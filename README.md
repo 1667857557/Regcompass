@@ -2,9 +2,9 @@
 
 RegCompassR is an R package scaffold for RegCompass-Multiome: a multiome-supported, GPR-aware, sample-aware framework for reaction capacity potential and selected network-constrained feasibility analysis.
 
-## v0.1-v0.4 scope
+## v0.1-v0.5 scope
 
-The v0.1 implementation focuses on the input layer for already annotated Seurat v4/Signac single-cell multiome objects. The v0.2 implementation adds sample-aware micropooling and pool-level pseudobulk summaries. The v0.3 implementation adds simple GPR parsing and Layer 1 reaction capacity potential. The v0.4 implementation adds pool/GPR/Q95 diagnostics with bootstrap uncertainty. It does not rerun clustering, WNN, or flux/QP modeling.
+The v0.1 implementation focuses on the input layer for already annotated Seurat v4/Signac single-cell multiome objects. The v0.2 implementation adds sample-aware micropooling and pool-level pseudobulk summaries. The v0.3 implementation adds simple GPR parsing and Layer 1 reaction capacity potential. The v0.4 implementation adds pool/GPR/Q95 diagnostics with bootstrap uncertainty. The v0.5 implementation adds a minimal toy GEM plus baseline and selected demand QP wrappers around OSQP/rosqp. It does not rerun clustering, WNN, or flux/QP modeling.
 
 Implemented functions:
 
@@ -17,6 +17,7 @@ Implemented functions:
 - `rc_run_layer1_capacity()` computes GPR-aware Layer 1 reaction capacity and Q95 diagnostics.
 - `rc_pool_diagnostics()` reports v0.4 pool-level diagnostics for depth, low-power pools, and metabolic/GPR gene detection.
 - `rc_q95_bootstrap()` adds bootstrap confidence intervals for reaction-wise Q95 diagnostics.
+- `rc_toy_gem()`, `rc_build_baseline_qp()`, `rc_solve_qp()`, and `rc_demand_qp()` provide the v0.5 toy GEM/QP MVP.
 
 ## Expected input
 
@@ -117,3 +118,25 @@ q95_diag <- rc_q95_calibrate(
   B = 200
 )$Q
 ```
+
+## v0.5 toy GEM and QP example
+
+```r
+toy <- rc_toy_gem()
+qp <- rc_build_baseline_qp(
+  toy,
+  penalty = rep(1, length(toy$reaction_id)),
+  lambda = 1e-4,
+  atpm_rxn = "ATPM",
+  atpm_min = 1
+)
+
+# Requires rosqp.
+base_solution <- rc_solve_qp(qp, settings = list(verbose = FALSE))
+base_status <- rc_osqp_status(base_solution)
+
+demand_qp <- rc_demand_qp(qp, reaction_id = "BIOMASS", delta = 1)
+demand_solution <- rc_solve_qp(demand_qp, settings = list(verbose = FALSE))
+```
+
+v0.5 intentionally stays on the toy GEM / selected demand QP path and does not attempt full Human-GEM, all-reaction QP, FVA, thermodynamic constraints, or community exchange.
