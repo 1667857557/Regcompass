@@ -1,0 +1,42 @@
+test_that("rc_reaction_capacity returns reaction by pool matrix", {
+  gpr_table <- data.frame(
+    reaction_id = c("R_HEX", "R_PFK"),
+    gpr = c("HK1 or HK2", "PFKM and PFKL"),
+    stringsAsFactors = FALSE
+  )
+  parsed <- rc_parse_gpr_table(gpr_table)
+  gene_score <- matrix(
+    c(0.8, 0.4, 0.7, 0.5, 0.2, 0.9, 0.6, 0.4),
+    nrow = 4,
+    dimnames = list(c("hk1", "hk2", "pfkm", "pfkl"), c("pool1", "pool2"))
+  )
+
+  out <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = "none", tau = 0.08)
+  expect_equal(dim(out), c(2L, 2L))
+  expect_identical(rownames(out), c("R_HEX", "R_PFK"))
+  expect_identical(colnames(out), c("pool1", "pool2"))
+  expect_equal(out["R_HEX", "pool1"], 0.8 + 0.4)
+})
+
+test_that("rc_run_layer1_capacity returns MVP v0.3 outputs", {
+  gpr_table <- data.frame(
+    reaction_id = c("R_HEX", "R_PFK"),
+    gpr = c("HK1 or HK2", "PFKM and PFKL"),
+    stringsAsFactors = FALSE
+  )
+  expr <- matrix(
+    c(10, 2, 5, 5, 4, 8, 6, 2),
+    nrow = 4,
+    dimnames = list(c("HK1", "HK2", "PFKM", "PFKL"), c("pool1", "pool2"))
+  )
+  detect <- matrix(
+    c(1, 0.5, 0.8, 0.9, 1, 0.2, 0.7, 0.6),
+    nrow = 4,
+    dimnames = list(c("HK1", "HK2", "PFKM", "PFKL"), c("pool1", "pool2"))
+  )
+
+  out <- rc_run_layer1_capacity(gpr_table, expr, pool_detection = detect, promiscuity_mode = "sqrt", min_direct = 10)
+  expect_true(all(c("reaction_capacity_L1", "reaction_confidence", "q95_diagnostics") %in% names(out)))
+  expect_equal(dim(out$reaction_capacity_L1), c(2L, 2L))
+  expect_true("mean_gpr_detection_rate" %in% colnames(out$reaction_confidence))
+})
