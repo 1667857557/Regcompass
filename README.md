@@ -11,6 +11,8 @@ Implemented functions:
 - `rc_validate_seurat()` checks that a Seurat object contains the requested RNA assay, ATAC assay, required sample and cell-type metadata, optional condition/batch metadata, and optional embedding.
 - `rc_extract_inputs()` validates the object and extracts RNA assay data, ATAC assay data, cell metadata, and an optional embedding into a plain R list.
 - `rc_make_pools()` creates sample-aware micropools within sample, optional condition, cell type, and optional local-state/cluster strata without mixing cells across samples.
+- `rc_pool_mean()` computes pool-level sparse means for normalized expression/residual matrices.
+- `rc_pool_detection()` computes pool-level detection rates from raw counts for later dropout-aware correction.
 
 ## Expected input
 
@@ -58,3 +60,12 @@ pool_map <- rc_make_pools(
   seed = 1
 )
 ```
+
+## v0.2 pseudobulk example
+
+```r
+rna_pool_mean <- rc_pool_mean(inputs$rna, pool_map)
+rna_detection <- rc_pool_detection(inputs$rna, pool_map)
+```
+
+Use raw counts for detection rates. Use normalized data or residual matrices for expression scores; do not use imputed matrices in the main GPR formula.
