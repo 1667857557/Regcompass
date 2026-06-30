@@ -34,6 +34,11 @@ rc_demand_qp <- function(qp_base, reaction_id, delta) {
 #' @param delta Demand flux applied to each reaction, or one value per reaction.
 #' @param settings OSQP settings passed to [rc_solve_qp()].
 #' @param BPPARAM Optional `BiocParallelParam` for selected reaction parallelism.
+#' @param checkpoint_file Optional path to an RDS checkpoint. Completed results are
+#' loaded before solving and saved during execution. Checkpointing is disabled
+#' when `BPPARAM` is supplied because parallel workers cannot safely append to the
+#' same checkpoint file.
+#' @param checkpoint_every Save checkpoint after this many newly solved demand QPs.
 #'
 #' @return A data.frame with reaction ID, delta, OSQP status, objective, and flux.
 #' @export
@@ -41,11 +46,20 @@ rc_solve_selected_demand_qp <- function(qp_base,
                                         reactions,
                                         delta,
                                         settings = list(verbose = FALSE),
-                                        BPPARAM = NULL) {
+                                        BPPARAM = NULL,
+                                        checkpoint_file = NULL,
+                                        checkpoint_every = 100L) {
   if (length(delta) == 1L) delta <- rep(delta, length(reactions))
   if (length(delta) != length(reactions)) stop("`delta` must have length 1 or match `reactions`.", call. = FALSE)
+  if (!is.numeric(checkpoint_every) || length(checkpoint_every) != 1L || is.na(checkpoint_every) || checkpoint_every < 1) {
+    stop("`checkpoint_every` must be a positive integer.", call. = FALSE)
+  }
+  checkpoint_every <- as.integer(checkpoint_every)
+  if (!is.null(checkpoint_file) && !is.null(BPPARAM)) {
+    stop("`checkpoint_file` cannot be used with parallel `BPPARAM`; checkpoint by pool or run serial demand solves.", call. = FALSE)
+  }
 
-  pieces <- rc_parallel_lapply(seq_along(reactions), function(i) {
+  make_one <- function(i) {
     qp <- rc_demand_qp(qp_base, reactions[[i]], delta[[i]])
     sol <- rc_solve_qp(qp, settings = settings)
     status <- rc_osqp_status(sol)
@@ -58,6 +72,27 @@ rc_solve_selected_demand_qp <- function(qp_base,
       flux = if (!is.null(sol$x)) sol$x[[idx]] else NA_real_,
       stringsAsFactors = FALSE
     )
-  }, BPPARAM = BPPARAM)
-  do.call(rbind, pieces)
+  }
+
+  if (is.null(checkpoint_file)) {
+    pieces <- rc_parallel_lapply(seq_along(reactions), make_one, BPPARAM = BPPARAM)
+    return(do.call(rbind, pieces))
+  }
+
+  done <- if (file.exists(checkpoint_file)) readRDS(checkpoint_file) else data.frame()
+  done_keys <- if (nrow(done) > 0L) paste(done$reaction_id, done$delta, sep = "\r") else character()
+  target_keys <- paste(as.character(reactions), delta, sep = "\r")
+  pieces <- if (nrow(done) > 0L) list(done) else list()
+  solved_since_checkpoint <- 0L
+  for (i in which(!target_keys %in% done_keys)) {
+    pieces[[length(pieces) + 1L]] <- make_one(i)
+    solved_since_checkpoint <- solved_since_checkpoint + 1L
+    if (solved_since_checkpoint >= checkpoint_every) {
+      saveRDS(do.call(rbind, pieces), checkpoint_file)
+      solved_since_checkpoint <- 0L
+    }
+  }
+  out <- do.call(rbind, pieces)
+  saveRDS(out, checkpoint_file)
+  out
 }
