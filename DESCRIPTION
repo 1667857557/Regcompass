@@ -1,8 +1,8 @@
 Package: RegCompassR
 Title: Multiome-Supported Metabolic Reaction Capacity Analysis
-Version: 0.3.0
+Version: 0.4.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
-Description: Provides input validation, extraction, sample-aware micropooling, and pool-level pseudobulk, GPR parsing, and Layer 1 reaction capacity utilities for annotated Seurat/Signac single-cell multiome objects in early RegCompass-Multiome development stages.
+Description: Provides input validation, extraction, sample-aware micropooling, and pool-level pseudobulk, GPR parsing, and Layer 1 reaction capacity and diagnostics utilities for annotated Seurat/Signac single-cell multiome objects in early RegCompass-Multiome development stages.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

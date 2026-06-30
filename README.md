@@ -2,9 +2,9 @@
 
 RegCompassR is an R package scaffold for RegCompass-Multiome: a multiome-supported, GPR-aware, sample-aware framework for reaction capacity potential and selected network-constrained feasibility analysis.
 
-## v0.1-v0.3 scope
+## v0.1-v0.4 scope
 
-The v0.1 implementation focuses on the input layer for already annotated Seurat v4/Signac single-cell multiome objects. The v0.2 implementation adds sample-aware micropooling and pool-level pseudobulk summaries. The v0.3 implementation adds simple GPR parsing and Layer 1 reaction capacity potential. It does not rerun clustering, WNN, or flux/QP modeling.
+The v0.1 implementation focuses on the input layer for already annotated Seurat v4/Signac single-cell multiome objects. The v0.2 implementation adds sample-aware micropooling and pool-level pseudobulk summaries. The v0.3 implementation adds simple GPR parsing and Layer 1 reaction capacity potential. The v0.4 implementation adds pool/GPR/Q95 diagnostics with bootstrap uncertainty. It does not rerun clustering, WNN, or flux/QP modeling.
 
 Implemented functions:
 
@@ -15,6 +15,8 @@ Implemented functions:
 - `rc_pool_detection()` computes pool-level detection rates from raw counts for later dropout-aware correction.
 - `rc_parse_gpr_simple()` / `rc_parse_gpr_table()` parse curated simple GPR rules.
 - `rc_run_layer1_capacity()` computes GPR-aware Layer 1 reaction capacity and Q95 diagnostics.
+- `rc_pool_diagnostics()` reports v0.4 pool-level diagnostics for depth, low-power pools, and metabolic/GPR gene detection.
+- `rc_q95_bootstrap()` adds bootstrap confidence intervals for reaction-wise Q95 diagnostics.
 
 ## Expected input
 
@@ -94,3 +96,24 @@ q95_diagnostics <- layer1$q95_diagnostics
 ```
 
 Layer 1 capacity is a reaction capacity potential, not a true flux estimate. The AND rule uses a Boltzmann-weighted average biased toward the minimum; it is not a LogSumExp soft minimum.
+
+## v0.4 diagnostics example
+
+```r
+gpr_genes <- unique(unlist(layer1$parsed_gpr, use.names = FALSE))
+pool_diag <- rc_pool_diagnostics(
+  pool_map,
+  rna_counts = inputs$rna,
+  atac_counts = inputs$atac,
+  state_col = "seurat_clusters",
+  metabolic_genes = gpr_genes,
+  gpr_genes = gpr_genes
+)
+
+q95_diag <- rc_q95_calibrate(
+  layer1$reaction_capacity_raw,
+  min_direct = 100,
+  bootstrap = TRUE,
+  B = 200
+)$Q
+```
