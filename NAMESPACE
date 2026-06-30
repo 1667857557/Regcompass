@@ -1,2 +1,3 @@
 export(rc_validate_seurat)
 export(rc_extract_inputs)
+export(rc_make_pools)
