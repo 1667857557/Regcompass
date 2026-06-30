@@ -2,9 +2,9 @@
 
 RegCompassR is an R package scaffold for RegCompass-Multiome: a multiome-supported, GPR-aware, sample-aware framework for reaction capacity potential and selected network-constrained feasibility analysis.
 
-## v0.1-v0.5 scope
+## v0.1-v0.7 scope
 
-The v0.1 implementation focuses on the input layer for already annotated Seurat v4/Signac single-cell multiome objects. The v0.2 implementation adds sample-aware micropooling and pool-level pseudobulk summaries. The v0.3 implementation adds simple GPR parsing and Layer 1 reaction capacity potential. The v0.4 implementation adds pool/GPR/Q95 diagnostics with bootstrap uncertainty. The v0.5 implementation adds a minimal toy GEM plus baseline and selected demand QP wrappers around OSQP/rosqp. It does not rerun clustering, WNN, or flux/QP modeling.
+The v0.1 implementation focuses on the input layer for already annotated Seurat v4/Signac single-cell multiome objects. The v0.2 implementation adds sample-aware micropooling and pool-level pseudobulk summaries. The v0.3 implementation adds simple GPR parsing and Layer 1 reaction capacity potential. The v0.4 implementation adds pool/GPR/Q95 diagnostics with bootstrap uncertainty. The v0.5 implementation adds a minimal toy GEM plus baseline and selected demand QP wrappers around OSQP/rosqp. The v0.6 implementation adds selected reaction demand-QP selection, workload estimation, parallel execution hooks, and serial checkpoint/resume support. The v0.7 implementation adds sample-level aggregation, simple sample-level linear models, and candidate regulator ranking. It does not rerun clustering or WNN.
 
 Implemented functions:
 
@@ -18,6 +18,8 @@ Implemented functions:
 - `rc_pool_diagnostics()` reports v0.4 pool-level diagnostics for depth, low-power pools, and metabolic/GPR gene detection.
 - `rc_q95_bootstrap()` adds bootstrap confidence intervals for reaction-wise Q95 diagnostics.
 - `rc_toy_gem()`, `rc_build_baseline_qp()`, `rc_solve_qp()`, and `rc_demand_qp()` provide the v0.5 toy GEM/QP MVP.
+- `rc_select_reactions()` and `rc_estimate_selected_demand_qp()` provide the v0.6 selected-demand QP planning layer.
+- `rc_sample_aggregate()`, `rc_lm_by_reaction()`, and `rc_rank_regulators()` provide the v0.7 sample-level statistics and regulator candidate-prioritization layer.
 
 ## Expected input
 
@@ -140,3 +142,13 @@ demand_solution <- rc_solve_qp(demand_qp, settings = list(verbose = FALSE))
 ```
 
 v0.5 intentionally stays on the toy GEM / selected demand QP path and does not attempt full Human-GEM, all-reaction QP, FVA, thermodynamic constraints, or community exchange.
+
+
+## v0.6 selected reaction demand-QP planning
+
+`rc_select_reactions()` selects the union of top variable Layer 1 reactions, exchange reactions, transport reactions, and user-specified reactions from annotated reaction metadata. Before running selected demand QPs, call `rc_estimate_selected_demand_qp()` to report `n_pools * (1 + length(selected_reactions))`, estimated serial/parallel runtime, worker plan, and checkpoint count. `rc_solve_selected_demand_qp()` supports `BPPARAM` for Linux parallelism and `checkpoint_file`/`checkpoint_every` for serial checkpoint/resume.
+
+
+## v0.7 sample-level statistics and regulator ranking
+
+`rc_sample_aggregate()` aggregates pool-level reaction scores to biological sample × annotated cell-type medians, so differential analysis does not treat pools as independent biological replicates. `rc_lm_by_reaction()` fits simple reaction-wise sample-level linear models and reports BH-adjusted q-values within model terms. `rc_rank_regulators()` combines direct/adjusted association and support evidence into candidate regulator rankings only; rankings are not causal driver claims.
