@@ -39,6 +39,7 @@ rc_parse_gpr_table <- function(gpr_table) {
       unname(lapply(split_gene, function(x) unique(x[nzchar(x)])))
     }))
   }
+
   missing_cols <- setdiff(c("reaction_id", "gpr"), colnames(gpr_table))
   if (length(missing_cols) > 0) stop("`gpr_table` is missing required columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
   if (anyNA(gpr_table$reaction_id) || any(!nzchar(trimws(gpr_table$reaction_id)))) stop("`reaction_id` values must be non-empty.", call. = FALSE)

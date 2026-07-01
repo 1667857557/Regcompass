@@ -52,12 +52,7 @@ rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TR
   list(C_rel = out$C_rel, Q = Q)
 }
 
-#' Bootstrap Q95 confidence interval for one reaction
-#'
-#' @param x Numeric raw capacity values for one reaction across pools.
-#' @param B Number of bootstrap resamples.
-#'
-#' @return Named numeric vector: `q95`, `ci_low`, `ci_high`, and `width`.
+#' Calibrate raw reaction capacity by Q95 shrinkage
 #' @export
 rc_q95_bootstrap <- function(x, B = 500) {
   x <- x[is.finite(x)]
@@ -77,22 +72,11 @@ rc_q95_bootstrap <- function(x, B = 500) {
   )
 }
 
-#' Run v0.4 Layer 1 GPR capacity workflow with diagnostics
+#' Compute reaction confidence from gene confidence or RNA detection
 #'
-#' @param gpr_table A data.frame with `reaction_id` and `gpr` columns.
-#' @param pool_expression Gene-by-pool expression score input. Use normalized
-#' data or residuals, not imputed matrices.
-#' @param pool_detection Optional gene-by-pool detection-rate matrix from raw
-#' counts for confidence summaries.
-#' @param promiscuity_mode One of `"sqrt"`, `"linear"`, or `"none"`.
-#' @param tau Positive Boltzmann temperature for AND complexes.
-#' @param min_direct Minimum finite pool count for Q95 calibration.
-#' @param bootstrap Logical; if `TRUE`, include bootstrap Q95 confidence intervals.
-#' @param B Number of bootstrap resamples when `bootstrap = TRUE`.
-#' @param BPPARAM Optional `BiocParallelParam` used to parallelize reactions and bootstrap.
-#'
-#' @return A list with `reaction_capacity_L1`, `reaction_capacity_raw`,
-#' `reaction_confidence`, `q95_diagnostics`, `gpr_diagnostics`, and `parsed_gpr`.
+#' Reaction confidence is the median available GPR-gene confidence per pool,
+#' multiplied by the observed fraction of GPR genes. This preserves the capacity
+#' estimate from available genes but downgrades reactions with missing GPR genes.
 #' @export
 rc_run_layer1_capacity <- function(gpr_table,
                                    pool_expression,
@@ -116,6 +100,51 @@ rc_run_layer1_capacity <- function(gpr_table,
   if (is.null(rownames(pool_expression))) {
     stop("`pool_expression` must have gene IDs in rownames().", call. = FALSE)
   }
+  gene_confidence <- as.matrix(gene_confidence)
+  if (is.null(rownames(gene_confidence)) || is.null(colnames(gene_confidence))) stop("Gene confidence/detection must have gene rownames and pool colnames.", call. = FALSE)
+  rownames(gene_confidence) <- tolower(rownames(gene_confidence))
+
+  rows <- lapply(names(gpr_list), function(rid) {
+    genes_all <- unique(unlist(gpr_list[[rid]], use.names = FALSE))
+    genes_all <- genes_all[nzchar(genes_all)]
+    total <- length(genes_all)
+    genes <- intersect(genes_all, rownames(gene_confidence))
+    missing_frac <- if (total == 0L) NA_real_ else 1 - length(genes) / total
+    raw <- if (length(genes) == 0L) rep(NA_real_, ncol(gene_confidence)) else matrixStats::colMedians(gene_confidence[genes, , drop = FALSE], na.rm = TRUE)
+    conf <- raw * ifelse(is.na(missing_frac), NA_real_, 1 - missing_frac)
+    data.frame(
+      reaction_id = rid,
+      pool_id = colnames(gene_confidence),
+      reaction_confidence = pmax(0, pmin(1, conf)),
+      raw_reaction_confidence = pmax(0, pmin(1, raw)),
+      missing_gpr_gene_fraction = missing_frac,
+      low_confidence_reaction_flag = conf < 0.25 | is.na(conf),
+      confidence_source = source,
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
+}
+
+#' Run the simplified RegCompassR Layer 1 workflow from RNA raw counts
+#' @export
+rc_run_layer1_from_counts <- function(gpr_table,
+                                      rna_counts,
+                                      pool_map,
+                                      pool_meta = NULL,
+                                      stratum_col = "cell_type",
+                                      tau = 0.20,
+                                      n0 = 80,
+                                      BPPARAM = NULL) {
+  pb <- rc_pseudobulk_counts(rna_counts, pool_map, fun = "sum", BPPARAM = BPPARAM)
+  if (is.null(pool_meta)) pool_meta <- rc_build_pool_metadata(pool_map)
+  filtered <- rc_filter_empty_pools(pb, pool_meta)
+  rna_logcpm <- rc_logcpm(filtered$counts)
+  pool_meta <- filtered$pool_meta
+
+  detection <- rc_pool_detection(rna_counts, pool_map, BPPARAM = BPPARAM)
+  detection <- detection[, colnames(rna_logcpm), drop = FALSE]
+
   parsed <- rc_parse_gpr_table(gpr_table)
   gene_score <- rc_gene_score(pool_expression)
   rownames(gene_score) <- tolower(rownames(gene_score))
@@ -130,8 +159,8 @@ rc_run_layer1_capacity <- function(gpr_table,
   and_sens <- rc_and_method_sensitivity(and_long)
 
   list(
-    reaction_capacity_L1 = calibrated$C_rel,
-    reaction_capacity_raw = C_raw,
+    C_raw = C_raw,
+    C_rel = calibrated$C_rel,
     reaction_confidence = confidence,
     capacity_long = and_long,
     and_method_sensitivity = and_sens,

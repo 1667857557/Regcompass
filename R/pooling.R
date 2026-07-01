@@ -43,7 +43,7 @@ rc_make_pools <- function(meta,
     if (!is.numeric(val) || length(val) != 1L || is.na(val) || val < 1) stop("`", nm, "` must be a single positive number.", call. = FALSE)
   }
   group_cols <- c(sample_col, condition_col, celltype_col, state_col)
-  group_cols <- group_cols[!is.na(group_cols) & nzchar(group_cols)]
+  group_cols <- group_cols[!is.null(group_cols) & !is.na(group_cols) & nzchar(group_cols)]
   missing_cols <- setdiff(group_cols, colnames(meta))
   if (length(missing_cols) > 0) stop("Missing metadata columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
 

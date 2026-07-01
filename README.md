@@ -1,12 +1,24 @@
 # RegCompassR
 
-RegCompassR is an R package scaffold for RegCompass-Multiome: a multiome-supported, GPR-aware, sample-aware framework for reaction capacity potential and selected network-constrained feasibility analysis.
+RegCompassR is a simplified Layer 1 tool for **multiome-supported, GPR-aware, sample-aware reaction capacity potential** analysis from annotated Seurat v4 RNA+ATAC objects.
 
-## v0.1-v0.7 scope
+The package intentionally keeps the main analysis narrow:
 
-The v0.1 implementation focuses on the input layer for already annotated Seurat v4/Signac single-cell multiome objects. The v0.2 implementation adds sample-aware micropooling and pool-level pseudobulk summaries. The v0.3 implementation adds simple GPR parsing and Layer 1 reaction capacity potential. The v0.4 implementation adds pool/GPR/Q95 diagnostics with bootstrap uncertainty. The v0.5 implementation adds a minimal toy GEM plus baseline and selected demand QP wrappers around OSQP/rosqp. The v0.6 implementation adds selected reaction demand-QP selection, workload estimation, parallel execution hooks, and serial checkpoint/resume support. The v0.7 implementation adds sample-level aggregation, simple sample-level linear models, and candidate regulator ranking. It does not rerun clustering or WNN.
-
-Implemented functions:
+```text
+Seurat v4 RNA+ATAC counts
+→ sample × cell_type × optional condition micropools
+→ RNA raw-count pool sum
+→ log2(CPM + 1)
+→ robust z-score by gene across pools
+→ sigmoid gene score
+→ sqrt promiscuity correction
+→ GPR capacity:
+   AND = Boltzmann minimum-biased average, tau = 0.20
+   OR  = sum across isoenzyme groups
+→ cell-type Q95 continuous shrinkage
+→ reaction confidence = median gene confidence × observed GPR gene fraction
+→ C_raw, C_rel, reaction_confidence, minimal diagnostics
+```
 
 - `rc_validate_seurat()` checks that a Seurat object contains the requested RNA assay, ATAC assay, required sample and cell-type metadata, optional condition/batch metadata, and optional embedding.
 - `rc_extract_inputs()` validates the object and extracts RNA assay data, ATAC assay data, cell metadata, and an optional embedding into a plain R list.
@@ -23,19 +35,22 @@ Implemented functions:
 
 ## Expected input
 
-A Seurat v4 object should contain:
+An already annotated Seurat v4/Signac multiome object with:
 
-- RNA assay: commonly `RNA` or `SCT`
-- ATAC/chromatin assay: commonly `ATAC` or `peaks`
-- metadata columns such as `sample_id`, `cell_type`, optional `condition`, and optional `batch`
-- optional reductions such as WNN, UMAP, PCA, LSI, or Harmony
+- RNA assay counts, usually `RNA`
+- ATAC/chromatin assay counts, usually `ATAC` or `peaks`
+- identical RNA and ATAC cell barcodes
+- metadata columns:
+  - `sample_id`
+  - `cell_type`
+  - optional `condition`
 
-## Example
+## Main workflow
 
 ```r
 library(RegCompassR)
 
-rc_validate_seurat(
+inputs <- rc_extract_seurat_v4(
   object,
   rna_assay = "RNA",
   atac_assay = "ATAC",
@@ -44,31 +59,24 @@ rc_validate_seurat(
   condition_col = "condition"
 )
 
-inputs <- rc_extract_inputs(
-  object,
-  rna_assay = "RNA",
-  atac_assay = "ATAC",
-  sample_col = "sample_id",
-  celltype_col = "cell_type"
-)
-```
-
-## v0.2 micropooling example
-
-```r
 pool_map <- rc_make_pools(
   inputs$meta,
   sample_col = "sample_id",
   celltype_col = "cell_type",
   condition_col = "condition",
-  state_col = "seurat_clusters",
   target_size = 80,
-  min_size = 30,
+  min_pool_size = 30,
+  min_group_size = 30,
   seed = 1
 )
-```
 
-## v0.2 pseudobulk example
+layer1 <- rc_run_layer1_from_counts(
+  gpr_table = gpr_table,
+  rna_counts = inputs$rna_counts,
+  pool_map = pool_map,
+  stratum_col = "cell_type",
+  tau = 0.20
+)
 
 RegCompassR Layer 1 uses the adjusted plan order: raw counts → pool sum → pool-level normalization. Do not average cell-level residuals, TF-IDF, or imputed expression for the main GPR capacity input.
 
@@ -84,13 +92,9 @@ rna_detection <- rna_detection[, colnames(rna_logcpm), drop = FALSE]
 
 Detection rates are retained for confidence/diagnostics only and do not directly modify the gene score.
 
-## v0.3 Layer 1 GPR capacity example
+### Pool expression
 
-```r
-gpr_table <- data.frame(
-  reaction_id = c("R_HEX1", "R_PFK", "R_LDH"),
-  gpr = c("HK1 or HK2 or HK3", "PFKM and PFKL", "LDHA or LDHB")
-)
+Layer 1 uses only:
 
 layer1 <- rc_run_layer1_capacity(
   gpr_table = gpr_table,
@@ -103,14 +107,11 @@ layer1 <- rc_run_layer1_capacity(
   tau = 0.20
 )
 
-reaction_capacity_L1 <- layer1$reaction_capacity_L1
-reaction_confidence <- layer1$reaction_confidence
-q95_diagnostics <- layer1$q95_diagnostics
-```
+where \(count_{g,p}\) is the raw-count sum of gene \(g\) in pool \(p\).
 
-Layer 1 capacity is a reaction capacity potential, not a true flux estimate. The AND rule uses a Boltzmann-weighted average biased toward the minimum; it is not a LogSumExp soft minimum.
+Cell-level Pearson residuals, TF-IDF, scaled data, and imputed matrices are not valid main inputs because their averages are not equivalent to pseudobulk count normalization.
 
-## v0.4 diagnostics example
+### Gene score
 
 ```r
 gpr_genes <- unique(unlist(layer1$parsed_gpr, use.names = FALSE))
@@ -131,35 +132,69 @@ q95_diag <- rc_q95_calibrate(
 )$Q
 ```
 
-## v0.5 toy GEM and QP example
+with clipping to \([-6,6]\), then:
 
-```r
-toy <- rc_toy_gem()
-qp <- rc_build_baseline_qp(
-  toy,
-  penalty = rep(1, length(toy$reaction_id)),
-  lambda = 1e-4,
-  atpm_rxn = "ATPM",
-  atpm_min = 1
-)
+\[
+s_{g,p}=\sigma(z_{g,p})
+\]
 
-# Requires rosqp.
-base_solution <- rc_solve_qp(qp, settings = list(verbose = FALSE))
-base_status <- rc_osqp_status(base_solution)
+### GPR capacity
 
-demand_qp <- rc_demand_qp(qp, reaction_id = "BIOMASS", delta = 1)
-demand_solution <- rc_solve_qp(demand_qp, settings = list(verbose = FALSE))
-```
+Promiscuous genes are downweighted by:
 
-v0.5 intentionally stays on the toy GEM / selected demand QP path and does not attempt full Human-GEM, all-reaction QP, FVA, thermodynamic constraints, or community exchange.
+\[
+s'_{g,p}=s_{g,p}/\sqrt{N_{rxn}(g)}
+\]
 
+For AND groups:
 
-## v0.6 selected reaction demand-QP planning
+\[
+w_{g,p}=\frac{\exp(-s'_{g,p}/\tau)}{\sum_h \exp(-s'_{h,p}/\tau)}
+\]
 
-`rc_select_reactions()` selects the union of top variable Layer 1 reactions, optional top sample-level differential reactions, exchange reactions, transport reactions, and user-specified reactions from annotated reaction metadata. Before running selected demand QPs, call `rc_estimate_selected_demand_qp()` to report `n_pools * (1 + length(selected_reactions))`, estimated serial/parallel runtime, worker plan, and checkpoint count. `rc_solve_selected_demand_qp()` supports `BPPARAM` for Linux parallelism and `checkpoint_file`/`checkpoint_every` for serial checkpoint/resume.
+\[
+C_k(r,p)=\sum_g w_{g,p}s'_{g,p}
+\]
 
+Default \(\tau=0.20\). Smaller values such as 0.08 behave closer to a hard minimum; larger values move toward a mean-like AND. RegCompassR reports a hard-min sensitivity flag but keeps one main result.
 
-## v0.7 sample-level statistics and regulator ranking
+For OR groups:
+
+\[
+C_{raw}(r,p)=\sum_k C_k(r,p)
+\]
+
+### Q95 calibration
+
+Within each cell type:
+
+\[
+Q_r=\rho_n Q_{r,celltype}+(1-\rho_n)Q_{r,global}
+\]
+
+\[
+\rho_n=\frac{n}{n+80}
+\]
+
+\[
+C_{rel}(r,p)=\min\left(1,\frac{C_{raw}(r,p)}{Q_r+\epsilon}\right)
+\]
+
+`C_rel` is a relative reaction capacity potential, not enzyme activity and not a flux bound.
+
+### Reaction confidence
+
+When only RNA detection is available, reaction confidence defaults to:
+
+\[
+Conf_{r,p}=median(Detection_{g,p}:g\in GPR_r)\times(1-missing\_gpr\_gene\_fraction)
+\]
+
+If a user supplies a gene-level confidence matrix, the same missing-GPR penalty is applied.
+
+## Minimal diagnostics
+
+The main workflow returns:
 
 `rc_sample_aggregate()` aggregates pool-level reaction scores to biological sample × annotated cell-type medians, so differential analysis does not treat pools as independent biological replicates. `rc_lm_by_reaction()` fits simple reaction-wise sample-level linear models and reports BH-adjusted q-values within model terms. `rc_rank_regulators()` combines direct/adjusted association and support evidence into candidate regulator rankings only; rankings are not causal driver claims.
 
