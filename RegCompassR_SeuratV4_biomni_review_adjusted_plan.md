@@ -834,10 +834,10 @@ Concord_{RA}(g,p)=1-|P_{RNA}(g,p)-P_{ATAC}(g,p)|
 
 ### 14.2 离散 null baseline
 
-对 n 个 pool，独立随机 rank 的期望 concordance 为：
+在 stratum 内 percentile 定义为 \((rank-1)/(n-1)\) 时，对 n 个 pool，独立随机 rank 的期望 concordance 为：
 
 \[
-E_{null}(n)=\frac{2}{3}+\frac{1}{3n^2}
+E_{null}(n)=\frac{2}{3}-\frac{1}{3n}
 \]
 
 因此：

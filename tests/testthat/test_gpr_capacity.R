@@ -16,9 +16,23 @@ test_that("rc_reaction_capacity returns reaction by pool matrix", {
   expect_identical(rownames(out), c("R_HEX", "R_PFK"))
   expect_identical(colnames(out), c("pool1", "pool2"))
   expect_equal(out["R_HEX", "pool1"], 0.8 + 0.4)
+
+  sqrt_out <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = "sqrt", tau = 0.08)
+  expect_equal(sqrt_out["R_HEX", "pool1"], out["R_HEX", "pool1"])
 })
 
-test_that("rc_run_layer1_capacity returns MVP v0.3 outputs", {
+test_that("rc_reaction_capacity passes promiscuity_mode into weights", {
+  gprs <- list(r1 = list("g1"), r2 = list("g1"))
+  gene_score <- matrix(1, nrow = 1, ncol = 1, dimnames = list("g1", "p1"))
+  none <- rc_reaction_capacity(gprs, gene_score, promiscuity_mode = "none")
+  sqrt <- rc_reaction_capacity(gprs, gene_score, promiscuity_mode = "sqrt")
+  linear <- rc_reaction_capacity(gprs, gene_score, promiscuity_mode = "linear")
+  expect_equal(none["r1", "p1"], 1)
+  expect_equal(sqrt["r1", "p1"], 1 / sqrt(2))
+  expect_equal(linear["r1", "p1"], 1 / 2)
+})
+
+test_that("rc_run_layer1_capacity returns MVP Layer 1 toy outputs", {
   gpr_table <- data.frame(
     reaction_id = c("R_HEX", "R_PFK"),
     gpr = c("HK1 or HK2", "PFKM and PFKL"),
@@ -36,9 +50,15 @@ test_that("rc_run_layer1_capacity returns MVP v0.3 outputs", {
   )
 
   out <- rc_run_layer1_capacity(gpr_table, expr, pool_detection = detect, promiscuity_mode = "sqrt", min_direct = 10)
-  expect_true(all(c("reaction_capacity_L1", "reaction_confidence", "q95_diagnostics") %in% names(out)))
-  expect_equal(dim(out$reaction_capacity_L1), c(2L, 2L))
+  expect_true(all(c("C_raw", "C_rel", "q95_diagnostics", "gpr_diagnostics", "reaction_confidence") %in% names(out)))
+  expect_equal(dim(out$C_raw), c(2L, 2L))
   expect_true("mean_gpr_detection_rate" %in% colnames(out$reaction_confidence))
+
+  pfk <- out$capacity_long[out$capacity_long$reaction_id == "R_PFK" & out$capacity_long$pool_id == "pool1", ]
+  cap <- stats::setNames(pfk$C_raw, pfk$and_method)
+  expect_lte(cap[["min"]], cap[["boltzmann_0.08"]])
+  expect_lte(cap[["boltzmann_0.08"]], cap[["boltzmann_0.20"]])
+  expect_lte(cap[["boltzmann_0.20"]], cap[["mean"]])
 })
 
 test_that("safe scale uses sigma-consistent MAD/IQR and clips z-scores", {

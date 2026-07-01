@@ -34,6 +34,11 @@ rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95,
 }
 
 #' Calibrate raw reaction capacities by continuous reaction-wise Q95 shrinkage
+#'
+#' `min_direct` is retained only for backward compatibility and is ignored.
+#' Continuous shrinkage is used for every reaction/stratum with one or more
+#' finite pools; low pool counts are reported through diagnostics rather than a
+#' hard direct/global switch.
 #' @export
 rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TRUE, B = 500, BPPARAM = NULL, n0 = 80, pool_meta = NULL, stratum_col = NULL) {
   C_raw <- as.matrix(C_raw)
@@ -72,11 +77,7 @@ rc_q95_bootstrap <- function(x, B = 500) {
   )
 }
 
-#' Compute reaction confidence from gene confidence or RNA detection
-#'
-#' Reaction confidence is the median available GPR-gene confidence per pool,
-#' multiplied by the observed fraction of GPR genes. This preserves the capacity
-#' estimate from available genes but downgrades reactions with missing GPR genes.
+#' Run the simplified Layer 1 capacity workflow
 #' @export
 rc_run_layer1_capacity <- function(gpr_table,
                                    pool_expression,
@@ -97,60 +98,31 @@ rc_run_layer1_capacity <- function(gpr_table,
                                    BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
   and_method <- match.arg(and_method)
+  pool_expression <- as.matrix(pool_expression)
   if (is.null(rownames(pool_expression))) {
     stop("`pool_expression` must have gene IDs in rownames().", call. = FALSE)
   }
-  gene_confidence <- as.matrix(gene_confidence)
-  if (is.null(rownames(gene_confidence)) || is.null(colnames(gene_confidence))) stop("Gene confidence/detection must have gene rownames and pool colnames.", call. = FALSE)
-  rownames(gene_confidence) <- tolower(rownames(gene_confidence))
-
-  rows <- lapply(names(gpr_list), function(rid) {
-    genes_all <- unique(unlist(gpr_list[[rid]], use.names = FALSE))
-    genes_all <- genes_all[nzchar(genes_all)]
-    total <- length(genes_all)
-    genes <- intersect(genes_all, rownames(gene_confidence))
-    missing_frac <- if (total == 0L) NA_real_ else 1 - length(genes) / total
-    raw <- if (length(genes) == 0L) rep(NA_real_, ncol(gene_confidence)) else matrixStats::colMedians(gene_confidence[genes, , drop = FALSE], na.rm = TRUE)
-    conf <- raw * ifelse(is.na(missing_frac), NA_real_, 1 - missing_frac)
-    data.frame(
-      reaction_id = rid,
-      pool_id = colnames(gene_confidence),
-      reaction_confidence = pmax(0, pmin(1, conf)),
-      raw_reaction_confidence = pmax(0, pmin(1, raw)),
-      missing_gpr_gene_fraction = missing_frac,
-      low_confidence_reaction_flag = conf < 0.25 | is.na(conf),
-      confidence_source = source,
-      stringsAsFactors = FALSE
-    )
-  })
-  do.call(rbind, rows)
-}
-
-#' Run the simplified RegCompassR Layer 1 workflow from RNA raw counts
-#' @export
-rc_run_layer1_from_counts <- function(gpr_table,
-                                      rna_counts,
-                                      pool_map,
-                                      pool_meta = NULL,
-                                      stratum_col = "cell_type",
-                                      tau = 0.20,
-                                      n0 = 80,
-                                      BPPARAM = NULL) {
-  pb <- rc_pseudobulk_counts(rna_counts, pool_map, fun = "sum", BPPARAM = BPPARAM)
-  if (is.null(pool_meta)) pool_meta <- rc_build_pool_metadata(pool_map)
-  filtered <- rc_filter_empty_pools(pb, pool_meta)
-  rna_logcpm <- rc_logcpm(filtered$counts)
-  pool_meta <- filtered$pool_meta
-
-  detection <- rc_pool_detection(rna_counts, pool_map, BPPARAM = BPPARAM)
-  detection <- detection[, colnames(rna_logcpm), drop = FALSE]
-
+  if (is.null(colnames(pool_expression))) {
+    stop("`pool_expression` must have pool IDs in colnames().", call. = FALSE)
+  }
   parsed <- rc_parse_gpr_table(gpr_table)
   gene_score <- rc_gene_score(pool_expression)
   rownames(gene_score) <- tolower(rownames(gene_score))
+  if (!is.null(pool_detection)) {
+    pool_detection <- as.matrix(pool_detection)
+    if (is.null(rownames(pool_detection)) || is.null(colnames(pool_detection))) stop("`pool_detection` must have gene rownames and pool colnames.", call. = FALSE)
+    if (!all(colnames(pool_expression) %in% colnames(pool_detection))) stop("`pool_detection` is missing one or more pool_expression columns.", call. = FALSE)
+    pool_detection <- pool_detection[, colnames(pool_expression), drop = FALSE]
+  }
+  if (!is.null(gene_confidence)) {
+    gene_confidence <- as.matrix(gene_confidence)
+    if (is.null(rownames(gene_confidence)) || is.null(colnames(gene_confidence))) stop("`gene_confidence` must have gene rownames and pool colnames.", call. = FALSE)
+    if (!all(colnames(pool_expression) %in% colnames(gene_confidence))) stop("`gene_confidence` is missing one or more pool_expression columns.", call. = FALSE)
+    gene_confidence <- gene_confidence[, colnames(pool_expression), drop = FALSE]
+  }
 
   C_raw <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = promiscuity_mode, tau = tau, and_method = and_method, BPPARAM = BPPARAM)
-  calibrated <- rc_q95_calibrate(C_raw, min_direct = min_direct, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM, pool_meta = pool_meta, stratum_col = stratum_col)
+  calibrated <- rc_q95_calibrate(C_raw, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM, pool_meta = pool_meta, stratum_col = stratum_col)
   gpr_diag <- rc_gpr_diagnostics(parsed, rownames(gene_score))
   confidence <- rc_reaction_confidence(parsed, gene_confidence = gene_confidence, pool_detection = pool_detection)
   tau_sens <- rc_capacity_sensitivity(parsed, gene_score, variable = "tau", values = tau_sensitivity, promiscuity_mode = promiscuity_mode, and_method = and_method, BPPARAM = BPPARAM)
@@ -160,6 +132,7 @@ rc_run_layer1_from_counts <- function(gpr_table,
 
   list(
     C_raw = C_raw,
+    reaction_capacity_L1 = C_raw,
     C_rel = calibrated$C_rel,
     reaction_confidence = confidence,
     capacity_long = and_long,

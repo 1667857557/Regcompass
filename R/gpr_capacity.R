@@ -122,9 +122,10 @@ rc_reaction_capacity <- function(gpr_list,
   if (is.null(rownames(gene_score)) || is.null(colnames(gene_score))) stop("`gene_score` must have rownames as genes and colnames as pools.", call. = FALSE)
   rownames(gene_score) <- tolower(rownames(gene_score))
 
-  weights <- rc_promiscuity_weight(gpr_list)
+  weights <- rc_promiscuity_weight(gpr_list, mode = promiscuity_mode)
   common_genes <- intersect(rownames(gene_score), names(weights))
-  gene_score[common_genes, ] <- sweep(gene_score[common_genes, , drop = FALSE], 1, weights[common_genes], "*")
+  weighted_score <- gene_score
+  weighted_score[common_genes, ] <- sweep(weighted_score[common_genes, , drop = FALSE], 1, weights[common_genes], "*")
 
   reaction_ids <- names(gpr_list)
   per_reaction <- rc_pool_lapply(reaction_ids, function(rid) {

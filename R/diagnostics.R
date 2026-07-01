@@ -20,14 +20,8 @@ rc_pool_diagnostics <- function(pool_map,
   if (!is.null(rna_counts)) {
     rc_validate_diagnostic_matrix(rna_counts, active_pool_map$cell_id, "rna_counts")
   }
-  if (!is.null(atac_counts)) {
-    rc_validate_diagnostic_matrix(atac_counts, active_pool_map$cell_id, "atac_counts")
-  }
-
   rna_depth <- if (is.null(rna_counts)) NULL else Matrix::colSums(rna_counts)
   gpr_genes <- rc_match_matrix_features(gpr_genes, rna_counts)
-  pool_ids <- unique(active$pool_id)
-
   pool_ids <- unique(active_pool_map$pool_id)
   pieces <- rc_parallel_lapply(pool_ids, function(pid) {
     rows <- active_pool_map$pool_id == pid

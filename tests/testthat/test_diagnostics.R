@@ -20,34 +20,21 @@ test_that("rc_pool_diagnostics reports v0.4 pool diagnostic fields", {
     sparse = TRUE,
     dimnames = list(c("HK1", "PFKM", "LDHA"), paste0("cell", 1:4))
   )
-  atac_counts <- Matrix::Matrix(
-    c(1, 1, 0, 0,
-      0, 2, 3, 0),
-    nrow = 2,
-    ncol = 4,
-    sparse = TRUE,
-    dimnames = list(c("peak1", "peak2"), paste0("cell", 1:4))
-  )
-
   out <- rc_pool_diagnostics(
     pool_map,
     rna_counts = rna_counts,
-    atac_counts = atac_counts,
-    state_col = "seurat_clusters",
-    metabolic_genes = c("HK1", "PFKM"),
     gpr_genes = c("HK1", "LDHA")
   )
 
   expect_equal(colnames(out), c(
-    "pool_id", "sample_id", "condition", "cell_type", "local_state", "n_cells",
-    "low_power_pool", "RNA_depth_mean", "ATAC_depth_mean",
-    "metabolic_gene_detection_rate", "GPR_gene_detection_rate"
+    "pool_id", "sample_id", "cell_type", "condition", "n_cells",
+    "low_power_pool", "single_pool_group_flag", "pool_seed", "state_source",
+    "state_resolution", "RNA_depth_mean", "GPR_gene_detection_rate"
   ))
   expect_equal(out$n_cells, c(2L, 2L))
   expect_equal(out$sample_id, c("s1", "s2"))
-  expect_equal(out$local_state, c("0", "1"))
   expect_true(all(is.finite(out$RNA_depth_mean)))
-  expect_true(all(out$metabolic_gene_detection_rate >= 0 & out$metabolic_gene_detection_rate <= 1))
+  expect_true(all(out$GPR_gene_detection_rate >= 0 & out$GPR_gene_detection_rate <= 1))
 })
 
 test_that("rc_pool_diagnostics validates matrix cell IDs", {
