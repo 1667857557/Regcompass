@@ -45,3 +45,10 @@ test_that("rc_validate_seurat reports missing requested metadata", {
 
   expect_error(rc_validate_seurat(object), "Missing metadata columns: cell_type")
 })
+
+test_that("rc_check_metadata reports cell counts and state source", {
+  meta <- data.frame(sample_id = c("s1", "s1", "s2"), condition = c("a", "a", "b"), batch = c("x", "y", "x"), cell_type = c("T", "B", "T"), state = c("0", "0", "1"))
+  out <- rc_check_metadata(meta, condition_col = "condition", batch_col = "batch", state_col = "state", state_source = "manual")
+  expect_true(all(c("cell_counts", "na_counts", "condition_batch", "state_record") %in% names(out)))
+  expect_equal(out$state_record$state_source, "manual")
+})

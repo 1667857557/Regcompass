@@ -40,3 +40,44 @@ test_that("rc_run_layer1_capacity returns MVP v0.3 outputs", {
   expect_equal(dim(out$reaction_capacity_L1), c(2L, 2L))
   expect_true("mean_gpr_detection_rate" %in% colnames(out$reaction_confidence))
 })
+
+test_that("safe scale uses sigma-consistent MAD/IQR and clips z-scores", {
+  x <- c(0, 0, 1, 1)
+  expect_equal(rc_safe_scale(x, min_scale = 0.05), max(stats::mad(x, constant = 1.4826), stats::IQR(x) / 1.349, 0.05))
+  X <- rbind(g1 = c(0, 100), g2 = c(1, 1))
+  z <- rc_gene_zscore(X, z_clip = 2)
+  expect_true(all(z <= 2 & z >= -2))
+})
+
+test_that("reaction confidence aggregates gene confidence by GPR genes and pools", {
+  gprs <- list(r1 = list(c("g1", "g2")), r2 = list("g3"))
+  gene_conf <- matrix(c(0.2, 0.8, 0.9, 0.4, 0.6, 0.7), nrow = 3,
+                      dimnames = list(c("g1", "g2", "g3"), c("p1", "p2")))
+  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf)
+  expect_true(all(c("reaction_id", "pool_id", "reaction_confidence") %in% colnames(out)))
+  expect_equal(out$reaction_confidence[out$reaction_id == "r1" & out$pool_id == "p1"], stats::median(c(0.2, 0.8)))
+})
+
+test_that("rc_layer1_capacity alias matches run function", {
+  expect_identical(rc_layer1_capacity, rc_run_layer1_capacity)
+})
+
+test_that("layer1 returns AND-method capacity long table and missing penalty", {
+  gprs <- list(r1 = list(c("g1", "g2")))
+  gene_score <- matrix(c(0.2, 0.8), nrow = 2, dimnames = list(c("g1", "g2"), "p1"))
+  long <- rc_and_method_capacity_long(gprs, gene_score)
+  expect_true(all(c("min", "boltzmann_0.08", "boltzmann_0.20", "mean") %in% long$and_method))
+  conf <- rc_reaction_confidence(gprs, gene_confidence = matrix(1, nrow = 1, dimnames = list("g1", "p1")))
+  expect_equal(conf$missing_subunit_confidence_penalty, 0.5)
+  expect_equal(conf$reaction_confidence, 0.5)
+})
+
+test_that("rc_run_layer1_from_counts provides RNA-detection confidence source", {
+  counts <- Matrix::Matrix(c(1, 0, 2, 3, 0, 4), nrow = 2, sparse = TRUE)
+  rownames(counts) <- c("g1", "g2"); colnames(counts) <- paste0("c", 1:3)
+  pool_map <- data.frame(pool_id = c("p1", "p1", "p2"), cell_id = colnames(counts), skipped = FALSE, sample_id = "s1", cell_type = "T")
+  gpr <- data.frame(reaction_id = "r1", gpr = "g1 and g2")
+  out <- rc_run_layer1_from_counts(gpr, counts, pool_map, bootstrap = FALSE)
+  expect_equal(out$reaction_confidence_source, "rna_detection")
+  expect_true("capacity_long" %in% names(out))
+})

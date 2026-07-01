@@ -15,14 +15,16 @@
 rc_sample_aggregate <- function(score_mat,
                                 pool_meta,
                                 sample_col = "sample_id",
-                                celltype_col = "cell_type") {
+                                celltype_col = "cell_type",
+                                condition_col = NULL) {
   score_mat <- as.matrix(score_mat)
   storage.mode(score_mat) <- "numeric"
   if (is.null(rownames(score_mat)) || is.null(colnames(score_mat))) {
     stop("`score_mat` must have reaction row names and pool column names.", call. = FALSE)
   }
   if (!is.data.frame(pool_meta)) stop("`pool_meta` must be a data.frame.", call. = FALSE)
-  required <- c("pool_id", sample_col, celltype_col)
+  required <- c("pool_id", sample_col, celltype_col, condition_col)
+  required <- required[!is.null(required) & !is.na(required)]
   missing <- setdiff(required, colnames(pool_meta))
   if (length(missing) > 0L) stop("`pool_meta` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   if (anyNA(pool_meta$pool_id) || anyDuplicated(pool_meta$pool_id)) {
@@ -33,7 +35,9 @@ rc_sample_aggregate <- function(score_mat,
     stop("`score_mat` is missing pools from `pool_meta`: ", paste(utils::head(missing_pools, 5L), collapse = ", "), call. = FALSE)
   }
 
-  groups <- interaction(pool_meta[[sample_col]], pool_meta[[celltype_col]], drop = TRUE)
+  group_cols <- c(sample_col, condition_col, celltype_col)
+  group_cols <- group_cols[!is.null(group_cols) & !is.na(group_cols)]
+  groups <- interaction(pool_meta[, group_cols, drop = FALSE], drop = TRUE)
   split_pools <- split(as.character(pool_meta$pool_id), groups)
   res <- lapply(split_pools, function(pools) {
     matrixStats::rowMedians(score_mat[, pools, drop = FALSE], na.rm = TRUE)

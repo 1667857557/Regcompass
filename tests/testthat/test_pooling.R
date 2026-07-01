@@ -56,3 +56,11 @@ test_that("rc_make_pools flags low-power strata and validates columns", {
 
   expect_error(rc_make_pools(meta, condition_col = "condition"), "Missing metadata columns: condition")
 })
+
+test_that("pool seed replicates record seed metadata", {
+  meta <- data.frame(sample_id = "s1", cell_type = "T", row.names = paste0("c", 1:40))
+  pools <- rc_make_pool_seed_replicates(meta, seeds = c(1, 2), target_size = 20, min_group_size = 10, min_pool_size = 5)
+  expect_equal(sort(unique(pools$pool_seed_replicate)), c(1, 2))
+  expect_true("pool_seed" %in% colnames(pools))
+  expect_equal(anyDuplicated(stats::na.omit(pools$pool_id)), 0L)
+})
