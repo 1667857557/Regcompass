@@ -1,10 +1,10 @@
 #' Select reactions for Layer 3 demand QP
 #'
 #' Selected reactions are the union of high-variance Layer 1 reactions,
-#' exchange reactions, transport reactions, and user-specified reactions. The
-#' high-variance term is a practical pool-level differential proxy: reactions
-#' with larger variance in `C_rel` vary more across annotated pools and are
-#' prioritized for exact feasibility testing.
+#' exchange reactions, transport reactions, top differential reactions when a
+#' differential score is supplied, and user-specified reactions. The
+#' high-variance term is a pool-level variability screen; differential scores
+#' should come from sample-level statistics such as `rc_lm_by_reaction()`.
 #'
 #' @param C_rel Reaction-by-pool Layer 1 relative capacity matrix.
 #' @param reaction_meta Data frame with `reaction_id`, `is_exchange`, and
@@ -13,6 +13,14 @@
 #' @param include_exchange Include reactions marked as exchange.
 #' @param include_transport Include reactions marked as transport.
 #' @param user_reactions Optional character vector of user-specified reactions.
+#' @param differential_score Optional named numeric vector of differential
+#' scores, or a data frame with `reaction_id` plus `score_col`, used to include
+#' top differential reactions from sample-level statistics. Larger values are
+#' treated as stronger evidence; pass `-log10(q_value)` or `abs(statistic)` as
+#' appropriate for the contrast.
+#' @param top_diff_n Number of top differential reactions to include when
+#' `differential_score` is supplied. Defaults to `top_n`.
+#' @param score_col Score column used when `differential_score` is a data frame.
 #'
 #' @return Character vector of unique selected reaction IDs.
 #' @export
@@ -21,7 +29,10 @@ rc_select_reactions <- function(C_rel,
                                 top_n = 500,
                                 include_exchange = TRUE,
                                 include_transport = TRUE,
-                                user_reactions = NULL) {
+                                user_reactions = NULL,
+                                differential_score = NULL,
+                                top_diff_n = top_n,
+                                score_col = "score") {
   if (is.null(rownames(C_rel))) stop("`C_rel` must have reaction IDs as row names.", call. = FALSE)
   if (!is.data.frame(reaction_meta)) stop("`reaction_meta` must be a data.frame.", call. = FALSE)
   required <- c("reaction_id", "is_exchange", "is_transport")
@@ -36,6 +47,9 @@ rc_select_reactions <- function(C_rel,
   if (!is.logical(include_transport) || length(include_transport) != 1L || is.na(include_transport)) {
     stop("`include_transport` must be TRUE or FALSE.", call. = FALSE)
   }
+  if (!is.numeric(top_diff_n) || length(top_diff_n) != 1L || is.na(top_diff_n) || top_diff_n < 0) {
+    stop("`top_diff_n` must be a single non-negative number.", call. = FALSE)
+  }
 
   C_mat <- as.matrix(C_rel)
   storage.mode(C_mat) <- "numeric"
@@ -44,8 +58,27 @@ rc_select_reactions <- function(C_rel,
   top_n <- as.integer(top_n)
   top <- names(sort(var_score, decreasing = TRUE))[seq_len(min(top_n, length(var_score)))]
 
+  top_diff <- character()
+  if (!is.null(differential_score)) {
+    if (is.data.frame(differential_score)) {
+      if (!all(c("reaction_id", score_col) %in% colnames(differential_score))) {
+        stop("`differential_score` data frame must contain `reaction_id` and `score_col` columns.", call. = FALSE)
+      }
+      diff_score <- differential_score[[score_col]]
+      names(diff_score) <- as.character(differential_score$reaction_id)
+    } else {
+      diff_score <- differential_score
+      if (is.null(names(diff_score))) stop("`differential_score` vector must be named by reaction ID.", call. = FALSE)
+    }
+    if (!is.numeric(diff_score)) stop("`differential_score` must be numeric.", call. = FALSE)
+    diff_score <- diff_score[is.finite(diff_score) & !is.na(names(diff_score)) & nzchar(names(diff_score))]
+    top_diff_n <- as.integer(top_diff_n)
+    top_diff <- names(sort(diff_score, decreasing = TRUE))[seq_len(min(top_diff_n, length(diff_score)))]
+  }
+
   selected <- unique(c(
     top,
+    top_diff,
     if (include_exchange) as.character(reaction_meta$reaction_id[as.logical(reaction_meta$is_exchange)]),
     if (include_transport) as.character(reaction_meta$reaction_id[as.logical(reaction_meta$is_transport)]),
     as.character(user_reactions)

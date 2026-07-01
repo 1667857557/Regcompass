@@ -14,9 +14,16 @@ test_that("rc_select_reactions selects variable, exchange, transport, and user r
     is_transport = c(FALSE, FALSE, FALSE, TRUE)
   )
 
-  selected <- rc_select_reactions(C_rel, meta, top_n = 1, user_reactions = "R_user")
+  selected <- rc_select_reactions(
+    C_rel,
+    meta,
+    top_n = 1,
+    user_reactions = "R_user",
+    differential_score = c(R_var = 3, R_const = 1),
+    top_diff_n = 1
+  )
 
-  expect_equal(selected, c("T_lac", "EX_glc", "R_user"))
+  expect_equal(selected, c("T_lac", "R_var", "EX_glc", "R_user"))
 })
 
 test_that("rc_estimate_selected_demand_qp reports required workload plan", {

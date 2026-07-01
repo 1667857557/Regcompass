@@ -146,7 +146,7 @@ v0.5 intentionally stays on the toy GEM / selected demand QP path and does not a
 
 ## v0.6 selected reaction demand-QP planning
 
-`rc_select_reactions()` selects the union of top variable Layer 1 reactions, exchange reactions, transport reactions, and user-specified reactions from annotated reaction metadata. Before running selected demand QPs, call `rc_estimate_selected_demand_qp()` to report `n_pools * (1 + length(selected_reactions))`, estimated serial/parallel runtime, worker plan, and checkpoint count. `rc_solve_selected_demand_qp()` supports `BPPARAM` for Linux parallelism and `checkpoint_file`/`checkpoint_every` for serial checkpoint/resume.
+`rc_select_reactions()` selects the union of top variable Layer 1 reactions, optional top sample-level differential reactions, exchange reactions, transport reactions, and user-specified reactions from annotated reaction metadata. Before running selected demand QPs, call `rc_estimate_selected_demand_qp()` to report `n_pools * (1 + length(selected_reactions))`, estimated serial/parallel runtime, worker plan, and checkpoint count. `rc_solve_selected_demand_qp()` supports `BPPARAM` for Linux parallelism and `checkpoint_file`/`checkpoint_every` for serial checkpoint/resume.
 
 
 ## v0.7 sample-level statistics and regulator ranking
