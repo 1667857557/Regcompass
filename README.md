@@ -11,8 +11,8 @@ Implemented functions:
 - `rc_validate_seurat()` checks that a Seurat object contains the requested RNA assay, ATAC assay, required sample and cell-type metadata, optional condition/batch metadata, and optional embedding.
 - `rc_extract_inputs()` validates the object and extracts RNA assay data, ATAC assay data, cell metadata, and an optional embedding into a plain R list.
 - `rc_make_pools()` creates sample-aware micropools within sample, optional condition, cell type, and optional local-state/cluster strata without mixing cells across samples.
-- `rc_pool_mean()` computes pool-level sparse means for normalized expression/residual matrices.
-- `rc_pool_detection()` computes pool-level detection rates from raw counts for later dropout-aware correction.
+- `rc_pseudobulk_counts()` sums raw counts by pool; `rc_filter_empty_pools()` removes zero-library pools; `rc_logcpm()` computes pool-level `log2(CPM + 1)` for Layer 1.
+- `rc_pool_detection()` computes pool-level detection rates from raw counts for confidence/diagnostics only.
 - `rc_parse_gpr_simple()` / `rc_parse_gpr_table()` parse curated simple GPR rules.
 - `rc_run_layer1_capacity()` computes GPR-aware Layer 1 reaction capacity and Q95 diagnostics.
 - `rc_pool_diagnostics()` reports v0.4 pool-level diagnostics for depth, low-power pools, and metabolic/GPR gene detection.
@@ -70,12 +70,19 @@ pool_map <- rc_make_pools(
 
 ## v0.2 pseudobulk example
 
+RegCompassR Layer 1 uses the adjusted plan order: raw counts → pool sum → pool-level normalization. Do not average cell-level residuals, TF-IDF, or imputed expression for the main GPR capacity input.
+
 ```r
-rna_pool_mean <- rc_pool_mean(inputs$rna, pool_map)
+rna_pb <- rc_pseudobulk_counts(inputs$rna, pool_map, fun = "sum")
+pool_meta <- rc_build_pool_metadata(pool_map, inputs$meta)
+filtered <- rc_filter_empty_pools(rna_pb, pool_meta)
+rna_logcpm <- rc_logcpm(filtered$counts)
+pool_meta <- filtered$pool_meta
 rna_detection <- rc_pool_detection(inputs$rna, pool_map)
+rna_detection <- rna_detection[, colnames(rna_logcpm), drop = FALSE]
 ```
 
-Use raw counts for detection rates. Use normalized data or residual matrices for expression scores; do not use imputed matrices in the main GPR formula.
+Detection rates are retained for confidence/diagnostics only and do not directly modify the gene score.
 
 ## v0.3 Layer 1 GPR capacity example
 
@@ -87,10 +94,13 @@ gpr_table <- data.frame(
 
 layer1 <- rc_run_layer1_capacity(
   gpr_table = gpr_table,
-  pool_expression = rna_pool_mean,
+  pool_expression = rna_logcpm,
   pool_detection = rna_detection,
+  pool_meta = pool_meta,
+  stratum_col = "cell_type",
   promiscuity_mode = "sqrt",
-  tau = 0.08
+  and_method = "boltzmann",
+  tau = 0.20
 )
 
 reaction_capacity_L1 <- layer1$reaction_capacity_L1
@@ -117,7 +127,7 @@ q95_diag <- rc_q95_calibrate(
   layer1$reaction_capacity_raw,
   min_direct = 100,
   bootstrap = TRUE,
-  B = 200
+  B = 500
 )$Q
 ```
 
@@ -152,3 +162,12 @@ v0.5 intentionally stays on the toy GEM / selected demand QP path and does not a
 ## v0.7 sample-level statistics and regulator ranking
 
 `rc_sample_aggregate()` aggregates pool-level reaction scores to biological sample × annotated cell-type medians, so differential analysis does not treat pools as independent biological replicates. `rc_lm_by_reaction()` fits simple reaction-wise sample-level linear models and reports BH-adjusted q-values within model terms. `rc_rank_regulators()` combines direct/adjusted association and support evidence into candidate regulator rankings only; rankings are not causal driver claims.
+
+## Export and report helpers
+
+```r
+sample_matrix <- rc_sample_aggregate(layer1$reaction_capacity_L1, pool_meta)
+rc_export_sample_matrix(sample_matrix, "output/sample_capacity.tsv")
+rc_export_long_table(layer1$reaction_capacity_L1, "output/pool_capacity_long.tsv", value_col = "C_rel")
+rc_write_report_md("output/layer1_report.md", q95_diagnostics = layer1$q95_diagnostics, gpr_diagnostics = layer1$gpr_diagnostics, confidence = layer1$reaction_confidence)
+```
