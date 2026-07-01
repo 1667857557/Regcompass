@@ -1,23 +1,26 @@
-#' Pseudobulk raw counts by pool
+#' Sum raw counts by pool
+#'
+#' This is the only supported expression input for the main Layer 1 workflow:
+#' raw counts are summed within each micropool before logCPM normalization.
+#' Averaging cell-level residuals, TF-IDF, or imputed expression changes the
+#' biological scale and should not be used for reaction capacity potential.
 #' @export
-rc_pseudobulk_counts <- function(counts, pool_map, fun = c("sum", "mean"), BPPARAM = NULL) {
-  fun <- match.arg(fun)
+rc_pseudobulk_counts <- function(counts, pool_map, fun = "sum", BPPARAM = NULL) {
+  if (!identical(fun, "sum")) stop("Main RegCompassR Layer 1 requires `fun = 'sum'`.", call. = FALSE)
   rc_validate_pool_matrix_inputs(counts, pool_map)
   if ("skipped" %in% colnames(pool_map)) pool_map <- pool_map[!pool_map$skipped, , drop = FALSE]
   pool_map <- pool_map[!is.na(pool_map$pool_id), , drop = FALSE]
   pool_ids <- unique(pool_map$pool_id)
-  summarize_pool <- function(pid) {
-    cells <- pool_map$cell_id[pool_map$pool_id == pid]
-    x <- counts[, cells, drop = FALSE]
-    if (fun == "sum") Matrix::rowSums(x) else Matrix::rowMeans(x)
-  }
+
+  summarize_pool <- function(pid) Matrix::rowSums(counts[, pool_map$cell_id[pool_map$pool_id == pid], drop = FALSE])
   res <- rc_pool_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
   out <- do.call(cbind, res)
-  colnames(out) <- pool_ids; rownames(out) <- rownames(counts)
+  colnames(out) <- pool_ids
+  rownames(out) <- rownames(counts)
   out
 }
 
-#' Filter empty pseudobulk pools before normalization
+#' Remove zero-library pools before normalization
 #' @export
 rc_filter_empty_pools <- function(pb_counts, pool_meta) {
   lib <- Matrix::colSums(pb_counts)
@@ -49,32 +52,27 @@ rc_build_pool_metadata <- function(pool_map, meta = NULL) {
   out
 }
 
-#' Compute pool-level sparse means
-#' @export
-rc_pool_mean <- function(mat, pool_map, BPPARAM = NULL) {
-  rc_validate_pool_matrix_inputs(mat, pool_map)
-  pool_ids <- unique(pool_map$pool_id[!is.na(pool_map$pool_id)])
-  summarize_pool <- function(pid) Matrix::rowMeans(mat[, pool_map$cell_id[pool_map$pool_id == pid], drop = FALSE])
-  res <- rc_pool_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
-  out <- do.call(cbind, res); colnames(out) <- pool_ids; rownames(out) <- rownames(mat); out
-}
-
-#' Compute pool-level detection rates
+#' Pool-level RNA detection rates for confidence only
 #' @export
 rc_pool_detection <- function(counts, pool_map, BPPARAM = NULL) {
   rc_validate_pool_matrix_inputs(counts, pool_map)
-  pool_ids <- unique(pool_map$pool_id[!is.na(pool_map$pool_id)])
+  if ("skipped" %in% colnames(pool_map)) pool_map <- pool_map[!pool_map$skipped, , drop = FALSE]
+  pool_map <- pool_map[!is.na(pool_map$pool_id), , drop = FALSE]
+  pool_ids <- unique(pool_map$pool_id)
   summarize_pool <- function(pid) Matrix::rowMeans(counts[, pool_map$cell_id[pool_map$pool_id == pid], drop = FALSE] > 0)
   res <- rc_pool_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
-  out <- do.call(cbind, res); colnames(out) <- pool_ids; rownames(out) <- rownames(counts); out
+  out <- do.call(cbind, res)
+  colnames(out) <- pool_ids
+  rownames(out) <- rownames(counts)
+  out
 }
 
 rc_validate_pool_matrix_inputs <- function(mat, pool_map) {
-  if (is.null(dim(mat)) || length(dim(mat)) != 2L) stop("`mat`/`counts` must be a two-dimensional feature-by-cell matrix.", call. = FALSE)
+  if (is.null(dim(mat)) || length(dim(mat)) != 2L) stop("`counts` must be a two-dimensional feature-by-cell matrix.", call. = FALSE)
   if (is.null(colnames(mat)) || anyNA(colnames(mat)) || any(!nzchar(colnames(mat)))) stop("Input matrix must have non-empty cell IDs in colnames().", call. = FALSE)
   if (!is.data.frame(pool_map)) stop("`pool_map` must be a data.frame.", call. = FALSE)
   missing_pool_cols <- setdiff(c("pool_id", "cell_id"), colnames(pool_map))
-  if (length(missing_pool_cols) > 0) stop("`pool_map` is missing required columns: ", paste(missing_pool_cols, collapse = ", "), call. = FALSE)
+  if (length(missing_pool_cols) > 0L) stop("`pool_map` is missing required columns: ", paste(missing_pool_cols, collapse = ", "), call. = FALSE)
   active <- pool_map
   if ("skipped" %in% colnames(active)) active <- active[!active$skipped, , drop = FALSE]
   active <- active[!is.na(active$pool_id), , drop = FALSE]
@@ -90,14 +88,4 @@ rc_pool_lapply <- function(X, FUN, BPPARAM = NULL) {
     return(BiocParallel::bplapply(X, FUN, BPPARAM = BPPARAM))
   }
   lapply(X, FUN)
-}
-
-#' Filter ATAC peaks detected in at least min_pools and compute pool logCPM
-#' @export
-rc_atac_pool_logcpm <- function(atac_counts, pool_map, min_pools = 3, BPPARAM = NULL) {
-  pb <- rc_pseudobulk_counts(atac_counts, pool_map, fun = "sum", BPPARAM = BPPARAM)
-  detected <- Matrix::rowSums(pb > 0) >= min_pools
-  pb <- pb[detected, , drop = FALSE]
-  filtered <- rc_filter_empty_pools(pb, rc_build_pool_metadata(pool_map))
-  rc_logcpm(filtered$counts)
 }
