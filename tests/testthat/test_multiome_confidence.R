@@ -1,0 +1,21 @@
+test_that("concordance null correction uses finite-n discrete baseline", {
+  p1 <- matrix(c(0, 1, 0.5, 0.5), nrow = 1, dimnames = list("g1", paste0("p", 1:4)))
+  p2 <- matrix(c(0, 1, 0.5, 0.5), nrow = 1, dimnames = list("g1", paste0("p", 1:4)))
+  out <- rc_concordance_null_correct(p1, p2)
+  expect_equal(as.numeric(out), rep(1, 4))
+})
+
+test_that("Fisher shrinkage separates positive support from negative discordance", {
+  x <- rbind(g1 = 1:8, g2 = 1:8)
+  y <- rbind(g1 = 1:8, g2 = 8:1)
+  out <- rc_fisher_shrink(x, y, n0 = 30)
+  expect_gt(out["g1", "rho_shrink"], 0)
+  expect_lt(out["g2", "rho_shrink"], 0)
+  expect_true(all(abs(out$rho_shrink) < 1))
+})
+
+test_that("gene confidence remains nonnegative and bounded", {
+  mat <- matrix(c(0, 0.5, 1, 1), nrow = 2, dimnames = list(c("g1", "g2"), c("p1", "p2")))
+  conf <- rc_gene_confidence(mat, rel_ra_pos = c(1, 0), det_rna = mat, qc = c(1, 0.5))
+  expect_true(all(conf >= 0 & conf <= 1))
+})
