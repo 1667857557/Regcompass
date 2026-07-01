@@ -3,7 +3,7 @@
 rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95, n0 = 80, eps = 1e-6) {
   C_raw <- as.matrix(C_raw)
   if (is.null(rownames(C_raw)) || is.null(colnames(C_raw))) stop("`C_raw` must have reaction rownames and pool colnames.", call. = FALSE)
-  global_q <- apply(C_raw, 1, stats::quantile, probs = q, na.rm = TRUE, names = FALSE)
+  global_q <- apply(C_raw, 1, rc_safe_quantile, probs = q)
   if (!is.null(stratum_col)) {
     if (is.null(pool_meta) || !"pool_id" %in% colnames(pool_meta) || !stratum_col %in% colnames(pool_meta)) stop("`pool_meta` with `pool_id` and `stratum_col` is required.", call. = FALSE)
     pool_meta <- pool_meta[match(colnames(C_raw), pool_meta$pool_id), , drop = FALSE]
@@ -17,7 +17,7 @@ rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95,
   for (st in unique(strata)) {
     pools <- which(strata == st)
     n <- length(pools); rho <- n / (n + n0)
-    q_st <- apply(C_raw[, pools, drop = FALSE], 1, stats::quantile, probs = q, na.rm = TRUE, names = FALSE)
+    q_st <- apply(C_raw[, pools, drop = FALSE], 1, rc_safe_quantile, probs = q)
     q_shrink <- rho * q_st + (1 - rho) * global_q
     C_rel[, pools] <- sweep(C_raw[, pools, drop = FALSE], 1, q_shrink + eps, "/")
     diag_list[[idx]] <- data.frame(reaction_id = rownames(C_raw), stratum = st, n = n,
@@ -97,12 +97,14 @@ rc_run_layer1_capacity <- function(gpr_table,
                                    pool_expression,
                                    pool_detection = NULL,
                                    promiscuity_mode = c("sqrt", "linear", "none"),
-                                   tau = 0.08,
+                                   tau = 0.20,
+                                   and_method = c("boltzmann", "min", "mean"),
                                    min_direct = 100,
                                    bootstrap = TRUE,
                                    B = 500,
                                    BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
+  and_method <- match.arg(and_method)
   if (is.null(rownames(pool_expression))) {
     stop("`pool_expression` must have gene IDs in rownames().", call. = FALSE)
   }
@@ -110,7 +112,7 @@ rc_run_layer1_capacity <- function(gpr_table,
   gene_score <- rc_gene_score(pool_expression)
   rownames(gene_score) <- tolower(rownames(gene_score))
 
-  C_raw <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = promiscuity_mode, tau = tau, BPPARAM = BPPARAM)
+  C_raw <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = promiscuity_mode, tau = tau, and_method = and_method, BPPARAM = BPPARAM)
   calibrated <- rc_q95_calibrate(C_raw, min_direct = min_direct, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM)
   gpr_diag <- rc_gpr_diagnostics(parsed, rownames(gene_score))
   confidence <- rc_reaction_confidence(parsed, pool_detection)
@@ -156,4 +158,10 @@ rc_reaction_confidence <- function(gpr_list, pool_detection = NULL) {
   }, numeric(1))
   diag$mean_gpr_detection_rate <- mean_detection
   diag
+}
+
+rc_safe_quantile <- function(x, probs) {
+  x <- x[is.finite(x)]
+  if (length(x) == 0L) return(NA_real_)
+  stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE)
 }

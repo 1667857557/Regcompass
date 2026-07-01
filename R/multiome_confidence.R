@@ -49,6 +49,8 @@ rc_concordance_null_correct <- function(p_rna, p_atac) {
   denom <- 1 - e_null
   out <- sweep(sweep(concord, 1, e_null, "-"), 1, denom, "/")
   out <- pmax(0, pmin(1, out))
+  zero_power <- !is.finite(denom) | denom <= 0
+  if (any(zero_power)) out[zero_power, ] <- 0
   out[!is.finite(out)] <- NA_real_
   out
 }

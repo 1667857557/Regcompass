@@ -66,6 +66,34 @@ rc_boltzmann_minavg <- function(scores, tau = 0.08) {
   sum(w * scores)
 }
 
+
+#' AND aggregation for one GPR complex
+#'
+#' Implements the plan-supported sensitivity choices: hard minimum,
+#' Boltzmann-weighted minimum-biased average, and arithmetic mean.
+#' @export
+rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau = 0.20) {
+  method <- match.arg(method)
+  scores <- scores[is.finite(scores)]
+  if (length(scores) == 0L) return(NA_real_)
+  switch(
+    method,
+    min = min(scores),
+    mean = mean(scores),
+    boltzmann = rc_boltzmann_minavg(scores, tau = tau)
+  )
+}
+
+#' OR aggregation across isoenzyme groups
+#'
+#' OR groups are summed to preserve cumulative isoenzyme capacity.
+#' @export
+rc_or_capacity <- function(and_capacities) {
+  and_capacities <- and_capacities[is.finite(and_capacities)]
+  if (length(and_capacities) == 0L) return(NA_real_)
+  sum(and_capacities)
+}
+
 #' Compute capacity for one reaction in one pool
 #'
 #' @param parsed_gpr Parsed GPR rule returned by [rc_parse_gpr_simple()].
@@ -74,18 +102,14 @@ rc_boltzmann_minavg <- function(scores, tau = 0.08) {
 #'
 #' @return A single raw Layer 1 reaction capacity potential.
 #' @export
-rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.08) {
+rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean")) {
+  and_method <- match.arg(and_method)
   and_caps <- vapply(parsed_gpr, function(and_group) {
     vals <- gene_score_vec[and_group]
-    vals <- vals[!is.na(vals)]
-    if (length(vals) == 0L) return(NA_real_)
-    rc_boltzmann_minavg(vals, tau = tau)
+    rc_and_capacity(vals, method = and_method, tau = tau)
   }, numeric(1))
 
-  if (all(is.na(and_caps))) {
-    return(NA_real_)
-  }
-  sum(and_caps, na.rm = TRUE)
+  rc_or_capacity(and_caps)
 }
 
 #' Compute Layer 1 reaction capacity for all reactions and pools
@@ -103,9 +127,11 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.08) {
 rc_reaction_capacity <- function(gpr_list,
                                  gene_score,
                                  promiscuity_mode = c("sqrt", "linear", "none"),
-                                 tau = 0.08,
+                                 tau = 0.20,
+                                 and_method = c("boltzmann", "min", "mean"),
                                  BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
+  and_method <- match.arg(and_method)
   if (is.null(names(gpr_list))) {
     stop("`gpr_list` must be named by reaction IDs.", call. = FALSE)
   }
@@ -124,7 +150,7 @@ rc_reaction_capacity <- function(gpr_list,
   per_reaction <- rc_parallel_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(weighted_score)), function(j) {
-      rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau)
+      rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau, and_method = and_method)
     }, numeric(1))
   }, BPPARAM = BPPARAM)
 

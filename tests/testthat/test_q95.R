@@ -20,3 +20,11 @@ test_that("rc_q95_shrink uses continuous shrinkage for all n", {
   expect_true(all(out$Q$q95_very_low_power))
   expect_true(all(out$C_rel <= 1))
 })
+
+test_that("rc_q95_shrink tolerates all-missing reactions", {
+  C_raw <- rbind(r1 = c(NA_real_, NA_real_), r2 = c(1, 2))
+  colnames(C_raw) <- c("p1", "p2")
+  out <- rc_q95_shrink(C_raw)
+  expect_true(is.na(out$Q$q_shrink[out$Q$reaction_id == "r1"]))
+  expect_true(all(out$C_rel["r2", ] <= 1))
+})

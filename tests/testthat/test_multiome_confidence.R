@@ -19,3 +19,9 @@ test_that("gene confidence remains nonnegative and bounded", {
   conf <- rc_gene_confidence(mat, rel_ra_pos = c(1, 0), det_rna = mat, qc = c(1, 0.5))
   expect_true(all(conf >= 0 & conf <= 1))
 })
+
+test_that("concordance correction is zero-power safe for n equals one", {
+  p1 <- matrix(0.5, nrow = 1, dimnames = list("g1", "p1"))
+  p2 <- matrix(0.5, nrow = 1, dimnames = list("g1", "p1"))
+  expect_equal(as.numeric(rc_concordance_null_correct(p1, p2)), 0)
+})
