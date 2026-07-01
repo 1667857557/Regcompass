@@ -83,3 +83,15 @@ rc_make_pools <- function(meta,
   rownames(pool_map) <- NULL
   pool_map
 }
+
+
+#' Create multiple pool maps across random seeds for seed sensitivity
+#' @export
+rc_make_pool_seed_replicates <- function(meta, seeds = seq_len(5), ...) {
+  reps <- lapply(seeds, function(seed) {
+    out <- rc_make_pools(meta = meta, seed = seed, ...)
+    out$pool_seed_replicate <- seed
+    out
+  })
+  do.call(rbind, reps)
+}

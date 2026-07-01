@@ -33,3 +33,10 @@ test_that("concordance correction can use stratum-specific n", {
   out <- rc_concordance_null_correct(p1, p2, pool_meta = pool_meta, stratum_col = "cell_type")
   expect_equal(as.numeric(out), rep(1, 4))
 })
+
+test_that("gene confidence aligns named reliability vectors by gene", {
+  mat <- matrix(c(0.2, 0.8, 0.4, 0.6), nrow = 2, dimnames = list(c("g1", "g2"), c("p1", "p2")))
+  rel <- c(g2 = 0, g1 = 1)
+  conf <- rc_gene_confidence(mat, rel_ra_pos = rel, det_rna = mat, qc = c(1, 1))
+  expect_gt(conf["g1", "p1"], conf["g2", "p1"])
+})

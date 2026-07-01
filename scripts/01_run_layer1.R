@@ -17,12 +17,12 @@ rc_validate_seurat_v4(object, rna_assay = "RNA", atac_assay = "ATAC", sample_col
 inputs <- rc_extract_seurat_v4(object, rna_assay = "RNA", atac_assay = "ATAC", sample_col = "sample_id", celltype_col = "cell_type", condition_col = "condition")
 
 pool_map <- rc_make_pools(inputs$meta, sample_col = "sample_id", celltype_col = "cell_type", condition_col = "condition", target_size = 80, min_pool_size = 30, min_group_size = 30, seed = 1)
-rna_pb <- rc_pseudobulk_counts(inputs$rna, pool_map, fun = "sum")
+rna_pb <- rc_pseudobulk_counts(inputs$rna_counts, pool_map, fun = "sum")
 pool_meta <- rc_build_pool_metadata(pool_map, inputs$meta)
 filtered <- rc_filter_empty_pools(rna_pb, pool_meta)
 rna_logcpm <- rc_logcpm(filtered$counts)
 pool_meta <- filtered$pool_meta
-rna_detection <- rc_pool_detection(inputs$rna, pool_map)
+rna_detection <- rc_pool_detection(inputs$rna_counts, pool_map)
 rna_detection <- rna_detection[, colnames(rna_logcpm), drop = FALSE]
 
 gpr_table <- utils::read.delim(gpr_file, stringsAsFactors = FALSE)

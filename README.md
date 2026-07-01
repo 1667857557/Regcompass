@@ -73,12 +73,12 @@ pool_map <- rc_make_pools(
 RegCompassR Layer 1 uses the adjusted plan order: raw counts → pool sum → pool-level normalization. Do not average cell-level residuals, TF-IDF, or imputed expression for the main GPR capacity input.
 
 ```r
-rna_pb <- rc_pseudobulk_counts(inputs$rna, pool_map, fun = "sum")
+rna_pb <- rc_pseudobulk_counts(inputs$rna_counts, pool_map, fun = "sum")
 pool_meta <- rc_build_pool_metadata(pool_map, inputs$meta)
 filtered <- rc_filter_empty_pools(rna_pb, pool_meta)
 rna_logcpm <- rc_logcpm(filtered$counts)
 pool_meta <- filtered$pool_meta
-rna_detection <- rc_pool_detection(inputs$rna, pool_map)
+rna_detection <- rc_pool_detection(inputs$rna_counts, pool_map)
 rna_detection <- rna_detection[, colnames(rna_logcpm), drop = FALSE]
 ```
 
@@ -116,8 +116,8 @@ Layer 1 capacity is a reaction capacity potential, not a true flux estimate. The
 gpr_genes <- unique(unlist(layer1$parsed_gpr, use.names = FALSE))
 pool_diag <- rc_pool_diagnostics(
   pool_map,
-  rna_counts = inputs$rna,
-  atac_counts = inputs$atac,
+  rna_counts = inputs$rna_counts,
+  atac_counts = inputs$atac_counts,
   state_col = "seurat_clusters",
   metabolic_genes = gpr_genes,
   gpr_genes = gpr_genes

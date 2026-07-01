@@ -57,3 +57,7 @@ test_that("reaction confidence aggregates gene confidence by GPR genes and pools
   expect_true(all(c("reaction_id", "pool_id", "reaction_confidence") %in% colnames(out)))
   expect_equal(out$reaction_confidence[out$reaction_id == "r1" & out$pool_id == "p1"], stats::median(c(0.2, 0.8)))
 })
+
+test_that("rc_layer1_capacity alias matches run function", {
+  expect_identical(rc_layer1_capacity, rc_run_layer1_capacity)
+})

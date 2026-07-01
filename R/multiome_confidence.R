@@ -127,17 +127,16 @@ rc_gene_confidence <- function(concord_ra_norm,
   det_rna <- as.matrix(det_rna)
   if (!identical(dim(base), dim(det_rna))) stop("`concord_ra_norm` and `det_rna` must have identical dimensions.", call. = FALSE)
   zeros <- matrix(0, nrow = nrow(base), ncol = ncol(base), dimnames = dimnames(base))
-  if (is.null(link_conf)) link_conf <- zeros else link_conf <- as.matrix(link_conf)
-  if (is.null(concord_rt_norm)) concord_rt_norm <- zeros else concord_rt_norm <- as.matrix(concord_rt_norm)
+  if (is.null(link_conf)) link_conf <- zeros else link_conf <- rc_align_component_matrix(link_conf, base, "link_conf")
+  if (is.null(concord_rt_norm)) concord_rt_norm <- zeros else concord_rt_norm <- rc_align_component_matrix(concord_rt_norm, base, "concord_rt_norm")
   if (is.null(rel_rt_pos)) rel_rt_pos <- rep(0, nrow(base))
-  if (is.null(gpr_gene_observed)) gpr_gene_observed <- matrix(1, nrow = nrow(base), ncol = ncol(base), dimnames = dimnames(base))
+  if (is.null(gpr_gene_observed)) gpr_gene_observed <- matrix(1, nrow = nrow(base), ncol = ncol(base), dimnames = dimnames(base)) else gpr_gene_observed <- rc_align_component_matrix(gpr_gene_observed, base, "gpr_gene_observed")
   if (is.null(qc)) qc <- rep(1, ncol(base))
   if (!identical(dim(base), dim(link_conf)) || !identical(dim(base), dim(concord_rt_norm)) || !identical(dim(base), dim(as.matrix(gpr_gene_observed)))) {
     stop("All matrix confidence components must have identical dimensions.", call. = FALSE)
   }
-  rel_ra_pos <- pmax(0, as.numeric(rel_ra_pos))
-  rel_rt_pos <- pmax(0, as.numeric(rel_rt_pos))
-  if (length(rel_ra_pos) != nrow(base) || length(rel_rt_pos) != nrow(base)) stop("Reliability vectors must have one value per gene/row.", call. = FALSE)
+  rel_ra_pos <- rc_align_reliability_vector(rel_ra_pos, rownames(base), "rel_ra_pos")
+  rel_rt_pos <- rc_align_reliability_vector(rel_rt_pos, rownames(base), "rel_rt_pos")
   if (length(qc) != ncol(base)) stop("`qc` must have one value per pool/column.", call. = FALSE)
   qc_mat <- matrix(pmax(0, pmin(1, as.numeric(qc))), nrow = nrow(base), ncol = ncol(base), byrow = TRUE)
   conf <- 0.25 * sweep(pmax(0, pmin(1, base)), 1, rel_ra_pos, "*") +
@@ -147,4 +146,28 @@ rc_gene_confidence <- function(concord_ra_norm,
     0.15 * qc_mat +
     0.10 * pmax(0, pmin(1, as.matrix(gpr_gene_observed)))
   pmax(0, pmin(1, conf))
+}
+
+rc_align_reliability_vector <- function(x, genes, name) {
+  nms <- names(x)
+  x <- as.numeric(x)
+  if (!is.null(nms)) {
+    names(x) <- nms
+    out <- x[match(genes, names(x))]
+    out[is.na(out)] <- 0
+    return(pmax(0, out))
+  }
+  if (length(x) != length(genes)) stop("`", name, "` must be named by gene or have one value per gene/row.", call. = FALSE)
+  pmax(0, x)
+}
+
+rc_align_component_matrix <- function(x, template, name) {
+  x <- as.matrix(x)
+  if (!is.null(rownames(x)) && !is.null(colnames(x))) {
+    if (!all(rownames(template) %in% rownames(x)) || !all(colnames(template) %in% colnames(x))) stop("`", name, "` is missing required genes or pools.", call. = FALSE)
+    return(x[rownames(template), colnames(template), drop = FALSE])
+  }
+  if (!identical(dim(x), dim(template))) stop("`", name, "` must have dimensions matching confidence matrices.", call. = FALSE)
+  dimnames(x) <- dimnames(template)
+  x
 }
