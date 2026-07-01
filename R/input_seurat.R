@@ -22,13 +22,14 @@ rc_validate_seurat <- function(object,
                                celltype_col = "cell_type",
                                condition_col = NULL,
                                batch_col = NULL,
+                               state_col = NULL,
                                embedding = NULL) {
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
   }
 
   meta <- object@meta.data
-  required_meta <- c(sample_col, celltype_col, condition_col, batch_col)
+  required_meta <- c(sample_col, celltype_col, condition_col, batch_col, state_col)
   required_meta <- required_meta[!is.na(required_meta) & nzchar(required_meta)]
   missing_meta <- setdiff(required_meta, colnames(meta))
   if (length(missing_meta) > 0) {
@@ -41,6 +42,12 @@ rc_validate_seurat <- function(object,
   }
   if (!atac_assay %in% assay_names) {
     stop("ATAC assay not found: ", atac_assay, call. = FALSE)
+  }
+
+  rna_cells <- colnames(SeuratObject::GetAssayData(object = object, assay = rna_assay, slot = "counts"))
+  atac_cells <- colnames(SeuratObject::GetAssayData(object = object, assay = atac_assay, slot = "counts"))
+  if (!setequal(rna_cells, atac_cells)) {
+    stop("RNA and ATAC assays must contain the same cell barcodes.", call. = FALSE)
   }
 
   if (!is.null(embedding) && !embedding %in% names(object@reductions)) {
@@ -73,7 +80,10 @@ rc_extract_inputs <- function(object,
                               celltype_col = "cell_type",
                               condition_col = NULL,
                               batch_col = NULL,
+                              state_col = NULL,
                               embedding = NULL) {
+  if (!identical(rna_slot, "counts") || !identical(atac_slot, "counts")) stop("Main RegCompassR workflow requires counts slots for RNA and ATAC extraction.", call. = FALSE)
+
   rc_validate_seurat(
     object = object,
     rna_assay = rna_assay,
@@ -82,6 +92,7 @@ rc_extract_inputs <- function(object,
     celltype_col = celltype_col,
     condition_col = condition_col,
     batch_col = batch_col,
+    state_col = state_col,
     embedding = embedding
   )
 
@@ -95,4 +106,18 @@ rc_extract_inputs <- function(object,
   }
 
   list(rna = rna, atac = atac, meta = meta, embedding = emb)
+}
+
+#' Seurat v4 validation alias following the development plan naming
+#' @export
+rc_validate_seurat_v4 <- rc_validate_seurat
+
+#' Seurat v4 extraction alias following the development plan naming
+#' @export
+rc_extract_seurat_v4 <- rc_extract_inputs
+
+#' Get assay counts from a Seurat v4 object
+#' @export
+rc_get_assay_counts <- function(object, assay) {
+  SeuratObject::GetAssayData(object = object, assay = assay, slot = "counts")
 }
