@@ -56,5 +56,20 @@ test_that("rc_rank_regulators prioritizes supported candidate regulators", {
 
   expect_equal(out$regulator_id[[1]], "TF1")
   expect_equal(out$evidence_tier[[1]], "motif-and-enhancer-supported")
-  expect_true(all(grepl("candidate", "candidate prioritization")))
+  expect_true(all(c("rra_p_value", "q_value") %in% colnames(out)))
+})
+
+test_that("rc_rank_regulators ranks candidates within each reaction", {
+  evidence <- data.frame(
+    regulator_id = c("TF1", "TF2", "TF1", "TF2"),
+    reaction_id = c("R1", "R1", "R2", "R2"),
+    direct_association = c(0.9, 0.1, 0.1, 0.9),
+    adjusted_association = c(0.8, 0.2, 0.2, 0.8)
+  )
+
+  out <- rc_rank_regulators(evidence)
+  top_by_reaction <- out[out$candidate_rank == 1, c("reaction_id", "regulator_id")]
+
+  expect_equal(top_by_reaction$reaction_id, c("R1", "R2"))
+  expect_equal(top_by_reaction$regulator_id, c("TF1", "TF2"))
 })
