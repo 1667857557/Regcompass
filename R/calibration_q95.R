@@ -40,6 +40,7 @@ rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = "cell_type", q 
       q95_very_low_power = n < 5L,
       q95_low_power = n < 20L,
       q95_moderate_power = n < 100L,
+      q95_high_power = n >= 400L,
       stringsAsFactors = FALSE
     )
     idx <- idx + 1L

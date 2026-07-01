@@ -18,6 +18,7 @@ rc_make_pools <- function(meta,
                           sample_col = "sample_id",
                           celltype_col = "cell_type",
                           condition_col = NULL,
+                          state_col = NULL,
                           target_size = 80,
                           min_pool_size = 30,
                           min_group_size = 30,
@@ -29,7 +30,7 @@ rc_make_pools <- function(meta,
     if (!is.numeric(val) || length(val) != 1L || is.na(val) || val < 1) stop("`", nm, "` must be a single positive number.", call. = FALSE)
   }
 
-  group_cols <- c(sample_col, celltype_col, condition_col)
+  group_cols <- c(sample_col, condition_col, celltype_col, state_col)
   group_cols <- group_cols[!is.null(group_cols) & !is.na(group_cols) & nzchar(group_cols)]
   missing_cols <- setdiff(group_cols, colnames(meta))
   if (length(missing_cols) > 0L) stop("Missing metadata columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
@@ -80,17 +81,4 @@ rc_make_pools <- function(meta,
   pool_map <- do.call(rbind, out)
   rownames(pool_map) <- NULL
   pool_map
-}
-
-#' Optional seed-sensitivity helper; not used in the default workflow
-#' @export
-rc_make_pool_seed_replicates <- function(meta, seeds = seq_len(3), ...) {
-  reps <- lapply(seeds, function(seed) {
-    out <- rc_make_pools(meta = meta, seed = seed, ...)
-    out$pool_seed_replicate <- seed
-    idx <- !is.na(out$pool_id)
-    out$pool_id[idx] <- paste0("seed", seed, "_", out$pool_id[idx])
-    out
-  })
-  do.call(rbind, reps)
 }
