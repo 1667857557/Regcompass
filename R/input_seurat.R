@@ -121,3 +121,17 @@ rc_extract_seurat_v4 <- rc_extract_inputs
 rc_get_assay_counts <- function(object, assay) {
   SeuratObject::GetAssayData(object = object, assay = assay, slot = "counts")
 }
+
+#' Seurat v4 validation alias following the development plan naming
+#' @export
+rc_validate_seurat_v4 <- rc_validate_seurat
+
+#' Seurat v4 extraction alias following the development plan naming
+#' @export
+rc_extract_seurat_v4 <- rc_extract_inputs
+
+#' Get assay counts from a Seurat v4 object
+#' @export
+rc_get_assay_counts <- function(object, assay) {
+  SeuratObject::GetAssayData(object = object, assay = assay, slot = "counts")
+}
