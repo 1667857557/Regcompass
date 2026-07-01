@@ -1,19 +1,36 @@
+#' Safe robust sigma-scale estimate
+#' @export
+rc_safe_scale <- function(x, min_scale = 0.05) {
+  mad_sigma <- stats::mad(x, constant = 1.4826, na.rm = TRUE)
+  iqr_sigma <- stats::IQR(x, na.rm = TRUE) / 1.349
+  max(mad_sigma, iqr_sigma, min_scale, na.rm = TRUE)
+}
+
+#' Robust row-wise z score clipped to a finite range
+#' @export
+rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
+  X <- as.matrix(X)
+  z <- X
+  for (i in seq_len(nrow(X))) {
+    x <- as.numeric(X[i, ])
+    med <- stats::median(x, na.rm = TRUE)
+    sc <- rc_safe_scale(x, min_scale = min_scale)
+    zi <- (x - med) / sc
+    zi <- pmax(pmin(zi, z_clip), -z_clip)
+    z[i, ] <- zi
+  }
+  z
+}
+
 #' Robust row-wise z score
-#'
-#' v0.3 uses a dense implementation suitable for toy/small matrices. Sparse or
-#' block-wise scaling is planned for later versions.
-#'
-#' @param x Numeric matrix-like object with features in rows and pools in columns.
-#' @param eps Positive stabilizer added to the MAD denominator.
-#'
-#' @return A numeric matrix of robust z scores.
 #' @export
 rc_robust_z <- function(x, eps = 1e-6) {
-  x <- as.matrix(x)
-  med <- matrixStats::rowMedians(x, na.rm = TRUE)
-  madv <- matrixStats::rowMads(x, na.rm = TRUE)
-  sweep(sweep(x, 1, med, "-"), 1, madv + eps, "/")
+  rc_gene_zscore(x, min_scale = max(eps, 0.05), z_clip = Inf)
 }
+
+#' Sigmoid gene score from normalized pool expression
+#' @export
+rc_gene_score <- function(X, min_scale = 0.05, z_clip = 6) rc_sigmoid(rc_gene_zscore(X, min_scale = min_scale, z_clip = z_clip))
 
 #' Logistic sigmoid transform
 #'
