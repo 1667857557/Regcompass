@@ -24,3 +24,7 @@ test_that("rc_parse_gpr_table supports long-table GPR input", {
 test_that("rc_parse_gpr_simple rejects complex nested GPR input", {
   expect_error(rc_parse_gpr_simple("g1 and (g2 or g3)"), "Complex")
 })
+
+test_that("rc_parse_gpr_simple supports flat parenthesized OR-of-AND", {
+  expect_identical(rc_parse_gpr_simple("(g1 and g2) or (g3 and g4)"), list(c("g1", "g2"), c("g3", "g4")))
+})

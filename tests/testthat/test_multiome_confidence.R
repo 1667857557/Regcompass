@@ -40,3 +40,16 @@ test_that("gene confidence aligns named reliability vectors by gene", {
   conf <- rc_gene_confidence(mat, rel_ra_pos = rel, det_rna = mat, qc = c(1, 1))
   expect_gt(conf["g1", "p1"], conf["g2", "p1"])
 })
+
+test_that("concordance null matches rank-minus-one percentile definition", {
+  p1 <- matrix(c(0, 1), nrow = 1, dimnames = list("g1", c("p1", "p2")))
+  p2 <- matrix(c(0.25, 0.5), nrow = 1, dimnames = list("g1", c("p1", "p2")))
+  out <- rc_concordance_null_correct(p1, p2)
+  expect_equal(as.numeric(out), c(0.5, 0))
+})
+
+test_that("gene confidence flags missing default components", {
+  mat <- matrix(0.5, nrow = 1, ncol = 1, dimnames = list("g1", "p1"))
+  conf <- rc_gene_confidence(mat, rel_ra_pos = c(g1 = 1), det_rna = mat)
+  expect_true(isTRUE(attr(conf, "confidence_component_missing_flag")))
+})

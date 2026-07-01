@@ -20,7 +20,18 @@ Seurat v4 RNA+ATAC counts
 → C_raw, C_rel, reaction_confidence, minimal diagnostics
 ```
 
-It does **not** perform clustering, WNN construction, full Human-GEM QP, FVA, thermodynamic modeling, causal regulator discovery, or true flux inference.
+- `rc_validate_seurat()` checks that a Seurat object contains the requested RNA assay, ATAC assay, required sample and cell-type metadata, optional condition/batch metadata, and optional embedding.
+- `rc_extract_inputs()` validates the object and extracts RNA assay data, ATAC assay data, cell metadata, and an optional embedding into a plain R list.
+- `rc_make_pools()` creates sample-aware micropools within sample, optional condition, cell type, and optional local-state/cluster strata without mixing cells across samples.
+- `rc_pseudobulk_counts()` sums raw counts by pool; `rc_filter_empty_pools()` removes zero-library pools; `rc_logcpm()` computes pool-level `log2(CPM + 1)` for Layer 1.
+- `rc_pool_detection()` computes pool-level detection rates from raw counts for confidence/diagnostics only.
+- `rc_parse_gpr_simple()` / `rc_parse_gpr_table()` parse curated simple GPR rules.
+- `rc_run_layer1_capacity()` computes GPR-aware Layer 1 reaction capacity and Q95 diagnostics.
+- `rc_pool_diagnostics()` reports v0.4 pool-level diagnostics for depth, low-power pools, and metabolic/GPR gene detection.
+- `rc_q95_bootstrap()` adds bootstrap confidence intervals for reaction-wise Q95 diagnostics.
+- `rc_toy_gem()`, `rc_build_baseline_qp()`, `rc_solve_qp()`, and `rc_demand_qp()` provide the v0.5 toy GEM/QP MVP.
+- `rc_select_reactions()` and `rc_estimate_selected_demand_qp()` provide the v0.6 selected-demand QP planning layer.
+- `rc_sample_aggregate()`, `rc_lm_by_reaction()`, and `rc_rank_regulators()` provide the v0.7 sample-level statistics and regulator candidate-prioritization layer.
 
 ## Expected input
 
@@ -67,21 +78,34 @@ layer1 <- rc_run_layer1_from_counts(
   tau = 0.20
 )
 
-C_raw <- layer1$C_raw
-C_rel <- layer1$C_rel
-reaction_confidence <- layer1$reaction_confidence
-diagnostics <- layer1$minimal_diagnostics
+RegCompassR Layer 1 uses the adjusted plan order: raw counts → pool sum → pool-level normalization. Do not average cell-level residuals, TF-IDF, or imputed expression for the main GPR capacity input.
+
+```r
+rna_pb <- rc_pseudobulk_counts(inputs$rna_counts, pool_map, fun = "sum")
+pool_meta <- rc_build_pool_metadata(pool_map, inputs$meta)
+filtered <- rc_filter_empty_pools(rna_pb, pool_meta)
+rna_logcpm <- rc_logcpm(filtered$counts)
+pool_meta <- filtered$pool_meta
+rna_detection <- rc_pool_detection(inputs$rna_counts, pool_map)
+rna_detection <- rna_detection[, colnames(rna_logcpm), drop = FALSE]
 ```
 
-## Mathematical defaults
+Detection rates are retained for confidence/diagnostics only and do not directly modify the gene score.
 
 ### Pool expression
 
 Layer 1 uses only:
 
-\[
-X^{RNA}_{g,p}=\log_2\left(1+\frac{count_{g,p}}{\sum_g count_{g,p}}\times 10^6\right)
-\]
+layer1 <- rc_run_layer1_capacity(
+  gpr_table = gpr_table,
+  pool_expression = rna_logcpm,
+  pool_detection = rna_detection,
+  pool_meta = pool_meta,
+  stratum_col = "cell_type",
+  promiscuity_mode = "sqrt",
+  and_method = "boltzmann",
+  tau = 0.20
+)
 
 where \(count_{g,p}\) is the raw-count sum of gene \(g\) in pool \(p\).
 
@@ -89,11 +113,24 @@ Cell-level Pearson residuals, TF-IDF, scaled data, and imputed matrices are not 
 
 ### Gene score
 
-For each gene across pools:
+```r
+gpr_genes <- unique(unlist(layer1$parsed_gpr, use.names = FALSE))
+pool_diag <- rc_pool_diagnostics(
+  pool_map,
+  rna_counts = inputs$rna_counts,
+  atac_counts = inputs$atac_counts,
+  state_col = "seurat_clusters",
+  metabolic_genes = gpr_genes,
+  gpr_genes = gpr_genes
+)
 
-\[
-z_{g,p}=\frac{X_{g,p}-median(X_g)}{\max(MAD_\sigma, IQR/1.349, 0.05)}
-\]
+q95_diag <- rc_q95_calibrate(
+  layer1$reaction_capacity_raw,
+  min_direct = 100,
+  bootstrap = TRUE,
+  B = 500
+)$Q
+```
 
 with clipping to \([-6,6]\), then:
 
@@ -159,24 +196,13 @@ If a user supplies a gene-level confidence matrix, the same missing-GPR penalty 
 
 The main workflow returns:
 
-- pool diagnostics:
-  - `pool_id`
-  - `sample_id`
-  - `cell_type`
-  - `condition`
-  - `n_cells`
-  - `low_power_pool`
-  - `RNA_depth_mean`
-  - `GPR_gene_detection_rate`
-- Q95 diagnostics:
-  - `q_stratum`
-  - `q_global`
-  - `rho_n`
-  - `q95_low_power`
-- GPR diagnostics:
-  - `has_isoenzyme`
-  - `has_multisubunit`
-  - `missing_gpr_gene_fraction`
-- tau sensitivity:
-  - mean absolute difference from hard-min AND
-  - `tau_sensitive_flag`
+`rc_sample_aggregate()` aggregates pool-level reaction scores to biological sample × annotated cell-type medians, so differential analysis does not treat pools as independent biological replicates. `rc_lm_by_reaction()` fits simple reaction-wise sample-level linear models and reports BH-adjusted q-values within model terms. `rc_rank_regulators()` combines direct/adjusted association and support evidence into candidate regulator rankings only; rankings are not causal driver claims.
+
+## Export and report helpers
+
+```r
+sample_matrix <- rc_sample_aggregate(layer1$reaction_capacity_L1, pool_meta)
+rc_export_sample_matrix(sample_matrix, "output/sample_capacity.tsv")
+rc_export_long_table(layer1$reaction_capacity_L1, "output/pool_capacity_long.tsv", value_col = "C_rel")
+rc_write_report_md("output/layer1_report.md", q95_diagnostics = layer1$q95_diagnostics, gpr_diagnostics = layer1$gpr_diagnostics, confidence = layer1$reaction_confidence)
+```

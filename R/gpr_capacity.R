@@ -1,4 +1,4 @@
-#' Robust sigma-scale estimate for pool-level expression
+#' Safe robust sigma-scale estimate
 #' @export
 rc_safe_scale <- function(x, min_scale = 0.05) {
   mad_sigma <- stats::mad(x, constant = 1.4826, na.rm = TRUE)
@@ -6,19 +6,31 @@ rc_safe_scale <- function(x, min_scale = 0.05) {
   max(mad_sigma, iqr_sigma, min_scale, na.rm = TRUE)
 }
 
-#' Row-wise robust z-score across pools
+#' Robust row-wise z score clipped to a finite range
 #' @export
 rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
   X <- as.matrix(X)
   z <- X
   for (i in seq_len(nrow(X))) {
     x <- as.numeric(X[i, ])
+    med <- stats::median(x, na.rm = TRUE)
     sc <- rc_safe_scale(x, min_scale = min_scale)
-    zi <- (x - stats::median(x, na.rm = TRUE)) / sc
-    z[i, ] <- pmax(pmin(zi, z_clip), -z_clip)
+    zi <- (x - med) / sc
+    zi <- pmax(pmin(zi, z_clip), -z_clip)
+    z[i, ] <- zi
   }
   z
 }
+
+#' Robust row-wise z score
+#' @export
+rc_robust_z <- function(x, eps = 1e-6) {
+  rc_gene_zscore(x, min_scale = max(eps, 0.05), z_clip = Inf)
+}
+
+#' Sigmoid gene score from normalized pool expression
+#' @export
+rc_gene_score <- function(X, min_scale = 0.05, z_clip = 6) rc_sigmoid(rc_gene_zscore(X, min_scale = min_scale, z_clip = z_clip))
 
 #' Logistic sigmoid transform
 #' @export
@@ -48,8 +60,28 @@ rc_boltzmann_minavg <- function(scores, tau = 0.20) {
   sum(w * scores)
 }
 
-rc_and_capacity <- function(scores, tau = 0.20) rc_boltzmann_minavg(scores, tau = tau)
 
+#' AND aggregation for one GPR complex
+#'
+#' Implements the plan-supported sensitivity choices: hard minimum,
+#' Boltzmann-weighted minimum-biased average, and arithmetic mean.
+#' @export
+rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau = 0.20) {
+  method <- match.arg(method)
+  scores <- scores[is.finite(scores)]
+  if (length(scores) == 0L) return(NA_real_)
+  switch(
+    method,
+    min = min(scores),
+    mean = mean(scores),
+    boltzmann = rc_boltzmann_minavg(scores, tau = tau)
+  )
+}
+
+#' OR aggregation across isoenzyme groups
+#'
+#' OR groups are summed to preserve cumulative isoenzyme capacity.
+#' @export
 rc_or_capacity <- function(and_capacities) {
   and_capacities <- and_capacities[is.finite(and_capacities)]
   if (length(and_capacities) == 0L) return(NA_real_)
@@ -58,8 +90,13 @@ rc_or_capacity <- function(and_capacities) {
 
 #' Compute capacity for one reaction in one pool
 #' @export
-rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20) {
-  and_caps <- vapply(parsed_gpr, function(and_group) rc_and_capacity(gene_score_vec[and_group], tau = tau), numeric(1))
+rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean")) {
+  and_method <- match.arg(and_method)
+  and_caps <- vapply(parsed_gpr, function(and_group) {
+    vals <- gene_score_vec[and_group]
+    rc_and_capacity(vals, method = and_method, tau = tau)
+  }, numeric(1))
+
   rc_or_capacity(and_caps)
 }
 
@@ -70,8 +107,17 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20) {
 #' tau values should be interpreted only as sensitivity to the multi-subunit
 #' bottleneck assumption.
 #' @export
-rc_reaction_capacity <- function(gpr_list, gene_score, tau = 0.20, BPPARAM = NULL, ...) {
-  if (is.null(names(gpr_list))) stop("`gpr_list` must be named by reaction IDs.", call. = FALSE)
+rc_reaction_capacity <- function(gpr_list,
+                                 gene_score,
+                                 promiscuity_mode = c("sqrt", "linear", "none"),
+                                 tau = 0.20,
+                                 and_method = c("boltzmann", "min", "mean"),
+                                 BPPARAM = NULL) {
+  promiscuity_mode <- match.arg(promiscuity_mode)
+  and_method <- match.arg(and_method)
+  if (is.null(names(gpr_list))) {
+    stop("`gpr_list` must be named by reaction IDs.", call. = FALSE)
+  }
   gene_score <- as.matrix(gene_score)
   if (is.null(rownames(gene_score)) || is.null(colnames(gene_score))) stop("`gene_score` must have rownames as genes and colnames as pools.", call. = FALSE)
   rownames(gene_score) <- tolower(rownames(gene_score))
@@ -83,7 +129,9 @@ rc_reaction_capacity <- function(gpr_list, gene_score, tau = 0.20, BPPARAM = NUL
   reaction_ids <- names(gpr_list)
   per_reaction <- rc_pool_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
-    vapply(seq_len(ncol(gene_score)), function(j) rc_reaction_capacity_one(parsed, gene_score[, j], tau = tau), numeric(1))
+    vapply(seq_len(ncol(weighted_score)), function(j) {
+      rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau, and_method = and_method)
+    }, numeric(1))
   }, BPPARAM = BPPARAM)
 
   out <- do.call(rbind, per_reaction)
@@ -108,7 +156,8 @@ rc_gpr_diagnostics <- function(gpr_list, gene_ids) {
       n_and_groups = length(rule),
       has_isoenzyme = length(rule) > 1L,
       has_multisubunit = any(vapply(rule, length, integer(1)) > 1L),
-      missing_gpr_gene_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
+      missing_gene_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
+      missing_subunit_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
       missing_subunit_flag = n_missing > 0L,
       capacity_missing_flag = n_genes == 0L || n_missing == n_genes,
       stringsAsFactors = FALSE

@@ -55,7 +55,7 @@ rc_concordance_null_correct <- function(p_rna, p_atac, pool_meta = NULL, stratum
   for (st in unique(strata)) {
     cols <- which(strata == st)
     n <- rowSums(is.finite(p_rna[, cols, drop = FALSE]) & is.finite(p_atac[, cols, drop = FALSE]))
-    e_null <- 2 / 3 + 1 / (3 * n^2)
+    e_null <- 2 / 3 - 1 / (3 * n)
     e_null[!is.finite(e_null) | n < 1L] <- NA_real_
     denom <- 1 - e_null
     tmp <- sweep(sweep(concord[, cols, drop = FALSE], 1, e_null, "-"), 1, denom, "/")
@@ -130,8 +130,15 @@ rc_gene_confidence <- function(concord_ra_norm,
   if (is.null(link_conf)) link_conf <- zeros else link_conf <- rc_align_component_matrix(link_conf, base, "link_conf")
   if (is.null(concord_rt_norm)) concord_rt_norm <- zeros else concord_rt_norm <- rc_align_component_matrix(concord_rt_norm, base, "concord_rt_norm")
   if (is.null(rel_rt_pos)) rel_rt_pos <- rep(0, nrow(base))
-  if (is.null(gpr_gene_observed)) gpr_gene_observed <- matrix(1, nrow = nrow(base), ncol = ncol(base), dimnames = dimnames(base)) else gpr_gene_observed <- rc_align_component_matrix(gpr_gene_observed, base, "gpr_gene_observed")
-  if (is.null(qc)) qc <- rep(1, ncol(base))
+  missing_components <- character(0)
+  if (is.null(gpr_gene_observed)) {
+    gpr_gene_observed <- zeros
+    missing_components <- c(missing_components, "gpr_gene_observed")
+  } else gpr_gene_observed <- rc_align_component_matrix(gpr_gene_observed, base, "gpr_gene_observed")
+  if (is.null(qc)) {
+    qc <- rep(0, ncol(base))
+    missing_components <- c(missing_components, "qc")
+  }
   if (!identical(dim(base), dim(link_conf)) || !identical(dim(base), dim(concord_rt_norm)) || !identical(dim(base), dim(as.matrix(gpr_gene_observed)))) {
     stop("All matrix confidence components must have identical dimensions.", call. = FALSE)
   }
@@ -145,7 +152,10 @@ rc_gene_confidence <- function(concord_ra_norm,
     0.15 * pmax(0, pmin(1, link_conf)) +
     0.15 * qc_mat +
     0.10 * pmax(0, pmin(1, as.matrix(gpr_gene_observed)))
-  pmax(0, pmin(1, conf))
+  conf <- pmax(0, pmin(1, conf))
+  attr(conf, "confidence_component_missing_flag") <- length(missing_components) > 0L
+  attr(conf, "missing_components") <- missing_components
+  conf
 }
 
 rc_align_reliability_vector <- function(x, genes, name) {

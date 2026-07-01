@@ -11,18 +11,29 @@ rc_pool_diagnostics <- function(pool_map,
   missing_cols <- setdiff(c("pool_id", "cell_id"), colnames(pool_map))
   if (length(missing_cols) > 0L) stop("`pool_map` is missing required columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
 
-  active <- pool_map
-  if ("skipped" %in% colnames(active)) active <- active[!active$skipped, , drop = FALSE]
-  active <- active[!is.na(active$pool_id), , drop = FALSE]
-  if (!is.null(rna_counts)) rc_validate_diagnostic_matrix(rna_counts, active$cell_id, "rna_counts")
+  active_pool_map <- pool_map
+  if ("skipped" %in% colnames(active_pool_map)) {
+    active_pool_map <- active_pool_map[!active_pool_map$skipped, , drop = FALSE]
+  }
+  active_pool_map <- active_pool_map[!is.na(active_pool_map$pool_id), , drop = FALSE]
+
+  if (!is.null(rna_counts)) {
+    rc_validate_diagnostic_matrix(rna_counts, active_pool_map$cell_id, "rna_counts")
+  }
+  if (!is.null(atac_counts)) {
+    rc_validate_diagnostic_matrix(atac_counts, active_pool_map$cell_id, "atac_counts")
+  }
 
   rna_depth <- if (is.null(rna_counts)) NULL else Matrix::colSums(rna_counts)
   gpr_genes <- rc_match_matrix_features(gpr_genes, rna_counts)
   pool_ids <- unique(active$pool_id)
 
-  pieces <- rc_pool_lapply(pool_ids, function(pid) {
-    one <- active[active$pool_id == pid, , drop = FALSE]
-    cells <- one$cell_id
+  pool_ids <- unique(active_pool_map$pool_id)
+  pieces <- rc_parallel_lapply(pool_ids, function(pid) {
+    rows <- active_pool_map$pool_id == pid
+    cells <- active_pool_map$cell_id[rows]
+    one <- active_pool_map[rows, , drop = FALSE]
+
     data.frame(
       pool_id = pid,
       sample_id = rc_pool_unique_value(one, sample_col),
@@ -30,7 +41,10 @@ rc_pool_diagnostics <- function(pool_map,
       condition = rc_pool_unique_value(one, condition_col),
       n_cells = length(cells),
       low_power_pool = if ("low_power_pool" %in% colnames(one)) any(one$low_power_pool) else NA,
-      no_within_group_pool_replicate = if ("no_within_group_pool_replicate" %in% colnames(one)) any(one$no_within_group_pool_replicate) else NA,
+      single_pool_group_flag = if ("no_within_group_pool_replicate" %in% colnames(one)) any(one$no_within_group_pool_replicate) else NA,
+      pool_seed = rc_pool_unique_value(one, "pool_seed"),
+      state_source = rc_pool_unique_value(one, "state_source"),
+      state_resolution = rc_pool_unique_value(one, "state_resolution"),
       RNA_depth_mean = if (is.null(rna_depth)) NA_real_ else mean(rna_depth[cells], na.rm = TRUE),
       GPR_gene_detection_rate = rc_feature_detection_mean(rna_counts, gpr_genes, cells),
       stringsAsFactors = FALSE

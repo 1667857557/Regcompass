@@ -61,3 +61,23 @@ test_that("reaction confidence aggregates gene confidence by GPR genes and pools
 test_that("rc_layer1_capacity alias matches run function", {
   expect_identical(rc_layer1_capacity, rc_run_layer1_capacity)
 })
+
+test_that("layer1 returns AND-method capacity long table and missing penalty", {
+  gprs <- list(r1 = list(c("g1", "g2")))
+  gene_score <- matrix(c(0.2, 0.8), nrow = 2, dimnames = list(c("g1", "g2"), "p1"))
+  long <- rc_and_method_capacity_long(gprs, gene_score)
+  expect_true(all(c("min", "boltzmann_0.08", "boltzmann_0.20", "mean") %in% long$and_method))
+  conf <- rc_reaction_confidence(gprs, gene_confidence = matrix(1, nrow = 1, dimnames = list("g1", "p1")))
+  expect_equal(conf$missing_subunit_confidence_penalty, 0.5)
+  expect_equal(conf$reaction_confidence, 0.5)
+})
+
+test_that("rc_run_layer1_from_counts provides RNA-detection confidence source", {
+  counts <- Matrix::Matrix(c(1, 0, 2, 3, 0, 4), nrow = 2, sparse = TRUE)
+  rownames(counts) <- c("g1", "g2"); colnames(counts) <- paste0("c", 1:3)
+  pool_map <- data.frame(pool_id = c("p1", "p1", "p2"), cell_id = colnames(counts), skipped = FALSE, sample_id = "s1", cell_type = "T")
+  gpr <- data.frame(reaction_id = "r1", gpr = "g1 and g2")
+  out <- rc_run_layer1_from_counts(gpr, counts, pool_map, bootstrap = FALSE)
+  expect_equal(out$reaction_confidence_source, "rna_detection")
+  expect_true("capacity_long" %in% names(out))
+})
