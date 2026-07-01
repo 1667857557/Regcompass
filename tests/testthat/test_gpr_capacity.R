@@ -40,3 +40,11 @@ test_that("rc_run_layer1_capacity returns MVP v0.3 outputs", {
   expect_equal(dim(out$reaction_capacity_L1), c(2L, 2L))
   expect_true("mean_gpr_detection_rate" %in% colnames(out$reaction_confidence))
 })
+
+test_that("safe scale uses sigma-consistent MAD/IQR and clips z-scores", {
+  x <- c(0, 0, 1, 1)
+  expect_equal(rc_safe_scale(x, min_scale = 0.05), max(stats::mad(x, constant = 1.4826), stats::IQR(x) / 1.349, 0.05))
+  X <- rbind(g1 = c(0, 100), g2 = c(1, 1))
+  z <- rc_gene_zscore(X, z_clip = 2)
+  expect_true(all(z <= 2 & z >= -2))
+})
