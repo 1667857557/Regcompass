@@ -182,6 +182,8 @@ rc_gpr_diagnostics <- function(gpr_list, gene_ids) {
       has_isoenzyme = length(rule) > 1L,
       has_multisubunit = any(vapply(rule, length, integer(1)) > 1L),
       missing_gene_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
+      missing_subunit_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
+      missing_subunit_flag = n_missing > 0L,
       capacity_missing_flag = n_genes == 0L || n_missing == n_genes,
       stringsAsFactors = FALSE
     )

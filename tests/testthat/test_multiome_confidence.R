@@ -25,3 +25,11 @@ test_that("concordance correction is zero-power safe for n equals one", {
   p2 <- matrix(0.5, nrow = 1, dimnames = list("g1", "p1"))
   expect_equal(as.numeric(rc_concordance_null_correct(p1, p2)), 0)
 })
+
+test_that("concordance correction can use stratum-specific n", {
+  p1 <- matrix(c(0, 1, 0.5, 0.5), nrow = 1, dimnames = list("g1", paste0("p", 1:4)))
+  p2 <- p1
+  pool_meta <- data.frame(pool_id = colnames(p1), cell_type = c("A", "A", "B", "B"))
+  out <- rc_concordance_null_correct(p1, p2, pool_meta = pool_meta, stratum_col = "cell_type")
+  expect_equal(as.numeric(out), rep(1, 4))
+})

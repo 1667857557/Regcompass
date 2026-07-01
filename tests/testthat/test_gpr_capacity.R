@@ -48,3 +48,12 @@ test_that("safe scale uses sigma-consistent MAD/IQR and clips z-scores", {
   z <- rc_gene_zscore(X, z_clip = 2)
   expect_true(all(z <= 2 & z >= -2))
 })
+
+test_that("reaction confidence aggregates gene confidence by GPR genes and pools", {
+  gprs <- list(r1 = list(c("g1", "g2")), r2 = list("g3"))
+  gene_conf <- matrix(c(0.2, 0.8, 0.9, 0.4, 0.6, 0.7), nrow = 3,
+                      dimnames = list(c("g1", "g2", "g3"), c("p1", "p2")))
+  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf)
+  expect_true(all(c("reaction_id", "pool_id", "reaction_confidence") %in% colnames(out)))
+  expect_equal(out$reaction_confidence[out$reaction_id == "r1" & out$pool_id == "p1"], stats::median(c(0.2, 0.8)))
+})

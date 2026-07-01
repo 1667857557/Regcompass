@@ -39,19 +39,32 @@ rc_percentile_vector <- function(v) {
 
 #' RNA-ATAC concordance with discrete-rank null correction
 #' @export
-rc_concordance_null_correct <- function(p_rna, p_atac) {
+rc_concordance_null_correct <- function(p_rna, p_atac, pool_meta = NULL, stratum_col = NULL) {
   p_rna <- as.matrix(p_rna); p_atac <- as.matrix(p_atac)
   if (!identical(dim(p_rna), dim(p_atac))) stop("`p_rna` and `p_atac` must have identical dimensions.", call. = FALSE)
   concord <- 1 - abs(p_rna - p_atac)
-  n <- rowSums(is.finite(p_rna) & is.finite(p_atac))
-  e_null <- 2 / 3 + 1 / (3 * n^2)
-  e_null[!is.finite(e_null) | n < 1L] <- NA_real_
-  denom <- 1 - e_null
-  out <- sweep(sweep(concord, 1, e_null, "-"), 1, denom, "/")
-  out <- pmax(0, pmin(1, out))
-  zero_power <- !is.finite(denom) | denom <= 0
-  if (any(zero_power)) out[zero_power, ] <- 0
-  out[!is.finite(out)] <- NA_real_
+  if (!is.null(stratum_col)) {
+    if (is.null(pool_meta) || !"pool_id" %in% colnames(pool_meta) || !stratum_col %in% colnames(pool_meta)) stop("`pool_meta` must contain `pool_id` and `stratum_col`.", call. = FALSE)
+    pool_meta <- pool_meta[match(colnames(p_rna), pool_meta$pool_id), , drop = FALSE]
+    if (anyNA(pool_meta$pool_id)) stop("`pool_meta` is missing metadata for some matrix columns.", call. = FALSE)
+    strata <- as.character(pool_meta[[stratum_col]])
+  } else {
+    strata <- rep("global", ncol(p_rna))
+  }
+  out <- concord
+  for (st in unique(strata)) {
+    cols <- which(strata == st)
+    n <- rowSums(is.finite(p_rna[, cols, drop = FALSE]) & is.finite(p_atac[, cols, drop = FALSE]))
+    e_null <- 2 / 3 + 1 / (3 * n^2)
+    e_null[!is.finite(e_null) | n < 1L] <- NA_real_
+    denom <- 1 - e_null
+    tmp <- sweep(sweep(concord[, cols, drop = FALSE], 1, e_null, "-"), 1, denom, "/")
+    tmp <- pmax(0, pmin(1, tmp))
+    zero_power <- !is.finite(denom) | denom <= 0
+    if (any(zero_power)) tmp[zero_power, ] <- 0
+    tmp[!is.finite(tmp)] <- NA_real_
+    out[, cols] <- tmp
+  }
   out
 }
 
@@ -73,6 +86,8 @@ rc_fisher_shrink <- function(x, y, n0 = 30) {
   }, numeric(4)))
   out <- as.data.frame(res)
   out$low_correlation_power_flag <- as.logical(out$low_correlation_power_flag)
+  out$rel_positive <- pmax(0, out$rho_shrink)
+  out$discordance <- abs(pmin(0, out$rho_shrink))
   rownames(out) <- rownames(x)
   out
 }

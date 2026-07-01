@@ -28,3 +28,12 @@ test_that("rc_q95_shrink tolerates all-missing reactions", {
   expect_true(is.na(out$Q$q_shrink[out$Q$reaction_id == "r1"]))
   expect_true(all(out$C_rel["r2", ] <= 1))
 })
+
+test_that("rc_q95_shrink uses reaction-specific finite n within strata", {
+  C_raw <- rbind(r1 = c(1, NA, 2, NA), r2 = c(1, 2, 3, 4))
+  colnames(C_raw) <- paste0("p", 1:4)
+  pool_meta <- data.frame(pool_id = colnames(C_raw), cell_type = c("A", "A", "B", "B"))
+  out <- rc_q95_shrink(C_raw, pool_meta = pool_meta, stratum_col = "cell_type")
+  expect_equal(out$Q$n[out$Q$reaction_id == "r1" & out$Q$stratum == "A"], 1L)
+  expect_equal(out$Q$n[out$Q$reaction_id == "r2" & out$Q$stratum == "A"], 2L)
+})
