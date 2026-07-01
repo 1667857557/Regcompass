@@ -1,8 +1,8 @@
 Package: RegCompassR
-Title: Multiome-Supported Metabolic Reaction Capacity Analysis
-Version: 0.7.0
+Title: Simplified Multiome-Supported Reaction Capacity Potential Analysis
+Version: 0.8.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
-Description: Provides input validation, extraction, sample-aware micropooling, and pool-level pseudobulk, GPR parsing, and Layer 1 reaction capacity, diagnostics, and minimal toy GEM/QP utilities, and selected reaction demand-QP planning, sample-level statistics, and regulator candidate ranking for annotated Seurat/Signac single-cell multiome objects in early RegCompass-Multiome development stages.
+Description: Provides a simplified Layer 1 workflow for annotated Seurat v4 RNA+ATAC multiome objects: raw RNA count extraction, sample-aware cell-type micropooling, pool-summed logCPM normalization, robust GPR-aware reaction capacity potential, cell-type Q95 calibration, reaction confidence with missing-GPR penalties, and minimal diagnostics.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -14,7 +14,6 @@ Imports:
     SeuratObject (>= 4.0.0)
 Suggests:
     BiocParallel,
-    rosqp,
     Seurat (>= 4.0.0),
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
