@@ -76,11 +76,14 @@ rc_select_reactions <- function(C_rel,
     top_diff <- names(sort(diff_score, decreasing = TRUE))[seq_len(min(top_diff_n, length(diff_score)))]
   }
 
+  exchange_flag <- rc_reaction_meta_flag(reaction_meta$is_exchange)
+  transport_flag <- rc_reaction_meta_flag(reaction_meta$is_transport)
+
   selected <- unique(c(
     top,
     top_diff,
-    if (include_exchange) as.character(reaction_meta$reaction_id[as.logical(reaction_meta$is_exchange)]),
-    if (include_transport) as.character(reaction_meta$reaction_id[as.logical(reaction_meta$is_transport)]),
+    if (include_exchange) as.character(reaction_meta$reaction_id[exchange_flag]),
+    if (include_transport) as.character(reaction_meta$reaction_id[transport_flag]),
     as.character(user_reactions)
   ))
   selected[!is.na(selected) & nzchar(selected)]
@@ -115,7 +118,12 @@ rc_estimate_selected_demand_qp <- function(n_pools,
   n_pools <- as.integer(n_pools)
   workers <- as.integer(workers)
   checkpoint_every <- as.integer(checkpoint_every)
-  n_selected <- length(unique(as.character(selected_reactions)))
+  selected_reactions <- unique(as.character(selected_reactions))
+  selected_reactions <- selected_reactions[!is.na(selected_reactions) & nzchar(selected_reactions)]
+  n_selected <- length(selected_reactions)
+  if (!is.numeric(seconds_per_qp) || length(seconds_per_qp) != 1L || (!is.na(seconds_per_qp) && seconds_per_qp < 0)) {
+    stop("`seconds_per_qp` must be a single non-negative number or NA.", call. = FALSE)
+  }
   n_qp <- n_pools * (1L + n_selected)
   estimated_seconds_serial <- if (is.na(seconds_per_qp)) NA_real_ else n_qp * seconds_per_qp
   data.frame(
@@ -131,4 +139,11 @@ rc_estimate_selected_demand_qp <- function(n_pools,
     expected_checkpoints = ceiling(n_qp / checkpoint_every),
     stringsAsFactors = FALSE
   )
+}
+
+rc_reaction_meta_flag <- function(x) {
+  if (is.logical(x)) return(!is.na(x) & x)
+  if (is.numeric(x)) return(!is.na(x) & x != 0)
+  x_chr <- tolower(trimws(as.character(x)))
+  !is.na(x_chr) & x_chr %in% c("true", "t", "1", "yes", "y")
 }

@@ -41,3 +41,34 @@ test_that("rc_estimate_selected_demand_qp reports required workload plan", {
   expect_equal(plan$estimated_seconds_parallel, 7.5)
   expect_equal(plan$expected_checkpoints, 5)
 })
+
+test_that("rc_select_reactions handles character reaction metadata flags", {
+  C_rel <- matrix(
+    c(1, 2, 3, 4),
+    nrow = 2L,
+    dimnames = list(c("EX_a", "T_b"), c("P1", "P2"))
+  )
+  meta <- data.frame(
+    reaction_id = rownames(C_rel),
+    is_exchange = c("TRUE", "FALSE"),
+    is_transport = c("no", "yes"),
+    stringsAsFactors = FALSE
+  )
+
+  selected <- rc_select_reactions(C_rel, meta, top_n = 0)
+
+  expect_equal(selected, c("EX_a", "T_b"))
+})
+
+test_that("rc_estimate_selected_demand_qp ignores missing and blank selected reactions", {
+  plan <- rc_estimate_selected_demand_qp(
+    n_pools = 3,
+    selected_reactions = c("R1", "", NA, "R1", "R2"),
+    seconds_per_qp = 1,
+    workers = 1,
+    checkpoint_every = 2
+  )
+
+  expect_equal(plan$n_selected_reactions, 2L)
+  expect_equal(plan$estimated_QP_count, 9)
+})

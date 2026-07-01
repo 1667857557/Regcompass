@@ -51,6 +51,7 @@ rc_solve_selected_demand_qp <- function(qp_base,
                                         checkpoint_every = 100L) {
   if (length(delta) == 1L) delta <- rep(delta, length(reactions))
   if (length(delta) != length(reactions)) stop("`delta` must have length 1 or match `reactions`.", call. = FALSE)
+  reaction_ids <- vapply(reactions, function(r) qp_base$reaction_id[[rc_reaction_index(r, qp_base$reaction_id)]], character(1L))
   if (!is.numeric(checkpoint_every) || length(checkpoint_every) != 1L || is.na(checkpoint_every) || checkpoint_every < 1) {
     stop("`checkpoint_every` must be a positive integer.", call. = FALSE)
   }
@@ -60,10 +61,10 @@ rc_solve_selected_demand_qp <- function(qp_base,
   }
 
   make_one <- function(i) {
-    qp <- rc_demand_qp(qp_base, reactions[[i]], delta[[i]])
+    qp <- rc_demand_qp(qp_base, reaction_ids[[i]], delta[[i]])
     sol <- rc_solve_qp(qp, settings = settings)
     status <- rc_osqp_status(sol)
-    idx <- rc_reaction_index(reactions[[i]], qp_base$reaction_id)
+    idx <- rc_reaction_index(reaction_ids[[i]], qp_base$reaction_id)
     data.frame(
       reaction_id = qp_base$reaction_id[[idx]],
       delta = delta[[i]],
@@ -74,14 +75,19 @@ rc_solve_selected_demand_qp <- function(qp_base,
     )
   }
 
+  empty_out <- function() data.frame(
+    reaction_id = character(), delta = numeric(), osqp_status = character(),
+    objective = numeric(), flux = numeric(), stringsAsFactors = FALSE
+  )
+
   if (is.null(checkpoint_file)) {
     pieces <- rc_parallel_lapply(seq_along(reactions), make_one, BPPARAM = BPPARAM)
-    return(do.call(rbind, pieces))
+    return(if (length(pieces) > 0L) do.call(rbind, pieces) else empty_out())
   }
 
   done <- if (file.exists(checkpoint_file)) readRDS(checkpoint_file) else data.frame()
   done_keys <- if (nrow(done) > 0L) paste(done$reaction_id, done$delta, sep = "\r") else character()
-  target_keys <- paste(as.character(reactions), delta, sep = "\r")
+  target_keys <- paste(reaction_ids, delta, sep = "\r")
   pieces <- if (nrow(done) > 0L) list(done) else list()
   solved_since_checkpoint <- 0L
   for (i in which(!target_keys %in% done_keys)) {
@@ -92,7 +98,7 @@ rc_solve_selected_demand_qp <- function(qp_base,
       solved_since_checkpoint <- 0L
     }
   }
-  out <- do.call(rbind, pieces)
+  out <- if (length(pieces) > 0L) do.call(rbind, pieces) else empty_out()
   saveRDS(out, checkpoint_file)
   out
 }

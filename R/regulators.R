@@ -29,7 +29,7 @@ rc_rank_regulators <- function(evidence,
   missing <- setdiff(required, colnames(evidence))
   if (length(missing) > 0L) stop("`evidence` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   if (is.null(evidence_cols)) {
-    evidence_cols <- names(evidence)[vapply(evidence, is.numeric, logical(1L))]
+    evidence_cols <- setdiff(names(evidence)[vapply(evidence, is.numeric, logical(1L))], c(regulator_col, reaction_col))
   }
   evidence_cols <- intersect(evidence_cols, colnames(evidence))
   if (length(evidence_cols) == 0L) stop("At least one numeric evidence column is required.", call. = FALSE)

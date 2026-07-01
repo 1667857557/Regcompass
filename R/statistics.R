@@ -28,6 +28,9 @@ rc_sample_aggregate <- function(score_mat,
   if (anyNA(pool_meta$pool_id) || anyDuplicated(pool_meta$pool_id)) {
     stop("`pool_meta$pool_id` must be non-missing and unique.", call. = FALSE)
   }
+  if (anyNA(pool_meta[[sample_col]]) || anyNA(pool_meta[[celltype_col]])) {
+    stop("Sample and cell-type columns in `pool_meta` must not contain missing values.", call. = FALSE)
+  }
   missing_pools <- setdiff(pool_meta$pool_id, colnames(score_mat))
   if (length(missing_pools) > 0L) {
     stop("`score_mat` is missing pools from `pool_meta`: ", paste(utils::head(missing_pools, 5L), collapse = ", "), call. = FALSE)

@@ -73,3 +73,32 @@ test_that("rc_rank_regulators ranks candidates within each reaction", {
   expect_equal(top_by_reaction$reaction_id, c("R1", "R2"))
   expect_equal(top_by_reaction$regulator_id, c("TF1", "TF2"))
 })
+
+test_that("rc_sample_aggregate rejects missing sample or cell-type labels", {
+  score_mat <- matrix(
+    c(1, 2, 3, 4),
+    nrow = 2L,
+    dimnames = list(c("R1", "R2"), c("P1", "P2"))
+  )
+  pool_meta <- data.frame(
+    pool_id = c("P1", "P2"),
+    sample_id = c("S1", NA),
+    cell_type = c("T", "T")
+  )
+
+  expect_error(rc_sample_aggregate(score_mat, pool_meta), "must not contain missing")
+})
+
+test_that("rc_rank_regulators excludes numeric identifier columns from default evidence", {
+  evidence <- data.frame(
+    regulator_id = c(101, 102),
+    reaction_id = c(1, 1),
+    direct_association = c(0.1, 0.9)
+  )
+
+  out <- rc_rank_regulators(evidence)
+
+  expect_false("rank_regulator_id" %in% colnames(out))
+  expect_false("rank_reaction_id" %in% colnames(out))
+  expect_equal(out$regulator_id[[1]], 102)
+})
