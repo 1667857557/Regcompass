@@ -1,66 +1,54 @@
-#' Calibrate raw reaction capacities by reaction-wise upper quantiles
-#'
-#' Reactions with at least `min_direct` finite pool values use Q95; smaller
-#' reactions use Q90 as a conservative fallback for v0.4 diagnostics.
-#'
-#' @param C_raw Reaction-by-pool raw capacity matrix.
-#' @param min_direct Minimum number of finite values needed for direct Q95.
-#' @param eps Positive stabilizer added to the quantile denominator.
-#' @param bootstrap Logical; if `TRUE`, add bootstrap Q95 confidence intervals.
-#' @param B Number of bootstrap resamples per reaction when `bootstrap = TRUE`.
-#' @param BPPARAM Optional `BiocParallelParam` for reaction-wise bootstrap.
-#'
-#' @return A list with `C_rel`, the clipped relative capacity matrix, and `Q`, a
-#' data.frame with reaction-wise quantiles and diagnostic metadata.
+#' Continuous shrinkage Q95 calibration
 #' @export
-rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TRUE, B = 200, BPPARAM = NULL) {
+rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95, n0 = 80, eps = 1e-6) {
   C_raw <- as.matrix(C_raw)
-  if (is.null(rownames(C_raw))) {
-    stop("`C_raw` must have reaction IDs in rownames().", call. = FALSE)
+  if (is.null(rownames(C_raw)) || is.null(colnames(C_raw))) stop("`C_raw` must have reaction rownames and pool colnames.", call. = FALSE)
+  global_q <- apply(C_raw, 1, rc_safe_quantile, probs = q)
+  if (!is.null(stratum_col)) {
+    if (is.null(pool_meta) || !"pool_id" %in% colnames(pool_meta) || !stratum_col %in% colnames(pool_meta)) stop("`pool_meta` with `pool_id` and `stratum_col` is required.", call. = FALSE)
+    pool_meta <- pool_meta[match(colnames(C_raw), pool_meta$pool_id), , drop = FALSE]
+    if (anyNA(pool_meta$pool_id)) stop("`pool_meta` is missing metadata for some capacity columns.", call. = FALSE)
+    strata <- as.character(pool_meta[[stratum_col]])
+  } else {
+    strata <- rep("global", ncol(C_raw))
   }
-  if (!is.numeric(min_direct) || length(min_direct) != 1L || is.na(min_direct) || min_direct < 1) {
-    stop("`min_direct` must be a single positive number.", call. = FALSE)
+  diag_list <- list(); C_rel <- C_raw
+  idx <- 1L
+  for (st in unique(strata)) {
+    pools <- which(strata == st)
+    n <- length(pools); rho <- n / (n + n0)
+    q_st <- apply(C_raw[, pools, drop = FALSE], 1, rc_safe_quantile, probs = q)
+    q_shrink <- rho * q_st + (1 - rho) * global_q
+    C_rel[, pools] <- sweep(C_raw[, pools, drop = FALSE], 1, q_shrink + eps, "/")
+    diag_list[[idx]] <- data.frame(reaction_id = rownames(C_raw), stratum = st, n = n,
+      q_stratum = as.numeric(q_st), q_global = as.numeric(global_q), rho_n = rho,
+      q_shrink = as.numeric(q_shrink), q95_very_low_power = n < 5L,
+      q95_low_power = n < 20L, q95_moderate_power = n < 100L,
+      q95_high_power = n >= 400L, stringsAsFactors = FALSE)
+    idx <- idx + 1L
   }
-
-  q <- apply(C_raw, 1, function(x) {
-    x <- x[is.finite(x)]
-    if (length(x) == 0L) {
-      return(NA_real_)
-    }
-    if (length(x) >= min_direct) {
-      stats::quantile(x, 0.95, na.rm = TRUE, names = FALSE)
-    } else {
-      stats::quantile(x, 0.90, na.rm = TRUE, names = FALSE)
-    }
-  })
-
-  n_finite <- rowSums(is.finite(C_raw))
-  quantile_used <- ifelse(n_finite >= min_direct, 0.95, 0.90)
-  quantile_used[n_finite == 0L] <- NA_real_
-  C_rel <- sweep(C_raw, 1, q + eps, "/")
   C_rel[C_rel > 1] <- 1
+  list(C_rel = C_rel, Q = do.call(rbind, diag_list))
+}
 
-  Q <- data.frame(
-    reaction_id = rownames(C_raw),
-    q_value = as.numeric(q),
-    quantile_used = quantile_used,
-    n_finite = as.integer(n_finite),
-    low_n_flag = n_finite < min_direct,
-    stringsAsFactors = FALSE
-  )
-
+#' Calibrate raw reaction capacities by continuous reaction-wise Q95 shrinkage
+#' @export
+rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TRUE, B = 500, BPPARAM = NULL, n0 = 80) {
+  C_raw <- as.matrix(C_raw)
+  out <- rc_q95_shrink(C_raw, q = 0.95, n0 = n0, eps = eps)
+  Q <- out$Q
+  names(Q)[names(Q) == "q_shrink"] <- "q_value"
+  Q$quantile_used <- 0.95
+  Q$n_finite <- rowSums(is.finite(C_raw))[match(Q$reaction_id, rownames(C_raw))]
+  Q$low_n_flag <- Q$n_finite < 20L
   if (isTRUE(bootstrap)) {
-    boot <- rc_parallel_lapply(seq_len(nrow(C_raw)), function(i) {
-      rc_q95_bootstrap(C_raw[i, ], B = B)
-    }, BPPARAM = BPPARAM)
+    boot <- rc_parallel_lapply(seq_len(nrow(C_raw)), function(i) rc_q95_bootstrap(C_raw[i, ], B = B), BPPARAM = BPPARAM)
     boot <- do.call(rbind, boot)
-    Q$q95_bootstrap <- boot[, "q95"]
-    Q$q95_ci_low <- boot[, "ci_low"]
-    Q$q95_ci_high <- boot[, "ci_high"]
-    Q$q95_ci_width <- boot[, "width"]
+    Q$q95_bootstrap <- boot[, "q95"]; Q$q95_ci_low <- boot[, "ci_low"]
+    Q$q95_ci_high <- boot[, "ci_high"]; Q$q95_ci_width <- boot[, "width"]
+    Q$q95_unstable_flag <- is.finite(Q$q95_ci_width) & Q$q95_ci_width > Q$q_value
   }
-
-  list(C_rel = C_rel, Q = Q)
+  list(C_rel = out$C_rel, Q = Q)
 }
 
 #' Bootstrap Q95 confidence interval for one reaction
@@ -70,7 +58,7 @@ rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TR
 #'
 #' @return Named numeric vector: `q95`, `ci_low`, `ci_high`, and `width`.
 #' @export
-rc_q95_bootstrap <- function(x, B = 200) {
+rc_q95_bootstrap <- function(x, B = 500) {
   x <- x[is.finite(x)]
   if (length(x) < 20L) {
     return(c(q95 = NA_real_, ci_low = NA_real_, ci_high = NA_real_, width = NA_real_))
@@ -109,20 +97,22 @@ rc_run_layer1_capacity <- function(gpr_table,
                                    pool_expression,
                                    pool_detection = NULL,
                                    promiscuity_mode = c("sqrt", "linear", "none"),
-                                   tau = 0.08,
+                                   tau = 0.20,
+                                   and_method = c("boltzmann", "min", "mean"),
                                    min_direct = 100,
                                    bootstrap = TRUE,
-                                   B = 200,
+                                   B = 500,
                                    BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
+  and_method <- match.arg(and_method)
   if (is.null(rownames(pool_expression))) {
     stop("`pool_expression` must have gene IDs in rownames().", call. = FALSE)
   }
   parsed <- rc_parse_gpr_table(gpr_table)
-  gene_score <- rc_sigmoid(rc_robust_z(pool_expression))
+  gene_score <- rc_gene_score(pool_expression)
   rownames(gene_score) <- tolower(rownames(gene_score))
 
-  C_raw <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = promiscuity_mode, tau = tau, BPPARAM = BPPARAM)
+  C_raw <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = promiscuity_mode, tau = tau, and_method = and_method, BPPARAM = BPPARAM)
   calibrated <- rc_q95_calibrate(C_raw, min_direct = min_direct, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM)
   gpr_diag <- rc_gpr_diagnostics(parsed, rownames(gene_score))
   confidence <- rc_reaction_confidence(parsed, pool_detection)
@@ -168,4 +158,10 @@ rc_reaction_confidence <- function(gpr_list, pool_detection = NULL) {
   }, numeric(1))
   diag$mean_gpr_detection_rate <- mean_detection
   diag
+}
+
+rc_safe_quantile <- function(x, probs) {
+  x <- x[is.finite(x)]
+  if (length(x) == 0L) return(NA_real_)
+  stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE)
 }

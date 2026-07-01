@@ -1,19 +1,36 @@
+#' Safe robust sigma-scale estimate
+#' @export
+rc_safe_scale <- function(x, min_scale = 0.05) {
+  mad_sigma <- stats::mad(x, constant = 1.4826, na.rm = TRUE)
+  iqr_sigma <- stats::IQR(x, na.rm = TRUE) / 1.349
+  max(mad_sigma, iqr_sigma, min_scale, na.rm = TRUE)
+}
+
+#' Robust row-wise z score clipped to a finite range
+#' @export
+rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
+  X <- as.matrix(X)
+  z <- X
+  for (i in seq_len(nrow(X))) {
+    x <- as.numeric(X[i, ])
+    med <- stats::median(x, na.rm = TRUE)
+    sc <- rc_safe_scale(x, min_scale = min_scale)
+    zi <- (x - med) / sc
+    zi <- pmax(pmin(zi, z_clip), -z_clip)
+    z[i, ] <- zi
+  }
+  z
+}
+
 #' Robust row-wise z score
-#'
-#' v0.3 uses a dense implementation suitable for toy/small matrices. Sparse or
-#' block-wise scaling is planned for later versions.
-#'
-#' @param x Numeric matrix-like object with features in rows and pools in columns.
-#' @param eps Positive stabilizer added to the MAD denominator.
-#'
-#' @return A numeric matrix of robust z scores.
 #' @export
 rc_robust_z <- function(x, eps = 1e-6) {
-  x <- as.matrix(x)
-  med <- matrixStats::rowMedians(x, na.rm = TRUE)
-  madv <- matrixStats::rowMads(x, na.rm = TRUE)
-  sweep(sweep(x, 1, med, "-"), 1, madv + eps, "/")
+  rc_gene_zscore(x, min_scale = max(eps, 0.05), z_clip = Inf)
 }
+
+#' Sigmoid gene score from normalized pool expression
+#' @export
+rc_gene_score <- function(X, min_scale = 0.05, z_clip = 6) rc_sigmoid(rc_gene_zscore(X, min_scale = min_scale, z_clip = z_clip))
 
 #' Logistic sigmoid transform
 #'
@@ -49,6 +66,34 @@ rc_boltzmann_minavg <- function(scores, tau = 0.08) {
   sum(w * scores)
 }
 
+
+#' AND aggregation for one GPR complex
+#'
+#' Implements the plan-supported sensitivity choices: hard minimum,
+#' Boltzmann-weighted minimum-biased average, and arithmetic mean.
+#' @export
+rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau = 0.20) {
+  method <- match.arg(method)
+  scores <- scores[is.finite(scores)]
+  if (length(scores) == 0L) return(NA_real_)
+  switch(
+    method,
+    min = min(scores),
+    mean = mean(scores),
+    boltzmann = rc_boltzmann_minavg(scores, tau = tau)
+  )
+}
+
+#' OR aggregation across isoenzyme groups
+#'
+#' OR groups are summed to preserve cumulative isoenzyme capacity.
+#' @export
+rc_or_capacity <- function(and_capacities) {
+  and_capacities <- and_capacities[is.finite(and_capacities)]
+  if (length(and_capacities) == 0L) return(NA_real_)
+  sum(and_capacities)
+}
+
 #' Compute capacity for one reaction in one pool
 #'
 #' @param parsed_gpr Parsed GPR rule returned by [rc_parse_gpr_simple()].
@@ -57,18 +102,14 @@ rc_boltzmann_minavg <- function(scores, tau = 0.08) {
 #'
 #' @return A single raw Layer 1 reaction capacity potential.
 #' @export
-rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.08) {
+rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean")) {
+  and_method <- match.arg(and_method)
   and_caps <- vapply(parsed_gpr, function(and_group) {
     vals <- gene_score_vec[and_group]
-    vals <- vals[!is.na(vals)]
-    if (length(vals) == 0L) return(NA_real_)
-    rc_boltzmann_minavg(vals, tau = tau)
+    rc_and_capacity(vals, method = and_method, tau = tau)
   }, numeric(1))
 
-  if (all(is.na(and_caps))) {
-    return(NA_real_)
-  }
-  sum(and_caps, na.rm = TRUE)
+  rc_or_capacity(and_caps)
 }
 
 #' Compute Layer 1 reaction capacity for all reactions and pools
@@ -86,9 +127,11 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.08) {
 rc_reaction_capacity <- function(gpr_list,
                                  gene_score,
                                  promiscuity_mode = c("sqrt", "linear", "none"),
-                                 tau = 0.08,
+                                 tau = 0.20,
+                                 and_method = c("boltzmann", "min", "mean"),
                                  BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
+  and_method <- match.arg(and_method)
   if (is.null(names(gpr_list))) {
     stop("`gpr_list` must be named by reaction IDs.", call. = FALSE)
   }
@@ -107,7 +150,7 @@ rc_reaction_capacity <- function(gpr_list,
   per_reaction <- rc_parallel_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(weighted_score)), function(j) {
-      rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau)
+      rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau, and_method = and_method)
     }, numeric(1))
   }, BPPARAM = BPPARAM)
 
