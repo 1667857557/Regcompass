@@ -82,6 +82,8 @@ rc_extract_inputs <- function(object,
                               batch_col = NULL,
                               state_col = NULL,
                               embedding = NULL) {
+  if (!identical(rna_slot, "counts") || !identical(atac_slot, "counts")) stop("Main RegCompassR workflow requires counts slots for RNA and ATAC extraction.", call. = FALSE)
+
   rc_validate_seurat(
     object = object,
     rna_assay = rna_assay,

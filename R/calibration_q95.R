@@ -19,10 +19,11 @@ rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95,
     n <- rowSums(is.finite(C_raw[, pools, drop = FALSE]))
     rho <- n / (n + n0)
     q_st <- apply(C_raw[, pools, drop = FALSE], 1, rc_safe_quantile, probs = q)
-    q_shrink <- rho * q_st + (1 - rho) * global_q
+    q_base <- ifelse(is.finite(q_st), q_st, global_q)
+    q_shrink <- rho * q_base + (1 - rho) * global_q
     C_rel[, pools] <- sweep(C_raw[, pools, drop = FALSE], 1, q_shrink + eps, "/")
     diag_list[[idx]] <- data.frame(reaction_id = rownames(C_raw), stratum = st,
-      n = as.integer(n), n_global = as.integer(global_n), q_stratum = as.numeric(q_st),
+      n = as.integer(n), n_global = as.integer(global_n), q_stratum = as.numeric(q_st), q_stratum_used = as.numeric(q_base),
       q_global = as.numeric(global_q), rho_n = as.numeric(rho), q_shrink = as.numeric(q_shrink),
       q95_very_low_power = n < 5L, q95_low_power = n < 20L,
       q95_moderate_power = n < 100L, q95_high_power = n >= 400L, stringsAsFactors = FALSE)
@@ -43,8 +44,7 @@ rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TR
   Q$n_finite <- rowSums(is.finite(C_raw))[match(Q$reaction_id, rownames(C_raw))]
   Q$low_n_flag <- Q$n_finite < 20L
   if (isTRUE(bootstrap)) {
-    boot <- rc_parallel_lapply(seq_len(nrow(C_raw)), function(i) rc_q95_bootstrap(C_raw[i, ], B = B), BPPARAM = BPPARAM)
-    boot <- do.call(rbind, boot)
+    boot <- rc_q95_bootstrap_diagnostics(C_raw, Q, pool_meta = pool_meta, stratum_col = stratum_col, B = B, BPPARAM = BPPARAM)
     Q$q95_bootstrap <- boot[, "q95"]; Q$q95_ci_low <- boot[, "ci_low"]
     Q$q95_ci_high <- boot[, "ci_high"]; Q$q95_ci_width <- boot[, "width"]
     Q$q95_unstable_flag <- is.finite(Q$q95_ci_width) & Q$q95_ci_width > Q$q_value
@@ -159,6 +159,8 @@ rc_reaction_confidence <- function(gpr_list, gene_confidence = NULL, pool_detect
   if (is.null(pool_detection)) {
     all_genes <- unique(unlist(gpr_list, use.names = FALSE))
     diag <- rc_gpr_diagnostics(gpr_list, all_genes)
+    diag$pool_id <- NA_character_
+    diag$reaction_confidence <- NA_real_
     diag$detection_available <- FALSE
     diag$mean_gpr_detection_rate <- NA_real_
     return(diag)
@@ -166,16 +168,54 @@ rc_reaction_confidence <- function(gpr_list, gene_confidence = NULL, pool_detect
   pool_detection <- as.matrix(pool_detection)
   if (is.null(rownames(pool_detection))) stop("`pool_detection` must have gene IDs in rownames().", call. = FALSE)
   rownames(pool_detection) <- tolower(rownames(pool_detection))
-  diag <- rc_gpr_diagnostics(gpr_list, rownames(pool_detection))
-  diag$detection_available <- TRUE
-  mean_detection <- vapply(names(gpr_list), function(rid) {
-    genes <- unique(unlist(gpr_list[[rid]], use.names = FALSE))
-    genes <- intersect(genes, rownames(pool_detection))
-    if (length(genes) == 0L) return(NA_real_)
-    mean(pool_detection[genes, , drop = FALSE], na.rm = TRUE)
-  }, numeric(1))
-  diag$mean_gpr_detection_rate <- mean_detection
-  diag
+  rows <- lapply(names(gpr_list), function(rid) {
+    genes_all <- unique(unlist(gpr_list[[rid]], use.names = FALSE))
+    total <- length(genes_all)
+    genes <- intersect(genes_all, rownames(pool_detection))
+    vals <- if (length(genes) == 0L) rep(NA_real_, ncol(pool_detection)) else matrixStats::colMedians(pool_detection[genes, , drop = FALSE], na.rm = TRUE)
+    data.frame(reaction_id = rid, pool_id = colnames(pool_detection), reaction_confidence = vals,
+               missing_gpr_gene_fraction = if (total == 0L) NA_real_ else 1 - length(genes) / total,
+               detection_available = TRUE, mean_gpr_detection_rate = vals, stringsAsFactors = FALSE)
+  })
+  do.call(rbind, rows)
+}
+
+#' Compute compact capacity sensitivity summaries
+#' @export
+rc_capacity_sensitivity <- function(gpr_list, gene_score, variable = c("tau", "promiscuity"), values, promiscuity_mode = "sqrt", tau = 0.20, and_method = "boltzmann", BPPARAM = NULL) {
+  variable <- match.arg(variable)
+  if (length(values) == 0L) return(data.frame())
+  rows <- lapply(values, function(v) {
+    C <- if (variable == "tau") {
+      rc_reaction_capacity(gpr_list, gene_score, promiscuity_mode = promiscuity_mode, tau = as.numeric(v), and_method = and_method, BPPARAM = BPPARAM)
+    } else {
+      rc_reaction_capacity(gpr_list, gene_score, promiscuity_mode = as.character(v), tau = tau, and_method = and_method, BPPARAM = BPPARAM)
+    }
+    data.frame(reaction_id = rownames(C), sensitivity = variable, value = as.character(v), median_capacity = matrixStats::rowMedians(C, na.rm = TRUE), stringsAsFactors = FALSE)
+  })
+  do.call(rbind, rows)
+}
+
+rc_safe_quantile <- function(x, probs) {
+  x <- x[is.finite(x)]
+  if (length(x) == 0L) return(NA_real_)
+  stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE)
+}
+
+
+rc_q95_bootstrap_diagnostics <- function(C_raw, Q, pool_meta = NULL, stratum_col = NULL, B = 500, BPPARAM = NULL) {
+  C_raw <- as.matrix(C_raw)
+  strata <- if (!is.null(stratum_col)) {
+    pool_meta <- pool_meta[match(colnames(C_raw), pool_meta$pool_id), , drop = FALSE]
+    as.character(pool_meta[[stratum_col]])
+  } else rep("global", ncol(C_raw))
+  rows <- seq_len(nrow(Q))
+  boot <- rc_parallel_lapply(rows, function(i) {
+    rid <- Q$reaction_id[[i]]; st <- Q$stratum[[i]]
+    cols <- which(strata == st)
+    rc_q95_bootstrap(C_raw[rid, cols], B = B)
+  }, BPPARAM = BPPARAM)
+  do.call(rbind, boot)
 }
 
 #' Compute compact capacity sensitivity summaries

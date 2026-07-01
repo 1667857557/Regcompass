@@ -91,3 +91,13 @@ rc_pool_lapply <- function(X, FUN, BPPARAM = NULL) {
   }
   lapply(X, FUN)
 }
+
+#' Filter ATAC peaks detected in at least min_pools and compute pool logCPM
+#' @export
+rc_atac_pool_logcpm <- function(atac_counts, pool_map, min_pools = 3, BPPARAM = NULL) {
+  pb <- rc_pseudobulk_counts(atac_counts, pool_map, fun = "sum", BPPARAM = BPPARAM)
+  detected <- Matrix::rowSums(pb > 0) >= min_pools
+  pb <- pb[detected, , drop = FALSE]
+  filtered <- rc_filter_empty_pools(pb, rc_build_pool_metadata(pool_map))
+  rc_logcpm(filtered$counts)
+}

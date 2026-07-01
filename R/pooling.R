@@ -27,6 +27,8 @@ rc_make_pools <- function(meta,
                           min_group_size = 30,
                           min_size = NULL,
                           seed = 1,
+                          state_source = NA_character_,
+                          state_resolution = NA_character_,
                           BPPARAM = NULL) {
   if (!is.null(min_size)) {
     min_pool_size <- min_size
@@ -60,7 +62,7 @@ rc_make_pools <- function(meta,
       out[[k]] <- data.frame(group_id = nm, group_key = nm, pool_id = NA_character_, cell_id = cells,
                              skipped = TRUE, skip_reason = "group_below_min_group_size",
                              low_power_pool = TRUE, pool_size = n,
-                             no_within_group_pool_replicate = TRUE, stringsAsFactors = FALSE)
+                             no_within_group_pool_replicate = TRUE, pool_seed = seed, state_source = state_source, state_resolution = state_resolution, stringsAsFactors = FALSE)
       for (col in group_cols) out[[k]][[col]] <- values[[col]][[1]]
       k <- k + 1L; next
     }
@@ -72,7 +74,7 @@ rc_make_pools <- function(meta,
       out[[k]] <- data.frame(group_id = nm, group_key = nm, pool_id = paste0("pool_", k), cell_id = cc,
                              skipped = FALSE, skip_reason = NA_character_,
                              low_power_pool = length(cc) < min_pool_size, pool_size = length(cc),
-                             no_within_group_pool_replicate = n_pool == 1L, stringsAsFactors = FALSE)
+                             no_within_group_pool_replicate = n_pool == 1L, pool_seed = seed, state_source = state_source, state_resolution = state_resolution, stringsAsFactors = FALSE)
       for (col in group_cols) out[[k]][[col]] <- values[[col]][[1]]
       k <- k + 1L
     }
