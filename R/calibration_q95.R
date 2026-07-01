@@ -217,3 +217,25 @@ rc_q95_bootstrap_diagnostics <- function(C_raw, Q, pool_meta = NULL, stratum_col
   }, BPPARAM = BPPARAM)
   do.call(rbind, boot)
 }
+
+#' Compute compact capacity sensitivity summaries
+#' @export
+rc_capacity_sensitivity <- function(gpr_list, gene_score, variable = c("tau", "promiscuity"), values, promiscuity_mode = "sqrt", tau = 0.20, and_method = "boltzmann", BPPARAM = NULL) {
+  variable <- match.arg(variable)
+  if (length(values) == 0L) return(data.frame())
+  rows <- lapply(values, function(v) {
+    C <- if (variable == "tau") {
+      rc_reaction_capacity(gpr_list, gene_score, promiscuity_mode = promiscuity_mode, tau = as.numeric(v), and_method = and_method, BPPARAM = BPPARAM)
+    } else {
+      rc_reaction_capacity(gpr_list, gene_score, promiscuity_mode = as.character(v), tau = tau, and_method = and_method, BPPARAM = BPPARAM)
+    }
+    data.frame(reaction_id = rownames(C), sensitivity = variable, value = as.character(v), median_capacity = matrixStats::rowMedians(C, na.rm = TRUE), stringsAsFactors = FALSE)
+  })
+  do.call(rbind, rows)
+}
+
+rc_safe_quantile <- function(x, probs) {
+  x <- x[is.finite(x)]
+  if (length(x) == 0L) return(NA_real_)
+  stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE)
+}
