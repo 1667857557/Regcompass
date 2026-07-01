@@ -5,8 +5,9 @@ rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95,
   if (is.null(rownames(C_raw)) || is.null(colnames(C_raw))) stop("`C_raw` must have reaction rownames and pool colnames.", call. = FALSE)
   global_q <- apply(C_raw, 1, stats::quantile, probs = q, na.rm = TRUE, names = FALSE)
   if (!is.null(stratum_col)) {
-    if (is.null(pool_meta) || !stratum_col %in% colnames(pool_meta)) stop("`pool_meta` with `stratum_col` is required.", call. = FALSE)
+    if (is.null(pool_meta) || !"pool_id" %in% colnames(pool_meta) || !stratum_col %in% colnames(pool_meta)) stop("`pool_meta` with `pool_id` and `stratum_col` is required.", call. = FALSE)
     pool_meta <- pool_meta[match(colnames(C_raw), pool_meta$pool_id), , drop = FALSE]
+    if (anyNA(pool_meta$pool_id)) stop("`pool_meta` is missing metadata for some capacity columns.", call. = FALSE)
     strata <- as.character(pool_meta[[stratum_col]])
   } else {
     strata <- rep("global", ncol(C_raw))
@@ -32,7 +33,7 @@ rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95,
 
 #' Calibrate raw reaction capacities by continuous reaction-wise Q95 shrinkage
 #' @export
-rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TRUE, B = 200, BPPARAM = NULL, n0 = 80) {
+rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TRUE, B = 500, BPPARAM = NULL, n0 = 80) {
   C_raw <- as.matrix(C_raw)
   out <- rc_q95_shrink(C_raw, q = 0.95, n0 = n0, eps = eps)
   Q <- out$Q
@@ -57,7 +58,7 @@ rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TR
 #'
 #' @return Named numeric vector: `q95`, `ci_low`, `ci_high`, and `width`.
 #' @export
-rc_q95_bootstrap <- function(x, B = 200) {
+rc_q95_bootstrap <- function(x, B = 500) {
   x <- x[is.finite(x)]
   if (length(x) < 20L) {
     return(c(q95 = NA_real_, ci_low = NA_real_, ci_high = NA_real_, width = NA_real_))
@@ -99,14 +100,14 @@ rc_run_layer1_capacity <- function(gpr_table,
                                    tau = 0.08,
                                    min_direct = 100,
                                    bootstrap = TRUE,
-                                   B = 200,
+                                   B = 500,
                                    BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
   if (is.null(rownames(pool_expression))) {
     stop("`pool_expression` must have gene IDs in rownames().", call. = FALSE)
   }
   parsed <- rc_parse_gpr_table(gpr_table)
-  gene_score <- rc_sigmoid(rc_robust_z(pool_expression))
+  gene_score <- rc_gene_score(pool_expression)
   rownames(gene_score) <- tolower(rownames(gene_score))
 
   C_raw <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = promiscuity_mode, tau = tau, BPPARAM = BPPARAM)

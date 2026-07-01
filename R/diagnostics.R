@@ -34,11 +34,17 @@ rc_pool_diagnostics <- function(pool_map,
     stop("`pool_map` is missing required columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
   }
 
+  active_pool_map <- pool_map
+  if ("skipped" %in% colnames(active_pool_map)) {
+    active_pool_map <- active_pool_map[!active_pool_map$skipped, , drop = FALSE]
+  }
+  active_pool_map <- active_pool_map[!is.na(active_pool_map$pool_id), , drop = FALSE]
+
   if (!is.null(rna_counts)) {
-    rc_validate_diagnostic_matrix(rna_counts, pool_map$cell_id, "rna_counts")
+    rc_validate_diagnostic_matrix(rna_counts, active_pool_map$cell_id, "rna_counts")
   }
   if (!is.null(atac_counts)) {
-    rc_validate_diagnostic_matrix(atac_counts, pool_map$cell_id, "atac_counts")
+    rc_validate_diagnostic_matrix(atac_counts, active_pool_map$cell_id, "atac_counts")
   }
 
   rna_depth <- if (is.null(rna_counts)) NULL else Matrix::colSums(rna_counts)
@@ -46,11 +52,11 @@ rc_pool_diagnostics <- function(pool_map,
   metabolic_genes <- rc_match_matrix_features(metabolic_genes, rna_counts)
   gpr_genes <- rc_match_matrix_features(gpr_genes, rna_counts)
 
-  pool_ids <- unique(pool_map$pool_id)
+  pool_ids <- unique(active_pool_map$pool_id)
   pieces <- rc_parallel_lapply(pool_ids, function(pid) {
-    rows <- pool_map$pool_id == pid
-    cells <- pool_map$cell_id[rows]
-    one <- pool_map[rows, , drop = FALSE]
+    rows <- active_pool_map$pool_id == pid
+    cells <- active_pool_map$cell_id[rows]
+    one <- active_pool_map[rows, , drop = FALSE]
 
     data.frame(
       pool_id = pid,
