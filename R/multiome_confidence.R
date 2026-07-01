@@ -55,7 +55,7 @@ rc_concordance_null_correct <- function(p_rna, p_atac, pool_meta = NULL, stratum
   for (st in unique(strata)) {
     cols <- which(strata == st)
     n <- rowSums(is.finite(p_rna[, cols, drop = FALSE]) & is.finite(p_atac[, cols, drop = FALSE]))
-    e_null <- 2 / 3 - 1 / (3 * n)
+    e_null <- 2 / 3 + 1 / (3 * n^2)
     e_null[!is.finite(e_null) | n < 1L] <- NA_real_
     denom <- 1 - e_null
     tmp <- sweep(sweep(concord[, cols, drop = FALSE], 1, e_null, "-"), 1, denom, "/")
