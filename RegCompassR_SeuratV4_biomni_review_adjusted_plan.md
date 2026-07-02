@@ -764,10 +764,11 @@ q = 0.95
 不切换公式，只打标记：
 
 ```text
-n < 5: q95_very_low_power
-n < 20: q95_low_power
-n < 100: q95_moderate_power
-n ≥ 400: q95_high_power
+n < 5: q95_power_class = very_low
+5 ≤ n < 20: q95_power_class = low
+20 ≤ n < 100: q95_power_class = moderate
+100 ≤ n < 400: q95_power_class = adequate
+n ≥ 400: q95_power_class = high
 ```
 
 ### 12.2 Q95 bootstrap
@@ -789,7 +790,7 @@ q_shrink
 q95_ci_low
 q95_ci_high
 q95_ci_width
-q95_unstable_flag
+q95_unstable_flag  # q95_ci_width / max(q_value, 1e-6) > 0.5
 ```
 
 ### 12.3 C_rel

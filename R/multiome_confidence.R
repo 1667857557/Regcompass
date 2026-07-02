@@ -30,7 +30,7 @@ rc_percentile_vector <- function(v) {
   n <- sum(ok)
   if (n == 0L) return(out)
   if (n == 1L) {
-    out[ok] <- 1
+    out[ok] <- NA_real_
     return(out)
   }
   out[ok] <- (rank(v[ok], ties.method = "average") - 1) / (n - 1)
