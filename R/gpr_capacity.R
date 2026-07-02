@@ -28,10 +28,6 @@ rc_robust_z <- function(x, eps = 1e-6) {
   rc_gene_zscore(x, min_scale = max(eps, 0.05), z_clip = Inf)
 }
 
-#' Sigmoid gene score from normalized pool expression
-#' @export
-rc_gene_score <- function(X, min_scale = 0.05, z_clip = 6) rc_sigmoid(rc_gene_zscore(X, min_scale = min_scale, z_clip = z_clip))
-
 #' Logistic sigmoid transform
 #' @export
 rc_sigmoid <- function(z) 1 / (1 + exp(-z))

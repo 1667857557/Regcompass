@@ -47,6 +47,12 @@ An already annotated Seurat v4/Signac multiome object with:
 
 ## Main workflow
 
+RegCompassR keeps the capacity input as raw RNA counts until after pooling. The
+recommended wrapper is `rc_run_layer1_from_counts()`, which performs the same
+calculation as the manual steps below: pseudobulk pool sums, pool-level
+`log2(CPM + 1)`, robust gene z-scores, sigmoid gene scores, GPR capacity,
+Q95 calibration, and reaction confidence.
+
 ```r
 library(RegCompassR)
 
@@ -70,31 +76,56 @@ pool_map <- rc_make_pools(
   seed = 1
 )
 
+pool_meta <- rc_build_pool_metadata(pool_map, inputs$meta)
+
 layer1 <- rc_run_layer1_from_counts(
   gpr_table = gpr_table,
   rna_counts = inputs$rna_counts,
   pool_map = pool_map,
+  pool_meta = pool_meta,
   stratum_col = "cell_type",
-  tau = 0.20
+  promiscuity_mode = "sqrt",
+  and_method = "boltzmann",
+  tau = 0.20,
+  bootstrap = TRUE,
+  B = 500
 )
+```
 
-RegCompassR Layer 1 uses the adjusted plan order: raw counts → pool sum → pool-level normalization. Do not average cell-level residuals, TF-IDF, or imputed expression for the main GPR capacity input.
+To enable multiome-supported gene confidence, pass ATAC counts and curated peak-gene links:
+
+```r
+layer1 <- rc_run_layer1_from_counts(
+  gpr_table = gpr_table,
+  rna_counts = inputs$rna_counts,
+  pool_map = pool_map,
+  pool_meta = pool_meta,
+  atac_counts = inputs$atac_counts,
+  peak_gene_links = peak_gene_links,
+  stratum_col = "cell_type"
+)
+```
+
+When `atac_counts` and `peak_gene_links` are supplied, the wrapper computes
+RNA and ATAC pool percentiles within `stratum_col`, peak-gene link confidence,
+discrete-null-corrected RNA/ATAC concordance, Fisher-shrunk positive RNA/ATAC
+association, and nonnegative gene confidence before reaction confidence is
+calculated. Single-pool strata have undefined percentiles (`NA`), not maximal
+confidence.
+
+### Manual calculation flow
+
+These steps are useful when inspecting intermediate objects or providing custom
+gene confidence.
 
 ```r
 rna_pb <- rc_pseudobulk_counts(inputs$rna_counts, pool_map, fun = "sum")
-pool_meta <- rc_build_pool_metadata(pool_map, inputs$meta)
 filtered <- rc_filter_empty_pools(rna_pb, pool_meta)
 rna_logcpm <- rc_logcpm(filtered$counts)
 pool_meta <- filtered$pool_meta
+
 rna_detection <- rc_pool_detection(inputs$rna_counts, pool_map)
 rna_detection <- rna_detection[, colnames(rna_logcpm), drop = FALSE]
-```
-
-Detection rates are retained for confidence/diagnostics only and do not directly modify the gene score.
-
-### Pool expression
-
-Layer 1 uses only:
 
 layer1 <- rc_run_layer1_capacity(
   gpr_table = gpr_table,
@@ -104,39 +135,24 @@ layer1 <- rc_run_layer1_capacity(
   stratum_col = "cell_type",
   promiscuity_mode = "sqrt",
   and_method = "boltzmann",
-  tau = 0.20
+  tau = 0.20,
+  bootstrap = TRUE,
+  B = 500
 )
+```
 
-where \(count_{g,p}\) is the raw-count sum of gene \(g\) in pool \(p\).
-
-Cell-level Pearson residuals, TF-IDF, scaled data, and imputed matrices are not valid main inputs because their averages are not equivalent to pseudobulk count normalization.
+Detection rates are retained for confidence/diagnostics only and do not directly modify the gene score. Cell-level Pearson residuals, TF-IDF, scaled data, and imputed matrices are not valid main inputs because their averages are not equivalent to pseudobulk count normalization.
 
 ### Gene score
 
-```r
-gpr_genes <- unique(unlist(layer1$parsed_gpr, use.names = FALSE))
-pool_diag <- rc_pool_diagnostics(
-  pool_map,
-  rna_counts = inputs$rna_counts,
-  atac_counts = inputs$atac_counts,
-  state_col = "seurat_clusters",
-  metabolic_genes = gpr_genes,
-  gpr_genes = gpr_genes
-)
-
-q95_diag <- rc_q95_calibrate(
-  layer1$reaction_capacity_raw,
-  min_direct = 100,
-  bootstrap = TRUE,
-  B = 500
-)$Q
-```
-
-with clipping to \([-6,6]\), then:
+For pool-level logCPM expression, `rc_gene_score()` computes robust row-wise
+z-scores clipped to `[-6, 6]`, then applies the logistic sigmoid:
 
 \[
 s_{g,p}=\sigma(z_{g,p})
 \]
+
+where `count_{g,p}` is the raw-count sum of gene `g` in pool `p` before logCPM normalization.
 
 ### GPR capacity
 
@@ -166,10 +182,10 @@ C_{raw}(r,p)=\sum_k C_k(r,p)
 
 ### Q95 calibration
 
-Within each cell type:
+Within each `stratum_col` group:
 
 \[
-Q_r=\rho_n Q_{r,celltype}+(1-\rho_n)Q_{r,global}
+Q_r=\rho_n Q_{r,stratum}+(1-\rho_n)Q_{r,global}
 \]
 
 \[
@@ -179,6 +195,8 @@ Q_r=\rho_n Q_{r,celltype}+(1-\rho_n)Q_{r,global}
 \[
 C_{rel}(r,p)=\min\left(1,\frac{C_{raw}(r,p)}{Q_r+\epsilon}\right)
 \]
+
+`rc_q95_calibrate()` reports an ordered `q95_power_class` (`very_low`, `low`, `moderate`, `adequate`, `high`) and flags unstable Q95 estimates when `q95_ci_width / max(q_value, 1e-6) > 0.5`.
 
 `C_rel` is a relative reaction capacity potential, not enzyme activity and not a flux bound.
 
@@ -190,19 +208,28 @@ When only RNA detection is available, reaction confidence defaults to:
 Conf_{r,p}=median(Detection_{g,p}:g\in GPR_r)\times(1-missing\_gpr\_gene\_fraction)
 \]
 
-If a user supplies a gene-level confidence matrix, the same missing-GPR penalty is applied.
+If multiome confidence or a user-supplied gene-level confidence matrix is available, the same missing-GPR penalty is applied to the median gene confidence.
 
 ## Minimal diagnostics
 
-The main workflow returns:
+The main workflow returns `C_raw`, `C_rel`, `reaction_capacity_L1`,
+`reaction_confidence`, `q95_diagnostics`, `gpr_diagnostics`,
+`tau_sensitivity`, `promiscuity_sensitivity`, `and_method_sensitivity`,
+`capacity_long`, and `parsed_gpr`. The `rc_run_layer1_from_counts()` wrapper also
+returns `pool_meta` and `reaction_confidence_source`.
 
 `rc_sample_aggregate()` aggregates pool-level reaction scores to biological sample × annotated cell-type medians, so differential analysis does not treat pools as independent biological replicates. `rc_lm_by_reaction()` fits simple reaction-wise sample-level linear models and reports BH-adjusted q-values within model terms. `rc_rank_regulators()` combines direct/adjusted association and support evidence into candidate regulator rankings only; rankings are not causal driver claims.
 
 ## Export and report helpers
 
 ```r
-sample_matrix <- rc_sample_aggregate(layer1$reaction_capacity_L1, pool_meta)
+sample_matrix <- rc_sample_aggregate(layer1$C_rel, layer1$pool_meta)
 rc_export_sample_matrix(sample_matrix, "output/sample_capacity.tsv")
-rc_export_long_table(layer1$reaction_capacity_L1, "output/pool_capacity_long.tsv", value_col = "C_rel")
-rc_write_report_md("output/layer1_report.md", q95_diagnostics = layer1$q95_diagnostics, gpr_diagnostics = layer1$gpr_diagnostics, confidence = layer1$reaction_confidence)
+rc_export_long_table(layer1$C_rel, "output/pool_capacity_long.tsv", value_col = "C_rel")
+rc_write_report_md(
+  "output/layer1_report.md",
+  q95_diagnostics = layer1$q95_diagnostics,
+  gpr_diagnostics = layer1$gpr_diagnostics,
+  confidence = layer1$reaction_confidence
+)
 ```

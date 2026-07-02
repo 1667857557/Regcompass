@@ -53,3 +53,10 @@ test_that("gene confidence flags missing default components", {
   conf <- rc_gene_confidence(mat, rel_ra_pos = c(g1 = 1), det_rna = mat)
   expect_true(isTRUE(attr(conf, "confidence_component_missing_flag")))
 })
+
+
+test_that("single-pool percentiles are undefined rather than maximal", {
+  x <- matrix(5, nrow = 2, ncol = 1, dimnames = list(c("g1", "g2"), "p1"))
+  out <- rc_percentile_by_stratum(x)
+  expect_true(all(is.na(out)))
+})
