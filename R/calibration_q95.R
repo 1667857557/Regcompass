@@ -25,8 +25,18 @@ rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95,
     diag_list[[idx]] <- data.frame(reaction_id = rownames(C_raw), stratum = st,
       n = as.integer(n), n_global = as.integer(global_n), q_stratum = as.numeric(q_st), q_stratum_used = as.numeric(q_base),
       q_global = as.numeric(global_q), rho_n = as.numeric(rho), q_shrink = as.numeric(q_shrink),
-      q95_very_low_power = n < 5L, q95_low_power = n < 20L,
-      q95_moderate_power = n < 100L, q95_high_power = n >= 400L, stringsAsFactors = FALSE)
+      q95_power_class = factor(
+        ifelse(n < 5L, "very_low",
+          ifelse(n < 20L, "low",
+            ifelse(n < 100L, "moderate",
+              ifelse(n < 400L, "adequate", "high")
+            )
+          )
+        ),
+        levels = c("very_low", "low", "moderate", "adequate", "high"),
+        ordered = TRUE
+      ),
+      stringsAsFactors = FALSE)
     idx <- idx + 1L
   }
   C_rel[C_rel > 1] <- 1
@@ -52,7 +62,8 @@ rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TR
     boot <- rc_q95_bootstrap_diagnostics(C_raw, Q, pool_meta = pool_meta, stratum_col = stratum_col, B = B, BPPARAM = BPPARAM)
     Q$q95_bootstrap <- boot[, "q95"]; Q$q95_ci_low <- boot[, "ci_low"]
     Q$q95_ci_high <- boot[, "ci_high"]; Q$q95_ci_width <- boot[, "width"]
-    Q$q95_unstable_flag <- is.finite(Q$q95_ci_width) & Q$q95_ci_width > Q$q_value
+    Q$q95_unstable_flag <- is.finite(Q$q95_ci_width) &
+      (Q$q95_ci_width / pmax(Q$q_value, 1e-6)) > 0.5
   }
   list(C_rel = out$C_rel, Q = Q)
 }

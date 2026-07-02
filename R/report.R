@@ -19,7 +19,11 @@ rc_write_report_md <- function(file,
     lines <- c(lines, "", "## Q95 diagnostics", paste0("- Rows: ", nrow(q95_diagnostics)))
     if ("rho_n" %in% colnames(q95_diagnostics)) lines <- c(lines, add_num("Q95 rho_n", q95_diagnostics$rho_n))
     if ("q95_ci_width" %in% colnames(q95_diagnostics)) lines <- c(lines, add_num("Q95 CI width", q95_diagnostics$q95_ci_width))
-    for (nm in intersect(c("q95_low_power", "q95_very_low_power", "q95_unstable_flag"), colnames(q95_diagnostics))) lines <- c(lines, paste0("- ", nm, " fraction: ", mean(q95_diagnostics[[nm]], na.rm = TRUE)))
+    if ("q95_power_class" %in% colnames(q95_diagnostics)) {
+      tab <- table(q95_diagnostics$q95_power_class, useNA = "ifany")
+      lines <- c(lines, paste0("- q95_power_class counts: ", paste(paste(names(tab), as.integer(tab), sep = "="), collapse = ", ")))
+    }
+    if ("q95_unstable_flag" %in% colnames(q95_diagnostics)) lines <- c(lines, paste0("- q95_unstable_flag fraction: ", mean(q95_diagnostics$q95_unstable_flag, na.rm = TRUE)))
   }
   if (!is.null(gpr_diagnostics)) {
     lines <- c(lines, "", "## GPR diagnostics", paste0("- Reactions: ", nrow(gpr_diagnostics)))
