@@ -41,6 +41,16 @@ test_that("gene confidence aligns named reliability vectors by gene", {
   expect_gt(conf["g1", "p1"], conf["g2", "p1"])
 })
 
+test_that("gene confidence preserves matrix dimensions while clamping inputs", {
+  mat <- matrix(c(-0.2, 1.2, 0.4, 0.6), nrow = 2, dimnames = list(c("g1", "g2"), c("p1", "p2")))
+  rel <- c(g2 = 0, g1 = 1)
+  conf <- rc_gene_confidence(mat, rel_ra_pos = rel, det_rna = mat, qc = c(1, 1))
+  expect_identical(dim(conf), dim(mat))
+  expect_identical(dimnames(conf), dimnames(mat))
+  expect_true(all(conf >= 0 & conf <= 1))
+})
+
+
 test_that("concordance null matches rank-minus-one percentile definition", {
   p1 <- matrix(c(0, 1), nrow = 1, dimnames = list("g1", c("p1", "p2")))
   p2 <- matrix(c(0.25, 0.5), nrow = 1, dimnames = list("g1", c("p1", "p2")))
