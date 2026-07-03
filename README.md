@@ -20,18 +20,19 @@ Seurat v4 RNA+ATAC counts
 → C_raw, C_rel, reaction_confidence, minimal diagnostics
 ```
 
-- `rc_validate_seurat()` checks that a Seurat object contains the requested RNA assay, ATAC assay, required sample and cell-type metadata, optional condition/batch metadata, and optional embedding.
-- `rc_extract_inputs()` validates the object and extracts RNA assay data, ATAC assay data, cell metadata, and an optional embedding into a plain R list.
-- `rc_make_pools()` creates sample-aware micropools within sample, optional condition, cell type, and optional local-state/cluster strata without mixing cells across samples.
-- `rc_pseudobulk_counts()` sums raw counts by pool; `rc_filter_empty_pools()` removes zero-library pools; `rc_logcpm()` computes pool-level `log2(CPM + 1)` for Layer 1.
-- `rc_pool_detection()` computes pool-level detection rates from raw counts for confidence/diagnostics only.
+- `rc_validate_seurat()` / `rc_validate_seurat_v4()` check that a Seurat object contains the requested RNA assay, ATAC assay, required sample and cell-type metadata, optional condition/batch/state metadata, and optional embedding.
+- `rc_extract_inputs()` / `rc_extract_seurat_v4()` validate the object and extract RNA assay data, ATAC assay data, cell metadata, and an optional embedding into a plain R list.
+- `rc_check_metadata()` and `rc_write_input_summary()` create input QC summaries for sample/cell-type counts, missing metadata, optional condition-batch balance, and state provenance.
+- `rc_drop_na_grouping()` removes cells with missing pooling labels; `rc_make_pools()` creates sample-aware micropools within sample, optional condition, cell type, and optional local-state/cluster strata without mixing cells across samples; `rc_make_pool_seed_replicates()` repeats pooling over multiple seeds for sensitivity analysis.
+- `rc_pseudobulk_counts()` sums raw counts by pool; `rc_filter_empty_pools()` removes zero-library pools; `rc_logcpm()` computes pool-level `log2(CPM + 1)` for Layer 1; `rc_check_pseudobulk_mapping()` spot-checks pool membership against pseudobulk columns.
+- `rc_pool_detection()` computes pool-level detection rates from raw counts for confidence/diagnostics only; `rc_atac_pool_logcpm()` computes pooled ATAC accessibility logCPM for multiome confidence.
 - `rc_parse_gpr_simple()` / `rc_parse_gpr_table()` parse curated simple GPR rules.
 - `rc_run_layer1_capacity()` computes GPR-aware Layer 1 reaction capacity and Q95 diagnostics.
 - `rc_pool_diagnostics()` reports v0.4 pool-level diagnostics for depth, low-power pools, and metabolic/GPR gene detection.
 - `rc_q95_bootstrap()` adds bootstrap confidence intervals for reaction-wise Q95 diagnostics.
-- `rc_toy_gem()`, `rc_build_baseline_qp()`, `rc_solve_qp()`, and `rc_demand_qp()` provide the v0.5 toy GEM/QP MVP.
-- `rc_select_reactions()` and `rc_estimate_selected_demand_qp()` provide the v0.6 selected-demand QP planning layer.
-- `rc_sample_aggregate()`, `rc_lm_by_reaction()`, and `rc_rank_regulators()` provide the v0.7 sample-level statistics and regulator candidate-prioritization layer.
+- `rc_sample_aggregate()`, `rc_sample_summary()`, `rc_export_sample_matrix()`, `rc_export_long_table()`, and `rc_write_report_md()` provide sample-aware summaries, table exports, and Markdown reporting.
+
+RegCompassR v0.9 intentionally keeps GEM/QP solving, selected-demand QP planning, FVA, thermodynamic constraints, and causal regulator discovery outside the runnable package scope.
 
 ## Expected input
 
@@ -44,6 +45,49 @@ An already annotated Seurat v4/Signac multiome object with:
   - `sample_id`
   - `cell_type`
   - optional `condition`
+
+
+## Human-GEM GPR tables and metabolic peak-gene links
+
+RegCompassR can download the official Human-GEM repository archive and convert its
+model GPR rules into the simple `reaction_id`, `and_group_id`, `gene` table used
+by the Layer 1 workflow:
+
+```r
+hg <- rc_download_humangem_gpr_table(
+  destdir = "data/Human-GEM",
+  ref = "main",
+  gene_format = "symbol"
+)
+
+gpr_table <- hg$gpr_table
+metabolic_genes <- hg$metabolic_genes
+```
+
+The returned `metabolic_genes` vector is the recommended target gene set when
+regenerating metabolic peak-gene links outside RegCompassR, for example with
+Signac's peak-gene linking workflow using `genes.use = metabolic_genes`.
+RegCompassR does **not** infer new peak-gene links internally; instead, pass the
+recomputed or curated link table to `rc_run_layer1_from_counts()` through
+`peak_gene_links`. The wrapper filters those links to the metabolic GPR genes
+before computing multiome gene confidence.
+
+```r
+# Example sketch; run the linking step in your established Signac workflow.
+# object <- Signac::LinkPeaks(object, peak.assay = "ATAC", expression.assay = "RNA",
+#                             genes.use = metabolic_genes)
+# peak_gene_links <- object@assays$ATAC@links  # convert to peak_id/gene/weight table
+
+layer1 <- rc_run_layer1_from_counts(
+  gpr_table = gpr_table,
+  rna_counts = inputs$rna_counts,
+  pool_map = pool_map,
+  pool_meta = pool_meta,
+  atac_counts = inputs$atac_counts,
+  peak_gene_links = peak_gene_links,
+  stratum_col = "cell_type"
+)
+```
 
 ## Main workflow
 
@@ -218,12 +262,16 @@ The main workflow returns `C_raw`, `C_rel`, `reaction_capacity_L1`,
 `capacity_long`, and `parsed_gpr`. The `rc_run_layer1_from_counts()` wrapper also
 returns `pool_meta` and `reaction_confidence_source`.
 
-`rc_sample_aggregate()` aggregates pool-level reaction scores to biological sample × annotated cell-type medians, so differential analysis does not treat pools as independent biological replicates. `rc_lm_by_reaction()` fits simple reaction-wise sample-level linear models and reports BH-adjusted q-values within model terms. `rc_rank_regulators()` combines direct/adjusted association and support evidence into candidate regulator rankings only; rankings are not causal driver claims.
+`rc_sample_aggregate()` aggregates pool-level reaction scores to biological sample × annotated cell-type medians, so downstream analysis does not treat pools as independent biological replicates. `rc_sample_summary()` provides long-form median/IQR summaries by sample, cell type, and optional condition. Statistical modeling and regulator ranking are left to downstream project-specific analyses rather than treated as built-in causal inference.
 
 ## Export and report helpers
 
 ```r
+input_summary <- rc_check_metadata(inputs$meta, condition_col = "condition")
+rc_write_input_summary(input_summary, "output/input_qc")
+
 sample_matrix <- rc_sample_aggregate(layer1$C_rel, layer1$pool_meta)
+sample_summary <- rc_sample_summary(layer1$C_rel, layer1$pool_meta, condition_col = "condition")
 rc_export_sample_matrix(sample_matrix, "output/sample_capacity.tsv")
 rc_export_long_table(layer1$C_rel, "output/pool_capacity_long.tsv", value_col = "C_rel")
 rc_write_report_md(
