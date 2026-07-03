@@ -30,6 +30,7 @@ Seurat v4 RNA+ATAC counts
 - `rc_run_layer1_capacity()` computes GPR-aware Layer 1 reaction capacity and Q95 diagnostics.
 - `rc_pool_diagnostics()` reports v0.4 pool-level diagnostics for depth, low-power pools, and metabolic/GPR gene detection.
 - `rc_q95_bootstrap()` adds bootstrap confidence intervals for reaction-wise Q95 diagnostics.
+- `rc_parallel_lapply()` and `rc_default_bpparam()` provide automatic BiocParallel-backed multi-core execution for expensive pool-, reaction-, model-, and bootstrap-level loops when BiocParallel is installed.
 - `rc_sample_aggregate()`, `rc_sample_summary()`, `rc_export_sample_matrix()`, `rc_export_long_table()`, and `rc_write_report_md()` provide sample-aware summaries, table exports, and Markdown reporting.
 
 RegCompassR v0.9 intentionally keeps GEM/QP solving, selected-demand QP planning, FVA, thermodynamic constraints, and causal regulator discovery outside the runnable package scope.
@@ -105,6 +106,21 @@ layer1 <- rc_run_layer1_from_counts(
   stratum_col = "cell_type"
 )
 ```
+
+
+## Parallel execution
+
+RegCompassR parallelizes the most expensive embarrassingly parallel work units: pool pseudobulk/detection summaries, reaction-wise GPR capacity calculations, Q95 bootstrap diagnostics, pool diagnostics, and reaction-wise linear models. These functions accept `BPPARAM` for an explicit `BiocParallelParam`; when `BPPARAM = NULL`, they call `rc_default_bpparam()` and use all detected CPU cores except one when BiocParallel is installed. If BiocParallel is unavailable, or if only one worker is requested, the same code falls back to deterministic sequential `lapply()` execution.
+
+Control the automatic worker count globally with either:
+
+```r
+options(RegCompassR.workers = 4)
+# or before starting R:
+# Sys.setenv(REGCOMPASS_WORKERS = "4")
+```
+
+Set `options(RegCompassR.workers = 1)` or pass `BPPARAM = FALSE` to force sequential execution for debugging or constrained environments.
 
 ## Main workflow
 

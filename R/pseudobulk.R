@@ -88,11 +88,7 @@ rc_filter_active_pool_map <- function(pool_map) {
 }
 
 rc_pool_lapply <- function(X, FUN, BPPARAM = NULL) {
-  if (!is.null(BPPARAM)) {
-    if (!requireNamespace("BiocParallel", quietly = TRUE)) stop("BiocParallel must be installed when `BPPARAM` is provided.", call. = FALSE)
-    return(BiocParallel::bplapply(X, FUN, BPPARAM = BPPARAM))
-  }
-  lapply(X, FUN)
+  rc_parallel_lapply(X, FUN, BPPARAM = BPPARAM)
 }
 
 #' Filter ATAC peaks detected in at least min_pools and compute pool logCPM
