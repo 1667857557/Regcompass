@@ -104,3 +104,25 @@ rc_atac_pool_logcpm <- function(atac_counts, pool_map, min_pools = 3, BPPARAM = 
   filtered <- rc_filter_empty_pools(pb, rc_build_pool_metadata(pool_map))
   rc_logcpm(filtered$counts)
 }
+
+#' Check pseudobulk columns against manual pool sums
+#'
+#' This lightweight runtime sanity check verifies that selected pseudobulk
+#' columns equal manual row sums over the active pool-map cells.
+#' @export
+rc_check_pseudobulk_mapping <- function(counts, pool_map, pb, n_check = 5) {
+  rc_validate_pool_matrix_inputs(counts, pool_map)
+  active <- rc_filter_active_pool_map(pool_map)
+  pids <- unique(active$pool_id)
+  pids <- utils::head(pids, n_check)
+  missing_pools <- setdiff(pids, colnames(pb))
+  if (length(missing_pools) > 0L) stop("`pb` is missing pool columns: ", paste(missing_pools, collapse = ", "), call. = FALSE)
+  for (pid in pids) {
+    cells <- active$cell_id[active$pool_id == pid]
+    manual <- Matrix::rowSums(counts[, cells, drop = FALSE])
+    if (!isTRUE(all.equal(as.numeric(pb[, pid]), as.numeric(manual)))) {
+      stop("Pseudobulk mapping check failed for pool: ", pid, call. = FALSE)
+    }
+  }
+  TRUE
+}

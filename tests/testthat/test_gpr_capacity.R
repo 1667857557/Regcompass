@@ -49,7 +49,7 @@ test_that("rc_run_layer1_capacity returns MVP Layer 1 toy outputs", {
     dimnames = list(c("HK1", "HK2", "PFKM", "PFKL"), c("pool1", "pool2"))
   )
 
-  out <- rc_run_layer1_capacity(gpr_table, expr, pool_detection = detect, promiscuity_mode = "sqrt", min_direct = 10)
+  out <- rc_run_layer1_capacity(gpr_table, expr, pool_detection = detect, promiscuity_mode = "sqrt", min_direct = 10, run_sensitivity = TRUE)
   expect_true(all(c("C_raw", "C_rel", "q95_diagnostics", "gpr_diagnostics", "reaction_confidence") %in% names(out)))
   expect_equal(dim(out$C_raw), c(2L, 2L))
   expect_true("mean_gpr_detection_rate" %in% colnames(out$reaction_confidence))
@@ -127,4 +127,22 @@ test_that("layer1 ignores non-metabolic peak-gene links and keeps detection conf
   out <- rc_run_layer1_from_counts(gpr, counts, pool_map, atac_counts = atac, peak_gene_links = links, bootstrap = FALSE)
   expect_equal(out$reaction_confidence_source, "rna_detection")
   expect_true(all(is.finite(out$reaction_confidence$reaction_confidence)))
+})
+
+test_that("OR capacity supports bounded sensitivity methods", {
+  x <- c(0.2, 0.5, 0.8)
+  expect_equal(rc_or_capacity(x, method = "sum"), 1.5)
+  expect_equal(rc_or_capacity(x, method = "max"), 0.8)
+  expect_equal(rc_or_capacity(x, method = "prob_or"), 1 - prod(1 - x))
+  expect_equal(rc_or_capacity(x, method = "sum_sqrtK"), sum(x) / sqrt(length(x)))
+})
+
+test_that("reaction confidence falls back per reaction when multiome overlap is partial", {
+  gprs <- list(r_multi = list("g1"), r_detect = list("g2"))
+  gene_conf <- matrix(c(0.8, 0.6), nrow = 1, dimnames = list("g1", c("p1", "p2")))
+  detect <- matrix(c(0.2, 0.4, 0.7, 0.9), nrow = 2, dimnames = list(c("g1", "g2"), c("p1", "p2")))
+  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, pool_detection = detect)
+  expect_equal(unique(out$confidence_source[out$reaction_id == "r_multi"]), "multiome_link_confidence")
+  expect_equal(unique(out$confidence_source[out$reaction_id == "r_detect"]), "rna_detection_fallback")
+  expect_true(all(is.finite(out$reaction_confidence[out$reaction_id == "r_detect"])))
 })
