@@ -46,6 +46,49 @@ An already annotated Seurat v4/Signac multiome object with:
   - `cell_type`
   - optional `condition`
 
+
+## Human-GEM GPR tables and metabolic peak-gene links
+
+RegCompassR can download the official Human-GEM repository archive and convert its
+model GPR rules into the simple `reaction_id`, `and_group_id`, `gene` table used
+by the Layer 1 workflow:
+
+```r
+hg <- rc_download_humangem_gpr_table(
+  destdir = "data/Human-GEM",
+  ref = "main",
+  gene_format = "symbol"
+)
+
+gpr_table <- hg$gpr_table
+metabolic_genes <- hg$metabolic_genes
+```
+
+The returned `metabolic_genes` vector is the recommended target gene set when
+regenerating metabolic peak-gene links outside RegCompassR, for example with
+Signac's peak-gene linking workflow using `genes.use = metabolic_genes`.
+RegCompassR does **not** infer new peak-gene links internally; instead, pass the
+recomputed or curated link table to `rc_run_layer1_from_counts()` through
+`peak_gene_links`. The wrapper filters those links to the metabolic GPR genes
+before computing multiome gene confidence.
+
+```r
+# Example sketch; run the linking step in your established Signac workflow.
+# object <- Signac::LinkPeaks(object, peak.assay = "ATAC", expression.assay = "RNA",
+#                             genes.use = metabolic_genes)
+# peak_gene_links <- object@assays$ATAC@links  # convert to peak_id/gene/weight table
+
+layer1 <- rc_run_layer1_from_counts(
+  gpr_table = gpr_table,
+  rna_counts = inputs$rna_counts,
+  pool_map = pool_map,
+  pool_meta = pool_meta,
+  atac_counts = inputs$atac_counts,
+  peak_gene_links = peak_gene_links,
+  stratum_col = "cell_type"
+)
+```
+
 ## Main workflow
 
 RegCompassR keeps the capacity input as raw RNA counts until after pooling. The

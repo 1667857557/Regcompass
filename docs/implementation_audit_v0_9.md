@@ -10,7 +10,8 @@ RegCompassR now focuses on a reproducible, diagnostic Layer 1 workflow:
 - create sample-aware, optional condition/state-aware micropools with `rc_make_pools()` and `rc_make_pool_seed_replicates()`;
 - aggregate raw RNA counts by pool with `rc_pseudobulk_counts()`, remove empty pools with `rc_filter_empty_pools()`, and normalize to pool-level `log2(CPM + 1)` with `rc_logcpm()`;
 - compute robust gene scores, GPR-aware reaction capacities, Q95 calibration, reaction confidence, and sensitivity diagnostics through `rc_run_layer1_from_counts()` / `rc_run_layer1_capacity()`;
-- optionally compute ATAC-supported multiome gene confidence from pooled ATAC accessibility and curated peak-gene links;
+- download Human-GEM and prepare a RegCompass-compatible GPR table plus the corresponding metabolic GPR gene set;
+- optionally compute ATAC-supported multiome gene confidence from pooled ATAC accessibility and curated or externally regenerated peak-gene links;
 - summarize, export, and report pool-level results at sample-aware levels.
 
 ## Removed QP planning layer
@@ -37,6 +38,13 @@ Pooling remains sample-aware: cells are never pooled across samples, and optiona
 The core capacity calculation keeps raw counts until after pool aggregation. Gene scores use robust z-scores over pool-level logCPM values followed by a sigmoid transformation. GPR AND rules use the default Boltzmann minimum-biased average with `tau = 0.20`; OR rules sum isoenzyme-group capacities. Q95 calibration uses continuous shrinkage toward global Q95 values and can report bootstrap uncertainty.
 
 The workflow returns capacity matrices and diagnostics including Q95 power classes, GPR gene coverage, hard-min/tau/promiscuity/AND-method sensitivity summaries, long-form capacity tables, parsed GPR rules, pool metadata, and the source of reaction confidence.
+
+
+## Human-GEM and metabolic peak-gene links
+
+`rc_download_humangem_gpr_table()` downloads a Human-GEM GitHub archive, reads `model/genes.tsv`, `model/reactions.tsv`, and `model/Human-GEM.yml`, converts Human-GEM gene identifiers to symbols by default, and returns a RegCompass-compatible `gpr_table`, `metabolic_genes`, raw reaction rules, and source annotation tables.
+
+`rc_metabolic_gpr_genes()` extracts the metabolic GPR gene set from any parsed or tabular GPR input. That gene set is intended as the target for regenerating metabolic peak-gene links in an external multiome workflow such as Signac `LinkPeaks(genes.use = metabolic_genes)`. The package does not run peak-gene link inference internally; `rc_run_layer1_from_counts()` accepts a supplied `peak_gene_links` table, filters it to the GPR metabolic genes, and then computes multiome confidence from pooled ATAC accessibility and link weights.
 
 ## Multiome confidence
 
