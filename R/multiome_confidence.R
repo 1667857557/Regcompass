@@ -146,16 +146,22 @@ rc_gene_confidence <- function(concord_ra_norm,
   rel_rt_pos <- rc_align_reliability_vector(rel_rt_pos, rownames(base), "rel_rt_pos")
   if (length(qc) != ncol(base)) stop("`qc` must have one value per pool/column.", call. = FALSE)
   qc_mat <- matrix(pmax(0, pmin(1, as.numeric(qc))), nrow = nrow(base), ncol = ncol(base), byrow = TRUE)
-  conf <- 0.25 * sweep(pmax(0, pmin(1, base)), 1, rel_ra_pos, "*") +
-    0.15 * sweep(pmax(0, pmin(1, concord_rt_norm)), 1, rel_rt_pos, "*") +
-    0.20 * pmax(0, pmin(1, det_rna)) +
-    0.15 * pmax(0, pmin(1, link_conf)) +
+  conf <- 0.25 * sweep(rc_clamp01_matrix(base), 1, rel_ra_pos, "*") +
+    0.15 * sweep(rc_clamp01_matrix(concord_rt_norm), 1, rel_rt_pos, "*") +
+    0.20 * rc_clamp01_matrix(det_rna) +
+    0.15 * rc_clamp01_matrix(link_conf) +
     0.15 * qc_mat +
-    0.10 * pmax(0, pmin(1, as.matrix(gpr_gene_observed)))
-  conf <- pmax(0, pmin(1, conf))
+    0.10 * rc_clamp01_matrix(gpr_gene_observed)
+  conf <- rc_clamp01_matrix(conf)
   attr(conf, "confidence_component_missing_flag") <- length(missing_components) > 0L
   attr(conf, "missing_components") <- missing_components
   conf
+}
+
+rc_clamp01_matrix <- function(x) {
+  x <- as.matrix(x)
+  x[] <- pmax(0, pmin(1, x))
+  x
 }
 
 rc_align_reliability_vector <- function(x, genes, name) {
