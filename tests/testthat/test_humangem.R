@@ -17,10 +17,10 @@ test_that("Human-GEM preparation returns symbol GPR tables", {
     "reactions:",
     "- id: MAR00001",
     "  name: hexokinase",
-    "  gene_reaction_rule: ENSG00000156515 or ENSG00000003436",
+    "  - gene_reaction_rule: ENSG00000156515 or ENSG00000003436",
     "- id: MAR00002",
     "  name: lactate dehydrogenase",
-    "  gene_reaction_rule: ENSG00000134333"
+    "  - gene_reaction_rule: ENSG00000134333"
   ), file.path(model, "Human-GEM.yml"))
 
   out <- rc_prepare_humangem_gpr_table(repo)
@@ -36,7 +36,7 @@ test_that("Human-GEM preparation can keep Ensembl gene IDs", {
   dir.create(model, recursive = TRUE)
   writeLines(c("genes\tgeneSymbols", "ENSG1\tHK1"), file.path(model, "genes.tsv"))
   writeLines(c("rxns", "MAR00001"), file.path(model, "reactions.tsv"))
-  writeLines(c("reactions:", "- id: MAR00001", "  gene_reaction_rule: ENSG1"), file.path(model, "Human-GEM.yml"))
+  writeLines(c("reactions:", "- id: MAR00001", "  - gene_reaction_rule: ENSG1"), file.path(model, "Human-GEM.yml"))
 
   out <- rc_prepare_humangem_gpr_table(repo, gene_format = "ensembl")
   expect_identical(out$gpr_table$gene, "ENSG1")

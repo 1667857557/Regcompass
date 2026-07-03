@@ -83,13 +83,14 @@ rc_read_humangem_yml_rules <- function(model_yml) {
   x <- readLines(model_yml, warn = FALSE)
   ids <- sub("^\\s*-\\s*id:\\s*['\"]?([^'\"]+)['\"]?.*$", "\\1", x[grepl("^\\s*-\\s*id:\\s*", x)])
   id_lines <- which(grepl("^\\s*-\\s*id:\\s*", x))
-  rule_lines <- which(grepl("^\\s*gene_reaction_rule:\\s*", x))
+  rule_pattern <- "^\\s*-?\\s*gene_reaction_rule:\\s*"
+  rule_lines <- which(grepl(rule_pattern, x))
   rxn_ids <- character(0)
   rules <- character(0)
   for (line in rule_lines) {
     id_idx <- max(which(id_lines < line), na.rm = TRUE)
     if (!is.finite(id_idx)) next
-    rule <- sub("^\\s*gene_reaction_rule:\\s*", "", x[[line]])
+    rule <- sub(rule_pattern, "", x[[line]])
     rule <- gsub("^['\"]|['\"]$", "", trimws(rule))
     rxn_ids <- c(rxn_ids, ids[[id_idx]])
     rules <- c(rules, rule)
