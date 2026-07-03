@@ -49,7 +49,7 @@ test_that("rc_run_layer1_capacity returns MVP Layer 1 toy outputs", {
     dimnames = list(c("HK1", "HK2", "PFKM", "PFKL"), c("pool1", "pool2"))
   )
 
-  out <- rc_run_layer1_capacity(gpr_table, expr, pool_detection = detect, promiscuity_mode = "sqrt", min_direct = 10)
+  out <- rc_run_layer1_capacity(gpr_table, expr, pool_detection = detect, promiscuity_mode = "sqrt", min_direct = 10, run_sensitivity = TRUE)
   expect_true(all(c("C_raw", "C_rel", "q95_diagnostics", "gpr_diagnostics", "reaction_confidence") %in% names(out)))
   expect_equal(dim(out$C_raw), c(2L, 2L))
   expect_true("mean_gpr_detection_rate" %in% colnames(out$reaction_confidence))
