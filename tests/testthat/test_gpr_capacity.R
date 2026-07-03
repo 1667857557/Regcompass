@@ -128,3 +128,31 @@ test_that("layer1 ignores non-metabolic peak-gene links and keeps detection conf
   expect_equal(out$reaction_confidence_source, "rna_detection")
   expect_true(all(is.finite(out$reaction_confidence$reaction_confidence)))
 })
+
+test_that("OR capacity supports bounded sensitivity methods", {
+  x <- c(0.2, 0.5, 0.8)
+  expect_equal(rc_or_capacity(x, method = "sum"), 1.5)
+  expect_equal(rc_or_capacity(x, method = "max"), 0.8)
+  expect_equal(rc_or_capacity(x, method = "prob_or"), 1 - prod(1 - x))
+  expect_equal(rc_or_capacity(x, method = "sum_sqrtK"), sum(x) / sqrt(length(x)))
+})
+
+test_that("reaction confidence falls back per reaction when multiome overlap is partial", {
+  gprs <- list(r_multi = list("g1"), r_detect = list("g2"))
+  gene_conf <- matrix(c(0.8, 0.6), nrow = 1, dimnames = list("g1", c("p1", "p2")))
+  detect <- matrix(c(0.2, 0.4, 0.7, 0.9), nrow = 2, dimnames = list(c("g1", "g2"), c("p1", "p2")))
+  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, pool_detection = detect)
+  expect_equal(unique(out$confidence_source[out$reaction_id == "r_multi"]), "multiome_link_confidence")
+  expect_equal(unique(out$confidence_source[out$reaction_id == "r_detect"]), "rna_detection_fallback")
+  expect_true(all(is.finite(out$reaction_confidence[out$reaction_id == "r_detect"])))
+  expect_gt(out$reaction_evidence_score[out$reaction_id == "r_detect" & out$pool_id == "p1"], 0)
+})
+
+test_that("Layer 1 names OR raw capacity according to OR method", {
+  gpr_table <- data.frame(reaction_id = "r1", gpr = "g1 or g2", stringsAsFactors = FALSE)
+  expr <- matrix(c(1, 3, 2, 4), nrow = 2, dimnames = list(c("g1", "g2"), c("p1", "p2")))
+  out <- rc_run_layer1_capacity(gpr_table, expr, or_method = "max", run_sensitivity = FALSE)
+  expect_equal(out$or_method_used, "max")
+  expect_true("C_or_raw" %in% names(out))
+  expect_false("C_iso_sum_raw" %in% names(out))
+})

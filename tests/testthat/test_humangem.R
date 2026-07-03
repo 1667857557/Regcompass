@@ -41,3 +41,14 @@ test_that("Human-GEM preparation can keep Ensembl gene IDs", {
   out <- rc_prepare_humangem_gpr_table(repo, gene_format = "ensembl")
   expect_identical(out$gpr_table$gene, "ENSG1")
 })
+
+test_that("Human-GEM YAML parser supports omap/list-prefixed gene_reaction_rule", {
+  yml <- tempfile(fileext = ".yml")
+  writeLines(c(
+    "- id: MAR00001",
+    "  - gene_reaction_rule: ENSG000001 or ENSG000002"
+  ), yml)
+  out <- RegCompassR:::rc_read_humangem_yml_rules(yml)
+  expect_equal(out$reaction_id, "MAR00001")
+  expect_equal(out$gpr, "ENSG000001 or ENSG000002")
+})

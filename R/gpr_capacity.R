@@ -10,16 +10,13 @@ rc_safe_scale <- function(x, min_scale = 0.05) {
 #' @export
 rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
   X <- as.matrix(X)
-  z <- X
-  for (i in seq_len(nrow(X))) {
-    x <- as.numeric(X[i, ])
-    med <- stats::median(x, na.rm = TRUE)
-    sc <- rc_safe_scale(x, min_scale = min_scale)
-    zi <- (x - med) / sc
-    zi <- pmax(pmin(zi, z_clip), -z_clip)
-    z[i, ] <- zi
-  }
-  z
+  med <- matrixStats::rowMedians(X, na.rm = TRUE)
+  mad_sigma <- matrixStats::rowMads(X, constant = 1.4826, na.rm = TRUE)
+  iqr_sigma <- matrixStats::rowIQRs(X, na.rm = TRUE) / 1.349
+  sc <- pmax(mad_sigma, iqr_sigma, min_scale, na.rm = TRUE)
+  z <- sweep(X, 1, med, "-")
+  z <- sweep(z, 1, sc, "/")
+  pmax(pmin(z, z_clip), -z_clip)
 }
 
 #' Robust row-wise z score
@@ -76,24 +73,36 @@ rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau 
 
 #' OR aggregation across isoenzyme groups
 #'
-#' OR groups are summed to preserve cumulative isoenzyme capacity.
+#' The default `sum` returns an unbounded isoenzyme-summed reaction capacity
+#' potential for within-reaction comparisons. `max` and `prob_or` provide bounded
+#' sensitivity diagnostics, while `sum_sqrtK` dampens isoenzyme-rich reactions.
 #' @export
-rc_or_capacity <- function(and_capacities) {
-  and_capacities <- and_capacities[is.finite(and_capacities)]
-  if (length(and_capacities) == 0L) return(NA_real_)
-  sum(and_capacities)
+rc_or_capacity <- function(and_capacities,
+                           method = c("sum", "max", "prob_or", "sum_sqrtK")) {
+  method <- match.arg(method)
+  x <- and_capacities[is.finite(and_capacities)]
+  if (length(x) == 0L) return(NA_real_)
+  switch(
+    method,
+    sum = sum(x),
+    max = max(x),
+    prob_or = 1 - prod(1 - pmin(pmax(x, 0), 1)),
+    sum_sqrtK = sum(x) / sqrt(length(x))
+  )
 }
 
 #' Compute capacity for one reaction in one pool
 #' @export
-rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean")) {
+rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean"),
+                                     or_method = c("sum", "max", "prob_or", "sum_sqrtK")) {
   and_method <- match.arg(and_method)
+  or_method <- match.arg(or_method)
   and_caps <- vapply(parsed_gpr, function(and_group) {
     vals <- gene_score_vec[and_group]
     rc_and_capacity(vals, method = and_method, tau = tau)
   }, numeric(1))
 
-  rc_or_capacity(and_caps)
+  rc_or_capacity(and_caps, method = or_method)
 }
 
 #' Compute raw Layer 1 reaction capacity
@@ -108,9 +117,11 @@ rc_reaction_capacity <- function(gpr_list,
                                  promiscuity_mode = c("sqrt", "linear", "none"),
                                  tau = 0.20,
                                  and_method = c("boltzmann", "min", "mean"),
+                                 or_method = c("sum", "max", "prob_or", "sum_sqrtK"),
                                  BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
   and_method <- match.arg(and_method)
+  or_method <- match.arg(or_method)
   if (is.null(names(gpr_list))) {
     stop("`gpr_list` must be named by reaction IDs.", call. = FALSE)
   }
@@ -127,7 +138,7 @@ rc_reaction_capacity <- function(gpr_list,
   per_reaction <- rc_pool_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(weighted_score)), function(j) {
-      rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau, and_method = and_method)
+      rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau, and_method = and_method, or_method = or_method)
     }, numeric(1))
   }, BPPARAM = BPPARAM)
 
