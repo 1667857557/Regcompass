@@ -64,19 +64,24 @@ gpr_table <- hg$gpr_table
 metabolic_genes <- hg$metabolic_genes
 ```
 
-The returned `metabolic_genes` vector is the recommended target gene set when
-regenerating metabolic peak-gene links outside RegCompassR, for example with
-Signac's peak-gene linking workflow using `genes.use = metabolic_genes`.
-RegCompassR does **not** infer new peak-gene links internally; instead, pass the
-recomputed or curated link table to `rc_run_layer1_from_counts()` through
-`peak_gene_links`. The wrapper filters those links to the metabolic GPR genes
-before computing multiome gene confidence.
+The returned `metabolic_genes` vector is the target gene set for recomputing
+metabolic peak-gene links. RegCompassR now provides
+`rc_recompute_signac_peak_gene_links()`, which calls `Signac::LinkPeaks()`
+internally with `genes.use = metabolic_genes`, extracts `Signac::Links()` from
+the ATAC assay, converts the result to the `peak_id`, `gene`, `weight` table,
+and filters it to GPR metabolic genes. Signac remains an optional dependency, so
+install Signac before running this step.
 
 ```r
-# Example sketch; run the linking step in your established Signac workflow.
-# object <- Signac::LinkPeaks(object, peak.assay = "ATAC", expression.assay = "RNA",
-#                             genes.use = metabolic_genes)
-# peak_gene_links <- object@assays$ATAC@links  # convert to peak_id/gene/weight table
+peak_gene_links <- rc_recompute_signac_peak_gene_links(
+  object = object,
+  metabolic_genes = metabolic_genes,
+  peak_assay = "ATAC",
+  expression_assay = "RNA"
+)
+
+# The Signac-updated object is retained for users who want to inspect links in Seurat.
+object <- attr(peak_gene_links, "seurat_object")
 
 layer1 <- rc_run_layer1_from_counts(
   gpr_table = gpr_table,

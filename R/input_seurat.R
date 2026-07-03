@@ -123,3 +123,73 @@ rc_write_input_summary <- function(summary, out_dir) {
   utils::write.table(summary$state_record, file.path(out_dir, "state_source.tsv"), sep = "\t", quote = FALSE, row.names = FALSE)
   invisible(out_dir)
 }
+#' Recompute metabolic peak-gene links with Signac
+#'
+#' Runs `Signac::LinkPeaks()` inside RegCompassR for the metabolic genes in a
+#' Human-GEM/RegCompass GPR table, then converts the resulting Signac links into
+#' the `peak_id`, `gene`, `weight` table consumed by `rc_run_layer1_from_counts()`.
+#' Signac is an optional dependency and must be installed by the caller.
+#' @export
+rc_recompute_signac_peak_gene_links <- function(object,
+                                                gpr_table = NULL,
+                                                metabolic_genes = NULL,
+                                                peak_assay = "ATAC",
+                                                expression_assay = "RNA",
+                                                genes_use = NULL,
+                                                score_col = c("score", "zscore"),
+                                                keep_negative = FALSE,
+                                                ...) {
+  if (!requireNamespace("Signac", quietly = TRUE)) {
+    stop("Package 'Signac' is required to recompute peak-gene links. Install Signac or provide `peak_gene_links` directly.", call. = FALSE)
+  }
+  if (is.null(metabolic_genes)) {
+    if (is.null(gpr_table)) stop("Provide either `gpr_table` or `metabolic_genes`.", call. = FALSE)
+    metabolic_genes <- rc_metabolic_gpr_genes(gpr_table)
+  }
+  if (!is.null(genes_use)) metabolic_genes <- genes_use
+  metabolic_genes <- unique(as.character(metabolic_genes))
+  metabolic_genes <- metabolic_genes[!is.na(metabolic_genes) & nzchar(metabolic_genes)]
+  if (length(metabolic_genes) == 0L) stop("No metabolic genes were available for Signac::LinkPeaks().", call. = FALSE)
+
+  object <- Signac::LinkPeaks(
+    object = object,
+    peak.assay = peak_assay,
+    expression.assay = expression_assay,
+    genes.use = metabolic_genes,
+    ...
+  )
+  links <- Signac::Links(object[[peak_assay]])
+  link_table <- rc_signac_links_to_peak_gene_table(links, score_col = score_col, keep_negative = keep_negative)
+  link_table <- rc_filter_peak_gene_links_to_gpr(link_table, tolower(metabolic_genes))
+  attr(link_table, "seurat_object") <- object
+  link_table
+}
+
+rc_signac_links_to_peak_gene_table <- function(links, score_col = c("score", "zscore"), keep_negative = FALSE) {
+  score_col <- match.arg(score_col)
+  df <- as.data.frame(links)
+  if (!"gene" %in% colnames(df)) stop("Signac links must contain a `gene` column.", call. = FALSE)
+  if (!score_col %in% colnames(df)) {
+    fallback <- setdiff(c("score", "zscore"), score_col)
+    fallback <- fallback[fallback %in% colnames(df)][1]
+    if (is.na(fallback)) stop("Signac links must contain `score` or `zscore` for link weights.", call. = FALSE)
+    score_col <- fallback
+  }
+  if ("peak" %in% colnames(df)) {
+    peak_id <- as.character(df$peak)
+  } else if (all(c("seqnames", "start", "end") %in% colnames(df))) {
+    peak_id <- paste0(df$seqnames, "-", df$start, "-", df$end)
+  } else {
+    peak_id <- rownames(df)
+  }
+  out <- data.frame(
+    peak_id = peak_id,
+    gene = toupper(as.character(df$gene)),
+    weight = as.numeric(df[[score_col]]),
+    stringsAsFactors = FALSE
+  )
+  out <- out[!is.na(out$peak_id) & nzchar(out$peak_id) & !is.na(out$gene) & nzchar(out$gene) & is.finite(out$weight), , drop = FALSE]
+  if (!keep_negative) out <- out[out$weight > 0, , drop = FALSE]
+  rownames(out) <- NULL
+  out
+}
