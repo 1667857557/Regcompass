@@ -104,7 +104,7 @@ rc_run_layer1_capacity <- function(gpr_table,
                                    tau = 0.20,
                                    and_method = c("boltzmann", "min", "mean"),
                                    or_method = c("sum", "max", "prob_or", "sum_sqrtK"),
-                                   run_sensitivity = FALSE,
+                                   run_sensitivity = TRUE,
                                    min_direct = 100,
                                    bootstrap = FALSE,
                                    B = 500,
@@ -151,8 +151,9 @@ rc_run_layer1_capacity <- function(gpr_table,
     and_sens <- data.frame()
   }
 
-  list(
-    C_iso_sum_raw = C_raw,
+  out <- list(
+    C_or_raw = C_raw,
+    or_method_used = or_method,
     C_raw = C_raw,
     reaction_capacity_L1 = C_raw,
     C_rel = calibrated$C_rel,
@@ -166,6 +167,8 @@ rc_run_layer1_capacity <- function(gpr_table,
     promiscuity_sensitivity = prom_sens,
     parsed_gpr = parsed
   )
+  if (identical(or_method, "sum")) out <- c(list(C_iso_sum_raw = C_raw), out)
+  out
 }
 
 #' Compute reaction-level evidence from gene confidence or RNA detection fallback
@@ -202,6 +205,7 @@ rc_reaction_confidence <- function(gpr_list, gene_confidence = NULL, pool_detect
       vals <- matrixStats::colMedians(gene_confidence[genes_conf, , drop = FALSE], na.rm = TRUE)
       source <- "multiome_link_confidence"
       n_multiome <- length(genes_conf)
+      n_evidence <- length(genes_conf)
       det_available <- !is.null(pool_detection)
       mean_det <- rep(NA_real_, length(vals))
     } else if (!is.null(pool_detection)) {
@@ -209,17 +213,19 @@ rc_reaction_confidence <- function(gpr_list, gene_confidence = NULL, pool_detect
       vals <- if (length(genes_det) == 0L) rep(NA_real_, ncol(pool_detection)) else matrixStats::colMedians(pool_detection[genes_det, , drop = FALSE], na.rm = TRUE)
       source <- "rna_detection_fallback"
       n_multiome <- 0L
+      n_evidence <- length(genes_det)
       det_available <- TRUE
       mean_det <- vals
     } else {
       vals <- rep(NA_real_, length(pool_ids))
       source <- "none"
       n_multiome <- 0L
+      n_evidence <- 0L
       det_available <- FALSE
       mean_det <- vals
     }
 
-    miss <- if (total == 0L) NA_real_ else 1 - n_multiome / total
+    miss <- if (total == 0L) NA_real_ else 1 - n_evidence / total
     coverage <- if (total == 0L) NA_real_ else n_multiome / total
     vals_penalized <- vals * (1 - ifelse(is.na(miss), 0, miss))
     data.frame(

@@ -145,4 +145,14 @@ test_that("reaction confidence falls back per reaction when multiome overlap is 
   expect_equal(unique(out$confidence_source[out$reaction_id == "r_multi"]), "multiome_link_confidence")
   expect_equal(unique(out$confidence_source[out$reaction_id == "r_detect"]), "rna_detection_fallback")
   expect_true(all(is.finite(out$reaction_confidence[out$reaction_id == "r_detect"])))
+  expect_gt(out$reaction_evidence_score[out$reaction_id == "r_detect" & out$pool_id == "p1"], 0)
+})
+
+test_that("Layer 1 names OR raw capacity according to OR method", {
+  gpr_table <- data.frame(reaction_id = "r1", gpr = "g1 or g2", stringsAsFactors = FALSE)
+  expr <- matrix(c(1, 3, 2, 4), nrow = 2, dimnames = list(c("g1", "g2"), c("p1", "p2")))
+  out <- rc_run_layer1_capacity(gpr_table, expr, or_method = "max", run_sensitivity = FALSE)
+  expect_equal(out$or_method_used, "max")
+  expect_true("C_or_raw" %in% names(out))
+  expect_false("C_iso_sum_raw" %in% names(out))
 })
