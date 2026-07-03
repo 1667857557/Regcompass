@@ -7,6 +7,17 @@ test_that("rc_pool_detection computes detection fractions from counts", {
   expect_true(all(out >= 0 & out <= 1))
 })
 
+test_that("rc_pool_detection ignores skipped and NA pool-map rows", {
+  skip_if_not_installed("Matrix")
+  counts <- Matrix::Matrix(c(1, 0, 0, 1, 1, 1), nrow = 2, ncol = 3, sparse = TRUE)
+  rownames(counts) <- c("g1", "g2"); colnames(counts) <- paste0("c", 1:3)
+  pool_map <- data.frame(pool_id = c("p1", NA, "p2"), cell_id = colnames(counts), skipped = c(FALSE, TRUE, FALSE))
+  out <- rc_pool_detection(counts, pool_map)
+  expect_identical(colnames(out), c("p1", "p2"))
+  expect_equal(as.numeric(out[, "p1"]), c(1, 0))
+  expect_equal(as.numeric(out[, "p2"]), c(1, 1))
+})
+
 test_that("raw-count pseudobulk sum then logCPM works and empty pools are rejected", {
   skip_if_not_installed("Matrix")
   counts <- Matrix::Matrix(c(1, 0, 3, 0, 0, 0), nrow = 2, ncol = 3, sparse = TRUE)
