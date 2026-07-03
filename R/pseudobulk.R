@@ -3,8 +3,7 @@
 rc_pseudobulk_counts <- function(counts, pool_map, fun = c("sum", "mean"), BPPARAM = NULL) {
   fun <- match.arg(fun)
   rc_validate_pool_matrix_inputs(counts, pool_map)
-  if ("skipped" %in% colnames(pool_map)) pool_map <- pool_map[!pool_map$skipped, , drop = FALSE]
-  pool_map <- pool_map[!is.na(pool_map$pool_id), , drop = FALSE]
+  pool_map <- rc_filter_active_pool_map(pool_map)
   pool_ids <- unique(pool_map$pool_id)
   summarize_pool <- function(pid) {
     cells <- pool_map$cell_id[pool_map$pool_id == pid]
@@ -39,9 +38,7 @@ rc_logcpm <- function(pb_counts, scale_factor = 1e6) {
 #' Build one-row-per-pool metadata
 #' @export
 rc_build_pool_metadata <- function(pool_map, meta = NULL) {
-  keep <- !is.na(pool_map$pool_id)
-  if ("skipped" %in% colnames(pool_map)) keep <- keep & !pool_map$skipped
-  x <- pool_map[keep, , drop = FALSE]
+  x <- rc_filter_active_pool_map(pool_map)
   cols <- setdiff(colnames(x), "cell_id")
   out <- x[!duplicated(x$pool_id), cols, drop = FALSE]
   out$n_cells <- as.integer(tabulate(match(x$pool_id, out$pool_id), nbins = nrow(out)))
@@ -53,7 +50,8 @@ rc_build_pool_metadata <- function(pool_map, meta = NULL) {
 #' @export
 rc_pool_mean <- function(mat, pool_map, BPPARAM = NULL) {
   rc_validate_pool_matrix_inputs(mat, pool_map)
-  pool_ids <- unique(pool_map$pool_id[!is.na(pool_map$pool_id)])
+  pool_map <- rc_filter_active_pool_map(pool_map)
+  pool_ids <- unique(pool_map$pool_id)
   summarize_pool <- function(pid) Matrix::rowMeans(mat[, pool_map$cell_id[pool_map$pool_id == pid], drop = FALSE])
   res <- rc_pool_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
   out <- do.call(cbind, res); colnames(out) <- pool_ids; rownames(out) <- rownames(mat); out
@@ -63,7 +61,8 @@ rc_pool_mean <- function(mat, pool_map, BPPARAM = NULL) {
 #' @export
 rc_pool_detection <- function(counts, pool_map, BPPARAM = NULL) {
   rc_validate_pool_matrix_inputs(counts, pool_map)
-  pool_ids <- unique(pool_map$pool_id[!is.na(pool_map$pool_id)])
+  pool_map <- rc_filter_active_pool_map(pool_map)
+  pool_ids <- unique(pool_map$pool_id)
   summarize_pool <- function(pid) Matrix::rowMeans(counts[, pool_map$cell_id[pool_map$pool_id == pid], drop = FALSE] > 0)
   res <- rc_pool_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
   out <- do.call(cbind, res); colnames(out) <- pool_ids; rownames(out) <- rownames(counts); out
@@ -75,13 +74,17 @@ rc_validate_pool_matrix_inputs <- function(mat, pool_map) {
   if (!is.data.frame(pool_map)) stop("`pool_map` must be a data.frame.", call. = FALSE)
   missing_pool_cols <- setdiff(c("pool_id", "cell_id"), colnames(pool_map))
   if (length(missing_pool_cols) > 0) stop("`pool_map` is missing required columns: ", paste(missing_pool_cols, collapse = ", "), call. = FALSE)
-  active <- pool_map
-  if ("skipped" %in% colnames(active)) active <- active[!active$skipped, , drop = FALSE]
-  active <- active[!is.na(active$pool_id), , drop = FALSE]
+  active <- rc_filter_active_pool_map(pool_map)
   if (anyNA(active$cell_id)) stop("`pool_map$cell_id` must not contain NA values.", call. = FALSE)
   missing_cells <- setdiff(active$cell_id, colnames(mat))
   if (length(missing_cells) > 0L) stop("Some pool_map cell IDs are absent from matrix columns: ", paste(utils::head(missing_cells), collapse = ", "), call. = FALSE)
   invisible(TRUE)
+}
+
+rc_filter_active_pool_map <- function(pool_map) {
+  keep <- !is.na(pool_map$pool_id)
+  if ("skipped" %in% colnames(pool_map)) keep <- keep & !(pool_map$skipped %in% TRUE)
+  pool_map[keep, , drop = FALSE]
 }
 
 rc_pool_lapply <- function(X, FUN, BPPARAM = NULL) {
