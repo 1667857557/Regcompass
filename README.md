@@ -73,6 +73,18 @@ and filters it to GPR metabolic genes. Signac remains an optional dependency, so
 install Signac before running this step.
 
 ```r
+# Preferred Seurat entry point: recompute metabolic Signac links by default.
+layer1 <- rc_run_layer1_from_seurat(
+  gpr_table = gpr_table,
+  object = object,
+  pool_map = pool_map,
+  pool_meta = pool_meta,
+  rna_assay = "RNA",
+  atac_assay = "ATAC",
+  recompute_peak_gene_links = TRUE
+)
+
+# Lower-level equivalent when you want the link table explicitly.
 peak_gene_links <- rc_recompute_signac_peak_gene_links(
   object = object,
   metabolic_genes = metabolic_genes,

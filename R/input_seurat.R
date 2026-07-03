@@ -193,3 +193,81 @@ rc_signac_links_to_peak_gene_table <- function(links, score_col = c("score", "zs
   rownames(out) <- NULL
   out
 }
+
+#' Run Layer 1 from Seurat with internal Signac metabolic relinking by default
+#'
+#' Extracts RNA/ATAC counts from an annotated Seurat object and, by default,
+#' recomputes metabolic peak-gene links internally with `Signac::LinkPeaks()`
+#' before calling `rc_run_layer1_from_counts()`.
+#' @export
+rc_run_layer1_from_seurat <- function(gpr_table,
+                                      object,
+                                      pool_map,
+                                      pool_meta = NULL,
+                                      rna_assay = "RNA",
+                                      atac_assay = "ATAC",
+                                      sample_col = "sample_id",
+                                      celltype_col = "cell_type",
+                                      condition_col = NULL,
+                                      batch_col = NULL,
+                                      state_col = NULL,
+                                      embedding = NULL,
+                                      peak_gene_links = NULL,
+                                      recompute_peak_gene_links = TRUE,
+                                      signac_args = list(),
+                                      stratum_col = "cell_type",
+                                      promiscuity_mode = "sqrt",
+                                      and_method = "boltzmann",
+                                      tau = 0.20,
+                                      or_method = c("sum", "max", "prob_or", "sum_sqrtK"),
+                                      bootstrap = FALSE,
+                                      B = 500,
+                                      BPPARAM = NULL) {
+  or_method <- match.arg(or_method)
+  inputs <- rc_extract_inputs(
+    object = object,
+    rna_assay = rna_assay,
+    atac_assay = atac_assay,
+    sample_col = sample_col,
+    celltype_col = celltype_col,
+    condition_col = condition_col,
+    batch_col = batch_col,
+    state_col = state_col,
+    embedding = embedding
+  )
+  link_source <- "supplied_peak_gene_links"
+  signac_object <- NULL
+  if (isTRUE(recompute_peak_gene_links)) {
+    args <- c(list(
+      object = object,
+      gpr_table = gpr_table,
+      peak_assay = atac_assay,
+      expression_assay = rna_assay
+    ), signac_args)
+    peak_gene_links <- do.call(rc_recompute_signac_peak_gene_links, args)
+    signac_object <- attr(peak_gene_links, "seurat_object")
+    link_source <- "signac_recomputed_metabolic_links"
+  } else if (is.null(peak_gene_links)) {
+    link_source <- "none"
+  }
+
+  out <- rc_run_layer1_from_counts(
+    gpr_table = gpr_table,
+    rna_counts = inputs$rna_counts,
+    pool_map = pool_map,
+    pool_meta = pool_meta,
+    atac_counts = inputs$atac_counts,
+    peak_gene_links = peak_gene_links,
+    stratum_col = stratum_col,
+    promiscuity_mode = promiscuity_mode,
+    and_method = and_method,
+    tau = tau,
+    or_method = or_method,
+    bootstrap = bootstrap,
+    B = B,
+    BPPARAM = BPPARAM
+  )
+  out$peak_gene_link_source <- link_source
+  if (!is.null(signac_object)) out$signac_object <- signac_object
+  out
+}

@@ -44,7 +44,7 @@ The workflow returns capacity matrices and diagnostics including Q95 power class
 
 `rc_download_humangem_gpr_table()` downloads a Human-GEM GitHub archive, reads `model/genes.tsv`, `model/reactions.tsv`, and `model/Human-GEM.yml`, converts Human-GEM gene identifiers to symbols by default, and returns a RegCompass-compatible `gpr_table`, `metabolic_genes`, raw reaction rules, and source annotation tables.
 
-`rc_metabolic_gpr_genes()` extracts the metabolic GPR gene set from any parsed or tabular GPR input. `rc_recompute_signac_peak_gene_links()` uses that gene set to call `Signac::LinkPeaks(genes.use = metabolic_genes)` inside RegCompassR, extracts `Signac::Links()` from the peak assay, converts the Signac output to the package-standard `peak_id`/`gene`/`weight` table, and filters links to GPR metabolic genes. `rc_run_layer1_from_counts()` then accepts this internally recomputed `peak_gene_links` table and computes multiome confidence from pooled ATAC accessibility and link weights.
+`rc_metabolic_gpr_genes()` extracts the metabolic GPR gene set from any parsed or tabular GPR input. `rc_recompute_signac_peak_gene_links()` uses that gene set to call `Signac::LinkPeaks(genes.use = metabolic_genes)` inside RegCompassR, extracts `Signac::Links()` from the peak assay, converts the Signac output to the package-standard `peak_id`/`gene`/`weight` table, and filters links to GPR metabolic genes. The Seurat-level wrapper `rc_run_layer1_from_seurat()` defaults to `recompute_peak_gene_links = TRUE`, so the default Seurat workflow uses internally recomputed Signac metabolic links; `rc_run_layer1_from_counts()` remains the lower-level entry point for explicitly supplied counts and link tables.
 
 ## Multiome confidence
 
