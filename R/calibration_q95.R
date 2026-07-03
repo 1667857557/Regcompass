@@ -163,8 +163,12 @@ rc_reaction_confidence <- function(gpr_list, gene_confidence = NULL, pool_detect
   if (!is.null(gene_confidence)) {
     gene_confidence <- as.matrix(gene_confidence)
     rownames(gene_confidence) <- tolower(rownames(gene_confidence))
+    gpr_genes <- rc_gpr_gene_ids(gpr_list)
+    if (length(intersect(gpr_genes, rownames(gene_confidence))) == 0L && !is.null(pool_detection)) {
+      return(rc_reaction_confidence(gpr_list, gene_confidence = NULL, pool_detection = pool_detection))
+    }
     rows <- lapply(names(gpr_list), function(rid) {
-      genes <- unique(unlist(gpr_list[[rid]], use.names = FALSE))
+      genes <- unique(tolower(unlist(gpr_list[[rid]], use.names = FALSE)))
       total <- length(genes)
       genes <- intersect(genes, rownames(gene_confidence))
       vals <- if (length(genes) == 0L) rep(NA_real_, ncol(gene_confidence)) else matrixStats::colMedians(gene_confidence[genes, , drop = FALSE], na.rm = TRUE)
@@ -191,7 +195,7 @@ rc_reaction_confidence <- function(gpr_list, gene_confidence = NULL, pool_detect
   if (is.null(rownames(pool_detection))) stop("`pool_detection` must have gene IDs in rownames().", call. = FALSE)
   rownames(pool_detection) <- tolower(rownames(pool_detection))
   rows <- lapply(names(gpr_list), function(rid) {
-    genes_all <- unique(unlist(gpr_list[[rid]], use.names = FALSE))
+    genes_all <- unique(tolower(unlist(gpr_list[[rid]], use.names = FALSE)))
     total <- length(genes_all)
     genes <- intersect(genes_all, rownames(pool_detection))
     vals <- if (length(genes) == 0L) rep(NA_real_, ncol(pool_detection)) else matrixStats::colMedians(pool_detection[genes, , drop = FALSE], na.rm = TRUE)
@@ -204,6 +208,21 @@ rc_reaction_confidence <- function(gpr_list, gene_confidence = NULL, pool_detect
                detection_available = TRUE, mean_gpr_detection_rate = vals, stringsAsFactors = FALSE)
   })
   do.call(rbind, rows)
+}
+
+rc_gpr_gene_ids <- function(gpr_list) {
+  genes <- unique(tolower(unlist(gpr_list, use.names = FALSE)))
+  genes[!is.na(genes) & nzchar(genes)]
+}
+
+#' Extract metabolic GPR genes from a GPR table
+#'
+#' Use this gene set as the `genes.use` target when regenerating metabolic
+#' peak-gene links with Signac::LinkPeaks for multiome confidence.
+#' @export
+rc_metabolic_gpr_genes <- function(gpr_table) {
+  gpr_list <- if (is.data.frame(gpr_table)) rc_parse_gpr_table(gpr_table) else gpr_table
+  rc_gpr_gene_ids(gpr_list)
 }
 
 #' Compute compact capacity sensitivity summaries
@@ -305,7 +324,10 @@ rc_run_layer1_from_counts <- function(gpr_table,
 
   gene_conf <- NULL
   confidence_source <- "rna_detection"
+  parsed_gpr <- rc_parse_gpr_table(gpr_table)
+  metabolic_gpr_genes <- rc_metabolic_gpr_genes(parsed_gpr)
   if (!is.null(atac_counts) && !is.null(peak_gene_links)) {
+    peak_gene_links <- rc_filter_peak_gene_links_to_gpr(peak_gene_links, metabolic_gpr_genes)
     atac_peak <- rc_atac_pool_logcpm(atac_counts, pool_map, min_pools = 3, BPPARAM = BPPARAM)
     common_pools <- intersect(colnames(rna_logcpm), colnames(atac_peak))
     rna_logcpm <- rna_logcpm[, common_pools, drop = FALSE]
@@ -313,9 +335,17 @@ rc_run_layer1_from_counts <- function(gpr_table,
     pool_meta <- pool_meta[match(common_pools, pool_meta$pool_id), , drop = FALSE]
     p_rna <- rc_percentile_by_stratum(rna_logcpm, pool_meta = pool_meta, stratum_col = stratum_col)
     p_atac_peak <- rc_percentile_by_stratum(atac_peak[, common_pools, drop = FALSE], pool_meta = pool_meta, stratum_col = stratum_col)
-    link_conf <- rc_link_confidence(p_atac_peak, peak_gene_links)
-    genes <- intersect(rownames(p_rna), rownames(link_conf))
+    if (nrow(peak_gene_links) > 0L) {
+      link_conf <- rc_link_confidence(p_atac_peak, peak_gene_links)
+      genes <- Reduce(intersect, list(tolower(rownames(p_rna)), tolower(rownames(link_conf)), metabolic_gpr_genes))
+    } else {
+      genes <- character(0)
+    }
     if (length(genes) > 0L) {
+      rownames(p_rna) <- tolower(rownames(p_rna))
+      rownames(rna_logcpm) <- tolower(rownames(rna_logcpm))
+      rownames(rna_detection) <- tolower(rownames(rna_detection))
+      rownames(link_conf) <- tolower(rownames(link_conf))
       concord <- rc_concordance_null_correct(p_rna[genes, , drop = FALSE], link_conf[genes, , drop = FALSE], pool_meta = pool_meta, stratum_col = stratum_col)
       rel <- rc_fisher_shrink(rna_logcpm[genes, , drop = FALSE], link_conf[genes, , drop = FALSE])$rel_positive
       names(rel) <- genes
@@ -330,4 +360,12 @@ rc_run_layer1_from_counts <- function(gpr_table,
   out$pool_meta <- pool_meta
   out$reaction_confidence_source <- confidence_source
   out
+}
+
+rc_filter_peak_gene_links_to_gpr <- function(peak_gene_links, gpr_genes) {
+  required <- c("peak_id", "gene", "weight")
+  missing <- setdiff(required, colnames(peak_gene_links))
+  if (length(missing) > 0L) stop("`peak_gene_links` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (length(gpr_genes) == 0L) return(peak_gene_links[0, , drop = FALSE])
+  peak_gene_links[tolower(as.character(peak_gene_links$gene)) %in% gpr_genes, , drop = FALSE]
 }

@@ -78,6 +78,20 @@ test_that("reaction confidence aggregates gene confidence by GPR genes and pools
   expect_equal(out$reaction_confidence[out$reaction_id == "r1" & out$pool_id == "p1"], stats::median(c(0.2, 0.8)))
 })
 
+test_that("reaction confidence falls back to detection when gene confidence has no GPR overlap", {
+  gprs <- list(r1 = list(c("hk1", "pfkm")))
+  gene_conf <- matrix(1, nrow = 1, ncol = 2, dimnames = list("scn5a", c("p1", "p2")))
+  detect <- matrix(c(1, 0.5, 0.2, 0.8), nrow = 2, dimnames = list(c("hk1", "pfkm"), c("p1", "p2")))
+  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, pool_detection = detect)
+  expect_true(all(is.finite(out$reaction_confidence)))
+  expect_true(all(out$detection_available))
+})
+
+test_that("metabolic GPR genes are extracted from the active GPR table", {
+  gpr <- data.frame(reaction_id = c("r1", "r2"), gpr = c("HK1 or HK2", "PFKM and LDHA"))
+  expect_setequal(rc_metabolic_gpr_genes(gpr), c("hk1", "hk2", "pfkm", "ldha"))
+})
+
 test_that("rc_layer1_capacity alias matches run function", {
   expect_identical(rc_layer1_capacity, rc_run_layer1_capacity)
 })
@@ -100,4 +114,17 @@ test_that("rc_run_layer1_from_counts provides RNA-detection confidence source", 
   out <- rc_run_layer1_from_counts(gpr, counts, pool_map, bootstrap = FALSE)
   expect_equal(out$reaction_confidence_source, "rna_detection")
   expect_true("capacity_long" %in% names(out))
+})
+
+test_that("layer1 ignores non-metabolic peak-gene links and keeps detection confidence", {
+  counts <- Matrix::Matrix(c(1, 0, 2, 3, 0, 4), nrow = 2, sparse = TRUE)
+  rownames(counts) <- c("HK1", "PFKM"); colnames(counts) <- paste0("c", 1:3)
+  atac <- Matrix::Matrix(c(1, 1, 1), nrow = 1, sparse = TRUE)
+  rownames(atac) <- "peak1"; colnames(atac) <- colnames(counts)
+  pool_map <- data.frame(pool_id = paste0("p", 1:3), cell_id = colnames(counts), skipped = FALSE, sample_id = "s1", cell_type = "T")
+  gpr <- data.frame(reaction_id = "r1", gpr = "HK1 and PFKM")
+  links <- data.frame(peak_id = "peak1", gene = "SCN5A", weight = 1)
+  out <- rc_run_layer1_from_counts(gpr, counts, pool_map, atac_counts = atac, peak_gene_links = links, bootstrap = FALSE)
+  expect_equal(out$reaction_confidence_source, "rna_detection")
+  expect_true(all(is.finite(out$reaction_confidence$reaction_confidence)))
 })
