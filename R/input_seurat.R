@@ -142,6 +142,13 @@ rc_recompute_signac_peak_gene_links <- function(object,
   if (!requireNamespace("Signac", quietly = TRUE)) {
     stop("Package 'Signac' is required to recompute peak-gene links. Install Signac or provide `peak_gene_links` directly.", call. = FALSE)
   }
+  if (!requireNamespace("qlcMatrix", quietly = TRUE)) {
+    stop("Package 'qlcMatrix' is required by Signac::LinkPeaks(). Install qlcMatrix or provide `peak_gene_links` directly.", call. = FALSE)
+  }
+  fragments <- Signac::Fragments(object[[peak_assay]])
+  if (length(fragments) == 0L) {
+    stop("No fragment file is registered for the peak assay; Signac::LinkPeaks() cannot be recomputed. Provide `peak_gene_links` directly or attach fragments to the Seurat object.", call. = FALSE)
+  }
   if (is.null(metabolic_genes)) {
     if (is.null(gpr_table)) stop("Provide either `gpr_table` or `metabolic_genes`.", call. = FALSE)
     metabolic_genes <- rc_metabolic_gpr_genes(gpr_table)
@@ -219,7 +226,7 @@ rc_run_layer1_from_seurat <- function(gpr_table,
                                       promiscuity_mode = "sqrt",
                                       and_method = "boltzmann",
                                       tau = 0.20,
-                                      or_method = c("sum", "max", "prob_or", "sum_sqrtK"),
+                                      or_method = c("sum_sqrtK", "max", "prob_or", "sum"),
                                       bootstrap = FALSE,
                                       B = 500,
                                       BPPARAM = NULL) {

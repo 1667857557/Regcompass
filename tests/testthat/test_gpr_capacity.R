@@ -15,7 +15,7 @@ test_that("rc_reaction_capacity returns reaction by pool matrix", {
   expect_equal(dim(out), c(2L, 2L))
   expect_identical(rownames(out), c("R_HEX", "R_PFK"))
   expect_identical(colnames(out), c("pool1", "pool2"))
-  expect_equal(out["R_HEX", "pool1"], 0.8 + 0.4)
+  expect_equal(out["R_HEX", "pool1"], (0.8 + 0.4) / sqrt(2))
 
   sqrt_out <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = "sqrt", tau = 0.08)
   expect_equal(sqrt_out["R_HEX", "pool1"], out["R_HEX", "pool1"])
@@ -155,4 +155,16 @@ test_that("Layer 1 names OR raw capacity according to OR method", {
   expect_equal(out$or_method_used, "max")
   expect_true("C_or_raw" %in% names(out))
   expect_false("C_iso_sum_raw" %in% names(out))
+})
+
+test_that("AND-method sensitivity keeps all-NA ranges as NA", {
+  long <- data.frame(
+    reaction_id = "r1",
+    pool_id = "p1",
+    and_method = c("min", "boltzmann_0.08", "boltzmann_0.20", "mean"),
+    C_raw = NA_real_
+  )
+  out <- rc_and_method_sensitivity(long)
+  expect_true(is.na(out$capacity_range))
+  expect_false(out$tau_sensitive_flag)
 })

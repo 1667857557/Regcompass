@@ -47,3 +47,14 @@ test_that("rc_pool_diagnostics validates matrix cell IDs", {
 
   expect_error(rc_pool_diagnostics(pool_map, rna_counts = rna_counts), "absent")
 })
+
+test_that("feature detection mean handles sparse logical matrices", {
+  mat <- Matrix::Matrix(c(1, 0, 0, 2), nrow = 2, sparse = TRUE)
+  rownames(mat) <- c("g1", "g2")
+  colnames(mat) <- c("c1", "c2")
+  expect_equal(rc_pool_diagnostics(
+    data.frame(pool_id = "p1", cell_id = colnames(mat), skipped = FALSE),
+    rna_counts = mat,
+    gpr_genes = rownames(mat)
+  )$GPR_gene_detection_rate, 0.5)
+})

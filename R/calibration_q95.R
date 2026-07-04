@@ -10,6 +10,9 @@ rc_q95_shrink <- function(C_raw, pool_meta = NULL, stratum_col = NULL, q = 0.95,
     pool_meta <- pool_meta[match(colnames(C_raw), pool_meta$pool_id), , drop = FALSE]
     if (anyNA(pool_meta$pool_id)) stop("`pool_meta` is missing metadata for some capacity columns.", call. = FALSE)
     strata <- as.character(pool_meta[[stratum_col]])
+    if (length(unique(stats::na.omit(strata))) < 2L) {
+      warning("Only one stratum detected; Q95 stratified calibration degenerates to global calibration.", call. = FALSE)
+    }
   } else {
     strata <- rep("global", ncol(C_raw))
   }
@@ -103,8 +106,8 @@ rc_run_layer1_capacity <- function(gpr_table,
                                    promiscuity_mode = c("sqrt", "linear", "none"),
                                    tau = 0.20,
                                    and_method = c("boltzmann", "min", "mean"),
-                                   or_method = c("sum", "max", "prob_or", "sum_sqrtK"),
-                                   run_sensitivity = TRUE,
+                                   or_method = c("sum_sqrtK", "max", "prob_or", "sum"),
+                                   run_sensitivity = FALSE,
                                    min_direct = 100,
                                    bootstrap = FALSE,
                                    B = 500,
@@ -151,6 +154,9 @@ rc_run_layer1_capacity <- function(gpr_table,
     and_sens <- data.frame()
   }
 
+  confidence_sources <- rc_reaction_confidence_sources(confidence)
+  confidence_summary <- rc_reaction_confidence_summary(confidence, gene_confidence = gene_confidence)
+
   out <- list(
     C_or_raw = C_raw,
     or_method_used = or_method,
@@ -158,6 +164,8 @@ rc_run_layer1_capacity <- function(gpr_table,
     reaction_capacity_L1 = C_raw,
     C_rel = calibrated$C_rel,
     reaction_confidence = confidence,
+    reaction_confidence_source = confidence_sources,
+    reaction_confidence_summary = confidence_summary,
     capacity_long = and_long,
     and_method_sensitivity = and_sens,
     q95_diagnostics = calibrated$Q,
@@ -323,15 +331,23 @@ rc_and_method_capacity_long <- function(gpr_list, gene_score, and_methods = c("m
 #' Summarize AND-method sensitivity by reaction and pool
 #' @export
 rc_and_method_sensitivity <- function(capacity_long) {
+  if (nrow(capacity_long) == 0L) return(data.frame())
   split_key <- interaction(capacity_long$reaction_id, capacity_long$pool_id, drop = TRUE)
   rows <- lapply(split(capacity_long, split_key), function(df) {
     tau_vals <- df$C_raw[df$and_method %in% c("boltzmann_0.08", "boltzmann_0.20")]
+    tau_vals <- tau_vals[is.finite(tau_vals)]
     data.frame(reaction_id = df$reaction_id[[1]], pool_id = df$pool_id[[1]],
-               capacity_range = max(df$C_raw, na.rm = TRUE) - min(df$C_raw, na.rm = TRUE),
-               tau_sensitive_flag = length(tau_vals) >= 2L && diff(range(tau_vals, na.rm = TRUE)) > 0.05,
+               capacity_range = rc_safe_range(df$C_raw),
+               tau_sensitive_flag = length(tau_vals) >= 2L && diff(range(tau_vals)) > 0.05,
                stringsAsFactors = FALSE)
   })
   do.call(rbind, rows)
+}
+
+rc_safe_range <- function(x) {
+  x <- x[is.finite(x)]
+  if (length(x) == 0L) return(NA_real_)
+  max(x) - min(x)
 }
 
 rc_parse_and_method <- function(x) {
@@ -353,7 +369,7 @@ rc_run_layer1_from_counts <- function(gpr_table,
                                       promiscuity_mode = "sqrt",
                                       and_method = "boltzmann",
                                       tau = 0.20,
-                                      or_method = c("sum", "max", "prob_or", "sum_sqrtK"),
+                                      or_method = c("sum_sqrtK", "max", "prob_or", "sum"),
                                       bootstrap = FALSE,
                                       B = 500,
                                       BPPARAM = NULL) {
@@ -402,10 +418,43 @@ rc_run_layer1_from_counts <- function(gpr_table,
                                 pool_meta = pool_meta, stratum_col = stratum_col, gene_confidence = gene_conf,
                                 promiscuity_mode = promiscuity_mode, and_method = and_method, or_method = or_method, tau = tau, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM)
   out$pool_meta <- pool_meta
-  out$reaction_confidence_source <- confidence_source
+  if (identical(confidence_source, "rna_detection")) out$reaction_confidence_source <- "rna_detection"
   out
 }
 
+rc_reaction_confidence_sources <- function(reaction_confidence) {
+  if (is.null(reaction_confidence) || nrow(reaction_confidence) == 0L || !"confidence_source" %in% colnames(reaction_confidence)) return(character(0))
+  src <- unique(as.character(reaction_confidence$confidence_source))
+  src <- src[!is.na(src) & nzchar(src)]
+  if (length(src) == 1L && identical(src, "rna_detection_fallback")) return("rna_detection")
+  src
+}
+
+#' Summarize reaction confidence evidence coverage
+#' @export
+rc_reaction_confidence_summary <- function(reaction_confidence, gene_confidence = NULL, low_multiome_threshold = 0.20) {
+  if (is.null(reaction_confidence) || nrow(reaction_confidence) == 0L) return(data.frame())
+  src <- as.character(reaction_confidence$confidence_source)
+  rxn_src <- stats::aggregate(src == "multiome_link_confidence", list(reaction_id = reaction_confidence$reaction_id), any)
+  names(rxn_src)[2] <- "has_multiome"
+  multiome_reaction_fraction <- mean(rxn_src$has_multiome, na.rm = TRUE)
+  multiome_reaction_pool_fraction <- mean(src == "multiome_link_confidence", na.rm = TRUE)
+  fallback_fraction <- mean(src == "rna_detection_fallback", na.rm = TRUE)
+  out <- data.frame(
+    multiome_coverage_reaction_fraction = multiome_reaction_fraction,
+    multiome_coverage_reaction_pool_fraction = multiome_reaction_pool_fraction,
+    fallback_fraction = fallback_fraction,
+    n_linked_metabolic_genes = if (!is.null(gene_confidence)) nrow(gene_confidence) else NA_integer_,
+    stringsAsFactors = FALSE
+  )
+  if (is.finite(multiome_reaction_pool_fraction) && multiome_reaction_pool_fraction > 0 && multiome_reaction_pool_fraction < low_multiome_threshold) {
+    warning("Multiome coverage is low; results are mostly driven by RNA fallback.", call. = FALSE)
+  }
+  out
+}
+
+#' Filter peak-gene links to metabolic GPR genes
+#' @export
 rc_filter_peak_gene_links_to_gpr <- function(peak_gene_links, gpr_genes) {
   required <- c("peak_id", "gene", "weight")
   missing <- setdiff(required, colnames(peak_gene_links))

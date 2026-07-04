@@ -76,5 +76,10 @@ rc_match_matrix_features <- function(features, mat) {
 
 rc_feature_detection_mean <- function(mat, features, cells) {
   if (is.null(mat) || length(features) == 0L || length(cells) == 0L) return(NA_real_)
-  mean(mat[features, cells, drop = FALSE] > 0, na.rm = TRUE)
+  if (is.null(rownames(mat)) || is.null(colnames(mat))) return(NA_real_)
+  features <- intersect(features, rownames(mat))
+  cells <- intersect(cells, colnames(mat))
+  if (length(features) == 0L || length(cells) == 0L) return(NA_real_)
+  x <- mat[features, cells, drop = FALSE]
+  Matrix::sum(x > 0, na.rm = TRUE) / (length(features) * length(cells))
 }
