@@ -78,7 +78,7 @@ rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau 
 #' sensitivity diagnostics, while `sum_sqrtK` dampens isoenzyme-rich reactions.
 #' @export
 rc_or_capacity <- function(and_capacities,
-                           method = c("sum", "max", "prob_or", "sum_sqrtK")) {
+                           method = c("sum_sqrtK", "max", "prob_or", "sum")) {
   method <- match.arg(method)
   x <- and_capacities[is.finite(and_capacities)]
   if (length(x) == 0L) return(NA_real_)
@@ -94,7 +94,7 @@ rc_or_capacity <- function(and_capacities,
 #' Compute capacity for one reaction in one pool
 #' @export
 rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean"),
-                                     or_method = c("sum", "max", "prob_or", "sum_sqrtK")) {
+                                     or_method = c("sum_sqrtK", "max", "prob_or", "sum")) {
   and_method <- match.arg(and_method)
   or_method <- match.arg(or_method)
   and_caps <- vapply(parsed_gpr, function(and_group) {
@@ -108,7 +108,7 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and
 #' Compute raw Layer 1 reaction capacity
 #'
 #' Uses fixed sqrt promiscuity correction, Boltzmann AND with tau = 0.20 by default,
-#' and OR-group summation. These defaults are the main biological model; alternative
+#' and square-root dampened OR-group summation. These defaults are the main biological model; alternative
 #' tau values should be interpreted only as sensitivity to the multi-subunit
 #' bottleneck assumption.
 #' @export
@@ -117,7 +117,7 @@ rc_reaction_capacity <- function(gpr_list,
                                  promiscuity_mode = c("sqrt", "linear", "none"),
                                  tau = 0.20,
                                  and_method = c("boltzmann", "min", "mean"),
-                                 or_method = c("sum", "max", "prob_or", "sum_sqrtK"),
+                                 or_method = c("sum_sqrtK", "max", "prob_or", "sum"),
                                  BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
   and_method <- match.arg(and_method)

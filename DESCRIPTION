@@ -16,5 +16,6 @@ Suggests:
     BiocParallel,
     Seurat (>= 4.0.0),
     Signac,
+    qlcMatrix,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
