@@ -25,7 +25,7 @@ Seurat v4 RNA+ATAC counts
 - `rc_validate_seurat()` / `rc_validate_seurat_v4()` check that a Seurat object contains the requested RNA assay, ATAC assay, required sample and cell-type metadata, optional condition/batch/state metadata, and optional embedding.
 - `rc_extract_inputs()` / `rc_extract_seurat_v4()` validate the object and extract RNA assay data, ATAC assay data, cell metadata, and an optional embedding into a plain R list.
 - `rc_check_metadata()` and `rc_write_input_summary()` create input QC summaries for sample/cell-type counts, missing metadata, optional condition-batch balance, and state provenance.
-- `rc_drop_na_grouping()` removes cells with missing pooling labels; `rc_make_pools()` creates sample-aware micropools within sample, optional condition, cell type, and optional local-state/cluster strata without mixing cells across samples; `rc_make_pool_seed_replicates()` repeats pooling over multiple seeds for sensitivity analysis.
+- `rc_drop_na_grouping()` removes cells with missing pooling labels; `rc_make_pools()` creates sample-aware micropools within sample, optional condition, cell type, and optional local-state/cluster strata without mixing cells across samples. If one major cell class is selected with no contrast, it runs as a single-class analysis by default; optionally, non-target cell types can be kept as an explicit control group. `rc_make_pool_seed_replicates()` repeats pooling over multiple seeds for sensitivity analysis.
 - `rc_pseudobulk_counts()` sums raw counts by pool; `rc_filter_empty_pools()` removes zero-library pools; `rc_logcpm()` computes pool-level `log2(CPM + 1)` for Layer 1; `rc_check_pseudobulk_mapping()` spot-checks pool membership against pseudobulk columns.
 - `rc_pool_detection()` computes pool-level detection rates from raw counts for confidence/diagnostics only; `rc_atac_pool_logcpm()` computes pooled ATAC accessibility logCPM for multiome confidence.
 - `rc_parse_gpr_simple()` / `rc_parse_gpr_table()` parse curated simple GPR rules.
@@ -200,6 +200,43 @@ association, and nonnegative gene confidence before reaction confidence is
 calculated. Single-pool strata have undefined percentiles (`NA`), not maximal
 confidence.
 
+
+### Single-cell-class and optional other-cell controls
+
+If the analysis is intended for one major cell class and no contrast column is
+provided, select that class with `target_celltype`. RegCompassR then pools only
+that class and does not create an artificial contrast:
+
+```r
+pool_map <- rc_make_pools(
+  inputs$meta,
+  sample_col = "sample_id",
+  celltype_col = "cell_type",
+  target_celltype = "T cell",
+  target_size = 80,
+  min_pool_size = 30,
+  min_group_size = 30
+)
+```
+
+If the desired design is target-vs-all-other-cells, opt in explicitly:
+
+```r
+pool_map <- rc_make_pools(
+  inputs$meta,
+  sample_col = "sample_id",
+  celltype_col = "cell_type",
+  target_celltype = "T cell",
+  include_other_celltypes_as_control = TRUE,
+  target_contrast_label = "T cell",
+  other_contrast_label = "other"
+)
+```
+
+This second mode keeps the original labels in `original_cell_type`, recodes the
+analysis `cell_type` to target vs `other`, and creates `celltype_contrast` when
+no `condition_col` is supplied.
+
 ### Manual calculation flow
 
 These steps are useful when inspecting intermediate objects or providing custom
@@ -354,7 +391,7 @@ that have `no_complete_gpr_group_flag` or `q95_power_class == "very_low"`.
 | `rc_validate_seurat()`, `rc_validate_seurat_v4()` | Validate Seurat/Signac inputs | Checks assays, metadata, barcodes, and optional embedding. |
 | `rc_extract_inputs()`, `rc_extract_seurat_v4()`, `rc_get_assay_counts()` | Extract plain count matrices and metadata | Use counts, not scaled/imputed values, for Layer 1. |
 | `rc_check_metadata()`, `rc_write_input_summary()` | Input QC | Summarizes sample/cell-type/condition coverage and missing labels. |
-| `rc_make_pools()`, `rc_make_pool_seed_replicates()`, `rc_filter_active_pool_map()` | Build sample-aware micropools | Pools are nested within sample, cell type, optional condition, and optional state/cluster. |
+| `rc_make_pools()`, `rc_make_pool_seed_replicates()`, `rc_filter_active_pool_map()` | Build sample-aware micropools | Supports single target-cell-class pooling by default and optional target-vs-other control pooling. |
 | `rc_pseudobulk_counts()`, `rc_filter_empty_pools()`, `rc_logcpm()`, `rc_pool_mean()`, `rc_check_pseudobulk_mapping()` | Pool expression preprocessing | Sum raw counts, remove empty pools, then compute pool logCPM. |
 | `rc_pool_detection()`, `rc_pool_diagnostics()` | Detection and pool QC | Detection supports confidence diagnostics; it does not alter capacity scores. |
 | `rc_parse_gpr_simple()`, `rc_parse_gpr_table()`, `rc_metabolic_gpr_genes()` | GPR parsing and gene extraction | Supports simple AND/OR GPR rules and Human-GEM-style tables. |

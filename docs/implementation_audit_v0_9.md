@@ -7,7 +7,7 @@ This audit summarizes the current code-level scope after simplifying RegCompassR
 RegCompassR now focuses on a reproducible, diagnostic Layer 1 workflow:
 
 - validate annotated Seurat v4 RNA+ATAC objects and extract raw counts with `rc_validate_seurat()` / `rc_extract_inputs()` plus the compatibility aliases `rc_validate_seurat_v4()` / `rc_extract_seurat_v4()`;
-- create sample-aware, optional condition/state-aware micropools with `rc_make_pools()` and `rc_make_pool_seed_replicates()`;
+- create sample-aware, optional condition/state-aware micropools with `rc_make_pools()` and `rc_make_pool_seed_replicates()`, including single target-cell-class pooling and optional target-vs-other-cell controls;
 - aggregate raw RNA counts by pool with `rc_pseudobulk_counts()`, remove empty pools with `rc_filter_empty_pools()`, and normalize to pool-level `log2(CPM + 1)` with `rc_logcpm()`;
 - compute robust gene scores, GPR-aware reaction capacities, Q95 calibration, GPR-aware reaction confidence, and sensitivity diagnostics through `rc_run_layer1_from_counts()` / `rc_run_layer1_capacity()`;
 - download Human-GEM and prepare a RegCompass-compatible GPR table plus the corresponding metabolic GPR gene set;
@@ -31,7 +31,7 @@ The current input API requires a Seurat object with paired RNA and ATAC assays c
 
 ## Pooling and pseudobulk checks
 
-Pooling remains sample-aware: cells are never pooled across samples, and optional condition/cell-type/state grouping columns define independent pooling strata. `rc_drop_na_grouping()` removes cells with missing grouping values before pool construction. `rc_check_pseudobulk_mapping()` provides spot checks that pseudobulk columns are consistent with pool membership.
+Pooling remains sample-aware: cells are never pooled across samples, and optional condition/cell-type/state grouping columns define independent pooling strata. When `target_celltype` is supplied without a contrast/control option, pooling is restricted to that major cell class. When `include_other_celltypes_as_control = TRUE`, all non-target cells are retained as an explicit `other` control while original labels are preserved. `rc_drop_na_grouping()` removes cells with missing grouping values before pool construction. `rc_check_pseudobulk_mapping()` provides spot checks that pseudobulk columns are consistent with pool membership.
 
 ## Layer 1 capacity and diagnostics
 
