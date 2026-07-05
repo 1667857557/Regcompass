@@ -95,3 +95,45 @@ test_that("rc_make_pools uses harmony or pca embeddings when requested", {
   expect_equal(unique(pools$pool_dims), "1,2")
   expect_true(all(vapply(split(pools, pools$pool_id), function(x) length(unique(x$sample_id)) == 1L, logical(1))))
 })
+
+test_that("rc_make_pools defaults target cell type to single-class analysis without contrast", {
+  meta <- data.frame(
+    sample_id = "s1",
+    cell_type = rep(c("T", "B"), each = 40),
+    row.names = paste0("c", 1:80)
+  )
+  pools <- rc_make_pools(
+    meta,
+    target_celltype = "T",
+    target_size = 20,
+    min_group_size = 10,
+    min_pool_size = 5,
+    seed = 1
+  )
+  expect_setequal(unique(pools$cell_type), "T")
+  expect_false("celltype_contrast" %in% colnames(pools))
+  expect_equal(sum(!pools$skipped), 40L)
+})
+
+test_that("rc_make_pools can use non-target cell types as explicit controls", {
+  meta <- data.frame(
+    sample_id = "s1",
+    cell_type = rep(c("T", "B", "Mono"), each = 40),
+    row.names = paste0("c", 1:120)
+  )
+  pools <- rc_make_pools(
+    meta,
+    target_celltype = "T",
+    include_other_celltypes_as_control = TRUE,
+    target_contrast_label = "T_target",
+    other_contrast_label = "other_control",
+    target_size = 20,
+    min_group_size = 10,
+    min_pool_size = 5,
+    seed = 1
+  )
+  expect_setequal(unique(pools$cell_type), c("T_target", "other_control"))
+  expect_setequal(unique(pools$celltype_contrast), c("T_target", "other_control"))
+  expect_true("original_cell_type" %in% colnames(pools))
+  expect_setequal(unique(pools$original_cell_type[pools$cell_type == "other_control"]), c("B", "Mono"))
+})

@@ -102,7 +102,10 @@ rc_drop_na_grouping <- function(meta, group_cols) {
 #' Create sample-aware micropools from cell metadata
 #'
 #' Pools are formed only within the requested sample/condition/cell-type/state
-#' strata. Groups below `min_group_size` are represented as skipped rows and are
+#' strata. If `target_celltype` is supplied without a contrast, only that
+#' cell type is pooled by default; set `include_other_celltypes_as_control = TRUE`
+#' to keep all other cell types as an explicit control group.
+#' Groups below `min_group_size` are represented as skipped rows and are
 #' excluded from pseudobulk by default; groups with one valid pool are retained
 #' and flagged as lacking within-group pool replication. With `pooling_method =
 #' "auto"`, state-aware stratification is preferred when `state_col` is supplied,
@@ -121,6 +124,11 @@ rc_make_pools <- function(meta,
                           min_size = NULL,
                           seed = 1,
                           pooling_method = c("auto", "random", "state", "embedding"),
+                          target_celltype = NULL,
+                          include_other_celltypes_as_control = FALSE,
+                          contrast_col = NULL,
+                          target_contrast_label = NULL,
+                          other_contrast_label = "other",
                           reduction = NULL,
                           dims = 1:30,
                           nstart = 20,
@@ -143,6 +151,16 @@ rc_make_pools <- function(meta,
     }
   }
   if (!is.data.frame(meta)) stop("`meta` must be a data.frame.", call. = FALSE)
+  if (!is.logical(include_other_celltypes_as_control) || length(include_other_celltypes_as_control) != 1L || is.na(include_other_celltypes_as_control)) {
+    stop("`include_other_celltypes_as_control` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (is.null(contrast_col)) contrast_col <- "celltype_contrast"
+  if (!is.character(contrast_col) || length(contrast_col) != 1L || is.na(contrast_col) || !nzchar(contrast_col)) {
+    stop("`contrast_col` must be a non-empty column name.", call. = FALSE)
+  }
+  if (!is.character(other_contrast_label) || length(other_contrast_label) != 1L || is.na(other_contrast_label) || !nzchar(other_contrast_label)) {
+    stop("`other_contrast_label` must be a non-empty label.", call. = FALSE)
+  }
   if (is.null(rownames(meta)) || anyNA(rownames(meta)) || any(!nzchar(rownames(meta)))) {
     stop("`meta` must have non-empty cell IDs in rownames(meta).", call. = FALSE)
   }
@@ -154,10 +172,42 @@ rc_make_pools <- function(meta,
     stop("`nstart` must be a single positive number.", call. = FALSE)
   }
 
+  required_cols <- c(sample_col, condition_col, celltype_col, state_col)
+  required_cols <- required_cols[!is.null(required_cols) & !is.na(required_cols) & nzchar(required_cols)]
+  missing_cols <- setdiff(required_cols, colnames(meta))
+  if (length(missing_cols) > 0) stop("Missing metadata columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
+
+  if (!is.null(target_celltype)) {
+    target_celltype <- unique(as.character(target_celltype))
+    target_celltype <- target_celltype[!is.na(target_celltype) & nzchar(target_celltype)]
+    if (length(target_celltype) == 0L) stop("`target_celltype` must contain at least one non-empty cell-type label.", call. = FALSE)
+    celltype_values <- as.character(meta[[celltype_col]])
+    target_hit <- celltype_values %in% target_celltype
+    if (!any(target_hit, na.rm = TRUE)) {
+      stop("`target_celltype` did not match any values in `", celltype_col, "`.", call. = FALSE)
+    }
+    target_label <- target_contrast_label
+    if (is.null(target_label)) target_label <- paste(target_celltype, collapse = "+")
+    if (!is.character(target_label) || length(target_label) != 1L || is.na(target_label) || !nzchar(target_label)) {
+      stop("`target_contrast_label` must be NULL or a non-empty label.", call. = FALSE)
+    }
+
+    if (isTRUE(include_other_celltypes_as_control)) {
+      original_col <- paste0("original_", celltype_col)
+      if (!original_col %in% colnames(meta)) meta[[original_col]] <- celltype_values
+      meta[[celltype_col]] <- ifelse(target_hit, target_label, other_contrast_label)
+      if (is.null(condition_col)) {
+        meta[[contrast_col]] <- ifelse(target_hit, target_label, other_contrast_label)
+        condition_col <- contrast_col
+      }
+    } else {
+      meta <- meta[target_hit, , drop = FALSE]
+      if (nrow(meta) == 0L) stop("No cells remain after selecting `target_celltype`.", call. = FALSE)
+    }
+  }
+
   group_cols <- c(sample_col, condition_col, celltype_col, state_col)
   group_cols <- group_cols[!is.null(group_cols) & !is.na(group_cols) & nzchar(group_cols)]
-  missing_cols <- setdiff(group_cols, colnames(meta))
-  if (length(missing_cols) > 0) stop("Missing metadata columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
 
   emb <- NULL
   used_reduction <- NA_character_
