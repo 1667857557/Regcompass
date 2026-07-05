@@ -35,7 +35,7 @@ Pooling remains sample-aware: cells are never pooled across samples, and optiona
 
 ## Layer 1 capacity and diagnostics
 
-The core capacity calculation keeps raw counts until after pool aggregation. Gene scores use robust z-scores over pool-level logCPM values followed by a sigmoid transformation. GPR AND rules use the default Boltzmann minimum-biased average with `tau = 0.20`; OR rules sum isoenzyme-group capacities. Q95 calibration uses continuous shrinkage toward global Q95 values and can report bootstrap uncertainty.
+The core capacity calculation keeps raw counts until after pool aggregation. Gene scores use robust z-scores over pool-level logCPM values followed by a sigmoid transformation. GPR AND rules use the default Boltzmann minimum-biased average with `tau = 0.20`; OR rules use the default `sum_sqrtK` formula, dividing summed isoenzyme-group capacities by the square root of the number of groups. Q95 calibration uses continuous shrinkage toward global Q95 values and can report bootstrap uncertainty.
 
 The workflow returns capacity matrices and diagnostics including Q95 power classes, all-missing reaction flags, GPR gene coverage, hard-min/tau/promiscuity/AND-method sensitivity summaries, long-form capacity tables, parsed GPR rules, pool metadata, the selected reaction confidence method, and the source of reaction confidence. All-NA `C_raw` reactions remain `NA` in `C_rel`.
 
@@ -48,7 +48,7 @@ The workflow returns capacity matrices and diagnostics including Q95 power class
 
 ## Multiome confidence
 
-When pooled ATAC counts and curated peak-gene links are supplied, the wrapper filters links to genes present in the GPR set, computes pooled ATAC logCPM, derives RNA and ATAC percentiles within the selected stratum, estimates null-corrected RNA/ATAC concordance, applies Fisher shrinkage to positive association evidence, and combines nonnegative components into gene confidence. Reaction confidence then uses `rc_reaction_confidence_gpr_aware()`: AND groups are bottleneck-aware (`softmin` by default), OR isoenzymes use `max` by default, incomplete AND groups are diagnosed, and reactions with no complete GPR group remain `NA`. RNA-only detection now uses the same GPR-aware aggregation rather than legacy median scoring. Single-pool strata produce undefined percentiles rather than artificially high confidence.
+When pooled ATAC counts and curated peak-gene links are supplied, the wrapper filters links to genes present in the GPR set, computes pooled ATAC logCPM, derives RNA and ATAC percentiles within the selected stratum, estimates null-corrected RNA/ATAC concordance, applies Fisher shrinkage to positive association evidence, and combines nonnegative components into gene confidence with optional component diagnostics (`ra_component`, `det_component`, `link_component`, `qc_component`, `gpr_observed_component`, `rel_ra_pos`, and `concord_ra_norm`). Reaction confidence then uses `rc_reaction_confidence_gpr_aware()`: AND groups are bottleneck-aware (`softmin` by default), OR isoenzymes use `max` by default, incomplete AND groups are diagnosed, and reactions with no complete GPR group remain `NA`. RNA-only detection now uses the same GPR-aware aggregation rather than legacy median scoring. Single-pool strata produce undefined percentiles rather than artificially high confidence.
 
 ## Sample-aware summaries and reports
 

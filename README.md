@@ -299,11 +299,13 @@ C_k(r,p)=\sum_g w_{g,p}s'_{g,p}
 
 Default \(\tau=0.20\). Smaller values such as 0.08 behave closer to a hard minimum; larger values move toward a mean-like AND. RegCompassR reports a hard-min sensitivity flag but keeps one main result.
 
-For OR groups:
+For OR groups, the default `or_method = "sum_sqrtK"` dampens isoenzyme-rich reactions:
 
 \[
-C_{raw}(r,p)=\sum_k C_k(r,p)
+C_{raw}(r,p)=\frac{\sum_k C_k(r,p)}{\sqrt{K_r}}
 \]
+
+Set `or_method = "sum"` only when undampened isoenzyme summation is desired.
 
 ### Q95 calibration
 
@@ -400,7 +402,7 @@ that have `reaction_unsupported_by_complete_gpr_flag` or `q95_power_class == "ve
 | `rc_gene_score()`, `rc_gene_zscore()`, `rc_safe_scale()`, `rc_sigmoid()` | Gene scoring | Robust row scaling plus sigmoid transformation of pool logCPM. |
 | `rc_and_capacity()`, `rc_or_capacity()`, `rc_reaction_capacity()`, `rc_reaction_capacity_one()` | GPR capacity calculation | AND defaults to Boltzmann bottleneck; OR capacity method is configurable. |
 | `rc_q95_shrink()`, `rc_q95_calibrate()`, `rc_q95_bootstrap()` | Q95 calibration | Produces bounded `C_rel`; all-missing reactions stay `NA`. |
-| `rc_percentile_by_stratum()`, `rc_concordance_null_correct()`, `rc_fisher_shrink()`, `rc_link_confidence()`, `rc_gene_confidence()` | Multiome gene confidence | Converts RNA/ATAC concordance and peak-gene links into gene-level confidence. |
+| `rc_percentile_by_stratum()`, `rc_concordance_null_correct()`, `rc_fisher_shrink()`, `rc_link_confidence()`, `rc_gene_confidence()` | Multiome gene confidence | Converts RNA/ATAC concordance and peak-gene links into gene-level confidence; `return_components = TRUE` exposes RA, detection, link, QC, and GPR-observed diagnostics. |
 | `rc_recompute_signac_peak_gene_links()`, `rc_filter_peak_gene_links_to_gpr()`, `rc_atac_pool_logcpm()` | ATAC link utilities | Recompute/filter metabolic peak-gene links for multiome confidence. |
 | `rc_reaction_confidence_gpr_aware()`, `rc_reaction_confidence()`, `rc_reaction_confidence_summary()` | Reaction confidence | GPR-aware aggregation is the default for multiome and RNA-only evidence; legacy median is reproducibility-only. |
 | `rc_run_layer1_capacity()`, `rc_layer1_capacity()` | Core Layer 1 runner | Starts from pool expression and optional confidence inputs. |

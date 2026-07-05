@@ -612,8 +612,8 @@ rc_run_layer1_from_counts <- function(gpr_table,
       rel <- rc_fisher_shrink(rna_logcpm[genes, , drop = FALSE], link_conf[genes, , drop = FALSE])$rel_positive
       names(rel) <- genes
       gene_conf_out <- rc_gene_confidence(concord, rel_ra_pos = rel, det_rna = rna_detection[genes, , drop = FALSE], link_conf = link_conf[genes, , drop = FALSE], return_components = TRUE)
-      gene_conf <- gene_conf_out$confidence
-      gene_confidence_components <- gene_conf_out[c("components", "component_weights", "missing_components")]
+      gene_conf <- gene_conf_out$gene_confidence
+      gene_confidence_components <- gene_conf_out[setdiff(names(gene_conf_out), c("gene_confidence", "confidence"))]
     }
   }
 
