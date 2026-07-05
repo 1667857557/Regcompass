@@ -64,3 +64,34 @@ test_that("pool seed replicates record seed metadata", {
   expect_true("pool_seed" %in% colnames(pools))
   expect_equal(anyDuplicated(stats::na.omit(pools$pool_id)), 0L)
 })
+
+test_that("rc_make_pools uses harmony or pca embeddings when requested", {
+  skip_if_not_installed("SeuratObject")
+
+  meta <- data.frame(
+    sample_id = "s1",
+    cell_type = "T",
+    row.names = paste0("cell", seq_len(60)),
+    stringsAsFactors = FALSE
+  )
+  counts <- matrix(0, nrow = 3, ncol = 60, dimnames = list(paste0("g", 1:3), rownames(meta)))
+  seu <- SeuratObject::CreateSeuratObject(counts = counts, meta.data = meta)
+  emb <- matrix(rnorm(60 * 3), nrow = 60, dimnames = list(rownames(meta), paste0("PC_", 1:3)))
+  seu[["pca"]] <- SeuratObject::CreateDimReducObject(embeddings = emb, key = "PC_", assay = "RNA")
+
+  pools <- rc_make_pools(
+    meta = meta,
+    seu = seu,
+    target_size = 30,
+    min_group_size = 10,
+    min_pool_size = 5,
+    pooling_method = "auto",
+    dims = 1:2,
+    seed = 1
+  )
+
+  expect_equal(unique(pools$pooling_method), "embedding")
+  expect_equal(unique(pools$pool_reduction), "pca")
+  expect_equal(unique(pools$pool_dims), "1,2")
+  expect_true(all(vapply(split(pools, pools$pool_id), function(x) length(unique(x$sample_id)) == 1L, logical(1))))
+})

@@ -10,14 +10,107 @@ rc_drop_na_grouping <- function(meta, group_cols) {
   meta[!bad, , drop = FALSE]
 }
 
+#' Extract the reduction used for embedding-based pooling
+#'
+#' @param seu Seurat object containing PCA and/or Harmony reductions.
+#' @param reduction Reduction name to use. Defaults to `harmony`, then `pca`.
+#' @param dims Reduction dimensions to use.
+#' @param scale_embedding Whether to scale embedding columns before pooling.
+#' @return A list containing the embedding matrix and selected reduction metadata.
+.rc_get_pool_embedding <- function(seu,
+                                   reduction = NULL,
+                                   dims = 1:30,
+                                   scale_embedding = TRUE) {
+  if (is.null(seu)) {
+    stop("`seu` is required for embedding-based pooling.", call. = FALSE)
+  }
+
+  red_names <- names(seu@reductions)
+  if (is.null(reduction)) {
+    if ("harmony" %in% red_names) {
+      reduction <- "harmony"
+    } else if ("pca" %in% red_names) {
+      reduction <- "pca"
+    } else {
+      stop("No `harmony` or `pca` reduction found. Run the single-cell multiomics workflow until one of these reductions is available, or set `pooling_method = 'random'` explicitly.", call. = FALSE)
+    }
+  }
+
+  if (!reduction %in% red_names) {
+    stop("Reduction not found: ", reduction, call. = FALSE)
+  }
+  if (!is.numeric(dims) || length(dims) == 0L || anyNA(dims) || any(dims < 1)) {
+    stop("`dims` must contain positive numeric dimension indices.", call. = FALSE)
+  }
+
+  emb <- SeuratObject::Embeddings(seu, reduction = reduction)
+  dims <- dims[dims <= ncol(emb)]
+  if (length(dims) == 0L) {
+    stop("No requested `dims` are available in reduction: ", reduction, call. = FALSE)
+  }
+  emb <- emb[, dims, drop = FALSE]
+
+  if (scale_embedding) {
+    emb <- scale(emb)
+    emb[!is.finite(emb)] <- 0
+  }
+
+  list(
+    emb = emb,
+    reduction = reduction,
+    dims = dims
+  )
+}
+
+#' Randomly assign cells to pools
+#'
+#' @param cells Cell identifiers in one pooling stratum.
+#' @param n_pool Number of pools to create.
+#' @return A list of cell identifier vectors, one per pool.
+.rc_assign_random_pools <- function(cells, n_pool) {
+  cells <- sample(cells)
+  split(cells, rep(seq_len(n_pool), length.out = length(cells)))
+}
+
+#' Assign cells to pools by embedding-space proximity
+#'
+#' @param cells Cell identifiers in one pooling stratum.
+#' @param emb Embedding matrix with cells in row names.
+#' @param n_pool Number of pools to create.
+#' @param nstart Number of random starts passed to `stats::kmeans()`.
+#' @return A list of cell identifier vectors, one per pool.
+.rc_assign_embedding_pools <- function(cells,
+                                       emb,
+                                       n_pool,
+                                       nstart = 20) {
+  x <- emb[cells, , drop = FALSE]
+
+  if (n_pool == 1L) {
+    return(list(cells))
+  }
+
+  km <- stats::kmeans(
+    x = x,
+    centers = n_pool,
+    nstart = nstart,
+    iter.max = 100
+  )
+
+  split(cells, km$cluster)
+}
+
 #' Create sample-aware micropools from cell metadata
 #'
 #' Pools are formed only within the requested sample/condition/cell-type/state
 #' strata. Groups below `min_group_size` are represented as skipped rows and are
 #' excluded from pseudobulk by default; groups with one valid pool are retained
-#' and flagged as lacking within-group pool replication.
+#' and flagged as lacking within-group pool replication. With `pooling_method =
+#' "auto"`, state-aware stratification is preferred when `state_col` is supplied,
+#' otherwise Harmony/PCA embeddings from `seu` are used when available, and the
+#' original random pooling logic is used only when no embedding input is supplied.
 #' @export
 rc_make_pools <- function(meta,
+                          seu = NULL,
                           sample_col = "sample_id",
                           celltype_col = "cell_type",
                           condition_col = NULL,
@@ -27,12 +120,27 @@ rc_make_pools <- function(meta,
                           min_group_size = 30,
                           min_size = NULL,
                           seed = 1,
+                          pooling_method = c("auto", "random", "state", "embedding"),
+                          reduction = NULL,
+                          dims = 1:30,
+                          nstart = 20,
+                          scale_embedding = TRUE,
                           state_source = NA_character_,
                           state_resolution = NA_character_,
                           BPPARAM = NULL) {
   if (!is.null(min_size)) {
     min_pool_size <- min_size
     min_group_size <- min_size
+  }
+  pooling_method <- match.arg(pooling_method)
+  if (pooling_method == "auto") {
+    if (!is.null(state_col)) {
+      pooling_method <- "state"
+    } else if (!is.null(seu)) {
+      pooling_method <- "embedding"
+    } else {
+      pooling_method <- "random"
+    }
   }
   if (!is.data.frame(meta)) stop("`meta` must be a data.frame.", call. = FALSE)
   if (is.null(rownames(meta)) || anyNA(rownames(meta)) || any(!nzchar(rownames(meta)))) {
@@ -42,10 +150,36 @@ rc_make_pools <- function(meta,
     val <- get(nm)
     if (!is.numeric(val) || length(val) != 1L || is.na(val) || val < 1) stop("`", nm, "` must be a single positive number.", call. = FALSE)
   }
+  if (!is.numeric(nstart) || length(nstart) != 1L || is.na(nstart) || nstart < 1) {
+    stop("`nstart` must be a single positive number.", call. = FALSE)
+  }
+
   group_cols <- c(sample_col, condition_col, celltype_col, state_col)
   group_cols <- group_cols[!is.null(group_cols) & !is.na(group_cols) & nzchar(group_cols)]
   missing_cols <- setdiff(group_cols, colnames(meta))
   if (length(missing_cols) > 0) stop("Missing metadata columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
+
+  emb <- NULL
+  used_reduction <- NA_character_
+  used_dims <- NA_character_
+  if (pooling_method == "embedding") {
+    emb_info <- .rc_get_pool_embedding(
+      seu = seu,
+      reduction = reduction,
+      dims = dims,
+      scale_embedding = scale_embedding
+    )
+    emb <- emb_info$emb
+    used_reduction <- emb_info$reduction
+    used_dims <- paste(emb_info$dims, collapse = ",")
+
+    common <- intersect(rownames(meta), rownames(emb))
+    if (length(common) == 0L) {
+      stop("No cells overlap between `meta` rownames and the selected embedding rownames.", call. = FALSE)
+    }
+    meta <- meta[common, , drop = FALSE]
+    emb <- emb[common, , drop = FALSE]
+  }
 
   meta <- rc_drop_na_grouping(meta, group_cols)
   meta$cell_id <- rownames(meta)
@@ -62,19 +196,28 @@ rc_make_pools <- function(meta,
       out[[k]] <- data.frame(group_id = nm, group_key = nm, pool_id = NA_character_, cell_id = cells,
                              skipped = TRUE, skip_reason = "group_below_min_group_size",
                              low_power_pool = TRUE, pool_size = n,
-                             no_within_group_pool_replicate = TRUE, pool_seed = seed, state_source = state_source, state_resolution = state_resolution, stringsAsFactors = FALSE)
+                             no_within_group_pool_replicate = TRUE,
+                             pooling_method = pooling_method, pool_reduction = used_reduction,
+                             pool_dims = used_dims, pool_seed = seed,
+                             state_source = state_source, state_resolution = state_resolution, stringsAsFactors = FALSE)
       for (col in group_cols) out[[k]][[col]] <- values[[col]][[1]]
       k <- k + 1L; next
     }
     n_pool <- max(1L, floor(n / target_size))
-    cells <- sample(cells)
-    pool_assign <- rep(seq_len(n_pool), length.out = n)
-    for (j in seq_len(n_pool)) {
-      cc <- cells[pool_assign == j]
+    if (pooling_method %in% c("random", "state")) {
+      pool_list <- .rc_assign_random_pools(cells, n_pool)
+    } else if (pooling_method == "embedding") {
+      pool_list <- .rc_assign_embedding_pools(cells = cells, emb = emb, n_pool = n_pool, nstart = nstart)
+    }
+    for (j in seq_along(pool_list)) {
+      cc <- pool_list[[j]]
       out[[k]] <- data.frame(group_id = nm, group_key = nm, pool_id = paste0("pool_", k), cell_id = cc,
                              skipped = FALSE, skip_reason = NA_character_,
                              low_power_pool = length(cc) < min_pool_size, pool_size = length(cc),
-                             no_within_group_pool_replicate = n_pool == 1L, pool_seed = seed, state_source = state_source, state_resolution = state_resolution, stringsAsFactors = FALSE)
+                             no_within_group_pool_replicate = length(pool_list) == 1L,
+                             pooling_method = pooling_method, pool_reduction = used_reduction,
+                             pool_dims = used_dims, pool_seed = seed,
+                             state_source = state_source, state_resolution = state_resolution, stringsAsFactors = FALSE)
       for (col in group_cols) out[[k]][[col]] <- values[[col]][[1]]
       k <- k + 1L
     }
