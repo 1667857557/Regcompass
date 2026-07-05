@@ -1,6 +1,6 @@
 # RegCompassR
 
-RegCompassR is a simplified Layer 1 tool for **multiome-supported, GPR-aware, sample-aware reaction capacity potential** analysis from annotated Seurat v4 RNA+ATAC objects.
+RegCompassR is a 1.0 framework for **multiome-supported, GPR-aware, sample-aware reaction capacity potential** analysis from annotated Seurat v4 RNA+ATAC objects, with a Layer 2 design for selected stoichiometrically constrained and balance-penalized flux-potential optimization.
 
 The package intentionally keeps the main analysis narrow:
 
@@ -36,7 +36,7 @@ Seurat v4 RNA+ATAC counts
 - `rc_parallel_lapply()` and `rc_default_bpparam()` provide automatic BiocParallel-backed multi-core execution for expensive pool-, reaction-, model-, and bootstrap-level loops when BiocParallel is installed.
 - `rc_sample_aggregate()`, `rc_sample_summary()`, `rc_export_sample_matrix()`, `rc_export_long_table()`, and `rc_write_report_md()` provide sample-aware summaries, table exports, and Markdown reporting.
 
-RegCompassR v0.9 intentionally keeps GEM/QP solving, selected-demand QP planning, FVA, thermodynamic constraints, and causal regulator discovery outside the runnable package scope.
+RegCompassR 1.0 keeps true flux inference, enzyme activity inference, causal regulator discovery, full medium-constrained FBA, and thermodynamic flux estimation outside the package claims. Layer 2 uses Layer 1 capacity as priors, bounds modifiers, penalties, and reaction-selection evidence for constrained flux-potential optimization rather than as measured flux.
 
 ## Expected input
 
@@ -430,3 +430,261 @@ rc_write_report_md(
   confidence = layer1$reaction_confidence
 )
 ```
+
+## RegCompassR 1.0 Layer 2 design
+
+RegCompassR 1.0 extends the current Layer 1 workflow without reinterpreting Layer 1 as measured flux. The recommended positioning is:
+
+> **multiome-supported, GPR-aware, sample-aware reaction capacity potential + selected stoichiometrically constrained flux-potential optimization**
+
+```text
+Layer 1: Seurat v4 RNA+ATAC -> reaction capacity potential
+Layer 2: use Layer 1 output as GEM priors, bounds, penalties, and reaction-selection scores
+Layer 2 output: stoichiometrically feasible / balance-penalized flux potential, not true flux
+```
+
+### What Layer 2 borrows from COMPASS and scFEA
+
+Layer 2 should absorb COMPASS-style genome-scale metabolic modeling where useful: a full GEM structure, steady-state mass balance (`S v = 0`), LP optimization with reaction-specific objectives, and expression-supported penalty minimization. It should not run full COMPASS over every single cell and every Human-GEM reaction by default, nor should it treat expression-derived penalties as true enzyme activities or require measured media constraints.
+
+Layer 2 should also absorb scFEA-style ideas: relaxed mass balance (`S v ≈ 0`), metabolite imbalance/stress outputs, expression priors constrained by network balance, and local/module-like subnetworks for speed. RegCompassR should use deterministic, interpretable LP/QP formulations rather than training a neural network in the default R package workflow.
+
+### Layer 2 input contract
+
+Layer 2 consumes the existing Layer 1 object fields:
+
+```r
+layer1$C_rel
+layer1$C_raw
+layer1$reaction_confidence
+layer1$q95_diagnostics
+layer1$gpr_diagnostics
+layer1$pool_meta
+layer1$parsed_gpr
+```
+
+`C_rel` remains a **relative reaction capacity potential**. It may be used as a reaction prior, a pool/profile-specific upper-bound modifier, an optimization penalty source, or a reaction-selection score; it is not a direct flux bound by itself.
+
+### Recommended run units for the three core biological questions
+
+| Biological question | Default run unit | Main Layer 2 result |
+|---|---|---|
+| Same broad cell class across conditions | `sample_celltype` | condition differential constrained capacity |
+| Reaction status within one broad cell class | `sample_celltype` plus optional pool diagnostics | reaction status / feasibility / imbalance |
+| One broad cell class versus other cell classes | `sample_celltype` | target-vs-other metabolic activation |
+
+For condition comparisons, pools are within-sample denoising units, not independent biological replicates. The recommended workflow is Layer 1 on pools, aggregation to sample × cell type × condition profiles, Layer 2 optimization on those profiles, and sample-level condition statistics.
+
+### GEM object
+
+Layer 2 uses a unified GEM object:
+
+```r
+gem <- list(
+  S = S,                         # sparse metabolite × reaction matrix
+  reactions = reactions,         # reaction_id, name, lb, ub, reversible, subsystem
+  metabolites = metabolites,     # metabolite_id, name, compartment
+  gpr_table = gpr_table,
+  exchange_rxns = exchange_rxns,
+  demand_rxns = demand_rxns,
+  model_source = "Human-GEM"
+)
+```
+
+Validation should require sparse `S`, matching dimensions and names, unique reaction/metabolite IDs, `lb <= ub`, explicit exchange/demand annotations, and a diagnosable mapping between Layer 1 reaction IDs and GEM reaction IDs.
+
+### Aggregating Layer 1 to profiles
+
+For a sample × cell type × condition unit `u`, aggregate pools by default with medians:
+
+```text
+C_tilde[r,u]    = median(C_rel[r,p] for p in u)
+Conf_tilde[r,u] = median(Conf[r,p] for p in u)
+support_fraction[r,u] = supported finite pools / total pools
+```
+
+This preserves sample-level replication and avoids treating multiple pools from one sample as independent replicates.
+
+### Mapping capacity to bounds, penalties, and priors
+
+Layer 2 maps aggregated Layer 1 evidence to a bounded evidence score:
+
+```text
+q[r,u] = clamp(C_tilde[r,u] * Conf_tilde[r,u], q_min, 1)
+```
+
+Recommended defaults are `q_min = 0.05` and `alpha = 0.05`. Unsupported GPR reactions should be down-weighted and reported, not hard-deleted. Exchange, demand, sink, transport, and non-enzymatic reactions should not be controlled by GPR confidence in the same way as enzyme-catalyzed reactions.
+
+Profile-specific bounds and penalties are:
+
+```text
+ub[r,u] = ub_base[r] * (alpha + (1 - alpha) * q[r,u])
+lb[r,u] = -ub[r,u] for reversible reactions, otherwise 0
+penalty[r,u] = -log(q[r,u] + epsilon)
+v_prior[r,u] = v_scale * q[r,u]
+```
+
+### Core optimization modes
+
+#### `hard_lp`
+
+COMPASS/FBA-like strict steady-state feasibility:
+
+```text
+maximize c'v
+subject to S v = 0 and lb_u <= v <= ub_u
+```
+
+The output is `stoich_feasible_capacity`. Infeasible reactions should be recorded in diagnostics rather than causing a hard pipeline failure.
+
+#### `compass_penalty`
+
+A two-step COMPASS-like LP. Step 1 maximizes a target reaction capacity. Step 2 fixes the target reaction to at least `omega * vmax` and minimizes expression-unsupported absolute flux using split variables. Recommended default: `omega = 0.95`.
+
+Outputs include `reaction_penalty`, `compass_like_score`, and `target_flux_fraction`. A high penalty means the target is difficult to realize with expression-supported network routes; it should not be interpreted as high activity.
+
+#### `relaxed_balance_qp` / `relaxed_balance_lp`
+
+scFEA-like balance-penalized optimization with deterministic convex solvers. The QP form minimizes deviation from the Layer 1 prior plus a mass-balance penalty:
+
+```text
+minimize sum_i w[i,u] * (v_i - v_prior[i,u])^2 + lambda * ||S v||_2^2
+subject to lb_u <= v <= ub_u
+```
+
+The LP form uses imbalance slack variables and absolute prior deviations. Outputs include `balanced_flux_potential`, `metabolite_imbalance`, `imbalance_score`, and `reaction_residual`. The default main Layer 2 result should be `sample_celltype × relaxed_balance_qp`, with `hard_lp` and `compass_penalty` as auxiliary diagnostics.
+
+### Reaction selection and speed
+
+RegCompassR 1.0 should avoid all profiles × all Human-GEM reactions × full FVA by default. The recommended approach is Layer 1 scoring, candidate reaction selection, stoichiometric-neighbor expansion, local sub-GEM construction, and LP/QP/FVA only on selected reactions.
+
+```r
+rc_select_reactions_layer1(
+  layer1,
+  mode = "union",
+  top_n = 300,
+  min_C_rel = 0.2,
+  min_confidence = 0.3,
+  include_neighbors = TRUE,
+  neighbor_depth = 1,
+  include_exchange = TRUE,
+  include_demand = TRUE
+)
+```
+
+Mandatory support reactions include selected reactions, one-step upstream/downstream reactions sharing metabolites, exchange/transport/demand/sink reactions, ATP/NAD/NADP/CoA cofactor-balance reactions, and user-specified pathway reactions. Recommended defaults are `top_n = 300`, `max_reactions = 1000`, `neighbor_depth = 1`, `q_min = 0.05`, `alpha = 0.05`, `omega = 0.95`, and `lambda_balance` sensitivity values of `1`, `10`, and `100`.
+
+### Proposed Layer 2 modules and APIs
+
+Planned files:
+
+```text
+R/gem_io.R
+R/gem_validate.R
+R/layer1_aggregate.R
+R/reaction_selection.R
+R/bounds.R
+R/penalty.R
+R/lp_solver.R
+R/qp_solver.R
+R/layer2_flux.R
+R/fva_selected.R
+R/layer2_stats.R
+R/layer2_report.R
+```
+
+Planned exported functions:
+
+```r
+rc_read_humangem_model()
+rc_read_sbml_model()
+rc_validate_gem()
+rc_match_layer1_to_gem()
+rc_aggregate_layer1_profiles()
+rc_select_reactions_layer1()
+rc_make_subgem()
+rc_capacity_to_bounds()
+rc_capacity_to_penalty()
+rc_build_layer2_problem()
+rc_solve_hard_lp()
+rc_solve_compass_penalty_lp()
+rc_solve_relaxed_balance_qp()
+rc_run_layer2_flux()
+rc_selected_fva()
+rc_compare_condition_within_celltype()
+rc_compare_celltype_vs_others()
+rc_summarize_reaction_status()
+rc_write_layer2_report_md()
+```
+
+LP solvers should prefer optional `highs`, `glpk`, or `gurobi`; QP should use optional `osqp`. Gurobi must not be a hard dependency. All solver wrappers should return a common structure with `status`, `objective`, `flux`, `imbalance`, `runtime`, `solver`, and `diagnostics`.
+
+### Recommended user-facing APIs
+
+Condition comparison within one cell type:
+
+```r
+layer2_cond <- rc_run_layer2_flux(
+  layer1 = layer1,
+  gem = gem,
+  run_unit = "sample_celltype",
+  celltype_col = "cell_type",
+  sample_col = "sample_id",
+  condition_col = "condition",
+  target_celltype = "Oligodendrocyte",
+  mode = c("relaxed_balance_qp", "hard_lp", "compass_penalty"),
+  selection = "layer1_union",
+  max_reactions = 1000
+)
+
+res_cond <- rc_compare_condition_within_celltype(
+  layer2 = layer2_cond,
+  target_celltype = "Oligodendrocyte",
+  condition_col = "condition",
+  contrast = c("cKO", "Control")
+)
+```
+
+Reaction status in one cell type:
+
+```r
+status_ol <- rc_summarize_reaction_status(
+  layer2 = layer2_cond,
+  celltype = "Oligodendrocyte",
+  group_by = c("condition"),
+  min_confidence = 0.3,
+  max_imbalance = 0.2
+)
+```
+
+Target cell type versus others:
+
+```r
+layer2_ct <- rc_run_layer2_flux(
+  layer1 = layer1,
+  gem = gem,
+  run_unit = "sample_celltype",
+  mode = "relaxed_balance_qp",
+  selection = "layer1_union"
+)
+
+res_ct <- rc_compare_celltype_vs_others(
+  layer2 = layer2_ct,
+  target_celltype = "Oligodendrocyte",
+  reference = "all_others",
+  block_col = "sample_id",
+  condition_col = "condition"
+)
+```
+
+### Validation requirements
+
+Mathematical tests should cover GEM validation, toy-network LP behavior (`A_ext -> A -> B -> C_ext`), COMPASS-like penalty behavior, relaxed balance behavior, and Layer 1 aggregation. Biological validation should report capacity change, stoichiometric feasibility change, imbalance change, and confidence change rather than a single score. External validation should prioritize matched metabolomics, stable isotope flux data, bulk metabolic enzyme proteomics, known pathway markers, and perturbation directions.
+
+### Interpretation boundary
+
+RegCompassR 1.0 may claim **multiome-supported, GPR-aware, sample-aware, stoichiometrically constrained reaction capacity potential**. It should not claim true single-cell flux, true enzyme activity, causal regulator inference, complete medium-constrained FBA, or thermodynamic flux estimation.
+
+A conservative manuscript statement is:
+
+> RegCompassR 1.0 uses multiome-derived GPR evidence to construct sample-aware reaction capacity priors, then performs selected stoichiometrically constrained and balance-penalized optimization to identify reaction programs that are both molecularly supported and network-feasible.
