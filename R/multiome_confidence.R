@@ -122,7 +122,8 @@ rc_gene_confidence <- function(concord_ra_norm,
                                qc = NULL,
                                gpr_gene_observed = NULL,
                                concord_rt_norm = NULL,
-                               rel_rt_pos = NULL) {
+                               rel_rt_pos = NULL,
+                               return_components = FALSE) {
   base <- as.matrix(concord_ra_norm)
   det_rna <- as.matrix(det_rna)
   if (!identical(dim(base), dim(det_rna))) stop("`concord_ra_norm` and `det_rna` must have identical dimensions.", call. = FALSE)
@@ -184,6 +185,23 @@ rc_gene_confidence <- function(concord_ra_norm,
   conf <- rc_clamp01_matrix(conf)
   attr(conf, "confidence_component_missing_flag") <- length(missing_components) > 0L
   attr(conf, "missing_components") <- missing_components
+  if (isTRUE(return_components)) {
+    component_values <- lapply(components, `[[`, "value")
+    return(list(
+      gene_confidence = conf,
+      confidence = conf,
+      ra_component = component_values$ra,
+      det_component = component_values$det,
+      link_component = if (!is.null(component_values$link)) component_values$link else NULL,
+      qc_component = if (!is.null(component_values$qc)) component_values$qc else NULL,
+      gpr_observed_component = if (!is.null(component_values$gpr_observed)) component_values$gpr_observed else NULL,
+      rel_ra_pos = rel_ra_pos,
+      concord_ra_norm = rc_clamp01_matrix(base),
+      components = component_values,
+      component_weights = vapply(components, `[[`, numeric(1), "weight"),
+      missing_components = missing_components
+    ))
+  }
   conf
 }
 

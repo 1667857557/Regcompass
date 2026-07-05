@@ -24,6 +24,7 @@ rc_write_report_md <- function(file,
       lines <- c(lines, paste0("- q95_power_class counts: ", paste(paste(names(tab), as.integer(tab), sep = "="), collapse = ", ")))
     }
     if ("q95_unstable_flag" %in% colnames(q95_diagnostics)) lines <- c(lines, paste0("- q95_unstable_flag fraction: ", mean(q95_diagnostics$q95_unstable_flag, na.rm = TRUE)))
+    if ("all_missing_reaction_flag" %in% colnames(q95_diagnostics)) lines <- c(lines, paste0("- all_missing_reaction_flag fraction: ", mean(q95_diagnostics$all_missing_reaction_flag, na.rm = TRUE)))
   }
   if (!is.null(gpr_diagnostics)) {
     lines <- c(lines, "", "## GPR diagnostics", paste0("- Reactions: ", nrow(gpr_diagnostics)))
@@ -34,6 +35,19 @@ rc_write_report_md <- function(file,
     conf <- as.data.frame(confidence)
     lines <- c(lines, "", "## Confidence", paste0("- Rows: ", nrow(conf)))
     if ("reaction_confidence" %in% colnames(conf)) lines <- c(lines, add_num("Reaction confidence", conf$reaction_confidence))
+    if ("reaction_confidence_method" %in% colnames(conf)) {
+      tab <- table(conf$reaction_confidence_method, useNA = "ifany")
+      lines <- c(lines, paste0("- reaction_confidence_method: ", paste(paste(names(tab), as.integer(tab), sep = "="), collapse = ", ")))
+    }
+    if ("confidence_source" %in% colnames(conf)) {
+      tab <- table(conf$confidence_source, useNA = "ifany")
+      lines <- c(lines, paste0("- confidence_source counts: ", paste(paste(names(tab), as.integer(tab), sep = "="), collapse = ", ")))
+    }
+    for (nm in c("no_complete_gpr_group_flag", "reaction_unsupported_by_complete_gpr_flag", "any_incomplete_gpr_group_flag", "low_confidence_reaction_flag")) {
+      if (nm %in% colnames(conf)) lines <- c(lines, paste0("- ", nm, " fraction: ", mean(conf[[nm]], na.rm = TRUE)))
+    }
+    if ("complete_and_group_fraction" %in% colnames(conf)) lines <- c(lines, add_num("Complete AND-group fraction", conf$complete_and_group_fraction))
+    if ("best_and_group_observed_fraction" %in% colnames(conf)) lines <- c(lines, add_num("Best AND-group observed fraction", conf$best_and_group_observed_fraction))
   }
   if (!is.null(tau_sensitivity)) lines <- c(lines, "", "## Tau sensitivity", paste0("- Rows: ", nrow(tau_sensitivity)))
   if (!is.null(promiscuity_sensitivity)) lines <- c(lines, "", "## Promiscuity sensitivity", paste0("- Rows: ", nrow(promiscuity_sensitivity)))
