@@ -96,6 +96,21 @@ rc_q95_bootstrap <- function(x, B = 500) {
   )
 }
 
+
+rc_empty_gpr_evidence_matrix <- function(gpr_list, pool_ids) {
+  genes <- unique(tolower(unlist(gpr_list, use.names = FALSE)))
+  genes <- genes[!is.na(genes) & nzchar(genes)]
+  if (length(genes) == 0L) genes <- character(0)
+  matrix(NA_real_, nrow = length(genes), ncol = length(pool_ids), dimnames = list(genes, pool_ids))
+}
+
+rc_set_confidence_source <- function(confidence, source, detection_available = NULL) {
+  confidence$confidence_source <- source
+  confidence$evidence_source <- source
+  if (!is.null(detection_available)) confidence$detection_available <- detection_available
+  confidence
+}
+
 #' Run the simplified Layer 1 capacity workflow
 #' @export
 rc_run_layer1_capacity <- function(gpr_table,
@@ -150,11 +165,16 @@ rc_run_layer1_capacity <- function(gpr_table,
   C_raw <- rc_reaction_capacity(parsed, gene_score, promiscuity_mode = promiscuity_mode, tau = tau, and_method = and_method, or_method = or_method, BPPARAM = BPPARAM)
   calibrated <- rc_q95_calibrate(C_raw, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM, pool_meta = pool_meta, stratum_col = stratum_col)
   gpr_diag <- rc_gpr_diagnostics(parsed, rownames(gene_score))
-  confidence <- if (identical(reaction_confidence_method, "gpr_aware") && !is.null(gene_confidence)) {
-    rc_reaction_confidence_gpr_aware(parsed, gene_confidence = gene_confidence, tau_conf = tau, low_confidence_quantile = low_confidence_quantile)
-  } else {
-    rc_reaction_confidence_legacy_median(parsed, gene_confidence = gene_confidence, pool_detection = pool_detection, low_confidence_threshold = low_confidence_threshold)
-  }
+  confidence <- rc_reaction_confidence(
+    parsed,
+    gene_confidence = gene_confidence,
+    pool_detection = pool_detection,
+    method = reaction_confidence_method,
+    tau_conf = tau,
+    low_confidence_quantile = low_confidence_quantile,
+    low_confidence_threshold = low_confidence_threshold,
+    pool_ids = colnames(pool_expression)
+  )
   confidence$reaction_confidence_method <- reaction_confidence_method
   if (isTRUE(run_sensitivity)) {
     tau_sens <- rc_capacity_sensitivity(parsed, gene_score, variable = "tau", values = tau_sensitivity, promiscuity_mode = promiscuity_mode, and_method = and_method, or_method = or_method, BPPARAM = BPPARAM)
@@ -299,7 +319,10 @@ rc_reaction_confidence_gpr_aware <- function(gpr_list,
       n_and_groups_total = length(groups), n_and_groups_complete = sum(complete),
       complete_and_group_fraction = mean(complete),
       best_and_group_observed_fraction = if (all(is.na(observed))) NA_real_ else max(observed, na.rm = TRUE),
-      missing_required_subunit_flag = any(!complete), no_complete_gpr_group_flag = !any(complete),
+      any_incomplete_gpr_group_flag = any(!complete),
+      reaction_unsupported_by_complete_gpr_flag = !any(complete),
+      missing_required_subunit_flag = any(!complete),
+      no_complete_gpr_group_flag = !any(complete),
       stringsAsFactors = FALSE
     )
   })
@@ -307,7 +330,7 @@ rc_reaction_confidence_gpr_aware <- function(gpr_list,
 }
 
 
-rc_reaction_confidence_legacy_median <- function(gpr_list,
+.rc_reaction_confidence_legacy_median <- function(gpr_list,
                                                  gene_confidence = NULL,
                                                  pool_detection = NULL,
                                                  low_confidence_threshold = 0.25) {
@@ -384,99 +407,55 @@ rc_gpr_confidence_matrix <- function(gpr, evidence) {
   }, numeric(1))
 }
 
-#' Compute reaction-level evidence from gene confidence or RNA detection fallback
+#' Compute reaction-level confidence from gene confidence or RNA detection
 #'
-#' Reactions with multiome-supported GPR genes use `gene_confidence`. Reactions
-#' without gene-confidence overlap fall back independently to `pool_detection`,
-#' avoiding global all-or-nothing fallback behavior. Evidence is aggregated at
-#' the reaction-pool level with GPR semantics: AND uses the minimum observed
-#' subunit confidence and OR uses the maximum isoenzyme confidence.
+#' By default this public API uses GPR-aware aggregation for either multiome
+#' gene confidence or RNA-only detection evidence. Use `method = "legacy_median"`
+#' only to reproduce older median-plus-global-missing-penalty results.
 #' @export
 rc_reaction_confidence <- function(gpr_list,
                                    gene_confidence = NULL,
                                    pool_detection = NULL,
-                                   low_confidence_threshold = 0.25) {
-  if (!is.numeric(low_confidence_threshold) || length(low_confidence_threshold) != 1L || is.na(low_confidence_threshold)) {
-    stop("`low_confidence_threshold` must be a single numeric value.", call. = FALSE)
-  }
-  if (!is.null(gene_confidence)) {
-    gene_confidence <- as.matrix(gene_confidence)
-    if (is.null(rownames(gene_confidence)) || is.null(colnames(gene_confidence))) stop("`gene_confidence` must have gene rownames and pool colnames.", call. = FALSE)
-    rownames(gene_confidence) <- tolower(rownames(gene_confidence))
-  }
-  if (!is.null(pool_detection)) {
-    pool_detection <- as.matrix(pool_detection)
-    if (is.null(rownames(pool_detection)) || is.null(colnames(pool_detection))) stop("`pool_detection` must have gene rownames and pool colnames.", call. = FALSE)
-    rownames(pool_detection) <- tolower(rownames(pool_detection))
-  }
-  if (!is.null(gene_confidence) && !is.null(pool_detection)) {
-    if (!all(colnames(gene_confidence) %in% colnames(pool_detection))) stop("`pool_detection` is missing one or more gene_confidence columns.", call. = FALSE)
-    pool_detection <- pool_detection[, colnames(gene_confidence), drop = FALSE]
-  }
+                                   method = c("gpr_aware", "legacy_median"),
+                                   tau_conf = 0.20,
+                                   and_method = c("softmin", "min", "mean"),
+                                   or_method = c("max", "prob_or", "sum_sqrtK"),
+                                   low_confidence_quantile = NULL,
+                                   low_confidence_threshold = NULL,
+                                   pool_ids = NULL) {
+  method <- match.arg(method)
+  and_method <- match.arg(and_method)
+  or_method <- match.arg(or_method)
 
-  pool_ids <- if (!is.null(gene_confidence)) colnames(gene_confidence) else if (!is.null(pool_detection)) colnames(pool_detection) else NA_character_
-
-  rows <- lapply(names(gpr_list), function(rid) {
-    genes_all <- unique(tolower(unlist(gpr_list[[rid]], use.names = FALSE)))
-    genes_all <- genes_all[!is.na(genes_all) & nzchar(genes_all)]
-    total <- length(genes_all)
-
-    genes_conf <- if (!is.null(gene_confidence)) intersect(genes_all, rownames(gene_confidence)) else character(0)
-    if (length(genes_conf) > 0L) {
-      vals <- rc_gpr_confidence_matrix(gpr_list[[rid]], gene_confidence)
-      source <- "multiome_link_confidence"
-      n_multiome <- length(genes_conf)
-      n_evidence <- length(genes_conf)
-      det_available <- !is.null(pool_detection)
-      mean_det <- if (!is.null(pool_detection)) {
-        genes_det <- intersect(genes_all, rownames(pool_detection))
-        if (length(genes_det) == 0L) rep(NA_real_, ncol(pool_detection)) else matrixStats::colMeans2(pool_detection[genes_det, , drop = FALSE], na.rm = TRUE)
-      } else rep(NA_real_, length(vals))
-    } else if (!is.null(pool_detection)) {
-      genes_det <- intersect(genes_all, rownames(pool_detection))
-      vals <- if (length(genes_det) == 0L) rep(NA_real_, ncol(pool_detection)) else rc_gpr_confidence_matrix(gpr_list[[rid]], pool_detection)
-      source <- "rna_detection_fallback"
-      n_multiome <- 0L
-      n_evidence <- length(genes_det)
-      det_available <- TRUE
-      mean_det <- if (length(genes_det) == 0L) rep(NA_real_, ncol(pool_detection)) else matrixStats::colMeans2(pool_detection[genes_det, , drop = FALSE], na.rm = TRUE)
-    } else {
-      vals <- rep(NA_real_, length(pool_ids))
-      source <- "none"
-      n_multiome <- 0L
-      n_evidence <- 0L
-      det_available <- FALSE
-      mean_det <- vals
+  if (identical(method, "gpr_aware")) {
+    evidence <- if (!is.null(gene_confidence)) gene_confidence else pool_detection
+    source <- if (!is.null(gene_confidence)) "gpr_aware_gene_confidence" else "gpr_aware_rna_detection"
+    detection_available <- !is.null(pool_detection)
+    if (is.null(evidence)) {
+      if (is.null(pool_ids)) stop("Provide `gene_confidence` or `pool_detection` for gpr_aware confidence.", call. = FALSE)
+      evidence <- rc_empty_gpr_evidence_matrix(gpr_list, pool_ids)
+      source <- "gpr_aware_no_evidence"
+      detection_available <- FALSE
     }
-
-    miss <- if (total == 0L || identical(source, "none")) NA_real_ else 1 - n_evidence / total
-    coverage <- if (total == 0L) NA_real_ else n_multiome / total
-    penalty <- ifelse(is.na(miss), NA_real_, miss)
-    vals_penalized <- vals * (1 - ifelse(is.na(miss), 0, miss))
-    low_flag <- is.finite(vals_penalized) & vals_penalized < low_confidence_threshold
-    data.frame(
-      reaction_id = rid,
-      pool_id = pool_ids,
-      reaction_confidence = vals_penalized,
-      reaction_evidence_score = vals_penalized,
-      reaction_confidence_unpenalized = vals,
-      reaction_evidence_score_unpenalized = vals,
-      confidence_source = source,
-      evidence_source = source,
-      n_gpr_genes_total = total,
-      n_gpr_genes_multiome = n_multiome,
-      multiome_coverage_fraction = coverage,
-      missing_gpr_gene_fraction = miss,
-      missing_gene_fraction = miss,
-      missing_subunit_confidence_penalty = penalty,
-      detection_available = det_available,
-      mean_gpr_detection_rate = mean_det,
-      low_confidence_threshold = low_confidence_threshold,
-      low_confidence_reaction_flag = low_flag,
-      stringsAsFactors = FALSE
+    out <- rc_reaction_confidence_gpr_aware(
+      gpr_list = gpr_list,
+      gene_confidence = evidence,
+      pool_detection = pool_detection,
+      tau_conf = tau_conf,
+      and_method = and_method,
+      or_method = or_method,
+      low_confidence_quantile = low_confidence_quantile
     )
-  })
-  do.call(rbind, rows)
+    return(rc_set_confidence_source(out, source, detection_available = detection_available))
+  }
+
+  warning("`legacy_median` is retained only for reproducibility and is not recommended.", call. = FALSE)
+  .rc_reaction_confidence_legacy_median(
+    gpr_list = gpr_list,
+    gene_confidence = gene_confidence,
+    pool_detection = pool_detection,
+    low_confidence_threshold = if (is.null(low_confidence_threshold)) 0.25 else low_confidence_threshold
+  )
 }
 
 rc_gpr_gene_ids <- function(gpr_list) {
@@ -606,7 +585,7 @@ rc_run_layer1_from_counts <- function(gpr_table,
   rna_detection <- rna_detection[, colnames(rna_logcpm), drop = FALSE]
 
   gene_conf <- NULL
-  confidence_source <- "rna_detection"
+  gene_confidence_components <- NULL
   parsed_gpr <- rc_parse_gpr_table(gpr_table)
   metabolic_gpr_genes <- rc_metabolic_gpr_genes(parsed_gpr)
   if (!is.null(atac_counts) && !is.null(peak_gene_links)) {
@@ -632,8 +611,9 @@ rc_run_layer1_from_counts <- function(gpr_table,
       concord <- rc_concordance_null_correct(p_rna[genes, , drop = FALSE], link_conf[genes, , drop = FALSE], pool_meta = pool_meta, stratum_col = stratum_col)
       rel <- rc_fisher_shrink(rna_logcpm[genes, , drop = FALSE], link_conf[genes, , drop = FALSE])$rel_positive
       names(rel) <- genes
-      gene_conf <- rc_gene_confidence(concord, rel_ra_pos = rel, det_rna = rna_detection[genes, , drop = FALSE], link_conf = link_conf[genes, , drop = FALSE])
-      confidence_source <- "multiome_link_confidence"
+      gene_conf_out <- rc_gene_confidence(concord, rel_ra_pos = rel, det_rna = rna_detection[genes, , drop = FALSE], link_conf = link_conf[genes, , drop = FALSE], return_components = TRUE)
+      gene_conf <- gene_conf_out$confidence
+      gene_confidence_components <- gene_conf_out[c("components", "component_weights", "missing_components")]
     }
   }
 
@@ -643,7 +623,7 @@ rc_run_layer1_from_counts <- function(gpr_table,
                                 low_confidence_threshold = low_confidence_threshold, low_confidence_quantile = low_confidence_quantile,
                                 reaction_confidence_method = reaction_confidence_method, B = B, BPPARAM = BPPARAM)
   out$pool_meta <- pool_meta
-  if (identical(confidence_source, "rna_detection")) out$reaction_confidence_source <- "rna_detection"
+  out$gene_confidence_components <- gene_confidence_components
   out
 }
 

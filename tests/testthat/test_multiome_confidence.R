@@ -70,3 +70,10 @@ test_that("single-pool percentiles are undefined rather than maximal", {
   out <- rc_percentile_by_stratum(x)
   expect_true(all(is.na(out)))
 })
+
+test_that("rc_gene_confidence can return component diagnostics", {
+  mat <- matrix(c(0.2, 0.8), nrow = 1, dimnames = list("g1", c("p1", "p2")))
+  out <- rc_gene_confidence(mat, rel_ra_pos = c(g1 = 1), det_rna = mat, return_components = TRUE)
+  expect_true(all(c("confidence", "components", "component_weights", "missing_components") %in% names(out)))
+  expect_true(all(c("ra", "det") %in% names(out$components)))
+})

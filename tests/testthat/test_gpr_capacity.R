@@ -73,7 +73,7 @@ test_that("reaction confidence aggregates gene confidence by GPR AND/OR genes an
   gprs <- list(r1 = list(c("g1", "g2")), r2 = list("g3"))
   gene_conf <- matrix(c(0.2, 0.8, 0.9, 0.4, 0.6, 0.7), nrow = 3,
                       dimnames = list(c("g1", "g2", "g3"), c("p1", "p2")))
-  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf)
+  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, and_method = "min")
   expect_true(all(c("reaction_id", "pool_id", "reaction_confidence") %in% colnames(out)))
   expect_equal(out$reaction_confidence[out$reaction_id == "r1" & out$pool_id == "p1"], min(c(0.2, 0.8)))
 })
@@ -82,7 +82,7 @@ test_that("reaction confidence falls back to detection when gene confidence has 
   gprs <- list(r1 = list(c("hk1", "pfkm")))
   gene_conf <- matrix(1, nrow = 1, ncol = 2, dimnames = list("scn5a", c("p1", "p2")))
   detect <- matrix(c(1, 0.5, 0.2, 0.8), nrow = 2, dimnames = list(c("hk1", "pfkm"), c("p1", "p2")))
-  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, pool_detection = detect)
+  out <- rc_reaction_confidence(gprs, pool_detection = detect)
   expect_true(all(is.finite(out$reaction_confidence)))
   expect_true(all(out$detection_available))
 })
@@ -102,8 +102,8 @@ test_that("layer1 returns AND-method capacity long table and missing penalty", {
   long <- rc_and_method_capacity_long(gprs, gene_score)
   expect_true(all(c("min", "boltzmann_0.08", "boltzmann_0.20", "mean") %in% long$and_method))
   conf <- rc_reaction_confidence(gprs, gene_confidence = matrix(1, nrow = 1, dimnames = list("g1", "p1")))
-  expect_equal(conf$missing_subunit_confidence_penalty, 0.5)
-  expect_equal(conf$reaction_confidence, 0.5)
+  expect_true(is.na(conf$reaction_confidence))
+  expect_true(conf$reaction_unsupported_by_complete_gpr_flag)
 })
 
 test_that("rc_run_layer1_from_counts provides RNA-detection confidence source", {
@@ -112,7 +112,7 @@ test_that("rc_run_layer1_from_counts provides RNA-detection confidence source", 
   pool_map <- data.frame(pool_id = c("p1", "p1", "p2"), cell_id = colnames(counts), skipped = FALSE, sample_id = "s1", cell_type = "T")
   gpr <- data.frame(reaction_id = "r1", gpr = "g1 and g2")
   out <- rc_run_layer1_from_counts(gpr, counts, pool_map, bootstrap = FALSE)
-  expect_equal(out$reaction_confidence_source, "rna_detection")
+  expect_equal(out$reaction_confidence_source, "gpr_aware_rna_detection")
   expect_true("capacity_long" %in% names(out))
 })
 
@@ -125,7 +125,7 @@ test_that("layer1 ignores non-metabolic peak-gene links and keeps detection conf
   gpr <- data.frame(reaction_id = "r1", gpr = "HK1 and PFKM")
   links <- data.frame(peak_id = "peak1", gene = "SCN5A", weight = 1)
   out <- rc_run_layer1_from_counts(gpr, counts, pool_map, atac_counts = atac, peak_gene_links = links, bootstrap = FALSE)
-  expect_equal(out$reaction_confidence_source, "rna_detection")
+  expect_equal(out$reaction_confidence_source, "gpr_aware_rna_detection")
   expect_true(all(is.finite(out$reaction_confidence$reaction_confidence)))
 })
 
@@ -142,10 +142,10 @@ test_that("reaction confidence falls back per reaction when multiome overlap is 
   gene_conf <- matrix(c(0.8, 0.6), nrow = 1, dimnames = list("g1", c("p1", "p2")))
   detect <- matrix(c(0.2, 0.4, 0.7, 0.9), nrow = 2, dimnames = list(c("g1", "g2"), c("p1", "p2")))
   out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, pool_detection = detect)
-  expect_equal(unique(out$confidence_source[out$reaction_id == "r_multi"]), "multiome_link_confidence")
-  expect_equal(unique(out$confidence_source[out$reaction_id == "r_detect"]), "rna_detection_fallback")
-  expect_true(all(is.finite(out$reaction_confidence[out$reaction_id == "r_detect"])))
-  expect_gt(out$reaction_evidence_score[out$reaction_id == "r_detect" & out$pool_id == "p1"], 0)
+  expect_equal(unique(out$confidence_source), "gpr_aware_gene_confidence")
+  expect_true(all(is.finite(out$reaction_confidence[out$reaction_id == "r_multi"])))
+  expect_true(all(is.na(out$reaction_confidence[out$reaction_id == "r_detect"])))
+  expect_true(unique(out$reaction_unsupported_by_complete_gpr_flag[out$reaction_id == "r_detect"]))
 })
 
 test_that("Layer 1 names OR raw capacity according to OR method", {
@@ -180,12 +180,73 @@ test_that("missing AND subunits make capacity unavailable instead of reusing par
 test_that("reaction confidence uses GPR bottleneck and isoenzyme semantics", {
   gprs <- list(r_and = list(c("g1", "g2")), r_or = list("g1", "g2"), r_missing = list(c("g1", "g3")))
   gene_conf <- matrix(c(0.2, 0.8), nrow = 2, dimnames = list(c("g1", "g2"), "p1"))
-  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, low_confidence_threshold = 0.3)
+  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, and_method = "min")
   expect_equal(out$reaction_confidence[out$reaction_id == "r_and"], 0.2)
   expect_equal(out$reaction_confidence[out$reaction_id == "r_or"], 0.8)
-  expect_equal(out$reaction_confidence[out$reaction_id == "r_missing"], 0.1)
-  expect_true(out$low_confidence_reaction_flag[out$reaction_id == "r_and"])
-  expect_false(out$low_confidence_reaction_flag[out$reaction_id == "r_or"])
+  expect_true(is.na(out$reaction_confidence[out$reaction_id == "r_missing"]))
+  expect_true(out$reaction_unsupported_by_complete_gpr_flag[out$reaction_id == "r_missing"])
+})
+
+test_that("GPR-aware confidence does not penalize supported OR isoenzymes", {
+  gprs <- list(R1 = list("A", "B", "C"))
+  gene_conf <- matrix(c(0.9, 0.0, 0.0), nrow = 3, dimnames = list(c("A", "B", "C"), "p1"))
+  expect_warning(legacy <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, method = "legacy_median"), "legacy_median")
+  aware <- rc_reaction_confidence_gpr_aware(gprs, gene_confidence = gene_conf, or_method = "max")
+  expect_equal(legacy$reaction_confidence, 0)
+  expect_equal(aware$reaction_confidence, 0.9)
+  expect_false(aware$no_complete_gpr_group_flag)
+})
+
+test_that("GPR-aware confidence limits AND complexes by low subunits", {
+  gprs <- list(R2 = list(c("A", "B", "C")))
+  gene_conf <- matrix(c(0.9, 0.8, 0.1), nrow = 3, dimnames = list(c("A", "B", "C"), "p1"))
+  aware_min <- rc_reaction_confidence_gpr_aware(gprs, gene_confidence = gene_conf, and_method = "min")
+  aware_soft <- rc_reaction_confidence_gpr_aware(gprs, gene_confidence = gene_conf, and_method = "softmin", tau_conf = 0.20)
+  expect_equal(aware_min$reaction_confidence, 0.1)
+  expect_lt(aware_soft$reaction_confidence, 0.2)
+})
+
+test_that("GPR-aware confidence uses complete alternative AND groups", {
+  gprs <- list(R3 = list(c("A", "B"), "C"))
+  gene_conf <- matrix(0.85, nrow = 1, dimnames = list("C", "p1"))
+  aware <- rc_reaction_confidence_gpr_aware(gprs, gene_confidence = gene_conf)
+  expect_equal(aware$reaction_confidence, 0.85)
+  expect_false(aware$no_complete_gpr_group_flag)
+  expect_equal(aware$n_and_groups_complete, 1L)
+})
+
+test_that("GPR-aware confidence keeps fully missing reactions as NA", {
+  gprs <- list(R4 = list(c("X", "Y")))
+  gene_conf <- matrix(0.5, nrow = 1, dimnames = list("A", "p1"))
+  aware <- rc_reaction_confidence_gpr_aware(gprs, gene_confidence = gene_conf)
+  expect_true(is.na(aware$reaction_confidence))
+  expect_true(aware$no_complete_gpr_group_flag)
+})
+
+test_that("Layer 1 preserves legacy confidence mode", {
+  gpr_table <- data.frame(reaction_id = "R1", gpr = "A or B or C", stringsAsFactors = FALSE)
+  expr <- matrix(c(1, 1, 1), nrow = 3, dimnames = list(c("A", "B", "C"), "p1"))
+  gene_conf <- matrix(c(0.9, 0, 0), nrow = 3, dimnames = list(c("A", "B", "C"), "p1"))
+  out <- rc_run_layer1_capacity(gpr_table, expr, gene_confidence = gene_conf, reaction_confidence_method = "legacy_median", bootstrap = FALSE)
+  expect_equal(out$reaction_confidence_method, "legacy_median")
+  expect_equal(out$reaction_confidence$reaction_confidence, 0)
+})
+
+test_that("RNA-only GPR-aware confidence does not median-penalize OR isoenzymes", {
+  gprs <- list(R1 = list(c("A"), c("B"), c("C")))
+  det <- matrix(c(0.9, 0, 0), nrow = 3, dimnames = list(c("a", "b", "c"), "pool1"))
+  out <- rc_reaction_confidence(gprs, pool_detection = det, method = "gpr_aware")
+  expect_equal(out$reaction_confidence, 0.9)
+  expect_equal(out$confidence_source, "gpr_aware_rna_detection")
+})
+
+test_that("GPR-aware confidence distinguishes incomplete alternatives from unsupported reactions", {
+  gprs <- list(R3 = list(c("A", "B"), c("C")))
+  ev <- matrix(c(NA_real_, NA_real_, 0.85), nrow = 3, dimnames = list(c("a", "b", "c"), "pool1"))
+  out <- rc_reaction_confidence_gpr_aware(gprs, ev)
+  expect_false(out$no_complete_gpr_group_flag)
+  expect_false(out$reaction_unsupported_by_complete_gpr_flag)
+  expect_equal(out$reaction_confidence, 0.85)
 })
 
 test_that("GPR-aware confidence does not penalize supported OR isoenzymes", {

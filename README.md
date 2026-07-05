@@ -18,7 +18,7 @@ Seurat v4 RNA+ATAC counts
 → cell-type Q95 continuous shrinkage
 → reaction confidence:
    multiome/user gene confidence = GPR-aware AND/OR aggregation
-   RNA-only fallback = legacy median detection × observed GPR fraction
+   RNA-only detection = GPR-aware AND/OR aggregation
 → C_raw, C_rel, reaction_confidence, structured diagnostics
 ```
 
@@ -134,8 +134,8 @@ recommended wrapper is `rc_run_layer1_from_counts()`, which performs the same
 calculation as the manual steps below: pseudobulk pool sums, pool-level
 `log2(CPM + 1)`, robust gene z-scores, sigmoid gene scores, GPR capacity,
 Q95 calibration, and reaction confidence. With multiome/user gene confidence,
-reaction confidence is GPR-aware by default; RNA-only detection keeps the
-legacy median fallback.
+reaction confidence is GPR-aware by default for both multiome gene confidence
+and RNA-only detection. Legacy median mode is retained only for reproducibility.
 
 ```r
 library(RegCompassR)
@@ -171,7 +171,7 @@ layer1 <- rc_run_layer1_from_counts(
   promiscuity_mode = "sqrt",
   and_method = "boltzmann",
   tau = 0.20,
-  reaction_confidence_method = "legacy_median",
+  reaction_confidence_method = "gpr_aware",
   bootstrap = TRUE,
   B = 500
 )
@@ -260,7 +260,7 @@ layer1 <- rc_run_layer1_capacity(
   promiscuity_mode = "sqrt",
   and_method = "boltzmann",
   tau = 0.20,
-  reaction_confidence_method = "legacy_median",
+  reaction_confidence_method = "gpr_aware",
   bootstrap = TRUE,
   B = 500
 )
@@ -356,22 +356,23 @@ conf <- rc_reaction_confidence_gpr_aware(
 
 Key output columns include `reaction_confidence`, `n_and_groups_total`,
 `n_and_groups_complete`, `complete_and_group_fraction`,
-`best_and_group_observed_fraction`, `missing_required_subunit_flag`, and
-`no_complete_gpr_group_flag`.
+`best_and_group_observed_fraction`, `any_incomplete_gpr_group_flag`,
+`reaction_unsupported_by_complete_gpr_flag`, and the deprecated alias
+`missing_required_subunit_flag`.
 
-The RNA-only fallback and reproducibility mode use legacy median aggregation:
+The deprecated reproducibility mode `method = "legacy_median"` uses median aggregation:
 
 \[
 Conf_{r,p}=median(Evidence_{g,p}:g\in GPR_r)\times(1-missing\_gpr\_gene\_fraction)
 \]
 
-Select it explicitly with `reaction_confidence_method = "legacy_median"`.
+Select it explicitly only when reproducing older reports with `reaction_confidence_method = "legacy_median"`.
 
 ## Outputs and diagnostics
 
 The main workflow returns `C_raw`, `C_rel`, `reaction_capacity_L1`,
 `reaction_confidence`, `reaction_confidence_method`,
-`reaction_confidence_source`, `reaction_confidence_summary`, `q95_diagnostics`,
+`reaction_confidence_source`, `reaction_confidence_summary`, `gene_confidence_components`, `q95_diagnostics`,
 `gpr_diagnostics`, `tau_sensitivity`, `promiscuity_sensitivity`,
 `and_method_sensitivity`, `capacity_long`, and `parsed_gpr`.
 `rc_run_layer1_from_counts()` also returns `pool_meta`.
@@ -379,7 +380,7 @@ The main workflow returns `C_raw`, `C_rel`, `reaction_capacity_L1`,
 Q95 diagnostics include `q95_power_class`, bootstrap fields when requested, and
 `all_missing_reaction_flag`. Reactions with all-`NA` `C_raw` remain `NA` in
 `C_rel` and should be excluded from downstream rankings, along with reactions
-that have `no_complete_gpr_group_flag` or `q95_power_class == "very_low"`.
+that have `reaction_unsupported_by_complete_gpr_flag` or `q95_power_class == "very_low"`. Use `rc_filter_valid_reactions()` and `rc_rank_reactions()` for consistent downstream filtering/ranking.
 
 `rc_sample_aggregate()` aggregates pool-level reaction scores to biological sample × annotated cell-type medians, so downstream analysis does not treat pools as independent biological replicates. `rc_sample_summary()` provides long-form median/IQR summaries by sample, cell type, and optional condition. Statistical modeling and regulator ranking are left to downstream project-specific analyses rather than treated as built-in causal inference.
 
@@ -401,10 +402,11 @@ that have `no_complete_gpr_group_flag` or `q95_power_class == "very_low"`.
 | `rc_q95_shrink()`, `rc_q95_calibrate()`, `rc_q95_bootstrap()` | Q95 calibration | Produces bounded `C_rel`; all-missing reactions stay `NA`. |
 | `rc_percentile_by_stratum()`, `rc_concordance_null_correct()`, `rc_fisher_shrink()`, `rc_link_confidence()`, `rc_gene_confidence()` | Multiome gene confidence | Converts RNA/ATAC concordance and peak-gene links into gene-level confidence. |
 | `rc_recompute_signac_peak_gene_links()`, `rc_filter_peak_gene_links_to_gpr()`, `rc_atac_pool_logcpm()` | ATAC link utilities | Recompute/filter metabolic peak-gene links for multiome confidence. |
-| `rc_reaction_confidence_gpr_aware()`, `rc_reaction_confidence()`, `rc_reaction_confidence_summary()` | Reaction confidence | Prefer GPR-aware confidence for gene-confidence input; legacy median remains available for RNA fallback/reproducibility. |
+| `rc_reaction_confidence_gpr_aware()`, `rc_reaction_confidence()`, `rc_reaction_confidence_summary()` | Reaction confidence | GPR-aware aggregation is the default for multiome and RNA-only evidence; legacy median is reproducibility-only. |
 | `rc_run_layer1_capacity()`, `rc_layer1_capacity()` | Core Layer 1 runner | Starts from pool expression and optional confidence inputs. |
 | `rc_run_layer1_from_counts()`, `rc_run_layer1_from_seurat()` | End-to-end runners | Start from counts or Seurat object and return capacities, confidence, and diagnostics. |
 | `rc_capacity_sensitivity()`, `rc_and_method_capacity_long()`, `rc_and_method_sensitivity()` | Sensitivity analysis | Compare tau, promiscuity, and AND aggregation choices. |
+| `rc_filter_valid_reactions()`, `rc_rank_reactions()` | Filtering and ranking | Exclude all-missing, unsupported-GPR, very-low-Q95 reactions before ranking. |
 | `rc_sample_aggregate()`, `rc_sample_summary()` | Sample-aware summaries | Aggregate pool-level results to biological sample/cell-type summaries. |
 | `rc_export_sample_matrix()`, `rc_export_long_table()`, `rc_write_report_md()` | Export/report helpers | Write matrices, long tables, and Markdown summaries. |
 | `rc_default_bpparam()`, `rc_parallel_lapply()` | Parallel execution | Uses BiocParallel when installed; otherwise deterministic sequential fallback. |

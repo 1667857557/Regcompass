@@ -73,3 +73,6 @@ export(rc_filter_peak_gene_links_to_gpr)
 export(rc_reaction_confidence_summary)
 
 export(rc_reaction_confidence_gpr_aware)
+
+export(rc_filter_valid_reactions)
+export(rc_rank_reactions)
