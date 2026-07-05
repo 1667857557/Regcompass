@@ -9,7 +9,7 @@ RegCompassR now focuses on a reproducible, diagnostic Layer 1 workflow:
 - validate annotated Seurat v4 RNA+ATAC objects and extract raw counts with `rc_validate_seurat()` / `rc_extract_inputs()` plus the compatibility aliases `rc_validate_seurat_v4()` / `rc_extract_seurat_v4()`;
 - create sample-aware, optional condition/state-aware micropools with `rc_make_pools()` and `rc_make_pool_seed_replicates()`;
 - aggregate raw RNA counts by pool with `rc_pseudobulk_counts()`, remove empty pools with `rc_filter_empty_pools()`, and normalize to pool-level `log2(CPM + 1)` with `rc_logcpm()`;
-- compute robust gene scores, GPR-aware reaction capacities, Q95 calibration, reaction confidence, and sensitivity diagnostics through `rc_run_layer1_from_counts()` / `rc_run_layer1_capacity()`;
+- compute robust gene scores, GPR-aware reaction capacities, Q95 calibration, GPR-aware reaction confidence, and sensitivity diagnostics through `rc_run_layer1_from_counts()` / `rc_run_layer1_capacity()`;
 - download Human-GEM and prepare a RegCompass-compatible GPR table plus the corresponding metabolic GPR gene set;
 - optionally compute ATAC-supported multiome gene confidence from pooled ATAC accessibility and curated or externally regenerated peak-gene links;
 - summarize, export, and report pool-level results at sample-aware levels.
@@ -37,7 +37,7 @@ Pooling remains sample-aware: cells are never pooled across samples, and optiona
 
 The core capacity calculation keeps raw counts until after pool aggregation. Gene scores use robust z-scores over pool-level logCPM values followed by a sigmoid transformation. GPR AND rules use the default Boltzmann minimum-biased average with `tau = 0.20`; OR rules sum isoenzyme-group capacities. Q95 calibration uses continuous shrinkage toward global Q95 values and can report bootstrap uncertainty.
 
-The workflow returns capacity matrices and diagnostics including Q95 power classes, GPR gene coverage, hard-min/tau/promiscuity/AND-method sensitivity summaries, long-form capacity tables, parsed GPR rules, pool metadata, and the source of reaction confidence.
+The workflow returns capacity matrices and diagnostics including Q95 power classes, all-missing reaction flags, GPR gene coverage, hard-min/tau/promiscuity/AND-method sensitivity summaries, long-form capacity tables, parsed GPR rules, pool metadata, the selected reaction confidence method, and the source of reaction confidence. All-NA `C_raw` reactions remain `NA` in `C_rel`.
 
 
 ## Human-GEM and metabolic peak-gene links
@@ -48,7 +48,7 @@ The workflow returns capacity matrices and diagnostics including Q95 power class
 
 ## Multiome confidence
 
-When pooled ATAC counts and curated peak-gene links are supplied, the wrapper filters links to genes present in the GPR set, computes pooled ATAC logCPM, derives RNA and ATAC percentiles within the selected stratum, estimates null-corrected RNA/ATAC concordance, applies Fisher shrinkage to positive association evidence, and combines nonnegative components into gene confidence. Single-pool strata produce undefined percentiles rather than artificially high confidence.
+When pooled ATAC counts and curated peak-gene links are supplied, the wrapper filters links to genes present in the GPR set, computes pooled ATAC logCPM, derives RNA and ATAC percentiles within the selected stratum, estimates null-corrected RNA/ATAC concordance, applies Fisher shrinkage to positive association evidence, and combines nonnegative components into gene confidence. Reaction confidence then uses `rc_reaction_confidence_gpr_aware()`: AND groups are bottleneck-aware (`softmin` by default), OR isoenzymes use `max` by default, incomplete AND groups are diagnosed, and reactions with no complete GPR group remain `NA`. Single-pool strata produce undefined percentiles rather than artificially high confidence.
 
 ## Sample-aware summaries and reports
 

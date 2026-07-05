@@ -229,9 +229,12 @@ rc_run_layer1_from_seurat <- function(gpr_table,
                                       or_method = c("sum_sqrtK", "max", "prob_or", "sum"),
                                       bootstrap = FALSE,
                                       low_confidence_threshold = 0.25,
+                                      low_confidence_quantile = NULL,
+                                      reaction_confidence_method = c("gpr_aware", "legacy_median"),
                                       B = 500,
                                       BPPARAM = NULL) {
   or_method <- match.arg(or_method)
+  reaction_confidence_method <- match.arg(reaction_confidence_method)
   inputs <- rc_extract_inputs(
     object = object,
     rna_assay = rna_assay,
@@ -273,6 +276,8 @@ rc_run_layer1_from_seurat <- function(gpr_table,
     or_method = or_method,
     bootstrap = bootstrap,
     low_confidence_threshold = low_confidence_threshold,
+    low_confidence_quantile = low_confidence_quantile,
+    reaction_confidence_method = reaction_confidence_method,
     B = B,
     BPPARAM = BPPARAM
   )
