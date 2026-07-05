@@ -228,6 +228,7 @@ rc_run_layer1_from_seurat <- function(gpr_table,
                                       tau = 0.20,
                                       or_method = c("sum_sqrtK", "max", "prob_or", "sum"),
                                       bootstrap = FALSE,
+                                      low_confidence_threshold = 0.25,
                                       B = 500,
                                       BPPARAM = NULL) {
   or_method <- match.arg(or_method)
@@ -271,6 +272,7 @@ rc_run_layer1_from_seurat <- function(gpr_table,
     tau = tau,
     or_method = or_method,
     bootstrap = bootstrap,
+    low_confidence_threshold = low_confidence_threshold,
     B = B,
     BPPARAM = BPPARAM
   )

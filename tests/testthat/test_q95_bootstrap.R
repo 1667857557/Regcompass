@@ -24,7 +24,7 @@ test_that("rc_reaction_confidence distinguishes missing detection input", {
   gprs <- list(r1 = list(c("g1", "g2")))
   out <- rc_reaction_confidence(gprs, pool_detection = NULL)
   expect_false(out$detection_available)
-  expect_equal(out$missing_gene_fraction, 0)
+  expect_true(is.na(out$missing_gene_fraction))
   expect_true(is.na(out$mean_gpr_detection_rate))
 })
 
@@ -36,4 +36,22 @@ test_that("rc_q95_calibrate bootstraps reaction-stratum rows", {
   out <- rc_q95_calibrate(C_raw, pool_meta = pool_meta, stratum_col = "cell_type", bootstrap = TRUE, B = 20)
   expect_equal(nrow(out$Q), 4L)
   expect_true(all(is.na(out$Q$q95_ci_width[out$Q$reaction_id == "r2" & out$Q$stratum == "A"])))
+})
+
+test_that("Q95 calibration preserves all-NA reactions as NA", {
+  C_raw <- rbind(r_all_na = c(NA_real_, NA_real_), r_finite = c(0, 1))
+  colnames(C_raw) <- c("p1", "p2")
+  out <- rc_q95_calibrate(C_raw, bootstrap = FALSE)
+  expect_true(all(is.na(out$C_rel["r_all_na", ])))
+  expect_false(any(out$C_rel["r_all_na", ] == 1, na.rm = TRUE))
+})
+
+test_that("Q95 low-n diagnostics are stratum-specific", {
+  C_raw <- rbind(r1 = seq_len(40))
+  colnames(C_raw) <- paste0("p", seq_len(40))
+  pool_meta <- data.frame(pool_id = colnames(C_raw), cell_type = rep(c("A", "B"), each = 20))
+  out <- rc_q95_calibrate(C_raw, pool_meta = pool_meta, stratum_col = "cell_type", bootstrap = FALSE)
+  expect_equal(out$Q$n_finite, c(20L, 20L))
+  expect_equal(out$Q$n_finite_global, c(40L, 40L))
+  expect_false(any(out$Q$low_n_flag))
 })

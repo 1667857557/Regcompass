@@ -69,13 +69,13 @@ test_that("safe scale uses sigma-consistent MAD/IQR and clips z-scores", {
   expect_true(all(z <= 2 & z >= -2))
 })
 
-test_that("reaction confidence aggregates gene confidence by GPR genes and pools", {
+test_that("reaction confidence aggregates gene confidence by GPR AND/OR genes and pools", {
   gprs <- list(r1 = list(c("g1", "g2")), r2 = list("g3"))
   gene_conf <- matrix(c(0.2, 0.8, 0.9, 0.4, 0.6, 0.7), nrow = 3,
                       dimnames = list(c("g1", "g2", "g3"), c("p1", "p2")))
   out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf)
   expect_true(all(c("reaction_id", "pool_id", "reaction_confidence") %in% colnames(out)))
-  expect_equal(out$reaction_confidence[out$reaction_id == "r1" & out$pool_id == "p1"], stats::median(c(0.2, 0.8)))
+  expect_equal(out$reaction_confidence[out$reaction_id == "r1" & out$pool_id == "p1"], min(c(0.2, 0.8)))
 })
 
 test_that("reaction confidence falls back to detection when gene confidence has no GPR overlap", {
@@ -167,4 +167,23 @@ test_that("AND-method sensitivity keeps all-NA ranges as NA", {
   out <- rc_and_method_sensitivity(long)
   expect_true(is.na(out$capacity_range))
   expect_false(out$tau_sensitive_flag)
+})
+
+test_that("missing AND subunits make capacity unavailable instead of reusing partial complex", {
+  gprs <- list(r1 = list(c("g1", "g2")), r2 = list(c("g1", "g2"), "g3"))
+  gene_score <- matrix(c(0.8, 0.4), nrow = 2, dimnames = list(c("g1", "g3"), "p1"))
+  out <- rc_reaction_capacity(gprs, gene_score, promiscuity_mode = "none", or_method = "max")
+  expect_true(is.na(out["r1", "p1"]))
+  expect_equal(out["r2", "p1"], 0.4)
+})
+
+test_that("reaction confidence uses GPR bottleneck and isoenzyme semantics", {
+  gprs <- list(r_and = list(c("g1", "g2")), r_or = list("g1", "g2"), r_missing = list(c("g1", "g3")))
+  gene_conf <- matrix(c(0.2, 0.8), nrow = 2, dimnames = list(c("g1", "g2"), "p1"))
+  out <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, low_confidence_threshold = 0.3)
+  expect_equal(out$reaction_confidence[out$reaction_id == "r_and"], 0.2)
+  expect_equal(out$reaction_confidence[out$reaction_id == "r_or"], 0.8)
+  expect_equal(out$reaction_confidence[out$reaction_id == "r_missing"], 0.1)
+  expect_true(out$low_confidence_reaction_flag[out$reaction_id == "r_and"])
+  expect_false(out$low_confidence_reaction_flag[out$reaction_id == "r_or"])
 })

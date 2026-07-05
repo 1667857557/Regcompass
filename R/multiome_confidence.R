@@ -126,32 +126,61 @@ rc_gene_confidence <- function(concord_ra_norm,
   base <- as.matrix(concord_ra_norm)
   det_rna <- as.matrix(det_rna)
   if (!identical(dim(base), dim(det_rna))) stop("`concord_ra_norm` and `det_rna` must have identical dimensions.", call. = FALSE)
-  zeros <- matrix(0, nrow = nrow(base), ncol = ncol(base), dimnames = dimnames(base))
-  if (is.null(link_conf)) link_conf <- zeros else link_conf <- rc_align_component_matrix(link_conf, base, "link_conf")
-  if (is.null(concord_rt_norm)) concord_rt_norm <- zeros else concord_rt_norm <- rc_align_component_matrix(concord_rt_norm, base, "concord_rt_norm")
-  if (is.null(rel_rt_pos)) rel_rt_pos <- rep(0, nrow(base))
   missing_components <- character(0)
+  if (is.null(link_conf)) {
+    missing_components <- c(missing_components, "link_conf")
+  } else {
+    link_conf <- rc_align_component_matrix(link_conf, base, "link_conf")
+  }
+  if (is.null(concord_rt_norm)) {
+    missing_components <- c(missing_components, "concord_rt_norm")
+  } else {
+    concord_rt_norm <- rc_align_component_matrix(concord_rt_norm, base, "concord_rt_norm")
+  }
+  if (is.null(rel_rt_pos)) {
+    missing_components <- c(missing_components, "rel_rt_pos")
+  }
   if (is.null(gpr_gene_observed)) {
-    gpr_gene_observed <- zeros
     missing_components <- c(missing_components, "gpr_gene_observed")
-  } else gpr_gene_observed <- rc_align_component_matrix(gpr_gene_observed, base, "gpr_gene_observed")
+  } else {
+    gpr_gene_observed <- rc_align_component_matrix(gpr_gene_observed, base, "gpr_gene_observed")
+  }
   if (is.null(qc)) {
-    qc <- rep(0, ncol(base))
     missing_components <- c(missing_components, "qc")
   }
-  if (!identical(dim(base), dim(link_conf)) || !identical(dim(base), dim(concord_rt_norm)) || !identical(dim(base), dim(as.matrix(gpr_gene_observed)))) {
-    stop("All matrix confidence components must have identical dimensions.", call. = FALSE)
-  }
   rel_ra_pos <- rc_align_reliability_vector(rel_ra_pos, rownames(base), "rel_ra_pos")
-  rel_rt_pos <- rc_align_reliability_vector(rel_rt_pos, rownames(base), "rel_rt_pos")
-  if (length(qc) != ncol(base)) stop("`qc` must have one value per pool/column.", call. = FALSE)
-  qc_mat <- matrix(pmax(0, pmin(1, as.numeric(qc))), nrow = nrow(base), ncol = ncol(base), byrow = TRUE)
-  conf <- 0.25 * sweep(rc_clamp01_matrix(base), 1, rel_ra_pos, "*") +
-    0.15 * sweep(rc_clamp01_matrix(concord_rt_norm), 1, rel_rt_pos, "*") +
-    0.20 * rc_clamp01_matrix(det_rna) +
-    0.15 * rc_clamp01_matrix(link_conf) +
-    0.15 * qc_mat +
-    0.10 * rc_clamp01_matrix(gpr_gene_observed)
+  if (!is.null(rel_rt_pos)) rel_rt_pos <- rc_align_reliability_vector(rel_rt_pos, rownames(base), "rel_rt_pos")
+
+  components <- list(
+    ra = list(weight = 0.25, value = sweep(rc_clamp01_matrix(base), 1, rel_ra_pos, "*")),
+    det = list(weight = 0.20, value = rc_clamp01_matrix(det_rna))
+  )
+  if (!is.null(concord_rt_norm) && !is.null(rel_rt_pos)) {
+    components$rt <- list(weight = 0.15, value = sweep(rc_clamp01_matrix(concord_rt_norm), 1, rel_rt_pos, "*"))
+  }
+  if (!is.null(link_conf)) {
+    components$link <- list(weight = 0.15, value = rc_clamp01_matrix(link_conf))
+  }
+  if (!is.null(qc)) {
+    if (length(qc) != ncol(base)) stop("`qc` must have one value per pool/column.", call. = FALSE)
+    qc_mat <- matrix(pmax(0, pmin(1, as.numeric(qc))), nrow = nrow(base), ncol = ncol(base), byrow = TRUE)
+    components$qc <- list(weight = 0.15, value = qc_mat)
+  }
+  if (!is.null(gpr_gene_observed)) {
+    components$gpr_observed <- list(weight = 0.10, value = rc_clamp01_matrix(gpr_gene_observed))
+  }
+
+  num <- matrix(0, nrow = nrow(base), ncol = ncol(base), dimnames = dimnames(base))
+  den <- matrix(0, nrow = nrow(base), ncol = ncol(base), dimnames = dimnames(base))
+  for (component in components) {
+    val <- component$value
+    if (!identical(dim(base), dim(val))) stop("All matrix confidence components must have identical dimensions.", call. = FALSE)
+    ok <- is.finite(val)
+    num[ok] <- num[ok] + component$weight * val[ok]
+    den[ok] <- den[ok] + component$weight
+  }
+  conf <- num / den
+  conf[den == 0] <- NA_real_
   conf <- rc_clamp01_matrix(conf)
   attr(conf, "confidence_component_missing_flag") <- length(missing_components) > 0L
   attr(conf, "missing_components") <- missing_components

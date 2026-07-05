@@ -98,7 +98,11 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and
   and_method <- match.arg(and_method)
   or_method <- match.arg(or_method)
   and_caps <- vapply(parsed_gpr, function(and_group) {
-    vals <- gene_score_vec[and_group]
+    genes <- unique(tolower(and_group))
+    vals <- gene_score_vec[genes]
+    if (length(genes) == 0L || anyNA(vals) || any(!is.finite(vals))) {
+      return(NA_real_)
+    }
     rc_and_capacity(vals, method = and_method, tau = tau)
   }, numeric(1))
 
