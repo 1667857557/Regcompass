@@ -44,6 +44,7 @@ test_that("Q95 calibration preserves all-NA reactions as NA", {
   out <- rc_q95_calibrate(C_raw, bootstrap = FALSE)
   expect_true(all(is.na(out$C_rel["r_all_na", ])))
   expect_false(any(out$C_rel["r_all_na", ] == 1, na.rm = TRUE))
+  expect_true(out$Q$all_missing_reaction_flag[out$Q$reaction_id == "r_all_na"])
 })
 
 test_that("Q95 low-n diagnostics are stratum-specific", {
