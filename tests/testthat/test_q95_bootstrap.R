@@ -22,10 +22,7 @@ test_that("rc_q95_calibrate includes bootstrap diagnostics", {
 
 test_that("rc_reaction_confidence distinguishes missing detection input", {
   gprs <- list(r1 = list(c("g1", "g2")))
-  out <- rc_reaction_confidence(gprs, pool_detection = NULL)
-  expect_false(out$detection_available)
-  expect_true(is.na(out$missing_gene_fraction))
-  expect_true(is.na(out$mean_gpr_detection_rate))
+  expect_error(rc_reaction_confidence(gprs, pool_detection = NULL), "Provide `gene_confidence` or `pool_detection`")
 })
 
 test_that("rc_q95_calibrate bootstraps reaction-stratum rows", {
@@ -44,6 +41,7 @@ test_that("Q95 calibration preserves all-NA reactions as NA", {
   out <- rc_q95_calibrate(C_raw, bootstrap = FALSE)
   expect_true(all(is.na(out$C_rel["r_all_na", ])))
   expect_false(any(out$C_rel["r_all_na", ] == 1, na.rm = TRUE))
+  expect_true(out$Q$all_missing_reaction_flag[out$Q$reaction_id == "r_all_na"])
 })
 
 test_that("Q95 low-n diagnostics are stratum-specific", {
