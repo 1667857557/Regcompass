@@ -74,3 +74,16 @@ rc_layer2_invalid_reactions <- function(layer1) {
   }
   invalid
 }
+
+#' Select target reactions without expanding the network
+#' @export
+rc_select_target_reactions <- function(layer1, targets = NULL, pathway = NULL, subsystem = NULL, method = c("custom", "top_capacity", "differential", "pathway"), top_n = 100, min_C_rel = 0.15, min_confidence = 0.25, require_complete_gpr = TRUE, exclude_low_q95_power = TRUE) {
+  method <- match.arg(method)
+  if (!is.null(targets) || method == "custom") return(data.frame(reaction_id = unique(as.character(targets)), selection_reason = "custom", stringsAsFactors = FALSE))
+  C <- as.matrix(layer1$C_rel); conf <- if (!is.null(layer1$reaction_confidence)) rc_layer2_confidence_matrix(layer1$reaction_confidence, C) else matrix(1, nrow(C), ncol(C), dimnames=dimnames(C))
+  keep <- rownames(C)[rowMedians_safe(C) >= min_C_rel | rowMedians_safe(conf) >= min_confidence]
+  if (exclude_low_q95_power && is.data.frame(layer1$q95_diagnostics) && "q95_power_class" %in% colnames(layer1$q95_diagnostics)) keep <- setdiff(keep, layer1$q95_diagnostics$reaction_id[layer1$q95_diagnostics$q95_power_class == "very_low"])
+  score <- rowMedians_safe(C[keep,,drop=FALSE])
+  keep <- names(sort(score, decreasing=TRUE))[seq_len(min(top_n, length(score)))]
+  data.frame(reaction_id=keep, selection_reason=method, stringsAsFactors=FALSE)
+}
