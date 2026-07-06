@@ -1,55 +1,34 @@
-# RegCompassR v0.9 implementation audit
+# RegCompassR Implementation Audit: Metacell-first Code Alignment
 
-This audit summarizes the current code-level scope after simplifying RegCompassR to a Layer 1 reaction-capacity workflow. It supersedes the older v0.6-v0.7 selected-demand QP planning notes.
+This audit reflects the current metacell-first implementation rather than the historical pool/micropool design.
 
-## Current package scope
+## Public workflow now implemented
 
-RegCompassR now focuses on a reproducible, diagnostic Layer 1 workflow:
+- `rc_make_supercell2_metacells()` builds SuperCell2.0 metacells per `sample_id × condition × cell_type` stratum, with optional `state_col` and `label_col`.
+- `rc_import_supercell2_metacells()` imports saved metacell outputs and validates count/metadata alignment.
+- `rc_validate_metacell_inputs()`, `rc_build_metacell_metadata()`, `rc_filter_empty_metacells()`, `rc_metacell_detection()`, and `rc_atac_metacell_logcpm()` provide metacell-level input and normalization utilities.
+- `rc_run_layer1_from_metacells()` runs Layer 1 from raw metacell RNA counts and optional ATAC/peak-gene evidence.
+- `rc_recompute_metacell_peak_gene_links()` recomputes metabolic peak-gene links on metacell Signac objects when Signac dependencies and fragments are available.
+- `rc_metacell_sample_summary()`, `rc_metacell_diagnostics()`, and `rc_write_metacell_report()` summarize and report metacell-level results.
 
-- validate annotated Seurat v4 RNA+ATAC objects and extract raw counts with `rc_validate_seurat()` / `rc_extract_inputs()` plus the compatibility aliases `rc_validate_seurat_v4()` / `rc_extract_seurat_v4()`;
-- create sample-aware, optional condition/state-aware micropools with `rc_make_pools()` and `rc_make_pool_seed_replicates()`, including single target-cell-class pooling and optional target-vs-other-cell controls;
-- aggregate raw RNA counts by pool with `rc_pseudobulk_counts()`, remove empty pools with `rc_filter_empty_pools()`, and normalize to pool-level `log2(CPM + 1)` with `rc_logcpm()`;
-- compute robust gene scores, GPR-aware reaction capacities, Q95 calibration, GPR-aware reaction confidence, and sensitivity diagnostics through `rc_run_layer1_from_counts()` / `rc_run_layer1_capacity()`;
-- download Human-GEM and prepare a RegCompass-compatible GPR table plus the corresponding metabolic GPR gene set;
-- optionally compute ATAC-supported multiome gene confidence from pooled ATAC accessibility and curated or externally regenerated peak-gene links;
-- summarize, export, and report pool-level results at sample-aware levels.
+## Important code-backed limitations
 
-## Removed QP planning layer
+- Strata below `min_cells_per_stratum` are skipped and currently save QC only.
+- Fragment files are delegated to SuperCell. RegCompassR passes fragment-related arguments and imports files matching `fragments/*.tsv.gz`; it does not guarantee fixed fragment file names.
+- The Layer 1 internals still use some historical `pool_*` argument names. The public wrapper hides this by creating an internal `pool_id` alias from `metacell_id`.
+- Legacy pseudobulk functions remain in `R/pseudobulk.R` for compatibility and internal fallback use, but are not exported in `NAMESPACE`.
+- Automated R tests could not be executed in the current environment because `Rscript` is unavailable.
 
-The following modules are intentionally out of scope in the current simplified package and their source files now contain removal placeholders:
+## NAMESPACE audit
 
-- baseline GEM/QP construction;
-- selected-demand QP sweeps;
-- reaction-selection planning for QP workloads;
-- regulator-ranking/causal-driver layers.
+The public namespace exports the metacell APIs and no longer exports `rc_make_pools()`, `rc_make_pool_seed_replicates()`, `rc_pseudobulk_counts()`, `rc_filter_empty_pools()`, `rc_build_pool_metadata()`, `rc_pool_detection()`, `rc_atac_pool_logcpm()`, or `rc_pool_diagnostics()`.
 
-Tutorials should therefore describe `C_rel` as relative reaction capacity potential and should not present it as a hard flux bound or as direct flux inference.
+## Test audit
 
-## Input and metadata checks
+The repository now includes `tests/testthat/test_metacell.R`, which checks:
 
-The current input API requires a Seurat object with paired RNA and ATAC assays containing the same cell barcodes. Metadata checks cover required sample and cell-type columns plus optional condition, batch, and state columns. `rc_check_metadata()` and `rc_write_input_summary()` provide human-readable input summaries including sample/cell-type counts, missing metadata counts, optional condition-by-batch tables, and state-source records.
+1. metacell metadata construction and validation;
+2. Layer 1 execution from toy raw metacell counts;
+3. sample-summary output fields for metacell diagnostics.
 
-## Pooling and pseudobulk checks
-
-Pooling remains sample-aware: cells are never pooled across samples, and optional condition/cell-type/state grouping columns define independent pooling strata. When `target_celltype` is supplied without a contrast/control option, pooling is restricted to that major cell class. When `include_other_celltypes_as_control = TRUE`, all non-target cells are retained as an explicit `other` control while original labels are preserved. `rc_drop_na_grouping()` removes cells with missing grouping values before pool construction. `rc_check_pseudobulk_mapping()` provides spot checks that pseudobulk columns are consistent with pool membership.
-
-## Layer 1 capacity and diagnostics
-
-The core capacity calculation keeps raw counts until after pool aggregation. Gene scores use robust z-scores over pool-level logCPM values followed by a sigmoid transformation. GPR AND rules use the default Boltzmann minimum-biased average with `tau = 0.20`; OR rules use the default `sum_sqrtK` formula, dividing summed isoenzyme-group capacities by the square root of the number of groups. Q95 calibration uses continuous shrinkage toward global Q95 values and can report bootstrap uncertainty.
-
-The workflow returns capacity matrices and diagnostics including Q95 power classes, all-missing reaction flags, GPR gene coverage, hard-min/tau/promiscuity/AND-method sensitivity summaries, long-form capacity tables, parsed GPR rules, pool metadata, the selected reaction confidence method, and the source of reaction confidence. All-NA `C_raw` reactions remain `NA` in `C_rel`.
-
-
-## Human-GEM and metabolic peak-gene links
-
-`rc_download_humangem_gpr_table()` downloads a Human-GEM GitHub archive, reads `model/genes.tsv`, `model/reactions.tsv`, and `model/Human-GEM.yml`, converts Human-GEM gene identifiers to symbols by default, and returns a RegCompass-compatible `gpr_table`, `metabolic_genes`, raw reaction rules, and source annotation tables.
-
-`rc_metabolic_gpr_genes()` extracts the metabolic GPR gene set from any parsed or tabular GPR input. `rc_recompute_signac_peak_gene_links()` uses that gene set to call `Signac::LinkPeaks(genes.use = metabolic_genes)` inside RegCompassR, extracts `Signac::Links()` from the peak assay, converts the Signac output to the package-standard `peak_id`/`gene`/`weight` table, and filters links to GPR metabolic genes. The Seurat-level wrapper `rc_run_layer1_from_seurat()` defaults to `recompute_peak_gene_links = TRUE`, so the default Seurat workflow uses internally recomputed Signac metabolic links; `rc_run_layer1_from_counts()` remains the lower-level entry point for explicitly supplied counts and link tables.
-
-## Multiome confidence
-
-When pooled ATAC counts and curated peak-gene links are supplied, the wrapper filters links to genes present in the GPR set, computes pooled ATAC logCPM, derives RNA and ATAC percentiles within the selected stratum, estimates null-corrected RNA/ATAC concordance, applies Fisher shrinkage to positive association evidence, and combines nonnegative components into gene confidence with optional component diagnostics (`ra_component`, `det_component`, `link_component`, `qc_component`, `gpr_observed_component`, `rel_ra_pos`, and `concord_ra_norm`). Reaction confidence then uses `rc_reaction_confidence_gpr_aware()`: AND groups are bottleneck-aware (`softmin` by default), OR isoenzymes use `max` by default, incomplete AND groups are diagnosed, and reactions with no complete GPR group remain `NA`. RNA-only detection now uses the same GPR-aware aggregation rather than legacy median scoring. Single-pool strata produce undefined percentiles rather than artificially high confidence.
-
-## Sample-aware summaries and reports
-
-`rc_sample_aggregate()` aggregates pool-level matrices to biological sample × annotated cell-type medians. `rc_sample_summary()` returns long-form sample/cell-type/condition summaries with median and IQR. Export helpers write sample matrices and long pool-level tables, `rc_filter_valid_reactions()` / `rc_rank_reactions()` provide consistent downstream filtering/ranking, and `rc_write_report_md()` generates a compact Markdown diagnostic report with GPR-aware confidence diagnostics.
+Historical pool/pseudobulk/diagnostics tests were removed because those APIs are no longer the documented main path.
