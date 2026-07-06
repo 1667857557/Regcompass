@@ -1,6 +1,6 @@
 # RegCompassR
 
-RegCompassR is a simplified Layer 1 tool for **multiome-supported, GPR-aware, sample-aware reaction capacity potential** analysis from annotated Seurat v4 RNA+ATAC objects.
+RegCompassR is a Layer 1 plus Layer 2 tool for **multiome-supported, GPR-aware, sample-aware reaction capacity potential** analysis from annotated Seurat v4 RNA+ATAC objects. RegCompassR 1.0 keeps Layer 1 as the evidence generator and adds a single Layer 2 main algorithm: selected-subnetwork, multiome/GPR-weighted, COMPASS-like two-step penalty LP.
 
 The package intentionally keeps the main analysis narrow:
 
@@ -36,7 +36,7 @@ Seurat v4 RNA+ATAC counts
 - `rc_parallel_lapply()` and `rc_default_bpparam()` provide automatic BiocParallel-backed multi-core execution for expensive pool-, reaction-, model-, and bootstrap-level loops when BiocParallel is installed.
 - `rc_sample_aggregate()`, `rc_sample_summary()`, `rc_export_sample_matrix()`, `rc_export_long_table()`, and `rc_write_report_md()` provide sample-aware summaries, table exports, and Markdown reporting.
 
-RegCompassR v0.9 intentionally keeps GEM/QP solving, selected-demand QP planning, FVA, thermodynamic constraints, and causal regulator discovery outside the runnable package scope.
+RegCompassR 1.0 intentionally keeps standalone hard LP, scFEA-like relaxed balance QP/LP, selected FVA, thermodynamic constraints, and causal regulator discovery outside the runnable package scope. Hard LP is used only internally to compute Layer 2 `vmax` feasibility diagnostics.
 
 ## Expected input
 
@@ -430,3 +430,112 @@ rc_write_report_md(
   confidence = layer1$reaction_confidence
 )
 ```
+
+## RegCompassR 1.0 Layer 2: COMPASS-like two-step penalty LP
+
+RegCompassR 1.0 uses one Layer 2 main algorithm: a **selected-subnetwork,
+multiome/GPR-weighted, COMPASS-like two-step penalty LP**. The goal is not to
+estimate true metabolic flux, enzyme activity, absolute flux, metabolite
+production rate, or causal regulation. Instead, Layer 2 asks whether a target
+reaction can be supported at low Layer1-derived multiome/GPR penalty while
+respecting genome-scale stoichiometric steady-state constraints.
+
+Layer 1 keeps its role as the source of reaction priors (`C_rel`),
+GPR/multiome evidence (`reaction_confidence`), candidate reaction filtering, and
+sample-aware aggregation. `C_rel` is still a relative reaction capacity
+potential; it is not a flux bound and is not enzyme activity.
+
+The primary Layer 2 outputs are:
+
+```text
+L2_compass_like_score
+L2_compass_like_penalty
+L2_vmax_internal
+L2_feasible_flag
+L2_solver_status
+```
+
+### Algorithm
+
+For each sample × cell type unit by default, Layer 2 maps Layer 1 evidence to a
+penalty:
+
+```text
+E[r,u] = max(C_rel[r,u], epsilon_C) * max(Conf[r,u], epsilon_Conf)
+P[r,u] = min(-log(E[r,u] + epsilon), penalty_cap)
+```
+
+Defaults are `epsilon = 1e-6`, `epsilon_C = 1e-3`, `epsilon_Conf = 1e-3`, and
+`penalty_cap = 20`. Exchange, demand, sink, and support reactions should use a
+fixed low or medium-policy-specific penalty rather than a GPR penalty.
+
+For each target reaction, Step 1 maximizes the target reaction under `S v = 0`
+and GEM bounds to obtain `L2_vmax_internal`. This hard LP is retained only as an
+internal feasibility diagnostic. If Step 1 is infeasible or `vmax <= 1e-8`, the
+reaction is marked infeasible and receives score 0.
+
+Step 2 requires `v_target >= omega * vmax` (default `omega = 0.95`) and minimizes
+network-wide penalty-weighted absolute flux:
+
+```text
+minimize sum_i P[i,u] * |v_i|
+subject to S v = 0, bounds, and v_target >= omega * vmax
+```
+
+The implementation uses positive/negative variable splitting to keep the
+problem linear.
+
+### Main function
+
+```r
+layer2 <- rc_run_layer2_compass_lp(
+  layer1 = layer1,
+  gem = gem,
+  unit = "sample_celltype",
+  sample_col = "sample_id",
+  celltype_col = "cell_type",
+  condition_col = "condition",
+  selection_method = "auto",
+  top_n = 300,
+  min_C_rel = 0.15,
+  min_confidence = 0.25,
+  neighbor_depth = 1,
+  max_subgem_reactions = 1000,
+  omega = 0.95,
+  solver = "highs",
+  time_limit = 60
+)
+```
+
+The returned object contains score, penalty, feasibility, solver status, internal
+`vmax`, penalty components, selected reactions with selection reasons, sub-GEM
+diagnostics, medium policy, unit metadata, and the method string
+`"COMPASS-like two-step penalty LP"`.
+
+### Reaction/sub-GEM selection
+
+Layer 2 does not run all Human-GEM reactions by default. It selects candidate
+reactions from high `C_rel`, high `reaction_confidence`, optional user-specified
+reactions or pathways, one-hop shared-metabolite neighbors, and required
+exchange/transport/demand/sink support reactions. Defaults are `top_n = 300`,
+`min_C_rel = 0.15`, `min_confidence = 0.25`, `neighbor_depth = 1`, and
+`max_subgem_reactions = 1000`. All-missing Layer 1 reactions, unsupported
+complete GPR reactions, very-low Q95 reactions, and completely blocked
+non-support reactions should be excluded from primary interpretation.
+
+### Interpretation
+
+Use wording such as:
+
+- reaction capacity potential is higher;
+- stoichiometrically plausible support is stronger;
+- multiome/GPR evidence is more consistent with the metabolic network;
+- COMPASS-like penalty is lower.
+
+Avoid wording such as true flux is higher, enzyme activity is higher, metabolite
+production rate is quantified, or causal regulation is proven.
+
+Standalone hard LP, scFEA-like relaxed balance QP/LP, and selected FVA are not
+implemented as RegCompassR 1.0 Layer 2 algorithms. Hard LP is only Step 1 of the
+COMPASS-like two-step penalty LP, while relaxed balance and FVA are reserved for
+possible future diagnostic extensions.
