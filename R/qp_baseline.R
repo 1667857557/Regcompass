@@ -1,2 +1,2 @@
-# Removed from the simplified Layer 1 RegCompassR workflow.
+# Not implemented in RegCompassR 1.0. Reserved for future extensions.
 NULL
