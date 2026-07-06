@@ -132,7 +132,7 @@ rc_run_layer1_from_metacells <- function(gpr_table,
 #' Recompute metabolic peak-gene links on a metacell Signac object
 #' @export
 rc_recompute_metacell_peak_gene_links <- function(metacell_object,
-                                                  metabolic_genes,
+                                                  metabolic_genes = NULL,
                                                   peak_assay = "ATAC",
                                                   expression_assay = "RNA",
                                                   genome = NULL,
@@ -294,7 +294,31 @@ rc_make_supercell2_metacells <- function(object,
     }
     diag <- data.frame(group_id = key, n_cells = length(cells), n_metacells = length(mc_ids), gamma = gamma, min_metacell_size = min_metacell_size, skipped = FALSE, stringsAsFactors = FALSE)
     .rc_write_tsv_gz(diag, file.path(stratum_dir, "qc", "metacell_qc.tsv.gz"))
-    if (requireNamespace("yaml", quietly = TRUE)) yaml::write_yaml(as.list(formals(sys.function())), file.path(stratum_dir, "qc", "run_params.yaml"))
+    if (requireNamespace("yaml", quietly = TRUE)) {
+      run_params <- list(
+        sample_col = sample_col,
+        condition_col = condition_col,
+        celltype_col = celltype_col,
+        state_col = state_col,
+        rna_assay = rna_assay,
+        atac_assay = atac_assay,
+        rna_reduction = rna_reduction,
+        atac_reduction = atac_reduction,
+        rna_dims = rna_dims,
+        atac_dims = atac_dims,
+        gamma = gamma,
+        min_cells_per_stratum = min_cells_per_stratum,
+        min_metacell_size = min_metacell_size,
+        label_col = label_col,
+        fragment_files = fragment_files,
+        bgzip_path = bgzip_path,
+        tabix_path = tabix_path,
+        save_metacell_object = save_metacell_object,
+        save_counts = save_counts,
+        save_fragments = save_fragments
+      )
+      yaml::write_yaml(run_params, file.path(stratum_dir, "qc", "run_params.yaml"))
+    }
     stratum_dir
   }
   dirs <- unlist(rc_parallel_lapply(names(groups), run_one, BPPARAM = BPPARAM), use.names = FALSE)
