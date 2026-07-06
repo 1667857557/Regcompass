@@ -466,8 +466,11 @@ P[r,u] = min(-log(E[r,u] + epsilon), penalty_cap)
 ```
 
 Defaults are `epsilon = 1e-6`, `epsilon_C = 1e-3`, `epsilon_Conf = 1e-3`, and
-`penalty_cap = 20`. Exchange, demand, sink, and support reactions should use a
-fixed low or medium-policy-specific penalty rather than a GPR penalty.
+`penalty_cap = 20`. Exchange, demand, sink, and support/artificial reactions use
+a small non-zero fixed or medium-policy-specific penalty rather than a GPR
+penalty. Transport reactions are not support-exempt by default because many
+transporters are GPR-backed and cell-type specific; `transport_penalty_mode` can
+be set to `"support"` or `"reduced"` for explicit diagnostic runs.
 
 For each target reaction, Step 1 maximizes the target reaction under `S v = 0`
 and GEM bounds to obtain `L2_vmax_internal`. This hard LP is retained only as an
@@ -501,7 +504,10 @@ layer2 <- rc_run_layer2_compass_lp(
   min_confidence = 0.25,
   neighbor_depth = 1,
   max_subgem_reactions = 1000,
+  override_invalid = FALSE,
   omega = 0.95,
+  transport_penalty_mode = "normal",
+  support_penalty = c(exchange = 0.05, demand = 0.1, sink = 0.1, support = 0.05),
   solver = "highs",
   time_limit = 60
 )
@@ -509,7 +515,8 @@ layer2 <- rc_run_layer2_compass_lp(
 
 The returned object contains score, penalty, feasibility, solver status, internal
 `vmax`, penalty components, selected reactions with selection reasons, sub-GEM
-diagnostics, medium policy, unit metadata, and the method string
+diagnostics, LP diagnostics, any filtered custom-invalid reaction warning,
+medium policy, unit metadata, and the method string
 `"COMPASS-like two-step penalty LP"`.
 
 ### Reaction/sub-GEM selection
@@ -517,13 +524,22 @@ diagnostics, medium policy, unit metadata, and the method string
 Layer 2 does not run all Human-GEM reactions by default. It selects candidate
 reactions from high `C_rel`, high `reaction_confidence`, optional user-specified
 reactions or pathways, one-hop shared-metabolite neighbors, and required
-exchange/transport/demand/sink support reactions. Defaults are `top_n = 300`,
+exchange/demand/sink/support reactions. Defaults are `top_n = 300`,
 `min_C_rel = 0.15`, `min_confidence = 0.25`, `neighbor_depth = 1`, and
 `max_subgem_reactions = 1000`. All-missing Layer 1 reactions, unsupported
 complete GPR reactions, very-low Q95 reactions, and completely blocked
-non-support reactions should be excluded from primary interpretation.
+non-support reactions should be excluded from primary interpretation. Custom
+`selected_reactions` are filtered against these invalid Layer 1 diagnostics by
+default; set `override_invalid = TRUE` only for explicit troubleshooting.
 
 ### Interpretation
+
+`L2_compass_like_score` is robustly standardized within each reaction across
+feasible units, so it is intended primarily for comparing the same reaction
+across units (for example oligodendrocyte cKO vs oligodendrocyte control). Do
+not interpret it as an absolute score that ranks unrelated reactions by itself;
+reaction ranking should combine `L2_compass_like_penalty`, `C_rel`,
+`reaction_confidence`, `L2_vmax_internal`, and `L2_feasible_flag`.
 
 Use wording such as:
 

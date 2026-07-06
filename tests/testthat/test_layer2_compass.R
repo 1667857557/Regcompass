@@ -5,7 +5,7 @@ test_that("Layer 2 penalty mapping penalizes missing evidence and exempts suppor
   out <- rc_layer2_penalty(C, Conf, support_reactions = "EX_a")
 
   expect_lt(out$penalty["R_high", "u1"], out$penalty["R_missing", "u1"])
-  expect_equal(out$penalty["EX_a", "u1"], 0)
+  expect_equal(out$penalty["EX_a", "u1"], 0.05)
   expect_true(out$components$missing_evidence["R_missing", "u1"])
 })
 
@@ -57,4 +57,53 @@ test_that("absolute penalty LP builder represents target minimum and variable bo
   expect_equal(lp$lhs[2], 4)
   expect_true(is.infinite(lp$rhs[2]))
   expect_equal(lp$ub, c(5, 7, 10, 0))
+})
+
+
+test_that("transport reactions are not support-exempt by default", {
+  meta <- data.frame(
+    reaction_id = c("EX_a", "DM_b", "T_gpr", "T_nogpr"),
+    type = c("exchange", "demand", "transport", "transport"),
+    gpr = c("", "", "geneA", ""),
+    stringsAsFactors = FALSE
+  )
+  gem <- list(reaction_meta = meta)
+  C <- matrix(NA_real_, nrow = 4, ncol = 1, dimnames = list(meta$reaction_id, "u1"))
+  Conf <- C
+
+  normal <- rc_layer2_support_penalties(gem, meta$reaction_id, C, Conf)
+  reduced <- rc_layer2_support_penalties(gem, meta$reaction_id, C, Conf, transport_penalty_mode = "reduced", transport_reduced_penalty = 1)
+
+  expect_true("EX_a" %in% names(normal))
+  expect_true("DM_b" %in% names(normal))
+  expect_false("T_gpr" %in% names(normal))
+  expect_false("T_nogpr" %in% names(normal))
+  expect_false("T_gpr" %in% names(reduced))
+  expect_equal(reduced["T_nogpr"], c(T_nogpr = 1))
+})
+
+test_that("custom selected reactions filter invalid entries unless explicitly overridden", {
+  layer1 <- list(
+    C_rel = matrix(c(0.9, NA), nrow = 2, dimnames = list(c("R_keep", "R_missing"), "pool1")),
+    reaction_confidence = data.frame(
+      reaction_id = c("R_keep", "R_missing"),
+      pool_id = "pool1",
+      reaction_confidence = c(0.9, NA),
+      stringsAsFactors = FALSE
+    ),
+    q95_diagnostics = data.frame(
+      reaction_id = c("R_keep", "R_missing"),
+      all_missing_reaction_flag = c(FALSE, TRUE),
+      stringsAsFactors = FALSE
+    )
+  )
+  S <- matrix(1, nrow = 1, dimnames = list("m1", rownames(layer1$C_rel)))
+  gem <- rc_make_gem(S, lb = rep(0, 2), ub = rep(1000, 2))
+
+  expect_warning(sel <- rc_select_layer2_reactions(layer1, gem, selected_reactions = c("R_keep", "R_missing"), neighbor_depth = 0), "Filtered invalid")
+  override <- rc_select_layer2_reactions(layer1, gem, selected_reactions = c("R_keep", "R_missing"), neighbor_depth = 0, override_invalid = TRUE)
+
+  expect_equal(sel$reaction_id, "R_keep")
+  expect_true(grepl("R_missing", attr(sel, "custom_invalid_reaction_warning")))
+  expect_setequal(override$reaction_id, c("R_keep", "R_missing"))
 })

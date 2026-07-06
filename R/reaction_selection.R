@@ -3,18 +3,26 @@
 rc_select_layer2_reactions <- function(layer1, gem, selected_reactions = NULL,
                                        selection_method = c("auto", "top", "differential", "pathway", "custom"),
                                        top_n = 300, min_C_rel = 0.15, min_confidence = 0.25,
-                                       neighbor_depth = 1, max_subgem_reactions = 1000) {
+                                       neighbor_depth = 1, max_subgem_reactions = 1000,
+                                       override_invalid = FALSE) {
   selection_method <- match.arg(selection_method)
   valid <- rc_validate_gem(gem)
   rxns <- valid$reactions
+  invalid <- rc_layer2_invalid_reactions(layer1)
+  custom_invalid_reaction_warning <- NULL
   if (!is.null(selected_reactions)) {
-    keep <- intersect(unique(as.character(selected_reactions)), rxns)
-    reason <- stats::setNames(rep("custom", length(keep)), keep)
+    requested <- intersect(unique(as.character(selected_reactions)), rxns)
+    invalid_requested <- intersect(requested, invalid)
+    if (length(invalid_requested) && !isTRUE(override_invalid)) {
+      custom_invalid_reaction_warning <- paste("Filtered invalid custom reactions:", paste(invalid_requested, collapse = ", "))
+      warning(custom_invalid_reaction_warning, call. = FALSE)
+    }
+    keep <- if (isTRUE(override_invalid)) requested else setdiff(requested, invalid)
+    reason <- stats::setNames(rep(if (isTRUE(override_invalid)) "custom (invalid filtering overridden)" else "custom", length(keep)), keep)
   } else {
     C <- as.matrix(layer1$C_rel)
     Conf <- if (!is.null(layer1$reaction_confidence)) rc_layer2_confidence_matrix(layer1$reaction_confidence, C) else matrix(1, nrow(C), ncol(C), dimnames = dimnames(C))
     common <- intersect(intersect(rownames(C), rownames(Conf)), rxns)
-    invalid <- rc_layer2_invalid_reactions(layer1)
     common <- setdiff(common, invalid)
     evidence <- pmax(rowMedians_safe(C[common, , drop = FALSE]), rowMedians_safe(Conf[common, , drop = FALSE]), na.rm = TRUE)
     pass <- common[(rowMedians_safe(C[common, , drop = FALSE]) >= min_C_rel) | (rowMedians_safe(Conf[common, , drop = FALSE]) >= min_confidence)]
@@ -23,9 +31,12 @@ rc_select_layer2_reactions <- function(layer1, gem, selected_reactions = NULL,
     reason <- stats::setNames(rep("Layer1 C_rel/confidence threshold or top evidence", length(keep)), keep)
   }
   keep <- rc_add_reaction_neighbors(valid$S, keep, depth = neighbor_depth, limit = max_subgem_reactions)
+  if (!isTRUE(override_invalid)) keep <- setdiff(keep, invalid)
   reason[setdiff(keep, names(reason))] <- "shared-metabolite neighbor/support reaction"
   keep <- utils::head(unique(keep), max_subgem_reactions)
-  data.frame(reaction_id = keep, reaction_selection_reason = unname(reason[keep]), stringsAsFactors = FALSE)
+  out <- data.frame(reaction_id = keep, reaction_selection_reason = unname(reason[keep]), stringsAsFactors = FALSE)
+  attr(out, "custom_invalid_reaction_warning") <- custom_invalid_reaction_warning
+  out
 }
 
 rc_add_reaction_neighbors <- function(S, seeds, depth = 1, limit = 1000) {
