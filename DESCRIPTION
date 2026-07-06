@@ -2,7 +2,7 @@ Package: RegCompassR
 Title: Simplified Multiome-Supported Reaction Capacity Potential Analysis
 Version: 1.0.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
-Description: Provides a Layer 1 workflow for annotated Seurat v4 RNA+ATAC multiome objects and a RegCompassR 1.0 Layer 2 workflow centered on selected-subnetwork, multiome/GPR-weighted, COMPASS-like two-step penalty linear programming. Layer 2 reports reaction capacity support scores, penalties, feasibility flags, solver status, and internal vmax diagnostics rather than true fluxes or enzyme activity.
+Description: Provides a Layer 1 workflow for sample-aware SuperCell2.0 RNA+ATAC metacells from annotated Seurat/Signac multiome objects and a RegCompassR 1.0 Layer 2 workflow centered on selected-subnetwork, multiome/GPR-weighted, COMPASS-like two-step penalty linear programming. Layer 2 reports reaction capacity support scores, penalties, feasibility flags, solver status, and internal vmax diagnostics rather than true fluxes or enzyme activity.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -16,6 +16,9 @@ Suggests:
     BiocParallel,
     Seurat (>= 4.0.0),
     Signac,
+    SuperCell,
+    yaml,
+    data.table,
     qlcMatrix,
     gurobi,
     highs,
