@@ -377,3 +377,56 @@ rc_write_metacell_report <- function(metacell_meta, file, diagnostics = NULL) {
   writeLines(lines, con = file)
   invisible(file)
 }
+
+#' Build sample-aware RNA+ATAC metacells
+#' @export
+rc_make_metacells <- function(..., allow_empty_membership = FALSE, filter_low_power_metacells = TRUE, min_metacell_size = 20) {
+  out <- rc_make_supercell2_metacells(..., min_metacell_size = min_metacell_size)
+  if (nrow(out$membership) == 0L && !allow_empty_membership) stop("SuperCell membership could not be extracted. Check SuperCell version/output schema.", call. = FALSE)
+  if ("n_cells" %in% colnames(out$metacell_meta)) {
+    out$metacell_meta_all <- out$metacell_meta
+    out$metacell_meta$low_power_metacell <- out$metacell_meta$n_cells < min_metacell_size
+    out$metacell_meta_used <- if (filter_low_power_metacells) out$metacell_meta[!out$metacell_meta$low_power_metacell, , drop=FALSE] else out$metacell_meta
+    out$rna_counts_all <- out$rna_counts
+    if (!is.null(out$atac_counts)) out$atac_counts_all <- out$atac_counts
+    if (filter_low_power_metacells) {
+      ids <- as.character(out$metacell_meta_used$metacell_id)
+      out$rna_counts <- out$rna_counts[, ids, drop = FALSE]
+      if (!is.null(out$atac_counts)) out$atac_counts <- out$atac_counts[, ids, drop = FALSE]
+    }
+    out$low_power_metacell_fraction <- mean(out$metacell_meta$low_power_metacell, na.rm=TRUE)
+  }
+  out
+}
+#' @export
+rc_import_metacells <- function(metacell_dirs, ..., filter_low_power_metacells = TRUE, min_metacell_size = 20) {
+  out <- rc_import_supercell2_metacells(metacell_dirs, ...)
+  out$metacell_meta_all <- out$metacell_meta
+  if ("n_cells" %in% colnames(out$metacell_meta)) out$metacell_meta$low_power_metacell <- out$metacell_meta$n_cells < min_metacell_size
+  keep <- if (filter_low_power_metacells && "low_power_metacell" %in% colnames(out$metacell_meta)) !out$metacell_meta$low_power_metacell else rep(TRUE, nrow(out$metacell_meta))
+  out$metacell_meta_used <- out$metacell_meta[keep,,drop=FALSE]
+  ids <- out$metacell_meta_used$metacell_id; out$rna_counts <- out$rna_counts[, ids, drop=FALSE]; if (!is.null(out$atac_counts)) out$atac_counts <- out$atac_counts[, ids, drop=FALSE]
+  out$low_power_metacell_fraction <- if ("low_power_metacell" %in% colnames(out$metacell_meta)) mean(out$metacell_meta$low_power_metacell, na.rm=TRUE) else NA_real_
+  out
+}
+
+#' Run Layer 1 multiome evidence from metacell raw counts
+#' @export
+rc_run_layer1_multiome <- function(gpr_table, rna_metacell_counts, metacell_meta, atac_metacell_counts = NULL, peak_gene_links = NULL, stratum_col = "cell_type", gene_score_method = c("robust_sigmoid"), and_method = c("boltzmann", "min", "mean"), or_method = c("sum_sqrtK", "max", "prob_or", "sum"), tau = 0.20, q = 0.95, q95_n0 = 80, bootstrap_q95 = FALSE, filter_low_power_metacells = TRUE, BPPARAM = NULL) {
+  gpr_genes <- rc_metabolic_gpr_genes(gpr_table)
+  if (filter_low_power_metacells && "low_power_metacell" %in% colnames(metacell_meta)) {
+    keep_ids <- as.character(metacell_meta$metacell_id[!metacell_meta$low_power_metacell])
+    rna_metacell_counts <- rna_metacell_counts[, keep_ids, drop=FALSE]; metacell_meta <- metacell_meta[match(keep_ids, metacell_meta$metacell_id),,drop=FALSE]
+    if (!is.null(atac_metacell_counts)) atac_metacell_counts <- atac_metacell_counts[, keep_ids, drop=FALSE]
+  }
+  out <- rc_run_layer1_from_metacells(gpr_table, rna_metacell_counts, metacell_meta, atac_metacell_counts, peak_gene_links, stratum_col = stratum_col, and_method = match.arg(and_method), tau = tau, bootstrap = bootstrap_q95, BPPARAM = BPPARAM)
+  if (!is.null(out$gene_confidence) && length(intersect(rownames(out$gene_confidence), gpr_genes)) == 0L) { warning("No overlap between multiome confidence genes and GPR genes; falling back to RNA detection confidence.", call. = FALSE); out$gene_confidence <- NULL }
+  if (!is.null(out$C_rel)) {
+    summ <- rc_metacell_sample_summary(out$C_rel, out$metacell_meta, condition_col = "condition")
+    units <- unique(summ$group_id); C <- matrix(NA_real_, nrow(out$C_rel), length(units), dimnames=list(rownames(out$C_rel), units))
+    for (u in units) C[summ$reaction_id[summ$group_id==u], u] <- summ$value[summ$group_id==u]
+    out$C_rel_sample <- C; out$confidence_sample <- NULL; out$sample_unit_meta <- unique(data.frame(unit_id=summ$group_id, stringsAsFactors=FALSE))
+  }
+  out$layer1_params <- list(stratum_col=stratum_col, q=q, q95_n0=q95_n0, unit="metacell")
+  out
+}

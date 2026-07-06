@@ -5,7 +5,7 @@
 #' @export
 rc_validate_gem <- function(gem, selected_reactions = NULL, allow_zero_support = TRUE) {
   if (!is.list(gem) || is.null(gem$S)) stop("`gem` must be a list containing `S`.", call. = FALSE)
-  S <- as.matrix(gem$S)
+  S <- if (inherits(gem$S, "sparseMatrix")) methods::as(gem$S, "dgCMatrix") else methods::as(gem$S, "dgCMatrix")
   if (is.null(colnames(S))) stop("`gem$S` must have reaction IDs in colnames.", call. = FALSE)
   if (is.null(rownames(S))) rownames(S) <- paste0("met_", seq_len(nrow(S)))
   if (anyDuplicated(colnames(S))) stop("`gem$S` has duplicated reaction IDs.", call. = FALSE)
@@ -18,7 +18,7 @@ rc_validate_gem <- function(gem, selected_reactions = NULL, allow_zero_support =
     missing <- setdiff(selected_reactions, rxns)
     if (length(missing) > 0L) stop("Selected reactions missing from GEM: ", paste(utils::head(missing, 10), collapse = ", "), call. = FALSE)
   }
-  zero_cols <- rxns[colSums(abs(S) > 0) == 0]
+  zero_cols <- rxns[Matrix::colSums(abs(S) > 0) == 0]
   list(S = S, lb = lb, ub = ub, reactions = rxns, metabolites = rownames(S), zero_column_reactions = zero_cols,
        n_reactions = length(rxns), n_metabolites = nrow(S), valid = TRUE)
 }

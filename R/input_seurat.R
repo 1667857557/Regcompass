@@ -285,3 +285,26 @@ rc_run_layer1_from_seurat <- function(gpr_table,
   if (!is.null(signac_object)) out$signac_object <- signac_object
   out
 }
+
+#' Validate an annotated Seurat/Signac multiome raw-count object
+#' @export
+rc_validate_multiome_input <- function(object, rna_assay = "RNA", atac_assay = "ATAC", sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, require_atac = TRUE, require_raw_counts = TRUE) {
+  if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
+  meta <- object@meta.data
+  required <- c(sample_col, condition_col, celltype_col, state_col); required <- required[!is.null(required) & !is.na(required) & nzchar(required)]
+  miss <- setdiff(required, colnames(meta)); if (length(miss)) stop("Missing metadata columns: ", paste(miss, collapse = ", "), call. = FALSE)
+  assays <- names(object@assays); if (!rna_assay %in% assays) stop("RNA assay not found: ", rna_assay, call. = FALSE); if (require_atac && !atac_assay %in% assays) stop("ATAC assay not found: ", atac_assay, call. = FALSE)
+  rna <- .rc_get_assay_counts(object, rna_assay)
+  if (require_raw_counts && is.null(rna)) stop("RNA raw counts could not be extracted.", call. = FALSE)
+  if (require_atac) { atac <- .rc_get_assay_counts(object, atac_assay); if (!identical(colnames(rna), colnames(atac))) stop("RNA and ATAC barcodes must be identical and in the same order.", call. = FALSE) }
+  invisible(TRUE)
+}
+.rc_get_assay_counts <- function(object, assay) {
+  tryCatch(SeuratObject::GetAssayData(object = object, assay = assay, layer = "counts"), error = function(e) SeuratObject::GetAssayData(object = object, assay = assay, slot = "counts"))
+}
+#' @export
+rc_get_assay_counts <- function(object, assay) .rc_get_assay_counts(object, assay)
+#' @export
+rc_validate_seurat_v4 <- function(...) { .Deprecated("rc_validate_multiome_input"); rc_validate_multiome_input(...) }
+#' @export
+rc_extract_seurat_v4 <- function(...) { .Deprecated("rc_extract_multiome_counts"); rc_extract_inputs(...) }
