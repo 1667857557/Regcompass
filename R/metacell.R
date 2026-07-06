@@ -380,13 +380,20 @@ rc_write_metacell_report <- function(metacell_meta, file, diagnostics = NULL) {
 
 #' Build sample-aware RNA+ATAC metacells
 #' @export
-rc_make_metacells <- function(..., allow_empty_membership = FALSE, filter_low_power_metacells = TRUE) {
-  out <- rc_make_supercell2_metacells(...)
+rc_make_metacells <- function(..., allow_empty_membership = FALSE, filter_low_power_metacells = TRUE, min_metacell_size = 20) {
+  out <- rc_make_supercell2_metacells(..., min_metacell_size = min_metacell_size)
   if (nrow(out$membership) == 0L && !allow_empty_membership) stop("SuperCell membership could not be extracted. Check SuperCell version/output schema.", call. = FALSE)
   if ("n_cells" %in% colnames(out$metacell_meta)) {
     out$metacell_meta_all <- out$metacell_meta
-    out$metacell_meta$low_power_metacell <- out$metacell_meta$n_cells < 20
+    out$metacell_meta$low_power_metacell <- out$metacell_meta$n_cells < min_metacell_size
     out$metacell_meta_used <- if (filter_low_power_metacells) out$metacell_meta[!out$metacell_meta$low_power_metacell, , drop=FALSE] else out$metacell_meta
+    out$rna_counts_all <- out$rna_counts
+    if (!is.null(out$atac_counts)) out$atac_counts_all <- out$atac_counts
+    if (filter_low_power_metacells) {
+      ids <- as.character(out$metacell_meta_used$metacell_id)
+      out$rna_counts <- out$rna_counts[, ids, drop = FALSE]
+      if (!is.null(out$atac_counts)) out$atac_counts <- out$atac_counts[, ids, drop = FALSE]
+    }
     out$low_power_metacell_fraction <- mean(out$metacell_meta$low_power_metacell, na.rm=TRUE)
   }
   out
