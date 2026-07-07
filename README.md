@@ -127,6 +127,8 @@ blood_like          EX_glc_D_e            -10  1000  TRUE
 low_glucose         EX_glc_D_e             -5  1000  TRUE
 ```
 
+Optional columns include `metabolite_id`, `condition`, `evidence_source`, and `assumption_level`.
+
 ### Reaction role table
 
 ```text
