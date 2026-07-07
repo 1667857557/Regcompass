@@ -1,8 +1,8 @@
 # RegCompassR microCOMPASS quick guide
 
-RegCompassR microCOMPASS uses structural target-local micro-GEMs defined by GEM topology, target reactions, reaction roles, and medium scenarios. RNA+ATAC-GPR evidence is used only to compute unit-specific penalties and does not remove reactions from the structural micro-GEM.
+microCOMPASS builds structural target-local micro-GEMs from GEM topology, target reactions, reaction roles, and medium scenarios. RNA+ATAC-GPR evidence is used only for unit-specific LP penalties; it does not prune reactions.
 
-RegCompassR reports multiome-supported reaction capacity potential, not true metabolic flux, enzyme activity, uptake/secretion flux, ATAC causality, or in vivo medium truth.
+Output means multiome-supported reaction capacity potential. It is not true flux, enzyme activity, uptake/secretion flux, ATAC causality, or in vivo medium truth.
 
 ## Minimal workflow
 
@@ -32,7 +32,10 @@ mc <- rc_make_metacells(
   filter_low_power_metacells = TRUE
 )
 
-gem <- rc_read_gem("Human2_2.0.0_regcompass.rds")
+gem <- rc_prepare_human2_gem(
+  version = "2.0.0",
+  save_rds = "Human2_2.0.0_regcompass.rds"
+)
 gem <- rc_annotate_reaction_roles(gem, reaction_role_table = reaction_roles)
 
 medium <- rc_make_medium_scenarios(
@@ -90,29 +93,33 @@ rc_export_microcompass(res, "RegCompassR_run")
 
 ## Function checklist
 
-| Function | Use | Main output |
+| Function | Purpose | Returns |
 |---|---|---|
-| `rc_validate_multiome_input()` | Check Seurat/Signac assays and metadata. | Invisible `TRUE`; stops on invalid input. |
+| `rc_validate_multiome_input()` | Validate Seurat/Signac assays and metadata. | Invisible `TRUE`; errors on invalid input. |
 | `rc_make_metacells()` | Build sample/condition/cell-type-aware RNA+ATAC metacells. | Counts, metadata, membership, diagnostics. |
-| `rc_import_metacells()` | Import saved metacell directories. | Same structure as `rc_make_metacells()`. |
-| `rc_read_gem()` | Read a GEM RDS; requires `model_info` by default. | Validated GEM. |
-| `rc_prepare_human2_gem()` | Load a pinned preconverted Human2 RDS with provenance; automatic conversion is not bundled. | Validated Human2 GEM, or an error if no RDS/provenance is supplied. |
-| `rc_annotate_reaction_roles()` | Add curated or inferred reaction roles. | GEM with `reaction_roles`. |
-| `rc_make_medium_scenarios()` | Create named medium-scenario bounds. | Scenario table for exchanges. |
-| `rc_run_layer1_multiome()` | Convert metacell RNA/ATAC and GPRs into reaction evidence. | `C_rel`, confidence, diagnostics, unit metadata. |
-| `rc_select_target_reactions()` | Select targets without expanding networks. | Balanced ranked target table. |
-| `rc_extract_cofactor_modules()` | Find cofactor-related candidate reactions from GEM annotations. | Cofactor module diagnostic table. |
-| `rc_build_microgem_cache()` | Build structural micro-GEMs once per target direction and medium scenario. | Named micro-GEM cache plus cache summary. |
-| `rc_build_target_microgem()` | Build one structural target-local micro-GEM. | Micro-GEM plus closure and medium diagnostics. |
-| `rc_run_microcompass()` | Run cached structural micro-GEM strict LP with unit-specific penalties. | Score, penalty, vmax, feasibility, LP diagnostics. |
-| `rc_test_microcompass_differential()` | Test sample-level differences with `lm`, `wilcox`, or continuous `limma::lmFit()`/`eBayes()`. | Differential result table. |
-| `rc_export_microcompass()` | Write standardized outputs. | RDS/TSV files under numbered folders. |
+| `rc_import_metacells()` | Import saved metacell outputs. | Same structure as `rc_make_metacells()`. |
+| `rc_prepare_human2_gem()` | Load pinned preconverted Human2 RDS; no automatic conversion. | Validated Human2 GEM. |
+| `rc_read_gem()` | Read generic GEM RDS with `model_info` by default. | Validated GEM. |
+| `rc_annotate_reaction_roles()` | Add curated/inferred reaction roles. | GEM with `reaction_roles`. |
+| `rc_make_medium_scenarios()` | Build named exchange-bound scenarios. | Medium scenario table. |
+| `rc_run_layer1_multiome()` | Compute RNA+ATAC-GPR reaction evidence. | `C_rel`, confidence, diagnostics, unit metadata. |
+| `rc_select_target_reactions()` | Select target reactions only. | Target table with balanced ranking diagnostics. |
+| `rc_build_target_microgem()` | Build one structural target-local micro-GEM. | Micro-GEM with closure/medium diagnostics. |
+| `rc_build_microgem_cache()` | Cache micro-GEMs by target direction and medium scenario. | Named cache plus `microgem_cache_summary`. |
+| `rc_compute_multiome_penalty()` | Convert unit evidence to LP penalties. | Penalty matrix, components, `evidence_policy = "penalty_only"`. |
+| `rc_run_microcompass()` | Run cached strict two-step LP per target/scenario/unit. | Score, penalty, vmax, feasibility, LP diagnostics. |
+| `rc_test_microcompass_differential()` | Test sample-level scores with `lm`, `wilcox`, or `limma_continuous`. | Differential result table. |
+| `rc_export_microcompass()` | Write standardized outputs. | Files under `02_medium`, `03_microgem`, `04_microcompass`. |
 
-## Required input tables
+## Required tables
+
+### Human2 RDS
+
+`rc_prepare_human2_gem()` expects a pinned preconverted RDS with `S`, `lb`, `ub`, `reaction_meta`, `metabolite_meta`, `gpr_table`, and `model_info`.
 
 ### Medium scenario table
 
-Usually create this with `rc_make_medium_scenarios()`. A custom table must contain at least:
+Usually create this with `rc_make_medium_scenarios()`. A custom table needs at least:
 
 ```text
 medium_scenario_id  exchange_reaction_id  lb   ub    available
@@ -130,11 +137,9 @@ EX_glc_D_e   exchange   curated
 R_HEX1       internal   curated
 ```
 
-Common roles: `internal`, `boundary_like`, `exchange`, `transport`, `demand`, `sink`, `biomass`, `maintenance`, `cofactor_recycle`, `artificial_support`, `blocked`, `unknown`.
+Common roles include `internal`, `boundary_like`, `exchange`, `transport`, `demand`, `sink`, `cofactor_recycle`, and `unknown`.
 
-## Outputs to inspect
-
-After `rc_export_microcompass(res, outdir)`, inspect:
+## Exported outputs
 
 ```text
 02_medium/medium_scenarios.tsv.gz
@@ -143,19 +148,16 @@ After `rc_export_microcompass(res, outdir)`, inspect:
 03_microgem/microgem_cache_summary.tsv.gz
 04_microcompass/strict_score_matrix.rds
 04_microcompass/strict_penalty_matrix.rds
+04_microcompass/vmax_matrix.rds
+04_microcompass/feasible_matrix.rds
+04_microcompass/penalty_components.rds
 04_microcompass/lp_diagnostics.tsv.gz
 session_info.txt
 ```
 
 ## Interpretation
 
-Use concise conservative language:
-
-- `strict_feasible + low penalty + stable medium sensitivity`: stronger reaction-potential evidence.
-- Strict infeasible LP results receive score 0 under the specified structural micro-GEM and medium scenario.
-- ATAC confidence reflects chromatin-expression concordance, not regulatory causality.
+- Strict feasible + low penalty + stable medium sensitivity: stronger capacity-potential evidence.
+- Strict infeasible: score is 0 for that structural micro-GEM and medium scenario.
+- ATAC confidence means chromatin-expression concordance, not regulatory causality.
 - DNA methylation is not modeled.
-
-## Legacy aliases
-
-These aliases remain for compatibility: `rc_make_supercell2_metacells()`, `rc_import_supercell2_metacells()`, `rc_run_layer1_from_metacells()`, `rc_run_layer2_compass_lp()`, and `rc_layer2_apply_bounds()`.
