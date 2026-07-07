@@ -33,35 +33,46 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub, solver = "highs", time_limit =
   stop("Unsupported solver.", call. = FALSE)
 }
 
+rc_standardize_lp_result <- function(status, objective_value, primal_solution, runtime, message = NULL) {
+  map <- tolower(as.character(status %||% "error"))
+  std <- if (grepl("optimal", map)) "optimal" else if (grepl("infeas", map)) "infeasible" else if (grepl("unbound", map)) "unbounded" else if (grepl("time|limit", map)) "time_limit" else if (identical(map, "optimal")) "optimal" else map
+  structure(list(status = std,
+                 objective_value = as.numeric(objective_value),
+                 objective = as.numeric(objective_value),
+                 primal_solution = primal_solution,
+                 solution = primal_solution,
+                 runtime = runtime,
+                 message = message),
+            objective_sense = "min")
+}
+
 rc_solve_lp_gurobi <- function(obj, A, lhs, rhs, lb, ub, time_limit) {
   start_time <- proc.time()[["elapsed"]]
-  if (!requireNamespace("gurobi", quietly = TRUE)) return(list(status = "error", objective = NA_real_, solution = NULL, runtime = 0, message = "gurobi package not installed"))
+  if (!requireNamespace("gurobi", quietly = TRUE)) return(rc_standardize_lp_result("error", NA_real_, NULL, 0, "gurobi package not installed"))
   sense <- ifelse(is.finite(lhs) & is.finite(rhs) & lhs == rhs, "=", ifelse(is.finite(lhs), ">", "<"))
   b <- ifelse(sense == ">", lhs, rhs)
   model <- list(modelsense = "min", obj = obj, A = A, sense = sense, rhs = b, lb = lb, ub = ub)
   res <- tryCatch(gurobi::gurobi(model, params = list(TimeLimit = time_limit, OutputFlag = 0)), error = function(e) e)
-  if (inherits(res, "error")) return(list(status = "error", objective = NA_real_, solution = NULL, runtime = proc.time()[["elapsed"]] - start_time, message = conditionMessage(res)))
-  status <- if (tolower(res$status) == "optimal") "optimal" else tolower(res$status)
-  list(status = status, objective = res$objval, solution = res$x, runtime = proc.time()[["elapsed"]] - start_time)
+  if (inherits(res, "error")) return(rc_standardize_lp_result("error", NA_real_, NULL, proc.time()[["elapsed"]] - start_time, conditionMessage(res)))
+  rc_standardize_lp_result(res$status, res$objval, res$x, proc.time()[["elapsed"]] - start_time)
 }
 
 rc_solve_lp_highs <- function(obj, A, lhs, rhs, lb, ub, time_limit) {
   start_time <- proc.time()[["elapsed"]]
-  if (!requireNamespace("highs", quietly = TRUE)) return(list(status = "error", objective = NA_real_, solution = NULL, runtime = 0, message = "highs package not installed"))
+  if (!requireNamespace("highs", quietly = TRUE)) return(rc_standardize_lp_result("error", NA_real_, NULL, 0, "highs package not installed"))
   res <- tryCatch(highs::highs_solve(L = obj, lower = lhs, upper = rhs, A = A, lower_bounds = lb, upper_bounds = ub, maximum = FALSE), error = function(e) e)
-  if (inherits(res, "error")) return(list(status = "error", objective = NA_real_, solution = NULL, runtime = proc.time()[["elapsed"]] - start_time, message = conditionMessage(res)))
-  status <- if (!is.null(res$status) && grepl("optimal", tolower(res$status))) "optimal" else tolower(as.character(res$status %||% "error"))
-  list(status = status, objective = as.numeric(res$objective_value %||% res$objective), solution = res$primal_solution %||% res$solution, runtime = proc.time()[["elapsed"]] - start_time)
+  if (inherits(res, "error")) return(rc_standardize_lp_result("error", NA_real_, NULL, proc.time()[["elapsed"]] - start_time, conditionMessage(res)))
+  rc_standardize_lp_result(res$status %||% "error", res$objective_value %||% res$objective, res$primal_solution %||% res$solution, proc.time()[["elapsed"]] - start_time)
 }
 
 rc_solve_lp_glpk <- function(obj, A, lhs, rhs, lb, ub, time_limit) {
   start_time <- proc.time()[["elapsed"]]
-  if (!requireNamespace("Rglpk", quietly = TRUE)) return(list(status = "error", objective = NA_real_, solution = NULL, runtime = 0, message = "Rglpk package not installed"))
+  if (!requireNamespace("Rglpk", quietly = TRUE)) return(rc_standardize_lp_result("error", NA_real_, NULL, 0, "Rglpk package not installed"))
   dir <- rep("==", length(lhs)); dir[is.infinite(lhs)] <- "<="; dir[is.infinite(rhs)] <- ">="; b <- ifelse(dir == ">=", lhs, rhs)
   res <- tryCatch(Rglpk::Rglpk_solve_LP(obj, A, dir, b, bounds = list(lower = list(ind = seq_along(lb), val = lb), upper = list(ind = seq_along(ub), val = ub)), max = FALSE, control = list(tm_limit = time_limit * 1000)), error = function(e) e)
-  if (inherits(res, "error")) return(list(status = "error", objective = NA_real_, solution = NULL, runtime = proc.time()[["elapsed"]] - start_time, message = conditionMessage(res)))
+  if (inherits(res, "error")) return(rc_standardize_lp_result("error", NA_real_, NULL, proc.time()[["elapsed"]] - start_time, conditionMessage(res)))
   status <- if (res$status == 0) "optimal" else paste0("glpk_status_", res$status)
-  list(status = status, objective = res$optimum, solution = res$solution, runtime = proc.time()[["elapsed"]] - start_time)
+  rc_standardize_lp_result(status, res$optimum, res$solution, proc.time()[["elapsed"]] - start_time)
 }
 
 `%||%` <- function(x, y) if (is.null(x)) y else x

@@ -14,14 +14,35 @@ rc_compute_multiome_penalty <- function(C_rel, reaction_confidence, gpr_diagnost
   missing_flag <- is.na(C) | is.na(F)
   P_missing <- matrix(0, nrow(C), ncol(C), dimnames = dimnames(C)); P_missing[missing_flag] <- missing_penalty
   role <- rep("internal", nrow(C)); names(role) <- rownames(C)
+  role_source <- rep("unknown", nrow(C)); names(role_source) <- rownames(C)
+  role_confidence <- rep(NA_character_, nrow(C)); names(role_confidence) <- rownames(C)
   if (!is.null(reaction_roles)) {
     rr <- if (is.data.frame(reaction_roles)) reaction_roles else as.data.frame(reaction_roles)
-    if (all(c("reaction_id", "role") %in% colnames(rr))) role[intersect(rownames(C), as.character(rr$reaction_id))] <- as.character(rr$role[match(intersect(rownames(C), as.character(rr$reaction_id)), as.character(rr$reaction_id))])
+    if (all(c("reaction_id", "role") %in% colnames(rr))) {
+      hit <- intersect(rownames(C), as.character(rr$reaction_id))
+      m <- match(hit, as.character(rr$reaction_id))
+      role[hit] <- as.character(rr$role[m])
+      if ("role_source" %in% colnames(rr)) role_source[hit] <- as.character(rr$role_source[m])
+      if ("role_confidence" %in% colnames(rr)) role_confidence[hit] <- as.character(rr$role_confidence[m])
+    }
   }
   P_role <- matrix(0, nrow(C), ncol(C), dimnames = dimnames(C))
-  for (nm in intersect(names(support_penalty), unique(role))) P_role[role == nm, ] <- as.numeric(support_penalty[[nm]])
+  role_override_flag <- role %in% c("exchange", "demand", "sink", "artificial_support") &
+    role_source %in% c("curated", "model_high_confidence")
+  support_penalty_used <- rep(NA_real_, nrow(C)); names(support_penalty_used) <- rownames(C)
+  for (nm in intersect(names(support_penalty), unique(role[role_override_flag]))) {
+    support_penalty_used[role_override_flag & role == nm] <- as.numeric(support_penalty[[nm]])
+  }
+  transport_evidence_flag <- role == "transport" & is.finite(rowMeans(C, na.rm = TRUE))
   W <- c(expr = 1, confidence = 0.5, missing = 1); W[names(weights)] <- weights
-  P <- W["expr"] * P_expr + W["confidence"] * P_conf + W["missing"] * P_missing + P_role
+  P_base <- W["expr"] * P_expr + W["confidence"] * P_conf + W["missing"] * P_missing
+  P <- P_base
+  if (any(role_override_flag)) {
+    P[role_override_flag, ] <- matrix(support_penalty_used[role_override_flag],
+                                      nrow = sum(role_override_flag), ncol = ncol(P),
+                                      dimnames = list(names(role)[role_override_flag], colnames(P)))
+  }
+  P_role[role_override_flag, ] <- P[role_override_flag, , drop = FALSE]
   P <- pmin(pmax(P, 0), penalty_cap); P[!is.finite(P)] <- penalty_cap
-  list(penalty = P, components = list(P_expr = P_expr, P_conf = P_conf, P_missing = P_missing, P_role = P_role, C_rel = C, reaction_confidence = F, missing_evidence_flag = missing_flag, role = role))
+  list(penalty = P, components = list(P_expr = P_expr, P_conf = P_conf, P_missing = P_missing, P_role = P_role, P_base = P_base, C_rel = C, reaction_confidence = F, missing_evidence_flag = missing_flag, role = role, role_source = role_source, role_confidence = role_confidence, role_override_flag = role_override_flag, support_penalty_used = support_penalty_used, transport_evidence_flag = transport_evidence_flag), evidence_policy = "penalty_only")
 }

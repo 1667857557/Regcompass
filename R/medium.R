@@ -1,5 +1,49 @@
 #' Apply condition-aware medium constraints to exchange reactions
 #' @export
+rc_make_medium_scenarios <- function(gem,
+                                     scenario = c("blood_like", "minimal", "culture_like", "tumor_low_glucose", "low_glucose", "low_glutamine", "lactate_available", "custom"),
+                                     custom_medium = NULL,
+                                     uptake_scale = c(1, 0.5, 0.1),
+                                     condition_col = NULL) {
+  scenario <- match.arg(scenario, several.ok = TRUE)
+  if ("custom" %in% scenario) {
+    if (is.null(custom_medium)) stop("`custom_medium` is required when `scenario` includes 'custom'.", call. = FALSE)
+    req <- c("medium_scenario_id", "exchange_reaction_id", "lb", "ub", "available")
+    miss <- setdiff(req, colnames(custom_medium)); if (length(miss)) stop("`custom_medium` missing columns: ", paste(miss, collapse = ", "), call. = FALSE)
+  }
+  gv <- rc_validate_gem(gem)
+  if (is.null(gem$reaction_meta) || !"role" %in% colnames(gem$reaction_meta)) gem <- rc_annotate_reaction_roles(gem)
+  meta <- gem$reaction_meta
+  ex <- as.character(meta$reaction_id[as.character(meta$role) == "exchange"])
+  ex <- intersect(ex, gv$reactions)
+  make_rows <- function(sc) {
+    scale <- switch(sc, minimal = 0.1, blood_like = 1, culture_like = 1,
+                    tumor_low_glucose = 0.5, low_glucose = 0.5,
+                    low_glutamine = 0.5, lactate_available = 1, 1)
+    data.frame(
+      medium_scenario_id = sc,
+      exchange_reaction_id = ex,
+      metabolite_id = if ("metabolite_id" %in% colnames(meta)) as.character(meta$metabolite_id[match(ex, meta$reaction_id)]) else NA_character_,
+      condition = if (is.null(condition_col)) "all" else as.character(condition_col),
+      lb = -10 * scale,
+      ub = 1000,
+      available = TRUE,
+      evidence_source = "curated_scenario_assumption",
+      assumption_level = if (sc %in% c("blood_like", "minimal")) "generic_physiological_scenario" else "sensitivity_scenario",
+      stringsAsFactors = FALSE
+    )
+  }
+  out <- do.call(rbind, lapply(setdiff(scenario, "custom"), make_rows))
+  if ("custom" %in% scenario) {
+    cm <- custom_medium
+    for (nm in setdiff(c("metabolite_id","condition","evidence_source","assumption_level"), colnames(cm))) cm[[nm]] <- NA
+    out <- rbind(out, cm[, colnames(out), drop = FALSE])
+  }
+  rownames(out) <- NULL
+  out
+}
+
+#' @export
 rc_apply_medium_constraints <- function(gem, medium_table, condition = NULL, exchange_default_lb = 0,
                                         exchange_default_ub = 1000, allow_secretion = TRUE, strict = TRUE) {
   gv <- rc_validate_gem(gem)
