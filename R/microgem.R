@@ -7,8 +7,8 @@
 #' @export
 rc_build_target_microgem <- function(gem, target_reaction, medium_table = NULL, condition = NULL, k_hop = 2,
                                      include_same_subsystem = TRUE, include_transport = TRUE, include_exchange = TRUE,
-                                     include_demand_sink = TRUE, include_cofactor_modules = TRUE, allow_gapfill = TRUE,
-                                     currency_metabolites = NULL, max_reactions = 500, gapfill_max_added = 50, strict_closure = FALSE) {
+                                     include_demand_sink = TRUE, include_cofactor_modules = TRUE,
+                                     currency_metabolites = NULL, max_reactions = 500, strict_closure = FALSE) {
   if (!target_reaction %in% colnames(gem$S)) stop("`target_reaction` is not present in `gem$S`.", call. = FALSE)
   gem <- rc_annotate_reaction_roles(gem)
   gv <- rc_validate_gem(gem); S <- gv$S; meta <- gem$reaction_meta[match(gv$reactions, gem$reaction_meta$reaction_id), , drop = FALSE]
@@ -34,7 +34,7 @@ rc_build_target_microgem <- function(gem, target_reaction, medium_table = NULL, 
   if (!is.null(gem$gpr_table)) sub$gpr_table <- gem$gpr_table[as.character(gem$gpr_table$reaction_id) %in% keep, , drop = FALSE]
   med_diag <- data.frame(); if (!is.null(medium_table)) { app <- rc_apply_medium_constraints(sub, medium_table, condition = condition, strict = FALSE); sub <- app$gem; med_diag <- app$medium_diagnostics }
   sub$target_reaction <- target_reaction; sub$reaction_roles <- sub$reaction_meta[, intersect(c("reaction_id", "role", "role_source", "role_confidence"), colnames(sub$reaction_meta)), drop = FALSE]
-  sub$medium_diagnostics <- med_diag; sub$gapfill_diagnostics <- data.frame(n_gapfilled_reactions = 0L)
+  sub$medium_diagnostics <- med_diag
   sub$closure_diagnostics <- rc_check_microgem_closure(sub, target_reaction)
   sub$build_params <- list(k_hop = k_hop, max_reactions = max_reactions, strict_closure = strict_closure)
   sub
@@ -46,5 +46,5 @@ rc_check_microgem_closure <- function(microgem, target_reaction, solver = "highs
   f <- rc_compass_vmax_directional(gv$S, gv$lb, gv$ub, target_reaction, "forward", solver, 60)
   role <- if (!is.null(microgem$reaction_meta) && "role" %in% colnames(microgem$reaction_meta)) as.character(microgem$reaction_meta$role) else rep("unknown", length(gv$reactions))
   nnz_m <- Matrix::rowSums(abs(gv$S) > 0)
-  data.frame(target_reaction = target_reaction, strict_target_feasible = isTRUE(f$feasible), strict_vmax = f$vmax, n_boundary_metabolites = sum(nnz_m == 1), n_deadend_metabolites = sum(nnz_m <= 1), n_exchange_reactions = sum(role == "exchange"), n_transport_reactions = sum(role == "transport"), n_support_reactions = sum(role %in% c("exchange", "demand", "sink", "artificial_support", "cofactor_recycle")), n_gapfilled_reactions = 0L, top_unbalanced_boundary_metabolites = paste(utils::head(rownames(gv$S)[nnz_m == 1], 5), collapse = ";"), closure_warning_flag = !isTRUE(f$feasible), stringsAsFactors = FALSE)
+  data.frame(target_reaction = target_reaction, strict_target_feasible = isTRUE(f$feasible), strict_vmax = f$vmax, n_boundary_metabolites = sum(nnz_m == 1), n_deadend_metabolites = sum(nnz_m <= 1), n_exchange_reactions = sum(role == "exchange"), n_transport_reactions = sum(role == "transport"), n_support_reactions = sum(role %in% c("exchange", "demand", "sink", "artificial_support", "cofactor_recycle")), top_unbalanced_boundary_metabolites = paste(utils::head(rownames(gv$S)[nnz_m == 1], 5), collapse = ";"), closure_warning_flag = !isTRUE(f$feasible), stringsAsFactors = FALSE)
 }

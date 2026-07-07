@@ -44,5 +44,5 @@ rc_compute_multiome_penalty <- function(C_rel, reaction_confidence, gpr_diagnost
   }
   P_role[role_override_flag, ] <- P[role_override_flag, , drop = FALSE]
   P <- pmin(pmax(P, 0), penalty_cap); P[!is.finite(P)] <- penalty_cap
-  list(penalty = P, components = list(P_expr = P_expr, P_conf = P_conf, P_missing = P_missing, P_role = P_role, P_base = P_base, C_rel = C, reaction_confidence = F, missing_evidence_flag = missing_flag, role = role, role_source = role_source, role_confidence = role_confidence, role_override_flag = role_override_flag, support_penalty_used = support_penalty_used, transport_evidence_flag = transport_evidence_flag))
+  list(penalty = P, components = list(P_expr = P_expr, P_conf = P_conf, P_missing = P_missing, P_role = P_role, P_base = P_base, C_rel = C, reaction_confidence = F, missing_evidence_flag = missing_flag, role = role, role_source = role_source, role_confidence = role_confidence, role_override_flag = role_override_flag, support_penalty_used = support_penalty_used, transport_evidence_flag = transport_evidence_flag), evidence_policy = "penalty_only")
 }

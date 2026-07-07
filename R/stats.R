@@ -1,9 +1,9 @@
 rc_parse_microcompass_row_id <- function(x) {
-  medium <- ifelse(grepl("::medium=", x, fixed = TRUE),
-                   sub("^.*::medium=", "", x),
-                   NA_character_)
   core <- sub("::medium=.*$", "", x)
   parts <- strsplit(core, "::", fixed = TRUE)
+  medium <- ifelse(grepl("::medium=", x, fixed = TRUE),
+                   sub("^.*::medium=", "", x),
+                   vapply(parts, function(z) z[[3]] %||% NA_character_, character(1)))
   data.frame(
     reaction_id = vapply(parts, function(z) z[[1]] %||% NA_character_, character(1)),
     target_direction = vapply(parts, function(z) z[[2]] %||% NA_character_, character(1)),

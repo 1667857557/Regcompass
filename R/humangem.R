@@ -10,20 +10,32 @@ rc_prepare_human2_gem <- function(version = "2.0.0",
                                   save_rds = file.path(cache_dir, paste0("Human2_", version, "_regcompass.rds")),
                                   force_download = FALSE,
                                   allow_latest = FALSE,
-                                  importer = c("cobrapy", "sbml", "raven_export", "yml_fallback"),
                                   require_model_info = TRUE) {
-  importer <- match.arg(importer)
   if (identical(version, "latest") && !isTRUE(allow_latest)) {
-    stop('`version = "latest"` requires `allow_latest = TRUE`; use a pinned Human2 release for reproducible analyses.', call. = FALSE)
+    stop("`version = 'latest'` requires `allow_latest = TRUE`; use a pinned Human2 release.", call. = FALSE)
   }
-  if (identical(version, "latest")) {
-    warning("Using Human2 latest is opt-in and not reproducible unless the resolved release/commit/checksum are recorded.", call. = FALSE)
+  if (!file.exists(save_rds)) {
+    stop("Preconverted Human2 RegCompassR RDS not found: ", save_rds, "\n",
+         "Provide a pinned preconverted RDS with S, lb, ub, reaction_meta, metabolite_meta, gpr_table, and model_info.",
+         call. = FALSE)
   }
-  if (file.exists(save_rds) && !isTRUE(force_download)) {
-    return(rc_read_gem(save_rds, require_model_info = require_model_info))
-  }
-  stop("Automatic Human2 GEM conversion is not bundled in this lightweight R implementation. ",
-       "Provide a stable preconverted RegCompassR RDS, SBML/cobrapy conversion, or RAVEN export with model_info.", call. = FALSE)
+  gem <- rc_read_gem(save_rds, require_model_info = require_model_info)
+  rc_validate_human2_gem(gem)
+  gem
+}
+
+#' @export
+rc_validate_human2_gem <- function(gem) {
+  rc_validate_gem(gem)
+  if (is.null(gem$model_info)) stop("Human2 GEM requires `model_info`.", call. = FALSE)
+  req_info <- c("source", "version", "commit", "checksum", "conversion_date")
+  miss_info <- setdiff(req_info, names(gem$model_info))
+  if (length(miss_info)) stop("Human2 `model_info` missing: ", paste(miss_info, collapse = ", "), call. = FALSE)
+  if (is.null(gem$gpr_table)) stop("Human2 GEM requires `gpr_table`.", call. = FALSE)
+  req_gpr <- c("reaction_id", "and_group_id", "gene")
+  miss_gpr <- setdiff(req_gpr, colnames(gem$gpr_table))
+  if (length(miss_gpr)) stop("Human2 `gpr_table` missing columns: ", paste(miss_gpr, collapse = ", "), call. = FALSE)
+  invisible(TRUE)
 }
 
 #' @export

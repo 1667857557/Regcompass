@@ -1,8 +1,8 @@
 # RegCompassR microCOMPASS quick guide
 
-RegCompassR estimates target-local reaction potential with Human2-backed GEMs, medium scenarios, and RNA/ATAC evidence.
+RegCompassR microCOMPASS uses structural target-local micro-GEMs defined by GEM topology, target reactions, reaction roles, and medium scenarios. RNA+ATAC-GPR evidence is used only to compute unit-specific penalties and does not remove reactions from the structural micro-GEM.
 
-Do not interpret results as true flux, enzyme activity, real uptake/secretion, ATAC causality, or in vivo medium truth.
+RegCompassR reports multiome-supported reaction capacity potential, not true metabolic flux, enzyme activity, uptake/secretion flux, ATAC causality, or in vivo medium truth.
 
 ## Minimal workflow
 
@@ -72,13 +72,8 @@ res <- rc_run_microcompass(
   unit = "sample_celltype",
   target_direction = "both",
   omega = 0.95,
-  run_relaxed = TRUE,
-  run_gapfill_diagnostic = TRUE,
   use_gapfilled_for_score = FALSE,
-  run_fva = TRUE,
-  fva_mode = "target_active",
-  fva_top_targets = 30,
-  max_fva_lp = 5000,
+  parallel = TRUE,
   solver = "highs",
   time_limit = 60
 )
@@ -101,16 +96,15 @@ rc_export_microcompass(res, "RegCompassR_run")
 | `rc_make_metacells()` | Build sample/condition/cell-type-aware RNA+ATAC metacells. | Counts, metadata, membership, diagnostics. |
 | `rc_import_metacells()` | Import saved metacell directories. | Same structure as `rc_make_metacells()`. |
 | `rc_read_gem()` | Read a GEM RDS; requires `model_info` by default. | Validated GEM. |
-| `rc_prepare_human2_gem()` | Load a pinned preconverted Human2 RDS; `latest` requires opt-in. | Validated GEM, or an error if no RDS is supplied. |
+| `rc_prepare_human2_gem()` | Load a pinned preconverted Human2 RDS with provenance; automatic conversion is not bundled. | Validated Human2 GEM, or an error if no RDS/provenance is supplied. |
 | `rc_annotate_reaction_roles()` | Add curated or inferred reaction roles. | GEM with `reaction_roles`. |
 | `rc_make_medium_scenarios()` | Create named medium-scenario bounds. | Scenario table for exchanges. |
 | `rc_run_layer1_multiome()` | Convert metacell RNA/ATAC and GPRs into reaction evidence. | `C_rel`, confidence, diagnostics, unit metadata. |
 | `rc_select_target_reactions()` | Select targets without expanding networks. | Balanced ranked target table. |
 | `rc_extract_cofactor_modules()` | Find cofactor-related candidate reactions from GEM annotations. | Cofactor module diagnostic table. |
-| `rc_build_target_microgem()` | Build one target-local micro-GEM. | Micro-GEM plus closure/medium/gapfill diagnostics. |
-| `rc_run_microcompass()` | Run strict directional LP scores and optional diagnostics. | Score, penalty, vmax, feasibility, LP/relaxed/FVA diagnostics. |
-| `rc_run_relaxed_balance_lp()` | Diagnose mass-balance slack feasibility. | Slack summary; not part of strict score. |
-| `rc_run_selected_fva()` | Diagnose local flux variability. | Selected min/max ranges. |
+| `rc_build_microgem_cache()` | Build structural micro-GEMs once per target direction and medium scenario. | Named micro-GEM cache plus cache summary. |
+| `rc_build_target_microgem()` | Build one structural target-local micro-GEM. | Micro-GEM plus closure and medium diagnostics. |
+| `rc_run_microcompass()` | Run cached structural micro-GEM strict LP with unit-specific penalties. | Score, penalty, vmax, feasibility, LP diagnostics. |
 | `rc_test_microcompass_differential()` | Test sample-level differences with `lm`, `wilcox`, or continuous `limma::lmFit()`/`eBayes()`. | Differential result table. |
 | `rc_export_microcompass()` | Write standardized outputs. | RDS/TSV files under numbered folders. |
 
@@ -146,13 +140,10 @@ After `rc_export_microcompass(res, outdir)`, inspect:
 02_medium/medium_scenarios.tsv.gz
 02_medium/medium_sensitivity_summary.tsv.gz
 03_microgem/closure_diagnostics.tsv.gz
-03_microgem/gapfill_diagnostics.tsv.gz
+03_microgem/microgem_cache_summary.tsv.gz
 04_microcompass/strict_score_matrix.rds
 04_microcompass/strict_penalty_matrix.rds
 04_microcompass/lp_diagnostics.tsv.gz
-05_relaxed_balance/slack_summary.tsv.gz
-06_fva/selected_fva.tsv.gz
-06_fva/fva_runtime_summary.tsv.gz
 session_info.txt
 ```
 
@@ -161,8 +152,7 @@ session_info.txt
 Use concise conservative language:
 
 - `strict_feasible + low penalty + stable medium sensitivity`: stronger reaction-potential evidence.
-- `strict infeasible + relaxed/gapfill feasible`: local closure, medium, or cofactor limitation.
-- `strict feasible + wide FVA`: alternative routes; reaction-specific conclusion is weak.
+- Strict infeasible LP results receive score 0 under the specified structural micro-GEM and medium scenario.
 - ATAC confidence reflects chromatin-expression concordance, not regulatory causality.
 - DNA methylation is not modeled.
 
