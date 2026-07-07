@@ -5,6 +5,28 @@
 #' default genes are converted from Human-GEM Ensembl IDs to gene symbols using
 #' `model/genes.tsv`.
 #' @export
+rc_prepare_human2_gem <- function(version = "2.0.0",
+                                  cache_dir = tools::R_user_dir("RegCompassR", "cache"),
+                                  save_rds = file.path(cache_dir, paste0("Human2_", version, "_regcompass.rds")),
+                                  force_download = FALSE,
+                                  allow_latest = FALSE,
+                                  importer = c("cobrapy", "sbml", "raven_export", "yml_fallback"),
+                                  require_model_info = TRUE) {
+  importer <- match.arg(importer)
+  if (identical(version, "latest") && !isTRUE(allow_latest)) {
+    stop('`version = "latest"` requires `allow_latest = TRUE`; use a pinned Human2 release for reproducible analyses.', call. = FALSE)
+  }
+  if (identical(version, "latest")) {
+    warning("Using Human2 latest is opt-in and not reproducible unless the resolved release/commit/checksum are recorded.", call. = FALSE)
+  }
+  if (file.exists(save_rds) && !isTRUE(force_download)) {
+    return(rc_read_gem(save_rds, require_model_info = require_model_info))
+  }
+  stop("Automatic Human2 GEM conversion is not bundled in this lightweight R implementation. ",
+       "Provide a stable preconverted RegCompassR RDS, SBML/cobrapy conversion, or RAVEN export with model_info.", call. = FALSE)
+}
+
+#' @export
 rc_download_humangem_gpr_table <- function(destdir = tempfile("Human-GEM-"),
                                            ref = "main",
                                            gene_format = c("symbol", "ensembl"),

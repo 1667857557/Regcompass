@@ -77,13 +77,35 @@ rc_layer2_invalid_reactions <- function(layer1) {
 
 #' Select target reactions without expanding the network
 #' @export
-rc_select_target_reactions <- function(layer1, targets = NULL, pathway = NULL, subsystem = NULL, method = c("custom", "top_capacity", "differential", "pathway"), top_n = 100, min_C_rel = 0.15, min_confidence = 0.25, require_complete_gpr = TRUE, exclude_low_q95_power = TRUE) {
+rc_select_target_reactions <- function(layer1, targets = NULL, pathway = NULL, subsystem = NULL, method = c("balanced_top_capacity", "custom", "top_capacity", "condition_specific", "differential", "pathway"), selection_mode = c("balanced_rank", "and", "or", "ranked_product"), group_cols = c("condition", "cell_type"), top_n = 100, top_n_per_group = 30, min_C_rel = 0.15, min_confidence = 0.25, min_units_per_group = 3, require_complete_gpr = TRUE, exclude_very_low_q95_power = TRUE, exclude_low_q95_power = exclude_very_low_q95_power) {
   method <- match.arg(method)
+  selection_mode <- match.arg(selection_mode)
   if (!is.null(targets) || method == "custom") return(data.frame(reaction_id = unique(as.character(targets)), selection_reason = "custom", stringsAsFactors = FALSE))
   C <- as.matrix(layer1$C_rel); conf <- if (!is.null(layer1$reaction_confidence)) rc_layer2_confidence_matrix(layer1$reaction_confidence, C) else matrix(1, nrow(C), ncol(C), dimnames=dimnames(C))
-  keep <- rownames(C)[rowMedians_safe(C) >= min_C_rel | rowMedians_safe(conf) >= min_confidence]
+  meta <- layer1$unit_meta %||% layer1$pool_meta %||% layer1$metacell_meta %||% data.frame(unit_id = colnames(C), stringsAsFactors = FALSE)
+  id_col <- intersect(c("unit_id","pool_id","sample_celltype_id"), colnames(meta))[1] %||% colnames(meta)[1]
+  meta <- meta[match(colnames(C), as.character(meta[[id_col]])), , drop = FALSE]
+  groups <- if (all(group_cols %in% colnames(meta))) interaction(meta[, group_cols, drop = FALSE], drop = TRUE, sep = "|") else factor(rep("all", ncol(C)))
+  rxns <- rownames(C); gs <- matrix(NA_real_, nrow(C), length(levels(groups)), dimnames = list(rxns, levels(groups)))
+  n_by <- setNames(integer(length(levels(groups))), levels(groups))
+  medC <- medConf <- gs
+  for (g in levels(groups)) {
+    cols <- which(groups == g); n_by[g] <- length(cols)
+    medC[, g] <- rowMedians_safe(C[, cols, drop = FALSE])
+    medConf[, g] <- rowMedians_safe(conf[, cols, drop = FALSE])
+    gs[, g] <- sqrt(pmax(0, medC[, g]) * pmax(0, medConf[, g]))
+    gs[n_by[g] < min_units_per_group, g] <- NA_real_
+  }
+  balanced_score <- apply(gs, 1, max, na.rm = TRUE); balanced_score[!is.finite(balanced_score)] <- NA_real_
+  pass <- switch(selection_mode,
+                 and = rowSums(medC >= min_C_rel & medConf >= min_confidence, na.rm = TRUE) > 0,
+                 or = rowSums(medC >= min_C_rel | medConf >= min_confidence, na.rm = TRUE) > 0,
+                 ranked_product = is.finite(balanced_score),
+                 balanced_rank = is.finite(balanced_score))
+  keep <- rxns[pass]
   if (exclude_low_q95_power && is.data.frame(layer1$q95_diagnostics) && "q95_power_class" %in% colnames(layer1$q95_diagnostics)) keep <- setdiff(keep, layer1$q95_diagnostics$reaction_id[layer1$q95_diagnostics$q95_power_class == "very_low"])
-  score <- rowMedians_safe(C[keep,,drop=FALSE])
-  keep <- names(sort(score, decreasing=TRUE))[seq_len(min(top_n, length(score)))]
-  data.frame(reaction_id=keep, selection_reason=method, stringsAsFactors=FALSE)
+  ranked <- names(sort(balanced_score[keep], decreasing=TRUE, na.last=NA))
+  selected_groups <- apply(gs[ranked,,drop=FALSE], 1, function(x) paste(names(sort(x, decreasing=TRUE, na.last=NA))[seq_len(min(top_n_per_group, sum(is.finite(x))))], collapse = ";"))
+  keep <- utils::head(ranked, top_n)
+  data.frame(reaction_id=keep, selection_reason=paste(method, selection_mode, sep=":"), selected_in_group=unname(selected_groups[keep]), balanced_score=balanced_score[keep], median_C_rel_by_group=apply(round(medC[keep,,drop=FALSE],4),1,paste,collapse=";"), median_confidence_by_group=apply(round(medConf[keep,,drop=FALSE],4),1,paste,collapse=";"), n_units_by_group=paste(n_by, collapse=";"), low_power_selection_flag=any(n_by < min_units_per_group), gpr_complexity=NA_character_, stringsAsFactors=FALSE)
 }
