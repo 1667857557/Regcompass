@@ -12,7 +12,7 @@ rc_prepare_directional_targets <- function(gem, target_reactions, mode = c("both
 rc_compass_vmax_directional <- function(S, lb, ub, target_reaction, direction = "forward", solver = "highs", time_limit = 60) {
   j <- match(target_reaction, colnames(S)); c1 <- rep(0, ncol(S)); c1[j] <- if (direction == "reverse") 1 else -1
   step <- rc_solve_lp(c1, S, rep(0, nrow(S)), rep(0, nrow(S)), lb, ub, solver, time_limit)
-  vmax <- if (identical(step$status, "optimal")) if (direction == "reverse") step$objective else -step$objective else NA_real_
+  vmax <- if (identical(step$status, "optimal")) -step$objective_value else NA_real_
   list(feasible = is.finite(vmax) && vmax > 1e-8, vmax = vmax, status = step$status, runtime = step$runtime)
 }
 rc_compass_two_step_lp_directional <- function(S, lb, ub, target_reaction, penalties, target_direction = "forward", omega = 0.95, solver = "highs", time_limit = 60) {

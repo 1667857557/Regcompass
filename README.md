@@ -86,6 +86,7 @@ res <- rc_run_microcompass(
 stat <- rc_test_microcompass_differential(
   res,
   formula = score ~ condition,
+  method = "lm",
   min_samples_per_group = 3
 )
 
@@ -110,7 +111,7 @@ rc_export_microcompass(res, "RegCompassR_run")
 | `rc_run_microcompass()` | Run strict directional LP scores and optional diagnostics. | Score, penalty, vmax, feasibility, LP/relaxed/FVA diagnostics. |
 | `rc_run_relaxed_balance_lp()` | Diagnose mass-balance slack feasibility. | Slack summary; not part of strict score. |
 | `rc_run_selected_fva()` | Diagnose local flux variability. | Selected min/max ranges. |
-| `rc_test_microcompass_differential()` | Test score differences using sample-level units. | Differential result table. |
+| `rc_test_microcompass_differential()` | Test sample-level differences with `lm`, `wilcox`, or continuous `limma::lmFit()`/`eBayes()`. | Differential result table. |
 | `rc_export_microcompass()` | Write standardized outputs. | RDS/TSV files under numbered folders. |
 
 ## Required input tables
@@ -135,7 +136,7 @@ EX_glc_D_e   exchange   curated
 R_HEX1       internal   curated
 ```
 
-Common roles: `internal`, `exchange`, `transport`, `demand`, `sink`, `biomass`, `maintenance`, `cofactor_recycle`, `artificial_support`, `blocked`, `unknown`.
+Common roles: `internal`, `boundary_like`, `exchange`, `transport`, `demand`, `sink`, `biomass`, `maintenance`, `cofactor_recycle`, `artificial_support`, `blocked`, `unknown`.
 
 ## Outputs to inspect
 

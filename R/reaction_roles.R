@@ -16,7 +16,7 @@ rc_annotate_reaction_roles <- function(gem, reaction_role_table = NULL, infer_fr
   if (infer_from_stoichiometry) {
     nnz <- Matrix::colSums(abs(gv$S) > 0)
     idx <- role == "unknown" & nnz == 1
-    role[idx] <- "exchange"; source[idx] <- "stoichiometry"; conf[idx] <- "medium"
+    role[idx] <- "boundary_like"; source[idx] <- "stoichiometry"; conf[idx] <- "low"
   }
   if (infer_from_compartment && !is.null(gem$metabolite_meta) && "compartment" %in% colnames(gem$metabolite_meta)) {
     comp <- as.character(gem$metabolite_meta$compartment[match(rownames(gv$S), as.character(gem$metabolite_meta$metabolite_id))])
