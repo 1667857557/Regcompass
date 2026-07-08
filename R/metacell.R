@@ -341,6 +341,40 @@ rc_metacell_diagnostics <- function(metacell_meta, rna_metacell_counts = NULL, a
   data.frame(cell_id = character(0), metacell_id = character(0), stringsAsFactors = FALSE)
 }
 
+
+.rc_normalize_fragment_files <- function(fragment_files, atac_assay = "ATAC") {
+  if (is.null(fragment_files)) return(NULL)
+  if (is.character(fragment_files)) {
+    if (length(fragment_files) == 1L && (is.null(names(fragment_files)) || !nzchar(names(fragment_files)[1L]))) {
+      return(stats::setNames(list(fragment_files[[1L]]), atac_assay))
+    }
+    if (is.null(names(fragment_files)) || any(!nzchar(names(fragment_files)))) {
+      stop("`fragment_files` must be a named character vector/list when more than one file is supplied.", call. = FALSE)
+    }
+    return(as.list(fragment_files))
+  }
+  if (is.list(fragment_files)) {
+    if (length(fragment_files) == 1L && (is.null(names(fragment_files)) || !nzchar(names(fragment_files)[1L]))) {
+      names(fragment_files) <- atac_assay
+    }
+    if (is.null(names(fragment_files)) || any(!nzchar(names(fragment_files)))) {
+      stop("`fragment_files` list must be named by chromatin assay, e.g. list(ATAC = path).", call. = FALSE)
+    }
+    return(fragment_files)
+  }
+  stop("`fragment_files` must be NULL, a character path/vector, or a named list.", call. = FALSE)
+}
+
+.rc_assert_shell_safe_paths <- function(...) {
+  paths <- unlist(list(...), use.names = FALSE)
+  paths <- paths[!is.na(paths) & nzchar(paths)]
+  bad <- paths[grepl("\\s", paths)]
+  if (length(bad)) {
+    warning("Some paths contain whitespace. RegCompassR sanitizes stratum directories, but external fragment tools may still fail if shell paths are not quoted: ", paste(unique(bad), collapse = ", "), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' Build sample-aware SuperCell2.0 RNA+ATAC metacells and save outputs
 #' @export
 rc_make_supercell2_metacells <- function(object,
@@ -358,10 +392,13 @@ rc_make_supercell2_metacells <- function(object,
                                          gamma = 75,
                                          min_cells_per_stratum = 100,
                                          min_metacell_size = 20,
+                                         min_metacells_per_stratum = 2L,
+                                         adaptive_gamma = FALSE,
                                          label_col = NULL,
                                          fragment_files = NULL,
                                          bgzip_path = "bgzip",
                                          tabix_path = "tabix",
+                                         fragment_nb_cl = 1L,
                                          save_metacell_object = TRUE,
                                          save_counts = TRUE,
                                          save_fragments = TRUE,
@@ -374,6 +411,8 @@ rc_make_supercell2_metacells <- function(object,
     if (!isTRUE(save_fragments)) stop("Formal multiome workflow requires `save_fragments = TRUE`.", call. = FALSE)
     if (is.null(fragment_files)) stop("Formal multiome workflow requires `fragment_files` for metacell fragment aggregation.", call. = FALSE)
   }
+  fragment_files <- .rc_normalize_fragment_files(fragment_files, atac_assay = atac_assay)
+  .rc_assert_shell_safe_paths(outdir, unlist(fragment_files, use.names = FALSE))
   meta <- object@meta.data
   required <- c(sample_col, condition_col, celltype_col, state_col, label_col)
   required <- required[!is.null(required) & !is.na(required) & nzchar(required)]
@@ -395,19 +434,28 @@ rc_make_supercell2_metacells <- function(object,
     if (dir.exists(stratum_dir) && !overwrite && file.exists(file.path(stratum_dir, "metacell_metadata.tsv.gz"))) return(stratum_dir)
     dir.create(file.path(stratum_dir, "fragments"), recursive = TRUE, showWarnings = FALSE)
     dir.create(file.path(stratum_dir, "qc"), recursive = TRUE, showWarnings = FALSE)
-    if (length(cells) < min_cells_per_stratum) {
-      diag <- data.frame(group_id = key, n_cells = length(cells), skipped = TRUE, skip_reason = "stratum_below_min_cells_per_stratum", stringsAsFactors = FALSE)
-      .rc_write_tsv_gz(diag, file.path(stratum_dir, "qc", "metacell_qc.tsv.gz"))
-      return(stratum_dir)
+    min_required_cells <- max(as.integer(min_cells_per_stratum), as.integer(min_metacells_per_stratum) * as.integer(gamma))
+    gamma_i <- as.integer(gamma)
+    if (length(cells) < min_required_cells) {
+      if (isTRUE(adaptive_gamma) && length(cells) >= as.integer(min_metacells_per_stratum) * as.integer(min_metacell_size)) {
+        gamma_i <- max(1L, floor(length(cells) / as.integer(min_metacells_per_stratum)))
+      } else {
+        reason <- if (length(cells) < min_cells_per_stratum) "stratum_below_min_cells_per_stratum" else "stratum_too_small_for_min_metacells_at_current_gamma"
+        diag <- data.frame(group_id = key, n_cells = length(cells), skipped = TRUE, skip_reason = reason, gamma = gamma, min_required_cells = min_required_cells, stringsAsFactors = FALSE)
+        .rc_write_tsv_gz(diag, file.path(stratum_dir, "qc", "metacell_qc.tsv.gz"))
+        return(stratum_dir)
+      }
     }
+    prefix <- paste(vapply(vals, .rc_safe_path_component, character(1)), collapse = "_")
     seu_sub <- subset(object, cells = cells)
-    args <- list(seurat = seu_sub, assay = c(rna_assay, atac_assay), reduction = list(rna_reduction, atac_reduction), dims = list(rna_dims, atac_dims), gamma = gamma, return.seurat = TRUE)
+    args <- list(seurat = seu_sub, assay = c(rna_assay, atac_assay), reduction = list(rna_reduction, atac_reduction), dims = list(rna_dims, atac_dims), gamma = gamma_i, return.seurat = TRUE, prefixMC = prefix)
     if (!is.null(label_col)) args$label <- label_col
     if (save_fragments && !is.null(fragment_files)) {
       args$fragmentFiles <- fragment_files
       args$outputDirMcFragment <- file.path(stratum_dir, "fragments")
       args$bgzip_path <- bgzip_path
       args$tabix_path <- tabix_path
+      args$nb_cl <- max(1L, as.integer(fragment_nb_cl))
     }
     mc <- tryCatch(
       .rc_with_seurat4_filterobjects(do.call(SuperCell::SCimplify_for_Seurat, args)),
@@ -419,16 +467,14 @@ rc_make_supercell2_metacells <- function(object,
       }
     )
     mc_ids <- colnames(.rc_get_assay_counts_safe(mc, rna_assay))
-    prefix <- paste(vapply(vals, .rc_safe_path_component, character(1)), collapse = "_")
-    new_ids <- paste0(prefix, "_MC", sprintf(paste0("%0", max(3, nchar(length(mc_ids))), "d"), seq_along(mc_ids)))
-    if (requireNamespace("SeuratObject", quietly = TRUE) && exists("RenameCells", asNamespace("SeuratObject"))) mc <- SeuratObject::RenameCells(mc, new.names = new_ids)
-    mc_ids <- new_ids
+    display_ids <- paste0(prefix, "_MC", sprintf(paste0("%0", max(3, nchar(length(mc_ids))), "d"), seq_along(mc_ids)))
     membership <- .rc_extract_supercell_membership(mc, cells, mc_ids)
     if (nrow(membership) == 0L) warning("Could not infer single-cell membership from SuperCell output for stratum ", key, "; membership.tsv.gz will be empty.", call. = FALSE)
     for (col in group_cols) membership[[col]] <- vals[[col]][[1]]
     mc_meta <- rc_build_metacell_metadata(membership)
     if (nrow(mc_meta) == 0L) mc_meta <- data.frame(metacell_id = mc_ids, n_cells = NA_integer_, stringsAsFactors = FALSE)
     for (col in group_cols) if (!col %in% colnames(mc_meta)) mc_meta[[col]] <- vals[[col]][[1]]
+    mc_meta$metacell_display_id <- display_ids[match(as.character(mc_meta$metacell_id), mc_ids)]
     mc_meta$low_power_metacell <- !is.na(mc_meta$n_cells) & mc_meta$n_cells < min_metacell_size
     rna_counts <- .rc_as_sparse(.rc_get_assay_counts_safe(mc, rna_assay))
     atac_counts <- .rc_as_sparse(.rc_get_assay_counts_safe(mc, atac_assay))
@@ -439,7 +485,7 @@ rc_make_supercell2_metacells <- function(object,
       saveRDS(rna_counts, file.path(stratum_dir, "rna_counts.rds"))
       saveRDS(atac_counts, file.path(stratum_dir, "atac_counts.rds"))
     }
-    diag <- data.frame(group_id = key, n_cells = length(cells), n_metacells = length(mc_ids), gamma = gamma, min_metacell_size = min_metacell_size, skipped = FALSE, stringsAsFactors = FALSE)
+    diag <- data.frame(group_id = key, n_cells = length(cells), n_metacells = length(mc_ids), gamma = gamma_i, requested_gamma = gamma, min_metacell_size = min_metacell_size, skipped = FALSE, stringsAsFactors = FALSE)
     .rc_write_tsv_gz(diag, file.path(stratum_dir, "qc", "metacell_qc.tsv.gz"))
     if (requireNamespace("yaml", quietly = TRUE)) {
       run_params <- list(
@@ -456,10 +502,13 @@ rc_make_supercell2_metacells <- function(object,
         gamma = gamma,
         min_cells_per_stratum = min_cells_per_stratum,
         min_metacell_size = min_metacell_size,
+        min_metacells_per_stratum = min_metacells_per_stratum,
+        adaptive_gamma = adaptive_gamma,
         label_col = label_col,
         fragment_files = fragment_files,
         bgzip_path = bgzip_path,
         tabix_path = tabix_path,
+        fragment_nb_cl = max(1L, as.integer(fragment_nb_cl)),
         save_metacell_object = save_metacell_object,
         save_counts = save_counts,
         save_fragments = save_fragments,
@@ -577,33 +626,46 @@ rc_import_metacells <- function(metacell_dirs, ..., filter_low_power_metacells =
 rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_files = NULL, rna_assay = "RNA", atac_assay = "ATAC") {
   if (is.null(metacell_objects) || length(metacell_objects) == 0L) stop("No metacell Seurat objects supplied.", call. = FALSE)
   objs <- lapply(metacell_objects, function(x) if (inherits(x, "Seurat")) x else readRDS(x))
+  cells_by_fragment <- lapply(objs, colnames)
   obj <- if (length(objs) == 1L) objs[[1L]] else Reduce(function(a, b) merge(a, y = b), objs)
-  .rc_register_signac_fragments(obj, fragment_files = fragment_files, atac_assay = atac_assay)
+  .rc_register_signac_fragments(obj, fragment_files = fragment_files, cells_by_fragment = cells_by_fragment, atac_assay = atac_assay, replace_existing = TRUE)
 }
 
-.rc_register_signac_fragments <- function(object, fragment_files = NULL, atac_assay = "ATAC") {
+.rc_register_signac_fragments <- function(object, fragment_files = NULL, cells_by_fragment = NULL, atac_assay = "ATAC", replace_existing = TRUE) {
   if (is.null(fragment_files) || length(fragment_files) == 0L) return(object)
-  fragment_files <- unique(as.character(fragment_files))
+  fragment_files <- as.character(fragment_files)
+  if (is.null(cells_by_fragment)) cells_by_fragment <- rep(list(colnames(object)), length(fragment_files))
+  if (length(cells_by_fragment) != length(fragment_files)) stop("`cells_by_fragment` must have one cell vector per fragment file.", call. = FALSE)
   missing <- fragment_files[!file.exists(fragment_files)]
   missing_index <- fragment_files[!file.exists(paste0(fragment_files, ".tbi"))]
   if (length(missing) > 0L) stop("Metacell fragment files are missing: ", paste(missing, collapse = ", "), call. = FALSE)
   if (length(missing_index) > 0L) stop("Metacell fragment tabix indexes are missing: ", paste(paste0(missing_index, ".tbi"), collapse = ", "), call. = FALSE)
   if (!requireNamespace("Signac", quietly = TRUE)) stop("Package 'Signac' is required to register metacell fragment files.", call. = FALSE)
   if (!atac_assay %in% names(object@assays)) stop("Metacell object is missing ATAC assay `", atac_assay, "`.", call. = FALSE)
-  fragments <- lapply(fragment_files, function(path) {
+  frag_setter <- get("Fragments<-", envir = asNamespace("Signac"))
+  if (isTRUE(replace_existing)) object[[atac_assay]] <- frag_setter(object[[atac_assay]], value = list())
+  fragments <- Map(function(path, cells) {
     tryCatch(
-      Signac::CreateFragmentObject(path = path, cells = colnames(object), validate.fragments = FALSE),
+      Signac::CreateFragmentObject(path = path, cells = as.character(cells), validate.fragments = FALSE),
       error = function(e) stop("Failed to register metacell fragment file `", path, "`: ", conditionMessage(e), call. = FALSE)
     )
-  })
-  frag_setter <- get("Fragments<-", envir = asNamespace("Signac"))
+  }, fragment_files, cells_by_fragment)
   object[[atac_assay]] <- frag_setter(object[[atac_assay]], value = fragments)
   object
 }
 
 #' Run the formal sample-aware metacell multiome workflow
 #' @export
-rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC", gamma = 75, min_metacell_size = 20, link_stratum_cols = "cell_type", min_metacells_for_linkpeaks = 80, linkpeaks_args = list(), ...) {
+rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC", gamma = 75, min_metacell_size = 20, link_stratum_cols = "cell_type", min_metacells_for_linkpeaks = 80, linkpeaks_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, ...) {
+  future_plan <- match.arg(future_plan)
+  if (future_plan == "sequential" && requireNamespace("future", quietly = TRUE)) {
+    old_plan <- future::plan()
+    old_max_size <- getOption("future.globals.maxSize")
+    on.exit(future::plan(old_plan), add = TRUE)
+    on.exit(options(future.globals.maxSize = old_max_size), add = TRUE)
+    future::plan(future::sequential)
+    options(future.globals.maxSize = future_globals_max_size)
+  }
   mc <- rc_make_metacells(object = object, outdir = file.path(outdir, "01_metacells"), sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, rna_assay = rna_assay, atac_assay = atac_assay, gamma = gamma, min_metacell_size = min_metacell_size, fragment_files = fragment_files, save_fragments = TRUE, require_fragment_aggregation = TRUE, save_metacell_object = TRUE)
   metacell_seurat <- rc_load_or_merge_metacell_objects(mc$metacell_objects, fragment_files = mc$fragment_files, rna_assay = rna_assay, atac_assay = atac_assay)
   rc_run_layer1_from_metacells(gpr_table = gpr_table, rna_metacell_counts = mc$rna_counts, atac_metacell_counts = mc$atac_counts, metacell_meta = mc$metacell_meta, metacell_seurat = metacell_seurat, force_metacell_relink = TRUE, allow_supplied_links = FALSE, link_stratum_cols = link_stratum_cols, min_metacells_for_linkpeaks = min_metacells_for_linkpeaks, linkpeaks_args = linkpeaks_args, ...)
