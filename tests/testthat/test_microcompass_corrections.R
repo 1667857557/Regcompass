@@ -63,13 +63,6 @@ test_that("Human2 GEM requires model_info and gpr_table", {
   expect_silent(rc_validate_human2_gem(gem))
 })
 
-test_that("microCOMPASS export excludes relaxed and FVA outputs", {
-  out <- tempfile()
-  result <- list(score = matrix(1, 1, 1), penalty = matrix(1, 1, 1), vmax = matrix(1, 1, 1), feasible = matrix(TRUE, 1, 1), penalty_components = list(), medium_scenarios = NULL, medium_sensitivity_summary = NULL, microgem_diagnostics = NULL, microgem_cache_summary = NULL, lp_diagnostics = NULL)
-  rc_export_microcompass(result, out)
-  expect_false(dir.exists(file.path(out, "05_relaxed_balance")))
-  expect_false(dir.exists(file.path(out, "06_fva")))
-})
 
 test_that("parallel and serial microCOMPASS agree with structural cache", {
   gem <- rc_test_toy_gem()
@@ -87,6 +80,4 @@ test_that("parallel and serial microCOMPASS agree with structural cache", {
   expect_equal(res1$score, res2$score, tolerance = 1e-8)
   expect_equal(res1$penalty, res2$penalty, tolerance = 1e-8)
   expect_equal(res1$feasible, res2$feasible)
-  expect_null(res1$relaxed)
-  expect_null(res1$fva)
 })

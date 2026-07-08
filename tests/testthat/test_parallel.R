@@ -9,8 +9,3 @@ test_that("rc_default_bpparam can be disabled with worker option", {
   options(RegCompassR.workers = 1)
   expect_null(rc_default_bpparam())
 })
-
-test_that("rc_pool_lapply delegates to the shared parallel helper", {
-  out <- rc_pool_lapply(c("a", "b"), function(x) paste0(x, x), BPPARAM = FALSE)
-  expect_equal(out, list("aa", "bb"))
-})

@@ -1,5 +1,4 @@
 #' Minimal pool diagnostics for the simplified Layer 1 workflow
-#' @export
 rc_pool_diagnostics <- function(pool_map,
                                 rna_counts = NULL,
                                 sample_col = "sample_id",

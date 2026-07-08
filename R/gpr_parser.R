@@ -49,7 +49,6 @@ rc_parse_gpr_table <- function(gpr_table) {
 }
 
 #' Compute gene promiscuity weights from parsed GPR rules
-#' @export
 rc_promiscuity_weight <- function(gpr_list, mode = c("sqrt", "linear", "none")) {
   mode <- match.arg(mode)
   genes <- unique(unlist(gpr_list, use.names = FALSE))

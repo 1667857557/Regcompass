@@ -20,7 +20,6 @@ rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
 }
 
 #' Robust row-wise z score
-#' @export
 rc_robust_z <- function(x, eps = 1e-6) {
   rc_gene_zscore(x, min_scale = max(eps, 0.05), z_clip = Inf)
 }
@@ -139,7 +138,7 @@ rc_reaction_capacity <- function(gpr_list,
   weighted_score[common_genes, ] <- sweep(weighted_score[common_genes, , drop = FALSE], 1, weights[common_genes], "*")
 
   reaction_ids <- names(gpr_list)
-  per_reaction <- rc_pool_lapply(reaction_ids, function(rid) {
+  per_reaction <- rc_internal_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(weighted_score)), function(j) {
       rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau, and_method = and_method, or_method = or_method)
@@ -183,7 +182,7 @@ rc_hard_min_capacity <- function(gpr_list, gene_score, BPPARAM = NULL) {
   weights <- rc_promiscuity_weight(gpr_list)
   common_genes <- intersect(rownames(gene_score), names(weights))
   gene_score[common_genes, ] <- sweep(gene_score[common_genes, , drop = FALSE], 1, weights[common_genes], "*")
-  per_reaction <- rc_pool_lapply(names(gpr_list), function(rid) {
+  per_reaction <- rc_internal_lapply(names(gpr_list), function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(gene_score)), function(j) {
       and_caps <- vapply(parsed, function(and_group) {

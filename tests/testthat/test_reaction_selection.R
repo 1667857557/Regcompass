@@ -1,4 +1,3 @@
-
 test_that("target reaction selection honors require_complete_gpr", {
   layer1 <- list(
     C_rel = matrix(c(0.9, 0.8), nrow = 2, dimnames = list(c("R_supported", "R_unsupported"), "mc1")),
@@ -12,7 +11,7 @@ test_that("target reaction selection honors require_complete_gpr", {
     pool_meta = data.frame(pool_id = "mc1", condition = "ctrl", cell_type = "T", stringsAsFactors = FALSE)
   )
   strict <- rc_select_target_reactions(layer1, require_complete_gpr = TRUE, min_units_per_group = 1, top_n = 10)
-  relaxed <- rc_select_target_reactions(layer1, require_complete_gpr = FALSE, min_units_per_group = 1, top_n = 10)
+  permissive <- rc_select_target_reactions(layer1, require_complete_gpr = FALSE, min_units_per_group = 1, top_n = 10)
   expect_equal(strict$reaction_id, "R_supported")
-  expect_true("R_unsupported" %in% relaxed$reaction_id)
+  expect_true("R_unsupported" %in% permissive$reaction_id)
 })

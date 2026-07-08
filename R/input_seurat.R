@@ -28,8 +28,8 @@ rc_validate_seurat <- function(object,
   if (!rna_assay %in% assay_names) stop("RNA assay not found: ", rna_assay, call. = FALSE)
   if (!atac_assay %in% assay_names) stop("ATAC assay not found: ", atac_assay, call. = FALSE)
 
-  rna_cells <- colnames(SeuratObject::GetAssayData(object = object, assay = rna_assay, slot = "counts"))
-  atac_cells <- colnames(SeuratObject::GetAssayData(object = object, assay = atac_assay, slot = "counts"))
+  rna_cells <- colnames(.rc_get_assay_counts(object, rna_assay))
+  atac_cells <- colnames(.rc_get_assay_counts(object, atac_assay))
   if (!setequal(rna_cells, atac_cells)) {
     stop("RNA and ATAC assays must contain the same cell barcodes.", call. = FALSE)
   }
@@ -45,17 +45,13 @@ rc_validate_seurat <- function(object,
 #' @export
 rc_extract_inputs <- function(object,
                               rna_assay = "RNA",
-                              rna_slot = "counts",
                               atac_assay = "ATAC",
-                              atac_slot = "counts",
                               sample_col = "sample_id",
                               celltype_col = "cell_type",
                               condition_col = NULL,
                               batch_col = NULL,
                               state_col = NULL,
                               embedding = NULL) {
-  if (!identical(rna_slot, "counts") || !identical(atac_slot, "counts")) stop("Main RegCompassR workflow requires counts slots for RNA and ATAC extraction.", call. = FALSE)
-
   rc_validate_seurat(
     object = object,
     rna_assay = rna_assay,
@@ -68,8 +64,8 @@ rc_extract_inputs <- function(object,
     embedding = embedding
   )
 
-  rna <- SeuratObject::GetAssayData(object = object, assay = rna_assay, slot = rna_slot)
-  atac <- SeuratObject::GetAssayData(object = object, assay = atac_assay, slot = atac_slot)
+  rna <- .rc_get_assay_counts(object, rna_assay)
+  atac <- .rc_get_assay_counts(object, atac_assay)
   meta <- object@meta.data
 
   emb <- NULL
@@ -78,20 +74,6 @@ rc_extract_inputs <- function(object,
   }
 
   list(rna_counts = rna, atac_counts = atac, rna = rna, atac = atac, meta = meta, embedding = emb)
-}
-
-#' Seurat v4 validation alias following the development plan naming
-#' @export
-rc_validate_seurat_v4 <- rc_validate_seurat
-
-#' Seurat v4 extraction alias following the development plan naming
-#' @export
-rc_extract_seurat_v4 <- rc_extract_inputs
-
-#' Get assay counts from a Seurat v4 object
-#' @export
-rc_get_assay_counts <- function(object, assay) {
-  SeuratObject::GetAssayData(object = object, assay = assay, slot = "counts")
 }
 
 #' Check cell metadata distributions for input diagnostics
@@ -129,7 +111,6 @@ rc_write_input_summary <- function(summary, out_dir) {
 #' Human-GEM/RegCompass GPR table, then converts the resulting Signac links into
 #' the `peak_id`, `gene`, `weight` table consumed by `rc_run_layer1_from_counts()`.
 #' Signac is an optional dependency and must be installed by the caller.
-#' @export
 rc_recompute_signac_peak_gene_links <- function(object,
                                                 gpr_table = NULL,
                                                 metabolic_genes = NULL,
@@ -206,7 +187,6 @@ rc_signac_links_to_peak_gene_table <- function(links, score_col = c("score", "zs
 #' Extracts RNA/ATAC counts from an annotated Seurat object and, by default,
 #' recomputes metabolic peak-gene links internally with `Signac::LinkPeaks()`
 #' before calling `rc_run_layer1_from_counts()`.
-#' @export
 rc_run_layer1_from_seurat <- function(gpr_table,
                                       object,
                                       pool_map,
@@ -230,7 +210,7 @@ rc_run_layer1_from_seurat <- function(gpr_table,
                                       bootstrap = FALSE,
                                       low_confidence_threshold = 0.25,
                                       low_confidence_quantile = NULL,
-                                      reaction_confidence_method = c("gpr_aware", "legacy_median"),
+                                      reaction_confidence_method = c("gpr_aware"),
                                       B = 500,
                                       BPPARAM = NULL) {
   or_method <- match.arg(or_method)
@@ -300,11 +280,14 @@ rc_validate_multiome_input <- function(object, rna_assay = "RNA", atac_assay = "
   invisible(TRUE)
 }
 .rc_get_assay_counts <- function(object, assay) {
-  tryCatch(SeuratObject::GetAssayData(object = object, assay = assay, layer = "counts"), error = function(e) SeuratObject::GetAssayData(object = object, assay = assay, slot = "counts"))
+  get_assay_data <- SeuratObject::GetAssayData
+  args <- list(object = object, assay = assay)
+  if ("layer" %in% names(formals(get_assay_data))) {
+    args$layer <- "counts"
+  } else {
+    args[["slot"]] <- "counts"
+  }
+  do.call(get_assay_data, args)
 }
 #' @export
 rc_get_assay_counts <- function(object, assay) .rc_get_assay_counts(object, assay)
-#' @export
-rc_validate_seurat_v4 <- function(...) { .Deprecated("rc_validate_multiome_input"); rc_validate_multiome_input(...) }
-#' @export
-rc_extract_seurat_v4 <- function(...) { .Deprecated("rc_extract_multiome_counts"); rc_extract_inputs(...) }
