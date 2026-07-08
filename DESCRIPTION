@@ -16,6 +16,8 @@ Suggests:
     BiocParallel,
     Seurat (>= 4.0.0),
     Signac,
+    EnsDb.Hsapiens.v86,
+    BSgenome.Hsapiens.UCSC.hg38,
     SuperCell,
     yaml,
     data.table,

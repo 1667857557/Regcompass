@@ -409,8 +409,23 @@ rc_gpr_gene_ids <- function(gpr_list) {
 #' peak-gene links with Signac::LinkPeaks for multiome confidence.
 #' @export
 rc_metabolic_gpr_genes <- function(gpr_table) {
+  if (is.data.frame(gpr_table) && all(c("reaction_id", "and_group_id", "gene") %in% colnames(gpr_table))) {
+    genes <- unique(as.character(gpr_table$gene))
+    genes <- genes[!is.na(genes) & nzchar(genes)]
+    return(genes)
+  }
+  if (is.data.frame(gpr_table) && all(c("reaction_id", "gpr") %in% colnames(gpr_table))) {
+    rules <- as.character(gpr_table$gpr)
+    rules <- gsub("[()]", " ", rules)
+    rules <- gsub("\\s+(and|or)\\s+", "|", rules, perl = TRUE, ignore.case = TRUE)
+    tokens <- unlist(strsplit(rules, "|", fixed = TRUE), use.names = FALSE)
+    genes <- unique(trimws(tokens))
+    genes <- genes[!is.na(genes) & nzchar(genes)]
+    return(genes)
+  }
   gpr_list <- if (is.data.frame(gpr_table)) rc_parse_gpr_table(gpr_table) else gpr_table
-  rc_gpr_gene_ids(gpr_list)
+  genes <- unique(as.character(unlist(gpr_list, use.names = FALSE)))
+  genes[!is.na(genes) & nzchar(genes)]
 }
 
 #' Compute compact capacity sensitivity summaries
@@ -604,5 +619,6 @@ rc_filter_peak_gene_links_to_gpr <- function(peak_gene_links, gpr_genes) {
   missing <- setdiff(required, colnames(peak_gene_links))
   if (length(missing) > 0L) stop("`peak_gene_links` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   if (length(gpr_genes) == 0L) return(peak_gene_links[0, , drop = FALSE])
+  gpr_genes <- unique(tolower(as.character(gpr_genes)))
   peak_gene_links[tolower(as.character(peak_gene_links$gene)) %in% gpr_genes, , drop = FALSE]
 }
