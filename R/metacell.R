@@ -247,7 +247,7 @@ rc_metacell_diagnostics <- function(metacell_meta, rna_metacell_counts = NULL, a
 }
 
 .rc_get_assay_counts_safe <- function(object, assay) {
-  SeuratObject::GetAssayData(object = object, assay = assay, slot = "counts")
+  rc_get_assay_counts(object, assay)
 }
 
 .rc_extract_supercell_membership <- function(mc_object, original_cells, metacell_ids) {
@@ -542,29 +542,4 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
   mc <- rc_make_metacells(object = object, outdir = file.path(outdir, "01_metacells"), sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, rna_assay = rna_assay, atac_assay = atac_assay, gamma = gamma, min_metacell_size = min_metacell_size, fragment_files = fragment_files, save_fragments = TRUE, require_fragment_aggregation = TRUE, save_metacell_object = TRUE)
   metacell_seurat <- rc_load_or_merge_metacell_objects(mc$metacell_objects, fragment_files = mc$fragment_files, rna_assay = rna_assay, atac_assay = atac_assay)
   rc_run_layer1_from_metacells(gpr_table = gpr_table, rna_metacell_counts = mc$rna_counts, atac_metacell_counts = mc$atac_counts, metacell_meta = mc$metacell_meta, metacell_seurat = metacell_seurat, force_metacell_relink = TRUE, allow_supplied_links = FALSE, link_stratum_cols = link_stratum_cols, min_metacells_for_linkpeaks = min_metacells_for_linkpeaks, linkpeaks_args = linkpeaks_args, ...)
-}
-
-#' Run Layer 1 multiome evidence from metacell raw counts
-#' @export
-rc_run_layer1_multiome <- function(gpr_table, rna_metacell_counts, metacell_meta, atac_metacell_counts = NULL, peak_gene_links = NULL, stratum_col = "cell_type", gene_score_method = c("robust_sigmoid"), and_method = c("boltzmann", "min", "mean"), or_method = c("sum_sqrtK", "max", "prob_or", "sum"), tau = 0.20, q = 0.95, q95_n0 = 80, bootstrap_q95 = FALSE, filter_low_power_metacells = TRUE, BPPARAM = NULL, legacy_allow_supplied_links = FALSE) {
-  .Deprecated("rc_run_regcompass_multiome_metacell")
-  if (!is.null(peak_gene_links) && !isTRUE(legacy_allow_supplied_links)) {
-    stop("`rc_run_layer1_multiome()` is a deprecated legacy/debug entrypoint and no longer accepts supplied `peak_gene_links` by default. Use `rc_run_regcompass_multiome_metacell()` for formal multiome analysis, or set `legacy_allow_supplied_links = TRUE` only for debugging.", call. = FALSE)
-  }
-  gpr_genes <- rc_metabolic_gpr_genes(gpr_table)
-  if (filter_low_power_metacells && "low_power_metacell" %in% colnames(metacell_meta)) {
-    keep_ids <- as.character(metacell_meta$metacell_id[!metacell_meta$low_power_metacell])
-    rna_metacell_counts <- rna_metacell_counts[, keep_ids, drop=FALSE]; metacell_meta <- metacell_meta[match(keep_ids, metacell_meta$metacell_id),,drop=FALSE]
-    if (!is.null(atac_metacell_counts)) atac_metacell_counts <- atac_metacell_counts[, keep_ids, drop=FALSE]
-  }
-  out <- rc_run_layer1_from_metacells(gpr_table = gpr_table, rna_metacell_counts = rna_metacell_counts, metacell_meta = metacell_meta, atac_metacell_counts = atac_metacell_counts, metacell_seurat = NULL, peak_gene_links = peak_gene_links, allow_supplied_links = legacy_allow_supplied_links, force_metacell_relink = FALSE, stratum_col = stratum_col, and_method = match.arg(and_method), tau = tau, bootstrap = bootstrap_q95, BPPARAM = BPPARAM)
-  if (!is.null(out$gene_confidence) && length(intersect(rownames(out$gene_confidence), gpr_genes)) == 0L) { warning("No overlap between multiome confidence genes and GPR genes; falling back to RNA detection confidence.", call. = FALSE); out$gene_confidence <- NULL }
-  if (!is.null(out$C_rel)) {
-    summ <- rc_metacell_sample_summary(out$C_rel, out$metacell_meta, condition_col = "condition")
-    units <- unique(summ$group_id); C <- matrix(NA_real_, nrow(out$C_rel), length(units), dimnames=list(rownames(out$C_rel), units))
-    for (u in units) C[summ$reaction_id[summ$group_id==u], u] <- summ$value[summ$group_id==u]
-    out$C_rel_sample <- C; out$confidence_sample <- NULL; out$sample_unit_meta <- unique(data.frame(unit_id=summ$group_id, stringsAsFactors=FALSE))
-  }
-  out$layer1_params <- list(stratum_col=stratum_col, q=q, q95_n0=q95_n0, unit="metacell")
-  out
 }

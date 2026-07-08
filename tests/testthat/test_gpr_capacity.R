@@ -190,9 +190,7 @@ test_that("reaction confidence uses GPR bottleneck and isoenzyme semantics", {
 test_that("GPR-aware confidence does not penalize supported OR isoenzymes", {
   gprs <- list(R1 = list("A", "B", "C"))
   gene_conf <- matrix(c(0.9, 0.0, 0.0), nrow = 3, dimnames = list(c("A", "B", "C"), "p1"))
-  expect_warning(legacy <- rc_reaction_confidence(gprs, gene_confidence = gene_conf, method = "legacy_median"), "legacy_median")
   aware <- rc_reaction_confidence_gpr_aware(gprs, gene_confidence = gene_conf, or_method = "max")
-  expect_equal(legacy$reaction_confidence, 0)
   expect_equal(aware$reaction_confidence, 0.9)
   expect_false(aware$no_complete_gpr_group_flag)
 })
@@ -221,15 +219,6 @@ test_that("GPR-aware confidence keeps fully missing reactions as NA", {
   aware <- rc_reaction_confidence_gpr_aware(gprs, gene_confidence = gene_conf)
   expect_true(is.na(aware$reaction_confidence))
   expect_true(aware$no_complete_gpr_group_flag)
-})
-
-test_that("Layer 1 preserves legacy confidence mode", {
-  gpr_table <- data.frame(reaction_id = "R1", gpr = "A or B or C", stringsAsFactors = FALSE)
-  expr <- matrix(c(1, 1, 1), nrow = 3, dimnames = list(c("A", "B", "C"), "p1"))
-  gene_conf <- matrix(c(0.9, 0, 0), nrow = 3, dimnames = list(c("A", "B", "C"), "p1"))
-  out <- rc_run_layer1_capacity(gpr_table, expr, gene_confidence = gene_conf, reaction_confidence_method = "legacy_median", bootstrap = FALSE)
-  expect_equal(out$reaction_confidence_method, "legacy_median")
-  expect_equal(out$reaction_confidence$reaction_confidence, 0)
 })
 
 test_that("RNA-only GPR-aware confidence does not median-penalize OR isoenzymes", {
