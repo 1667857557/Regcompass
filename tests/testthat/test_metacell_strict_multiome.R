@@ -53,3 +53,16 @@ test_that("LinkPeaks stratum requires enough metacells", {
   gpr <- data.frame(reaction_id = "R1", and_group_id = 1, gene = "G1", stringsAsFactors = FALSE)
   expect_error(rc_recompute_metacell_peak_gene_links_by_stratum(metacell_object = obj, metacell_meta = meta, gpr_table = gpr, min_metacells_for_linkpeaks = 80), "Too few metacells")
 })
+
+test_that("deprecated rc_run_layer1_multiome rejects supplied links by default", {
+  rna <- Matrix::Matrix(matrix(1, nrow = 2, ncol = 2, dimnames = list(c("G1", "G2"), c("mc1", "mc2"))), sparse = TRUE)
+  atac <- Matrix::Matrix(matrix(1, nrow = 2, ncol = 2, dimnames = list(c("p1", "p2"), c("mc1", "mc2"))), sparse = TRUE)
+  meta <- data.frame(metacell_id = c("mc1", "mc2"), sample_id = "s1", condition = "ctrl", cell_type = "T", stringsAsFactors = FALSE)
+  gpr <- data.frame(reaction_id = "R1", and_group_id = 1, gene = "G1", stringsAsFactors = FALSE)
+  links <- data.frame(peak_id = "p1", gene = "G1", weight = 1, link_stratum = "T", stringsAsFactors = FALSE)
+  expect_error(suppressWarnings(rc_run_layer1_multiome(gpr, rna, meta, atac_metacell_counts = atac, peak_gene_links = links, bootstrap_q95 = FALSE)), "deprecated legacy/debug")
+})
+
+test_that("fragment registration errors before relinking if fragment paths are missing", {
+  expect_error(.rc_register_signac_fragments(list(), fragment_files = tempfile(fileext = ".tsv.gz")), "fragment files are missing")
+})

@@ -513,7 +513,27 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_files =
   if (is.null(metacell_objects) || length(metacell_objects) == 0L) stop("No metacell Seurat objects supplied.", call. = FALSE)
   objs <- lapply(metacell_objects, function(x) if (inherits(x, "Seurat")) x else readRDS(x))
   obj <- if (length(objs) == 1L) objs[[1L]] else Reduce(function(a, b) merge(a, y = b), objs)
-  obj
+  .rc_register_signac_fragments(obj, fragment_files = fragment_files, atac_assay = atac_assay)
+}
+
+.rc_register_signac_fragments <- function(object, fragment_files = NULL, atac_assay = "ATAC") {
+  if (is.null(fragment_files) || length(fragment_files) == 0L) return(object)
+  fragment_files <- unique(as.character(fragment_files))
+  missing <- fragment_files[!file.exists(fragment_files)]
+  missing_index <- fragment_files[!file.exists(paste0(fragment_files, ".tbi"))]
+  if (length(missing) > 0L) stop("Metacell fragment files are missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (length(missing_index) > 0L) stop("Metacell fragment tabix indexes are missing: ", paste(paste0(missing_index, ".tbi"), collapse = ", "), call. = FALSE)
+  if (!requireNamespace("Signac", quietly = TRUE)) stop("Package 'Signac' is required to register metacell fragment files.", call. = FALSE)
+  if (!atac_assay %in% names(object@assays)) stop("Metacell object is missing ATAC assay `", atac_assay, "`.", call. = FALSE)
+  fragments <- lapply(fragment_files, function(path) {
+    tryCatch(
+      Signac::CreateFragmentObject(path = path, cells = colnames(object), validate.fragments = FALSE),
+      error = function(e) stop("Failed to register metacell fragment file `", path, "`: ", conditionMessage(e), call. = FALSE)
+    )
+  })
+  frag_setter <- get("Fragments<-", envir = asNamespace("Signac"))
+  object[[atac_assay]] <- frag_setter(object[[atac_assay]], value = fragments)
+  object
 }
 
 #' Run the formal sample-aware metacell multiome workflow
@@ -526,14 +546,18 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
 
 #' Run Layer 1 multiome evidence from metacell raw counts
 #' @export
-rc_run_layer1_multiome <- function(gpr_table, rna_metacell_counts, metacell_meta, atac_metacell_counts = NULL, peak_gene_links = NULL, stratum_col = "cell_type", gene_score_method = c("robust_sigmoid"), and_method = c("boltzmann", "min", "mean"), or_method = c("sum_sqrtK", "max", "prob_or", "sum"), tau = 0.20, q = 0.95, q95_n0 = 80, bootstrap_q95 = FALSE, filter_low_power_metacells = TRUE, BPPARAM = NULL) {
+rc_run_layer1_multiome <- function(gpr_table, rna_metacell_counts, metacell_meta, atac_metacell_counts = NULL, peak_gene_links = NULL, stratum_col = "cell_type", gene_score_method = c("robust_sigmoid"), and_method = c("boltzmann", "min", "mean"), or_method = c("sum_sqrtK", "max", "prob_or", "sum"), tau = 0.20, q = 0.95, q95_n0 = 80, bootstrap_q95 = FALSE, filter_low_power_metacells = TRUE, BPPARAM = NULL, legacy_allow_supplied_links = FALSE) {
+  .Deprecated("rc_run_regcompass_multiome_metacell")
+  if (!is.null(peak_gene_links) && !isTRUE(legacy_allow_supplied_links)) {
+    stop("`rc_run_layer1_multiome()` is a deprecated legacy/debug entrypoint and no longer accepts supplied `peak_gene_links` by default. Use `rc_run_regcompass_multiome_metacell()` for formal multiome analysis, or set `legacy_allow_supplied_links = TRUE` only for debugging.", call. = FALSE)
+  }
   gpr_genes <- rc_metabolic_gpr_genes(gpr_table)
   if (filter_low_power_metacells && "low_power_metacell" %in% colnames(metacell_meta)) {
     keep_ids <- as.character(metacell_meta$metacell_id[!metacell_meta$low_power_metacell])
     rna_metacell_counts <- rna_metacell_counts[, keep_ids, drop=FALSE]; metacell_meta <- metacell_meta[match(keep_ids, metacell_meta$metacell_id),,drop=FALSE]
     if (!is.null(atac_metacell_counts)) atac_metacell_counts <- atac_metacell_counts[, keep_ids, drop=FALSE]
   }
-  out <- rc_run_layer1_from_metacells(gpr_table = gpr_table, rna_metacell_counts = rna_metacell_counts, metacell_meta = metacell_meta, atac_metacell_counts = atac_metacell_counts, metacell_seurat = NULL, peak_gene_links = peak_gene_links, allow_supplied_links = TRUE, force_metacell_relink = FALSE, stratum_col = stratum_col, and_method = match.arg(and_method), tau = tau, bootstrap = bootstrap_q95, BPPARAM = BPPARAM)
+  out <- rc_run_layer1_from_metacells(gpr_table = gpr_table, rna_metacell_counts = rna_metacell_counts, metacell_meta = metacell_meta, atac_metacell_counts = atac_metacell_counts, metacell_seurat = NULL, peak_gene_links = peak_gene_links, allow_supplied_links = legacy_allow_supplied_links, force_metacell_relink = FALSE, stratum_col = stratum_col, and_method = match.arg(and_method), tau = tau, bootstrap = bootstrap_q95, BPPARAM = BPPARAM)
   if (!is.null(out$gene_confidence) && length(intersect(rownames(out$gene_confidence), gpr_genes)) == 0L) { warning("No overlap between multiome confidence genes and GPR genes; falling back to RNA detection confidence.", call. = FALSE); out$gene_confidence <- NULL }
   if (!is.null(out$C_rel)) {
     summ <- rc_metacell_sample_summary(out$C_rel, out$metacell_meta, condition_col = "condition")
