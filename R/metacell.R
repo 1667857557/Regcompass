@@ -233,7 +233,7 @@ rc_make_supercell2_metacells <- function(object,
                                          save_fragments = TRUE,
                                          overwrite = FALSE,
                                          BPPARAM = NULL) {
-  if (!requireNamespace("SuperCell", quietly = TRUE)) stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). Install SuperCell or import existing metacells with rc_import_supercell2_metacells().", call. = FALSE)
+  if (!requireNamespace("SuperCell", quietly = TRUE)) stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). By default, install SuperCell from https://github.com/1667857557/SuperCell-Seurat-V4/tree/supercell-2.0, or import existing metacells with rc_import_supercell2_metacells().", call. = FALSE)
   if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
   meta <- object@meta.data
   required <- c(sample_col, condition_col, celltype_col, state_col, label_col)
