@@ -496,7 +496,6 @@ rc_parse_and_method <- function(x) {
 }
 
 #' End-to-end Layer 1 run from raw counts and a pool map
-#' @export
 rc_run_layer1_from_counts <- function(gpr_table,
                                       rna_counts,
                                       pool_map,
