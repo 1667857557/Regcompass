@@ -134,8 +134,6 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
                      interpretation = "multiome-supported reaction capacity potential from strict cached microCOMPASS"),
        method = "microCOMPASS strict target-local reaction-potential LP")
 }
-#' @export
-rc_run_layer2_compass_lp <- function(...) { .Deprecated("rc_run_microcompass"); rc_run_microcompass(...) }
 #' Summarize microCOMPASS result
 #' @export
 rc_summarize_microcompass <- function(result) data.frame(n_targets = nrow(result$score), n_units = ncol(result$score), feasible_fraction = mean(result$feasible, na.rm = TRUE))
