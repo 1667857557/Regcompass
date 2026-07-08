@@ -39,7 +39,7 @@ layer1 <- rc_run_regcompass_multiome_metacell(
   rna_assay = "RNA",
   atac_assay = "ATAC",
   link_stratum_cols = "cell_type",
-  min_metacells_for_linkpeaks = 20
+  min_metacells_for_linkpeaks = 10
 )
 
 targets <- rc_select_target_reactions(
