@@ -135,8 +135,7 @@ rc_recompute_signac_peak_gene_links <- function(object,
     metabolic_genes <- rc_metabolic_gpr_genes(gpr_table)
   }
   if (!is.null(genes_use)) metabolic_genes <- genes_use
-  metabolic_genes <- unique(as.character(metabolic_genes))
-  metabolic_genes <- metabolic_genes[!is.na(metabolic_genes) & nzchar(metabolic_genes)]
+  metabolic_genes <- rc_match_linkpeaks_genes(metabolic_genes, object = object, expression_assay = expression_assay)
   if (length(metabolic_genes) == 0L) stop("No metabolic genes were available for Signac::LinkPeaks().", call. = FALSE)
 
   object <- Signac::LinkPeaks(
@@ -151,6 +150,19 @@ rc_recompute_signac_peak_gene_links <- function(object,
   link_table <- rc_filter_peak_gene_links_to_gpr(link_table, tolower(metabolic_genes))
   attr(link_table, "seurat_object") <- object
   link_table
+}
+
+
+rc_match_linkpeaks_genes <- function(genes, object, expression_assay = "RNA") {
+  genes <- unique(as.character(genes))
+  genes <- genes[!is.na(genes) & nzchar(genes)]
+  if (length(genes) == 0L) return(character(0))
+  features <- tryCatch(rownames(object[[expression_assay]]), error = function(e) NULL)
+  if (is.null(features) || length(features) == 0L) return(genes)
+  feature_key <- stats::setNames(as.character(features), tolower(as.character(features)))
+  matched <- unname(feature_key[tolower(genes)])
+  matched <- matched[!is.na(matched) & nzchar(matched)]
+  unique(matched)
 }
 
 rc_signac_links_to_peak_gene_table <- function(links, score_col = c("score", "zscore"), keep_negative = FALSE) {

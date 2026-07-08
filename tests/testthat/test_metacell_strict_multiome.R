@@ -58,3 +58,10 @@ test_that("LinkPeaks stratum requires enough metacells", {
 test_that("fragment registration errors before relinking if fragment paths are missing", {
   expect_error(.rc_register_signac_fragments(list(), fragment_files = tempfile(fileext = ".tsv.gz")), "fragment files are missing")
 })
+
+test_that("LinkPeaks gene matching preserves expression feature case", {
+  skip_if_not_installed("SeuratObject")
+  counts <- Matrix::Matrix(matrix(1, nrow = 2, ncol = 2, dimnames = list(c("HK1", "PFKM"), c("mc1", "mc2"))), sparse = TRUE)
+  obj <- SeuratObject::CreateSeuratObject(counts = counts, assay = "RNA")
+  expect_identical(rc_match_linkpeaks_genes(c("hk1", "pfkm", "missing"), obj, "RNA"), c("HK1", "PFKM"))
+})
