@@ -83,7 +83,7 @@ rc_select_target_reactions <- function(layer1, targets = NULL, pathway = NULL, s
   if (!is.null(targets) || method == "custom") return(data.frame(reaction_id = unique(as.character(targets)), selection_reason = "custom", stringsAsFactors = FALSE))
   C <- as.matrix(layer1$C_rel); conf <- if (!is.null(layer1$reaction_confidence)) rc_layer2_confidence_matrix(layer1$reaction_confidence, C) else matrix(1, nrow(C), ncol(C), dimnames=dimnames(C))
   meta <- layer1$unit_meta %||% layer1$pool_meta %||% layer1$metacell_meta %||% data.frame(unit_id = colnames(C), stringsAsFactors = FALSE)
-  id_col <- intersect(c("unit_id","pool_id","sample_celltype_id"), colnames(meta))[1] %||% colnames(meta)[1]
+  id_col <- .rc_first_existing_col(c("unit_id", "pool_id", "sample_celltype_id", "metacell_id"), meta, fallback = colnames(meta)[1])
   meta <- meta[match(colnames(C), as.character(meta[[id_col]])), , drop = FALSE]
   groups <- if (all(group_cols %in% colnames(meta))) interaction(meta[, group_cols, drop = FALSE], drop = TRUE, sep = "|") else factor(rep("all", ncol(C)))
   rxns <- rownames(C); gs <- matrix(NA_real_, nrow(C), length(levels(groups)), dimnames = list(rxns, levels(groups)))
