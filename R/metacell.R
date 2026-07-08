@@ -32,6 +32,7 @@ rc_validate_metacell_inputs <- function(rna_metacell_counts,
 .rc_metacell_meta_for_pool_apis <- function(metacell_meta, metacell_id_col = "metacell_id") {
   out <- metacell_meta
   if (!"pool_id" %in% colnames(out)) out$pool_id <- as.character(out[[metacell_id_col]])
+  if (!"unit_id" %in% colnames(out)) out$unit_id <- out$pool_id
   out
 }
 
@@ -86,11 +87,15 @@ rc_atac_metacell_logcpm <- function(atac_metacell_counts, min_metacells = 3) {
 rc_run_layer1_from_metacells <- function(gpr_table,
                                          rna_metacell_counts,
                                          metacell_meta,
-                                         atac_metacell_counts = NULL,
+                                         atac_metacell_counts,
+                                         metacell_seurat,
                                          peak_gene_links = NULL,
-                                         metacell_seurat = NULL,
-                                         recompute_peak_gene_links = FALSE,
+                                         allow_supplied_links = FALSE,
+                                         force_metacell_relink = TRUE,
+                                         link_stratum_cols = "cell_type",
+                                         min_metacells_for_linkpeaks = 80,
                                          metabolic_genes = NULL,
+                                         linkpeaks_args = list(),
                                          stratum_col = "cell_type",
                                          promiscuity_mode = "sqrt",
                                          and_method = "boltzmann",
@@ -99,10 +104,22 @@ rc_run_layer1_from_metacells <- function(gpr_table,
                                          bootstrap = TRUE,
                                          B = 500,
                                          BPPARAM = NULL) {
-  if (isTRUE(recompute_peak_gene_links)) {
-    if (is.null(metacell_seurat)) stop("`metacell_seurat` is required when `recompute_peak_gene_links = TRUE`.", call. = FALSE)
-    peak_gene_links <- rc_recompute_metacell_peak_gene_links(metacell_seurat, gpr_table = gpr_table, metabolic_genes = metabolic_genes)
+  if (!is.null(peak_gene_links) && !isTRUE(allow_supplied_links)) {
+    stop("`peak_gene_links` supplied by users are not accepted in formal multiome mode. RegCompassR recomputes metabolic peak-gene links on metacells.", call. = FALSE)
   }
+  if (is.null(atac_metacell_counts)) stop("`atac_metacell_counts` is required in formal multiome mode.", call. = FALSE)
+  if (isTRUE(force_metacell_relink)) {
+    if (is.null(metacell_seurat)) stop("`metacell_seurat` is required for metacell-level LinkPeaks.", call. = FALSE)
+    peak_gene_links <- do.call(rc_recompute_metacell_peak_gene_links_by_stratum, c(list(
+      metacell_object = metacell_seurat,
+      metacell_meta = metacell_meta,
+      gpr_table = gpr_table,
+      metabolic_genes = metabolic_genes,
+      link_stratum_cols = link_stratum_cols,
+      min_metacells_for_linkpeaks = min_metacells_for_linkpeaks
+    ), linkpeaks_args))
+  }
+  if (is.null(peak_gene_links) || nrow(peak_gene_links) == 0L) stop("Metacell-level metabolic peak-gene relinking produced no usable links.", call. = FALSE)
   rc_validate_metacell_inputs(rna_metacell_counts, metacell_meta, atac_metacell_counts = atac_metacell_counts)
   rna_metacell_counts <- .rc_as_sparse(rna_metacell_counts)
   filtered <- rc_filter_empty_metacells(rna_metacell_counts, metacell_meta)
@@ -110,21 +127,22 @@ rc_run_layer1_from_metacells <- function(gpr_table,
   metacell_meta <- filtered$metacell_meta
   rna_logcpm <- rc_logcpm(rna_metacell_counts)
   rna_detection <- rc_metacell_detection(rna_metacell_counts)
-  gene_conf <- NULL
-  if (!is.null(atac_metacell_counts) && !is.null(peak_gene_links)) {
-    atac_metacell_counts <- atac_metacell_counts[, colnames(rna_logcpm), drop = FALSE]
-    atac_peak <- rc_atac_metacell_logcpm(atac_metacell_counts, min_metacells = 3)
-    pool_meta <- .rc_metacell_meta_for_pool_apis(metacell_meta)
-    p_rna <- rc_percentile_by_stratum(rna_logcpm, pool_meta = pool_meta, stratum_col = stratum_col)
-    p_atac_peak <- rc_percentile_by_stratum(atac_peak, pool_meta = pool_meta, stratum_col = stratum_col)
-    link_conf <- rc_link_confidence(p_atac_peak, peak_gene_links)
-    genes <- intersect(rownames(p_rna), rownames(link_conf))
-    if (length(genes) > 0L) gene_conf <- rc_concordance_null_correct(p_rna[genes, , drop = FALSE], link_conf[genes, , drop = FALSE], pool_meta = pool_meta, stratum_col = stratum_col)
-  }
-  out <- rc_run_layer1_capacity(gpr_table = gpr_table, pool_expression = rna_logcpm, pool_detection = rna_detection, pool_meta = .rc_metacell_meta_for_pool_apis(metacell_meta), stratum_col = stratum_col, gene_confidence = gene_conf, promiscuity_mode = promiscuity_mode, and_method = and_method, tau = tau, reaction_confidence_method = reaction_confidence_method, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM)
+  atac_metacell_counts <- atac_metacell_counts[, colnames(rna_logcpm), drop = FALSE]
+  atac_peak <- rc_atac_metacell_logcpm(atac_metacell_counts, min_metacells = 3)
+  pool_meta <- .rc_metacell_meta_for_pool_apis(metacell_meta)
+  p_rna <- rc_percentile_by_stratum(rna_logcpm, pool_meta = pool_meta, stratum_col = stratum_col)
+  p_atac_peak <- rc_percentile_by_stratum(atac_peak, pool_meta = pool_meta, stratum_col = stratum_col)
+  link_conf <- rc_link_confidence_by_stratum(p_atac_peak = p_atac_peak, peak_gene_links = peak_gene_links, pool_meta = pool_meta, link_stratum_cols = link_stratum_cols)
+  genes <- intersect(rownames(p_rna), rownames(link_conf))
+  if (length(genes) == 0L) stop("No overlap between metacell RNA genes and linked metabolic genes.", call. = FALSE)
+  gene_conf <- rc_concordance_null_correct(p_rna[genes, , drop = FALSE], link_conf[genes, , drop = FALSE], pool_meta = pool_meta, stratum_col = stratum_col)
+  out <- rc_run_layer1_capacity(gpr_table = gpr_table, pool_expression = rna_logcpm, pool_detection = rna_detection, pool_meta = pool_meta, stratum_col = stratum_col, gene_confidence = gene_conf, promiscuity_mode = promiscuity_mode, and_method = and_method, tau = tau, reaction_confidence_method = reaction_confidence_method, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM)
   out$metacell_meta <- metacell_meta
+  out$pool_meta <- .rc_metacell_meta_for_pool_apis(out$metacell_meta)
   out$rna_metacell_logcpm <- rna_logcpm
   out$rna_metacell_detection <- rna_detection
+  out$metacell_peak_gene_links <- peak_gene_links
+  out$peak_gene_link_source <- "cell_type_stratified_metacell_recomputed_metabolic_links"
   out$layer1_unit <- "metacell"
   out
 }
@@ -135,18 +153,55 @@ rc_recompute_metacell_peak_gene_links <- function(metacell_object,
                                                   metabolic_genes = NULL,
                                                   peak_assay = "ATAC",
                                                   expression_assay = "RNA",
-                                                  genome = NULL,
                                                   distance = 5e5,
                                                   min_cells = 10,
                                                   out_file = NULL,
                                                   gpr_table = NULL,
+                                                  require_fragments = TRUE,
                                                   ...) {
+  if (!inherits(metacell_object, "Seurat")) stop("`metacell_object` must be a metacell-level Seurat/Signac object.", call. = FALSE)
+  if (!requireNamespace("Signac", quietly = TRUE)) stop("Package 'Signac' is required for metacell-level LinkPeaks.", call. = FALSE)
+  frags <- Signac::Fragments(metacell_object[[peak_assay]])
+  if (require_fragments && length(frags) == 0L) stop("Metacell-level LinkPeaks requires fragment files registered on the metacell ATAC assay. Run metacell fragment aggregation successfully before Layer 1 multiome analysis.", call. = FALSE)
   links <- rc_recompute_signac_peak_gene_links(object = metacell_object, gpr_table = gpr_table, metabolic_genes = metabolic_genes, peak_assay = peak_assay, expression_assay = expression_assay, distance = distance, min.cells = min_cells, ...)
-  if (!is.null(out_file)) {
-    dir.create(dirname(out_file), recursive = TRUE, showWarnings = FALSE)
-    utils::write.table(links, file = gzfile(out_file, open = "wt"), sep = "\t", quote = FALSE, row.names = FALSE)
-  }
+  if (nrow(links) == 0L) stop("Metacell-level metabolic peak-gene relinking returned 0 links.", call. = FALSE)
+  if (!is.null(out_file)) .rc_write_tsv_gz(links, out_file)
   links
+}
+
+#' Recompute metacell peak-gene links separately within metadata strata
+#' @export
+rc_recompute_metacell_peak_gene_links_by_stratum <- function(metacell_object,
+                                                             metacell_meta,
+                                                             gpr_table,
+                                                             metabolic_genes = NULL,
+                                                             link_stratum_cols = "cell_type",
+                                                             min_metacells_for_linkpeaks = 80,
+                                                             peak_assay = "ATAC",
+                                                             expression_assay = "RNA",
+                                                             ...) {
+  if (!inherits(metacell_object, "Seurat")) stop("`metacell_object` must be a metacell-level Seurat object.", call. = FALSE)
+  if (!"metacell_id" %in% colnames(metacell_meta)) stop("`metacell_meta` must contain `metacell_id`.", call. = FALSE)
+  missing_cols <- setdiff(link_stratum_cols, colnames(metacell_meta))
+  if (length(missing_cols) > 0L) stop("Missing link stratum columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
+  if (is.null(metabolic_genes)) metabolic_genes <- rc_metabolic_gpr_genes(gpr_table)
+  metabolic_genes <- unique(as.character(metabolic_genes))
+  metabolic_genes <- metabolic_genes[!is.na(metabolic_genes) & nzchar(metabolic_genes)]
+  if (length(metabolic_genes) == 0L) stop("No metabolic/GPR genes available for metacell LinkPeaks.", call. = FALSE)
+  stratum_id <- interaction(metacell_meta[, link_stratum_cols, drop = FALSE], sep = "|", drop = TRUE)
+  metacell_meta$link_stratum <- as.character(stratum_id)
+  strata <- split(as.character(metacell_meta$metacell_id), metacell_meta$link_stratum)
+  links <- lapply(names(strata), function(st) {
+    cells <- intersect(strata[[st]], colnames(metacell_object))
+    if (length(cells) < min_metacells_for_linkpeaks) stop("Too few metacells for LinkPeaks in stratum `", st, "`: ", length(cells), " < ", min_metacells_for_linkpeaks, call. = FALSE)
+    obj_st <- subset(metacell_object, cells = cells)
+    x <- rc_recompute_metacell_peak_gene_links(metacell_object = obj_st, gpr_table = gpr_table, metabolic_genes = metabolic_genes, peak_assay = peak_assay, expression_assay = expression_assay, ...)
+    x$link_stratum <- st
+    x
+  })
+  out <- do.call(rbind, links)
+  rownames(out) <- NULL
+  out
 }
 
 #' Sample-level long summary with metacell diagnostics
@@ -185,7 +240,9 @@ rc_metacell_diagnostics <- function(metacell_meta, rna_metacell_counts = NULL, a
 
 .rc_write_tsv_gz <- function(x, file) {
   dir.create(dirname(file), recursive = TRUE, showWarnings = FALSE)
-  utils::write.table(x, file = gzfile(file, open = "wt"), sep = "\t", quote = FALSE, row.names = FALSE)
+  con <- gzfile(file, open = "wt")
+  on.exit(close(con), add = TRUE)
+  utils::write.table(x, file = con, sep = "\t", quote = FALSE, row.names = FALSE)
   invisible(file)
 }
 
@@ -200,6 +257,18 @@ rc_metacell_diagnostics <- function(metacell_meta, rna_metacell_counts = NULL, a
     vals <- meta[[nm]]
     if (is.list(vals)) {
       return(do.call(rbind, lapply(seq_along(vals), function(i) data.frame(cell_id = as.character(vals[[i]]), metacell_id = metacell_ids[[i]], stringsAsFactors = FALSE))))
+    }
+  }
+  misc_mem <- tryCatch(mc_object@misc$membership, error = function(e) NULL)
+  if (!is.null(misc_mem)) {
+    if (is.data.frame(misc_mem)) return(misc_mem)
+    if (is.numeric(misc_mem) || is.integer(misc_mem)) {
+      cell_ids <- names(misc_mem)
+      if (is.null(cell_ids) || any(!nzchar(cell_ids))) cell_ids <- original_cells
+      idx <- as.integer(misc_mem)
+      mc <- metacell_ids[idx]
+      ok <- !is.na(mc) & nzchar(mc)
+      return(data.frame(cell_id = as.character(cell_ids[ok]), metacell_id = as.character(mc[ok]), stringsAsFactors = FALSE))
     }
   }
   attr_map <- attr(mc_object, "membership")
@@ -231,10 +300,15 @@ rc_make_supercell2_metacells <- function(object,
                                          save_metacell_object = TRUE,
                                          save_counts = TRUE,
                                          save_fragments = TRUE,
+                                         require_fragment_aggregation = TRUE,
                                          overwrite = FALSE,
                                          BPPARAM = NULL) {
   if (!requireNamespace("SuperCell", quietly = TRUE)) stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). By default, install SuperCell from https://github.com/1667857557/SuperCell-Seurat-V4/tree/supercell-2.0, or import existing metacells with rc_import_supercell2_metacells().", call. = FALSE)
   if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
+  if (isTRUE(require_fragment_aggregation)) {
+    if (!isTRUE(save_fragments)) stop("Formal multiome workflow requires `save_fragments = TRUE`.", call. = FALSE)
+    if (is.null(fragment_files)) stop("Formal multiome workflow requires `fragment_files` for metacell fragment aggregation.", call. = FALSE)
+  }
   meta <- object@meta.data
   required <- c(sample_col, condition_col, celltype_col, state_col, label_col)
   required <- required[!is.null(required) & !is.na(required) & nzchar(required)]
@@ -270,7 +344,15 @@ rc_make_supercell2_metacells <- function(object,
       args$bgzip_path <- bgzip_path
       args$tabix_path <- tabix_path
     }
-    mc <- do.call(SuperCell::SCimplify_for_Seurat, args)
+    mc <- tryCatch(
+      .rc_with_seurat4_filterobjects(do.call(SuperCell::SCimplify_for_Seurat, args)),
+      error = function(e) {
+        if (isTRUE(require_fragment_aggregation)) stop("Metacell fragment aggregation failed; metacell-level LinkPeaks cannot be recomputed: ", conditionMessage(e), call. = FALSE)
+        warning("Fragment aggregation failed; continuing only because `require_fragment_aggregation = FALSE`.", call. = FALSE)
+        args2 <- args[setdiff(names(args), c("fragmentFiles", "outputDirMcFragment", "bgzip_path", "tabix_path"))]
+        .rc_with_seurat4_filterobjects(do.call(SuperCell::SCimplify_for_Seurat, args2))
+      }
+    )
     mc_ids <- colnames(.rc_get_assay_counts_safe(mc, rna_assay))
     prefix <- paste(vapply(vals, .rc_safe_path_component, character(1)), collapse = "_")
     new_ids <- paste0(prefix, "_MC", sprintf(paste0("%0", max(3, nchar(length(mc_ids))), "d"), seq_along(mc_ids)))
@@ -315,14 +397,15 @@ rc_make_supercell2_metacells <- function(object,
         tabix_path = tabix_path,
         save_metacell_object = save_metacell_object,
         save_counts = save_counts,
-        save_fragments = save_fragments
+        save_fragments = save_fragments,
+        require_fragment_aggregation = require_fragment_aggregation
       )
       yaml::write_yaml(run_params, file.path(stratum_dir, "qc", "run_params.yaml"))
     }
     stratum_dir
   }
   dirs <- unlist(rc_parallel_lapply(names(groups), run_one, BPPARAM = BPPARAM), use.names = FALSE)
-  rc_import_supercell2_metacells(dirs, rna_assay = rna_assay, atac_assay = atac_assay, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, require_fragments = FALSE)
+  rc_import_supercell2_metacells(dirs, rna_assay = rna_assay, atac_assay = atac_assay, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, require_fragments = require_fragment_aggregation)
 }
 
 #' Import saved SuperCell2.0 metacell outputs
@@ -380,8 +463,8 @@ rc_write_metacell_report <- function(metacell_meta, file, diagnostics = NULL) {
 
 #' Build sample-aware RNA+ATAC metacells
 #' @export
-rc_make_metacells <- function(..., allow_empty_membership = FALSE, filter_low_power_metacells = TRUE, min_metacell_size = 20) {
-  out <- rc_make_supercell2_metacells(..., min_metacell_size = min_metacell_size)
+rc_make_metacells <- function(..., allow_empty_membership = FALSE, filter_low_power_metacells = TRUE, min_metacell_size = 20, require_fragment_aggregation = TRUE) {
+  out <- rc_make_supercell2_metacells(..., min_metacell_size = min_metacell_size, require_fragment_aggregation = require_fragment_aggregation)
   if (nrow(out$membership) == 0L && !allow_empty_membership) stop("SuperCell membership could not be extracted. Check SuperCell version/output schema.", call. = FALSE)
   if ("n_cells" %in% colnames(out$metacell_meta)) {
     out$metacell_meta_all <- out$metacell_meta
@@ -410,16 +493,71 @@ rc_import_metacells <- function(metacell_dirs, ..., filter_low_power_metacells =
   out
 }
 
+
+.rc_with_seurat4_filterobjects <- function(expr) {
+  if (!exists(".FilterObjects", envir = .GlobalEnv, inherits = FALSE)) {
+    assign(".FilterObjects", function(object, classes.keep = c("Assay", "Assay5", "ChromatinAssay")) {
+      assays <- names(object@assays)
+      assays[vapply(assays, function(a) {
+        any(vapply(classes.keep, function(cl) inherits(object@assays[[a]], cl), logical(1)))
+      }, logical(1))]
+    }, envir = .GlobalEnv)
+    on.exit(rm(".FilterObjects", envir = .GlobalEnv), add = TRUE)
+  }
+  force(expr)
+}
+
+#' Load and merge saved metacell Seurat objects
+#' @export
+rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_files = NULL, rna_assay = "RNA", atac_assay = "ATAC") {
+  if (is.null(metacell_objects) || length(metacell_objects) == 0L) stop("No metacell Seurat objects supplied.", call. = FALSE)
+  objs <- lapply(metacell_objects, function(x) if (inherits(x, "Seurat")) x else readRDS(x))
+  obj <- if (length(objs) == 1L) objs[[1L]] else Reduce(function(a, b) merge(a, y = b), objs)
+  .rc_register_signac_fragments(obj, fragment_files = fragment_files, atac_assay = atac_assay)
+}
+
+.rc_register_signac_fragments <- function(object, fragment_files = NULL, atac_assay = "ATAC") {
+  if (is.null(fragment_files) || length(fragment_files) == 0L) return(object)
+  fragment_files <- unique(as.character(fragment_files))
+  missing <- fragment_files[!file.exists(fragment_files)]
+  missing_index <- fragment_files[!file.exists(paste0(fragment_files, ".tbi"))]
+  if (length(missing) > 0L) stop("Metacell fragment files are missing: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (length(missing_index) > 0L) stop("Metacell fragment tabix indexes are missing: ", paste(paste0(missing_index, ".tbi"), collapse = ", "), call. = FALSE)
+  if (!requireNamespace("Signac", quietly = TRUE)) stop("Package 'Signac' is required to register metacell fragment files.", call. = FALSE)
+  if (!atac_assay %in% names(object@assays)) stop("Metacell object is missing ATAC assay `", atac_assay, "`.", call. = FALSE)
+  fragments <- lapply(fragment_files, function(path) {
+    tryCatch(
+      Signac::CreateFragmentObject(path = path, cells = colnames(object), validate.fragments = FALSE),
+      error = function(e) stop("Failed to register metacell fragment file `", path, "`: ", conditionMessage(e), call. = FALSE)
+    )
+  })
+  frag_setter <- get("Fragments<-", envir = asNamespace("Signac"))
+  object[[atac_assay]] <- frag_setter(object[[atac_assay]], value = fragments)
+  object
+}
+
+#' Run the formal sample-aware metacell multiome workflow
+#' @export
+rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC", gamma = 75, min_metacell_size = 20, link_stratum_cols = "cell_type", min_metacells_for_linkpeaks = 80, linkpeaks_args = list(), ...) {
+  mc <- rc_make_metacells(object = object, outdir = file.path(outdir, "01_metacells"), sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, rna_assay = rna_assay, atac_assay = atac_assay, gamma = gamma, min_metacell_size = min_metacell_size, fragment_files = fragment_files, save_fragments = TRUE, require_fragment_aggregation = TRUE, save_metacell_object = TRUE)
+  metacell_seurat <- rc_load_or_merge_metacell_objects(mc$metacell_objects, fragment_files = mc$fragment_files, rna_assay = rna_assay, atac_assay = atac_assay)
+  rc_run_layer1_from_metacells(gpr_table = gpr_table, rna_metacell_counts = mc$rna_counts, atac_metacell_counts = mc$atac_counts, metacell_meta = mc$metacell_meta, metacell_seurat = metacell_seurat, force_metacell_relink = TRUE, allow_supplied_links = FALSE, link_stratum_cols = link_stratum_cols, min_metacells_for_linkpeaks = min_metacells_for_linkpeaks, linkpeaks_args = linkpeaks_args, ...)
+}
+
 #' Run Layer 1 multiome evidence from metacell raw counts
 #' @export
-rc_run_layer1_multiome <- function(gpr_table, rna_metacell_counts, metacell_meta, atac_metacell_counts = NULL, peak_gene_links = NULL, stratum_col = "cell_type", gene_score_method = c("robust_sigmoid"), and_method = c("boltzmann", "min", "mean"), or_method = c("sum_sqrtK", "max", "prob_or", "sum"), tau = 0.20, q = 0.95, q95_n0 = 80, bootstrap_q95 = FALSE, filter_low_power_metacells = TRUE, BPPARAM = NULL) {
+rc_run_layer1_multiome <- function(gpr_table, rna_metacell_counts, metacell_meta, atac_metacell_counts = NULL, peak_gene_links = NULL, stratum_col = "cell_type", gene_score_method = c("robust_sigmoid"), and_method = c("boltzmann", "min", "mean"), or_method = c("sum_sqrtK", "max", "prob_or", "sum"), tau = 0.20, q = 0.95, q95_n0 = 80, bootstrap_q95 = FALSE, filter_low_power_metacells = TRUE, BPPARAM = NULL, legacy_allow_supplied_links = FALSE) {
+  .Deprecated("rc_run_regcompass_multiome_metacell")
+  if (!is.null(peak_gene_links) && !isTRUE(legacy_allow_supplied_links)) {
+    stop("`rc_run_layer1_multiome()` is a deprecated legacy/debug entrypoint and no longer accepts supplied `peak_gene_links` by default. Use `rc_run_regcompass_multiome_metacell()` for formal multiome analysis, or set `legacy_allow_supplied_links = TRUE` only for debugging.", call. = FALSE)
+  }
   gpr_genes <- rc_metabolic_gpr_genes(gpr_table)
   if (filter_low_power_metacells && "low_power_metacell" %in% colnames(metacell_meta)) {
     keep_ids <- as.character(metacell_meta$metacell_id[!metacell_meta$low_power_metacell])
     rna_metacell_counts <- rna_metacell_counts[, keep_ids, drop=FALSE]; metacell_meta <- metacell_meta[match(keep_ids, metacell_meta$metacell_id),,drop=FALSE]
     if (!is.null(atac_metacell_counts)) atac_metacell_counts <- atac_metacell_counts[, keep_ids, drop=FALSE]
   }
-  out <- rc_run_layer1_from_metacells(gpr_table, rna_metacell_counts, metacell_meta, atac_metacell_counts, peak_gene_links, stratum_col = stratum_col, and_method = match.arg(and_method), tau = tau, bootstrap = bootstrap_q95, BPPARAM = BPPARAM)
+  out <- rc_run_layer1_from_metacells(gpr_table = gpr_table, rna_metacell_counts = rna_metacell_counts, metacell_meta = metacell_meta, atac_metacell_counts = atac_metacell_counts, metacell_seurat = NULL, peak_gene_links = peak_gene_links, allow_supplied_links = legacy_allow_supplied_links, force_metacell_relink = FALSE, stratum_col = stratum_col, and_method = match.arg(and_method), tau = tau, bootstrap = bootstrap_q95, BPPARAM = BPPARAM)
   if (!is.null(out$gene_confidence) && length(intersect(rownames(out$gene_confidence), gpr_genes)) == 0L) { warning("No overlap between multiome confidence genes and GPR genes; falling back to RNA detection confidence.", call. = FALSE); out$gene_confidence <- NULL }
   if (!is.null(out$C_rel)) {
     summ <- rc_metacell_sample_summary(out$C_rel, out$metacell_meta, condition_col = "condition")
