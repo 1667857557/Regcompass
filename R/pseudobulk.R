@@ -29,9 +29,10 @@ rc_filter_empty_pools <- function(pb_counts, pool_meta) {
 #' Pool-level log2(CPM + 1) normalization
 #' @export
 rc_logcpm <- function(pb_counts, scale_factor = 1e6) {
+  pb_counts <- .rc_as_sparse(pb_counts)
   lib <- Matrix::colSums(pb_counts)
   if (any(lib <= 0)) stop("Empty pools detected. Run rc_filter_empty_pools() first.", call. = FALSE)
-  norm <- t(t(pb_counts) / lib) * scale_factor
+  norm <- Matrix::t(Matrix::t(pb_counts) / lib) * scale_factor
   log1p(norm) / log(2)
 }
 
