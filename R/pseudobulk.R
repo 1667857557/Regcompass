@@ -1,5 +1,4 @@
 #' Pseudobulk raw counts by pool
-#' @export
 rc_pseudobulk_counts <- function(counts, pool_map, fun = c("sum", "mean"), BPPARAM = NULL) {
   fun <- match.arg(fun)
   rc_validate_pool_matrix_inputs(counts, pool_map)
@@ -10,14 +9,13 @@ rc_pseudobulk_counts <- function(counts, pool_map, fun = c("sum", "mean"), BPPAR
     x <- counts[, cells, drop = FALSE]
     if (fun == "sum") Matrix::rowSums(x) else Matrix::rowMeans(x)
   }
-  res <- rc_pool_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
+  res <- rc_internal_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
   out <- do.call(cbind, res)
   colnames(out) <- pool_ids; rownames(out) <- rownames(counts)
   out
 }
 
 #' Filter empty pseudobulk pools before normalization
-#' @export
 rc_filter_empty_pools <- function(pb_counts, pool_meta) {
   lib <- Matrix::colSums(pb_counts)
   keep <- lib > 0
@@ -37,7 +35,6 @@ rc_logcpm <- function(pb_counts, scale_factor = 1e6) {
 }
 
 #' Build one-row-per-pool metadata
-#' @export
 rc_build_pool_metadata <- function(pool_map, meta = NULL) {
   x <- rc_filter_active_pool_map(pool_map)
   cols <- setdiff(colnames(x), "cell_id")
@@ -48,24 +45,22 @@ rc_build_pool_metadata <- function(pool_map, meta = NULL) {
 }
 
 #' Compute pool-level sparse means
-#' @export
 rc_pool_mean <- function(mat, pool_map, BPPARAM = NULL) {
   rc_validate_pool_matrix_inputs(mat, pool_map)
   pool_map <- rc_filter_active_pool_map(pool_map)
   pool_ids <- unique(pool_map$pool_id)
   summarize_pool <- function(pid) Matrix::rowMeans(mat[, pool_map$cell_id[pool_map$pool_id == pid], drop = FALSE])
-  res <- rc_pool_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
+  res <- rc_internal_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
   out <- do.call(cbind, res); colnames(out) <- pool_ids; rownames(out) <- rownames(mat); out
 }
 
 #' Compute pool-level detection rates
-#' @export
 rc_pool_detection <- function(counts, pool_map, BPPARAM = NULL) {
   rc_validate_pool_matrix_inputs(counts, pool_map)
   pool_map <- rc_filter_active_pool_map(pool_map)
   pool_ids <- unique(pool_map$pool_id)
   summarize_pool <- function(pid) Matrix::rowMeans(counts[, pool_map$cell_id[pool_map$pool_id == pid], drop = FALSE] > 0)
-  res <- rc_pool_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
+  res <- rc_internal_lapply(pool_ids, summarize_pool, BPPARAM = BPPARAM)
   out <- do.call(cbind, res); colnames(out) <- pool_ids; rownames(out) <- rownames(counts); out
 }
 
@@ -88,12 +83,11 @@ rc_filter_active_pool_map <- function(pool_map) {
   pool_map[keep, , drop = FALSE]
 }
 
-rc_pool_lapply <- function(X, FUN, BPPARAM = NULL) {
+rc_internal_lapply <- function(X, FUN, BPPARAM = NULL) {
   rc_parallel_lapply(X, FUN, BPPARAM = BPPARAM)
 }
 
 #' Filter ATAC peaks detected in at least min_pools and compute pool logCPM
-#' @export
 rc_atac_pool_logcpm <- function(atac_counts, pool_map, min_pools = 3, BPPARAM = NULL) {
   pb <- rc_pseudobulk_counts(atac_counts, pool_map, fun = "sum", BPPARAM = BPPARAM)
   detected <- Matrix::rowSums(pb > 0) >= min_pools
@@ -106,7 +100,6 @@ rc_atac_pool_logcpm <- function(atac_counts, pool_map, min_pools = 3, BPPARAM = 
 #'
 #' This lightweight runtime sanity check verifies that selected pseudobulk
 #' columns equal manual row sums over the active pool-map cells.
-#' @export
 rc_check_pseudobulk_mapping <- function(counts, pool_map, pb, n_check = 5) {
   rc_validate_pool_matrix_inputs(counts, pool_map)
   active <- rc_filter_active_pool_map(pool_map)

@@ -74,5 +74,3 @@ rc_apply_medium_constraints <- function(gem, medium_table, condition = NULL, exc
   diag <- data.frame(reaction_id = names(lb), old_lb = old_lb, old_ub = old_ub, new_lb = lb, new_ub = ub, medium_status = status, condition = condition %||% "all", stringsAsFactors = FALSE)
   list(gem = gem, medium_diagnostics = diag)
 }
-#' @export
-rc_layer2_apply_bounds <- function(gem, medium_policy = NULL) { .Deprecated("rc_apply_medium_constraints"); rc_apply_medium_constraints(gem, medium_policy, strict = FALSE)$gem }

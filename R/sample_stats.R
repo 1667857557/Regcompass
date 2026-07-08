@@ -23,7 +23,6 @@ rc_export_long_table <- function(score_mat, file, value_col = "value") {
 }
 
 #' Sample-level long summary with pool/cell-count diagnostics
-#' @export
 rc_sample_summary <- function(score_mat, pool_meta, sample_col = "sample_id", celltype_col = "cell_type", condition_col = NULL) {
   score_mat <- as.matrix(score_mat)
   required <- c("pool_id", sample_col, celltype_col)

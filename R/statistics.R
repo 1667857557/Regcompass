@@ -63,7 +63,6 @@ rc_sample_aggregate <- function(score_mat,
 #'
 #' @return Data frame with reaction ID, model term, estimate, standard error,
 #' statistic, p-value, and BH q-value computed within each term.
-#' @export
 rc_lm_by_reaction <- function(Y,
                               sample_meta,
                               formula_str,
