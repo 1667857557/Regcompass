@@ -38,3 +38,26 @@ test_that("metacell sample summary reports metacell diagnostics", {
   expect_equal(unique(out$n_metacells_used), 2L)
   expect_false(unique(out$single_metacell_group_flag))
 })
+
+test_that("fragment_files are normalized for SuperCell", {
+  x <- .rc_normalize_fragment_files("fragments.tsv.gz", atac_assay = "ATAC")
+  expect_true(is.list(x))
+  expect_identical(names(x), "ATAC")
+  expect_identical(x[["ATAC"]], "fragments.tsv.gz")
+
+  y <- .rc_normalize_fragment_files(c(ATAC = "a.tsv.gz", Peaks = "b.tsv.gz"), atac_assay = "ATAC")
+  expect_true(is.list(y))
+  expect_identical(names(y), c("ATAC", "Peaks"))
+
+  expect_error(.rc_normalize_fragment_files(c("a.tsv.gz", "b.tsv.gz")), "named")
+})
+
+test_that("fragment registration validates one cell vector per fragment", {
+  frag1 <- tempfile(fileext = ".tsv.gz")
+  frag2 <- tempfile(fileext = ".tsv.gz")
+  file.create(frag1, paste0(frag1, ".tbi"), frag2, paste0(frag2, ".tbi"))
+  expect_error(
+    .rc_register_signac_fragments(list(), fragment_files = c(frag1, frag2), cells_by_fragment = list("mc1")),
+    "one cell vector per fragment file"
+  )
+})
