@@ -15,9 +15,15 @@ rc_prepare_human2_gem <- function(version = "2.0.0",
     stop("`version = 'latest'` requires `allow_latest = TRUE`; use a pinned Human2 release.", call. = FALSE)
   }
   if (!file.exists(save_rds)) {
-    stop("Preconverted Human2 RegCompassR RDS not found: ", save_rds, "\n",
-         "Provide a pinned preconverted RDS with S, lb, ub, reaction_meta, metabolite_meta, gpr_table, and model_info.",
-         call. = FALSE)
+    ref <- if (identical(version, "latest")) "main" else paste0("v", version)
+    tmp <- tempfile("Human-GEM-")
+    gpr <- rc_download_humangem_gpr_table(destdir = tmp, ref = ref, overwrite = TRUE, quiet = TRUE)
+    repo_dir <- attr(gpr, "repo_dir")
+    model_yml <- file.path(repo_dir, "model", "Human-GEM.yml")
+    checksum <- tools::md5sum(model_yml)[[1]]
+    gem_new <- rc_convert_humangem_yaml_to_regcompass(model_yml, version = version, commit = ref, checksum = checksum)
+    dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
+    saveRDS(gem_new, save_rds)
   }
   gem <- rc_read_gem(save_rds, require_model_info = require_model_info)
   rc_validate_human2_gem(gem)
@@ -139,4 +145,47 @@ rc_replace_humangem_gene_ids <- function(rule, gene_map) {
     rule <- gsub(paste0("\\b", id, "\\b"), gene_map[[id]], rule, perl = TRUE)
   }
   rule
+}
+
+#' Convert a Human-GEM YAML model to a RegCompass GEM object
+#' @export
+rc_convert_humangem_yaml_to_regcompass <- function(model_yml,
+                                                   version = NA_character_,
+                                                   commit = NA_character_,
+                                                   checksum = NA_character_) {
+  if (!file.exists(model_yml)) stop("Human-GEM YAML file not found: ", model_yml, call. = FALSE)
+  if (!requireNamespace("yaml", quietly = TRUE)) stop("Package 'yaml' is required to parse Human-GEM YAML files.", call. = FALSE)
+  model <- yaml::read_yaml(model_yml)
+  mets <- model$metabolites %||% list()
+  rxns <- model$reactions %||% list()
+  metabolite_ids <- vapply(mets, function(x) as.character(x$id %||% x$metabolite_id %||% NA_character_), character(1))
+  reaction_ids <- vapply(rxns, function(x) as.character(x$id %||% x$reaction_id %||% NA_character_), character(1))
+  metabolite_ids <- metabolite_ids[!is.na(metabolite_ids) & nzchar(metabolite_ids)]
+  reaction_ids <- reaction_ids[!is.na(reaction_ids) & nzchar(reaction_ids)]
+  S <- Matrix::sparseMatrix(i = integer(0), j = integer(0), x = numeric(0), dims = c(length(metabolite_ids), length(reaction_ids)), dimnames = list(metabolite_ids, reaction_ids))
+  lb <- stats::setNames(rep(-1000, length(reaction_ids)), reaction_ids)
+  ub <- stats::setNames(rep(1000, length(reaction_ids)), reaction_ids)
+  gpr_rows <- list()
+  for (j in seq_along(rxns)) {
+    rid <- reaction_ids[[j]]
+    r <- rxns[[j]]
+    if (!is.null(r$lower_bound)) lb[[rid]] <- as.numeric(r$lower_bound)
+    if (!is.null(r$upper_bound)) ub[[rid]] <- as.numeric(r$upper_bound)
+    sto <- r$metabolites %||% r$stoichiometry
+    if (length(sto)) {
+      ids <- names(sto); vals <- as.numeric(unlist(sto, use.names = FALSE)); idx <- match(ids, metabolite_ids); ok <- !is.na(idx) & is.finite(vals)
+      if (any(ok)) S[cbind(idx[ok], j)] <- vals[ok]
+    }
+    rule <- as.character(r$gene_reaction_rule %||% r$grRule %||% "")
+    if (nzchar(rule)) {
+      parsed <- tryCatch(rc_parse_gpr_simple(rule), error = function(e) list())
+      if (length(parsed)) gpr_rows[[length(gpr_rows) + 1L]] <- do.call(rbind, lapply(seq_along(parsed), function(k) data.frame(reaction_id = rid, and_group_id = k, gene = parsed[[k]], stringsAsFactors = FALSE)))
+    }
+  }
+  reaction_meta <- data.frame(reaction_id = reaction_ids, name = vapply(rxns, function(x) as.character(x$name %||% NA_character_), character(1)), stringsAsFactors = FALSE)
+  metabolite_meta <- data.frame(metabolite_id = metabolite_ids, name = vapply(mets, function(x) as.character(x$name %||% NA_character_), character(1)), stringsAsFactors = FALSE)
+  gpr_table <- if (length(gpr_rows)) unique(do.call(rbind, gpr_rows)) else data.frame(reaction_id = character(), and_group_id = integer(), gene = character())
+  out <- list(S = S, lb = lb, ub = ub, reaction_meta = reaction_meta, metabolite_meta = metabolite_meta, gpr_table = gpr_table, model_info = list(source = "SysBioChalmers/Human-GEM", version = version, commit = commit, checksum = checksum, conversion_date = as.character(Sys.Date())))
+  rc_validate_gem(out)
+  out
 }

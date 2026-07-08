@@ -2,7 +2,7 @@
 
 microCOMPASS builds structural target-local micro-GEMs from GEM topology, target reactions, reaction roles, and medium scenarios. RNA+ATAC-GPR evidence is used only for unit-specific LP penalties; it does not prune reactions.
 
-Output means multiome-supported reaction capacity potential. It is not true flux, enzyme activity, uptake/secretion flux, ATAC causality, or in vivo medium truth.
+Output means multiome-supported reaction capacity potential from strict cached microCOMPASS.
 
 ## Minimal workflow
 
@@ -29,6 +29,9 @@ mc <- rc_make_metacells(
   gamma = 75,
   min_cells_per_stratum = 100,
   min_metacell_size = 20,
+  fragment_files = fragment_files,
+  save_fragments = TRUE,
+  require_fragment_aggregation = TRUE,
   filter_low_power_metacells = TRUE
 )
 
@@ -43,17 +46,15 @@ medium <- rc_make_medium_scenarios(
   scenario = c("blood_like", "low_glucose", "low_glutamine", "lactate_available")
 )
 
-layer1 <- rc_run_layer1_multiome(
+layer1 <- rc_run_regcompass_multiome_metacell(
+  object = object,
   gpr_table = gem$gpr_table,
-  rna_metacell_counts = mc$rna_counts,
-  metacell_meta = mc$metacell_meta_used,
-  atac_metacell_counts = mc$atac_counts,
-  peak_gene_links = peak_gene_links,
-  stratum_col = "cell_type",
+  outdir = "RegCompassR_run",
+  fragment_files = fragment_files,
+  link_stratum_cols = "cell_type",
+  min_metacells_for_linkpeaks = 80,
   and_method = "boltzmann",
-  tau = 0.20,
-  q = 0.95,
-  q95_n0 = 80
+  tau = 0.20
 )
 
 targets <- rc_select_target_reactions(
@@ -75,7 +76,6 @@ res <- rc_run_microcompass(
   unit = "sample_celltype",
   target_direction = "both",
   omega = 0.95,
-  use_gapfilled_for_score = FALSE,
   parallel = TRUE,
   solver = "highs",
   time_limit = 60
@@ -98,7 +98,7 @@ rc_export_microcompass(res, "RegCompassR_run")
 | `rc_validate_multiome_input()` | Validate Seurat/Signac assays and metadata. | Invisible `TRUE`; errors on invalid input. |
 | `rc_make_metacells()` | Build sample/condition/cell-type-aware RNA+ATAC metacells. | Counts, metadata, membership, diagnostics. |
 | `rc_import_metacells()` | Import saved metacell outputs. | Same structure as `rc_make_metacells()`. |
-| `rc_prepare_human2_gem()` | Load pinned preconverted Human2 RDS; no automatic conversion. | Validated Human2 GEM. |
+| `rc_prepare_human2_gem()` | Load cached Human2 RDS or convert pinned Human-GEM YAML. | Validated Human2 GEM. |
 | `rc_read_gem()` | Read generic GEM RDS with `model_info` by default. | Validated GEM. |
 | `rc_annotate_reaction_roles()` | Add curated/inferred reaction roles. | GEM with `reaction_roles`. |
 | `rc_make_medium_scenarios()` | Build named exchange-bound scenarios. | Medium scenario table. |
