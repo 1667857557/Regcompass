@@ -234,3 +234,27 @@ rc_align_component_matrix <- function(x, template, name) {
   dimnames(x) <- dimnames(template)
   x
 }
+
+#' Stratum-aware ATAC link confidence from normalized peak accessibility percentiles
+#' @export
+rc_link_confidence_by_stratum <- function(p_atac_peak,
+                                          peak_gene_links,
+                                          pool_meta,
+                                          link_stratum_cols = "cell_type") {
+  if (!"link_stratum" %in% colnames(peak_gene_links)) stop("`peak_gene_links` must contain `link_stratum`.", call. = FALSE)
+  missing_cols <- setdiff(link_stratum_cols, colnames(pool_meta))
+  if (length(missing_cols) > 0L) stop("`pool_meta` missing link stratum columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
+  unit_stratum <- interaction(pool_meta[, link_stratum_cols, drop = FALSE], sep = "|", drop = TRUE)
+  names(unit_stratum) <- as.character(pool_meta$pool_id)
+  out <- matrix(NA_real_, nrow = length(unique(peak_gene_links$gene)), ncol = ncol(p_atac_peak), dimnames = list(sort(unique(peak_gene_links$gene)), colnames(p_atac_peak)))
+  for (st in unique(as.character(peak_gene_links$link_stratum))) {
+    cols <- names(unit_stratum)[as.character(unit_stratum) == st]
+    cols <- intersect(cols, colnames(p_atac_peak))
+    if (length(cols) == 0L) next
+    links_st <- peak_gene_links[peak_gene_links$link_stratum == st, , drop = FALSE]
+    conf_st <- rc_link_confidence(p_atac_peak[, cols, drop = FALSE], links_st)
+    common_genes <- intersect(rownames(out), rownames(conf_st))
+    out[common_genes, cols] <- conf_st[common_genes, cols, drop = FALSE]
+  }
+  out
+}

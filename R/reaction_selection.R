@@ -80,10 +80,14 @@ rc_layer2_invalid_reactions <- function(layer1) {
 rc_select_target_reactions <- function(layer1, targets = NULL, pathway = NULL, subsystem = NULL, method = c("balanced_top_capacity", "custom", "top_capacity", "condition_specific", "differential", "pathway"), selection_mode = c("balanced_rank", "and", "or", "ranked_product"), group_cols = c("condition", "cell_type"), top_n = 100, top_n_per_group = 30, min_C_rel = 0.15, min_confidence = 0.25, min_units_per_group = 3, require_complete_gpr = TRUE, exclude_very_low_q95_power = TRUE, exclude_low_q95_power = exclude_very_low_q95_power) {
   method <- match.arg(method)
   selection_mode <- match.arg(selection_mode)
-  if (!is.null(targets) || method == "custom") return(data.frame(reaction_id = unique(as.character(targets)), selection_reason = "custom", stringsAsFactors = FALSE))
+  invalid <- rc_target_selection_invalid_reactions(layer1, require_complete_gpr = require_complete_gpr, exclude_low_q95_power = exclude_low_q95_power)
+  if (!is.null(targets) || method == "custom") {
+    keep <- setdiff(unique(as.character(targets)), invalid)
+    return(data.frame(reaction_id = keep, selection_reason = "custom", require_complete_gpr = require_complete_gpr, stringsAsFactors = FALSE))
+  }
   C <- as.matrix(layer1$C_rel); conf <- if (!is.null(layer1$reaction_confidence)) rc_layer2_confidence_matrix(layer1$reaction_confidence, C) else matrix(1, nrow(C), ncol(C), dimnames=dimnames(C))
   meta <- layer1$unit_meta %||% layer1$pool_meta %||% layer1$metacell_meta %||% data.frame(unit_id = colnames(C), stringsAsFactors = FALSE)
-  id_col <- intersect(c("unit_id","pool_id","sample_celltype_id"), colnames(meta))[1] %||% colnames(meta)[1]
+  id_col <- .rc_first_existing_col(c("unit_id", "pool_id", "sample_celltype_id", "metacell_id"), meta, fallback = colnames(meta)[1])
   meta <- meta[match(colnames(C), as.character(meta[[id_col]])), , drop = FALSE]
   groups <- if (all(group_cols %in% colnames(meta))) interaction(meta[, group_cols, drop = FALSE], drop = TRUE, sep = "|") else factor(rep("all", ncol(C)))
   rxns <- rownames(C); gs <- matrix(NA_real_, nrow(C), length(levels(groups)), dimnames = list(rxns, levels(groups)))
@@ -102,10 +106,27 @@ rc_select_target_reactions <- function(layer1, targets = NULL, pathway = NULL, s
                  or = rowSums(medC >= min_C_rel | medConf >= min_confidence, na.rm = TRUE) > 0,
                  ranked_product = is.finite(balanced_score),
                  balanced_rank = is.finite(balanced_score))
-  keep <- rxns[pass]
-  if (exclude_low_q95_power && is.data.frame(layer1$q95_diagnostics) && "q95_power_class" %in% colnames(layer1$q95_diagnostics)) keep <- setdiff(keep, layer1$q95_diagnostics$reaction_id[layer1$q95_diagnostics$q95_power_class == "very_low"])
+  keep <- setdiff(rxns[pass], invalid)
   ranked <- names(sort(balanced_score[keep], decreasing=TRUE, na.last=NA))
-  selected_groups <- apply(gs[ranked,,drop=FALSE], 1, function(x) paste(names(sort(x, decreasing=TRUE, na.last=NA))[seq_len(min(top_n_per_group, sum(is.finite(x))))], collapse = ";"))
+  selected_groups <- if (length(ranked)) apply(gs[ranked,,drop=FALSE], 1, function(x) paste(names(sort(x, decreasing=TRUE, na.last=NA))[seq_len(min(top_n_per_group, sum(is.finite(x))))], collapse = ";")) else character(0)
   keep <- utils::head(ranked, top_n)
-  data.frame(reaction_id=keep, selection_reason=paste(method, selection_mode, sep=":"), selected_in_group=unname(selected_groups[keep]), balanced_score=balanced_score[keep], median_C_rel_by_group=apply(round(medC[keep,,drop=FALSE],4),1,paste,collapse=";"), median_confidence_by_group=apply(round(medConf[keep,,drop=FALSE],4),1,paste,collapse=";"), n_units_by_group=paste(n_by, collapse=";"), low_power_selection_flag=any(n_by < min_units_per_group), gpr_complexity=NA_character_, stringsAsFactors=FALSE)
+  if (length(keep) == 0L) {
+    return(data.frame(reaction_id=character(), selection_reason=character(), selected_in_group=character(), balanced_score=numeric(), median_C_rel_by_group=character(), median_confidence_by_group=character(), n_units_by_group=character(), low_power_selection_flag=logical(), gpr_complexity=character(), require_complete_gpr=logical(), stringsAsFactors=FALSE))
+  }
+  data.frame(reaction_id=keep, selection_reason=paste(method, selection_mode, sep=":"), selected_in_group=unname(selected_groups[keep]), balanced_score=balanced_score[keep], median_C_rel_by_group=apply(round(medC[keep,,drop=FALSE],4),1,paste,collapse=";"), median_confidence_by_group=apply(round(medConf[keep,,drop=FALSE],4),1,paste,collapse=";"), n_units_by_group=paste(n_by, collapse=";"), low_power_selection_flag=any(n_by < min_units_per_group), gpr_complexity=NA_character_, require_complete_gpr=require_complete_gpr, stringsAsFactors=FALSE)
+}
+
+rc_target_selection_invalid_reactions <- function(layer1, require_complete_gpr = TRUE, exclude_low_q95_power = TRUE) {
+  invalid <- character(0)
+  q95 <- layer1$q95_diagnostics
+  if (is.data.frame(q95) && "reaction_id" %in% colnames(q95)) {
+    if ("all_missing_reaction_flag" %in% colnames(q95)) invalid <- union(invalid, as.character(q95$reaction_id[q95$all_missing_reaction_flag %in% TRUE]))
+    if (isTRUE(exclude_low_q95_power) && "q95_power_class" %in% colnames(q95)) invalid <- union(invalid, as.character(q95$reaction_id[as.character(q95$q95_power_class) == "very_low"]))
+  }
+  conf <- layer1$reaction_confidence
+  if (isTRUE(require_complete_gpr) && is.data.frame(conf) && "reaction_id" %in% colnames(conf)) {
+    unsupported_col <- if ("reaction_unsupported_by_complete_gpr_flag" %in% colnames(conf)) "reaction_unsupported_by_complete_gpr_flag" else if ("no_complete_gpr_group_flag" %in% colnames(conf)) "no_complete_gpr_group_flag" else NA_character_
+    if (!is.na(unsupported_col)) invalid <- union(invalid, as.character(conf$reaction_id[conf[[unsupported_col]] %in% TRUE]))
+  }
+  invalid
 }

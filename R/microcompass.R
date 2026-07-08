@@ -35,16 +35,12 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
                                 penalty_weights = c(expr = 1.0, confidence = 0.5, missing = 1.0),
                                 omega = 0.95,
                                 target_direction = "both",
-                                use_gapfilled_for_score = FALSE,
                                 parallel = TRUE,
                                 solver = c("highs", "gurobi", "glpk"),
                                 time_limit = 60,
                                 BPPARAM = NULL) {
   unit <- match.arg(unit)
   solver <- match.arg(solver)
-  if (isTRUE(use_gapfilled_for_score)) {
-    stop("Gapfilled reactions cannot be used for the primary microCOMPASS score.", call. = FALSE)
-  }
   mats <- rc_layer2_unit_matrices(layer1, if (unit == "metacell") "pool" else "sample_celltype", sample_col, celltype_col, condition_col)
   gem <- rc_annotate_reaction_roles(gem)
   dirs <- rc_prepare_directional_targets(gem, target_reactions, if (target_direction == "both") "both_for_reversible" else "forward_only")
@@ -135,7 +131,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
                      omega = omega,
                      target_direction = target_direction,
                      evidence_policy = "RNA+ATAC-GPR evidence affects penalties only, not structural micro-GEM membership.",
-                     interpretation = "reaction capacity potential; not true flux, enzyme activity, uptake-secretion flux, ATAC causality, or in vivo medium truth"),
+                     interpretation = "multiome-supported reaction capacity potential from strict cached microCOMPASS"),
        method = "microCOMPASS strict target-local reaction-potential LP")
 }
 #' @export
