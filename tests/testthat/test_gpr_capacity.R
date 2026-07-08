@@ -89,7 +89,7 @@ test_that("reaction confidence falls back to detection when gene confidence has 
 
 test_that("metabolic GPR genes are extracted from the active GPR table", {
   gpr <- data.frame(reaction_id = c("r1", "r2"), gpr = c("HK1 or HK2", "PFKM and LDHA"))
-  expect_setequal(rc_metabolic_gpr_genes(gpr), c("hk1", "hk2", "pfkm", "ldha"))
+  expect_setequal(rc_metabolic_gpr_genes(gpr), c("HK1", "HK2", "PFKM", "LDHA"))
 })
 
 test_that("rc_layer1_capacity alias matches run function", {

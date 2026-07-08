@@ -147,6 +147,43 @@ rc_run_layer1_from_metacells <- function(gpr_table,
   out
 }
 
+
+rc_prepare_metacell_linkpeaks_object <- function(object,
+                                                peak_assay = "ATAC",
+                                                expression_assay = "RNA",
+                                                normalize_expression = TRUE,
+                                                run_region_stats = TRUE,
+                                                genome = NULL) {
+  old_assay <- tryCatch(SeuratObject::DefaultAssay(object), error = function(e) NULL)
+
+  if (isTRUE(normalize_expression)) {
+    if (!requireNamespace("Seurat", quietly = TRUE)) stop("Package 'Seurat' is required to run NormalizeData on metacell RNA before LinkPeaks.", call. = FALSE)
+    object <- rc_set_default_assay(object, expression_assay)
+    object <- Seurat::NormalizeData(object = object, assay = expression_assay, verbose = FALSE)
+  }
+
+  if (isTRUE(run_region_stats) && !rc_has_region_stats(object, peak_assay = peak_assay)) {
+    if (is.null(genome)) {
+      stop("Metacell LinkPeaks requires peak-level region statistics. Provide `genome` (for example BSgenome.Hsapiens.UCSC.hg38) so Signac::RegionStats() can run, or precompute RegionStats on the metacell ATAC assay.", call. = FALSE)
+    }
+    object <- rc_set_default_assay(object, peak_assay)
+    object <- Signac::RegionStats(object = object, assay = peak_assay, genome = genome, verbose = FALSE)
+  }
+  if (!is.null(old_assay)) object <- rc_set_default_assay(object, old_assay)
+  object
+}
+
+rc_set_default_assay <- function(object, assay) {
+  setter <- get("DefaultAssay<-", envir = asNamespace("SeuratObject"))
+  setter(object, value = assay)
+}
+
+rc_has_region_stats <- function(object, peak_assay = "ATAC") {
+  meta_features <- tryCatch(object[[peak_assay]]@meta.features, error = function(e) NULL)
+  if (is.null(meta_features)) return(FALSE)
+  all(c("GC.percent", "sequence.length") %in% colnames(meta_features))
+}
+
 #' Recompute metabolic peak-gene links on a metacell Signac object
 #' @export
 rc_recompute_metacell_peak_gene_links <- function(metacell_object,
@@ -158,11 +195,15 @@ rc_recompute_metacell_peak_gene_links <- function(metacell_object,
                                                   out_file = NULL,
                                                   gpr_table = NULL,
                                                   require_fragments = TRUE,
+                                                  normalize_expression = TRUE,
+                                                  run_region_stats = TRUE,
+                                                  genome = NULL,
                                                   ...) {
   if (!inherits(metacell_object, "Seurat")) stop("`metacell_object` must be a metacell-level Seurat/Signac object.", call. = FALSE)
   if (!requireNamespace("Signac", quietly = TRUE)) stop("Package 'Signac' is required for metacell-level LinkPeaks.", call. = FALSE)
   frags <- Signac::Fragments(metacell_object[[peak_assay]])
   if (require_fragments && length(frags) == 0L) stop("Metacell-level LinkPeaks requires fragment files registered on the metacell ATAC assay. Run metacell fragment aggregation successfully before Layer 1 multiome analysis.", call. = FALSE)
+  metacell_object <- rc_prepare_metacell_linkpeaks_object(metacell_object, peak_assay = peak_assay, expression_assay = expression_assay, normalize_expression = normalize_expression, run_region_stats = run_region_stats, genome = genome)
   links <- rc_recompute_signac_peak_gene_links(object = metacell_object, gpr_table = gpr_table, metabolic_genes = metabolic_genes, peak_assay = peak_assay, expression_assay = expression_assay, distance = distance, min.cells = min_cells, ...)
   if (nrow(links) == 0L) stop("Metacell-level metabolic peak-gene relinking returned 0 links.", call. = FALSE)
   if (!is.null(out_file)) .rc_write_tsv_gz(links, out_file)
