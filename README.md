@@ -1,7 +1,5 @@
 # RegCompassR workflow
 
-RegCompassR 的主干流程是 strict multiome microCOMPASS：
-
 ```text
 Seurat RNA+ATAC object
 → sample-aware metacells
@@ -11,7 +9,6 @@ Seurat RNA+ATAC object
 → strict cached microCOMPASS
 ```
 
-正式流程会在 metacell 层重新计算 metabolic peak-gene links；不要传入旧的 single-cell links。
 
 ## Minimal example
 
@@ -42,7 +39,7 @@ layer1 <- rc_run_regcompass_multiome_metacell(
   rna_assay = "RNA",
   atac_assay = "ATAC",
   link_stratum_cols = "cell_type",
-  min_metacells_for_linkpeaks = 80
+  min_metacells_for_linkpeaks = 10
 )
 
 targets <- rc_select_target_reactions(
