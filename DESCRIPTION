@@ -26,3 +26,5 @@ Suggests:
     Rglpk,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
+Remotes:
+    1667857557/SuperCell-Seurat-V4@supercell-2.0
