@@ -51,8 +51,34 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
     }
     if (!"medium_scenario_id" %in% colnames(medium_scenarios)) medium_scenarios$medium_scenario_id <- "custom"
   }
-  mg_cache <- rc_build_microgem_cache(gem = gem, dirs = dirs, medium_scenarios = medium_scenarios, microgem_params = microgem_params)
-  all_rxns <- unique(unlist(lapply(mg_cache, function(mg) colnames(mg$S))))
+  cache_strategy <- microgem_params$strategy %||% "target_khop"
+  if (identical(cache_strategy, "module_meso_gem")) {
+    module_params <- microgem_params
+    module_params$strategy <- NULL
+    cache_dir <- module_params$cache_dir %||% tempfile("RegCompassR_module_gem_cache_")
+    module_col <- module_params$module_col %||% "metabolic_module"
+    force_cache <- module_params$force_cache %||% FALSE
+    module_params$cache_dir <- NULL
+    module_params$module_col <- NULL
+    module_params$force_cache <- NULL
+    mg_cache <- rc_build_module_gem_cache(
+      gem = gem,
+      dirs = dirs,
+      medium_scenarios = medium_scenarios,
+      cache_dir = cache_dir,
+      module_col = module_col,
+      module_gem_params = module_params,
+      force = force_cache
+    )
+  } else {
+    target_params <- microgem_params
+    target_params$strategy <- NULL
+    mg_cache <- rc_build_microgem_cache(gem = gem, dirs = dirs, medium_scenarios = medium_scenarios, microgem_params = target_params)
+  }
+  cache_gem <- function(entry) {
+    if (is.list(entry) && !is.null(entry$file)) readRDS(entry$file) else entry
+  }
+  all_rxns <- unique(unlist(lapply(mg_cache, function(entry) colnames(cache_gem(entry)$S))))
   pen <- rc_compute_multiome_penalty(
     rc_align_layer2_evidence(mats$C_rel, all_rxns, NA_real_),
     rc_align_layer2_evidence(mats$reaction_confidence, all_rxns, NA_real_),
@@ -66,7 +92,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
   feasible <- matrix(FALSE, nrow = length(row_ids), ncol = length(units), dimnames = list(row_ids, units))
   tasks <- expand.grid(row_id = row_ids, unit_id = units, stringsAsFactors = FALSE)
   run_one <- function(task) {
-    mg <- mg_cache[[task$row_id]]
+    mg <- cache_gem(mg_cache[[task$row_id]])
     u <- task$unit_id
     parts <- strsplit(task$row_id, "::", fixed = TRUE)[[1]]
     reaction_id <- parts[[1]]
@@ -106,7 +132,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
   score[] <- rc_sigmoid(-(penalty - stats::median(penalty, na.rm = TRUE)))
   score[!feasible] <- 0
   lp_diagnostics <- do.call(rbind, lapply(res, `[[`, "diag"))
-  microgem_diagnostics <- do.call(rbind, lapply(mg_cache, function(mg) mg$closure_diagnostics))
+  microgem_diagnostics <- do.call(rbind, lapply(mg_cache, function(entry) cache_gem(entry)$closure_diagnostics))
   scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))
   sens <- if (length(scenarios) > 1L) {
     aggregate(strict_feasible ~ reaction_id + target_direction + unit_id, lp_diagnostics, function(x) length(unique(x)) > 1L)

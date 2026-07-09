@@ -59,10 +59,53 @@ rc_solve_lp_gurobi <- function(obj, A, lhs, rhs, lb, ub, time_limit) {
 
 rc_solve_lp_highs <- function(obj, A, lhs, rhs, lb, ub, time_limit) {
   start_time <- proc.time()[["elapsed"]]
-  if (!requireNamespace("highs", quietly = TRUE)) return(rc_standardize_lp_result("error", NA_real_, NULL, 0, "highs package not installed"))
-  res <- tryCatch(highs::highs_solve(L = obj, lower = lhs, upper = rhs, A = A, lower_bounds = lb, upper_bounds = ub, maximum = FALSE), error = function(e) e)
-  if (inherits(res, "error")) return(rc_standardize_lp_result("error", NA_real_, NULL, proc.time()[["elapsed"]] - start_time, conditionMessage(res)))
-  rc_standardize_lp_result(res$status %||% "error", res$objective_value %||% res$objective, res$primal_solution %||% res$solution, proc.time()[["elapsed"]] - start_time)
+  if (!requireNamespace("highs", quietly = TRUE)) {
+    return(rc_standardize_lp_result("error", NA_real_, NULL, 0, "highs package not installed"))
+  }
+
+  fmls <- names(formals(highs::highs_solve))
+  args <- list(
+    L = as.numeric(obj),
+    lower = as.numeric(lb),
+    upper = as.numeric(ub),
+    A = A,
+    maximum = FALSE
+  )
+
+  if ("Q" %in% fmls) args$Q <- NULL
+
+  if (all(c("lhs", "rhs") %in% fmls)) {
+    args$lhs <- as.numeric(lhs)
+    args$rhs <- as.numeric(rhs)
+  } else if (all(c("lower_bounds", "upper_bounds") %in% fmls)) {
+    args$lower_bounds <- as.numeric(lb)
+    args$upper_bounds <- as.numeric(ub)
+    args$lower <- as.numeric(lhs)
+    args$upper <- as.numeric(rhs)
+  } else {
+    return(rc_standardize_lp_result(
+      "error",
+      NA_real_,
+      NULL,
+      proc.time()[["elapsed"]] - start_time,
+      "Unsupported highs::highs_solve() API; expected either lhs/rhs or lower_bounds/upper_bounds interface."
+    ))
+  }
+
+  if ("types" %in% fmls) args$types <- rep("C", length(obj))
+  if ("options" %in% fmls || "..." %in% fmls) args$options <- list(time_limit = time_limit)
+
+  res <- tryCatch(do.call(highs::highs_solve, args), error = function(e) e)
+  if (inherits(res, "error")) {
+    return(rc_standardize_lp_result("error", NA_real_, NULL, proc.time()[["elapsed"]] - start_time, conditionMessage(res)))
+  }
+  rc_standardize_lp_result(
+    res$status %||% res$model_status %||% "error",
+    res$objective_value %||% res$objective,
+    res$primal_solution %||% res$solution,
+    proc.time()[["elapsed"]] - start_time,
+    res$message %||% NULL
+  )
 }
 
 rc_solve_lp_glpk <- function(obj, A, lhs, rhs, lb, ub, time_limit) {

@@ -23,6 +23,8 @@ rc_prepare_human2_gem <- function(version = "2.0.0",
     model_yml <- file.path(repo_dir, "model", "Human-GEM.yml")
     checksum <- tools::md5sum(model_yml)[[1]]
     gem_new <- rc_convert_humangem_yaml_to_regcompass(model_yml, version = version, commit = ref, checksum = checksum)
+    gem_new <- rc_enrich_humangem_metadata(gem_new, reactions_tsv = gpr$reactions)
+    gem_new <- rc_annotate_reaction_roles(gem_new, overwrite_existing = TRUE)
     gem_new$gpr_table <- gpr$gpr_table
     gem_new$metabolic_genes <- gpr$metabolic_genes
     gem_new$reaction_rules <- gpr$reaction_rules

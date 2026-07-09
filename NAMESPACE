@@ -90,3 +90,8 @@ export(rc_convert_humangem_yaml_to_regcompass)
 
 export(rc_aggregate_fragments_by_membership)
 export(rc_signac_links_to_peak_gene_table)
+export(rc_enrich_humangem_metadata)
+export(rc_reaction_module_map)
+export(rc_build_module_meso_gem)
+export(rc_build_module_gem_cache)
+export(rc_check_module_gem_closure)
