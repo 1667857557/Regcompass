@@ -1,29 +1,50 @@
+#' Detect a conservative RegCompass worker count
+#'
+#' Worker discovery honors explicit RegCompass settings before scheduler- or
+#' cgroup-aware sources. This avoids over-subscribing containers where
+#' `parallel::detectCores()` reports host CPUs instead of the current process
+#' allocation.
+#'
+#' @param default Fallback worker count when no source can be detected.
+#' @return A positive integer worker count.
+#' @export
+rc_available_workers <- function(default = 1L) {
+  vals <- c(
+    getOption("RegCompassR.workers", NA),
+    Sys.getenv("REGCOMPASS_WORKERS", unset = NA_character_),
+    Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA_character_),
+    Sys.getenv("NSLOTS", unset = NA_character_)
+  )
+  vals <- suppressWarnings(as.integer(vals))
+  vals <- vals[is.finite(vals) & vals >= 1L]
+  if (length(vals)) return(max(1L, vals[[1L]]))
+
+  if (requireNamespace("future", quietly = TRUE)) {
+    fc <- tryCatch(future::availableCores(), error = function(e) NA_integer_)
+    fc <- suppressWarnings(as.integer(fc[[1L]]))
+    if (is.finite(fc) && fc >= 1L) return(fc)
+  }
+
+  cores <- parallel::detectCores(logical = TRUE)
+  cores <- suppressWarnings(as.integer(cores[[1L]]))
+  if (!is.finite(cores) || cores < 1L) max(1L, as.integer(default[[1L]])) else max(1L, cores - 1L)
+}
+
 #' Build the default RegCompass parallel backend
 #'
 #' Expensive pool-, reaction-, and bootstrap-level loops use this helper when
-#' callers do not provide an explicit `BiocParallelParam`. By default it uses all
-#' available cores except one, capped by `options(RegCompassR.workers = ...)` or
-#' the `REGCOMPASS_WORKERS` environment variable. Set either value to `1` to force
+#' callers do not provide an explicit `BiocParallelParam`. By default it uses a
+#' conservative worker count from `rc_available_workers()`. Set
+#' `options(RegCompassR.workers = 1)` or `REGCOMPASS_WORKERS=1` to force
 #' sequential execution.
 #'
-#' @param workers Optional worker count. Defaults to option/env autodetection.
+#' @param workers Optional worker count. Defaults to option/env/autodetection.
 #' @return A `BiocParallelParam` object when BiocParallel is installed and more
 #' than one worker is requested; otherwise `NULL` for sequential execution.
 #' @export
 rc_default_bpparam <- function(workers = NULL) {
-  if (is.null(workers)) {
-    opt_workers <- getOption("RegCompassR.workers", NULL)
-    env_workers <- Sys.getenv("REGCOMPASS_WORKERS", unset = NA_character_)
-    if (!is.null(opt_workers)) {
-      workers <- opt_workers
-    } else if (!is.na(env_workers) && nzchar(env_workers)) {
-      workers <- env_workers
-    } else {
-      cores <- parallel::detectCores(logical = TRUE)
-      workers <- if (is.na(cores)) 1L else max(1L, cores - 1L)
-    }
-  }
-  workers <- suppressWarnings(as.integer(workers[[1]]))
+  if (is.null(workers)) workers <- rc_available_workers(default = 1L)
+  workers <- suppressWarnings(as.integer(workers[[1L]]))
   if (is.na(workers) || workers < 2L) return(NULL)
   if (!requireNamespace("BiocParallel", quietly = TRUE)) return(NULL)
 

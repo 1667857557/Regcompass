@@ -14,14 +14,24 @@ rc_prepare_human2_gem <- function(version = "2.0.0",
   if (identical(version, "latest") && !isTRUE(allow_latest)) {
     stop("`version = 'latest'` requires `allow_latest = TRUE`; use a pinned Human2 release.", call. = FALSE)
   }
+  if (isTRUE(force_download) && file.exists(save_rds)) unlink(save_rds, force = TRUE)
   if (!file.exists(save_rds)) {
     ref <- if (identical(version, "latest")) "main" else paste0("v", version)
     tmp <- tempfile("Human-GEM-")
-    gpr <- rc_download_humangem_gpr_table(destdir = tmp, ref = ref, overwrite = TRUE, quiet = TRUE)
+    gpr <- rc_download_humangem_gpr_table(destdir = tmp, ref = ref, ref_type = "auto", gene_format = "symbol", overwrite = TRUE, quiet = TRUE)
     repo_dir <- attr(gpr, "repo_dir")
     model_yml <- file.path(repo_dir, "model", "Human-GEM.yml")
     checksum <- tools::md5sum(model_yml)[[1]]
     gem_new <- rc_convert_humangem_yaml_to_regcompass(model_yml, version = version, commit = ref, checksum = checksum)
+    gem_new$gpr_table <- gpr$gpr_table
+    gem_new$metabolic_genes <- gpr$metabolic_genes
+    gem_new$reaction_rules <- gpr$reaction_rules
+    gem_new$genes <- gpr$genes
+    gem_new$reactions <- gpr$reactions
+    gem_new$model_info$gene_format <- "symbol"
+    gem_new$model_info$archive <- attr(gpr, "archive")
+    gem_new$model_info$archive_url <- attr(gpr, "archive_url") %||% NA_character_
+    rc_validate_human2_gem(gem_new)
     dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
     saveRDS(gem_new, save_rds)
   }
@@ -47,10 +57,12 @@ rc_validate_human2_gem <- function(gem) {
 #' @export
 rc_download_humangem_gpr_table <- function(destdir = tempfile("Human-GEM-"),
                                            ref = "main",
+                                           ref_type = c("auto", "heads", "tags"),
                                            gene_format = c("symbol", "ensembl"),
                                            repo_url = "https://github.com/SysBioChalmers/Human-GEM",
                                            overwrite = FALSE,
                                            quiet = FALSE) {
+  ref_type <- match.arg(ref_type)
   gene_format <- match.arg(gene_format)
   if (dir.exists(destdir) && length(list.files(destdir, all.files = TRUE, no.. = TRUE)) > 0L && !overwrite) {
     stop("`destdir` already exists and is not empty. Use `overwrite = TRUE` or choose another directory.", call. = FALSE)
@@ -59,8 +71,23 @@ rc_download_humangem_gpr_table <- function(destdir = tempfile("Human-GEM-"),
   dir.create(destdir, recursive = TRUE, showWarnings = FALSE)
 
   archive <- file.path(destdir, paste0("Human-GEM-", ref, ".zip"))
-  archive_url <- paste0(sub("/$", "", repo_url), "/archive/refs/heads/", ref, ".zip")
-  utils::download.file(archive_url, archive, mode = "wb", quiet = quiet)
+  make_url <- function(type) paste0(sub("/$", "", repo_url), "/archive/refs/", type, "/", ref, ".zip")
+  urls <- switch(ref_type, heads = make_url("heads"), tags = make_url("tags"), auto = c(make_url("heads"), make_url("tags")))
+  archive_url <- NA_character_
+  ok <- FALSE
+  for (u in urls) {
+    if (file.exists(archive)) unlink(archive, force = TRUE)
+    status <- tryCatch({
+      utils::download.file(u, archive, mode = "wb", quiet = quiet)
+      TRUE
+    }, error = function(e) FALSE)
+    if (isTRUE(status) && file.exists(archive) && file.info(archive)$size > 0) {
+      archive_url <- u
+      ok <- TRUE
+      break
+    }
+  }
+  if (!ok) stop("Failed to download Human-GEM archive for ref: ", ref, call. = FALSE)
   utils::unzip(archive, exdir = destdir)
 
   roots <- list.dirs(destdir, recursive = FALSE, full.names = TRUE)
@@ -72,6 +99,8 @@ rc_download_humangem_gpr_table <- function(destdir = tempfile("Human-GEM-"),
   attr(out, "archive") <- archive
   attr(out, "source_url") <- repo_url
   attr(out, "ref") <- ref
+  attr(out, "ref_type") <- ref_type
+  attr(out, "archive_url") <- archive_url
   out
 }
 
