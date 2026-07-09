@@ -11,15 +11,37 @@
   n <- length(gv$reactions)
   rid <- tolower(as.character(gv$reactions))
   rn <- .rc_meta_col(meta, c("reaction_name", "name", "description"), n)
-  rs <- .rc_meta_col(meta, c("subsystem", "subSystem", "sub_system"), n)
+  rs <- .rc_meta_col(meta, c("subsystem", "subSystems", "subSystem", "sub_system", "metabolic_module"), n)
   eq <- .rc_meta_col(meta, c("equation", "reaction_formula", "formula"), n)
-  nnz <- Matrix::colSums(abs(gv$S) > 0)
-  is_boundary <- nnz == 1
+
   id_exchange <- grepl("^(ex_|ex|exchange)", rid)
   name_exchange <- grepl("exchange|boundary exchange|extracellular exchange|uptake|secretion", rn)
-  subsystem_exchange <- grepl("exchange|transport, extracellular|extracellular", rs)
+  subsystem_exchange <- grepl("exchange|extracellular", rs)
   eq_exchange <- grepl("\\[e\\]|\\[extracellular\\]|extracellular", eq)
-  role == "unknown" & (id_exchange | (is_boundary & (name_exchange | subsystem_exchange | eq_exchange)))
+
+  comp <- NULL
+  if (!is.null(gem$metabolite_meta) && "compartment" %in% colnames(gem$metabolite_meta)) {
+    comp <- as.character(gem$metabolite_meta$compartment[
+      match(rownames(gv$S), as.character(gem$metabolite_meta$metabolite_id))
+    ])
+  }
+
+  single_extracellular <- rep(FALSE, n)
+  if (!is.null(comp)) {
+    single_extracellular <- vapply(seq_len(ncol(gv$S)), function(j) {
+      idx <- which(gv$S[, j] != 0)
+      rxn_comp <- unique(stats::na.omit(comp[idx]))
+      length(idx) == 1L && length(rxn_comp) == 1L && identical(rxn_comp[[1]], "e")
+    }, logical(1))
+  }
+
+  role == "unknown" & (
+    id_exchange |
+      name_exchange |
+      subsystem_exchange |
+      eq_exchange |
+      single_extracellular
+  )
 }
 
 #' Annotate GEM reactions with curated or inferred RegCompassR roles
