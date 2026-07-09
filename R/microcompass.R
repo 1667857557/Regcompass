@@ -41,7 +41,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
                                 BPPARAM = NULL) {
   unit <- match.arg(unit)
   solver <- match.arg(solver)
-  mats <- rc_layer2_unit_matrices(layer1, if (unit == "metacell") "pool" else "sample_celltype", sample_col, celltype_col, condition_col)
+  mats <- rc_layer2_unit_matrices(layer1, if (unit == "metacell") "metacell" else "sample_celltype", sample_col, celltype_col, condition_col)
   gem <- rc_annotate_reaction_roles(gem)
   dirs <- rc_prepare_directional_targets(gem, target_reactions, if (target_direction == "both") "both_for_reversible" else "forward_only")
   if (is.null(medium_scenarios)) {

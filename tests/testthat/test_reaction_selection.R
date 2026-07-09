@@ -8,7 +8,7 @@ test_that("target reaction selection honors require_complete_gpr", {
       reaction_unsupported_by_complete_gpr_flag = c(FALSE, TRUE),
       stringsAsFactors = FALSE
     ),
-    pool_meta = data.frame(pool_id = "mc1", condition = "ctrl", cell_type = "T", stringsAsFactors = FALSE)
+    unit_meta = data.frame(pool_id = "mc1", condition = "ctrl", cell_type = "T", stringsAsFactors = FALSE)
   )
   strict <- rc_select_target_reactions(layer1, require_complete_gpr = TRUE, min_units_per_group = 1, top_n = 10)
   permissive <- rc_select_target_reactions(layer1, require_complete_gpr = FALSE, min_units_per_group = 1, top_n = 10)

@@ -1,20 +1,20 @@
 #' Stratum-wise empirical percentiles for feature-by-pool matrices
 #'
-#' Percentiles are computed within each requested pool stratum so cell-type or
+#' Percentiles are computed within each requested unit stratum so cell-type or
 #' condition composition does not dominate RNA/ATAC confidence components.
 #' @export
-rc_percentile_by_stratum <- function(x, pool_meta = NULL, stratum_col = NULL) {
+rc_percentile_by_stratum <- function(x, unit_meta = NULL, stratum_col = NULL) {
   x <- as.matrix(x)
-  if (is.null(colnames(x))) stop("`x` must have pool IDs in colnames().", call. = FALSE)
+  if (is.null(colnames(x))) stop("`x` must have unit IDs in colnames().", call. = FALSE)
   if (is.null(stratum_col)) {
     strata <- rep("global", ncol(x))
   } else {
-    if (is.null(pool_meta) || !"pool_id" %in% colnames(pool_meta) || !stratum_col %in% colnames(pool_meta)) {
-      stop("`pool_meta` must contain `pool_id` and `stratum_col`.", call. = FALSE)
+    if (is.null(unit_meta) || !"pool_id" %in% colnames(unit_meta) || !stratum_col %in% colnames(unit_meta)) {
+      stop("`unit_meta` must contain `pool_id` and `stratum_col`.", call. = FALSE)
     }
-    pool_meta <- pool_meta[match(colnames(x), pool_meta$pool_id), , drop = FALSE]
-    if (anyNA(pool_meta$pool_id)) stop("`pool_meta` is missing metadata for some matrix columns.", call. = FALSE)
-    strata <- as.character(pool_meta[[stratum_col]])
+    unit_meta <- unit_meta[match(colnames(x), unit_meta$pool_id), , drop = FALSE]
+    if (anyNA(unit_meta$pool_id)) stop("`unit_meta` is missing metadata for some matrix columns.", call. = FALSE)
+    strata <- as.character(unit_meta[[stratum_col]])
   }
   out <- x
   for (st in unique(strata)) {
@@ -39,15 +39,15 @@ rc_percentile_vector <- function(v) {
 
 #' RNA-ATAC concordance with discrete-rank null correction
 #' @export
-rc_concordance_null_correct <- function(p_rna, p_atac, pool_meta = NULL, stratum_col = NULL) {
+rc_concordance_null_correct <- function(p_rna, p_atac, unit_meta = NULL, stratum_col = NULL) {
   p_rna <- as.matrix(p_rna); p_atac <- as.matrix(p_atac)
   if (!identical(dim(p_rna), dim(p_atac))) stop("`p_rna` and `p_atac` must have identical dimensions.", call. = FALSE)
   concord <- 1 - abs(p_rna - p_atac)
   if (!is.null(stratum_col)) {
-    if (is.null(pool_meta) || !"pool_id" %in% colnames(pool_meta) || !stratum_col %in% colnames(pool_meta)) stop("`pool_meta` must contain `pool_id` and `stratum_col`.", call. = FALSE)
-    pool_meta <- pool_meta[match(colnames(p_rna), pool_meta$pool_id), , drop = FALSE]
-    if (anyNA(pool_meta$pool_id)) stop("`pool_meta` is missing metadata for some matrix columns.", call. = FALSE)
-    strata <- as.character(pool_meta[[stratum_col]])
+    if (is.null(unit_meta) || !"pool_id" %in% colnames(unit_meta) || !stratum_col %in% colnames(unit_meta)) stop("`unit_meta` must contain `pool_id` and `stratum_col`.", call. = FALSE)
+    unit_meta <- unit_meta[match(colnames(p_rna), unit_meta$pool_id), , drop = FALSE]
+    if (anyNA(unit_meta$pool_id)) stop("`unit_meta` is missing metadata for some matrix columns.", call. = FALSE)
+    strata <- as.character(unit_meta[[stratum_col]])
   } else {
     strata <- rep("global", ncol(p_rna))
   }
@@ -239,13 +239,13 @@ rc_align_component_matrix <- function(x, template, name) {
 #' @export
 rc_link_confidence_by_stratum <- function(p_atac_peak,
                                           peak_gene_links,
-                                          pool_meta,
+                                          unit_meta,
                                           link_stratum_cols = "cell_type") {
   if (!"link_stratum" %in% colnames(peak_gene_links)) stop("`peak_gene_links` must contain `link_stratum`.", call. = FALSE)
-  missing_cols <- setdiff(link_stratum_cols, colnames(pool_meta))
-  if (length(missing_cols) > 0L) stop("`pool_meta` missing link stratum columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
-  unit_stratum <- interaction(pool_meta[, link_stratum_cols, drop = FALSE], sep = "|", drop = TRUE)
-  names(unit_stratum) <- as.character(pool_meta$pool_id)
+  missing_cols <- setdiff(link_stratum_cols, colnames(unit_meta))
+  if (length(missing_cols) > 0L) stop("`unit_meta` missing link stratum columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
+  unit_stratum <- interaction(unit_meta[, link_stratum_cols, drop = FALSE], sep = "|", drop = TRUE)
+  names(unit_stratum) <- as.character(unit_meta$pool_id)
   out <- matrix(NA_real_, nrow = length(unique(peak_gene_links$gene)), ncol = ncol(p_atac_peak), dimnames = list(sort(unique(peak_gene_links$gene)), colnames(p_atac_peak)))
   for (st in unique(as.character(peak_gene_links$link_stratum))) {
     cols <- names(unit_stratum)[as.character(unit_stratum) == st]

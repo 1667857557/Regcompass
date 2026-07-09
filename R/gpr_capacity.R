@@ -28,7 +28,7 @@ rc_robust_z <- function(x, eps = 1e-6) {
 #' @export
 rc_sigmoid <- function(z) 1 / (1 + exp(-z))
 
-#' Gene capacity score from pool-level logCPM
+#' Gene capacity score from meta-cell-level logCPM
 #' @export
 rc_gene_score <- function(X, min_scale = 0.05, z_clip = 6) {
   rc_sigmoid(rc_gene_zscore(X, min_scale = min_scale, z_clip = z_clip))

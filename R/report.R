@@ -1,7 +1,7 @@
 #' Write a markdown diagnostics report
 #' @export
 rc_write_report_md <- function(file,
-                               pool_diagnostics = NULL,
+                               unit_diagnostics = NULL,
                                q95_diagnostics = NULL,
                                gpr_diagnostics = NULL,
                                confidence = NULL,
@@ -9,11 +9,11 @@ rc_write_report_md <- function(file,
                                promiscuity_sensitivity = NULL) {
   lines <- c("# RegCompassR Layer 1 diagnostics", "")
   add_num <- function(label, x) paste0("- ", label, ": ", if (all(is.na(x))) "NA" else signif(stats::median(x, na.rm = TRUE), 4), " median; IQR ", if (all(is.na(x))) "NA" else signif(stats::IQR(x, na.rm = TRUE), 4))
-  if (!is.null(pool_diagnostics)) {
-    lines <- c(lines, "## Pool diagnostics", paste0("- Pools: ", nrow(pool_diagnostics)))
-    if ("n_cells" %in% colnames(pool_diagnostics)) lines <- c(lines, add_num("Pool cell count", pool_diagnostics$n_cells))
-    if ("low_power_pool" %in% colnames(pool_diagnostics)) lines <- c(lines, paste0("- Low-power pool fraction: ", mean(pool_diagnostics$low_power_pool, na.rm = TRUE)))
-    for (nm in intersect(c("pool_seed", "state_source", "state_resolution"), colnames(pool_diagnostics))) lines <- c(lines, paste0("- ", nm, ": ", paste(unique(stats::na.omit(pool_diagnostics[[nm]])), collapse = ", ")))
+  if (!is.null(unit_diagnostics)) {
+    lines <- c(lines, "## Meta-cell diagnostics", paste0("- Meta cells: ", nrow(unit_diagnostics)))
+    if ("n_cells" %in% colnames(unit_diagnostics)) lines <- c(lines, add_num("Meta-cell cell count", unit_diagnostics$n_cells))
+    if ("low_power_pool" %in% colnames(unit_diagnostics)) lines <- c(lines, paste0("- Low-power meta-cell fraction: ", mean(unit_diagnostics$low_power_pool, na.rm = TRUE)))
+    for (nm in intersect(c("pool_seed", "state_source", "state_resolution"), colnames(unit_diagnostics))) lines <- c(lines, paste0("- ", nm, ": ", paste(unique(stats::na.omit(unit_diagnostics[[nm]])), collapse = ", ")))
   }
   if (!is.null(q95_diagnostics)) {
     lines <- c(lines, "", "## Q95 diagnostics", paste0("- Rows: ", nrow(q95_diagnostics)))

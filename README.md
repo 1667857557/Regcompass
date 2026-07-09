@@ -92,6 +92,6 @@ rc_export_microcompass(res, "RegCompassR_run")
 
 ## Main outputs
 
-- `layer1`: includes `C_rel`, `reaction_confidence`, `metacell_meta`, `pool_meta`, `rna_metacell_logcpm`, `rna_metacell_detection`, and `metacell_peak_gene_links`.
+- `layer1`: includes `C_rel`, `reaction_confidence`, `metacell_meta`, `unit_meta`, `rna_metacell_logcpm`, `rna_metacell_detection`, and `metacell_peak_gene_links`.
 - `res`: includes `score`, `penalty`, `vmax`, `feasible`, `medium_scenarios`, diagnostics, and `unit_meta`.
 - `stat`: differential-test table from `rc_test_microcompass_differential()`.
