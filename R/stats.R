@@ -49,10 +49,6 @@ rc_test_microcompass_differential <- function(result,
   meta <- meta[match(colnames(S), as.character(meta$unit_id)), , drop = FALSE]
   if (anyNA(meta$unit_id)) stop("`result$unit_meta` is missing rows for score matrix columns.", call. = FALSE)
   if (!condition_col %in% colnames(meta)) stop("`condition_col` is missing from `result$unit_meta`.", call. = FALSE)
-  if (sample_col %in% colnames(meta)) {
-    rc_check_replicate_design(meta, condition_col = condition_col, sample_col = sample_col, min_samples_per_condition = min_samples_per_group, strict = strict_replicate_design)
-  }
-
   parsed <- rc_parse_microcompass_row_id(rownames(S))
   row_meta <- data.frame(row_id = rownames(S), parsed, stringsAsFactors = FALSE)
   celltypes <- if (celltype_col %in% colnames(meta)) unique(as.character(meta[[celltype_col]])) else NA_character_

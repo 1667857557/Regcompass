@@ -46,11 +46,16 @@ rc_make_medium_scenarios <- function(gem,
       stringsAsFactors = FALSE
     )
   }
-  out <- do.call(rbind, lapply(setdiff(scenario, "custom"), make_rows))
+  built_in <- setdiff(scenario, "custom")
+  out <- if (length(built_in) > 0L) do.call(rbind, lapply(built_in, make_rows)) else NULL
   if ("custom" %in% scenario) {
     cm <- custom_medium
-    for (nm in setdiff(c("metabolite_id","condition","evidence_source","assumption_level"), colnames(cm))) cm[[nm]] <- NA
-    out <- rbind(out, cm[, colnames(out), drop = FALSE])
+    for (nm in setdiff(c("metabolite_id", "condition", "evidence_source", "assumption_level"), colnames(cm))) cm[[nm]] <- NA
+    if (is.null(out)) {
+      out <- cm
+    } else {
+      out <- rbind(out, cm[, colnames(out), drop = FALSE])
+    }
   }
   rownames(out) <- NULL
   out

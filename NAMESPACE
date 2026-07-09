@@ -90,4 +90,3 @@ export(rc_convert_humangem_yaml_to_regcompass)
 
 export(rc_aggregate_fragments_by_membership)
 export(rc_signac_links_to_peak_gene_table)
-export(rc_check_replicate_design)

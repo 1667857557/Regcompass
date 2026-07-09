@@ -411,7 +411,17 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
   utils::write.table(membership[, c("cell_id", "metacell_id")], file = map_file, sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
   if (requireNamespace("SuperCell", quietly = TRUE) && exists("AggregateFragmentFile", envir = asNamespace("SuperCell"), inherits = FALSE)) {
     agg <- get("AggregateFragmentFile", envir = asNamespace("SuperCell"))
-    return(agg(fragmentFiles = fragment_files, cellToMc = map_file, outputDir = outdir, bgzip_path = bgzip_path, tabix_path = tabix_path, nb_cl = nb_cl))
+    args <- list(
+      fragmentFiles = fragment_files,
+      cellToMc = map_file,
+      outputDir = outdir,
+      bgzip_path = bgzip_path,
+      tabix_path = tabix_path,
+      nb_cl = nb_cl
+    )
+    fml <- names(formals(agg))
+    if (!is.null(fml)) args <- args[names(args) %in% fml]
+    return(do.call(agg, args))
   }
   stop("No supported fragment aggregation backend found. Install SuperCell2 or provide pre-aggregated metacell fragments.", call. = FALSE)
 }
@@ -593,10 +603,13 @@ rc_make_supercell2_metacells <- function(object,
     mc <- tryCatch(
       .rc_supercell2_scimplify_for_seurat(args),
       error = function(e) {
-        if (isTRUE(require_fragment_aggregation)) stop("Metacell fragment aggregation failed; metacell-level LinkPeaks cannot be recomputed: ", conditionMessage(e), call. = FALSE)
-        warning("Fragment aggregation failed; continuing only because `require_fragment_aggregation = FALSE`.", call. = FALSE)
-        args2 <- args[setdiff(names(args), c("fragmentFiles", "outputDirMcFragment", "bgzip_path", "tabix_path"))]
-        .rc_supercell2_scimplify_for_seurat(args2)
+        if (identical(fragment_aggregation_backend, "supercell")) {
+          if (isTRUE(require_fragment_aggregation)) stop("SuperCell fragment aggregation failed before metacell output was returned: ", conditionMessage(e), call. = FALSE)
+          warning("SuperCell fragment aggregation failed; retrying metacell construction without fragment arguments because `require_fragment_aggregation = FALSE`.", call. = FALSE)
+          args2 <- args[setdiff(names(args), c("fragmentFiles", "outputDirMcFragment", "bgzip_path", "tabix_path", "nb_cl"))]
+          return(.rc_supercell2_scimplify_for_seurat(args2))
+        }
+        stop("SuperCell2 metacell construction failed: ", conditionMessage(e), call. = FALSE)
       }
     )
     mc_ids <- colnames(.rc_get_assay_counts_safe(mc, rna_assay))
