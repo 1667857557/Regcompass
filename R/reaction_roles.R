@@ -7,7 +7,7 @@
   tolower(x)
 }
 
-.rc_infer_exchange_like <- function(gem, gv, meta, role) {
+.rc_infer_exchange_like <- function(gem, gv, meta, role, medium_table = NULL) {
   n <- length(gv$reactions)
   rid <- tolower(as.character(gv$reactions))
   rn <- .rc_meta_col(meta, c("reaction_name", "name", "description"), n)
@@ -16,8 +16,15 @@
 
   id_exchange <- grepl("^(ex_|ex|exchange)", rid)
   name_exchange <- grepl("exchange|boundary exchange|extracellular exchange|uptake|secretion", rn)
-  subsystem_exchange <- grepl("exchange|extracellular", rs)
-  eq_exchange <- grepl("\\[e\\]|\\[extracellular\\]|extracellular", eq)
+  subsystem_exchange <- grepl("exchange|uptake|secretion", rs)
+  extracellular_equation <- grepl("\\[e\\]|\\[extracellular\\]|extracellular", eq)
+  nnz <- Matrix::colSums(abs(gv$S) > 0)
+  boundary_like <- nnz == 1L
+
+  medium_exchange <- rep(FALSE, n)
+  if (!is.null(medium_table) && "exchange_reaction_id" %in% colnames(medium_table)) {
+    medium_exchange <- gv$reactions %in% as.character(medium_table$exchange_reaction_id)
+  }
 
   comp <- NULL
   if (!is.null(gem$metabolite_meta) && "compartment" %in% colnames(gem$metabolite_meta)) {
@@ -39,14 +46,15 @@
     id_exchange |
       name_exchange |
       subsystem_exchange |
-      eq_exchange |
-      single_extracellular
+      single_extracellular |
+      medium_exchange |
+      (boundary_like & extracellular_equation)
   )
 }
 
 #' Annotate GEM reactions with curated or inferred RegCompassR roles
 #' @export
-rc_annotate_reaction_roles <- function(gem, reaction_role_table = NULL, infer_from_id = TRUE,
+rc_annotate_reaction_roles <- function(gem, reaction_role_table = NULL, medium_table = NULL, infer_from_id = TRUE,
                                        infer_from_stoichiometry = TRUE, infer_from_compartment = TRUE,
                                        overwrite_existing = FALSE) {
   gv <- rc_validate_gem(gem)
@@ -60,7 +68,7 @@ rc_annotate_reaction_roles <- function(gem, reaction_role_table = NULL, infer_fr
   source <- ifelse(role != "unknown", "metadata", "unknown")
   conf <- ifelse(role != "unknown", "medium", "low")
   if (infer_from_id || infer_from_stoichiometry || infer_from_compartment) {
-    idx_ex <- .rc_infer_exchange_like(gem, gv, meta, role)
+    idx_ex <- .rc_infer_exchange_like(gem, gv, meta, role, medium_table = medium_table)
     role[idx_ex] <- "exchange"; source[idx_ex] <- "metadata_stoichiometry"; conf[idx_ex] <- "medium"
   }
   if (infer_from_stoichiometry) {

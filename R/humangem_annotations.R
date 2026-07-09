@@ -1,8 +1,10 @@
 .rc_humangem_met_compartment_from_id <- function(metabolite_id) {
   x <- as.character(metabolite_id)
-  last <- substring(x, nchar(x), nchar(x))
   known <- c("c", "e", "g", "l", "m", "n", "p", "r", "x")
-  ifelse(last %in% known, last, NA_character_)
+  bracket <- sub("^.*\\[([A-Za-z])\\]$", "\\1", x)
+  last <- substring(x, nchar(x), nchar(x))
+  out <- ifelse(bracket %in% known, bracket, ifelse(last %in% known, last, NA_character_))
+  out
 }
 
 .rc_first_existing_col <- function(df, candidates) {

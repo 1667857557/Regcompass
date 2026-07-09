@@ -28,7 +28,7 @@ rc_build_module_meso_gem <- function(gem,
                                      currency_metabolites = NULL,
                                      max_reactions = 3000,
                                      strict_closure = FALSE) {
-  gem <- rc_annotate_reaction_roles(gem)
+  gem <- rc_annotate_reaction_roles(gem, medium_table = medium_table)
   gv <- rc_validate_gem(gem)
   S <- gv$S
   meta <- gem$reaction_meta[match(gv$reactions, as.character(gem$reaction_meta$reaction_id)), , drop = FALSE]
@@ -72,11 +72,7 @@ rc_build_module_meso_gem <- function(gem,
   }
 
   keep <- intersect(unique(keep), colnames(S))
-  if (length(keep) > max_reactions) {
-    core_protected <- union(core, names(role)[role %in% c("exchange", "transport", "maintenance")])
-    ranked <- unique(c(intersect(core_protected, keep), setdiff(keep, core_protected)))
-    keep <- utils::head(ranked, max_reactions)
-  }
+  max_reactions_exceeded <- is.finite(max_reactions) && length(keep) > max_reactions
 
   sub <- gem
   sub$S <- S[, keep, drop = FALSE]
@@ -101,6 +97,8 @@ rc_build_module_meso_gem <- function(gem,
   sub$medium_diagnostics <- med_diag
   sub$closure_diagnostics <- data.frame()
   sub$build_params <- list(strategy = "module_meso_gem", module_id = module_id, max_reactions = max_reactions,
+                           max_reactions_exceeded = max_reactions_exceeded,
+                           n_reactions_before_any_max_guard = length(keep),
                            include_one_hop = include_one_hop, include_transport = include_transport,
                            include_exchange = include_exchange, include_protected = include_protected,
                            strict_closure = strict_closure)

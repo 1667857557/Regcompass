@@ -14,3 +14,13 @@ test_that("module meso-GEM cache is built once per module and medium", {
   expect_equal(nrow(summary), 1)
   expect_true(file.exists(summary$file[[1]]))
 })
+
+test_that("module meso-GEM max_reactions guard never truncates reactions", {
+  S <- diag(3)
+  dimnames(S) <- list(paste0("M", 1:3), paste0("R", 1:3))
+  reaction_meta <- data.frame(reaction_id = paste0("R", 1:3), metabolic_module = "large_module", stringsAsFactors = FALSE)
+  gem <- rc_make_gem(S, lb = rep(0, 3), ub = rep(1000, 3), reaction_meta = reaction_meta)
+  mg <- rc_build_module_meso_gem(gem, "large_module", max_reactions = 1)
+  expect_setequal(colnames(mg$S), paste0("R", 1:3))
+  expect_true(mg$build_params$max_reactions_exceeded)
+})
