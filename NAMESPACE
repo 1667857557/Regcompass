@@ -87,3 +87,7 @@ export(rc_recompute_metacell_peak_gene_links_by_stratum)
 export(rc_load_or_merge_metacell_objects)
 export(rc_run_regcompass_multiome_metacell)
 export(rc_convert_humangem_yaml_to_regcompass)
+
+export(rc_aggregate_fragments_by_membership)
+export(rc_signac_links_to_peak_gene_table)
+export(rc_check_replicate_design)

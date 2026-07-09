@@ -1,3 +1,27 @@
+
+.rc_meta_col <- function(meta, names, n) {
+  nm <- intersect(names, colnames(meta))[1]
+  if (is.na(nm)) return(rep("", n))
+  x <- as.character(meta[[nm]])
+  x[is.na(x)] <- ""
+  tolower(x)
+}
+
+.rc_infer_exchange_like <- function(gem, gv, meta, role) {
+  n <- length(gv$reactions)
+  rid <- tolower(as.character(gv$reactions))
+  rn <- .rc_meta_col(meta, c("reaction_name", "name", "description"), n)
+  rs <- .rc_meta_col(meta, c("subsystem", "subSystem", "sub_system"), n)
+  eq <- .rc_meta_col(meta, c("equation", "reaction_formula", "formula"), n)
+  nnz <- Matrix::colSums(abs(gv$S) > 0)
+  is_boundary <- nnz == 1
+  id_exchange <- grepl("^(ex_|ex|exchange)", rid)
+  name_exchange <- grepl("exchange|boundary exchange|extracellular exchange|uptake|secretion", rn)
+  subsystem_exchange <- grepl("exchange|transport, extracellular|extracellular", rs)
+  eq_exchange <- grepl("\\[e\\]|\\[extracellular\\]|extracellular", eq)
+  role == "unknown" & (id_exchange | (is_boundary & (name_exchange | subsystem_exchange | eq_exchange)))
+}
+
 #' Annotate GEM reactions with curated or inferred RegCompassR roles
 #' @export
 rc_annotate_reaction_roles <- function(gem, reaction_role_table = NULL, infer_from_id = TRUE,
@@ -13,6 +37,10 @@ rc_annotate_reaction_roles <- function(gem, reaction_role_table = NULL, infer_fr
   role <- ifelse(!is.na(old_role) & nzchar(old_role) & !overwrite_existing, old_role, "unknown")
   source <- ifelse(role != "unknown", "metadata", "unknown")
   conf <- ifelse(role != "unknown", "medium", "low")
+  if (infer_from_id || infer_from_stoichiometry || infer_from_compartment) {
+    idx_ex <- .rc_infer_exchange_like(gem, gv, meta, role)
+    role[idx_ex] <- "exchange"; source[idx_ex] <- "metadata_stoichiometry"; conf[idx_ex] <- "medium"
+  }
   if (infer_from_stoichiometry) {
     nnz <- Matrix::colSums(abs(gv$S) > 0)
     idx <- role == "unknown" & nnz == 1
