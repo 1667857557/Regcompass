@@ -342,6 +342,28 @@ rc_metacell_diagnostics <- function(metacell_meta, rna_metacell_counts = NULL, a
 }
 
 
+.rc_fragment_path_from_object <- function(fragment) {
+  path <- NULL
+  if (is.list(fragment) && !is.null(fragment$path)) path <- fragment$path
+  if (is.null(path)) path <- attr(fragment, "path", exact = TRUE)
+  if (is.null(path) && methods::is(fragment, "Fragment") && methods::isS4(fragment) && "path" %in% methods::slotNames(fragment)) {
+    path <- methods::slot(fragment, "path")
+  }
+  path <- as.character(path %||% character(0))
+  path[!is.na(path) & nzchar(path)]
+}
+
+.rc_fragment_files_from_atac <- function(object, atac_assay = "ATAC") {
+  if (!requireNamespace("Signac", quietly = TRUE)) return(NULL)
+  assay <- tryCatch(object[[atac_assay]], error = function(e) NULL)
+  if (is.null(assay)) return(NULL)
+  fragments <- tryCatch(Signac::Fragments(assay), error = function(e) list())
+  paths <- unlist(lapply(fragments, .rc_fragment_path_from_object), use.names = FALSE)
+  paths <- unique(paths[!is.na(paths) & nzchar(paths)])
+  if (length(paths) == 0L) return(NULL)
+  stats::setNames(list(paths), atac_assay)
+}
+
 .rc_normalize_fragment_files <- function(fragment_files, atac_assay = "ATAC") {
   if (is.null(fragment_files)) return(NULL)
   if (is.character(fragment_files)) {
@@ -407,9 +429,10 @@ rc_make_supercell2_metacells <- function(object,
                                          BPPARAM = NULL) {
   if (!requireNamespace("SuperCell", quietly = TRUE)) stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). By default, install SuperCell from https://github.com/1667857557/SuperCell-Seurat-V4/tree/supercell-2.0, or import existing metacells with rc_import_supercell2_metacells().", call. = FALSE)
   if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
+  if (is.null(fragment_files)) fragment_files <- .rc_fragment_files_from_atac(object, atac_assay = atac_assay)
   if (isTRUE(require_fragment_aggregation)) {
     if (!isTRUE(save_fragments)) stop("Formal multiome workflow requires `save_fragments = TRUE`.", call. = FALSE)
-    if (is.null(fragment_files)) stop("Formal multiome workflow requires `fragment_files` for metacell fragment aggregation.", call. = FALSE)
+    if (is.null(fragment_files)) stop("Formal multiome workflow requires `fragment_files` for metacell fragment aggregation, or a fragment file registered on the ATAC assay.", call. = FALSE)
   }
   fragment_files <- .rc_normalize_fragment_files(fragment_files, atac_assay = atac_assay)
   .rc_assert_shell_safe_paths(outdir, unlist(fragment_files, use.names = FALSE))
@@ -457,6 +480,7 @@ rc_make_supercell2_metacells <- function(object,
       args$tabix_path <- tabix_path
       args$nb_cl <- max(1L, as.integer(fragment_nb_cl))
     }
+    .rc_install_seurat4_filterobjects()
     mc <- tryCatch(
       .rc_with_seurat4_filterobjects(do.call(SuperCell::SCimplify_for_Seurat, args)),
       error = function(e) {
@@ -518,6 +542,7 @@ rc_make_supercell2_metacells <- function(object,
     }
     stratum_dir
   }
+  .rc_install_seurat4_filterobjects()
   dirs <- unlist(rc_parallel_lapply(names(groups), run_one, BPPARAM = BPPARAM), use.names = FALSE)
   rc_import_supercell2_metacells(dirs, rna_assay = rna_assay, atac_assay = atac_assay, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, require_fragments = require_fragment_aggregation)
 }
@@ -608,16 +633,28 @@ rc_import_metacells <- function(metacell_dirs, ..., filter_low_power_metacells =
 }
 
 
-.rc_with_seurat4_filterobjects <- function(expr) {
-  if (!exists(".FilterObjects", envir = .GlobalEnv, inherits = FALSE)) {
-    assign(".FilterObjects", function(object, classes.keep = c("Assay", "Assay5", "ChromatinAssay")) {
-      assays <- names(object@assays)
-      assays[vapply(assays, function(a) {
-        any(vapply(classes.keep, function(cl) inherits(object@assays[[a]], cl), logical(1)))
-      }, logical(1))]
-    }, envir = .GlobalEnv)
-    on.exit(rm(".FilterObjects", envir = .GlobalEnv), add = TRUE)
+.rc_seurat4_filterobjects <- function(object, classes.keep = c("Assay", "Assay5", "ChromatinAssay")) {
+  assays <- names(object@assays)
+  assays[vapply(assays, function(a) {
+    any(vapply(classes.keep, function(cl) inherits(object@assays[[a]], cl), logical(1)))
+  }, logical(1))]
+}
+
+.rc_install_seurat4_filterobjects <- function(envir = .GlobalEnv) {
+  if (!exists(".FilterObjects", envir = envir, inherits = FALSE)) {
+    assign(".FilterObjects", .rc_seurat4_filterobjects, envir = envir)
   }
+  invisible(TRUE)
+}
+
+.rc_with_seurat4_filterobjects <- function(expr) {
+  # SuperCell 2.0's Seurat-v4 compatibility path may call the unexported
+  # Seurat helper `.FilterObjects` while aggregating fragments. That work can
+  # happen in BiocParallel child processes, so a temporary main-process global
+  # (and removing it with on.exit) races with workers and is not inherited by
+  # SOCK workers. Install a small compatible shim in each process that reaches
+  # this wrapper and leave it in place for any nested/background workers.
+  .rc_install_seurat4_filterobjects()
   force(expr)
 }
 
@@ -656,7 +693,7 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_files =
 
 #' Run the formal sample-aware metacell multiome workflow
 #' @export
-rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC", gamma = 75, min_metacell_size = 20, link_stratum_cols = "cell_type", min_metacells_for_linkpeaks = 80, linkpeaks_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, ...) {
+rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC", gamma = 75, min_metacell_size = 20, link_stratum_cols = "cell_type", min_metacells_for_linkpeaks = 80, linkpeaks_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, ...) {
   future_plan <- match.arg(future_plan)
   if (future_plan == "sequential" && requireNamespace("future", quietly = TRUE)) {
     old_plan <- future::plan()

@@ -61,3 +61,35 @@ test_that("fragment registration validates one cell vector per fragment", {
     "one cell vector per fragment file"
   )
 })
+
+test_that("Seurat4 FilterObjects shim persists for parallel SuperCell workers", {
+  old <- if (exists(".FilterObjects", envir = .GlobalEnv, inherits = FALSE)) {
+    get(".FilterObjects", envir = .GlobalEnv, inherits = FALSE)
+  } else {
+    NULL
+  }
+  if (is.null(old)) {
+    on.exit(rm(".FilterObjects", envir = .GlobalEnv), add = TRUE)
+  } else {
+    on.exit(assign(".FilterObjects", old, envir = .GlobalEnv), add = TRUE)
+  }
+
+  .rc_with_seurat4_filterobjects(TRUE)
+  expect_true(exists(".FilterObjects", envir = .GlobalEnv, inherits = FALSE))
+  if (is.null(old)) {
+    expect_identical(get(".FilterObjects", envir = .GlobalEnv, inherits = FALSE), .rc_seurat4_filterobjects)
+  } else {
+    expect_identical(get(".FilterObjects", envir = .GlobalEnv, inherits = FALSE), old)
+  }
+})
+
+
+test_that("ATAC assay fragment paths are converted to SuperCell list input", {
+  frag1 <- structure(list(path = "sample1.fragments.tsv.gz"), class = "Fragment")
+  frag2 <- structure(list(path = "sample2.fragments.tsv.gz"), class = "Fragment")
+  paths <- unlist(lapply(list(frag1, frag2), .rc_fragment_path_from_object), use.names = FALSE)
+
+  x <- .rc_normalize_fragment_files(stats::setNames(list(paths), "ATAC"), atac_assay = "ATAC")
+  expect_identical(names(x), "ATAC")
+  expect_identical(x[["ATAC"]], c("sample1.fragments.tsv.gz", "sample2.fragments.tsv.gz"))
+})
