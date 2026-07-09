@@ -4,7 +4,8 @@ rc_make_medium_scenarios <- function(gem,
                                      scenario = c("blood_like", "minimal", "culture_like", "tumor_low_glucose", "low_glucose", "low_glutamine", "lactate_available", "custom"),
                                      custom_medium = NULL,
                                      uptake_scale = c(1, 0.5, 0.1),
-                                     condition_col = NULL) {
+                                     condition_col = NULL,
+                                     exchange_roles = c("exchange")) {
   scenario <- match.arg(scenario, several.ok = TRUE)
   if ("custom" %in% scenario) {
     if (is.null(custom_medium)) stop("`custom_medium` is required when `scenario` includes 'custom'.", call. = FALSE)
@@ -14,8 +15,20 @@ rc_make_medium_scenarios <- function(gem,
   gv <- rc_validate_gem(gem)
   if (is.null(gem$reaction_meta) || !"role" %in% colnames(gem$reaction_meta)) gem <- rc_annotate_reaction_roles(gem)
   meta <- gem$reaction_meta
-  ex <- as.character(meta$reaction_id[as.character(meta$role) == "exchange"])
+  exchange_roles <- unique(as.character(exchange_roles))
+  ex <- as.character(meta$reaction_id[as.character(meta$role) %in% exchange_roles])
   ex <- intersect(ex, gv$reactions)
+  if (length(ex) == 0L && length(setdiff(scenario, "custom")) > 0L) {
+    n_boundary <- sum(as.character(meta$role) == "boundary_like", na.rm = TRUE)
+    stop(
+      "No `exchange` reactions found in GEM reaction metadata. ",
+      "`rc_make_medium_scenarios()` requires exchange reactions for built-in scenarios. ",
+      "Found ", n_boundary, " `boundary_like` reactions. ",
+      "Run `rc_annotate_reaction_roles()` with a curated Human-GEM reaction_role_table, ",
+      "or improve Human-GEM exchange annotation before building medium scenarios.",
+      call. = FALSE
+    )
+  }
   make_rows <- function(sc) {
     scale <- switch(sc, minimal = 0.1, blood_like = 1, culture_like = 1,
                     tumor_low_glucose = 0.5, low_glucose = 0.5,

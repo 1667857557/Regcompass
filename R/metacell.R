@@ -229,7 +229,10 @@ rc_recompute_metacell_peak_gene_links <- function(metacell_object,
   if (require_fragments && length(frags) == 0L) stop("Metacell-level LinkPeaks requires fragment files registered on the metacell ATAC assay. Run metacell fragment aggregation successfully before Layer 1 multiome analysis.", call. = FALSE)
   metacell_object <- rc_prepare_metacell_linkpeaks_object(metacell_object, peak_assay = peak_assay, expression_assay = expression_assay, normalize_expression = normalize_expression, run_region_stats = run_region_stats, genome = genome, genome_package = genome_package, annotation_package = annotation_package)
   links <- rc_recompute_signac_peak_gene_links(object = metacell_object, gpr_table = gpr_table, metabolic_genes = metabolic_genes, peak_assay = peak_assay, expression_assay = expression_assay, distance = distance, min.cells = min_cells, ...)
-  if (nrow(links) == 0L) stop("Metacell-level metabolic peak-gene relinking returned 0 links.", call. = FALSE)
+  if (nrow(links) == 0L) {
+    attr(links, "diagnostics") <- attr(links, "diagnostics") %||% data.frame(status = "zero_links", reason = "Signac LinkPeaks returned no metabolic peak-gene links after filtering", n_metacells = ncol(metacell_object), stringsAsFactors = FALSE)
+    return(links)
+  }
   if (!is.null(out_file)) .rc_write_tsv_gz(links, out_file)
   links
 }
@@ -344,29 +347,73 @@ rc_metacell_diagnostics <- function(metacell_meta, rna_metacell_counts = NULL, a
 }
 
 .rc_extract_supercell_membership <- function(mc_object, original_cells, metacell_ids) {
+  make_df <- function(cell_id, metacell_id) {
+    out <- data.frame(cell_id = as.character(cell_id), metacell_id = as.character(metacell_id), stringsAsFactors = FALSE)
+    out <- out[!is.na(out$cell_id) & nzchar(out$cell_id) & !is.na(out$metacell_id) & nzchar(out$metacell_id), , drop = FALSE]
+    out <- out[!duplicated(out$cell_id), , drop = FALSE]
+    rownames(out) <- NULL
+    out
+  }
+  normalize_ids <- function(x) {
+    x <- as.character(x)
+    if (length(x) > 0L && all(x %in% metacell_ids)) return(x)
+    suppressWarnings(ix <- as.integer(x))
+    if (length(ix) > 0L && all(is.finite(ix)) && all(ix >= 1L) && all(ix <= length(metacell_ids))) return(metacell_ids[ix])
+    x
+  }
   meta <- mc_object@meta.data
   candidates <- c("cell_membership", "membership", "cells", "cell_ids", "single_cell_ids", "SC")
   for (nm in intersect(candidates, colnames(meta))) {
     vals <- meta[[nm]]
     if (is.list(vals)) {
-      return(do.call(rbind, lapply(seq_along(vals), function(i) data.frame(cell_id = as.character(vals[[i]]), metacell_id = metacell_ids[[i]], stringsAsFactors = FALSE))))
+      return(do.call(rbind, lapply(seq_along(vals), function(i) make_df(vals[[i]], metacell_ids[[i]]))))
     }
   }
   misc_mem <- tryCatch(mc_object@misc$membership, error = function(e) NULL)
   if (!is.null(misc_mem)) {
-    if (is.data.frame(misc_mem)) return(misc_mem)
-    if (is.numeric(misc_mem) || is.integer(misc_mem)) {
+    if (is.data.frame(misc_mem)) {
+      if (!"cell_id" %in% colnames(misc_mem) && "cell" %in% colnames(misc_mem)) misc_mem$cell_id <- misc_mem$cell
+      if (!"metacell_id" %in% colnames(misc_mem) && "metacell" %in% colnames(misc_mem)) misc_mem$metacell_id <- misc_mem$metacell
+      if (all(c("cell_id", "metacell_id") %in% colnames(misc_mem))) return(make_df(misc_mem$cell_id, normalize_ids(misc_mem$metacell_id)))
+    }
+    if (is.atomic(misc_mem) && length(misc_mem) == length(original_cells)) {
       cell_ids <- names(misc_mem)
       if (is.null(cell_ids) || any(!nzchar(cell_ids))) cell_ids <- original_cells
-      idx <- as.integer(misc_mem)
-      mc <- metacell_ids[idx]
-      ok <- !is.na(mc) & nzchar(mc)
-      return(data.frame(cell_id = as.character(cell_ids[ok]), metacell_id = as.character(mc[ok]), stringsAsFactors = FALSE))
+      return(make_df(cell_ids, normalize_ids(misc_mem)))
+    }
+  }
+  wt <- tryCatch(mc_object@misc$walktrap_clusters, error = function(e) NULL)
+  if (!is.null(wt) && is.atomic(wt) && length(wt) == length(original_cells)) {
+    cell_ids <- names(wt)
+    if (is.null(cell_ids) || any(!nzchar(cell_ids))) cell_ids <- original_cells
+    return(make_df(cell_ids, normalize_ids(wt)))
+  }
+  hierarchy <- tryCatch(mc_object@misc$metacells_hierarchy, error = function(e) NULL)
+  if (!is.null(hierarchy) && requireNamespace("igraph", quietly = TRUE)) {
+    mem <- tryCatch(igraph::membership(hierarchy), error = function(e) NULL)
+    if (!is.null(mem) && length(mem) == length(original_cells)) {
+      cell_ids <- names(mem)
+      if (is.null(cell_ids) || any(!nzchar(cell_ids))) cell_ids <- original_cells
+      return(make_df(cell_ids, normalize_ids(mem)))
     }
   }
   attr_map <- attr(mc_object, "membership")
-  if (!is.null(attr_map) && is.data.frame(attr_map)) return(attr_map)
+  if (!is.null(attr_map) && is.data.frame(attr_map) && all(c("cell_id", "metacell_id") %in% colnames(attr_map))) return(make_df(attr_map$cell_id, normalize_ids(attr_map$metacell_id)))
   data.frame(cell_id = character(0), metacell_id = character(0), stringsAsFactors = FALSE)
+}
+
+#' Aggregate ATAC fragments by metacell membership
+#' @export
+rc_aggregate_fragments_by_membership <- function(fragment_files, membership, outdir, bgzip_path = "bgzip", tabix_path = "tabix", nb_cl = 1L) {
+  if (!all(c("cell_id", "metacell_id") %in% colnames(membership))) stop("`membership` must contain cell_id and metacell_id.", call. = FALSE)
+  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  map_file <- file.path(outdir, "membership_for_fragments.tsv")
+  utils::write.table(membership[, c("cell_id", "metacell_id")], file = map_file, sep = "\t", quote = FALSE, row.names = FALSE, col.names = FALSE)
+  if (requireNamespace("SuperCell", quietly = TRUE) && exists("AggregateFragmentFile", envir = asNamespace("SuperCell"), inherits = FALSE)) {
+    agg <- get("AggregateFragmentFile", envir = asNamespace("SuperCell"))
+    return(agg(fragmentFiles = fragment_files, cellToMc = map_file, outputDir = outdir, bgzip_path = bgzip_path, tabix_path = tabix_path, nb_cl = nb_cl))
+  }
+  stop("No supported fragment aggregation backend found. Install SuperCell2 or provide pre-aggregated metacell fragments.", call. = FALSE)
 }
 
 
@@ -485,8 +532,10 @@ rc_make_supercell2_metacells <- function(object,
                                          save_counts = TRUE,
                                          save_fragments = TRUE,
                                          require_fragment_aggregation = TRUE,
+                                         fragment_aggregation_backend = c("regcompass", "supercell", "none"),
                                          overwrite = FALSE,
                                          BPPARAM = NULL) {
+  fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
   .rc_require_supercell2()
   if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
   if (is.null(fragment_files)) fragment_files <- .rc_fragment_files_from_atac(object, atac_assay = atac_assay)
@@ -534,7 +583,7 @@ rc_make_supercell2_metacells <- function(object,
     seu_sub <- subset(object, cells = cells)
     args <- list(seurat = seu_sub, assay = c(rna_assay, atac_assay), reduction = list(rna_reduction, atac_reduction), dims = list(rna_dims, atac_dims), gamma = gamma_i, return.seurat = TRUE, prefixMC = "Metacell_")
     if (!is.null(label_col)) args$label <- label_col
-    if (save_fragments && !is.null(fragment_files)) {
+    if (identical(fragment_aggregation_backend, "supercell") && save_fragments && !is.null(fragment_files)) {
       args$fragmentFiles <- fragment_files
       args$outputDirMcFragment <- file.path(stratum_dir, "fragments")
       args$bgzip_path <- bgzip_path
@@ -553,7 +602,17 @@ rc_make_supercell2_metacells <- function(object,
     mc_ids <- colnames(.rc_get_assay_counts_safe(mc, rna_assay))
     display_ids <- paste0(prefix, "_MC", sprintf(paste0("%0", max(3, nchar(length(mc_ids))), "d"), seq_along(mc_ids)))
     membership <- .rc_extract_supercell_membership(mc, cells, mc_ids)
-    if (nrow(membership) == 0L) warning("Could not infer single-cell membership from SuperCell output for stratum ", key, "; membership.tsv.gz will be empty.", call. = FALSE)
+    if (nrow(membership) == 0L) stop("Could not infer single-cell membership from SuperCell output for stratum ", key, call. = FALSE)
+    if (identical(fragment_aggregation_backend, "regcompass") && save_fragments && !is.null(fragment_files)) {
+      tryCatch(
+        rc_aggregate_fragments_by_membership(fragment_files = fragment_files, membership = membership, outdir = file.path(stratum_dir, "fragments"), bgzip_path = bgzip_path, tabix_path = tabix_path, nb_cl = max(1L, as.integer(fragment_nb_cl))),
+        error = function(e) {
+          if (isTRUE(require_fragment_aggregation)) stop("Metacell fragment aggregation failed; metacell-level LinkPeaks cannot be recomputed: ", conditionMessage(e), call. = FALSE)
+          warning("Fragment aggregation failed; continuing only because `require_fragment_aggregation = FALSE`: ", conditionMessage(e), call. = FALSE)
+          NULL
+        }
+      )
+    }
     for (col in group_cols) membership[[col]] <- vals[[col]][[1]]
     mc_meta <- rc_build_metacell_metadata(membership)
     if (nrow(mc_meta) == 0L) mc_meta <- data.frame(metacell_id = mc_ids, n_cells = NA_integer_, stringsAsFactors = FALSE)
@@ -596,7 +655,8 @@ rc_make_supercell2_metacells <- function(object,
         save_metacell_object = save_metacell_object,
         save_counts = save_counts,
         save_fragments = save_fragments,
-        require_fragment_aggregation = require_fragment_aggregation
+        require_fragment_aggregation = require_fragment_aggregation,
+        fragment_aggregation_backend = fragment_aggregation_backend
       )
       yaml::write_yaml(run_params, file.path(stratum_dir, "qc", "run_params.yaml"))
     }
@@ -751,7 +811,8 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_files =
 
 #' Run the formal sample-aware metacell multiome workflow
 #' @export
-rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, label_col = NULL, rna_assay = "RNA", atac_assay = "ATAC", rna_reduction = "pca", atac_reduction = "lsi", rna_dims = 1:30, atac_dims = 2:30, gamma = 100, min_cells_per_stratum = 100, min_metacell_size = 20, min_metacells_per_stratum = 2L, adaptive_gamma = FALSE, fragment_nb_cl = 1L, require_fragment_aggregation = TRUE, save_fragments = TRUE, save_metacell_object = TRUE, save_counts = TRUE, overwrite = FALSE, BPPARAM_metacell = FALSE, link_stratum_cols = "cell_type", min_metacells_for_linkpeaks = 10, linkpeaks_args = list(), layer1_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3) {
+rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, label_col = NULL, rna_assay = "RNA", atac_assay = "ATAC", rna_reduction = "pca", atac_reduction = "lsi", rna_dims = 1:30, atac_dims = 2:30, gamma = 100, min_cells_per_stratum = 100, min_metacell_size = 20, min_metacells_per_stratum = 2L, adaptive_gamma = FALSE, fragment_nb_cl = 1L, require_fragment_aggregation = TRUE, fragment_aggregation_backend = c("regcompass", "supercell", "none"), save_fragments = TRUE, save_metacell_object = TRUE, save_counts = TRUE, overwrite = FALSE, BPPARAM_metacell = FALSE, link_stratum_cols = "cell_type", min_metacells_for_linkpeaks = 10, linkpeaks_args = list(), layer1_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3) {
+  fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
   future_plan <- match.arg(future_plan)
   if (future_plan == "sequential" && requireNamespace("future", quietly = TRUE)) {
     old_plan <- future::plan()
@@ -761,7 +822,7 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
     future::plan(future::sequential)
     options(future.globals.maxSize = future_globals_max_size)
   }
-  mc <- rc_make_metacells(object = object, outdir = file.path(outdir, "01_metacells"), sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, state_col = state_col, label_col = label_col, rna_assay = rna_assay, atac_assay = atac_assay, rna_reduction = rna_reduction, atac_reduction = atac_reduction, rna_dims = rna_dims, atac_dims = atac_dims, gamma = gamma, min_cells_per_stratum = min_cells_per_stratum, min_metacell_size = min_metacell_size, min_metacells_per_stratum = min_metacells_per_stratum, adaptive_gamma = adaptive_gamma, fragment_files = fragment_files, fragment_nb_cl = fragment_nb_cl, save_fragments = save_fragments, save_metacell_object = save_metacell_object, save_counts = save_counts, require_fragment_aggregation = require_fragment_aggregation, overwrite = overwrite, BPPARAM = BPPARAM_metacell)
+  mc <- rc_make_metacells(object = object, outdir = file.path(outdir, "01_metacells"), sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, state_col = state_col, label_col = label_col, rna_assay = rna_assay, atac_assay = atac_assay, rna_reduction = rna_reduction, atac_reduction = atac_reduction, rna_dims = rna_dims, atac_dims = atac_dims, gamma = gamma, min_cells_per_stratum = min_cells_per_stratum, min_metacell_size = min_metacell_size, min_metacells_per_stratum = min_metacells_per_stratum, adaptive_gamma = adaptive_gamma, fragment_files = fragment_files, fragment_nb_cl = fragment_nb_cl, save_fragments = save_fragments, save_metacell_object = save_metacell_object, save_counts = save_counts, require_fragment_aggregation = require_fragment_aggregation, fragment_aggregation_backend = fragment_aggregation_backend, overwrite = overwrite, BPPARAM = BPPARAM_metacell)
   metacell_seurat <- rc_load_or_merge_metacell_objects(mc$metacell_objects, fragment_files = mc$fragment_files, rna_assay = rna_assay, atac_assay = atac_assay)
   do.call(rc_run_layer1_from_metacells, c(list(gpr_table = gpr_table, rna_metacell_counts = mc$rna_counts, atac_metacell_counts = mc$atac_counts, metacell_meta = mc$metacell_meta, metacell_seurat = metacell_seurat, force_metacell_relink = TRUE, allow_supplied_links = FALSE, link_stratum_cols = link_stratum_cols, min_metacells_for_linkpeaks = min_metacells_for_linkpeaks, linkpeaks_args = linkpeaks_args), layer1_args))
 }

@@ -1,3 +1,20 @@
+#' Check biological replicate support for differential testing
+#' @export
+rc_check_replicate_design <- function(unit_meta, condition_col = "condition", sample_col = "sample_id", min_samples_per_condition = 2L, strict = TRUE) {
+  if (!is.data.frame(unit_meta)) stop("`unit_meta` must be a data.frame.", call. = FALSE)
+  missing <- setdiff(c(condition_col, sample_col), colnames(unit_meta))
+  if (length(missing) > 0L) stop("`unit_meta` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  x <- unique(unit_meta[, c(condition_col, sample_col), drop = FALSE])
+  x <- x[!is.na(x[[condition_col]]) & !is.na(x[[sample_col]]), , drop = FALSE]
+  tab <- table(x[[condition_col]])
+  ok <- length(tab) >= 2L && all(tab >= as.integer(min_samples_per_condition))
+  if (!ok) {
+    msg <- paste0("Insufficient biological replication for differential testing: ", paste(names(tab), as.integer(tab), sep = "=", collapse = ", "), ". Use descriptive summaries only, or set `strict = FALSE` for workflow testing.")
+    if (isTRUE(strict)) stop(msg, call. = FALSE) else warning(msg, call. = FALSE)
+  }
+  invisible(tab)
+}
+
 rc_parse_microcompass_row_id <- function(x) {
   core <- sub("::medium=.*$", "", x)
   parts <- strsplit(core, "::", fixed = TRUE)
@@ -23,7 +40,8 @@ rc_test_microcompass_differential <- function(result,
                                              covariates = NULL,
                                              min_samples_per_group = 3,
                                              preferred_min_samples_per_group = 5,
-                                             p_adjust_method = "BH") {
+                                             p_adjust_method = "BH",
+                                             strict_replicate_design = TRUE) {
   method <- match.arg(method)
   S <- as.matrix(result$score)
   meta <- result$unit_meta
@@ -31,6 +49,9 @@ rc_test_microcompass_differential <- function(result,
   meta <- meta[match(colnames(S), as.character(meta$unit_id)), , drop = FALSE]
   if (anyNA(meta$unit_id)) stop("`result$unit_meta` is missing rows for score matrix columns.", call. = FALSE)
   if (!condition_col %in% colnames(meta)) stop("`condition_col` is missing from `result$unit_meta`.", call. = FALSE)
+  if (sample_col %in% colnames(meta)) {
+    rc_check_replicate_design(meta, condition_col = condition_col, sample_col = sample_col, min_samples_per_condition = min_samples_per_group, strict = strict_replicate_design)
+  }
 
   parsed <- rc_parse_microcompass_row_id(rownames(S))
   row_meta <- data.frame(row_id = rownames(S), parsed, stringsAsFactors = FALSE)

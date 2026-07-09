@@ -148,6 +148,9 @@ rc_recompute_signac_peak_gene_links <- function(object,
   links <- Signac::Links(object[[peak_assay]])
   link_table <- rc_signac_links_to_peak_gene_table(links, score_col = score_col, keep_negative = keep_negative)
   link_table <- rc_filter_peak_gene_links_to_gpr(link_table, tolower(metabolic_genes))
+  if (nrow(link_table) == 0L) {
+    attr(link_table, "diagnostics") <- data.frame(status = "zero_links", reason = "Signac LinkPeaks returned no metabolic peak-gene links after filtering", n_metacells = ncol(object), stringsAsFactors = FALSE)
+  }
   attr(link_table, "seurat_object") <- object
   link_table
 }
@@ -165,18 +168,34 @@ rc_match_linkpeaks_genes <- function(genes, object, expression_assay = "RNA") {
   unique(matched)
 }
 
-rc_signac_links_to_peak_gene_table <- function(links, score_col = c("score", "zscore"), keep_negative = FALSE) {
+#' Convert Signac Links output to a RegCompass peak-gene table
+#' @export
+rc_signac_links_to_peak_gene_table <- function(links, peak_assay = "ATAC", score_col = c("score", "zscore", "correlation", "cor"), keep_negative = FALSE) {
   score_col <- match.arg(score_col)
-  df <- as.data.frame(links)
-  if (!"gene" %in% colnames(df)) stop("Signac links must contain a `gene` column.", call. = FALSE)
-  if (!score_col %in% colnames(df)) {
-    fallback <- setdiff(c("score", "zscore"), score_col)
-    fallback <- fallback[fallback %in% colnames(df)][1]
-    if (is.na(fallback)) stop("Signac links must contain `score` or `zscore` for link weights.", call. = FALSE)
-    score_col <- fallback
+  if (inherits(links, "GRanges") || inherits(links, "GenomicRanges")) {
+    df <- as.data.frame(links)
+  } else if (is.data.frame(links)) {
+    df <- links
+  } else {
+    stop("Unsupported Signac Links object type: ", paste(class(links), collapse = "/"), call. = FALSE)
   }
-  if ("peak" %in% colnames(df)) {
+  if (nrow(df) == 0L) {
+    out <- data.frame(peak_id = character(), gene = character(), weight = numeric(), pvalue = numeric(), stringsAsFactors = FALSE)
+    attr(out, "peak_assay") <- peak_assay
+    return(out)
+  }
+  gene_col <- intersect(c("gene", "gene_name", "gene.name", "symbol"), colnames(df))[1]
+  if (is.na(gene_col)) stop("Signac links must contain a gene column.", call. = FALSE)
+  score_candidates <- unique(c(score_col, "score", "zscore", "correlation", "cor"))
+  weight_col <- intersect(score_candidates, colnames(df))[1]
+  if (is.na(weight_col)) stop("Signac links must contain a score/correlation column for link weights.", call. = FALSE)
+  p_col <- intersect(c("pvalue", "p.value", "p_val", "p_val_adj"), colnames(df))[1]
+  if ("peak_id" %in% colnames(df)) {
+    peak_id <- as.character(df$peak_id)
+  } else if ("peak" %in% colnames(df)) {
     peak_id <- as.character(df$peak)
+  } else if (any(c("peak.id", "peak_name") %in% colnames(df))) {
+    peak_id <- as.character(df[[intersect(c("peak.id", "peak_name"), colnames(df))[1]]])
   } else if (all(c("seqnames", "start", "end") %in% colnames(df))) {
     peak_id <- paste0(df$seqnames, "-", df$start, "-", df$end)
   } else {
@@ -184,13 +203,16 @@ rc_signac_links_to_peak_gene_table <- function(links, score_col = c("score", "zs
   }
   out <- data.frame(
     peak_id = peak_id,
-    gene = toupper(as.character(df$gene)),
-    weight = as.numeric(df[[score_col]]),
+    gene = toupper(as.character(df[[gene_col]])),
+    weight = as.numeric(df[[weight_col]]),
+    pvalue = if (!is.na(p_col)) as.numeric(df[[p_col]]) else NA_real_,
     stringsAsFactors = FALSE
   )
   out <- out[!is.na(out$peak_id) & nzchar(out$peak_id) & !is.na(out$gene) & nzchar(out$gene) & is.finite(out$weight), , drop = FALSE]
-  if (!keep_negative) out <- out[out$weight > 0, , drop = FALSE]
+  if (keep_negative) out$weight <- abs(out$weight) else out$weight <- pmax(0, out$weight)
+  out <- out[is.finite(out$weight) & out$weight > 0, , drop = FALSE]
   rownames(out) <- NULL
+  attr(out, "peak_assay") <- peak_assay
   out
 }
 
