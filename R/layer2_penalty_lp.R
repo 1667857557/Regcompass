@@ -38,9 +38,9 @@ rc_compass_score_from_penalty <- function(P, feasible, epsilon = 1e-6) {
 rc_layer2_unit_matrices <- function(layer1, unit, sample_col, celltype_col, condition_col) {
   C <- as.matrix(layer1$C_rel); Conf <- rc_layer2_confidence_matrix(layer1$reaction_confidence, C)
   common <- intersect(rownames(C), rownames(Conf)); C <- C[common,,drop=FALSE]; Conf <- Conf[common,,drop=FALSE]
-  if (unit == "pool") return(list(C_rel = C, reaction_confidence = Conf, unit_meta = layer1$pool_meta, summary = "pool-level Layer1 matrices"))
-  if (is.null(layer1$pool_meta)) stop("sample_celltype units require `layer1$pool_meta`.", call. = FALSE)
-  pm <- layer1$pool_meta; required <- c("pool_id", sample_col, celltype_col); missing <- setdiff(required, colnames(pm)); if (length(missing)) stop("pool_meta missing: ", paste(missing, collapse=", "), call.=FALSE)
+  if (unit == "metacell") return(list(C_rel = C, reaction_confidence = Conf, unit_meta = layer1$unit_meta, summary = "metacell-level Layer1 matrices"))
+  if (is.null(layer1$unit_meta)) stop("sample_celltype units require `layer1$unit_meta`.", call. = FALSE)
+  pm <- layer1$unit_meta; required <- c("pool_id", sample_col, celltype_col); missing <- setdiff(required, colnames(pm)); if (length(missing)) stop("unit_meta missing: ", paste(missing, collapse=", "), call.=FALSE)
   pm <- pm[pm$pool_id %in% colnames(C), , drop=FALSE]
   group_cols <- c(sample_col, if (condition_col %in% colnames(pm)) condition_col else NULL, celltype_col)
   gid <- interaction(pm[, group_cols, drop=FALSE], sep="|", drop=TRUE)

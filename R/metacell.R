@@ -29,7 +29,7 @@ rc_validate_metacell_inputs <- function(rna_metacell_counts,
   methods::as(x, "dgCMatrix")
 }
 
-.rc_metacell_meta_for_pool_apis <- function(metacell_meta, metacell_id_col = "metacell_id") {
+.rc_metacell_meta_for_unit_apis <- function(metacell_meta, metacell_id_col = "metacell_id") {
   out <- metacell_meta
   if (!"pool_id" %in% colnames(out)) out$pool_id <- as.character(out[[metacell_id_col]])
   if (!"unit_id" %in% colnames(out)) out$unit_id <- out$pool_id
@@ -43,7 +43,7 @@ rc_validate_metacell_inputs <- function(rna_metacell_counts,
   missing <- setdiff(c(metacell_id_col, cell_id_col), colnames(membership))
   if (length(missing) > 0L) stop("`membership` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   map <- data.frame(pool_id = as.character(membership[[metacell_id_col]]), cell_id = as.character(membership[[cell_id_col]]), stringsAsFactors = FALSE)
-  rc_pseudobulk_counts(counts, map, fun = fun, BPPARAM = BPPARAM)
+  rc_unit_bulk_counts(counts, map, fun = fun, BPPARAM = BPPARAM)
 }
 
 #' Filter empty metacells before normalization
@@ -129,16 +129,16 @@ rc_run_layer1_from_metacells <- function(gpr_table,
   rna_detection <- rc_metacell_detection(rna_metacell_counts)
   atac_metacell_counts <- atac_metacell_counts[, colnames(rna_logcpm), drop = FALSE]
   atac_peak <- rc_atac_metacell_logcpm(atac_metacell_counts, min_metacells = 3)
-  pool_meta <- .rc_metacell_meta_for_pool_apis(metacell_meta)
-  p_rna <- rc_percentile_by_stratum(rna_logcpm, pool_meta = pool_meta, stratum_col = stratum_col)
-  p_atac_peak <- rc_percentile_by_stratum(atac_peak, pool_meta = pool_meta, stratum_col = stratum_col)
-  link_conf <- rc_link_confidence_by_stratum(p_atac_peak = p_atac_peak, peak_gene_links = peak_gene_links, pool_meta = pool_meta, link_stratum_cols = link_stratum_cols)
+  unit_meta <- .rc_metacell_meta_for_unit_apis(metacell_meta)
+  p_rna <- rc_percentile_by_stratum(rna_logcpm, unit_meta = unit_meta, stratum_col = stratum_col)
+  p_atac_peak <- rc_percentile_by_stratum(atac_peak, unit_meta = unit_meta, stratum_col = stratum_col)
+  link_conf <- rc_link_confidence_by_stratum(p_atac_peak = p_atac_peak, peak_gene_links = peak_gene_links, unit_meta = unit_meta, link_stratum_cols = link_stratum_cols)
   genes <- intersect(rownames(p_rna), rownames(link_conf))
   if (length(genes) == 0L) stop("No overlap between metacell RNA genes and linked metabolic genes.", call. = FALSE)
-  gene_conf <- rc_concordance_null_correct(p_rna[genes, , drop = FALSE], link_conf[genes, , drop = FALSE], pool_meta = pool_meta, stratum_col = stratum_col)
-  out <- rc_run_layer1_capacity(gpr_table = gpr_table, pool_expression = rna_logcpm, pool_detection = rna_detection, pool_meta = pool_meta, stratum_col = stratum_col, gene_confidence = gene_conf, promiscuity_mode = promiscuity_mode, and_method = and_method, tau = tau, reaction_confidence_method = reaction_confidence_method, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM)
+  gene_conf <- rc_concordance_null_correct(p_rna[genes, , drop = FALSE], link_conf[genes, , drop = FALSE], unit_meta = unit_meta, stratum_col = stratum_col)
+  out <- rc_run_layer1_capacity(gpr_table = gpr_table, unit_expression = rna_logcpm, unit_detection = rna_detection, unit_meta = unit_meta, stratum_col = stratum_col, gene_confidence = gene_conf, promiscuity_mode = promiscuity_mode, and_method = and_method, tau = tau, reaction_confidence_method = reaction_confidence_method, bootstrap = bootstrap, B = B, BPPARAM = BPPARAM)
   out$metacell_meta <- metacell_meta
-  out$pool_meta <- .rc_metacell_meta_for_pool_apis(out$metacell_meta)
+  out$unit_meta <- .rc_metacell_meta_for_unit_apis(out$metacell_meta)
   out$rna_metacell_logcpm <- rna_logcpm
   out$rna_metacell_detection <- rna_detection
   out$metacell_peak_gene_links <- peak_gene_links

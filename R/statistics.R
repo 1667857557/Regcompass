@@ -1,44 +1,44 @@
-#' Aggregate pool-level scores to sample-by-cell-type summaries
+#' Aggregate meta-cell-level scores to sample-by-cell-type summaries
 #'
 #' This is the default v0.7 statistical unit: downstream differential tests should
 #' use biological sample-level aggregates rather than treating pools as
 #' independent replicates.
 #'
 #' @param score_mat Reaction-by-pool numeric matrix.
-#' @param pool_meta Data frame with one row per pool and at least `pool_id`,
+#' @param unit_meta Data frame with one row per pool and at least `pool_id`,
 #' `sample_col`, and `celltype_col` columns.
-#' @param sample_col Column in `pool_meta` containing biological sample IDs.
-#' @param celltype_col Column in `pool_meta` containing annotated cell types.
+#' @param sample_col Column in `unit_meta` containing biological sample IDs.
+#' @param celltype_col Column in `unit_meta` containing annotated cell types.
 #'
 #' @return Reaction-by-sample-celltype matrix of row medians across pools.
 #' @export
 rc_sample_aggregate <- function(score_mat,
-                                pool_meta,
+                                unit_meta,
                                 sample_col = "sample_id",
                                 celltype_col = "cell_type",
                                 condition_col = NULL) {
   score_mat <- as.matrix(score_mat)
   storage.mode(score_mat) <- "numeric"
   if (is.null(rownames(score_mat)) || is.null(colnames(score_mat))) {
-    stop("`score_mat` must have reaction row names and pool column names.", call. = FALSE)
+    stop("`score_mat` must have reaction row names and unit column names.", call. = FALSE)
   }
-  if (!is.data.frame(pool_meta)) stop("`pool_meta` must be a data.frame.", call. = FALSE)
+  if (!is.data.frame(unit_meta)) stop("`unit_meta` must be a data.frame.", call. = FALSE)
   required <- c("pool_id", sample_col, celltype_col, condition_col)
   required <- required[!is.null(required) & !is.na(required)]
-  missing <- setdiff(required, colnames(pool_meta))
-  if (length(missing) > 0L) stop("`pool_meta` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
-  if (anyNA(pool_meta$pool_id) || anyDuplicated(pool_meta$pool_id)) {
-    stop("`pool_meta$pool_id` must be non-missing and unique.", call. = FALSE)
+  missing <- setdiff(required, colnames(unit_meta))
+  if (length(missing) > 0L) stop("`unit_meta` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (anyNA(unit_meta$pool_id) || anyDuplicated(unit_meta$pool_id)) {
+    stop("`unit_meta$pool_id` must be non-missing and unique.", call. = FALSE)
   }
-  missing_pools <- setdiff(pool_meta$pool_id, colnames(score_mat))
+  missing_pools <- setdiff(unit_meta$pool_id, colnames(score_mat))
   if (length(missing_pools) > 0L) {
-    stop("`score_mat` is missing pools from `pool_meta`: ", paste(utils::head(missing_pools, 5L), collapse = ", "), call. = FALSE)
+    stop("`score_mat` is missing units from `unit_meta`: ", paste(utils::head(missing_pools, 5L), collapse = ", "), call. = FALSE)
   }
 
   group_cols <- c(sample_col, condition_col, celltype_col)
   group_cols <- group_cols[!is.null(group_cols) & !is.na(group_cols)]
-  groups <- interaction(pool_meta[, group_cols, drop = FALSE], drop = TRUE)
-  split_pools <- split(as.character(pool_meta$pool_id), groups)
+  groups <- interaction(unit_meta[, group_cols, drop = FALSE], drop = TRUE)
+  split_pools <- split(as.character(unit_meta$pool_id), groups)
   res <- lapply(split_pools, function(pools) {
     matrixStats::rowMedians(score_mat[, pools, drop = FALSE], na.rm = TRUE)
   })
@@ -50,7 +50,7 @@ rc_sample_aggregate <- function(score_mat,
 
 #' Fit simple sample-level linear models for each reaction
 #'
-#' v0.7 intentionally uses ordinary sample-level linear models. Pool-level tests
+#' v0.7 intentionally uses ordinary sample-level linear models. Meta-cell-level tests
 #' and mixed models are not used here; mixed models are reserved for later
 #' milestones when sample size and repeated-pool structure justify them.
 #'

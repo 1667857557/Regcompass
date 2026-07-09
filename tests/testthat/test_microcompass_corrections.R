@@ -72,7 +72,7 @@ test_that("parallel and serial microCOMPASS agree with structural cache", {
     reaction_confidence = matrix(1, nrow = 3, ncol = 2,
                                  dimnames = list(c("EX_m1", "Rtarget", "DM_m2"), c("p1", "p2"))),
     gpr_diagnostics = NULL,
-    pool_meta = data.frame(pool_id = c("p1", "p2"), sample_id = c("s1", "s2"), condition = c("a", "b"), cell_type = "T", stringsAsFactors = FALSE)
+    unit_meta = data.frame(pool_id = c("p1", "p2"), sample_id = c("s1", "s2"), condition = c("a", "b"), cell_type = "T", stringsAsFactors = FALSE)
   )
   medium <- data.frame(medium_scenario_id = "base", exchange_reaction_id = character(), lb = numeric(), ub = numeric(), available = logical())
   res1 <- rc_run_microcompass(layer1, gem, "Rtarget", medium_scenarios = medium, unit = "metacell", target_direction = "forward", parallel = FALSE)
