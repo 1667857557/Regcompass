@@ -62,7 +62,7 @@ test_that("fragment registration validates one cell vector per fragment", {
   )
 })
 
-test_that("Seurat4 FilterObjects shim persists for parallel SuperCell workers", {
+test_that("Seurat4 FilterObjects shim is scoped to avoid function conflicts", {
   old <- if (exists(".FilterObjects", envir = .GlobalEnv, inherits = FALSE)) {
     get(".FilterObjects", envir = .GlobalEnv, inherits = FALSE)
   } else {
@@ -74,10 +74,9 @@ test_that("Seurat4 FilterObjects shim persists for parallel SuperCell workers", 
     on.exit(assign(".FilterObjects", old, envir = .GlobalEnv), add = TRUE)
   }
 
-  .rc_with_seurat4_filterobjects(TRUE)
-  expect_true(exists(".FilterObjects", envir = .GlobalEnv, inherits = FALSE))
+  expect_true(.rc_with_seurat4_filterobjects(exists(".FilterObjects", envir = .GlobalEnv, inherits = FALSE)))
   if (is.null(old)) {
-    expect_identical(get(".FilterObjects", envir = .GlobalEnv, inherits = FALSE), .rc_seurat4_filterobjects)
+    expect_false(exists(".FilterObjects", envir = .GlobalEnv, inherits = FALSE))
   } else {
     expect_identical(get(".FilterObjects", envir = .GlobalEnv, inherits = FALSE), old)
   }
@@ -92,4 +91,13 @@ test_that("ATAC assay fragment paths are converted to SuperCell list input", {
   x <- .rc_normalize_fragment_files(stats::setNames(list(paths), "ATAC"), atac_assay = "ATAC")
   expect_identical(names(x), "ATAC")
   expect_identical(x[["ATAC"]], c("sample1.fragments.tsv.gz", "sample2.fragments.tsv.gz"))
+})
+
+
+test_that("SuperCell2 input validation catches missing reductions before SCimplify", {
+  skip_if_not_installed("SeuratObject")
+  counts <- Matrix::Matrix(matrix(1, nrow = 3, ncol = 3, dimnames = list(paste0("g", 1:3), paste0("c", 1:3))), sparse = TRUE)
+  object <- SeuratObject::CreateSeuratObject(counts = counts, assay = "RNA")
+  object[["ATAC"]] <- SeuratObject::CreateAssayObject(counts = counts)
+  expect_error(.rc_validate_supercell2_inputs(object, assays = c("RNA", "ATAC"), reductions = c("pca", "lsi")), "missing reduction")
 })

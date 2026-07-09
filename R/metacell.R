@@ -415,6 +415,38 @@ rc_metacell_diagnostics <- function(metacell_meta, rna_metacell_counts = NULL, a
   stop("`fragment_files` must be NULL, a character path/vector, or a named list.", call. = FALSE)
 }
 
+
+.rc_require_supercell2 <- function() {
+  if (!requireNamespace("SuperCell", quietly = TRUE)) {
+    stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). Install the SuperCell2 branch with `remotes::install_github(\"1667857557/SuperCell_Seurat_V4@supercell-2.0\")` (or the upstream mirror `GfellerLab/SuperCell@supercell-2.0`).", call. = FALSE)
+  }
+  if (!exists("SCimplify_for_Seurat", envir = asNamespace("SuperCell"), inherits = FALSE)) {
+    stop("Installed package 'SuperCell' does not export SCimplify_for_Seurat(); install the SuperCell2 branch before running metacells.", call. = FALSE)
+  }
+  version <- tryCatch(utils::packageVersion("SuperCell"), error = function(e) NULL)
+  if (!is.null(version) && version < "2.0") {
+    stop("RegCompass requires SuperCell2 (>= 2.0) for multimodal Seurat metacells. Reinstall with `remotes::install_github(\"1667857557/SuperCell_Seurat_V4@supercell-2.0\")`.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+.rc_validate_supercell2_inputs <- function(object, assays, reductions) {
+  missing_assays <- setdiff(assays, names(object@assays))
+  if (length(missing_assays) > 0L) stop("Seurat object is missing assay(s) required by SuperCell2: ", paste(missing_assays, collapse = ", "), call. = FALSE)
+  reductions <- unlist(reductions, use.names = FALSE)
+  reductions <- reductions[!is.na(reductions) & nzchar(reductions)]
+  missing_reductions <- setdiff(reductions, names(object@reductions))
+  if (length(missing_reductions) > 0L) {
+    stop("Seurat object is missing reduction(s) required by SuperCell2: ", paste(missing_reductions, collapse = ", "), ". Run the corresponding Seurat/Signac dimensional reduction first or pass existing `rna_reduction`/`atac_reduction` names.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+.rc_supercell2_scimplify_for_seurat <- function(args) {
+  .rc_require_supercell2()
+  .rc_with_seurat4_filterobjects(do.call(getExportedValue("SuperCell", "SCimplify_for_Seurat"), args))
+}
+
 .rc_assert_shell_safe_paths <- function(...) {
   paths <- unlist(list(...), use.names = FALSE)
   paths <- paths[!is.na(paths) & nzchar(paths)]
@@ -455,7 +487,7 @@ rc_make_supercell2_metacells <- function(object,
                                          require_fragment_aggregation = TRUE,
                                          overwrite = FALSE,
                                          BPPARAM = NULL) {
-  if (!requireNamespace("SuperCell", quietly = TRUE)) stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). By default, install SuperCell from https://github.com/1667857557/SuperCell-Seurat-V4/tree/supercell-2.0, or import existing metacells with rc_import_supercell2_metacells().", call. = FALSE)
+  .rc_require_supercell2()
   if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
   if (is.null(fragment_files)) fragment_files <- .rc_fragment_files_from_atac(object, atac_assay = atac_assay)
   if (isTRUE(require_fragment_aggregation)) {
@@ -464,6 +496,7 @@ rc_make_supercell2_metacells <- function(object,
   }
   fragment_files <- .rc_normalize_fragment_files(fragment_files, atac_assay = atac_assay)
   .rc_assert_shell_safe_paths(outdir, unlist(fragment_files, use.names = FALSE))
+  .rc_validate_supercell2_inputs(object, assays = c(rna_assay, atac_assay), reductions = c(rna_reduction, atac_reduction))
   meta <- object@meta.data
   required <- c(sample_col, condition_col, celltype_col, state_col, label_col)
   required <- required[!is.null(required) & !is.na(required) & nzchar(required)]
@@ -509,12 +542,12 @@ rc_make_supercell2_metacells <- function(object,
       args$nb_cl <- max(1L, as.integer(fragment_nb_cl))
     }
     mc <- tryCatch(
-      do.call(SuperCell::SCimplify_for_Seurat, args),
+      .rc_supercell2_scimplify_for_seurat(args),
       error = function(e) {
         if (isTRUE(require_fragment_aggregation)) stop("Metacell fragment aggregation failed; metacell-level LinkPeaks cannot be recomputed: ", conditionMessage(e), call. = FALSE)
         warning("Fragment aggregation failed; continuing only because `require_fragment_aggregation = FALSE`.", call. = FALSE)
         args2 <- args[setdiff(names(args), c("fragmentFiles", "outputDirMcFragment", "bgzip_path", "tabix_path"))]
-        do.call(SuperCell::SCimplify_for_Seurat, args2)
+        .rc_supercell2_scimplify_for_seurat(args2)
       }
     )
     mc_ids <- colnames(.rc_get_assay_counts_safe(mc, rna_assay))
@@ -666,9 +699,23 @@ rc_import_metacells <- function(metacell_dirs, ..., filter_low_power_metacells =
   }, logical(1))]
 }
 
-.rc_install_seurat4_filterobjects <- function(envir = .GlobalEnv) invisible(TRUE)
+.rc_install_seurat4_filterobjects <- function(envir = .GlobalEnv) {
+  if (!exists(".FilterObjects", envir = envir, inherits = FALSE)) {
+    assign(".FilterObjects", .rc_seurat4_filterobjects, envir = envir)
+  }
+  invisible(TRUE)
+}
 
-.rc_with_seurat4_filterobjects <- function(expr) force(expr)
+.rc_with_seurat4_filterobjects <- function(expr) {
+  envir <- .GlobalEnv
+  had_old <- exists(".FilterObjects", envir = envir, inherits = FALSE)
+  old <- if (had_old) get(".FilterObjects", envir = envir, inherits = FALSE) else NULL
+  .rc_install_seurat4_filterobjects(envir)
+  on.exit({
+    if (had_old) assign(".FilterObjects", old, envir = envir) else if (exists(".FilterObjects", envir = envir, inherits = FALSE)) rm(".FilterObjects", envir = envir)
+  }, add = TRUE)
+  force(expr)
+}
 #' Load and merge saved metacell Seurat objects
 #' @export
 rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_files = NULL, rna_assay = "RNA", atac_assay = "ATAC") {
