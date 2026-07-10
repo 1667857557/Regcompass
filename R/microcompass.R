@@ -51,7 +51,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
     }
     if (!"medium_scenario_id" %in% colnames(medium_scenarios)) medium_scenarios$medium_scenario_id <- "custom"
   }
-  cache_strategy <- microgem_params$strategy %||% "target_khop"
+  cache_strategy <- microgem_params$strategy %||% "module_meso_gem"
   if (identical(cache_strategy, "module_meso_gem")) {
     module_params <- microgem_params
     module_params$strategy <- NULL

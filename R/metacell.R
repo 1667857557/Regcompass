@@ -951,47 +951,163 @@ rc_import_metacells <- function(metacell_dirs, ..., filter_low_power_metacells =
 }
 #' Load and merge saved metacell Seurat objects
 #' @export
-rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_manifest = NULL, metacell_meta = NULL, fragment_files = NULL, rna_assay = "RNA", atac_assay = "ATAC") {
+rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_manifest = NULL, metacell_meta = NULL, fragment_files = NULL, rna_assay = "RNA", atac_assay = "ATAC", require_complete_fragments = TRUE) {
   if (is.null(metacell_objects) || length(metacell_objects) == 0L) stop("No metacell Seurat objects supplied.", call. = FALSE)
   objs <- lapply(metacell_objects, function(x) if (inherits(x, "Seurat")) x else readRDS(x))
-  cells_by_fragment <- lapply(objs, colnames)
-  obj <- if (length(objs) == 1L) objs[[1L]] else Reduce(function(a, b) merge(a, y = b), objs)
+
+  object_cells_by_input <- lapply(objs, colnames)
+  input_cells <- unlist(object_cells_by_input, use.names = FALSE)
+  duplicated_before_merge <- unique(input_cells[duplicated(input_cells)])
+  if (length(duplicated_before_merge)) {
+    stop("Metacell IDs are not globally unique before merge: ", paste(utils::head(duplicated_before_merge, 10L), collapse = ", "), call. = FALSE)
+  }
+
+  objs <- lapply(objs, .rc_clear_signac_fragments, atac_assay = atac_assay)
+  obj <- if (length(objs) == 1L) objs[[1L]] else Reduce(function(a, b) merge(x = a, y = b, merge.data = FALSE), objs)
+  if (anyDuplicated(colnames(obj))) stop("Merged metacell object contains duplicated cell names.", call. = FALSE)
+
   if (!is.null(metacell_meta)) {
     metacell_meta$metacell_id <- as.character(metacell_meta$metacell_id)
-    if (!all(metacell_meta$metacell_id %in% colnames(obj))) stop("Merged metacell object is missing metacell metadata IDs.", call. = FALSE)
-    if (!setequal(colnames(obj), metacell_meta$metacell_id)) obj <- subset(obj, cells = metacell_meta$metacell_id)
+    expected <- metacell_meta$metacell_id
+    if (!setequal(expected, colnames(obj))) stop("Merged object and metacell metadata contain different IDs.", call. = FALSE)
+    obj <- subset(obj, cells = expected)
+    if (!identical(colnames(obj), expected)) stop("Merged object could not be reordered to metacell metadata.", call. = FALSE)
   }
+
   if (!is.null(fragment_manifest) && is.data.frame(fragment_manifest) && nrow(fragment_manifest)) {
-    if (is.null(metacell_meta)) stop("`metacell_meta` is required when registering fragments from a fragment manifest.", call. = FALSE)
-    fragment_files <- as.character(fragment_manifest$fragment_file)
-    cells_by_fragment <- lapply(seq_len(nrow(fragment_manifest)), function(i) {
-      st <- as.character(fragment_manifest$stratum_id[[i]])
-      metacell_meta$metacell_id[as.character(metacell_meta$stratum_id) == st]
-    })
+    registration <- .rc_fragment_registration_from_manifest(
+      fragment_manifest = fragment_manifest,
+      metacell_meta = metacell_meta,
+      object_cells = colnames(obj)
+    )
+    fragment_files <- registration$fragment_files
+    cells_by_fragment <- registration$cell_maps
+  } else {
+    cells_by_fragment <- NULL
   }
-  .rc_register_signac_fragments(obj, fragment_files = fragment_files, cells_by_fragment = cells_by_fragment, atac_assay = atac_assay, replace_existing = TRUE)
+
+  .rc_register_signac_fragments(
+    obj,
+    fragment_files = fragment_files,
+    cells_by_fragment = cells_by_fragment,
+    atac_assay = atac_assay,
+    replace_existing = TRUE,
+    require_complete = require_complete_fragments
+  )
 }
 
-.rc_register_signac_fragments <- function(object, fragment_files = NULL, cells_by_fragment = NULL, atac_assay = "ATAC", replace_existing = TRUE) {
+.rc_clear_signac_fragments <- function(object, atac_assay = "ATAC") {
+  if (!inherits(object, "Seurat")) return(object)
+  if (!requireNamespace("Signac", quietly = TRUE)) return(object)
+  if (!atac_assay %in% names(object@assays)) return(object)
+  if (!inherits(object[[atac_assay]], "ChromatinAssay")) return(object)
+  fragment_setter <- get("Fragments<-", envir = asNamespace("Signac"))
+  object[[atac_assay]] <- fragment_setter(object[[atac_assay]], value = list())
+  object
+}
+
+.rc_normalize_fragment_cell_map <- function(cell_map, object_cells, fragment_file = NULL) {
+  if (is.data.frame(cell_map)) {
+    required <- c("object_cell", "fragment_barcode")
+    missing <- setdiff(required, colnames(cell_map))
+    if (length(missing)) stop("`cell_map` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
+    cell_map <- stats::setNames(as.character(cell_map$fragment_barcode), as.character(cell_map$object_cell))
+  } else {
+    cell_map <- as.character(cell_map)
+    if (is.null(names(cell_map))) names(cell_map) <- cell_map
+  }
+  if (!length(cell_map)) stop("Fragment cell map is empty", if (!is.null(fragment_file)) paste0(": ", fragment_file) else ".", call. = FALSE)
+  if (anyNA(cell_map) || any(!nzchar(cell_map)) || anyNA(names(cell_map)) || any(!nzchar(names(cell_map)))) stop("Fragment cell map contains missing or empty identifiers.", call. = FALSE)
+  if (anyDuplicated(names(cell_map))) {
+    duplicated_cells <- unique(names(cell_map)[duplicated(names(cell_map))])
+    stop("Duplicated object cells within one fragment mapping: ", paste(utils::head(duplicated_cells, 10L), collapse = ", "), call. = FALSE)
+  }
+  unknown <- setdiff(names(cell_map), object_cells)
+  if (length(unknown)) stop("Fragment mapping contains cells absent from the merged object: ", paste(utils::head(unknown, 10L), collapse = ", "), call. = FALSE)
+  cell_map
+}
+
+.rc_validate_fragment_registration_plan <- function(fragment_files, cell_maps, object_cells, require_complete = TRUE) {
+  fragment_files <- as.character(fragment_files)
+  if (length(fragment_files) != length(cell_maps)) stop("`fragment_files` and `cell_maps` must have the same length.", call. = FALSE)
+  if (!length(fragment_files)) stop("No fragment files were supplied.", call. = FALSE)
+  missing_files <- fragment_files[!file.exists(fragment_files)]
+  if (length(missing_files)) stop("Metacell fragment files are missing: ", paste(utils::head(missing_files, 10L), collapse = ", "), call. = FALSE)
+  missing_indexes <- vapply(fragment_files, function(path) !file.exists(paste0(path, ".tbi")) && !file.exists(paste0(path, ".csi")), logical(1))
+  if (any(missing_indexes)) stop("Metacell fragment tabix indexes are missing: ", paste(utils::head(paste0(fragment_files[missing_indexes], ".tbi"), 10L), collapse = ", "), call. = FALSE)
+  registered <- unlist(lapply(cell_maps, names), use.names = FALSE)
+  if (anyDuplicated(registered)) {
+    duplicated_cells <- unique(registered[duplicated(registered)])
+    stop("Object cells are assigned to multiple fragment files: ", paste(utils::head(duplicated_cells, 10L), collapse = ", "), call. = FALSE)
+  }
+  if (isTRUE(require_complete)) {
+    missing_cells <- setdiff(object_cells, registered)
+    extra_cells <- setdiff(registered, object_cells)
+    if (length(missing_cells) || length(extra_cells)) stop("Fragment registration does not exactly cover the merged object. Missing cells: ", paste(utils::head(missing_cells, 10L), collapse = ", "), "; extra cells: ", paste(utils::head(extra_cells, 10L), collapse = ", "), call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
+.rc_fragment_registration_from_manifest <- function(fragment_manifest, metacell_meta = NULL, object_cells) {
+  if (!"fragment_file" %in% colnames(fragment_manifest)) stop("`fragment_manifest` must contain `fragment_file`.", call. = FALSE)
+  manifest <- fragment_manifest
+  manifest$fragment_file <- as.character(manifest$fragment_file)
+  if (all(c("object_cell", "fragment_barcode") %in% colnames(manifest))) {
+    manifest$object_cell <- as.character(manifest$object_cell)
+    manifest$fragment_barcode <- as.character(manifest$fragment_barcode)
+    manifest <- unique(manifest[, c("fragment_file", "object_cell", "fragment_barcode"), drop = FALSE])
+    cell_path <- paste(manifest$fragment_file, manifest$object_cell, sep = "\001")
+    barcode_by_cell_path <- tapply(manifest$fragment_barcode, cell_path, function(x) length(unique(x)))
+    conflicts <- names(barcode_by_cell_path)[barcode_by_cell_path > 1L]
+    if (length(conflicts)) {
+      conflict_cells <- sub("^.*\\001", "", conflicts)
+      stop("Fragment manifest assigns one object cell to multiple barcodes: ", paste(utils::head(conflict_cells, 10L), collapse = ", "), call. = FALSE)
+    }
+    files <- unique(manifest$fragment_file)
+    maps <- lapply(files, function(path) {
+      x <- manifest[manifest$fragment_file == path, , drop = FALSE]
+      .rc_normalize_fragment_cell_map(x[, c("object_cell", "fragment_barcode"), drop = FALSE], object_cells = object_cells, fragment_file = path)
+    })
+    return(list(fragment_files = files, cell_maps = maps))
+  }
+  if (is.null(metacell_meta)) stop("`metacell_meta` is required when fragment manifest lacks explicit object_cell/fragment_barcode columns.", call. = FALSE)
+  if (!all(c("stratum_id", "metacell_id") %in% colnames(metacell_meta)) || !"stratum_id" %in% colnames(manifest)) {
+    stop("Fragment manifest requires explicit cell maps or stratum_id metadata for legacy identity mapping.", call. = FALSE)
+  }
+  files <- unique(manifest$fragment_file)
+  maps <- lapply(files, function(path) {
+    strata <- unique(as.character(manifest$stratum_id[manifest$fragment_file == path]))
+    ids <- as.character(metacell_meta$metacell_id[as.character(metacell_meta$stratum_id) %in% strata])
+    .rc_normalize_fragment_cell_map(stats::setNames(ids, ids), object_cells = object_cells, fragment_file = path)
+  })
+  list(fragment_files = files, cell_maps = maps)
+}
+
+.rc_register_signac_fragments <- function(object, fragment_files = NULL, cells_by_fragment = NULL, atac_assay = "ATAC", replace_existing = TRUE, require_complete = TRUE, validate_fragments = TRUE) {
   if (is.null(fragment_files) || length(fragment_files) == 0L) return(object)
   fragment_files <- as.character(fragment_files)
-  if (is.null(cells_by_fragment)) cells_by_fragment <- rep(list(colnames(object)), length(fragment_files))
+  if (is.null(cells_by_fragment)) {
+    if (length(fragment_files) != 1L) stop("`cells_by_fragment` is required when registering multiple fragment files.", call. = FALSE)
+    ids <- colnames(object)
+    cells_by_fragment <- list(stats::setNames(ids, ids))
+  }
   if (length(cells_by_fragment) != length(fragment_files)) stop("`cells_by_fragment` must have one cell vector per fragment file.", call. = FALSE)
-  missing <- fragment_files[!file.exists(fragment_files)]
-  missing_index <- fragment_files[!file.exists(paste0(fragment_files, ".tbi"))]
-  if (length(missing) > 0L) stop("Metacell fragment files are missing: ", paste(missing, collapse = ", "), call. = FALSE)
-  if (length(missing_index) > 0L) stop("Metacell fragment tabix indexes are missing: ", paste(paste0(missing_index, ".tbi"), collapse = ", "), call. = FALSE)
+  cell_maps <- Map(function(cell_map, path) .rc_normalize_fragment_cell_map(cell_map, object_cells = colnames(object), fragment_file = path), cells_by_fragment, fragment_files)
+  .rc_validate_fragment_registration_plan(fragment_files, cell_maps, object_cells = colnames(object), require_complete = require_complete)
   if (!requireNamespace("Signac", quietly = TRUE)) stop("Package 'Signac' is required to register metacell fragment files.", call. = FALSE)
-  if (!atac_assay %in% names(object@assays)) stop("Metacell object is missing ATAC assay `", atac_assay, "`.", call. = FALSE)
+  if (!inherits(object, "Seurat") || !atac_assay %in% names(object@assays)) stop("Metacell object is missing ATAC assay `", atac_assay, "`.", call. = FALSE)
+  fragment_files <- normalizePath(fragment_files, mustWork = TRUE)
   frag_setter <- get("Fragments<-", envir = asNamespace("Signac"))
   if (isTRUE(replace_existing)) object[[atac_assay]] <- frag_setter(object[[atac_assay]], value = list())
-  fragments <- Map(function(path, cells) {
+  fragments <- Map(function(path, cell_map) {
     tryCatch(
-      Signac::CreateFragmentObject(path = path, cells = as.character(cells), validate.fragments = TRUE),
+      Signac::CreateFragmentObject(path = path, cells = cell_map, validate.fragments = validate_fragments),
       error = function(e) stop("Failed to register metacell fragment file `", path, "`: ", conditionMessage(e), call. = FALSE)
     )
-  }, fragment_files, cells_by_fragment)
+  }, fragment_files, cell_maps)
   object[[atac_assay]] <- frag_setter(object[[atac_assay]], value = fragments)
+  registered <- unlist(lapply(fragments, SeuratObject::Cells), use.names = FALSE)
+  if (anyDuplicated(registered)) stop("Post-registration validation detected cells in multiple Fragment objects.", call. = FALSE)
   object
 }
 
