@@ -119,6 +119,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
                            solver_status = ans$solver_status,
                            step1_status = ans$step1_status,
                            step2_status = ans$step2_status,
+                           target_status = mg$target_status %||% if (isTRUE(ans$feasible)) "ok" else "structurally_infeasible",
                            objective_value = ans$penalty,
                            vmax = ans$vmax,
                            stringsAsFactors = FALSE))
@@ -129,8 +130,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
     vmax[x$row_id, x$unit_id] <- x$vmax
     feasible[x$row_id, x$unit_id] <- x$feasible
   }
-  score[] <- rc_sigmoid(-(penalty - stats::median(penalty, na.rm = TRUE)))
-  score[!feasible] <- 0
+  score <- rc_compass_score_from_penalty(penalty, feasible)
   lp_diagnostics <- do.call(rbind, lapply(res, `[[`, "diag"))
   microgem_diagnostics <- do.call(rbind, lapply(mg_cache, function(entry) cache_gem(entry)$closure_diagnostics))
   scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))

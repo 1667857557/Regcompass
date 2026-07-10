@@ -37,6 +37,9 @@ rc_build_target_microgem <- function(gem, target_reaction, medium_table = NULL, 
   sub$medium_diagnostics <- med_diag
   sub$closure_diagnostics <- rc_check_microgem_closure(sub, target_reaction)
   sub$build_params <- list(k_hop = k_hop, max_reactions = max_reactions, strict_closure = strict_closure)
+  if (isTRUE(strict_closure) && (!nrow(sub$closure_diagnostics) || !isTRUE(sub$closure_diagnostics$strict_target_feasible[[1L]]))) {
+    stop("Target micro-GEM failed strict closure validation: ", target_reaction, call. = FALSE)
+  }
   sub
 }
 #' Check strict closure diagnostics for a micro-GEM

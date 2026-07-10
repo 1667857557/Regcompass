@@ -46,6 +46,23 @@ rc_standardize_lp_result <- function(status, objective_value, primal_solution, r
             objective_sense = "min")
 }
 
+.rc_highs_status <- function(res, n_variables) {
+  text_candidates <- c(res$model_status, res$status_message, res$message)
+  text_candidates <- as.character(unlist(text_candidates, use.names = FALSE))
+  text_candidates <- text_candidates[!is.na(text_candidates) & nzchar(text_candidates)]
+  text <- tolower(paste(text_candidates, collapse = " "))
+  if (grepl("optimal", text)) return("optimal")
+  if (grepl("infeasible", text)) return("infeasible")
+  if (grepl("unbounded", text)) return("unbounded")
+  if (grepl("time|limit", text)) return("time_limit")
+  code <- suppressWarnings(as.integer(res$status)[1L])
+  solution <- res$primal_solution %||% res$solution
+  objective <- res$objective_value %||% res$objective
+  if (identical(code, 7L) && length(objective) == 1L && is.finite(objective) && length(solution) == n_variables && all(is.finite(solution))) return("optimal")
+  if (is.finite(code)) return(paste0("highs_status_", code))
+  "error"
+}
+
 rc_solve_lp_gurobi <- function(obj, A, lhs, rhs, lb, ub, time_limit) {
   start_time <- proc.time()[["elapsed"]]
   if (!requireNamespace("gurobi", quietly = TRUE)) return(rc_standardize_lp_result("error", NA_real_, NULL, 0, "gurobi package not installed"))
@@ -99,13 +116,18 @@ rc_solve_lp_highs <- function(obj, A, lhs, rhs, lb, ub, time_limit) {
   if (inherits(res, "error")) {
     return(rc_standardize_lp_result("error", NA_real_, NULL, proc.time()[["elapsed"]] - start_time, conditionMessage(res)))
   }
-  rc_standardize_lp_result(
-    res$status %||% res$model_status %||% "error",
+  status <- .rc_highs_status(res, n_variables = length(obj))
+  out <- rc_standardize_lp_result(
+    status,
     res$objective_value %||% res$objective,
     res$primal_solution %||% res$solution,
     proc.time()[["elapsed"]] - start_time,
-    res$message %||% NULL
+    res$message %||% res$status_message %||% NULL
   )
+  out$raw_status <- res$status %||% NA
+  out$raw_model_status <- res$model_status %||% NA
+  out$solver_version <- as.character(utils::packageVersion("highs"))
+  out
 }
 
 rc_solve_lp_glpk <- function(obj, A, lhs, rhs, lb, ub, time_limit) {
