@@ -268,28 +268,54 @@ rc_recompute_metacell_peak_gene_links_by_stratum <- function(metacell_object,
   diagnostics <- list()
   links <- lapply(names(strata), function(st) {
     cells <- intersect(strata[[st]], colnames(metacell_object))
+    effective_st <- st
+    fallback_source <- "none"
     if (length(cells) < min_metacells_for_linkpeaks) {
       reason <- paste0("too_few_metacells: ", length(cells), " < ", min_metacells_for_linkpeaks)
       if (identical(on_too_few_metacells, "stop")) stop("Too few metacells for LinkPeaks in stratum `", st, "`: ", length(cells), " < ", min_metacells_for_linkpeaks, call. = FALSE)
-      diagnostics[[st]] <<- data.frame(link_stratum = st, n_metacells = length(cells), n_links = 0L, status = "skipped", reason = reason, stringsAsFactors = FALSE)
-      return(NULL)
+      if (identical(on_too_few_metacells, "skip")) {
+        diagnostics[[st]] <<- data.frame(link_stratum = st, requested_link_stratum = st, effective_link_stratum = NA_character_, fallback_source = "skip", n_metacells = length(cells), n_links = 0L, status = "skipped", reason = reason, stringsAsFactors = FALSE)
+        return(NULL)
+      }
+      if (identical(on_too_few_metacells, "global")) {
+        cells <- colnames(metacell_object)
+        effective_st <- "global"
+        fallback_source <- "global"
+      }
+      if (identical(on_too_few_metacells, "pool_by_cell_type")) {
+        if (!"cell_type" %in% colnames(metacell_meta)) stop("`pool_by_cell_type` fallback requires a `cell_type` column in `metacell_meta`.", call. = FALSE)
+        ct <- unique(as.character(metacell_meta$cell_type[metacell_meta$link_stratum == st]))
+        ct <- ct[!is.na(ct) & nzchar(ct)]
+        if (length(ct) != 1L) stop("`pool_by_cell_type` fallback requires each link stratum to map to exactly one cell_type.", call. = FALSE)
+        cells <- intersect(as.character(metacell_meta$metacell_id[as.character(metacell_meta$cell_type) == ct]), colnames(metacell_object))
+        effective_st <- paste0("cell_type:", ct)
+        fallback_source <- "cell_type"
+      }
+      if (length(cells) < min_metacells_for_linkpeaks) {
+        diagnostics[[st]] <<- data.frame(link_stratum = st, requested_link_stratum = st, effective_link_stratum = effective_st, fallback_source = fallback_source, n_metacells = length(cells), n_links = 0L, status = "skipped", reason = reason, stringsAsFactors = FALSE)
+        return(NULL)
+      }
     }
     obj_st <- subset(metacell_object, cells = cells)
     x <- tryCatch(
       rc_recompute_metacell_peak_gene_links(metacell_object = obj_st, gpr_table = gpr_table, metabolic_genes = metabolic_genes, peak_assay = peak_assay, expression_assay = expression_assay, ...),
       error = function(e) {
         if (identical(on_too_few_metacells, "stop")) stop(e)
-        diagnostics[[st]] <<- data.frame(link_stratum = st, n_metacells = length(cells), n_links = 0L, status = "failed", reason = conditionMessage(e), stringsAsFactors = FALSE)
+        diagnostics[[st]] <<- data.frame(link_stratum = st, requested_link_stratum = st, effective_link_stratum = effective_st, fallback_source = fallback_source, n_metacells = length(cells), n_links = 0L, status = "failed", reason = conditionMessage(e), stringsAsFactors = FALSE)
         NULL
       }
     )
     if (is.null(x)) return(NULL)
     x$link_stratum <- st
-    diagnostics[[st]] <<- data.frame(link_stratum = st, n_metacells = length(cells), n_links = nrow(x), status = "ok", reason = NA_character_, stringsAsFactors = FALSE)
+    x$requested_link_stratum <- st
+    x$effective_link_stratum <- effective_st
+    x$fallback_source <- fallback_source
+    x$n_metacells <- length(cells)
+    diagnostics[[st]] <<- data.frame(link_stratum = st, requested_link_stratum = st, effective_link_stratum = effective_st, fallback_source = fallback_source, n_metacells = length(cells), n_links = nrow(x), status = "ok", reason = NA_character_, stringsAsFactors = FALSE)
     x
   })
   links <- links[!vapply(links, is.null, logical(1))]
-  diag <- if (length(diagnostics)) do.call(rbind, diagnostics) else data.frame(link_stratum = character(), n_metacells = integer(), n_links = integer(), status = character(), reason = character())
+  diag <- if (length(diagnostics)) do.call(rbind, diagnostics) else data.frame(link_stratum = character(), requested_link_stratum = character(), effective_link_stratum = character(), fallback_source = character(), n_metacells = integer(), n_links = integer(), status = character(), reason = character())
   rownames(diag) <- NULL
   if (!is.null(diagnostics_file)) .rc_write_tsv_gz(diag, diagnostics_file)
   if (!length(links)) {
@@ -686,6 +712,33 @@ rc_make_supercell2_metacells <- function(object,
     membership <- .rc_extract_supercell_membership(mc, cells, mc_ids)
     if (nrow(membership) == 0L) stop("Could not infer single-cell membership from SuperCell output for stratum ", key, call. = FALSE)
     fragment_manifest_i <- NULL
+    if (identical(fragment_aggregation_backend, "supercell") && save_fragments) {
+      fragment_manifest_i <- tryCatch(mc@misc$fragment_manifest, error = function(e) NULL)
+      if (is.null(fragment_manifest_i) || !is.data.frame(fragment_manifest_i) || !nrow(fragment_manifest_i)) {
+        produced <- Sys.glob(file.path(stratum_dir, "fragments", "*.tsv.gz"))
+        produced <- produced[basename(produced) != "fragment_manifest.tsv.gz"]
+        if (length(produced)) {
+          fragment_manifest_i <- data.frame(
+            input_file = NA_character_,
+            fragment_file = normalizePath(produced, mustWork = FALSE),
+            index_file = normalizePath(paste0(produced, ".tbi"), mustWork = FALSE),
+            status = "ok",
+            stringsAsFactors = FALSE
+          )
+        }
+      }
+      if (!is.null(fragment_manifest_i) && is.data.frame(fragment_manifest_i) && nrow(fragment_manifest_i)) {
+        if (!"input_file" %in% colnames(fragment_manifest_i)) fragment_manifest_i$input_file <- NA_character_
+        if (!"fragment_file" %in% colnames(fragment_manifest_i) && "output_file" %in% colnames(fragment_manifest_i)) fragment_manifest_i$fragment_file <- fragment_manifest_i$output_file
+        if (!"index_file" %in% colnames(fragment_manifest_i)) fragment_manifest_i$index_file <- paste0(fragment_manifest_i$fragment_file, ".tbi")
+        if (!"status" %in% colnames(fragment_manifest_i)) fragment_manifest_i$status <- "ok"
+        fragment_manifest_i$stratum_id <- key
+        fragment_manifest_i$sample_id <- sample_value
+        fragment_manifest_i$assay <- atac_assay
+        fragment_manifest_i$metacell_prefix <- prefix_mc
+        .rc_write_tsv_gz(fragment_manifest_i, file.path(stratum_dir, "fragments", "fragment_manifest.tsv.gz"))
+      }
+    }
     if (identical(fragment_aggregation_backend, "regcompass") && save_fragments && length(fragment_files_i)) {
       fragment_manifest_i <- tryCatch(
         rc_aggregate_fragments_by_membership(fragment_files = fragment_files_i, membership = membership, outdir = file.path(stratum_dir, "fragments"), bgzip_path = bgzip_path, tabix_path = tabix_path, nb_cl = max(1L, as.integer(fragment_nb_cl))),
@@ -932,7 +985,7 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_manifes
   if (isTRUE(replace_existing)) object[[atac_assay]] <- frag_setter(object[[atac_assay]], value = list())
   fragments <- Map(function(path, cells) {
     tryCatch(
-      Signac::CreateFragmentObject(path = path, cells = as.character(cells), validate.fragments = FALSE),
+      Signac::CreateFragmentObject(path = path, cells = as.character(cells), validate.fragments = TRUE),
       error = function(e) stop("Failed to register metacell fragment file `", path, "`: ", conditionMessage(e), call. = FALSE)
     )
   }, fragment_files, cells_by_fragment)

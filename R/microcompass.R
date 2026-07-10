@@ -119,6 +119,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
                            solver_status = ans$solver_status,
                            step1_status = ans$step1_status,
                            step2_status = ans$step2_status,
+                           target_status = mg$target_status %||% if (isTRUE(ans$feasible)) "ok" else "structurally_infeasible",
                            objective_value = ans$penalty,
                            vmax = ans$vmax,
                            stringsAsFactors = FALSE))

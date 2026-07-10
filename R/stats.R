@@ -77,8 +77,10 @@ rc_test_microcompass_differential <- function(result,
                                              min_samples_per_group = 3,
                                              preferred_min_samples_per_group = 5,
                                              p_adjust_method = "BH",
-                                             strict_replicate_design = TRUE) {
+                                             strict_replicate_design = TRUE,
+                                             test_type = c("omnibus", "pairwise")) {
   method <- match.arg(method)
+  test_type <- match.arg(test_type)
   S <- as.matrix(result$score)
   meta <- result$unit_meta
   if (is.null(meta) || !"unit_id" %in% colnames(meta)) stop("`result$unit_meta` must contain `unit_id`.", call. = FALSE)
@@ -105,7 +107,7 @@ rc_test_microcompass_differential <- function(result,
       return(rc_microcompass_limma(S[, cols, drop = FALSE], meta[cols, , drop = FALSE], row_meta,
                                    formula, sample_col, celltype_col, condition_col,
                                    min_samples_per_group, preferred_min_samples_per_group,
-                                   p_adjust_method, ct))
+                                   p_adjust_method, ct, test_type))
     }
     rows <- lapply(seq_len(nrow(S)), function(i) {
       df <- data.frame(score = as.numeric(S[i, cols]), meta[cols, , drop = FALSE], stringsAsFactors = FALSE)
@@ -113,7 +115,7 @@ rc_test_microcompass_differential <- function(result,
       n_by_group <- table(sample_condition_i[[condition_col]])
       low_power <- length(n_by_group) < 2L || any(n_by_group < min_samples_per_group)
       preferred_low <- length(n_by_group) < 2L || any(n_by_group < preferred_min_samples_per_group)
-      fit <- rc_microcompass_fit_one(df, formula, method, condition_col, low_power)
+      fit <- rc_microcompass_fit_one(df, formula, method, condition_col, low_power, test_type = test_type)
       data.frame(
         reaction_id = row_meta$reaction_id[i],
         target_direction = row_meta$target_direction[i],
@@ -139,7 +141,7 @@ rc_test_microcompass_differential <- function(result,
   out
 }
 
-rc_microcompass_fit_one <- function(df, formula, method, condition_col, low_power) {
+rc_microcompass_fit_one <- function(df, formula, method, condition_col, low_power, test_type = "omnibus") {
   if (isTRUE(low_power)) {
     return(list(contrast = NA_character_, effect_size = NA_real_, statistic = NA_real_,
                 p_value = NA_real_, model_status = "low_sample_power"))
@@ -155,6 +157,11 @@ rc_microcompass_fit_one <- function(df, formula, method, condition_col, low_powe
   }
   fit <- tryCatch(stats::lm(formula, data = df), error = function(e) e)
   if (inherits(fit, "error")) return(list(contrast = NA_character_, effect_size = NA_real_, statistic = NA_real_, p_value = NA_real_, model_status = conditionMessage(fit)))
+  if (length(unique(df[[condition_col]])) > 2L && identical(test_type, "omnibus")) {
+    aov_tab <- tryCatch(stats::anova(fit), error = function(e) e)
+    if (inherits(aov_tab, "error") || !condition_col %in% rownames(aov_tab)) return(list(contrast = condition_col, effect_size = NA_real_, statistic = NA_real_, p_value = NA_real_, model_status = "omnibus_failed"))
+    return(list(contrast = paste0(condition_col, "_omnibus"), effect_size = NA_real_, statistic = unname(aov_tab[condition_col, "F value"]), p_value = unname(aov_tab[condition_col, "Pr(>F)"]), model_status = "ok"))
+  }
   cf <- summary(fit)$coefficients
   idx <- setdiff(rownames(cf), "(Intercept)")[1]
   if (is.na(idx)) return(list(contrast = NA_character_, effect_size = NA_real_, statistic = NA_real_, p_value = NA_real_, model_status = "no_non_intercept_term"))
@@ -164,7 +171,7 @@ rc_microcompass_fit_one <- function(df, formula, method, condition_col, low_powe
 
 rc_microcompass_limma <- function(Y, meta, row_meta, formula, sample_col, celltype_col, condition_col,
                                   min_samples_per_group, preferred_min_samples_per_group,
-                                  p_adjust_method, cell_type) {
+                                  p_adjust_method, cell_type, test_type = "omnibus") {
   if (!requireNamespace("limma", quietly = TRUE)) {
     return(data.frame(reaction_id = row_meta$reaction_id,
                       target_direction = row_meta$target_direction,
@@ -195,15 +202,20 @@ rc_microcompass_limma <- function(Y, meta, row_meta, formula, sample_col, cellty
   }
   design <- stats::model.matrix(stats::delete.response(stats::terms(formula)), data = meta)
   fit <- limma::eBayes(limma::lmFit(Y, design))
-  coef_name <- setdiff(colnames(design), "(Intercept)")[1]
-  tab <- limma::topTable(fit, coef = coef_name, number = Inf, sort.by = "none", adjust.method = p_adjust_method)
+  coef_names <- setdiff(colnames(design), "(Intercept)")
+  coef_use <- if (length(unique(meta[[condition_col]])) > 2L && identical(test_type, "omnibus")) coef_names[grepl(paste0("^", condition_col), coef_names)] else coef_names[1]
+  tab <- if (length(coef_use) > 1L) {
+    limma::topTableF(fit, coef = coef_use, number = Inf, sort.by = "none", adjust.method = p_adjust_method)
+  } else {
+    limma::topTable(fit, coef = coef_use, number = Inf, sort.by = "none", adjust.method = p_adjust_method)
+  }
   data.frame(reaction_id = row_meta$reaction_id,
              target_direction = row_meta$target_direction,
              cell_type = if (!is.na(cell_type)) cell_type else NA_character_,
              medium_scenario = row_meta$medium_scenario,
-             contrast = coef_name,
-             effect_size = tab$logFC,
-             statistic = tab$t,
+             contrast = if (length(coef_use) > 1L) paste0(condition_col, "_omnibus") else coef_use,
+             effect_size = if ("logFC" %in% colnames(tab)) tab$logFC else NA_real_,
+             statistic = if ("t" %in% colnames(tab)) tab$t else tab$F,
              p_value = tab$P.Value,
              n_samples_per_group = paste(names(n_by_group), as.integer(n_by_group), sep = "=", collapse = ";"),
              method = "limma_continuous",
