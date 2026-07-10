@@ -51,7 +51,7 @@ test_that("LinkPeaks stratum requires enough metacells", {
   obj <- SeuratObject::CreateSeuratObject(counts = counts)
   meta <- data.frame(metacell_id = c("mc1", "mc2"), cell_type = "T", sample_id = "s1", condition = "ctrl", stringsAsFactors = FALSE)
   gpr <- data.frame(reaction_id = "R1", and_group_id = 1, gene = "G1", stringsAsFactors = FALSE)
-  expect_error(rc_recompute_metacell_peak_gene_links_by_stratum(metacell_object = obj, metacell_meta = meta, gpr_table = gpr, min_metacells_for_linkpeaks = 80), "Too few metacells")
+  expect_error(rc_recompute_metacell_peak_gene_links_by_stratum(metacell_object = obj, metacell_meta = meta, gpr_table = gpr, min_metacells_for_linkpeaks = 80, on_too_few_metacells = "stop"), "Too few metacells")
 })
 
 

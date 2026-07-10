@@ -28,11 +28,11 @@ rc_validate_seurat <- function(object,
   if (!rna_assay %in% assay_names) stop("RNA assay not found: ", rna_assay, call. = FALSE)
   if (!atac_assay %in% assay_names) stop("ATAC assay not found: ", atac_assay, call. = FALSE)
 
+  canonical_cells <- colnames(object)
   rna_cells <- colnames(.rc_get_assay_counts(object, rna_assay))
   atac_cells <- colnames(.rc_get_assay_counts(object, atac_assay))
-  if (!setequal(rna_cells, atac_cells)) {
-    stop("RNA and ATAC assays must contain the same cell barcodes.", call. = FALSE)
-  }
+  if (!setequal(canonical_cells, rna_cells)) stop("RNA assay cell set differs from the Seurat object.", call. = FALSE)
+  if (!setequal(canonical_cells, atac_cells)) stop("ATAC assay cell set differs from the Seurat object.", call. = FALSE)
 
   if (!is.null(embedding) && !embedding %in% names(object@reductions)) {
     stop("Embedding/reduction not found: ", embedding, call. = FALSE)
@@ -310,7 +310,15 @@ rc_validate_multiome_input <- function(object, rna_assay = "RNA", atac_assay = "
   assays <- names(object@assays); if (!rna_assay %in% assays) stop("RNA assay not found: ", rna_assay, call. = FALSE); if (require_atac && !atac_assay %in% assays) stop("ATAC assay not found: ", atac_assay, call. = FALSE)
   rna <- .rc_get_assay_counts(object, rna_assay)
   if (require_raw_counts && is.null(rna)) stop("RNA raw counts could not be extracted.", call. = FALSE)
-  if (require_atac) { atac <- .rc_get_assay_counts(object, atac_assay); if (!identical(colnames(rna), colnames(atac))) stop("RNA and ATAC barcodes must be identical and in the same order.", call. = FALSE) }
+  canonical_cells <- colnames(object)
+  if (!setequal(canonical_cells, colnames(rna))) stop("RNA assay cell set differs from the Seurat object.", call. = FALSE)
+  rna <- rna[, canonical_cells, drop = FALSE]
+  if (require_atac) {
+    atac <- .rc_get_assay_counts(object, atac_assay)
+    if (!setequal(canonical_cells, colnames(atac))) stop("ATAC assay cell set differs from the Seurat object.", call. = FALSE)
+    atac <- atac[, canonical_cells, drop = FALSE]
+    stopifnot(identical(colnames(rna), colnames(atac)))
+  }
   invisible(TRUE)
 }
 .rc_get_assay_counts <- function(object, assay) {
