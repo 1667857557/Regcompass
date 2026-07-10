@@ -105,6 +105,12 @@ rc_build_module_meso_gem <- function(gem,
   sub
 }
 
+.rc_module_id_for_reaction <- function(gem, reaction_id, module_col = "metabolic_module") {
+  map <- rc_reaction_module_map(gem, target_reactions = reaction_id, module_col = module_col)
+  mid <- as.character(map$module_id[match(reaction_id, map$reaction_id)])
+  if (is.na(mid) || !nzchar(mid)) "UNASSIGNED" else mid
+}
+
 #' Check closure diagnostics for targets in a module meso-GEM
 #' @export
 rc_check_module_gem_closure <- function(module_gem, target_reactions, solver = "highs", flux_threshold = 1e-8) {

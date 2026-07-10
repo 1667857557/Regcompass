@@ -32,7 +32,9 @@ rc_compass_score_from_penalty <- function(P, feasible, epsilon = 1e-6) {
     if (!is.finite(sc) || sc <= 0) sc <- epsilon
     z <- (med - x) / (sc + epsilon); score[i, ] <- rc_sigmoid(z)
   }
-  score[!feasible] <- 0; score[!is.finite(score)] <- 0; score
+  score[!feasible] <- NA_real_
+  score[!is.finite(score) & feasible] <- NA_real_
+  score
 }
 
 rc_layer2_unit_matrices <- function(layer1, unit, sample_col, celltype_col, condition_col) {
