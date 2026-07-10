@@ -71,9 +71,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
       force = force_cache
     )
   } else {
-    target_params <- microgem_params
-    target_params$strategy <- NULL
-    mg_cache <- rc_build_microgem_cache(gem = gem, dirs = dirs, medium_scenarios = medium_scenarios, microgem_params = target_params)
+    mg_cache <- rc_build_microgem_cache(gem = gem, dirs = dirs, medium_scenarios = medium_scenarios, microgem_params = microgem_params)
   }
   cache_gem <- function(entry) {
     if (is.list(entry) && !is.null(entry$file)) readRDS(entry$file) else entry

@@ -17,6 +17,16 @@ test_that("micro-GEM auto strategy falls back from target khop to module meso-GE
   expect_equal(mg$build_params$fallback_from, "target_khop")
   expect_equal(mg$target_status, "ok")
   expect_true(isTRUE(mg$closure_diagnostics$strict_target_feasible[[1]]))
+
+  layer1 <- list(
+    C_rel = matrix(1, nrow = 3, ncol = 1, dimnames = list(colnames(S), "u1")),
+    reaction_confidence = matrix(1, nrow = 3, ncol = 1, dimnames = list(colnames(S), "u1")),
+    gpr_diagnostics = NULL,
+    unit_meta = data.frame(pool_id = "u1", unit_id = "u1", sample_id = "s1", condition = "ctrl", cell_type = "T", stringsAsFactors = FALSE)
+  )
+  run <- rc_run_microcompass(layer1, gem, "Rtarget", medium_scenarios = medium, unit = "metacell", target_direction = "forward", parallel = FALSE, microgem_params = list(strategy = "auto", k_hop = 0, module_col = "metabolic_module"))
+  expect_equal(run$microgem_cache_summary$build_strategy, "module_meso_gem")
+  expect_equal(run$microgem_cache_summary$fallback_from, "target_khop")
 })
 
 test_that("strict_closure is enforced for structurally infeasible target micro-GEMs", {
@@ -28,6 +38,7 @@ test_that("strict_closure is enforced for structurally infeasible target micro-G
 test_that("HiGHS numeric status 7 with valid optimal fields is parsed as optimal", {
   res <- list(status = 7L, model_status = "Optimal", objective_value = 1, primal_solution = c(1, 0))
   expect_equal(.rc_highs_status(res, n_variables = 2), "optimal")
+  expect_equal(.rc_highs_status(list(status = "optimal", objective_value = 1, primal_solution = c(1, 0)), n_variables = 2), "optimal")
 })
 
 test_that("infeasible COMPASS scores are NA rather than zero", {
@@ -46,8 +57,27 @@ test_that("single-sample differential output is descriptive-only when strict des
   out <- rc_test_microcompass_differential(result, strict_replicate_design = FALSE)
   expect_true(all(is.na(out$p_value)))
   expect_true(all(is.na(out$FDR)))
+  expect_true("medium_scenario" %in% colnames(out))
+  expect_equal(unique(out$medium_scenario), "base")
   expect_equal(unique(out$model_status), "descriptive_only")
   expect_equal(unique(out$n_biological_samples), 1L)
+})
+
+test_that("strict replicate design is enforced within each cell type", {
+  unit_meta <- rbind(
+    data.frame(unit_id = paste0("T", 1:6), sample_id = paste0("s", 1:6), condition = rep(c("A", "B"), each = 3), cell_type = "T", stringsAsFactors = FALSE),
+    data.frame(unit_id = paste0("B", 1:4), sample_id = paste0("s", 7:10), condition = c("A", "A", "A", "B"), cell_type = "B", stringsAsFactors = FALSE)
+  )
+  result <- list(score = matrix(seq_len(nrow(unit_meta)), nrow = 1, dimnames = list("R1::forward::base", unit_meta$unit_id)), unit_meta = unit_meta)
+  expect_error(rc_test_microcompass_differential(result, method = "lm", min_samples_per_group = 2, strict_replicate_design = TRUE), "within cell type")
+})
+
+test_that("one shared fragment file can be mapped to every sample", {
+  f <- tempfile(fileext = ".tsv.gz")
+  writeLines("chr1\t1\t2\tcell-1\t1", f)
+  manifest <- .rc_normalize_fragment_manifest(f, sample_ids = c("sample1", "sample2"), atac_assay = "ATAC")
+  expect_equal(manifest$sample_id, c("sample1", "sample2"))
+  expect_equal(unique(manifest$fragment_file), f)
 })
 
 test_that("multi-class condition lm uses omnibus test instead of first coefficient", {

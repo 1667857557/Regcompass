@@ -47,7 +47,7 @@ rc_standardize_lp_result <- function(status, objective_value, primal_solution, r
 }
 
 .rc_highs_status <- function(res, n_variables) {
-  text_candidates <- c(res$model_status, res$status_message, res$message)
+  text_candidates <- c(res$model_status, res$status, res$status_message, res$message)
   text_candidates <- as.character(unlist(text_candidates, use.names = FALSE))
   text_candidates <- text_candidates[!is.na(text_candidates) & nzchar(text_candidates)]
   text <- tolower(paste(text_candidates, collapse = " "))

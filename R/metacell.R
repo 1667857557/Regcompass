@@ -502,8 +502,9 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
     out$fragment_file <- as.character(out$fragment_file)
   } else {
     files <- as.character(unlist(fragment_files, use.names = FALSE))
-    if (length(sample_ids) != 1L) stop("Multi-sample input requires a fragment manifest containing sample_id, assay and fragment_file.", call. = FALSE)
-    out <- data.frame(sample_id = sample_ids[[1L]], assay = atac_assay, fragment_file = files, stringsAsFactors = FALSE)
+    files <- files[!is.na(files) & nzchar(files)]
+    if (length(sample_ids) != 1L && length(files) != 1L) stop("Multi-sample input requires a fragment manifest containing sample_id, assay and fragment_file, unless one shared fragment file is supplied for all samples.", call. = FALSE)
+    out <- data.frame(sample_id = if (length(sample_ids) == 1L) sample_ids[[1L]] else sample_ids, assay = atac_assay, fragment_file = if (length(files) == 1L) files[[1L]] else files, stringsAsFactors = FALSE)
   }
   out <- out[!is.na(out$fragment_file) & nzchar(out$fragment_file), , drop = FALSE]
   if (any(!file.exists(out$fragment_file))) stop("One or more fragment files in the manifest do not exist.", call. = FALSE)
@@ -957,7 +958,8 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_manifes
   obj <- if (length(objs) == 1L) objs[[1L]] else Reduce(function(a, b) merge(a, y = b), objs)
   if (!is.null(metacell_meta)) {
     metacell_meta$metacell_id <- as.character(metacell_meta$metacell_id)
-    if (!setequal(colnames(obj), metacell_meta$metacell_id)) stop("Merged metacell object and metacell metadata contain different IDs.", call. = FALSE)
+    if (!all(metacell_meta$metacell_id %in% colnames(obj))) stop("Merged metacell object is missing metacell metadata IDs.", call. = FALSE)
+    if (!setequal(colnames(obj), metacell_meta$metacell_id)) obj <- subset(obj, cells = metacell_meta$metacell_id)
   }
   if (!is.null(fragment_manifest) && is.data.frame(fragment_manifest) && nrow(fragment_manifest)) {
     if (is.null(metacell_meta)) stop("`metacell_meta` is required when registering fragments from a fragment manifest.", call. = FALSE)
@@ -1007,6 +1009,10 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
     options(future.globals.maxSize = future_globals_max_size)
   }
   mc <- rc_make_metacells(object = object, outdir = file.path(outdir, "01_metacells"), sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, state_col = state_col, label_col = label_col, rna_assay = rna_assay, atac_assay = atac_assay, rna_reduction = rna_reduction, atac_reduction = atac_reduction, rna_dims = rna_dims, atac_dims = atac_dims, gamma = gamma, min_cells_per_stratum = min_cells_per_stratum, min_metacell_size = min_metacell_size, min_metacells_per_stratum = min_metacells_per_stratum, adaptive_gamma = adaptive_gamma, fragment_files = fragment_files, fragment_nb_cl = fragment_nb_cl, save_fragments = save_fragments, save_metacell_object = save_metacell_object, save_counts = save_counts, require_fragment_aggregation = require_fragment_aggregation, fragment_aggregation_backend = fragment_aggregation_backend, overwrite = overwrite, BPPARAM = BPPARAM_metacell)
-  metacell_seurat <- rc_load_or_merge_metacell_objects(mc$metacell_objects, fragment_manifest = mc$fragment_manifest, metacell_meta = mc$metacell_meta, fragment_files = mc$fragment_files, rna_assay = rna_assay, atac_assay = atac_assay)
-  do.call(rc_run_layer1_from_metacells, c(list(gpr_table = gpr_table, rna_metacell_counts = mc$rna_counts, atac_metacell_counts = mc$atac_counts, metacell_meta = mc$metacell_meta, metacell_seurat = metacell_seurat, force_metacell_relink = TRUE, allow_supplied_links = FALSE, link_stratum_cols = link_stratum_cols, min_metacells_for_linkpeaks = min_metacells_for_linkpeaks, linkpeaks_args = linkpeaks_args), layer1_args))
+  metacell_meta_for_layer <- mc$metacell_meta_used %||% mc$metacell_meta
+  metacell_seurat <- rc_load_or_merge_metacell_objects(mc$metacell_objects, fragment_manifest = mc$fragment_manifest, metacell_meta = metacell_meta_for_layer, fragment_files = mc$fragment_files, rna_assay = rna_assay, atac_assay = atac_assay)
+  ids <- intersect(colnames(mc$rna_counts), colnames(metacell_seurat))
+  metacell_seurat <- subset(metacell_seurat, cells = ids)
+  metacell_meta_for_layer <- metacell_meta_for_layer[match(ids, as.character(metacell_meta_for_layer$metacell_id)), , drop = FALSE]
+  do.call(rc_run_layer1_from_metacells, c(list(gpr_table = gpr_table, rna_metacell_counts = mc$rna_counts[, ids, drop = FALSE], atac_metacell_counts = mc$atac_counts[, ids, drop = FALSE], metacell_meta = metacell_meta_for_layer, metacell_seurat = metacell_seurat, force_metacell_relink = TRUE, allow_supplied_links = FALSE, link_stratum_cols = link_stratum_cols, min_metacells_for_linkpeaks = min_metacells_for_linkpeaks, linkpeaks_args = linkpeaks_args), layer1_args))
 }

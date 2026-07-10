@@ -47,6 +47,7 @@ rc_describe_microcompass_by_group <- function(result,
       data.frame(
         reaction_id = row_meta$reaction_id[i],
         target_direction = row_meta$target_direction[i],
+        medium_scenario = row_meta$medium_scenario[i],
         cell_type = if (celltype_col %in% colnames(groups)) as.character(groups[[celltype_col]][[g]]) else NA_character_,
         condition = if (condition_col %in% colnames(groups)) as.character(groups[[condition_col]][[g]]) else NA_character_,
         median_score = stats::median(vals, na.rm = TRUE),
@@ -107,13 +108,16 @@ rc_test_microcompass_differential <- function(result,
       return(rc_microcompass_limma(S[, cols, drop = FALSE], meta[cols, , drop = FALSE], row_meta,
                                    formula, sample_col, celltype_col, condition_col,
                                    min_samples_per_group, preferred_min_samples_per_group,
-                                   p_adjust_method, ct, test_type))
+                                   p_adjust_method, ct, test_type, strict_replicate_design))
     }
     rows <- lapply(seq_len(nrow(S)), function(i) {
       df <- data.frame(score = as.numeric(S[i, cols]), meta[cols, , drop = FALSE], stringsAsFactors = FALSE)
       sample_condition_i <- unique(df[, c(sample_col, condition_col), drop = FALSE])
       n_by_group <- table(sample_condition_i[[condition_col]])
       low_power <- length(n_by_group) < 2L || any(n_by_group < min_samples_per_group)
+      if (isTRUE(strict_replicate_design) && isTRUE(low_power)) {
+        stop("Insufficient independent biological samples within cell type `", ct, "`. Metacells are not biological replicates.", call. = FALSE)
+      }
       preferred_low <- length(n_by_group) < 2L || any(n_by_group < preferred_min_samples_per_group)
       fit <- rc_microcompass_fit_one(df, formula, method, condition_col, low_power, test_type = test_type)
       data.frame(
@@ -171,7 +175,8 @@ rc_microcompass_fit_one <- function(df, formula, method, condition_col, low_powe
 
 rc_microcompass_limma <- function(Y, meta, row_meta, formula, sample_col, celltype_col, condition_col,
                                   min_samples_per_group, preferred_min_samples_per_group,
-                                  p_adjust_method, cell_type, test_type = "omnibus") {
+                                  p_adjust_method, cell_type, test_type = "omnibus",
+                                  strict_replicate_design = TRUE) {
   if (!requireNamespace("limma", quietly = TRUE)) {
     return(data.frame(reaction_id = row_meta$reaction_id,
                       target_direction = row_meta$target_direction,
@@ -187,6 +192,9 @@ rc_microcompass_limma <- function(Y, meta, row_meta, formula, sample_col, cellty
   sample_condition <- unique(meta[, c(sample_col, condition_col), drop = FALSE])
   n_by_group <- table(sample_condition[[condition_col]])
   low_power <- length(n_by_group) < 2L || any(n_by_group < min_samples_per_group)
+  if (isTRUE(strict_replicate_design) && isTRUE(low_power)) {
+    stop("Insufficient independent biological samples within cell type `", cell_type, "`. Metacells are not biological replicates.", call. = FALSE)
+  }
   preferred_low <- length(n_by_group) < 2L || any(n_by_group < preferred_min_samples_per_group)
   if (low_power) {
     return(data.frame(reaction_id = row_meta$reaction_id,
