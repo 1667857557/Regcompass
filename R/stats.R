@@ -29,6 +29,42 @@ rc_parse_microcompass_row_id <- function(x) {
   )
 }
 
+rc_describe_microcompass_by_group <- function(result,
+                                             sample_col = "sample_id",
+                                             condition_col = "condition",
+                                             celltype_col = "cell_type") {
+  S <- as.matrix(result$score)
+  meta <- result$unit_meta
+  meta <- meta[match(colnames(S), as.character(meta$unit_id)), , drop = FALSE]
+  parsed <- rc_parse_microcompass_row_id(rownames(S))
+  row_meta <- data.frame(row_id = rownames(S), parsed, stringsAsFactors = FALSE)
+  groups <- unique(meta[, intersect(c(condition_col, celltype_col), colnames(meta)), drop = FALSE])
+  pieces <- lapply(seq_len(nrow(row_meta)), function(i) {
+    do.call(rbind, lapply(seq_len(nrow(groups)), function(g) {
+      keep <- rep(TRUE, nrow(meta))
+      for (nm in colnames(groups)) keep <- keep & as.character(meta[[nm]]) == as.character(groups[[nm]][[g]])
+      vals <- as.numeric(S[i, keep])
+      data.frame(
+        reaction_id = row_meta$reaction_id[i],
+        target_direction = row_meta$target_direction[i],
+        cell_type = if (celltype_col %in% colnames(groups)) as.character(groups[[celltype_col]][[g]]) else NA_character_,
+        condition = if (condition_col %in% colnames(groups)) as.character(groups[[condition_col]][[g]]) else NA_character_,
+        median_score = stats::median(vals, na.rm = TRUE),
+        mean_score = mean(vals, na.rm = TRUE),
+        IQR = stats::IQR(vals, na.rm = TRUE),
+        n_metacells = sum(keep),
+        n_cells = if ("n_cells" %in% colnames(meta)) sum(meta$n_cells[keep], na.rm = TRUE) else NA_real_,
+        n_biological_samples = if (sample_col %in% colnames(meta)) length(unique(meta[[sample_col]][keep])) else NA_integer_,
+        p_value = NA_real_,
+        FDR = NA_real_,
+        model_status = "descriptive_only",
+        stringsAsFactors = FALSE
+      )
+    }))
+  })
+  do.call(rbind, pieces)
+}
+
 #' Test sample-level microCOMPASS differential scores
 #' @export
 rc_test_microcompass_differential <- function(result,
@@ -49,6 +85,16 @@ rc_test_microcompass_differential <- function(result,
   meta <- meta[match(colnames(S), as.character(meta$unit_id)), , drop = FALSE]
   if (anyNA(meta$unit_id)) stop("`result$unit_meta` is missing rows for score matrix columns.", call. = FALSE)
   if (!condition_col %in% colnames(meta)) stop("`condition_col` is missing from `result$unit_meta`.", call. = FALSE)
+  if (!sample_col %in% colnames(meta)) stop("`sample_col` is missing from `result$unit_meta`.", call. = FALSE)
+  sample_condition <- unique(meta[, c(sample_col, condition_col), drop = FALSE])
+  n_samples_by_group <- table(sample_condition[[condition_col]])
+  enough_samples <- length(n_samples_by_group) >= 2L && all(n_samples_by_group >= min_samples_per_group)
+  if (!enough_samples) {
+    if (isTRUE(strict_replicate_design)) {
+      stop("Insufficient independent biological samples. Metacells are not biological replicates.", call. = FALSE)
+    }
+    return(rc_describe_microcompass_by_group(result = result, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col))
+  }
   parsed <- rc_parse_microcompass_row_id(rownames(S))
   row_meta <- data.frame(row_id = rownames(S), parsed, stringsAsFactors = FALSE)
   celltypes <- if (celltype_col %in% colnames(meta)) unique(as.character(meta[[celltype_col]])) else NA_character_
@@ -63,7 +109,8 @@ rc_test_microcompass_differential <- function(result,
     }
     rows <- lapply(seq_len(nrow(S)), function(i) {
       df <- data.frame(score = as.numeric(S[i, cols]), meta[cols, , drop = FALSE], stringsAsFactors = FALSE)
-      n_by_group <- table(df[[condition_col]])
+      sample_condition_i <- unique(df[, c(sample_col, condition_col), drop = FALSE])
+      n_by_group <- table(sample_condition_i[[condition_col]])
       low_power <- length(n_by_group) < 2L || any(n_by_group < min_samples_per_group)
       preferred_low <- length(n_by_group) < 2L || any(n_by_group < preferred_min_samples_per_group)
       fit <- rc_microcompass_fit_one(df, formula, method, condition_col, low_power)
@@ -130,7 +177,8 @@ rc_microcompass_limma <- function(Y, meta, row_meta, formula, sample_col, cellty
                       model_status = "limma package not installed",
                       stringsAsFactors = FALSE))
   }
-  n_by_group <- table(meta[[condition_col]])
+  sample_condition <- unique(meta[, c(sample_col, condition_col), drop = FALSE])
+  n_by_group <- table(sample_condition[[condition_col]])
   low_power <- length(n_by_group) < 2L || any(n_by_group < min_samples_per_group)
   preferred_low <- length(n_by_group) < 2L || any(n_by_group < preferred_min_samples_per_group)
   if (low_power) {
