@@ -51,8 +51,17 @@ rc_run_microcompass <- function(layer1, gem, target_reactions,
     }
     if (!"medium_scenario_id" %in% colnames(medium_scenarios)) medium_scenarios$medium_scenario_id <- "custom"
   }
-  cache_strategy <- microgem_params$strategy %||% "module_meso_gem"
-  if (identical(cache_strategy, "module_meso_gem")) {
+  cache_strategy <- microgem_params$strategy %||% "full_gem"
+  if (identical(cache_strategy, "full_gem")) {
+    full_params <- microgem_params
+    full_params$strategy <- NULL
+    cache_dir <- full_params$cache_dir %||% tempfile("RegCompassR_full_gem_cache_")
+    force_cache <- full_params$force_cache %||% FALSE
+    full_params$cache_dir <- NULL
+    full_params$force_cache <- NULL
+    full_params <- full_params[names(full_params) %in% names(formals(rc_build_full_gem_cache))]
+    mg_cache <- do.call(rc_build_full_gem_cache, c(list(gem = gem, dirs = dirs, medium_scenarios = medium_scenarios, cache_dir = cache_dir, force = force_cache), full_params))
+  } else if (identical(cache_strategy, "module_meso_gem")) {
     module_params <- microgem_params
     module_params$strategy <- NULL
     cache_dir <- module_params$cache_dir %||% tempfile("RegCompassR_module_gem_cache_")

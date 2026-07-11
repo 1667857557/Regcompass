@@ -62,6 +62,9 @@ res <- rc_run_microcompass(
   medium_scenarios = medium,
   unit = "sample_celltype",
   target_direction = "both",
+  # Default: COMPASS-style full GEM per medium scenario.
+  # To opt back into the older module cache, set:
+  # microgem_params = list(strategy = "module_meso_gem"),
   solver = "highs"
 )
 
@@ -86,9 +89,44 @@ rc_export_microcompass(res, "RegCompassR_run")
 | `rc_make_medium_scenarios()` | Build the medium table passed as `medium_scenarios`. |
 | `rc_run_regcompass_multiome_metacell()` | Build metacells, aggregate fragments, recompute LinkPeaks, and return Layer 1. |
 | `rc_select_target_reactions()` | Select Layer 2 target reactions from Layer 1 results. |
-| `rc_run_microcompass()` | Run target-local LP scoring. |
+| `rc_run_microcompass()` | Run COMPASS-style LP scoring; by default it caches one full GEM per medium scenario and maps selected target reactions to that full-model input. |
+| `rc_build_full_gem_cache()` | Optional lower-level helper used by the default `rc_run_microcompass()` strategy (`microgem_params = list(strategy = "full_gem")`). |
+| `rc_build_module_gem_cache()` | Optional lower-level helper for the older module-level strategy (`microgem_params = list(strategy = "module_meso_gem")`). |
 | `rc_test_microcompass_differential()` | Test score differences using `result$unit_meta`. |
 | `rc_export_microcompass()` | Write matrices, diagnostics, and `session_info.txt`. |
+
+## Layer 2 GEM cache strategies
+
+`rc_run_microcompass()` now defaults to a COMPASS-style full-GEM analysis. With
+the default `microgem_params = list()` setting, RegCompassR builds one validated
+full GEM per `medium_scenario_id`, applies the matching medium constraints, and
+uses that complete model when scoring each selected target reaction. This avoids
+selecting reactions by metabolic module unless you explicitly request it.
+
+Use these `microgem_params$strategy` values when you need a different structural
+cache:
+
+| Strategy | Behavior |
+|---|---|
+| `"full_gem"` | Default. Cache the complete GEM per medium scenario, matching standard COMPASS-style full-model LP inputs. |
+| `"module_meso_gem"` | Cache one module-level meso-GEM per module and medium scenario; requires `gem$reaction_meta$metabolic_module` or a custom `module_col`. |
+| `"target_khop"` | Build target-local k-hop micro-GEMs through `rc_build_microgem_cache()`. |
+| `"auto"` | Try target-local k-hop micro-GEMs and fall back to module meso-GEMs when strict closure diagnostics fail. |
+
+For example, to reproduce the previous module-based workflow:
+
+```r
+res_module <- rc_run_microcompass(
+  layer1 = layer1,
+  gem = gem,
+  target_reactions = targets$reaction_id,
+  medium_scenarios = medium,
+  unit = "sample_celltype",
+  target_direction = "both",
+  microgem_params = list(strategy = "module_meso_gem"),
+  solver = "highs"
+)
+```
 
 ## Main outputs
 
