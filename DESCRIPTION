@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Simplified Multiome-Supported Reaction Capacity Potential Analysis
-Version: 1.0.0
+Version: 1.1.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Description: Provides a formal multiome workflow for sample-aware SuperCell RNA+ATAC metacells, metacell fragment aggregation, cell-type-stratified metabolic peak-gene relinking, RNA-GPR reaction capacity, ATAC-supported reaction confidence, and strict cached microCOMPASS scoring.
 License: MIT + file LICENSE

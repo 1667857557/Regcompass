@@ -63,7 +63,8 @@ rc_download_humangem_gpr_table <- function(destdir = tempfile("Human-GEM-"),
                                            gene_format = c("symbol", "ensembl"),
                                            repo_url = "https://github.com/SysBioChalmers/Human-GEM",
                                            overwrite = FALSE,
-                                           quiet = FALSE) {
+                                           quiet = FALSE,
+                                           download_fun = utils::download.file) {
   ref_type <- match.arg(ref_type)
   gene_format <- match.arg(gene_format)
   if (dir.exists(destdir) && length(list.files(destdir, all.files = TRUE, no.. = TRUE)) > 0L && !overwrite) {
@@ -73,23 +74,79 @@ rc_download_humangem_gpr_table <- function(destdir = tempfile("Human-GEM-"),
   dir.create(destdir, recursive = TRUE, showWarnings = FALSE)
 
   archive <- file.path(destdir, paste0("Human-GEM-", ref, ".zip"))
+  part <- paste0(archive, ".part")
   make_url <- function(type) paste0(sub("/$", "", repo_url), "/archive/refs/", type, "/", ref, ".zip")
-  urls <- switch(ref_type, heads = make_url("heads"), tags = make_url("tags"), auto = c(make_url("heads"), make_url("tags")))
+  is_semver <- grepl("^v?[0-9]+\\.[0-9]+\\.[0-9]+([.-].*)?$", ref)
+  candidate_types <- switch(ref_type,
+                            heads = "heads",
+                            tags = "tags",
+                            auto = if (is_semver) c("tags", "heads") else c("heads", "tags"))
+  urls <- vapply(candidate_types, make_url, character(1))
+
+  validate_archive <- function(path) {
+    if (!file.exists(path)) return("file_missing")
+    info <- file.info(path)
+    if (is.na(info$size) || info$size <= 0) return("empty_file")
+    con <- file(path, "rb")
+    on.exit(close(con), add = TRUE)
+    magic <- readBin(con, what = "raw", n = 4L)
+    if (length(magic) < 4L || !identical(magic, charToRaw("PK\003\004"))) return("invalid_zip_magic")
+    listing <- tryCatch(utils::unzip(path, list = TRUE), error = function(e) e)
+    if (inherits(listing, "error")) return(paste0("unzip_list_failed: ", conditionMessage(listing)))
+    files <- gsub("^([^/]+/)", "", as.character(listing$Name))
+    required <- c("model/Human-GEM.yml", "model/genes.tsv", "model/reactions.tsv")
+    missing <- setdiff(required, files)
+    if (length(missing)) return(paste0("missing_model_files: ", paste(missing, collapse = ", ")))
+    "ok"
+  }
+
+  attempts <- vector("list", length(urls))
   archive_url <- NA_character_
-  ok <- FALSE
-  for (u in urls) {
-    if (file.exists(archive)) unlink(archive, force = TRUE)
-    status <- tryCatch({
-      utils::download.file(u, archive, mode = "wb", quiet = quiet)
-      TRUE
-    }, error = function(e) FALSE)
-    if (isTRUE(status) && file.exists(archive) && file.info(archive)$size > 0) {
+  for (i in seq_along(urls)) {
+    u <- urls[[i]]
+    if (file.exists(part)) unlink(part, force = TRUE)
+    warnings <- character()
+    err <- NA_character_
+    status_code <- NA_integer_
+    status_code <- tryCatch(
+      withCallingHandlers(
+        download_fun(u, part, mode = "wb", quiet = quiet),
+        warning = function(w) {
+          warnings <<- c(warnings, conditionMessage(w))
+          invokeRestart("muffleWarning")
+        }
+      ),
+      error = function(e) {
+        err <<- conditionMessage(e)
+        NA_integer_
+      }
+    )
+    if (is.null(status_code)) status_code <- 0L
+    status_ok <- identical(as.integer(status_code), 0L)
+    validation <- if (status_ok) validate_archive(part) else "download_status_nonzero"
+    attempts[[i]] <- data.frame(url = u,
+                                download_status = as.character(status_code),
+                                warning = paste(warnings, collapse = " | "),
+                                error = err,
+                                archive_validation = validation,
+                                stringsAsFactors = FALSE)
+    if (status_ok && identical(validation, "ok")) {
+      if (file.exists(archive)) unlink(archive, force = TRUE)
+      ok <- file.rename(part, archive)
+      if (!ok) {
+        file.copy(part, archive, overwrite = TRUE)
+        unlink(part, force = TRUE)
+      }
       archive_url <- u
-      ok <- TRUE
       break
     }
   }
-  if (!ok) stop("Failed to download Human-GEM archive for ref: ", ref, call. = FALSE)
+  if (file.exists(part)) unlink(part, force = TRUE)
+  diagnostics <- do.call(rbind, attempts[!vapply(attempts, is.null, logical(1))])
+  if (is.na(archive_url)) {
+    lines <- apply(diagnostics, 1L, function(x) paste0("URL=", x[["url"]], "; download_status=", x[["download_status"]], "; warning=", x[["warning"]], "; error=", x[["error"]], "; archive_validation=", x[["archive_validation"]]))
+    stop("Failed to download a valid Human-GEM archive for ref: ", ref, "\n", paste(lines, collapse = "\n"), call. = FALSE)
+  }
   utils::unzip(archive, exdir = destdir)
 
   roots <- list.dirs(destdir, recursive = FALSE, full.names = TRUE)
@@ -103,6 +160,7 @@ rc_download_humangem_gpr_table <- function(destdir = tempfile("Human-GEM-"),
   attr(out, "ref") <- ref
   attr(out, "ref_type") <- ref_type
   attr(out, "archive_url") <- archive_url
+  attr(out, "download_diagnostics") <- diagnostics
   out
 }
 
