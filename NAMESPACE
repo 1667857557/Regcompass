@@ -98,3 +98,5 @@ export(rc_check_module_gem_closure)
 
 export(rc_build_full_gem)
 export(rc_build_full_gem_cache)
+export(rc_filter_pre_metacell_strata)
+export(rc_filter_post_metacell_strata)

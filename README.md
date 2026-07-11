@@ -39,9 +39,10 @@ layer1 <- rc_run_regcompass_multiome_metacell(
   rna_assay = "RNA",
   atac_assay = "ATAC",
   gamma = 100,
+  adaptive_gamma = TRUE,
+  min_cells_pre_metacell = 100,
   min_metacell_size = 20,
-  link_stratum_cols = "cell_type",
-  min_metacells_for_linkpeaks = 10,
+  min_metacells_post_metacell = 10,
   future_plan = "sequential"
 )
 
@@ -94,6 +95,36 @@ rc_export_microcompass(res, "RegCompassR_run")
 | `rc_build_module_gem_cache()` | Optional lower-level helper for the older module-level strategy (`microgem_params = list(strategy = "module_meso_gem")`). |
 | `rc_test_microcompass_differential()` | Test score differences using `result$unit_meta`. |
 | `rc_export_microcompass()` | Write matrices, diagnostics, and `session_info.txt`. |
+
+## Strict metacell strata and LinkPeaks gates
+
+The formal metacell workflow uses one fixed analysis stratum definition for
+metacell construction, post-metacell filtering, and LinkPeaks:
+
+```text
+condition × sample × cell type
+```
+
+Input validation only confirms that required assays, reductions, barcodes, and
+metadata columns are usable. It does not guarantee every stratum has enough data
+for downstream analysis. The workflow applies two auditable hard filters:
+
+1. Before SuperCell, each `condition × sample × cell type` stratum must have at
+   least `min_cells_pre_metacell = 100` original cells. Strata below this
+   threshold are excluded before metacell construction.
+2. After metacell construction, low-power metacells are removed, then each same
+   stratum must have at least `min_metacells_post_metacell = 10` usable
+   metacells. Strata below this threshold are removed from all downstream
+   bundles.
+3. LinkPeaks is recomputed independently within the same strict stratum and uses
+   the same `min_metacells_post_metacell` threshold; any retained stratum with
+   fewer metacells is treated as an internal invariant failure.
+4. Strata excluded by either gate do not enter fragment aggregation, LinkPeaks,
+   Layer 1, or microCOMPASS. Excluded cells/metacells are retained only in QC
+   reports under `00_stratum_qc/`.
+
+`state_col` can be kept in metadata for later summaries, but it does not change
+the formal metacell/LinkPeaks stratum in this workflow.
 
 ## Layer 2 GEM cache strategies
 
