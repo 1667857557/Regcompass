@@ -1202,7 +1202,7 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_manifes
 
 #' Run the formal sample-aware metacell multiome workflow
 #' @export
-rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, label_col = NULL, rna_assay = "RNA", atac_assay = "ATAC", rna_reduction = "pca", atac_reduction = "lsi", rna_dims = 1:30, atac_dims = 2:30, gamma = 100L, adaptive_gamma = TRUE, min_cells_pre_metacell = 100L, min_metacell_size = 20L, min_metacells_post_metacell = 10L, fragment_nb_cl = 1L, require_fragment_aggregation = TRUE, fragment_aggregation_backend = c("regcompass", "supercell", "none"), save_fragments = TRUE, save_metacell_object = TRUE, save_counts = TRUE, overwrite = FALSE, BPPARAM_metacell = FALSE, filter_low_power_metacells = TRUE, linkpeaks_args = list(), layer1_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, min_cells_per_stratum = NULL, min_metacells_per_stratum = NULL, min_metacells_for_linkpeaks = NULL) {
+rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, label_col = NULL, rna_assay = "RNA", atac_assay = "ATAC", rna_reduction = "pca", atac_reduction = "lsi", rna_dims = 1:30, atac_dims = 2:30, gamma = 100L, adaptive_gamma = TRUE, min_cells_pre_metacell = 100L, min_metacell_size = 20L, min_metacells_post_metacell = 10L, fragment_nb_cl = 1L, require_fragment_aggregation = TRUE, fragment_aggregation_backend = c("regcompass", "supercell", "none"), save_fragments = TRUE, save_metacell_object = TRUE, save_counts = TRUE, overwrite = FALSE, BPPARAM_metacell = FALSE, filter_low_power_metacells = NULL, linkpeaks_args = list(), layer1_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, min_cells_per_stratum = NULL, min_metacells_per_stratum = NULL, min_metacells_for_linkpeaks = NULL) {
   fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
   future_plan <- match.arg(future_plan)
   strict_cols <- .rc_strict_stratum_cols(sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col)
@@ -1215,6 +1215,7 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
     min_metacells_post_metacell <- min_metacells_for_linkpeaks
   }
   if (!is.null(min_metacells_per_stratum)) warning("`min_metacells_per_stratum` is deprecated and no longer adds a pre-metacell gamma-based gate.", call. = FALSE)
+  if (!is.null(filter_low_power_metacells)) warning("`filter_low_power_metacells` is deprecated in the formal workflow and no longer affects the post-metacell stratum gate.", call. = FALSE)
   if (!isTRUE(save_metacell_object)) stop("Formal multiome workflow requires `save_metacell_object = TRUE` so retained metacells can be merged for LinkPeaks.", call. = FALSE)
   if (!isTRUE(save_counts)) stop("Formal multiome workflow requires `save_counts = TRUE` so retained metacell count matrices can be filtered and aligned.", call. = FALSE)
   if (isTRUE(require_fragment_aggregation) && !isTRUE(save_fragments)) stop("Formal multiome workflow requires `save_fragments = TRUE` when fragment aggregation is required for LinkPeaks.", call. = FALSE)
@@ -1226,10 +1227,10 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
     future::plan(future::sequential); options(future.globals.maxSize = future_globals_max_size)
   }
   qc_dir <- file.path(outdir, "00_stratum_qc")
-  pre <- rc_filter_pre_metacell_strata(object = object, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, min_cells = min_cells_pre_metacell, gamma = gamma, min_metacell_size = min_metacell_size, target_metacells = min_metacells_post_metacell, adaptive_gamma = adaptive_gamma)
+  pre <- rc_filter_pre_metacell_strata(object = object, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, min_cells = min_cells_pre_metacell)
   rc_write_stratum_filter_reports(pre$diagnostics, pre$excluded_cells, stage = "pre_metacell", outdir = qc_dir)
-  mc_all <- rc_make_metacells(object = pre$object, outdir = file.path(outdir, "01_metacells"), sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, state_col = NULL, label_col = label_col, rna_assay = rna_assay, atac_assay = atac_assay, rna_reduction = rna_reduction, atac_reduction = atac_reduction, rna_dims = rna_dims, atac_dims = atac_dims, gamma = gamma, min_cells_per_stratum = min_cells_pre_metacell, min_metacell_size = min_metacell_size, min_metacells_per_stratum = min_metacells_post_metacell, adaptive_gamma = adaptive_gamma, fragment_files = fragment_files, fragment_nb_cl = fragment_nb_cl, save_fragments = FALSE, save_metacell_object = save_metacell_object, save_counts = save_counts, require_fragment_aggregation = FALSE, fragment_aggregation_backend = "none", overwrite = overwrite, BPPARAM = BPPARAM_metacell, filter_low_power_metacells = FALSE)
-  mc <- rc_filter_post_metacell_strata(mc_all, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, min_metacells = min_metacells_post_metacell, min_metacell_size = min_metacell_size, filter_low_power_metacells = filter_low_power_metacells)
+  mc_all <- rc_make_metacells(object = pre$object, outdir = file.path(outdir, "01_metacells"), sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, state_col = NULL, label_col = label_col, rna_assay = rna_assay, atac_assay = atac_assay, rna_reduction = rna_reduction, atac_reduction = atac_reduction, rna_dims = rna_dims, atac_dims = atac_dims, gamma = gamma, min_cells_per_stratum = min_cells_pre_metacell, min_metacell_size = min_metacell_size, min_metacells_per_stratum = 2L, adaptive_gamma = adaptive_gamma, fragment_files = fragment_files, fragment_nb_cl = fragment_nb_cl, save_fragments = FALSE, save_metacell_object = save_metacell_object, save_counts = save_counts, require_fragment_aggregation = FALSE, fragment_aggregation_backend = "none", overwrite = overwrite, BPPARAM = BPPARAM_metacell, filter_low_power_metacells = FALSE)
+  mc <- rc_filter_post_metacell_strata(mc_all, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, min_metacells = min_metacells_post_metacell)
   rc_write_stratum_filter_reports(mc$post_filter_diagnostics, mc$excluded_post_metacells, stage = "post_metacell", outdir = qc_dir)
   .rc_write_tsv_gz(mc$post_filter_diagnostics[mc$post_filter_diagnostics$eligible, , drop = FALSE], file.path(qc_dir, "retained_final_strata.tsv.gz"))
   if (requireNamespace("yaml", quietly = TRUE)) {
@@ -1244,6 +1245,12 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
     ), file.path(qc_dir, "filtering_summary.yaml"))
   }
   metacell_meta_for_layer <- mc$metacell_meta_used %||% mc$metacell_meta
+  link_ids <- .rc_make_link_stratum_id(metacell_meta_for_layer, strict_cols)
+  link_tab <- table(link_ids)
+  bad_link_strata <- names(link_tab[link_tab < min_metacells_post_metacell])
+  if (length(bad_link_strata)) {
+    stop("Internal invariant failed: post-filtered LinkPeaks strata contain fewer than ", min_metacells_post_metacell, " metacells: ", paste(utils::head(bad_link_strata, 10L), collapse = ", "), call. = FALSE)
+  }
   fragment_manifest_for_layer <- data.frame()
   if (isTRUE(save_fragments) && !identical(fragment_aggregation_backend, "none")) {
     if (is.null(fragment_files)) fragment_files <- .rc_fragment_files_from_atac(pre$object, atac_assay = atac_assay)
@@ -1263,7 +1270,7 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
       mc$fragment_files <- unique(as.character(fragment_manifest_for_layer$fragment_file))
     }
   }
-  metacell_meta_for_layer$link_stratum_id <- .rc_make_link_stratum_id(metacell_meta_for_layer, strict_cols)
+  metacell_meta_for_layer$link_stratum_id <- link_ids
   metacell_seurat <- rc_load_or_merge_metacell_objects(mc$metacell_objects, fragment_manifest = fragment_manifest_for_layer, metacell_meta = metacell_meta_for_layer, fragment_files = mc$fragment_files, rna_assay = rna_assay, atac_assay = atac_assay, require_complete_fragments = require_fragment_aggregation)
   ids <- as.character(metacell_meta_for_layer$metacell_id)
   aligned <- .rc_align_metacell_bundle(mc$rna_counts, metacell_meta_for_layer, mc$atac_counts, metacell_seurat)

@@ -112,13 +112,13 @@ for downstream analysis. The workflow applies two auditable hard filters:
 1. Before SuperCell, each `condition × sample × cell type` stratum must have at
    least `min_cells_pre_metacell = 100` original cells. Strata below this
    threshold are excluded before metacell construction.
-2. After metacell construction, low-power metacells are removed, then each same
-   stratum must have at least `min_metacells_post_metacell = 10` usable
-   metacells. Strata below this threshold are removed from all downstream
-   bundles.
+2. After metacell construction, each same stratum must have at least
+   `min_metacells_post_metacell = 10` actual generated metacells. Strata below
+   this threshold are removed from all downstream bundles.
 3. LinkPeaks is recomputed independently within the same strict stratum and uses
    the same `min_metacells_post_metacell` threshold; any retained stratum with
-   fewer metacells is treated as an internal invariant failure.
+   fewer actual metacells is treated as an internal invariant failure. This
+   threshold is independent of Signac's `min.cells` detection parameter.
 4. Strata excluded by either gate do not enter fragment aggregation, LinkPeaks,
    Layer 1, or microCOMPASS. Excluded cells/metacells are retained only in QC
    reports under `00_stratum_qc/`.
