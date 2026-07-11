@@ -25,8 +25,8 @@ test_that("module meso-GEM max_reactions guard never truncates reactions", {
   expect_true(mg$build_params$max_reactions_exceeded)
 })
 
-test_that("microCOMPASS defaults to module meso-GEM cache strategy", {
+test_that("microCOMPASS defaults to full GEM cache strategy", {
   txt <- paste(deparse(body(rc_run_microcompass)), collapse = "\n")
-  expect_match(txt, 'module_meso_gem', fixed = TRUE)
-  expect_match(txt, 'cache_strategy <- microgem_params$strategy %||% "module_meso_gem"', fixed = TRUE)
+  expect_match(txt, 'full_gem', fixed = TRUE)
+  expect_match(txt, 'cache_strategy <- microgem_params$strategy %||% "full_gem"', fixed = TRUE)
 })

@@ -52,3 +52,58 @@ test_that("Human-GEM YAML parser supports omap/list-prefixed gene_reaction_rule"
   expect_equal(out$reaction_id, "MAR00001")
   expect_equal(out$gpr, "ENSG000001 or ENSG000002")
 })
+
+test_that("Human-GEM downloader prefers tags for semver and validates archives", {
+  skip_if(!nzchar(Sys.which("zip")), "zip command is required to build mock archive")
+  repo <- file.path(tempdir(), paste0("Human-GEM-zip-", Sys.getpid()))
+  model <- file.path(repo, "model")
+  dir.create(model, recursive = TRUE)
+  writeLines(c("genes\tgeneSymbols", "ENSG1\tHK1"), file.path(model, "genes.tsv"))
+  writeLines(c("rxns", "MAR00001"), file.path(model, "reactions.tsv"))
+  writeLines(c("reactions:", "- id: MAR00001", "  - gene_reaction_rule: ENSG1"), file.path(model, "Human-GEM.yml"))
+  zipfile <- tempfile(fileext = ".zip")
+  old <- setwd(dirname(repo)); on.exit(setwd(old), add = TRUE)
+  utils::zip(zipfile, files = basename(repo), flags = "-r9Xq")
+  calls <- character()
+  mock_download <- function(url, destfile, mode, quiet) {
+    calls <<- c(calls, url)
+    if (grepl("/tags/", url)) {
+      file.copy(zipfile, destfile, overwrite = TRUE)
+      return(0L)
+    }
+    warning("404 Not Found")
+    writeLines("<html>not found</html>", destfile)
+    22L
+  }
+
+  out <- rc_download_humangem_gpr_table(destdir = tempfile("hg-dl-"), ref = "v2.0.0", overwrite = TRUE, download_fun = mock_download)
+  expect_match(calls[[1]], "/tags/")
+  expect_equal(attr(out, "download_diagnostics")$archive_validation[[1]], "ok")
+})
+
+test_that("Human-GEM downloader rejects status-zero HTML archives and cleans part files", {
+  mock_download <- function(url, destfile, mode, quiet) {
+    writeLines("<html>not a zip</html>", destfile)
+    0L
+  }
+  dest <- tempfile("hg-dl-bad-")
+  expect_error(
+    rc_download_humangem_gpr_table(destdir = dest, ref = "main", overwrite = TRUE, download_fun = mock_download),
+    "invalid_zip_magic"
+  )
+  expect_false(any(grepl("\\.part$", list.files(dest, full.names = TRUE))))
+})
+
+test_that("Human-GEM downloader uses heads first for branch refs", {
+  mock_download <- function(url, destfile, mode, quiet) {
+    writeLines("not a zip", destfile)
+    1L
+  }
+  dest <- tempfile("hg-dl-branch-")
+  expect_error(rc_download_humangem_gpr_table(destdir = dest, ref = "main", overwrite = TRUE, download_fun = mock_download), "Failed to download")
+  # Error diagnostics should report heads before tags for branch-like refs.
+  err <- tryCatch(rc_download_humangem_gpr_table(destdir = tempfile("hg-dl-branch2-"), ref = "develop", overwrite = TRUE, download_fun = mock_download), error = conditionMessage)
+  urls <- regmatches(err, gregexpr("https?://[^;\\n]+", err))[[1]]
+  expect_match(urls[[1]], "/heads/")
+  expect_match(urls[[2]], "/tags/")
+})
