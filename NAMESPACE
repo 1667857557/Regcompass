@@ -95,3 +95,6 @@ export(rc_reaction_module_map)
 export(rc_build_module_meso_gem)
 export(rc_build_module_gem_cache)
 export(rc_check_module_gem_closure)
+
+export(rc_build_full_gem)
+export(rc_build_full_gem_cache)
