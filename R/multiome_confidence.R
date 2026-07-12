@@ -59,7 +59,7 @@ rc_concordance_null_correct <- function(p_rna, p_atac, unit_meta = NULL, stratum
     e_null[!is.finite(e_null) | n < 1L] <- NA_real_
     denom <- 1 - e_null
     tmp <- sweep(sweep(concord[, cols, drop = FALSE], 1, e_null, "-"), 1, denom, "/")
-    tmp <- pmax(0, pmin(1, tmp))
+    tmp[] <- pmax(0, pmin(1, tmp))
     zero_power <- !is.finite(denom) | denom <= 0
     if (any(zero_power)) tmp[zero_power, ] <- 0
     tmp[!is.finite(tmp)] <- NA_real_

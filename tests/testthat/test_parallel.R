@@ -9,3 +9,7 @@ test_that("rc_default_bpparam can be disabled with worker option", {
   options(RegCompassR.workers = 1)
   expect_null(rc_default_bpparam())
 })
+
+test_that("rc_default_bpparam supports explicit serial backend", {
+  expect_null(rc_default_bpparam(workers = 4, backend = "serial"))
+})

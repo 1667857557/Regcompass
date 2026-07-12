@@ -27,13 +27,32 @@ rc_validate_metacell_inputs <- function(rna_metacell_counts,
   invisible(TRUE)
 }
 
-.rc_make_link_stratum_id <- function(meta, cols) {
+#' Construct RegCompass stratum IDs
+#'
+#' This helper exposes the same `interaction(..., sep = "|", lex.order = TRUE)`
+#' convention used internally for strict strata and LinkPeaks strata.
+#'
+#' @param meta Metadata data frame.
+#' @param cols Metadata columns to combine.
+#' @param sep Separator used between column values.
+#' @return Character vector with one stratum ID per row of `meta`.
+#' @export
+rc_make_stratum_id <- function(meta, cols, sep = "|") {
+  if (!is.data.frame(meta)) stop("`meta` must be a data.frame.", call. = FALSE)
   cols <- cols[!is.null(cols) & !is.na(cols) & nzchar(cols)]
+  if (!length(cols)) stop("`cols` must contain at least one metadata column.", call. = FALSE)
   missing <- setdiff(cols, colnames(meta))
-  if (length(missing)) stop("Missing link stratum columns: ", paste(missing, collapse = ", "), call. = FALSE)
-  bad <- vapply(meta[, cols, drop = FALSE], function(x) anyNA(x) || any(!nzchar(as.character(x))), logical(1))
-  if (any(bad)) stop("Link stratum columns contain missing or empty values: ", paste(cols[bad], collapse = ", "), call. = FALSE)
-  as.character(interaction(meta[, cols, drop = FALSE], sep = "|", drop = TRUE, lex.order = TRUE))
+  if (length(missing)) stop("Missing stratum columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  bad <- vapply(meta[, cols, drop = FALSE], function(x) anyNA(x) || any(!nzchar(trimws(as.character(x)))), logical(1))
+  if (any(bad)) stop("Stratum columns contain missing or empty values: ", paste(cols[bad], collapse = ", "), call. = FALSE)
+  as.character(interaction(meta[, cols, drop = FALSE], sep = sep, drop = TRUE, lex.order = TRUE))
+}
+
+.rc_make_link_stratum_id <- function(meta, cols) {
+  tryCatch(
+    rc_make_stratum_id(meta, cols, sep = "|"),
+    error = function(e) stop(sub("^Missing stratum columns", "Missing link stratum columns", sub("^Stratum columns", "Link stratum columns", conditionMessage(e))), call. = FALSE)
+  )
 }
 
 .rc_align_metacell_bundle <- function(rna_metacell_counts, metacell_meta, atac_metacell_counts = NULL, metacell_seurat = NULL, metacell_id_col = "metacell_id") {
@@ -300,6 +319,7 @@ rc_recompute_metacell_peak_gene_links_by_stratum <- function(metacell_object,
                                                              diagnostics_file = NULL,
                                                              peak_assay = "ATAC",
                                                              expression_assay = "RNA",
+                                                             BPPARAM = NULL,
                                                              ...) {
   on_too_few_metacells <- match.arg(on_too_few_metacells)
   on_linkpeaks_error <- match.arg(on_linkpeaks_error)
@@ -332,35 +352,36 @@ rc_recompute_metacell_peak_gene_links_by_stratum <- function(metacell_object,
       check.names = FALSE
     )
   }
-  diagnostics <- list()
-  links <- lapply(names(strata), function(st) {
+  run_one_stratum <- function(st) {
     cells <- intersect(strata[[st]], colnames(metacell_object))
     if (length(cells) < min_metacells_for_linkpeaks) {
       reason <- paste0("too_few_metacells: ", length(cells), " < ", min_metacells_for_linkpeaks)
       if (identical(on_too_few_metacells, "stop")) stop("Internal invariant failed: retained stratum `", st, "` has fewer than ", min_metacells_for_linkpeaks, " metacells.", call. = FALSE)
-      diagnostics[[st]] <<- diagnostic_row(st, cells, FALSE, "skipped_too_few_metacells", 0L, reason)
-      return(NULL)
+      return(list(link = NULL, diagnostic = diagnostic_row(st, cells, FALSE, "skipped_too_few_metacells", 0L, reason)))
     }
     obj_st <- subset(metacell_object, cells = cells)
     x <- tryCatch(
       rc_recompute_metacell_peak_gene_links(metacell_object = obj_st, gpr_table = gpr_table, metabolic_genes = metabolic_genes, peak_assay = peak_assay, expression_assay = expression_assay, ...),
       error = function(e) {
         if (identical(on_linkpeaks_error, "stop")) stop(e)
-        diagnostics[[st]] <<- diagnostic_row(st, cells, TRUE, "failed", 0L, conditionMessage(e), class(e)[[1L]])
-        NULL
+        structure(list(error = e), class = "rc_linkpeaks_error")
       }
     )
-    if (is.null(x)) return(NULL)
+    if (inherits(x, "rc_linkpeaks_error")) {
+      e <- x$error
+      return(list(link = NULL, diagnostic = diagnostic_row(st, cells, TRUE, "failed", 0L, conditionMessage(e), class(e)[[1L]])))
+    }
     if (nrow(x) == 0L) {
-      diagnostics[[st]] <<- diagnostic_row(st, cells, TRUE, "zero_links", 0L, "LinkPeaks returned no usable metabolic peak-gene links")
-      return(NULL)
+      return(list(link = NULL, diagnostic = diagnostic_row(st, cells, TRUE, "zero_links", 0L, "LinkPeaks returned no usable metabolic peak-gene links")))
     }
     x$link_stratum <- st
     for (col in link_stratum_cols) x[[col]] <- stratum_meta[st, col, drop = TRUE]
     x$n_metacells <- length(cells)
-    diagnostics[[st]] <<- diagnostic_row(st, cells, TRUE, "ok", nrow(x))
-    x
-  })
+    list(link = x, diagnostic = diagnostic_row(st, cells, TRUE, "ok", nrow(x)))
+  }
+  results <- rc_parallel_lapply(names(strata), run_one_stratum, BPPARAM = BPPARAM)
+  diagnostics <- lapply(results, `[[`, "diagnostic")
+  links <- lapply(results, `[[`, "link")
   links <- links[!vapply(links, is.null, logical(1))]
   diag <- if (length(diagnostics)) do.call(rbind, diagnostics) else data.frame(link_stratum = character(), n_metacells = integer(), min_required_metacells = integer(), eligible = logical(), status = character(), n_metabolic_genes_requested = integer(), n_links = integer(), error_class = character(), reason = character())
   rownames(diag) <- NULL
@@ -536,6 +557,57 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
   manifest
 }
 
+.rc_aggregate_fragments_by_stratum <- function(fragment_files,
+                                               membership,
+                                               outdir,
+                                               stratum_cols,
+                                               sample_col = "sample_id",
+                                               atac_assay = "ATAC",
+                                               tmp_root = tempdir(),
+                                               bgzip_path = "bgzip",
+                                               tabix_path = "tabix",
+                                               nb_cl = 1L) {
+  if (!is.data.frame(membership) || !all(c("cell_id", "metacell_id") %in% colnames(membership))) {
+    stop("`membership` must be a data.frame containing cell_id and metacell_id.", call. = FALSE)
+  }
+  stratum_cols <- stratum_cols[!is.null(stratum_cols) & !is.na(stratum_cols) & nzchar(stratum_cols)]
+  missing <- setdiff(c(stratum_cols, sample_col), colnames(membership))
+  if (length(missing)) stop("Membership is missing stratum columns required for fragment aggregation: ", paste(missing, collapse = ", "), call. = FALSE)
+  membership$.rc_fragment_stratum <- rc_make_stratum_id(membership, stratum_cols)
+  input_manifest <- .rc_normalize_fragment_manifest(fragment_files, sample_ids = membership[[sample_col]], atac_assay = atac_assay)
+  if (!nrow(input_manifest)) stop("No fragment files supplied for stratum-wise fragment aggregation.", call. = FALSE)
+  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  pieces <- lapply(split(membership, membership$.rc_fragment_stratum), function(mem_i) {
+    st <- mem_i$.rc_fragment_stratum[[1L]]
+    vals <- mem_i[1, stratum_cols, drop = FALSE]
+    sample_value <- as.character(mem_i[[sample_col]][[1L]])
+    files_i <- input_manifest$fragment_file[input_manifest$sample_id == sample_value & input_manifest$assay == atac_assay]
+    files_i <- unique(as.character(files_i[!is.na(files_i) & nzchar(files_i)]))
+    if (!length(files_i)) stop("No fragment file was mapped to stratum `", st, "` sample `", sample_value, "`.", call. = FALSE)
+    stratum_dir <- file.path(outdir, .rc_safe_path_component(st))
+    manifest_i <- rc_aggregate_fragments_by_membership(
+      fragment_files = files_i,
+      membership = mem_i[, c("cell_id", "metacell_id"), drop = FALSE],
+      outdir = stratum_dir,
+      tmp_root = file.path(tmp_root, .rc_safe_path_component(st)),
+      bgzip_path = bgzip_path,
+      tabix_path = tabix_path,
+      nb_cl = nb_cl
+    )
+    ids_i <- unique(as.character(mem_i$metacell_id))
+    manifest_i <- do.call(rbind, lapply(seq_len(nrow(manifest_i)), function(i) {
+      row <- manifest_i[i, , drop = FALSE]
+      map <- data.frame(object_cell = ids_i, fragment_barcode = ids_i, stringsAsFactors = FALSE)
+      cbind(row, vals[rep(1L, nrow(map)), , drop = FALSE], link_stratum = st, map)
+    }))
+    rownames(manifest_i) <- NULL
+    manifest_i
+  })
+  out <- do.call(rbind, pieces)
+  rownames(out) <- NULL
+  out
+}
+
 .rc_normalize_fragment_manifest <- function(fragment_files, sample_ids, atac_assay = "ATAC") {
   if (is.null(fragment_files)) return(data.frame(sample_id = character(), assay = character(), fragment_file = character(), stringsAsFactors = FALSE))
   sample_ids <- unique(as.character(sample_ids))
@@ -678,8 +750,10 @@ rc_make_supercell2_metacells <- function(object,
                                          require_fragment_aggregation = TRUE,
                                          fragment_aggregation_backend = c("regcompass", "supercell", "none"),
                                          overwrite = FALSE,
-                                         BPPARAM = NULL) {
+                                         BPPARAM = NULL,
+                                         on_stratum_error = c("record", "stop")) {
   fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
+  on_stratum_error <- match.arg(on_stratum_error)
   .rc_require_supercell2()
   if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
   if (is.null(fragment_files)) fragment_files <- .rc_fragment_files_from_atac(object, atac_assay = atac_assay)
@@ -855,8 +929,55 @@ rc_make_supercell2_metacells <- function(object,
     }
     stratum_dir
   }
-  dirs <- unlist(rc_parallel_lapply(names(groups), run_one, BPPARAM = BPPARAM), use.names = FALSE)
-  rc_import_supercell2_metacells(dirs, rna_assay = rna_assay, atac_assay = atac_assay, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, require_fragments = require_fragment_aggregation)
+  stratum_status_row <- function(key, status, output_dir = NA_character_, error = NULL) {
+    cells <- groups[[key]]
+    one_meta <- meta[match(cells, meta$cell_id), , drop = FALSE]
+    vals <- one_meta[1, group_cols, drop = FALSE]
+    target_metacells <- suppressWarnings(floor(length(cells) / as.integer(gamma)))
+    if (!is.finite(target_metacells)) target_metacells <- NA_integer_
+    actual_metacells <- NA_integer_
+    if (!is.na(output_dir)) {
+      mm <- file.path(output_dir, "metacell_metadata.tsv.gz")
+      if (file.exists(mm)) actual_metacells <- tryCatch(nrow(utils::read.delim(gzfile(mm), stringsAsFactors = FALSE)), error = function(e) NA_integer_)
+    }
+    data.frame(
+      stratum_id = key,
+      vals,
+      n_input_cells = length(cells),
+      gamma = as.integer(gamma),
+      target_metacells = as.integer(target_metacells),
+      actual_metacells = as.integer(actual_metacells),
+      status = status,
+      output_dir = output_dir,
+      error_class = if (is.null(error)) NA_character_ else class(error)[[1L]],
+      error_message = if (is.null(error)) NA_character_ else conditionMessage(error),
+      intermediate_files = if (!is.na(output_dir) && dir.exists(output_dir)) length(list.files(output_dir, recursive = TRUE, all.files = FALSE, no.. = TRUE)) else 0L,
+      resumable = TRUE,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }
+  run_one_safe <- function(key) {
+    tryCatch(
+      {
+        out <- run_one(key)
+        list(status = stratum_status_row(key, "ok", output_dir = out), output_dir = out)
+      },
+      error = function(e) {
+        if (identical(on_stratum_error, "stop")) stop(e)
+        list(status = stratum_status_row(key, "failed", error = e), output_dir = NA_character_)
+      }
+    )
+  }
+  results <- rc_parallel_lapply(names(groups), run_one_safe, BPPARAM = BPPARAM)
+  status <- do.call(rbind, lapply(results, `[[`, "status"))
+  .rc_write_tsv_gz(status, file.path(outdir, "metacell_stratum_status.tsv.gz"))
+  dirs <- vapply(results, `[[`, character(1), "output_dir")
+  dirs <- dirs[!is.na(dirs) & nzchar(dirs)]
+  if (!length(dirs)) stop("All metacell strata failed. See metacell_stratum_status.tsv.gz for details.", call. = FALSE)
+  out <- rc_import_supercell2_metacells(dirs, rna_assay = rna_assay, atac_assay = atac_assay, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, require_fragments = require_fragment_aggregation)
+  out$stratum_status <- status
+  out
 }
 
 #' Import saved SuperCell2.0 metacell outputs
@@ -1202,7 +1323,7 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_manifes
 
 #' Run the formal sample-aware metacell multiome workflow
 #' @export
-rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, label_col = NULL, rna_assay = "RNA", atac_assay = "ATAC", rna_reduction = "pca", atac_reduction = "lsi", rna_dims = 1:30, atac_dims = 2:30, gamma = 100L, adaptive_gamma = TRUE, min_cells_pre_metacell = 100L, min_metacell_size = 20L, min_metacells_post_metacell = 10L, fragment_nb_cl = 1L, require_fragment_aggregation = TRUE, fragment_aggregation_backend = c("regcompass", "supercell", "none"), save_fragments = TRUE, save_metacell_object = TRUE, save_counts = TRUE, overwrite = FALSE, BPPARAM_metacell = FALSE, filter_low_power_metacells = NULL, linkpeaks_args = list(), layer1_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, min_cells_per_stratum = NULL, min_metacells_per_stratum = NULL, min_metacells_for_linkpeaks = NULL) {
+rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, label_col = NULL, rna_assay = "RNA", atac_assay = "ATAC", rna_reduction = "pca", atac_reduction = "lsi", rna_dims = 1:30, atac_dims = 2:30, gamma = 100L, adaptive_gamma = TRUE, min_cells_pre_metacell = 100L, min_metacell_size = 20L, min_metacells_post_metacell = 10L, fragment_nb_cl = 1L, require_fragment_aggregation = TRUE, fragment_aggregation_backend = c("regcompass", "supercell", "none"), save_fragments = TRUE, save_metacell_object = TRUE, save_counts = TRUE, overwrite = FALSE, BPPARAM_metacell = FALSE, filter_low_power_metacells = NULL, linkpeaks_args = list(), layer1_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, BPPARAM_linkpeaks = NULL, BPPARAM_layer1 = NULL, BPPARAM_layer2 = NULL, layer2_gem = NULL, layer2_target_reactions = NULL, layer2_args = list(), min_cells_per_stratum = NULL, min_metacells_per_stratum = NULL, min_metacells_for_linkpeaks = NULL) {
   fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
   future_plan <- match.arg(future_plan)
   strict_cols <- .rc_strict_stratum_cols(sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col)
@@ -1256,15 +1377,15 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
     if (is.null(fragment_files)) fragment_files <- .rc_fragment_files_from_atac(pre$object, atac_assay = atac_assay)
     if (isTRUE(require_fragment_aggregation) && is.null(fragment_files)) stop("Formal multiome workflow requires `fragment_files` for deferred metacell fragment aggregation, or a fragment file registered on the ATAC assay.", call. = FALSE)
     if (!is.null(fragment_files) && nrow(mc$membership)) {
-      fragment_manifest_for_layer <- rc_aggregate_fragments_by_membership(fragment_files = fragment_files, membership = mc$membership, outdir = file.path(outdir, "02_metacell_fragments"), nb_cl = max(1L, as.integer(fragment_nb_cl)))
-      input_manifest <- .rc_normalize_fragment_manifest(fragment_files, sample_ids = metacell_meta_for_layer$sample_id, atac_assay = atac_assay)
-      fragment_manifest_for_layer <- do.call(rbind, lapply(seq_len(nrow(fragment_manifest_for_layer)), function(i) {
-        row <- fragment_manifest_for_layer[i, , drop = FALSE]
-        samples <- unique(as.character(input_manifest$sample_id[normalizePath(input_manifest$fragment_file, mustWork = FALSE) == row$input_file[[1L]]]))
-        ids_i <- if (length(samples)) unique(as.character(mc$membership$metacell_id[as.character(mc$membership$sample_id) %in% samples])) else unique(as.character(mc$membership$metacell_id))
-        map <- data.frame(object_cell = ids_i, fragment_barcode = ids_i, stringsAsFactors = FALSE)
-        cbind(row, map)
-      }))
+      fragment_manifest_for_layer <- .rc_aggregate_fragments_by_stratum(
+        fragment_files = fragment_files,
+        membership = mc$membership,
+        outdir = file.path(outdir, "02_metacell_fragments"),
+        stratum_cols = strict_cols,
+        sample_col = sample_col,
+        atac_assay = atac_assay,
+        nb_cl = max(1L, as.integer(fragment_nb_cl))
+      )
       mc$fragment_manifest <- fragment_manifest_for_layer
       mc$fragment_manifest_used <- fragment_manifest_for_layer
       mc$fragment_files <- unique(as.character(fragment_manifest_for_layer$fragment_file))
@@ -1276,8 +1397,10 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
   aligned <- .rc_align_metacell_bundle(mc$rna_counts, metacell_meta_for_layer, mc$atac_counts, metacell_seurat)
   linkpeaks_dir <- file.path(outdir, "03_linkpeaks"); dir.create(linkpeaks_dir, recursive = TRUE, showWarnings = FALSE)
   linkpeaks_args$diagnostics_file <- linkpeaks_args$diagnostics_file %||% file.path(linkpeaks_dir, "linkpeaks_stratum_diagnostics.tsv.gz")
+  linkpeaks_args$BPPARAM <- linkpeaks_args$BPPARAM %||% BPPARAM_linkpeaks
   linkpeaks_args$on_too_few_metacells <- NULL
   linkpeaks_args$on_linkpeaks_error <- NULL
+  layer1_args$BPPARAM <- layer1_args$BPPARAM %||% BPPARAM_layer1
   layer1_args$link_stratum_cols <- NULL
   layer1 <- do.call(rc_run_layer1_from_metacells, c(list(gpr_table = gpr_table, rna_metacell_counts = aligned$rna_metacell_counts[, ids, drop = FALSE], atac_metacell_counts = aligned$atac_metacell_counts[, ids, drop = FALSE], metacell_meta = metacell_meta_for_layer, metacell_seurat = aligned$metacell_seurat, force_metacell_relink = TRUE, allow_supplied_links = FALSE, link_stratum_cols = strict_cols, min_metacells_for_linkpeaks = min_metacells_post_metacell, linkpeaks_args = c(list(on_too_few_metacells = "stop", on_linkpeaks_error = "record"), linkpeaks_args)), layer1_args))
   if (is.data.frame(layer1$metacell_peak_gene_links)) .rc_write_tsv_gz(layer1$metacell_peak_gene_links, file.path(linkpeaks_dir, "peak_gene_links.tsv.gz"))
@@ -1290,5 +1413,23 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
   layer1$strict_stratum_cols <- strict_cols
   layer1$min_cells_pre_metacell <- min_cells_pre_metacell
   layer1$min_metacells_post_metacell <- min_metacells_post_metacell
+  if (!is.null(layer2_gem) || !is.null(layer2_target_reactions)) {
+    if (is.null(layer2_gem) || is.null(layer2_target_reactions)) {
+      stop("Both `layer2_gem` and `layer2_target_reactions` are required to run Layer 2 from `rc_run_regcompass_multiome_metacell()`.", call. = FALSE)
+    }
+    layer2_args$BPPARAM <- layer2_args$BPPARAM %||% BPPARAM_layer2
+    layer2_args$parallel <- layer2_args$parallel %||% TRUE
+    layer2_defaults <- list(
+      layer1 = layer1,
+      gem = layer2_gem,
+      target_reactions = layer2_target_reactions,
+      unit = "metacell",
+      condition_col = condition_col,
+      sample_col = sample_col,
+      celltype_col = celltype_col
+    )
+    layer2_defaults[names(layer2_args)] <- NULL
+    layer1$layer2_microcompass <- do.call(rc_run_microcompass, c(layer2_defaults, layer2_args))
+  }
   layer1
 }

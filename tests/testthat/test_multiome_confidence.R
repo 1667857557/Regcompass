@@ -79,3 +79,48 @@ test_that("rc_gene_confidence can return component diagnostics", {
   expect_equal(out$ra_component, out$components$ra)
   expect_equal(out$det_component, out$components$det)
 })
+
+test_that("rc_concordance_null_correct preserves matrix dimensions", {
+  p_rna <- matrix(
+    c(0, 0.5, 1, NA, 0.2, 0.8),
+    nrow = 3,
+    dimnames = list(paste0("g", 1:3), c("mc1", "mc2"))
+  )
+
+  p_atac <- matrix(
+    c(0, 0.4, 1, NA, 0.3, 0.7),
+    nrow = 3,
+    dimnames = dimnames(p_rna)
+  )
+
+  meta <- data.frame(
+    pool_id = c("mc1", "mc2"),
+    cell_type = "T",
+    stringsAsFactors = FALSE
+  )
+
+  out <- rc_concordance_null_correct(
+    p_rna,
+    p_atac,
+    unit_meta = meta,
+    stratum_col = "cell_type"
+  )
+
+  expect_true(is.matrix(out))
+  expect_identical(dim(out), dim(p_rna))
+  expect_identical(dimnames(out), dimnames(p_rna))
+})
+
+test_that("concordance correction preserves matrix shape across degenerate strata", {
+  p_rna <- matrix(c(NA, 0.5, 0.2, NA, 0.8, 0.8), nrow = 3,
+                  dimnames = list(paste0("g", 1:3), c("mc1", "mc2")))
+  p_atac <- matrix(c(NA, 0.5, 0.3, NA, 0.7, 0.9), nrow = 3,
+                   dimnames = dimnames(p_rna))
+  meta <- data.frame(pool_id = c("mc1", "mc2"), cell_type = c("A", "B"), stringsAsFactors = FALSE)
+
+  out <- rc_concordance_null_correct(p_rna, p_atac, unit_meta = meta, stratum_col = "cell_type")
+
+  expect_true(is.matrix(out))
+  expect_identical(dim(out), dim(p_rna))
+  expect_identical(dimnames(out), dimnames(p_rna))
+})
