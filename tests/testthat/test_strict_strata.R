@@ -83,7 +83,7 @@ test_that("formal workflow encodes requested strict-stratum parallel architectur
   link_txt <- paste(deparse(body(rc_recompute_metacell_peak_gene_links_by_stratum)), collapse = "\n")
 
   expect_match(body_txt, "rc_filter_pre_metacell_strata", fixed = TRUE)
-  expect_match(body_txt, "rc_make_metacells", fixed = TRUE)
+  expect_match(body_txt, "rc_make_supercell2_metacells", fixed = TRUE)
   expect_match(body_txt, ".rc_aggregate_fragments_by_stratum", fixed = TRUE)
   expect_match(body_txt, "stratum_cols = strict_cols", fixed = TRUE)
   expect_match(body_txt, "BPPARAM_linkpeaks", fixed = TRUE)
@@ -92,4 +92,12 @@ test_that("formal workflow encodes requested strict-stratum parallel architectur
   expect_match(body_txt, "BPPARAM_layer2", fixed = TRUE)
   expect_match(link_txt, "rc_parallel_lapply", fixed = TRUE)
   expect_true("BPPARAM" %in% names(formals(rc_recompute_metacell_peak_gene_links_by_stratum)))
+})
+
+
+test_that("deprecated metacell convenience APIs are not exported by current workflow", {
+  expect_false("rc_make_metacells" %in% getNamespaceExports("RegCompassR"))
+  expect_false("rc_import_metacells" %in% getNamespaceExports("RegCompassR"))
+  deprecated_formals <- c("filter_low_power_metacells", "min_cells_per_stratum", "min_metacells_per_stratum", "min_metacells_for_linkpeaks")
+  expect_false(any(deprecated_formals %in% names(formals(rc_run_regcompass_multiome_metacell))))
 })
