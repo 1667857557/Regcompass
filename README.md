@@ -118,7 +118,11 @@ for downstream analysis. The workflow applies two auditable hard filters:
 3. LinkPeaks is recomputed independently within the same strict stratum and uses
    the same `min_metacells_post_metacell` threshold; any retained stratum with
    fewer actual metacells is treated as an internal invariant failure. This
-   threshold is independent of Signac's `min.cells` detection parameter.
+   threshold is independent of Signac's `min.cells` detection parameter. In
+   Signac, `min.cells` is a feature-detection gate for peaks/genes observed in
+   at least that many cells/metacells, so RegCompassR passes `min.cells = 3` by
+   default during metacell LinkPeaks to avoid dropping sparsely detected genes
+   solely because they are present in fewer than 10 metacells.
 4. Strata excluded by either gate do not enter fragment aggregation, LinkPeaks,
    Layer 1, or microCOMPASS. Excluded cells/metacells are retained only in QC
    reports under `00_stratum_qc/`.
