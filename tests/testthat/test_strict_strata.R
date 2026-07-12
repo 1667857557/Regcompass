@@ -77,3 +77,19 @@ test_that("rc_make_stratum_id exposes internal pipe-separated convention", {
   expect_identical(rc_make_stratum_id(meta, c("condition", "sample_id", "cell_type")), c("ctrl|s1|T", "stim|s2|B"))
   expect_identical(rc_make_stratum_id(meta, "cell_type"), c("T", "B"))
 })
+
+test_that("formal workflow encodes requested strict-stratum parallel architecture", {
+  body_txt <- paste(deparse(body(rc_run_regcompass_multiome_metacell)), collapse = "\n")
+  link_txt <- paste(deparse(body(rc_recompute_metacell_peak_gene_links_by_stratum)), collapse = "\n")
+
+  expect_match(body_txt, "rc_filter_pre_metacell_strata", fixed = TRUE)
+  expect_match(body_txt, "rc_make_metacells", fixed = TRUE)
+  expect_match(body_txt, ".rc_aggregate_fragments_by_stratum", fixed = TRUE)
+  expect_match(body_txt, "stratum_cols = strict_cols", fixed = TRUE)
+  expect_match(body_txt, "BPPARAM_linkpeaks", fixed = TRUE)
+  expect_match(body_txt, "BPPARAM_layer1", fixed = TRUE)
+  expect_match(body_txt, "rc_run_microcompass", fixed = TRUE)
+  expect_match(body_txt, "BPPARAM_layer2", fixed = TRUE)
+  expect_match(link_txt, "rc_parallel_lapply", fixed = TRUE)
+  expect_true("BPPARAM" %in% names(formals(rc_recompute_metacell_peak_gene_links_by_stratum)))
+})
