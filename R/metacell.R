@@ -27,13 +27,32 @@ rc_validate_metacell_inputs <- function(rna_metacell_counts,
   invisible(TRUE)
 }
 
-.rc_make_link_stratum_id <- function(meta, cols) {
+#' Construct RegCompass stratum IDs
+#'
+#' This helper exposes the same `interaction(..., sep = "|", lex.order = TRUE)`
+#' convention used internally for strict strata and LinkPeaks strata.
+#'
+#' @param meta Metadata data frame.
+#' @param cols Metadata columns to combine.
+#' @param sep Separator used between column values.
+#' @return Character vector with one stratum ID per row of `meta`.
+#' @export
+rc_make_stratum_id <- function(meta, cols, sep = "|") {
+  if (!is.data.frame(meta)) stop("`meta` must be a data.frame.", call. = FALSE)
   cols <- cols[!is.null(cols) & !is.na(cols) & nzchar(cols)]
+  if (!length(cols)) stop("`cols` must contain at least one metadata column.", call. = FALSE)
   missing <- setdiff(cols, colnames(meta))
-  if (length(missing)) stop("Missing link stratum columns: ", paste(missing, collapse = ", "), call. = FALSE)
-  bad <- vapply(meta[, cols, drop = FALSE], function(x) anyNA(x) || any(!nzchar(as.character(x))), logical(1))
-  if (any(bad)) stop("Link stratum columns contain missing or empty values: ", paste(cols[bad], collapse = ", "), call. = FALSE)
-  as.character(interaction(meta[, cols, drop = FALSE], sep = "|", drop = TRUE, lex.order = TRUE))
+  if (length(missing)) stop("Missing stratum columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  bad <- vapply(meta[, cols, drop = FALSE], function(x) anyNA(x) || any(!nzchar(trimws(as.character(x)))), logical(1))
+  if (any(bad)) stop("Stratum columns contain missing or empty values: ", paste(cols[bad], collapse = ", "), call. = FALSE)
+  as.character(interaction(meta[, cols, drop = FALSE], sep = sep, drop = TRUE, lex.order = TRUE))
+}
+
+.rc_make_link_stratum_id <- function(meta, cols) {
+  tryCatch(
+    rc_make_stratum_id(meta, cols, sep = "|"),
+    error = function(e) stop(sub("^Missing stratum columns", "Missing link stratum columns", sub("^Stratum columns", "Link stratum columns", conditionMessage(e))), call. = FALSE)
+  )
 }
 
 .rc_align_metacell_bundle <- function(rna_metacell_counts, metacell_meta, atac_metacell_counts = NULL, metacell_seurat = NULL, metacell_id_col = "metacell_id") {
@@ -678,8 +697,10 @@ rc_make_supercell2_metacells <- function(object,
                                          require_fragment_aggregation = TRUE,
                                          fragment_aggregation_backend = c("regcompass", "supercell", "none"),
                                          overwrite = FALSE,
-                                         BPPARAM = NULL) {
+                                         BPPARAM = NULL,
+                                         on_stratum_error = c("record", "stop")) {
   fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
+  on_stratum_error <- match.arg(on_stratum_error)
   .rc_require_supercell2()
   if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
   if (is.null(fragment_files)) fragment_files <- .rc_fragment_files_from_atac(object, atac_assay = atac_assay)
@@ -855,8 +876,55 @@ rc_make_supercell2_metacells <- function(object,
     }
     stratum_dir
   }
-  dirs <- unlist(rc_parallel_lapply(names(groups), run_one, BPPARAM = BPPARAM), use.names = FALSE)
-  rc_import_supercell2_metacells(dirs, rna_assay = rna_assay, atac_assay = atac_assay, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, require_fragments = require_fragment_aggregation)
+  stratum_status_row <- function(key, status, output_dir = NA_character_, error = NULL) {
+    cells <- groups[[key]]
+    one_meta <- meta[match(cells, meta$cell_id), , drop = FALSE]
+    vals <- one_meta[1, group_cols, drop = FALSE]
+    target_metacells <- suppressWarnings(floor(length(cells) / as.integer(gamma)))
+    if (!is.finite(target_metacells)) target_metacells <- NA_integer_
+    actual_metacells <- NA_integer_
+    if (!is.na(output_dir)) {
+      mm <- file.path(output_dir, "metacell_metadata.tsv.gz")
+      if (file.exists(mm)) actual_metacells <- tryCatch(nrow(utils::read.delim(gzfile(mm), stringsAsFactors = FALSE)), error = function(e) NA_integer_)
+    }
+    data.frame(
+      stratum_id = key,
+      vals,
+      n_input_cells = length(cells),
+      gamma = as.integer(gamma),
+      target_metacells = as.integer(target_metacells),
+      actual_metacells = as.integer(actual_metacells),
+      status = status,
+      output_dir = output_dir,
+      error_class = if (is.null(error)) NA_character_ else class(error)[[1L]],
+      error_message = if (is.null(error)) NA_character_ else conditionMessage(error),
+      intermediate_files = if (!is.na(output_dir) && dir.exists(output_dir)) length(list.files(output_dir, recursive = TRUE, all.files = FALSE, no.. = TRUE)) else 0L,
+      resumable = TRUE,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  }
+  run_one_safe <- function(key) {
+    tryCatch(
+      {
+        out <- run_one(key)
+        list(status = stratum_status_row(key, "ok", output_dir = out), output_dir = out)
+      },
+      error = function(e) {
+        if (identical(on_stratum_error, "stop")) stop(e)
+        list(status = stratum_status_row(key, "failed", error = e), output_dir = NA_character_)
+      }
+    )
+  }
+  results <- rc_parallel_lapply(names(groups), run_one_safe, BPPARAM = BPPARAM)
+  status <- do.call(rbind, lapply(results, `[[`, "status"))
+  .rc_write_tsv_gz(status, file.path(outdir, "metacell_stratum_status.tsv.gz"))
+  dirs <- vapply(results, `[[`, character(1), "output_dir")
+  dirs <- dirs[!is.na(dirs) & nzchar(dirs)]
+  if (!length(dirs)) stop("All metacell strata failed. See metacell_stratum_status.tsv.gz for details.", call. = FALSE)
+  out <- rc_import_supercell2_metacells(dirs, rna_assay = rna_assay, atac_assay = atac_assay, sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col, require_fragments = require_fragment_aggregation)
+  out$stratum_status <- status
+  out
 }
 
 #' Import saved SuperCell2.0 metacell outputs
