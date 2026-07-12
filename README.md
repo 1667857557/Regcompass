@@ -4,10 +4,13 @@ RegCompassR runs a strict multiome workflow:
 
 ```text
 Seurat RNA+ATAC object
-→ sample-aware metacells and fragments
-→ metacell LinkPeaks
+→ pre-filter condition × sample × cell type strata
+→ build SuperCell2 RNA+ATAC metacells inside each retained stratum
+→ post-filter strata by actual metacell count
+→ aggregate ATAC fragments separately for each retained stratum
+→ recompute stratum-specific metacell LinkPeaks
 → Layer 1 reaction capacity/confidence
-→ strict microCOMPASS
+→ optional strict microCOMPASS / Layer 2 GEM scoring
 ```
 
 ## Minimal example
@@ -28,6 +31,8 @@ gem <- rc_prepare_human2_gem(version = "2.0.0")
 gem <- rc_annotate_reaction_roles(gem, reaction_role_table = reaction_roles)
 medium <- rc_make_medium_scenarios(gem, scenario = "blood_like")
 
+bp <- rc_default_bpparam(workers = 4, backend = "snow")
+
 layer1 <- rc_run_regcompass_multiome_metacell(
   object = object,
   gpr_table = gem$gpr_table,
@@ -43,7 +48,10 @@ layer1 <- rc_run_regcompass_multiome_metacell(
   min_cells_pre_metacell = 100,
   min_metacell_size = 20,
   min_metacells_post_metacell = 10,
-  future_plan = "sequential"
+  future_plan = "sequential",
+  BPPARAM_metacell = FALSE,      # keep SuperCell2/Seurat object work serial by default
+  BPPARAM_linkpeaks = bp,        # LinkPeaks strata can be parallelized
+  BPPARAM_layer1 = bp            # Layer 1 reaction/bootstrap loops can be parallelized
 )
 
 targets <- rc_select_target_reactions(
@@ -66,7 +74,9 @@ res <- rc_run_microcompass(
   # Default: COMPASS-style full GEM per medium scenario.
   # To opt back into the older module cache, set:
   # microgem_params = list(strategy = "module_meso_gem"),
-  solver = "highs"
+  solver = "highs",
+  parallel = TRUE,
+  BPPARAM = bp
 )
 
 stat <- rc_test_microcompass_differential(
@@ -78,7 +88,7 @@ stat <- rc_test_microcompass_differential(
 rc_export_microcompass(res, "RegCompassR_run")
 ```
 
-`fragment_files` may be a single fragment path or a named vector/list such as `list(ATAC = "fragments.tsv.gz")`.
+`fragment_files` may be a single fragment path for one-sample data or a manifest with `sample_id`, `assay`, and `fragment_file` columns for multi-sample data. The formal workflow now aggregates fragments after post-metacell filtering and writes one set of metacell fragment outputs per retained `condition × sample × cell type` stratum.
 
 ## Function checklist
 
@@ -88,9 +98,9 @@ rc_export_microcompass(res, "RegCompassR_run")
 | `rc_prepare_human2_gem()` | Load a pinned Human2 GEM with `gpr_table`. |
 | `rc_annotate_reaction_roles()` | Add reaction roles used by medium and microCOMPASS steps. |
 | `rc_make_medium_scenarios()` | Build the medium table passed as `medium_scenarios`. |
-| `rc_run_regcompass_multiome_metacell()` | Build metacells, aggregate fragments, recompute LinkPeaks, and return Layer 1. |
+| `rc_run_regcompass_multiome_metacell()` | Run the current formal workflow: strict-stratum metacells, post-filtered stratum-wise fragment aggregation, parallelizable metacell LinkPeaks, and Layer 1. It can also run Layer 2 when fixed targets are supplied through `layer2_gem` and `layer2_target_reactions`. |
 | `rc_select_target_reactions()` | Select Layer 2 target reactions from Layer 1 results. |
-| `rc_run_microcompass()` | Run COMPASS-style LP scoring; by default it caches one full GEM per medium scenario and maps selected target reactions to that full-model input. |
+| `rc_run_microcompass()` | Run COMPASS-style LP scoring; by default it caches one full GEM per medium scenario and maps selected target reactions to that full-model input. Use `parallel = TRUE` with `BPPARAM` for GEM task parallelism. |
 | `rc_build_full_gem_cache()` | Optional lower-level helper used by the default `rc_run_microcompass()` strategy (`microgem_params = list(strategy = "full_gem")`). |
 | `rc_build_module_gem_cache()` | Optional lower-level helper for the older module-level strategy (`microgem_params = list(strategy = "module_meso_gem")`). |
 | `rc_test_microcompass_differential()` | Test score differences using `result$unit_meta`. |
@@ -99,7 +109,7 @@ rc_export_microcompass(res, "RegCompassR_run")
 ## Strict metacell strata and LinkPeaks gates
 
 The formal metacell workflow uses one fixed analysis stratum definition for
-metacell construction, post-metacell filtering, and LinkPeaks:
+metacell construction, post-metacell filtering, fragment aggregation, and LinkPeaks:
 
 ```text
 condition × sample × cell type
@@ -115,7 +125,10 @@ for downstream analysis. The workflow applies two auditable hard filters:
 2. After metacell construction, each same stratum must have at least
    `min_metacells_post_metacell = 10` actual generated metacells. Strata below
    this threshold are removed from all downstream bundles.
-3. LinkPeaks is recomputed independently within the same strict stratum and uses
+3. After post-metacell filtering, ATAC fragments are aggregated independently for
+   each retained strict stratum. These metacell fragment files are then registered
+   on the merged metacell Seurat object for Signac.
+4. LinkPeaks is recomputed independently within the same strict stratum and uses
    the same `min_metacells_post_metacell` threshold; any retained stratum with
    fewer actual metacells is treated as an internal invariant failure. This
    threshold is independent of Signac's `min.cells` detection parameter. In
@@ -123,12 +136,16 @@ for downstream analysis. The workflow applies two auditable hard filters:
    at least that many cells/metacells, so RegCompassR passes `min.cells = 3` by
    default during metacell LinkPeaks to avoid dropping sparsely detected genes
    solely because they are present in fewer than 10 metacells.
-4. Strata excluded by either gate do not enter fragment aggregation, LinkPeaks,
+5. Strata excluded by either gate do not enter fragment aggregation, LinkPeaks,
    Layer 1, or microCOMPASS. Excluded cells/metacells are retained only in QC
    reports under `00_stratum_qc/`.
 
 `state_col` can be kept in metadata for later summaries, but it does not change
 the formal metacell/LinkPeaks stratum in this workflow.
+
+## Current API notes
+
+Use the formal entry point `rc_run_regcompass_multiome_metacell()` for new analyses. The older convenience wrappers `rc_make_metacells()` and `rc_import_metacells()` have been removed to avoid conflicting filtering semantics; use `rc_make_supercell2_metacells()` / `rc_import_supercell2_metacells()` only for lower-level debugging or custom workflows. Deprecated aliases such as `min_cells_per_stratum`, `min_metacells_per_stratum`, `min_metacells_for_linkpeaks` on the formal entry point, and `filter_low_power_metacells` are no longer part of the current API.
 
 ## Layer 2 GEM cache strategies
 

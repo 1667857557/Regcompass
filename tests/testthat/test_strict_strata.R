@@ -71,3 +71,33 @@ test_that("formal workflow contains a LinkPeaks stratum invariant before relinki
   expect_match(txt, "post-filtered LinkPeaks strata contain fewer than", fixed = TRUE)
   expect_match(txt, "link_stratum_cols = strict_cols", fixed = TRUE)
 })
+
+test_that("rc_make_stratum_id exposes internal pipe-separated convention", {
+  meta <- data.frame(condition = c("ctrl", "stim"), sample_id = c("s1", "s2"), cell_type = c("T", "B"), stringsAsFactors = FALSE)
+  expect_identical(rc_make_stratum_id(meta, c("condition", "sample_id", "cell_type")), c("ctrl|s1|T", "stim|s2|B"))
+  expect_identical(rc_make_stratum_id(meta, "cell_type"), c("T", "B"))
+})
+
+test_that("formal workflow encodes requested strict-stratum parallel architecture", {
+  body_txt <- paste(deparse(body(rc_run_regcompass_multiome_metacell)), collapse = "\n")
+  link_txt <- paste(deparse(body(rc_recompute_metacell_peak_gene_links_by_stratum)), collapse = "\n")
+
+  expect_match(body_txt, "rc_filter_pre_metacell_strata", fixed = TRUE)
+  expect_match(body_txt, "rc_make_supercell2_metacells", fixed = TRUE)
+  expect_match(body_txt, ".rc_aggregate_fragments_by_stratum", fixed = TRUE)
+  expect_match(body_txt, "stratum_cols = strict_cols", fixed = TRUE)
+  expect_match(body_txt, "BPPARAM_linkpeaks", fixed = TRUE)
+  expect_match(body_txt, "BPPARAM_layer1", fixed = TRUE)
+  expect_match(body_txt, "rc_run_microcompass", fixed = TRUE)
+  expect_match(body_txt, "BPPARAM_layer2", fixed = TRUE)
+  expect_match(link_txt, "rc_parallel_lapply", fixed = TRUE)
+  expect_true("BPPARAM" %in% names(formals(rc_recompute_metacell_peak_gene_links_by_stratum)))
+})
+
+
+test_that("deprecated metacell convenience APIs are not exported by current workflow", {
+  expect_false("rc_make_metacells" %in% getNamespaceExports("RegCompassR"))
+  expect_false("rc_import_metacells" %in% getNamespaceExports("RegCompassR"))
+  deprecated_formals <- c("filter_low_power_metacells", "min_cells_per_stratum", "min_metacells_per_stratum", "min_metacells_for_linkpeaks")
+  expect_false(any(deprecated_formals %in% names(formals(rc_run_regcompass_multiome_metacell))))
+})

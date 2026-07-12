@@ -39,16 +39,24 @@ rc_available_workers <- function(default = 1L) {
 #' sequential execution.
 #'
 #' @param workers Optional worker count. Defaults to option/env/autodetection.
+#' @param backend Parallel backend. `auto` avoids forked multicore workers in
+#' detected containers; `serial` always returns `NULL`.
 #' @return A `BiocParallelParam` object when BiocParallel is installed and more
 #' than one worker is requested; otherwise `NULL` for sequential execution.
 #' @export
-rc_default_bpparam <- function(workers = NULL) {
+rc_default_bpparam <- function(workers = NULL, backend = c("auto", "serial", "snow", "multicore")) {
+  backend <- match.arg(backend)
   if (is.null(workers)) workers <- rc_available_workers(default = 1L)
   workers <- suppressWarnings(as.integer(workers[[1L]]))
-  if (is.na(workers) || workers < 2L) return(NULL)
+  if (is.na(workers) || workers < 2L || identical(backend, "serial")) return(NULL)
   if (!requireNamespace("BiocParallel", quietly = TRUE)) return(NULL)
 
-  if (.Platform$OS.type == "windows") {
+  if (identical(backend, "auto")) {
+    in_container <- nzchar(Sys.getenv("CONTAINER")) || file.exists("/.dockerenv")
+    backend <- if (.Platform$OS.type == "windows" || in_container) "snow" else "multicore"
+  }
+
+  if (identical(backend, "snow")) {
     BiocParallel::SnowParam(workers = workers, type = "SOCK")
   } else {
     BiocParallel::MulticoreParam(workers = workers)
