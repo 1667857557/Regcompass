@@ -71,3 +71,9 @@ test_that("formal workflow contains a LinkPeaks stratum invariant before relinki
   expect_match(txt, "post-filtered LinkPeaks strata contain fewer than", fixed = TRUE)
   expect_match(txt, "link_stratum_cols = strict_cols", fixed = TRUE)
 })
+
+test_that("rc_make_stratum_id exposes internal pipe-separated convention", {
+  meta <- data.frame(condition = c("ctrl", "stim"), sample_id = c("s1", "s2"), cell_type = c("T", "B"), stringsAsFactors = FALSE)
+  expect_identical(rc_make_stratum_id(meta, c("condition", "sample_id", "cell_type")), c("ctrl|s1|T", "stim|s2|B"))
+  expect_identical(rc_make_stratum_id(meta, "cell_type"), c("T", "B"))
+})
