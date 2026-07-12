@@ -10,7 +10,7 @@ Seurat RNA+ATAC object
 → aggregate ATAC fragments separately for each retained stratum
 → recompute stratum-specific metacell LinkPeaks
 → Layer 1 reaction capacity/confidence
-→ optional strict microCOMPASS / Layer 2 GEM scoring
+→ Layer 2 GEM scoring
 ```
 
 ## Minimal example
@@ -43,10 +43,10 @@ layer1 <- rc_run_regcompass_multiome_metacell(
   celltype_col = "cell_type",
   rna_assay = "RNA",
   atac_assay = "ATAC",
-  gamma = 100,
+  gamma = 150,
   adaptive_gamma = TRUE,
   min_cells_pre_metacell = 100,
-  min_metacell_size = 20,
+  min_metacell_size = 10,
   min_metacells_post_metacell = 10,
   future_plan = "sequential",
   BPPARAM_metacell = FALSE,      # keep SuperCell2/Seurat object work serial by default
@@ -59,7 +59,7 @@ targets <- rc_select_target_reactions(
   method = "balanced_top_capacity",
   selection_mode = "balanced_rank",
   group_cols = c("condition", "cell_type"),
-  top_n = 500,
+  top_n = 100,
   min_C_rel = 0.15,
   min_confidence = 0.25
 )
@@ -72,8 +72,6 @@ res <- rc_run_microcompass(
   unit = "sample_celltype",
   target_direction = "both",
   # Default: COMPASS-style full GEM per medium scenario.
-  # To opt back into the older module cache, set:
-  # microgem_params = list(strategy = "module_meso_gem"),
   solver = "highs",
   parallel = TRUE,
   BPPARAM = bp
