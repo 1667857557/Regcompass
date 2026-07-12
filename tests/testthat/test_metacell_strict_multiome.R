@@ -32,6 +32,11 @@ test_that("rc_logcpm handles sparse dgCMatrix", {
   expect_s4_class(rc_logcpm(m), "dgCMatrix")
 })
 
+
+test_that("metacell LinkPeaks lowers Signac detection gate to three metacells by default", {
+  expect_identical(formals(rc_recompute_metacell_peak_gene_links)$min_cells, 3)
+})
+
 test_that("metacell LinkPeaks requires fragments", {
   skip_if_not_installed("SeuratObject")
   skip_if_not_installed("Signac")
