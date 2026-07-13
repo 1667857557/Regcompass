@@ -1,8 +1,8 @@
 Package: RegCompassR
-Title: Simplified Multiome-Supported Reaction Capacity Potential Analysis
-Version: 1.1.0
+Title: Multiome-Supported Reaction Capacity and GRN Meta-Module Analysis
+Version: 1.2.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
-Description: Provides a formal multiome workflow for sample-aware SuperCell RNA+ATAC metacells, metacell fragment aggregation, cell-type-stratified metabolic peak-gene relinking, RNA-GPR reaction capacity, ATAC-supported reaction confidence, and strict cached microCOMPASS scoring.
+Description: Provides a formal multiome workflow for sample-aware SuperCell RNA+ATAC metacells, metacell fragment aggregation, cell-type-stratified metabolic peak-gene relinking, RNA-GPR reaction capacity, ATAC-supported reaction confidence, sample-specific Pando gene-regulatory networks, GRN-defined reaction meta-modules, and cached microCOMPASS scoring.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -14,8 +14,9 @@ Imports:
     SeuratObject (>= 4.0.0)
 Suggests:
     BiocParallel,
-    Seurat (>= 4.0.0),
-    Signac,
+    Seurat (>= 4.4.0),
+    Signac (>= 1.11.0),
+    Pando (>= 1.1.1),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     SuperCell,
@@ -29,4 +30,5 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@supercell-2.0
+    1667857557/SuperCell_Seurat_V4@supercell-2.0,
+    1667857557/Pando_regcompass@1b5f759a36630ec34d66f995906b20496a79689c
