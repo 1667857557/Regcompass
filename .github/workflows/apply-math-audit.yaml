@@ -1,6 +1,9 @@
 name: Apply mathematical audit patch
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - agent/math-biology-audit-v13
@@ -10,7 +13,7 @@ permissions:
 
 jobs:
   apply:
-    if: ${{ !contains(github.event.head_commit.message, '[math-audit-applied]') }}
+    if: ${{ !contains(github.event.head_commit.message || '', '[math-audit-applied]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out audit branch
