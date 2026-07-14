@@ -6,35 +6,32 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  apply-followup:
-    if: ${{ !contains(github.event.head_commit.message || '', '[math-followup-applied]') }}
+  build-followup:
     runs-on: ubuntu-latest
     steps:
       - name: Check out audit branch
         uses: actions/checkout@v7
         with:
           ref: agent/math-biology-audit-v13
-          fetch-depth: 0
 
       - name: Apply follow-up corrections
         run: python3 tools/apply_math_followup.py
 
-      - name: Remove transient script and restore workflows
+      - name: Archive corrected files
         shell: bash
         run: |
-          rm -f tools/apply_math_followup.py
-          git checkout origin/agent/math-biology-audit-v13 -- .github/workflows
+          mkdir -p math-followup/R math-followup/tests/testthat
+          cp R/stats.R math-followup/R/stats.R
+          cp R/microcompass.R math-followup/R/microcompass.R
+          cp tests/testthat/test_math_biology_audit_v13.R math-followup/tests/testthat/test_math_biology_audit_v13.R
 
-      - name: Commit and push follow-up
-        shell: bash
-        run: |
-          set -euo pipefail
-          git config user.name "RegCompass audit bot"
-          git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "Preserve covariate types and filter blocked full-GEM targets [math-followup-applied]"
-          git push origin HEAD:agent/math-biology-audit-v13
+      - name: Upload corrected files
+        uses: actions/upload-artifact@v4
+        with:
+          name: math-audit-followup-files
+          path: math-followup
+          if-no-files-found: error
+          retention-days: 7
