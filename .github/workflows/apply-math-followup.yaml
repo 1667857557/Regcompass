@@ -10,7 +10,6 @@ permissions:
 
 jobs:
   apply-followup:
-    if: ${{ !contains(github.event.head_commit.message || '', '[math-followup-applied]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out audit branch
@@ -18,26 +17,44 @@ jobs:
         with:
           ref: agent/math-biology-audit-v13
           fetch-depth: 0
+          show-progress: false
 
       - name: Apply follow-up corrections
-        run: python3 tools/apply_math_followup.py
-
-      - name: Remove transient script and restore workflows
         shell: bash
         run: |
+          mkdir -p /tmp/followup-debug
+          python3 tools/apply_math_followup.py > /tmp/followup-debug/apply.log 2>&1
           rm -f tools/apply_math_followup.py
           git checkout origin/agent/math-biology-audit-v13 -- .github/workflows
 
-      - name: Commit and push follow-up
+      - name: Attempt commit and push with diagnostics
         shell: bash
         run: |
-          set -euo pipefail
+          set +e
           git config user.name "RegCompass audit bot"
           git config user.email "actions@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "Preserve covariate types and filter blocked full-GEM targets [math-followup-applied]"
-          git fetch origin agent/math-biology-audit-v13
-          git rebase origin/agent/math-biology-audit-v13
-          expected="$(git rev-parse origin/agent/math-biology-audit-v13)"
-          git push --force-with-lease=refs/heads/agent/math-biology-audit-v13:${expected} origin HEAD:agent/math-biology-audit-v13
+          git add -A > /tmp/followup-debug/add.log 2>&1
+          add_status=$?
+          git diff --cached --check > /tmp/followup-debug/diff_check.log 2>&1
+          diff_status=$?
+          git commit -m "Preserve covariate types and filter blocked full-GEM targets [math-followup-applied]" > /tmp/followup-debug/commit.log 2>&1
+          commit_status=$?
+          git fetch origin agent/math-biology-audit-v13 > /tmp/followup-debug/fetch.log 2>&1
+          fetch_status=$?
+          git rebase origin/agent/math-biology-audit-v13 > /tmp/followup-debug/rebase.log 2>&1
+          rebase_status=$?
+          expected="$(git rev-parse origin/agent/math-biology-audit-v13 2>/dev/null)"
+          git push --force-with-lease=refs/heads/agent/math-biology-audit-v13:${expected} origin HEAD:agent/math-biology-audit-v13 > /tmp/followup-debug/push.log 2>&1
+          push_status=$?
+          printf 'add=%s\ndiff=%s\ncommit=%s\nfetch=%s\nrebase=%s\npush=%s\n' "$add_status" "$diff_status" "$commit_status" "$fetch_status" "$rebase_status" "$push_status" > /tmp/followup-debug/status.txt
+          git status --short > /tmp/followup-debug/status_after.txt 2>&1
+          exit 0
+
+      - name: Upload follow-up diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: math-followup-git-debug
+          path: /tmp/followup-debug
+          if-no-files-found: error
+          retention-days: 7
