@@ -34,7 +34,7 @@ jobs:
           set -euo pipefail
           git config user.name "RegCompass audit bot"
           git config user.email "actions@users.noreply.github.com"
-          git add R/stats.R R/microcompass.R tests/testthat/test_math_biology_audit_v13.R tools/apply_math_followup.py
+          git add -A
           git diff --cached --check
           git commit -m "Preserve covariate types and filter blocked full-GEM targets [math-followup-applied]"
           git push origin HEAD:agent/math-biology-audit-v13
