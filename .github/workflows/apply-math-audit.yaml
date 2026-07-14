@@ -23,21 +23,33 @@ jobs:
           fetch-depth: 0
 
       - name: Decode and apply patch
-        id: apply_patch
         shell: bash
         run: |
           set +e
           mkdir -p audit-apply
-          base64 --decode tools/apply_math_audit.py.gz.b64 | gzip --decompress > /tmp/apply_math_audit.py
-          python3 -m py_compile /tmp/apply_math_audit.py > audit-apply/py_compile.log 2>&1
-          compile_status=$?
+          cat tools/math_audit_parts/part_* > /tmp/apply_math_audit.py.gz.b64
+          echo "0616b70f00a1b773ee90b0486d33cf2b967dedbcb33cbbfcc78eb072e5ed209b  /tmp/apply_math_audit.py.gz.b64" | sha256sum --check - > audit-apply/payload_checksum.log 2>&1
+          checksum_status=$?
+          if [ "$checksum_status" -eq 0 ]; then
+            base64 --decode /tmp/apply_math_audit.py.gz.b64 | gzip --decompress > /tmp/apply_math_audit.py
+            echo "3bff76c96661d5a3d402992a564c9e7370d9c71338405de53954793a01487c73  /tmp/apply_math_audit.py" | sha256sum --check - > audit-apply/script_checksum.log 2>&1
+            script_checksum_status=$?
+          else
+            script_checksum_status=$checksum_status
+          fi
+          if [ "$script_checksum_status" -eq 0 ]; then
+            python3 -m py_compile /tmp/apply_math_audit.py > audit-apply/py_compile.log 2>&1
+            compile_status=$?
+          else
+            compile_status=$script_checksum_status
+          fi
           if [ "$compile_status" -eq 0 ]; then
             python3 /tmp/apply_math_audit.py > audit-apply/apply.log 2>&1
             apply_status=$?
           else
             apply_status=$compile_status
           fi
-          cp /tmp/apply_math_audit.py audit-apply/apply_math_audit.py
+          cp /tmp/apply_math_audit.py audit-apply/apply_math_audit.py 2>/dev/null || true
           git status --short > audit-apply/git_status.txt
           echo "$apply_status" > audit-apply/status.txt
           cat audit-apply/apply.log 2>/dev/null || true
@@ -58,12 +70,14 @@ jobs:
         run: |
           test "$(cat audit-apply/status.txt)" = "0" || exit 0
           rm -f tools/apply_math_audit.py.gz.b64
+          rm -rf tools/math_audit_parts
           rm -f .github/workflows/apply-math-audit.yaml
+          rm -rf audit-apply
 
       - name: Commit audited implementation
         shell: bash
         run: |
-          test "$(cat audit-apply/status.txt)" = "0"
+          test "$(cat audit-apply/status.txt 2>/dev/null || echo 0)" = "0"
           git config user.name "RegCompass audit bot"
           git config user.email "actions@users.noreply.github.com"
           git add -A
