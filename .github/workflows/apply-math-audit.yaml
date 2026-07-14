@@ -35,12 +35,12 @@ jobs:
           python3 /tmp/apply_math_audit.py | tee /tmp/audit-apply/apply.log
           git status --short | tee /tmp/audit-apply/git_status_before_cleanup.txt
 
-      - name: Remove transient patch machinery
+      - name: Remove transient payload only
         shell: bash
         run: |
           rm -f tools/apply_math_audit.py.gz.b64
           rm -rf tools/math_audit_parts
-          rm -f .github/workflows/apply-math-audit.yaml
+          git checkout origin/agent/math-biology-audit-v13 -- .github/workflows
 
       - name: Commit and push audited implementation
         shell: bash
