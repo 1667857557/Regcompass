@@ -1,0 +1,40 @@
+name: Apply mathematical audit follow-up
+
+on:
+  pull_request:
+    branches:
+      - main
+
+permissions:
+  contents: write
+
+jobs:
+  apply-followup:
+    if: ${{ !contains(github.event.head_commit.message || '', '[math-followup-applied]') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out audit branch
+        uses: actions/checkout@v7
+        with:
+          ref: agent/math-biology-audit-v13
+          fetch-depth: 0
+
+      - name: Apply follow-up corrections
+        run: python3 tools/apply_math_followup.py
+
+      - name: Remove transient script and restore workflows
+        shell: bash
+        run: |
+          rm -f tools/apply_math_followup.py
+          git checkout origin/agent/math-biology-audit-v13 -- .github/workflows
+
+      - name: Commit and push follow-up
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "RegCompass audit bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add R/stats.R R/microcompass.R tests/testthat/test_math_biology_audit_v13.R tools/apply_math_followup.py
+          git diff --cached --check
+          git commit -m "Preserve covariate types and filter blocked full-GEM targets [math-followup-applied]"
+          git push origin HEAD:agent/math-biology-audit-v13
