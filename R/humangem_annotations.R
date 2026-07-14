@@ -7,11 +7,6 @@
   out
 }
 
-.rc_first_existing_col <- function(df, candidates) {
-  hit <- intersect(candidates, colnames(df))[1]
-  if (is.na(hit)) NULL else hit
-}
-
 #' Enrich Human-GEM metadata with module, equation, reversibility, and compartment annotations
 #' @export
 rc_enrich_humangem_metadata <- function(gem, reactions_tsv = NULL, metabolites_tsv = NULL) {

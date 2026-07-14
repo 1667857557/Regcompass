@@ -23,13 +23,21 @@ jobs:
           r-version: release
           use-public-rspm: true
 
-      - name: Install focused test dependencies
+      - name: Set up focused R dependencies
+        uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: |
+            any::testthat
+            any::highs
+          cache-version: function-audit-v2
+
+      - name: Verify focused dependencies
         shell: Rscript {0}
         run: |
-          install.packages(
-            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs"),
-            repos = "https://cloud.r-project.org"
-          )
+          required <- c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs")
+          missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]
+          if (length(missing)) stop("Missing focused dependencies: ", paste(missing, collapse = ", "))
 
       - name: Parse package and test sources
         shell: Rscript {0}
@@ -73,9 +81,7 @@ jobs:
           }
           inventory <- if (length(rows)) do.call(rbind, rows) else data.frame()
           utils::write.csv(inventory, "audit/function_inventory.csv", row.names = FALSE)
-          usage <- utils::capture.output(
-            try(codetools::checkUsagePackage("RegCompassR"), silent = TRUE)
-          )
+          usage <- utils::capture.output(codetools::checkUsagePackage("RegCompassR"))
           writeLines(usage, "audit/codetools_usage.txt")
           writeLines(
             c(
@@ -104,6 +110,12 @@ jobs:
           )
           testthat::test_file(
             "tests/testthat/test_v13_integration.R",
+            reporter = "summary",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
+          )
+          testthat::test_file(
+            "tests/testthat/test_function_audit_v13.R",
             reporter = "summary",
             stop_on_failure = TRUE,
             stop_on_warning = FALSE
