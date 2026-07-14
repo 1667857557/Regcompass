@@ -79,7 +79,9 @@ jobs:
           }
           inventory <- if (length(rows)) do.call(rbind, rows) else data.frame()
           utils::write.csv(inventory, "audit/function_inventory.csv", row.names = FALSE)
-          usage <- utils::capture.output(codetools::checkUsagePackage("RegCompassR"))
+          usage <- utils::capture.output(
+            try(codetools::checkUsagePackage("RegCompassR"), silent = TRUE)
+          )
           writeLines(usage, "audit/codetools_usage.txt")
           writeLines(
             c(
