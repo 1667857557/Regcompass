@@ -6,32 +6,38 @@ on:
       - main
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  build-followup:
+  apply-followup:
+    if: ${{ !contains(github.event.head_commit.message || '', '[math-followup-applied]') }}
     runs-on: ubuntu-latest
     steps:
       - name: Check out audit branch
         uses: actions/checkout@v7
         with:
           ref: agent/math-biology-audit-v13
+          fetch-depth: 0
 
       - name: Apply follow-up corrections
         run: python3 tools/apply_math_followup.py
 
-      - name: Archive corrected files
+      - name: Remove transient script and restore workflows
         shell: bash
         run: |
-          mkdir -p math-followup/R math-followup/tests/testthat
-          cp R/stats.R math-followup/R/stats.R
-          cp R/microcompass.R math-followup/R/microcompass.R
-          cp tests/testthat/test_math_biology_audit_v13.R math-followup/tests/testthat/test_math_biology_audit_v13.R
+          rm -f tools/apply_math_followup.py
+          git checkout origin/agent/math-biology-audit-v13 -- .github/workflows
 
-      - name: Upload corrected files
-        uses: actions/upload-artifact@v4
-        with:
-          name: math-audit-followup-files
-          path: math-followup
-          if-no-files-found: error
-          retention-days: 7
+      - name: Commit and push follow-up
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "RegCompass audit bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Preserve covariate types and filter blocked full-GEM targets [math-followup-applied]"
+          git fetch origin agent/math-biology-audit-v13
+          git rebase origin/agent/math-biology-audit-v13
+          expected="$(git rev-parse origin/agent/math-biology-audit-v13)"
+          git push --force-with-lease=refs/heads/agent/math-biology-audit-v13:${expected} origin HEAD:agent/math-biology-audit-v13
