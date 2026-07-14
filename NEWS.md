@@ -14,7 +14,7 @@
 
 ## Compatibility
 
-- Pins the Seurat 4-compatible Pando fork at commit `1b5f759a36630ec34d66f995906b20496a79689c`.
+- Requires the Seurat 4-compatible Pando fork from `1667857557/Pando_regcompass` without pinning a package version or commit SHA.
 - Keeps the existing Layer 1 capacity/confidence calculation and all existing microCOMPASS cache strategies available.
 
 # RegCompassR 1.1.0

@@ -181,10 +181,6 @@ rc_run_pando_meta_modules <- function(metacell_object,
                                       single_cell_genes = NULL,
                                       rna_assay = "RNA",
                                       atac_assay = "ATAC",
-                                      pando_version = NULL,
-                                      pando_remote_username = "1667857557",
-                                      pando_remote_repo = "Pando_regcompass",
-                                      require_pando_remote = TRUE,
                                       min_metacells = 20L,
                                       pando_initiate_args = list(exclude_exons = TRUE),
                                       pando_motif_args = list(),
@@ -207,12 +203,7 @@ rc_run_pando_meta_modules <- function(metacell_object,
   on_sample_error <- match.arg(on_sample_error)
   if (!inherits(metacell_object, "Seurat")) stop("`metacell_object` must inherit from Seurat.", call. = FALSE)
   if (!requireNamespace("Pando", quietly = TRUE)) stop("Install the pinned Pando fork before running v1.2 meta-modules.", call. = FALSE)
-  pando_install <- .rc_validate_pando_install(
-    pando_version = pando_version,
-    pando_remote_username = pando_remote_username,
-    pando_remote_repo = pando_remote_repo,
-    require_pando_remote = require_pando_remote
-  )
+  pando_install <- .rc_validate_pando_repository()
   installed <- pando_install$version
   if (!requireNamespace("Seurat", quietly = TRUE) || !requireNamespace("Signac", quietly = TRUE)) {
     stop("Packages 'Seurat' and 'Signac' are required.", call. = FALSE)
@@ -312,7 +303,7 @@ rc_run_pando_meta_modules <- function(metacell_object,
   .rc_mm_write_tsv_gz(expanded$summary, file.path(outdir, "meta_module_summary.tsv.gz"))
 
   out <- list(schema_version = "regcompass_pando_meta_module_v1.2",
-              pando_version = installed,
+              pando_installed_version = installed,
               pando_remote_username = pando_install$remote_username,
               pando_remote_repo = pando_install$remote_repo,
               pando_remote_ref = pando_install$remote_ref,
