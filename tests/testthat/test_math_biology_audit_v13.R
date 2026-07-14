@@ -76,3 +76,35 @@ test_that("multiome penalty uses active role and GPR parameters", {
   expect_gt(out$penalty["R", "u"], -log(0.5))
   expect_match(out$evidence_policy, "not the original COMPASS")
 })
+
+test_that("sample aggregation preserves continuous covariate classes", {
+  score <- matrix(1:8, nrow = 1,
+                  dimnames = list("R::forward::medium=base", paste0("u", 1:8)))
+  meta <- data.frame(
+    unit_id = paste0("u", 1:8),
+    sample_id = rep(c("S1", "S2", "S3", "S4"), each = 2),
+    condition = rep(c("A", "A", "B", "B"), each = 2),
+    age = rep(c(30, 40, 50, 60), each = 2),
+    stringsAsFactors = FALSE
+  )
+  out <- .rc_aggregate_microcompass_samples(
+    score, meta, "sample_id", "condition", covariates = "age"
+  )
+  expect_true(is.numeric(out$meta$age))
+  expect_equal(out$meta$age, c(30, 40, 50, 60))
+})
+
+test_that("blocked full-GEM directions are retained only as diagnostics", {
+  S <- matrix(0, nrow = 1, ncol = 2,
+              dimnames = list("m", c("blocked", "open")))
+  gem <- rc_make_gem(S, lb = c(blocked = 0, open = 0),
+                     ub = c(blocked = 0, open = 10))
+  directions <- rc_prepare_directional_targets(
+    gem, c("blocked", "open"), target_direction = "both"
+  )
+  allowed <- directions[directions$target_direction %in% c("forward", "reverse"), , drop = FALSE]
+  expect_equal(directions$target_direction[directions$reaction_id == "blocked"], "none")
+  expect_false("blocked" %in% allowed$reaction_id)
+  expect_equal(allowed$target_direction, "forward")
+})
+

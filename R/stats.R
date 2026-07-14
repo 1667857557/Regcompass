@@ -93,18 +93,19 @@ rc_describe_microcompass_by_group <- function(result,
   }
   sample_meta <- lapply(samples, function(sample) {
     rows <- which(as.character(meta[[sample_col]]) == sample)
-    values <- lapply(fields, function(field) unique(as.character(meta[[field]][rows])))
-    names(values) <- fields
-    bad <- vapply(values, function(value) length(value) != 1L || is.na(value) || !nzchar(value), logical(1))
+    bad <- vapply(fields, function(field) {
+      values <- meta[[field]][rows]
+      values <- values[!is.na(values)]
+      length(unique(values)) != 1L
+    }, logical(1))
     if (any(bad)) {
       stop("Sample `", sample, "` has inconsistent metadata: ",
            paste(fields[bad], collapse = ", "), call. = FALSE)
     }
-    as.data.frame(c(list(sample_id_internal = sample), values), stringsAsFactors = FALSE)
+    meta[rows[[1L]], fields, drop = FALSE]
   })
   sample_meta <- do.call(rbind, sample_meta)
-  rownames(sample_meta) <- sample_meta$sample_id_internal
-  sample_meta$sample_id_internal <- NULL
+  rownames(sample_meta) <- samples
   aggregated <- do.call(cbind, lapply(samples, function(sample) {
     columns <- which(as.character(meta[[sample_col]]) == sample)
     matrixStats::rowMedians(score[, columns, drop = FALSE], na.rm = TRUE)

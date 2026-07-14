@@ -225,6 +225,7 @@ rc_run_microcompass <- function(layer1, gem,
   sample_conditions <- .rc_sample_condition_map(
     matrices$unit_meta, sample_col, condition_col
   )
+  direction_diagnostics <- NULL
 
   if (identical(mode, "full_gem")) {
     if (is.null(target_reactions) || !length(target_reactions)) {
@@ -238,6 +239,11 @@ rc_run_microcompass <- function(layer1, gem,
       target_reactions,
       target_direction
     )
+    direction_diagnostics <- directions
+    directions <- directions[
+      directions$target_direction %in% c("forward", "reverse"),
+      , drop = FALSE
+    ]
     if (!nrow(directions)) {
       stop(
         "No target reaction directions are allowed by the GEM bounds.",
@@ -501,6 +507,7 @@ rc_run_microcompass <- function(layer1, gem,
     feasible = feasible,
     evaluated = evaluated,
     target_direction = directions,
+    direction_diagnostics = direction_diagnostics,
     medium_scenarios = medium_scenarios,
     model_mode = mode,
     model_cache_summary = attr(model_cache, "summary"),
