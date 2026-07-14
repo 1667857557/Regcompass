@@ -30,7 +30,7 @@ jobs:
           extra-packages: |
             any::testthat
             any::highs
-          cache-version: function-audit-v2
+          cache-version: function-audit-v3
 
       - name: Verify focused dependencies
         shell: Rscript {0}
@@ -92,7 +92,7 @@ jobs:
             "audit/function_inventory_summary.txt"
           )
 
-      - name: Run focused FASTCORE and integration tests
+      - name: Run focused mathematical and integration tests
         shell: bash
         run: |
           set +e
@@ -102,24 +102,20 @@ jobs:
           for (file in list.files("R", pattern = "[.]R$", full.names = TRUE)) {
             sys.source(file, envir = .GlobalEnv)
           }
-          testthat::test_file(
+          test_files <- c(
             "tests/testthat/test_fastcore_architecture.R",
-            reporter = "summary",
-            stop_on_failure = TRUE,
-            stop_on_warning = FALSE
-          )
-          testthat::test_file(
             "tests/testthat/test_v13_integration.R",
-            reporter = "summary",
-            stop_on_failure = TRUE,
-            stop_on_warning = FALSE
-          )
-          testthat::test_file(
             "tests/testthat/test_function_audit_v13.R",
-            reporter = "summary",
-            stop_on_failure = TRUE,
-            stop_on_warning = FALSE
+            "tests/testthat/test_math_biology_audit_v13.R"
           )
+          for (file in test_files) {
+            testthat::test_file(
+              file,
+              reporter = "summary",
+              stop_on_failure = TRUE,
+              stop_on_warning = FALSE
+            )
+          }
           RSCRIPT
           status=$?
           echo "$status" > audit/focused_tests.status
