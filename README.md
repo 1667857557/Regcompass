@@ -82,6 +82,26 @@ module_summary <- result$grn_meta_modules$meta_module_summary
 
 The metabolic Pando target genes are the case-insensitive intersection of original single-cell RNA features, retained metacell RNA features, and Human-GEM GPR genes. Pando is run separately for each `sample_id`.
 
+
+## Function-by-function workflow guide
+
+The v1.2 API is intentionally split into auditable functions. Use them in this order when you need to inspect or rerun individual stages instead of calling `rc_run_regcompass_v12()` as a wrapper:
+
+| Step | Function | Actual implementation role | Main outputs / side effects |
+|---|---|---|---|
+| 1 | `rc_prepare_human2_gem_v12()` | Downloads or reads a pinned Human-GEM release, converts `Human-GEM.yml`, enriches reaction metadata with subsystem, KEGG, Reactome, Rhea and master-Rhea IDs, annotates reaction roles, and stores GPR/metabolic gene tables. | A validated GEM list with `gpr_table`, `metabolic_genes`, `reaction_meta`, `reaction_roles`, and `model_info$annotation_schema = "regcompass_humangem_v12"`. |
+| 2 | `rc_run_regcompass_multiome_metacell()` | Runs the existing strict Layer 1 workflow: pre-filter strict strata, build SuperCell2 RNA+ATAC metacells, post-filter by actual metacell count, aggregate fragments, recompute stratum-specific LinkPeaks, then compute GPR capacity and ATAC confidence. | Layer 1 result plus saved `00_stratum_qc/`, `01_metacells/`, `02_metacell_fragments/`, and `03_linkpeaks/` outputs. |
+| 3 | `rc_load_metacell_object_from_run()` | Reloads saved `metacell_object.rds` files from `01_metacells/`, optionally subsets to retained metacell IDs, clears Signac fragment pointers, and merges sample/stratum objects. | One retained metacell Seurat object for the Pando stage. |
+| 4 | `rc_run_pando_meta_modules()` | Validates the pinned Pando fork, derives metabolic target genes from original RNA genes ∩ retained metacell RNA genes ∩ Human-GEM metabolic genes, runs Pando once per sample, records per-sample status/errors, projects significant Pando edges to metabolic gene modules, maps modules to reactions, expands reactions, and writes audit tables. | `04_pando_meta_modules/` files and a `regcompass_pando_meta_module_v1.2` list. |
+| 4a | `rc_extract_pando_tf_peak_gene()` | Converts `coef(grn_object)` to a table, merges `Pando::gof()` by target when available, uppercases TF/target names, and filters by `padj`, `estimate`, and optional `rsq`. | Complete and significant TF–peak–gene tables. |
+| 4b | `rc_project_metabolic_grn()` | Keeps significant metabolic targets, creates shared-TF gene pairs, optionally adds direct metabolic-TF edges, applies shared-TF/Jaccard/top-k filters, and labels connected components as sample-specific `GRN####` modules. | `metabolic_gene_nodes` and `metabolic_gene_edges`. |
+| 4c | `rc_map_meta_module_core_reactions()` | Uppercase-joins GRN module genes to Human-GEM GPR genes and marks every matching reaction as a core GRN reaction. | `core_gene_reaction` with `inclusion_stage = "core_grn_gene"`. |
+| 4d | `rc_expand_meta_module_reactions()` | For each `sample_id × module_id`, filters to valid GEM reactions, adds core-subsystem reactions, then KEGG/Reactome-linked subsystem reactions, then master-Rhea-linked subsystem reactions; `fixed_point` repeats until stable or `max_iterations`. | `reaction_membership`, `meta_module_summary`, and normalized cross-reference maps. |
+| 5 | `rc_build_meta_module_gem()` | Uses a selected biological meta-module as `grn_meta_module`, delegates local closure/support expansion to `rc_build_module_meso_gem()`, and labels biological versus support-only reactions. | A local module GEM with `biological_meta_module_member` and `support_only` flags. |
+| 6 | `rc_run_regcompass_v12()` | Convenience wrapper that runs Step 2, reloads retained metacells, runs Step 4, attaches `grn_meta_modules`, sets `schema_version`, and saves `regcompass_v1.2_result.rds`. | Integrated Layer 1 + GRN meta-module result. |
+
+A staged tutorial mirroring these functions is maintained in `docs/meta_module_v12_design.md`.
+
 ## Meta-module definition
 
 For each sample-specific connected metabolic GRN component:
