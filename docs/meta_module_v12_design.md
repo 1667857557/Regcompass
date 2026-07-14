@@ -26,11 +26,11 @@ The package pins the Seurat 4-compatible fork:
 
 ```r
 remotes::install_github(
-  "1667857557/Pando_regcompass@1b5f759a36630ec34d66f995906b20496a79689c"
+  "1667857557/Pando_regcompass"
 )
 ```
 
-The package name remains `Pando`, version `1.1.1`. The requested repository name `Pando_regcompasspando` does not exist; the accessible fork is `Pando_regcompass`.
+The package name remains `Pando`. Runtime validation requires the installed package metadata to point to `1667857557/Pando_regcompass`; it records but does not restrict the package version or commit SHA.
 
 ## 3. Human-GEM annotation preparation
 

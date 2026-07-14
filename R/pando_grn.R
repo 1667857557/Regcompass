@@ -181,7 +181,10 @@ rc_run_pando_meta_modules <- function(metacell_object,
                                       single_cell_genes = NULL,
                                       rna_assay = "RNA",
                                       atac_assay = "ATAC",
-                                      pando_version = "1.1.1",
+                                      pando_version = NULL,
+                                      pando_remote_username = "1667857557",
+                                      pando_remote_repo = "Pando_regcompass",
+                                      require_pando_remote = TRUE,
                                       min_metacells = 20L,
                                       pando_initiate_args = list(exclude_exons = TRUE),
                                       pando_motif_args = list(),
@@ -204,12 +207,13 @@ rc_run_pando_meta_modules <- function(metacell_object,
   on_sample_error <- match.arg(on_sample_error)
   if (!inherits(metacell_object, "Seurat")) stop("`metacell_object` must inherit from Seurat.", call. = FALSE)
   if (!requireNamespace("Pando", quietly = TRUE)) stop("Install the pinned Pando fork before running v1.2 meta-modules.", call. = FALSE)
-  installed <- as.character(utils::packageVersion("Pando"))
-  pando_description <- utils::packageDescription("Pando")
-  pando_remote_sha <- as.character(pando_description$RemoteSha %||% NA_character_)
-  if (!identical(installed, as.character(pando_version))) {
-    stop("Pando version mismatch: installed ", installed, ", required ", pando_version, ".", call. = FALSE)
-  }
+  pando_install <- .rc_validate_pando_install(
+    pando_version = pando_version,
+    pando_remote_username = pando_remote_username,
+    pando_remote_repo = pando_remote_repo,
+    require_pando_remote = require_pando_remote
+  )
+  installed <- pando_install$version
   if (!requireNamespace("Seurat", quietly = TRUE) || !requireNamespace("Signac", quietly = TRUE)) {
     stop("Packages 'Seurat' and 'Signac' are required.", call. = FALSE)
   }
@@ -309,7 +313,10 @@ rc_run_pando_meta_modules <- function(metacell_object,
 
   out <- list(schema_version = "regcompass_pando_meta_module_v1.2",
               pando_version = installed,
-              pando_remote_sha = pando_remote_sha,
+              pando_remote_username = pando_install$remote_username,
+              pando_remote_repo = pando_install$remote_repo,
+              pando_remote_ref = pando_install$remote_ref,
+              pando_remote_sha = pando_install$remote_sha,
               target_metabolic_genes = target_genes,
               sample_status = status_table,
               tf_peak_gene_all = all_table,
