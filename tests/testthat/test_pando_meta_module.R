@@ -1,6 +1,9 @@
-test_that("ordered meta-module expansion follows subsystem, database, then master Rhea", {
+test_that("ordered expansion follows subsystem database and master Rhea", {
   S <- diag(10)
-  dimnames(S) <- list(paste0("M", 1:10), paste0("R", 1:10))
+  dimnames(S) <- list(
+    paste0("M", 1:10),
+    paste0("R", 1:10)
+  )
   reaction_meta <- data.frame(
     reaction_id = paste0("R", 1:10),
     subsystem = c("A", "A", "B", "B", "C", "C", "D", "D", "E", "E"),
@@ -10,28 +13,67 @@ test_that("ordered meta-module expansion follows subsystem, database, then maste
     rhea_master_id = c("RM1", NA, NA, NA, "RM2", NA, "RM2", NA, NA, NA),
     stringsAsFactors = FALSE
   )
-  gem <- rc_make_gem(S, lb = rep(0, 10), ub = rep(1000, 10), reaction_meta = reaction_meta)
-  core <- data.frame(sample_id = "S1", module_id = "S1::GRN0001", gene = "G1",
-                     reaction_id = "R1", stringsAsFactors = FALSE)
+  gem <- rc_make_gem(
+    S,
+    lb = rep(0, 10),
+    ub = rep(1000, 10),
+    reaction_meta = reaction_meta
+  )
+  core <- data.frame(
+    sample_id = "S1",
+    module_id = "S1::GRN0001",
+    gene = "G1",
+    reaction_id = "R1",
+    stringsAsFactors = FALSE
+  )
 
-  ordered <- rc_expand_meta_module_reactions(gem, core, expansion_mode = "ordered_once")
-  member <- ordered$reaction_membership
-  expect_setequal(member$reaction_id, paste0("R", 1:8))
-  expect_equal(member$inclusion_stage[match("R1", member$reaction_id)], "core_grn_gene")
-  expect_equal(member$inclusion_stage[match("R2", member$reaction_id)], "same_core_subsystem")
-  expect_true(all(member$inclusion_stage[match(c("R3", "R4", "R5", "R6"), member$reaction_id)] ==
-                    "shared_kegg_or_reactome_subsystem"))
-  expect_true(all(member$inclusion_stage[match(c("R7", "R8"), member$reaction_id)] ==
-                    "shared_master_rhea_subsystem"))
-  expect_false(any(c("R9", "R10") %in% member$reaction_id))
+  ordered <- rc_expand_meta_module_reactions(
+    gem,
+    core,
+    expansion_mode = "ordered_once"
+  )
+  membership <- ordered$reaction_membership
+  expect_setequal(membership$reaction_id, paste0("R", 1:8))
+  expect_equal(
+    membership$inclusion_stage[
+      match("R1", membership$reaction_id)
+    ],
+    "core_grn_gene"
+  )
+  expect_equal(
+    membership$inclusion_stage[
+      match("R2", membership$reaction_id)
+    ],
+    "same_core_subsystem"
+  )
+  expect_true(all(
+    membership$inclusion_stage[
+      match(c("R3", "R4", "R5", "R6"), membership$reaction_id)
+    ] == "shared_kegg_or_reactome_subsystem"
+  ))
+  expect_true(all(
+    membership$inclusion_stage[
+      match(c("R7", "R8"), membership$reaction_id)
+    ] == "shared_master_rhea_subsystem"
+  ))
+  expect_false(any(c("R9", "R10") %in% membership$reaction_id))
 
-  fixed <- rc_expand_meta_module_reactions(gem, core, expansion_mode = "fixed_point")
-  expect_true(all(c("R9", "R10") %in% fixed$reaction_membership$reaction_id))
+  fixed <- rc_expand_meta_module_reactions(
+    gem,
+    core,
+    expansion_mode = "fixed_point"
+  )
+  expect_true(all(
+    c("R9", "R10") %in% fixed$reaction_membership$reaction_id
+  ))
 })
 
-test_that("UNASSIGNED subsystem labels are never expanded as one shared subsystem", {
+test_that("UNASSIGNED subsystem labels are not pooled", {
   S <- diag(3)
-  dimnames(S) <- list(paste0("M", 1:3), paste0("R", 1:3))
+  dimnames(S) <- list(
+    paste0("M", 1:3),
+    paste0("R", 1:3)
+  )
   reaction_meta <- data.frame(
     reaction_id = paste0("R", 1:3),
     subsystem = c("A", "UNASSIGNED", "UNASSIGNED"),
@@ -40,10 +82,12 @@ test_that("UNASSIGNED subsystem labels are never expanded as one shared subsyste
   )
   gem <- rc_make_gem(S, reaction_meta = reaction_meta)
   maps <- rc_reaction_crossref_maps(gem)
-  expect_false(any(toupper(maps$subsystem$subsystem_id) == "UNASSIGNED"))
+  expect_false(any(
+    toupper(maps$subsystem$subsystem_id) == "UNASSIGNED"
+  ))
 })
 
-test_that("Pando projection retains significant targets and direct metabolic TF neighbors", {
+test_that("Pando projection retains targets and direct TF neighbors", {
   tf_peak_gene <- data.frame(
     sample_id = "S1",
     tf = c("TF1", "TF1", "G3", "TF2"),
@@ -61,60 +105,131 @@ test_that("Pando projection retains significant targets and direct metabolic TF 
   )
   expect_setequal(projected$nodes$gene, c("G1", "G2", "G3"))
   expect_equal(length(unique(projected$nodes$module_id)), 1)
-  edge_keys <- paste(projected$edges$gene_a, projected$edges$gene_b, sep = "-")
+  edge_keys <- paste(
+    projected$edges$gene_a,
+    projected$edges$gene_b,
+    sep = "-"
+  )
   expect_true("G1-G2" %in% edge_keys)
   expect_true("G1-G3" %in% edge_keys)
-  expect_true(projected$edges$direct_regulatory[match("G1-G3", edge_keys)])
+  expect_true(
+    projected$edges$direct_regulatory[
+      match("G1-G3", edge_keys)
+    ]
+  )
 })
 
-test_that("GRN genes map to core reactions and biological membership remains explicit", {
+test_that("GRN mapping remains explicit in the completed model", {
+  skip_if_not(
+    requireNamespace("highs", quietly = TRUE) ||
+      requireNamespace("Rglpk", quietly = TRUE) ||
+      requireNamespace("gurobi", quietly = TRUE)
+  )
+  solver <- if (requireNamespace("highs", quietly = TRUE)) {
+    "highs"
+  } else if (requireNamespace("Rglpk", quietly = TRUE)) {
+    "glpk"
+  } else {
+    "gurobi"
+  }
   S <- diag(3)
-  dimnames(S) <- list(paste0("M", 1:3), paste0("R", 1:3))
-  reaction_meta <- data.frame(reaction_id = paste0("R", 1:3), metabolic_module = c("A", "A", "B"), stringsAsFactors = FALSE)
-  gpr <- data.frame(reaction_id = c("R1", "R2", "R3"), and_group_id = 1L,
-                    gene = c("G1", "G2", "G3"), stringsAsFactors = FALSE)
-  gem <- rc_make_gem(S, lb = rep(0, 3), ub = rep(1000, 3), reaction_meta = reaction_meta)
+  dimnames(S) <- list(
+    paste0("M", 1:3),
+    paste0("R", 1:3)
+  )
+  reaction_meta <- data.frame(
+    reaction_id = paste0("R", 1:3),
+    metabolic_module = c("A", "A", "B"),
+    role = "internal",
+    role_source = "curated",
+    stringsAsFactors = FALSE
+  )
+  gpr <- data.frame(
+    reaction_id = c("R1", "R2", "R3"),
+    and_group_id = 1L,
+    gene = c("G1", "G2", "G3"),
+    stringsAsFactors = FALSE
+  )
+  gem <- rc_make_gem(
+    S,
+    lb = rep(0, 3),
+    ub = rep(1000, 3),
+    reaction_meta = reaction_meta
+  )
   gem$gpr_table <- gpr
-  nodes <- data.frame(sample_id = "S1", gene = c("G1", "G2"),
-                      node_role = "significant_target", module_id = "S1::GRN0001",
-                      stringsAsFactors = FALSE)
+  nodes <- data.frame(
+    sample_id = "S1",
+    gene = c("G1", "G2"),
+    node_role = "significant_target",
+    module_id = "S1::GRN0001",
+    stringsAsFactors = FALSE
+  )
   core <- rc_map_meta_module_core_reactions(nodes, gpr)
   expect_setequal(core$reaction_id, c("R1", "R2"))
 
-  membership <- data.frame(sample_id = "S1", module_id = "S1::GRN0001",
-                           reaction_id = c("R1", "R2"), stringsAsFactors = FALSE)
+  membership <- data.frame(
+    sample_id = "S1",
+    module_id = "S1::GRN0001",
+    reaction_id = c("R1", "R2"),
+    is_core = TRUE,
+    stringsAsFactors = FALSE
+  )
   module_gem <- rc_build_meta_module_gem(
-    gem, membership, sample_id = "S1", module_id = "S1::GRN0001",
-    include_one_hop = FALSE, include_transport = FALSE,
-    include_exchange = FALSE, include_protected = FALSE
+    gem,
+    membership,
+    core,
+    sample_id = "S1",
+    module_id = "S1::GRN0001",
+    solver = solver,
+    strict = TRUE
   )
   expect_setequal(colnames(module_gem$S), c("R1", "R2"))
-  expect_true(all(module_gem$reaction_meta$biological_meta_module_member))
+  expect_true(all(
+    module_gem$reaction_meta$biological_meta_module_member
+  ))
   expect_false(any(module_gem$reaction_meta$support_only))
 })
 
-test_that("Pando install validation enforces the RegCompass Pando repository", {
-  desc <- list(
+test_that("Pando validation enforces the configured repository", {
+  description <- list(
     RemoteUsername = "1667857557",
     RemoteRepo = "Pando_regcompass",
     RemoteRef = "HEAD",
     RemoteSha = "any-sha"
   )
-  ok <- .rc_validate_pando_repository(description = desc, installed_version = "9.9.9")
-  expect_identical(ok$version, "9.9.9")
-  expect_identical(ok$remote_username, "1667857557")
-  expect_identical(ok$remote_repo, "Pando_regcompass")
-  expect_identical(ok$remote_sha, "any-sha")
+  valid <- .rc_validate_pando_repository(
+    description = description,
+    installed_version = "9.9.9"
+  )
+  expect_identical(valid$version, "9.9.9")
+  expect_identical(valid$remote_username, "1667857557")
+  expect_identical(valid$remote_repo, "Pando_regcompass")
+  expect_identical(valid$remote_sha, "any-sha")
 
-  desc_other_sha <- desc
-  desc_other_sha$RemoteSha <- "another-sha"
-  expect_silent(.rc_validate_pando_repository(description = desc_other_sha, installed_version = "9.9.9"))
+  other_sha <- description
+  other_sha$RemoteSha <- "another-sha"
+  expect_silent(.rc_validate_pando_repository(
+    description = other_sha,
+    installed_version = "9.9.9"
+  ))
 
-  desc_bad_user <- desc
-  desc_bad_user$RemoteUsername <- "other-user"
-  expect_error(.rc_validate_pando_repository(description = desc_bad_user, installed_version = "9.9.9"), "remote username mismatch")
+  bad_user <- description
+  bad_user$RemoteUsername <- "other-user"
+  expect_error(
+    .rc_validate_pando_repository(
+      description = bad_user,
+      installed_version = "9.9.9"
+    ),
+    "remote username mismatch"
+  )
 
-  desc_bad_repo <- desc
-  desc_bad_repo$RemoteRepo <- "Pando"
-  expect_error(.rc_validate_pando_repository(description = desc_bad_repo, installed_version = "9.9.9"), "remote repository mismatch")
+  bad_repo <- description
+  bad_repo$RemoteRepo <- "Pando"
+  expect_error(
+    .rc_validate_pando_repository(
+      description = bad_repo,
+      installed_version = "9.9.9"
+    ),
+    "remote repository mismatch"
+  )
 })

@@ -1,172 +1,493 @@
-#' Prepare directional targets for reversible reactions
+# Two-mode microCOMPASS runner.
+
+#' Prepare direction-specific reaction targets from signed Human-GEM bounds
 #' @export
-rc_prepare_directional_targets <- function(gem, target_reactions, mode = c("both_for_reversible", "forward_only", "user_defined")) {
-  mode <- match.arg(mode); gv <- rc_validate_gem(gem); meta <- gem$reaction_meta
-  rev <- stats::setNames(gv$lb < 0 & gv$ub > 0, gv$reactions)
-  if (!is.null(meta) && "reversible" %in% colnames(meta)) rev[as.character(meta$reaction_id)] <- as.logical(meta$reversible)
-  do.call(rbind, lapply(intersect(target_reactions, gv$reactions), function(r) {
-    dirs <- if (mode == "both_for_reversible" && isTRUE(rev[[r]])) c("forward", "reverse") else "forward"
-    data.frame(reaction_id = r, target_direction = dirs, reversible = isTRUE(rev[[r]]), stringsAsFactors = FALSE)
-  }))
+rc_prepare_directional_targets <- function(gem, target_reactions,
+                                           target_direction = c(
+                                             "both", "forward", "reverse"
+                                           ),
+                                           bound_tolerance = 1e-12) {
+  target_direction <- match.arg(target_direction)
+  validated <- rc_validate_gem(gem)
+  target_reactions <- intersect(
+    unique(as.character(target_reactions)),
+    validated$reactions
+  )
+  if (!length(target_reactions)) {
+    return(data.frame(
+      reaction_id = character(),
+      target_direction = character(),
+      direction_class = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+
+  rows <- lapply(target_reactions, function(reaction) {
+    lb <- validated$lb[[reaction]]
+    ub <- validated$ub[[reaction]]
+    forward_allowed <- ub > bound_tolerance
+    reverse_allowed <- lb < -bound_tolerance
+    direction_class <- if (forward_allowed && reverse_allowed) {
+      "reversible"
+    } else if (forward_allowed) {
+      "forward_only"
+    } else if (reverse_allowed) {
+      "reverse_only"
+    } else {
+      "blocked"
+    }
+    directions <- switch(
+      target_direction,
+      both = c(
+        if (forward_allowed) "forward",
+        if (reverse_allowed) "reverse"
+      ),
+      forward = if (forward_allowed) "forward" else character(),
+      reverse = if (reverse_allowed) "reverse" else character()
+    )
+    if (!length(directions)) return(NULL)
+    data.frame(
+      reaction_id = reaction,
+      target_direction = directions,
+      direction_class = direction_class,
+      stringsAsFactors = FALSE
+    )
+  })
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if (!length(rows)) {
+    return(data.frame(
+      reaction_id = character(),
+      target_direction = character(),
+      direction_class = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+  do.call(rbind, rows)
 }
-rc_compass_vmax_directional <- function(S, lb, ub, target_reaction, direction = "forward", solver = "highs", time_limit = 60) {
-  j <- match(target_reaction, colnames(S)); c1 <- rep(0, ncol(S)); c1[j] <- if (direction == "reverse") 1 else -1
-  step <- rc_solve_lp(c1, S, rep(0, nrow(S)), rep(0, nrow(S)), lb, ub, solver, time_limit)
-  vmax <- if (identical(step$status, "optimal")) -step$objective_value else NA_real_
-  list(feasible = is.finite(vmax) && vmax > 1e-8, vmax = vmax, status = step$status, runtime = step$runtime)
+
+.rc_normalize_medium_scenarios <- function(medium_scenarios) {
+  if (is.null(medium_scenarios) ||
+      (is.data.frame(medium_scenarios) && !nrow(medium_scenarios))) {
+    return(data.frame(
+      medium_scenario_id = "base",
+      exchange_reaction_id = NA_character_,
+      lb = NA_real_,
+      ub = NA_real_,
+      available = FALSE,
+      .no_constraints = TRUE,
+      stringsAsFactors = FALSE
+    ))
+  }
+  if (!is.data.frame(medium_scenarios)) {
+    stop("`medium_scenarios` must be a data.frame.", call. = FALSE)
+  }
+  if (!"medium_scenario_id" %in% colnames(medium_scenarios)) {
+    medium_scenarios$medium_scenario_id <- "custom"
+  }
+  medium_scenarios$.no_constraints <- FALSE
+  medium_scenarios
 }
-rc_compass_two_step_lp_directional <- function(S, lb, ub, target_reaction, penalties, target_direction = "forward", omega = 0.95, solver = "highs", time_limit = 60) {
-  v <- rc_compass_vmax_directional(S, lb, ub, target_reaction, target_direction, solver, time_limit)
-  if (!isTRUE(v$feasible)) return(list(feasible = FALSE, vmax = v$vmax, penalty = NA_real_, solver_status = v$status, step1_status = v$status, step2_status = "not_run", number_constraints = nrow(S), number_variables = ncol(S), runtime = v$runtime))
-  j <- match(target_reaction, colnames(S)); step2 <- rc_build_abs_penalty_lp(S, lb, ub, penalties, j, omega * v$vmax)
-  if (target_direction == "reverse") { A <- rep(0, 2*ncol(S)); A[j] <- -1; A[ncol(S)+j] <- 1; step2$A[nrow(step2$A),] <- A }
-  ans <- rc_solve_lp(step2$obj, step2$A, step2$lhs, step2$rhs, step2$lb, step2$ub, solver, time_limit)
-  list(feasible = identical(ans$status, "optimal"), vmax = v$vmax, penalty = if (identical(ans$status, "optimal")) ans$objective else NA_real_, solver_status = ans$status, step1_status = v$status, step2_status = ans$status, number_constraints = nrow(step2$A), number_variables = length(step2$obj), runtime = sum(c(v$runtime, ans$runtime), na.rm = TRUE))
+
+.rc_cache_gem <- function(entry) {
+  if (is.list(entry) && !is.null(entry$file)) {
+    readRDS(entry$file)
+  } else {
+    entry
+  }
 }
-#' Run target-local microCOMPASS analyses
+
+.rc_unit_sample_map <- function(unit_meta, unit_ids, sample_col) {
+  if (is.null(unit_meta) || !sample_col %in% colnames(unit_meta)) {
+    stop(
+      "Meta-module GEM mode requires unit metadata with `",
+      sample_col,
+      "`.",
+      call. = FALSE
+    )
+  }
+  id_columns <- intersect(
+    c("unit_id", "pool_id", "metacell_id"),
+    colnames(unit_meta)
+  )
+  for (id_column in id_columns) {
+    output <- stats::setNames(
+      as.character(unit_meta[[sample_col]]),
+      as.character(unit_meta[[id_column]])
+    )
+    if (all(unit_ids %in% names(output))) {
+      return(output[unit_ids])
+    }
+  }
+  if (nrow(unit_meta) == length(unit_ids)) {
+    return(stats::setNames(
+      as.character(unit_meta[[sample_col]]),
+      unit_ids
+    ))
+  }
+  stop("Could not align Layer 2 units to sample IDs.", call. = FALSE)
+}
+
+#' Run microCOMPASS with a full GEM or a FASTCORE-completed meta-module GEM
+#'
+#' The package intentionally exposes exactly two structural modes.
 #' @export
-rc_run_microcompass <- function(layer1, gem, target_reactions,
-                                medium_table = NULL, medium_scenarios = NULL,
-                                unit = c("sample_celltype", "metacell"),
-                                condition_col = "condition",
-                                sample_col = "sample_id",
-                                celltype_col = "cell_type",
-                                microgem_params = list(),
-                                penalty_weights = c(expr = 1.0, confidence = 0.5, missing = 1.0),
-                                omega = 0.95,
-                                target_direction = "both",
-                                parallel = TRUE,
-                                solver = c("highs", "gurobi", "glpk"),
-                                time_limit = 60,
-                                BPPARAM = NULL) {
+rc_run_microcompass <- function(layer1, gem,
+                                 target_reactions = NULL,
+                                 medium_table = NULL,
+                                 medium_scenarios = NULL,
+                                 mode = c(
+                                   "full_gem", "meta_module_gem"
+                                 ),
+                                 reaction_membership = NULL,
+                                 core_reactions = NULL,
+                                 unit = c(
+                                   "sample_celltype", "metacell"
+                                 ),
+                                 condition_col = "condition",
+                                 sample_col = "sample_id",
+                                 celltype_col = "cell_type",
+                                 model_params = list(),
+                                 penalty_weights = c(
+                                   expr = 1.0,
+                                   confidence = 0.5,
+                                   missing = 1.0
+                                 ),
+                                 omega = 0.95,
+                                 target_direction = c(
+                                   "both", "forward", "reverse"
+                                 ),
+                                 parallel = TRUE,
+                                 solver = c(
+                                   "highs", "gurobi", "glpk"
+                                 ),
+                                 time_limit = 60,
+                                 flux_threshold = 1e-8,
+                                 BPPARAM = NULL) {
+  mode <- match.arg(mode)
   unit <- match.arg(unit)
   solver <- match.arg(solver)
-  mats <- rc_layer2_unit_matrices(layer1, if (unit == "metacell") "metacell" else "sample_celltype", sample_col, celltype_col, condition_col)
+  target_direction <- match.arg(target_direction)
+  medium_scenarios <- .rc_normalize_medium_scenarios(
+    medium_scenarios %||% medium_table
+  )
+  matrices <- rc_layer2_unit_matrices(
+    layer1,
+    if (unit == "metacell") "metacell" else "sample_celltype",
+    sample_col,
+    celltype_col,
+    condition_col
+  )
   gem <- rc_annotate_reaction_roles(gem)
-  dirs <- rc_prepare_directional_targets(gem, target_reactions, if (target_direction == "both") "both_for_reversible" else "forward_only")
-  if (is.null(medium_scenarios)) {
-    medium_scenarios <- medium_table
-    if (is.null(medium_scenarios)) {
-      medium_scenarios <- data.frame(medium_scenario_id = "base", exchange_reaction_id = character(), lb = numeric(), ub = numeric(), available = logical(), stringsAsFactors = FALSE)
+
+  if (identical(mode, "full_gem")) {
+    if (is.null(target_reactions) || !length(target_reactions)) {
+      stop(
+        "`target_reactions` is required in full-GEM mode.",
+        call. = FALSE
+      )
     }
-    if (!"medium_scenario_id" %in% colnames(medium_scenarios)) medium_scenarios$medium_scenario_id <- "custom"
-  }
-  cache_strategy <- microgem_params$strategy %||% "full_gem"
-  if (identical(cache_strategy, "full_gem")) {
-    full_params <- microgem_params
-    full_params$strategy <- NULL
-    cache_dir <- full_params$cache_dir %||% tempfile("RegCompassR_full_gem_cache_")
-    force_cache <- full_params$force_cache %||% FALSE
-    full_params$cache_dir <- NULL
-    full_params$force_cache <- NULL
-    full_params <- full_params[names(full_params) %in% names(formals(rc_build_full_gem_cache))]
-    mg_cache <- do.call(rc_build_full_gem_cache, c(list(gem = gem, dirs = dirs, medium_scenarios = medium_scenarios, cache_dir = cache_dir, force = force_cache), full_params))
-  } else if (identical(cache_strategy, "module_meso_gem")) {
-    module_params <- microgem_params
-    module_params$strategy <- NULL
-    cache_dir <- module_params$cache_dir %||% tempfile("RegCompassR_module_gem_cache_")
-    module_col <- module_params$module_col %||% "metabolic_module"
-    force_cache <- module_params$force_cache %||% FALSE
-    module_params$cache_dir <- NULL
-    module_params$module_col <- NULL
-    module_params$force_cache <- NULL
-    mg_cache <- rc_build_module_gem_cache(
+    directions <- rc_prepare_directional_targets(
+      gem,
+      target_reactions,
+      target_direction
+    )
+    if (!nrow(directions)) {
+      stop(
+        "No target reaction directions are allowed by the GEM bounds.",
+        call. = FALSE
+      )
+    }
+    cache_dir <- model_params$cache_dir %||%
+      tempfile("RegCompassR_full_gem_cache_")
+    model_cache <- rc_build_full_gem_cache(
       gem = gem,
-      dirs = dirs,
+      dirs = directions,
       medium_scenarios = medium_scenarios,
-      cache_dir = cache_dir,
-      module_col = module_col,
-      module_gem_params = module_params,
-      force = force_cache
+      cache_dir = cache_dir
     )
   } else {
-    mg_cache <- rc_build_microgem_cache(gem = gem, dirs = dirs, medium_scenarios = medium_scenarios, microgem_params = microgem_params)
+    if (is.null(reaction_membership)) {
+      stop(
+        paste(
+          "`reaction_membership` is required in",
+          "meta-module-GEM mode."
+        ),
+        call. = FALSE
+      )
+    }
+    cache_dir <- model_params$cache_dir %||%
+      tempfile("RegCompassR_meta_module_gem_cache_")
+    model_cache <- rc_build_meta_module_gem_cache(
+      gem = gem,
+      reaction_membership = reaction_membership,
+      core_reactions = core_reactions,
+      target_reactions = target_reactions,
+      medium_scenarios = medium_scenarios,
+      cache_dir = cache_dir,
+      target_direction = target_direction,
+      solver = solver,
+      time_limit = model_params$completion_time_limit %||%
+        max(time_limit, 300),
+      fastcore_epsilon = model_params$fastcore_epsilon %||%
+        1e-4,
+      max_support_reactions =
+        model_params$max_support_reactions %||% 2000,
+      strict = model_params$strict %||% TRUE
+    )
+    if (!length(model_cache)) {
+      stop(
+        "No parent-feasible meta-module targets were available.",
+        call. = FALSE
+      )
+    }
+    directions <- unique(do.call(rbind, lapply(
+      model_cache,
+      function(entry) {
+        data.frame(
+          sample_id = entry$sample_id,
+          module_id = entry$module_id,
+          reaction_id = entry$reaction_id,
+          target_direction = entry$target_direction,
+          stringsAsFactors = FALSE
+        )
+      }
+    )))
   }
-  cache_gem <- function(entry) {
-    if (is.list(entry) && !is.null(entry$file)) readRDS(entry$file) else entry
-  }
-  all_rxns <- unique(unlist(lapply(mg_cache, function(entry) colnames(cache_gem(entry)$S))))
-  pen <- rc_compute_multiome_penalty(
-    rc_align_layer2_evidence(mats$C_rel, all_rxns, NA_real_),
-    rc_align_layer2_evidence(mats$reaction_confidence, all_rxns, NA_real_),
+
+  all_reactions <- unique(unlist(lapply(
+    model_cache,
+    function(entry) colnames(.rc_cache_gem(entry)$S)
+  )))
+  penalties <- rc_compute_multiome_penalty(
+    rc_align_layer2_evidence(
+      matrices$C_rel,
+      all_reactions,
+      NA_real_
+    ),
+    rc_align_layer2_evidence(
+      matrices$reaction_confidence,
+      all_reactions,
+      NA_real_
+    ),
     layer1$gpr_diagnostics,
     gem$reaction_roles,
     weights = penalty_weights
   )
-  units <- colnames(mats$C_rel)
-  row_ids <- names(mg_cache)
-  score <- penalty <- vmax <- matrix(NA_real_, nrow = length(row_ids), ncol = length(units), dimnames = list(row_ids, units))
-  feasible <- matrix(FALSE, nrow = length(row_ids), ncol = length(units), dimnames = list(row_ids, units))
-  tasks <- expand.grid(row_id = row_ids, unit_id = units, stringsAsFactors = FALSE)
-  run_one <- function(task) {
-    mg <- cache_gem(mg_cache[[task$row_id]])
-    u <- task$unit_id
-    parts <- strsplit(task$row_id, "::", fixed = TRUE)[[1]]
-    reaction_id <- parts[[1]]
-    target_dir <- parts[[2]]
-    medium_scenario <- parts[[3]]
-    p <- pen$penalty[colnames(mg$S), u]
-    ans <- rc_compass_two_step_lp_directional(mg$S, mg$lb, mg$ub,
-                                              target_reaction = reaction_id,
-                                              penalties = p,
-                                              target_direction = target_dir,
-                                              omega = omega,
-                                              solver = solver,
-                                              time_limit = time_limit)
-    list(row_id = task$row_id,
-         unit_id = u,
-         penalty = ans$penalty,
-         vmax = ans$vmax,
-         feasible = isTRUE(ans$feasible),
-         diag = data.frame(reaction_id = reaction_id,
-                           target_direction = target_dir,
-                           medium_scenario = medium_scenario,
-                           unit_id = u,
-                           strict_feasible = isTRUE(ans$feasible),
-                           solver_status = ans$solver_status,
-                           step1_status = ans$step1_status,
-                           step2_status = ans$step2_status,
-                           target_status = mg$target_status %||% if (isTRUE(ans$feasible)) "ok" else "structurally_infeasible",
-                           objective_value = ans$penalty,
-                           vmax = ans$vmax,
-                           stringsAsFactors = FALSE))
+
+  units <- colnames(matrices$C_rel)
+  row_ids <- names(model_cache)
+  penalty <- vmax <- matrix(
+    NA_real_,
+    nrow = length(row_ids),
+    ncol = length(units),
+    dimnames = list(row_ids, units)
+  )
+  feasible <- matrix(
+    FALSE,
+    nrow = length(row_ids),
+    ncol = length(units),
+    dimnames = list(row_ids, units)
+  )
+  evaluated <- feasible
+
+  if (identical(mode, "meta_module_gem")) {
+    unit_sample <- .rc_unit_sample_map(
+      matrices$unit_meta,
+      units,
+      sample_col
+    )
+    task_rows <- lapply(row_ids, function(row_id) {
+      entry <- model_cache[[row_id]]
+      selected_units <- names(unit_sample)[
+        unit_sample == as.character(entry$sample_id)
+      ]
+      if (!length(selected_units)) return(NULL)
+      data.frame(
+        row_id = row_id,
+        unit_id = selected_units,
+        stringsAsFactors = FALSE
+      )
+    })
+    task_rows <- task_rows[
+      !vapply(task_rows, is.null, logical(1))
+    ]
+    tasks <- if (length(task_rows)) {
+      do.call(rbind, task_rows)
+    } else {
+      data.frame()
+    }
+  } else {
+    tasks <- expand.grid(
+      row_id = row_ids,
+      unit_id = units,
+      stringsAsFactors = FALSE
+    )
   }
-  res <- rc_parallel_lapply(split(tasks, seq_len(nrow(tasks))), function(x) run_one(x[1, ]), BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE)
-  for (x in res) {
-    penalty[x$row_id, x$unit_id] <- x$penalty
-    vmax[x$row_id, x$unit_id] <- x$vmax
-    feasible[x$row_id, x$unit_id] <- x$feasible
+  if (!nrow(tasks)) {
+    stop(
+      "No model-target and unit combinations were available.",
+      call. = FALSE
+    )
+  }
+
+  run_one <- function(task) {
+    entry <- model_cache[[task$row_id]]
+    model <- .rc_cache_gem(entry)
+    unit_id <- as.character(task$unit_id)
+    reaction_penalties <- penalties$penalty[
+      colnames(model$S),
+      unit_id
+    ]
+    answer <- rc_compass_two_step_lp_directional(
+      S = model$S,
+      lb = model$lb,
+      ub = model$ub,
+      target_reaction = entry$reaction_id,
+      penalties = reaction_penalties,
+      target_direction = entry$target_direction,
+      omega = omega,
+      solver = solver,
+      time_limit = time_limit,
+      flux_threshold = flux_threshold
+    )
+    diagnostic <- data.frame(
+      row_id = task$row_id,
+      unit_id = unit_id,
+      sample_id = entry$sample_id %||% NA_character_,
+      module_id = entry$module_id %||% NA_character_,
+      reaction_id = entry$reaction_id,
+      target_direction = entry$target_direction,
+      medium_scenario = entry$medium_scenario,
+      strict_feasible = isTRUE(answer$feasible),
+      solver_status = answer$solver_status,
+      step1_status = answer$step1_status,
+      step2_status = answer$step2_status,
+      target_status = model$target_status %||%
+        if (isTRUE(answer$feasible)) {
+          "ok"
+        } else {
+          "structurally_infeasible"
+        },
+      objective_value = answer$penalty,
+      vmax = answer$vmax,
+      stringsAsFactors = FALSE
+    )
+    list(
+      row_id = task$row_id,
+      unit_id = unit_id,
+      penalty = answer$penalty,
+      vmax = answer$vmax,
+      feasible = isTRUE(answer$feasible),
+      diagnostics = diagnostic
+    )
+  }
+
+  task_list <- split(tasks, seq_len(nrow(tasks)))
+  results <- rc_parallel_lapply(
+    task_list,
+    function(task) run_one(task[1, , drop = FALSE]),
+    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
+  )
+  for (result in results) {
+    penalty[result$row_id, result$unit_id] <- result$penalty
+    vmax[result$row_id, result$unit_id] <- result$vmax
+    feasible[result$row_id, result$unit_id] <- result$feasible
+    evaluated[result$row_id, result$unit_id] <- TRUE
   }
   score <- rc_compass_score_from_penalty(penalty, feasible)
-  lp_diagnostics <- do.call(rbind, lapply(res, `[[`, "diag"))
-  microgem_diagnostics <- do.call(rbind, lapply(mg_cache, function(entry) cache_gem(entry)$closure_diagnostics))
-  scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))
-  sens <- if (length(scenarios) > 1L) {
-    aggregate(strict_feasible ~ reaction_id + target_direction + unit_id, lp_diagnostics, function(x) length(unique(x)) > 1L)
+  lp_diagnostics <- do.call(
+    rbind,
+    lapply(results, `[[`, "diagnostics")
+  )
+
+  diagnostic_keys <- vapply(
+    model_cache,
+    function(entry) {
+      entry$file %||% paste(
+        entry$sample_id %||% "",
+        entry$module_id %||% "",
+        entry$medium_scenario,
+        sep = "::"
+      )
+    },
+    character(1)
+  )
+  diagnostic_entries <- model_cache[!duplicated(diagnostic_keys)]
+  diagnostic_rows <- lapply(diagnostic_entries, function(entry) {
+    model <- .rc_cache_gem(entry)
+    output <- model$closure_diagnostics
+    if (!is.data.frame(output) || !nrow(output)) return(NULL)
+    output$sample_id <- entry$sample_id %||% NA_character_
+    output$module_id <- entry$module_id %||% NA_character_
+    output$medium_scenario <- entry$medium_scenario
+    output
+  })
+  diagnostic_rows <- diagnostic_rows[
+    !vapply(diagnostic_rows, is.null, logical(1))
+  ]
+  model_diagnostics <- if (length(diagnostic_rows)) {
+    do.call(rbind, diagnostic_rows)
   } else {
-    NULL
+    data.frame()
   }
-  if (!is.null(sens)) names(sens)[names(sens) == "strict_feasible"] <- "medium_sensitive_flag"
-  list(score = score,
-       penalty = penalty,
-       vmax = vmax,
-       feasible = feasible,
-       target_direction = dirs,
-       medium_scenarios = medium_scenarios,
-       medium_sensitivity_summary = sens,
-       microgem_cache_summary = attr(mg_cache, "summary"),
-       microgem_diagnostics = microgem_diagnostics,
-       lp_diagnostics = lp_diagnostics,
-       penalty_components = pen$components,
-       evidence_policy = pen$evidence_policy,
-       unit_meta = mats$unit_meta,
-       params = list(unit = unit,
-                     omega = omega,
-                     target_direction = target_direction,
-                     evidence_policy = "RNA+ATAC-GPR evidence affects penalties only, not structural micro-GEM membership.",
-                     interpretation = "multiome-supported reaction capacity potential from strict cached microCOMPASS"),
-       method = "microCOMPASS strict target-local reaction-potential LP")
+
+  list(
+    score = score,
+    penalty = penalty,
+    vmax = vmax,
+    feasible = feasible,
+    evaluated = evaluated,
+    target_direction = directions,
+    medium_scenarios = medium_scenarios,
+    model_mode = mode,
+    model_cache_summary = attr(model_cache, "summary"),
+    model_diagnostics = model_diagnostics,
+    lp_diagnostics = lp_diagnostics,
+    penalty_components = penalties$components,
+    evidence_policy = penalties$evidence_policy,
+    unit_meta = matrices$unit_meta,
+    params = list(
+      unit = unit,
+      omega = omega,
+      target_direction = target_direction,
+      model_mode = mode,
+      flux_threshold = flux_threshold,
+      evidence_policy = paste(
+        "RNA+ATAC-GPR evidence affects COMPASS penalties only;",
+        "meta-module structure is biological membership plus",
+        "FASTCORE support."
+      )
+    ),
+    method = if (identical(mode, "full_gem")) {
+      "microCOMPASS full-GEM directional LP"
+    } else {
+      paste(
+        "microCOMPASS FASTCORE-completed",
+        "meta-module-GEM directional LP"
+      )
+    }
+  )
 }
-#' Summarize microCOMPASS result
+
+#' Summarize a microCOMPASS result
 #' @export
-rc_summarize_microcompass <- function(result) data.frame(n_targets = nrow(result$score), n_units = ncol(result$score), feasible_fraction = mean(result$feasible, na.rm = TRUE))
+rc_summarize_microcompass <- function(result) {
+  evaluated <- result$evaluated %||% matrix(
+    TRUE,
+    nrow = nrow(result$feasible),
+    ncol = ncol(result$feasible),
+    dimnames = dimnames(result$feasible)
+  )
+  data.frame(
+    model_mode = result$model_mode %||% NA_character_,
+    n_targets = nrow(result$score),
+    n_units = ncol(result$score),
+    n_evaluated = sum(evaluated),
+    feasible_fraction = if (any(evaluated)) {
+      mean(result$feasible[evaluated])
+    } else {
+      NA_real_
+    },
+    stringsAsFactors = FALSE
+  )
+}
