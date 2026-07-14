@@ -23,21 +23,47 @@ jobs:
           fetch-depth: 0
 
       - name: Decode and apply patch
+        id: apply_patch
         shell: bash
         run: |
+          set +e
+          mkdir -p audit-apply
           base64 --decode tools/apply_math_audit.py.gz.b64 | gzip --decompress > /tmp/apply_math_audit.py
-          python3 -m py_compile /tmp/apply_math_audit.py
-          python3 /tmp/apply_math_audit.py
+          python3 -m py_compile /tmp/apply_math_audit.py > audit-apply/py_compile.log 2>&1
+          compile_status=$?
+          if [ "$compile_status" -eq 0 ]; then
+            python3 /tmp/apply_math_audit.py > audit-apply/apply.log 2>&1
+            apply_status=$?
+          else
+            apply_status=$compile_status
+          fi
+          cp /tmp/apply_math_audit.py audit-apply/apply_math_audit.py
+          git status --short > audit-apply/git_status.txt
+          echo "$apply_status" > audit-apply/status.txt
+          cat audit-apply/apply.log 2>/dev/null || true
+          exit 0
+
+      - name: Upload patch diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: math-audit-apply-debug
+          path: audit-apply
+          if-no-files-found: error
+          retention-days: 7
 
       - name: Remove transient patch machinery
+        if: always()
         shell: bash
         run: |
+          test "$(cat audit-apply/status.txt)" = "0" || exit 0
           rm -f tools/apply_math_audit.py.gz.b64
           rm -f .github/workflows/apply-math-audit.yaml
 
       - name: Commit audited implementation
         shell: bash
         run: |
+          test "$(cat audit-apply/status.txt)" = "0"
           git config user.name "RegCompass audit bot"
           git config user.email "actions@users.noreply.github.com"
           git add -A
