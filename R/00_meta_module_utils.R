@@ -54,3 +54,29 @@
   data.frame(gene = nodes, component = match(roots, root_levels), stringsAsFactors = FALSE)
 }
 
+
+.rc_validate_pando_repository <- function(description = NULL, installed_version = NULL) {
+  expected_username <- "1667857557"
+  expected_repo <- "Pando_regcompass"
+  if (is.null(installed_version)) installed_version <- as.character(utils::packageVersion("Pando"))
+  installed_version <- as.character(installed_version)
+  if (is.null(description)) description <- utils::packageDescription("Pando")
+  remote_username <- as.character(description$RemoteUsername %||% description$GithubUsername %||% NA_character_)
+  remote_repo <- as.character(description$RemoteRepo %||% description$GithubRepo %||% NA_character_)
+  remote_ref <- as.character(description$RemoteRef %||% description$GithubRef %||% NA_character_)
+  remote_sha <- as.character(description$RemoteSha %||% description$GithubSHA1 %||% NA_character_)
+  if (is.na(remote_username) || !identical(remote_username, expected_username)) {
+    stop("Pando remote username mismatch: installed ", remote_username,
+         ", required ", expected_username, ".", call. = FALSE)
+  }
+  if (is.na(remote_repo) || !identical(remote_repo, expected_repo)) {
+    stop("Pando remote repository mismatch: installed ", remote_repo,
+         ", required ", expected_repo, ".", call. = FALSE)
+  }
+  list(version = installed_version,
+       remote_username = remote_username,
+       remote_repo = remote_repo,
+       remote_ref = remote_ref,
+       remote_sha = remote_sha)
+}
+
