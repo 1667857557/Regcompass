@@ -27,8 +27,7 @@ jobs:
         shell: Rscript {0}
         run: |
           install.packages(
-            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs"),
-            repos = "https://cloud.r-project.org"
+            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs")
           )
 
       - name: Verify focused dependencies
