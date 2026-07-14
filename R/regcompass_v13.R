@@ -20,6 +20,23 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
   if (is.null(gem$gpr_table)) {
     stop("`gem` must contain `gpr_table`.", call. = FALSE)
   }
+  reserved_layer2 <- intersect(
+    names(layer2_args),
+    c(
+      "layer1", "gem", "mode", "reaction_membership",
+      "core_reactions", "medium_scenarios", "sample_col",
+      "condition_col", "celltype_col"
+    )
+  )
+  if (length(reserved_layer2)) {
+    stop(
+      paste0(
+        "`layer2_args` cannot override integrated workflow fields: ",
+        paste(reserved_layer2, collapse = ", "), "."
+      ),
+      call. = FALSE
+    )
+  }
 
   layer1_defaults <- list(
     object = object,
