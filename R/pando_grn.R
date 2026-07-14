@@ -183,8 +183,7 @@ rc_run_pando_meta_modules <- function(metacell_object,
                                       atac_assay = "ATAC",
                                       pando_version = NULL,
                                       pando_remote_username = "1667857557",
-                                      pando_remote_repo = c("Pando_regcompasspando", "Pando_regcompass"),
-                                      pando_remote_sha = "1b5f759a36630ec34d66f995906b20496a79689c",
+                                      pando_remote_repo = "Pando_regcompass",
                                       require_pando_remote = TRUE,
                                       min_metacells = 20L,
                                       pando_initiate_args = list(exclude_exons = TRUE),
@@ -212,7 +211,6 @@ rc_run_pando_meta_modules <- function(metacell_object,
     pando_version = pando_version,
     pando_remote_username = pando_remote_username,
     pando_remote_repo = pando_remote_repo,
-    pando_remote_sha = pando_remote_sha,
     require_pando_remote = require_pando_remote
   )
   installed <- pando_install$version

@@ -93,27 +93,28 @@ test_that("GRN genes map to core reactions and biological membership remains exp
   expect_false(any(module_gem$reaction_meta$support_only))
 })
 
-test_that("Pando install validation enforces pinned remote repository", {
+test_that("Pando install validation enforces the RegCompass Pando repository", {
   desc <- list(
     RemoteUsername = "1667857557",
-    RemoteRepo = "Pando_regcompasspando",
+    RemoteRepo = "Pando_regcompass",
     RemoteRef = "HEAD",
-    RemoteSha = "1b5f759a36630ec34d66f995906b20496a79689c"
+    RemoteSha = "any-sha"
   )
   ok <- .rc_validate_pando_install(description = desc, installed_version = "9.9.9")
+  expect_identical(ok$version, "9.9.9")
   expect_identical(ok$remote_username, "1667857557")
-  expect_identical(ok$remote_repo, "Pando_regcompasspando")
-  expect_identical(ok$remote_sha, "1b5f759a36630ec34d66f995906b20496a79689c")
+  expect_identical(ok$remote_repo, "Pando_regcompass")
+  expect_identical(ok$remote_sha, "any-sha")
 
-  desc_fallback <- desc
-  desc_fallback$RemoteRepo <- "Pando_regcompass"
-  expect_silent(.rc_validate_pando_install(description = desc_fallback, installed_version = "9.9.9"))
+  desc_other_sha <- desc
+  desc_other_sha$RemoteSha <- "another-sha"
+  expect_silent(.rc_validate_pando_install(description = desc_other_sha, installed_version = "9.9.9"))
 
-  desc_bad_sha <- desc
-  desc_bad_sha$RemoteSha <- "bad"
-  expect_error(.rc_validate_pando_install(description = desc_bad_sha, installed_version = "9.9.9"), "remote SHA mismatch")
+  desc_bad_user <- desc
+  desc_bad_user$RemoteUsername <- "other-user"
+  expect_error(.rc_validate_pando_install(description = desc_bad_user, installed_version = "9.9.9"), "remote username mismatch")
 
   desc_bad_repo <- desc
-  desc_bad_repo$RemoteRepo <- "Pando"
+  desc_bad_repo$RemoteRepo <- "Pando_regcompasspando"
   expect_error(.rc_validate_pando_install(description = desc_bad_repo, installed_version = "9.9.9"), "remote repository mismatch")
 })

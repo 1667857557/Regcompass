@@ -22,11 +22,11 @@ The Pando layer defines reaction collections but does not replace Layer 1 GPR ca
 
 ```r
 remotes::install_github("1667857557/SuperCell_Seurat_V4@supercell-2.0")
-remotes::install_github("1667857557/Pando_regcompass@1b5f759a36630ec34d66f995906b20496a79689c")
+remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-The Pando package name is `Pando`. Runtime validation checks that the installed package metadata points to owner `1667857557`, an accepted RegCompass Pando fork (`Pando_regcompasspando` or the compatibility fork `Pando_regcompass`), and commit `1b5f759a36630ec34d66f995906b20496a79689c`; it records but does not restrict the package version.
+The Pando package name is `Pando`. Runtime validation checks that the installed package metadata points to `1667857557/Pando_regcompass`; it records but does not restrict the package version or commit SHA.
 
 ## RegCompassR 1.2 example
 

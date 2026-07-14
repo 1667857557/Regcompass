@@ -31,4 +31,4 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@supercell-2.0,
-    1667857557/Pando_regcompass@1b5f759a36630ec34d66f995906b20496a79689c
+    1667857557/Pando_regcompass
