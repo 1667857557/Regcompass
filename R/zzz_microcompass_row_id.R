@@ -12,11 +12,24 @@ rc_parse_microcompass_row_id <- function(x) {
     stringsAsFactors = FALSE
   )
 
+  get_named_value <- function(value, name) {
+    selected <- value[name]
+    if (!length(selected) || is.na(selected[[1L]]) ||
+        !nzchar(selected[[1L]])) {
+      return(NA_character_)
+    }
+    unname(selected[[1L]])
+  }
+  get_position <- function(value, position) {
+    if (length(value) < position) return(NA_character_)
+    value[[position]]
+  }
+
   if (any(labeled)) {
     parsed <- lapply(x[labeled], function(value) {
       fields <- strsplit(value, "::", fixed = TRUE)[[1L]]
       key_value <- strsplit(fields, "=", fixed = TRUE)
-      keys <- vapply(key_value, `[[`, character(1), 1L)
+      keys <- vapply(key_value, get_position, character(1), 1L)
       values <- vapply(key_value, function(field) {
         if (length(field) < 2L) return(NA_character_)
         paste(field[-1L], collapse = "=")
@@ -26,29 +39,19 @@ rc_parse_microcompass_row_id <- function(x) {
       values
     })
     output$sample_id[labeled] <- vapply(
-      parsed,
-      function(value) value[["sample"]] %||% NA_character_,
-      character(1)
+      parsed, get_named_value, character(1), "sample"
     )
     output$module_id[labeled] <- vapply(
-      parsed,
-      function(value) value[["module"]] %||% NA_character_,
-      character(1)
+      parsed, get_named_value, character(1), "module"
     )
     output$reaction_id[labeled] <- vapply(
-      parsed,
-      function(value) value[["reaction"]] %||% NA_character_,
-      character(1)
+      parsed, get_named_value, character(1), "reaction"
     )
     output$target_direction[labeled] <- vapply(
-      parsed,
-      function(value) value[["direction"]] %||% NA_character_,
-      character(1)
+      parsed, get_named_value, character(1), "direction"
     )
     output$medium_scenario[labeled] <- vapply(
-      parsed,
-      function(value) value[["medium"]] %||% NA_character_,
-      character(1)
+      parsed, get_named_value, character(1), "medium"
     )
   }
 
@@ -57,23 +60,15 @@ rc_parse_microcompass_row_id <- function(x) {
     core <- sub("::medium=.*$", "", legacy)
     parts <- strsplit(core, "::", fixed = TRUE)
     output$reaction_id[!labeled] <- vapply(
-      parts,
-      function(value) value[[1L]] %||% NA_character_,
-      character(1)
+      parts, get_position, character(1), 1L
     )
     output$target_direction[!labeled] <- vapply(
-      parts,
-      function(value) value[[2L]] %||% NA_character_,
-      character(1)
+      parts, get_position, character(1), 2L
     )
     output$medium_scenario[!labeled] <- ifelse(
       grepl("::medium=", legacy, fixed = TRUE),
       sub("^.*::medium=", "", legacy),
-      vapply(
-        parts,
-        function(value) value[[3L]] %||% NA_character_,
-        character(1)
-      )
+      vapply(parts, get_position, character(1), 3L)
     )
   }
   output
