@@ -1,6 +1,6 @@
 # RegCompassR workflow
 
-RegCompassR 1.2 runs a strict multiome workflow with an optional sample-specific Pando GRN meta-module layer:
+RegCompassR 1.2 runs a strict multiome workflow with an optional sample-specific Pando GRN meta-module layer. The implemented biological-envelope stages and the intended local-GEM support-completion stages are:
 
 ```text
 Seurat RNA+ATAC object
@@ -9,14 +9,21 @@ Seurat RNA+ATAC object
 → post-filter strata by actual metacell count
 → aggregate ATAC fragments separately for each retained stratum
 → recompute stratum-specific metacell LinkPeaks
-→ Layer 1 reaction capacity/confidence
-→ run Pando independently for each sample on retained metacells
-→ map significant metabolic GRN modules to core reactions
-→ expand core reactions by subsystem, KEGG/Reactome-linked subsystem, and master-Rhea-linked subsystem
-→ Layer 2 GEM scoring
+→ Layer 1 RNA+ATAC-GPR capacity/confidence
+→ sample-specific Pando GRN
+→ GRN core reactions
+→ subsystem + KEGG/Reactome + master-Rhea expansion
+→ biological reaction envelope B
+→ medium-specific full GEM
+→ FASTCC consistent parent
+→ core direction precheck
+→ add-only FASTCORE support completion
+→ capacity-retention validation
+→ completed local GEM = B* ∪ support
+→ sample/module-aware microCOMPASS
 ```
 
-The Pando layer defines reaction collections but does not replace Layer 1 GPR capacity, ATAC confidence, medium constraints, steady-state mass balance, or flux optimization.
+The Pando/meta-module layer defines a biological reaction envelope **B** before solver support is considered. In the current code, **B** is implemented by Layer 1 RNA+ATAC-GPR evidence, sample-specific Pando GRNs, GRN core reactions, and subsystem + KEGG/Reactome + master-Rhea expansion. The intended complete local-GEM path after **B** is medium-specific full GEM → FASTCC consistent parent → core-direction precheck → add-only FASTCORE support completion → capacity-retention validation → completed local GEM (**B*** ∪ support) → sample/module-aware microCOMPASS. The current `rc_build_meta_module_gem()` implementation has not yet added FASTCC/FASTCORE/capacity-retention steps; it currently performs deterministic Human-GEM support inclusion and keeps those support reactions separate from biological members.
 
 ## Install the pinned dependencies
 
@@ -97,7 +104,8 @@ The v1.2 API is intentionally split into auditable functions. Use them in this o
 | 4b | `rc_project_metabolic_grn()` | Keeps significant metabolic targets, creates shared-TF gene pairs, optionally adds direct metabolic-TF edges, applies shared-TF/Jaccard/top-k filters, and labels connected components as sample-specific `GRN####` modules. | `metabolic_gene_nodes` and `metabolic_gene_edges`. |
 | 4c | `rc_map_meta_module_core_reactions()` | Uppercase-joins GRN module genes to Human-GEM GPR genes and marks every matching reaction as a core GRN reaction. | `core_gene_reaction` with `inclusion_stage = "core_grn_gene"`. |
 | 4d | `rc_expand_meta_module_reactions()` | For each `sample_id × module_id`, filters to valid GEM reactions, adds core-subsystem reactions, then KEGG/Reactome-linked subsystem reactions, then master-Rhea-linked subsystem reactions; `fixed_point` repeats until stable or `max_iterations`. | `reaction_membership`, `meta_module_summary`, and normalized cross-reference maps. |
-| 5 | `rc_build_meta_module_gem()` | Uses a selected biological meta-module as `grn_meta_module`, delegates local closure/support expansion to `rc_build_module_meso_gem()`, and labels biological versus support-only reactions. | A local module GEM with `biological_meta_module_member` and `support_only` flags. |
+| 5 | Intended FASTCC/FASTCORE local-GEM completion | After biological envelope **B**, the intended flow is medium-specific full GEM, FASTCC consistent parent, core-direction precheck, add-only FASTCORE support completion, and capacity-retention validation. | Completed local GEM = **B*** ∪ support, with support reactions kept outside biological membership. |
+| 5 current | `rc_build_meta_module_gem()` | Current implementation uses a selected biological meta-module as `grn_meta_module`, delegates deterministic local closure/support expansion to `rc_build_module_meso_gem()`, and labels biological versus support-only reactions. | A local module GEM with `biological_meta_module_member` and `support_only` flags; FASTCC/FASTCORE/capacity-retention are not yet implemented here. |
 | 6 | `rc_run_regcompass_v12()` | Convenience wrapper that runs Step 2, reloads retained metacells, runs Step 4, attaches `grn_meta_modules`, sets `schema_version`, and saves `regcompass_v1.2_result.rds`. | Integrated Layer 1 + GRN meta-module result. |
 
 A staged tutorial mirroring these functions is maintained in `docs/meta_module_v12_design.md`.
@@ -131,7 +139,7 @@ module_gem <- rc_build_meta_module_gem(
 )
 ```
 
-The exact GRN-defined reaction set is retained as `biological_meta_module_member = TRUE`. Reactions added only to support transport, exchange, local closure, or solver feasibility are labeled `support_only = TRUE`.
+The exact expanded biological meta-module reaction set (**B**) is retained as `biological_meta_module_member = TRUE`. Reactions added only for transport, exchange, local closure, or solver feasibility are labeled `support_only = TRUE`; they must not redefine **B**. In the intended FASTCORE-based completion, FASTCORE is add-only and only contributes the minimal support set needed for core/biological reactions to carry steady-state flux after medium-specific full-GEM consistency and direction prechecks.
 
 See `docs/meta_module_v12_design.md` for the algorithm, thresholds, output schema, and validation requirements.
 
