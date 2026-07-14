@@ -4,7 +4,9 @@
 
 RegCompassR 1.2 adds a sample-specific regulatory layer between metacell construction and reaction-set/GEM analysis. The existing Layer 1 reaction-capacity and ATAC-confidence calculations remain unchanged. Pando results define biologically motivated reaction collections; they do not replace GPR capacity, medium constraints, mass balance, or flux optimization.
 
-The implementation follows this separation:
+Implementation boundary: the code currently defines the biological reaction envelope **B** as GRN → metabolic gene → GPR reaction → subsystem/cross-reference-linked subsystem expansion. The intended complete local-GEM workflow continues after **B** with medium-specific full GEM construction, FASTCC consistency, core-direction precheck, add-only FASTCORE support completion, capacity-retention validation, and sample/module-aware microCOMPASS. FASTCC/FASTCORE/capacity-retention are not yet implemented in `rc_build_meta_module_gem()`; the current function uses deterministic Human-GEM support inclusion and labels those reactions separately from biological meta-module reactions.
+
+The implemented biological-envelope stages and intended local-GEM support-completion stages are separated as follows:
 
 ```text
 single-cell RNA+ATAC
@@ -16,8 +18,14 @@ single-cell RNA+ATAC
 → significant metabolic target genes + tightly connected metabolic genes
 → GPR mapping to core reactions
 → subsystem/database/master-Rhea expansion
-→ sample-specific reaction meta-modules
-→ optional module-meso-GEM support expansion and microCOMPASS
+→ biological reaction envelope B
+→ medium-specific full GEM
+→ FASTCC consistent parent
+→ core direction precheck
+→ add-only FASTCORE support completion
+→ capacity-retention validation
+→ completed local GEM = B* ∪ support
+→ sample/module-aware microCOMPASS
 ```
 
 ## 2. Version pinning
@@ -48,7 +56,7 @@ The v1.2 object retains these normalized reaction metadata columns:
 
 A reaction can have multiple subsystem or database annotations. Delimited values are normalized to long maps by `rc_reaction_crossref_maps()`.
 
-`rxnKEGGID` and `rxnREACTOMEID` are reaction/event cross-references, not pathway identifiers. Step 4 therefore means: identify another subsystem containing at least one reaction with a KEGG/Reactome reaction identifier shared with the current subsystem collection, then add all reactions from that subsystem. A future pathway-level implementation would require an explicit subsystem-to-pathway crosswalk.
+`rxnKEGGID` and `rxnREACTOMEID` are reaction/event cross-references, not pathway identifiers. Step 4 therefore means: identify another subsystem containing at least one reaction with a KEGG/Reactome reaction identifier shared with the current subsystem collection, then add all reactions from that subsystem. A future pathway-level implementation would require an explicit subsystem-to-pathway crosswalk or pathway membership table. In other words, the present implementation should be described as subsystem/cross-reference expansion, not as a completed GRN–gene–reaction–subsystem–pathway expansion.
 
 ## 4. Per-sample Pando input
 
@@ -239,9 +247,23 @@ The database and Rhea rules are reapplied until no new reactions are added or `m
 
 ## 8. Biological membership versus solver support
 
-`reaction_membership` is the exact biologically defined meta-module. It is never silently expanded for flux feasibility.
+`reaction_membership` is the exact biological reaction envelope **B** produced by GRN/gene/reaction/subsystem/cross-reference expansion. It is never silently expanded for flux feasibility.
 
-`rc_build_meta_module_gem()` then reuses `rc_build_module_meso_gem()` to optionally add:
+The intended support-completion layer is:
+
+```text
+B
+→ apply the requested medium to the full Human-GEM
+→ run FASTCC to obtain a medium-specific consistent parent model
+→ precheck each core reaction direction for achievable steady-state flux
+→ run add-only FASTCORE with B/core reactions protected
+→ validate capacity retention for protected reactions
+→ completed local GEM = B* ∪ support
+```
+
+Here **B*** denotes the protected biological envelope after consistency/direction checks, and `support` denotes reactions selected only to make protected reactions flux-consistent. FASTCORE must be add-only: it may not delete biological reactions from **B** or promote support reactions into biological membership.
+
+The current implementation does not yet run FASTCC, FASTCORE, or capacity-retention validation. `rc_build_meta_module_gem()` currently reuses `rc_build_module_meso_gem()` to optionally add deterministic support reactions from the complete Human-GEM:
 
 - one-hop reactions;
 - transport reactions;
@@ -255,7 +277,7 @@ biological_meta_module_member = TRUE/FALSE
 support_only = TRUE/FALSE
 ```
 
-Therefore, support reactions can satisfy local mass-balance and boundary requirements without being reported as Pando/GRN-derived module members.
+Therefore, support reactions can satisfy local mass-balance and boundary requirements without being reported as Pando/GRN-derived module members. In the intended FASTCORE-based completion, FASTCORE-selected reactions should be labeled `support_only = TRUE` unless they were already in `reaction_membership`, and capacity-retention diagnostics should be reported before interpreting microCOMPASS scores.
 
 Recommended primary settings:
 
@@ -268,21 +290,115 @@ include_protected = TRUE
 
 Closure and target feasibility should still be checked before interpreting microCOMPASS scores.
 
-## 9. New public functions
+## 9. Function-by-function workflow and tutorial
 
-| Function | Role |
-|---|---|
-| `rc_prepare_human2_gem_v12()` | Download a pinned Human-GEM release and retain v1.2 annotations |
-| `rc_enrich_humangem_v12_metadata()` | Normalize subsystem and database metadata |
-| `rc_reaction_crossref_maps()` | Convert annotations into long reaction maps |
-| `rc_extract_pando_tf_peak_gene()` | Export and filter Pando coefficients |
-| `rc_project_metabolic_grn()` | Construct sample-specific metabolic gene networks |
-| `rc_map_meta_module_core_reactions()` | Map GRN genes to GPR reactions |
-| `rc_expand_meta_module_reactions()` | Apply ordered subsystem/database/Rhea expansion |
-| `rc_build_meta_module_gem()` | Build a local GEM while labeling support-only reactions |
-| `rc_load_metacell_object_from_run()` | Reconstruct retained metacell objects from formal run outputs |
-| `rc_run_pando_meta_modules()` | Run the per-sample Pando and meta-module stage |
-| `rc_run_regcompass_v12()` | Run existing formal Layer 1 and attach v1.2 meta-modules |
+This section mirrors the actual implementation order. Use the integrated wrapper in Section 10 for routine runs; use the staged calls below when auditing, debugging, or rerunning a single stage.
+
+### 9.1 Prepare a v1.2 Human-GEM object
+
+```r
+gem <- rc_prepare_human2_gem_v12(version = "2.0.0")
+```
+
+`rc_prepare_human2_gem_v12()` refuses `version = "latest"` unless `allow_latest = TRUE`, removes an existing cache only when `force_download = TRUE`, downloads the requested Human-GEM reference, converts `model/Human-GEM.yml`, enriches metadata, annotates reaction roles, validates the object, saves it to `save_rds`, and finally reads it back through `rc_read_gem()`. The returned object contains the standard stoichiometric model plus `gpr_table`, `metabolic_genes`, `reaction_rules`, `genes`, `reactions`, and v1.2 model metadata.
+
+Supporting helpers:
+
+- `rc_enrich_humangem_v12_metadata()` first applies the legacy Human-GEM metadata enrichment, then fills missing `subsystem` and `equation` values from the YAML file when available, copies `rxnKEGGID`, `rxnREACTOMEID`, `rxnRheaID`, and `rxnRheaMasterID` from `reactions.tsv`, and mirrors subsystem labels into `metabolic_module`.
+- `rc_reaction_crossref_maps()` turns semicolon- or otherwise delimited annotations into long maps for subsystem, KEGG, Reactome, Rhea, and master-Rhea lookups. It drops `UNASSIGNED`, `NA`, and `NONE` subsystem labels before expansion.
+
+### 9.2 Run or reuse the strict Layer 1 metacell workflow
+
+```r
+layer1 <- rc_run_regcompass_multiome_metacell(
+  object = object,
+  gpr_table = gem$gpr_table,
+  outdir = "RegCompassR_v1.2_run",
+  fragment_files = fragment_files,
+  sample_col = "sample_id",
+  condition_col = "condition",
+  celltype_col = "cell_type",
+  rna_assay = "RNA",
+  atac_assay = "ATAC",
+  gamma = 150,
+  adaptive_gamma = TRUE,
+  min_cells_pre_metacell = 100,
+  min_metacell_size = 10,
+  min_metacells_post_metacell = 10,
+  future_plan = "sequential"
+)
+```
+
+This is the existing formal workflow. It enforces the same `condition × sample × cell type` stratum for pre-filtering, metacell construction, post-filtering, fragment aggregation, LinkPeaks, and Layer 1 capacity/confidence. The v1.2 wrapper does not reimplement this logic; it delegates to this function.
+
+To resume the Pando stage from a completed run:
+
+```r
+mc_object <- rc_load_metacell_object_from_run(
+  run_dir = "RegCompassR_v1.2_run",
+  retained_metacell_ids = layer1$metacell_meta$metacell_id,
+  rna_assay = "RNA",
+  atac_assay = "ATAC"
+)
+```
+
+`rc_load_metacell_object_from_run()` searches `01_metacells/` recursively for `metacell_object.rds`, verifies that saved metacell IDs are unique, optionally checks/subsets retained IDs, removes stored Signac fragment pointers, merges objects if more than one file is present, and returns a retained metacell Seurat object.
+
+### 9.3 Run the sample-specific Pando meta-module stage
+
+```r
+grns <- rc_run_pando_meta_modules(
+  metacell_object = mc_object,
+  gem = gem,
+  outdir = file.path("RegCompassR_v1.2_run", "04_pando_meta_modules"),
+  pfm = motifs,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  sample_col = "sample_id",
+  single_cell_genes = rownames(rc_get_assay_counts(object, "RNA")),
+  rna_assay = "RNA",
+  atac_assay = "ATAC",
+  min_metacells = 20,
+  pando_infer_args = list(method = "glm", tf_cor = 0.1, peak_cor = 0,
+                          adjust_method = "fdr", parallel = FALSE),
+  padj_threshold = 0.05,
+  min_model_rsq = 0.1,
+  top_k_neighbors = 5,
+  min_shared_tfs = 1,
+  expansion_mode = "ordered_once"
+)
+```
+
+Actual behavior by internal function:
+
+1. `rc_run_pando_meta_modules()` validates that `metacell_object` is Seurat, validates the pinned `1667857557/Pando_regcompass` installation, requires Seurat and Signac, creates output folders, and constructs the Pando target set from original single-cell genes, retained metacell RNA genes, and Human-GEM metabolic genes. It iterates over `sample_col` values; samples with fewer than `min_metacells` are recorded as `skipped_too_few_metacells`, and sample-level errors are either recorded or stopped according to `on_sample_error`.
+2. For each runnable sample, the function subsets metacells, normalizes RNA, runs ATAC TF-IDF, optionally saves the sample object, calls `Pando::initiate_grn()`, `Pando::find_motifs()`, and `Pando::infer_grn()`, then optionally saves the Pando object.
+3. `rc_extract_pando_tf_peak_gene()` converts `stats::coef(grn_object)` to a data frame, requires `tf`, `target`, and `region`, merges non-conflicting `Pando::gof()` columns by `target` when available, uppercases `tf` and `target`, and filters significant rows by finite absolute `estimate`, adjusted p-value, and `rsq` when present. If `padj` is absent and `require_padj = TRUE`, it stops with guidance to use a p-value-producing Pando model such as GLM.
+4. `rc_project_metabolic_grn()` keeps significant rows whose targets are metabolic genes, aggregates TF-target strengths, forms shared-TF target pairs with capped targets per TF, adds direct edges when a significant TF is itself metabolic, applies `min_shared_tfs`, `min_tf_jaccard`, and per-gene `top_k` filtering, then labels connected components as `<sample_id>::GRN####`.
+5. `rc_map_meta_module_core_reactions()` uppercase-joins projected GRN genes to `gem$gpr_table` and emits one row per gene–reaction match with `is_core = TRUE` and `inclusion_stage = "core_grn_gene"`. This is membership evidence, not a replacement for AND/OR-aware GPR capacity.
+6. `rc_expand_meta_module_reactions()` runs independently for each sample/module pair. It filters core reactions to valid GEM reactions, includes reactions from core subsystems, includes whole subsystems linked by KEGG or Reactome reaction IDs found in the current collection, includes whole subsystems linked by shared master-Rhea IDs, and either stops after one ordered pass or repeats in `fixed_point` mode. It does not consume a separate pathway table and should not be documented as an explicit pathway expansion.
+7. The stage writes status, coefficient, projection, core, membership, and summary tables, saves `pando_meta_modules.rds`, and returns the same data as a list. It stops if no significant Pando TF–peak–gene edges are available across all samples.
+
+### 9.4 Build a local meta-module GEM
+
+```r
+module_gem <- rc_build_meta_module_gem(
+  gem = gem,
+  reaction_membership = grns$reaction_membership,
+  sample_id = grns$meta_module_summary$sample_id[[1]],
+  module_id = grns$meta_module_summary$module_id[[1]],
+  medium_table = medium,
+  include_one_hop = FALSE,
+  include_transport = TRUE,
+  include_exchange = TRUE,
+  include_protected = TRUE
+)
+```
+
+`rc_build_meta_module_gem()` currently selects the requested biological reaction set **B**, writes it into `reaction_meta$grn_meta_module`, delegates deterministic support expansion and closure handling to `rc_build_module_meso_gem()`, then adds `sample_id`, `grn_module_id`, `biological_meta_module_member`, and `support_only` flags. Biological membership therefore remains auditable even when transport, exchange, protected, or other support reactions are added for feasibility. The intended replacement/extension of this support layer is medium-specific full GEM → FASTCC consistent parent → core-direction precheck → add-only FASTCORE support completion → capacity-retention validation.
+
+### 9.5 Use the integrated convenience wrapper
+
+`rc_run_regcompass_v12()` combines Sections 9.2 and 9.3. It requires `gem$gpr_table`, forwards `metacell_args` to `rc_run_regcompass_multiome_metacell()`, reloads retained metacells from disk, forwards `pando_args` to `rc_run_pando_meta_modules()`, stores the returned list as `layer1$grn_meta_modules`, sets `schema_version = "regcompass_v1.2"`, saves `regcompass_v1.2_result.rds`, and returns the integrated object.
 
 ## 10. Integrated example
 
