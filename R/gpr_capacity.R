@@ -21,6 +21,15 @@ rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
 
 #' Robust row-wise z score
 rc_robust_z <- function(x, eps = 1e-6) {
+  if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0) {
+    stop("`eps` must be a single positive finite number.", call. = FALSE)
+  }
+  if (is.null(dim(x))) {
+    x <- as.numeric(x)
+    center <- stats::median(x, na.rm = TRUE)
+    scale <- rc_safe_scale(x, min_scale = max(eps, 0.05))
+    return((x - center) / scale)
+  }
   rc_gene_zscore(x, min_scale = max(eps, 0.05), z_clip = Inf)
 }
 
@@ -129,15 +138,33 @@ rc_reaction_capacity <- function(gpr_list,
     stop("`gpr_list` must be named by reaction IDs.", call. = FALSE)
   }
   gene_score <- as.matrix(gene_score)
-  if (is.null(rownames(gene_score)) || is.null(colnames(gene_score))) stop("`gene_score` must have rownames as genes and colnames as pools.", call. = FALSE)
-  rownames(gene_score) <- tolower(rownames(gene_score))
+  if (is.null(rownames(gene_score)) || is.null(colnames(gene_score))) {
+    stop("`gene_score` must have rownames as genes and colnames as pools.", call. = FALSE)
+  }
+  normalized_genes <- tolower(trimws(rownames(gene_score)))
+  if (anyNA(normalized_genes) || any(!nzchar(normalized_genes))) {
+    stop("`gene_score` gene row names must be non-missing and non-empty.", call. = FALSE)
+  }
+  if (anyDuplicated(normalized_genes)) {
+    stop("`gene_score` contains duplicated gene IDs after case normalization.", call. = FALSE)
+  }
+  rownames(gene_score) <- normalized_genes
+  reaction_ids <- names(gpr_list)
+  if (!length(reaction_ids)) {
+    return(matrix(
+      numeric(), nrow = 0L, ncol = ncol(gene_score),
+      dimnames = list(character(), colnames(gene_score))
+    ))
+  }
+  if (anyNA(reaction_ids) || any(!nzchar(trimws(reaction_ids))) || anyDuplicated(reaction_ids)) {
+    stop("`gpr_list` reaction names must be unique, non-missing, and non-empty.", call. = FALSE)
+  }
 
   weights <- rc_promiscuity_weight(gpr_list, mode = promiscuity_mode)
   common_genes <- intersect(rownames(gene_score), names(weights))
   weighted_score <- gene_score
   weighted_score[common_genes, ] <- sweep(weighted_score[common_genes, , drop = FALSE], 1, weights[common_genes], "*")
 
-  reaction_ids <- names(gpr_list)
   per_reaction <- rc_internal_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(weighted_score)), function(j) {
@@ -178,23 +205,44 @@ rc_gpr_diagnostics <- function(gpr_list, gene_ids) {
 
 rc_hard_min_capacity <- function(gpr_list, gene_score, BPPARAM = NULL) {
   gene_score <- as.matrix(gene_score)
-  rownames(gene_score) <- tolower(rownames(gene_score))
+  if (is.null(rownames(gene_score)) || is.null(colnames(gene_score))) {
+    stop("`gene_score` must have gene rownames and unit colnames.", call. = FALSE)
+  }
+  normalized_genes <- tolower(trimws(rownames(gene_score)))
+  if (anyDuplicated(normalized_genes)) {
+    stop("`gene_score` contains duplicated gene IDs after case normalization.", call. = FALSE)
+  }
+  rownames(gene_score) <- normalized_genes
+  reaction_ids <- names(gpr_list)
+  if (is.null(reaction_ids)) stop("`gpr_list` must be named by reaction IDs.", call. = FALSE)
+  if (!length(reaction_ids)) {
+    return(matrix(numeric(), nrow = 0L, ncol = ncol(gene_score),
+                  dimnames = list(character(), colnames(gene_score))))
+  }
   weights <- rc_promiscuity_weight(gpr_list)
   common_genes <- intersect(rownames(gene_score), names(weights))
-  gene_score[common_genes, ] <- sweep(gene_score[common_genes, , drop = FALSE], 1, weights[common_genes], "*")
-  per_reaction <- rc_internal_lapply(names(gpr_list), function(rid) {
+  gene_score[common_genes, ] <- sweep(
+    gene_score[common_genes, , drop = FALSE],
+    1, weights[common_genes], "*"
+  )
+  per_reaction <- rc_internal_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(gene_score)), function(j) {
       and_caps <- vapply(parsed, function(and_group) {
-        vals <- gene_score[and_group, j]
-        vals <- vals[is.finite(vals)]
-        if (length(vals) == 0L) NA_real_ else min(vals)
+        genes <- unique(tolower(trimws(as.character(and_group))))
+        genes <- genes[!is.na(genes) & nzchar(x)])
+        vals <- gene_score[genes, j]
+        if (!length(genes) || length(vals) != length(genes) ||
+            anyNA(vals) || any(!is.finite(vals))) {
+          return(NA_real_)
+        }
+        min(vals)
       }, numeric(1))
-      rc_or_capacity(and_caps)
+      rc_or_capacity(and_caps, method = "sum_sqrtK")
     }, numeric(1))
   }, BPPARAM = BPPARAM)
   out <- do.call(rbind, per_reaction)
-  rownames(out) <- names(gpr_list)
+  rownames(out) <- reaction_ids
   colnames(out) <- colnames(gene_score)
   out
 }
