@@ -8,21 +8,27 @@ rc_prepare_directional_targets <- function(gem, target_reactions,
                                            ),
                                            bound_tolerance = 1e-12) {
   target_direction <- match.arg(target_direction)
+  if (!is.numeric(bound_tolerance) || length(bound_tolerance) != 1L ||
+      !is.finite(bound_tolerance) || bound_tolerance < 0) {
+    stop("`bound_tolerance` must be one finite non-negative number.", call. = FALSE)
+  }
   validated <- rc_validate_gem(gem)
-  target_reactions <- intersect(
-    unique(as.character(target_reactions)),
-    validated$reactions
-  )
-  if (!length(target_reactions)) {
+  requested <- unique(trimws(as.character(target_reactions)))
+  requested <- requested[!is.na(requested) & nzchar(requested)]
+  missing <- setdiff(requested, validated$reactions)
+  if (length(missing)) {
+    stop("Target reactions missing from GEM: ",
+         paste(utils::head(missing, 10L), collapse = ", "), call. = FALSE)
+  }
+  if (!length(requested)) {
     return(data.frame(
-      reaction_id = character(),
-      target_direction = character(),
-      direction_class = character(),
-      stringsAsFactors = FALSE
+      reaction_id = character(), target_direction = character(),
+      direction_class = character(), requested_direction = character(),
+      direction_status = character(), stringsAsFactors = FALSE
     ))
   }
 
-  rows <- lapply(target_reactions, function(reaction) {
+  rows <- lapply(requested, function(reaction) {
     lb <- validated$lb[[reaction]]
     ub <- validated$ub[[reaction]]
     forward_allowed <- ub > bound_tolerance
@@ -38,30 +44,20 @@ rc_prepare_directional_targets <- function(gem, target_reactions,
     }
     directions <- switch(
       target_direction,
-      both = c(
-        if (forward_allowed) "forward",
-        if (reverse_allowed) "reverse"
-      ),
+      both = c(if (forward_allowed) "forward", if (reverse_allowed) "reverse"),
       forward = if (forward_allowed) "forward" else character(),
       reverse = if (reverse_allowed) "reverse" else character()
     )
-    if (!length(directions)) return(NULL)
+    if (!length(directions)) directions <- "none"
     data.frame(
       reaction_id = reaction,
       target_direction = directions,
       direction_class = direction_class,
+      requested_direction = target_direction,
+      direction_status = ifelse(directions == "none", "no_allowed_direction", "allowed"),
       stringsAsFactors = FALSE
     )
   })
-  rows <- rows[!vapply(rows, is.null, logical(1))]
-  if (!length(rows)) {
-    return(data.frame(
-      reaction_id = character(),
-      target_direction = character(),
-      direction_class = character(),
-      stringsAsFactors = FALSE
-    ))
-  }
   do.call(rbind, rows)
 }
 
@@ -127,6 +123,51 @@ rc_prepare_directional_targets <- function(gem, target_reactions,
   stop("Could not align Layer 2 units to sample IDs.", call. = FALSE)
 }
 
+.rc_unit_condition_map <- function(unit_meta, unit_ids, condition_col) {
+  if (is.null(condition_col) || !nzchar(condition_col) ||
+      is.null(unit_meta) || !condition_col %in% colnames(unit_meta)) {
+    return(stats::setNames(rep("all", length(unit_ids)), unit_ids))
+  }
+  id_columns <- intersect(c("unit_id", "pool_id", "metacell_id"), colnames(unit_meta))
+  for (id_column in id_columns) {
+    values <- stats::setNames(
+      as.character(unit_meta[[condition_col]]),
+      as.character(unit_meta[[id_column]])
+    )
+    if (all(unit_ids %in% names(values))) {
+      out <- values[unit_ids]
+      if (anyNA(out) || any(!nzchar(out))) {
+        stop("Unit conditions must be non-missing and non-empty.", call. = FALSE)
+      }
+      return(out)
+    }
+  }
+  stop("Could not align Layer 2 units to conditions.", call. = FALSE)
+}
+
+.rc_sample_condition_map <- function(unit_meta, sample_col, condition_col) {
+  if (is.null(unit_meta) || !sample_col %in% colnames(unit_meta)) {
+    stop("Unit metadata is missing the sample column.", call. = FALSE)
+  }
+  samples <- unique(as.character(unit_meta[[sample_col]]))
+  if (is.null(condition_col) || !nzchar(condition_col) ||
+      !condition_col %in% colnames(unit_meta)) {
+    return(stats::setNames(rep("all", length(samples)), samples))
+  }
+  pairs <- unique(data.frame(
+    sample_id = as.character(unit_meta[[sample_col]]),
+    condition = as.character(unit_meta[[condition_col]]),
+    stringsAsFactors = FALSE
+  ))
+  if (anyNA(pairs$sample_id) || any(!nzchar(pairs$sample_id)) ||
+      anyNA(pairs$condition) || any(!nzchar(pairs$condition)) ||
+      any(table(pairs$sample_id) != 1L)) {
+    stop("Each biological sample must map to exactly one condition.", call. = FALSE)
+  }
+  stats::setNames(pairs$condition, pairs$sample_id)
+}
+
+
 #' Run microCOMPASS with a full GEM or a FASTCORE-completed meta-module GEM
 #'
 #' The package intentionally exposes exactly two structural modes.
@@ -178,6 +219,12 @@ rc_run_microcompass <- function(layer1, gem,
     condition_col
   )
   gem <- rc_annotate_reaction_roles(gem)
+  unit_condition <- .rc_unit_condition_map(
+    matrices$unit_meta, colnames(matrices$C_rel), condition_col
+  )
+  sample_conditions <- .rc_sample_condition_map(
+    matrices$unit_meta, sample_col, condition_col
+  )
 
   if (identical(mode, "full_gem")) {
     if (is.null(target_reactions) || !length(target_reactions)) {
@@ -203,7 +250,8 @@ rc_run_microcompass <- function(layer1, gem,
       gem = gem,
       dirs = directions,
       medium_scenarios = medium_scenarios,
-      cache_dir = cache_dir
+      cache_dir = cache_dir,
+      conditions = unique(unname(unit_condition))
     )
   } else {
     if (is.null(reaction_membership)) {
@@ -232,7 +280,8 @@ rc_run_microcompass <- function(layer1, gem,
         1e-4,
       max_support_reactions =
         model_params$max_support_reactions %||% 2000,
-      strict = model_params$strict %||% TRUE
+      strict = model_params$strict %||% TRUE,
+      sample_conditions = sample_conditions
     )
     if (!length(model_cache)) {
       stop(
@@ -248,6 +297,7 @@ rc_run_microcompass <- function(layer1, gem,
           module_id = entry$module_id,
           reaction_id = entry$reaction_id,
           target_direction = entry$target_direction,
+          condition = entry$condition %||% "all",
           stringsAsFactors = FALSE
         )
       }
@@ -317,11 +367,23 @@ rc_run_microcompass <- function(layer1, gem,
       data.frame()
     }
   } else {
-    tasks <- expand.grid(
-      row_id = row_ids,
-      unit_id = units,
-      stringsAsFactors = FALSE
-    )
+    task_rows <- lapply(row_ids, function(row_id) {
+      entry <- model_cache[[row_id]]
+      condition <- entry$condition %||% "all"
+      selected_units <- if (identical(condition, "all")) {
+        units
+      } else {
+        names(unit_condition)[unit_condition == condition]
+      }
+      if (!length(selected_units)) return(NULL)
+      data.frame(
+        row_id = row_id,
+        unit_id = selected_units,
+        stringsAsFactors = FALSE
+      )
+    })
+    task_rows <- task_rows[!vapply(task_rows, is.null, logical(1))]
+    tasks <- if (length(task_rows)) do.call(rbind, task_rows) else data.frame()
   }
   if (!nrow(tasks)) {
     stop(
@@ -358,6 +420,7 @@ rc_run_microcompass <- function(layer1, gem,
       reaction_id = entry$reaction_id,
       target_direction = entry$target_direction,
       medium_scenario = entry$medium_scenario,
+      condition = entry$condition %||% "all",
       strict_feasible = isTRUE(answer$feasible),
       solver_status = answer$solver_status,
       step1_status = answer$step1_status,

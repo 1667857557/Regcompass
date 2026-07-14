@@ -46,3 +46,12 @@
 - Added strict condition × sample × cell type metacell filtering gates before and after metacell construction.
 - Hardened Human-GEM archive download fallback and ZIP validation.
 - Updated the formal metacell README example for the current API.
+
+## Mathematical and biological audit
+
+- Enforced exact penalty/reaction alignment and correct ranged-constraint handling.
+- Added condition-aware full-GEM and meta-module parent caches.
+- Reported blocked core reactions as `no_allowed_direction`.
+- Marked FASTCORE as an add-only direction-preserving extension.
+- Moved all differential inference to biological-sample aggregates.
+- Activated documented GPR/role penalty parameters and made artificial drains expensive by default.

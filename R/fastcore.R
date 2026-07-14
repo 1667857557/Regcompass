@@ -62,53 +62,43 @@
                                         flux_threshold = 1e-8) {
   required <- c("reaction_id", "target_direction")
   if (!is.data.frame(targets) || !all(required %in% colnames(targets))) {
-    stop(
-      "`targets` must contain reaction_id and target_direction.",
-      call. = FALSE
-    )
+    stop("`targets` must contain reaction_id and target_direction.", call. = FALSE)
   }
   if (!nrow(targets)) {
     return(data.frame(
-      reaction_id = character(),
-      target_direction = character(),
-      feasible = logical(),
-      vmax = numeric(),
-      solver_status = character(),
+      reaction_id = character(), target_direction = character(),
+      feasible = logical(), vmax = numeric(), solver_status = character(),
       stringsAsFactors = FALSE
     ))
   }
-
   validated <- rc_validate_gem(gem)
   rows <- lapply(seq_len(nrow(targets)), function(i) {
     reaction <- as.character(targets$reaction_id[[i]])
     direction <- as.character(targets$target_direction[[i]])
     if (!reaction %in% validated$reactions) {
       return(data.frame(
-        reaction_id = reaction,
-        target_direction = direction,
-        feasible = FALSE,
-        vmax = NA_real_,
-        solver_status = "reaction_missing",
+        reaction_id = reaction, target_direction = direction,
+        feasible = FALSE, vmax = NA_real_, solver_status = "reaction_missing",
+        stringsAsFactors = FALSE
+      ))
+    }
+    if (!direction %in% c("forward", "reverse")) {
+      return(data.frame(
+        reaction_id = reaction, target_direction = direction,
+        feasible = FALSE, vmax = 0, solver_status = "no_allowed_direction",
         stringsAsFactors = FALSE
       ))
     }
     answer <- rc_compass_vmax_directional(
-      S = validated$S,
-      lb = validated$lb,
-      ub = validated$ub,
-      target_reaction = reaction,
-      direction = direction,
-      solver = solver,
-      time_limit = time_limit,
+      S = validated$S, lb = validated$lb, ub = validated$ub,
+      target_reaction = reaction, direction = direction,
+      solver = solver, time_limit = time_limit,
       flux_threshold = flux_threshold
     )
     data.frame(
-      reaction_id = reaction,
-      target_direction = direction,
-      feasible = isTRUE(answer$feasible),
-      vmax = answer$vmax,
-      solver_status = answer$status,
-      stringsAsFactors = FALSE
+      reaction_id = reaction, target_direction = direction,
+      feasible = isTRUE(answer$feasible), vmax = answer$vmax,
+      solver_status = answer$status, stringsAsFactors = FALSE
     )
   })
   do.call(rbind, rows)
@@ -786,15 +776,19 @@
     sort = FALSE
   )
   diagnostics$completion_status <- ifelse(
-    !diagnostics$feasible,
-    "parent_blocked",
+    diagnostics$solver_status == "no_allowed_direction",
+    "no_allowed_direction",
     ifelse(
-      diagnostics$initial_feasible %in% TRUE,
-      "already_feasible",
+      !diagnostics$feasible,
+      "parent_blocked",
       ifelse(
-        diagnostics$final_feasible %in% TRUE,
-        "fastcore_completed",
-        "unresolved"
+        diagnostics$initial_feasible %in% TRUE,
+        "already_feasible",
+        ifelse(
+          diagnostics$final_feasible %in% TRUE,
+          "fastcore_completed",
+          "unresolved"
+        )
       )
     )
   )
@@ -842,11 +836,15 @@
     data.frame()
   }
 
-  n_parent_blocked <- sum(!(diagnostics$feasible %in% TRUE))
+  n_no_direction <- sum(diagnostics$completion_status == "no_allowed_direction")
+  n_parent_blocked <- sum(diagnostics$completion_status == "parent_blocked")
   final$target_status <- if (any(failed)) {
     "structurally_infeasible"
-  } else if (nrow(diagnostics) > 0L &&
-             n_parent_blocked == nrow(diagnostics)) {
+  } else if (nrow(diagnostics) > 0L && n_no_direction == nrow(diagnostics)) {
+    "no_allowed_direction"
+  } else if (n_no_direction > 0L) {
+    "partial_no_allowed_direction"
+  } else if (nrow(diagnostics) > 0L && n_parent_blocked == nrow(diagnostics)) {
     "parent_blocked"
   } else if (n_parent_blocked > 0L) {
     "partial_parent_blocked"
@@ -855,7 +853,7 @@
   }
   final$build_params <- list(
     strategy = "meta_module_gem",
-    algorithm = "add_only_fastcore_lp7_lp10",
+    algorithm = "add_only_direction_preserving_fastcore_lp7_lp10",
     n_biological_reactions = length(biological),
     n_fastcore_support_reactions = length(selected_support),
     n_fastcc_consistent_parent_reactions = length(
@@ -940,79 +938,110 @@ rc_build_meta_module_gem_cache <- function(gem, reaction_membership,
                                            time_limit = 300,
                                            fastcore_epsilon = 1e-4,
                                            max_support_reactions = 2000,
-                                           strict = TRUE) {
+                                           strict = TRUE,
+                                           sample_conditions = NULL) {
   requested_direction <- match.arg(target_direction)
   if (is.null(core_reactions)) {
     if (!"is_core" %in% colnames(reaction_membership)) {
-      stop(
-        paste(
-          "Supply `core_reactions` or an `is_core` column",
-          "in `reaction_membership`."
-        ),
-        call. = FALSE
-      )
+      stop("Supply `core_reactions` or an `is_core` column in `reaction_membership`.", call. = FALSE)
     }
-    core_reactions <- reaction_membership[
-      reaction_membership$is_core %in% TRUE,
-      , drop = FALSE
-    ]
+    core_reactions <- reaction_membership[reaction_membership$is_core %in% TRUE, , drop = FALSE]
   }
   required <- c("sample_id", "module_id", "reaction_id")
   if (!all(required %in% colnames(core_reactions))) {
-    stop(
-      "`core_reactions` is missing required columns.",
-      call. = FALSE
-    )
+    stop("`core_reactions` is missing required columns.", call. = FALSE)
   }
   if (!is.null(target_reactions)) {
     core_reactions <- core_reactions[
-      as.character(core_reactions$reaction_id) %in%
-        as.character(target_reactions),
+      as.character(core_reactions$reaction_id) %in% as.character(target_reactions),
       , drop = FALSE
     ]
   }
-  if (!nrow(core_reactions)) {
-    stop(
-      "No core reactions remain for meta-module scoring.",
-      call. = FALSE
-    )
+  if (!nrow(core_reactions)) stop("No core reactions remain for meta-module scoring.", call. = FALSE)
+
+  groups <- unique(core_reactions[, c("sample_id", "module_id"), drop = FALSE])
+  samples <- unique(as.character(groups$sample_id))
+  if (is.null(sample_conditions)) {
+    source <- if ("condition" %in% colnames(core_reactions)) {
+      core_reactions
+    } else if ("condition" %in% colnames(reaction_membership)) {
+      reaction_membership
+    } else {
+      NULL
+    }
+    if (is.null(source)) {
+      condition_map <- stats::setNames(rep("all", length(samples)), samples)
+    } else {
+      pairs <- unique(data.frame(
+        sample_id = as.character(source$sample_id),
+        condition = as.character(source$condition),
+        stringsAsFactors = FALSE
+      ))
+      pairs <- pairs[pairs$sample_id %in% samples, , drop = FALSE]
+      if (anyNA(pairs$condition) || any(!nzchar(pairs$condition)) ||
+          any(table(pairs$sample_id) != 1L)) {
+        stop("Each sample must map to exactly one non-empty condition.", call. = FALSE)
+      }
+      condition_map <- stats::setNames(pairs$condition, pairs$sample_id)
+    }
+  } else if (is.data.frame(sample_conditions)) {
+    if (!all(c("sample_id", "condition") %in% colnames(sample_conditions))) {
+      stop("`sample_conditions` data frame needs sample_id and condition.", call. = FALSE)
+    }
+    pairs <- unique(sample_conditions[, c("sample_id", "condition"), drop = FALSE])
+    pairs$sample_id <- as.character(pairs$sample_id)
+    pairs$condition <- as.character(pairs$condition)
+    if (any(table(pairs$sample_id) != 1L)) {
+      stop("Each sample must map to exactly one condition.", call. = FALSE)
+    }
+    condition_map <- stats::setNames(pairs$condition, pairs$sample_id)
+  } else {
+    if (is.null(names(sample_conditions))) {
+      stop("Vector `sample_conditions` must be named by sample ID.", call. = FALSE)
+    }
+    condition_map <- stats::setNames(as.character(sample_conditions), names(sample_conditions))
+  }
+  missing_conditions <- setdiff(samples, names(condition_map))
+  if (length(missing_conditions)) {
+    stop("Missing condition mapping for samples: ",
+         paste(utils::head(missing_conditions, 10L), collapse = ", "), call. = FALSE)
+  }
+  condition_map <- condition_map[samples]
+  if (anyNA(condition_map) || any(!nzchar(condition_map))) {
+    stop("Sample conditions must be non-missing and non-empty.", call. = FALSE)
   }
 
-  medium_scenarios <- .rc_normalize_medium_scenarios(
-    medium_scenarios
-  )
+  medium_scenarios <- .rc_normalize_medium_scenarios(medium_scenarios)
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-  groups <- unique(core_reactions[
-    , c("sample_id", "module_id"), drop = FALSE
-  ])
-  scenarios <- unique(
-    as.character(medium_scenarios$medium_scenario_id)
-  )
+  scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))
   tasks <- merge(
     groups,
-    data.frame(
-      medium_scenario = scenarios,
-      stringsAsFactors = FALSE
-    ),
+    data.frame(medium_scenario = scenarios, stringsAsFactors = FALSE),
     by = NULL
   )
+  tasks$condition <- unname(condition_map[as.character(tasks$sample_id)])
   cache <- list()
   summaries <- vector("list", nrow(tasks))
-  parent_by_scenario <- list()
+  parent_cache <- list()
+  safe <- function(value) paste(sprintf("%02x", as.integer(charToRaw(enc2utf8(value)))), collapse = "")
 
-  for (scenario in scenarios) {
+  parent_tasks <- unique(tasks[, c("medium_scenario", "condition"), drop = FALSE])
+  for (i in seq_len(nrow(parent_tasks))) {
+    scenario <- parent_tasks$medium_scenario[[i]]
+    condition <- parent_tasks$condition[[i]]
     medium <- medium_scenarios[
-      medium_scenarios$medium_scenario_id == scenario,
+      as.character(medium_scenarios$medium_scenario_id) == scenario,
       , drop = FALSE
     ]
     if (!nrow(medium) ||
-        (".no_constraints" %in% colnames(medium) &&
-         all(medium$.no_constraints))) {
+        (".no_constraints" %in% colnames(medium) && all(medium$.no_constraints))) {
       medium <- NULL
     }
-    parent_by_scenario[[scenario]] <- .rc_fastcore_parent(
+    parent_key <- paste(scenario, condition, sep = "::")
+    parent_cache[[parent_key]] <- .rc_fastcore_parent(
       gem,
       medium_table = medium,
+      condition = if (identical(condition, "all")) NULL else condition,
       solver = solver,
       time_limit = time_limit,
       fastcore_epsilon = fastcore_epsilon
@@ -1023,33 +1052,23 @@ rc_build_meta_module_gem_cache <- function(gem, reaction_membership,
     sample_id <- as.character(tasks$sample_id[[i]])
     module_id <- as.character(tasks$module_id[[i]])
     scenario <- as.character(tasks$medium_scenario[[i]])
-    safe <- function(value) {
-      paste(
-        sprintf(
-          "%02x",
-          as.integer(charToRaw(enc2utf8(value)))
-        ),
-        collapse = ""
-      )
-    }
+    condition <- as.character(tasks$condition[[i]])
     file <- file.path(
       cache_dir,
       paste0(
-        "sample_", safe(sample_id),
-        "__module_", safe(module_id),
-        "__medium_", safe(scenario),
-        ".rds"
+        "sample_", safe(sample_id), "__module_", safe(module_id),
+        "__medium_", safe(scenario), "__condition_", safe(condition), ".rds"
       )
     )
     medium <- medium_scenarios[
-      medium_scenarios$medium_scenario_id == scenario,
+      as.character(medium_scenarios$medium_scenario_id) == scenario,
       , drop = FALSE
     ]
     if (!nrow(medium) ||
-        (".no_constraints" %in% colnames(medium) &&
-         all(medium$.no_constraints))) {
+        (".no_constraints" %in% colnames(medium) && all(medium$.no_constraints))) {
       medium <- NULL
     }
+    parent_key <- paste(scenario, condition, sep = "::")
     module_gem <- .rc_complete_meta_module(
       gem = gem,
       reaction_membership = reaction_membership,
@@ -1057,7 +1076,8 @@ rc_build_meta_module_gem_cache <- function(gem, reaction_membership,
       sample_id = sample_id,
       module_id = module_id,
       medium_table = medium,
-      parent_gem = parent_by_scenario[[scenario]],
+      condition = if (identical(condition, "all")) NULL else condition,
+      parent_gem = parent_cache[[parent_key]],
       target_direction = requested_direction,
       solver = solver,
       time_limit = time_limit,
@@ -1065,19 +1085,15 @@ rc_build_meta_module_gem_cache <- function(gem, reaction_membership,
       max_support_reactions = max_support_reactions,
       strict = strict
     )
+    module_gem$condition <- condition
     saveRDS(module_gem, file)
 
     summaries[[i]] <- data.frame(
-      sample_id = sample_id,
-      module_id = module_id,
-      medium_scenario = scenario,
-      file = file,
-      n_reactions = ncol(module_gem$S),
-      n_metabolites = nrow(module_gem$S),
-      n_biological_reactions =
-        module_gem$build_params$n_biological_reactions,
-      n_fastcore_support_reactions =
-        module_gem$build_params$n_fastcore_support_reactions,
+      sample_id = sample_id, module_id = module_id,
+      medium_scenario = scenario, condition = condition, file = file,
+      n_reactions = ncol(module_gem$S), n_metabolites = nrow(module_gem$S),
+      n_biological_reactions = module_gem$build_params$n_biological_reactions,
+      n_fastcore_support_reactions = module_gem$build_params$n_fastcore_support_reactions,
       target_status = module_gem$target_status,
       build_strategy = "meta_module_gem",
       stringsAsFactors = FALSE
@@ -1085,27 +1101,21 @@ rc_build_meta_module_gem_cache <- function(gem, reaction_membership,
 
     if (nrow(module_gem$target_directions)) {
       for (j in seq_len(nrow(module_gem$target_directions))) {
-        reaction_id <- as.character(
-          module_gem$target_directions$reaction_id[[j]]
-        )
-        direction <- as.character(
-          module_gem$target_directions$target_direction[[j]]
-        )
+        reaction_id <- as.character(module_gem$target_directions$reaction_id[[j]])
+        direction <- as.character(module_gem$target_directions$target_direction[[j]])
         key <- paste0(
           "sample=", utils::URLencode(sample_id, reserved = TRUE),
           "::module=", utils::URLencode(module_id, reserved = TRUE),
           "::reaction=", utils::URLencode(reaction_id, reserved = TRUE),
           "::direction=", direction,
-          "::medium=", utils::URLencode(scenario, reserved = TRUE)
+          "::medium=", utils::URLencode(scenario, reserved = TRUE),
+          "::condition=", utils::URLencode(condition, reserved = TRUE)
         )
         cache[[key]] <- list(
-          sample_id = sample_id,
-          module_id = module_id,
-          reaction_id = reaction_id,
-          target_direction = direction,
-          medium_scenario = scenario,
-          file = file,
-          build_strategy = "meta_module_gem"
+          sample_id = sample_id, module_id = module_id,
+          reaction_id = reaction_id, target_direction = direction,
+          medium_scenario = scenario, condition = condition,
+          file = file, build_strategy = "meta_module_gem"
         )
       }
     }

@@ -1,48 +1,128 @@
 #' Compute decomposed multiome penalties for microCOMPASS
 #' @export
-rc_compute_multiome_penalty <- function(C_rel, reaction_confidence, gpr_diagnostics = NULL, reaction_roles = NULL,
-                                        weights = c(expr = 1.0, confidence = 0.5, missing = 1.0), eps = 1e-6,
-                                        penalty_cap = 20,
-                                        support_penalty = c(exchange = 0.05, demand = 0.10, sink = 0.10, artificial_support = 0.05, cofactor_recycle = 0.50, transport = 1.00),
-                                        missing_penalty = 5) {
-  C <- as.matrix(C_rel); F <- rc_layer2_confidence_matrix(reaction_confidence, C)
-  rx <- union(rownames(C), rownames(F)); units <- union(colnames(C), colnames(F))
-  align <- function(M, fill) { out <- matrix(fill, length(rx), length(units), dimnames = list(rx, units)); out[intersect(rx, rownames(M)), intersect(units, colnames(M))] <- M[intersect(rx, rownames(M)), intersect(units, colnames(M)), drop = FALSE]; out }
-  C <- align(C, NA_real_); F <- align(F, NA_real_)
-  P_expr <- -log(pmax(C, eps)); P_expr[!is.finite(P_expr)] <- penalty_cap
-  P_conf <- -log(pmax(F, eps)); P_conf[!is.finite(P_conf)] <- 0
+rc_compute_multiome_penalty <- function(
+    C_rel, reaction_confidence, gpr_diagnostics = NULL, reaction_roles = NULL,
+    weights = c(expr = 1.0, confidence = 0.5, missing = 1.0, gpr_missing = 0),
+    eps = 1e-6, penalty_cap = 20,
+    support_penalty = c(
+      exchange = 0.05, demand = 20, sink = 20,
+      artificial_support = 20, cofactor_recycle = 0.50, transport = 1.00
+    ),
+    missing_penalty = 5) {
+  if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0 ||
+      !is.numeric(penalty_cap) || length(penalty_cap) != 1L ||
+      !is.finite(penalty_cap) || penalty_cap <= 0 ||
+      !is.numeric(missing_penalty) || length(missing_penalty) != 1L ||
+      !is.finite(missing_penalty) || missing_penalty < 0) {
+    stop("Penalty constants must be finite and satisfy eps > 0, cap > 0, missing >= 0.", call. = FALSE)
+  }
+  C <- as.matrix(C_rel)
+  F <- rc_layer2_confidence_matrix(reaction_confidence, C)
+  if (is.null(rownames(C)) || is.null(colnames(C)) ||
+      is.null(rownames(F)) || is.null(colnames(F)) ||
+      anyDuplicated(rownames(C)) || anyDuplicated(colnames(C)) ||
+      anyDuplicated(rownames(F)) || anyDuplicated(colnames(F))) {
+    stop("Capacity and confidence matrices require unique reaction and unit IDs.", call. = FALSE)
+  }
+  reactions <- union(rownames(C), rownames(F))
+  units <- union(colnames(C), colnames(F))
+  align <- function(matrix_in, fill) {
+    output <- matrix(fill, length(reactions), length(units),
+                     dimnames = list(reactions, units))
+    common_r <- intersect(reactions, rownames(matrix_in))
+    common_u <- intersect(units, colnames(matrix_in))
+    output[common_r, common_u] <- matrix_in[common_r, common_u, drop = FALSE]
+    output
+  }
+  C <- align(C, NA_real_)
+  F <- align(F, NA_real_)
+  C[is.finite(C)] <- pmin(pmax(C[is.finite(C)], 0), 1)
+  F[is.finite(F)] <- pmin(pmax(F[is.finite(F)], 0), 1)
+
+  P_expr <- -log(pmax(C, eps))
+  P_conf <- -log(pmax(F, eps))
+  P_expr[!is.finite(P_expr)] <- 0
+  P_conf[!is.finite(P_conf)] <- 0
   missing_flag <- is.na(C) | is.na(F)
-  P_missing <- matrix(0, nrow(C), ncol(C), dimnames = dimnames(C)); P_missing[missing_flag] <- missing_penalty
-  role <- rep("internal", nrow(C)); names(role) <- rownames(C)
-  role_source <- rep("unknown", nrow(C)); names(role_source) <- rownames(C)
-  role_confidence <- rep(NA_character_, nrow(C)); names(role_confidence) <- rownames(C)
-  if (!is.null(reaction_roles)) {
-    rr <- if (is.data.frame(reaction_roles)) reaction_roles else as.data.frame(reaction_roles)
-    if (all(c("reaction_id", "role") %in% colnames(rr))) {
-      hit <- intersect(rownames(C), as.character(rr$reaction_id))
-      m <- match(hit, as.character(rr$reaction_id))
-      role[hit] <- as.character(rr$role[m])
-      if ("role_source" %in% colnames(rr)) role_source[hit] <- as.character(rr$role_source[m])
-      if ("role_confidence" %in% colnames(rr)) role_confidence[hit] <- as.character(rr$role_confidence[m])
+  P_missing <- matrix(0, nrow(C), ncol(C), dimnames = dimnames(C))
+  P_missing[missing_flag] <- missing_penalty
+
+  P_gpr <- matrix(0, nrow(C), ncol(C), dimnames = dimnames(C))
+  gpr_missing_fraction <- stats::setNames(rep(0, nrow(C)), rownames(C))
+  if (!is.null(gpr_diagnostics)) {
+    if (!is.data.frame(gpr_diagnostics) ||
+        !all(c("reaction_id", "missing_gene_fraction") %in% colnames(gpr_diagnostics))) {
+      stop("`gpr_diagnostics` must contain reaction_id and missing_gene_fraction.", call. = FALSE)
     }
+    if (anyDuplicated(as.character(gpr_diagnostics$reaction_id))) {
+      stop("`gpr_diagnostics$reaction_id` must be unique.", call. = FALSE)
+    }
+    hit <- intersect(rownames(C), as.character(gpr_diagnostics$reaction_id))
+    values <- as.numeric(gpr_diagnostics$missing_gene_fraction[
+      match(hit, as.character(gpr_diagnostics$reaction_id))
+    ])
+    values[!is.finite(values)] <- 0
+    gpr_missing_fraction[hit] <- pmin(pmax(values, 0), 1)
+    P_gpr <- matrix(gpr_missing_fraction[rownames(C)], nrow(C), ncol(C),
+                    dimnames = dimnames(C))
   }
-  P_role <- matrix(0, nrow(C), ncol(C), dimnames = dimnames(C))
-  role_override_flag <- role %in% c("exchange", "demand", "sink", "artificial_support") &
+
+  default_weights <- c(expr = 1, confidence = 0.5, missing = 1, gpr_missing = 0)
+  if (is.null(names(weights)) || any(!names(weights) %in% names(default_weights)) ||
+      any(!is.finite(weights)) || any(weights < 0)) {
+    stop("`weights` must be a named non-negative vector using expr, confidence, missing, or gpr_missing.", call. = FALSE)
+  }
+  W <- default_weights
+  W[names(weights)] <- weights
+  P_base <- W[["expr"]] * P_expr + W[["confidence"]] * P_conf +
+    W[["missing"]] * P_missing + W[["gpr_missing"]] * P_gpr
+
+  role <- stats::setNames(rep("internal", nrow(C)), rownames(C))
+  role_source <- stats::setNames(rep("unknown", nrow(C)), rownames(C))
+  role_confidence <- stats::setNames(rep(NA_character_, nrow(C)), rownames(C))
+  if (!is.null(reaction_roles)) {
+    roles <- if (is.data.frame(reaction_roles)) reaction_roles else as.data.frame(reaction_roles)
+    if (!all(c("reaction_id", "role") %in% colnames(roles))) {
+      stop("`reaction_roles` must contain reaction_id and role.", call. = FALSE)
+    }
+    if (anyDuplicated(as.character(roles$reaction_id))) {
+      stop("`reaction_roles$reaction_id` must be unique.", call. = FALSE)
+    }
+    hit <- intersect(rownames(C), as.character(roles$reaction_id))
+    match_index <- match(hit, as.character(roles$reaction_id))
+    role[hit] <- as.character(roles$role[match_index])
+    if ("role_source" %in% colnames(roles)) role_source[hit] <- as.character(roles$role_source[match_index])
+    if ("role_confidence" %in% colnames(roles)) role_confidence[hit] <- as.character(roles$role_confidence[match_index])
+  }
+  if (is.null(names(support_penalty)) || any(!is.finite(support_penalty)) ||
+      any(support_penalty < 0)) {
+    stop("`support_penalty` must be a named finite non-negative vector.", call. = FALSE)
+  }
+  override <- role %in% names(support_penalty) &
     role_source %in% c("curated", "model_high_confidence")
-  support_penalty_used <- rep(NA_real_, nrow(C)); names(support_penalty_used) <- rownames(C)
-  for (nm in intersect(names(support_penalty), unique(role[role_override_flag]))) {
-    support_penalty_used[role_override_flag & role == nm] <- as.numeric(support_penalty[[nm]])
-  }
-  transport_evidence_flag <- role == "transport" & is.finite(rowMeans(C, na.rm = TRUE))
-  W <- c(expr = 1, confidence = 0.5, missing = 1); W[names(weights)] <- weights
-  P_base <- W["expr"] * P_expr + W["confidence"] * P_conf + W["missing"] * P_missing
+  support_penalty_used <- stats::setNames(rep(NA_real_, nrow(C)), rownames(C))
+  support_penalty_used[override] <- as.numeric(support_penalty[role[override]])
   P <- P_base
-  if (any(role_override_flag)) {
-    P[role_override_flag, ] <- matrix(support_penalty_used[role_override_flag],
-                                      nrow = sum(role_override_flag), ncol = ncol(P),
-                                      dimnames = list(names(role)[role_override_flag], colnames(P)))
-  }
-  P_role[role_override_flag, ] <- P[role_override_flag, , drop = FALSE]
-  P <- pmin(pmax(P, 0), penalty_cap); P[!is.finite(P)] <- penalty_cap
-  list(penalty = P, components = list(P_expr = P_expr, P_conf = P_conf, P_missing = P_missing, P_role = P_role, P_base = P_base, C_rel = C, reaction_confidence = F, missing_evidence_flag = missing_flag, role = role, role_source = role_source, role_confidence = role_confidence, role_override_flag = role_override_flag, support_penalty_used = support_penalty_used, transport_evidence_flag = transport_evidence_flag), evidence_policy = "penalty_only")
+  if (any(override)) P[override, ] <- support_penalty_used[override]
+  P <- pmin(pmax(P, 0), penalty_cap)
+  P[!is.finite(P)] <- penalty_cap
+  P_role <- matrix(0, nrow(C), ncol(C), dimnames = dimnames(C))
+  P_role[override, ] <- P[override, , drop = FALSE]
+
+  list(
+    penalty = P,
+    components = list(
+      P_expr = P_expr, P_conf = P_conf, P_missing = P_missing,
+      P_gpr = P_gpr, P_role = P_role, P_base = P_base,
+      C_rel = C, reaction_confidence = F,
+      missing_evidence_flag = missing_flag,
+      gpr_missing_fraction = gpr_missing_fraction,
+      role = role, role_source = role_source,
+      role_confidence = role_confidence,
+      role_override_flag = override,
+      support_penalty_used = support_penalty_used
+    ),
+    evidence_policy = "RegCompass multiome log-penalty extension; not the original COMPASS expression-neighborhood penalty",
+    penalty_formula = "w_expr*-log(C_rel)+w_conf*-log(confidence)+w_missing*missing+w_gpr*gpr_missing"
+  )
 }

@@ -328,3 +328,10 @@ sample=<sample>::module=<module>::reaction=<reaction>::direction=<direction>::me
 - Results remain conditional on Human-GEM stoichiometry, bounds, reaction-role annotations, GPR mapping, and the selected medium.
 
 See `docs/meta_module_v13_design.md` for the mathematical and engineering specification.
+
+## Mathematical validation and interpretation
+
+The implemented LP equations, deviations from canonical FASTCORE/COMPASS,
+condition-aware cache identity, biological assumptions, and remaining
+limitations are documented in [`docs/math_biology_audit_v13.md`](docs/math_biology_audit_v13.md).
+Metacells are never treated as independent biological replicates.
