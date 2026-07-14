@@ -12,7 +12,7 @@ rc_validate_gem <- function(gem, selected_reactions = NULL,
       is.na(allow_zero_support)) {
     stop("`allow_zero_support` must be TRUE or FALSE.", call. = FALSE)
   }
-  S <- methods::as(gem$S, "dgCMatrix")
+  S <- .rc_as_dgCMatrix(gem$S)
   if (is.null(colnames(S))) {
     stop("`gem$S` must have reaction IDs in colnames.", call. = FALSE)
   }

@@ -74,8 +74,7 @@ rc_make_stratum_id <- function(meta, cols, sep = "|") {
 }
 
 .rc_as_sparse <- function(x) {
-  if (inherits(x, "sparseMatrix")) return(x)
-  methods::as(x, "dgCMatrix")
+  .rc_as_dgCMatrix(x)
 }
 
 .rc_metacell_meta_for_unit_apis <- function(metacell_meta, metacell_id_col = "metacell_id") {
@@ -121,7 +120,7 @@ rc_build_metacell_metadata <- function(membership, metacell_id_col = "metacell_i
 #' Compute metacell-level detection from raw metacell counts
 #' @export
 rc_metacell_detection <- function(metacell_counts) {
-  methods::as(metacell_counts > 0, "dgCMatrix")
+  .rc_as_dgCMatrix(metacell_counts > 0)
 }
 
 #' Filter ATAC peaks detected in metacells and compute metacell logCPM

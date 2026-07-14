@@ -38,3 +38,16 @@ rc_drop_na_grouping <- function(meta, grouping_cols) {
   attr(out, "dropped_na_by_column") <- drop_by_col
   out
 }
+
+.rc_as_dgCMatrix <- function(x) {
+  if (inherits(x, "dgCMatrix")) return(x)
+  if (inherits(x, "sparseMatrix")) {
+    return(methods::as(x, "dgCMatrix"))
+  }
+  out <- Matrix::Matrix(as.matrix(x), sparse = TRUE)
+  if (!inherits(out, "dgCMatrix")) {
+    out <- methods::as(out, "dgCMatrix")
+  }
+  out
+}
+

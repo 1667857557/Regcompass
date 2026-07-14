@@ -360,7 +360,7 @@ test_that("the Layer 2 API exposes exactly two structural modes", {
       gem = list(),
       mode = "module_meso_gem"
     ),
-    "arg should be one of"
+    "should be one of"
   )
   exports <- getNamespaceExports("RegCompassR")
   expect_false(any(c(

@@ -120,7 +120,7 @@
     ))
   }
 
-  S <- methods::as(S, "dgCMatrix")
+  S <- .rc_as_dgCMatrix(S)
   zero <- Matrix::Matrix(
     0, nrow = nrow(S), ncol = n_core, sparse = TRUE
   )
@@ -259,7 +259,7 @@
     stop("`scaling_factor` must be >= 1.", call. = FALSE)
   }
 
-  S <- methods::as(S, "dgCMatrix")
+  S <- .rc_as_dgCMatrix(S)
   scaled_lb <- as.numeric(lb) * scaling_factor
   scaled_ub <- as.numeric(ub) * scaling_factor
   names(scaled_lb) <- names(lb)

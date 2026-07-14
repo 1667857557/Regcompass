@@ -57,7 +57,7 @@ rc_build_abs_penalty_lp <- function(S, lb, ub, penalties, target_index,
                                     target_direction = c("forward", "reverse"),
                                     penalty_floor = 1e-12) {
   target_direction <- match.arg(target_direction)
-  S <- methods::as(S, "dgCMatrix")
+  S <- .rc_as_dgCMatrix(S)
   n <- ncol(S)
   reactions <- colnames(S)
   if (is.null(reactions) || anyNA(reactions) || any(!nzchar(reactions)) ||
@@ -246,7 +246,7 @@ rc_compass_two_step_lp <- function(S, lb, ub, target_reaction, penalties,
 }
 
 .rc_expand_ranged_constraints <- function(A, lhs, rhs) {
-  A <- methods::as(A, "dgCMatrix")
+  A <- .rc_as_dgCMatrix(A)
   rows <- list()
   sense <- character()
   bound <- numeric()
