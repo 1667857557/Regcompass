@@ -1,0 +1,67 @@
+name: FASTCORE architecture checks
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: read
+
+jobs:
+  fastcore-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up R
+        uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install focused test dependencies
+        shell: Rscript {0}
+        run: |
+          install.packages(
+            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs"),
+            repos = "https://cloud.r-project.org"
+          )
+
+      - name: Parse package and test sources
+        shell: Rscript {0}
+        run: |
+          files <- c(
+            list.files("R", pattern = "[.]R$", full.names = TRUE),
+            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
+          )
+          for (file in files) {
+            message("Parsing ", file)
+            parse(file = file)
+          }
+
+      - name: Install RegCompassR
+        run: R CMD INSTALL . --no-multiarch --with-keep.source
+
+      - name: Run FASTCORE and v1.3 integration tests
+        shell: Rscript {0}
+        run: |
+          library(RegCompassR)
+          for (file in list.files("R", pattern = "[.]R$", full.names = TRUE)) {
+            sys.source(file, envir = .GlobalEnv)
+          }
+          testthat::test_file(
+            "tests/testthat/test_fastcore_architecture.R",
+            reporter = "summary",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
+          )
+          testthat::test_file(
+            "tests/testthat/test_v13_integration.R",
+            reporter = "summary",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
+          )
