@@ -16,7 +16,7 @@ Suggests:
     BiocParallel,
     Seurat (>= 4.4.0),
     Signac (>= 1.11.0),
-    Pando (>= 1.1.1),
+    Pando,
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     SuperCell,

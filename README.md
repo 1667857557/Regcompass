@@ -26,7 +26,7 @@ remotes::install_github("1667857557/Pando_regcompass@1b5f759a36630ec34d66f995906
 remotes::install_github("1667857557/Regcompass")
 ```
 
-The Pando package name is `Pando`, version `1.1.1`.
+The Pando package name is `Pando`. Runtime validation checks that the installed package metadata points to owner `1667857557`, an accepted RegCompass Pando fork (`Pando_regcompasspando` or the compatibility fork `Pando_regcompass`), and commit `1b5f759a36630ec34d66f995906b20496a79689c`; it records but does not restrict the package version.
 
 ## RegCompassR 1.2 example
 

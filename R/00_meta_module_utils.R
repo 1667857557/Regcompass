@@ -54,3 +54,42 @@
   data.frame(gene = nodes, component = match(roots, root_levels), stringsAsFactors = FALSE)
 }
 
+
+.rc_validate_pando_install <- function(pando_version = NULL,
+                                       pando_remote_username = "1667857557",
+                                       pando_remote_repo = c("Pando_regcompasspando", "Pando_regcompass"),
+                                       pando_remote_sha = "1b5f759a36630ec34d66f995906b20496a79689c",
+                                       require_pando_remote = TRUE,
+                                       description = NULL,
+                                       installed_version = NULL) {
+  if (is.null(installed_version)) installed_version <- as.character(utils::packageVersion("Pando"))
+  installed_version <- as.character(installed_version)
+  if (is.null(description)) description <- utils::packageDescription("Pando")
+  required_user <- .rc_mm_trim_unique(pando_remote_username)
+  required_repo <- .rc_mm_trim_unique(pando_remote_repo)
+  required_sha <- .rc_mm_trim_unique(pando_remote_sha)
+  remote_username <- as.character(description$RemoteUsername %||% description$GithubUsername %||% NA_character_)
+  remote_repo <- as.character(description$RemoteRepo %||% description$GithubRepo %||% NA_character_)
+  remote_ref <- as.character(description$RemoteRef %||% description$GithubRef %||% NA_character_)
+  remote_sha <- as.character(description$RemoteSha %||% description$GithubSHA1 %||% NA_character_)
+  if (isTRUE(require_pando_remote)) {
+    if (!length(required_user) || is.na(remote_username) || !remote_username %in% required_user) {
+      stop("Pando remote username mismatch: installed ", remote_username,
+           ", required one of ", paste(required_user, collapse = ", "), ".", call. = FALSE)
+    }
+    if (!length(required_repo) || is.na(remote_repo) || !remote_repo %in% required_repo) {
+      stop("Pando remote repository mismatch: installed ", remote_repo,
+           ", required one of ", paste(required_repo, collapse = ", "), ".", call. = FALSE)
+    }
+    if (length(required_sha) && (is.na(remote_sha) || !remote_sha %in% required_sha)) {
+      stop("Pando remote SHA mismatch: installed ", remote_sha,
+           ", required one of ", paste(required_sha, collapse = ", "), ".", call. = FALSE)
+    }
+  }
+  list(version = installed_version,
+       remote_username = remote_username,
+       remote_repo = remote_repo,
+       remote_ref = remote_ref,
+       remote_sha = remote_sha)
+}
+

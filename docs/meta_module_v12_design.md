@@ -30,7 +30,7 @@ remotes::install_github(
 )
 ```
 
-The package name remains `Pando`, version `1.1.1`. The requested repository name `Pando_regcompasspando` does not exist; the accessible fork is `Pando_regcompass`.
+The package name remains `Pando`. Runtime validation requires owner `1667857557`, commit `1b5f759a36630ec34d66f995906b20496a79689c`, and an accepted RegCompass Pando fork name; it records but does not restrict the package version. `Pando_regcompasspando` is accepted for the requested URL, while `Pando_regcompass` remains accepted as the compatibility fork used by existing installs.
 
 ## 3. Human-GEM annotation preparation
 
