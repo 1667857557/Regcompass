@@ -2,7 +2,7 @@ Package: RegCompassR
 Title: Multiome-Supported Reaction Capacity and GRN Meta-Module Analysis
 Version: 1.4.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
-Description: Provides a strict-stratum multiome workflow that builds sample-aware SuperCell RNA+ATAC metacells, aggregates fragments, recomputes metacell peak-gene links, infers Pando regulatory meta-modules, recalibrates GPR reaction capacities across all metacells, constructs one shared global-union or full genome-scale metabolic model, and performs metacell-specific directional microCOMPASS scoring on a common structural reference.
+Description: Provides a strict-stratum multiome workflow that builds sample-aware SuperCell RNA+ATAC metacells, aggregates fragments, uses Pando as the sole peak-gene and regulatory-network model, derives metacell reaction confidence from significant Pando regions and ATAC accessibility, recalibrates GPR reaction capacities across all metacells, constructs one shared global-union or full genome-scale metabolic model, and performs metacell-specific directional microCOMPASS scoring on a common structural reference.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
