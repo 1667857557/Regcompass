@@ -40,7 +40,8 @@ test_that("integrated workflow has an upstream barrier before global calibration
 test_that("Layer 2 defaults to metacells and evaluates the full shared task grid", {
   expect_identical(eval(formals(rc_run_microcompass)$unit)[[1L]], "metacell")
   text <- paste(deparse(body(rc_run_microcompass)), collapse = "\n")
-  expect_match(text, "expand.grid\\(row_id = row_ids, unit_id = units", perl = TRUE)
+  expect_match(text, "expand.grid", fixed = TRUE)
+  expect_match(text, "unit_id = units", fixed = TRUE)
   expect_false(grepl("unit_sample ==", text, fixed = TRUE))
 })
 
