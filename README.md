@@ -30,7 +30,7 @@ Seurat RNA+ATAC object
 
 No global recalibration or GEM construction occurs from a partial set of successful strata. If one retained stratum fails, the workflow writes `00_strata/upstream_barrier.tsv.gz`, releases the upstream workers, and stops.
 
-The shared GEM is the structural reference for every metacell. Biological differences enter the LP objective through metacell-specific penalties, not through sample-specific stoichiometric models. After all upstream artifacts are complete, RegCompass combines GPR-gene logCPM across all metacells, recomputes gene scores and GPR reaction capacities on that common population, and then applies one reaction-wise Q95 calibration. Stratum-local `C_raw` and `C_rel` values are not used for cross-sample scoring; stratum-specific LinkPeaks evidence remains in the reaction-confidence term.
+The shared GEM is the structural reference for every metacell. Biological differences enter the LP objective through metacell-specific penalties, not through sample-specific stoichiometric models. After all upstream artifacts are complete, RegCompass combines GPR-gene logCPM across all metacells, recomputes gene scores and GPR reaction capacities on that common population, and then applies one reaction-wise Q95 calibration. Peak-gene evidence is computed once inside Pando; RegCompass derives metacell-specific reaction confidence from significant Pando regions and their TF-IDF accessibility and does not run a separate Signac `LinkPeaks()` pass.
 
 ## Structural modes
 
@@ -188,6 +188,3 @@ Use `rc_run_regcompass()` for the supported workflow. Lower-level metacell, Pand
 
 - FASTCORE is an LP-based compact reconstruction algorithm, not an exact minimum-cardinality MILP.
 - Steady-state feasibility does not establish thermodynamic or kinetic feasibility.
-- Reaction capacity and microCOMPASS scores are multiome-supported reaction potentials, not measured fluxes.
-- Metacells are technical aggregation units and are not independent biological replicates.
-- Cross-condition inference must aggregate or model metacells at the biological-sample level.
