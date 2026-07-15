@@ -904,6 +904,11 @@ rc_build_meta_module_gem <- function(gem, reaction_membership,
       reaction_membership$is_core %in% TRUE,
       , drop = FALSE
     ]
+  } else if ("is_core" %in% colnames(core_reactions)) {
+    core_reactions <- core_reactions[
+      core_reactions$is_core %in% TRUE,
+      , drop = FALSE
+    ]
   }
   .rc_complete_meta_module(
     gem = gem,
@@ -946,6 +951,8 @@ rc_build_meta_module_gem_cache <- function(gem, reaction_membership,
       stop("Supply `core_reactions` or an `is_core` column in `reaction_membership`.", call. = FALSE)
     }
     core_reactions <- reaction_membership[reaction_membership$is_core %in% TRUE, , drop = FALSE]
+  } else if ("is_core" %in% colnames(core_reactions)) {
+    core_reactions <- core_reactions[core_reactions$is_core %in% TRUE, , drop = FALSE]
   }
   required <- c("sample_id", "module_id", "reaction_id")
   if (!all(required %in% colnames(core_reactions))) {

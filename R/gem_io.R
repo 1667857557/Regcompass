@@ -30,12 +30,10 @@ rc_make_gem <- function(S, lb = NULL, ub = NULL,
 
 #' Read a GEM object stored as an RDS file
 #' @export
-rc_read_gem <- function(file, require_model_info = TRUE) {
+rc_read_gem <- function(file) {
   gem <- readRDS(file)
   rc_validate_gem(gem)
-  if (isTRUE(require_model_info)) {
-    rc_validate_model_info(gem$model_info)
-  }
+  rc_validate_model_info(gem$model_info)
   gem
 }
 
@@ -43,17 +41,11 @@ rc_validate_model_info <- function(model_info) {
   if (is.null(model_info) || !is.list(model_info)) {
     stop(
       paste(
-        "GEM is missing `model_info`; set",
-        "`require_model_info = FALSE` only for legacy exploratory inputs."
+        "GEM is missing `model_info`."
       ),
       call. = FALSE
     )
   }
-  required_legacy <- c(
-    "source_model", "model_name", "model_version",
-    "source_release", "source_commit", "file_sha256",
-    "importer", "converted_by", "converted_date"
-  )
   required_human2 <- c(
     "source", "version", "commit", "checksum",
     "conversion_date"
@@ -65,8 +57,8 @@ rc_validate_model_info <- function(model_info) {
         !all(is.na(model_info[[name]]))
     }, logical(1)))
   }
-  if (!complete(required_legacy) && !complete(required_human2)) {
-    missing <- required_legacy[!vapply(required_legacy, function(name) {
+  if (!complete(required_human2)) {
+    missing <- required_human2[!vapply(required_human2, function(name) {
       !is.null(model_info[[name]]) &&
         length(model_info[[name]]) > 0L &&
         !all(is.na(model_info[[name]]))

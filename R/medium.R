@@ -80,15 +80,14 @@ rc_make_medium_scenarios <- function(
     scale_defaults[known] <- named[known]
   } else if (length(uptake_scale) == 1L) {
     scale_defaults[] <- uptake_scale[[1L]]
-  } else {
-    # Backward-compatible interpretation of c(base, reduced, minimal).
-    scale_defaults[c("blood_like", "culture_like", "lactate_available")] <- uptake_scale[[1L]]
-    if (length(uptake_scale) >= 2L) {
-      scale_defaults[c("tumor_low_glucose")] <- uptake_scale[[2L]]
-    }
-    if (length(uptake_scale) >= 3L) {
-      scale_defaults[c("minimal", "low_glucose", "low_glutamine")] <- uptake_scale[[3L]]
-    }
+  } else if (length(uptake_scale) > 1L) {
+    stop(
+      paste(
+        "`uptake_scale` must be a single global scale or a named vector",
+        "using scenario IDs."
+      ),
+      call. = FALSE
+    )
   }
 
   text_columns <- intersect(

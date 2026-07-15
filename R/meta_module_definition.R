@@ -20,6 +20,10 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
   }
   gpr <- gpr_table
   gpr$gene <- toupper(as.character(gpr$gene))
+  if (!"and_group_id" %in% colnames(gpr)) {
+    gpr$and_group_id <- 1L
+  }
+  gpr$and_group_id <- as.character(gpr$and_group_id)
   nodes <- gene_nodes
   nodes$gene <- toupper(as.character(nodes$gene))
   output <- merge(
@@ -29,7 +33,32 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
     all = FALSE,
     sort = FALSE
   )
-  output$is_core <- TRUE
+  if (!nrow(output)) {
+    output$is_core <- logical()
+  } else {
+    node_groups <- split(
+      nodes$gene,
+      paste(nodes$sample_id, nodes$module_id, sep = "\001")
+    )
+    gpr_groups <- split(
+      gpr$gene,
+      paste(gpr$reaction_id, gpr$and_group_id, sep = "\001")
+    )
+    reaction_complete <- lapply(node_groups, function(module_genes) {
+      complete_group <- vapply(
+        gpr_groups,
+        function(group_genes) {
+          all(unique(group_genes) %in% module_genes)
+        },
+        logical(1)
+      )
+      unique(sub("\001.*$", "", names(gpr_groups)[complete_group]))
+    })
+    output$is_core <- vapply(seq_len(nrow(output)), function(i) {
+      key <- paste(output$sample_id[[i]], output$module_id[[i]], sep = "\001")
+      output$reaction_id[[i]] %in% reaction_complete[[key]]
+    }, logical(1))
+  }
   output$inclusion_stage <- "core_grn_gene"
   output <- unique(output[, c(
     "sample_id", "module_id", "gene", "reaction_id",
@@ -74,6 +103,12 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
     )
   }
   valid_reactions <- colnames(rc_validate_gem(gem)$S)
+  if ("is_core" %in% colnames(core_reactions)) {
+    core_reactions <- core_reactions[
+      core_reactions$is_core %in% TRUE,
+      , drop = FALSE
+    ]
+  }
   core_reactions <- core_reactions[
     core_reactions$reaction_id %in% valid_reactions,
     , drop = FALSE
