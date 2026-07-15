@@ -64,11 +64,13 @@ test_that("global meta-module union preserves source tables and creates one cano
   expect_true(all(out$global_reaction_membership$module_id == "GLOBAL_UNION"))
 })
 
-test_that("microCOMPASS applies every shared model target to every unit", {
+test_that("microCOMPASS applies each shared model to every metacell task", {
   body_text <- paste(deparse(body(rc_run_microcompass)), collapse = "\n")
-  expect_match(body_text, "expand.grid(row_id = row_ids, unit_id = units", fixed = TRUE)
+  expect_match(body_text, "expand.grid(model_key = unique_model_keys, unit_id = units", fixed = TRUE)
+  expect_match(body_text, "run_one_metacell", fixed = TRUE)
   expect_false(grepl("unit_sample ==", body_text, fixed = TRUE))
   expect_match(body_text, "shared_gem_scope = \"all_metacells\"", fixed = TRUE)
+  expect_match(body_text, "parallel_task = \"shared_model_by_metacell\"", fixed = TRUE)
 })
 
 test_that("legacy integrated and sample-specific cache APIs are retired", {
