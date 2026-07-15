@@ -7,37 +7,10 @@ on:
       - main
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  migrate-pando-only:
-    if: github.event_name == 'pull_request'
-    runs-on: ubuntu-latest
-    steps:
-      - name: Check out workflow branch
-        uses: actions/checkout@v7
-        with:
-          ref: agent/global-metacell-compass
-          fetch-depth: 0
-
-      - name: Apply migration and restore normal CI
-        shell: bash
-        run: |
-          git show HEAD^:.github/workflows/fastcore-checks.yaml > /tmp/fastcore-checks.yaml
-          sed -n "/python3 - <<'PY'/,/^          PY$/p" .github/workflows/apply-pando-only-peak-gene.yml \
-            | sed '1d;$d;s/^          //' > /tmp/apply_pando_only.py
-          python3 -m py_compile /tmp/apply_pando_only.py
-          python3 /tmp/apply_pando_only.py
-          cp /tmp/fastcore-checks.yaml .github/workflows/fastcore-checks.yaml
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git diff --cached --check
-          git commit -m "Use Pando as the sole peak-gene model"
-          git push origin HEAD:agent/global-metacell-compass
-
   function-audit:
-    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
 
     steps:
