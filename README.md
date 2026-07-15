@@ -14,15 +14,21 @@ Seurat RNA+ATAC object
      Layer 1 RNA-GPR capacity and ATAC confidence
      Pando GRN
      GRN-to-reaction mapping and meta-module expansion
+→ wait for every retained stratum and every sample to complete
+→ validate the all-strata artifact barrier
 → stop and release the upstream worker pool
+→ recompute one reaction-wise Q95 capacity scale across all metacells
 → union all stratum meta-modules
 → complete one shared global meta-module GEM with add-only FASTCORE
 → align all metacells to the same reaction universe
 → compute one penalty vector per metacell
-→ start a fresh worker pool for target-direction × metacell LP tasks
+→ start a fresh worker pool for shared-model/medium × metacell tasks
+→ load the shared GEM once per metacell task and evaluate all target directions
 ```
 
-The shared GEM is the structural reference for every metacell. Biological differences enter the LP objective through metacell-specific penalties, not through sample-specific stoichiometric models.
+No global recalibration or GEM construction occurs from a partial set of successful strata. If one retained stratum fails, the workflow writes `00_strata/upstream_barrier.tsv.gz`, releases the upstream workers, and stops.
+
+The shared GEM is the structural reference for every metacell. Biological differences enter the LP objective through metacell-specific penalties, not through sample-specific stoichiometric models. The final expression-capacity normalization uses one global reaction-wise Q95 computed after all upstream artifacts are complete; stratum-local `C_rel` values are not used for cross-sample scoring.
 
 ## Structural modes
 
@@ -138,7 +144,9 @@ The integrated runner fixes `unit = "metacell"`, uses one shared structural GEM,
 
 ```r
 result$upstream_status
+result$upstream_barrier
 result$layer1$C_rel
+result$layer1$capacity_calibration_scope
 result$layer1$reaction_confidence
 result$grn_meta_modules$core_gene_reaction
 result$grn_meta_modules$reaction_membership
