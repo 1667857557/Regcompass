@@ -320,9 +320,10 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
                                                "ordered_once", "fixed_point"
                                              ),
                                              max_iterations = 10L) {
+  hard_core_reactions <- .rc_hard_core_rows(core_reactions)
   answer <- .rc_expand_meta_module_reactions_uncorrected(
     gem = gem,
-    core_reactions = core_reactions,
+    core_reactions = hard_core_reactions,
     subsystem_table = subsystem_table,
     expansion_mode = expansion_mode,
     max_iterations = max_iterations
