@@ -168,7 +168,9 @@ rc_reaction_capacity <- function(gpr_list,
   per_reaction <- rc_internal_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(weighted_score)), function(j) {
-      rc_reaction_capacity_one(parsed, weighted_score[, j], tau = tau, and_method = and_method, or_method = or_method)
+      score_vector <- weighted_score[, j, drop = TRUE]
+      names(score_vector) <- rownames(weighted_score)
+      rc_reaction_capacity_one(parsed, score_vector, tau = tau, and_method = and_method, or_method = or_method)
     }, numeric(1))
   }, BPPARAM = BPPARAM)
 
