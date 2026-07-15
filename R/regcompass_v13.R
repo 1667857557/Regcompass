@@ -3,8 +3,9 @@
 #' Each retained condition-by-sample-by-cell-type stratum is processed by one
 #' upstream worker from metacell construction through Pando and meta-module
 #' inference. Global capacity recalibration and GEM construction begin only after
-#' every retained stratum has completed successfully. A fresh worker pool then
-#' evaluates every metacell with its own penalty vector on one shared GEM.
+#' every retained stratum and every biological sample have completed successfully.
+#' A fresh worker pool then evaluates every metacell with its own penalty vector
+#' on one shared GEM.
 #' @export
 rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
                                fragment_files = NULL,
@@ -32,11 +33,20 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
   meta <- object@meta.data
   missing_cols <- setdiff(group_cols, colnames(meta))
   if (length(missing_cols)) stop("Missing metadata columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
+  all_samples <- unique(as.character(meta[[sample_col]]))
+  if (anyNA(all_samples) || any(!nzchar(all_samples))) stop("Sample IDs must be non-missing and non-empty.", call. = FALSE)
+
   minimum_cells <- as.integer(metacell_args$min_cells_per_stratum %||% 100L)
   group_ids <- rc_make_stratum_id(meta, group_cols)
   counts <- table(group_ids)
   retained_ids <- names(counts[counts >= minimum_cells])
   if (!length(retained_ids)) stop("No strict strata satisfy `min_cells_per_stratum`.", call. = FALSE)
+  retained_samples <- unique(as.character(meta[[sample_col]][group_ids %in% retained_ids]))
+  samples_without_retained_strata <- setdiff(all_samples, retained_samples)
+  if (length(samples_without_retained_strata)) {
+    stop("Every biological sample must contribute at least one retained strict stratum. Missing samples: ",
+         paste(samples_without_retained_strata, collapse = ", "), call. = FALSE)
+  }
   excluded_ids <- setdiff(names(counts), retained_ids)
   status_dir <- file.path(outdir, "00_strata")
   dir.create(status_dir, recursive = TRUE, showWarnings = FALSE)
@@ -75,8 +85,10 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
       }
     )
   }
-  upstream_results <- rc_parallel_lapply(retained_ids, run_one, BPPARAM = upstream_param)
-  .rc_release_bpparam(upstream_param)
+  upstream_results <- tryCatch(
+    rc_parallel_lapply(retained_ids, run_one, BPPARAM = upstream_param),
+    finally = .rc_release_bpparam(upstream_param)
+  )
   rm(upstream_param)
   invisible(gc(verbose = FALSE))
 
@@ -100,6 +112,7 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     barrier <- data.frame(
       stage = "upstream_complete_barrier",
       passed = FALSE,
+      n_required_samples = length(all_samples),
       n_required_strata = length(retained_ids),
       n_completed_strata = length(intersect(completed_ids, retained_ids)),
       failed_strata = paste(failed_ids, collapse = ";"),
@@ -112,10 +125,10 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
       call. = FALSE
     )
   }
-  artifact_files <- artifact_files[match(retained_ids, retained_status$group_id)]
   barrier <- data.frame(
     stage = "upstream_complete_barrier",
     passed = TRUE,
+    n_required_samples = length(all_samples),
     n_required_strata = length(retained_ids),
     n_completed_strata = length(retained_ids),
     failed_strata = "",
@@ -147,6 +160,11 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     condition_col = condition_col,
     celltype_col = celltype_col
   )
+  missing_global_samples <- setdiff(all_samples, unique(as.character(layer1$unit_meta[[sample_col]])))
+  if (length(missing_global_samples)) {
+    stop("Global Layer 1 is missing biological samples after the upstream barrier: ",
+         paste(missing_global_samples, collapse = ", "), call. = FALSE)
+  }
   saveRDS(layer1, file.path(outdir, "02_global_layer1.rds"))
   saveRDS(grn_meta_modules, file.path(outdir, "03_global_meta_modules.rds"))
   rm(artifacts)
@@ -178,8 +196,10 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     BPPARAM = layer2_param
   )
   layer2_defaults[names(layer2_args)] <- NULL
-  microcompass <- do.call(rc_run_microcompass, c(layer2_defaults, layer2_args))
-  .rc_release_bpparam(layer2_param)
+  microcompass <- tryCatch(
+    do.call(rc_run_microcompass, c(layer2_defaults, layer2_args)),
+    finally = .rc_release_bpparam(layer2_param)
+  )
   rm(layer2_param)
   invisible(gc(verbose = FALSE))
 
@@ -195,8 +215,10 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     params = list(
       shared_gem = TRUE,
       penalty_unit = "metacell",
+      capacity_calibration_scope = "all_metacells_global_reaction_q95",
       upstream_parallel_unit = "condition_sample_celltype",
       global_stage_requires_all_retained_strata = TRUE,
+      global_stage_requires_all_samples = TRUE,
       layer2_parallel_unit = "target_direction_by_metacell",
       parallel_backend = parallel_backend,
       upstream_workers = upstream_workers,
