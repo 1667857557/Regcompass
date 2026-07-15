@@ -61,6 +61,13 @@ test_that("global Layer 1 recomputes gene scores and reaction Q95 across all met
   expect_lt(out$C_raw["R1", "u1"], out$C_raw["R1", "u2"])
 })
 
+test_that("medium normalization preserves an existing no-constraint marker", {
+  base <- .rc_normalize_medium_scenarios(NULL)
+  expect_true(base$.no_constraints)
+  normalized_again <- .rc_normalize_medium_scenarios(base)
+  expect_true(normalized_again$.no_constraints)
+})
+
 test_that("global meta-module union preserves source tables and creates one canonical module", {
   artifact <- list(
     group_id = "A|S1|T",
