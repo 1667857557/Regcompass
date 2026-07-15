@@ -1,10 +1,38 @@
-test_that("integrated workflow fuses strict-stratum upstream work", {
+test_that("integrated workflow has an all-strata barrier before global work", {
   body_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   expect_match(body_text, ".rc_run_regcompass_stratum", fixed = TRUE)
-  expect_match(body_text, ".rc_merge_stratum_meta_modules", fixed = TRUE)
+  expect_match(body_text, "upstream_complete_barrier", fixed = TRUE)
+  expect_match(body_text, "not all retained strata completed successfully", fixed = TRUE)
   expect_match(body_text, ".rc_release_bpparam(upstream_param)", fixed = TRUE)
+  expect_match(body_text, ".rc_merge_stratum_meta_modules", fixed = TRUE)
+  expect_match(body_text, ".rc_merge_stratum_layer1", fixed = TRUE)
   expect_match(body_text, "unit = \"metacell\"", fixed = TRUE)
   expect_match(body_text, "global_reaction_membership", fixed = TRUE)
+})
+
+test_that("global Layer 1 recalibration uses one Q95 scale across all metacells", {
+  artifacts <- list(
+    list(layer1 = list(
+      C_raw = matrix(1, nrow = 1, dimnames = list("R1", "u1")),
+      reaction_confidence = matrix(1, nrow = 1, dimnames = list("R1", "u1")),
+      unit_meta = data.frame(pool_id = "u1", unit_id = "u1", sample_id = "S1",
+                             condition = "A", cell_type = "T", stringsAsFactors = FALSE)
+    )),
+    list(layer1 = list(
+      C_raw = matrix(2, nrow = 1, dimnames = list("R1", "u2")),
+      reaction_confidence = matrix(1, nrow = 1, dimnames = list("R1", "u2")),
+      unit_meta = data.frame(pool_id = "u2", unit_id = "u2", sample_id = "S2",
+                             condition = "B", cell_type = "T", stringsAsFactors = FALSE)
+    ))
+  )
+  gem <- list(gpr_table = data.frame(reaction_id = "R1", and_group_id = 1, gene = "G1"))
+  out <- .rc_merge_stratum_layer1(
+    artifacts, gem, single_cell_genes = "G1",
+    sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type"
+  )
+  expect_equal(out$capacity_calibration_scope, "all_metacells_global_reaction_q95")
+  expect_equal(unique(as.character(out$q95_diagnostics$stratum)), "global")
+  expect_identical(colnames(out$C_rel), c("u1", "u2"))
 })
 
 test_that("global meta-module union preserves source tables and creates one canonical module", {
