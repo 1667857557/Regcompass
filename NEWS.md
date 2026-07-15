@@ -22,8 +22,7 @@
 - Corrected parent-GEM failure semantics so an allowed reaction direction that is structurally infeasible is reported as `parent_blocked`, not `no_allowed_direction`.
 - Hardened labeled microCOMPASS row-ID validation and preserved gene names in single-gene reaction-capacity calculations.
 - Enforced one active pool per cell, made hard-min GPR capacity return missing for absent required subunits, restored explicit partial-GPR confidence thresholds, filtered missing pathway cross-references before meta-module expansion, and prioritized curated reaction roles in Layer 2 classification.
-- Removed incomplete GPR candidates from the hard-core anchor set while retaining reactions that are independently reached through a valid hard-core subsystem or database cross-reference.
-- Passes the filtered hard-core table—not the mixed candidate table—into subsystem and cross-database meta-module expansion.
+- Passes only the filtered hard-core table into subsystem and cross-database meta-module expansion and excludes every explicitly incomplete GPR candidate from final membership.
 
 # RegCompassR 1.3.0
 
