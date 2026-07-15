@@ -23,6 +23,7 @@
 - Hardened labeled microCOMPASS row-ID validation and preserved gene names in single-gene reaction-capacity calculations.
 - Enforced one active pool per cell, made hard-min GPR capacity return missing for absent required subunits, restored explicit partial-GPR confidence thresholds, filtered missing pathway cross-references before meta-module expansion, and prioritized curated reaction roles in Layer 2 classification.
 - Passes only the filtered hard-core table into subsystem and cross-database meta-module expansion and excludes every explicitly incomplete GPR candidate from final membership.
+- Restored stable ranged-constraint aliases (`sense`, `bound`) and explicitly labels the RegCompass multiome penalty as distinct from the original COMPASS expression penalty.
 
 # RegCompassR 1.3.0
 
