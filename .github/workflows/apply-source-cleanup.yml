@@ -1,0 +1,145 @@
+name: Apply source cleanup
+
+on:
+  push:
+    branches:
+      - agent/global-metacell-compass
+    paths:
+      - .github/workflows/apply-source-cleanup.yml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out workflow branch
+        uses: actions/checkout@v7
+        with:
+          ref: agent/global-metacell-compass
+          fetch-depth: 0
+
+      - name: Remove deprecated implementations and fix FASTCORE semantics
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          def remove_from_marker_to_eof(path, marker):
+              p = Path(path)
+              text = p.read_text()
+              start = text.index(marker)
+              p.write_text(text[:start].rstrip() + "\n")
+
+          def find_block_end(text, start):
+              brace = text.index("{", start)
+              depth = 0
+              quote = None
+              escaped = False
+              for index in range(brace, len(text)):
+                  char = text[index]
+                  if quote is not None:
+                      if escaped:
+                          escaped = False
+                      elif char == "\\":
+                          escaped = True
+                      elif char == quote:
+                          quote = None
+                      continue
+                  if char in ('"', "'"):
+                      quote = char
+                  elif char == "{":
+                      depth += 1
+                  elif char == "}":
+                      depth -= 1
+                      if depth == 0:
+                          end = index + 1
+                          while end < len(text) and text[end] in "\r\n":
+                              end += 1
+                          return end
+              raise RuntimeError("Unbalanced function block")
+
+          def remove_function(path, marker):
+              p = Path(path)
+              text = p.read_text()
+              start = text.index(marker)
+              end = find_block_end(text, start)
+              p.write_text(text[:start] + text[end:])
+
+          def remove_test(path, title):
+              p = Path(path)
+              text = p.read_text()
+              marker = f'test_that("{title}", {{'
+              start = text.index(marker)
+              end = find_block_end(text, start)
+              if end < len(text) and text[end] == ")":
+                  end += 1
+              while end < len(text) and text[end] in "\r\n":
+                  end += 1
+              p.write_text(text[:start] + text[end:])
+
+          fastcore = Path("R/fastcore.R")
+          text = fastcore.read_text()
+          old = 'diagnostics$solver_status == "no_allowed_direction",\n    "no_allowed_direction",'
+          new = 'diagnostics$target_direction == "none",\n    "no_allowed_direction",'
+          if old not in text:
+              raise RuntimeError("FASTCORE status expression not found")
+          fastcore.write_text(text.replace(old, new, 1))
+          remove_from_marker_to_eof(
+              "R/fastcore.R",
+              "#' Cache sample-specific FASTCORE-completed meta-module GEMs"
+          )
+          remove_from_marker_to_eof(
+              "R/metacell.R",
+              "#' Run the formal sample-aware metacell multiome workflow"
+          )
+          remove_from_marker_to_eof(
+              "R/meta_module_definition.R",
+              "#' Load the retained metacell Seurat object from a formal RegCompass run"
+          )
+
+          corrections = Path("R/zzz_core_workflow_corrections.R")
+          text = corrections.read_text().replace(
+              ".rc_build_meta_module_gem_cache_uncorrected <- rc_build_meta_module_gem_cache\n",
+              ""
+          )
+          corrections.write_text(text)
+          remove_function(
+              "R/zzz_core_workflow_corrections.R",
+              "rc_build_meta_module_gem_cache <- function"
+          )
+
+          remove_test(
+              "tests/testthat/test_fastcore_architecture.R",
+              "one completed GEM is cached per sample module and medium"
+          )
+          remove_test(
+              "tests/testthat/test_math_biology_audit_v13.R",
+              "condition-specific meta-module parents preserve medium bounds"
+          )
+          for title in (
+              "README formal workflow example uses current metacell API",
+              "formal workflow contains a LinkPeaks stratum invariant before relinking",
+              "formal workflow encodes requested strict-stratum parallel architecture",
+              "deprecated metacell convenience APIs are not exported by current workflow",
+          ):
+              remove_test("tests/testthat/test_strict_strata.R", title)
+          PY
+
+          rm -f R/zzzz_fastcore_semantics.R
+          rm -f .github/workflows/apply-source-cleanup.yml
+
+          if grep -R -n -E '^rc_build_meta_module_gem_cache[[:space:]]*<-|^rc_run_regcompass_multiome_metacell[[:space:]]*<-|^rc_load_metacell_object_from_run[[:space:]]*<-' R; then
+            echo "Deprecated function definitions remain" >&2
+            exit 1
+          fi
+
+      - name: Commit cleanup
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Remove deprecated staged workflow code"
+          git push origin HEAD:agent/global-metacell-compass
