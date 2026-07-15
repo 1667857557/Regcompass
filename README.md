@@ -17,7 +17,9 @@ Seurat RNA+ATAC object
 → wait for every retained stratum and every sample to complete
 → validate the all-strata artifact barrier
 → stop and release the upstream worker pool
-→ recompute one reaction-wise Q95 capacity scale across all metacells
+→ combine Human-GEM GPR-gene logCPM from all metacells
+→ recompute one global gene-score scale and reaction-capacity matrix
+→ recompute one reaction-wise Q95 scale across all metacells
 → union all stratum meta-modules
 → complete one shared global meta-module GEM with add-only FASTCORE
 → align all metacells to the same reaction universe
@@ -28,7 +30,7 @@ Seurat RNA+ATAC object
 
 No global recalibration or GEM construction occurs from a partial set of successful strata. If one retained stratum fails, the workflow writes `00_strata/upstream_barrier.tsv.gz`, releases the upstream workers, and stops.
 
-The shared GEM is the structural reference for every metacell. Biological differences enter the LP objective through metacell-specific penalties, not through sample-specific stoichiometric models. The final expression-capacity normalization uses one global reaction-wise Q95 computed after all upstream artifacts are complete; stratum-local `C_rel` values are not used for cross-sample scoring.
+The shared GEM is the structural reference for every metacell. Biological differences enter the LP objective through metacell-specific penalties, not through sample-specific stoichiometric models. After all upstream artifacts are complete, RegCompass combines GPR-gene logCPM across all metacells, recomputes gene scores and GPR reaction capacities on that common population, and then applies one reaction-wise Q95 calibration. Stratum-local `C_raw` and `C_rel` values are not used for cross-sample scoring; stratum-specific LinkPeaks evidence remains in the reaction-confidence term.
 
 ## Structural modes
 
@@ -145,6 +147,9 @@ The integrated runner fixes `unit = "metacell"`, uses one shared structural GEM,
 ```r
 result$upstream_status
 result$upstream_barrier
+result$layer1$rna_metacell_logcpm
+result$layer1$global_gene_score
+result$layer1$C_raw
 result$layer1$C_rel
 result$layer1$capacity_calibration_scope
 result$layer1$reaction_confidence
