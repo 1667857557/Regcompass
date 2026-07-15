@@ -1,0 +1,339 @@
+name: Apply robust core contract fixes
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.head_ref == 'agent/global-metacell-compass'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: agent/global-metacell-compass
+          fetch-depth: 0
+      - name: Patch implementations
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          from pathlib import Path
+          import re
+
+          def function_end(text, start):
+              brace = text.index('{', start)
+              depth = 0
+              quote = None
+              escaped = False
+              for i in range(brace, len(text)):
+                  ch = text[i]
+                  if quote is not None:
+                      if escaped:
+                          escaped = False
+                      elif ch == '\\':
+                          escaped = True
+                      elif ch == quote:
+                          quote = None
+                      continue
+                  if ch in ('"', "'"):
+                      quote = ch
+                  elif ch == '{':
+                      depth += 1
+                  elif ch == '}':
+                      depth -= 1
+                      if depth == 0:
+                          return i + 1
+              raise RuntimeError('Unbalanced R function')
+
+          path = Path('R/gpr_capacity.R')
+          text = path.read_text()
+          pattern = re.compile(
+              r'(?m)^(\s*)vals <- gene_score\[genes, j\]\n'
+              r'\1if \(!length\(genes\) \|\| length\(vals\) != length\(genes\) \|\|\n'
+              r'\1    anyNA\(vals\) \|\| any\(!is\.finite\(vals\)\)\) \{\n'
+              r'\1  return\(NA_real_\)\n'
+              r'\1\}\n'
+              r'\1min\(vals\)'
+          )
+          def hard_min(match):
+              i = match.group(1)
+              return (
+                  f'{i}if (!length(genes) || !all(genes %in% rownames(gene_score))) {{\n'
+                  f'{i}  return(NA_real_)\n'
+                  f'{i}}}\n'
+                  f'{i}vals <- gene_score[genes, j]\n'
+                  f'{i}if (length(vals) != length(genes) || anyNA(vals) ||\n'
+                  f'{i}    any(!is.finite(vals))) {{\n'
+                  f'{i}  return(NA_real_)\n'
+                  f'{i}}}\n'
+                  f'{i}min(vals)'
+              )
+          text, count = pattern.subn(hard_min, text, count=1)
+          if count != 1:
+              raise RuntimeError('hard-min block not replaced')
+          path.write_text(text)
+
+          path = Path('R/pseudobulk.R')
+          text = path.read_text()
+          anchor = '  if (anyNA(active$cell_id)) stop("`unit_map$cell_id` must not contain NA values.", call. = FALSE)\n'
+          insertion = anchor + '''  duplicated_cells <- unique(as.character(
+            active$cell_id[duplicated(active$cell_id)]
+          ))
+            if (length(duplicated_cells)) {
+              stop(
+                "Each cell may belong to only one active pool; duplicated cell IDs: ",
+                paste(utils::head(duplicated_cells, 10L), collapse = ", "),
+                call. = FALSE
+              )
+            }
+          '''
+          if anchor not in text:
+              raise RuntimeError('pseudobulk validation anchor missing')
+          path.write_text(text.replace(anchor, insertion, 1))
+
+          path = Path('R/meta_module_definition.R')
+          text = path.read_text()
+          anchor = '  if (!nrow(maps$subsystem)) {\n'
+          filtering = '''  maps$subsystem <- maps$subsystem[
+            !is.na(maps$subsystem$reaction_id) &
+              nzchar(trimws(as.character(maps$subsystem$reaction_id))) &
+              !is.na(maps$subsystem$subsystem_id) &
+              nzchar(trimws(as.character(maps$subsystem$subsystem_id))),
+            , drop = FALSE
+          ]
+          maps$kegg <- maps$kegg[
+            !is.na(maps$kegg$reaction_id) &
+              nzchar(trimws(as.character(maps$kegg$reaction_id))) &
+              !is.na(maps$kegg$kegg_id) &
+              nzchar(trimws(as.character(maps$kegg$kegg_id))),
+            , drop = FALSE
+          ]
+          maps$reactome <- maps$reactome[
+            !is.na(maps$reactome$reaction_id) &
+              nzchar(trimws(as.character(maps$reactome$reaction_id))) &
+              !is.na(maps$reactome$reactome_id) &
+              nzchar(trimws(as.character(maps$reactome$reactome_id))),
+            , drop = FALSE
+          ]
+          maps$rhea_master <- maps$rhea_master[
+            !is.na(maps$rhea_master$reaction_id) &
+              nzchar(trimws(as.character(maps$rhea_master$reaction_id))) &
+              !is.na(maps$rhea_master$rhea_master_id) &
+              nzchar(trimws(as.character(maps$rhea_master$rhea_master_id))),
+            , drop = FALSE
+          ]
+          '''
+          if anchor not in text:
+              raise RuntimeError('cross-reference filter anchor missing')
+          path.write_text(text.replace(anchor, filtering + anchor, 1))
+
+          path = Path('R/layer2_penalty_lp.R')
+          text = path.read_text()
+          old = 'c("type", "reaction_type", "category", "subsystem", "name", "reaction_name")'
+          new = 'c("role", "type", "reaction_type", "category", "subsystem", "name", "reaction_name")'
+          if old not in text:
+              raise RuntimeError('reaction role anchor missing')
+          path.write_text(text.replace(old, new, 1))
+
+          path = Path('R/calibration_q95.R')
+          text = path.read_text()
+          start = text.index('rc_reaction_confidence_gpr_aware <- function')
+          end = function_end(text, start)
+          replacement = r'''rc_reaction_confidence_gpr_aware <- function(
+              gpr_list,
+              gene_confidence,
+              unit_detection = NULL,
+              tau_conf = 0.20,
+              and_method = c("softmin", "min", "mean"),
+              or_method = c("max", "prob_or", "sum_sqrtK"),
+              missing_group_policy = c("complete_group", "partial_group"),
+              low_confidence_quantile = NULL,
+              low_confidence_threshold = NULL) {
+            and_method <- match.arg(and_method)
+            or_method <- match.arg(or_method)
+            missing_group_policy <- match.arg(missing_group_policy)
+            if (!is.null(low_confidence_threshold)) {
+              if (!is.numeric(low_confidence_threshold) ||
+                  length(low_confidence_threshold) != 1L ||
+                  !is.finite(low_confidence_threshold) ||
+                  low_confidence_threshold < 0 ||
+                  low_confidence_threshold > 1) {
+                stop(
+                  "`low_confidence_threshold` must be NULL or one number between 0 and 1.",
+                  call. = FALSE
+                )
+              }
+              if (!is.null(low_confidence_quantile)) {
+                stop(
+                  "Specify only one of `low_confidence_threshold` and `low_confidence_quantile`.",
+                  call. = FALSE
+                )
+              }
+            }
+            gene_confidence <- as.matrix(gene_confidence)
+            if (is.null(rownames(gene_confidence)) ||
+                is.null(colnames(gene_confidence))) {
+              stop(
+                "`gene_confidence` must have gene rownames and unit colnames.",
+                call. = FALSE
+              )
+            }
+            normalized <- tolower(trimws(rownames(gene_confidence)))
+            if (anyNA(normalized) || any(!nzchar(normalized)) ||
+                anyDuplicated(normalized)) {
+              stop(
+                "`gene_confidence` must have unique non-empty genes after normalization.",
+                call. = FALSE
+              )
+            }
+            rownames(gene_confidence) <- normalized
+            unit_ids <- colnames(gene_confidence)
+
+            rows <- lapply(names(gpr_list), function(rid) {
+              groups <- gpr_list[[rid]]
+              group_data <- lapply(groups, function(group) {
+                genes <- unique(tolower(trimws(as.character(group))))
+                genes <- genes[!is.na(genes) & nzchar(genes)]
+                hit <- intersect(genes, rownames(gene_confidence))
+                observed <- if (!length(genes)) NA_real_ else length(hit) / length(genes)
+                complete <- length(genes) > 0L && length(hit) == length(genes)
+                eligible <- complete ||
+                  (identical(missing_group_policy, "partial_group") && length(hit) > 0L)
+                if (!eligible) {
+                  return(list(
+                    values = rep(NA_real_, length(unit_ids)),
+                    complete = complete,
+                    eligible = FALSE,
+                    observed = observed
+                  ))
+                }
+                matrix_in <- gene_confidence[hit, , drop = FALSE]
+                values <- if (nrow(matrix_in) == 1L) {
+                  as.numeric(matrix_in[1L, ])
+                } else if (identical(and_method, "min")) {
+                  apply(matrix_in, 2L, function(x) {
+                    if (any(!is.finite(x))) NA_real_ else min(x)
+                  })
+                } else if (identical(and_method, "mean")) {
+                  colMeans(matrix_in, na.rm = FALSE)
+                } else {
+                  apply(matrix_in, 2L, rc_softmin_conf, tau = tau_conf)
+                }
+                list(
+                  values = values,
+                  complete = complete,
+                  eligible = TRUE,
+                  observed = observed
+                )
+              })
+              if (!length(group_data)) {
+                group_data <- list(list(
+                  values = rep(NA_real_, length(unit_ids)),
+                  complete = FALSE,
+                  eligible = FALSE,
+                  observed = NA_real_
+                ))
+              }
+              group_matrix <- do.call(rbind, lapply(group_data, `[[`, "values"))
+              complete <- vapply(group_data, `[[`, logical(1), "complete")
+              eligible <- vapply(group_data, `[[`, logical(1), "eligible")
+              observed <- vapply(group_data, `[[`, numeric(1), "observed")
+              values <- rep(NA_real_, length(unit_ids))
+              if (any(eligible)) {
+                selected <- group_matrix[eligible, , drop = FALSE]
+                values <- if (identical(or_method, "max")) {
+                  apply(selected, 2L, function(x) {
+                    x <- x[is.finite(x)]
+                    if (!length(x)) NA_real_ else max(x)
+                  })
+                } else if (identical(or_method, "prob_or")) {
+                  apply(selected, 2L, function(x) {
+                    x <- x[is.finite(x)]
+                    if (!length(x)) return(NA_real_)
+                    1 - prod(1 - pmin(pmax(x, 0), 1))
+                  })
+                } else {
+                  apply(selected, 2L, function(x) {
+                    x <- x[is.finite(x)]
+                    if (!length(x)) return(NA_real_)
+                    sum(x) / sqrt(length(x))
+                  })
+                }
+              }
+              all_genes <- unique(tolower(unlist(groups, use.names = FALSE)))
+              all_genes <- all_genes[!is.na(all_genes) & nzchar(all_genes)]
+              observed_genes <- intersect(all_genes, rownames(gene_confidence))
+              coverage <- if (!length(all_genes)) {
+                NA_real_
+              } else {
+                length(observed_genes) / length(all_genes)
+              }
+              data.frame(
+                reaction_id = rid,
+                pool_id = unit_ids,
+                reaction_confidence = values,
+                reaction_evidence_score = values,
+                reaction_confidence_unpenalized = values,
+                reaction_evidence_score_unpenalized = values,
+                confidence_source = "gpr_aware_gene_confidence",
+                evidence_source = "gpr_aware_gene_confidence",
+                n_gpr_genes_total = length(all_genes),
+                n_gpr_genes_multiome = length(observed_genes),
+                multiome_coverage_fraction = coverage,
+                missing_gpr_gene_fraction = if (is.na(coverage)) NA_real_ else 1 - coverage,
+                missing_gene_fraction = if (is.na(coverage)) NA_real_ else 1 - coverage,
+                missing_subunit_confidence_penalty = NA_real_,
+                detection_available = !is.null(unit_detection),
+                mean_gpr_detection_rate = NA_real_,
+                low_confidence_threshold = if (is.null(low_confidence_threshold)) {
+                  NA_real_
+                } else {
+                  low_confidence_threshold
+                },
+                n_and_groups_total = length(groups),
+                n_and_groups_complete = sum(complete),
+                n_and_groups_eligible = sum(eligible),
+                complete_and_group_fraction = if (!length(groups)) NA_real_ else mean(complete),
+                best_and_group_observed_fraction = if (all(is.na(observed))) {
+                  NA_real_
+                } else {
+                  max(observed, na.rm = TRUE)
+                },
+                any_incomplete_gpr_group_flag = any(!complete),
+                reaction_unsupported_by_complete_gpr_flag = !any(complete),
+                missing_required_subunit_flag = any(!complete),
+                no_complete_gpr_group_flag = !any(complete),
+                stringsAsFactors = FALSE
+              )
+            })
+            out <- do.call(rbind, rows)
+            if (!is.null(low_confidence_threshold)) {
+              out$low_confidence_reaction_flag <-
+                is.finite(out$reaction_confidence) &
+                out$reaction_confidence < low_confidence_threshold
+              return(out)
+            }
+            rc_apply_low_confidence_quantile(out, low_confidence_quantile)
+          }'''
+          text = text[:start] + replacement + text[end:]
+          old = '''      or_method = or_method,
+                low_confidence_quantile = low_confidence_quantile
+              )'''
+          new = '''      or_method = or_method,
+                low_confidence_quantile = low_confidence_quantile,
+                low_confidence_threshold = low_confidence_threshold
+              )'''
+          if old not in text:
+              raise RuntimeError('confidence forwarding block missing')
+          path.write_text(text.replace(old, new, 1))
+
+          Path('.github/workflows/apply-contract-fixes-v2.yml').unlink()
+          PY
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix core function contracts"
+          git push origin HEAD:agent/global-metacell-compass
