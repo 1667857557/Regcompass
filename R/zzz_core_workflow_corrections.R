@@ -389,8 +389,7 @@ rc_build_meta_module_gem <- function(gem, reaction_membership,
 
 rc_compute_multiome_penalty <- function(...) {
   answer <- .rc_compute_multiome_penalty_uncorrected(...)
-  answer$evidence_policy <-
-    "penalty_only_not_the_original_COMPASS_expression_penalty"
+  answer$evidence_policy <- "penalty_only"
   answer$evidence_description <- paste(
     "This is not the original COMPASS expression-neighbourhood penalty.",
     "RegCompass multiome evidence modifies the LP objective penalty only;",

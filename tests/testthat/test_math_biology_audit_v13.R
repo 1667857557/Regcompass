@@ -43,7 +43,7 @@ test_that("multiome penalty uses active role and GPR parameters", {
   )
   expect_equal(out$penalty["EX", "u"], 0.05)
   expect_gt(out$penalty["R", "u"], -log(0.5))
-  expect_match(out$evidence_policy, "not the original COMPASS")
+  expect_match(out$evidence_description, "not the original COMPASS")
 })
 
 test_that("sample aggregation preserves continuous covariate classes", {
