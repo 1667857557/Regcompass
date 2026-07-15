@@ -13,7 +13,7 @@
 - Changed Layer 2 parallelization to one shared-model/medium × metacell task, with one metacell-specific penalty vector and all target directions evaluated after loading the model once.
 - Explicitly releases the upstream worker pool before global processing and creates a fresh Layer 2 pool; cleanup also runs on errors.
 
-## API cleanup
+## API cleanup and contracts
 
 - Removed the obsolete staged runner `rc_run_regcompass_multiome_metacell()`.
 - Removed the sample-specific `rc_build_meta_module_gem_cache()` implementation.
@@ -21,6 +21,7 @@
 - Removed the obsolete patch-application GitHub Actions workflow.
 - Corrected parent-GEM failure semantics so an allowed reaction direction that is structurally infeasible is reported as `parent_blocked`, not `no_allowed_direction`.
 - Hardened labeled microCOMPASS row-ID validation and preserved gene names in single-gene reaction-capacity calculations.
+- Enforced one active pool per cell, made hard-min GPR capacity return missing for absent required subunits, restored explicit partial-GPR confidence thresholds, filtered missing pathway cross-references before meta-module expansion, and prioritized curated reaction roles in Layer 2 classification.
 
 # RegCompassR 1.3.0
 
