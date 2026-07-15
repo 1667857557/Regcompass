@@ -326,33 +326,6 @@ test_that("FASTCC does not create a false reversible split cycle", {
   expect_false("Rrev_blocked" %in% consistent)
 })
 
-test_that("one completed GEM is cached per sample module and medium", {
-  skip_if_not(rc_fastcore_solver_available())
-  gem <- rc_fastcore_forward_toy()
-  membership <- data.frame(
-    sample_id = "S1",
-    module_id = "S1::GRN0001",
-    reaction_id = "Rcore",
-    is_core = TRUE,
-    stringsAsFactors = FALSE
-  )
-  cache <- rc_build_meta_module_gem_cache(
-    gem = gem,
-    reaction_membership = membership,
-    core_reactions = membership,
-    medium_scenarios = NULL,
-    solver = rc_fastcore_test_solver()
-  )
-  summary <- attr(cache, "summary")
-  expect_equal(nrow(summary), 1)
-  expect_equal(summary$build_strategy, "meta_module_gem")
-  expect_true(file.exists(summary$file[[1L]]))
-  expect_equal(
-    length(unique(vapply(cache, `[[`, character(1), "file"))),
-    1
-  )
-})
-
 test_that("the Layer 2 API exposes exactly two structural modes", {
   expect_identical(
     eval(formals(rc_run_microcompass)$mode),

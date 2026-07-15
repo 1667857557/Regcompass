@@ -2,7 +2,6 @@
 
 .rc_expand_meta_module_reactions_uncorrected <- rc_expand_meta_module_reactions
 .rc_build_meta_module_gem_uncorrected <- rc_build_meta_module_gem
-.rc_build_meta_module_gem_cache_uncorrected <- rc_build_meta_module_gem_cache
 .rc_compute_multiome_penalty_uncorrected <- rc_compute_multiome_penalty
 
 .rc_hard_core_rows <- function(core_reactions) {
@@ -375,19 +374,6 @@ rc_build_meta_module_gem <- function(gem, reaction_membership,
     core_reactions <- .rc_hard_core_rows(core_reactions)
   }
   .rc_build_meta_module_gem_uncorrected(
-    gem = gem,
-    reaction_membership = reaction_membership,
-    core_reactions = core_reactions,
-    ...
-  )
-}
-
-rc_build_meta_module_gem_cache <- function(gem, reaction_membership,
-                                           core_reactions = NULL, ...) {
-  if (!is.null(core_reactions)) {
-    core_reactions <- .rc_hard_core_rows(core_reactions)
-  }
-  .rc_build_meta_module_gem_cache_uncorrected(
     gem = gem,
     reaction_membership = reaction_membership,
     core_reactions = core_reactions,
