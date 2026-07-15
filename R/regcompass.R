@@ -215,11 +215,11 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     params = list(
       shared_gem = TRUE,
       penalty_unit = "metacell",
-      capacity_calibration_scope = "all_metacells_global_reaction_q95",
+      capacity_calibration_scope = "all_metacells_global_gene_score_and_reaction_q95",
       upstream_parallel_unit = "condition_sample_celltype",
       global_stage_requires_all_retained_strata = TRUE,
       global_stage_requires_all_samples = TRUE,
-      layer2_parallel_unit = "target_direction_by_metacell",
+      layer2_parallel_unit = "shared_model_by_metacell",
       parallel_backend = parallel_backend,
       upstream_workers = upstream_workers,
       layer2_workers = layer2_workers
