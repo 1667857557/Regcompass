@@ -185,14 +185,19 @@
 
 .rc_merge_stratum_layer1 <- function(artifacts, gem, single_cell_genes,
                                       sample_col, condition_col, celltype_col) {
+  parsed <- rc_parse_gpr_table(gem$gpr_table)
+  gpr_genes <- unique(tolower(unlist(parsed, use.names = FALSE)))
   expression_list <- lapply(artifacts, function(x) x$layer1$rna_metacell_logcpm)
   if (any(vapply(expression_list, is.null, logical(1)))) {
     stop("Every upstream artifact must contain metacell RNA logCPM for global capacity recomputation.", call. = FALSE)
   }
-  expression_list <- lapply(expression_list, as.matrix)
+  expression_list <- lapply(expression_list, function(x) {
+    keep <- tolower(rownames(x)) %in% gpr_genes
+    as.matrix(x[keep, , drop = FALSE])
+  })
   common_genes <- Reduce(intersect, lapply(expression_list, rownames))
   common_genes <- rownames(expression_list[[1L]])[rownames(expression_list[[1L]]) %in% common_genes]
-  if (!length(common_genes)) stop("No common RNA genes remain across upstream metacell artifacts.", call. = FALSE)
+  if (!length(common_genes)) stop("No common GPR genes remain across upstream metacell artifacts.", call. = FALSE)
   expression_list <- lapply(expression_list, function(x) x[common_genes, , drop = FALSE])
   rna_logcpm <- .rc_cbind_matrix_union(expression_list)
 
@@ -205,7 +210,6 @@
     stop("Upstream artifacts must use one identical Layer 1 capacity parameter set.", call. = FALSE)
   }
   capacity_params <- artifacts[[1L]]$capacity_params
-  parsed <- rc_parse_gpr_table(gem$gpr_table)
   global_gene_score <- rc_gene_score(rna_logcpm)
   C_raw <- rc_reaction_capacity(
     parsed,
