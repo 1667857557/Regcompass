@@ -195,8 +195,8 @@
     C_raw,
     bootstrap = FALSE,
     BPPARAM = FALSE,
-    unit_meta = unit_meta,
-    stratum_col = "stratum_id"
+    unit_meta = NULL,
+    stratum_col = NULL
   )
   parsed <- rc_parse_gpr_table(gem$gpr_table)
   list(
@@ -207,6 +207,7 @@
     C_rel = calibrated$C_rel,
     reaction_confidence = reaction_confidence,
     q95_diagnostics = calibrated$Q,
+    capacity_calibration_scope = "all_metacells_global_reaction_q95",
     gpr_diagnostics = rc_gpr_diagnostics(parsed, tolower(single_cell_genes)),
     parsed_gpr = parsed,
     unit_meta = unit_meta,
