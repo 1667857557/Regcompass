@@ -86,9 +86,13 @@ test_that("reaction directions are derived only from signed bounds", {
       directions$target_direction,
       sep = ":"
     ),
-    c("F:forward", "R:reverse", "B:forward", "B:reverse")
+    c("F:forward", "R:reverse", "B:forward", "B:reverse", "Z:none")
   )
-  expect_false("Z" %in% directions$reaction_id)
+  expect_true("Z" %in% directions$reaction_id)
+  expect_equal(
+    directions$direction_class[directions$reaction_id == "Z"],
+    "blocked"
+  )
 })
 
 test_that("signed absolute-penalty LP preserves forced non-zero bounds", {
@@ -165,7 +169,7 @@ test_that("add-only FASTCORE preserves the full biological set", {
   ))
   expect_equal(
     model$build_params$algorithm,
-    "add_only_fastcore_lp7_lp10"
+    "add_only_direction_preserving_fastcore_lp7_lp10"
   )
 })
 
@@ -360,7 +364,7 @@ test_that("the Layer 2 API exposes exactly two structural modes", {
       gem = list(),
       mode = "module_meso_gem"
     ),
-    "arg should be one of"
+    "should be one of"
   )
   exports <- getNamespaceExports("RegCompassR")
   expect_false(any(c(

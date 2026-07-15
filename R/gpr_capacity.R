@@ -230,7 +230,7 @@ rc_hard_min_capacity <- function(gpr_list, gene_score, BPPARAM = NULL) {
     vapply(seq_len(ncol(gene_score)), function(j) {
       and_caps <- vapply(parsed, function(and_group) {
         genes <- unique(tolower(trimws(as.character(and_group))))
-        genes <- genes[!is.na(genes) & nzchar(x)])
+        genes <- genes[!is.na(genes) & nzchar(genes)]
         vals <- gene_score[genes, j]
         if (!length(genes) || length(vals) != length(genes) ||
             anyNA(vals) || any(!is.finite(vals))) {

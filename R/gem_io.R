@@ -5,11 +5,7 @@ rc_make_gem <- function(S, lb = NULL, ub = NULL,
                         metabolite_meta = NULL,
                         medium_policy = "base_bounds",
                         model_info = NULL) {
-  S <- if (inherits(S, "sparseMatrix")) {
-    methods::as(S, "dgCMatrix")
-  } else {
-    as.matrix(S)
-  }
+  S <- .rc_as_dgCMatrix(S)
   if (is.null(colnames(S))) {
     stop("`S` must have reaction IDs in colnames.", call. = FALSE)
   }

@@ -38,3 +38,25 @@ rc_drop_na_grouping <- function(meta, grouping_cols) {
   attr(out, "dropped_na_by_column") <- drop_by_col
   out
 }
+
+.rc_as_dgCMatrix <- function(x) {
+  if (inherits(x, "dgCMatrix")) return(x)
+  if (inherits(x, "sparseMatrix")) {
+    out <- methods::as(methods::as(x, "generalMatrix"), "CsparseMatrix")
+    if (!inherits(out, "dgCMatrix")) {
+      out <- out * 1
+      out <- methods::as(methods::as(out, "generalMatrix"), "CsparseMatrix")
+    }
+    if (!inherits(out, "dgCMatrix")) {
+      stop("Could not coerce sparse input to `dgCMatrix`.", call. = FALSE)
+    }
+    return(out)
+  }
+  dense <- as.matrix(x)
+  storage.mode(dense) <- "double"
+  out <- Matrix::Matrix(dense, sparse = TRUE)
+  if (!inherits(out, "dgCMatrix")) {
+    out <- methods::as(methods::as(out, "generalMatrix"), "CsparseMatrix")
+  }
+  out
+}
