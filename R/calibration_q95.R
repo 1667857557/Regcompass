@@ -244,80 +244,166 @@ rc_apply_low_confidence_quantile <- function(df, low_confidence_quantile) {
 #' Missing required genes make the affected AND group incomplete; a reaction remains
 #' supported when at least one alternative AND group is complete.
 #' @export
-rc_reaction_confidence_gpr_aware <- function(gpr_list,
-                                             gene_confidence,
-                                             unit_detection = NULL,
-                                             tau_conf = 0.20,
-                                             and_method = c("softmin", "min", "mean"),
-                                             or_method = c("max", "prob_or", "sum_sqrtK"),
-                                             missing_group_policy = c("complete_group", "partial_group"),
-                                             low_confidence_quantile = NULL) {
+rc_reaction_confidence_gpr_aware <- function(
+    gpr_list,
+    gene_confidence,
+    unit_detection = NULL,
+    tau_conf = 0.20,
+    and_method = c("softmin", "min", "mean"),
+    or_method = c("max", "prob_or", "sum_sqrtK"),
+    missing_group_policy = c("complete_group", "partial_group"),
+    low_confidence_quantile = NULL,
+    low_confidence_threshold = NULL) {
   and_method <- match.arg(and_method)
   or_method <- match.arg(or_method)
   missing_group_policy <- match.arg(missing_group_policy)
+  if (!is.null(low_confidence_threshold)) {
+    if (!is.numeric(low_confidence_threshold) ||
+        length(low_confidence_threshold) != 1L ||
+        !is.finite(low_confidence_threshold) ||
+        low_confidence_threshold < 0 ||
+        low_confidence_threshold > 1) {
+      stop(
+        "`low_confidence_threshold` must be NULL or one number between 0 and 1.",
+        call. = FALSE
+      )
+    }
+    if (!is.null(low_confidence_quantile)) {
+      stop(
+        "Specify only one of `low_confidence_threshold` and `low_confidence_quantile`.",
+        call. = FALSE
+      )
+    }
+  }
   gene_confidence <- as.matrix(gene_confidence)
-  if (is.null(rownames(gene_confidence)) || is.null(colnames(gene_confidence))) stop("`gene_confidence` must have gene rownames and unit colnames.", call. = FALSE)
-  rownames(gene_confidence) <- tolower(rownames(gene_confidence))
+  if (is.null(rownames(gene_confidence)) ||
+      is.null(colnames(gene_confidence))) {
+    stop(
+      "`gene_confidence` must have gene rownames and unit colnames.",
+      call. = FALSE
+    )
+  }
+  normalized <- tolower(trimws(rownames(gene_confidence)))
+  if (anyNA(normalized) || any(!nzchar(normalized)) ||
+      anyDuplicated(normalized)) {
+    stop(
+      "`gene_confidence` must have unique non-empty genes after normalization.",
+      call. = FALSE
+    )
+  }
+  rownames(gene_confidence) <- normalized
   unit_ids <- colnames(gene_confidence)
 
   rows <- lapply(names(gpr_list), function(rid) {
     groups <- gpr_list[[rid]]
-    group_mat <- lapply(seq_along(groups), function(k) {
-      gs <- unique(tolower(groups[[k]]))
-      gs <- gs[!is.na(gs) & nzchar(gs)]
-      hit <- intersect(gs, rownames(gene_confidence))
-      observed_fraction <- if (length(gs) == 0L) NA_real_ else length(hit) / length(gs)
-      complete <- length(gs) > 0L && length(hit) == length(gs)
-      if (!complete && identical(missing_group_policy, "complete_group")) {
-        return(list(conf = rep(NA_real_, length(unit_ids)), observed_fraction = observed_fraction, complete = FALSE))
+    group_data <- lapply(groups, function(group) {
+      genes <- unique(tolower(trimws(as.character(group))))
+      genes <- genes[!is.na(genes) & nzchar(genes)]
+      hit <- intersect(genes, rownames(gene_confidence))
+      observed <- if (!length(genes)) NA_real_ else length(hit) / length(genes)
+      complete <- length(genes) > 0L && length(hit) == length(genes)
+      eligible <- complete ||
+        (identical(missing_group_policy, "partial_group") && length(hit) > 0L)
+      if (!eligible) {
+        return(list(
+          values = rep(NA_real_, length(unit_ids)),
+          complete = complete,
+          eligible = FALSE,
+          observed = observed
+        ))
       }
-      if (length(hit) == 0L) {
-        return(list(conf = rep(NA_real_, length(unit_ids)), observed_fraction = observed_fraction, complete = FALSE))
-      }
-      x <- gene_confidence[hit, , drop = FALSE]
-      conf <- if (nrow(x) == 1L) {
-        as.numeric(x[1, ])
+      matrix_in <- gene_confidence[hit, , drop = FALSE]
+      values <- if (nrow(matrix_in) == 1L) {
+        as.numeric(matrix_in[1L, ])
       } else if (identical(and_method, "min")) {
-        apply(x, 2, function(v) if (any(!is.finite(v))) NA_real_ else min(v))
+        apply(matrix_in, 2L, function(x) {
+          if (any(!is.finite(x))) NA_real_ else min(x)
+        })
       } else if (identical(and_method, "mean")) {
-        colMeans(x, na.rm = FALSE)
+        colMeans(matrix_in, na.rm = FALSE)
       } else {
-        apply(x, 2, rc_softmin_conf, tau = tau_conf)
+        apply(matrix_in, 2L, rc_softmin_conf, tau = tau_conf)
       }
-      list(conf = conf, observed_fraction = observed_fraction, complete = complete)
+      list(
+        values = values,
+        complete = complete,
+        eligible = TRUE,
+        observed = observed
+      )
     })
-    if (length(group_mat) == 0L) group_mat <- list(list(conf = rep(NA_real_, length(unit_ids)), observed_fraction = NA_real_, complete = FALSE))
-    G <- do.call(rbind, lapply(group_mat, `[[`, "conf"))
-    complete <- vapply(group_mat, `[[`, logical(1), "complete")
-    observed <- vapply(group_mat, `[[`, numeric(1), "observed_fraction")
-    if (!any(complete)) {
-      vals <- rep(NA_real_, length(unit_ids))
-    } else {
-      G2 <- G[complete, , drop = FALSE]
-      vals <- if (identical(or_method, "max")) {
-        apply(G2, 2, function(v) if (all(is.na(v))) NA_real_ else max(v, na.rm = TRUE))
+    if (!length(group_data)) {
+      group_data <- list(list(
+        values = rep(NA_real_, length(unit_ids)),
+        complete = FALSE,
+        eligible = FALSE,
+        observed = NA_real_
+      ))
+    }
+    group_matrix <- do.call(rbind, lapply(group_data, `[[`, "values"))
+    complete <- vapply(group_data, `[[`, logical(1), "complete")
+    eligible <- vapply(group_data, `[[`, logical(1), "eligible")
+    observed <- vapply(group_data, `[[`, numeric(1), "observed")
+    values <- rep(NA_real_, length(unit_ids))
+    if (any(eligible)) {
+      selected <- group_matrix[eligible, , drop = FALSE]
+      values <- if (identical(or_method, "max")) {
+        apply(selected, 2L, function(x) {
+          x <- x[is.finite(x)]
+          if (!length(x)) NA_real_ else max(x)
+        })
       } else if (identical(or_method, "prob_or")) {
-        apply(G2, 2, function(v) { v <- v[is.finite(v)]; if (!length(v)) return(NA_real_); 1 - prod(1 - pmax(0, pmin(1, v))) })
+        apply(selected, 2L, function(x) {
+          x <- x[is.finite(x)]
+          if (!length(x)) return(NA_real_)
+          1 - prod(1 - pmin(pmax(x, 0), 1))
+        })
       } else {
-        apply(G2, 2, function(v) { v <- v[is.finite(v)]; if (!length(v)) return(NA_real_); sum(v) / sqrt(length(v)) })
+        apply(selected, 2L, function(x) {
+          x <- x[is.finite(x)]
+          if (!length(x)) return(NA_real_)
+          sum(x) / sqrt(length(x))
+        })
       }
     }
-    genes_all <- unique(tolower(unlist(groups, use.names = FALSE)))
-    genes_all <- genes_all[!is.na(genes_all) & nzchar(genes_all)]
+    all_genes <- unique(tolower(unlist(groups, use.names = FALSE)))
+    all_genes <- all_genes[!is.na(all_genes) & nzchar(all_genes)]
+    observed_genes <- intersect(all_genes, rownames(gene_confidence))
+    coverage <- if (!length(all_genes)) {
+      NA_real_
+    } else {
+      length(observed_genes) / length(all_genes)
+    }
     data.frame(
-      reaction_id = rid, pool_id = unit_ids,
-      reaction_confidence = vals, reaction_evidence_score = vals,
-      reaction_confidence_unpenalized = vals, reaction_evidence_score_unpenalized = vals,
-      confidence_source = "gpr_aware_gene_confidence", evidence_source = "gpr_aware_gene_confidence",
-      n_gpr_genes_total = length(genes_all), n_gpr_genes_multiome = length(intersect(genes_all, rownames(gene_confidence))),
-      multiome_coverage_fraction = if (length(genes_all) == 0L) NA_real_ else length(intersect(genes_all, rownames(gene_confidence))) / length(genes_all),
-      missing_gpr_gene_fraction = if (length(genes_all) == 0L) NA_real_ else 1 - length(intersect(genes_all, rownames(gene_confidence))) / length(genes_all),
-      missing_gene_fraction = if (length(genes_all) == 0L) NA_real_ else 1 - length(intersect(genes_all, rownames(gene_confidence))) / length(genes_all),
-      missing_subunit_confidence_penalty = NA_real_, detection_available = !is.null(unit_detection), mean_gpr_detection_rate = NA_real_,
-      low_confidence_threshold = NA_real_,
-      n_and_groups_total = length(groups), n_and_groups_complete = sum(complete),
-      complete_and_group_fraction = mean(complete),
-      best_and_group_observed_fraction = if (all(is.na(observed))) NA_real_ else max(observed, na.rm = TRUE),
+      reaction_id = rid,
+      pool_id = unit_ids,
+      reaction_confidence = values,
+      reaction_evidence_score = values,
+      reaction_confidence_unpenalized = values,
+      reaction_evidence_score_unpenalized = values,
+      confidence_source = "gpr_aware_gene_confidence",
+      evidence_source = "gpr_aware_gene_confidence",
+      n_gpr_genes_total = length(all_genes),
+      n_gpr_genes_multiome = length(observed_genes),
+      multiome_coverage_fraction = coverage,
+      missing_gpr_gene_fraction = if (is.na(coverage)) NA_real_ else 1 - coverage,
+      missing_gene_fraction = if (is.na(coverage)) NA_real_ else 1 - coverage,
+      missing_subunit_confidence_penalty = NA_real_,
+      detection_available = !is.null(unit_detection),
+      mean_gpr_detection_rate = NA_real_,
+      low_confidence_threshold = if (is.null(low_confidence_threshold)) {
+        NA_real_
+      } else {
+        low_confidence_threshold
+      },
+      n_and_groups_total = length(groups),
+      n_and_groups_complete = sum(complete),
+      n_and_groups_eligible = sum(eligible),
+      complete_and_group_fraction = if (!length(groups)) NA_real_ else mean(complete),
+      best_and_group_observed_fraction = if (all(is.na(observed))) {
+        NA_real_
+      } else {
+        max(observed, na.rm = TRUE)
+      },
       any_incomplete_gpr_group_flag = any(!complete),
       reaction_unsupported_by_complete_gpr_flag = !any(complete),
       missing_required_subunit_flag = any(!complete),
@@ -325,7 +411,14 @@ rc_reaction_confidence_gpr_aware <- function(gpr_list,
       stringsAsFactors = FALSE
     )
   })
-  rc_apply_low_confidence_quantile(do.call(rbind, rows), low_confidence_quantile)
+  out <- do.call(rbind, rows)
+  if (!is.null(low_confidence_threshold)) {
+    out$low_confidence_reaction_flag <-
+      is.finite(out$reaction_confidence) &
+      out$reaction_confidence < low_confidence_threshold
+    return(out)
+  }
+  rc_apply_low_confidence_quantile(out, low_confidence_quantile)
 }
 
 
@@ -391,7 +484,8 @@ rc_reaction_confidence <- function(gpr_list,
       tau_conf = tau_conf,
       and_method = and_method,
       or_method = or_method,
-      low_confidence_quantile = low_confidence_quantile
+      low_confidence_quantile = low_confidence_quantile,
+      low_confidence_threshold = low_confidence_threshold
     )
     return(rc_set_confidence_source(out, source, detection_available = detection_available))
   }

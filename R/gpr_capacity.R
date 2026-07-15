@@ -233,9 +233,12 @@ rc_hard_min_capacity <- function(gpr_list, gene_score, BPPARAM = NULL) {
       and_caps <- vapply(parsed, function(and_group) {
         genes <- unique(tolower(trimws(as.character(and_group))))
         genes <- genes[!is.na(genes) & nzchar(genes)]
+        if (!length(genes) || !all(genes %in% rownames(gene_score))) {
+          return(NA_real_)
+        }
         vals <- gene_score[genes, j]
-        if (!length(genes) || length(vals) != length(genes) ||
-            anyNA(vals) || any(!is.finite(vals))) {
+        if (length(vals) != length(genes) || anyNA(vals) ||
+            any(!is.finite(vals))) {
           return(NA_real_)
         }
         min(vals)

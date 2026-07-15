@@ -96,6 +96,34 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
     gem,
     subsystem_table = subsystem_table
   )
+  maps$subsystem <- maps$subsystem[
+  !is.na(maps$subsystem$reaction_id) &
+    nzchar(trimws(as.character(maps$subsystem$reaction_id))) &
+    !is.na(maps$subsystem$subsystem_id) &
+    nzchar(trimws(as.character(maps$subsystem$subsystem_id))),
+  , drop = FALSE
+]
+maps$kegg <- maps$kegg[
+  !is.na(maps$kegg$reaction_id) &
+    nzchar(trimws(as.character(maps$kegg$reaction_id))) &
+    !is.na(maps$kegg$kegg_id) &
+    nzchar(trimws(as.character(maps$kegg$kegg_id))),
+  , drop = FALSE
+]
+maps$reactome <- maps$reactome[
+  !is.na(maps$reactome$reaction_id) &
+    nzchar(trimws(as.character(maps$reactome$reaction_id))) &
+    !is.na(maps$reactome$reactome_id) &
+    nzchar(trimws(as.character(maps$reactome$reactome_id))),
+  , drop = FALSE
+]
+maps$rhea_master <- maps$rhea_master[
+  !is.na(maps$rhea_master$reaction_id) &
+    nzchar(trimws(as.character(maps$rhea_master$reaction_id))) &
+    !is.na(maps$rhea_master$rhea_master_id) &
+    nzchar(trimws(as.character(maps$rhea_master$rhea_master_id))),
+  , drop = FALSE
+]
   if (!nrow(maps$subsystem)) {
     stop(
       "No usable reaction-to-subsystem annotations were found.",
