@@ -1,30 +1,29 @@
 # RegCompassR
 
-RegCompassR 1.3 runs a sample-aware RNA+ATAC workflow that converts metacells, GPR evidence, sample-specific Pando regulatory modules, Human-GEM structure, and medium constraints into directional microCOMPASS reaction-potential scores.
+RegCompassR 1.4 implements a two-stage, shared-structure multiome workflow for directional reaction-potential analysis.
 
-## Main workflow
+## Workflow
 
 ```text
 Seurat RNA+ATAC object
-→ condition × sample × cell-type strata
-→ SuperCell2 RNA+ATAC metacells and fragment aggregation
-→ LinkPeaks relinking within retained strata
-→ Layer 1 RNA-GPR capacity and ATAC-supported confidence
-→ sample-specific Pando metabolic GRNs
-→ GRN genes mapped to Human-GEM core reactions
-→ subsystem + KEGG/Reactome + master-Rhea meta-module expansion
-→ full-GEM or FASTCORE-completed meta-module-GEM
-→ directional microCOMPASS scoring
+→ define retained condition × sample × cell-type strata
+→ upstream parallel stage: one worker per stratum
+     Meta cell
+     → fragment aggregation
+     → metacell LinkPeaks
+     → Layer 1 RNA/ATAC-GPR evidence
+     → Pando GRN
+     → metabolic GRN projection
+     → meta-module expansion
+→ global barrier: every retained stratum must complete
+→ merge all metacells and rerun expression-capacity calibration globally
+→ union all stratum meta-modules
+→ build one shared FASTCORE-completed GEM per medium scenario
+→ release upstream workers
+→ downstream parallel stage: shared target-direction × metacell LP tasks
 ```
 
-RegCompass 1.3 intentionally exposes two structural model modes:
-
-| Mode | Structural model |
-|---|---|
-| `meta_module_gem` | The GRN/subsystem/pathway biological reaction set completed with compact Human-GEM support reactions by add-only FASTCORE. This is the recommended default. |
-| `full_gem` | The complete medium-constrained Human-GEM, analogous to the structural model used by COMPASS. |
-
-Older target-k-hop, module-meso-GEM, automatic-fallback, and alternate reference-mode APIs are not part of the current tutorial.
+The downstream model has the same stoichiometric matrix, bounds, target definitions, and medium for every metacell. Each metacell retains its own evidence-derived penalty vector.
 
 ## Installation
 
@@ -34,12 +33,14 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-The installed Pando package must retain repository metadata pointing to `1667857557/Pando_regcompass`.
-
-## Prepare Human-GEM and medium constraints
+## Integrated analysis
 
 ```r
 library(RegCompassR)
+library(Pando)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+data(motifs, package = "Pando")
 
 gem <- rc_prepare_human2_gem_v12(version = "2.0.0")
 
@@ -52,43 +53,17 @@ medium <- data.frame(
   condition = "all",
   stringsAsFactors = FALSE
 )
-```
-
-`rc_apply_medium_constraints()` first closes uptake through all annotated exchange reactions and then opens only the listed available exchanges. Built-in medium scenarios are broad sensitivity scenarios; use curated tables for biological interpretation.
-
-Human-GEM reaction directions are derived from active numerical bounds:
-
-```text
-lb < 0 < ub     reversible
-0 <= lb < ub    forward-only
-lb < ub <= 0    reverse-only
-lb = ub = 0     blocked
-```
-
-## Recommended integrated analysis
-
-Use `rc_run_regcompass()` for the supported end-to-end workflow. The default tutorial path uses `model_mode = "meta_module_gem"`.
-
-Parallelization is split into two stages: metacell construction and Pando/meta-module inference run by retained `condition × sample × cell-type` strata, while the downstream COMPASS-like Layer 2 task grid uses its own parallel pass after the upstream worker pool has been released.
-
-```r
-library(Pando)
-library(BSgenome.Hsapiens.UCSC.hg38)
-
-data(motifs, package = "Pando")
 
 result <- rc_run_regcompass(
   object = object,
   gem = gem,
-  outdir = "RegCompassR_v1.3_meta_module",
+  outdir = "RegCompassR_v1.4",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = fragment_files,
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
-  rna_assay = "RNA",
-  atac_assay = "ATAC",
   model_mode = "meta_module_gem",
   medium_scenarios = medium,
   metacell_args = list(
@@ -96,8 +71,7 @@ result <- rc_run_regcompass(
     adaptive_gamma = TRUE,
     min_cells_pre_metacell = 100,
     min_metacell_size = 10,
-    min_metacells_post_metacell = 10,
-    future_plan = "sequential"
+    min_metacells_post_metacell = 10
   ),
   pando_args = list(
     min_metacells = 20,
@@ -111,11 +85,16 @@ result <- rc_run_regcompass(
     padj_threshold = 0.05,
     min_model_rsq = 0.1,
     top_k_neighbors = 5,
-    min_shared_tfs = 1,
     expansion_mode = "ordered_once"
   ),
+  calibration_args = list(
+    bootstrap = FALSE,
+    promiscuity_mode = "sqrt",
+    and_method = "boltzmann",
+    tau = 0.20,
+    or_method = "sum_sqrtK"
+  ),
   layer2_args = list(
-    unit = "sample_celltype",
     target_direction = "both",
     solver = "highs",
     parallel = TRUE,
@@ -124,68 +103,47 @@ result <- rc_run_regcompass(
       fastcore_epsilon = 1e-4,
       max_support_reactions = 2000
     )
-  )
+  ),
+  BPPARAM_upstream = rc_default_bpparam(workers = 6, backend = "snow"),
+  BPPARAM_layer2 = rc_default_bpparam(workers = 12, backend = "snow")
 )
 ```
 
-The result is saved to:
+`condition`-specific medium bounds are rejected because they would make the structural model differ between conditions. Use `condition = "all"` when cross-condition scores must share one GEM.
+
+## Barrier and outputs
+
+No global calibration, union GEM construction, or LP scoring starts unless every retained stratum completes all upstream steps. Diagnostics are written to:
 
 ```text
-RegCompassR_v1.3_meta_module/regcompass_v1.3_result.rds
+upstream_expected_strata.tsv.gz
+upstream_stratum_status.tsv.gz
 ```
 
-## Optional full-GEM analysis
-
-Switch only `model_mode` and the output directory when you want to score targets inside the full Human-GEM structure.
+Main outputs:
 
 ```r
-result_full <- rc_run_regcompass(
-  object = object,
-  gem = gem,
-  outdir = "RegCompassR_v1.3_full_gem",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = fragment_files,
-  model_mode = "full_gem",
-  medium_scenarios = medium,
-  layer2_args = list(
-    unit = "sample_celltype",
-    target_direction = "both",
-    solver = "highs"
-  )
-)
-```
-
-The full-GEM workflow still uses Pando-derived core reactions as the default target set. Provide `target_reactions` inside `layer2_args` only when scoring an explicit alternative set.
-
-## Key outputs
-
-```r
+result$layer1$C_raw
+result$layer1$C_rel
 result$grn_meta_modules$core_gene_reaction
 result$grn_meta_modules$reaction_membership
 result$microcompass$score
 result$microcompass$penalty
 result$microcompass$vmax
-result$microcompass$feasible
-result$microcompass$evaluated
 result$microcompass$model_cache_summary
-result$microcompass$model_diagnostics
 result$microcompass$lp_diagnostics
 ```
 
-In meta-module mode, score row IDs include sample and module identity:
+Score rows use a shared identity without sample- or module-specific model labels:
 
 ```text
-sample=<sample>::module=<module>::reaction=<reaction>::direction=<direction>::medium=<medium>
+reaction=<reaction>::direction=<direction>::medium=<medium>::condition=all
 ```
 
-## Interpretation limits
+## Public API
 
-- FASTCORE is an LP-based compact reconstruction algorithm, not an exact minimum-cardinality MILP.
-- Steady-state feasibility does not establish thermodynamic or kinetic feasibility.
-- Reaction capacity and microCOMPASS scores are multiome-supported reaction potentials, not measured fluxes.
-- The completed model guarantees requested parent-feasible core directions; it does not require every peripheral biological-envelope reaction to carry flux.
-- Results remain conditional on Human-GEM stoichiometry, bounds, reaction-role annotations, GPR mapping, and the selected medium.
-- Metacells are technical aggregation units and are never treated as independent biological replicates.
+`rc_run_regcompass()` is the supported end-to-end workflow. Former public stage-specific runners and cache constructors are now internal implementation details to avoid competing orchestration paths.
 
-See [`docs/meta_module_v13_design.md`](docs/meta_module_v13_design.md) for the engineering specification and [`docs/math_biology_audit_v13.md`](docs/math_biology_audit_v13.md) for the LP equations, biological assumptions, and validation notes.
+## Interpretation
+
+Reaction capacities and microCOMPASS scores are model-based reaction potentials, not measured fluxes. Metacells are technical aggregation units and are not biological replicates. Results remain conditional on the GEM, GPR mapping, reaction-role annotations, medium constraints, GRN inference, and penalty model.
