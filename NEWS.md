@@ -4,10 +4,10 @@
 
 ## Global metacell workflow
 
-- Replaced the staged integrated workflow with one upstream worker per retained `condition × sample × cell-type` stratum. Each worker now completes metacell construction, fragment aggregation, LinkPeaks/Layer 1, Pando, and meta-module inference before returning an artifact.
+- Replaced the staged integrated workflow with one upstream worker per retained `condition × sample × cell-type` stratum. Each worker now completes metacell construction, fragment aggregation, Pando peak-gene/GRN inference, Pando-derived reaction confidence, and meta-module inference before returning an artifact.
 - Added a hard all-strata/all-sample barrier. Global recalibration and GEM construction are blocked when any retained stratum fails or any biological sample is absent.
 - Recomputed expression capacity after the barrier by combining Human-GEM GPR-gene logCPM across all metacells, recalculating one global gene-score and GPR reaction-capacity matrix, and applying one reaction-wise Q95 calibration.
-- Preserved stratum-specific LinkPeaks/ATAC evidence as the metacell-specific reaction-confidence component.
+- Derived metacell-specific reaction confidence from significant Pando regions and their TF-IDF accessibility; no separate Signac `LinkPeaks()` pass is run by the integrated workflow.
 - Unioned all strict-stratum reaction envelopes into one canonical `GLOBAL_UNION` meta-module and completed one shared GEM per medium scenario.
 - Required condition-invariant medium constraints for shared-GEM comparison and preserved explicit no-constraint scenarios across repeated normalization.
 - Changed Layer 2 parallelization to one shared-model/medium × metacell task, with one metacell-specific penalty vector and all target directions evaluated after loading the model once.
@@ -38,44 +38,3 @@
 - Implemented the original LP-10 scaling convention: core constraints and flux bounds are multiplied by `1e5`, while support is extracted using the original epsilon.
 - Preserved the complete biological reaction envelope and penalized only candidate support reactions outside that envelope.
 - Added signed reaction orientation for reverse-only and reversible core tasks without splitting reversible reactions into artificial forward/reverse copies.
-- Demand, sink, and artificial-support reactions are disabled during structural completion; parent-blocked targets are reported instead of gap-filled.
-
-## microCOMPASS
-
-- Replaced the loose positive/negative flux split with signed reaction variables and absolute-value auxiliary variables.
-- Non-zero positive and negative reaction bounds are now preserved exactly in the penalty LP.
-- Meta-module scoring always uses the completed local GEM's own directional `vmax`; no alternative reference modes are exposed.
-- Sample-specific meta-modules are evaluated only against Layer 2 units from the matching biological sample.
-
-## Documentation and validation
-
-- Replaced the v1.2 module-meso tutorial with the implemented v1.3 full-GEM/meta-module-GEM workflow.
-- Added mathematical design documentation for FASTCC, FASTCORE, directional flux scoring, cache scope, and failure semantics.
-- Added regression tests for LP-7/LP-10 support completion, paper scaling, reverse-only targets, forced non-zero bounds, parent-blocked reactions, reversible-cycle avoidance, cache reuse, and the two-mode API contract.
-
-# RegCompassR 1.2.0
-
-## Added
-
-- Sample-specific Pando GRN inference on retained RNA+ATAC metacells.
-- Metabolic target-gene selection from the intersection of single-cell RNA features and Human-GEM GPR genes.
-- Export of complete and significant TF–peak–gene coefficient tables for every sample.
-- Projection of significant Pando edges into sample-specific metabolic gene networks using shared-TF and direct metabolic-TF relationships.
-- GRN-defined core reaction mapping and ordered meta-module expansion through core subsystems, shared KEGG/Reactome identifiers at subsystem level, and shared master-Rhea identifiers at subsystem level.
-- Optional fixed-point expansion for sensitivity analysis.
-- Human-GEM annotation preparation retaining subsystem, KEGG, Reactome, Rhea, and master-Rhea fields.
-
-# RegCompassR 1.1.0
-
-- Added strict condition × sample × cell type metacell filtering gates before and after metacell construction.
-- Hardened Human-GEM archive download fallback and ZIP validation.
-- Updated the formal metacell README example for the current API.
-
-## Mathematical and biological audit
-
-- Enforced exact penalty/reaction alignment and correct ranged-constraint handling.
-- Added condition-aware full-GEM and meta-module parent caches.
-- Reported blocked core reactions as `no_allowed_direction`.
-- Marked FASTCORE as an add-only direction-preserving extension.
-- Moved all differential inference to biological-sample aggregates.
-- Activated documented GPR/role penalty parameters and made artificial drains expensive by default.
