@@ -2,8 +2,9 @@
 #'
 #' Each retained condition-by-sample-by-cell-type stratum is processed by one
 #' upstream worker from metacell construction through Pando and meta-module
-#' inference. The resulting reaction envelopes are unioned into one shared GEM,
-#' and a fresh worker pool evaluates every metacell with its own penalty vector.
+#' inference. Global capacity recalibration and GEM construction begin only after
+#' every retained stratum has completed successfully. A fresh worker pool then
+#' evaluates every metacell with its own penalty vector on one shared GEM.
 #' @export
 rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
                                fragment_files = NULL,
@@ -20,11 +21,9 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
                                layer2_args = list(),
                                upstream_workers = NULL,
                                layer2_workers = NULL,
-                               parallel_backend = c("auto", "serial", "snow", "multicore"),
-                               on_stratum_error = c("record", "stop")) {
+                               parallel_backend = c("auto", "serial", "snow", "multicore")) {
   model_mode <- match.arg(model_mode)
   parallel_backend <- match.arg(parallel_backend)
-  on_stratum_error <- match.arg(on_stratum_error)
   if (!inherits(object, "Seurat")) stop("`object` must inherit from Seurat.", call. = FALSE)
   if (is.null(gem$gpr_table)) stop("`gem` must contain `gpr_table`.", call. = FALSE)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
@@ -70,7 +69,6 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
         pando_args = pando_args
       ),
       error = function(error) {
-        if (identical(on_stratum_error, "stop")) stop(error)
         list(group_id = group_id, status = "failed", artifact_file = NA_character_,
              n_cells = as.integer(counts[[group_id]]), n_metacells = NA_integer_,
              error_class = class(error)[[1L]], error_message = conditionMessage(error))
@@ -82,22 +80,65 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
   rm(upstream_param)
   invisible(gc(verbose = FALSE))
 
-  upstream_status <- .rc_bind_frames_fill(lapply(upstream_results, as.data.frame))
+  retained_status <- .rc_bind_frames_fill(lapply(upstream_results, as.data.frame))
+  upstream_status <- retained_status
   if (length(excluded_ids)) {
     excluded_status <- data.frame(
       group_id = excluded_ids, status = "skipped_too_few_cells", artifact_file = NA_character_,
       n_cells = as.integer(counts[excluded_ids]), n_metacells = NA_integer_,
       error_class = NA_character_, error_message = NA_character_, stringsAsFactors = FALSE
     )
-    upstream_status <- .rc_bind_frames_fill(list(upstream_status, excluded_status))
+    upstream_status <- .rc_bind_frames_fill(list(retained_status, excluded_status))
   }
   .rc_write_tsv_gz(upstream_status, file.path(status_dir, "stratum_workflow_status.tsv.gz"))
-  artifact_files <- upstream_status$artifact_file[upstream_status$status == "ok"]
-  artifact_files <- artifact_files[!is.na(artifact_files) & file.exists(artifact_files)]
-  if (!length(artifact_files)) stop("All strict-stratum workflows failed; inspect stratum_workflow_status.tsv.gz.", call. = FALSE)
+
+  completed_ids <- as.character(retained_status$group_id[retained_status$status == "ok"])
+  failed_ids <- setdiff(retained_ids, completed_ids)
+  artifact_files <- retained_status$artifact_file[match(retained_ids, retained_status$group_id)]
+  missing_artifacts <- retained_ids[is.na(artifact_files) | !file.exists(artifact_files)]
+  if (length(failed_ids) || length(missing_artifacts) || !setequal(completed_ids, retained_ids)) {
+    barrier <- data.frame(
+      stage = "upstream_complete_barrier",
+      passed = FALSE,
+      n_required_strata = length(retained_ids),
+      n_completed_strata = length(intersect(completed_ids, retained_ids)),
+      failed_strata = paste(failed_ids, collapse = ";"),
+      missing_artifacts = paste(missing_artifacts, collapse = ";"),
+      stringsAsFactors = FALSE
+    )
+    .rc_write_tsv_gz(barrier, file.path(status_dir, "upstream_barrier.tsv.gz"))
+    stop(
+      "Global recalibration and union-GEM construction were blocked because not all retained strata completed successfully. Inspect stratum_workflow_status.tsv.gz and upstream_barrier.tsv.gz.",
+      call. = FALSE
+    )
+  }
+  artifact_files <- artifact_files[match(retained_ids, retained_status$group_id)]
+  barrier <- data.frame(
+    stage = "upstream_complete_barrier",
+    passed = TRUE,
+    n_required_strata = length(retained_ids),
+    n_completed_strata = length(retained_ids),
+    failed_strata = "",
+    missing_artifacts = "",
+    stringsAsFactors = FALSE
+  )
+  .rc_write_tsv_gz(barrier, file.path(status_dir, "upstream_barrier.tsv.gz"))
+
   artifacts <- lapply(artifact_files, readRDS)
+  artifact_group_ids <- vapply(artifacts, function(x) as.character(x$group_id), character(1))
+  if (!identical(artifact_group_ids, retained_ids)) {
+    stop("Upstream artifacts are incomplete or out of strict-stratum order.", call. = FALSE)
+  }
+  valid_artifact <- vapply(artifacts, function(x) {
+    identical(x$schema_version, "regcompass_stratum_v2") &&
+      is.list(x$layer1) && is.list(x$grn_meta_modules) &&
+      is.data.frame(x$grn_meta_modules$core_gene_reaction) &&
+      is.data.frame(x$grn_meta_modules$reaction_membership)
+  }, logical(1))
+  if (!all(valid_artifact)) stop("One or more upstream artifacts failed completeness validation.", call. = FALSE)
 
   single_cell_genes <- rownames(.rc_get_assay_counts(object, rna_assay))
+  grn_meta_modules <- .rc_merge_stratum_meta_modules(artifacts)
   layer1 <- .rc_merge_stratum_layer1(
     artifacts = artifacts,
     gem = gem,
@@ -106,7 +147,6 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     condition_col = condition_col,
     celltype_col = celltype_col
   )
-  grn_meta_modules <- .rc_merge_stratum_meta_modules(artifacts)
   saveRDS(layer1, file.path(outdir, "02_global_layer1.rds"))
   saveRDS(grn_meta_modules, file.path(outdir, "03_global_meta_modules.rds"))
   rm(artifacts)
@@ -148,6 +188,7 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     model_mode = model_mode,
     strict_stratum_cols = group_cols,
     upstream_status = upstream_status,
+    upstream_barrier = barrier,
     layer1 = layer1,
     grn_meta_modules = grn_meta_modules,
     microcompass = microcompass,
@@ -155,6 +196,7 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
       shared_gem = TRUE,
       penalty_unit = "metacell",
       upstream_parallel_unit = "condition_sample_celltype",
+      global_stage_requires_all_retained_strata = TRUE,
       layer2_parallel_unit = "target_direction_by_metacell",
       parallel_backend = parallel_backend,
       upstream_workers = upstream_workers,
