@@ -1,12 +1,6 @@
+# Parallel helpers used by the two-stage RegCompass workflow.
+
 #' Detect a conservative RegCompass worker count
-#'
-#' Worker discovery honors explicit RegCompass settings before scheduler- or
-#' cgroup-aware sources. This avoids over-subscribing containers where
-#' `parallel::detectCores()` reports host CPUs instead of the current process
-#' allocation.
-#'
-#' @param default Fallback worker count when no source can be detected.
-#' @return A positive integer worker count.
 #' @export
 rc_available_workers <- function(default = 1L) {
   vals <- c(
@@ -18,31 +12,16 @@ rc_available_workers <- function(default = 1L) {
   vals <- suppressWarnings(as.integer(vals))
   vals <- vals[is.finite(vals) & vals >= 1L]
   if (length(vals)) return(max(1L, vals[[1L]]))
-
   if (requireNamespace("future", quietly = TRUE)) {
-    fc <- tryCatch(future::availableCores(), error = function(e) NA_integer_)
-    fc <- suppressWarnings(as.integer(fc[[1L]]))
-    if (is.finite(fc) && fc >= 1L) return(fc)
+    value <- tryCatch(future::availableCores(), error = function(e) NA_integer_)
+    value <- suppressWarnings(as.integer(value[[1L]]))
+    if (is.finite(value) && value >= 1L) return(value)
   }
-
-  cores <- parallel::detectCores(logical = TRUE)
-  cores <- suppressWarnings(as.integer(cores[[1L]]))
-  if (!is.finite(cores) || cores < 1L) max(1L, as.integer(default[[1L]])) else max(1L, cores - 1L)
+  value <- suppressWarnings(as.integer(parallel::detectCores(logical = TRUE)[[1L]]))
+  if (!is.finite(value) || value < 1L) max(1L, as.integer(default[[1L]])) else max(1L, value - 1L)
 }
 
-#' Build the default RegCompass parallel backend
-#'
-#' Expensive pool-, reaction-, and bootstrap-level loops use this helper when
-#' callers do not provide an explicit `BiocParallelParam`. By default it uses a
-#' conservative worker count from `rc_available_workers()`. Set
-#' `options(RegCompassR.workers = 1)` or `REGCOMPASS_WORKERS=1` to force
-#' sequential execution.
-#'
-#' @param workers Optional worker count. Defaults to option/env/autodetection.
-#' @param backend Parallel backend. `auto` avoids forked multicore workers in
-#' detected containers; `serial` always returns `NULL`.
-#' @return A `BiocParallelParam` object when BiocParallel is installed and more
-#' than one worker is requested; otherwise `NULL` for sequential execution.
+#' Build a RegCompass BiocParallel backend
 #' @export
 rc_default_bpparam <- function(workers = NULL, backend = c("auto", "serial", "snow", "multicore")) {
   backend <- match.arg(backend)
@@ -50,12 +29,10 @@ rc_default_bpparam <- function(workers = NULL, backend = c("auto", "serial", "sn
   workers <- suppressWarnings(as.integer(workers[[1L]]))
   if (is.na(workers) || workers < 2L || identical(backend, "serial")) return(NULL)
   if (!requireNamespace("BiocParallel", quietly = TRUE)) return(NULL)
-
   if (identical(backend, "auto")) {
     in_container <- nzchar(Sys.getenv("CONTAINER")) || file.exists("/.dockerenv")
     backend <- if (.Platform$OS.type == "windows" || in_container) "snow" else "multicore"
   }
-
   if (identical(backend, "snow")) {
     BiocParallel::SnowParam(workers = workers, type = "SOCK")
   } else {
@@ -63,31 +40,27 @@ rc_default_bpparam <- function(workers = NULL, backend = c("auto", "serial", "sn
   }
 }
 
-#' Apply a function with optional BiocParallel control
+.rc_stop_bpparam <- function(BPPARAM) {
+  if (identical(BPPARAM, FALSE) || is.null(BPPARAM) ||
+      !requireNamespace("BiocParallel", quietly = TRUE)) return(invisible(FALSE))
+  started <- tryCatch(isTRUE(BiocParallel::bpstarted(BPPARAM)), error = function(e) FALSE)
+  if (started) try(BiocParallel::bpstop(BPPARAM), silent = TRUE)
+  invisible(started)
+}
+
+#' Apply a function with a stage-owned BiocParallel backend
 #'
-#' @param X A vector or list to iterate over.
-#' @param FUN Function applied to each element of `X`.
-#' @param BPPARAM Optional `BiocParallelParam`. If `NULL`, RegCompass attempts to
-#' use `rc_default_bpparam()` for multi-core work and falls back to base
-#' `lapply()` when BiocParallel is unavailable or only one worker is requested.
-#' Pass `BPPARAM = FALSE` to force sequential execution.
-#' @param ... Additional arguments passed to `FUN`.
-#'
-#' @return A list with one element per `X`.
+#' The backend is always stopped when the call returns. This creates a hard
+#' process boundary between the upstream stratum stage and downstream LP stage.
 #' @export
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
-  if (identical(BPPARAM, FALSE) || length(X) <= 1L) {
-    return(lapply(X, FUN, ...))
-  }
+  if (identical(BPPARAM, FALSE) || length(X) <= 1L) return(lapply(X, FUN, ...))
   if (is.null(BPPARAM)) BPPARAM <- rc_default_bpparam()
   if (is.null(BPPARAM)) return(lapply(X, FUN, ...))
   if (!requireNamespace("BiocParallel", quietly = TRUE)) {
     stop("BiocParallel must be installed when `BPPARAM` is provided.", call. = FALSE)
   }
-  was_started <- isTRUE(BiocParallel::bpstarted(BPPARAM))
-  if (!was_started) {
-    BiocParallel::bpstart(BPPARAM)
-    on.exit(BiocParallel::bpstop(BPPARAM), add = TRUE)
-  }
+  if (!isTRUE(BiocParallel::bpstarted(BPPARAM))) BiocParallel::bpstart(BPPARAM)
+  on.exit(.rc_stop_bpparam(BPPARAM), add = TRUE)
   BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
 }
