@@ -342,9 +342,15 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
 
   answer$reaction_membership$is_core <- membership_keys %in% hard_keys
   partial_anchor <- membership_keys %in% setdiff(candidate_keys, hard_keys) &
-    answer$reaction_membership$inclusion_stage == "core_grn_gene"
-  answer$reaction_membership$inclusion_stage[partial_anchor] <-
-    "partial_gpr_candidate"
+    answer$reaction_membership$inclusion_stage %in%
+      c("core_grn_gene", "partial_gpr_candidate")
+  if (any(partial_anchor)) {
+    answer$reaction_membership <- answer$reaction_membership[
+      !partial_anchor,
+      , drop = FALSE
+    ]
+    membership_keys <- key(answer$reaction_membership)
+  }
 
   if (is.data.frame(answer$summary) && nrow(answer$summary)) {
     for (i in seq_len(nrow(answer$summary))) {
