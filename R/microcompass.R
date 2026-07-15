@@ -271,10 +271,41 @@ rc_run_microcompass <- function(layer1, gem,
     }
     cache_dir <- model_params$cache_dir %||%
       tempfile("RegCompassR_meta_module_gem_cache_")
+    merge_sample_modules <- isTRUE(
+      model_params$merge_sample_modules %||% TRUE
+    )
+    cache_membership <- reaction_membership
+    cache_core <- core_reactions
+    cache_sample_conditions <- sample_conditions
+    if (merge_sample_modules) {
+      merged_sample_id <- model_params$merged_sample_id %||%
+        "__merged_meta_module__"
+      merged_module_id <- model_params$merged_module_id %||%
+        "merged_meta_module"
+      cache_membership$source_sample_id <- as.character(
+        cache_membership$sample_id
+      )
+      cache_membership$source_module_id <- as.character(
+        cache_membership$module_id
+      )
+      cache_membership$sample_id <- merged_sample_id
+      cache_membership$module_id <- merged_module_id
+      if (!is.null(cache_core)) {
+        cache_core$source_sample_id <- as.character(cache_core$sample_id)
+        cache_core$source_module_id <- as.character(cache_core$module_id)
+        cache_core$sample_id <- merged_sample_id
+        cache_core$module_id <- merged_module_id
+      }
+      cache_sample_conditions <- data.frame(
+        sample_id = merged_sample_id,
+        condition = "all",
+        stringsAsFactors = FALSE
+      )
+    }
     model_cache <- rc_build_meta_module_gem_cache(
       gem = gem,
-      reaction_membership = reaction_membership,
-      core_reactions = core_reactions,
+      reaction_membership = cache_membership,
+      core_reactions = cache_core,
       target_reactions = target_reactions,
       medium_scenarios = medium_scenarios,
       cache_dir = cache_dir,
@@ -287,8 +318,9 @@ rc_run_microcompass <- function(layer1, gem,
       max_support_reactions =
         model_params$max_support_reactions %||% 2000,
       strict = model_params$strict %||% TRUE,
-      sample_conditions = sample_conditions
+      sample_conditions = cache_sample_conditions
     )
+    attr(model_cache, "merge_sample_modules") <- merge_sample_modules
     if (!length(model_cache)) {
       stop(
         "No parent-feasible meta-module targets were available.",
@@ -347,6 +379,9 @@ rc_run_microcompass <- function(layer1, gem,
   evaluated <- feasible
 
   if (identical(mode, "meta_module_gem")) {
+    merged_meta_module <- isTRUE(
+      attr(model_cache, "merge_sample_modules")
+    )
     unit_sample <- .rc_unit_sample_map(
       matrices$unit_meta,
       units,
@@ -354,9 +389,18 @@ rc_run_microcompass <- function(layer1, gem,
     )
     task_rows <- lapply(row_ids, function(row_id) {
       entry <- model_cache[[row_id]]
-      selected_units <- names(unit_sample)[
-        unit_sample == as.character(entry$sample_id)
-      ]
+      selected_units <- if (merged_meta_module) {
+        condition <- entry$condition %||% "all"
+        if (identical(condition, "all")) {
+          units
+        } else {
+          names(unit_condition)[unit_condition == condition]
+        }
+      } else {
+        names(unit_sample)[
+          unit_sample == as.character(entry$sample_id)
+        ]
+      }
       if (!length(selected_units)) return(NULL)
       data.frame(
         row_id = row_id,
@@ -521,6 +565,11 @@ rc_run_microcompass <- function(layer1, gem,
       omega = omega,
       target_direction = target_direction,
       model_mode = mode,
+      merge_sample_modules = if (identical(mode, "meta_module_gem")) {
+        isTRUE(attr(model_cache, "merge_sample_modules"))
+      } else {
+        FALSE
+      },
       flux_threshold = flux_threshold,
       evidence_policy = paste(
         "RNA+ATAC-GPR evidence affects COMPASS penalties only;",

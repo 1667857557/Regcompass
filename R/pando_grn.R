@@ -178,6 +178,9 @@ rc_run_pando_meta_modules <- function(metacell_object,
                                       pfm,
                                       genome,
                                       sample_col = "sample_id",
+                                      condition_col = "condition",
+                                      celltype_col = "cell_type",
+                                      group_cols = NULL,
                                       single_cell_genes = NULL,
                                       rna_assay = "RNA",
                                       atac_assay = "ATAC",
@@ -198,6 +201,7 @@ rc_run_pando_meta_modules <- function(metacell_object,
                                       expansion_mode = c("ordered_once", "fixed_point"),
                                       save_sample_metacell_objects = TRUE,
                                       save_pando_objects = TRUE,
+                                      BPPARAM = NULL,
                                       on_sample_error = c("record", "stop")) {
   expansion_mode <- match.arg(expansion_mode)
   on_sample_error <- match.arg(on_sample_error)
@@ -208,7 +212,21 @@ rc_run_pando_meta_modules <- function(metacell_object,
   if (!requireNamespace("Seurat", quietly = TRUE) || !requireNamespace("Signac", quietly = TRUE)) {
     stop("Packages 'Seurat' and 'Signac' are required.", call. = FALSE)
   }
-  if (!sample_col %in% colnames(metacell_object@meta.data)) stop("Missing sample metadata column: ", sample_col, call. = FALSE)
+  if (is.null(group_cols)) {
+    group_cols <- .rc_strict_stratum_cols(
+      sample_col = sample_col,
+      condition_col = condition_col,
+      celltype_col = celltype_col
+    )
+  }
+  group_cols <- unique(as.character(group_cols))
+  missing_group_cols <- setdiff(group_cols, colnames(metacell_object@meta.data))
+  if (length(missing_group_cols)) {
+    stop("Missing metadata column(s): ", paste(missing_group_cols, collapse = ", "), call. = FALSE)
+  }
+  if (!sample_col %in% group_cols) stop("`group_cols` must include `sample_col`.", call. = FALSE)
+  display_cols <- unique(c("group_id", group_cols))
+  module_cols <- unique(c("group_id", group_cols, "sample_id", "module_id"))
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   dir.create(file.path(outdir, "pando_objects"), recursive = TRUE, showWarnings = FALSE)
   dir.create(file.path(outdir, "sample_metacell_objects"), recursive = TRUE, showWarnings = FALSE)
@@ -222,28 +240,38 @@ rc_run_pando_meta_modules <- function(metacell_object,
   target_genes <- .rc_mm_trim_unique(target_genes)
   if (!length(target_genes)) stop("No overlap between single-cell RNA genes and Human-GEM metabolic genes.", call. = FALSE)
 
-  sample_ids <- .rc_mm_trim_unique(metacell_object@meta.data[[sample_col]])
-  all_edges <- list()
-  sig_edges <- list()
-  status_rows <- list()
+  meta <- metacell_object@meta.data
+  meta$.rc_pando_group_id <- rc_make_stratum_id(meta, group_cols)
+  group_ids <- unique(as.character(meta$.rc_pando_group_id))
 
-  for (sample in sample_ids) {
-    cells <- rownames(metacell_object@meta.data)[as.character(metacell_object@meta.data[[sample_col]]) == sample]
-    status <- data.frame(sample_id = sample, n_metacells = length(cells), n_target_genes = length(target_genes),
-                         status = "pending", n_edges = 0L, n_significant_edges = 0L,
-                         error_class = NA_character_, error_message = NA_character_, stringsAsFactors = FALSE)
+  run_one_group <- function(group_id) {
+    cells <- rownames(meta)[as.character(meta$.rc_pando_group_id) == group_id]
+    vals <- meta[match(cells[[1L]], rownames(meta)), group_cols, drop = FALSE]
+    sample <- as.character(vals[[sample_col]][[1L]])
+    status <- data.frame(
+      group_id = group_id,
+      vals,
+      n_metacells = length(cells),
+      n_target_genes = length(target_genes),
+      status = "pending",
+      n_edges = 0L,
+      n_significant_edges = 0L,
+      error_class = NA_character_,
+      error_message = NA_character_,
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
     if (length(cells) < as.integer(min_metacells)) {
       status$status <- "skipped_too_few_metacells"
-      status_rows[[sample]] <- status
-      next
+      return(list(status = status, all = data.frame(), significant = data.frame()))
     }
     one <- tryCatch({
       obj <- subset(metacell_object, cells = cells)
       obj <- Seurat::NormalizeData(obj, assay = rna_assay, verbose = FALSE)
       obj <- Signac::RunTFIDF(obj, assay = atac_assay)
-      sample_file_id <- gsub("[^A-Za-z0-9_.-]+", "_", sample)
+      group_file_id <- gsub("[^A-Za-z0-9_.-]+", "_", group_id)
       if (isTRUE(save_sample_metacell_objects)) {
-        saveRDS(obj, file.path(outdir, "sample_metacell_objects", paste0(sample_file_id, ".rds")))
+        saveRDS(obj, file.path(outdir, "sample_metacell_objects", paste0(group_file_id, ".rds")))
       }
       init_defaults <- list(object = obj, peak_assay = atac_assay, rna_assay = rna_assay)
       init_defaults[names(pando_initiate_args)] <- NULL
@@ -259,43 +287,78 @@ rc_run_pando_meta_modules <- function(metacell_object,
                                            min_abs_estimate = min_abs_estimate,
                                            min_model_rsq = min_model_rsq,
                                            require_padj = require_padj)
-      if (isTRUE(save_pando_objects)) saveRDS(grn, file.path(outdir, "pando_objects", paste0(sample_file_id, ".rds")))
-      list(grn = grn, tables = tab)
+      add_group_meta <- function(x) {
+        if (!nrow(x)) return(x)
+        x$group_id <- group_id
+        for (col in group_cols) x[[col]] <- vals[[col]][[1L]]
+        x[, c(display_cols, setdiff(colnames(x), display_cols)), drop = FALSE]
+      }
+      tab$all <- add_group_meta(tab$all)
+      tab$significant <- add_group_meta(tab$significant)
+      if (isTRUE(save_pando_objects)) saveRDS(grn, file.path(outdir, "pando_objects", paste0(group_file_id, ".rds")))
+      tab
     }, error = function(e) e)
     if (inherits(one, "error")) {
       status$status <- "failed"
       status$error_class <- class(one)[[1L]]
       status$error_message <- conditionMessage(one)
-      status_rows[[sample]] <- status
       if (identical(on_sample_error, "stop")) stop(one)
-      next
+      return(list(status = status, all = data.frame(), significant = data.frame()))
     }
-    all_edges[[sample]] <- one$tables$all
-    sig_edges[[sample]] <- one$tables$significant
     status$status <- "ok"
-    status$n_edges <- nrow(one$tables$all)
-    status$n_significant_edges <- nrow(one$tables$significant)
-    status_rows[[sample]] <- status
+    status$n_edges <- nrow(one$all)
+    status$n_significant_edges <- nrow(one$significant)
+    list(status = status, all = one$all, significant = one$significant)
   }
 
-  status_table <- do.call(rbind, status_rows)
-  all_table <- if (length(all_edges)) do.call(rbind, all_edges) else data.frame()
-  sig_table <- if (length(sig_edges)) do.call(rbind, sig_edges) else data.frame()
+  group_results <- rc_parallel_lapply(group_ids, run_one_group, BPPARAM = BPPARAM)
+  status_table <- do.call(rbind, lapply(group_results, `[[`, "status"))
+  all_table <- do.call(rbind, lapply(group_results, `[[`, "all"))
+  sig_table <- do.call(rbind, lapply(group_results, `[[`, "significant"))
+  if (is.null(all_table)) all_table <- data.frame()
+  if (is.null(sig_table)) sig_table <- data.frame()
   .rc_mm_write_tsv_gz(status_table, file.path(outdir, "pando_sample_status.tsv.gz"))
   .rc_mm_write_tsv_gz(all_table, file.path(outdir, "pando_tf_peak_gene_all.tsv.gz"))
   .rc_mm_write_tsv_gz(sig_table, file.path(outdir, "pando_tf_peak_gene_significant.tsv.gz"))
   if (!nrow(sig_table)) stop("No significant Pando TF-peak-gene edges were available across samples.", call. = FALSE)
 
-  projection <- rc_project_metabolic_grn(sig_table, metabolic_genes = metabolic_genes,
+  sig_for_projection <- sig_table
+  sig_for_projection$sample_id <- sig_for_projection$group_id
+  projection <- rc_project_metabolic_grn(sig_for_projection, metabolic_genes = metabolic_genes,
                                           top_k = top_k_neighbors,
                                           min_shared_tfs = min_shared_tfs,
                                           min_tf_jaccard = min_tf_jaccard,
                                           max_targets_per_tf = max_targets_per_tf,
                                           include_direct_metabolic_tf = TRUE)
+  group_meta <- unique(status_table[, c("group_id", group_cols), drop = FALSE])
+  remap_projection <- function(x) {
+    if (!nrow(x)) return(x)
+    x$group_id <- as.character(x$sample_id)
+    x <- merge(x, group_meta, by = "group_id", all.x = TRUE, sort = FALSE)
+    x$sample_id <- as.character(x[[sample_col]])
+    x[, c(display_cols, setdiff(colnames(x), display_cols)), drop = FALSE]
+  }
+  projection$nodes <- remap_projection(projection$nodes)
+  projection$edges <- remap_projection(projection$edges)
   core <- rc_map_meta_module_core_reactions(projection$nodes, gem$gpr_table)
+  if (nrow(core)) {
+    core <- merge(core, unique(projection$nodes[, module_cols, drop = FALSE]),
+                  by = c("sample_id", "module_id"), all.x = TRUE, sort = FALSE)
+    core <- core[, c(display_cols, setdiff(colnames(core), display_cols)), drop = FALSE]
+  }
   expanded <- rc_expand_meta_module_reactions(gem, core,
                                                subsystem_table = subsystem_table,
                                                expansion_mode = expansion_mode)
+  if (nrow(expanded$reaction_membership)) {
+    expanded$reaction_membership <- merge(expanded$reaction_membership, unique(core[, module_cols, drop = FALSE]),
+                                          by = c("sample_id", "module_id"), all.x = TRUE, sort = FALSE)
+    expanded$reaction_membership <- expanded$reaction_membership[, c(display_cols, setdiff(colnames(expanded$reaction_membership), display_cols)), drop = FALSE]
+  }
+  if (nrow(expanded$summary)) {
+    expanded$summary <- merge(expanded$summary, unique(core[, module_cols, drop = FALSE]),
+                              by = c("sample_id", "module_id"), all.x = TRUE, sort = FALSE)
+    expanded$summary <- expanded$summary[, c(display_cols, setdiff(colnames(expanded$summary), display_cols)), drop = FALSE]
+  }
   .rc_mm_write_tsv_gz(projection$nodes, file.path(outdir, "metabolic_gene_nodes.tsv.gz"))
   .rc_mm_write_tsv_gz(projection$edges, file.path(outdir, "metabolic_gene_edges.tsv.gz"))
   .rc_mm_write_tsv_gz(core, file.path(outdir, "core_gene_reaction.tsv.gz"))
