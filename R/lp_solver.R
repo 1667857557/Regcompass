@@ -19,7 +19,9 @@
     return(list(
       A = A,
       direction = character(),
-      rhs = numeric()
+      rhs = numeric(),
+      sense = character(),
+      bound = numeric()
     ))
   }
 
@@ -55,7 +57,12 @@
   list(
     A = A[source_rows, , drop = FALSE],
     direction = direction,
-    rhs = bounds
+    rhs = bounds,
+    sense = ifelse(
+      direction == "==", "=",
+      ifelse(direction == ">=", ">", "<")
+    ),
+    bound = bounds
   )
 }
 
