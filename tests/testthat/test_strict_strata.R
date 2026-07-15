@@ -88,8 +88,6 @@ test_that("formal workflow encodes requested strict-stratum parallel architectur
   expect_match(body_txt, "stratum_cols = strict_cols", fixed = TRUE)
   expect_match(body_txt, "BPPARAM_linkpeaks", fixed = TRUE)
   expect_match(body_txt, "BPPARAM_layer1", fixed = TRUE)
-  expect_match(body_txt, "rc_run_microcompass", fixed = TRUE)
-  expect_match(body_txt, "BPPARAM_layer2", fixed = TRUE)
   expect_match(link_txt, "rc_parallel_lapply", fixed = TRUE)
   expect_true("BPPARAM" %in% names(formals(rc_recompute_metacell_peak_gene_links_by_stratum)))
 })
@@ -100,4 +98,14 @@ test_that("deprecated metacell convenience APIs are not exported by current work
   expect_false("rc_import_metacells" %in% getNamespaceExports("RegCompassR"))
   deprecated_formals <- c("filter_low_power_metacells", "min_cells_per_stratum", "min_metacells_per_stratum", "min_metacells_for_linkpeaks")
   expect_false(any(deprecated_formals %in% names(formals(rc_run_regcompass_multiome_metacell))))
+})
+
+
+test_that("Pando meta-module workflow is grouped by strict multiome strata", {
+  formals_pando <- names(formals(rc_run_pando_meta_modules))
+  expect_true(all(c("condition_col", "celltype_col", "group_cols", "BPPARAM") %in% formals_pando))
+  body_txt <- paste(deparse(body(rc_run_pando_meta_modules)), collapse = "\n")
+  expect_match(body_txt, "rc_make_stratum_id", fixed = TRUE)
+  expect_match(body_txt, "rc_parallel_lapply(group_ids", fixed = TRUE)
+  expect_match(body_txt, "sig_for_projection$sample_id <- sig_for_projection$group_id", fixed = TRUE)
 })

@@ -72,6 +72,8 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     pfm = pfm,
     genome = genome,
     sample_col = sample_col,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
     single_cell_genes = single_cell_genes,
     rna_assay = rna_assay,
     atac_assay = atac_assay
