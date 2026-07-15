@@ -10,7 +10,7 @@ test_that("integrated workflow has an all-strata barrier before global work", {
   expect_match(body_text, "global_reaction_membership", fixed = TRUE)
 })
 
-test_that("global Layer 1 recomputes gene scores and reaction Q95 across all metacells", {
+test_that("global Layer 1 recomputes gene scores and uses Pando confidence", {
   artifacts <- list(
     list(
       capacity_params = list(
@@ -18,9 +18,12 @@ test_that("global Layer 1 recomputes gene scores and reaction Q95 across all met
         tau = 0.20, or_method = "sum_sqrtK"
       ),
       layer1 = list(
-        C_raw = matrix(1, nrow = 1, dimnames = list("R1", "u1")),
-        rna_metacell_logcpm = matrix(1, nrow = 1, dimnames = list("G1", "u1")),
-        reaction_confidence = matrix(1, nrow = 1, dimnames = list("R1", "u1")),
+        rna_metacell_logcpm = matrix(
+          1, nrow = 1, dimnames = list("G1", "u1")
+        ),
+        reaction_confidence = matrix(
+          0.8, nrow = 1, dimnames = list("R1", "u1")
+        ),
         unit_meta = data.frame(
           pool_id = "u1", unit_id = "u1", sample_id = "S1",
           condition = "A", cell_type = "T", stringsAsFactors = FALSE
@@ -33,9 +36,12 @@ test_that("global Layer 1 recomputes gene scores and reaction Q95 across all met
         tau = 0.20, or_method = "sum_sqrtK"
       ),
       layer1 = list(
-        C_raw = matrix(1, nrow = 1, dimnames = list("R1", "u2")),
-        rna_metacell_logcpm = matrix(3, nrow = 1, dimnames = list("G1", "u2")),
-        reaction_confidence = matrix(1, nrow = 1, dimnames = list("R1", "u2")),
+        rna_metacell_logcpm = matrix(
+          3, nrow = 1, dimnames = list("G1", "u2")
+        ),
+        reaction_confidence = matrix(
+          0.4, nrow = 1, dimnames = list("R1", "u2")
+        ),
         unit_meta = data.frame(
           pool_id = "u2", unit_id = "u2", sample_id = "S2",
           condition = "B", cell_type = "T", stringsAsFactors = FALSE
@@ -55,8 +61,13 @@ test_that("global Layer 1 recomputes gene scores and reaction Q95 across all met
     out$capacity_calibration_scope,
     "all_metacells_global_gene_score_and_reaction_q95"
   )
+  expect_equal(
+    out$reaction_confidence_source,
+    "pando_internal_peak_gene_accessibility"
+  )
   expect_equal(unique(as.character(out$q95_diagnostics$stratum)), "global")
   expect_identical(colnames(out$C_rel), c("u1", "u2"))
+  expect_equal(out$reaction_confidence["R1", ], c(u1 = 0.8, u2 = 0.4))
   expect_lt(out$global_gene_score["G1", "u1"], out$global_gene_score["G1", "u2"])
   expect_lt(out$C_raw["R1", "u1"], out$C_raw["R1", "u2"])
 })
@@ -66,6 +77,21 @@ test_that("medium normalization preserves an existing no-constraint marker", {
   expect_true(base$.no_constraints)
   normalized_again <- .rc_normalize_medium_scenarios(base)
   expect_true(normalized_again$.no_constraints)
+})
+
+test_that("integrated stratum worker uses Pando without rerunning LinkPeaks", {
+  body_text <- paste(
+    deparse(body(.rc_run_regcompass_stratum)),
+    collapse = "\n"
+  )
+  expect_match(body_text, "rc_run_pando_meta_modules", fixed = TRUE)
+  expect_match(
+    body_text,
+    "pando_internal_peak_gene_accessibility",
+    fixed = TRUE
+  )
+  expect_false(grepl("rc_run_layer1_from_metacells", body_text, fixed = TRUE))
+  expect_false(grepl("Signac::LinkPeaks", body_text, fixed = TRUE))
 })
 
 test_that("global meta-module union preserves source tables and creates one canonical module", {

@@ -1,5 +1,7 @@
 # RegCompassR 1.4.0 (development)
 
+- Removed the duplicate Signac LinkPeaks pass from the integrated workflow; Pando is now the sole peak-gene model, and significant Pando regions plus metacell accessibility define ATAC confidence.
+
 ## Global metacell workflow
 
 - Replaced the staged integrated workflow with one upstream worker per retained `condition × sample × cell-type` stratum. Each worker now completes metacell construction, fragment aggregation, LinkPeaks/Layer 1, Pando, and meta-module inference before returning an artifact.

@@ -48,26 +48,62 @@
   invisible(gc(verbose = FALSE))
 }
 
-.rc_run_regcompass_stratum <- function(object, group_id, group_cols, gem, outdir, pfm, genome,
-                                        fragment_files = NULL, sample_col = "sample_id",
-                                        condition_col = "condition", celltype_col = "cell_type",
-                                        rna_assay = "RNA", atac_assay = "ATAC",
-                                        metacell_args = list(), layer1_args = list(), pando_args = list()) {
+.rc_metacell_logcpm <- function(counts, scale_factor = 1e6) {
+  counts <- methods::as(counts, "dgCMatrix")
+  library_size <- Matrix::colSums(counts)
+  if (any(!is.finite(library_size)) || any(library_size <= 0)) {
+    stop("Every metacell must have a positive finite RNA library size.", call. = FALSE)
+  }
+  scaled <- counts %*% Matrix::Diagonal(x = scale_factor / library_size)
+  log1p(scaled)
+}
+
+.rc_run_regcompass_stratum <- function(object, group_id, group_cols, gem, outdir,
+                                        pfm, genome, fragment_files = NULL,
+                                        sample_col = "sample_id",
+                                        condition_col = "condition",
+                                        celltype_col = "cell_type",
+                                        rna_assay = "RNA",
+                                        atac_assay = "ATAC",
+                                        metacell_args = list(),
+                                        layer1_args = list(),
+                                        pando_args = list()) {
+  retired_link_args <- intersect(
+    names(layer1_args),
+    c(
+      "linkpeaks_args", "min_metacells_for_linkpeaks",
+      "force_metacell_relink", "allow_supplied_links",
+      "peak_gene_links", "recompute_peak_gene_links"
+    )
+  )
+  if (length(retired_link_args)) {
+    stop(
+      paste0(
+        "Integrated RegCompass no longer runs a separate LinkPeaks step; ",
+        "Pando performs peak-gene modeling internally. Remove: ",
+        paste(retired_link_args, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
   meta <- object@meta.data
   ids <- rc_make_stratum_id(meta, group_cols)
   cells <- rownames(meta)[ids == group_id]
-  if (!length(cells)) stop("No cells found for stratum: ", group_id, call. = FALSE)
+  if (!length(cells)) {
+    stop("No cells found for stratum: ", group_id, call. = FALSE)
+  }
   one <- subset(object, cells = cells)
-  stratum_dir <- file.path(outdir, gsub("[^A-Za-z0-9_.-]+", "_", group_id))
+  stratum_dir <- file.path(
+    outdir,
+    gsub("[^A-Za-z0-9_.-]+", "_", group_id)
+  )
   dir.create(stratum_dir, recursive = TRUE, showWarnings = FALSE)
-
   capacity_params <- list(
     promiscuity_mode = layer1_args$promiscuity_mode %||% "sqrt",
     and_method = layer1_args$and_method %||% "boltzmann",
     tau = layer1_args$tau %||% 0.20,
     or_method = "sum_sqrtK"
   )
-
   metacell_defaults <- list(
     object = one,
     outdir = file.path(stratum_dir, "01_metacells"),
@@ -86,20 +122,35 @@
     on_stratum_error = "stop"
   )
   reserved <- intersect(names(metacell_args), names(metacell_defaults))
-  reserved <- setdiff(reserved, c("rna_reduction", "atac_reduction", "rna_dims", "atac_dims", "gamma",
-                                  "seed", "min_cells_per_stratum", "min_metacell_size",
-                                  "min_metacells_per_stratum", "adaptive_gamma", "label_col",
-                                  "bgzip_path", "tabix_path", "fragment_nb_cl", "overwrite"))
-  if (length(reserved)) stop("`metacell_args` cannot override workflow fields: ", paste(reserved, collapse = ", "), call. = FALSE)
+  reserved <- setdiff(
+    reserved,
+    c(
+      "rna_reduction", "atac_reduction", "rna_dims", "atac_dims",
+      "gamma", "seed", "min_cells_per_stratum",
+      "min_metacell_size", "min_metacells_per_stratum",
+      "adaptive_gamma", "label_col", "bgzip_path", "tabix_path",
+      "fragment_nb_cl", "overwrite"
+    )
+  )
+  if (length(reserved)) {
+    stop(
+      "`metacell_args` cannot override workflow fields: ",
+      paste(reserved, collapse = ", "),
+      call. = FALSE
+    )
+  }
   metacell_defaults[names(metacell_args)] <- NULL
-  metacells <- do.call(rc_make_supercell2_metacells, c(metacell_defaults, metacell_args))
-
-  minimum_metacells <- max(as.integer(c(
-    layer1_args$min_metacells_for_linkpeaks %||% 10L,
-    pando_args$min_metacells %||% 10L
-  )), na.rm = TRUE)
+  metacells <- do.call(
+    rc_make_supercell2_metacells,
+    c(metacell_defaults, metacell_args)
+  )
+  minimum_metacells <- as.integer(pando_args$min_metacells %||% 20L)
   if (nrow(metacells$metacell_meta) < minimum_metacells) {
-    stop("Stratum `", group_id, "` produced fewer than ", minimum_metacells, " metacells.", call. = FALSE)
+    stop(
+      "Stratum `", group_id, "` produced fewer than ",
+      minimum_metacells, " metacells.",
+      call. = FALSE
+    )
   }
   metacell_object <- rc_load_or_merge_metacell_objects(
     metacells$metacell_objects,
@@ -110,35 +161,8 @@
     atac_assay = atac_assay,
     require_complete_fragments = TRUE
   )
-
-  linkpeaks_args <- layer1_args$linkpeaks_args %||% list()
-  linkpeaks_args$genome <- linkpeaks_args$genome %||% genome
-  linkpeaks_args$BPPARAM <- FALSE
-  layer1_args$linkpeaks_args <- NULL
-  layer1_args$BPPARAM <- NULL
-  layer1_args$link_stratum_cols <- NULL
-  layer1_args$stratum_col <- NULL
-  layer1_args$min_metacells_for_linkpeaks <- NULL
-  layer1_defaults <- list(
-    gpr_table = gem$gpr_table,
-    rna_metacell_counts = metacells$rna_counts,
-    metacell_meta = metacells$metacell_meta,
-    atac_metacell_counts = metacells$atac_counts,
-    metacell_seurat = metacell_object,
-    force_metacell_relink = TRUE,
-    allow_supplied_links = FALSE,
-    link_stratum_cols = group_cols,
-    min_metacells_for_linkpeaks = minimum_metacells,
-    metabolic_genes = gem$metabolic_genes %||% rc_metabolic_gpr_genes(gem$gpr_table),
-    linkpeaks_args = linkpeaks_args,
-    stratum_col = "stratum_id",
-    BPPARAM = FALSE
-  )
-  layer1_defaults[names(layer1_args)] <- NULL
-  layer1 <- do.call(rc_run_layer1_from_metacells, c(layer1_defaults, layer1_args))
-  layer1$strict_group_id <- group_id
-
   pando_args$BPPARAM <- NULL
+  pando_args$save_sample_metacell_objects <- NULL
   pando_infer_args <- pando_args$pando_infer_args %||% list()
   pando_infer_args$parallel <- FALSE
   pando_args$pando_infer_args <- pando_infer_args
@@ -146,10 +170,11 @@
   pando_args$sample_col <- NULL
   pando_args$condition_col <- NULL
   pando_args$celltype_col <- NULL
+  pando_outdir <- file.path(stratum_dir, "02_pando_meta_modules")
   pando_defaults <- list(
     metacell_object = metacell_object,
     gem = gem,
-    outdir = file.path(stratum_dir, "02_pando_meta_modules"),
+    outdir = pando_outdir,
     pfm = pfm,
     genome = genome,
     sample_col = sample_col,
@@ -160,12 +185,126 @@
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     min_metacells = minimum_metacells,
+    save_sample_metacell_objects = TRUE,
     BPPARAM = FALSE,
     on_sample_error = "stop"
   )
   pando_defaults[names(pando_args)] <- NULL
-  meta_modules <- do.call(rc_run_pando_meta_modules, c(pando_defaults, pando_args))
+  meta_modules <- do.call(
+    rc_run_pando_meta_modules,
+    c(pando_defaults, pando_args)
+  )
+  pando_object_file <- file.path(
+    pando_outdir,
+    "sample_metacell_objects",
+    paste0(gsub("[^A-Za-z0-9_.-]+", "_", group_id), ".rds")
+  )
+  if (!file.exists(pando_object_file)) {
+    stop(
+      "Pando did not save its normalized metacell object: ",
+      pando_object_file,
+      call. = FALSE
+    )
+  }
+  pando_object <- readRDS(pando_object_file)
+  pando_confidence <- .rc_pando_reaction_confidence(
+    meta_modules,
+    pando_object,
+    gem,
+    atac_assay = atac_assay
+  )
+  saveRDS(
+    pando_confidence$gene_confidence,
+    file.path(pando_outdir, "pando_gene_confidence.rds")
+  )
+  saveRDS(
+    pando_confidence$reaction_confidence_matrix,
+    file.path(pando_outdir, "pando_reaction_confidence_matrix.rds")
+  )
+  .rc_mm_write_tsv_gz(
+    pando_confidence$gene_confidence_diagnostics,
+    file.path(pando_outdir, "pando_gene_confidence_diagnostics.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    pando_confidence$reaction_confidence,
+    file.path(pando_outdir, "pando_reaction_confidence.tsv.gz")
+  )
+  meta_modules$gene_confidence <- pando_confidence$gene_confidence
+  meta_modules$gene_confidence_diagnostics <-
+    pando_confidence$gene_confidence_diagnostics
+  meta_modules$reaction_confidence <-
+    pando_confidence$reaction_confidence
+  meta_modules$reaction_confidence_matrix <-
+    pando_confidence$reaction_confidence_matrix
+  meta_modules$confidence_source <- pando_confidence$confidence_source
 
+  gpr_genes <- toupper(rc_metabolic_gpr_genes(gem$gpr_table))
+  rna_counts <- metacells$rna_counts[
+    toupper(rownames(metacells$rna_counts)) %in% gpr_genes,
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(rna_counts)) {
+    stop(
+      "No Human-GEM GPR genes were retained in metacell RNA counts.",
+      call. = FALSE
+    )
+  }
+  rna_logcpm <- .rc_metacell_logcpm(rna_counts)
+  unit_meta <- metacells$metacell_meta
+  id_col <- if ("metacell_id" %in% colnames(unit_meta)) {
+    "metacell_id"
+  } else if ("pool_id" %in% colnames(unit_meta)) {
+    "pool_id"
+  } else {
+    NULL
+  }
+  if (is.null(id_col)) {
+    stop("Metacell metadata lacks metacell_id/pool_id.", call. = FALSE)
+  }
+  if (!"pool_id" %in% colnames(unit_meta)) {
+    unit_meta$pool_id <- as.character(unit_meta[[id_col]])
+  }
+  if (!"unit_id" %in% colnames(unit_meta)) {
+    unit_meta$unit_id <- unit_meta$pool_id
+  }
+  unit_meta <- unit_meta[
+    match(colnames(rna_logcpm), as.character(unit_meta$pool_id)),
+    ,
+    drop = FALSE
+  ]
+  if (anyNA(unit_meta$pool_id)) {
+    stop("Metacell metadata are incomplete after Pando.", call. = FALSE)
+  }
+  reaction_confidence <- as.matrix(
+    pando_confidence$reaction_confidence_matrix
+  )
+  missing_confidence_units <- setdiff(
+    colnames(rna_logcpm),
+    colnames(reaction_confidence)
+  )
+  if (length(missing_confidence_units)) {
+    stop(
+      "Pando reaction confidence is missing metacells: ",
+      paste(utils::head(missing_confidence_units, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  reaction_confidence <- reaction_confidence[
+    ,
+    colnames(rna_logcpm),
+    drop = FALSE
+  ]
+  layer1 <- list(
+    schema_version = "regcompass_stratum_evidence_v2",
+    rna_metacell_logcpm = rna_logcpm,
+    reaction_confidence = reaction_confidence,
+    reaction_confidence_source =
+      "pando_internal_peak_gene_accessibility",
+    unit_meta = unit_meta,
+    metacell_meta = unit_meta,
+    strict_group_id = group_id
+  )
   artifact <- list(
     schema_version = "regcompass_stratum_v2",
     group_id = group_id,
@@ -173,14 +312,20 @@
     capacity_params = capacity_params,
     layer1 = layer1,
     grn_meta_modules = meta_modules,
-    metacell_meta = metacells$metacell_meta,
+    metacell_meta = unit_meta,
     metacell_dir = stratum_dir
   )
   artifact_file <- file.path(stratum_dir, "stratum_result.rds")
   saveRDS(artifact, artifact_file)
-  list(group_id = group_id, status = "ok", artifact_file = artifact_file,
-       n_cells = length(cells), n_metacells = nrow(metacells$metacell_meta),
-       error_class = NA_character_, error_message = NA_character_)
+  list(
+    group_id = group_id,
+    status = "ok",
+    artifact_file = artifact_file,
+    n_cells = length(cells),
+    n_metacells = nrow(unit_meta),
+    error_class = NA_character_,
+    error_message = NA_character_
+  )
 }
 
 .rc_merge_stratum_layer1 <- function(artifacts, gem, single_cell_genes,
@@ -229,7 +374,14 @@
   )
 
   confidence_list <- lapply(artifacts, function(x) {
-    rc_layer2_confidence_matrix(x$layer1$reaction_confidence, x$layer1$C_raw)
+    value <- x$layer1$reaction_confidence
+    if (is.null(value)) {
+      stop(
+        "Every upstream artifact must contain Pando-derived reaction confidence.",
+        call. = FALSE
+      )
+    }
+    as.matrix(value)
   })
   reaction_confidence <- .rc_cbind_matrix_union(confidence_list)
   reaction_confidence <- rc_align_layer2_evidence(
@@ -261,6 +413,7 @@
     reaction_confidence = reaction_confidence,
     q95_diagnostics = calibrated$Q,
     capacity_calibration_scope = "all_metacells_global_gene_score_and_reaction_q95",
+    reaction_confidence_source = "pando_internal_peak_gene_accessibility",
     capacity_params = capacity_params,
     rna_metacell_logcpm = rna_logcpm,
     global_gene_score = global_gene_score,

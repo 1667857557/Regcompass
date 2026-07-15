@@ -10,8 +10,8 @@ Seurat RNA+ATAC object
 → one upstream worker per strict stratum:
      SuperCell2 metacells
      fragment aggregation
-     metacell LinkPeaks
-     Layer 1 RNA-GPR capacity and ATAC confidence
+     Pando internal peak-gene and TF-gene modeling
+     Pando-derived metacell ATAC confidence
      Pando GRN
      GRN-to-reaction mapping and meta-module expansion
 → wait for every retained stratum and every sample to complete
@@ -108,8 +108,9 @@ result <- rc_run_regcompass(
     min_metacells_per_stratum = 10
   ),
   layer1_args = list(
-    min_metacells_for_linkpeaks = 10,
-    bootstrap = FALSE
+    promiscuity_mode = "sqrt",
+    and_method = "boltzmann",
+    tau = 0.20
   ),
   pando_args = list(
     min_metacells = 20,
