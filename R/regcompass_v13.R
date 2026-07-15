@@ -82,9 +82,14 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     c(pando_defaults, pando_args)
   )
 
-  default_targets <- unique(
-    result$grn_meta_modules$core_gene_reaction$reaction_id
-  )
+  core_gene_reaction <- result$grn_meta_modules$core_gene_reaction
+  if ("is_core" %in% colnames(core_gene_reaction)) {
+    core_gene_reaction <- core_gene_reaction[
+      core_gene_reaction$is_core %in% TRUE,
+      , drop = FALSE
+    ]
+  }
+  default_targets <- unique(core_gene_reaction$reaction_id)
   layer2_defaults <- list(
     layer1 = result,
     gem = gem,

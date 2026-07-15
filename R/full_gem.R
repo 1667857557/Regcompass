@@ -138,9 +138,17 @@ rc_build_full_gem_cache <- function(gem, dirs, medium_scenarios,
       scenario <- combinations$medium_scenario[[j]]
       condition <- combinations$condition[[j]]
       identity <- paste(scenario, condition, sep = "::")
-      key <- paste(
-        dirs$reaction_id[[i]], dirs$target_direction[[i]],
-        scenario, condition, sep = "::"
+      key <- paste0(
+        "reaction=", utils::URLencode(
+          as.character(dirs$reaction_id[[i]]),
+          reserved = TRUE
+        ),
+        "::direction=", utils::URLencode(
+          as.character(dirs$target_direction[[i]]),
+          reserved = TRUE
+        ),
+        "::medium=", utils::URLencode(scenario, reserved = TRUE),
+        "::condition=", utils::URLencode(condition, reserved = TRUE)
       )
       cache[[key]] <- list(
         reaction_id = as.character(dirs$reaction_id[[i]]),

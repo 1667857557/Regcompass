@@ -1,16 +1,8 @@
-# Row-ID parser supporting both v1.3 labeled IDs and legacy IDs.
+# Row-ID parser for v1.3 labeled microCOMPASS IDs.
 
 rc_parse_microcompass_row_id <- function(x) {
   x <- as.character(x)
-  labeled <- grepl("^sample=", x)
-  output <- data.frame(
-    sample_id = rep(NA_character_, length(x)),
-    module_id = rep(NA_character_, length(x)),
-    reaction_id = rep(NA_character_, length(x)),
-    target_direction = rep(NA_character_, length(x)),
-    medium_scenario = rep(NA_character_, length(x)),
-    stringsAsFactors = FALSE
-  )
+  required_fields <- c("reaction", "direction", "medium")
 
   get_named_value <- function(value, name) {
     selected <- value[name]
@@ -25,51 +17,72 @@ rc_parse_microcompass_row_id <- function(x) {
     value[[position]]
   }
 
-  if (any(labeled)) {
-    parsed <- lapply(x[labeled], function(value) {
-      fields <- strsplit(value, "::", fixed = TRUE)[[1L]]
-      key_value <- strsplit(fields, "=", fixed = TRUE)
-      keys <- vapply(key_value, get_position, character(1), 1L)
-      values <- vapply(key_value, function(field) {
-        if (length(field) < 2L) return(NA_character_)
-        paste(field[-1L], collapse = "=")
-      }, character(1))
-      values <- utils::URLdecode(values)
-      names(values) <- keys
-      values
-    })
-    output$sample_id[labeled] <- vapply(
-      parsed, get_named_value, character(1), "sample"
+  has_required_labels <- vapply(x, function(value) {
+    fields <- strsplit(value, "::", fixed = TRUE)[[1L]]
+    keys <- vapply(
+      strsplit(fields, "=", fixed = TRUE),
+      get_position,
+      character(1),
+      1L
     )
-    output$module_id[labeled] <- vapply(
-      parsed, get_named_value, character(1), "module"
-    )
-    output$reaction_id[labeled] <- vapply(
-      parsed, get_named_value, character(1), "reaction"
-    )
-    output$target_direction[labeled] <- vapply(
-      parsed, get_named_value, character(1), "direction"
-    )
-    output$medium_scenario[labeled] <- vapply(
-      parsed, get_named_value, character(1), "medium"
+    all(required_fields %in% keys)
+  }, logical(1))
+  if (any(!has_required_labels)) {
+    stop(
+      paste(
+        "microCOMPASS row IDs must use the v1.3 labeled format",
+        "`reaction=...::direction=...::medium=...`."
+      ),
+      call. = FALSE
     )
   }
+  output <- data.frame(
+    sample_id = rep(NA_character_, length(x)),
+    module_id = rep(NA_character_, length(x)),
+    reaction_id = rep(NA_character_, length(x)),
+    target_direction = rep(NA_character_, length(x)),
+    medium_scenario = rep(NA_character_, length(x)),
+    condition = rep(NA_character_, length(x)),
+    stringsAsFactors = FALSE
+  )
 
-  if (any(!labeled)) {
-    legacy <- x[!labeled]
-    core <- sub("::medium=.*$", "", legacy)
-    parts <- strsplit(core, "::", fixed = TRUE)
-    output$reaction_id[!labeled] <- vapply(
-      parts, get_position, character(1), 1L
-    )
-    output$target_direction[!labeled] <- vapply(
-      parts, get_position, character(1), 2L
-    )
-    output$medium_scenario[!labeled] <- ifelse(
-      grepl("::medium=", legacy, fixed = TRUE),
-      sub("^.*::medium=", "", legacy),
-      vapply(parts, get_position, character(1), 3L)
+  parsed <- lapply(x, function(value) {
+    fields <- strsplit(value, "::", fixed = TRUE)[[1L]]
+    key_value <- strsplit(fields, "=", fixed = TRUE)
+    keys <- vapply(key_value, get_position, character(1), 1L)
+    values <- vapply(key_value, function(field) {
+      if (length(field) < 2L) return(NA_character_)
+      paste(field[-1L], collapse = "=")
+    }, character(1))
+    values <- utils::URLdecode(values)
+    names(values) <- keys
+    values
+  })
+  invalid <- vapply(parsed, function(values) {
+    duplicated_required <- any(duplicated(names(values)[names(values) %in% required_fields]))
+    missing_required <- any(vapply(required_fields, function(name) {
+      value <- get_named_value(values, name)
+      is.na(value) || !nzchar(value)
+    }, logical(1)))
+    direction <- get_named_value(values, "direction")
+    bad_direction <- is.na(direction) || !direction %in% c("forward", "reverse")
+    duplicated_required || missing_required || bad_direction
+  }, logical(1))
+  if (any(invalid)) {
+    stop(
+      paste(
+        "microCOMPASS row IDs must contain exactly one non-empty",
+        "`reaction`, `direction`, and `medium` field; `direction` must be",
+        "`forward` or `reverse`."
+      ),
+      call. = FALSE
     )
   }
+  output$sample_id <- vapply(parsed, get_named_value, character(1), "sample")
+  output$module_id <- vapply(parsed, get_named_value, character(1), "module")
+  output$reaction_id <- vapply(parsed, get_named_value, character(1), "reaction")
+  output$target_direction <- vapply(parsed, get_named_value, character(1), "direction")
+  output$medium_scenario <- vapply(parsed, get_named_value, character(1), "medium")
+  output$condition <- vapply(parsed, get_named_value, character(1), "condition")
   output
 }

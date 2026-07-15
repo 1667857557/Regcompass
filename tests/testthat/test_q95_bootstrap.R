@@ -15,7 +15,7 @@ test_that("rc_q95_bootstrap returns finite CI for enough values", {
 test_that("rc_q95_calibrate includes bootstrap diagnostics", {
   set.seed(1)
   C_raw <- rbind(r1 = seq_len(30), r2 = seq(0, 1, length.out = 30))
-  out <- rc_q95_calibrate(C_raw, min_direct = 20, bootstrap = TRUE, B = 20)
+  out <- rc_q95_calibrate(C_raw, bootstrap = TRUE, B = 20)
   expect_true(all(c("q95_bootstrap", "q95_ci_low", "q95_ci_high", "q95_ci_width") %in% colnames(out$Q)))
   expect_true(all(is.finite(out$Q$q95_ci_width)))
 })

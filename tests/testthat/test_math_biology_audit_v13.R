@@ -79,7 +79,7 @@ test_that("multiome penalty uses active role and GPR parameters", {
 
 test_that("sample aggregation preserves continuous covariate classes", {
   score <- matrix(1:8, nrow = 1,
-                  dimnames = list("R::forward::medium=base", paste0("u", 1:8)))
+                  dimnames = list("reaction=R::direction=forward::medium=base", paste0("u", 1:8)))
   meta <- data.frame(
     unit_id = paste0("u", 1:8),
     sample_id = rep(c("S1", "S2", "S3", "S4"), each = 2),

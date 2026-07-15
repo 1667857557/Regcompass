@@ -97,26 +97,47 @@ test_that("single-stoichiometry reactions are boundary-like", {
   expect_equal(roles[["R_boundary"]], "boundary_like")
 })
 
-test_that("row IDs parse legacy and labeled formats", {
+test_that("row IDs require and parse v1.3 labeled format", {
+  expect_error(
+    rc_parse_microcompass_row_id("R1::forward::blood_like"),
+    "v1.3 labeled format"
+  )
+  expect_error(
+    rc_parse_microcompass_row_id("reaction=R1::direction=both::medium=base"),
+    "direction"
+  )
+  expect_error(
+    rc_parse_microcompass_row_id("reaction=::direction=forward::medium=base"),
+    "non-empty"
+  )
+  expect_error(
+    rc_parse_microcompass_row_id(paste0(
+      "reaction=R1::reaction=R2::direction=forward::medium=base"
+    )),
+    "exactly one"
+  )
   parsed <- rc_parse_microcompass_row_id(c(
-    "R1::forward::blood_like",
-    "R2::reverse::medium=old",
+    paste0(
+      "reaction=R1::direction=forward",
+      "::medium=blood_like::condition=ctrl"
+    ),
     paste0(
       "sample=S1::module=S1%3A%3AM1::reaction=R3",
-      "::direction=forward::medium=base"
+      "::direction=reverse::medium=base::condition=treat"
     )
   ))
-  expect_equal(parsed$reaction_id, c("R1", "R2", "R3"))
+  expect_equal(parsed$reaction_id, c("R1", "R3"))
   expect_equal(
     parsed$target_direction,
-    c("forward", "reverse", "forward")
+    c("forward", "reverse")
   )
   expect_equal(
     parsed$medium_scenario,
-    c("blood_like", "old", "base")
+    c("blood_like", "base")
   )
-  expect_equal(parsed$sample_id[[3L]], "S1")
-  expect_equal(parsed$module_id[[3L]], "S1::M1")
+  expect_equal(parsed$condition, c("ctrl", "treat"))
+  expect_equal(parsed$sample_id[[2L]], "S1")
+  expect_equal(parsed$module_id[[2L]], "S1::M1")
 })
 
 test_that("full-GEM cache is structural and evidence-independent", {

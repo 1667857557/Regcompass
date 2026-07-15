@@ -5,6 +5,27 @@ test_that("shared column helper has one stable calling convention", {
   expect_null(.rc_first_existing_col(x, "z"))
 })
 
+test_that("microCOMPASS row-id parser has one implementation", {
+  r_dir <- testthat::test_path("../../R")
+  sources <- list.files(r_dir, pattern = "[.]R$", full.names = TRUE)
+  definitions <- unlist(lapply(sources, function(path) {
+    grep(
+      "^rc_parse_microcompass_row_id[[:space:]]*<-[[:space:]]*function",
+      readLines(path, warn = FALSE),
+      value = TRUE
+    )
+  }), use.names = FALSE)
+  expect_length(definitions, 1L)
+})
+
+test_that("removed compatibility arguments stay removed", {
+  expect_false("min_direct" %in% names(formals(rc_q95_calibrate)))
+  expect_false("min_direct" %in% names(formals(rc_run_layer1_capacity)))
+  expect_false("require_model_info" %in% names(formals(rc_read_gem)))
+  expect_false("require_model_info" %in% names(formals(rc_prepare_human2_gem)))
+  expect_false("require_model_info" %in% names(formals(rc_prepare_human2_gem_v12)))
+})
+
 test_that("hard-min GPR capacity requires every AND subunit", {
   gpr <- list(R1 = list(c("g1", "g2")))
   score <- matrix(1, nrow = 1, dimnames = list("g1", "u1"))
@@ -131,6 +152,34 @@ test_that("GRN hard core requires one complete GPR AND group", {
   expect_true(unique(mapped$is_core[mapped$reaction_id == "R2"]))
 })
 
+test_that("meta-module expansion ignores incomplete GPR mappings", {
+  S <- matrix(
+    c(1, 0, 0, 1), nrow = 2,
+    dimnames = list(c("m1", "m2"), c("R1", "R2"))
+  )
+  gem <- rc_make_gem(
+    S,
+    lb = c(R1 = 0, R2 = 0),
+    ub = c(R1 = 1000, R2 = 1000),
+    reaction_meta = data.frame(
+      reaction_id = c("R1", "R2"),
+      subsystem = c("A", "B"),
+      stringsAsFactors = FALSE
+    )
+  )
+  core <- data.frame(
+    sample_id = "S1",
+    module_id = "M1",
+    gene = c("G1", "G3"),
+    reaction_id = c("R1", "R2"),
+    is_core = c(FALSE, TRUE),
+    stringsAsFactors = FALSE
+  )
+  expanded <- rc_expand_meta_module_reactions(gem, core)
+  expect_false("R1" %in% expanded$reaction_membership$reaction_id)
+  expect_true("R2" %in% expanded$reaction_membership$reaction_id)
+})
+
 test_that("Layer 2 reaction helpers respect role and mixed GPR evidence", {
   meta <- data.frame(
     reaction_id = c("R1", "R2"), role = c("transport", "internal"),
@@ -154,7 +203,7 @@ test_that("microCOMPASS differential testing uses biological samples", {
   # Sample medians: A1=0, A2=2, B1=4, B2=6; B-A effect is 4.
   score <- matrix(
     c(0, 0, 100, 2, 4, 6, 6), nrow = 1,
-    dimnames = list("R1::forward::base", unit_meta$unit_id)
+    dimnames = list("reaction=R1::direction=forward::medium=base", unit_meta$unit_id)
   )
   out <- rc_test_microcompass_differential(
     list(score = score, unit_meta = unit_meta),

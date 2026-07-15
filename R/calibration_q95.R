@@ -52,12 +52,11 @@ rc_q95_shrink <- function(C_raw, unit_meta = NULL, stratum_col = NULL, q = 0.95,
 
 #' Calibrate raw reaction capacities by continuous reaction-wise Q95 shrinkage
 #'
-#' `min_direct` is retained only for backward compatibility and is ignored.
 #' Continuous shrinkage is used for every reaction/stratum with one or more
 #' finite units; low unit counts are reported through diagnostics rather than a
 #' hard direct/global switch.
 #' @export
-rc_q95_calibrate <- function(C_raw, min_direct = 100, eps = 1e-6, bootstrap = TRUE, B = 500, BPPARAM = NULL, n0 = 80, unit_meta = NULL, stratum_col = NULL) {
+rc_q95_calibrate <- function(C_raw, eps = 1e-6, bootstrap = TRUE, B = 500, BPPARAM = NULL, n0 = 80, unit_meta = NULL, stratum_col = NULL) {
   C_raw <- as.matrix(C_raw)
   out <- rc_q95_shrink(C_raw, unit_meta = unit_meta, stratum_col = stratum_col, q = 0.95, n0 = n0, eps = eps)
   Q <- out$Q
@@ -128,7 +127,6 @@ rc_run_layer1_capacity <- function(gpr_table,
                                    and_method = c("boltzmann", "min", "mean"),
                                    or_method = c("sum_sqrtK", "max", "prob_or", "sum"),
                                    run_sensitivity = FALSE,
-                                   min_direct = 100,
                                    bootstrap = FALSE,
                                    low_confidence_threshold = 0.25,
                                    low_confidence_quantile = NULL,

@@ -15,20 +15,6 @@ rc_check_replicate_design <- function(unit_meta, condition_col = "condition", sa
   invisible(tab)
 }
 
-rc_parse_microcompass_row_id <- function(x) {
-  core <- sub("::medium=.*$", "", x)
-  parts <- strsplit(core, "::", fixed = TRUE)
-  medium <- ifelse(grepl("::medium=", x, fixed = TRUE),
-                   sub("^.*::medium=", "", x),
-                   vapply(parts, function(z) z[[3]] %||% NA_character_, character(1)))
-  data.frame(
-    reaction_id = vapply(parts, function(z) z[[1]] %||% NA_character_, character(1)),
-    target_direction = vapply(parts, function(z) z[[2]] %||% NA_character_, character(1)),
-    medium_scenario = medium,
-    stringsAsFactors = FALSE
-  )
-}
-
 rc_describe_microcompass_by_group <- function(result,
                                              sample_col = "sample_id",
                                              condition_col = "condition",

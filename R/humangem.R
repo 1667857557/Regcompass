@@ -9,8 +9,7 @@ rc_prepare_human2_gem <- function(version = "2.0.0",
                                   cache_dir = tools::R_user_dir("RegCompassR", "cache"),
                                   save_rds = file.path(cache_dir, paste0("Human2_", version, "_regcompass.rds")),
                                   force_download = FALSE,
-                                  allow_latest = FALSE,
-                                  require_model_info = TRUE) {
+                                  allow_latest = FALSE) {
   if (identical(version, "latest") && !isTRUE(allow_latest)) {
     stop("`version = 'latest'` requires `allow_latest = TRUE`; use a pinned Human2 release.", call. = FALSE)
   }
@@ -37,7 +36,7 @@ rc_prepare_human2_gem <- function(version = "2.0.0",
     dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
     saveRDS(gem_new, save_rds)
   }
-  gem <- rc_read_gem(save_rds, require_model_info = require_model_info)
+  gem <- rc_read_gem(save_rds)
   rc_validate_human2_gem(gem)
   gem
 }

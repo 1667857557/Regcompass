@@ -1241,17 +1241,13 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_manifes
     })
     return(list(fragment_files = files, cell_maps = maps))
   }
-  if (is.null(metacell_meta)) stop("`metacell_meta` is required when fragment manifest lacks explicit object_cell/fragment_barcode columns.", call. = FALSE)
-  if (!all(c("stratum_id", "metacell_id") %in% colnames(metacell_meta)) || !"stratum_id" %in% colnames(manifest)) {
-    stop("Fragment manifest requires explicit cell maps or stratum_id metadata for legacy identity mapping.", call. = FALSE)
-  }
-  files <- unique(manifest$fragment_file)
-  maps <- lapply(files, function(path) {
-    strata <- unique(as.character(manifest$stratum_id[manifest$fragment_file == path]))
-    ids <- as.character(metacell_meta$metacell_id[as.character(metacell_meta$stratum_id) %in% strata])
-    .rc_normalize_fragment_cell_map(stats::setNames(ids, ids), object_cells = object_cells, fragment_file = path)
-  })
-  list(fragment_files = files, cell_maps = maps)
+  stop(
+    paste(
+      "Fragment manifest entries must contain explicit",
+      "`object_cell` and `fragment_barcode` columns."
+    ),
+    call. = FALSE
+  )
 }
 
 .rc_register_signac_fragments <- function(object, fragment_files = NULL, cells_by_fragment = NULL, atac_assay = "ATAC", replace_existing = TRUE, require_complete = TRUE, validate_fragments = TRUE) {

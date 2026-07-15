@@ -46,7 +46,7 @@ test_that("single-sample output is descriptive-only when requested", {
       c(0.2, 0.8),
       nrow = 1,
       dimnames = list(
-        "R1::forward::base",
+        "reaction=R1::direction=forward::medium=base",
         c("u1", "u2")
       )
     ),
@@ -99,7 +99,7 @@ test_that("strict replicate design is enforced within cell type", {
       seq_len(nrow(unit_meta)),
       nrow = 1,
       dimnames = list(
-        "R1::forward::base",
+        "reaction=R1::direction=forward::medium=base",
         unit_meta$unit_id
       )
     ),
@@ -137,7 +137,7 @@ test_that("multi-class condition lm uses an omnibus test", {
       c(1, 2, 3, 1.2, 2.2, 3.2),
       nrow = 1,
       dimnames = list(
-        "R1::forward::base",
+        "reaction=R1::direction=forward::medium=base",
         paste0("u", 1:6)
       )
     ),
