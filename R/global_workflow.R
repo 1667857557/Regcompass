@@ -61,6 +61,13 @@
   stratum_dir <- file.path(outdir, gsub("[^A-Za-z0-9_.-]+", "_", group_id))
   dir.create(stratum_dir, recursive = TRUE, showWarnings = FALSE)
 
+  capacity_params <- list(
+    promiscuity_mode = layer1_args$promiscuity_mode %||% "sqrt",
+    and_method = layer1_args$and_method %||% "boltzmann",
+    tau = layer1_args$tau %||% 0.20,
+    or_method = "sum_sqrtK"
+  )
+
   metacell_defaults <- list(
     object = one,
     outdir = file.path(stratum_dir, "01_metacells"),
@@ -163,6 +170,7 @@
     schema_version = "regcompass_stratum_v2",
     group_id = group_id,
     group_cols = group_cols,
+    capacity_params = capacity_params,
     layer1 = layer1,
     grn_meta_modules = meta_modules,
     metacell_meta = metacells$metacell_meta,
@@ -175,14 +183,62 @@
        error_class = NA_character_, error_message = NA_character_)
 }
 
-.rc_merge_stratum_layer1 <- function(artifacts, gem, single_cell_genes, sample_col, condition_col, celltype_col) {
-  raw <- lapply(artifacts, function(x) as.matrix(x$layer1$C_raw))
-  confidence <- lapply(artifacts, function(x) {
+.rc_merge_stratum_layer1 <- function(artifacts, gem, single_cell_genes,
+                                      sample_col, condition_col, celltype_col) {
+  expression_list <- lapply(artifacts, function(x) x$layer1$rna_metacell_logcpm)
+  if (any(vapply(expression_list, is.null, logical(1)))) {
+    stop("Every upstream artifact must contain metacell RNA logCPM for global capacity recomputation.", call. = FALSE)
+  }
+  expression_list <- lapply(expression_list, as.matrix)
+  common_genes <- Reduce(intersect, lapply(expression_list, rownames))
+  common_genes <- rownames(expression_list[[1L]])[rownames(expression_list[[1L]]) %in% common_genes]
+  if (!length(common_genes)) stop("No common RNA genes remain across upstream metacell artifacts.", call. = FALSE)
+  expression_list <- lapply(expression_list, function(x) x[common_genes, , drop = FALSE])
+  rna_logcpm <- .rc_cbind_matrix_union(expression_list)
+
+  parameter_keys <- vapply(artifacts, function(x) {
+    params <- x$capacity_params
+    if (is.null(params)) return(NA_character_)
+    paste(params$promiscuity_mode, params$and_method, params$tau, params$or_method, sep = "|")
+  }, character(1))
+  if (anyNA(parameter_keys) || length(unique(parameter_keys)) != 1L) {
+    stop("Upstream artifacts must use one identical Layer 1 capacity parameter set.", call. = FALSE)
+  }
+  capacity_params <- artifacts[[1L]]$capacity_params
+  parsed <- rc_parse_gpr_table(gem$gpr_table)
+  global_gene_score <- rc_gene_score(rna_logcpm)
+  C_raw <- rc_reaction_capacity(
+    parsed,
+    global_gene_score,
+    promiscuity_mode = capacity_params$promiscuity_mode,
+    tau = capacity_params$tau,
+    and_method = capacity_params$and_method,
+    or_method = capacity_params$or_method,
+    BPPARAM = FALSE
+  )
+  calibrated <- rc_q95_calibrate(
+    C_raw,
+    bootstrap = FALSE,
+    BPPARAM = FALSE,
+    unit_meta = NULL,
+    stratum_col = NULL
+  )
+
+  confidence_list <- lapply(artifacts, function(x) {
     rc_layer2_confidence_matrix(x$layer1$reaction_confidence, x$layer1$C_raw)
   })
-  C_raw <- .rc_cbind_matrix_union(raw)
-  reaction_confidence <- .rc_cbind_matrix_union(confidence)
-  reaction_confidence <- reaction_confidence[rownames(C_raw), colnames(C_raw), drop = FALSE]
+  reaction_confidence <- .rc_cbind_matrix_union(confidence_list)
+  reaction_confidence <- rc_align_layer2_evidence(
+    reaction_confidence,
+    rownames(C_raw),
+    NA_real_
+  )
+  missing_confidence_units <- setdiff(colnames(C_raw), colnames(reaction_confidence))
+  if (length(missing_confidence_units)) {
+    stop("Reaction confidence is missing metacells after global alignment.", call. = FALSE)
+  }
+  reaction_confidence <- reaction_confidence[, colnames(C_raw), drop = FALSE]
+
   unit_meta <- .rc_bind_frames_fill(lapply(artifacts, function(x) x$layer1$unit_meta))
   id_col <- if ("pool_id" %in% colnames(unit_meta)) "pool_id" else if ("metacell_id" %in% colnames(unit_meta)) "metacell_id" else NULL
   if (is.null(id_col)) stop("Merged metacell metadata lacks pool_id/metacell_id.", call. = FALSE)
@@ -191,14 +247,7 @@
   if (!"pool_id" %in% colnames(unit_meta)) unit_meta$pool_id <- as.character(unit_meta[[id_col]])
   if (!"unit_id" %in% colnames(unit_meta)) unit_meta$unit_id <- unit_meta$pool_id
   unit_meta$stratum_id <- rc_make_stratum_id(unit_meta, c(condition_col, sample_col, celltype_col))
-  calibrated <- rc_q95_calibrate(
-    C_raw,
-    bootstrap = FALSE,
-    BPPARAM = FALSE,
-    unit_meta = NULL,
-    stratum_col = NULL
-  )
-  parsed <- rc_parse_gpr_table(gem$gpr_table)
+
   list(
     schema_version = "regcompass_global_layer1_v2",
     C_or_raw = C_raw,
@@ -207,7 +256,10 @@
     C_rel = calibrated$C_rel,
     reaction_confidence = reaction_confidence,
     q95_diagnostics = calibrated$Q,
-    capacity_calibration_scope = "all_metacells_global_reaction_q95",
+    capacity_calibration_scope = "all_metacells_global_gene_score_and_reaction_q95",
+    capacity_params = capacity_params,
+    rna_metacell_logcpm = rna_logcpm,
+    global_gene_score = global_gene_score,
     gpr_diagnostics = rc_gpr_diagnostics(parsed, tolower(single_cell_genes)),
     parsed_gpr = parsed,
     unit_meta = unit_meta,
