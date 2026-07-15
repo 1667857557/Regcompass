@@ -47,6 +47,7 @@
     n_unique_regions = integer(length(genes)),
     n_matched_regions = integer(length(genes)),
     matched_region_fraction = NA_real_,
+    pando_supported = FALSE,
     confidence_source = "pando_internal_peak_gene_accessibility",
     stringsAsFactors = FALSE
   )
@@ -114,6 +115,7 @@
     } else {
       NA_real_
     }
+    diagnostics$pando_supported[row] <- nrow(matched) > 0L
     if (!nrow(matched)) next
     aggregated <- stats::aggregate(
       matched$.weight,
@@ -170,9 +172,15 @@
     atac_assay = atac_assay,
     target_genes = target_genes
   )
+  supported <- rowSums(is.finite(gene$gene_confidence)) > 0L
+  gene_for_reaction <- gene$gene_confidence[
+    supported,
+    ,
+    drop = FALSE
+  ]
   reaction <- rc_reaction_confidence(
     parsed,
-    gene_confidence = gene$gene_confidence,
+    gene_confidence = gene_for_reaction,
     unit_ids = colnames(pando_object)
   )
   list(
