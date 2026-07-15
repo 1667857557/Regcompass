@@ -1280,7 +1280,7 @@ rc_load_or_merge_metacell_objects <- function(metacell_objects, fragment_manifes
 
 #' Run the formal sample-aware metacell multiome workflow
 #' @export
-rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, label_col = NULL, rna_assay = "RNA", atac_assay = "ATAC", rna_reduction = "pca", atac_reduction = "lsi", rna_dims = 1:30, atac_dims = 2:30, gamma = 100L, adaptive_gamma = TRUE, min_cells_pre_metacell = 100L, min_metacell_size = 20L, min_metacells_post_metacell = 10L, fragment_nb_cl = 1L, require_fragment_aggregation = TRUE, fragment_aggregation_backend = c("regcompass", "supercell", "none"), save_fragments = TRUE, save_metacell_object = TRUE, save_counts = TRUE, overwrite = FALSE, BPPARAM_metacell = FALSE, linkpeaks_args = list(), layer1_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, BPPARAM_linkpeaks = NULL, BPPARAM_layer1 = NULL, BPPARAM_layer2 = NULL, layer2_gem = NULL, layer2_target_reactions = NULL, layer2_args = list()) {
+rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragment_files = NULL, sample_col = "sample_id", condition_col = "condition", celltype_col = "cell_type", state_col = NULL, label_col = NULL, rna_assay = "RNA", atac_assay = "ATAC", rna_reduction = "pca", atac_reduction = "lsi", rna_dims = 1:30, atac_dims = 2:30, gamma = 100L, adaptive_gamma = TRUE, min_cells_pre_metacell = 100L, min_metacell_size = 20L, min_metacells_post_metacell = 10L, fragment_nb_cl = 1L, require_fragment_aggregation = TRUE, fragment_aggregation_backend = c("regcompass", "supercell", "none"), save_fragments = TRUE, save_metacell_object = TRUE, save_counts = TRUE, overwrite = FALSE, BPPARAM_metacell = FALSE, linkpeaks_args = list(), layer1_args = list(), future_plan = c("sequential", "current"), future_globals_max_size = 8 * 1024^3, BPPARAM_linkpeaks = NULL, BPPARAM_layer1 = NULL) {
   fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
   future_plan <- match.arg(future_plan)
   strict_cols <- .rc_strict_stratum_cols(sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col)
@@ -1360,23 +1360,5 @@ rc_run_regcompass_multiome_metacell <- function(object, gpr_table, outdir, fragm
   layer1$strict_stratum_cols <- strict_cols
   layer1$min_cells_pre_metacell <- min_cells_pre_metacell
   layer1$min_metacells_post_metacell <- min_metacells_post_metacell
-  if (!is.null(layer2_gem) || !is.null(layer2_target_reactions)) {
-    if (is.null(layer2_gem) || is.null(layer2_target_reactions)) {
-      stop("Both `layer2_gem` and `layer2_target_reactions` are required to run Layer 2 from `rc_run_regcompass_multiome_metacell()`.", call. = FALSE)
-    }
-    layer2_args$BPPARAM <- layer2_args$BPPARAM %||% BPPARAM_layer2
-    layer2_args$parallel <- layer2_args$parallel %||% TRUE
-    layer2_defaults <- list(
-      layer1 = layer1,
-      gem = layer2_gem,
-      target_reactions = layer2_target_reactions,
-      unit = "metacell",
-      condition_col = condition_col,
-      sample_col = sample_col,
-      celltype_col = celltype_col
-    )
-    layer2_defaults[names(layer2_args)] <- NULL
-    layer1$layer2_microcompass <- do.call(rc_run_microcompass, c(layer2_defaults, layer2_args))
-  }
   layer1
 }

@@ -84,5 +84,10 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
   if (!requireNamespace("BiocParallel", quietly = TRUE)) {
     stop("BiocParallel must be installed when `BPPARAM` is provided.", call. = FALSE)
   }
+  was_started <- isTRUE(BiocParallel::bpstarted(BPPARAM))
+  if (!was_started) {
+    BiocParallel::bpstart(BPPARAM)
+    on.exit(BiocParallel::bpstop(BPPARAM), add = TRUE)
+  }
   BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
 }
