@@ -226,7 +226,19 @@ rc_run_microcompass <- function(layer1, gem, target_reactions = NULL,
     })))
   }
 
-  all_reactions <- unique(unlist(lapply(model_cache, function(entry) colnames(.rc_cache_gem(entry)$S)), use.names = FALSE))
+  units <- colnames(matrices$C_rel)
+  row_ids <- names(model_cache)
+  model_keys <- vapply(row_ids, function(row_id) {
+    entry <- model_cache[[row_id]]
+    entry$file %||% paste0("memory::", row_id)
+  }, character(1))
+  names(model_keys) <- row_ids
+  unique_model_keys <- unique(unname(model_keys))
+  representative_rows <- vapply(unique_model_keys, function(key) names(model_keys)[match(key, model_keys)], character(1))
+  names(representative_rows) <- unique_model_keys
+  all_reactions <- unique(unlist(lapply(representative_rows, function(row_id) {
+    colnames(.rc_cache_gem(model_cache[[row_id]])$S)
+  }), use.names = FALSE))
   penalties <- rc_compute_multiome_penalty(
     rc_align_layer2_evidence(matrices$C_rel, all_reactions, NA_real_),
     rc_align_layer2_evidence(matrices$reaction_confidence, all_reactions, NA_real_),
@@ -234,49 +246,55 @@ rc_run_microcompass <- function(layer1, gem, target_reactions = NULL,
     gem$reaction_roles,
     weights = penalty_weights
   )
-  units <- colnames(matrices$C_rel)
-  row_ids <- names(model_cache)
+
   penalty <- vmax <- matrix(NA_real_, nrow = length(row_ids), ncol = length(units), dimnames = list(row_ids, units))
   feasible <- evaluated <- matrix(FALSE, nrow = length(row_ids), ncol = length(units), dimnames = list(row_ids, units))
-  tasks <- expand.grid(row_id = row_ids, unit_id = units, stringsAsFactors = FALSE)
+  tasks <- expand.grid(model_key = unique_model_keys, unit_id = units, stringsAsFactors = FALSE)
 
-  run_one <- function(task) {
-    entry <- model_cache[[as.character(task$row_id)]]
-    model <- .rc_cache_gem(entry)
+  run_one_metacell <- function(task) {
+    model_key <- as.character(task$model_key)
     unit_id <- as.character(task$unit_id)
-    answer <- rc_compass_two_step_lp_directional(
-      S = model$S, lb = model$lb, ub = model$ub,
-      target_reaction = entry$reaction_id,
-      penalties = penalties$penalty[colnames(model$S), unit_id],
-      target_direction = entry$target_direction,
-      omega = omega, solver = solver, time_limit = time_limit,
-      flux_threshold = flux_threshold
-    )
-    list(
-      row_id = as.character(task$row_id),
-      unit_id = unit_id,
-      penalty = answer$penalty,
-      vmax = answer$vmax,
-      feasible = isTRUE(answer$feasible),
-      diagnostics = data.frame(
-        row_id = as.character(task$row_id), unit_id = unit_id,
-        sample_id = "global", module_id = if (identical(mode, "meta_module_gem")) "GLOBAL_UNION" else NA_character_,
-        reaction_id = entry$reaction_id, target_direction = entry$target_direction,
-        medium_scenario = entry$medium_scenario, condition = "all",
-        strict_feasible = isTRUE(answer$feasible), solver_status = answer$solver_status,
-        step1_status = answer$step1_status, step2_status = answer$step2_status,
-        target_status = model$target_status %||% if (isTRUE(answer$feasible)) "ok" else "structurally_infeasible",
-        objective_value = answer$penalty, vmax = answer$vmax,
-        stringsAsFactors = FALSE
+    selected_rows <- names(model_keys)[model_keys == model_key]
+    model <- .rc_cache_gem(model_cache[[selected_rows[[1L]]]])
+    target_results <- lapply(selected_rows, function(row_id) {
+      entry <- model_cache[[row_id]]
+      answer <- rc_compass_two_step_lp_directional(
+        S = model$S, lb = model$lb, ub = model$ub,
+        target_reaction = entry$reaction_id,
+        penalties = penalties$penalty[colnames(model$S), unit_id],
+        target_direction = entry$target_direction,
+        omega = omega, solver = solver, time_limit = time_limit,
+        flux_threshold = flux_threshold
       )
-    )
+      list(
+        row_id = row_id,
+        unit_id = unit_id,
+        penalty = answer$penalty,
+        vmax = answer$vmax,
+        feasible = isTRUE(answer$feasible),
+        diagnostics = data.frame(
+          row_id = row_id, unit_id = unit_id,
+          sample_id = "global", module_id = if (identical(mode, "meta_module_gem")) "GLOBAL_UNION" else NA_character_,
+          reaction_id = entry$reaction_id, target_direction = entry$target_direction,
+          medium_scenario = entry$medium_scenario, condition = "all",
+          strict_feasible = isTRUE(answer$feasible), solver_status = answer$solver_status,
+          step1_status = answer$step1_status, step2_status = answer$step2_status,
+          target_status = model$target_status %||% if (isTRUE(answer$feasible)) "ok" else "structurally_infeasible",
+          objective_value = answer$penalty, vmax = answer$vmax,
+          stringsAsFactors = FALSE
+        )
+      )
+    })
+    list(results = target_results, diagnostics = do.call(rbind, lapply(target_results, `[[`, "diagnostics")))
   }
+
   task_list <- split(tasks, seq_len(nrow(tasks)))
-  results <- rc_parallel_lapply(
+  grouped_results <- rc_parallel_lapply(
     task_list,
-    function(task) run_one(task[1, , drop = FALSE]),
+    function(task) run_one_metacell(task[1, , drop = FALSE]),
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
+  results <- unlist(lapply(grouped_results, `[[`, "results"), recursive = FALSE)
   for (result in results) {
     penalty[result$row_id, result$unit_id] <- result$penalty
     vmax[result$row_id, result$unit_id] <- result$vmax
@@ -284,11 +302,9 @@ rc_run_microcompass <- function(layer1, gem, target_reactions = NULL,
     evaluated[result$row_id, result$unit_id] <- TRUE
   }
   score <- rc_compass_score_from_penalty(penalty, feasible)
-  lp_diagnostics <- do.call(rbind, lapply(results, `[[`, "diagnostics"))
-  model_files <- unique(vapply(model_cache, function(entry) entry$file %||% "", character(1)))
-  model_files <- model_files[nzchar(model_files)]
-  model_diagnostics <- .rc_bind_frames_fill(lapply(model_files, function(file) {
-    model <- readRDS(file)
+  lp_diagnostics <- do.call(rbind, lapply(grouped_results, `[[`, "diagnostics"))
+  model_diagnostics <- .rc_bind_frames_fill(lapply(representative_rows, function(row_id) {
+    model <- .rc_cache_gem(model_cache[[row_id]])
     model$closure_diagnostics %||% data.frame()
   }))
 
@@ -314,6 +330,7 @@ rc_run_microcompass <- function(layer1, gem, target_reactions = NULL,
       target_direction = target_direction,
       shared_gem = TRUE,
       shared_gem_scope = "all_metacells",
+      parallel_task = "shared_model_by_metacell",
       flux_threshold = flux_threshold
     ),
     method = if (identical(mode, "full_gem")) "microCOMPASS shared full-GEM directional LP" else "microCOMPASS shared global meta-module-GEM directional LP"
