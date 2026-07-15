@@ -1,3 +1,22 @@
+# RegCompassR 1.4.0 (development)
+
+## Global metacell workflow
+
+- Replaced the staged integrated workflow with one upstream worker per retained `condition × sample × cell-type` stratum. Each worker now completes metacell construction, fragment aggregation, LinkPeaks/Layer 1, Pando, and meta-module inference before returning an artifact.
+- Added a hard all-strata/all-sample barrier. Global recalibration and GEM construction are blocked when any retained stratum fails or any biological sample is absent.
+- Recomputed reaction-capacity normalization after the barrier using one reaction-wise Q95 across all metacells.
+- Unioned all strict-stratum reaction envelopes into one canonical `GLOBAL_UNION` meta-module and completed one shared GEM per medium scenario.
+- Required condition-invariant medium constraints for shared-GEM comparison.
+- Changed Layer 2 parallelization to one shared-model/medium × metacell task, with one metacell-specific penalty vector and all target directions evaluated after loading the model once.
+- Explicitly releases the upstream worker pool before global processing and creates a fresh Layer 2 pool; cleanup also runs on errors.
+
+## API cleanup
+
+- Removed the obsolete staged runner `rc_run_regcompass_multiome_metacell()`.
+- Removed the sample-specific `rc_build_meta_module_gem_cache()` implementation.
+- Removed `rc_load_metacell_object_from_run()` and the versioned `R/regcompass_v13.R` file.
+- Corrected parent-GEM failure semantics so an allowed reaction direction that is structurally infeasible is reported as `parent_blocked`, not `no_allowed_direction`.
+
 # RegCompassR 1.3.0
 
 ## Architecture
