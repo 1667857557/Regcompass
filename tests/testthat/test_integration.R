@@ -64,21 +64,26 @@ test_that("global meta-module model scores every metacell", {
       stringsAsFactors = FALSE
     )
   )
-  result <- rc_run_microcompass(
-    layer1 = layer1,
-    gem = gem,
-    target_reactions = "R1",
-    mode = "meta_module_gem",
-    reaction_membership = membership,
-    core_reactions = membership,
-    unit = "metacell",
-    target_direction = "forward",
-    parallel = FALSE,
-    solver = solver
+  result <- expect_warning(
+    rc_run_microcompass(
+      layer1 = layer1,
+      gem = gem,
+      target_reactions = "R1",
+      mode = "meta_module_gem",
+      reaction_membership = membership,
+      core_reactions = membership,
+      unit = "metacell",
+      target_direction = "forward",
+      parallel = FALSE,
+      solver = solver
+    ),
+    "exploratory"
   )
   expect_true(all(result$evaluated[1L, ]))
   expect_true(all(result$feasible[1L, ]))
-  expect_true(all(is.finite(result$score[1L, ])))
+  expect_true(all(is.finite(result$penalty[1L, ])))
+  expect_true(all(is.na(result$score[1L, ])))
+  expect_true(result$noninformative_target[[1L]])
   expect_equal(nrow(result$model_cache_summary), 1L)
   expect_true(result$params$shared_gem)
   expect_equal(result$params$shared_gem_scope, "all_metacells")
