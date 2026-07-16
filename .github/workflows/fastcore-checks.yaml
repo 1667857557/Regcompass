@@ -64,8 +64,10 @@ jobs:
         run: R CMD INSTALL . --no-multiarch --with-keep.source
 
       - name: Run tests
-        shell: Rscript {0}
+        shell: bash
         run: |
+          set +e
+          Rscript - <<'RSCRIPT' > test.log 2>&1
           library(RegCompassR)
           for (file in list.files("R", pattern = "[.]R$", full.names = TRUE)) {
             sys.source(file, envir = .GlobalEnv)
@@ -76,3 +78,21 @@ jobs:
             stop_on_failure = TRUE,
             stop_on_warning = FALSE
           )
+          RSCRIPT
+          status=$?
+          echo "$status" > test.status
+          cat test.log
+          exit 0
+
+      - name: Upload test log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: regcompass-test-log
+          path: |
+            test.log
+            test.status
+          retention-days: 3
+
+      - name: Check test status
+        run: test "$(cat test.status)" = "0"
