@@ -2,10 +2,7 @@
 #' @export
 rc_make_medium_scenarios <- function(
     gem,
-    scenario = c(
-      "blood_like", "minimal", "culture_like", "tumor_low_glucose",
-      "low_glucose", "low_glutamine", "lactate_available", "custom"
-    ),
+    scenario = "blood_like",
     custom_medium = NULL,
     uptake_scale = c(
       blood_like = 1, culture_like = 1, minimal = 0.1,
