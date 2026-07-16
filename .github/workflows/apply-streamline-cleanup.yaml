@@ -1,6 +1,9 @@
 name: Apply streamline cleanup
 
 on:
+  pull_request:
+    branches:
+      - main
   push:
     branches:
       - agent/streamline-main-api
