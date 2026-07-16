@@ -26,37 +26,6 @@ test_that("suboptimal solver status is not standardized as optimal", {
   expect_false(identical(out$status, "optimal"))
 })
 
-test_that("condition-specific meta-module parents preserve medium bounds", {
-  skip_if_not(requireNamespace("highs", quietly = TRUE))
-  S <- matrix(c(-1, -1), nrow = 1,
-              dimnames = list("m", c("EX_m", "R")))
-  gem <- rc_make_gem(
-    S, lb = c(EX_m = -1000, R = 0), ub = c(EX_m = 0, R = 1000),
-    reaction_meta = data.frame(
-      reaction_id = c("EX_m", "R"), role = c("exchange", "internal"),
-      role_source = "curated", stringsAsFactors = FALSE
-    )
-  )
-  membership <- data.frame(
-    sample_id = c("S1", "S2"), module_id = "M1", reaction_id = "R",
-    is_core = TRUE, stringsAsFactors = FALSE
-  )
-  medium <- data.frame(
-    medium_scenario_id = "custom", exchange_reaction_id = "EX_m",
-    lb = c(-1, -10), ub = 0, available = TRUE,
-    condition = c("A", "B"), stringsAsFactors = FALSE
-  )
-  cache <- rc_build_meta_module_gem_cache(
-    gem, membership, membership, medium_scenarios = medium,
-    sample_conditions = c(S1 = "A", S2 = "B"),
-    solver = "highs", strict = TRUE
-  )
-  summary <- attr(cache, "summary")
-  expect_setequal(summary$condition, c("A", "B"))
-  models <- lapply(summary$file, readRDS)
-  expect_setequal(vapply(models, function(x) x$lb[["EX_m"]], numeric(1)), c(-1, -10))
-})
-
 test_that("multiome penalty uses active role and GPR parameters", {
   C <- matrix(0.5, nrow = 2, ncol = 1,
               dimnames = list(c("EX", "R"), "u"))
@@ -74,7 +43,7 @@ test_that("multiome penalty uses active role and GPR parameters", {
   )
   expect_equal(out$penalty["EX", "u"], 0.05)
   expect_gt(out$penalty["R", "u"], -log(0.5))
-  expect_match(out$evidence_policy, "not the original COMPASS")
+  expect_match(out$evidence_description, "not the original COMPASS")
 })
 
 test_that("sample aggregation preserves continuous covariate classes", {

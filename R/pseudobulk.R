@@ -72,6 +72,16 @@ rc_validate_unit_matrix_inputs <- function(mat, unit_map) {
   if (length(missing_pool_cols) > 0) stop("`unit_map` is missing required columns: ", paste(missing_pool_cols, collapse = ", "), call. = FALSE)
   active <- rc_filter_active_unit_map(unit_map)
   if (anyNA(active$cell_id)) stop("`unit_map$cell_id` must not contain NA values.", call. = FALSE)
+  duplicated_cells <- unique(as.character(
+  active$cell_id[duplicated(active$cell_id)]
+))
+  if (length(duplicated_cells)) {
+    stop(
+      "Each cell may belong to only one active pool; duplicated cell IDs: ",
+      paste(utils::head(duplicated_cells, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
   missing_cells <- setdiff(active$cell_id, colnames(mat))
   if (length(missing_cells) > 0L) stop("Some unit_map cell IDs are absent from matrix columns: ", paste(utils::head(missing_cells), collapse = ", "), call. = FALSE)
   invisible(TRUE)

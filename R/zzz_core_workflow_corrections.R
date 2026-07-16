@@ -2,7 +2,6 @@
 
 .rc_expand_meta_module_reactions_uncorrected <- rc_expand_meta_module_reactions
 .rc_build_meta_module_gem_uncorrected <- rc_build_meta_module_gem
-.rc_build_meta_module_gem_cache_uncorrected <- rc_build_meta_module_gem_cache
 .rc_compute_multiome_penalty_uncorrected <- rc_compute_multiome_penalty
 
 .rc_hard_core_rows <- function(core_reactions) {
@@ -321,9 +320,10 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
                                                "ordered_once", "fixed_point"
                                              ),
                                              max_iterations = 10L) {
+  hard_core_reactions <- .rc_hard_core_rows(core_reactions)
   answer <- .rc_expand_meta_module_reactions_uncorrected(
     gem = gem,
-    core_reactions = core_reactions,
+    core_reactions = hard_core_reactions,
     subsystem_table = subsystem_table,
     expansion_mode = expansion_mode,
     max_iterations = max_iterations
@@ -342,10 +342,15 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
   membership_keys <- key(answer$reaction_membership)
 
   answer$reaction_membership$is_core <- membership_keys %in% hard_keys
-  partial_anchor <- membership_keys %in% setdiff(candidate_keys, hard_keys) &
-    answer$reaction_membership$inclusion_stage == "core_grn_gene"
-  answer$reaction_membership$inclusion_stage[partial_anchor] <-
-    "partial_gpr_candidate"
+  partial_anchor <- membership_keys %in%
+    setdiff(candidate_keys, hard_keys)
+  if (any(partial_anchor)) {
+    answer$reaction_membership <- answer$reaction_membership[
+      !partial_anchor,
+      , drop = FALSE
+    ]
+    membership_keys <- key(answer$reaction_membership)
+  }
 
   if (is.data.frame(answer$summary) && nrow(answer$summary)) {
     for (i in seq_len(nrow(answer$summary))) {
@@ -382,24 +387,12 @@ rc_build_meta_module_gem <- function(gem, reaction_membership,
   )
 }
 
-rc_build_meta_module_gem_cache <- function(gem, reaction_membership,
-                                           core_reactions = NULL, ...) {
-  if (!is.null(core_reactions)) {
-    core_reactions <- .rc_hard_core_rows(core_reactions)
-  }
-  .rc_build_meta_module_gem_cache_uncorrected(
-    gem = gem,
-    reaction_membership = reaction_membership,
-    core_reactions = core_reactions,
-    ...
-  )
-}
-
 rc_compute_multiome_penalty <- function(...) {
   answer <- .rc_compute_multiome_penalty_uncorrected(...)
   answer$evidence_policy <- "penalty_only"
   answer$evidence_description <- paste(
-    "Multiome evidence modifies the LP objective penalty only;",
+    "This is not the original COMPASS expression-neighbourhood penalty.",
+    "RegCompass multiome evidence modifies the LP objective penalty only;",
     "it does not directly change stoichiometry or reaction bounds."
   )
   answer

@@ -97,10 +97,11 @@ test_that("single-stoichiometry reactions are boundary-like", {
   expect_equal(roles[["R_boundary"]], "boundary_like")
 })
 
-test_that("row IDs require and parse v1.3 labeled format", {
+test_that("row IDs require and parse labeled format", {
   expect_error(
     rc_parse_microcompass_row_id("R1::forward::blood_like"),
-    "v1.3 labeled format"
+    "reaction=...::direction=...::medium=...",
+    fixed = TRUE
   )
   expect_error(
     rc_parse_microcompass_row_id("reaction=R1::direction=both::medium=base"),

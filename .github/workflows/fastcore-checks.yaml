@@ -105,6 +105,8 @@ jobs:
           test_files <- c(
             "tests/testthat/test_fastcore_architecture.R",
             "tests/testthat/test_v13_integration.R",
+            "tests/testthat/test_global_metacell_workflow.R",
+            "tests/testthat/test_microcompass_corrections.R",
             "tests/testthat/test_function_audit_v13.R",
             "tests/testthat/test_math_biology_audit_v13.R"
           )

@@ -88,7 +88,7 @@ rc_layer2_support_penalties <- function(gem, rxns, C_rel = NULL, Conf = NULL,
 }
 
 rc_layer2_reaction_type <- function(meta) {
-  text_cols <- intersect(c("type", "reaction_type", "category", "subsystem", "name", "reaction_name"), colnames(meta))
+  text_cols <- intersect(c("role", "type", "reaction_type", "category", "subsystem", "name", "reaction_name"), colnames(meta))
   txt <- if (length(text_cols)) apply(meta[, text_cols, drop = FALSE], 1, paste, collapse = " ") else rep("", nrow(meta))
   txt <- tolower(txt)
   out <- rep("other", length(txt))

@@ -96,6 +96,34 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
     gem,
     subsystem_table = subsystem_table
   )
+  maps$subsystem <- maps$subsystem[
+  !is.na(maps$subsystem$reaction_id) &
+    nzchar(trimws(as.character(maps$subsystem$reaction_id))) &
+    !is.na(maps$subsystem$subsystem_id) &
+    nzchar(trimws(as.character(maps$subsystem$subsystem_id))),
+  , drop = FALSE
+]
+maps$kegg <- maps$kegg[
+  !is.na(maps$kegg$reaction_id) &
+    nzchar(trimws(as.character(maps$kegg$reaction_id))) &
+    !is.na(maps$kegg$kegg_id) &
+    nzchar(trimws(as.character(maps$kegg$kegg_id))),
+  , drop = FALSE
+]
+maps$reactome <- maps$reactome[
+  !is.na(maps$reactome$reaction_id) &
+    nzchar(trimws(as.character(maps$reactome$reaction_id))) &
+    !is.na(maps$reactome$reactome_id) &
+    nzchar(trimws(as.character(maps$reactome$reactome_id))),
+  , drop = FALSE
+]
+maps$rhea_master <- maps$rhea_master[
+  !is.na(maps$rhea_master$reaction_id) &
+    nzchar(trimws(as.character(maps$rhea_master$reaction_id))) &
+    !is.na(maps$rhea_master$rhea_master_id) &
+    nzchar(trimws(as.character(maps$rhea_master$rhea_master_id))),
+  , drop = FALSE
+]
   if (!nrow(maps$subsystem)) {
     stop(
       "No usable reaction-to-subsystem annotations were found.",
@@ -349,77 +377,4 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
     summary = do.call(rbind, summary_rows),
     crossref_maps = maps
   )
-}
-
-#' Load the retained metacell Seurat object from a formal RegCompass run
-#' @export
-rc_load_metacell_object_from_run <- function(run_dir,
-                                              retained_metacell_ids = NULL,
-                                              rna_assay = "RNA",
-                                              atac_assay = "ATAC") {
-  metacell_root <- file.path(run_dir, "01_metacells")
-  object_files <- list.files(
-    metacell_root,
-    pattern = "metacell_object\\.rds$",
-    recursive = TRUE,
-    full.names = TRUE
-  )
-  if (!length(object_files)) {
-    stop(
-      "No metacell_object.rds files were found under `01_metacells`.",
-      call. = FALSE
-    )
-  }
-  objects <- lapply(object_files, readRDS)
-  object_cells <- unlist(lapply(objects, colnames), use.names = FALSE)
-  if (anyDuplicated(object_cells)) {
-    stop(
-      "Saved metacell objects contain duplicated metacell IDs.",
-      call. = FALSE
-    )
-  }
-  if (!is.null(retained_metacell_ids)) {
-    retained_metacell_ids <- .rc_mm_trim_unique(
-      retained_metacell_ids
-    )
-    missing <- setdiff(retained_metacell_ids, object_cells)
-    if (length(missing)) {
-      stop(
-        "Retained metacell IDs are missing from saved objects: ",
-        paste(utils::head(missing, 10L), collapse = ", "),
-        call. = FALSE
-      )
-    }
-    objects <- lapply(objects, function(object) {
-      keep <- intersect(colnames(object), retained_metacell_ids)
-      if (!length(keep)) return(NULL)
-      subset(object, cells = keep)
-    })
-    objects <- objects[
-      !vapply(objects, is.null, logical(1))
-    ]
-  }
-  objects <- lapply(
-    objects,
-    .rc_clear_signac_fragments,
-    atac_assay = atac_assay
-  )
-  output <- if (length(objects) == 1L) {
-    objects[[1L]]
-  } else {
-    Reduce(
-      function(first, second) {
-        merge(
-          x = first,
-          y = second,
-          merge.data = FALSE
-        )
-      },
-      objects
-    )
-  }
-  if (!is.null(retained_metacell_ids)) {
-    output <- subset(output, cells = retained_metacell_ids)
-  }
-  output
 }
