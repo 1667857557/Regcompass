@@ -1,17 +1,15 @@
 test_that("integrated workflow keeps one barrier between the two worker pools", {
-  body_text <- paste(deparse(body(rc_run_regcompass)), collapse = "
-")
+  body_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   expect_match(body_text, ".rc_run_regcompass_stratum", fixed = TRUE)
   expect_match(body_text, "upstream_complete_barrier", fixed = TRUE)
   expect_match(body_text, ".rc_release_bpparam(upstream_param)", fixed = TRUE)
   expect_match(body_text, ".rc_merge_stratum_meta_modules", fixed = TRUE)
   expect_match(body_text, ".rc_merge_stratum_layer1", fixed = TRUE)
-  expect_match(body_text, "unit = "metacell"", fixed = TRUE)
+  expect_match(body_text, "unit = \"metacell\"", fixed = TRUE)
 })
 
 test_that("strict-stratum worker runs Pando and local FASTCORE", {
-  body_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "
-")
+  body_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
   expect_match(body_text, "rc_make_supercell2_metacells", fixed = TRUE)
   expect_match(body_text, "rc_run_pando_meta_modules", fixed = TRUE)
   expect_match(body_text, ".rc_complete_stratum_meta_modules", fixed = TRUE)
