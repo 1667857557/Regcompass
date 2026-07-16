@@ -64,8 +64,9 @@ test_that("global meta-module model scores every metacell", {
       stringsAsFactors = FALSE
     )
   )
-  result <- expect_warning(
-    rc_run_microcompass(
+  result <- NULL
+  expect_warning(
+    result <- rc_run_microcompass(
       layer1 = layer1,
       gem = gem,
       target_reactions = "R1",
