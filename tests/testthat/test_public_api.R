@@ -4,7 +4,8 @@ test_that("public API contains only the supported workflow", {
     c(
       "rc_prepare_human2_gem",
       "rc_make_medium_scenarios",
-      "rc_run_regcompass"
+      "rc_run_regcompass",
+      "rc_run_regcompass_one_shot"
     )
   )
 })
