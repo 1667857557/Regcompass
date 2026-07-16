@@ -32,7 +32,8 @@ test_that("deprecated and versioned entry points are absent", {
     c(
       "zzz_architecture_correctness.R",
       "zzzz_architecture_hotfixes.R",
-      "zzzzz_signed_projection.R"
+      "zzzzz_signed_projection.R",
+      "zzzzzz_signal_scale.R"
     )
   )
 })
