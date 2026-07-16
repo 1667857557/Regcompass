@@ -28,16 +28,26 @@ jobs:
         with:
           ref: agent/streamline-main-api
           fetch-depth: 0
+          show-progress: false
 
-      - name: Rebuild and apply cleanup
+      - name: Rebuild cleanup script
         shell: bash
         run: |
           set -euo pipefail
           find tools/streamline_chunks -type f -name 'part*.b64' | sort | xargs cat | base64 --decode > /tmp/apply_streamline.py
-          python3 -m py_compile /tmp/apply_streamline.py
-          python3 /tmp/apply_streamline.py
-          git restore --source=HEAD -- .github/workflows/fastcore-checks.yaml || true
-          rm -rf tools/streamline_chunks
+
+      - name: Parse cleanup script
+        run: python3 -m py_compile /tmp/apply_streamline.py
+
+      - name: Apply source transformation
+        run: python3 /tmp/apply_streamline.py
+
+      - name: Exclude CI workflow changes
+        shell: bash
+        run: git restore --source=HEAD -- .github/workflows/fastcore-checks.yaml || true
+
+      - name: Remove cleanup payload
+        run: rm -rf tools/streamline_chunks
 
       - name: Commit streamlined package
         shell: bash
