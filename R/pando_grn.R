@@ -1,5 +1,4 @@
 #' Extract and filter a Pando TF-peak-gene coefficient table
-#' @export
 rc_extract_pando_tf_peak_gene <- function(grn_object,
                                           sample_id,
                                           padj_threshold = 0.05,
@@ -38,7 +37,6 @@ rc_extract_pando_tf_peak_gene <- function(grn_object,
 }
 
 #' Project significant Pando edges onto a metabolic gene-gene network
-#' @export
 rc_project_metabolic_grn <- function(tf_peak_gene,
                                      metabolic_genes,
                                      top_k = 5L,
@@ -171,7 +169,6 @@ rc_project_metabolic_grn <- function(tf_peak_gene,
 
 
 #' Run sample-specific Pando GRNs and construct reaction meta-modules
-#' @export
 rc_run_pando_meta_modules <- function(metacell_object,
                                       gem,
                                       outdir,

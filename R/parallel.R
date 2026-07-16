@@ -7,7 +7,6 @@
 #'
 #' @param default Fallback worker count when no source can be detected.
 #' @return A positive integer worker count.
-#' @export
 rc_available_workers <- function(default = 1L) {
   vals <- c(
     getOption("RegCompassR.workers", NA),
@@ -43,7 +42,6 @@ rc_available_workers <- function(default = 1L) {
 #' detected containers; `serial` always returns `NULL`.
 #' @return A `BiocParallelParam` object when BiocParallel is installed and more
 #' than one worker is requested; otherwise `NULL` for sequential execution.
-#' @export
 rc_default_bpparam <- function(workers = NULL, backend = c("auto", "serial", "snow", "multicore")) {
   backend <- match.arg(backend)
   if (is.null(workers)) workers <- rc_available_workers(default = 1L)
@@ -74,7 +72,6 @@ rc_default_bpparam <- function(workers = NULL, backend = c("auto", "serial", "sn
 #' @param ... Additional arguments passed to `FUN`.
 #'
 #' @return A list with one element per `X`.
-#' @export
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
   if (identical(BPPARAM, FALSE) || length(X) <= 1L) {
     return(lapply(X, FUN, ...))

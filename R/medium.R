@@ -183,7 +183,6 @@ rc_make_medium_scenarios <- function(
 }
 
 #' Apply a medium table to exchange-reaction bounds
-#' @export
 rc_apply_medium_constraints <- function(
     gem, medium_table, condition = NULL,
     exchange_default_lb = 0, exchange_default_ub = 1000,

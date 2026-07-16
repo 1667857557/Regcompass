@@ -1,6 +1,5 @@
 #' Compute decomposed multiome penalties for microCOMPASS
-#' @export
-rc_compute_multiome_penalty <- function(
+.rc_compute_multiome_penalty_core <- function(
     C_rel, reaction_confidence, gpr_diagnostics = NULL, reaction_roles = NULL,
     weights = c(expr = 1.0, confidence = 0.5, missing = 1.0, gpr_missing = 0),
     eps = 1e-6, penalty_cap = 20,
@@ -125,4 +124,15 @@ rc_compute_multiome_penalty <- function(
     evidence_policy = "RegCompass multiome log-penalty extension; not the original COMPASS expression-neighborhood penalty",
     penalty_formula = "w_expr*-log(C_rel)+w_conf*-log(confidence)+w_missing*missing+w_gpr*gpr_missing"
   )
+}
+
+rc_compute_multiome_penalty <- function(...) {
+  answer <- .rc_compute_multiome_penalty_core(...)
+  answer$evidence_policy <- "penalty_only"
+  answer$evidence_description <- paste(
+    "This is not the original COMPASS expression-neighbourhood penalty.",
+    "RegCompass multiome evidence modifies the LP objective penalty only;",
+    "it does not directly change stoichiometry or reaction bounds."
+  )
+  answer
 }

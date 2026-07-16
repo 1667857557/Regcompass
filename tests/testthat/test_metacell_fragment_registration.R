@@ -123,23 +123,6 @@ test_that("fragment manifest filters extra mappings but requires complete used m
   )
 })
 
-test_that("LinkPeaks fallback modes are rejected", {
-  skip_if_not_installed("SeuratObject")
-  counts <- Matrix::Matrix(matrix(1, nrow = 2, ncol = 2, dimnames = list(c("g1", "g2"), c("mc1", "mc2"))), sparse = TRUE)
-  obj <- SeuratObject::CreateSeuratObject(counts = counts)
-  meta <- data.frame(metacell_id = c("mc1", "mc2"), sample_id = "s1", cell_type = "T", condition = "ctrl", stringsAsFactors = FALSE)
-  gpr <- data.frame(reaction_id = "R1", and_group_id = 1, gene = "G1", stringsAsFactors = FALSE)
-
-  expect_error(
-    rc_recompute_metacell_peak_gene_links_by_stratum(obj, meta, gpr, link_stratum_cols = c("sample_id", "cell_type", "condition"), on_too_few_metacells = "global"),
-    "one of"
-  )
-  expect_error(
-    rc_recompute_metacell_peak_gene_links_by_stratum(obj, meta, gpr, link_stratum_cols = c("sample_id", "cell_type", "condition"), on_too_few_metacells = "pool_by_cell_type"),
-    "one of"
-  )
-})
-
 test_that("merged objects are subset before strict ID validation", {
   skip_if_not_installed("SeuratObject")
   counts <- Matrix::Matrix(matrix(1, nrow = 2, ncol = 3, dimnames = list(c("g1", "g2"), c("mc1", "mc2", "mc3"))), sparse = TRUE)

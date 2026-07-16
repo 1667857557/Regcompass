@@ -875,8 +875,7 @@
 }
 
 #' Build one GRN-defined meta-module GEM with add-only FASTCORE completion
-#' @export
-rc_build_meta_module_gem <- function(gem, reaction_membership,
+.rc_build_meta_module_gem_core <- function(gem, reaction_membership,
                                      core_reactions = NULL,
                                      sample_id, module_id,
                                      medium_table = NULL,
@@ -924,5 +923,18 @@ rc_build_meta_module_gem <- function(gem, reaction_membership,
     fastcore_epsilon = fastcore_epsilon,
     max_support_reactions = max_support_reactions,
     strict = strict
+  )
+}
+
+rc_build_meta_module_gem <- function(gem, reaction_membership,
+                                     core_reactions = NULL, ...) {
+  if (!is.null(core_reactions)) {
+    core_reactions <- .rc_hard_core_rows(core_reactions)
+  }
+  .rc_build_meta_module_gem_core(
+    gem = gem,
+    reaction_membership = reaction_membership,
+    core_reactions = core_reactions,
+    ...
   )
 }

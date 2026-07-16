@@ -1,5 +1,4 @@
 #' Construct a minimal GEM object from stoichiometry and bounds
-#' @export
 rc_make_gem <- function(S, lb = NULL, ub = NULL,
                         reaction_meta = NULL,
                         metabolite_meta = NULL,
@@ -29,7 +28,6 @@ rc_make_gem <- function(S, lb = NULL, ub = NULL,
 }
 
 #' Read a GEM object stored as an RDS file
-#' @export
 rc_read_gem <- function(file) {
   gem <- readRDS(file)
   rc_validate_gem(gem)

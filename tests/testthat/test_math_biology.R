@@ -21,9 +21,8 @@ test_that("ranged LP rows are expanded without dropping either bound", {
   expect_equal(out$bound, c(1, 3))
 })
 
-test_that("suboptimal solver status is not standardized as optimal", {
-  out <- rc_standardize_lp_result("suboptimal", 0, numeric(), 0)
-  expect_false(identical(out$status, "optimal"))
+test_that("suboptimal solver status is not classified as optimal", {
+  expect_false(identical(.rc_lp_status("suboptimal"), "optimal"))
 })
 
 test_that("multiome penalty uses active role and GPR parameters", {
