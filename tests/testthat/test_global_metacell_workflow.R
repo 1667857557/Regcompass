@@ -92,12 +92,12 @@ test_that("global Layer 1 recomputes sample-balanced gene scores and uses Pando 
   )
   expect_true(out$calibration_params$sample_balance)
   expect_equal(
-    tapply(
+    as.numeric(tapply(
       out$sample_balance_weights,
       out$unit_meta$sample_id,
       sum
-    ),
-    c(S1 = 0.5, S2 = 0.5)
+    )),
+    c(0.5, 0.5)
   )
   expect_identical(colnames(out$C_rel), c("u1", "u2"))
   expect_equal(out$reaction_confidence["R1", ], c(u1 = 0.8, u2 = 0.4))
