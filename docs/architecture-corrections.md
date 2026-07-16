@@ -4,20 +4,20 @@ This note documents the canonical RegCompassR corrections introduced in v1.4.1. 
 
 ## 1. Absolute evidence and relative state are separate
 
-Metacell RNA input is log1p(CPM). Canonical gene evidence is now
+Metacell RNA input is log1p(CPM). Canonical bounded support is now computed from the supplied non-negative normalized signal:
 
 \[
-A_{gm}=\frac{\operatorname{CPM}_{gm}}{\operatorname{CPM}_{gm}+\kappa},
-\qquad \operatorname{CPM}_{gm}=\exp(x_{gm})-1,
+A_{gm}=\frac{x_{gm}}{x_{gm}+\kappa},
+\qquad x_{gm}=\log(1+\operatorname{CPM}_{gm})
 \]
 
-with \(\kappa=1\) CPM by default. This preserves the absolute zero:
+for RNA, while ATAC uses its non-negative normalized accessibility signal on its own input scale. The default is \(\kappa=1\), and the threshold is configurable and recorded with the run. This transform preserves the absolute zero without applying an RNA-specific inverse transform to ATAC:
 
 \[
 x_{gm}=0 \Rightarrow A_{gm}=0.
 \]
 
-A constant high-abundance gene remains high, whereas an all-zero gene remains zero. The previous within-gene robust-z sigmoid remains available only as a relative-state diagnostic and is `NA` for constant rows.
+A constant positive signal remains positive, whereas an all-zero gene remains zero. `A` is a bounded support score, not a probability, enzyme concentration or physical capacity. The previous within-gene robust-z sigmoid remains available only as a relative-state diagnostic and is `NA` for constant rows.
 
 Reaction-wise Q95 scaling is retained as `C_within_reaction_relative`, but it is diagnostic only. `C_rel` is retained as a compatibility field and now contains bounded absolute reaction evidence used by the LP.
 
@@ -47,9 +47,9 @@ weighted by \(|\hat\beta_e|\sqrt{R_e^2}\). Regulatory support is centered at 0.5
 F_{gm}=\operatorname{clip}_{[0,1]}\left(0.5+0.5\sum_e w_eu_{em}\right).
 \]
 
-Thus 0.5 is neutral, values below 0.5 represent active repression, and values above 0.5 represent active support. TF RNA activity and peak accessibility are both required for a non-neutral edge contribution. Missing regulatory evidence is neutral rather than equivalent to missing enzyme expression.
+Thus 0.5 is neutral, values below 0.5 represent active repression, and values above 0.5 represent active support. TF RNA support and peak accessibility are both required for a non-neutral edge contribution. Missing regulatory evidence is neutral rather than equivalent to missing enzyme expression.
 
-The shared-TF projection still supplies undirected connectivity for component construction, but now retains regulator sets, direct regulator/target fields, signed projection weights and concordant/discordant/mixed regulatory relations.
+The shared-TF projection retains regulator sets, direct regulator/target fields, signed projection weights and concordant/discordant/mixed regulatory relations. Direct TF-to-target edges and concordant shared-TF edges may define components; discordant or mixed shared-TF relations remain diagnostic and do not merge genes into one biological module.
 
 ## 4. Multiome penalty
 
@@ -88,7 +88,7 @@ It is explicitly **not a probability**. Constant targets are marked non-informat
 The added tests require:
 
 1. all-zero genes produce zero absolute evidence;
-2. constant high genes retain high absolute evidence;
+2. constant positive genes retain positive absolute evidence;
 3. nested GPR rules preserve Boolean logic;
 4. canonical required-subunit capacity equals the bottleneck;
 5. canonical isoenzyme capacity is not inflated by isoenzyme count;
@@ -97,7 +97,8 @@ The added tests require:
 8. constant penalties yield no relative rank;
 9. permissive media are explicitly identified as technical assumptions;
 10. shared-TF projection retains sign and regulator metadata;
-11. sample-by-cell-type is the default inference unit.
+11. discordant shared-TF relations do not merge components;
+12. sample-by-cell-type is the default inference unit.
 
 ## Remaining scope
 
