@@ -1,6 +1,6 @@
 # RegCompassR 1.4.0
 
-- Reduced the public API to five supported workflow functions.
-- Removed standalone LinkPeaks, staged Layer 1, versioned Human-GEM and legacy reporting interfaces.
-- Consolidated sample-balanced calibration, local FASTCORE and workflow contracts into the canonical implementation files.
-- Replaced versioned architecture documents with concise workflow and function references.
+- Focused the public API on the canonical workflow and its required setup helpers: `rc_prepare_human2_gem()`, `rc_make_medium_scenarios()` and `rc_run_regcompass()`.
+- Kept tutorials concise while still showing adjustable setup steps for Human-GEM preparation and shared medium construction.
+- Removed the adaptive metacell gamma API; the workflow now uses one fixed gamma and skips strata that do not produce enough metacells for downstream analysis.
+- Removed standalone LinkPeaks, staged Layer 1, versioned Human-GEM and legacy reporting interfaces from the supported API surface.

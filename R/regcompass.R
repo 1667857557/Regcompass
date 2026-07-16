@@ -102,23 +102,29 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
   .rc_write_tsv_gz(upstream_status, file.path(status_dir, "stratum_workflow_status.tsv.gz"))
 
   completed_ids <- as.character(retained_status$group_id[retained_status$status == "ok"])
-  failed_ids <- setdiff(retained_ids, completed_ids)
-  artifact_files <- retained_status$artifact_file[match(retained_ids, retained_status$group_id)]
-  missing_artifacts <- retained_ids[is.na(artifact_files) | !file.exists(artifact_files)]
-  if (length(failed_ids) || length(missing_artifacts) || !setequal(completed_ids, retained_ids)) {
+  skipped_metacell_ids <- as.character(retained_status$group_id[retained_status$status == "skipped_too_few_metacells"])
+  failed_ids <- as.character(retained_status$group_id[retained_status$status == "failed"])
+  artifact_files <- retained_status$artifact_file[match(completed_ids, retained_status$group_id)]
+  missing_artifacts <- completed_ids[is.na(artifact_files) | !file.exists(artifact_files)]
+  completed_samples <- unique(as.character(meta[[sample_col]][group_ids %in% completed_ids]))
+  samples_without_completed_strata <- setdiff(all_samples, completed_samples)
+  if (length(failed_ids) || length(missing_artifacts) || !length(completed_ids) || length(samples_without_completed_strata)) {
     barrier <- data.frame(
       stage = "upstream_complete_barrier",
       passed = FALSE,
       n_required_samples = length(all_samples),
-      n_required_strata = length(retained_ids),
-      n_completed_strata = length(intersect(completed_ids, retained_ids)),
+      n_retained_strata = length(retained_ids),
+      n_completed_strata = length(completed_ids),
+      n_skipped_too_few_metacells = length(skipped_metacell_ids),
       failed_strata = paste(failed_ids, collapse = ";"),
+      skipped_too_few_metacells = paste(skipped_metacell_ids, collapse = ";"),
       missing_artifacts = paste(missing_artifacts, collapse = ";"),
+      missing_samples = paste(samples_without_completed_strata, collapse = ";"),
       stringsAsFactors = FALSE
     )
     .rc_write_tsv_gz(barrier, file.path(status_dir, "upstream_barrier.tsv.gz"))
     stop(
-      "Global recalibration and union-GEM construction were blocked because not all retained strata completed successfully. Inspect stratum_workflow_status.tsv.gz and upstream_barrier.tsv.gz.",
+      "Global recalibration and union-GEM construction were blocked because one or more retained strata failed, no analyzable strata remained, or a biological sample had no analyzable stratum. Inspect stratum_workflow_status.tsv.gz and upstream_barrier.tsv.gz.",
       call. = FALSE
     )
   }
@@ -126,18 +132,21 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     stage = "upstream_complete_barrier",
     passed = TRUE,
     n_required_samples = length(all_samples),
-    n_required_strata = length(retained_ids),
-    n_completed_strata = length(retained_ids),
+    n_retained_strata = length(retained_ids),
+    n_completed_strata = length(completed_ids),
+    n_skipped_too_few_metacells = length(skipped_metacell_ids),
     failed_strata = "",
+    skipped_too_few_metacells = paste(skipped_metacell_ids, collapse = ";"),
     missing_artifacts = "",
+    missing_samples = "",
     stringsAsFactors = FALSE
   )
   .rc_write_tsv_gz(barrier, file.path(status_dir, "upstream_barrier.tsv.gz"))
 
   artifacts <- lapply(artifact_files, readRDS)
   artifact_group_ids <- vapply(artifacts, function(x) as.character(x$group_id), character(1))
-  if (!identical(artifact_group_ids, retained_ids)) {
-    stop("Upstream artifacts are incomplete or out of strict-stratum order.", call. = FALSE)
+  if (!identical(artifact_group_ids, completed_ids)) {
+    stop("Upstream artifacts are incomplete or out of analyzable strict-stratum order.", call. = FALSE)
   }
   valid_artifact <- vapply(artifacts, function(x) {
     identical(x$schema_version, "regcompass_stratum_v3") &&

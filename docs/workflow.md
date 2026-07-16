@@ -11,15 +11,16 @@ condition × sample × cell type
 Each upstream worker performs:
 
 ```text
-SuperCell2 metacells
+SuperCell2 metacells with one fixed gamma
 → fragment aggregation
+→ minimum-metacell filter
 → Pando GRN
 → Pando-derived reaction confidence
 → reaction meta-module expansion
 → local FASTCORE completion
 ```
 
-The global stage starts only after every retained stratum succeeds. The upstream worker pool is stopped before global processing.
+Strata that produce fewer than the required metacells are marked `skipped_too_few_metacells` and do not enter Pando, global calibration or scoring. The global stage starts after all non-skipped retained strata succeed and every biological sample still has at least one analyzable stratum. The upstream worker pool is stopped before global processing.
 
 ## Phase 2: global calibration and shared GEM
 
