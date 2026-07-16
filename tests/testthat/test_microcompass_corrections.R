@@ -207,24 +207,30 @@ test_that("parallel and serial full-GEM scoring agree", {
       stringsAsFactors = FALSE
     )
   )
-  serial <- rc_run_microcompass(
-    layer1,
-    gem,
-    "Rtarget",
-    mode = "full_gem",
-    unit = "metacell",
-    target_direction = "forward",
-    parallel = FALSE
+  serial <- expect_warning(
+    rc_run_microcompass(
+      layer1,
+      gem,
+      "Rtarget",
+      mode = "full_gem",
+      unit = "metacell",
+      target_direction = "forward",
+      parallel = FALSE
+    ),
+    "exploratory"
   )
-  parallel <- rc_run_microcompass(
-    layer1,
-    gem,
-    "Rtarget",
-    mode = "full_gem",
-    unit = "metacell",
-    target_direction = "forward",
-    parallel = TRUE,
-    BPPARAM = FALSE
+  parallel <- expect_warning(
+    rc_run_microcompass(
+      layer1,
+      gem,
+      "Rtarget",
+      mode = "full_gem",
+      unit = "metacell",
+      target_direction = "forward",
+      parallel = TRUE,
+      BPPARAM = FALSE
+    ),
+    "exploratory"
   )
   expect_equal(serial$score, parallel$score, tolerance = 1e-8)
   expect_equal(serial$penalty, parallel$penalty, tolerance = 1e-8)
