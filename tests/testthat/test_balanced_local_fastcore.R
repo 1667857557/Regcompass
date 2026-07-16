@@ -41,7 +41,7 @@ test_that("equal-sample weights give every biological sample equal total mass", 
   sample_ids <- c("S1", "S1", "S1", "S2", "S2", "S3")
   weights <- .rc_equal_sample_weights(sample_ids)
   totals <- tapply(weights, sample_ids, sum)
-  expect_equal(unname(totals), rep(1 / 3, 3), tolerance = 1e-12)
+  expect_equal(as.numeric(totals), rep(1 / 3, 3), tolerance = 1e-12)
   expect_equal(sum(weights), 1, tolerance = 1e-12)
 })
 
