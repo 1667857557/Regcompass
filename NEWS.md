@@ -5,13 +5,20 @@
 ## Global metacell workflow
 
 - Replaced the staged integrated workflow with one upstream worker per retained `condition × sample × cell-type` stratum. Each worker now completes metacell construction, fragment aggregation, Pando peak-gene/GRN inference, Pando-derived reaction confidence, and meta-module inference before returning an artifact.
+- Added local add-only FASTCORE completion for every GRN meta-module inside its strict-stratum worker. Local modules share one unconstrained FASTCC-screened parent within the worker, save their own completed models and diagnostics, and contribute both biological and support reactions to the global union.
 - Added a hard all-strata/all-sample barrier. Global recalibration and GEM construction are blocked when any retained stratum fails or any biological sample is absent.
-- Recomputed expression capacity after the barrier by combining Human-GEM GPR-gene logCPM across all metacells, recalculating one global gene-score and GPR reaction-capacity matrix, and applying one reaction-wise Q95 calibration.
+- Recomputed expression capacity after the barrier by combining Human-GEM GPR-gene logCPM across all metacells, optionally removing identifiable technical batches with `limma::removeBatchEffect()`, and recalculating the global gene-score and reaction-wise Q95 with equal total weight per biological sample by default.
 - Derived metacell-specific reaction confidence from significant Pando regions and their TF-IDF accessibility; no separate Signac `LinkPeaks()` pass is run by the integrated workflow.
-- Unioned all strict-stratum reaction envelopes into one canonical `GLOBAL_UNION` meta-module and completed one shared GEM per medium scenario.
+- Unioned the deduplicated locally completed strict-stratum meta-modules into one canonical `GLOBAL_UNION`. The shared global model then rechecks every core direction and invokes a second add-only FASTCORE repair only for directions that remain incomplete under the selected common medium.
 - Required condition-invariant medium constraints for shared-GEM comparison and preserved explicit no-constraint scenarios across repeated normalization.
 - Changed Layer 2 parallelization to one shared-model/medium × metacell task, with one metacell-specific penalty vector and all target directions evaluated after loading the model once.
 - Explicitly releases the upstream worker pool before global processing and creates a fresh Layer 2 pool; cleanup also runs on errors.
+
+## Calibration controls
+
+- Added `layer1_args$sample_balance` (default `TRUE`) and `layer1_args$sample_balance_col` (default `sample_id`) so every biological sample contributes equal total weight to robust gene-score scaling and reaction-wise Q95 calibration.
+- Added optional `layer1_args$expression_batch_correction = "limma"`, `technical_batch_cols`, and `preserve_design_cols`. Biological `sample_id` is rejected as a removable technical batch, and correction stops when the technical batch is confounded with the preserved biological design.
+- Added `layer1_args$local_fastcore`, plus `local_fastcore_args` for solver, time limit, epsilon, support cap, strictness, and local model persistence.
 
 ## API cleanup and contracts
 
