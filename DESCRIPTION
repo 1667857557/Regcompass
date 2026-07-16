@@ -1,8 +1,8 @@
 Package: RegCompassR
 Title: Multiome-Supported Reaction Capacity and GRN Meta-Module Analysis
-Version: 1.4.0
+Version: 1.4.1
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
-Description: Runs a strict-stratum RNA+ATAC metacell workflow with Pando regulatory evidence, local and global FASTCORE completion, sample-balanced reaction-capacity calibration, one shared GEM, and metacell-specific directional scoring.
+Description: Runs a strict-stratum RNA+ATAC metacell workflow with signed Pando regulatory evidence, conservative GPR aggregation, zero-preserving absolute reaction evidence, local and global FASTCORE completion, one shared GEM, sample-by-cell-type inference, and directional minimum evidence-discordance scoring.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
