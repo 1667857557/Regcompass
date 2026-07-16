@@ -27,13 +27,13 @@ jobs:
         shell: Rscript {0}
         run: |
           install.packages(
-            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs")
+            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs", "limma")
           )
 
       - name: Verify focused dependencies
         shell: Rscript {0}
         run: |
-          required <- c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs")
+          required <- c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs", "limma")
           missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]
           if (length(missing)) stop("Missing focused dependencies: ", paste(missing, collapse = ", "))
 
@@ -107,6 +107,7 @@ jobs:
             "tests/testthat/test_v13_integration.R",
             "tests/testthat/test_global_metacell_workflow.R",
             "tests/testthat/test_microcompass_corrections.R",
+            "tests/testthat/test_balanced_local_fastcore.R",
             "tests/testthat/test_function_audit_v13.R",
             "tests/testthat/test_math_biology_audit_v13.R"
           )
