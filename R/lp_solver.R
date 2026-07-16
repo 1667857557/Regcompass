@@ -8,6 +8,9 @@
   if (grepl("infeasible", text)) return("infeasible")
   if (grepl("unbounded", text)) return("unbounded")
   if (grepl("time|limit", text)) return("time_limit")
+  if (grepl("suboptimal|not[ _-]*optimal|non[ _-]*optimal", text)) {
+    return("error")
+  }
   if (grepl("optimal", text)) return("optimal")
   if (is.finite(code) && as.integer(code) == 0L) return("optimal")
   "error"
@@ -433,5 +436,100 @@ rc_compass_two_step_lp_directional <- function(
     step1_status = step1$status,
     step2_status = step2$status,
     flux = flux
+  )
+}
+
+rc_build_abs_penalty_lp <- function(S, lb, ub, penalties, target_index,
+                                    target_min,
+                                    target_direction = c("forward", "reverse"),
+                                    penalty_floor = 1e-12) {
+  target_direction <- match.arg(target_direction)
+  S <- .rc_as_dgCMatrix(S)
+  n <- ncol(S)
+  reactions <- colnames(S)
+  if (is.null(reactions) || anyNA(reactions) || any(!nzchar(reactions)) ||
+      anyDuplicated(reactions)) {
+    stop("`S` must have unique non-empty reaction IDs in colnames().", call. = FALSE)
+  }
+  if (length(target_index) != 1L || is.na(target_index) ||
+      target_index < 1L || target_index > n) {
+    stop("`target_index` is invalid.", call. = FALSE)
+  }
+  if (!is.numeric(target_min) || length(target_min) != 1L ||
+      !is.finite(target_min) || target_min < 0) {
+    stop("`target_min` must be one finite non-negative number.", call. = FALSE)
+  }
+  if (!is.numeric(penalty_floor) || length(penalty_floor) != 1L ||
+      !is.finite(penalty_floor) || penalty_floor < 0) {
+    stop("`penalty_floor` must be one finite non-negative number.", call. = FALSE)
+  }
+  lb <- rc_align_bound(lb, reactions, default = -1000, name = "lb")
+  ub <- rc_align_bound(ub, reactions, default = 1000, name = "ub")
+
+  if (is.null(names(penalties))) {
+    if (length(penalties) != n) {
+      stop("Unnamed `penalties` must have one value per reaction.", call. = FALSE)
+    }
+    penalty <- as.numeric(penalties)
+  } else {
+    penalty_names <- as.character(names(penalties))
+    if (anyNA(penalty_names) || any(!nzchar(penalty_names)) ||
+        anyDuplicated(penalty_names)) {
+      stop("Named `penalties` must have unique non-empty reaction IDs.", call. = FALSE)
+    }
+    missing <- setdiff(reactions, penalty_names)
+    unknown <- setdiff(penalty_names, reactions)
+    if (length(missing)) {
+      stop("Named `penalties` is missing reactions: ",
+           paste(utils::head(missing, 10L), collapse = ", "), call. = FALSE)
+    }
+    if (length(unknown)) {
+      stop("Named `penalties` contains unknown reactions: ",
+           paste(utils::head(unknown, 10L), collapse = ", "), call. = FALSE)
+    }
+    penalty <- as.numeric(penalties[reactions])
+  }
+  if (any(!is.finite(penalty)) || any(penalty < 0)) {
+    stop("`penalties` must contain finite non-negative values.", call. = FALSE)
+  }
+  penalty <- pmax(penalty, penalty_floor)
+
+  identity <- Matrix::Diagonal(n)
+  zero <- Matrix::Matrix(0, nrow = nrow(S), ncol = n, sparse = TRUE)
+  mass_balance <- cbind(S, zero)
+  abs_positive <- cbind(identity, -identity)
+  abs_negative <- cbind(-identity, -identity)
+  target <- Matrix::Matrix(0, nrow = 1L, ncol = 2L * n, sparse = TRUE)
+  target[1L, target_index] <- if (identical(target_direction, "reverse")) -1 else 1
+
+  absolute_upper <- pmax(abs(lb), abs(ub))
+  if (any(!is.finite(absolute_upper))) {
+    stop("Absolute flux bounds must be finite for the penalty LP.", call. = FALSE)
+  }
+  list(
+    obj = c(rep(0, n), penalty),
+    A = rbind(mass_balance, abs_positive, abs_negative, target),
+    lhs = c(rep(0, nrow(S)), rep(-Inf, 2L * n), target_min),
+    rhs = c(rep(0, nrow(S)), rep(0, 2L * n), Inf),
+    lb = c(lb, rep(0, n)),
+    ub = c(ub, absolute_upper),
+    n_flux_variables = n
+  )
+}
+
+rc_compass_two_step_lp <- function(S, lb, ub, target_reaction, penalties,
+                                   omega = 0.95, solver = "highs",
+                                   time_limit = 60, tol_vmax = 1e-8) {
+  rc_compass_two_step_lp_directional(
+    S = S,
+    lb = lb,
+    ub = ub,
+    target_reaction = target_reaction,
+    penalties = penalties,
+    target_direction = "forward",
+    omega = omega,
+    solver = solver,
+    time_limit = time_limit,
+    flux_threshold = tol_vmax
   )
 }

@@ -1,25 +1,6 @@
-test_that("HiGHS numeric status 7 with valid fields is optimal", {
-  result <- list(
-    status = 7L,
-    model_status = "Optimal",
-    objective_value = 1,
-    primal_solution = c(1, 0)
-  )
-  expect_equal(
-    .rc_highs_status(result, n_variables = 2),
-    "optimal"
-  )
-  expect_equal(
-    .rc_highs_status(
-      list(
-        status = "optimal",
-        objective_value = 1,
-        primal_solution = c(1, 0)
-      ),
-      n_variables = 2
-    ),
-    "optimal"
-  )
+test_that("solver status text is normalized", {
+  expect_equal(.rc_lp_status("Optimal"), "optimal")
+  expect_equal(.rc_lp_status("infeasible"), "infeasible")
 })
 
 test_that("infeasible COMPASS scores are NA rather than zero", {

@@ -1,11 +1,8 @@
-#' Run the integrated RegCompass workflow
+#' Run the RegCompass workflow
 #'
-#' Each retained condition-by-sample-by-cell-type stratum is processed by one
-#' upstream worker from metacell construction through Pando and meta-module
-#' inference. Global capacity recalibration and GEM construction begin only after
-#' every retained stratum and every biological sample have completed successfully.
-#' A fresh worker pool then evaluates every metacell with its own penalty vector
-#' on one shared GEM.
+#' Builds strict-stratum RNA+ATAC metacells, runs Pando and local meta-module
+#' completion, calibrates all metacells on a sample-balanced scale, constructs
+#' one shared GEM, and performs metacell-specific directional scoring.
 #' @export
 rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
                                fragment_files = NULL,
@@ -143,7 +140,7 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     stop("Upstream artifacts are incomplete or out of strict-stratum order.", call. = FALSE)
   }
   valid_artifact <- vapply(artifacts, function(x) {
-    identical(x$schema_version, "regcompass_stratum_v2") &&
+    identical(x$schema_version, "regcompass_stratum_v3") &&
       is.list(x$layer1) && is.list(x$grn_meta_modules) &&
       is.data.frame(x$grn_meta_modules$core_gene_reaction) &&
       is.data.frame(x$grn_meta_modules$reaction_membership)
@@ -204,7 +201,7 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
   invisible(gc(verbose = FALSE))
 
   result <- list(
-    schema_version = "regcompass_v2_global_metacell",
+    schema_version = "regcompass_v3_global_metacell",
     model_mode = model_mode,
     strict_stratum_cols = group_cols,
     upstream_status = upstream_status,
@@ -215,7 +212,15 @@ rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
     params = list(
       shared_gem = TRUE,
       penalty_unit = "metacell",
-      capacity_calibration_scope = "all_metacells_global_gene_score_and_reaction_q95",
+      capacity_calibration_scope = layer1$capacity_calibration_scope,
+      sample_balanced_gene_score = isTRUE(layer1$calibration_params$sample_balance),
+      sample_balanced_q95 = isTRUE(layer1$calibration_params$sample_balance),
+      expression_batch_correction = layer1$calibration_params$expression_batch_correction,
+      local_fastcore_before_global_union = identical(
+        grn_meta_modules$global_union_source,
+        "deduplicated_local_fastcore_completed_meta_modules"
+      ),
+      global_fastcore_repair = "conditional_on_global_core_directional_incompleteness",
       upstream_parallel_unit = "condition_sample_celltype",
       global_stage_requires_all_retained_strata = TRUE,
       global_stage_requires_all_samples = TRUE,

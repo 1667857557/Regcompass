@@ -2,7 +2,6 @@
 #'
 #' The complete validated Human-GEM is retained. Optional medium constraints are
 #' applied once and the resulting model is reused for every target and unit.
-#' @export
 rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
   gem <- rc_annotate_reaction_roles(gem, medium_table = medium_table)
   validated <- rc_validate_gem(gem)
@@ -53,7 +52,6 @@ rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
 }
 
 #' Cache one complete full GEM per medium scenario
-#' @export
 rc_build_full_gem_cache <- function(gem, dirs, medium_scenarios,
                                     cache_dir = tempfile(
                                       "RegCompassR_full_gem_cache_"

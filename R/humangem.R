@@ -6,23 +6,27 @@
 #' `model/genes.tsv`.
 #' @export
 rc_prepare_human2_gem <- function(version = "2.0.0",
-                                  cache_dir = tools::R_user_dir("RegCompassR", "cache"),
-                                  save_rds = file.path(cache_dir, paste0("Human2_", version, "_regcompass.rds")),
-                                  force_download = FALSE,
-                                  allow_latest = FALSE) {
+                                      cache_dir = tools::R_user_dir("RegCompassR", "cache"),
+                                      save_rds = file.path(cache_dir, paste0("Human2_", version, "_regcompass.rds")),
+                                      force_download = FALSE,
+                                      allow_latest = FALSE) {
   if (identical(version, "latest") && !isTRUE(allow_latest)) {
-    stop("`version = 'latest'` requires `allow_latest = TRUE`; use a pinned Human2 release.", call. = FALSE)
+    stop("`version = 'latest'` requires `allow_latest = TRUE`; use a pinned Human-GEM release.", call. = FALSE)
   }
   if (isTRUE(force_download) && file.exists(save_rds)) unlink(save_rds, force = TRUE)
   if (!file.exists(save_rds)) {
     ref <- if (identical(version, "latest")) "main" else paste0("v", version)
     tmp <- tempfile("Human-GEM-")
-    gpr <- rc_download_humangem_gpr_table(destdir = tmp, ref = ref, ref_type = "auto", gene_format = "symbol", overwrite = TRUE, quiet = TRUE)
+    gpr <- rc_download_humangem_gpr_table(destdir = tmp, ref = ref, ref_type = "auto",
+                                          gene_format = "symbol", overwrite = TRUE, quiet = TRUE)
     repo_dir <- attr(gpr, "repo_dir")
     model_yml <- file.path(repo_dir, "model", "Human-GEM.yml")
-    checksum <- tools::md5sum(model_yml)[[1]]
-    gem_new <- rc_convert_humangem_yaml_to_regcompass(model_yml, version = version, commit = ref, checksum = checksum)
-    gem_new <- rc_enrich_humangem_metadata(gem_new, reactions_tsv = gpr$reactions)
+    checksum <- tools::md5sum(model_yml)[[1L]]
+    gem_new <- rc_convert_humangem_yaml_to_regcompass(model_yml, version = version,
+                                                       commit = ref, checksum = checksum)
+    gem_new <- rc_enrich_humangem_metadata(gem_new,
+                                                reactions_tsv = gpr$reactions,
+                                                model_yml = model_yml)
     gem_new <- rc_annotate_reaction_roles(gem_new, overwrite_existing = TRUE)
     gem_new$gpr_table <- gpr$gpr_table
     gem_new$metabolic_genes <- gpr$metabolic_genes
@@ -32,6 +36,7 @@ rc_prepare_human2_gem <- function(version = "2.0.0",
     gem_new$model_info$gene_format <- "symbol"
     gem_new$model_info$archive <- attr(gpr, "archive")
     gem_new$model_info$archive_url <- attr(gpr, "archive_url") %||% NA_character_
+    gem_new$model_info$annotation_schema <- "regcompass_humangem"
     rc_validate_human2_gem(gem_new)
     dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
     saveRDS(gem_new, save_rds)
@@ -41,7 +46,6 @@ rc_prepare_human2_gem <- function(version = "2.0.0",
   gem
 }
 
-#' @export
 rc_validate_human2_gem <- function(gem) {
   rc_validate_gem(gem)
   if (is.null(gem$model_info)) stop("Human2 GEM requires `model_info`.", call. = FALSE)
@@ -55,7 +59,6 @@ rc_validate_human2_gem <- function(gem) {
   invisible(TRUE)
 }
 
-#' @export
 rc_download_humangem_gpr_table <- function(destdir = tempfile("Human-GEM-"),
                                            ref = "main",
                                            ref_type = c("auto", "heads", "tags"),
@@ -236,7 +239,6 @@ rc_replace_humangem_gene_ids <- function(rule, gene_map) {
 }
 
 #' Convert a Human-GEM YAML model to a RegCompass GEM object
-#' @export
 rc_convert_humangem_yaml_to_regcompass <- function(model_yml,
                                                    version = NA_character_,
                                                    commit = NA_character_,

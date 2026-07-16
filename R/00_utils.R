@@ -20,7 +20,6 @@
 #' @param meta Data frame containing metadata rows.
 #' @param grouping_cols Character vector of grouping columns.
 #' @return Filtered metadata with an attribute containing per-column drop counts.
-#' @export
 rc_drop_na_grouping <- function(meta, grouping_cols) {
   missing_cols <- setdiff(grouping_cols, colnames(meta))
   if (length(missing_cols) > 0L) {
@@ -59,4 +58,8 @@ rc_drop_na_grouping <- function(meta, grouping_cols) {
     out <- methods::as(methods::as(out, "generalMatrix"), "CsparseMatrix")
   }
   out
+}
+
+.rc_as_sparse <- function(x) {
+  .rc_as_dgCMatrix(x)
 }

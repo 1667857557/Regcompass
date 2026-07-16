@@ -3,7 +3,6 @@
 #' Supports flat GPR forms such as `(g1 and g2) or g3`, `g1 or g2`,
 #' `g1 and g2`, and `g1`. Complex nested mixtures such as
 #' `g1 and (g2 or g3)` stop rather than being silently mis-parsed.
-#' @export
 rc_parse_gpr_simple <- function(gpr) {
   if (length(gpr) != 1L || is.na(gpr) || !nzchar(trimws(gpr))) return(list())
   gpr <- gsub("\\s+", " ", trimws(tolower(as.character(gpr))))
@@ -39,7 +38,6 @@ rc_parse_gpr_simple <- function(gpr) {
 #'
 #' Accepts either `reaction_id + gpr` or a pre-parsed long table with
 #' `reaction_id + and_group_id + gene`.
-#' @export
 rc_parse_gpr_table <- function(gpr_table) {
   if (!is.data.frame(gpr_table)) {
     stop("`gpr_table` must be a data.frame.", call. = FALSE)

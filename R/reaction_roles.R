@@ -69,7 +69,6 @@
 }
 
 #' Annotate GEM reactions with curated or inferred RegCompassR roles
-#' @export
 rc_annotate_reaction_roles <- function(
     gem, reaction_role_table = NULL, medium_table = NULL,
     infer_from_id = TRUE, infer_from_stoichiometry = TRUE,

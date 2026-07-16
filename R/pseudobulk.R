@@ -25,7 +25,6 @@ rc_filter_empty_units <- function(pb_counts, unit_meta) {
 }
 
 #' Meta-cell-level log2(CPM + 1) normalization
-#' @export
 rc_logcpm <- function(pb_counts, scale_factor = 1e6) {
   pb_counts <- .rc_as_sparse(pb_counts)
   lib <- Matrix::colSums(pb_counts)

@@ -1,5 +1,4 @@
 #' Safe robust sigma-scale estimate
-#' @export
 rc_safe_scale <- function(x, min_scale = 0.05) {
   mad_sigma <- stats::mad(x, constant = 1.4826, na.rm = TRUE)
   iqr_sigma <- stats::IQR(x, na.rm = TRUE) / 1.349
@@ -7,7 +6,6 @@ rc_safe_scale <- function(x, min_scale = 0.05) {
 }
 
 #' Robust row-wise z score clipped to a finite range
-#' @export
 rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
   X <- as.matrix(X)
   med <- matrixStats::rowMedians(X, na.rm = TRUE)
@@ -34,11 +32,9 @@ rc_robust_z <- function(x, eps = 1e-6) {
 }
 
 #' Logistic sigmoid transform
-#' @export
 rc_sigmoid <- function(z) 1 / (1 + exp(-z))
 
 #' Gene capacity score from meta-cell-level logCPM
-#' @export
 rc_gene_score <- function(X, min_scale = 0.05, z_clip = 6) {
   rc_sigmoid(rc_gene_zscore(X, min_scale = min_scale, z_clip = z_clip))
 }
@@ -48,7 +44,6 @@ rc_gene_score <- function(X, min_scale = 0.05, z_clip = 6) {
 #' Default tau = 0.20 is a biologically moderate bottleneck model for multi-subunit
 #' enzymes. Smaller tau, such as 0.08, behaves closer to a hard minimum; larger tau
 #' moves toward the arithmetic mean.
-#' @export
 rc_boltzmann_minavg <- function(scores, tau = 0.20) {
   if (!is.numeric(tau) || length(tau) != 1L || is.na(tau) || tau <= 0) stop("`tau` must be a single positive number.", call. = FALSE)
   scores <- scores[is.finite(scores)]
@@ -66,7 +61,6 @@ rc_boltzmann_minavg <- function(scores, tau = 0.20) {
 #'
 #' Implements the plan-supported sensitivity choices: hard minimum,
 #' Boltzmann-weighted minimum-biased average, and arithmetic mean.
-#' @export
 rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau = 0.20) {
   method <- match.arg(method)
   scores <- scores[is.finite(scores)]
@@ -84,7 +78,6 @@ rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau 
 #' The default `sum` returns an unbounded isoenzyme-summed reaction capacity
 #' potential for within-reaction comparisons. `max` and `prob_or` provide bounded
 #' sensitivity diagnostics, while `sum_sqrtK` dampens isoenzyme-rich reactions.
-#' @export
 rc_or_capacity <- function(and_capacities,
                            method = c("sum_sqrtK", "max", "prob_or", "sum")) {
   method <- match.arg(method)
@@ -100,7 +93,6 @@ rc_or_capacity <- function(and_capacities,
 }
 
 #' Compute capacity for one reaction in one pool
-#' @export
 rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean"),
                                      or_method = c("sum_sqrtK", "max", "prob_or", "sum")) {
   and_method <- match.arg(and_method)
@@ -123,7 +115,6 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and
 #' and square-root dampened OR-group summation. These defaults are the main biological model; alternative
 #' tau values should be interpreted only as sensitivity to the multi-subunit
 #' bottleneck assumption.
-#' @export
 rc_reaction_capacity <- function(gpr_list,
                                  gene_score,
                                  promiscuity_mode = c("sqrt", "linear", "none"),
@@ -181,7 +172,6 @@ rc_reaction_capacity <- function(gpr_list,
 }
 
 #' Reaction-level GPR diagnostics
-#' @export
 rc_gpr_diagnostics <- function(gpr_list, gene_ids) {
   gene_ids <- unique(tolower(gene_ids))
   do.call(rbind, lapply(names(gpr_list), function(rid) {

@@ -1,45 +1,18 @@
 # RegCompassR
 
-RegCompassR converts RNA+ATAC metacells, GPR evidence, Pando regulatory networks, Human-GEM structure, and medium constraints into directional microCOMPASS reaction-potential scores.
-
-## Current workflow
+RegCompassR runs one supported RNA+ATAC metacell workflow:
 
 ```text
-Seurat RNA+ATAC object
-→ split by condition × sample × cell type
-→ one upstream worker per strict stratum:
-     SuperCell2 metacells
-     fragment aggregation
-     Pando internal peak-gene and TF-gene modeling
-     Pando-derived metacell ATAC confidence
-     Pando GRN
-     GRN-to-reaction mapping and meta-module expansion
-→ wait for every retained stratum and every sample to complete
-→ validate the all-strata artifact barrier
-→ stop and release the upstream worker pool
-→ combine Human-GEM GPR-gene logCPM from all metacells
-→ recompute one global gene-score scale and reaction-capacity matrix
-→ recompute one reaction-wise Q95 scale across all metacells
-→ union all stratum meta-modules
-→ complete one shared global meta-module GEM with add-only FASTCORE
-→ align all metacells to the same reaction universe
-→ compute one penalty vector per metacell
-→ start a fresh worker pool for shared-model/medium × metacell tasks
-→ load the shared GEM once per metacell task and evaluate all target directions
+condition × sample × cell type
+→ SuperCell2 metacells
+→ Pando GRN and reaction confidence
+→ local meta-module FASTCORE
+→ all-strata barrier
+→ sample-balanced global gene score and Q95
+→ deduplicated global-union GEM
+→ metacell-specific penalties
+→ directional microCOMPASS scoring
 ```
-
-No global recalibration or GEM construction occurs from a partial set of successful strata. If one retained stratum fails, the workflow writes `00_strata/upstream_barrier.tsv.gz`, releases the upstream workers, and stops.
-
-The shared GEM is the structural reference for every metacell. Biological differences enter the LP objective through metacell-specific penalties, not through sample-specific stoichiometric models. After all upstream artifacts are complete, RegCompass combines GPR-gene logCPM across all metacells, recomputes gene scores and GPR reaction capacities on that common population, and then applies one reaction-wise Q95 calibration. Peak-gene evidence is computed once inside Pando; RegCompass derives metacell-specific reaction confidence from significant Pando regions and their TF-IDF accessibility and does not run a separate Signac `LinkPeaks()` pass.
-
-## Structural modes
-
-| Mode | Structural model |
-|---|---|
-| `meta_module_gem` | Union of all strict-stratum Pando meta-modules, completed once with Human-GEM support reactions. Recommended. |
-| `full_gem` | One complete medium-constrained Human-GEM shared by all metacells. |
-
-Condition-specific medium bounds are rejected by the integrated shared-GEM workflow because they would create different feasible spaces across conditions.
 
 ## Installation
 
@@ -49,55 +22,42 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-The installed Pando package must retain repository metadata pointing to `1667857557/Pando_regcompass`.
-
-## Prepare Human-GEM and medium constraints
+## 1. Prepare Human-GEM
 
 ```r
 library(RegCompassR)
 
-gem <- rc_prepare_human2_gem_v12(version = "2.0.0")
+gem <- rc_prepare_human2_gem(version = "2.0.0")
+```
 
-medium <- data.frame(
-  medium_scenario_id = "brain_tumor_medium",
-  exchange_reaction_id = curated_exchange_ids,
-  lb = curated_uptake_lower_bounds,
-  ub = rep(1000, length(curated_exchange_ids)),
-  available = TRUE,
-  condition = "all",
-  stringsAsFactors = FALSE
+## 2. Define a shared medium
+
+```r
+medium <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "blood_like"
 )
 ```
 
-Reaction directions are derived from active numerical bounds:
+The integrated workflow requires the same medium constraints for all conditions.
 
-```text
-lb < 0 < ub     reversible
-0 <= lb < ub    forward-only
-lb < ub <= 0    reverse-only
-lb = ub = 0     blocked
-```
-
-## Integrated analysis
+## 3. Run RegCompass
 
 ```r
 library(Pando)
 library(BSgenome.Hsapiens.UCSC.hg38)
-
 data(motifs, package = "Pando")
 
 result <- rc_run_regcompass(
   object = object,
   gem = gem,
-  outdir = "RegCompass_global_metacell",
+  outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = fragment_files,
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
-  rna_assay = "RNA",
-  atac_assay = "ATAC",
   model_mode = "meta_module_gem",
   medium_scenarios = medium,
   metacell_args = list(
@@ -108,9 +68,9 @@ result <- rc_run_regcompass(
     min_metacells_per_stratum = 10
   ),
   layer1_args = list(
-    promiscuity_mode = "sqrt",
-    and_method = "boltzmann",
-    tau = 0.20
+    local_fastcore = TRUE,
+    sample_balance = TRUE,
+    expression_batch_correction = "none"
   ),
   pando_args = list(
     min_metacells = 20,
@@ -119,21 +79,11 @@ result <- rc_run_regcompass(
       tf_cor = 0.1,
       peak_cor = 0,
       adjust_method = "fdr"
-    ),
-    padj_threshold = 0.05,
-    min_model_rsq = 0.1,
-    top_k_neighbors = 5,
-    min_shared_tfs = 1,
-    expansion_mode = "ordered_once"
+    )
   ),
   layer2_args = list(
     target_direction = "both",
-    solver = "highs",
-    model_params = list(
-      strict = TRUE,
-      fastcore_epsilon = 1e-4,
-      max_support_reactions = 2000
-    )
+    solver = "highs"
   ),
   upstream_workers = 6,
   layer2_workers = 12,
@@ -141,50 +91,49 @@ result <- rc_run_regcompass(
 )
 ```
 
-The integrated runner fixes `unit = "metacell"`, uses one shared structural GEM, and prevents `layer2_args` from overriding those invariants.
-
-## Main outputs
+Optional technical-batch correction is configured in `layer1_args`:
 
 ```r
-result$upstream_status
-result$upstream_barrier
-result$layer1$rna_metacell_logcpm
-result$layer1$global_gene_score
-result$layer1$C_raw
+layer1_args = list(
+  expression_batch_correction = "limma",
+  technical_batch_cols = "library_batch",
+  preserve_design_cols = c("condition", "cell_type")
+)
+```
+
+Do not use `sample_id` as a removable batch.
+
+## 4. Test condition differences
+
+```r
+differential <- rc_test_microcompass_differential(
+  result = result$microcompass,
+  formula = score ~ condition,
+  method = "limma_continuous"
+)
+```
+
+Meta cells are aggregated to biological samples before testing.
+
+## 5. Export matrices and diagnostics
+
+```r
+rc_export_microcompass(
+  result = result$microcompass,
+  outdir = "RegCompass_result/export"
+)
+```
+
+## Main result objects
+
+```r
 result$layer1$C_rel
-result$layer1$capacity_calibration_scope
 result$layer1$reaction_confidence
-result$grn_meta_modules$core_gene_reaction
-result$grn_meta_modules$reaction_membership
-result$grn_meta_modules$global_core_reactions
 result$grn_meta_modules$global_reaction_membership
 result$microcompass$score
 result$microcompass$penalty
 result$microcompass$vmax
 result$microcompass$feasible
-result$microcompass$model_cache_summary
-result$microcompass$lp_diagnostics
 ```
 
-The complete result is saved as:
-
-```text
-RegCompass_global_metacell/regcompass_global_metacell_result.rds
-```
-
-## Retired public APIs
-
-The former staged integrated entry point and sample-specific meta-module cache are no longer exported:
-
-```text
-rc_run_regcompass_multiome_metacell
-rc_build_meta_module_gem_cache
-rc_load_metacell_object_from_run
-```
-
-Use `rc_run_regcompass()` for the supported workflow. Lower-level metacell, Pando, FASTCORE, and LP functions remain available where they are still part of the current architecture.
-
-## Interpretation limits
-
-- FASTCORE is an LP-based compact reconstruction algorithm, not an exact minimum-cardinality MILP.
-- Steady-state feasibility does not establish thermodynamic or kinetic feasibility.
+See [workflow](docs/workflow.md) and [public functions](docs/functions.md).

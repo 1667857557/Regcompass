@@ -95,15 +95,19 @@ test_that("Human-GEM downloader rejects status-zero HTML archives and cleans par
 })
 
 test_that("Human-GEM downloader uses heads first for branch refs", {
+  calls <- character()
   mock_download <- function(url, destfile, mode, quiet) {
+    calls <<- c(calls, url)
     writeLines("not a zip", destfile)
     1L
   }
-  dest <- tempfile("hg-dl-branch-")
-  expect_error(rc_download_humangem_gpr_table(destdir = dest, ref = "main", overwrite = TRUE, download_fun = mock_download), "Failed to download")
-  # Error diagnostics should report heads before tags for branch-like refs.
-  err <- tryCatch(rc_download_humangem_gpr_table(destdir = tempfile("hg-dl-branch2-"), ref = "develop", overwrite = TRUE, download_fun = mock_download), error = conditionMessage)
-  urls <- regmatches(err, gregexpr("https?://[^;\\n]+", err))[[1]]
-  expect_match(urls[[1]], "/heads/")
-  expect_match(urls[[2]], "/tags/")
+  expect_error(
+    rc_download_humangem_gpr_table(
+      destdir = tempfile("hg-dl-branch-"), ref = "develop",
+      overwrite = TRUE, download_fun = mock_download
+    ),
+    "Failed to download"
+  )
+  expect_match(calls[[1L]], "/heads/")
+  expect_match(calls[[2L]], "/tags/")
 })

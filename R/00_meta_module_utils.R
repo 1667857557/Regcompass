@@ -80,3 +80,13 @@
        remote_sha = remote_sha)
 }
 
+
+.rc_hard_core_rows <- function(core_reactions) {
+  if (is.null(core_reactions) || !is.data.frame(core_reactions)) {
+    return(core_reactions)
+  }
+  if ("is_core" %in% colnames(core_reactions)) {
+    return(core_reactions[core_reactions$is_core %in% TRUE, , drop = FALSE])
+  }
+  core_reactions
+}

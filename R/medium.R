@@ -2,12 +2,13 @@
 #' @export
 rc_make_medium_scenarios <- function(
     gem,
-    scenario = c(
-      "blood_like", "minimal", "culture_like", "tumor_low_glucose",
-      "low_glucose", "low_glutamine", "lactate_available", "custom"
-    ),
+    scenario = "blood_like",
     custom_medium = NULL,
-    uptake_scale = c(1, 0.5, 0.1),
+    uptake_scale = c(
+      blood_like = 1, culture_like = 1, minimal = 0.1,
+      tumor_low_glucose = 0.5, low_glucose = 0.1,
+      low_glutamine = 0.1, lactate_available = 1
+    ),
     condition_col = NULL,
     exchange_roles = c("exchange"),
     condition = condition_col) {
@@ -183,7 +184,6 @@ rc_make_medium_scenarios <- function(
 }
 
 #' Apply a medium table to exchange-reaction bounds
-#' @export
 rc_apply_medium_constraints <- function(
     gem, medium_table, condition = NULL,
     exchange_default_lb = 0, exchange_default_ub = 1000,

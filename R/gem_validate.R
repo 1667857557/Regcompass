@@ -2,7 +2,6 @@
 #'
 #' `gem` may be a list with `S`, `lb`, and `ub`, or those fields plus optional
 #' `reactions`, `metabolites`, `reaction_meta`, and `medium_policy`.
-#' @export
 rc_validate_gem <- function(gem, selected_reactions = NULL,
                             allow_zero_support = TRUE) {
   if (!is.list(gem) || is.null(gem$S)) {

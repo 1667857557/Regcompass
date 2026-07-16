@@ -108,19 +108,39 @@ rc_layer2_support_penalty_for_type <- function(type, support_penalty) {
 }
 
 rc_layer2_has_gpr <- function(meta, C_rel = NULL, Conf = NULL) {
-  gpr_cols <- intersect(c("gpr", "grRule", "gene_reaction_rule", "gene_reaction_rule_string", "genes"), colnames(meta))
-  has_meta_gpr <- if (length(gpr_cols)) {
-    apply(meta[, gpr_cols, drop = FALSE], 1, function(x) any(!is.na(x) & nzchar(trimws(as.character(x)))))
+  if (!is.data.frame(meta) || !"reaction_id" %in% colnames(meta)) {
+    stop("`meta` must contain `reaction_id`.", call. = FALSE)
+  }
+  gpr_columns <- intersect(
+    c("gpr", "grRule", "gene_reaction_rule",
+      "gene_reaction_rule_string", "genes"),
+    colnames(meta)
+  )
+  has_metadata_gpr <- if (length(gpr_columns)) {
+    apply(meta[, gpr_columns, drop = FALSE], 1, function(value) {
+      any(!is.na(value) & nzchar(trimws(as.character(value))))
+    })
   } else {
     rep(FALSE, nrow(meta))
   }
-  if (any(has_meta_gpr) || is.null(C_rel) || is.null(Conf)) return(has_meta_gpr)
-  rid <- as.character(meta$reaction_id)
-  C <- as.matrix(C_rel); F <- as.matrix(Conf)
-  in_evidence <- rid %in% rownames(C) & rid %in% rownames(F)
-  has_evidence <- rep(FALSE, length(rid))
-  has_evidence[in_evidence] <- rowSums(is.finite(C[rid[in_evidence], , drop = FALSE]) | is.finite(F[rid[in_evidence], , drop = FALSE])) > 0
-  has_evidence
+
+  has_evidence <- rep(FALSE, nrow(meta))
+  if (!is.null(C_rel) && !is.null(Conf)) {
+    C <- as.matrix(C_rel)
+    F <- as.matrix(Conf)
+    if (!is.null(rownames(C)) && !is.null(rownames(F))) {
+      reaction_id <- as.character(meta$reaction_id)
+      present <- reaction_id %in% rownames(C) & reaction_id %in% rownames(F)
+      if (any(present)) {
+        selected <- reaction_id[present]
+        has_evidence[present] <- rowSums(
+          is.finite(C[selected, , drop = FALSE]) |
+            is.finite(F[selected, , drop = FALSE])
+        ) > 0
+      }
+    }
+  }
+  has_metadata_gpr | has_evidence
 }
 rc_layer2_confidence_matrix <- function(confidence, C_rel) {
   C_rel <- as.matrix(C_rel)
