@@ -1,0 +1,44 @@
+name: Apply streamline cleanup
+
+on:
+  push:
+    branches:
+      - agent/streamline-main-api
+    paths:
+      - tools/streamline_chunks/**
+      - .github/workflows/apply-streamline-cleanup.yaml
+
+permissions:
+  contents: write
+
+jobs:
+  apply:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out cleanup branch
+        uses: actions/checkout@v7
+        with:
+          ref: agent/streamline-main-api
+          fetch-depth: 0
+
+      - name: Rebuild and apply cleanup
+        shell: bash
+        run: |
+          set -euo pipefail
+          find tools/streamline_chunks -type f -name 'part*.b64' | sort | xargs cat | base64 --decode > /tmp/apply_streamline.py
+          python3 -m py_compile /tmp/apply_streamline.py
+          python3 /tmp/apply_streamline.py
+          rm -rf tools/streamline_chunks
+          rm .github/workflows/apply-streamline-cleanup.yaml
+
+      - name: Commit streamlined package
+        shell: bash
+        run: |
+          set -euo pipefail
+          git config user.name "RegCompass cleanup bot"
+          git config user.email "actions@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Streamline public API and main workflow"
+          git push origin HEAD:agent/streamline-main-api
