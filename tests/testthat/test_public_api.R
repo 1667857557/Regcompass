@@ -21,7 +21,12 @@ test_that("deprecated and versioned entry points are absent", {
   )
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
 
-  late_files <- basename(list.files("R", pattern = "^zzz"))
+  source_dir <- if (dir.exists("R")) {
+    "R"
+  } else {
+    normalizePath(file.path("..", "..", "R"), mustWork = TRUE)
+  }
+  late_files <- basename(list.files(source_dir, pattern = "^zzz"))
   expect_setequal(
     late_files,
     c(
