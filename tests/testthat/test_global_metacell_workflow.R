@@ -1,16 +1,21 @@
 test_that("integrated workflow keeps one barrier between the two worker pools", {
-  body_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
-  expect_match(body_text, ".rc_run_regcompass_stratum", fixed = TRUE)
-  expect_match(body_text, "upstream_complete_barrier", fixed = TRUE)
-  expect_match(body_text, ".rc_release_bpparam(upstream_param)", fixed = TRUE)
-  expect_match(body_text, ".rc_merge_stratum_meta_modules", fixed = TRUE)
-  expect_match(body_text, ".rc_merge_stratum_layer1", fixed = TRUE)
-  expect_match(body_text, "unit = \"metacell\"", fixed = TRUE)
+  core_text <- paste(deparse(body(.rc_original_run_regcompass)), collapse = "\n")
+  wrapper_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  expect_match(core_text, ".rc_run_regcompass_stratum", fixed = TRUE)
+  expect_match(core_text, "upstream_complete_barrier", fixed = TRUE)
+  expect_match(core_text, ".rc_release_bpparam(upstream_param)", fixed = TRUE)
+  expect_match(core_text, ".rc_merge_stratum_meta_modules", fixed = TRUE)
+  expect_match(core_text, ".rc_merge_stratum_layer1", fixed = TRUE)
+  expect_match(wrapper_text, "inference_unit", fixed = TRUE)
+  expect_equal(
+    eval(formals(rc_run_regcompass)$inference_unit),
+    c("sample_celltype", "metacell")
+  )
 })
 
 
 test_that("integrated workflow uses fixed metacell gamma and skips low-yield strata", {
-  workflow_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  workflow_text <- paste(deparse(body(.rc_original_run_regcompass)), collapse = "\n")
   worker_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
   metacell_formals <- names(formals(rc_make_supercell2_metacells))
   expect_false("adaptive_gamma" %in% metacell_formals)
