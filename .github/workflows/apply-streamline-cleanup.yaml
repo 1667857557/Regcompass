@@ -36,7 +36,7 @@ jobs:
           find tools/streamline_chunks -type f -name 'part*.b64' | sort | xargs cat | base64 --decode > /tmp/apply_streamline.py
           python3 -m py_compile /tmp/apply_streamline.py
           python3 /tmp/apply_streamline.py
-          git checkout HEAD -- .github/workflows/fastcore-checks.yaml
+          git restore --source=HEAD -- .github/workflows/fastcore-checks.yaml || true
           rm -rf tools/streamline_chunks
 
       - name: Commit streamlined package
