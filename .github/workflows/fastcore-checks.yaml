@@ -20,36 +20,13 @@ jobs:
           use-public-rspm: true
 
       - name: Parse sources
-        shell: bash
+        shell: Rscript {0}
         run: |
-          set +e
-          Rscript - <<'RSCRIPT' > parse.log 2>&1
           files <- c(
             list.files("R", pattern = "[.]R$", full.names = TRUE),
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
-          for (file in files) {
-            message("Parsing ", file)
-            parse(file = file)
-          }
-          RSCRIPT
-          status=$?
-          echo "$status" > parse.status
-          cat parse.log
-          exit 0
-
-      - name: Upload parse log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: regcompass-parse-log
-          path: |
-            parse.log
-            parse.status
-          retention-days: 3
-
-      - name: Check parse status
-        run: test "$(cat parse.status)" = "0"
+          invisible(lapply(files, parse))
 
       - name: Install dependencies
         shell: Rscript {0}
@@ -64,10 +41,8 @@ jobs:
         run: R CMD INSTALL . --no-multiarch --with-keep.source
 
       - name: Run tests
-        shell: bash
+        shell: Rscript {0}
         run: |
-          set +e
-          Rscript - <<'RSCRIPT' > test.log 2>&1
           library(RegCompassR)
           for (file in list.files("R", pattern = "[.]R$", full.names = TRUE)) {
             sys.source(file, envir = .GlobalEnv)
@@ -78,21 +53,3 @@ jobs:
             stop_on_failure = TRUE,
             stop_on_warning = FALSE
           )
-          RSCRIPT
-          status=$?
-          echo "$status" > test.status
-          cat test.log
-          exit 0
-
-      - name: Upload test log
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: regcompass-test-log
-          path: |
-            test.log
-            test.status
-          retention-days: 3
-
-      - name: Check test status
-        run: test "$(cat test.status)" = "0"
