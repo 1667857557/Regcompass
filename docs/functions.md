@@ -51,4 +51,6 @@ result <- rc_run_regcompass(
 )
 ```
 
+Use one fixed `metacell_args$gamma` across all strict strata. Strata that produce fewer than `pando_args$min_metacells` are skipped before Pando and excluded from downstream global calibration and scoring.
+
 Downstream exports and statistics are intentionally left to project-specific code so the supported API remains focused on setup plus the canonical workflow.

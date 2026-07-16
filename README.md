@@ -64,7 +64,6 @@ result <- rc_run_regcompass(
   medium_scenarios = medium,
   metacell_args = list(
     gamma = 150,
-    adaptive_gamma = TRUE,
     min_cells_per_stratum = 100,
     min_metacell_size = 10,
     min_metacells_per_stratum = 10
@@ -92,6 +91,8 @@ result <- rc_run_regcompass(
   parallel_backend = "snow"
 )
 ```
+
+Use one fixed `gamma` for all strict strata. Strata that produce fewer than `pando_args$min_metacells` are recorded as skipped and are not included in downstream global calibration or scoring.
 
 Optional technical-batch correction is configured in `layer1_args` after logCPM merging and before gene scoring:
 

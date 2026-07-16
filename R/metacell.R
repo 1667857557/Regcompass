@@ -411,7 +411,6 @@ rc_make_supercell2_metacells <- function(object,
                                          min_cells_per_stratum = 100,
                                          min_metacell_size = 20,
                                          min_metacells_per_stratum = 2L,
-                                         adaptive_gamma = FALSE,
                                          label_col = NULL,
                                          fragment_files = NULL,
                                          bgzip_path = "bgzip",
@@ -464,10 +463,6 @@ rc_make_supercell2_metacells <- function(object,
       diag <- data.frame(group_id = key, n_cells = length(cells), skipped = TRUE, skip_reason = reason, gamma = gamma, min_required_cells = min_required_cells, stringsAsFactors = FALSE)
       .rc_write_tsv_gz(diag, file.path(stratum_dir, "qc", "metacell_qc.tsv.gz"))
       return(stratum_dir)
-    }
-    if (isTRUE(adaptive_gamma)) {
-      gamma_i <- min(as.integer(gamma), floor(length(cells) / as.integer(min_metacells_per_stratum)))
-      gamma_i <- max(gamma_i, as.integer(min_metacell_size))
     }
     prefix <- paste(vapply(vals, .rc_safe_path_component, character(1)), collapse = "_")
     prefix_mc <- paste0(prefix, "_MC_")
@@ -586,7 +581,6 @@ rc_make_supercell2_metacells <- function(object,
         min_cells_per_stratum = min_cells_per_stratum,
         min_metacell_size = min_metacell_size,
         min_metacells_per_stratum = min_metacells_per_stratum,
-        adaptive_gamma = adaptive_gamma,
         label_col = label_col,
         fragment_files = fragment_manifest,
         bgzip_path = bgzip_path,

@@ -534,7 +534,7 @@
       "rna_reduction", "atac_reduction", "rna_dims", "atac_dims",
       "gamma", "seed", "min_cells_per_stratum",
       "min_metacell_size", "min_metacells_per_stratum",
-      "adaptive_gamma", "label_col", "bgzip_path", "tabix_path",
+      "label_col", "bgzip_path", "tabix_path",
       "fragment_nb_cl", "overwrite"
     )
   )
@@ -552,11 +552,15 @@
   )
   minimum_metacells <- as.integer(pando_args$min_metacells %||% 20L)
   if (nrow(metacells$metacell_meta) < minimum_metacells) {
-    stop(
-      "Stratum `", group_id, "` produced fewer than ",
-      minimum_metacells, " metacells.",
-      call. = FALSE
-    )
+    return(list(
+      group_id = group_id,
+      status = "skipped_too_few_metacells",
+      artifact_file = NA_character_,
+      n_cells = length(cells),
+      n_metacells = nrow(metacells$metacell_meta),
+      error_class = NA_character_,
+      error_message = paste0("Produced fewer than ", minimum_metacells, " metacells.")
+    ))
   }
   metacell_object <- rc_load_or_merge_metacell_objects(
     metacells$metacell_objects,

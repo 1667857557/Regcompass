@@ -8,6 +8,18 @@ test_that("integrated workflow keeps one barrier between the two worker pools", 
   expect_match(body_text, "unit = \"metacell\"", fixed = TRUE)
 })
 
+
+test_that("integrated workflow uses fixed metacell gamma and skips low-yield strata", {
+  workflow_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  worker_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
+  metacell_formals <- names(formals(rc_make_supercell2_metacells))
+  expect_false("adaptive_gamma" %in% metacell_formals)
+  expect_false(grepl("adaptive_gamma", workflow_text, fixed = TRUE))
+  expect_false(grepl("adaptive_gamma", worker_text, fixed = TRUE))
+  expect_match(worker_text, "skipped_too_few_metacells", fixed = TRUE)
+  expect_match(workflow_text, "n_skipped_too_few_metacells", fixed = TRUE)
+})
+
 test_that("strict-stratum worker runs Pando and local FASTCORE", {
   body_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
   expect_match(body_text, "rc_make_supercell2_metacells", fixed = TRUE)
