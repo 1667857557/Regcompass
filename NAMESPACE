@@ -1,3 +1,4 @@
 export(rc_prepare_human2_gem)
 export(rc_make_medium_scenarios)
 export(rc_run_regcompass)
+export(rc_run_regcompass_one_shot)

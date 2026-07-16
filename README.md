@@ -22,9 +22,71 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-## Optional setup steps
+## Tutorial option 1: run everything in one call
 
-Prepare or load a RegCompass-compatible GEM before the main workflow. The helper below downloads and converts Human-GEM when you want the packaged default.
+Use `rc_run_regcompass_one_shot()` when you want a compact tutorial or a
+first-pass run with the packaged Human-GEM and medium defaults. The helper
+prepares Human-GEM when `gem` is not supplied, builds the shared medium when
+`medium_scenarios` is not supplied, and then runs the canonical RegCompass
+workflow.
+
+```r
+library(RegCompassR)
+library(Pando)
+library(BSgenome.Hsapiens.UCSC.hg38)
+data(motifs, package = "Pando")
+
+result <- rc_run_regcompass_one_shot(
+  object = object,
+  outdir = "RegCompass_result",
+  pfm = motifs,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  fragment_files = fragment_files,
+  humangem_version = "2.0.0",
+  medium_scenario = "blood_like",
+  sample_col = "sample_id",
+  condition_col = "condition",
+  celltype_col = "cell_type",
+  model_mode = "meta_module_gem",
+  metacell_args = list(
+    gamma = 150,
+    min_cells_per_stratum = 100,
+    min_metacell_size = 10,
+    min_metacells_per_stratum = 10
+  ),
+  layer1_args = list(
+    local_fastcore = TRUE,
+    sample_balance = TRUE,
+    expression_batch_correction = "none"
+  ),
+  pando_args = list(
+    min_metacells = 20,
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0,
+      adjust_method = "fdr"
+    )
+  ),
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  ),
+  upstream_workers = 6,
+  layer2_workers = 12,
+  parallel_backend = "snow"
+)
+```
+
+## Tutorial option 2: run setup and workflow step by step
+
+Use the step-by-step form when you want to inspect, cache, or customize setup
+objects before launching the expensive workflow.
+
+### Step 1: prepare or load a GEM
+
+Prepare or load a RegCompass-compatible GEM before the main workflow. The helper
+below downloads and converts Human-GEM when you want the packaged default.
 
 ```r
 library(RegCompassR)
@@ -32,7 +94,10 @@ library(RegCompassR)
 gem <- rc_prepare_human2_gem(version = "2.0.0")
 ```
 
-Build one shared medium definition for all conditions so downstream scores remain comparable.
+### Step 2: build shared medium scenarios
+
+Build one shared medium definition for all conditions so downstream scores
+remain comparable.
 
 ```r
 medium <- rc_make_medium_scenarios(
@@ -41,9 +106,10 @@ medium <- rc_make_medium_scenarios(
 )
 ```
 
-## Run RegCompass
+### Step 3: run RegCompass
 
-Prepare motif PFMs, a genome object and fragment files, then run the main workflow.
+Prepare motif PFMs, a genome object and fragment files, then run the main
+workflow with the explicit `gem` and `medium` objects from the previous steps.
 
 ```r
 library(Pando)
@@ -92,9 +158,12 @@ result <- rc_run_regcompass(
 )
 ```
 
-Use one fixed `gamma` for all strict strata. Strata that produce fewer than `pando_args$min_metacells` are recorded as skipped and are not included in downstream global calibration or scoring.
+Use one fixed `gamma` for all strict strata. Strata that produce fewer than
+`pando_args$min_metacells` are recorded as skipped and are not included in
+downstream global calibration or scoring.
 
-Optional technical-batch correction is configured in `layer1_args` after logCPM merging and before gene scoring:
+Optional technical-batch correction is configured in `layer1_args` after logCPM
+merging and before gene scoring:
 
 ```r
 layer1_args = list(
@@ -106,7 +175,8 @@ layer1_args = list(
 
 Do not use `sample_id` as a removable batch.
 
-Export and downstream statistical summaries can be generated from `result$microcompass` with project-specific code.
+Export and downstream statistical summaries can be generated from
+`result$microcompass` with project-specific code.
 
 ## Main result objects
 
