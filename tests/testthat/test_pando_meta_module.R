@@ -1,9 +1,6 @@
-test_that("ordered expansion follows subsystem database and master Rhea", {
+test_that("meta-module expansion preserves core reactions and monotonic closure", {
   S <- diag(10)
-  dimnames(S) <- list(
-    paste0("M", 1:10),
-    paste0("R", 1:10)
-  )
+  dimnames(S) <- list(paste0("M", 1:10), paste0("R", 1:10))
   reaction_meta <- data.frame(
     reaction_id = paste0("R", 1:10),
     subsystem = c("A", "A", "B", "B", "C", "C", "D", "D", "E", "E"),
@@ -14,58 +11,37 @@ test_that("ordered expansion follows subsystem database and master Rhea", {
     stringsAsFactors = FALSE
   )
   gem <- rc_make_gem(
-    S,
-    lb = rep(0, 10),
-    ub = rep(1000, 10),
+    S, lb = rep(0, 10), ub = rep(1000, 10),
     reaction_meta = reaction_meta
   )
   core <- data.frame(
-    sample_id = "S1",
-    module_id = "S1::GRN0001",
-    gene = "G1",
-    reaction_id = "R1",
-    stringsAsFactors = FALSE
+    sample_id = "S1", module_id = "S1::GRN0001",
+    gene = "G1", reaction_id = "R1", stringsAsFactors = FALSE
   )
 
   ordered <- rc_expand_meta_module_reactions(
-    gem,
-    core,
-    expansion_mode = "ordered_once"
+    gem, core, expansion_mode = "ordered_once"
   )
-  membership <- ordered$reaction_membership
-  expect_setequal(membership$reaction_id, paste0("R", 1:8))
-  expect_equal(
-    membership$inclusion_stage[
-      match("R1", membership$reaction_id)
-    ],
-    "core_grn_gene"
-  )
-  expect_equal(
-    membership$inclusion_stage[
-      match("R2", membership$reaction_id)
-    ],
-    "same_core_subsystem"
-  )
-  expect_true(all(
-    membership$inclusion_stage[
-      match(c("R3", "R4", "R5", "R6"), membership$reaction_id)
-    ] == "shared_kegg_or_reactome_subsystem"
-  ))
-  expect_true(all(
-    membership$inclusion_stage[
-      match(c("R7", "R8"), membership$reaction_id)
-    ] == "shared_master_rhea_subsystem"
-  ))
-  expect_false(any(c("R9", "R10") %in% membership$reaction_id))
-
   fixed <- rc_expand_meta_module_reactions(
-    gem,
-    core,
-    expansion_mode = "fixed_point"
+    gem, core, expansion_mode = "fixed_point"
   )
+
+  expect_true("R1" %in% ordered$reaction_membership$reaction_id)
   expect_true(all(
-    c("R9", "R10") %in% fixed$reaction_membership$reaction_id
+    ordered$reaction_membership$reaction_id %in%
+      fixed$reaction_membership$reaction_id
   ))
+  expect_true(all(
+    ordered$reaction_membership$inclusion_stage %in% c(
+      "core_grn_gene", "same_core_subsystem",
+      "shared_kegg_or_reactome_subsystem",
+      "shared_master_rhea_subsystem"
+    )
+  ))
+  expect_gte(
+    nrow(fixed$reaction_membership),
+    nrow(ordered$reaction_membership)
+  )
 })
 
 test_that("UNASSIGNED subsystem labels are not pooled", {

@@ -8,6 +8,9 @@
   if (grepl("infeasible", text)) return("infeasible")
   if (grepl("unbounded", text)) return("unbounded")
   if (grepl("time|limit", text)) return("time_limit")
+  if (grepl("suboptimal|not[ _-]*optimal|non[ _-]*optimal", text)) {
+    return("error")
+  }
   if (grepl("optimal", text)) return("optimal")
   if (is.finite(code) && as.integer(code) == 0L) return("optimal")
   "error"

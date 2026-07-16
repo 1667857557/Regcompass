@@ -7,7 +7,11 @@ rc_make_medium_scenarios <- function(
       "low_glucose", "low_glutamine", "lactate_available", "custom"
     ),
     custom_medium = NULL,
-    uptake_scale = c(1, 0.5, 0.1),
+    uptake_scale = c(
+      blood_like = 1, culture_like = 1, minimal = 0.1,
+      tumor_low_glucose = 0.5, low_glucose = 0.1,
+      low_glutamine = 0.1, lactate_available = 1
+    ),
     condition_col = NULL,
     exchange_roles = c("exchange"),
     condition = condition_col) {

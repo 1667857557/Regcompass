@@ -146,6 +146,7 @@ rc_test_microcompass_differential <- function(
         stop("Insufficient independent biological samples within cell type `",
              cell_type, "`. Metacells are not biological replicates.", call. = FALSE)
       }
+      descriptive_only <- length(n_by_group) < 2L
       return(data.frame(
         reaction_id = row_meta$reaction_id,
         target_direction = row_meta$target_direction,
@@ -154,9 +155,11 @@ rc_test_microcompass_differential <- function(
         contrast = NA_character_, effect_size = NA_real_, statistic = NA_real_,
         p_value = NA_real_,
         n_samples_per_group = paste(names(n_by_group), as.integer(n_by_group), sep = "=", collapse = ";"),
+        n_biological_samples = nrow(sample_meta),
         method = method, low_sample_power_flag = TRUE,
         preferred_sample_power_flag = preferred_low,
-        model_status = "low_sample_power", stringsAsFactors = FALSE
+        model_status = if (descriptive_only) "descriptive_only" else "low_sample_power",
+        stringsAsFactors = FALSE
       ))
     }
     if (identical(method, "limma_continuous")) {
