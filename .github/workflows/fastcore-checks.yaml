@@ -27,8 +27,9 @@ jobs:
         shell: Rscript {0}
         run: |
           install.packages(
-            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs", "limma")
+            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs", "BiocManager")
           )
+          BiocManager::install("limma", ask = FALSE, update = FALSE)
 
       - name: Verify focused dependencies
         shell: Rscript {0}
