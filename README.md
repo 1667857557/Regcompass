@@ -22,7 +22,9 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-## 1. Prepare Human-GEM
+## Optional setup steps
+
+Prepare or load a RegCompass-compatible GEM before the main workflow. The helper below downloads and converts Human-GEM when you want the packaged default.
 
 ```r
 library(RegCompassR)
@@ -30,7 +32,7 @@ library(RegCompassR)
 gem <- rc_prepare_human2_gem(version = "2.0.0")
 ```
 
-## 2. Define a shared medium
+Build one shared medium definition for all conditions so downstream scores remain comparable.
 
 ```r
 medium <- rc_make_medium_scenarios(
@@ -39,9 +41,9 @@ medium <- rc_make_medium_scenarios(
 )
 ```
 
-The integrated workflow requires the same medium constraints for all conditions.
+## Run RegCompass
 
-## 3. Run RegCompass
+Prepare motif PFMs, a genome object and fragment files, then run the main workflow.
 
 ```r
 library(Pando)
@@ -91,7 +93,7 @@ result <- rc_run_regcompass(
 )
 ```
 
-Optional technical-batch correction is configured in `layer1_args`:
+Optional technical-batch correction is configured in `layer1_args` after logCPM merging and before gene scoring:
 
 ```r
 layer1_args = list(
@@ -103,26 +105,7 @@ layer1_args = list(
 
 Do not use `sample_id` as a removable batch.
 
-## 4. Test condition differences
-
-```r
-differential <- rc_test_microcompass_differential(
-  result = result$microcompass,
-  formula = score ~ condition,
-  method = "limma_continuous"
-)
-```
-
-Meta cells are aggregated to biological samples before testing.
-
-## 5. Export matrices and diagnostics
-
-```r
-rc_export_microcompass(
-  result = result$microcompass,
-  outdir = "RegCompass_result/export"
-)
-```
+Export and downstream statistical summaries can be generated from `result$microcompass` with project-specific code.
 
 ## Main result objects
 
