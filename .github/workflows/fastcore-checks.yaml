@@ -1,151 +1,55 @@
-name: RegCompassR architecture and function checks
+name: RegCompassR checks
 
 on:
   pull_request:
   push:
-    branches:
-      - main
+    branches: [main]
 
 permissions:
   contents: read
 
 jobs:
-  function-audit:
+  test:
     runs-on: ubuntu-latest
-
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
+      - uses: actions/checkout@v7
 
-      - name: Set up R
-        uses: r-lib/actions/setup-r@v2
+      - uses: r-lib/actions/setup-r@v2
         with:
           r-version: release
           use-public-rspm: true
 
-      - name: Install focused R dependencies
+      - name: Install dependencies
         shell: Rscript {0}
         run: |
-          install.packages(
-            c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs", "BiocManager")
-          )
+          install.packages(c(
+            "Matrix", "matrixStats", "SeuratObject", "testthat",
+            "highs", "BiocManager"
+          ))
           BiocManager::install("limma", ask = FALSE, update = FALSE)
 
-      - name: Verify focused dependencies
-        shell: Rscript {0}
-        run: |
-          required <- c("Matrix", "matrixStats", "SeuratObject", "testthat", "highs", "limma")
-          missing <- required[!vapply(required, requireNamespace, logical(1), quietly = TRUE)]
-          if (length(missing)) stop("Missing focused dependencies: ", paste(missing, collapse = ", "))
-
-      - name: Parse package and test sources
+      - name: Parse sources
         shell: Rscript {0}
         run: |
           files <- c(
             list.files("R", pattern = "[.]R$", full.names = TRUE),
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
-          for (file in files) {
-            message("Parsing ", file)
-            parse(file = file)
-          }
+          invisible(lapply(files, parse))
 
-      - name: Install RegCompassR
+      - name: Install package
         run: R CMD INSTALL . --no-multiarch --with-keep.source
 
-      - name: Build function inventory and usage report
+      - name: Run tests
         shell: Rscript {0}
         run: |
-          dir.create("audit", showWarnings = FALSE)
-          r_files <- sort(list.files("R", pattern = "[.]R$", full.names = TRUE))
-          rows <- list()
-          for (file in r_files) {
-            expression <- parse(file = file, keep.source = TRUE)
-            refs <- attr(expression, "srcref")
-            for (i in seq_along(expression)) {
-              call <- expression[[i]]
-              if (!is.call(call) || !as.character(call[[1L]]) %in% c("<-", "=")) next
-              if (length(call) < 3L || !is.symbol(call[[2L]]) || !is.call(call[[3L]])) next
-              if (!identical(as.character(call[[3L]][[1L]]), "function")) next
-              sr <- refs[[i]]
-              rows[[length(rows) + 1L]] <- data.frame(
-                function_name = as.character(call[[2L]]),
-                file = file,
-                start_line = if (!is.null(sr)) as.integer(sr[[1L]]) else NA_integer_,
-                end_line = if (!is.null(sr)) as.integer(sr[[3L]]) else NA_integer_,
-                exported = as.character(call[[2L]]) %in% getNamespaceExports("RegCompassR"),
-                stringsAsFactors = FALSE
-              )
-            }
-          }
-          inventory <- if (length(rows)) do.call(rbind, rows) else data.frame()
-          utils::write.csv(inventory, "audit/function_inventory.csv", row.names = FALSE)
-          usage <- utils::capture.output(
-            try(codetools::checkUsagePackage("RegCompassR"), silent = TRUE)
-          )
-          writeLines(usage, "audit/codetools_usage.txt")
-          writeLines(
-            c(
-              paste("R files:", length(r_files)),
-              paste("Top-level functions:", nrow(inventory)),
-              paste("Exported functions:", sum(inventory$exported, na.rm = TRUE))
-            ),
-            "audit/function_inventory_summary.txt"
-          )
-
-      - name: Run focused mathematical and integration tests
-        shell: bash
-        run: |
-          set +e
-          mkdir -p audit
-          Rscript - <<'RSCRIPT' > audit/focused_tests.log 2>&1
           library(RegCompassR)
           for (file in list.files("R", pattern = "[.]R$", full.names = TRUE)) {
             sys.source(file, envir = .GlobalEnv)
           }
-          test_files <- c(
-            "tests/testthat/test_fastcore_architecture.R",
-            "tests/testthat/test_v13_integration.R",
-            "tests/testthat/test_global_metacell_workflow.R",
-            "tests/testthat/test_microcompass_corrections.R",
-            "tests/testthat/test_balanced_local_fastcore.R",
-            "tests/testthat/test_function_audit_v13.R",
-            "tests/testthat/test_math_biology_audit_v13.R"
+          testthat::test_dir(
+            "tests/testthat",
+            reporter = "summary",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
           )
-          for (file in test_files) {
-            testthat::test_file(
-              file,
-              reporter = "summary",
-              stop_on_failure = TRUE,
-              stop_on_warning = FALSE
-            )
-          }
-          RSCRIPT
-          status=$?
-          echo "$status" > audit/focused_tests.status
-          cat audit/focused_tests.log
-          exit 0
-
-      - name: Archive audited source
-        if: always()
-        shell: bash
-        run: |
-          mkdir -p audit
-          tar -czf audit/regcompass-audited-source.tar.gz \
-            R tests DESCRIPTION NAMESPACE NEWS.md README.md docs .github/workflows
-
-      - name: Upload audit artifacts
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: regcompass-function-audit
-          path: audit
-          if-no-files-found: error
-          retention-days: 14
-
-      - name: Fail when focused tests fail
-        if: always()
-        shell: bash
-        run: |
-          test -f audit/focused_tests.status
-          test "$(cat audit/focused_tests.status)" = "0"
