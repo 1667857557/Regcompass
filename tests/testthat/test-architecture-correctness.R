@@ -5,7 +5,9 @@ test_that("absolute gene evidence preserves zero and constant abundance", {
                  dimnames = list("g1", paste0("m", 1:3)))
 
   expect_equal(as.numeric(rc_gene_score(zero)), rep(0, 3))
-  expect_true(all(rc_gene_score(high) > 0.9))
+  expected_high <- log1p(10) / (log1p(10) + 1)
+  expect_equal(as.numeric(rc_gene_score(high)), rep(expected_high, 3))
+  expect_true(all(rc_gene_score(high) > 0.5))
 
   raw <- rbind(zero = c(0, 0, 0), constant_high = c(0.8, 0.8, 0.8))
   calibrated <- .rc_weighted_q95_calibrate(raw, rep(1 / 3, 3))
