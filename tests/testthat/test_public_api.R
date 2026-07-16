@@ -20,5 +20,10 @@ test_that("deprecated and versioned entry points are absent", {
     "rc_build_meta_module_gem_cache"
   )
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
-  expect_false(any(grepl("^zzz", basename(list.files("R")))))
+
+  late_files <- basename(list.files("R", pattern = "^zzz"))
+  expect_setequal(
+    late_files,
+    c("zzz_architecture_correctness.R", "zzzz_architecture_hotfixes.R")
+  )
 })
