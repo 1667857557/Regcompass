@@ -24,6 +24,10 @@ test_that("deprecated and versioned entry points are absent", {
   late_files <- basename(list.files("R", pattern = "^zzz"))
   expect_setequal(
     late_files,
-    c("zzz_architecture_correctness.R", "zzzz_architecture_hotfixes.R")
+    c(
+      "zzz_architecture_correctness.R",
+      "zzzz_architecture_hotfixes.R",
+      "zzzzz_signed_projection.R"
+    )
   )
 })
