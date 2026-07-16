@@ -37,7 +37,6 @@ jobs:
           python3 -m py_compile /tmp/apply_streamline.py
           python3 /tmp/apply_streamline.py
           rm -rf tools/streamline_chunks
-          rm .github/workflows/apply-streamline-cleanup.yaml
 
       - name: Commit streamlined package
         shell: bash
