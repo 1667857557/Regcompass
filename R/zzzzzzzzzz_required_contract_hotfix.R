@@ -127,9 +127,10 @@ rc_apply_medium_constraints <- function(
     medium$condition[
       is.na(medium$condition) | !nzchar(medium$condition)
     ] <- "all"
-    keep <- medium$condition == "all" |
-      (!is.null(condition) &
-         medium$condition == as.character(condition))
+    keep <- medium$condition == "all"
+    if (!is.null(condition)) {
+      keep <- keep | medium$condition == as.character(condition)
+    }
     medium <- medium[keep, , drop = FALSE]
 
     if (nrow(medium)) {
