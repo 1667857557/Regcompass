@@ -141,8 +141,9 @@ test_that("COMPASS-style medium preserves model direction and caps exchanges", {
   ))
 
   constrained <- rc_apply_medium_constraints(gem, medium)
-  expect_equal(constrained$lb[["EX_blocked"]], 0)
-  expect_equal(constrained$ub[["EX_blocked"]], 0)
+  blocked_index <- match("EX_blocked", colnames(constrained$S))
+  expect_equal(constrained$lb[[blocked_index]], 0)
+  expect_equal(constrained$ub[[blocked_index]], 0)
 })
 
 test_that("COMPASS-style model bounds are the workflow defaults", {
