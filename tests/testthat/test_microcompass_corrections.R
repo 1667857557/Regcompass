@@ -101,7 +101,7 @@ test_that("single-stoichiometry reactions are boundary-like", {
 
 test_that("row IDs require and parse labeled format", {
   expect_error(
-    rc_parse_microcompass_row_id("R1::forward::blood_like"),
+    rc_parse_microcompass_row_id("R1::forward::normal_human_plasma"),
     "reaction=...::direction=...::medium=...",
     fixed = TRUE
   )
@@ -122,7 +122,7 @@ test_that("row IDs require and parse labeled format", {
   parsed <- rc_parse_microcompass_row_id(c(
     paste0(
       "reaction=R1::direction=forward",
-      "::medium=blood_like::condition=ctrl"
+      "::medium=normal_human_plasma::condition=ctrl"
     ),
     paste0(
       "sample=S1::module=S1%3A%3AM1::reaction=R3",
@@ -136,7 +136,7 @@ test_that("row IDs require and parse labeled format", {
   )
   expect_equal(
     parsed$medium_scenario,
-    c("blood_like", "base")
+    c("normal_human_plasma", "base")
   )
   expect_equal(parsed$condition, c("ctrl", "treat"))
   expect_equal(parsed$sample_id[[2L]], "S1")

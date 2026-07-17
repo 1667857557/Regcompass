@@ -151,6 +151,13 @@ test_that("COMPASS-style model bounds are the workflow defaults", {
     eval(formals(rc_make_medium_scenarios)$scenario),
     "compass_model_bounds"
   )
+  expect_setequal(
+    names(eval(formals(rc_make_medium_scenarios)$uptake_scale)),
+    c(
+      "permissive_all_exchange", "normal_human_plasma", "rpmi1640",
+      "minimal", "low_glucose", "low_glutamine", "high_lactate"
+    )
+  )
   expect_identical(
     eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
     "compass_model_bounds"

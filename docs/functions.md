@@ -132,10 +132,9 @@ custom_flux <- rc_make_medium_scenarios(
 )
 ```
 
-Legacy names are mapped with warnings: `blood_like` becomes
-`normal_human_plasma`, `culture_like` becomes `rpmi1640`,
-`tumor_low_glucose` becomes `low_glucose`, and `lactate_available` becomes
-`high_lactate`.
+Current named backgrounds include `normal_human_plasma`, `rpmi1640`,
+`low_glucose`, and `high_lactate`. Retired names are not compatibility aliases.
+Use `custom_medium` only when measured or justified bounds are available.
 
 ## `rc_run_regcompass()`
 

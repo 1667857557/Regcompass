@@ -161,9 +161,9 @@ rc_make_medium_scenarios <- function(
     custom_medium = NULL,
     uptake_scale = c(
       permissive_all_exchange = 1,
-      blood_like = 1, culture_like = 1, minimal = 0.1,
-      tumor_low_glucose = 0.5, low_glucose = 0.1,
-      low_glutamine = 0.1, lactate_available = 1
+      normal_human_plasma = 1, rpmi1640 = 1, minimal = 0.1,
+      low_glucose = 0.1,
+      low_glutamine = 0.1, high_lactate = 1
     ),
     condition_col = NULL,
     exchange_roles = c("exchange"),
@@ -171,9 +171,9 @@ rc_make_medium_scenarios <- function(
     exchange_limit = 1) {
   choices <- c(
     "compass_model_bounds",
-    "permissive_all_exchange", "blood_like", "culture_like", "minimal",
-    "tumor_low_glucose", "low_glucose", "low_glutamine",
-    "lactate_available", "custom"
+    "permissive_all_exchange", "normal_human_plasma", "rpmi1640", "minimal",
+    "low_glucose", "low_glutamine",
+    "high_lactate", "custom"
   )
   scenario <- match.arg(scenario, choices = choices, several.ok = TRUE)
   pieces <- list()

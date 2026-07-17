@@ -111,10 +111,13 @@ test_that("permissive medium is labelled as a technical baseline", {
   expect_true(all(medium$medium_scenario_id == "permissive_all_exchange"))
   expect_true(all(medium$assumption_level == "technical_upper_bound"))
   expect_true(all(!medium$concentration_used_for_rate_bound))
-  expect_warning(
-    rc_make_medium_scenarios(gem, scenario = "blood_like"),
-    "not a curated medium"
+  named_medium <- rc_make_medium_scenarios(
+    gem, scenario = "normal_human_plasma"
   )
+  expect_true(all(named_medium$medium_scenario_id == "normal_human_plasma"))
+  expect_true(all(
+    named_medium$evidence_source == "current_named_medium_definition"
+  ))
 })
 
 test_that("shared-TF projection retains regulator and sign metadata", {

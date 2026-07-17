@@ -104,6 +104,10 @@ The default `compass_model_bounds` scenario preserves GEM exchange direction
 and caps exchange bounds uniformly. It is a model-defined environment, not a
 claim about measured metabolite concentrations.
 
+Current optional named backgrounds are `normal_human_plasma`, `rpmi1640`,
+`low_glucose`, and `high_lactate`. Retired identifiers are intentionally not
+accepted or remapped.
+
 ```{r medium}
 medium <- rc_make_medium_scenarios(
   gem = gem,

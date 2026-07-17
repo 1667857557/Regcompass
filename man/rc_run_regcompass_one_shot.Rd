@@ -22,16 +22,9 @@ rc_run_regcompass_one_shot(
   \code{NULL}.}
   \item{medium_scenario}{Scenario passed to
   \code{rc_make_medium_scenarios()} when \code{medium_scenarios} is
-  \code{NULL}. In addition to \code{"compass_model_bounds"}, published
-  human presets include \code{"normal_human_plasma"},
-  \code{"high_glucose"}, \code{"low_glucose"},
-  \code{"high_lactate"}, \code{"low_lactate"}, and
-  \code{"rpmi1640"}. See \code{?rc_make_medium_scenarios} for values,
-  citations and uptake semantics.}
+  \code{NULL}.}
   \item{medium_scenarios}{Optional pre-built medium table. When supplied, it
-  takes precedence over \code{medium_scenario}. Build this table explicitly
-  when using \code{custom_metabolites}, exact reaction bounds, a non-default
-  \code{exchange_limit}, or multiple scenarios.}
+  takes precedence over \code{medium_scenario}.}
   \item{...}{Additional arguments passed to \code{rc_run_regcompass()}, such as
   metadata columns, argument bundles, workers, and \code{inference_unit}.}
 }
@@ -43,13 +36,6 @@ Convenience entry point that prepares a pinned Human-GEM model and shared
 medium when they are not supplied, then delegates to the canonical integrated
 RegCompass workflow.
 }
-\details{
-The one-shot helper accepts one named medium preset through
-\code{medium_scenario}. For full control, first call
-\code{rc_make_medium_scenarios()} and pass its output through
-\code{medium_scenarios}. Published concentrations are provenance and relative
-sensitivity inputs, not physical uptake rates.
-}
 \examples{
 \dontrun{
 result <- rc_run_regcompass_one_shot(
@@ -58,7 +44,6 @@ result <- rc_run_regcompass_one_shot(
   pfm = motifs,
   genome = genome,
   fragment_files = fragment_files,
-  medium_scenario = "normal_human_plasma",
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
