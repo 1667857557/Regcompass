@@ -35,6 +35,7 @@ test_that("deprecated and versioned entry points are absent", {
     "workflow_stage_02_compatibility.R",
     "workflow_stage_03_signed_projection.R",
     "workflow_stage_04_result_contracts.R",
+    "workflow_stage_04b_human_medium_presets.R",
     "workflow_stage_05_api_contracts.R",
     "workflow_stage_06_audit_contracts.R"
   )
