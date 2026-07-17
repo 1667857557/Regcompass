@@ -1,0 +1,42 @@
+name: Static contract check
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  parse:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - name: Parse R sources
+        shell: Rscript {0}
+        run: |
+          files <- list.files("R", pattern = "\\.R$", full.names = TRUE)
+          invisible(lapply(files, parse))
+      - name: Parse tests
+        shell: Rscript {0}
+        run: |
+          files <- list.files("tests", pattern = "\\.[Rr]$", full.names = TRUE, recursive = TRUE)
+          invisible(lapply(files, parse))
+      - name: Parse installed help pages
+        shell: Rscript {0}
+        run: |
+          files <- list.files("man", pattern = "\\.Rd$", full.names = TRUE)
+          invisible(lapply(files, tools::parse_Rd))
+      - name: Validate DESCRIPTION collate files
+        shell: Rscript {0}
+        run: |
+          description <- read.dcf("DESCRIPTION")
+          collate <- strsplit(description[1, "Collate"], "[[:space:]]+")[[1]]
+          collate <- gsub("^'|'$", "", collate)
+          collate <- collate[nzchar(collate)]
+          missing <- collate[!file.exists(file.path("R", collate))]
+          if (length(missing)) stop("Missing Collate files: ", paste(missing, collapse = ", "))
