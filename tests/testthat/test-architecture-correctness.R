@@ -147,6 +147,6 @@ test_that("sample by cell type is the default inference unit", {
   )
   expect_identical(
     eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
-    "permissive_all_exchange"
+    "compass_model_bounds"
   )
 })
