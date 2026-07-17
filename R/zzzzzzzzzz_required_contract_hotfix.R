@@ -272,3 +272,55 @@ rc_compute_multiome_penalty <- function(...) {
   )
   answer
 }
+
+# The canonical GPR contract is explicit at the function boundary. Alternative
+# aggregation heuristics remain available only when callers request them.
+rc_reaction_capacity <- function(
+    gpr_list, gene_score,
+    promiscuity_mode = c("none", "sqrt", "linear"),
+    tau = 0.20,
+    and_method = c("min", "boltzmann", "mean"),
+    or_method = c("max", "sum_sqrtK", "prob_or", "sum"),
+    BPPARAM = NULL) {
+  promiscuity_mode <- match.arg(promiscuity_mode)
+  and_method <- match.arg(and_method)
+  or_method <- match.arg(or_method)
+  .rc_original_reaction_capacity(
+    gpr_list = gpr_list,
+    gene_score = gene_score,
+    promiscuity_mode = promiscuity_mode,
+    tau = tau,
+    and_method = and_method,
+    or_method = or_method,
+    BPPARAM = BPPARAM
+  )
+}
+
+# GPR-filtered expression must never be normalized by the GPR subset library
+# size. The canonical workflow caches full-transcriptome library sizes before
+# filtering; callers outside that workflow must pass `library_size` explicitly.
+.rc_required_contract_previous_metacell_logcpm <- .rc_metacell_logcpm
+
+.rc_metacell_logcpm <- function(counts, scale_factor = 1e6,
+                                 library_size = NULL) {
+  counts <- methods::as(counts, "dgCMatrix")
+  if (is.null(library_size)) {
+    key <- .rc_library_cache_key(colnames(counts))
+    if (!exists(key, envir = .rc_full_library_size_cache,
+                inherits = FALSE)) {
+      stop(
+        paste(
+          "Full-transcriptome RNA library sizes are required before GPR-gene filtering.",
+          "Pass `library_size` explicitly or run the canonical metacell workflow",
+          "so full-library sizes are cached before subsetting."
+        ),
+        call. = FALSE
+      )
+    }
+  }
+  .rc_required_contract_previous_metacell_logcpm(
+    counts = counts,
+    scale_factor = scale_factor,
+    library_size = library_size
+  )
+}
