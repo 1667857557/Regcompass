@@ -7,6 +7,19 @@ rc_export_microcompass <- function(result, outdir,
   microcompass_dir <- file.path(outdir, "04_microcompass")
   model_dir <- file.path(outdir, "03_models")
 
+  write_tsv_gz <- function(value, path) {
+    connection <- gzfile(path, "wt")
+    on.exit(close(connection), add = TRUE)
+    utils::write.table(
+      value,
+      connection,
+      sep = "\t",
+      quote = FALSE,
+      row.names = FALSE
+    )
+    invisible(path)
+  }
+
   if (isTRUE(write_matrices)) {
     dir.create(
       microcompass_dir,
@@ -56,51 +69,27 @@ rc_export_microcompass <- function(result, outdir,
     )
 
     if (!is.null(result$medium_scenarios)) {
-      utils::write.table(
+      write_tsv_gz(
         result$medium_scenarios,
-        gzfile(
-          file.path(medium_dir, "medium_scenarios.tsv.gz"),
-          "wt"
-        ),
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
+        file.path(medium_dir, "medium_scenarios.tsv.gz")
       )
     }
     if (!is.null(result$model_cache_summary)) {
-      utils::write.table(
+      write_tsv_gz(
         result$model_cache_summary,
-        gzfile(
-          file.path(model_dir, "model_cache_summary.tsv.gz"),
-          "wt"
-        ),
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
+        file.path(model_dir, "model_cache_summary.tsv.gz")
       )
     }
     if (!is.null(result$model_diagnostics)) {
-      utils::write.table(
+      write_tsv_gz(
         result$model_diagnostics,
-        gzfile(
-          file.path(model_dir, "model_diagnostics.tsv.gz"),
-          "wt"
-        ),
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
+        file.path(model_dir, "model_diagnostics.tsv.gz")
       )
     }
     if (!is.null(result$lp_diagnostics)) {
-      utils::write.table(
+      write_tsv_gz(
         result$lp_diagnostics,
-        gzfile(
-          file.path(microcompass_dir, "lp_diagnostics.tsv.gz"),
-          "wt"
-        ),
-        sep = "\t",
-        quote = FALSE,
-        row.names = FALSE
+        file.path(microcompass_dir, "lp_diagnostics.tsv.gz")
       )
     }
   }
