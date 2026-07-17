@@ -98,18 +98,22 @@ test_that("missing and no-GPR evidence are not cheaper than observed zero", {
 
 test_that("COMPASS-style medium preserves model direction and caps exchanges", {
   S <- Matrix::Matrix(
-    matrix(c(-1, -1, -1, 1), nrow = 1),
+    matrix(c(-1, -1, -1, -1, 1), nrow = 1),
     sparse = TRUE
   )
   rownames(S) <- "m_e"
-  colnames(S) <- c("EX_both", "EX_secrete", "EX_uptake", "R1")
+  colnames(S) <- c(
+    "EX_both", "EX_secrete", "EX_uptake", "EX_blocked", "R1"
+  )
   gem <- list(
     S = S,
-    lb = stats::setNames(c(-1000, 0, -1000, 0), colnames(S)),
-    ub = stats::setNames(c(1000, 1000, 0, 1000), colnames(S)),
+    lb = stats::setNames(c(-1000, 0, -1000, 0, 0), colnames(S)),
+    ub = stats::setNames(c(1000, 1000, 0, 0, 1000), colnames(S)),
     reaction_meta = data.frame(
       reaction_id = colnames(S),
-      role = c("exchange", "exchange", "exchange", "internal"),
+      role = c(
+        "exchange", "exchange", "exchange", "exchange", "internal"
+      ),
       stringsAsFactors = FALSE
     )
   )
@@ -119,19 +123,26 @@ test_that("COMPASS-style medium preserves model direction and caps exchanges", {
     scenario = "compass_model_bounds"
   )
   medium <- medium[
-    match(c("EX_both", "EX_secrete", "EX_uptake"),
-          medium$exchange_reaction_id),
+    match(
+      c("EX_both", "EX_secrete", "EX_uptake", "EX_blocked"),
+      medium$exchange_reaction_id
+    ),
     ,
     drop = FALSE
   ]
 
-  expect_equal(medium$lb, c(-1, 0, -1))
-  expect_equal(medium$ub, c(1, 1, 0))
+  expect_equal(medium$lb, c(-1, 0, -1, 0))
+  expect_equal(medium$ub, c(1, 1, 0, 0))
+  expect_true(all(medium$available))
   expect_true(all(medium$condition == "all"))
   expect_true(all(medium$exchange_limit == 1))
   expect_true(all(
     medium$assumption_level == "shared_model_defined_environment"
   ))
+
+  constrained <- rc_apply_medium_constraints(gem, medium)
+  expect_equal(constrained$lb[["EX_blocked"]], 0)
+  expect_equal(constrained$ub[["EX_blocked"]], 0)
 })
 
 test_that("COMPASS-style model bounds are the workflow defaults", {
