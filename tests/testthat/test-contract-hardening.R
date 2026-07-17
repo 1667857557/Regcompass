@@ -89,3 +89,38 @@ test_that("GPR-subset logCPM requires full-transcriptome library sizes", {
 
   expect_equal(as.matrix(observed), expected)
 })
+
+test_that("integrated workflow validates routing inputs before delegation", {
+  common <- list(
+    object = NULL,
+    gem = list(),
+    outdir = tempfile("regcompass-routing-"),
+    pfm = NULL,
+    genome = NULL,
+    medium_scenarios = data.frame()
+  )
+
+  expect_error(
+    do.call(rc_run_regcompass, c(common, list(model_mode = "invalid"))),
+    "'arg' should be one of"
+  )
+  expect_error(
+    do.call(rc_run_regcompass, c(common, list(parallel_backend = "invalid"))),
+    "'arg' should be one of"
+  )
+  expect_error(
+    do.call(rc_run_regcompass, c(common, list(inference_unit = "invalid"))),
+    "'arg' should be one of"
+  )
+  expect_error(
+    do.call(
+      rc_run_regcompass,
+      c(common, list(strict_biological_defaults = NA))
+    ),
+    "strict_biological_defaults.*TRUE or FALSE"
+  )
+  expect_error(
+    do.call(rc_run_regcompass, c(common, list(layer2_args = "invalid"))),
+    "argument bundles must be lists: layer2_args"
+  )
+})

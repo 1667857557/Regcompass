@@ -121,4 +121,6 @@ main path.
 
 The primary outputs are `result$layer1`, `result$grn_meta_modules`, and
 `result$microcompass`. See the [workflow](docs/workflow.md) and
-[public functions](docs/functions.md) for the compact contract.
+[public functions](docs/functions.md) for the compact contract. The
+[`regcompass-workflow` vignette](vignettes/regcompass-workflow.Rmd) provides a
+complete, input-to-output walkthrough with explicit and one-shot entry points.
