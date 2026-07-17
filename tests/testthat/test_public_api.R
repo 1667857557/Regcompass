@@ -26,15 +26,24 @@ test_that("deprecated and versioned entry points are absent", {
   } else {
     normalizePath(file.path("..", "..", "R"), mustWork = TRUE)
   }
-  late_files <- basename(list.files(source_dir, pattern = "^zzz"))
-  expect_setequal(
-    late_files,
+  legacy_late_files <- basename(list.files(source_dir, pattern = "^zzz"))
+  expect_length(legacy_late_files, 0L)
+
+  workflow_stages <- sprintf(
+    "workflow_stage_%02d_%s.R",
+    seq_len(5L),
     c(
-      "zzz_architecture_correctness.R",
-      "zzzz_architecture_hotfixes.R",
-      "zzzzz_signed_projection.R",
-      "zzzzzzzz_required_result_fixes.R",
-      "zzzzzzzzzz_required_contract_hotfix.R"
+      "architecture",
+      "compatibility",
+      "signed_projection",
+      "result_contracts",
+      "api_contracts"
     )
   )
+  expect_true(all(file.exists(file.path(source_dir, workflow_stages))))
+
+  description <- read.dcf(file.path(source_dir, "..", "DESCRIPTION"))
+  collate <- strsplit(description[1L, "Collate"], "[[:space:]]+")[[1L]]
+  collate <- gsub("^['\"]|['\"]$", "", collate[nzchar(collate)])
+  expect_identical(utils::tail(collate, length(workflow_stages)), workflow_stages)
 })

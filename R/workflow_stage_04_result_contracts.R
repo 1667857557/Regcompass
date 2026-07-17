@@ -1,4 +1,4 @@
-# Required result-level corrections.
+# Workflow stage 4: enforce normalization, penalty, medium and result contracts.
 #
 # This file is collated after the earlier compatibility layers. It changes only:
 #   1. RNA library-depth normalization,

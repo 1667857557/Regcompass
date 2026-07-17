@@ -1,4 +1,4 @@
-# Final compatibility fixes loaded after zzz_architecture_correctness.R.
+# Compatibility refinements loaded after workflow_stage_01_architecture.R.
 
 # Regulatory evidence follows the same conservative GPR semantics as RNA
 # evidence: required subunits use min and alternative isoenzymes use max.
