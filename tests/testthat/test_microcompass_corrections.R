@@ -45,7 +45,7 @@ test_that("reverse vmax uses the minimization objective convention", {
   expect_equal(answer$vmax, 3, tolerance = 1e-6)
 })
 
-test_that("curated support penalty overrides evidence penalty", {
+test_that("exchange reactions use one structural penalty regardless role source", {
   capacity <- matrix(
     0.01,
     nrow = 3,
@@ -68,8 +68,10 @@ test_that("curated support penalty overrides evidence penalty", {
     reaction_roles = roles
   )
   expect_equal(output$evidence_policy, "penalty_only")
-  expect_equal(output$penalty["EX_curated", "u1"], 0.05)
-  expect_gt(output$penalty["EX_inferred", "u1"], 0.05)
+  expect_equal(output$penalty["EX_curated", "u1"], 1)
+  expect_equal(output$penalty["EX_inferred", "u1"], 1)
+  expect_true(output$components$role_override_flag["EX_curated"])
+  expect_true(output$components$role_override_flag["EX_inferred"])
 })
 
 test_that("single-stoichiometry reactions are boundary-like", {
