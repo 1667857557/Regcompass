@@ -16,13 +16,32 @@ jobs:
   export:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - name: Archive repository
+      - name: Checkout RegCompassR
+        uses: actions/checkout@v4
+        with:
+          path: regcompass
+      - name: Checkout Mouse-GEM model files
+        uses: actions/checkout@v4
+        with:
+          repository: SysBioChalmers/Mouse-GEM
+          ref: main
+          path: mouse-gem
+          sparse-checkout: |
+            model/Mouse-GEM.yml
+            model/reactions.tsv
+          sparse-checkout-cone-mode: false
+      - name: Archive sources
         shell: bash
         run: |
-          tar --exclude=.git -czf "$RUNNER_TEMP/regcompass-source.tar.gz" .
+          tar --exclude=.git -czf "$RUNNER_TEMP/regcompass-source.tar.gz" -C regcompass .
+          tar --exclude=.git -czf "$RUNNER_TEMP/mouse-gem-model.tar.gz" -C mouse-gem model/Mouse-GEM.yml model/reactions.tsv
       - uses: actions/upload-artifact@v4
         with:
           name: regcompass-source
           path: ${{ runner.temp }}/regcompass-source.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mouse-gem-model
+          path: ${{ runner.temp }}/mouse-gem-model.tar.gz
           if-no-files-found: error
