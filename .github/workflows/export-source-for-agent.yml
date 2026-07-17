@@ -1,0 +1,25 @@
+name: Export source for refactor
+
+on:
+  push:
+    branches:
+      - agent/species-medium-core-refactor
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Archive repository
+        shell: bash
+        run: |
+          tar --exclude=.git -czf regcompass-source.tar.gz .
+      - uses: actions/upload-artifact@v4
+        with:
+          name: regcompass-source
+          path: regcompass-source.tar.gz
+          if-no-files-found: error
