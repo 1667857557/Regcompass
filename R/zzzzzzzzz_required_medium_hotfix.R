@@ -27,7 +27,7 @@
   exchange <- intersect(exchange, validated$reactions)
   if (!length(exchange)) {
     stop(
-      "No exchange reactions were identified for COMPASS-style model bounds.",
+      "No `exchange` reactions found for COMPASS-style model bounds.",
       call. = FALSE
     )
   }
