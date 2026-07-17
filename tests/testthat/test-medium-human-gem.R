@@ -19,10 +19,13 @@ test_that("Human-GEM MAR exchange reactions can be used by medium scenarios", {
   )
   expect_gt(nrow(medium), 0)
   expect_true(all(medium$assumption_level == "technical_upper_bound"))
-  expect_warning(
-    rc_make_medium_scenarios(gem, scenario = "blood_like"),
-    "not a curated medium"
+  named_medium <- rc_make_medium_scenarios(
+    gem, scenario = "normal_human_plasma"
   )
+  expect_true(all(named_medium$medium_scenario_id == "normal_human_plasma"))
+  expect_true(all(
+    named_medium$evidence_source == "current_named_medium_definition"
+  ))
 })
 
 test_that("medium scenarios fail informatively when no exchange reactions are annotated", {

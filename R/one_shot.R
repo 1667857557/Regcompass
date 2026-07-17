@@ -10,7 +10,7 @@ rc_run_regcompass_one_shot <- function(object, outdir, pfm, genome,
                                        fragment_files = NULL,
                                        gem = NULL,
                                        humangem_version = "2.0.0",
-                                       medium_scenario = "blood_like",
+                                       medium_scenario = "normal_human_plasma",
                                        medium_scenarios = NULL,
                                        ...) {
   if (is.null(gem)) {

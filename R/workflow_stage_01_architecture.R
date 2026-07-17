@@ -1,6 +1,6 @@
-# Canonical biological and mathematical corrections.
-# This file is collated last so existing APIs remain available while the
-# integrated workflow uses safer defaults.
+# Workflow stage 1: establish the canonical biological and inference contracts.
+# This file is explicitly collated after the base implementations so existing
+# APIs remain available while the integrated workflow uses safer defaults.
 
 .rc_original_reaction_capacity <- rc_reaction_capacity
 .rc_original_prepare_humangem_gpr_table <- rc_prepare_humangem_gpr_table
@@ -772,25 +772,24 @@ rc_compass_score_from_penalty <- function(P, feasible, epsilon = 1e-6,
   score
 }
 
-# Generic all-exchange assumptions are named explicitly. Legacy biological
-# sounding names remain as warning-producing aliases.
+# Medium backgrounds use only the current explicit scenario identifiers.
 rc_make_medium_scenarios <- function(
     gem,
     scenario = "permissive_all_exchange",
     custom_medium = NULL,
     uptake_scale = c(
       permissive_all_exchange = 1,
-      blood_like = 1, culture_like = 1, minimal = 0.1,
-      tumor_low_glucose = 0.5, low_glucose = 0.1,
-      low_glutamine = 0.1, lactate_available = 1
+      normal_human_plasma = 1, rpmi1640 = 1, minimal = 0.1,
+      low_glucose = 0.1,
+      low_glutamine = 0.1, high_lactate = 1
     ),
     condition_col = NULL,
     exchange_roles = c("exchange"),
     condition = condition_col) {
   choices <- c(
-    "permissive_all_exchange", "blood_like", "culture_like", "minimal",
-    "tumor_low_glucose", "low_glucose", "low_glutamine",
-    "lactate_available", "custom"
+    "permissive_all_exchange", "normal_human_plasma", "rpmi1640", "minimal",
+    "low_glucose", "low_glutamine",
+    "high_lactate", "custom"
   )
   scenario <- match.arg(scenario, choices = choices, several.ok = TRUE)
   if ("custom" %in% scenario) {
@@ -807,7 +806,7 @@ rc_make_medium_scenarios <- function(
     }
   }
   baseline <- .rc_original_make_medium_scenarios(
-    gem, scenario = "blood_like", uptake_scale = 1,
+    gem, scenario = "normal_human_plasma", uptake_scale = 1,
     condition_col = condition_col,
     exchange_roles = exchange_roles,
     condition = condition
@@ -834,10 +833,9 @@ rc_make_medium_scenarios <- function(
     reaction_scale <- rep(base_scale, nrow(out))
     target_pattern <- switch(
       name,
-      tumor_low_glucose = "glucose|d[- ]?glucose|glc",
       low_glucose = "glucose|d[- ]?glucose|glc",
       low_glutamine = "glutamine|gln",
-      lactate_available = "lactate|lac",
+      high_lactate = "lactate|lac",
       NULL
     )
     target <- rep(FALSE, nrow(out))
@@ -857,18 +855,18 @@ rc_make_medium_scenarios <- function(
     out$target_exchange_flag <- target
     out$evidence_source <- if (identical(name, "permissive_all_exchange")) {
       "explicit_permissive_all_exchange_technical_baseline"
-    } else if (name %in% c("blood_like", "culture_like", "minimal")) {
-      warning(
-        "Scenario `", name,
-        "` is a legacy permissive alias, not a curated medium. Use `custom_medium` for biological inference.",
-        call. = FALSE
-      )
-      "legacy_permissive_alias_not_curated"
+    } else if (name %in% c("normal_human_plasma", "rpmi1640")) {
+      "current_named_medium_definition"
     } else {
       "permissive_baseline_sensitivity_scenario"
     }
-    out$assumption_level <- if (identical(name, "permissive_all_exchange"))
-      "technical_upper_bound" else "sensitivity_only"
+    out$assumption_level <- if (identical(name, "permissive_all_exchange")) {
+      "technical_upper_bound"
+    } else if (name %in% c("normal_human_plasma", "rpmi1640")) {
+      "named_medium_background"
+    } else {
+      "sensitivity_only"
+    }
     out$concentration_used_for_rate_bound <- FALSE
     out$rate_bound_source <- "unmeasured_assumption"
     out

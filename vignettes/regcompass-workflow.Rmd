@@ -1,0 +1,268 @@
+---
+title: "RegCompassR: from multiome input to directional scoring"
+author: "RegCompass Developers"
+output: rmarkdown::html_vignette
+vignette: >
+  %\VignetteIndexEntry{RegCompassR: from multiome input to directional scoring}
+  %\VignetteEngine{knitr::rmarkdown}
+  %\VignetteEncoding{UTF-8}
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>",
+  eval = FALSE
+)
+```
+
+## Workflow contract
+
+RegCompassR exposes four supported functions. The explicit path prepares a
+Human-GEM model with `rc_prepare_human2_gem()`, defines exchange constraints
+with `rc_make_medium_scenarios()`, and passes both to `rc_run_regcompass()`.
+`rc_run_regcompass_one_shot()` performs those setup calls when `gem` or
+`medium_scenarios` is omitted.
+
+The integrated calculation follows this order:
+
+```text
+Seurat RNA + ATAC object and fragment files
+  -> condition x sample x cell-type strata
+  -> fixed-resolution metacells within each stratum
+  -> stratum-specific Pando regulatory evidence
+  -> conservative GPR reaction evidence
+  -> local FASTCORE-completed reaction meta-modules
+  -> sample-balanced global Layer 1 and one shared GEM
+  -> sample x cell-type directional minimum-discordance scoring
+```
+
+The primary score is an optimization penalty: lower values mean that the model
+requires less disagreement with the observed evidence. It is not a measured
+flux, a probability, or an independent observation for every metacell.
+
+## 1. Validate the multiome input
+
+`object` must inherit from `Seurat`, contain RNA and chromatin assays, and have
+non-missing metadata columns for biological sample, condition, and cell type.
+Cell barcodes must agree across the object and fragment files. Fragment files
+must be bgzip-compressed and tabix-indexed. They may already be registered on
+the chromatin assay or be supplied explicitly.
+
+```{r input-contract}
+required_metadata <- c("sample_id", "condition", "cell_type")
+stopifnot(inherits(object, "Seurat"))
+stopifnot(all(required_metadata %in% colnames(object[[]])))
+stopifnot(all(c("RNA", "ATAC") %in% names(object@assays)))
+stopifnot(!anyNA(object[[]][, required_metadata]))
+
+# A sample-aware manifest is the least ambiguous representation.
+fragment_files <- data.frame(
+  sample_id = c("donor_01", "donor_02"),
+  assay = "ATAC",
+  fragment_file = c(
+    "fragments/donor_01.fragments.tsv.gz",
+    "fragments/donor_02.fragments.tsv.gz"
+  )
+)
+stopifnot(all(file.exists(fragment_files$fragment_file)))
+stopifnot(all(file.exists(paste0(fragment_files$fragment_file, ".tbi"))))
+
+with(object[[]], table(condition, sample_id, cell_type))
+```
+
+Every biological sample must contribute at least one retained stratum. Choose
+`min_cells_per_stratum`, metacell resolution (`gamma`), and Pando's minimum
+metacell count together; otherwise the global completion barrier will stop the
+run rather than silently discard a sample.
+
+## 2. Prepare and inspect the GEM
+
+Pin a Human-GEM release for reproducibility. The helper downloads, converts,
+annotates, validates, and caches the model.
+
+```{r gem}
+library(RegCompassR)
+
+gem <- rc_prepare_human2_gem(
+  version = "2.0.0",
+  cache_dir = "model-cache"
+)
+
+dim(gem$S)
+head(gem$gpr_table)
+table(gem$reaction_meta$role, useNA = "ifany")
+gem$model_info[c("source", "version", "commit", "checksum")]
+```
+
+Do not use `version = "latest"` for a reproducible analysis. If it is required
+for exploration, it must be explicitly enabled with `allow_latest = TRUE`.
+
+## 3. Define one shared medium
+
+The default `compass_model_bounds` scenario preserves GEM exchange direction
+and caps exchange bounds uniformly. It is a model-defined environment, not a
+claim about measured metabolite concentrations.
+
+Current optional named backgrounds are `normal_human_plasma`, `rpmi1640`,
+`low_glucose`, and `high_lactate`. Retired identifiers are intentionally not
+accepted or remapped.
+
+```{r medium}
+medium <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "compass_model_bounds",
+  exchange_limit = 1
+)
+
+stopifnot(all(medium$exchange_reaction_id %in% colnames(gem$S)))
+stopifnot(all(medium$lb <= medium$ub))
+stopifnot(identical(unique(medium$condition), "all"))
+head(medium[c("exchange_reaction_id", "lb", "ub", "available")])
+```
+
+Use a custom table only when bounds have an external justification. It must
+include `medium_scenario_id`, `exchange_reaction_id`, `lb`, `ub`, and
+`available`. Keep the medium shared across conditions unless the experimental
+design independently establishes condition-specific exchange constraints.
+
+## 4. Run the explicit workflow
+
+The explicit entry point makes every major input visible. The PFM collection
+and genome object shown below are typical human defaults; use objects matching
+the organism and genome build of the ATAC assay.
+
+```{r explicit-run}
+library(Pando)
+library(BSgenome.Hsapiens.UCSC.hg38)
+data(motifs, package = "Pando")
+
+result <- rc_run_regcompass(
+  object = object,
+  gem = gem,
+  outdir = "RegCompass_result",
+  pfm = motifs,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  fragment_files = fragment_files,
+  sample_col = "sample_id",
+  condition_col = "condition",
+  celltype_col = "cell_type",
+  rna_assay = "RNA",
+  atac_assay = "ATAC",
+  model_mode = "meta_module_gem",
+  medium_scenarios = medium,
+  metacell_args = list(
+    gamma = 50,
+    min_cells_per_stratum = 1000,
+    min_metacell_size = 10
+  ),
+  pando_args = list(
+    min_metacells = 20,
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0,
+      adjust_method = "fdr"
+    )
+  ),
+  layer1_args = list(
+    local_fastcore = TRUE,
+    sample_balance = TRUE,
+    expression_batch_correction = "none"
+  ),
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  ),
+  inference_unit = "sample_celltype",
+  upstream_workers = 4,
+  layer2_workers = 4,
+  parallel_backend = "snow"
+)
+```
+
+The four `*_args` values are lists by contract. Integrated fields such as
+`layer1`, `gem`, `unit`, and `medium_scenarios` are owned by the workflow and
+must not be overridden through `layer2_args`. Use `inference_unit` on
+`rc_run_regcompass()` to select the Layer 2 unit.
+
+## 5. Equivalent one-shot entry point
+
+For a first run, omit `gem` and `medium_scenarios`; the one-shot function
+constructs them and delegates to the same integrated workflow. Arguments in
+`...` are passed to `rc_run_regcompass()`.
+
+```{r one-shot}
+result <- rc_run_regcompass_one_shot(
+  object = object,
+  outdir = "RegCompass_result",
+  pfm = motifs,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  fragment_files = fragment_files,
+  humangem_version = "2.0.0",
+  medium_scenario = "compass_model_bounds",
+  sample_col = "sample_id",
+  condition_col = "condition",
+  celltype_col = "cell_type",
+  inference_unit = "sample_celltype"
+)
+```
+
+Supply `gem = gem` and `medium_scenarios = medium` to the one-shot function if
+those objects were prepared separately. An explicit `medium_scenarios` table
+takes precedence over `medium_scenario`.
+
+## 6. Check the barrier and outputs
+
+Do not begin differential analysis until the upstream barrier and sample
+coverage have been inspected.
+
+```{r inspect-result}
+stopifnot(isTRUE(result$upstream_barrier$passed))
+table(result$upstream_status$status, useNA = "ifany")
+
+result$schema_version
+result$params[c(
+  "inference_unit",
+  "medium_policy",
+  "strict_biological_defaults",
+  "penalty_unit"
+)]
+
+dim(result$layer1$C_abs)
+head(result$grn_meta_modules$global_core_reactions)
+dim(result$microcompass$penalty)
+result$microcompass$primary_output_semantics
+```
+
+The returned object connects the phases as follows:
+
+| Component | Produced by | Consumed by / interpretation |
+|---|---|---|
+| `upstream_status`, `upstream_barrier` | strict-stratum workers | verifies all required strata and samples reached the global phase |
+| `layer1` | merged expression, GPR and Pando evidence | supplies absolute reaction evidence and diagnostics to Layer 2 |
+| `grn_meta_modules` | local module construction and union | defines shared core and reaction membership for the meta-module GEM |
+| `microcompass$penalty` | directional LP scoring | primary minimum evidence-discordance result; lower is more supported |
+| `microcompass$relative_penalty_rank` | within-target ranking | display diagnostic, not the primary inferential quantity |
+
+The run also writes the stratum manifest and status files, merged Layer 1,
+global meta-modules, and the final result under `outdir`. Keep these artifacts
+with the model version, medium table, parameters, and software environment.
+
+## 7. Failure checkpoints
+
+When a run stops, inspect the earliest applicable boundary:
+
+1. **Input:** metadata completeness, assay names, fragment paths and indexes.
+2. **Strata:** `00_strata/stratum_filter.tsv.gz` and
+   `00_strata/stratum_workflow_status.tsv.gz`.
+3. **Global barrier:** `00_strata/upstream_barrier.tsv.gz`; every sample must
+   retain an analyzable stratum.
+4. **Model:** reaction IDs in GPR, medium, membership, and target tables must
+   match the stoichiometric matrix column names.
+5. **Solver:** install the selected backend and record solver/time-limit
+   settings; use `solver = "highs"` for the default open-source path.
+
+For confirmatory comparisons, retain `inference_unit = "sample_celltype"` so
+biological samples, rather than metacells from the same sample, are the
+replicates.

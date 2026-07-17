@@ -1,4 +1,4 @@
-# Final compatibility fixes loaded after zzz_architecture_correctness.R.
+# Compatibility refinements loaded after workflow_stage_01_architecture.R.
 
 # Regulatory evidence follows the same conservative GPR semantics as RNA
 # evidence: required subunits use min and alternative isoenzymes use max.
@@ -46,9 +46,9 @@ rc_make_medium_scenarios <- local({
       custom_medium = NULL,
       uptake_scale = c(
         permissive_all_exchange = 1,
-        blood_like = 1, culture_like = 1, minimal = 0.1,
-        tumor_low_glucose = 0.5, low_glucose = 0.1,
-        low_glutamine = 0.1, lactate_available = 1
+        normal_human_plasma = 1, rpmi1640 = 1, minimal = 0.1,
+        low_glucose = 0.1,
+        low_glutamine = 0.1, high_lactate = 1
       ),
       condition_col = NULL,
       exchange_roles = c("exchange"),

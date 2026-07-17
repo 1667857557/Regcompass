@@ -2,12 +2,12 @@
 #' @export
 rc_make_medium_scenarios <- function(
     gem,
-    scenario = "blood_like",
+    scenario = "normal_human_plasma",
     custom_medium = NULL,
     uptake_scale = c(
-      blood_like = 1, culture_like = 1, minimal = 0.1,
-      tumor_low_glucose = 0.5, low_glucose = 0.1,
-      low_glutamine = 0.1, lactate_available = 1
+      normal_human_plasma = 1, rpmi1640 = 1, minimal = 0.1,
+      low_glucose = 0.1,
+      low_glutamine = 0.1, high_lactate = 1
     ),
     condition_col = NULL,
     exchange_roles = c("exchange"),
@@ -63,13 +63,12 @@ rc_make_medium_scenarios <- function(
   }
 
   scale_defaults <- c(
-    blood_like = 1,
-    culture_like = 1,
+    normal_human_plasma = 1,
+    rpmi1640 = 1,
     minimal = 0.1,
-    tumor_low_glucose = 0.5,
     low_glucose = 0.1,
     low_glutamine = 0.1,
-    lactate_available = 1
+    high_lactate = 1
   )
   if (!is.numeric(uptake_scale) || !length(uptake_scale) ||
       any(!is.finite(uptake_scale)) || any(uptake_scale < 0)) {
@@ -105,17 +104,16 @@ rc_make_medium_scenarios <- function(
   }
   names(annotation_text) <- as.character(meta$reaction_id)
   target_pattern <- list(
-    tumor_low_glucose = "glucose|d[- ]?glucose|glc",
     low_glucose = "glucose|d[- ]?glucose|glc",
     low_glutamine = "glutamine|gln",
-    lactate_available = "lactate|lac"
+    high_lactate = "lactate|lac"
   )
 
   make_rows <- function(scenario_id) {
     base_scale <- if (scenario_id == "minimal") {
       scale_defaults[["minimal"]]
     } else {
-      scale_defaults[["blood_like"]]
+      scale_defaults[["normal_human_plasma"]]
     }
     reaction_scale <- stats::setNames(rep(base_scale, length(exchange)), exchange)
     target_reactions <- character()
@@ -149,7 +147,7 @@ rc_make_medium_scenarios <- function(
       } else {
         "generic_medium_assumption"
       },
-      assumption_level = if (scenario_id %in% c("blood_like", "culture_like")) {
+      assumption_level = if (scenario_id %in% c("normal_human_plasma", "rpmi1640")) {
         "generic_baseline"
       } else {
         "sensitivity_scenario"

@@ -14,7 +14,7 @@
 - Reworked Pando evidence as signed TF–peak–gene regulatory support with TF expression and peak accessibility.
 - Preserved regulator and sign metadata in shared-TF projections.
 - Made missing/neutral regulatory evidence neutral in the LP penalty and prevented silent structural-support penalty overrides.
-- Renamed the generic all-exchange medium to `permissive_all_exchange`; legacy biological-sounding aliases now warn.
+- Added explicit named medium backgrounds without retaining compatibility aliases for retired names.
 - Changed the canonical inference unit to sample by cell type; metacell-level scoring is explicitly exploratory.
 - Replaced the MAD-sigmoid display score with a stable within-target empirical penalty rank; raw penalty is the primary output.
 

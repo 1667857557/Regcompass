@@ -3,6 +3,10 @@
 Only four functions form the supported API. Internal helpers may change and
 should not be called directly.
 
+After installation, each supported function has a standard R help page. Open
+it in RStudio with `?rc_run_regcompass`, `?rc_run_regcompass_one_shot`,
+`?rc_prepare_human2_gem`, or `?rc_make_medium_scenarios`.
+
 ## `rc_run_regcompass_one_shot()`
 
 The tutorial entry point. It prepares a Human-GEM model and shared medium when
@@ -33,6 +37,8 @@ Creates the shared exchange constraints used by every condition.
 medium <- rc_make_medium_scenarios(gem, scenario = "compass_model_bounds")
 ```
 
+Current named backgrounds include `normal_human_plasma`, `rpmi1640`,
+`low_glucose`, and `high_lactate`. Retired names are not compatibility aliases.
 Use `custom_medium` only when measured or justified bounds are available.
 
 ## `rc_run_regcompass()`
