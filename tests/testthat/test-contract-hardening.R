@@ -85,6 +85,7 @@ test_that("GPR-subset logCPM requires full-transcriptome library sizes", {
   expected <- log1p(
     as.matrix(counts) %*% diag(1e6 / as.numeric(library_size))
   )
+  dimnames(expected) <- dimnames(counts)
 
   expect_equal(as.matrix(observed), expected)
 })
