@@ -21,11 +21,15 @@
     stop("`half_saturation` must be one positive finite number.", call. = FALSE)
   }
   observed <- is.finite(X)
-  abundance <- expm1(pmax(X, 0))
-  score <- abundance / (abundance + half_saturation)
-  score[observed & abundance <= 0] <- 0
+  signal <- pmax(X, 0)
+  score <- signal / (signal + half_saturation)
+  score[observed & signal <= 0] <- 0
   score[!observed] <- NA_real_
   dimnames(score) <- dimnames(X)
+  attr(score, "score_semantics") <- paste(
+    "zero-preserving bounded support from non-negative normalized signal;",
+    "not a probability or enzyme capacity"
+  )
   score
 }
 

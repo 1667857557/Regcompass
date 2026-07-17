@@ -141,7 +141,7 @@ rc_make_supercell2_metacells <- function(...) {
     condition = "all",
     lb = lb,
     ub = ub,
-    available = lb < 0 | ub > 0,
+    available = TRUE,
     original_lb = original_lb,
     original_ub = original_ub,
     exchange_limit = exchange_limit,

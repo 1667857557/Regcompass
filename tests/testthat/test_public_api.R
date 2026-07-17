@@ -33,9 +33,7 @@ test_that("deprecated and versioned entry points are absent", {
       "zzz_architecture_correctness.R",
       "zzzz_architecture_hotfixes.R",
       "zzzzz_signed_projection.R",
-      "zzzzzz_signal_scale.R",
       "zzzzzzzz_required_result_fixes.R",
-      "zzzzzzzzz_required_medium_hotfix.R",
       "zzzzzzzzzz_required_contract_hotfix.R"
     )
   )
