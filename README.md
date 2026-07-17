@@ -113,6 +113,52 @@ result <- rc_run_regcompass(
 )
 ```
 
+## Published human medium presets
+
+`compass_model_bounds` remains the technical default. Human-only biological
+backgrounds are selected explicitly:
+
+```r
+plasma <- rc_make_medium_scenarios(
+  gem,
+  scenario = "normal_human_plasma"
+)
+
+high_glucose <- rc_make_medium_scenarios(gem, scenario = "high_glucose")
+low_glucose <- rc_make_medium_scenarios(gem, scenario = "low_glucose")
+high_lactate <- rc_make_medium_scenarios(gem, scenario = "high_lactate")
+low_lactate <- rc_make_medium_scenarios(gem, scenario = "low_lactate")
+rpmi <- rc_make_medium_scenarios(gem, scenario = "rpmi1640")
+```
+
+The presets close uptake for exchanges not represented by the selected
+background and reopen listed nutrients. They do not convert concentration in
+mM into physical flux. Glucose and lactate concentrations define relative
+sensitivity caps; other listed metabolites are treated as available. Every
+preset row records the human paper citation, DOI, PMID, concentration and bound
+provenance. See `?rc_make_medium_scenarios` and
+[`docs/functions.md`](docs/functions.md) for the exact values and references.
+
+Users can supply either exact reaction bounds with `custom_medium` or a
+metabolite availability table with `custom_metabolites`:
+
+```r
+custom <- rc_make_medium_scenarios(
+  gem,
+  scenario = "custom",
+  custom_metabolites = data.frame(
+    metabolite_name = c("glucose", "lactate"),
+    metabolite_pattern = c("glucose|glc", "lactate|lactic acid"),
+    available = TRUE,
+    concentration_mM = c(3, 8),
+    uptake_fraction = c(0.12, 0.40),
+    target_exchange_flag = TRUE,
+    required_match = TRUE,
+    reference_doi = "project-specific reference"
+  )
+)
+```
+
 Keep one fixed metacell `gamma` across strata. Strata below the minimum
 metacell count are recorded as skipped and excluded from calibration and
 scoring. Advanced settings remain available through `metacell_args`,
