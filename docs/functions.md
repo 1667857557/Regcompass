@@ -50,5 +50,7 @@ result <- rc_run_regcompass(
 ```
 
 The main path is strict-stratum metacells and Pando inference, local FASTCORE,
-global calibration and a shared GEM, followed by directional scoring. Project
-code should handle downstream reporting and statistics.
+global calibration and a shared GEM, followed by directional scoring. The
+[parameter-selection guide](../README.md#choosing-analysis-parameters) explains
+how to choose metacell resolution, Pando thresholds, calibration options, and
+the LP solver. Project code should handle downstream reporting and statistics.

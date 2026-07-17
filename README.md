@@ -37,9 +37,55 @@ result <- rc_run_regcompass_one_shot(
   fragment_files = fragment_files,
   sample_col = "sample_id",
   condition_col = "condition",
-  celltype_col = "cell_type"
+  celltype_col = "cell_type",
+  metacell_args = list(
+    gamma = 50,
+    min_cells_per_stratum = 1000,
+    min_metacell_size = 10
+  ),
+  pando_args = list(
+    min_metacells = 20,
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0,
+      adjust_method = "fdr"
+    )
+  ),
+  layer1_args = list(
+    local_fastcore = TRUE,
+    sample_balance = TRUE,
+    expression_batch_correction = "none"
+  ),
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  )
 )
 ```
+
+## Choosing analysis parameters
+
+The values above are starting points, not fixed analysis parameters. Choose
+them before a full run from stratum sizes, expected biological heterogeneity,
+and a small pilot run.
+
+| Setting | Role | Selection guidance |
+| --- | --- | --- |
+| `metacell_args$gamma` | Approximate cells represented by each metacell | Use a smaller value for more metacells and finer heterogeneity, or a larger value for stronger aggregation. Keep one value across all strata so resolution is comparable. |
+| `metacell_args$min_cells_per_stratum` | Minimum cells in each condition × sample × cell-type stratum | Set high enough to avoid unstable strata, but check that every biological sample retains at least one stratum. |
+| `metacell_args$min_metacell_size` | Flags undersized, low-power metacells | Increase when sparse RNA/ATAC profiles are unstable; do not use it to compensate for an unsuitable `gamma`. |
+| `pando_args$min_metacells` | Minimum metacells required for Pando | It must be compatible with `floor(n_cells / gamma)`. Strata below it are skipped, so inspect `00_strata/stratum_workflow_status.tsv.gz` after a pilot. |
+| `pando_infer_args` | Pando model and correlation/FDR filters | Start with the shown GLM settings; tighten correlation thresholds only when the pilot produces excessive weak edges. Apply one policy to every stratum. |
+| `layer1_args$local_fastcore` | Completes each local metabolic module | Keep enabled for the canonical path. `sample_balance = TRUE` prevents samples with more metacells from dominating global calibration. |
+| `layer1_args$expression_batch_correction` | Optional technical-batch correction | Keep `"none"` unless a documented technical batch exists. If using `"limma"`, provide technical and preserved biological design columns; never remove `sample_id` as batch. |
+| `layer2_args$target_direction` | Forward, reverse, or both-direction scoring | Use `"both"` unless the GEM direction or scientific question justifies one direction. |
+| `layer2_args$solver` | LP solver | `"highs"` is the default open-source choice; use Gurobi only in a licensed environment. |
+
+A practical pilot is to tabulate cells per strict stratum, choose one `gamma`,
+confirm that enough metacells remain for Pando, and only then scale workers.
+`upstream_workers` parallelizes strata and `layer2_workers` parallelizes
+metacell scoring; worker counts affect runtime and memory, not model semantics.
 
 ## Explicit setup
 
