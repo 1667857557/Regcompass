@@ -1,6 +1,6 @@
-# Canonical biological and mathematical corrections.
-# This file is collated last so existing APIs remain available while the
-# integrated workflow uses safer defaults.
+# Workflow stage 1: establish the canonical biological and inference contracts.
+# This file is explicitly collated after the base implementations so existing
+# APIs remain available while the integrated workflow uses safer defaults.
 
 .rc_original_reaction_capacity <- rc_reaction_capacity
 .rc_original_prepare_humangem_gpr_table <- rc_prepare_humangem_gpr_table

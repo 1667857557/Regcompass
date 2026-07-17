@@ -1,4 +1,4 @@
-# Signed projection policy loaded after the metadata-enrichment wrapper.
+# Workflow stage 3: preserve signed regulatory projections across components.
 # Discordant or mixed shared-TF relations remain in diagnostics but do not join
 # genes into one biological component. Direct TF -> target relations remain
 # valid component edges regardless of activation or repression sign.

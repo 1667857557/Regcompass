@@ -2,6 +2,19 @@
 
 This note documents the canonical RegCompassR model contract used by v1.4.3. The objective is not to claim quantitative intracellular flux from RNA and ATAC. The primary output remains a medium- and GEM-dependent **minimum evidence-discordance penalty**.
 
+## Implementation stages
+
+The base implementations are refined by five explicitly ordered source files:
+
+1. `workflow_stage_01_architecture.R` establishes the biological and inference contracts;
+2. `workflow_stage_02_compatibility.R` applies compatibility refinements;
+3. `workflow_stage_03_signed_projection.R` enforces signed-projection behavior;
+4. `workflow_stage_04_result_contracts.R` enforces normalization, medium, penalty and result contracts; and
+5. `workflow_stage_05_api_contracts.R` enforces the final public API and diagnostics contracts.
+
+Their load order is declared in `DESCRIPTION` through `Collate`; it no longer
+depends on opaque filenames containing increasing numbers of `z` characters.
+
 ## 1. Absolute evidence and relative state are separate
 
 Metacell RNA input is `log1p(CPM)`. Canonical bounded support is computed from the supplied non-negative normalized signal:

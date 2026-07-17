@@ -1,5 +1,5 @@
-# Preserve public validation order, named diagnostics and exact medium-bound
-# application after the required result-level corrections.
+# Workflow stage 5: preserve public API validation order, named diagnostics,
+# and exact medium-bound application after the result contracts.
 
 .rc_required_result_run_microcompass <- rc_run_microcompass
 
