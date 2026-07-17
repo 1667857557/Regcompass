@@ -3,6 +3,10 @@
 Only four functions form the supported API. Internal helpers may change and
 should not be called directly.
 
+After installation, each supported function has a standard R help page. Open
+it in RStudio with `?rc_run_regcompass`, `?rc_run_regcompass_one_shot`,
+`?rc_prepare_human2_gem`, or `?rc_make_medium_scenarios`.
+
 ## `rc_run_regcompass_one_shot()`
 
 The tutorial entry point. It prepares a Human-GEM model and shared medium when

@@ -1,4 +1,4 @@
-# Required result-level corrections.
+# Workflow stage 4: enforce normalization, penalty, medium and result contracts.
 #
 # This file is collated after the earlier compatibility layers. It changes only:
 #   1. RNA library-depth normalization,
@@ -544,6 +544,37 @@ rc_run_regcompass <- function(
     parallel_backend = c("auto", "serial", "snow", "multicore"),
     strict_biological_defaults = TRUE,
     inference_unit = c("sample_celltype", "metacell")) {
+  # Validate public routing arguments before the compatibility layers inspect
+  # the Seurat object or construct a default medium.  Besides producing useful
+  # API errors, this guarantees that the normalized scalar values are what the
+  # downstream workflow receives.
+  model_mode <- match.arg(model_mode)
+  parallel_backend <- match.arg(parallel_backend)
+  inference_unit <- match.arg(inference_unit)
+  if (!is.logical(strict_biological_defaults) ||
+      length(strict_biological_defaults) != 1L ||
+      is.na(strict_biological_defaults)) {
+    stop("`strict_biological_defaults` must be TRUE or FALSE.",
+         call. = FALSE)
+  }
+  named_list_args <- list(
+    metacell_args = metacell_args,
+    layer1_args = layer1_args,
+    pando_args = pando_args,
+    layer2_args = layer2_args
+  )
+  invalid_list_args <- names(named_list_args)[!vapply(
+    named_list_args,
+    is.list,
+    logical(1)
+  )]
+  if (length(invalid_list_args)) {
+    stop(
+      "Workflow argument bundles must be lists: ",
+      paste(invalid_list_args, collapse = ", "),
+      call. = FALSE
+    )
+  }
   if (is.null(medium_scenarios)) {
     medium_scenarios <- rc_make_medium_scenarios(
       gem,
