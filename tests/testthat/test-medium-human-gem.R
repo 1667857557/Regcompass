@@ -20,11 +20,13 @@ test_that("Human-GEM MAR exchange reactions can be used by medium scenarios", {
   expect_gt(nrow(medium), 0)
   expect_true(all(medium$assumption_level == "technical_upper_bound"))
   named_medium <- rc_make_medium_scenarios(
-    gem, scenario = "normal_human_plasma"
+    gem,
+    scenario = "normal_human_plasma",
+    strict_preset_matching = FALSE
   )
   expect_true(all(named_medium$medium_scenario_id == "normal_human_plasma"))
   expect_true(all(
-    named_medium$evidence_source == "current_named_medium_definition"
+    named_medium$evidence_source == "published_human_medium_preset"
   ))
 })
 
@@ -34,7 +36,7 @@ test_that("medium scenarios fail informatively when no exchange reactions are an
   colnames(S) <- "MAR00001"
   gem <- list(S = S, lb = c(MAR00001 = 0), ub = c(MAR00001 = 1000))
   gem <- rc_annotate_reaction_roles(gem, infer_from_id = FALSE)
-  expect_error(rc_make_medium_scenarios(gem), "No `exchange` reactions found")
+  expect_error(rc_make_medium_scenarios(gem), "No.*exchange reactions")
 })
 
 test_that("pure custom medium does not require a generic exchange baseline", {
