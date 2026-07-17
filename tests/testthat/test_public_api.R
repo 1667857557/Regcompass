@@ -10,6 +10,7 @@ test_that("public API contains only the supported workflow", {
   )
 })
 
+
 test_that("deprecated and versioned entry points are absent", {
   retired <- c(
     "rc_prepare_human2_gem_v12",
@@ -29,16 +30,13 @@ test_that("deprecated and versioned entry points are absent", {
   legacy_late_files <- basename(list.files(source_dir, pattern = "^zzz"))
   expect_length(legacy_late_files, 0L)
 
-  workflow_stages <- sprintf(
-    "workflow_stage_%02d_%s.R",
-    seq_len(5L),
-    c(
-      "architecture",
-      "compatibility",
-      "signed_projection",
-      "result_contracts",
-      "api_contracts"
-    )
+  workflow_stages <- c(
+    "workflow_stage_01_architecture.R",
+    "workflow_stage_02_compatibility.R",
+    "workflow_stage_03_signed_projection.R",
+    "workflow_stage_04_result_contracts.R",
+    "workflow_stage_05_api_contracts.R",
+    "workflow_stage_06_audit_contracts.R"
   )
   expect_true(all(file.exists(file.path(source_dir, workflow_stages))))
 

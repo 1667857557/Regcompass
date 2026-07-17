@@ -38,7 +38,10 @@ jobs:
           BiocManager::install("limma", ask = FALSE, update = FALSE)
 
       - name: Install package
-        run: R CMD INSTALL . --no-multiarch --with-keep.source
+        shell: bash
+        run: |
+          set -o pipefail
+          R CMD INSTALL . --no-multiarch --with-keep.source 2>&1 | tee install-output.txt
 
       - name: Run tests
         shell: Rscript {0}
@@ -72,5 +75,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: test-diagnostics
-          path: test-output.txt
+          path: |
+            install-output.txt
+            test-output.txt
           if-no-files-found: warn

@@ -16,22 +16,32 @@ test_that("integrated workflow keeps one barrier between the two worker pools", 
 
 test_that("integrated workflow uses fixed metacell gamma and skips low-yield strata", {
   workflow_text <- paste(deparse(body(.rc_original_run_regcompass)), collapse = "\n")
-  worker_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
+  worker_text <- paste(
+    deparse(body(.rc_required_previous_run_regcompass_stratum)),
+    collapse = "\n"
+  )
+  wrapper_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
   metacell_formals <- names(formals(rc_make_supercell2_metacells))
   expect_false("adaptive_gamma" %in% metacell_formals)
   expect_false(grepl("adaptive_gamma", workflow_text, fixed = TRUE))
   expect_false(grepl("adaptive_gamma", worker_text, fixed = TRUE))
   expect_match(worker_text, "skipped_too_few_metacells", fixed = TRUE)
   expect_match(workflow_text, "n_skipped_too_few_metacells", fixed = TRUE)
+  expect_match(wrapper_text, ".rc_finalize_stratum_capacity_params", fixed = TRUE)
 })
 
+
 test_that("strict-stratum worker runs Pando and local FASTCORE", {
-  body_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
+  body_text <- paste(
+    deparse(body(.rc_required_previous_run_regcompass_stratum)),
+    collapse = "\n"
+  )
   expect_match(body_text, "rc_make_supercell2_metacells", fixed = TRUE)
   expect_match(body_text, "rc_run_pando_meta_modules", fixed = TRUE)
   expect_match(body_text, ".rc_complete_stratum_meta_modules", fixed = TRUE)
   expect_false(grepl("LinkPeaks", body_text, fixed = TRUE))
 })
+
 
 test_that("global Layer 1 uses equal total sample weight", {
   artifacts <- list(
@@ -82,6 +92,7 @@ test_that("global Layer 1 uses equal total sample weight", {
   expect_equal(as.numeric(totals), c(0.5, 0.5), tolerance = 1e-12)
   expect_match(out$capacity_calibration_scope, "equal_sample_weighted", fixed = TRUE)
 })
+
 
 test_that("global union contains biological and local support reactions", {
   artifact <- list(
