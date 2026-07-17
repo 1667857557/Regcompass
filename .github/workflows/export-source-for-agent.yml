@@ -20,9 +20,9 @@ jobs:
       - name: Archive repository
         shell: bash
         run: |
-          tar --exclude=.git -czf regcompass-source.tar.gz .
+          tar --exclude=.git -czf "$RUNNER_TEMP/regcompass-source.tar.gz" .
       - uses: actions/upload-artifact@v4
         with:
           name: regcompass-source
-          path: regcompass-source.tar.gz
+          path: ${{ runner.temp }}/regcompass-source.tar.gz
           if-no-files-found: error
