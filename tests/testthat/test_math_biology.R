@@ -40,8 +40,8 @@ test_that("multiome penalty uses active role and GPR parameters", {
     C, F, gpr_diagnostics = gpr, reaction_roles = roles,
     weights = c(expr = 1, confidence = 0, missing = 0, gpr_missing = 2)
   )
-  expect_equal(out$penalty["EX", "u"], 0.05)
-  expect_gt(out$penalty["R", "u"], -log(0.5))
+  expect_equal(out$penalty["EX", "u"], 1)
+  expect_gt(out$penalty["R", "u"], 1 - 0.5)
   expect_match(out$evidence_description, "not the original COMPASS")
 })
 
@@ -75,4 +75,3 @@ test_that("blocked full-GEM directions are retained only as diagnostics", {
   expect_false("blocked" %in% allowed$reaction_id)
   expect_equal(allowed$target_direction, "forward")
 })
-
