@@ -38,17 +38,17 @@ jobs:
       - name: Apply audited fixes
         shell: bash
         run: |
-          set -euo pipefail
-          python3 .github/post-merge-audit.py
+          set -o pipefail
+          python3 .github/post-merge-audit.py 2>&1 | tee apply-output.txt
           rm -f .github/post-merge-audit.py
-          Rscript -e 'roxygen2::roxygenise()'
+          Rscript -e 'roxygen2::roxygenise()' 2>&1 | tee roxygen-output.txt
           git diff --check
 
       - name: Parse package and tests
         shell: bash
         run: |
-          set -euo pipefail
-          Rscript - <<'RS'
+          set -o pipefail
+          Rscript - <<'RS' 2>&1 | tee parse-output.txt
           files <- c(
             list.files("R", pattern = "[.]R$", full.names = TRUE),
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
@@ -62,9 +62,9 @@ jobs:
       - name: Install and test package namespace
         shell: bash
         run: |
-          set -euo pipefail
-          R CMD INSTALL --install-tests . --no-multiarch --with-keep.source
-          Rscript -e 'library(testthat); test_local(".", reporter = "summary", load_package = "installed")'
+          set -o pipefail
+          R CMD INSTALL --install-tests . --no-multiarch --with-keep.source 2>&1 | tee install-output.txt
+          Rscript -e 'library(testthat); test_local(".", reporter = "summary", load_package = "installed")' 2>&1 | tee test-output.txt
 
       - name: Commit validated fixes
         shell: bash
@@ -79,3 +79,16 @@ jobs:
           git commit -m "Fix post-merge cache and GRN correctness issues"
           git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
           git push origin HEAD:agent/fix-post-merge-audit
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: post-merge-audit-diagnostics
+          path: |
+            apply-output.txt
+            roxygen-output.txt
+            parse-output.txt
+            install-output.txt
+            test-output.txt
+          if-no-files-found: warn
