@@ -28,9 +28,10 @@ with `rc_make_medium_scenarios()`, and passes both to `rc_run_regcompass()`.
 The integrated calculation follows this order:
 
 ```text
-Seurat RNA + ATAC object and fragment files
+Seurat RNA + ATAC object plus optional fragment files
   -> condition x sample x cell-type strata
   -> fixed-resolution metacells within each stratum
+  -> fragment re-aggregation when fragment files are supplied; otherwise object ATAC peak counts
   -> stratum-specific Pando regulatory evidence
   -> conservative GPR reaction evidence
   -> local FASTCORE-completed reaction meta-modules
@@ -46,9 +47,12 @@ flux, a probability, or an independent observation for every metacell.
 
 `object` must inherit from `Seurat`, contain RNA and chromatin assays, and have
 non-missing metadata columns for biological sample, condition, and cell type.
-Cell barcodes must agree across the object and fragment files. Fragment files
-must be bgzip-compressed and tabix-indexed. They may already be registered on
-the chromatin assay or be supplied explicitly.
+If matching fragment files are available, cell barcodes must agree across the
+object and fragment files. Fragment files must be bgzip-compressed and
+tabix-indexed. They may already be registered on the chromatin assay or be
+supplied explicitly. If no matching fragment files are available, set
+`fragment_files = FALSE`; RegCompass skips fragment aggregation and uses ATAC
+peak raw counts already stored in the object.
 
 ```{r input-contract, purl=FALSE}
 required_metadata <- c("sample_id", "condition", "cell_type")
@@ -57,7 +61,7 @@ stopifnot(all(required_metadata %in% colnames(object[[]])))
 stopifnot(all(c("RNA", "ATAC") %in% names(object@assays)))
 stopifnot(!anyNA(object[[]][, required_metadata]))
 
-# A sample-aware manifest is the least ambiguous representation.
+# A sample-aware manifest is the least ambiguous representation when fragments exist.
 fragment_files <- data.frame(
   sample_id = c("donor_01", "donor_02"),
   assay = "ATAC",
@@ -143,7 +147,7 @@ result <- rc_run_regcompass(
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = fragment_files,
+  fragment_files = FALSE,  # use object ATAC peak counts; pass fragment_files to re-aggregate
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
@@ -200,7 +204,7 @@ result <- rc_run_regcompass_one_shot(
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = fragment_files,
+  fragment_files = FALSE,  # or fragment_files to re-aggregate from fragments
   species = "human",
   gem_version = "2.0.0",
   medium_scenario = "compass_model_bounds",  # or "physiologic"/other presets
@@ -211,7 +215,9 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-For mouse data, use a mouse genome and set `species = "mouse"`; the wrapper
+Set `fragment_files = FALSE` in the one-shot call when no matching fragment file
+is available; pass the fragment manifest/path when fragments should be
+re-aggregated. For mouse data, use a mouse genome and set `species = "mouse"`; the wrapper
 then prepares Mouse-GEM 1.8.0 and the mouse physiological medium unless you
 provide `gem` or `medium_scenarios`. Supply `gem = human2_gem` (or a Mouse-GEM
 object) and `medium_scenarios = medium` to the one-shot function if those

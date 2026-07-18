@@ -24,6 +24,8 @@ test_that("workflow vignette follows the supported public API", {
     function(name) grepl(paste0(name, "\\("), text),
     logical(1)
   )))
+  expect_match(text, 'fragment_files = FALSE')
+  expect_match(text, "uses ATAC")
   expect_match(text, 'species = "human"')
   expect_match(text, 'species = "mouse"')
   expect_match(text, 'medium_scenario = "compass_model_bounds"')

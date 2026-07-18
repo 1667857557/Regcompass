@@ -27,7 +27,8 @@ rc_run_regcompass_one_shot(
 
 \item{genome}{Genome object matching the selected species and ATAC coordinates.}
 
-\item{fragment_files}{Optional fragment-file mapping.}
+\item{fragment_files}{Fragment-file manifest/path(s), or \code{FALSE} to skip
+fragment aggregation and use ATAC peak raw counts from \code{object} directly.}
 
 \item{gem}{Optional prebuilt species GEM.}
 

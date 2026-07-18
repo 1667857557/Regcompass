@@ -590,6 +590,7 @@
     tau = layer1_args$tau %||% 0.20,
     or_method = or_method
   )
+  fragment_aggregation_enabled <- !identical(fragment_files, FALSE)
   metacell_defaults <- list(
     object = one,
     outdir = file.path(stratum_dir, "01_metacells"),
@@ -598,12 +599,12 @@
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    fragment_files = fragment_files,
+    fragment_files = if (isTRUE(fragment_aggregation_enabled)) fragment_files else FALSE,
     save_metacell_object = TRUE,
     save_counts = TRUE,
-    save_fragments = TRUE,
-    require_fragment_aggregation = TRUE,
-    fragment_aggregation_backend = "regcompass",
+    save_fragments = fragment_aggregation_enabled,
+    require_fragment_aggregation = fragment_aggregation_enabled,
+    fragment_aggregation_backend = if (isTRUE(fragment_aggregation_enabled)) "regcompass" else "none",
     BPPARAM = FALSE,
     on_stratum_error = "stop"
   )
@@ -649,7 +650,7 @@
     fragment_files = metacells$fragment_files,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    require_complete_fragments = TRUE
+    require_complete_fragments = fragment_aggregation_enabled
   )
   pando_args$BPPARAM <- NULL
   pando_args$save_sample_metacell_objects <- NULL

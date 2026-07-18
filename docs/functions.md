@@ -13,7 +13,8 @@ The tutorial entry point. It prepares a species-specific Human-GEM 2 or Mouse-GE
 
 ```r
 result <- rc_run_regcompass_one_shot(
-  object, "RegCompass_result", motifs, genome, fragment_files,
+  object, "RegCompass_result", motifs, genome,
+  fragment_files = FALSE,  # skip aggregation and use object ATAC peak counts
   species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
   gem_version = "2.0.0",
   medium_scenario = "physiologic",  # or "compass_model_bounds", "rpmi1640", etc.
@@ -29,16 +30,21 @@ when `gem` and `medium_scenarios` are omitted.
 
 ```r
 mouse_result <- rc_run_regcompass_one_shot(
-  object, "RegCompass_mouse_result", motifs, mouse_genome, fragment_files,
+  object, "RegCompass_mouse_result", motifs, mouse_genome,
+  fragment_files = FALSE,
   species = "mouse",
   gem_version = "1.8.0",
   medium_scenario = "physiologic"
 )
 ```
 
-To bypass preset construction entirely, pass a prebuilt `medium_scenarios`
-table from `rc_make_medium_scenarios()`; it takes precedence over
-`medium_scenario`.
+Use `fragment_files = FALSE` when no matching fragment files are available; the
+workflow then skips fragment aggregation and uses ATAC peak raw counts already
+stored in the object. If matching fragments are available, pass a path, named
+list, or manifest to `fragment_files` and the workflow re-aggregates ATAC peak
+raw counts from fragments. To bypass preset construction entirely, pass a
+prebuilt `medium_scenarios` table from `rc_make_medium_scenarios()`; it takes
+precedence over `medium_scenario`.
 
 ## `rc_prepare_gem()`
 

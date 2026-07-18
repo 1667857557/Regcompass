@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Species-Aware Multiome Reaction Capacity and GRN Meta-Module Analysis
-Version: 1.5.1
+Version: 1.6.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -40,6 +40,10 @@ Collate:
     'regcompass.R'
     'stats.R'
     'stratum_filter.R'
+    'zzz_metacell_fragment_recount.R'
+    'zzzz_metacell_fragment_ranges.R'
+    'zzzzz_metacell_peak_calling.R'
+    'zzzzzz_metacell_peak_union.R'
 Imports:
     Matrix,
     matrixStats,

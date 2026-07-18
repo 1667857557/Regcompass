@@ -33,7 +33,8 @@
 #' @param outdir Persistent output directory.
 #' @param pfm Motif position-frequency matrices passed to Pando.
 #' @param genome Genome object matching `species` and the ATAC coordinates.
-#' @param fragment_files Optional fragment-file mapping.
+#' @param fragment_files Fragment-file manifest/path(s), or `FALSE` to skip
+#'   fragment aggregation and use ATAC peak raw counts from `object` directly.
 #' @param species `"auto"`, `"human"`, or `"mouse"`.
 #' @param sample_col,condition_col,celltype_col Metadata columns.
 #' @param rna_assay,atac_assay Assay names.

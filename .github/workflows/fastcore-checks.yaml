@@ -19,6 +19,18 @@ jobs:
           r-version: release
           use-public-rspm: true
 
+      - name: Install system libraries
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libbz2-dev \
+            liblzma-dev \
+            zlib1g-dev
+
       - name: Parse sources
         shell: Rscript {0}
         run: |
@@ -29,13 +41,49 @@ jobs:
           invisible(lapply(files, parse))
 
       - name: Install dependencies
-        shell: Rscript {0}
+        shell: bash
         run: |
+          set -o pipefail
+          Rscript - <<'RSCRIPT' 2>&1 | tee dependency-output.txt
           install.packages(c(
             "Matrix", "matrixStats", "SeuratObject", "testthat",
             "highs", "BiocManager"
           ))
-          BiocManager::install("limma", ask = FALSE, update = FALSE)
+          BiocManager::install(c(
+            "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
+            "GenomicRanges", "sparseMatrixStats", "limma"
+          ), ask = FALSE, update = FALSE)
+          BiocManager::install(
+            c("Rhtslib", "Rsamtools"),
+            ask = FALSE,
+            update = FALSE,
+            force = TRUE
+          )
+          bioc_required <- c(
+            "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
+            "GenomicRanges", "Rhtslib", "Rsamtools",
+            "sparseMatrixStats", "limma"
+          )
+          bioc_missing <- bioc_required[!vapply(
+            bioc_required,
+            requireNamespace,
+            logical(1),
+            quietly = TRUE
+          )]
+          if (length(bioc_missing)) {
+            stop("Missing Bioconductor dependencies: ",
+                 paste(bioc_missing, collapse = ", "))
+          }
+          install.packages("Signac")
+          signac_status <- tryCatch({
+            library(Signac)
+            paste0("loaded Signac ", as.character(packageVersion("Signac")))
+          }, error = function(error) {
+            paste0("ERROR: ", conditionMessage(error))
+          })
+          writeLines(signac_status, "signac-load-status.txt")
+          if (startsWith(signac_status, "ERROR:")) stop(signac_status)
+          RSCRIPT
 
       - name: Install package
         shell: bash
@@ -76,6 +124,8 @@ jobs:
         with:
           name: test-diagnostics
           path: |
+            dependency-output.txt
+            signac-load-status.txt
             install-output.txt
             test-output.txt
           if-no-files-found: warn

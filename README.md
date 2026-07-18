@@ -18,6 +18,10 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
+Fragment-enabled runs additionally require a MACS2/MACS3 executable. Pass its
+path through `metacell_args$macs2_path` when it is not available as `macs2` on
+`PATH`.
+
 ## Quick start
 
 The one-shot entry point prepares Human-GEM 2 and the shared model-bound medium
@@ -36,8 +40,8 @@ result <- rc_run_regcompass_one_shot(
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = fragment_files,
-  species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
+  fragment_files = FALSE,
+  species = "human",
   gem_version = "2.0.0",
   medium_scenario = "physiologic",
   sample_col = "sample_id",
@@ -69,11 +73,46 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-For mouse data, use the matching genome and set `species = "mouse"`; the
-one-shot setup then prepares Mouse-GEM 1.8.0 and `mouse_plasma` through the
-`"physiologic"` medium shortcut. To use a fully custom medium table, build it
-with `rc_make_medium_scenarios()` and pass it as `medium_scenarios`, which
-overrides `medium_scenario`.
+`fragment_files = FALSE` skips fragment aggregation and uses the ATAC peak raw
+counts already stored in `object`, summed according to SuperCell membership.
+When matching fragment files are supplied, each strict stratum follows this
+path:
+
+```text
+single-cell fragments
+→ metacell fragment aggregation
+→ pseudobulk MACS2/MACS3 peak calling on aggregated fragments
+→ FeatureMatrix on the newly called peaks
+→ replacement metacell ChromatinAssay
+→ TF-IDF and Pando
+```
+
+For a fragment-enabled run:
+
+```r
+result <- rc_run_regcompass_one_shot(
+  object = object,
+  outdir = "RegCompass_fragment_result",
+  pfm = motifs,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  fragment_files = fragment_manifest,
+  species = "human",
+  metacell_args = list(
+    gamma = 50,
+    macs2_path = "/path/to/macs3",
+    call_peaks_from_fragments = TRUE,
+    peak_calling_effective_genome_size = 2.7e9,
+    peak_calling_args = list(
+      additional.args = "--keep-dup all"
+    )
+  )
+)
+```
+
+The workflow saves each stratum's called peak ranges and records whether ATAC
+counts came from the object or from de novo fragment-derived peaks. Mouse runs
+should use the matching genome and either allow automatic `mm*` genome
+inference or set `peak_calling_effective_genome_size = 1.87e9` explicitly.
 
 ## Choosing analysis parameters
 
@@ -86,6 +125,9 @@ and a small pilot run.
 | `metacell_args$gamma` | Approximate cells represented by each metacell | Use a smaller value for more metacells and finer heterogeneity, or a larger value for stronger aggregation. Keep one value across all strata so resolution is comparable. |
 | `metacell_args$min_cells_per_stratum` | Minimum cells in each condition × sample × cell-type stratum | Set high enough to avoid unstable strata, but check that every biological sample retains at least one stratum. |
 | `metacell_args$min_metacell_size` | Flags undersized, low-power metacells | Increase when sparse RNA/ATAC profiles are unstable; do not use it to compensate for an unsuitable `gamma`. |
+| `metacell_args$macs2_path` | MACS2/MACS3 executable for fragment-enabled runs | Required when the executable is not discoverable as `macs2` on `PATH`. |
+| `metacell_args$peak_calling_effective_genome_size` | MACS effective genome size | Use a species-matched value; defaults are inferred from annotated `hg*`/`GRCh*` or `mm*`/`GRCm*` peak ranges. |
+| `metacell_args$peak_calling_args` | Additional `Signac::CallPeaks()` arguments | Keep one policy across strata. Use only justified MACS options and record them with the run. |
 | `pando_args$min_metacells` | Minimum metacells required for Pando | It must be compatible with `floor(n_cells / gamma)`. Strata below it are skipped, so inspect `00_strata/stratum_workflow_status.tsv.gz` after a pilot. |
 | `pando_infer_args` | Pando model and correlation/FDR filters | Start with the shown GLM settings; tighten correlation thresholds only when the pilot produces excessive weak edges. Apply one policy to every stratum. |
 | `layer1_args$local_fastcore` | Completes each local metabolic module | Keep enabled for the canonical path. `sample_balance = TRUE` prevents samples with more metacells from dominating global calibration. |
