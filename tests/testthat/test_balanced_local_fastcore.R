@@ -59,6 +59,7 @@ test_that("weighted gene score and Q95 retain matrix dimensions and finite bound
   expect_true(all(score >= 0 & score <= 1))
 
   capacity <- rbind(R1 = c(0.1, 0.2, 1.0), R2 = c(1, 1, 1))
+  colnames(capacity) <- colnames(expression)
   calibrated <- .rc_weighted_q95_calibrate(capacity, weights)
   expect_identical(dim(calibrated$C_rel), dim(capacity))
   expect_true(all(calibrated$C_rel <= 1, na.rm = TRUE))

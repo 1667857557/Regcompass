@@ -1,5 +1,5 @@
 test_that("integrated workflow keeps one barrier between the two worker pools", {
-  core_text <- paste(deparse(body(.rc_original_run_regcompass)), collapse = "\n")
+  core_text <- paste(deparse(body(.rc_run_regcompass_engine)), collapse = "\n")
   wrapper_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   expect_match(core_text, ".rc_run_regcompass_stratum", fixed = TRUE)
   expect_match(core_text, "upstream_complete_barrier", fixed = TRUE)
@@ -7,6 +7,7 @@ test_that("integrated workflow keeps one barrier between the two worker pools", 
   expect_match(core_text, ".rc_merge_stratum_meta_modules", fixed = TRUE)
   expect_match(core_text, ".rc_merge_stratum_layer1", fixed = TRUE)
   expect_match(wrapper_text, "inference_unit", fixed = TRUE)
+  expect_match(wrapper_text, "04_model_cache", fixed = TRUE)
   expect_equal(
     eval(formals(rc_run_regcompass)$inference_unit),
     c("sample_celltype", "metacell")
@@ -15,25 +16,24 @@ test_that("integrated workflow keeps one barrier between the two worker pools", 
 
 
 test_that("integrated workflow uses fixed metacell gamma and skips low-yield strata", {
-  workflow_text <- paste(deparse(body(.rc_original_run_regcompass)), collapse = "\n")
+  workflow_text <- paste(deparse(body(.rc_run_regcompass_engine)), collapse = "\n")
   worker_text <- paste(
-    deparse(body(.rc_required_previous_run_regcompass_stratum)),
+    deparse(body(.rc_run_regcompass_stratum)),
     collapse = "\n"
   )
-  wrapper_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
   metacell_formals <- names(formals(rc_make_supercell2_metacells))
   expect_false("adaptive_gamma" %in% metacell_formals)
   expect_false(grepl("adaptive_gamma", workflow_text, fixed = TRUE))
   expect_false(grepl("adaptive_gamma", worker_text, fixed = TRUE))
   expect_match(worker_text, "skipped_too_few_metacells", fixed = TRUE)
   expect_match(workflow_text, "n_skipped_too_few_metacells", fixed = TRUE)
-  expect_match(wrapper_text, ".rc_finalize_stratum_capacity_params", fixed = TRUE)
+  expect_match(worker_text, "or_method", fixed = TRUE)
 })
 
 
 test_that("strict-stratum worker runs Pando and local FASTCORE", {
   body_text <- paste(
-    deparse(body(.rc_required_previous_run_regcompass_stratum)),
+    deparse(body(.rc_run_regcompass_stratum)),
     collapse = "\n"
   )
   expect_match(body_text, "rc_make_supercell2_metacells", fixed = TRUE)

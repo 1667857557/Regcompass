@@ -43,7 +43,8 @@ test_that("normal human plasma is a cited human uptake-availability preset", {
   medium <- rc_make_medium_scenarios(
     gem,
     scenario = "normal_human_plasma",
-    exchange_limit = 1
+    exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
 
   expect_true(all(medium$species == "Homo sapiens"))
@@ -66,13 +67,16 @@ test_that("normal human plasma is a cited human uptake-availability preset", {
 test_that("glucose presets change glucose uptake without changing lactate", {
   gem <- make_human_medium_test_gem()
   low <- rc_make_medium_scenarios(
-    gem, scenario = "low_glucose", exchange_limit = 1
+    gem, scenario = "low_glucose", exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
   normal <- rc_make_medium_scenarios(
-    gem, scenario = "normal_human_plasma", exchange_limit = 1
+    gem, scenario = "normal_human_plasma", exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
   high <- rc_make_medium_scenarios(
-    gem, scenario = "high_glucose", exchange_limit = 1
+    gem, scenario = "high_glucose", exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
 
   glucose_lb <- c(
@@ -93,13 +97,16 @@ test_that("glucose presets change glucose uptake without changing lactate", {
 test_that("lactate presets change lactate uptake without changing glucose", {
   gem <- make_human_medium_test_gem()
   low <- rc_make_medium_scenarios(
-    gem, scenario = "low_lactate", exchange_limit = 1
+    gem, scenario = "low_lactate", exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
   normal <- rc_make_medium_scenarios(
-    gem, scenario = "normal_human_plasma", exchange_limit = 1
+    gem, scenario = "normal_human_plasma", exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
   high <- rc_make_medium_scenarios(
-    gem, scenario = "high_lactate", exchange_limit = 1
+    gem, scenario = "high_lactate", exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
 
   lactate_lb <- c(
@@ -122,7 +129,8 @@ test_that("RPMI-1640 enables basal formulation nutrients but not plasma-only row
   medium <- rc_make_medium_scenarios(
     gem,
     scenario = "rpmi1640",
-    exchange_limit = 1
+    exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
 
   expect_true(all(c(
@@ -130,7 +138,10 @@ test_that("RPMI-1640 enables basal formulation nutrients but not plasma-only row
   ) %in% medium$exchange_reaction_id))
   expect_false("EX_lactate" %in% medium$exchange_reaction_id)
   expect_false("EX_urate" %in% medium$exchange_reaction_id)
-  expect_equal(medium_row(medium, "EX_glucose")$concentration_mM, 11.1)
+  expect_equal(
+    medium_row(medium, "EX_glucose")$concentration_mM,
+    11.111111, tolerance = 1e-6
+  )
   expect_match(
     medium_row(medium, "EX_glucose")$reference_label,
     "RPMI|Moore"
@@ -175,7 +186,8 @@ test_that("legacy human-like aliases map to the published presets", {
   gem <- make_human_medium_test_gem()
   expect_warning(
     blood <- rc_make_medium_scenarios(
-      gem, scenario = "blood_like", exchange_limit = 1
+      gem, scenario = "blood_like", exchange_limit = 1,
+      strict_preset_matching = FALSE
     ),
     "blood_like -> normal_human_plasma"
   )
@@ -183,7 +195,8 @@ test_that("legacy human-like aliases map to the published presets", {
 
   expect_warning(
     culture <- rc_make_medium_scenarios(
-      gem, scenario = "culture_like", exchange_limit = 1
+      gem, scenario = "culture_like", exchange_limit = 1,
+      strict_preset_matching = FALSE
     ),
     "culture_like -> rpmi1640"
   )

@@ -63,3 +63,6 @@ rc_drop_na_grouping <- function(meta, grouping_cols) {
 .rc_as_sparse <- function(x) {
   .rc_as_dgCMatrix(x)
 }
+
+# Clamp finite numerical evidence to the unit interval.
+.rc_clamp01 <- function(x) pmin(pmax(x, 0), 1)

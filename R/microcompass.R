@@ -223,7 +223,7 @@ rc_prepare_directional_targets <- function(gem, target_reactions,
 }
 
 #' Run COMPASS-like directional LPs with one shared structural GEM
-rc_run_microcompass <- function(layer1, gem, target_reactions = NULL,
+.rc_run_microcompass_engine <- function(layer1, gem, target_reactions = NULL,
                                  medium_table = NULL, medium_scenarios = NULL,
                                  mode = c("full_gem", "meta_module_gem"),
                                  reaction_membership = NULL, core_reactions = NULL,
@@ -394,6 +394,137 @@ rc_run_microcompass <- function(layer1, gem, target_reactions = NULL,
     ),
     method = if (identical(mode, "full_gem")) "microCOMPASS shared full-GEM directional LP" else "microCOMPASS shared global meta-module-GEM directional LP"
   )
+}
+
+#' Run directional minimum-evidence-discordance LPs
+#'
+#' Uses one shared structural GEM across units. The default medium is the
+#' species-matched literature-backed physiological environment. Model RDS files,
+#' manifests, medium tables and LP diagnostics are persisted when
+#' `model_params$cache_dir` is supplied.
+rc_run_microcompass <- function(
+    layer1, gem, target_reactions = NULL,
+    medium_table = NULL, medium_scenarios = NULL,
+    mode = c("full_gem", "meta_module_gem"),
+    reaction_membership = NULL, core_reactions = NULL,
+    unit = c("sample_celltype", "metacell"),
+    condition_col = "condition", sample_col = "sample_id",
+    celltype_col = "cell_type", model_params = list(),
+    penalty_weights = c(expr = 1.0, confidence = 0.5, missing = 1.0),
+    omega = 0.95,
+    target_direction = c("both", "forward", "reverse"),
+    parallel = TRUE,
+    solver = c("highs", "gurobi", "glpk"),
+    time_limit = 60, flux_threshold = 1e-8,
+    BPPARAM = NULL) {
+  mode <- match.arg(mode)
+  unit <- match.arg(unit)
+  target_direction <- match.arg(target_direction)
+  solver <- match.arg(solver)
+  if (!is.list(model_params)) {
+    stop("`model_params` must be a list.", call. = FALSE)
+  }
+  forced_unit <- getOption("RegCompassR.inference_unit", NULL)
+  if (!is.null(forced_unit)) unit <- match.arg(forced_unit, c("sample_celltype", "metacell"))
+  if (identical(unit, "metacell")) {
+    warning(
+      "Metacell-level scores are exploratory within-sample observations. Use `unit = 'sample_celltype'` for biological-replicate inference.",
+      call. = FALSE
+    )
+  }
+  if (is.null(medium_scenarios) && is.null(medium_table)) {
+    model_info <- gem$model_info %||% list()
+    recorded_species <- tolower(as.character(model_info$species %||% ""))
+    recorded_source <- tolower(as.character(model_info$source %||% ""))
+    species_provenance <- recorded_species %in% c("human", "mouse") ||
+      grepl("human-gem|mouse-gem", recorded_source)
+    if (isTRUE(species_provenance)) {
+      medium_scenarios <- rc_make_medium_scenarios(
+        gem,
+        scenario = "physiologic",
+        species = "auto",
+        strict_preset_matching = TRUE
+      )
+    } else {
+      warning(
+        "GEM species provenance is unavailable; preserving the model's original exchange directions instead of assuming a human physiological medium.",
+        call. = FALSE
+      )
+      medium_scenarios <- rc_make_medium_scenarios(
+        gem,
+        scenario = "compass_model_bounds",
+        species = "auto"
+      )
+    }
+  }
+  cache_dir <- model_params$cache_dir %||% NULL
+  if (!is.null(cache_dir)) {
+    if (!is.character(cache_dir) || length(cache_dir) != 1L ||
+        is.na(cache_dir) || !nzchar(cache_dir)) {
+      stop("`model_params$cache_dir` must be one non-empty path.", call. = FALSE)
+    }
+    dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  }
+  answer <- .rc_run_microcompass_engine(
+    layer1 = layer1,
+    gem = gem,
+    target_reactions = target_reactions,
+    medium_table = medium_table,
+    medium_scenarios = medium_scenarios,
+    mode = mode,
+    reaction_membership = reaction_membership,
+    core_reactions = core_reactions,
+    unit = unit,
+    condition_col = condition_col,
+    sample_col = sample_col,
+    celltype_col = celltype_col,
+    model_params = model_params,
+    penalty_weights = penalty_weights,
+    omega = omega,
+    target_direction = target_direction,
+    parallel = parallel,
+    solver = solver,
+    time_limit = time_limit,
+    flux_threshold = flux_threshold,
+    BPPARAM = BPPARAM
+  )
+  answer$relative_penalty_rank <- answer$score
+  answer$score_semantics <- attr(answer$score, "score_semantics") %||%
+    "within_target_relative_penalty_rank_not_probability"
+  answer$noninformative_target <- attr(answer$score, "noninformative_target")
+  answer$primary_output <- "penalty"
+  answer$primary_output_semantics <-
+    "minimum evidence-discordance penalty; lower means stronger support"
+  answer$params$inference_unit <- unit
+  answer$params$model_cache_dir <- cache_dir
+  if (!is.null(cache_dir)) {
+    saveRDS(answer$model_cache_summary,
+            file.path(cache_dir, "model_cache_summary.rds"))
+    saveRDS(answer$model_diagnostics,
+            file.path(cache_dir, "model_diagnostics.rds"))
+    saveRDS(answer$lp_diagnostics,
+            file.path(cache_dir, "lp_diagnostics.rds"))
+    saveRDS(answer$medium_scenarios,
+            file.path(cache_dir, "medium_scenarios.rds"))
+    saveRDS(answer$params,
+            file.path(cache_dir, "microcompass_parameters.rds"))
+    files <- if (is.data.frame(answer$model_cache_summary) &&
+                 "file" %in% colnames(answer$model_cache_summary)) {
+      unique(as.character(answer$model_cache_summary$file))
+    } else {
+      character()
+    }
+    files <- files[file.exists(files)]
+    manifest <- data.frame(
+      file = files,
+      size_bytes = as.numeric(file.info(files)$size),
+      md5 = if (length(files)) unname(tools::md5sum(files)) else character(),
+      stringsAsFactors = FALSE
+    )
+    saveRDS(manifest, file.path(cache_dir, "model_file_manifest.rds"))
+    answer$model_file_manifest <- manifest
+  }
+  answer
 }
 
 #' Summarize a microCOMPASS result

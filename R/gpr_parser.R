@@ -1,37 +1,126 @@
-#' Parse a simple GPR rule
+#' Parse a Boolean GPR rule
 #'
-#' Supports flat GPR forms such as `(g1 and g2) or g3`, `g1 or g2`,
-#' `g1 and g2`, and `g1`. Complex nested mixtures such as
-#' `g1 and (g2 or g3)` stop rather than being silently mis-parsed.
-rc_parse_gpr_simple <- function(gpr) {
-  if (length(gpr) != 1L || is.na(gpr) || !nzchar(trimws(gpr))) return(list())
-  gpr <- gsub("\\s+", " ", trimws(tolower(as.character(gpr))))
-  if (grepl("and\\s*\\(", gpr) || grepl("\\)\\s*and", gpr)) {
-    stop(
-      "Complex nested AND/OR GPR formulas are not supported; provide a long-table GPR.",
-      call. = FALSE
-    )
-  }
-  flat <- gsub("\\([^()]+\\)", "X", gpr)
-  if (grepl("[()]", flat)) {
-    stop(
-      "Complex or nested GPR formulas are not supported; provide a long-table GPR.",
-      call. = FALSE
-    )
-  }
-  gpr <- gsub("[()]", "", gpr)
-  or_parts <- strsplit(gpr, "\\s+or\\s+", perl = TRUE)[[1L]]
-  if (!length(or_parts) || any(!nzchar(trimws(or_parts)))) {
-    stop("Malformed GPR rule contains an empty OR group.", call. = FALSE)
-  }
-  groups <- lapply(or_parts, function(group) {
-    genes <- trimws(strsplit(group, "\\s+and\\s+", perl = TRUE)[[1L]])
-    if (!length(genes) || any(!nzchar(genes))) {
-      stop("Malformed GPR rule contains an empty AND subunit.", call. = FALSE)
+#' Parses nested `AND`/`OR` expressions with `AND` precedence and converts the
+#' rule to disjunctive normal form. Each returned list element is one alternative
+#' enzyme complex and contains the genes required by that complex.
+#'
+#' @param gpr One GPR expression.
+#' @param max_terms Maximum number of DNF alternatives allowed during expansion.
+#' @param preserve_case Retain source gene-symbol capitalization. The default
+#'   lower-cases computational identifiers; Mouse-GEM import opts into native
+#'   mouse symbol capitalization.
+#' @return A list of character vectors.
+.rc_gpr_tokenize <- function(gpr) {
+  text <- gsub("([()])", " \\1 ", trimws(as.character(gpr)))
+  tokens <- strsplit(gsub("\\s+", " ", text), " ", fixed = TRUE)[[1L]]
+  tokens <- tokens[nzchar(tokens)]
+  logical_operator <- tolower(tokens) %in% c("and", "or")
+  tokens[logical_operator] <- tolower(tokens[logical_operator])
+  tokens
+}
+
+.rc_gpr_ast_to_dnf <- function(node, max_terms = 10000L) {
+  if (identical(node$type, "gene")) return(list(node$value))
+  child_terms <- lapply(
+    node$children,
+    .rc_gpr_ast_to_dnf,
+    max_terms = max_terms
+  )
+  if (identical(node$type, "or")) {
+    answer <- unlist(child_terms, recursive = FALSE)
+  } else {
+    answer <- list(character())
+    for (terms in child_terms) {
+      answer <- unlist(lapply(answer, function(left) {
+        lapply(terms, function(right) unique(c(left, right)))
+      }), recursive = FALSE)
+      if (length(answer) > max_terms) {
+        stop(
+          "GPR expansion exceeded `max_terms`; use a structured long-table GPR.",
+          call. = FALSE
+        )
+      }
     }
-    unique(genes)
+  }
+  keys <- vapply(answer, function(x) {
+    paste(sort(unique(x)), collapse = "\001")
+  }, character(1))
+  answer[!duplicated(keys)]
+}
+
+rc_parse_gpr_simple <- function(gpr, max_terms = 10000L,
+                                preserve_case = FALSE) {
+  if (length(gpr) != 1L || is.na(gpr) || !nzchar(trimws(gpr))) return(list())
+  if (!is.numeric(max_terms) || length(max_terms) != 1L ||
+      !is.finite(max_terms) || max_terms < 1) {
+    stop("`max_terms` must be one positive finite number.", call. = FALSE)
+  }
+  tokens <- .rc_gpr_tokenize(gpr)
+  position <- 1L
+  current <- function() {
+    if (position <= length(tokens)) tokens[[position]] else NA_character_
+  }
+  consume <- function(expected = NULL) {
+    token <- current()
+    if (!is.null(expected) && !identical(token, expected)) {
+      found <- if (is.na(token)) "<end>" else token
+      stop(
+        "Malformed GPR: expected `", expected, "` but found `", found, "`.",
+        call. = FALSE
+      )
+    }
+    position <<- position + 1L
+    token
+  }
+  parse_primary <- NULL
+  parse_and <- NULL
+  parse_or <- NULL
+  parse_primary <- function() {
+    token <- current()
+    if (is.na(token)) {
+      stop("Malformed GPR: unexpected end of rule.", call. = FALSE)
+    }
+    if (identical(token, "(")) {
+      consume("(")
+      node <- parse_or()
+      consume(")")
+      return(node)
+    }
+    if (token %in% c("and", "or", ")")) {
+      stop("Malformed GPR near token `", token, "`.", call. = FALSE)
+    }
+    consume()
+    list(type = "gene", value = token)
+  }
+  parse_and <- function() {
+    children <- list(parse_primary())
+    while (identical(current(), "and")) {
+      consume("and")
+      children[[length(children) + 1L]] <- parse_primary()
+    }
+    if (length(children) == 1L) children[[1L]] else
+      list(type = "and", children = children)
+  }
+  parse_or <- function() {
+    children <- list(parse_and())
+    while (identical(current(), "or")) {
+      consume("or")
+      children[[length(children) + 1L]] <- parse_and()
+    }
+    if (length(children) == 1L) children[[1L]] else
+      list(type = "or", children = children)
+  }
+  ast <- parse_or()
+  if (position <= length(tokens)) {
+    stop(
+      "Malformed GPR: unexpected trailing token `", current(), "`.",
+      call. = FALSE
+    )
+  }
+  lapply(.rc_gpr_ast_to_dnf(ast, as.integer(max_terms)), function(x) {
+    x <- unique(x[nzchar(x)])
+    if (isTRUE(preserve_case)) x else tolower(x)
   })
-  groups
 }
 
 #' Parse a reaction GPR table

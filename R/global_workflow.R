@@ -48,15 +48,44 @@
   invisible(gc(verbose = FALSE))
 }
 
-.rc_metacell_logcpm <- function(counts, scale_factor = 1e6) {
+.rc_metacell_logcpm <- function(counts, scale_factor = 1e6,
+                                 library_size = NULL) {
   counts <- methods::as(counts, "dgCMatrix")
-  library_size <- Matrix::colSums(counts)
-  if (any(!is.finite(library_size)) || any(library_size <= 0)) {
-    stop("Every metacell must have a positive finite RNA library size.", call. = FALSE)
+  if (!is.numeric(scale_factor) || length(scale_factor) != 1L ||
+      !is.finite(scale_factor) || scale_factor <= 0) {
+    stop("`scale_factor` must be one positive finite number.", call. = FALSE)
+  }
+  normalization_scope <- "input_matrix_library_size"
+  if (is.null(library_size)) {
+    library_size <- Matrix::colSums(counts)
+  } else {
+    normalization_scope <- "full_transcriptome_library_size_before_gpr_filter"
+    if (!is.null(names(library_size))) {
+      missing <- setdiff(colnames(counts), names(library_size))
+      if (length(missing)) {
+        stop("`library_size` is missing metacells: ",
+             paste(utils::head(missing, 10L), collapse = ", "), call. = FALSE)
+      }
+      library_size <- library_size[colnames(counts)]
+    }
+  }
+  library_size <- as.numeric(library_size)
+  if (length(library_size) != ncol(counts) ||
+      any(!is.finite(library_size)) || any(library_size <= 0)) {
+    stop("`library_size` must contain one positive finite value per metacell.",
+         call. = FALSE)
   }
   scaled <- counts %*% Matrix::Diagonal(x = scale_factor / library_size)
-  log1p(scaled)
+  answer <- log1p(scaled)
+  dimnames(answer) <- dimnames(counts)
+  attr(answer, "normalization_scope") <- normalization_scope
+  attr(answer, "library_size") <- stats::setNames(
+    library_size,
+    colnames(counts)
+  )
+  answer
 }
+
 
 .rc_weighted_quantile <- function(x, weights, probs = 0.5) {
   x <- as.numeric(x)
@@ -91,85 +120,120 @@
   weights / sum(weights)
 }
 
-.rc_weighted_gene_score <- function(X, weights, min_scale = 0.05, z_clip = 6) {
+.rc_weighted_gene_score <- function(
+    X, weights, min_scale = 0.05, z_clip = 6,
+    mode = c("absolute", "relative"),
+    half_saturation = getOption("RegCompassR.cpm_half_saturation", 1)) {
   X <- as.matrix(X)
-  if (length(weights) != ncol(X)) {
-    stop("`weights` must contain one value per expression column.", call. = FALSE)
+  if (length(weights) != ncol(X) || any(!is.finite(weights)) ||
+      any(weights <= 0)) {
+    stop("`weights` must contain one positive finite value per column.",
+         call. = FALSE)
   }
-  if (any(!is.finite(weights)) || any(weights <= 0)) {
-    stop("Gene-score weights must be positive and finite.", call. = FALSE)
+  mode <- match.arg(mode)
+  if (identical(mode, "absolute")) {
+    return(.rc_absolute_activity_score(X, half_saturation))
   }
-  centers <- apply(X, 1L, .rc_weighted_quantile, weights = weights, probs = 0.5)
-  mad_sigma <- vapply(seq_len(nrow(X)), function(index) {
-    .rc_weighted_quantile(
-      abs(X[index, ] - centers[[index]]),
-      weights,
-      probs = 0.5
+  centers <- apply(
+    X, 1L, .rc_weighted_quantile,
+    weights = weights, probs = 0.5
+  )
+  scales <- vapply(seq_len(nrow(X)), function(i) {
+    mad_sigma <- .rc_weighted_quantile(
+      abs(X[i, ] - centers[[i]]), weights, probs = 0.5
     ) * 1.4826
-  }, numeric(1))
-  iqr_sigma <- vapply(seq_len(nrow(X)), function(index) {
-    quantiles <- .rc_weighted_quantile(
-      X[index, ],
-      weights,
-      probs = c(0.25, 0.75)
+    quartiles <- .rc_weighted_quantile(
+      X[i, ], weights, probs = c(0.25, 0.75)
     )
-    diff(quantiles) / 1.349
+    max(mad_sigma, diff(quartiles) / 1.349, min_scale, na.rm = TRUE)
   }, numeric(1))
-  scales <- pmax(mad_sigma, iqr_sigma, min_scale, na.rm = TRUE)
-  scales[!is.finite(scales) | scales <= 0] <- min_scale
   z <- sweep(X, 1L, centers, "-")
   z <- sweep(z, 1L, scales, "/")
   z <- pmax(pmin(z, z_clip), -z_clip)
   score <- rc_sigmoid(z)
+  finite_range <- apply(X, 1L, function(x) {
+    x <- x[is.finite(x)]
+    if (!length(x)) return(NA_real_)
+    diff(range(x))
+  })
+  score[!is.finite(finite_range) | finite_range <= 1e-12, ] <- NA_real_
   dimnames(score) <- dimnames(X)
+  attr(score, "score_semantics") <-
+    "sample_balanced_within_gene_relative_state"
   score
 }
 
-.rc_weighted_q95_calibrate <- function(C_raw, weights, eps = 1e-6) {
+
+.rc_weighted_q95_calibrate <- function(
+    C_raw, weights, eps = 1e-6, n0 = 80,
+    unit_meta = NULL, stratum_col = NULL,
+    bootstrap = FALSE, B = 500, BPPARAM = NULL) {
   C_raw <- as.matrix(C_raw)
-  if (length(weights) != ncol(C_raw)) {
-    stop("`weights` must contain one value per reaction-capacity column.", call. = FALSE)
+  if (is.null(rownames(C_raw))) {
+    rownames(C_raw) <- paste0("reaction_", seq_len(nrow(C_raw)))
   }
-  q_values <- apply(
-    C_raw,
-    1L,
-    .rc_weighted_quantile,
-    weights = weights,
-    probs = 0.95
+  if (is.null(colnames(C_raw))) {
+    colnames(C_raw) <- paste0("unit_", seq_len(ncol(C_raw)))
+  }
+  rc_q95_calibrate(
+    C_raw = C_raw,
+    eps = eps,
+    bootstrap = bootstrap,
+    B = B,
+    BPPARAM = BPPARAM,
+    n0 = n0,
+    unit_meta = unit_meta,
+    stratum_col = stratum_col,
+    weights = weights
   )
-  C_rel <- sweep(C_raw, 1L, q_values + eps, "/")
-  C_rel[C_rel > 1] <- 1
-  all_missing <- rowSums(is.finite(C_raw)) == 0L
-  if (any(all_missing)) C_rel[all_missing, ] <- NA_real_
-  diagnostics <- data.frame(
-    reaction_id = rownames(C_raw),
-    stratum = "global_sample_balanced",
-    n = as.integer(rowSums(is.finite(C_raw))),
-    n_global = as.integer(rowSums(is.finite(C_raw))),
-    q_stratum = as.numeric(q_values),
-    q_stratum_used = as.numeric(q_values),
-    q_global = as.numeric(q_values),
-    rho_n = 1,
-    q_value = as.numeric(q_values),
-    quantile_used = 0.95,
-    n_finite = as.integer(rowSums(is.finite(C_raw))),
-    n_finite_global = as.integer(rowSums(is.finite(C_raw))),
-    low_n_flag = rowSums(is.finite(C_raw)) < 20L,
-    all_missing_reaction_flag = all_missing,
-    sample_balanced = TRUE,
-    stringsAsFactors = FALSE
-  )
-  list(C_rel = C_rel, Q = diagnostics)
 }
 
-.rc_normalize_calibration_params <- function(params, sample_col, condition_col,
-                                             celltype_col) {
+
+.rc_normalize_calibration_params <- function(
+    params, sample_col, condition_col, celltype_col) {
   params <- params %||% list()
-  correction <- params$expression_batch_correction %||% "none"
-  correction <- match.arg(correction, c("none", "limma"))
+  correction <- match.arg(
+    params$expression_batch_correction %||% "none",
+    c("none", "limma")
+  )
   sample_balance <- params$sample_balance %||% TRUE
-  if (!is.logical(sample_balance) || length(sample_balance) != 1L || is.na(sample_balance)) {
-    stop("`sample_balance` must be TRUE or FALSE.", call. = FALSE)
+  q95_bootstrap <- params$q95_bootstrap %||% FALSE
+  logical_values <- list(
+    sample_balance = sample_balance,
+    q95_bootstrap = q95_bootstrap
+  )
+  invalid_logical <- names(logical_values)[!vapply(
+    logical_values,
+    function(value) is.logical(value) && length(value) == 1L && !is.na(value),
+    logical(1)
+  )]
+  if (length(invalid_logical)) {
+    stop(
+      "Calibration switches must be TRUE or FALSE: ",
+      paste(invalid_logical, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  q95_n0 <- params$q95_n0 %||% 80
+  q95_B <- params$q95_B %||% 500L
+  if (!is.numeric(q95_n0) || length(q95_n0) != 1L ||
+      !is.finite(q95_n0) || q95_n0 < 0) {
+    stop("`q95_n0` must be one finite non-negative number.", call. = FALSE)
+  }
+  if (!is.numeric(q95_B) || length(q95_B) != 1L ||
+      !is.finite(q95_B) || q95_B < 1) {
+    stop("`q95_B` must be one positive finite number.", call. = FALSE)
+  }
+  q95_stratum_col <- params$q95_stratum_col %||% celltype_col
+  if (is.null(q95_stratum_col) || identical(q95_stratum_col, "none")) {
+    q95_stratum_col <- NULL
+  } else {
+    q95_stratum_col <- as.character(q95_stratum_col)
+    if (length(q95_stratum_col) != 1L || is.na(q95_stratum_col) ||
+        !nzchar(q95_stratum_col)) {
+      stop("`q95_stratum_col` must be one metadata column or NULL.",
+           call. = FALSE)
+    }
   }
   technical_batch_cols <- unique(as.character(
     params$technical_batch_cols %||% character()
@@ -190,9 +254,14 @@
     ),
     expression_batch_correction = correction,
     technical_batch_cols = technical_batch_cols,
-    preserve_design_cols = preserve_design_cols
+    preserve_design_cols = preserve_design_cols,
+    q95_n0 = as.numeric(q95_n0),
+    q95_stratum_col = q95_stratum_col,
+    q95_bootstrap = q95_bootstrap,
+    q95_B = as.integer(q95_B)
   )
 }
+
 
 .rc_apply_limma_batch_correction <- function(X, unit_meta, calibration_params,
                                              sample_col) {
@@ -482,11 +551,12 @@
                                         layer1_args = list(),
                                         pando_args = list()) {
   allowed_layer1_args <- c(
-    "promiscuity_mode", "and_method", "tau",
+    "promiscuity_mode", "and_method", "or_method", "tau",
     "local_fastcore", "local_fastcore_args",
     "sample_balance", "sample_balance_col",
     "expression_batch_correction", "technical_batch_cols",
-    "preserve_design_cols"
+    "preserve_design_cols", "q95_n0", "q95_stratum_col",
+    "q95_bootstrap", "q95_B"
   )
   unsupported_layer1_args <- setdiff(names(layer1_args), allowed_layer1_args)
   if (length(unsupported_layer1_args)) {
@@ -504,11 +574,21 @@
     gsub("[^A-Za-z0-9_.-]+", "_", group_id)
   )
   dir.create(stratum_dir, recursive = TRUE, showWarnings = FALSE)
+  or_method <- match.arg(
+    layer1_args$or_method %||% "max",
+    c("max", "sum_sqrtK", "prob_or", "sum")
+  )
   capacity_params <- list(
-    promiscuity_mode = layer1_args$promiscuity_mode %||% "sqrt",
-    and_method = layer1_args$and_method %||% "boltzmann",
+    promiscuity_mode = match.arg(
+      layer1_args$promiscuity_mode %||% "none",
+      c("none", "sqrt", "linear")
+    ),
+    and_method = match.arg(
+      layer1_args$and_method %||% "min",
+      c("min", "boltzmann", "mean")
+    ),
     tau = layer1_args$tau %||% 0.20,
-    or_method = "sum_sqrtK"
+    or_method = or_method
   )
   metacell_defaults <- list(
     object = one,
@@ -667,6 +747,11 @@
   meta_modules$local_fastcore_parent_scope <- local_completion$parent_scope
 
   gpr_genes <- toupper(rc_metabolic_gpr_genes(gem$gpr_table))
+  full_library_size <- Matrix::colSums(metacells$rna_counts)
+  if (any(!is.finite(full_library_size)) || any(full_library_size <= 0)) {
+    stop("Every metacell must have a positive finite full RNA library size.",
+         call. = FALSE)
+  }
   rna_counts <- metacells$rna_counts[
     toupper(rownames(metacells$rna_counts)) %in% gpr_genes,
     ,
@@ -678,7 +763,10 @@
       call. = FALSE
     )
   }
-  rna_logcpm <- .rc_metacell_logcpm(rna_counts)
+  rna_logcpm <- .rc_metacell_logcpm(
+    rna_counts,
+    library_size = full_library_size[colnames(rna_counts)]
+  )
   unit_meta <- metacells$metacell_meta
   id_col <- if ("metacell_id" %in% colnames(unit_meta)) {
     "metacell_id"
@@ -972,17 +1060,21 @@
     or_method = capacity_params$or_method,
     BPPARAM = FALSE
   )
-  calibrated <- if (isTRUE(calibration_params$sample_balance)) {
-    .rc_weighted_q95_calibrate(C_raw, weights)
-  } else {
-    rc_q95_calibrate(
-      C_raw,
-      bootstrap = FALSE,
-      BPPARAM = FALSE,
-      unit_meta = NULL,
-      stratum_col = NULL
-    )
+  q95_stratum_col <- calibration_params$q95_stratum_col
+  if (!is.null(q95_stratum_col) && !q95_stratum_col %in% colnames(unit_meta)) {
+    stop("Q95 stratum metadata are missing column: ", q95_stratum_col,
+         call. = FALSE)
   }
+  calibrated <- rc_q95_calibrate(
+    C_raw = C_raw,
+    bootstrap = calibration_params$q95_bootstrap,
+    B = calibration_params$q95_B,
+    BPPARAM = FALSE,
+    n0 = calibration_params$q95_n0,
+    unit_meta = unit_meta,
+    stratum_col = q95_stratum_col,
+    weights = if (isTRUE(calibration_params$sample_balance)) weights else NULL
+  )
   confidence_list <- lapply(artifacts, function(artifact) {
     value <- artifact$layer1$reaction_confidence
     if (is.null(value)) {
@@ -1030,10 +1122,12 @@
     C_raw = C_raw,
     reaction_capacity_L1 = C_raw,
     C_rel = calibrated$C_rel,
+    C_abs = calibrated$C_abs,
+    C_within_reaction_relative = calibrated$C_within_reaction_relative,
     reaction_confidence = reaction_confidence,
     q95_diagnostics = calibrated$Q,
     capacity_calibration_scope = calibration_scope,
-    reaction_confidence_source = "pando_internal_peak_gene_accessibility",
+    reaction_confidence_source = "pando_signed_tf_peak_gene_regulatory_support",
     capacity_params = capacity_params,
     calibration_params = calibration_params,
     sample_balance_weights = weights,

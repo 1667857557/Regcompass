@@ -14,7 +14,7 @@ rc_check_replicate_design <- function(unit_meta, condition_col = "condition", sa
   invisible(tab)
 }
 
-rc_describe_microcompass_by_group <- function(result,
+.rc_describe_microcompass_by_group_engine <- function(result,
                                              sample_col = "sample_id",
                                              condition_col = "condition",
                                              celltype_col = "cell_type") {
@@ -52,6 +52,29 @@ rc_describe_microcompass_by_group <- function(result,
 }
 
 #' Test sample-level microCOMPASS differential scores
+rc_describe_microcompass_by_group <- function(
+    result,
+    sample_col = "sample_id",
+    condition_col = "condition",
+    celltype_col = "cell_type") {
+  metric <- if (!is.null(result$penalty)) "penalty" else "score"
+  input <- result
+  if (identical(metric, "penalty")) input$score <- result$penalty
+  output <- .rc_describe_microcompass_by_group_engine(
+    input,
+    sample_col = sample_col,
+    condition_col = condition_col,
+    celltype_col = celltype_col
+  )
+  output$analysis_metric <- metric
+  output$metric_direction <- if (identical(metric, "penalty")) {
+    "lower_is_more_supported"
+  } else {
+    "higher_is_more_supported"
+  }
+  output
+}
+
 .rc_add_formula_covariates <- function(formula, covariates) {
   formula <- stats::as.formula(formula)
   covariates <- unique(as.character(covariates %||% character()))
@@ -99,8 +122,7 @@ rc_describe_microcompass_by_group <- function(result,
   list(score = aggregated, meta = sample_meta)
 }
 
-#' @export
-rc_test_microcompass_differential <- function(
+.rc_test_microcompass_differential_engine <- function(
     result, formula = score ~ condition,
     method = c("lm", "limma_continuous", "wilcox"),
     sample_col = "sample_id", celltype_col = "cell_type",
@@ -199,9 +221,45 @@ rc_test_microcompass_differential <- function(
     output$medium_scenario, output$contrast,
     drop = TRUE, lex.order = TRUE
   )
-  output$FDR <- ave(output$p_value, adjustment_group,
+  output$FDR <- stats::ave(output$p_value, adjustment_group,
                     FUN = function(p) stats::p.adjust(p, method = p_adjust_method))
   rownames(output) <- NULL
+  output
+}
+
+rc_test_microcompass_differential <- function(
+    result, formula = score ~ condition,
+    method = c("lm", "limma_continuous", "wilcox"),
+    sample_col = "sample_id", celltype_col = "cell_type",
+    condition_col = "condition", covariates = NULL,
+    min_samples_per_group = 3, preferred_min_samples_per_group = 5,
+    p_adjust_method = "BH", strict_replicate_design = TRUE,
+    test_type = c("omnibus", "pairwise")) {
+  metric <- if (!is.null(result$penalty)) "penalty" else "score"
+  input <- result
+  if (identical(metric, "penalty")) input$score <- result$penalty
+  output <- .rc_test_microcompass_differential_engine(
+    input,
+    formula = formula,
+    method = method,
+    sample_col = sample_col,
+    celltype_col = celltype_col,
+    condition_col = condition_col,
+    covariates = covariates,
+    min_samples_per_group = min_samples_per_group,
+    preferred_min_samples_per_group = preferred_min_samples_per_group,
+    p_adjust_method = p_adjust_method,
+    strict_replicate_design = strict_replicate_design,
+    test_type = test_type
+  )
+  if (nrow(output)) {
+    output$analysis_metric <- metric
+    output$metric_direction <- if (identical(metric, "penalty")) {
+      "positive_effect_means_higher_penalty_and_weaker_support"
+    } else {
+      "positive_effect_means_higher_relative_support"
+    }
+  }
   output
 }
 

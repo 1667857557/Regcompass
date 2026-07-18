@@ -37,7 +37,7 @@ rc_extract_pando_tf_peak_gene <- function(grn_object,
 }
 
 #' Project significant Pando edges onto a metabolic gene-gene network
-rc_project_metabolic_grn <- function(tf_peak_gene,
+.rc_project_metabolic_grn_base <- function(tf_peak_gene,
                                      metabolic_genes,
                                      top_k = 5L,
                                      min_shared_tfs = 1L,
@@ -169,6 +169,148 @@ rc_project_metabolic_grn <- function(tf_peak_gene,
 
 
 #' Run sample-specific Pando GRNs and construct reaction meta-modules
+
+
+.rc_signed_relation <- function(values) {
+  values <- values[is.finite(values) & values != 0]
+  if (!length(values)) return(NA_character_)
+  if (all(values > 0)) return("concordant")
+  if (all(values < 0)) return("discordant")
+  "mixed"
+}
+
+.rc_project_metabolic_grn_signed_metadata <- function(tf_peak_gene, metabolic_genes,
+                                     top_k = 5L, min_shared_tfs = 1L,
+                                     min_tf_jaccard = 0,
+                                     max_targets_per_tf = 200L,
+                                     include_direct_metabolic_tf = TRUE) {
+  answer <- .rc_project_metabolic_grn_base(
+    tf_peak_gene, metabolic_genes,
+    top_k = top_k,
+    min_shared_tfs = min_shared_tfs,
+    min_tf_jaccard = min_tf_jaccard,
+    max_targets_per_tf = max_targets_per_tf,
+    include_direct_metabolic_tf = include_direct_metabolic_tf
+  )
+  edges <- answer$edges
+  edges$regulator_set <- NA_character_
+  edges$direct_regulator <- NA_character_
+  edges$direct_target <- NA_character_
+  edges$regulatory_relation <- NA_character_
+  edges$signed_projection_weight <- NA_real_
+  edges$direction_and_sign_preserved <- FALSE
+  if (!nrow(edges) || !is.data.frame(tf_peak_gene) ||
+      !all(c("sample_id", "tf", "target") %in% colnames(tf_peak_gene))) {
+    answer$edges <- edges
+    return(answer)
+  }
+  x <- tf_peak_gene
+  x$sample_id <- as.character(x$sample_id)
+  x$tf <- toupper(trimws(as.character(x$tf)))
+  x$target <- toupper(trimws(as.character(x$target)))
+  x$.estimate <- if ("estimate" %in% colnames(x))
+    suppressWarnings(as.numeric(x$estimate)) else rep(NA_real_, nrow(x))
+  x$.strength <- abs(x$.estimate)
+
+  for (i in seq_len(nrow(edges))) {
+    sample <- as.character(edges$sample_id[[i]])
+    a <- toupper(as.character(edges$gene_a[[i]]))
+    b <- toupper(as.character(edges$gene_b[[i]]))
+    xs <- x[x$sample_id == sample, , drop = FALSE]
+    direct <- xs[(xs$tf == a & xs$target == b) |
+                   (xs$tf == b & xs$target == a), , drop = FALSE]
+    if (nrow(direct)) {
+      edges$direct_regulator[[i]] <- paste(unique(direct$tf), collapse = ";")
+      edges$direct_target[[i]] <- paste(unique(direct$target), collapse = ";")
+      edges$regulator_set[[i]] <- paste(unique(direct$tf), collapse = ";")
+      edges$regulatory_relation[[i]] <- .rc_signed_relation(direct$.estimate)
+      edges$signed_projection_weight[[i]] <- sum(direct$.estimate, na.rm = TRUE)
+      edges$direction_and_sign_preserved[[i]] <- TRUE
+      next
+    }
+    xa <- xs[xs$target == a, c("tf", ".estimate", ".strength"), drop = FALSE]
+    xb <- xs[xs$target == b, c("tf", ".estimate", ".strength"), drop = FALSE]
+    shared <- intersect(unique(xa$tf), unique(xb$tf))
+    if (!length(shared)) next
+    contributions <- vapply(shared, function(tf) {
+      ea <- sum(xa$.estimate[xa$tf == tf], na.rm = TRUE)
+      eb <- sum(xb$.estimate[xb$tf == tf], na.rm = TRUE)
+      sa <- sum(xa$.strength[xa$tf == tf], na.rm = TRUE)
+      sb <- sum(xb$.strength[xb$tf == tf], na.rm = TRUE)
+      sign(ea) * sign(eb) * min(sa, sb)
+    }, numeric(1))
+    edges$regulator_set[[i]] <- paste(shared, collapse = ";")
+    edges$regulatory_relation[[i]] <- .rc_signed_relation(contributions)
+    edges$signed_projection_weight[[i]] <- sum(contributions, na.rm = TRUE)
+    edges$direction_and_sign_preserved[[i]] <- TRUE
+  }
+  answer$edges <- edges
+  answer
+}
+
+rc_project_metabolic_grn <- function(tf_peak_gene, metabolic_genes,
+                                     top_k = 5L, min_shared_tfs = 1L,
+                                     min_tf_jaccard = 0,
+                                     max_targets_per_tf = 200L,
+                                     include_direct_metabolic_tf = TRUE) {
+  answer <- .rc_project_metabolic_grn_signed_metadata(
+    tf_peak_gene = tf_peak_gene,
+    metabolic_genes = metabolic_genes,
+    top_k = top_k,
+    min_shared_tfs = min_shared_tfs,
+    min_tf_jaccard = min_tf_jaccard,
+    max_targets_per_tf = max_targets_per_tf,
+    include_direct_metabolic_tf = include_direct_metabolic_tf
+  )
+  edges <- answer$edges
+  nodes <- answer$nodes
+  if (!nrow(edges) || !nrow(nodes)) {
+    edges$used_for_component <- logical(nrow(edges))
+    answer$edges <- edges
+    return(answer)
+  }
+
+  relation <- as.character(edges$regulatory_relation)
+  edges$used_for_component <- edges$direct_regulatory %in% TRUE |
+    (!edges$direct_regulatory %in% TRUE & relation == "concordant")
+  edges$used_for_component[is.na(edges$used_for_component)] <- FALSE
+
+  for (sample in unique(as.character(nodes$sample_id))) {
+    node_index <- as.character(nodes$sample_id) == sample
+    edge_index <- as.character(edges$sample_id) == sample
+    component_edges <- edges[
+      edge_index & edges$used_for_component,
+      , drop = FALSE
+    ]
+    components <- .rc_mm_components(
+      as.character(nodes$gene[node_index]),
+      component_edges
+    )
+    module_ids <- paste0(
+      sample, "::GRN", sprintf("%04d", components$component)
+    )
+    nodes$module_id[node_index] <- module_ids[
+      match(as.character(nodes$gene[node_index]), components$gene)
+    ]
+    if (any(edge_index)) {
+      edges$module_id[edge_index] <- nodes$module_id[
+        match(
+          as.character(edges$gene_a[edge_index]),
+          as.character(nodes$gene)
+        )
+      ]
+    }
+  }
+
+  answer$nodes <- nodes
+  answer$edges <- edges
+  answer$component_policy <- paste(
+    "direct regulatory edges plus concordant signed shared-TF edges;",
+    "discordant and mixed shared-TF edges are diagnostic only"
+  )
+  answer
+}
+
 rc_run_pando_meta_modules <- function(metacell_object,
                                       gem,
                                       outdir,
@@ -381,4 +523,3 @@ rc_run_pando_meta_modules <- function(metacell_object,
   saveRDS(out, file.path(outdir, "pando_meta_modules.rds"))
   out
 }
-

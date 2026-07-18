@@ -1,5 +1,4 @@
 #' Export standardized microCOMPASS outputs
-#' @export
 rc_export_microcompass <- function(result, outdir,
                                    write_matrices = TRUE,
                                    write_diagnostics = TRUE) {

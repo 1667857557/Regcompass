@@ -8,8 +8,11 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
          call. = FALSE)
   }
   if (!is.data.frame(gpr_table) ||
-      !all(c("reaction_id", "gene") %in% colnames(gpr_table))) {
-    stop("`gpr_table` must contain reaction_id and gene.", call. = FALSE)
+      !all(c("reaction_id", "and_group_id", "gene") %in% colnames(gpr_table))) {
+    stop(
+      "`gpr_table` must contain reaction_id, and_group_id and gene; treating every gene as an isoenzyme would misclassify required subunits.",
+      call. = FALSE
+    )
   }
 
   nodes <- unique(gene_nodes[, c("sample_id", "module_id", "gene"), drop = FALSE])
@@ -26,13 +29,6 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
       !is.na(gpr$gene) & nzchar(gpr$gene),
     , drop = FALSE
   ]
-  if (!"and_group_id" %in% colnames(gpr)) {
-    gpr$and_group_id <- ave(
-      seq_len(nrow(gpr)),
-      gpr$reaction_id,
-      FUN = seq_along
-    )
-  }
   gpr$and_group_id <- as.character(gpr$and_group_id)
   gpr <- unique(gpr[, c("reaction_id", "and_group_id", "gene"), drop = FALSE])
 

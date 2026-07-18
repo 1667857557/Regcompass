@@ -57,7 +57,7 @@ test_that("alternative GPR heuristics require explicit arguments", {
   expect_false(isTRUE(all.equal(heuristic, canonical)))
 })
 
-test_that("GPR-subset logCPM requires full-transcriptome library sizes", {
+test_that("GPR-subset logCPM accepts explicit full-transcriptome library sizes", {
   counts <- Matrix::Matrix(
     matrix(
       c(10, 5, 0, 5),
@@ -67,14 +67,11 @@ test_that("GPR-subset logCPM requires full-transcriptome library sizes", {
     ),
     sparse = TRUE
   )
-  key <- .rc_library_cache_key(colnames(counts))
-  if (exists(key, envir = .rc_full_library_size_cache, inherits = FALSE)) {
-    rm(list = key, envir = .rc_full_library_size_cache)
-  }
 
-  expect_error(
-    .rc_metacell_logcpm(counts),
-    "Full-transcriptome RNA library sizes are required"
+  input_scope <- .rc_metacell_logcpm(counts)
+  expect_identical(
+    attr(input_scope, "normalization_scope"),
+    "input_matrix_library_size"
   )
 
   library_size <- c(m1 = 100, m2 = 200)
@@ -88,6 +85,10 @@ test_that("GPR-subset logCPM requires full-transcriptome library sizes", {
   dimnames(expected) <- dimnames(counts)
 
   expect_equal(as.matrix(observed), expected)
+  expect_identical(
+    attr(observed, "normalization_scope"),
+    "full_transcriptome_library_size_before_gpr_filter"
+  )
 })
 
 test_that("integrated workflow validates routing inputs before delegation", {

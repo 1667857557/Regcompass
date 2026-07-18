@@ -1,4 +1,4 @@
-rc_layer2_penalty <- function(C_rel, Conf, epsilon = 1e-6, epsilon_C = 1e-3, epsilon_Conf = 1e-3,
+.rc_layer2_penalty_engine <- function(C_rel, Conf, epsilon = 1e-6, epsilon_C = 1e-3, epsilon_Conf = 1e-3,
                               penalty_cap = 20, support_reactions = character(), support_penalty = 0.05) {
   C_raw <- as.matrix(C_rel); Conf_raw <- as.matrix(Conf)
   Cc <- ifelse(is.na(C_raw), epsilon_C, pmax(C_raw, epsilon_C))
@@ -25,7 +25,7 @@ rc_layer2_penalty <- function(C_rel, Conf, epsilon = 1e-6, epsilon_C = 1e-3, eps
                                       penalty = P, epsilon_C = epsilon_C, epsilon_Conf = epsilon_Conf,
                                       penalty_cap = penalty_cap, support_penalty = support_penalty))
 }
-rc_compass_score_from_penalty <- function(P, feasible, epsilon = 1e-6) {
+.rc_compass_score_from_penalty_engine <- function(P, feasible, epsilon = 1e-6) {
   score <- P
   for (i in seq_len(nrow(P))) {
     x <- P[i, ]; med <- stats::median(x[feasible[i, ]], na.rm = TRUE); sc <- stats::mad(x[feasible[i, ]], constant = 1.4826, na.rm = TRUE)
@@ -34,6 +34,65 @@ rc_compass_score_from_penalty <- function(P, feasible, epsilon = 1e-6) {
   }
   score[!feasible] <- NA_real_
   score[!is.finite(score) & feasible] <- NA_real_
+  score
+}
+
+rc_layer2_penalty <- function(C_rel, Conf, epsilon = 1e-6,
+                              epsilon_C = 1e-3, epsilon_Conf = 1e-3,
+                              penalty_cap = 20,
+                              support_reactions = character(),
+                              support_penalty = 0.05,
+                              allow_structural_support_override = FALSE) {
+  if (length(support_reactions) && !isTRUE(allow_structural_support_override)) {
+    stop(
+      "FASTCORE/support membership is structural, not biological evidence. Set `allow_structural_support_override = TRUE` only for sensitivity analysis.",
+      call. = FALSE
+    )
+  }
+  .rc_layer2_penalty_engine(
+    C_rel, Conf,
+    epsilon = epsilon,
+    epsilon_C = epsilon_C,
+    epsilon_Conf = epsilon_Conf,
+    penalty_cap = penalty_cap,
+    support_reactions = support_reactions,
+    support_penalty = support_penalty
+  )
+}
+
+rc_compass_score_from_penalty <- function(P, feasible, epsilon = 1e-6,
+                                          method = c("ecdf", "mad_sigmoid"),
+                                          variation_tolerance = 1e-8) {
+  method <- match.arg(method)
+  P <- as.matrix(P)
+  feasible <- as.matrix(feasible)
+  score <- matrix(NA_real_, nrow(P), ncol(P), dimnames = dimnames(P))
+  noninformative <- logical(nrow(P))
+  for (i in seq_len(nrow(P))) {
+    index <- feasible[i, ] & is.finite(P[i, ])
+    x <- P[i, index]
+    if (length(x) < 2L || diff(range(x)) <= variation_tolerance) {
+      noninformative[[i]] <- TRUE
+      next
+    }
+    if (identical(method, "ecdf")) {
+      ranks <- rank(x, ties.method = "average")
+      score[i, index] <- 1 - (ranks - 1) / (length(x) - 1)
+    } else {
+      center <- stats::median(x)
+      scale <- max(stats::mad(x, constant = 1.4826),
+                   stats::IQR(x) / 1.349, variation_tolerance)
+      score[i, index] <- rc_sigmoid((center - x) / scale)
+    }
+  }
+  attr(score, "score_semantics") <- if (identical(method, "ecdf")) {
+    "within_target_relative_penalty_rank_not_probability"
+  } else {
+    "within_target_robust_penalty_transform_not_probability"
+  }
+  attr(score, "noninformative_target") <- stats::setNames(
+    noninformative, rownames(P)
+  )
   score
 }
 
@@ -46,14 +105,19 @@ rc_layer2_unit_matrices <- function(layer1, unit, sample_col, celltype_col, cond
   pm <- pm[pm$pool_id %in% colnames(C), , drop=FALSE]
   group_cols <- c(sample_col, if (condition_col %in% colnames(pm)) condition_col else NULL, celltype_col)
   gid <- interaction(pm[, group_cols, drop=FALSE], sep="|", drop=TRUE)
-  agg <- function(M) do.call(cbind, lapply(split(pm$pool_id, gid), function(cols) rowMedians_safe(M[, cols, drop=FALSE])))
+  agg <- function(M) {
+    do.call(cbind, lapply(
+      split(pm$pool_id, gid),
+      function(cols) matrixStats::rowMedians(M[, cols, drop = FALSE], na.rm = TRUE)
+    ))
+  }
   outC <- agg(C); outF <- agg(Conf)
   unit_meta <- unique(data.frame(unit_id = as.character(gid), pm[, group_cols, drop=FALSE], stringsAsFactors=FALSE))
   unit_meta <- unit_meta[match(colnames(outC), unit_meta$unit_id), , drop = FALSE]
-  rownames(unit_meta) <- NULL; list(C_rel = outC, reaction_confidence = outF, unit_meta = unit_meta, summary = "Layer1 aggregated to sample × celltype medians")
+  rownames(unit_meta) <- NULL; list(C_rel = outC, reaction_confidence = outF, unit_meta = unit_meta, summary = "Layer1 aggregated to sample x celltype medians")
 }
 
-rc_align_layer2_evidence <- function(M, rxns, fill = 1) {
+rc_align_layer2_evidence <- function(M, rxns, fill = NA_real_) {
   M <- as.matrix(M)
   out <- matrix(fill, nrow = length(rxns), ncol = ncol(M), dimnames = list(rxns, colnames(M)))
   common <- intersect(rxns, rownames(M))
