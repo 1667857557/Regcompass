@@ -79,17 +79,35 @@ jobs:
               path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
           PY
 
+          rm -f NAMESPACE
+          rm -f man/rc_prepare_human2_gem.Rd
+          rm -f man/rc_make_medium_scenarios.Rd
+          rm -f man/rc_run_regcompass.Rd
+          rm -f man/rc_run_regcompass_one_shot.Rd
           Rscript -e 'roxygen2::roxygenise()'
           git diff --check
 
       - name: Parse sources
-        shell: Rscript {0}
+        shell: bash
         run: |
+          set -o pipefail
+          Rscript - <<'RS' 2>&1 | tee parse-output.txt
           files <- c(
             list.files("R", pattern = "[.]R$", full.names = TRUE),
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
-          invisible(lapply(files, parse))
+          for (file in files) {
+            cat("Parsing ", file, "\n", sep = "")
+            tryCatch(
+              parse(file),
+              error = function(error) {
+                cat("PARSE_ERROR_FILE=", file, "\n", sep = "")
+                cat("PARSE_ERROR_MESSAGE=", conditionMessage(error), "\n", sep = "")
+                stop(error)
+              }
+            )
+          }
+          RS
 
       - name: Install package
         shell: bash
@@ -131,6 +149,7 @@ jobs:
           name: species-refactor-v2-diagnostics
           path: |
             source-application.log
+            parse-output.txt
             install-output.txt
             test-output.txt
             check-output.txt
