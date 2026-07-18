@@ -188,7 +188,7 @@ jobs:
           package_tarball=$(ls -t RegCompassR_*.tar.gz | head -n 1)
           env _R_CHECK_FORCE_SUGGESTS_=false R CMD check --no-manual --no-build-vignettes "$package_tarball" 2>&1 | tee check-output.txt
 
-      - name: Commit validated refactor
+      - name: Commit validated source
         shell: bash
         env:
           GH_TOKEN: ${{ github.token }}
@@ -196,9 +196,10 @@ jobs:
           set -euo pipefail
           rm -f RegCompassR_*.tar.gz
           rm -rf RegCompassR.Rcheck ..Rcheck
+          git checkout origin/agent/fix-species-medium-refactor-v2 -- .github
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
+          git add -A -- DESCRIPTION NAMESPACE R man tests vignettes
           git diff --cached --check
           git status --short
           git commit -m "Complete species-aware workflow refactor"
