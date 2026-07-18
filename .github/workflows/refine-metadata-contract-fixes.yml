@@ -1,9 +1,9 @@
 name: Refine metadata contract fixes
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/fix-metacell-pando-metadata-contracts
+      - main
 
 permissions:
   contents: write
