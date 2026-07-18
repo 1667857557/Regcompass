@@ -1,0 +1,141 @@
+diff --git a/R/global_workflow.R b/R/global_workflow.R
+index 149ae77..642da7d 100644
+--- a/R/global_workflow.R
++++ b/R/global_workflow.R
+@@ -574,6 +574,10 @@
+     gsub("[^A-Za-z0-9_.-]+", "_", group_id)
+   )
+   dir.create(stratum_dir, recursive = TRUE, showWarnings = FALSE)
++  or_method <- match.arg(
++    layer1_args$or_method %||% "max",
++    c("max", "sum_sqrtK", "prob_or", "sum")
++  )
+   capacity_params <- list(
+     promiscuity_mode = match.arg(
+       layer1_args$promiscuity_mode %||% "none",
+@@ -584,10 +588,7 @@
+       c("min", "boltzmann", "mean")
+     ),
+     tau = layer1_args$tau %||% 0.20,
+-    or_method = match.arg(
+-      layer1_args$or_method %||% "max",
+-      c("max", "sum_sqrtK", "prob_or", "sum")
+-    )
++    or_method = or_method
+   )
+   metacell_defaults <- list(
+     object = one,
+diff --git a/R/gpr_capacity.R b/R/gpr_capacity.R
+index 89a9b62..2c4a394 100644
+--- a/R/gpr_capacity.R
++++ b/R/gpr_capacity.R
+@@ -147,7 +147,7 @@ rc_or_capacity <- function(and_capacities,
+ }
+ 
+ #' Compute capacity for one reaction in one pool
+-rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean"),
++rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("min", "boltzmann", "mean"),
+                                      or_method = c("max", "sum_sqrtK", "prob_or", "sum")) {
+   and_method <- match.arg(and_method)
+   or_method <- match.arg(or_method)
+@@ -165,15 +165,14 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and
+ 
+ #' Compute raw Layer 1 reaction capacity
+ #'
+-#' Uses fixed sqrt promiscuity correction, Boltzmann AND with tau = 0.20 by default,
+-#' and square-root dampened OR-group summation. These defaults are the main biological model; alternative
+-#' tau values should be interpreted only as sensitivity to the multi-subunit
+-#' bottleneck assumption.
++#' Uses annotation-count-neutral promiscuity, hard-minimum AND, and maximum
++#' isoenzyme support by default. Legacy sqrt promiscuity, Boltzmann AND, and
++#' square-root-dampened OR aggregation remain explicit sensitivity modes.
+ rc_reaction_capacity <- function(gpr_list,
+                                  gene_score,
+-                                 promiscuity_mode = c("sqrt", "linear", "none"),
++                                 promiscuity_mode = c("none", "sqrt", "linear"),
+                                  tau = 0.20,
+-                                 and_method = c("boltzmann", "min", "mean"),
++                                 and_method = c("min", "boltzmann", "mean"),
+                                  or_method = c("max", "sum_sqrtK", "prob_or", "sum"),
+                                  BPPARAM = NULL) {
+   promiscuity_mode <- match.arg(promiscuity_mode)
+diff --git a/R/medium.R b/R/medium.R
+index f7cc734..3fee02d 100644
+--- a/R/medium.R
++++ b/R/medium.R
+@@ -156,6 +156,17 @@
+   )
+   hit <- match(physiologic$metabolite_name, names(key_concentrations))
+   physiologic$concentration_mM[!is.na(hit)] <- key_concentrations[hit[!is.na(hit)]]
++  sensitivity_reference <- c(glucose = 25, lactate = 20, glutamine = 2)
++  sensitivity_index <- match(
++    physiologic$metabolite_name, names(sensitivity_reference)
++  )
++  sensitivity_rows <- !is.na(sensitivity_index)
++  physiologic$uptake_fraction[sensitivity_rows] <- pmin(
++    1,
++    physiologic$concentration_mM[sensitivity_rows] /
++      sensitivity_reference[sensitivity_index[sensitivity_rows]]
++  )
++  physiologic$target_exchange_flag[sensitivity_rows] <- TRUE
+ 
+   if (preset_id %in% c("normal_human_plasma", "human_plasma", "hplm")) {
+     return(physiologic)
+@@ -165,6 +176,11 @@
+     # Concentrations remain provenance values rather than direct flux bounds.
+     physiologic$concentration_mM[physiologic$metabolite_name == "glucose"] <- 7.5
+     physiologic$concentration_mM[physiologic$metabolite_name == "lactate"] <- 2.0
++    physiologic$uptake_fraction[sensitivity_rows] <- pmin(
++      1,
++      physiologic$concentration_mM[sensitivity_rows] /
++        sensitivity_reference[sensitivity_index[sensitivity_rows]]
++    )
+     return(physiologic)
+   }
+ 
+diff --git a/R/regcompass.R b/R/regcompass.R
+index 2181da4..a034c32 100644
+--- a/R/regcompass.R
++++ b/R/regcompass.R
+@@ -93,15 +93,20 @@ rc_run_regcompass <- function(
+       call. = FALSE
+     )
+   }
++  or_method <- .rc_resolve_workflow_or_method(
++    layer1_args, strict_biological_defaults
++  )
++  or_method_source <- .rc_workflow_or_method_source(
++    layer1_args, strict_biological_defaults
++  )
+   if (isTRUE(strict_biological_defaults)) {
+     layer1_args$promiscuity_mode <- layer1_args$promiscuity_mode %||% "none"
+     layer1_args$and_method <- layer1_args$and_method %||% "min"
+-    layer1_args$or_method <- layer1_args$or_method %||% "max"
+   } else {
+     layer1_args$promiscuity_mode <- layer1_args$promiscuity_mode %||% "sqrt"
+     layer1_args$and_method <- layer1_args$and_method %||% "boltzmann"
+-    layer1_args$or_method <- layer1_args$or_method %||% "sum_sqrtK"
+   }
++  layer1_args$or_method <- or_method
+   layer1_args$promiscuity_mode <- match.arg(
+     layer1_args$promiscuity_mode,
+     c("none", "sqrt", "linear")
+@@ -181,16 +186,8 @@ rc_run_regcompass <- function(
+   answer$params$strict_biological_defaults <- strict_biological_defaults
+   answer$params$gpr_promiscuity_mode <- layer1_args$promiscuity_mode
+   answer$params$gpr_and_method <- layer1_args$and_method
+-  answer$params$gpr_or_method <- layer1_args$or_method
+-  answer$params$gpr_or_method_source <- if (!is.null(layer1_args$or_method)) {
+-    if (isTRUE(strict_biological_defaults) && identical(layer1_args$or_method, "max")) {
+-      "strict_or_explicit_default"
+-    } else {
+-      "layer1_args"
+-    }
+-  } else {
+-    "workflow_default"
+-  }
++  answer$params$gpr_or_method <- or_method
++  answer$params$gpr_or_method_source <- or_method_source
+   answer$params$q95_role <- "diagnostic_only"
+   answer$params$q95_n0 <- answer$layer1$calibration_params$q95_n0
+   answer$params$q95_stratum_col <-
