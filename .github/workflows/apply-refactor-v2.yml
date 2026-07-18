@@ -115,8 +115,11 @@ jobs:
           git apply .github/refactor-v2-fixes.patch
           git apply --check .github/refactor-v2-fixes-2.patch
           git apply .github/refactor-v2-fixes-2.patch
+          git apply --check .github/refactor-v2-fixes-3.patch
+          git apply .github/refactor-v2-fixes-3.patch
           rm -f .github/refactor-v2-fixes.patch
           rm -f .github/refactor-v2-fixes-2.patch
+          rm -f .github/refactor-v2-fixes-3.patch
 
           rm -f NAMESPACE
           rm -f man/rc_prepare_human2_gem.Rd
