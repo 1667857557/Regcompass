@@ -54,7 +54,7 @@ result <- rc_run_regcompass_one_shot(
   fragment_files = FALSE,  # use existing ATAC peak counts; pass paths to re-aggregate fragments
   species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
   gem_version = "2.0.0",
-  medium_scenario = "physiologic",
+  medium_scenario = "normal_human_plasma",
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
