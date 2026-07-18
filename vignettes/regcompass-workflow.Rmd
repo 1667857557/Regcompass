@@ -19,8 +19,8 @@ knitr::opts_chunk$set(
 
 ## Workflow contract
 
-RegCompassR exposes four supported functions. The explicit path prepares a
-Human-GEM model with `rc_prepare_human2_gem()`, defines exchange constraints
+RegCompassR exposes six supported functions. The explicit path prepares a
+species GEM model with `rc_prepare_gem()`, defines exchange constraints
 with `rc_make_medium_scenarios()`, and passes both to `rc_run_regcompass()`.
 `rc_run_regcompass_one_shot()` performs those setup calls when `gem` or
 `medium_scenarios` is omitted.
@@ -79,21 +79,22 @@ run rather than silently discard a sample.
 
 ## 2. Prepare and inspect the GEM
 
-Pin a Human-GEM release for reproducibility. The helper downloads, converts,
+Pin a Human-GEM 2 release for reproducibility. The helper downloads, converts,
 annotates, validates, and caches the model.
 
 ```{r gem, purl=FALSE}
 library(RegCompassR)
 
-gem <- rc_prepare_human2_gem(
+human2_gem <- rc_prepare_human2_gem(
   version = "2.0.0",
   cache_dir = "model-cache"
 )
+# For mouse data, use rc_prepare_mouse_gem(version = "1.8.0").
 
-dim(gem$S)
-head(gem$gpr_table)
-table(gem$reaction_meta$role, useNA = "ifany")
-gem$model_info[c("source", "version", "commit", "checksum")]
+dim(human2_gem$S)
+head(human2_gem$gpr_table)
+table(human2_gem$reaction_meta$role, useNA = "ifany")
+human2_gem$model_info[c("source", "version", "commit", "checksum")]
 ```
 
 Do not use `version = "latest"` for a reproducible analysis. If it is required
@@ -105,18 +106,16 @@ The default `compass_model_bounds` scenario preserves GEM exchange direction
 and caps exchange bounds uniformly. It is a model-defined environment, not a
 claim about measured metabolite concentrations.
 
-Current optional named backgrounds are `normal_human_plasma`, `rpmi1640`,
-`low_glucose`, and `high_lactate`. Retired identifiers are intentionally not
-accepted or remapped.
+Preset scenarios can also be returned together with a user-defined `"custom"` scenario in one medium table. Current optional named backgrounds are `normal_human_plasma`, `mouse_plasma`, `rpmi1640`, `dmem_high_glucose`, `low_glucose`, `high_glucose`, `low_lactate`, `high_lactate`, `low_glutamine`, `minimal`, and `permissive_all_exchange`. Removed compatibility aliases such as `human_plasma`, `hplm`, `blood_like`, `culture_like`, `tumor_low_glucose`, and `lactate_available` are intentionally unsupported; use canonical preset names or a custom medium table.
 
 ```{r medium, purl=FALSE}
 medium <- rc_make_medium_scenarios(
-  gem = gem,
+  gem = human2_gem,
   scenario = "compass_model_bounds",
   exchange_limit = 1
 )
 
-stopifnot(all(medium$exchange_reaction_id %in% colnames(gem$S)))
+stopifnot(all(medium$exchange_reaction_id %in% colnames(human2_gem$S)))
 stopifnot(all(medium$lb <= medium$ub))
 stopifnot(identical(unique(medium$condition), "all"))
 head(medium[c("exchange_reaction_id", "lb", "ub", "available")])
@@ -140,7 +139,7 @@ data(motifs, package = "Pando")
 
 result <- rc_run_regcompass(
   object = object,
-  gem = gem,
+  gem = human2_gem,
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
@@ -190,8 +189,10 @@ must not be overridden through `layer2_args`. Use `inference_unit` on
 ## 5. Equivalent one-shot entry point
 
 For a first run, omit `gem` and `medium_scenarios`; the one-shot function
-constructs them and delegates to the same integrated workflow. Arguments in
-`...` are passed to `rc_run_regcompass()`.
+constructs them and delegates to the same integrated workflow. The default is
+`species = "human"`; set `species = "mouse"` to automatically prepare
+Mouse-GEM 1.8.0 and the mouse physiological medium. Arguments in `...` are
+passed to `rc_run_regcompass()`.
 
 ```{r one-shot, purl=FALSE}
 result <- rc_run_regcompass_one_shot(
@@ -200,8 +201,9 @@ result <- rc_run_regcompass_one_shot(
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = fragment_files,
-  humangem_version = "2.0.0",
-  medium_scenario = "compass_model_bounds",
+  species = "human",
+  gem_version = "2.0.0",
+  medium_scenario = "compass_model_bounds",  # or "physiologic"/other presets
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
@@ -209,9 +211,12 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-Supply `gem = gem` and `medium_scenarios = medium` to the one-shot function if
-those objects were prepared separately. An explicit `medium_scenarios` table
-takes precedence over `medium_scenario`.
+For mouse data, use a mouse genome and set `species = "mouse"`; the wrapper
+then prepares Mouse-GEM 1.8.0 and the mouse physiological medium unless you
+provide `gem` or `medium_scenarios`. Supply `gem = human2_gem` (or a Mouse-GEM
+object) and `medium_scenarios = medium` to the one-shot function if those
+objects were prepared separately. An explicit `medium_scenarios` table takes
+precedence over `medium_scenario`.
 
 ## 6. Check the barrier and outputs
 

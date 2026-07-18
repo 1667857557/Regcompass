@@ -11,7 +11,6 @@ rc_run_regcompass_one_shot(
   genome,
   fragment_files = NULL,
   gem = NULL,
-  humangem_version = NULL,
   medium_scenario = "physiologic",
   medium_scenarios = NULL,
   species = c("human", "mouse"),
@@ -32,14 +31,15 @@ rc_run_regcompass_one_shot(
 
 \item{gem}{Optional prebuilt species GEM.}
 
-\item{humangem_version}{Deprecated Human-GEM compatibility argument.}
 
 \item{medium_scenario}{Medium preset identifier. The default \code{"physiologic"}
 resolves to human or mouse plasma.}
 
 \item{medium_scenarios}{Optional prebuilt medium table.}
 
-\item{species}{\code{"human"} or \code{"mouse"}.}
+\item{species}{\code{"human"} or \code{"mouse"}; defaults to \code{"human"}. Choosing
+\code{"mouse"} prepares Mouse-GEM and mouse plasma defaults when \code{gem} and
+\code{medium_scenarios} are omitted.}
 
 \item{gem_version}{Pinned model release. Defaults to Human-GEM 2.0.0 or
 Mouse-GEM 1.8.0.}
@@ -50,7 +50,9 @@ Mouse-GEM 1.8.0.}
 A RegCompass result list.
 }
 \description{
-Downloads a pinned Human-GEM or Mouse-GEM release when \code{gem} is not supplied,
-builds a species-matched literature-backed physiological medium by default,
-and delegates to \code{rc_run_regcompass()}.
+Downloads a pinned Human-GEM 2 or Mouse-GEM release when \code{gem} is not
+supplied. \code{species = "human"} is the default; \code{species = "mouse"} routes
+setup to Mouse-GEM 1.8.0 and the mouse physiological medium. It builds a
+species-matched literature-backed physiological medium by default, and delegates
+to \code{rc_run_regcompass()}.
 }

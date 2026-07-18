@@ -199,11 +199,13 @@ rc_prepare_gem <- function(
 
 #' Prepare Human-GEM 2 for RegCompass
 #'
-#' Backward-compatible Human-GEM entry point. New code may use
-#' `rc_prepare_gem(species = "human")`.
+#' Species-specific Human-GEM 2 entry point. Use this named helper when the
+#' analysis should explicitly download, cache, and validate the Human-GEM 2
+#' model path; it delegates to `rc_prepare_gem(species = "human")` with
+#' Human-GEM 2 defaults.
 #'
 #' @inheritParams rc_prepare_gem
-#' @param version Human-GEM release version.
+#' @param version Human-GEM 2 release version.
 #' @export
 rc_prepare_human2_gem <- function(
     version = "2.0.0",
@@ -226,7 +228,9 @@ rc_prepare_human2_gem <- function(
 
 #' Prepare Mouse-GEM for RegCompass
 #'
-#' Convenience wrapper around `rc_prepare_gem(species = "mouse")`.
+#' Species-specific convenience entry point for users who want the Mouse-GEM
+#' download, cache naming, and validation path explicitly. Equivalent to
+#' `rc_prepare_gem(species = "mouse")` with Mouse-GEM defaults.
 #'
 #' @inheritParams rc_prepare_gem
 #' @param version Mouse-GEM release version.
@@ -288,14 +292,6 @@ rc_validate_species_gem <- function(gem, species = c("human", "mouse")) {
     )
   }
   invisible(TRUE)
-}
-
-rc_validate_human2_gem <- function(gem) {
-  rc_validate_species_gem(gem, "human")
-}
-
-rc_validate_mouse_gem <- function(gem) {
-  rc_validate_species_gem(gem, "mouse")
 }
 
 rc_download_species_gem <- function(
@@ -580,21 +576,6 @@ rc_prepare_species_gpr_table <- function(
     reaction_rules = reaction_rules,
     genes = genes,
     reactions = reactions
-  )
-}
-
-# Backward-compatible internal names used by older tests and downstream scripts.
-rc_download_humangem_gpr_table <- function(...) {
-  rc_download_species_gem(species = "human", ...)
-}
-
-rc_prepare_humangem_gpr_table <- function(
-    repo_dir,
-    gene_format = c("symbol", "ensembl")) {
-  rc_prepare_species_gpr_table(
-    repo_dir,
-    species = "human",
-    gene_format = gene_format
   )
 }
 

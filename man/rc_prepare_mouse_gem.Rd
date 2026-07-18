@@ -25,5 +25,7 @@ is generated inside \code{cache_dir}.}
 \item{allow_latest}{Permit the unpinned \code{version = "latest"} mode.}
 }
 \description{
-Convenience wrapper around \code{rc_prepare_gem(species = "mouse")}.
+Species-specific convenience entry point for users who want the Mouse-GEM
+download, cache naming, and validation path explicitly. Equivalent to
+\code{rc_prepare_gem(species = "mouse")} with Mouse-GEM defaults.
 }
