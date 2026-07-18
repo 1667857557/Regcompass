@@ -59,6 +59,8 @@ test_that("staged override architecture has been removed", {
 test_that("retired entry points remain absent", {
   retired <- c(
     "rc_prepare_human2_gem_v12",
+    "rc_download_humangem_gpr_table",
+    "rc_prepare_humangem_gpr_table",
     "rc_run_regcompass_multiome_metacell",
     "rc_run_layer1_from_metacells",
     "rc_recompute_metacell_peak_gene_links",

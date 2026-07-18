@@ -12,7 +12,9 @@ test_that("workflow vignette follows the supported public API", {
 
   text <- paste(readLines(vignette_file, warn = FALSE), collapse = "\n")
   supported <- c(
+    "rc_prepare_gem",
     "rc_prepare_human2_gem",
+    "rc_prepare_mouse_gem",
     "rc_make_medium_scenarios",
     "rc_run_regcompass",
     "rc_run_regcompass_one_shot"
