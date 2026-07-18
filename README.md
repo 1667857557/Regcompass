@@ -37,7 +37,9 @@ result <- rc_run_regcompass_one_shot(
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = fragment_files,
-  species = "human",
+  species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
+  gem_version = "2.0.0",
+  medium_scenario = "physiologic",
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
@@ -66,6 +68,12 @@ result <- rc_run_regcompass_one_shot(
   )
 )
 ```
+
+For mouse data, use the matching genome and set `species = "mouse"`; the
+one-shot setup then prepares Mouse-GEM 1.8.0 and `mouse_plasma` through the
+`"physiologic"` medium shortcut. To use a fully custom medium table, build it
+with `rc_make_medium_scenarios()` and pass it as `medium_scenarios`, which
+overrides `medium_scenario`.
 
 ## Choosing analysis parameters
 

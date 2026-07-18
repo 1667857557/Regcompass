@@ -15,11 +15,30 @@ The tutorial entry point. It prepares a species-specific Human-GEM 2 or Mouse-GE
 result <- rc_run_regcompass_one_shot(
   object, "RegCompass_result", motifs, genome, fragment_files,
   species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
+  gem_version = "2.0.0",
+  medium_scenario = "physiologic",  # or "compass_model_bounds", "rpmi1640", etc.
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type"
 )
 ```
+
+For mouse data, switch both the genome object and the species selector; the
+one-shot wrapper then prepares Mouse-GEM and the mouse physiological medium
+when `gem` and `medium_scenarios` are omitted.
+
+```r
+mouse_result <- rc_run_regcompass_one_shot(
+  object, "RegCompass_mouse_result", motifs, mouse_genome, fragment_files,
+  species = "mouse",
+  gem_version = "1.8.0",
+  medium_scenario = "physiologic"
+)
+```
+
+To bypass preset construction entirely, pass a prebuilt `medium_scenarios`
+table from `rc_make_medium_scenarios()`; it takes precedence over
+`medium_scenario`.
 
 ## `rc_prepare_gem()`
 

@@ -19,7 +19,7 @@ knitr::opts_chunk$set(
 
 ## Workflow contract
 
-RegCompassR exposes four supported functions. The explicit path prepares a
+RegCompassR exposes six supported functions. The explicit path prepares a
 species GEM model with `rc_prepare_gem()`, defines exchange constraints
 with `rc_make_medium_scenarios()`, and passes both to `rc_run_regcompass()`.
 `rc_run_regcompass_one_shot()` performs those setup calls when `gem` or
@@ -203,7 +203,7 @@ result <- rc_run_regcompass_one_shot(
   fragment_files = fragment_files,
   species = "human",
   gem_version = "2.0.0",
-  medium_scenario = "compass_model_bounds",
+  medium_scenario = "compass_model_bounds",  # or "physiologic"/other presets
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
@@ -211,9 +211,12 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-Supply `gem = human2_gem` (or a Mouse-GEM object) and `medium_scenarios = medium` to the one-shot function if
-those objects were prepared separately. An explicit `medium_scenarios` table
-takes precedence over `medium_scenario`.
+For mouse data, use a mouse genome and set `species = "mouse"`; the wrapper
+then prepares Mouse-GEM 1.8.0 and the mouse physiological medium unless you
+provide `gem` or `medium_scenarios`. Supply `gem = human2_gem` (or a Mouse-GEM
+object) and `medium_scenarios = medium` to the one-shot function if those
+objects were prepared separately. An explicit `medium_scenarios` table takes
+precedence over `medium_scenario`.
 
 ## 6. Check the barrier and outputs
 
