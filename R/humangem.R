@@ -43,6 +43,52 @@
   )
 }
 
+.rc_load_compatible_species_gem <- function(save_rds, spec) {
+  if (!file.exists(save_rds)) return(NULL)
+  cached <- tryCatch(
+    rc_read_gem(save_rds),
+    error = function(error) error
+  )
+  reason <- NULL
+  if (inherits(cached, "error")) {
+    reason <- conditionMessage(cached)
+  } else {
+    reason <- tryCatch(
+      {
+        rc_validate_species_gem(cached, spec$species)
+        recorded_source <- as.character(cached$model_info$source %||% "")
+        recorded_version <- as.character(cached$model_info$version %||% "")
+        if (!identical(recorded_source, spec$source)) {
+          stop(
+            "cached model source is `", recorded_source,
+            "` instead of `", spec$source, "`",
+            call. = FALSE
+          )
+        }
+        if (!identical(recorded_version, spec$version)) {
+          stop(
+            "cached model version is `", recorded_version,
+            "` instead of `", spec$version, "`",
+            call. = FALSE
+          )
+        }
+        NULL
+      },
+      error = function(error) conditionMessage(error)
+    )
+  }
+  if (!is.null(reason)) {
+    warning(
+      "Removing incompatible cached ", spec$repository_name,
+      " model at `", save_rds, "`: ", reason,
+      call. = FALSE
+    )
+    unlink(save_rds, force = TRUE)
+    return(NULL)
+  }
+  cached
+}
+
 #' Prepare a species-specific genome-scale metabolic model
 #'
 #' Downloads and converts a pinned official SysBioChalmers GEM release. Human
@@ -93,54 +139,59 @@ rc_prepare_gem <- function(
   if (isTRUE(force_download) && file.exists(save_rds)) {
     unlink(save_rds, force = TRUE)
   }
-  if (!file.exists(save_rds)) {
-    ref <- if (identical(spec$version, "latest")) {
-      "main"
-    } else {
-      paste0("v", spec$version)
-    }
-    tmp <- tempfile(paste0(spec$repository_name, "-"))
-    prepared <- rc_download_species_gem(
-      species = species,
-      destdir = tmp,
-      ref = ref,
-      ref_type = "auto",
-      gene_format = spec$gene_format,
-      overwrite = TRUE,
-      quiet = TRUE
-    )
-    repo_dir <- attr(prepared, "repo_dir")
-    model_yml <- file.path(repo_dir, "model", spec$model_file)
-    checksum <- unname(tools::md5sum(model_yml)[[1L]])
-    gem <- rc_convert_yaml_to_regcompass(
-      model_yml = model_yml,
-      species = species,
-      version = spec$version,
-      commit = ref,
-      checksum = checksum
-    )
-    gem <- rc_enrich_humangem_metadata(
-      gem,
-      reactions_tsv = prepared$reactions,
-      model_yml = model_yml
-    )
-    gem <- rc_annotate_reaction_roles(gem, overwrite_existing = TRUE)
-    gem$gpr_table <- prepared$gpr_table
-    gem$metabolic_genes <- prepared$metabolic_genes
-    gem$reaction_rules <- prepared$reaction_rules
-    gem$genes <- prepared$genes
-    gem$reactions <- prepared$reactions
-    gem$model_info$gene_format <- spec$gene_format
-    gem$model_info$archive <- attr(prepared, "archive")
-    gem$model_info$archive_url <- attr(prepared, "archive_url") %||%
-      NA_character_
-    gem$model_info$annotation_schema <- "regcompass_species_gem_v1"
-    gem$model_info$citation <- spec$citation
-    gem$model_info$citation_doi <- spec$citation_doi
-    rc_validate_species_gem(gem, species)
-    dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
-    saveRDS(gem, save_rds)
+  cached <- if (isTRUE(force_download)) {
+    NULL
+  } else {
+    .rc_load_compatible_species_gem(save_rds, spec)
   }
+  if (!is.null(cached)) return(cached)
+
+  ref <- if (identical(spec$version, "latest")) {
+    "main"
+  } else {
+    paste0("v", spec$version)
+  }
+  tmp <- tempfile(paste0(spec$repository_name, "-"))
+  prepared <- rc_download_species_gem(
+    species = species,
+    destdir = tmp,
+    ref = ref,
+    ref_type = "auto",
+    gene_format = spec$gene_format,
+    overwrite = TRUE,
+    quiet = TRUE
+  )
+  repo_dir <- attr(prepared, "repo_dir")
+  model_yml <- file.path(repo_dir, "model", spec$model_file)
+  checksum <- unname(tools::md5sum(model_yml)[[1L]])
+  gem <- rc_convert_yaml_to_regcompass(
+    model_yml = model_yml,
+    species = species,
+    version = spec$version,
+    commit = ref,
+    checksum = checksum
+  )
+  gem <- rc_enrich_humangem_metadata(
+    gem,
+    reactions_tsv = prepared$reactions,
+    model_yml = model_yml
+  )
+  gem <- rc_annotate_reaction_roles(gem, overwrite_existing = TRUE)
+  gem$gpr_table <- prepared$gpr_table
+  gem$metabolic_genes <- prepared$metabolic_genes
+  gem$reaction_rules <- prepared$reaction_rules
+  gem$genes <- prepared$genes
+  gem$reactions <- prepared$reactions
+  gem$model_info$gene_format <- spec$gene_format
+  gem$model_info$archive <- attr(prepared, "archive")
+  gem$model_info$archive_url <- attr(prepared, "archive_url") %||%
+    NA_character_
+  gem$model_info$annotation_schema <- "regcompass_species_gem_v1"
+  gem$model_info$citation <- spec$citation
+  gem$model_info$citation_doi <- spec$citation_doi
+  rc_validate_species_gem(gem, species)
+  dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(gem, save_rds)
   gem <- rc_read_gem(save_rds)
   rc_validate_species_gem(gem, species)
   gem

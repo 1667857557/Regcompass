@@ -23,12 +23,12 @@
 rc_run_regcompass_one_shot <- function(
     object, outdir, pfm, genome,
     fragment_files = NULL,
-    species = c("human", "mouse"),
     gem = NULL,
-    gem_version = NULL,
     humangem_version = NULL,
     medium_scenario = "physiologic",
     medium_scenarios = NULL,
+    species = c("human", "mouse"),
+    gem_version = NULL,
     ...) {
   species <- match.arg(species)
   if (!is.null(humangem_version)) {

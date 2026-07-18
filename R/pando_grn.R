@@ -186,7 +186,7 @@ rc_extract_pando_tf_peak_gene <- function(grn_object,
                                      include_direct_metabolic_tf = TRUE) {
   answer <- .rc_project_metabolic_grn_base(
     tf_peak_gene, metabolic_genes,
-    top_k = top_k,
+    top_k = Inf,
     min_shared_tfs = min_shared_tfs,
     min_tf_jaccard = min_tf_jaccard,
     max_targets_per_tf = max_targets_per_tf,
@@ -271,9 +271,35 @@ rc_project_metabolic_grn <- function(tf_peak_gene, metabolic_genes,
   }
 
   relation <- as.character(edges$regulatory_relation)
-  edges$used_for_component <- edges$direct_regulatory %in% TRUE |
+  component_candidate <- edges$direct_regulatory %in% TRUE |
     (!edges$direct_regulatory %in% TRUE & relation == "concordant")
-  edges$used_for_component[is.na(edges$used_for_component)] <- FALSE
+  component_candidate[is.na(component_candidate)] <- FALSE
+  edges$used_for_component <- component_candidate
+  if (nrow(edges) && is.finite(top_k) && top_k > 0L) {
+    selected <- rep(FALSE, nrow(edges))
+    for (sample in unique(as.character(nodes$sample_id))) {
+      sample_edge <- as.character(edges$sample_id) == sample
+      sample_genes <- as.character(
+        nodes$gene[as.character(nodes$sample_id) == sample]
+      )
+      for (gene in sample_genes) {
+        index <- which(
+          sample_edge & component_candidate &
+            (edges$gene_a == gene | edges$gene_b == gene)
+        )
+        if (!length(index)) next
+        order_index <- order(
+          edges$direct_regulatory[index],
+          edges$projection_weight[index],
+          edges$shared_tf_count[index],
+          decreasing = TRUE,
+          na.last = TRUE
+        )
+        selected[index[utils::head(order_index, as.integer(top_k))]] <- TRUE
+      }
+    }
+    edges$used_for_component <- selected
+  }
 
   for (sample in unique(as.character(nodes$sample_id))) {
     node_index <- as.character(nodes$sample_id) == sample
@@ -293,10 +319,11 @@ rc_project_metabolic_grn <- function(tf_peak_gene, metabolic_genes,
       match(as.character(nodes$gene[node_index]), components$gene)
     ]
     if (any(edge_index)) {
-      edges$module_id[edge_index] <- nodes$module_id[
+      sample_nodes <- nodes[node_index, , drop = FALSE]
+      edges$module_id[edge_index] <- sample_nodes$module_id[
         match(
           as.character(edges$gene_a[edge_index]),
-          as.character(nodes$gene)
+          as.character(sample_nodes$gene)
         )
       ]
     }

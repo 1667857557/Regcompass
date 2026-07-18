@@ -10,12 +10,12 @@ rc_run_regcompass_one_shot(
   pfm,
   genome,
   fragment_files = NULL,
-  species = c("human", "mouse"),
   gem = NULL,
-  gem_version = NULL,
   humangem_version = NULL,
   medium_scenario = "physiologic",
   medium_scenarios = NULL,
+  species = c("human", "mouse"),
+  gem_version = NULL,
   ...
 )
 }
@@ -30,12 +30,7 @@ rc_run_regcompass_one_shot(
 
 \item{fragment_files}{Optional fragment-file mapping.}
 
-\item{species}{\code{"human"} or \code{"mouse"}.}
-
 \item{gem}{Optional prebuilt species GEM.}
-
-\item{gem_version}{Pinned model release. Defaults to Human-GEM 2.0.0 or
-Mouse-GEM 1.8.0.}
 
 \item{humangem_version}{Deprecated Human-GEM compatibility argument.}
 
@@ -43,6 +38,11 @@ Mouse-GEM 1.8.0.}
 resolves to human or mouse plasma.}
 
 \item{medium_scenarios}{Optional prebuilt medium table.}
+
+\item{species}{\code{"human"} or \code{"mouse"}.}
+
+\item{gem_version}{Pinned model release. Defaults to Human-GEM 2.0.0 or
+Mouse-GEM 1.8.0.}
 
 \item{...}{Arguments passed to \code{rc_run_regcompass()}.}
 }

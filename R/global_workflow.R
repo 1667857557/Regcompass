@@ -701,7 +701,8 @@
     meta_modules,
     pando_object,
     gem,
-    atac_assay = atac_assay
+    atac_assay = atac_assay,
+    rna_assay = rna_assay
   )
   saveRDS(
     pando_confidence$gene_confidence,

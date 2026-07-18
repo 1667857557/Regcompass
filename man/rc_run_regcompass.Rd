@@ -11,7 +11,6 @@ rc_run_regcompass(
   pfm,
   genome,
   fragment_files = NULL,
-  species = c("auto", "human", "mouse"),
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
@@ -27,7 +26,8 @@ rc_run_regcompass(
   layer2_workers = NULL,
   parallel_backend = c("auto", "serial", "snow", "multicore"),
   strict_biological_defaults = TRUE,
-  inference_unit = c("sample_celltype", "metacell")
+  inference_unit = c("sample_celltype", "metacell"),
+  species = c("auto", "human", "mouse")
 )
 }
 \arguments{
@@ -42,8 +42,6 @@ rc_run_regcompass(
 \item{genome}{Genome object matching \code{species} and the ATAC coordinates.}
 
 \item{fragment_files}{Optional fragment-file mapping.}
-
-\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
 
 \item{sample_col, condition_col, celltype_col}{Metadata columns.}
 
@@ -65,6 +63,8 @@ species-matched literature-backed physiological environment.}
 
 \item{inference_unit}{Primary scoring unit. Sample-by-cell-type is recommended
 for biological inference; metacells are exploratory observations.}
+
+\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
 }
 \value{
 A RegCompass result list; canonical RDS files and model cache files are
