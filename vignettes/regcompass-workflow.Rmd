@@ -35,13 +35,21 @@ Seurat RNA + ATAC object plus optional fragment files
   -> stratum-specific Pando regulatory evidence
   -> conservative GPR reaction evidence
   -> local FASTCORE-completed reaction meta-modules
-  -> sample-balanced global Layer 1 and one shared GEM
+  -> sample-balanced Q95 diagnostics and one shared GEM
   -> sample x cell-type directional minimum-discordance scoring
 ```
 
 The primary score is an optimization penalty: lower values mean that the model
 requires less disagreement with the observed evidence. It is not a measured
 flux, a probability, or an independent observation for every metacell.
+
+With `sample_balance = TRUE`, global diagnostic weights are
+\(w_{si}=1/(S n_s)\). Within a Q95 stratum they are recomputed as
+\(w_{sci}=1/(S_c n_{sc})\), so each represented biological sample has equal
+total mass in that stratum. These weights affect Q95 and relative-state
+diagnostics only; they do not multiply the zero-preserving absolute expression
+support. Biological inference is balanced by the default `sample_celltype`
+unit, which yields one unit per sample and represented cell type.
 
 ## 1. Validate the multiome input
 
