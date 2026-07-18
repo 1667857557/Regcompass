@@ -32,10 +32,14 @@ jobs:
         shell: Rscript {0}
         run: |
           install.packages(c(
-            "Matrix", "matrixStats", "SeuratObject", "Signac", "testthat",
+            "Matrix", "matrixStats", "SeuratObject", "testthat",
             "highs", "BiocManager"
           ))
-          BiocManager::install("limma", ask = FALSE, update = FALSE)
+          BiocManager::install(c(
+            "limma", "GenomeInfoDb", "GenomicRanges", "IRanges",
+            "Rsamtools", "S4Vectors", "BiocGenerics", "sparseMatrixStats"
+          ), ask = FALSE, update = FALSE)
+          install.packages("Signac")
 
       - name: Install package
         shell: bash
