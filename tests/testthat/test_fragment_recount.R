@@ -10,13 +10,10 @@ test_that("fragment manifest expansion records metacell barcode mappings", {
   expect_equal(nrow(out), 4L)
   expect_setequal(out$object_cell, c("mc1", "mc2"))
   expect_identical(out$object_cell, out$fragment_barcode)
-  expect_equal(
-    table(out$fragment_file),
-    c("f1.tsv.gz" = 2L, "f2.tsv.gz" = 2L)
-  )
+  expect_equal(table(out$fragment_file), c("f1.tsv.gz" = 2L, "f2.tsv.gz" = 2L))
 })
 
-test_that("peak matrices are aligned to requested features and cells", {
+test_that("peak matrices are aligned to the requested feature and cell order", {
   x <- Matrix::Matrix(
     matrix(
       c(1, 2, 3, 4),
@@ -34,19 +31,16 @@ test_that("peak matrices are aligned to requested features and cells", {
 
   expect_identical(rownames(out), c("p1", "p2", "p3"))
   expect_identical(colnames(out), c("mc1", "mc2", "mc3"))
-  expect_equal(
-    as.matrix(out[c("p1", "p2"), c("mc1", "mc2")]),
-    matrix(
-      c(4, 3, 2, 1),
-      nrow = 2,
-      dimnames = list(c("p1", "p2"), c("mc1", "mc2"))
-    )
-  )
-  expect_equal(Matrix::sum(out["p3", ]), 0)
-  expect_equal(Matrix::sum(out[, "mc3"]), 0)
+  expect_equal(as.matrix(out[c("p1", "p2"), c("mc1", "mc2")]), matrix(
+    c(4, 3, 2, 1),
+    nrow = 2,
+    dimnames = list(c("p1", "p2"), c("mc1", "mc2"))
+  ))
+  expect_equal(sum(out["p3", ]), 0)
+  expect_equal(sum(out[, "mc3"]), 0)
 })
 
-test_that("fragment-derived matrices replace ATAC counts before Pando", {
+test_that("fragment-derived matrices replace object ATAC counts before Pando", {
   skip_if_not_installed("SeuratObject")
   skip_if_not_installed("Signac")
 
