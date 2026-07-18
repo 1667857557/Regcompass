@@ -1,0 +1,77 @@
+name: Apply post-merge audit fixes
+
+on:
+  push:
+    branches:
+      - agent/fix-post-merge-audit
+
+permissions:
+  contents: write
+
+jobs:
+  apply-test-commit:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/fix-post-merge-audit
+          fetch-depth: 0
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install validation dependencies
+        shell: Rscript {0}
+        run: |
+          install.packages(c(
+            "Matrix", "matrixStats", "SeuratObject", "testthat",
+            "highs", "yaml", "roxygen2", "BiocManager"
+          ))
+          BiocManager::install("limma", ask = FALSE, update = FALSE)
+
+      - name: Apply audited fixes
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 .github/post-merge-audit.py
+          rm -f .github/post-merge-audit.py
+          Rscript -e 'roxygen2::roxygenise()'
+          git diff --check
+
+      - name: Parse package and tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          Rscript - <<'RS'
+          files <- c(
+            list.files("R", pattern = "[.]R$", full.names = TRUE),
+            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
+          )
+          for (file in files) {
+            cat("Parsing ", file, "\n", sep = "")
+            parse(file)
+          }
+          RS
+
+      - name: Install and test package namespace
+        shell: bash
+        run: |
+          set -euo pipefail
+          R CMD INSTALL --install-tests . --no-multiarch --with-keep.source
+          Rscript -e 'library(testthat); test_local(".", reporter = "summary", load_package = "installed")'
+
+      - name: Commit validated fixes
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git diff --cached --check
+          git commit -m "Fix post-merge cache and GRN correctness issues"
+          git remote set-url origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git push origin HEAD:agent/fix-post-merge-audit
