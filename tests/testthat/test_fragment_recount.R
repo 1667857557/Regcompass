@@ -6,11 +6,13 @@ test_that("fragment manifest expansion records metacell barcode mappings", {
   )
 
   out <- .rc_expand_fragment_manifest(manifest, c("mc1", "mc2"))
+  file_counts <- table(out$fragment_file)
 
   expect_equal(nrow(out), 4L)
   expect_setequal(out$object_cell, c("mc1", "mc2"))
   expect_identical(out$object_cell, out$fragment_barcode)
-  expect_equal(table(out$fragment_file), c("f1.tsv.gz" = 2L, "f2.tsv.gz" = 2L))
+  expect_setequal(names(file_counts), c("f1.tsv.gz", "f2.tsv.gz"))
+  expect_equal(as.integer(file_counts), c(2L, 2L))
 })
 
 test_that("peak matrices are aligned to the requested feature and cell order", {
