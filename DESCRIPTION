@@ -27,6 +27,7 @@ Collate:
     'layer2_penalty_lp.R'
     'lp_solver.R'
     'medium.R'
+    'medium_exchange_mapping.R'
     'meta_module_definition.R'
     'metacell_fragments.R'
     'metacell_import.R'
