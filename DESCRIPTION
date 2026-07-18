@@ -29,7 +29,6 @@ Collate:
     'medium.R'
     'meta_module_definition.R'
     'metacell.R'
-    'metacell_fragment_recount.R'
     'microcompass.R'
     'one_shot.R'
     'pando_confidence.R'
@@ -41,6 +40,8 @@ Collate:
     'regcompass.R'
     'stats.R'
     'stratum_filter.R'
+    'zzz_metacell_fragment_recount.R'
+    'zzzz_metacell_fragment_ranges.R'
 Imports:
     Matrix,
     matrixStats,
