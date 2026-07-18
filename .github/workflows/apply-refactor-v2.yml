@@ -110,6 +110,17 @@ jobs:
               text = path.read_text(encoding="utf-8")
               text = normalize_r_string_escapes(text)
               path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
+
+          vignette = Path("vignettes/regcompass-workflow.Rmd")
+          if vignette.exists():
+              text = vignette.read_text(encoding="utf-8")
+              old = '  comment = "#>",\n  eval = FALSE\n'
+              new = '  comment = "#>",\n  eval = FALSE,\n  purl = FALSE\n'
+              if old not in text and 'purl = FALSE' not in text:
+                  raise RuntimeError("Could not locate vignette setup chunk")
+              if old in text:
+                  text = text.replace(old, new, 1)
+              vignette.write_text(text, encoding="utf-8")
           PY
 
           for patch in .github/refactor-v2-fixes.patch \
