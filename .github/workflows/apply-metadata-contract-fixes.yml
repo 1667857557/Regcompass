@@ -4,6 +4,9 @@ on:
   push:
     branches:
       - agent/fix-metacell-pando-metadata-contracts
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
@@ -36,5 +39,6 @@ jobs:
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add R/metacell_fragments.R R/pando_grn.R tests/testthat/test-metadata-contracts.R
+          git diff --cached --quiet && exit 0
           git commit -m 'Fix metacell and Pando metadata contracts'
           git push origin HEAD:agent/fix-metacell-pando-metadata-contracts
