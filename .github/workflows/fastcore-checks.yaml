@@ -40,6 +40,14 @@ jobs:
             "Rsamtools", "S4Vectors", "BiocGenerics", "sparseMatrixStats"
           ), ask = FALSE, update = FALSE)
           install.packages("Signac")
+          signac_status <- tryCatch({
+            library(Signac)
+            paste0("loaded Signac ", as.character(packageVersion("Signac")))
+          }, error = function(error) {
+            paste0("ERROR: ", conditionMessage(error))
+          })
+          writeLines(signac_status, "signac-load-status.txt")
+          if (startsWith(signac_status, "ERROR:")) stop(signac_status)
 
       - name: Install package
         shell: bash
@@ -80,6 +88,7 @@ jobs:
         with:
           name: test-diagnostics
           path: |
+            signac-load-status.txt
             install-output.txt
             test-output.txt
           if-no-files-found: warn
