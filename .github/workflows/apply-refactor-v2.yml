@@ -151,7 +151,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          Rscript -e 'library(testthat); library(RegCompassR); test_check("RegCompassR", reporter = "summary")' 2>&1 | tee test-output.txt
+          Rscript -e 'library(testthat); test_local(".", reporter = "summary", load_package = "installed")' 2>&1 | tee test-output.txt
 
       - name: Run package check
         shell: bash
