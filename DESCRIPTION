@@ -42,6 +42,7 @@ Collate:
     'stratum_filter.R'
     'zzz_metacell_fragment_recount.R'
     'zzzz_metacell_fragment_ranges.R'
+    'zzzzz_metacell_peak_calling.R'
 Imports:
     Matrix,
     matrixStats,
