@@ -50,7 +50,7 @@
 
 .rc_metacell_logcpm <- function(counts, scale_factor = 1e6,
                                  library_size = NULL) {
-  counts <- methods::as(counts, "dgCMatrix")
+  counts <- .rc_as_dgCMatrix(counts)
   if (!is.numeric(scale_factor) || length(scale_factor) != 1L ||
       !is.finite(scale_factor) || scale_factor <= 0) {
     stop("`scale_factor` must be one positive finite number.", call. = FALSE)

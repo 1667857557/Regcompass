@@ -89,6 +89,17 @@ test_that("GPR-subset logCPM accepts explicit full-transcriptome library sizes",
     attr(observed, "normalization_scope"),
     "full_transcriptome_library_size_before_gpr_filter"
   )
+
+  triangular <- Matrix::triu(Matrix::Matrix(
+    matrix(c(1, 1, 0, 1), nrow = 2),
+    sparse = TRUE
+  ))
+  expect_silent(triangular_output <- .rc_metacell_logcpm(triangular))
+  expect_equal(
+    as.matrix(triangular_output),
+    log1p(as.matrix(triangular) %*%
+            diag(1e6 / Matrix::colSums(triangular)))
+  )
 })
 
 test_that("integrated workflow validates routing inputs before delegation", {
