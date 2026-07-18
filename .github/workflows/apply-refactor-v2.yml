@@ -111,6 +111,10 @@ jobs:
               path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
           PY
 
+          git apply --check .github/refactor-v2-fixes.patch
+          git apply .github/refactor-v2-fixes.patch
+          rm -f .github/refactor-v2-fixes.patch
+
           rm -f NAMESPACE
           rm -f man/rc_prepare_human2_gem.Rd
           rm -f man/rc_make_medium_scenarios.Rd
