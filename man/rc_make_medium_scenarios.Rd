@@ -13,9 +13,8 @@ rc_make_medium_scenarios(
   uptake_scale = c(physiologic = 1, normal_human_plasma = 1, mouse_plasma = 1, rpmi1640 =
     1, dmem_high_glucose = 1, high_glucose = 1, low_glucose = 1, high_lactate = 1,
     low_lactate = 1, low_glutamine = 1, permissive_all_exchange = 1, minimal = 0.1),
-  condition_col = NULL,
   exchange_roles = c("exchange"),
-  condition = condition_col,
+  condition = "all",
   exchange_limit = 1,
   strict_preset_matching = TRUE
 )
@@ -24,17 +23,21 @@ rc_make_medium_scenarios(
 \item{gem}{A validated RegCompass GEM.}
 
 \item{scenario}{One or more medium scenario identifiers. \code{"physiologic"}
-resolves to human or mouse plasma according to \code{species}.}
+resolves to human or mouse plasma according to \code{species}. Presets may be
+combined with \code{"custom"} to return literature-backed and user-defined
+scenarios in one table.}
 
 \item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
 
-\item{custom_medium}{Exact reaction-level medium rows.}
+\item{custom_medium}{Exact reaction-level medium rows. Can be used together
+with preset \code{scenario} values when \code{"custom"} is included in \code{scenario}.}
 
-\item{custom_metabolites}{Metabolite-pattern availability rows.}
+\item{custom_metabolites}{Metabolite-pattern availability rows. Can be used
+together with preset \code{scenario} values when \code{"custom"} is included in
+\code{scenario}.}
 
 \item{uptake_scale}{Non-negative global or named sensitivity multipliers.}
 
-\item{condition_col}{Deprecated compatibility alias for \code{condition}.}
 
 \item{exchange_roles}{Reaction roles treated as exchange reactions.}
 

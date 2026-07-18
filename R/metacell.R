@@ -428,10 +428,18 @@ rc_make_supercell2_metacells <- function(object,
   on_stratum_error <- match.arg(on_stratum_error)
   .rc_require_supercell2()
   if (!inherits(object, "Seurat")) stop("`object` must inherit from class 'Seurat'.", call. = FALSE)
-  if (is.null(fragment_files)) fragment_files <- .rc_fragment_files_from_atac(object, atac_assay = atac_assay)
+  if (identical(fragment_files, FALSE)) {
+    fragment_files <- NULL
+    save_fragments <- FALSE
+    require_fragment_aggregation <- FALSE
+    fragment_aggregation_backend <- "none"
+  }
+  if (is.null(fragment_files) && isTRUE(require_fragment_aggregation)) {
+    fragment_files <- .rc_fragment_files_from_atac(object, atac_assay = atac_assay)
+  }
   if (isTRUE(require_fragment_aggregation)) {
     if (!isTRUE(save_fragments)) stop("Formal multiome workflow requires `save_fragments = TRUE`.", call. = FALSE)
-    if (is.null(fragment_files)) stop("Formal multiome workflow requires `fragment_files` for metacell fragment aggregation, or a fragment file registered on the ATAC assay.", call. = FALSE)
+    if (is.null(fragment_files)) stop("Formal multiome workflow requires `fragment_files` for metacell fragment aggregation, or a fragment file registered on the ATAC assay. Use `fragment_files = FALSE` to skip fragment aggregation and use ATAC peak raw counts from the object.", call. = FALSE)
   }
   .rc_validate_supercell2_inputs(object, assays = c(rna_assay, atac_assay), reductions = c(rna_reduction, atac_reduction))
   meta <- object@meta.data

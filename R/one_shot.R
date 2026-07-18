@@ -1,19 +1,23 @@
 #' Run RegCompass from species-aware defaults
 #'
-#' Downloads a pinned Human-GEM or Mouse-GEM release when `gem` is not supplied,
-#' builds a species-matched literature-backed physiological medium by default,
+#' Downloads a pinned Human-GEM 2 or Mouse-GEM release when `gem` is not
+#' supplied. `species = "human"` is the default; `species = "mouse"` routes
+#' setup to Mouse-GEM 1.8.0 and the mouse physiological medium. It builds a
+#' species-matched literature-backed physiological medium by default,
 #' and delegates to `rc_run_regcompass()`.
 #'
 #' @param object A Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
 #' @param pfm Motif position-frequency matrices.
 #' @param genome Genome object matching the selected species and ATAC coordinates.
-#' @param fragment_files Optional fragment-file mapping.
-#' @param species `"human"` or `"mouse"`.
+#' @param fragment_files Fragment-file manifest/path(s), or `FALSE` to skip
+#'   fragment aggregation and use ATAC peak raw counts from `object` directly.
+#' @param species `"human"` or `"mouse"`; defaults to `"human"`. Choosing
+#'   `"mouse"` prepares Mouse-GEM and mouse plasma defaults when `gem` and
+#'   `medium_scenarios` are omitted.
 #' @param gem Optional prebuilt species GEM.
 #' @param gem_version Pinned model release. Defaults to Human-GEM 2.0.0 or
 #'   Mouse-GEM 1.8.0.
-#' @param humangem_version Deprecated Human-GEM compatibility argument.
 #' @param medium_scenario Medium preset identifier. The default `"physiologic"`
 #'   resolves to human or mouse plasma.
 #' @param medium_scenarios Optional prebuilt medium table.
@@ -24,24 +28,12 @@ rc_run_regcompass_one_shot <- function(
     object, outdir, pfm, genome,
     fragment_files = NULL,
     gem = NULL,
-    humangem_version = NULL,
     medium_scenario = "physiologic",
     medium_scenarios = NULL,
     species = c("human", "mouse"),
     gem_version = NULL,
     ...) {
   species <- match.arg(species)
-  if (!is.null(humangem_version)) {
-    if (!identical(species, "human")) {
-      stop("`humangem_version` cannot be used with `species = 'mouse'`.",
-           call. = FALSE)
-    }
-    warning(
-      "`humangem_version` is deprecated; use `gem_version`.",
-      call. = FALSE
-    )
-    if (is.null(gem_version)) gem_version <- humangem_version
-  }
   if (is.null(gem_version)) {
     gem_version <- if (identical(species, "human")) "2.0.0" else "1.8.0"
   }

@@ -124,3 +124,12 @@ test_that("global union contains biological and local support reactions", {
     "global_union_local_fastcore_support"
   )
 })
+
+
+test_that("fragment_files FALSE disables required fragment aggregation in stratum workflow", {
+  body_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
+  expect_match(body_text, "fragment_aggregation_enabled <- !identical(fragment_files, FALSE)", fixed = TRUE)
+  expect_match(body_text, "require_fragment_aggregation = fragment_aggregation_enabled", fixed = TRUE)
+  expect_match(body_text, "fragment_aggregation_backend = if (isTRUE(fragment_aggregation_enabled))", fixed = TRUE)
+  expect_match(body_text, "require_complete_fragments = fragment_aggregation_enabled", fixed = TRUE)
+})

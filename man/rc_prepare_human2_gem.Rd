@@ -13,7 +13,7 @@ rc_prepare_human2_gem(
 )
 }
 \arguments{
-\item{version}{Human-GEM release version.}
+\item{version}{Human-GEM 2 release version.}
 
 \item{cache_dir}{Persistent model cache directory.}
 
@@ -25,6 +25,8 @@ is generated inside \code{cache_dir}.}
 \item{allow_latest}{Permit the unpinned \code{version = "latest"} mode.}
 }
 \description{
-Backward-compatible Human-GEM entry point. New code may use
-\code{rc_prepare_gem(species = "human")}.
+Species-specific Human-GEM 2 entry point. Use this named helper when the
+analysis should explicitly download, cache, and validate the Human-GEM 2
+model path; it delegates to \code{rc_prepare_gem(species = "human")} with
+Human-GEM 2 defaults.
 }

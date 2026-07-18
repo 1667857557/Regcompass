@@ -146,3 +146,11 @@ test_that("missing expected metacell IDs remain fatal", {
     "mc2"
   )
 })
+
+
+test_that("fragment_files FALSE is documented as the raw ATAC-count path", {
+  body_text <- paste(deparse(body(rc_make_supercell2_metacells)), collapse = "\n")
+  expect_match(body_text, "identical(fragment_files, FALSE)", fixed = TRUE)
+  expect_match(body_text, "fragment_aggregation_backend <- \"none\"", fixed = TRUE)
+  expect_match(body_text, "Use `fragment_files = FALSE` to skip fragment aggregation", fixed = TRUE)
+})
