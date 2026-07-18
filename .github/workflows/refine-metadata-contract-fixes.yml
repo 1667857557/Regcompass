@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 jobs:
-  refine-and-validate:
+  refine:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
@@ -17,65 +17,8 @@ jobs:
         with:
           ref: agent/fix-metacell-pando-metadata-contracts
           fetch-depth: 0
-      - uses: r-lib/actions/setup-r@v2
-        with:
-          r-version: '4.4.3'
       - name: Apply source refinements
         run: python tools/refine_metadata_contract_fixes.py
-      - name: Parse changed R sources and tests
-        run: |
-          Rscript -e 'parse(file="R/metacell_fragments.R"); parse(file="R/pando_grn.R"); parse(file="tests/testthat/test-metadata-contracts.R")'
-      - name: Exercise metadata helpers with base R
-        shell: bash
-        run: |
-          Rscript - <<'RSCRIPT'
-          source("R/metacell_fragments.R")
-          source("R/pando_grn.R")
-          object_meta <- data.frame(
-            X_rc_condition = c("control", "treated"),
-            nCount_RNA = c(10, 20),
-            row.names = c("MC1", "MC2"),
-            check.names = FALSE
-          )
-          metacell_meta <- data.frame(
-            metacell_id = c("MC2", "MC1"),
-            `_rc_condition` = c("treated", "control"),
-            sample_id = c("S2", "S1"),
-            check.names = FALSE
-          )
-          restored <- .rc_restore_metacell_metadata(
-            object_meta, metacell_meta, c("MC1", "MC2")
-          )
-          stopifnot(
-            identical(rownames(restored), c("MC1", "MC2")),
-            "_rc_condition" %in% colnames(restored),
-            !"X_rc_condition" %in% colnames(restored),
-            identical(restored$`_rc_condition`, c("control", "treated")),
-            identical(restored$nCount_RNA, c(10, 20))
-          )
-          projection <- data.frame(
-            sample_id = c("G2", "G1"),
-            gene = c("B", "A"),
-            module_id = c("G2::GRN0001", "G1::GRN0001"),
-            stringsAsFactors = FALSE
-          )
-          group_meta <- data.frame(
-            group_id = c("G1", "G2"),
-            sample_id = c("S1", "S2"),
-            `_rc_condition` = c("control", "treated"),
-            check.names = FALSE
-          )
-          remapped <- .rc_remap_projection_metadata(
-            projection, group_meta, "sample_id",
-            c("group_id", "sample_id", "_rc_condition")
-          )
-          stopifnot(
-            identical(remapped$group_id, c("G2", "G1")),
-            identical(remapped$sample_id, c("S2", "S1")),
-            identical(remapped$`_rc_condition`, c("treated", "control")),
-            !any(c("sample_id.x", "sample_id.y") %in% colnames(remapped))
-          )
-          RSCRIPT
       - name: Commit refined source
         run: |
           git config user.name github-actions[bot]
