@@ -36,9 +36,25 @@ jobs:
             "highs", "BiocManager"
           ))
           BiocManager::install(c(
-            "limma", "GenomeInfoDb", "GenomicRanges", "IRanges",
-            "Rsamtools", "S4Vectors", "BiocGenerics", "sparseMatrixStats"
-          ), ask = FALSE, update = FALSE)
+            "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
+            "GenomicRanges", "Rhtslib", "Rsamtools",
+            "sparseMatrixStats", "limma"
+          ), ask = FALSE, update = FALSE, force = TRUE)
+          bioc_required <- c(
+            "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
+            "GenomicRanges", "Rhtslib", "Rsamtools",
+            "sparseMatrixStats", "limma"
+          )
+          bioc_missing <- bioc_required[!vapply(
+            bioc_required,
+            requireNamespace,
+            logical(1),
+            quietly = TRUE
+          )]
+          if (length(bioc_missing)) {
+            stop("Missing Bioconductor dependencies: ",
+                 paste(bioc_missing, collapse = ", "))
+          }
           install.packages("Signac")
           signac_status <- tryCatch({
             library(Signac)
