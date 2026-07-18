@@ -50,9 +50,9 @@ Imports:
     Matrix,
     matrixStats,
     methods,
-    SeuratObject (= 4.1.4),
-    Seurat (= 4.4.0),
-    Signac (= 1.11.0)
+    SeuratObject (>= 4.1.4),
+    Seurat (>= 4.4.0),
+    Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
     Pando,
@@ -77,3 +77,6 @@ Remotes:
     1667857557/SuperCell_Seurat_V4@supercell-2.0,
     1667857557/Pando_regcompass
 Config/roxygen2/version: 8.0.0
+Config/RegCompassR/SeuratObjectVersion: 4.1.4
+Config/RegCompassR/SeuratVersion: 4.4.0
+Config/RegCompassR/SignacVersion: 1.11.0

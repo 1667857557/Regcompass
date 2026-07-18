@@ -100,9 +100,28 @@ test_that("retired entry points remain absent", {
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
 })
 
-test_that("Seurat stack is installed at the supported exact versions", {
-  imports <- utils::packageDescription("RegCompassR")$Imports %||% ""
-  expect_match(imports, "SeuratObject (= 4.1.4)", fixed = TRUE)
-  expect_match(imports, "Seurat (= 4.4.0)", fixed = TRUE)
-  expect_match(imports, "Signac (= 1.11.0)", fixed = TRUE)
+test_that("Seurat stack uses valid minimum bounds and exact stack metadata", {
+  description <- utils::packageDescription("RegCompassR")
+  imports <- description$Imports %||% ""
+  expect_match(imports, "SeuratObject (>= 4.1.4)", fixed = TRUE)
+  expect_match(imports, "Seurat (>= 4.4.0)", fixed = TRUE)
+  expect_match(imports, "Signac (>= 1.11.0)", fixed = TRUE)
+
+  expected <- c(
+    SeuratObject = description[[
+      "Config/RegCompassR/SeuratObjectVersion"
+    ]],
+    Seurat = description[["Config/RegCompassR/SeuratVersion"]],
+    Signac = description[["Config/RegCompassR/SignacVersion"]]
+  )
+  expect_identical(
+    unname(expected),
+    c("4.1.4", "4.4.0", "1.11.0")
+  )
+  observed <- vapply(
+    names(expected),
+    function(package) as.character(utils::packageVersion(package)),
+    character(1)
+  )
+  expect_identical(observed, expected)
 })
