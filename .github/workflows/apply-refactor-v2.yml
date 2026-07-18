@@ -62,7 +62,43 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
-          import re
+
+          VALID_R_ESCAPES = set("abfnrtv\\'\"`01234567xuU\n")
+
+          def normalize_r_string_escapes(text: str) -> str:
+              output = []
+              quote = None
+              in_comment = False
+              index = 0
+              while index < len(text):
+                  char = text[index]
+                  if in_comment:
+                      output.append(char)
+                      if char == "\n":
+                          in_comment = False
+                      index += 1
+                      continue
+                  if quote is None:
+                      if char == "#":
+                          in_comment = True
+                      elif char in ("'", '"'):
+                          quote = char
+                      output.append(char)
+                      index += 1
+                      continue
+                  if char == "\\" and index + 1 < len(text):
+                      following = text[index + 1]
+                      if following not in VALID_R_ESCAPES:
+                          output.extend(("\\", "\\", following))
+                      else:
+                          output.extend((char, following))
+                      index += 2
+                      continue
+                  output.append(char)
+                  if char == quote:
+                      quote = None
+                  index += 1
+              return "".join(output)
 
           paths = [Path("DESCRIPTION"), Path("NAMESPACE")]
           paths.extend(Path("R").glob("*.R"))
@@ -71,7 +107,7 @@ jobs:
               if not path.exists():
                   continue
               text = path.read_text(encoding="utf-8")
-              text = re.sub(r"(?<!\\)\\\$", lambda _: r"\\$", text)
+              text = normalize_r_string_escapes(text)
               path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
           PY
 
