@@ -165,9 +165,10 @@
 
 
 .rc_weighted_q95_calibrate <- function(
-    C_raw, weights, eps = 1e-6, n0 = 80,
+    C_raw, weights = NULL, eps = 1e-6, n0 = 80,
     unit_meta = NULL, stratum_col = NULL,
-    bootstrap = FALSE, B = 500, BPPARAM = NULL) {
+    bootstrap = FALSE, B = 500, BPPARAM = NULL,
+    balance_ids = NULL) {
   C_raw <- as.matrix(C_raw)
   if (is.null(rownames(C_raw))) {
     rownames(C_raw) <- paste0("reaction_", seq_len(nrow(C_raw)))
@@ -184,7 +185,8 @@
     n0 = n0,
     unit_meta = unit_meta,
     stratum_col = stratum_col,
-    weights = weights
+    weights = weights,
+    balance_ids = balance_ids
   )
 }
 
@@ -1083,17 +1085,27 @@
   if (!balance_col %in% colnames(unit_meta)) {
     stop("Sample-balance metadata are missing column: ", balance_col, call. = FALSE)
   }
-  weights <- if (isTRUE(calibration_params$sample_balance)) {
-    .rc_equal_sample_weights(unit_meta[[balance_col]])
+  balance_ids <- if (isTRUE(calibration_params$sample_balance)) {
+    stats::setNames(
+      as.character(unit_meta[[balance_col]]),
+      colnames(rna_logcpm)
+    )
   } else {
-    rep(1 / ncol(rna_logcpm), ncol(rna_logcpm))
+    NULL
   }
-  names(weights) <- colnames(rna_logcpm)
-  global_gene_score <- if (isTRUE(calibration_params$sample_balance)) {
-    .rc_weighted_gene_score(rna_logcpm, weights)
+  weights <- if (!is.null(balance_ids)) {
+    .rc_equal_sample_weights(balance_ids)
   } else {
-    rc_gene_score(rna_logcpm)
+    stats::setNames(
+      rep(1 / ncol(rna_logcpm), ncol(rna_logcpm)),
+      colnames(rna_logcpm)
+    )
   }
+  # Sampling weights define population summaries; they must not be multiplied
+  # into a metacell's biological activity. Absolute support therefore remains
+  # an element-wise, zero-preserving transform. Sample balance enters Q95
+  # diagnostics and the sample-by-cell-type inference unit downstream.
+  global_gene_score <- rc_gene_score(rna_logcpm, mode = "absolute")
   C_raw <- rc_reaction_capacity(
     parsed,
     global_gene_score,
@@ -1116,7 +1128,7 @@
     n0 = calibration_params$q95_n0,
     unit_meta = unit_meta,
     stratum_col = q95_stratum_col,
-    weights = if (isTRUE(calibration_params$sample_balance)) weights else NULL
+    balance_ids = balance_ids
   )
   confidence_list <- lapply(artifacts, function(artifact) {
     value <- artifact$layer1$reaction_confidence
@@ -1150,13 +1162,13 @@
     drop = FALSE
   ]
   calibration_scope <- paste(
+    "absolute_gene_support_unweighted",
     if (isTRUE(calibration_params$sample_balance)) {
-      "equal_sample_weighted"
+      "equal_sample_weighted_q95_global_and_within_stratum"
     } else {
-      "equal_metacell_weighted"
+      "equal_metacell_weighted_q95"
     },
     calibration_params$expression_batch_correction,
-    "global_gene_score_and_reaction_q95",
     sep = "_"
   )
   list(
@@ -1174,6 +1186,13 @@
     capacity_params = capacity_params,
     calibration_params = calibration_params,
     sample_balance_weights = weights,
+    sample_balance_role = if (isTRUE(calibration_params$sample_balance)) {
+      "q95_and_relative_state_diagnostics; primary inference uses one sample-celltype unit"
+    } else {
+      "disabled; equal-metacell diagnostic weights"
+    },
+    sample_balance_estimand =
+      "equal biological-sample mass globally and within each Q95 stratum",
     expression_batch_diagnostics = correction$diagnostics,
     rna_metacell_logcpm_uncorrected = rna_logcpm_uncorrected,
     rna_metacell_logcpm = rna_logcpm,
