@@ -28,6 +28,9 @@ Collate:
     'lp_solver.R'
     'medium.R'
     'meta_module_definition.R'
+    'metacell_fragments.R'
+    'metacell_import.R'
+    'metacell_peak_calling.R'
     'metacell.R'
     'microcompass.R'
     'one_shot.R'
@@ -40,19 +43,18 @@ Collate:
     'regcompass.R'
     'stats.R'
     'stratum_filter.R'
-    'zzz_metacell_fragment_recount.R'
-    'zzzz_metacell_fragment_ranges.R'
-    'zzzzz_metacell_peak_calling.R'
-    'zzzzzz_metacell_peak_union.R'
 Imports:
+    BiocGenerics,
+    GenomeInfoDb,
+    GenomicRanges,
     Matrix,
     matrixStats,
     methods,
-    SeuratObject (>= 4.0.0)
+    SeuratObject (= 4.1.4),
+    Seurat (= 4.4.0),
+    Signac (= 1.11.0)
 Suggests:
     BiocParallel,
-    Seurat (>= 4.4.0),
-    Signac (>= 1.11.0),
     Pando,
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,

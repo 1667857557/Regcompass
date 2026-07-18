@@ -103,7 +103,7 @@ test_that("fragment-derived de novo peaks replace the ATAC assay before Pando", 
     called_peaks
   }
   feature_matrix_fun <- function(
-      fragments, features, keep_all_features, cells, process_n, verbose) {
+      fragments, features, cells, process_n, verbose) {
     expect_identical(.rc_peak_ids(features), called_peak_ids)
     path <- fragments[[1L]]$path
     values <- if (identical(path, files[[1L]])) {

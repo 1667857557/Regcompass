@@ -18,6 +18,7 @@ test_that("staged override architecture has been removed", {
   expect_false(grepl(
     "workflow_stage_", description$Collate %||% "", fixed = TRUE
   ))
+  expect_false(grepl("zzz", description$Collate %||% "", fixed = TRUE))
 
   candidates <- c("R", file.path("..", "R"), file.path("..", "..", "R"))
   candidates <- candidates[dir.exists(candidates)]
@@ -27,6 +28,10 @@ test_that("staged override architecture has been removed", {
   source_dir <- normalizePath(candidates[[1L]], mustWork = TRUE)
   expect_length(
     list.files(source_dir, pattern = "^workflow_stage_", full.names = TRUE),
+    0L
+  )
+  expect_length(
+    list.files(source_dir, pattern = "^z+.*[.]R$", full.names = TRUE),
     0L
   )
 
@@ -53,6 +58,24 @@ test_that("staged override architecture has been removed", {
       info = paste("canonical function", name, "must have one source definition")
     )
   }
+
+  source_files <- list.files(source_dir, pattern = "[.]R$", full.names = TRUE)
+  definitions <- unlist(lapply(source_files, function(path) {
+    lines <- readLines(path, warn = FALSE)
+    lines <- lines[grepl(
+      "^[A-Za-z.][A-Za-z0-9._]*[[:space:]]*<-[[:space:]]*function",
+      lines
+    )]
+    sub(
+      "^([A-Za-z.][A-Za-z0-9._]*)[[:space:]]*<-.*$",
+      "\\1",
+      lines
+    )
+  }), use.names = FALSE)
+  expect_false(
+    anyDuplicated(definitions) > 0L,
+    info = "every top-level function must have exactly one source definition"
+  )
 })
 
 
@@ -65,7 +88,21 @@ test_that("retired entry points remain absent", {
     "rc_run_layer1_from_metacells",
     "rc_recompute_metacell_peak_gene_links",
     "rc_recompute_metacell_peak_gene_links_by_stratum",
-    "rc_build_meta_module_gem_cache"
+    "rc_build_meta_module_gem_cache",
+    "rc_replace_humangem_gene_ids",
+    "rc_convert_humangem_yaml_to_regcompass",
+    "rc_compass_two_step_lp",
+    "rc_hard_min_capacity",
+    "rc_q95_bootstrap_diagnostics",
+    ".rc_weighted_q95_calibrate",
+    ".rc_apply_used_metacell_ids"
   )
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
+})
+
+test_that("Seurat stack is installed at the supported exact versions", {
+  imports <- utils::packageDescription("RegCompassR")$Imports %||% ""
+  expect_match(imports, "SeuratObject (= 4.1.4)", fixed = TRUE)
+  expect_match(imports, "Seurat (= 4.4.0)", fixed = TRUE)
+  expect_match(imports, "Signac (= 1.11.0)", fixed = TRUE)
 })

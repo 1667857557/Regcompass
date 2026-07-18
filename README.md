@@ -13,10 +13,21 @@ condition × sample × cell type
 ## Installation
 
 ```r
-remotes::install_github("1667857557/SuperCell_Seurat_V4@supercell-2.0")
-remotes::install_github("1667857557/Pando_regcompass")
-remotes::install_github("1667857557/Regcompass")
+install.packages("remotes")
+remotes::install_version("SeuratObject", "4.1.4", upgrade = "never")
+remotes::install_version("Seurat", "4.4.0", upgrade = "never")
+remotes::install_version("Signac", "1.11.0", upgrade = "never")
+remotes::install_github(
+  "1667857557/SuperCell_Seurat_V4@supercell-2.0",
+  upgrade = "never"
+)
+remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
+remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
+
+The supported stack is exact: SeuratObject 4.1.4, Seurat 4.4.0, and Signac
+1.11.0. Seurat 4.4.0 requires SeuratObject 4.1.4 or newer; pinning 4.1.4 keeps
+the stack reproducible while satisfying that dependency.
 
 Fragment-enabled runs additionally require a MACS2/MACS3 executable. Pass its
 path through `metacell_args$macs2_path` when it is not available as `macs2` on

@@ -299,6 +299,32 @@ test_that("LP-10 scaling retains smaller stoichiometric support flux", {
   ))
 })
 
+test_that("LP-10 returns flux and objective in original GEM units", {
+  skip_if_not(rc_fastcore_solver_available())
+  S <- matrix(
+    c(1, -1),
+    nrow = 1,
+    dimnames = list("A_c", c("EX_A", "Rcore"))
+  )
+  answer <- .rc_fastcore_lp10(
+    S = S,
+    lb = c(EX_A = 0, Rcore = 0),
+    ub = c(EX_A = 1000, Rcore = 1000),
+    active_core = "Rcore",
+    penalized_reactions = "EX_A",
+    epsilon = 1e-4,
+    solver = rc_fastcore_test_solver(),
+    time_limit = 60,
+    scaling_factor = 1e5
+  )
+
+  expect_identical(answer$status, "optimal")
+  expect_equal(unname(answer$flux[["Rcore"]]), 1e-4, tolerance = 1e-7)
+  expect_equal(unname(answer$flux[["EX_A"]]), 1e-4, tolerance = 1e-7)
+  expect_equal(answer$objective, 1e-4, tolerance = 1e-7)
+  expect_identical(answer$new_support, "EX_A")
+})
+
 test_that("FASTCC does not create a false reversible split cycle", {
   skip_if_not(rc_fastcore_solver_available())
   S <- matrix(

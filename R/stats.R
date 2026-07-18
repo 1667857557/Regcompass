@@ -1,10 +1,30 @@
 #' Check biological replicate support for differential testing
 rc_check_replicate_design <- function(unit_meta, condition_col = "condition", sample_col = "sample_id", min_samples_per_condition = 2L, strict = TRUE) {
   if (!is.data.frame(unit_meta)) stop("`unit_meta` must be a data.frame.", call. = FALSE)
+  if (!is.numeric(min_samples_per_condition) ||
+      length(min_samples_per_condition) != 1L ||
+      !is.finite(min_samples_per_condition) ||
+      min_samples_per_condition < 1 ||
+      min_samples_per_condition != as.integer(min_samples_per_condition)) {
+    stop("`min_samples_per_condition` must be one positive integer.",
+         call. = FALSE)
+  }
+  if (!is.logical(strict) || length(strict) != 1L || is.na(strict)) {
+    stop("`strict` must be TRUE or FALSE.", call. = FALSE)
+  }
   missing <- setdiff(c(condition_col, sample_col), colnames(unit_meta))
   if (length(missing) > 0L) stop("`unit_meta` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
   x <- unique(unit_meta[, c(condition_col, sample_col), drop = FALSE])
   x <- x[!is.na(x[[condition_col]]) & !is.na(x[[sample_col]]), , drop = FALSE]
+  conditions_per_sample <- tapply(
+    as.character(x[[condition_col]]),
+    as.character(x[[sample_col]]),
+    function(value) length(unique(value))
+  )
+  if (any(conditions_per_sample != 1L)) {
+    stop("Each biological sample must map to exactly one condition.",
+         call. = FALSE)
+  }
   tab <- table(x[[condition_col]])
   ok <- length(tab) >= 2L && all(tab >= as.integer(min_samples_per_condition))
   if (!ok) {
@@ -14,13 +34,46 @@ rc_check_replicate_design <- function(unit_meta, condition_col = "condition", sa
   invisible(tab)
 }
 
+.rc_align_score_unit_metadata <- function(score, unit_meta) {
+  score <- as.matrix(score)
+  if (!is.numeric(score) || is.null(rownames(score)) ||
+      is.null(colnames(score)) || anyNA(rownames(score)) ||
+      anyNA(colnames(score)) || any(!nzchar(rownames(score))) ||
+      any(!nzchar(colnames(score))) || anyDuplicated(rownames(score)) ||
+      anyDuplicated(colnames(score))) {
+    stop(
+      "Scores must be a numeric matrix with unique non-empty row and unit IDs.",
+      call. = FALSE
+    )
+  }
+  if (is.null(unit_meta) || !is.data.frame(unit_meta) ||
+      !"unit_id" %in% colnames(unit_meta)) {
+    stop("`result$unit_meta` must be a data frame containing `unit_id`.",
+         call. = FALSE)
+  }
+  unit_id <- trimws(as.character(unit_meta$unit_id))
+  if (anyNA(unit_id) || any(!nzchar(unit_id)) || anyDuplicated(unit_id)) {
+    stop("`result$unit_meta$unit_id` must be unique and non-empty.",
+         call. = FALSE)
+  }
+  missing <- setdiff(colnames(score), unit_id)
+  if (length(missing)) {
+    stop("`result$unit_meta` is missing rows for score columns: ",
+         paste(utils::head(missing, 10L), collapse = ", "), call. = FALSE)
+  }
+  unit_meta$unit_id <- unit_id
+  unit_meta <- unit_meta[match(colnames(score), unit_meta$unit_id), , drop = FALSE]
+  rownames(unit_meta) <- NULL
+  list(score = score, unit_meta = unit_meta)
+}
+
 .rc_describe_microcompass_by_group_engine <- function(result,
                                              sample_col = "sample_id",
                                              condition_col = "condition",
                                              celltype_col = "cell_type") {
-  S <- as.matrix(result$score)
-  meta <- result$unit_meta
-  meta <- meta[match(colnames(S), as.character(meta$unit_id)), , drop = FALSE]
+  aligned <- .rc_align_score_unit_metadata(result$score, result$unit_meta)
+  S <- aligned$score
+  meta <- aligned$unit_meta
   parsed <- rc_parse_microcompass_row_id(rownames(S))
   row_meta <- data.frame(row_id = rownames(S), parsed, stringsAsFactors = FALSE)
   groups <- unique(meta[, intersect(c(condition_col, celltype_col), colnames(meta)), drop = FALSE])
@@ -102,8 +155,8 @@ rc_describe_microcompass_by_group <- function(
     rows <- which(as.character(meta[[sample_col]]) == sample)
     bad <- vapply(fields, function(field) {
       values <- meta[[field]][rows]
-      values <- values[!is.na(values)]
-      length(unique(values)) != 1L
+      text <- trimws(as.character(values))
+      anyNA(values) || any(!nzchar(text)) || length(unique(text)) != 1L
     }, logical(1))
     if (any(bad)) {
       stop("Sample `", sample, "` has inconsistent metadata: ",
@@ -117,6 +170,7 @@ rc_describe_microcompass_by_group <- function(
     columns <- which(as.character(meta[[sample_col]]) == sample)
     matrixStats::rowMedians(score[, columns, drop = FALSE], na.rm = TRUE)
   }))
+  aggregated[is.nan(aggregated)] <- NA_real_
   rownames(aggregated) <- rownames(score)
   colnames(aggregated) <- samples
   list(score = aggregated, meta = sample_meta)
@@ -133,19 +187,63 @@ rc_describe_microcompass_by_group <- function(
   method <- match.arg(method)
   test_type <- match.arg(test_type)
   formula <- .rc_add_formula_covariates(formula, covariates)
+  valid_threshold <- function(value) {
+    is.numeric(value) && length(value) == 1L && is.finite(value) &&
+      value >= 1 && value == as.integer(value)
+  }
+  if (!valid_threshold(min_samples_per_group) ||
+      !valid_threshold(preferred_min_samples_per_group) ||
+      preferred_min_samples_per_group < min_samples_per_group) {
+    stop(
+      "Sample thresholds must be positive integers and the preferred ",
+      "threshold cannot be smaller than the minimum.",
+      call. = FALSE
+    )
+  }
+  if (!is.logical(strict_replicate_design) ||
+      length(strict_replicate_design) != 1L ||
+      is.na(strict_replicate_design)) {
+    stop("`strict_replicate_design` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (!is.character(p_adjust_method) || length(p_adjust_method) != 1L ||
+      is.na(p_adjust_method) ||
+      !p_adjust_method %in% stats::p.adjust.methods) {
+    stop("`p_adjust_method` is not supported by stats::p.adjust().",
+         call. = FALSE)
+  }
+  formula_predictors <- all.vars(
+    stats::delete.response(stats::terms(formula))
+  )
+  if (!condition_col %in% formula_predictors) {
+    stop("The differential formula must include `condition_col`.",
+         call. = FALSE)
+  }
   if (identical(method, "wilcox") && length(covariates %||% character())) {
     stop("Wilcoxon testing cannot adjust covariates; use lm or limma_continuous.", call. = FALSE)
   }
-  score <- as.matrix(result$score)
-  meta <- result$unit_meta
-  if (is.null(meta) || !"unit_id" %in% colnames(meta)) {
-    stop("`result$unit_meta` must contain `unit_id`.", call. = FALSE)
-  }
-  meta <- meta[match(colnames(score), as.character(meta$unit_id)), , drop = FALSE]
-  if (anyNA(meta$unit_id)) stop("`result$unit_meta` is missing rows for score columns.", call. = FALSE)
+  aligned <- .rc_align_score_unit_metadata(result$score, result$unit_meta)
+  score <- aligned$score
+  meta <- aligned$unit_meta
   required <- c(sample_col, condition_col, covariates)
   missing <- setdiff(required, colnames(meta))
   if (length(missing)) stop("Missing differential metadata: ", paste(missing, collapse = ", "), call. = FALSE)
+  required_values <- meta[, required, drop = FALSE]
+  invalid_required <- vapply(required_values, function(value) {
+    text <- trimws(as.character(value))
+    anyNA(value) || any(!nzchar(text))
+  }, logical(1))
+  if (any(invalid_required)) {
+    stop("Differential metadata contain missing or empty values: ",
+         paste(required[invalid_required], collapse = ", "), call. = FALSE)
+  }
+  if (celltype_col %in% colnames(meta)) {
+    celltype <- trimws(as.character(meta[[celltype_col]]))
+    if (anyNA(celltype) || any(!nzchar(celltype))) {
+      stop("Cell-type metadata must be non-missing and non-empty.",
+           call. = FALSE)
+    }
+    meta[[celltype_col]] <- celltype
+  }
 
   parsed <- rc_parse_microcompass_row_id(rownames(score))
   row_meta <- data.frame(row_id = rownames(score), parsed, stringsAsFactors = FALSE)
@@ -161,6 +259,13 @@ rc_describe_microcompass_by_group <- function(
     sample_score <- aggregated$score
     sample_meta <- aggregated$meta
     n_by_group <- table(sample_meta[[condition_col]])
+    if (length(n_by_group) > 2L && identical(test_type, "pairwise")) {
+      stop(
+        "Multi-class `pairwise` contrasts are not implemented; use ",
+        "`test_type = \"omnibus\"`.",
+        call. = FALSE
+      )
+    }
     low_power <- length(n_by_group) < 2L || any(n_by_group < min_samples_per_group)
     preferred_low <- length(n_by_group) < 2L || any(n_by_group < preferred_min_samples_per_group)
     if (low_power) {
@@ -206,6 +311,7 @@ rc_describe_microcompass_by_group <- function(
         contrast = fit$contrast, effect_size = fit$effect_size,
         statistic = fit$statistic, p_value = fit$p_value,
         n_samples_per_group = paste(names(n_by_group), as.integer(n_by_group), sep = "=", collapse = ";"),
+        n_biological_samples = nrow(sample_meta),
         method = method, low_sample_power_flag = FALSE,
         preferred_sample_power_flag = preferred_low,
         model_status = fit$model_status, stringsAsFactors = FALSE
@@ -339,6 +445,7 @@ rc_microcompass_limma <- function(
       cell_type = cell_type, medium_scenario = row_meta$medium_scenario,
       contrast = NA_character_, effect_size = NA_real_, statistic = NA_real_,
       p_value = NA_real_, n_samples_per_group = NA_character_,
+      n_biological_samples = ncol(Y),
       method = "limma_continuous", low_sample_power_flag = TRUE,
       preferred_sample_power_flag = TRUE,
       model_status = "limma package not installed", stringsAsFactors = FALSE
@@ -378,6 +485,7 @@ rc_microcompass_limma <- function(
     statistic = if ("t" %in% colnames(table)) table$t else table$F,
     p_value = table$P.Value,
     n_samples_per_group = paste(names(n_by_group), as.integer(n_by_group), sep = "=", collapse = ";"),
+    n_biological_samples = ncol(Y),
     method = "limma_continuous", low_sample_power_flag = low_power,
     preferred_sample_power_flag = any(n_by_group < preferred_min_samples_per_group),
     model_status = if (low_power) "low_sample_power" else "ok",

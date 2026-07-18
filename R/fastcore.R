@@ -231,7 +231,8 @@
 }
 
 # FASTCORE LP-10. Following Vlassis et al., the core constraint and all flux
-# bounds are scaled by 1e5; support is extracted using the original epsilon.
+# bounds are scaled for numerical stability. Returned fluxes and the objective
+# are converted back to the original GEM units before support is classified.
 .rc_fastcore_lp10 <- function(S, lb, ub, active_core,
                               penalized_reactions,
                               epsilon, solver, time_limit,
@@ -337,7 +338,8 @@
       new_support = character(), objective = NA_real_
     ))
   }
-  flux <- answer$solution[seq_len(n_reactions)]
+  scaled_flux <- answer$solution[seq_len(n_reactions)]
+  flux <- scaled_flux / scaling_factor
   names(flux) <- colnames(S)
   new_support <- penalized_reactions[
     abs(flux[penalized_reactions]) >= epsilon * (1 - 1e-7)
@@ -346,7 +348,7 @@
     status = answer$status,
     flux = flux,
     new_support = new_support,
-    objective = answer$objective,
+    objective = answer$objective / scaling_factor,
     scaling_factor = scaling_factor
   )
 }

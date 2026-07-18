@@ -46,8 +46,8 @@ jobs:
           set -o pipefail
           Rscript - <<'RSCRIPT' 2>&1 | tee dependency-output.txt
           install.packages(c(
-            "Matrix", "matrixStats", "SeuratObject", "testthat",
-            "highs", "BiocManager"
+            "Matrix", "matrixStats", "testthat", "highs",
+            "BiocManager", "remotes"
           ))
           BiocManager::install(c(
             "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
@@ -74,7 +74,35 @@ jobs:
             stop("Missing Bioconductor dependencies: ",
                  paste(bioc_missing, collapse = ", "))
           }
-          install.packages("Signac")
+          remotes::install_version(
+            "SeuratObject", version = "4.1.4",
+            dependencies = NA, upgrade = "never"
+          )
+          remotes::install_version(
+            "Seurat", version = "4.4.0",
+            dependencies = NA, upgrade = "never"
+          )
+          remotes::install_version(
+            "Signac", version = "1.11.0",
+            dependencies = NA, upgrade = "never"
+          )
+          expected_versions <- c(
+            SeuratObject = "4.1.4",
+            Seurat = "4.4.0",
+            Signac = "1.11.0"
+          )
+          observed_versions <- vapply(
+            names(expected_versions),
+            function(package) as.character(packageVersion(package)),
+            character(1)
+          )
+          if (!identical(observed_versions, expected_versions)) {
+            stop(
+              "Unexpected Seurat stack: ",
+              paste(names(observed_versions), observed_versions,
+                    sep = "=", collapse = ", ")
+            )
+          }
           signac_status <- tryCatch({
             library(Signac)
             paste0("loaded Signac ", as.character(packageVersion("Signac")))

@@ -139,4 +139,54 @@ test_that("multi-class condition lm uses an omnibus test", {
   )
   expect_equal(output$contrast, "condition_omnibus")
   expect_true(is.finite(output$p_value))
+  expect_equal(output$n_biological_samples, 6L)
+  expect_error(
+    rc_test_microcompass_differential(
+      result,
+      method = "lm",
+      min_samples_per_group = 2,
+      strict_replicate_design = TRUE,
+      test_type = "pairwise"
+    ),
+    "not implemented",
+    fixed = TRUE
+  )
+})
+
+test_that("differential testing rejects ambiguous unit and sample metadata", {
+  row_id <- "reaction=R1::direction=forward::medium=base"
+  score <- matrix(
+    c(1, 2, 3, 4), nrow = 1,
+    dimnames = list(row_id, paste0("u", 1:4))
+  )
+  meta <- data.frame(
+    unit_id = paste0("u", 1:4),
+    sample_id = paste0("s", 1:4),
+    condition = rep(c("A", "B"), each = 2),
+    cell_type = "T",
+    stringsAsFactors = FALSE
+  )
+  duplicated_meta <- meta
+  duplicated_meta$unit_id[[2L]] <- "u1"
+  expect_error(
+    rc_test_microcompass_differential(
+      list(score = score, unit_meta = duplicated_meta),
+      min_samples_per_group = 2
+    ),
+    "unique and non-empty",
+    fixed = TRUE
+  )
+
+  inconsistent <- rbind(
+    meta,
+    data.frame(
+      unit_id = "u5", sample_id = "s1", condition = "B",
+      cell_type = "T", stringsAsFactors = FALSE
+    )
+  )
+  expect_error(
+    rc_check_replicate_design(inconsistent),
+    "exactly one condition",
+    fixed = TRUE
+  )
 })
