@@ -45,6 +45,122 @@ test_that("equal-sample weights give every biological sample equal total mass", 
   expect_equal(sum(weights), 1, tolerance = 1e-12)
 })
 
+test_that("sample balancing is recomputed inside every Q95 stratum", {
+  unit_ids <- paste0("u", seq_len(8))
+  sample_ids <- c("S1", "S1", "S1", "S2",
+                  "S1", "S2", "S2", "S2")
+  cell_type <- rep(c("A", "B"), each = 4)
+  capacity <- matrix(
+    c(0, 0, 0, 1, 1, 0, 0, 0),
+    nrow = 1,
+    dimnames = list("R1", unit_ids)
+  )
+  unit_meta <- data.frame(
+    pool_id = unit_ids,
+    cell_type = cell_type,
+    stringsAsFactors = FALSE
+  )
+
+  balanced <- rc_q95_shrink(
+    capacity,
+    unit_meta = unit_meta,
+    stratum_col = "cell_type",
+    q = 0.60,
+    n0 = 0,
+    balance_ids = stats::setNames(sample_ids, unit_ids)
+  )
+  unbalanced <- rc_q95_shrink(
+    capacity,
+    unit_meta = unit_meta,
+    stratum_col = "cell_type",
+    q = 0.60,
+    n0 = 0
+  )
+
+  sample_mass <- tapply(balanced$weights, sample_ids, sum)
+  expect_equal(as.numeric(sample_mass), c(0.5, 0.5), tolerance = 1e-12)
+  expect_equal(balanced$Q$q_stratum, c(1, 1))
+  expect_equal(unbalanced$Q$q_stratum, c(0, 0))
+  expect_equal(balanced$Q$n_effective, c(3, 3), tolerance = 1e-12)
+  expect_true(all(balanced$Q$sample_balanced))
+  expect_true(all(
+    balanced$Q$balance_scope ==
+      "equal_sample_global_and_within_stratum"
+  ))
+  expect_equal(balanced$Q$n_balancing_samples, c(2L, 2L))
+})
+
+test_that("sample weights do not rescale absolute metacell activity", {
+  expression <- matrix(
+    c(0, 0, 0, 10),
+    nrow = 1,
+    dimnames = list("g1", paste0("u", 1:4))
+  )
+  weights <- .rc_equal_sample_weights(c("S1", "S1", "S1", "S2"))
+
+  balanced_absolute <- .rc_weighted_gene_score(
+    expression,
+    weights,
+    mode = "absolute"
+  )
+  unweighted_absolute <- rc_gene_score(expression, mode = "absolute")
+  expect_equal(balanced_absolute, unweighted_absolute)
+
+  balanced_relative <- .rc_weighted_gene_score(
+    expression,
+    weights,
+    mode = "relative"
+  )
+  equal_metacell_relative <- .rc_weighted_gene_score(
+    expression,
+    rep(1 / 4, 4),
+    mode = "relative"
+  )
+  expect_false(isTRUE(all.equal(
+    as.numeric(balanced_relative),
+    as.numeric(equal_metacell_relative)
+  )))
+})
+
+test_that("sample-celltype inference creates one unit per biological sample", {
+  unit_ids <- paste0("u", 1:5)
+  layer1 <- list(
+    C_rel = matrix(
+      c(0.1, 0.2, 0.3, 0.4, 0.9),
+      nrow = 1,
+      dimnames = list("R1", unit_ids)
+    ),
+    reaction_confidence = matrix(
+      c(0.2, 0.4, 0.6, 0.8, 0.5),
+      nrow = 1,
+      dimnames = list("R1", unit_ids)
+    ),
+    unit_meta = data.frame(
+      pool_id = unit_ids,
+      sample_id = c("S1", "S1", "S1", "S1", "S2"),
+      condition = "A",
+      cell_type = "T",
+      stringsAsFactors = FALSE
+    )
+  )
+
+  aggregated <- rc_layer2_unit_matrices(
+    layer1,
+    unit = "sample_celltype",
+    sample_col = "sample_id",
+    celltype_col = "cell_type",
+    condition_col = "condition"
+  )
+
+  expect_equal(ncol(aggregated$C_rel), 2L)
+  expect_setequal(aggregated$unit_meta$sample_id, c("S1", "S2"))
+  expect_equal(
+    as.numeric(aggregated$C_rel["R1", ]),
+    c(0.25, 0.9),
+    tolerance = 1e-12
+  )
+})
+
 test_that("weighted gene score and Q95 retain matrix dimensions and finite bounds", {
   expression <- matrix(
     c(0, 0, 10, 2, 2, 2),
