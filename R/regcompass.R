@@ -190,6 +190,12 @@ rc_run_regcompass <- function(
   answer$params$gpr_or_method <- or_method
   answer$params$gpr_or_method_source <- or_method_source
   answer$params$q95_role <- "diagnostic_only"
+  answer$params$sample_balance_role <-
+    answer$layer1$sample_balance_role %||%
+    "q95_and_relative_state_diagnostics_only"
+  answer$params$sample_balance_estimand <-
+    answer$layer1$sample_balance_estimand %||%
+    "equal biological-sample mass globally and within each Q95 stratum"
   answer$params$q95_n0 <- answer$layer1$calibration_params$q95_n0
   answer$params$q95_stratum_col <-
     answer$layer1$calibration_params$q95_stratum_col
@@ -208,8 +214,9 @@ rc_run_regcompass <- function(
 #' Run the RegCompass workflow
 #'
 #' Builds strict-stratum RNA+ATAC metacells, runs Pando and local meta-module
-#' completion, calibrates all metacells on a sample-balanced scale, constructs
-#' one shared GEM, and performs metacell-specific directional scoring.
+#' completion, computes sample-balanced global and within-stratum Q95
+#' diagnostics without rescaling absolute metacell activity, constructs one
+#' shared GEM, and performs directional sample-by-cell-type inference.
 .rc_run_regcompass_engine <- function(object, gem, outdir, pfm, genome,
                                fragment_files = NULL,
                                sample_col = "sample_id",
