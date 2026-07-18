@@ -32,7 +32,7 @@ jobs:
         shell: Rscript {0}
         run: |
           install.packages(c(
-            "Matrix", "matrixStats", "SeuratObject", "testthat",
+            "Matrix", "matrixStats", "SeuratObject", "Signac", "testthat",
             "highs", "BiocManager"
           ))
           BiocManager::install("limma", ask = FALSE, update = FALSE)
