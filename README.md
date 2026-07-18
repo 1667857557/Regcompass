@@ -6,7 +6,7 @@ RegCompassR provides one supported RNA+ATAC workflow:
 condition × sample × cell type
 → metacells and stratum-specific Pando GRNs
 → local FASTCORE meta-modules
-→ sample-balanced global calibration and one shared GEM
+→ sample-balanced Q95 diagnostics and one shared GEM
 → directional microCOMPASS scoring
 ```
 
@@ -100,10 +100,18 @@ and a small pilot run.
 | `metacell_args$peak_calling_args` | Additional `Signac::CallPeaks()` arguments | Keep one policy across strata. Use only justified MACS options and record them with the run. |
 | `pando_args$min_metacells` | Minimum metacells required for Pando | It must be compatible with `floor(n_cells / gamma)`. Strata below it are skipped, so inspect `00_strata/stratum_workflow_status.tsv.gz` after a pilot. |
 | `pando_infer_args` | Pando model and correlation/FDR filters | Start with the shown GLM settings; tighten correlation thresholds only when the pilot produces excessive weak edges. Apply one policy to every stratum. |
-| `layer1_args$local_fastcore` | Completes each local metabolic module | Keep enabled for the canonical path. `sample_balance = TRUE` prevents samples with more metacells from dominating global calibration. |
+| `layer1_args$local_fastcore` | Completes each local metabolic module | Keep enabled for the canonical path. |
+| `layer1_args$sample_balance` | Defines the sampling estimand for Q95 and relative-state diagnostics | Keep `TRUE` for biological-replicate inference. Every sample receives equal total mass globally, and weights are recomputed inside each Q95 stratum. Absolute metacell activity is not rescaled. |
 | `layer1_args$expression_batch_correction` | Optional technical-batch correction | Keep `"none"` unless a documented technical batch exists. If using `"limma"`, provide technical and preserved biological design columns; never remove `sample_id` as batch. |
 | `layer2_args$target_direction` | Forward, reverse, or both-direction scoring | Use `"both"` unless the GEM direction or scientific question justifies one direction. |
 | `layer2_args$solver` | LP solver | `"highs"` is the default open-source choice; use Gurobi only in a licensed environment. |
+
+`sample_balance = TRUE` uses \(w_{si}=1/(S n_s)\) for global diagnostics and
+recomputes \(w_{sci}=1/(S_c n_{sc})\) inside each Q95 stratum. These are
+sampling weights, not enzyme-activity multipliers. The primary absolute
+reaction support remains the zero-preserving metacell value, while the default
+`sample_celltype` Layer 2 unit gives each biological sample one inference unit
+per represented cell type.
 
 A practical pilot is to tabulate cells per strict stratum, choose one `gamma`,
 confirm that enough metacells remain for Pando, and only then scale workers.
