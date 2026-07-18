@@ -40,8 +40,8 @@ result <- rc_run_regcompass_one_shot(
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,
-  species = "human",
+  fragment_files = FALSE,  # use existing ATAC peak counts; pass paths to re-aggregate fragments
+  species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
   gem_version = "2.0.0",
   medium_scenario = "physiologic",
   sample_col = "sample_id",
@@ -73,46 +73,16 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-`fragment_files = FALSE` skips fragment aggregation and uses the ATAC peak raw
-counts already stored in `object`, summed according to SuperCell membership.
-When matching fragment files are supplied, each strict stratum follows this
-path:
-
-```text
-single-cell fragments
-→ metacell fragment aggregation
-→ pseudobulk MACS2/MACS3 peak calling on aggregated fragments
-→ FeatureMatrix on the newly called peaks
-→ replacement metacell ChromatinAssay
-→ TF-IDF and Pando
-```
-
-For a fragment-enabled run:
-
-```r
-result <- rc_run_regcompass_one_shot(
-  object = object,
-  outdir = "RegCompass_fragment_result",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = fragment_manifest,
-  species = "human",
-  metacell_args = list(
-    gamma = 50,
-    macs2_path = "/path/to/macs3",
-    call_peaks_from_fragments = TRUE,
-    peak_calling_effective_genome_size = 2.7e9,
-    peak_calling_args = list(
-      additional.args = "--keep-dup all"
-    )
-  )
-)
-```
-
-The workflow saves each stratum's called peak ranges and records whether ATAC
-counts came from the object or from de novo fragment-derived peaks. Mouse runs
-should use the matching genome and either allow automatic `mm*` genome
-inference or set `peak_calling_effective_genome_size = 1.87e9` explicitly.
+Set `fragment_files = FALSE` when no matching fragment files are available; the
+workflow skips fragment aggregation and carries the object's ATAC peak raw counts
+into metacell and Pando analysis. When matching fragments are available, pass a
+path, named list, or manifest in `fragment_files`; RegCompass re-aggregates ATAC
+peak raw counts from fragments before downstream analysis. For mouse data, use
+the matching genome and set `species = "mouse"`; the one-shot setup then
+prepares Mouse-GEM 1.8.0 and `mouse_plasma` through the `"physiologic"` medium
+shortcut. To use a fully custom medium table, build it with
+`rc_make_medium_scenarios()` and pass it as `medium_scenarios`, which overrides
+`medium_scenario`.
 
 ## Choosing analysis parameters
 

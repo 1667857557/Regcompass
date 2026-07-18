@@ -14,7 +14,7 @@ Without matching fragment files:
 
 ```text
 SuperCell2 metacells with one fixed gamma
-→ sum object ATAC peak raw counts by metacell membership
+→ fragment aggregation when `fragment_files` are supplied, or object ATAC peak raw counts when `fragment_files = FALSE`
 → minimum-metacell filter
 → Pando GRN
 ```

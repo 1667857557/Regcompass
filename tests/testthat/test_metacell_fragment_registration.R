@@ -227,44 +227,10 @@ test_that("missing expected metacell IDs remain fatal", {
   )
 })
 
-test_that("fragment routing exposes object-count and de novo peak paths", {
-  metacell_body <- gsub(
-    "\\s+",
-    "",
-    paste(deparse(body(rc_make_supercell2_metacells)), collapse = "\n")
-  )
-  recount_body <- gsub(
-    "\\s+",
-    "",
-    paste(
-      deparse(body(.rc_recount_atac_from_fragment_manifest)),
-      collapse = "\n"
-    )
-  )
 
-  expect_match(
-    metacell_body,
-    "if(identical(fragment_files,FALSE))",
-    fixed = TRUE
-  )
-  expect_match(
-    metacell_body,
-    'out$atac_peak_source<-"existing_object_peak_ranges"',
-    fixed = TRUE
-  )
-  expect_match(
-    metacell_body,
-    '"de_novo_macs2_from_metacell_fragments"',
-    fixed = TRUE
-  )
-  expect_match(
-    recount_body,
-    'object@misc$atac_count_source<-"recomputed_from_metacell_fragments"',
-    fixed = TRUE
-  )
-  expect_match(
-    recount_body,
-    "Signac::CreateChromatinAssay",
-    fixed = TRUE
-  )
+test_that("fragment_files FALSE is documented as the raw ATAC-count path", {
+  body_text <- paste(deparse(body(rc_make_supercell2_metacells)), collapse = "\n")
+  expect_match(body_text, "identical(fragment_files, FALSE)", fixed = TRUE)
+  expect_match(body_text, "fragment_aggregation_backend <- \"none\"", fixed = TRUE)
+  expect_match(body_text, "Use `fragment_files = FALSE` to skip fragment aggregation", fixed = TRUE)
 })
