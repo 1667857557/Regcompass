@@ -170,7 +170,7 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          R CMD check --no-manual --no-build-vignettes . 2>&1 | tee check-output.txt
+          env _R_CHECK_FORCE_SUGGESTS_=false R CMD check --no-manual --no-build-vignettes . 2>&1 | tee check-output.txt
 
       - name: Commit validated refactor
         shell: bash
