@@ -29,7 +29,27 @@
     acetate = "acetate|acetic[ _-]?acid",
     citrate = "citrate|citric[ _-]?acid",
     acetoacetate = "acetoacetate|acetoacetic[ _-]?acid",
-    beta_hydroxybutyrate = "beta[- _]?hydroxybutyrate|3[- _]?hydroxybutyrate",
+    beta_hydroxybutyrate = "beta[- _]?hydroxybutyrate|3[- _]?hydroxybutyrate|3[- _]?hydroxybutanoate",
+    acetone = "(^|[^a-z0-9])acetone([^a-z0-9]|$)",
+    fructose = "d[- ]?fructose|(^|[^a-z0-9])fructose([^a-z0-9]|$)",
+    galactose = "d[- ]?galactose|(^|[^a-z0-9])galactose([^a-z0-9]|$)",
+    glycerol = "(^|[^a-z0-9])glycerol([^a-z0-9]|$)",
+    hypoxanthine = "(^|[^a-z0-9])hypoxanthine([^a-z0-9]|$)",
+    uridine = "(^|[^a-z0-9])uridine([^a-z0-9]|$)",
+    acetylcarnitine = "o[- ]?acetylcarnitine|l[- ]?acetylcarnitine|(^|[^a-z0-9])acetylcarnitine([^a-z0-9]|$)",
+    betaine = "(^|[^a-z0-9])betaine([^a-z0-9]|$)|trimethylglycine",
+    alpha_aminobutyrate = "alpha[- _]?aminobutyrate|2[- _]?aminobutyrate|2[- _]?aminobutanoate|alpha[- _]?aminobutyric",
+    citrulline = "l[- ]?citrulline|(^|[^a-z0-9])citrulline([^a-z0-9]|$)",
+    ornithine = "l[- ]?ornithine|(^|[^a-z0-9])ornithine([^a-z0-9]|$)",
+    n_acetylglycine = "n[- _]?acetylglycine|acetylglycine",
+    taurine = "(^|[^a-z0-9])taurine([^a-z0-9]|$)",
+    alpha_ketoglutarate = "alpha[- _]?ketoglutarate|2[- _]?oxoglutarate|(^|[^a-z0-9])akg([^a-z0-9]|$)",
+    formate = "(^|[^a-z0-9])formate([^a-z0-9]|$)|formic[ _-]?acid",
+    malate = "l[- ]?malate|(^|[^a-z0-9])malate([^a-z0-9]|$)|malic[ _-]?acid",
+    malonate = "(^|[^a-z0-9])malonate([^a-z0-9]|$)|malonic[ _-]?acid",
+    succinate = "(^|[^a-z0-9])succinate([^a-z0-9]|$)|succinic[ _-]?acid",
+    ammonium = "ammonium|(^|[^a-z0-9])nh4([^a-z0-9]|$)",
+    nitrate = "nitrate|(^|[^a-z0-9])no3([^a-z0-9]|$)",
     alanine = "l[- ]?alanine|(^|[^a-z0-9])alanine([^a-z0-9]|$)",
     arginine = "l[- ]?arginine|(^|[^a-z0-9])arginine([^a-z0-9]|$)",
     asparagine = "l[- ]?asparagine|(^|[^a-z0-9])asparagine([^a-z0-9]|$)",
@@ -69,33 +89,139 @@
     creatinine = "creatinine",
     urea = "(^|[^a-z0-9])urea([^a-z0-9]|$)",
     urate = "urate|uric[ _-]?acid",
-    glutathione = "glutathione",
+    glutathione = "reduced[ _-]?glutathione|(^|[^a-z0-9])glutathione([^a-z0-9]|$)|(^|[^a-z0-9])gsh([^a-z0-9]|$)",
     oxygen = "oxygen|(^|[^a-z0-9])o2([^a-z0-9]|$)",
     carbon_dioxide = "carbon[ _-]?dioxide|(^|[^a-z0-9])co2([^a-z0-9]|$)",
     water = "(^|[^a-z0-9])water([^a-z0-9]|$)|(^|[^a-z0-9])h2o([^a-z0-9]|$)",
     bicarbonate = "bicarbonate|hydrogen[ _-]?carbonate",
-    phosphate = "phosphate|orthophosphate|inorganic[ _-]?phosphate",
-    sulfate = "sulfate|sulphate",
-    chloride = "chloride",
-    sodium = "(^|[^a-z0-9])sodium([^a-z0-9]|$)",
-    potassium = "(^|[^a-z0-9])potassium([^a-z0-9]|$)",
-    calcium = "(^|[^a-z0-9])calcium([^a-z0-9]|$)",
-    magnesium = "(^|[^a-z0-9])magnesium([^a-z0-9]|$)",
-    iron = "ferric|ferrous|(^|[^a-z0-9])iron([^a-z0-9]|$)"
+    phosphate = "phosphate|orthophosphate|inorganic[ _-]?phosphate|(^|[^a-z0-9])pi([^a-z0-9]|$)",
+    sulfate = "sulfate|sulphate|(^|[^a-z0-9])so4([^a-z0-9]|$)",
+    chloride = "chloride|(^|[^a-z0-9])cl([^a-z0-9]|$)",
+    sodium = "(^|[^a-z0-9])sodium([^a-z0-9]|$)|(^|[^a-z0-9])na([^a-z0-9]|$)",
+    potassium = "(^|[^a-z0-9])potassium([^a-z0-9]|$)|(^|[^a-z0-9])k([^a-z0-9]|$)",
+    calcium = "(^|[^a-z0-9])calcium([^a-z0-9]|$)|(^|[^a-z0-9])ca([^a-z0-9]|$)",
+    magnesium = "(^|[^a-z0-9])magnesium([^a-z0-9]|$)|(^|[^a-z0-9])mg([^a-z0-9]|$)",
+    iron = "ferric|ferrous|(^|[^a-z0-9])iron([^a-z0-9]|$)|(^|[^a-z0-9])fe[23]?([^a-z0-9]|$)"
   )
   if (name %in% names(patterns)) return(unname(patterns[[name]]))
   gsub("_", "[- _]?", name, fixed = TRUE)
 }
 
+.rc_medium_gem_aliases <- function(name) {
+  name <- tolower(trimws(as.character(name)))
+  generic <- c(name, gsub("_", " ", name, fixed = TRUE))
+  amino_acids <- c(
+    "alanine", "arginine", "asparagine", "aspartate", "cysteine",
+    "glutamate", "glutamine", "histidine", "isoleucine", "leucine",
+    "lysine", "methionine", "phenylalanine", "proline", "serine",
+    "threonine", "tryptophan", "tyrosine", "valine", "citrulline",
+    "ornithine"
+  )
+  if (name %in% amino_acids) {
+    generic <- c(generic, paste0("L-", name), paste0("L ", name))
+  }
+  special <- switch(
+    name,
+    glucose = c("D-glucose", "glucose", "dextrose"),
+    lactate = c("L-lactate", "(S)-lactate", "lactate", "lactic acid"),
+    pyruvate = c("pyruvate", "pyruvic acid"),
+    acetate = c("acetate", "acetic acid"),
+    citrate = c("citrate", "citric acid"),
+    acetoacetate = c("acetoacetate", "acetoacetic acid"),
+    beta_hydroxybutyrate = c(
+      "3-hydroxybutyrate", "3-hydroxybutanoate",
+      "(R)-3-hydroxybutanoate", "beta-hydroxybutyrate"
+    ),
+    acetone = "acetone",
+    fructose = c("D-fructose", "fructose"),
+    galactose = c("D-galactose", "galactose"),
+    glycerol = "glycerol",
+    hypoxanthine = "hypoxanthine",
+    uridine = "uridine",
+    acetylcarnitine = c(
+      "O-acetylcarnitine", "acetylcarnitine", "L-acetylcarnitine"
+    ),
+    betaine = c("betaine", "trimethylglycine"),
+    alpha_aminobutyrate = c(
+      "L-2-aminobutanoate", "2-aminobutanoate", "2-aminobutyrate",
+      "alpha-aminobutyrate", "L-alpha-aminobutyric acid",
+      "L-2-aminobutyric acid"
+    ),
+    n_acetylglycine = c("N-acetylglycine", "acetylglycine"),
+    taurine = "taurine",
+    alpha_ketoglutarate = c(
+      "2-oxoglutarate", "alpha-ketoglutarate", "alpha-ketoglutaric acid",
+      "2-oxoglutaric acid", "AKG"
+    ),
+    formate = c("formate", "formic acid"),
+    malate = c("L-malate", "malate", "malic acid"),
+    malonate = c("malonate", "malonic acid"),
+    succinate = c("succinate", "succinic acid"),
+    ammonium = c("ammonium", "NH4+", "ammonium ion"),
+    nitrate = c("nitrate", "NO3-", "nitrate ion"),
+    cystine = c("L-cystine", "cystine"),
+    glycine = "glycine",
+    hydroxyproline = c(
+      "trans-4-hydroxy-L-proline", "hydroxy-L-proline", "hydroxyproline"
+    ),
+    biotin = c("biotin", "vitamin B7"),
+    choline = c("choline", "choline cation"),
+    pantothenate = c("pantothenate", "pantothenic acid", "vitamin B5"),
+    folate = c("folate", "folic acid", "vitamin B9"),
+    niacinamide = c("niacinamide", "nicotinamide", "vitamin B3"),
+    p_aminobenzoate = c(
+      "4-aminobenzoate", "p-aminobenzoate", "para-aminobenzoate",
+      "4-aminobenzoic acid"
+    ),
+    pyridoxine = c("pyridoxine", "vitamin B6"),
+    riboflavin = c("riboflavin", "vitamin B2"),
+    thiamine = c("thiamine", "vitamin B1"),
+    vitamin_b12 = c("cobalamin", "vitamin B12"),
+    inositol = c("myo-inositol", "inositol"),
+    carnitine = c("L-carnitine", "carnitine"),
+    ethanolamine = "ethanolamine",
+    creatine = "creatine",
+    creatinine = "creatinine",
+    urea = "urea",
+    urate = c("urate", "uric acid"),
+    glutathione = c("glutathione", "reduced glutathione", "GSH"),
+    oxygen = c("oxygen", "O2"),
+    carbon_dioxide = c("carbon dioxide", "CO2"),
+    water = c("water", "H2O"),
+    bicarbonate = c("bicarbonate", "hydrogen carbonate", "HCO3-"),
+    phosphate = c("phosphate", "orthophosphate", "inorganic phosphate", "Pi"),
+    sulfate = c("sulfate", "sulphate", "SO4", "SO4(2-)"),
+    chloride = c("chloride", "Cl-"),
+    sodium = c("sodium", "Na+"),
+    potassium = c("potassium", "K+"),
+    calcium = c("calcium", "Ca2+"),
+    magnesium = c("magnesium", "Mg2+"),
+    iron = c("iron", "ferrous ion", "ferric ion", "Fe2+", "Fe3+"),
+    character()
+  )
+  unique(c(generic, special))
+}
+
 .rc_medium_rows <- function(names, concentration_mM = NA_real_,
-                            category = "nutrient", required = FALSE) {
+                             category = "nutrient", required = FALSE,
+                             gem_metabolite_aliases = NULL) {
   n <- length(names)
   concentration_mM <- rep(concentration_mM, length.out = n)
   category <- rep(category, length.out = n)
   required <- rep(required, length.out = n)
+  if (is.null(gem_metabolite_aliases)) {
+    gem_metabolite_aliases <- vapply(
+      names,
+      function(name) paste(.rc_medium_gem_aliases(name), collapse = ";"),
+      character(1)
+    )
+  } else {
+    gem_metabolite_aliases <- rep(gem_metabolite_aliases, length.out = n)
+  }
   data.frame(
     metabolite_name = names,
     metabolite_pattern = vapply(names, .rc_medium_pattern, character(1)),
+    gem_metabolite_aliases = as.character(gem_metabolite_aliases),
     concentration_mM = as.numeric(concentration_mM),
     uptake_fraction = 1,
     category = category,
@@ -125,13 +251,17 @@
   )
   ions <- c(
     "sodium", "potassium", "calcium", "magnesium", "chloride",
-    "bicarbonate", "phosphate", "sulfate", "iron"
+    "bicarbonate", "phosphate", "sulfate", "iron", "ammonium", "nitrate"
   )
-  physiologic_other <- c(
+  plasma_small_molecules <- c(
     "glucose", "lactate", "pyruvate", "acetate", "citrate",
-    "acetoacetate", "beta_hydroxybutyrate", "carnitine", "ethanolamine",
-    "creatine", "creatinine", "urea", "urate", "oxygen",
-    "carbon_dioxide", "water"
+    "acetoacetate", "beta_hydroxybutyrate", "acetone", "fructose",
+    "galactose", "glycerol", "hypoxanthine", "uridine",
+    "carnitine", "acetylcarnitine", "betaine", "alpha_aminobutyrate",
+    "citrulline", "ornithine", "n_acetylglycine", "taurine",
+    "alpha_ketoglutarate", "formate", "malate", "malonate", "succinate",
+    "ethanolamine", "creatine", "creatinine", "urea", "urate",
+    "glutathione", "oxygen", "carbon_dioxide", "water"
   )
   physiologic <- rbind(
     .rc_medium_rows(
@@ -142,20 +272,50 @@
     .rc_medium_rows(vitamins, category = "vitamin_or_cofactor"),
     .rc_medium_rows(ions, category = "inorganic_ion"),
     .rc_medium_rows(
-      physiologic_other,
-      category = "physiologic_metabolite",
-      required = physiologic_other %in% c("glucose", "lactate", "oxygen")
+      plasma_small_molecules,
+      category = "plasma_small_molecule",
+      required = plasma_small_molecules %in% c(
+        "glucose", "lactate", "oxygen"
+      )
     )
   )
-  key_concentrations <- c(
+  human_concentrations <- c(
     glucose = 5.0, lactate = 1.5, glutamine = 0.55, arginine = 0.11,
     alanine = 0.35, glycine = 0.25, serine = 0.12, pyruvate = 0.08,
     acetate = 0.10, citrate = 0.10, urate = 0.35, urea = 5.0,
     creatinine = 0.08, bicarbonate = 25, sodium = 140, potassium = 4.5,
-    calcium = 1.2, magnesium = 0.8, chloride = 103, phosphate = 1.0
+    calcium = 1.2, magnesium = 0.8, chloride = 103, phosphate = 1.0,
+    glutathione = 0.024999188, acetone = 0.06000344,
+    fructose = 0.03999778, galactose = 0.060002223,
+    glycerol = 0.11999132, hypoxanthine = 0.01,
+    uridine = 0.003001638, acetylcarnitine = 0.005002086,
+    betaine = 0.07000427, alpha_aminobutyrate = 0.019996122,
+    citrulline = 0.04, ornithine = 0.06999763,
+    n_acetylglycine = 0.089999996, taurine = 0.09000319,
+    alpha_ketoglutarate = 0.005003422, formate = 0.04998914,
+    malate = 0.0049966443, malonate = 0.010003844,
+    succinate = 0.020001695, ammonium = 0.12002288,
+    nitrate = 0.01999783
   )
-  hit <- match(physiologic$metabolite_name, names(key_concentrations))
-  physiologic$concentration_mM[!is.na(hit)] <- key_concentrations[hit[!is.na(hit)]]
+  hit <- match(physiologic$metabolite_name, names(human_concentrations))
+  physiologic$concentration_mM[!is.na(hit)] <-
+    human_concentrations[hit[!is.na(hit)]]
+  physiologic$concentration_basis <- ifelse(
+    is.na(physiologic$concentration_mM),
+    "availability_only",
+    "human_plasma_or_HPLM_reference"
+  )
+  physiologic$component_reference_doi <- ifelse(
+    physiologic$metabolite_name %in% c(
+      "glutathione", "acetone", "fructose", "galactose", "glycerol",
+      "hypoxanthine", "uridine", "acetylcarnitine", "betaine",
+      "alpha_aminobutyrate", "citrulline", "ornithine",
+      "n_acetylglycine", "taurine", "alpha_ketoglutarate", "formate",
+      "malate", "malonate", "succinate", "ammonium", "nitrate"
+    ),
+    "10.1016/j.cell.2017.03.023",
+    "10.1371/journal.pone.0016957"
+  )
   sensitivity_reference <- c(glucose = 25, lactate = 20, glutamine = 2)
   sensitivity_index <- match(
     physiologic$metabolite_name, names(sensitivity_reference)
@@ -172,10 +332,29 @@
     return(physiologic)
   }
   if (identical(preset_id, "mouse_plasma")) {
-    # Availability is based on the broad murine plasma/TIF metabolomics panel.
-    # Concentrations remain provenance values rather than direct flux bounds.
-    physiologic$concentration_mM[physiologic$metabolite_name == "glucose"] <- 7.5
-    physiologic$concentration_mM[physiologic$metabolite_name == "lactate"] <- 2.0
+    expanded <- physiologic$metabolite_name %in% c(
+      "glutathione", "acetone", "fructose", "galactose", "glycerol",
+      "hypoxanthine", "uridine", "acetylcarnitine", "betaine",
+      "alpha_aminobutyrate", "citrulline", "ornithine",
+      "n_acetylglycine", "taurine", "alpha_ketoglutarate", "formate",
+      "malate", "malonate", "succinate", "ammonium", "nitrate"
+    )
+    physiologic$concentration_mM[expanded] <- NA_real_
+    physiologic$concentration_basis[expanded] <-
+      "mouse_plasma_TIF_detection_without_shared_concentration"
+    physiologic$component_reference_doi[expanded] <- "10.7554/eLife.44235"
+    physiologic$concentration_mM[
+      physiologic$metabolite_name == "glucose"
+    ] <- 7.5
+    physiologic$concentration_mM[
+      physiologic$metabolite_name == "lactate"
+    ] <- 2.0
+    physiologic$concentration_basis[
+      physiologic$metabolite_name %in% c("glucose", "lactate")
+    ] <- "mouse_plasma_reference"
+    physiologic$component_reference_doi[
+      physiologic$metabolite_name %in% c("glucose", "lactate")
+    ] <- "10.7554/eLife.44235"
     physiologic$uptake_fraction[sensitivity_rows] <- pmin(
       1,
       physiologic$concentration_mM[sensitivity_rows] /
@@ -212,11 +391,17 @@
       rpm_conc,
       category = ifelse(
         rpm_names %in% amino_acids, "amino_acid",
-        ifelse(rpm_names %in% vitamins, "vitamin_or_cofactor",
-               ifelse(rpm_names %in% ions, "inorganic_ion", "other_component"))
+        ifelse(
+          rpm_names %in% vitamins, "vitamin_or_cofactor",
+          ifelse(rpm_names %in% ions, "inorganic_ion", "other_component")
+        )
       ),
       required = rpm_names %in% c("glucose", "glutamine", essential)
     )
+    out$concentration_basis <- ifelse(
+      is.na(out$concentration_mM), "availability_only", "RPMI_1640_formulation"
+    )
+    out$component_reference_doi <- "10.1001/jama.1967.03120080053007"
     return(out)
   }
 
@@ -238,20 +423,31 @@
       1.8018018, 2.4752476e-4, 0.8139166, 5.3333335, 110.344826,
       110.344826, 44.04762, 0.9057971, 25.0, NA, NA, NA
     )
-    return(.rc_medium_rows(
+    out <- .rc_medium_rows(
       dmem_names,
       dmem_conc,
       category = ifelse(
         dmem_names %in% amino_acids, "amino_acid",
-        ifelse(dmem_names %in% vitamins, "vitamin_or_cofactor",
-               ifelse(dmem_names %in% ions, "inorganic_ion", "other_component"))
+        ifelse(
+          dmem_names %in% vitamins, "vitamin_or_cofactor",
+          ifelse(dmem_names %in% ions, "inorganic_ion", "other_component")
+        )
       ),
       required = dmem_names %in% c("glucose", "glutamine", essential)
-    ))
+    )
+    out$concentration_basis <- ifelse(
+      is.na(out$concentration_mM), "availability_only",
+      "DMEM_high_glucose_11965_formulation"
+    )
+    out$component_reference_doi <- "10.1016/0042-6822(59)90063-3"
+    return(out)
   }
 
-  base_id <- if (identical(species, "mouse")) "mouse_plasma" else
+  base_id <- if (identical(species, "mouse")) {
+    "mouse_plasma"
+  } else {
     "normal_human_plasma"
+  }
   if (preset_id %in% c(
     "high_glucose", "low_glucose", "high_lactate", "low_lactate",
     "low_glutamine"
@@ -273,9 +469,12 @@
       low_lactate = 0.5,
       low_glutamine = 0.05
     )
-    reference_high <- switch(target, glucose = 25, lactate = 20, glutamine = 2)
+    reference_high <- switch(
+      target, glucose = 25, lactate = 20, glutamine = 2
+    )
     selected <- out$metabolite_name == target
     out$concentration_mM[selected] <- concentration
+    out$concentration_basis[selected] <- "explicit_sensitivity_scenario"
     out$uptake_fraction[selected] <- concentration / reference_high
     out$target_exchange_flag[selected] <- TRUE
     out$required_match[selected] <- TRUE
@@ -287,9 +486,9 @@
 .rc_medium_reference_catalog <- function() {
   data.frame(
     preset_id = c(
-      "normal_human_plasma", "mouse_plasma", "rpmi1640", "dmem_high_glucose",
-      "high_glucose", "low_glucose", "high_lactate", "low_lactate",
-      "low_glutamine", "custom"
+      "normal_human_plasma", "mouse_plasma", "rpmi1640",
+      "dmem_high_glucose", "high_glucose", "low_glucose",
+      "high_lactate", "low_lactate", "low_glutamine", "custom"
     ),
     species = c(
       "Homo sapiens", "Mus musculus", "not species-specific",
@@ -297,7 +496,10 @@
       "user supplied"
     ),
     reference_label = c(
-      "Cantor et al., Cell 2017 (HPLM); Psychogios et al., PLoS One 2011",
+      paste(
+        "Cantor et al., Cell 2017 (HPLM);",
+        "Psychogios et al., PLoS One 2011"
+      ),
       "Sullivan et al., eLife 2019; Wang et al., PNAS 2021",
       "Moore et al., JAMA 1967; Thermo Fisher RPMI-1640 formulation 11875",
       "Dulbecco and Freeman, Virology 1959; Thermo Fisher DMEM formulation 11965",
@@ -313,12 +515,12 @@
       "10.7554/eLife.44235;10.1073/pnas.2102344118",
       "10.1001/jama.1967.03120080053007",
       "10.1016/0042-6822(59)90063-3",
-      NA_character_, NA_character_, NA_character_, NA_character_, NA_character_,
-      NA_character_
+      NA_character_, NA_character_, NA_character_, NA_character_,
+      NA_character_, NA_character_
     ),
     evidence_scope = c(
       "adult human plasma-like polar nutrient availability",
-      "murine plasma and tumor interstitial-fluid nutrient availability",
+      "murine plasma and tumor interstitial-fluid polar nutrient availability",
       "serum-free RPMI-1640 basal formulation",
       "DMEM high-glucose basal formulation",
       "glucose sensitivity on a physiological plasma background",
@@ -350,13 +552,173 @@
   tolower(apply(values, 1L, paste, collapse = " "))
 }
 
+.rc_medium_normalize_name <- function(x) {
+  x <- as.character(x)
+  x[is.na(x)] <- ""
+  x <- iconv(x, from = "", to = "ASCII//TRANSLIT", sub = "")
+  x <- tolower(trimws(x))
+  gsub("[^a-z0-9]+", "", x, perl = TRUE)
+}
+
+.rc_medium_split_aliases <- function(x) {
+  values <- unlist(strsplit(as.character(x %||% ""), ";", fixed = TRUE))
+  values <- trimws(values)
+  unique(values[!is.na(values) & nzchar(values)])
+}
+
+.rc_medium_is_official_species_gem <- function(gem) {
+  source <- tolower(as.character(gem$model_info$source %||% ""))
+  grepl("sysbiochalmers/(human|mouse)-gem", source, perl = TRUE)
+}
+
+.rc_medium_exchange_metabolites <- function(gem, exchange_meta, validated) {
+  exchange_ids <- as.character(exchange_meta$reaction_id)
+  output <- data.frame(
+    exchange_reaction_id = exchange_ids,
+    metabolite_id = NA_character_,
+    gem_metabolite_name = NA_character_,
+    mapping_source = NA_character_,
+    stringsAsFactors = FALSE
+  )
+  explicit_id_col <- intersect(
+    c("metabolite_id", "exchange_metabolite_id"),
+    colnames(exchange_meta)
+  )
+  explicit_name_col <- intersect(
+    c("metabolite_name", "exchange_metabolite_name"),
+    colnames(exchange_meta)
+  )
+  if (length(explicit_id_col)) {
+    output$metabolite_id <- as.character(exchange_meta[[explicit_id_col[[1L]]]])
+  }
+  if (length(explicit_name_col)) {
+    output$gem_metabolite_name <-
+      as.character(exchange_meta[[explicit_name_col[[1L]]]])
+  }
+  explicit <- (!is.na(output$metabolite_id) & nzchar(output$metabolite_id)) |
+    (!is.na(output$gem_metabolite_name) & nzchar(output$gem_metabolite_name))
+  output$mapping_source[explicit] <- "reaction_metadata"
+
+  met_meta <- gem$metabolite_meta
+  if (is.null(met_meta) || !is.data.frame(met_meta)) {
+    met_meta <- data.frame(
+      metabolite_id = validated$metabolites,
+      stringsAsFactors = FALSE
+    )
+  }
+  if (!"metabolite_id" %in% colnames(met_meta)) {
+    met_meta$metabolite_id <- validated$metabolites
+  }
+  met_meta <- met_meta[
+    match(validated$metabolites, as.character(met_meta$metabolite_id)),
+    ,
+    drop = FALSE
+  ]
+  met_meta$metabolite_id <- validated$metabolites
+  name_col <- intersect(c("name", "metabolite_name"), colnames(met_meta))
+  compartment <- if ("compartment" %in% colnames(met_meta)) {
+    tolower(as.character(met_meta$compartment))
+  } else {
+    rep(NA_character_, nrow(met_meta))
+  }
+  inferred_compartment <- ifelse(
+    grepl("\\[e\\]$", validated$metabolites, ignore.case = TRUE),
+    "e",
+    ifelse(
+      grepl("e$", validated$metabolites, ignore.case = TRUE),
+      "e",
+      NA_character_
+    )
+  )
+  missing_compartment <- is.na(compartment) | !nzchar(compartment)
+  compartment[missing_compartment] <- inferred_compartment[missing_compartment]
+
+  unresolved <- which(!explicit)
+  for (row in unresolved) {
+    reaction_index <- match(exchange_ids[[row]], validated$reactions)
+    if (is.na(reaction_index)) next
+    column <- validated$S[, reaction_index, drop = FALSE]
+    nonzero <- which(as.numeric(column) != 0)
+    if (!length(nonzero)) next
+    extracellular_flag <- !is.na(compartment[nonzero]) &
+      compartment[nonzero] == "e"
+    extracellular <- nonzero[extracellular_flag]
+    candidate <- if (length(extracellular) == 1L) {
+      extracellular
+    } else if (!length(extracellular) && length(nonzero) == 1L) {
+      nonzero
+    } else {
+      integer()
+    }
+    if (length(candidate) != 1L) next
+    output$metabolite_id[[row]] <- validated$metabolites[[candidate]]
+    if (length(name_col)) {
+      output$gem_metabolite_name[[row]] <-
+        as.character(met_meta[[name_col[[1L]]]][[candidate]])
+    }
+    output$mapping_source[[row]] <- if (length(extracellular) == 1L) {
+      "stoichiometric_extracellular_metabolite"
+    } else {
+      "single_stoichiometric_metabolite"
+    }
+  }
+  output$normalized_metabolite_id <-
+    .rc_medium_normalize_name(output$metabolite_id)
+  output$normalized_metabolite_name <-
+    .rc_medium_normalize_name(output$gem_metabolite_name)
+  output
+}
+
+.rc_medium_match_exchanges <- function(compound, exchange_map, annotation,
+                                       official_species_gem) {
+  aliases <- .rc_medium_split_aliases(compound$gem_metabolite_aliases)
+  aliases <- unique(c(aliases, as.character(compound$metabolite_name)))
+  normalized_aliases <- .rc_medium_normalize_name(aliases)
+  normalized_aliases <- normalized_aliases[nzchar(normalized_aliases)]
+  exact_name <- exchange_map$normalized_metabolite_name %in% normalized_aliases
+  exact_id <- logical(nrow(exchange_map))
+  if ("gem_metabolite_ids" %in% names(compound)) {
+    ids <- .rc_medium_split_aliases(compound$gem_metabolite_ids)
+    normalized_ids <- .rc_medium_normalize_name(ids)
+    exact_id <- exchange_map$normalized_metabolite_id %in% normalized_ids
+  }
+  exact <- exact_name | exact_id
+  if (any(exact)) {
+    return(list(
+      hit = exact,
+      method = ifelse(
+        exact_id[exact] & !exact_name[exact],
+        "exact_gem_metabolite_id",
+        "exact_gem_metabolite_name"
+      )
+    ))
+  }
+  mapped <- nzchar(exchange_map$normalized_metabolite_name) |
+    nzchar(exchange_map$normalized_metabolite_id)
+  allow_fallback <- !isTRUE(official_species_gem) || !any(mapped)
+  if (!allow_fallback) {
+    return(list(hit = rep(FALSE, nrow(exchange_map)), method = character()))
+  }
+  fallback <- grepl(
+    as.character(compound$metabolite_pattern),
+    annotation,
+    ignore.case = TRUE,
+    perl = TRUE
+  )
+  list(
+    hit = fallback,
+    method = rep("annotation_pattern_fallback", sum(fallback))
+  )
+}
+
 .rc_medium_scale <- function(uptake_scale, scenario_id) {
   if (!is.numeric(uptake_scale) || !length(uptake_scale) ||
       any(!is.finite(uptake_scale)) || any(uptake_scale < 0)) {
     stop("`uptake_scale` must contain finite non-negative values.", call. = FALSE)
   }
   if (length(uptake_scale) == 1L &&
-      (is.null(names(uptake_scale)) || !nzchar(names(uptake_scale)[[1L]]))) {
+      (is.null(names(uptake_scale)) ||
+       !nzchar(names(uptake_scale)[[1L]]))) {
     return(as.numeric(uptake_scale[[1L]]))
   }
   if (!is.null(names(uptake_scale)) && scenario_id %in% names(uptake_scale)) {
@@ -379,24 +741,31 @@
     ,
     drop = FALSE
   ]
-  exchange <- as.character(meta$reaction_id[as.character(meta$role) == "exchange"])
-  exchange <- intersect(exchange, validated$reactions)
+  exchange_meta <- meta[as.character(meta$role) == "exchange", , drop = FALSE]
+  exchange <- intersect(as.character(exchange_meta$reaction_id), validated$reactions)
   if (!length(exchange)) {
     stop("No exchange reactions were identified in the GEM.", call. = FALSE)
   }
+  exchange_meta <- exchange_meta[
+    match(exchange, as.character(exchange_meta$reaction_id)),
+    ,
+    drop = FALSE
+  ]
+  exchange_map <- .rc_medium_exchange_metabolites(gem, exchange_meta, validated)
   index <- match(exchange, validated$reactions)
   original_lb <- as.numeric(validated$lb[index])
   original_ub <- as.numeric(validated$ub[index])
   data.frame(
     medium_scenario_id = "compass_model_bounds",
     exchange_reaction_id = exchange,
-    metabolite_id = if ("metabolite_id" %in% colnames(meta)) {
-      as.character(meta$metabolite_id[index])
-    } else {
-      NA_character_
-    },
+    metabolite_id = exchange_map$metabolite_id,
+    gem_metabolite_name = exchange_map$gem_metabolite_name,
+    match_method = exchange_map$mapping_source,
     preset_metabolite = NA_character_,
+    nutrient_category = NA_character_,
     concentration_mM = NA_real_,
+    concentration_basis = NA_character_,
+    component_reference_doi = NA_character_,
     condition = "all",
     lb = pmax(original_lb, -exchange_limit),
     ub = pmin(original_ub, exchange_limit),
@@ -442,12 +811,23 @@
   if (!nrow(exchange_meta)) {
     stop("No exchange reactions found for the medium preset.", call. = FALSE)
   }
-  if (is.null(compounds)) {
-    compounds <- .rc_medium_catalog(preset_id, species)
+  if (is.null(compounds)) compounds <- .rc_medium_catalog(preset_id, species)
+  defaults <- list(
+    gem_metabolite_aliases = vapply(
+      compounds$metabolite_name,
+      function(name) paste(.rc_medium_gem_aliases(name), collapse = ";"),
+      character(1)
+    ),
+    concentration_basis = "availability_only",
+    component_reference_doi = NA_character_
+  )
+  for (name in names(defaults)) {
+    if (!name %in% colnames(compounds)) compounds[[name]] <- defaults[[name]]
   }
   required <- c(
-    "metabolite_name", "metabolite_pattern", "concentration_mM",
-    "uptake_fraction", "category", "target_exchange_flag", "required_match"
+    "metabolite_name", "metabolite_pattern", "gem_metabolite_aliases",
+    "concentration_mM", "uptake_fraction", "category",
+    "target_exchange_flag", "required_match"
   )
   missing <- setdiff(required, colnames(compounds))
   if (length(missing)) {
@@ -459,37 +839,43 @@
   }
   annotation <- .rc_medium_annotation_text(exchange_meta)
   exchange_ids <- as.character(exchange_meta$reaction_id)
+  exchange_map <- .rc_medium_exchange_metabolites(gem, exchange_meta, validated)
+  official_species_gem <- .rc_medium_is_official_species_gem(gem)
   matched_count <- integer(nrow(compounds))
+  match_methods <- rep(NA_character_, nrow(compounds))
   rows <- vector("list", nrow(compounds))
   scale <- .rc_medium_scale(uptake_scale, preset_id)
+
   for (i in seq_len(nrow(compounds))) {
-    hit <- grepl(
-      as.character(compounds$metabolite_pattern[[i]]),
-      annotation,
-      ignore.case = TRUE,
-      perl = TRUE
+    compound <- as.list(compounds[i, , drop = FALSE])
+    matched <- .rc_medium_match_exchanges(
+      compound, exchange_map, annotation, official_species_gem
     )
+    hit <- matched$hit
     matched_count[[i]] <- sum(hit)
     if (!any(hit)) next
+    method <- matched$method
+    if (length(method) == 1L) method <- rep(method, sum(hit))
+    match_methods[[i]] <- paste(unique(method), collapse = ";")
     index <- match(exchange_ids[hit], validated$reactions)
-    fraction <- pmin(
-      1,
-      as.numeric(compounds$uptake_fraction[[i]]) * scale
-    )
+    fraction <- pmin(1, as.numeric(compounds$uptake_fraction[[i]]) * scale)
+    if (!is.finite(fraction)) fraction <- 1
     original_lb <- as.numeric(validated$lb[index])
     original_ub <- as.numeric(validated$ub[index])
     requested_lb <- -exchange_limit * fraction
     rows[[i]] <- data.frame(
       medium_scenario_id = preset_id,
       exchange_reaction_id = exchange_ids[hit],
-      metabolite_id = if ("metabolite_id" %in% colnames(exchange_meta)) {
-        as.character(exchange_meta$metabolite_id[hit])
-      } else {
-        NA_character_
-      },
+      metabolite_id = exchange_map$metabolite_id[hit],
+      gem_metabolite_name = exchange_map$gem_metabolite_name[hit],
+      match_method = method,
       preset_metabolite = as.character(compounds$metabolite_name[[i]]),
       nutrient_category = as.character(compounds$category[[i]]),
       concentration_mM = as.numeric(compounds$concentration_mM[[i]]),
+      concentration_basis = as.character(compounds$concentration_basis[[i]]),
+      component_reference_doi = as.character(
+        compounds$component_reference_doi[[i]]
+      ),
       condition = as.character(condition %||% "all"),
       lb = pmax(original_lb, requested_lb),
       ub = pmin(original_ub, exchange_limit),
@@ -501,8 +887,9 @@
       evidence_source = "literature_backed_medium_catalog",
       assumption_level = "availability_catalog_with_relative_uptake_cap",
       target_exchange_flag = as.logical(compounds$target_exchange_flag[[i]]),
-      concentration_used_for_rate_bound =
-        as.logical(compounds$target_exchange_flag[[i]]),
+      concentration_used_for_rate_bound = as.logical(
+        compounds$target_exchange_flag[[i]]
+      ),
       rate_bound_source = if (isTRUE(compounds$target_exchange_flag[[i]])) {
         "relative_concentration_sensitivity_not_measured_flux"
       } else {
@@ -516,9 +903,10 @@
   ]
   if (length(unmatched) && isTRUE(strict_preset_matching)) {
     stop(
-      "Required medium components were not matched to GEM exchanges: ",
+      "Required medium components were not matched one-to-one to GEM exchanges: ",
       paste(unmatched, collapse = ", "),
-      ". Inspect GEM annotations or set `strict_preset_matching = FALSE` for a documented partial model.",
+      ". Inspect GEM metabolite metadata or set `strict_preset_matching = FALSE` ",
+      "for a documented partial model.",
       call. = FALSE
     )
   }
@@ -527,18 +915,46 @@
     stop("The medium preset did not match any exchange reactions.", call. = FALSE)
   }
   output <- do.call(rbind, rows)
-  output <- output[!duplicated(output$exchange_reaction_id), , drop = FALSE]
+  duplicated_exchange <- duplicated(output$exchange_reaction_id) |
+    duplicated(output$exchange_reaction_id, fromLast = TRUE)
+  if (any(duplicated_exchange)) {
+    conflicts <- split(
+      output$preset_metabolite[duplicated_exchange],
+      output$exchange_reaction_id[duplicated_exchange]
+    )
+    conflict_text <- paste(
+      vapply(
+        names(conflicts),
+        function(id) paste0(
+          id, " <- ", paste(unique(conflicts[[id]]), collapse = "/")
+        ),
+        character(1)
+      ),
+      collapse = "; "
+    )
+    if (isTRUE(official_species_gem) || isTRUE(strict_preset_matching)) {
+      stop(
+        "Multiple preset metabolites mapped to the same GEM exchange: ",
+        conflict_text,
+        call. = FALSE
+      )
+    }
+    warning(
+      "Keeping the first mapping for duplicated GEM exchanges: ",
+      conflict_text,
+      call. = FALSE
+    )
+    output <- output[!duplicated(output$exchange_reaction_id), , drop = FALSE]
+  }
   reference <- custom_reference %||% .rc_medium_reference_catalog()
   reference_row <- reference[reference$preset_id == preset_id, , drop = FALSE]
-  if (!nrow(reference_row) && preset_id %in% c(
-    "high_glucose", "low_glucose", "high_lactate", "low_lactate",
-    "low_glutamine"
-  )) {
-    reference_row <- reference[reference$preset_id == preset_id, , drop = FALSE]
-  }
   if (!nrow(reference_row)) {
     reference_row <- data.frame(
-      species = if (identical(species, "human")) "Homo sapiens" else "Mus musculus",
+      species = if (identical(species, "human")) {
+        "Homo sapiens"
+      } else {
+        "Mus musculus"
+      },
       reference_label = "user supplied",
       reference_doi = NA_character_,
       evidence_scope = "user-supplied extracellular environment",
@@ -558,9 +974,13 @@
   attr(output, "preset_diagnostics") <- data.frame(
     medium_scenario_id = preset_id,
     preset_metabolite = compounds$metabolite_name,
+    gem_metabolite_aliases = compounds$gem_metabolite_aliases,
     nutrient_category = compounds$category,
     concentration_mM = compounds$concentration_mM,
+    concentration_basis = compounds$concentration_basis,
+    component_reference_doi = compounds$component_reference_doi,
     n_exchange_matches = matched_count,
+    match_method = match_methods,
     required_match = compounds$required_match,
     matched = matched_count > 0L,
     stringsAsFactors = FALSE
@@ -570,29 +990,25 @@
 
 #' Build shared extracellular medium scenarios
 #'
-#' Named physiological and cell-culture media are complete availability
-#' catalogs rather than small marker-metabolite lists. Concentrations are stored
-#' as provenance and do not become fluxes. Bounds are always intersected with
-#' the original GEM directionality, so a medium cannot open a blocked uptake or
-#' secretion direction.
+#' Named physiological and cell-culture media are curated availability catalogs
+#' rather than exhaustive representations of serum or plasma. Concentrations are
+#' stored as provenance and do not become fluxes except for the explicitly
+#' flagged glucose, lactate, and glutamine sensitivity scenarios. Official
+#' Human-GEM and Mouse-GEM models are matched through the exact extracellular
+#' metabolite attached to each exchange reaction.
 #'
 #' @param gem A validated RegCompass GEM.
 #' @param scenario One or more medium scenario identifiers. `"physiologic"`
-#'   resolves to human or mouse plasma according to `species`. Presets may be
-#'   combined with `"custom"` to return literature-backed and user-defined
-#'   scenarios in one table.
+#'   resolves to human or mouse plasma according to `species`.
 #' @param species `"auto"`, `"human"`, or `"mouse"`.
-#' @param custom_medium Exact reaction-level medium rows. Can be used together
-#'   with preset `scenario` values when `"custom"` is included in `scenario`.
-#' @param custom_metabolites Metabolite-pattern availability rows. Can be used
-#'   together with preset `scenario` values when `"custom"` is included in
-#'   `scenario`.
+#' @param custom_medium Exact reaction-level medium rows.
+#' @param custom_metabolites Metabolite availability rows.
 #' @param uptake_scale Non-negative global or named sensitivity multipliers.
 #' @param exchange_roles Reaction roles treated as exchange reactions.
 #' @param condition Shared condition label; canonical scoring requires `"all"`.
 #' @param exchange_limit Absolute cap used for available exchange directions.
 #' @param strict_preset_matching Stop when required medium components cannot be
-#'   mapped to exchange annotations.
+#'   mapped to GEM exchange metabolites.
 #' @return A medium constraint data frame.
 #' @export
 rc_make_medium_scenarios <- function(
@@ -622,9 +1038,9 @@ rc_make_medium_scenarios <- function(
   species <- .rc_infer_gem_species(gem, species)
   choices <- c(
     "physiologic", "compass_model_bounds", "permissive_all_exchange",
-    "normal_human_plasma", "mouse_plasma", "rpmi1640", "dmem_high_glucose",
-    "high_glucose", "low_glucose", "high_lactate", "low_lactate",
-    "low_glutamine", "minimal", "custom"
+    "normal_human_plasma", "mouse_plasma", "rpmi1640",
+    "dmem_high_glucose", "high_glucose", "low_glucose",
+    "high_lactate", "low_lactate", "low_glutamine", "minimal", "custom"
   )
   scenario <- match.arg(scenario, choices = choices, several.ok = TRUE)
   scenario[scenario == "physiologic"] <- if (identical(species, "human")) {
@@ -632,8 +1048,7 @@ rc_make_medium_scenarios <- function(
   } else {
     "mouse_plasma"
   }
-  if (identical(species, "mouse") &&
-      any(scenario %in% "normal_human_plasma")) {
+  if (identical(species, "mouse") && any(scenario %in% "normal_human_plasma")) {
     stop("Human plasma presets cannot be used with a Mouse-GEM run.", call. = FALSE)
   }
   if (identical(species, "human") && "mouse_plasma" %in% scenario) {
@@ -659,8 +1074,8 @@ rc_make_medium_scenarios <- function(
   preset_ids <- intersect(
     scenario,
     c(
-      "normal_human_plasma", "mouse_plasma",
-      "rpmi1640", "dmem_high_glucose", "high_glucose", "low_glucose",
+      "normal_human_plasma", "mouse_plasma", "rpmi1640",
+      "dmem_high_glucose", "high_glucose", "low_glucose",
       "high_lactate", "low_lactate", "low_glutamine"
     )
   )
@@ -687,6 +1102,8 @@ rc_make_medium_scenarios <- function(
       category = "minimal_required_nutrient",
       required = c(rep(TRUE, 13), rep(FALSE, 6))
     )
+    compounds$concentration_basis <- "availability_only"
+    compounds$component_reference_doi <- NA_character_
     pieces[[length(pieces) + 1L]] <- .rc_build_medium_preset(
       gem = gem,
       preset_id = "minimal",
@@ -702,7 +1119,8 @@ rc_make_medium_scenarios <- function(
   if ("custom" %in% scenario) {
     if (is.null(custom_medium) && is.null(custom_metabolites)) {
       stop(
-        "`custom_medium` or `custom_metabolites` is required for `scenario = 'custom'`.",
+        "`custom_medium` or `custom_metabolites` is required for ",
+        "`scenario = 'custom'`.",
         call. = FALSE
       )
     }
@@ -713,12 +1131,14 @@ rc_make_medium_scenarios <- function(
       missing <- setdiff(required, colnames(custom_medium))
       if (length(missing)) {
         stop(
-          "`custom_medium` missing columns: ", paste(missing, collapse = ", "),
+          "`custom_medium` missing columns: ",
+          paste(missing, collapse = ", "),
           call. = FALSE
         )
       }
       custom <- custom_medium
-      custom$exchange_reaction_id <- trimws(as.character(custom$exchange_reaction_id))
+      custom$exchange_reaction_id <-
+        trimws(as.character(custom$exchange_reaction_id))
       custom$lb <- suppressWarnings(as.numeric(custom$lb))
       custom$ub <- suppressWarnings(as.numeric(custom$ub))
       custom$available <- as.logical(custom$available)
@@ -727,34 +1147,49 @@ rc_make_medium_scenarios <- function(
           any(!is.finite(custom$lb)) || any(!is.finite(custom$ub)) ||
           any(custom$lb > custom$ub) || anyNA(custom$available)) {
         stop(
-          "Custom medium rows require valid reaction IDs, logical availability, and finite ordered bounds.",
+          "Custom medium rows require valid reaction IDs, logical ",
+          "availability, and finite ordered bounds.",
           call. = FALSE
         )
       }
       optional_defaults <- list(
-        metabolite_id = NA_character_, preset_metabolite = NA_character_,
-        nutrient_category = "custom", concentration_mM = NA_real_,
+        metabolite_id = NA_character_,
+        gem_metabolite_name = NA_character_,
+        match_method = "user_supplied_reaction_id",
+        preset_metabolite = NA_character_,
+        nutrient_category = "custom",
+        concentration_mM = NA_real_,
+        concentration_basis = "user_supplied",
+        component_reference_doi = NA_character_,
         condition = as.character(condition %||% "all"),
-        original_lb = NA_real_, original_ub = NA_real_,
-        exchange_limit = exchange_limit, uptake_fraction = NA_real_,
+        original_lb = NA_real_,
+        original_ub = NA_real_,
+        exchange_limit = exchange_limit,
+        uptake_fraction = NA_real_,
         evidence_source = "user_supplied_custom_medium",
         assumption_level = "user_supplied",
         target_exchange_flag = FALSE,
         concentration_used_for_rate_bound = FALSE,
         rate_bound_source = "user_supplied_bound",
-        species = if (identical(species, "human")) "Homo sapiens" else "Mus musculus",
+        species = if (identical(species, "human")) {
+          "Homo sapiens"
+        } else {
+          "Mus musculus"
+        },
         reference_label = "user supplied",
-        reference_doi = NA_character_, reference_pmid = NA_character_,
+        reference_doi = NA_character_,
+        reference_pmid = NA_character_,
         evidence_scope = "user-supplied reaction-level extracellular constraints"
       )
       for (name in names(optional_defaults)) {
         if (!name %in% colnames(custom)) custom[[name]] <- optional_defaults[[name]]
       }
-      custom$condition[is.na(custom$condition) | !nzchar(custom$condition)] <-
-        as.character(condition %||% "all")
+      custom$condition[
+        is.na(custom$condition) | !nzchar(custom$condition)
+      ] <- as.character(condition %||% "all")
       pieces[[length(pieces) + 1L]] <- custom
     } else {
-      required <- c("metabolite_name", "metabolite_pattern", "available")
+      required <- c("metabolite_name", "available")
       missing <- setdiff(required, colnames(custom_metabolites))
       if (length(missing)) {
         stop(
@@ -763,13 +1198,31 @@ rc_make_medium_scenarios <- function(
           call. = FALSE
         )
       }
-      compounds <- custom_metabolites[custom_metabolites$available %in% TRUE, , drop = FALSE]
+      compounds <- custom_metabolites[
+        custom_metabolites$available %in% TRUE,
+        ,
+        drop = FALSE
+      ]
       if (!nrow(compounds)) {
         stop("`custom_metabolites` contains no available metabolites.", call. = FALSE)
       }
       defaults <- list(
-        concentration_mM = NA_real_, uptake_fraction = 1,
-        category = "custom", target_exchange_flag = FALSE,
+        metabolite_pattern = vapply(
+          compounds$metabolite_name,
+          .rc_medium_pattern,
+          character(1)
+        ),
+        gem_metabolite_aliases = vapply(
+          compounds$metabolite_name,
+          function(name) paste(.rc_medium_gem_aliases(name), collapse = ";"),
+          character(1)
+        ),
+        concentration_mM = NA_real_,
+        concentration_basis = "user_supplied",
+        component_reference_doi = NA_character_,
+        uptake_fraction = 1,
+        category = "custom",
+        target_exchange_flag = FALSE,
         required_match = TRUE
       )
       for (name in names(defaults)) {
@@ -777,10 +1230,20 @@ rc_make_medium_scenarios <- function(
       }
       custom_reference <- data.frame(
         preset_id = "custom",
-        species = if (identical(species, "human")) "Homo sapiens" else "Mus musculus",
-        reference_label = as.character(compounds$reference_label[[1L]] %||% "user supplied"),
-        reference_doi = as.character(compounds$reference_doi[[1L]] %||% NA_character_),
-        reference_pmid = as.character(compounds$reference_pmid[[1L]] %||% NA_character_),
+        species = if (identical(species, "human")) {
+          "Homo sapiens"
+        } else {
+          "Mus musculus"
+        },
+        reference_label = as.character(
+          compounds$reference_label[[1L]] %||% "user supplied"
+        ),
+        reference_doi = as.character(
+          compounds$reference_doi[[1L]] %||% NA_character_
+        ),
+        reference_pmid = as.character(
+          compounds$reference_pmid[[1L]] %||% NA_character_
+        ),
         evidence_scope = "user-supplied metabolite availability",
         stringsAsFactors = FALSE
       )
@@ -807,7 +1270,7 @@ rc_make_medium_scenarios <- function(
   attr(output, "preset_diagnostics") <- diagnostics
   attr(output, "species") <- species
   attr(output, "medium_policy") <-
-    "literature_catalog_with_original_gem_directionality_intersection"
+    "literature_catalog_with_exact_gem_exchange_mapping"
   output
 }
 
@@ -817,7 +1280,7 @@ rc_make_medium_scenarios <- function(
 #' uptake therefore preserves an originally permitted secretion direction, and
 #' no medium row can open a reaction direction that was blocked in the GEM.
 #'
-#' @param gem A validated GEM.
+#' @param gem A validated RegCompass GEM.
 #' @param medium_table Medium rows from `rc_make_medium_scenarios()`.
 #' @param condition Optional condition selector.
 #' @param exchange_default_lb Default lower bound for unlisted exchanges.
@@ -834,10 +1297,13 @@ rc_apply_medium_constraints <- function(
       !is.logical(strict) || length(strict) != 1L || is.na(strict)) {
     stop("`allow_secretion` and `strict` must be TRUE or FALSE.", call. = FALSE)
   }
-  if (!is.numeric(exchange_default_lb) || length(exchange_default_lb) != 1L ||
+  if (!is.numeric(exchange_default_lb) ||
+      length(exchange_default_lb) != 1L ||
       !is.finite(exchange_default_lb) ||
-      !is.numeric(exchange_default_ub) || length(exchange_default_ub) != 1L ||
-      is.na(exchange_default_ub) || exchange_default_lb > exchange_default_ub) {
+      !is.numeric(exchange_default_ub) ||
+      length(exchange_default_ub) != 1L ||
+      is.na(exchange_default_ub) ||
+      exchange_default_lb > exchange_default_ub) {
     stop("Default exchange bounds must be ordered numeric scalars.", call. = FALSE)
   }
   validated <- rc_validate_gem(gem)
@@ -855,7 +1321,6 @@ rc_apply_medium_constraints <- function(
   old_ub <- stats::setNames(as.numeric(validated$ub), reactions)
   lb <- old_lb
   ub <- old_ub
-  # Close unlisted uptake but preserve/cap only directions allowed by the GEM.
   lb[is_exchange] <- pmax(old_lb[is_exchange], exchange_default_lb)
   if (isTRUE(allow_secretion)) {
     ub[is_exchange] <- pmin(old_ub[is_exchange], exchange_default_ub)
@@ -873,20 +1338,26 @@ rc_apply_medium_constraints <- function(
     missing <- setdiff(required, colnames(medium_table))
     if (length(missing)) {
       stop(
-        "`medium_table` missing columns: ", paste(missing, collapse = ", "),
+        "`medium_table` missing columns: ",
+        paste(missing, collapse = ", "),
         call. = FALSE
       )
     }
     medium <- medium_table
-    medium$exchange_reaction_id <- trimws(as.character(medium$exchange_reaction_id))
+    medium$exchange_reaction_id <-
+      trimws(as.character(medium$exchange_reaction_id))
     medium$condition <- if ("condition" %in% colnames(medium)) {
       as.character(medium$condition)
     } else {
       "all"
     }
-    medium$condition[is.na(medium$condition) | !nzchar(medium$condition)] <- "all"
+    medium$condition[
+      is.na(medium$condition) | !nzchar(medium$condition)
+    ] <- "all"
     keep <- medium$condition == "all"
-    if (!is.null(condition)) keep <- keep | medium$condition == as.character(condition)
+    if (!is.null(condition)) {
+      keep <- keep | medium$condition == as.character(condition)
+    }
     medium <- medium[keep, , drop = FALSE]
     if (nrow(medium)) {
       medium$available <- as.logical(medium$available)
@@ -895,10 +1366,12 @@ rc_apply_medium_constraints <- function(
       if (anyNA(medium$exchange_reaction_id) ||
           any(!nzchar(medium$exchange_reaction_id)) ||
           anyNA(medium$available) ||
-          any(!is.finite(medium$lb)) || any(!is.finite(medium$ub)) ||
+          any(!is.finite(medium$lb)) ||
+          any(!is.finite(medium$ub)) ||
           any(medium$lb > medium$ub)) {
         stop(
-          "Medium rows require valid reaction IDs, logical availability, and finite ordered bounds.",
+          "Medium rows require valid reaction IDs, logical availability, ",
+          "and finite ordered bounds.",
           call. = FALSE
         )
       }
@@ -908,10 +1381,7 @@ rc_apply_medium_constraints <- function(
         sep = "\001"
       )
       if (anyDuplicated(duplicate_key)) {
-        stop(
-          "`medium_table` contains duplicated reaction/condition rows.",
-          call. = FALSE
-        )
+        stop("`medium_table` contains duplicated reaction/condition rows.", call. = FALSE)
       }
       unknown <- setdiff(medium$exchange_reaction_id, reactions)
       if (length(unknown)) {
@@ -921,7 +1391,11 @@ rc_apply_medium_constraints <- function(
         )
         if (strict) stop(message, call. = FALSE) else warning(message, call. = FALSE)
       }
-      medium <- medium[medium$exchange_reaction_id %in% reactions, , drop = FALSE]
+      medium <- medium[
+        medium$exchange_reaction_id %in% reactions,
+        ,
+        drop = FALSE
+      ]
       reaction_index <- match(medium$exchange_reaction_id, reactions)
       non_exchange <- medium$exchange_reaction_id[!is_exchange[reaction_index]]
       if (length(non_exchange)) {
