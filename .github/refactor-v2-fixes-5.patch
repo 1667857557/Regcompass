@@ -1,8 +1,8 @@
 diff --git a/R/layer2_penalty_lp.R b/R/layer2_penalty_lp.R
-index 30e0a85..f30f3a2 100644
+index b470fb1..13bbd08 100644
 --- a/R/layer2_penalty_lp.R
 +++ b/R/layer2_penalty_lp.R
-@@ -105,11 +105,16 @@ rc_layer2_unit_matrices <- function(layer1, unit, sample_col, celltype_col, condi
+@@ -105,11 +105,16 @@ rc_layer2_unit_matrices <- function(layer1, unit, sample_col, celltype_col, cond
    pm <- pm[pm$pool_id %in% colnames(C), , drop=FALSE]
    group_cols <- c(sample_col, if (condition_col %in% colnames(pm)) condition_col else NULL, celltype_col)
    gid <- interaction(pm[, group_cols, drop=FALSE], sep="|", drop=TRUE)
@@ -22,22 +22,23 @@ index 30e0a85..f30f3a2 100644
  
  rc_align_layer2_evidence <- function(M, rxns, fill = NA_real_) {
 diff --git a/R/metacell.R b/R/metacell.R
-index 64c48c0..f07726a 100644
+index ba9c40f..ed44f76 100644
 --- a/R/metacell.R
 +++ b/R/metacell.R
-@@ -310,7 +310,7 @@ rc_fragment_path_from_object <- function(object, atac_assay = "ATAC") {
-   for (fragment in fragments) {
-     path <- tryCatch(Signac::GetFragmentData(fragment, slot = "path"), error = function(e) NULL)
--    if (is.null(path) && methods::is(fragment, "Fragment") && methods::isS4(fragment) && "path" %in% methods::slotNames(fragment)) {
-+    if (is.null(path) && methods::is(fragment, "Fragment") && isS4(fragment) && "path" %in% methods::slotNames(fragment)) {
-       path <- methods::slot(fragment, "path")
-     }
-     if (!is.null(path) && length(path)) output <- c(output, as.character(path))
+@@ -310,7 +310,7 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
+   path <- NULL
+   if (is.list(fragment) && !is.null(fragment$path)) path <- fragment$path
+   if (is.null(path)) path <- attr(fragment, "path", exact = TRUE)
+-  if (is.null(path) && methods::is(fragment, "Fragment") && methods::isS4(fragment) && "path" %in% methods::slotNames(fragment)) {
++  if (is.null(path) && methods::is(fragment, "Fragment") && isS4(fragment) && "path" %in% methods::slotNames(fragment)) {
+     path <- methods::slot(fragment, "path")
+   }
+   path <- as.character(path %||% character(0))
 diff --git a/R/stats.R b/R/stats.R
-index 7cdd82b..40b1dd5 100644
+index 203fb68..6aa33ef 100644
 --- a/R/stats.R
 +++ b/R/stats.R
-@@ -221,7 +221,7 @@ .rc_test_microcompass_differential_engine <- function(
+@@ -221,7 +221,7 @@ rc_describe_microcompass_by_group <- function(
      output$medium_scenario, output$contrast,
      drop = TRUE, lex.order = TRUE
    )
@@ -47,10 +48,10 @@ index 7cdd82b..40b1dd5 100644
    rownames(output) <- NULL
    output
 diff --git a/tests/testthat/test-vignette-contract.R b/tests/testthat/test-vignette-contract.R
-index 67c3b1b..69f8dc6 100644
+index 6f04535..ad956ec 100644
 --- a/tests/testthat/test-vignette-contract.R
 +++ b/tests/testthat/test-vignette-contract.R
-@@ -1,7 +1,16 @@
+@@ -1,7 +1,14 @@
  test_that("workflow vignette follows the supported public API", {
 -  root <- if (dir.exists("vignettes")) "." else file.path("..", "..")
 -  vignette_file <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
@@ -69,10 +70,10 @@ index 67c3b1b..69f8dc6 100644
    text <- paste(readLines(vignette_file, warn = FALSE), collapse = "\n")
    supported <- c(
 diff --git a/tests/testthat/test_public_api.R b/tests/testthat/test_public_api.R
-index 243d419..0592475 100644
+index 243d419..97d1e7a 100644
 --- a/tests/testthat/test_public_api.R
 +++ b/tests/testthat/test_public_api.R
-@@ -14,14 +14,22 @@ test_that("public API contains the canonical species-aware workflow", {
+@@ -14,17 +14,21 @@ test_that("public API contains the canonical species-aware workflow", {
  
  
  test_that("staged override architecture has been removed", {
@@ -100,15 +101,3 @@ index 243d419..0592475 100644
  
    canonical <- c(
      "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
-diff --git a/vignettes/regcompass-workflow.Rmd b/vignettes/regcompass-workflow.Rmd
-index 9cf37af..1bb3118 100644
---- a/vignettes/regcompass-workflow.Rmd
-+++ b/vignettes/regcompass-workflow.Rmd
-@@ -14,7 +14,8 @@ knitr::opts_chunk$set(
-   collapse = TRUE,
-   comment = "#>",
--  eval = FALSE
-+  eval = FALSE,
-+  purl = FALSE
- )
- ```
