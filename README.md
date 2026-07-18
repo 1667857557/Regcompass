@@ -59,12 +59,12 @@ result <- rc_run_regcompass_one_shot(
   condition_col = "condition",
   celltype_col = "cell_type",
   metacell_args = list(
-    gamma = 50,
-    min_cells_per_stratum = 1000,
+    gamma = 150,
+    min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
   pando_args = list(
-    min_metacells = 20,
+    min_metacells = 10,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
