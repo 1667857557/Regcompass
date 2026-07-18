@@ -20,7 +20,7 @@ remotes::install_github("1667857557/Regcompass")
 
 ## Quick start
 
-The one-shot entry point prepares Human-GEM and the shared model-bound medium
+The one-shot entry point prepares Human-GEM 2 and the shared model-bound medium
 when they are not supplied:
 
 ```r
@@ -93,15 +93,17 @@ Use the same main workflow when the GEM or medium must be inspected or
 customized first:
 
 ```r
-gem <- rc_prepare_human2_gem(version = "2.0.0")
+human2_gem <- rc_prepare_human2_gem(version = "2.0.0")
+# Or choose Mouse-GEM explicitly when analyzing mouse data:
+# mouse_gem <- rc_prepare_mouse_gem(version = "1.8.0")
 medium <- rc_make_medium_scenarios(
-  gem,
+  human2_gem,
   scenario = "compass_model_bounds"
 )
 
 result <- rc_run_regcompass(
   object = object,
-  gem = gem,
+  gem = human2_gem,
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,

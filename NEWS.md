@@ -1,3 +1,10 @@
+# RegCompassR 1.5.2
+
+- Kept the explicitly named Human-GEM 2 entry point and Mouse-GEM preparation entry point while documenting `rc_prepare_gem(species = ...)` as the shared species-aware implementation.
+- Removed deprecated one-shot `humangem_version` handling; use `gem_version` with `species`.
+- Clarified and tested that `rc_make_medium_scenarios()` can return preset and user-defined custom scenarios together, while preserving literature-derived concentration provenance and relative uptake sensitivity bounds.
+- Updated tutorials, help pages, and public-API tests to document the canonical interfaces only.
+
 # RegCompassR 1.4.2
 
 - Fixed metacell RNA normalization so GPR-gene logCPM uses the full-transcriptome library size computed before filtering to metabolic genes.

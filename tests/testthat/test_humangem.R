@@ -23,7 +23,7 @@ test_that("Human-GEM preparation returns symbol GPR tables", {
     "  - gene_reaction_rule: ENSG00000134333"
   ), file.path(model, "Human-GEM.yml"))
 
-  out <- rc_prepare_humangem_gpr_table(repo)
+  out <- rc_prepare_species_gpr_table(repo, species = "human")
   expect_true(all(c("gpr_table", "metabolic_genes", "reaction_rules", "genes", "reactions") %in% names(out)))
   expect_setequal(out$gpr_table$gene, c("HK1", "PFKM", "LDHA"))
   expect_setequal(out$metabolic_genes, c("HK1", "PFKM", "LDHA"))
@@ -38,7 +38,7 @@ test_that("Human-GEM preparation can keep Ensembl gene IDs", {
   writeLines(c("rxns", "MAR00001"), file.path(model, "reactions.tsv"))
   writeLines(c("reactions:", "- id: MAR00001", "  - gene_reaction_rule: ENSG1"), file.path(model, "Human-GEM.yml"))
 
-  out <- rc_prepare_humangem_gpr_table(repo, gene_format = "ensembl")
+  out <- rc_prepare_species_gpr_table(repo, species = "human", gene_format = "ensembl")
   expect_identical(out$gpr_table$gene, "ENSG1")
 })
 
@@ -76,7 +76,7 @@ test_that("Human-GEM downloader prefers tags for semver and validates archives",
     22L
   }
 
-  out <- rc_download_humangem_gpr_table(destdir = tempfile("hg-dl-"), ref = "v2.0.0", overwrite = TRUE, download_fun = mock_download)
+  out <- rc_download_species_gem(species = "human", destdir = tempfile("hg-dl-"), ref = "v2.0.0", overwrite = TRUE, download_fun = mock_download)
   expect_match(calls[[1]], "/tags/")
   expect_equal(attr(out, "download_diagnostics")$archive_validation[[1]], "ok")
 })
@@ -88,7 +88,7 @@ test_that("Human-GEM downloader rejects status-zero HTML archives and cleans par
   }
   dest <- tempfile("hg-dl-bad-")
   expect_error(
-    rc_download_humangem_gpr_table(destdir = dest, ref = "main", overwrite = TRUE, download_fun = mock_download),
+    rc_download_species_gem(species = "human", destdir = dest, ref = "main", overwrite = TRUE, download_fun = mock_download),
     "invalid_zip_magic"
   )
   expect_false(any(grepl("\\.part$", list.files(dest, full.names = TRUE))))
@@ -102,8 +102,8 @@ test_that("Human-GEM downloader uses heads first for branch refs", {
     1L
   }
   expect_error(
-    rc_download_humangem_gpr_table(
-      destdir = tempfile("hg-dl-branch-"), ref = "develop",
+    rc_download_species_gem(
+      species = "human", destdir = tempfile("hg-dl-branch-"), ref = "develop",
       overwrite = TRUE, download_fun = mock_download
     ),
     "Failed to download"
