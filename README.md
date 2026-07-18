@@ -18,6 +18,10 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
+Fragment-enabled runs additionally require a MACS2/MACS3 executable. Pass its
+path through `metacell_args$macs2_path` when it is not available as `macs2` on
+`PATH`.
+
 ## Quick start
 
 The one-shot entry point prepares Human-GEM 2 and the shared model-bound medium
@@ -91,6 +95,9 @@ and a small pilot run.
 | `metacell_args$gamma` | Approximate cells represented by each metacell | Use a smaller value for more metacells and finer heterogeneity, or a larger value for stronger aggregation. Keep one value across all strata so resolution is comparable. |
 | `metacell_args$min_cells_per_stratum` | Minimum cells in each condition × sample × cell-type stratum | Set high enough to avoid unstable strata, but check that every biological sample retains at least one stratum. |
 | `metacell_args$min_metacell_size` | Flags undersized, low-power metacells | Increase when sparse RNA/ATAC profiles are unstable; do not use it to compensate for an unsuitable `gamma`. |
+| `metacell_args$macs2_path` | MACS2/MACS3 executable for fragment-enabled runs | Required when the executable is not discoverable as `macs2` on `PATH`. |
+| `metacell_args$peak_calling_effective_genome_size` | MACS effective genome size | Use a species-matched value; defaults are inferred from annotated `hg*`/`GRCh*` or `mm*`/`GRCm*` peak ranges. |
+| `metacell_args$peak_calling_args` | Additional `Signac::CallPeaks()` arguments | Keep one policy across strata. Use only justified MACS options and record them with the run. |
 | `pando_args$min_metacells` | Minimum metacells required for Pando | It must be compatible with `floor(n_cells / gamma)`. Strata below it are skipped, so inspect `00_strata/stratum_workflow_status.tsv.gz` after a pilot. |
 | `pando_infer_args` | Pando model and correlation/FDR filters | Start with the shown GLM settings; tighten correlation thresholds only when the pilot produces excessive weak edges. Apply one policy to every stratum. |
 | `layer1_args$local_fastcore` | Completes each local metabolic module | Keep enabled for the canonical path. `sample_balance = TRUE` prevents samples with more metacells from dominating global calibration. |

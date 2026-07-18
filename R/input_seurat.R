@@ -1,10 +1,19 @@
 .rc_get_assay_counts <- function(object, assay) {
-  get_assay_data <- SeuratObject::GetAssayData
-  args <- list(object = object, assay = assay)
-  if ("layer" %in% names(formals(get_assay_data))) {
-    args$layer <- "counts"
+  seurat_object_version <- tryCatch(
+    utils::packageVersion("SeuratObject"),
+    error = function(e) numeric_version("0.0.0")
+  )
+  if (seurat_object_version >= numeric_version("5.0.0")) {
+    SeuratObject::GetAssayData(
+      object = object,
+      assay = assay,
+      layer = "counts"
+    )
   } else {
-    args$slot <- "counts"
+    SeuratObject::GetAssayData(
+      object = object,
+      assay = assay,
+      slot = "counts"
+    )
   }
-  do.call(get_assay_data, args)
 }

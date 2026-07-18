@@ -66,7 +66,10 @@ test_that("fragment manifest registration merges rows for the same fragment path
     stringsAsFactors = FALSE
   )
 
-  reg <- .rc_fragment_registration_from_manifest(manifest, object_cells = c("A_MC1", "A_MC2"))
+  reg <- .rc_fragment_registration_from_manifest(
+    manifest,
+    object_cells = c("A_MC1", "A_MC2")
+  )
 
   expect_identical(reg$fragment_files, f)
   expect_length(reg$cell_maps, 1L)
@@ -76,7 +79,15 @@ test_that("fragment manifest registration merges rows for the same fragment path
 
 test_that("metacell merge rejects duplicate IDs before Seurat renaming", {
   skip_if_not_installed("SeuratObject")
-  counts <- Matrix::Matrix(matrix(1, nrow = 2, ncol = 1, dimnames = list(c("g1", "g2"), "MC1")), sparse = TRUE)
+  counts <- Matrix::Matrix(
+    matrix(
+      1,
+      nrow = 2,
+      ncol = 1,
+      dimnames = list(c("g1", "g2"), "MC1")
+    ),
+    sparse = TRUE
+  )
   obj1 <- SeuratObject::CreateSeuratObject(counts = counts)
   obj2 <- SeuratObject::CreateSeuratObject(counts = counts)
 
@@ -90,11 +101,40 @@ test_that("low-power filtering keeps the metacell bundle synchronized", {
   ids <- paste0("mc", 1:53)
   used <- ids[-14]
   bundle <- list(
-    metacell_meta = data.frame(metacell_id = ids, n_cells = ifelse(ids == "mc14", 18L, 20L), stringsAsFactors = FALSE),
-    rna_counts = Matrix::Matrix(matrix(1, nrow = 2, ncol = 53, dimnames = list(c("g1", "g2"), ids)), sparse = TRUE),
-    atac_counts = Matrix::Matrix(matrix(1, nrow = 2, ncol = 53, dimnames = list(c("p1", "p2"), ids)), sparse = TRUE),
-    membership = data.frame(cell_id = paste0("c", seq_along(ids)), metacell_id = ids, stringsAsFactors = FALSE),
-    fragment_manifest = data.frame(fragment_file = "frag.tsv.gz", object_cell = ids, fragment_barcode = ids, stringsAsFactors = FALSE)
+    metacell_meta = data.frame(
+      metacell_id = ids,
+      n_cells = ifelse(ids == "mc14", 18L, 20L),
+      stringsAsFactors = FALSE
+    ),
+    rna_counts = Matrix::Matrix(
+      matrix(
+        1,
+        nrow = 2,
+        ncol = 53,
+        dimnames = list(c("g1", "g2"), ids)
+      ),
+      sparse = TRUE
+    ),
+    atac_counts = Matrix::Matrix(
+      matrix(
+        1,
+        nrow = 2,
+        ncol = 53,
+        dimnames = list(c("p1", "p2"), ids)
+      ),
+      sparse = TRUE
+    ),
+    membership = data.frame(
+      cell_id = paste0("c", seq_along(ids)),
+      metacell_id = ids,
+      stringsAsFactors = FALSE
+    ),
+    fragment_manifest = data.frame(
+      fragment_file = "frag.tsv.gz",
+      object_cell = ids,
+      fragment_barcode = ids,
+      stringsAsFactors = FALSE
+    )
   )
 
   out <- .rc_apply_used_metacell_ids(bundle, used)
@@ -114,22 +154,45 @@ test_that("fragment manifest filters extra mappings but requires complete used m
     stringsAsFactors = FALSE
   )
 
-  reg <- .rc_fragment_registration_from_manifest(manifest, object_cells = c("mc1", "mc2"))
+  reg <- .rc_fragment_registration_from_manifest(
+    manifest,
+    object_cells = c("mc1", "mc2")
+  )
   expect_identical(names(reg$cell_maps[[1L]]), c("mc1", "mc2"))
 
   expect_error(
-    .rc_fragment_registration_from_manifest(manifest[1, , drop = FALSE], object_cells = c("mc1", "mc2")),
+    .rc_fragment_registration_from_manifest(
+      manifest[1, , drop = FALSE],
+      object_cells = c("mc1", "mc2")
+    ),
     "missing mappings"
   )
 })
 
 test_that("merged objects are subset before strict ID validation", {
   skip_if_not_installed("SeuratObject")
-  counts <- Matrix::Matrix(matrix(1, nrow = 2, ncol = 3, dimnames = list(c("g1", "g2"), c("mc1", "mc2", "mc3"))), sparse = TRUE)
+  counts <- Matrix::Matrix(
+    matrix(
+      1,
+      nrow = 2,
+      ncol = 3,
+      dimnames = list(c("g1", "g2"), c("mc1", "mc2", "mc3"))
+    ),
+    sparse = TRUE
+  )
   obj <- SeuratObject::CreateSeuratObject(counts = counts)
-  meta <- data.frame(metacell_id = c("mc1", "mc2"), sample_id = "s1", condition = "ctrl", cell_type = "T", stringsAsFactors = FALSE)
+  meta <- data.frame(
+    metacell_id = c("mc1", "mc2"),
+    sample_id = "s1",
+    condition = "ctrl",
+    cell_type = "T",
+    stringsAsFactors = FALSE
+  )
 
-  out <- rc_load_or_merge_metacell_objects(list(obj), metacell_meta = meta)
+  out <- rc_load_or_merge_metacell_objects(
+    list(obj),
+    metacell_meta = meta
+  )
 
   expect_identical(colnames(out), c("mc1", "mc2"))
   expect_identical(attr(out, "removed_extra_metacell_ids"), "mc3")
@@ -137,12 +200,29 @@ test_that("merged objects are subset before strict ID validation", {
 
 test_that("missing expected metacell IDs remain fatal", {
   skip_if_not_installed("SeuratObject")
-  counts <- Matrix::Matrix(matrix(1, nrow = 2, ncol = 1, dimnames = list(c("g1", "g2"), "mc1")), sparse = TRUE)
+  counts <- Matrix::Matrix(
+    matrix(
+      1,
+      nrow = 2,
+      ncol = 1,
+      dimnames = list(c("g1", "g2"), "mc1")
+    ),
+    sparse = TRUE
+  )
   obj <- SeuratObject::CreateSeuratObject(counts = counts)
-  meta <- data.frame(metacell_id = c("mc1", "mc2"), sample_id = "s1", condition = "ctrl", cell_type = "T", stringsAsFactors = FALSE)
+  meta <- data.frame(
+    metacell_id = c("mc1", "mc2"),
+    sample_id = "s1",
+    condition = "ctrl",
+    cell_type = "T",
+    stringsAsFactors = FALSE
+  )
 
   expect_error(
-    rc_load_or_merge_metacell_objects(list(obj), metacell_meta = meta),
+    rc_load_or_merge_metacell_objects(
+      list(obj),
+      metacell_meta = meta
+    ),
     "mc2"
   )
 })
