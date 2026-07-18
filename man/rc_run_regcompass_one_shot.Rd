@@ -11,7 +11,6 @@ rc_run_regcompass_one_shot(
   genome,
   fragment_files = NULL,
   gem = NULL,
-  humangem_version = NULL,
   medium_scenario = "physiologic",
   medium_scenarios = NULL,
   species = c("human", "mouse"),
@@ -32,7 +31,6 @@ rc_run_regcompass_one_shot(
 
 \item{gem}{Optional prebuilt species GEM.}
 
-\item{humangem_version}{Deprecated Human-GEM compatibility argument.}
 
 \item{medium_scenario}{Medium preset identifier. The default \code{"physiologic"}
 resolves to human or mouse plasma.}

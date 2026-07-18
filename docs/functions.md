@@ -1,16 +1,15 @@
 # Supported functions
 
-Only four functions form the supported API. Internal helpers may change and
+Six functions form the supported API: four workflow-level functions plus explicit Human-GEM 2 and Mouse-GEM preparation entry points. Internal helpers may change and
 should not be called directly.
 
 After installation, each supported function has a standard R help page. Open
 it in RStudio with `?rc_run_regcompass`, `?rc_run_regcompass_one_shot`,
-`?rc_prepare_human2_gem`, or `?rc_make_medium_scenarios`.
+`?rc_prepare_gem`, `?rc_prepare_human2_gem`, `?rc_prepare_mouse_gem`, or `?rc_make_medium_scenarios`.
 
 ## `rc_run_regcompass_one_shot()`
 
-The tutorial entry point. It prepares a Human-GEM model and shared medium when
-needed, then calls `rc_run_regcompass()`.
+The tutorial entry point. It prepares a species-specific Human-GEM 2 or Mouse-GEM model and shared medium when needed, then calls `rc_run_regcompass()`.
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -21,12 +20,33 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-## `rc_prepare_human2_gem()`
+## `rc_prepare_gem()`
 
-Downloads and converts one Human-GEM release.
+Downloads and converts one pinned Human-GEM 2 or Mouse-GEM release according to
+the `species` argument.
 
 ```r
-gem <- rc_prepare_human2_gem(version = "2.0.0")
+gem <- rc_prepare_gem(
+  species = "human",
+  version = "2.0.0"
+)
+
+mouse_gem <- rc_prepare_gem(
+  species = "mouse",
+  version = "1.8.0"
+)
+```
+
+## `rc_prepare_human2_gem()` and `rc_prepare_mouse_gem()`
+
+Use `rc_prepare_human2_gem()` when human analyses should name the Human-GEM 2
+model path explicitly, and `rc_prepare_mouse_gem()` for Mouse-GEM. Both
+delegate to `rc_prepare_gem()` with the matching `species` and default
+version.
+
+```r
+human2_gem <- rc_prepare_human2_gem(version = "2.0.0")
+mouse_gem <- rc_prepare_mouse_gem(version = "1.8.0")
 ```
 
 ## `rc_make_medium_scenarios()`
@@ -46,16 +66,16 @@ technical_medium <- rc_make_medium_scenarios(
 
 ### Published human presets
 
-The function now provides six human-only presets:
+The function provides species-aware physiological presets plus human culture and perturbation presets:
 
 | Preset | Main definition | Human references |
 |---|---|---|
-| `normal_human_plasma` | Plasma/serum metabolite availability; glucose 5 mM and lactate 1.5 mM | Cantor et al., *Cell* 2017, DOI `10.1016/j.cell.2017.03.023`; Psychogios et al., *PLoS One* 2011, DOI `10.1371/journal.pone.0016957` |
+| `normal_human_plasma` | Human plasma/serum metabolite availability; glucose 5 mM and lactate 1.5 mM | Cantor et al., *Cell* 2017, DOI `10.1016/j.cell.2017.03.023`; Psychogios et al., *PLoS One* 2011, DOI `10.1371/journal.pone.0016957` |
 | `high_glucose` | Human plasma background with glucose 25 mM | Han et al., *Gynecologic Oncology* 2015, DOI `10.1016/j.ygyno.2015.06.036` |
 | `low_glucose` | Human plasma background with glucose 1 mM | Han et al., *Gynecologic Oncology* 2015, DOI `10.1016/j.ygyno.2015.06.036` |
 | `high_lactate` | Human plasma background with lactate 20 mM | Schwickert et al., *Experientia* 1996, DOI `10.1007/BF01919316`; Kennedy et al., *PLoS One* 2013, DOI `10.1371/journal.pone.0075154` |
 | `low_lactate` | Human plasma background with lactate 0.5 mM | Kennedy et al., *PLoS One* 2013, DOI `10.1371/journal.pone.0075154` |
-| `rpmi1640` | Serum-free basal RPMI-1640 nutrient availability; glucose 11.1 mM and glutamine 2.055 mM | Moore et al., *JAMA* 1967, DOI `10.1001/jama.1967.03120080053007`; Cantor et al., *Cell* 2017 |
+| `rpmi1640` | Human serum-free basal RPMI-1640 nutrient availability; glucose 11.1 mM and glutamine 2.055 mM | Moore et al., *JAMA* 1967, DOI `10.1001/jama.1967.03120080053007`; Cantor et al., *Cell* 2017 |
 
 ```r
 plasma <- rc_make_medium_scenarios(
@@ -96,7 +116,8 @@ exchange annotations.
 ### User-defined environments
 
 Users can provide either a complete exchange-reaction table or a metabolite
-availability table.
+availability table. Include `"custom"` alongside preset scenario names to
+return both literature-backed and user-defined media in a single table.
 
 ```r
 # Metabolite-level input: the function maps patterns to exchange reactions.
@@ -130,11 +151,22 @@ custom_flux <- rc_make_medium_scenarios(
     available = TRUE
   )
 )
+
+# Preset and custom scenarios can be returned together.
+preset_plus_custom <- rc_make_medium_scenarios(
+  gem,
+  scenario = c("normal_human_plasma", "custom"),
+  custom_medium = data.frame(
+    medium_scenario_id = "measured_medium",
+    exchange_reaction_id = "EXAMPLE_EXCHANGE",
+    lb = -0.2,
+    ub = 1,
+    available = TRUE
+  )
+)
 ```
 
-Current named backgrounds include `normal_human_plasma`, `rpmi1640`,
-`low_glucose`, and `high_lactate`. Retired names are not compatibility aliases.
-Use `custom_medium` only when measured or justified bounds are available.
+Current named backgrounds include `normal_human_plasma`, `mouse_plasma`, `rpmi1640`, `dmem_high_glucose`, `low_glucose`, `high_glucose`, `low_lactate`, `high_lactate`, `low_glutamine`, `minimal`, and `permissive_all_exchange`. Removed compatibility aliases such as `human_plasma`, `hplm`, `blood_like`, `culture_like`, `tumor_low_glucose`, and `lactate_available` are intentionally unsupported; use the canonical preset names or `custom_medium` when measured or justified bounds are available.
 
 ## `rc_run_regcompass()`
 

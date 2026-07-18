@@ -168,7 +168,7 @@
   )
   physiologic$target_exchange_flag[sensitivity_rows] <- TRUE
 
-  if (preset_id %in% c("normal_human_plasma", "human_plasma", "hplm")) {
+  if (identical(preset_id, "normal_human_plasma")) {
     return(physiologic)
   }
   if (identical(preset_id, "mouse_plasma")) {
@@ -287,16 +287,17 @@
 .rc_medium_reference_catalog <- function() {
   data.frame(
     preset_id = c(
-      "normal_human_plasma", "human_plasma", "hplm", "mouse_plasma",
-      "rpmi1640", "dmem_high_glucose", "high_glucose", "low_glucose",
-      "high_lactate", "low_lactate", "low_glutamine", "custom"
+      "normal_human_plasma", "mouse_plasma", "rpmi1640", "dmem_high_glucose",
+      "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+      "low_glutamine", "custom"
     ),
     species = c(
-      rep("Homo sapiens", 3), "Mus musculus", rep("not species-specific", 2),
-      rep("species-specific plasma background", 5), "user supplied"
+      "Homo sapiens", "Mus musculus", "not species-specific",
+      "not species-specific", rep("species-specific plasma background", 5),
+      "user supplied"
     ),
     reference_label = c(
-      rep("Cantor et al., Cell 2017 (HPLM); Psychogios et al., PLoS One 2011", 3),
+      "Cantor et al., Cell 2017 (HPLM); Psychogios et al., PLoS One 2011",
       "Sullivan et al., eLife 2019; Wang et al., PNAS 2021",
       "Moore et al., JAMA 1967; Thermo Fisher RPMI-1640 formulation 11875",
       "Dulbecco and Freeman, Virology 1959; Thermo Fisher DMEM formulation 11965",
@@ -308,7 +309,7 @@
       "user supplied"
     ),
     reference_doi = c(
-      rep("10.1016/j.cell.2017.03.023;10.1371/journal.pone.0016957", 3),
+      "10.1016/j.cell.2017.03.023;10.1371/journal.pone.0016957",
       "10.7554/eLife.44235;10.1073/pnas.2102344118",
       "10.1001/jama.1967.03120080053007",
       "10.1016/0042-6822(59)90063-3",
@@ -316,7 +317,7 @@
       NA_character_
     ),
     evidence_scope = c(
-      rep("adult human plasma-like polar nutrient availability", 3),
+      "adult human plasma-like polar nutrient availability",
       "murine plasma and tumor interstitial-fluid nutrient availability",
       "serum-free RPMI-1640 basal formulation",
       "DMEM high-glucose basal formulation",
@@ -577,12 +578,16 @@
 #'
 #' @param gem A validated RegCompass GEM.
 #' @param scenario One or more medium scenario identifiers. `"physiologic"`
-#'   resolves to human or mouse plasma according to `species`.
+#'   resolves to human or mouse plasma according to `species`. Presets may be
+#'   combined with `"custom"` to return literature-backed and user-defined
+#'   scenarios in one table.
 #' @param species `"auto"`, `"human"`, or `"mouse"`.
-#' @param custom_medium Exact reaction-level medium rows.
-#' @param custom_metabolites Metabolite-pattern availability rows.
+#' @param custom_medium Exact reaction-level medium rows. Can be used together
+#'   with preset `scenario` values when `"custom"` is included in `scenario`.
+#' @param custom_metabolites Metabolite-pattern availability rows. Can be used
+#'   together with preset `scenario` values when `"custom"` is included in
+#'   `scenario`.
 #' @param uptake_scale Non-negative global or named sensitivity multipliers.
-#' @param condition_col Deprecated compatibility alias for `condition`.
 #' @param exchange_roles Reaction roles treated as exchange reactions.
 #' @param condition Shared condition label; canonical scoring requires `"all"`.
 #' @param exchange_limit Absolute cap used for available exchange directions.
@@ -610,44 +615,25 @@ rc_make_medium_scenarios <- function(
       permissive_all_exchange = 1,
       minimal = 0.1
     ),
-    condition_col = NULL,
     exchange_roles = c("exchange"),
-    condition = condition_col,
+    condition = "all",
     exchange_limit = 1,
     strict_preset_matching = TRUE) {
   species <- .rc_infer_gem_species(gem, species)
   choices <- c(
     "physiologic", "compass_model_bounds", "permissive_all_exchange",
-    "normal_human_plasma", "human_plasma", "hplm", "mouse_plasma",
-    "rpmi1640", "dmem_high_glucose", "high_glucose", "low_glucose",
-    "high_lactate", "low_lactate", "low_glutamine", "minimal",
-    "blood_like", "culture_like", "tumor_low_glucose",
-    "lactate_available", "custom"
+    "normal_human_plasma", "mouse_plasma", "rpmi1640", "dmem_high_glucose",
+    "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+    "low_glutamine", "minimal", "custom"
   )
   scenario <- match.arg(scenario, choices = choices, several.ok = TRUE)
-  aliases <- c(
-    blood_like = if (identical(species, "human")) "normal_human_plasma" else
-      "mouse_plasma",
-    culture_like = "rpmi1640",
-    tumor_low_glucose = "low_glucose",
-    lactate_available = "high_lactate"
-  )
-  alias_hit <- intersect(scenario, names(aliases))
-  if (length(alias_hit)) {
-    warning(
-      "Legacy medium aliases were mapped to canonical presets: ",
-      paste(paste0(alias_hit, " -> ", aliases[alias_hit]), collapse = ", "),
-      call. = FALSE
-    )
-    scenario <- unique(c(setdiff(scenario, alias_hit), unname(aliases[alias_hit])))
-  }
   scenario[scenario == "physiologic"] <- if (identical(species, "human")) {
     "normal_human_plasma"
   } else {
     "mouse_plasma"
   }
   if (identical(species, "mouse") &&
-      any(scenario %in% c("normal_human_plasma", "human_plasma", "hplm"))) {
+      any(scenario %in% "normal_human_plasma")) {
     stop("Human plasma presets cannot be used with a Mouse-GEM run.", call. = FALSE)
   }
   if (identical(species, "human") && "mouse_plasma" %in% scenario) {
@@ -673,7 +659,7 @@ rc_make_medium_scenarios <- function(
   preset_ids <- intersect(
     scenario,
     c(
-      "normal_human_plasma", "human_plasma", "hplm", "mouse_plasma",
+      "normal_human_plasma", "mouse_plasma",
       "rpmi1640", "dmem_high_glucose", "high_glucose", "low_glucose",
       "high_lactate", "low_lactate", "low_glutamine"
     )

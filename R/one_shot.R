@@ -13,7 +13,6 @@
 #' @param gem Optional prebuilt species GEM.
 #' @param gem_version Pinned model release. Defaults to Human-GEM 2.0.0 or
 #'   Mouse-GEM 1.8.0.
-#' @param humangem_version Deprecated Human-GEM compatibility argument.
 #' @param medium_scenario Medium preset identifier. The default `"physiologic"`
 #'   resolves to human or mouse plasma.
 #' @param medium_scenarios Optional prebuilt medium table.
@@ -24,24 +23,12 @@ rc_run_regcompass_one_shot <- function(
     object, outdir, pfm, genome,
     fragment_files = NULL,
     gem = NULL,
-    humangem_version = NULL,
     medium_scenario = "physiologic",
     medium_scenarios = NULL,
     species = c("human", "mouse"),
     gem_version = NULL,
     ...) {
   species <- match.arg(species)
-  if (!is.null(humangem_version)) {
-    if (!identical(species, "human")) {
-      stop("`humangem_version` cannot be used with `species = 'mouse'`.",
-           call. = FALSE)
-    }
-    warning(
-      "`humangem_version` is deprecated; use `gem_version`.",
-      call. = FALSE
-    )
-    if (is.null(gem_version)) gem_version <- humangem_version
-  }
   if (is.null(gem_version)) {
     gem_version <- if (identical(species, "human")) "2.0.0" else "1.8.0"
   }

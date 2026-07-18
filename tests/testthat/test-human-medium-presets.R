@@ -182,23 +182,70 @@ test_that("custom metabolite presets map availability and relative uptake", {
   expect_equal(unname(constrained$lb["EX_unknown"]), 0)
 })
 
-test_that("legacy human-like aliases map to the published presets", {
+test_that("retired medium aliases are not accepted", {
   gem <- make_human_medium_test_gem()
-  expect_warning(
-    blood <- rc_make_medium_scenarios(
-      gem, scenario = "blood_like", exchange_limit = 1,
-      strict_preset_matching = FALSE
-    ),
-    "blood_like -> normal_human_plasma"
+  for (alias in c("blood_like", "culture_like", "tumor_low_glucose", "lactate_available", "human_plasma", "hplm")) {
+    expect_error(
+      rc_make_medium_scenarios(
+        gem, scenario = alias, exchange_limit = 1,
+        strict_preset_matching = FALSE
+      ),
+      "should be one of"
+    )
+  }
+})
+test_that("preset and user-defined medium scenarios can be returned together", {
+  gem <- make_human_medium_test_gem()
+  custom <- data.frame(
+    medium_scenario_id = "measured_custom",
+    exchange_reaction_id = "EX_customfuel",
+    lb = -0.4,
+    ub = 1,
+    available = TRUE,
+    stringsAsFactors = FALSE
   )
-  expect_true(all(blood$medium_scenario_id == "normal_human_plasma"))
 
-  expect_warning(
-    culture <- rc_make_medium_scenarios(
-      gem, scenario = "culture_like", exchange_limit = 1,
-      strict_preset_matching = FALSE
-    ),
-    "culture_like -> rpmi1640"
+  medium <- rc_make_medium_scenarios(
+    gem,
+    scenario = c("normal_human_plasma", "custom"),
+    custom_medium = custom,
+    exchange_limit = 1,
+    strict_preset_matching = FALSE
   )
-  expect_true(all(culture$medium_scenario_id == "rpmi1640"))
+
+  expect_setequal(
+    unique(medium$medium_scenario_id),
+    c("normal_human_plasma", "measured_custom")
+  )
+  expect_equal(medium_row(medium, "EX_customfuel")$medium_scenario_id, "measured_custom")
+  expect_true("EX_glucose" %in% medium$exchange_reaction_id)
+})
+
+test_that("documented concentration-derived sensitivity bounds are internally consistent", {
+  gem <- make_human_medium_test_gem()
+  medium <- rc_make_medium_scenarios(
+    gem,
+    scenario = c(
+      "normal_human_plasma", "high_glucose", "low_glucose",
+      "high_lactate", "low_lactate", "low_glutamine"
+    ),
+    exchange_limit = 1,
+    strict_preset_matching = FALSE
+  )
+  row_for <- function(scenario_id, reaction_id) {
+    medium[
+      medium$medium_scenario_id == scenario_id &
+        medium$exchange_reaction_id == reaction_id,
+      ,
+      drop = FALSE
+    ]
+  }
+
+  expect_equal(row_for("normal_human_plasma", "EX_glucose")$uptake_fraction, 5 / 25)
+  expect_equal(row_for("high_glucose", "EX_glucose")$uptake_fraction, 1)
+  expect_equal(row_for("low_glucose", "EX_glucose")$uptake_fraction, 1 / 25)
+  expect_equal(row_for("normal_human_plasma", "EX_lactate")$uptake_fraction, 1.5 / 20)
+  expect_equal(row_for("high_lactate", "EX_lactate")$uptake_fraction, 1)
+  expect_equal(row_for("low_lactate", "EX_lactate")$uptake_fraction, 0.5 / 20)
+  expect_equal(row_for("low_glutamine", "EX_glutamine")$uptake_fraction, 0.05 / 2)
 })
