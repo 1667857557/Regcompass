@@ -1,9 +1,6 @@
 name: Apply and validate species refactor v2
 
 on:
-  push:
-    branches:
-      - agent/fix-species-medium-refactor-v2
   pull_request:
     branches:
       - main
@@ -11,13 +8,9 @@ on:
 permissions:
   contents: write
 
-concurrency:
-  group: species-medium-refactor-v2
-  cancel-in-progress: true
-
 jobs:
   apply-validate-commit:
-    if: github.head_ref == '' || github.head_ref == 'agent/fix-species-medium-refactor-v2'
+    if: github.head_ref == 'agent/fix-species-medium-refactor-v2'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
