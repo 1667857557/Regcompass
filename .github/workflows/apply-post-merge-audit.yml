@@ -4,12 +4,16 @@ on:
   push:
     branches:
       - agent/fix-post-merge-audit
+  pull_request:
+    branches:
+      - main
 
 permissions:
   contents: write
 
 jobs:
   apply-test-commit:
+    if: github.event_name == 'push' || github.head_ref == 'agent/fix-post-merge-audit'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
