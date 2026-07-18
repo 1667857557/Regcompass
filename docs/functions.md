@@ -9,11 +9,12 @@ it in RStudio with `?rc_run_regcompass`, `?rc_run_regcompass_one_shot`,
 
 ## `rc_run_regcompass_one_shot()`
 
-The tutorial entry point. It prepares a species-specific Human-GEM 2 or Mouse-GEM model and shared medium when needed, then calls `rc_run_regcompass()`.
+The tutorial entry point. It prepares a species-specific Human-GEM 2 or Mouse-GEM model and shared medium when needed, then calls `rc_run_regcompass()`. The default is `species = "human"`; set `species = "mouse"` to automatically use Mouse-GEM and the mouse physiological medium.
 
 ```r
 result <- rc_run_regcompass_one_shot(
   object, "RegCompass_result", motifs, genome, fragment_files,
+  species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type"

@@ -1,7 +1,9 @@
 #' Run RegCompass from species-aware defaults
 #'
-#' Downloads a pinned Human-GEM or Mouse-GEM release when `gem` is not supplied,
-#' builds a species-matched literature-backed physiological medium by default,
+#' Downloads a pinned Human-GEM 2 or Mouse-GEM release when `gem` is not
+#' supplied. `species = "human"` is the default; `species = "mouse"` routes
+#' setup to Mouse-GEM 1.8.0 and the mouse physiological medium. It builds a
+#' species-matched literature-backed physiological medium by default,
 #' and delegates to `rc_run_regcompass()`.
 #'
 #' @param object A Seurat RNA+ATAC object.
@@ -9,7 +11,9 @@
 #' @param pfm Motif position-frequency matrices.
 #' @param genome Genome object matching the selected species and ATAC coordinates.
 #' @param fragment_files Optional fragment-file mapping.
-#' @param species `"human"` or `"mouse"`.
+#' @param species `"human"` or `"mouse"`; defaults to `"human"`. Choosing
+#'   `"mouse"` prepares Mouse-GEM and mouse plasma defaults when `gem` and
+#'   `medium_scenarios` are omitted.
 #' @param gem Optional prebuilt species GEM.
 #' @param gem_version Pinned model release. Defaults to Human-GEM 2.0.0 or
 #'   Mouse-GEM 1.8.0.

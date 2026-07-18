@@ -1,6 +1,6 @@
 # RegCompassR 1.5.2
 
-- Kept the explicitly named Human-GEM 2 entry point and Mouse-GEM preparation entry point while documenting `rc_prepare_gem(species = ...)` as the shared species-aware implementation.
+- Documented that `rc_run_regcompass_one_shot()` defaults to the Human-GEM 2 path and routes to Mouse-GEM plus mouse physiological medium when `species = "mouse"`.
 - Removed deprecated one-shot `humangem_version` handling; use `gem_version` with `species`.
 - Clarified and tested that `rc_make_medium_scenarios()` can return preset and user-defined custom scenarios together, while preserving literature-derived concentration provenance and relative uptake sensitivity bounds.
 - Updated tutorials, help pages, and public-API tests to document the canonical interfaces only.

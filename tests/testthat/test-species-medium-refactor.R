@@ -195,3 +195,12 @@ test_that("canonical workflow owns a persistent model cache", {
   expect_match(micro_text, "model_file_manifest.rds")
   expect_match(micro_text, "tools::md5sum")
 })
+
+test_that("one-shot species argument defaults to human and routes setup by species", {
+  expect_identical(eval(formals(rc_run_regcompass_one_shot)$species), c("human", "mouse"))
+  body_text <- paste(deparse(body(rc_run_regcompass_one_shot)), collapse = "\n")
+  expect_match(body_text, "rc_prepare_gem", fixed = TRUE)
+  expect_match(body_text, "species = species", fixed = TRUE)
+  expect_match(body_text, "rc_make_medium_scenarios", fixed = TRUE)
+  expect_match(body_text, "Mouse-GEM|1.8.0")
+})

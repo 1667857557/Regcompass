@@ -21,7 +21,9 @@ remotes::install_github("1667857557/Regcompass")
 ## Quick start
 
 The one-shot entry point prepares Human-GEM 2 and the shared model-bound medium
-when they are not supplied:
+when they are not supplied. This is the default human path; set
+`species = "mouse"` to route setup to Mouse-GEM and the mouse physiological
+medium:
 
 ```r
 library(RegCompassR)
@@ -35,6 +37,7 @@ result <- rc_run_regcompass_one_shot(
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = fragment_files,
+  species = "human",
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
@@ -108,6 +111,7 @@ result <- rc_run_regcompass(
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = fragment_files,
+  species = "human",
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
