@@ -141,17 +141,17 @@ jobs:
           }
           RS
 
-      - name: Install package
+      - name: Install package with tests
         shell: bash
         run: |
           set -o pipefail
-          R CMD INSTALL . --no-multiarch --with-keep.source 2>&1 | tee install-output.txt
+          R CMD INSTALL --install-tests . --no-multiarch --with-keep.source 2>&1 | tee install-output.txt
 
       - name: Test installed namespace
         shell: bash
         run: |
           set -o pipefail
-          Rscript -e 'library(RegCompassR); testthat::test_dir("tests/testthat", reporter = "summary", stop_on_failure = TRUE, stop_on_warning = FALSE)' 2>&1 | tee test-output.txt
+          Rscript -e 'library(testthat); library(RegCompassR); test_check("RegCompassR", reporter = "summary")' 2>&1 | tee test-output.txt
 
       - name: Run package check
         shell: bash
@@ -186,4 +186,9 @@ jobs:
             test-output.txt
             check-output.txt
             *.Rcheck/00check.log
+            DESCRIPTION
+            NAMESPACE
+            R
+            man
+            tests
           if-no-files-found: warn
