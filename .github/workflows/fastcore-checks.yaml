@@ -37,9 +37,14 @@ jobs:
           ))
           BiocManager::install(c(
             "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
-            "GenomicRanges", "Rhtslib", "Rsamtools",
-            "sparseMatrixStats", "limma"
-          ), ask = FALSE, update = FALSE, force = TRUE)
+            "GenomicRanges", "sparseMatrixStats", "limma"
+          ), ask = FALSE, update = FALSE)
+          BiocManager::install(
+            c("Rhtslib", "Rsamtools"),
+            ask = FALSE,
+            update = FALSE,
+            force = TRUE
+          )
           bioc_required <- c(
             "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
             "GenomicRanges", "Rhtslib", "Rsamtools",
