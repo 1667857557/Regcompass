@@ -23,7 +23,7 @@
   if (is.null(weights)) {
     output <- rep(1, length(columns))
     names(output) <- columns
-    return(output)
+    return(output / sum(output))
   }
   if (!is.numeric(weights) || length(weights) != length(columns) ||
       any(!is.finite(weights)) || any(weights <= 0)) {
@@ -44,13 +44,46 @@
   output
 }
 
+.rc_q95_validate_balance_ids <- function(balance_ids, columns) {
+  if (is.null(balance_ids)) return(NULL)
+  if (length(balance_ids) != length(columns)) {
+    stop("`balance_ids` must contain one biological-sample ID per capacity column.",
+         call. = FALSE)
+  }
+  if (!is.null(names(balance_ids))) {
+    missing <- setdiff(columns, names(balance_ids))
+    if (length(missing)) {
+      stop("Named `balance_ids` are missing capacity columns: ",
+           paste(utils::head(missing, 10L), collapse = ", "), call. = FALSE)
+    }
+    balance_ids <- balance_ids[columns]
+  }
+  output <- trimws(as.character(balance_ids))
+  if (anyNA(output) || any(!nzchar(output))) {
+    stop("`balance_ids` must be non-missing and non-empty.", call. = FALSE)
+  }
+  names(output) <- columns
+  output
+}
+
+.rc_q95_local_weights <- function(global_weights, balance_ids, columns) {
+  if (!is.null(balance_ids)) {
+    local <- .rc_equal_sample_weights(balance_ids[columns])
+    names(local) <- columns
+    return(local)
+  }
+  local <- global_weights[columns]
+  local / sum(local)
+}
+
 #' Shrink within-reaction Q95 diagnostics across strata
 #'
 #' This calibration is diagnostic only. It never replaces the bounded absolute
 #' reaction support used by the LP.
 rc_q95_shrink <- function(
     C_raw, unit_meta = NULL, stratum_col = NULL,
-    q = 0.95, n0 = 80, eps = 1e-6, weights = NULL) {
+    q = 0.95, n0 = 80, eps = 1e-6, weights = NULL,
+    balance_ids = NULL) {
   C_raw <- as.matrix(C_raw)
   if (is.null(rownames(C_raw)) || is.null(colnames(C_raw))) {
     stop("`C_raw` must have reaction rownames and unit colnames.", call. = FALSE)
@@ -64,9 +97,28 @@ rc_q95_shrink <- function(
   if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0) {
     stop("`eps` must be one positive finite number.", call. = FALSE)
   }
-  weights <- .rc_q95_validate_weights(weights, colnames(C_raw))
-  weighted <- !is.null(weights) &&
-    length(unique(round(as.numeric(weights), 14))) > 1L
+  if (!is.null(weights) && !is.null(balance_ids)) {
+    stop("Specify only one of `weights` and `balance_ids`.", call. = FALSE)
+  }
+  balance_ids <- .rc_q95_validate_balance_ids(
+    balance_ids,
+    colnames(C_raw)
+  )
+  weights <- if (!is.null(balance_ids)) {
+    .rc_equal_sample_weights(balance_ids)
+  } else {
+    .rc_q95_validate_weights(weights, colnames(C_raw))
+  }
+  names(weights) <- colnames(C_raw)
+  weighted <- length(unique(round(as.numeric(weights), 14))) > 1L
+  sample_balanced <- !is.null(balance_ids) || weighted
+  balance_scope <- if (!is.null(balance_ids)) {
+    "equal_sample_global_and_within_stratum"
+  } else if (weighted) {
+    "caller_supplied_global_weights"
+  } else {
+    "equal_unit"
+  }
   quantile_one <- function(values, selected_weights) {
     .rc_q95_weighted_quantile(values, selected_weights, probs = q)
   }
@@ -115,16 +167,21 @@ rc_q95_shrink <- function(
   index <- 1L
   for (stratum in unique(strata)) {
     columns <- which(strata == stratum)
+    stratum_weights <- .rc_q95_local_weights(
+      weights,
+      balance_ids,
+      columns
+    )
     n <- rowSums(is.finite(C_raw[, columns, drop = FALSE]))
     n_effective <- vapply(seq_len(nrow(C_raw)), function(i) {
       observed <- is.finite(C_raw[i, columns])
-      selected <- weights[columns][observed]
+      selected <- stratum_weights[observed]
       if (!length(selected)) return(0)
       sum(selected)^2 / sum(selected^2)
     }, numeric(1))
     rho <- n_effective / (n_effective + n0)
     q_stratum <- vapply(seq_len(nrow(C_raw)), function(i) {
-      quantile_one(C_raw[i, columns], weights[columns])
+      quantile_one(C_raw[i, columns], stratum_weights)
     }, numeric(1))
     q_used <- ifelse(is.finite(q_stratum), q_stratum, global_q)
     q_shrink <- rho * q_used + (1 - rho) * global_q
@@ -146,7 +203,13 @@ rc_q95_shrink <- function(
       q_global = as.numeric(global_q),
       rho_n = as.numeric(rho),
       q_value = as.numeric(q_shrink),
-      sample_balanced = weighted,
+      sample_balanced = sample_balanced,
+      balance_scope = balance_scope,
+      n_balancing_samples = if (is.null(balance_ids)) {
+        NA_integer_
+      } else {
+        length(unique(balance_ids[columns]))
+      },
       stringsAsFactors = FALSE
     )
     index <- index + 1L
@@ -178,7 +241,12 @@ rc_q95_shrink <- function(
     levels = c("very_low", "low", "moderate", "adequate", "high"),
     ordered = TRUE
   )
-  list(C_rel = relative, Q = Q, weights = weights)
+  list(
+    C_rel = relative,
+    Q = Q,
+    weights = weights,
+    balance_ids = balance_ids
+  )
 }
 
 .rc_q95_bootstrap_one <- function(x, weights, B = 500, q = 0.95) {
@@ -226,14 +294,19 @@ rc_q95_shrink <- function(
 #' @param n0 Empirical-Bayes shrinkage strength toward the global reaction Q95.
 #' @param unit_meta Unit metadata with a `pool_id` column.
 #' @param stratum_col Optional diagnostic stratum column.
-#' @param weights Optional positive unit weights, for example equal-sample
-#'   weights. These affect both global and stratum Q95 estimates.
+#' @param weights Optional positive global unit weights. Retained for callers
+#'   that provide a custom weighting estimand.
+#' @param balance_ids Optional biological-sample IDs aligned to capacity
+#'   columns. When supplied, samples receive equal total mass globally and the
+#'   weights are recomputed inside every diagnostic stratum so each represented
+#'   sample again receives equal total mass.
 #' @return A list containing absolute LP support, within-reaction diagnostics,
 #'   Q95 diagnostics, and normalized weights.
 rc_q95_calibrate <- function(
     C_raw, eps = 1e-6, bootstrap = TRUE,
     B = 500, BPPARAM = NULL, n0 = 80,
-    unit_meta = NULL, stratum_col = NULL, weights = NULL) {
+    unit_meta = NULL, stratum_col = NULL, weights = NULL,
+    balance_ids = NULL) {
   C_raw <- as.matrix(C_raw)
   if (is.null(rownames(C_raw)) || is.null(colnames(C_raw))) {
     stop("`C_raw` must have reaction rownames and unit colnames.", call. = FALSE)
@@ -252,7 +325,8 @@ rc_q95_calibrate <- function(
     q = 0.95,
     n0 = n0,
     eps = eps,
-    weights = weights
+    weights = weights,
+    balance_ids = balance_ids
   )
   absolute <- pmin(pmax(C_raw, 0), 1)
   all_missing <- rowSums(is.finite(C_raw)) == 0L
@@ -307,9 +381,14 @@ rc_q95_calibrate <- function(
         ]
         columns <- which(as.character(aligned_meta[[stratum_col]]) == stratum)
       }
+      bootstrap_weights <- .rc_q95_local_weights(
+        normalized_weights,
+        diagnostic$balance_ids,
+        columns
+      )
       .rc_q95_bootstrap_one(
         C_raw[reaction, columns],
-        normalized_weights[columns],
+        bootstrap_weights,
         B = as.integer(B),
         q = 0.95
       )
@@ -328,6 +407,7 @@ rc_q95_calibrate <- function(
     C_within_reaction_relative = diagnostic$C_rel,
     Q = Q,
     weights = diagnostic$weights,
+    balance_ids = diagnostic$balance_ids,
     BPPARAM = BPPARAM
   )
 }
