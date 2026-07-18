@@ -53,7 +53,6 @@
 rc_run_regcompass <- function(
     object, gem, outdir, pfm, genome,
     fragment_files = NULL,
-    species = c("auto", "human", "mouse"),
     sample_col = "sample_id",
     condition_col = "condition",
     celltype_col = "cell_type",
@@ -69,7 +68,8 @@ rc_run_regcompass <- function(
     layer2_workers = NULL,
     parallel_backend = c("auto", "serial", "snow", "multicore"),
     strict_biological_defaults = TRUE,
-    inference_unit = c("sample_celltype", "metacell")) {
+    inference_unit = c("sample_celltype", "metacell"),
+    species = c("auto", "human", "mouse")) {
   species <- .rc_infer_gem_species(gem, species)
   model_mode <- match.arg(model_mode)
   parallel_backend <- match.arg(parallel_backend)
