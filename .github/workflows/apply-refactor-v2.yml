@@ -103,6 +103,7 @@ jobs:
           paths = [Path("DESCRIPTION"), Path("NAMESPACE")]
           paths.extend(Path("R").glob("*.R"))
           paths.extend(Path("tests/testthat").glob("*.R"))
+          paths.extend(Path("vignettes").glob("*.Rmd"))
           for path in paths:
               if not path.exists():
                   continue
@@ -111,25 +112,27 @@ jobs:
               path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
           PY
 
-          git apply --check .github/refactor-v2-fixes.patch
-          git apply .github/refactor-v2-fixes.patch
-          git apply --check .github/refactor-v2-fixes-2.patch
-          git apply .github/refactor-v2-fixes-2.patch
-          git apply --check .github/refactor-v2-fixes-3.patch
-          git apply .github/refactor-v2-fixes-3.patch
-          git apply --check .github/refactor-v2-fixes-4.patch
-          git apply .github/refactor-v2-fixes-4.patch
-          rm -f .github/refactor-v2-fixes.patch
-          rm -f .github/refactor-v2-fixes-2.patch
-          rm -f .github/refactor-v2-fixes-3.patch
-          rm -f .github/refactor-v2-fixes-4.patch
+          for patch in .github/refactor-v2-fixes.patch \
+                       .github/refactor-v2-fixes-2.patch \
+                       .github/refactor-v2-fixes-3.patch \
+                       .github/refactor-v2-fixes-4.patch \
+                       .github/refactor-v2-fixes-5.patch; do
+            git apply --check "$patch"
+            git apply "$patch"
+            rm -f "$patch"
+          done
 
           rm -f NAMESPACE
-          rm -f man/rc_prepare_human2_gem.Rd
-          rm -f man/rc_make_medium_scenarios.Rd
-          rm -f man/rc_run_regcompass.Rd
-          rm -f man/rc_run_regcompass_one_shot.Rd
+          rm -f man/*.Rd
           Rscript -e 'roxygen2::roxygenise()'
+          find man -type f ! \( \
+            -name 'rc_prepare_gem.Rd' -o \
+            -name 'rc_prepare_human2_gem.Rd' -o \
+            -name 'rc_prepare_mouse_gem.Rd' -o \
+            -name 'rc_make_medium_scenarios.Rd' -o \
+            -name 'rc_run_regcompass.Rd' -o \
+            -name 'rc_run_regcompass_one_shot.Rd' \
+          \) -delete
           git diff --check
 
       - name: Parse sources
@@ -166,11 +169,13 @@ jobs:
           set -o pipefail
           Rscript -e 'library(testthat); test_local(".", reporter = "summary", load_package = "installed")' 2>&1 | tee test-output.txt
 
-      - name: Run package check
+      - name: Build and check source package
         shell: bash
         run: |
           set -o pipefail
-          env _R_CHECK_FORCE_SUGGESTS_=false R CMD check --no-manual --no-build-vignettes . 2>&1 | tee check-output.txt
+          R CMD build --no-build-vignettes . 2>&1 | tee build-output.txt
+          package_tarball=$(ls -t RegCompassR_*.tar.gz | head -n 1)
+          env _R_CHECK_FORCE_SUGGESTS_=false R CMD check --no-manual --no-build-vignettes "$package_tarball" 2>&1 | tee check-output.txt
 
       - name: Commit validated refactor
         shell: bash
@@ -178,6 +183,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          rm -f RegCompassR_*.tar.gz
+          rm -rf RegCompassR.Rcheck ..Rcheck
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
@@ -197,6 +204,7 @@ jobs:
             parse-output.txt
             install-output.txt
             test-output.txt
+            build-output.txt
             check-output.txt
             *.Rcheck/00check.log
             DESCRIPTION
@@ -204,4 +212,5 @@ jobs:
             R
             man
             tests
+            vignettes
           if-no-files-found: warn
