@@ -69,6 +69,8 @@ jobs:
 
           python3 - <<'PY'
           from pathlib import Path
+          import re
+
           paths = [Path("DESCRIPTION"), Path("NAMESPACE")]
           paths.extend(Path("R").glob("*.R"))
           paths.extend(Path("tests/testthat").glob("*.R"))
@@ -76,6 +78,7 @@ jobs:
               if not path.exists():
                   continue
               text = path.read_text(encoding="utf-8")
+              text = re.sub(r"(?<!\\)\\\$", lambda _: r"\\$", text)
               path.write_text(text.rstrip("\n") + "\n", encoding="utf-8")
           PY
 
