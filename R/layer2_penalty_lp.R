@@ -56,8 +56,12 @@
   }
   Cc <- ifelse(is.na(C_raw), epsilon_C, pmax(C_raw, epsilon_C))
   Fc <- ifelse(is.na(Conf_raw), epsilon_Conf, pmax(Conf_raw, epsilon_Conf))
+  dimnames(Cc) <- dimnames(C_raw)
+  dimnames(Fc) <- dimnames(C_raw)
   E <- Cc * Fc
   P <- pmax(0, pmin(-log(E + epsilon), penalty_cap))
+  dimnames(E) <- dimnames(C_raw)
+  dimnames(P) <- dimnames(C_raw)
   P[!is.finite(P)] <- penalty_cap
   support_reaction_ids <- character()
   support_penalty_by_reaction <- numeric()

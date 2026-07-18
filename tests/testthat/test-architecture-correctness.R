@@ -82,6 +82,7 @@ test_that("structural support cannot silently override biological penalty", {
 
 test_that("relative penalty rank is stable and explicitly not probability", {
   penalty <- rbind(variable = c(1, 1, 1.0001), constant = c(2, 2, 2))
+  colnames(penalty) <- paste0("u", seq_len(ncol(penalty)))
   feasible <- matrix(TRUE, nrow = 2, ncol = 3,
                      dimnames = dimnames(penalty))
   score <- rc_compass_score_from_penalty(penalty, feasible)
