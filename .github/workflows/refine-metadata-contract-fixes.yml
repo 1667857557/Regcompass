@@ -18,7 +18,7 @@ jobs:
           ref: agent/fix-metacell-pando-metadata-contracts
           fetch-depth: 0
       - name: Apply source refinements
-        run: python tools/refine_metadata_contract_fixes.py
+        run: python tools/refine_metadata_contract_fixes_v2.py
       - name: Commit refined source
         run: |
           git config user.name github-actions[bot]
