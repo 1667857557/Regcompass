@@ -1,10 +1,215 @@
+.rc_resolve_workflow_or_method <- function(
+    layer1_args = list(), strict_biological_defaults = TRUE) {
+  if (!is.list(layer1_args)) stop("`layer1_args` must be a list.", call. = FALSE)
+  if (!is.null(layer1_args$or_method)) {
+    return(match.arg(
+      as.character(layer1_args$or_method),
+      c("max", "sum_sqrtK", "prob_or", "sum")
+    ))
+  }
+  if (isTRUE(strict_biological_defaults)) "max" else "sum_sqrtK"
+}
+
+.rc_workflow_or_method_source <- function(
+    layer1_args = list(), strict_biological_defaults = TRUE) {
+  if (!is.null(layer1_args$or_method)) return("explicit_layer1_args")
+  if (isTRUE(strict_biological_defaults)) {
+    "strict_biological_default"
+  } else {
+    "legacy_sensitivity_default"
+  }
+}
+
+#' Run the canonical RegCompass workflow
+#'
+#' Builds strict condition-by-sample-by-cell-type metacells, estimates signed
+#' Pando regulatory evidence, constructs either a shared full GEM or a
+#' FASTCORE-completed shared meta-module GEM, and runs directional
+#' minimum-evidence-discordance LPs. Human-GEM and Mouse-GEM are supported
+#' without cross-species gene conversion.
+#'
+#' @param object A Seurat object containing RNA and ATAC assays.
+#' @param gem A species GEM prepared by `rc_prepare_gem()`.
+#' @param outdir Persistent output directory.
+#' @param pfm Motif position-frequency matrices passed to Pando.
+#' @param genome Genome object matching `species` and the ATAC coordinates.
+#' @param fragment_files Optional fragment-file mapping.
+#' @param species `"auto"`, `"human"`, or `"mouse"`.
+#' @param sample_col,condition_col,celltype_col Metadata columns.
+#' @param rna_assay,atac_assay Assay names.
+#' @param model_mode `"meta_module_gem"` or `"full_gem"`.
+#' @param medium_scenarios Shared medium table. The default is the
+#'   species-matched literature-backed physiological environment.
+#' @param metacell_args,layer1_args,pando_args,layer2_args Named argument lists.
+#' @param upstream_workers,layer2_workers Worker counts.
+#' @param parallel_backend Parallel backend.
+#' @param strict_biological_defaults Use `promiscuity=none`, `AND=min`, and
+#'   `OR=max` unless explicitly overridden.
+#' @param inference_unit Primary scoring unit. Sample-by-cell-type is recommended
+#'   for biological inference; metacells are exploratory observations.
+#' @return A RegCompass result list; canonical RDS files and model cache files are
+#'   written below `outdir`.
+#' @export
+rc_run_regcompass <- function(
+    object, gem, outdir, pfm, genome,
+    fragment_files = NULL,
+    species = c("auto", "human", "mouse"),
+    sample_col = "sample_id",
+    condition_col = "condition",
+    celltype_col = "cell_type",
+    rna_assay = "RNA",
+    atac_assay = "ATAC",
+    model_mode = c("meta_module_gem", "full_gem"),
+    medium_scenarios = NULL,
+    metacell_args = list(),
+    layer1_args = list(),
+    pando_args = list(),
+    layer2_args = list(),
+    upstream_workers = NULL,
+    layer2_workers = NULL,
+    parallel_backend = c("auto", "serial", "snow", "multicore"),
+    strict_biological_defaults = TRUE,
+    inference_unit = c("sample_celltype", "metacell")) {
+  species <- .rc_infer_gem_species(gem, species)
+  model_mode <- match.arg(model_mode)
+  parallel_backend <- match.arg(parallel_backend)
+  inference_unit <- match.arg(inference_unit)
+  if (!is.logical(strict_biological_defaults) ||
+      length(strict_biological_defaults) != 1L ||
+      is.na(strict_biological_defaults)) {
+    stop("`strict_biological_defaults` must be TRUE or FALSE.", call. = FALSE)
+  }
+  bundles <- list(
+    metacell_args = metacell_args,
+    layer1_args = layer1_args,
+    pando_args = pando_args,
+    layer2_args = layer2_args
+  )
+  invalid <- names(bundles)[!vapply(bundles, is.list, logical(1))]
+  if (length(invalid)) {
+    stop(
+      "Workflow argument bundles must be lists: ",
+      paste(invalid, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  or_method <- .rc_resolve_workflow_or_method(
+    layer1_args, strict_biological_defaults
+  )
+  or_method_source <- .rc_workflow_or_method_source(
+    layer1_args, strict_biological_defaults
+  )
+  if (isTRUE(strict_biological_defaults)) {
+    layer1_args$promiscuity_mode <- layer1_args$promiscuity_mode %||% "none"
+    layer1_args$and_method <- layer1_args$and_method %||% "min"
+  } else {
+    layer1_args$promiscuity_mode <- layer1_args$promiscuity_mode %||% "sqrt"
+    layer1_args$and_method <- layer1_args$and_method %||% "boltzmann"
+  }
+  layer1_args$or_method <- or_method
+  layer1_args$promiscuity_mode <- match.arg(
+    layer1_args$promiscuity_mode,
+    c("none", "sqrt", "linear")
+  )
+  layer1_args$and_method <- match.arg(
+    layer1_args$and_method,
+    c("min", "boltzmann", "mean")
+  )
+  layer1_args$or_method <- match.arg(
+    layer1_args$or_method,
+    c("max", "sum_sqrtK", "prob_or", "sum")
+  )
+  if (is.null(medium_scenarios)) {
+    medium_scenarios <- rc_make_medium_scenarios(
+      gem,
+      scenario = "physiologic",
+      species = species
+    )
+  }
+  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  cache_dir <- file.path(outdir, "04_model_cache", model_mode)
+  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
+  layer2_args$model_params <- layer2_args$model_params %||% list()
+  if (!is.list(layer2_args$model_params)) {
+    stop("`layer2_args$model_params` must be a list.", call. = FALSE)
+  }
+  supplied_cache <- layer2_args$model_params$cache_dir %||% cache_dir
+  if (!identical(normalizePath(supplied_cache, mustWork = FALSE),
+                 normalizePath(cache_dir, mustWork = FALSE))) {
+    stop(
+      "The integrated workflow owns `layer2_args$model_params$cache_dir`; use the persistent path below `outdir`.",
+      call. = FALSE
+    )
+  }
+  layer2_args$model_params$cache_dir <- cache_dir
+  previous <- options(RegCompassR.inference_unit = inference_unit)
+  on.exit(options(previous), add = TRUE)
+  answer <- .rc_run_regcompass_engine(
+    object = object,
+    gem = gem,
+    outdir = outdir,
+    pfm = pfm,
+    genome = genome,
+    fragment_files = fragment_files,
+    sample_col = sample_col,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    rna_assay = rna_assay,
+    atac_assay = atac_assay,
+    model_mode = model_mode,
+    medium_scenarios = medium_scenarios,
+    metacell_args = metacell_args,
+    layer1_args = layer1_args,
+    pando_args = pando_args,
+    layer2_args = layer2_args,
+    upstream_workers = upstream_workers,
+    layer2_workers = layer2_workers,
+    parallel_backend = parallel_backend
+  )
+  answer$schema_version <- "regcompass_v5_species_canonical"
+  answer$species <- species
+  answer$model_info <- gem$model_info
+  answer$layer1$C_abs <- answer$layer1$C_abs %||% answer$layer1$C_rel
+  answer$layer1$gene_activity_absolute <- answer$layer1$global_gene_score
+  answer$layer1$gene_state_relative <- .rc_weighted_gene_score(
+    answer$layer1$rna_metacell_logcpm,
+    answer$layer1$sample_balance_weights,
+    mode = "relative"
+  )
+  answer$layer1$capacity_calibration_scope <-
+    "zero_preserving_absolute_activity_with_weighted_stratified_q95_diagnostics"
+  answer$layer1$reaction_confidence_source <-
+    "pando_signed_tf_peak_gene_regulatory_support"
+  answer$params$species <- species
+  answer$params$model_source <- gem$model_info$source %||% NA_character_
+  answer$params$model_version <- gem$model_info$version %||% NA_character_
+  answer$params$strict_biological_defaults <- strict_biological_defaults
+  answer$params$gpr_promiscuity_mode <- layer1_args$promiscuity_mode
+  answer$params$gpr_and_method <- layer1_args$and_method
+  answer$params$gpr_or_method <- or_method
+  answer$params$gpr_or_method_source <- or_method_source
+  answer$params$q95_role <- "diagnostic_only"
+  answer$params$q95_n0 <- answer$layer1$calibration_params$q95_n0
+  answer$params$q95_stratum_col <-
+    answer$layer1$calibration_params$q95_stratum_col
+  answer$params$model_cache_dir <- cache_dir
+  answer$params$medium_policy <-
+    "species_matched_literature_catalog_with_original_gem_bound_intersection"
+  answer$params$inference_unit <- inference_unit
+  answer$params$penalty_unit <- inference_unit
+  saveRDS(gem$model_info, file.path(outdir, "00_model_info.rds"))
+  saveRDS(medium_scenarios, file.path(outdir, "01_medium_scenarios.rds"))
+  saveRDS(answer, file.path(outdir, "regcompass_global_metacell_result.rds"))
+  saveRDS(answer, file.path(outdir, "regcompass_result.rds"))
+  answer
+}
+
 #' Run the RegCompass workflow
 #'
 #' Builds strict-stratum RNA+ATAC metacells, runs Pando and local meta-module
 #' completion, calibrates all metacells on a sample-balanced scale, constructs
 #' one shared GEM, and performs metacell-specific directional scoring.
-#' @export
-rc_run_regcompass <- function(object, gem, outdir, pfm, genome,
+.rc_run_regcompass_engine <- function(object, gem, outdir, pfm, genome,
                                fragment_files = NULL,
                                sample_col = "sample_id",
                                condition_col = "condition",

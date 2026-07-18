@@ -18,7 +18,7 @@ test_that("Human-GEM MAR exchange reactions can be used by medium scenarios", {
     gem, scenario = "permissive_all_exchange"
   )
   expect_gt(nrow(medium), 0)
-  expect_true(all(medium$assumption_level == "technical_upper_bound"))
+  expect_true(all(medium$assumption_level == "technical_sensitivity_baseline"))
   named_medium <- rc_make_medium_scenarios(
     gem,
     scenario = "normal_human_plasma",
@@ -26,7 +26,7 @@ test_that("Human-GEM MAR exchange reactions can be used by medium scenarios", {
   )
   expect_true(all(named_medium$medium_scenario_id == "normal_human_plasma"))
   expect_true(all(
-    named_medium$evidence_source == "published_human_medium_preset"
+    named_medium$evidence_source == "literature_backed_medium_catalog"
   ))
 })
 

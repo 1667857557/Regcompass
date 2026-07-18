@@ -1,19 +1,98 @@
-rc_q95_shrink <- function(C_raw, unit_meta = NULL, stratum_col = NULL,
-                          q = 0.95, n0 = 80, eps = 1e-6) {
+.rc_q95_weighted_quantile <- function(x, weights, probs = 0.95) {
+  x <- as.numeric(x)
+  weights <- as.numeric(weights)
+  keep <- is.finite(x) & is.finite(weights) & weights > 0
+  x <- x[keep]
+  weights <- weights[keep]
+  if (!length(x)) return(rep(NA_real_, length(probs)))
+  order_index <- order(x)
+  x <- x[order_index]
+  weights <- weights[order_index]
+  cumulative <- cumsum(weights) / sum(weights)
+  vapply(probs, function(probability) {
+    if (!is.finite(probability) || probability < 0 || probability > 1) {
+      stop("`probs` values must be between zero and one.", call. = FALSE)
+    }
+    if (probability <= 0) return(x[[1L]])
+    if (probability >= 1) return(x[[length(x)]])
+    x[[which(cumulative >= probability)[[1L]]]]
+  }, numeric(1))
+}
+
+.rc_q95_validate_weights <- function(weights, columns) {
+  if (is.null(weights)) {
+    output <- rep(1, length(columns))
+    names(output) <- columns
+    return(output)
+  }
+  if (!is.numeric(weights) || length(weights) != length(columns) ||
+      any(!is.finite(weights)) || any(weights <= 0)) {
+    stop("`weights` must contain one positive finite value per capacity column.",
+         call. = FALSE)
+  }
+  if (!is.null(names(weights))) {
+    missing <- setdiff(columns, names(weights))
+    if (length(missing)) {
+      stop("Named `weights` are missing capacity columns: ",
+           paste(utils::head(missing, 10L), collapse = ", "), call. = FALSE)
+    }
+    weights <- weights[columns]
+  }
+  output <- as.numeric(weights)
+  output <- output / sum(output)
+  names(output) <- columns
+  output
+}
+
+#' Shrink within-reaction Q95 diagnostics across strata
+#'
+#' This calibration is diagnostic only. It never replaces the bounded absolute
+#' reaction support used by the LP.
+rc_q95_shrink <- function(
+    C_raw, unit_meta = NULL, stratum_col = NULL,
+    q = 0.95, n0 = 80, eps = 1e-6, weights = NULL) {
   C_raw <- as.matrix(C_raw)
   if (is.null(rownames(C_raw)) || is.null(colnames(C_raw))) {
     stop("`C_raw` must have reaction rownames and unit colnames.", call. = FALSE)
   }
-  global_q <- apply(C_raw, 1, rc_safe_quantile, probs = q)
+  if (!is.numeric(q) || length(q) != 1L || !is.finite(q) || q <= 0 || q >= 1) {
+    stop("`q` must be one number strictly between zero and one.", call. = FALSE)
+  }
+  if (!is.numeric(n0) || length(n0) != 1L || !is.finite(n0) || n0 < 0) {
+    stop("`n0` must be one finite non-negative number.", call. = FALSE)
+  }
+  if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0) {
+    stop("`eps` must be one positive finite number.", call. = FALSE)
+  }
+  weights <- .rc_q95_validate_weights(weights, colnames(C_raw))
+  weighted <- !is.null(weights) &&
+    length(unique(round(as.numeric(weights), 14))) > 1L
+  quantile_one <- function(values, selected_weights) {
+    .rc_q95_weighted_quantile(values, selected_weights, probs = q)
+  }
+  global_q <- vapply(seq_len(nrow(C_raw)), function(i) {
+    quantile_one(C_raw[i, ], weights)
+  }, numeric(1))
   global_n <- rowSums(is.finite(C_raw))
+  global_n_effective <- vapply(seq_len(nrow(C_raw)), function(i) {
+    observed <- is.finite(C_raw[i, ])
+    selected <- weights[observed]
+    if (!length(selected)) return(0)
+    sum(selected)^2 / sum(selected^2)
+  }, numeric(1))
 
   if (!is.null(stratum_col)) {
-    if (is.null(unit_meta) || !"pool_id" %in% colnames(unit_meta) ||
+    if (is.null(unit_meta) || !is.data.frame(unit_meta) ||
+        !"pool_id" %in% colnames(unit_meta) ||
         !stratum_col %in% colnames(unit_meta)) {
       stop("`unit_meta` with `pool_id` and `stratum_col` is required.",
            call. = FALSE)
     }
-    unit_meta <- unit_meta[match(colnames(C_raw), unit_meta$pool_id), , drop = FALSE]
+    unit_meta <- unit_meta[
+      match(colnames(C_raw), as.character(unit_meta$pool_id)),
+      ,
+      drop = FALSE
+    ]
     if (anyNA(unit_meta$pool_id)) {
       stop("`unit_meta` is missing metadata for some capacity columns.",
            call. = FALSE)
@@ -22,34 +101,36 @@ rc_q95_shrink <- function(C_raw, unit_meta = NULL, stratum_col = NULL,
     if (anyNA(strata) || any(!nzchar(strata))) {
       stop("Q95 strata must be non-missing and non-empty.", call. = FALSE)
     }
-    if (length(unique(strata)) < 2L) {
-      warning(
-        "Only one stratum detected; Q95 stratified calibration degenerates to global calibration.",
-        call. = FALSE
-      )
-    }
   } else {
     strata <- rep("global", ncol(C_raw))
   }
 
+  relative <- matrix(
+    NA_real_,
+    nrow = nrow(C_raw),
+    ncol = ncol(C_raw),
+    dimnames = dimnames(C_raw)
+  )
   diagnostics <- list()
-  C_rel <- C_raw
   index <- 1L
   for (stratum in unique(strata)) {
-    pools <- which(strata == stratum)
-    n <- rowSums(is.finite(C_raw[, pools, drop = FALSE]))
-    rho <- n / (n + n0)
-    q_stratum <- apply(
-      C_raw[, pools, drop = FALSE],
-      1,
-      rc_safe_quantile,
-      probs = q
-    )
+    columns <- which(strata == stratum)
+    n <- rowSums(is.finite(C_raw[, columns, drop = FALSE]))
+    n_effective <- vapply(seq_len(nrow(C_raw)), function(i) {
+      observed <- is.finite(C_raw[i, columns])
+      selected <- weights[columns][observed]
+      if (!length(selected)) return(0)
+      sum(selected)^2 / sum(selected^2)
+    }, numeric(1))
+    rho <- n_effective / (n_effective + n0)
+    q_stratum <- vapply(seq_len(nrow(C_raw)), function(i) {
+      quantile_one(C_raw[i, columns], weights[columns])
+    }, numeric(1))
     q_used <- ifelse(is.finite(q_stratum), q_stratum, global_q)
     q_shrink <- rho * q_used + (1 - rho) * global_q
-    C_rel[, pools] <- sweep(
-      C_raw[, pools, drop = FALSE],
-      1,
+    relative[, columns] <- sweep(
+      C_raw[, columns, drop = FALSE],
+      1L,
       q_shrink + eps,
       "/"
     )
@@ -57,75 +138,202 @@ rc_q95_shrink <- function(C_raw, unit_meta = NULL, stratum_col = NULL,
       reaction_id = rownames(C_raw),
       stratum = stratum,
       n = as.integer(n),
+      n_effective = as.numeric(n_effective),
       n_global = as.integer(global_n),
+      n_global_effective = as.numeric(global_n_effective),
       q_stratum = as.numeric(q_stratum),
       q_stratum_used = as.numeric(q_used),
       q_global = as.numeric(global_q),
       rho_n = as.numeric(rho),
-      q_shrink = as.numeric(q_shrink),
-      q95_power_class = factor(
-        ifelse(
-          n < 5L,
-          "very_low",
-          ifelse(
-            n < 20L,
-            "low",
-            ifelse(n < 100L, "moderate",
-                   ifelse(n < 400L, "adequate", "high"))
-          )
-        ),
-        levels = c("very_low", "low", "moderate", "adequate", "high"),
-        ordered = TRUE
-      ),
+      q_value = as.numeric(q_shrink),
+      sample_balanced = weighted,
       stringsAsFactors = FALSE
     )
     index <- index + 1L
   }
-
-  C_rel[C_rel > 1] <- 1
-  all_missing <- global_n == 0L
-  if (any(all_missing)) C_rel[all_missing, ] <- NA_real_
+  relative <- pmin(pmax(relative, 0), 1)
+  finite_range <- apply(C_raw, 1L, function(x) {
+    x <- x[is.finite(x)]
+    if (!length(x)) return(NA_real_)
+    diff(range(x))
+  })
+  noninformative <- !is.finite(finite_range) | finite_range <= eps
+  if (any(noninformative)) relative[noninformative, ] <- NA_real_
   Q <- do.call(rbind, diagnostics)
   Q$all_missing_reaction_flag <- Q$n_global == 0L
   Q$stratum_missing_reaction_flag <- Q$n == 0L
-  list(C_rel = C_rel, Q = Q)
+  # Compatibility aliases retained for downstream diagnostics and older tests.
+  Q$q_shrink <- Q$q_value
+  Q$q95_power_class <- factor(
+    ifelse(
+      Q$n < 5L,
+      "very_low",
+      ifelse(
+        Q$n < 20L,
+        "low",
+        ifelse(Q$n < 100L, "moderate",
+               ifelse(Q$n < 400L, "adequate", "high"))
+      )
+    ),
+    levels = c("very_low", "low", "moderate", "adequate", "high"),
+    ordered = TRUE
+  )
+  list(C_rel = relative, Q = Q, weights = weights)
 }
 
-rc_q95_calibrate <- function(C_raw, eps = 1e-6, bootstrap = TRUE, B = 500, BPPARAM = NULL, n0 = 80, unit_meta = NULL, stratum_col = NULL) {
-  C_raw <- as.matrix(C_raw)
-  out <- rc_q95_shrink(C_raw, unit_meta = unit_meta, stratum_col = stratum_col, q = 0.95, n0 = n0, eps = eps)
-  Q <- out$Q
-  names(Q)[names(Q) == "q_shrink"] <- "q_value"
-  Q$quantile_used <- 0.95
-  Q$n_finite <- Q$n
-  Q$n_finite_global <- rowSums(is.finite(C_raw))[match(Q$reaction_id, rownames(C_raw))]
-  Q$low_n_flag <- Q$n_finite < 20L
-  if (isTRUE(bootstrap)) {
-    boot <- rc_q95_bootstrap_diagnostics(C_raw, Q, unit_meta = unit_meta, stratum_col = stratum_col, B = B, BPPARAM = BPPARAM)
-    Q$q95_bootstrap <- boot[, "q95"]; Q$q95_ci_low <- boot[, "ci_low"]
-    Q$q95_ci_high <- boot[, "ci_high"]; Q$q95_ci_width <- boot[, "width"]
-    Q$q95_unstable_flag <- is.finite(Q$q95_ci_width) &
-      (Q$q95_ci_width / pmax(Q$q_value, 1e-6)) > 0.5
-  }
-  list(C_rel = out$C_rel, Q = Q)
-}
-
-rc_q95_bootstrap <- function(x, B = 500) {
-  x <- x[is.finite(x)]
+.rc_q95_bootstrap_one <- function(x, weights, B = 500, q = 0.95) {
+  keep <- is.finite(x) & is.finite(weights) & weights > 0
+  x <- as.numeric(x[keep])
+  weights <- as.numeric(weights[keep])
   if (length(x) < 20L) {
     return(c(q95 = NA_real_, ci_low = NA_real_, ci_high = NA_real_, width = NA_real_))
   }
-  if (!is.numeric(B) || length(B) != 1L || is.na(B) || B < 1) {
-    stop("`B` must be a single positive number.", call. = FALSE)
-  }
-  qs <- replicate(B, stats::quantile(sample(x, replace = TRUE), 0.95, na.rm = TRUE, names = FALSE))
-  ci <- stats::quantile(qs, c(0.025, 0.975), na.rm = TRUE, names = FALSE)
-  c(
-    q95 = stats::quantile(x, 0.95, na.rm = TRUE, names = FALSE),
-    ci_low = unname(ci[[1]]),
-    ci_high = unname(ci[[2]]),
-    width = unname(diff(ci))
+  probabilities <- weights / sum(weights)
+  estimates <- replicate(B, {
+    sampled <- sample.int(length(x), size = length(x), replace = TRUE,
+                          prob = probabilities)
+    .rc_q95_weighted_quantile(
+      x[sampled],
+      rep(1, length(sampled)),
+      probs = q
+    )
+  })
+  interval <- stats::quantile(
+    estimates,
+    c(0.025, 0.975),
+    na.rm = TRUE,
+    names = FALSE
   )
+  c(
+    q95 = .rc_q95_weighted_quantile(x, weights, probs = q),
+    ci_low = interval[[1L]],
+    ci_high = interval[[2L]],
+    width = diff(interval)
+  )
+}
+
+#' Calibrate reaction-capacity diagnostics
+#'
+#' `C_abs` and the compatibility field `C_rel` contain zero-preserving bounded
+#' absolute support used by downstream penalties. Q95-normalized values are
+#' returned only in `C_within_reaction_relative`.
+#'
+#' @param C_raw Reaction-by-unit raw bounded support matrix.
+#' @param eps Positive numerical tolerance.
+#' @param bootstrap Compute weighted bootstrap Q95 intervals.
+#' @param B Number of bootstrap replicates.
+#' @param BPPARAM Reserved parallel backend parameter.
+#' @param n0 Empirical-Bayes shrinkage strength toward the global reaction Q95.
+#' @param unit_meta Unit metadata with a `pool_id` column.
+#' @param stratum_col Optional diagnostic stratum column.
+#' @param weights Optional positive unit weights, for example equal-sample
+#'   weights. These affect both global and stratum Q95 estimates.
+#' @return A list containing absolute LP support, within-reaction diagnostics,
+#'   Q95 diagnostics, and normalized weights.
+rc_q95_calibrate <- function(
+    C_raw, eps = 1e-6, bootstrap = TRUE,
+    B = 500, BPPARAM = NULL, n0 = 80,
+    unit_meta = NULL, stratum_col = NULL, weights = NULL) {
+  C_raw <- as.matrix(C_raw)
+  if (is.null(rownames(C_raw)) || is.null(colnames(C_raw))) {
+    stop("`C_raw` must have reaction rownames and unit colnames.", call. = FALSE)
+  }
+  if (!is.logical(bootstrap) || length(bootstrap) != 1L || is.na(bootstrap)) {
+    stop("`bootstrap` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (isTRUE(bootstrap) &&
+      (!is.numeric(B) || length(B) != 1L || !is.finite(B) || B < 1)) {
+    stop("`B` must be one positive finite number.", call. = FALSE)
+  }
+  diagnostic <- rc_q95_shrink(
+    C_raw,
+    unit_meta = unit_meta,
+    stratum_col = stratum_col,
+    q = 0.95,
+    n0 = n0,
+    eps = eps,
+    weights = weights
+  )
+  absolute <- pmin(pmax(C_raw, 0), 1)
+  all_missing <- rowSums(is.finite(C_raw)) == 0L
+  if (any(all_missing)) absolute[all_missing, ] <- NA_real_
+  all_zero <- apply(C_raw, 1L, function(x) {
+    x <- x[is.finite(x)]
+    length(x) > 0L && max(x) <= eps
+  })
+  if (any(all_zero)) absolute[all_zero, ] <- 0
+
+  Q <- diagnostic$Q
+  reaction_index <- match(Q$reaction_id, rownames(C_raw))
+  minimum <- apply(C_raw, 1L, function(x) {
+    x <- x[is.finite(x)]
+    if (length(x)) min(x) else NA_real_
+  })
+  maximum <- apply(C_raw, 1L, function(x) {
+    x <- x[is.finite(x)]
+    if (length(x)) max(x) else NA_real_
+  })
+  informative <- rowSums(is.finite(diagnostic$C_rel)) > 0L
+  Q$quantile_used <- 0.95
+  Q$n_finite <- Q$n
+  Q$n_finite_global <- Q$n_global
+  Q$low_n_flag <- Q$n_effective < 20
+  Q$all_zero_reaction_flag <-
+    is.finite(maximum[reaction_index]) & maximum[reaction_index] <= eps
+  Q$constant_reaction_flag <-
+    is.finite(minimum[reaction_index]) &
+    is.finite(maximum[reaction_index]) &
+    abs(maximum[reaction_index] - minimum[reaction_index]) <= eps
+  Q$raw_out_of_unit_interval_flag <- vapply(
+    reaction_index,
+    function(i) any(is.finite(C_raw[i, ]) &
+                      (C_raw[i, ] < -eps | C_raw[i, ] > 1 + eps)),
+    logical(1)
+  )
+  Q$relative_capacity_informative <- informative[reaction_index]
+  Q$calibration_role <- "diagnostic_only_not_lp_capacity"
+
+  if (isTRUE(bootstrap)) {
+    normalized_weights <- diagnostic$weights
+    bootstrap_rows <- lapply(seq_len(nrow(Q)), function(i) {
+      reaction <- Q$reaction_id[[i]]
+      stratum <- Q$stratum[[i]]
+      columns <- seq_len(ncol(C_raw))
+      if (!is.null(stratum_col)) {
+        aligned_meta <- unit_meta[
+          match(colnames(C_raw), as.character(unit_meta$pool_id)),
+          ,
+          drop = FALSE
+        ]
+        columns <- which(as.character(aligned_meta[[stratum_col]]) == stratum)
+      }
+      .rc_q95_bootstrap_one(
+        C_raw[reaction, columns],
+        normalized_weights[columns],
+        B = as.integer(B),
+        q = 0.95
+      )
+    })
+    boot <- do.call(rbind, bootstrap_rows)
+    Q$q95_bootstrap <- boot[, "q95"]
+    Q$q95_ci_low <- boot[, "ci_low"]
+    Q$q95_ci_high <- boot[, "ci_high"]
+    Q$q95_ci_width <- boot[, "width"]
+    Q$q95_unstable_flag <- is.finite(Q$q95_ci_width) &
+      (Q$q95_ci_width / pmax(Q$q_value, eps)) > 0.5
+  }
+  list(
+    C_rel = absolute,
+    C_abs = absolute,
+    C_within_reaction_relative = diagnostic$C_rel,
+    Q = Q,
+    weights = diagnostic$weights,
+    BPPARAM = BPPARAM
+  )
+}
+
+rc_q95_bootstrap <- function(x, B = 500) {
+  .rc_q95_bootstrap_one(x, rep(1, length(x)), B = B, q = 0.95)
 }
 
 rc_empty_gpr_evidence_matrix <- function(gpr_list, unit_ids) {
@@ -446,4 +654,3 @@ rc_q95_bootstrap_diagnostics <- function(C_raw, Q, unit_meta = NULL, stratum_col
   }, BPPARAM = BPPARAM)
   do.call(rbind, boot)
 }
-

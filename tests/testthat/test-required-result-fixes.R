@@ -1,4 +1,4 @@
-test_that("GPR logCPM uses full-transcriptome library size", {
+test_that("GPR logCPM uses explicit full-transcriptome library size", {
   full <- Matrix::Matrix(
     matrix(
       c(
@@ -13,14 +13,11 @@ test_that("GPR logCPM uses full-transcriptome library size", {
     sparse = TRUE
   )
   subset_counts <- full[c("G1", "G2"), , drop = FALSE]
-  key <- .rc_library_cache_key(colnames(full))
-  assign(
-    key,
-    Matrix::colSums(full),
-    envir = .rc_full_library_size_cache
-  )
 
-  observed <- .rc_metacell_logcpm(subset_counts)
+  observed <- .rc_metacell_logcpm(
+    subset_counts,
+    library_size = Matrix::colSums(full)
+  )
   expected <- log1p(c(10 / 100, 10 / 1000) * 1e6)
 
   expect_equal(as.numeric(observed["G1", ]), expected)
@@ -28,11 +25,6 @@ test_that("GPR logCPM uses full-transcriptome library size", {
     attr(observed, "normalization_scope"),
     "full_transcriptome_library_size_before_gpr_filter"
   )
-  expect_false(exists(
-    key,
-    envir = .rc_full_library_size_cache,
-    inherits = FALSE
-  ))
 })
 
 test_that("missing and no-GPR evidence are not cheaper than observed zero", {
@@ -146,21 +138,22 @@ test_that("COMPASS-style medium preserves model direction and caps exchanges", {
   expect_equal(constrained$gem$ub[[blocked_index]], 0)
 })
 
-test_that("COMPASS-style model bounds are the workflow defaults", {
+test_that("species-matched physiological media are the workflow defaults", {
   expect_identical(
     eval(formals(rc_make_medium_scenarios)$scenario),
-    "compass_model_bounds"
+    "physiologic"
   )
   expect_setequal(
     names(eval(formals(rc_make_medium_scenarios)$uptake_scale)),
     c(
-      "permissive_all_exchange", "normal_human_plasma", "rpmi1640",
-      "minimal", "low_glucose", "low_glutamine", "high_lactate"
+      "physiologic", "normal_human_plasma", "mouse_plasma", "rpmi1640",
+      "dmem_high_glucose", "high_glucose", "low_glucose", "high_lactate",
+      "low_lactate", "low_glutamine", "permissive_all_exchange", "minimal"
     )
   )
   expect_identical(
     eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
-    "compass_model_bounds"
+    "physiologic"
   )
 })
 

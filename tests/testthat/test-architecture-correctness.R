@@ -109,7 +109,7 @@ test_that("permissive medium is labelled as a technical baseline", {
     gem, scenario = "permissive_all_exchange"
   )
   expect_true(all(medium$medium_scenario_id == "permissive_all_exchange"))
-  expect_true(all(medium$assumption_level == "technical_upper_bound"))
+  expect_true(all(medium$assumption_level == "technical_sensitivity_baseline"))
   expect_true(all(!medium$concentration_used_for_rate_bound))
 
   annotated <- gem
@@ -121,7 +121,7 @@ test_that("permissive medium is labelled as a technical baseline", {
   )
   expect_true(all(named_medium$medium_scenario_id == "normal_human_plasma"))
   expect_true(all(
-    named_medium$evidence_source == "published_human_medium_preset"
+    named_medium$evidence_source == "literature_backed_medium_catalog"
   ))
 })
 
@@ -155,6 +155,6 @@ test_that("sample by cell type is the default inference unit", {
   )
   expect_identical(
     eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
-    "compass_model_bounds"
+    "physiologic"
   )
 })

@@ -1,7 +1,14 @@
 test_that("workflow vignette follows the supported public API", {
-  root <- if (dir.exists("vignettes")) "." else file.path("..", "..")
-  vignette_file <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
-  expect_true(file.exists(vignette_file))
+  candidates <- c(
+    file.path("vignettes", "regcompass-workflow.Rmd"),
+    file.path("..", "vignettes", "regcompass-workflow.Rmd"),
+    file.path("..", "..", "vignettes", "regcompass-workflow.Rmd")
+  )
+  candidates <- candidates[file.exists(candidates)]
+  if (!length(candidates)) {
+    skip("Source vignette is unavailable in the installed-package test context.")
+  }
+  vignette_file <- candidates[[1L]]
 
   text <- paste(readLines(vignette_file, warn = FALSE), collapse = "\n")
   supported <- c(

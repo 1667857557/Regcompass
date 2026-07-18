@@ -310,7 +310,7 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
   path <- NULL
   if (is.list(fragment) && !is.null(fragment$path)) path <- fragment$path
   if (is.null(path)) path <- attr(fragment, "path", exact = TRUE)
-  if (is.null(path) && methods::is(fragment, "Fragment") && methods::isS4(fragment) && "path" %in% methods::slotNames(fragment)) {
+  if (is.null(path) && methods::is(fragment, "Fragment") && isS4(fragment) && "path" %in% methods::slotNames(fragment)) {
     path <- methods::slot(fragment, "path")
   }
   path <- as.character(path %||% character(0))

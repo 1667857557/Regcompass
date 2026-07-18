@@ -34,10 +34,64 @@ rc_robust_z <- function(x, eps = 1e-6) {
 #' Logistic sigmoid transform
 rc_sigmoid <- function(z) 1 / (1 + exp(-z))
 
-#' Gene capacity score from meta-cell-level logCPM
-rc_gene_score <- function(X, min_scale = 0.05, z_clip = 6) {
-  rc_sigmoid(rc_gene_zscore(X, min_scale = min_scale, z_clip = z_clip))
+.rc_absolute_activity_score <- function(X, half_saturation = 1) {
+  X <- as.matrix(X)
+  if (!is.numeric(half_saturation) || length(half_saturation) != 1L ||
+      !is.finite(half_saturation) || half_saturation <= 0) {
+    stop("`half_saturation` must be one positive finite number.", call. = FALSE)
+  }
+  observed <- is.finite(X)
+  signal <- pmax(X, 0)
+  score <- signal / (signal + half_saturation)
+  score[observed & signal <= 0] <- 0
+  score[!observed] <- NA_real_
+  dimnames(score) <- dimnames(X)
+  attr(score, "score_semantics") <- paste(
+    "zero-preserving bounded support from non-negative normalized signal;",
+    "not a probability or enzyme capacity"
+  )
+  score
 }
+
+#' Gene capacity score from meta-cell-level logCPM
+rc_gene_score <- function(
+    X, min_scale = 0.05, z_clip = 6,
+    mode = c("absolute", "relative"),
+    half_saturation = getOption("RegCompassR.cpm_half_saturation", 1)) {
+  X <- as.matrix(X)
+  mode <- match.arg(mode)
+  if (!is.numeric(half_saturation) || length(half_saturation) != 1L ||
+      !is.finite(half_saturation) || half_saturation <= 0) {
+    stop("`half_saturation` must be one positive finite number.", call. = FALSE)
+  }
+  if (identical(mode, "absolute")) {
+    observed <- is.finite(X)
+    signal <- pmax(X, 0)
+    score <- signal / (signal + half_saturation)
+    score[observed & signal <= 0] <- 0
+    score[!observed] <- NA_real_
+    dimnames(score) <- dimnames(X)
+    attr(score, "score_semantics") <- paste(
+      "zero-preserving bounded support from non-negative normalized signal;",
+      "not a probability or enzyme capacity"
+    )
+    return(score)
+  }
+  score <- rc_sigmoid(
+    rc_gene_zscore(X, min_scale = min_scale, z_clip = z_clip)
+  )
+  finite_range <- apply(X, 1L, function(x) {
+    x <- x[is.finite(x)]
+    if (!length(x)) return(NA_real_)
+    diff(range(x))
+  })
+  score[!is.finite(finite_range) | finite_range <= 1e-12, ] <- NA_real_
+  dimnames(score) <- dimnames(X)
+  attr(score, "score_semantics") <-
+    "within_gene_relative_state_not_absolute_capacity"
+  score
+}
+
 
 #' Boltzmann-weighted minimum-biased average for GPR AND
 #'
@@ -79,7 +133,7 @@ rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau 
 #' potential for within-reaction comparisons. `max` and `prob_or` provide bounded
 #' sensitivity diagnostics, while `sum_sqrtK` dampens isoenzyme-rich reactions.
 rc_or_capacity <- function(and_capacities,
-                           method = c("sum_sqrtK", "max", "prob_or", "sum")) {
+                           method = c("max", "sum_sqrtK", "prob_or", "sum")) {
   method <- match.arg(method)
   x <- and_capacities[is.finite(and_capacities)]
   if (length(x) == 0L) return(NA_real_)
@@ -93,8 +147,8 @@ rc_or_capacity <- function(and_capacities,
 }
 
 #' Compute capacity for one reaction in one pool
-rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("boltzmann", "min", "mean"),
-                                     or_method = c("sum_sqrtK", "max", "prob_or", "sum")) {
+rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("min", "boltzmann", "mean"),
+                                     or_method = c("max", "sum_sqrtK", "prob_or", "sum")) {
   and_method <- match.arg(and_method)
   or_method <- match.arg(or_method)
   and_caps <- vapply(parsed_gpr, function(and_group) {
@@ -111,16 +165,15 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and
 
 #' Compute raw Layer 1 reaction capacity
 #'
-#' Uses fixed sqrt promiscuity correction, Boltzmann AND with tau = 0.20 by default,
-#' and square-root dampened OR-group summation. These defaults are the main biological model; alternative
-#' tau values should be interpreted only as sensitivity to the multi-subunit
-#' bottleneck assumption.
+#' Uses annotation-count-neutral promiscuity, hard-minimum AND, and maximum
+#' isoenzyme support by default. Legacy sqrt promiscuity, Boltzmann AND, and
+#' square-root-dampened OR aggregation remain explicit sensitivity modes.
 rc_reaction_capacity <- function(gpr_list,
                                  gene_score,
-                                 promiscuity_mode = c("sqrt", "linear", "none"),
+                                 promiscuity_mode = c("none", "sqrt", "linear"),
                                  tau = 0.20,
-                                 and_method = c("boltzmann", "min", "mean"),
-                                 or_method = c("sum_sqrtK", "max", "prob_or", "sum"),
+                                 and_method = c("min", "boltzmann", "mean"),
+                                 or_method = c("max", "sum_sqrtK", "prob_or", "sum"),
                                  BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
   and_method <- match.arg(and_method)

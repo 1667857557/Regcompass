@@ -1,8 +1,10 @@
-test_that("public API contains only the supported workflow", {
+test_that("public API contains the canonical species-aware workflow", {
   expect_setequal(
     getNamespaceExports("RegCompassR"),
     c(
+      "rc_prepare_gem",
       "rc_prepare_human2_gem",
+      "rc_prepare_mouse_gem",
       "rc_make_medium_scenarios",
       "rc_run_regcompass",
       "rc_run_regcompass_one_shot"
@@ -11,7 +13,50 @@ test_that("public API contains only the supported workflow", {
 })
 
 
-test_that("deprecated and versioned entry points are absent", {
+test_that("staged override architecture has been removed", {
+  description <- utils::packageDescription("RegCompassR")
+  expect_false(grepl(
+    "workflow_stage_", description$Collate %||% "", fixed = TRUE
+  ))
+
+  candidates <- c("R", file.path("..", "R"), file.path("..", "..", "R"))
+  candidates <- candidates[dir.exists(candidates)]
+  if (!length(candidates)) {
+    skip("Source R directory is unavailable in the installed-package test context.")
+  }
+  source_dir <- normalizePath(candidates[[1L]], mustWork = TRUE)
+  expect_length(
+    list.files(source_dir, pattern = "^workflow_stage_", full.names = TRUE),
+    0L
+  )
+
+  canonical <- c(
+    "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
+    "rc_make_medium_scenarios", "rc_apply_medium_constraints",
+    "rc_q95_calibrate", "rc_reaction_capacity", "rc_run_microcompass",
+    "rc_run_regcompass", "rc_run_regcompass_one_shot"
+  )
+  source_text <- vapply(
+    list.files(source_dir, pattern = "[.]R$", full.names = TRUE),
+    function(path) paste(readLines(path, warn = FALSE), collapse = "\n"),
+    character(1)
+  )
+  for (name in canonical) {
+    pattern <- paste0("(?m)^", gsub("[.]", "\\\\.", name),
+                      "[[:space:]]*<-[[:space:]]*function[[:space:]]*\\(")
+    expect_equal(
+      sum(vapply(source_text, function(x) {
+        matches <- gregexpr(pattern, x, perl = TRUE)[[1L]]
+        any(matches > 0L)
+      }, logical(1))),
+      1L,
+      info = paste("canonical function", name, "must have one source definition")
+    )
+  }
+})
+
+
+test_that("retired entry points remain absent", {
   retired <- c(
     "rc_prepare_human2_gem_v12",
     "rc_run_regcompass_multiome_metacell",
@@ -21,29 +66,4 @@ test_that("deprecated and versioned entry points are absent", {
     "rc_build_meta_module_gem_cache"
   )
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
-
-  source_dir <- if (dir.exists("R")) {
-    "R"
-  } else {
-    normalizePath(file.path("..", "..", "R"), mustWork = TRUE)
-  }
-  legacy_late_files <- basename(list.files(source_dir, pattern = "^zzz"))
-  expect_length(legacy_late_files, 0L)
-
-  workflow_stages <- c(
-    "workflow_stage_01_architecture.R",
-    "workflow_stage_02_compatibility.R",
-    "workflow_stage_03_signed_projection.R",
-    "workflow_stage_04_result_contracts.R",
-    "workflow_stage_04b_human_medium_presets.R",
-    "workflow_stage_04c_medium_default_scales.R",
-    "workflow_stage_05_api_contracts.R",
-    "workflow_stage_06_audit_contracts.R"
-  )
-  expect_true(all(file.exists(file.path(source_dir, workflow_stages))))
-
-  description <- read.dcf(file.path(source_dir, "..", "DESCRIPTION"))
-  collate <- strsplit(description[1L, "Collate"], "[[:space:]]+")[[1L]]
-  collate <- gsub("^['\"]|['\"]$", "", collate[nzchar(collate)])
-  expect_identical(utils::tail(collate, length(workflow_stages)), workflow_stages)
 })

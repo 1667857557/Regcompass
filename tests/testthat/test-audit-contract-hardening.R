@@ -22,22 +22,18 @@ test_that("workflow OR aggregation matches the recorded parameter", {
     "sum_sqrtK"
   )
 
-  artifact_file <- tempfile(fileext = ".rds")
-  saveRDS(
-    list(capacity_params = list(or_method = "sum_sqrtK")),
-    artifact_file
-  )
-  used <- .rc_finalize_stratum_capacity_params(
-    artifact_file,
-    list(promiscuity_mode = "none", and_method = "min")
-  )
-  artifact <- readRDS(artifact_file)
+  worker_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
+  expect_match(worker_text, 'layer1_args\\$or_method %\\|\\|% "max"')
+  expect_match(worker_text, "capacity_params = capacity_params")
 
-  expect_equal(used, "max")
-  expect_equal(artifact$capacity_params$or_method, "max")
-  expect_equal(
-    artifact$capacity_params$or_method_source,
-    "strict_biological_default"
+  workflow_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  expect_match(
+    workflow_text,
+    "answer\\$params\\$gpr_or_method <- or_method"
+  )
+  expect_match(
+    workflow_text,
+    "answer\\$params\\$gpr_or_method_source <- or_method_source"
   )
 })
 

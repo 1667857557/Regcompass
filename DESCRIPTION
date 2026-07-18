@@ -1,12 +1,13 @@
 Package: RegCompassR
-Title: Multiome-Supported Reaction Capacity and GRN Meta-Module Analysis
-Version: 1.4.5
+Title: Species-Aware Multiome Reaction Capacity and GRN Meta-Module Analysis
+Version: 1.5.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
-Description: Runs a strict-stratum RNA+ATAC metacell workflow with signed Pando regulatory evidence, conservative GPR aggregation, zero-preserving absolute reaction evidence, local and global FASTCORE completion, one shared GEM, sample-by-cell-type inference, and directional minimum evidence-discordance scoring.
+Author: RegCompass Developers [aut, cre]
+Maintainer: RegCompass Developers <dev@example.com>
+Description: Runs a species-aware human or mouse strict-stratum RNA+ATAC metacell workflow with signed Pando regulatory evidence, conservative GPR aggregation, literature-backed extracellular environments, zero-preserving absolute reaction evidence, local and global FASTCORE completion, persistent shared GEM caches, sample-by-cell-type inference, and directional minimum evidence-discordance scoring.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
-RoxygenNote: 7.3.2
 VignetteBuilder: knitr
 Collate:
     '00_meta_module_utils.R'
@@ -39,14 +40,6 @@ Collate:
     'regcompass.R'
     'stats.R'
     'stratum_filter.R'
-    'workflow_stage_01_architecture.R'
-    'workflow_stage_02_compatibility.R'
-    'workflow_stage_03_signed_projection.R'
-    'workflow_stage_04_result_contracts.R'
-    'workflow_stage_04b_human_medium_presets.R'
-    'workflow_stage_04c_medium_default_scales.R'
-    'workflow_stage_05_api_contracts.R'
-    'workflow_stage_06_audit_contracts.R'
 Imports:
     Matrix,
     matrixStats,
@@ -59,6 +52,7 @@ Suggests:
     Pando,
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
+    BSgenome.Mmusculus.UCSC.mm10,
     SuperCell,
     yaml,
     future,
@@ -70,8 +64,10 @@ Suggests:
     Rglpk,
     knitr,
     rmarkdown,
+    roxygen2,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@supercell-2.0,
     1667857557/Pando_regcompass
+Config/roxygen2/version: 8.0.0
