@@ -95,7 +95,13 @@ test_that("retired entry points remain absent", {
     "rc_hard_min_capacity",
     "rc_q95_bootstrap_diagnostics",
     ".rc_weighted_q95_calibrate",
-    ".rc_apply_used_metacell_ids"
+    ".rc_apply_used_metacell_ids",
+    ".rc_layer2_penalty_engine",
+    "rc_layer2_penalty",
+    "rc_layer2_support_penalties",
+    "rc_layer2_reaction_type",
+    "rc_layer2_support_penalty_for_type",
+    "rc_layer2_has_gpr"
   )
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
 })

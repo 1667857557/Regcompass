@@ -69,17 +69,6 @@ test_that("regulatory support is neutral when missing and penalizes repression",
   expect_true(answer$components$missing_regulatory_support_flag["r1", "u1"])
 })
 
-test_that("structural support cannot silently override biological penalty", {
-  capacity <- matrix(0.5, nrow = 1, ncol = 1,
-                     dimnames = list("r1", "u1"))
-  confidence <- matrix(0.5, nrow = 1, ncol = 1,
-                       dimnames = dimnames(capacity))
-  expect_error(
-    rc_layer2_penalty(capacity, confidence, support_reactions = "r1"),
-    "structural"
-  )
-})
-
 test_that("relative penalty rank is stable and explicitly not probability", {
   penalty <- rbind(variable = c(1, 1, 1.0001), constant = c(2, 2, 2))
   colnames(penalty) <- paste0("u", seq_len(ncol(penalty)))
@@ -96,24 +85,7 @@ test_that("relative penalty rank is stable and explicitly not probability", {
   expect_true(attr(score, "noninformative_target")[["constant"]])
 })
 
-test_that("Layer 2 evidence and feasibility are aligned by identifiers", {
-  capacity <- matrix(
-    c(0.2, 0.8, 0.4, 0.6), nrow = 2,
-    dimnames = list(c("r1", "r2"), c("u1", "u2"))
-  )
-  confidence <- capacity[c("r2", "r1"), c("u2", "u1")]
-  answer <- rc_layer2_penalty(capacity, confidence)
-  expect_identical(dimnames(answer$penalty), dimnames(capacity))
-  expect_equal(
-    answer$components$reaction_confidence,
-    confidence[rownames(capacity), colnames(capacity)]
-  )
-  expect_error(
-    rc_layer2_penalty(capacity, confidence[, "u1", drop = FALSE]),
-    "identical reaction and unit IDs",
-    fixed = TRUE
-  )
-
+test_that("Layer 2 feasibility is aligned by identifiers", {
   penalty <- matrix(
     c(1, 4, 2, 5, 3, 6), nrow = 2,
     dimnames = list(c("r1", "r2"), c("u1", "u2", "u3"))
