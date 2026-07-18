@@ -90,6 +90,30 @@ test_that("sample balancing is recomputed inside every Q95 stratum", {
   expect_equal(balanced$Q$n_balancing_samples, c(2L, 2L))
 })
 
+test_that("sample balancing is recomputed after reaction-specific missingness", {
+  capacity <- matrix(
+    c(1, NA, NA, 0),
+    nrow = 1,
+    dimnames = list("R1", paste0("u", 1:4))
+  )
+  sample_ids <- stats::setNames(
+    c("S1", "S1", "S1", "S2"),
+    colnames(capacity)
+  )
+
+  balanced <- rc_q95_shrink(
+    capacity,
+    q = 0.60,
+    n0 = 0,
+    balance_ids = sample_ids
+  )
+
+  expect_equal(balanced$Q$q_global, 1)
+  expect_equal(balanced$Q$q_stratum, 1)
+  expect_equal(balanced$Q$n_effective, 2, tolerance = 1e-12)
+  expect_equal(balanced$Q$n_balancing_samples, 2L)
+})
+
 test_that("sample weights do not rescale absolute metacell activity", {
   expression <- matrix(
     c(0, 0, 0, 10),

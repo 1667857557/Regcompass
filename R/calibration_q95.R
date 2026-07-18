@@ -119,18 +119,41 @@ rc_q95_shrink <- function(
   } else {
     "equal_unit"
   }
-  quantile_one <- function(values, selected_weights) {
-    .rc_q95_weighted_quantile(values, selected_weights, probs = q)
+  reaction_weights <- function(values, selected_weights,
+                               selected_balance_ids = NULL) {
+    observed <- is.finite(values)
+    if (!any(observed)) return(numeric())
+    if (!is.null(selected_balance_ids)) {
+      return(.rc_equal_sample_weights(selected_balance_ids[observed]))
+    }
+    selected_weights[observed] / sum(selected_weights[observed])
+  }
+  quantile_one <- function(values, selected_weights,
+                           selected_balance_ids = NULL) {
+    observed <- is.finite(values)
+    if (!any(observed)) return(NA_real_)
+    .rc_q95_weighted_quantile(
+      values[observed],
+      reaction_weights(
+        values, selected_weights, selected_balance_ids
+      ),
+      probs = q
+    )
+  }
+  effective_n_one <- function(values, selected_weights,
+                              selected_balance_ids = NULL) {
+    selected <- reaction_weights(
+      values, selected_weights, selected_balance_ids
+    )
+    if (!length(selected)) return(0)
+    sum(selected)^2 / sum(selected^2)
   }
   global_q <- vapply(seq_len(nrow(C_raw)), function(i) {
-    quantile_one(C_raw[i, ], weights)
+    quantile_one(C_raw[i, ], weights, balance_ids)
   }, numeric(1))
   global_n <- rowSums(is.finite(C_raw))
   global_n_effective <- vapply(seq_len(nrow(C_raw)), function(i) {
-    observed <- is.finite(C_raw[i, ])
-    selected <- weights[observed]
-    if (!length(selected)) return(0)
-    sum(selected)^2 / sum(selected^2)
+    effective_n_one(C_raw[i, ], weights, balance_ids)
   }, numeric(1))
 
   if (!is.null(stratum_col)) {
@@ -174,15 +197,32 @@ rc_q95_shrink <- function(
     )
     n <- rowSums(is.finite(C_raw[, columns, drop = FALSE]))
     n_effective <- vapply(seq_len(nrow(C_raw)), function(i) {
-      observed <- is.finite(C_raw[i, columns])
-      selected <- stratum_weights[observed]
-      if (!length(selected)) return(0)
-      sum(selected)^2 / sum(selected^2)
+      effective_n_one(
+        C_raw[i, columns],
+        stratum_weights,
+        if (is.null(balance_ids)) NULL else balance_ids[columns]
+      )
     }, numeric(1))
-    rho <- n_effective / (n_effective + n0)
+    rho <- numeric(length(n_effective))
+    observed_reaction <- n_effective > 0
+    rho[observed_reaction] <-
+      n_effective[observed_reaction] /
+      (n_effective[observed_reaction] + n0)
     q_stratum <- vapply(seq_len(nrow(C_raw)), function(i) {
-      quantile_one(C_raw[i, columns], stratum_weights)
+      quantile_one(
+        C_raw[i, columns],
+        stratum_weights,
+        if (is.null(balance_ids)) NULL else balance_ids[columns]
+      )
     }, numeric(1))
+    n_balancing_samples <- if (is.null(balance_ids)) {
+      rep(NA_integer_, nrow(C_raw))
+    } else {
+      vapply(seq_len(nrow(C_raw)), function(i) {
+        observed <- is.finite(C_raw[i, columns])
+        length(unique(balance_ids[columns][observed]))
+      }, integer(1))
+    }
     q_used <- ifelse(is.finite(q_stratum), q_stratum, global_q)
     q_shrink <- rho * q_used + (1 - rho) * global_q
     relative[, columns] <- sweep(
@@ -205,11 +245,7 @@ rc_q95_shrink <- function(
       q_value = as.numeric(q_shrink),
       sample_balanced = sample_balanced,
       balance_scope = balance_scope,
-      n_balancing_samples = if (is.null(balance_ids)) {
-        NA_integer_
-      } else {
-        length(unique(balance_ids[columns]))
-      },
+      n_balancing_samples = n_balancing_samples,
       stringsAsFactors = FALSE
     )
     index <- index + 1L
@@ -277,6 +313,10 @@ rc_q95_shrink <- function(
         call. = FALSE
       )
     }
+    # Missing reaction evidence can differ by sample. Rebalance after the
+    # finite-observation filter so every represented biological sample retains
+    # equal total mass for this reaction.
+    weights <- .rc_equal_sample_weights(balance_ids)
   }
   if (length(x) < 20L) {
     return(c(q95 = NA_real_, ci_low = NA_real_, ci_high = NA_real_, width = NA_real_))
