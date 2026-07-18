@@ -590,6 +590,7 @@
     tau = layer1_args$tau %||% 0.20,
     or_method = or_method
   )
+  fragment_aggregation_enabled <- !identical(fragment_files, FALSE)
   metacell_defaults <- list(
     object = one,
     outdir = file.path(stratum_dir, "01_metacells"),
@@ -598,12 +599,12 @@
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    fragment_files = fragment_files,
+    fragment_files = if (isTRUE(fragment_aggregation_enabled)) fragment_files else FALSE,
     save_metacell_object = TRUE,
     save_counts = TRUE,
-    save_fragments = TRUE,
-    require_fragment_aggregation = TRUE,
-    fragment_aggregation_backend = "regcompass",
+    save_fragments = fragment_aggregation_enabled,
+    require_fragment_aggregation = fragment_aggregation_enabled,
+    fragment_aggregation_backend = if (isTRUE(fragment_aggregation_enabled)) "regcompass" else "none",
     BPPARAM = FALSE,
     on_stratum_error = "stop"
   )
@@ -649,7 +650,7 @@
     fragment_files = metacells$fragment_files,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    require_complete_fragments = TRUE
+    require_complete_fragments = fragment_aggregation_enabled
   )
   pando_args$BPPARAM <- NULL
   pando_args$save_sample_metacell_objects <- NULL
@@ -850,6 +851,47 @@
     error_class = NA_character_,
     error_message = NA_character_
   )
+}
+
+.rc_validate_stratum_artifact_contract <- function(artifact) {
+  if (!identical(artifact$schema_version, "regcompass_stratum_v3")) {
+    return("schema_version")
+  }
+  if (!is.list(artifact$layer1) || !is.list(artifact$grn_meta_modules)) {
+    return("layer1_or_grn_missing")
+  }
+  layer1 <- artifact$layer1
+  if (is.null(layer1$rna_metacell_logcpm) ||
+      is.null(layer1$reaction_confidence) ||
+      !is.data.frame(layer1$unit_meta)) {
+    return("layer1_outputs_missing")
+  }
+  rna <- as.matrix(layer1$rna_metacell_logcpm)
+  confidence <- as.matrix(layer1$reaction_confidence)
+  if (!nrow(rna) || !ncol(rna)) return("empty_rna_metacell_logcpm")
+  if (!nrow(confidence) || !ncol(confidence)) return("empty_reaction_confidence")
+  unit_meta <- layer1$unit_meta
+  id_col <- if ("pool_id" %in% colnames(unit_meta)) {
+    "pool_id"
+  } else if ("metacell_id" %in% colnames(unit_meta)) {
+    "metacell_id"
+  } else {
+    return("unit_meta_id_missing")
+  }
+  if (!identical(colnames(rna), as.character(unit_meta[[id_col]]))) {
+    return("rna_unit_meta_mismatch")
+  }
+  missing_confidence <- setdiff(colnames(rna), colnames(confidence))
+  if (length(missing_confidence)) return("reaction_confidence_unit_mismatch")
+  grn <- artifact$grn_meta_modules
+  required_grn <- c("core_gene_reaction", "reaction_membership")
+  missing_grn <- required_grn[!vapply(grn[required_grn], is.data.frame, logical(1))]
+  if (length(missing_grn)) return(paste0("grn_missing_", paste(missing_grn, collapse = "_")))
+  if (!"reaction_id" %in% colnames(grn$core_gene_reaction) ||
+      !"reaction_id" %in% colnames(grn$reaction_membership)) {
+    return("grn_reaction_id_missing")
+  }
+  "ok"
 }
 
 .rc_merge_stratum_meta_modules <- function(artifacts) {

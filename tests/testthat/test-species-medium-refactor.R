@@ -52,6 +52,7 @@ test_that("species model routing is explicit and pinned", {
   expect_equal(mouse$taxonomy_id, "10090")
 
   expect_identical(eval(formals(rc_prepare_gem)$species), c("human", "mouse"))
+  expect_identical(eval(formals(rc_prepare_human2_gem)$version), "2.0.0")
   expect_identical(eval(formals(rc_prepare_mouse_gem)$version), "1.8.0")
 })
 
@@ -193,4 +194,13 @@ test_that("canonical workflow owns a persistent model cache", {
   expect_match(workflow_text, "model_params\\$cache_dir <- cache_dir")
   expect_match(micro_text, "model_file_manifest.rds")
   expect_match(micro_text, "tools::md5sum")
+})
+
+test_that("one-shot species argument defaults to human and routes setup by species", {
+  expect_identical(eval(formals(rc_run_regcompass_one_shot)$species), c("human", "mouse"))
+  body_text <- paste(deparse(body(rc_run_regcompass_one_shot)), collapse = "\n")
+  expect_match(body_text, "rc_prepare_gem", fixed = TRUE)
+  expect_match(body_text, "species = species", fixed = TRUE)
+  expect_match(body_text, "rc_make_medium_scenarios", fixed = TRUE)
+  expect_match(body_text, "Mouse-GEM|1.8.0")
 })

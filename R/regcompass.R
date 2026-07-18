@@ -33,7 +33,8 @@
 #' @param outdir Persistent output directory.
 #' @param pfm Motif position-frequency matrices passed to Pando.
 #' @param genome Genome object matching `species` and the ATAC coordinates.
-#' @param fragment_files Optional fragment-file mapping.
+#' @param fragment_files Fragment-file manifest/path(s), or `FALSE` to skip
+#'   fragment aggregation and use ATAC peak raw counts from `object` directly.
 #' @param species `"auto"`, `"human"`, or `"mouse"`.
 #' @param sample_col,condition_col,celltype_col Metadata columns.
 #' @param rna_assay,atac_assay Assay names.
@@ -353,13 +354,19 @@ rc_run_regcompass <- function(
   if (!identical(artifact_group_ids, completed_ids)) {
     stop("Upstream artifacts are incomplete or out of analyzable strict-stratum order.", call. = FALSE)
   }
-  valid_artifact <- vapply(artifacts, function(x) {
-    identical(x$schema_version, "regcompass_stratum_v3") &&
-      is.list(x$layer1) && is.list(x$grn_meta_modules) &&
-      is.data.frame(x$grn_meta_modules$core_gene_reaction) &&
-      is.data.frame(x$grn_meta_modules$reaction_membership)
-  }, logical(1))
-  if (!all(valid_artifact)) stop("One or more upstream artifacts failed completeness validation.", call. = FALSE)
+  artifact_contract <- vapply(
+    artifacts,
+    .rc_validate_stratum_artifact_contract,
+    character(1)
+  )
+  invalid_artifact <- artifact_contract != "ok"
+  if (any(invalid_artifact)) {
+    stop(
+      "One or more upstream artifacts failed input/output contract validation: ",
+      paste(unique(artifact_contract[invalid_artifact]), collapse = ", "),
+      call. = FALSE
+    )
+  }
 
   single_cell_genes <- rownames(.rc_get_assay_counts(object, rna_assay))
   grn_meta_modules <- .rc_merge_stratum_meta_modules(artifacts)

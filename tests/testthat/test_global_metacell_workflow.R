@@ -124,3 +124,33 @@ test_that("global union contains biological and local support reactions", {
     "global_union_local_fastcore_support"
   )
 })
+
+
+test_that("fragment_files FALSE disables required fragment aggregation in stratum workflow", {
+  body_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
+  expect_match(body_text, "fragment_aggregation_enabled <- !identical(fragment_files, FALSE)", fixed = TRUE)
+  expect_match(body_text, "require_fragment_aggregation = fragment_aggregation_enabled", fixed = TRUE)
+  expect_match(body_text, "fragment_aggregation_backend = if (isTRUE(fragment_aggregation_enabled))", fixed = TRUE)
+  expect_match(body_text, "require_complete_fragments = fragment_aggregation_enabled", fixed = TRUE)
+})
+
+test_that("stratum artifact contract validates hand-off to global workflow", {
+  artifact <- list(
+    schema_version = "regcompass_stratum_v3",
+    layer1 = list(
+      rna_metacell_logcpm = matrix(1, nrow = 1, ncol = 2, dimnames = list("G1", c("mc1", "mc2"))),
+      reaction_confidence = matrix(0.5, nrow = 1, ncol = 2, dimnames = list("R1", c("mc1", "mc2"))),
+      unit_meta = data.frame(pool_id = c("mc1", "mc2"), sample_id = "S1", condition = "ctrl", cell_type = "T")
+    ),
+    grn_meta_modules = list(
+      core_gene_reaction = data.frame(reaction_id = "R1"),
+      reaction_membership = data.frame(reaction_id = "R1")
+    )
+  )
+  expect_identical(.rc_validate_stratum_artifact_contract(artifact), "ok")
+  artifact$layer1$reaction_confidence <- artifact$layer1$reaction_confidence[, "mc1", drop = FALSE]
+  expect_identical(
+    .rc_validate_stratum_artifact_contract(artifact),
+    "reaction_confidence_unit_mismatch"
+  )
+})

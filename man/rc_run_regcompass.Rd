@@ -41,7 +41,8 @@ rc_run_regcompass(
 
 \item{genome}{Genome object matching \code{species} and the ATAC coordinates.}
 
-\item{fragment_files}{Optional fragment-file mapping.}
+\item{fragment_files}{Fragment-file manifest/path(s), or \code{FALSE} to skip
+fragment aggregation and use ATAC peak raw counts from \code{object} directly.}
 
 \item{sample_col, condition_col, celltype_col}{Metadata columns.}
 
