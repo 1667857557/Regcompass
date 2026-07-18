@@ -353,6 +353,56 @@
   object
 }
 
+.rc_restore_metacell_metadata <- function(
+    object_meta, metacell_meta, expected_ids) {
+  if (!is.data.frame(object_meta) || !is.data.frame(metacell_meta)) {
+    stop("Metacell metadata inputs must be data.frames.", call. = FALSE)
+  }
+  if (!"metacell_id" %in% colnames(metacell_meta)) {
+    stop("`metacell_meta` must contain `metacell_id`.", call. = FALSE)
+  }
+  expected_ids <- as.character(expected_ids)
+  supplied_ids <- as.character(metacell_meta$metacell_id)
+  if (anyNA(expected_ids) || any(!nzchar(expected_ids)) ||
+      anyDuplicated(expected_ids)) {
+    stop("Expected metacell IDs must be non-missing and unique.", call. = FALSE)
+  }
+  if (anyNA(supplied_ids) || any(!nzchar(supplied_ids)) ||
+      anyDuplicated(supplied_ids)) {
+    stop("`metacell_meta$metacell_id` must be non-missing and unique.",
+         call. = FALSE)
+  }
+  missing_metadata <- setdiff(expected_ids, supplied_ids)
+  if (length(missing_metadata)) {
+    stop("Metacell metadata are missing expected IDs: ",
+         paste(utils::head(missing_metadata, 10L), collapse = ", "),
+         call. = FALSE)
+  }
+  missing_object_rows <- setdiff(expected_ids, rownames(object_meta))
+  if (length(missing_object_rows)) {
+    stop("Seurat metadata are missing expected metacell IDs: ",
+         paste(utils::head(missing_object_rows, 10L), collapse = ", "),
+         call. = FALSE)
+  }
+  aligned <- metacell_meta[
+    match(expected_ids, supplied_ids), , drop = FALSE
+  ]
+  rownames(aligned) <- expected_ids
+  object_meta <- object_meta[expected_ids, , drop = FALSE]
+
+  supplied_names <- colnames(aligned)
+  syntactic_aliases <- make.names(supplied_names, unique = FALSE)
+  repaired_aliases <- unique(
+    syntactic_aliases[syntactic_aliases != supplied_names]
+  )
+  extra_columns <- setdiff(
+    colnames(object_meta),
+    unique(c(supplied_names, repaired_aliases))
+  )
+  for (column in extra_columns) aligned[[column]] <- object_meta[[column]]
+  aligned
+}
+
 rc_load_or_merge_metacell_objects <- function(
     metacell_objects, fragment_manifest = NULL, metacell_meta = NULL,
     rna_assay = "RNA", atac_assay = "ATAC",
@@ -394,6 +444,11 @@ rc_load_or_merge_metacell_objects <- function(
          call. = FALSE)
   }
   if (!is.null(metacell_meta)) {
+    if (!is.data.frame(metacell_meta) ||
+        !"metacell_id" %in% colnames(metacell_meta)) {
+      stop("`metacell_meta` must be a data.frame containing `metacell_id`.",
+           call. = FALSE)
+    }
     metacell_meta$metacell_id <- as.character(metacell_meta$metacell_id)
     expected <- metacell_meta$metacell_id
     observed <- colnames(obj)
@@ -409,6 +464,11 @@ rc_load_or_merge_metacell_objects <- function(
       stop("Merged object could not be subset and reordered to expected ",
            "metacell IDs.", call. = FALSE)
     }
+    obj@meta.data <- .rc_restore_metacell_metadata(
+      object_meta = obj@meta.data,
+      metacell_meta = metacell_meta,
+      expected_ids = expected
+    )
     attr(obj, "removed_extra_metacell_ids") <- extra_in_object
   }
   if (has_fragment_manifest && !precounted) {

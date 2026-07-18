@@ -347,6 +347,63 @@ rc_project_metabolic_grn <- function(tf_peak_gene, metabolic_genes,
   answer
 }
 
+.rc_remap_projection_metadata <- function(
+    x, group_meta, sample_col, display_cols) {
+  if (!is.data.frame(x) || !is.data.frame(group_meta)) {
+    stop("Projection and group metadata must be data.frames.", call. = FALSE)
+  }
+  if (!nrow(x)) return(x)
+  required_projection <- c("sample_id", "module_id")
+  missing_projection <- setdiff(required_projection, colnames(x))
+  if (length(missing_projection)) {
+    stop("Projection table is missing columns: ",
+         paste(missing_projection, collapse = ", "), call. = FALSE)
+  }
+  required_group <- c("group_id", sample_col)
+  missing_group <- setdiff(required_group, colnames(group_meta))
+  if (length(missing_group)) {
+    stop("Projection group metadata are missing columns: ",
+         paste(missing_group, collapse = ", "), call. = FALSE)
+  }
+  group_meta$group_id <- as.character(group_meta$group_id)
+  if (anyNA(group_meta$group_id) || any(!nzchar(group_meta$group_id)) ||
+      anyDuplicated(group_meta$group_id)) {
+    stop("Projection group metadata require unique, non-empty group IDs.",
+         call. = FALSE)
+  }
+  if (".rc_projection_order" %in% colnames(x)) {
+    stop("Projection table contains reserved column `.rc_projection_order`.",
+         call. = FALSE)
+  }
+  x$group_id <- as.character(x$sample_id)
+  missing_groups <- setdiff(unique(x$group_id), group_meta$group_id)
+  if (length(missing_groups)) {
+    stop("Projection metadata are missing group IDs: ",
+         paste(utils::head(missing_groups, 10L), collapse = ", "),
+         call. = FALSE)
+  }
+  x$sample_id <- NULL
+  x$.rc_projection_order <- seq_len(nrow(x))
+  out <- merge(
+    x, group_meta,
+    by = "group_id", all.x = TRUE, sort = FALSE
+  )
+  if (nrow(out) != nrow(x)) {
+    stop("Projection metadata merge changed the number of rows.",
+         call. = FALSE)
+  }
+  out <- out[order(out$.rc_projection_order), , drop = FALSE]
+  out$.rc_projection_order <- NULL
+  sample_values <- as.character(out[[sample_col]])
+  if (anyNA(sample_values) || any(!nzchar(sample_values))) {
+    stop("Projection metadata produced missing or empty sample IDs.",
+         call. = FALSE)
+  }
+  out$sample_id <- sample_values
+  rownames(out) <- NULL
+  out[, c(display_cols, setdiff(colnames(out), display_cols)), drop = FALSE]
+}
+
 rc_run_pando_meta_modules <- function(metacell_object,
                                       gem,
                                       outdir,
@@ -506,15 +563,18 @@ rc_run_pando_meta_modules <- function(metacell_object,
                                           max_targets_per_tf = max_targets_per_tf,
                                           include_direct_metabolic_tf = TRUE)
   group_meta <- unique(status_table[, c("group_id", group_cols), drop = FALSE])
-  remap_projection <- function(x) {
-    if (!nrow(x)) return(x)
-    x$group_id <- as.character(x$sample_id)
-    x <- merge(x, group_meta, by = "group_id", all.x = TRUE, sort = FALSE)
-    x$sample_id <- as.character(x[[sample_col]])
-    x[, c(display_cols, setdiff(colnames(x), display_cols)), drop = FALSE]
-  }
-  projection$nodes <- remap_projection(projection$nodes)
-  projection$edges <- remap_projection(projection$edges)
+  projection$nodes <- .rc_remap_projection_metadata(
+    projection$nodes,
+    group_meta = group_meta,
+    sample_col = sample_col,
+    display_cols = display_cols
+  )
+  projection$edges <- .rc_remap_projection_metadata(
+    projection$edges,
+    group_meta = group_meta,
+    sample_col = sample_col,
+    display_cols = display_cols
+  )
   core <- rc_map_meta_module_core_reactions(projection$nodes, gem$gpr_table)
   if (nrow(core)) {
     core <- merge(core, unique(projection$nodes[, module_cols, drop = FALSE]),
