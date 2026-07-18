@@ -58,7 +58,7 @@ rc_import_supercell2_metacells <- function(
   }
   metas <- memberships <- fragment_manifests <- list()
   rnas <- atacs <- list()
-  objects <- fragments <- character()
+  objects <- character()
   for (directory in metacell_dirs) {
     meta_file <- file.path(directory, "metacell_metadata.tsv.gz")
     if (!file.exists(meta_file)) next
@@ -80,10 +80,6 @@ rc_import_supercell2_metacells <- function(
       manifest <- read_tsv(manifest_file)
       manifest$stratum_dir <- directory
       fragment_manifests[[directory]] <- manifest
-    } else {
-      discovered <- Sys.glob(file.path(directory, "fragments", "*.tsv.gz"))
-      discovered <- setdiff(discovered, manifest_file)
-      if (length(discovered)) fragments <- c(fragments, discovered)
     }
   }
   if (!length(metas)) {
@@ -141,12 +137,8 @@ rc_import_supercell2_metacells <- function(
   }
   if (nrow(fragment_manifest)) {
     fragments <- unique(as.character(fragment_manifest$fragment_file))
-  } else if (length(fragments)) {
-    warning(
-      "Legacy fragment discovery by glob was used because no fragment ",
-      "manifest was found.",
-      call. = FALSE
-    )
+  } else {
+    fragments <- character()
   }
   if (isTRUE(require_fragments)) {
     missing_idx <- fragments[

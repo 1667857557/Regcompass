@@ -1,8 +1,3 @@
-if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALSE)) {
-  .rc_make_supercell2_metacells_before_peak_calling <-
-    rc_make_supercell2_metacells
-}
-
 .rc_infer_macs_effective_genome_size <- function(
     object, atac_assay = "ATAC") {
   ranges <- methods::slot(object[[atac_assay]], "ranges")
@@ -40,10 +35,29 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
     fragment_files, object, atac_assay = "ATAC",
     call_peaks = TRUE, macs2_path = NULL,
     effective_genome_size = NULL, peak_calling_args = list(),
+    peak_calling_outdir = file.path(tempdir(), "regcompass_macs2"),
     call_peaks_fun = NULL) {
+  if (!is.logical(call_peaks) || length(call_peaks) != 1L ||
+      is.na(call_peaks)) {
+    stop("`call_peaks` must be TRUE or FALSE.", call. = FALSE)
+  }
   if (!isTRUE(call_peaks)) {
     peaks <- methods::slot(object[[atac_assay]], "ranges")
-    names(peaks) <- rownames(.rc_get_assay_counts_safe(object, atac_assay))
+    counts <- .rc_get_assay_counts_safe(object, atac_assay)
+    if (!inherits(peaks, "GRanges") || !length(peaks) ||
+        length(peaks) != nrow(counts)) {
+      stop(
+        "Existing ATAC ranges must be a non-empty GRanges with one range per ",
+        "count-matrix row.",
+        call. = FALSE
+      )
+    }
+    peak_ids <- .rc_peak_ids(peaks)
+    if (anyDuplicated(peak_ids)) {
+      stop("Existing ATAC ranges contain duplicated genomic intervals.",
+           call. = FALSE)
+    }
+    names(peaks) <- peak_ids
     return(list(
       peaks = peaks,
       peak_source = "existing_object_peak_ranges"
@@ -57,16 +71,29 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
   if (!is.list(peak_calling_args)) {
     stop("`peak_calling_args` must be a list.", call. = FALSE)
   }
-  if (is.null(call_peaks_fun)) {
+  reserved_args <- intersect(
+    names(peak_calling_args),
+    c("object", "macs2.path", "outdir", "effective.genome.size")
+  )
+  if (length(reserved_args)) {
+    stop(
+      "`peak_calling_args` cannot override explicit peak-calling inputs: ",
+      paste(reserved_args, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  using_signac_call_peaks <- is.null(call_peaks_fun)
+  if (using_signac_call_peaks) {
     call_peaks_fun <- getExportedValue("Signac", "CallPeaks")
   }
-  macs2_path <- macs2_path %||%
-    getOption("RegCompassR.macs2_path", NULL)
+  if (!is.null(macs2_path) &&
+      (length(macs2_path) != 1L || is.na(macs2_path))) {
+    stop("`macs2_path` must be NULL or one non-missing path.", call. = FALSE)
+  }
   if (is.null(macs2_path) || !nzchar(as.character(macs2_path))) {
     macs2_path <- unname(Sys.which("macs2"))
   }
-  if (!nzchar(as.character(macs2_path)) &&
-      identical(call_peaks_fun, getExportedValue("Signac", "CallPeaks"))) {
+  if (!nzchar(as.character(macs2_path)) && using_signac_call_peaks) {
     stop(
       "MACS2 was not found. Install MACS2 or pass its executable path in ",
       "`metacell_args$macs2_path`.",
@@ -74,12 +101,14 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
     )
   }
   effective_genome_size <- effective_genome_size %||%
-    getOption("RegCompassR.peak_calling_effective_genome_size", NULL) %||%
     .rc_infer_macs_effective_genome_size(object, atac_assay = atac_assay)
-  outdir <- getOption(
-    "RegCompassR.peak_calling_outdir",
-    file.path(tempdir(), "regcompass_macs2")
-  )
+  if (!is.numeric(effective_genome_size) ||
+      length(effective_genome_size) != 1L ||
+      !is.finite(effective_genome_size) || effective_genome_size <= 0) {
+    stop("`effective_genome_size` must be one positive finite number.",
+         call. = FALSE)
+  }
+  outdir <- peak_calling_outdir
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   default_args <- list(
     object = unique(as.character(fragment_files)),
@@ -120,10 +149,15 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
     object, fragment_manifest, atac_assay = "ATAC",
     require_complete = TRUE, process_n = 2000L,
     create_fragment_fun = NULL, feature_matrix_fun = NULL,
-    call_peaks = getOption("RegCompassR.call_peaks_from_fragments", TRUE),
+    call_peaks = TRUE,
     macs2_path = NULL, effective_genome_size = NULL,
-    peak_calling_args = getOption("RegCompassR.peak_calling_args", list()),
+    peak_calling_args = list(), peak_calling_outdir = NULL,
     call_peaks_fun = NULL) {
+  if (!is.numeric(process_n) || length(process_n) != 1L ||
+      !is.finite(process_n) || process_n < 1 ||
+      abs(process_n - round(process_n)) > sqrt(.Machine$double.eps)) {
+    stop("`process_n` must be one positive integer.", call. = FALSE)
+  }
   if (!requireNamespace("Signac", quietly = TRUE) &&
       (is.null(create_fragment_fun) || is.null(feature_matrix_fun) ||
        (isTRUE(call_peaks) && is.null(call_peaks_fun)))) {
@@ -163,6 +197,8 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
     macs2_path = macs2_path,
     effective_genome_size = effective_genome_size,
     peak_calling_args = peak_calling_args,
+    peak_calling_outdir = peak_calling_outdir %||%
+      file.path(tempdir(), "regcompass_macs2"),
     call_peaks_fun = call_peaks_fun
   )
   peaks <- peak_result$peaks
@@ -186,7 +222,6 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
     counts_i <- feature_matrix_fun(
       fragments = list(fragment_objects[[i]]),
       features = peaks,
-      keep_all_features = TRUE,
       cells = names(cell_map),
       process_n = as.integer(process_n),
       verbose = FALSE
@@ -218,9 +253,9 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
     object, fragment_manifest, atac_assay = "ATAC",
     require_complete = TRUE, process_n = 2000L,
     create_fragment_fun = NULL, feature_matrix_fun = NULL,
-    call_peaks = getOption("RegCompassR.call_peaks_from_fragments", TRUE),
+    call_peaks = TRUE,
     macs2_path = NULL, effective_genome_size = NULL,
-    peak_calling_args = getOption("RegCompassR.peak_calling_args", list()),
+    peak_calling_args = list(), peak_calling_outdir = NULL,
     call_peaks_fun = NULL) {
   answer <- .rc_fragment_objects_and_counts(
     object = object,
@@ -234,6 +269,7 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
     macs2_path = macs2_path,
     effective_genome_size = effective_genome_size,
     peak_calling_args = peak_calling_args,
+    peak_calling_outdir = peak_calling_outdir,
     call_peaks_fun = call_peaks_fun
   )
   if (is.null(answer$counts)) return(object)
@@ -281,118 +317,4 @@ if (!exists(".rc_make_supercell2_metacells_before_peak_calling", inherits = FALS
     macs2_path = answer$macs2_path %||% NA_character_
   )
   object
-}
-
-rc_make_supercell2_metacells <- function(
-    object,
-    outdir,
-    sample_col = "sample_id",
-    condition_col = "condition",
-    celltype_col = "cell_type",
-    state_col = NULL,
-    rna_assay = "RNA",
-    atac_assay = "ATAC",
-    rna_reduction = "pca",
-    atac_reduction = "lsi",
-    rna_dims = 1:30,
-    atac_dims = 2:30,
-    gamma = 100,
-    seed = 12345L,
-    min_cells_per_stratum = 100,
-    min_metacell_size = 20,
-    min_metacells_per_stratum = 2L,
-    label_col = NULL,
-    fragment_files = NULL,
-    bgzip_path = "bgzip",
-    tabix_path = "tabix",
-    fragment_nb_cl = 1L,
-    save_metacell_object = TRUE,
-    save_counts = TRUE,
-    save_fragments = TRUE,
-    require_fragment_aggregation = TRUE,
-    fragment_aggregation_backend = c("regcompass", "supercell", "none"),
-    overwrite = FALSE,
-    BPPARAM = NULL,
-    on_stratum_error = c("record", "stop"),
-    call_peaks_from_fragments = TRUE,
-    macs2_path = NULL,
-    peak_calling_effective_genome_size = NULL,
-    peak_calling_args = list()) {
-  fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
-  on_stratum_error <- match.arg(on_stratum_error)
-  if (!is.logical(call_peaks_from_fragments) ||
-      length(call_peaks_from_fragments) != 1L ||
-      is.na(call_peaks_from_fragments)) {
-    stop("`call_peaks_from_fragments` must be TRUE or FALSE.", call. = FALSE)
-  }
-  if (!is.list(peak_calling_args)) {
-    stop("`peak_calling_args` must be a list.", call. = FALSE)
-  }
-  old_options <- options(
-    RegCompassR.call_peaks_from_fragments = call_peaks_from_fragments,
-    RegCompassR.macs2_path = macs2_path,
-    RegCompassR.peak_calling_effective_genome_size =
-      peak_calling_effective_genome_size,
-    RegCompassR.peak_calling_args = peak_calling_args,
-    RegCompassR.peak_calling_outdir = file.path(outdir, "macs2")
-  )
-  on.exit(options(old_options), add = TRUE)
-  out <- .rc_make_supercell2_metacells_before_peak_calling(
-    object = object,
-    outdir = outdir,
-    sample_col = sample_col,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    state_col = state_col,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    rna_reduction = rna_reduction,
-    atac_reduction = atac_reduction,
-    rna_dims = rna_dims,
-    atac_dims = atac_dims,
-    gamma = gamma,
-    seed = seed,
-    min_cells_per_stratum = min_cells_per_stratum,
-    min_metacell_size = min_metacell_size,
-    min_metacells_per_stratum = min_metacells_per_stratum,
-    label_col = label_col,
-    fragment_files = fragment_files,
-    bgzip_path = bgzip_path,
-    tabix_path = tabix_path,
-    fragment_nb_cl = fragment_nb_cl,
-    save_metacell_object = save_metacell_object,
-    save_counts = save_counts,
-    save_fragments = save_fragments,
-    require_fragment_aggregation = require_fragment_aggregation,
-    fragment_aggregation_backend = fragment_aggregation_backend,
-    overwrite = overwrite,
-    BPPARAM = BPPARAM,
-    on_stratum_error = on_stratum_error
-  )
-  if (identical(fragment_files, FALSE)) {
-    out$atac_peak_source <- "existing_object_peak_ranges"
-    return(out)
-  }
-  if (length(out$metacell_objects)) {
-    for (object_file in as.character(out$metacell_objects)) {
-      mc <- readRDS(object_file)
-      if (identical(
-        tryCatch(mc@misc$atac_peak_source, error = function(e) NULL),
-        "de_novo_macs2_from_metacell_fragments"
-      )) {
-        peak_dir <- file.path(dirname(object_file), "peaks")
-        dir.create(peak_dir, recursive = TRUE, showWarnings = FALSE)
-        saveRDS(
-          methods::slot(mc[[atac_assay]], "ranges"),
-          file.path(peak_dir, "called_peaks.rds")
-        )
-      }
-    }
-  }
-  out$atac_peak_source <- if (isTRUE(call_peaks_from_fragments)) {
-    "de_novo_macs2_from_metacell_fragments"
-  } else {
-    "existing_object_peak_ranges"
-  }
-  out
 }

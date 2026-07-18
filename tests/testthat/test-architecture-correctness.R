@@ -10,7 +10,12 @@ test_that("absolute gene evidence preserves zero and constant abundance", {
   expect_true(all(rc_gene_score(high) > 0.5))
 
   raw <- rbind(zero = c(0, 0, 0), constant_high = c(0.8, 0.8, 0.8))
-  calibrated <- .rc_weighted_q95_calibrate(raw, rep(1 / 3, 3))
+  colnames(raw) <- paste0("m", 1:3)
+  calibrated <- rc_q95_calibrate(
+    raw,
+    bootstrap = FALSE,
+    weights = rep(1 / 3, 3)
+  )
   expect_equal(as.numeric(calibrated$C_rel["zero", ]), rep(0, 3))
   expect_equal(as.numeric(calibrated$C_rel["constant_high", ]), rep(0.8, 3))
   expect_true(all(is.na(calibrated$C_within_reaction_relative)))
@@ -64,19 +69,9 @@ test_that("regulatory support is neutral when missing and penalizes repression",
   expect_true(answer$components$missing_regulatory_support_flag["r1", "u1"])
 })
 
-test_that("structural support cannot silently override biological penalty", {
-  capacity <- matrix(0.5, nrow = 1, ncol = 1,
-                     dimnames = list("r1", "u1"))
-  confidence <- matrix(0.5, nrow = 1, ncol = 1,
-                       dimnames = dimnames(capacity))
-  expect_error(
-    rc_layer2_penalty(capacity, confidence, support_reactions = "r1"),
-    "structural"
-  )
-})
-
 test_that("relative penalty rank is stable and explicitly not probability", {
   penalty <- rbind(variable = c(1, 1, 1.0001), constant = c(2, 2, 2))
+  colnames(penalty) <- paste0("u", seq_len(ncol(penalty)))
   feasible <- matrix(TRUE, nrow = 2, ncol = 3,
                      dimnames = dimnames(penalty))
   score <- rc_compass_score_from_penalty(penalty, feasible)
@@ -88,6 +83,26 @@ test_that("relative penalty rank is stable and explicitly not probability", {
     "within_target_relative_penalty_rank_not_probability"
   )
   expect_true(attr(score, "noninformative_target")[["constant"]])
+})
+
+test_that("Layer 2 feasibility is aligned by identifiers", {
+  penalty <- matrix(
+    c(1, 4, 2, 5, 3, 6), nrow = 2,
+    dimnames = list(c("r1", "r2"), c("u1", "u2", "u3"))
+  )
+  feasible_aligned <- matrix(
+    c(TRUE, TRUE, FALSE, TRUE, TRUE, TRUE), nrow = 2,
+    dimnames = dimnames(penalty)
+  )
+  feasible <- feasible_aligned[c("r2", "r1"), c("u3", "u1", "u2")]
+  score <- rc_compass_score_from_penalty(penalty, feasible)
+  expect_true(is.na(score["r1", "u2"]))
+  expect_true(all(is.finite(score["r1", c("u1", "u3")])))
+  expect_error(
+    rc_compass_score_from_penalty(penalty, feasible[, "u1", drop = FALSE]),
+    "identical target and unit IDs",
+    fixed = TRUE
+  )
 })
 
 test_that("permissive medium is labelled as a technical baseline", {

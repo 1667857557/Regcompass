@@ -36,8 +36,8 @@ rc_extract_pando_tf_peak_gene <- function(grn_object,
   list(all = coefs, significant = coefs[keep, , drop = FALSE])
 }
 
-#' Project significant Pando edges onto a metabolic gene-gene network
-.rc_project_metabolic_grn_base <- function(tf_peak_gene,
+#' Build an unsigned metabolic gene projection from significant Pando edges
+.rc_build_metabolic_projection_graph <- function(tf_peak_gene,
                                      metabolic_genes,
                                      top_k = 5L,
                                      min_shared_tfs = 1L,
@@ -179,13 +179,40 @@ rc_extract_pando_tf_peak_gene <- function(grn_object,
   "mixed"
 }
 
-.rc_project_metabolic_grn_signed_metadata <- function(tf_peak_gene, metabolic_genes,
+rc_project_metabolic_grn <- function(tf_peak_gene, metabolic_genes,
                                      top_k = 5L, min_shared_tfs = 1L,
                                      min_tf_jaccard = 0,
                                      max_targets_per_tf = 200L,
                                      include_direct_metabolic_tf = TRUE) {
-  answer <- .rc_project_metabolic_grn_base(
-    tf_peak_gene, metabolic_genes,
+  integer_control <- function(value, name, allow_infinite = FALSE) {
+    valid_infinite <- allow_infinite && length(value) == 1L &&
+      identical(as.numeric(value), Inf)
+    if (!valid_infinite &&
+        (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
+         value < 1 ||
+         abs(value - round(value)) > sqrt(.Machine$double.eps))) {
+      stop("`", name, "` must be one positive integer",
+           if (allow_infinite) " or Inf" else "", ".", call. = FALSE)
+    }
+  }
+  integer_control(top_k, "top_k", allow_infinite = TRUE)
+  integer_control(min_shared_tfs, "min_shared_tfs")
+  integer_control(max_targets_per_tf, "max_targets_per_tf")
+  if (!is.numeric(min_tf_jaccard) || length(min_tf_jaccard) != 1L ||
+      !is.finite(min_tf_jaccard) || min_tf_jaccard < 0 ||
+      min_tf_jaccard > 1) {
+    stop("`min_tf_jaccard` must be one number between zero and one.",
+         call. = FALSE)
+  }
+  if (!is.logical(include_direct_metabolic_tf) ||
+      length(include_direct_metabolic_tf) != 1L ||
+      is.na(include_direct_metabolic_tf)) {
+    stop("`include_direct_metabolic_tf` must be TRUE or FALSE.",
+         call. = FALSE)
+  }
+  answer <- .rc_build_metabolic_projection_graph(
+    tf_peak_gene = tf_peak_gene,
+    metabolic_genes = metabolic_genes,
     top_k = Inf,
     min_shared_tfs = min_shared_tfs,
     min_tf_jaccard = min_tf_jaccard,
@@ -202,7 +229,6 @@ rc_extract_pando_tf_peak_gene <- function(grn_object,
   if (!nrow(edges) || !is.data.frame(tf_peak_gene) ||
       !all(c("sample_id", "tf", "target") %in% colnames(tf_peak_gene))) {
     answer$edges <- edges
-    return(answer)
   }
   x <- tf_peak_gene
   x$sample_id <- as.character(x$sample_id)
@@ -245,23 +271,6 @@ rc_extract_pando_tf_peak_gene <- function(grn_object,
     edges$direction_and_sign_preserved[[i]] <- TRUE
   }
   answer$edges <- edges
-  answer
-}
-
-rc_project_metabolic_grn <- function(tf_peak_gene, metabolic_genes,
-                                     top_k = 5L, min_shared_tfs = 1L,
-                                     min_tf_jaccard = 0,
-                                     max_targets_per_tf = 200L,
-                                     include_direct_metabolic_tf = TRUE) {
-  answer <- .rc_project_metabolic_grn_signed_metadata(
-    tf_peak_gene = tf_peak_gene,
-    metabolic_genes = metabolic_genes,
-    top_k = top_k,
-    min_shared_tfs = min_shared_tfs,
-    min_tf_jaccard = min_tf_jaccard,
-    max_targets_per_tf = max_targets_per_tf,
-    include_direct_metabolic_tf = include_direct_metabolic_tf
-  )
   edges <- answer$edges
   nodes <- answer$nodes
   if (!nrow(edges) || !nrow(nodes)) {

@@ -90,6 +90,30 @@ test_that("sample balancing is recomputed inside every Q95 stratum", {
   expect_equal(balanced$Q$n_balancing_samples, c(2L, 2L))
 })
 
+test_that("sample balancing is recomputed after reaction-specific missingness", {
+  capacity <- matrix(
+    c(1, NA, NA, 0),
+    nrow = 1,
+    dimnames = list("R1", paste0("u", 1:4))
+  )
+  sample_ids <- stats::setNames(
+    c("S1", "S1", "S1", "S2"),
+    colnames(capacity)
+  )
+
+  balanced <- rc_q95_shrink(
+    capacity,
+    q = 0.60,
+    n0 = 0,
+    balance_ids = sample_ids
+  )
+
+  expect_equal(balanced$Q$q_global, 1)
+  expect_equal(balanced$Q$q_stratum, 1)
+  expect_equal(balanced$Q$n_effective, 2, tolerance = 1e-12)
+  expect_equal(balanced$Q$n_balancing_samples, 2L)
+})
+
 test_that("sample weights do not rescale absolute metacell activity", {
   expression <- matrix(
     c(0, 0, 0, 10),
@@ -122,6 +146,37 @@ test_that("sample weights do not rescale absolute metacell activity", {
   )))
 })
 
+test_that("sample-balanced Q95 uses hierarchical biological-sample bootstrap", {
+  unit_ids <- paste0("u", seq_len(30))
+  sample_ids <- rep(c("S1", "S2", "S3"), c(5, 10, 15))
+  capacity <- matrix(
+    seq(0.01, 0.99, length.out = length(unit_ids)),
+    nrow = 1L,
+    dimnames = list("R1", unit_ids)
+  )
+
+  set.seed(2025)
+  calibrated <- rc_q95_calibrate(
+    capacity,
+    bootstrap = TRUE,
+    B = 40L,
+    balance_ids = stats::setNames(sample_ids, unit_ids)
+  )
+
+  expect_identical(
+    calibrated$Q$q95_bootstrap_resampling,
+    "hierarchical_biological_sample_then_unit"
+  )
+  expect_true(is.finite(calibrated$Q$q95_bootstrap))
+  expect_true(is.finite(calibrated$Q$q95_ci_low))
+  expect_true(is.finite(calibrated$Q$q95_ci_high))
+  expect_error(
+    rc_q95_calibrate(capacity, bootstrap = TRUE, B = 2.5),
+    "positive integer",
+    fixed = TRUE
+  )
+})
+
 test_that("sample-celltype inference creates one unit per biological sample", {
   unit_ids <- paste0("u", 1:5)
   layer1 <- list(
@@ -133,7 +188,7 @@ test_that("sample-celltype inference creates one unit per biological sample", {
     reaction_confidence = matrix(
       c(0.2, 0.4, 0.6, 0.8, 0.5),
       nrow = 1,
-      dimnames = list("R1", unit_ids)
+      dimnames = list("R1", rev(unit_ids))
     ),
     unit_meta = data.frame(
       pool_id = unit_ids,
@@ -159,6 +214,20 @@ test_that("sample-celltype inference creates one unit per biological sample", {
     c(0.25, 0.9),
     tolerance = 1e-12
   )
+
+  incomplete <- layer1
+  incomplete$unit_meta <- incomplete$unit_meta[-1, , drop = FALSE]
+  expect_error(
+    rc_layer2_unit_matrices(
+      incomplete,
+      unit = "sample_celltype",
+      sample_col = "sample_id",
+      celltype_col = "cell_type",
+      condition_col = "condition"
+    ),
+    "does not exactly match",
+    fixed = TRUE
+  )
 })
 
 test_that("weighted gene score and Q95 retain matrix dimensions and finite bounds", {
@@ -176,7 +245,11 @@ test_that("weighted gene score and Q95 retain matrix dimensions and finite bound
 
   capacity <- rbind(R1 = c(0.1, 0.2, 1.0), R2 = c(1, 1, 1))
   colnames(capacity) <- colnames(expression)
-  calibrated <- .rc_weighted_q95_calibrate(capacity, weights)
+  calibrated <- rc_q95_calibrate(
+    capacity,
+    bootstrap = FALSE,
+    weights = weights
+  )
   expect_identical(dim(calibrated$C_rel), dim(capacity))
   expect_true(all(calibrated$C_rel <= 1, na.rm = TRUE))
   expect_true(all(calibrated$Q$sample_balanced))

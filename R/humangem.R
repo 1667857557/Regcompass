@@ -623,8 +623,6 @@ rc_replace_gem_gene_ids <- function(rule, gene_map) {
   rule
 }
 
-rc_replace_humangem_gene_ids <- rc_replace_gem_gene_ids
-
 rc_convert_yaml_to_regcompass <- function(
     model_yml,
     species = c("human", "mouse"),
@@ -768,18 +766,4 @@ rc_convert_yaml_to_regcompass <- function(
   )
   rc_validate_gem(output)
   output
-}
-
-rc_convert_humangem_yaml_to_regcompass <- function(
-    model_yml,
-    version = NA_character_,
-    commit = NA_character_,
-    checksum = NA_character_) {
-  rc_convert_yaml_to_regcompass(
-    model_yml,
-    species = "human",
-    version = version,
-    commit = commit,
-    checksum = checksum
-  )
 }

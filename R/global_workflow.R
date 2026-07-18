@@ -50,7 +50,7 @@
 
 .rc_metacell_logcpm <- function(counts, scale_factor = 1e6,
                                  library_size = NULL) {
-  counts <- methods::as(counts, "dgCMatrix")
+  counts <- .rc_as_dgCMatrix(counts)
   if (!is.numeric(scale_factor) || length(scale_factor) != 1L ||
       !is.finite(scale_factor) || scale_factor <= 0) {
     stop("`scale_factor` must be one positive finite number.", call. = FALSE)
@@ -161,33 +161,6 @@
   attr(score, "score_semantics") <-
     "sample_balanced_within_gene_relative_state"
   score
-}
-
-
-.rc_weighted_q95_calibrate <- function(
-    C_raw, weights = NULL, eps = 1e-6, n0 = 80,
-    unit_meta = NULL, stratum_col = NULL,
-    bootstrap = FALSE, B = 500, BPPARAM = NULL,
-    balance_ids = NULL) {
-  C_raw <- as.matrix(C_raw)
-  if (is.null(rownames(C_raw))) {
-    rownames(C_raw) <- paste0("reaction_", seq_len(nrow(C_raw)))
-  }
-  if (is.null(colnames(C_raw))) {
-    colnames(C_raw) <- paste0("unit_", seq_len(ncol(C_raw)))
-  }
-  rc_q95_calibrate(
-    C_raw = C_raw,
-    eps = eps,
-    bootstrap = bootstrap,
-    B = B,
-    BPPARAM = BPPARAM,
-    n0 = n0,
-    unit_meta = unit_meta,
-    stratum_col = stratum_col,
-    weights = weights,
-    balance_ids = balance_ids
-  )
 }
 
 
@@ -592,7 +565,7 @@
     tau = layer1_args$tau %||% 0.20,
     or_method = or_method
   )
-  fragment_aggregation_enabled <- !identical(fragment_files, FALSE)
+  fragment_aggregation_enabled <- .rc_fragments_requested(fragment_files)
   metacell_defaults <- list(
     object = one,
     outdir = file.path(stratum_dir, "01_metacells"),
@@ -649,7 +622,6 @@
     metacells$metacell_objects,
     fragment_manifest = metacells$fragment_manifest,
     metacell_meta = metacells$metacell_meta,
-    fragment_files = metacells$fragment_files,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     require_complete_fragments = fragment_aggregation_enabled

@@ -38,6 +38,24 @@ test_that("rc_q95_shrink uses reaction-specific finite n within strata", {
   expect_equal(out$Q$n[out$Q$reaction_id == "r2" & out$Q$stratum == "A"], 2L)
 })
 
+test_that("empty strata use zero shrinkage weight when n0 is zero", {
+  C_raw <- rbind(r1 = c(NA_real_, NA_real_, 1, 2))
+  colnames(C_raw) <- paste0("p", 1:4)
+  unit_meta <- data.frame(
+    pool_id = colnames(C_raw),
+    cell_type = c("A", "A", "B", "B")
+  )
+  out <- rc_q95_shrink(
+    C_raw,
+    unit_meta = unit_meta,
+    stratum_col = "cell_type",
+    n0 = 0
+  )
+  empty <- out$Q[out$Q$stratum == "A", ]
+  expect_equal(empty$rho_n, 0)
+  expect_equal(empty$q_value, empty$q_global)
+})
+
 
 test_that("rc_q95_shrink power classes are mutually exclusive and cover all n ranges", {
   C_raw <- rbind(

@@ -153,12 +153,9 @@ test_that("global union contains biological and local support reactions", {
 })
 
 
-test_that("fragment_files FALSE disables required fragment aggregation in stratum workflow", {
-  body_text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
-  expect_match(body_text, "fragment_aggregation_enabled <- !identical(fragment_files, FALSE)", fixed = TRUE)
-  expect_match(body_text, "require_fragment_aggregation = fragment_aggregation_enabled", fixed = TRUE)
-  expect_match(body_text, "fragment_aggregation_backend = if (isTRUE(fragment_aggregation_enabled))", fixed = TRUE)
-  expect_match(body_text, "require_complete_fragments = fragment_aggregation_enabled", fixed = TRUE)
+test_that("fragment_files FALSE disables the fragment workflow contract", {
+  expect_false(.rc_fragments_requested(FALSE))
+  expect_true(.rc_fragments_requested(NULL))
 })
 
 test_that("stratum artifact contract validates hand-off to global workflow", {

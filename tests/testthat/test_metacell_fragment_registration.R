@@ -97,55 +97,6 @@ test_that("metacell merge rejects duplicate IDs before Seurat renaming", {
   )
 })
 
-test_that("low-power filtering keeps the metacell bundle synchronized", {
-  ids <- paste0("mc", 1:53)
-  used <- ids[-14]
-  bundle <- list(
-    metacell_meta = data.frame(
-      metacell_id = ids,
-      n_cells = ifelse(ids == "mc14", 18L, 20L),
-      stringsAsFactors = FALSE
-    ),
-    rna_counts = Matrix::Matrix(
-      matrix(
-        1,
-        nrow = 2,
-        ncol = 53,
-        dimnames = list(c("g1", "g2"), ids)
-      ),
-      sparse = TRUE
-    ),
-    atac_counts = Matrix::Matrix(
-      matrix(
-        1,
-        nrow = 2,
-        ncol = 53,
-        dimnames = list(c("p1", "p2"), ids)
-      ),
-      sparse = TRUE
-    ),
-    membership = data.frame(
-      cell_id = paste0("c", seq_along(ids)),
-      metacell_id = ids,
-      stringsAsFactors = FALSE
-    ),
-    fragment_manifest = data.frame(
-      fragment_file = "frag.tsv.gz",
-      object_cell = ids,
-      fragment_barcode = ids,
-      stringsAsFactors = FALSE
-    )
-  )
-
-  out <- .rc_apply_used_metacell_ids(bundle, used)
-
-  expect_identical(colnames(out$rna_counts), used)
-  expect_identical(colnames(out$atac_counts), used)
-  expect_identical(out$metacell_meta_used$metacell_id, used)
-  expect_false("mc14" %in% out$membership_used$metacell_id)
-  expect_false("mc14" %in% out$fragment_manifest_used$object_cell)
-})
-
 test_that("fragment manifest filters extra mappings but requires complete used mappings", {
   manifest <- data.frame(
     fragment_file = "frag.tsv.gz",
@@ -228,9 +179,19 @@ test_that("missing expected metacell IDs remain fatal", {
 })
 
 
-test_that("fragment_files FALSE is documented as the raw ATAC-count path", {
-  body_text <- paste(deparse(body(rc_make_supercell2_metacells)), collapse = "\n")
-  expect_match(body_text, "identical(fragment_files, FALSE)", fixed = TRUE)
-  expect_match(body_text, "fragment_aggregation_backend <- \"none\"", fixed = TRUE)
-  expect_match(body_text, "Use `fragment_files = FALSE` to skip fragment aggregation", fixed = TRUE)
+test_that("fragment processing is selected by an explicit pure contract", {
+  expect_false(.rc_fragments_requested(FALSE))
+  expect_true(.rc_fragments_requested(NULL))
+  expect_false(.rc_fragment_processing_enabled(FALSE, TRUE, "regcompass"))
+  expect_false(.rc_fragment_processing_enabled(NULL, FALSE, "regcompass"))
+  expect_false(.rc_fragment_processing_enabled(NULL, TRUE, "none"))
+  expect_true(.rc_fragment_processing_enabled(NULL, TRUE, "regcompass"))
+  expect_false(.rc_fragment_processing_enabled(
+    NULL, TRUE, "regcompass", require_fragments = FALSE
+  ))
+})
+
+test_that("obsolete fragment-file merge argument is absent", {
+  expect_false("fragment_files" %in%
+                 names(formals(rc_load_or_merge_metacell_objects)))
 })

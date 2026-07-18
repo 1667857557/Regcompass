@@ -119,18 +119,41 @@ rc_q95_shrink <- function(
   } else {
     "equal_unit"
   }
-  quantile_one <- function(values, selected_weights) {
-    .rc_q95_weighted_quantile(values, selected_weights, probs = q)
+  reaction_weights <- function(values, selected_weights,
+                               selected_balance_ids = NULL) {
+    observed <- is.finite(values)
+    if (!any(observed)) return(numeric())
+    if (!is.null(selected_balance_ids)) {
+      return(.rc_equal_sample_weights(selected_balance_ids[observed]))
+    }
+    selected_weights[observed] / sum(selected_weights[observed])
+  }
+  quantile_one <- function(values, selected_weights,
+                           selected_balance_ids = NULL) {
+    observed <- is.finite(values)
+    if (!any(observed)) return(NA_real_)
+    .rc_q95_weighted_quantile(
+      values[observed],
+      reaction_weights(
+        values, selected_weights, selected_balance_ids
+      ),
+      probs = q
+    )
+  }
+  effective_n_one <- function(values, selected_weights,
+                              selected_balance_ids = NULL) {
+    selected <- reaction_weights(
+      values, selected_weights, selected_balance_ids
+    )
+    if (!length(selected)) return(0)
+    sum(selected)^2 / sum(selected^2)
   }
   global_q <- vapply(seq_len(nrow(C_raw)), function(i) {
-    quantile_one(C_raw[i, ], weights)
+    quantile_one(C_raw[i, ], weights, balance_ids)
   }, numeric(1))
   global_n <- rowSums(is.finite(C_raw))
   global_n_effective <- vapply(seq_len(nrow(C_raw)), function(i) {
-    observed <- is.finite(C_raw[i, ])
-    selected <- weights[observed]
-    if (!length(selected)) return(0)
-    sum(selected)^2 / sum(selected^2)
+    effective_n_one(C_raw[i, ], weights, balance_ids)
   }, numeric(1))
 
   if (!is.null(stratum_col)) {
@@ -174,15 +197,32 @@ rc_q95_shrink <- function(
     )
     n <- rowSums(is.finite(C_raw[, columns, drop = FALSE]))
     n_effective <- vapply(seq_len(nrow(C_raw)), function(i) {
-      observed <- is.finite(C_raw[i, columns])
-      selected <- stratum_weights[observed]
-      if (!length(selected)) return(0)
-      sum(selected)^2 / sum(selected^2)
+      effective_n_one(
+        C_raw[i, columns],
+        stratum_weights,
+        if (is.null(balance_ids)) NULL else balance_ids[columns]
+      )
     }, numeric(1))
-    rho <- n_effective / (n_effective + n0)
+    rho <- numeric(length(n_effective))
+    observed_reaction <- n_effective > 0
+    rho[observed_reaction] <-
+      n_effective[observed_reaction] /
+      (n_effective[observed_reaction] + n0)
     q_stratum <- vapply(seq_len(nrow(C_raw)), function(i) {
-      quantile_one(C_raw[i, columns], stratum_weights)
+      quantile_one(
+        C_raw[i, columns],
+        stratum_weights,
+        if (is.null(balance_ids)) NULL else balance_ids[columns]
+      )
     }, numeric(1))
+    n_balancing_samples <- if (is.null(balance_ids)) {
+      rep(NA_integer_, nrow(C_raw))
+    } else {
+      vapply(seq_len(nrow(C_raw)), function(i) {
+        observed <- is.finite(C_raw[i, columns])
+        length(unique(balance_ids[columns][observed]))
+      }, integer(1))
+    }
     q_used <- ifelse(is.finite(q_stratum), q_stratum, global_q)
     q_shrink <- rho * q_used + (1 - rho) * global_q
     relative[, columns] <- sweep(
@@ -205,11 +245,7 @@ rc_q95_shrink <- function(
       q_value = as.numeric(q_shrink),
       sample_balanced = sample_balanced,
       balance_scope = balance_scope,
-      n_balancing_samples = if (is.null(balance_ids)) {
-        NA_integer_
-      } else {
-        length(unique(balance_ids[columns]))
-      },
+      n_balancing_samples = n_balancing_samples,
       stringsAsFactors = FALSE
     )
     index <- index + 1L
@@ -249,23 +285,83 @@ rc_q95_shrink <- function(
   )
 }
 
-.rc_q95_bootstrap_one <- function(x, weights, B = 500, q = 0.95) {
+.rc_q95_bootstrap_one <- function(
+    x, weights, B = 500, q = 0.95, balance_ids = NULL) {
+  if (length(weights) != length(x)) {
+    stop("`weights` must have the same length as `x`.", call. = FALSE)
+  }
+  if (!is.numeric(B) || length(B) != 1L || !is.finite(B) || B < 1 ||
+      abs(B - round(B)) > sqrt(.Machine$double.eps)) {
+    stop("`B` must be one positive integer.", call. = FALSE)
+  }
+  if (!is.numeric(q) || length(q) != 1L || !is.finite(q) ||
+      q <= 0 || q >= 1) {
+    stop("`q` must be one number strictly between zero and one.", call. = FALSE)
+  }
+  if (!is.null(balance_ids) && length(balance_ids) != length(x)) {
+    stop("`balance_ids` must have the same length as `x`.", call. = FALSE)
+  }
   keep <- is.finite(x) & is.finite(weights) & weights > 0
   x <- as.numeric(x[keep])
   weights <- as.numeric(weights[keep])
+  if (!is.null(balance_ids)) {
+    balance_ids <- trimws(as.character(balance_ids[keep]))
+    if (length(balance_ids) != length(x) || anyNA(balance_ids) ||
+        any(!nzchar(balance_ids))) {
+      stop(
+        "`balance_ids` must identify every finite bootstrap observation.",
+        call. = FALSE
+      )
+    }
+    # Missing reaction evidence can differ by sample. Rebalance after the
+    # finite-observation filter so every represented biological sample retains
+    # equal total mass for this reaction.
+    weights <- .rc_equal_sample_weights(balance_ids)
+  }
   if (length(x) < 20L) {
     return(c(q95 = NA_real_, ci_low = NA_real_, ci_high = NA_real_, width = NA_real_))
   }
-  probabilities <- weights / sum(weights)
-  estimates <- replicate(B, {
-    sampled <- sample.int(length(x), size = length(x), replace = TRUE,
-                          prob = probabilities)
-    .rc_q95_weighted_quantile(
-      x[sampled],
-      rep(1, length(sampled)),
-      probs = q
-    )
-  })
+  if (is.null(balance_ids)) {
+    probabilities <- weights / sum(weights)
+    estimates <- replicate(B, {
+      sampled <- sample.int(
+        length(x), size = length(x), replace = TRUE,
+        prob = probabilities
+      )
+      .rc_q95_weighted_quantile(
+        x[sampled],
+        rep(1, length(sampled)),
+        probs = q
+      )
+    })
+  } else {
+    samples <- unique(balance_ids)
+    if (length(samples) < 2L) {
+      return(c(q95 = NA_real_, ci_low = NA_real_, ci_high = NA_real_, width = NA_real_))
+    }
+    rows_by_sample <- split(seq_along(x), balance_ids)
+    estimates <- replicate(B, {
+      sampled_samples <- sample(
+        samples, size = length(samples), replace = TRUE
+      )
+      sampled_rows <- unlist(lapply(sampled_samples, function(sample_id) {
+        rows <- rows_by_sample[[sample_id]]
+        sample(rows, size = length(rows), replace = TRUE)
+      }), use.names = FALSE)
+      # Repeated draws of one biological sample are separate bootstrap
+      # clusters. This preserves equal total mass per sampled cluster even
+      # when the original samples contain different numbers of metacells.
+      bootstrap_clusters <- rep(
+        seq_along(sampled_samples),
+        lengths(rows_by_sample[sampled_samples])
+      )
+      .rc_q95_weighted_quantile(
+        x[sampled_rows],
+        .rc_equal_sample_weights(bootstrap_clusters),
+        probs = q
+      )
+    })
+  }
   interval <- stats::quantile(
     estimates,
     c(0.025, 0.975),
@@ -315,8 +411,9 @@ rc_q95_calibrate <- function(
     stop("`bootstrap` must be TRUE or FALSE.", call. = FALSE)
   }
   if (isTRUE(bootstrap) &&
-      (!is.numeric(B) || length(B) != 1L || !is.finite(B) || B < 1)) {
-    stop("`B` must be one positive finite number.", call. = FALSE)
+      (!is.numeric(B) || length(B) != 1L || !is.finite(B) || B < 1 ||
+       abs(B - round(B)) > sqrt(.Machine$double.eps))) {
+    stop("`B` must be one positive integer.", call. = FALSE)
   }
   diagnostic <- rc_q95_shrink(
     C_raw,
@@ -390,7 +487,12 @@ rc_q95_calibrate <- function(
         C_raw[reaction, columns],
         bootstrap_weights,
         B = as.integer(B),
-        q = 0.95
+        q = 0.95,
+        balance_ids = if (is.null(diagnostic$balance_ids)) {
+          NULL
+        } else {
+          diagnostic$balance_ids[columns]
+        }
       )
     })
     boot <- do.call(rbind, bootstrap_rows)
@@ -400,6 +502,11 @@ rc_q95_calibrate <- function(
     Q$q95_ci_width <- boot[, "width"]
     Q$q95_unstable_flag <- is.finite(Q$q95_ci_width) &
       (Q$q95_ci_width / pmax(Q$q_value, eps)) > 0.5
+    Q$q95_bootstrap_resampling <- if (is.null(diagnostic$balance_ids)) {
+      "weighted_unit"
+    } else {
+      "hierarchical_biological_sample_then_unit"
+    }
   }
   list(
     C_rel = absolute,
@@ -718,19 +825,4 @@ rc_safe_quantile <- function(x, probs) {
   x <- x[is.finite(x)]
   if (length(x) == 0L) return(NA_real_)
   stats::quantile(x, probs = probs, na.rm = TRUE, names = FALSE)
-}
-
-rc_q95_bootstrap_diagnostics <- function(C_raw, Q, unit_meta = NULL, stratum_col = NULL, B = 500, BPPARAM = NULL) {
-  C_raw <- as.matrix(C_raw)
-  strata <- if (!is.null(stratum_col)) {
-    unit_meta <- unit_meta[match(colnames(C_raw), unit_meta$pool_id), , drop = FALSE]
-    as.character(unit_meta[[stratum_col]])
-  } else rep("global", ncol(C_raw))
-  rows <- seq_len(nrow(Q))
-  boot <- rc_parallel_lapply(rows, function(i) {
-    rid <- Q$reaction_id[[i]]; st <- Q$stratum[[i]]
-    cols <- which(strata == st)
-    rc_q95_bootstrap(C_raw[rid, cols], B = B)
-  }, BPPARAM = BPPARAM)
-  do.call(rbind, boot)
 }

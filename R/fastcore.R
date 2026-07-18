@@ -231,7 +231,11 @@
 }
 
 # FASTCORE LP-10. Following Vlassis et al., the core constraint and all flux
-# bounds are scaled by 1e5; support is extracted using the original epsilon.
+# bounds are scaled for numerical stability. Returned fluxes and the objective
+# are converted back to the original GEM units. Support is the numerical
+# non-zero support of the LP solution; it must not be thresholded at the core
+# epsilon because stoichiometric coefficients can require a supporting flux
+# smaller than the active-core flux.
 .rc_fastcore_lp10 <- function(S, lb, ub, active_core,
                               penalized_reactions,
                               epsilon, solver, time_limit,
@@ -337,17 +341,25 @@
       new_support = character(), objective = NA_real_
     ))
   }
-  flux <- answer$solution[seq_len(n_reactions)]
+  scaled_flux <- answer$solution[seq_len(n_reactions)]
+  flux <- scaled_flux / scaling_factor
   names(flux) <- colnames(S)
+  scaled_auxiliary <- if (n_penalized) {
+    answer$solution[n_reactions + seq_len(n_penalized)]
+  } else {
+    numeric()
+  }
+  support_tolerance_scaled <- max(1e-7, scaled_epsilon * 1e-9)
   new_support <- penalized_reactions[
-    abs(flux[penalized_reactions]) >= epsilon * (1 - 1e-7)
+    scaled_auxiliary > support_tolerance_scaled
   ]
   list(
     status = answer$status,
     flux = flux,
     new_support = new_support,
-    objective = answer$objective,
-    scaling_factor = scaling_factor
+    objective = answer$objective / scaling_factor,
+    scaling_factor = scaling_factor,
+    support_tolerance = support_tolerance_scaled / scaling_factor
   )
 }
 

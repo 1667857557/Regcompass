@@ -235,14 +235,27 @@ rc_compass_vmax_directional <- function(S, lb, ub, target_reaction,
                                         flux_threshold = 1e-8) {
   direction <- match.arg(direction)
   solver <- match.arg(solver)
+  S <- .rc_as_dgCMatrix(S)
   reactions <- colnames(S)
-  if (is.null(reactions) || !target_reaction %in% reactions) {
+  if (is.null(reactions) || anyNA(reactions) || any(!nzchar(reactions)) ||
+      anyDuplicated(reactions)) {
+    stop("`S` must have unique non-empty reaction IDs in colnames().",
+         call. = FALSE)
+  }
+  if (!target_reaction %in% reactions) {
     stop("`target_reaction` is missing from the stoichiometric matrix.",
          call. = FALSE)
   }
-  lb <- as.numeric(lb[reactions])
-  ub <- as.numeric(ub[reactions])
-  names(lb) <- names(ub) <- reactions
+  if (!is.numeric(flux_threshold) || length(flux_threshold) != 1L ||
+      !is.finite(flux_threshold) || flux_threshold <= 0) {
+    stop("`flux_threshold` must be one positive finite number.",
+         call. = FALSE)
+  }
+  lb <- rc_align_bound(lb, reactions, default = -1000, name = "lb")
+  ub <- rc_align_bound(ub, reactions, default = 1000, name = "ub")
+  if (any(lb > ub)) {
+    stop("Reaction lower bounds cannot exceed upper bounds.", call. = FALSE)
+  }
   target_index <- match(target_reaction, reactions)
 
   allowed <- if (identical(direction, "forward")) {
@@ -312,13 +325,20 @@ rc_compass_two_step_lp_directional <- function(
   }
 
   reactions <- colnames(S)
-  if (is.null(reactions) || !target_reaction %in% reactions) {
+  if (is.null(reactions) || anyNA(reactions) || any(!nzchar(reactions)) ||
+      anyDuplicated(reactions)) {
+    stop("`S` must have unique non-empty reaction IDs in colnames().",
+         call. = FALSE)
+  }
+  if (!target_reaction %in% reactions) {
     stop("`target_reaction` is missing from the stoichiometric matrix.",
          call. = FALSE)
   }
-  lb <- as.numeric(lb[reactions])
-  ub <- as.numeric(ub[reactions])
-  names(lb) <- names(ub) <- reactions
+  lb <- rc_align_bound(lb, reactions, default = -1000, name = "lb")
+  ub <- rc_align_bound(ub, reactions, default = 1000, name = "ub")
+  if (any(lb > ub)) {
+    stop("Reaction lower bounds cannot exceed upper bounds.", call. = FALSE)
+  }
 
   if (!is.null(names(penalties))) {
     missing_penalties <- setdiff(reactions, names(penalties))
@@ -514,22 +534,5 @@ rc_build_abs_penalty_lp <- function(S, lb, ub, penalties, target_index,
     lb = c(lb, rep(0, n)),
     ub = c(ub, absolute_upper),
     n_flux_variables = n
-  )
-}
-
-rc_compass_two_step_lp <- function(S, lb, ub, target_reaction, penalties,
-                                   omega = 0.95, solver = "highs",
-                                   time_limit = 60, tol_vmax = 1e-8) {
-  rc_compass_two_step_lp_directional(
-    S = S,
-    lb = lb,
-    ub = ub,
-    target_reaction = target_reaction,
-    penalties = penalties,
-    target_direction = "forward",
-    omega = omega,
-    solver = solver,
-    time_limit = time_limit,
-    flux_threshold = tol_vmax
   )
 }
