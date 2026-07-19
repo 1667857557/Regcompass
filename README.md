@@ -4,11 +4,14 @@ RegCompassR 1.7.0 provides one canonical RNA+ATAC workflow:
 
 ```text
 condition × cell type cells pooled across biological samples
-→ SuperCell2 condition-level metacells
-→ condition × cell type Pando GRNs
-→ condition-specific GRN meta-modules and local FASTCORE completion
+→ SuperCell2 condition-level metacells with sample composition retained
+→ one Pando GRN per condition × cell type
+→ complete-GPR core reactions
+→ subsystem + KEGG/Reactome + master-Rhea expansion
+→ one bounded metabolite-neighbour hop
+→ local FASTCORE feasibility completion
 → one shared union-GEM and one shared extracellular medium
-→ TF–ATAC regulation integrated into gene support before GPR aggregation
+→ Pando-coefficient-weighted ATAC regulation integrated into RNA support
 → directional COMPASS-like minimum-penalty scoring
 → descriptive comparison between conditions
 ```
@@ -79,11 +82,16 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The canonical v1.7.0 workflow requires `fragment_files = FALSE` and aggregates
-the existing ATAC peak-count assay. Cells from all biological samples in the
-same condition and cell type are supplied together to SuperCell2. Consequently,
-a pooled metacell does not retain one biological-sample identity and the
-canonical inference unit is the metacell.
+The v1.7.0 canonical path requires `fragment_files = FALSE` and aggregates the
+existing ATAC peak-count assay. Each biological sample must map to one condition.
+With `strict_biological_defaults = TRUE`, each condition must contain at least
+two biological samples. Cells are pooled by condition and cell type before
+SuperCell2, but original sample membership is retained in
+`result$metacells$sample_composition` and the corresponding output tables.
+
+Condition-pooled metacells are descriptive pseudo-observations, not independent
+biological replicates. The package does not perform biological-sample-level
+significance testing on those metacells.
 
 ## Core multiome calculation
 
@@ -93,10 +101,11 @@ RNA is converted to zero-preserving bounded gene support:
 C^{RNA}_{g,u}=\frac{x_{g,u}}{x_{g,u}+h}.
 \]
 
-Pando coefficients determine the sign and relative weight of TF–peak–gene
-regulation. Peak accessibility and TF abundance are multiplied, centered and
-scaled across all conditions within the same cell type, and aggregated to a bounded
-regulatory modifier \(R_{g,u}\in[-1,1]\).
+Pando coefficients are learned from RNA+ATAC within each condition and cell
+type. For per-metacell scoring, coefficient sign and magnitude weight robustly
+standardized **peak accessibility only**. Metacell TF RNA is not multiplied into
+the regulatory state, so target-gene RNA enters direct metacell support once.
+The resulting modifier is bounded as \(R_{g,u}\in[-1,1]\).
 
 The regulatory modifier changes RNA support on the support log-odds scale:
 
@@ -106,8 +115,11 @@ C^{MO}_{g,u}=
 {1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{\alpha R_{g,u}}}.
 \]
 
-This preserves zero RNA support, keeps all values in `[0,1]`, increases support
-under positive regulation and decreases it under negative regulation.
+This preserves zero RNA support, keeps values in `[0,1]`, increases support under
+positive regulation and decreases it under negative regulation. Because the
+Pando coefficients are fitted on the same pooled dataset, they are learned
+parameters rather than independent validation evidence; external fitting or
+cross-fitting is required for a fully independent regulatory layer.
 
 Protein complexes use the normalized Boltzmann soft-min AND rule with
 `tau = 0.20`:
@@ -117,31 +129,35 @@ C_{complex}=-\tau\log\left(\frac{1}{n}\sum_{i=1}^{n}
 \exp\left[-C_i/\tau\right]\right).
 \]
 
-This aggregation is monotone in every required subunit, equals the common value
-when all subunits are equal, and approaches the hard minimum as `tau` decreases.
-Isozymes are added and no gene-promiscuity weighting is applied. The resulting
-multiome reaction expression is converted to one COMPASS-like cost:
+Isozymes are added and no gene-promiscuity weighting is applied. Reaction
+expression is converted to one COMPASS-like cost:
 
 \[
 p_{r,u}=\frac{1}{1+\log_2(1+E^{MO}_{r,u})}.
 \]
 
-Pando is therefore not added as an independent reaction-level penalty.
+There is no independent Pando reaction-confidence penalty, Q95 calibration,
+confidence-alignment matrix, or `penalty_weights` term in the canonical model.
 
-## Structural model and comparison
+## Structural model and LP
 
-Each condition-specific GRN meta-module is completed locally with FASTCORE.
-Completed modules from all conditions are deduplicated into one union-GEM. All
-conditions use the same stoichiometric matrix, bounds, extracellular medium,
-target reactions and target-flux fraction.
+A reaction is core only when at least one complete GPR isozyme group is present.
+The biological module is expanded by core subsystem, shared KEGG/Reactome
+reaction IDs, shared master Rhea IDs, and one bounded non-structural metabolite
+neighbour hop. Local FASTCORE then adds only reactions required for feasibility.
+
+All conditions use the same union-GEM, stoichiometric matrix, bounds, medium,
+target reactions and target-flux fraction. For each target direction, the solver
+first obtains maximum feasible target flux, then constrains the target to at
+least `omega × vmax` and minimizes the network-wide weighted absolute flux.
 
 Primary outputs are:
 
-- `result$layer1`: RNA support, TF–ATAC modifier, multiome gene support and reaction expression;
-- `result$grn_meta_modules`: condition-specific modules and the shared union-GEM membership;
-- `result$microcompass`: raw minimum penalties and directional target diagnostics;
-- `result$condition_summary`: per-cell-type, per-condition median reaction penalties and support scores;
-- `result$condition_contrast`: two-condition relative support differences within each cell type.
+- `result$metacells`: pooled metacells, membership and biological-sample composition;
+- `result$layer1`: RNA support, ATAC-derived modifier, multiome gene support and `reaction_expression`;
+- `result$grn_meta_modules`: biological membership, local FASTCORE completion and shared union-GEM membership;
+- `result$microcompass`: raw minimum penalties, feasibility and directional target diagnostics;
+- `result$condition_summary` and `result$condition_contrast`: descriptive within-cell-type condition comparisons.
 
 For the exact architecture and equations, see
 [`docs/v1.7.0-condition-pooled-architecture.md`](docs/v1.7.0-condition-pooled-architecture.md).
