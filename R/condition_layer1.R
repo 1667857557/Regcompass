@@ -143,11 +143,13 @@
 }
 
 .rc_condition_penalty_comparison <- function(
-    microcompass, condition_col = "condition", eps = 1e-8) {
+    microcompass, condition_col = "condition", celltype_col = "cell_type",
+    eps = 1e-8) {
   penalty <- as.matrix(microcompass$penalty)
   meta <- microcompass$unit_meta
-  if (!is.data.frame(meta) || !condition_col %in% colnames(meta)) {
-    stop("microCOMPASS unit metadata lack the condition column.", call. = FALSE)
+  required <- c(condition_col, celltype_col)
+  if (!is.data.frame(meta) || !all(required %in% colnames(meta))) {
+    stop("microCOMPASS unit metadata lack condition/cell-type columns.", call. = FALSE)
   }
   unit_id <- if ("unit_id" %in% colnames(meta)) {
     as.character(meta$unit_id)
@@ -157,13 +159,20 @@
     stop("microCOMPASS unit metadata lack unit_id/pool_id.", call. = FALSE)
   }
   meta <- meta[match(colnames(penalty), unit_id), , drop = FALSE]
-  conditions <- unique(as.character(meta[[condition_col]]))
-  summary_rows <- lapply(conditions, function(condition) {
-    keep <- as.character(meta[[condition_col]]) == condition
+  if (anyNA(meta[[condition_col]]) || anyNA(meta[[celltype_col]])) {
+    stop("microCOMPASS condition/cell-type metadata are incomplete.", call. = FALSE)
+  }
+  strata <- unique(meta[, c(condition_col, celltype_col), drop = FALSE])
+  summary_rows <- lapply(seq_len(nrow(strata)), function(i) {
+    condition <- as.character(strata[[condition_col]][[i]])
+    celltype <- as.character(strata[[celltype_col]][[i]])
+    keep <- as.character(meta[[condition_col]]) == condition &
+      as.character(meta[[celltype_col]]) == celltype
     med <- matrixStats::rowMedians(penalty[, keep, drop = FALSE], na.rm = TRUE)
     data.frame(
       row_id = rownames(penalty),
       condition = condition,
+      cell_type = celltype,
       median_penalty = med,
       support_score = -log(med + eps),
       n_metacells = sum(keep),
@@ -171,12 +180,16 @@
     )
   })
   summary <- do.call(rbind, summary_rows)
-  contrast <- data.frame()
-  if (length(conditions) == 2L) {
-    a <- summary[summary$condition == conditions[[1L]], , drop = FALSE]
-    b <- summary[summary$condition == conditions[[2L]], , drop = FALSE]
-    contrast <- data.frame(
+  contrast_rows <- lapply(unique(summary$cell_type), function(celltype) {
+    one <- summary[summary$cell_type == celltype, , drop = FALSE]
+    conditions <- unique(one$condition)
+    if (length(conditions) != 2L) return(NULL)
+    a <- one[one$condition == conditions[[1L]], , drop = FALSE]
+    b <- one[one$condition == conditions[[2L]], , drop = FALSE]
+    b <- b[match(a$row_id, b$row_id), , drop = FALSE]
+    data.frame(
       row_id = a$row_id,
+      cell_type = celltype,
       condition_a = conditions[[1L]],
       condition_b = conditions[[2L]],
       median_penalty_a = a$median_penalty,
@@ -189,6 +202,8 @@
       ),
       stringsAsFactors = FALSE
     )
-  }
+  })
+  contrast_rows <- contrast_rows[!vapply(contrast_rows, is.null, logical(1))]
+  contrast <- if (length(contrast_rows)) do.call(rbind, contrast_rows) else data.frame()
   list(summary = summary, contrast = contrast)
 }
