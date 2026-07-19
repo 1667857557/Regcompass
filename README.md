@@ -95,8 +95,8 @@ C^{RNA}_{g,u}=\frac{x_{g,u}}{x_{g,u}+h}.
 
 Pando coefficients determine the sign and relative weight of TF–peak–gene
 regulation. Peak accessibility and TF abundance are multiplied, centered and
-scaled across all pooled metacells, and aggregated to a bounded regulatory
-modifier \(R_{g,u}\in[-1,1]\).
+scaled across all conditions within the same cell type, and aggregated to a bounded
+regulatory modifier \(R_{g,u}\in[-1,1]\).
 
 The regulatory modifier changes RNA support on the support log-odds scale:
 
@@ -131,8 +131,8 @@ Primary outputs are:
 - `result$layer1`: RNA support, TF–ATAC modifier, multiome gene support and reaction expression;
 - `result$grn_meta_modules`: condition-specific modules and the shared union-GEM membership;
 - `result$microcompass`: raw minimum penalties and directional target diagnostics;
-- `result$condition_summary`: per-condition median reaction penalties and support scores;
-- `result$condition_contrast`: two-condition relative support differences when exactly two conditions are present.
+- `result$condition_summary`: per-cell-type, per-condition median reaction penalties and support scores;
+- `result$condition_contrast`: two-condition relative support differences within each cell type.
 
 For the exact architecture and equations, see
 [`docs/v1.7.0-condition-pooled-architecture.md`](docs/v1.7.0-condition-pooled-architecture.md).
