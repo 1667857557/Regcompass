@@ -13,6 +13,154 @@
   cols
 }
 
+.rc_condition_pool_design_summary <- function(
+    meta, sample_col, condition_col, celltype_col,
+    strict_biological_defaults = TRUE) {
+  required <- c(sample_col, condition_col, celltype_col)
+  missing <- setdiff(required, colnames(meta))
+  if (length(missing)) {
+    stop("Missing metadata columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  }
+  bad <- vapply(meta[, required, drop = FALSE], function(value) {
+    value <- trimws(as.character(value))
+    anyNA(value) || any(!nzchar(value))
+  }, logical(1))
+  if (any(bad)) {
+    stop("Condition-pooled metadata contain missing or empty values: ",
+         paste(required[bad], collapse = ", "), call. = FALSE)
+  }
+
+  sample_condition <- unique(meta[, c(sample_col, condition_col), drop = FALSE])
+  sample_condition_count <- table(as.character(sample_condition[[sample_col]]))
+  mixed_condition_samples <- names(sample_condition_count)[sample_condition_count > 1L]
+  if (length(mixed_condition_samples)) {
+    stop(
+      "Each biological sample must map to exactly one condition. Conflicting samples: ",
+      paste(utils::head(mixed_condition_samples, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
+
+  condition_sample <- stats::aggregate(
+    as.character(meta[[sample_col]]),
+    by = list(condition = as.character(meta[[condition_col]])),
+    FUN = function(x) length(unique(x))
+  )
+  colnames(condition_sample) <- c(condition_col, "n_biological_samples")
+  condition_celltype_sample <- stats::aggregate(
+    as.character(meta[[sample_col]]),
+    by = list(
+      condition = as.character(meta[[condition_col]]),
+      cell_type = as.character(meta[[celltype_col]])
+    ),
+    FUN = function(x) length(unique(x))
+  )
+  colnames(condition_celltype_sample) <- c(
+    condition_col, celltype_col, "n_biological_samples"
+  )
+
+  low_condition <- condition_sample$n_biological_samples < 2L
+  if (any(low_condition)) {
+    message <- paste0(
+      "Condition-pooled analysis requires at least two biological samples per ",
+      "condition for a biologically replicated design. Insufficient conditions: ",
+      paste(
+        paste0(
+          condition_sample[[condition_col]][low_condition], " (n=",
+          condition_sample$n_biological_samples[low_condition], ")"
+        ),
+        collapse = "; "
+      )
+    )
+    if (isTRUE(strict_biological_defaults)) stop(message, call. = FALSE)
+    warning(message, call. = FALSE)
+  }
+
+  list(
+    condition_sample_count = condition_sample,
+    condition_celltype_sample_count = condition_celltype_sample,
+    sample_condition_map = sample_condition,
+    low_replication_strata = condition_celltype_sample[
+      condition_celltype_sample$n_biological_samples < 2L,
+      , drop = FALSE
+    ],
+    inference_policy = paste(
+      "biological samples are pooled before metacell construction; metacells are",
+      "descriptive units and are not independent biological replicates"
+    )
+  )
+}
+
+.rc_condition_pool_composition <- function(
+    object, membership, sample_col, condition_col, celltype_col) {
+  if (!is.data.frame(membership) ||
+      !all(c("cell_id", "metacell_id") %in% colnames(membership))) {
+    stop("Condition-pooled metacells require cell-to-metacell membership.", call. = FALSE)
+  }
+  cell_id <- as.character(membership$cell_id)
+  meta_index <- match(cell_id, rownames(object@meta.data))
+  if (anyNA(meta_index)) {
+    stop("Metacell membership contains cells missing from the input object.", call. = FALSE)
+  }
+
+  membership$biological_sample_id <- as.character(
+    object@meta.data[[sample_col]][meta_index]
+  )
+  membership$condition <- as.character(
+    object@meta.data[[condition_col]][meta_index]
+  )
+  membership$cell_type <- as.character(
+    object@meta.data[[celltype_col]][meta_index]
+  )
+  if (anyNA(membership$biological_sample_id) ||
+      any(!nzchar(trimws(membership$biological_sample_id)))) {
+    stop("Biological sample IDs are incomplete in metacell membership.", call. = FALSE)
+  }
+
+  composition <- stats::aggregate(
+    rep.int(1L, nrow(membership)),
+    by = list(
+      metacell_id = as.character(membership$metacell_id),
+      biological_sample_id = membership$biological_sample_id,
+      condition = membership$condition,
+      cell_type = membership$cell_type
+    ),
+    FUN = sum
+  )
+  colnames(composition)[[5L]] <- "n_cells"
+  totals <- stats::aggregate(
+    composition$n_cells,
+    by = list(metacell_id = composition$metacell_id),
+    FUN = sum
+  )
+  colnames(totals)[[2L]] <- "n_cells_total"
+  composition$n_cells_total <- totals$n_cells_total[
+    match(composition$metacell_id, totals$metacell_id)
+  ]
+  composition$sample_fraction <- composition$n_cells / composition$n_cells_total
+
+  split_rows <- split(seq_len(nrow(composition)), composition$metacell_id)
+  summary <- do.call(rbind, lapply(names(split_rows), function(id) {
+    z <- composition[split_rows[[id]], , drop = FALSE]
+    data.frame(
+      metacell_id = id,
+      n_biological_samples = length(unique(z$biological_sample_id)),
+      dominant_sample_fraction = max(z$sample_fraction),
+      effective_sample_n = 1 / sum(z$sample_fraction^2),
+      samples_mixed_within_condition =
+        length(unique(z$biological_sample_id)) > 1L,
+      stringsAsFactors = FALSE
+    )
+  }))
+  rownames(composition) <- NULL
+  rownames(summary) <- NULL
+  list(
+    membership = membership,
+    sample_composition = composition,
+    metacell_summary = summary
+  )
+}
+
 .rc_make_condition_pooled_metacells <- function(
     object, outdir,
     sample_col = "sample_id",
@@ -21,18 +169,26 @@
     rna_assay = "RNA",
     atac_assay = "ATAC",
     fragment_files = FALSE,
-    metacell_args = list()) {
+    metacell_args = list(),
+    strict_biological_defaults = TRUE) {
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
   }
-  required <- c(sample_col, condition_col, celltype_col)
-  missing <- setdiff(required, colnames(object@meta.data))
-  if (length(missing)) {
-    stop("Missing metadata columns: ", paste(missing, collapse = ", "), call. = FALSE)
+  if (!is.logical(strict_biological_defaults) ||
+      length(strict_biological_defaults) != 1L ||
+      is.na(strict_biological_defaults)) {
+    stop("`strict_biological_defaults` must be TRUE or FALSE.", call. = FALSE)
   }
+  design <- .rc_condition_pool_design_summary(
+    object@meta.data,
+    sample_col = sample_col,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    strict_biological_defaults = strict_biological_defaults
+  )
   if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
     stop(
       paste(
@@ -95,12 +251,49 @@
   if (!all(c(condition_col, celltype_col) %in% colnames(meta))) {
     stop("Condition-pooled metacell metadata are incomplete.", call. = FALSE)
   }
+  composition <- .rc_condition_pool_composition(
+    object = object,
+    membership = pooled$membership,
+    sample_col = sample_col,
+    condition_col = condition_col,
+    celltype_col = celltype_col
+  )
+  composition_index <- match(
+    as.character(meta$metacell_id),
+    as.character(composition$metacell_summary$metacell_id)
+  )
+  if (anyNA(composition_index)) {
+    stop("Sample-composition diagnostics are incomplete for pooled metacells.", call. = FALSE)
+  }
+  summary_cols <- setdiff(
+    colnames(composition$metacell_summary),
+    "metacell_id"
+  )
+  for (column in summary_cols) {
+    meta[[column]] <- composition$metacell_summary[[column]][composition_index]
+  }
   meta[[sample_col]] <- paste0(as.character(meta[[condition_col]]), "__pooled")
+  meta$pooled_sample_id <- meta[[sample_col]]
   meta$pooling_scope <- "condition_x_celltype"
-  meta$samples_mixed_within_condition <- TRUE
+  meta$sample_weighting <- "cell_count_weighted"
+  meta$biological_sample_identity <- "mixed_membership_available"
+
   pooled$metacell_meta <- meta
+  pooled$membership <- composition$membership
+  pooled$sample_composition <- composition$sample_composition
+  pooled$sample_composition_summary <- composition$metacell_summary
+  pooled$input_design <- design
   pooled$pooling_scope <- "condition_x_celltype"
+  pooled$sample_weighting <- "cell_count_weighted"
   pooled$pooled_sample_column <- pool_col
+  .rc_write_tsv_gz(
+    pooled$sample_composition,
+    file.path(outdir, "metacell_sample_composition.tsv.gz")
+  )
+  .rc_write_tsv_gz(
+    pooled$sample_composition_summary,
+    file.path(outdir, "metacell_sample_composition_summary.tsv.gz")
+  )
   pooled
 }
 
@@ -123,7 +316,7 @@
     metacell_object, gem, outdir, pfm, genome,
     condition_col = "condition", celltype_col = "cell_type",
     rna_assay = "RNA", atac_assay = "ATAC",
-    pando_args = list(), layer1_args = list()) {
+    pando_args = list(), layer1_args = list(), BPPARAM = FALSE) {
   if (!is.list(pando_args) || !is.list(layer1_args)) {
     stop("`pando_args` and `layer1_args` must be lists.", call. = FALSE)
   }
@@ -155,7 +348,7 @@
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     save_sample_metacell_objects = TRUE,
-    BPPARAM = FALSE,
+    BPPARAM = BPPARAM,
     on_sample_error = "stop"
   )
   defaults[names(pando_args)] <- NULL
@@ -195,6 +388,9 @@
   meta_modules$local_fastcore_completion_iterations <-
     completion$completion_iterations
   meta_modules$local_fastcore_parent_scope <- completion$parent_scope
+  meta_modules$analysis_group_unit <- "condition_x_celltype"
+  meta_modules$sample_id_semantics <-
+    "internal module namespace; not a biological-replicate identifier"
   meta_modules
 }
 
@@ -216,7 +412,7 @@
 .rc_condition_gene_regulatory_modifier <- function(
     significant_edges, object, unit_meta,
     condition_col = "condition", celltype_col = "cell_type",
-    rna_assay = "RNA", atac_assay = "ATAC",
+    atac_assay = "ATAC",
     target_genes = NULL,
     min_scale = 0.05) {
   if (!is.data.frame(significant_edges)) {
@@ -271,16 +467,12 @@
   if (!nrow(edges)) return(modifier)
 
   atac <- .rc_pando_assay_data(object, atac_assay)
-  rna <- .rc_pando_assay_data(object, rna_assay)
   peak_keys <- toupper(.rc_pando_region_key(rownames(atac)))
   peak_keep <- !is.na(peak_keys) & nzchar(peak_keys) & !duplicated(peak_keys)
   peak_lookup <- stats::setNames(rownames(atac)[peak_keep], peak_keys[peak_keep])
-  tf_lookup <- .rc_case_insensitive_lookup(rownames(rna))
   edges$.peak_id <- unname(peak_lookup[toupper(.rc_pando_region_key(edges$region))])
-  edges$.tf_id <- unname(tf_lookup[edges$tf])
   edges <- edges[
-    !is.na(edges$.peak_id) & nzchar(edges$.peak_id) &
-      !is.na(edges$.tf_id) & nzchar(edges$.tf_id),
+    !is.na(edges$.peak_id) & nzchar(edges$.peak_id),
     , drop = FALSE
   ]
   if (!nrow(edges)) return(modifier)
@@ -305,17 +497,11 @@
       gene_id <- tolower(target)
       if (!gene_id %in% rownames(modifier) || !nrow(selected)) next
 
-      peak_score <- rc_gene_score(
+      edge_activity <- rc_gene_score(
         as.matrix(atac[selected$.peak_id, units, drop = FALSE]),
         mode = "absolute",
         half_saturation = getOption("RegCompassR.atac_half_saturation", 1)
       )
-      tf_score <- rc_gene_score(
-        as.matrix(rna[selected$.tf_id, units, drop = FALSE]),
-        mode = "absolute",
-        half_saturation = getOption("RegCompassR.tf_half_saturation", 1)
-      )
-      edge_activity <- peak_score * tf_score
       celltype_value <- as.character(group_edges[[celltype_col]][[1L]])
       reference_units <- units[
         as.character(unit_meta[[celltype_col]]) == celltype_value
@@ -354,7 +540,12 @@
   }
   attr(modifier, "score_semantics") <- paste(
     "condition-specific Pando coefficient sign and magnitude applied to",
-    "cell-type-specific pooled-condition TF-by-ATAC activity deviations"
+    "cell-type-referenced ATAC accessibility deviations"
+  )
+  attr(modifier, "evidence_provenance") <- paste(
+    "Pando coefficients are learned from RNA+ATAC at condition x cell type;",
+    "the per-metacell modifier uses ATAC only, so target and TF RNA are not",
+    "reused as an additional metacell-level regulatory observation"
   )
   modifier
 }
