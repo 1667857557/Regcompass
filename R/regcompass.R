@@ -61,6 +61,7 @@ rc_run_regcompass <- function(
   if (is.null(gem$gpr_table)) {
     stop("`gem` must contain `gpr_table`.", call. = FALSE)
   }
+  validated_gem <- rc_validate_gem(gem)
   required_meta <- c(sample_col, condition_col, celltype_col)
   missing_meta <- setdiff(required_meta, colnames(object@meta.data))
   if (length(missing_meta)) {
@@ -79,11 +80,15 @@ rc_run_regcompass <- function(
       species = species
     )
   }
+  medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
 
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  saveRDS(gem$model_info, file.path(outdir, "00_model_info.rds"))
+  saveRDS(gem$model_info %||% list(), file.path(outdir, "00_model_info.rds"))
   saveRDS(medium_scenarios, file.path(outdir, "01_medium_scenarios.rds"))
 
+  upstream_param <- .rc_phase_bpparam(upstream_workers, parallel_backend)
+  on.exit(.rc_release_bpparam(upstream_param), add = TRUE)
+  if (is.null(metacell_args$BPPARAM)) metacell_args$BPPARAM <- upstream_param
   pooled <- .rc_make_condition_pooled_metacells(
     object = object,
     outdir = file.path(outdir, "01_condition_pooled_metacells"),
@@ -93,7 +98,8 @@ rc_run_regcompass <- function(
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     fragment_files = fragment_files,
-    metacell_args = metacell_args
+    metacell_args = metacell_args,
+    strict_biological_defaults = strict_biological_defaults
   )
   retained_conditions <- unique(as.character(
     pooled$metacell_meta[[condition_col]]
@@ -106,11 +112,19 @@ rc_run_regcompass <- function(
       call. = FALSE
     )
   }
+  if (!is.data.frame(pooled$sample_composition) ||
+      !nrow(pooled$sample_composition)) {
+    stop("Condition-pooled output lacks biological-sample composition.", call. = FALSE)
+  }
   metacell_object <- .rc_normalize_condition_metacell_object(
     pooled,
     rna_assay = rna_assay,
     atac_assay = atac_assay
   )
+  if (!setequal(colnames(metacell_object), pooled$metacell_meta$metacell_id)) {
+    stop("Merged metacell object and pooled metadata contain different units.",
+         call. = FALSE)
+  }
   saveRDS(
     metacell_object,
     file.path(outdir, "01_condition_pooled_metacells", "merged_metacell_object.rds")
@@ -127,12 +141,37 @@ rc_run_regcompass <- function(
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     pando_args = pando_args,
-    layer1_args = layer1_args
+    layer1_args = layer1_args,
+    BPPARAM = upstream_param
   )
+  .rc_release_bpparam(upstream_param)
+  upstream_param <- FALSE
+
+  if (!is.data.frame(meta_modules$reaction_membership) ||
+      !nrow(meta_modules$reaction_membership)) {
+    stop("Pando meta-module construction produced no reaction membership.",
+         call. = FALSE)
+  }
+  missing_module_reactions <- setdiff(
+    unique(as.character(meta_modules$reaction_membership$reaction_id)),
+    colnames(validated_gem$S)
+  )
+  if (length(missing_module_reactions)) {
+    stop(
+      "Meta-module membership contains reactions absent from the GEM: ",
+      paste(utils::head(missing_module_reactions, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
   global_meta_modules <- .rc_merge_stratum_meta_modules(list(list(
     group_id = "condition_pooled",
     grn_meta_modules = meta_modules
   )))
+  if (!is.data.frame(global_meta_modules$global_core_reactions) ||
+      !nrow(global_meta_modules$global_core_reactions)) {
+    stop("No complete-GPR global core reactions remain after module merging.",
+         call. = FALSE)
+  }
   saveRDS(global_meta_modules, file.path(outdir, "03_global_meta_modules.rds"))
 
   layer1 <- .rc_build_condition_pooled_layer1(
@@ -150,6 +189,11 @@ rc_run_regcompass <- function(
     gene_half_saturation = layer1_args$gene_half_saturation %||%
       getOption("RegCompassR.cpm_half_saturation", 1)
   )
+  if (!identical(colnames(layer1$reaction_expression),
+                 as.character(layer1$unit_meta$pool_id))) {
+    stop("Layer 1 reaction expression and unit metadata are not ordered identically.",
+         call. = FALSE)
+  }
   saveRDS(layer1, file.path(outdir, "02_global_layer1.rds"))
 
   cache_dir <- file.path(outdir, "04_model_cache", model_mode)
@@ -164,7 +208,8 @@ rc_run_regcompass <- function(
     c(
       "layer1", "gem", "mode", "unit", "reaction_membership",
       "core_reactions", "target_reactions", "medium_scenarios",
-      "sample_col", "condition_col", "celltype_col", "BPPARAM", "parallel"
+      "sample_col", "condition_col", "celltype_col", "BPPARAM", "parallel",
+      "penalty_weights"
     )
   )
   if (length(reserved_layer2)) {
@@ -200,6 +245,11 @@ rc_run_regcompass <- function(
     suppressWarnings(do.call(rc_run_microcompass, c(defaults, layer2_args))),
     finally = .rc_release_bpparam(layer2_param)
   )
+  if (!identical(colnames(microcompass$penalty),
+                 colnames(layer1$reaction_expression))) {
+    stop("microCOMPASS and Layer 1 contain different or reordered units.",
+         call. = FALSE)
+  }
   comparison <- .rc_condition_penalty_comparison(
     microcompass,
     condition_col = condition_col,
@@ -212,24 +262,32 @@ rc_run_regcompass <- function(
     species = species,
     model_mode = model_mode,
     pooling_scope = "condition_x_celltype_across_samples",
+    input_design = pooled$input_design,
     metacells = pooled,
     layer1 = layer1,
     grn_meta_modules = global_meta_modules,
     microcompass = microcompass,
     condition_summary = comparison$summary,
     condition_contrast = comparison$contrast,
+    inference_policy = comparison$inference_policy,
     params = list(
       shared_gem = TRUE,
       shared_medium = TRUE,
       metacell_grouping = c(condition_col, celltype_col),
-      samples_mixed_within_condition = TRUE,
+      samples_mixed_within_condition = any(
+        pooled$metacell_meta$samples_mixed_within_condition
+      ),
+      sample_weighting = pooled$sample_weighting,
       pando_grouping = c(condition_col, celltype_col),
-      inference_unit = "metacell",
+      inference_unit = "condition_pooled_metacell_descriptive_only",
       regulatory_alpha = layer1$capacity_params$regulatory_alpha,
+      regulatory_state = "ATAC_accessibility_only",
+      pando_parameter_source = "RNA_plus_ATAC_condition_x_celltype_fit",
       gpr_promiscuity_mode = "none",
       gpr_and_method = "boltzmann",
       gpr_tau = layer1$capacity_params$tau,
       gpr_or_method = "sum",
+      meta_module_one_hop = TRUE,
       penalty_formula = "1/(1+log2(1+E_multiome))",
       parallel_backend = parallel_backend,
       upstream_workers = upstream_workers,
