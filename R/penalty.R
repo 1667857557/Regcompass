@@ -17,22 +17,29 @@
 }
 
 # Compute the v1.7.0 COMPASS-like penalty from multiome reaction expression.
-# Regulatory evidence is integrated before GPR aggregation; there is no
-# independent reaction-confidence term in the canonical model.
+# Regulatory evidence is integrated into gene support before GPR aggregation;
+# there is no independent reaction-confidence term in the canonical model.
 rc_compute_multiome_penalty <- function(
-    C_rel, reaction_confidence = NULL, gpr_diagnostics = NULL,
+    reaction_expression,
     reaction_roles = NULL,
-    weights = c(expr = 1),
-    eps = 1e-6, penalty_cap = 20,
+    eps = 1e-6,
+    penalty_cap = 20,
     support_penalty = c(
-      exchange = 1.0, demand = 20, sink = 20,
-      artificial_support = 20, cofactor_recycle = 0.50, transport = 1.00
+      exchange = 1.0,
+      demand = 20,
+      sink = 20,
+      artificial_support = 20,
+      cofactor_recycle = 0.50,
+      transport = 1.00
     ),
     missing_penalty = 1) {
-  E <- as.matrix(C_rel)
+  E <- as.matrix(reaction_expression)
   if (!is.numeric(E) || is.null(rownames(E)) || is.null(colnames(E)) ||
       anyDuplicated(rownames(E)) || anyDuplicated(colnames(E))) {
-    stop("Reaction expression requires a numeric matrix with unique dimnames.", call. = FALSE)
+    stop(
+      "Reaction expression requires a numeric matrix with unique dimnames.",
+      call. = FALSE
+    )
   }
   if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0 ||
       !is.numeric(penalty_cap) || length(penalty_cap) != 1L ||
@@ -85,14 +92,10 @@ rc_compute_multiome_penalty <- function(
     penalty_version = "v1.7.0_gene_integrated_multiome_penalty",
     evidence_description = paste(
       "Condition-specific Pando coefficients learned from RNA+ATAC weight",
-      "accessibility-only regulatory deviations before GPR aggregation;",
-      "reaction cost is 1/(1+log2(1+reaction_expression))."
+      "accessibility-only regulatory deviations integrated into gene support",
+      "before GPR aggregation; reaction cost is",
+      "1/(1+log2(1+reaction_expression))."
     ),
-    penalty_formula = "1 / (1 + log2(1 + E_multiome))",
-    legacy_arguments_ignored = c(
-      reaction_confidence = !is.null(reaction_confidence),
-      gpr_diagnostics = !is.null(gpr_diagnostics),
-      weights = !identical(weights, c(expr = 1))
-    )
+    penalty_formula = "1 / (1 + log2(1 + E_multiome))"
   )
 }
