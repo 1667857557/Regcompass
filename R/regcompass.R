@@ -95,6 +95,17 @@ rc_run_regcompass <- function(
     fragment_files = fragment_files,
     metacell_args = metacell_args
   )
+  retained_conditions <- unique(as.character(
+    pooled$metacell_meta[[condition_col]]
+  ))
+  missing_conditions <- setdiff(conditions, retained_conditions)
+  if (length(missing_conditions)) {
+    stop(
+      "Condition-pooled metacell construction lost input conditions: ",
+      paste(missing_conditions, collapse = ", "),
+      call. = FALSE
+    )
+  }
   metacell_object <- .rc_normalize_condition_metacell_object(
     pooled,
     rna_assay = rna_assay,
