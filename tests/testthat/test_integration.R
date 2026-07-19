@@ -42,19 +42,12 @@ test_that("global meta-module model scores every metacell", {
     stringsAsFactors = FALSE
   )
   layer1 <- list(
-    C_rel = matrix(
+    reaction_expression = matrix(
       1,
       nrow = 3,
       ncol = 2,
       dimnames = list(colnames(S), c("u1", "u2"))
     ),
-    reaction_confidence = matrix(
-      1,
-      nrow = 3,
-      ncol = 2,
-      dimnames = list(colnames(S), c("u1", "u2"))
-    ),
-    gpr_diagnostics = NULL,
     unit_meta = data.frame(
       pool_id = c("u1", "u2"),
       unit_id = c("u1", "u2"),
@@ -78,7 +71,7 @@ test_that("global meta-module model scores every metacell", {
       parallel = FALSE,
       solver = solver
     ),
-    "exploratory"
+    "descriptive pseudo-observations"
   )
   expect_true(all(result$evaluated[1L, ]))
   expect_true(all(result$feasible[1L, ]))
@@ -92,23 +85,34 @@ test_that("global meta-module model scores every metacell", {
 
 test_that("condition-specific medium is rejected for shared-GEM scoring", {
   layer1 <- list(
-    C_rel = matrix(1, nrow = 1, dimnames = list("R1", "u1")),
-    reaction_confidence = matrix(1, nrow = 1, dimnames = list("R1", "u1")),
-    gpr_diagnostics = NULL,
+    reaction_expression = matrix(
+      1,
+      nrow = 1,
+      dimnames = list("R1", "u1")
+    ),
     unit_meta = data.frame(
       pool_id = "u1", unit_id = "u1", sample_id = "S1",
       condition = "A", cell_type = "T", stringsAsFactors = FALSE
     )
   )
-  gem <- rc_make_gem(matrix(0, nrow = 1, dimnames = list("m", "R1")),
-                     lb = c(R1 = 0), ub = c(R1 = 1))
+  gem <- rc_make_gem(
+    matrix(0, nrow = 1, dimnames = list("m", "R1")),
+    lb = c(R1 = 0),
+    ub = c(R1 = 1)
+  )
   medium <- data.frame(
     medium_scenario_id = "custom", exchange_reaction_id = "R1",
     lb = 0, ub = 1, available = TRUE, condition = "A"
   )
   expect_error(
-    rc_run_microcompass(layer1, gem, "R1", medium_scenarios = medium,
-                        mode = "full_gem", parallel = FALSE),
+    rc_run_microcompass(
+      layer1,
+      gem,
+      "R1",
+      medium_scenarios = medium,
+      mode = "full_gem",
+      parallel = FALSE
+    ),
     "condition-invariant"
   )
 })
