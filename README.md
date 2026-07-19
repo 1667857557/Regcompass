@@ -65,6 +65,7 @@ result <- rc_run_regcompass_one_shot(
   ),
   pando_args = list(
     min_metacells = 10,
+    regions = SCREEN.ccRE.UCSC.hg38,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
