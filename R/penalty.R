@@ -74,13 +74,14 @@ rc_compute_multiome_penalty <- function(
     penalty = penalty,
     components = list(
       reaction_expression = E,
-      expression_penalty = P_expr,
+      P_expr = P_expr,
       role = role,
       role_source = role_source,
       role_override_flag = override,
       missing_expression_flag = !finite
     ),
-    evidence_policy = "single_integrated_expression_penalty",
+    evidence_policy = "penalty_only",
+    evidence_policy_detail = "single_integrated_expression_penalty",
     penalty_version = "v1.7.0_gene_integrated_multiome_penalty",
     evidence_description = paste(
       "Condition-specific Pando coefficients learned from RNA+ATAC weight",
