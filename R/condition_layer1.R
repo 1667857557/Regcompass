@@ -21,12 +21,12 @@
   out[!is.finite(out)] <- NA_real_
   dimnames(out) <- dimnames(C)
   attr(out, "integration_formula") <- paste(
-    "C_multiome = C_RNA * 2^(alpha * R) /",
-    "(1 - C_RNA + C_RNA * 2^(alpha * R))"
+    "C_multiome = C_RNA * 2^(alpha * R_ATAC) /",
+    "(1 - C_RNA + C_RNA * 2^(alpha * R_ATAC))"
   )
   attr(out, "score_semantics") <- paste(
-    "zero-preserving bounded gene support with signed TF-ATAC regulation",
-    "on the support log-odds scale"
+    "zero-preserving bounded gene support with a signed accessibility-derived",
+    "regulatory modifier on the support log-odds scale"
   )
   out
 }
@@ -85,11 +85,14 @@
     unit_meta = unit_meta,
     condition_col = condition_col,
     celltype_col = celltype_col,
-    rna_assay = rna_assay,
     atac_assay = atac_assay,
     target_genes = rownames(gene_rna_support)
   )
-  modifier <- modifier[rownames(gene_rna_support), colnames(gene_rna_support), drop = FALSE]
+  modifier <- modifier[
+    rownames(gene_rna_support),
+    colnames(gene_rna_support),
+    drop = FALSE
+  ]
   gene_multiome_support <- .rc_integrate_regulatory_support_v170(
     gene_rna_support,
     modifier,
@@ -117,7 +120,7 @@
     C_abs = reaction_expression,
     reaction_expression = reaction_expression,
     reaction_confidence = reaction_confidence,
-    reaction_confidence_source = "integrated_into_gene_support_not_separate_penalty",
+    reaction_confidence_source = "deprecated_placeholder_not_used_by_penalty",
     rna_metacell_logcpm = rna_logcpm,
     gene_support_rna = gene_rna_support,
     gene_regulatory_modifier = modifier,
@@ -136,8 +139,18 @@
       or_method = "sum"
     ),
     evidence_formula = paste(
-      "Pando TF-by-ATAC modifier -> zero-preserving gene support log-odds",
-      "update -> Boltzmann AND and additive isozyme OR"
+      "Pando coefficient-weighted ATAC accessibility modifier ->",
+      "zero-preserving RNA support log-odds update ->",
+      "Boltzmann AND and additive isozyme OR"
+    ),
+    evidence_provenance = list(
+      direct_metacell_evidence = c("target_gene_RNA", "peak_ATAC"),
+      learned_parameters = "condition_x_celltype Pando coefficients fit from RNA+ATAC",
+      excluded_duplicate_evidence = "metacell TF RNA is not multiplied into the regulatory modifier",
+      circularity_scope = paste(
+        "Pando parameters remain estimated from the same pooled dataset; outputs",
+        "are descriptive unless external fitting or cross-fitting is supplied"
+      )
     )
   )
 }
@@ -176,6 +189,8 @@
       median_penalty = med,
       support_score = -log(med + eps),
       n_metacells = sum(keep),
+      descriptive_only = TRUE,
+      biological_replicate_inference = FALSE,
       stringsAsFactors = FALSE
     )
   })
@@ -200,10 +215,19 @@
         conditions[[2L]],
         ifelse(a$support_score > b$support_score, conditions[[1L]], "tie")
       ),
+      descriptive_only = TRUE,
+      biological_replicate_inference = FALSE,
       stringsAsFactors = FALSE
     )
   })
   contrast_rows <- contrast_rows[!vapply(contrast_rows, is.null, logical(1))]
   contrast <- if (length(contrast_rows)) do.call(rbind, contrast_rows) else data.frame()
-  list(summary = summary, contrast = contrast)
+  list(
+    summary = summary,
+    contrast = contrast,
+    inference_policy = paste(
+      "condition-pooled metacells are descriptive pseudo-observations;",
+      "biological-sample-level significance testing is not performed"
+    )
+  )
 }
