@@ -315,10 +315,19 @@
         mode = "absolute",
         half_saturation = getOption("RegCompassR.tf_half_saturation", 1)
       )
-      edge_deviation <- .rc_edge_activity_deviation(
-        peak_score * tf_score,
+      edge_activity <- peak_score * tf_score
+      celltype_value <- as.character(group_edges[[celltype_col]][[1L]])
+      reference_units <- units[
+        as.character(unit_meta[[celltype_col]]) == celltype_value
+      ]
+      if (!length(reference_units)) next
+      edge_deviation_reference <- .rc_edge_activity_deviation(
+        edge_activity[, reference_units, drop = FALSE],
         min_scale = min_scale
       )
+      edge_deviation <- edge_deviation_reference[
+        , group_units, drop = FALSE
+      ]
 
       weight <- abs(selected$estimate)
       weight[!is.finite(weight)] <- 0
@@ -338,14 +347,14 @@
       signed_weight <- weight * sign(selected$estimate)
       value <- reliability * as.numeric(crossprod(
         signed_weight,
-        edge_deviation[, group_units, drop = FALSE]
+        edge_deviation
       ))
       modifier[gene_id, group_units] <- pmax(pmin(value, 1), -1)
     }
   }
   attr(modifier, "score_semantics") <- paste(
     "condition-specific Pando coefficient sign and magnitude applied to",
-    "pooled-reference TF-by-ATAC activity deviations"
+    "cell-type-specific pooled-condition TF-by-ATAC activity deviations"
   )
   modifier
 }
