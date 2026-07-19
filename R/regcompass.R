@@ -32,15 +32,6 @@ rc_run_regcompass <- function(
       is.na(strict_biological_defaults)) {
     stop("`strict_biological_defaults` must be TRUE or FALSE.", call. = FALSE)
   }
-  if (!identical(inference_unit, "metacell")) {
-    stop(
-      paste(
-        "RegCompassR 1.7.0 condition-pooled metacells do not retain one",
-        "biological-sample identity. `inference_unit` must be 'metacell'."
-      ),
-      call. = FALSE
-    )
-  }
   bundles <- list(
     metacell_args = metacell_args,
     layer1_args = layer1_args,
@@ -200,7 +191,8 @@ rc_run_regcompass <- function(
   )
   comparison <- .rc_condition_penalty_comparison(
     microcompass,
-    condition_col = condition_col
+    condition_col = condition_col,
+    celltype_col = celltype_col
   )
 
   result <- list(
