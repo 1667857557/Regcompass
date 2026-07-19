@@ -46,7 +46,7 @@ test_that("reverse vmax uses the minimization objective convention", {
 })
 
 test_that("exchange reactions use one structural penalty regardless role source", {
-  capacity <- matrix(
+  expression <- matrix(
     0.01,
     nrow = 3,
     ncol = 1,
@@ -55,16 +55,14 @@ test_that("exchange reactions use one structural penalty regardless role source"
       "u1"
     )
   )
-  confidence <- capacity
   roles <- data.frame(
-    reaction_id = rownames(capacity),
+    reaction_id = rownames(expression),
     role = c("exchange", "transport", "exchange"),
     role_source = c("curated", "curated", "id_pattern"),
     stringsAsFactors = FALSE
   )
   output <- rc_compute_multiome_penalty(
-    capacity,
-    confidence,
+    expression,
     reaction_roles = roles
   )
   expect_equal(output$evidence_policy, "penalty_only")
@@ -159,21 +157,12 @@ test_that("full-GEM cache is structural and evidence-independent", {
 })
 
 test_that("penalty is unit-specific", {
-  capacity <- matrix(
+  expression <- matrix(
     c(0.9, 0.1),
     nrow = 1,
     dimnames = list("Rtarget", c("u1", "u2"))
   )
-  confidence <- matrix(
-    1,
-    nrow = 1,
-    ncol = 2,
-    dimnames = dimnames(capacity)
-  )
-  penalty <- rc_compute_multiome_penalty(
-    capacity,
-    confidence
-  )
+  penalty <- rc_compute_multiome_penalty(expression)
   expect_false(identical(
     penalty$penalty[, 1L],
     penalty$penalty[, 2L]
@@ -183,7 +172,7 @@ test_that("penalty is unit-specific", {
 test_that("parallel and serial full-GEM scoring agree", {
   gem <- rc_test_toy_gem()
   layer1 <- list(
-    C_rel = matrix(
+    reaction_expression = matrix(
       c(0.9, 0.2, 0.8, 0.8, 0.7, 0.3),
       nrow = 3,
       dimnames = list(
@@ -191,16 +180,6 @@ test_that("parallel and serial full-GEM scoring agree", {
         c("p1", "p2")
       )
     ),
-    reaction_confidence = matrix(
-      1,
-      nrow = 3,
-      ncol = 2,
-      dimnames = list(
-        c("EX_m1", "Rtarget", "EX_m2"),
-        c("p1", "p2")
-      )
-    ),
-    gpr_diagnostics = NULL,
     unit_meta = data.frame(
       pool_id = c("p1", "p2"),
       sample_id = c("s1", "s2"),
@@ -219,7 +198,7 @@ test_that("parallel and serial full-GEM scoring agree", {
       target_direction = "forward",
       parallel = FALSE
     ),
-    "exploratory"
+    "descriptive pseudo-observations"
   )
   parallel <- expect_warning(
     rc_run_microcompass(
@@ -232,7 +211,7 @@ test_that("parallel and serial full-GEM scoring agree", {
       parallel = TRUE,
       BPPARAM = FALSE
     ),
-    "exploratory"
+    "descriptive pseudo-observations"
   )
   expect_equal(serial$score, parallel$score, tolerance = 1e-8)
   expect_equal(serial$penalty, parallel$penalty, tolerance = 1e-8)
