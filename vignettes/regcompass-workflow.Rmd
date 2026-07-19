@@ -13,8 +13,14 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 RegCompassR 1.7.0 uses ATAC and RNA from cells pooled across biological samples
 within each condition and cell type. SuperCell2 builds condition-level
-metacells, Pando infers condition-specific TF–peak–gene regulation, and one
-shared union-GEM is used for directional COMPASS-like scoring.
+metacells while retaining original sample composition. Pando fits one
+condition-specific TF–peak–gene model per cell type, and one shared union-GEM is
+used for directional COMPASS-like scoring.
+
+Pando coefficients are learned from RNA+ATAC, but the per-metacell regulatory
+state uses coefficient-weighted peak accessibility only. Metacell TF RNA is not
+multiplied into that state. Condition-pooled metacells are descriptive units,
+not independent biological replicates.
 
 ## Prepare the model
 
@@ -52,6 +58,7 @@ result <- rc_run_regcompass(
   celltype_col = "cell_type",
   medium_scenarios = medium,
   inference_unit = "metacell",
+  strict_biological_defaults = TRUE,
   metacell_args = list(
     gamma = 150,
     min_cells_per_stratum = 500,
@@ -81,10 +88,13 @@ result <- rc_run_regcompass(
 )
 ```
 
-The main outputs are the integrated gene and reaction evidence in
-`result$layer1`, the union-GEM membership in `result$grn_meta_modules`, raw
-minimum penalties in `result$microcompass$penalty`, and descriptive condition
-comparisons in `result$condition_contrast`.
+The main outputs are:
+
+- sample membership in `result$metacells$sample_composition`;
+- RNA, ATAC-derived regulatory state and `reaction_expression` in `result$layer1`;
+- biological and FASTCORE-completed union membership in `result$grn_meta_modules`;
+- raw minimum penalties in `result$microcompass$penalty`;
+- descriptive comparisons in `result$condition_contrast`.
 
 ## Equivalent one-shot entry point
 
@@ -102,6 +112,7 @@ result <- rc_run_regcompass_one_shot(
   condition_col = "condition",
   celltype_col = "cell_type",
   inference_unit = "metacell",
+  strict_biological_defaults = TRUE,
   pando_args = list(
     min_metacells = 10,
     pando_initiate_args = list(
