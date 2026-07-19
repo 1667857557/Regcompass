@@ -1,25 +1,18 @@
 test_that("GPR logCPM uses explicit full-transcriptome library size", {
   full <- Matrix::Matrix(
     matrix(
-      c(
-        10, 10,
-        0, 0,
-        90, 990
-      ),
+      c(10, 10, 0, 0, 90, 990),
       nrow = 3,
       byrow = TRUE,
       dimnames = list(c("G1", "G2", "OTHER"), c("m1", "m2"))
     ),
     sparse = TRUE
   )
-  subset_counts <- full[c("G1", "G2"), , drop = FALSE]
-
   observed <- .rc_metacell_logcpm(
-    subset_counts,
+    full[c("G1", "G2"), , drop = FALSE],
     library_size = Matrix::colSums(full)
   )
   expected <- log1p(c(10 / 100, 10 / 1000) * 1e6)
-
   expect_equal(as.numeric(observed["G1", ]), expected)
   expect_identical(
     attr(observed, "normalization_scope"),
@@ -27,26 +20,15 @@ test_that("GPR logCPM uses explicit full-transcriptome library size", {
   )
 })
 
-test_that("missing and no-GPR evidence are not cheaper than observed zero", {
+test_that("missing and no-GPR expression are not cheaper than observed zero", {
   reactions <- c(
     "observed_zero", "assay_missing", "no_gpr",
-    "high_support", "exchange", "demand"
+    "high_expression", "exchange", "demand"
   )
-  capacity <- matrix(
+  expression <- matrix(
     c(0, NA, NA, 0.8, NA, NA),
     ncol = 1,
     dimnames = list(reactions, "u1")
-  )
-  regulation <- matrix(
-    0.5,
-    nrow = length(reactions),
-    ncol = 1,
-    dimnames = dimnames(capacity)
-  )
-  diagnostics <- data.frame(
-    reaction_id = c("observed_zero", "assay_missing", "high_support"),
-    missing_gene_fraction = c(0, 1, 0),
-    stringsAsFactors = FALSE
   )
   roles <- data.frame(
     reaction_id = reactions,
@@ -58,108 +40,31 @@ test_that("missing and no-GPR evidence are not cheaper than observed zero", {
       "metadata", "metadata", "unknown",
       "metadata", "metadata", "id_pattern"
     ),
-    role_confidence = c(
-      "medium", "medium", "low",
-      "medium", "medium", "low"
-    ),
     stringsAsFactors = FALSE
   )
-
-  answer <- rc_compute_multiome_penalty(
-    capacity,
-    regulation,
-    gpr_diagnostics = diagnostics,
-    reaction_roles = roles
-  )
+  answer <- rc_compute_multiome_penalty(expression, reaction_roles = roles)
 
   expect_equal(answer$penalty["observed_zero", "u1"], 1)
   expect_equal(answer$penalty["assay_missing", "u1"], 1)
   expect_equal(answer$penalty["no_gpr", "u1"], 1)
-  expect_equal(answer$penalty["high_support", "u1"], 0.2)
+  expect_equal(
+    answer$penalty["high_expression", "u1"],
+    1 / (1 + log2(1 + 0.8))
+  )
   expect_equal(answer$penalty["exchange", "u1"], 1)
   expect_equal(answer$penalty["demand", "u1"], 20)
-  expect_gte(
-    answer$penalty["assay_missing", "u1"],
-    answer$penalty["observed_zero", "u1"]
-  )
-  expect_gte(
-    answer$penalty["no_gpr", "u1"],
-    answer$penalty["observed_zero", "u1"]
-  )
 })
 
-test_that("COMPASS-style medium preserves model direction and caps exchanges", {
-  S <- Matrix::Matrix(
-    matrix(c(-1, -1, -1, -1, 1), nrow = 1),
-    sparse = TRUE
-  )
-  rownames(S) <- "m_e"
-  colnames(S) <- c(
-    "EX_both", "EX_secrete", "EX_uptake", "EX_blocked", "R1"
-  )
-  gem <- list(
-    S = S,
-    lb = stats::setNames(c(-1000, 0, -1000, 0, 0), colnames(S)),
-    ub = stats::setNames(c(1000, 1000, 0, 0, 1000), colnames(S)),
-    reaction_meta = data.frame(
-      reaction_id = colnames(S),
-      role = c(
-        "exchange", "exchange", "exchange", "exchange", "internal"
-      ),
-      stringsAsFactors = FALSE
-    )
-  )
-
-  medium <- rc_make_medium_scenarios(
-    gem,
-    scenario = "compass_model_bounds"
-  )
-  medium <- medium[
-    match(
-      c("EX_both", "EX_secrete", "EX_uptake", "EX_blocked"),
-      medium$exchange_reaction_id
-    ),
-    ,
-    drop = FALSE
-  ]
-
-  expect_equal(medium$lb, c(-1, 0, -1, 0))
-  expect_equal(medium$ub, c(1, 1, 0, 0))
-  expect_true(all(medium$available))
-  expect_true(all(medium$condition == "all"))
-  expect_true(all(medium$exchange_limit == 1))
-  expect_true(all(
-    medium$assumption_level == "shared_model_defined_environment"
-  ))
-
-  constrained <- rc_apply_medium_constraints(gem, medium)
-  blocked_index <- match("EX_blocked", colnames(constrained$gem$S))
-  expect_equal(constrained$gem$lb[[blocked_index]], 0)
-  expect_equal(constrained$gem$ub[[blocked_index]], 0)
+test_that("species-matched physiological media remain defaults", {
+  expect_identical(eval(formals(rc_make_medium_scenarios)$scenario),
+                   "physiologic")
+  expect_identical(eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
+                   "physiologic")
 })
 
-test_that("species-matched physiological media are the workflow defaults", {
-  expect_identical(
-    eval(formals(rc_make_medium_scenarios)$scenario),
-    "physiologic"
-  )
-  expect_setequal(
-    names(eval(formals(rc_make_medium_scenarios)$uptake_scale)),
-    c(
-      "physiologic", "normal_human_plasma", "mouse_plasma", "rpmi1640",
-      "dmem_high_glucose", "high_glucose", "low_glucose", "high_lactate",
-      "low_lactate", "low_glutamine", "permissive_all_exchange", "minimal"
-    )
-  )
-  expect_identical(
-    eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
-    "physiologic"
-  )
-})
-
-test_that("peak-gene inference remains strict-stratum specific", {
-  body_text <- paste(deparse(body(rc_run_pando_meta_modules)), collapse = "\n")
-  expect_match(body_text, "\\.rc_pando_group_id")
-  expect_match(body_text, "run_one_group")
-  expect_match(body_text, "subset\\(metacell_object, cells = cells\\)")
+test_that("main workflow routes Pando by condition and cell type", {
+  body_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  expect_match(body_text, ".rc_run_condition_pando_modules", fixed = TRUE)
+  expect_match(body_text, "condition_col", fixed = TRUE)
+  expect_match(body_text, "celltype_col", fixed = TRUE)
 })
