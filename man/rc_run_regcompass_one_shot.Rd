@@ -9,7 +9,7 @@ rc_run_regcompass_one_shot(
   outdir,
   pfm,
   genome,
-  fragment_files = NULL,
+  fragment_files = FALSE,
   gem = NULL,
   medium_scenario = "physiologic",
   medium_scenarios = NULL,
@@ -27,11 +27,9 @@ rc_run_regcompass_one_shot(
 
 \item{genome}{Genome object matching the selected species and ATAC coordinates.}
 
-\item{fragment_files}{Fragment-file manifest/path(s), or \code{FALSE} to skip
-fragment aggregation and use ATAC peak raw counts from \code{object} directly.}
+\item{fragment_files}{Must be \code{FALSE} in the v1.7.0 canonical condition-pooled workflow; existing ATAC peak counts are aggregated.}
 
 \item{gem}{Optional prebuilt species GEM.}
-
 
 \item{medium_scenario}{Medium preset identifier. The default \code{"physiologic"}
 resolves to human or mouse plasma.}
