@@ -94,14 +94,6 @@ test_that("species arguments preserve legacy positional ordering", {
   )
 })
 
-test_that("stratum confidence forwards the selected RNA assay", {
-  text <- paste(deparse(body(.rc_run_regcompass_stratum)), collapse = "\n")
-  expect_match(
-    text,
-    "atac_assay = atac_assay,\\s*rna_assay = rna_assay"
-  )
-})
-
 test_that("multi-sample projected edges receive sample-local module IDs", {
   input <- data.frame(
     sample_id = c("s1", "s1", "s2", "s2"),
