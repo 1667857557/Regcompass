@@ -109,8 +109,17 @@ C^{MO}_{g,u}=
 This preserves zero RNA support, keeps all values in `[0,1]`, increases support
 under positive regulation and decreases it under negative regulation.
 
-Protein complexes use a Boltzmann minimum-biased AND rule with `tau = 0.20`.
-Isozymes are added. No gene-promiscuity weighting is applied. The resulting
+Protein complexes use the normalized Boltzmann soft-min AND rule with
+`tau = 0.20`:
+
+\[
+C_{complex}=-\tau\log\left(\frac{1}{n}\sum_{i=1}^{n}
+\exp\left[-C_i/\tau\right]\right).
+\]
+
+This aggregation is monotone in every required subunit, equals the common value
+when all subunits are equal, and approaches the hard minimum as `tau` decreases.
+Isozymes are added and no gene-promiscuity weighting is applied. The resulting
 multiome reaction expression is converted to one COMPASS-like cost:
 
 \[
