@@ -160,6 +160,23 @@
   )
   defaults[names(pando_args)] <- NULL
   meta_modules <- do.call(rc_run_pando_meta_modules, c(defaults, pando_args))
+  status <- meta_modules$sample_status
+  if (!is.data.frame(status) || !nrow(status) || !"status" %in% colnames(status)) {
+    stop("Pando did not return a complete condition-level status table.", call. = FALSE)
+  }
+  failed <- is.na(status$status) | status$status != "ok"
+  if (any(failed)) {
+    group_label <- if ("group_id" %in% colnames(status)) {
+      as.character(status$group_id[failed])
+    } else {
+      which(failed)
+    }
+    stop(
+      "Every condition-by-cell-type Pando GRN must complete successfully. Failed: ",
+      paste(group_label, collapse = ";"),
+      call. = FALSE
+    )
+  }
 
   local_fastcore_args <- layer1_args$local_fastcore_args %||% list()
   local_fastcore_args$enabled <- layer1_args$local_fastcore %||%
