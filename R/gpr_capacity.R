@@ -93,28 +93,29 @@ rc_gene_score <- function(
 }
 
 
-#' Boltzmann-weighted minimum-biased average for GPR AND
+#' Normalized Boltzmann soft minimum for GPR AND
 #'
-#' Default tau = 0.20 is a biologically moderate bottleneck model for multi-subunit
-#' enzymes. Smaller tau, such as 0.08, behaves closer to a hard minimum; larger tau
-#' moves toward the arithmetic mean.
+#' Computes `-tau * log(mean(exp(-scores / tau)))` using a stable shift.
+#' The normalized form equals the common score when all subunits are equal,
+#' approaches the hard minimum as tau tends to zero, approaches the arithmetic
+#' mean as tau increases, and is monotonically non-decreasing in every subunit.
 rc_boltzmann_minavg <- function(scores, tau = 0.20) {
-  if (!is.numeric(tau) || length(tau) != 1L || is.na(tau) || tau <= 0) stop("`tau` must be a single positive number.", call. = FALSE)
+  if (!is.numeric(tau) || length(tau) != 1L || is.na(tau) || tau <= 0) {
+    stop("`tau` must be a single positive number.", call. = FALSE)
+  }
   scores <- scores[is.finite(scores)]
   if (length(scores) == 0L) return(NA_real_)
   if (length(scores) == 1L) return(scores)
-  z <- -scores / tau
-  z <- z - max(z)
-  w <- exp(z)
-  w <- w / sum(w)
-  sum(w * scores)
+  minimum <- min(scores)
+  shifted <- (scores - minimum) / tau
+  minimum - tau * log(mean(exp(-shifted)))
 }
 
 
 #' AND aggregation for one GPR complex
 #'
-#' Implements the plan-supported sensitivity choices: hard minimum,
-#' Boltzmann-weighted minimum-biased average, and arithmetic mean.
+#' Implements hard minimum, normalized Boltzmann soft minimum, and arithmetic
+#' mean. The canonical v1.7.0 workflow uses the monotone soft minimum.
 rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau = 0.20) {
   method <- match.arg(method)
   scores <- scores[is.finite(scores)]
@@ -166,8 +167,9 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and
 #' Compute raw Layer 1 reaction capacity
 #'
 #' Uses annotation-count-neutral promiscuity, hard-minimum AND, and maximum
-#' isoenzyme support by default. Legacy sqrt promiscuity, Boltzmann AND, and
-#' square-root-dampened OR aggregation remain explicit sensitivity modes.
+#' isoenzyme support by default. Alternative aggregation rules remain available
+#' to lower-level callers; the v1.7.0 canonical workflow fixes no promiscuity
+#' weighting, normalized Boltzmann soft-min AND, and additive isozyme OR.
 rc_reaction_capacity <- function(gpr_list,
                                  gene_score,
                                  promiscuity_mode = c("none", "sqrt", "linear"),
