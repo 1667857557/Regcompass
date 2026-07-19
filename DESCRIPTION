@@ -37,6 +37,8 @@ Collate:
     'one_shot.R'
     'pando_confidence.R'
     'pando_grn.R'
+    'condition_pooling.R'
+    'condition_layer1.R'
     'parallel.R'
     'penalty.R'
     'pseudobulk.R'
