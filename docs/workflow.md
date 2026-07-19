@@ -1,90 +1,74 @@
-# Workflow
+# RegCompassR 1.7.0 workflow
 
-## Phase 1: strict-stratum processing
-
-`rc_run_regcompass()` divides cells by:
+## Canonical data flow
 
 ```text
-condition × sample × cell type
-```
-
-Each upstream worker performs one of two ATAC paths.
-
-Without matching fragment files:
-
-```text
-SuperCell2 metacells with one fixed gamma
-→ fragment aggregation when `fragment_files` are supplied, or object ATAC peak raw counts when `fragment_files = FALSE`
-→ minimum-metacell filter
-→ Pando GRN
-```
-
-With matching fragment files:
-
-```text
-SuperCell2 metacells with one fixed gamma
-→ aggregate fragments by metacell membership
-→ pseudobulk MACS2/MACS3 peak calling within the strict stratum
-→ quantify newly called peaks with Signac::FeatureMatrix()
-→ rebuild the metacell ChromatinAssay
-→ minimum-metacell filter
-→ TF-IDF and Pando GRN
-```
-
-Both paths then continue through:
-
-```text
-Pando-derived reaction confidence
-→ reaction meta-module expansion
+condition × cell type cells pooled across biological samples
+→ SuperCell2 metacells
+→ condition × cell type Pando GRNs
+→ GRN-derived metabolic meta-modules
 → local FASTCORE completion
+→ shared union-GEM
+→ TF–ATAC regulation integrated into gene support
+→ GPR reaction expression
+→ COMPASS-like directional minimum-penalty LP
+→ descriptive condition comparison
 ```
 
-Different strata may produce different de novo peak sets. Their saved ATAC
-matrices are imported by sparse peak-name union with zero fill. This union is
-used for bookkeeping and cross-stratum matrices; Pando itself remains fitted
-independently within each strict stratum.
+## Metacell scope
 
-Strata that produce fewer than the required metacells are marked
-`skipped_too_few_metacells` and do not enter Pando, global calibration or
-scoring. The global stage starts after all non-skipped retained strata succeed
-and every biological sample still has at least one analyzable stratum. The
-upstream worker pool is stopped before global processing.
+The canonical workflow deliberately supplies cells from every biological sample
+within the same condition and cell type to one SuperCell2 run. The original
+`sample_col` is required to define the input design, but pooled metacells do not
+retain one sample identity. `inference_unit = "metacell"` is therefore fixed.
 
-## Phase 2: global calibration and shared GEM
+The v1.7.0 canonical path requires `fragment_files = FALSE` and aggregates the
+existing ATAC peak-count assay. It does not silently combine sample fragment
+files without an explicit per-file barcode map.
 
-All metacell GPR-gene logCPM matrices are merged. By default, each biological
-sample receives equal total weight during gene scaling and reaction-wise Q95
-calibration.
+## Pando and meta-modules
 
-Optional `limma::removeBatchEffect()` correction occurs after logCPM merging and
-before gene scoring. The preserved design should include biological variables
-such as condition and cell type.
+Pando is run independently for every condition-by-cell-type metacell group.
+Significant TF–peak–gene coefficients define regulatory direction and relative
+edge weight. The same GRNs are projected to metabolic genes, mapped through
+complete GPR AND groups, expanded by subsystem and database cross-references,
+and completed locally with FASTCORE.
 
-Locally completed reaction sets are unioned and deduplicated. The shared medium
-is applied, and FASTCORE repairs only global core directions that remain
-incomplete.
+All completed condition-specific modules are deduplicated into one shared
+union-GEM. The union-GEM, medium, bounds, target reactions and target-flux
+fraction are identical for all conditions.
 
-## Phase 3: directional scoring
+## Multiome evidence
 
-All metacells use the same stoichiometric model. Each metacell has its own
-penalty vector derived from expression capacity and Pando confidence.
+RNA support is
 
-A fresh Layer 2 worker pool evaluates:
+\[
+C^{RNA}_{g,u}=x_{g,u}/(x_{g,u}+h).
+\]
 
-```text
-shared model × metacell
-```
+The signed Pando modifier is applied on the support log-odds scale:
 
-## Output order
+\[
+C^{MO}_{g,u}=\frac{C^{RNA}_{g,u}2^{\alpha R_{g,u}}}
+{1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{\alpha R_{g,u}}}.
+\]
 
-```text
-00_strata/
-01_stratum_workflows/
-02_global_layer1.rds
-03_global_meta_modules.rds
-regcompass_global_metacell_result.rds
-```
+The transform is bounded and zero preserving. Protein complexes use a
+Boltzmann minimum-biased AND rule with `tau = 0.20`; isozyme groups are summed;
+no promiscuity weighting is applied.
 
-For fragment-enabled strata, `01_metacells/` also contains aggregated fragment
-files, fragment manifests, fragment-derived `atac_counts.rds`, and
-`peaks/called_peaks.rds`.
+Reaction expression becomes one positive LP cost:
+
+\[
+p_{r,u}=1/[1+\log_2(1+E^{MO}_{r,u})].
+\]
+
+There is no independent Pando reaction-confidence penalty.
+
+## Outputs
+
+- `layer1`: RNA support, regulatory modifier, multiome gene support and reaction expression;
+- `grn_meta_modules`: condition-specific modules and global union membership;
+- `microcompass`: directional maximum flux, feasibility and minimum penalties;
+- `condition_summary`: median penalty and support per condition;
+- `condition_contrast`: two-condition support difference when exactly two conditions exist.
