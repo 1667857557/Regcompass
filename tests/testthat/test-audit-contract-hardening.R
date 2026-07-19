@@ -40,6 +40,7 @@ test_that("condition comparison is based on the primary penalty matrix", {
     unit_meta = data.frame(
       unit_id = paste0("u", 1:4),
       condition = c("A", "A", "B", "B"),
+      cell_type = "T",
       stringsAsFactors = FALSE
     )
   )
