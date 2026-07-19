@@ -114,17 +114,24 @@ for exploration, it must be explicitly enabled with `allow_latest = TRUE`.
 
 ## 3. Define one shared medium
 
-The default `compass_model_bounds` scenario preserves GEM exchange direction
-and caps exchange bounds uniformly. It is a model-defined environment, not a
-claim about measured metabolite concentrations.
+The README quick start uses the published `normal_human_plasma` background.
+`compass_model_bounds` remains available as a technical model-defined
+environment. Neither should be interpreted as measured sample-specific
+metabolite concentrations.
 
-Preset scenarios can also be returned together with a user-defined `"custom"` scenario in one medium table. Current optional named backgrounds are `normal_human_plasma`, `mouse_plasma`, `rpmi1640`, `dmem_high_glucose`, `low_glucose`, `high_glucose`, `low_lactate`, `high_lactate`, `low_glutamine`, `minimal`, and `permissive_all_exchange`. Removed compatibility aliases such as `human_plasma`, `hplm`, `blood_like`, `culture_like`, `tumor_low_glucose`, and `lactate_available` are intentionally unsupported; use canonical preset names or a custom medium table.
+Preset scenarios can also be returned together with a user-defined `"custom"`
+scenario in one medium table. Current optional named backgrounds are
+`normal_human_plasma`, `mouse_plasma`, `rpmi1640`, `dmem_high_glucose`,
+`low_glucose`, `high_glucose`, `low_lactate`, `high_lactate`,
+`low_glutamine`, `minimal`, and `permissive_all_exchange`. Removed
+compatibility aliases such as `human_plasma`, `hplm`, `blood_like`,
+`culture_like`, `tumor_low_glucose`, and `lactate_available` are intentionally
+unsupported; use canonical preset names or a custom medium table.
 
 ```{r medium, purl=FALSE}
 medium <- rc_make_medium_scenarios(
   gem = human2_gem,
-  scenario = "compass_model_bounds",
-  exchange_limit = 1
+  scenario = "normal_human_plasma"
 )
 
 stopifnot(all(medium$exchange_reaction_id %in% colnames(human2_gem$S)))
@@ -140,14 +147,16 @@ design independently establishes condition-specific exchange constraints.
 
 ## 4. Run the explicit workflow
 
-The explicit entry point makes every major input visible. The PFM collection
-and genome object shown below are typical human defaults; use objects matching
-the organism and genome build of the ATAC assay.
+The explicit entry point makes every major input visible. The PFM collection,
+candidate regulatory regions, and genome object shown below match the current
+human quick-start example; use organism- and genome-build-matched objects for
+other analyses.
 
 ```{r explicit-run, purl=FALSE}
 library(Pando)
 library(BSgenome.Hsapiens.UCSC.hg38)
 data(motifs, package = "Pando")
+data(SCREEN.ccRE.UCSC.hg38, package = "Pando")
 
 result <- rc_run_regcompass(
   object = object,
@@ -164,16 +173,17 @@ result <- rc_run_regcompass(
   model_mode = "meta_module_gem",
   medium_scenarios = medium,
   metacell_args = list(
-    gamma = 50,
-    min_cells_per_stratum = 1000,
+    gamma = 150,
+    min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
   pando_args = list(
-    min_metacells = 20,
+    min_metacells = 10,
+    regions = SCREEN.ccRE.UCSC.hg38,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
-      peak_cor = 0,
+      peak_cor = 0.05,
       adjust_method = "fdr"
     )
   ),
@@ -212,25 +222,48 @@ result <- rc_run_regcompass_one_shot(
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,  # or fragment_files to re-aggregate from fragments
+  fragment_files = FALSE,  # use existing ATAC peak counts; pass paths to re-aggregate fragments
   species = "human",
   gem_version = "2.0.0",
-  medium_scenario = "compass_model_bounds",  # or "physiologic"/other presets
+  medium_scenario = "normal_human_plasma",
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
-  inference_unit = "sample_celltype"
+  metacell_args = list(
+    gamma = 150,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10
+  ),
+  pando_args = list(
+    min_metacells = 10,
+    regions = SCREEN.ccRE.UCSC.hg38,
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0.05,
+      adjust_method = "fdr"
+    )
+  ),
+  layer1_args = list(
+    local_fastcore = TRUE,
+    sample_balance = TRUE,
+    expression_batch_correction = "none"
+  ),
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  )
 )
 ```
 
 Set `fragment_files = FALSE` in the one-shot call when no matching fragment file
 is available; pass the fragment manifest/path when fragments should be
-re-aggregated. For mouse data, use a mouse genome and set `species = "mouse"`; the wrapper
-then prepares Mouse-GEM 1.8.0 and the mouse physiological medium unless you
-provide `gem` or `medium_scenarios`. Supply `gem = human2_gem` (or a Mouse-GEM
-object) and `medium_scenarios = medium` to the one-shot function if those
-objects were prepared separately. An explicit `medium_scenarios` table takes
-precedence over `medium_scenario`.
+re-aggregated. For mouse data, use a mouse genome and set `species = "mouse"`;
+the wrapper then prepares Mouse-GEM 1.8.0 and the mouse physiological medium
+unless you provide `gem` or `medium_scenarios`. Supply `gem = human2_gem` (or a
+Mouse-GEM object) and `medium_scenarios = medium` to the one-shot function if
+those objects were prepared separately. An explicit `medium_scenarios` table
+takes precedence over `medium_scenario`.
 
 ## 6. Check the barrier and outputs
 

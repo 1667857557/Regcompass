@@ -113,15 +113,15 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
 
 #' Expand core reactions into GRN-defined biological reaction meta-modules
 #'
-#' Expansion is ordered: core subsystems, shared KEGG/Reactome identifiers, then
-#' shared master-Rhea identifiers. The output is biological membership, not a
-#' flux-feasibility support set.
+#' Expansion is ordered: core subsystems, reactions sharing KEGG/Reactome
+#' identifiers, then reactions sharing master-Rhea identifiers. The output is
+#' biological membership, not a flux-feasibility support set.
 .rc_expand_meta_module_reactions_core <- function(gem, core_reactions,
-                                             subsystem_table = NULL,
-                                             expansion_mode = c(
-                                               "ordered_once", "fixed_point"
-                                             ),
-                                             max_iterations = 10L) {
+                                                  subsystem_table = NULL,
+                                                  expansion_mode = c(
+                                                    "ordered_once", "fixed_point"
+                                                  ),
+                                                  max_iterations = 10L) {
   expansion_mode <- match.arg(expansion_mode)
   required <- c("sample_id", "module_id", "gene", "reaction_id")
   if (!is.data.frame(core_reactions) ||
@@ -134,44 +134,47 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
       call. = FALSE
     )
   }
+
   maps <- rc_reaction_crossref_maps(
     gem,
     subsystem_table = subsystem_table
   )
   maps$subsystem <- maps$subsystem[
-  !is.na(maps$subsystem$reaction_id) &
-    nzchar(trimws(as.character(maps$subsystem$reaction_id))) &
-    !is.na(maps$subsystem$subsystem_id) &
-    nzchar(trimws(as.character(maps$subsystem$subsystem_id))),
-  , drop = FALSE
-]
-maps$kegg <- maps$kegg[
-  !is.na(maps$kegg$reaction_id) &
-    nzchar(trimws(as.character(maps$kegg$reaction_id))) &
-    !is.na(maps$kegg$kegg_id) &
-    nzchar(trimws(as.character(maps$kegg$kegg_id))),
-  , drop = FALSE
-]
-maps$reactome <- maps$reactome[
-  !is.na(maps$reactome$reaction_id) &
-    nzchar(trimws(as.character(maps$reactome$reaction_id))) &
-    !is.na(maps$reactome$reactome_id) &
-    nzchar(trimws(as.character(maps$reactome$reactome_id))),
-  , drop = FALSE
-]
-maps$rhea_master <- maps$rhea_master[
-  !is.na(maps$rhea_master$reaction_id) &
-    nzchar(trimws(as.character(maps$rhea_master$reaction_id))) &
-    !is.na(maps$rhea_master$rhea_master_id) &
-    nzchar(trimws(as.character(maps$rhea_master$rhea_master_id))),
-  , drop = FALSE
-]
+    !is.na(maps$subsystem$reaction_id) &
+      nzchar(trimws(as.character(maps$subsystem$reaction_id))) &
+      !is.na(maps$subsystem$subsystem_id) &
+      nzchar(trimws(as.character(maps$subsystem$subsystem_id))),
+    , drop = FALSE
+  ]
+  maps$kegg <- maps$kegg[
+    !is.na(maps$kegg$reaction_id) &
+      nzchar(trimws(as.character(maps$kegg$reaction_id))) &
+      !is.na(maps$kegg$kegg_id) &
+      nzchar(trimws(as.character(maps$kegg$kegg_id))),
+    , drop = FALSE
+  ]
+  maps$reactome <- maps$reactome[
+    !is.na(maps$reactome$reaction_id) &
+      nzchar(trimws(as.character(maps$reactome$reaction_id))) &
+      !is.na(maps$reactome$reactome_id) &
+      nzchar(trimws(as.character(maps$reactome$reactome_id))),
+    , drop = FALSE
+  ]
+  maps$rhea_master <- maps$rhea_master[
+    !is.na(maps$rhea_master$reaction_id) &
+      nzchar(trimws(as.character(maps$rhea_master$reaction_id))) &
+      !is.na(maps$rhea_master$rhea_master_id) &
+      nzchar(trimws(as.character(maps$rhea_master$rhea_master_id))),
+    , drop = FALSE
+  ]
+
   if (!nrow(maps$subsystem)) {
     stop(
       "No usable reaction-to-subsystem annotations were found.",
       call. = FALSE
     )
   }
+
   valid_reactions <- colnames(rc_validate_gem(gem)$S)
   if ("is_core" %in% colnames(core_reactions)) {
     core_reactions <- core_reactions[
@@ -203,15 +206,9 @@ maps$rhea_master <- maps$rhea_master[
 
   for (key in names(groups)) {
     index <- groups[[key]]
-    core <- unique(
-      as.character(core_reactions$reaction_id[index])
-    )
-    sample_id <- as.character(
-      core_reactions$sample_id[index[[1L]]]
-    )
-    module_id <- as.character(
-      core_reactions$module_id[index[[1L]]]
-    )
+    core <- unique(as.character(core_reactions$reaction_id[index]))
+    sample_id <- as.character(core_reactions$sample_id[index[[1L]]])
+    module_id <- as.character(core_reactions$module_id[index[[1L]]])
     included <- core
     reasons <- stats::setNames(
       rep("core_grn_gene", length(core)),
@@ -240,6 +237,7 @@ maps$rhea_master <- maps$rhea_master[
 
     expand_once <- function() {
       before <- length(included)
+
       reactions_in_subsystems <- function(subsystems) {
         unique(maps$subsystem$reaction_id[
           maps$subsystem$subsystem_id %in% subsystems
@@ -250,45 +248,26 @@ maps$rhea_master <- maps$rhea_master[
           maps$subsystem$reaction_id %in% reactions
         ])
       }
-      source_for_subsystem_members <- function(
-        subsystems,
-        labels_by_subsystem
-      ) {
+      source_for_subsystem_members <- function(subsystems) {
         reactions <- reactions_in_subsystems(subsystems)
         stats::setNames(vapply(reactions, function(reaction) {
           subsystem_ids <- unique(maps$subsystem$subsystem_id[
             maps$subsystem$reaction_id == reaction &
               maps$subsystem$subsystem_id %in% subsystems
           ])
-          labels <- unique(unlist(
-            labels_by_subsystem[subsystem_ids],
-            use.names = FALSE
-          ))
           paste(
-            labels[!is.na(labels) & nzchar(labels)],
+            paste0("SUBSYSTEM:", subsystem_ids),
             collapse = ";"
           )
         }, character(1)), reactions)
       }
 
       core_subsystems <- subsystems_for_reactions(core)
-      subsystem_reactions <- reactions_in_subsystems(
-        core_subsystems
-      )
-      subsystem_labels <- stats::setNames(
-        lapply(
-          core_subsystems,
-          function(value) paste0("SUBSYSTEM:", value)
-        ),
-        core_subsystems
-      )
+      subsystem_reactions <- reactions_in_subsystems(core_subsystems)
       add_reactions(
         subsystem_reactions,
         "same_core_subsystem",
-        source_for_subsystem_members(
-          core_subsystems,
-          subsystem_labels
-        )
+        source_for_subsystem_members(core_subsystems)
       )
 
       current <- included
@@ -298,76 +277,72 @@ maps$rhea_master <- maps$rhea_master[
       reactome_ids <- unique(maps$reactome$reactome_id[
         maps$reactome$reaction_id %in% current
       ])
-      all_subsystems <- unique(maps$subsystem$subsystem_id)
-      database_labels <- lapply(all_subsystems, function(subsystem) {
-        reactions <- reactions_in_subsystems(subsystem)
-        kegg <- intersect(
-          unique(maps$kegg$kegg_id[
-            maps$kegg$reaction_id %in% reactions
-          ]),
-          kegg_ids
-        )
-        reactome <- intersect(
-          unique(maps$reactome$reactome_id[
-            maps$reactome$reaction_id %in% reactions
-          ]),
-          reactome_ids
-        )
-        unique(c(
-          paste0("SUBSYSTEM:", subsystem),
-          paste0("KEGG:", kegg),
-          paste0("REACTOME:", reactome)
-        ))
-      })
-      names(database_labels) <- all_subsystems
-      database_subsystems <- all_subsystems[vapply(
-        database_labels,
-        function(value) {
-          any(grepl("^(KEGG|REACTOME):", value))
-        },
-        logical(1)
-      )]
+      database_reactions <- unique(c(
+        maps$kegg$reaction_id[
+          maps$kegg$kegg_id %in% kegg_ids
+        ],
+        maps$reactome$reaction_id[
+          maps$reactome$reactome_id %in% reactome_ids
+        ]
+      ))
+      database_source <- stats::setNames(
+        vapply(database_reactions, function(reaction) {
+          reaction_kegg <- intersect(
+            unique(maps$kegg$kegg_id[
+              maps$kegg$reaction_id == reaction
+            ]),
+            kegg_ids
+          )
+          reaction_reactome <- intersect(
+            unique(maps$reactome$reactome_id[
+              maps$reactome$reaction_id == reaction
+            ]),
+            reactome_ids
+          )
+          paste(
+            c(
+              paste0("KEGG:", reaction_kegg),
+              paste0("REACTOME:", reaction_reactome)
+            ),
+            collapse = ";"
+          )
+        }, character(1)),
+        database_reactions
+      )
       add_reactions(
-        reactions_in_subsystems(database_subsystems),
-        "shared_kegg_or_reactome_subsystem",
-        source_for_subsystem_members(
-          database_subsystems,
-          database_labels
-        )
+        database_reactions,
+        "shared_kegg_or_reactome_reaction",
+        database_source
       )
 
       current <- included
       master_ids <- unique(maps$rhea_master$rhea_master_id[
         maps$rhea_master$reaction_id %in% current
       ])
-      anchor_reactions <- unique(maps$rhea_master$reaction_id[
+      rhea_reactions <- unique(maps$rhea_master$reaction_id[
         maps$rhea_master$rhea_master_id %in% master_ids
       ])
-      rhea_subsystems <- subsystems_for_reactions(
-        anchor_reactions
+      rhea_source <- stats::setNames(
+        vapply(rhea_reactions, function(reaction) {
+          reaction_master_ids <- intersect(
+            unique(maps$rhea_master$rhea_master_id[
+              maps$rhea_master$reaction_id == reaction
+            ]),
+            master_ids
+          )
+          paste(
+            paste0("RHEA_MASTER:", reaction_master_ids),
+            collapse = ";"
+          )
+        }, character(1)),
+        rhea_reactions
       )
-      rhea_labels <- lapply(rhea_subsystems, function(subsystem) {
-        reactions <- reactions_in_subsystems(subsystem)
-        identifiers <- intersect(
-          unique(maps$rhea_master$rhea_master_id[
-            maps$rhea_master$reaction_id %in% reactions
-          ]),
-          master_ids
-        )
-        unique(c(
-          paste0("SUBSYSTEM:", subsystem),
-          paste0("RHEA_MASTER:", identifiers)
-        ))
-      })
-      names(rhea_labels) <- rhea_subsystems
       add_reactions(
-        reactions_in_subsystems(rhea_subsystems),
-        "shared_master_rhea_subsystem",
-        source_for_subsystem_members(
-          rhea_subsystems,
-          rhea_labels
-        )
+        rhea_reactions,
+        "shared_master_rhea_reaction",
+        rhea_source
       )
+
       length(included) > before
     }
 
@@ -403,11 +378,11 @@ maps$rhea_master <- maps$rhea_master[
       ),
       n_database_added = sum(
         membership$inclusion_stage ==
-          "shared_kegg_or_reactome_subsystem"
+          "shared_kegg_or_reactome_reaction"
       ),
       n_rhea_added = sum(
         membership$inclusion_stage ==
-          "shared_master_rhea_subsystem"
+          "shared_master_rhea_reaction"
       ),
       iterations = iteration,
       stringsAsFactors = FALSE
@@ -456,27 +431,57 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
       !partial_anchor,
       , drop = FALSE
     ]
-    membership_keys <- key(answer$reaction_membership)
   }
 
   if (is.data.frame(answer$summary) && nrow(answer$summary)) {
     for (i in seq_len(nrow(answer$summary))) {
-      selected <- as.character(core_reactions$sample_id) ==
-        as.character(answer$summary$sample_id[[i]]) &
-        as.character(core_reactions$module_id) ==
-        as.character(answer$summary$module_id[[i]]) &
+      sample_id <- as.character(answer$summary$sample_id[[i]])
+      module_id <- as.character(answer$summary$module_id[[i]])
+      selected <- as.character(core_reactions$sample_id) == sample_id &
+        as.character(core_reactions$module_id) == module_id &
         core_reactions$is_core %in% TRUE
+      gene_selected <- selected
+      if ("group_complete" %in% colnames(core_reactions)) {
+        gene_selected <- gene_selected &
+          core_reactions$group_complete %in% TRUE
+      }
+
+      membership_selected <-
+        as.character(answer$reaction_membership$sample_id) == sample_id &
+        as.character(answer$reaction_membership$module_id) == module_id
+      membership <- answer$reaction_membership[
+        membership_selected,
+        , drop = FALSE
+      ]
+      count_stage <- function(stage) {
+        length(unique(as.character(
+          membership$reaction_id[
+            !is.na(membership$inclusion_stage) &
+              membership$inclusion_stage == stage
+          ]
+        )))
+      }
+
       answer$summary$n_core_reactions[[i]] <- length(unique(
         as.character(core_reactions$reaction_id[selected])
       ))
-      gene_selected <- selected
-      if ("group_complete" %in% colnames(core_reactions)) {
-        gene_selected <- gene_selected & core_reactions$group_complete %in% TRUE
-      }
       answer$summary$n_core_genes[[i]] <- length(unique(
         as.character(core_reactions$gene[gene_selected])
       ))
+      answer$summary$n_reactions[[i]] <- length(unique(
+        as.character(membership$reaction_id)
+      ))
+      answer$summary$n_subsystem_added[[i]] <- count_stage(
+        "same_core_subsystem"
+      )
+      answer$summary$n_database_added[[i]] <- count_stage(
+        "shared_kegg_or_reactome_reaction"
+      )
+      answer$summary$n_rhea_added[[i]] <- count_stage(
+        "shared_master_rhea_reaction"
+      )
     }
   }
+
   answer
 }
