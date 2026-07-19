@@ -4,7 +4,7 @@ Version: 1.7.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Runs a species-aware human or mouse RNA+ATAC workflow that pools biological samples within each condition and cell type before SuperCell2 metacell construction, estimates condition-specific signed Pando regulatory effects, integrates TF-by-ATAC regulation into zero-preserving gene support before GPR aggregation, constructs condition-specific meta-modules and one shared union-GEM, and performs directional COMPASS-like minimum-penalty scoring on a shared extracellular medium.
+Description: Runs a species-aware human or mouse RNA+ATAC workflow that pools biological samples within each condition and cell type before SuperCell2 metacell construction, estimates condition-specific Pando regulatory coefficients, projects coefficient-weighted ATAC accessibility into zero-preserving RNA gene support before GPR aggregation, constructs condition-specific biological meta-modules with bounded one-hop expansion and local FASTCORE completion, builds one shared union-GEM, and performs directional COMPASS-like minimum-penalty scoring on a shared extracellular medium.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -12,13 +12,12 @@ VignetteBuilder: knitr
 Collate:
     '00_meta_module_utils.R'
     '00_utils.R'
-    'calibration_q95.R'
+    'workflow_utils.R'
     'export.R'
     'fastcore.R'
     'full_gem.R'
     'gem_io.R'
     'gem_validate.R'
-    'global_workflow.R'
     'gpr_capacity.R'
     'gpr_parser.R'
     'humangem.R'
@@ -35,7 +34,7 @@ Collate:
     'metacell.R'
     'microcompass.R'
     'one_shot.R'
-    'pando_confidence.R'
+    'pando_evidence_utils.R'
     'pando_grn.R'
     'condition_pooling.R'
     'condition_layer1.R'
