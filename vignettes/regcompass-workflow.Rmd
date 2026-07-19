@@ -179,7 +179,9 @@ result <- rc_run_regcompass(
   ),
   pando_args = list(
     min_metacells = 10,
-    regions = SCREEN.ccRE.UCSC.hg38,
+    pando_initiate_args = list(
+      regions = SCREEN.ccRE.UCSC.hg38
+    ),
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -206,7 +208,8 @@ result <- rc_run_regcompass(
 The four `*_args` values are lists by contract. Integrated fields such as
 `layer1`, `gem`, `unit`, and `medium_scenarios` are owned by the workflow and
 must not be overridden through `layer2_args`. Use `inference_unit` on
-`rc_run_regcompass()` to select the Layer 2 unit.
+`rc_run_regcompass()` to select the Layer 2 unit. Candidate regions belong in
+`pando_args$pando_initiate_args$regions`, matching `Pando::initiate_grn()`.
 
 ## 5. Equivalent one-shot entry point
 
@@ -236,7 +239,9 @@ result <- rc_run_regcompass_one_shot(
   ),
   pando_args = list(
     min_metacells = 10,
-    regions = SCREEN.ccRE.UCSC.hg38,
+    pando_initiate_args = list(
+      regions = SCREEN.ccRE.UCSC.hg38
+    ),
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -258,64 +263,4 @@ result <- rc_run_regcompass_one_shot(
 
 Set `fragment_files = FALSE` in the one-shot call when no matching fragment file
 is available; pass the fragment manifest/path when fragments should be
-re-aggregated. For mouse data, use a mouse genome and set `species = "mouse"`;
-the wrapper then prepares Mouse-GEM 1.8.0 and the mouse physiological medium
-unless you provide `gem` or `medium_scenarios`. Supply `gem = human2_gem` (or a
-Mouse-GEM object) and `medium_scenarios = medium` to the one-shot function if
-those objects were prepared separately. An explicit `medium_scenarios` table
-takes precedence over `medium_scenario`.
-
-## 6. Check the barrier and outputs
-
-Do not begin differential analysis until the upstream barrier and sample
-coverage have been inspected.
-
-```{r inspect-result, purl=FALSE}
-stopifnot(isTRUE(result$upstream_barrier$passed))
-table(result$upstream_status$status, useNA = "ifany")
-
-result$schema_version
-result$params[c(
-  "inference_unit",
-  "medium_policy",
-  "strict_biological_defaults",
-  "penalty_unit"
-)]
-
-dim(result$layer1$C_abs)
-head(result$grn_meta_modules$global_core_reactions)
-dim(result$microcompass$penalty)
-result$microcompass$primary_output_semantics
-```
-
-The returned object connects the phases as follows:
-
-| Component | Produced by | Consumed by / interpretation |
-|---|---|---|
-| `upstream_status`, `upstream_barrier` | strict-stratum workers | verifies all required strata and samples reached the global phase |
-| `layer1` | merged expression, GPR and Pando evidence | supplies absolute reaction evidence and diagnostics to Layer 2 |
-| `grn_meta_modules` | local module construction and union | defines shared core and reaction membership for the meta-module GEM |
-| `microcompass$penalty` | directional LP scoring | primary minimum evidence-discordance result; lower is more supported |
-| `microcompass$relative_penalty_rank` | within-target ranking | display diagnostic, not the primary inferential quantity |
-
-The run also writes the stratum manifest and status files, merged Layer 1,
-global meta-modules, and the final result under `outdir`. Keep these artifacts
-with the model version, medium table, parameters, and software environment.
-
-## 7. Failure checkpoints
-
-When a run stops, inspect the earliest applicable boundary:
-
-1. **Input:** metadata completeness, assay names, fragment paths and indexes.
-2. **Strata:** `00_strata/stratum_filter.tsv.gz` and
-   `00_strata/stratum_workflow_status.tsv.gz`.
-3. **Global barrier:** `00_strata/upstream_barrier.tsv.gz`; every sample must
-   retain an analyzable stratum.
-4. **Model:** reaction IDs in GPR, medium, membership, and target tables must
-   match the stoichiometric matrix column names.
-5. **Solver:** install the selected backend and record solver/time-limit
-   settings; use `solver = "highs"` for the default open-source path.
-
-For confirmatory comparisons, retain `inference_unit = "sample_celltype"` so
-biological samples, rather than metacells from the same sample, are the
-replicates.
+re-aggregated.
