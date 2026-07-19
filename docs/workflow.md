@@ -46,16 +46,18 @@ RNA support is
 C^{RNA}_{g,u}=x_{g,u}/(x_{g,u}+h).
 \]
 
-The signed Pando modifier is applied on the support log-odds scale:
+The signed Pando modifier is computed from TF-by-ATAC activity deviations
+centered across conditions within the same cell type, then applied on the support
+log-odds scale:
 
 \[
 C^{MO}_{g,u}=\frac{C^{RNA}_{g,u}2^{\alpha R_{g,u}}}
 {1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{\alpha R_{g,u}}}.
 \]
 
-The transform is bounded and zero preserving. Protein complexes use a
-Boltzmann minimum-biased AND rule with `tau = 0.20`; isozyme groups are summed;
-no promiscuity weighting is applied.
+The transform is bounded and zero preserving. Protein complexes use the
+normalized, monotone Boltzmann soft-min AND rule with `tau = 0.20`; isozyme
+groups are summed and no promiscuity weighting is applied.
 
 Reaction expression becomes one positive LP cost:
 
@@ -70,5 +72,5 @@ There is no independent Pando reaction-confidence penalty.
 - `layer1`: RNA support, regulatory modifier, multiome gene support and reaction expression;
 - `grn_meta_modules`: condition-specific modules and global union membership;
 - `microcompass`: directional maximum flux, feasibility and minimum penalties;
-- `condition_summary`: median penalty and support per condition;
-- `condition_contrast`: two-condition support difference when exactly two conditions exist.
+- `condition_summary`: median penalty and support for each condition within each cell type;
+- `condition_contrast`: two-condition support difference within each cell type.
