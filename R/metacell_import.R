@@ -50,11 +50,19 @@ rc_import_supercell2_metacells <- function(
     stop("No valid metacell directories supplied.", call. = FALSE)
   }
   read_tsv <- function(path) {
-    utils::read.delim(
+    out <- utils::read.delim(
       gzfile(path),
       stringsAsFactors = FALSE,
-      check.names = FALSE
+      check.names = FALSE,
+      colClasses = "character"
     )
+    out[] <- lapply(
+      out,
+      utils::type.convert,
+      as.is = TRUE,
+      tryLogical = FALSE
+    )
+    out
   }
   metas <- memberships <- fragment_manifests <- list()
   rnas <- atacs <- list()
