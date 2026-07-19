@@ -1,8 +1,25 @@
-test_that("rc_boltzmann_minavg is bounded by min and mean", {
+test_that("normalized Boltzmann soft-min is bounded by min and mean", {
   scores <- c(0.2, 0.5, 0.9)
   out <- rc_boltzmann_minavg(scores, tau = 0.08)
   expect_gte(out, min(scores))
   expect_lte(out, mean(scores))
+})
+
+test_that("normalized Boltzmann soft-min is monotone in every subunit", {
+  scores <- c(0.2, 0.5, 0.9)
+  baseline <- rc_boltzmann_minavg(scores, tau = 0.20)
+  for (index in seq_along(scores)) {
+    increased <- scores
+    increased[[index]] <- increased[[index]] + 0.1
+    expect_gte(
+      rc_boltzmann_minavg(increased, tau = 0.20),
+      baseline
+    )
+  }
+  expect_equal(
+    rc_boltzmann_minavg(rep(0.4, 3), tau = 0.20),
+    0.4
+  )
 })
 
 test_that("rc_reaction_capacity_one handles AND and OR semantics", {
@@ -22,7 +39,7 @@ test_that("rc_reaction_capacity_one handles AND and OR semantics", {
   )
 })
 
-test_that("AND aggregation supports min, Boltzmann, and mean sensitivities", {
+test_that("AND aggregation supports min, Boltzmann soft-min, and mean", {
   scores <- c(0.2, 0.5, 0.9)
   expect_equal(rc_and_capacity(scores, method = "min"), min(scores))
   expect_equal(rc_and_capacity(scores, method = "mean"), mean(scores))
