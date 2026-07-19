@@ -28,9 +28,16 @@ test_that("workflow vignette follows the supported public API", {
   expect_match(text, "uses ATAC")
   expect_match(text, 'species = "human"')
   expect_match(text, 'species = "mouse"')
-  expect_match(text, 'medium_scenario = "compass_model_bounds"')
+  expect_match(text, 'medium_scenario = "normal_human_plasma"')
   expect_match(text, "medium_scenarios = medium")
   expect_match(text, 'inference_unit = "sample_celltype"')
+  expect_match(text, "pando_initiate_args = list")
+  expect_match(text, "regions = SCREEN.ccRE.UCSC.hg38")
+  expect_false(grepl(
+    "pando_args = list\\(\\s*min_metacells = 10,\\s*regions =",
+    text,
+    perl = TRUE
+  ))
   expect_match(text, "upstream_barrier\\$passed")
   expect_match(text, "microcompass\\$penalty")
 })

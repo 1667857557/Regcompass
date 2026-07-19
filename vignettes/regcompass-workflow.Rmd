@@ -179,7 +179,9 @@ result <- rc_run_regcompass(
   ),
   pando_args = list(
     min_metacells = 10,
-    regions = SCREEN.ccRE.UCSC.hg38,
+    pando_initiate_args = list(
+      regions = SCREEN.ccRE.UCSC.hg38
+    ),
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -206,7 +208,8 @@ result <- rc_run_regcompass(
 The four `*_args` values are lists by contract. Integrated fields such as
 `layer1`, `gem`, `unit`, and `medium_scenarios` are owned by the workflow and
 must not be overridden through `layer2_args`. Use `inference_unit` on
-`rc_run_regcompass()` to select the Layer 2 unit.
+`rc_run_regcompass()` to select the Layer 2 unit. Candidate regions belong in
+`pando_args$pando_initiate_args$regions`, matching `Pando::initiate_grn()`.
 
 ## 5. Equivalent one-shot entry point
 
@@ -236,7 +239,9 @@ result <- rc_run_regcompass_one_shot(
   ),
   pando_args = list(
     min_metacells = 10,
-    regions = SCREEN.ccRE.UCSC.hg38,
+    pando_initiate_args = list(
+      regions = SCREEN.ccRE.UCSC.hg38
+    ),
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,

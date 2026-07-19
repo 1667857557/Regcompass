@@ -261,6 +261,10 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
           )
         }, character(1)), reactions)
       }
+      prefixed_crossrefs <- function(prefix, values) {
+        values <- .rc_mm_trim_unique(values)
+        if (!length(values)) character() else paste0(prefix, values)
+      }
 
       core_subsystems <- subsystems_for_reactions(core)
       subsystem_reactions <- reactions_in_subsystems(core_subsystems)
@@ -301,8 +305,8 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
           )
           paste(
             c(
-              paste0("KEGG:", reaction_kegg),
-              paste0("REACTOME:", reaction_reactome)
+              prefixed_crossrefs("KEGG:", reaction_kegg),
+              prefixed_crossrefs("REACTOME:", reaction_reactome)
             ),
             collapse = ";"
           )
