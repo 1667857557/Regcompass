@@ -17,7 +17,8 @@
 }
 
 # Compute the v1.7.0 COMPASS-like penalty from multiome reaction expression.
-# Pando regulation is integrated before GPR; no separate confidence penalty.
+# Regulatory evidence is integrated before GPR aggregation; there is no
+# independent reaction-confidence term in the canonical model.
 rc_compute_multiome_penalty <- function(
     C_rel, reaction_confidence = NULL, gpr_diagnostics = NULL,
     reaction_roles = NULL,
@@ -40,6 +41,7 @@ rc_compute_multiome_penalty <- function(
       !is.finite(missing_penalty) || missing_penalty < 0) {
     stop("Penalty constants are invalid.", call. = FALSE)
   }
+
   finite <- is.finite(E)
   E_nonnegative <- pmax(E, 0)
   P_expr <- matrix(
@@ -56,10 +58,11 @@ rc_compute_multiome_penalty <- function(
   structural <- role %in% c("exchange", "demand", "sink", "artificial_support")
   curated <- role %in% names(support_penalty) &
     role_source %in% c("curated", "model_high_confidence")
-  override <- (structural | curated) & role %in% names(support_penalty)
-  names(structural) <- rownames(E)
-  names(curated) <- rownames(E)
-  names(override) <- rownames(E)
+  override <- stats::setNames(
+    as.logical((structural | curated) & role %in% names(support_penalty)),
+    rownames(E)
+  )
+
   penalty <- P_expr
   if (any(override)) {
     penalty[override, ] <- as.numeric(support_penalty[role[override]])
@@ -71,19 +74,24 @@ rc_compute_multiome_penalty <- function(
     penalty = penalty,
     components = list(
       reaction_expression = E,
-      P_expr = P_expr,
-      P_conf = matrix(0, nrow(E), ncol(E), dimnames = dimnames(E)),
+      expression_penalty = P_expr,
       role = role,
       role_source = role_source,
       role_override_flag = override,
       missing_expression_flag = !finite
     ),
-    evidence_policy = "penalty_only",
+    evidence_policy = "single_integrated_expression_penalty",
     penalty_version = "v1.7.0_gene_integrated_multiome_penalty",
     evidence_description = paste(
-      "Signed Pando TF-ATAC regulation is integrated into gene support before",
-      "GPR aggregation; reaction cost is 1/(1+log2(1+reaction_expression))."
+      "Condition-specific Pando coefficients learned from RNA+ATAC weight",
+      "accessibility-only regulatory deviations before GPR aggregation;",
+      "reaction cost is 1/(1+log2(1+reaction_expression))."
     ),
-    penalty_formula = "1 / (1 + log2(1 + E_multiome))"
+    penalty_formula = "1 / (1 + log2(1 + E_multiome))",
+    legacy_arguments_ignored = c(
+      reaction_confidence = !is.null(reaction_confidence),
+      gpr_diagnostics = !is.null(gpr_diagnostics),
+      weights = !identical(weights, c(expr = 1))
+    )
   )
 }
