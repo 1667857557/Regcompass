@@ -68,7 +68,7 @@ result <- rc_run_regcompass_one_shot(
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
-      peak_cor = 0,
+      peak_cor = 0.05,
       adjust_method = "fdr"
     )
   ),
