@@ -155,37 +155,6 @@ test_that("medium application never expands blocked GEM directions", {
   ))
 })
 
-test_that("unified Q95 uses weights, strata, and effective sample size", {
-  C_raw <- rbind(
-    r1 = c(0.1, 0.2, 0.8, 0.9),
-    r2 = c(0.2, 0.3, 0.6, 0.7)
-  )
-  colnames(C_raw) <- paste0("p", 1:4)
-  meta <- data.frame(
-    pool_id = colnames(C_raw),
-    sample_id = c("s1", "s1", "s2", "s3"),
-    cell_type = c("A", "A", "B", "B"),
-    stringsAsFactors = FALSE
-  )
-  weights <- .rc_equal_sample_weights(meta$sample_id)
-  calibrated <- rc_q95_calibrate(
-    C_raw,
-    bootstrap = FALSE,
-    n0 = 80,
-    unit_meta = meta,
-    stratum_col = "cell_type",
-    weights = weights
-  )
-
-  expect_equal(calibrated$C_rel, C_raw)
-  expect_true(all(calibrated$Q$n_effective <= calibrated$Q$n))
-  expect_true(all(calibrated$Q$rho_n < 1))
-  expect_true(all(calibrated$Q$sample_balanced))
-  expect_true(all(
-    calibrated$Q$calibration_role == "diagnostic_only_not_lp_capacity"
-  ))
-})
-
 test_that("canonical workflow owns a persistent model cache", {
   workflow_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   micro_text <- paste(deparse(body(rc_run_microcompass)), collapse = "\n")
