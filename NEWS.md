@@ -1,3 +1,14 @@
+# RegCompassR 1.7.0
+
+- Changed the canonical metacell scope to `condition × cell type`, deliberately pooling cells from all biological samples within each condition before SuperCell2.
+- Changed Pando inference and GRN meta-module construction to the same condition-by-cell-type scope.
+- Replaced the independent Pando reaction-confidence penalty with a signed TF-by-ATAC regulatory modifier integrated into zero-preserving gene support before GPR aggregation.
+- Fixed the canonical GPR calculation to Boltzmann minimum-biased AND, additive isozyme OR, and no promiscuity weighting.
+- Replaced the previous decomposed expression-plus-confidence objective with one COMPASS-like positive cost, `1 / (1 + log2(1 + E_multiome))`.
+- Preserved condition-specific meta-module discovery, local FASTCORE completion, one shared union-GEM, one shared medium, and directional two-step COMPASS-like LP scoring.
+- Restricted the canonical inference unit to condition-pooled metacells because pooled metacells no longer have one biological-sample identity.
+- Added direct descriptive condition summaries and two-condition reaction-support contrasts.
+
 # RegCompassR 1.6.0
 
 - Added `fragment_files = FALSE` support so one-shot and integrated workflows can skip fragment aggregation and use object ATAC peak raw counts when matching fragment files are unavailable.
