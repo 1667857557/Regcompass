@@ -107,20 +107,10 @@
     or_method = "sum",
     BPPARAM = FALSE
   )
-  reaction_confidence <- matrix(
-    NA_real_,
-    nrow = nrow(reaction_expression),
-    ncol = ncol(reaction_expression),
-    dimnames = dimnames(reaction_expression)
-  )
 
   list(
     schema_version = "regcompass_condition_pooled_layer1_v1.7.0",
-    C_rel = reaction_expression,
-    C_abs = reaction_expression,
     reaction_expression = reaction_expression,
-    reaction_confidence = reaction_confidence,
-    reaction_confidence_source = "deprecated_placeholder_not_used_by_penalty",
     rna_metacell_logcpm = rna_logcpm,
     gene_support_rna = gene_rna_support,
     gene_regulatory_modifier = modifier,
