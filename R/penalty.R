@@ -57,6 +57,9 @@ rc_compute_multiome_penalty <- function(
   curated <- role %in% names(support_penalty) &
     role_source %in% c("curated", "model_high_confidence")
   override <- (structural | curated) & role %in% names(support_penalty)
+  names(structural) <- rownames(E)
+  names(curated) <- rownames(E)
+  names(override) <- rownames(E)
   penalty <- P_expr
   if (any(override)) {
     penalty[override, ] <- as.numeric(support_penalty[role[override]])
