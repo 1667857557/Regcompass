@@ -10,8 +10,8 @@
 #' @param outdir Persistent output directory.
 #' @param pfm Motif position-frequency matrices.
 #' @param genome Genome object matching the selected species and ATAC coordinates.
-#' @param fragment_files Fragment-file manifest/path(s), or `FALSE` to skip
-#'   fragment aggregation and use ATAC peak raw counts from `object` directly.
+#' @param fragment_files Must be `FALSE` in the v1.7.0 canonical
+#'   condition-pooled workflow; existing ATAC peak counts are aggregated.
 #' @param species `"human"` or `"mouse"`; defaults to `"human"`. Choosing
 #'   `"mouse"` prepares Mouse-GEM and mouse plasma defaults when `gem` and
 #'   `medium_scenarios` are omitted.
@@ -26,7 +26,7 @@
 #' @export
 rc_run_regcompass_one_shot <- function(
     object, outdir, pfm, genome,
-    fragment_files = NULL,
+    fragment_files = FALSE,
     gem = NULL,
     medium_scenario = "physiologic",
     medium_scenarios = NULL,
