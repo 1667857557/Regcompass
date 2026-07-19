@@ -1,13 +1,15 @@
 # RegCompassR 1.7.0
 
-- Changed the canonical metacell scope to `condition × cell type`, deliberately pooling cells from all biological samples within each condition before SuperCell2.
+- Changed the canonical metacell scope to `condition × cell type`, deliberately pooling cells from all biological samples within each condition before SuperCell2 while retaining per-metacell biological-sample composition diagnostics.
 - Changed Pando inference and GRN meta-module construction to the same condition-by-cell-type scope.
-- Replaced the independent Pando reaction-confidence penalty with a signed TF-by-ATAC regulatory modifier integrated into zero-preserving gene support before GPR aggregation.
+- Uses condition-specific Pando coefficients learned from RNA+ATAC to weight accessibility-only regulatory deviations at the metacell level; metacell TF RNA is not multiplied into the modifier, reducing direct duplicate RNA weighting.
+- Clarifies that coefficients estimated from the same pooled dataset are fitted parameters rather than independent validation evidence; condition-pooled outputs remain descriptive unless external fitting or cross-fitting is supplied.
 - Fixed the canonical GPR calculation to a normalized, monotone Boltzmann soft-min AND, additive isozyme OR, and no promiscuity weighting.
 - Replaced the previous decomposed expression-plus-confidence objective with one COMPASS-like positive cost, `1 / (1 + log2(1 + E_multiome))`.
-- Preserved condition-specific meta-module discovery, local FASTCORE completion, one shared union-GEM, one shared medium, and directional two-step COMPASS-like LP scoring.
-- Restricted the canonical inference unit to condition-pooled metacells because pooled metacells no longer have one biological-sample identity.
+- Builds biological meta-modules from complete-GPR core reactions, subsystem and reaction cross-references, one bounded non-structural metabolite-neighbour hop, and local FASTCORE feasibility completion.
+- Preserved one shared union-GEM, one shared medium, common bounds and directional two-step COMPASS-like LP scoring across all conditions.
 - Added direct descriptive condition summaries and two-condition reaction-support contrasts within each cell type.
+- Deleted the retired strict-stratum global workflow, Q95 calibration implementation, Pando reaction-confidence implementation, Layer 2 confidence alignment functions, confidence placeholders, and `penalty_weights` API.
 
 # RegCompassR 1.6.0
 
