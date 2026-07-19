@@ -1,46 +1,179 @@
-test_that("meta-module expansion preserves core reactions and monotonic closure", {
-  S <- diag(10)
-  dimnames(S) <- list(paste0("M", 1:10), paste0("R", 1:10))
+test_that(
+  "meta-module cross-reference expansion adds reactions rather than subsystems",
+  {
+    S <- diag(10)
+    dimnames(S) <- list(
+      paste0("M", 1:10),
+      paste0("R", 1:10)
+    )
+    reaction_meta <- data.frame(
+      reaction_id = paste0("R", 1:10),
+      subsystem = c(
+        "A", "A",
+        "B", "B",
+        "C", "C",
+        "D", "D",
+        "E", "E"
+      ),
+      metabolic_module = c(
+        "A", "A",
+        "B", "B",
+        "C", "C",
+        "D", "D",
+        "E", "E"
+      ),
+      kegg_reaction_id = c(
+        "K1", NA,
+        "K1", NA,
+        NA, NA,
+        "K2", NA,
+        "K2", NA
+      ),
+      reactome_reaction_id = c(
+        NA, "X1",
+        NA, NA,
+        "X1", NA,
+        NA, NA,
+        NA, NA
+      ),
+      rhea_master_id = c(
+        "RM1", NA,
+        NA, NA,
+        "RM2", NA,
+        "RM2", NA,
+        NA, NA
+      ),
+      stringsAsFactors = FALSE
+    )
+    gem <- rc_make_gem(
+      S,
+      lb = rep(0, 10),
+      ub = rep(1000, 10),
+      reaction_meta = reaction_meta
+    )
+    core <- data.frame(
+      sample_id = "S1",
+      module_id = "S1::GRN0001",
+      gene = "G1",
+      reaction_id = "R1",
+      stringsAsFactors = FALSE
+    )
+
+    ordered <- rc_expand_meta_module_reactions(
+      gem,
+      core,
+      expansion_mode = "ordered_once"
+    )
+    fixed <- rc_expand_meta_module_reactions(
+      gem,
+      core,
+      expansion_mode = "fixed_point"
+    )
+
+    expect_setequal(
+      ordered$reaction_membership$reaction_id,
+      c("R1", "R2", "R3", "R5", "R7")
+    )
+    expect_setequal(
+      fixed$reaction_membership$reaction_id,
+      c("R1", "R2", "R3", "R5", "R7", "R9")
+    )
+    expect_false(any(
+      c("R4", "R6", "R8", "R10") %in%
+        fixed$reaction_membership$reaction_id
+    ))
+
+    stage <- stats::setNames(
+      ordered$reaction_membership$inclusion_stage,
+      ordered$reaction_membership$reaction_id
+    )
+    source <- stats::setNames(
+      ordered$reaction_membership$source_annotation,
+      ordered$reaction_membership$reaction_id
+    )
+    expect_identical(stage[["R2"]], "same_core_subsystem")
+    expect_identical(
+      stage[["R3"]],
+      "shared_kegg_or_reactome_reaction"
+    )
+    expect_identical(
+      stage[["R5"]],
+      "shared_kegg_or_reactome_reaction"
+    )
+    expect_identical(
+      stage[["R7"]],
+      "shared_master_rhea_reaction"
+    )
+    expect_identical(source[["R3"]], "KEGG:K1")
+    expect_identical(source[["R5"]], "REACTOME:X1")
+    expect_identical(source[["R7"]], "RHEA_MASTER:RM2")
+
+    expect_equal(ordered$summary$n_core_reactions, 1)
+    expect_equal(ordered$summary$n_subsystem_added, 1)
+    expect_equal(ordered$summary$n_database_added, 2)
+    expect_equal(ordered$summary$n_rhea_added, 1)
+    expect_equal(ordered$summary$n_reactions, 5)
+
+    expect_equal(fixed$summary$n_core_reactions, 1)
+    expect_equal(fixed$summary$n_subsystem_added, 1)
+    expect_equal(fixed$summary$n_database_added, 3)
+    expect_equal(fixed$summary$n_rhea_added, 1)
+    expect_equal(fixed$summary$n_reactions, 6)
+  }
+)
+
+test_that("meta-module summary is recomputed after partial anchors are removed", {
+  S <- diag(3)
+  dimnames(S) <- list(
+    paste0("M", 1:3),
+    paste0("R", 1:3)
+  )
   reaction_meta <- data.frame(
-    reaction_id = paste0("R", 1:10),
-    subsystem = c("A", "A", "B", "B", "C", "C", "D", "D", "E", "E"),
-    metabolic_module = c("A", "A", "B", "B", "C", "C", "D", "D", "E", "E"),
-    kegg_reaction_id = c("K1", NA, "K1", NA, NA, NA, "K2", NA, "K2", NA),
-    reactome_reaction_id = c(NA, "X1", NA, NA, "X1", NA, NA, NA, NA, NA),
-    rhea_master_id = c("RM1", NA, NA, NA, "RM2", NA, "RM2", NA, NA, NA),
+    reaction_id = paste0("R", 1:3),
+    subsystem = rep("A", 3),
+    metabolic_module = rep("A", 3),
     stringsAsFactors = FALSE
   )
   gem <- rc_make_gem(
-    S, lb = rep(0, 10), ub = rep(1000, 10),
+    S,
+    lb = rep(0, 3),
+    ub = rep(1000, 3),
     reaction_meta = reaction_meta
   )
   core <- data.frame(
-    sample_id = "S1", module_id = "S1::GRN0001",
-    gene = "G1", reaction_id = "R1", stringsAsFactors = FALSE
+    sample_id = c("S1", "S1"),
+    module_id = c("S1::GRN0001", "S1::GRN0001"),
+    gene = c("G1", "G2"),
+    reaction_id = c("R1", "R2"),
+    and_group_id = c("1", "1"),
+    required_genes = c("G1", "G2;G3"),
+    matched_genes = c("G1", "G2"),
+    missing_genes = c("", "G3"),
+    group_complete = c(TRUE, FALSE),
+    is_core = c(TRUE, FALSE),
+    is_partial_candidate = c(FALSE, TRUE),
+    inclusion_stage = c(
+      "core_complete_gpr",
+      "partial_gpr_candidate"
+    ),
+    stringsAsFactors = FALSE
   )
 
-  ordered <- rc_expand_meta_module_reactions(
-    gem, core, expansion_mode = "ordered_once"
-  )
-  fixed <- rc_expand_meta_module_reactions(
-    gem, core, expansion_mode = "fixed_point"
-  )
+  expanded <- rc_expand_meta_module_reactions(gem, core)
 
-  expect_true("R1" %in% ordered$reaction_membership$reaction_id)
-  expect_true(all(
-    ordered$reaction_membership$reaction_id %in%
-      fixed$reaction_membership$reaction_id
-  ))
-  expect_true(all(
-    ordered$reaction_membership$inclusion_stage %in% c(
-      "core_grn_gene", "same_core_subsystem",
-      "shared_kegg_or_reactome_subsystem",
-      "shared_master_rhea_subsystem"
-    )
-  ))
-  expect_gte(
-    nrow(fixed$reaction_membership),
-    nrow(ordered$reaction_membership)
+  expect_setequal(
+    expanded$reaction_membership$reaction_id,
+    c("R1", "R3")
+  )
+  expect_equal(expanded$summary$n_core_genes, 1)
+  expect_equal(expanded$summary$n_core_reactions, 1)
+  expect_equal(expanded$summary$n_reactions, 2)
+  expect_equal(expanded$summary$n_subsystem_added, 1)
+  expect_equal(expanded$summary$n_database_added, 0)
+  expect_equal(expanded$summary$n_rhea_added, 0)
+  expect_equal(
+    expanded$summary$n_reactions,
+    nrow(expanded$reaction_membership)
   )
 })
 
