@@ -45,6 +45,7 @@ library(RegCompassR)
 library(Pando)
 library(BSgenome.Hsapiens.UCSC.hg38)
 data(motifs, package = "Pando")
+data(SCREEN.ccRE.UCSC.hg38, package = "Pando")
 
 result <- rc_run_regcompass_one_shot(
   object = object,
@@ -65,7 +66,9 @@ result <- rc_run_regcompass_one_shot(
   ),
   pando_args = list(
     min_metacells = 10,
-    regions = SCREEN.ccRE.UCSC.hg38,
+    pando_initiate_args = list(
+      regions = SCREEN.ccRE.UCSC.hg38
+    ),
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -111,7 +114,8 @@ and a small pilot run.
 | `metacell_args$peak_calling_effective_genome_size` | MACS effective genome size | Use a species-matched value; defaults are inferred from annotated `hg*`/`GRCh*` or `mm*`/`GRCm*` peak ranges. |
 | `metacell_args$peak_calling_args` | Additional `Signac::CallPeaks()` arguments | Keep one policy across strata. Use only justified MACS options and record them with the run. |
 | `pando_args$min_metacells` | Minimum metacells required for Pando | It must be compatible with `floor(n_cells / gamma)`. Strata below it are skipped, so inspect `00_strata/stratum_workflow_status.tsv.gz` after a pilot. |
-| `pando_infer_args` | Pando model and correlation/FDR filters | Start with the shown GLM settings; tighten correlation thresholds only when the pilot produces excessive weak edges. Apply one policy to every stratum. |
+| `pando_args$pando_initiate_args$regions` | Candidate regulatory regions passed to `Pando::initiate_grn()` | Use a genome-build-matched region set. Do not place `regions` at the top level of `pando_args`. |
+| `pando_args$pando_infer_args` | Pando model and correlation/FDR filters | Start with the shown GLM settings; tighten correlation thresholds only when the pilot produces excessive weak edges. Apply one policy to every stratum. |
 | `layer1_args$local_fastcore` | Completes each local metabolic module | Keep enabled for the canonical path. |
 | `layer1_args$sample_balance` | Defines the sampling estimand for Q95 and relative-state diagnostics | Keep `TRUE` for biological-replicate inference. Every sample receives equal total mass globally, and weights are recomputed inside each Q95 stratum. Absolute metacell activity is not rescaled. |
 | `layer1_args$expression_batch_correction` | Optional technical-batch correction | Keep `"none"` unless a documented technical batch exists. If using `"limma"`, provide technical and preserved biological design columns; never remove `sample_id` as batch. |
