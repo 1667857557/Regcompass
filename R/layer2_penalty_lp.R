@@ -1,6 +1,6 @@
 rc_compass_score_from_penalty <- function(P, feasible,
-                                          method = c("ecdf", "mad_sigmoid"),
-                                          variation_tolerance = 1e-8) {
+                                           method = c("ecdf", "mad_sigmoid"),
+                                           variation_tolerance = 1e-8) {
   method <- match.arg(method)
   P <- as.matrix(P)
   feasible <- as.matrix(feasible)
@@ -66,39 +66,28 @@ rc_compass_score_from_penalty <- function(P, feasible,
 rc_layer2_unit_matrices <- function(
     layer1, unit, sample_col, celltype_col, condition_col) {
   unit <- match.arg(unit, c("sample_celltype", "metacell"))
-  C <- as.matrix(layer1$C_rel)
-  Conf <- rc_layer2_confidence_matrix(layer1$reaction_confidence, C)
+  reaction_expression <- layer1$reaction_expression %||% layer1$C_rel
+  if (is.null(reaction_expression)) {
+    stop("Layer 1 must contain `reaction_expression`.", call. = FALSE)
+  }
+  E <- as.matrix(reaction_expression)
   valid_dimnames <- function(x) {
     !is.null(rownames(x)) && !is.null(colnames(x)) &&
       !anyNA(rownames(x)) && !anyNA(colnames(x)) &&
       all(nzchar(rownames(x))) && all(nzchar(colnames(x))) &&
       !anyDuplicated(rownames(x)) && !anyDuplicated(colnames(x))
   }
-  if (!valid_dimnames(C) || !valid_dimnames(Conf)) {
+  if (!is.numeric(E) || !valid_dimnames(E)) {
     stop(
-      "Layer 1 capacity and confidence matrices require unique non-empty ",
-      "reaction and unit IDs.",
+      "Layer 1 reaction expression requires unique non-empty reaction and unit IDs.",
       call. = FALSE
     )
   }
-  if (!setequal(colnames(C), colnames(Conf))) {
-    stop("Layer 1 capacity and confidence matrices contain different units.",
-         call. = FALSE)
-  }
-  Conf <- Conf[, colnames(C), drop = FALSE]
-  common <- intersect(rownames(C), rownames(Conf))
-  if (!length(common)) {
-    stop("Layer 1 capacity and confidence matrices share no reactions.",
-         call. = FALSE)
-  }
-  C <- C[common, , drop = FALSE]
-  Conf <- Conf[common, , drop = FALSE]
   if (identical(unit, "metacell")) {
     return(list(
-      C_rel = C,
-      reaction_confidence = Conf,
+      reaction_expression = E,
       unit_meta = layer1$unit_meta,
-      summary = "metacell-level Layer1 matrices"
+      summary = "metacell-level reaction-expression matrix"
     ))
   }
   if (is.null(layer1$unit_meta) || !is.data.frame(layer1$unit_meta)) {
@@ -117,12 +106,12 @@ rc_layer2_unit_matrices <- function(
     stop("`unit_meta$pool_id` must contain unique non-empty unit IDs.",
          call. = FALSE)
   }
-  if (!setequal(pool_ids, colnames(C))) {
+  if (!setequal(pool_ids, colnames(E))) {
     stop("`unit_meta$pool_id` does not exactly match Layer 1 matrix units.",
          call. = FALSE)
   }
   pm$pool_id <- pool_ids
-  pm <- pm[match(colnames(C), pm$pool_id), , drop = FALSE]
+  pm <- pm[match(colnames(E), pm$pool_id), , drop = FALSE]
   group_cols <- c(
     sample_col,
     if (condition_col %in% colnames(pm)) condition_col else NULL,
@@ -140,51 +129,38 @@ rc_layer2_unit_matrices <- function(
     pm[, group_cols, drop = FALSE],
     sep = "|", drop = TRUE, lex.order = TRUE
   )
-  agg <- function(M) {
-    do.call(cbind, lapply(
-      split(pm$pool_id, gid),
-      function(cols) matrixStats::rowMedians(M[, cols, drop = FALSE], na.rm = TRUE)
-    ))
-  }
-  outC <- agg(C)
-  outF <- agg(Conf)
+  out <- do.call(cbind, lapply(
+    split(pm$pool_id, gid),
+    function(cols) matrixStats::rowMedians(E[, cols, drop = FALSE], na.rm = TRUE)
+  ))
   unit_meta <- unique(data.frame(
     unit_id = as.character(gid),
     pm[, group_cols, drop = FALSE],
     stringsAsFactors = FALSE
   ))
-  unit_meta <- unit_meta[match(colnames(outC), unit_meta$unit_id), , drop = FALSE]
+  unit_meta <- unit_meta[match(colnames(out), unit_meta$unit_id), , drop = FALSE]
   rownames(unit_meta) <- NULL
   list(
-    C_rel = outC,
-    reaction_confidence = outF,
+    reaction_expression = out,
     unit_meta = unit_meta,
-    summary = "Layer1 aggregated to sample x celltype medians"
+    summary = "reaction expression aggregated to sample x celltype medians"
   )
 }
 
-rc_align_layer2_evidence <- function(M, rxns, fill = NA_real_) {
+rc_align_reaction_expression <- function(M, reactions, fill = NA_real_) {
   M <- as.matrix(M)
-  out <- matrix(fill, nrow = length(rxns), ncol = ncol(M), dimnames = list(rxns, colnames(M)))
-  common <- intersect(rxns, rownames(M))
+  if (is.null(rownames(M)) || is.null(colnames(M))) {
+    stop("Reaction expression must contain reaction and unit IDs.", call. = FALSE)
+  }
+  reactions <- unique(trimws(as.character(reactions)))
+  reactions <- reactions[!is.na(reactions) & nzchar(reactions)]
+  out <- matrix(
+    fill,
+    nrow = length(reactions),
+    ncol = ncol(M),
+    dimnames = list(reactions, colnames(M))
+  )
+  common <- intersect(reactions, rownames(M))
   out[common, ] <- M[common, , drop = FALSE]
   out
-}
-
-rc_layer2_confidence_matrix <- function(confidence, C_rel) {
-  C_rel <- as.matrix(C_rel)
-  if (is.data.frame(confidence) && all(c("reaction_id", "pool_id", "reaction_confidence") %in% colnames(confidence))) {
-    out <- matrix(NA_real_, nrow = nrow(C_rel), ncol = ncol(C_rel), dimnames = dimnames(C_rel))
-    rid <- as.character(confidence$reaction_id)
-    pid <- as.character(confidence$pool_id)
-    ok <- rid %in% rownames(out) & pid %in% colnames(out)
-    if (any(ok)) {
-      idx <- cbind(match(rid[ok], rownames(out)), match(pid[ok], colnames(out)))
-      out[idx] <- as.numeric(confidence$reaction_confidence[ok])
-    }
-    return(out)
-  }
-  M <- as.matrix(confidence)
-  if (is.null(rownames(M)) || is.null(colnames(M))) stop("`reaction_confidence` must be a matrix-like object with dimnames or a long data frame.", call. = FALSE)
-  M
 }
