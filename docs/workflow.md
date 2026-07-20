@@ -89,18 +89,24 @@ integrated multiome expression cost. There is no independent Pando
 reaction-confidence penalty, Q95 calibration, confidence matrix or
 `penalty_weights` term.
 
-## LP and outputs
+## LP, ranking and outputs
 
 For each target and direction, step 1 maximizes directional target flux under
 `S v = 0` and model bounds. Step 2 requires at least `omega × vmax` and minimizes
 the weighted absolute network flux. The selected structural model is shared; only
 the metacell-specific reaction penalty changes.
 
+Raw minimum penalty is used for comparisons of the same reaction, direction and
+medium between conditions. Cross-reaction ranking uses
+`penalty / (omega * vmax)`, the minimum evidence cost per unit required near-maximal
+target flux. The workflow verifies that `vmax` is invariant across metacells for
+each target under the shared structural model.
+
 - `metacells`: pooled metacells, membership and sample composition;
 - `layer1`: RNA support, ATAC-derived modifier, multiome gene support and reaction expression;
 - `grn_meta_modules`: biological membership, separate FASTCORE support and global union membership;
-- `microcompass`: directional maximum flux, feasibility and minimum penalties;
-- `reaction_ranking`: within-condition and within-cell-type priority ranking;
+- `microcompass`: directional maximum flux, feasibility and raw minimum penalties;
+- `reaction_ranking`: raw and normalized within-condition priorities;
 - `condition_contrast`: all pairwise descriptive comparisons when multiple conditions are present.
 
 With a single condition, `reaction_ranking` remains complete and
