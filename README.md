@@ -57,7 +57,7 @@ result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   model_mode = "meta_module_gem",
   metacell_args = list(
-    gamma = 150,
+    gamma = 20,
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
