@@ -4,7 +4,7 @@ Version: 1.7.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Runs a species-aware human or mouse RNA+ATAC workflow that pools biological samples within each condition and cell type before SuperCell2 metacell construction, estimates condition-specific Pando regulatory coefficients, projects coefficient-weighted ATAC accessibility into zero-preserving RNA gene support before GPR aggregation, constructs condition-specific biological meta-modules with bounded one-hop expansion and local FASTCORE completion, builds one shared union-GEM, and performs directional COMPASS-like minimum-penalty scoring on a shared extracellular medium.
+Description: Runs a species-aware human or mouse RNA+ATAC workflow that pools biological samples within each condition and cell type before SuperCell2 metacell construction, estimates condition-specific Pando regulatory coefficients, projects coefficient-weighted ATAC accessibility into zero-preserving RNA gene support before GPR aggregation, constructs condition-specific biological meta-modules from complete-GPR core reactions, their subsystems, and KEGG, Reactome, and master-Rhea reaction cross-references followed by local FASTCORE feasibility completion, builds one shared union-GEM, and performs directional COMPASS-like minimum-penalty scoring on a shared extracellular medium.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
