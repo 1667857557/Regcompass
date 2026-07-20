@@ -9,29 +9,31 @@ condition × cell type cells pooled across biological samples
 → complete-GPR core reactions
 → core-reaction subsystem + KEGG/Reactome + master-Rhea expansion
 → local FASTCORE completion
-→ one shared union-GEM and shared medium
+→ shared union meta-module GEM or shared full GEM
 → Pando-coefficient-weighted ATAC state integrated into RNA support
 → GPR reaction expression
 → COMPASS-like directional minimum-penalty LP
-→ descriptive condition comparison
+→ within-condition reaction ranking
+→ optional descriptive pairwise condition comparison
 ```
 
 ## Metacell scope
 
-The canonical workflow deliberately supplies cells from every biological sample
-within the same condition and cell type to one SuperCell2 run. Each sample must
-map to one condition; strict defaults require at least two biological samples
-per condition.
+The workflow supplies cells from every biological sample within the same condition
+and cell type to one SuperCell2 run. Each sample must map to exactly one condition.
+There is no minimum number of samples per condition and no minimum number of
+conditions. One sample per condition and a single-condition dataset both enter the
+same descriptive workflow normally.
 
 Pooled metacells do not have one biological-sample identity, but the workflow
 retains cell membership and reports per-metacell sample counts, fractions,
 dominant-sample fraction and effective sample number. Pooling is cell-count
-weighted. `inference_unit = "metacell"` is fixed, and these units are descriptive
-pseudo-observations rather than independent biological replicates.
+weighted. Metacells are descriptive pseudo-observations rather than independent
+biological replicates.
 
-The v1.7.0 canonical path requires `fragment_files = FALSE` and aggregates the
-existing ATAC peak-count assay. It does not silently combine sample fragment
-files without an explicit per-file barcode map.
+The canonical path requires `fragment_files = FALSE` and aggregates the existing
+ATAC peak-count assay. It does not silently combine sample fragment files without
+an explicit barcode map.
 
 ## Pando and meta-modules
 
@@ -47,9 +49,11 @@ IDs. No metabolite-neighbour or stoichiometric one-hop expansion is performed.
 Local FASTCORE is the only stage that adds non-annotated reactions required for
 flux feasibility; these reactions remain separately labelled as FASTCORE support.
 
-All completed condition-specific modules are deduplicated into one shared
-union-GEM. The union-GEM, medium, bounds, target reactions and target-flux
-fraction are identical for all conditions.
+All completed condition-specific modules are deduplicated into one shared union.
+With `model_mode = "meta_module_gem"`, that union is the shared structural model.
+With `model_mode = "full_gem"`, the complete validated GEM is the shared structural
+model. Both modes use the same medium, target set, target-flux fraction and Layer 1
+penalty matrix.
 
 ## Multiome evidence
 
@@ -73,24 +77,31 @@ The transform is bounded and zero preserving. Protein complexes use the
 normalized, monotone Boltzmann soft-min AND rule with `tau = 0.20`; isozyme
 groups are summed and no promiscuity weighting is applied.
 
-Reaction expression becomes one positive LP cost:
+Expression-linked reaction support becomes one positive LP cost:
 
 \[
 p_{r,u}=1/[1+\log_2(1+E^{MO}_{r,u})].
 \]
 
-There is no independent Pando reaction-confidence penalty, Q95 calibration,
-confidence-alignment matrix or `penalty_weights` term.
+Only exchange, demand, sink and artificial-support reactions receive fixed
+structural costs. Transport and cofactor reactions with GPR evidence retain the
+integrated multiome expression cost. There is no independent Pando
+reaction-confidence penalty, Q95 calibration, confidence matrix or
+`penalty_weights` term.
 
 ## LP and outputs
 
 For each target and direction, step 1 maximizes directional target flux under
 `S v = 0` and model bounds. Step 2 requires at least `omega × vmax` and minimizes
-the weighted absolute network flux. The stoichiometric model is shared; only the
-unit-specific reaction penalty changes.
+the weighted absolute network flux. The selected structural model is shared; only
+the metacell-specific reaction penalty changes.
 
 - `metacells`: pooled metacells, membership and sample composition;
-- `layer1`: RNA support, ATAC-derived modifier, multiome gene support and `reaction_expression`;
-- `grn_meta_modules`: annotation-defined biological membership, separate FASTCORE support and global union membership;
+- `layer1`: RNA support, ATAC-derived modifier, multiome gene support and reaction expression;
+- `grn_meta_modules`: biological membership, separate FASTCORE support and global union membership;
 - `microcompass`: directional maximum flux, feasibility and minimum penalties;
-- `condition_summary` and `condition_contrast`: descriptive within-cell-type comparisons.
+- `reaction_ranking`: within-condition and within-cell-type priority ranking;
+- `condition_contrast`: all pairwise descriptive comparisons when multiple conditions are present.
+
+With a single condition, `reaction_ranking` remains complete and
+`condition_contrast` is an empty data frame.
