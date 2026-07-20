@@ -43,15 +43,24 @@ resolves to human or mouse plasma.}
 \item{gem_version}{Pinned model release. Defaults to Human-GEM 2.0.0 or
 Mouse-GEM 1.8.0.}
 
-\item{...}{Arguments passed to \code{rc_run_regcompass()}.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}. The delegated workflow
+has no metabolite-neighbour or one-hop expansion argument.}
 }
 \value{
-A RegCompass result list.
+A RegCompass result list with the same schema and structural provenance as
+\code{rc_run_regcompass()}. Biological meta-module membership is annotation-defined,
+and local FASTCORE feasibility support is reported separately.
 }
 \description{
 Downloads a pinned Human-GEM 2 or Mouse-GEM release when \code{gem} is not
 supplied. \code{species = "human"} is the default; \code{species = "mouse"} routes
 setup to Mouse-GEM 1.8.0 and the mouse physiological medium. It builds a
-species-matched literature-backed physiological medium by default, and delegates
+species-matched literature-backed physiological medium by default and delegates
 to \code{rc_run_regcompass()}.
+
+The delegated canonical workflow constructs biological meta-modules from
+complete-GPR core reactions, core-reaction subsystems and shared KEGG, Reactome,
+or master-Rhea identifiers. It does not perform metabolite-neighbour or
+generic stoichiometric one-hop expansion. Local FASTCORE remains the sole
+mechanism for adding reactions required for flux feasibility.
 }
