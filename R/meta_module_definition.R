@@ -126,77 +126,20 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
   unique(out)
 }
 
-.rc_meta_module_one_hop <- function(
-    S, included, valid_reactions, reaction_roles = NULL,
-    max_metabolite_degree = 50L) {
-  if (!length(included) || !nrow(S) || !ncol(S)) {
-    return(list(reactions = character(), source = character()))
-  }
-  degree <- as.numeric(Matrix::rowSums(S != 0))
-  names(degree) <- rownames(S)
-  anchor_metabolites <- rownames(S)[
-    as.numeric(Matrix::rowSums(S[, included, drop = FALSE] != 0)) > 0
-  ]
-  eligible <- anchor_metabolites[
-    degree[anchor_metabolites] >= 2 &
-      degree[anchor_metabolites] <= as.integer(max_metabolite_degree)
-  ]
-  if (!length(eligible)) {
-    return(list(reactions = character(), source = character()))
-  }
-
-  candidate <- colnames(S)[
-    as.numeric(Matrix::colSums(S[eligible, , drop = FALSE] != 0)) > 0
-  ]
-  candidate <- intersect(setdiff(candidate, included), valid_reactions)
-  if (is.data.frame(reaction_roles) &&
-      all(c("reaction_id", "role") %in% colnames(reaction_roles))) {
-    role <- stats::setNames(
-      as.character(reaction_roles$role),
-      as.character(reaction_roles$reaction_id)
-    )
-    structural <- c(
-      "exchange", "demand", "sink", "artificial_support", "boundary_like"
-    )
-    candidate <- candidate[!unname(role[candidate]) %in% structural]
-  }
-  candidate <- candidate[!is.na(candidate) & nzchar(candidate)]
-  if (!length(candidate)) {
-    return(list(reactions = character(), source = character()))
-  }
-
-  source <- stats::setNames(vapply(candidate, function(reaction) {
-    shared <- eligible[as.numeric(S[eligible, reaction, drop = TRUE]) != 0]
-    paste(paste0("METABOLITE:", shared), collapse = ";")
-  }, character(1)), candidate)
-  list(reactions = candidate, source = source)
-}
-
 #' Expand core reactions into GRN-defined biological reaction meta-modules
 #'
-#' Expansion is ordered: core subsystems, reactions sharing KEGG/Reactome
-#' identifiers, reactions sharing master-Rhea identifiers, and one bounded
-#' metabolite-neighbour hop. The result defines biological membership only;
-#' flux-feasibility support is added later by local FASTCORE.
+#' Expansion is restricted to reactions in core-reaction subsystems and reactions
+#' sharing KEGG, Reactome or master-Rhea identifiers. No stoichiometric-neighbour
+#' expansion is performed. Flux-feasibility support is added later by FASTCORE.
 .rc_expand_meta_module_reactions_core <- function(
     gem, core_reactions, subsystem_table = NULL,
     expansion_mode = c("ordered_once", "fixed_point"),
-    max_iterations = 10L,
-    include_one_hop = TRUE,
-    one_hop_max_metabolite_degree = 50L) {
+    max_iterations = 10L) {
   expansion_mode <- match.arg(expansion_mode)
-  if (!is.logical(include_one_hop) || length(include_one_hop) != 1L ||
-      is.na(include_one_hop)) {
-    stop("`include_one_hop` must be TRUE or FALSE.", call. = FALSE)
-  }
-  integer_controls <- c(
-    max_iterations = max_iterations,
-    one_hop_max_metabolite_degree = one_hop_max_metabolite_degree
-  )
-  if (any(!is.finite(integer_controls)) || any(integer_controls < 1) ||
-      any(abs(integer_controls - round(integer_controls)) >
-          sqrt(.Machine$double.eps))) {
-    stop("Meta-module expansion controls must be positive integers.", call. = FALSE)
+  if (!is.numeric(max_iterations) || length(max_iterations) != 1L ||
+      !is.finite(max_iterations) || max_iterations < 1 ||
+      abs(max_iterations - round(max_iterations)) > sqrt(.Machine$double.eps)) {
+    stop("`max_iterations` must be one positive integer.", call. = FALSE)
   }
   required <- c("sample_id", "module_id", "gene", "reaction_id")
   if (!is.data.frame(core_reactions) ||
@@ -222,13 +165,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
   }
 
   validated <- rc_validate_gem(gem)
-  S <- validated$S
-  valid_reactions <- colnames(S)
-  annotated_gem <- tryCatch(
-    rc_annotate_reaction_roles(gem),
-    error = function(e) gem
-  )
-  reaction_roles <- annotated_gem$reaction_roles %||% gem$reaction_roles
+  valid_reactions <- colnames(validated$S)
 
   if ("is_core" %in% colnames(core_reactions)) {
     core_reactions <- core_reactions[
@@ -383,21 +320,6 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
       }
     }
 
-    if (isTRUE(include_one_hop)) {
-      one_hop <- .rc_meta_module_one_hop(
-        S = S,
-        included = included,
-        valid_reactions = valid_reactions,
-        reaction_roles = reaction_roles,
-        max_metabolite_degree = one_hop_max_metabolite_degree
-      )
-      add_reactions(
-        one_hop$reactions,
-        "one_hop_metabolite_neighbor",
-        one_hop$source
-      )
-    }
-
     membership <- data.frame(
       sample_id = sample_id,
       module_id = module_id,
@@ -426,13 +348,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
         membership$inclusion_stage ==
           "shared_master_rhea_reaction"
       ),
-      n_one_hop_added = sum(
-        membership$inclusion_stage == "one_hop_metabolite_neighbor"
-      ),
       iterations = iteration,
-      one_hop_max_metabolite_degree = as.integer(
-        one_hop_max_metabolite_degree
-      ),
       stringsAsFactors = FALSE
     )
   }
@@ -447,18 +363,14 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
 rc_expand_meta_module_reactions <- function(
     gem, core_reactions, subsystem_table = NULL,
     expansion_mode = c("ordered_once", "fixed_point"),
-    max_iterations = 10L,
-    include_one_hop = TRUE,
-    one_hop_max_metabolite_degree = 50L) {
+    max_iterations = 10L) {
   hard_core_reactions <- .rc_hard_core_rows(core_reactions)
   answer <- .rc_expand_meta_module_reactions_core(
     gem = gem,
     core_reactions = hard_core_reactions,
     subsystem_table = subsystem_table,
     expansion_mode = expansion_mode,
-    max_iterations = max_iterations,
-    include_one_hop = include_one_hop,
-    one_hop_max_metabolite_degree = one_hop_max_metabolite_degree
+    max_iterations = max_iterations
   )
   if (!"is_core" %in% colnames(core_reactions)) return(answer)
 
@@ -528,9 +440,6 @@ rc_expand_meta_module_reactions <- function(
       )
       answer$summary$n_rhea_added[[i]] <- count_stage(
         "shared_master_rhea_reaction"
-      )
-      answer$summary$n_one_hop_added[[i]] <- count_stage(
-        "one_hop_metabolite_neighbor"
       )
     }
   }
