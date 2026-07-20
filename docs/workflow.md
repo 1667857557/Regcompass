@@ -7,8 +7,7 @@ condition × cell type cells pooled across biological samples
 → SuperCell2 metacells with biological-sample composition retained
 → one Pando GRN per condition × cell type
 → complete-GPR core reactions
-→ subsystem + KEGG/Reactome + master-Rhea expansion
-→ one bounded non-structural metabolite-neighbour hop
+→ core-reaction subsystem + KEGG/Reactome + master-Rhea expansion
 → local FASTCORE completion
 → one shared union-GEM and shared medium
 → Pando-coefficient-weighted ATAC state integrated into RNA support
@@ -42,11 +41,11 @@ edge weight. These coefficients are fitted from RNA+ATAC and are not independent
 validation evidence.
 
 GRNs are projected to metabolic genes. A reaction is core only when at least one
-complete GPR isozyme group is present. Biological expansion then adds reactions
-from the core subsystem, shared KEGG/Reactome reaction IDs, shared master Rhea
-IDs, and exactly one bounded non-structural metabolite-neighbour hop. High-degree
-currency metabolites are excluded from that hop. Local FASTCORE subsequently
-adds only reactions required for feasibility.
+complete GPR isozyme group is present. Biological membership is expanded only by
+core-reaction subsystem, shared KEGG/Reactome reaction IDs and shared master Rhea
+IDs. No metabolite-neighbour or stoichiometric one-hop expansion is performed.
+Local FASTCORE is the only stage that adds non-annotated reactions required for
+flux feasibility; these reactions remain separately labelled as FASTCORE support.
 
 All completed condition-specific modules are deduplicated into one shared
 union-GEM. The union-GEM, medium, bounds, target reactions and target-flux
@@ -92,6 +91,6 @@ unit-specific reaction penalty changes.
 
 - `metacells`: pooled metacells, membership and sample composition;
 - `layer1`: RNA support, ATAC-derived modifier, multiome gene support and `reaction_expression`;
-- `grn_meta_modules`: biological membership, FASTCORE completion and global union membership;
+- `grn_meta_modules`: annotation-defined biological membership, separate FASTCORE support and global union membership;
 - `microcompass`: directional maximum flux, feasibility and minimum penalties;
 - `condition_summary` and `condition_contrast`: descriptive within-cell-type comparisons.
