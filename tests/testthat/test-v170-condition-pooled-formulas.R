@@ -105,7 +105,7 @@ test_that("per-metacell regulatory state uses ATAC rather than TF RNA", {
   expect_false(grepl("rna_assay", body_text, fixed = TRUE))
 })
 
-test_that("meta-module adds one bounded non-structural metabolite hop", {
+test_that("meta-module expansion excludes metabolite-neighbour reactions", {
   S <- matrix(
     c(
       -1,  0,  0,  1,
@@ -142,13 +142,17 @@ test_that("meta-module adds one bounded non-structural metabolite hop", {
     stringsAsFactors = FALSE
   )
   expanded <- rc_expand_meta_module_reactions(gem, core)
-  expect_setequal(expanded$reaction_membership$reaction_id, c("R1", "R2"))
-  stage <- stats::setNames(
-    expanded$reaction_membership$inclusion_stage,
-    expanded$reaction_membership$reaction_id
+
+  expect_identical(
+    unique(as.character(expanded$reaction_membership$reaction_id)),
+    "R1"
   )
-  expect_identical(stage[["R2"]], "one_hop_metabolite_neighbor")
-  expect_equal(expanded$summary$n_one_hop_added, 1)
-  expect_false(any(c("R3", "EX_M1") %in%
-                     expanded$reaction_membership$reaction_id))
+  expect_false(any(grepl("one_hop", names(expanded$summary), fixed = TRUE)))
+  expect_false(any(c(
+    "include_one_hop", "one_hop_max_metabolite_degree"
+  ) %in% names(formals(rc_expand_meta_module_reactions))))
+  expect_false(any(c(
+    "include_one_hop", "one_hop_max_metabolite_degree"
+  ) %in% names(formals(.rc_expand_meta_module_reactions_core))))
+  expect_false(exists(".rc_meta_module_one_hop", inherits = TRUE))
 })
