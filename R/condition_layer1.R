@@ -251,9 +251,6 @@
     median_vmax[is.nan(median_vmax)] <- NA_real_
     median_required_flux[is.nan(median_required_flux)] <- NA_real_
     median_normalized[is.nan(median_normalized)] <- NA_real_
-    priority_rank <- rank(
-      median_normalized, ties.method = "min", na.last = "keep"
-    )
     data.frame(
       row_id = row_meta$row_id,
       reaction_id = row_meta$reaction_id,
@@ -266,8 +263,9 @@
       median_required_target_flux = median_required_flux,
       median_penalty_per_target_flux = median_normalized,
       support_score = -log(median_normalized + eps),
-      priority_rank = as.integer(priority_rank),
+      priority_rank = NA_integer_,
       ranking_metric = "minimum_penalty_per_required_target_flux",
+      ranking_scope = "condition_x_celltype_x_medium",
       n_metacells = sum(keep),
       descriptive_only = TRUE,
       biological_replicate_inference = FALSE,
@@ -275,13 +273,25 @@
     )
   })
   ranking <- do.call(rbind, summary_rows)
+  rank_group <- interaction(
+    ranking[, c("cell_type", "condition", "medium_scenario"), drop = FALSE],
+    drop = TRUE,
+    lex.order = TRUE
+  )
+  for (rows in split(seq_len(nrow(ranking)), rank_group)) {
+    ranking$priority_rank[rows] <- as.integer(rank(
+      ranking$median_penalty_per_target_flux[rows],
+      ties.method = "min",
+      na.last = "keep"
+    ))
+  }
   ranking <- ranking[order(
     ranking$cell_type,
     ranking$condition,
+    ranking$medium_scenario,
     ranking$priority_rank,
     ranking$reaction_id,
     ranking$target_direction,
-    ranking$medium_scenario,
     na.last = TRUE
   ), , drop = FALSE]
   rownames(ranking) <- NULL
@@ -349,9 +359,11 @@
     contrast = contrast,
     analysis_mode = analysis_mode,
     ranking_formula = "penalty / (omega * vmax)",
+    ranking_scope = "condition_x_celltype_x_medium",
     inference_policy = paste(
       "condition-pooled metacells are descriptive pseudo-observations;",
-      "reaction priority uses minimum penalty per required target flux;",
+      "reaction priority uses minimum penalty per required target flux",
+      "within each condition, cell type and medium;",
       "biological-sample-level significance testing is not performed"
     )
   )
