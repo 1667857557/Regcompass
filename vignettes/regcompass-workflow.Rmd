@@ -22,6 +22,13 @@ state uses coefficient-weighted peak accessibility only. Metacell TF RNA is not
 multiplied into that state. Condition-pooled metacells are descriptive units,
 not independent biological replicates.
 
+Biological meta-module membership is annotation-defined: complete-GPR core
+reactions are expanded through their subsystems and shared KEGG, Reactome, or
+master-Rhea reaction identifiers. No metabolite-neighbour or stoichiometric
+one-hop expansion is performed. Local FASTCORE is the sole stage that can add
+non-annotated reactions required for flux feasibility, and those support
+reactions remain separate from biological membership.
+
 ## Prepare the model
 
 ```{r}
@@ -92,9 +99,13 @@ The main outputs are:
 
 - sample membership in `result$metacells$sample_composition`;
 - RNA, ATAC-derived regulatory state and `reaction_expression` in `result$layer1`;
-- biological and FASTCORE-completed union membership in `result$grn_meta_modules`;
+- annotation-defined biological membership, separate FASTCORE support and shared union membership in `result$grn_meta_modules`;
 - raw minimum penalties in `result$microcompass$penalty`;
 - descriptive comparisons in `result$condition_contrast`.
+
+The result provenance records
+`result$params$meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"`
+and `result$params$feasibility_completion = "local_fastcore_only"`.
 
 ## Equivalent one-shot entry point
 
@@ -121,5 +132,8 @@ result <- rc_run_regcompass_one_shot(
   )
 )
 ```
+
+The one-shot entry point delegates to the same annotation-only meta-module
+architecture and does not expose a metabolite-neighbour expansion option.
 
 For mouse data, use `species = "mouse"`, a mouse genome object, and Mouse-GEM.
