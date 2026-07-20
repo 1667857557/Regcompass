@@ -19,19 +19,24 @@ test_that("workflow vignette follows the v1.7.0 public API", {
     function(name) grepl(paste0(name, "\\("), text),
     logical(1)
   )))
-  expect_match(text, "pooled across biological samples", fixed = TRUE)
-  expect_match(text, "uses ATAC", fixed = TRUE)
+  expect_match(text, "pools cells across biological samples", fixed = TRUE)
+  expect_match(text, "uses coefficient-weighted peak accessibility only", fixed = TRUE)
   expect_match(text, 'fragment_files = FALSE')
   expect_match(text, 'species = "human"')
   expect_match(text, 'species = "mouse"')
   expect_match(text, 'medium_scenario = "normal_human_plasma"')
   expect_match(text, "medium_scenarios = medium")
-  expect_match(text, 'inference_unit = "metacell"')
+  expect_match(text, 'model_mode = "meta_module_gem"')
+  expect_match(text, 'model_mode = "full_gem"')
   expect_match(text, "pando_initiate_args = list")
   expect_match(text, "regions = SCREEN.ccRE.UCSC.hg38")
   expect_match(text, "microcompass\\$penalty")
+  expect_match(text, "reaction_ranking")
+  expect_match(text, "single_condition_reaction_ranking", fixed = TRUE)
   expect_match(text, "condition_contrast")
   expect_match(text, "No metabolite-neighbour", fixed = TRUE)
+  expect_false(grepl("strict_biological_defaults", text, fixed = TRUE))
+  expect_false(grepl("inference_unit =", text, fixed = TRUE))
   expect_match(
     text,
     'meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"',
@@ -40,7 +45,7 @@ test_that("workflow vignette follows the v1.7.0 public API", {
   expect_match(text, 'feasibility_completion = "local_fastcore_only"', fixed = TRUE)
 })
 
-test_that("tutorial and man pages exclude retired one-hop interfaces", {
+test_that("tutorial and man pages exclude retired interfaces", {
   candidate_roots <- c(".", "..", file.path("..", ".."))
   root <- candidate_roots[vapply(candidate_roots, function(path) {
     dir.exists(file.path(path, "man")) &&
@@ -69,7 +74,9 @@ test_that("tutorial and man pages exclude retired one-hop interfaces", {
     "one_hop_max_metabolite_degree",
     "one_hop_metabolite_neighbor",
     "n_one_hop_added",
-    "meta_module_one_hop = TRUE"
+    "meta_module_one_hop = TRUE",
+    "strict_biological_defaults =",
+    "inference_unit = \"metacell\""
   )
   expect_false(any(vapply(
     retired_tokens,
@@ -82,4 +89,5 @@ test_that("tutorial and man pages exclude retired one-hop interfaces", {
     fixed = TRUE
   )
   expect_match(text, "local_fastcore_only", fixed = TRUE)
+  expect_match(text, "penalty / (omega * vmax)", fixed = TRUE)
 })
