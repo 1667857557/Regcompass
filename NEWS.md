@@ -6,10 +6,10 @@
 - Clarifies that coefficients estimated from the same pooled dataset are fitted parameters rather than independent validation evidence; condition-pooled outputs remain descriptive unless external fitting or cross-fitting is supplied.
 - Fixed the canonical GPR calculation to a normalized, monotone Boltzmann soft-min AND, additive isozyme OR, and no promiscuity weighting.
 - Replaced the previous decomposed expression-plus-confidence objective with one COMPASS-like positive cost, `1 / (1 + log2(1 + E_multiome))`.
-- Builds biological meta-modules from complete-GPR core reactions, subsystem and reaction cross-references, one bounded non-structural metabolite-neighbour hop, and local FASTCORE feasibility completion.
+- Builds biological meta-modules only from complete-GPR core reactions, core-reaction subsystems, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Metabolite-neighbour expansion is not used; local FASTCORE is the sole mechanism for adding reactions required for flux feasibility.
 - Preserved one shared union-GEM, one shared medium, common bounds and directional two-step COMPASS-like LP scoring across all conditions.
 - Added direct descriptive condition summaries and two-condition reaction-support contrasts within each cell type.
-- Deleted the retired strict-stratum global workflow, Q95 calibration implementation, Pando reaction-confidence implementation, Layer 2 confidence alignment functions, confidence placeholders, and `penalty_weights` API.
+- Deleted the retired strict-stratum global workflow, Q95 calibration implementation, Pando reaction-confidence implementation, Layer 2 confidence alignment functions, confidence placeholders, `penalty_weights` API, and metabolite-neighbour expansion helper and controls.
 
 # RegCompassR 1.6.0
 
