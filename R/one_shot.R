@@ -6,12 +6,18 @@
 #' species-matched literature-backed physiological medium by default and
 #' delegates to [rc_run_regcompass()].
 #'
-#' The delegated canonical workflow constructs biological meta-modules from
-#' complete-GPR core reactions, core-reaction subsystems and shared KEGG,
-#' Reactome, or master-Rhea reaction identifiers. It performs no
-#' metabolite-neighbour or generic stoichiometric one-hop expansion. Local
-#' FASTCORE is the sole mechanism for adding reactions required for flux
-#' feasibility, and those reactions remain separate from biological membership.
+#' The delegated condition-pooled workflow supports one or more samples per
+#' condition and one or more conditions. One condition returns a reaction
+#' ranking; multiple conditions additionally return descriptive pairwise
+#' priority contrasts. `model_mode = "meta_module_gem"` and
+#' `model_mode = "full_gem"` are both supported through `...`.
+#'
+#' Biological meta-modules are constructed from complete-GPR core reactions,
+#' core-reaction subsystems and shared KEGG, Reactome, or master-Rhea reaction
+#' identifiers. No metabolite-neighbour or generic stoichiometric one-hop
+#' expansion is performed. Local FASTCORE is the sole mechanism for adding
+#' reactions required for flux feasibility, and those reactions remain separate
+#' from biological membership.
 #'
 #' @param object A Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
@@ -28,11 +34,12 @@
 #' @param medium_scenario Medium preset identifier. The default `"physiologic"`
 #'   resolves to human or mouse plasma.
 #' @param medium_scenarios Optional prebuilt medium table.
-#' @param ... Arguments passed to [rc_run_regcompass()]. There is no
-#'   metabolite-neighbour or one-hop expansion argument.
-#' @return A RegCompass result list with annotation-defined biological
-#'   meta-module membership and separately labelled local FASTCORE feasibility
-#'   support.
+#' @param ... Arguments passed to [rc_run_regcompass()], including
+#'   `model_mode`. There is no metabolite-neighbour or one-hop expansion
+#'   argument.
+#' @return A RegCompass result list containing raw directional minimum penalties,
+#'   flux-normalized `reaction_ranking`, and descriptive condition contrasts when
+#'   multiple conditions are present.
 #' @export
 rc_run_regcompass_one_shot <- function(
     object, outdir, pfm, genome,
