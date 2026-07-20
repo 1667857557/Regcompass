@@ -274,7 +274,9 @@
   })
   ranking <- do.call(rbind, summary_rows)
   rank_group <- interaction(
-    ranking[, c("cell_type", "condition", "medium_scenario"), drop = FALSE],
+    ranking$cell_type,
+    ranking$condition,
+    ranking$medium_scenario,
     drop = TRUE,
     lex.order = TRUE
   )
