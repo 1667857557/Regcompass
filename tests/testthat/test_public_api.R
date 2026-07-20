@@ -125,9 +125,18 @@ test_that("retired entry points and evidence APIs remain absent", {
     "rc_layer2_support_penalties",
     "rc_layer2_reaction_type",
     "rc_layer2_support_penalty_for_type",
-    "rc_layer2_has_gpr"
+    "rc_layer2_has_gpr",
+    ".rc_meta_module_one_hop"
   )
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
+})
+
+test_that("meta-module expansion exposes no one-hop controls", {
+  retired_arguments <- c("include_one_hop", "one_hop_max_metabolite_degree")
+  expect_false(any(retired_arguments %in%
+                     names(formals(rc_expand_meta_module_reactions))))
+  expect_false(any(retired_arguments %in%
+                     names(formals(.rc_expand_meta_module_reactions_core))))
 })
 
 test_that("Seurat stack uses valid minimum bounds and exact stack metadata", {
