@@ -45,6 +45,7 @@ Collate:
     'reaction_roles.R'
     'regcompass.R'
     'stepwise_workflow.R'
+    'stratum_filter.R'
     'v170_tfidf.R'
     'v170_pando_reuse.R'
     'v170_rsq_metadata.R'
