@@ -6,9 +6,13 @@
 - Clarifies that coefficients estimated from the same pooled dataset are fitted parameters rather than independent validation evidence; condition-pooled outputs remain descriptive unless external fitting or cross-fitting is supplied.
 - Fixed the canonical GPR calculation to a normalized, monotone Boltzmann soft-min AND, additive isozyme OR, and no promiscuity weighting.
 - Replaced the previous decomposed expression-plus-confidence objective with one COMPASS-like positive cost, `1 / (1 + log2(1 + E_multiome))`.
+- Restricts fixed structural penalties to exchange, demand, sink, and artificial-support reactions. Transport and cofactor reactions with GPR evidence retain the integrated multiome reaction-expression cost.
 - Builds biological meta-modules only from complete-GPR core reactions, core-reaction subsystems, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Metabolite-neighbour expansion is not used; local FASTCORE is the sole mechanism for adding reactions required for flux feasibility.
-- Preserved one shared union-GEM, one shared medium, common bounds and directional two-step COMPASS-like LP scoring across all conditions.
-- Added direct descriptive condition summaries and two-condition reaction-support contrasts within each cell type.
+- Supports both shared union meta-module GEM and shared full-GEM scoring modes with the same Layer 1 evidence, medium, target-flux fraction, and ranking outputs.
+- Allows one or more biological samples per condition. Sample counts are retained as provenance and do not block the descriptive pooled-metacell workflow.
+- Allows one condition. Single-condition runs return within-condition reaction priorities; multi-condition runs additionally return all pairwise descriptive priority contrasts within each cell type.
+- Added explicit `reaction_ranking` output containing reaction ID, direction, medium, median minimum penalty, support score, and within-condition priority rank.
+- Deleted obsolete sample-level differential/statistics code and unused pseudobulk interfaces that were incompatible with the pooled-metacell inference semantics.
 - Deleted the retired strict-stratum global workflow, Q95 calibration implementation, Pando reaction-confidence implementation, Layer 2 confidence alignment functions, confidence placeholders, `penalty_weights` API, and metabolite-neighbour expansion helper and controls.
 
 # RegCompassR 1.6.0
