@@ -287,7 +287,9 @@ rc_run_regcompass <- function(
       gpr_and_method = "boltzmann",
       gpr_tau = layer1$capacity_params$tau,
       gpr_or_method = "sum",
-      meta_module_one_hop = TRUE,
+      meta_module_expansion =
+        "core_subsystem_plus_kegg_reactome_master_rhea_only",
+      feasibility_completion = "local_fastcore_only",
       penalty_formula = "1/(1+log2(1+E_multiome))",
       parallel_backend = parallel_backend,
       upstream_workers = upstream_workers,
