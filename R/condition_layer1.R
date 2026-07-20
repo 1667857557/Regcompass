@@ -148,9 +148,18 @@
 .rc_condition_penalty_comparison <- function(
     microcompass, condition_col = "condition", celltype_col = "cell_type",
     eps = 1e-8) {
+  if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0) {
+    stop("`eps` must be one positive finite number.", call. = FALSE)
+  }
   penalty <- as.matrix(microcompass$penalty)
   meta <- microcompass$unit_meta
   required <- c(condition_col, celltype_col)
+  if (!is.numeric(penalty) || is.null(rownames(penalty)) ||
+      is.null(colnames(penalty)) || anyDuplicated(rownames(penalty)) ||
+      anyDuplicated(colnames(penalty))) {
+    stop("microCOMPASS penalty must be a numeric matrix with unique dimnames.",
+         call. = FALSE)
+  }
   if (!is.data.frame(meta) || !all(required %in% colnames(meta))) {
     stop("microCOMPASS unit metadata lack condition/cell-type columns.", call. = FALSE)
   }
@@ -161,10 +170,23 @@
   } else {
     stop("microCOMPASS unit metadata lack unit_id/pool_id.", call. = FALSE)
   }
-  meta <- meta[match(colnames(penalty), unit_id), , drop = FALSE]
-  if (anyNA(meta[[condition_col]]) || anyNA(meta[[celltype_col]])) {
+  if (anyNA(unit_id) || any(!nzchar(trimws(unit_id))) || anyDuplicated(unit_id)) {
+    stop("microCOMPASS unit IDs must be unique and non-empty.", call. = FALSE)
+  }
+  if (!setequal(colnames(penalty), unit_id)) {
+    stop("microCOMPASS penalties and unit metadata contain different units.",
+         call. = FALSE)
+  }
+  meta$unit_id <- unit_id
+  meta <- meta[match(colnames(penalty), meta$unit_id), , drop = FALSE]
+  if (anyNA(meta[[condition_col]]) || anyNA(meta[[celltype_col]]) ||
+      any(!nzchar(trimws(as.character(meta[[condition_col]])))) ||
+      any(!nzchar(trimws(as.character(meta[[celltype_col]]))))) {
     stop("microCOMPASS condition/cell-type metadata are incomplete.", call. = FALSE)
   }
+
+  row_meta <- rc_parse_microcompass_row_id(rownames(penalty))
+  row_meta$row_id <- rownames(penalty)
   strata <- unique(meta[, c(condition_col, celltype_col), drop = FALSE])
   summary_rows <- lapply(seq_len(nrow(strata)), function(i) {
     condition <- as.character(strata[[condition_col]][[i]])
@@ -172,51 +194,97 @@
     keep <- as.character(meta[[condition_col]]) == condition &
       as.character(meta[[celltype_col]]) == celltype
     med <- matrixStats::rowMedians(penalty[, keep, drop = FALSE], na.rm = TRUE)
+    med[is.nan(med)] <- NA_real_
+    priority_rank <- rank(med, ties.method = "min", na.last = "keep")
     data.frame(
-      row_id = rownames(penalty),
+      row_id = row_meta$row_id,
+      reaction_id = row_meta$reaction_id,
+      target_direction = row_meta$target_direction,
+      medium_scenario = row_meta$medium_scenario,
       condition = condition,
       cell_type = celltype,
       median_penalty = med,
       support_score = -log(med + eps),
+      priority_rank = as.integer(priority_rank),
       n_metacells = sum(keep),
       descriptive_only = TRUE,
       biological_replicate_inference = FALSE,
       stringsAsFactors = FALSE
     )
   })
-  summary <- do.call(rbind, summary_rows)
-  contrast_rows <- lapply(unique(summary$cell_type), function(celltype) {
-    one <- summary[summary$cell_type == celltype, , drop = FALSE]
-    conditions <- unique(one$condition)
-    if (length(conditions) != 2L) return(NULL)
-    a <- one[one$condition == conditions[[1L]], , drop = FALSE]
-    b <- one[one$condition == conditions[[2L]], , drop = FALSE]
-    b <- b[match(a$row_id, b$row_id), , drop = FALSE]
-    data.frame(
-      row_id = a$row_id,
-      cell_type = celltype,
-      condition_a = conditions[[1L]],
-      condition_b = conditions[[2L]],
-      median_penalty_a = a$median_penalty,
-      median_penalty_b = b$median_penalty,
-      delta_support_b_minus_a = b$support_score - a$support_score,
-      higher_supported_condition = ifelse(
-        b$support_score > a$support_score,
-        conditions[[2L]],
-        ifelse(a$support_score > b$support_score, conditions[[1L]], "tie")
-      ),
-      descriptive_only = TRUE,
-      biological_replicate_inference = FALSE,
-      stringsAsFactors = FALSE
-    )
-  })
-  contrast_rows <- contrast_rows[!vapply(contrast_rows, is.null, logical(1))]
-  contrast <- if (length(contrast_rows)) do.call(rbind, contrast_rows) else data.frame()
+  ranking <- do.call(rbind, summary_rows)
+  ranking <- ranking[order(
+    ranking$cell_type,
+    ranking$condition,
+    ranking$priority_rank,
+    ranking$reaction_id,
+    ranking$target_direction,
+    ranking$medium_scenario,
+    na.last = TRUE
+  ), , drop = FALSE]
+  rownames(ranking) <- NULL
+
+  contrast_rows <- list()
+  contrast_index <- 1L
+  for (celltype in unique(ranking$cell_type)) {
+    one <- ranking[ranking$cell_type == celltype, , drop = FALSE]
+    conditions <- unique(as.character(one$condition))
+    if (length(conditions) < 2L) next
+    condition_pairs <- utils::combn(conditions, 2L, simplify = FALSE)
+    for (pair in condition_pairs) {
+      a <- one[one$condition == pair[[1L]], , drop = FALSE]
+      b <- one[one$condition == pair[[2L]], , drop = FALSE]
+      b <- b[match(a$row_id, b$row_id), , drop = FALSE]
+      if (anyNA(b$row_id)) {
+        stop("Condition ranking tables contain different reaction targets.",
+             call. = FALSE)
+      }
+      contrast_rows[[contrast_index]] <- data.frame(
+        row_id = a$row_id,
+        reaction_id = a$reaction_id,
+        target_direction = a$target_direction,
+        medium_scenario = a$medium_scenario,
+        cell_type = celltype,
+        condition_a = pair[[1L]],
+        condition_b = pair[[2L]],
+        median_penalty_a = a$median_penalty,
+        median_penalty_b = b$median_penalty,
+        priority_rank_a = a$priority_rank,
+        priority_rank_b = b$priority_rank,
+        delta_support_b_minus_a = b$support_score - a$support_score,
+        higher_supported_condition = ifelse(
+          b$support_score > a$support_score,
+          pair[[2L]],
+          ifelse(a$support_score > b$support_score, pair[[1L]], "tie")
+        ),
+        descriptive_only = TRUE,
+        biological_replicate_inference = FALSE,
+        stringsAsFactors = FALSE
+      )
+      contrast_index <- contrast_index + 1L
+    }
+  }
+  contrast <- if (length(contrast_rows)) {
+    do.call(rbind, contrast_rows)
+  } else {
+    data.frame()
+  }
+  if (nrow(contrast)) rownames(contrast) <- NULL
+
+  n_conditions <- length(unique(as.character(ranking$condition)))
+  analysis_mode <- if (n_conditions == 1L) {
+    "single_condition_reaction_ranking"
+  } else {
+    "multi_condition_reaction_ranking_and_pairwise_comparison"
+  }
   list(
-    summary = summary,
+    summary = ranking,
+    ranking = ranking,
     contrast = contrast,
+    analysis_mode = analysis_mode,
     inference_policy = paste(
       "condition-pooled metacells are descriptive pseudo-observations;",
+      "reaction priority is ranked within each condition and cell type;",
       "biological-sample-level significance testing is not performed"
     )
   )
