@@ -37,6 +37,7 @@ Collate:
     'one_shot.R'
     'pando_evidence_utils.R'
     'pando_grn.R'
+    'pando_rsq_reliability.R'
     'condition_pooling.R'
     'condition_layer1.R'
     'parallel.R'
