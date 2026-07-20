@@ -38,5 +38,16 @@ jobs:
           collate <- strsplit(description[1, "Collate"], "[[:space:]]+")[[1]]
           collate <- gsub("^'|'$", "", collate)
           collate <- collate[nzchar(collate)]
+          r_files <- list.files("R", pattern = "\\.[Rr]$", full.names = FALSE)
           missing <- collate[!file.exists(file.path("R", collate))]
-          if (length(missing)) stop("Missing Collate files: ", paste(missing, collapse = ", "))
+          unlisted <- setdiff(r_files, collate)
+          duplicated <- unique(collate[duplicated(collate)])
+          if (length(missing)) {
+            stop("Missing Collate files: ", paste(missing, collapse = ", "))
+          }
+          if (length(unlisted)) {
+            stop("R files missing from Collate: ", paste(unlisted, collapse = ", "))
+          }
+          if (length(duplicated)) {
+            stop("Duplicated Collate entries: ", paste(duplicated, collapse = ", "))
+          }
