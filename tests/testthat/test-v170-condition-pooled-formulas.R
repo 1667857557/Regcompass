@@ -105,46 +105,66 @@ test_that("per-metacell regulatory state uses ATAC rather than TF RNA", {
   expect_false(grepl("rna_assay", body_text, fixed = TRUE))
 })
 
-test_that("single-condition scoring degrades to reaction ranking", {
+test_that("single-condition scoring uses penalty per required target flux", {
   row_ids <- c(
     "reaction=R1::direction=forward::medium=base",
     "reaction=R2::direction=forward::medium=base"
   )
+  units <- c("u1", "u2")
   microcompass <- list(
     penalty = matrix(
       c(0.2, 0.4, 0.3, 0.5),
       nrow = 2,
-      dimnames = list(row_ids, c("u1", "u2"))
+      dimnames = list(row_ids, units)
+    ),
+    vmax = matrix(
+      c(10, 1, 10, 1),
+      nrow = 2,
+      dimnames = list(row_ids, units)
     ),
     unit_meta = data.frame(
-      unit_id = c("u1", "u2"),
+      unit_id = units,
       condition = "A",
       cell_type = "T",
       stringsAsFactors = FALSE
-    )
+    ),
+    params = list(omega = 0.95)
   )
   answer <- .rc_condition_penalty_comparison(microcompass)
   expect_identical(answer$analysis_mode, "single_condition_reaction_ranking")
+  expect_identical(answer$ranking_formula, "penalty / (omega * vmax)")
   expect_equal(nrow(answer$ranking), 2L)
   expect_equal(answer$ranking$reaction_id, c("R1", "R2"))
   expect_equal(answer$ranking$priority_rank, c(1L, 2L))
+  expect_equal(
+    answer$ranking$median_penalty_per_target_flux,
+    c(0.25 / 9.5, 0.45 / 0.95)
+  )
   expect_equal(nrow(answer$contrast), 0L)
 })
 
 test_that("multiple conditions produce every pairwise descriptive comparison", {
   row_id <- "reaction=R1::direction=forward::medium=base"
+  units <- c("uA", "uB", "uC")
   microcompass <- list(
     penalty = matrix(
       c(0.5, 0.3, 0.2),
       nrow = 1,
-      dimnames = list(row_id, c("uA", "uB", "uC"))
+      dimnames = list(row_id, units)
+    ),
+    vmax = matrix(
+      2,
+      nrow = 1,
+      ncol = 3,
+      dimnames = list(row_id, units)
     ),
     unit_meta = data.frame(
-      unit_id = c("uA", "uB", "uC"),
+      unit_id = units,
       condition = c("A", "B", "C"),
       cell_type = "T",
       stringsAsFactors = FALSE
-    )
+    ),
+    params = list(omega = 0.95)
   )
   answer <- .rc_condition_penalty_comparison(microcompass)
   expect_identical(
@@ -156,6 +176,31 @@ test_that("multiple conditions produce every pairwise descriptive comparison", {
   expect_setequal(
     paste(answer$contrast$condition_a, answer$contrast$condition_b, sep = "-"),
     c("A-B", "A-C", "B-C")
+  )
+})
+
+test_that("shared-model ranking rejects unit-dependent vmax", {
+  row_id <- "reaction=R1::direction=forward::medium=base"
+  microcompass <- list(
+    penalty = matrix(
+      c(0.5, 0.3), nrow = 1,
+      dimnames = list(row_id, c("u1", "u2"))
+    ),
+    vmax = matrix(
+      c(1, 2), nrow = 1,
+      dimnames = list(row_id, c("u1", "u2"))
+    ),
+    unit_meta = data.frame(
+      unit_id = c("u1", "u2"),
+      condition = c("A", "B"),
+      cell_type = "T",
+      stringsAsFactors = FALSE
+    ),
+    params = list(omega = 0.95)
+  )
+  expect_error(
+    .rc_condition_penalty_comparison(microcompass),
+    "vmax differs across metacells"
   )
 })
 
