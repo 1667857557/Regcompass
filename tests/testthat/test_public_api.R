@@ -20,8 +20,12 @@ test_that("canonical source architecture has one definition per function", {
   expect_false(grepl("calibration_q95.R", collate, fixed = TRUE))
   expect_false(grepl("global_workflow.R", collate, fixed = TRUE))
   expect_false(grepl("pando_confidence.R", collate, fixed = TRUE))
+  expect_false(grepl("stats.R", collate, fixed = TRUE))
+  expect_false(grepl("pseudobulk.R", collate, fixed = TRUE))
+  expect_match(collate, "full_gem.R", fixed = TRUE)
   expect_match(collate, "workflow_utils.R", fixed = TRUE)
   expect_match(collate, "pando_evidence_utils.R", fixed = TRUE)
+  expect_match(collate, "internal_apply.R", fixed = TRUE)
 
   candidates <- c("R", file.path("..", "R"), file.path("..", "..", "R"))
   candidates <- candidates[dir.exists(candidates)]
@@ -40,7 +44,10 @@ test_that("canonical source architecture has one definition per function", {
   expect_length(
     list.files(
       source_dir,
-      pattern = "^(calibration_q95|global_workflow|pando_confidence)[.]R$",
+      pattern = paste0(
+        "^(calibration_q95|global_workflow|pando_confidence|stats|pseudobulk)",
+        "[.]R$"
+      ),
       full.names = TRUE
     ),
     0L
@@ -126,9 +133,31 @@ test_that("retired entry points and evidence APIs remain absent", {
     "rc_layer2_reaction_type",
     "rc_layer2_support_penalty_for_type",
     "rc_layer2_has_gpr",
-    ".rc_meta_module_one_hop"
+    ".rc_meta_module_one_hop",
+    "rc_check_replicate_design",
+    "rc_describe_microcompass_by_group",
+    "rc_test_microcompass_differential",
+    ".rc_aggregate_microcompass_samples",
+    "rc_unit_bulk_counts",
+    "rc_filter_empty_units",
+    "rc_logcpm",
+    "rc_build_unit_metadata",
+    "rc_unit_mean",
+    "rc_unit_detection",
+    "rc_atac_unit_logcpm",
+    "rc_check_unit_mapping"
   )
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
+})
+
+test_that("canonical entry keeps both structural model modes", {
+  formals_names <- names(formals(rc_run_regcompass))
+  expect_false("strict_biological_defaults" %in% formals_names)
+  expect_false("inference_unit" %in% formals_names)
+  expect_identical(
+    eval(formals(rc_run_regcompass)$model_mode),
+    c("meta_module_gem", "full_gem")
+  )
 })
 
 test_that("meta-module expansion exposes no one-hop controls", {

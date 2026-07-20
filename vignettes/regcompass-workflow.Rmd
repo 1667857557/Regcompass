@@ -11,16 +11,20 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-RegCompassR 1.7.0 uses ATAC and RNA from cells pooled across biological samples
-within each condition and cell type. SuperCell2 builds condition-level
-metacells while retaining original sample composition. Pando fits one
-condition-specific TF–peak–gene model per cell type, and one shared union-GEM is
-used for directional COMPASS-like scoring.
+RegCompassR 1.7.0 pools cells across biological samples within each condition and
+cell type. SuperCell2 builds condition-level metacells while retaining original
+sample composition. Pando fits one condition-specific TF–peak–gene model per cell
+type. Directional COMPASS-like scoring can use either the shared union meta-module
+GEM or the shared full GEM.
+
+One or more samples per condition and one or more conditions are accepted.
+Condition-pooled metacells are descriptive units, not independent biological
+replicates. A single-condition analysis returns a metabolic reaction ranking;
+multiple conditions additionally return pairwise descriptive priority contrasts.
 
 Pando coefficients are learned from RNA+ATAC, but the per-metacell regulatory
 state uses coefficient-weighted peak accessibility only. Metacell TF RNA is not
-multiplied into that state. Condition-pooled metacells are descriptive units,
-not independent biological replicates.
+multiplied into that state.
 
 Biological meta-module membership is annotation-defined: complete-GPR core
 reactions are expanded through their subsystems and shared KEGG, Reactome, or
@@ -63,9 +67,8 @@ result <- rc_run_regcompass(
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
+  model_mode = "meta_module_gem",
   medium_scenarios = medium,
-  inference_unit = "metacell",
-  strict_biological_defaults = TRUE,
   metacell_args = list(
     gamma = 150,
     min_cells_per_stratum = 500,
@@ -95,13 +98,21 @@ result <- rc_run_regcompass(
 )
 ```
 
+Use `model_mode = "full_gem"` to retain the complete validated GEM during LP
+scoring. The same condition-pooled Layer 1 evidence, medium, core-derived targets,
+and output ranking contract are used in both modes.
+
 The main outputs are:
 
 - sample membership in `result$metacells$sample_composition`;
 - RNA, ATAC-derived regulatory state and `reaction_expression` in `result$layer1`;
-- annotation-defined biological membership, separate FASTCORE support and shared union membership in `result$grn_meta_modules`;
+- biological membership, separate FASTCORE support and shared union membership in `result$grn_meta_modules`;
 - raw minimum penalties in `result$microcompass$penalty`;
-- descriptive comparisons in `result$condition_contrast`.
+- reaction priorities in `result$reaction_ranking`;
+- pairwise descriptive comparisons in `result$condition_contrast` when multiple conditions are present.
+
+With one condition, `result$analysis_mode` is
+`"single_condition_reaction_ranking"` and `result$condition_contrast` is empty.
 
 The result provenance records
 `result$params$meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"`
@@ -122,8 +133,7 @@ result <- rc_run_regcompass_one_shot(
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
-  inference_unit = "metacell",
-  strict_biological_defaults = TRUE,
+  model_mode = "meta_module_gem",
   pando_args = list(
     min_metacells = 10,
     pando_initiate_args = list(
@@ -133,7 +143,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The one-shot entry point delegates to the same annotation-only meta-module
-architecture and does not expose a metabolite-neighbour expansion option.
+The one-shot entry point delegates to the same condition-pooled evidence,
+annotation-only meta-module architecture, and selectable structural model modes.
 
 For mouse data, use `species = "mouse"`, a mouse genome object, and Mouse-GEM.

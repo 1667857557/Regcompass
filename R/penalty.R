@@ -28,9 +28,7 @@ rc_compute_multiome_penalty <- function(
       exchange = 1.0,
       demand = 20,
       sink = 20,
-      artificial_support = 20,
-      cofactor_recycle = 0.50,
-      transport = 1.00
+      artificial_support = 20
     ),
     missing_penalty = 1) {
   E <- as.matrix(reaction_expression)
@@ -48,6 +46,18 @@ rc_compute_multiome_penalty <- function(
       !is.finite(missing_penalty) || missing_penalty < 0) {
     stop("Penalty constants are invalid.", call. = FALSE)
   }
+  required_structural_roles <- c(
+    "exchange", "demand", "sink", "artificial_support"
+  )
+  if (!is.numeric(support_penalty) || is.null(names(support_penalty)) ||
+      anyDuplicated(names(support_penalty)) ||
+      any(!required_structural_roles %in% names(support_penalty)) ||
+      any(!is.finite(support_penalty)) || any(support_penalty < 0)) {
+    stop(
+      "`support_penalty` must provide finite non-negative costs for all structural roles.",
+      call. = FALSE
+    )
+  }
 
   finite <- is.finite(E)
   E_nonnegative <- pmax(E, 0)
@@ -62,11 +72,8 @@ rc_compute_multiome_penalty <- function(
   roles <- .rc_condition_role_vectors(rownames(E), reaction_roles)
   role <- roles$role
   role_source <- roles$role_source
-  structural <- role %in% c("exchange", "demand", "sink", "artificial_support")
-  curated <- role %in% names(support_penalty) &
-    role_source %in% c("curated", "model_high_confidence")
   override <- stats::setNames(
-    as.logical((structural | curated) & role %in% names(support_penalty)),
+    as.logical(role %in% required_structural_roles),
     rownames(E)
   )
 
@@ -88,12 +95,15 @@ rc_compute_multiome_penalty <- function(
       missing_expression_flag = !finite
     ),
     evidence_policy = "penalty_only",
-    evidence_policy_detail = "single_integrated_expression_penalty",
+    evidence_policy_detail = paste(
+      "single integrated expression penalty with fixed costs only for",
+      "exchange/demand/sink/artificial-support reactions"
+    ),
     penalty_version = "v1.7.0_gene_integrated_multiome_penalty",
     evidence_description = paste(
       "Condition-specific Pando coefficients learned from RNA+ATAC weight",
       "accessibility-only regulatory deviations integrated into gene support",
-      "before GPR aggregation; reaction cost is",
+      "before GPR aggregation; expression-linked reactions use",
       "1/(1+log2(1+reaction_expression))."
     ),
     penalty_formula = "1 / (1 + log2(1 + E_multiome))"
