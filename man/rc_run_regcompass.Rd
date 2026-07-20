@@ -43,7 +43,7 @@ rc_run_regcompass(
 
 \item{fragment_files}{Must be \code{FALSE} in the v1.7.0 canonical pooled workflow. Existing ATAC peak counts are aggregated by SuperCell2.}
 
-\item{sample_col, condition_col, celltype_col}{Single-cell metadata columns. Samples are deliberately pooled within each condition and cell type before metacell construction.}
+\item{sample_col, condition_col, celltype_col}{Single-cell metadata columns. Each biological sample must map to one condition. Samples are deliberately pooled within each condition and cell type before metacell construction.}
 
 \item{rna_assay, atac_assay}{Assay names.}
 
@@ -53,7 +53,7 @@ rc_run_regcompass(
 
 \item{metacell_args}{Arguments passed to condition-pooled SuperCell2 construction.}
 
-\item{layer1_args}{Canonical multiome parameters: \code{regulatory_alpha}, \code{gene_half_saturation}, \code{tau}, \code{local_fastcore}, and \code{local_fastcore_args}.}
+\item{layer1_args}{Canonical multiome parameters: \code{regulatory_alpha}, \code{gene_half_saturation}, \code{tau}, \code{local_fastcore}, and \code{local_fastcore_args}. There is no metabolite-neighbour or one-hop expansion argument.}
 
 \item{pando_args}{Arguments passed to condition-by-cell-type Pando inference.}
 
@@ -63,22 +63,38 @@ rc_run_regcompass(
 
 \item{parallel_backend}{Parallel backend.}
 
-\item{strict_biological_defaults}{Retained for interface compatibility. The v1.7.0 canonical path fixes no promiscuity weighting, Boltzmann AND, and additive isozyme OR.}
+\item{strict_biological_defaults}{If \code{TRUE}, require at least two biological samples per condition and fail on a non-replicated condition-pooled design. If \code{FALSE}, emit a warning instead.}
 
-\item{inference_unit}{Must be \code{"metacell"}; pooled metacells do not retain one biological-sample identity.}
+\item{inference_unit}{Must be \code{"metacell"}; pooled metacells are descriptive pseudo-observations and do not retain one biological-sample identity.}
 
 \item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
 }
 \value{
-A RegCompass result list containing pooled metacells, condition-specific Pando
-meta-modules, multiome gene and reaction evidence, one shared union-GEM,
-directional minimum penalties, and descriptive condition contrasts.
+A RegCompass result list containing pooled metacells and sample-composition
+information, condition-specific Pando meta-modules, multiome gene and reaction
+evidence, annotation-defined biological reaction membership, separately labelled
+local FASTCORE feasibility support, one shared union-GEM, directional minimum
+penalties, and descriptive condition contrasts. The result parameters record
+\code{meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"}
+and \code{feasibility_completion = "local_fastcore_only"}.
 }
 \description{
 Pools cells from all biological samples within each condition and cell type
-before SuperCell2. Pando coefficients are applied to TF-by-ATAC activity and
-integrated into zero-preserving gene support before GPR aggregation. Each
-condition-specific meta-module is completed locally with FASTCORE, all completed
-modules are merged into one shared union-GEM, and all conditions are scored with
-the same medium and directional two-step COMPASS-like linear program.
+before SuperCell2. Pando coefficients are fitted from condition-by-cell-type
+RNA+ATAC data; at per-metacell scoring, their sign and magnitude weight
+peak-accessibility deviations only. Metacell TF RNA is not multiplied into the
+regulatory state. The accessibility-derived modifier is integrated into
+zero-preserving RNA gene support before GPR aggregation.
+
+A reaction is core only when at least one complete GPR isozyme group is present.
+Biological meta-module membership may expand through the core reaction's
+subsystem and shared KEGG, Reactome, or master-Rhea reaction identifiers. No
+reaction is added because it shares a metabolite or is one stoichiometric hop
+away. Local FASTCORE is the sole mechanism for adding reactions required for
+flux feasibility, and those additions remain separate from biological
+membership.
+
+Completed condition-specific modules are merged into one shared union-GEM, and
+all conditions are scored with the same medium and directional two-step
+COMPASS-like linear program.
 }
