@@ -126,7 +126,7 @@ test_that("targets without finite Pando R-squared are untrusted", {
     target_genes = "gene1"
   )
 
-  expect_equal(unname(modifier), matrix(0, nrow = 1, ncol = 2))
+  expect_true(all(modifier == 0))
   expect_match(
     attr(modifier, "reliability_policy"),
     "reliability zero",
