@@ -152,7 +152,7 @@ remain governed by the same multiome reaction-expression cost. There is no
 independent Pando reaction-confidence penalty, Q95 calibration, confidence matrix,
 or `penalty_weights` term.
 
-## Structural model and LP
+## Structural model, LP and ranking
 
 A reaction is core only when at least one complete GPR isozyme group is present.
 Biological meta-module membership is expanded only through:
@@ -171,13 +171,25 @@ direction, the solver first obtains maximum feasible target flux, then constrain
 the target to at least `omega × vmax` and minimizes the network-wide weighted
 absolute flux.
 
+Raw LP penalties are used for comparisons of the same target between conditions.
+Cross-reaction priority uses
+
+\[
+\widetilde P_{r,u}=\frac{P^*_{r,u}}{\omega V^{max}_{r}},
+\]
+
+implemented as `penalty / (omega * vmax)`. This is the minimum evidence cost per
+unit required near-maximal target flux in the selected structural model. Reactions
+are ranked within each condition and cell type by ascending median normalized
+cost. This is a model-based priority, not a physical flux estimate.
+
 Primary outputs are:
 
 - `result$metacells`: pooled metacells, membership and sample composition;
 - `result$layer1`: RNA support, ATAC-derived modifier, multiome gene support and reaction expression;
 - `result$grn_meta_modules`: biological membership, local FASTCORE support and shared union membership;
-- `result$microcompass`: raw minimum penalties, feasibility and directional target diagnostics;
-- `result$reaction_ranking`: reaction priorities within every condition and cell type;
+- `result$microcompass`: raw minimum penalties, feasibility, `vmax` and directional target diagnostics;
+- `result$reaction_ranking`: raw and flux-normalized reaction priorities within every condition and cell type;
 - `result$condition_contrast`: descriptive pairwise comparisons when at least two conditions are present.
 
 For the exact architecture and equations, see
