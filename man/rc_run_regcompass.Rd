@@ -68,12 +68,15 @@ A RegCompass result list containing pooled metacells and sample-composition
 information, condition-specific Pando meta-modules, multiome gene and reaction
 evidence, annotation-defined biological reaction membership, separately labelled
 local FASTCORE feasibility support, directional minimum penalties,
-\code{reaction_ranking}, and descriptive condition contrasts. With one condition,
-\code{reaction_ranking} is the primary reaction-priority output and
-\code{condition_contrast} is empty. With multiple conditions, rankings are produced
-for every condition and pairwise descriptive priority contrasts are returned within
-each cell type. In \code{"meta_module_gem"} mode the structural model is the shared
-union meta-module GEM; in \code{"full_gem"} mode it is the shared full GEM.
+\code{reaction_ranking}, and descriptive condition contrasts. The ranking retains
+raw median penalty and uses \code{penalty / (omega * vmax)} for cross-reaction
+priority, together with \code{vmax}, required target flux, normalized penalty and
+support score. With one condition, \code{reaction_ranking} is the primary output
+and \code{condition_contrast} is empty. With multiple conditions, rankings are
+produced for every condition and pairwise descriptive priority contrasts are
+returned within each cell type. In \code{"meta_module_gem"} mode the structural
+model is the shared union meta-module GEM; in \code{"full_gem"} mode it is the
+shared full GEM.
 }
 \description{
 Pools cells from all biological samples within each condition and cell type
@@ -96,5 +99,6 @@ condition. It also accepts a single condition, in which case it produces a
 within-condition reaction ranking instead of a between-condition contrast.
 No biological-sample-level significance test is inferred from pooled metacells.
 All scored units use one shared medium and the same directional two-step
-COMPASS-like linear program.
+COMPASS-like linear program. Raw penalty compares the same target across
+conditions; flux-normalized penalty is used to rank different targets.
 }
