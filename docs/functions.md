@@ -32,7 +32,19 @@ Main argument bundles:
 - `layer1_args`: `regulatory_alpha`, `gene_half_saturation`, `tau`, and local FASTCORE options;
 - `layer2_args`: solver, target direction, time limit and shared-model options.
 
+Structural contract:
+
+- core reactions require at least one complete GPR isozyme group;
+- biological membership may expand through the core reaction's subsystem and
+  shared KEGG, Reactome, or master-Rhea reaction identifiers;
+- no reaction is added by metabolite sharing, stoichiometric adjacency, or a
+  one-hop rule;
+- there is no `include_one_hop` or metabolite-degree control in the API;
+- local FASTCORE may add only the reactions required for flux feasibility, and
+  these are reported separately from annotation-defined biological membership.
+
 ## `rc_run_regcompass_one_shot()`
 
 Prepare the species GEM and medium when omitted, then delegate to
-`rc_run_regcompass()`.
+`rc_run_regcompass()`. It uses the same annotation-only meta-module expansion and
+has no metabolite-neighbour expansion interface.
