@@ -17,21 +17,10 @@ rc_run_regcompass <- function(
     upstream_workers = NULL,
     layer2_workers = NULL,
     parallel_backend = c("auto", "serial", "snow", "multicore"),
-    strict_biological_defaults = TRUE,
-    inference_unit = "metacell",
     species = c("auto", "human", "mouse")) {
   species <- .rc_infer_gem_species(gem, species)
   model_mode <- match.arg(model_mode)
   parallel_backend <- match.arg(parallel_backend)
-  if (!is.character(inference_unit) || length(inference_unit) != 1L ||
-      is.na(inference_unit) || !identical(inference_unit, "metacell")) {
-    stop("'arg' should be one of 'metacell'", call. = FALSE)
-  }
-  if (!is.logical(strict_biological_defaults) ||
-      length(strict_biological_defaults) != 1L ||
-      is.na(strict_biological_defaults)) {
-    stop("`strict_biological_defaults` must be TRUE or FALSE.", call. = FALSE)
-  }
   bundles <- list(
     metacell_args = metacell_args,
     layer1_args = layer1_args,
@@ -68,10 +57,10 @@ rc_run_regcompass <- function(
     stop("Missing metadata columns: ", paste(missing_meta, collapse = ", "),
          call. = FALSE)
   }
-  conditions <- unique(as.character(object@meta.data[[condition_col]]))
+  conditions <- unique(trimws(as.character(object@meta.data[[condition_col]])))
   conditions <- conditions[!is.na(conditions) & nzchar(conditions)]
-  if (length(conditions) < 2L) {
-    stop("At least two conditions are required.", call. = FALSE)
+  if (!length(conditions)) {
+    stop("At least one non-empty condition is required.", call. = FALSE)
   }
   if (is.null(medium_scenarios)) {
     medium_scenarios <- rc_make_medium_scenarios(
@@ -89,7 +78,7 @@ rc_run_regcompass <- function(
   upstream_param <- .rc_phase_bpparam(upstream_workers, parallel_backend)
   on.exit(.rc_release_bpparam(upstream_param), add = TRUE)
   if (is.null(metacell_args$BPPARAM)) metacell_args$BPPARAM <- upstream_param
-  pooled <- .rc_make_condition_pooled_metacells(
+  pooled <- suppressWarnings(.rc_make_condition_pooled_metacells(
     object = object,
     outdir = file.path(outdir, "01_condition_pooled_metacells"),
     sample_col = sample_col,
@@ -99,11 +88,14 @@ rc_run_regcompass <- function(
     atac_assay = atac_assay,
     fragment_files = fragment_files,
     metacell_args = metacell_args,
-    strict_biological_defaults = strict_biological_defaults
-  )
-  retained_conditions <- unique(as.character(
-    pooled$metacell_meta[[condition_col]]
+    strict_biological_defaults = FALSE
   ))
+  retained_conditions <- unique(trimws(as.character(
+    pooled$metacell_meta[[condition_col]]
+  )))
+  retained_conditions <- retained_conditions[
+    !is.na(retained_conditions) & nzchar(retained_conditions)
+  ]
   missing_conditions <- setdiff(conditions, retained_conditions)
   if (length(missing_conditions)) {
     stop(
@@ -261,23 +253,28 @@ rc_run_regcompass <- function(
     version = "1.7.0",
     species = species,
     model_mode = model_mode,
+    analysis_mode = comparison$analysis_mode,
     pooling_scope = "condition_x_celltype_across_samples",
     input_design = pooled$input_design,
     metacells = pooled,
     layer1 = layer1,
     grn_meta_modules = global_meta_modules,
     microcompass = microcompass,
+    reaction_ranking = comparison$ranking,
     condition_summary = comparison$summary,
     condition_contrast = comparison$contrast,
     inference_policy = comparison$inference_policy,
     params = list(
       shared_gem = TRUE,
       shared_medium = TRUE,
+      n_conditions = length(conditions),
+      condition_mode = comparison$analysis_mode,
       metacell_grouping = c(condition_col, celltype_col),
       samples_mixed_within_condition = any(
         pooled$metacell_meta$samples_mixed_within_condition
       ),
       sample_weighting = pooled$sample_weighting,
+      biological_sample_minimum = "none; one sample per condition is allowed",
       pando_grouping = c(condition_col, celltype_col),
       inference_unit = "condition_pooled_metacell_descriptive_only",
       regulatory_alpha = layer1$capacity_params$regulatory_alpha,
@@ -293,11 +290,9 @@ rc_run_regcompass <- function(
       penalty_formula = "1/(1+log2(1+E_multiome))",
       parallel_backend = parallel_backend,
       upstream_workers = upstream_workers,
-      layer2_workers = layer2_workers,
-      strict_biological_defaults = strict_biological_defaults
+      layer2_workers = layer2_workers
     )
   )
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
-  saveRDS(result, file.path(outdir, "regcompass_condition_pooled_result.rds"))
   result
 }
