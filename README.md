@@ -7,8 +7,7 @@ condition × cell type cells pooled across biological samples
 → SuperCell2 condition-level metacells with sample composition retained
 → one Pando GRN per condition × cell type
 → complete-GPR core reactions
-→ subsystem + KEGG/Reactome + master-Rhea expansion
-→ one bounded metabolite-neighbour hop
+→ core-reaction subsystem + KEGG/Reactome + master-Rhea expansion
 → local FASTCORE feasibility completion
 → one shared union-GEM and one shared extracellular medium
 → Pando-coefficient-weighted ATAC regulation integrated into RNA support
@@ -142,9 +141,17 @@ confidence-alignment matrix, or `penalty_weights` term in the canonical model.
 ## Structural model and LP
 
 A reaction is core only when at least one complete GPR isozyme group is present.
-The biological module is expanded by core subsystem, shared KEGG/Reactome
-reaction IDs, shared master Rhea IDs, and one bounded non-structural metabolite
-neighbour hop. Local FASTCORE then adds only reactions required for feasibility.
+Biological meta-module membership is then expanded only through:
+
+1. the subsystem of each core reaction;
+2. shared KEGG or Reactome reaction identifiers;
+3. the same master Rhea identifier.
+
+No reaction is added merely because it shares a metabolite with an included
+reaction. There is no metabolite-neighbour or one-hop expansion API. Local
+FASTCORE is the only stage that may add non-annotated reactions, and those
+reactions are recorded separately as feasibility support rather than biological
+meta-module members.
 
 All conditions use the same union-GEM, stoichiometric matrix, bounds, medium,
 target reactions and target-flux fraction. For each target direction, the solver
@@ -155,7 +162,7 @@ Primary outputs are:
 
 - `result$metacells`: pooled metacells, membership and biological-sample composition;
 - `result$layer1`: RNA support, ATAC-derived modifier, multiome gene support and `reaction_expression`;
-- `result$grn_meta_modules`: biological membership, local FASTCORE completion and shared union-GEM membership;
+- `result$grn_meta_modules`: annotation-defined biological membership, local FASTCORE support and shared union-GEM membership;
 - `result$microcompass`: raw minimum penalties, feasibility and directional target diagnostics;
 - `result$condition_summary` and `result$condition_contrast`: descriptive within-cell-type condition comparisons.
 
