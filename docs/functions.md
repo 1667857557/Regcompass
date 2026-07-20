@@ -66,6 +66,15 @@ Evidence contract:
 - only exchange, demand, sink and artificial-support reactions receive fixed
   structural costs.
 
+Ranking contract:
+
+- raw `microcompass$penalty` is retained for the same reaction across conditions;
+- cross-reaction priority uses `penalty / (omega * vmax)`;
+- `reaction_ranking` reports raw penalty, `vmax`, required target flux,
+  normalized penalty, support score and priority rank;
+- rankings from `meta_module_gem` and `full_gem` are separate structural-context
+  analyses and should not be merged.
+
 ## `rc_run_regcompass_one_shot()`
 
 Prepare the species GEM and medium when omitted, then delegate to
