@@ -78,18 +78,29 @@ rc_run_regcompass <- function(
   upstream_param <- .rc_phase_bpparam(upstream_workers, parallel_backend)
   on.exit(.rc_release_bpparam(upstream_param), add = TRUE)
   if (is.null(metacell_args$BPPARAM)) metacell_args$BPPARAM <- upstream_param
-  pooled <- suppressWarnings(.rc_make_condition_pooled_metacells(
-    object = object,
-    outdir = file.path(outdir, "01_condition_pooled_metacells"),
-    sample_col = sample_col,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    fragment_files = fragment_files,
-    metacell_args = metacell_args,
-    strict_biological_defaults = FALSE
-  ))
+  pooled <- withCallingHandlers(
+    .rc_make_condition_pooled_metacells(
+      object = object,
+      outdir = file.path(outdir, "01_condition_pooled_metacells"),
+      sample_col = sample_col,
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
+      fragment_files = fragment_files,
+      metacell_args = metacell_args,
+      strict_biological_defaults = FALSE
+    ),
+    warning = function(warning) {
+      if (grepl(
+        "Condition-pooled analysis requires at least two biological samples",
+        conditionMessage(warning),
+        fixed = TRUE
+      )) {
+        invokeRestart("muffleWarning")
+      }
+    }
+  )
   retained_conditions <- unique(trimws(as.character(
     pooled$metacell_meta[[condition_col]]
   )))
@@ -234,7 +245,18 @@ rc_run_regcompass <- function(
   )
   defaults[names(layer2_args)] <- NULL
   microcompass <- tryCatch(
-    suppressWarnings(do.call(rc_run_microcompass, c(defaults, layer2_args))),
+    withCallingHandlers(
+      do.call(rc_run_microcompass, c(defaults, layer2_args)),
+      warning = function(warning) {
+        if (grepl(
+          "Metacell-level scores are descriptive pseudo-observations",
+          conditionMessage(warning),
+          fixed = TRUE
+        )) {
+          invokeRestart("muffleWarning")
+        }
+      }
+    ),
     finally = .rc_release_bpparam(layer2_param)
   )
   if (!identical(colnames(microcompass$penalty),
@@ -288,6 +310,7 @@ rc_run_regcompass <- function(
         "core_subsystem_plus_kegg_reactome_master_rhea_only",
       feasibility_completion = "local_fastcore_only",
       penalty_formula = "1/(1+log2(1+E_multiome))",
+      reaction_ranking_formula = comparison$ranking_formula,
       parallel_backend = parallel_backend,
       upstream_workers = upstream_workers,
       layer2_workers = layer2_workers
