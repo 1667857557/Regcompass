@@ -151,6 +151,7 @@ rc_regcompass_step_meta_modules <- function(
   answer <- list(
     condition_modules = condition_modules,
     global_modules = global_modules,
+    workflow_params = params,
     params = list(
       pando_args = pando_args,
       layer1_args = layer1_args
@@ -189,6 +190,12 @@ rc_regcompass_step_layer1 <- function(
   if (!inherits(meta_modules, "regcompass_meta_module_step")) {
     stop(
       "`meta_modules` must be the output of `rc_regcompass_step_meta_modules()`.",
+      call. = FALSE
+    )
+  }
+  if (!identical(metacells$params, meta_modules$workflow_params)) {
+    stop(
+      "Metacell and meta-module stages use different workflow metadata settings.",
       call. = FALSE
     )
   }
@@ -250,6 +257,7 @@ rc_regcompass_step_layer2 <- function(
   if (!is.list(layer2_args)) {
     stop("`layer2_args` must be a list.", call. = FALSE)
   }
+  params <- meta_modules$workflow_params
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   cache_dir <- file.path(outdir, "model_cache", model_mode)
@@ -293,9 +301,9 @@ rc_regcompass_step_layer2 <- function(
       NULL
     },
     unit = "metacell",
-    sample_col = "sample_id",
-    condition_col = "condition",
-    celltype_col = "cell_type",
+    sample_col = params$sample_col,
+    condition_col = params$condition_col,
+    celltype_col = params$celltype_col,
     parallel = parallel,
     BPPARAM = BPPARAM
   )
@@ -343,6 +351,12 @@ rc_regcompass_step_results <- function(
       !inherits(meta_modules, "regcompass_meta_module_step")) {
     stop(
       "Stepwise results require outputs from the metacell and meta-module stages.",
+      call. = FALSE
+    )
+  }
+  if (!identical(metacells$params, meta_modules$workflow_params)) {
+    stop(
+      "Metacell and meta-module stages use different workflow metadata settings.",
       call. = FALSE
     )
   }
