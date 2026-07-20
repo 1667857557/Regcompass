@@ -105,7 +105,7 @@ step1 <- rc_regcompass_step_metacells(
   celltype_col = "cell_type",
   fragment_files = FALSE,
   metacell_args = list(
-    gamma = 150,
+     = 20,
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   )
