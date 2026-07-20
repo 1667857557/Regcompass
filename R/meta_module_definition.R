@@ -111,18 +111,36 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
   answer
 }
 
+.rc_clean_meta_module_map <- function(x, id_col) {
+  if (!is.data.frame(x) ||
+      !all(c("reaction_id", id_col) %in% colnames(x))) {
+    return(data.frame())
+  }
+  reaction <- trimws(as.character(x$reaction_id))
+  identifier <- trimws(as.character(x[[id_col]]))
+  keep <- !is.na(reaction) & nzchar(reaction) &
+    !is.na(identifier) & nzchar(identifier)
+  out <- x[keep, c("reaction_id", id_col), drop = FALSE]
+  out$reaction_id <- reaction[keep]
+  out[[id_col]] <- identifier[keep]
+  unique(out)
+}
+
 #' Expand core reactions into GRN-defined biological reaction meta-modules
 #'
-#' Expansion is ordered: core subsystems, reactions sharing KEGG/Reactome
-#' identifiers, then reactions sharing master-Rhea identifiers. The output is
-#' biological membership, not a flux-feasibility support set.
-.rc_expand_meta_module_reactions_core <- function(gem, core_reactions,
-                                                  subsystem_table = NULL,
-                                                  expansion_mode = c(
-                                                    "ordered_once", "fixed_point"
-                                                  ),
-                                                  max_iterations = 10L) {
+#' Expansion is restricted to reactions in core-reaction subsystems and reactions
+#' sharing KEGG, Reactome or master-Rhea identifiers. No stoichiometric-neighbour
+#' expansion is performed. Flux-feasibility support is added later by FASTCORE.
+.rc_expand_meta_module_reactions_core <- function(
+    gem, core_reactions, subsystem_table = NULL,
+    expansion_mode = c("ordered_once", "fixed_point"),
+    max_iterations = 10L) {
   expansion_mode <- match.arg(expansion_mode)
+  if (!is.numeric(max_iterations) || length(max_iterations) != 1L ||
+      !is.finite(max_iterations) || max_iterations < 1 ||
+      abs(max_iterations - round(max_iterations)) > sqrt(.Machine$double.eps)) {
+    stop("`max_iterations` must be one positive integer.", call. = FALSE)
+  }
   required <- c("sample_id", "module_id", "gene", "reaction_id")
   if (!is.data.frame(core_reactions) ||
       !all(required %in% colnames(core_reactions))) {
@@ -135,47 +153,20 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
     )
   }
 
-  maps <- rc_reaction_crossref_maps(
-    gem,
-    subsystem_table = subsystem_table
+  maps <- rc_reaction_crossref_maps(gem, subsystem_table = subsystem_table)
+  maps$subsystem <- .rc_clean_meta_module_map(maps$subsystem, "subsystem_id")
+  maps$kegg <- .rc_clean_meta_module_map(maps$kegg, "kegg_id")
+  maps$reactome <- .rc_clean_meta_module_map(maps$reactome, "reactome_id")
+  maps$rhea_master <- .rc_clean_meta_module_map(
+    maps$rhea_master, "rhea_master_id"
   )
-  maps$subsystem <- maps$subsystem[
-    !is.na(maps$subsystem$reaction_id) &
-      nzchar(trimws(as.character(maps$subsystem$reaction_id))) &
-      !is.na(maps$subsystem$subsystem_id) &
-      nzchar(trimws(as.character(maps$subsystem$subsystem_id))),
-    , drop = FALSE
-  ]
-  maps$kegg <- maps$kegg[
-    !is.na(maps$kegg$reaction_id) &
-      nzchar(trimws(as.character(maps$kegg$reaction_id))) &
-      !is.na(maps$kegg$kegg_id) &
-      nzchar(trimws(as.character(maps$kegg$kegg_id))),
-    , drop = FALSE
-  ]
-  maps$reactome <- maps$reactome[
-    !is.na(maps$reactome$reaction_id) &
-      nzchar(trimws(as.character(maps$reactome$reaction_id))) &
-      !is.na(maps$reactome$reactome_id) &
-      nzchar(trimws(as.character(maps$reactome$reactome_id))),
-    , drop = FALSE
-  ]
-  maps$rhea_master <- maps$rhea_master[
-    !is.na(maps$rhea_master$reaction_id) &
-      nzchar(trimws(as.character(maps$rhea_master$reaction_id))) &
-      !is.na(maps$rhea_master$rhea_master_id) &
-      nzchar(trimws(as.character(maps$rhea_master$rhea_master_id))),
-    , drop = FALSE
-  ]
-
   if (!nrow(maps$subsystem)) {
-    stop(
-      "No usable reaction-to-subsystem annotations were found.",
-      call. = FALSE
-    )
+    stop("No usable reaction-to-subsystem annotations were found.", call. = FALSE)
   }
 
-  valid_reactions <- colnames(rc_validate_gem(gem)$S)
+  validated <- rc_validate_gem(gem)
+  valid_reactions <- colnames(validated$S)
+
   if ("is_core" %in% colnames(core_reactions)) {
     core_reactions <- core_reactions[
       core_reactions$is_core %in% TRUE,
@@ -187,19 +178,12 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
     , drop = FALSE
   ]
   if (!nrow(core_reactions)) {
-    stop(
-      "No GRN genes mapped to valid GEM reactions.",
-      call. = FALSE
-    )
+    stop("No GRN genes mapped to valid GEM reactions.", call. = FALSE)
   }
 
   groups <- split(
     seq_len(nrow(core_reactions)),
-    paste(
-      core_reactions$sample_id,
-      core_reactions$module_id,
-      sep = "\001"
-    )
+    paste(core_reactions$sample_id, core_reactions$module_id, sep = "\001")
   )
   membership_rows <- list()
   summary_rows <- list()
@@ -210,66 +194,49 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
     sample_id <- as.character(core_reactions$sample_id[index[[1L]]])
     module_id <- as.character(core_reactions$module_id[index[[1L]]])
     included <- core
-    reasons <- stats::setNames(
-      rep("core_grn_gene", length(core)),
-      core
-    )
-    source_ids <- stats::setNames(
-      rep(NA_character_, length(core)),
-      core
-    )
+    reasons <- stats::setNames(rep("core_grn_gene", length(core)), core)
+    source_ids <- stats::setNames(rep(NA_character_, length(core)), core)
 
     add_reactions <- function(reactions, reason, source_map = NULL) {
-      reactions <- intersect(
-        .rc_mm_trim_unique(reactions),
-        valid_reactions
-      )
+      reactions <- intersect(.rc_mm_trim_unique(reactions), valid_reactions)
       new <- setdiff(reactions, included)
       if (length(new)) {
         included <<- c(included, new)
         reasons[new] <<- reason
-        if (!is.null(source_map)) {
-          source_ids[new] <<- source_map[new]
-        }
+        if (!is.null(source_map)) source_ids[new] <<- source_map[new]
       }
       invisible(new)
     }
+    reactions_in_subsystems <- function(subsystems) {
+      unique(maps$subsystem$reaction_id[
+        maps$subsystem$subsystem_id %in% subsystems
+      ])
+    }
+    subsystems_for_reactions <- function(reactions) {
+      unique(maps$subsystem$subsystem_id[
+        maps$subsystem$reaction_id %in% reactions
+      ])
+    }
+    source_for_subsystem_members <- function(subsystems) {
+      reactions <- reactions_in_subsystems(subsystems)
+      stats::setNames(vapply(reactions, function(reaction) {
+        ids <- unique(maps$subsystem$subsystem_id[
+          maps$subsystem$reaction_id == reaction &
+            maps$subsystem$subsystem_id %in% subsystems
+        ])
+        paste(paste0("SUBSYSTEM:", ids), collapse = ";")
+      }, character(1)), reactions)
+    }
+    prefixed_crossrefs <- function(prefix, values) {
+      values <- .rc_mm_trim_unique(values)
+      if (!length(values)) character() else paste0(prefix, values)
+    }
 
-    expand_once <- function() {
+    expand_annotations_once <- function() {
       before <- length(included)
-
-      reactions_in_subsystems <- function(subsystems) {
-        unique(maps$subsystem$reaction_id[
-          maps$subsystem$subsystem_id %in% subsystems
-        ])
-      }
-      subsystems_for_reactions <- function(reactions) {
-        unique(maps$subsystem$subsystem_id[
-          maps$subsystem$reaction_id %in% reactions
-        ])
-      }
-      source_for_subsystem_members <- function(subsystems) {
-        reactions <- reactions_in_subsystems(subsystems)
-        stats::setNames(vapply(reactions, function(reaction) {
-          subsystem_ids <- unique(maps$subsystem$subsystem_id[
-            maps$subsystem$reaction_id == reaction &
-              maps$subsystem$subsystem_id %in% subsystems
-          ])
-          paste(
-            paste0("SUBSYSTEM:", subsystem_ids),
-            collapse = ";"
-          )
-        }, character(1)), reactions)
-      }
-      prefixed_crossrefs <- function(prefix, values) {
-        values <- .rc_mm_trim_unique(values)
-        if (!length(values)) character() else paste0(prefix, values)
-      }
-
       core_subsystems <- subsystems_for_reactions(core)
-      subsystem_reactions <- reactions_in_subsystems(core_subsystems)
       add_reactions(
-        subsystem_reactions,
+        reactions_in_subsystems(core_subsystems),
         "same_core_subsystem",
         source_for_subsystem_members(core_subsystems)
       )
@@ -282,9 +249,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
         maps$reactome$reaction_id %in% current
       ])
       database_reactions <- unique(c(
-        maps$kegg$reaction_id[
-          maps$kegg$kegg_id %in% kegg_ids
-        ],
+        maps$kegg$reaction_id[maps$kegg$kegg_id %in% kegg_ids],
         maps$reactome$reaction_id[
           maps$reactome$reactome_id %in% reactome_ids
         ]
@@ -328,16 +293,13 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
       ])
       rhea_source <- stats::setNames(
         vapply(rhea_reactions, function(reaction) {
-          reaction_master_ids <- intersect(
+          ids <- intersect(
             unique(maps$rhea_master$rhea_master_id[
               maps$rhea_master$reaction_id == reaction
             ]),
             master_ids
           )
-          paste(
-            paste0("RHEA_MASTER:", reaction_master_ids),
-            collapse = ";"
-          )
+          paste(paste0("RHEA_MASTER:", ids), collapse = ";")
         }, character(1)),
         rhea_reactions
       )
@@ -346,17 +308,15 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
         "shared_master_rhea_reaction",
         rhea_source
       )
-
       length(included) > before
     }
 
-    changed <- expand_once()
+    changed <- expand_annotations_once()
     iteration <- 1L
     if (identical(expansion_mode, "fixed_point")) {
-      while (isTRUE(changed) &&
-             iteration < as.integer(max_iterations)) {
+      while (isTRUE(changed) && iteration < as.integer(max_iterations)) {
         iteration <- iteration + 1L
-        changed <- expand_once()
+        changed <- expand_annotations_once()
       }
     }
 
@@ -400,12 +360,10 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
   )
 }
 
-rc_expand_meta_module_reactions <- function(gem, core_reactions,
-                                             subsystem_table = NULL,
-                                             expansion_mode = c(
-                                               "ordered_once", "fixed_point"
-                                             ),
-                                             max_iterations = 10L) {
+rc_expand_meta_module_reactions <- function(
+    gem, core_reactions, subsystem_table = NULL,
+    expansion_mode = c("ordered_once", "fixed_point"),
+    max_iterations = 10L) {
   hard_core_reactions <- .rc_hard_core_rows(core_reactions)
   answer <- .rc_expand_meta_module_reactions_core(
     gem = gem,
@@ -428,8 +386,7 @@ rc_expand_meta_module_reactions <- function(gem, core_reactions,
   membership_keys <- key(answer$reaction_membership)
 
   answer$reaction_membership$is_core <- membership_keys %in% hard_keys
-  partial_anchor <- membership_keys %in%
-    setdiff(candidate_keys, hard_keys)
+  partial_anchor <- membership_keys %in% setdiff(candidate_keys, hard_keys)
   if (any(partial_anchor)) {
     answer$reaction_membership <- answer$reaction_membership[
       !partial_anchor,

@@ -1,3 +1,16 @@
+# RegCompassR 1.7.0
+
+- Changed the canonical metacell scope to `condition × cell type`, deliberately pooling cells from all biological samples within each condition before SuperCell2 while retaining per-metacell biological-sample composition diagnostics.
+- Changed Pando inference and GRN meta-module construction to the same condition-by-cell-type scope.
+- Uses condition-specific Pando coefficients learned from RNA+ATAC to weight accessibility-only regulatory deviations at the metacell level; metacell TF RNA is not multiplied into the modifier, reducing direct duplicate RNA weighting.
+- Clarifies that coefficients estimated from the same pooled dataset are fitted parameters rather than independent validation evidence; condition-pooled outputs remain descriptive unless external fitting or cross-fitting is supplied.
+- Fixed the canonical GPR calculation to a normalized, monotone Boltzmann soft-min AND, additive isozyme OR, and no promiscuity weighting.
+- Replaced the previous decomposed expression-plus-confidence objective with one COMPASS-like positive cost, `1 / (1 + log2(1 + E_multiome))`.
+- Builds biological meta-modules only from complete-GPR core reactions, core-reaction subsystems, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Metabolite-neighbour expansion is not used; local FASTCORE is the sole mechanism for adding reactions required for flux feasibility.
+- Preserved one shared union-GEM, one shared medium, common bounds and directional two-step COMPASS-like LP scoring across all conditions.
+- Added direct descriptive condition summaries and two-condition reaction-support contrasts within each cell type.
+- Deleted the retired strict-stratum global workflow, Q95 calibration implementation, Pando reaction-confidence implementation, Layer 2 confidence alignment functions, confidence placeholders, `penalty_weights` API, and metabolite-neighbour expansion helper and controls.
+
 # RegCompassR 1.6.0
 
 - Added `fragment_files = FALSE` support so one-shot and integrated workflows can skip fragment aggregation and use object ATAC peak raw counts when matching fragment files are unavailable.

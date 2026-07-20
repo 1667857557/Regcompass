@@ -1,13 +1,18 @@
 # RegCompassR
 
-RegCompassR provides one supported RNA+ATAC workflow:
+RegCompassR 1.7.0 provides one canonical RNA+ATAC workflow:
 
 ```text
-condition × sample × cell type
-→ metacells and stratum-specific Pando GRNs
-→ local FASTCORE meta-modules
-→ sample-balanced Q95 diagnostics and one shared GEM
-→ directional microCOMPASS scoring
+condition × cell type cells pooled across biological samples
+→ SuperCell2 condition-level metacells with sample composition retained
+→ one Pando GRN per condition × cell type
+→ complete-GPR core reactions
+→ core-reaction subsystem + KEGG/Reactome + master-Rhea expansion
+→ local FASTCORE feasibility completion
+→ one shared union-GEM and one shared extracellular medium
+→ Pando-coefficient-weighted ATAC regulation integrated into RNA support
+→ directional COMPASS-like minimum-penalty scoring
+→ descriptive comparison between conditions
 ```
 
 ## Installation
@@ -25,25 +30,13 @@ remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
 
-The supported stack is exact: SeuratObject 4.1.4, Seurat 4.4.0, and Signac
-1.11.0. Seurat 4.4.0 requires SeuratObject 4.1.4 or newer; pinning 4.1.4 keeps
-the stack reproducible while satisfying that dependency.
-
-Fragment-enabled runs additionally require a MACS2/MACS3 executable. Pass its
-path through `metacell_args$macs2_path` when it is not available as `macs2` on
-`PATH`.
-
 ## Quick start
-
-The one-shot entry point prepares Human-GEM 2 and the shared model-bound medium
-when they are not supplied. This is the default human path; set
-`species = "mouse"` to route setup to Mouse-GEM and the mouse physiological
-medium:
 
 ```r
 library(RegCompassR)
 library(Pando)
 library(BSgenome.Hsapiens.UCSC.hg38)
+
 data(motifs, package = "Pando")
 data(SCREEN.ccRE.UCSC.hg38, package = "Pando")
 
@@ -52,8 +45,8 @@ result <- rc_run_regcompass_one_shot(
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,  # use existing ATAC peak counts; pass paths to re-aggregate fragments
-  species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
+  fragment_files = FALSE,
+  species = "human",
   gem_version = "2.0.0",
   medium_scenario = "normal_human_plasma",
   sample_col = "sample_id",
@@ -77,9 +70,9 @@ result <- rc_run_regcompass_one_shot(
     )
   ),
   layer1_args = list(
-    local_fastcore = TRUE,
-    sample_balance = TRUE,
-    expression_batch_correction = "none"
+    regulatory_alpha = 1,
+    tau = 0.20,
+    local_fastcore = TRUE
   ),
   layer2_args = list(
     target_direction = "both",
@@ -88,135 +81,90 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-Set `fragment_files = FALSE` when no matching fragment files are available; the
-workflow skips fragment aggregation and carries the object's ATAC peak raw counts
-into metacell and Pando analysis. When matching fragments are available, pass a
-path, named list, or manifest in `fragment_files`; RegCompass re-aggregates ATAC
-peak raw counts from fragments before downstream analysis. For mouse data, use
-the matching genome and set `species = "mouse"`; the one-shot setup then
-prepares Mouse-GEM 1.8.0 and `mouse_plasma` through the `"physiologic"` medium
-shortcut. To use a fully custom medium table, build it with
-`rc_make_medium_scenarios()` and pass it as `medium_scenarios`, which overrides
-`medium_scenario`.
+The v1.7.0 canonical path requires `fragment_files = FALSE` and aggregates the
+existing ATAC peak-count assay. Each biological sample must map to one condition.
+With `strict_biological_defaults = TRUE`, each condition must contain at least
+two biological samples. Cells are pooled by condition and cell type before
+SuperCell2, but original sample membership is retained in
+`result$metacells$sample_composition` and the corresponding output tables.
 
-## Choosing analysis parameters
+Condition-pooled metacells are descriptive pseudo-observations, not independent
+biological replicates. The package does not perform biological-sample-level
+significance testing on those metacells.
 
-The values above are starting points, not fixed analysis parameters. Choose
-them before a full run from stratum sizes, expected biological heterogeneity,
-and a small pilot run.
+## Core multiome calculation
 
-| Setting | Role | Selection guidance |
-| --- | --- | --- |
-| `metacell_args$gamma` | Approximate cells represented by each metacell | Use a smaller value for more metacells and finer heterogeneity, or a larger value for stronger aggregation. Keep one value across all strata so resolution is comparable. |
-| `metacell_args$min_cells_per_stratum` | Minimum cells in each condition × sample × cell-type stratum | Set high enough to avoid unstable strata, but check that every biological sample retains at least one stratum. |
-| `metacell_args$min_metacell_size` | Flags undersized, low-power metacells | Increase when sparse RNA/ATAC profiles are unstable; do not use it to compensate for an unsuitable `gamma`. |
-| `metacell_args$macs2_path` | MACS2/MACS3 executable for fragment-enabled runs | Required when the executable is not discoverable as `macs2` on `PATH`. |
-| `metacell_args$peak_calling_effective_genome_size` | MACS effective genome size | Use a species-matched value; defaults are inferred from annotated `hg*`/`GRCh*` or `mm*`/`GRCm*` peak ranges. |
-| `metacell_args$peak_calling_args` | Additional `Signac::CallPeaks()` arguments | Keep one policy across strata. Use only justified MACS options and record them with the run. |
-| `pando_args$min_metacells` | Minimum metacells required for Pando | It must be compatible with `floor(n_cells / gamma)`. Strata below it are skipped, so inspect `00_strata/stratum_workflow_status.tsv.gz` after a pilot. |
-| `pando_args$pando_initiate_args$regions` | Candidate regulatory regions passed to `Pando::initiate_grn()` | Use a genome-build-matched region set. Do not place `regions` at the top level of `pando_args`. |
-| `pando_args$pando_infer_args` | Pando model and correlation/FDR filters | Start with the shown GLM settings; tighten correlation thresholds only when the pilot produces excessive weak edges. Apply one policy to every stratum. |
-| `layer1_args$local_fastcore` | Completes each local metabolic module | Keep enabled for the canonical path. |
-| `layer1_args$sample_balance` | Defines the sampling estimand for Q95 and relative-state diagnostics | Keep `TRUE` for biological-replicate inference. Every sample receives equal total mass globally, and weights are recomputed inside each Q95 stratum. Absolute metacell activity is not rescaled. |
-| `layer1_args$expression_batch_correction` | Optional technical-batch correction | Keep `"none"` unless a documented technical batch exists. If using `"limma"`, provide technical and preserved biological design columns; never remove `sample_id` as batch. |
-| `layer2_args$target_direction` | Forward, reverse, or both-direction scoring | Use `"both"` unless the GEM direction or scientific question justifies one direction. |
-| `layer2_args$solver` | LP solver | `"highs"` is the default open-source choice; use Gurobi only in a licensed environment. |
+RNA is converted to zero-preserving bounded gene support:
 
-`sample_balance = TRUE` uses \(w_{si}=1/(S n_s)\) for global diagnostics and
-recomputes \(w_{sci}=1/(S_c n_{sc})\) inside each Q95 stratum. These are
-sampling weights, not enzyme-activity multipliers. The primary absolute
-reaction support remains the zero-preserving metacell value, while the default
-`sample_celltype` Layer 2 unit gives each biological sample one inference unit
-per represented cell type.
+\[
+C^{RNA}_{g,u}=\frac{x_{g,u}}{x_{g,u}+h}.
+\]
 
-A practical pilot is to tabulate cells per strict stratum, choose one `gamma`,
-confirm that enough metacells remain for Pando, and only then scale workers.
-`upstream_workers` parallelizes strata and `layer2_workers` parallelizes
-metacell scoring; worker counts affect runtime and memory, not model semantics.
+Pando coefficients are learned from RNA+ATAC within each condition and cell
+type. For per-metacell scoring, coefficient sign and magnitude weight robustly
+standardized **peak accessibility only**. Metacell TF RNA is not multiplied into
+the regulatory state, so target-gene RNA enters direct metacell support once.
+The resulting modifier is bounded as \(R_{g,u}\in[-1,1]\).
 
-## Explicit setup
+The regulatory modifier changes RNA support on the support log-odds scale:
 
-Use the same main workflow when the GEM or medium must be inspected or
-customized first:
+\[
+C^{MO}_{g,u}=
+\frac{C^{RNA}_{g,u}2^{\alpha R_{g,u}}}
+{1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{\alpha R_{g,u}}}.
+\]
 
-```r
-human2_gem <- rc_prepare_human2_gem(version = "2.0.0")
-# Or choose Mouse-GEM explicitly when analyzing mouse data:
-# mouse_gem <- rc_prepare_mouse_gem(version = "1.8.0")
-medium <- rc_make_medium_scenarios(
-  human2_gem,
-  scenario = "compass_model_bounds"
-)
+This preserves zero RNA support, keeps values in `[0,1]`, increases support under
+positive regulation and decreases it under negative regulation. Because the
+Pando coefficients are fitted on the same pooled dataset, they are learned
+parameters rather than independent validation evidence; external fitting or
+cross-fitting is required for a fully independent regulatory layer.
 
-result <- rc_run_regcompass(
-  object = object,
-  gem = human2_gem,
-  outdir = "RegCompass_result",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = fragment_files,
-  species = "human",
-  sample_col = "sample_id",
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  medium_scenarios = medium
-)
-```
+Protein complexes use the normalized Boltzmann soft-min AND rule with
+`tau = 0.20`:
 
-## Published human medium presets
+\[
+C_{complex}=-\tau\log\left(\frac{1}{n}\sum_{i=1}^{n}
+\exp\left[-C_i/\tau\right]\right).
+\]
 
-`compass_model_bounds` remains the technical default. Human-only biological
-backgrounds are selected explicitly:
+Isozymes are added and no gene-promiscuity weighting is applied. Reaction
+expression is converted to one COMPASS-like cost:
 
-```r
-plasma <- rc_make_medium_scenarios(
-  gem,
-  scenario = "normal_human_plasma"
-)
+\[
+p_{r,u}=\frac{1}{1+\log_2(1+E^{MO}_{r,u})}.
+\]
 
-high_glucose <- rc_make_medium_scenarios(gem, scenario = "high_glucose")
-low_glucose <- rc_make_medium_scenarios(gem, scenario = "low_glucose")
-high_lactate <- rc_make_medium_scenarios(gem, scenario = "high_lactate")
-low_lactate <- rc_make_medium_scenarios(gem, scenario = "low_lactate")
-rpmi <- rc_make_medium_scenarios(gem, scenario = "rpmi1640")
-```
+There is no independent Pando reaction-confidence penalty, Q95 calibration,
+confidence-alignment matrix, or `penalty_weights` term in the canonical model.
 
-The presets close uptake for exchanges not represented by the selected
-background and reopen listed nutrients. They do not convert concentration in
-mM into physical flux. Glucose and lactate concentrations define relative
-sensitivity caps; other listed metabolites are treated as available. Every
-preset row records the human paper citation, DOI, PMID, concentration and bound
-provenance. See `?rc_make_medium_scenarios` and
-[`docs/functions.md`](docs/functions.md) for the exact values and references.
+## Structural model and LP
 
-Users can supply either exact reaction bounds with `custom_medium` or a
-metabolite availability table with `custom_metabolites`:
+A reaction is core only when at least one complete GPR isozyme group is present.
+Biological meta-module membership is then expanded only through:
 
-```r
-custom <- rc_make_medium_scenarios(
-  gem,
-  scenario = "custom",
-  custom_metabolites = data.frame(
-    metabolite_name = c("glucose", "lactate"),
-    metabolite_pattern = c("glucose|glc", "lactate|lactic acid"),
-    available = TRUE,
-    concentration_mM = c(3, 8),
-    uptake_fraction = c(0.12, 0.40),
-    target_exchange_flag = TRUE,
-    required_match = TRUE,
-    reference_doi = "project-specific reference"
-  )
-)
-```
+1. the subsystem of each core reaction;
+2. shared KEGG or Reactome reaction identifiers;
+3. the same master Rhea identifier.
 
-Keep one fixed metacell `gamma` across strata. Strata below the minimum
-metacell count are recorded as skipped and excluded from calibration and
-scoring. Advanced settings remain available through `metacell_args`,
-`pando_args`, `layer1_args`, and `layer2_args`; defaults define the supported
-main path.
+No reaction is added merely because it shares a metabolite with an included
+reaction. There is no metabolite-neighbour or one-hop expansion API. Local
+FASTCORE is the only stage that may add non-annotated reactions, and those
+reactions are recorded separately as feasibility support rather than biological
+meta-module members.
 
-The primary outputs are `result$layer1`, `result$grn_meta_modules`, and
-`result$microcompass`. See the [workflow](docs/workflow.md) and
-[public functions](docs/functions.md) for the compact contract. The
-[`regcompass-workflow` vignette](vignettes/regcompass-workflow.Rmd) provides a
-complete, input-to-output walkthrough with explicit and one-shot entry points.
+All conditions use the same union-GEM, stoichiometric matrix, bounds, medium,
+target reactions and target-flux fraction. For each target direction, the solver
+first obtains maximum feasible target flux, then constrains the target to at
+least `omega × vmax` and minimizes the network-wide weighted absolute flux.
+
+Primary outputs are:
+
+- `result$metacells`: pooled metacells, membership and biological-sample composition;
+- `result$layer1`: RNA support, ATAC-derived modifier, multiome gene support and `reaction_expression`;
+- `result$grn_meta_modules`: annotation-defined biological membership, local FASTCORE support and shared union-GEM membership;
+- `result$microcompass`: raw minimum penalties, feasibility and directional target diagnostics;
+- `result$condition_summary` and `result$condition_contrast`: descriptive within-cell-type condition comparisons.
+
+For the exact architecture and equations, see
+[`docs/v1.7.0-condition-pooled-architecture.md`](docs/v1.7.0-condition-pooled-architecture.md).

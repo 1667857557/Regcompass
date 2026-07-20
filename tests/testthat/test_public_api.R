@@ -1,4 +1,4 @@
-test_that("public API contains the canonical species-aware workflow", {
+test_that("public API contains only the canonical species-aware workflow", {
   expect_setequal(
     getNamespaceExports("RegCompassR"),
     c(
@@ -12,13 +12,16 @@ test_that("public API contains the canonical species-aware workflow", {
   )
 })
 
-
-test_that("staged override architecture has been removed", {
+test_that("canonical source architecture has one definition per function", {
   description <- utils::packageDescription("RegCompassR")
-  expect_false(grepl(
-    "workflow_stage_", description$Collate %||% "", fixed = TRUE
-  ))
-  expect_false(grepl("zzz", description$Collate %||% "", fixed = TRUE))
+  collate <- description$Collate %||% ""
+  expect_false(grepl("workflow_stage_", collate, fixed = TRUE))
+  expect_false(grepl("zzz", collate, fixed = TRUE))
+  expect_false(grepl("calibration_q95.R", collate, fixed = TRUE))
+  expect_false(grepl("global_workflow.R", collate, fixed = TRUE))
+  expect_false(grepl("pando_confidence.R", collate, fixed = TRUE))
+  expect_match(collate, "workflow_utils.R", fixed = TRUE)
+  expect_match(collate, "pando_evidence_utils.R", fixed = TRUE)
 
   candidates <- c("R", file.path("..", "R"), file.path("..", "..", "R"))
   candidates <- candidates[dir.exists(candidates)]
@@ -34,12 +37,21 @@ test_that("staged override architecture has been removed", {
     list.files(source_dir, pattern = "^z+.*[.]R$", full.names = TRUE),
     0L
   )
+  expect_length(
+    list.files(
+      source_dir,
+      pattern = "^(calibration_q95|global_workflow|pando_confidence)[.]R$",
+      full.names = TRUE
+    ),
+    0L
+  )
 
   canonical <- c(
     "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
     "rc_make_medium_scenarios", "rc_apply_medium_constraints",
-    "rc_q95_calibrate", "rc_reaction_capacity", "rc_run_microcompass",
-    "rc_run_regcompass", "rc_run_regcompass_one_shot"
+    "rc_reaction_capacity", "rc_compute_multiome_penalty",
+    "rc_run_microcompass", "rc_run_regcompass",
+    "rc_run_regcompass_one_shot"
   )
   source_text <- vapply(
     list.files(source_dir, pattern = "[.]R$", full.names = TRUE),
@@ -47,8 +59,10 @@ test_that("staged override architecture has been removed", {
     character(1)
   )
   for (name in canonical) {
-    pattern <- paste0("(?m)^", gsub("[.]", "\\\\.", name),
-                      "[[:space:]]*<-[[:space:]]*function[[:space:]]*\\(")
+    pattern <- paste0(
+      "(?m)^", gsub("[.]", "\\\\.", name),
+      "[[:space:]]*<-[[:space:]]*function[[:space:]]*\\("
+    )
     expect_equal(
       sum(vapply(source_text, function(x) {
         matches <- gregexpr(pattern, x, perl = TRUE)[[1L]]
@@ -78,8 +92,7 @@ test_that("staged override architecture has been removed", {
   )
 })
 
-
-test_that("retired entry points remain absent", {
+test_that("retired entry points and evidence APIs remain absent", {
   retired <- c(
     "rc_prepare_human2_gem_v12",
     "rc_download_humangem_gpr_table",
@@ -93,17 +106,37 @@ test_that("retired entry points remain absent", {
     "rc_convert_humangem_yaml_to_regcompass",
     "rc_compass_two_step_lp",
     "rc_hard_min_capacity",
+    "rc_q95_calibrate",
+    "rc_q95_shrink",
     "rc_q95_bootstrap_diagnostics",
     ".rc_weighted_q95_calibrate",
+    ".rc_weighted_gene_score",
+    ".rc_equal_sample_weights",
+    ".rc_run_regcompass_stratum",
+    ".rc_merge_stratum_layer1",
+    ".rc_pando_gene_confidence",
+    ".rc_pando_reaction_confidence",
+    ".rc_pando_reaction_confidence_matrix",
+    "rc_layer2_confidence_matrix",
+    "rc_align_layer2_evidence",
     ".rc_apply_used_metacell_ids",
     ".rc_layer2_penalty_engine",
     "rc_layer2_penalty",
     "rc_layer2_support_penalties",
     "rc_layer2_reaction_type",
     "rc_layer2_support_penalty_for_type",
-    "rc_layer2_has_gpr"
+    "rc_layer2_has_gpr",
+    ".rc_meta_module_one_hop"
   )
   expect_false(any(vapply(retired, exists, logical(1), inherits = TRUE)))
+})
+
+test_that("meta-module expansion exposes no one-hop controls", {
+  retired_arguments <- c("include_one_hop", "one_hop_max_metabolite_degree")
+  expect_false(any(retired_arguments %in%
+                     names(formals(rc_expand_meta_module_reactions))))
+  expect_false(any(retired_arguments %in%
+                     names(formals(.rc_expand_meta_module_reactions_core))))
 })
 
 test_that("Seurat stack uses valid minimum bounds and exact stack metadata", {

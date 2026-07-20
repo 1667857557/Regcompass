@@ -1,215 +1,50 @@
-# Supported functions
-
-Six functions form the supported API: four workflow-level functions plus explicit Human-GEM 2 and Mouse-GEM preparation entry points. Internal helpers may change and
-should not be called directly.
-
-After installation, each supported function has a standard R help page. Open
-it in RStudio with `?rc_run_regcompass`, `?rc_run_regcompass_one_shot`,
-`?rc_prepare_gem`, `?rc_prepare_human2_gem`, `?rc_prepare_mouse_gem`, or `?rc_make_medium_scenarios`.
-
-## `rc_run_regcompass_one_shot()`
-
-The tutorial entry point. It prepares a species-specific Human-GEM 2 or Mouse-GEM model and shared medium when needed, then calls `rc_run_regcompass()`. The default is `species = "human"`; set `species = "mouse"` to automatically use Mouse-GEM and the mouse physiological medium.
-
-```r
-result <- rc_run_regcompass_one_shot(
-  object, "RegCompass_result", motifs, genome,
-  fragment_files = FALSE,  # skip aggregation and use object ATAC peak counts
-  species = "human",  # default; use "mouse" for Mouse-GEM + mouse medium
-  gem_version = "2.0.0",
-  medium_scenario = "physiologic",  # or "compass_model_bounds", "rpmi1640", etc.
-  sample_col = "sample_id",
-  condition_col = "condition",
-  celltype_col = "cell_type"
-)
-```
-
-For mouse data, switch both the genome object and the species selector; the
-one-shot wrapper then prepares Mouse-GEM and the mouse physiological medium
-when `gem` and `medium_scenarios` are omitted.
-
-```r
-mouse_result <- rc_run_regcompass_one_shot(
-  object, "RegCompass_mouse_result", motifs, mouse_genome,
-  fragment_files = FALSE,
-  species = "mouse",
-  gem_version = "1.8.0",
-  medium_scenario = "physiologic"
-)
-```
-
-Use `fragment_files = FALSE` when no matching fragment files are available; the
-workflow then skips fragment aggregation and uses ATAC peak raw counts already
-stored in the object. If matching fragments are available, pass a path, named
-list, or manifest to `fragment_files` and the workflow re-aggregates ATAC peak
-raw counts from fragments. To bypass preset construction entirely, pass a
-prebuilt `medium_scenarios` table from `rc_make_medium_scenarios()`; it takes
-precedence over `medium_scenario`.
+# Public functions in RegCompassR 1.7.0
 
 ## `rc_prepare_gem()`
 
-Downloads and converts one pinned Human-GEM 2 or Mouse-GEM release according to
-the `species` argument.
-
-```r
-gem <- rc_prepare_gem(
-  species = "human",
-  version = "2.0.0"
-)
-
-mouse_gem <- rc_prepare_gem(
-  species = "mouse",
-  version = "1.8.0"
-)
-```
+Prepare the supported human or mouse genome-scale metabolic model.
 
 ## `rc_prepare_human2_gem()` and `rc_prepare_mouse_gem()`
 
-Use `rc_prepare_human2_gem()` when human analyses should name the Human-GEM 2
-model path explicitly, and `rc_prepare_mouse_gem()` for Mouse-GEM. Both
-delegate to `rc_prepare_gem()` with the matching `species` and default
-version.
-
-```r
-human2_gem <- rc_prepare_human2_gem(version = "2.0.0")
-mouse_gem <- rc_prepare_mouse_gem(version = "1.8.0")
-```
+Prepare the pinned Human-GEM 2.0.0 or Mouse-GEM 1.8.0 model.
 
 ## `rc_make_medium_scenarios()`
 
-Creates exchange constraints used by every condition. The default
-`compass_model_bounds` remains a shared technical baseline that preserves GEM
-directionality and caps exchange reactions. It is not a measured biological
-medium.
-
-```r
-technical_medium <- rc_make_medium_scenarios(
-  gem,
-  scenario = "compass_model_bounds",
-  exchange_limit = 1
-)
-```
-
-### Published human presets
-
-The function provides species-aware physiological presets plus human culture and perturbation presets:
-
-| Preset | Main definition | Human references |
-|---|---|---|
-| `normal_human_plasma` | Human plasma/serum metabolite availability; glucose 5 mM and lactate 1.5 mM | Cantor et al., *Cell* 2017, DOI `10.1016/j.cell.2017.03.023`; Psychogios et al., *PLoS One* 2011, DOI `10.1371/journal.pone.0016957` |
-| `high_glucose` | Human plasma background with glucose 25 mM | Han et al., *Gynecologic Oncology* 2015, DOI `10.1016/j.ygyno.2015.06.036` |
-| `low_glucose` | Human plasma background with glucose 1 mM | Han et al., *Gynecologic Oncology* 2015, DOI `10.1016/j.ygyno.2015.06.036` |
-| `high_lactate` | Human plasma background with lactate 20 mM | Schwickert et al., *Experientia* 1996, DOI `10.1007/BF01919316`; Kennedy et al., *PLoS One* 2013, DOI `10.1371/journal.pone.0075154` |
-| `low_lactate` | Human plasma background with lactate 0.5 mM | Kennedy et al., *PLoS One* 2013, DOI `10.1371/journal.pone.0075154` |
-| `rpmi1640` | Human serum-free basal RPMI-1640 nutrient availability; glucose 11.1 mM and glutamine 2.055 mM | Moore et al., *JAMA* 1967, DOI `10.1001/jama.1967.03120080053007`; Cantor et al., *Cell* 2017 |
-
-```r
-plasma <- rc_make_medium_scenarios(
-  gem,
-  scenario = "normal_human_plasma"
-)
-
-nutrient_stress <- rc_make_medium_scenarios(
-  gem,
-  scenario = c("low_glucose", "high_lactate")
-)
-
-culture <- rc_make_medium_scenarios(
-  gem,
-  scenario = "rpmi1640"
-)
-```
-
-The presets primarily implement **allow/deny uptake**. When a medium table is
-applied, exchange uptake is closed first; only exchange reactions represented
-by available preset metabolites are reopened. Unlisted exchanges therefore
-remain at `lb = 0`. Secretion remains governed by the GEM and the medium
-application settings.
-
-Concentrations are not fluxes. They are retained in `concentration_mM` as
-provenance. Only the designated glucose or lactate contrast is converted to a
-dimensionless relative uptake fraction. With `exchange_limit = 1`, the target
-fractions are 1.00 for 25 mM glucose or 20 mM lactate, 0.20 for normal plasma
-glucose, 0.075 for normal plasma lactate, 0.04 for 1 mM glucose, and 0.025 for
-0.5 mM lactate. These are sensitivity bounds, not measured
-`mmol / gDW / h` rates.
-
-Each human preset output includes its paper citation, DOI, PMID, species,
-concentration, matching diagnostics, and bound provenance. The function stops
-by default if required marker metabolites cannot be matched to Human-GEM
-exchange annotations.
-
-### User-defined environments
-
-Users can provide either a complete exchange-reaction table or a metabolite
-availability table. Include `"custom"` alongside preset scenario names to
-return both literature-backed and user-defined media in a single table.
-
-```r
-# Metabolite-level input: the function maps patterns to exchange reactions.
-custom_metabolites <- data.frame(
-  metabolite_name = c("glucose", "lactate"),
-  metabolite_pattern = c("glucose|glc", "lactate|lactic acid"),
-  available = TRUE,
-  concentration_mM = c(3, 8),
-  uptake_fraction = c(0.12, 0.40),
-  target_exchange_flag = TRUE,
-  required_match = TRUE,
-  reference_doi = "project-specific reference"
-)
-
-custom <- rc_make_medium_scenarios(
-  gem,
-  scenario = "custom",
-  custom_metabolites = custom_metabolites,
-  exchange_limit = 1
-)
-
-# Reaction-level input: use exact measured or justified model bounds directly.
-custom_flux <- rc_make_medium_scenarios(
-  gem,
-  scenario = "custom",
-  custom_medium = data.frame(
-    medium_scenario_id = "measured_medium",
-    exchange_reaction_id = "EXAMPLE_EXCHANGE",
-    lb = -0.2,
-    ub = 1,
-    available = TRUE
-  )
-)
-
-# Preset and custom scenarios can be returned together.
-preset_plus_custom <- rc_make_medium_scenarios(
-  gem,
-  scenario = c("normal_human_plasma", "custom"),
-  custom_medium = data.frame(
-    medium_scenario_id = "measured_medium",
-    exchange_reaction_id = "EXAMPLE_EXCHANGE",
-    lb = -0.2,
-    ub = 1,
-    available = TRUE
-  )
-)
-```
-
-Current named backgrounds include `normal_human_plasma`, `mouse_plasma`, `rpmi1640`, `dmem_high_glucose`, `low_glucose`, `high_glucose`, `low_lactate`, `high_lactate`, `low_glutamine`, `minimal`, and `permissive_all_exchange`. Removed compatibility aliases such as `human_plasma`, `hplm`, `blood_like`, `culture_like`, `tumor_low_glucose`, and `lactate_available` are intentionally unsupported; use the canonical preset names or `custom_medium` when measured or justified bounds are available.
+Construct one shared extracellular medium. Condition-specific medium rows are
+not accepted by shared-GEM scoring.
 
 ## `rc_run_regcompass()`
 
-Runs the canonical workflow with an explicit GEM and medium:
+Run the canonical condition-pooled workflow.
 
-```r
-result <- rc_run_regcompass(
-  object, gem, "RegCompass_result", motifs, genome, fragment_files,
-  sample_col = "sample_id",
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  medium_scenarios = medium
-)
-```
+Required design:
 
-The main path is strict-stratum metacells and Pando inference, local FASTCORE,
-global calibration and a shared GEM, followed by directional scoring. The
-[parameter-selection guide](../README.md#choosing-analysis-parameters) explains
-how to choose metacell resolution, Pando thresholds, calibration options, and
-the LP solver. Project code should handle downstream reporting and statistics.
+- `sample_col`: original biological-sample identifier;
+- `condition_col`: condition used for pooling and comparison;
+- `celltype_col`: cell type kept pure during pooling;
+- `fragment_files = FALSE`;
+- `inference_unit = "metacell"`.
+
+Main argument bundles:
+
+- `metacell_args`: SuperCell2 parameters such as `gamma` and minimum stratum size;
+- `pando_args`: `initiate_grn()`, motif and `infer_grn()` parameters;
+- `layer1_args`: `regulatory_alpha`, `gene_half_saturation`, `tau`, and local FASTCORE options;
+- `layer2_args`: solver, target direction, time limit and shared-model options.
+
+Structural contract:
+
+- core reactions require at least one complete GPR isozyme group;
+- biological membership may expand through the core reaction's subsystem and
+  shared KEGG, Reactome, or master-Rhea reaction identifiers;
+- no reaction is added by metabolite sharing, stoichiometric adjacency, or a
+  one-hop rule;
+- there is no `include_one_hop` or metabolite-degree control in the API;
+- local FASTCORE may add only the reactions required for flux feasibility, and
+  these are reported separately from annotation-defined biological membership.
+
+## `rc_run_regcompass_one_shot()`
+
+Prepare the species GEM and medium when omitted, then delegate to
+`rc_run_regcompass()`. It uses the same annotation-only meta-module expansion and
+has no metabolite-neighbour expansion interface.

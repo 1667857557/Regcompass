@@ -1,158 +1,52 @@
 ---
-title: "RegCompassR: from multiome input to directional scoring"
-author: "RegCompass Developers"
+title: "RegCompassR 1.7.0 condition-pooled workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR: from multiome input to directional scoring}
+  %\VignetteIndexEntry{RegCompassR 1.7.0 condition-pooled workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
 
-```{r setup, include=FALSE, purl=FALSE}
-knitr::opts_chunk$set(
-  collapse = TRUE,
-  comment = "#>",
-  eval = FALSE,
-  purl = FALSE
-)
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-## Workflow contract
+RegCompassR 1.7.0 uses ATAC and RNA from cells pooled across biological samples
+within each condition and cell type. SuperCell2 builds condition-level
+metacells while retaining original sample composition. Pando fits one
+condition-specific TF–peak–gene model per cell type, and one shared union-GEM is
+used for directional COMPASS-like scoring.
 
-RegCompassR exposes six supported functions. The explicit path prepares a
-species GEM model with `rc_prepare_gem()`, defines exchange constraints
-with `rc_make_medium_scenarios()`, and passes both to `rc_run_regcompass()`.
-`rc_run_regcompass_one_shot()` performs those setup calls when `gem` or
-`medium_scenarios` is omitted.
+Pando coefficients are learned from RNA+ATAC, but the per-metacell regulatory
+state uses coefficient-weighted peak accessibility only. Metacell TF RNA is not
+multiplied into that state. Condition-pooled metacells are descriptive units,
+not independent biological replicates.
 
-The integrated calculation follows this order:
+Biological meta-module membership is annotation-defined: complete-GPR core
+reactions are expanded through their subsystems and shared KEGG, Reactome, or
+master-Rhea reaction identifiers. No metabolite-neighbour or stoichiometric
+one-hop expansion is performed. Local FASTCORE is the sole stage that can add
+non-annotated reactions required for flux feasibility, and those support
+reactions remain separate from biological membership.
 
-```text
-Seurat RNA + ATAC object plus optional fragment files
-  -> condition x sample x cell-type strata
-  -> fixed-resolution metacells within each stratum
-  -> fragment re-aggregation when fragment files are supplied; otherwise object ATAC peak counts
-  -> stratum-specific Pando regulatory evidence
-  -> conservative GPR reaction evidence
-  -> local FASTCORE-completed reaction meta-modules
-  -> sample-balanced Q95 diagnostics and one shared GEM
-  -> sample x cell-type directional minimum-discordance scoring
-```
+## Prepare the model
 
-The primary score is an optimization penalty: lower values mean that the model
-requires less disagreement with the observed evidence. It is not a measured
-flux, a probability, or an independent observation for every metacell.
-
-With `sample_balance = TRUE`, global diagnostic weights are
-\(w_{si}=1/(S n_s)\). Within a Q95 stratum they are recomputed as
-\(w_{sci}=1/(S_c n_{sc})\), so each represented biological sample has equal
-total mass in that stratum. These weights affect Q95 and relative-state
-diagnostics only; they do not multiply the zero-preserving absolute expression
-support. Biological inference is balanced by the default `sample_celltype`
-unit, which yields one unit per sample and represented cell type.
-
-## 1. Validate the multiome input
-
-`object` must inherit from `Seurat`, contain RNA and chromatin assays, and have
-non-missing metadata columns for biological sample, condition, and cell type.
-If matching fragment files are available, cell barcodes must agree across the
-object and fragment files. Fragment files must be bgzip-compressed and
-tabix-indexed. They may already be registered on the chromatin assay or be
-supplied explicitly. If no matching fragment files are available, set
-`fragment_files = FALSE`; RegCompass skips fragment aggregation and uses ATAC
-peak raw counts already stored in the object.
-
-```{r input-contract, purl=FALSE}
-required_metadata <- c("sample_id", "condition", "cell_type")
-stopifnot(inherits(object, "Seurat"))
-stopifnot(all(required_metadata %in% colnames(object[[]])))
-stopifnot(all(c("RNA", "ATAC") %in% names(object@assays)))
-stopifnot(!anyNA(object[[]][, required_metadata]))
-
-# A sample-aware manifest is the least ambiguous representation when fragments exist.
-fragment_files <- data.frame(
-  sample_id = c("donor_01", "donor_02"),
-  assay = "ATAC",
-  fragment_file = c(
-    "fragments/donor_01.fragments.tsv.gz",
-    "fragments/donor_02.fragments.tsv.gz"
-  )
-)
-stopifnot(all(file.exists(fragment_files$fragment_file)))
-stopifnot(all(file.exists(paste0(fragment_files$fragment_file, ".tbi"))))
-
-with(object[[]], table(condition, sample_id, cell_type))
-```
-
-Every biological sample must contribute at least one retained stratum. Choose
-`min_cells_per_stratum`, metacell resolution (`gamma`), and Pando's minimum
-metacell count together; otherwise the global completion barrier will stop the
-run rather than silently discard a sample.
-
-## 2. Prepare and inspect the GEM
-
-Pin a Human-GEM 2 release for reproducibility. The helper downloads, converts,
-annotates, validates, and caches the model.
-
-```{r gem, purl=FALSE}
+```{r}
 library(RegCompassR)
 
-human2_gem <- rc_prepare_human2_gem(
-  version = "2.0.0",
-  cache_dir = "model-cache"
-)
-# For mouse data, use rc_prepare_mouse_gem(version = "1.8.0").
+human_gem <- rc_prepare_human2_gem(version = "2.0.0")
+mouse_gem <- rc_prepare_mouse_gem(version = "1.8.0")
+gem <- rc_prepare_gem(species = "human", version = "2.0.0")
 
-dim(human2_gem$S)
-head(human2_gem$gpr_table)
-table(human2_gem$reaction_meta$role, useNA = "ifany")
-human2_gem$model_info[c("source", "version", "commit", "checksum")]
-```
-
-Do not use `version = "latest"` for a reproducible analysis. If it is required
-for exploration, it must be explicitly enabled with `allow_latest = TRUE`.
-
-## 3. Define one shared medium
-
-The README quick start uses the published `normal_human_plasma` background.
-`compass_model_bounds` remains available as a technical model-defined
-environment. Neither should be interpreted as measured sample-specific
-metabolite concentrations.
-
-Preset scenarios can also be returned together with a user-defined `"custom"`
-scenario in one medium table. Current optional named backgrounds are
-`normal_human_plasma`, `mouse_plasma`, `rpmi1640`, `dmem_high_glucose`,
-`low_glucose`, `high_glucose`, `low_lactate`, `high_lactate`,
-`low_glutamine`, `minimal`, and `permissive_all_exchange`. Removed
-compatibility aliases such as `human_plasma`, `hplm`, `blood_like`,
-`culture_like`, `tumor_low_glucose`, and `lactate_available` are intentionally
-unsupported; use canonical preset names or a custom medium table.
-
-```{r medium, purl=FALSE}
 medium <- rc_make_medium_scenarios(
-  gem = human2_gem,
+  human_gem,
   scenario = "normal_human_plasma"
 )
-
-stopifnot(all(medium$exchange_reaction_id %in% colnames(human2_gem$S)))
-stopifnot(all(medium$lb <= medium$ub))
-stopifnot(identical(unique(medium$condition), "all"))
-head(medium[c("exchange_reaction_id", "lb", "ub", "available")])
 ```
 
-Use a custom table only when bounds have an external justification. It must
-include `medium_scenario_id`, `exchange_reaction_id`, `lb`, `ub`, and
-`available`. Keep the medium shared across conditions unless the experimental
-design independently establishes condition-specific exchange constraints.
+## Run the explicit workflow
 
-## 4. Run the explicit workflow
-
-The explicit entry point makes every major input visible. The PFM collection,
-candidate regulatory regions, and genome object shown below match the current
-human quick-start example; use organism- and genome-build-matched objects for
-other analyses.
-
-```{r explicit-run, purl=FALSE}
+```{r}
 library(Pando)
 library(BSgenome.Hsapiens.UCSC.hg38)
 data(motifs, package = "Pando")
@@ -160,78 +54,18 @@ data(SCREEN.ccRE.UCSC.hg38, package = "Pando")
 
 result <- rc_run_regcompass(
   object = object,
-  gem = human2_gem,
+  gem = human_gem,
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,  # use object ATAC peak counts; pass fragment_files to re-aggregate
-  sample_col = "sample_id",
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  rna_assay = "RNA",
-  atac_assay = "ATAC",
-  model_mode = "meta_module_gem",
-  medium_scenarios = medium,
-  metacell_args = list(
-    gamma = 150,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10
-  ),
-  pando_args = list(
-    min_metacells = 10,
-    pando_initiate_args = list(
-      regions = SCREEN.ccRE.UCSC.hg38
-    ),
-    pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0.05,
-      adjust_method = "fdr"
-    )
-  ),
-  layer1_args = list(
-    local_fastcore = TRUE,
-    sample_balance = TRUE,
-    expression_batch_correction = "none"
-  ),
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs"
-  ),
-  inference_unit = "sample_celltype",
-  upstream_workers = 4,
-  layer2_workers = 4,
-  parallel_backend = "snow"
-)
-```
-
-The four `*_args` values are lists by contract. Integrated fields such as
-`layer1`, `gem`, `unit`, and `medium_scenarios` are owned by the workflow and
-must not be overridden through `layer2_args`. Use `inference_unit` on
-`rc_run_regcompass()` to select the Layer 2 unit. Candidate regions belong in
-`pando_args$pando_initiate_args$regions`, matching `Pando::initiate_grn()`.
-
-## 5. Equivalent one-shot entry point
-
-For a first run, omit `gem` and `medium_scenarios`; the one-shot function
-constructs them and delegates to the same integrated workflow. The default is
-`species = "human"`; set `species = "mouse"` to automatically prepare
-Mouse-GEM 1.8.0 and the mouse physiological medium. Arguments in `...` are
-passed to `rc_run_regcompass()`.
-
-```{r one-shot, purl=FALSE}
-result <- rc_run_regcompass_one_shot(
-  object = object,
-  outdir = "RegCompass_result",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,  # use existing ATAC peak counts; pass paths to re-aggregate fragments
+  fragment_files = FALSE,
   species = "human",
-  gem_version = "2.0.0",
-  medium_scenario = "normal_human_plasma",
   sample_col = "sample_id",
   condition_col = "condition",
   celltype_col = "cell_type",
+  medium_scenarios = medium,
+  inference_unit = "metacell",
+  strict_biological_defaults = TRUE,
   metacell_args = list(
     gamma = 150,
     min_cells_per_stratum = 500,
@@ -250,9 +84,9 @@ result <- rc_run_regcompass_one_shot(
     )
   ),
   layer1_args = list(
-    local_fastcore = TRUE,
-    sample_balance = TRUE,
-    expression_batch_correction = "none"
+    regulatory_alpha = 1,
+    tau = 0.20,
+    local_fastcore = TRUE
   ),
   layer2_args = list(
     target_direction = "both",
@@ -261,66 +95,45 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-Set `fragment_files = FALSE` in the one-shot call when no matching fragment file
-is available; pass the fragment manifest/path when fragments should be
-re-aggregated. For mouse data, use a mouse genome and set `species = "mouse"`;
-the wrapper then prepares Mouse-GEM 1.8.0 and the mouse physiological medium
-unless you provide `gem` or `medium_scenarios`. Supply `gem = human2_gem` (or a
-Mouse-GEM object) and `medium_scenarios = medium` to the one-shot function if
-those objects were prepared separately. An explicit `medium_scenarios` table
-takes precedence over `medium_scenario`.
+The main outputs are:
 
-## 6. Check the barrier and outputs
+- sample membership in `result$metacells$sample_composition`;
+- RNA, ATAC-derived regulatory state and `reaction_expression` in `result$layer1`;
+- annotation-defined biological membership, separate FASTCORE support and shared union membership in `result$grn_meta_modules`;
+- raw minimum penalties in `result$microcompass$penalty`;
+- descriptive comparisons in `result$condition_contrast`.
 
-Do not begin differential analysis until the upstream barrier and sample
-coverage have been inspected.
+The result provenance records
+`result$params$meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"`
+and `result$params$feasibility_completion = "local_fastcore_only"`.
 
-```{r inspect-result, purl=FALSE}
-stopifnot(isTRUE(result$upstream_barrier$passed))
-table(result$upstream_status$status, useNA = "ifany")
+## Equivalent one-shot entry point
 
-result$schema_version
-result$params[c(
-  "inference_unit",
-  "medium_policy",
-  "strict_biological_defaults",
-  "penalty_unit"
-)]
-
-dim(result$layer1$C_abs)
-head(result$grn_meta_modules$global_core_reactions)
-dim(result$microcompass$penalty)
-result$microcompass$primary_output_semantics
+```{r}
+result <- rc_run_regcompass_one_shot(
+  object = object,
+  outdir = "RegCompass_result",
+  pfm = motifs,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  fragment_files = FALSE,
+  species = "human",
+  gem_version = "2.0.0",
+  medium_scenario = "normal_human_plasma",
+  sample_col = "sample_id",
+  condition_col = "condition",
+  celltype_col = "cell_type",
+  inference_unit = "metacell",
+  strict_biological_defaults = TRUE,
+  pando_args = list(
+    min_metacells = 10,
+    pando_initiate_args = list(
+      regions = SCREEN.ccRE.UCSC.hg38
+    )
+  )
+)
 ```
 
-The returned object connects the phases as follows:
+The one-shot entry point delegates to the same annotation-only meta-module
+architecture and does not expose a metabolite-neighbour expansion option.
 
-| Component | Produced by | Consumed by / interpretation |
-|---|---|---|
-| `upstream_status`, `upstream_barrier` | strict-stratum workers | verifies all required strata and samples reached the global phase |
-| `layer1` | merged expression, GPR and Pando evidence | supplies absolute reaction evidence and diagnostics to Layer 2 |
-| `grn_meta_modules` | local module construction and union | defines shared core and reaction membership for the meta-module GEM |
-| `microcompass$penalty` | directional LP scoring | primary minimum evidence-discordance result; lower is more supported |
-| `microcompass$relative_penalty_rank` | within-target ranking | display diagnostic, not the primary inferential quantity |
-
-The run also writes the stratum manifest and status files, merged Layer 1,
-global meta-modules, and the final result under `outdir`. Keep these artifacts
-with the model version, medium table, parameters, and software environment.
-
-## 7. Failure checkpoints
-
-When a run stops, inspect the earliest applicable boundary:
-
-1. **Input:** metadata completeness, assay names, fragment paths and indexes.
-2. **Strata:** `00_strata/stratum_filter.tsv.gz` and
-   `00_strata/stratum_workflow_status.tsv.gz`.
-3. **Global barrier:** `00_strata/upstream_barrier.tsv.gz`; every sample must
-   retain an analyzable stratum.
-4. **Model:** reaction IDs in GPR, medium, membership, and target tables must
-   match the stoichiometric matrix column names.
-5. **Solver:** install the selected backend and record solver/time-limit
-   settings; use `solver = "highs"` for the default open-source path.
-
-For confirmatory comparisons, retain `inference_unit = "sample_celltype"` so
-biological samples, rather than metacells from the same sample, are the
-replicates.
+For mouse data, use `species = "mouse"`, a mouse genome object, and Mouse-GEM.

@@ -3,15 +3,22 @@
 #' Downloads a pinned Human-GEM 2 or Mouse-GEM release when `gem` is not
 #' supplied. `species = "human"` is the default; `species = "mouse"` routes
 #' setup to Mouse-GEM 1.8.0 and the mouse physiological medium. It builds a
-#' species-matched literature-backed physiological medium by default,
-#' and delegates to `rc_run_regcompass()`.
+#' species-matched literature-backed physiological medium by default and
+#' delegates to [rc_run_regcompass()].
+#'
+#' The delegated canonical workflow constructs biological meta-modules from
+#' complete-GPR core reactions, core-reaction subsystems and shared KEGG,
+#' Reactome, or master-Rhea reaction identifiers. It performs no
+#' metabolite-neighbour or generic stoichiometric one-hop expansion. Local
+#' FASTCORE is the sole mechanism for adding reactions required for flux
+#' feasibility, and those reactions remain separate from biological membership.
 #'
 #' @param object A Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
 #' @param pfm Motif position-frequency matrices.
 #' @param genome Genome object matching the selected species and ATAC coordinates.
-#' @param fragment_files Fragment-file manifest/path(s), or `FALSE` to skip
-#'   fragment aggregation and use ATAC peak raw counts from `object` directly.
+#' @param fragment_files Must be `FALSE` in the v1.7.0 canonical
+#'   condition-pooled workflow; existing ATAC peak counts are aggregated.
 #' @param species `"human"` or `"mouse"`; defaults to `"human"`. Choosing
 #'   `"mouse"` prepares Mouse-GEM and mouse plasma defaults when `gem` and
 #'   `medium_scenarios` are omitted.
@@ -21,12 +28,15 @@
 #' @param medium_scenario Medium preset identifier. The default `"physiologic"`
 #'   resolves to human or mouse plasma.
 #' @param medium_scenarios Optional prebuilt medium table.
-#' @param ... Arguments passed to `rc_run_regcompass()`.
-#' @return A RegCompass result list.
+#' @param ... Arguments passed to [rc_run_regcompass()]. There is no
+#'   metabolite-neighbour or one-hop expansion argument.
+#' @return A RegCompass result list with annotation-defined biological
+#'   meta-module membership and separately labelled local FASTCORE feasibility
+#'   support.
 #' @export
 rc_run_regcompass_one_shot <- function(
     object, outdir, pfm, genome,
-    fragment_files = NULL,
+    fragment_files = FALSE,
     gem = NULL,
     medium_scenario = "physiologic",
     medium_scenarios = NULL,
