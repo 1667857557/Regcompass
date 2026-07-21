@@ -80,6 +80,15 @@
         min_abs_estimate = min_abs_estimate, min_model_rsq = min_model_rsq,
         require_padj = require_padj
       )
+      if (nrow(tab$significant)) {
+        reliable_rsq <- if ("rsq" %in% colnames(tab$significant)) {
+          value <- suppressWarnings(as.numeric(tab$significant$rsq))
+          is.finite(value) & value >= min_model_rsq
+        } else {
+          rep(FALSE, nrow(tab$significant))
+        }
+        tab$significant <- tab$significant[reliable_rsq, , drop = FALSE]
+      }
       add_meta <- function(x) {
         if (!nrow(x)) return(x)
         x$group_id <- group_id
@@ -124,7 +133,8 @@
       rna = "global single-cell NormalizeData before condition splitting",
       atac = "cell-type-shared TF-IDF across conditions before condition splitting",
       zero_count_peaks = "excluded globally before TF-IDF and within each Pando group",
-      pando_peak_cor = pando_infer_args$peak_cor %||% 0.01
+      pando_peak_cor = pando_infer_args$peak_cor %||% 0.01,
+      pando_rsq = paste0("finite rsq >= ", min_model_rsq)
     ),
     group_cols = group_cols
   )
