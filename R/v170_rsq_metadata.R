@@ -97,6 +97,20 @@
     layer2_workers = NULL,
     parallel_backend = c("auto", "serial", "snow", "multicore"),
     species = c("auto", "human", "mouse")) {
+  .rc_condition_pool_design_summary(
+    object@meta.data,
+    sample_col = sample_col,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    strict_biological_defaults = FALSE
+  )
+  warning(
+    paste(
+      "Metacell-level scores are descriptive pseudo-observations and are not",
+      "independent biological replicates."
+    ),
+    call. = FALSE
+  )
   result <- .rc_run_regcompass_uncorrected_metadata(
     object = object, gem = gem, outdir = outdir, pfm = pfm, genome = genome,
     fragment_files = fragment_files,
