@@ -4,7 +4,7 @@ Version: 1.7.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Runs a species-aware human or mouse RNA+ATAC workflow that pools biological samples within each condition and cell type before SuperCell2 metacell construction, estimates condition-specific Pando regulatory coefficients, projects coefficient-weighted ATAC accessibility into zero-preserving RNA gene support before GPR aggregation, constructs condition-specific biological meta-modules from complete-GPR core reactions, their subsystems, and KEGG, Reactome, and master-Rhea reaction cross-references followed by local FASTCORE feasibility completion, and performs directional COMPASS-like minimum-penalty scoring with either one shared union meta-module GEM or the full GEM. The workflow can run through one convenience call or through inspectable, restartable public stages. One or more conditions and one or more samples per condition are supported; outputs are descriptive reaction rankings and, when multiple conditions are present, descriptive pairwise priority comparisons.
+Description: Runs a species-aware human or mouse RNA+ATAC workflow that balances biological-sample cell contributions within each condition and cell type before condition-pooled SuperCell2 metacell construction, estimates condition-specific Pando regulatory coefficients, projects coefficient-weighted ATAC accessibility into zero-preserving RNA gene support before GPR aggregation, constructs condition-specific biological meta-modules from complete-GPR core reactions, their subsystems, and KEGG, Reactome, and master-Rhea reaction cross-references followed by local FASTCORE feasibility completion, and performs directional COMPASS-like minimum-penalty scoring with either one shared union meta-module GEM or the full GEM. The workflow can run through one convenience call or through inspectable, restartable public stages. One or more conditions and one or more samples per condition are supported; outputs are descriptive reaction rankings and, when multiple conditions are present, descriptive pairwise priority comparisons.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -40,6 +40,7 @@ Collate:
     'pando_grn.R'
     'pando_rsq_reliability.R'
     'condition_pooling.R'
+    'v170_sample_balance.R'
     'condition_layer1.R'
     'parallel.R'
     'v170_microcompass_contract.R'
