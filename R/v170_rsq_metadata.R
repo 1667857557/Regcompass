@@ -75,6 +75,8 @@
     "exclude before shared TF-IDF and within each Pando group"
   result$params$missing_expression_policy <-
     "unmeasured reaction expression is zero-filled and receives the same strict penalty as explicit zero"
+  result$params$fragment_registration_policy <-
+    "ignore and clear registered Signac fragments when fragment_files = FALSE"
   result
 }
 
@@ -97,6 +99,9 @@
     layer2_workers = NULL,
     parallel_backend = c("auto", "serial", "snow", "multicore"),
     species = c("auto", "human", "mouse")) {
+  if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
+    object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
+  }
   .rc_condition_pool_design_summary(
     object@meta.data,
     sample_col = sample_col,
@@ -125,6 +130,7 @@
   )
   result <- .rc_apply_corrected_result_metadata(result)
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
+  rc_export_microcompass(result$microcompass, outdir)
   result
 }
 rc_run_regcompass <- .rc_run_regcompass_v170
