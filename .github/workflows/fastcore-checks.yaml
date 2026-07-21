@@ -64,7 +64,7 @@ jobs:
           if (length(present)) {
             stop("Stale documented defaults remain: ", paste(present, collapse = ", "))
           }
-          required <- c("gamma = 20", "peak_cor = 0")
+          required <- c("gamma = 75", "peak_cor = 0.01")
           missing <- required[!vapply(required, grepl, logical(1), x = text,
                                       fixed = TRUE)]
           if (length(missing)) {
