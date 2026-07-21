@@ -2,6 +2,7 @@
 
 - Changed the canonical metacell scope to `condition × cell type`, deliberately pooling cells from all biological samples within each condition before SuperCell2 while retaining per-metacell biological-sample composition diagnostics.
 - Changed Pando inference and GRN meta-module construction to the same condition-by-cell-type scope.
+- Allows Pando installed from a locally downloaded source archive when GitHub remote metadata are unavailable. Such installations continue with an explicit warning and are marked as having an unverified repository origin; explicitly conflicting remote username or repository metadata still fail.
 - Uses condition-specific Pando coefficients learned from RNA+ATAC to weight accessibility-only regulatory deviations at the metacell level; metacell TF RNA is not multiplied into the modifier, reducing direct duplicate RNA weighting.
 - Clarifies that coefficients estimated from the same pooled dataset are fitted parameters rather than independent validation evidence; condition-pooled outputs remain descriptive unless external fitting or cross-fitting is supplied.
 - Fixed the canonical GPR calculation to a normalized, monotone Boltzmann soft-min AND, additive isozyme OR, and no promiscuity weighting.
