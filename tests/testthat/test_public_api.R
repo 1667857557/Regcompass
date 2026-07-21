@@ -18,11 +18,13 @@ test_that("canonical source architecture has no load-order compatibility layers"
   retired <- c(
     "v170_sample_balance.R", "v170_aliases.R",
     "v170_stepwise_parallel.R", "v170_tfidf.R",
-    "v170_pando_reuse.R", "workflow_stage_", "zzz"
+    "v170_pando_reuse.R", "v170_rsq_metadata.R",
+    "pando_rsq_reliability.R", "workflow_stage_", "zzz"
   )
   expect_false(any(vapply(retired, grepl, logical(1), x = collate, fixed = TRUE)))
   expect_match(collate, "shared_tfidf.R", fixed = TRUE)
   expect_match(collate, "grn_inference.R", fixed = TRUE)
+  expect_match(collate, "regulatory_modifier.R", fixed = TRUE)
 
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
@@ -32,7 +34,8 @@ test_that("canonical source architecture has no load-order compatibility layers"
   candidates <- candidates[dir.exists(candidates)]
   if (!length(candidates)) skip("Source R files are unavailable.")
   source_dir <- normalizePath(candidates[[1L]], mustWork = TRUE)
-  expect_false(any(file.exists(file.path(source_dir, retired[1:5]))))
+  source_retired <- retired[grepl("[.]R$", retired)]
+  expect_false(any(file.exists(file.path(source_dir, source_retired))))
 })
 
 test_that("canonical order is GRN then metacells then meta-modules", {
@@ -52,6 +55,8 @@ test_that("GRN and metacell defaults match the canonical design", {
   expect_match(grn_body, "peak_cor = 0.01", fixed = TRUE)
   expect_match(grn_body, "condition_col, celltype_col", fixed = TRUE)
   expect_match(metacell_body, "gamma <- 75L", fixed = TRUE)
+  expect_match(metacell_body, 'pooling_scope <- "condition_only"', fixed = TRUE)
+  expect_match(metacell_body, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(metacell_body, "Sample balancing is not part", fixed = TRUE)
   expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
 })
