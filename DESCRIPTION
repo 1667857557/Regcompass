@@ -37,7 +37,6 @@ Collate:
     'microcompass.R'
     'pando_evidence_utils.R'
     'pando_grn.R'
-    'pando_rsq_reliability.R'
     'shared_tfidf.R'
     'condition_pooling.R'
     'grn_inference.R'
