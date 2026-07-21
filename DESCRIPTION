@@ -52,7 +52,6 @@ Collate:
     'regcompass.R'
     'one_shot.R'
     'stratum_filter.R'
-    'rsq_reliability.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
