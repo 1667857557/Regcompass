@@ -30,12 +30,33 @@ test_that("global union contains biological and local support reactions", {
     "global_union_local_fastcore_support")
 })
 
-test_that("condition metacells have no sample balancing path", {
+test_that("metacell construction is condition-only without sample balancing", {
   text <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
-  expect_match(text, "condition_x_celltype", fixed = TRUE)
+  expect_match(text, 'object@meta.data[[internal_celltype_col]] <- "all_celltypes"', fixed = TRUE)
+  expect_match(text, 'pooling_scope <- "condition_only"', fixed = TRUE)
   expect_match(text, 'sample_weighting <- "none"', fixed = TRUE)
+  expect_match(text, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(text, "gamma <- 75L", fixed = TRUE)
   expect_match(text, "Sample balancing is not part", fixed = TRUE)
+})
+
+test_that("dominant cell type is assigned after condition-only metacells", {
+  skip_if_not_installed("SeuratObject")
+  counts <- Matrix::Matrix(matrix(1, nrow = 1, ncol = 5,
+    dimnames = list("g1", paste0("c", 1:5))), sparse = TRUE)
+  object <- SeuratObject::CreateSeuratObject(counts = counts)
+  object$cell_type <- c("T", "T", "B", "B", "T")
+  pooled <- list(
+    membership = data.frame(
+      cell_id = paste0("c", 1:5),
+      metacell_id = c("m1", "m1", "m1", "m2", "m2")
+    ),
+    metacell_meta = data.frame(metacell_id = c("m1", "m2"))
+  )
+  out <- .rc_assign_metacell_dominant_celltype(pooled, object, "cell_type")
+  expect_identical(out$metacell_meta$cell_type, c("T", "B"))
+  expect_equal(out$metacell_meta$dominant_celltype_fraction, c(2/3, 1/2))
+  expect_true(all(out$metacell_meta$mixed_celltype_metacell))
 })
 
 test_that("condition metacells reject fragment pooling without maps", {
