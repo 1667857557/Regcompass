@@ -39,7 +39,8 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{outdir}{Output directory for the stage.}
 \item{pfm}{Motif position-frequency matrices.}
 \item{genome}{Genome object matching ATAC coordinates.}
-\item{condition_col, celltype_col}{Metadata columns defining Pando groups and metacell strata.}
+\item{condition_col}{Metadata column defining condition-specific Pando groups and the only metacell stratification variable.}
+\item{celltype_col}{Metadata column used with condition for Pando grouping. It is not used to stratify metacells; metacells receive a post hoc dominant member-cell label.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Arguments for single-cell Pando inference. The default Pando model uses \code{peak_cor = 0.01}.}
 \item{parallel}{Whether to run the stage in parallel.}
@@ -60,8 +61,8 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{species}{Species identifier or \code{"auto"}.}
 }
 \description{
-The stages are executed in this order: single-cell GRN inference, condition-by-cell-type metacell construction, GRN-derived core-reaction and meta-module construction, Layer 1 reaction expression, Layer 2 scoring, and result assembly.
+The stages are executed in this order: condition-by-cell-type single-cell GRN inference, condition-only metacell construction, GRN-derived core-reaction and meta-module construction, Layer 1 reaction expression, Layer 2 scoring, and result assembly.
 }
 \details{
-RNA is normalized once before Pando splitting. ATAC TF-IDF is computed within each cell type using all conditions as the shared reference. Pando is then fitted independently in each condition-by-cell-type subset. Metacells are constructed afterwards with \code{gamma = 75} by default.
+RNA is normalized once before Pando splitting. ATAC TF-IDF is computed within each cell type using all conditions as the shared reference. Pando is then fitted independently in each condition-by-cell-type subset. Metacells are constructed afterwards using condition as the only varying stratum and \code{gamma = 75} by default. Dominant member-cell type, purity, number of represented cell types, and mixed-cell-type status are stored for each metacell.
 }
