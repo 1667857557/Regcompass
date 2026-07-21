@@ -15,8 +15,8 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
   species = c("auto", "human", "mouse"))
 }
 \description{
-Runs single-cell RNA normalization, cell-type-shared ATAC TF-IDF, condition-by-cell-type Pando GRNs, condition-by-cell-type SuperCell2 metacells, GRN-derived meta-modules, Layer 1 integration, and Layer 2 scoring.
+Runs single-cell RNA normalization, cell-type-shared ATAC TF-IDF, condition-by-cell-type Pando GRNs, condition-only SuperCell2 metacells, GRN-derived meta-modules, Layer 1 integration, and Layer 2 scoring.
 }
 \details{
-The default Pando peak filter is \code{peak_cor = 0.01}. The default metacell resolution is \code{gamma = 75}. Sample balancing and sample-based weighting are not implemented.
+The default Pando peak filter is \code{peak_cor = 0.01}. The default metacell resolution is \code{gamma = 75}. Sample balancing and sample-based weighting are not implemented. Cell type is assigned to each metacell afterwards from its dominant member-cell label and is not a metacell stratification variable.
 }
