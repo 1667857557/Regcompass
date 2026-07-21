@@ -77,7 +77,7 @@ rc_regcompass_step_results(
 
 \item{fragment_files}{Must be \code{FALSE} for the canonical condition-pooled workflow.}
 
-\item{metacell_args}{Arguments passed to the SuperCell2 metacell builder. Tutorials use \code{gamma = 20}.}
+\item{metacell_args}{Arguments passed to the SuperCell2 metacell builder. Tutorials use \code{gamma = 20}. Sample balancing is enabled by default through \code{sample_balance = TRUE}; within each condition-by-cell-type stratum, every biological sample is deterministically limited to the smallest sample cell count. Use \code{sample_balance_seed} to control selection or \code{sample_balance = FALSE} for an explicitly cell-count-weighted analysis.}
 
 \item{metacells}{Output from \code{rc_regcompass_step_metacells()}.}
 
@@ -122,7 +122,9 @@ Each stage returns the complete object required by the next stage and writes an 
 These functions expose the same canonical condition-pooled workflow as the convenience runner, but split execution into restartable stages. Users can inspect stage outputs, change parameters belonging to a later stage, and rerun only that stage and its descendants.
 }
 \details{
-The stages are: condition-pooled metacell construction; Pando GRN and biological meta-module construction; RNA+ATAC Layer 1 reaction expression; directional COMPASS-like Layer 2 scoring; and final ranking/result assembly. Parameters should be changed only before the stage that consumes them. Changing an upstream stage invalidates every downstream checkpoint.
+The stages are: sample-balanced condition-pooled metacell construction; Pando GRN and biological meta-module construction; RNA+ATAC Layer 1 reaction expression; directional COMPASS-like Layer 2 scoring; and final ranking/result assembly. Parameters should be changed only before the stage that consumes them. Changing an upstream stage invalidates every downstream checkpoint.
+
+Sample balancing limits unequal cell-count influence but does not create biological replication. Per-sample retained and excluded counts are written to \code{sample_balance_diagnostics.tsv.gz}.
 
 Peaks with zero counts are excluded before shared TF-IDF normalization and within each Pando group. In Layer 2, unmeasured reaction expression is zero-filled and receives the same strictest expression-linked penalty as explicitly measured zero expression.
 }
@@ -133,7 +135,12 @@ bp <- BiocParallel::SnowParam(workers = 8, type = "SOCK")
 step1 <- rc_regcompass_step_metacells(
   object = object,
   outdir = "steps/01_metacells",
-  metacell_args = list(gamma = 20, BPPARAM = bp)
+  metacell_args = list(
+    gamma = 20,
+    sample_balance = TRUE,
+    sample_balance_seed = 12345,
+    BPPARAM = bp
+  )
 )
 
 step2 <- rc_regcompass_step_meta_modules(
