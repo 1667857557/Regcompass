@@ -67,69 +67,48 @@ test_that("zero-count ATAC features are removed by default", {
   expect_equal(filtered$diagnostics$n_retained_peaks, 1)
 })
 
-test_that("condition pooling balances sample cell contributions deterministically", {
-  cells <- paste0("c", seq_len(9))
+test_that("condition-only pool identifiers do not depend on sample labels", {
+  cells <- paste0("c", seq_len(6))
   counts <- Matrix::Matrix(
-    matrix(seq_len(18), nrow = 2,
+    matrix(seq_len(12), nrow = 2,
            dimnames = list(c("g1", "g2"), cells)),
     sparse = TRUE
   )
   object <- SeuratObject::CreateSeuratObject(counts = counts)
-  object$sample_id <- c(rep("s1", 4), rep("s2", 2), rep("s3", 3))
-  object$condition <- c(rep("A", 6), rep("B", 3))
+  object$sample_id <- c("s1", "s1", "s2", "s3", "s4", "s4")
+  object$condition <- c("A", "A", "A", "B", "B", "B")
   object$cell_type <- "T"
 
-  first <- .rc_balance_condition_celltype_cells(
-    object,
-    sample_col = "sample_id",
-    condition_col = "condition",
-    celltype_col = "cell_type",
-    sample_balance = TRUE,
-    sample_balance_seed = 17L
-  )
-  second <- .rc_balance_condition_celltype_cells(
-    object,
-    sample_col = "sample_id",
-    condition_col = "condition",
-    celltype_col = "cell_type",
-    sample_balance = TRUE,
-    sample_balance_seed = 17L
-  )
+  first <- .rc_prepare_condition_only_object(object, "condition")
+  object$sample_id <- rev(object$sample_id)
+  second <- .rc_prepare_condition_only_object(object, "condition")
 
-  expect_identical(colnames(first$object), colnames(second$object))
-  expect_equal(ncol(first$object), 7)
-  retained <- table(first$object$condition, first$object$sample_id)
-  expect_equal(unname(retained["A", c("s1", "s2")]), c(2, 2))
-  expect_equal(unname(retained["B", "s3"]), 3)
+  expect_identical(first$sample_col, second$sample_col)
   expect_identical(
-    first$sample_weighting,
-    "equal_cells_per_sample_within_condition_celltype"
+    first$object@meta.data[[first$sample_col]],
+    second$object@meta.data[[second$sample_col]]
   )
-  expect_equal(sum(first$diagnostics$n_excluded_cells), 2)
+  expect_setequal(
+    unique(first$object@meta.data[[first$sample_col]]),
+    c("A__condition_pool", "B__condition_pool")
+  )
 })
 
-test_that("sample balancing can be disabled explicitly", {
-  cells <- paste0("c", seq_len(4))
-  counts <- Matrix::Matrix(
-    matrix(seq_len(8), nrow = 2,
-           dimnames = list(c("g1", "g2"), cells)),
-    sparse = TRUE
-  )
-  object <- SeuratObject::CreateSeuratObject(counts = counts)
-  object$sample_id <- c("s1", "s1", "s1", "s2")
-  object$condition <- "A"
-  object$cell_type <- "T"
+test_that("canonical metacell APIs make sample metadata optional", {
+  expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
+  expect_null(eval(formals(rc_run_regcompass)$sample_col))
 
-  unbalanced <- .rc_balance_condition_celltype_cells(
-    object,
-    sample_col = "sample_id",
-    condition_col = "condition",
-    celltype_col = "cell_type",
-    sample_balance = FALSE
+  wrapper_text <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells)),
+    collapse = "\n"
   )
-  expect_equal(ncol(unbalanced$object), 4)
-  expect_identical(unbalanced$sample_weighting, "cell_count_weighted")
-  expect_true(all(unbalanced$diagnostics$n_excluded_cells == 0))
+  expect_match(wrapper_text, ".rc_prepare_condition_only_object", fixed = TRUE)
+  expect_match(wrapper_text, "ignored_balance_args", fixed = TRUE)
+  expect_false(grepl(
+    ".rc_balance_condition_celltype_cells",
+    wrapper_text,
+    fixed = TRUE
+  ))
 })
 
 test_that("hidden inference-unit option is retired", {
