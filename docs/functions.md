@@ -38,10 +38,21 @@ for Pando inference.
 Main argument bundles:
 
 - `metacell_args`: SuperCell2 parameters such as `gamma` and minimum stratum size;
+  `sample_balance = TRUE` is the default and deterministically gives every
+  biological sample the same cell quota within each condition × cell-type
+  stratum, using the smallest sample count; `sample_balance_seed` defaults to
+  `12345`; set `sample_balance = FALSE` only for an explicitly cell-count-weighted
+  analysis;
 - `pando_args`: `initiate_grn()`, motif and `infer_grn()` parameters;
 - `layer1_args`: `regulatory_alpha`, `gene_half_saturation`, `tau`, and local FASTCORE options;
 - `layer2_args`: solver, target direction, time limit and shared-model options;
 - `upstream_workers` and `layer2_workers`: worker counts for the one-call workflow.
+
+Sample-balancing diagnostics are written to
+`sample_balance_diagnostics.tsv.gz` and retained in
+`result$metacells$sample_balance_diagnostics`. Balancing limits unequal cell-count
+influence on pooled metacell construction; it does not create biological
+replication and does not justify metacell-level significance testing.
 
 Structural model selection:
 
