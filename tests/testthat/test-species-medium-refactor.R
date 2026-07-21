@@ -156,8 +156,14 @@ test_that("medium application never expands blocked GEM directions", {
 })
 
 test_that("canonical workflow owns a persistent model cache", {
-  workflow_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
-  micro_text <- paste(deparse(body(rc_run_microcompass)), collapse = "\n")
+  workflow_text <- paste(
+    deparse(body(.rc_run_regcompass_uncorrected_metadata)),
+    collapse = "\n"
+  )
+  micro_text <- paste(
+    deparse(body(.rc_run_microcompass_with_explicit_unit)),
+    collapse = "\n"
+  )
 
   expect_match(workflow_text, 'file.path\\(outdir, "04_model_cache", model_mode\\)')
   expect_match(workflow_text, "model_params\\$cache_dir <- cache_dir")
