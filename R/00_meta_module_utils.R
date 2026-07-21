@@ -61,23 +61,62 @@
   if (is.null(installed_version)) installed_version <- as.character(utils::packageVersion("Pando"))
   installed_version <- as.character(installed_version)
   if (is.null(description)) description <- utils::packageDescription("Pando")
-  remote_username <- as.character(description$RemoteUsername %||% description$GithubUsername %||% NA_character_)
-  remote_repo <- as.character(description$RemoteRepo %||% description$GithubRepo %||% NA_character_)
-  remote_ref <- as.character(description$RemoteRef %||% description$GithubRef %||% NA_character_)
-  remote_sha <- as.character(description$RemoteSha %||% description$GithubSHA1 %||% NA_character_)
-  if (is.na(remote_username) || !identical(remote_username, expected_username)) {
-    stop("Pando remote username mismatch: installed ", remote_username,
-         ", required ", expected_username, ".", call. = FALSE)
+
+  normalize_remote_field <- function(value) {
+    value <- as.character(value %||% NA_character_)
+    if (!length(value)) return(NA_character_)
+    value <- trimws(value[[1L]])
+    if (is.na(value) || !nzchar(value)) NA_character_ else value
   }
-  if (is.na(remote_repo) || !identical(remote_repo, expected_repo)) {
-    stop("Pando remote repository mismatch: installed ", remote_repo,
-         ", required ", expected_repo, ".", call. = FALSE)
+
+  remote_username <- normalize_remote_field(
+    description$RemoteUsername %||% description$GithubUsername
+  )
+  remote_repo <- normalize_remote_field(
+    description$RemoteRepo %||% description$GithubRepo
+  )
+  remote_ref <- normalize_remote_field(
+    description$RemoteRef %||% description$GithubRef
+  )
+  remote_sha <- normalize_remote_field(
+    description$RemoteSha %||% description$GithubSHA1
+  )
+
+  remote_metadata_missing <- is.na(remote_username) && is.na(remote_repo)
+  if (remote_metadata_missing) {
+    warning(
+      paste0(
+        "Pando GitHub remote metadata are unavailable. This is expected for ",
+        "offline or local source-package installation; continuing with an ",
+        "unverified repository origin. Confirm that Pando was downloaded from ",
+        "1667857557/Pando_regcompass."
+      ),
+      call. = FALSE
+    )
+  } else {
+    if (is.na(remote_username) || !identical(remote_username, expected_username)) {
+      stop("Pando remote username mismatch: installed ", remote_username,
+           ", required ", expected_username, ".", call. = FALSE)
+    }
+    if (is.na(remote_repo) || !identical(remote_repo, expected_repo)) {
+      stop("Pando remote repository mismatch: installed ", remote_repo,
+           ", required ", expected_repo, ".", call. = FALSE)
+    }
   }
-  list(version = installed_version,
-       remote_username = remote_username,
-       remote_repo = remote_repo,
-       remote_ref = remote_ref,
-       remote_sha = remote_sha)
+
+  list(
+    version = installed_version,
+    remote_username = remote_username,
+    remote_repo = remote_repo,
+    remote_ref = remote_ref,
+    remote_sha = remote_sha,
+    repository_verified = !remote_metadata_missing,
+    installation_source = if (remote_metadata_missing) {
+      "local_or_offline_source_unverified"
+    } else {
+      "github_remote_verified"
+    }
+  )
 }
 
 
