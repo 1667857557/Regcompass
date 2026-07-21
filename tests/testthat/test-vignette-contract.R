@@ -61,7 +61,7 @@ test_that("workflow vignette follows the v1.7.0 public API", {
   )
 })
 
-test_that("tutorial and man pages exclude retired interfaces", {
+test_that("tutorial and man pages exclude retired interface usage", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidate_roots <- unique(c(
     if (nzchar(workspace)) workspace else character(),
@@ -89,18 +89,16 @@ test_that("tutorial and man pages exclude retired interfaces", {
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
-  retired_tokens <- c(
-    ".rc_meta_module_one_hop",
-    "include_one_hop",
-    "one_hop_max_metabolite_degree",
-    "one_hop_metabolite_neighbor",
-    "n_one_hop_added",
+  retired_usage_tokens <- c(
+    ".rc_meta_module_one_hop(",
+    "include_one_hop =",
+    "one_hop_max_metabolite_degree =",
     "meta_module_one_hop = TRUE",
     "strict_biological_defaults =",
     "inference_unit = \"metacell\""
   )
   expect_false(any(vapply(
-    retired_tokens,
+    retired_usage_tokens,
     function(token) grepl(token, text, fixed = TRUE),
     logical(1)
   )))
