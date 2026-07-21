@@ -1,4 +1,4 @@
-test_that("public API contains only the canonical species-aware workflow", {
+test_that("public API contains the canonical and restartable workflows", {
   expect_setequal(
     getNamespaceExports("RegCompassR"),
     c(
@@ -7,7 +7,12 @@ test_that("public API contains only the canonical species-aware workflow", {
       "rc_prepare_mouse_gem",
       "rc_make_medium_scenarios",
       "rc_run_regcompass",
-      "rc_run_regcompass_one_shot"
+      "rc_run_regcompass_one_shot",
+      "rc_regcompass_step_metacells",
+      "rc_regcompass_step_meta_modules",
+      "rc_regcompass_step_layer1",
+      "rc_regcompass_step_layer2",
+      "rc_regcompass_step_results"
     )
   )
 })
@@ -26,6 +31,8 @@ test_that("canonical source architecture has one definition per function", {
   expect_match(collate, "workflow_utils.R", fixed = TRUE)
   expect_match(collate, "pando_evidence_utils.R", fixed = TRUE)
   expect_match(collate, "internal_apply.R", fixed = TRUE)
+  expect_match(collate, "v170_aliases.R", fixed = TRUE)
+  expect_match(collate, "v170_stepwise_parallel.R", fixed = TRUE)
 
   candidates <- c("R", file.path("..", "R"), file.path("..", "..", "R"))
   candidates <- candidates[dir.exists(candidates)]
@@ -58,7 +65,10 @@ test_that("canonical source architecture has one definition per function", {
     "rc_make_medium_scenarios", "rc_apply_medium_constraints",
     "rc_reaction_capacity", "rc_compute_multiome_penalty",
     "rc_run_microcompass", "rc_run_regcompass",
-    "rc_run_regcompass_one_shot"
+    "rc_run_regcompass_one_shot",
+    "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
+    "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
+    "rc_regcompass_step_results"
   )
   source_text <- vapply(
     list.files(source_dir, pattern = "[.]R$", full.names = TRUE),
