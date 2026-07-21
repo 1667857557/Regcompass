@@ -28,7 +28,8 @@ rc_regcompass_step_meta_modules(
   genome,
   pando_args = list(),
   layer1_args = list(),
-  BPPARAM = FALSE
+  parallel = TRUE,
+  BPPARAM = NULL
 )
 
 rc_regcompass_step_layer1(
@@ -38,7 +39,9 @@ rc_regcompass_step_layer1(
   outdir,
   regulatory_alpha = 1,
   tau = 0.2,
-  gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1)
+  gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
+  parallel = TRUE,
+  BPPARAM = NULL
 )
 
 rc_regcompass_step_layer2(
@@ -50,7 +53,7 @@ rc_regcompass_step_layer2(
   model_mode = c("meta_module_gem", "full_gem"),
   layer2_args = list(),
   parallel = TRUE,
-  BPPARAM = FALSE
+  BPPARAM = NULL
 )
 
 rc_regcompass_step_results(
@@ -74,7 +77,7 @@ rc_regcompass_step_results(
 
 \item{fragment_files}{Must be \code{FALSE} for the canonical condition-pooled workflow.}
 
-\item{metacell_args}{Arguments passed to the SuperCell2 metacell builder.}
+\item{metacell_args}{Arguments passed to the SuperCell2 metacell builder. Tutorials use \code{gamma = 20}.}
 
 \item{metacells}{Output from \code{rc_regcompass_step_metacells()}.}
 
@@ -84,11 +87,13 @@ rc_regcompass_step_results(
 
 \item{genome}{Genome object matching the ATAC coordinates.}
 
-\item{pando_args}{Arguments passed to condition-by-cell-type Pando inference.}
+\item{pando_args}{Arguments passed to condition-by-cell-type Pando inference. Tutorials use \code{peak_cor = 0}.}
 
 \item{layer1_args}{Structural Layer 1 arguments used during local FASTCORE completion.}
 
-\item{BPPARAM}{A BiocParallel parameter object or \code{FALSE}.}
+\item{parallel}{Whether to parallelize condition-by-cell-type Pando fits, reaction-level GPR aggregation, or shared-model-by-metacell LP tasks in Steps 2, 3, and 4, respectively.}
+
+\item{BPPARAM}{\code{NULL} to use the default RegCompass backend, \code{FALSE} for sequential execution, or a \code{BiocParallelParam} object. Logical \code{TRUE} is not valid.}
 
 \item{meta_modules}{Output from \code{rc_regcompass_step_meta_modules()}.}
 
@@ -106,8 +111,6 @@ rc_regcompass_step_results(
 
 \item{layer2_args}{Additional non-reserved arguments passed to microCOMPASS scoring.}
 
-\item{parallel}{Whether to parallelize shared-model-by-metacell LP tasks.}
-
 \item{layer2}{Output from \code{rc_regcompass_step_layer2()}.}
 
 \item{species}{Species identifier or \code{"auto"}.}
@@ -120,4 +123,54 @@ These functions expose the same canonical condition-pooled workflow as the conve
 }
 \details{
 The stages are: condition-pooled metacell construction; Pando GRN and biological meta-module construction; RNA+ATAC Layer 1 reaction expression; directional COMPASS-like Layer 2 scoring; and final ranking/result assembly. Parameters should be changed only before the stage that consumes them. Changing an upstream stage invalidates every downstream checkpoint.
+
+Peaks with zero counts are excluded before shared TF-IDF normalization and within each Pando group. In Layer 2, unmeasured reaction expression is zero-filled and receives the same strictest expression-linked penalty as explicitly measured zero expression.
+}
+\examples{
+\dontrun{
+bp <- BiocParallel::SnowParam(workers = 8, type = "SOCK")
+
+step1 <- rc_regcompass_step_metacells(
+  object = object,
+  outdir = "steps/01_metacells",
+  metacell_args = list(gamma = 20, BPPARAM = bp)
+)
+
+step2 <- rc_regcompass_step_meta_modules(
+  metacells = step1,
+  gem = gem,
+  outdir = "steps/02_meta_modules",
+  pfm = motifs,
+  genome = genome,
+  pando_args = list(
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0,
+      adjust_method = "fdr"
+    )
+  ),
+  parallel = TRUE,
+  BPPARAM = bp
+)
+
+step3 <- rc_regcompass_step_layer1(
+  metacells = step1,
+  meta_modules = step2,
+  gem = gem,
+  outdir = "steps/03_layer1",
+  parallel = TRUE,
+  BPPARAM = bp
+)
+
+step4 <- rc_regcompass_step_layer2(
+  layer1 = step3,
+  meta_modules = step2,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "steps/04_layer2",
+  parallel = TRUE,
+  BPPARAM = bp
+)
+}
 }
