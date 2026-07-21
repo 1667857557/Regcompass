@@ -45,6 +45,10 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
 
   expect_equal(penalty[["zero"]], 1)
   expect_equal(penalty[["missing"]], 1)
+  expect_equal(
+    answer$components$effective_reaction_expression["missing", "u1"],
+    0
+  )
   expect_gt(penalty[["zero"]], penalty[["low"]])
   expect_gt(penalty[["low"]], penalty[["high"]])
   expect_true(all(is.finite(penalty) & penalty > 0))
@@ -72,8 +76,12 @@ test_that("shared-TF projection retains regulator and sign metadata", {
   expect_true(projected$edges$direction_and_sign_preserved)
 })
 
-test_that("condition-pooled metacell is the canonical inference unit", {
-  expect_identical(eval(formals(rc_run_regcompass)$inference_unit), "metacell")
+test_that("condition-pooled metacell is selected explicitly", {
+  expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
+  expect_identical(
+    eval(formals(rc_run_microcompass)$unit),
+    c("sample_celltype", "metacell")
+  )
   expect_identical(eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
                    "physiologic")
 })
