@@ -6,15 +6,16 @@ RegCompassR 1.8.0 uses a GRN-first RNA+ATAC workflow:
 single-cell RNA NormalizeData across all cells
 → ATAC TF-IDF within each cell type across conditions
 → one Pando GRN per condition × cell type (peak_cor = 0.01 by default)
-→ condition × cell type SuperCell2 metacells (gamma = 75 by default)
-→ complete-GPR core reactions from each GRN
+→ condition-only SuperCell2 metacells (gamma = 75 by default)
+→ post hoc dominant cell-type labels from metacell membership
+→ complete-GPR core reactions from each condition × cell-type GRN
 → subsystem + KEGG/Reactome + master-Rhea expansion
 → local FASTCORE feasibility completion
 → RNA+ATAC reaction expression
 → directional COMPASS-like minimum-penalty scoring
 ```
 
-Sample metadata are optional. They are not used for sample balancing, downsampling, weighting, or metacell grouping.
+Sample metadata are optional. They are not used for sample balancing, downsampling, weighting, or metacell grouping. Cell type is also not used to stratify metacell construction; it is assigned afterwards from the dominant member-cell label, with purity and mixed-cell-type diagnostics retained.
 
 ## Installation
 
@@ -128,4 +129,4 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-The Pando coefficients are learned from single cells, while Layer 1 and Layer 2 remain metacell-level analyses. Meta-module expansion remains restricted to complete-GPR core reactions, their subsystems, shared KEGG or Reactome identifiers, and identical master-Rhea identifiers. Local FASTCORE adds only feasibility-support reactions.
+The Pando coefficients are learned from single cells. Metacells are built only within condition and receive dominant cell-type labels afterwards so the corresponding condition × cell-type GRN can be applied in Layer 1. Meta-module expansion remains restricted to complete-GPR core reactions, their subsystems, shared KEGG or Reactome identifiers, and identical master-Rhea identifiers. Local FASTCORE adds only feasibility-support reactions.
