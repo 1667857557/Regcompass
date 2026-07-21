@@ -11,6 +11,9 @@
     atac_assay = "ATAC",
     fragment_files = FALSE,
     metacell_args = list()) {
+  if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
+    object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
+  }
   # Emit the biological-replication warning before the legacy implementation
   # performs the same design check with its historical warning handler.
   .rc_condition_pool_design_summary(
@@ -134,6 +137,12 @@ rc_regcompass_step_layer1 <- .rc_regcompass_step_layer1_v170
     layer2_args = list(),
     parallel = TRUE,
     BPPARAM = NULL) {
+  if (!inherits(meta_modules, "regcompass_meta_module_step")) {
+    stop(
+      "`meta_modules` must be the output of `rc_regcompass_step_meta_modules()`.",
+      call. = FALSE
+    )
+  }
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
   }
@@ -144,7 +153,7 @@ rc_regcompass_step_layer1 <- .rc_regcompass_step_layer1_v170
     ),
     call. = FALSE
   )
-  .rc_regcompass_step_layer2_base(
+  answer <- .rc_regcompass_step_layer2_base(
     layer1 = layer1,
     meta_modules = meta_modules,
     gem = gem,
@@ -155,5 +164,7 @@ rc_regcompass_step_layer1 <- .rc_regcompass_step_layer1_v170
     parallel = parallel,
     BPPARAM = BPPARAM
   )
+  rc_export_microcompass(answer, outdir)
+  answer
 }
 rc_regcompass_step_layer2 <- .rc_regcompass_step_layer2_v170
