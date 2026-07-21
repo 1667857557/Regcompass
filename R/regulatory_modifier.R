@@ -27,9 +27,16 @@
   genes <- genes[!is.na(genes) & nzchar(genes)]
   if (!length(genes)) genes <- unique(tolower(trimws(as.character(significant_edges$target))))
   modifier <- matrix(0, nrow = length(genes), ncol = length(units), dimnames = list(genes, units))
+  attr(modifier, "reliability_policy") <- paste(
+    "only finite Pando R-squared values are trusted; targets without finite",
+    "R-squared receive regulatory reliability zero"
+  )
   if (!nrow(significant_edges) || !length(genes)) return(modifier)
 
   edges <- significant_edges
+  rsq <- if ("rsq" %in% colnames(edges)) suppressWarnings(as.numeric(edges$rsq)) else rep(NA_real_, nrow(edges))
+  edges <- edges[is.finite(rsq), , drop = FALSE]
+  if (!nrow(edges)) return(modifier)
   edges$target <- toupper(trimws(as.character(edges$target)))
   edges$tf <- toupper(trimws(as.character(edges$tf)))
   edges$region <- trimws(as.character(edges$region))
@@ -86,4 +93,30 @@
     }
   }
   modifier
+}
+
+.rc_feasibility_completion_metadata <- function(model_mode) {
+  if (identical(model_mode, "meta_module_gem")) {
+    return(list(
+      feasibility_completion =
+        "local_unconstrained_fastcore_then_global_union_medium_specific_fastcore",
+      feasibility_completion_stages = list(
+        local = paste(
+          "condition x cell-type biological meta-modules are completed against",
+          "an unconstrained shared FASTCC parent"
+        ),
+        global = paste(
+          "the union model is rebuilt and add-only FASTCORE-completed separately",
+          "for each shared medium scenario before scoring"
+        )
+      )
+    ))
+  }
+  list(
+    feasibility_completion = "not_applicable_full_gem",
+    feasibility_completion_stages = list(
+      local = "local meta-modules are not used for full-GEM scoring",
+      global = "the complete GEM is constrained by each shared medium"
+    )
+  )
 }
