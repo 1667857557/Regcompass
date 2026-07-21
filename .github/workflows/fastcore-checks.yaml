@@ -149,10 +149,10 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
-          R CMD INSTALL . --no-multiarch --with-keep.source --install-tests \
+          R CMD INSTALL --no-multiarch --with-keep.source --install-tests . \
             2>&1 | tee install-output.txt
 
-      - name: Run installed-package tests
+      - name: Run source tests against installed package
         shell: Rscript {0}
         run: |
           output <- file("test-output.txt", open = "wt")
@@ -161,9 +161,10 @@ jobs:
           status <- 0L
           tryCatch({
             library(RegCompassR)
-            testthat::test_check(
-              "RegCompassR",
+            testthat::test_local(
+              Sys.getenv("GITHUB_WORKSPACE"),
               reporter = "summary",
+              load_package = "installed",
               stop_on_failure = TRUE,
               stop_on_warning = FALSE
             )
