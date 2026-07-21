@@ -47,7 +47,8 @@ test_that("single-condition scoring uses penalty per required target flux", {
     vmax = matrix(c(10, 1, 10, 1), nrow = 2,
       dimnames = list(row_ids, units)),
     unit_meta = data.frame(unit_id = units, condition = "A", cell_type = "T"),
-    params = list(omega = 0.95))
+    params = list(omega = 0.95)
+  )
   answer <- .rc_condition_penalty_comparison(microcompass)
   expect_identical(answer$analysis_mode, "single_condition_reaction_ranking")
   expect_identical(answer$ranking_formula, "penalty / (omega * vmax)")
@@ -62,7 +63,8 @@ test_that("multiple conditions produce every pairwise descriptive comparison", {
     penalty = matrix(c(0.5, 0.3, 0.2), nrow = 1, dimnames = list(row_id, units)),
     vmax = matrix(2, nrow = 1, ncol = 3, dimnames = list(row_id, units)),
     unit_meta = data.frame(unit_id = units, condition = c("A", "B", "C"), cell_type = "T"),
-    params = list(omega = 0.95))
+    params = list(omega = 0.95)
+  )
   answer <- .rc_condition_penalty_comparison(microcompass)
   expect_identical(answer$analysis_mode,
     "multi_condition_reaction_ranking_and_pairwise_comparison")
@@ -76,7 +78,8 @@ test_that("shared-model ranking rejects unit-dependent vmax", {
     penalty = matrix(c(0.5, 0.3), nrow = 1, dimnames = list(row_id, c("u1", "u2"))),
     vmax = matrix(c(1, 2), nrow = 1, dimnames = list(row_id, c("u1", "u2"))),
     unit_meta = data.frame(unit_id = c("u1", "u2"), condition = c("A", "B"), cell_type = "T"),
-    params = list(omega = 0.95))
+    params = list(omega = 0.95)
+  )
   expect_error(.rc_condition_penalty_comparison(microcompass), "vmax differs across metacells")
 })
 
