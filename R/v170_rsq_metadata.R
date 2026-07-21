@@ -77,6 +77,9 @@
     "unmeasured reaction expression is zero-filled and receives the same strict penalty as explicit zero"
   result$params$fragment_registration_policy <-
     "ignore and clear registered Signac fragments when fragment_files = FALSE"
+  if (!is.null(result$metacells$sample_balance_summary)) {
+    result$params$sample_balance <- result$metacells$sample_balance_summary
+  }
   result
 }
 
@@ -99,23 +102,28 @@
     layer2_workers = NULL,
     parallel_backend = c("auto", "serial", "snow", "multicore"),
     species = c("auto", "human", "mouse")) {
-  if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
-    object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
+  model_mode <- match.arg(model_mode)
+  parallel_backend <- match.arg(parallel_backend)
+  species <- match.arg(species)
+  if (inherits(object, "Seurat")) {
+    if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
+      object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
+    }
+    .rc_condition_pool_design_summary(
+      object@meta.data,
+      sample_col = sample_col,
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      strict_biological_defaults = FALSE
+    )
+    warning(
+      paste(
+        "Metacell-level scores are descriptive pseudo-observations and are not",
+        "independent biological replicates."
+      ),
+      call. = FALSE
+    )
   }
-  .rc_condition_pool_design_summary(
-    object@meta.data,
-    sample_col = sample_col,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    strict_biological_defaults = FALSE
-  )
-  warning(
-    paste(
-      "Metacell-level scores are descriptive pseudo-observations and are not",
-      "independent biological replicates."
-    ),
-    call. = FALSE
-  )
   result <- .rc_run_regcompass_uncorrected_metadata(
     object = object, gem = gem, outdir = outdir, pfm = pfm, genome = genome,
     fragment_files = fragment_files,
@@ -139,6 +147,7 @@ rc_run_regcompass <- .rc_run_regcompass_v170
 .rc_regcompass_step_results_v170 <- function(
     metacells, meta_modules, layer1, layer2, gem, outdir,
     species = c("auto", "human", "mouse")) {
+  species <- match.arg(species)
   result <- .rc_regcompass_step_results_uncorrected_metadata(
     metacells = metacells,
     meta_modules = meta_modules,
