@@ -13,6 +13,7 @@ Collate:
     '00_meta_module_utils.R'
     '00_utils.R'
     'workflow_utils.R'
+    'version_checks.R'
     'export.R'
     'fastcore.R'
     'full_gem.R'
@@ -41,6 +42,7 @@ Collate:
     'condition_pooling.R'
     'condition_layer1.R'
     'parallel.R'
+    'v170_layer1_parallel.R'
     'penalty.R'
     'reaction_roles.R'
     'regcompass.R'
@@ -48,6 +50,7 @@ Collate:
     'stratum_filter.R'
     'v170_tfidf.R'
     'v170_pando_reuse.R'
+    'v170_aliases.R'
     'v170_rsq_metadata.R'
 Imports:
     BiocGenerics,
