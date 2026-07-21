@@ -29,14 +29,19 @@ Required design:
 A single condition produces `reaction_ranking` and no contrast. Multiple conditions
 produce one ranking per condition and all pairwise descriptive contrasts within
 each cell type. Pooled metacells are not treated as independent biological
-replicates.
+replicates, and the workflow warns when a condition has fewer than two biological
+samples.
+
+Canonical tutorial defaults are `gamma = 20` for SuperCell2 and `peak_cor = 0`
+for Pando inference.
 
 Main argument bundles:
 
 - `metacell_args`: SuperCell2 parameters such as `gamma` and minimum stratum size;
 - `pando_args`: `initiate_grn()`, motif and `infer_grn()` parameters;
 - `layer1_args`: `regulatory_alpha`, `gene_half_saturation`, `tau`, and local FASTCORE options;
-- `layer2_args`: solver, target direction, time limit and shared-model options.
+- `layer2_args`: solver, target direction, time limit and shared-model options;
+- `upstream_workers` and `layer2_workers`: worker counts for the one-call workflow.
 
 Structural model selection:
 
@@ -58,11 +63,14 @@ Structural contract:
 
 Evidence contract:
 
+- peaks with zero counts are excluded before shared TF-IDF and within each Pando group;
 - Pando coefficients weight cell-type-referenced peak-accessibility deviations;
 - the modifier updates bounded RNA support before GPR aggregation;
 - protein-complex AND uses normalized Boltzmann soft-min;
 - isozyme OR is additive;
 - expression-linked reactions use `1 / (1 + log2(1 + E_multiome))`;
+- non-finite reaction expression is set to zero, so unmeasured and explicit zero
+  expression receive the same strictest expression-linked penalty;
 - only exchange, demand, sink and artificial-support reactions receive fixed
   structural costs.
 
@@ -74,6 +82,21 @@ Ranking contract:
   normalized penalty, support score and priority rank;
 - rankings from `meta_module_gem` and `full_gem` are separate structural-context
   analyses and should not be merged.
+
+## Stepwise functions
+
+The public restartable stages are:
+
+- `rc_regcompass_step_metacells()`;
+- `rc_regcompass_step_meta_modules()`;
+- `rc_regcompass_step_layer1()`;
+- `rc_regcompass_step_layer2()`;
+- `rc_regcompass_step_results()`.
+
+Steps 2–4 accept `parallel = TRUE/FALSE` and `BPPARAM`. Use `BPPARAM = NULL`
+for the default backend, `BPPARAM = FALSE` for sequential `lapply()`, or an
+explicit `BiocParallelParam`. Logical `TRUE` is rejected because it is not a
+parallel backend object.
 
 ## `rc_run_regcompass_one_shot()`
 
