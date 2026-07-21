@@ -74,7 +74,7 @@ rc_default_bpparam <- function(workers = NULL, backend = c("auto", "serial", "sn
 #'
 #' @return A list with one element per `X`.
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
-  if (identical(BPPARAM, FALSE) || length(X) <= 1L) {
+  if (identical(BPPARAM, FALSE)) {
     return(lapply(X, FUN, ...))
   }
   if (!is.null(BPPARAM)) {
@@ -88,6 +88,7 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
       )
     }
   }
+  if (length(X) <= 1L) return(lapply(X, FUN, ...))
   if (is.null(BPPARAM)) BPPARAM <- rc_default_bpparam()
   if (is.null(BPPARAM)) return(lapply(X, FUN, ...))
   was_started <- isTRUE(BiocParallel::bpisup(BPPARAM))
