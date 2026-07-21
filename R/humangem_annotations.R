@@ -27,7 +27,12 @@
       ss_col <- .rc_first_existing_col(tab, c("subSystems", "subsystem", "sub_system"))
       eq_col <- .rc_first_existing_col(tab, c("equation", "rxnEquations", "reaction_formula"))
       rev_col <- .rc_first_existing_col(tab, c("rev", "reversible"))
-      if (!is.null(nm_col)) rxn_meta$name <- as.character(tab[[nm_col]])
+      if (!is.null(nm_col)) {
+        incoming <- as.character(tab[[nm_col]])
+        if (!"name" %in% colnames(rxn_meta)) rxn_meta$name <- NA_character_
+        replace <- !is.na(incoming) & nzchar(trimws(incoming))
+        rxn_meta$name[replace] <- incoming[replace]
+      }
       if (!is.null(ss_col)) rxn_meta$subsystem <- as.character(tab[[ss_col]])
       if (!is.null(eq_col)) rxn_meta$equation <- as.character(tab[[eq_col]])
       if (!is.null(rev_col)) rxn_meta$reversible <- as.logical(tab[[rev_col]])
@@ -94,6 +99,8 @@ rc_enrich_humangem_metadata <- function(gem, reactions_tsv = NULL, model_yml = N
     }
     yml_meta <- data.frame(
       reaction_id = yml_ids,
+      name_yml = vapply(rxns, collapse_field, character(1),
+                        candidates = c("name", "reaction_name", "rxnName", "rxnNames")),
       subsystem_yml = vapply(rxns, collapse_field, character(1),
                              candidates = c("subsystem", "subsystems", "subSystem", "subSystems")),
       equation_yml = vapply(rxns, collapse_field, character(1),
@@ -102,6 +109,11 @@ rc_enrich_humangem_metadata <- function(gem, reactions_tsv = NULL, model_yml = N
     )
     yml_meta <- yml_meta[!is.na(yml_meta$reaction_id) & nzchar(yml_meta$reaction_id), , drop = FALSE]
     idx <- match(meta$reaction_id, yml_meta$reaction_id)
+    yml_name <- yml_meta$name_yml[idx]
+    if (!"name" %in% colnames(meta)) meta$name <- NA_character_
+    replace_name <- (is.na(meta$name) | !nzchar(trimws(as.character(meta$name)))) &
+      !is.na(yml_name) & nzchar(trimws(yml_name))
+    meta$name[replace_name] <- yml_name[replace_name]
     yml_sub <- yml_meta$subsystem_yml[idx]
     if (!"subsystem" %in% colnames(meta)) meta$subsystem <- NA_character_
     replace_sub <- (is.na(meta$subsystem) | !nzchar(as.character(meta$subsystem)) |

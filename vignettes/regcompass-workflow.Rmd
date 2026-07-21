@@ -11,20 +11,27 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-RegCompassR 1.7.0 pools cells across biological samples within each condition and
-cell type. SuperCell2 builds condition-level metacells while retaining original
-sample composition. Pando fits one condition-specific TF–peak–gene model per cell
-type. Directional COMPASS-like scoring can use either the shared union meta-module
-GEM or the shared full GEM.
+RegCompassR 1.7.0 balances biological-sample cell contributions within each
+condition and cell type, then pools the retained cells for SuperCell2
+condition-level metacell construction. Original sample composition and balancing
+diagnostics are retained. Pando fits one condition-specific TF–peak–gene model
+per cell type. Directional COMPASS-like scoring can use either the shared union
+meta-module GEM or the shared full GEM.
 
 One or more samples per condition and one or more conditions are accepted.
 Condition-pooled metacells are descriptive units, not independent biological
 replicates. A single-condition analysis returns a metabolic reaction ranking;
 multiple conditions additionally return pairwise descriptive priority contrasts.
 
+By default, every biological sample contributes the same number of cells within
+each condition-by-cell-type stratum, using the smallest sample cell count as the
+quota. The deterministic selection is controlled by `sample_balance_seed`.
+Balancing limits cell-count dominance but does not create biological replication.
+
 Pando coefficients are learned from RNA+ATAC, but the per-metacell regulatory
 state uses coefficient-weighted peak accessibility only. Metacell TF RNA is not
-multiplied into that state.
+multiplied into that state. Peaks with zero counts are excluded before shared
+TF-IDF normalization and again within each condition-by-cell-type Pando fit.
 
 Biological meta-module membership is annotation-defined: complete-GPR core
 reactions are expanded through their subsystems and shared KEGG, Reactome, or
@@ -70,9 +77,11 @@ result <- rc_run_regcompass(
   model_mode = "meta_module_gem",
   medium_scenarios = medium,
   metacell_args = list(
-    gamma = 150,
+    gamma = 20,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10
+    min_metacell_size = 10,
+    sample_balance = TRUE,
+    sample_balance_seed = 12345
   ),
   pando_args = list(
     min_metacells = 10,
@@ -82,7 +91,7 @@ result <- rc_run_regcompass(
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
-      peak_cor = 0.05,
+      peak_cor = 0,
       adjust_method = "fdr"
     )
   ),
@@ -94,7 +103,9 @@ result <- rc_run_regcompass(
   layer2_args = list(
     target_direction = "both",
     solver = "highs"
-  )
+  ),
+  upstream_workers = 8,
+  layer2_workers = 8
 )
 ```
 
@@ -105,18 +116,25 @@ and output ranking contract are used in both modes.
 The main outputs are:
 
 - sample membership in `result$metacells$sample_composition`;
+- sample-balancing diagnostics in `result$metacells$sample_balance_diagnostics`;
 - RNA, ATAC-derived regulatory state and `reaction_expression` in `result$layer1`;
 - biological membership, separate FASTCORE support and shared union membership in `result$grn_meta_modules`;
 - raw minimum penalties in `result$microcompass$penalty`;
 - reaction priorities in `result$reaction_ranking`;
 - pairwise descriptive comparisons in `result$condition_contrast` when multiple conditions are present.
 
+For expression-linked reactions, unmeasured reaction expression is zero-filled.
+It therefore receives exactly the same strict LP penalty as explicitly measured
+zero expression. Missingness remains available in
+`result$microcompass$penalty_components$missing_expression_flag`.
+
 With one condition, `result$analysis_mode` is
 `"single_condition_reaction_ranking"` and `result$condition_contrast` is empty.
 
 The result provenance records
 `result$params$meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"`
-and `result$params$feasibility_completion = "local_fastcore_only"`.
+and
+`result$params$feasibility_completion = "local_unconstrained_fastcore_then_global_union_medium_specific_fastcore"`.
 
 ## Equivalent one-shot entry point
 
@@ -134,10 +152,23 @@ result <- rc_run_regcompass_one_shot(
   condition_col = "condition",
   celltype_col = "cell_type",
   model_mode = "meta_module_gem",
+  metacell_args = list(
+    gamma = 20,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10,
+    sample_balance = TRUE,
+    sample_balance_seed = 12345
+  ),
   pando_args = list(
     min_metacells = 10,
     pando_initiate_args = list(
       regions = SCREEN.ccRE.UCSC.hg38
+    ),
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0,
+      adjust_method = "fdr"
     )
   )
 )

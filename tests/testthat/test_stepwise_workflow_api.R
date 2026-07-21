@@ -12,6 +12,20 @@ test_that("stepwise workflow functions are exported", {
   }, logical(1))))
 })
 
+test_that("stepwise computational stages expose optional parallelism", {
+  stages <- list(
+    meta_modules = rc_regcompass_step_meta_modules,
+    layer1 = rc_regcompass_step_layer1,
+    layer2 = rc_regcompass_step_layer2
+  )
+  for (stage in stages) {
+    stage_formals <- formals(stage)
+    expect_true(all(c("parallel", "BPPARAM") %in% names(stage_formals)))
+    expect_identical(eval(stage_formals$parallel), TRUE)
+    expect_null(eval(stage_formals$BPPARAM))
+  }
+})
+
 test_that("stepwise stages reject incompatible upstream objects", {
   expect_error(
     rc_regcompass_step_meta_modules(
@@ -24,13 +38,13 @@ test_that("stepwise stages reject incompatible upstream objects", {
     "output of `rc_regcompass_step_metacells\\(\\)`"
   )
   expect_error(
-    rc_regcompass_step_layer2(
+    suppressWarnings(rc_regcompass_step_layer2(
       layer1 = list(),
       meta_modules = list(),
       gem = list(),
       medium_scenarios = data.frame(),
       outdir = tempfile()
-    ),
+    )),
     "output of `rc_regcompass_step_meta_modules\\(\\)`"
   )
   expect_error(
@@ -46,8 +60,11 @@ test_that("stepwise stages reject incompatible upstream objects", {
   )
 })
 
-test_that("stepwise Layer 2 preserves configured metadata columns", {
-  body_text <- paste(deparse(body(rc_regcompass_step_layer2)), collapse = "\n")
+test_that("stepwise Layer 2 delegates configured metadata columns", {
+  body_text <- paste(
+    deparse(body(.rc_regcompass_step_layer2_base)),
+    collapse = "\n"
+  )
   expect_match(body_text, "sample_col = params\\$sample_col")
   expect_match(body_text, "condition_col = params\\$condition_col")
   expect_match(body_text, "celltype_col = params\\$celltype_col")

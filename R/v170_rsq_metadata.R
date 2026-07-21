@@ -4,7 +4,7 @@
 # Canonical correction: non-finite Pando R-squared is not regulatory evidence.
 # Edges without finite R-squared are excluded; a target with no finite R-squared
 # therefore receives a zero (untrusted) ATAC modifier rather than reliability 1.
-.rc_condition_gene_regulatory_modifier <- function(
+.rc_condition_gene_regulatory_modifier_finite_rsq <- function(
     significant_edges, object, unit_meta,
     condition_col = "condition", celltype_col = "cell_type",
     atac_assay = "ATAC",
@@ -35,6 +35,8 @@
   )
   out
 }
+.rc_condition_gene_regulatory_modifier <-
+  .rc_condition_gene_regulatory_modifier_finite_rsq
 
 .rc_feasibility_completion_metadata <- function(model_mode) {
   if (identical(model_mode, "meta_module_gem")) {
@@ -69,11 +71,20 @@
   result$params$atac_tfidf_scope <- "cell_type_across_conditions"
   result$params$pando_normalization_policy <-
     "reuse Step 1 normalized RNA and cell-type-shared ATAC TF-IDF"
+  result$params$zero_count_peak_policy <-
+    "exclude before shared TF-IDF and within each Pando group"
+  result$params$missing_expression_policy <-
+    "unmeasured reaction expression is zero-filled and receives the same strict penalty as explicit zero"
+  result$params$fragment_registration_policy <-
+    "ignore and clear registered Signac fragments when fragment_files = FALSE"
+  if (!is.null(result$metacells$sample_balance_summary)) {
+    result$params$sample_balance <- result$metacells$sample_balance_summary
+  }
   result
 }
 
 .rc_run_regcompass_uncorrected_metadata <- rc_run_regcompass
-rc_run_regcompass <- function(
+.rc_run_regcompass_v170 <- function(
     object, gem, outdir, pfm, genome,
     fragment_files = FALSE,
     sample_col = "sample_id",
@@ -91,6 +102,28 @@ rc_run_regcompass <- function(
     layer2_workers = NULL,
     parallel_backend = c("auto", "serial", "snow", "multicore"),
     species = c("auto", "human", "mouse")) {
+  model_mode <- match.arg(model_mode)
+  parallel_backend <- match.arg(parallel_backend)
+  species <- match.arg(species)
+  if (inherits(object, "Seurat")) {
+    if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
+      object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
+    }
+    .rc_condition_pool_design_summary(
+      object@meta.data,
+      sample_col = sample_col,
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      strict_biological_defaults = FALSE
+    )
+    warning(
+      paste(
+        "Metacell-level scores are descriptive pseudo-observations and are not",
+        "independent biological replicates."
+      ),
+      call. = FALSE
+    )
+  }
   result <- .rc_run_regcompass_uncorrected_metadata(
     object = object, gem = gem, outdir = outdir, pfm = pfm, genome = genome,
     fragment_files = fragment_files,
@@ -105,13 +138,16 @@ rc_run_regcompass <- function(
   )
   result <- .rc_apply_corrected_result_metadata(result)
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
+  rc_export_microcompass(result$microcompass, outdir)
   result
 }
+rc_run_regcompass <- .rc_run_regcompass_v170
 
 .rc_regcompass_step_results_uncorrected_metadata <- rc_regcompass_step_results
-rc_regcompass_step_results <- function(
+.rc_regcompass_step_results_v170 <- function(
     metacells, meta_modules, layer1, layer2, gem, outdir,
     species = c("auto", "human", "mouse")) {
+  species <- match.arg(species)
   result <- .rc_regcompass_step_results_uncorrected_metadata(
     metacells = metacells,
     meta_modules = meta_modules,
@@ -125,3 +161,4 @@ rc_regcompass_step_results <- function(
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result
 }
+rc_regcompass_step_results <- .rc_regcompass_step_results_v170

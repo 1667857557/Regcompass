@@ -1,9 +1,15 @@
 test_that("workflow vignette follows the v1.7.0 public API", {
-  candidates <- c(
+  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
+  candidates <- unique(c(
+    if (nzchar(workspace)) {
+      file.path(workspace, "vignettes", "regcompass-workflow.Rmd")
+    } else {
+      character()
+    },
     file.path("vignettes", "regcompass-workflow.Rmd"),
     file.path("..", "vignettes", "regcompass-workflow.Rmd"),
     file.path("..", "..", "vignettes", "regcompass-workflow.Rmd")
-  )
+  ))
   candidates <- candidates[file.exists(candidates)]
   if (!length(candidates)) {
     skip("Source vignette is unavailable in the installed-package test context.")
@@ -19,7 +25,7 @@ test_that("workflow vignette follows the v1.7.0 public API", {
     function(name) grepl(paste0(name, "\\("), text),
     logical(1)
   )))
-  expect_match(text, "pools cells across biological samples", fixed = TRUE)
+  expect_match(text, "balances biological-sample cell contributions", fixed = TRUE)
   expect_match(text, "uses coefficient-weighted peak accessibility only", fixed = TRUE)
   expect_match(text, 'fragment_files = FALSE')
   expect_match(text, 'species = "human"')
@@ -30,6 +36,9 @@ test_that("workflow vignette follows the v1.7.0 public API", {
   expect_match(text, 'model_mode = "full_gem"')
   expect_match(text, "pando_initiate_args = list")
   expect_match(text, "regions = SCREEN.ccRE.UCSC.hg38")
+  expect_match(text, "gamma = 20", fixed = TRUE)
+  expect_match(text, "peak_cor = 0", fixed = TRUE)
+  expect_match(text, "sample_balance = TRUE", fixed = TRUE)
   expect_match(text, "microcompass\\$penalty")
   expect_match(text, "reaction_ranking")
   expect_match(text, "single_condition_reaction_ranking", fixed = TRUE)
@@ -42,11 +51,22 @@ test_that("workflow vignette follows the v1.7.0 public API", {
     'meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"',
     fixed = TRUE
   )
-  expect_match(text, 'feasibility_completion = "local_fastcore_only"', fixed = TRUE)
+  expect_match(
+    text,
+    paste0(
+      'feasibility_completion = ',
+      '"local_unconstrained_fastcore_then_global_union_medium_specific_fastcore"'
+    ),
+    fixed = TRUE
+  )
 })
 
 test_that("tutorial and man pages exclude retired interfaces", {
-  candidate_roots <- c(".", "..", file.path("..", ".."))
+  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
+  candidate_roots <- unique(c(
+    if (nzchar(workspace)) workspace else character(),
+    ".", "..", file.path("..", "..")
+  ))
   root <- candidate_roots[vapply(candidate_roots, function(path) {
     dir.exists(file.path(path, "man")) &&
       dir.exists(file.path(path, "vignettes")) &&
@@ -64,7 +84,8 @@ test_that("tutorial and man pages exclude retired interfaces", {
     file.path(root, "docs", "architecture-corrections.md"),
     file.path(root, "docs", "v1.7.0-condition-pooled-architecture.md"),
     file.path(root, "man", "rc_run_regcompass.Rd"),
-    file.path(root, "man", "rc_run_regcompass_one_shot.Rd")
+    file.path(root, "man", "rc_run_regcompass_one_shot.Rd"),
+    file.path(root, "man", "rc_regcompass_stepwise.Rd")
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
@@ -88,6 +109,12 @@ test_that("tutorial and man pages exclude retired interfaces", {
     "core_subsystem_plus_kegg_reactome_master_rhea_only",
     fixed = TRUE
   )
-  expect_match(text, "local_fastcore_only", fixed = TRUE)
+  expect_match(
+    text,
+    "local_unconstrained_fastcore_then_global_union_medium_specific_fastcore",
+    fixed = TRUE
+  )
   expect_match(text, "penalty / (omega * vmax)", fixed = TRUE)
+  expect_match(text, "gamma = 20", fixed = TRUE)
+  expect_match(text, "peak_cor = 0", fixed = TRUE)
 })

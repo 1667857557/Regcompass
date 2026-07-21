@@ -1,5 +1,8 @@
 test_that("v1.7.0 workflow fixes the canonical GPR architecture", {
-  workflow_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  workflow_text <- paste(
+    deparse(body(.rc_run_regcompass_uncorrected_metadata)),
+    collapse = "\n"
+  )
   layer1_text <- paste(
     deparse(body(.rc_build_condition_pooled_layer1)),
     collapse = "\n"
@@ -29,7 +32,7 @@ test_that("full-library logCPM preserves matrix identifiers", {
   expect_identical(dimnames(observed), dimnames(counts))
 })
 
-test_that("condition comparison is based on the primary penalty matrix", {
+test_that("condition comparison uses the primary penalty under shared vmax", {
   row_id <- "reaction=R1::direction=forward::medium=base"
   result <- list(
     penalty = matrix(
@@ -37,6 +40,13 @@ test_that("condition comparison is based on the primary penalty matrix", {
       nrow = 1,
       dimnames = list(row_id, paste0("u", 1:4))
     ),
+    vmax = matrix(
+      1,
+      nrow = 1,
+      ncol = 4,
+      dimnames = list(row_id, paste0("u", 1:4))
+    ),
+    params = list(omega = 1),
     unit_meta = data.frame(
       unit_id = paste0("u", 1:4),
       condition = c("A", "A", "B", "B"),

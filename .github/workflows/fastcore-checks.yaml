@@ -32,7 +32,7 @@ jobs:
             liblzma-dev \
             zlib1g-dev
 
-      - name: Parse sources
+      - name: Parse sources and verify documented defaults
         shell: Rscript {0}
         run: |
           files <- c(
@@ -40,6 +40,37 @@ jobs:
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
           invisible(lapply(files, parse))
+
+          documentation <- c(
+            "README.md",
+            list.files("docs", pattern = "[.]md$", full.names = TRUE),
+            list.files("vignettes", pattern = "[.]Rmd$", full.names = TRUE),
+            list.files("man", pattern = "[.]Rd$", full.names = TRUE)
+          )
+          text <- paste(
+            unlist(lapply(documentation, readLines, warn = FALSE), use.names = FALSE),
+            collapse = "\n"
+          )
+          forbidden <- c(
+            "gamma = 150",
+            "gamma=150",
+            "peak_cor = 0.05",
+            "peak_cor=0.05",
+            "peak_cor = 0.1",
+            "peak_cor=0.1"
+          )
+          present <- forbidden[vapply(forbidden, grepl, logical(1), x = text,
+                                      fixed = TRUE)]
+          if (length(present)) {
+            stop("Stale documented defaults remain: ", paste(present, collapse = ", "))
+          }
+          required <- c("gamma = 20", "peak_cor = 0")
+          missing <- required[!vapply(required, grepl, logical(1), x = text,
+                                      fixed = TRUE)]
+          if (length(missing)) {
+            stop("Canonical documented defaults are missing: ",
+                 paste(missing, collapse = ", "))
+          }
 
       - name: Install dependencies
         shell: bash
@@ -114,13 +145,14 @@ jobs:
           if (startsWith(signac_status, "ERROR:")) stop(signac_status)
           RSCRIPT
 
-      - name: Install package
+      - name: Install package with tests
         shell: bash
         run: |
           set -o pipefail
-          R CMD INSTALL . --no-multiarch --with-keep.source 2>&1 | tee install-output.txt
+          R CMD INSTALL --no-multiarch --with-keep.source --install-tests . \
+            2>&1 | tee install-output.txt
 
-      - name: Run tests
+      - name: Run source tests against installed package
         shell: Rscript {0}
         run: |
           output <- file("test-output.txt", open = "wt")
@@ -129,12 +161,10 @@ jobs:
           status <- 0L
           tryCatch({
             library(RegCompassR)
-            for (file in list.files("R", pattern = "[.]R$", full.names = TRUE)) {
-              sys.source(file, envir = .GlobalEnv)
-            }
-            testthat::test_dir(
-              "tests/testthat",
+            testthat::test_local(
+              Sys.getenv("GITHUB_WORKSPACE"),
               reporter = "summary",
+              load_package = "installed",
               stop_on_failure = TRUE,
               stop_on_warning = FALSE
             )

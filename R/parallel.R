@@ -68,19 +68,35 @@ rc_default_bpparam <- function(workers = NULL, backend = c("auto", "serial", "sn
 #' @param BPPARAM Optional `BiocParallelParam`. If `NULL`, RegCompass attempts to
 #' use `rc_default_bpparam()` for multi-core work and falls back to base
 #' `lapply()` when BiocParallel is unavailable or only one worker is requested.
-#' Pass `BPPARAM = FALSE` to force sequential execution.
+#' Pass `BPPARAM = FALSE` to force sequential execution. Logical `TRUE` is not a
+#' backend and is rejected with an informative error.
 #' @param ... Additional arguments passed to `FUN`.
 #'
 #' @return A list with one element per `X`.
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
-  if (identical(BPPARAM, FALSE) || length(X) <= 1L) {
+  if (identical(BPPARAM, FALSE)) {
     return(lapply(X, FUN, ...))
   }
+  if (!is.null(BPPARAM)) {
+    if (is.logical(BPPARAM)) {
+      stop(
+        "`BPPARAM` must be NULL, FALSE, or a BiocParallelParam object; logical TRUE is not valid.",
+        call. = FALSE
+      )
+    }
+    if (!requireNamespace("BiocParallel", quietly = TRUE)) {
+      stop("BiocParallel must be installed when `BPPARAM` is provided.", call. = FALSE)
+    }
+    if (!methods::is(BPPARAM, "BiocParallelParam")) {
+      stop(
+        "`BPPARAM` must be NULL, FALSE, or a BiocParallelParam object.",
+        call. = FALSE
+      )
+    }
+  }
+  if (length(X) <= 1L) return(lapply(X, FUN, ...))
   if (is.null(BPPARAM)) BPPARAM <- rc_default_bpparam()
   if (is.null(BPPARAM)) return(lapply(X, FUN, ...))
-  if (!requireNamespace("BiocParallel", quietly = TRUE)) {
-    stop("BiocParallel must be installed when `BPPARAM` is provided.", call. = FALSE)
-  }
   was_started <- isTRUE(BiocParallel::bpisup(BPPARAM))
   if (!was_started) {
     BiocParallel::bpstart(BPPARAM)

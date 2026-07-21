@@ -32,7 +32,7 @@ test_that("v1.7.0 reaction penalty is positive and decreases with expression", {
   expect_gt(P[["R2"]], P[["R3"]])
   expect_equal(P[["R4"]], 1)
   expect_true(all(is.finite(P) & P > 0))
-  expect_identical(answer$penalty_formula, "1 / (1 + log2(1 + E_multiome))")
+  expect_match(answer$penalty_formula, "missing E_multiome := 0", fixed = TRUE)
   expect_identical(answer$evidence_policy, "penalty_only")
   expect_false("P_conf" %in% names(answer$components))
 })
@@ -97,7 +97,7 @@ test_that("one biological sample per condition is accepted descriptively", {
 
 test_that("per-metacell regulatory state uses ATAC rather than TF RNA", {
   body_text <- paste(
-    deparse(body(.rc_condition_gene_regulatory_modifier)),
+    deparse(body(.rc_condition_gene_regulatory_modifier_unfiltered)),
     collapse = "\n"
   )
   expect_match(body_text, ".rc_pando_assay_data(object, atac_assay)", fixed = TRUE)

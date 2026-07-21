@@ -43,8 +43,11 @@ rc_compute_multiome_penalty <- function(
       !is.numeric(penalty_cap) || length(penalty_cap) != 1L ||
       !is.finite(penalty_cap) || penalty_cap <= 0 ||
       !is.numeric(missing_penalty) || length(missing_penalty) != 1L ||
-      !is.finite(missing_penalty) || missing_penalty < 0) {
-    stop("Penalty constants are invalid.", call. = FALSE)
+      !is.finite(missing_penalty) || missing_penalty != 1) {
+    stop(
+      "Penalty constants are invalid; `missing_penalty` must remain 1 so unmeasured expression is treated as zero expression.",
+      call. = FALSE
+    )
   }
   required_structural_roles <- c(
     "exchange", "demand", "sink", "artificial_support"
@@ -59,15 +62,12 @@ rc_compute_multiome_penalty <- function(
     )
   }
 
-  finite <- is.finite(E)
-  E_nonnegative <- pmax(E, 0)
-  P_expr <- matrix(
-    missing_penalty,
-    nrow = nrow(E),
-    ncol = ncol(E),
-    dimnames = dimnames(E)
-  )
-  P_expr[finite] <- 1 / (1 + log2(1 + E_nonnegative[finite]))
+  observed <- is.finite(E)
+  E_effective <- E
+  E_effective[!observed] <- 0
+  E_effective <- pmax(E_effective, 0)
+  P_expr <- 1 / (1 + log2(1 + E_effective))
+  dimnames(P_expr) <- dimnames(E)
 
   roles <- .rc_condition_role_vectors(rownames(E), reaction_roles)
   role <- roles$role
@@ -88,24 +88,27 @@ rc_compute_multiome_penalty <- function(
     penalty = penalty,
     components = list(
       reaction_expression = E,
+      effective_reaction_expression = E_effective,
       P_expr = P_expr,
       role = role,
       role_source = role_source,
       role_override_flag = override,
-      missing_expression_flag = !finite
+      missing_expression_flag = !observed,
+      zero_or_missing_expression_flag = !observed | E_effective <= 0
     ),
     evidence_policy = "penalty_only",
     evidence_policy_detail = paste(
-      "single integrated expression penalty with fixed costs only for",
-      "exchange/demand/sink/artificial-support reactions"
+      "unmeasured and explicit zero reaction expression are both treated as",
+      "zero support and receive the strictest expression-linked penalty;",
+      "fixed costs are used only for exchange/demand/sink/artificial-support reactions"
     ),
     penalty_version = "v1.7.0_gene_integrated_multiome_penalty",
     evidence_description = paste(
       "Condition-specific Pando coefficients learned from RNA+ATAC weight",
       "accessibility-only regulatory deviations integrated into gene support",
       "before GPR aggregation; expression-linked reactions use",
-      "1/(1+log2(1+reaction_expression))."
+      "1/(1+log2(1+reaction_expression)), with missing expression zero-filled."
     ),
-    penalty_formula = "1 / (1 + log2(1 + E_multiome))"
+    penalty_formula = "1 / (1 + log2(1 + pmax(E_multiome, 0))); missing E_multiome := 0"
   )
 }

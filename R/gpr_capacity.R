@@ -231,20 +231,31 @@ rc_gpr_diagnostics <- function(gpr_list, gene_ids) {
   gene_ids <- unique(tolower(gene_ids))
   do.call(rbind, lapply(names(gpr_list), function(rid) {
     rule <- gpr_list[[rid]]
-    genes <- unique(unlist(rule, use.names = FALSE))
-    genes <- genes[nzchar(genes)]
+    normalized_groups <- lapply(rule, function(group) {
+      genes <- unique(tolower(group))
+      genes[!is.na(genes) & nzchar(genes)]
+    })
+    group_complete <- vapply(normalized_groups, function(genes) {
+      length(genes) > 0L && all(genes %in% gene_ids)
+    }, logical(1))
+    genes <- unique(unlist(normalized_groups, use.names = FALSE))
     n_genes <- length(genes)
     n_missing <- sum(!genes %in% gene_ids)
+    n_groups <- length(normalized_groups)
+    n_complete_groups <- sum(group_complete)
     data.frame(
       reaction_id = rid,
       n_gpr_genes = n_genes,
-      n_and_groups = length(rule),
-      has_isoenzyme = length(rule) > 1L,
-      has_multisubunit = any(vapply(rule, length, integer(1)) > 1L),
+      n_and_groups = n_groups,
+      n_complete_and_groups = n_complete_groups,
+      complete_and_group_fraction = if (n_groups == 0L) NA_real_ else n_complete_groups / n_groups,
+      has_isoenzyme = n_groups > 1L,
+      has_multisubunit = any(vapply(normalized_groups, length, integer(1)) > 1L),
       missing_gene_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
       missing_subunit_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
       missing_subunit_flag = n_missing > 0L,
-      capacity_missing_flag = n_genes == 0L || n_missing == n_genes,
+      incomplete_and_group_flag = n_groups == 0L || any(!group_complete),
+      capacity_missing_flag = n_groups == 0L || !any(group_complete),
       stringsAsFactors = FALSE
     )
   }))

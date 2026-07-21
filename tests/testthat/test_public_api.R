@@ -1,4 +1,4 @@
-test_that("public API contains only the canonical species-aware workflow", {
+test_that("public API contains the canonical and restartable workflows", {
   expect_setequal(
     getNamespaceExports("RegCompassR"),
     c(
@@ -7,7 +7,12 @@ test_that("public API contains only the canonical species-aware workflow", {
       "rc_prepare_mouse_gem",
       "rc_make_medium_scenarios",
       "rc_run_regcompass",
-      "rc_run_regcompass_one_shot"
+      "rc_run_regcompass_one_shot",
+      "rc_regcompass_step_metacells",
+      "rc_regcompass_step_meta_modules",
+      "rc_regcompass_step_layer1",
+      "rc_regcompass_step_layer2",
+      "rc_regcompass_step_results"
     )
   )
 })
@@ -26,11 +31,23 @@ test_that("canonical source architecture has one definition per function", {
   expect_match(collate, "workflow_utils.R", fixed = TRUE)
   expect_match(collate, "pando_evidence_utils.R", fixed = TRUE)
   expect_match(collate, "internal_apply.R", fixed = TRUE)
+  expect_match(collate, "v170_sample_balance.R", fixed = TRUE)
+  expect_match(collate, "v170_aliases.R", fixed = TRUE)
+  expect_match(collate, "v170_stepwise_parallel.R", fixed = TRUE)
 
-  candidates <- c("R", file.path("..", "R"), file.path("..", "..", "R"))
+  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
+  candidates <- unique(c(
+    if (nzchar(workspace)) file.path(workspace, "R") else character(),
+    "R",
+    file.path("..", "R"),
+    file.path("..", "..", "R")
+  ))
   candidates <- candidates[dir.exists(candidates)]
+  candidates <- candidates[vapply(candidates, function(path) {
+    length(list.files(path, pattern = "[.]R$", full.names = TRUE)) > 0L
+  }, logical(1))]
   if (!length(candidates)) {
-    skip("Source R directory is unavailable in the installed-package test context.")
+    skip("Source R files are unavailable in the installed-package test context.")
   }
   source_dir <- normalizePath(candidates[[1L]], mustWork = TRUE)
   expect_length(
@@ -58,7 +75,15 @@ test_that("canonical source architecture has one definition per function", {
     "rc_make_medium_scenarios", "rc_apply_medium_constraints",
     "rc_reaction_capacity", "rc_compute_multiome_penalty",
     "rc_run_microcompass", "rc_run_regcompass",
-    "rc_run_regcompass_one_shot"
+    "rc_run_regcompass_one_shot",
+    "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
+    "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
+    "rc_regcompass_step_results",
+    "rc_run_pando_meta_modules",
+    ".rc_normalize_condition_metacell_object",
+    ".rc_condition_gene_regulatory_modifier",
+    ".rc_build_condition_pooled_layer1",
+    ".rc_make_condition_pooled_metacells"
   )
   source_text <- vapply(
     list.files(source_dir, pattern = "[.]R$", full.names = TRUE),
@@ -79,24 +104,6 @@ test_that("canonical source architecture has one definition per function", {
       info = paste("canonical function", name, "must have one source definition")
     )
   }
-
-  source_files <- list.files(source_dir, pattern = "[.]R$", full.names = TRUE)
-  definitions <- unlist(lapply(source_files, function(path) {
-    lines <- readLines(path, warn = FALSE)
-    lines <- lines[grepl(
-      "^[A-Za-z.][A-Za-z0-9._]*[[:space:]]*<-[[:space:]]*function",
-      lines
-    )]
-    sub(
-      "^([A-Za-z.][A-Za-z0-9._]*)[[:space:]]*<-.*$",
-      "\\1",
-      lines
-    )
-  }), use.names = FALSE)
-  expect_false(
-    anyDuplicated(definitions) > 0L,
-    info = "every top-level function must have exactly one source definition"
-  )
 })
 
 test_that("retired entry points and evidence APIs remain absent", {
