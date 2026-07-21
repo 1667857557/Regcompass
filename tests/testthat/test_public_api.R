@@ -34,10 +34,19 @@ test_that("canonical source architecture has one definition per function", {
   expect_match(collate, "v170_aliases.R", fixed = TRUE)
   expect_match(collate, "v170_stepwise_parallel.R", fixed = TRUE)
 
-  candidates <- c("R", file.path("..", "R"), file.path("..", "..", "R"))
+  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
+  candidates <- unique(c(
+    if (nzchar(workspace)) file.path(workspace, "R") else character(),
+    "R",
+    file.path("..", "R"),
+    file.path("..", "..", "R")
+  ))
   candidates <- candidates[dir.exists(candidates)]
+  candidates <- candidates[vapply(candidates, function(path) {
+    length(list.files(path, pattern = "[.]R$", full.names = TRUE)) > 0L
+  }, logical(1))]
   if (!length(candidates)) {
-    skip("Source R directory is unavailable in the installed-package test context.")
+    skip("Source R files are unavailable in the installed-package test context.")
   }
   source_dir <- normalizePath(candidates[[1L]], mustWork = TRUE)
   expect_length(
