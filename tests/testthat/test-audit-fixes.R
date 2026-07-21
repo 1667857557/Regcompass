@@ -67,6 +67,71 @@ test_that("zero-count ATAC features are removed by default", {
   expect_equal(filtered$diagnostics$n_retained_peaks, 1)
 })
 
+test_that("condition pooling balances sample cell contributions deterministically", {
+  cells <- paste0("c", seq_len(9))
+  counts <- Matrix::Matrix(
+    matrix(seq_len(18), nrow = 2,
+           dimnames = list(c("g1", "g2"), cells)),
+    sparse = TRUE
+  )
+  object <- SeuratObject::CreateSeuratObject(counts = counts)
+  object$sample_id <- c(rep("s1", 4), rep("s2", 2), rep("s3", 3))
+  object$condition <- c(rep("A", 6), rep("B", 3))
+  object$cell_type <- "T"
+
+  first <- .rc_balance_condition_celltype_cells(
+    object,
+    sample_col = "sample_id",
+    condition_col = "condition",
+    celltype_col = "cell_type",
+    sample_balance = TRUE,
+    sample_balance_seed = 17L
+  )
+  second <- .rc_balance_condition_celltype_cells(
+    object,
+    sample_col = "sample_id",
+    condition_col = "condition",
+    celltype_col = "cell_type",
+    sample_balance = TRUE,
+    sample_balance_seed = 17L
+  )
+
+  expect_identical(colnames(first$object), colnames(second$object))
+  expect_equal(ncol(first$object), 7)
+  retained <- table(first$object$condition, first$object$sample_id)
+  expect_equal(unname(retained["A", c("s1", "s2")]), c(2, 2))
+  expect_equal(unname(retained["B", "s3"]), 3)
+  expect_identical(
+    first$sample_weighting,
+    "equal_cells_per_sample_within_condition_celltype"
+  )
+  expect_equal(sum(first$diagnostics$n_excluded_cells), 2)
+})
+
+test_that("sample balancing can be disabled explicitly", {
+  cells <- paste0("c", seq_len(4))
+  counts <- Matrix::Matrix(
+    matrix(seq_len(8), nrow = 2,
+           dimnames = list(c("g1", "g2"), cells)),
+    sparse = TRUE
+  )
+  object <- SeuratObject::CreateSeuratObject(counts = counts)
+  object$sample_id <- c("s1", "s1", "s1", "s2")
+  object$condition <- "A"
+  object$cell_type <- "T"
+
+  unbalanced <- .rc_balance_condition_celltype_cells(
+    object,
+    sample_col = "sample_id",
+    condition_col = "condition",
+    celltype_col = "cell_type",
+    sample_balance = FALSE
+  )
+  expect_equal(ncol(unbalanced$object), 4)
+  expect_identical(unbalanced$sample_weighting, "cell_count_weighted")
+  expect_true(all(unbalanced$diagnostics$n_excluded_cells == 0))
+})
+
 test_that("hidden inference-unit option is retired", {
   body_text <- paste(deparse(body(rc_run_microcompass)), collapse = "\n")
   expect_match(body_text, "retired `RegCompassR.inference_unit` option is ignored",
