@@ -24,7 +24,8 @@ multiple conditions additionally return pairwise descriptive priority contrasts.
 
 Pando coefficients are learned from RNA+ATAC, but the per-metacell regulatory
 state uses coefficient-weighted peak accessibility only. Metacell TF RNA is not
-multiplied into that state.
+multiplied into that state. Peaks with zero counts are excluded before shared
+TF-IDF normalization and again within each condition-by-cell-type Pando fit.
 
 Biological meta-module membership is annotation-defined: complete-GPR core
 reactions are expanded through their subsystems and shared KEGG, Reactome, or
@@ -70,7 +71,7 @@ result <- rc_run_regcompass(
   model_mode = "meta_module_gem",
   medium_scenarios = medium,
   metacell_args = list(
-    gamma = 150,
+    gamma = 20,
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
@@ -82,7 +83,7 @@ result <- rc_run_regcompass(
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
-      peak_cor = 0.05,
+      peak_cor = 0,
       adjust_method = "fdr"
     )
   ),
@@ -94,7 +95,9 @@ result <- rc_run_regcompass(
   layer2_args = list(
     target_direction = "both",
     solver = "highs"
-  )
+  ),
+  upstream_workers = 8,
+  layer2_workers = 8
 )
 ```
 
@@ -111,12 +114,17 @@ The main outputs are:
 - reaction priorities in `result$reaction_ranking`;
 - pairwise descriptive comparisons in `result$condition_contrast` when multiple conditions are present.
 
+For expression-linked reactions, unmeasured reaction expression is zero-filled.
+It therefore receives exactly the same strict LP penalty as explicitly measured
+zero expression. Missingness remains available in
+`result$microcompass$penalty_components$missing_expression_flag`.
+
 With one condition, `result$analysis_mode` is
 `"single_condition_reaction_ranking"` and `result$condition_contrast` is empty.
 
 The result provenance records
 `result$params$meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"`
-and `result$params$feasibility_completion = "local_fastcore_only"`.
+and the two-stage local/global feasibility-completion policy.
 
 ## Equivalent one-shot entry point
 
@@ -134,10 +142,21 @@ result <- rc_run_regcompass_one_shot(
   condition_col = "condition",
   celltype_col = "cell_type",
   model_mode = "meta_module_gem",
+  metacell_args = list(
+    gamma = 20,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10
+  ),
   pando_args = list(
     min_metacells = 10,
     pando_initiate_args = list(
       regions = SCREEN.ccRE.UCSC.hg38
+    ),
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0,
+      adjust_method = "fdr"
     )
   )
 )
