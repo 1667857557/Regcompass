@@ -64,8 +64,21 @@ test_that("global union contains biological and local support reactions", {
   )
 })
 
+test_that("condition-pooled workflow balances samples before base pooling", {
+  wrapper_text <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells)),
+    collapse = "\n"
+  )
+  expect_match(wrapper_text, ".rc_balance_condition_celltype_cells", fixed = TRUE)
+  expect_match(wrapper_text, "sample_balance_diagnostics.tsv.gz", fixed = TRUE)
+  expect_match(wrapper_text, "sample_balance %||% TRUE", fixed = TRUE)
+})
+
 test_that("condition-pooled workflow rejects fragment pooling without maps", {
-  text <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
+  text <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells_unbalanced)),
+    collapse = "\n"
+  )
   expect_match(text, "fragment_files = FALSE", fixed = TRUE)
   expect_match(text, "explicit per-file barcode map", fixed = TRUE)
 })
