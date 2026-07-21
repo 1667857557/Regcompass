@@ -11,7 +11,7 @@
 rc_regcompass_step_metacells(
   object,
   outdir,
-  sample_col = "sample_id",
+  sample_col = NULL,
   condition_col = "condition",
   celltype_col = "cell_type",
   rna_assay = "RNA",
@@ -71,13 +71,15 @@ rc_regcompass_step_results(
 
 \item{outdir}{Output directory for the current stage or final result.}
 
-\item{sample_col, condition_col, celltype_col}{Metadata columns identifying biological samples, conditions and cell types.}
+\item{sample_col}{Optional metadata-column name retained only as input provenance. It defaults to \code{NULL} and never affects metacell cell selection, weighting, or grouping.}
+
+\item{condition_col, celltype_col}{Metadata columns that define the metacell strata.}
 
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 
 \item{fragment_files}{Must be \code{FALSE} for the canonical condition-pooled workflow.}
 
-\item{metacell_args}{Arguments passed to the SuperCell2 metacell builder. Tutorials use \code{gamma = 20}. Sample balancing is enabled by default through \code{sample_balance = TRUE}; within each condition-by-cell-type stratum, every biological sample is deterministically limited to the smallest sample cell count. Use \code{sample_balance_seed} to control selection or \code{sample_balance = FALSE} for an explicitly cell-count-weighted analysis.}
+\item{metacell_args}{Arguments passed to the SuperCell2 metacell builder. Tutorials use \code{gamma = 20}. Legacy \code{sample_balance} and \code{sample_balance_seed} values are ignored with a warning because sample identity is not part of metacell construction.}
 
 \item{metacells}{Output from \code{rc_regcompass_step_metacells()}.}
 
@@ -122,9 +124,9 @@ Each stage returns the complete object required by the next stage and writes an 
 These functions expose the same canonical condition-pooled workflow as the convenience runner, but split execution into restartable stages. Users can inspect stage outputs, change parameters belonging to a later stage, and rerun only that stage and its descendants.
 }
 \details{
-The stages are: sample-balanced condition-pooled metacell construction; Pando GRN and biological meta-module construction; RNA+ATAC Layer 1 reaction expression; directional COMPASS-like Layer 2 scoring; and final ranking/result assembly. Parameters should be changed only before the stage that consumes them. Changing an upstream stage invalidates every downstream checkpoint.
+The stages are: condition-by-cell-type metacell construction; Pando GRN and biological meta-module construction; RNA+ATAC Layer 1 reaction expression; directional COMPASS-like Layer 2 scoring; and final ranking/result assembly. Parameters should be changed only before the stage that consumes them. Changing an upstream stage invalidates every downstream checkpoint.
 
-Sample balancing limits unequal cell-count influence but does not create biological replication. Per-sample retained and excluded counts are written to \code{sample_balance_diagnostics.tsv.gz}.
+Before SuperCell2, an internal pool identifier is derived only from \code{condition_col}. Consequently, biological-sample labels do not change cell retention, weighting, or grouping, and no sample-balanced downsampling is performed.
 
 Peaks with zero counts are excluded before shared TF-IDF normalization and within each Pando group. In Layer 2, unmeasured reaction expression is zero-filled and receives the same strictest expression-linked penalty as explicitly measured zero expression.
 }
@@ -135,10 +137,11 @@ bp <- BiocParallel::SnowParam(workers = 8, type = "SOCK")
 step1 <- rc_regcompass_step_metacells(
   object = object,
   outdir = "steps/01_metacells",
+  sample_col = NULL,
+  condition_col = "condition",
+  celltype_col = "cell_type",
   metacell_args = list(
     gamma = 20,
-    sample_balance = TRUE,
-    sample_balance_seed = 12345,
     BPPARAM = bp
   )
 )
