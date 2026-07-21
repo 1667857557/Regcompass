@@ -5,6 +5,7 @@ RegCompassR 1.7.0 provides one condition-pooled RNA+ATAC workflow with two execu
 ```text
 condition × cell type cells pooled across biological samples
 → SuperCell2 condition-level metacells with sample composition retained
+→ zero-count ATAC peaks excluded
 → one Pando GRN per condition × cell type
 → complete-GPR core reactions
 → core-reaction subsystem + KEGG/Reactome + master-Rhea expansion
@@ -30,6 +31,8 @@ remotes::install_github(
 remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
+
+RegCompassR validates this exact Seurat stack when the package is loaded.
 
 ## Execution mode A: one-shot
 
@@ -69,7 +72,7 @@ result <- rc_run_regcompass_one_shot(
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
-      peak_cor = 0.05,
+      peak_cor = 0,
       adjust_method = "fdr"
     )
   ),
@@ -81,7 +84,9 @@ result <- rc_run_regcompass_one_shot(
   layer2_args = list(
     target_direction = "both",
     solver = "highs"
-  )
+  ),
+  upstream_workers = 8,
+  layer2_workers = 8
 )
 ```
 
@@ -97,6 +102,8 @@ medium_scenarios <- rc_make_medium_scenarios(
   species = "human"
 )
 
+bp <- BiocParallel::SnowParam(workers = 8, type = "SOCK")
+
 step1 <- rc_regcompass_step_metacells(
   object = object,
   outdir = "RegCompass_steps/01_metacells",
@@ -107,7 +114,8 @@ step1 <- rc_regcompass_step_metacells(
   metacell_args = list(
     gamma = 20,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10
+    min_metacell_size = 10,
+    BPPARAM = bp
   )
 )
 
@@ -123,13 +131,15 @@ step2 <- rc_regcompass_step_meta_modules(
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
-      peak_cor = 0.05,
+      peak_cor = 0,
       adjust_method = "fdr"
     ),
     padj_threshold = 0.05,
     min_model_rsq = 0.1
   ),
-  layer1_args = list(local_fastcore = TRUE)
+  layer1_args = list(local_fastcore = TRUE),
+  parallel = TRUE,
+  BPPARAM = bp
 )
 
 step3 <- rc_regcompass_step_layer1(
@@ -139,7 +149,9 @@ step3 <- rc_regcompass_step_layer1(
   outdir = "RegCompass_steps/03_layer1",
   regulatory_alpha = 1,
   tau = 0.20,
-  gene_half_saturation = 1
+  gene_half_saturation = 1,
+  parallel = TRUE,
+  BPPARAM = bp
 )
 
 step4 <- rc_regcompass_step_layer2(
@@ -153,7 +165,9 @@ step4 <- rc_regcompass_step_layer2(
     target_direction = "both",
     omega = 0.95,
     solver = "highs"
-  )
+  ),
+  parallel = TRUE,
+  BPPARAM = bp
 )
 
 result <- rc_regcompass_step_results(
@@ -167,14 +181,18 @@ result <- rc_regcompass_step_results(
 )
 ```
 
+`parallel = FALSE` forces sequential execution in Steps 2–4. `BPPARAM = NULL` uses the default RegCompass backend, `BPPARAM = FALSE` forces base `lapply()`, and a `BiocParallelParam` object selects an explicit backend. Logical `TRUE` is not a valid `BPPARAM` value.
+
 Each stage writes a complete RDS checkpoint and returns the object consumed by the next stage. Inspect `step1$pooled`, `step2$condition_modules`, `step2$global_modules`, `step3$gene_regulatory_modifier`, `step3$reaction_expression`, `step4$lp_diagnostics`, and the final reaction rankings before proceeding.
 
 The detailed tutorial lists inspection commands, expected ranges, failure checks and the exact downstream stages that must be rerun after each parameter change:
 [`docs/run-modes-and-stepwise-workflow.md`](docs/run-modes-and-stepwise-workflow.md).
 
-The canonical path requires `fragment_files = FALSE` and aggregates the existing ATAC peak-count assay. Each biological sample must map to exactly one condition, but there is no minimum sample count per condition. One condition is sufficient for reaction ranking; two or more conditions additionally produce descriptive pairwise priority comparisons. Cells are pooled by condition and cell type before SuperCell2, while original sample membership remains available in `result$metacells$sample_composition`.
+The canonical path requires `fragment_files = FALSE` and aggregates the existing ATAC peak-count assay. Peaks with zero total counts are removed before shared TF-IDF normalization, and peaks with zero counts within a Pando condition-by-cell-type group are removed again before motif and GRN inference. The numbers retained and excluded are recorded in the ATAC normalization metadata and Pando status table.
 
-Condition-pooled metacells are descriptive pseudo-observations, not independent biological replicates. The package does not perform biological-sample-level significance testing on those metacells.
+Each biological sample must map to exactly one condition. One condition is sufficient for reaction ranking; two or more conditions additionally produce descriptive pairwise priority comparisons. Cells are pooled by condition and cell type before SuperCell2, while original sample membership remains available in `result$metacells$sample_composition`.
+
+Condition-pooled metacells are descriptive pseudo-observations, not independent biological replicates. The package warns when a condition has fewer than two biological samples and does not perform biological-sample-level significance testing on metacells.
 
 ## Structural model modes
 
@@ -214,6 +232,8 @@ Isozymes are added and no gene-promiscuity weighting is applied. Reaction expres
 \[
 p_{r,u}=\frac{1}{1+\log_2(1+E^{MO}_{r,u})}.
 \]
+
+For expression-linked reactions, unmeasured reaction expression is set to zero before applying this formula. Therefore unmeasured expression and explicit zero expression both receive the strictest expression-linked LP penalty, while missingness remains available as a diagnostic flag.
 
 Only structural exchange, demand, sink, and artificial-support reactions receive fixed structural costs. Transport and cofactor reactions with expression support remain governed by the same multiome reaction-expression cost. There is no independent Pando reaction-confidence penalty, Q95 calibration, confidence matrix, or `penalty_weights` term.
 
