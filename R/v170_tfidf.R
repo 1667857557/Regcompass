@@ -107,7 +107,7 @@
 
 # Canonical correction: estimate one shared IDF reference per cell type across
 # all conditions, then retain those normalized values for Pando and Layer 1.
-.rc_normalize_condition_metacell_object <- function(
+.rc_normalize_condition_metacell_object_v170 <- function(
     pooled, rna_assay = "RNA", atac_assay = "ATAC") {
   object <- rc_load_or_merge_metacell_objects(
     pooled$metacell_objects,
@@ -125,3 +125,5 @@
   )
   object
 }
+.rc_normalize_condition_metacell_object <-
+  .rc_normalize_condition_metacell_object_v170
