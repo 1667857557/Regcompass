@@ -1,124 +1,30 @@
-.rc_with_preserved_seed <- function(seed, code) {
-  if (!is.numeric(seed) || length(seed) != 1L || !is.finite(seed) ||
-      seed < 0 || abs(seed - round(seed)) > sqrt(.Machine$double.eps)) {
-    stop("`sample_balance_seed` must be one non-negative integer.", call. = FALSE)
-  }
-  had_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  if (had_seed) old_seed <- get(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  on.exit({
-    if (had_seed) {
-      assign(".Random.seed", old_seed, envir = .GlobalEnv)
-    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-      rm(".Random.seed", envir = .GlobalEnv)
-    }
-  }, add = TRUE)
-  set.seed(as.integer(seed))
-  force(code)
+.rc_condition_only_sample_col <- function(meta) {
+  candidate <- ".rc_condition_only_pool_id"
+  while (candidate %in% colnames(meta)) candidate <- paste0(candidate, "_")
+  candidate
 }
 
-.rc_balance_condition_celltype_cells <- function(
-    object, sample_col, condition_col, celltype_col,
-    sample_balance = TRUE, sample_balance_seed = 12345L) {
+.rc_prepare_condition_only_object <- function(object, condition_col) {
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
-  if (!is.logical(sample_balance) || length(sample_balance) != 1L ||
-      is.na(sample_balance)) {
-    stop("`sample_balance` must be TRUE or FALSE.", call. = FALSE)
+  if (!is.character(condition_col) || length(condition_col) != 1L ||
+      is.na(condition_col) || !nzchar(condition_col)) {
+    stop("`condition_col` must name one metadata column.", call. = FALSE)
   }
-  required <- c(sample_col, condition_col, celltype_col)
-  missing <- setdiff(required, colnames(object@meta.data))
-  if (length(missing)) {
-    stop("Missing metadata columns: ", paste(missing, collapse = ", "),
-         call. = FALSE)
+  if (!condition_col %in% colnames(object@meta.data)) {
+    stop("Missing metadata column: ", condition_col, call. = FALSE)
   }
-
-  meta <- object@meta.data
-  meta$.rc_cell_id <- rownames(meta)
-  meta$.rc_sample <- trimws(as.character(meta[[sample_col]]))
-  meta$.rc_condition <- trimws(as.character(meta[[condition_col]]))
-  meta$.rc_celltype <- trimws(as.character(meta[[celltype_col]]))
-  if (anyNA(meta[, c(".rc_sample", ".rc_condition", ".rc_celltype")]) ||
-      any(!nzchar(meta$.rc_sample)) || any(!nzchar(meta$.rc_condition)) ||
-      any(!nzchar(meta$.rc_celltype))) {
-    stop("Sample, condition, and cell-type metadata must be complete.",
-         call. = FALSE)
+  condition <- trimws(as.character(object@meta.data[[condition_col]]))
+  if (anyNA(condition) || any(!nzchar(condition))) {
+    stop("Condition metadata must be complete and non-empty.", call. = FALSE)
   }
-  meta$.rc_balance_group <- paste(
-    meta$.rc_condition,
-    meta$.rc_celltype,
-    sep = "\037"
+  internal_sample_col <- .rc_condition_only_sample_col(object@meta.data)
+  object@meta.data[[internal_sample_col]] <- paste0(
+    condition,
+    "__condition_pool"
   )
-  group_ids <- sort(unique(meta$.rc_balance_group))
-
-  balance_one_group <- function(group_id) {
-    group_meta <- meta[meta$.rc_balance_group == group_id, , drop = FALSE]
-    sample_ids <- sort(unique(group_meta$.rc_sample))
-    counts <- table(factor(group_meta$.rc_sample, levels = sample_ids))
-    target <- if (isTRUE(sample_balance)) min(as.integer(counts)) else NA_integer_
-    retained <- lapply(sample_ids, function(sample_id) {
-      cells <- sort(group_meta$.rc_cell_id[group_meta$.rc_sample == sample_id])
-      if (!isTRUE(sample_balance) || length(cells) <= target) return(cells)
-      cells[sample.int(length(cells), size = target, replace = FALSE)]
-    })
-    names(retained) <- sample_ids
-    diagnostics <- do.call(rbind, lapply(sample_ids, function(sample_id) {
-      n_input <- as.integer(counts[[sample_id]])
-      n_retained <- length(retained[[sample_id]])
-      data.frame(
-        condition = group_meta$.rc_condition[[1L]],
-        cell_type = group_meta$.rc_celltype[[1L]],
-        biological_sample_id = sample_id,
-        n_input_cells = n_input,
-        target_cells_per_sample = if (isTRUE(sample_balance)) target else NA_integer_,
-        n_retained_cells = n_retained,
-        n_excluded_cells = n_input - n_retained,
-        sample_balance = sample_balance,
-        balance_strategy = if (isTRUE(sample_balance)) {
-          "equal_cells_per_sample_at_minimum_sample_count"
-        } else {
-          "disabled_cell_count_weighted"
-        },
-        stringsAsFactors = FALSE
-      )
-    }))
-    list(cells = unlist(retained, use.names = FALSE), diagnostics = diagnostics)
-  }
-
-  balanced <- .rc_with_preserved_seed(
-    sample_balance_seed,
-    lapply(group_ids, balance_one_group)
-  )
-  diagnostics <- do.call(rbind, lapply(balanced, `[[`, "diagnostics"))
-  keep_cells <- unlist(lapply(balanced, `[[`, "cells"), use.names = FALSE)
-  keep_cells <- keep_cells[!duplicated(keep_cells)]
-  if (!length(keep_cells)) {
-    stop("Sample balancing retained no cells.", call. = FALSE)
-  }
-  if (isTRUE(sample_balance) && any(diagnostics$n_retained_cells <= 0L)) {
-    stop("Sample balancing produced an empty biological-sample stratum.",
-         call. = FALSE)
-  }
-  balanced_object <- if (length(keep_cells) == ncol(object)) {
-    object
-  } else {
-    subset(object, cells = keep_cells)
-  }
-
-  list(
-    object = balanced_object,
-    diagnostics = diagnostics,
-    sample_balance = sample_balance,
-    sample_balance_seed = as.integer(sample_balance_seed),
-    sample_weighting = if (isTRUE(sample_balance)) {
-      "equal_cells_per_sample_within_condition_celltype"
-    } else {
-      "cell_count_weighted"
-    },
-    n_input_cells = ncol(object),
-    n_retained_cells = ncol(balanced_object),
-    n_excluded_cells = ncol(object) - ncol(balanced_object)
-  )
+  list(object = object, sample_col = internal_sample_col)
 }
 
 .rc_make_condition_pooled_metacells_unbalanced <-
@@ -126,7 +32,7 @@
 
 .rc_make_condition_pooled_metacells_v170 <- function(
     object, outdir,
-    sample_col = "sample_id",
+    sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
@@ -137,48 +43,108 @@
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
   }
-  sample_balance <- metacell_args$sample_balance %||% TRUE
-  sample_balance_seed <- metacell_args$sample_balance_seed %||% 12345L
-  metacell_args$sample_balance <- NULL
-  metacell_args$sample_balance_seed <- NULL
+  if (!is.null(sample_col) &&
+      (!is.character(sample_col) || length(sample_col) != 1L ||
+       is.na(sample_col) || !nzchar(sample_col))) {
+    stop("`sample_col` must be NULL or one metadata-column name.", call. = FALSE)
+  }
 
-  balanced <- .rc_balance_condition_celltype_cells(
-    object = object,
-    sample_col = sample_col,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    sample_balance = sample_balance,
-    sample_balance_seed = sample_balance_seed
+  ignored_balance_args <- intersect(
+    names(metacell_args),
+    c("sample_balance", "sample_balance_seed")
   )
-  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  .rc_write_tsv_gz(
-    balanced$diagnostics,
-    file.path(outdir, "sample_balance_diagnostics.tsv.gz")
+  if (length(ignored_balance_args)) {
+    warning(
+      paste0(
+        "Ignoring `", paste(ignored_balance_args, collapse = "`, `"),
+        "`: metacells are stratified only by condition and cell type; ",
+        "biological-sample labels do not alter cell selection, weighting, or grouping."
+      ),
+      call. = FALSE
+    )
+    metacell_args[ignored_balance_args] <- NULL
+  }
+
+  prepared <- .rc_prepare_condition_only_object(object, condition_col)
+  pooled <- withCallingHandlers(
+    .rc_make_condition_pooled_metacells_unbalanced(
+      object = prepared$object,
+      outdir = outdir,
+      sample_col = prepared$sample_col,
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
+      fragment_files = fragment_files,
+      metacell_args = metacell_args,
+      strict_biological_defaults = FALSE
+    ),
+    warning = function(warning) {
+      if (grepl(
+        "Condition-pooled analysis requires at least two biological samples",
+        conditionMessage(warning),
+        fixed = TRUE
+      )) {
+        invokeRestart("muffleWarning")
+      }
+    }
   )
 
-  pooled <- .rc_make_condition_pooled_metacells_unbalanced(
-    object = balanced$object,
-    outdir = outdir,
-    sample_col = sample_col,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    fragment_files = fragment_files,
-    metacell_args = metacell_args,
-    strict_biological_defaults = strict_biological_defaults
+  sample_summary_cols <- intersect(
+    c(
+      "n_biological_samples", "dominant_sample_fraction",
+      "effective_sample_n"
+    ),
+    colnames(pooled$metacell_meta)
   )
-  pooled$sample_balance <- balanced$sample_balance
-  pooled$sample_balance_seed <- balanced$sample_balance_seed
-  pooled$sample_weighting <- balanced$sample_weighting
-  pooled$sample_balance_diagnostics <- balanced$diagnostics
-  pooled$sample_balance_summary <- balanced[c(
-    "sample_balance", "sample_balance_seed", "sample_weighting",
-    "n_input_cells", "n_retained_cells", "n_excluded_cells"
-  )]
-  pooled$metacell_meta$sample_weighting <- balanced$sample_weighting
-  pooled$metacell_meta$sample_balance <- balanced$sample_balance
+  for (column in sample_summary_cols) {
+    pooled$metacell_meta[[column]] <- if (column == "n_biological_samples") {
+      NA_integer_
+    } else {
+      NA_real_
+    }
+  }
+  if ("samples_mixed_within_condition" %in% colnames(pooled$metacell_meta)) {
+    pooled$metacell_meta$samples_mixed_within_condition <- FALSE
+  }
+
+  pooled$metacell_meta$sample_weighting <-
+    "not_applicable_condition_only_stratification"
+  pooled$metacell_meta$sample_balance <- FALSE
+  pooled$metacell_meta$sample_col_role <-
+    "internal_condition_pool_id_not_biological_sample"
+  if (is.data.frame(pooled$sample_composition)) {
+    pooled$sample_composition$sample_col_role <-
+      "internal_condition_pool_id_not_biological_sample"
+  }
+  if (is.data.frame(pooled$sample_composition_summary)) {
+    pooled$sample_composition_summary$sample_provenance_available <- FALSE
+  }
+
+  pooled$input_sample_col <- sample_col
+  pooled$analysis_sample_col <- prepared$sample_col
+  pooled$sample_balance <- FALSE
+  pooled$sample_balance_seed <- NULL
+  pooled$sample_weighting <- "not_applicable_condition_only_stratification"
+  pooled$sample_balance_diagnostics <- data.frame()
+  pooled$sample_balance_summary <- list(
+    sample_balance = FALSE,
+    sample_balance_seed = NULL,
+    sample_weighting = pooled$sample_weighting,
+    n_input_cells = ncol(object),
+    n_retained_cells = ncol(object),
+    n_excluded_cells = 0L
+  )
+  pooled$pooling_scope <- "condition_x_celltype"
+  pooled$input_design$sample_col_role <-
+    "ignored_not_used_for_stratification_weighting_or_cell_selection"
+  pooled$input_design$metacell_grouping <- c(condition_col, celltype_col)
+  pooled$input_design$condition_only_stratification <- TRUE
   pooled$input_design$sample_balance <- pooled$sample_balance_summary
+  pooled$input_design$inference_policy <- paste(
+    "cells are stratified only by condition and cell type before metacell",
+    "construction; sample metadata are not used"
+  )
   pooled
 }
 
