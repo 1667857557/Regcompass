@@ -27,9 +27,11 @@ medium_scenarios <- rc_make_medium_scenarios(
   scenario = "normal_human_plasma",
   species = "human"
 )
+
+bp <- BiocParallel::SnowParam(workers = 8, type = "SOCK")
 ```
 
-The input Seurat object must contain RNA and ATAC assays and the metadata columns `sample_id`, `condition` and `cell_type`. Each biological sample must map to exactly one condition.
+The input Seurat object must contain RNA and ATAC assays and the metadata columns `sample_id`, `condition` and `cell_type`. Each biological sample must map to exactly one condition. The package warns when fewer than two biological samples are available in a condition because metacells are descriptive pseudo-observations rather than biological replicates.
 
 ## Mode A: one-shot execution
 
@@ -50,7 +52,7 @@ result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   model_mode = "meta_module_gem",
   metacell_args = list(
-    gamma = 150,
+    gamma = 20,
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
@@ -62,7 +64,7 @@ result <- rc_run_regcompass_one_shot(
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
-      peak_cor = 0.05,
+      peak_cor = 0,
       adjust_method = "fdr"
     )
   ),
@@ -74,7 +76,9 @@ result <- rc_run_regcompass_one_shot(
   layer2_args = list(
     target_direction = "both",
     solver = "highs"
-  )
+  ),
+  upstream_workers = 8,
+  layer2_workers = 8
 )
 ```
 
@@ -97,9 +101,10 @@ step1 <- rc_regcompass_step_metacells(
   atac_assay = "ATAC",
   fragment_files = FALSE,
   metacell_args = list(
-    gamma = 150,
+    gamma = 20,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10
+    min_metacell_size = 10,
+    BPPARAM = bp
   )
 )
 ```
@@ -112,6 +117,7 @@ head(step1$pooled$metacell_meta)
 head(step1$pooled$sample_composition)
 with(step1$pooled$metacell_meta, table(condition, cell_type))
 summary(step1$pooled$metacell_meta$effective_sample_n)
+step1$metacell_object@misc$regcompass_atac_normalization
 stopifnot(
   setequal(
     colnames(step1$metacell_object),
@@ -119,6 +125,8 @@ stopifnot(
   )
 )
 ```
+
+Peaks with zero total counts across the pooled metacell object are removed before the cell-type-shared TF-IDF calculation. Inspect `n_zero_count_peaks_excluded` and `n_retained_peaks` in the normalization metadata.
 
 Adjust `gamma`, `min_cells_per_stratum` or `min_metacell_size` here. Any change to Step 1 invalidates Steps 2–5.
 
@@ -141,7 +149,7 @@ step2 <- rc_regcompass_step_meta_modules(
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
-      peak_cor = 0.05,
+      peak_cor = 0,
       adjust_method = "fdr"
     ),
     padj_threshold = 0.05,
@@ -152,7 +160,9 @@ step2 <- rc_regcompass_step_meta_modules(
     local_fastcore_args = list(
       solver = "highs"
     )
-  )
+  ),
+  parallel = TRUE,
+  BPPARAM = bp
 )
 ```
 
@@ -160,6 +170,10 @@ Inspect before continuing:
 
 ```r
 with(step2$condition_modules$sample_status, table(status))
+step2$condition_modules$sample_status[, c(
+  "group_id", "n_atac_peaks_input", "n_zero_count_peaks_excluded",
+  "n_atac_peaks_used"
+)]
 head(step2$condition_modules$tf_peak_gene_significant)
 summary(step2$condition_modules$tf_peak_gene_significant$rsq)
 head(step2$condition_modules$core_gene_reaction)
@@ -168,7 +182,7 @@ length(unique(step2$global_modules$global_core_reactions$reaction_id))
 length(unique(step2$global_modules$global_reaction_membership$reaction_id))
 ```
 
-Every condition-by-cell-type Pando fit must have status `ok`. Check that retained edges have finite `rsq`, that complete-GPR core reactions exist, and that local FASTCORE support is not unexpectedly large.
+Every condition-by-cell-type Pando fit must have status `ok`. Peaks with zero counts within a Pando group are removed before motif and GRN inference even when they were nonzero in another condition. Check that retained edges have finite `rsq`, that complete-GPR core reactions exist, and that local FASTCORE support is not unexpectedly large.
 
 Adjust Pando thresholds, motif/region inputs or local FASTCORE settings here. Any change to Step 2 invalidates Steps 3–5 but does not require rebuilding metacells.
 
@@ -184,7 +198,9 @@ step3 <- rc_regcompass_step_layer1(
   outdir = "RegCompass_steps/03_layer1",
   regulatory_alpha = 1,
   tau = 0.20,
-  gene_half_saturation = 1
+  gene_half_saturation = 1,
+  parallel = TRUE,
+  BPPARAM = bp
 )
 ```
 
@@ -199,6 +215,7 @@ range(step3$gene_support_rna, na.rm = TRUE)
 range(step3$gene_regulatory_modifier, na.rm = TRUE)
 range(step3$gene_support_multiome, na.rm = TRUE)
 summary(as.numeric(step3$reaction_expression))
+with(step3$gpr_diagnostics, table(capacity_missing_flag))
 stopifnot(
   identical(
     colnames(step3$reaction_expression),
@@ -207,7 +224,7 @@ stopifnot(
 )
 ```
 
-Expected ranges are `[0,1]` for RNA and multiome gene support and `[-1,1]` for the regulatory modifier. Reaction expression is non-negative and is not a flux.
+Expected ranges are `[0,1]` for RNA and multiome gene support and `[-1,1]` for the regulatory modifier. Reaction expression is non-negative and is not a flux. Layer 1 parallelizes reaction-level GPR aggregation.
 
 Adjust `regulatory_alpha`, `tau` or `gene_half_saturation` here. Any change to Step 3 invalidates Steps 4–5 only.
 
@@ -229,7 +246,8 @@ step4 <- rc_regcompass_step_layer2(
     solver = "highs",
     time_limit = 60
   ),
-  parallel = TRUE
+  parallel = TRUE,
+  BPPARAM = bp
 )
 ```
 
@@ -242,10 +260,13 @@ mean(step4$feasible)
 with(step4$lp_diagnostics, table(step2_status, useNA = "ifany"))
 head(step4$model_cache_summary)
 head(step4$model_diagnostics)
+with(step4$penalty_components, table(missing_expression_flag))
 stopifnot(
   identical(colnames(step4$penalty), colnames(step3$reaction_expression))
 )
 ```
+
+For expression-linked reactions, non-finite reaction expression is zero-filled before penalty calculation. Unmeasured expression and explicit zero expression therefore receive the same strictest expression-linked cost of 1. Missingness remains separately recorded in `penalty_components$missing_expression_flag`.
 
 Review blocked targets, solver failures, medium mapping and the number of biological versus FASTCORE support reactions. Adjust `model_mode`, medium constraints, `omega`, target direction, solver or time limit here. Any change to Step 4 invalidates Step 5 only.
 
@@ -275,6 +296,17 @@ table(result$reaction_ranking$cell_type, result$reaction_ranking$condition)
 ```
 
 Checkpoint: `RegCompass_steps/final/regcompass_result.rds`.
+
+## Parallel controls
+
+Steps 2–4 accept both `parallel` and `BPPARAM`:
+
+- `parallel = FALSE` forces sequential execution;
+- `parallel = TRUE, BPPARAM = NULL` uses the default RegCompass backend;
+- `BPPARAM = FALSE` forces base `lapply()`;
+- a `BiocParallelParam` object selects an explicit backend.
+
+Logical `TRUE` is not a valid `BPPARAM` object. Use `BiocParallel::SnowParam()`, `BiocParallel::MulticoreParam()` or `FALSE`.
 
 ## Restarting from checkpoints
 
