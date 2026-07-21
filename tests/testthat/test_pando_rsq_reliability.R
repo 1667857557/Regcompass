@@ -21,7 +21,8 @@ test_that("zero regulatory reliability falls back to RNA support", {
     regulatory_modifier = modifier,
     alpha = 1
   )
-  expect_equal(as.matrix(integrated), rna, tolerance = 0)
+  expect_equal(as.numeric(integrated), as.numeric(rna), tolerance = 0)
+  expect_identical(dimnames(integrated), dimnames(rna))
   expect_match(
     attr(integrated, "integration_formula"),
     "C_multiome",
