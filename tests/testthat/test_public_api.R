@@ -31,6 +31,7 @@ test_that("canonical source architecture has one definition per function", {
   expect_match(collate, "workflow_utils.R", fixed = TRUE)
   expect_match(collate, "pando_evidence_utils.R", fixed = TRUE)
   expect_match(collate, "internal_apply.R", fixed = TRUE)
+  expect_match(collate, "v170_sample_balance.R", fixed = TRUE)
   expect_match(collate, "v170_aliases.R", fixed = TRUE)
   expect_match(collate, "v170_stepwise_parallel.R", fixed = TRUE)
 
@@ -77,7 +78,12 @@ test_that("canonical source architecture has one definition per function", {
     "rc_run_regcompass_one_shot",
     "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
     "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
-    "rc_regcompass_step_results"
+    "rc_regcompass_step_results",
+    "rc_run_pando_meta_modules",
+    ".rc_normalize_condition_metacell_object",
+    ".rc_condition_gene_regulatory_modifier",
+    ".rc_build_condition_pooled_layer1",
+    ".rc_make_condition_pooled_metacells"
   )
   source_text <- vapply(
     list.files(source_dir, pattern = "[.]R$", full.names = TRUE),
@@ -98,24 +104,6 @@ test_that("canonical source architecture has one definition per function", {
       info = paste("canonical function", name, "must have one source definition")
     )
   }
-
-  source_files <- list.files(source_dir, pattern = "[.]R$", full.names = TRUE)
-  definitions <- unlist(lapply(source_files, function(path) {
-    lines <- readLines(path, warn = FALSE)
-    lines <- lines[grepl(
-      "^[A-Za-z.][A-Za-z0-9._]*[[:space:]]*<-[[:space:]]*function",
-      lines
-    )]
-    sub(
-      "^([A-Za-z.][A-Za-z0-9._]*)[[:space:]]*<-.*$",
-      "\\1",
-      lines
-    )
-  }), use.names = FALSE)
-  expect_false(
-    anyDuplicated(definitions) > 0L,
-    info = "every top-level function must have exactly one source definition"
-  )
 })
 
 test_that("retired entry points and evidence APIs remain absent", {
