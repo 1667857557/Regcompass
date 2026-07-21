@@ -5,9 +5,11 @@ test_that("GRN-first defaults are encoded in canonical functions", {
   expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
 })
 
-test_that("metacell default gamma is canonical", {
+test_that("metacells are condition-only with gamma 75", {
   body_text <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
   expect_match(body_text, "gamma <- 75L", fixed = TRUE)
+  expect_match(body_text, 'pooling_scope <- "condition_only"', fixed = TRUE)
+  expect_match(body_text, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(body_text, "Sample balancing is not part", fixed = TRUE)
 })
 
