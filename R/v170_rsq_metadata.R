@@ -77,6 +77,17 @@
     "unmeasured reaction expression is zero-filled and receives the same strict penalty as explicit zero"
   result$params$fragment_registration_policy <-
     "ignore and clear registered Signac fragments when fragment_files = FALSE"
+  result$pooling_scope <- "condition_x_celltype"
+  result$params$metacell_grouping <- c(
+    result$metacells$input_design$metacell_grouping %||% character()
+  )
+  result$params$sample_col_role <-
+    "ignored_not_used_for_stratification_weighting_or_cell_selection"
+  result$params$sample_weighting <-
+    "not_applicable_condition_only_stratification"
+  result$params$samples_mixed_within_condition <- FALSE
+  result$params$biological_sample_minimum <-
+    "not applicable; sample metadata are not used by metacell construction"
   if (!is.null(result$metacells$sample_balance_summary)) {
     result$params$sample_balance <- result$metacells$sample_balance_summary
   }
@@ -87,7 +98,7 @@
 .rc_run_regcompass_v170 <- function(
     object, gem, outdir, pfm, genome,
     fragment_files = FALSE,
-    sample_col = "sample_id",
+    sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
@@ -105,17 +116,15 @@
   model_mode <- match.arg(model_mode)
   parallel_backend <- match.arg(parallel_backend)
   species <- match.arg(species)
+  input_sample_col <- sample_col
+  analysis_sample_col <- sample_col
   if (inherits(object, "Seurat")) {
     if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
       object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
     }
-    .rc_condition_pool_design_summary(
-      object@meta.data,
-      sample_col = sample_col,
-      condition_col = condition_col,
-      celltype_col = celltype_col,
-      strict_biological_defaults = FALSE
-    )
+    prepared <- .rc_prepare_condition_only_object(object, condition_col)
+    object <- prepared$object
+    analysis_sample_col <- prepared$sample_col
     warning(
       paste(
         "Metacell-level scores are descriptive pseudo-observations and are not",
@@ -127,7 +136,7 @@
   result <- .rc_run_regcompass_uncorrected_metadata(
     object = object, gem = gem, outdir = outdir, pfm = pfm, genome = genome,
     fragment_files = fragment_files,
-    sample_col = sample_col, condition_col = condition_col,
+    sample_col = analysis_sample_col, condition_col = condition_col,
     celltype_col = celltype_col, rna_assay = rna_assay,
     atac_assay = atac_assay, model_mode = model_mode,
     medium_scenarios = medium_scenarios,
@@ -136,6 +145,10 @@
     upstream_workers = upstream_workers, layer2_workers = layer2_workers,
     parallel_backend = parallel_backend, species = species
   )
+  result$metacells$input_sample_col <- input_sample_col
+  result$params$input_sample_col <- input_sample_col
+  result$params$analysis_sample_col <-
+    result$metacells$analysis_sample_col %||% analysis_sample_col
   result <- .rc_apply_corrected_result_metadata(result)
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   rc_export_microcompass(result$microcompass, outdir)
@@ -157,6 +170,8 @@ rc_run_regcompass <- .rc_run_regcompass_v170
     outdir = outdir,
     species = species
   )
+  result$params$input_sample_col <- metacells$params$input_sample_col %||% NULL
+  result$params$analysis_sample_col <- metacells$params$sample_col
   result <- .rc_apply_corrected_result_metadata(result)
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result

@@ -11,22 +11,20 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-RegCompassR 1.7.0 balances biological-sample cell contributions within each
-condition and cell type, then pools the retained cells for SuperCell2
-condition-level metacell construction. Original sample composition and balancing
-diagnostics are retained. Pando fits one condition-specific TF–peak–gene model
-per cell type. Directional COMPASS-like scoring can use either the shared union
-meta-module GEM or the shared full GEM.
+RegCompassR 1.7.0 stratifies cells only by condition and cell type before
+SuperCell2 condition-level metacell construction. Biological-sample labels do
+not alter cell selection, weighting, or grouping. `sample_col` is therefore
+optional and defaults to `NULL`. Pando fits one condition-specific
+TF–peak–gene model per cell type. Directional COMPASS-like scoring can use
+either the shared union meta-module GEM or the shared full GEM.
 
-One or more samples per condition and one or more conditions are accepted.
-Condition-pooled metacells are descriptive units, not independent biological
-replicates. A single-condition analysis returns a metabolic reaction ranking;
-multiple conditions additionally return pairwise descriptive priority contrasts.
+One or more conditions are accepted. Condition-pooled metacells are descriptive
+units, not independent biological replicates. A single-condition analysis
+returns a metabolic reaction ranking; multiple conditions additionally return
+pairwise descriptive priority contrasts.
 
-By default, every biological sample contributes the same number of cells within
-each condition-by-cell-type stratum, using the smallest sample cell count as the
-quota. The deterministic selection is controlled by `sample_balance_seed`.
-Balancing limits cell-count dominance but does not create biological replication.
+Legacy `sample_balance` and `sample_balance_seed` entries in `metacell_args` are
+ignored with a warning. No cells are downsampled according to sample identity.
 
 Pando coefficients are learned from RNA+ATAC, but the per-metacell regulatory
 state uses coefficient-weighted peak accessibility only. Metacell TF RNA is not
@@ -71,7 +69,7 @@ result <- rc_run_regcompass(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
   species = "human",
-  sample_col = "sample_id",
+  sample_col = NULL,
   condition_col = "condition",
   celltype_col = "cell_type",
   model_mode = "meta_module_gem",
@@ -79,9 +77,7 @@ result <- rc_run_regcompass(
   metacell_args = list(
     gamma = 20,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10,
-    sample_balance = TRUE,
-    sample_balance_seed = 12345
+    min_metacell_size = 10
   ),
   pando_args = list(
     min_metacells = 10,
@@ -115,8 +111,8 @@ and output ranking contract are used in both modes.
 
 The main outputs are:
 
-- sample membership in `result$metacells$sample_composition`;
-- sample-balancing diagnostics in `result$metacells$sample_balance_diagnostics`;
+- condition-only metacell membership in `result$metacells$membership`;
+- pooling provenance in `result$metacells$input_design`;
 - RNA, ATAC-derived regulatory state and `reaction_expression` in `result$layer1`;
 - biological membership, separate FASTCORE support and shared union membership in `result$grn_meta_modules`;
 - raw minimum penalties in `result$microcompass$penalty`;
@@ -148,16 +144,14 @@ result <- rc_run_regcompass_one_shot(
   species = "human",
   gem_version = "2.0.0",
   medium_scenario = "normal_human_plasma",
-  sample_col = "sample_id",
+  sample_col = NULL,
   condition_col = "condition",
   celltype_col = "cell_type",
   model_mode = "meta_module_gem",
   metacell_args = list(
     gamma = 20,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10,
-    sample_balance = TRUE,
-    sample_balance_seed = 12345
+    min_metacell_size = 10
   ),
   pando_args = list(
     min_metacells = 10,

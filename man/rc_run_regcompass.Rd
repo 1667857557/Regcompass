@@ -11,7 +11,7 @@ rc_run_regcompass(
   pfm,
   genome,
   fragment_files = FALSE,
-  sample_col = "sample_id",
+  sample_col = NULL,
   condition_col = "condition",
   celltype_col = "cell_type",
   rna_assay = "RNA",
@@ -41,7 +41,9 @@ rc_run_regcompass(
 
 \item{fragment_files}{Must be \code{FALSE} in the v1.7.0 canonical pooled workflow. Existing ATAC peak counts are aggregated by SuperCell2.}
 
-\item{sample_col, condition_col, celltype_col}{Single-cell metadata columns. Each biological sample must map to one condition. Samples are deliberately pooled within each condition and cell type before metacell construction. One or more samples per condition and one or more conditions are accepted.}
+\item{sample_col}{Optional metadata-column name retained only as provenance. It defaults to \code{NULL}; sample identity does not affect metacell cell selection, weighting, or grouping.}
+
+\item{condition_col, celltype_col}{Single-cell metadata columns that define the metacell strata.}
 
 \item{rna_assay, atac_assay}{Assay names.}
 
@@ -49,7 +51,7 @@ rc_run_regcompass(
 
 \item{medium_scenarios}{One shared medium table for all conditions.}
 
-\item{metacell_args}{Arguments passed to condition-pooled SuperCell2 construction.}
+\item{metacell_args}{Arguments passed to condition-pooled SuperCell2 construction. Legacy \code{sample_balance} and \code{sample_balance_seed} entries are ignored with a warning.}
 
 \item{layer1_args}{Canonical multiome parameters: \code{regulatory_alpha}, \code{gene_half_saturation}, \code{tau}, \code{local_fastcore}, and \code{local_fastcore_args}. There is no metabolite-neighbour or one-hop expansion argument.}
 
@@ -64,27 +66,31 @@ rc_run_regcompass(
 \item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
 }
 \value{
-A RegCompass result list containing pooled metacells and sample-composition
-information, condition-specific Pando meta-modules, multiome gene and reaction
-evidence, annotation-defined biological reaction membership, separately labelled
-local FASTCORE feasibility support, directional minimum penalties,
-\code{reaction_ranking}, and descriptive condition contrasts. The ranking retains
-raw median penalty and uses \code{penalty / (omega * vmax)} for cross-reaction
-priority, together with \code{vmax}, required target flux, normalized penalty and
-support score. With one condition, \code{reaction_ranking} is the primary output
-and \code{condition_contrast} is empty. With multiple conditions, rankings are
+A RegCompass result list containing condition-pooled metacells, condition-specific
+Pando meta-modules, multiome gene and reaction evidence, annotation-defined
+biological reaction membership, separately labelled local FASTCORE feasibility
+support, directional minimum penalties, \code{reaction_ranking}, and descriptive
+condition contrasts. The ranking retains raw median penalty and uses
+\code{penalty / (omega * vmax)} for cross-reaction priority, together with
+\code{vmax}, required target flux, normalized penalty and support score. With one
+condition, \code{reaction_ranking} is the primary output and
+\code{condition_contrast} is empty. With multiple conditions, rankings are
 produced for every condition and pairwise descriptive priority contrasts are
 returned within each cell type. In \code{"meta_module_gem"} mode the structural
 model is the shared union meta-module GEM; in \code{"full_gem"} mode it is the
 shared full GEM.
 }
 \description{
-Pools cells from all biological samples within each condition and cell type
-before SuperCell2. Pando coefficients are fitted from condition-by-cell-type
-RNA+ATAC data; at per-metacell scoring, their sign and magnitude weight
-peak-accessibility deviations only. Metacell TF RNA is not multiplied into the
-regulatory state. The accessibility-derived modifier is integrated into
-zero-preserving RNA gene support before GPR aggregation.
+Stratifies cells only by condition and cell type before SuperCell2. Internally,
+a condition-derived pool identifier is used wherever a downstream API requires
+a sample-like column. User sample metadata are not used for cell downsampling,
+weighting, or grouping.
+
+Pando coefficients are fitted from condition-by-cell-type RNA+ATAC data; at
+per-metacell scoring, their sign and magnitude weight peak-accessibility
+deviations only. Metacell TF RNA is not multiplied into the regulatory state.
+The accessibility-derived modifier is integrated into zero-preserving RNA gene
+support before GPR aggregation.
 
 A reaction is core only when at least one complete GPR isozyme group is present.
 Biological meta-module membership may expand through the core reaction's
@@ -94,11 +100,9 @@ away. Local FASTCORE is the sole mechanism for adding reactions required for
 flux feasibility, and those additions remain separate from biological
 membership.
 
-The workflow accepts descriptive designs with a single biological sample per
-condition. It also accepts a single condition, in which case it produces a
-within-condition reaction ranking instead of a between-condition contrast.
-No biological-sample-level significance test is inferred from pooled metacells.
-All scored units use one shared medium and the same directional two-step
+The workflow accepts one or more conditions. Condition-pooled metacells are
+descriptive pseudo-observations, not independent biological replicates. All
+scored units use one shared medium and the same directional two-step
 COMPASS-like linear program. Raw penalty compares the same target across
 conditions; flux-normalized penalty is used to rank different targets.
 }

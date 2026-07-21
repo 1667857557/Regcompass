@@ -10,7 +10,7 @@ test_that("v1.7.0 public workflow is condition pooled", {
   expect_match(base_text, ".rc_merge_stratum_meta_modules", fixed = TRUE)
   expect_match(base_text, ".rc_build_condition_pooled_layer1", fixed = TRUE)
   expect_match(base_text, "04_model_cache", fixed = TRUE)
-  expect_match(wrapper_text, ".rc_condition_pool_design_summary", fixed = TRUE)
+  expect_match(wrapper_text, ".rc_prepare_condition_only_object", fixed = TRUE)
   expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
   expect_identical(eval(formals(rc_run_regcompass)$fragment_files), FALSE)
 })
@@ -64,14 +64,22 @@ test_that("global union contains biological and local support reactions", {
   )
 })
 
-test_that("condition-pooled workflow balances samples before base pooling", {
+test_that("condition-pooled workflow ignores sample balancing", {
   wrapper_text <- paste(
     deparse(body(.rc_make_condition_pooled_metacells)),
     collapse = "\n"
   )
-  expect_match(wrapper_text, ".rc_balance_condition_celltype_cells", fixed = TRUE)
-  expect_match(wrapper_text, "sample_balance_diagnostics.tsv.gz", fixed = TRUE)
-  expect_match(wrapper_text, "sample_balance %||% TRUE", fixed = TRUE)
+  expect_match(wrapper_text, ".rc_prepare_condition_only_object", fixed = TRUE)
+  expect_match(
+    wrapper_text,
+    "biological-sample labels do not alter cell selection, weighting, or grouping",
+    fixed = TRUE
+  )
+  expect_match(
+    wrapper_text,
+    "not_applicable_condition_only_stratification",
+    fixed = TRUE
+  )
 })
 
 test_that("condition-pooled workflow rejects fragment pooling without maps", {
