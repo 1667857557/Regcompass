@@ -13,7 +13,7 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 RegCompassR first estimates condition-by-cell-type Pando GRNs from single cells. RNA is normalized once across all cells, while ATAC TF-IDF uses all conditions within each cell type as the shared reference. Pando then splits the normalized object by `condition_col × celltype_col`; the default peak-expression filter is `peak_cor = 0.01`.
 
-After GRN inference, SuperCell2 builds `condition_col × celltype_col` metacells with `gamma = 75` by default. These metacells are used for Layer 1 reaction expression and Layer 2 scoring. Sample balancing and sample-based downsampling are not implemented.
+After GRN inference, SuperCell2 builds metacells stratified only by `condition_col`, with `gamma = 75` by default. `celltype_col` is not used for metacell grouping. Each metacell is assigned the dominant cell type among its member cells, and the dominant fraction, number of represented cell types, and mixed-cell-type flag are retained. These labels select the matching condition-by-cell-type GRN during Layer 1. Sample balancing and sample-based downsampling are not implemented.
 
 ```{r}
 step1 <- rc_regcompass_step_grn(
