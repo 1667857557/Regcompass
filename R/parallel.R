@@ -78,12 +78,18 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
     return(lapply(X, FUN, ...))
   }
   if (!is.null(BPPARAM)) {
+    if (is.logical(BPPARAM)) {
+      stop(
+        "`BPPARAM` must be NULL, FALSE, or a BiocParallelParam object; logical TRUE is not valid.",
+        call. = FALSE
+      )
+    }
     if (!requireNamespace("BiocParallel", quietly = TRUE)) {
       stop("BiocParallel must be installed when `BPPARAM` is provided.", call. = FALSE)
     }
     if (!methods::is(BPPARAM, "BiocParallelParam")) {
       stop(
-        "`BPPARAM` must be NULL, FALSE, or a BiocParallelParam object; logical TRUE is not valid.",
+        "`BPPARAM` must be NULL, FALSE, or a BiocParallelParam object.",
         call. = FALSE
       )
     }
