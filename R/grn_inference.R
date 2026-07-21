@@ -20,6 +20,11 @@
     BPPARAM = NULL,
     on_group_error = c("record", "stop")) {
   on_group_error <- match.arg(on_group_error)
+  if (!is.list(pando_infer_args)) stop("`pando_infer_args` must be a list.", call. = FALSE)
+  pando_infer_args <- modifyList(
+    list(method = "glm", tf_cor = 0.1, peak_cor = 0.01, adjust_method = "fdr", parallel = FALSE),
+    pando_infer_args
+  )
   if (!inherits(object, "Seurat")) stop("`object` must inherit from Seurat.", call. = FALSE)
   if (!requireNamespace("Pando", quietly = TRUE)) stop("Install the pinned Pando fork before running GRN inference.", call. = FALSE)
   pando_install <- .rc_validate_pando_repository()
