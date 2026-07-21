@@ -9,38 +9,39 @@
 
 # Canonical correction: condition x cell-type Pando models reuse normalized
 # RNA and the cell-type-shared ATAC TF-IDF from Step 1. No group-specific
-# NormalizeData/RunTFIDF pass is performed here.
-rc_run_pando_meta_modules <- function(metacell_object,
-                                      gem,
-                                      outdir,
-                                      pfm,
-                                      genome,
-                                      sample_col = "sample_id",
-                                      condition_col = "condition",
-                                      celltype_col = "cell_type",
-                                      group_cols = NULL,
-                                      single_cell_genes = NULL,
-                                      rna_assay = "RNA",
-                                      atac_assay = "ATAC",
-                                      min_metacells = 20L,
-                                      pando_initiate_args = list(exclude_exons = TRUE),
-                                      pando_motif_args = list(),
-                                      pando_infer_args = list(method = "glm", tf_cor = 0.1, peak_cor = 0,
-                                                              adjust_method = "fdr", parallel = FALSE),
-                                      padj_threshold = 0.05,
-                                      min_abs_estimate = 0,
-                                      min_model_rsq = 0.1,
-                                      require_padj = TRUE,
-                                      top_k_neighbors = 5L,
-                                      min_shared_tfs = 1L,
-                                      min_tf_jaccard = 0,
-                                      max_targets_per_tf = 200L,
-                                      subsystem_table = NULL,
-                                      expansion_mode = c("ordered_once", "fixed_point"),
-                                      save_sample_metacell_objects = TRUE,
-                                      save_pando_objects = TRUE,
-                                      BPPARAM = NULL,
-                                      on_sample_error = c("record", "stop")) {
+# NormalizeData/RunTFIDF pass is performed here. Peaks with zero counts in the
+# current Pando group are excluded before motif and GRN inference.
+.rc_run_pando_meta_modules_v170 <- function(metacell_object,
+                                            gem,
+                                            outdir,
+                                            pfm,
+                                            genome,
+                                            sample_col = "sample_id",
+                                            condition_col = "condition",
+                                            celltype_col = "cell_type",
+                                            group_cols = NULL,
+                                            single_cell_genes = NULL,
+                                            rna_assay = "RNA",
+                                            atac_assay = "ATAC",
+                                            min_metacells = 20L,
+                                            pando_initiate_args = list(exclude_exons = TRUE),
+                                            pando_motif_args = list(),
+                                            pando_infer_args = list(method = "glm", tf_cor = 0.1, peak_cor = 0,
+                                                                    adjust_method = "fdr", parallel = FALSE),
+                                            padj_threshold = 0.05,
+                                            min_abs_estimate = 0,
+                                            min_model_rsq = 0.1,
+                                            require_padj = TRUE,
+                                            top_k_neighbors = 5L,
+                                            min_shared_tfs = 1L,
+                                            min_tf_jaccard = 0,
+                                            max_targets_per_tf = 200L,
+                                            subsystem_table = NULL,
+                                            expansion_mode = c("ordered_once", "fixed_point"),
+                                            save_sample_metacell_objects = TRUE,
+                                            save_pando_objects = TRUE,
+                                            BPPARAM = NULL,
+                                            on_sample_error = c("record", "stop")) {
   expansion_mode <- match.arg(expansion_mode)
   on_sample_error <- match.arg(on_sample_error)
   if (!inherits(metacell_object, "Seurat")) stop("`metacell_object` must inherit from Seurat.", call. = FALSE)
@@ -95,6 +96,8 @@ rc_run_pando_meta_modules <- function(metacell_object,
     sample <- as.character(vals[[sample_col]][[1L]])
     status <- data.frame(group_id = group_id, vals,
       n_metacells = length(cells), n_target_genes = length(target_genes),
+      n_atac_peaks_input = NA_integer_, n_zero_count_peaks_excluded = NA_integer_,
+      n_atac_peaks_used = NA_integer_,
       status = "pending", n_edges = 0L, n_significant_edges = 0L,
       error_class = NA_character_, error_message = NA_character_,
       stringsAsFactors = FALSE, check.names = FALSE)
@@ -105,6 +108,13 @@ rc_run_pando_meta_modules <- function(metacell_object,
     one <- tryCatch({
       obj <- subset(metacell_object, cells = cells)
       .rc_require_normalized_assay(obj, rna_assay, "RNA")
+      .rc_require_normalized_assay(obj, atac_assay, "ATAC")
+      filtered <- .rc_drop_zero_count_atac_features(
+        obj,
+        atac_assay = atac_assay,
+        context = paste0("Pando group ", group_id)
+      )
+      obj <- filtered$object
       .rc_require_normalized_assay(obj, atac_assay, "ATAC")
       group_file_id <- gsub("[^A-Za-z0-9_.-]+", "_", group_id)
       if (isTRUE(save_sample_metacell_objects)) saveRDS(obj, file.path(outdir, "sample_metacell_objects", paste0(group_file_id, ".rds")))
@@ -128,6 +138,7 @@ rc_run_pando_meta_modules <- function(metacell_object,
       }
       tab$all <- add_group_meta(tab$all)
       tab$significant <- add_group_meta(tab$significant)
+      tab$peak_diagnostics <- filtered$diagnostics
       if (isTRUE(save_pando_objects)) saveRDS(grn, file.path(outdir, "pando_objects", paste0(group_file_id, ".rds")))
       tab
     }, error = function(e) e)
@@ -136,6 +147,9 @@ rc_run_pando_meta_modules <- function(metacell_object,
       if (identical(on_sample_error, "stop")) stop(one)
       return(list(status = status, all = data.frame(), significant = data.frame()))
     }
+    status$n_atac_peaks_input <- one$peak_diagnostics$n_input_peaks
+    status$n_zero_count_peaks_excluded <- one$peak_diagnostics$n_zero_count_peaks_excluded
+    status$n_atac_peaks_used <- one$peak_diagnostics$n_retained_peaks
     status$status <- "ok"; status$n_edges <- nrow(one$all); status$n_significant_edges <- nrow(one$significant)
     list(status = status, all = one$all, significant = one$significant)
   }
@@ -190,7 +204,8 @@ rc_run_pando_meta_modules <- function(metacell_object,
     crossref_maps = expanded$crossref_maps,
     normalization_policy = list(
       rna = "Step 1 normalized RNA data reused without group renormalization",
-      atac = "cell-type-shared TF-IDF across conditions reused without group renormalization"))
+      atac = "cell-type-shared TF-IDF reused without group renormalization",
+      zero_count_peaks = "excluded globally before TF-IDF and again within each Pando group"))
   saveRDS(out, file.path(outdir, "pando_meta_modules.rds"))
   out
 }
