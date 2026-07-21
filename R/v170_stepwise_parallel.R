@@ -4,7 +4,7 @@
 .rc_regcompass_step_metacells_base <- rc_regcompass_step_metacells
 .rc_regcompass_step_metacells_v170 <- function(
     object, outdir,
-    sample_col = "sample_id",
+    sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
@@ -14,16 +14,7 @@
   if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
     object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
   }
-  # Emit the biological-replication warning before the legacy implementation
-  # performs the same design check with its historical warning handler.
-  .rc_condition_pool_design_summary(
-    object@meta.data,
-    sample_col = sample_col,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    strict_biological_defaults = FALSE
-  )
-  .rc_regcompass_step_metacells_base(
+  answer <- .rc_regcompass_step_metacells_base(
     object = object,
     outdir = outdir,
     sample_col = sample_col,
@@ -34,6 +25,14 @@
     fragment_files = fragment_files,
     metacell_args = metacell_args
   )
+  answer$params$input_sample_col <- sample_col
+  answer$params$sample_col <- answer$pooled$analysis_sample_col %||%
+    answer$params$sample_col
+  answer$params$sample_col_role <-
+    "internal_condition_pool_id_not_biological_sample"
+  answer$params$metacell_grouping <- c(condition_col, celltype_col)
+  saveRDS(answer, file.path(outdir, "step_metacells.rds"))
+  answer
 }
 rc_regcompass_step_metacells <- .rc_regcompass_step_metacells_v170
 
