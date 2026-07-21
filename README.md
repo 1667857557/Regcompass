@@ -3,7 +3,7 @@
 RegCompassR 1.7.0 provides one condition-pooled RNA+ATAC workflow with two execution modes: a one-shot convenience runner and inspectable, restartable public stages.
 
 ```text
-condition × cell type cells pooled across biological samples
+condition × cell type cells balanced to equal cell counts per biological sample
 → SuperCell2 condition-level metacells with sample composition retained
 → zero-count ATAC peaks excluded
 → one Pando GRN per condition × cell type
@@ -62,7 +62,9 @@ result <- rc_run_regcompass_one_shot(
   metacell_args = list(
     gamma = 20,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10
+    min_metacell_size = 10,
+    sample_balance = TRUE,
+    sample_balance_seed = 12345
   ),
   pando_args = list(
     min_metacells = 10,
@@ -115,6 +117,8 @@ step1 <- rc_regcompass_step_metacells(
     gamma = 20,
     min_cells_per_stratum = 500,
     min_metacell_size = 10,
+    sample_balance = TRUE,
+    sample_balance_seed = 12345,
     BPPARAM = bp
   )
 )
@@ -190,6 +194,8 @@ The detailed tutorial lists inspection commands, expected ranges, failure checks
 
 The canonical path requires `fragment_files = FALSE` and aggregates the existing ATAC peak-count assay. Peaks with zero total counts are removed before shared TF-IDF normalization, and peaks with zero counts within a Pando condition-by-cell-type group are removed again before motif and GRN inference. The numbers retained and excluded are recorded in the ATAC normalization metadata and Pando status table.
 
+By default, `sample_balance = TRUE` deterministically equalizes the number of cells contributed by each biological sample within every condition-by-cell-type stratum before pooled SuperCell2 construction. The quota is the smallest sample cell count in that stratum. Per-sample input, retained and excluded counts are written to `sample_balance_diagnostics.tsv.gz` and stored in `result$metacells$sample_balance_diagnostics`. Set `sample_balance = FALSE` only when a cell-count-weighted analysis is intended. Balancing does not create biological replication.
+
 Each biological sample must map to exactly one condition. One condition is sufficient for reaction ranking; two or more conditions additionally produce descriptive pairwise priority comparisons. Cells are pooled by condition and cell type before SuperCell2, while original sample membership remains available in `result$metacells$sample_composition`.
 
 Condition-pooled metacells are descriptive pseudo-observations, not independent biological replicates. The package warns when a condition has fewer than two biological samples and does not perform biological-sample-level significance testing on metacells.
@@ -259,7 +265,7 @@ implemented as `penalty / (omega * vmax)`. This is the minimum evidence cost per
 
 Primary outputs are:
 
-- `result$metacells`: pooled metacells, membership and sample composition;
+- `result$metacells`: pooled metacells, membership, sample balance diagnostics and sample composition;
 - `result$layer1`: RNA support, ATAC-derived modifier, multiome gene support and reaction expression;
 - `result$grn_meta_modules`: biological membership, local FASTCORE support and shared union membership;
 - `result$microcompass`: raw minimum penalties, feasibility, `vmax` and directional target diagnostics;
