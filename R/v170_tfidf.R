@@ -11,6 +11,34 @@
   )
 }
 
+.rc_drop_zero_count_atac_features <- function(
+    object, atac_assay = "ATAC", context = "ATAC normalization") {
+  if (!inherits(object, "Seurat")) {
+    stop("`object` must inherit from Seurat.", call. = FALSE)
+  }
+  counts <- .rc_get_assay_counts(object, atac_assay)
+  peak_totals <- Matrix::rowSums(counts)
+  keep <- is.finite(peak_totals) & peak_totals > 0
+  if (!any(keep)) {
+    stop(context, " has no peaks with a positive total count.", call. = FALSE)
+  }
+  diagnostics <- list(
+    n_input_peaks = nrow(counts),
+    n_zero_count_peaks_excluded = sum(!keep),
+    n_retained_peaks = sum(keep),
+    zero_count_peak_policy = "exclude_before_tfidf_and_pando"
+  )
+  if (any(!keep)) {
+    assay_object <- object[[atac_assay]]
+    assay_object <- subset(
+      assay_object,
+      features = rownames(counts)[keep]
+    )
+    object[[atac_assay]] <- assay_object
+  }
+  list(object = object, diagnostics = diagnostics)
+}
+
 .rc_apply_celltype_shared_tfidf <- function(
     object, celltype_col, atac_assay = "ATAC",
     method = 1, scale.factor = 1e4) {
@@ -20,6 +48,12 @@
   if (!celltype_col %in% colnames(object@meta.data)) {
     stop("Missing cell-type metadata column: ", celltype_col, call. = FALSE)
   }
+  filtered <- .rc_drop_zero_count_atac_features(
+    object,
+    atac_assay = atac_assay,
+    context = "Cell-type-shared TF-IDF"
+  )
+  object <- filtered$object
   counts <- .rc_get_assay_counts(object, atac_assay)
   units <- colnames(counts)
   meta_index <- match(units, rownames(object@meta.data))
@@ -56,14 +90,17 @@
     new.data = tfidf
   )
   object[[atac_assay]] <- assay_object
-  object@misc$regcompass_atac_normalization <- list(
-    method = "Signac_TFIDF",
-    scope = "cell_type_across_conditions",
-    celltype_col = celltype_col,
-    idf_reference = "all condition-pooled metacells of the same cell type",
-    n_metacells_by_celltype = vapply(groups, length, integer(1)),
-    tfidf_method = method,
-    scale_factor = scale.factor
+  object@misc$regcompass_atac_normalization <- c(
+    list(
+      method = "Signac_TFIDF",
+      scope = "cell_type_across_conditions",
+      celltype_col = celltype_col,
+      idf_reference = "all condition-pooled metacells of the same cell type",
+      n_metacells_by_celltype = vapply(groups, length, integer(1)),
+      tfidf_method = method,
+      scale_factor = scale.factor
+    ),
+    filtered$diagnostics
   )
   object
 }
