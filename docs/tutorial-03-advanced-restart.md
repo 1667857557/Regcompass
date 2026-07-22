@@ -26,6 +26,11 @@ For a one-shot run, the corresponding stage directories are:
 06_results
 ```
 
+The one-shot workflow writes the final result both to
+`RegCompass_result/regcompass_result.rds` and to
+`RegCompass_result/06_results/regcompass_result.rds`. The two files contain the
+same one-shot execution metadata, so either location is safe for a restart.
+
 Always load the stage wrapper, such as `step_grn.rds` or `step_metacells.rds`, when a downstream function requires the class and workflow parameters. The compact files such as `single_cell_grn.rds` are useful for inspection but are not substitutes for the stage wrapper.
 
 ## 2. Minimal rerun matrix
