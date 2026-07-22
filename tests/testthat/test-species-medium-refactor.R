@@ -155,9 +155,9 @@ test_that("medium application never expands blocked GEM directions", {
   ))
 })
 
-test_that("canonical workflow owns a persistent model cache", {
+test_that("canonical Layer 2 owns a persistent model cache", {
   workflow_text <- paste(
-    deparse(body(.rc_run_regcompass_uncorrected_metadata)),
+    deparse(body(rc_regcompass_step_layer2)),
     collapse = "\n"
   )
   micro_text <- paste(
@@ -165,8 +165,15 @@ test_that("canonical workflow owns a persistent model cache", {
     collapse = "\n"
   )
 
-  expect_match(workflow_text, 'file.path\\(outdir, "04_model_cache", model_mode\\)')
-  expect_match(workflow_text, "model_params\\$cache_dir <- cache_dir")
+  expect_match(
+    workflow_text,
+    'file.path\(outdir, "model_cache", model_mode\)'
+  )
+  expect_match(
+    workflow_text,
+    "layer2_args\\$model_params\\$cache_dir",
+    fixed = FALSE
+  )
   expect_match(micro_text, "model_file_manifest.rds")
   expect_match(micro_text, "tools::md5sum")
 })
