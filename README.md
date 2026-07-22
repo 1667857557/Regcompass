@@ -17,7 +17,8 @@ The canonical defaults are `peak_cor = 0.01` for Pando and `gamma = 75` for Supe
 ## Installation
 
 ```r
-install.packages(c("remotes", "highs"))
+install.packages(c("remotes", "highs", "BiocManager"))
+BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
 remotes::install_version("SeuratObject", "4.1.4", upgrade = "never")
 remotes::install_version("Seurat", "4.4.0", upgrade = "never")
 remotes::install_version("Signac", "1.11.0", upgrade = "never")
@@ -42,9 +43,9 @@ RegCompass validates the required Pando API. GitHub remote metadata are not requ
 
 | Level | Intended use | Tutorial |
 |---|---|---|
-| 1 | minimum input validation and a canonical one-shot run | [Minimal one-shot run](docs/tutorial-01-quick-start.md) |
-| 2 | stage-by-stage execution with mandatory audit gates | [Stepwise run with audit gates](docs/tutorial-02-stepwise-audit.md) |
-| 3 | restart, alternative media, solver/model sensitivity, and diagnostics | [Advanced restart and diagnostics](docs/tutorial-03-advanced-restart.md) |
+| 1 | minimum input validation and a canonical Linux one-shot run | [Minimal one-shot run](docs/tutorial-01-quick-start.md) |
+| 2 | stage-by-stage execution with mandatory audit gates and explicit `MulticoreParam` objects | [Stepwise run with audit gates](docs/tutorial-02-stepwise-audit.md) |
+| 3 | restart, Linux worker allocation, alternative media, solver/model sensitivity, and diagnostics | [Advanced restart and diagnostics](docs/tutorial-03-advanced-restart.md) |
 
 The [tutorial index](docs/run-modes-and-stepwise-workflow.md) summarizes the three levels and their shared input contract.
 
@@ -84,7 +85,7 @@ medium_scenarios <- rc_make_medium_scenarios(
 
 RNA and ATAC normalized matrices are aligned by cell name; different column order is accepted. Peaks absent from one cell type are retained as exact zeros but are excluded from that cell type's TF-IDF calculation.
 
-## One-shot run
+## Linux multicore one-shot run
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -104,7 +105,8 @@ result <- rc_run_regcompass_one_shot(
       method = "glm",
       tf_cor = 0.1,
       peak_cor = 0.01,
-      adjust_method = "fdr"
+      adjust_method = "fdr",
+      parallel = FALSE
     )
   ),
   metacell_args = list(
@@ -112,10 +114,26 @@ result <- rc_run_regcompass_one_shot(
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
-  layer1_args = list(local_fastcore = TRUE),
-  layer2_args = list(target_direction = "both", solver = "highs")
+  layer1_args = list(
+    local_fastcore = TRUE,
+    local_fastcore_args = list(
+      solver = "highs",
+      parallel = TRUE
+    )
+  ),
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  ),
+  upstream_workers = 16L,
+  layer2_workers = 12L,
+  parallel_backend = "multicore"
 )
 ```
+
+On Linux, `upstream_workers` controls Stage 1 Pando groups, Stage 3 local FASTCORE completion by meta-module, and Stage 4 GPR capacity. `layer2_workers` controls shared-model × metacell LP tasks. Keep Pando's inner `parallel = FALSE` to avoid nested workers. The model-cache construction portions remain serial.
+
+Before launching R on a threaded BLAS installation, set `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, and `MKL_NUM_THREADS=1`.
 
 The default `highs` backend is a required dependency. If another solver is selected, RegCompass checks its R package before constructing the medium-constrained model and reports a solver-installation error separately from biological infeasibility.
 

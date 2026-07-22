@@ -20,6 +20,8 @@ Runs single-cell RNA normalization, cell-type-shared ATAC TF-IDF, condition-by-c
 \details{
 The default Pando peak filter is \code{peak_cor = 0.01}. The default metacell resolution is \code{gamma = 75}. Normalized RNA and ATAC matrices are aligned by cell ID; different order is accepted, while different cell sets are rejected. Cell-type-local all-zero peaks are omitted from that cell type's TF-IDF calculation and restored as exact zeros.
 
+On Linux, \code{parallel_backend = "multicore"} uses \code{BiocParallel::MulticoreParam}. \code{upstream_workers} controls condition-by-cell-type Pando groups, local FASTCORE completion of individual meta-modules, and Layer 1 GPR/reaction-capacity calculations. \code{layer2_workers} controls shared-model-by-metacell directional LP tasks. Keep Pando's inner \code{parallel = FALSE} when outer group-level parallelism is enabled. Structural model-cache construction and metacell construction are not parallelized by these worker arguments.
+
 Pando may be installed from GitHub or a local source package. RegCompass validates the required Pando API and does not require GitHub remote metadata for local installations. The default HiGHS LP backend is a required dependency, and the selected solver is checked before medium-constrained model construction.
 
 Sample balancing and sample-based weighting are not implemented. Cell type is assigned to each metacell afterwards from its dominant member-cell label and is not a metacell stratification variable.

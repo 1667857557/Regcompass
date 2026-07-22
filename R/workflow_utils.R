@@ -126,10 +126,22 @@
     fastcore_epsilon = 1e-4,
     max_support_reactions = 2000,
     strict = TRUE,
-    save_models = TRUE
+    save_models = TRUE,
+    parallel = TRUE,
+    workers = NULL,
+    backend = "auto",
+    BPPARAM = NULL
   )
   defaults[names(local_fastcore_args)] <- NULL
   args <- c(defaults, local_fastcore_args)
+  if (!is.logical(args$parallel) || length(args$parallel) != 1L ||
+      is.na(args$parallel)) {
+    stop("`local_fastcore_args$parallel` must be TRUE or FALSE.", call. = FALSE)
+  }
+  args$backend <- match.arg(
+    as.character(args$backend),
+    c("auto", "serial", "snow", "multicore")
+  )
   if (!isTRUE(args$enabled)) {
     return(list(
       completed_reaction_membership = meta_modules$reaction_membership,
@@ -169,15 +181,35 @@
   module_keys <- unique(
     membership[, c("sample_id", "module_id"), drop = FALSE]
   )
-  completed_rows <- vector("list", nrow(module_keys))
-  summaries <- vector("list", nrow(module_keys))
-  diagnostics <- vector("list", nrow(module_keys))
-  iterations <- vector("list", nrow(module_keys))
   model_dir <- file.path(outdir, "local_fastcore_models")
   if (isTRUE(args$save_models)) {
     dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
   }
-  for (index in seq_len(nrow(module_keys))) {
+
+  BPPARAM <- if (!isTRUE(args$parallel) || identical(args$backend, "serial")) {
+    FALSE
+  } else if (!is.null(args$BPPARAM)) {
+    args$BPPARAM
+  } else {
+    .rc_phase_bpparam(workers = args$workers, backend = args$backend)
+  }
+  owns_param <- isTRUE(args$parallel) && is.null(args$BPPARAM) &&
+    !identical(BPPARAM, FALSE) && !is.null(BPPARAM)
+  if (owns_param) on.exit(.rc_release_bpparam(BPPARAM), add = TRUE)
+  worker_count <- if (identical(BPPARAM, FALSE) || is.null(BPPARAM)) {
+    1L
+  } else if (requireNamespace("BiocParallel", quietly = TRUE)) {
+    as.integer(BiocParallel::bpnworkers(BPPARAM))
+  } else {
+    1L
+  }
+  backend_class <- if (identical(BPPARAM, FALSE) || is.null(BPPARAM)) {
+    "serial"
+  } else {
+    class(BPPARAM)[[1L]]
+  }
+
+  run_one <- function(index) {
     sample_id <- as.character(module_keys$sample_id[[index]])
     module_id <- as.character(module_keys$module_id[[index]])
     in_module <- as.character(membership$sample_id) == sample_id &
@@ -208,7 +240,7 @@
       max_support_reactions = args$max_support_reactions,
       strict = args$strict
     )
-    completed_rows[[index]] <- .rc_local_fastcore_rows(
+    completed <- .rc_local_fastcore_rows(
       model,
       membership_i,
       unique(as.character(core_i$reaction_id))
@@ -216,7 +248,7 @@
     support_ids <- model$reaction_meta$reaction_id[
       model$reaction_meta$fastcore_support %in% TRUE
     ]
-    summaries[[index]] <- data.frame(
+    summary <- data.frame(
       sample_id = sample_id,
       module_id = module_id,
       n_biological_reactions = nrow(membership_i),
@@ -225,30 +257,53 @@
       n_completed_reactions = ncol(model$S),
       target_status = model$target_status,
       parent_scope = "unconstrained_shared_parent_with_fastcc",
+      parallel_task = "local_fastcore_by_meta_module",
+      parallel_backend = backend_class,
+      parallel_workers = worker_count,
       stringsAsFactors = FALSE
     )
+    diagnostic <- data.frame()
     if (nrow(model$closure_diagnostics)) {
-      diagnostic_i <- model$closure_diagnostics
-      diagnostic_i$sample_id <- sample_id
-      diagnostic_i$module_id <- module_id
-      diagnostics[[index]] <- diagnostic_i
+      diagnostic <- model$closure_diagnostics
+      diagnostic$sample_id <- sample_id
+      diagnostic$module_id <- module_id
     }
+    iteration <- data.frame()
     if (nrow(model$completion_iterations)) {
-      iteration_i <- model$completion_iterations
-      iteration_i$sample_id <- sample_id
-      iteration_i$module_id <- module_id
-      iterations[[index]] <- iteration_i
+      iteration <- model$completion_iterations
+      iteration$sample_id <- sample_id
+      iteration$module_id <- module_id
     }
     if (isTRUE(args$save_models)) {
-      safe_id <- gsub("[^A-Za-z0-9_.-]+", "_", module_id)
-      saveRDS(model, file.path(model_dir, paste0(safe_id, ".rds")))
+      safe_sample <- gsub("[^A-Za-z0-9_.-]+", "_", sample_id)
+      safe_module <- gsub("[^A-Za-z0-9_.-]+", "_", module_id)
+      saveRDS(
+        model,
+        file.path(model_dir, paste0(safe_sample, "__", safe_module, ".rds"))
+      )
     }
+    list(
+      completed = completed,
+      summary = summary,
+      diagnostic = diagnostic,
+      iteration = iteration
+    )
   }
+
+  results <- rc_parallel_lapply(
+    seq_len(nrow(module_keys)),
+    run_one,
+    BPPARAM = BPPARAM
+  )
   list(
-    completed_reaction_membership = .rc_bind_frames_fill(completed_rows),
-    summary = .rc_bind_frames_fill(summaries),
-    diagnostics = .rc_bind_frames_fill(diagnostics),
-    completion_iterations = .rc_bind_frames_fill(iterations),
+    completed_reaction_membership = .rc_bind_frames_fill(lapply(
+      results, `[[`, "completed"
+    )),
+    summary = .rc_bind_frames_fill(lapply(results, `[[`, "summary")),
+    diagnostics = .rc_bind_frames_fill(lapply(results, `[[`, "diagnostic")),
+    completion_iterations = .rc_bind_frames_fill(lapply(
+      results, `[[`, "iteration"
+    )),
     parent_scope = "unconstrained_shared_parent_with_fastcc"
   )
 }

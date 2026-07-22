@@ -2,31 +2,47 @@
 
 Use this level when every stage must be inspected before the next stage starts. It follows the same analysis design as Level 1 but exposes the intermediate objects and files.
 
-Complete the installation and input checks in [Level 1](tutorial-01-quick-start.md) first. Use [Level 3](tutorial-03-advanced-restart.md) for restart, alternative media, solver selection, and resource controls.
+Complete the installation and input checks in [Level 1](tutorial-01-quick-start.md) first. Use [Level 3](tutorial-03-advanced-restart.md) for restart, alternative media, solver selection, and detailed resource controls.
 
 ## Stage map
 
-| Stage | Primary input | Primary output | Required gate |
-|---|---|---|---|
-| 1. GRN | single-cell Seurat object, GEM, motifs, genome | condition × cell-type Pando GRNs | every required group is `ok` and has significant edges |
-| 2. Metacells | original Seurat object | condition-only metacells with post hoc cell type | no ambiguous dominant-cell-type ties |
-| 3. Meta-modules | Stages 1-2, GEM | core reactions and expanded modules | GRN/metacell coverage is complete; core reactions exist |
-| 4. Layer 1 | metacells, modules, GEM | reaction-expression matrix | columns align exactly to metacell metadata |
-| 5. Layer 2 | Layer 1, global module, medium | directional LP scores | targets were evaluated and feasible targets exist |
-| 6. Results | Stages 1-5 | rankings and condition contrasts | outputs retain condition-specific and global modules |
+| Stage | Primary input | Primary output | Parallel unit on Linux | Required gate |
+|---|---|---|---|---|
+| 1. GRN | single-cell Seurat object, GEM, motifs, genome | condition × cell-type Pando GRNs | one condition × cell-type group per worker | every required group is `ok` and has significant edges |
+| 2. Metacells | original Seurat object | condition-only metacells with post hoc cell type | not controlled by the workflow `BPPARAM` | no ambiguous dominant-cell-type ties |
+| 3. Meta-modules | Stages 1-2, GEM | core reactions and expanded modules | one local FASTCORE meta-module completion per worker | GRN/metacell coverage is complete; core reactions exist |
+| 4. Layer 1 | metacells, modules, GEM | reaction-expression matrix | GPR/reaction-capacity calculations | columns align exactly to metacell metadata |
+| 5. Layer 2 | Layer 1, global module, medium | directional LP scores | one shared-model × metacell task per worker | targets were evaluated and feasible targets exist |
+| 6. Results | Stages 1-5 | rankings and condition contrasts | serial assembly | outputs retain condition-specific and global modules |
 
-## Common setup
+## Common Linux multicore setup
+
+This tutorial assumes a normal Linux host, not Windows. Use explicit `MulticoreParam` objects so worker allocation is visible and reproducible.
 
 ```r
 library(RegCompassR)
 library(Pando)
 library(Signac)
+library(BiocParallel)
 library(BSgenome.Hsapiens.UCSC.hg38)
 
 data(motifs, package = "Pando")
 
 condition_col <- "dataset"
 celltype_col <- "epithelial_or_stem"
+
+upstream_workers <- 16L
+layer2_workers <- 12L
+
+upstream_bp <- BiocParallel::MulticoreParam(
+  workers = upstream_workers,
+  progressbar = TRUE
+)
+
+layer2_bp <- BiocParallel::MulticoreParam(
+  workers = layer2_workers,
+  progressbar = TRUE
+)
 
 gem <- rc_prepare_gem(species = "human", version = "2.0.0")
 medium_scenarios <- rc_make_medium_scenarios(
@@ -39,6 +55,14 @@ rc_validate_gem(gem)
 
 The same paired-cell Seurat object `A` is passed independently to Stages 1 and 2. Do not pass the internally normalized Stage 1 object into Stage 2.
 
+Set numerical-library thread counts to one before starting R when the server uses OpenBLAS or MKL. This prevents every forked worker from starting additional BLAS threads:
+
+```bash
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+```
+
 ## Stage 1: condition × cell-type single-cell GRNs
 
 ### Input
@@ -49,7 +73,7 @@ The same paired-cell Seurat object `A` is passed independently to Stages 1 and 2
 - genome matching ATAC peak coordinates;
 - complete condition and cell-type metadata.
 
-### Run
+### Run with group-level multicore parallelism
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -66,13 +90,18 @@ step1 <- rc_regcompass_step_grn(
       method = "glm",
       tf_cor = 0.1,
       peak_cor = 0.01,
-      adjust_method = "fdr"
+      adjust_method = "fdr",
+      parallel = FALSE
     )
-  )
+  ),
+  parallel = TRUE,
+  BPPARAM = upstream_bp
 )
 ```
 
-RNA is normalized across all cells. ATAC TF-IDF uses all conditions within each cell type as the shared reference. Pando is then fitted independently for every condition × cell-type subset.
+RNA is normalized across all cells. ATAC TF-IDF uses all conditions within each cell type as the shared reference. RegCompass distributes the independent condition × cell-type subsets across the outer workers.
+
+Keep `pando_infer_args$parallel = FALSE`. Activating both the outer RegCompass workers and Pando's internal workers creates nested parallelism and usually oversubscribes the Linux host.
 
 ### Gate before Stage 2 or 3
 
@@ -124,7 +153,7 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-Each metacell receives a dominant member-cell type after construction. Purity, mixed-cell-type status, and the full composition are retained. An exact dominant-cell-type tie stops the workflow.
+Stage 2 does not use the workflow `BPPARAM` shown above. Do not insert `BPPARAM = TRUE` into `metacell_args`. Each metacell receives a dominant member-cell type after construction. Purity, mixed-cell-type status, and the full composition are retained. An exact dominant-cell-type tie stops the workflow.
 
 ### Gate before Stage 3
 
@@ -158,7 +187,9 @@ summary(meta2$dominant_celltype_fraction)
 
 Stage 1, Stage 2, and the same GEM used for Stage 1.
 
-### Run
+### Run local FASTCORE completion in parallel
+
+The projection, core-reaction mapping, and database expansion are deterministic setup operations. The expensive local FASTCORE completion is distributed by meta-module. The worker configuration is placed inside `local_fastcore_args` because that is the parallel substage.
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -173,7 +204,11 @@ step3 <- rc_regcompass_step_meta_modules(
     local_fastcore = TRUE,
     local_fastcore_args = list(
       solver = "highs",
-      strict = TRUE
+      strict = TRUE,
+      time_limit = 300,
+      parallel = TRUE,
+      workers = upstream_workers,
+      backend = "multicore"
     )
   )
 )
@@ -186,7 +221,9 @@ The stage:
 3. maps complete-GPR core reactions;
 4. adds reactions from core-reaction subsystems;
 5. adds reactions sharing KEGG, Reactome, or identical master-Rhea identifiers;
-6. adds only the FASTCORE support reactions needed for local feasibility.
+6. completes separate local meta-modules with FASTCORE in parallel.
+
+The parent GEM is prepared once before the worker loop. Each worker completes a different `sample_id × module_id`, so concurrent workers do not alter one another's biological module definition.
 
 ### Gate before Stage 4
 
@@ -194,19 +231,24 @@ The stage:
 coverage3 <- step3$group_coverage
 core3 <- step3$condition_modules$core_gene_reaction
 membership3 <- step3$condition_modules$reaction_membership
+fastcore3 <- step3$condition_modules$local_fastcore_summary
 
 stopifnot(
   all(coverage3$coverage_complete),
   nrow(core3) > 0,
   nrow(membership3) > 0,
   all(core3$reaction_id %in% colnames(gem$S)),
-  all(membership3$reaction_id %in% colnames(gem$S))
+  all(membership3$reaction_id %in% colnames(gem$S)),
+  all(fastcore3$parallel_task == "local_fastcore_by_meta_module"),
+  all(fastcore3$parallel_workers == upstream_workers)
 )
 
 coverage3
 head(core3)
 head(membership3)
-step3$condition_modules$local_fastcore_summary
+unique(fastcore3[, c(
+  "parallel_task", "parallel_backend", "parallel_workers"
+)])
 ```
 
 ### Files
@@ -216,11 +258,11 @@ step3$condition_modules$local_fastcore_summary
 - `meta_module_reactions.tsv.gz`;
 - `condition_meta_modules.rds`;
 - `global_meta_modules.rds`;
-- `local_fastcore/` diagnostics and optional models.
+- `local_fastcore/` diagnostics and optional per-module models.
 
 ## Stage 4: RNA+ATAC reaction expression
 
-### Run
+### Run with GPR/reaction parallelism
 
 ```r
 step4 <- rc_regcompass_step_layer1(
@@ -229,7 +271,9 @@ step4 <- rc_regcompass_step_layer1(
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
   regulatory_alpha = 1,
-  tau = 0.20
+  tau = 0.20,
+  parallel = TRUE,
+  BPPARAM = upstream_bp
 )
 ```
 
@@ -248,13 +292,14 @@ stopifnot(
 
 dim(step4$reaction_expression)
 head(step4$gpr_diagnostics)
+step4$capacity_params[c("parallel", "bpparam_class")]
 ```
 
 `step_layer1.rds` contains RNA support, the ATAC regulatory modifier, integrated gene support, GPR diagnostics, and reaction expression.
 
 ## Stage 5: directional COMPASS-like scoring
 
-### Run
+### Run LP tasks with a separate worker pool
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -268,9 +313,15 @@ step5 <- rc_regcompass_step_layer2(
     target_direction = "both",
     solver = "highs",
     time_limit = 60
-  )
+  ),
+  parallel = TRUE,
+  BPPARAM = layer2_bp
 )
 ```
+
+Layer 2 first builds and caches each structural GEM. It then distributes the independent `shared model × metacell` LP tasks. Model-cache construction itself remains serial so workers do not race while writing the same cache file.
+
+Use a smaller `layer2_workers` value than the CPU count when each GEM is large. Parallel LP tasks can become memory-bound before they become CPU-bound.
 
 The selected solver is checked before medium-constrained model construction. A missing solver package is reported separately from true biological infeasibility.
 
@@ -280,7 +331,8 @@ The selected solver is checked before medium-constrained model construction. A m
 stopifnot(
   any(step5$evaluated),
   nrow(step5$lp_diagnostics) > 0,
-  nrow(step5$model_cache_summary) > 0
+  nrow(step5$model_cache_summary) > 0,
+  identical(step5$params$parallel_task, "shared_model_by_metacell")
 )
 
 table(step5$evaluated)

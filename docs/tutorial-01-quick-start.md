@@ -7,7 +7,8 @@ For stage-by-stage inspection, continue with [Level 2](tutorial-02-stepwise-audi
 ## 1. Install the required packages
 
 ```r
-install.packages(c("remotes", "highs"))
+install.packages(c("remotes", "highs", "BiocManager"))
+BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
 remotes::install_version("SeuratObject", "4.1.4", upgrade = "never")
 remotes::install_version("Seurat", "4.4.0", upgrade = "never")
 remotes::install_version("Signac", "1.11.0", upgrade = "never")
@@ -75,9 +76,16 @@ medium_scenarios <- rc_make_medium_scenarios(
 rc_validate_gem(gem)
 ```
 
-## 4. Run the canonical workflow
+## 4. Run on a Linux multicore system
+
+The following example assumes a Linux host with enough memory for forked workers. `upstream_workers` controls condition × cell-type Pando groups, local FASTCORE completion for individual meta-modules, and Layer 1 GPR-capacity calculations. `layer2_workers` controls the directional LP tasks in Layer 2.
+
+Use fewer Layer 2 workers when each GEM is large because every concurrent solver task needs its own working memory.
 
 ```r
+upstream_workers <- 16L
+layer2_workers <- 12L
+
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
@@ -95,7 +103,8 @@ result <- rc_run_regcompass_one_shot(
       method = "glm",
       tf_cor = 0.1,
       peak_cor = 0.01,
-      adjust_method = "fdr"
+      adjust_method = "fdr",
+      parallel = FALSE
     )
   ),
   metacell_args = list(
@@ -103,25 +112,41 @@ result <- rc_run_regcompass_one_shot(
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
-  layer1_args = list(local_fastcore = TRUE),
+  layer1_args = list(
+    local_fastcore = TRUE,
+    local_fastcore_args = list(
+      solver = "highs",
+      time_limit = 300,
+      parallel = TRUE
+    )
+  ),
   layer2_args = list(
     target_direction = "both",
-    solver = "highs"
-  )
+    solver = "highs",
+    time_limit = 60
+  ),
+  upstream_workers = upstream_workers,
+  layer2_workers = layer2_workers,
+  parallel_backend = "multicore"
 )
 ```
+
+Keep `pando_infer_args$parallel = FALSE`. RegCompass already distributes the independent condition × cell-type Pando groups across the outer BiocParallel workers; enabling Pando's inner parallelism would create nested workers and CPU oversubscription.
 
 The analysis order is fixed:
 
 ```text
 single-cell RNA normalization
 → cell-type-shared ATAC TF-IDF across conditions
-→ Pando per condition × cell type
+→ Pando per condition × cell type [parallel by group]
 → condition-only metacells
 → GRN-derived core reactions and meta-modules
-→ RNA+ATAC reaction expression
-→ directional COMPASS-like scoring
+→ local FASTCORE completion [parallel by meta-module]
+→ RNA+ATAC reaction expression [parallel by GPR/reaction]
+→ directional COMPASS-like scoring [parallel by shared model × metacell]
 ```
+
+`parallel_backend = "multicore"` explicitly selects `BiocParallel::MulticoreParam` on Linux. Use `"snow"` instead when forked processes are prohibited, such as some containers or managed cluster environments.
 
 ## 5. Confirm that the run completed
 
@@ -137,6 +162,18 @@ stopifnot(
 
 head(result$reaction_ranking)
 head(result$condition_contrast)
+```
+
+Confirm the Stage 3 worker policy:
+
+```r
+fastcore_summary <- readRDS(
+  "RegCompass_result/03_meta_modules/condition_meta_modules.rds"
+)$local_fastcore_summary
+
+unique(fastcore_summary[, c(
+  "parallel_task", "parallel_backend", "parallel_workers"
+)])
 ```
 
 Do not interpret the final ranking before confirming that every condition × cell-type Pando group completed and that Layer 2 contains feasible targets. Level 2 shows the required checks at each boundary.
