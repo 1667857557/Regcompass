@@ -12,5 +12,5 @@ rc_run_regcompass_one_shot(object, outdir, pfm, genome,
 Prepares a supported human or mouse GEM when needed and delegates to \code{rc_run_regcompass()}.
 }
 \details{
-The delegated workflow fits condition-by-cell-type Pando models on single cells before constructing condition-only metacells. Defaults are \code{peak_cor = 0.01} and \code{gamma = 75}.
+The delegated workflow fits condition-by-cell-type Pando models on single cells before constructing condition-only metacells. Defaults are \code{peak_cor = 0.01} and \code{gamma = 75}. Pando may be installed from GitHub or a local source package without GitHub remote metadata. The default HiGHS solver is installed as a required dependency and is checked before medium-constrained model construction.
 }
