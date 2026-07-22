@@ -1,6 +1,6 @@
 # RegCompassR
 
-RegCompassR 1.8.2 runs the following RNA+ATAC workflow:
+RegCompassR 1.8.1 runs the following RNA+ATAC workflow:
 
 ```text
 single-cell RNA normalization
