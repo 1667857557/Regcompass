@@ -92,6 +92,7 @@
     sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
+    label_col = celltype_col,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     fragment_files = FALSE,
@@ -102,7 +103,12 @@
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
   }
-  required <- c(condition_col, celltype_col)
+  if (is.null(label_col)) label_col <- celltype_col
+  if (!is.character(label_col) || length(label_col) != 1L ||
+      is.na(label_col) || !nzchar(trimws(label_col))) {
+    stop("`label_col` must name one metadata column.", call. = FALSE)
+  }
+  required <- unique(c(condition_col, celltype_col, label_col))
   missing <- setdiff(required, colnames(object@meta.data))
   if (length(missing)) {
     stop("Missing metadata columns: ", paste(missing, collapse = ", "),
@@ -114,7 +120,8 @@
     logical(1)
   )
   if (any(invalid)) {
-    stop("Condition and cell-type metadata must be complete.", call. = FALSE)
+    stop("Condition, cell-type, and SuperCell label metadata must be complete.",
+         call. = FALSE)
   }
   if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
     stop(

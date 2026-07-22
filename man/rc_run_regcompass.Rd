@@ -6,6 +6,7 @@
 rc_run_regcompass(object, gem, outdir, pfm, genome,
   fragment_files = FALSE, sample_col = NULL,
   condition_col = "condition", celltype_col = "cell_type",
+  metacell_label_col = celltype_col,
   rna_assay = "RNA", atac_assay = "ATAC",
   model_mode = c("meta_module_gem", "full_gem"),
   medium_scenarios = NULL, metacell_args = list(), layer1_args = list(),

@@ -15,8 +15,8 @@ rc_regcompass_step_grn(object, gem, outdir, pfm, genome,
 
 rc_regcompass_step_metacells(object, outdir, sample_col = NULL,
   condition_col = "condition", celltype_col = "cell_type",
-  rna_assay = "RNA", atac_assay = "ATAC", fragment_files = FALSE,
-  metacell_args = list())
+  label_col = celltype_col, rna_assay = "RNA", atac_assay = "ATAC",
+  fragment_files = FALSE, metacell_args = list())
 
 rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
   layer1_args = list())
@@ -41,6 +41,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{condition_col}{Metadata column defining condition-specific Pando groups and the only metacell stratification variable.}
 \item{celltype_col}{Metadata column used with condition for Pando grouping. It is not used to stratify metacells; metacells receive a post hoc dominant member-cell label.}
+\item{label_col}{Complete metadata annotation passed to SuperCell2 before aggregation. Defaults to \code{celltype_col} to reduce cell-type mixing without making cell type a hard stratum.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Arguments for single-cell Pando inference. The default Pando model uses \code{peak_cor = 0.01}. Pando may be installed from GitHub or a local source archive; RegCompass validates the required API rather than requiring GitHub remote metadata. Keep Pando's inner \code{parallel = FALSE} when Stage 1 uses an outer BiocParallel backend.}
 \item{parallel}{Whether to run the supported computational loop in parallel.}

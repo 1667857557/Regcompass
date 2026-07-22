@@ -97,6 +97,7 @@ result <- rc_run_regcompass_one_shot(
   medium_scenarios = medium_scenarios,
   condition_col = condition_col,
   celltype_col = celltype_col,
+  metacell_label_col = celltype_col,
   pando_args = list(
     min_cells = 100,
     pando_infer_args = list(

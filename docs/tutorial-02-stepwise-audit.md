@@ -30,6 +30,7 @@ data(motifs, package = "Pando")
 
 condition_col <- "dataset"
 celltype_col <- "epithelial_or_stem"
+metacell_label_col <- celltype_col
 
 upstream_workers <- 16L
 layer2_workers <- 12L
@@ -147,6 +148,7 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "RegCompass_steps/02_metacells",
   condition_col = condition_col,
   celltype_col = celltype_col,
+  label_col = metacell_label_col,
   fragment_files = FALSE,
   metacell_args = list(
     gamma = 75,

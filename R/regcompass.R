@@ -1,4 +1,7 @@
 #' Run the canonical GRN-first RegCompass workflow
+#'
+#' @param metacell_label_col Complete metadata annotation supplied to
+#'   SuperCell2 before aggregation. Defaults to `celltype_col`.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, pfm, genome,
@@ -6,6 +9,7 @@ rc_run_regcompass <- function(
     sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
+    metacell_label_col = celltype_col,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     model_mode = c("meta_module_gem", "full_gem"),
@@ -59,7 +63,8 @@ rc_run_regcompass <- function(
   step2 <- rc_regcompass_step_metacells(
     object = object, outdir = file.path(outdir, "02_condition_metacells"),
     sample_col = sample_col, condition_col = condition_col,
-    celltype_col = celltype_col, rna_assay = rna_assay,
+    celltype_col = celltype_col, label_col = metacell_label_col,
+    rna_assay = rna_assay,
     atac_assay = atac_assay, fragment_files = fragment_files,
     metacell_args = metacell_args
   )

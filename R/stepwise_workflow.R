@@ -168,6 +168,7 @@ rc_regcompass_step_metacells <- function(
     sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
+    label_col = celltype_col,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     fragment_files = FALSE,
@@ -179,6 +180,7 @@ rc_regcompass_step_metacells <- function(
   pooled <- .rc_make_condition_pooled_metacells(
     object = object, outdir = outdir, sample_col = sample_col,
     condition_col = condition_col, celltype_col = celltype_col,
+    label_col = label_col,
     rna_assay = rna_assay, atac_assay = atac_assay,
     fragment_files = fragment_files, metacell_args = metacell_args
   )
@@ -216,6 +218,7 @@ rc_regcompass_step_metacells <- function(
       sample_col = pooled$analysis_sample_col,
       condition_col = condition_col,
       celltype_col = celltype_col,
+      label_col = label_col,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       fragment_files = fragment_files,
