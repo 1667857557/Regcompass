@@ -71,22 +71,37 @@
 }
 
 .rc_validate_pando_repository <- function(
-    description = NULL, installed_version = NULL) {
+    description = NULL, installed_version = NULL,
+    validate_api = is.null(description)) {
   expected_username <- "1667857557"
   expected_repo <- "Pando_regcompass"
-  required_exports <- c("initiate_grn", "find_motifs", "infer_grn", "gof")
-  missing_exports <- required_exports[!vapply(
-    required_exports,
-    function(name) exists(name, envir = asNamespace("Pando"), inherits = FALSE),
-    logical(1)
-  )]
-  if (length(missing_exports)) {
-    stop(
-      "Installed Pando is incompatible with RegCompassR. Missing API: ",
-      paste(missing_exports, collapse = ", "),
-      ". Install 1667857557/Pando_regcompass from GitHub or a local source tarball.",
-      call. = FALSE
-    )
+  if (!is.logical(validate_api) || length(validate_api) != 1L ||
+      is.na(validate_api)) {
+    stop("`validate_api` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (isTRUE(validate_api)) {
+    if (!requireNamespace("Pando", quietly = TRUE)) {
+      stop(
+        "Package 'Pando' is not installed. Install 1667857557/Pando_regcompass ",
+        "from GitHub or a local source tarball.",
+        call. = FALSE
+      )
+    }
+    required_exports <- c("initiate_grn", "find_motifs", "infer_grn", "gof")
+    namespace <- asNamespace("Pando")
+    missing_exports <- required_exports[!vapply(
+      required_exports,
+      function(name) exists(name, envir = namespace, inherits = FALSE),
+      logical(1)
+    )]
+    if (length(missing_exports)) {
+      stop(
+        "Installed Pando is incompatible with RegCompassR. Missing API: ",
+        paste(missing_exports, collapse = ", "),
+        ". Install 1667857557/Pando_regcompass from GitHub or a local source tarball.",
+        call. = FALSE
+      )
+    }
   }
   if (is.null(installed_version)) {
     installed_version <- as.character(utils::packageVersion("Pando"))
@@ -132,6 +147,7 @@
     }
   }
 
+  api_verified <- isTRUE(validate_api)
   list(
     version = installed_version,
     remote_username = remote_username,
@@ -139,9 +155,13 @@
     remote_ref = remote_ref,
     remote_sha = remote_sha,
     repository_verified = !remote_metadata_missing,
-    api_verified = TRUE,
+    api_verified = api_verified,
     installation_source = if (remote_metadata_missing) {
-      "local_or_offline_source_api_verified"
+      if (api_verified) {
+        "local_or_offline_source_api_verified"
+      } else {
+        "local_or_offline_source_metadata_only"
+      }
     } else {
       "github_remote_verified"
     }
