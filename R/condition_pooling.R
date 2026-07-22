@@ -92,6 +92,7 @@
     sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
+    label_col = celltype_col,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     fragment_files = FALSE,
@@ -102,7 +103,12 @@
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
   }
-  required <- c(condition_col, celltype_col)
+  if (is.null(label_col)) label_col <- celltype_col
+  if (!is.character(label_col) || length(label_col) != 1L ||
+      is.na(label_col) || !nzchar(trimws(label_col))) {
+    stop("`label_col` must name one metadata column.", call. = FALSE)
+  }
+  required <- unique(c(condition_col, celltype_col, label_col))
   missing <- setdiff(required, colnames(object@meta.data))
   if (length(missing)) {
     stop("Missing metadata columns: ", paste(missing, collapse = ", "),
@@ -114,7 +120,8 @@
     logical(1)
   )
   if (any(invalid)) {
-    stop("Condition and cell-type metadata must be complete.", call. = FALSE)
+    stop("Condition, cell-type, and SuperCell label metadata must be complete.",
+         call. = FALSE)
   }
   if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
     stop(
@@ -143,6 +150,7 @@
   object@meta.data[[internal_celltype_col]] <- "all_celltypes"
   reserved <- intersect(names(metacell_args), c(
     "object", "outdir", "sample_col", "condition_col", "celltype_col",
+    "label_col",
     "rna_assay", "atac_assay", "fragment_files", "save_metacell_object",
     "save_counts", "save_fragments", "require_fragment_aggregation",
     "fragment_aggregation_backend", "on_stratum_error"
@@ -159,6 +167,7 @@
     sample_col = internal_sample_col,
     condition_col = condition_col,
     celltype_col = internal_celltype_col,
+    label_col = label_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     fragment_files = FALSE,
@@ -187,7 +196,7 @@
   meta$pooling_scope <- "condition_only"
   meta$sample_weighting <- "none"
   meta$sample_col_role <- "internal_condition_pool_id"
-  meta$celltype_role <- "posthoc_dominant_membership_label"
+  meta$celltype_role <- "label_guided_posthoc_dominant_membership"
   pooled$metacell_meta <- meta
   pooled$input_sample_col <- sample_col
   pooled$analysis_sample_col <- internal_sample_col
@@ -199,12 +208,17 @@
   pooled$input_design <- list(
     metacell_grouping = condition_col,
     condition_only_stratification = TRUE,
-    celltype_assignment = "dominant membership after condition-only SuperCell2",
+    supercell_label_col = label_col,
+    celltype_assignment = paste0(
+      "SuperCell2 label-guided construction using `", label_col,
+      "`, followed by dominant membership assignment"
+    ),
     ambiguous_celltype_policy = "error_on_tied_dominant_membership",
     gamma = metacell_args$gamma,
     inference_policy = paste(
-      "cells are stratified only by condition; sample and cell-type metadata",
-      "are not used for selection, weighting or metacell grouping"
+      "cells are stratified only by condition; the supplied label is passed",
+      "to SuperCell2 before aggregation to discourage label mixing; sample",
+      "metadata are not used for selection, weighting or metacell grouping"
     )
   )
   pooled

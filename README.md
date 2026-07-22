@@ -6,7 +6,7 @@ RegCompassR 1.8.1 runs the following RNA+ATAC workflow:
 single-cell RNA normalization
 → ATAC TF-IDF shared across conditions within each cell type
 → Pando GRN for each condition × cell type
-→ condition-only SuperCell2 metacells
+→ label-guided SuperCell2 metacells within condition
 → GRN-derived core reactions and meta-modules
 → RNA+ATAC reaction expression
 → directional COMPASS-like scoring
@@ -99,6 +99,7 @@ result <- rc_run_regcompass_one_shot(
   medium_scenarios = medium_scenarios,
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
+  metacell_label_col = "epithelial_or_stem",
   pando_args = list(
     min_cells = 100,
     pando_infer_args = list(
@@ -130,6 +131,12 @@ result <- rc_run_regcompass_one_shot(
   parallel_backend = "multicore"
 )
 ```
+
+`metacell_label_col` is supplied to SuperCell2 before aggregation. It defaults
+to `celltype_col`; spelling it out in the analysis script records which existing
+single-cell annotation was used to reduce annotated cell-type mixing. Condition
+remains the only hard metacell stratum, and member-cell composition and purity
+must still be checked in the Stage 2 outputs.
 
 On Linux, `upstream_workers` controls Stage 1 Pando groups, Stage 3 local FASTCORE completion by meta-module, and Stage 4 GPR capacity. `layer2_workers` controls shared-model × metacell LP tasks. Keep Pando's inner `parallel = FALSE` to avoid nested workers. The model-cache construction portions remain serial.
 

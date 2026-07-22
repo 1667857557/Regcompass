@@ -11,7 +11,7 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-RegCompassR first fits Pando GRNs on single cells and then constructs condition-only metacells. RNA is normalized once across all cells. ATAC TF-IDF is calculated within each cell type using all conditions as the shared reference. Pando is fitted separately for each `condition_col × celltype_col` group with `peak_cor = 0.01` by default. SuperCell2 then uses condition as its only varying stratum, with `gamma = 75` by default.
+RegCompassR first fits Pando GRNs on single cells and then constructs condition-only metacells. RNA is normalized once across all cells. ATAC TF-IDF is calculated within each cell type using all conditions as the shared reference. Pando is fitted separately for each `condition_col × celltype_col` group with `peak_cor = 0.01` by default. SuperCell2 then uses condition as its only varying stratum, with `gamma = 75` by default, while the existing cell-type annotation is passed as its construction label to reduce cell-type mixing.
 
 ## Tutorial levels
 
@@ -113,7 +113,7 @@ stopifnot(
 
 Stage 1 parallelizes independent condition × cell-type groups. Pando's inner `parallel` setting remains `FALSE` to avoid nested worker pools. The stage writes `single_cell_grn.rds`, `step_grn.rds`, Pando group status, all/significant edge tables, and optional fitted Pando objects.
 
-## Stage 2: condition-only metacells
+## Stage 2: label-guided metacells within condition
 
 ```{r}
 step2 <- rc_regcompass_step_metacells(
@@ -121,6 +121,7 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "steps/02_metacells",
   condition_col = condition_col,
   celltype_col = celltype_col,
+  label_col = celltype_col,
   fragment_files = FALSE,
   metacell_args = list(
     gamma = 75,
@@ -138,7 +139,11 @@ stopifnot(
 )
 ```
 
-Cell type is assigned after metacell construction from member-cell composition. Exact dominant-cell-type ties are rejected. Stage 2 is not controlled by the workflow `BPPARAM`.
+The existing cell type is supplied before aggregation through `label_col`, so
+SuperCell2 can avoid indiscriminate mixing of annotated types. Cell type is also
+audited after construction from member-cell composition. Exact
+dominant-cell-type ties are rejected. Stage 2 is not controlled by the workflow
+`BPPARAM`.
 
 ## Stage 3: parallel local FASTCORE meta-modules
 

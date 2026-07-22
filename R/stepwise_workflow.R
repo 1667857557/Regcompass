@@ -157,15 +157,20 @@ rc_regcompass_step_grn <- function(
 
 #' Build condition-only SuperCell2 metacells
 #'
-#' SuperCell2 is stratified only by condition. Cell type is not a grouping
-#' variable; each resulting metacell receives a dominant member-cell type label
-#' and accompanying purity diagnostics for downstream GRN mapping.
+#' SuperCell2 is stratified only by condition. The existing cell-type annotation
+#' is passed as its label by default so construction is label-aware without
+#' making cell type a hard stratum. Each resulting metacell also receives a
+#' dominant member-cell type label and purity diagnostics for downstream GRN
+#' mapping.
+#' @param label_col Complete single-cell annotation supplied to SuperCell2 before
+#'   aggregation. Defaults to `celltype_col`.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
     sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
+    label_col = celltype_col,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     fragment_files = FALSE,
@@ -177,6 +182,7 @@ rc_regcompass_step_metacells <- function(
   pooled <- .rc_make_condition_pooled_metacells(
     object = object, outdir = outdir, sample_col = sample_col,
     condition_col = condition_col, celltype_col = celltype_col,
+    label_col = label_col,
     rna_assay = rna_assay, atac_assay = atac_assay,
     fragment_files = fragment_files, metacell_args = metacell_args
   )
@@ -214,6 +220,7 @@ rc_regcompass_step_metacells <- function(
       sample_col = pooled$analysis_sample_col,
       condition_col = condition_col,
       celltype_col = celltype_col,
+      label_col = label_col,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       fragment_files = fragment_files,
@@ -464,7 +471,8 @@ rc_regcompass_step_results <- function(
       pando_grouping = c(params$condition_col, params$celltype_col),
       pando_peak_cor = grn$grn_result$normalization_policy$pando_peak_cor,
       metacell_grouping = params$condition_col,
-      metacell_celltype_assignment = "posthoc_dominant_membership_label",
+      metacell_celltype_assignment =
+        "supercell_label_guided_then_dominant_membership_audit",
       metacell_gamma = params$metacell_args$gamma,
       sample_weighting = "none",
       meta_module_expansion =
