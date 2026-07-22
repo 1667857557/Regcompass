@@ -44,15 +44,30 @@
     ord <- order(-z$n_cells, as.character(z[[celltype_col]]))
     z <- z[ord, , drop = FALSE]
     total <- sum(z$n_cells)
+    top_count <- max(z$n_cells)
+    tied <- sum(z$n_cells == top_count) > 1L
     data.frame(
       metacell_id = id,
-      dominant_celltype = as.character(z[[celltype_col]][[1L]]),
-      dominant_celltype_fraction = z$n_cells[[1L]] / total,
+      dominant_celltype = if (tied) NA_character_ else
+        as.character(z[[celltype_col]][[1L]]),
+      dominant_celltype_fraction = top_count / total,
       n_celltypes = nrow(z),
       mixed_celltype_metacell = nrow(z) > 1L,
+      dominant_celltype_tied = tied,
       stringsAsFactors = FALSE
     )
   }))
+  tied_ids <- as.character(summary$metacell_id[
+    summary$dominant_celltype_tied %in% TRUE
+  ])
+  if (length(tied_ids)) {
+    stop(
+      "Condition-only SuperCell2 produced metacells with tied dominant cell types: ",
+      paste(utils::head(tied_ids, 10L), collapse = ", "),
+      ". A condition-by-cell-type GRN cannot be assigned unambiguously.",
+      call. = FALSE
+    )
+  }
   meta <- pooled$metacell_meta
   index <- match(as.character(meta$metacell_id), summary$metacell_id)
   if (anyNA(index)) {
@@ -64,6 +79,7 @@
     summary$dominant_celltype_fraction[index]
   meta$n_celltypes <- summary$n_celltypes[index]
   meta$mixed_celltype_metacell <- summary$mixed_celltype_metacell[index]
+  meta$dominant_celltype_tied <- summary$dominant_celltype_tied[index]
   pooled$membership <- membership
   pooled$metacell_meta <- meta
   pooled$celltype_composition <- composition
@@ -184,6 +200,7 @@
     metacell_grouping = condition_col,
     condition_only_stratification = TRUE,
     celltype_assignment = "dominant membership after condition-only SuperCell2",
+    ambiguous_celltype_policy = "error_on_tied_dominant_membership",
     gamma = metacell_args$gamma,
     inference_policy = paste(
       "cells are stratified only by condition; sample and cell-type metadata",
