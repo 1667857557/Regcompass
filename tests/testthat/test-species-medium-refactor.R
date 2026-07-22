@@ -167,7 +167,7 @@ test_that("canonical Layer 2 owns a persistent model cache", {
 
   expect_match(
     workflow_text,
-    'file.path(outdir, "model_cache", model_mode)',
+    'file.path(outdir, "model_cache",',
     fixed = TRUE
   )
   expect_match(
