@@ -139,9 +139,9 @@ stopifnot(
 )
 ```
 
-The existing cell type is supplied before aggregation through `label_col`, so
-SuperCell2 can avoid indiscriminate mixing of annotated types. Cell type is also
-audited after construction from member-cell composition. Exact
+The existing `celltype_col` annotation is automatically supplied before
+aggregation, so SuperCell2 can avoid indiscriminate mixing of annotated types
+without a separate label parameter. Cell type is also audited after construction from member-cell composition. Exact
 dominant-cell-type ties are rejected. Stage 2 is not controlled by the workflow
 `BPPARAM`.
 

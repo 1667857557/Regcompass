@@ -78,7 +78,7 @@ test_that("three tutorial levels exist and have distinct Linux parallel scopes",
   expect_match(level1, "upstream_workers = upstream_workers", fixed = TRUE)
   expect_match(level1, "layer2_workers = layer2_workers", fixed = TRUE)
   expect_match(level1, "parallel_backend = \"multicore\"", fixed = TRUE)
-  expect_match(level1, "metacell_label_col = celltype_col", fixed = TRUE)
+  expect_match(level1, "automatically passed to SuperCell2", fixed = TRUE)
   expect_match(level1, "Confirm that the run completed", fixed = TRUE)
 
   expect_match(level2, "Tutorial Level 2", fixed = TRUE)
@@ -89,7 +89,7 @@ test_that("three tutorial levels exist and have distinct Linux parallel scopes",
   expect_match(level2, "shared-model × metacell", fixed = TRUE)
   expect_match(level2, "Gate before Stage 2 or 3", fixed = TRUE)
   expect_match(level2, "GRN/metacell group coverage", fixed = TRUE)
-  expect_match(level2, "label_col = metacell_label_col", fixed = TRUE)
+  expect_match(level2, "no separate label parameter is required", fixed = TRUE)
 
   expect_match(level3, "Tutorial Level 3", fixed = TRUE)
   expect_match(level3, "Linux process and thread controls", fixed = TRUE)
@@ -100,7 +100,7 @@ test_that("three tutorial levels exist and have distinct Linux parallel scopes",
   expect_match(level3, "Serial troubleshooting", fixed = TRUE)
   expect_match(level3, "Failure classification", fixed = TRUE)
   expect_match(level3, "Distinguish medium infeasibility from target blockage", fixed = TRUE)
-  expect_match(level3, "metacell_label_col = celltype_col", fixed = TRUE)
+  expect_match(level3, "automatically as", fixed = TRUE)
 
   combined <- paste(level1, level2, level3, collapse = "\n")
   expect_match(combined, "Pando_regcompass.tar.gz", fixed = TRUE)

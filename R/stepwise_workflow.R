@@ -162,8 +162,6 @@ rc_regcompass_step_grn <- function(
 #' making cell type a hard stratum. Each resulting metacell also receives a
 #' dominant member-cell type label and purity diagnostics for downstream GRN
 #' mapping.
-#' @param label_col Complete single-cell annotation supplied to SuperCell2 before
-#'   aggregation. Defaults to `celltype_col`.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,

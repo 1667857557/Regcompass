@@ -167,7 +167,7 @@
     sample_col = internal_sample_col,
     condition_col = condition_col,
     celltype_col = internal_celltype_col,
-    label_col = label_col,
+    label_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     fragment_files = FALSE,
@@ -208,9 +208,9 @@
   pooled$input_design <- list(
     metacell_grouping = condition_col,
     condition_only_stratification = TRUE,
-    supercell_label_col = label_col,
+    supercell_label_col = celltype_col,
     celltype_assignment = paste0(
-      "SuperCell2 label-guided construction using `", label_col,
+      "SuperCell2 label-guided construction using `", celltype_col,
       "`, followed by dominant membership assignment"
     ),
     ambiguous_celltype_policy = "error_on_tied_dominant_membership",

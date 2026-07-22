@@ -52,10 +52,10 @@ All levels require:
 
 Do not use the `motif2tf` annotation table as `pfm`. Sample metadata are optional provenance and are not used for balancing, weighting, downsampling, or graph construction.
 
-The canonical label is the column selected by `celltype_col`. One-shot calls can
-override it with `metacell_label_col`; Stage 2 calls use `label_col`. The label
-guides SuperCell2 before aggregation but does not become an additional hard
-stratum, so the post-aggregation composition gates remain required.
+The column selected by `celltype_col` is automatically used as the SuperCell2
+label; there is no separate label parameter. It guides SuperCell2 before
+aggregation but does not become an additional hard stratum, so the
+post-aggregation composition gates remain required.
 
 ## Installation choices
 

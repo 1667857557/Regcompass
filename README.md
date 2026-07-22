@@ -121,11 +121,10 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-`metacell_label_col` is supplied to SuperCell2 before aggregation. It defaults
-to `celltype_col`; spelling it out in the analysis script records which existing
-single-cell annotation was used to reduce annotated cell-type mixing. Condition
-remains the only hard metacell stratum, and member-cell composition and purity
-must still be checked in the Stage 2 outputs.
+The column selected by `celltype_col` is automatically supplied to SuperCell2
+before aggregation to reduce annotated cell-type mixing; no separate label
+parameter is needed. Condition remains the only hard metacell stratum, and
+member-cell composition and purity must still be checked in the Stage 2 outputs.
 
 On Linux, `upstream_workers` controls Stage 1 Pando groups, Stage 3 local FASTCORE completion by meta-module, and Stage 4 GPR capacity. `layer2_workers` controls shared-model × metacell LP tasks. Keep Pando's inner `parallel = FALSE` to avoid nested workers. The model-cache construction portions remain serial.
 

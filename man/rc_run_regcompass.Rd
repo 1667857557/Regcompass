@@ -25,8 +25,5 @@ On Linux, \code{parallel_backend = "multicore"} uses \code{BiocParallel::Multico
 
 Pando may be installed from GitHub or a local source package. RegCompass validates the required Pando API and does not require GitHub remote metadata for local installations. The default HiGHS LP backend is a required dependency, and the selected solver is checked before medium-constrained model construction.
 
-Sample balancing and sample-based weighting are not implemented. The column named by \code{metacell_label_col} is passed to SuperCell2 before aggregation to reduce annotated cell-type mixing. Cell type is not a hard metacell stratum; dominant member-cell type and purity are audited afterwards.
-}
-\arguments{
-\item{metacell_label_col}{Complete metadata annotation passed to SuperCell2 before aggregation. Defaults to \code{celltype_col} to reduce annotated cell-type mixing while condition remains the only hard stratum.}
+Sample balancing and sample-based weighting are not implemented. The \code{celltype_col} annotation is automatically passed to SuperCell2 before aggregation to reduce annotated cell-type mixing; no separate label argument is needed. Cell type is not a hard metacell stratum; dominant member-cell type and purity are audited afterwards.
 }

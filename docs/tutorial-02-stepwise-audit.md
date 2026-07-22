@@ -158,7 +158,7 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-Stage 2 does not use the workflow `BPPARAM` shown above. Do not insert `BPPARAM = TRUE` into `metacell_args`. `label_col` must name a complete annotation column and is passed to SuperCell2 before aggregation. Each metacell receives a dominant member-cell type after construction. Purity, mixed-cell-type status, and the full composition are retained. An exact dominant-cell-type tie stops the workflow.
+Stage 2 does not use the workflow `BPPARAM` shown above. Do not insert `BPPARAM = TRUE` into `metacell_args`. The complete `celltype_col` annotation is automatically passed to SuperCell2 before aggregation; no separate label parameter is required. Each metacell receives a dominant member-cell type after construction. Purity, mixed-cell-type status, and the full composition are retained. An exact dominant-cell-type tie stops the workflow.
 
 ### Gate before Stage 3
 

@@ -134,10 +134,11 @@ result <- rc_run_regcompass_one_shot(
 
 Keep `pando_infer_args$parallel = FALSE`. RegCompass already distributes the independent condition × cell-type Pando groups across the outer BiocParallel workers; enabling Pando's inner parallelism would create nested workers and CPU oversubscription.
 
-`metacell_label_col` passes the existing single-cell annotation to SuperCell2
-before aggregation. This makes metacell construction label-aware and reduces
-cell-type mixing while retaining condition as the only hard stratum. Purity and
-the full observed cell-type composition are still audited after construction.
+`celltype_col` is automatically passed to SuperCell2 as the pre-aggregation
+label. This makes metacell construction label-aware without requiring a second
+parameter and reduces cell-type mixing while retaining condition as the only
+hard stratum. Purity and the full observed cell-type composition are still
+audited after construction.
 
 The analysis order is fixed:
 
