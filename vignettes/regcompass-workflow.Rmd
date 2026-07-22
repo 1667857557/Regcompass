@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.0 GRN-first workflow"
+title: "RegCompassR 1.8.2 GRN-first workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.0 GRN-first workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.2 GRN-first workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -11,45 +11,166 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-RegCompassR first estimates condition-by-cell-type Pando GRNs from single cells. RNA is normalized once across all cells, while ATAC TF-IDF uses all conditions within each cell type as the shared reference. Pando then splits the normalized object by `condition_col × celltype_col`; the default peak-expression filter is `peak_cor = 0.01`.
+RegCompassR first fits Pando GRNs on single cells and then constructs condition-only metacells. RNA is normalized once across all cells. ATAC TF-IDF is calculated within each cell type using all conditions as the shared reference. Pando is fitted separately for each `condition_col × celltype_col` group with `peak_cor = 0.01` by default. SuperCell2 then uses condition as its only varying stratum, with `gamma = 75` by default.
 
-After GRN inference, SuperCell2 builds metacells stratified only by `condition_col`, with `gamma = 75` by default. `celltype_col` is not used for metacell grouping. Each metacell is assigned the dominant cell type among its member cells, and the dominant fraction, number of represented cell types, and mixed-cell-type flag are retained. These labels select the matching condition-by-cell-type GRN during Layer 1. Sample balancing and sample-based downsampling are not implemented.
+## Installation
+
+```{r}
+install.packages(c("remotes", "highs"))
+remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
+remotes::install_github("1667857557/Regcompass", upgrade = "never")
+```
+
+A downloaded Pando source archive is also valid:
+
+```{r}
+install.packages("~/Pando_regcompass.tar.gz", repos = NULL, type = "source")
+```
+
+RegCompass validates the Pando API and does not require GitHub remote metadata for local installations.
+
+## Required object
+
+The Seurat object must contain paired RNA and ATAC counts for the same cell IDs, an ATAC `ChromatinAssay`, complete condition and cell-type metadata, and peak coordinates matching the selected genome. Cell order may differ between assay matrices; RegCompass aligns normalized data by cell name.
+
+`pfm` must be a motif PFM/PWM collection accepted by Pando and motifmatchr. Use `Pando::motifs`; do not pass the `motif2tf` annotation table.
+
+```{r}
+library(RegCompassR)
+library(Pando)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+data(motifs, package = "Pando")
+
+condition_col <- "dataset"
+celltype_col <- "epithelial_or_stem"
+
+stopifnot(
+  inherits(A, "Seurat"),
+  all(c("RNA", "ATAC") %in% names(A@assays)),
+  inherits(A[["ATAC"]], "ChromatinAssay"),
+  all(c(condition_col, celltype_col) %in% colnames(A@meta.data)),
+  !anyNA(A@meta.data[[condition_col]]),
+  !anyNA(A@meta.data[[celltype_col]])
+)
+
+gem <- rc_prepare_gem(species = "human", version = "2.0.0")
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "high_glucose",
+  species = "human"
+)
+```
+
+## Step 1: single-cell GRNs
 
 ```{r}
 step1 <- rc_regcompass_step_grn(
-  object, gem, "steps/01_grn", motifs,
-  BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = "condition",
-  celltype_col = "cell_type",
+  object = A,
+  gem = gem,
+  outdir = "steps/01_grn",
+  pfm = motifs,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  condition_col = condition_col,
+  celltype_col = celltype_col,
   pando_args = list(
+    min_cells = 100,
     pando_infer_args = list(
-      method = "glm", tf_cor = 0.1,
-      peak_cor = 0.01, adjust_method = "fdr"
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0.01,
+      adjust_method = "fdr"
     )
   )
 )
 
-step2 <- rc_regcompass_step_metacells(
-  object, "steps/02_metacells",
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  metacell_args = list(gamma = 75)
-)
-
-step3 <- rc_regcompass_step_meta_modules(
-  step1, step2, gem, "steps/03_meta_modules"
-)
-step4 <- rc_regcompass_step_layer1(
-  step2, step3, gem, "steps/04_layer1"
-)
-step5 <- rc_regcompass_step_layer2(
-  step4, step3, gem, medium_scenarios,
-  "steps/05_layer2"
-)
-result <- rc_regcompass_step_results(
-  step1, step2, step3, step4, step5,
-  gem, "steps/06_results"
-)
+step1$grn_result$sample_status
+head(step1$grn_result$tf_peak_gene_significant)
 ```
 
-Each condition-by-cell-type GRN defines metabolic-gene components and complete-GPR core reactions. Meta-modules then add reactions in the core-reaction subsystems and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE is the only feasibility-completion stage.
+The stage writes `single_cell_grn.rds`, `step_grn.rds`, Pando group status, all/significant edge tables, and optional fitted Pando objects.
+
+## Step 2: condition-only metacells
+
+```{r}
+step2 <- rc_regcompass_step_metacells(
+  object = A,
+  outdir = "steps/02_metacells",
+  condition_col = condition_col,
+  celltype_col = celltype_col,
+  fragment_files = FALSE,
+  metacell_args = list(
+    gamma = 75,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10
+  )
+)
+
+table(
+  step2$pooled$metacell_meta[[condition_col]],
+  step2$pooled$metacell_meta[[celltype_col]]
+)
+summary(step2$pooled$metacell_meta$dominant_celltype_fraction)
+```
+
+Cell type is assigned after metacell construction from member-cell composition. Exact dominant-cell-type ties are rejected. The stage writes the merged metacell Seurat object, final metadata, membership, and cell-type composition tables.
+
+## Step 3: meta-modules
+
+```{r}
+step3 <- rc_regcompass_step_meta_modules(
+  grn = step1,
+  metacells = step2,
+  gem = gem,
+  outdir = "steps/03_meta_modules",
+  layer1_args = list(
+    local_fastcore = TRUE,
+    local_fastcore_args = list(solver = "highs", strict = TRUE)
+  )
+)
+
+step3$group_coverage
+head(step3$condition_modules$core_gene_reaction)
+step3$condition_modules$local_fastcore_summary
+```
+
+Each GRN defines metabolic-gene components and complete-GPR core reactions. Meta-modules add core-reaction subsystems and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE adds only feasibility-support reactions.
+
+## Steps 4-6: reaction evidence and scoring
+
+```{r}
+step4 <- rc_regcompass_step_layer1(
+  metacells = step2,
+  meta_modules = step3,
+  gem = gem,
+  outdir = "steps/04_layer1"
+)
+
+step5 <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "steps/05_layer2",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  )
+)
+
+result <- rc_regcompass_step_results(
+  grn = step1,
+  metacells = step2,
+  meta_modules = step3,
+  layer1 = step4,
+  layer2 = step5,
+  gem = gem,
+  outdir = "steps/06_results"
+)
+
+dim(step4$reaction_expression)
+table(step5$feasible)
+head(result$reaction_ranking)
+```
+
+The default HiGHS backend is checked before any medium-constrained model is constructed. A missing solver is reported as a solver installation problem rather than as GEM infeasibility.
