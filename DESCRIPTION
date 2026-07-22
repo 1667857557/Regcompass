@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: GRN-First Multiome Reaction and Meta-Module Analysis
-Version: 1.8.1
+Version: 1.8.2
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -27,6 +27,7 @@ Collate:
     'input_seurat.R'
     'layer2_penalty_lp.R'
     'lp_solver.R'
+    'solver_preflight.R'
     'medium.R'
     'medium_exchange_mapping.R'
     'meta_module_definition.R'
@@ -58,6 +59,7 @@ Imports:
     Matrix,
     matrixStats,
     methods,
+    highs,
     SeuratObject (>= 4.1.4),
     Seurat (>= 4.4.0),
     Signac (>= 1.11.0)
@@ -73,7 +75,6 @@ Suggests:
     igraph,
     slam,
     gurobi,
-    highs,
     Rglpk,
     knitr,
     rmarkdown,
