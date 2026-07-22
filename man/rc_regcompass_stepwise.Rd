@@ -34,15 +34,15 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
   gem, outdir, species = c("auto", "human", "mouse"))
 }
 \arguments{
-\item{object}{A Seurat RNA+ATAC object.}
+\item{object}{A paired-cell Seurat RNA+ATAC object. RNA, ATAC, and metadata must contain the same cell IDs; column order may differ.}
 \item{gem}{A prepared genome-scale metabolic model.}
 \item{outdir}{Output directory for the stage.}
-\item{pfm}{Motif position-frequency matrices.}
+\item{pfm}{A PFM/PWM collection accepted by Pando and motifmatchr. Use the Pando motif object rather than a motif-to-TF annotation table.}
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{condition_col}{Metadata column defining condition-specific Pando groups and the only metacell stratification variable.}
 \item{celltype_col}{Metadata column used with condition for Pando grouping. It is not used to stratify metacells; metacells receive a post hoc dominant member-cell label.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Arguments for single-cell Pando inference. The default Pando model uses \code{peak_cor = 0.01}.}
+\item{pando_args}{Arguments for single-cell Pando inference. The default Pando model uses \code{peak_cor = 0.01}. Pando may be installed from GitHub or a local source archive; RegCompass validates the required API rather than requiring GitHub remote metadata.}
 \item{parallel}{Whether to run the stage in parallel.}
 \item{BPPARAM}{A BiocParallel parameter object, \code{NULL}, or \code{FALSE}.}
 \item{sample_col}{Optional provenance column. It is not used for balancing, weighting, selection, or grouping.}
@@ -56,7 +56,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{layer1}{Output from \code{rc_regcompass_step_layer1()}.}
 \item{medium_scenarios}{Shared medium table.}
 \item{model_mode}{Shared union meta-module GEM or full GEM.}
-\item{layer2_args}{Additional microCOMPASS arguments.}
+\item{layer2_args}{Additional microCOMPASS arguments, including \code{solver}. The default HiGHS backend is checked before medium-constrained model construction.}
 \item{layer2}{Output from \code{rc_regcompass_step_layer2()}.}
 \item{species}{Species identifier or \code{"auto"}.}
 }
@@ -64,5 +64,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 The stages are executed in this order: condition-by-cell-type single-cell GRN inference, condition-only metacell construction, GRN-derived core-reaction and meta-module construction, Layer 1 reaction expression, Layer 2 scoring, and result assembly.
 }
 \details{
-RNA is normalized once before Pando splitting. ATAC TF-IDF is computed within each cell type using all conditions as the shared reference. Pando is then fitted independently in each condition-by-cell-type subset. Metacells are constructed afterwards using condition as the only varying stratum and \code{gamma = 75} by default. Dominant member-cell type, purity, number of represented cell types, and mixed-cell-type status are stored for each metacell.
+RNA is normalized once before Pando splitting. Normalized assay matrices are aligned by cell ID, so different column order is accepted but genuinely different cell sets are rejected. ATAC TF-IDF is computed within each cell type using all conditions as the shared reference. Peaks with zero counts in one cell type are not passed to that cell type's TF-IDF calculation and are restored as exact zeros. Pando is then fitted independently in each condition-by-cell-type subset.
+
+Metacells are constructed afterwards using condition as the only varying stratum and \code{gamma = 75} by default. Dominant member-cell type, purity, number of represented cell types, and mixed-cell-type status are stored for each metacell. The selected LP solver is validated before FASTCORE or directional scoring, so a missing solver package is reported separately from GEM infeasibility.
 }

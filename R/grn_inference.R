@@ -1,6 +1,22 @@
 .rc_require_normalized_assay <- function(object, assay, context) {
   value <- .rc_pando_assay_data(object, assay)
-  if (!identical(colnames(value), colnames(object))) stop(context, " normalized assay data are not aligned to the analysis units.", call. = FALSE)
+  expected <- as.character(colnames(object))
+  observed <- as.character(colnames(value))
+  if (anyNA(expected) || any(!nzchar(expected)) || anyDuplicated(expected) ||
+      anyNA(observed) || any(!nzchar(observed)) || anyDuplicated(observed)) {
+    stop(context, " normalized assay cell identifiers must be unique and non-empty.",
+         call. = FALSE)
+  }
+  missing <- setdiff(expected, observed)
+  extra <- setdiff(observed, expected)
+  if (length(missing) || length(extra)) {
+    stop(
+      context, " normalized assay contains different cells from the analysis object. ",
+      "Missing: ", paste(utils::head(missing, 10L), collapse = ", "),
+      "; extra: ", paste(utils::head(extra, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
   invisible(TRUE)
 }
 
@@ -26,7 +42,7 @@
     pando_infer_args
   )
   if (!inherits(object, "Seurat")) stop("`object` must inherit from Seurat.", call. = FALSE)
-  if (!requireNamespace("Pando", quietly = TRUE)) stop("Install the pinned Pando fork before running GRN inference.", call. = FALSE)
+  if (!requireNamespace("Pando", quietly = TRUE)) stop("Install Pando from 1667857557/Pando_regcompass, either from GitHub or a local source tarball, before running GRN inference.", call. = FALSE)
   pando_install <- .rc_validate_pando_repository()
   group_cols <- c(condition_col, celltype_col)
   missing <- setdiff(group_cols, colnames(object@meta.data))
@@ -125,6 +141,7 @@
   answer <- list(
     schema_version = "regcompass_single_cell_grn_v1",
     pando_installed_version = pando_install$version,
+    pando_installation = pando_install,
     target_metabolic_genes = target_genes,
     sample_status = status,
     tf_peak_gene_all = all_edges,
@@ -132,7 +149,7 @@
     normalization_policy = list(
       rna = "global single-cell NormalizeData before condition splitting",
       atac = "cell-type-shared TF-IDF across conditions before condition splitting",
-      zero_count_peaks = "excluded globally before TF-IDF and within each Pando group",
+      zero_count_peaks = "globally absent peaks are removed; cell-type-local absent peaks remain exact zeros and are not passed to RunTFIDF",
       pando_peak_cor = pando_infer_args$peak_cor %||% 0.01,
       pando_rsq = paste0("finite rsq >= ", min_model_rsq)
     ),

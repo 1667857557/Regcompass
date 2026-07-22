@@ -14,6 +14,8 @@
     solver = c("highs", "gurobi", "glpk"),
     time_limit = 60, flux_threshold = 1e-8,
     BPPARAM = NULL) {
+  solver <- match.arg(solver)
+  .rc_require_lp_solver(solver)
   hidden_unit <- getOption("RegCompassR.inference_unit", NULL)
   if (!is.null(hidden_unit)) {
     warning(
