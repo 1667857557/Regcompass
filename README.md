@@ -27,17 +27,6 @@ remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
 
-A locally downloaded Pando source package is also supported:
-
-```r
-install.packages(
-  "~/Pando_regcompass.tar.gz",
-  repos = NULL,
-  type = "source"
-)
-```
-
-RegCompass validates the required Pando API. GitHub remote metadata are not required for a local or offline source installation.
 
 ## Choose a tutorial level
 
