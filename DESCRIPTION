@@ -1,10 +1,10 @@
 Package: RegCompassR
 Title: GRN-First Multiome Reaction and Meta-Module Analysis
-Version: 1.8.0
+Version: 1.8.1
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Runs a species-aware human or mouse RNA+ATAC workflow that first normalizes single-cell RNA globally, computes ATAC TF-IDF within each cell type across conditions, and fits one Pando TF-peak-gene model per condition and cell type. Cells are then stratified only by condition for SuperCell2 metacell construction with gamma 75 by default; each metacell receives a post hoc dominant cell-type label from its member cells for regulatory mapping. Condition-specific GRNs define complete-GPR core reactions, which are expanded through core-reaction subsystems and shared KEGG, Reactome, and master-Rhea identifiers, followed by local FASTCORE feasibility completion. Metacell RNA and ATAC evidence are integrated into reaction expression and directional COMPASS-like minimum-penalty scoring. Sample metadata are optional and are not used for balancing, selection, weighting, or grouping.
+Description: Runs a species-aware human or mouse RNA+ATAC workflow that first normalizes single-cell RNA globally, computes ATAC TF-IDF within each cell type across conditions, and fits one Pando TF-peak-gene model per condition and cell type. Cells are then stratified only by condition for SuperCell2 metacell construction with gamma 75 by default; each metacell receives an unambiguous post hoc dominant cell-type label from its member cells for regulatory mapping. GRN and metacell condition-by-cell-type coverage is validated before condition-specific GRNs define complete-GPR core reactions, which are expanded through core-reaction subsystems and shared KEGG, Reactome, and master-Rhea identifiers, followed by local FASTCORE feasibility completion. Metacell RNA and ATAC evidence are integrated into reaction expression and directional COMPASS-like minimum-penalty scoring. Sample metadata are optional and are not used for balancing, selection, weighting, or grouping.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -42,9 +42,9 @@ Collate:
     'grn_inference.R'
     'regulatory_modifier.R'
     'condition_layer1.R'
+    'layer1_builder.R'
     'parallel.R'
     'v170_microcompass_contract.R'
-    'v170_layer1_parallel.R'
     'penalty.R'
     'reaction_roles.R'
     'stepwise_workflow.R'

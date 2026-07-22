@@ -42,21 +42,22 @@ test_that("metacell construction is condition-only without sample balancing", {
 
 test_that("dominant cell type is assigned after condition-only metacells", {
   skip_if_not_installed("SeuratObject")
-  counts <- Matrix::Matrix(matrix(1, nrow = 1, ncol = 5,
-    dimnames = list("g1", paste0("c", 1:5))), sparse = TRUE)
+  counts <- Matrix::Matrix(matrix(1, nrow = 1, ncol = 6,
+    dimnames = list("g1", paste0("c", 1:6))), sparse = TRUE)
   object <- SeuratObject::CreateSeuratObject(counts = counts)
-  object$cell_type <- c("T", "T", "B", "B", "T")
+  object$cell_type <- c("T", "T", "B", "B", "B", "T")
   pooled <- list(
     membership = data.frame(
-      cell_id = paste0("c", 1:5),
-      metacell_id = c("m1", "m1", "m1", "m2", "m2")
+      cell_id = paste0("c", 1:6),
+      metacell_id = c("m1", "m1", "m1", "m2", "m2", "m2")
     ),
     metacell_meta = data.frame(metacell_id = c("m1", "m2"))
   )
   out <- .rc_assign_metacell_dominant_celltype(pooled, object, "cell_type")
   expect_identical(out$metacell_meta$cell_type, c("T", "B"))
-  expect_equal(out$metacell_meta$dominant_celltype_fraction, c(2/3, 1/2))
+  expect_equal(out$metacell_meta$dominant_celltype_fraction, c(2/3, 2/3))
   expect_true(all(out$metacell_meta$mixed_celltype_metacell))
+  expect_false(any(out$metacell_meta$dominant_celltype_tied))
 })
 
 test_that("condition metacells reject fragment pooling without maps", {

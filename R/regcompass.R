@@ -18,11 +18,29 @@ rc_run_regcompass <- function(
     layer2_workers = NULL,
     parallel_backend = c("auto", "serial", "snow", "multicore"),
     species = c("auto", "human", "mouse")) {
-  species <- .rc_infer_gem_species(gem, species)
   model_mode <- match.arg(model_mode)
   parallel_backend <- match.arg(parallel_backend)
+  bundles <- list(
+    metacell_args = metacell_args,
+    layer1_args = layer1_args,
+    pando_args = pando_args,
+    layer2_args = layer2_args
+  )
+  invalid_bundles <- names(bundles)[!vapply(bundles, is.list, logical(1))]
+  if (length(invalid_bundles)) {
+    stop(
+      "Workflow argument bundles must be lists: ",
+      paste(invalid_bundles, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
-  if (is.null(medium_scenarios)) medium_scenarios <- rc_make_medium_scenarios(gem, scenario = "physiologic", species = species)
+  if (is.null(medium_scenarios)) {
+    medium_scenarios <- rc_make_medium_scenarios(
+      gem, scenario = "physiologic", species = species
+    )
+  }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   if (is.null(metacell_args$gamma)) metacell_args$gamma <- 75L
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
@@ -55,19 +73,23 @@ rc_run_regcompass <- function(
     outdir = file.path(outdir, "04_layer1"),
     regulatory_alpha = layer1_args$regulatory_alpha %||% 1,
     tau = layer1_args$tau %||% 0.20,
-    gene_half_saturation = layer1_args$gene_half_saturation %||% getOption("RegCompassR.cpm_half_saturation", 1),
+    gene_half_saturation = layer1_args$gene_half_saturation %||%
+      getOption("RegCompassR.cpm_half_saturation", 1),
     parallel = TRUE, BPPARAM = upstream
   )
   .rc_release_bpparam(upstream)
   upstream <- FALSE
   lp_param <- .rc_phase_bpparam(layer2_workers, parallel_backend)
-  step5 <- tryCatch(rc_regcompass_step_layer2(
-    layer1 = step4, meta_modules = step3, gem = gem,
-    medium_scenarios = medium_scenarios,
-    outdir = file.path(outdir, "05_layer2"),
-    model_mode = model_mode, layer2_args = layer2_args,
-    parallel = TRUE, BPPARAM = lp_param
-  ), finally = .rc_release_bpparam(lp_param))
+  step5 <- tryCatch(
+    rc_regcompass_step_layer2(
+      layer1 = step4, meta_modules = step3, gem = gem,
+      medium_scenarios = medium_scenarios,
+      outdir = file.path(outdir, "05_layer2"),
+      model_mode = model_mode, layer2_args = layer2_args,
+      parallel = TRUE, BPPARAM = lp_param
+    ),
+    finally = .rc_release_bpparam(lp_param)
+  )
   result <- rc_regcompass_step_results(
     grn = step1, metacells = step2, meta_modules = step3,
     layer1 = step4, layer2 = step5, gem = gem,

@@ -1,5 +1,4 @@
-# Canonical Layer 1 implementation with optional reaction-level parallelism.
-.rc_build_condition_pooled_layer1_v170 <- function(
+.rc_build_condition_pooled_layer1 <- function(
     metacell_object, meta_modules, gem, metacell_meta,
     sample_col = "sample_id", condition_col = "condition",
     celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC",
@@ -21,7 +20,8 @@
   )
   rownames(rna_logcpm) <- tolower(rownames(rna_logcpm))
   if (anyDuplicated(rownames(rna_logcpm))) {
-    stop("Duplicated GPR gene identifiers after case normalization.", call. = FALSE)
+    stop("Duplicated GPR gene identifiers after case normalization.",
+         call. = FALSE)
   }
 
   unit_meta <- metacell_meta
@@ -35,15 +35,14 @@
   unit_meta$pool_id <- as.character(unit_meta[[id_col]])
   unit_meta$unit_id <- unit_meta$pool_id
   unit_meta[[sample_col]] <- paste0(
-    as.character(unit_meta[[condition_col]]),
-    "__pooled"
+    as.character(unit_meta[[condition_col]]), "__pooled"
   )
   unit_meta <- unit_meta[
-    match(colnames(rna_logcpm), unit_meta$pool_id),
-    , drop = FALSE
+    match(colnames(rna_logcpm), unit_meta$pool_id), , drop = FALSE
   ]
   if (anyNA(unit_meta$pool_id)) {
-    stop("Pooled metacell metadata do not align with RNA counts.", call. = FALSE)
+    stop("Pooled metacell metadata do not align with RNA counts.",
+         call. = FALSE)
   }
 
   gene_rna_support <- rc_gene_score(
@@ -81,7 +80,7 @@
   )
 
   list(
-    schema_version = "regcompass_condition_pooled_layer1_v1.7.0",
+    schema_version = "regcompass_condition_only_layer1_v1.8.1",
     reaction_expression = reaction_expression,
     rna_metacell_logcpm = rna_logcpm,
     gene_support_rna = gene_rna_support,
@@ -91,7 +90,7 @@
     gpr_diagnostics = rc_gpr_diagnostics(parsed, rownames(rna_logcpm)),
     unit_meta = unit_meta,
     metacell_meta = unit_meta,
-    layer1_unit = "condition_pooled_metacell",
+    layer1_unit = "condition_only_metacell_with_posthoc_celltype",
     capacity_params = list(
       regulatory_alpha = regulatory_alpha,
       gene_half_saturation = gene_half_saturation,
@@ -115,13 +114,18 @@
     ),
     evidence_provenance = list(
       direct_metacell_evidence = c("target_gene_RNA", "peak_ATAC"),
-      learned_parameters = "condition_x_celltype Pando coefficients fit from RNA+ATAC",
-      excluded_duplicate_evidence = "metacell TF RNA is not multiplied into the regulatory modifier",
+      learned_parameters =
+        "condition_x_celltype Pando coefficients fit from single-cell RNA+ATAC",
+      metacell_assignment = paste(
+        "condition-only metacells are mapped to GRNs by condition and",
+        "post hoc dominant member-cell type"
+      ),
+      excluded_duplicate_evidence =
+        "metacell TF RNA is not multiplied into the regulatory modifier",
       circularity_scope = paste(
-        "Pando parameters remain estimated from the same pooled dataset; outputs",
-        "are descriptive unless external fitting or cross-fitting is supplied"
+        "Pando parameters remain estimated from the same pooled dataset;",
+        "outputs are descriptive unless external fitting or cross-fitting is supplied"
       )
     )
   )
 }
-.rc_build_condition_pooled_layer1 <- .rc_build_condition_pooled_layer1_v170

@@ -63,11 +63,9 @@ test_that("species-matched physiological media remain defaults", {
 })
 
 test_that("main workflow routes Pando by condition and cell type", {
-  body_text <- paste(
-    deparse(body(.rc_run_regcompass_uncorrected_metadata)),
-    collapse = "\n"
-  )
-  expect_match(body_text, ".rc_run_condition_pando_modules", fixed = TRUE)
-  expect_match(body_text, "condition_col", fixed = TRUE)
-  expect_match(body_text, "celltype_col", fixed = TRUE)
+  body_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  expect_match(body_text, "rc_regcompass_step_grn", fixed = TRUE)
+  expect_match(body_text, "condition_col = condition_col", fixed = TRUE)
+  expect_match(body_text, "celltype_col = celltype_col", fixed = TRUE)
+  expect_match(body_text, "rc_regcompass_step_metacells", fixed = TRUE)
 })

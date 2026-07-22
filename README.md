@@ -1,13 +1,14 @@
 # RegCompassR
 
-RegCompassR 1.8.0 uses a GRN-first RNA+ATAC workflow:
+RegCompassR 1.8.1 uses a GRN-first RNA+ATAC workflow:
 
 ```text
 single-cell RNA NormalizeData across all cells
 → ATAC TF-IDF within each cell type across conditions
 → one Pando GRN per condition × cell type (peak_cor = 0.01 by default)
 → condition-only SuperCell2 metacells (gamma = 75 by default)
-→ post hoc dominant cell-type labels from metacell membership
+→ unambiguous post hoc dominant cell-type labels from metacell membership
+→ validate GRN ↔ metacell condition × cell-type coverage
 → complete-GPR core reactions from each condition × cell-type GRN
 → subsystem + KEGG/Reactome + master-Rhea expansion
 → local FASTCORE feasibility completion
@@ -15,7 +16,7 @@ single-cell RNA NormalizeData across all cells
 → directional COMPASS-like minimum-penalty scoring
 ```
 
-Sample metadata are optional. They are not used for sample balancing, downsampling, weighting, or metacell grouping. Cell type is also not used to stratify metacell construction; it is assigned afterwards from the dominant member-cell label, with purity and mixed-cell-type diagnostics retained.
+Sample metadata are optional. They are not used for sample balancing, downsampling, weighting, or metacell grouping. Cell type is also not used to stratify metacell construction; it is assigned afterwards from the dominant member-cell label. Purity and mixed-cell-type diagnostics are retained, and exact dominant-cell-type ties are rejected because no condition × cell-type GRN can be assigned unambiguously.
 
 ## Installation
 
@@ -129,4 +130,15 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-The Pando coefficients are learned from single cells. Metacells are built only within condition and receive dominant cell-type labels afterwards so the corresponding condition × cell-type GRN can be applied in Layer 1. Meta-module expansion remains restricted to complete-GPR core reactions, their subsystems, shared KEGG or Reactome identifiers, and identical master-Rhea identifiers. Local FASTCORE adds only feasibility-support reactions.
+## Auditable stage outputs
+
+The restartable stages write the following primary contracts:
+
+- `01_grn`: `single_cell_grn.rds`, `step_grn.rds`, Pando group status and all/significant edge tables, plus optional per-group Pando objects.
+- `02_metacells`: `step_metacells.rds`, `merged_metacell_object.rds`, final `metacell_metadata.tsv.gz`, `metacell_membership.tsv.gz`, and cell-type composition/summary tables. These root-level tables contain the post hoc labels used downstream, unlike the raw per-stratum intermediates.
+- `03_meta_modules`: `grn_metacell_group_coverage.tsv.gz`, condition-specific and global meta-module RDS files, core-reaction and reaction-membership tables, and local FASTCORE diagnostics.
+- `04_layer1`: `step_layer1.rds`, containing metacell RNA support, ATAC regulatory modifiers, integrated gene support, and reaction expression.
+- `05_layer2`: exported microCOMPASS matrices/tables, `step_layer2.rds`, and a persistent model cache.
+- `06_results`: `step_comparison.rds` and `regcompass_result.rds`, retaining both condition-specific and global meta-modules.
+
+The Pando coefficients are learned from single cells. Metacells are built only within condition and receive dominant cell-type labels afterwards so the corresponding condition × cell-type GRN can be applied in Layer 1. Before meta-module construction, every successful GRN group must have at least one scoring metacell and every scoring metacell group must have a successful GRN with significant edges. Meta-module expansion remains restricted to complete-GPR core reactions, their subsystems, shared KEGG or Reactome identifiers, and identical master-Rhea identifiers. Local FASTCORE adds only feasibility-support reactions.
