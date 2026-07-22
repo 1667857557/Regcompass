@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.1 GRN-first workflow"
+title: "RegCompassR 1.8.1 tiered GRN-first workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.1 GRN-first workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.1 tiered GRN-first workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -12,6 +12,14 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
 RegCompassR first fits Pando GRNs on single cells and then constructs condition-only metacells. RNA is normalized once across all cells. ATAC TF-IDF is calculated within each cell type using all conditions as the shared reference. Pando is fitted separately for each `condition_col × celltype_col` group with `peak_cor = 0.01` by default. SuperCell2 then uses condition as its only varying stratum, with `gamma = 75` by default.
+
+## Tutorial levels
+
+The documentation is deliberately separated into three levels:
+
+1. **Level 1 — minimal one-shot run:** installation, minimum input validation, GEM/medium preparation, canonical execution, and completion checks. See `docs/tutorial-01-quick-start.md`.
+2. **Level 2 — stepwise run with audit gates:** explicit stage inputs, outputs, files, and mandatory continuation checks. This vignette provides the compact Level 2 workflow; the complete version is `docs/tutorial-02-stepwise-audit.md`.
+3. **Level 3 — restart and diagnostics:** stage reuse, sensitivity runs, alternative media, solver/model controls, and failure classification. See `docs/tutorial-03-advanced-restart.md`.
 
 ## Installation
 
@@ -62,7 +70,7 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-## Step 1: single-cell GRNs
+## Stage 1: single-cell GRNs
 
 ```{r}
 step1 <- rc_regcompass_step_grn(
@@ -84,13 +92,16 @@ step1 <- rc_regcompass_step_grn(
   )
 )
 
-step1$grn_result$sample_status
-head(step1$grn_result$tf_peak_gene_significant)
+status1 <- step1$grn_result$sample_status
+stopifnot(
+  all(status1$status == "ok"),
+  all(status1$n_significant_edges > 0)
+)
 ```
 
 The stage writes `single_cell_grn.rds`, `step_grn.rds`, Pando group status, all/significant edge tables, and optional fitted Pando objects.
 
-## Step 2: condition-only metacells
+## Stage 2: condition-only metacells
 
 ```{r}
 step2 <- rc_regcompass_step_metacells(
@@ -106,16 +117,18 @@ step2 <- rc_regcompass_step_metacells(
   )
 )
 
-table(
-  step2$pooled$metacell_meta[[condition_col]],
-  step2$pooled$metacell_meta[[celltype_col]]
+stopifnot(
+  !any(step2$pooled$metacell_meta$dominant_celltype_tied %in% TRUE),
+  setequal(
+    colnames(step2$metacell_object),
+    step2$pooled$metacell_meta$metacell_id
+  )
 )
-summary(step2$pooled$metacell_meta$dominant_celltype_fraction)
 ```
 
 Cell type is assigned after metacell construction from member-cell composition. Exact dominant-cell-type ties are rejected. The stage writes the merged metacell Seurat object, final metadata, membership, and cell-type composition tables.
 
-## Step 3: meta-modules
+## Stage 3: meta-modules
 
 ```{r}
 step3 <- rc_regcompass_step_meta_modules(
@@ -129,14 +142,15 @@ step3 <- rc_regcompass_step_meta_modules(
   )
 )
 
-step3$group_coverage
-head(step3$condition_modules$core_gene_reaction)
-step3$condition_modules$local_fastcore_summary
+stopifnot(
+  all(step3$group_coverage$coverage_complete),
+  nrow(step3$condition_modules$core_gene_reaction) > 0
+)
 ```
 
 Each GRN defines metabolic-gene components and complete-GPR core reactions. Meta-modules add core-reaction subsystems and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE adds only feasibility-support reactions.
 
-## Steps 4-6: reaction evidence and scoring
+## Stages 4-6: reaction evidence and scoring
 
 ```{r}
 step4 <- rc_regcompass_step_layer1(
@@ -168,7 +182,15 @@ result <- rc_regcompass_step_results(
   outdir = "steps/06_results"
 )
 
-dim(step4$reaction_expression)
+stopifnot(
+  identical(
+    colnames(step4$reaction_expression),
+    as.character(step4$unit_meta$pool_id)
+  ),
+  any(step5$evaluated),
+  nrow(result$reaction_ranking) > 0
+)
+
 table(step5$feasible)
 head(result$reaction_ranking)
 ```
