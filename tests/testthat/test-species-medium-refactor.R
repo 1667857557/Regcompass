@@ -167,12 +167,13 @@ test_that("canonical Layer 2 owns a persistent model cache", {
 
   expect_match(
     workflow_text,
-    'file.path\(outdir, "model_cache", model_mode\)'
+    'file.path(outdir, "model_cache", model_mode)',
+    fixed = TRUE
   )
   expect_match(
     workflow_text,
-    "layer2_args\\$model_params\\$cache_dir",
-    fixed = FALSE
+    'layer2_args$model_params$cache_dir',
+    fixed = TRUE
   )
   expect_match(micro_text, "model_file_manifest.rds")
   expect_match(micro_text, "tools::md5sum")
