@@ -9,7 +9,7 @@ test_that("workflow vignette documents the GRN-first API and required inputs", {
   candidates <- candidates[file.exists(candidates)]
   if (!length(candidates)) skip("Source vignette is unavailable.")
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
-  expect_match(text, "RegCompassR 1.8.2", fixed = TRUE)
+  expect_match(text, "RegCompassR 1.8.1", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_grn(", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_metacells(", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_meta_modules(", fixed = TRUE)
