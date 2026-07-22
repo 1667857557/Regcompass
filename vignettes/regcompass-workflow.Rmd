@@ -113,7 +113,7 @@ stopifnot(
 
 Stage 1 parallelizes independent condition × cell-type groups. Pando's inner `parallel` setting remains `FALSE` to avoid nested worker pools. The stage writes `single_cell_grn.rds`, `step_grn.rds`, Pando group status, all/significant edge tables, and optional fitted Pando objects.
 
-## Stage 2: condition-only metacells
+## Stage 2: label-guided metacells within condition
 
 ```{r}
 step2 <- rc_regcompass_step_metacells(

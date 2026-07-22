@@ -39,6 +39,7 @@ Always load the stage wrapper, such as `step_grn.rds` or `step_metacells.rds`, w
 |---|---:|---|
 | Pando `tf_cor`, `peak_cor`, model method, minimum cells | 1 | none for GRN-derived modules; Stage 2 may be reused if unchanged |
 | metacell `gamma`, minimum stratum size, minimum metacell size | 2 | Stage 1 |
+| SuperCell2 `metacell_label_col` / Stage 2 `label_col` | 2 | Stage 1 |
 | GRN projection or meta-module expansion settings | 3 | Stages 1-2 |
 | local FASTCORE solver, strictness, or support limits | 3 | Stages 1-2 |
 | `regulatory_alpha`, GPR `tau`, RNA half-saturation | 4 | Stages 1-3 |
@@ -120,6 +121,7 @@ result <- rc_run_regcompass_one_shot(
   medium_scenarios = medium_scenarios,
   condition_col = condition_col,
   celltype_col = celltype_col,
+  metacell_label_col = celltype_col,
   pando_args = list(
     min_cells = 100,
     pando_infer_args = list(
@@ -155,6 +157,11 @@ result <- rc_run_regcompass_one_shot(
 ```
 
 `parallel_backend = "auto"` also selects multicore on an ordinary non-container Linux host. Explicit `"multicore"` is preferable in a reproducible Linux script. In Docker or another detected container, `"auto"` selects a socket-based SnowParam backend instead.
+
+`metacell_label_col` is evaluated in Stage 2. Changing it therefore requires
+rerunning Stage 2 and every downstream stage, while an unchanged Stage 1 GRN may
+be reused. The selected label column must be complete. It guides SuperCell2
+before aggregation but does not replace the Stage 2 membership and purity audit.
 
 ## 6. Stepwise Linux multicore run
 
@@ -499,8 +506,8 @@ head(step5$lp_diagnostics)
 ## 15. Output interpretation boundaries
 
 - Pando coefficients are learned from single cells within each condition × cell-type group.
-- Metacells are descriptive pseudo-observations built only within condition.
-- The post hoc dominant cell type selects the matching condition × cell-type GRN for Layer 1.
+- Metacells are descriptive pseudo-observations built only within condition and guided before aggregation by the selected annotation label.
+- The audited dominant member-cell type selects the matching condition × cell-type GRN for Layer 1; inspect composition and purity even when label guidance is enabled.
 - Condition contrasts are not biological-sample-level significance tests.
 - Sample metadata are provenance only; no sample balancing, weighting, or downsampling is performed.
 - FASTCORE support reactions ensure local feasibility and are not additional GRN-supported core reactions.
