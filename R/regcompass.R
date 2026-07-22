@@ -63,10 +63,22 @@ rc_run_regcompass <- function(
     atac_assay = atac_assay, fragment_files = fragment_files,
     metacell_args = metacell_args
   )
+  step3_args <- layer1_args
+  local_fastcore_args <- step3_args$local_fastcore_args %||% list()
+  if (is.null(local_fastcore_args$parallel)) {
+    local_fastcore_args$parallel <- !identical(parallel_backend, "serial")
+  }
+  if (is.null(local_fastcore_args$workers)) {
+    local_fastcore_args$workers <- upstream_workers
+  }
+  if (is.null(local_fastcore_args$backend)) {
+    local_fastcore_args$backend <- parallel_backend
+  }
+  step3_args$local_fastcore_args <- local_fastcore_args
   step3 <- rc_regcompass_step_meta_modules(
     grn = step1, metacells = step2, gem = gem,
     outdir = file.path(outdir, "03_meta_modules"),
-    layer1_args = layer1_args
+    layer1_args = step3_args
   )
   step4 <- rc_regcompass_step_layer1(
     metacells = step2, meta_modules = step3, gem = gem,
@@ -97,6 +109,8 @@ rc_run_regcompass <- function(
   )
   result$params$execution_mode <- "one_shot"
   result$params$parallel_backend <- parallel_backend
+  result$params$upstream_workers <- upstream_workers
+  result$params$layer2_workers <- layer2_workers
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result
 }
