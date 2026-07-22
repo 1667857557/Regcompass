@@ -37,7 +37,7 @@ test_that("workflow vignette documents the GRN-first API and tutorial levels", {
   expect_match(text, "ChromatinAssay", fixed = TRUE)
   expect_match(text, "do not pass the `motif2tf`", fixed = TRUE)
   expect_match(text, "MulticoreParam", fixed = TRUE)
-  expect_match(text, "local_fastcore_by_meta_module", fixed = TRUE)
+  expect_match(text, "parallel_task", fixed = TRUE)
   expect_match(text, "parallel = FALSE", fixed = TRUE)
   expect_match(text, "table(step5$feasible)", fixed = TRUE)
   expect_false(grepl("sample_balance = TRUE", text, fixed = TRUE))
