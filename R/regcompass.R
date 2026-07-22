@@ -111,6 +111,14 @@ rc_run_regcompass <- function(
   result$params$parallel_backend <- parallel_backend
   result$params$upstream_workers <- upstream_workers
   result$params$layer2_workers <- layer2_workers
+  # `rc_regcompass_step_results()` persists its result before the one-shot
+  # execution metadata above is available.  Keep the restartable Stage 6
+  # artifact identical to the top-level result rather than leaving it marked
+  # as a stepwise run.
+  saveRDS(
+    result,
+    file.path(outdir, "06_results", "regcompass_result.rds")
+  )
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result
 }

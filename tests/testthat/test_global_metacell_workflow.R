@@ -38,6 +38,16 @@ test_that("metacell construction is condition-only without sample balancing", {
   expect_match(text, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(text, "gamma <- 75L", fixed = TRUE)
   expect_match(text, "Sample balancing is not part", fixed = TRUE)
+  expect_match(text, "label_col = celltype_col", fixed = TRUE)
+  expect_match(text, '"label_col"', fixed = TRUE)
+})
+
+test_that("canonical metacells automatically use cell type as the label", {
+  step_formals <- formals(rc_regcompass_step_metacells)
+  run_formals <- formals(rc_run_regcompass)
+
+  expect_false("label_col" %in% names(step_formals))
+  expect_false("metacell_label_col" %in% names(run_formals))
 })
 
 test_that("dominant cell type is assigned after condition-only metacells", {

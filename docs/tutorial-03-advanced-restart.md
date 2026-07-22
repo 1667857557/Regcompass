@@ -26,6 +26,11 @@ For a one-shot run, the corresponding stage directories are:
 06_results
 ```
 
+The one-shot workflow writes the final result both to
+`RegCompass_result/regcompass_result.rds` and to
+`RegCompass_result/06_results/regcompass_result.rds`. The two files contain the
+same one-shot execution metadata, so either location is safe for a restart.
+
 Always load the stage wrapper, such as `step_grn.rds` or `step_metacells.rds`, when a downstream function requires the class and workflow parameters. The compact files such as `single_cell_grn.rds` are useful for inspection but are not substitutes for the stage wrapper.
 
 ## 2. Minimal rerun matrix
@@ -34,6 +39,7 @@ Always load the stage wrapper, such as `step_grn.rds` or `step_metacells.rds`, w
 |---|---:|---|
 | Pando `tf_cor`, `peak_cor`, model method, minimum cells | 1 | none for GRN-derived modules; Stage 2 may be reused if unchanged |
 | metacell `gamma`, minimum stratum size, minimum metacell size | 2 | Stage 1 |
+| `celltype_col` annotation used to guide SuperCell2 | 1 for GRNs and 2 for metacells | none |
 | GRN projection or meta-module expansion settings | 3 | Stages 1-2 |
 | local FASTCORE solver, strictness, or support limits | 3 | Stages 1-2 |
 | `regulatory_alpha`, GPR `tau`, RNA half-saturation | 4 | Stages 1-3 |
@@ -150,6 +156,12 @@ result <- rc_run_regcompass_one_shot(
 ```
 
 `parallel_backend = "auto"` also selects multicore on an ordinary non-container Linux host. Explicit `"multicore"` is preferable in a reproducible Linux script. In Docker or another detected container, `"auto"` selects a socket-based SnowParam backend instead.
+
+`celltype_col` is used both for condition-by-cell-type GRNs and automatically as
+the SuperCell2 pre-aggregation label. Changing it therefore requires rerunning
+Stages 1 and 2 and every downstream stage. The annotation must be complete. It
+guides SuperCell2 before aggregation but does not replace the Stage 2 membership
+and purity audit.
 
 ## 6. Stepwise Linux multicore run
 
@@ -494,8 +506,8 @@ head(step5$lp_diagnostics)
 ## 15. Output interpretation boundaries
 
 - Pando coefficients are learned from single cells within each condition × cell-type group.
-- Metacells are descriptive pseudo-observations built only within condition.
-- The post hoc dominant cell type selects the matching condition × cell-type GRN for Layer 1.
+- Metacells are descriptive pseudo-observations built only within condition and guided before aggregation by the selected annotation label.
+- The audited dominant member-cell type selects the matching condition × cell-type GRN for Layer 1; inspect composition and purity even when label guidance is enabled.
 - Condition contrasts are not biological-sample-level significance tests.
 - Sample metadata are provenance only; no sample balancing, weighting, or downsampling is performed.
 - FASTCORE support reactions ensure local feasibility and are not additional GRN-supported core reactions.

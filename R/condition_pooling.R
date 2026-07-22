@@ -143,6 +143,7 @@
   object@meta.data[[internal_celltype_col]] <- "all_celltypes"
   reserved <- intersect(names(metacell_args), c(
     "object", "outdir", "sample_col", "condition_col", "celltype_col",
+    "label_col",
     "rna_assay", "atac_assay", "fragment_files", "save_metacell_object",
     "save_counts", "save_fragments", "require_fragment_aggregation",
     "fragment_aggregation_backend", "on_stratum_error"
@@ -159,6 +160,7 @@
     sample_col = internal_sample_col,
     condition_col = condition_col,
     celltype_col = internal_celltype_col,
+    label_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     fragment_files = FALSE,
@@ -187,7 +189,7 @@
   meta$pooling_scope <- "condition_only"
   meta$sample_weighting <- "none"
   meta$sample_col_role <- "internal_condition_pool_id"
-  meta$celltype_role <- "posthoc_dominant_membership_label"
+  meta$celltype_role <- "label_guided_posthoc_dominant_membership"
   pooled$metacell_meta <- meta
   pooled$input_sample_col <- sample_col
   pooled$analysis_sample_col <- internal_sample_col
@@ -199,12 +201,17 @@
   pooled$input_design <- list(
     metacell_grouping = condition_col,
     condition_only_stratification = TRUE,
-    celltype_assignment = "dominant membership after condition-only SuperCell2",
+    supercell_label_col = celltype_col,
+    celltype_assignment = paste0(
+      "SuperCell2 label-guided construction using `", celltype_col,
+      "`, followed by dominant membership assignment"
+    ),
     ambiguous_celltype_policy = "error_on_tied_dominant_membership",
     gamma = metacell_args$gamma,
     inference_policy = paste(
-      "cells are stratified only by condition; sample and cell-type metadata",
-      "are not used for selection, weighting or metacell grouping"
+      "cells are stratified only by condition; the supplied label is passed",
+      "to SuperCell2 before aggregation to discourage label mixing; sample",
+      "metadata are not used for selection, weighting or metacell grouping"
     )
   )
   pooled

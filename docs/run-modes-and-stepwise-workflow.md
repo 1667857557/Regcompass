@@ -16,8 +16,8 @@ The tutorials are split by the amount of control and inspection required. Start 
 single-cell RNA normalization
 → ATAC TF-IDF shared across conditions within each cell type
 → Pando GRN per condition × cell type (peak_cor = 0.01)
-→ condition-only SuperCell2 metacells (gamma = 75)
-→ post hoc dominant cell-type assignment
+→ cell-type-label-guided SuperCell2 metacells within condition (gamma = 75)
+→ post-aggregation membership, purity, and dominant-cell-type audit
 → GRN/metacell coverage validation
 → complete-GPR core reactions
 → subsystem + KEGG/Reactome + master-Rhea expansion
@@ -44,13 +44,18 @@ All levels require:
 
 - a paired-cell Seurat object with RNA counts and an ATAC `ChromatinAssay`;
 - RNA, ATAC, and metadata containing the same cell IDs, although order may differ;
-- complete condition and cell-type metadata;
+- complete condition, cell-type, and selected SuperCell2 label metadata;
 - ATAC peak coordinates matching the selected genome;
 - a Pando/motifmatchr-compatible PFM/PWM collection such as `Pando::motifs`;
 - a supported and validated human or mouse GEM;
 - the selected LP solver package.
 
 Do not use the `motif2tf` annotation table as `pfm`. Sample metadata are optional provenance and are not used for balancing, weighting, downsampling, or graph construction.
+
+The column selected by `celltype_col` is automatically used as the SuperCell2
+label; there is no separate label parameter. It guides SuperCell2 before
+aggregation but does not become an additional hard stratum, so the
+post-aggregation composition gates remain required.
 
 ## Installation choices
 

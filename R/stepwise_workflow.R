@@ -157,9 +157,11 @@ rc_regcompass_step_grn <- function(
 
 #' Build condition-only SuperCell2 metacells
 #'
-#' SuperCell2 is stratified only by condition. Cell type is not a grouping
-#' variable; each resulting metacell receives a dominant member-cell type label
-#' and accompanying purity diagnostics for downstream GRN mapping.
+#' SuperCell2 is stratified only by condition. The existing cell-type annotation
+#' is passed as its label by default so construction is label-aware without
+#' making cell type a hard stratum. Each resulting metacell also receives a
+#' dominant member-cell type label and purity diagnostics for downstream GRN
+#' mapping.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
@@ -464,7 +466,8 @@ rc_regcompass_step_results <- function(
       pando_grouping = c(params$condition_col, params$celltype_col),
       pando_peak_cor = grn$grn_result$normalization_policy$pando_peak_cor,
       metacell_grouping = params$condition_col,
-      metacell_celltype_assignment = "posthoc_dominant_membership_label",
+      metacell_celltype_assignment =
+        "supercell_label_guided_then_dominant_membership_audit",
       metacell_gamma = params$metacell_args$gamma,
       sample_weighting = "none",
       meta_module_expansion =
