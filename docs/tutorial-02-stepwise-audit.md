@@ -130,11 +130,14 @@ Do not continue when a required group failed, was skipped for too few cells, or 
 - `pando_tf_peak_gene_significant.tsv.gz`;
 - optional `pando_objects/*.rds`.
 
-## Stage 2: condition-only metacells
+## Stage 2: label-aware, condition-only metacells
 
 ### Input
 
-The original `A`. Condition is the only varying metacell stratum. Cell type and sample are not metacell grouping variables.
+The original `A`. Condition is the only hard metacell stratum. The existing
+cell-type annotation is supplied to SuperCell2 as a construction label so cells
+of different annotated types are not merged indiscriminately. Cell type and
+sample remain excluded from the hard stratum definition.
 
 ### Run
 
@@ -144,6 +147,7 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "RegCompass_steps/02_metacells",
   condition_col = condition_col,
   celltype_col = celltype_col,
+  label_col = celltype_col,
   fragment_files = FALSE,
   metacell_args = list(
     gamma = 75,
@@ -153,7 +157,7 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-Stage 2 does not use the workflow `BPPARAM` shown above. Do not insert `BPPARAM = TRUE` into `metacell_args`. Each metacell receives a dominant member-cell type after construction. Purity, mixed-cell-type status, and the full composition are retained. An exact dominant-cell-type tie stops the workflow.
+Stage 2 does not use the workflow `BPPARAM` shown above. Do not insert `BPPARAM = TRUE` into `metacell_args`. `label_col` must name a complete annotation column and is passed to SuperCell2 before aggregation. Each metacell receives a dominant member-cell type after construction. Purity, mixed-cell-type status, and the full composition are retained. An exact dominant-cell-type tie stops the workflow.
 
 ### Gate before Stage 3
 

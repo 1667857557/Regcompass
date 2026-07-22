@@ -6,6 +6,7 @@
 rc_run_regcompass(object, gem, outdir, pfm, genome,
   fragment_files = FALSE, sample_col = NULL,
   condition_col = "condition", celltype_col = "cell_type",
+  metacell_label_col = celltype_col,
   rna_assay = "RNA", atac_assay = "ATAC",
   model_mode = c("meta_module_gem", "full_gem"),
   medium_scenarios = NULL, metacell_args = list(), layer1_args = list(),
@@ -24,5 +25,8 @@ On Linux, \code{parallel_backend = "multicore"} uses \code{BiocParallel::Multico
 
 Pando may be installed from GitHub or a local source package. RegCompass validates the required Pando API and does not require GitHub remote metadata for local installations. The default HiGHS LP backend is a required dependency, and the selected solver is checked before medium-constrained model construction.
 
-Sample balancing and sample-based weighting are not implemented. Cell type is assigned to each metacell afterwards from its dominant member-cell label and is not a metacell stratification variable.
+Sample balancing and sample-based weighting are not implemented. The column named by \code{metacell_label_col} is passed to SuperCell2 before aggregation to reduce annotated cell-type mixing. Cell type is not a hard metacell stratum; dominant member-cell type and purity are audited afterwards.
+}
+\arguments{
+\item{metacell_label_col}{Complete metadata annotation passed to SuperCell2 before aggregation. Defaults to \code{celltype_col} to reduce annotated cell-type mixing while condition remains the only hard stratum.}
 }

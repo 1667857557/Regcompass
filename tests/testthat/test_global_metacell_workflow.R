@@ -38,6 +38,20 @@ test_that("metacell construction is condition-only without sample balancing", {
   expect_match(text, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(text, "gamma <- 75L", fixed = TRUE)
   expect_match(text, "Sample balancing is not part", fixed = TRUE)
+  expect_match(text, "label_col = label_col", fixed = TRUE)
+})
+
+test_that("public metacell workflows expose a pre-aggregation annotation label", {
+  step_formals <- formals(rc_regcompass_step_metacells)
+  run_formals <- formals(rc_run_regcompass)
+
+  expect_identical(deparse(step_formals$label_col), "celltype_col")
+  expect_identical(deparse(run_formals$metacell_label_col), "celltype_col")
+
+  step_text <- paste(deparse(body(rc_regcompass_step_metacells)), collapse = "\n")
+  run_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  expect_match(step_text, "label_col = label_col", fixed = TRUE)
+  expect_match(run_text, "label_col = metacell_label_col", fixed = TRUE)
 })
 
 test_that("dominant cell type is assigned after condition-only metacells", {
