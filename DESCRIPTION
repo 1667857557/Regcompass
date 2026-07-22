@@ -41,7 +41,6 @@ Collate:
     'condition_pooling.R'
     'grn_inference.R'
     'regulatory_modifier.R'
-    'regulatory_integration.R'
     'condition_layer1.R'
     'layer1_builder.R'
     'parallel.R'
