@@ -18,5 +18,9 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
 Runs single-cell RNA normalization, cell-type-shared ATAC TF-IDF, condition-by-cell-type Pando GRNs, condition-only SuperCell2 metacells, GRN-derived meta-modules, Layer 1 integration, and Layer 2 scoring.
 }
 \details{
-The default Pando peak filter is \code{peak_cor = 0.01}. The default metacell resolution is \code{gamma = 75}. Sample balancing and sample-based weighting are not implemented. Cell type is assigned to each metacell afterwards from its dominant member-cell label and is not a metacell stratification variable.
+The default Pando peak filter is \code{peak_cor = 0.01}. The default metacell resolution is \code{gamma = 75}. Normalized RNA and ATAC matrices are aligned by cell ID; different order is accepted, while different cell sets are rejected. Cell-type-local all-zero peaks are omitted from that cell type's TF-IDF calculation and restored as exact zeros.
+
+Pando may be installed from GitHub or a local source package. RegCompass validates the required Pando API and does not require GitHub remote metadata for local installations. The default HiGHS LP backend is a required dependency, and the selected solver is checked before medium-constrained model construction.
+
+Sample balancing and sample-based weighting are not implemented. Cell type is assigned to each metacell afterwards from its dominant member-cell label and is not a metacell stratification variable.
 }
