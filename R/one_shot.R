@@ -1,45 +1,25 @@
 #' Run RegCompass from species-aware defaults
 #'
-#' Downloads a pinned Human-GEM 2 or Mouse-GEM release when `gem` is not
-#' supplied. `species = "human"` is the default; `species = "mouse"` routes
-#' setup to Mouse-GEM 1.8.0 and the mouse physiological medium. It builds a
-#' species-matched literature-backed physiological medium by default and
-#' delegates to [rc_run_regcompass()].
+#' Prepares a pinned Human-GEM or Mouse-GEM model when `gem` is omitted and
+#' delegates to the canonical GRN-first [rc_run_regcompass()] workflow.
 #'
-#' The delegated condition-pooled workflow supports one or more samples per
-#' condition and one or more conditions. One condition returns a reaction
-#' ranking; multiple conditions additionally return descriptive pairwise
-#' priority contrasts. `model_mode = "meta_module_gem"` and
-#' `model_mode = "full_gem"` are both supported through `...`.
-#'
-#' Biological meta-modules are constructed from complete-GPR core reactions,
-#' core-reaction subsystems and shared KEGG, Reactome, or master-Rhea reaction
-#' identifiers. No metabolite-neighbour or generic stoichiometric one-hop
-#' expansion is performed. Local FASTCORE is the sole mechanism for adding
-#' reactions required for flux feasibility, and those reactions remain separate
-#' from biological membership.
+#' The workflow first normalizes single-cell RNA globally and computes ATAC
+#' TF-IDF within each cell type across conditions. It then fits one Pando model
+#' per condition and cell type with `peak_cor = 0.01` by default. SuperCell2
+#' metacells are constructed afterwards with `gamma = 75` by default.
 #'
 #' @param object A Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
 #' @param pfm Motif position-frequency matrices.
 #' @param genome Genome object matching the selected species and ATAC coordinates.
-#' @param fragment_files Must be `FALSE` in the v1.7.0 canonical
-#'   condition-pooled workflow; existing ATAC peak counts are aggregated.
-#' @param species `"human"` or `"mouse"`; defaults to `"human"`. Choosing
-#'   `"mouse"` prepares Mouse-GEM and mouse plasma defaults when `gem` and
-#'   `medium_scenarios` are omitted.
+#' @param fragment_files Must be `FALSE` for the canonical peak-count path.
+#' @param species `"human"` or `"mouse"`.
 #' @param gem Optional prebuilt species GEM.
-#' @param gem_version Pinned model release. Defaults to Human-GEM 2.0.0 or
-#'   Mouse-GEM 1.8.0.
-#' @param medium_scenario Medium preset identifier. The default `"physiologic"`
-#'   resolves to human or mouse plasma.
+#' @param gem_version Pinned model release.
+#' @param medium_scenario Medium preset identifier.
 #' @param medium_scenarios Optional prebuilt medium table.
-#' @param ... Arguments passed to [rc_run_regcompass()], including
-#'   `model_mode`. There is no metabolite-neighbour or one-hop expansion
-#'   argument.
-#' @return A RegCompass result list containing raw directional minimum penalties,
-#'   flux-normalized `reaction_ranking`, and descriptive condition contrasts when
-#'   multiple conditions are present.
+#' @param ... Arguments passed to [rc_run_regcompass()].
+#' @return A canonical RegCompass result list.
 #' @export
 rc_run_regcompass_one_shot <- function(
     object, outdir, pfm, genome,
@@ -51,30 +31,20 @@ rc_run_regcompass_one_shot <- function(
     gem_version = NULL,
     ...) {
   species <- match.arg(species)
-  if (is.null(gem_version)) {
-    gem_version <- if (identical(species, "human")) "2.0.0" else "1.8.0"
-  }
+  if (is.null(gem_version)) gem_version <- if (identical(species, "human")) "2.0.0" else "1.8.0"
   if (is.null(gem)) {
-    gem <- rc_prepare_gem(
-      species = species,
-      version = gem_version
-    )
+    gem <- rc_prepare_gem(species = species, version = gem_version)
   } else {
     .rc_infer_gem_species(gem, species)
   }
   if (is.null(medium_scenarios)) {
     medium_scenarios <- rc_make_medium_scenarios(
-      gem = gem,
-      scenario = medium_scenario,
-      species = species
+      gem = gem, scenario = medium_scenario, species = species
     )
   }
   rc_run_regcompass(
-    object = object,
-    gem = gem,
-    outdir = outdir,
-    pfm = pfm,
-    genome = genome,
+    object = object, gem = gem, outdir = outdir,
+    pfm = pfm, genome = genome,
     fragment_files = fragment_files,
     species = species,
     medium_scenarios = medium_scenarios,

@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.7.0 condition-pooled workflow"
+title: "RegCompassR 1.8.0 GRN-first workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.7.0 condition-pooled workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.0 GRN-first workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -11,164 +11,45 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-RegCompassR 1.7.0 stratifies cells only by condition and cell type before
-SuperCell2 condition-level metacell construction. Biological-sample labels do
-not alter cell selection, weighting, or grouping. `sample_col` is therefore
-optional and defaults to `NULL`. Pando fits one condition-specific
-TF–peak–gene model per cell type. Directional COMPASS-like scoring can use
-either the shared union meta-module GEM or the shared full GEM.
+RegCompassR first estimates condition-by-cell-type Pando GRNs from single cells. RNA is normalized once across all cells, while ATAC TF-IDF uses all conditions within each cell type as the shared reference. Pando then splits the normalized object by `condition_col × celltype_col`; the default peak-expression filter is `peak_cor = 0.01`.
 
-One or more conditions are accepted. Condition-pooled metacells are descriptive
-units, not independent biological replicates. A single-condition analysis
-returns a metabolic reaction ranking; multiple conditions additionally return
-pairwise descriptive priority contrasts.
-
-Legacy `sample_balance` and `sample_balance_seed` entries in `metacell_args` are
-ignored with a warning. No cells are downsampled according to sample identity.
-
-Pando coefficients are learned from RNA+ATAC, but the per-metacell regulatory
-state uses coefficient-weighted peak accessibility only. Metacell TF RNA is not
-multiplied into that state. Peaks with zero counts are excluded before shared
-TF-IDF normalization and again within each condition-by-cell-type Pando fit.
-
-Biological meta-module membership is annotation-defined: complete-GPR core
-reactions are expanded through their subsystems and shared KEGG, Reactome, or
-master-Rhea reaction identifiers. No metabolite-neighbour or stoichiometric
-one-hop expansion is performed. Local FASTCORE is the sole stage that can add
-non-annotated reactions required for flux feasibility, and those support
-reactions remain separate from biological membership.
-
-## Prepare the model
+After GRN inference, SuperCell2 builds metacells stratified only by `condition_col`, with `gamma = 75` by default. `celltype_col` is not used for metacell grouping. Each metacell is assigned the dominant cell type among its member cells, and the dominant fraction, number of represented cell types, and mixed-cell-type flag are retained. These labels select the matching condition-by-cell-type GRN during Layer 1. Sample balancing and sample-based downsampling are not implemented.
 
 ```{r}
-library(RegCompassR)
-
-human_gem <- rc_prepare_human2_gem(version = "2.0.0")
-mouse_gem <- rc_prepare_mouse_gem(version = "1.8.0")
-gem <- rc_prepare_gem(species = "human", version = "2.0.0")
-
-medium <- rc_make_medium_scenarios(
-  human_gem,
-  scenario = "normal_human_plasma"
-)
-```
-
-## Run the explicit workflow
-
-```{r}
-library(Pando)
-library(BSgenome.Hsapiens.UCSC.hg38)
-data(motifs, package = "Pando")
-data(SCREEN.ccRE.UCSC.hg38, package = "Pando")
-
-result <- rc_run_regcompass(
-  object = object,
-  gem = human_gem,
-  outdir = "RegCompass_result",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,
-  species = "human",
-  sample_col = NULL,
+step1 <- rc_regcompass_step_grn(
+  object, gem, "steps/01_grn", motifs,
+  BSgenome.Hsapiens.UCSC.hg38,
   condition_col = "condition",
   celltype_col = "cell_type",
-  model_mode = "meta_module_gem",
-  medium_scenarios = medium,
-  metacell_args = list(
-    gamma = 20,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10
-  ),
   pando_args = list(
-    min_metacells = 10,
-    pando_initiate_args = list(
-      regions = SCREEN.ccRE.UCSC.hg38
-    ),
     pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0,
-      adjust_method = "fdr"
-    )
-  ),
-  layer1_args = list(
-    regulatory_alpha = 1,
-    tau = 0.20,
-    local_fastcore = TRUE
-  ),
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs"
-  ),
-  upstream_workers = 8,
-  layer2_workers = 8
-)
-```
-
-Use `model_mode = "full_gem"` to retain the complete validated GEM during LP
-scoring. The same condition-pooled Layer 1 evidence, medium, core-derived targets,
-and output ranking contract are used in both modes.
-
-The main outputs are:
-
-- condition-only metacell membership in `result$metacells$membership`;
-- pooling provenance in `result$metacells$input_design`;
-- RNA, ATAC-derived regulatory state and `reaction_expression` in `result$layer1`;
-- biological membership, separate FASTCORE support and shared union membership in `result$grn_meta_modules`;
-- raw minimum penalties in `result$microcompass$penalty`;
-- reaction priorities in `result$reaction_ranking`;
-- pairwise descriptive comparisons in `result$condition_contrast` when multiple conditions are present.
-
-For expression-linked reactions, unmeasured reaction expression is zero-filled.
-It therefore receives exactly the same strict LP penalty as explicitly measured
-zero expression. Missingness remains available in
-`result$microcompass$penalty_components$missing_expression_flag`.
-
-With one condition, `result$analysis_mode` is
-`"single_condition_reaction_ranking"` and `result$condition_contrast` is empty.
-
-The result provenance records
-`result$params$meta_module_expansion = "core_subsystem_plus_kegg_reactome_master_rhea_only"`
-and
-`result$params$feasibility_completion = "local_unconstrained_fastcore_then_global_union_medium_specific_fastcore"`.
-
-## Equivalent one-shot entry point
-
-```{r}
-result <- rc_run_regcompass_one_shot(
-  object = object,
-  outdir = "RegCompass_result",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,
-  species = "human",
-  gem_version = "2.0.0",
-  medium_scenario = "normal_human_plasma",
-  sample_col = NULL,
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  model_mode = "meta_module_gem",
-  metacell_args = list(
-    gamma = 20,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10
-  ),
-  pando_args = list(
-    min_metacells = 10,
-    pando_initiate_args = list(
-      regions = SCREEN.ccRE.UCSC.hg38
-    ),
-    pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0,
-      adjust_method = "fdr"
+      method = "glm", tf_cor = 0.1,
+      peak_cor = 0.01, adjust_method = "fdr"
     )
   )
 )
+
+step2 <- rc_regcompass_step_metacells(
+  object, "steps/02_metacells",
+  condition_col = "condition",
+  celltype_col = "cell_type",
+  metacell_args = list(gamma = 75)
+)
+
+step3 <- rc_regcompass_step_meta_modules(
+  step1, step2, gem, "steps/03_meta_modules"
+)
+step4 <- rc_regcompass_step_layer1(
+  step2, step3, gem, "steps/04_layer1"
+)
+step5 <- rc_regcompass_step_layer2(
+  step4, step3, gem, medium_scenarios,
+  "steps/05_layer2"
+)
+result <- rc_regcompass_step_results(
+  step1, step2, step3, step4, step5,
+  gem, "steps/06_results"
+)
 ```
 
-The one-shot entry point delegates to the same condition-pooled evidence,
-annotation-only meta-module architecture, and selectable structural model modes.
-
-For mouse data, use `species = "mouse"`, a mouse genome object, and Mouse-GEM.
+Each condition-by-cell-type GRN defines metabolic-gene components and complete-GPR core reactions. Meta-modules then add reactions in the core-reaction subsystems and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE is the only feasibility-completion stage.

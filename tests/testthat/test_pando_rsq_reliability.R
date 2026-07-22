@@ -1,12 +1,11 @@
-test_that("missing Pando rsq is never treated as reliable", {
-  expect_identical(
-    .rc_pando_rsq_is_reliable(
-      c(NA_real_, NaN, Inf, -Inf, 0, 0.1, 0.2),
-      min_model_rsq = 0.1
-    ),
-    c(FALSE, FALSE, FALSE, FALSE, FALSE, TRUE, TRUE)
+test_that("single-cell GRN keeps only finite Pando R-squared values", {
+  body_text <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns)),
+    collapse = "\n"
   )
-  expect_false(.rc_pando_rsq_is_reliable(NA_real_, min_model_rsq = 0))
+  expect_match(body_text, "is.finite(value) & value >= min_model_rsq", fixed = TRUE)
+  expect_match(body_text, "rep(FALSE, nrow(tab$significant))", fixed = TRUE)
+  expect_false(exists(".rc_pando_rsq_is_reliable", inherits = TRUE))
 })
 
 test_that("zero regulatory reliability falls back to RNA support", {
@@ -23,14 +22,6 @@ test_that("zero regulatory reliability falls back to RNA support", {
   )
   expect_equal(as.numeric(integrated), as.numeric(rna), tolerance = 0)
   expect_identical(dimnames(integrated), dimnames(rna))
-  expect_match(
-    attr(integrated, "integration_formula"),
-    "C_multiome",
-    fixed = TRUE
-  )
-  expect_match(
-    attr(integrated, "score_semantics"),
-    "zero-preserving",
-    fixed = TRUE
-  )
+  expect_match(attr(integrated, "integration_formula"), "C_multiome", fixed = TRUE)
+  expect_match(attr(integrated, "score_semantics"), "zero-preserving", fixed = TRUE)
 })

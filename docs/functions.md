@@ -1,116 +1,13 @@
-# Public functions in RegCompassR 1.7.0
+# Public functions in RegCompassR 1.8.0
 
-## `rc_prepare_gem()`
+- `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: prepare supported GEMs.
+- `rc_make_medium_scenarios()`: create the shared extracellular medium.
+- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: run the complete GRN-first workflow.
+- `rc_regcompass_step_grn()`: normalize single-cell RNA, compute cell-type-shared ATAC TF-IDF across conditions, and fit one Pando model per condition × cell type. Default `peak_cor = 0.01`.
+- `rc_regcompass_step_metacells()`: build SuperCell2 metacells stratified only by condition. Default `gamma = 75`. Cell type is assigned afterwards from the dominant member-cell label, with purity and mixed-cell-type diagnostics retained.
+- `rc_regcompass_step_meta_modules()`: convert condition × cell-type GRNs into complete-GPR core reactions and expanded biological meta-modules, followed by local FASTCORE completion.
+- `rc_regcompass_step_layer1()`: integrate metacell RNA and ATAC evidence into reaction expression using the post hoc dominant cell-type label to select the matching GRN.
+- `rc_regcompass_step_layer2()`: run directional COMPASS-like minimum-penalty scoring.
+- `rc_regcompass_step_results()`: assemble rankings and the final result.
 
-Prepare the supported human or mouse genome-scale metabolic model.
-
-## `rc_prepare_human2_gem()` and `rc_prepare_mouse_gem()`
-
-Prepare the pinned Human-GEM 2.0.0 or Mouse-GEM 1.8.0 model.
-
-## `rc_make_medium_scenarios()`
-
-Construct one shared extracellular medium. Condition-specific medium rows are
-not accepted by shared-model scoring.
-
-## `rc_run_regcompass()`
-
-Run the canonical condition-pooled workflow.
-
-Required design:
-
-- `sample_col`: original biological-sample identifier; each sample maps to one condition;
-- `condition_col`: condition used for pooling, ranking and optional comparison;
-- `celltype_col`: cell type kept pure during pooling;
-- `fragment_files = FALSE`;
-- one or more samples per condition;
-- one or more conditions.
-
-A single condition produces `reaction_ranking` and no contrast. Multiple conditions
-produce one ranking per condition and all pairwise descriptive contrasts within
-each cell type. Pooled metacells are not treated as independent biological
-replicates, and the workflow warns when a condition has fewer than two biological
-samples.
-
-Canonical tutorial defaults are `gamma = 20` for SuperCell2 and `peak_cor = 0`
-for Pando inference.
-
-Main argument bundles:
-
-- `metacell_args`: SuperCell2 parameters such as `gamma` and minimum stratum size;
-  `sample_balance = TRUE` is the default and deterministically gives every
-  biological sample the same cell quota within each condition × cell-type
-  stratum, using the smallest sample count; `sample_balance_seed` defaults to
-  `12345`; set `sample_balance = FALSE` only for an explicitly cell-count-weighted
-  analysis;
-- `pando_args`: `initiate_grn()`, motif and `infer_grn()` parameters;
-- `layer1_args`: `regulatory_alpha`, `gene_half_saturation`, `tau`, and local FASTCORE options;
-- `layer2_args`: solver, target direction, time limit and shared-model options;
-- `upstream_workers` and `layer2_workers`: worker counts for the one-call workflow.
-
-Sample-balancing diagnostics are written to
-`sample_balance_diagnostics.tsv.gz` and retained in
-`result$metacells$sample_balance_diagnostics`. Balancing limits unequal cell-count
-influence on pooled metacell construction; it does not create biological
-replication and does not justify metacell-level significance testing.
-
-Structural model selection:
-
-- `model_mode = "meta_module_gem"`: score the shared union of locally completed condition-specific meta-modules;
-- `model_mode = "full_gem"`: score the same targets and penalties in the shared full GEM.
-
-Both modes use the same Layer 1 evidence model, medium and target-flux fraction.
-
-Structural contract:
-
-- core reactions require at least one complete GPR isozyme group;
-- biological membership may expand through the core reaction's subsystem and
-  shared KEGG, Reactome, or master-Rhea reaction identifiers;
-- no reaction is added by metabolite sharing, stoichiometric adjacency, or a
-  one-hop rule;
-- there is no `include_one_hop` or metabolite-degree control in the API;
-- local FASTCORE may add only reactions required for flux feasibility, reported
-  separately from annotation-defined biological membership.
-
-Evidence contract:
-
-- peaks with zero counts are excluded before shared TF-IDF and within each Pando group;
-- Pando coefficients weight cell-type-referenced peak-accessibility deviations;
-- the modifier updates bounded RNA support before GPR aggregation;
-- protein-complex AND uses normalized Boltzmann soft-min;
-- isozyme OR is additive;
-- expression-linked reactions use `1 / (1 + log2(1 + E_multiome))`;
-- non-finite reaction expression is set to zero, so unmeasured and explicit zero
-  expression receive the same strictest expression-linked penalty;
-- only exchange, demand, sink and artificial-support reactions receive fixed
-  structural costs.
-
-Ranking contract:
-
-- raw `microcompass$penalty` is retained for the same reaction across conditions;
-- cross-reaction priority uses `penalty / (omega * vmax)`;
-- `reaction_ranking` reports raw penalty, `vmax`, required target flux,
-  normalized penalty, support score and priority rank;
-- rankings from `meta_module_gem` and `full_gem` are separate structural-context
-  analyses and should not be merged.
-
-## Stepwise functions
-
-The public restartable stages are:
-
-- `rc_regcompass_step_metacells()`;
-- `rc_regcompass_step_meta_modules()`;
-- `rc_regcompass_step_layer1()`;
-- `rc_regcompass_step_layer2()`;
-- `rc_regcompass_step_results()`.
-
-Steps 2–4 accept `parallel = TRUE/FALSE` and `BPPARAM`. Use `BPPARAM = NULL`
-for the default backend, `BPPARAM = FALSE` for sequential `lapply()`, or an
-explicit `BiocParallelParam`. Logical `TRUE` is rejected because it is not a
-parallel backend object.
-
-## `rc_run_regcompass_one_shot()`
-
-Prepare the species GEM and medium when omitted, then delegate to
-`rc_run_regcompass()`. It uses the same condition-pooled evidence architecture,
-selectable structural model modes and annotation-only meta-module expansion.
+Sample balancing APIs are not part of the workflow. `sample_col` is optional provenance only and does not affect cell selection, weighting, grouping, or graph construction. Cell type is not a metacell stratification variable.
