@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.2 GRN-first workflow"
+title: "RegCompassR 1.8.1 GRN-first workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.2 GRN-first workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.1 GRN-first workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
