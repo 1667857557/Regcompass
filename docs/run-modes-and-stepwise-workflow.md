@@ -1,8 +1,8 @@
 # RegCompassR stepwise workflow
 
-This tutorial describes the canonical 1.8.2 workflow and the files that connect each stage.
+This is the canonical 1.8.2 workflow. Each section states the stage input, output, and minimum inspection required before continuing.
 
-## 1. Installation
+## Installation
 
 ```r
 install.packages(c("remotes", "highs"))
@@ -14,30 +14,29 @@ remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
 
-Pando may instead be installed from a local source archive:
+A locally downloaded Pando source archive is supported:
 
 ```r
 install.packages("~/Pando_regcompass.tar.gz", repos = NULL, type = "source")
 ```
 
-A local installation does not contain GitHub remote metadata. RegCompass checks the required Pando functions and accepts the package without a remote-origin warning.
+RegCompass checks the required Pando API. GitHub remote metadata are not required for a local installation.
 
-## 2. Input contract
+## Input contract
 
-The same single-cell Seurat object is supplied to Steps 1 and 2. It must contain paired RNA and ATAC measurements for the same cell identities.
-
-Required components:
+The same paired-cell Seurat multiome object is passed to Steps 1 and 2.
 
 | Input | Requirement |
 |---|---|
-| RNA assay | Raw counts with gene symbols compatible with the selected GEM |
-| ATAC assay | `ChromatinAssay` peak-count matrix |
-| Cells | RNA, ATAC, and metadata refer to the same cell IDs; order may differ |
-| Condition | Complete metadata column, for example `dataset` |
-| Cell type | Complete metadata column, for example `epithelial_or_stem` |
-| Genome | Matches ATAC coordinates, for example hg38 |
-| `pfm` | PFM/PWM collection accepted by Pando/motifmatchr; `Pando::motifs`, not `motif2tf` |
-| Fragments | Not required when `fragment_files = FALSE`; existing peak counts are aggregated |
+| RNA | Raw-count assay with GEM-compatible gene symbols |
+| ATAC | Peak-count `ChromatinAssay` |
+| Cells | RNA, ATAC, and metadata contain the same cell IDs; order may differ |
+| Metadata | Complete condition and cell-type columns |
+| Genome | Matches the ATAC peak coordinates |
+| `pfm` | Pando/motifmatchr-compatible PFM/PWM collection |
+| Fragments | Not needed when `fragment_files = FALSE` |
+
+Use `Pando::motifs` as `pfm`; do not pass the `motif2tf` annotation table.
 
 ```r
 library(RegCompassR)
@@ -59,35 +58,23 @@ stopifnot(
   all(nzchar(trimws(as.character(A@meta.data[[condition_col]])))),
   all(nzchar(trimws(as.character(A@meta.data[[celltype_col]]))))
 )
-```
 
-RegCompass runs `NormalizeData` on RNA. For ATAC, it calculates one TF-IDF reference per cell type using all conditions. A peak that is globally present but absent in one cell type remains zero for that cell type and is not passed to `RunTFIDF`, preventing zero-total warnings.
-
-## 3. GEM and medium
-
-```r
-gem <- rc_prepare_gem(
-  species = "human",
-  version = "2.0.0"
-)
-
+gem <- rc_prepare_gem(species = "human", version = "2.0.0")
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
   scenario = "high_glucose",
   species = "human"
 )
-
 rc_validate_gem(gem)
-head(medium_scenarios)
 ```
 
-The default solver is `highs`, which is a package dependency. RegCompass checks the selected solver before constructing a medium-constrained GEM. A missing solver is therefore reported as an installation error, not as model infeasibility.
+RNA is normalized globally. ATAC TF-IDF is calculated once within each cell type across all conditions. A peak absent from one cell type remains zero and is not passed to that cell type's `RunTFIDF` call.
 
-## 4. Step 1: single-cell GRNs
+## Step 1: single-cell GRNs
 
-**Input:** original Seurat object, GEM, motifs, genome, condition and cell-type columns.
+**Input:** `A`, `gem`, `motifs`, genome, condition column, cell-type column.
 
-**Computation:** global RNA normalization, cell-type-shared ATAC TF-IDF, then one Pando model per `condition × cell type`.
+**Output used by Step 3:** `step1$grn_result`.
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -114,20 +101,21 @@ head(step1$grn_result$tf_peak_gene_significant)
 step1$grn_result$pando_installation
 ```
 
-Primary files:
+Do not continue if any Pando group failed or if required condition × cell-type groups have no significant edges.
 
-- `single_cell_grn.rds`: GRN result used by Step 3.
-- `step_grn.rds`: restartable stage object.
-- `pando_group_status.tsv.gz`: group cell counts and edge counts.
-- `pando_tf_peak_gene_all.tsv.gz`: all fitted coefficients.
-- `pando_tf_peak_gene_significant.tsv.gz`: filtered edges used downstream.
-- `pando_objects/*.rds`: optional fitted Pando objects.
+Files:
 
-## 5. Step 2: condition-only metacells
+- `single_cell_grn.rds`, `step_grn.rds`
+- `pando_group_status.tsv.gz`
+- `pando_tf_peak_gene_all.tsv.gz`
+- `pando_tf_peak_gene_significant.tsv.gz`
+- optional `pando_objects/*.rds`
 
-**Input:** the original, unmodified Seurat object.
+## Step 2: condition-only metacells
 
-**Computation:** SuperCell2 is stratified only by condition. Cell type is assigned afterwards from membership. An exact tie between two cell types is rejected because no unique GRN can be selected.
+**Input:** original `A`, not the normalized object internal to Step 1.
+
+**Output used by Steps 3-4:** `step2$pooled` and `step2$metacell_object`.
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -143,38 +131,28 @@ step2 <- rc_regcompass_step_metacells(
   )
 )
 
-with(
-  step2$pooled$metacell_meta,
-  table(.data[[condition_col]], .data[[celltype_col]])
+table(
+  step2$pooled$metacell_meta[[condition_col]],
+  step2$pooled$metacell_meta[[celltype_col]]
 )
 summary(step2$pooled$metacell_meta$dominant_celltype_fraction)
 ```
 
-For base R compatibility, the table can also be written as:
+SuperCell2 is grouped only by condition. Cell type is assigned afterwards from member cells. Exact dominant-cell-type ties stop the workflow.
 
-```r
-with(
-  step2$pooled$metacell_meta,
-  table(
-    step2$pooled$metacell_meta[[condition_col]],
-    step2$pooled$metacell_meta[[celltype_col]]
-  )
-)
-```
+Files:
 
-Primary files:
+- `step_metacells.rds`, `merged_metacell_object.rds`
+- `metacell_metadata.tsv.gz`
+- `metacell_membership.tsv.gz`
+- `metacell_celltype_composition.tsv.gz`
+- `metacell_celltype_summary.tsv.gz`
 
-- `step_metacells.rds`: restartable stage object.
-- `merged_metacell_object.rds`: normalized RNA+ATAC metacell Seurat object.
-- `metacell_metadata.tsv.gz`: final condition, dominant cell type, purity, and mixed-cell diagnostics.
-- `metacell_membership.tsv.gz`: single-cell-to-metacell assignments.
-- `metacell_celltype_composition.tsv.gz`: full cell-type composition per metacell.
+## Step 3: core reactions and meta-modules
 
-## 6. Step 3: core reactions and meta-modules
+**Input:** Step 1, Step 2, and the same GEM.
 
-**Input:** Step 1 GRNs, Step 2 metacells, and the same GEM.
-
-**Computation:** validates bidirectional GRN/metacell group coverage, maps GRN metabolic genes to complete-GPR core reactions, expands through subsystem and shared KEGG/Reactome/master-Rhea identifiers, then adds local FASTCORE support reactions.
+**Output used by Steps 4-5:** `step3$condition_modules` and `step3$global_modules`.
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -200,16 +178,17 @@ head(step3$condition_modules$reaction_membership)
 step3$condition_modules$local_fastcore_summary
 ```
 
-Primary files:
+The stage validates GRN ↔ metacell group coverage, maps complete-GPR core reactions, expands through core subsystems and shared KEGG/Reactome/master-Rhea identifiers, then adds local FASTCORE support reactions.
 
-- `grn_metacell_group_coverage.tsv.gz`: required GRN/metacell alignment.
-- `core_gene_reaction.tsv.gz`: complete-GPR core mappings.
-- `meta_module_reactions.tsv.gz`: biological membership before FASTCORE support.
-- `condition_meta_modules.rds`: condition × cell-type modules.
-- `global_meta_modules.rds`: deduplicated union used by Layer 2.
-- `local_fastcore/`: completion models and diagnostics.
+Files:
 
-## 7. Step 4: RNA+ATAC reaction expression
+- `grn_metacell_group_coverage.tsv.gz`
+- `core_gene_reaction.tsv.gz`
+- `meta_module_reactions.tsv.gz`
+- `condition_meta_modules.rds`, `global_meta_modules.rds`
+- `local_fastcore/` diagnostics and optional models
+
+## Step 4: reaction expression
 
 ```r
 step4 <- rc_regcompass_step_layer1(
@@ -221,18 +200,16 @@ step4 <- rc_regcompass_step_layer1(
   tau = 0.20
 )
 
-dim(step4$gene_support_rna)
-dim(step4$gene_regulatory_modifier)
-dim(step4$reaction_expression)
 stopifnot(identical(
   colnames(step4$reaction_expression),
   step4$unit_meta$pool_id
 ))
+dim(step4$reaction_expression)
 ```
 
-`step_layer1.rds` contains RNA support, ATAC regulatory modifiers, integrated gene support, parsed GPRs, reaction expression, and metacell metadata.
+`step_layer1.rds` contains RNA support, ATAC modifiers, integrated gene support, GPR diagnostics, and reaction expression.
 
-## 8. Step 5: directional scoring
+## Step 5: directional scoring
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -254,9 +231,9 @@ head(step5$lp_diagnostics)
 step5$model_cache_summary
 ```
 
-Primary outputs include `score`, `penalty`, `vmax`, `feasible`, LP diagnostics, model diagnostics, and the persistent model cache.
+The selected solver is checked before model construction. A missing solver package is reported as an installation error, not as medium/GEM infeasibility.
 
-## 9. Step 6: final result
+## Step 6: final result
 
 ```r
 result <- rc_regcompass_step_results(
@@ -269,23 +246,14 @@ result <- rc_regcompass_step_results(
   outdir = "RegCompass_steps/06_results"
 )
 
-names(result)
 head(result$reaction_ranking)
 head(result$condition_contrast)
 ```
 
-The final files are `step_comparison.rds` and `regcompass_result.rds`.
+Final files: `step_comparison.rds` and `regcompass_result.rds`.
 
-## Common errors
+## Error interpretation
 
-### `RNA normalized assay data are not aligned`
-
-Different column order is valid and is now automatically corrected. A remaining error means RNA and the Seurat object contain genuinely different cell IDs.
-
-### `Some features contain 0 total counts`
-
-Globally nonzero peaks can be absent from one cell type. RegCompass now excludes those local all-zero rows from that TF-IDF calculation and restores them as exact zeros.
-
-### `The medium-constrained parent GEM is not feasible: error`
-
-An `error` status may indicate a missing solver rather than biological infeasibility. Version 1.8.2 requires `highs` and performs a solver preflight. True infeasibility is reported only after a solver has run successfully.
+- **`RNA normalized assay data are not aligned`**: column-order differences are accepted in 1.8.2. A remaining error means the cell-ID sets genuinely differ.
+- **`Some features contain 0 total counts`**: cell-type-local all-zero peaks are now omitted from TF-IDF and restored as zeros.
+- **`The medium-constrained parent GEM is not feasible: error`**: reinstall 1.8.2 and confirm `highs` is installed. Solver availability is checked before feasibility analysis.
