@@ -1,27 +1,23 @@
 # RegCompassR
 
-RegCompassR 1.8.1 uses a GRN-first RNA+ATAC workflow:
+RegCompassR 1.8.2 runs the following RNA+ATAC workflow:
 
 ```text
-single-cell RNA NormalizeData across all cells
-→ ATAC TF-IDF within each cell type across conditions
-→ one Pando GRN per condition × cell type (peak_cor = 0.01 by default)
-→ condition-only SuperCell2 metacells (gamma = 75 by default)
-→ unambiguous post hoc dominant cell-type labels from metacell membership
-→ validate GRN ↔ metacell condition × cell-type coverage
-→ complete-GPR core reactions from each condition × cell-type GRN
-→ subsystem + KEGG/Reactome + master-Rhea expansion
-→ local FASTCORE feasibility completion
+single-cell RNA normalization
+→ ATAC TF-IDF shared across conditions within each cell type
+→ Pando GRN for each condition × cell type
+→ condition-only SuperCell2 metacells
+→ GRN-derived core reactions and meta-modules
 → RNA+ATAC reaction expression
-→ directional COMPASS-like minimum-penalty scoring
+→ directional COMPASS-like scoring
 ```
 
-Sample metadata are optional. They are not used for sample balancing, downsampling, weighting, or metacell grouping. Cell type is also not used to stratify metacell construction; it is assigned afterwards from the dominant member-cell label. Purity and mixed-cell-type diagnostics are retained, and exact dominant-cell-type ties are rejected because no condition × cell-type GRN can be assigned unambiguously.
+The canonical defaults are `peak_cor = 0.01` for Pando and `gamma = 75` for SuperCell2. Sample metadata are optional and are not used for balancing, weighting, downsampling, or grouping.
 
 ## Installation
 
 ```r
-install.packages("remotes")
+install.packages(c("remotes", "highs"))
 remotes::install_version("SeuratObject", "4.1.4", upgrade = "never")
 remotes::install_version("Seurat", "4.4.0", upgrade = "never")
 remotes::install_version("Signac", "1.11.0", upgrade = "never")
@@ -30,18 +26,68 @@ remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
 
-## One-shot workflow
+A locally downloaded Pando source package is also supported:
+
+```r
+install.packages(
+  "~/Pando_regcompass.tar.gz",
+  repos = NULL,
+  type = "source"
+)
+```
+
+RegCompass validates the required Pando API. GitHub remote metadata are not required for a local or offline source installation.
+
+## Required input
+
+`object` must be a paired-cell Seurat multiome object with:
+
+- an RNA assay containing raw counts;
+- an ATAC `ChromatinAssay` containing peak counts for the same cell IDs;
+- complete condition and cell-type metadata;
+- peak coordinates and genome build matching `genome`;
+- a PFM/PWM collection accepted by Pando/motifmatchr. Use `Pando::motifs`; do not pass the `motif2tf` annotation table as `pfm`.
+
+```r
+library(RegCompassR)
+library(Pando)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+data(motifs, package = "Pando")
+
+stopifnot(
+  inherits(A, "Seurat"),
+  all(c("RNA", "ATAC") %in% names(A@assays)),
+  inherits(A[["ATAC"]], "ChromatinAssay"),
+  all(c("dataset", "epithelial_or_stem") %in% colnames(A@meta.data)),
+  !anyNA(A$dataset),
+  !anyNA(A$epithelial_or_stem)
+)
+
+gem <- rc_prepare_gem(species = "human", version = "2.0.0")
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "high_glucose",
+  species = "human"
+)
+```
+
+RNA and ATAC normalized matrices are aligned by cell name; different column order is accepted. Peaks absent from one cell type are retained as exact zeros but are excluded from that cell type's TF-IDF calculation.
+
+## One-shot run
 
 ```r
 result <- rc_run_regcompass_one_shot(
-  object = object,
+  object = A,
   outdir = "RegCompass_result",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
   species = "human",
-  condition_col = "condition",
-  celltype_col = "cell_type",
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
   pando_args = list(
     min_cells = 100,
     pando_infer_args = list(
@@ -56,89 +102,23 @@ result <- rc_run_regcompass_one_shot(
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
-  layer1_args = list(
-    regulatory_alpha = 1,
-    tau = 0.20,
-    local_fastcore = TRUE
-  ),
+  layer1_args = list(local_fastcore = TRUE),
   layer2_args = list(target_direction = "both", solver = "highs")
 )
 ```
 
-## Stepwise workflow
+The default `highs` backend is a required dependency. If another solver is selected, RegCompass checks its R package before constructing the medium-constrained model and reports a solver-installation error separately from biological infeasibility.
 
-```r
-step1 <- rc_regcompass_step_grn(
-  object = object,
-  gem = gem,
-  outdir = "RegCompass_steps/01_grn",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  pando_args = list(
-    min_cells = 100,
-    pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0.01,
-      adjust_method = "fdr"
-    )
-  )
-)
+## Main outputs
 
-step2 <- rc_regcompass_step_metacells(
-  object = object,
-  outdir = "RegCompass_steps/02_metacells",
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  fragment_files = FALSE,
-  metacell_args = list(gamma = 75)
-)
+- `01_single_cell_grn/pando_group_status.tsv.gz`: one row per condition × cell-type GRN.
+- `01_single_cell_grn/pando_tf_peak_gene_significant.tsv.gz`: significant Pando edges.
+- `02_condition_metacells/metacell_metadata.tsv.gz`: final metacell labels and purity diagnostics.
+- `03_meta_modules/grn_metacell_group_coverage.tsv.gz`: GRN-to-metacell coverage validation.
+- `03_meta_modules/core_gene_reaction.tsv.gz`: complete-GPR core reactions.
+- `03_meta_modules/meta_module_reactions.tsv.gz`: biological meta-module membership before FASTCORE support.
+- `04_layer1/step_layer1.rds`: RNA support, ATAC modifier, integrated gene support, and reaction expression.
+- `05_layer2/step_layer2.rds`: directional LP scores, penalties, feasibility, and diagnostics.
+- `06_results/regcompass_result.rds`: assembled final result.
 
-step3 <- rc_regcompass_step_meta_modules(
-  grn = step1,
-  metacells = step2,
-  gem = gem,
-  outdir = "RegCompass_steps/03_meta_modules",
-  layer1_args = list(local_fastcore = TRUE)
-)
-
-step4 <- rc_regcompass_step_layer1(
-  metacells = step2,
-  meta_modules = step3,
-  gem = gem,
-  outdir = "RegCompass_steps/04_layer1"
-)
-
-step5 <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_layer2"
-)
-
-result <- rc_regcompass_step_results(
-  grn = step1,
-  metacells = step2,
-  meta_modules = step3,
-  layer1 = step4,
-  layer2 = step5,
-  gem = gem,
-  outdir = "RegCompass_steps/06_results"
-)
-```
-
-## Auditable stage outputs
-
-The restartable stages write the following primary contracts:
-
-- `01_grn`: `single_cell_grn.rds`, `step_grn.rds`, Pando group status and all/significant edge tables, plus optional per-group Pando objects.
-- `02_metacells`: `step_metacells.rds`, `merged_metacell_object.rds`, final `metacell_metadata.tsv.gz`, `metacell_membership.tsv.gz`, and cell-type composition/summary tables. These root-level tables contain the post hoc labels used downstream, unlike the raw per-stratum intermediates.
-- `03_meta_modules`: `grn_metacell_group_coverage.tsv.gz`, condition-specific and global meta-module RDS files, core-reaction and reaction-membership tables, and local FASTCORE diagnostics.
-- `04_layer1`: `step_layer1.rds`, containing metacell RNA support, ATAC regulatory modifiers, integrated gene support, and reaction expression.
-- `05_layer2`: exported microCOMPASS matrices/tables, `step_layer2.rds`, and a persistent model cache.
-- `06_results`: `step_comparison.rds` and `regcompass_result.rds`, retaining both condition-specific and global meta-modules.
-
-The Pando coefficients are learned from single cells. Metacells are built only within condition and receive dominant cell-type labels afterwards so the corresponding condition × cell-type GRN can be applied in Layer 1. Before meta-module construction, every successful GRN group must have at least one scoring metacell and every scoring metacell group must have a successful GRN with significant edges. Meta-module expansion remains restricted to complete-GPR core reactions, their subsystems, shared KEGG or Reactome identifiers, and identical master-Rhea identifiers. Local FASTCORE adds only feasibility-support reactions.
+See [the stepwise tutorial](docs/run-modes-and-stepwise-workflow.md) for stage-by-stage execution and inspection.
