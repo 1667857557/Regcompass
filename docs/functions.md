@@ -1,4 +1,4 @@
-# Public functions in RegCompassR 1.8.2
+# Public functions in RegCompassR 1.8.1
 
 - `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: prepare supported GEMs.
 - `rc_make_medium_scenarios()`: create the shared extracellular medium.
