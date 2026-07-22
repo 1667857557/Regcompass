@@ -11,3 +11,9 @@
 - `rc_regcompass_step_results()`: assemble rankings and retain both condition-specific and global meta-module outputs.
 
 Sample balancing APIs are not part of the workflow. `sample_col` is optional provenance only and does not affect cell selection, weighting, grouping, or graph construction. Cell type is not a metacell stratification variable.
+
+## Tutorial level by API surface
+
+- [Level 1](tutorial-01-quick-start.md) uses `rc_run_regcompass_one_shot()` for the canonical minimal run.
+- [Level 2](tutorial-02-stepwise-audit.md) uses all six `rc_regcompass_step_*()` functions with input/output audit gates.
+- [Level 3](tutorial-03-advanced-restart.md) reuses saved stage objects for parameter sensitivity, restart, solver, medium, and model-scope diagnostics.

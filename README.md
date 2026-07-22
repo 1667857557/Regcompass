@@ -38,6 +38,16 @@ install.packages(
 
 RegCompass validates the required Pando API. GitHub remote metadata are not required for a local or offline source installation.
 
+## Choose a tutorial level
+
+| Level | Intended use | Tutorial |
+|---|---|---|
+| 1 | minimum input validation and a canonical one-shot run | [Minimal one-shot run](docs/tutorial-01-quick-start.md) |
+| 2 | stage-by-stage execution with mandatory audit gates | [Stepwise run with audit gates](docs/tutorial-02-stepwise-audit.md) |
+| 3 | restart, alternative media, solver/model sensitivity, and diagnostics | [Advanced restart and diagnostics](docs/tutorial-03-advanced-restart.md) |
+
+The [tutorial index](docs/run-modes-and-stepwise-workflow.md) summarizes the three levels and their shared input contract.
+
 ## Required input
 
 `object` must be a paired-cell Seurat multiome object with:
@@ -120,5 +130,3 @@ The default `highs` backend is a required dependency. If another solver is selec
 - `04_layer1/step_layer1.rds`: RNA support, ATAC modifier, integrated gene support, and reaction expression.
 - `05_layer2/step_layer2.rds`: directional LP scores, penalties, feasibility, and diagnostics.
 - `06_results/regcompass_result.rds`: assembled final result.
-
-See [the stepwise tutorial](docs/run-modes-and-stepwise-workflow.md) for stage-by-stage execution and inspection.
