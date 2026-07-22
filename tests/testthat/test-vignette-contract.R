@@ -1,7 +1,11 @@
-test_that("workflow vignette documents the GRN-first API and required inputs", {
+test_that("workflow vignette documents the GRN-first API and tutorial levels", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
-    if (nzchar(workspace)) file.path(workspace, "vignettes", "regcompass-workflow.Rmd") else character(),
+    if (nzchar(workspace)) {
+      file.path(workspace, "vignettes", "regcompass-workflow.Rmd")
+    } else {
+      character()
+    },
     file.path("vignettes", "regcompass-workflow.Rmd"),
     file.path("..", "vignettes", "regcompass-workflow.Rmd"),
     file.path("..", "..", "vignettes", "regcompass-workflow.Rmd")
@@ -9,7 +13,15 @@ test_that("workflow vignette documents the GRN-first API and required inputs", {
   candidates <- candidates[file.exists(candidates)]
   if (!length(candidates)) skip("Source vignette is unavailable.")
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
+
   expect_match(text, "RegCompassR 1.8.1", fixed = TRUE)
+  expect_match(text, "Tutorial levels", fixed = TRUE)
+  expect_match(text, "Level 1", fixed = TRUE)
+  expect_match(text, "Level 2", fixed = TRUE)
+  expect_match(text, "Level 3", fixed = TRUE)
+  expect_match(text, "tutorial-01-quick-start.md", fixed = TRUE)
+  expect_match(text, "tutorial-02-stepwise-audit.md", fixed = TRUE)
+  expect_match(text, "tutorial-03-advanced-restart.md", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_grn(", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_metacells(", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_meta_modules(", fixed = TRUE)
@@ -29,7 +41,7 @@ test_that("workflow vignette documents the GRN-first API and required inputs", {
   expect_false(grepl("min_metacells", text, fixed = TRUE))
 })
 
-test_that("README and full tutorial document local Pando and solver behavior", {
+test_that("three tutorial levels exist and have distinct scopes", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   roots <- unique(c(
     if (nzchar(workspace)) workspace else character(),
@@ -37,12 +49,64 @@ test_that("README and full tutorial document local Pando and solver behavior", {
   ))
   roots <- roots[vapply(
     roots,
-    function(path) dir.exists(file.path(path, "man")) &&
-      dir.exists(file.path(path, "docs")),
+    function(path) dir.exists(file.path(path, "docs")),
     logical(1)
   )]
   if (!length(roots)) skip("Source documentation is unavailable.")
   root <- normalizePath(roots[[1L]], mustWork = TRUE)
+
+  tutorial_paths <- file.path(
+    root,
+    "docs",
+    c(
+      "tutorial-01-quick-start.md",
+      "tutorial-02-stepwise-audit.md",
+      "tutorial-03-advanced-restart.md"
+    )
+  )
+  expect_true(all(file.exists(tutorial_paths)))
+
+  level1 <- paste(readLines(tutorial_paths[[1L]], warn = FALSE), collapse = "\n")
+  level2 <- paste(readLines(tutorial_paths[[2L]], warn = FALSE), collapse = "\n")
+  level3 <- paste(readLines(tutorial_paths[[3L]], warn = FALSE), collapse = "\n")
+
+  expect_match(level1, "Tutorial Level 1", fixed = TRUE)
+  expect_match(level1, "rc_run_regcompass_one_shot(", fixed = TRUE)
+  expect_match(level1, "Confirm that the run completed", fixed = TRUE)
+
+  expect_match(level2, "Tutorial Level 2", fixed = TRUE)
+  expect_match(level2, "Stage map", fixed = TRUE)
+  expect_match(level2, "Gate before Stage 2 or 3", fixed = TRUE)
+  expect_match(level2, "GRN/metacell group coverage", fixed = TRUE)
+
+  expect_match(level3, "Tutorial Level 3", fixed = TRUE)
+  expect_match(level3, "Minimal rerun matrix", fixed = TRUE)
+  expect_match(level3, "Failure classification", fixed = TRUE)
+  expect_match(level3, "Distinguish medium infeasibility from target blockage", fixed = TRUE)
+
+  combined <- paste(level1, level2, level3, collapse = "\n")
+  expect_match(combined, "Pando_regcompass.tar.gz", fixed = TRUE)
+  expect_match(combined, "peak_cor = 0.01", fixed = TRUE)
+  expect_match(combined, "gamma = 75", fixed = TRUE)
+  expect_false(grepl("sample_balance = TRUE", combined, fixed = TRUE))
+  expect_false(grepl("sample_balance_seed", combined, fixed = TRUE))
+})
+
+test_that("README and tutorial index expose the three levels", {
+  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
+  roots <- unique(c(
+    if (nzchar(workspace)) workspace else character(),
+    ".", "..", file.path("..", "..")
+  ))
+  roots <- roots[vapply(
+    roots,
+    function(path) file.exists(file.path(path, "README.md")) &&
+      file.exists(file.path(path, "docs", "run-modes-and-stepwise-workflow.md")),
+    logical(1)
+  )]
+  if (!length(roots)) skip("Source documentation is unavailable.")
+  root <- normalizePath(roots[[1L]], mustWork = TRUE)
+
   paths <- c(
     file.path(root, "README.md"),
     file.path(root, "docs", "run-modes-and-stepwise-workflow.md"),
@@ -54,6 +118,14 @@ test_that("README and full tutorial document local Pando and solver behavior", {
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
+
+  expect_match(text, "Choose a tutorial level", fixed = TRUE)
+  expect_match(text, "Level 1", fixed = TRUE)
+  expect_match(text, "Level 2", fixed = TRUE)
+  expect_match(text, "Level 3", fixed = TRUE)
+  expect_match(text, "tutorial-01-quick-start.md", fixed = TRUE)
+  expect_match(text, "tutorial-02-stepwise-audit.md", fixed = TRUE)
+  expect_match(text, "tutorial-03-advanced-restart.md", fixed = TRUE)
   expect_match(text, "peak_cor = 0.01", fixed = TRUE)
   expect_match(text, "gamma = 75", fixed = TRUE)
   expect_match(text, "condition-only", fixed = TRUE)
