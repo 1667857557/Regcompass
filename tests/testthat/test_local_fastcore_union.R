@@ -59,7 +59,9 @@ test_that("local FASTCORE completes each biological meta-module", {
     local_fastcore_args = list(
       solver = rc_local_test_solver(),
       save_models = FALSE,
-      strict = TRUE
+      strict = TRUE,
+      parallel = FALSE,
+      backend = "serial"
     )
   )
   support <- completed$completed_reaction_membership$reaction_id[
@@ -69,6 +71,12 @@ test_that("local FASTCORE completes each biological meta-module", {
   expect_true(all(c("Rcore", "Ralt") %in%
                     completed$completed_reaction_membership$reaction_id))
   expect_equal(completed$summary$n_local_fastcore_support, 2)
+  expect_identical(
+    completed$summary$parallel_task,
+    "local_fastcore_by_meta_module"
+  )
+  expect_identical(completed$summary$parallel_backend, "serial")
+  expect_identical(completed$summary$parallel_workers, 1L)
 })
 
 test_that("global union deduplicates local FASTCORE support", {
