@@ -1,6 +1,6 @@
 # RegCompassR stepwise workflow
 
-This is the canonical 1.8.2 workflow. Each section states the stage input, output, and minimum inspection required before continuing.
+This is the canonical 1.8.1 workflow. Each section states the stage input, output, and minimum inspection required before continuing.
 
 ## Installation
 
@@ -254,6 +254,6 @@ Final files: `step_comparison.rds` and `regcompass_result.rds`.
 
 ## Error interpretation
 
-- **`RNA normalized assay data are not aligned`**: column-order differences are accepted in 1.8.2. A remaining error means the cell-ID sets genuinely differ.
+- **`RNA normalized assay data are not aligned`**: column-order differences are accepted in 1.8.1. A remaining error means the cell-ID sets genuinely differ.
 - **`Some features contain 0 total counts`**: cell-type-local all-zero peaks are now omitted from TF-IDF and restored as zeros.
-- **`The medium-constrained parent GEM is not feasible: error`**: reinstall 1.8.2 and confirm `highs` is installed. Solver availability is checked before feasibility analysis.
+- **`The medium-constrained parent GEM is not feasible: error`**: reinstall the current 1.8.1 source and confirm `highs` is installed. Solver availability is checked before feasibility analysis.
