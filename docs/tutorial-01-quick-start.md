@@ -69,12 +69,14 @@ gem <- rc_prepare_gem(
 
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = "high_glucose",
+  scenario = "physiologic",
   species = "human"
 )
 
 rc_validate_gem(gem)
 ```
+
+`physiologic` is the recommended in-vivo baseline and resolves to the species-specific plasma preset. Culture formulations, targeted glucose/lactate/glutamine sensitivity scenarios, technical baselines, and custom media are described in [Predefined extracellular medium scenarios](medium-presets.md). Concentrations are not interpreted as measured uptake fluxes, and generated bounds never expand the original GEM directionality.
 
 ## 4. Run on a Linux multicore system
 
@@ -97,7 +99,6 @@ result <- rc_run_regcompass_one_shot(
   medium_scenarios = medium_scenarios,
   condition_col = condition_col,
   celltype_col = celltype_col,
-  metacell_label_col = celltype_col,
   pando_args = list(
     min_cells = 100,
     pando_infer_args = list(
@@ -134,11 +135,7 @@ result <- rc_run_regcompass_one_shot(
 
 Keep `pando_infer_args$parallel = FALSE`. RegCompass already distributes the independent condition × cell-type Pando groups across the outer BiocParallel workers; enabling Pando's inner parallelism would create nested workers and CPU oversubscription.
 
-`celltype_col` is automatically passed to SuperCell2 as the pre-aggregation
-label. This makes metacell construction label-aware without requiring a second
-parameter and reduces cell-type mixing while retaining condition as the only
-hard stratum. Purity and the full observed cell-type composition are still
-audited after construction.
+`celltype_col` is automatically passed to SuperCell2 as the pre-aggregation label. This makes metacell construction label-aware without accepting a second workflow label parameter and reduces cell-type mixing while retaining condition as the only hard stratum. Purity and the full observed cell-type composition are still audited after construction.
 
 The analysis order is fixed:
 
