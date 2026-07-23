@@ -72,6 +72,8 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
+`scenario = "physiologic"` is the recommended in-vivo baseline and resolves to the species-specific plasma preset. Culture presets (`rpmi1640`, `dmem_high_glucose`), targeted nutrient sensitivity presets, technical baselines, and custom media are also available. See [Predefined extracellular medium scenarios](docs/medium-presets.md) before selecting or interpreting a medium.
+
 RNA and ATAC normalized matrices are aligned by cell name; different column order is accepted. Peaks absent from one cell type are retained as exact zeros but are excluded from that cell type's TF-IDF calculation.
 
 ## Linux multicore one-shot run
@@ -88,7 +90,6 @@ result <- rc_run_regcompass_one_shot(
   medium_scenarios = medium_scenarios,
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
-  metacell_label_col = "epithelial_or_stem",
   pando_args = list(
     min_cells = 100,
     pando_infer_args = list(
@@ -121,10 +122,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The column selected by `celltype_col` is automatically supplied to SuperCell2
-before aggregation to reduce annotated cell-type mixing; no separate label
-parameter is needed. Condition remains the only hard metacell stratum, and
-member-cell composition and purity must still be checked in the Stage 2 outputs.
+The column selected by `celltype_col` is automatically supplied to SuperCell2 before aggregation to reduce annotated cell-type mixing; no separate label parameter is accepted. Condition remains the only hard metacell stratum, and member-cell composition and purity must still be checked in the Stage 2 outputs.
 
 On Linux, `upstream_workers` controls Stage 1 Pando groups, Stage 3 local FASTCORE completion by meta-module, and Stage 4 GPR capacity. `layer2_workers` controls shared-model × metacell LP tasks. Keep Pando's inner `parallel = FALSE` to avoid nested workers. The model-cache construction portions remain serial.
 
