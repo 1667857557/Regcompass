@@ -332,36 +332,41 @@
     return(physiologic)
   }
   if (identical(preset_id, "mouse_plasma")) {
-    expanded <- physiologic$metabolite_name %in% c(
-      "glutathione", "acetone", "fructose", "galactose", "glycerol",
-      "hypoxanthine", "uridine", "acetylcarnitine", "betaine",
-      "alpha_aminobutyrate", "citrulline", "ornithine",
-      "n_acetylglycine", "taurine", "alpha_ketoglutarate", "formate",
-      "malate", "malonate", "succinate", "ammonium", "nitrate"
-    )
-    physiologic$concentration_mM[expanded] <- NA_real_
-    physiologic$concentration_basis[expanded] <-
-      "mouse_plasma_TIF_detection_without_shared_concentration"
-    physiologic$component_reference_doi[expanded] <- "10.7554/eLife.44235"
-    physiologic$concentration_mM[
-      physiologic$metabolite_name == "glucose"
-    ] <- 7.5
-    physiologic$concentration_mM[
-      physiologic$metabolite_name == "lactate"
-    ] <- 2.0
-    physiologic$concentration_basis[
-      physiologic$metabolite_name %in% c("glucose", "lactate")
-    ] <- "mouse_plasma_reference"
-    physiologic$component_reference_doi[
-      physiologic$metabolite_name %in% c("glucose", "lactate")
-    ] <- "10.7554/eLife.44235"
-    physiologic$uptake_fraction[sensitivity_rows] <- pmin(
-      1,
-      physiologic$concentration_mM[sensitivity_rows] /
-        sensitivity_reference[sensitivity_index[sensitivity_rows]]
-    )
-    return(physiologic)
-  }
+  # Quantitative target nutrients use healthy-mouse plasma-medium
+  # values from Gardner and Stuart (2024; doi:10.1152/ajpcell.00452.2024).
+  # The wider availability catalog is supported by murine plasma/TIF
+  # measurements from Sullivan et al. (2019; doi:10.7554/eLife.44235).
+  mouse_target_concentrations <- c(
+    glucose = 4.381,
+    lactate = 3.088,
+    glutamine = 0.934
+  )
+  physiologic$concentration_mM <- NA_real_
+  physiologic$concentration_basis <-
+    "mouse_plasma_availability_only_no_quantitative_bound"
+  physiologic$component_reference_doi <- NA_character_
+  physiologic$uptake_fraction <- 1
+  physiologic$target_exchange_flag <- FALSE
+
+  target_index <- match(
+    physiologic$metabolite_name,
+    names(mouse_target_concentrations)
+  )
+  target_rows <- !is.na(target_index)
+  physiologic$concentration_mM[target_rows] <-
+    mouse_target_concentrations[target_index[target_rows]]
+  physiologic$concentration_basis[target_rows] <-
+    "healthy_mouse_plasma_MPM_reference"
+  physiologic$component_reference_doi[target_rows] <-
+    "10.1152/ajpcell.00452.2024"
+  physiologic$uptake_fraction[target_rows] <- pmin(
+    1,
+    physiologic$concentration_mM[target_rows] /
+      sensitivity_reference[sensitivity_index[target_rows]]
+  )
+  physiologic$target_exchange_flag[target_rows] <- TRUE
+  return(physiologic)
+}
 
   if (identical(preset_id, "rpmi1640")) {
     rpm_names <- c(
@@ -500,7 +505,10 @@
         "Cantor et al., Cell 2017 (HPLM);",
         "Psychogios et al., PLoS One 2011"
       ),
-      "Sullivan et al., eLife 2019; Wang et al., PNAS 2021",
+      paste(
+        "Gardner and Stuart, Am J Physiol Cell Physiol 2024;",
+        "Sullivan et al., eLife 2019"
+      ),
       "Moore et al., JAMA 1967; Thermo Fisher RPMI-1640 formulation 11875",
       "Dulbecco and Freeman, Virology 1959; Thermo Fisher DMEM formulation 11965",
       "plasma background with explicit glucose sensitivity bound",
@@ -512,7 +520,7 @@
     ),
     reference_doi = c(
       "10.1016/j.cell.2017.03.023;10.1371/journal.pone.0016957",
-      "10.7554/eLife.44235;10.1073/pnas.2102344118",
+      "10.1152/ajpcell.00452.2024;10.7554/eLife.44235",
       "10.1001/jama.1967.03120080053007",
       "10.1016/0042-6822(59)90063-3",
       NA_character_, NA_character_, NA_character_, NA_character_,
