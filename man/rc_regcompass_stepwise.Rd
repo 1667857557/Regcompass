@@ -15,7 +15,7 @@ rc_regcompass_step_grn(object, gem, outdir, pfm, genome,
 
 rc_regcompass_step_metacells(object, outdir, sample_col = NULL,
   condition_col = "condition", celltype_col = "cell_type",
-  label_col = celltype_col, rna_assay = "RNA", atac_assay = "ATAC",
+  rna_assay = "RNA", atac_assay = "ATAC",
   fragment_files = FALSE, metacell_args = list())
 
 rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
@@ -40,15 +40,14 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{pfm}{A PFM/PWM collection accepted by Pando and motifmatchr. Use the Pando motif object rather than a motif-to-TF annotation table.}
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{condition_col}{Metadata column defining condition-specific Pando groups and the only metacell stratification variable.}
-\item{celltype_col}{Metadata column used with condition for Pando grouping. It is not used to stratify metacells; metacells receive a post hoc dominant member-cell label.}
-\item{label_col}{Complete metadata annotation passed to SuperCell2 before aggregation. Defaults to \code{celltype_col} to reduce cell-type mixing without making cell type a hard stratum.}
+\item{celltype_col}{Metadata column used with condition for Pando grouping and automatically passed to SuperCell2 as the construction label. It is not a hard metacell stratum; metacells receive an audited dominant member-cell label after aggregation.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Arguments for single-cell Pando inference. The default Pando model uses \code{peak_cor = 0.01}. Pando may be installed from GitHub or a local source archive; RegCompass validates the required API rather than requiring GitHub remote metadata. Keep Pando's inner \code{parallel = FALSE} when Stage 1 uses an outer BiocParallel backend.}
 \item{parallel}{Whether to run the supported computational loop in parallel.}
 \item{BPPARAM}{A BiocParallel parameter object, \code{NULL}, or \code{FALSE}. On Linux, use \code{BiocParallel::MulticoreParam}.}
 \item{sample_col}{Optional provenance column. It is not used for balancing, weighting, selection, or grouping.}
 \item{fragment_files}{Must be \code{FALSE} for the canonical peak-count path.}
-\item{metacell_args}{Arguments for SuperCell2. The default \code{gamma} is 75. Sample-balancing arguments are not supported.}
+\item{metacell_args}{Arguments for SuperCell2. The default \code{gamma} is 75. Sample-balancing arguments and a separate workflow label column are not supported.}
 \item{grn}{Output from \code{rc_regcompass_step_grn()}.}
 \item{metacells}{Output from \code{rc_regcompass_step_metacells()}.}
 \item{layer1_args}{Meta-module and local FASTCORE settings. Parallel local completion is configured through \code{local_fastcore_args = list(parallel = TRUE, workers = ..., backend = "multicore")} or a valid \code{BPPARAM}.}
@@ -69,5 +68,5 @@ RNA is normalized once before Pando splitting. Normalized assay matrices are ali
 
 On Linux, Stage 1 can distribute condition-by-cell-type Pando groups with \code{MulticoreParam}; Stage 3 distributes local FASTCORE completion by meta-module; Stage 4 distributes GPR/reaction-capacity work; and Stage 5 distributes shared-model-by-metacell LP tasks. Metacell construction, Stage 3 projection/database expansion, and Stage 5 structural model-cache construction are not controlled by these parallel loops.
 
-Metacells are constructed afterwards using condition as the only varying stratum and \code{gamma = 75} by default. The \code{celltype_col} annotation automatically guides SuperCell2 before aggregation to reduce mixing; no separate label argument is needed. Dominant member-cell type, purity, number of represented cell types, and mixed-cell-type status are stored for each metacell. The selected LP solver is validated before FASTCORE or directional scoring, so a missing solver package is reported separately from GEM infeasibility.
+Metacells are constructed afterwards using condition as the only varying stratum and \code{gamma = 75} by default. The \code{celltype_col} annotation automatically guides SuperCell2 before aggregation to reduce mixing; no separate label argument is accepted. Dominant member-cell type, purity, number of represented cell types, and mixed-cell-type status are stored for each metacell. The selected LP solver is validated before FASTCORE or directional scoring, so a missing solver package is reported separately from GEM infeasibility.
 }
