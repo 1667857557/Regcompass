@@ -14,11 +14,34 @@ factors.
 - the human serum metabolome reported by Psychogios et al.;
 - inorganic ions and gases required by the GEM.
 
-`mouse_plasma` uses the murine plasma and tumor-interstitial-fluid metabolite
-detection evidence reported by Sullivan et al. Concentrations that were not
-validated as directly comparable between human and mouse are retained as
-availability-only rows (`concentration_mM = NA`) rather than borrowing the human
-HPLM value.
+`mouse_plasma` uses two explicitly separated evidence layers:
+
+1. **Quantitative healthy-mouse baseline.** Gardner and Stuart's mouse plasma
+   medium provides the concentrations used for the only three nutrients that
+   RegCompass converts into relative uptake caps: glucose 4.381 mM, lactate
+   3.088 mM, and glutamine 0.934 mM.
+2. **Broader murine availability evidence.** Sullivan et al. quantified more
+   than 118 metabolites in mouse plasma and tumor interstitial fluid and showed
+   that local concentrations depend on tumor type, anatomical location, diet,
+   and sampling context. These measurements support the broader availability
+   catalog, but are not collapsed into one universal quantitative medium.
+
+All mouse components other than glucose, lactate, and glutamine are therefore
+availability-only rows (`concentration_mM = NA`). They receive no quantitative
+uptake cap and never inherit a human HPLM concentration or provenance label.
+
+## Quantitative target nutrients
+
+| RegCompass name | Mouse reference concentration (mM) | Existing high reference (mM) | Relative uptake fraction | Evidence |
+|---|---:|---:|---:|---|
+| glucose | 4.381 | 25 | 0.17524 | Gardner and Stuart 2024 |
+| lactate | 3.088 | 20 | 0.15440 | Gardner and Stuart 2024 |
+| glutamine | 0.934 | 2 | 0.46700 | Gardner and Stuart 2024 |
+
+The fractions are sensitivity assumptions calculated as reference concentration
+divided by the existing RegCompass high-concentration reference. They are not
+measured membrane-transport rates. The resulting requested exchange bounds are
+still intersected with the original GEM directionality.
 
 ## Added polar nutrients
 
@@ -46,9 +69,9 @@ HPLM value.
 | ammonium | ammonium; NH4+ | 0.12002288 | HPLM formulation |
 | nitrate | nitrate; NO3- | 0.01999783 | HPLM formulation, stoichiometric nitrate content |
 
-The concentration column is provenance. Except for explicitly flagged
-glucose/lactate/glutamine sensitivity scenarios, RegCompass does not interpret a
-medium concentration as a measured uptake flux.
+The human concentration column is provenance for `normal_human_plasma` only.
+Except for explicitly flagged glucose/lactate/glutamine sensitivity rows,
+RegCompass does not interpret a medium concentration as a measured uptake flux.
 
 ## Exact GEM correspondence
 
@@ -85,6 +108,9 @@ measured or explicitly assumed custom medium.
   DOI: 10.1016/j.cell.2017.03.023.
 - Psychogios N et al. The Human Serum Metabolome. *PLoS ONE* (2011).
   DOI: 10.1371/journal.pone.0016957.
+- Gardner GL and Stuart JA. Tumor microenvironment-like conditions alter
+  pancreatic cancer cell metabolism and behavior. *Am J Physiol Cell Physiol*
+  (2024). DOI: 10.1152/ajpcell.00452.2024.
 - Sullivan MR et al. Quantification of microenvironmental metabolites in murine
   cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
   DOI: 10.7554/eLife.44235.

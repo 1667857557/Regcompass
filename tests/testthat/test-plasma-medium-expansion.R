@@ -101,7 +101,59 @@ test_that("sensitivity scenarios retain the expanded plasma background", {
   )
 })
 
-test_that("mouse plasma uses detection evidence without borrowing human concentrations", {
+test_that("mouse plasma uses mouse-only quantitative provenance", {
+  mouse <- .rc_medium_catalog("mouse_plasma", "mouse")
+  targets <- c("glucose", "lactate", "glutamine")
+  target_rows <- mouse$metabolite_name %in% targets
+  target <- mouse[target_rows, , drop = FALSE]
+  target <- target[match(targets, target$metabolite_name), , drop = FALSE]
+
+  expect_equal(target$concentration_mM, c(4.381, 3.088, 0.934))
+  expect_equal(
+    target$uptake_fraction,
+    c(4.381 / 25, 3.088 / 20, 0.934 / 2)
+  )
+  expect_true(all(target$target_exchange_flag))
+  expect_true(all(
+    target$concentration_basis == "healthy_mouse_plasma_MPM_reference"
+  ))
+  expect_true(all(
+    target$component_reference_doi == "10.1152/ajpcell.00452.2024"
+  ))
+
+  availability_only <- mouse[!target_rows, , drop = FALSE]
+  expect_true(all(is.na(availability_only$concentration_mM)))
+  expect_true(all(availability_only$uptake_fraction == 1))
+  expect_false(any(availability_only$target_exchange_flag))
+  expect_true(all(
+    availability_only$concentration_basis ==
+      "mouse_plasma_availability_only_no_quantitative_bound"
+  ))
+  expect_true(all(is.na(availability_only$component_reference_doi)))
+  expect_false(any(grepl(
+    "human|HPLM", mouse$concentration_basis, ignore.case = TRUE
+  )))
+})
+
+test_that("mouse medium separates quantitative and availability evidence", {
+  reference <- .rc_medium_reference_catalog()
+  mouse <- reference[reference$preset_id == "mouse_plasma", , drop = FALSE]
+
+  expect_equal(nrow(mouse), 1)
+  expect_match(mouse$reference_label, "Gardner and Stuart", fixed = TRUE)
+  expect_match(mouse$reference_label, "Sullivan et al.", fixed = TRUE)
+  expect_match(
+    mouse$reference_doi,
+    "10.1152/ajpcell.00452.2024",
+    fixed = TRUE
+  )
+  expect_match(mouse$reference_doi, "10.7554/eLife.44235", fixed = TRUE)
+  expect_false(grepl(
+    "10.1073/pnas.2102344118", mouse$reference_doi, fixed = TRUE
+  ))
+})
+
+test_that("mapped mouse availability rows do not borrow human concentrations", {
   medium <- rc_make_medium_scenarios(
     make_exact_plasma_medium_gem("mouse"),
     scenario = "mouse_plasma",
@@ -113,9 +165,11 @@ test_that("mouse plasma uses detection evidence without borrowing human concentr
   expect_true(is.na(taurine$concentration_mM))
   expect_equal(
     taurine$concentration_basis,
-    "mouse_plasma_TIF_detection_without_shared_concentration"
+    "mouse_plasma_availability_only_no_quantitative_bound"
   )
-  expect_equal(taurine$component_reference_doi, "10.7554/eLife.44235")
+  expect_true(is.na(taurine$component_reference_doi))
+  expect_equal(taurine$uptake_fraction, 1)
+  expect_false(taurine$target_exchange_flag)
 })
 
 test_that("preset diagnostics report exact aliases and unmatched nutrients", {
