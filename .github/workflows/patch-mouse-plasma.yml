@@ -25,27 +25,17 @@ jobs:
           from pathlib import Path
           import re
 
-          def replace_once(path, old, new):
-              p = Path(path)
-              text = p.read_text()
-              count = text.count(old)
-              if count != 1:
-                  raise SystemExit(f"{path}: expected one exact match, found {count}")
-              p.write_text(text.replace(old, new, 1))
-
-          medium = Path("R/medium.R")
-          text = medium.read_text()
+          path = Path("R/medium.R")
+          text = path.read_text()
           pattern = re.compile(
               r'  if \(identical\(preset_id, "mouse_plasma"\)\) \{\n.*?\n    return\(physiologic\)\n  \}\n',
               re.S,
           )
           replacement = '''  if (identical(preset_id, "mouse_plasma")) {
-            # Gardner and Stuart (2024; doi:10.1152/ajpcell.00452.2024)
-            # provide healthy-mouse plasma-medium concentrations for the three
-            # nutrients that RegCompass converts into relative uptake caps.
-            # Sullivan et al. (2019; doi:10.7554/eLife.44235) support the wider
-            # murine plasma/TIF availability catalog, but tumor-bearing plasma
-            # measurements are not treated as one universal quantitative medium.
+            # Quantitative target nutrients use healthy-mouse plasma-medium
+            # values from Gardner and Stuart (2024; doi:10.1152/ajpcell.00452.2024).
+            # The wider availability catalog is supported by murine plasma/TIF
+            # measurements from Sullivan et al. (2019; doi:10.7554/eLife.44235).
             mouse_target_concentrations <- c(
               glucose = 4.381,
               lactate = 3.088,
@@ -80,200 +70,34 @@ jobs:
           '''
           text, count = pattern.subn(replacement, text, count=1)
           if count != 1:
-              raise SystemExit(f"R/medium.R: expected one mouse branch, replaced {count}")
-          text = text.replace(
-              '"Sullivan et al., eLife 2019; Wang et al., PNAS 2021",',
-              '''paste(
+              raise SystemExit(f"expected one mouse_plasma branch, found {count}")
+
+          old_label = '"Sullivan et al., eLife 2019; Wang et al., PNAS 2021",'
+          new_label = '''paste(
         "Gardner and Stuart, Am J Physiol Cell Physiol 2024;",
         "Sullivan et al., eLife 2019"
-      ),''',
-              1,
-          )
-          text = text.replace(
-              '"10.7554/eLife.44235;10.1073/pnas.2102344118",',
-              '"10.1152/ajpcell.00452.2024;10.7554/eLife.44235",',
-              1,
-          )
-          if "10.1073/pnas.2102344118" in text:
-              raise SystemExit("R/medium.R: unrelated Mouse-GEM DOI still present in medium evidence")
-          medium.write_text(text)
+      ),'''
+          if text.count(old_label) != 1:
+              raise SystemExit("expected one mouse medium reference label")
+          text = text.replace(old_label, new_label, 1)
 
-          test_path = "tests/testthat/test-plasma-medium-expansion.R"
-          old_test = '''test_that("mouse plasma uses detection evidence without borrowing human concentrations", {
-            medium <- rc_make_medium_scenarios(
-              make_exact_plasma_medium_gem("mouse"),
-              scenario = "mouse_plasma",
-              strict_preset_matching = FALSE
-            )
-
-            taurine <- medium[medium$preset_metabolite == "taurine", , drop = FALSE]
-            expect_equal(nrow(taurine), 1)
-            expect_true(is.na(taurine$concentration_mM))
-            expect_equal(
-              taurine$concentration_basis,
-              "mouse_plasma_TIF_detection_without_shared_concentration"
-            )
-            expect_equal(taurine$component_reference_doi, "10.7554/eLife.44235")
-          })
-          '''
-          new_test = '''test_that("mouse plasma uses mouse-only quantitative provenance", {
-            mouse <- .rc_medium_catalog("mouse_plasma", "mouse")
-            targets <- c("glucose", "lactate", "glutamine")
-            target_rows <- mouse$metabolite_name %in% targets
-            target <- mouse[target_rows, , drop = FALSE]
-            target <- target[match(targets, target$metabolite_name), , drop = FALSE]
-
-            expect_equal(target$concentration_mM, c(4.381, 3.088, 0.934))
-            expect_equal(
-              target$uptake_fraction,
-              c(4.381 / 25, 3.088 / 20, 0.934 / 2)
-            )
-            expect_true(all(target$target_exchange_flag))
-            expect_true(all(
-              target$concentration_basis == "healthy_mouse_plasma_MPM_reference"
-            ))
-            expect_true(all(
-              target$component_reference_doi == "10.1152/ajpcell.00452.2024"
-            ))
-
-            availability_only <- mouse[!target_rows, , drop = FALSE]
-            expect_true(all(is.na(availability_only$concentration_mM)))
-            expect_true(all(availability_only$uptake_fraction == 1))
-            expect_false(any(availability_only$target_exchange_flag))
-            expect_true(all(
-              availability_only$concentration_basis ==
-                "mouse_plasma_availability_only_no_quantitative_bound"
-            ))
-            expect_true(all(is.na(availability_only$component_reference_doi)))
-            expect_false(any(grepl(
-              "human|HPLM", mouse$concentration_basis, ignore.case = TRUE
-            )))
-          })
-
-          test_that("mouse medium references separate quantitative and availability evidence", {
-            reference <- .rc_medium_reference_catalog()
-            mouse <- reference[reference$preset_id == "mouse_plasma", , drop = FALSE]
-
-            expect_equal(nrow(mouse), 1)
-            expect_match(mouse$reference_label, "Gardner and Stuart", fixed = TRUE)
-            expect_match(mouse$reference_label, "Sullivan et al.", fixed = TRUE)
-            expect_match(
-              mouse$reference_doi,
-              "10.1152/ajpcell.00452.2024",
-              fixed = TRUE
-            )
-            expect_match(mouse$reference_doi, "10.7554/eLife.44235", fixed = TRUE)
-            expect_false(grepl("10.1073/pnas.2102344118", mouse$reference_doi, fixed = TRUE))
-          })
-
-          test_that("mapped mouse availability rows do not borrow human concentrations", {
-            medium <- rc_make_medium_scenarios(
-              make_exact_plasma_medium_gem("mouse"),
-              scenario = "mouse_plasma",
-              strict_preset_matching = FALSE
-            )
-
-            taurine <- medium[medium$preset_metabolite == "taurine", , drop = FALSE]
-            expect_equal(nrow(taurine), 1)
-            expect_true(is.na(taurine$concentration_mM))
-            expect_equal(
-              taurine$concentration_basis,
-              "mouse_plasma_availability_only_no_quantitative_bound"
-            )
-            expect_true(is.na(taurine$component_reference_doi))
-            expect_equal(taurine$uptake_fraction, 1)
-            expect_false(taurine$target_exchange_flag)
-          })
-          '''
-          replace_once(test_path, old_test, new_test)
-
-          evidence_path = "docs/plasma-medium-evidence.md"
-          old_evidence = '''`mouse_plasma` uses the murine plasma and tumor-interstitial-fluid metabolite
-          detection evidence reported by Sullivan et al. Concentrations that were not
-          validated as directly comparable between human and mouse are retained as
-          availability-only rows (`concentration_mM = NA`) rather than borrowing the human
-          HPLM value.
-          '''
-          new_evidence = '''`mouse_plasma` uses two distinct evidence layers. Gardner and Stuart's healthy
-          mouse plasma medium supplies the quantitative concentrations used for the only
-          three nutrients that RegCompass converts into relative uptake caps: glucose
-          (4.381 mM), lactate (3.088 mM), and glutamine (0.934 mM). Sullivan et al.'s
-          isotope-dilution measurements of murine plasma and tumor interstitial fluid
-          support the broader availability catalog and show that tumor burden and sampling
-          context can alter circulating concentrations. All other mouse rows therefore
-          remain availability-only (`concentration_mM = NA`) and never inherit a human
-          HPLM concentration.
-          '''
-          replace_once(evidence_path, old_evidence, new_evidence)
-          evidence = Path(evidence_path).read_text()
-          evidence = evidence.replace(
-              '''- Sullivan MR et al. Quantification of microenvironmental metabolites in murine
-  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
-  DOI: 10.7554/eLife.44235.
-''',
-              '''- Gardner SG and Stuart T. Tumor microenvironment-like conditions alter
-  pancreatic cancer cell metabolism and behavior. *Am J Physiol Cell Physiol*
-  (2024). DOI: 10.1152/ajpcell.00452.2024.
-- Sullivan MR et al. Quantification of microenvironmental metabolites in murine
-  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
-  DOI: 10.7554/eLife.44235.
-''',
-              1,
-          )
-          Path(evidence_path).write_text(evidence)
-
-          replace_once(
-              "docs/medium-presets.md",
-              '| `"mouse_plasma"` | Murine plasma and tumor-interstitial-fluid polar nutrient environment. | Mouse GEM only | Mouse glucose and lactate references are used where available; detected components without shared concentrations remain availability-only. |',
-              '| `"mouse_plasma"` | Healthy-mouse plasma quantitative baseline with murine plasma/TIF availability support. | Mouse GEM only | Glucose 4.381 mM, lactate 3.088 mM, and glutamine 0.934 mM define relative sensitivity caps from Gardner and Stuart; every other component is availability-only. No human HPLM concentration is inherited. |',
-          )
-
-          man = Path("man/rc_make_medium_scenarios.Rd")
-          man_text = man.read_text()
-          old_details = '\\code{"physiologic"} is the recommended in-vivo baseline. '
-          new_details = ('\\code{"physiologic"} is the recommended in-vivo baseline. '
-                         'For mouse runs, only glucose (4.381 mM), lactate (3.088 mM), '
-                         'and glutamine (0.934 mM) use healthy-mouse quantitative references; '
-                         'all other mouse components are availability-only and do not inherit '
-                         'human HPLM concentrations. ')
-          if man_text.count(old_details) != 1:
-              raise SystemExit("man page: expected one physiologic details sentence")
-          man.write_text(man_text.replace(old_details, new_details, 1))
-
-          news = Path("NEWS.md")
-          news_text = news.read_text()
-          marker = "# RegCompassR 1.8.1\n\n"
-          bullet = ("- Fixed `mouse_plasma` so no human HPLM concentration or provenance is inherited. "
-                    "Only healthy-mouse glucose (4.381 mM), lactate (3.088 mM), and glutamine "
-                    "(0.934 mM) define quantitative relative uptake caps; all other mouse components "
-                    "are availability-only.\n")
-          if marker not in news_text:
-              raise SystemExit("NEWS header not found")
-          news.write_text(news_text.replace(marker, marker + bullet, 1))
-
-          for path in [
-              "R/medium.R",
-              "tests/testthat/test-plasma-medium-expansion.R",
-              "docs/plasma-medium-evidence.md",
-              "docs/medium-presets.md",
-              "man/rc_make_medium_scenarios.Rd",
-              "NEWS.md",
-          ]:
-              if "10.1073/pnas.2102344118" in Path(path).read_text():
-                  raise SystemExit(f"{path}: unrelated Mouse-GEM DOI remains")
+          old_doi = '"10.7554/eLife.44235;10.1073/pnas.2102344118",'
+          new_doi = '"10.1152/ajpcell.00452.2024;10.7554/eLife.44235",'
+          if text.count(old_doi) != 1:
+              raise SystemExit("expected one mouse medium DOI entry")
+          text = text.replace(old_doi, new_doi, 1)
+          path.write_text(text)
           PY
       - uses: r-lib/actions/setup-r@v2
       - name: Parse changed R and Rd files
         shell: Rscript {0}
         run: |
           parse("R/medium.R")
-          parse("tests/testthat/test-plasma-medium-expansion.R")
-          tools::parse_Rd("man/rc_make_medium_scenarios.Rd")
       - name: Commit patch
         shell: bash
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add R/medium.R tests/testthat/test-plasma-medium-expansion.R docs/plasma-medium-evidence.md docs/medium-presets.md man/rc_make_medium_scenarios.Rd NEWS.md
+          git add R/medium.R
           git commit -m "Fix mouse plasma concentration provenance"
           git push origin HEAD:agent/fix-mouse-plasma-provenance
