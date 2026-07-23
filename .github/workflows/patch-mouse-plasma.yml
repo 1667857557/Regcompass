@@ -83,7 +83,10 @@ jobs:
               raise SystemExit(f"R/medium.R: expected one mouse branch, replaced {count}")
           text = text.replace(
               '"Sullivan et al., eLife 2019; Wang et al., PNAS 2021",',
-              'paste(\n        "Gardner and Stuart, Am J Physiol Cell Physiol 2024;",\n        "Sullivan et al., eLife 2019"\n      ),',
+              '''paste(
+        "Gardner and Stuart, Am J Physiol Cell Physiol 2024;",
+        "Sullivan et al., eLife 2019"
+      ),''',
               1,
           )
           text = text.replace(
@@ -204,8 +207,17 @@ jobs:
           replace_once(evidence_path, old_evidence, new_evidence)
           evidence = Path(evidence_path).read_text()
           evidence = evidence.replace(
-              '- Sullivan MR et al. Quantification of microenvironmental metabolites in murine\n  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).\n  DOI: 10.7554/eLife.44235.\n',
-              '- Gardner SG and Stuart T. Tumor microenvironment-like conditions alter\n  pancreatic cancer cell metabolism and behavior. *Am J Physiol Cell Physiol*\n  (2024). DOI: 10.1152/ajpcell.00452.2024.\n- Sullivan MR et al. Quantification of microenvironmental metabolites in murine\n  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).\n  DOI: 10.7554/eLife.44235.\n',
+              '''- Sullivan MR et al. Quantification of microenvironmental metabolites in murine
+  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
+  DOI: 10.7554/eLife.44235.
+''',
+              '''- Gardner SG and Stuart T. Tumor microenvironment-like conditions alter
+  pancreatic cancer cell metabolism and behavior. *Am J Physiol Cell Physiol*
+  (2024). DOI: 10.1152/ajpcell.00452.2024.
+- Sullivan MR et al. Quantification of microenvironmental metabolites in murine
+  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
+  DOI: 10.7554/eLife.44235.
+''',
               1,
           )
           Path(evidence_path).write_text(evidence)
