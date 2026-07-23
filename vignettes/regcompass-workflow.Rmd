@@ -21,6 +21,8 @@ The documentation is deliberately separated into three levels:
 2. **Level 2 — stepwise run with audit gates:** explicit stage inputs, outputs, files, Linux `MulticoreParam` objects, and mandatory continuation checks. This vignette provides the compact Level 2 workflow; the complete version is `docs/tutorial-02-stepwise-audit.md`.
 3. **Level 3 — restart and diagnostics:** stage reuse, worker allocation, sensitivity runs, alternative media, solver/model controls, and failure classification. See `docs/tutorial-03-advanced-restart.md`.
 
+The complete medium catalog and its interpretation rules are in `docs/medium-presets.md`.
+
 ## Installation
 
 ```{r}
@@ -67,7 +69,7 @@ stopifnot(
 gem <- rc_prepare_gem(species = "human", version = "2.0.0")
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = "high_glucose",
+  scenario = "physiologic",
   species = "human"
 )
 
@@ -76,6 +78,8 @@ layer2_workers <- 12L
 upstream_bp <- MulticoreParam(workers = upstream_workers, progressbar = TRUE)
 layer2_bp <- MulticoreParam(workers = layer2_workers, progressbar = TRUE)
 ```
+
+`physiologic` is the species-specific plasma baseline. `rpmi1640`, `dmem_high_glucose`, targeted glucose/lactate/glutamine sensitivity scenarios, technical baselines, and `custom` are optional alternatives. Concentrations are provenance rather than measured uptake fluxes, and medium bounds never expand GEM directionality.
 
 On Linux, set `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, and `MKL_NUM_THREADS=1` before starting R to avoid nested BLAS threads.
 
@@ -113,7 +117,7 @@ stopifnot(
 
 Stage 1 parallelizes independent condition × cell-type groups. Pando's inner `parallel` setting remains `FALSE` to avoid nested worker pools. The stage writes `single_cell_grn.rds`, `step_grn.rds`, Pando group status, all/significant edge tables, and optional fitted Pando objects.
 
-## Stage 2: label-guided metacells within condition
+## Stage 2: cell-type-guided metacells within condition
 
 ```{r}
 step2 <- rc_regcompass_step_metacells(
@@ -121,7 +125,6 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "steps/02_metacells",
   condition_col = condition_col,
   celltype_col = celltype_col,
-  label_col = celltype_col,
   fragment_files = FALSE,
   metacell_args = list(
     gamma = 75,
@@ -139,11 +142,7 @@ stopifnot(
 )
 ```
 
-The existing `celltype_col` annotation is automatically supplied before
-aggregation, so SuperCell2 can avoid indiscriminate mixing of annotated types
-without a separate label parameter. Cell type is also audited after construction from member-cell composition. Exact
-dominant-cell-type ties are rejected. Stage 2 is not controlled by the workflow
-`BPPARAM`.
+The existing `celltype_col` annotation is automatically supplied before aggregation, so SuperCell2 can avoid indiscriminate mixing of annotated types without accepting a separate workflow label parameter. Cell type is also audited after construction from member-cell composition. Exact dominant-cell-type ties are rejected. Stage 2 is not controlled by the workflow `BPPARAM`.
 
 ## Stage 3: parallel local FASTCORE meta-modules
 
