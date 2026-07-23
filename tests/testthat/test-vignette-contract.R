@@ -22,6 +22,7 @@ test_that("workflow vignette documents the GRN-first API and tutorial levels", {
   expect_match(text, "tutorial-01-quick-start.md", fixed = TRUE)
   expect_match(text, "tutorial-02-stepwise-audit.md", fixed = TRUE)
   expect_match(text, "tutorial-03-advanced-restart.md", fixed = TRUE)
+  expect_match(text, "medium-presets.md", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_grn(", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_metacells(", fixed = TRUE)
   expect_match(text, "rc_regcompass_step_meta_modules(", fixed = TRUE)
@@ -34,12 +35,16 @@ test_that("workflow vignette documents the GRN-first API and tutorial levels", {
   expect_match(text, "Pando_regcompass.tar.gz", fixed = TRUE)
   expect_match(text, "rc_prepare_gem", fixed = TRUE)
   expect_match(text, "rc_make_medium_scenarios", fixed = TRUE)
+  expect_match(text, "scenario = \"physiologic\"", fixed = TRUE)
+  expect_match(text, "dmem_high_glucose", fixed = TRUE)
   expect_match(text, "ChromatinAssay", fixed = TRUE)
   expect_match(text, "do not pass the `motif2tf`", fixed = TRUE)
   expect_match(text, "MulticoreParam", fixed = TRUE)
   expect_match(text, "local_fastcore_by_meta_module", fixed = TRUE)
   expect_match(text, "parallel = FALSE", fixed = TRUE)
   expect_match(text, "table(step5$feasible)", fixed = TRUE)
+  expect_false(grepl("metacell_label_col", text, fixed = TRUE))
+  expect_false(grepl("label_col =", text, fixed = TRUE))
   expect_false(grepl("sample_balance = TRUE", text, fixed = TRUE))
   expect_false(grepl("min_metacells", text, fixed = TRUE))
 })
@@ -89,7 +94,7 @@ test_that("three tutorial levels exist and have distinct Linux parallel scopes",
   expect_match(level2, "shared-model × metacell", fixed = TRUE)
   expect_match(level2, "Gate before Stage 2 or 3", fixed = TRUE)
   expect_match(level2, "GRN/metacell group coverage", fixed = TRUE)
-  expect_match(level2, "no separate label parameter is required", fixed = TRUE)
+  expect_match(level2, "does not accept a separate label parameter", fixed = TRUE)
 
   expect_match(level3, "Tutorial Level 3", fixed = TRUE)
   expect_match(level3, "Linux process and thread controls", fixed = TRUE)
@@ -101,6 +106,7 @@ test_that("three tutorial levels exist and have distinct Linux parallel scopes",
   expect_match(level3, "Failure classification", fixed = TRUE)
   expect_match(level3, "Distinguish medium infeasibility from target blockage", fixed = TRUE)
   expect_match(level3, "automatically as", fixed = TRUE)
+  expect_match(level3, "Predefined extracellular medium scenarios", fixed = TRUE)
 
   combined <- paste(level1, level2, level3, collapse = "\n")
   expect_match(combined, "Pando_regcompass.tar.gz", fixed = TRUE)
@@ -108,11 +114,15 @@ test_that("three tutorial levels exist and have distinct Linux parallel scopes",
   expect_match(combined, "gamma = 75", fixed = TRUE)
   expect_match(combined, "pando_infer_args", fixed = TRUE)
   expect_match(combined, "parallel = FALSE", fixed = TRUE)
+  expect_match(combined, "scenario = \"physiologic\"", fixed = TRUE)
+  expect_match(combined, "low_glucose", fixed = TRUE)
+  expect_false(grepl("metacell_label_col", combined, fixed = TRUE))
+  expect_false(grepl("label_col =", combined, fixed = TRUE))
   expect_false(grepl("sample_balance = TRUE", combined, fixed = TRUE))
   expect_false(grepl("sample_balance_seed", combined, fixed = TRUE))
 })
 
-test_that("README and tutorial index expose Linux multicore controls", {
+test_that("README and documentation expose canonical APIs and media", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   roots <- unique(c(
     if (nzchar(workspace)) workspace else character(),
@@ -131,10 +141,12 @@ test_that("README and tutorial index expose Linux multicore controls", {
     file.path(root, "README.md"),
     file.path(root, "docs", "run-modes-and-stepwise-workflow.md"),
     file.path(root, "docs", "functions.md"),
+    file.path(root, "docs", "medium-presets.md"),
     file.path(root, "vignettes", "regcompass-workflow.Rmd"),
     file.path(root, "man", "rc_run_regcompass.Rd"),
     file.path(root, "man", "rc_run_regcompass_one_shot.Rd"),
-    file.path(root, "man", "rc_regcompass_stepwise.Rd")
+    file.path(root, "man", "rc_regcompass_stepwise.Rd"),
+    file.path(root, "man", "rc_make_medium_scenarios.Rd")
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
@@ -161,6 +173,13 @@ test_that("README and tutorial index expose Linux multicore controls", {
   expect_match(text, "solver installation", fixed = TRUE)
   expect_match(text, "core reactions", fixed = TRUE)
   expect_match(text, "master-Rhea", fixed = TRUE)
+  expect_match(text, "normal_human_plasma", fixed = TRUE)
+  expect_match(text, "rpmi1640", fixed = TRUE)
+  expect_match(text, "dmem_high_glucose", fixed = TRUE)
+  expect_match(text, "permissive_all_exchange", fixed = TRUE)
+  expect_match(text, "concentration", fixed = TRUE)
+  expect_false(grepl("metacell_label_col", text, fixed = TRUE))
+  expect_false(grepl("label_col = celltype_col", text, fixed = TRUE))
   expect_false(grepl("v170_sample_balance", text, fixed = TRUE))
   expect_false(grepl("sample_balance_seed", text, fixed = TRUE))
 })

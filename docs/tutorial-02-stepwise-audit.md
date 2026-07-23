@@ -9,7 +9,7 @@ Complete the installation and input checks in [Level 1](tutorial-01-quick-start.
 | Stage | Primary input | Primary output | Parallel unit on Linux | Required gate |
 |---|---|---|---|---|
 | 1. GRN | single-cell Seurat object, GEM, motifs, genome | condition × cell-type Pando GRNs | one condition × cell-type group per worker | every required group is `ok` and has significant edges |
-| 2. Metacells | original Seurat object and complete annotation label | label-guided metacells within condition plus composition audit | not controlled by the workflow `BPPARAM` | no ambiguous dominant-cell-type ties; inspect purity and mixing |
+| 2. Metacells | original Seurat object and complete cell-type annotation | cell-type-guided metacells within condition plus composition audit | not controlled by the workflow `BPPARAM` | no ambiguous dominant-cell-type ties; inspect purity and mixing |
 | 3. Meta-modules | Stages 1-2, GEM | core reactions and expanded modules | one local FASTCORE meta-module completion per worker | GRN/metacell coverage is complete; core reactions exist |
 | 4. Layer 1 | metacells, modules, GEM | reaction-expression matrix | GPR/reaction-capacity calculations | columns align exactly to metacell metadata |
 | 5. Layer 2 | Layer 1, global module, medium | directional LP scores | one shared-model × metacell task per worker | targets were evaluated and feasible targets exist |
@@ -30,7 +30,6 @@ data(motifs, package = "Pando")
 
 condition_col <- "dataset"
 celltype_col <- "epithelial_or_stem"
-metacell_label_col <- celltype_col
 
 upstream_workers <- 16L
 layer2_workers <- 12L
@@ -48,11 +47,13 @@ layer2_bp <- BiocParallel::MulticoreParam(
 gem <- rc_prepare_gem(species = "human", version = "2.0.0")
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = "high_glucose",
+  scenario = "physiologic",
   species = "human"
 )
 rc_validate_gem(gem)
 ```
+
+`physiologic` resolves to the species-specific plasma environment. See [Predefined extracellular medium scenarios](medium-presets.md) for the culture formulations, nutrient sensitivity presets, technical baselines, custom-medium contract, and interpretation limits.
 
 The same paired-cell Seurat object `A` is passed independently to Stages 1 and 2. Do not pass the internally normalized Stage 1 object into Stage 2.
 
@@ -131,14 +132,11 @@ Do not continue when a required group failed, was skipped for too few cells, or 
 - `pando_tf_peak_gene_significant.tsv.gz`;
 - optional `pando_objects/*.rds`.
 
-## Stage 2: label-aware, condition-only metacells
+## Stage 2: cell-type-guided, condition-only metacells
 
 ### Input
 
-The original `A`. Condition is the only hard metacell stratum. The existing
-cell-type annotation is supplied to SuperCell2 as a construction label so cells
-of different annotated types are not merged indiscriminately. Cell type and
-sample remain excluded from the hard stratum definition.
+The original `A`. Condition is the only hard metacell stratum. The complete annotation selected by `celltype_col` is supplied to SuperCell2 before aggregation so cells of different annotated types are not merged indiscriminately. Cell type and sample remain excluded from the hard stratum definition.
 
 ### Run
 
@@ -148,7 +146,6 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "RegCompass_steps/02_metacells",
   condition_col = condition_col,
   celltype_col = celltype_col,
-  label_col = metacell_label_col,
   fragment_files = FALSE,
   metacell_args = list(
     gamma = 75,
@@ -158,7 +155,7 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-Stage 2 does not use the workflow `BPPARAM` shown above. Do not insert `BPPARAM = TRUE` into `metacell_args`. The complete `celltype_col` annotation is automatically passed to SuperCell2 before aggregation; no separate label parameter is required. Each metacell receives a dominant member-cell type after construction. Purity, mixed-cell-type status, and the full composition are retained. An exact dominant-cell-type tie stops the workflow.
+Stage 2 does not use the workflow `BPPARAM` shown above. Do not insert `BPPARAM = TRUE` into `metacell_args`. The complete `celltype_col` annotation is automatically passed to SuperCell2 before aggregation; the canonical workflow does not accept a separate label parameter. Each metacell receives a dominant member-cell type after construction. Purity, mixed-cell-type status, and the full composition are retained. An exact dominant-cell-type tie stops the workflow.
 
 ### Gate before Stage 3
 

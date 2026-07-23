@@ -1,3 +1,10 @@
+# RegCompassR 1.8.1
+
+- Removed the redundant public `metacell_label_col` and stepwise `label_col` arguments. The canonical workflow now exposes its actual behavior directly: `celltype_col` is always passed to SuperCell2 before aggregation, while condition remains the only hard metacell stratum.
+- Retained `label_col` only on the lower-level general-purpose `rc_make_supercell2_metacells()` builder, where it is a functional SuperCell2 option.
+- Updated the README, all three tutorial levels, the workflow vignette, API index, and help pages to use the canonical interface only.
+- Added a complete guide to the predefined extracellular media, including species restrictions, culture versus plasma backgrounds, glucose/lactate/glutamine sensitivity bounds, technical baselines, custom media, and the rule that medium constraints never expand original GEM directionality.
+
 # RegCompassR 1.7.0
 
 - Changed the canonical metacell scope to `condition × cell type`, deliberately pooling cells from all biological samples within each condition before SuperCell2 while retaining per-metacell biological-sample composition diagnostics.
