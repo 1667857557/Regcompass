@@ -22,39 +22,39 @@ rc_make_medium_scenarios(
 \arguments{
 \item{gem}{A validated RegCompass GEM.}
 
-\item{scenario}{One or more medium scenario identifiers. \code{"physiologic"}
-resolves to human or mouse plasma according to \code{species}. Presets may be
-combined with \code{"custom"} to return literature-backed and user-defined
-scenarios in one table.}
+\item{scenario}{One or more identifiers from \code{"physiologic"},
+\code{"compass_model_bounds"}, \code{"permissive_all_exchange"},
+\code{"normal_human_plasma"}, \code{"mouse_plasma"}, \code{"rpmi1640"},
+\code{"dmem_high_glucose"}, \code{"high_glucose"}, \code{"low_glucose"},
+\code{"high_lactate"}, \code{"low_lactate"}, \code{"low_glutamine"},
+\code{"minimal"}, and \code{"custom"}. \code{"physiologic"} resolves to
+human or mouse plasma according to \code{species}. Presets may be combined with
+\code{"custom"} to return literature-backed and user-defined scenarios in one table.}
 
-\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
+\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}. Human and mouse plasma presets are restricted to their matching GEM species.}
 
-\item{custom_medium}{Exact reaction-level medium rows. Can be used together
-with preset \code{scenario} values when \code{"custom"} is included in \code{scenario}.}
+\item{custom_medium}{Exact reaction-level medium rows. Can be used together with preset \code{scenario} values when \code{"custom"} is included.}
 
-\item{custom_metabolites}{Metabolite-pattern availability rows. Can be used
-together with preset \code{scenario} values when \code{"custom"} is included in
-\code{scenario}.}
+\item{custom_metabolites}{Metabolite-availability rows. Can be used together with preset \code{scenario} values when \code{"custom"} is included.}
 
-\item{uptake_scale}{Non-negative global or named sensitivity multipliers.}
-
+\item{uptake_scale}{Non-negative global or named sensitivity multipliers applied to the preset relative uptake caps.}
 
 \item{exchange_roles}{Reaction roles treated as exchange reactions.}
 
 \item{condition}{Shared condition label; canonical scoring requires \code{"all"}.}
 
-\item{exchange_limit}{Absolute cap used for available exchange directions.}
+\item{exchange_limit}{Positive absolute cap used for available exchange directions.}
 
-\item{strict_preset_matching}{Stop when required medium components cannot be
-mapped to exchange annotations.}
+\item{strict_preset_matching}{Stop when required medium components cannot be mapped one-to-one to GEM exchange metabolites.}
 }
 \value{
-A medium constraint data frame.
+A reaction-level medium constraint data frame with mapping, provenance, requested bounds, and sensitivity metadata. Preset mapping diagnostics are stored in the \code{"preset_diagnostics"} attribute.
 }
 \description{
-Named physiological and cell-culture media are complete availability
-catalogs rather than small marker-metabolite lists. Concentrations are stored
-as provenance and do not become fluxes. Bounds are always intersected with
-the original GEM directionality, so a medium cannot open a blocked uptake or
-secretion direction.
+Named physiological and cell-culture media are curated extracellular availability catalogs rather than exhaustive representations of plasma, serum, or supplemented culture media. Concentrations are retained as provenance. Only explicitly flagged glucose, lactate, and glutamine sensitivity scenarios convert concentration ratios into relative uptake caps; these are sensitivity assumptions rather than measured transport fluxes.
+}
+\details{
+\code{"physiologic"} is the recommended in-vivo baseline. \code{"rpmi1640"} and \code{"dmem_high_glucose"} describe serum-free basal formulations. \code{"high_glucose"}, \code{"low_glucose"}, \code{"high_lactate"}, \code{"low_lactate"}, and \code{"low_glutamine"} modify one target nutrient on the species-specific plasma background. \code{"minimal"}, \code{"compass_model_bounds"}, and \code{"permissive_all_exchange"} are technical structural-sensitivity baselines rather than biological media.
+
+Every requested bound is intersected with the original GEM bounds. A medium cannot open an uptake or secretion direction that the GEM originally blocked. During medium application, uptake for unlisted exchanges is closed by default, while originally permitted secretion may remain open.
 }
