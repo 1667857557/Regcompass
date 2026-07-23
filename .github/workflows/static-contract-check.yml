@@ -36,6 +36,42 @@ jobs:
               line[10:] if line.startswith('          ') else line
               for line in payload.splitlines()
           )
+          payload = payload.replace(
+              """'paste(
+        "Gardner and Stuart, Am J Physiol Cell Physiol 2024;",
+        "Sullivan et al., eLife 2019"
+      ),'""",
+              """'''paste(
+        "Gardner and Stuart, Am J Physiol Cell Physiol 2024;",
+        "Sullivan et al., eLife 2019"
+      ),'''""",
+          )
+          payload = payload.replace(
+              """'- Sullivan MR et al. Quantification of microenvironmental metabolites in murine
+  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
+  DOI: 10.7554/eLife.44235.
+'""",
+              """'''- Sullivan MR et al. Quantification of microenvironmental metabolites in murine
+  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
+  DOI: 10.7554/eLife.44235.
+'''""",
+          )
+          payload = payload.replace(
+              """'- Gardner SG and Stuart T. Tumor microenvironment-like conditions alter
+  pancreatic cancer cell metabolism and behavior. *Am J Physiol Cell Physiol*
+  (2024). DOI: 10.1152/ajpcell.00452.2024.
+- Sullivan MR et al. Quantification of microenvironmental metabolites in murine
+  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
+  DOI: 10.7554/eLife.44235.
+'""",
+              """'''- Gardner SG and Stuart T. Tumor microenvironment-like conditions alter
+  pancreatic cancer cell metabolism and behavior. *Am J Physiol Cell Physiol*
+  (2024). DOI: 10.1152/ajpcell.00452.2024.
+- Sullivan MR et al. Quantification of microenvironmental metabolites in murine
+  cancers reveals determinants of tumor nutrient availability. *eLife* (2019).
+  DOI: 10.7554/eLife.44235.
+'''""",
+          )
           exec(compile(payload, 'mouse-plasma-patch', 'exec'))
           PY
       - uses: r-lib/actions/setup-r@v2
