@@ -144,9 +144,10 @@
   object@meta.data[[internal_celltype_col]] <- "all_celltypes"
   reserved <- intersect(names(metacell_args), c(
     "object", "outdir", "sample_col", "condition_col", "celltype_col",
-    "rna_assay", "atac_assay", "fragment_files", "save_metacell_object",
-    "save_counts", "save_fragments", "require_fragment_aggregation",
-    "fragment_aggregation_backend", "on_stratum_error"
+    "label_col", "rna_assay", "atac_assay", "fragment_files",
+    "save_metacell_object", "save_counts", "save_fragments",
+    "require_fragment_aggregation", "fragment_aggregation_backend",
+    "on_stratum_error"
   ))
   if (length(reserved)) {
     stop(
