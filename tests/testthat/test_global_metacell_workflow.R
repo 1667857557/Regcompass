@@ -39,7 +39,7 @@ test_that("metacell construction is condition-only without sample balancing", {
   expect_match(text, "gamma <- 75L", fixed = TRUE)
   expect_match(text, "Sample balancing is not part", fixed = TRUE)
   expect_match(text, "label_col = celltype_col", fixed = TRUE)
-  expect_match(text, '"label_col"', fixed = TRUE)
+  expect_false(grepl("label_col = label_col", text, fixed = TRUE))
 })
 
 test_that("canonical metacells automatically use cell type as the label", {
