@@ -528,7 +528,7 @@
     ),
     evidence_scope = c(
       "adult human plasma-like polar nutrient availability",
-      "murine plasma and tumor interstitial-fluid polar nutrient availability",
+      "healthy-mouse quantitative targets plus murine plasma/TIF availability",
       "serum-free RPMI-1640 basal formulation",
       "DMEM high-glucose basal formulation",
       "glucose sensitivity on a physiological plasma background",
