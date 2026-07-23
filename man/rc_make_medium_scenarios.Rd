@@ -51,10 +51,12 @@ human or mouse plasma according to \code{species}. Presets may be combined with
 A reaction-level medium constraint data frame with mapping, provenance, requested bounds, and sensitivity metadata. Preset mapping diagnostics are stored in the \code{"preset_diagnostics"} attribute.
 }
 \description{
-Named physiological and cell-culture media are curated extracellular availability catalogs rather than exhaustive representations of plasma, serum, or supplemented culture media. Concentrations are retained as provenance. Only explicitly flagged glucose, lactate, and glutamine sensitivity scenarios convert concentration ratios into relative uptake caps; these are sensitivity assumptions rather than measured transport fluxes.
+Named physiological and cell-culture media are curated extracellular availability catalogs rather than exhaustive representations of plasma, serum, or supplemented culture media. Concentrations are retained as provenance. Only explicitly flagged glucose, lactate, and glutamine sensitivity rows convert concentration ratios into relative uptake caps; these are sensitivity assumptions rather than measured transport fluxes.
 }
 \details{
-\code{"physiologic"} is the recommended in-vivo baseline. \code{"rpmi1640"} and \code{"dmem_high_glucose"} describe serum-free basal formulations. \code{"high_glucose"}, \code{"low_glucose"}, \code{"high_lactate"}, \code{"low_lactate"}, and \code{"low_glutamine"} modify one target nutrient on the species-specific plasma background. \code{"minimal"}, \code{"compass_model_bounds"}, and \code{"permissive_all_exchange"} are technical structural-sensitivity baselines rather than biological media.
+\code{"physiologic"} is the recommended in-vivo baseline. For mouse runs, glucose (4.381 mM), lactate (3.088 mM), and glutamine (0.934 mM) use the healthy-mouse plasma-medium reference from Gardner and Stuart. All other mouse components are availability-only, have \code{concentration_mM = NA}, and do not inherit human HPLM concentrations or provenance. Sullivan et al.'s murine plasma and tumor-interstitial-fluid measurements support the broader mouse availability catalog.
+
+\code{"rpmi1640"} and \code{"dmem_high_glucose"} describe serum-free basal formulations. \code{"high_glucose"}, \code{"low_glucose"}, \code{"high_lactate"}, \code{"low_lactate"}, and \code{"low_glutamine"} modify one target nutrient on the species-specific plasma background. \code{"minimal"}, \code{"compass_model_bounds"}, and \code{"permissive_all_exchange"} are technical structural-sensitivity baselines rather than biological media.
 
 Every requested bound is intersected with the original GEM bounds. A medium cannot open an uptake or secretion direction that the GEM originally blocked. During medium application, uptake for unlisted exchanges is closed by default, while originally permitted secretion may remain open.
 }

@@ -1,5 +1,7 @@
 # RegCompassR 1.8.1
 
+- Fixed `mouse_plasma` so it no longer inherits human HPLM concentrations or provenance. Healthy-mouse glucose (4.381 mM), lactate (3.088 mM), and glutamine (0.934 mM) define the only quantitative relative uptake caps; all other mouse components are availability-only.
+- Separated the healthy-mouse quantitative reference from the broader murine plasma and tumor-interstitial-fluid availability evidence, and removed the unrelated Mouse-GEM reconstruction DOI from medium-composition provenance.
 - Removed the redundant public `metacell_label_col` and stepwise `label_col` arguments. The canonical workflow now exposes its actual behavior directly: `celltype_col` is always passed to SuperCell2 before aggregation, while condition remains the only hard metacell stratum.
 - Retained `label_col` only on the lower-level general-purpose `rc_make_supercell2_metacells()` builder, where it is a functional SuperCell2 option.
 - Updated the README, all three tutorial levels, the workflow vignette, API index, and help pages to use the canonical interface only.
