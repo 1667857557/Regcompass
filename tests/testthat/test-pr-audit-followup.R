@@ -35,11 +35,30 @@ test_that("condition-metacell checkpoints require an identical cache contract", 
     .rc_validate_condition_metacell_cache(
       outdir, changed, overwrite = FALSE
     ),
-    "different cells, condition/cell-type labels, assay contents"
+    "different cells, labels, assay contents"
   )
   expect_false(.rc_validate_condition_metacell_cache(
     outdir, changed, overwrite = TRUE
   ))
+})
+
+test_that("matrix fingerprints detect value changes beyond marginal sums", {
+  first <- matrix(
+    c(1, 0, 0, 1), nrow = 2,
+    dimnames = list(c("g1", "g2"), c("u1", "u2"))
+  )
+  second <- matrix(
+    c(0, 1, 1, 0), nrow = 2,
+    dimnames = dimnames(first)
+  )
+  first_fingerprint <- .rc_condition_metacell_matrix_fingerprint(first)
+  second_fingerprint <- .rc_condition_metacell_matrix_fingerprint(second)
+  expect_identical(first_fingerprint$row_sums_md5,
+                   second_fingerprint$row_sums_md5)
+  expect_identical(first_fingerprint$col_sums_md5,
+                   second_fingerprint$col_sums_md5)
+  expect_false(identical(first_fingerprint$values_md5,
+                         second_fingerprint$values_md5))
 })
 
 test_that("downstream stages reject legacy metacell provenance", {
