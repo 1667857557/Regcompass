@@ -69,7 +69,7 @@ test_that("GRN and metacell defaults match the canonical design", {
   metacell_body <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
   expect_match(grn_body, "peak_cor = 0.01", fixed = TRUE)
   expect_match(grn_body, "condition_col, celltype_col", fixed = TRUE)
-  expect_match(metacell_body, "gamma <- 75L", fixed = TRUE)
+  expect_match(metacell_body, "gamma <- 30L", fixed = TRUE)
   expect_match(metacell_body, 'pooling_scope <- "condition_only"', fixed = TRUE)
   expect_match(metacell_body, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(metacell_body, "Sample balancing is not part", fixed = TRUE)

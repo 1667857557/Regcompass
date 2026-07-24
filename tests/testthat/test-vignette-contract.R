@@ -1,7 +1,11 @@
-test_that("workflow vignette documents the canonical layered API", {
+test_that("workflow vignette documents the canonical one-shot API", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
-    if (nzchar(workspace)) file.path(workspace, "vignettes", "regcompass-workflow.Rmd") else character(),
+    if (nzchar(workspace)) {
+      file.path(workspace, "vignettes", "regcompass-workflow.Rmd")
+    } else {
+      character()
+    },
     file.path("vignettes", "regcompass-workflow.Rmd"),
     file.path("..", "vignettes", "regcompass-workflow.Rmd"),
     file.path("..", "..", "vignettes", "regcompass-workflow.Rmd")
@@ -9,6 +13,7 @@ test_that("workflow vignette documents the canonical layered API", {
   candidates <- candidates[file.exists(candidates)]
   if (!length(candidates)) skip("Source vignette is unavailable.")
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
+
   required <- c(
     "RegCompassR 1.8.3",
     "rc_prepare_gem",
@@ -17,7 +22,7 @@ test_that("workflow vignette documents the canonical layered API", {
     "Pando_regcompass.tar.gz",
     "ChromatinAssay",
     "peak_cor = 0.01",
-    "gamma = 75",
+    "gamma = 30",
     "rc_run_regcompass_one_shot(",
     "upstream_workers = 6L",
     "layer2_workers = 30L",
@@ -36,12 +41,9 @@ test_that("workflow vignette documents the canonical layered API", {
     "result$version, \"1.8.3\""
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
+
   forbidden <- c(
-    "MulticoreParam(",
-    "SnowParam(",
-    "BPPARAM =",
     "parallel_backend =",
-    "local_fastcore_args = list(\n      solver = \"highs\",\n      strict = TRUE,\n      parallel = TRUE",
     "metacell_label_col",
     "label_col =",
     "sample_balance = TRUE",
@@ -54,63 +56,7 @@ test_that("workflow vignette documents the canonical layered API", {
   expect_false(any(vapply(forbidden, grepl, logical(1), x = text, fixed = TRUE)))
 })
 
-test_that("tutorials cover automatic execution, saved-stage audit, and restart", {
-  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
-  roots <- unique(c(
-    if (nzchar(workspace)) workspace else character(),
-    ".", "..", file.path("..", "..")
-  ))
-  roots <- roots[vapply(
-    roots, function(path) dir.exists(file.path(path, "docs")), logical(1)
-  )]
-  if (!length(roots)) skip("Source documentation is unavailable.")
-  root <- normalizePath(roots[[1L]], mustWork = TRUE)
-  paths <- file.path(root, "docs", c(
-    "tutorial-01-quick-start.md",
-    "tutorial-02-stepwise-audit.md",
-    "tutorial-03-advanced-restart.md",
-    "target-union-scoring.md",
-    "portable-execution.md"
-  ))
-  expect_true(all(file.exists(paths)))
-  text <- lapply(paths, function(path) {
-    paste(readLines(path, warn = FALSE), collapse = "\n")
-  })
-  expect_match(text[[1L]], "Tutorial Level 1", fixed = TRUE)
-  expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
-  expect_match(text[[1L]], "upstream_workers = 6L", fixed = TRUE)
-  expect_match(text[[1L]], "layer2_workers = 30L", fixed = TRUE)
-  expect_match(text[[2L]], "Tutorial Level 2", fixed = TRUE)
-  expect_match(text[[2L]], "regcompass_grn_step", fixed = TRUE)
-  expect_match(text[[2L]], "regcompass_layer1_step", fixed = TRUE)
-  expect_match(text[[2L]], "regcompass_layer2_step", fixed = TRUE)
-  expect_match(text[[2L]], "rc_regcompass_step_target_union(", fixed = TRUE)
-  expect_match(text[[2L]], "shared_kegg_reaction", fixed = TRUE)
-  expect_match(text[[2L]], "direct_kegg_reactome_master_rhea_noncore_only", fixed = TRUE)
-  expect_match(text[[2L]], "structural_model_reused_exactly", fixed = TRUE)
-  expect_match(text[[3L]], "Tutorial Level 3", fixed = TRUE)
-  expect_match(text[[3L]], "Earliest stage to rerun", fixed = TRUE)
-  expect_match(text[[3L]], "Serial troubleshooting", fixed = TRUE)
-  expect_match(text[[4L]], "No same-subsystem expansion", fixed = TRUE)
-  expect_match(text[[4L]], "anchor_core_reaction_id", fixed = TRUE)
-  expect_match(text[[4L]], "source_model_md5", fixed = TRUE)
-  expect_match(text[[5L]], "One outer worker equals one single-thread task", fixed = TRUE)
-  expect_match(text[[5L]], "gc(full = TRUE)", fixed = TRUE)
-  combined <- paste(unlist(text), collapse = "\n")
-  expect_match(combined, "peak_cor = 0.01", fixed = TRUE)
-  expect_match(combined, "gamma = 75", fixed = TRUE)
-  expect_match(combined, "OMP_NUM_THREADS=1", fixed = TRUE)
-  expect_match(combined, "internal_threads_per_task", fixed = TRUE)
-  expect_false(grepl("parallel_backend = \"auto\"", combined, fixed = TRUE))
-  expect_false(grepl("BPPARAM = upstream_bp", combined, fixed = TRUE))
-  expect_false(grepl("BPPARAM = layer2_bp", combined, fixed = TRUE))
-  expect_false(grepl("expansion_mode =", combined, fixed = TRUE))
-  expect_false(grepl("subsystem_table =", combined, fixed = TRUE))
-  expect_false(grepl("max_iterations =", combined, fixed = TRUE))
-  expect_false(grepl("_v170", combined, fixed = TRUE))
-})
-
-test_that("README and API index expose current public workflow only", {
+test_that("tutorials preserve one-shot, true stepwise, targeted, and differential modes", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   roots <- unique(c(
     if (nzchar(workspace)) workspace else character(),
@@ -118,8 +64,105 @@ test_that("README and API index expose current public workflow only", {
   ))
   roots <- roots[vapply(
     roots,
-    function(path) file.exists(file.path(path, "README.md")) &&
-      file.exists(file.path(path, "docs", "functions.md")),
+    function(path) dir.exists(file.path(path, "docs")),
+    logical(1)
+  )]
+  if (!length(roots)) skip("Source documentation is unavailable.")
+  root <- normalizePath(roots[[1L]], mustWork = TRUE)
+  paths <- file.path(root, "docs", c(
+    "tutorial-01-quick-start.md",
+    "tutorial-02-stepwise-audit.md",
+    "tutorial-03-advanced-restart.md",
+    "tutorial-04-targeted-reaction-remapping.md",
+    "tutorial-05-condition-differential-analysis.md",
+    "target-union-scoring.md",
+    "portable-execution.md"
+  ))
+  expect_true(all(file.exists(paths)))
+  text <- lapply(paths, function(path) {
+    paste(readLines(path, warn = FALSE), collapse = "\n")
+  })
+
+  expect_match(text[[1L]], "Tutorial Level 1", fixed = TRUE)
+  expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
+  expect_match(text[[1L]], "gamma = 30", fixed = TRUE)
+  expect_match(text[[1L]], "upstream_workers = 6L", fixed = TRUE)
+  expect_match(text[[1L]], "layer2_workers = 30L", fixed = TRUE)
+
+  expect_match(text[[2L]], "Tutorial Level 2", fixed = TRUE)
+  expect_false(grepl("rc_run_regcompass_one_shot(", text[[2L]], fixed = TRUE))
+  for (fun in c(
+    "rc_regcompass_step_grn(",
+    "rc_regcompass_step_metacells(",
+    "rc_regcompass_step_meta_modules(",
+    "rc_regcompass_step_layer1(",
+    "rc_regcompass_step_layer2(",
+    "rc_regcompass_step_results("
+  )) {
+    expect_match(text[[2L]], fun, fixed = TRUE)
+  }
+  expect_match(text[[2L]], "gamma = 30", fixed = TRUE)
+  expect_match(text[[2L]], "BPPARAM = upstream_bp", fixed = TRUE)
+  expect_match(text[[2L]], "BPPARAM = layer2_bp", fixed = TRUE)
+
+  expect_match(text[[3L]], "Tutorial Level 3", fixed = TRUE)
+  expect_match(text[[3L]], "Earliest stage to rerun", fixed = TRUE)
+  expect_match(text[[3L]], "Serial troubleshooting", fixed = TRUE)
+
+  expect_match(text[[4L]], "Tutorial Level 4", fixed = TRUE)
+  expect_match(text[[4L]], "rc_regcompass_step_target_union(", fixed = TRUE)
+  expect_match(text[[4L]], "core_genes", fixed = TRUE)
+  expect_match(text[[4L]], "core_reaction_ids", fixed = TRUE)
+  expect_match(text[[4L]], "shared_kegg_reaction", fixed = TRUE)
+  expect_match(
+    text[[4L]],
+    "direct_kegg_reactome_master_rhea_noncore_only",
+    fixed = TRUE
+  )
+  expect_match(text[[4L]], "structural_model_reused_exactly", fixed = TRUE)
+
+  expect_match(text[[5L]], "Tutorial Level 5", fixed = TRUE)
+  expect_match(text[[5L]], "rc_test_condition_reactions(", fixed = TRUE)
+  expect_match(text[[5L]], "rc_plot_condition_reaction(", fixed = TRUE)
+  expect_match(text[[5L]], "Kruskal-Wallis", fixed = TRUE)
+  expect_match(text[[5L]], "Wilcoxon", fixed = TRUE)
+  expect_match(text[[5L]], "metacell_within_dataset", fixed = TRUE)
+
+  expect_match(text[[6L]], "No same-subsystem expansion", fixed = TRUE)
+  expect_match(text[[6L]], "anchor_core_reaction_id", fixed = TRUE)
+  expect_match(text[[6L]], "source_model_md5", fixed = TRUE)
+  expect_match(
+    text[[7L]],
+    "One outer worker equals one single-thread task",
+    fixed = TRUE
+  )
+  expect_match(text[[7L]], "gc(full = TRUE)", fixed = TRUE)
+
+  combined <- paste(unlist(text), collapse = "\n")
+  expect_match(combined, "peak_cor = 0.01", fixed = TRUE)
+  expect_match(combined, "gamma = 30", fixed = TRUE)
+  expect_match(combined, "OMP_NUM_THREADS=1", fixed = TRUE)
+  expect_match(combined, "internal_threads_per_task", fixed = TRUE)
+  expect_false(grepl("gamma = 75", combined, fixed = TRUE))
+  expect_false(grepl("gamma = 100", combined, fixed = TRUE))
+  expect_false(grepl("expansion_mode =", combined, fixed = TRUE))
+  expect_false(grepl("subsystem_table =", combined, fixed = TRUE))
+  expect_false(grepl("max_iterations =", combined, fixed = TRUE))
+  expect_false(grepl("_v170", combined, fixed = TRUE))
+})
+
+test_that("README and API index expose current public workflow", {
+  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
+  roots <- unique(c(
+    if (nzchar(workspace)) workspace else character(),
+    ".", "..", file.path("..", "..")
+  ))
+  roots <- roots[vapply(
+    roots,
+    function(path) {
+      file.exists(file.path(path, "README.md")) &&
+        file.exists(file.path(path, "docs", "functions.md"))
+    },
     logical(1)
   )]
   if (!length(roots)) skip("Source documentation is unavailable.")
@@ -133,6 +176,7 @@ test_that("README and API index expose current public workflow only", {
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
+
   required <- c(
     "RegCompassR 1.8.3",
     "rc_run_regcompass_one_shot",
@@ -148,6 +192,7 @@ test_that("README and API index expose current public workflow only", {
     "medium-presets.md"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
+
   forbidden <- c(
     "parallel_backend = c(",
     "v170_microcompass_contract",

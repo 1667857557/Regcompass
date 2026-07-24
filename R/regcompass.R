@@ -85,7 +85,7 @@ rc_run_regcompass <- function(
     )
   }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
-  if (is.null(metacell_args$gamma)) metacell_args$gamma <- 75L
+  if (is.null(metacell_args$gamma)) metacell_args$gamma <- 30L
   saveRDS(gem$model_info %||% list(), file.path(outdir, "00_model_info.rds"))
   saveRDS(medium_scenarios, file.path(outdir, "00_medium_scenarios.rds"))
 

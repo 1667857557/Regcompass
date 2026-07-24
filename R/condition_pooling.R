@@ -135,7 +135,7 @@
       paste(unsupported, collapse = ", "), call. = FALSE
     )
   }
-  if (is.null(metacell_args$gamma)) metacell_args$gamma <- 75L
+  if (is.null(metacell_args$gamma)) metacell_args$gamma <- 30L
   internal_sample_col <- .rc_condition_only_sample_col(object@meta.data)
   object@meta.data[[internal_sample_col]] <- paste0(
     as.character(object@meta.data[[condition_col]]), "__condition_pool"

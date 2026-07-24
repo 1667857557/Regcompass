@@ -1,17 +1,23 @@
-# Tutorial Level 2: audit the saved stage workflow
+# Tutorial Level 2: true stepwise run with audit gates
 
-Use the canonical complete workflow for computation and the saved classed stage objects for inspection, restart planning, and audit gates. RegCompassR 1.8.3 automatically applies the two worker layers, selects the platform backend, and releases each parallel stage pool immediately after completion or failure.
+Use this tutorial when every RegCompass stage must be executed, inspected, saved, and restarted independently. Unlike the one-shot tutorial, this workflow calls each public stage function directly.
+
+RegCompassR 1.8.3 validates stage classes, workflow metadata, GEM fingerprints, core-target provenance, and ordered metacell IDs before accepting downstream objects.
 
 ## Setup
 
 ```r
 library(RegCompassR)
 library(Pando)
+library(BiocParallel)
 library(BSgenome.Hsapiens.UCSC.hg38)
 
 data(motifs, package = "Pando")
+
 condition_col <- "dataset"
 celltype_col <- "epithelial_or_stem"
+upstream_workers <- 6L
+layer2_workers <- 30L
 
 gem <- rc_prepare_gem(
   species = "human",
@@ -26,7 +32,9 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Before starting R on Linux:
+Use `Pando::motifs` as `pfm`; `motif2tf` is not a PFM/PWM collection.
+
+Before starting R on Linux, keep numerical-library threads at one because the outer BiocParallel layer distributes independent tasks:
 
 ```bash
 export OMP_NUM_THREADS=1
@@ -34,16 +42,47 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 ```
 
-## Run all stages with automatic worker management
+Create stage-specific worker backends:
 
 ```r
-result <- rc_run_regcompass_one_shot(
+upstream_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(
+    workers = upstream_workers,
+    type = "SOCK",
+    progressbar = TRUE
+  )
+} else {
+  MulticoreParam(
+    workers = upstream_workers,
+    progressbar = TRUE
+  )
+}
+
+layer2_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(
+    workers = layer2_workers,
+    type = "SOCK",
+    progressbar = TRUE
+  )
+} else {
+  MulticoreParam(
+    workers = layer2_workers,
+    progressbar = TRUE
+  )
+}
+```
+
+For serial troubleshooting, set `parallel = FALSE`, omit `BPPARAM`, and set local FASTCORE `parallel = FALSE`.
+
+## Stage 1: infer condition-by-cell-type GRNs
+
+```r
+step1 <- rc_regcompass_step_grn(
   object = A,
-  outdir = "RegCompass_result",
+  gem = gem,
+  outdir = "RegCompass_steps/01_single_cell_grn",
   pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,
-  species = "human",
   condition_col = condition_col,
   celltype_col = celltype_col,
   pando_args = list(
@@ -56,11 +95,61 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
+  parallel = TRUE,
+  BPPARAM = upstream_bp,
+  progress = TRUE
+)
+
+status1 <- step1$grn_result$sample_status
+stopifnot(
+  inherits(step1, "regcompass_grn_step"),
+  all(status1$status == "ok"),
+  all(status1$n_significant_edges > 0),
+  nzchar(step1$gem_fingerprint)
+)
+```
+
+RNA is normalized once. ATAC TF-IDF uses all conditions within each cell type as the reference, and Pando is fitted separately for each `condition × cell type` group. Pando's inner `parallel = FALSE` prevents nested parallelism.
+
+## Stage 2: construct condition-level metacells
+
+```r
+step2 <- rc_regcompass_step_metacells(
+  object = A,
+  outdir = "RegCompass_steps/02_condition_metacells",
+  sample_col = NULL,
+  condition_col = condition_col,
+  celltype_col = celltype_col,
+  fragment_files = FALSE,
   metacell_args = list(
-    gamma = 75,
+    gamma = 30,
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
+  progress = TRUE
+)
+
+meta2 <- step2$pooled$metacell_meta
+stopifnot(
+  inherits(step2, "regcompass_metacell_step"),
+  identical(step2$params$metacell_args$gamma, 30L),
+  !any(meta2$dominant_celltype_tied %in% TRUE),
+  setequal(colnames(step2$metacell_object), meta2$metacell_id)
+)
+
+table(meta2[[condition_col]], meta2[[celltype_col]])
+```
+
+Condition is the only hard stratum. `celltype_col` is passed to SuperCell2 as a construction label and is audited again from member-cell composition. `sample_col` is optional provenance and is not used for balancing.
+
+## Stage 3: build core reactions and meta-modules
+
+```r
+step3 <- rc_regcompass_step_meta_modules(
+  grn = step1,
+  metacells = step2,
+  gem = gem,
+  outdir = "RegCompass_steps/03_meta_modules",
   layer1_args = list(
     top_k_neighbors = 5,
     min_shared_tfs = 1,
@@ -69,89 +158,15 @@ result <- rc_run_regcompass_one_shot(
     local_fastcore_args = list(
       solver = "highs",
       strict = TRUE,
-      time_limit = 300
+      time_limit = 300,
+      parallel = TRUE,
+      workers = upstream_workers,
+      backend = "auto"
     )
   ),
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    time_limit = 60
-  ),
-  upstream_workers = 6L,
-  layer2_workers = 30L,
   progress = TRUE
 )
-```
 
-The complete run writes every intermediate wrapper RDS. The canonical interface does not expose `parallel_backend`; Windows uses SOCK workers, Linux/macOS use multicore workers, and either worker count set to one resolves that layer to serial execution.
-
-## Load the saved stage objects
-
-```r
-step1 <- readRDS(
-  "RegCompass_result/01_single_cell_grn/step_grn.rds"
-)
-step2 <- readRDS(
-  "RegCompass_result/02_condition_metacells/step_metacells.rds"
-)
-step3 <- readRDS(
-  "RegCompass_result/03_meta_modules/step_meta_modules.rds"
-)
-step4 <- readRDS(
-  "RegCompass_result/04_layer1/step_layer1.rds"
-)
-step5 <- readRDS(
-  "RegCompass_result/05_layer2/step_layer2.rds"
-)
-result <- readRDS(
-  "RegCompass_result/06_results/regcompass_result.rds"
-)
-```
-
-Use the wrapper RDS files above rather than compact inspection artifacts.
-
-## Audit Stage 1: condition-by-cell-type GRNs
-
-```r
-status1 <- step1$grn_result$sample_status
-
-stopifnot(
-  inherits(step1, "regcompass_grn_step"),
-  all(status1$status == "ok"),
-  all(status1$n_significant_edges > 0),
-  nzchar(step1$gem_fingerprint)
-)
-
-status1
-```
-
-RNA is normalized once. ATAC TF-IDF uses all conditions within each cell type as the reference. Pando's inner `parallel = FALSE` is retained because condition-by-cell-type groups are distributed by the upstream worker layer.
-
-## Audit Stage 2: condition-level metacells
-
-```r
-meta2 <- step2$pooled$metacell_meta
-
-stopifnot(
-  inherits(step2, "regcompass_metacell_step"),
-  !any(meta2$dominant_celltype_tied %in% TRUE),
-  setequal(
-    colnames(step2$metacell_object),
-    meta2$metacell_id
-  )
-)
-
-table(
-  meta2[[condition_col]],
-  meta2[[celltype_col]]
-)
-```
-
-Condition is the only hard stratum. `celltype_col` guides SuperCell2 before aggregation and is audited again from member-cell composition. Stage 2 has no workflow-level parallel worker pool.
-
-## Audit Stage 3: core reactions and meta-modules
-
-```r
 stopifnot(
   inherits(step3, "regcompass_meta_module_step"),
   all(step3$group_coverage$coverage_complete),
@@ -163,11 +178,23 @@ stopifnot(
 step3$condition_modules$local_fastcore_summary
 ```
 
-Biological meta-modules contain complete-GPR cores, same-subsystem reactions, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE adds only reactions required for feasibility. Its workers are assigned from `upstream_workers` and released before Layer 1 begins.
+Biological meta-modules contain complete-GPR cores, same-subsystem reactions, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE adds separately labelled reactions required for feasibility.
 
-## Audit Stage 4: integrated reaction expression
+## Stage 4: calculate integrated RNA+ATAC reaction expression
 
 ```r
+step4 <- rc_regcompass_step_layer1(
+  metacells = step2,
+  meta_modules = step3,
+  gem = gem,
+  outdir = "RegCompass_steps/04_layer1",
+  regulatory_alpha = 1,
+  tau = 0.20,
+  parallel = TRUE,
+  BPPARAM = upstream_bp,
+  progress = TRUE
+)
+
 stopifnot(
   inherits(step4, "regcompass_layer1_step"),
   identical(
@@ -182,18 +209,30 @@ dim(step4$reaction_expression)
 head(step4$gpr_diagnostics)
 ```
 
-Stage 4 receives a fresh upstream worker pool. That pool is stopped and garbage-collected immediately after the stage returns.
-
-## Audit Stage 5: original core LP scoring
+## Stage 5: run directional COMPASS-like LP scoring
 
 ```r
+step5 <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "RegCompass_steps/05_layer2",
+  model_mode = "meta_module_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    time_limit = 60
+  ),
+  parallel = TRUE,
+  BPPARAM = layer2_bp,
+  progress = TRUE
+)
+
 stopifnot(
   inherits(step5, "regcompass_layer2_step"),
   any(step5$evaluated),
-  identical(
-    colnames(step5$penalty),
-    colnames(step4$reaction_expression)
-  ),
+  identical(colnames(step5$penalty), colnames(step4$reaction_expression)),
   identical(step5$workflow_params, step4$workflow_params),
   identical(step5$gem_fingerprint, step4$gem_fingerprint),
   all(file.exists(step5$model_cache_summary$file))
@@ -206,32 +245,23 @@ table(
 )
 ```
 
-`penalty` is the primary output. `score` is a within-target relative rank. Layer 2 uses its own `layer2_workers` pool; no upstream pool remains active at this point.
+`penalty` is the primary output. Lower values indicate stronger compatibility between the required target flux and integrated evidence. `score` is a within-target relative rank, not a probability or measured flux.
 
-## Optional direct database-linked target scoring
+## Stage 6: assemble annotated results
 
 ```r
-expanded <- rc_regcompass_step_target_union(
-  layer1 = step4,
+result <- rc_regcompass_step_results(
+  grn = step1,
+  metacells = step2,
   meta_modules = step3,
+  layer1 = step4,
   layer2 = step5,
   gem = gem,
-  outdir = "RegCompass_result/05b_expanded_targets",
-  core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
-  gene_match = "complete_gpr",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs"
-  ),
+  outdir = "RegCompass_steps/06_results",
+  species = "human",
   progress = TRUE
 )
-```
 
-The selected cores are not scored again. The second pass includes only non-core reactions directly sharing KEGG, Reactome, or master-Rhea identifiers with the selected cores.
-
-## Audit Stage 6 and execution provenance
-
-```r
 stopifnot(
   identical(result$version, "1.8.3"),
   identical(result$schema_version, "regcompass_grn_first_v2"),
@@ -239,19 +269,72 @@ stopifnot(
   nrow(result$reaction_catalog) > 0,
   nrow(result$reaction_evidence) > 0,
   identical(result$gem_fingerprint, step5$gem_fingerprint),
-  identical(result$params$upstream_workers, 6L),
-  identical(result$params$layer2_workers, 30L),
-  identical(
-    result$params$parallel_worker_lifecycle,
-    "stage_scoped_create_start_stop_release_full_gc"
-  )
+  identical(result$params$execution_mode, "stepwise")
+)
+```
+
+Each stage writes its own classed RDS and `step_timing.tsv`, so a downstream stage can be restarted without recomputing valid upstream objects.
+
+Stop the user-created workers after all stages finish:
+
+```r
+bpstop(upstream_bp)
+bpstop(layer2_bp)
+gc(full = TRUE)
+```
+
+## Optional Stage 5b: select anchors and remap linked reactions
+
+A targeted second pass may be run from the completed Stage 3–5 objects. The selected genes or reaction IDs must resolve to previous global core reactions.
+
+```r
+expanded <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_steps/05b_targeted_reactions",
+  core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
+  gene_match = "complete_gpr",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  ),
+  parallel = TRUE,
+  BPPARAM = layer2_bp,
+  progress = TRUE
 )
 
-result$params$parallel_backend_resolved
-result$params$parallel_stage_groups
-result$timing$stages
+stopifnot(
+  inherits(expanded, "regcompass_target_union_step"),
+  expanded$microcompass$params$structural_model_reused_exactly,
+  identical(
+    expanded$microcompass$params$target_scope,
+    "direct_kegg_reactome_master_rhea_noncore_only"
+  )
+)
 ```
+
+The complete gene- and reaction-selection tutorial is [Tutorial Level 4](tutorial-04-targeted-reaction-remapping.md).
+
+## Compare conditions after Stage 6
+
+```r
+condition_stats <- rc_test_condition_reactions(
+  result,
+  condition_col = condition_col,
+  celltype_col = celltype_col,
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "stem-cell_like",
+  p_adjust_scope = "celltype_contrast_medium"
+)
+
+condition_stats$omnibus
+condition_stats$pairwise
+```
+
+The complete statistics and plotting tutorial is [Tutorial Level 5](tutorial-05-condition-differential-analysis.md).
 
 ## Stop conditions
 
-Do not continue when a required GRN group fails, a metacell has a tied dominant label, GRN/metacell coverage is incomplete, no complete-GPR core remains, stage classes or fingerprints differ, unit order changes, the solver is unavailable, or no LP target is evaluated.
+Do not continue when a required GRN group fails, a metacell has a tied dominant label, GRN/metacell coverage is incomplete, no complete-GPR core remains, stage classes or GEM fingerprints differ, scoring-unit order changes, the LP solver is unavailable, or no Layer 2 target is evaluated.

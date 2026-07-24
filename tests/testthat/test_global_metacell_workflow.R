@@ -36,7 +36,7 @@ test_that("metacell construction is condition-only without sample balancing", {
   expect_match(text, 'pooling_scope <- "condition_only"', fixed = TRUE)
   expect_match(text, 'sample_weighting <- "none"', fixed = TRUE)
   expect_match(text, "metacell_grouping = condition_col", fixed = TRUE)
-  expect_match(text, "gamma <- 75L", fixed = TRUE)
+  expect_match(text, "gamma <- 30L", fixed = TRUE)
   expect_match(text, "Sample balancing is not part", fixed = TRUE)
   expect_match(text, "label_col = celltype_col", fixed = TRUE)
   expect_match(text, '"label_col"', fixed = TRUE)

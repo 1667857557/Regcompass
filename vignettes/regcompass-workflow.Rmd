@@ -13,7 +13,7 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 RegCompassR fits condition-by-cell-type Pando GRNs, builds condition-level SuperCell2 metacells, maps complete-GPR core reactions, constructs a FASTCORE-completed global union GEM, integrates RNA and ATAC evidence, and performs directional minimum-penalty LP scoring.
 
-The canonical complete runner uses two automatic worker layers: `upstream_workers = 6L` and `layer2_workers = 30L`. It selects the operating-system backend, keeps every task inside an outer worker single-threaded, and releases each stage pool before the next unrelated stage.
+The canonical complete runner uses `gamma = 30` and two automatic worker layers: `upstream_workers = 6L` and `layer2_workers = 30L`. It selects the operating-system backend, keeps every task inside an outer worker single-threaded, and releases each stage pool before the next unrelated stage.
 
 ## Installation
 
@@ -85,7 +85,7 @@ result <- rc_run_regcompass_one_shot(
     )
   ),
   metacell_args = list(
-    gamma = 75,
+    gamma = 30,
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
@@ -135,6 +135,7 @@ stopifnot(
   all(step1$grn_result$sample_status$status == "ok"),
   !any(step2$pooled$metacell_meta$dominant_celltype_tied %in% TRUE),
   all(step3$group_coverage$coverage_complete),
+  identical(step2$params$metacell_args$gamma, 30L),
   identical(step4$gem_fingerprint, step5$gem_fingerprint),
   identical(colnames(step4$reaction_expression), colnames(step5$penalty)),
   any(step5$evaluated),
@@ -151,6 +152,8 @@ stopifnot(
 ```
 
 Meta-modules contain complete-GPR cores, same-subsystem reactions, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. FASTCORE adds separately labelled feasibility support. The raw minimum penalty is the primary result; the relative score is a within-target rank, not a probability.
+
+The complete stage-by-stage execution, rather than one-shot execution followed by RDS loading, is documented in `docs/tutorial-02-stepwise-audit.md`.
 
 ## Direct database-linked non-core scoring
 
@@ -183,6 +186,6 @@ stopifnot(
 
 The selected core reactions are mapping anchors and are not scored again. Only non-core reactions directly sharing a KEGG, Reactome, or master-Rhea identifier with a selected core enter the second LP. Same-subsystem and transitive expansion are excluded. The exact original union-GEM files and bounds are reused.
 
-For condition tests and plots, see `docs/condition-reaction-statistics.md`. For medium definitions, see `docs/medium-presets.md`. For restart and diagnostics, see `docs/tutorial-03-advanced-restart.md`.
+For gene/reaction-targeted remapping, see `docs/tutorial-04-targeted-reaction-remapping.md`. For condition tests and plots, see `docs/tutorial-05-condition-differential-analysis.md`. For medium definitions, see `docs/medium-presets.md`. For restart and diagnostics, see `docs/tutorial-03-advanced-restart.md`.
 
 Metacell-level condition comparisons describe separation within the analyzed dataset; they are not automatically biological-replicate-level treatment inference.

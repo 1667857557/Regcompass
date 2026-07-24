@@ -122,7 +122,7 @@ result <- rc_run_regcompass_one_shot(
     )
   ),
   metacell_args = list(
-    gamma = 75,
+    gamma = 30,
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
@@ -174,7 +174,7 @@ expanded <- rc_regcompass_step_target_union(
   meta_modules = step3,
   layer2 = step5,
   gem = gem,
-  outdir = "RegCompass_steps/06_expanded_target_scoring",
+  outdir = "RegCompass_steps/05b_expanded_target_scoring",
   core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
   gene_match = "complete_gpr",
   progress = TRUE
@@ -225,8 +225,10 @@ The plot shows one point per metacell and adjusted significance brackets. These 
 
 | Level | Use | Tutorial |
 |---|---|---|
-| 1 | minimal validated one-shot run | [Quick start](docs/tutorial-01-quick-start.md) |
-| 2 | inspect and audit saved stage objects | [Stepwise audit](docs/tutorial-02-stepwise-audit.md) |
+| 1 | complete one-shot analysis | [One-shot quick start](docs/tutorial-01-quick-start.md) |
+| 2 | execute and audit every stage independently | [True stepwise workflow](docs/tutorial-02-stepwise-audit.md) |
 | 3 | restart, sensitivity, resources, and failure diagnosis | [Advanced restart](docs/tutorial-03-advanced-restart.md) |
+| 4 | remap selected genes or reactions and run second-pass LP scoring | [Targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md) |
+| 5 | test and plot condition-associated reaction differences | [Condition differential analysis](docs/tutorial-05-condition-differential-analysis.md) |
 
 See also [Portable execution, bundled GEMs, progress, and timing](docs/portable-execution.md).
