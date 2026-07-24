@@ -1,7 +1,10 @@
 # Condition-associated reaction statistics
 
 `rc_test_condition_reactions()` compares the same reaction target across
-conditions within the same cell type after Layer 2 scoring.
+conditions within the same cell type after Layer 2 scoring. Stage 6 now attaches
+formal reaction names, stoichiometric formulas, substrates, products, GPR rules,
+participating genes, and RNA-versus-multiome evidence provenance to every result
+row.
 
 ## Why the comparison is valid
 
@@ -21,31 +24,82 @@ where `P[r,j]` is the minimum evidence-discordance penalty required to sustain
 `omega * Vmax[r]`. Larger scores indicate stronger support. Before testing, the
 function verifies that `Vmax[r]` is invariant across units under the shared GEM.
 
-## Basic use
+## Reaction annotations created by Stage 6
+
+A newly generated complete result contains:
 
 ```r
-condition_stats <- rc_test_condition_reactions(
+result$reaction_catalog
+result$reaction_evidence
+```
+
+`reaction_catalog` has one row per scored GEM reaction and includes:
+
+- `reaction_name`;
+- `subsystem` and `reaction_role`;
+- `model_formula` reconstructed from the GEM stoichiometric matrix;
+- `forward_substrates`, `forward_products`, and `forward_formula`;
+- `reverse_substrates`, `reverse_products`, and `reverse_formula`;
+- `genes`, `gpr_rule`, and `n_gpr_genes`;
+- KEGG, Reactome, Rhea, and master-Rhea identifiers when available.
+
+Metabolite names are followed by compartments, for example:
+
+```text
+L-glutamate [c] + ATP [c] -> ADP [c] + ...
+```
+
+The statistics tables additionally contain `tested_substrates`,
+`tested_products`, and `tested_formula`, which follow the scored forward or
+reverse LP direction rather than only the model's canonical equation order.
+
+For results created before this feature, attach the exact GEM used in the run:
+
+```r
+result <- rc_attach_reaction_annotations(
   result,
+  gem,
   condition_col = "dataset",
-  celltype_col = "epithelial_or_stem",
-  cell_types = c("epithelial_like", "stem-cell_like"),
-  min_units = 5,
-  p_adjust_method = "BH",
-  p_adjust_scope = "celltype_contrast_medium",
-  outdir = "RegCompass_result/07_condition_statistics"
+  celltype_col = "epithelial_or_stem"
 )
 ```
 
-The function accepts either the complete RegCompass result or the Layer 2
-`microcompass`/`step5` object.
+## RNA-only versus RNA+ATAC evidence
 
-## Multi-condition comparison
+`reaction_evidence` contains one row per
+`condition × cell type × reaction`. Evidence classes are:
 
-When three or more conditions are retained, one Kruskal-Wallis omnibus test is
-run for every fixed `cell type × reaction × direction × medium` target. Pairwise
-Wilcoxon tests are also returned for every requested condition pair.
+```text
+RNA+ATAC
+RNA-only
+GPR/no-observed-RNA
+structural/no-GPR
+```
 
-For control, JQ1, and MS177 together:
+The classification is deliberately strict:
+
+- `RNA+ATAC`: at least one GPR gene has integrated multiome support that differs
+  from its RNA support in at least one metacell of the group;
+- `RNA-only`: the reaction has observed RNA/GPR support, but ATAC-derived
+  regulation does not actively change integrated support in that group;
+- `GPR/no-observed-RNA`: a GPR exists but none of its measured genes has positive
+  RNA support in the group;
+- `structural/no-GPR`: the reaction has no GPR and is supported structurally,
+  such as many exchange, demand, sink, or artificial-support reactions.
+
+The output also separates two related concepts:
+
+```text
+has_atac_regulatory_evidence
+has_active_multiome_contribution
+```
+
+A non-zero ATAC regulatory modifier may exist without changing integrated
+support, for example when zero-preserving RNA support remains zero. Therefore
+`RNA+ATAC` is assigned only when the integrated multiome value actually departs
+from the RNA value.
+
+## Basic condition test
 
 ```r
 condition_stats <- rc_test_condition_reactions(
@@ -53,59 +107,140 @@ condition_stats <- rc_test_condition_reactions(
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
   conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  cell_types = "epithelial_like"
+  cell_types = "stem-cell_like",
+  min_units = 5,
+  p_adjust_method = "BH",
+  p_adjust_scope = "celltype_contrast_medium",
+  outdir = "RegCompass_result/07_condition_statistics"
 )
-
-condition_stats$omnibus
-condition_stats$pairwise
 ```
 
-## Outputs
-
-`condition_stats$omnibus` contains one Kruskal-Wallis test per
-`cell type × reaction × direction × medium` when at least three conditions are
-available.
-
-`condition_stats$pairwise` contains all requested pairwise Wilcoxon tests and:
-
-- median and mean support scores in both conditions;
-- `delta_median_score_b_minus_a`;
-- Cohen's d;
-- rank-biserial correlation;
-- common-language probability that a condition-B unit exceeds condition A;
-- raw and adjusted P values;
-- the condition with higher predicted reaction support;
-- explicit analysis-unit and inference-level labels.
-
-Positive `delta_median_score_b_minus_a`, Cohen's d, or rank-biserial correlation
-means stronger support in `condition_b`.
-
-## Selected comparisons and reactions
+The enriched tables can be inspected directly:
 
 ```r
-condition_stats <- rc_test_condition_reactions(
-  step5,
-  condition_col = "dataset",
-  celltype_col = "epithelial_or_stem",
-  cell_types = "epithelial_like",
-  comparisons = list(
-    c("control_24hr", "JQ1_24hr"),
-    c("control_24hr", "MS177_24hr"),
-    c("JQ1_24hr", "MS177_24hr")
-  ),
-  reaction_ids = c("MAR06231", "MAR06241"),
-  target_directions = c("forward", "reverse"),
-  medium_scenarios = "high_glucose"
+condition_stats$omnibus[
+  ,
+  c(
+    "reaction_id",
+    "reaction_name",
+    "target_direction",
+    "tested_formula",
+    "genes",
+    "gpr_rule",
+    "evidence_by_condition",
+    "p_adj"
+  )
+]
+
+condition_stats$pairwise[
+  ,
+  c(
+    "reaction_id",
+    "reaction_name",
+    "target_direction",
+    "tested_formula",
+    "condition_a",
+    "condition_b",
+    "evidence_class_a",
+    "evidence_class_b",
+    "multiome_contributing_genes_a",
+    "multiome_contributing_genes_b",
+    "delta_median_score_b_minus_a",
+    "rank_biserial_b_minus_a",
+    "p_adj"
+  )
+]
+```
+
+When `outdir` is supplied, the annotated exports include:
+
+```text
+condition_reaction_pairwise.tsv.gz
+condition_reaction_omnibus.tsv.gz
+condition_reaction_catalog.tsv.gz
+condition_reaction_evidence.tsv.gz
+condition_reaction_statistics.rds
+```
+
+## Multi-condition comparison
+
+When three or more conditions are retained, one Kruskal-Wallis omnibus test is
+run for every fixed `cell type × reaction × direction × medium` target. Pairwise
+Wilcoxon tests are also returned for every requested condition pair.
+
+`condition_stats$omnibus` answers whether at least one condition differs.
+`condition_stats$pairwise` provides the direction, effect size, and evidence
+provenance for each contrast.
+
+Positive `delta_median_score_b_minus_a`, Cohen's d, or rank-biserial correlation
+means stronger reaction support in `condition_b`.
+
+## Select reactions by metabolic genes
+
+A gene query selects reactions through the Boolean GPR annotation, not by
+reaction name or subsystem text.
+
+```r
+rela_metabolic_genes <- c(
+  "SLC7A11",
+  "GCLC",
+  "GCLM",
+  "GSS",
+  "GSR",
+  "G6PD",
+  "PGD"
+)
+
+gene_reactions <- rc_select_gene_reactions(
+  result,
+  genes = rela_metabolic_genes,
+  match = "any",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "stem-cell_like"
+)
+
+gene_reactions$reactions[
+  ,
+  c(
+    "reaction_id",
+    "reaction_name",
+    "model_formula",
+    "genes",
+    "gpr_rule",
+    "matched_genes"
+  )
+]
+
+gene_reactions$evidence[
+  ,
+  c(
+    "reaction_id",
+    "condition",
+    "cell_type",
+    "evidence_class",
+    "rna_supported_genes",
+    "multiome_contributing_genes"
+  )
+]
+```
+
+To retain only reactions with active multiome contribution in at least one
+selected group:
+
+```r
+multiome_gene_reactions <- rc_select_gene_reactions(
+  result,
+  genes = rela_metabolic_genes,
+  cell_types = "stem-cell_like",
+  evidence_class = "RNA+ATAC"
 )
 ```
 
-## Plot one reaction across conditions
+Selecting a gene means that it participates in the reaction GPR. It does not
+mean that the gene alone is sufficient for activity. Always inspect `gpr_rule`
+for multisubunit complexes and alternative isozymes.
 
-`rc_plot_condition_reaction()` displays all selected conditions in one plot.
-The boxplot summarizes the distribution and every point is one finite metacell
-score. Pairwise brackets use BH-adjusted P values by default, and the subtitle
-shows the BH-adjusted Kruskal-Wallis omnibus result when three or more conditions
-are present.
+## Plot one annotated reaction
 
 ```r
 p <- rc_plot_condition_reaction(
@@ -117,58 +252,81 @@ p <- rc_plot_condition_reaction(
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
   conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  comparisons = list(
-    c("control_24hr", "JQ1_24hr"),
-    c("control_24hr", "MS177_24hr"),
-    c("JQ1_24hr", "MS177_24hr")
-  ),
-  annotation_p = "p_adj",
-  show_nonsignificant = FALSE
+  annotation_p = "p_adj"
 )
 
 print(p)
-ggplot2::ggsave(
-  "MAR06231_reverse_epithelial_conditions.pdf",
-  p,
-  width = 6,
-  height = 5
-)
 ```
 
-Significance labels follow:
-
-```text
-****  P < 0.0001
-***   P < 0.001
-**    P < 0.01
-*     P < 0.05
-ns    P >= 0.05
-```
+The default plot title uses the formal reaction name when available. The caption
+contains the tested directional formula, participating genes, and evidence class
+for the compared conditions.
 
 The plotter computes multiplicity correction over the full scored reaction set
 within the selected statistical scope before extracting the requested reaction.
-It therefore does not incorrectly treat a single plotted reaction as the entire
-multiple-testing family.
+It therefore does not treat one displayed reaction as the complete testing
+family.
 
-The returned `ggplot` carries the underlying data and tests:
+## Plot a significant reaction collection for selected genes
+
+`rc_plot_condition_gene_reactions()` runs the statistics once, selects GPR
+reactions containing the requested genes, filters significant targets, ranks
+them by adjusted P value and effect size, and returns one annotated boxplot per
+reaction direction.
 
 ```r
-attr(p, "plot_data")
-attr(p, "annotation_data")
-attr(p, "condition_statistics")
+gene_plots <- rc_plot_condition_gene_reactions(
+  result,
+  genes = rela_metabolic_genes,
+  cell_type = "stem-cell_like",
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  comparisons = list(
+    c("control_24hr", "MS177_24hr"),
+    c("JQ1_24hr", "MS177_24hr")
+  ),
+  target_directions = c("forward", "reverse"),
+  medium_scenario = "high_glucose",
+  evidence_class = "RNA+ATAC",
+  p_adj_max = 0.05,
+  min_abs_rank_biserial = 0.30,
+  max_reactions = 12,
+  outdir = "RegCompass_result/07_condition_statistics/RELA_gene_plots"
+)
+
+names(gene_plots$plots)
+gene_plots$selected_targets
+gene_plots$pairwise_hits
+
+print(gene_plots$plots[[1]])
 ```
+
+The returned object contains:
+
+```text
+plots
+selected_targets
+pairwise_hits
+statistics
+gene_selection
+```
+
+When `outdir` is provided, each plot is saved as PDF together with the selected
+target and pairwise-result tables.
 
 ## Candidate filtering
 
-P values should be interpreted together with effect sizes. A practical
-exploratory filter is:
+P values should be interpreted together with effect sizes and evidence source:
 
 ```r
 hits <- subset(
   condition_stats$pairwise,
   p_adj < 0.05 &
     abs(rank_biserial_b_minus_a) >= 0.30 &
-    abs(delta_median_score_b_minus_a) >= 0.10
+    abs(delta_median_score_b_minus_a) >= 0.10 &
+    (evidence_class_a == "RNA+ATAC" |
+       evidence_class_b == "RNA+ATAC")
 )
 ```
 
@@ -188,5 +346,8 @@ descriptive_only = TRUE
 biological_replicate_inference = FALSE
 ```
 
-With independent biological samples, formal treatment-level inference should
-use sample-by-cell-type units or a sample-aware hierarchical analysis.
+The RNA-versus-multiome evidence label describes which measured evidence enters
+the reaction support calculation. It does not convert metacells into biological
+replicates and does not demonstrate actual metabolic flux. Independent samples
+and targeted metabolomics or isotope tracing remain necessary for population-
+level and flux-level validation.
