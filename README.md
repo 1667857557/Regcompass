@@ -132,7 +132,7 @@ The workflow records the requested and resolved backend, worker counts, and oper
 
 ## Progress and execution time
 
-Every public stage prints a progress indicator and writes `step_timing.tsv` in its output directory. A complete run additionally writes:
+Every public stage prints a progress indicator and writes `step_timing.tsv` in its output directory. Long BiocParallel loops additionally report task-level progress when RegCompass creates the backend. A complete run additionally writes:
 
 ```text
 RegCompass_result/00_execution_timing.tsv
@@ -182,6 +182,9 @@ condition_stats <- rc_test_condition_reactions(
   p_adjust_scope = "celltype_contrast_medium"
 )
 
+condition_stats$omnibus
+condition_stats$pairwise
+
 p <- rc_plot_condition_reaction(
   result,
   reaction_id = "MAR06231",
@@ -192,7 +195,7 @@ p <- rc_plot_condition_reaction(
 )
 ```
 
-These are metacell-level, within-dataset comparisons rather than biological-replicate inference. See [Condition-associated reaction statistics](docs/condition-reaction-statistics.md).
+The plot shows one point per metacell and adjusted significance brackets. These are metacell-level, within-dataset comparisons rather than biological-replicate inference. See [Condition-associated reaction statistics](docs/condition-reaction-statistics.md).
 
 ## Main outputs
 
@@ -212,3 +215,5 @@ These are metacell-level, within-dataset comparisons rather than biological-repl
 | 1 | minimal validated one-shot run | [Quick start](docs/tutorial-01-quick-start.md) |
 | 2 | stage-by-stage run and audit gates | [Stepwise audit](docs/tutorial-02-stepwise-audit.md) |
 | 3 | restart, sensitivity, resources, and failure diagnosis | [Advanced restart](docs/tutorial-03-advanced-restart.md) |
+
+See also [Portable execution, bundled GEMs, progress, and timing](docs/portable-execution.md).
