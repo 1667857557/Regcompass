@@ -5,9 +5,11 @@
 - `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: load the bundled pinned model by default or explicitly download/rebuild an updated release.
 - `rc_bundled_gem_manifest()`: inspect installed Human-GEM/Mouse-GEM release, checksum, size, citation, and license metadata.
 - `rc_download_species_gem()`: lower-level official repository download/parse path retained for updates.
-- `rc_parallel_config()`: inspect the OS-resolved backend and worker count before execution.
+- `rc_parallel_config()`: inspect OS-specific backend resolution for diagnostics and package development.
 - `rc_make_medium_scenarios()`: create one shared medium table; see [medium presets](medium-presets.md).
-- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete GRN-first workflow with progress and timing output.
+- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete GRN-first workflow with progress, timing, automatic backend selection, `upstream_workers = 6L`, and `layer2_workers = 30L`.
+
+The canonical complete workflow exposes only the two layered worker counts. Windows automatically uses SOCK/SnowParam, Linux/macOS use MulticoreParam, and a count of one makes that layer serial. Every outer worker runs one internally single-threaded analysis. Package-managed worker pools are released after each stage and followed by full garbage collection.
 
 ## Inspectable stages
 
@@ -19,7 +21,7 @@
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
 - `rc_regcompass_step_target_union()`: directly map selected previous cores through shared KEGG, Reactome, or master-Rhea identifiers and score only mapped non-core reactions.
 
-Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Every public stage returns a timing table and writes `step_timing.tsv`.
+Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Every public stage returns a timing table and writes `step_timing.tsv`. Low-level stage functions remain available for restart and debugging; normal complete analyses should use the canonical runner so worker lifecycle and nested-thread controls are applied consistently.
 
 ## Interpretation and plotting
 
@@ -32,9 +34,9 @@ Sample balancing is not part of the canonical workflow. Metacell-level compariso
 
 ## Tutorials
 
-- [Portable execution, bundled GEMs, progress, and timing](portable-execution.md)
+- [Portable execution, bundled GEMs, progress, timing, and worker cleanup](portable-execution.md)
 - [Level 1: quick start](tutorial-01-quick-start.md)
-- [Level 2: stepwise audit](tutorial-02-stepwise-audit.md)
+- [Level 2: saved-stage audit](tutorial-02-stepwise-audit.md)
 - [Level 3: restart and diagnostics](tutorial-03-advanced-restart.md)
 - [Direct database-linked non-core scoring](target-union-scoring.md)
 - [Condition statistics and plots](condition-reaction-statistics.md)
