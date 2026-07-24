@@ -116,7 +116,7 @@ test_that("only direct database-linked non-core reactions are targets", {
   )
   expect_identical(
     definition$summary$scoring_policy,
-    "direct_database_crossref_noncore_reactions_only"
+    "direct_database_crossref_noncore_reactions_present_in_all_cached_union_models"
   )
   expect_identical(
     definition$summary$model_policy,
@@ -146,6 +146,35 @@ test_that("gene selection resolves only previous core anchors", {
     core_genes = "G1", gene_match = "any_direct"
   )
   expect_setequal(direct$reaction_id, c("R1", "R2"))
+  expect_error(
+    .rc_target_union_core_rows(
+      gem, available_core_reactions = available,
+      core_reaction_ids = "R1", core_genes = "G5"
+    ),
+    "do not resolve to core targets"
+  )
+})
+
+test_that("cached union support is authoritative over membership rows", {
+  membership <- target_union_previous_membership()
+  membership <- membership[membership$reaction_id != "R5", , drop = FALSE]
+  definition <- .rc_build_target_union_definition(
+    gem = target_union_test_gem(),
+    global_core_reactions = target_union_previous_core(),
+    global_reaction_membership = membership,
+    core_reaction_ids = "R1",
+    cached_reaction_ids = paste0("R", 1:7)
+  )
+  expect_true("R5" %in% definition$expanded_scoring_targets$reaction_id)
+  r5 <- definition$expanded_reaction_catalog[
+    definition$expanded_reaction_catalog$reaction_id == "R5", , drop = FALSE
+  ]
+  expect_true(all(r5$available_in_all_cached_union_models))
+  expect_false(any(r5$present_in_previous_union_membership))
+  expect_identical(
+    unique(r5$previous_union_inclusion_stage),
+    "cached_union_support_not_in_membership"
+  )
 })
 
 test_that("target cache contains only direct non-core database links", {
@@ -153,8 +182,13 @@ test_that("target cache contains only direct non-core database links", {
   file <- tempfile(fileext = ".rds")
   on.exit(unlink(file), add = TRUE)
   saveRDS(gem, file)
+  layer2 <- target_union_layer2_stub(file)
+  expect_setequal(
+    .rc_target_union_cached_reaction_ids(layer2),
+    paste0("R", 1:7)
+  )
   cache <- .rc_build_target_union_model_cache(
-    layer2 = target_union_layer2_stub(file),
+    layer2 = layer2,
     target_reactions = c("R3", "R4", "R5"),
     target_direction = "forward"
   )
