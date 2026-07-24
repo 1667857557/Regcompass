@@ -150,6 +150,87 @@ test_that("previous union GEM files are reused for expanded targets", {
   )
 })
 
+test_that("second LP pass runs against the cached union GEM", {
+  skip_if_not(requireNamespace("highs", quietly = TRUE))
+  S <- matrix(
+    c(-1, 1, 1, -1),
+    nrow = 2,
+    dimnames = list(c("M1", "M2"), c("R1", "R2"))
+  )
+  gem <- rc_make_gem(
+    S,
+    lb = c(R1 = 0, R2 = 0),
+    ub = c(R1 = 1000, R2 = 1000),
+    reaction_meta = data.frame(
+      reaction_id = c("R1", "R2"),
+      role = c("internal", "internal"),
+      role_source = c("test", "test"),
+      stringsAsFactors = FALSE
+    )
+  )
+  file <- tempfile(fileext = ".rds")
+  on.exit(unlink(file), add = TRUE)
+  saveRDS(gem, file)
+  previous_layer2 <- list(
+    model_mode = "meta_module_gem",
+    model_cache_summary = data.frame(
+      medium_scenario = "physiologic",
+      file = file,
+      stringsAsFactors = FALSE
+    )
+  )
+  cache <- .rc_build_target_union_model_cache(
+    layer2 = previous_layer2,
+    target_reactions = c("R1", "R2"),
+    target_direction = "forward"
+  )
+  layer1 <- list(
+    reaction_expression = matrix(
+      c(4, 1, 1, 4),
+      nrow = 2,
+      byrow = TRUE,
+      dimnames = list(c("R1", "R2"), c("U1", "U2"))
+    ),
+    unit_meta = data.frame(
+      pool_id = c("U1", "U2"),
+      sample_id = c("S1", "S1"),
+      condition = c("A", "B"),
+      cell_type = c("C", "C"),
+      stringsAsFactors = FALSE
+    )
+  )
+  result <- .rc_score_target_union_cache(
+    layer1 = layer1,
+    gem = gem,
+    model_cache = cache,
+    medium_scenarios = data.frame(
+      medium_scenario_id = "physiologic",
+      exchange_reaction_id = NA_character_,
+      lb = NA_real_,
+      ub = NA_real_,
+      available = FALSE,
+      .no_constraints = TRUE,
+      stringsAsFactors = FALSE
+    ),
+    condition_col = "condition",
+    sample_col = "sample_id",
+    celltype_col = "cell_type",
+    omega = 0.95,
+    solver = "highs",
+    time_limit = 60,
+    flux_threshold = 1e-8,
+    parallel = FALSE,
+    BPPARAM = FALSE
+  )
+
+  expect_equal(dim(result$penalty), c(2, 2))
+  expect_true(all(result$evaluated))
+  expect_true(all(result$feasible))
+  expect_true(all(is.finite(result$penalty)))
+  expect_setequal(result$target_direction$reaction_id, c("R1", "R2"))
+  expect_identical(result$model_mode, "reused_global_union_gem")
+})
+
 test_that("invalid selections fail before the second LP pass", {
   gem <- target_union_test_gem()
   available <- target_union_previous_core()$reaction_id
