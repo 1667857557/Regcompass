@@ -22,8 +22,8 @@ rc_run_regcompass <- function(
     layer2_args = list(),
     upstream_workers = 6L,
     layer2_workers = 30L,
-    progress = getOption("RegCompassR.progress", TRUE),
-    species = c("auto", "human", "mouse")) {
+    species = c("auto", "human", "mouse"),
+    progress = getOption("RegCompassR.progress", TRUE)) {
   model_mode <- match.arg(model_mode)
   progress <- .rc_progress_enabled(progress)
   old_progress_option <- options(RegCompassR.progress = progress)
