@@ -53,6 +53,7 @@ Collate:
     'stepwise_workflow.R'
     'zz_reaction_annotations.R'
     'reaction_evidence.R'
+    'reaction_plot_annotations.R'
     'regcompass.R'
     'one_shot.R'
     'stratum_filter.R'
