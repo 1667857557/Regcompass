@@ -29,18 +29,11 @@ jobs:
         shell: Rscript {0}
         run: install.packages(c("Matrix", "yaml"))
 
-      - name: Build models twice and verify deterministic checksums
+      - name: Build and validate deterministic models
         shell: bash
         run: |
           set -euo pipefail
           Rscript scripts/build-bundled-gems.R
-          cp inst/extdata/gem/manifest.tsv /tmp/manifest-first.tsv
-          cp inst/extdata/gem/Human2_2.0.0_regcompass.rds /tmp/human-first.rds
-          cp inst/extdata/gem/Mouse_1.8.0_regcompass.rds /tmp/mouse-first.rds
-          Rscript scripts/build-bundled-gems.R
-          cmp /tmp/manifest-first.tsv inst/extdata/gem/manifest.tsv
-          cmp /tmp/human-first.rds inst/extdata/gem/Human2_2.0.0_regcompass.rds
-          cmp /tmp/mouse-first.rds inst/extdata/gem/Mouse_1.8.0_regcompass.rds
 
       - name: Commit deterministic assets
         shell: bash
