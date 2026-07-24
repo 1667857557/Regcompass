@@ -6,167 +6,48 @@ on:
     branches: [main]
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
-  restore:
-    if: >-
-      github.event_name == 'pull_request' &&
-      github.event.pull_request.head.repo.full_name == github.repository &&
-      github.actor != 'github-actions[bot]'
+  parse:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
         with:
-          ref: ${{ github.head_ref }}
-          fetch-depth: 0
-
-      - name: Apply requested defaults and tutorial index
-        shell: bash
+          use-public-rspm: true
+      - name: Parse R sources
+        shell: Rscript {0}
         run: |
-          python <<'PY'
-          from pathlib import Path
-          import re
-          import subprocess
-
-          targets = [
-              Path("README.md"),
-              Path("docs/run-modes-and-stepwise-workflow.md"),
-              Path("docs/tutorial-01-quick-start.md"),
-              Path("docs/tutorial-02-stepwise-audit.md"),
-              Path("docs/tutorial-03-advanced-restart.md"),
-              Path("docs/tutorial-04-targeted-reaction-remapping.md"),
-              Path("docs/tutorial-05-condition-differential-analysis.md"),
-              Path("vignettes/regcompass-workflow.Rmd"),
-              Path("R/regcompass.R"),
-              Path("R/stepwise_workflow.R"),
-              Path("R/condition_pooling.R"),
-              Path("R/metacell.R"),
-              Path("tests/testthat/test-vignette-contract.R"),
-              Path("tests/testthat/test-grn-first-workflow.R"),
-              Path("tests/testthat/test_public_api.R"),
-              Path("tests/testthat/test_global_metacell_workflow.R")
-          ]
-
-          def replace_gamma(text):
-              text = re.sub(
-                  r"\bgamma\s*=\s*(?:75|100)L?\b",
-                  "gamma = 30",
-                  text
-              )
-              text = re.sub(
-                  r"\bgamma\s*<-\s*(?:75|100)L?\b",
-                  "gamma <- 30L",
-                  text
-              )
-              return text
-
-          for path in targets:
-              if not path.exists():
-                  continue
-              text = path.read_text(encoding="utf-8")
-              updated = replace_gamma(text)
-              if updated != text:
-                  path.write_text(updated, encoding="utf-8")
-
-          readme_path = Path("README.md")
-          readme = readme_path.read_text(encoding="utf-8")
-          readme_table = '''## Tutorials
-
-| Level | Use | Tutorial |
-|---|---|---|
-| 1 | complete one-shot analysis | [One-shot quick start](docs/tutorial-01-quick-start.md) |
-| 2 | execute and audit every stage independently | [True stepwise workflow](docs/tutorial-02-stepwise-audit.md) |
-| 3 | restart, sensitivity, resources, and failure diagnosis | [Advanced restart](docs/tutorial-03-advanced-restart.md) |
-| 4 | remap selected genes or reactions and run second-pass LP scoring | [Targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md) |
-| 5 | test and plot condition-associated reaction differences | [Condition differential analysis](docs/tutorial-05-condition-differential-analysis.md) |'''
-          readme, count = re.subn(
-              r"## Tutorials\n\n\| Level \| Use \| Tutorial \|.*?(?=\n\nSee also)",
-              readme_table,
-              readme,
-              count=1,
-              flags=re.S
-          )
-          if count != 1:
-              raise RuntimeError("README tutorial table was not replaced")
-          readme_path.write_text(readme, encoding="utf-8")
-
-          index_path = Path("docs/run-modes-and-stepwise-workflow.md")
-          index = index_path.read_text(encoding="utf-8")
-          index_table = '''| Level | Use | Tutorial |
-|---|---|---|
-| 1 | complete one-shot analysis | [One-shot quick start](tutorial-01-quick-start.md) |
-| 2 | execute and audit every stage independently | [True stepwise workflow](tutorial-02-stepwise-audit.md) |
-| 3 | restart, sensitivity, resource allocation, and failure diagnosis | [Advanced restart](tutorial-03-advanced-restart.md) |
-| 4 | remap selected genes or reactions and run second-pass scoring | [Targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md) |
-| 5 | compare reaction support across conditions | [Condition differential analysis](tutorial-05-condition-differential-analysis.md) |'''
-          index, count = re.subn(
-              r"\| Level \| Use \| Tutorial \|\n\|---\|---\|---\|.*?(?=\n\nThe exact input/output requirements)",
-              index_table,
-              index,
-              count=1,
-              flags=re.S
-          )
-          if count != 1:
-              raise RuntimeError("Tutorial index table was not replaced")
-          index_path.write_text(index, encoding="utf-8")
-
-          for workflow in [
-              ".github/workflows/fastcore-checks.yaml",
-              ".github/workflows/static-contract-check.yml"
-          ]:
-              original = subprocess.check_output(
-                  ["git", "show", f"origin/main:{workflow}"],
-                  text=True
-              )
-              original = original.replace(
-                  'required <- c("gamma = 75", "peak_cor = 0.01")',
-                  'required <- c("gamma = 30", "peak_cor = 0.01")'
-              )
-              Path(workflow).write_text(original, encoding="utf-8")
-
-          for temporary in [
-              Path(".github/workflows/apply-tutorial-restoration.yml"),
-              Path(".github/tutorial-restoration-trigger")
-          ]:
-              if temporary.exists():
-                  temporary.unlink()
-
-          active = [
-              Path("README.md"),
-              *Path("R").glob("*.R"),
-              *Path("docs").rglob("*.md"),
-              *Path("vignettes").glob("*.Rmd")
-          ]
-          stale = []
-          for path in active:
-              text = path.read_text(encoding="utf-8")
-              if re.search(r"\bgamma\s*(?:=|<-)\s*(?:75|100)L?\b", text):
-                  stale.append(str(path))
-          if stale:
-              raise RuntimeError("Old gamma defaults remain: " + ", ".join(stale))
-
-          stepwise = Path("docs/tutorial-02-stepwise-audit.md").read_text(
-              encoding="utf-8"
-          )
-          required = [
-              "rc_regcompass_step_grn(",
-              "rc_regcompass_step_metacells(",
-              "rc_regcompass_step_meta_modules(",
-              "rc_regcompass_step_layer1(",
-              "rc_regcompass_step_layer2(",
-              "rc_regcompass_step_results("
-          ]
-          missing = [item for item in required if item not in stepwise]
-          if missing or "rc_run_regcompass_one_shot(" in stepwise:
-              raise RuntimeError("Invalid stepwise tutorial: " + repr(missing))
-          PY
-
-      - name: Commit generated changes
-        shell: bash
+          files <- list.files("R", pattern = "\\.R$", full.names = TRUE)
+          invisible(lapply(files, parse))
+      - name: Parse tests
+        shell: Rscript {0}
         run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add -A
-          git commit -m "Restore tutorials and set gamma default to 30"
-          git push origin HEAD:${{ github.head_ref }}
+          files <- list.files("tests", pattern = "\\.[Rr]$", full.names = TRUE, recursive = TRUE)
+          invisible(lapply(files, parse))
+      - name: Parse installed help pages
+        shell: Rscript {0}
+        run: |
+          files <- list.files("man", pattern = "\\.Rd$", full.names = TRUE)
+          invisible(lapply(files, tools::parse_Rd))
+      - name: Validate DESCRIPTION collate files
+        shell: Rscript {0}
+        run: |
+          description <- read.dcf("DESCRIPTION")
+          collate <- strsplit(description[1, "Collate"], "[[:space:]]+")[[1]]
+          collate <- gsub("^'|'$", "", collate)
+          collate <- collate[nzchar(collate)]
+          r_files <- list.files("R", pattern = "\\.[Rr]$", full.names = FALSE)
+          missing <- collate[!file.exists(file.path("R", collate))]
+          unlisted <- setdiff(r_files, collate)
+          duplicated <- unique(collate[duplicated(collate)])
+          if (length(missing)) {
+            stop("Missing Collate files: ", paste(missing, collapse = ", "))
+          }
+          if (length(unlisted)) {
+            stop("R files missing from Collate: ", paste(unlisted, collapse = ", "))
+          }
+          if (length(duplicated)) {
+            stop("Duplicated Collate entries: ", paste(duplicated, collapse = ", "))
+          }
