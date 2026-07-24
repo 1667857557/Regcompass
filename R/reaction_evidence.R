@@ -92,6 +92,19 @@
     )
   }
   gene_display <- stats::setNames(original_gene_ids, normalized_gene_ids)
+  catalog_gene_symbols <- unique(unlist(
+    lapply(catalog$genes, .rc_ra_split),
+    use.names = FALSE
+  ))
+  catalog_gene_symbols <- catalog_gene_symbols[
+    !is.na(catalog_gene_symbols) & nzchar(catalog_gene_symbols)
+  ]
+  if (length(catalog_gene_symbols)) {
+    catalog_normalized <- tolower(catalog_gene_symbols)
+    catalog_gene_symbols <- catalog_gene_symbols[!duplicated(catalog_normalized)]
+    catalog_normalized <- catalog_normalized[!duplicated(catalog_normalized)]
+    gene_display[catalog_normalized] <- catalog_gene_symbols
+  }
   rownames(rna) <- normalized_gene_ids
   rownames(modifier) <- normalized_gene_ids
   rownames(multiome) <- normalized_gene_ids
