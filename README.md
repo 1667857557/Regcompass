@@ -11,7 +11,7 @@ single-cell RNA normalization
 → local FASTCORE completion and one global union GEM
 → RNA+ATAC reaction expression
 → directional COMPASS-like LP scoring
-→ optional pathway-context re-scoring in the same union GEM
+→ optional non-core annotation-context scoring in the same union GEM
 ```
 
 Canonical defaults are `peak_cor = 0.01` and `gamma = 75`. Sample metadata are provenance only; they are not used for balancing, weighting, or grouping.
@@ -100,9 +100,11 @@ result <- rc_run_regcompass_one_shot(
 
 The workflow validates the solver, stage classes, GEM fingerprint, workflow metadata, and ordered metacell IDs before connecting stages.
 
-## Re-score the pathway context of selected cores
+## Score the annotation context of selected cores
 
-After a stepwise `meta_module_gem` Layer 2 run, select previous core reactions or their GPR genes. The function expands same-subsystem, KEGG/Reactome, and master-Rhea-related reactions and scores every expanded target using the exact cached union GEM and bounds from the original run.
+After a stepwise `meta_module_gem` Layer 2 run, select previous core reactions or their GPR genes. The selected cores are expansion anchors only. The function identifies reactions linked through the same subsystem, KEGG/Reactome, or master-Rhea mappings and runs a second LP only for linked reactions that were not global core targets in the original Layer 2 run.
+
+FASTCORE-only support reactions, generic union members, metabolite-neighbour reactions, and any previously scored global core are excluded from the second LP.
 
 ```r
 expanded <- rc_regcompass_step_target_union(
@@ -116,7 +118,7 @@ expanded <- rc_regcompass_step_target_union(
 )
 ```
 
-`expanded$microcompass$penalty` is the primary output. Lower penalty means stronger evidence-supported flux compatibility. Relative scores are within-target ranks, not probabilities.
+`expanded$expanded_reaction_catalog` records all mapped reactions and why core rows were excluded. `expanded$expanded_scoring_targets` contains only annotation-expanded non-core LP targets. `expanded$microcompass$penalty` is the primary result; lower penalty means stronger evidence-supported flux compatibility.
 
 ## Main outputs
 
@@ -126,7 +128,7 @@ expanded <- rc_regcompass_step_target_union(
 - `04_layer1/step_layer1.rds`: RNA support, ATAC modifier, GPR diagnostics, and reaction expression.
 - `05_layer2/step_layer2.rds`: penalties, relative scores, `vmax`, feasibility, model cache, and LP diagnostics.
 - `06_results/regcompass_result.rds`: rankings, annotations, and evidence provenance.
-- optional target-union output: selected cores, expanded targets, exact source-model hashes, and second-pass LP results.
+- optional target-union output: selected core anchors, full annotation expansion catalog, non-core scoring targets, source-model hashes, and second-pass LP results.
 
 ## Tutorials
 
