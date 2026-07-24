@@ -1,6 +1,6 @@
 # Tutorial Level 3: restart, sensitivity, and diagnostics
 
-Use saved classed stage objects. RegCompassR 1.8.3 rejects cross-run object mixing when GEM fingerprints, workflow parameters, stage classes, core sets, or ordered scoring units differ.
+Use saved classed stage objects. RegCompassR 1.8.3 rejects cross-run object mixing when GEM fingerprints, workflow parameters, stage classes, metacell cache/construction provenance, core sets, or ordered scoring units differ.
 
 ## Load a completed canonical run
 
@@ -29,6 +29,31 @@ Use the stage wrapper RDS, not a compact inspection artifact. Keep all files ref
 | ranking/annotation assembly | Stage 6 |
 
 A changed GEM invalidates Stage 1, Stage 3, Stage 4, Stage 5, Stage 6, and target-union outputs because their fingerprints no longer match.
+
+### Rebuild Stage 2 safely
+
+The Stage 2 output directory contains `condition_metacell_cache_contract.rds`. It fingerprints the ordered cells and condition/cell-type labels, RNA and ATAC assay contents, the SuperCell2 construction label, reductions/dimensions, `gamma`, seed, and metacell size thresholds.
+
+Unchanged inputs and parameters may reuse the existing per-stratum checkpoints. Any changed contract, or a checkpoint directory created before this contract existed, stops rather than silently reusing stale memberships. Rebuild in the same output directory explicitly:
+
+```r
+step2 <- rc_regcompass_step_metacells(
+  object = A,
+  outdir = "RegCompass_result/02_condition_metacells",
+  sample_col = NULL,
+  condition_col = condition_col,
+  celltype_col = celltype_col,
+  fragment_files = FALSE,
+  metacell_args = list(
+    gamma = 30,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10,
+    overwrite = TRUE
+  )
+)
+```
+
+After rebuilding Stage 2, rerun Stage 3 onward because downstream objects contain the previous metacell identities and workflow provenance.
 
 ## Worker policy
 
@@ -118,7 +143,7 @@ With one available worker, the automatic backend resolves to serial execution. F
 
 Classify failures in this order:
 
-1. **Input contract:** missing assays, metadata, stage class, fingerprint, or reordered units.
+1. **Input contract:** missing assays, metadata, stage class, fingerprint, metacell cache provenance, or reordered units.
 2. **Installation:** unavailable Pando, SuperCell2, genome package, or LP solver.
 3. **Model construction:** missing core reactions, invalid GPRs, or incomplete FASTCORE support.
 4. **Database mapping:** selected cores have no direct KEGG, Reactome, or master-Rhea-linked non-core reactions in the original union.
