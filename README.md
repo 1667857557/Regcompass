@@ -1,19 +1,20 @@
 # RegCompassR
 
-RegCompassR 1.8.1 runs the following RNA+ATAC workflow:
+RegCompassR 1.8.2 implements a GRN-first RNA+ATAC metabolic workflow:
 
 ```text
 single-cell RNA normalization
-→ ATAC TF-IDF shared across conditions within each cell type
-→ Pando GRN for each condition × cell type
-→ label-guided SuperCell2 metacells within condition
-→ GRN-derived core reactions and meta-modules
+→ cell-type-shared ATAC TF-IDF
+→ Pando GRNs for each condition × cell type
+→ condition-level, label-guided SuperCell2 metacells
+→ complete-GPR core reactions and annotation-expanded meta-modules
+→ local FASTCORE completion and one global union GEM
 → RNA+ATAC reaction expression
-→ directional COMPASS-like scoring
-→ same-reaction condition statistics and plots
+→ directional COMPASS-like LP scoring
+→ optional pathway-context re-scoring in the same union GEM
 ```
 
-The canonical defaults are `peak_cor = 0.01` for Pando and `gamma = 75` for SuperCell2. Sample metadata are optional and are not used for balancing, weighting, downsampling, or grouping.
+Canonical defaults are `peak_cor = 0.01` and `gamma = 75`. Sample metadata are provenance only; they are not used for balancing, weighting, or grouping.
 
 ## Installation
 
@@ -28,26 +29,9 @@ remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
 
+## Input contract
 
-## Choose a tutorial level
-
-| Level | Intended use | Tutorial |
-|---|---|---|
-| 1 | minimum input validation and a canonical Linux one-shot run | [Minimal one-shot run](docs/tutorial-01-quick-start.md) |
-| 2 | stage-by-stage execution with mandatory audit gates and explicit `MulticoreParam` objects | [Stepwise run with audit gates](docs/tutorial-02-stepwise-audit.md) |
-| 3 | restart, Linux worker allocation, alternative media, solver/model sensitivity, and diagnostics | [Advanced restart and diagnostics](docs/tutorial-03-advanced-restart.md) |
-
-The [tutorial index](docs/run-modes-and-stepwise-workflow.md) summarizes the three execution levels and links to the post-analysis tutorial for [multi-condition reaction statistics and plots](docs/condition-reaction-statistics.md).
-
-## Required input
-
-`object` must be a paired-cell Seurat multiome object with:
-
-- an RNA assay containing raw counts;
-- an ATAC `ChromatinAssay` containing peak counts for the same cell IDs;
-- complete condition and cell-type metadata;
-- peak coordinates and genome build matching `genome`;
-- a PFM/PWM collection accepted by Pando/motifmatchr. Use `Pando::motifs`; do not pass the `motif2tf` annotation table as `pfm`.
+`object` must contain paired RNA and ATAC counts for the same cells, complete condition and cell-type metadata, a Signac `ChromatinAssay`, and peak coordinates matching `genome`. Use `Pando::motifs` as `pfm`; `motif2tf` is not a motif matrix collection.
 
 ```r
 library(RegCompassR)
@@ -56,28 +40,25 @@ library(BSgenome.Hsapiens.UCSC.hg38)
 
 data(motifs, package = "Pando")
 
-stopifnot(
-  inherits(A, "Seurat"),
-  all(c("RNA", "ATAC") %in% names(A@assays)),
-  inherits(A[["ATAC"]], "ChromatinAssay"),
-  all(c("dataset", "epithelial_or_stem") %in% colnames(A@meta.data)),
-  !anyNA(A$dataset),
-  !anyNA(A$epithelial_or_stem)
-)
-
 gem <- rc_prepare_gem(species = "human", version = "2.0.0")
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = "high_glucose",
+  scenario = "physiologic",
   species = "human"
 )
 ```
 
-`scenario = "physiologic"` is the recommended in-vivo baseline and resolves to the species-specific plasma preset. Culture presets (`rpmi1640`, `dmem_high_glucose`), targeted nutrient sensitivity presets, technical baselines, and custom media are also available. See [Predefined extracellular medium scenarios](docs/medium-presets.md) before selecting or interpreting a medium.
+`physiologic` resolves to the species-specific plasma preset. Culture, nutrient-sensitivity, technical, and custom media are documented in [Predefined extracellular medium scenarios](docs/medium-presets.md).
 
-RNA and ATAC normalized matrices are aligned by cell name; different column order is accepted. Peaks absent from one cell type are retained as exact zeros but are excluded from that cell type's TF-IDF calculation.
+## One-shot Linux run
 
-## Linux multicore one-shot run
+Set numerical-library threads to one before starting R when using multiple workers.
+
+```bash
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+```
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -108,80 +89,51 @@ result <- rc_run_regcompass_one_shot(
   ),
   layer1_args = list(
     local_fastcore = TRUE,
-    local_fastcore_args = list(
-      solver = "highs",
-      parallel = TRUE
-    )
+    local_fastcore_args = list(solver = "highs", parallel = TRUE)
   ),
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs"
-  ),
+  layer2_args = list(target_direction = "both", solver = "highs"),
   upstream_workers = 16L,
   layer2_workers = 12L,
   parallel_backend = "multicore"
 )
 ```
 
-The column selected by `celltype_col` is automatically supplied to SuperCell2 before aggregation to reduce annotated cell-type mixing; no separate label parameter is accepted. Condition remains the only hard metacell stratum, and member-cell composition and purity must still be checked in the Stage 2 outputs.
+The workflow validates the solver, stage classes, GEM fingerprint, workflow metadata, and ordered metacell IDs before connecting stages.
 
-On Linux, `upstream_workers` controls Stage 1 Pando groups, Stage 3 local FASTCORE completion by meta-module, and Stage 4 GPR capacity. `layer2_workers` controls shared-model × metacell LP tasks. Keep Pando's inner `parallel = FALSE` to avoid nested workers. The model-cache construction portions remain serial.
+## Re-score the pathway context of selected cores
 
-Before launching R on a threaded BLAS installation, set `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, and `MKL_NUM_THREADS=1`.
-
-The default `highs` backend is a required dependency. If another solver is selected, RegCompass checks its R package before constructing the medium-constrained model and reports a solver-installation error separately from biological infeasibility.
-
-## Compare the same reaction across conditions
-
-After Layer 2, all metacells have been scored against the same shared union-GEM. The same `reaction × direction × medium` target can therefore be compared across conditions within one cell type.
+After a stepwise `meta_module_gem` Layer 2 run, select previous core reactions or their GPR genes. The function expands same-subsystem, KEGG/Reactome, and master-Rhea-related reactions and scores every expanded target using the exact cached union GEM and bounds from the original run.
 
 ```r
-condition_stats <- rc_test_condition_reactions(
-  result,
-  condition_col = "dataset",
-  celltype_col = "epithelial_or_stem",
-  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  cell_types = "epithelial_like",
-  p_adjust_method = "BH",
-  p_adjust_scope = "celltype_contrast_medium",
-  outdir = "RegCompass_result/07_condition_statistics"
+expanded <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_steps/06_expanded_target_scoring",
+  core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
+  gene_match = "complete_gpr"
 )
-
-head(condition_stats$omnibus)
-head(condition_stats$pairwise)
 ```
 
-Three or more conditions receive a Kruskal-Wallis omnibus test. Requested condition pairs receive two-sided Wilcoxon tests with effect sizes and multiplicity-adjusted P values.
-
-Plot one selected target across all conditions:
-
-```r
-p <- rc_plot_condition_reaction(
-  result,
-  reaction_id = "MAR06231",
-  cell_type = "epithelial_like",
-  target_direction = "reverse",
-  medium_scenario = "high_glucose",
-  condition_col = "dataset",
-  celltype_col = "epithelial_or_stem",
-  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  annotation_p = "p_adj"
-)
-
-print(p)
-```
-
-The boxplot overlays every finite metacell as a point, shows the adjusted omnibus result, and places pairwise significance brackets above the groups. See [Condition-associated reaction statistics](docs/condition-reaction-statistics.md) for filters, effect-size interpretation, star thresholds, and the metacell-level inference boundary.
+`expanded$microcompass$penalty` is the primary output. Lower penalty means stronger evidence-supported flux compatibility. Relative scores are within-target ranks, not probabilities.
 
 ## Main outputs
 
-- `01_single_cell_grn/pando_group_status.tsv.gz`: one row per condition × cell-type GRN.
-- `01_single_cell_grn/pando_tf_peak_gene_significant.tsv.gz`: significant Pando edges.
-- `02_condition_metacells/metacell_metadata.tsv.gz`: final metacell labels and purity diagnostics.
-- `03_meta_modules/grn_metacell_group_coverage.tsv.gz`: GRN-to-metacell coverage validation.
-- `03_meta_modules/core_gene_reaction.tsv.gz`: complete-GPR core reactions.
-- `03_meta_modules/meta_module_reactions.tsv.gz`: biological meta-module membership before FASTCORE support.
-- `04_layer1/step_layer1.rds`: RNA support, ATAC modifier, integrated gene support, and reaction expression.
-- `05_layer2/step_layer2.rds`: directional LP scores, penalties, feasibility, and diagnostics.
-- `06_results/regcompass_result.rds`: assembled final result.
-- optional `07_condition_statistics/`: pairwise and omnibus condition-reaction tests generated by `rc_test_condition_reactions()`.
+- `01_single_cell_grn/`: GRN status and Pando edges.
+- `02_condition_metacells/`: metacell counts, membership, labels, and purity.
+- `03_meta_modules/`: core reactions, annotation-expanded modules, and FASTCORE diagnostics.
+- `04_layer1/step_layer1.rds`: RNA support, ATAC modifier, GPR diagnostics, and reaction expression.
+- `05_layer2/step_layer2.rds`: penalties, relative scores, `vmax`, feasibility, model cache, and LP diagnostics.
+- `06_results/regcompass_result.rds`: rankings, annotations, and evidence provenance.
+- optional target-union output: selected cores, expanded targets, exact source-model hashes, and second-pass LP results.
+
+## Tutorials
+
+| Level | Use | Tutorial |
+|---|---|---|
+| 1 | minimal validated one-shot run | [Quick start](docs/tutorial-01-quick-start.md) |
+| 2 | stage-by-stage run and audit gates | [Stepwise audit](docs/tutorial-02-stepwise-audit.md) |
+| 3 | restart, sensitivity, resources, and failure diagnosis | [Advanced restart](docs/tutorial-03-advanced-restart.md) |
+
+Condition statistics and plots are described in [Condition-associated reaction statistics](docs/condition-reaction-statistics.md). Metacell-level comparisons are descriptive within-dataset analyses unless independent biological replication or external validation is supplied.
