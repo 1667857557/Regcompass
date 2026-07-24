@@ -1,9 +1,9 @@
 name: Fix annotated statistics export
 
 on:
-  push:
+  pull_request:
     branches:
-      - agent/add-reaction-biological-annotations
+      - main
     paths:
       - .github/workflows/fix-annotated-statistics-export.yml
 
@@ -12,11 +12,12 @@ permissions:
 
 jobs:
   patch:
+    if: github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/add-reaction-biological-annotations
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
 
       - name: Export enriched statistics tables
@@ -52,4 +53,4 @@ jobs:
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add R/condition_statistics.R
           git commit -m "Export enriched reaction statistics"
-          git push origin HEAD:agent/add-reaction-biological-annotations
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
