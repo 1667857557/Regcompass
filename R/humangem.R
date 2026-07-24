@@ -89,6 +89,15 @@
   cached
 }
 
+.rc_persist_species_gem <- function(gem, save_rds, species) {
+  rc_validate_species_gem(gem, species)
+  dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
+  saveRDS(gem, save_rds)
+  persisted <- rc_read_gem(save_rds)
+  rc_validate_species_gem(persisted, species)
+  persisted
+}
+
 #' Prepare a species-specific genome-scale metabolic model
 #'
 #' Loads a bundled pinned SysBioChalmers GEM by default. The official download
@@ -100,7 +109,8 @@
 #'   Mouse-GEM 1.8.0.
 #' @param cache_dir Persistent model cache directory.
 #' @param save_rds Optional output RDS path. When `NULL`, a species/version path
-#'   is generated inside `cache_dir`.
+#'   is generated inside `cache_dir`. Bundled models are copied to this path just
+#'   like downloaded models.
 #' @param force_download Re-download and rebuild an existing cached model.
 #' @param allow_latest Permit the unpinned `version = "latest"` mode.
 #' @param source Model source. `auto` uses a compatible cache, then the bundled
@@ -158,7 +168,9 @@ rc_prepare_gem <- function(
 
   if (!identical(source, "download")) {
     bundled <- .rc_load_bundled_species_gem(spec)
-    if (!is.null(bundled)) return(bundled)
+    if (!is.null(bundled)) {
+      return(.rc_persist_species_gem(bundled, save_rds, species))
+    }
     if (identical(source, "bundled")) {
       stop(
         "No bundled ", spec$repository_name, " model matches version `",
@@ -210,12 +222,7 @@ rc_prepare_gem <- function(
   gem$model_info$annotation_schema <- "regcompass_species_gem_v1"
   gem$model_info$citation <- spec$citation
   gem$model_info$citation_doi <- spec$citation_doi
-  rc_validate_species_gem(gem, species)
-  dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
-  saveRDS(gem, save_rds)
-  gem <- rc_read_gem(save_rds)
-  rc_validate_species_gem(gem, species)
-  gem
+  .rc_persist_species_gem(gem, save_rds, species)
 }
 
 #' Prepare Human-GEM 2 for RegCompass
@@ -340,7 +347,10 @@ rc_download_species_gem <- function(
   species <- match.arg(species)
   ref_type <- match.arg(ref_type)
   gene_format <- match.arg(gene_format)
-  spec <- .rc_species_gem_spec(species, if (identical(ref, "main")) "latest" else sub("^v", "", ref))
+  spec <- .rc_species_gem_spec(
+    species,
+    if (identical(ref, "main")) "latest" else sub("^v", "", ref)
+  )
   if (dir.exists(destdir) &&
       length(list.files(destdir, all.files = TRUE, no.. = TRUE)) > 0L &&
       !overwrite) {
