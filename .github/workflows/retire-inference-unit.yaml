@@ -21,9 +21,6 @@ jobs:
           fetch-depth: 0
       - name: Remove retired compatibility block
         run: python scripts/remove-retired-inference-unit.py
-      - name: Parse modified source
-        shell: Rscript {0}
-        run: parse("R/microcompass.R")
       - name: Commit canonical implementation
         shell: bash
         run: |
