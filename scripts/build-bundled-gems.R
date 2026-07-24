@@ -6,6 +6,8 @@ source_order <- scan(text = collate, what = character(), quiet = TRUE)
 source_order <- gsub("^'|'$", "", source_order)
 invisible(lapply(file.path("R", source_order), source, local = .GlobalEnv))
 
+bundle_release_date <- "2026-07-24"
+
 download_checked <- function(url, destination) {
   dir.create(dirname(destination), recursive = TRUE, showWarnings = FALSE)
   status <- utils::download.file(url, destination, mode = "wb", quiet = FALSE)
@@ -69,6 +71,7 @@ build_one <- function(species, version, filename) {
   gem$reaction_rules <- prepared$reaction_rules
   gem$genes <- prepared$genes
   gem$reactions <- prepared$reactions
+  gem$model_info$conversion_date <- bundle_release_date
   gem$model_info$gene_format <- source$spec$gene_format
   gem$model_info$archive <- NA_character_
   gem$model_info$archive_url <- NA_character_
@@ -86,7 +89,7 @@ build_one <- function(species, version, filename) {
   rc_validate_species_gem(gem, species)
 
   output <- file.path("inst/extdata/gem", filename)
-  saveRDS(gem, output, compress = "xz")
+  saveRDS(gem, output, compress = "xz", version = 3)
   reloaded <- readRDS(output)
   rc_validate_species_gem(reloaded, species)
   if (!identical(.rc_stage_gem_fingerprint(reloaded),
@@ -102,6 +105,7 @@ build_one <- function(species, version, filename) {
     source = as.character(gem$model_info$source),
     upstream_ref = source$ref,
     upstream_model_md5 = checksum,
+    conversion_date = bundle_release_date,
     citation_doi = as.character(gem$model_info$citation_doi),
     license = "CC-BY-4.0",
     stringsAsFactors = FALSE
