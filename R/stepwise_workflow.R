@@ -479,7 +479,21 @@ rc_regcompass_step_results <- function(
       execution_mode = "stepwise"
     )
   )
+  result <- .rc_ra_attach_to_result(
+    result = result,
+    gem = gem,
+    condition_col = params$condition_col,
+    celltype_col = params$celltype_col
+  )
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  .rc_write_tsv_gz(
+    result$reaction_catalog,
+    file.path(outdir, "reaction_catalog.tsv.gz")
+  )
+  .rc_write_tsv_gz(
+    result$reaction_evidence,
+    file.path(outdir, "reaction_evidence_by_condition_celltype.tsv.gz")
+  )
   saveRDS(comparison, file.path(outdir, "step_comparison.rds"))
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result

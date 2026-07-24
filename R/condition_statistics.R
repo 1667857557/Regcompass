@@ -587,6 +587,8 @@ rc_test_condition_reactions <- function(
   )
   if (isTRUE(include_scores)) answer$score <- score
   class(answer) <- c("regcompass_condition_statistics", "list")
+  annotation <- .rc_ra_annotation_from_object(x)
+  answer <- .rc_ra_enrich_statistics(answer, annotation)
 
   if (!is.null(outdir)) {
     valid_outdir <- is.character(outdir) && length(outdir) == 1L &&
@@ -603,6 +605,16 @@ rc_test_condition_reactions <- function(
       .rc_write_tsv_gz(
         omnibus,
         file.path(outdir, "condition_reaction_omnibus.tsv.gz")
+      )
+    }
+    if (!is.null(annotation)) {
+      .rc_write_tsv_gz(
+        answer$reaction_catalog,
+        file.path(outdir, "condition_reaction_catalog.tsv.gz")
+      )
+      .rc_write_tsv_gz(
+        answer$reaction_evidence,
+        file.path(outdir, "condition_reaction_evidence.tsv.gz")
       )
     }
     saveRDS(answer, file.path(outdir, "condition_reaction_statistics.rds"))

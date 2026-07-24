@@ -462,6 +462,15 @@ rc_plot_condition_reaction <- function(
     )
   }
 
+  plot <- .rc_ra_annotate_condition_plot(
+    plot = plot,
+    statistics = statistics,
+    reaction_id = reaction_id,
+    cell_type = cell_type,
+    target_direction = target_direction,
+    medium_scenario = medium_scenario,
+    title = title
+  )
   attr(plot, "condition_statistics") <- statistics
   attr(plot, "plot_data") <- plot_data
   attr(plot, "annotation_data") <- annotation_data

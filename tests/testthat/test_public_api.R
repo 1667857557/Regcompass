@@ -28,8 +28,9 @@ test_that("canonical source architecture has no retired compatibility layers", {
   expect_match(collate, "shared_tfidf.R", fixed = TRUE)
   expect_match(collate, "grn_inference.R", fixed = TRUE)
   expect_match(collate, "regulatory_modifier.R", fixed = TRUE)
-  expect_match(collate, "zz_reaction_annotations.R", fixed = TRUE)
+  expect_match(collate, "reaction_annotations.R", fixed = TRUE)
   expect_match(collate, "reaction_evidence.R", fixed = TRUE)
+  expect_match(collate, "reaction_gene_plots.R", fixed = TRUE)
 
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(

@@ -98,14 +98,10 @@ test_that("canonical Layer 1 has no versioned compatibility override", {
 })
 
 test_that("final results retain modules and add reaction interpretation", {
-  assembly_text <- paste(deparse(body(.rc_step_results_core)), collapse = "\n")
-  expect_match(assembly_text, "condition_grn_meta_modules", fixed = TRUE)
-  expect_match(assembly_text, "global_grn_meta_modules", fixed = TRUE)
-  expect_match(assembly_text, "grn_metacell_group_coverage", fixed = TRUE)
-
-  annotation_text <- paste(
-    deparse(body(rc_regcompass_step_results)), collapse = "\n"
-  )
-  expect_match(annotation_text, "reaction_catalog", fixed = TRUE)
-  expect_match(annotation_text, "reaction_evidence", fixed = TRUE)
+  body_text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
+  expect_match(body_text, "condition_grn_meta_modules", fixed = TRUE)
+  expect_match(body_text, "global_grn_meta_modules", fixed = TRUE)
+  expect_match(body_text, "grn_metacell_group_coverage", fixed = TRUE)
+  expect_match(body_text, "reaction_catalog", fixed = TRUE)
+  expect_match(body_text, "reaction_evidence", fixed = TRUE)
 })
