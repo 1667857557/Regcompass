@@ -1,77 +1,121 @@
-# Manual core reaction union-GEM scoring
+# Re-score annotation-related reactions in the existing union GEM
 
-`rc_regcompass_step_target_union()` is an optional step after Layer 1. It is intended for hypothesis-driven validation in which one or more reactions, or genes directly represented in GEM GPR rules, are selected as scoring targets.
+`rc_regcompass_step_target_union()` is an optional **post-Layer-2** step. The normal RegCompass workflow must first finish the original LP analysis of all GRN-derived core reactions and persist its global union-GEM cache.
 
-The step performs the following operations:
+The second pass then performs the following operations:
 
-1. Resolve the requested reaction IDs and gene-derived reactions.
-2. Treat only those reactions as `score_target = TRUE`.
-3. Expand the structural model through the core reactions' subsystems and shared KEGG, Reactome, and master-Rhea reaction identifiers.
-4. Mark all annotation-expanded reactions as `model_only = TRUE`.
-5. Add any further reactions required by the existing add-only FASTCORE feasibility completion.
-6. Run directional microCOMPASS LPs on the resulting shared union GEM while returning scores only for the selected core reactions.
+1. Select one or more reactions that were core LP targets in the previous analysis, either by reaction ID or by their directly associated GPR genes.
+2. Expand those selected cores through:
+   - the same subsystem;
+   - shared KEGG reaction IDs;
+   - shared Reactome reaction IDs;
+   - shared master-Rhea IDs.
+3. Verify that every expanded reaction is already present in the previously constructed global union GEM.
+4. Load the exact union-GEM model file recorded by the first Layer-2 run for each medium scenario.
+5. Run a second directional LP pass in which **the selected cores and every annotation-related reaction are all scoring targets**.
 
-Model-only reactions are not emitted as reaction targets. When they have GPR evidence, their penalties remain part of the network-level LP objective; this prevents pathway context from becoming cost-free while keeping the output restricted to the requested cores.
+The second pass does not rebuild the union GEM and does not classify expanded reactions as model-only support. Its purpose is to obtain LP scores for the wider pathway/function context surrounding selected core reactions while keeping the same stoichiometric network and medium-specific bounds used by the original core analysis.
 
-## Select reactions directly
+## Required preceding steps
 
 ```r
-selected <- rc_regcompass_step_target_union(
+step3 <- rc_regcompass_step_meta_modules(
+  grn = step1,
+  metacells = step2,
+  gem = gem,
+  outdir = "RegCompass_steps/03_meta_modules"
+)
+
+step4 <- rc_regcompass_step_layer1(
+  metacells = step2,
+  meta_modules = step3,
+  gem = gem,
+  outdir = "RegCompass_steps/04_layer1"
+)
+
+step5 <- rc_regcompass_step_layer2(
   layer1 = step4,
+  meta_modules = step3,
   gem = gem,
   medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_target_union",
+  outdir = "RegCompass_steps/05_core_layer2",
+  model_mode = "meta_module_gem"
+)
+```
+
+`step5$model_cache_summary$file` must remain available because these files contain the previously constructed medium-specific global union GEMs.
+
+## Select previously scored core reactions
+
+```r
+expanded <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_steps/06_expanded_target_scoring",
   core_reaction_ids = c("MAR04324", "MAR03964"),
   expansion_mode = "ordered_once",
   layer2_args = list(
     omega = 0.95,
+    target_direction = "both",
     solver = "highs",
     time_limit = 60
   )
 )
 ```
 
-## Select reactions from genes
+A reaction supplied through `core_reaction_ids` must already occur in `step3$global_modules$global_core_reactions`; the function rejects arbitrary non-core reactions.
 
-The default `gene_match = "complete_gpr"` only selects a reaction when the supplied genes cover at least one complete GPR AND group. This avoids treating one subunit of an obligate enzyme complex as a complete reaction core.
+## Select previous core reactions from genes
+
+The default `gene_match = "complete_gpr"` only resolves a previous core reaction when the supplied genes cover at least one complete GPR AND group. This avoids treating one subunit of an obligate enzyme complex as a complete core reaction.
 
 ```r
-selected <- rc_regcompass_step_target_union(
+expanded <- rc_regcompass_step_target_union(
   layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
   gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_glutathione_union",
+  outdir = "RegCompass_steps/06_glutathione_context",
   core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
   gene_match = "complete_gpr"
 )
 ```
 
-Use `gene_match = "any_direct"` only when intentionally selecting every reaction that directly contains at least one requested gene, including incomplete enzyme complexes.
+Use `gene_match = "any_direct"` only when intentionally allowing a gene to resolve a previous core reaction despite incomplete coverage of an enzyme complex.
 
-## Inspect the union
+## Inspect the second-pass targets and scores
 
 ```r
-selected$global_core_reactions
-selected$global_reaction_membership[
+expanded$selected_core_reactions
+expanded$expanded_scoring_targets[
   , c(
     "reaction_id",
-    "is_core",
+    "selected_core_anchor",
     "score_target",
-    "model_only",
+    "target_role",
     "inclusion_stage",
-    "source_annotation"
+    "source_annotation",
+    "previous_union_inclusion_stage"
   )
 ]
-selected$summary
-selected$microcompass$penalty
+expanded$summary
+expanded$microcompass$penalty
+expanded$microcompass$feasible
 ```
+
+Every row in `expanded_scoring_targets` has `score_target = TRUE`. The LP output therefore contains the original selected cores plus all same-subsystem, KEGG/Reactome-linked, and master-Rhea-linked reactions that were present in the original union GEM.
+
+## Outputs
 
 The step writes:
 
-- `selected_core_reactions.tsv.gz`
-- `union_reaction_membership.tsv.gz`
-- `union_summary.tsv.gz`
+- `selected_previous_core_reactions.tsv.gz`
+- `expanded_scoring_targets.tsv.gz`
+- `reused_global_union_membership.tsv.gz`
+- `target_union_summary.tsv.gz`
 - `scores/`
 - `step_target_union.rds`
 
-For several selected cores, all annotation-expanded memberships are deduplicated into one shared union GEM before scoring. `expansion_mode = "fixed_point"` permits transitive annotation expansion; `"ordered_once"` is the conservative default.
+`expansion_mode = "ordered_once"` is the conservative default and matches the canonical annotation-expansion order. `"fixed_point"` is allowed only when all transitively expanded reactions already exist in the previously built global union GEM; otherwise the function stops rather than silently rebuilding or changing the model.
