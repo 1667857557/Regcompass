@@ -10,6 +10,17 @@ The tutorials are split by the amount of control and inspection required. Start 
 | [Level 2: stepwise run with audit gates](tutorial-02-stepwise-audit.md) | every intermediate stage must be inspected | six explicit stages, `MulticoreParam` examples, input/output contracts, files, and continuation gates |
 | [Level 3: restart, sensitivity runs, and diagnostics](tutorial-03-advanced-restart.md) | rerunning selected stages or diagnosing structural/resource failures | restart matrix, Linux worker allocation, serial fallbacks, alternative media, full-GEM comparison, solver and Pando diagnostics |
 
+## Post-analysis tutorial
+
+After a valid Layer 2 or final result is available, use [Condition-associated reaction statistics](condition-reaction-statistics.md) to:
+
+- compare the same reaction, direction, and medium across two or more conditions within one cell type;
+- run Kruskal-Wallis omnibus tests across three or more conditions;
+- run pairwise Wilcoxon tests with BH correction and effect sizes;
+- draw condition boxplots with one point per metacell and pairwise significance brackets.
+
+The plotting and statistics tutorial applies equally to one-shot and stepwise runs because both expose the same shared-union-GEM Layer 2 result.
+
 ## Canonical workflow shared by all levels
 
 ```text
@@ -24,6 +35,7 @@ single-cell RNA normalization
 → local FASTCORE feasibility completion
 → RNA+ATAC reaction expression
 → directional COMPASS-like scoring
+→ same-reaction condition statistics and plots
 ```
 
 ## Linux parallel map
@@ -62,7 +74,7 @@ post-aggregation composition gates remain required.
 GitHub installation:
 
 ```r
-install.packages(c("remotes", "highs", "BiocManager"))
+install.packages(c("remotes", "highs", "BiocManager", "ggplot2"))
 BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
 remotes::install_version("SeuratObject", "4.1.4", upgrade = "never")
 remotes::install_version("Seurat", "4.4.0", upgrade = "never")
@@ -92,3 +104,4 @@ GitHub remote metadata are not required for local Pando installation; the requir
 1. Run Level 1 only after the input contract passes.
 2. Use Level 2 for the first real dataset or whenever parameter changes are introduced.
 3. Use Level 3 after a valid Level 2 run exists, especially when tuning Linux worker counts or comparing sensitivity runs against an audited baseline.
+4. Use the post-analysis tutorial only after confirming the Layer 2 evaluated/feasible gates and the intended cell-type/condition coverage.

@@ -15,18 +15,20 @@ RegCompassR first fits Pando GRNs on single cells and then constructs condition-
 
 ## Tutorial levels
 
-The documentation is deliberately separated into three levels:
+The documentation is deliberately separated into three execution levels:
 
 1. **Level 1 — minimal one-shot run:** installation, minimum input validation, GEM/medium preparation, canonical Linux multicore execution, and completion checks. See `docs/tutorial-01-quick-start.md`.
 2. **Level 2 — stepwise run with audit gates:** explicit stage inputs, outputs, files, Linux `MulticoreParam` objects, and mandatory continuation checks. This vignette provides the compact Level 2 workflow; the complete version is `docs/tutorial-02-stepwise-audit.md`.
 3. **Level 3 — restart and diagnostics:** stage reuse, worker allocation, sensitivity runs, alternative media, solver/model controls, and failure classification. See `docs/tutorial-03-advanced-restart.md`.
+
+After Layer 2, use `docs/condition-reaction-statistics.md` for multi-condition same-reaction tests and boxplots with one metacell per point.
 
 The complete medium catalog and its interpretation rules are in `docs/medium-presets.md`.
 
 ## Installation
 
 ```{r}
-install.packages(c("remotes", "highs", "BiocManager"))
+install.packages(c("remotes", "highs", "BiocManager", "ggplot2"))
 BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
 remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
@@ -226,3 +228,44 @@ head(result$reaction_ranking)
 ```
 
 Stage 4 parallelizes GPR/reaction-capacity work. Stage 5 parallelizes shared-model × metacell LP tasks; structural model-cache construction remains serial. The default HiGHS backend is checked before any medium-constrained model is constructed. A missing solver is reported as a solver installation problem rather than as GEM infeasibility.
+
+## Multi-condition reaction statistics and plots
+
+All Layer 2 metacells use the same shared structural GEM. For a fixed `reaction × direction × medium`, condition differences therefore reflect unit-specific multiome penalties rather than different model structures.
+
+```{r}
+condition_stats <- rc_test_condition_reactions(
+  result,
+  condition_col = condition_col,
+  celltype_col = celltype_col,
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "epithelial_like",
+  p_adjust_method = "BH",
+  p_adjust_scope = "celltype_contrast_medium",
+  outdir = "steps/07_condition_statistics"
+)
+
+head(condition_stats$omnibus)
+head(condition_stats$pairwise)
+```
+
+Three or more conditions receive a Kruskal-Wallis omnibus test. Pairwise contrasts use two-sided Wilcoxon tests and report adjusted P values and effect sizes.
+
+```{r}
+p <- rc_plot_condition_reaction(
+  result,
+  reaction_id = "MAR06231",
+  cell_type = "epithelial_like",
+  target_direction = "reverse",
+  medium_scenario = "physiologic",
+  condition_col = condition_col,
+  celltype_col = celltype_col,
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  annotation_p = "p_adj",
+  show_nonsignificant = FALSE
+)
+
+print(p)
+```
+
+The plot contains one box per condition, one jittered point per finite metacell score, an adjusted omnibus result in the subtitle, and pairwise significance brackets. Metacell P values quantify within-dataset condition-associated separation; they are not automatically biological-replicate-level treatment inference. See `docs/condition-reaction-statistics.md` for the complete interpretation and filtering rules.
