@@ -43,6 +43,7 @@ Collate:
     'grn_inference.R'
     'regulatory_modifier.R'
     'condition_layer1.R'
+    'condition_statistics.R'
     'layer1_builder.R'
     'parallel.R'
     'v170_microcompass_contract.R'
