@@ -1,6 +1,6 @@
 # Stage input-output contracts
 
-RegCompassR 1.8.2 connects stages only when their classes, workflow settings, GEM provenance, and scoring-unit order agree.
+RegCompassR 1.8.3 connects stages only when their classes, workflow settings, GEM provenance, and scoring-unit order agree.
 
 | Function | Required input | Output class | Downstream contract |
 |---|---|---|---|

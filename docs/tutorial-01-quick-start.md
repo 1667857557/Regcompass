@@ -1,6 +1,6 @@
 # Tutorial Level 1: minimal one-shot run
 
-Use this tutorial for a paired-cell RNA+ATAC Seurat object and the canonical RegCompassR 1.8.2 workflow. Use [Level 2](tutorial-02-stepwise-audit.md) for stage inspection and [Level 3](tutorial-03-advanced-restart.md) for restart and diagnostics.
+Use this tutorial for a paired-cell RNA+ATAC Seurat object and the canonical RegCompassR 1.8.3 workflow. Use [Level 2](tutorial-02-stepwise-audit.md) for stage inspection and [Level 3](tutorial-03-advanced-restart.md) for restart and diagnostics.
 
 ## Install
 
@@ -121,7 +121,7 @@ Keep Pando's inner `parallel = FALSE`. `celltype_col` is automatically passed to
 
 ```r
 stopifnot(
-  identical(result$version, "1.8.2"),
+  identical(result$version, "1.8.3"),
   identical(result$schema_version, "regcompass_grn_first_v2"),
   nrow(result$reaction_ranking) > 0,
   nrow(result$reaction_catalog) > 0,

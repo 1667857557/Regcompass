@@ -1,6 +1,6 @@
 # RegCompassR
 
-RegCompassR 1.8.2 implements a GRN-first RNA+ATAC metabolic workflow:
+RegCompassR 1.8.3 implements a GRN-first RNA+ATAC metabolic workflow:
 
 ```text
 single-cell RNA normalization

@@ -107,7 +107,10 @@ rc_regcompass_step_grn <- function(
     atac_assay = "ATAC",
     pando_args = list(),
     parallel = TRUE,
-    BPPARAM = NULL) {
+    BPPARAM = NULL,
+    progress = getOption("RegCompassR.progress", TRUE)) {
+  monitor <- .rc_step_monitor_start("grn", outdir, progress)
+  on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   if (!is.list(pando_args)) stop("`pando_args` must be a list.", call. = FALSE)
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
@@ -148,6 +151,7 @@ rc_regcompass_step_grn <- function(
     )
   )
   class(answer) <- c("regcompass_grn_step", "list")
+  answer <- .rc_step_monitor_finish(answer, monitor)
   saveRDS(answer, file.path(outdir, "step_grn.rds"))
   answer
 }
@@ -162,7 +166,10 @@ rc_regcompass_step_metacells <- function(
     rna_assay = "RNA",
     atac_assay = "ATAC",
     fragment_files = FALSE,
-    metacell_args = list()) {
+    metacell_args = list(),
+    progress = getOption("RegCompassR.progress", TRUE)) {
+  monitor <- .rc_step_monitor_start("metacells", outdir, progress)
+  on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
     object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
   }
@@ -214,6 +221,7 @@ rc_regcompass_step_metacells <- function(
     )
   )
   class(answer) <- c("regcompass_metacell_step", "list")
+  answer <- .rc_step_monitor_finish(answer, monitor)
   saveRDS(answer, file.path(outdir, "step_metacells.rds"))
   answer
 }
@@ -222,7 +230,10 @@ rc_regcompass_step_metacells <- function(
 #' @export
 rc_regcompass_step_meta_modules <- function(
     grn, metacells, gem, outdir,
-    layer1_args = list()) {
+    layer1_args = list(),
+    progress = getOption("RegCompassR.progress", TRUE)) {
+  monitor <- .rc_step_monitor_start("meta_modules", outdir, progress)
+  on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
   )
@@ -283,6 +294,7 @@ rc_regcompass_step_meta_modules <- function(
     params = list(layer1_args = layer1_args)
   )
   class(answer) <- c("regcompass_meta_module_step", "list")
+  answer <- .rc_step_monitor_finish(answer, monitor)
   saveRDS(condition_modules, file.path(outdir, "condition_meta_modules.rds"))
   saveRDS(global_modules, file.path(outdir, "global_meta_modules.rds"))
   saveRDS(answer, file.path(outdir, "step_meta_modules.rds"))
@@ -297,7 +309,10 @@ rc_regcompass_step_layer1 <- function(
     tau = 0.20,
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
     parallel = TRUE,
-    BPPARAM = NULL) {
+    BPPARAM = NULL,
+    progress = getOption("RegCompassR.progress", TRUE)) {
+  monitor <- .rc_step_monitor_start("layer1", outdir, progress)
+  on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   .rc_require_stage_class(
     metacells, "regcompass_metacell_step", "metacells",
     "rc_regcompass_step_metacells"
@@ -335,6 +350,7 @@ rc_regcompass_step_layer1 <- function(
     layer1, workflow_params = params, gem = gem, argument = "layer1"
   )
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  layer1 <- .rc_step_monitor_finish(layer1, monitor)
   saveRDS(layer1, file.path(outdir, "step_layer1.rds"))
   layer1
 }
@@ -344,7 +360,10 @@ rc_regcompass_step_layer1 <- function(
 rc_regcompass_step_layer2 <- function(
     layer1, meta_modules, gem, medium_scenarios, outdir,
     model_mode = c("meta_module_gem", "full_gem"),
-    layer2_args = list(), parallel = TRUE, BPPARAM = NULL) {
+    layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+    progress = getOption("RegCompassR.progress", TRUE)) {
+  monitor <- .rc_step_monitor_start("layer2", outdir, progress)
+  on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   model_mode <- match.arg(model_mode)
   .rc_require_stage_class(
     meta_modules, "regcompass_meta_module_step", "meta_modules",
@@ -421,6 +440,7 @@ rc_regcompass_step_layer2 <- function(
     answer, layer1 = layer1, workflow_params = params, gem = gem,
     argument = "layer2"
   )
+  answer <- .rc_step_monitor_finish(answer, monitor)
   rc_export_microcompass(answer, outdir)
   saveRDS(answer, file.path(outdir, "step_layer2.rds"))
   answer
@@ -430,7 +450,10 @@ rc_regcompass_step_layer2 <- function(
 #' @export
 rc_regcompass_step_results <- function(
     grn, metacells, meta_modules, layer1, layer2, gem, outdir,
-    species = c("auto", "human", "mouse")) {
+    species = c("auto", "human", "mouse"),
+    progress = getOption("RegCompassR.progress", TRUE)) {
+  monitor <- .rc_step_monitor_start("results", outdir, progress)
+  on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
   )
@@ -477,7 +500,7 @@ rc_regcompass_step_results <- function(
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
     schema_version = "regcompass_grn_first_v2",
-    version = "1.8.2", species = species, model_mode = layer2$model_mode,
+    version = "1.8.3", species = species, model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
     grn = grn$grn_result,
     metacells = metacells$pooled,
@@ -529,6 +552,7 @@ rc_regcompass_step_results <- function(
     result$reaction_evidence,
     file.path(outdir, "reaction_evidence_by_condition_celltype.tsv.gz")
   )
+  result <- .rc_step_monitor_finish(result, monitor)
   saveRDS(comparison, file.path(outdir, "step_comparison.rds"))
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result

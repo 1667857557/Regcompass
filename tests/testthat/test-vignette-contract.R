@@ -1,4 +1,4 @@
-test_that("workflow vignette documents the 1.8.2 staged API", {
+test_that("workflow vignette documents the 1.8.3 staged API", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
     if (nzchar(workspace)) file.path(workspace, "vignettes", "regcompass-workflow.Rmd") else character(),
@@ -10,7 +10,7 @@ test_that("workflow vignette documents the 1.8.2 staged API", {
   if (!length(candidates)) skip("Source vignette is unavailable.")
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
   required <- c(
-    "RegCompassR 1.8.2",
+    "RegCompassR 1.8.3",
     "rc_prepare_gem",
     "rc_make_medium_scenarios",
     "scenario = \"physiologic\"",
@@ -32,7 +32,7 @@ test_that("workflow vignette documents the 1.8.2 staged API", {
     "shared_master_rhea_reaction",
     "direct_kegg_reactome_master_rhea_noncore_only",
     "structural_model_reused_exactly",
-    "result$version, \"1.8.2\""
+    "result$version, \"1.8.3\""
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
   forbidden <- c(
@@ -118,7 +118,7 @@ test_that("README and API index expose current public workflow only", {
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
   required <- c(
-    "RegCompassR 1.8.2",
+    "RegCompassR 1.8.3",
     "rc_run_regcompass_one_shot",
     "rc_regcompass_step_target_union",
     "GEM fingerprint",

@@ -1,4 +1,4 @@
-# Public functions in RegCompassR 1.8.2
+# Public functions in RegCompassR 1.8.3
 
 ## Setup and complete runs
 
