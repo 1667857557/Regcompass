@@ -76,28 +76,50 @@ GPR/no-observed-RNA
 structural/no-GPR
 ```
 
-The classification is deliberately strict:
+The classification is deliberately reaction-level rather than merely gene-level.
+For every GPR reaction, RegCompass computes two otherwise identical reaction
+capacities with the canonical GPR aggregation rules:
 
-- `RNA+ATAC`: at least one GPR gene has integrated multiome support that differs
-  from its RNA support in at least one metacell of the group;
-- `RNA-only`: the reaction has observed RNA/GPR support, but ATAC-derived
-  regulation does not actively change integrated support in that group;
-- `GPR/no-observed-RNA`: a GPR exists but none of its measured genes has positive
-  RNA support in the group;
+```text
+C_RNA       = GPR(gene_support_rna)
+C_RNA+ATAC  = GPR(gene_support_multiome)
+```
+
+The evidence classes mean:
+
+- `RNA+ATAC`: `C_RNA+ATAC` differs from `C_RNA` by more than
+  `evidence_tolerance` in at least one metacell of the condition–cell-type group;
+- `RNA-only`: the reaction has positive RNA-derived reaction capacity, but
+  ATAC integration does not change the GPR-aggregated reaction capacity in that
+  group;
+- `GPR/no-observed-RNA`: a GPR exists but its RNA-only reaction capacity is not
+  positively supported in the group;
 - `structural/no-GPR`: the reaction has no GPR and is supported structurally,
   such as many exchange, demand, sink, or artificial-support reactions.
 
-The output also separates two related concepts:
+The evidence table retains both reaction-level and gene-level provenance:
 
 ```text
+evidence_resolution
+has_rna_evidence
 has_atac_regulatory_evidence
 has_active_multiome_contribution
+rna_supported_genes
+atac_modifier_genes
+multiome_contributing_genes
+median_multiome_capacity_shift
+max_abs_multiome_capacity_shift
 ```
 
-A non-zero ATAC regulatory modifier may exist without changing integrated
-support, for example when zero-preserving RNA support remains zero. Therefore
-`RNA+ATAC` is assigned only when the integrated multiome value actually departs
-from the RNA value.
+`has_atac_regulatory_evidence` means that at least one GPR gene has a non-zero
+accessibility-derived regulatory modifier. This is not sufficient by itself to
+label the whole reaction `RNA+ATAC`: the modifier may act on a non-limiting
+isozyme or subunit, or zero-preserving RNA support may remain zero.
+
+`has_active_multiome_contribution` is stricter. It is TRUE only when the
+GPR-aggregated reaction capacity changes after RNA+ATAC integration. The two
+capacity-shift columns quantify the direction and magnitude of that reaction-
+level change. Canonical results use `evidence_resolution = "reaction_capacity"`.
 
 ## Basic condition test
 
@@ -143,8 +165,12 @@ condition_stats$pairwise[
     "condition_b",
     "evidence_class_a",
     "evidence_class_b",
+    "evidence_resolution_a",
+    "evidence_resolution_b",
     "multiome_contributing_genes_a",
     "multiome_contributing_genes_b",
+    "median_multiome_capacity_shift_a",
+    "median_multiome_capacity_shift_b",
     "delta_median_score_b_minus_a",
     "rank_biserial_b_minus_a",
     "p_adj"
@@ -218,14 +244,18 @@ gene_reactions$evidence[
     "condition",
     "cell_type",
     "evidence_class",
+    "evidence_resolution",
     "rna_supported_genes",
-    "multiome_contributing_genes"
+    "atac_modifier_genes",
+    "multiome_contributing_genes",
+    "median_multiome_capacity_shift",
+    "max_abs_multiome_capacity_shift"
   )
 ]
 ```
 
-To retain only reactions with active multiome contribution in at least one
-selected group:
+To retain only reactions whose GPR-aggregated reaction capacity is actively
+changed by RNA+ATAC integration in at least one selected group:
 
 ```r
 multiome_gene_reactions <- rc_select_gene_reactions(
