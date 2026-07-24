@@ -10,6 +10,9 @@
 - Added progress output and elapsed-time auditing to every public workflow stage and to the complete six-stage run. Each stage writes `step_timing.tsv`; one-shot execution writes `00_execution_timing.tsv` and stores stage and total timings in `result$timing`.
 - Added `progress = FALSE` and `options(RegCompassR.progress = FALSE)` controls for non-interactive or quiet execution.
 - Added cross-platform backend, layered-default, single-thread-child, worker-release, bundled-model integrity, offline loading, progress-control, and timing-output tests.
+- Added an audited condition-metacell cache contract. Checkpoints are no longer reused by file existence alone: ordered cells and labels, assay fingerprints, the SuperCell2 label, `gamma`, seed, reductions/dimensions, and metacell thresholds must match exactly, or the user must rebuild with `overwrite = TRUE`.
+- Downstream stages now reject legacy metacell objects that lack the current condition-only label-guided construction and cache provenance instead of assigning current provenance to an unverifiable artifact.
+- Aligned `DESCRIPTION` with the exact SeuratObject 4.1.4, Seurat 4.4.0, and Signac 1.11.0 runtime gate, and synchronized the public tutorial index with the restored true stepwise and optional Level 4/5 workflows.
 
 # RegCompassR 1.8.2
 
