@@ -10,15 +10,21 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
   rna_assay = "RNA", atac_assay = "ATAC",
   model_mode = c("meta_module_gem", "full_gem"),
   medium_scenarios = NULL, metacell_args = list(), layer1_args = list(),
-  pando_args = list(), layer2_args = list(), upstream_workers = NULL,
-  layer2_workers = NULL,
-  parallel_backend = c("auto", "serial", "snow", "multicore"),
+  pando_args = list(), layer2_args = list(), upstream_workers = 6L,
+  layer2_workers = 30L,
   progress = getOption("RegCompassR.progress", TRUE),
   species = c("auto", "human", "mouse"))
 }
+\arguments{
+\item{upstream_workers}{Worker count for GRN inference, local FASTCORE, and Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for serial upstream execution.}
+
+\item{layer2_workers}{Worker count for Layer 2 LP scoring. Defaults to 30. Set to 1 for serial Layer 2 execution.}
+}
 \description{Runs the six canonical GRN, metacell, meta-module, Layer 1, Layer 2, and result stages.}
 \details{
-With \code{parallel_backend = "auto"}, Windows uses SOCK/SnowParam workers and Linux/macOS use MulticoreParam workers. Explicit multicore execution is rejected on Windows. Requested and resolved backends, worker counts, and OS type are saved in the result.
+The canonical workflow automatically selects SOCK/SnowParam workers on Windows and MulticoreParam workers on Linux/macOS. A worker count of one resolves that layer to serial execution.
+
+Each parallel stage owns a temporary worker pool. Cleanup is registered before startup, stops the pool after success or failure, removes the pool reference, and runs full garbage collection. Every outer worker runs a single-thread internal task; numerical-library environment variables and nested R worker options are temporarily fixed at one.
 
 Each stage reports progress and writes \code{step_timing.tsv}. The complete workflow writes \code{00_execution_timing.tsv} and stores stage and total elapsed time in \code{result$timing}. Set \code{progress = FALSE} or \code{options(RegCompassR.progress = FALSE)} for quiet execution.
 }
