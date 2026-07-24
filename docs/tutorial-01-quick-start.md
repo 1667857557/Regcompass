@@ -1,6 +1,6 @@
 # Tutorial Level 1: minimal one-shot run
 
-Use this tutorial for a paired-cell RNA+ATAC Seurat object and the canonical RegCompassR 1.8.3 workflow. Use [Level 2](tutorial-02-stepwise-audit.md) for stage inspection and [Level 3](tutorial-03-advanced-restart.md) for restart and diagnostics.
+Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.8.3. See [portable execution](portable-execution.md), [Level 2](tutorial-02-stepwise-audit.md), and [Level 3](tutorial-03-advanced-restart.md) for additional controls.
 
 ## Install
 
@@ -13,12 +13,6 @@ remotes::install_version("Signac", "1.11.0", upgrade = "never")
 remotes::install_github("1667857557/SuperCell_Seurat_V4@supercell-2.0", upgrade = "never")
 remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
-```
-
-A local Pando source archive is valid:
-
-```r
-install.packages("~/Pando_regcompass.tar.gz", repos = NULL, type = "source")
 ```
 
 ## Validate input
@@ -43,12 +37,16 @@ stopifnot(
 )
 ```
 
-Use `Pando::motifs` as `pfm`; `motif2tf` is not a motif matrix collection. RNA and ATAC must represent the same cell IDs, although assay column order may differ.
+Use `Pando::motifs` as `pfm`; `motif2tf` is not a motif matrix collection.
 
-## Prepare GEM and medium
+## Load the bundled GEM and medium
+
+No model download is required:
 
 ```r
-gem <- rc_prepare_gem(species = "human", version = "2.0.0")
+gem <- rc_prepare_gem("human")
+rc_bundled_gem_manifest()
+
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
   scenario = "physiologic",
@@ -56,9 +54,11 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-See [medium presets](medium-presets.md) before replacing the physiological baseline. Medium constraints never create a reaction direction absent from the source GEM.
+Use `source = "download"` only when intentionally rebuilding or updating the model.
 
-## Run on Linux
+## Run on Linux or Windows
+
+On Linux, set numerical-library threads to one before launching multiple outer workers:
 
 ```bash
 export OMP_NUM_THREADS=1
@@ -67,9 +67,6 @@ export MKL_NUM_THREADS=1
 ```
 
 ```r
-upstream_workers <- 16L
-layer2_workers <- 12L
-
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
@@ -77,8 +74,6 @@ result <- rc_run_regcompass_one_shot(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
   species = "human",
-  gem = gem,
-  medium_scenarios = medium_scenarios,
   condition_col = condition_col,
   celltype_col = celltype_col,
   pando_args = list(
@@ -109,26 +104,29 @@ result <- rc_run_regcompass_one_shot(
     solver = "highs",
     time_limit = 60
   ),
-  upstream_workers = upstream_workers,
-  layer2_workers = layer2_workers,
-  parallel_backend = "multicore"
+  upstream_workers = 16L,
+  layer2_workers = 12L,
+  parallel_backend = "auto",
+  progress = TRUE
 )
 ```
 
-Keep Pando's inner `parallel = FALSE`. `celltype_col` is automatically passed to SuperCell2 as the construction label, while condition remains the only hard metacell stratum.
+`auto` selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS. Keep Pando's inner `parallel = FALSE` when outer group parallelism is enabled.
 
-## Confirm completion
+## Confirm completion and timing
 
 ```r
 stopifnot(
   identical(result$version, "1.8.3"),
-  identical(result$schema_version, "regcompass_grn_first_v2"),
   nrow(result$reaction_ranking) > 0,
-  nrow(result$reaction_catalog) > 0,
-  nrow(result$reaction_evidence) > 0,
   file.exists("RegCompass_result/05_layer2/step_layer2.rds"),
-  file.exists("RegCompass_result/06_results/regcompass_result.rds")
+  file.exists("RegCompass_result/06_results/regcompass_result.rds"),
+  file.exists("RegCompass_result/00_execution_timing.tsv")
 )
+
+result$timing$stages
+result$timing$total
+result$params$parallel_backend_resolved
 ```
 
-The one-shot output includes stage classes, GEM provenance, model-cache diagnostics, LP penalties, and reaction annotations. Expanded target scoring requires the classed stepwise Stage 3-5 objects described in Level 2.
+Every stage directory also contains `step_timing.tsv`. Use `progress = FALSE` for quiet batch execution.
