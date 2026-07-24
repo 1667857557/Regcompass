@@ -21,7 +21,7 @@ The documentation is deliberately separated into three execution levels:
 2. **Level 2 — stepwise run with audit gates:** explicit stage inputs, outputs, files, Linux `MulticoreParam` objects, and mandatory continuation checks. This vignette provides the compact Level 2 workflow; the complete version is `docs/tutorial-02-stepwise-audit.md`.
 3. **Level 3 — restart and diagnostics:** stage reuse, worker allocation, sensitivity runs, alternative media, solver/model controls, and failure classification. See `docs/tutorial-03-advanced-restart.md`.
 
-After Layer 2, use `docs/condition-reaction-statistics.md` for multi-condition same-reaction tests and boxplots with one metacell per point.
+After Layer 2, use `docs/condition-reaction-statistics.md` for multi-condition same-reaction tests, formal reaction formulas and genes, RNA-only versus RNA+ATAC evidence provenance, gene-centered reaction selection, and boxplots with one metacell per point.
 
 The complete medium catalog and its interpretation rules are in `docs/medium-presets.md`.
 
@@ -176,7 +176,7 @@ unique(step3$condition_modules$local_fastcore_summary[, c(
 )])
 ```
 
-Each GRN defines metabolic-gene components and complete-GPR core reactions. Meta-modules add core-reaction subsystems and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE completion is parallelized by `sample_id × module_id`; projection and identifier expansion remain serial setup operations.
+Each GRN defines metabolic-gene components and complete-GPR core reactions. Meta-modules add core-reaction subsystems and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE completion uses the `local_fastcore_by_meta_module` task scope and is parallelized by `sample_id × module_id`; projection and identifier expansion remain serial setup operations.
 
 ## Stages 4-6: reaction evidence and scoring
 
@@ -220,14 +220,20 @@ stopifnot(
     as.character(step4$unit_meta$pool_id)
   ),
   any(step5$evaluated),
-  nrow(result$reaction_ranking) > 0
+  nrow(result$reaction_ranking) > 0,
+  nrow(result$reaction_catalog) > 0,
+  nrow(result$reaction_evidence) > 0
 )
 
 table(step5$feasible)
 head(result$reaction_ranking)
+head(result$reaction_catalog)
+head(result$reaction_evidence)
 ```
 
 Stage 4 parallelizes GPR/reaction-capacity work. Stage 5 parallelizes shared-model × metacell LP tasks; structural model-cache construction remains serial. The default HiGHS backend is checked before any medium-constrained model is constructed. A missing solver is reported as a solver installation problem rather than as GEM infeasibility.
+
+Stage 6 reconstructs formal reaction formulas directly from the scored GEM, includes metabolite names and compartments, retains the complete Boolean GPR, and classifies each `condition × cell type × reaction` as `RNA+ATAC`, `RNA-only`, `GPR/no-observed-RNA`, or `structural/no-GPR`. The `RNA+ATAC` label requires the GPR-aggregated reaction capacity to change relative to an RNA-only calculation; a non-zero ATAC modifier on one gene is retained as provenance but is not sufficient by itself.
 
 ## Multi-condition reaction statistics and plots
 
@@ -245,11 +251,19 @@ condition_stats <- rc_test_condition_reactions(
   outdir = "steps/07_condition_statistics"
 )
 
-head(condition_stats$omnibus)
-head(condition_stats$pairwise)
+head(condition_stats$omnibus[, c(
+  "reaction_id", "reaction_name", "target_direction", "tested_formula",
+  "genes", "gpr_rule", "evidence_by_condition", "p_adj"
+)])
+
+head(condition_stats$pairwise[, c(
+  "reaction_id", "reaction_name", "tested_formula",
+  "condition_a", "condition_b", "evidence_class_a", "evidence_class_b",
+  "delta_median_score_b_minus_a", "rank_biserial_b_minus_a", "p_adj"
+)])
 ```
 
-Three or more conditions receive a Kruskal-Wallis omnibus test. Pairwise contrasts use two-sided Wilcoxon tests and report adjusted P values and effect sizes.
+Three or more conditions receive a Kruskal-Wallis omnibus test. Pairwise contrasts use two-sided Wilcoxon tests and report adjusted P values, effect sizes, reaction biology, and condition-specific evidence provenance.
 
 ```{r}
 p <- rc_plot_condition_reaction(
@@ -268,4 +282,57 @@ p <- rc_plot_condition_reaction(
 print(p)
 ```
 
-The plot contains one box per condition, one jittered point per finite metacell score, an adjusted omnibus result in the subtitle, and pairwise significance brackets. Metacell P values quantify within-dataset condition-associated separation; they are not automatically biological-replicate-level treatment inference. See `docs/condition-reaction-statistics.md` for the complete interpretation and filtering rules.
+The plot contains one box per condition, one jittered point per finite metacell score, an adjusted omnibus result in the subtitle, and pairwise significance brackets. For annotated results, its title and caption also report the formal reaction name, tested directional formula, GPR genes, and evidence classes.
+
+## Select reactions and plots by metabolic genes
+
+```{r}
+glutathione_genes <- c(
+  "SLC7A11", "GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"
+)
+
+gene_reactions <- rc_select_gene_reactions(
+  result,
+  genes = glutathione_genes,
+  match = "any",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "stem-cell_like"
+)
+
+head(gene_reactions$reactions[, c(
+  "reaction_id", "reaction_name", "model_formula",
+  "genes", "gpr_rule", "matched_genes"
+)])
+
+head(gene_reactions$evidence[, c(
+  "reaction_id", "condition", "evidence_class",
+  "atac_modifier_genes", "multiome_contributing_genes",
+  "median_multiome_capacity_shift", "max_abs_multiome_capacity_shift"
+)])
+
+gene_plots <- rc_plot_condition_gene_reactions(
+  result,
+  genes = glutathione_genes,
+  cell_type = "stem-cell_like",
+  condition_col = condition_col,
+  celltype_col = celltype_col,
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  comparisons = list(
+    c("control_24hr", "MS177_24hr"),
+    c("JQ1_24hr", "MS177_24hr")
+  ),
+  evidence_class = "RNA+ATAC",
+  p_adj_max = 0.05,
+  min_abs_rank_biserial = 0.30,
+  max_reactions = 12,
+  outdir = "steps/07_condition_statistics/glutathione_gene_plots"
+)
+
+names(gene_plots$plots)
+gene_plots$selected_targets
+print(gene_plots$plots[[1]])
+```
+
+Gene selection is based on exact GPR membership, while the full Boolean GPR is retained to distinguish alternative isozymes from required complexes. The plot collection is ranked after multiple-testing correction over the full scored reaction family, not only the displayed reactions.
+
+Metacell P values quantify within-dataset condition-associated separation; they are not automatically biological-replicate-level treatment inference. Evidence labels state whether RNA+ATAC integration actively changed reaction capacity, but they do not demonstrate measured metabolic flux. See `docs/condition-reaction-statistics.md` for the complete interpretation and filtering rules.

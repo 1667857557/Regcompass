@@ -97,9 +97,11 @@ test_that("canonical Layer 1 has no versioned compatibility override", {
   )
 })
 
-test_that("final results retain condition-specific and global modules", {
-  text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
-  expect_match(text, "condition_grn_meta_modules", fixed = TRUE)
-  expect_match(text, "global_grn_meta_modules", fixed = TRUE)
-  expect_match(text, "grn_metacell_group_coverage", fixed = TRUE)
+test_that("final results retain modules and add reaction interpretation", {
+  body_text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
+  expect_match(body_text, "condition_grn_meta_modules", fixed = TRUE)
+  expect_match(body_text, "global_grn_meta_modules", fixed = TRUE)
+  expect_match(body_text, "grn_metacell_group_coverage", fixed = TRUE)
+  expect_match(body_text, "reaction_catalog", fixed = TRUE)
+  expect_match(body_text, "reaction_evidence", fixed = TRUE)
 })
