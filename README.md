@@ -69,16 +69,26 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-## Cross-platform parallel execution
+## Automatic layered parallel execution
 
-`parallel_backend = "auto"` is the recommended setting:
+The complete workflow exposes only two worker counts:
+
+- `upstream_workers = 6L` for condition-by-cell-type GRNs, local FASTCORE, and Layer 1;
+- `layer2_workers = 30L` for directional LP scoring.
+
+The backend is selected automatically:
 
 - Windows: `BiocParallel::SnowParam(type = "SOCK")`;
 - Linux/macOS: `BiocParallel::MulticoreParam`;
-- one worker or unavailable BiocParallel: sequential execution.
+- one worker: serial execution.
+
+Each parallel stage creates its own worker pool. The pool is stopped and released in a guaranteed cleanup block when the stage finishes or fails, followed by `gc(full = TRUE)`. Workers are therefore not kept alive across unrelated stages.
+
+Set both worker counts to one for a fully serial run:
 
 ```r
-rc_parallel_config(workers = 8L, backend = "auto")
+upstream_workers <- 1L
+layer2_workers <- 1L
 ```
 
 On Linux, set numerical-library threads to one before starting R when using multiple outer workers:
@@ -118,21 +128,23 @@ result <- rc_run_regcompass_one_shot(
   ),
   layer1_args = list(
     local_fastcore = TRUE,
-    local_fastcore_args = list(solver = "highs", parallel = TRUE)
+    local_fastcore_args = list(solver = "highs")
   ),
-  layer2_args = list(target_direction = "both", solver = "highs"),
-  upstream_workers = 16L,
-  layer2_workers = 12L,
-  parallel_backend = "auto",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  ),
+  upstream_workers = 6L,
+  layer2_workers = 30L,
   progress = TRUE
 )
 ```
 
-The workflow records the requested and resolved backend, worker counts, and operating system. Use `progress = FALSE` or `options(RegCompassR.progress = FALSE)` for quiet execution.
+The workflow records the resolved backend, worker counts, operating system, stage grouping, and worker lifecycle. `parallel_backend` is no longer a canonical workflow argument because operating-system selection is automatic.
 
 ## Progress and execution time
 
-Every public stage prints a progress indicator and writes `step_timing.tsv` in its output directory. Long BiocParallel loops additionally report task-level progress when RegCompass creates the backend. A complete run additionally writes:
+Every public stage prints a progress indicator and writes `step_timing.tsv` in its output directory. A complete run additionally writes:
 
 ```text
 RegCompass_result/00_execution_timing.tsv
@@ -143,10 +155,11 @@ The final object contains:
 ```r
 result$timing$stages
 result$timing$total
-result$params$parallel_backend_requested
 result$params$parallel_backend_resolved
 result$params$upstream_workers
 result$params$layer2_workers
+result$params$parallel_worker_lifecycle
+result$params$parallel_stage_groups
 ```
 
 The timing table reports stage, status, start time, finish time, elapsed seconds, formatted elapsed time, OS type, and R version.
@@ -213,7 +226,7 @@ The plot shows one point per metacell and adjusted significance brackets. These 
 | Level | Use | Tutorial |
 |---|---|---|
 | 1 | minimal validated one-shot run | [Quick start](docs/tutorial-01-quick-start.md) |
-| 2 | stage-by-stage run and audit gates | [Stepwise audit](docs/tutorial-02-stepwise-audit.md) |
+| 2 | inspect and audit saved stage objects | [Stepwise audit](docs/tutorial-02-stepwise-audit.md) |
 | 3 | restart, sensitivity, resources, and failure diagnosis | [Advanced restart](docs/tutorial-03-advanced-restart.md) |
 
 See also [Portable execution, bundled GEMs, progress, and timing](docs/portable-execution.md).
