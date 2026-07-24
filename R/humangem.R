@@ -91,9 +91,9 @@
 
 #' Prepare a species-specific genome-scale metabolic model
 #'
-#' Downloads and converts a pinned official SysBioChalmers GEM release. Human
-#' mode uses Human-GEM and mouse mode uses Mouse-GEM directly; mouse genes are
-#' retained as mouse symbols and are not converted through human orthologues.
+#' Loads a bundled pinned SysBioChalmers GEM by default. The official download
+#' and conversion path remains available for custom or updated releases. Mouse
+#' genes remain mouse symbols and are not converted through human orthologues.
 #'
 #' @param species Model organism: `"human"` or `"mouse"`.
 #' @param version Pinned release version. Defaults to Human-GEM 2.0.0 or
@@ -103,6 +103,9 @@
 #'   is generated inside `cache_dir`.
 #' @param force_download Re-download and rebuild an existing cached model.
 #' @param allow_latest Permit the unpinned `version = "latest"` mode.
+#' @param source Model source. `auto` uses a compatible cache, then the bundled
+#'   pinned model, then downloads only when required. `bundled` forbids network
+#'   fallback; `download` retains the original preparation path.
 #' @return A validated RegCompass GEM list.
 #' @export
 rc_prepare_gem <- function(
@@ -111,8 +114,10 @@ rc_prepare_gem <- function(
     cache_dir = tools::R_user_dir("RegCompassR", "cache"),
     save_rds = NULL,
     force_download = FALSE,
-    allow_latest = FALSE) {
+    allow_latest = FALSE,
+    source = c("auto", "bundled", "download")) {
   species <- match.arg(species)
+  source <- match.arg(source)
   spec <- .rc_species_gem_spec(species, version)
   if (identical(spec$version, "latest") && !isTRUE(allow_latest)) {
     stop(
@@ -136,15 +141,31 @@ rc_prepare_gem <- function(
       is.na(save_rds) || !nzchar(save_rds)) {
     stop("`save_rds` must be one non-empty file path or NULL.", call. = FALSE)
   }
+  if (isTRUE(force_download) && identical(source, "bundled")) {
+    stop("`force_download = TRUE` cannot be combined with `source = 'bundled'`.",
+         call. = FALSE)
+  }
+  if (isTRUE(force_download)) source <- "download"
   if (isTRUE(force_download) && file.exists(save_rds)) {
     unlink(save_rds, force = TRUE)
   }
-  cached <- if (isTRUE(force_download)) {
+  cached <- if (isTRUE(force_download) || identical(source, "bundled")) {
     NULL
   } else {
     .rc_load_compatible_species_gem(save_rds, spec)
   }
   if (!is.null(cached)) return(cached)
+
+  if (!identical(source, "download")) {
+    bundled <- .rc_load_bundled_species_gem(spec)
+    if (!is.null(bundled)) return(bundled)
+    if (identical(source, "bundled")) {
+      stop(
+        "No bundled ", spec$repository_name, " model matches version `",
+        spec$version, "`.", call. = FALSE
+      )
+    }
+  }
 
   ref <- if (identical(spec$version, "latest")) {
     "main"
@@ -215,14 +236,17 @@ rc_prepare_human2_gem <- function(
       paste0("Human2_", version, "_regcompass.rds")
     ),
     force_download = FALSE,
-    allow_latest = FALSE) {
+    allow_latest = FALSE,
+    source = c("auto", "bundled", "download")) {
+  source <- match.arg(source)
   rc_prepare_gem(
     species = "human",
     version = version,
     cache_dir = cache_dir,
     save_rds = save_rds,
     force_download = force_download,
-    allow_latest = allow_latest
+    allow_latest = allow_latest,
+    source = source
   )
 }
 
@@ -243,14 +267,17 @@ rc_prepare_mouse_gem <- function(
       paste0("Mouse_", version, "_regcompass.rds")
     ),
     force_download = FALSE,
-    allow_latest = FALSE) {
+    allow_latest = FALSE,
+    source = c("auto", "bundled", "download")) {
+  source <- match.arg(source)
   rc_prepare_gem(
     species = "mouse",
     version = version,
     cache_dir = cache_dir,
     save_rds = save_rds,
     force_download = force_download,
-    allow_latest = allow_latest
+    allow_latest = allow_latest,
+    source = source
   )
 }
 
@@ -294,6 +321,13 @@ rc_validate_species_gem <- function(gem, species = c("human", "mouse")) {
   invisible(TRUE)
 }
 
+#' Download and parse an official species GEM release
+#'
+#' Retained for users rebuilding the bundled files or preparing a newer pinned
+#' upstream release.
+#'
+#' @return Parsed official model tables with source archive metadata.
+#' @export
 rc_download_species_gem <- function(
     species = c("human", "mouse"),
     destdir = tempfile("species-GEM-"),

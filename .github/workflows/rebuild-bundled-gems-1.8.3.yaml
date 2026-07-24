@@ -1,0 +1,47 @@
+name: Rebuild deterministic bundled GEMs
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/rebuild-bundled-gems-1.8.3.yaml
+      - scripts/build-bundled-gems.R
+
+permissions:
+  contents: write
+
+jobs:
+  rebuild:
+    if: github.head_ref == 'agent/regcompass-1.8.3-portable-gems'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/regcompass-1.8.3-portable-gems
+          fetch-depth: 0
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install model-build dependencies
+        shell: Rscript {0}
+        run: install.packages(c("Matrix", "yaml"))
+
+      - name: Build and validate deterministic models
+        shell: bash
+        run: |
+          set -euo pipefail
+          Rscript scripts/build-bundled-gems.R
+
+      - name: Commit deterministic assets
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add inst/extdata/gem/Human2_2.0.0_regcompass.rds \
+                  inst/extdata/gem/Mouse_1.8.0_regcompass.rds \
+                  inst/extdata/gem/manifest.tsv
+          git commit -m "Rebuild deterministic bundled GEM assets"
+          git push origin HEAD:agent/regcompass-1.8.3-portable-gems

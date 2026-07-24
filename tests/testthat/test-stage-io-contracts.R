@@ -102,7 +102,7 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(layer2_text, "source_core_reactions", fixed = TRUE)
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(result_text, "regcompass_grn_first_v2", fixed = TRUE)
-  expect_match(result_text, 'version = "1.8.2"', fixed = TRUE)
+  expect_match(result_text, 'version = "1.8.3"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "global_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "reaction_catalog", fixed = TRUE)

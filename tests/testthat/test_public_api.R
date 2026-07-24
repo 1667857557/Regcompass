@@ -3,7 +3,8 @@ test_that("public API exposes the GRN-first restartable workflow", {
     getNamespaceExports("RegCompassR"),
     c(
       "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
-      "rc_make_medium_scenarios", "rc_run_regcompass",
+      "rc_bundled_gem_manifest", "rc_download_species_gem",
+      "rc_parallel_config", "rc_make_medium_scenarios", "rc_run_regcompass",
       "rc_run_regcompass_one_shot", "rc_regcompass_step_grn",
       "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
       "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
@@ -26,13 +27,13 @@ test_that("canonical source architecture has no retired compatibility layers", {
     "pando_rsq_reliability.R", "workflow_stage_", "zzz"
   )
   expect_false(any(vapply(retired, grepl, logical(1), x = collate, fixed = TRUE)))
-  expect_match(collate, "stage_contracts.R", fixed = TRUE)
-  expect_match(collate, "shared_tfidf.R", fixed = TRUE)
-  expect_match(collate, "grn_inference.R", fixed = TRUE)
-  expect_match(collate, "regulatory_modifier.R", fixed = TRUE)
-  expect_match(collate, "reaction_annotations.R", fixed = TRUE)
-  expect_match(collate, "reaction_evidence.R", fixed = TRUE)
-  expect_match(collate, "reaction_gene_plots.R", fixed = TRUE)
+  required <- c(
+    "stage_contracts.R", "shared_tfidf.R", "grn_inference.R",
+    "regulatory_modifier.R", "reaction_annotations.R", "reaction_evidence.R",
+    "reaction_gene_plots.R", "execution_monitor.R", "bundled_gems.R",
+    "parallel.R"
+  )
+  expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
 
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(

@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.2 GRN-first workflow"
+title: "RegCompassR 1.8.3 GRN-first workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.2 GRN-first workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.3 GRN-first workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -13,7 +13,7 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 RegCompassR fits condition-by-cell-type Pando GRNs, builds condition-level SuperCell2 metacells, maps complete-GPR core reactions, constructs a FASTCORE-completed global union GEM, integrates RNA and ATAC evidence, and performs directional minimum-penalty LP scoring.
 
-Version 1.8.2 adds strict stage provenance and an optional second LP pass for non-core reactions directly sharing KEGG, Reactome, or master-Rhea identifiers with selected cores.
+Version 1.8.3 adds strict stage provenance and an optional second LP pass for non-core reactions directly sharing KEGG, Reactome, or master-Rhea identifiers with selected cores.
 
 ## Installation
 
@@ -223,7 +223,7 @@ result <- rc_regcompass_step_results(
 )
 
 stopifnot(
-  identical(result$version, "1.8.2"),
+  identical(result$version, "1.8.3"),
   nrow(result$reaction_ranking) > 0,
   nrow(result$reaction_catalog) > 0,
   nrow(result$reaction_evidence) > 0

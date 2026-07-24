@@ -2,7 +2,10 @@
 
 export(rc_attach_reaction_annotations)
 export(rc_build_reaction_annotations)
+export(rc_bundled_gem_manifest)
+export(rc_download_species_gem)
 export(rc_make_medium_scenarios)
+export(rc_parallel_config)
 export(rc_plot_condition_gene_reactions)
 export(rc_plot_condition_reaction)
 export(rc_prepare_gem)

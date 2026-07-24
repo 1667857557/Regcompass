@@ -558,10 +558,6 @@ rc_run_microcompass <- function(
   if (!is.list(model_params)) {
     stop("`model_params` must be a list.", call. = FALSE)
   }
-  forced_unit <- getOption("RegCompassR.inference_unit", NULL)
-  if (!is.null(forced_unit)) {
-    unit <- match.arg(forced_unit, c("sample_celltype", "metacell"))
-  }
   if (identical(unit, "metacell")) {
     warning(
       paste(

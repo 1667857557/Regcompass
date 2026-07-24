@@ -1,0 +1,3 @@
+species	version	file	md5	size_bytes	source	upstream_ref	upstream_model_md5	conversion_date	citation_doi	license
+human	2.0.0	Human2_2.0.0_regcompass.rds	869b6fbccf06be59aeb82ee699588b12	554212	SysBioChalmers/Human-GEM	v2.0.0	ea30f7abb1ad7dea1b0635bfd7be14f6	2026-07-24	10.1126/scisignal.aaz1482	CC-BY-4.0
+mouse	1.8.0	Mouse_1.8.0_regcompass.rds	d4eb64fc46952b4a7dfe87309b91c379	327268	SysBioChalmers/Mouse-GEM	v1.8.0	1a18f2c64ebd07de6306e2c6b54dd755	2026-07-24	10.1073/pnas.2102344118	CC-BY-4.0

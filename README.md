@@ -1,6 +1,6 @@
 # RegCompassR
 
-RegCompassR 1.8.2 implements a GRN-first RNA+ATAC metabolic workflow:
+RegCompassR 1.8.3 implements a GRN-first RNA+ATAC metabolic workflow:
 
 ```text
 single-cell RNA normalization
@@ -13,7 +13,6 @@ single-cell RNA normalization
 → directional COMPASS-like LP scoring
 → optional direct database-linked non-core scoring in the same union GEM
 ```
-
 
 ## Installation
 
@@ -28,6 +27,29 @@ remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
 
+## Bundled Human-GEM and Mouse-GEM
+
+Human-GEM 2.0.0 and Mouse-GEM 1.8.0 are distributed as validated compressed package assets. Canonical runs therefore require no model download:
+
+```r
+human_gem <- rc_prepare_gem("human")
+mouse_gem <- rc_prepare_gem("mouse")
+rc_bundled_gem_manifest()
+```
+
+`source = "bundled"` requires the installed pinned asset and never accesses the network. The download/rebuild path remains available for updates:
+
+```r
+updated_gem <- rc_prepare_gem(
+  species = "human",
+  version = "2.0.0",
+  source = "download",
+  force_download = TRUE
+)
+```
+
+The installed manifest records source, release, RDS checksum, size, citation DOI, and CC BY 4.0 attribution. `scripts/build-bundled-gems.R` is the reproducible maintainer build script.
+
 ## Input contract
 
 `object` must contain paired RNA and ATAC counts for the same cells, complete condition and cell-type metadata, a Signac `ChromatinAssay`, and peak coordinates matching `genome`. Use `Pando::motifs` as `pfm`; `motif2tf` is not a motif matrix collection.
@@ -39,7 +61,7 @@ library(BSgenome.Hsapiens.UCSC.hg38)
 
 data(motifs, package = "Pando")
 
-gem <- rc_prepare_gem(species = "human", version = "2.0.0")
+gem <- rc_prepare_gem("human")
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
   scenario = "physiologic",
@@ -47,17 +69,27 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-`physiologic` resolves to the species-specific plasma preset. Culture, nutrient-sensitivity, technical, and custom media are documented in [Predefined extracellular medium scenarios](docs/medium-presets.md).
+## Cross-platform parallel execution
 
-## One-shot Linux run
+`parallel_backend = "auto"` is the recommended setting:
 
-Set numerical-library threads to one before starting R when using multiple workers.
+- Windows: `BiocParallel::SnowParam(type = "SOCK")`;
+- Linux/macOS: `BiocParallel::MulticoreParam`;
+- one worker or unavailable BiocParallel: sequential execution.
+
+```r
+rc_parallel_config(workers = 8L, backend = "auto")
+```
+
+On Linux, set numerical-library threads to one before starting R when using multiple outer workers:
 
 ```bash
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 ```
+
+## One-shot run
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -67,8 +99,6 @@ result <- rc_run_regcompass_one_shot(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
   species = "human",
-  gem = gem,
-  medium_scenarios = medium_scenarios,
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
   pando_args = list(
@@ -93,17 +123,37 @@ result <- rc_run_regcompass_one_shot(
   layer2_args = list(target_direction = "both", solver = "highs"),
   upstream_workers = 16L,
   layer2_workers = 12L,
-  parallel_backend = "multicore"
+  parallel_backend = "auto",
+  progress = TRUE
 )
 ```
 
-The workflow validates the solver, stage classes, GEM fingerprint, workflow metadata, and ordered metacell IDs before connecting stages.
+The workflow records the requested and resolved backend, worker counts, and operating system. Use `progress = FALSE` or `options(RegCompassR.progress = FALSE)` for quiet execution.
+
+## Progress and execution time
+
+Every public stage prints a progress indicator and writes `step_timing.tsv` in its output directory. Long BiocParallel loops additionally report task-level progress when RegCompass creates the backend. A complete run additionally writes:
+
+```text
+RegCompass_result/00_execution_timing.tsv
+```
+
+The final object contains:
+
+```r
+result$timing$stages
+result$timing$total
+result$params$parallel_backend_requested
+result$params$parallel_backend_resolved
+result$params$upstream_workers
+result$params$layer2_workers
+```
+
+The timing table reports stage, status, start time, finish time, elapsed seconds, formatted elapsed time, OS type, and R version.
 
 ## Score direct database links of selected cores
 
-After a stepwise `meta_module_gem` Layer 2 run, select previous core reactions or their GPR genes. The selected cores are mapping anchors only. The function directly identifies reactions sharing a KEGG, Reactome, or master-Rhea ID with each selected core and runs a second LP only for linked reactions that were not global core targets in the original Layer 2 run.
-
-Same-subsystem expansion, recursive propagation through intermediate reactions, FASTCORE-only support, generic union members, metabolite-neighbour reactions, and previously scored global cores are excluded.
+After a stepwise `meta_module_gem` Layer 2 run, selected cores are mapping anchors only. The function directly identifies non-core reactions sharing a KEGG, Reactome, or master-Rhea ID and runs a second LP only for linked reactions that were not global core targets in the original Layer 2 run.
 
 ```r
 expanded <- rc_regcompass_step_target_union(
@@ -113,11 +163,12 @@ expanded <- rc_regcompass_step_target_union(
   gem = gem,
   outdir = "RegCompass_steps/06_expanded_target_scoring",
   core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
-  gene_match = "complete_gpr"
+  gene_match = "complete_gpr",
+  progress = TRUE
 )
 ```
 
-`expanded$expanded_reaction_catalog` records `anchor_core_reaction_id`, mapping type, database identifier, and core-exclusion status. `expanded$expanded_scoring_targets` contains unique direct database-linked non-core targets. `expanded$microcompass$penalty` is the primary result; lower penalty means stronger evidence-supported flux compatibility.
+Same-subsystem expansion, recursive propagation, FASTCORE-only support, generic union members, metabolite-neighbour reactions, and previously scored global cores are excluded.
 
 ## Compare the same reaction across conditions
 
@@ -148,13 +199,14 @@ The plot shows one point per metacell and adjusted significance brackets. These 
 
 ## Main outputs
 
-- `01_single_cell_grn/`: GRN status and Pando edges.
-- `02_condition_metacells/`: metacell counts, membership, labels, and purity.
-- `03_meta_modules/`: core reactions, annotation-expanded modules, and FASTCORE diagnostics.
-- `04_layer1/step_layer1.rds`: RNA support, ATAC modifier, GPR diagnostics, and reaction expression.
-- `05_layer2/step_layer2.rds`: penalties, relative scores, `vmax`, feasibility, model cache, and LP diagnostics.
-- `06_results/regcompass_result.rds`: rankings, annotations, and evidence provenance.
-- optional target-union output: selected core anchors, direct database relation catalog, unique non-core scoring targets, source-model hashes, and second-pass LP results.
+- `01_single_cell_grn/`: GRN status, Pando edges, stage RDS, and timing.
+- `02_condition_metacells/`: metacell counts, membership, labels, purity, and timing.
+- `03_meta_modules/`: core reactions, expanded modules, FASTCORE diagnostics, and timing.
+- `04_layer1/step_layer1.rds`: RNA support, ATAC modifier, GPR diagnostics, reaction expression, and timing.
+- `05_layer2/step_layer2.rds`: penalties, relative scores, `vmax`, feasibility, model cache, LP diagnostics, and timing.
+- `06_results/regcompass_result.rds`: rankings, annotations, evidence provenance, and timing.
+- `00_execution_timing.tsv`: complete stage and total runtime summary.
+- optional target-union output: selected core anchors, direct database relation catalog, unique non-core targets, source-model hashes, second-pass LP results, and timing.
 
 ## Tutorials
 
@@ -163,3 +215,5 @@ The plot shows one point per metacell and adjusted significance brackets. These 
 | 1 | minimal validated one-shot run | [Quick start](docs/tutorial-01-quick-start.md) |
 | 2 | stage-by-stage run and audit gates | [Stepwise audit](docs/tutorial-02-stepwise-audit.md) |
 | 3 | restart, sensitivity, resources, and failure diagnosis | [Advanced restart](docs/tutorial-03-advanced-restart.md) |
+
+See also [Portable execution, bundled GEMs, progress, and timing](docs/portable-execution.md).

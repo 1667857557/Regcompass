@@ -1,6 +1,6 @@
 # Tutorial Level 3: restart, sensitivity, and diagnostics
 
-Use saved classed stage objects. RegCompassR 1.8.2 rejects cross-run object mixing when GEM fingerprints, workflow parameters, stage classes, core sets, or ordered scoring units differ.
+Use saved classed stage objects. RegCompassR 1.8.3 rejects cross-run object mixing when GEM fingerprints, workflow parameters, stage classes, core sets, or ordered scoring units differ.
 
 ## Load a completed stepwise run
 

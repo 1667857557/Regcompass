@@ -1,6 +1,6 @@
 # Tutorial Level 2: stepwise run with audit gates
 
-Use the stepwise workflow when intermediate objects must be inspected or restarted. Each stage writes a classed RDS object. RegCompassR 1.8.2 verifies workflow parameters, GEM fingerprints, and ordered metacell IDs before accepting downstream inputs.
+Use the stepwise workflow when intermediate objects must be inspected or restarted. Each stage writes a classed RDS object. RegCompassR 1.8.3 verifies workflow parameters, GEM fingerprints, and ordered metacell IDs before accepting downstream inputs.
 
 ## Setup
 
@@ -238,7 +238,7 @@ result <- rc_regcompass_step_results(
 )
 
 stopifnot(
-  identical(result$version, "1.8.2"),
+  identical(result$version, "1.8.3"),
   identical(result$schema_version, "regcompass_grn_first_v2"),
   nrow(result$reaction_ranking) > 0,
   nrow(result$reaction_catalog) > 0,

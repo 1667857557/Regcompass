@@ -1,4 +1,4 @@
-# RegCompassR 1.8.2 workflow
+# RegCompassR 1.8.3 workflow
 
 ## Canonical data flow
 

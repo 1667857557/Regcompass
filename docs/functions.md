@@ -1,10 +1,13 @@
-# Public functions in RegCompassR 1.8.2
+# Public functions in RegCompassR 1.8.3
 
 ## Setup and complete runs
 
-- `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: prepare validated species GEMs.
+- `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: load the bundled pinned model by default or explicitly download/rebuild an updated release.
+- `rc_bundled_gem_manifest()`: inspect installed Human-GEM/Mouse-GEM release, checksum, size, citation, and license metadata.
+- `rc_download_species_gem()`: lower-level official repository download/parse path retained for updates.
+- `rc_parallel_config()`: inspect the OS-resolved backend and worker count before execution.
 - `rc_make_medium_scenarios()`: create one shared medium table; see [medium presets](medium-presets.md).
-- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete GRN-first workflow.
+- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete GRN-first workflow with progress and timing output.
 
 ## Inspectable stages
 
@@ -14,9 +17,9 @@
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction expression.
 - `rc_regcompass_step_layer2()`: persistent union/full-GEM cache and directional LP scoring.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
-- `rc_regcompass_step_target_union()`: use previously scored cores as anchors, directly map reactions sharing KEGG, Reactome, or master-Rhea identifiers, and score only mapped reactions that were not global core targets. Same-subsystem and recursive expansion are not used.
+- `rc_regcompass_step_target_union()`: directly map selected previous cores through shared KEGG, Reactome, or master-Rhea identifiers and score only mapped non-core reactions.
 
-Stages 3-6 validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object.
+Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Every public stage returns a timing table and writes `step_timing.tsv`.
 
 ## Interpretation and plotting
 
@@ -29,6 +32,7 @@ Sample balancing is not part of the canonical workflow. Metacell-level compariso
 
 ## Tutorials
 
+- [Portable execution, bundled GEMs, progress, and timing](portable-execution.md)
 - [Level 1: quick start](tutorial-01-quick-start.md)
 - [Level 2: stepwise audit](tutorial-02-stepwise-audit.md)
 - [Level 3: restart and diagnostics](tutorial-03-advanced-restart.md)

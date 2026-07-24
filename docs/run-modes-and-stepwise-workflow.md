@@ -1,4 +1,4 @@
-# RegCompassR 1.8.2 tutorial index
+# RegCompassR 1.8.3 tutorial index
 
 Choose the lowest level that provides the required control. All levels use the same GRN-first biological model and defaults.
 

@@ -679,7 +679,10 @@ rc_regcompass_step_target_union <- function(
     layer1, meta_modules, layer2, gem, outdir,
     core_reaction_ids = NULL, core_genes = NULL,
     gene_match = c("complete_gpr", "any_direct"),
-    layer2_args = list(), parallel = TRUE, BPPARAM = NULL) {
+    layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+    progress = getOption("RegCompassR.progress", TRUE)) {
+  monitor <- .rc_step_monitor_start("target_union", outdir, progress)
+  on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   gene_match <- match.arg(gene_match)
   .rc_require_stage_class(
     meta_modules, "regcompass_meta_module_step", "meta_modules",
@@ -790,6 +793,7 @@ rc_regcompass_step_target_union <- function(
   answer$workflow_params <- workflow
   answer$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   class(answer) <- c("regcompass_target_union_step", "list")
+  answer <- .rc_step_monitor_finish(answer, monitor)
   saveRDS(answer, file.path(outdir, "step_target_union.rds"))
   answer
 }
