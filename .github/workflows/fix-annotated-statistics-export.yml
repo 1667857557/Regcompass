@@ -23,28 +23,26 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
+
           path = Path("R/condition_statistics.R")
           text = path.read_text(encoding="utf-8")
-          old_pairwise = '''    .rc_write_tsv_gz(
-                pairwise,
-                file.path(outdir, "condition_reaction_pairwise.tsv.gz")
-              )'''
-          new_pairwise = '''    .rc_write_tsv_gz(
-                answer$pairwise,
-                file.path(outdir, "condition_reaction_pairwise.tsv.gz")
-              )'''
-          old_omnibus = '''      .rc_write_tsv_gz(
-                  omnibus,
-                  file.path(outdir, "condition_reaction_omnibus.tsv.gz")
-                )'''
-          new_omnibus = '''      .rc_write_tsv_gz(
-                  answer$omnibus,
-                  file.path(outdir, "condition_reaction_omnibus.tsv.gz")
-                )'''
-          if old_pairwise not in text or old_omnibus not in text:
-              raise SystemExit("Expected export blocks were not found")
-          text = text.replace(old_pairwise, new_pairwise, 1)
-          text = text.replace(old_omnibus, new_omnibus, 1)
+          text, n_pairwise = re.subn(
+              r'(\.rc_write_tsv_gz\(\n\s*)pairwise,(\n\s*file\.path\(outdir, "condition_reaction_pairwise\.tsv\.gz"\))',
+              r'\1answer$pairwise,\2',
+              text,
+              count=1,
+          )
+          text, n_omnibus = re.subn(
+              r'(\.rc_write_tsv_gz\(\n\s*)omnibus,(\n\s*file\.path\(outdir, "condition_reaction_omnibus\.tsv\.gz"\))',
+              r'\1answer$omnibus,\2',
+              text,
+              count=1,
+          )
+          if n_pairwise != 1 or n_omnibus != 1:
+              raise SystemExit(
+                  f"Unexpected export replacements: pairwise={n_pairwise}, omnibus={n_omnibus}"
+              )
           path.write_text(text, encoding="utf-8")
           PY
 
