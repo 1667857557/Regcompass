@@ -482,7 +482,7 @@
     stop("Second-pass score semantics differ across medium scenarios.",
          call. = FALSE)
   }
-  noninformative <- unlist(lapply(results, function(result) {
+  noninformative_values <- lapply(results, function(result) {
     value <- result$noninformative_target
     if (is.null(value)) {
       value <- stats::setNames(
@@ -491,7 +491,11 @@
       )
     }
     value
-  }), use.names = TRUE)
+  })
+  noninformative <- unlist(
+    unname(noninformative_values),
+    use.names = TRUE
+  )
   attr(score, "score_semantics") <- score_semantics[[1L]]
   attr(score, "noninformative_target") <- noninformative
 
@@ -584,15 +588,17 @@
     scenario <- as.character(source_summary$medium_scenario[[i]])
     source_file <- as.character(source_summary$file[[i]])
     source_model <- readRDS(source_file)
+    scenario_entries <- model_cache[vapply(
+      model_cache,
+      function(entry) identical(
+        as.character(entry$medium_scenario),
+        scenario
+      ),
+      logical(1)
+    )]
+    if (!length(scenario_entries)) next
     target_reactions <- unique(vapply(
-      model_cache[vapply(
-        model_cache,
-        function(entry) identical(
-          as.character(entry$medium_scenario),
-          scenario
-        ),
-        logical(1)
-      )],
+      scenario_entries,
       `[[`,
       character(1),
       "reaction_id"
