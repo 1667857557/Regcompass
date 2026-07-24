@@ -63,20 +63,17 @@
   on.exit(.rc_restore_internal_threads(thread_state), add = TRUE)
 
   param <- .rc_phase_bpparam(config$workers, backend = "auto")
-  started <- FALSE
-
-  if (!identical(param, FALSE) && !is.null(param)) {
-    BiocParallel::bpstart(param)
-    started <- TRUE
-  }
-
   on.exit({
-    if (started || (!identical(param, FALSE) && !is.null(param))) {
+    if (!identical(param, FALSE) && !is.null(param)) {
       .rc_release_bpparam(param)
     }
     param <- FALSE
     invisible(gc(verbose = FALSE, full = TRUE))
   }, add = TRUE)
+
+  if (!identical(param, FALSE) && !is.null(param)) {
+    BiocParallel::bpstart(param)
+  }
 
   FUN(param, config)
 }
