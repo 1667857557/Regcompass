@@ -10,29 +10,23 @@ rc_prepare_gem(
   cache_dir = tools::R_user_dir("RegCompassR", "cache"),
   save_rds = NULL,
   force_download = FALSE,
-  allow_latest = FALSE
+  allow_latest = FALSE,
+  source = c("auto", "bundled", "download")
 )
 }
 \arguments{
 \item{species}{Model organism: \code{"human"} or \code{"mouse"}.}
-
-\item{version}{Pinned release version. Defaults to Human-GEM 2.0.0 or
-Mouse-GEM 1.8.0.}
-
+\item{version}{Pinned release version. Defaults to Human-GEM 2.0.0 or Mouse-GEM 1.8.0.}
 \item{cache_dir}{Persistent model cache directory.}
-
-\item{save_rds}{Optional output RDS path. When \code{NULL}, a species/version path
-is generated inside \code{cache_dir}.}
-
-\item{force_download}{Re-download and rebuild an existing cached model.}
-
+\item{save_rds}{Optional output RDS path. When \code{NULL}, a species/version path is generated inside \code{cache_dir}.}
+\item{force_download}{Re-download and rebuild an existing cached model. This implies \code{source = "download"}.}
 \item{allow_latest}{Permit the unpinned \code{version = "latest"} mode.}
+\item{source}{Model source. \code{"auto"} checks a compatible user cache, then the installed bundled asset, and downloads only when required. \code{"bundled"} forbids network fallback. \code{"download"} runs the official download and conversion path.}
 }
-\value{
-A validated RegCompass GEM list.
-}
+\value{A validated RegCompass GEM list.}
 \description{
-Downloads and converts a pinned official SysBioChalmers GEM release. Human
-mode uses Human-GEM and mouse mode uses Mouse-GEM directly; mouse genes are
-retained as mouse symbols and are not converted through human orthologues.
+Loads the bundled pinned Human-GEM or Mouse-GEM by default. The official download and conversion path remains available for custom or updated releases. Mouse genes remain mouse symbols and are not converted through human orthologues.
+}
+\details{
+RegCompassR 1.8.3 bundles Human-GEM 2.0.0 and Mouse-GEM 1.8.0 under \code{inst/extdata/gem}. Use \code{rc_bundled_gem_manifest()} to inspect source, release, checksum, size, citation, and license metadata.
 }
