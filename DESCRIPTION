@@ -77,9 +77,9 @@ Imports:
     matrixStats,
     methods,
     highs,
-    SeuratObject (>= 4.1.4),
-    Seurat (>= 4.4.0),
-    Signac (>= 1.11.0)
+    SeuratObject (= 4.1.4),
+    Seurat (= 4.4.0),
+    Signac (= 1.11.0)
 Suggests:
     BiocParallel,
     Pando,
