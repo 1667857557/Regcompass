@@ -119,6 +119,10 @@ rc_default_bpparam <- function(
 
 #' Apply a function with optional BiocParallel control
 #'
+#' RegCompass starts package-managed pools only after forcing every nested
+#' numerical and solver task to one internal thread. A pool created by this
+#' function is always stopped and followed by full garbage collection.
+#'
 #' @param X A vector or list.
 #' @param FUN Function applied to each element.
 #' @param BPPARAM `NULL`, `FALSE`, or a `BiocParallelParam`.
@@ -147,10 +151,17 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
   if (length(X) <= 1L) return(lapply(X, FUN, ...))
   if (is.null(BPPARAM)) BPPARAM <- rc_default_bpparam()
   if (is.null(BPPARAM)) return(lapply(X, FUN, ...))
+
   was_started <- isTRUE(BiocParallel::bpisup(BPPARAM))
+  thread_state <- NULL
   if (!was_started) {
+    thread_state <- .rc_set_internal_single_thread()
     BiocParallel::bpstart(BPPARAM)
-    on.exit(BiocParallel::bpstop(BPPARAM), add = TRUE)
+    on.exit({
+      .rc_release_bpparam(BPPARAM)
+      .rc_restore_internal_threads(thread_state)
+      invisible(gc(verbose = FALSE, full = TRUE))
+    }, add = TRUE)
   }
   BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
 }
