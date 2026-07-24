@@ -200,3 +200,128 @@
   rownames(answer) <- NULL
   answer
 }
+
+# Carry every evidence-provenance field into pairwise contrasts. This dynamic
+# join prevents new reaction-level diagnostics from being silently omitted.
+.rc_ra_pairwise_evidence <- function(data, evidence) {
+  if (!is.data.frame(data) || !nrow(data) ||
+      !is.data.frame(evidence) || !nrow(evidence)) return(data)
+  index <- .rc_ra_evidence_index(evidence)
+  fields <- setdiff(
+    colnames(evidence), c("reaction_id", "condition", "cell_type", "n_units")
+  )
+  for (suffix in c("a", "b")) {
+    condition <- data[[paste0("condition_", suffix)]]
+    key <- paste(data$reaction_id, condition, data$cell_type, sep = "\001")
+    idx <- match(key, index)
+    for (field in fields) {
+      data[[paste0(field, "_", suffix)]] <- evidence[[field]][idx]
+    }
+  }
+  data$evidence_comparison <- paste0(
+    data$condition_a, "=", data$evidence_class_a, ";",
+    data$condition_b, "=", data$evidence_class_b
+  )
+  data
+}
+
+# Omnibus rows retain a compact condition-wise evidence and capacity-shift audit.
+.rc_ra_omnibus_evidence <- function(data, evidence, conditions) {
+  if (!is.data.frame(data) || !nrow(data) ||
+      !is.data.frame(evidence) || !nrow(evidence)) return(data)
+  index <- .rc_ra_evidence_index(evidence)
+  summary <- lapply(seq_len(nrow(data)), function(i) {
+    keys <- paste(
+      data$reaction_id[[i]], conditions, data$cell_type[[i]], sep = "\001"
+    )
+    one <- evidence[match(keys, index), , drop = FALSE]
+    classes <- as.character(one$evidence_class)
+    resolutions <- as.character(one$evidence_resolution)
+    median_shift <- suppressWarnings(as.numeric(
+      one$median_multiome_capacity_shift
+    ))
+    max_shift <- suppressWarnings(as.numeric(
+      one$max_abs_multiome_capacity_shift
+    ))
+    overall <- if (any(classes == "RNA+ATAC", na.rm = TRUE)) {
+      "RNA+ATAC"
+    } else if (any(classes == "RNA-only", na.rm = TRUE)) {
+      "RNA-only"
+    } else if (any(classes == "GPR/no-observed-RNA", na.rm = TRUE)) {
+      "GPR/no-observed-RNA"
+    } else {
+      "structural/no-GPR"
+    }
+    format_number <- function(x) {
+      ifelse(
+        is.finite(x),
+        format(signif(x, 6), scientific = TRUE, trim = TRUE),
+        "NA"
+      )
+    }
+    data.frame(
+      evidence_class = overall,
+      evidence_by_condition = paste0(
+        conditions, "=", ifelse(is.na(classes), "unknown", classes),
+        collapse = ";"
+      ),
+      evidence_resolution_by_condition = paste0(
+        conditions, "=", ifelse(
+          is.na(resolutions), "unknown", resolutions
+        ),
+        collapse = ";"
+      ),
+      median_multiome_capacity_shift_by_condition = paste0(
+        conditions, "=", format_number(median_shift), collapse = ";"
+      ),
+      max_abs_multiome_capacity_shift_by_condition = paste0(
+        conditions, "=", format_number(max_shift), collapse = ";"
+      ),
+      multiome_supported_conditions = .rc_ra_collapse(
+        conditions[classes == "RNA+ATAC"]
+      ),
+      has_active_multiome_contribution = any(
+        one$has_active_multiome_contribution %in% TRUE, na.rm = TRUE
+      ),
+      stringsAsFactors = FALSE
+    )
+  })
+  summary <- do.call(rbind, summary)
+  for (column in colnames(summary)) data[[column]] <- summary[[column]]
+  data
+}
+
+# Public annotation entry point with reaction-level evidence semantics.
+rc_build_reaction_annotations <- function(
+    gem, layer1 = NULL, reaction_ids = NULL,
+    condition_col = NULL, celltype_col = NULL,
+    evidence_tolerance = 1e-8) {
+  if (!is.numeric(evidence_tolerance) || length(evidence_tolerance) != 1L ||
+      !is.finite(evidence_tolerance) || evidence_tolerance < 0) {
+    stop("`evidence_tolerance` must be one non-negative finite number.",
+         call. = FALSE)
+  }
+  catalog <- .rc_ra_reaction_catalog(gem, layer1, reaction_ids)
+  evidence <- .rc_ra_group_evidence(
+    catalog = catalog,
+    layer1 = layer1,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    evidence_tolerance = evidence_tolerance
+  )
+  answer <- list(
+    reactions = catalog,
+    evidence = evidence,
+    params = list(
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      evidence_tolerance = evidence_tolerance,
+      evidence_definition = paste(
+        "RNA+ATAC requires GPR-aggregated reaction capacity from integrated",
+        "gene support to differ from RNA-only reaction capacity"
+      )
+    )
+  )
+  class(answer) <- c("regcompass_reaction_annotations", "list")
+  answer
+}
