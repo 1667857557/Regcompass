@@ -2,8 +2,8 @@
 
 .rc_condition_stats_microcompass <- function(x) {
   if (is.list(x) && !is.null(x$microcompass)) x <- x$microcompass
-  if (!is.list(x) || is.null(x$penalty) || is.null(x$vmax) ||
-      is.null(x$feasible) || is.null(x$unit_meta)) {
+  required <- c("penalty", "vmax", "feasible", "unit_meta")
+  if (!is.list(x) || !all(required %in% names(x))) {
     stop(
       "`x` must be a microCOMPASS result or a RegCompass result containing `microcompass`.",
       call. = FALSE
@@ -14,8 +14,9 @@
 
 .rc_condition_stats_column <- function(meta, supplied, candidates, label) {
   if (!is.null(supplied)) {
-    if (!is.character(supplied) || length(supplied) != 1L ||
-        is.na(supplied) || !nzchar(supplied) || !supplied %in% colnames(meta)) {
+    valid <- is.character(supplied) && length(supplied) == 1L &&
+      !is.na(supplied) && nzchar(supplied) && supplied %in% colnames(meta)
+    if (!valid) {
       stop("`", label, "` must name one column in `unit_meta`.", call. = FALSE)
     }
     return(supplied)
@@ -60,11 +61,12 @@
       as.character(comparisons[i, , drop = TRUE])
     })
   }
+  valid_pair <- function(z) {
+    is.character(z) && length(z) == 2L && !anyNA(z) &&
+      all(nzchar(trimws(z))) && z[[1L]] != z[[2L]]
+  }
   if (!is.list(comparisons) || !length(comparisons) ||
-      any(!vapply(comparisons, function(z) {
-        is.character(z) && length(z) == 2L && !anyNA(z) &&
-          all(nzchar(trimws(z))) && z[[1L]] != z[[2L]]
-      }, logical(1)))) {
+      any(!vapply(comparisons, valid_pair, logical(1)))) {
     stop(
       "`comparisons` must be NULL, a two-column object, or a list of two-condition character vectors.",
       call. = FALSE
@@ -73,10 +75,14 @@
   comparisons <- lapply(comparisons, as.character)
   unknown <- setdiff(unique(unlist(comparisons, use.names = FALSE)), conditions)
   if (length(unknown)) {
-    stop("Unknown conditions in `comparisons`: ", paste(unknown, collapse = ", "),
-         call. = FALSE)
+    stop(
+      "Unknown conditions in `comparisons`: ", paste(unknown, collapse = ", "),
+      call. = FALSE
+    )
   }
-  keys <- vapply(comparisons, paste, collapse = "\001", character(1))
+  keys <- vapply(
+    comparisons, function(z) paste(z, collapse = "\001"), character(1)
+  )
   comparisons[!duplicated(keys)]
 }
 
@@ -86,10 +92,14 @@
   groups <- if (!length(group_cols)) {
     list(all = seq_len(nrow(data)))
   } else {
-    split(
-      seq_len(nrow(data)),
-      interaction(data[, group_cols, drop = FALSE], drop = TRUE, lex.order = TRUE)
+    group_values <- lapply(data[, group_cols, drop = FALSE], function(z) {
+      factor(z, exclude = NULL)
+    })
+    group_factor <- do.call(
+      interaction,
+      c(group_values, list(drop = TRUE, lex.order = TRUE))
     )
+    split(seq_len(nrow(data)), group_factor)
   }
   for (rows in groups) {
     valid <- rows[is.finite(data$p_value[rows])]
@@ -109,7 +119,7 @@
   median_b <- if (n_b) stats::median(b) else NA_real_
   mean_a <- if (n_a) mean(a) else NA_real_
   mean_b <- if (n_b) mean(b) else NA_real_
-  base <- list(
+  answer <- list(
     n_a = n_a,
     n_b = n_b,
     median_score_a = median_a,
@@ -123,38 +133,39 @@
     p_value = NA_real_,
     test_status = "insufficient_units"
   )
-  if (n_a < min_units || n_b < min_units) return(base)
+  if (n_a < min_units || n_b < min_units) return(answer)
 
   combined <- c(b, a)
   ranks <- rank(combined, ties.method = "average")
   u_b <- sum(ranks[seq_len(n_b)]) - n_b * (n_b + 1) / 2
   probability <- u_b / (n_a * n_b)
-  base$common_language_b_greater_a <- probability
-  base$rank_biserial_b_minus_a <- 2 * probability - 1
+  answer$common_language_b_greater_a <- probability
+  answer$rank_biserial_b_minus_a <- 2 * probability - 1
 
   pooled_variance <- (
     (n_a - 1) * stats::var(a) + (n_b - 1) * stats::var(b)
   ) / (n_a + n_b - 2)
   if (is.finite(pooled_variance) && pooled_variance > 0) {
-    base$cohens_d_b_minus_a <- (mean_b - mean_a) / sqrt(pooled_variance)
+    answer$cohens_d_b_minus_a <- (mean_b - mean_a) / sqrt(pooled_variance)
   } else if (isTRUE(all.equal(mean_a, mean_b))) {
-    base$cohens_d_b_minus_a <- 0
+    answer$cohens_d_b_minus_a <- 0
   }
 
   if (length(unique(combined)) == 1L) {
-    base$p_value <- 1
-    base$test_status <- "constant_equal"
-    return(base)
+    answer$p_value <- 1
+    answer$test_status <- "constant_equal"
+    return(answer)
   }
   test <- suppressWarnings(stats::wilcox.test(
-    b, a,
+    x = b,
+    y = a,
     alternative = "two.sided",
     exact = FALSE,
     correct = wilcox_correct
   ))
-  base$p_value <- unname(test$p.value)
-  base$test_status <- if (is.finite(base$p_value)) "ok" else "test_failed"
-  base
+  answer$p_value <- unname(test$p.value)
+  answer$test_status <- if (is.finite(answer$p_value)) "ok" else "test_failed"
+  answer
 }
 
 #' Test reaction support differences between conditions
@@ -225,19 +236,20 @@ rc_test_condition_reactions <- function(
     include_scores = FALSE,
     outdir = NULL) {
   p_adjust_scope <- match.arg(p_adjust_scope)
+  logical_controls <- c(
+    include_omnibus = include_omnibus,
+    wilcox_correct = wilcox_correct,
+    include_scores = include_scores
+  )
+  if (anyNA(logical_controls) || !all(logical_controls %in% c(TRUE, FALSE))) {
+    stop("Logical controls must be one non-missing TRUE/FALSE value.", call. = FALSE)
+  }
   if (!is.numeric(min_units) || length(min_units) != 1L ||
       !is.finite(min_units) || min_units < 2 ||
       abs(min_units - round(min_units)) > sqrt(.Machine$double.eps)) {
     stop("`min_units` must be one integer of at least two.", call. = FALSE)
   }
   min_units <- as.integer(min_units)
-  if (!is.logical(include_omnibus) || length(include_omnibus) != 1L ||
-      is.na(include_omnibus) || !is.logical(wilcox_correct) ||
-      length(wilcox_correct) != 1L || is.na(wilcox_correct) ||
-      !is.logical(include_scores) || length(include_scores) != 1L ||
-      is.na(include_scores)) {
-    stop("Logical controls must be one non-missing TRUE/FALSE value.", call. = FALSE)
-  }
   if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0 ||
       !is.numeric(vmax_tolerance) || length(vmax_tolerance) != 1L ||
       !is.finite(vmax_tolerance) || vmax_tolerance < 0) {
@@ -252,11 +264,11 @@ rc_test_condition_reactions <- function(
   penalty <- as.matrix(microcompass$penalty)
   vmax <- as.matrix(microcompass$vmax)
   feasible <- as.matrix(microcompass$feasible)
-  valid_matrix <- function(z) {
+  valid_numeric_matrix <- function(z) {
     is.numeric(z) && !is.null(rownames(z)) && !is.null(colnames(z)) &&
       !anyDuplicated(rownames(z)) && !anyDuplicated(colnames(z))
   }
-  if (!valid_matrix(penalty) || !valid_matrix(vmax) ||
+  if (!valid_numeric_matrix(penalty) || !valid_numeric_matrix(vmax) ||
       !is.logical(feasible) || is.null(dim(feasible)) ||
       !identical(dimnames(penalty), dimnames(vmax)) ||
       !identical(dimnames(penalty), dimnames(feasible))) {
@@ -265,15 +277,18 @@ rc_test_condition_reactions <- function(
   }
 
   meta <- microcompass$unit_meta
-  if (!is.data.frame(meta)) stop("microCOMPASS `unit_meta` must be a data frame.",
-                                 call. = FALSE)
+  if (!is.data.frame(meta)) {
+    stop("microCOMPASS `unit_meta` must be a data frame.", call. = FALSE)
+  }
   condition_col <- .rc_condition_stats_column(
-    meta, condition_col,
+    meta,
+    condition_col,
     c("condition", "dataset", "Group", "group", "treatment"),
     "condition_col"
   )
   celltype_col <- .rc_condition_stats_column(
-    meta, celltype_col,
+    meta,
+    celltype_col,
     c("cell_type", "celltype", "epithelial_or_stem", "CellType"),
     "celltype_col"
   )
@@ -294,25 +309,25 @@ rc_test_condition_reactions <- function(
 
   available_conditions <- unique(condition_values)
   available_cell_types <- unique(celltype_values)
-  conditions <- if (is.null(conditions)) available_conditions else as.character(conditions)
-  cell_types <- if (is.null(cell_types)) available_cell_types else as.character(cell_types)
+  conditions <- if (is.null(conditions)) available_conditions else unique(as.character(conditions))
+  cell_types <- if (is.null(cell_types)) available_cell_types else unique(as.character(cell_types))
+  if (!length(conditions) || anyNA(conditions) || any(!nzchar(trimws(conditions))) ||
+      !length(cell_types) || anyNA(cell_types) || any(!nzchar(trimws(cell_types)))) {
+    stop("`conditions` and `cell_types` must contain non-empty values.", call. = FALSE)
+  }
   unknown_conditions <- setdiff(conditions, available_conditions)
   unknown_cell_types <- setdiff(cell_types, available_cell_types)
   if (length(unknown_conditions) || length(unknown_cell_types)) {
-    stop(
-      paste0(
-        if (length(unknown_conditions)) {
-          paste0("Unknown conditions: ", paste(unknown_conditions, collapse = ", "), ". ")
-        } else "",
-        if (length(unknown_cell_types)) {
-          paste0("Unknown cell types: ", paste(unknown_cell_types, collapse = ", "), ".")
-        } else ""
-      ),
-      call. = FALSE
+    message <- c(
+      if (length(unknown_conditions)) {
+        paste0("Unknown conditions: ", paste(unknown_conditions, collapse = ", "), ".")
+      },
+      if (length(unknown_cell_types)) {
+        paste0("Unknown cell types: ", paste(unknown_cell_types, collapse = ", "), ".")
+      }
     )
+    stop(paste(message, collapse = " "), call. = FALSE)
   }
-  conditions <- unique(conditions)
-  cell_types <- unique(cell_types)
   if (length(conditions) < 2L) {
     stop("At least two conditions are required.", call. = FALSE)
   }
@@ -332,7 +347,9 @@ rc_test_condition_reactions <- function(
     row_keep <- row_keep &
       row_meta$medium_scenario %in% as.character(medium_scenarios)
   }
-  if (!any(row_keep)) stop("No reaction targets remain after filtering.", call. = FALSE)
+  if (!any(row_keep)) {
+    stop("No reaction targets remain after filtering.", call. = FALSE)
+  }
   penalty <- penalty[row_keep, , drop = FALSE]
   vmax <- vmax[row_keep, , drop = FALSE]
   feasible <- feasible[row_keep, , drop = FALSE]
@@ -357,12 +374,14 @@ rc_test_condition_reactions <- function(
     stop("microCOMPASS `omega` must be in (0, 1].", call. = FALSE)
   }
   required_flux <- omega * vmax
-  normalized <- penalty / required_flux
-  score <- -log(normalized + eps)
-  score[!feasible | !is.finite(normalized) | normalized < 0 |
-          !is.finite(score) | required_flux <= 0] <- NA_real_
+  normalized_penalty <- penalty / required_flux
+  score <- -log(normalized_penalty + eps)
+  invalid_score <- !feasible | !is.finite(normalized_penalty) |
+    normalized_penalty < 0 | !is.finite(score) | required_flux <= 0
+  score[invalid_score] <- NA_real_
 
-  selected_units <- condition_values %in% conditions & celltype_values %in% cell_types
+  selected_units <- condition_values %in% conditions &
+    celltype_values %in% cell_types
   score <- score[, selected_units, drop = FALSE]
   meta <- meta[selected_units, , drop = FALSE]
   condition_values <- as.character(meta[[condition_col]])
@@ -446,10 +465,14 @@ rc_test_condition_reactions <- function(
   pairwise$p_adjust_method <- p_adjust_method
   pairwise$p_adjust_scope <- p_adjust_scope
   pairwise <- pairwise[order(
-    pairwise$cell_type, pairwise$condition_a, pairwise$condition_b,
-    pairwise$medium_scenario, pairwise$p_adj,
+    pairwise$cell_type,
+    pairwise$condition_a,
+    pairwise$condition_b,
+    pairwise$medium_scenario,
+    pairwise$p_adj,
     -abs(pairwise$rank_biserial_b_minus_a),
-    pairwise$reaction_id, pairwise$target_direction,
+    pairwise$reaction_id,
+    pairwise$target_direction,
     na.last = TRUE
   ), , drop = FALSE]
   rownames(pairwise) <- NULL
@@ -467,16 +490,16 @@ rc_test_condition_reactions <- function(
         })
         names(groups) <- conditions
         counts <- vapply(groups, length, integer(1))
-        valid <- all(counts >= min_units)
         p_value <- NA_real_
         status <- "insufficient_units"
-        if (valid) {
-          combined <- unlist(groups, use.names = FALSE)
-          if (length(unique(combined)) == 1L) {
+        if (all(counts >= min_units)) {
+          values <- unlist(groups, use.names = FALSE)
+          labels <- factor(rep(names(groups), lengths(groups)), levels = names(groups))
+          if (length(unique(values)) == 1L) {
             p_value <- 1
             status <- "constant_equal"
           } else {
-            test <- suppressWarnings(stats::kruskal.test(groups))
+            test <- suppressWarnings(stats::kruskal.test(x = values, g = labels))
             p_value <- unname(test$p.value)
             status <- if (is.finite(p_value)) "ok" else "test_failed"
           }
@@ -519,8 +542,11 @@ rc_test_condition_reactions <- function(
     omnibus$p_adjust_method <- p_adjust_method
     omnibus$p_adjust_scope <- p_adjust_scope
     omnibus <- omnibus[order(
-      omnibus$cell_type, omnibus$medium_scenario, omnibus$p_adj,
-      omnibus$reaction_id, omnibus$target_direction,
+      omnibus$cell_type,
+      omnibus$medium_scenario,
+      omnibus$p_adj,
+      omnibus$reaction_id,
+      omnibus$target_direction,
       na.last = TRUE
     ), , drop = FALSE]
     rownames(omnibus) <- NULL
@@ -563,8 +589,9 @@ rc_test_condition_reactions <- function(
   class(answer) <- c("regcompass_condition_statistics", "list")
 
   if (!is.null(outdir)) {
-    if (!is.character(outdir) || length(outdir) != 1L || is.na(outdir) ||
-        !nzchar(outdir)) {
+    valid_outdir <- is.character(outdir) && length(outdir) == 1L &&
+      !is.na(outdir) && nzchar(outdir)
+    if (!valid_outdir) {
       stop("`outdir` must be one non-empty path.", call. = FALSE)
     }
     dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
