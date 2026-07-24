@@ -86,6 +86,9 @@ rc_parallel_config <- function(
 
 #' Build the default RegCompass parallel backend
 #'
+#' The backend's task-level progress bar follows
+#' `options(RegCompassR.progress = TRUE/FALSE)`.
+#'
 #' @param workers Optional worker count.
 #' @param backend Requested backend.
 #' @return A `BiocParallelParam` object or `NULL` for sequential execution.
@@ -94,14 +97,20 @@ rc_default_bpparam <- function(
     backend = c("auto", "serial", "snow", "multicore")) {
   config <- rc_parallel_config(workers = workers, backend = backend)
   if (identical(config$actual_backend, "serial")) return(NULL)
+  show_progress <- .rc_progress_enabled(
+    getOption("RegCompassR.progress", TRUE)
+  )
 
   param <- if (identical(config$actual_backend, "snow")) {
     BiocParallel::SnowParam(
-      workers = config$workers, type = "SOCK", progressbar = FALSE
+      workers = config$workers,
+      type = "SOCK",
+      progressbar = show_progress
     )
   } else {
     BiocParallel::MulticoreParam(
-      workers = config$workers, progressbar = FALSE
+      workers = config$workers,
+      progressbar = show_progress
     )
   }
   attr(param, "regcompass_parallel_config") <- config
