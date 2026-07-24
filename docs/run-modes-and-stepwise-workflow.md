@@ -1,12 +1,14 @@
 # RegCompassR 1.8.3 tutorial index
 
-Choose the lowest level that provides the required control. All levels use the same GRN-first biological model and defaults.
+Choose the lowest level that provides the required control. All levels use the same GRN-first biological model and `gamma = 30` default.
 
 | Level | Use | Tutorial |
 |---|---|---|
-| 1 | validated complete analysis | [Quick start](tutorial-01-quick-start.md) |
-| 2 | audit saved classed stage objects | [Saved-stage audit](tutorial-02-stepwise-audit.md) |
+| 1 | complete one-shot analysis | [One-shot quick start](tutorial-01-quick-start.md) |
+| 2 | execute and audit every stage independently | [True stepwise workflow](tutorial-02-stepwise-audit.md) |
 | 3 | restart, sensitivity, resource allocation, and failure diagnosis | [Advanced restart](tutorial-03-advanced-restart.md) |
+| 4 | remap selected genes or reactions and run second-pass scoring | [Targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md) |
+| 5 | compare reaction support across conditions | [Condition differential analysis](tutorial-05-condition-differential-analysis.md) |
 
 The exact input/output requirements for every stage are summarized in [Stage input-output contracts](stage-interface-contracts.md).
 
@@ -16,7 +18,7 @@ The exact input/output requirements for every stage are summarized in [Stage inp
 single-cell RNA normalization
 → cell-type-shared ATAC TF-IDF across conditions
 → Pando GRN per condition × cell type (peak_cor = 0.01)
-→ cell-type-guided SuperCell2 metacells within condition (gamma = 75)
+→ cell-type-guided SuperCell2 metacells within condition (gamma = 30)
 → complete-GPR core reactions
 → subsystem + KEGG/Reactome + master-Rhea expansion
 → local FASTCORE feasibility completion
@@ -37,7 +39,7 @@ upstream_workers <- 6L
 layer2_workers <- 30L
 ```
 
-The package selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS. Set both values to one for fully serial execution. `parallel_backend`, manually created `BPPARAM` objects, and independent local-FASTCORE worker fields are not part of the canonical complete-run interface.
+The package selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS. Set both values to one for fully serial execution. `parallel_backend`, manually created `BPPARAM` objects, and independent local-FASTCORE worker fields are not part of the canonical complete-run interface. The true stepwise tutorial deliberately exposes per-stage `BPPARAM` objects because the user controls each stage independently.
 
 | Stage | Parallel unit | Worker layer |
 |---|---|---|
@@ -53,8 +55,8 @@ Each worker processes one internally single-threaded task. Pando's inner paralle
 
 ## Optional analyses after Layer 2
 
-- [Direct database-linked non-core scoring](target-union-scoring.md): use previous core reactions or GPR genes as anchors, directly map reactions sharing KEGG, Reactome, or master-Rhea IDs, and score only mapped non-core reactions in the exact cached union GEM. Same-subsystem and recursive expansion are not used.
-- [Condition-associated reaction statistics](condition-reaction-statistics.md): compare the same reaction, direction, medium, and cell type across conditions.
+- [Tutorial Level 4: targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md): use previous core reactions or GPR genes as anchors, directly map reactions sharing KEGG, Reactome, or master-Rhea IDs, and score only mapped non-core reactions in the exact cached union GEM. Same-subsystem and recursive expansion are not used. The detailed API contract is in [Direct database-linked non-core scoring](target-union-scoring.md).
+- [Tutorial Level 5: condition differential analysis](tutorial-05-condition-differential-analysis.md): compare the same reaction, direction, medium, and cell type across conditions. The detailed statistical contract is in [Condition-associated reaction statistics](condition-reaction-statistics.md).
 
 ## Required input
 
