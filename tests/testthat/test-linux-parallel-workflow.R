@@ -34,6 +34,8 @@ test_that("canonical workflow injects layered workers and automatic backend", {
   expect_match(text, "layer2_workers = 30L", fixed = TRUE)
   expect_match(text, ".rc_stage_worker_config(", fixed = TRUE)
   expect_match(text, ".rc_with_stage_workers(", fixed = TRUE)
+  expect_match(text, "pando_infer_args$parallel <- FALSE", fixed = TRUE)
+  expect_match(text, "result$params$pando_internal_parallel <- FALSE", fixed = TRUE)
   expect_match(text, "local_fastcore_args$workers <- upstream_config$workers", fixed = TRUE)
   expect_match(text, "local_fastcore_args$backend <- \"auto\"", fixed = TRUE)
   expect_match(text, "result$params$internal_threads_per_task <- 1L", fixed = TRUE)
