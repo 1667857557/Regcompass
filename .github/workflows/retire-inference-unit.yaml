@@ -1,0 +1,34 @@
+name: Retire inference-unit compatibility
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/retire-inference-unit.yaml
+      - scripts/remove-retired-inference-unit.py
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    if: github.head_ref == 'agent/regcompass-1.8.3-portable-gems'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/regcompass-1.8.3-portable-gems
+          fetch-depth: 0
+      - name: Remove retired compatibility block
+        run: python scripts/remove-retired-inference-unit.py
+      - name: Parse modified source
+        shell: Rscript {0}
+        run: parse("R/microcompass.R")
+      - name: Commit canonical implementation
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add R/microcompass.R
+          git commit -m "Remove retired inference-unit compatibility"
+          git push origin HEAD:agent/regcompass-1.8.3-portable-gems
