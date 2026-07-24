@@ -9,8 +9,9 @@ Description: Builds condition-by-cell-type regulatory networks from paired
     complete-GPR core reactions, expands annotation-defined meta-modules, and
     completes feasible models with FASTCORE. Integrated RNA and ATAC evidence is
     converted to reaction penalties for directional COMPASS-like scoring. A
-    post-Layer-2 step can re-score subsystem- and database-related reactions in
-    the exact global union GEM used for the original core analysis.
+    post-Layer-2 step can score non-core reactions directly sharing KEGG,
+    Reactome, or master-Rhea identifiers with selected cores in the exact global
+    union GEM used for the original analysis.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
