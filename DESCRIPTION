@@ -44,6 +44,7 @@ Collate:
     'regulatory_modifier.R'
     'condition_layer1.R'
     'condition_statistics.R'
+    'condition_plot.R'
     'layer1_builder.R'
     'parallel.R'
     'v170_microcompass_contract.R'
@@ -73,6 +74,7 @@ Suggests:
     SuperCell,
     yaml,
     future,
+    ggplot2,
     igraph,
     slam,
     gurobi,
