@@ -8,6 +8,8 @@ target_union_test_gem <- function() {
     kegg_reaction_id = c("K1", NA, "K1", NA, NA),
     reactome_reaction_id = c(NA, NA, NA, NA, NA),
     rhea_master_id = c(NA, NA, "RM1", "RM1", NA),
+    role = rep("internal", 5),
+    role_source = rep("test", 5),
     stringsAsFactors = FALSE
   )
   gem <- rc_make_gem(
@@ -25,64 +27,161 @@ target_union_test_gem <- function() {
   gem
 }
 
-test_that("selected cores are the only score targets in the expanded union", {
+target_union_previous_core <- function() {
+  data.frame(
+    sample_id = "global",
+    module_id = "GLOBAL_UNION",
+    reaction_id = c("R1", "R2"),
+    is_core = TRUE,
+    stringsAsFactors = FALSE
+  )
+}
+
+target_union_previous_membership <- function() {
+  data.frame(
+    sample_id = "global",
+    module_id = "GLOBAL_UNION",
+    reaction_id = paste0("R", 1:5),
+    is_core = c(TRUE, TRUE, FALSE, FALSE, FALSE),
+    inclusion_stage = c(
+      "global_union_core", "global_union_core",
+      "global_union_biological_member",
+      "global_union_biological_member",
+      "global_union_local_fastcore_support"
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+test_that("selected core and annotation-related reactions are all LP targets", {
   definition <- .rc_build_target_union_definition(
     gem = target_union_test_gem(),
+    global_core_reactions = target_union_previous_core(),
+    global_reaction_membership = target_union_previous_membership(),
     core_reaction_ids = "R1"
   )
 
-  expect_identical(definition$global_core_reactions$reaction_id, "R1")
+  expect_identical(definition$selected_core_reactions$reaction_id, "R1")
   expect_setequal(
-    definition$global_reaction_membership$reaction_id,
+    definition$expanded_scoring_targets$reaction_id,
     c("R1", "R2", "R3", "R4")
   )
-  target <- definition$global_reaction_membership[
-    definition$global_reaction_membership$score_target,
-    , drop = FALSE
-  ]
-  support <- definition$global_reaction_membership[
-    definition$global_reaction_membership$model_only,
-    , drop = FALSE
-  ]
-  expect_identical(target$reaction_id, "R1")
-  expect_setequal(support$reaction_id, c("R2", "R3", "R4"))
-  expect_equal(definition$summary$n_score_targets, 1)
-  expect_equal(definition$summary$n_model_only_reactions, 3)
+  expect_true(all(definition$expanded_scoring_targets$score_target))
+  expect_false("model_only" %in% colnames(
+    definition$expanded_scoring_targets
+  ))
+  expect_identical(
+    definition$expanded_scoring_targets$reaction_id[
+      definition$expanded_scoring_targets$selected_core_anchor
+    ],
+    "R1"
+  )
+  expect_equal(definition$summary$n_selected_previous_core, 1)
+  expect_equal(definition$summary$n_expanded_score_targets, 4)
+  expect_identical(
+    definition$summary$model_policy,
+    "reuse_previous_global_union_gem_without_rebuilding"
+  )
 })
 
-test_that("gene cores respect complete GPR alternatives by default", {
+test_that("gene selection resolves only previously scored core reactions", {
   gem <- target_union_test_gem()
+  available <- target_union_previous_core()$reaction_id
 
-  one_gene <- .rc_target_union_core_rows(gem, core_genes = "G1")
+  one_gene <- .rc_target_union_core_rows(
+    gem,
+    available_core_reactions = available,
+    core_genes = "G1"
+  )
   expect_identical(one_gene$reaction_id, "R2")
-  expect_identical(one_gene$selection_source, "gene_complete_gpr")
+  expect_identical(
+    one_gene$selection_source,
+    "previous_core_gene_complete_gpr"
+  )
 
   complete <- .rc_target_union_core_rows(
     gem,
+    available_core_reactions = available,
     core_genes = c("G1", "G2")
   )
   expect_setequal(complete$reaction_id, c("R1", "R2"))
 
   direct <- .rc_target_union_core_rows(
     gem,
+    available_core_reactions = available,
     core_genes = "G1",
     gene_match = "any_direct"
   )
   expect_setequal(direct$reaction_id, c("R1", "R2"))
 })
 
-test_that("invalid manual core selections fail before LP construction", {
+test_that("previous union GEM files are reused for expanded targets", {
   gem <- target_union_test_gem()
+  file <- tempfile(fileext = ".rds")
+  on.exit(unlink(file), add = TRUE)
+  saveRDS(gem, file)
+  previous_layer2 <- list(
+    model_mode = "meta_module_gem",
+    model_cache_summary = data.frame(
+      medium_scenario = "physiologic",
+      file = file,
+      stringsAsFactors = FALSE
+    )
+  )
+
+  cache <- .rc_build_target_union_model_cache(
+    layer2 = previous_layer2,
+    target_reactions = c("R1", "R2", "R3", "R4"),
+    target_direction = "forward"
+  )
+
+  expect_length(cache, 4)
+  expect_true(all(vapply(
+    cache,
+    function(x) identical(x$file, file),
+    logical(1)
+  )))
+  expect_true(all(
+    attr(cache, "summary")$reused_without_rebuilding
+  ))
+  expect_setequal(
+    attr(cache, "direction_diagnostics")$reaction_id,
+    c("R1", "R2", "R3", "R4")
+  )
+})
+
+test_that("invalid selections fail before the second LP pass", {
+  gem <- target_union_test_gem()
+  available <- target_union_previous_core()$reaction_id
   expect_error(
-    .rc_target_union_core_rows(gem),
+    .rc_target_union_core_rows(
+      gem,
+      available_core_reactions = available
+    ),
     "Supply at least one"
   )
   expect_error(
-    .rc_target_union_core_rows(gem, core_reaction_ids = "missing"),
+    .rc_target_union_core_rows(
+      gem,
+      available_core_reactions = available,
+      core_reaction_ids = "missing"
+    ),
     "absent from the GEM"
   )
   expect_error(
-    .rc_target_union_core_rows(gem, core_genes = "missing"),
+    .rc_target_union_core_rows(
+      gem,
+      available_core_reactions = available,
+      core_reaction_ids = "R3"
+    ),
+    "not core reactions in the previous LP analysis"
+  )
+  expect_error(
+    .rc_target_union_core_rows(
+      gem,
+      available_core_reactions = available,
+      core_genes = "missing"
+    ),
     "do not map to GEM GPR rules"
   )
 })
