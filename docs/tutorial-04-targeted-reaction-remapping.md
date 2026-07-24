@@ -20,7 +20,7 @@ step4 <- readRDS("RegCompass_steps/04_layer1/step_layer1.rds")
 step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 ```
 
-The supplied objects must come from the same run. `step5` must have been generated with `model_mode = "meta_module_gem"`, and its model-cache files must still exist.
+The supplied objects must come from the same run. `step5` must have been generated with `model_mode = "meta_module_gem"`, and every model-cache file must still exist.
 
 ```r
 stopifnot(
@@ -67,6 +67,8 @@ targeted_by_gene <- rc_regcompass_step_target_union(
 
 `gene_match = "complete_gpr"` requires all genes in at least one GPR AND-group to be present in the supplied gene set. Use `gene_match = "any_direct"` only when any direct GPR participation is intended; it is broader and can select multisubunit reactions for which the supplied genes alone are not sufficient.
 
+The gene selector must resolve to at least one previously scored global core. This is checked independently even when `core_reaction_ids` is also supplied, so a misspelled or biologically irrelevant gene set is not silently ignored.
+
 Inspect how genes resolved to previous core anchors:
 
 ```r
@@ -107,7 +109,7 @@ targeted_by_reaction <- rc_regcompass_step_target_union(
 )
 ```
 
-Genes and reaction IDs may be supplied together. The resolved anchor set is their union.
+Genes and reaction IDs may be supplied together. Each selector is validated independently, then the valid resolved anchor sets are combined.
 
 ## What is remapped
 
@@ -125,6 +127,8 @@ Only mapped reactions that were **not** global core targets in the original Laye
 - FASTCORE-only support reactions without a direct database cross-reference;
 - reactions already scored as original global cores.
 
+Candidate availability is checked against the reactions actually present in every medium-specific file in `step5$model_cache_summary$file`, not only the pre-FASTCORE `global_reaction_membership` table. Consequently, a reaction introduced during FASTCORE completion can be scored when it has a direct database cross-reference to the selected core and is present in every reused cached model.
+
 Inspect the mapping relations and unique second-pass targets:
 
 ```r
@@ -135,8 +139,12 @@ targeted_by_gene$expanded_reaction_catalog[
     "reaction_id",
     "expansion_type",
     "source_annotation",
+    "present_in_previous_union_membership",
+    "available_in_all_cached_union_models",
     "previous_union_is_core",
-    "score_target"
+    "previous_union_inclusion_stage",
+    "score_target",
+    "lp_exclusion_reason"
   )
 ]
 
@@ -150,6 +158,8 @@ shared_kegg_reaction
 shared_reactome_reaction
 shared_master_rhea_reaction
 ```
+
+A directly linked reaction absent from one or more cached models remains in the mapping catalog as an excluded audit row. A directly linked support reaction present in every cached model but absent from the membership table is marked `cached_union_support_not_in_membership`.
 
 ## Confirm exact structural-model reuse
 
