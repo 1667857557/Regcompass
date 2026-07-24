@@ -598,12 +598,12 @@ rc_test_condition_reactions <- function(
     }
     dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
     .rc_write_tsv_gz(
-      pairwise,
+      answer$pairwise,
       file.path(outdir, "condition_reaction_pairwise.tsv.gz")
     )
     if (nrow(omnibus)) {
       .rc_write_tsv_gz(
-        omnibus,
+        answer$omnibus,
         file.path(outdir, "condition_reaction_omnibus.tsv.gz")
       )
     }
