@@ -43,14 +43,12 @@ make_species_medium_gem <- function(species = "human") {
 test_that("species model routing is explicit and pinned", {
   human <- .rc_species_gem_spec("human")
   mouse <- .rc_species_gem_spec("mouse")
-
   expect_equal(human$source, "SysBioChalmers/Human-GEM")
   expect_equal(human$version, "2.0.0")
   expect_equal(human$taxonomy_id, "9606")
   expect_equal(mouse$source, "SysBioChalmers/Mouse-GEM")
   expect_equal(mouse$version, "1.8.0")
   expect_equal(mouse$taxonomy_id, "10090")
-
   expect_identical(eval(formals(rc_prepare_gem)$species), c("human", "mouse"))
   expect_identical(eval(formals(rc_prepare_human2_gem)$version), "2.0.0")
   expect_identical(eval(formals(rc_prepare_mouse_gem)$version), "1.8.0")
@@ -72,19 +70,12 @@ test_that("Mouse-GEM GPR rules retain mouse symbols directly", {
     file.path(root, "model", "reactions.tsv"),
     sep = "\t", quote = FALSE, row.names = FALSE
   )
-
   prepared <- rc_prepare_species_gpr_table(
-    root,
-    species = "mouse",
-    gene_format = "symbol"
+    root, species = "mouse", gene_format = "symbol"
   )
-  groups <- split(
-    prepared$gpr_table$gene,
-    prepared$gpr_table$and_group_id
-  )
+  groups <- split(prepared$gpr_table$gene, prepared$gpr_table$and_group_id)
   keys <- sort(vapply(groups, function(x) paste(sort(x), collapse = "+"),
                       character(1)))
-
   expect_equal(unname(keys), c("Adh1", "Adh4+Aldh2"))
   expect_false(any(grepl("ENSG", prepared$gpr_table$gene)))
 })
@@ -94,7 +85,6 @@ test_that("literature media are complete catalogs rather than marker lists", {
   mouse_plasma <- .rc_medium_catalog("mouse_plasma", "mouse")
   rpm <- .rc_medium_catalog("rpmi1640", "human")
   dmem <- .rc_medium_catalog("dmem_high_glucose", "human")
-
   expect_gte(nrow(human_plasma), 55)
   expect_gte(nrow(mouse_plasma), 55)
   expect_gte(nrow(rpm), 40)
@@ -114,14 +104,11 @@ test_that("literature media are complete catalogs rather than marker lists", {
 
 test_that("physiological default follows GEM species", {
   human <- rc_make_medium_scenarios(
-    make_species_medium_gem("human"),
-    strict_preset_matching = FALSE
+    make_species_medium_gem("human"), strict_preset_matching = FALSE
   )
   mouse <- rc_make_medium_scenarios(
-    make_species_medium_gem("mouse"),
-    strict_preset_matching = FALSE
+    make_species_medium_gem("mouse"), strict_preset_matching = FALSE
   )
-
   expect_true(all(human$medium_scenario_id == "normal_human_plasma"))
   expect_true(all(mouse$medium_scenario_id == "mouse_plasma"))
   expect_identical(attr(human, "species"), "human")
@@ -141,7 +128,6 @@ test_that("medium application never expands blocked GEM directions", {
     available = TRUE,
     stringsAsFactors = FALSE
   )
-
   constrained <- rc_apply_medium_constraints(gem, medium)
   expect_equal(unname(constrained$gem$lb["EX_blocked"]), 0)
   expect_equal(unname(constrained$gem$ub["EX_blocked"]), 0)
@@ -156,31 +142,18 @@ test_that("medium application never expands blocked GEM directions", {
 })
 
 test_that("canonical Layer 2 owns a persistent model cache", {
-  workflow_text <- paste(
-    deparse(body(rc_regcompass_step_layer2)),
-    collapse = "\n"
-  )
-  micro_text <- paste(
-    deparse(body(.rc_run_microcompass_with_explicit_unit)),
-    collapse = "\n"
-  )
-
-  expect_match(
-    workflow_text,
-    'file.path(outdir, "model_cache",',
-    fixed = TRUE
-  )
-  expect_match(
-    workflow_text,
-    'layer2_args$model_params$cache_dir',
-    fixed = TRUE
-  )
-  expect_match(micro_text, "model_file_manifest.rds")
-  expect_match(micro_text, "tools::md5sum")
+  workflow_text <- paste(deparse(body(rc_regcompass_step_layer2)), collapse = "\n")
+  micro_text <- paste(deparse(body(rc_run_microcompass)), collapse = "\n")
+  expect_match(workflow_text, 'file.path(\n    outdir, "model_cache", model_mode', fixed = TRUE)
+  expect_match(workflow_text, 'layer2_args$model_params$cache_dir', fixed = TRUE)
+  expect_match(micro_text, "model_file_manifest.rds", fixed = TRUE)
+  expect_match(micro_text, "tools::md5sum", fixed = TRUE)
 })
 
-test_that("one-shot species argument defaults to human and routes setup by species", {
-  expect_identical(eval(formals(rc_run_regcompass_one_shot)$species), c("human", "mouse"))
+test_that("one-shot species argument routes setup by species", {
+  expect_identical(
+    eval(formals(rc_run_regcompass_one_shot)$species), c("human", "mouse")
+  )
   body_text <- paste(deparse(body(rc_run_regcompass_one_shot)), collapse = "\n")
   expect_match(body_text, "rc_prepare_gem", fixed = TRUE)
   expect_match(body_text, "species = species", fixed = TRUE)
