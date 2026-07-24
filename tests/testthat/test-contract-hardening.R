@@ -117,17 +117,11 @@ test_that("integrated workflow validates routing inputs before delegation", {
     "'arg' should be one of"
   )
   expect_error(
-    do.call(rc_run_regcompass, c(common, list(upstream_workers = 0L))),
-    "at least 1"
-  )
-  expect_error(
-    do.call(rc_run_regcompass, c(common, list(layer2_workers = 0L))),
-    "at least 1"
-  )
-  expect_error(
     do.call(rc_run_regcompass, c(common, list(layer2_args = "invalid"))),
     "argument bundles must be lists: layer2_args"
   )
+  expect_error(.rc_stage_worker_config(0L, "upstream_workers"), "at least 1")
+  expect_error(.rc_stage_worker_config(0L, "layer2_workers"), "at least 1")
 
   formals_names <- names(formals(rc_run_regcompass))
   expect_true("model_mode" %in% formals_names)
