@@ -84,7 +84,6 @@
     coverage$n_metacells > 0
   coverage$coverage_complete <- coverage$grn_available &
     coverage$metacells_available
-
   invalid <- coverage[!coverage$coverage_complete, , drop = FALSE]
   if (nrow(invalid)) {
     stop(
@@ -99,10 +98,6 @@
 }
 
 #' Infer condition-by-cell-type Pando GRNs from single cells
-#'
-#' RNA is normalized once across all cells. ATAC TF-IDF is computed within each
-#' cell type using all conditions as the shared IDF reference. Pando is then fit
-#' independently in each condition-by-cell-type subset.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, pfm, genome,
@@ -117,6 +112,7 @@ rc_regcompass_step_grn <- function(
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
   }
+  rc_validate_gem(gem)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   object <- .rc_normalize_single_cell_grn_object(
     object, condition_col = condition_col, celltype_col = celltype_col,
@@ -144,6 +140,7 @@ rc_regcompass_step_grn <- function(
   )
   answer <- list(
     grn_result = grn_result,
+    gem_fingerprint = .rc_stage_gem_fingerprint(gem),
     params = list(
       condition_col = condition_col, celltype_col = celltype_col,
       rna_assay = rna_assay, atac_assay = atac_assay,
@@ -156,12 +153,6 @@ rc_regcompass_step_grn <- function(
 }
 
 #' Build condition-only SuperCell2 metacells
-#'
-#' SuperCell2 is stratified only by condition. The existing cell-type annotation
-#' is passed as its label by default so construction is label-aware without
-#' making cell type a hard stratum. Each resulting metacell also receives a
-#' dominant member-cell type label and purity diagnostics for downstream GRN
-#' mapping.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
@@ -232,19 +223,19 @@ rc_regcompass_step_metacells <- function(
 rc_regcompass_step_meta_modules <- function(
     grn, metacells, gem, outdir,
     layer1_args = list()) {
-  if (!inherits(grn, "regcompass_grn_step")) {
-    stop("`grn` must be the output of `rc_regcompass_step_grn()`.",
-         call. = FALSE)
-  }
-  if (!inherits(metacells, "regcompass_metacell_step")) {
-    stop("`metacells` must be the output of `rc_regcompass_step_metacells()`.",
-         call. = FALSE)
-  }
+  .rc_require_stage_class(
+    grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
+  )
+  .rc_require_stage_class(
+    metacells, "regcompass_metacell_step", "metacells",
+    "rc_regcompass_step_metacells"
+  )
   if (!identical(.rc_workflow_signature(grn),
                  .rc_workflow_signature(metacells))) {
     stop("GRN and metacell stages use different metadata or assay settings.",
          call. = FALSE)
   }
+  .rc_require_stage_gem(grn, gem, "grn")
   validated_gem <- rc_validate_gem(gem)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   group_coverage <- .rc_validate_grn_metacell_group_coverage(
@@ -288,6 +279,7 @@ rc_regcompass_step_meta_modules <- function(
     group_coverage = group_coverage,
     workflow_params = metacells$params,
     grn_params = grn$params,
+    gem_fingerprint = .rc_stage_gem_fingerprint(gem),
     params = list(layer1_args = layer1_args)
   )
   class(answer) <- c("regcompass_meta_module_step", "list")
@@ -306,18 +298,19 @@ rc_regcompass_step_layer1 <- function(
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
     parallel = TRUE,
     BPPARAM = NULL) {
-  if (!inherits(metacells, "regcompass_metacell_step")) {
-    stop("`metacells` must be the output of `rc_regcompass_step_metacells()`.",
-         call. = FALSE)
-  }
-  if (!inherits(meta_modules, "regcompass_meta_module_step")) {
-    stop("`meta_modules` must be the output of `rc_regcompass_step_meta_modules()`.",
-         call. = FALSE)
-  }
+  .rc_require_stage_class(
+    metacells, "regcompass_metacell_step", "metacells",
+    "rc_regcompass_step_metacells"
+  )
+  .rc_require_stage_class(
+    meta_modules, "regcompass_meta_module_step", "meta_modules",
+    "rc_regcompass_step_meta_modules"
+  )
   if (!identical(metacells$params, meta_modules$workflow_params)) {
     stop("Metacell and meta-module stages use different workflow settings.",
          call. = FALSE)
   }
+  .rc_require_stage_gem(meta_modules, gem, "meta_modules")
   params <- metacells$params
   layer1 <- .rc_build_condition_pooled_layer1(
     metacell_object = metacells$metacell_object,
@@ -335,13 +328,12 @@ rc_regcompass_step_layer1 <- function(
     parallel = parallel,
     BPPARAM = BPPARAM
   )
-  if (!identical(
-    colnames(layer1$reaction_expression),
-    as.character(layer1$unit_meta$pool_id)
-  )) {
-    stop("Layer 1 reaction expression and metadata are not ordered identically.",
-         call. = FALSE)
-  }
+  layer1$workflow_params <- params
+  layer1$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
+  class(layer1) <- c("regcompass_layer1_step", "list")
+  .rc_validate_layer1_stage(
+    layer1, workflow_params = params, gem = gem, argument = "layer1"
+  )
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   saveRDS(layer1, file.path(outdir, "step_layer1.rds"))
   layer1
@@ -354,12 +346,16 @@ rc_regcompass_step_layer2 <- function(
     model_mode = c("meta_module_gem", "full_gem"),
     layer2_args = list(), parallel = TRUE, BPPARAM = NULL) {
   model_mode <- match.arg(model_mode)
-  if (!inherits(meta_modules, "regcompass_meta_module_step")) {
-    stop("`meta_modules` must be the output of `rc_regcompass_step_meta_modules()`.",
-         call. = FALSE)
-  }
+  .rc_require_stage_class(
+    meta_modules, "regcompass_meta_module_step", "meta_modules",
+    "rc_regcompass_step_meta_modules"
+  )
   if (!is.list(layer2_args)) stop("`layer2_args` must be a list.", call. = FALSE)
   params <- meta_modules$workflow_params
+  .rc_require_stage_gem(meta_modules, gem, "meta_modules")
+  .rc_validate_layer1_stage(
+    layer1, workflow_params = params, gem = gem, argument = "layer1"
+  )
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   layer2_args$model_params <- layer2_args$model_params %||% list()
@@ -376,10 +372,22 @@ rc_regcompass_step_layer2 <- function(
     stop("`layer2_args` cannot override workflow fields: ",
          paste(reserved, collapse = ", "), call. = FALSE)
   }
+  solver <- match.arg(
+    as.character(layer2_args$solver %||% "highs"),
+    c("highs", "gurobi", "glpk")
+  )
+  .rc_require_lp_solver(solver)
   global <- meta_modules$global_modules
+  targets <- unique(as.character(global$global_core_reactions$reaction_id))
+  missing_expression <- setdiff(targets, rownames(layer1$reaction_expression))
+  if (length(missing_expression)) {
+    stop("Global core reactions are absent from Layer 1 expression: ",
+         paste(utils::head(missing_expression, 10L), collapse = ", "),
+         call. = FALSE)
+  }
   defaults <- list(
     layer1 = layer1, gem = gem,
-    target_reactions = global$global_core_reactions$reaction_id,
+    target_reactions = targets,
     medium_scenarios = medium_scenarios, mode = model_mode,
     reaction_membership = if (identical(model_mode, "meta_module_gem")) {
       global$global_reaction_membership
@@ -405,6 +413,14 @@ rc_regcompass_step_layer2 <- function(
       )) invokeRestart("muffleWarning")
     }
   )
+  answer$workflow_params <- params
+  answer$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
+  answer$source_core_reactions <- global$global_core_reactions
+  class(answer) <- c("regcompass_layer2_step", "list")
+  .rc_validate_layer2_stage(
+    answer, layer1 = layer1, workflow_params = params, gem = gem,
+    argument = "layer2"
+  )
   rc_export_microcompass(answer, outdir)
   saveRDS(answer, file.path(outdir, "step_layer2.rds"))
   answer
@@ -415,14 +431,32 @@ rc_regcompass_step_layer2 <- function(
 rc_regcompass_step_results <- function(
     grn, metacells, meta_modules, layer1, layer2, gem, outdir,
     species = c("auto", "human", "mouse")) {
-  if (!inherits(grn, "regcompass_grn_step") ||
-      !inherits(metacells, "regcompass_metacell_step") ||
-      !inherits(meta_modules, "regcompass_meta_module_step")) {
-    stop("Final assembly requires GRN, metacell and meta-module stage outputs.",
-         call. = FALSE)
-  }
-  species <- .rc_infer_gem_species(gem, species)
+  .rc_require_stage_class(
+    grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
+  )
+  .rc_require_stage_class(
+    metacells, "regcompass_metacell_step", "metacells",
+    "rc_regcompass_step_metacells"
+  )
+  .rc_require_stage_class(
+    meta_modules, "regcompass_meta_module_step", "meta_modules",
+    "rc_regcompass_step_meta_modules"
+  )
   params <- metacells$params
+  if (!identical(params, meta_modules$workflow_params) ||
+      !identical(.rc_workflow_signature(grn), .rc_workflow_signature(metacells))) {
+    stop("Upstream stages use different workflow parameters.", call. = FALSE)
+  }
+  .rc_require_stage_gem(grn, gem, "grn")
+  .rc_require_stage_gem(meta_modules, gem, "meta_modules")
+  .rc_validate_layer1_stage(
+    layer1, workflow_params = params, gem = gem, argument = "layer1"
+  )
+  .rc_validate_layer2_stage(
+    layer2, layer1 = layer1, workflow_params = params, gem = gem,
+    argument = "layer2"
+  )
+  species <- .rc_infer_gem_species(gem, species)
   comparison <- .rc_condition_penalty_comparison(
     layer2,
     condition_col = params$condition_col,
@@ -442,8 +476,8 @@ rc_regcompass_step_results <- function(
   ), names(meta_modules$condition_modules))
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
-    schema_version = "regcompass_v1.8.1_grn_first",
-    version = "1.8.1", species = species, model_mode = layer2$model_mode,
+    schema_version = "regcompass_grn_first_v2",
+    version = "1.8.2", species = species, model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
     grn = grn$grn_result,
     metacells = metacells$pooled,
@@ -457,6 +491,7 @@ rc_regcompass_step_results <- function(
     condition_summary = comparison$summary,
     condition_contrast = comparison$contrast,
     inference_policy = comparison$inference_policy,
+    gem_fingerprint = .rc_stage_gem_fingerprint(gem),
     params = list(
       n_conditions = length(conditions),
       workflow_order = c(

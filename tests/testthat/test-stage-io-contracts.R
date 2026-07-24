@@ -15,17 +15,14 @@ test_that("GRN and metacell groups require bidirectional coverage", {
     mixed_celltype_metacell = c(FALSE, TRUE, FALSE),
     stringsAsFactors = FALSE
   )
-
   coverage <- .rc_validate_grn_metacell_group_coverage(
     grn, metacells, "condition", "cell_type"
   )
   expect_true(all(coverage$coverage_complete))
   expect_equal(coverage$n_metacells[coverage$condition == "A"], 2L)
   expect_equal(
-    coverage$n_mixed_celltype_metacells[coverage$condition == "A"],
-    1L
+    coverage$n_mixed_celltype_metacells[coverage$condition == "A"], 1L
   )
-
   expect_error(
     .rc_validate_grn_metacell_group_coverage(
       grn,
@@ -58,14 +55,13 @@ test_that("condition-only metacells reject tied dominant cell types", {
       stringsAsFactors = FALSE
     )
   )
-
   expect_error(
     .rc_assign_metacell_dominant_celltype(pooled, object, "cell_type"),
     "tied dominant cell types"
   )
 })
 
-test_that("metacell stage persists post hoc metadata contracts", {
+test_that("metacell stage persists required artifacts", {
   text <- paste(deparse(body(rc_regcompass_step_metacells)), collapse = "\n")
   required <- c(
     "metacell_metadata.tsv.gz",
@@ -78,16 +74,14 @@ test_that("metacell stage persists post hoc metadata contracts", {
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
 })
 
-test_that("canonical Layer 1 has no versioned compatibility override", {
-  description <- utils::packageDescription("RegCompassR")
-  collate <- description$Collate %||% ""
-  expect_false(grepl("v170_layer1_parallel.R", collate, fixed = TRUE))
+test_that("Layer 1 uses the canonical schema and stage class", {
   body_text <- paste(
     deparse(body(.rc_build_condition_pooled_layer1)), collapse = "\n"
   )
+  step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
   expect_match(
     body_text,
-    "regcompass_condition_only_layer1_v1.8.1",
+    "regcompass_condition_only_layer1_v2",
     fixed = TRUE
   )
   expect_match(
@@ -95,13 +89,43 @@ test_that("canonical Layer 1 has no versioned compatibility override", {
     "condition_only_metacell_with_posthoc_celltype",
     fixed = TRUE
   )
+  expect_match(step_text, "regcompass_layer1_step", fixed = TRUE)
+  expect_match(step_text, "gem_fingerprint", fixed = TRUE)
+  expect_match(step_text, "workflow_params", fixed = TRUE)
 })
 
-test_that("final results retain modules and add reaction interpretation", {
-  body_text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
-  expect_match(body_text, "condition_grn_meta_modules", fixed = TRUE)
-  expect_match(body_text, "global_grn_meta_modules", fixed = TRUE)
-  expect_match(body_text, "grn_metacell_group_coverage", fixed = TRUE)
-  expect_match(body_text, "reaction_catalog", fixed = TRUE)
-  expect_match(body_text, "reaction_evidence", fixed = TRUE)
+test_that("Layer 2 and final results validate upstream provenance", {
+  layer2_text <- paste(deparse(body(rc_regcompass_step_layer2)), collapse = "\n")
+  result_text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
+  expect_match(layer2_text, ".rc_validate_layer1_stage", fixed = TRUE)
+  expect_match(layer2_text, "regcompass_layer2_step", fixed = TRUE)
+  expect_match(layer2_text, "source_core_reactions", fixed = TRUE)
+  expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
+  expect_match(result_text, "regcompass_grn_first_v2", fixed = TRUE)
+  expect_match(result_text, 'version = "1.8.2"', fixed = TRUE)
+  expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
+  expect_match(result_text, "global_grn_meta_modules", fixed = TRUE)
+  expect_match(result_text, "reaction_catalog", fixed = TRUE)
+  expect_match(result_text, "reaction_evidence", fixed = TRUE)
+})
+
+test_that("stage validators reject reordered or mismatched units", {
+  params <- list(
+    condition_col = "condition", celltype_col = "cell_type",
+    rna_assay = "RNA", atac_assay = "ATAC"
+  )
+  layer1 <- list(
+    reaction_expression = matrix(
+      1, nrow = 1, ncol = 2,
+      dimnames = list("R1", c("U1", "U2"))
+    ),
+    unit_meta = data.frame(
+      pool_id = c("U2", "U1"),
+      stringsAsFactors = FALSE
+    ),
+    workflow_params = params,
+    gem_fingerprint = "x"
+  )
+  class(layer1) <- c("regcompass_layer1_step", "list")
+  expect_error(.rc_validate_layer1_stage(layer1), "not identically ordered")
 })

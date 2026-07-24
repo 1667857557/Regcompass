@@ -56,10 +56,10 @@ test_that("canonical metacell APIs exclude sample balancing", {
   expect_false(grepl(".rc_balance_condition_celltype_cells", wrapper_text, fixed = TRUE))
 })
 
-test_that("hidden inference-unit option is retired", {
+test_that("retired inference-unit compatibility path is absent", {
   body_text <- paste(deparse(body(rc_run_microcompass)), collapse = "\n")
-  expect_match(body_text, "retired `RegCompassR.inference_unit` option is ignored", fixed = TRUE)
-  expect_match(body_text, "options(RegCompassR.inference_unit = NULL)", fixed = TRUE)
+  expect_false("inference_unit" %in% names(formals(rc_run_microcompass)))
+  expect_false(grepl("RegCompassR.inference_unit", body_text, fixed = TRUE))
 })
 
 test_that("parallel contracts apply to GRN, Layer 1 and Layer 2", {

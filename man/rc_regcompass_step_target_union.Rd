@@ -2,7 +2,7 @@
 % Please edit documentation in R/target_union.R
 \name{rc_regcompass_step_target_union}
 \alias{rc_regcompass_step_target_union}
-\title{Re-score annotation-related reactions in a previous global union GEM}
+\title{Score directly database-linked non-core reactions in an existing union GEM}
 \usage{
 rc_regcompass_step_target_union(
   layer1,
@@ -13,9 +13,6 @@ rc_regcompass_step_target_union(
   core_reaction_ids = NULL,
   core_genes = NULL,
   gene_match = c("complete_gpr", "any_direct"),
-  subsystem_table = NULL,
-  expansion_mode = c("ordered_once", "fixed_point"),
-  max_iterations = 10L,
   layer2_args = list(),
   parallel = TRUE,
   BPPARAM = NULL
@@ -26,33 +23,32 @@ rc_regcompass_step_target_union(
 
 \item{meta_modules}{Output from \code{rc_regcompass_step_meta_modules()}.}
 
-\item{layer2}{Completed original core LP output from \code{rc_regcompass_step_layer2()} using \code{model_mode = "meta_module_gem"}.}
+\item{layer2}{Output from \code{rc_regcompass_step_layer2()} with \code{model_mode = "meta_module_gem"}.}
 
-\item{gem}{The same validated GEM used by the original analysis.}
+\item{gem}{The same GEM used for the original run.}
 
-\item{outdir}{Persistent output directory.}
+\item{outdir}{Output directory.}
 
-\item{core_reaction_ids}{One or more reactions that were core targets in the previous LP analysis.}
+\item{core_reaction_ids}{Previous core reaction IDs used only as direct database-mapping anchors.}
 
-\item{core_genes}{Genes used to resolve previous core reactions through GPR rules.}
+\item{core_genes}{Genes used to resolve previous core anchors through GPR rules.}
 
-\item{gene_match}{\code{"complete_gpr"} requires one complete GPR AND group. \code{"any_direct"} permits an intentional partial-complex match.}
+\item{gene_match}{\code{"complete_gpr"} requires one complete GPR AND group. \code{"any_direct"} allows an intentional partial-complex match.}
 
-\item{subsystem_table}{Optional external reaction-to-subsystem table.}
+\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, \code{time_limit}, and \code{flux_threshold} overrides.}
 
-\item{expansion_mode}{Either \code{"ordered_once"} or \code{"fixed_point"}.}
-
-\item{max_iterations}{Maximum fixed-point annotation-expansion iterations.}
-
-\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, \code{time_limit}, and \code{flux_threshold} overrides for the second scoring pass.}
-
-\item{parallel}{Whether LP tasks may run in parallel.}
+\item{parallel}{Whether to parallelize reused-model by metacell tasks.}
 
 \item{BPPARAM}{Optional BiocParallel parameter object.}
 }
 \value{
-A \code{regcompass_target_union_step} containing selected previous cores, expanded LP targets, the reused union membership, and the second-pass microCOMPASS result.
+A \code{regcompass_target_union_step} containing selected core anchors, direct anchor-to-reaction database relation rows, unique non-core LP targets, source-model provenance, and second-pass LP results.
 }
 \description{
-Starts from reactions that were already core targets in the original LP analysis. The selected cores are expanded through same-subsystem, shared KEGG or Reactome reaction, and shared master-Rhea mappings. Every expanded reaction is scored as a directional LP target. The structural model is loaded from the previous Layer-2 global union-GEM cache and is not reconstructed.
+Uses previously scored global core reactions as anchors, directly identifies reactions sharing KEGG, Reactome, or master-Rhea identifiers with those anchors, and scores only linked reactions that were not global core targets in the original Layer 2 run.
+}
+\details{
+No same-subsystem, metabolite-neighbour, fixed-point, or transitive expansion is performed. A reaction linked only through an intermediate mapped reaction is not included. Selected cores and any other previously scored global cores are not re-scored.
+
+Stage classes, workflow parameters, GEM fingerprints, ordered metacell IDs, the previous core set, and source-model hashes are validated. The original union GEM and bounds are reused without rebuilding FASTCORE.
 }

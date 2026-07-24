@@ -1,11 +1,7 @@
-test_that("workflow vignette documents the GRN-first API and tutorial levels", {
+test_that("workflow vignette documents the 1.8.2 staged API", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
-    if (nzchar(workspace)) {
-      file.path(workspace, "vignettes", "regcompass-workflow.Rmd")
-    } else {
-      character()
-    },
+    if (nzchar(workspace)) file.path(workspace, "vignettes", "regcompass-workflow.Rmd") else character(),
     file.path("vignettes", "regcompass-workflow.Rmd"),
     file.path("..", "vignettes", "regcompass-workflow.Rmd"),
     file.path("..", "..", "vignettes", "regcompass-workflow.Rmd")
@@ -13,116 +9,93 @@ test_that("workflow vignette documents the GRN-first API and tutorial levels", {
   candidates <- candidates[file.exists(candidates)]
   if (!length(candidates)) skip("Source vignette is unavailable.")
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
-
-  expect_match(text, "RegCompassR 1.8.1", fixed = TRUE)
-  expect_match(text, "Tutorial levels", fixed = TRUE)
-  expect_match(text, "Level 1", fixed = TRUE)
-  expect_match(text, "Level 2", fixed = TRUE)
-  expect_match(text, "Level 3", fixed = TRUE)
-  expect_match(text, "tutorial-01-quick-start.md", fixed = TRUE)
-  expect_match(text, "tutorial-02-stepwise-audit.md", fixed = TRUE)
-  expect_match(text, "tutorial-03-advanced-restart.md", fixed = TRUE)
-  expect_match(text, "medium-presets.md", fixed = TRUE)
-  expect_match(text, "rc_regcompass_step_grn(", fixed = TRUE)
-  expect_match(text, "rc_regcompass_step_metacells(", fixed = TRUE)
-  expect_match(text, "rc_regcompass_step_meta_modules(", fixed = TRUE)
-  expect_match(text, "peak_cor = 0.01", fixed = TRUE)
-  expect_match(text, "gamma = 75", fixed = TRUE)
-  expect_match(text, "RNA is normalized once", fixed = TRUE)
-  expect_match(text, "ATAC TF-IDF", fixed = TRUE)
-  expect_match(text, "condition as its only varying stratum", fixed = TRUE)
-  expect_match(text, "dominant-cell-type ties are rejected", fixed = TRUE)
-  expect_match(text, "Pando_regcompass.tar.gz", fixed = TRUE)
-  expect_match(text, "rc_prepare_gem", fixed = TRUE)
-  expect_match(text, "rc_make_medium_scenarios", fixed = TRUE)
-  expect_match(text, "scenario = \"physiologic\"", fixed = TRUE)
-  expect_match(text, "dmem_high_glucose", fixed = TRUE)
-  expect_match(text, "ChromatinAssay", fixed = TRUE)
-  expect_match(text, "do not pass the `motif2tf`", fixed = TRUE)
-  expect_match(text, "MulticoreParam", fixed = TRUE)
-  expect_match(text, "local_fastcore_by_meta_module", fixed = TRUE)
-  expect_match(text, "parallel = FALSE", fixed = TRUE)
-  expect_match(text, "table(step5$feasible)", fixed = TRUE)
-  expect_false(grepl("metacell_label_col", text, fixed = TRUE))
-  expect_false(grepl("label_col =", text, fixed = TRUE))
-  expect_false(grepl("sample_balance = TRUE", text, fixed = TRUE))
-  expect_false(grepl("min_metacells", text, fixed = TRUE))
+  required <- c(
+    "RegCompassR 1.8.2",
+    "rc_prepare_gem",
+    "rc_make_medium_scenarios",
+    "scenario = \"physiologic\"",
+    "Pando_regcompass.tar.gz",
+    "ChromatinAssay",
+    "peak_cor = 0.01",
+    "gamma = 75",
+    "rc_regcompass_step_grn(",
+    "rc_regcompass_step_metacells(",
+    "rc_regcompass_step_meta_modules(",
+    "rc_regcompass_step_layer1(",
+    "rc_regcompass_step_layer2(",
+    "rc_regcompass_step_target_union(",
+    "rc_regcompass_step_results(",
+    "regcompass_layer1_step",
+    "regcompass_layer2_step",
+    "shared_kegg_reaction",
+    "shared_reactome_reaction",
+    "shared_master_rhea_reaction",
+    "direct_kegg_reactome_master_rhea_noncore_only",
+    "structural_model_reused_exactly",
+    "result$version, \"1.8.2\""
+  )
+  expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
+  forbidden <- c(
+    "metacell_label_col",
+    "label_col =",
+    "sample_balance = TRUE",
+    "expansion_mode =",
+    "subsystem_table =",
+    "max_iterations =",
+    "_v170",
+    "RegCompassR.inference_unit"
+  )
+  expect_false(any(vapply(forbidden, grepl, logical(1), x = text, fixed = TRUE)))
 })
 
-test_that("three tutorial levels exist and have distinct Linux parallel scopes", {
+test_that("tutorials cover quick start, strict stage audit, and restart", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   roots <- unique(c(
     if (nzchar(workspace)) workspace else character(),
     ".", "..", file.path("..", "..")
   ))
   roots <- roots[vapply(
-    roots,
-    function(path) dir.exists(file.path(path, "docs")),
-    logical(1)
+    roots, function(path) dir.exists(file.path(path, "docs")), logical(1)
   )]
   if (!length(roots)) skip("Source documentation is unavailable.")
   root <- normalizePath(roots[[1L]], mustWork = TRUE)
-
-  tutorial_paths <- file.path(
-    root,
-    "docs",
-    c(
-      "tutorial-01-quick-start.md",
-      "tutorial-02-stepwise-audit.md",
-      "tutorial-03-advanced-restart.md"
-    )
-  )
-  expect_true(all(file.exists(tutorial_paths)))
-
-  level1 <- paste(readLines(tutorial_paths[[1L]], warn = FALSE), collapse = "\n")
-  level2 <- paste(readLines(tutorial_paths[[2L]], warn = FALSE), collapse = "\n")
-  level3 <- paste(readLines(tutorial_paths[[3L]], warn = FALSE), collapse = "\n")
-
-  expect_match(level1, "Tutorial Level 1", fixed = TRUE)
-  expect_match(level1, "rc_run_regcompass_one_shot(", fixed = TRUE)
-  expect_match(level1, "upstream_workers = upstream_workers", fixed = TRUE)
-  expect_match(level1, "layer2_workers = layer2_workers", fixed = TRUE)
-  expect_match(level1, "parallel_backend = \"multicore\"", fixed = TRUE)
-  expect_match(level1, "automatically passed to SuperCell2", fixed = TRUE)
-  expect_match(level1, "Confirm that the run completed", fixed = TRUE)
-
-  expect_match(level2, "Tutorial Level 2", fixed = TRUE)
-  expect_match(level2, "Stage map", fixed = TRUE)
-  expect_match(level2, "BiocParallel::MulticoreParam", fixed = TRUE)
-  expect_match(level2, "backend = \"multicore\"", fixed = TRUE)
-  expect_match(level2, "local_fastcore_by_meta_module", fixed = TRUE)
-  expect_match(level2, "shared-model × metacell", fixed = TRUE)
-  expect_match(level2, "Gate before Stage 2 or 3", fixed = TRUE)
-  expect_match(level2, "GRN/metacell group coverage", fixed = TRUE)
-  expect_match(level2, "does not accept a separate label parameter", fixed = TRUE)
-
-  expect_match(level3, "Tutorial Level 3", fixed = TRUE)
-  expect_match(level3, "Linux process and thread controls", fixed = TRUE)
-  expect_match(level3, "OMP_NUM_THREADS=1", fixed = TRUE)
-  expect_match(level3, "REGCOMPASS_WORKERS=16", fixed = TRUE)
-  expect_match(level3, "Parallel units by workflow stage", fixed = TRUE)
-  expect_match(level3, "Minimal rerun matrix", fixed = TRUE)
-  expect_match(level3, "Serial troubleshooting", fixed = TRUE)
-  expect_match(level3, "Failure classification", fixed = TRUE)
-  expect_match(level3, "Distinguish medium infeasibility from target blockage", fixed = TRUE)
-  expect_match(level3, "automatically as", fixed = TRUE)
-  expect_match(level3, "Predefined extracellular medium scenarios", fixed = TRUE)
-
-  combined <- paste(level1, level2, level3, collapse = "\n")
-  expect_match(combined, "Pando_regcompass.tar.gz", fixed = TRUE)
+  paths <- file.path(root, "docs", c(
+    "tutorial-01-quick-start.md",
+    "tutorial-02-stepwise-audit.md",
+    "tutorial-03-advanced-restart.md",
+    "target-union-scoring.md"
+  ))
+  expect_true(all(file.exists(paths)))
+  text <- lapply(paths, function(path) {
+    paste(readLines(path, warn = FALSE), collapse = "\n")
+  })
+  expect_match(text[[1L]], "Tutorial Level 1", fixed = TRUE)
+  expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
+  expect_match(text[[2L]], "Tutorial Level 2", fixed = TRUE)
+  expect_match(text[[2L]], "regcompass_grn_step", fixed = TRUE)
+  expect_match(text[[2L]], "regcompass_layer1_step", fixed = TRUE)
+  expect_match(text[[2L]], "regcompass_layer2_step", fixed = TRUE)
+  expect_match(text[[2L]], "rc_regcompass_step_target_union(", fixed = TRUE)
+  expect_match(text[[2L]], "shared_kegg_reaction", fixed = TRUE)
+  expect_match(text[[2L]], "direct_kegg_reactome_master_rhea_noncore_only", fixed = TRUE)
+  expect_match(text[[2L]], "structural_model_reused_exactly", fixed = TRUE)
+  expect_match(text[[3L]], "Tutorial Level 3", fixed = TRUE)
+  expect_match(text[[3L]], "Earliest stage to rerun", fixed = TRUE)
+  expect_match(text[[3L]], "Serial troubleshooting", fixed = TRUE)
+  expect_match(text[[4L]], "No same-subsystem expansion", fixed = TRUE)
+  expect_match(text[[4L]], "anchor_core_reaction_id", fixed = TRUE)
+  expect_match(text[[4L]], "source_model_md5", fixed = TRUE)
+  combined <- paste(unlist(text), collapse = "\n")
   expect_match(combined, "peak_cor = 0.01", fixed = TRUE)
   expect_match(combined, "gamma = 75", fixed = TRUE)
-  expect_match(combined, "pando_infer_args", fixed = TRUE)
-  expect_match(combined, "parallel = FALSE", fixed = TRUE)
-  expect_match(combined, "scenario = \"physiologic\"", fixed = TRUE)
-  expect_match(combined, "low_glucose", fixed = TRUE)
-  expect_false(grepl("metacell_label_col", combined, fixed = TRUE))
-  expect_false(grepl("label_col =", combined, fixed = TRUE))
-  expect_false(grepl("sample_balance = TRUE", combined, fixed = TRUE))
-  expect_false(grepl("sample_balance_seed", combined, fixed = TRUE))
+  expect_match(combined, "OMP_NUM_THREADS=1", fixed = TRUE)
+  expect_false(grepl("expansion_mode =", combined, fixed = TRUE))
+  expect_false(grepl("subsystem_table =", combined, fixed = TRUE))
+  expect_false(grepl("max_iterations =", combined, fixed = TRUE))
+  expect_false(grepl("_v170", combined, fixed = TRUE))
 })
 
-test_that("README and documentation expose canonical APIs and media", {
+test_that("README and API index expose current public workflow only", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   roots <- unique(c(
     if (nzchar(workspace)) workspace else character(),
@@ -131,55 +104,40 @@ test_that("README and documentation expose canonical APIs and media", {
   roots <- roots[vapply(
     roots,
     function(path) file.exists(file.path(path, "README.md")) &&
-      file.exists(file.path(path, "docs", "run-modes-and-stepwise-workflow.md")),
+      file.exists(file.path(path, "docs", "functions.md")),
     logical(1)
   )]
   if (!length(roots)) skip("Source documentation is unavailable.")
   root <- normalizePath(roots[[1L]], mustWork = TRUE)
-
   paths <- c(
     file.path(root, "README.md"),
-    file.path(root, "docs", "run-modes-and-stepwise-workflow.md"),
     file.path(root, "docs", "functions.md"),
-    file.path(root, "docs", "medium-presets.md"),
-    file.path(root, "vignettes", "regcompass-workflow.Rmd"),
-    file.path(root, "man", "rc_run_regcompass.Rd"),
-    file.path(root, "man", "rc_run_regcompass_one_shot.Rd"),
     file.path(root, "man", "rc_regcompass_stepwise.Rd"),
-    file.path(root, "man", "rc_make_medium_scenarios.Rd")
+    file.path(root, "man", "rc_regcompass_step_target_union.Rd")
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
-
-  expect_match(text, "Choose a tutorial level", fixed = TRUE)
-  expect_match(text, "Level 1", fixed = TRUE)
-  expect_match(text, "Level 2", fixed = TRUE)
-  expect_match(text, "Level 3", fixed = TRUE)
-  expect_match(text, "tutorial-01-quick-start.md", fixed = TRUE)
-  expect_match(text, "tutorial-02-stepwise-audit.md", fixed = TRUE)
-  expect_match(text, "tutorial-03-advanced-restart.md", fixed = TRUE)
-  expect_match(text, "upstream_workers", fixed = TRUE)
-  expect_match(text, "layer2_workers", fixed = TRUE)
-  expect_match(text, "MulticoreParam", fixed = TRUE)
-  expect_match(text, "parallel_backend = \"multicore\"", fixed = TRUE)
-  expect_match(text, "local FASTCORE", fixed = TRUE)
-  expect_match(text, "shared-model", fixed = TRUE)
-  expect_match(text, "peak_cor = 0.01", fixed = TRUE)
-  expect_match(text, "gamma = 75", fixed = TRUE)
-  expect_match(text, "condition-only", fixed = TRUE)
-  expect_match(text, "dominant", fixed = TRUE)
-  expect_match(text, "Pando_regcompass.tar.gz", fixed = TRUE)
-  expect_match(text, "GitHub remote metadata are not required", fixed = TRUE)
-  expect_match(text, "solver installation", fixed = TRUE)
-  expect_match(text, "core reactions", fixed = TRUE)
-  expect_match(text, "master-Rhea", fixed = TRUE)
-  expect_match(text, "normal_human_plasma", fixed = TRUE)
-  expect_match(text, "rpmi1640", fixed = TRUE)
-  expect_match(text, "dmem_high_glucose", fixed = TRUE)
-  expect_match(text, "permissive_all_exchange", fixed = TRUE)
-  expect_match(text, "concentration", fixed = TRUE)
-  expect_false(grepl("metacell_label_col", text, fixed = TRUE))
-  expect_false(grepl("label_col = celltype_col", text, fixed = TRUE))
-  expect_false(grepl("v170_sample_balance", text, fixed = TRUE))
-  expect_false(grepl("sample_balance_seed", text, fixed = TRUE))
+  required <- c(
+    "RegCompassR 1.8.2",
+    "rc_run_regcompass_one_shot",
+    "rc_regcompass_step_target_union",
+    "GEM fingerprint",
+    "ordered metacell IDs",
+    "KEGG",
+    "Reactome",
+    "master-Rhea",
+    "Same-subsystem",
+    "medium-presets.md"
+  )
+  expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
+  forbidden <- c(
+    "v170_microcompass_contract",
+    "internal_apply",
+    "metacell_label_col",
+    "sample_balance_seed",
+    "expansion_mode =",
+    "subsystem_table =",
+    "max_iterations ="
+  )
+  expect_false(any(vapply(forbidden, grepl, logical(1), x = text, fixed = TRUE)))
 })

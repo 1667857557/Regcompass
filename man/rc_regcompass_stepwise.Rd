@@ -6,7 +6,7 @@
 \alias{rc_regcompass_step_layer1}
 \alias{rc_regcompass_step_layer2}
 \alias{rc_regcompass_step_results}
-\title{Run RegCompass through GRN-first inspectable stages}
+\title{Run RegCompass through inspectable GRN-first stages}
 \usage{
 rc_regcompass_step_grn(object, gem, outdir, pfm, genome,
   condition_col = "condition", celltype_col = "cell_type",
@@ -34,39 +34,37 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
   gem, outdir, species = c("auto", "human", "mouse"))
 }
 \arguments{
-\item{object}{A paired-cell Seurat RNA+ATAC object. RNA, ATAC, and metadata must contain the same cell IDs; column order may differ.}
-\item{gem}{A prepared genome-scale metabolic model.}
-\item{outdir}{Output directory for the stage.}
-\item{pfm}{A PFM/PWM collection accepted by Pando and motifmatchr. Use the Pando motif object rather than a motif-to-TF annotation table.}
+\item{object}{Paired-cell Seurat RNA+ATAC object.}
+\item{gem}{Prepared genome-scale metabolic model.}
+\item{outdir}{Stage output directory.}
+\item{pfm}{Motif PFM/PWM collection accepted by Pando and motifmatchr.}
 \item{genome}{Genome object matching ATAC coordinates.}
-\item{condition_col}{Metadata column defining condition-specific Pando groups and the only metacell stratification variable.}
-\item{celltype_col}{Metadata column used with condition for Pando grouping and automatically passed to SuperCell2 as the construction label. It is not a hard metacell stratum; metacells receive an audited dominant member-cell label after aggregation.}
+\item{condition_col}{Condition metadata column and the only hard metacell stratum.}
+\item{celltype_col}{Cell-type column used for Pando grouping and as the SuperCell2 construction label.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Arguments for single-cell Pando inference. The default Pando model uses \code{peak_cor = 0.01}. Pando may be installed from GitHub or a local source archive; RegCompass validates the required API rather than requiring GitHub remote metadata. Keep Pando's inner \code{parallel = FALSE} when Stage 1 uses an outer BiocParallel backend.}
-\item{parallel}{Whether to run the supported computational loop in parallel.}
-\item{BPPARAM}{A BiocParallel parameter object, \code{NULL}, or \code{FALSE}. On Linux, use \code{BiocParallel::MulticoreParam}.}
-\item{sample_col}{Optional provenance column. It is not used for balancing, weighting, selection, or grouping.}
-\item{fragment_files}{Must be \code{FALSE} for the canonical peak-count path.}
-\item{metacell_args}{Arguments for SuperCell2. The default \code{gamma} is 75. Sample-balancing arguments and a separate workflow label column are not supported.}
+\item{pando_args}{Pando settings. Keep Pando's inner \code{parallel = FALSE} when Stage 1 uses BiocParallel.}
+\item{parallel}{Whether the supported stage loop is parallelized.}
+\item{BPPARAM}{BiocParallel parameter object, \code{NULL}, or \code{FALSE}.}
+\item{sample_col}{Optional provenance column; not used for balancing or grouping.}
+\item{fragment_files}{Use \code{FALSE} for the peak-count path.}
+\item{metacell_args}{SuperCell2 settings; default \code{gamma = 75}.}
 \item{grn}{Output from \code{rc_regcompass_step_grn()}.}
 \item{metacells}{Output from \code{rc_regcompass_step_metacells()}.}
-\item{layer1_args}{Meta-module and local FASTCORE settings. Parallel local completion is configured through \code{local_fastcore_args = list(parallel = TRUE, workers = ..., backend = "multicore")} or a valid \code{BPPARAM}.}
+\item{layer1_args}{Meta-module projection and local FASTCORE settings.}
 \item{meta_modules}{Output from \code{rc_regcompass_step_meta_modules()}.}
 \item{regulatory_alpha, tau, gene_half_saturation}{Layer 1 evidence parameters.}
 \item{layer1}{Output from \code{rc_regcompass_step_layer1()}.}
-\item{medium_scenarios}{Shared medium table.}
-\item{model_mode}{Shared union meta-module GEM or full GEM.}
-\item{layer2_args}{Additional microCOMPASS arguments, including \code{solver}. The default HiGHS backend is checked before medium-constrained model construction.}
+\item{medium_scenarios}{Condition-invariant medium table.}
+\item{model_mode}{Global union meta-module GEM or full GEM.}
+\item{layer2_args}{LP settings such as \code{solver}, \code{omega}, and target direction.}
 \item{layer2}{Output from \code{rc_regcompass_step_layer2()}.}
 \item{species}{Species identifier or \code{"auto"}.}
 }
 \description{
-The stages are executed in this order: condition-by-cell-type single-cell GRN inference, condition-only metacell construction, GRN-derived core-reaction and meta-module construction, Layer 1 reaction expression, Layer 2 scoring, and result assembly.
+Runs condition-by-cell-type GRN inference, condition-level metacells, complete-GPR core and meta-module construction, integrated reaction expression, directional LP scoring, and result assembly.
 }
 \details{
-RNA is normalized once before Pando splitting. Normalized assay matrices are aligned by cell ID, so different column order is accepted but genuinely different cell sets are rejected. ATAC TF-IDF is computed within each cell type using all conditions as the shared reference. Peaks with zero counts in one cell type are not passed to that cell type's TF-IDF calculation and are restored as exact zeros. Pando is then fitted independently in each condition-by-cell-type subset.
+Stage 3 verifies the Stage 1 GEM fingerprint and GRN/metacell workflow signature. Layer 1 and Layer 2 store formal stage classes, workflow parameters, GEM fingerprints, and ordered unit IDs. Stage 5 and Stage 6 stop when objects come from different GEMs, metadata settings, core sets, or metacell orders.
 
-On Linux, Stage 1 can distribute condition-by-cell-type Pando groups with \code{MulticoreParam}; Stage 3 distributes local FASTCORE completion by meta-module; Stage 4 distributes GPR/reaction-capacity work; and Stage 5 distributes shared-model-by-metacell LP tasks. Metacell construction, Stage 3 projection/database expansion, and Stage 5 structural model-cache construction are not controlled by these parallel loops.
-
-Metacells are constructed afterwards using condition as the only varying stratum and \code{gamma = 75} by default. The \code{celltype_col} annotation automatically guides SuperCell2 before aggregation to reduce mixing; no separate label argument is accepted. Dominant member-cell type, purity, number of represented cell types, and mixed-cell-type status are stored for each metacell. The selected LP solver is validated before FASTCORE or directional scoring, so a missing solver package is reported separately from GEM infeasibility.
+Stage 3 parallelizes local FASTCORE completion; Stage 4 parallelizes reaction-capacity work; Stage 5 parallelizes shared-model by metacell LP tasks. Model-cache construction remains serial. The selected LP solver is checked before model construction.
 }

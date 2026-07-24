@@ -1,10 +1,8 @@
-# Tutorial Level 3: restart, sensitivity runs, Linux parallelism, and diagnostics
+# Tutorial Level 3: restart, sensitivity, and diagnostics
 
-Use this level after completing the [Level 2 audit workflow](tutorial-02-stepwise-audit.md). It explains which stages must be rerun after a parameter change, how to allocate Linux workers, how to compare media and structural models, and how to separate installation, structural, and biological failures.
+Use saved classed stage objects. RegCompassR 1.8.2 rejects cross-run object mixing when GEM fingerprints, workflow parameters, stage classes, core sets, or ordered scoring units differ.
 
-## 1. Restart from saved stage objects
-
-For a stepwise run:
+## Load a completed stepwise run
 
 ```r
 step1 <- readRDS("RegCompass_steps/01_grn/step_grn.rds")
@@ -15,508 +13,122 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 result <- readRDS("RegCompass_steps/06_results/regcompass_result.rds")
 ```
 
-For a one-shot run, the corresponding stage directories are:
+Use the stage wrapper RDS, not a compact inspection artifact. Keep all files referenced by `step5$model_cache_summary$file`.
 
-```text
-01_single_cell_grn
-02_condition_metacells
-03_meta_modules
-04_layer1
-05_layer2
-06_results
-```
+## Earliest stage to rerun
 
-The one-shot workflow writes the final result both to `RegCompass_result/regcompass_result.rds` and `RegCompass_result/06_results/regcompass_result.rds`. The two files contain the same one-shot execution metadata.
+| Change | Rerun from |
+|---|---:|
+| Pando model, `tf_cor`, `peak_cor`, minimum cells | Stage 1 |
+| metacell `gamma` or cell-size thresholds | Stage 2 |
+| condition/cell-type metadata or assay names | Stage 1 and Stage 2 |
+| GRN projection, subsystem/cross-reference expansion, local FASTCORE | Stage 3 |
+| regulatory integration, GPR `tau`, RNA half-saturation | Stage 4 |
+| medium, structural mode, solver, `omega`, target direction | Stage 5 |
+| selected core anchors for direct database-linked scoring | target-union step only |
+| ranking/annotation assembly | Stage 6 |
 
-Always load the stage wrapper, such as `step_grn.rds` or `step_metacells.rds`, when a downstream function requires the class and workflow parameters. Compact artifacts such as `single_cell_grn.rds` are useful for inspection but are not substitutes for the stage wrapper.
+A changed GEM invalidates Stage 1, Stage 3, Stage 4, Stage 5, Stage 6, and target-union outputs because their fingerprints no longer match.
 
-## 2. Minimal rerun matrix
-
-| Changed item | Earliest stage to rerun | Reusable upstream stages |
-|---|---:|---|
-| Pando `tf_cor`, `peak_cor`, model method, minimum cells | 1 | Stage 2 may be reused only if its inputs are unchanged |
-| metacell `gamma`, minimum stratum size, minimum metacell size | 2 | Stage 1 |
-| `celltype_col` annotation | 1 for GRNs and 2 for metacells | none |
-| GRN projection or meta-module expansion settings | 3 | Stages 1-2 |
-| local FASTCORE solver, strictness, or support limits | 3 | Stages 1-2 |
-| `regulatory_alpha`, GPR `tau`, RNA half-saturation | 4 | Stages 1-3 |
-| medium scenario, solver, `omega`, target direction, `model_mode` | 5 | Stages 1-4 |
-| worker count or parallel backend only | same numerical stage | all completed upstream stages |
-| display or final assembly only | 6 | Stages 1-5 |
-
-Changing `celltype_col` affects both condition-by-cell-type GRNs and the annotation automatically passed to SuperCell2 before aggregation. The canonical workflow does not expose a second label-column argument.
-
-When Stage 1 or Stage 2 changes, rerun Stage 3 because the bidirectional GRN/metacell group-coverage contract must be revalidated. Changing only worker count or backend should not change the mathematical result, but the affected stage must be rerun for the resource setting to take effect.
-
-## 3. Linux process and thread controls
-
-RegCompass uses BiocParallel for independent R tasks. On a normal Linux host, `MulticoreParam` uses forked worker processes.
-
-Before launching R, limit numerical-library threads so each worker does not start additional OpenMP, OpenBLAS, or MKL threads:
+## Linux workers
 
 ```bash
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
-export VECLIB_MAXIMUM_THREADS=1
-export NUMEXPR_NUM_THREADS=1
-```
-
-An optional default worker count can be set for calls that use automatic discovery:
-
-```bash
 export REGCOMPASS_WORKERS=16
 ```
 
-Explicit parameter objects are preferable in a reproducible script:
-
 ```r
 library(BiocParallel)
-
-upstream_workers <- 16L
-layer2_workers <- 12L
-
-upstream_bp <- MulticoreParam(
-  workers = upstream_workers,
-  progressbar = TRUE
-)
-
-layer2_bp <- MulticoreParam(
-  workers = layer2_workers,
-  progressbar = TRUE
-)
+upstream_bp <- MulticoreParam(workers = 16L, progressbar = TRUE)
+layer2_bp <- MulticoreParam(workers = 12L, progressbar = TRUE)
 ```
 
-Use fewer workers than physical memory permits. Layer 2 often becomes memory-limited because several solver tasks can hold a GEM and penalty vectors simultaneously.
-
-## 4. Parallel units by workflow stage
-
-| Stage | Parallel unit | Control | Important limitation |
-|---|---|---|---|
-| 1. Pando GRN | condition × cell-type group | `parallel`, `BPPARAM` | keep Pando inner `parallel = FALSE` |
-| 2. Metacells | no workflow-level BiocParallel unit | SuperCell/metacell arguments only | do not pass `BPPARAM = TRUE` |
-| 3. Meta-modules | local FASTCORE completion per `sample_id × module_id` | `local_fastcore_args$parallel`, `$workers`, `$backend`, or `$BPPARAM` | projection and identifier expansion are serial setup |
-| 4. Layer 1 | GPR/reaction-capacity work | `parallel`, `BPPARAM` | ATAC modifier setup is not separately forked |
-| 5. Layer 2 | unique shared-model × metacell task | `parallel`, `BPPARAM` | structural model-cache construction remains serial |
-| 6. Results | serial assembly | none | no benefit from extra workers |
-
-The workflow deliberately avoids automatic nested parallelism. A condition × cell-type group is one outer Stage 1 task, so `pando_infer_args$parallel` should remain `FALSE`.
-
-## 5. Canonical one-shot Linux run
-
-```r
-library(RegCompassR)
-library(Pando)
-library(BSgenome.Hsapiens.UCSC.hg38)
-
-data(motifs, package = "Pando")
-
-gem <- rc_prepare_gem(species = "human", version = "2.0.0")
-medium_scenarios <- rc_make_medium_scenarios(
-  gem = gem,
-  scenario = "physiologic",
-  species = "human"
-)
-
-result <- rc_run_regcompass_one_shot(
-  object = A,
-  outdir = "RegCompass_result_linux",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,
-  species = "human",
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  condition_col = condition_col,
-  celltype_col = celltype_col,
-  pando_args = list(
-    min_cells = 100,
-    pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0.01,
-      adjust_method = "fdr",
-      parallel = FALSE
-    )
-  ),
-  metacell_args = list(
-    gamma = 75,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10
-  ),
-  layer1_args = list(
-    local_fastcore = TRUE,
-    local_fastcore_args = list(
-      solver = "highs",
-      strict = TRUE,
-      parallel = TRUE
-    )
-  ),
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    time_limit = 60
-  ),
-  upstream_workers = 16L,
-  layer2_workers = 12L,
-  parallel_backend = "multicore"
-)
-```
-
-`parallel_backend = "auto"` selects multicore on an ordinary non-container Linux host and a socket-based backend in detected containers. Explicit `"multicore"` is preferable in a reproducible Linux script.
-
-## 6. Stepwise Linux execution
-
-Stage 1 distributes Pando groups:
-
-```r
-step1 <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "RegCompass_steps/01_grn",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = condition_col,
-  celltype_col = celltype_col,
-  pando_args = list(
-    min_cells = 100,
-    pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0.01,
-      adjust_method = "fdr",
-      parallel = FALSE
-    )
-  ),
-  parallel = TRUE,
-  BPPARAM = upstream_bp
-)
-```
-
-Stage 2 uses `celltype_col` automatically as the SuperCell2 construction label:
-
-```r
-step2 <- rc_regcompass_step_metacells(
-  object = A,
-  outdir = "RegCompass_steps/02_metacells",
-  condition_col = condition_col,
-  celltype_col = celltype_col,
-  fragment_files = FALSE,
-  metacell_args = list(gamma = 75)
-)
-```
-
-Stage 3 parallelizes local FASTCORE completion:
-
-```r
-step3 <- rc_regcompass_step_meta_modules(
-  grn = step1,
-  metacells = step2,
-  gem = gem,
-  outdir = "RegCompass_steps/03_meta_modules",
-  layer1_args = list(
-    local_fastcore = TRUE,
-    local_fastcore_args = list(
-      solver = "highs",
-      strict = TRUE,
-      time_limit = 300,
-      parallel = TRUE,
-      workers = upstream_workers,
-      backend = "multicore"
-    )
-  )
-)
-```
-
-Stage 4 uses the upstream worker pool:
-
-```r
-step4 <- rc_regcompass_step_layer1(
-  metacells = step2,
-  meta_modules = step3,
-  gem = gem,
-  outdir = "RegCompass_steps/04_layer1",
-  regulatory_alpha = 1,
-  tau = 0.20,
-  parallel = TRUE,
-  BPPARAM = upstream_bp
-)
-```
-
-Stage 5 uses the LP worker pool:
-
-```r
-step5 <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_layer2",
-  model_mode = "meta_module_gem",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    time_limit = 60
-  ),
-  parallel = TRUE,
-  BPPARAM = layer2_bp
-)
-```
-
-## 7. Verify parallel settings
-
-```r
-unique(step3$condition_modules$local_fastcore_summary[, c(
-  "parallel_task", "parallel_backend", "parallel_workers"
-)])
-
-step4$capacity_params[c("parallel", "bpparam_class")]
-step5$params$parallel_task
-```
-
-Expected Stage 3 values include `parallel_task = "local_fastcore_by_meta_module"`; Stage 5 should report `"shared_model_by_metacell"`. CPU utilization alone is not proof that every stage is parallel because Stage 2, Stage 3 setup, and Stage 5 model-cache construction contain intentional serial sections.
-
-## 8. Serial troubleshooting
-
-A failing stage should first be rerun serially to obtain a deterministic traceback.
-
-```r
-step1_serial <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "RegCompass_steps/01_grn_serial",
-  pfm = motifs,
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = condition_col,
-  celltype_col = celltype_col,
-  pando_args = list(
-    min_cells = 100,
-    pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0.01,
-      adjust_method = "fdr",
-      parallel = FALSE
-    )
-  ),
-  parallel = FALSE,
-  BPPARAM = FALSE
-)
-```
-
-```r
-step3_serial <- rc_regcompass_step_meta_modules(
-  grn = step1,
-  metacells = step2,
-  gem = gem,
-  outdir = "RegCompass_steps/03_meta_modules_serial",
-  layer1_args = list(
-    local_fastcore = TRUE,
-    local_fastcore_args = list(
-      solver = "highs",
-      parallel = FALSE,
-      backend = "serial"
-    )
-  )
-)
-```
-
-```r
-step5_serial <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_layer2_serial",
-  layer2_args = list(solver = "highs"),
-  parallel = FALSE,
-  BPPARAM = FALSE
-)
-```
-
-Never use `BPPARAM = TRUE`; provide a valid BiocParallel parameter object, `NULL`, or `FALSE`.
-
-## 9. Medium selection and sensitivity runs
-
-All supported choices, their biological or technical scope, species restrictions, concentrations, and exact bound semantics are listed in [Predefined extracellular medium scenarios](medium-presets.md).
-
-The principal choices are:
-
-- `physiologic`: species-specific plasma baseline and recommended in-vivo default;
-- `normal_human_plasma` / `mouse_plasma`: explicit plasma presets;
-- `rpmi1640` / `dmem_high_glucose`: serum-free basal culture formulations;
-- `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`: targeted sensitivity scenarios on a plasma background;
-- `minimal`, `compass_model_bounds`, `permissive_all_exchange`: technical structural-sensitivity baselines;
-- `custom`: user-supplied reaction-level bounds or metabolite availability.
-
-Concentrations are provenance, not measured uptake rates. Only the explicitly flagged glucose, lactate, and glutamine scenarios generate relative uptake caps. Every requested bound is intersected with the original GEM directionality.
-
-Rerun only Stage 5 and Stage 6 when changing the medium:
-
-```r
-medium_scenarios_alt <- rc_make_medium_scenarios(
-  gem = gem,
-  scenario = "low_glucose",
-  species = "human"
-)
-
-step5_low_glucose <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios_alt,
-  outdir = "RegCompass_steps/05_layer2_low_glucose",
-  model_mode = "meta_module_gem",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    time_limit = 60
-  ),
-  parallel = TRUE,
-  BPPARAM = layer2_bp
-)
-
-result_low_glucose <- rc_regcompass_step_results(
-  grn = step1,
-  metacells = step2,
-  meta_modules = step3,
-  layer1 = step4,
-  layer2 = step5_low_glucose,
-  gem = gem,
-  outdir = "RegCompass_steps/06_results_low_glucose"
-)
-```
-
-Do not compare media unless the GEM, target reactions, Layer 1 reaction expression, target directions, solver, and convergence criteria are otherwise identical.
-
-## 10. Compare meta-module and full-GEM scoring
-
-`meta_module_gem` scores the shared global union of GRN-derived meta-modules after feasibility completion. `full_gem` keeps the complete prepared GEM and uses the same target core reactions.
-
-```r
-step5_full <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_layer2_full_gem",
-  model_mode = "full_gem",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    time_limit = 60
-  ),
-  parallel = TRUE,
-  BPPARAM = layer2_bp
-)
-```
-
-Interpret differences as sensitivity to structural model scope. Agreement is not independent biological replication.
-
-## 11. Solver selection
-
-The default solver is HiGHS and the `highs` R package is a required dependency.
-
-```r
-stopifnot(requireNamespace("highs", quietly = TRUE))
-```
-
-| `solver` | Required package |
+| Stage | Parallel unit |
 |---|---|
-| `"highs"` | `highs` |
-| `"glpk"` | `Rglpk` |
-| `"gurobi"` | `gurobi` plus a valid Gurobi installation and license |
+| 1 | condition × cell-type Pando group |
+| 2 | no workflow-level BiocParallel loop |
+| 3 | local FASTCORE completion per meta-module |
+| 4 | GPR/reaction-capacity calculation |
+| 5 | shared model × metacell |
+| target union | reused union model × metacell |
+| 6 | serial assembly |
 
-A solver-installation error is not evidence that the GEM or medium is infeasible.
+Keep Pando's inner `parallel = FALSE`. Lower Layer 2 worker counts when memory, not CPU, is limiting.
 
-## 12. Pando installation diagnostics
-
-A local source archive is supported:
+## Restart Stage 5 with a new medium
 
 ```r
-install.packages(
-  "~/Pando_regcompass.tar.gz",
-  repos = NULL,
-  type = "source"
+medium_scenarios <- rc_make_medium_scenarios(
+  gem,
+  scenario = c("normal_human_plasma", "dmem_high_glucose"),
+  species = "human"
+)
+
+step5_medium <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "RegCompass_steps/05_layer2_medium",
+  model_mode = "meta_module_gem",
+  layer2_args = list(solver = "highs", target_direction = "both"),
+  parallel = TRUE,
+  BPPARAM = layer2_bp
 )
 ```
 
-Confirm the required API:
+Medium bounds can restrict existing GEM directions but cannot create a direction absent from the source model.
+
+## Restart direct database-linked scoring
+
+```r
+expanded <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_steps/05b_glutathione",
+  core_reaction_ids = "MAR04324",
+  parallel = TRUE,
+  BPPARAM = layer2_bp
+)
+```
+
+The selected core is not scored again. Only non-core reactions directly sharing a KEGG, Reactome, or master-Rhea ID with the selected core are evaluated. Same-subsystem and transitive expansion are unavailable by design.
+
+This restart is valid only while the original union-GEM cache files remain unchanged and available. The output records their paths, fingerprints, MD5 hashes, and sizes.
+
+## Serial troubleshooting
+
+Rerun only the failing computational stage with `parallel = FALSE` and `BPPARAM = FALSE`. For Stage 3, set `local_fastcore_args$parallel = FALSE` and `backend = "serial"`.
+
+Classify failures in this order:
+
+1. **Input contract:** missing assays, metadata, stage class, fingerprint, or reordered units.
+2. **Installation:** unavailable Pando, SuperCell2, genome package, or LP solver.
+3. **Model construction:** missing core reactions, invalid GPRs, or incomplete FASTCORE support.
+4. **Database mapping:** selected cores have no direct KEGG, Reactome, or master-Rhea-linked non-core reactions in the original union.
+5. **Medium:** exchange mapping or restrictive bounds.
+6. **Target direction:** reaction blocked in the fixed model.
+7. **Evidence:** finite LP result but weak or non-informative variation.
+
+Do not interpret a solver-installation error as biological infeasibility. Do not interpret a blocked direction as evidence that the opposite direction is inactive without checking the signed model bounds.
+
+## Validate a restart before interpretation
 
 ```r
 stopifnot(
-  requireNamespace("Pando", quietly = TRUE),
-  all(vapply(
-    c("initiate_grn", "find_motifs", "infer_grn", "gof"),
-    exists,
-    logical(1),
-    envir = asNamespace("Pando"),
-    inherits = FALSE
-  ))
+  inherits(step3, "regcompass_meta_module_step"),
+  inherits(step4, "regcompass_layer1_step"),
+  inherits(step5, "regcompass_layer2_step"),
+  identical(step3$gem_fingerprint, step4$gem_fingerprint),
+  identical(step4$gem_fingerprint, step5$gem_fingerprint),
+  identical(step4$workflow_params, step5$workflow_params),
+  identical(colnames(step4$reaction_expression), colnames(step5$penalty)),
+  all(file.exists(step5$model_cache_summary$file))
 )
 ```
 
-GitHub remote metadata are optional. A local installation is accepted when the required API is present.
-
-## 13. Failure classification
-
-| Message or symptom | Classification | Action |
-|---|---|---|
-| normalized RNA or ATAC contains different cells | input alignment | compare cell-ID sets across assays and metadata |
-| `Some features contain 0 total counts` from an old installation | stale package code | reinstall current source; cell-type-local zero peaks are excluded before TF-IDF |
-| a Pando group is skipped | insufficient cells | inspect `pando_group_status.tsv.gz`; change `min_cells` only with a documented rationale |
-| no significant Pando edges | GRN evidence failure | inspect coefficients, FDR, R², target-gene overlap, and motif inputs |
-| dominant cell-type tie | metacell assignment ambiguity | inspect membership/composition; do not assign a GRN arbitrarily |
-| GRN/metacell groups do not align | stage contract failure | inspect `grn_metacell_group_coverage.tsv.gz`; rerun the changed upstream stage and Stage 3 |
-| no complete-GPR core reaction | mapping failure | inspect GEM gene symbols, GPR parsing, metabolic-gene overlap, and projected nodes |
-| a worker reports a remote error | parallel execution failure | rerun the same stage serially and inspect the original condition or module |
-| worker process is killed without R error | memory or scheduler failure | reduce worker count; inspect kernel, cgroup, or scheduler logs |
-| solver package is missing | installation failure | install the selected solver backend |
-| parent GEM is `infeasible` after solver preflight | structural or medium failure | inspect applied exchange bounds and parent-model diagnostics |
-| some target directions are blocked | possible biological/structural result | inspect target bounds and `lp_diagnostics`; do not convert blocked directions into zeros silently |
-
-## 14. Distinguish medium infeasibility from target blockage
-
-```r
-step5$model_cache_summary
-head(step5$model_diagnostics)
-head(step5$lp_diagnostics)
-```
-
-- Parent-model infeasibility means the medium-constrained structural model itself failed.
-- Target blockage means the parent model exists but a particular reaction direction cannot carry the required flux.
-- A missing solver or solver error means feasibility was not established and must not be interpreted biologically.
-- A killed parallel worker is a resource failure until the same task is reproduced serially.
-
-## 15. Output interpretation boundaries
-
-- Pando coefficients are learned from single cells within each condition × cell-type group.
-- Metacells are descriptive pseudo-observations built only within condition and guided before aggregation by `celltype_col`.
-- The audited dominant member-cell type selects the matching condition × cell-type GRN for Layer 1; inspect composition and purity even when label guidance is enabled.
-- Condition contrasts are not biological-sample-level significance tests.
-- Sample metadata are provenance only; no sample balancing, weighting, or downsampling is performed.
-- FASTCORE support reactions ensure local feasibility and are not additional GRN-supported core reactions.
-- Parallelism changes execution order and resource usage, not the biological evidence model.
-
-## 16. Archive a reproducible run
-
-Keep these together:
-
-```text
-package version and installation source
-Linux distribution and kernel
-R version and BiocParallel version
-worker counts and backend
-OMP/BLAS/MKL environment variables
-Seurat object checksum or immutable input path
-GEM model_info and checksum
-medium_scenarios table
-all stage wrapper RDS files
-Pando status and edge tables
-metacell membership and composition tables
-core-reaction and module-membership tables
-Layer 2 model cache and diagnostics
-final result RDS
-```
-
-The one-shot workflow writes `00_model_info.rds` and `00_medium_scenarios.rds` at the run root. Preserve them with the result.
+See [Predefined extracellular medium scenarios](medium-presets.md) and [Direct database-linked non-core scoring](target-union-scoring.md) for the corresponding contracts.

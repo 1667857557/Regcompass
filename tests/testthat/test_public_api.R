@@ -22,9 +22,11 @@ test_that("canonical source architecture has no retired compatibility layers", {
     "v170_sample_balance.R", "v170_aliases.R",
     "v170_stepwise_parallel.R", "v170_tfidf.R",
     "v170_pando_reuse.R", "v170_rsq_metadata.R",
+    "v170_microcompass_contract.R", "internal_apply.R",
     "pando_rsq_reliability.R", "workflow_stage_", "zzz"
   )
   expect_false(any(vapply(retired, grepl, logical(1), x = collate, fixed = TRUE)))
+  expect_match(collate, "stage_contracts.R", fixed = TRUE)
   expect_match(collate, "shared_tfidf.R", fixed = TRUE)
   expect_match(collate, "grn_inference.R", fixed = TRUE)
   expect_match(collate, "regulatory_modifier.R", fixed = TRUE)
@@ -42,6 +44,12 @@ test_that("canonical source architecture has no retired compatibility layers", {
   source_dir <- normalizePath(candidates[[1L]], mustWork = TRUE)
   source_retired <- retired[grepl("[.]R$", retired)]
   expect_false(any(file.exists(file.path(source_dir, source_retired))))
+  source_text <- paste(
+    unlist(lapply(list.files(source_dir, full.names = TRUE), readLines,
+                  warn = FALSE), use.names = FALSE),
+    collapse = "\n"
+  )
+  expect_false(grepl("_v170", source_text, fixed = TRUE))
 })
 
 test_that("canonical order is GRN then metacells then meta-modules", {

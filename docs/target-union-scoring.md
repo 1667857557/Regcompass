@@ -1,51 +1,50 @@
-# Re-score annotation-related reactions in the existing union GEM
+# Direct database-linked non-core scoring in the existing union GEM
 
-`rc_regcompass_step_target_union()` is an optional **post-Layer-2** step. The normal RegCompass workflow must first finish the original LP analysis of all GRN-derived core reactions and persist its global union-GEM cache.
+`rc_regcompass_step_target_union()` is an optional analysis after a completed stepwise Layer 2 run with `model_mode = "meta_module_gem"`.
 
-The second pass then performs the following operations:
+## Exact target definition
 
-1. Select one or more reactions that were core LP targets in the previous analysis, either by reaction ID or by their directly associated GPR genes.
-2. Expand those selected cores through:
-   - the same subsystem;
-   - shared KEGG reaction IDs;
-   - shared Reactome reaction IDs;
-   - shared master-Rhea IDs.
-3. Verify that every expanded reaction is already present in the previously constructed global union GEM.
-4. Load the exact union-GEM model file recorded by the first Layer-2 run for each medium scenario.
-5. Run a second directional LP pass in which **the selected cores and every annotation-related reaction are all scoring targets**.
+A selected core reaction is a **mapping anchor**, not a second-pass LP target. Candidate reactions are obtained directly from identifiers attached to that core:
 
-The second pass does not rebuild the union GEM and does not classify expanded reactions as model-only support. Its purpose is to obtain LP scores for the wider pathway/function context surrounding selected core reactions while keeping the same stoichiometric network and medium-specific bounds used by the original core analysis.
+- shared KEGG reaction ID;
+- shared Reactome reaction ID;
+- shared master-Rhea ID.
 
-## Required preceding steps
+No same-subsystem expansion is used. No candidate reaction is used as a new anchor, so the mapping is not transitive or recursive.
+
+The second LP pass scores only directly linked reactions that were **not global core targets in the original Layer 2 run**. It excludes:
+
+- the selected core itself;
+- any other global core already scored in Layer 2;
+- reactions related only by subsystem;
+- reactions reachable only through an intermediate mapped reaction;
+- FASTCORE-only support reactions without a direct database link to the selected core;
+- generic union-GEM members and metabolite-neighbour reactions.
+
+## Processing sequence
+
+1. Resolve previous core anchors from reaction IDs or GPR genes.
+2. Read each anchor's KEGG, Reactome, and master-Rhea identifiers.
+3. Find reactions that directly share those identifiers with that anchor.
+4. Preserve one relation row per `anchor × reaction × database mapping`.
+5. Remove reactions already scored as global cores.
+6. Require every remaining target to exist in the original global union GEM.
+7. Reuse the exact cached stoichiometry, bounds, and medium.
+8. Run directional Vmax/minimum-penalty LP only for the remaining non-core targets.
+
+The function does not rerun FASTCORE or rebuild the union GEM.
+
+## Required inputs
 
 ```r
-step3 <- rc_regcompass_step_meta_modules(
-  grn = step1,
-  metacells = step2,
-  gem = gem,
-  outdir = "RegCompass_steps/03_meta_modules"
-)
-
-step4 <- rc_regcompass_step_layer1(
-  metacells = step2,
-  meta_modules = step3,
-  gem = gem,
-  outdir = "RegCompass_steps/04_layer1"
-)
-
-step5 <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_core_layer2",
-  model_mode = "meta_module_gem"
-)
+step3 <- readRDS("RegCompass_steps/03_meta_modules/step_meta_modules.rds")
+step4 <- readRDS("RegCompass_steps/04_layer1/step_layer1.rds")
+step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 ```
 
-`step5$model_cache_summary$file` must remain available because these files contain the previously constructed medium-specific global union GEMs.
+The files listed in `step5$model_cache_summary$file` must remain available. Stage classes, workflow parameters, GEM fingerprints, metacell order, the original core set, and source-model hashes are checked before scoring.
 
-## Select previously scored core reactions
+## Select core anchors by reaction ID
 
 ```r
 expanded <- rc_regcompass_step_target_union(
@@ -55,21 +54,18 @@ expanded <- rc_regcompass_step_target_union(
   gem = gem,
   outdir = "RegCompass_steps/06_expanded_target_scoring",
   core_reaction_ids = c("MAR04324", "MAR03964"),
-  expansion_mode = "ordered_once",
   layer2_args = list(
-    omega = 0.95,
     target_direction = "both",
     solver = "highs",
+    omega = 0.95,
     time_limit = 60
   )
 )
 ```
 
-A reaction supplied through `core_reaction_ids` must already occur in `step3$global_modules$global_core_reactions`; the function rejects arbitrary non-core reactions.
+Reaction IDs must be members of `step3$global_modules$global_core_reactions` and must have been scored by `step5`.
 
-## Select previous core reactions from genes
-
-The default `gene_match = "complete_gpr"` only resolves a previous core reaction when the supplied genes cover at least one complete GPR AND group. This avoids treating one subunit of an obligate enzyme complex as a complete core reaction.
+## Select core anchors by gene
 
 ```r
 expanded <- rc_regcompass_step_target_union(
@@ -83,39 +79,63 @@ expanded <- rc_regcompass_step_target_union(
 )
 ```
 
-Use `gene_match = "any_direct"` only when intentionally allowing a gene to resolve a previous core reaction despite incomplete coverage of an enzyme complex.
+`complete_gpr` requires the supplied genes to cover one complete GPR AND group. Use `any_direct` only when partial enzyme-complex matching is intentional.
 
-## Inspect the second-pass targets and scores
+## Inspect direct mappings and LP targets
 
 ```r
 expanded$selected_core_reactions
-expanded$expanded_scoring_targets[
-  , c(
-    "reaction_id",
-    "selected_core_anchor",
-    "score_target",
-    "target_role",
-    "inclusion_stage",
-    "source_annotation",
-    "previous_union_inclusion_stage"
-  )
-]
-expanded$summary
-expanded$microcompass$penalty
-expanded$microcompass$feasible
+
+expanded$expanded_reaction_catalog[, c(
+  "anchor_core_reaction_id",
+  "reaction_id",
+  "expansion_type",
+  "source_annotation",
+  "previous_union_is_core",
+  "score_target",
+  "lp_exclusion_reason"
+)]
+
+expanded$expanded_scoring_targets[, c(
+  "reaction_id",
+  "anchor_core_reaction_ids",
+  "expansion_types",
+  "source_annotations"
+)]
 ```
 
-Every row in `expanded_scoring_targets` has `score_target = TRUE`. The LP output therefore contains the original selected cores plus all same-subsystem, KEGG/Reactome-linked, and master-Rhea-linked reactions that were present in the original union GEM.
+Valid `expansion_type` values are:
 
-## Outputs
+```r
+c(
+  "shared_kegg_reaction",
+  "shared_reactome_reaction",
+  "shared_master_rhea_reaction"
+)
+```
 
-The step writes:
+A directly linked reaction that was already a global core remains in `expanded_reaction_catalog` with `score_target = FALSE` and `lp_exclusion_reason = "already_scored_in_original_layer2"`.
+
+```r
+expanded$microcompass$penalty
+expanded$microcompass$feasible
+expanded$microcompass$model_cache_summary[, c(
+  "medium_scenario",
+  "file",
+  "source_model_fingerprint",
+  "source_model_md5",
+  "reused_without_rebuilding"
+)]
+```
+
+The raw minimum penalty is the primary result. Lower values indicate stronger compatibility with the integrated evidence under the fixed union-GEM constraints.
+
+## Files
 
 - `selected_previous_core_reactions.tsv.gz`
+- `expanded_reaction_catalog.tsv.gz`
 - `expanded_scoring_targets.tsv.gz`
 - `reused_global_union_membership.tsv.gz`
 - `target_union_summary.tsv.gz`
 - `scores/`
 - `step_target_union.rds`
-
-`expansion_mode = "ordered_once"` is the conservative default and matches the canonical annotation-expansion order. `"fixed_point"` is allowed only when all transitively expanded reactions already exist in the previously built global union GEM; otherwise the function stops rather than silently rebuilding or changing the model.

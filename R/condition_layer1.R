@@ -1,4 +1,4 @@
-.rc_integrate_regulatory_support_v170 <- function(
+.rc_integrate_regulatory_support <- function(
     rna_support, regulatory_modifier, alpha = 1) {
   rna_support <- as.matrix(rna_support)
   regulatory_modifier <- as.matrix(regulatory_modifier)

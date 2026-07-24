@@ -16,9 +16,9 @@
   list(role = role, role_source = role_source)
 }
 
-# Compute the v1.7.0 COMPASS-like penalty from multiome reaction expression.
-# Regulatory evidence is integrated into gene support before GPR aggregation;
-# there is no independent reaction-confidence term in the canonical model.
+# Compute the canonical COMPASS-like cost from multiome reaction expression.
+# Regulatory evidence is integrated before GPR aggregation; no independent
+# reaction-confidence term is added.
 rc_compute_multiome_penalty <- function(
     reaction_expression,
     reaction_roles = NULL,
@@ -102,7 +102,7 @@ rc_compute_multiome_penalty <- function(
       "zero support and receive the strictest expression-linked penalty;",
       "fixed costs are used only for exchange/demand/sink/artificial-support reactions"
     ),
-    penalty_version = "v1.7.0_gene_integrated_multiome_penalty",
+    penalty_version = "gene_integrated_multiome_penalty_v1",
     evidence_description = paste(
       "Condition-specific Pando coefficients learned from RNA+ATAC weight",
       "accessibility-only regulatory deviations integrated into gene support",

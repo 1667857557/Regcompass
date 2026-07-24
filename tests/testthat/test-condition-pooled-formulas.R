@@ -2,7 +2,7 @@ test_that("regulatory integration is bounded and zero preserving", {
   C <- matrix(c(0, 0.20, 0.20, 0.80), nrow = 4,
     dimnames = list(paste0("g", 1:4), "mc1"))
   R <- matrix(c(1, 1, -1, 1), nrow = 4, dimnames = dimnames(C))
-  out <- .rc_integrate_regulatory_support_v170(C, R, alpha = 1)
+  out <- .rc_integrate_regulatory_support(C, R, alpha = 1)
   expect_equal(out["g1", "mc1"], 0)
   expect_gt(out["g2", "mc1"], C["g2", "mc1"])
   expect_lt(out["g3", "mc1"], C["g3", "mc1"])
@@ -60,14 +60,19 @@ test_that("multiple conditions produce every pairwise descriptive comparison", {
   row_id <- "reaction=R1::direction=forward::medium=base"
   units <- c("uA", "uB", "uC")
   microcompass <- list(
-    penalty = matrix(c(0.5, 0.3, 0.2), nrow = 1, dimnames = list(row_id, units)),
+    penalty = matrix(c(0.5, 0.3, 0.2), nrow = 1,
+      dimnames = list(row_id, units)),
     vmax = matrix(2, nrow = 1, ncol = 3, dimnames = list(row_id, units)),
-    unit_meta = data.frame(unit_id = units, condition = c("A", "B", "C"), cell_type = "T"),
+    unit_meta = data.frame(
+      unit_id = units, condition = c("A", "B", "C"), cell_type = "T"
+    ),
     params = list(omega = 0.95)
   )
   answer <- .rc_condition_penalty_comparison(microcompass)
-  expect_identical(answer$analysis_mode,
-    "multi_condition_reaction_ranking_and_pairwise_comparison")
+  expect_identical(
+    answer$analysis_mode,
+    "multi_condition_reaction_ranking_and_pairwise_comparison"
+  )
   expect_equal(nrow(answer$ranking), 3L)
   expect_equal(nrow(answer$contrast), 3L)
 })
@@ -75,12 +80,19 @@ test_that("multiple conditions produce every pairwise descriptive comparison", {
 test_that("shared-model ranking rejects unit-dependent vmax", {
   row_id <- "reaction=R1::direction=forward::medium=base"
   microcompass <- list(
-    penalty = matrix(c(0.5, 0.3), nrow = 1, dimnames = list(row_id, c("u1", "u2"))),
-    vmax = matrix(c(1, 2), nrow = 1, dimnames = list(row_id, c("u1", "u2"))),
-    unit_meta = data.frame(unit_id = c("u1", "u2"), condition = c("A", "B"), cell_type = "T"),
+    penalty = matrix(c(0.5, 0.3), nrow = 1,
+      dimnames = list(row_id, c("u1", "u2"))),
+    vmax = matrix(c(1, 2), nrow = 1,
+      dimnames = list(row_id, c("u1", "u2"))),
+    unit_meta = data.frame(
+      unit_id = c("u1", "u2"), condition = c("A", "B"), cell_type = "T"
+    ),
     params = list(omega = 0.95)
   )
-  expect_error(.rc_condition_penalty_comparison(microcompass), "vmax differs across metacells")
+  expect_error(
+    .rc_condition_penalty_comparison(microcompass),
+    "vmax differs across metacells"
+  )
 })
 
 test_that("meta-module expansion excludes metabolite-neighbour reactions", {
@@ -91,9 +103,17 @@ test_that("meta-module expansion excludes metabolite-neighbour reactions", {
     metabolic_module = c("A", "B", "C", "D"),
     role = c("internal", "internal", "internal", "exchange"),
     role_source = "curated")
-  gem <- rc_make_gem(S, lb = rep(0, ncol(S)), ub = rep(1000, ncol(S)), reaction_meta = reaction_meta)
-  core <- data.frame(sample_id = "A", module_id = "A::GRN0001", gene = "G1", reaction_id = "R1")
+  gem <- rc_make_gem(
+    S, lb = rep(0, ncol(S)), ub = rep(1000, ncol(S)),
+    reaction_meta = reaction_meta
+  )
+  core <- data.frame(
+    sample_id = "A", module_id = "A::GRN0001",
+    gene = "G1", reaction_id = "R1"
+  )
   expanded <- rc_expand_meta_module_reactions(gem, core)
-  expect_identical(unique(as.character(expanded$reaction_membership$reaction_id)), "R1")
+  expect_identical(
+    unique(as.character(expanded$reaction_membership$reaction_id)), "R1"
+  )
   expect_false(exists(".rc_meta_module_one_hop", inherits = TRUE))
 })

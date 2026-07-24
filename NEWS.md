@@ -1,3 +1,10 @@
+# RegCompassR 1.8.2
+
+- Added `rc_regcompass_step_target_union()` for a second LP pass after the original core analysis. Selected previous core reactions are mapping anchors only. The function directly identifies non-core reactions sharing KEGG, Reactome, or master-Rhea identifiers with a selected core and scores them in the exact cached global union GEM. Same-subsystem, recursive/transitive, FASTCORE-only, generic union, and metabolite-neighbour expansion are not used; previously scored global cores are not recomputed.
+- Added strict stage contracts. Layer 1 and Layer 2 now carry classes, workflow parameters, GEM fingerprints, and ordered unit identifiers; Stage 3-6 reject objects from a different GEM, workflow, or metacell order.
+- Removed the retired `v170_microcompass_contract.R` compatibility override and the redundant `internal_apply.R` wrapper. Renamed the active regulatory integration helper without a historical version suffix and replaced package-version-specific algorithm labels with semantic schema identifiers.
+- Updated the tutorials, vignette, README, API index, and help pages for the 1.8.2 workflow. Repetitive migration text and the obsolete architecture correction document were removed.
+
 # RegCompassR 1.8.1
 
 - Added formal reaction annotation to Stage 6 and condition-statistics outputs: reaction names, stoichiometry-derived formulas with metabolite names and compartments, direction-specific substrates/products, subsystems, GPR rules, participating genes, and database cross-references.

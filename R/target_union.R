@@ -1,4 +1,4 @@
-# Re-score annotation-related reactions in a previously built global union GEM.
+# Score direct database-linked non-core reactions in an existing union GEM.
 
 .rc_target_union_normalize_ids <- function(x) {
   x <- trimws(as.character(x))
@@ -19,7 +19,6 @@
     stop("The previous analysis contains no valid global core reactions.",
          call. = FALSE)
   }
-
   requested_reactions <- .rc_target_union_normalize_ids(core_reaction_ids)
   requested_genes <- toupper(.rc_target_union_normalize_ids(core_genes))
   if (!length(requested_reactions) && !length(requested_genes)) {
@@ -28,7 +27,6 @@
       call. = FALSE
     )
   }
-
   missing_reactions <- setdiff(requested_reactions, validated$reactions)
   if (length(missing_reactions)) {
     stop(
@@ -53,10 +51,7 @@
     required <- c("reaction_id", "and_group_id", "gene")
     if (!is.data.frame(gpr) || !all(required %in% colnames(gpr))) {
       stop(
-        paste(
-          "Gene-selected cores require a GEM `gpr_table` containing",
-          "reaction_id, and_group_id and gene."
-        ),
+        "Gene-selected cores require a GEM `gpr_table` containing reaction_id, and_group_id and gene.",
         call. = FALSE
       )
     }
@@ -77,7 +72,6 @@
         call. = FALSE
       )
     }
-
     if (identical(gene_match, "any_direct")) {
       mapped <- unique(gpr$reaction_id[gpr$gene %in% requested_genes])
     } else {
@@ -93,10 +87,7 @@
     gene_reactions <- intersect(mapped, available)
     if (!length(gene_reactions) && !length(requested_reactions)) {
       stop(
-        paste(
-          "The selected genes do not resolve to reactions that were core",
-          "targets in the previous LP analysis."
-        ),
+        "The selected genes do not resolve to core targets in the previous LP analysis.",
         call. = FALSE
       )
     }
@@ -124,13 +115,9 @@
   }, character(1))
   mapped_genes <- vapply(reactions, function(reaction) {
     genes <- gene_source[[reaction]]
-    if (is.null(genes) || !length(genes)) {
-      NA_character_
-    } else {
+    if (is.null(genes) || !length(genes)) NA_character_ else
       paste(genes, collapse = ";")
-    }
   }, character(1))
-
   data.frame(
     sample_id = "global",
     module_id = "GLOBAL_UNION",
@@ -142,26 +129,147 @@
   )
 }
 
+.rc_target_union_direct_crossref_relations <- function(gem, selected_core_reactions) {
+  maps <- rc_reaction_crossref_maps(gem)
+  specifications <- list(
+    list(
+      map = .rc_clean_meta_module_map(maps$kegg, "kegg_id"),
+      id_col = "kegg_id",
+      expansion_type = "shared_kegg_reaction",
+      prefix = "KEGG:"
+    ),
+    list(
+      map = .rc_clean_meta_module_map(maps$reactome, "reactome_id"),
+      id_col = "reactome_id",
+      expansion_type = "shared_reactome_reaction",
+      prefix = "REACTOME:"
+    ),
+    list(
+      map = .rc_clean_meta_module_map(
+        maps$rhea_master, "rhea_master_id"
+      ),
+      id_col = "rhea_master_id",
+      expansion_type = "shared_master_rhea_reaction",
+      prefix = "RHEA_MASTER:"
+    )
+  )
+  anchors <- .rc_target_union_normalize_ids(
+    selected_core_reactions$reaction_id
+  )
+  output <- list()
+  output_index <- 0L
+  for (anchor in anchors) {
+    for (specification in specifications) {
+      map <- specification$map
+      id_col <- specification$id_col
+      if (!is.data.frame(map) || !nrow(map)) next
+      anchor_ids <- unique(as.character(map[[id_col]][
+        map$reaction_id == anchor
+      ]))
+      anchor_ids <- anchor_ids[
+        !is.na(anchor_ids) & nzchar(trimws(anchor_ids))
+      ]
+      if (!length(anchor_ids)) next
+      reactions <- unique(as.character(map$reaction_id[
+        map[[id_col]] %in% anchor_ids
+      ]))
+      reactions <- setdiff(reactions, anchor)
+      for (reaction in reactions) {
+        shared_ids <- intersect(
+          anchor_ids,
+          unique(as.character(map[[id_col]][map$reaction_id == reaction]))
+        )
+        shared_ids <- sort(shared_ids[
+          !is.na(shared_ids) & nzchar(trimws(shared_ids))
+        ])
+        if (!length(shared_ids)) next
+        output_index <- output_index + 1L
+        output[[output_index]] <- data.frame(
+          anchor_core_reaction_id = anchor,
+          reaction_id = reaction,
+          expansion_type = specification$expansion_type,
+          source_annotation = paste0(
+            specification$prefix,
+            paste(shared_ids, collapse = ";")
+          ),
+          stringsAsFactors = FALSE
+        )
+      }
+    }
+  }
+  if (!length(output)) {
+    return(data.frame(
+      anchor_core_reaction_id = character(),
+      reaction_id = character(),
+      expansion_type = character(),
+      source_annotation = character(),
+      stringsAsFactors = FALSE
+    ))
+  }
+  answer <- unique(do.call(rbind, output))
+  answer <- answer[order(
+    answer$anchor_core_reaction_id,
+    answer$reaction_id,
+    answer$expansion_type,
+    answer$source_annotation
+  ), , drop = FALSE]
+  rownames(answer) <- NULL
+  answer
+}
+
+.rc_target_union_aggregate_targets <- function(catalog) {
+  rows <- split(seq_len(nrow(catalog)), catalog$reaction_id)
+  answer <- do.call(rbind, lapply(rows, function(index) {
+    one <- catalog[index, , drop = FALSE]
+    data.frame(
+      sample_id = "global",
+      module_id = "GLOBAL_UNION",
+      reaction_id = as.character(one$reaction_id[[1L]]),
+      anchor_core_reaction_ids = paste(
+        sort(unique(as.character(one$anchor_core_reaction_id))),
+        collapse = ";"
+      ),
+      expansion_types = paste(
+        sort(unique(as.character(one$expansion_type))),
+        collapse = ";"
+      ),
+      source_annotations = paste(
+        sort(unique(as.character(one$source_annotation))),
+        collapse = ";"
+      ),
+      previous_union_is_core = FALSE,
+      previous_union_inclusion_stage = paste(
+        sort(unique(as.character(
+          one$previous_union_inclusion_stage[
+            !is.na(one$previous_union_inclusion_stage) &
+              nzchar(one$previous_union_inclusion_stage)
+          ]
+        ))),
+        collapse = ";"
+      ),
+      score_target = TRUE,
+      target_role = "direct_database_crossref_noncore",
+      lp_exclusion_reason = NA_character_,
+      stringsAsFactors = FALSE
+    )
+  }))
+  rownames(answer) <- NULL
+  answer
+}
+
 .rc_build_target_union_definition <- function(
     gem, global_core_reactions, global_reaction_membership,
     core_reaction_ids = NULL, core_genes = NULL,
-    gene_match = c("complete_gpr", "any_direct"),
-    subsystem_table = NULL,
-    expansion_mode = c("ordered_once", "fixed_point"),
-    max_iterations = 10L) {
+    gene_match = c("complete_gpr", "any_direct")) {
   gene_match <- match.arg(gene_match)
-  expansion_mode <- match.arg(expansion_mode)
-  required <- c("reaction_id")
   if (!is.data.frame(global_core_reactions) ||
-      !all(required %in% colnames(global_core_reactions))) {
+      !"reaction_id" %in% colnames(global_core_reactions)) {
     stop("`global_core_reactions` must contain reaction_id.", call. = FALSE)
   }
   if (!is.data.frame(global_reaction_membership) ||
-      !all(required %in% colnames(global_reaction_membership))) {
-    stop("`global_reaction_membership` must contain reaction_id.",
-         call. = FALSE)
+      !"reaction_id" %in% colnames(global_reaction_membership)) {
+    stop("`global_reaction_membership` must contain reaction_id.", call. = FALSE)
   }
-
   selected <- .rc_target_union_core_rows(
     gem = gem,
     available_core_reactions = global_core_reactions$reaction_id,
@@ -169,85 +277,99 @@
     core_genes = core_genes,
     gene_match = gene_match
   )
-  expanded <- rc_expand_meta_module_reactions(
-    gem = gem,
-    core_reactions = selected,
-    subsystem_table = subsystem_table,
-    expansion_mode = expansion_mode,
-    max_iterations = max_iterations
-  )
-  targets <- expanded$reaction_membership
+  catalog <- .rc_target_union_direct_crossref_relations(gem, selected)
+  if (!nrow(catalog)) {
+    stop(
+      "The selected core reactions have no directly linked KEGG, Reactome, or master-Rhea reactions.",
+      call. = FALSE
+    )
+  }
   previous_union_ids <- .rc_target_union_normalize_ids(
     global_reaction_membership$reaction_id
   )
   missing_from_union <- setdiff(
-    unique(as.character(targets$reaction_id)),
-    previous_union_ids
+    unique(as.character(catalog$reaction_id)), previous_union_ids
   )
   if (length(missing_from_union)) {
     stop(
-      paste(
-        "Annotation expansion produced reactions absent from the previously",
-        "constructed global union GEM:"
-      ),
+      "Direct database cross-reference expansion produced reactions absent from the previous global union GEM: ",
       paste(utils::head(missing_from_union, 10L), collapse = ", "),
-      ". Rebuild the original union with matching expansion settings.",
+      ". Rebuild the original union with matching reaction annotations.",
       call. = FALSE
     )
   }
-
   union_match <- match(
-    as.character(targets$reaction_id),
+    as.character(catalog$reaction_id),
     as.character(global_reaction_membership$reaction_id)
   )
-  targets$selected_core_anchor <-
-    as.character(targets$reaction_id) %in% selected$reaction_id
-  targets$score_target <- TRUE
-  targets$target_role <- ifelse(
-    targets$selected_core_anchor,
-    "selected_previous_core",
-    as.character(targets$inclusion_stage)
-  )
-  targets$previous_union_is_core <- if (
+  catalog$previous_union_is_core <- if (
     "is_core" %in% colnames(global_reaction_membership)
   ) {
     global_reaction_membership$is_core[union_match] %in% TRUE
   } else {
-    as.character(targets$reaction_id) %in%
+    as.character(catalog$reaction_id) %in%
       as.character(global_core_reactions$reaction_id)
   }
-  targets$previous_union_inclusion_stage <- if (
+  catalog$previous_union_inclusion_stage <- if (
     "inclusion_stage" %in% colnames(global_reaction_membership)
   ) {
     as.character(global_reaction_membership$inclusion_stage[union_match])
   } else {
     NA_character_
   }
+  catalog$score_target <- !catalog$previous_union_is_core
+  catalog$target_role <- ifelse(
+    catalog$previous_union_is_core,
+    "previous_global_core_not_rescored",
+    "direct_database_crossref_noncore"
+  )
+  catalog$lp_exclusion_reason <- ifelse(
+    catalog$previous_union_is_core,
+    "already_scored_in_original_layer2",
+    NA_character_
+  )
+  target_relations <- catalog[catalog$score_target, , drop = FALSE]
+  if (!nrow(target_relations)) {
+    stop(
+      "All directly linked KEGG, Reactome, or master-Rhea reactions were already scored as global cores in the original Layer 2 run.",
+      call. = FALSE
+    )
+  }
+  targets <- .rc_target_union_aggregate_targets(target_relations)
   rownames(selected) <- NULL
-  rownames(targets) <- NULL
-
-  summary <- expanded$summary
-  summary$n_selected_previous_core <- nrow(selected)
-  summary$n_expanded_score_targets <- length(unique(targets$reaction_id))
-  summary$n_previous_union_reactions <- length(previous_union_ids)
-  summary$gene_match <- gene_match
-  summary$expansion_mode <- expansion_mode
-  summary$scoring_policy <-
-    "selected_core_plus_annotation_related_reactions_all_scored"
-  summary$model_policy <- "reuse_previous_global_union_gem_without_rebuilding"
-
+  rownames(catalog) <- NULL
+  summary <- data.frame(
+    n_selected_previous_core = nrow(selected),
+    n_direct_crossref_relations = nrow(catalog),
+    n_direct_crossref_reactions = length(unique(catalog$reaction_id)),
+    n_previous_core_reactions_not_rescored = length(unique(
+      catalog$reaction_id[catalog$previous_union_is_core]
+    )),
+    n_expanded_score_targets = nrow(targets),
+    n_previous_union_reactions = length(previous_union_ids),
+    gene_match = gene_match,
+    expansion_policy =
+      "direct_from_selected_core_via_kegg_reactome_master_rhea_only",
+    scoring_policy =
+      "direct_database_crossref_noncore_reactions_only",
+    model_policy = "reuse_exact_previous_global_union_gem",
+    stringsAsFactors = FALSE
+  )
   list(
     selected_core_reactions = selected,
+    expanded_reaction_catalog = catalog,
     expanded_scoring_targets = targets,
     previous_union_membership = global_reaction_membership,
     summary = summary,
-    crossref_maps = expanded$crossref_maps,
     params = list(
       gene_match = gene_match,
-      expansion_mode = expansion_mode,
-      max_iterations = as.integer(max_iterations),
       selected_core_reactions = unique(as.character(selected$reaction_id)),
-      score_targets = unique(as.character(targets$reaction_id))
+      previous_core_reactions_not_rescored = unique(as.character(
+        catalog$reaction_id[catalog$previous_union_is_core]
+      )),
+      score_targets = unique(as.character(targets$reaction_id)),
+      expansion_policy =
+        "direct_from_selected_core_via_kegg_reactome_master_rhea_only"
     )
   )
 }
@@ -256,13 +378,10 @@
     layer2, target_reactions,
     target_direction = c("both", "forward", "reverse")) {
   target_direction <- match.arg(target_direction)
-  if (!is.list(layer2) ||
+  if (!inherits(layer2, "regcompass_layer2_step") ||
       !identical(as.character(layer2$model_mode), "meta_module_gem")) {
     stop(
-      paste(
-        "`layer2` must be the completed original core LP result produced with",
-        "`model_mode = \"meta_module_gem\"`."
-      ),
+      "`layer2` must be the completed core LP stage with `model_mode = \"meta_module_gem\"`.",
       call. = FALSE
     )
   }
@@ -275,17 +394,13 @@
       call. = FALSE
     )
   }
-  summary$medium_scenario <- as.character(summary$medium_scenario)
+  summary$medium_scenario <- trimws(as.character(summary$medium_scenario))
   summary$file <- as.character(summary$file)
   summary <- unique(summary[
     !is.na(summary$medium_scenario) & nzchar(summary$medium_scenario) &
       !is.na(summary$file) & nzchar(summary$file),
     , drop = FALSE
   ])
-  if (!nrow(summary)) {
-    stop("No reusable union GEM files remain after cache validation.",
-         call. = FALSE)
-  }
   scenario_files <- split(summary$file, summary$medium_scenario)
   ambiguous <- names(scenario_files)[vapply(
     scenario_files, function(x) length(unique(x)) != 1L, logical(1)
@@ -293,30 +408,27 @@
   if (length(ambiguous)) {
     stop(
       "Each medium scenario must resolve to one previous union GEM file: ",
-      paste(ambiguous, collapse = ", "),
-      call. = FALSE
+      paste(ambiguous, collapse = ", "), call. = FALSE
     )
   }
-  summary <- summary[
-    !duplicated(summary$medium_scenario),
-    , drop = FALSE
-  ]
+  summary <- summary[!duplicated(summary$medium_scenario), , drop = FALSE]
   missing_files <- summary$file[!file.exists(summary$file)]
   if (length(missing_files)) {
     stop(
       "Previous union GEM cache files are unavailable: ",
-      paste(utils::head(missing_files, 5L), collapse = ", "),
-      call. = FALSE
+      paste(utils::head(missing_files, 5L), collapse = ", "), call. = FALSE
     )
   }
 
   cache <- list()
   diagnostics <- list()
+  fingerprints <- character(nrow(summary))
   for (i in seq_len(nrow(summary))) {
     scenario <- summary$medium_scenario[[i]]
     file <- summary$file[[i]]
     model <- readRDS(file)
     validated <- rc_validate_gem(model)
+    fingerprints[[i]] <- .rc_full_gem_cache_fingerprint(model)
     missing_targets <- setdiff(target_reactions, validated$reactions)
     if (length(missing_targets)) {
       stop(
@@ -327,9 +439,7 @@
       )
     }
     directions <- rc_prepare_directional_targets(
-      model,
-      target_reactions = target_reactions,
-      target_direction = target_direction
+      model, target_reactions, target_direction
     )
     directions$medium_scenario <- scenario
     diagnostics[[scenario]] <- directions
@@ -353,382 +463,255 @@
         medium_scenario = scenario,
         condition = "all",
         file = file,
-        build_strategy = "reuse_previous_global_union_gem"
+        build_strategy = "reuse_exact_previous_global_union_gem"
       )
     }
   }
   if (!length(cache)) {
-    stop("No selected or annotation-related reaction direction can be scored.",
+    stop("No direct database-linked non-core reaction direction can be scored.",
          call. = FALSE)
   }
-  summary$build_strategy <- "reuse_previous_global_union_gem"
+  summary$source_model_fingerprint <- fingerprints
+  summary$source_model_md5 <- unname(tools::md5sum(summary$file))
+  summary$build_strategy <- "reuse_exact_previous_global_union_gem"
   summary$reused_without_rebuilding <- TRUE
   attr(cache, "summary") <- summary
   attr(cache, "direction_diagnostics") <- .rc_bind_frames_fill(diagnostics)
   cache
 }
 
-.rc_target_union_no_constraint_medium <- function(scenario) {
-  data.frame(
-    medium_scenario_id = as.character(scenario),
-    exchange_reaction_id = NA_character_,
-    lb = NA_real_,
-    ub = NA_real_,
-    available = FALSE,
-    .no_constraints = TRUE,
+.rc_score_existing_union_cache <- function(
+    layer1, gem, model_cache,
+    condition_col, sample_col, celltype_col,
+    omega = 0.95,
+    solver = c("highs", "gurobi", "glpk"),
+    time_limit = 60, flux_threshold = 1e-8,
+    parallel = TRUE, BPPARAM = NULL) {
+  solver <- match.arg(solver)
+  .rc_require_lp_solver(solver)
+  if (!is.numeric(omega) || length(omega) != 1L ||
+      !is.finite(omega) || omega <= 0 || omega > 1) {
+    stop("`omega` must be one finite value in (0, 1].", call. = FALSE)
+  }
+  matrices <- rc_layer2_unit_matrices(
+    layer1, "metacell", sample_col, celltype_col, condition_col
+  )
+  row_ids <- names(model_cache)
+  units <- colnames(matrices$reaction_expression)
+  model_files <- vapply(model_cache, `[[`, character(1), "file")
+  unique_files <- unique(model_files)
+  representative <- vapply(unique_files, function(file) {
+    row_ids[match(file, model_files)]
+  }, character(1))
+  all_reactions <- unique(unlist(lapply(representative, function(row_id) {
+    colnames(readRDS(model_cache[[row_id]]$file)$S)
+  }), use.names = FALSE))
+  gem <- rc_annotate_reaction_roles(gem)
+  penalties <- rc_compute_multiome_penalty(
+    rc_align_reaction_expression(
+      matrices$reaction_expression, all_reactions, NA_real_
+    ),
+    reaction_roles = gem$reaction_roles
+  )
+  penalty <- vmax <- matrix(
+    NA_real_, length(row_ids), length(units),
+    dimnames = list(row_ids, units)
+  )
+  feasible <- evaluated <- matrix(
+    FALSE, length(row_ids), length(units),
+    dimnames = list(row_ids, units)
+  )
+  tasks <- expand.grid(
+    file = unique_files, unit_id = units,
     stringsAsFactors = FALSE
   )
-}
-
-.rc_bind_target_union_results <- function(
-    results, model_cache, original_medium_scenarios,
-    omega, target_direction, solver, time_limit, flux_threshold) {
-  if (!length(results)) {
-    stop("No second-pass union-GEM results were produced.", call. = FALSE)
+  run_one <- function(task) {
+    file <- as.character(task$file)
+    unit_id <- as.character(task$unit_id)
+    selected <- row_ids[model_files == file]
+    model <- readRDS(file)
+    answers <- lapply(selected, function(row_id) {
+      entry <- model_cache[[row_id]]
+      fit <- rc_compass_two_step_lp_directional(
+        S = model$S, lb = model$lb, ub = model$ub,
+        target_reaction = entry$reaction_id,
+        penalties = penalties$penalty[colnames(model$S), unit_id],
+        target_direction = entry$target_direction,
+        omega = omega, solver = solver,
+        time_limit = time_limit, flux_threshold = flux_threshold
+      )
+      list(
+        row_id = row_id,
+        unit_id = unit_id,
+        penalty = fit$penalty,
+        vmax = fit$vmax,
+        feasible = isTRUE(fit$feasible),
+        diagnostics = data.frame(
+          row_id = row_id, unit_id = unit_id,
+          sample_id = "global", module_id = "GLOBAL_UNION",
+          reaction_id = entry$reaction_id,
+          target_direction = entry$target_direction,
+          medium_scenario = entry$medium_scenario,
+          condition = "all",
+          strict_feasible = isTRUE(fit$feasible),
+          solver_status = fit$solver_status,
+          step1_status = fit$step1_status,
+          step2_status = fit$step2_status,
+          target_status = model$target_status %||%
+            if (isTRUE(fit$feasible)) "ok" else "structurally_infeasible",
+          objective_value = fit$penalty,
+          vmax = fit$vmax,
+          source_union_model_file = file,
+          stringsAsFactors = FALSE
+        )
+      )
+    })
+    list(
+      results = answers,
+      diagnostics = do.call(rbind, lapply(answers, `[[`, "diagnostics"))
+    )
   }
-  bind_matrix <- function(field) {
-    values <- lapply(results, `[[`, field)
-    out <- do.call(rbind, values)
-    if (is.null(rownames(out)) || anyDuplicated(rownames(out))) {
-      stop("Second-pass target row IDs are missing or duplicated.",
-           call. = FALSE)
+  grouped <- rc_parallel_lapply(
+    split(tasks, seq_len(nrow(tasks))),
+    function(task) run_one(task[1L, , drop = FALSE]),
+    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
+  )
+  results <- unlist(lapply(grouped, `[[`, "results"), recursive = FALSE)
+  for (result in results) {
+    penalty[result$row_id, result$unit_id] <- result$penalty
+    vmax[result$row_id, result$unit_id] <- result$vmax
+    feasible[result$row_id, result$unit_id] <- result$feasible
+    evaluated[result$row_id, result$unit_id] <- TRUE
+  }
+  score <- rc_compass_score_from_penalty(penalty, feasible)
+  summary <- attr(model_cache, "summary")
+  model_diagnostics <- .rc_bind_frames_fill(lapply(seq_len(nrow(summary)), function(i) {
+    model <- readRDS(summary$file[[i]])
+    out <- model$closure_diagnostics %||% data.frame()
+    if (nrow(out)) {
+      out$medium_scenario <- summary$medium_scenario[[i]]
+      out$source_union_model_file <- summary$file[[i]]
     }
     out
-  }
-  score <- bind_matrix("score")
-  penalty <- bind_matrix("penalty")
-  vmax <- bind_matrix("vmax")
-  feasible <- bind_matrix("feasible")
-  evaluated <- bind_matrix("evaluated")
-
-  target_direction_table <- unique(.rc_bind_frames_fill(Map(
-    function(result, scenario) {
-      directions <- result$target_direction %||% data.frame()
-      if (nrow(directions)) directions$medium_scenario <- scenario
-      directions
-    },
-    results,
-    names(results)
-  )))
-  direction_diagnostics <- .rc_bind_frames_fill(Map(
-    function(result, scenario) {
-      diagnostics <- result$direction_diagnostics %||% data.frame()
-      if (nrow(diagnostics)) diagnostics$medium_scenario <- scenario
-      diagnostics
-    },
-    results,
-    names(results)
-  ))
-  lp_diagnostics <- .rc_bind_frames_fill(lapply(
-    results, `[[`, "lp_diagnostics"
-  ))
-
-  source_summary <- attr(model_cache, "summary")
-  source_files <- stats::setNames(
-    as.character(source_summary$file),
-    as.character(source_summary$medium_scenario)
+  }))
+  directions <- unique(do.call(rbind, lapply(model_cache, function(entry) {
+    data.frame(
+      reaction_id = entry$reaction_id,
+      target_direction = entry$target_direction,
+      medium_scenario = entry$medium_scenario,
+      stringsAsFactors = FALSE
+    )
+  })))
+  manifest <- data.frame(
+    file = summary$file,
+    medium_scenario = summary$medium_scenario,
+    size_bytes = as.numeric(file.info(summary$file)$size),
+    md5 = unname(tools::md5sum(summary$file)),
+    stringsAsFactors = FALSE
   )
-  model_cache_summary <- .rc_bind_frames_fill(Map(
-    function(result, scenario) {
-      summary <- result$model_cache_summary %||% data.frame()
-      if (nrow(summary)) {
-        summary$source_union_model_file <- unname(source_files[[scenario]])
-        summary$reused_previous_union_gem <- TRUE
-      }
-      summary
-    },
-    results,
-    names(results)
-  ))
-  original_model_diagnostics <- .rc_bind_frames_fill(lapply(
-    seq_len(nrow(source_summary)),
-    function(i) {
-      file <- as.character(source_summary$file[[i]])
-      scenario <- as.character(source_summary$medium_scenario[[i]])
-      model <- readRDS(file)
-      diagnostics <- model$closure_diagnostics %||% data.frame()
-      if (nrow(diagnostics)) {
-        diagnostics$medium_scenario <- scenario
-        diagnostics$source_union_model_file <- file
-        diagnostics$diagnostic_origin <- "original_core_union_build"
-      }
-      diagnostics
-    }
-  ))
-  components_by_medium <- lapply(
-    results,
-    `[[`,
-    "penalty_components"
-  )
-  manifests <- .rc_bind_frames_fill(Map(
-    function(result, scenario) {
-      manifest <- result$model_file_manifest %||% data.frame()
-      if (nrow(manifest)) manifest$medium_scenario <- scenario
-      manifest
-    },
-    results,
-    names(results)
-  ))
-
-  score_semantics <- unique(vapply(
-    results,
-    function(result) as.character(
-      result$score_semantics %||%
-        "within_target_relative_penalty_rank_not_probability"
-    ),
-    character(1)
-  ))
-  if (length(score_semantics) != 1L) {
-    stop("Second-pass score semantics differ across medium scenarios.",
-         call. = FALSE)
-  }
-  noninformative_values <- lapply(results, function(result) {
-    value <- result$noninformative_target
-    if (is.null(value)) {
-      value <- stats::setNames(
-        rep(FALSE, nrow(result$score)),
-        rownames(result$score)
-      )
-    }
-    value
-  })
-  noninformative <- unlist(
-    unname(noninformative_values),
-    use.names = TRUE
-  )
-  attr(score, "score_semantics") <- score_semantics[[1L]]
-  attr(score, "noninformative_target") <- noninformative
-
   answer <- list(
     score = score,
     penalty = penalty,
     vmax = vmax,
     feasible = feasible,
     evaluated = evaluated,
-    target_direction = target_direction_table,
-    direction_diagnostics = direction_diagnostics,
-    medium_scenarios = original_medium_scenarios,
+    target_direction = directions,
+    direction_diagnostics = attr(model_cache, "direction_diagnostics"),
     model_mode = "reused_global_union_gem",
-    model_cache_summary = model_cache_summary,
-    model_diagnostics = original_model_diagnostics,
-    lp_diagnostics = lp_diagnostics,
-    penalty_components = if (length(components_by_medium) == 1L) {
-      components_by_medium[[1L]]
-    } else {
-      components_by_medium
-    },
-    penalty_components_by_medium = components_by_medium,
-    evidence_policy = results[[1L]]$evidence_policy,
-    evidence_policy_detail = results[[1L]]$evidence_policy_detail,
-    unit_meta = results[[1L]]$unit_meta,
+    model_cache_summary = summary,
+    model_diagnostics = model_diagnostics,
+    model_file_manifest = manifest,
+    lp_diagnostics = .rc_bind_frames_fill(lapply(grouped, `[[`, "diagnostics")),
+    penalty_components = penalties$components,
+    evidence_policy = penalties$evidence_policy,
+    evidence_policy_detail = penalties$evidence_policy_detail,
+    unit_meta = matrices$unit_meta,
     params = list(
       unit = "metacell",
       omega = omega,
-      target_direction = target_direction,
       shared_gem = TRUE,
       shared_gem_scope = "previous_global_union_by_medium",
-      reused_without_structural_reconstruction = TRUE,
-      second_pass_engine = "canonical_full_gem_microcompass",
+      structural_model_reused_exactly = TRUE,
       parallel_task = "reused_union_model_by_metacell",
       flux_threshold = flux_threshold,
       solver = solver,
       time_limit = time_limit
     ),
-    method = paste(
-      "canonical microCOMPASS directional LP on previously constructed",
-      "global union GEMs"
-    )
+    method = "microCOMPASS directional LP for direct KEGG/Reactome/master-Rhea-linked non-core reactions on exact previous global union GEMs"
   )
-  if (nrow(manifests)) answer$model_file_manifest <- manifests
   answer$relative_penalty_rank <- answer$score
-  answer$score_semantics <- score_semantics[[1L]]
-  answer$noninformative_target <- noninformative
+  answer$score_semantics <- attr(answer$score, "score_semantics") %||%
+    "within_target_relative_penalty_rank_not_probability"
+  answer$noninformative_target <- attr(answer$score, "noninformative_target")
   answer$primary_output <- "penalty"
   answer$primary_output_semantics <-
     "minimum evidence-discordance penalty; lower means stronger support"
+  class(answer) <- c("regcompass_expanded_layer2_result", "list")
   answer
 }
 
-.rc_score_target_union_cache <- function(
-    layer1, gem, model_cache, medium_scenarios,
-    condition_col, sample_col, celltype_col,
-    omega = 0.95,
-    target_direction = c("both", "forward", "reverse"),
-    solver = c("highs", "gurobi", "glpk"),
-    time_limit = 60, flux_threshold = 1e-8,
-    cache_dir = tempfile("RegCompassR_target_union_"),
-    parallel = TRUE, BPPARAM = NULL) {
-  target_direction <- match.arg(target_direction)
-  solver <- match.arg(solver)
-  if (!is.numeric(omega) || length(omega) != 1L ||
-      !is.finite(omega) || omega <= 0 || omega > 1) {
-    stop("`omega` must be one finite value in (0, 1].", call. = FALSE)
-  }
-  if (!is.numeric(time_limit) || length(time_limit) != 1L ||
-      !is.finite(time_limit) || time_limit <= 0) {
-    stop("`time_limit` must be one positive finite number.", call. = FALSE)
-  }
-  if (!is.numeric(flux_threshold) || length(flux_threshold) != 1L ||
-      !is.finite(flux_threshold) || flux_threshold < 0) {
-    stop("`flux_threshold` must be one finite non-negative number.",
-         call. = FALSE)
-  }
-  if (!is.character(cache_dir) || length(cache_dir) != 1L ||
-      is.na(cache_dir) || !nzchar(cache_dir)) {
-    stop("`cache_dir` must be one non-empty path.", call. = FALSE)
-  }
-  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
-
-  source_summary <- attr(model_cache, "summary")
-  results <- list()
-  safe <- function(value) {
-    paste(sprintf("%02x", as.integer(charToRaw(enc2utf8(value)))), collapse = "")
-  }
-  for (i in seq_len(nrow(source_summary))) {
-    scenario <- as.character(source_summary$medium_scenario[[i]])
-    source_file <- as.character(source_summary$file[[i]])
-    source_model <- readRDS(source_file)
-    scenario_entries <- model_cache[vapply(
-      model_cache,
-      function(entry) identical(
-        as.character(entry$medium_scenario),
-        scenario
-      ),
-      logical(1)
-    )]
-    if (!length(scenario_entries)) next
-    target_reactions <- unique(vapply(
-      scenario_entries,
-      `[[`,
-      character(1),
-      "reaction_id"
-    ))
-    scenario_cache_dir <- file.path(
-      cache_dir,
-      paste0("medium_", safe(scenario))
-    )
-    results[[scenario]] <- withCallingHandlers(
-      rc_run_microcompass(
-        layer1 = layer1,
-        gem = source_model,
-        target_reactions = target_reactions,
-        medium_scenarios = .rc_target_union_no_constraint_medium(scenario),
-        mode = "full_gem",
-        unit = "metacell",
-        condition_col = condition_col,
-        sample_col = sample_col,
-        celltype_col = celltype_col,
-        model_params = list(cache_dir = scenario_cache_dir),
-        omega = omega,
-        target_direction = target_direction,
-        parallel = parallel,
-        solver = solver,
-        time_limit = time_limit,
-        flux_threshold = flux_threshold,
-        BPPARAM = BPPARAM
-      ),
-      warning = function(w) {
-        if (grepl(
-          "Metacell-level scores are descriptive pseudo-observations",
-          conditionMessage(w),
-          fixed = TRUE
-        )) invokeRestart("muffleWarning")
-      }
-    )
-  }
-  .rc_bind_target_union_results(
-    results = results,
-    model_cache = model_cache,
-    original_medium_scenarios = medium_scenarios,
-    omega = omega,
-    target_direction = target_direction,
-    solver = solver,
-    time_limit = time_limit,
-    flux_threshold = flux_threshold
-  )
-}
-
-#' Re-score annotation-related reactions in a previous global union GEM
+#' Score directly database-linked non-core reactions in a previous union GEM
 #'
-#' This optional post-Layer-2 step starts from reactions that were already core
-#' targets in the original LP analysis. It resolves those cores from reaction IDs
-#' and/or GPR genes, expands them through same-subsystem, shared KEGG/Reactome
-#' reaction, and shared master-Rhea mappings, and scores every expanded reaction
-#' as an LP target. The structural model is loaded from the previous Layer-2
-#' global union-GEM cache and is not reconstructed.
+#' Uses core reactions from a completed Layer 2 run as anchors. It directly
+#' identifies reactions sharing KEGG, Reactome, or master-Rhea identifiers with
+#' those anchors and scores only reactions that were not global core targets in
+#' the original Layer 2 run. No subsystem or transitive expansion is performed.
 #'
 #' @param layer1 Output from [rc_regcompass_step_layer1()].
 #' @param meta_modules Output from [rc_regcompass_step_meta_modules()].
-#' @param layer2 Completed original core LP output from
-#'   [rc_regcompass_step_layer2()] using `model_mode = "meta_module_gem"`.
-#' @param gem The same validated GEM used by the original analysis.
-#' @param outdir Persistent output directory.
-#' @param core_reaction_ids One or more reactions that were core targets in the
-#'   previous LP analysis.
-#' @param core_genes Genes used to resolve previous core reactions through GPR
-#'   rules.
-#' @param gene_match `"complete_gpr"` requires one complete GPR AND group;
-#'   `"any_direct"` permits an intentional partial-complex match.
-#' @param subsystem_table Optional external reaction-to-subsystem table.
-#' @param expansion_mode Annotation expansion mode passed to
-#'   [rc_expand_meta_module_reactions()].
-#' @param max_iterations Maximum fixed-point annotation-expansion iterations.
+#' @param layer2 Output from [rc_regcompass_step_layer2()] with
+#'   `model_mode = "meta_module_gem"`.
+#' @param gem The same GEM used for the original run.
+#' @param outdir Output directory.
+#' @param core_reaction_ids Previous core reaction IDs used as direct mapping
+#'   anchors.
+#' @param core_genes Genes used to resolve previous core anchors through GPRs.
+#' @param gene_match Require a complete GPR group or allow any direct gene match.
 #' @param layer2_args Optional `omega`, `target_direction`, `solver`,
-#'   `time_limit`, and `flux_threshold` overrides for the second scoring pass.
-#' @param parallel Whether LP tasks may run in parallel.
+#'   `time_limit`, and `flux_threshold` overrides.
+#' @param parallel Whether to parallelize model-by-metacell tasks.
 #' @param BPPARAM Optional BiocParallel parameter object.
-#' @return A `regcompass_target_union_step` containing selected previous cores,
-#'   expanded LP targets, the reused union membership, and the second-pass
-#'   microCOMPASS result.
+#' @return A `regcompass_target_union_step` with selected core anchors, direct
+#'   database relation rows, unique non-core LP targets, source-model provenance,
+#'   and second-pass LP results.
 #' @export
 rc_regcompass_step_target_union <- function(
     layer1, meta_modules, layer2, gem, outdir,
     core_reaction_ids = NULL, core_genes = NULL,
     gene_match = c("complete_gpr", "any_direct"),
-    subsystem_table = NULL,
-    expansion_mode = c("ordered_once", "fixed_point"),
-    max_iterations = 10L,
     layer2_args = list(), parallel = TRUE, BPPARAM = NULL) {
   gene_match <- match.arg(gene_match)
-  expansion_mode <- match.arg(expansion_mode)
-  if (!is.list(layer1) || is.null(layer1$reaction_expression) ||
-      is.null(layer1$unit_meta)) {
-    stop("`layer1` must contain reaction_expression and unit_meta.",
-         call. = FALSE)
-  }
-  if (!inherits(meta_modules, "regcompass_meta_module_step")) {
-    stop(
-      "`meta_modules` must be the output of `rc_regcompass_step_meta_modules()`.",
-      call. = FALSE
-    )
-  }
-  if (!is.list(layer2) || is.null(layer2$penalty)) {
-    stop(
-      "`layer2` must be the completed original core LP result.",
-      call. = FALSE
-    )
-  }
-  if (!is.list(layer2_args)) {
-    stop("`layer2_args` must be a list.", call. = FALSE)
-  }
-  allowed <- c(
-    "omega", "target_direction", "solver",
-    "time_limit", "flux_threshold"
+  .rc_require_stage_class(
+    meta_modules, "regcompass_meta_module_step", "meta_modules",
+    "rc_regcompass_step_meta_modules"
   )
+  workflow <- meta_modules$workflow_params
+  .rc_require_stage_gem(meta_modules, gem, "meta_modules")
+  .rc_validate_layer1_stage(
+    layer1, workflow_params = workflow, gem = gem, argument = "layer1"
+  )
+  .rc_validate_layer2_stage(
+    layer2, layer1 = layer1, workflow_params = workflow, gem = gem,
+    required_mode = "meta_module_gem", argument = "layer2"
+  )
+  if (!is.list(layer2_args)) stop("`layer2_args` must be a list.", call. = FALSE)
+  allowed <- c("omega", "target_direction", "solver", "time_limit", "flux_threshold")
   unknown <- setdiff(names(layer2_args), allowed)
   if (length(unknown)) {
-    stop(
-      "Unsupported `layer2_args` for union-GEM re-scoring: ",
-      paste(unknown, collapse = ", "),
-      call. = FALSE
-    )
+    stop("Unsupported `layer2_args`: ", paste(unknown, collapse = ", "),
+         call. = FALSE)
   }
-
   global <- meta_modules$global_modules
   if (!is.list(global) ||
       !is.data.frame(global$global_core_reactions) ||
       !is.data.frame(global$global_reaction_membership)) {
-    stop("The previous global meta-module union is unavailable.",
+    stop("The previous global meta-module union is unavailable.", call. = FALSE)
+  }
+  if (!setequal(
+    as.character(layer2$source_core_reactions$reaction_id),
+    as.character(global$global_core_reactions$reaction_id)
+  )) {
+    stop("Layer 2 was not generated from the supplied global core reactions.",
          call. = FALSE)
   }
   definition <- .rc_build_target_union_definition(
@@ -737,18 +720,11 @@ rc_regcompass_step_target_union <- function(
     global_reaction_membership = global$global_reaction_membership,
     core_reaction_ids = core_reaction_ids,
     core_genes = core_genes,
-    gene_match = gene_match,
-    subsystem_table = subsystem_table,
-    expansion_mode = expansion_mode,
-    max_iterations = max_iterations
+    gene_match = gene_match
   )
-
   target_direction <- match.arg(
-    as.character(
-      layer2_args$target_direction %||%
-        layer2$params$target_direction %||%
-        "both"
-    ),
+    as.character(layer2_args$target_direction %||%
+                   layer2$params$target_direction %||% "both"),
     c("both", "forward", "reverse")
   )
   solver <- match.arg(
@@ -758,46 +734,44 @@ rc_regcompass_step_target_union <- function(
   omega <- layer2_args$omega %||% layer2$params$omega %||% 0.95
   time_limit <- layer2_args$time_limit %||% 60
   flux_threshold <- layer2_args$flux_threshold %||% 1e-8
-
   model_cache <- .rc_build_target_union_model_cache(
     layer2 = layer2,
     target_reactions = definition$params$score_targets,
     target_direction = target_direction
   )
-  workflow <- meta_modules$workflow_params
-  scored <- .rc_score_target_union_cache(
+  scored <- .rc_score_existing_union_cache(
     layer1 = layer1,
     gem = gem,
     model_cache = model_cache,
-    medium_scenarios = layer2$medium_scenarios,
     condition_col = workflow$condition_col,
     sample_col = workflow$sample_col,
     celltype_col = workflow$celltype_col,
     omega = omega,
-    target_direction = target_direction,
     solver = solver,
     time_limit = time_limit,
     flux_threshold = flux_threshold,
-    cache_dir = file.path(outdir, "model_cache"),
     parallel = parallel,
     BPPARAM = BPPARAM
   )
+  scored$workflow_params <- workflow
+  scored$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
+  scored$params$target_direction <- target_direction
   scored$params$target_scope <-
-    "selected_previous_core_plus_annotation_related_reactions"
+    "direct_kegg_reactome_master_rhea_noncore_only"
   scored$params$n_selected_previous_core <-
     nrow(definition$selected_core_reactions)
+  scored$params$n_previous_core_reactions_not_rescored <-
+    length(definition$params$previous_core_reactions_not_rescored)
   scored$params$n_expanded_score_targets <-
     length(definition$params$score_targets)
-  scored$params$annotation_expansion <- c(
-    "same_subsystem",
-    "shared_kegg_or_reactome_reaction",
-    "shared_master_rhea_reaction"
-  )
-
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   .rc_mm_write_tsv_gz(
     definition$selected_core_reactions,
     file.path(outdir, "selected_previous_core_reactions.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    definition$expanded_reaction_catalog,
+    file.path(outdir, "expanded_reaction_catalog.tsv.gz")
   )
   .rc_mm_write_tsv_gz(
     definition$expanded_scoring_targets,
@@ -813,6 +787,8 @@ rc_regcompass_step_target_union <- function(
   )
   rc_export_microcompass(scored, file.path(outdir, "scores"))
   answer <- c(definition, list(microcompass = scored))
+  answer$workflow_params <- workflow
+  answer$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   class(answer) <- c("regcompass_target_union_step", "list")
   saveRDS(answer, file.path(outdir, "step_target_union.rds"))
   answer

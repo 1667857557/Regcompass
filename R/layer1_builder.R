@@ -64,7 +64,7 @@
     colnames(gene_rna_support),
     drop = FALSE
   ]
-  gene_multiome_support <- .rc_integrate_regulatory_support_v170(
+  gene_multiome_support <- .rc_integrate_regulatory_support(
     gene_rna_support,
     modifier,
     alpha = regulatory_alpha
@@ -80,7 +80,7 @@
   )
 
   list(
-    schema_version = "regcompass_condition_only_layer1_v1.8.1",
+    schema_version = "regcompass_condition_only_layer1_v2",
     reaction_expression = reaction_expression,
     rna_metacell_logcpm = rna_logcpm,
     gene_support_rna = gene_rna_support,
