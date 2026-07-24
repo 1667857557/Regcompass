@@ -13,7 +13,7 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 RegCompassR fits condition-by-cell-type Pando GRNs, builds condition-level SuperCell2 metacells, maps complete-GPR core reactions, constructs a FASTCORE-completed global union GEM, integrates RNA and ATAC evidence, and performs directional minimum-penalty LP scoring.
 
-Version 1.8.2 adds strict stage provenance and an optional second LP pass over the subsystem and database context of selected core reactions.
+Version 1.8.2 adds strict stage provenance and an optional second LP pass for non-core reactions directly sharing KEGG, Reactome, or master-Rhea identifiers with selected cores.
 
 ## Installation
 
@@ -176,7 +176,7 @@ stopifnot(
 
 The raw minimum penalty is the primary result. Lower values indicate stronger compatibility between the required target flux and integrated evidence. The relative score is a within-target rank, not a probability.
 
-## Expanded target scoring
+## Direct database-linked non-core scoring
 
 ```{r}
 expanded <- rc_regcompass_step_target_union(
@@ -193,12 +193,21 @@ expanded <- rc_regcompass_step_target_union(
 
 stopifnot(
   all(expanded$expanded_scoring_targets$score_target),
+  all(expanded$expanded_reaction_catalog$expansion_type %in% c(
+    "shared_kegg_reaction",
+    "shared_reactome_reaction",
+    "shared_master_rhea_reaction"
+  )),
+  identical(
+    expanded$microcompass$params$target_scope,
+    "direct_kegg_reactome_master_rhea_noncore_only"
+  ),
   expanded$microcompass$params$structural_model_reused_exactly,
   all(expanded$microcompass$model_cache_summary$reused_without_rebuilding)
 )
 ```
 
-The second pass reuses the exact original union-GEM files and bounds. It changes only the LP targets.
+The selected core reactions are mapping anchors and are not scored again. Only non-core reactions directly sharing a KEGG, Reactome, or master-Rhea identifier with a selected core enter the second LP. Same-subsystem and transitive expansion are excluded. The exact original union-GEM files and bounds are reused.
 
 ## Assemble and interpret results
 
