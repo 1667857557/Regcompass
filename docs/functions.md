@@ -8,6 +8,7 @@
 - `rc_regcompass_step_meta_modules()`: validate bidirectional GRN–metacell group coverage, convert GRNs into complete-GPR core reactions and expanded biological modules, then run local FASTCORE completion. Parallel completion is configured through `layer1_args$local_fastcore_args`, using `parallel`, `workers`, `backend`, or `BPPARAM`.
 - `rc_regcompass_step_layer1()`: integrate metacell RNA and ATAC evidence into reaction expression. GPR/reaction-capacity work accepts `parallel` and `BPPARAM`.
 - `rc_regcompass_step_layer2()`: preflight the selected LP solver, construct the persistent structural-model cache, and distribute shared-model × metacell LP tasks through `parallel` and `BPPARAM`. The default HiGHS solver is a required dependency.
+- `rc_regcompass_step_target_union()`: after the original core LP analysis, select previously scored core reactions by reaction ID or GPR gene, expand them through same-subsystem, KEGG/Reactome, and master-Rhea mappings, then score every expanded reaction in the exact previously cached global union GEM without rebuilding the model. See [Re-score annotation-related reactions in the existing union GEM](target-union-scoring.md).
 - `rc_regcompass_step_results()`: assemble rankings and retain both condition-specific and global meta-module outputs. Stage 6 now also creates `reaction_catalog` and `reaction_evidence`, including names, formulas, GPR genes, and RNA-versus-multiome provenance.
 - `rc_build_reaction_annotations()`: reconstruct formal reaction formulas from GEM stoichiometry, summarize GPR genes, and classify evidence by comparing RNA-only and RNA+ATAC GPR-aggregated reaction capacities.
 - `rc_attach_reaction_annotations()`: add the reaction catalog and evidence tables to results generated before this annotation layer was available.
@@ -24,6 +25,7 @@ Metacell-level condition tests describe within-dataset separation and are not au
 ## Tutorial level by API surface
 
 - [Level 1](tutorial-01-quick-start.md) uses `rc_run_regcompass_one_shot()` with explicit Linux worker counts.
-- [Level 2](tutorial-02-stepwise-audit.md) uses all six `rc_regcompass_step_*()` functions with `MulticoreParam` examples and input/output audit gates.
+- [Level 2](tutorial-02-stepwise-audit.md) uses all six canonical workflow stages with `MulticoreParam` examples and input/output audit gates.
 - [Level 3](tutorial-03-advanced-restart.md) covers worker allocation, restart, serial debugging, solver, medium, and model-scope diagnostics.
+- [Expanded target re-scoring](target-union-scoring.md) uses the completed Layer-2 union-GEM cache for a second LP pass over selected core reactions and their annotation-related reactions.
 - [Condition statistics, reaction annotations, and plots](condition-reaction-statistics.md) covers condition tests, formula/GPR annotation, reaction-level RNA-versus-multiome evidence, gene-based reaction selection, and plot collections.
