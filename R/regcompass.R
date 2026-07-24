@@ -28,6 +28,10 @@ rc_run_regcompass <- function(
   progress <- .rc_progress_enabled(progress)
   old_progress_option <- options(RegCompassR.progress = progress)
   on.exit(do.call(options, old_progress_option), add = TRUE)
+
+  thread_state <- .rc_set_internal_single_thread()
+  on.exit(.rc_restore_internal_threads(thread_state), add = TRUE)
+
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
   total_timer <- .rc_timing_start("total_workflow")
@@ -247,6 +251,7 @@ rc_run_regcompass <- function(
   )
   result$params$upstream_workers <- upstream_config$workers
   result$params$layer2_workers <- layer2_config$workers
+  result$params$internal_threads_per_task <- 1L
   result$params$parallel_worker_lifecycle <-
     "stage_scoped_create_start_stop_release_full_gc"
   result$params$parallel_stage_groups <- list(
