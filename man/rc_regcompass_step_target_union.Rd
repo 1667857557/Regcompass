@@ -17,7 +17,7 @@ rc_regcompass_step_target_union(
 \item{gem}{The same GEM used for the original run.}
 \item{outdir}{Output directory.}
 \item{core_reaction_ids}{Previously scored core reaction IDs used only as direct database-mapping anchors.}
-\item{core_genes}{Genes used to resolve previous core anchors through GPR rules.}
+\item{core_genes}{Genes used to resolve previous core anchors through GPR rules. Every supplied gene selector must resolve to at least one previously scored core; an invalid gene selection is not ignored when reaction IDs are also supplied.}
 \item{gene_match}{Complete-GPR or intentional partial-complex matching.}
 \item{layer2_args}{Optional LP overrides.}
 \item{parallel}{Whether to parallelize reused-model by metacell tasks.}
@@ -26,4 +26,4 @@ rc_regcompass_step_target_union(
 }
 \value{A \code{regcompass_target_union_step} containing anchor mappings, unique non-core targets, source-model provenance, LP results, and timing.}
 \description{Directly maps selected cores through shared KEGG, Reactome, or master-Rhea identifiers and scores only linked non-core reactions not scored in the original Layer 2 run.}
-\details{Same-subsystem, metabolite-neighbour, recursive/transitive, generic union, and FASTCORE-only expansion are excluded. The exact cached union GEM and bounds are reused. The stage writes \code{step_timing.tsv}.}
+\details{Same-subsystem, metabolite-neighbour, recursive/transitive, generic union, and FASTCORE-only expansion are excluded. The exact cached medium-specific union GEM files and bounds are reused. Candidate availability is checked against the actual reactions present in every cached model, not only the pre-FASTCORE membership table; a directly mapped support reaction added during model completion can therefore be scored when it exists in all reused models. The stage writes \code{step_timing.tsv}.}
