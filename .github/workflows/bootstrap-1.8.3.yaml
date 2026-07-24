@@ -35,8 +35,10 @@ jobs:
         run: python scripts/bootstrap_1_8_3.py
 
       - name: Build bundled Human-GEM and Mouse-GEM assets
-        shell: Rscript {0}
-        run: source("scripts/build-bundled-gems.R")
+        shell: bash
+        run: |
+          set -o pipefail
+          Rscript -e 'source("scripts/build-bundled-gems.R")' 2>&1 | tee bundled-gem-build.log
 
       - name: Parse updated R sources and tests
         shell: Rscript {0}
@@ -52,3 +54,11 @@ jobs:
           git add -A
           git commit -m "Bundle validated Human-GEM and Mouse-GEM models"
           git push origin HEAD:agent/regcompass-1.8.3-portable-gems
+
+      - name: Upload bootstrap diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundled-gem-bootstrap-diagnostics
+          path: bundled-gem-build.log
+          if-no-files-found: warn
