@@ -1,4 +1,4 @@
-# Re-score annotation-related reactions in a previously built global union GEM.
+# Score annotation-expanded non-core reactions in a previously built union GEM.
 
 .rc_target_union_normalize_ids <- function(x) {
   x <- trimws(as.character(x))
@@ -160,12 +160,12 @@
     expansion_mode = expansion_mode,
     max_iterations = max_iterations
   )
-  targets <- expanded$reaction_membership
+  catalog <- expanded$reaction_membership
   previous_union_ids <- .rc_target_union_normalize_ids(
     global_reaction_membership$reaction_id
   )
   missing_from_union <- setdiff(
-    unique(as.character(targets$reaction_id)), previous_union_ids
+    unique(as.character(catalog$reaction_id)), previous_union_ids
   )
   if (length(missing_from_union)) {
     stop(
@@ -176,45 +176,68 @@
     )
   }
   union_match <- match(
-    as.character(targets$reaction_id),
+    as.character(catalog$reaction_id),
     as.character(global_reaction_membership$reaction_id)
   )
-  targets$selected_core_anchor <-
-    as.character(targets$reaction_id) %in% selected$reaction_id
-  targets$score_target <- TRUE
-  targets$target_role <- ifelse(
-    targets$selected_core_anchor,
-    "selected_previous_core",
-    as.character(targets$inclusion_stage)
-  )
-  targets$previous_union_is_core <- if (
+  catalog$selected_core_anchor <-
+    as.character(catalog$reaction_id) %in% selected$reaction_id
+  catalog$previous_union_is_core <- if (
     "is_core" %in% colnames(global_reaction_membership)
   ) {
     global_reaction_membership$is_core[union_match] %in% TRUE
   } else {
-    as.character(targets$reaction_id) %in%
+    as.character(catalog$reaction_id) %in%
       as.character(global_core_reactions$reaction_id)
   }
-  targets$previous_union_inclusion_stage <- if (
+  catalog$previous_union_inclusion_stage <- if (
     "inclusion_stage" %in% colnames(global_reaction_membership)
   ) {
     as.character(global_reaction_membership$inclusion_stage[union_match])
   } else {
     NA_character_
   }
+  catalog$score_target <- !catalog$previous_union_is_core
+  catalog$target_role <- ifelse(
+    catalog$selected_core_anchor,
+    "selected_previous_core_anchor_not_rescored",
+    ifelse(
+      catalog$previous_union_is_core,
+      "previous_global_core_not_rescored",
+      as.character(catalog$inclusion_stage)
+    )
+  )
+  catalog$lp_exclusion_reason <- ifelse(
+    catalog$previous_union_is_core,
+    "already_scored_in_original_layer2",
+    NA_character_
+  )
+  targets <- catalog[catalog$score_target, , drop = FALSE]
+  if (!nrow(targets)) {
+    stop(
+      "The selected core reactions have no non-core annotation-expanded reactions to score in the previous global union GEM.",
+      call. = FALSE
+    )
+  }
   rownames(selected) <- NULL
+  rownames(catalog) <- NULL
   rownames(targets) <- NULL
   summary <- expanded$summary
   summary$n_selected_previous_core <- nrow(selected)
-  summary$n_expanded_score_targets <- length(unique(targets$reaction_id))
+  summary$n_expanded_catalog_reactions <-
+    length(unique(as.character(catalog$reaction_id)))
+  summary$n_previous_core_reactions_not_rescored <-
+    length(unique(as.character(catalog$reaction_id[catalog$previous_union_is_core])))
+  summary$n_expanded_score_targets <-
+    length(unique(as.character(targets$reaction_id)))
   summary$n_previous_union_reactions <- length(previous_union_ids)
   summary$gene_match <- gene_match
   summary$expansion_mode <- expansion_mode
   summary$scoring_policy <-
-    "selected_core_plus_annotation_related_reactions_all_scored"
+    "annotation_expanded_noncore_reactions_only"
   summary$model_policy <- "reuse_exact_previous_global_union_gem"
   list(
     selected_core_reactions = selected,
+    expanded_reaction_catalog = catalog,
     expanded_scoring_targets = targets,
     previous_union_membership = global_reaction_membership,
     summary = summary,
@@ -224,6 +247,9 @@
       expansion_mode = expansion_mode,
       max_iterations = as.integer(max_iterations),
       selected_core_reactions = unique(as.character(selected$reaction_id)),
+      previous_core_reactions_not_rescored = unique(as.character(
+        catalog$reaction_id[catalog$previous_union_is_core]
+      )),
       score_targets = unique(as.character(targets$reaction_id))
     )
   )
@@ -323,7 +349,7 @@
     }
   }
   if (!length(cache)) {
-    stop("No selected or annotation-related reaction direction can be scored.",
+    stop("No annotation-expanded non-core reaction direction can be scored.",
          call. = FALSE)
   }
   summary$source_model_fingerprint <- fingerprints
@@ -492,7 +518,7 @@
       solver = solver,
       time_limit = time_limit
     ),
-    method = "microCOMPASS directional LP on exact previous global union GEMs"
+    method = "microCOMPASS directional LP for annotation-expanded non-core reactions on exact previous global union GEMs"
   )
   answer$relative_penalty_rank <- answer$score
   answer$score_semantics <- attr(answer$score, "score_semantics") %||%
@@ -505,11 +531,13 @@
   answer
 }
 
-#' Re-score annotation-related reactions in a previous global union GEM
+#' Score annotation-expanded non-core reactions in a previous union GEM
 #'
-#' Selects core reactions from a completed Layer 2 run, expands them through
-#' subsystem, KEGG/Reactome, and master-Rhea mappings, and scores every expanded
-#' reaction using the exact cached union GEM and bounds from the original run.
+#' Selects core reactions from a completed Layer 2 run as expansion anchors,
+#' expands them through subsystem, KEGG/Reactome, and master-Rhea mappings, and
+#' scores only expanded reactions that were not global core targets in the
+#' original Layer 2 run. The selected cores and any other previously scored
+#' global cores are retained in the expansion catalog but are not re-scored.
 #'
 #' @param layer1 Output from [rc_regcompass_step_layer1()].
 #' @param meta_modules Output from [rc_regcompass_step_meta_modules()].
@@ -527,8 +555,9 @@
 #'   `time_limit`, and `flux_threshold` overrides.
 #' @param parallel Whether to parallelize model-by-metacell tasks.
 #' @param BPPARAM Optional BiocParallel parameter object.
-#' @return A `regcompass_target_union_step` with selected anchors, expanded
-#'   targets, exact source-model provenance, and second-pass LP results.
+#' @return A `regcompass_target_union_step` with selected core anchors, the full
+#'   expansion catalog, non-core LP targets, exact source-model provenance, and
+#'   second-pass LP results.
 #' @export
 rc_regcompass_step_target_union <- function(
     layer1, meta_modules, layer2, gem, outdir,
@@ -619,15 +648,21 @@ rc_regcompass_step_target_union <- function(
   scored$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   scored$params$target_direction <- target_direction
   scored$params$target_scope <-
-    "selected_previous_core_plus_annotation_related_reactions"
+    "annotation_expanded_noncore_reactions_only"
   scored$params$n_selected_previous_core <-
     nrow(definition$selected_core_reactions)
+  scored$params$n_previous_core_reactions_not_rescored <-
+    length(definition$params$previous_core_reactions_not_rescored)
   scored$params$n_expanded_score_targets <-
     length(definition$params$score_targets)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   .rc_mm_write_tsv_gz(
     definition$selected_core_reactions,
     file.path(outdir, "selected_previous_core_reactions.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    definition$expanded_reaction_catalog,
+    file.path(outdir, "expanded_reaction_catalog.tsv.gz")
   )
   .rc_mm_write_tsv_gz(
     definition$expanded_scoring_targets,
