@@ -1,33 +1,36 @@
-# Expanded non-core target scoring in the existing union GEM
+# Direct database-linked non-core scoring in the existing union GEM
 
 `rc_regcompass_step_target_union()` is an optional analysis after a completed stepwise Layer 2 run with `model_mode = "meta_module_gem"`.
 
 ## Exact target definition
 
-A selected core reaction is an **expansion anchor**, not a second-pass LP target. The function derives candidate reactions only through:
+A selected core reaction is a **mapping anchor**, not a second-pass LP target. Candidate reactions are obtained directly from identifiers attached to that core:
 
-- the same subsystem as the selected core;
-- shared KEGG reaction identifiers;
-- shared Reactome reaction identifiers;
-- shared master-Rhea identifiers.
+- shared KEGG reaction ID;
+- shared Reactome reaction ID;
+- shared master-Rhea ID.
 
-The second LP pass scores only those annotation-expanded reactions that were **not global core targets in the original Layer 2 run**. It excludes:
+No same-subsystem expansion is used. No candidate reaction is used as a new anchor, so the mapping is not transitive or recursive.
 
-- the selected core reaction itself;
-- any other global core reaction already scored in Layer 2;
-- local FASTCORE support reactions unless they independently qualify through one of the four annotation mappings above;
-- generic union-GEM members;
-- metabolite-neighbour or one-hop reactions.
+The second LP pass scores only directly linked reactions that were **not global core targets in the original Layer 2 run**. It excludes:
+
+- the selected core itself;
+- any other global core already scored in Layer 2;
+- reactions related only by subsystem;
+- reactions reachable only through an intermediate mapped reaction;
+- FASTCORE-only support reactions without a direct database link to the selected core;
+- generic union-GEM members and metabolite-neighbour reactions.
 
 ## Processing sequence
 
-1. Select previous core anchors by reaction ID or GPR gene.
-2. Expand the anchors through subsystem, KEGG, Reactome, and master-Rhea mappings.
-3. Retain the complete expansion catalog for provenance.
-4. Remove reactions already scored as global cores.
-5. Require every remaining target to exist in the original global union GEM.
-6. Reuse the exact cached stoichiometry, bounds, and medium for each scenario.
-7. Run the standard directional Vmax/minimum-penalty LP only for the remaining non-core expansion targets.
+1. Resolve previous core anchors from reaction IDs or GPR genes.
+2. Read each anchor's KEGG, Reactome, and master-Rhea identifiers.
+3. Find reactions that directly share those identifiers with that anchor.
+4. Preserve one relation row per `anchor × reaction × database mapping`.
+5. Remove reactions already scored as global cores.
+6. Require every remaining target to exist in the original global union GEM.
+7. Reuse the exact cached stoichiometry, bounds, and medium.
+8. Run directional Vmax/minimum-penalty LP only for the remaining non-core targets.
 
 The function does not rerun FASTCORE or rebuild the union GEM.
 
@@ -51,7 +54,6 @@ expanded <- rc_regcompass_step_target_union(
   gem = gem,
   outdir = "RegCompass_steps/06_expanded_target_scoring",
   core_reaction_ids = c("MAR04324", "MAR03964"),
-  expansion_mode = "ordered_once",
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -79,39 +81,40 @@ expanded <- rc_regcompass_step_target_union(
 
 `complete_gpr` requires the supplied genes to cover one complete GPR AND group. Use `any_direct` only when partial enzyme-complex matching is intentional.
 
-## Inspect the target split
+## Inspect direct mappings and LP targets
 
 ```r
 expanded$selected_core_reactions
 
 expanded$expanded_reaction_catalog[, c(
+  "anchor_core_reaction_id",
   "reaction_id",
-  "selected_core_anchor",
-  "previous_union_is_core",
-  "inclusion_stage",
+  "expansion_type",
   "source_annotation",
+  "previous_union_is_core",
   "score_target",
   "lp_exclusion_reason"
 )]
 
 expanded$expanded_scoring_targets[, c(
   "reaction_id",
-  "inclusion_stage",
-  "source_annotation"
+  "anchor_core_reaction_ids",
+  "expansion_types",
+  "source_annotations"
 )]
 ```
 
-Valid scoring-target stages are:
+Valid `expansion_type` values are:
 
 ```r
 c(
-  "same_core_subsystem",
-  "shared_kegg_or_reactome_reaction",
+  "shared_kegg_reaction",
+  "shared_reactome_reaction",
   "shared_master_rhea_reaction"
 )
 ```
 
-Core rows remain in `expanded_reaction_catalog` with `score_target = FALSE` and `lp_exclusion_reason = "already_scored_in_original_layer2"`.
+A directly linked reaction that was already a global core remains in `expanded_reaction_catalog` with `score_target = FALSE` and `lp_exclusion_reason = "already_scored_in_original_layer2"`.
 
 ```r
 expanded$microcompass$penalty
@@ -136,5 +139,3 @@ The raw minimum penalty is the primary result. Lower values indicate stronger co
 - `target_union_summary.tsv.gz`
 - `scores/`
 - `step_target_union.rds`
-
-`ordered_once` is the conservative expansion mode. `fixed_point` is allowed only when every transitively annotation-linked target already exists in the original union GEM.
