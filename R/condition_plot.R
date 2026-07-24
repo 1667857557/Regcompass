@@ -129,8 +129,10 @@
 #' and cell type. Every finite metacell score is displayed as a jittered point.
 #' Pairwise significance brackets are derived from
 #' [rc_test_condition_reactions()] and can use raw or multiplicity-adjusted P
-#' values. When three or more conditions are present, the Kruskal-Wallis
-#' omnibus result is shown in the subtitle by default.
+#' values. The statistics layer is run over the full scored reaction set before
+#' the selected target is extracted, so adjusted P values retain the requested
+#' reaction-wide multiplicity correction. When three or more conditions are
+#' present, the Kruskal-Wallis omnibus result is shown in the subtitle by default.
 #'
 #' The plotted score is
 #' `-log(penalty / (omega * vmax) + eps)`, with larger values indicating stronger
@@ -297,6 +299,9 @@ rc_plot_condition_reaction <- function(
     )
   }
 
+  # Run the statistics over every scored reaction target in the selected cell
+  # type and condition set. This keeps BH adjustment scoped across reactions;
+  # filtering to one target before testing would collapse adjusted P to raw P.
   statistics <- rc_test_condition_reactions(
     x = microcompass,
     condition_col = condition_col,
@@ -304,9 +309,6 @@ rc_plot_condition_reaction <- function(
     conditions = conditions,
     cell_types = cell_type,
     comparisons = comparisons,
-    reaction_ids = target$reaction_id,
-    target_directions = target$target_direction,
-    medium_scenarios = target$medium_scenario,
     min_units = min_units,
     include_omnibus = TRUE,
     p_adjust_method = p_adjust_method,
