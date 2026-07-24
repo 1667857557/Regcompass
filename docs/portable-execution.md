@@ -1,8 +1,10 @@
-# Portable execution, bundled GEMs, progress, and timing
+# Portable execution, bundled GEMs, progress, timing, and worker cleanup
 
-RegCompassR 1.8.3 removes two setup assumptions from the canonical workflow:
-users no longer need to prepare the default Human-GEM/Mouse-GEM themselves,
-and they no longer need to choose a platform-specific parallel backend.
+RegCompassR 1.8.3 removes three setup assumptions from the canonical workflow:
+
+1. users do not need to prepare the default Human-GEM or Mouse-GEM;
+2. users do not choose a platform-specific parallel backend;
+3. users do not manually create or retain worker pools across stages.
 
 ## Offline default GEMs
 
@@ -44,20 +46,38 @@ human_gem <- rc_prepare_gem(
 )
 ```
 
-`rc_download_species_gem()` remains available for lower-level update and
-inspection workflows. `scripts/build-bundled-gems.R` reproduces the package
-assets. Model provenance and CC BY 4.0 attribution are recorded in
-`inst/extdata/gem/manifest.tsv`.
+`rc_download_species_gem()` remains available for lower-level update and inspection workflows. `scripts/build-bundled-gems.R` reproduces the package assets. Model provenance and CC BY 4.0 attribution are recorded in `inst/extdata/gem/manifest.tsv`.
 
-## Automatic parallel backend
+## Canonical two-layer worker model
 
-Use `parallel_backend = "auto"` unless a specific backend is required:
+The complete workflow exposes two worker counts only:
 
 ```r
-rc_parallel_config(workers = 8L, backend = "auto")
+upstream_workers <- 6L
+layer2_workers <- 30L
 ```
 
-Resolution rules:
+`upstream_workers` applies to:
+
+- condition-by-cell-type Pando GRNs;
+- local FASTCORE completion;
+- Layer 1 reaction-expression calculation.
+
+`layer2_workers` applies to directional LP scoring.
+
+Set both values to one for fully serial execution:
+
+```r
+result <- rc_run_regcompass_one_shot(
+  ...,
+  upstream_workers = 1L,
+  layer2_workers = 1L
+)
+```
+
+## Automatic backend resolution
+
+The canonical workflow always requests `backend = "auto"` internally.
 
 | Operating system | Resolved backend |
 |---|---|
@@ -65,9 +85,56 @@ Resolution rules:
 | Linux/macOS | `BiocParallel::MulticoreParam` |
 | one worker or unavailable BiocParallel | sequential |
 
-Explicit `parallel_backend = "multicore"` is rejected on Windows rather than
-silently creating an unsupported backend. The final result records requested
-and actual backends and worker counts.
+The public complete-workflow interface therefore does not require `parallel_backend`. Low-level `rc_parallel_config()` remains available for diagnostics and package development.
+
+## One outer worker equals one single-thread task
+
+RegCompass uses task-level parallelism only. Every analysis running inside an outer worker is constrained to one internal thread.
+
+The workflow temporarily sets the following values before workers are created:
+
+```text
+OMP_NUM_THREADS=1
+OPENBLAS_NUM_THREADS=1
+MKL_NUM_THREADS=1
+VECLIB_MAXIMUM_THREADS=1
+BLIS_NUM_THREADS=1
+NUMEXPR_NUM_THREADS=1
+RCPP_PARALLEL_NUM_THREADS=1
+```
+
+It also sets `mc.cores = 1L` and keeps Pando's internal `parallel = FALSE`. Package-managed child processes inherit the single-thread environment. This prevents an outer pool of 30 LP tasks from expanding into 30 nested multi-threaded solver or BLAS workloads.
+
+HiGHS uses a one-thread control default. GLPK is used as a serial solver backend. Alternative low-level solver interfaces remain available, but the canonical tutorials use HiGHS.
+
+## Stage-scoped worker lifecycle
+
+Parallel workers are not retained across unrelated stages.
+
+For each parallel stage RegCompass performs:
+
+```text
+resolve operating-system backend
+→ set internal thread count to one
+→ create worker pool
+→ start worker pool
+→ execute independent tasks
+→ stop worker pool in guaranteed cleanup
+→ remove pool reference
+→ run gc(full = TRUE)
+```
+
+Cleanup is registered before the pool is started, so startup failures and analysis errors use the same release path. Step 1, Step 4, and Step 5 each receive a fresh pool. Local FASTCORE owns and releases its own Step 3 pool. No upstream worker pool remains active while Layer 2 is running.
+
+## Linux numerical-library setup
+
+The package applies single-thread settings during execution. For cluster batch jobs, setting them before launching R remains recommended because it also covers package loading and any user-side preprocessing:
+
+```bash
+export OMP_NUM_THREADS=1
+export OPENBLAS_NUM_THREADS=1
+export MKL_NUM_THREADS=1
+```
 
 ## Progress controls
 
@@ -89,10 +156,9 @@ or per call:
 result <- rc_run_regcompass_one_shot(..., progress = FALSE)
 ```
 
-The complete workflow reports progress across six stages. Each independently
-run stage reports its own start and completion status.
+The complete workflow reports progress across six stages. Each independently run stage reports its own start and completion status.
 
-## Timing outputs
+## Timing and execution provenance
 
 Every stage writes:
 
@@ -111,8 +177,12 @@ and stores:
 ```r
 result$timing$stages
 result$timing$total
+result$params$parallel_backend_resolved
+result$params$upstream_workers
+result$params$layer2_workers
+result$params$internal_threads_per_task
+result$params$parallel_worker_lifecycle
+result$params$parallel_stage_groups
 ```
 
-Timing columns include stage, status, start and finish timestamps, elapsed
-seconds, formatted elapsed time, OS type, and R version. Failed stages write an
-error-status timing row before propagating the original error.
+Timing columns include stage, status, start and finish timestamps, elapsed seconds, formatted elapsed time, OS type, and R version. Failed stages write an error-status timing row before propagating the original error.
