@@ -92,7 +92,6 @@ rc_gene_score <- function(
   score
 }
 
-
 #' Normalized Boltzmann soft minimum for GPR AND
 #'
 #' Computes `-tau * log(mean(exp(-scores / tau)))` using a stable shift.
@@ -111,11 +110,7 @@ rc_boltzmann_minavg <- function(scores, tau = 0.20) {
   minimum - tau * log(mean(exp(-shifted)))
 }
 
-
 #' AND aggregation for one GPR complex
-#'
-#' Implements hard minimum, normalized Boltzmann soft minimum, and arithmetic
-#' mean. The canonical v1.7.0 workflow uses the monotone soft minimum.
 rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau = 0.20) {
   method <- match.arg(method)
   scores <- scores[is.finite(scores)]
@@ -160,16 +155,14 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and
     }
     rc_and_capacity(vals, method = and_method, tau = tau)
   }, numeric(1))
-
   rc_or_capacity(and_caps, method = or_method)
 }
 
 #' Compute raw Layer 1 reaction capacity
 #'
-#' Uses annotation-count-neutral promiscuity, hard-minimum AND, and maximum
-#' isoenzyme support by default. Alternative aggregation rules remain available
-#' to lower-level callers; the v1.7.0 canonical workflow fixes no promiscuity
-#' weighting, normalized Boltzmann soft-min AND, and additive isozyme OR.
+#' The canonical workflow uses no promiscuity weighting, normalized Boltzmann
+#' soft-min AND, and additive isozyme OR. Alternative rules remain available to
+#' lower-level callers for sensitivity analysis.
 rc_reaction_capacity <- function(gpr_list,
                                  gene_score,
                                  promiscuity_mode = c("none", "sqrt", "linear"),
@@ -211,7 +204,7 @@ rc_reaction_capacity <- function(gpr_list,
   weighted_score <- gene_score
   weighted_score[common_genes, ] <- sweep(weighted_score[common_genes, , drop = FALSE], 1, weights[common_genes], "*")
 
-  per_reaction <- rc_internal_lapply(reaction_ids, function(rid) {
+  per_reaction <- rc_parallel_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(weighted_score)), function(j) {
       score_vector <- weighted_score[, j, drop = TRUE]
