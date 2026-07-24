@@ -120,6 +120,33 @@ expanded <- rc_regcompass_step_target_union(
 
 `expanded$expanded_reaction_catalog` records `anchor_core_reaction_id`, mapping type, database identifier, and core-exclusion status. `expanded$expanded_scoring_targets` contains unique direct database-linked non-core targets. `expanded$microcompass$penalty` is the primary result; lower penalty means stronger evidence-supported flux compatibility.
 
+## Compare the same reaction across conditions
+
+```r
+condition_stats <- rc_test_condition_reactions(
+  result,
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "stem-cell_like",
+  p_adjust_scope = "celltype_contrast_medium"
+)
+
+condition_stats$omnibus
+condition_stats$pairwise
+
+p <- rc_plot_condition_reaction(
+  result,
+  reaction_id = "MAR06231",
+  cell_type = "stem-cell_like",
+  target_direction = "reverse",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  annotation_p = "p_adj"
+)
+```
+
+The plot shows one point per metacell and adjusted significance brackets. These are metacell-level, within-dataset comparisons rather than biological-replicate inference. See [Condition-associated reaction statistics](docs/condition-reaction-statistics.md).
+
 ## Main outputs
 
 - `01_single_cell_grn/`: GRN status and Pando edges.
@@ -137,5 +164,3 @@ expanded <- rc_regcompass_step_target_union(
 | 1 | minimal validated one-shot run | [Quick start](docs/tutorial-01-quick-start.md) |
 | 2 | stage-by-stage run and audit gates | [Stepwise audit](docs/tutorial-02-stepwise-audit.md) |
 | 3 | restart, sensitivity, resources, and failure diagnosis | [Advanced restart](docs/tutorial-03-advanced-restart.md) |
-
-Condition statistics and plots are described in [Condition-associated reaction statistics](docs/condition-reaction-statistics.md). Metacell-level comparisons are descriptive within-dataset analyses unless independent biological replication or external validation is supplied.
