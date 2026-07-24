@@ -7,10 +7,10 @@ test_that("public API exposes the GRN-first restartable workflow", {
       "rc_run_regcompass_one_shot", "rc_regcompass_step_grn",
       "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
       "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
-      "rc_regcompass_step_results", "rc_test_condition_reactions",
-      "rc_plot_condition_reaction", "rc_build_reaction_annotations",
-      "rc_attach_reaction_annotations", "rc_select_gene_reactions",
-      "rc_plot_condition_gene_reactions"
+      "rc_regcompass_step_target_union", "rc_regcompass_step_results",
+      "rc_test_condition_reactions", "rc_plot_condition_reaction",
+      "rc_build_reaction_annotations", "rc_attach_reaction_annotations",
+      "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
     )
   )
 })
