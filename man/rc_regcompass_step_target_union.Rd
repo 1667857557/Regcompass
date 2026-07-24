@@ -5,50 +5,25 @@
 \title{Score directly database-linked non-core reactions in an existing union GEM}
 \usage{
 rc_regcompass_step_target_union(
-  layer1,
-  meta_modules,
-  layer2,
-  gem,
-  outdir,
-  core_reaction_ids = NULL,
-  core_genes = NULL,
+  layer1, meta_modules, layer2, gem, outdir,
+  core_reaction_ids = NULL, core_genes = NULL,
   gene_match = c("complete_gpr", "any_direct"),
-  layer2_args = list(),
-  parallel = TRUE,
-  BPPARAM = NULL
+  layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+  progress = getOption("RegCompassR.progress", TRUE)
 )
 }
 \arguments{
-\item{layer1}{Output from \code{rc_regcompass_step_layer1()}.}
-
-\item{meta_modules}{Output from \code{rc_regcompass_step_meta_modules()}.}
-
-\item{layer2}{Output from \code{rc_regcompass_step_layer2()} with \code{model_mode = "meta_module_gem"}.}
-
+\item{layer1, meta_modules, layer2}{Validated outputs from the original meta-module GEM run.}
 \item{gem}{The same GEM used for the original run.}
-
 \item{outdir}{Output directory.}
-
-\item{core_reaction_ids}{Previous core reaction IDs used only as direct database-mapping anchors.}
-
+\item{core_reaction_ids}{Previously scored core reaction IDs used only as direct database-mapping anchors.}
 \item{core_genes}{Genes used to resolve previous core anchors through GPR rules.}
-
-\item{gene_match}{\code{"complete_gpr"} requires one complete GPR AND group. \code{"any_direct"} allows an intentional partial-complex match.}
-
-\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, \code{time_limit}, and \code{flux_threshold} overrides.}
-
+\item{gene_match}{Complete-GPR or intentional partial-complex matching.}
+\item{layer2_args}{Optional LP overrides.}
 \item{parallel}{Whether to parallelize reused-model by metacell tasks.}
-
 \item{BPPARAM}{Optional BiocParallel parameter object.}
+\item{progress}{Display stage progress.}
 }
-\value{
-A \code{regcompass_target_union_step} containing selected core anchors, direct anchor-to-reaction database relation rows, unique non-core LP targets, source-model provenance, and second-pass LP results.
-}
-\description{
-Uses previously scored global core reactions as anchors, directly identifies reactions sharing KEGG, Reactome, or master-Rhea identifiers with those anchors, and scores only linked reactions that were not global core targets in the original Layer 2 run.
-}
-\details{
-No same-subsystem, metabolite-neighbour, fixed-point, or transitive expansion is performed. A reaction linked only through an intermediate mapped reaction is not included. Selected cores and any other previously scored global cores are not re-scored.
-
-Stage classes, workflow parameters, GEM fingerprints, ordered metacell IDs, the previous core set, and source-model hashes are validated. The original union GEM and bounds are reused without rebuilding FASTCORE.
-}
+\value{A \code{regcompass_target_union_step} containing anchor mappings, unique non-core targets, source-model provenance, LP results, and timing.}
+\description{Directly maps selected cores through shared KEGG, Reactome, or master-Rhea identifiers and scores only linked non-core reactions not scored in the original Layer 2 run.}
+\details{Same-subsystem, metabolite-neighbour, recursive/transitive, generic union, and FASTCORE-only expansion are excluded. The exact cached union GEM and bounds are reused. The stage writes \code{step_timing.tsv}.}
