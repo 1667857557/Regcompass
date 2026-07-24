@@ -30,7 +30,7 @@ Stage 3-6 validate stage classes, workflow metadata, GEM fingerprints, core-targ
 
 ## Optional analyses after Layer 2
 
-- [Expanded target scoring](target-union-scoring.md): select previous core reactions or GPR genes, expand their annotation-related context, and score every expanded reaction in the exact cached union GEM from the original run.
+- [Direct database-linked non-core scoring](target-union-scoring.md): use previous core reactions or GPR genes as anchors, directly map reactions sharing KEGG, Reactome, or master-Rhea IDs, and score only mapped non-core reactions in the exact cached union GEM. Same-subsystem and recursive expansion are not used.
 - [Condition-associated reaction statistics](condition-reaction-statistics.md): compare the same reaction, direction, medium, and cell type across conditions.
 
 ## Parallel units
@@ -42,7 +42,7 @@ Stage 3-6 validate stage classes, workflow metadata, GEM fingerprints, core-targ
 | Meta-modules | local FASTCORE completion per module |
 | Layer 1 | GPR/reaction capacity |
 | Layer 2 | shared model × metacell |
-| Expanded targets | reused union model × metacell |
+| Direct database-linked targets | reused union model × metacell |
 | Results | serial assembly |
 
 On Linux use `BiocParallel::MulticoreParam` or `parallel_backend = "multicore"`. Keep Pando's inner `parallel = FALSE` and set numerical-library thread counts to one.
