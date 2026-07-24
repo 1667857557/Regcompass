@@ -19,7 +19,7 @@
 
 .rc_condition_metacell_matrix_fingerprint <- function(x) {
   if (is.null(dim(x)) || length(dim(x)) != 2L) {
-    stop("Metacell cache fingerprinting requires a two-dimensional assay matrix.",
+    stop("Metacell cache fingerprinting requires a two-dimensional matrix.",
          call. = FALSE)
   }
   list(
@@ -32,7 +32,42 @@
     ),
     col_sums_md5 = .rc_condition_metacell_md5(
       as.numeric(Matrix::colSums(x))
+    ),
+    values_md5 = .rc_condition_metacell_md5(as.matrix(x))
+  )
+}
+
+.rc_condition_metacell_reduction_fingerprint <- function(
+    object, reduction, dims, cells) {
+  reduction <- trimws(as.character(reduction[[1L]]))
+  dims <- as.integer(dims)
+  if (!nzchar(reduction) || !length(dims) || anyNA(dims) || any(dims < 1L)) {
+    stop("Metacell reductions require a non-empty name and positive dimensions.",
+         call. = FALSE)
+  }
+  if (!reduction %in% names(object@reductions)) {
+    stop("Required metacell reduction is absent: `", reduction, "`.",
+         call. = FALSE)
+  }
+  embeddings <- SeuratObject::Embeddings(object[[reduction]])
+  if (max(dims) > ncol(embeddings)) {
+    stop(
+      "Reduction `", reduction, "` contains only ", ncol(embeddings),
+      " dimensions but the metacell contract requests dimension ", max(dims),
+      ".", call. = FALSE
     )
+  }
+  index <- match(cells, rownames(embeddings))
+  if (anyNA(index)) {
+    stop("Reduction `", reduction, "` lacks input cells required by Stage 2.",
+         call. = FALSE)
+  }
+  selected <- embeddings[index, dims, drop = FALSE]
+  rownames(selected) <- cells
+  list(
+    reduction = reduction,
+    dims = dims,
+    embedding = .rc_condition_metacell_matrix_fingerprint(selected)
   )
 }
 
@@ -93,6 +128,12 @@
     ),
     atac_counts = .rc_condition_metacell_matrix_fingerprint(
       .rc_get_assay_counts(object, atac_assay)
+    ),
+    rna_reduction = .rc_condition_metacell_reduction_fingerprint(
+      object, analysis_args$rna_reduction, analysis_args$rna_dims, cells
+    ),
+    atac_reduction = .rc_condition_metacell_reduction_fingerprint(
+      object, analysis_args$atac_reduction, analysis_args$atac_dims, cells
     )
   )
 }
@@ -134,7 +175,7 @@
   if (!identical(observed, contract)) {
     stop(
       "Existing condition-metacell checkpoints were created with different ",
-      "cells, condition/cell-type labels, assay contents, or construction ",
+      "cells, labels, assay contents, reduction embeddings, or construction ",
       "parameters. Set `metacell_args$overwrite = TRUE` to rebuild them.",
       call. = FALSE
     )
@@ -267,6 +308,19 @@
       paste(unsupported, collapse = ", "), call. = FALSE
     )
   }
+  reserved <- intersect(names(metacell_args), c(
+    "object", "outdir", "sample_col", "condition_col", "celltype_col",
+    "label_col", "rna_assay", "atac_assay", "fragment_files",
+    "save_metacell_object", "save_counts", "save_fragments",
+    "require_fragment_aggregation", "fragment_aggregation_backend",
+    "on_stratum_error"
+  ))
+  if (length(reserved)) {
+    stop(
+      "`metacell_args` cannot override workflow fields: ",
+      paste(reserved, collapse = ", "), call. = FALSE
+    )
+  }
   if (is.null(metacell_args$gamma)) metacell_args$gamma <- 30L
   cache_contract <- .rc_condition_metacell_cache_contract(
     object = object,
@@ -292,19 +346,6 @@
   )
   internal_celltype_col <- .rc_condition_only_celltype_col(object@meta.data)
   object@meta.data[[internal_celltype_col]] <- "all_celltypes"
-  reserved <- intersect(names(metacell_args), c(
-    "object", "outdir", "sample_col", "condition_col", "celltype_col",
-    "label_col", "rna_assay", "atac_assay", "fragment_files",
-    "save_metacell_object", "save_counts", "save_fragments",
-    "require_fragment_aggregation", "fragment_aggregation_backend",
-    "on_stratum_error"
-  ))
-  if (length(reserved)) {
-    stop(
-      "`metacell_args` cannot override workflow fields: ",
-      paste(reserved, collapse = ", "), call. = FALSE
-    )
-  }
   defaults <- list(
     object = object,
     outdir = outdir,
