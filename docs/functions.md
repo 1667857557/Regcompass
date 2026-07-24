@@ -14,7 +14,7 @@
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction expression.
 - `rc_regcompass_step_layer2()`: persistent union/full-GEM cache and directional LP scoring.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
-- `rc_regcompass_step_target_union()`: select cores from a completed union-GEM Layer 2 run, expand their subsystem/KEGG/Reactome/master-Rhea context, and score every expanded reaction in the exact original cached union GEM.
+- `rc_regcompass_step_target_union()`: use previously scored cores as anchors, expand same-subsystem/KEGG/Reactome/master-Rhea context, and score only annotation-linked reactions that were not global core targets in the original Layer 2 run. FASTCORE-only support and generic union members are excluded.
 
 Stages 3-6 validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object.
 
@@ -32,5 +32,5 @@ Sample balancing is not part of the canonical workflow. Metacell-level compariso
 - [Level 1: quick start](tutorial-01-quick-start.md)
 - [Level 2: stepwise audit](tutorial-02-stepwise-audit.md)
 - [Level 3: restart and diagnostics](tutorial-03-advanced-restart.md)
-- [Expanded target re-scoring](target-union-scoring.md)
+- [Expanded non-core target scoring](target-union-scoring.md)
 - [Condition statistics and plots](condition-reaction-statistics.md)
