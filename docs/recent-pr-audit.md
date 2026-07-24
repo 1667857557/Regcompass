@@ -121,15 +121,15 @@ The stale function-index label was corrected, and Tutorials 3–5 were synchroni
 
 The low-level builder returned completed stratum directories whenever expected files existed and `overwrite = FALSE`. A changed `gamma`, label column, cell set, condition assignment, assay content, or dimensional setting could silently reuse stale memberships.
 
-The canonical stage now writes `condition_metacell_cache_contract.rds`, covering ordered cells and metadata, RNA/ATAC assay fingerprints, the SuperCell2 construction label, reductions/dimensions, `gamma`, seed, and metacell thresholds. Existing checkpoints are reused only when the contract is identical. Legacy or changed caches require `metacell_args = list(overwrite = TRUE)`.
+The canonical stage now writes `condition_metacell_cache_contract.rds`. It records ordered cells and metadata, complete RNA/ATAC assay-content projections computed in O(nnz) without dense materialization, the exact PCA/LSI embedding values used by SuperCell2, the construction label, reductions/dimensions, `gamma`, seed, and metacell thresholds. Existing checkpoints are reused only when the contract is identical. Legacy or changed caches require `metacell_args = list(overwrite = TRUE)`.
 
 ### Legacy metacell objects could receive current provenance
 
 A manually loaded older classed object could pass a class-only check and later be described as condition-only label-guided output. Downstream stages now require the current input-design record and cache-contract schema before current provenance is assigned.
 
-### Dependency declarations contradicted the runtime gate
+### Dependency declarations and the exact runtime gate were conflated
 
-`DESCRIPTION` allowed newer SeuratObject, Seurat, and Signac versions with `>=`, while `.onLoad` accepted only 4.1.4, 4.4.0, and 1.11.0. Imports now use exact equality constraints.
+`DESCRIPTION` uses the legal minimum-version syntax supported by R: SeuratObject `>= 4.1.4`, Seurat `>= 4.4.0`, and Signac `>= 1.11.0`. R package metadata does not support an equality operator in dependency fields. The exact validated stack remains recorded in the three `Config/RegCompassR/*Version` fields and enforced by `.onLoad`, which rejects versions other than 4.1.4, 4.4.0, and 1.11.0. Tests now verify both layers instead of writing an invalid `DESCRIPTION`.
 
 ### Public documentation lagged the implementation
 
@@ -156,7 +156,7 @@ The added or expanded tests verify that:
 
 - missing or changed metacell cache contracts fail closed;
 - legacy metacell stages are rejected downstream;
-- exact dependency declarations match the runtime gate;
+- legal dependency minimums and exact Config pins match the runtime gate;
 - bundled GEMs are persisted to requested paths;
 - `species` remains positionally ahead of `progress`;
 - known stages report success only after their final RDS exists;
