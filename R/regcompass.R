@@ -23,6 +23,8 @@ rc_run_regcompass <- function(
   model_mode <- match.arg(model_mode)
   parallel_backend <- match.arg(parallel_backend)
   progress <- .rc_progress_enabled(progress)
+  old_progress_option <- options(RegCompassR.progress = progress)
+  on.exit(do.call(options, old_progress_option), add = TRUE)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
   total_timer <- .rc_timing_start("total_workflow")
