@@ -1,11 +1,15 @@
 # RegCompassR 1.8.3
 
-- Added operating-system-aware parallel configuration. `parallel_backend = "auto"` resolves to SOCK/SnowParam workers on Windows and MulticoreParam workers on Linux/macOS; explicit multicore execution is rejected on Windows. Requested and actual backends, worker counts, and OS type are retained in the result.
+- Added a canonical two-layer worker model with `upstream_workers = 6L` for GRN/local-FASTCORE/Layer-1 tasks and `layer2_workers = 30L` for LP scoring. Setting both values to one produces a fully serial run.
+- Removed `parallel_backend` from the complete-workflow interface. The package now always resolves SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS automatically.
+- Changed complete-run worker lifetime from a shared upstream pool to stage-scoped pools. Every package-managed pool is created for one stage, stopped on success or failure, dereferenced, and followed by `gc(full = TRUE)` before the next unrelated stage.
+- Added a strict no-nested-threading contract. BLAS/OpenMP/RcppParallel and nested R worker settings are temporarily fixed at one, while Pando remains internally serial, so outer parallelism executes multiple independent single-thread analyses rather than multiplying threads inside each worker.
+- Added operating-system-aware parallel configuration. Requested and actual backends, layered worker counts, one internal thread per task, OS type, stage groups, and lifecycle policy are retained in the result.
 - Bundled validated Human-GEM 2.0.0 and Mouse-GEM 1.8.0 RegCompass assets under `inst/extdata/gem`. Canonical runs load them offline by default. Cache-first, explicit bundled-only, download, force-rebuild, and low-level download/update paths remain available.
 - Added `rc_bundled_gem_manifest()` and exported `rc_download_species_gem()`. The installed manifest records model source, release, checksum, size, citation DOI, and CC BY 4.0 attribution.
 - Added progress output and elapsed-time auditing to every public workflow stage and to the complete six-stage run. Each stage writes `step_timing.tsv`; one-shot execution writes `00_execution_timing.tsv` and stores stage and total timings in `result$timing`.
 - Added `progress = FALSE` and `options(RegCompassR.progress = FALSE)` controls for non-interactive or quiet execution.
-- Added cross-platform backend, bundled-model integrity, offline loading, progress-control, and timing-output tests.
+- Added cross-platform backend, layered-default, single-thread-child, worker-release, bundled-model integrity, offline loading, progress-control, and timing-output tests.
 
 # RegCompassR 1.8.2
 

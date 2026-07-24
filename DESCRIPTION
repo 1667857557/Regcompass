@@ -62,6 +62,7 @@ Collate:
     'reaction_gene_plots.R'
     'layer1_builder.R'
     'parallel.R'
+    'stage_parallel_lifecycle.R'
     'penalty.R'
     'reaction_roles.R'
     'stepwise_workflow.R'

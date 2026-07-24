@@ -2,15 +2,15 @@
 
 Use saved classed stage objects. RegCompassR 1.8.3 rejects cross-run object mixing when GEM fingerprints, workflow parameters, stage classes, core sets, or ordered scoring units differ.
 
-## Load a completed stepwise run
+## Load a completed canonical run
 
 ```r
-step1 <- readRDS("RegCompass_steps/01_grn/step_grn.rds")
-step2 <- readRDS("RegCompass_steps/02_metacells/step_metacells.rds")
-step3 <- readRDS("RegCompass_steps/03_meta_modules/step_meta_modules.rds")
-step4 <- readRDS("RegCompass_steps/04_layer1/step_layer1.rds")
-step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
-result <- readRDS("RegCompass_steps/06_results/regcompass_result.rds")
+step1 <- readRDS("RegCompass_result/01_single_cell_grn/step_grn.rds")
+step2 <- readRDS("RegCompass_result/02_condition_metacells/step_metacells.rds")
+step3 <- readRDS("RegCompass_result/03_meta_modules/step_meta_modules.rds")
+step4 <- readRDS("RegCompass_result/04_layer1/step_layer1.rds")
+step5 <- readRDS("RegCompass_result/05_layer2/step_layer2.rds")
+result <- readRDS("RegCompass_result/06_results/regcompass_result.rds")
 ```
 
 Use the stage wrapper RDS, not a compact inspection artifact. Keep all files referenced by `step5$model_cache_summary$file`.
@@ -30,34 +30,41 @@ Use the stage wrapper RDS, not a compact inspection artifact. Keep all files ref
 
 A changed GEM invalidates Stage 1, Stage 3, Stage 4, Stage 5, Stage 6, and target-union outputs because their fingerprints no longer match.
 
-## Linux workers
+## Worker policy
+
+The canonical complete run uses:
+
+```r
+upstream_workers <- 6L
+layer2_workers <- 30L
+```
+
+The backend is always selected automatically: SOCK on Windows and multicore on Linux/macOS. Each stage owns its worker pool and releases it before the next unrelated stage starts.
+
+For low-level restart functions, set the worker budget before starting R rather than constructing a `BiocParallelParam` manually:
 
 ```bash
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
-export REGCOMPASS_WORKERS=16
+export REGCOMPASS_WORKERS=30
 ```
 
-```r
-library(BiocParallel)
-upstream_bp <- MulticoreParam(workers = 16L, progressbar = TRUE)
-layer2_bp <- MulticoreParam(workers = 12L, progressbar = TRUE)
-```
+| Stage | Parallel unit | Canonical worker layer |
+|---|---|---|
+| 1 | condition × cell-type Pando group | upstream |
+| 2 | no workflow-level BiocParallel loop | serial |
+| 3 | local FASTCORE completion per meta-module | upstream |
+| 4 | GPR/reaction-capacity calculation | upstream |
+| 5 | shared model × metacell | Layer 2 |
+| target union | reused union model × metacell | Layer 2-style restart budget |
+| 6 | serial assembly | serial |
 
-| Stage | Parallel unit |
-|---|---|
-| 1 | condition × cell-type Pando group |
-| 2 | no workflow-level BiocParallel loop |
-| 3 | local FASTCORE completion per meta-module |
-| 4 | GPR/reaction-capacity calculation |
-| 5 | shared model × metacell |
-| target union | reused union model × metacell |
-| 6 | serial assembly |
-
-Keep Pando's inner `parallel = FALSE`. Lower Layer 2 worker counts when memory, not CPU, is limiting.
+Keep Pando's inner `parallel = FALSE`. Lower the Layer 2 worker count when memory, not CPU, is limiting.
 
 ## Restart Stage 5 with a new medium
+
+Set `REGCOMPASS_WORKERS` to the desired Layer 2 restart count before starting R, then run the stage without manually creating a backend:
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
@@ -71,15 +78,16 @@ step5_medium <- rc_regcompass_step_layer2(
   meta_modules = step3,
   gem = gem,
   medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_layer2_medium",
+  outdir = "RegCompass_result/05_layer2_medium",
   model_mode = "meta_module_gem",
-  layer2_args = list(solver = "highs", target_direction = "both"),
-  parallel = TRUE,
-  BPPARAM = layer2_bp
+  layer2_args = list(
+    solver = "highs",
+    target_direction = "both"
+  )
 )
 ```
 
-Medium bounds can restrict existing GEM directions but cannot create a direction absent from the source model.
+When `BPPARAM` is omitted, the stage resolves the platform backend automatically. The internally created worker pool is released when the parallel loop completes. Medium bounds can restrict existing GEM directions but cannot create a direction absent from the source model.
 
 ## Restart direct database-linked scoring
 
@@ -89,10 +97,8 @@ expanded <- rc_regcompass_step_target_union(
   meta_modules = step3,
   layer2 = step5,
   gem = gem,
-  outdir = "RegCompass_steps/05b_glutathione",
-  core_reaction_ids = "MAR04324",
-  parallel = TRUE,
-  BPPARAM = layer2_bp
+  outdir = "RegCompass_result/05b_glutathione",
+  core_reaction_ids = "MAR04324"
 )
 ```
 
@@ -102,7 +108,13 @@ This restart is valid only while the original union-GEM cache files remain uncha
 
 ## Serial troubleshooting
 
-Rerun only the failing computational stage with `parallel = FALSE` and `BPPARAM = FALSE`. For Stage 3, set `local_fastcore_args$parallel = FALSE` and `backend = "serial"`.
+Set the global restart worker budget to one before starting R:
+
+```bash
+export REGCOMPASS_WORKERS=1
+```
+
+With one available worker, the automatic backend resolves to serial execution. For Stage 3, omit manual `workers`, `backend`, and `BPPARAM` fields unless debugging the lower-level implementation itself.
 
 Classify failures in this order:
 
@@ -127,7 +139,8 @@ stopifnot(
   identical(step4$gem_fingerprint, step5$gem_fingerprint),
   identical(step4$workflow_params, step5$workflow_params),
   identical(colnames(step4$reaction_expression), colnames(step5$penalty)),
-  all(file.exists(step5$model_cache_summary$file))
+  all(file.exists(step5$model_cache_summary$file)
+  )
 )
 ```
 

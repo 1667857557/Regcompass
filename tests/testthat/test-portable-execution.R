@@ -20,6 +20,79 @@ test_that("parallel configuration records requested and actual execution", {
   expect_identical(linux, "multicore")
 })
 
+test_that("canonical workflow exposes only two layered worker counts", {
+  args <- formals(rc_run_regcompass)
+  expect_identical(args$upstream_workers, 6L)
+  expect_identical(args$layer2_workers, 30L)
+  expect_false("parallel_backend" %in% names(args))
+
+  upstream <- .rc_stage_worker_config(1L, "upstream_workers")
+  layer2 <- .rc_stage_worker_config(1L, "layer2_workers")
+  expect_identical(upstream$actual_backend, "serial")
+  expect_identical(layer2$actual_backend, "serial")
+  expect_error(.rc_stage_worker_config(0L), "at least 1")
+})
+
+test_that("internal task thread settings are forced to one and restored", {
+  variables <- names(.rc_internal_thread_env())
+  before <- Sys.getenv(variables, unset = NA_character_)
+  before_mc <- getOption("mc.cores")
+  before_internal <- getOption("RegCompassR.internal_workers")
+
+  state <- .rc_set_internal_single_thread()
+  on.exit(.rc_restore_internal_threads(state), add = TRUE)
+
+  expect_true(all(Sys.getenv(variables) %in% c("1", "FALSE")))
+  expect_identical(Sys.getenv("OMP_NUM_THREADS"), "1")
+  expect_identical(Sys.getenv("OPENBLAS_NUM_THREADS"), "1")
+  expect_identical(Sys.getenv("MKL_NUM_THREADS"), "1")
+  expect_identical(getOption("mc.cores"), 1L)
+  expect_identical(getOption("RegCompassR.internal_workers"), 1L)
+
+  .rc_restore_internal_threads(state)
+  state <- NULL
+  expect_identical(Sys.getenv(variables, unset = NA_character_), before)
+  expect_identical(getOption("mc.cores"), before_mc)
+  expect_identical(
+    getOption("RegCompassR.internal_workers"),
+    before_internal
+  )
+})
+
+test_that("serial stage wrapper applies one-thread contract on errors", {
+  before <- Sys.getenv("OMP_NUM_THREADS", unset = NA_character_)
+  expect_error(
+    .rc_with_stage_workers(
+      1L,
+      function(param, config) {
+        expect_identical(param, FALSE)
+        expect_identical(config$actual_backend, "serial")
+        expect_identical(Sys.getenv("OMP_NUM_THREADS"), "1")
+        stop("expected-stage-error")
+      }
+    ),
+    "expected-stage-error"
+  )
+  expect_identical(
+    Sys.getenv("OMP_NUM_THREADS", unset = NA_character_),
+    before
+  )
+})
+
+test_that("package-managed worker pool is stopped after its stage", {
+  skip_if_not_installed("BiocParallel")
+  param <- .rc_with_stage_workers(
+    2L,
+    function(param, config) {
+      expect_false(identical(param, FALSE))
+      expect_true(BiocParallel::bpisup(param))
+      expect_identical(config$workers, 2L)
+      param
+    }
+  )
+  expect_false(BiocParallel::bpisup(param))
+})
+
 test_that("bundled GEM manifest and files are complete", {
   manifest <- rc_bundled_gem_manifest()
   expect_setequal(manifest$species, c("human", "mouse"))
