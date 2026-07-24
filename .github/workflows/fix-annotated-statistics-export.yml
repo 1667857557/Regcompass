@@ -1,0 +1,57 @@
+name: Fix annotated statistics export
+
+on:
+  push:
+    branches:
+      - agent/add-reaction-biological-annotations
+    paths:
+      - .github/workflows/fix-annotated-statistics-export.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/add-reaction-biological-annotations
+          fetch-depth: 0
+
+      - name: Export enriched statistics tables
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("R/condition_statistics.R")
+          text = path.read_text(encoding="utf-8")
+          old_pairwise = '''    .rc_write_tsv_gz(
+                pairwise,
+                file.path(outdir, "condition_reaction_pairwise.tsv.gz")
+              )'''
+          new_pairwise = '''    .rc_write_tsv_gz(
+                answer$pairwise,
+                file.path(outdir, "condition_reaction_pairwise.tsv.gz")
+              )'''
+          old_omnibus = '''      .rc_write_tsv_gz(
+                  omnibus,
+                  file.path(outdir, "condition_reaction_omnibus.tsv.gz")
+                )'''
+          new_omnibus = '''      .rc_write_tsv_gz(
+                  answer$omnibus,
+                  file.path(outdir, "condition_reaction_omnibus.tsv.gz")
+                )'''
+          if old_pairwise not in text or old_omnibus not in text:
+              raise SystemExit("Expected export blocks were not found")
+          text = text.replace(old_pairwise, new_pairwise, 1)
+          text = text.replace(old_omnibus, new_omnibus, 1)
+          path.write_text(text, encoding="utf-8")
+          PY
+
+      - name: Commit export correction
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add R/condition_statistics.R
+          git commit -m "Export enriched reaction statistics"
+          git push origin HEAD:agent/add-reaction-biological-annotations
