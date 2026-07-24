@@ -300,11 +300,11 @@ rc_plot_condition_reaction <- function(
     )
   }
 
-  # Run statistics over every scored reaction target in the selected cell type
-  # and condition set. Filtering to one target before BH adjustment would
-  # incorrectly collapse the adjusted P value to the raw P value.
+  # Preserve the original annotated result so reaction catalog and evidence
+  # provenance are available to the statistics layer. The helper extracts the
+  # same microCOMPASS matrices internally.
   statistics <- rc_test_condition_reactions(
-    x = microcompass,
+    x = x,
     condition_col = condition_col,
     celltype_col = celltype_col,
     conditions = conditions,
