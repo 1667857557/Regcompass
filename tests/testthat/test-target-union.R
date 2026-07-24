@@ -1,25 +1,26 @@
 target_union_test_gem <- function() {
-  S <- diag(5)
-  dimnames(S) <- list(paste0("M", 1:5), paste0("R", 1:5))
+  reactions <- paste0("R", 1:7)
+  S <- diag(length(reactions))
+  dimnames(S) <- list(paste0("M", seq_along(reactions)), reactions)
   reaction_meta <- data.frame(
-    reaction_id = paste0("R", 1:5),
-    subsystem = c("A", "A", "B", "C", "D"),
-    metabolic_module = c("A", "A", "B", "C", "D"),
-    kegg_reaction_id = c("K1", NA, "K1", NA, NA),
-    reactome_reaction_id = NA_character_,
-    rhea_master_id = c(NA, NA, "RM1", "RM1", NA),
+    reaction_id = reactions,
+    subsystem = c("A", "B", "C", "D", "E", "A", "F"),
+    metabolic_module = c("A", "B", "C", "D", "E", "A", "F"),
+    kegg_reaction_id = c("K1", "K1", "K1", NA, NA, NA, NA),
+    reactome_reaction_id = c("RE1", NA, NA, "RE1", NA, NA, NA),
+    rhea_master_id = c("RM1", NA, "RM2", NA, "RM1", NA, "RM2"),
     role = "internal",
     role_source = "test",
     stringsAsFactors = FALSE
   )
   gem <- rc_make_gem(
-    S, lb = rep(0, 5), ub = rep(1000, 5),
+    S, lb = rep(0, length(reactions)), ub = rep(1000, length(reactions)),
     reaction_meta = reaction_meta
   )
   gem$gpr_table <- data.frame(
-    reaction_id = c("R1", "R1", "R2", "R3", "R4"),
+    reaction_id = c("R1", "R1", "R2", "R3", "R4", "R5", "R6", "R7"),
     and_group_id = "1",
-    gene = c("G1", "G2", "G1", "G3", "G4"),
+    gene = c("G1", "G2", "G1", "G3", "G4", "G5", "G6", "G7"),
     stringsAsFactors = FALSE
   )
   gem
@@ -36,10 +37,12 @@ target_union_previous_core <- function() {
 target_union_previous_membership <- function() {
   data.frame(
     sample_id = "global", module_id = "GLOBAL_UNION",
-    reaction_id = paste0("R", 1:5),
-    is_core = c(TRUE, TRUE, FALSE, FALSE, FALSE),
+    reaction_id = paste0("R", 1:7),
+    is_core = c(TRUE, TRUE, rep(FALSE, 5)),
     inclusion_stage = c(
       "global_union_core", "global_union_core",
+      "global_union_biological_member",
+      "global_union_biological_member",
       "global_union_biological_member",
       "global_union_biological_member",
       "global_union_local_fastcore_support"
@@ -61,7 +64,7 @@ target_union_layer2_stub <- function(file) {
   answer
 }
 
-test_that("core anchors are retained but only non-core expansions are targets", {
+test_that("only direct database-linked non-core reactions are targets", {
   definition <- .rc_build_target_union_definition(
     gem = target_union_test_gem(),
     global_core_reactions = target_union_previous_core(),
@@ -71,11 +74,22 @@ test_that("core anchors are retained but only non-core expansions are targets", 
   expect_identical(definition$selected_core_reactions$reaction_id, "R1")
   expect_setequal(
     definition$expanded_reaction_catalog$reaction_id,
-    c("R1", "R2", "R3", "R4")
+    c("R2", "R3", "R4", "R5")
   )
   expect_setequal(
     definition$expanded_scoring_targets$reaction_id,
-    c("R3", "R4")
+    c("R3", "R4", "R5")
+  )
+  expect_false(any(
+    definition$expanded_reaction_catalog$reaction_id %in% c("R6", "R7")
+  ))
+  expect_setequal(
+    definition$expanded_reaction_catalog$expansion_type,
+    c(
+      "shared_kegg_reaction",
+      "shared_reactome_reaction",
+      "shared_master_rhea_reaction"
+    )
   )
   expect_true(all(definition$expanded_scoring_targets$score_target))
   expect_false(any(
@@ -85,24 +99,34 @@ test_that("core anchors are retained but only non-core expansions are targets", 
     definition$expanded_reaction_catalog$previous_union_is_core,
     , drop = FALSE
   ]
-  expect_setequal(core_catalog$reaction_id, c("R1", "R2"))
+  expect_identical(unique(core_catalog$reaction_id), "R2")
   expect_false(any(core_catalog$score_target))
   expect_true(all(
     core_catalog$lp_exclusion_reason ==
       "already_scored_in_original_layer2"
   ))
   expect_equal(definition$summary$n_selected_previous_core, 1)
-  expect_equal(definition$summary$n_expanded_catalog_reactions, 4)
-  expect_equal(definition$summary$n_previous_core_reactions_not_rescored, 2)
-  expect_equal(definition$summary$n_expanded_score_targets, 2)
+  expect_equal(definition$summary$n_direct_crossref_relations, 4)
+  expect_equal(definition$summary$n_direct_crossref_reactions, 4)
+  expect_equal(definition$summary$n_previous_core_reactions_not_rescored, 1)
+  expect_equal(definition$summary$n_expanded_score_targets, 3)
+  expect_identical(
+    definition$summary$expansion_policy,
+    "direct_from_selected_core_via_kegg_reactome_master_rhea_only"
+  )
   expect_identical(
     definition$summary$scoring_policy,
-    "annotation_expanded_noncore_reactions_only"
+    "direct_database_crossref_noncore_reactions_only"
   )
   expect_identical(
     definition$summary$model_policy,
     "reuse_exact_previous_global_union_gem"
   )
+})
+
+test_that("target-union API has no subsystem or recursive expansion controls", {
+  retired <- c("subsystem_table", "expansion_mode", "max_iterations")
+  expect_false(any(retired %in% names(formals(rc_regcompass_step_target_union))))
 })
 
 test_that("gene selection resolves only previous core anchors", {
@@ -124,20 +148,20 @@ test_that("gene selection resolves only previous core anchors", {
   expect_setequal(direct$reaction_id, c("R1", "R2"))
 })
 
-test_that("target cache contains only non-core expansion targets", {
+test_that("target cache contains only direct non-core database links", {
   gem <- target_union_test_gem()
   file <- tempfile(fileext = ".rds")
   on.exit(unlink(file), add = TRUE)
   saveRDS(gem, file)
   cache <- .rc_build_target_union_model_cache(
     layer2 = target_union_layer2_stub(file),
-    target_reactions = c("R3", "R4"),
+    target_reactions = c("R3", "R4", "R5"),
     target_direction = "forward"
   )
-  expect_length(cache, 2)
+  expect_length(cache, 3)
   expect_setequal(
     vapply(cache, `[[`, character(1), "reaction_id"),
-    c("R3", "R4")
+    c("R3", "R4", "R5")
   )
   expect_true(all(vapply(
     cache, function(x) identical(x$file, file), logical(1)
