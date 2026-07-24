@@ -128,7 +128,7 @@ stopifnot(
 )
 ```
 
-Biological modules contain complete-GPR cores, same-subsystem reactions, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE adds only reactions needed for feasibility.
+Biological meta-modules contain complete-GPR cores, same-subsystem reactions, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE adds only reactions needed for feasibility.
 
 ## Stage 4: integrated reaction expression
 
@@ -184,9 +184,9 @@ stopifnot(
 )
 ```
 
-`penalty` is the primary output. `score` is a within-target relative rank. The union-GEM cache must be retained for restart and expanded-target analysis.
+`penalty` is the primary output. `score` is a within-target relative rank. The union-GEM cache must be retained for restart and direct database-linked target analysis.
 
-## Optional Stage 5b: score related reactions in the same union GEM
+## Optional Stage 5b: score direct database links of selected cores
 
 ```r
 expanded <- rc_regcompass_step_target_union(
@@ -208,12 +208,21 @@ expanded <- rc_regcompass_step_target_union(
 stopifnot(
   inherits(expanded, "regcompass_target_union_step"),
   all(expanded$expanded_scoring_targets$score_target),
+  all(expanded$expanded_reaction_catalog$expansion_type %in% c(
+    "shared_kegg_reaction",
+    "shared_reactome_reaction",
+    "shared_master_rhea_reaction"
+  )),
   expanded$microcompass$params$structural_model_reused_exactly,
+  identical(
+    expanded$microcompass$params$target_scope,
+    "direct_kegg_reactome_master_rhea_noncore_only"
+  ),
   all(expanded$microcompass$model_cache_summary$reused_without_rebuilding)
 )
 ```
 
-This second pass changes only the LP target. It does not rebuild FASTCORE support, stoichiometry, medium bounds, or the union reaction set.
+The selected cores are not scored again. The second pass includes only non-core reactions directly sharing KEGG, Reactome, or master-Rhea identifiers with the selected cores. Same-subsystem and recursive expansion are not used. Stoichiometry, medium bounds, and the union reaction set remain unchanged.
 
 ## Stage 6: assemble results
 
