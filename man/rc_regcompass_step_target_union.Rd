@@ -2,7 +2,7 @@
 % Please edit documentation in R/target_union.R
 \name{rc_regcompass_step_target_union}
 \alias{rc_regcompass_step_target_union}
-\title{Score annotation-related reactions in an existing union GEM}
+\title{Score annotation-expanded non-core reactions in an existing union GEM}
 \usage{
 rc_regcompass_step_target_union(
   layer1,
@@ -32,9 +32,9 @@ rc_regcompass_step_target_union(
 
 \item{outdir}{Output directory.}
 
-\item{core_reaction_ids}{Previous core reaction IDs used as expansion anchors.}
+\item{core_reaction_ids}{Previous core reaction IDs used only as expansion anchors.}
 
-\item{core_genes}{Genes used to resolve previous core reactions through GPR rules.}
+\item{core_genes}{Genes used to resolve previous core anchors through GPR rules.}
 
 \item{gene_match}{\code{"complete_gpr"} requires one complete GPR AND group. \code{"any_direct"} allows an intentional partial-complex match.}
 
@@ -51,11 +51,13 @@ rc_regcompass_step_target_union(
 \item{BPPARAM}{Optional BiocParallel parameter object.}
 }
 \value{
-A \code{regcompass_target_union_step} containing selected core anchors, expanded LP targets, source-model provenance, and second-pass LP results.
+A \code{regcompass_target_union_step} containing selected core anchors, the complete annotation-expansion catalog, non-core LP targets, source-model provenance, and second-pass LP results.
 }
 \description{
-Selects core reactions from a completed Layer 2 run, expands them through same-subsystem, KEGG/Reactome, and master-Rhea mappings, and scores every expanded reaction using the exact cached global union GEM and bounds from the original run.
+Uses previously scored global core reactions as anchors, expands them through same-subsystem, KEGG, Reactome, and master-Rhea mappings, and scores only linked reactions that were not global core targets in the original Layer 2 run.
 }
 \details{
-The function validates stage classes, workflow parameters, GEM fingerprints, ordered metacell IDs, the previous core set, and source-model hashes. It does not rerun FASTCORE or rebuild the union GEM. Every row in \code{expanded_scoring_targets} is an LP target.
+The valid second-pass targets are reactions with expansion stages \code{same_core_subsystem}, \code{shared_kegg_or_reactome_reaction}, or \code{shared_master_rhea_reaction}, after removing all previously scored global cores. The function does not score selected cores again and does not add FASTCORE-only support reactions, generic union members, or metabolite-neighbour reactions.
+
+Stage classes, workflow parameters, GEM fingerprints, ordered metacell IDs, the previous core set, and source-model hashes are validated. The original union GEM and bounds are reused without rebuilding FASTCORE.
 }
