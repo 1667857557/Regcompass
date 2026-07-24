@@ -9,24 +9,18 @@ rc_prepare_human2_gem(
   cache_dir = tools::R_user_dir("RegCompassR", "cache"),
   save_rds = file.path(cache_dir, paste0("Human2_", version, "_regcompass.rds")),
   force_download = FALSE,
-  allow_latest = FALSE
+  allow_latest = FALSE,
+  source = c("auto", "bundled", "download")
 )
 }
 \arguments{
 \item{version}{Human-GEM 2 release version.}
-
 \item{cache_dir}{Persistent model cache directory.}
-
-\item{save_rds}{Optional output RDS path. When \code{NULL}, a species/version path
-is generated inside \code{cache_dir}.}
-
+\item{save_rds}{Optional output RDS path.}
 \item{force_download}{Re-download and rebuild an existing cached model.}
-
 \item{allow_latest}{Permit the unpinned \code{version = "latest"} mode.}
+\item{source}{Use a cache/bundled-first automatic path, require the bundled model, or download and rebuild.}
 }
 \description{
-Species-specific Human-GEM 2 entry point. Use this named helper when the
-analysis should explicitly download, cache, and validate the Human-GEM 2
-model path; it delegates to \code{rc_prepare_gem(species = "human")} with
-Human-GEM 2 defaults.
+Species-specific Human-GEM 2 entry point. Human-GEM 2.0.0 is bundled with RegCompassR 1.8.3 and is used offline by default; explicit download and rebuild remain available for updates.
 }
