@@ -11,60 +11,54 @@
 rc_regcompass_step_grn(object, gem, outdir, pfm, genome,
   condition_col = "condition", celltype_col = "cell_type",
   rna_assay = "RNA", atac_assay = "ATAC", pando_args = list(),
-  parallel = TRUE, BPPARAM = NULL)
+  parallel = TRUE, BPPARAM = NULL,
+  progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_metacells(object, outdir, sample_col = NULL,
   condition_col = "condition", celltype_col = "cell_type",
   rna_assay = "RNA", atac_assay = "ATAC",
-  fragment_files = FALSE, metacell_args = list())
+  fragment_files = FALSE, metacell_args = list(),
+  progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
-  layer1_args = list())
+  layer1_args = list(), progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_layer1(metacells, meta_modules, gem, outdir,
   regulatory_alpha = 1, tau = 0.2,
   gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
-  parallel = TRUE, BPPARAM = NULL)
+  parallel = TRUE, BPPARAM = NULL,
+  progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_layer2(layer1, meta_modules, gem, medium_scenarios,
   outdir, model_mode = c("meta_module_gem", "full_gem"),
-  layer2_args = list(), parallel = TRUE, BPPARAM = NULL)
+  layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+  progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
-  gem, outdir, species = c("auto", "human", "mouse"))
+  gem, outdir, species = c("auto", "human", "mouse"),
+  progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
 \item{object}{Paired-cell Seurat RNA+ATAC object.}
 \item{gem}{Prepared genome-scale metabolic model.}
 \item{outdir}{Stage output directory.}
-\item{pfm}{Motif PFM/PWM collection accepted by Pando and motifmatchr.}
+\item{pfm}{Motif collection accepted by Pando and motifmatchr.}
 \item{genome}{Genome object matching ATAC coordinates.}
-\item{condition_col}{Condition metadata column and the only hard metacell stratum.}
-\item{celltype_col}{Cell-type column used for Pando grouping and as the SuperCell2 construction label.}
+\item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Pando settings. Keep Pando's inner \code{parallel = FALSE} when Stage 1 uses BiocParallel.}
+\item{pando_args, metacell_args, layer1_args, layer2_args}{Stage-specific configuration lists.}
 \item{parallel}{Whether the supported stage loop is parallelized.}
 \item{BPPARAM}{BiocParallel parameter object, \code{NULL}, or \code{FALSE}.}
-\item{sample_col}{Optional provenance column; not used for balancing or grouping.}
+\item{progress}{Display stage progress. Set to \code{FALSE} for quiet execution.}
+\item{sample_col}{Optional provenance column.}
 \item{fragment_files}{Use \code{FALSE} for the peak-count path.}
-\item{metacell_args}{SuperCell2 settings; default \code{gamma = 75}.}
-\item{grn}{Output from \code{rc_regcompass_step_grn()}.}
-\item{metacells}{Output from \code{rc_regcompass_step_metacells()}.}
-\item{layer1_args}{Meta-module projection and local FASTCORE settings.}
-\item{meta_modules}{Output from \code{rc_regcompass_step_meta_modules()}.}
+\item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from the preceding stages.}
 \item{regulatory_alpha, tau, gene_half_saturation}{Layer 1 evidence parameters.}
-\item{layer1}{Output from \code{rc_regcompass_step_layer1()}.}
 \item{medium_scenarios}{Condition-invariant medium table.}
 \item{model_mode}{Global union meta-module GEM or full GEM.}
-\item{layer2_args}{LP settings such as \code{solver}, \code{omega}, and target direction.}
-\item{layer2}{Output from \code{rc_regcompass_step_layer2()}.}
 \item{species}{Species identifier or \code{"auto"}.}
 }
-\description{
-Runs condition-by-cell-type GRN inference, condition-level metacells, complete-GPR core and meta-module construction, integrated reaction expression, directional LP scoring, and result assembly.
-}
+\description{Runs the canonical workflow as separately restartable, validated stages.}
 \details{
-Stage 3 verifies the Stage 1 GEM fingerprint and GRN/metacell workflow signature. Layer 1 and Layer 2 store formal stage classes, workflow parameters, GEM fingerprints, and ordered unit IDs. Stage 5 and Stage 6 stop when objects come from different GEMs, metadata settings, core sets, or metacell orders.
-
-Stage 3 parallelizes local FASTCORE completion; Stage 4 parallelizes reaction-capacity work; Stage 5 parallelizes shared-model by metacell LP tasks. Model-cache construction remains serial. The selected LP solver is checked before model construction.
+Each stage returns a \code{timing} table and writes \code{step_timing.tsv} to its output directory. Failed stages also write an error-status timing row. Stage contracts reject mixed GEMs, workflows, core sets, or metacell orders.
 }
