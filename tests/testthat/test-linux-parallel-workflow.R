@@ -18,7 +18,7 @@ test_that("local FASTCORE completion is implemented as a parallel module loop", 
   expect_match(text, "backend = \"auto\"", fixed = TRUE)
 })
 
-test_that("one-shot upstream workers are propagated to meta-module completion", {
+test_that("one-shot workflow propagates resolved backend and worker settings", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
     if (nzchar(workspace)) file.path(workspace, "R", "regcompass.R") else character(),
@@ -30,10 +30,13 @@ test_that("one-shot upstream workers are propagated to meta-module completion", 
   if (!length(candidates)) skip("regcompass.R is unavailable.")
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
 
-  expect_match(text, "local_fastcore_args$workers <- upstream_workers", fixed = TRUE)
-  expect_match(text, "local_fastcore_args$backend <- parallel_backend", fixed = TRUE)
-  expect_match(text, "result$params$upstream_workers <- upstream_workers", fixed = TRUE)
-  expect_match(text, "result$params$layer2_workers <- layer2_workers", fixed = TRUE)
+  expect_match(text, "upstream_config <- rc_parallel_config", fixed = TRUE)
+  expect_match(text, "layer2_config <- rc_parallel_config", fixed = TRUE)
+  expect_match(text, "local_fastcore_args$workers <- upstream_config$workers", fixed = TRUE)
+  expect_match(text, "local_fastcore_args$backend <- upstream_config$actual_backend", fixed = TRUE)
+  expect_match(text, "result$params$upstream_workers <- upstream_config$workers", fixed = TRUE)
+  expect_match(text, "result$params$layer2_workers <- layer2_config$workers", fixed = TRUE)
+  expect_match(text, "parallel_backend_resolved", fixed = TRUE)
 })
 
 test_that("explicit Linux multicore backend creates a MulticoreParam", {
