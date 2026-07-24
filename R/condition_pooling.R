@@ -33,7 +33,7 @@
     col_sums_md5 = .rc_condition_metacell_md5(
       as.numeric(Matrix::colSums(x))
     ),
-    values_md5 = .rc_condition_metacell_md5(as.matrix(x))
+    values_md5 = .rc_condition_metacell_md5(x)
   )
 }
 
