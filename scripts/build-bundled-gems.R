@@ -89,7 +89,17 @@ build_one <- function(species, version, filename) {
   rc_validate_species_gem(gem, species)
 
   output <- file.path("inst/extdata/gem", filename)
+  deterministic_copy <- tempfile(fileext = ".rds")
+  on.exit(unlink(deterministic_copy, force = TRUE), add = TRUE)
   saveRDS(gem, output, compress = "xz", version = 3)
+  saveRDS(gem, deterministic_copy, compress = "xz", version = 3)
+  if (!identical(
+      unname(tools::md5sum(output)),
+      unname(tools::md5sum(deterministic_copy)))) {
+    stop("Bundled GEM serialization is not byte-for-byte deterministic.",
+         call. = FALSE)
+  }
+
   reloaded <- readRDS(output)
   rc_validate_species_gem(reloaded, species)
   if (!identical(.rc_stage_gem_fingerprint(reloaded),
