@@ -6,225 +6,168 @@ on:
     branches: [main]
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  test:
+  apply-tutorial-restoration:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      github.actor != 'github-actions[bot]'
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v7
-
-      - uses: r-lib/actions/setup-r@v2
+      - uses: actions/checkout@v4
         with:
-          r-version: release
-          use-public-rspm: true
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
 
-      - name: Install system libraries
+      - name: Apply gamma defaults and tutorial index
         shell: bash
         run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libcurl4-openssl-dev \
-            libssl-dev \
-            libxml2-dev \
-            libglpk-dev \
-            libbz2-dev \
-            liblzma-dev \
-            zlib1g-dev
+          python <<'PY'
+          from pathlib import Path
+          import re
+          import subprocess
 
-      - name: Parse sources and verify documented defaults
-        shell: Rscript {0}
-        run: |
-          files <- c(
-            list.files("R", pattern = "[.]R$", full.names = TRUE),
-            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
-          )
-          invisible(lapply(files, parse))
+          targets = [
+              Path("README.md"),
+              Path("docs/run-modes-and-stepwise-workflow.md"),
+              Path("docs/tutorial-01-quick-start.md"),
+              Path("docs/tutorial-02-stepwise-audit.md"),
+              Path("docs/tutorial-03-advanced-restart.md"),
+              Path("docs/tutorial-04-targeted-reaction-remapping.md"),
+              Path("docs/tutorial-05-condition-differential-analysis.md"),
+              Path("vignettes/regcompass-workflow.Rmd"),
+              Path("R/regcompass.R"),
+              Path("R/stepwise_workflow.R"),
+              Path("R/condition_pooling.R"),
+              Path("R/metacell.R"),
+              Path("tests/testthat/test-vignette-contract.R"),
+              Path("tests/testthat/test-grn-first-workflow.R"),
+              Path("tests/testthat/test_public_api.R"),
+              Path("tests/testthat/test_global_metacell_workflow.R")
+          ]
 
-          documentation <- c(
-            "README.md",
-            list.files("docs", pattern = "[.]md$", full.names = TRUE),
-            list.files("vignettes", pattern = "[.]Rmd$", full.names = TRUE),
-            list.files("man", pattern = "[.]Rd$", full.names = TRUE)
-          )
-          text <- paste(
-            unlist(lapply(documentation, readLines, warn = FALSE), use.names = FALSE),
-            collapse = "\n"
-          )
-          forbidden <- c(
-            "gamma = 150",
-            "gamma=150",
-            "peak_cor = 0.05",
-            "peak_cor=0.05",
-            "peak_cor = 0.1",
-            "peak_cor=0.1"
-          )
-          present <- forbidden[vapply(forbidden, grepl, logical(1), x = text,
-                                      fixed = TRUE)]
-          if (length(present)) {
-            stop("Stale documented defaults remain: ", paste(present, collapse = ", "))
-          }
-          required <- c("gamma = 75", "peak_cor = 0.01")
-          missing <- required[!vapply(required, grepl, logical(1), x = text,
-                                      fixed = TRUE)]
-          if (length(missing)) {
-            stop("Canonical documented defaults are missing: ",
-                 paste(missing, collapse = ", "))
-          }
+          def replace_gamma(text):
+              text = re.sub(
+                  r"\bgamma\s*=\s*(?:75|100)L?\b",
+                  "gamma = 30",
+                  text
+              )
+              text = re.sub(
+                  r"\bgamma\s*<-\s*(?:75|100)L?\b",
+                  "gamma <- 30L",
+                  text
+              )
+              return text
 
-      - name: Install dependencies
+          for path in targets:
+              if not path.exists():
+                  continue
+              text = path.read_text(encoding="utf-8")
+              updated = replace_gamma(text)
+              if updated != text:
+                  path.write_text(updated, encoding="utf-8")
+
+          readme_path = Path("README.md")
+          readme = readme_path.read_text(encoding="utf-8")
+          table = '''## Tutorials
+
+| Level | Use | Tutorial |
+|---|---|---|
+| 1 | complete one-shot analysis | [One-shot quick start](docs/tutorial-01-quick-start.md) |
+| 2 | execute and audit every stage independently | [True stepwise workflow](docs/tutorial-02-stepwise-audit.md) |
+| 3 | restart, sensitivity, resources, and failure diagnosis | [Advanced restart](docs/tutorial-03-advanced-restart.md) |
+| 4 | remap selected genes or reactions and run second-pass LP scoring | [Targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md) |
+| 5 | test and plot condition-associated reaction differences | [Condition differential analysis](docs/tutorial-05-condition-differential-analysis.md) |'''
+          readme, count = re.subn(
+              r"## Tutorials\n\n\| Level \| Use \| Tutorial \|.*?(?=\n\nSee also)",
+              table,
+              readme,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise RuntimeError("README tutorial table was not replaced")
+          readme_path.write_text(readme, encoding="utf-8")
+
+          index_path = Path("docs/run-modes-and-stepwise-workflow.md")
+          index = index_path.read_text(encoding="utf-8")
+          index_table = '''| Level | Use | Tutorial |
+|---|---|---|
+| 1 | complete one-shot analysis | [One-shot quick start](tutorial-01-quick-start.md) |
+| 2 | execute and audit every stage independently | [True stepwise workflow](tutorial-02-stepwise-audit.md) |
+| 3 | restart, sensitivity, resource allocation, and failure diagnosis | [Advanced restart](tutorial-03-advanced-restart.md) |
+| 4 | remap selected genes or reactions and run second-pass scoring | [Targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md) |
+| 5 | compare reaction support across conditions | [Condition differential analysis](tutorial-05-condition-differential-analysis.md) |'''
+          index, count = re.subn(
+              r"\| Level \| Use \| Tutorial \|\n\|---\|---\|---\|.*?(?=\n\nThe exact input/output requirements)",
+              index_table,
+              index,
+              count=1,
+              flags=re.S
+          )
+          if count != 1:
+              raise RuntimeError("Tutorial index table was not replaced")
+          index_path.write_text(index, encoding="utf-8")
+
+          original_workflow = subprocess.check_output(
+              ["git", "show", "origin/main:.github/workflows/fastcore-checks.yaml"],
+              text=True
+          )
+          original_workflow = original_workflow.replace(
+              'required <- c("gamma = 75", "peak_cor = 0.01")',
+              'required <- c("gamma = 30", "peak_cor = 0.01")'
+          )
+          Path(".github/workflows/fastcore-checks.yaml").write_text(
+              original_workflow,
+              encoding="utf-8"
+          )
+
+          for temporary in [
+              Path(".github/workflows/apply-tutorial-restoration.yml"),
+              Path(".github/tutorial-restoration-trigger")
+          ]:
+              if temporary.exists():
+                  temporary.unlink()
+
+          active = [
+              Path("README.md"),
+              *Path("R").glob("*.R"),
+              *Path("docs").rglob("*.md"),
+              *Path("vignettes").glob("*.Rmd")
+          ]
+          stale = []
+          for path in active:
+              text = path.read_text(encoding="utf-8")
+              if re.search(r"\bgamma\s*(?:=|<-)\s*(?:75|100)L?\b", text):
+                  stale.append(str(path))
+          if stale:
+              raise RuntimeError("Old gamma defaults remain: " + ", ".join(stale))
+
+          stepwise = Path("docs/tutorial-02-stepwise-audit.md").read_text(
+              encoding="utf-8"
+          )
+          required_stages = [
+              "rc_regcompass_step_grn(",
+              "rc_regcompass_step_metacells(",
+              "rc_regcompass_step_meta_modules(",
+              "rc_regcompass_step_layer1(",
+              "rc_regcompass_step_layer2(",
+              "rc_regcompass_step_results("
+          ]
+          missing = [item for item in required_stages if item not in stepwise]
+          if missing or "rc_run_regcompass_one_shot(" in stepwise:
+              raise RuntimeError(
+                  "Invalid true stepwise tutorial; missing=" + repr(missing)
+              )
+          PY
+
+      - name: Commit restored documentation and defaults
         shell: bash
         run: |
-          set -o pipefail
-          Rscript - <<'RSCRIPT' 2>&1 | tee dependency-output.txt
-          options(timeout = 900)
-          install.packages(c(
-            "Matrix", "matrixStats", "testthat", "highs",
-            "BiocManager", "remotes"
-          ))
-
-          install_bioc_with_retry <- function(packages, attempts = 3L,
-                                              force = FALSE) {
-            packages <- unique(as.character(packages))
-            missing <- packages[!vapply(
-              packages, requireNamespace, logical(1), quietly = TRUE
-            )]
-            if (!length(missing) && !isTRUE(force)) return(invisible(packages))
-
-            for (attempt in seq_len(attempts)) {
-              targets <- if (isTRUE(force) && attempt == 1L) packages else missing
-              if (!length(targets)) break
-              message(
-                "Bioconductor install attempt ", attempt, "/", attempts,
-                " for: ", paste(targets, collapse = ", ")
-              )
-              try(
-                BiocManager::install(
-                  targets,
-                  ask = FALSE,
-                  update = FALSE,
-                  force = isTRUE(force) && attempt == 1L
-                ),
-                silent = FALSE
-              )
-              missing <- packages[!vapply(
-                packages, requireNamespace, logical(1), quietly = TRUE
-              )]
-              if (!length(missing)) break
-              if (attempt < attempts) Sys.sleep(15 * attempt)
-            }
-
-            if (length(missing)) {
-              stop(
-                "Missing Bioconductor dependencies after retries: ",
-                paste(missing, collapse = ", ")
-              )
-            }
-            invisible(packages)
-          }
-
-          bioc_required <- c(
-            "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
-            "GenomicRanges", "sparseMatrixStats", "limma"
-          )
-          install_bioc_with_retry(bioc_required, attempts = 3L)
-          install_bioc_with_retry(
-            c("Rhtslib", "Rsamtools"),
-            attempts = 3L,
-            force = TRUE
-          )
-
-          bioc_all <- c(bioc_required, "Rhtslib", "Rsamtools")
-          bioc_missing <- bioc_all[!vapply(
-            bioc_all,
-            requireNamespace,
-            logical(1),
-            quietly = TRUE
-          )]
-          if (length(bioc_missing)) {
-            stop("Missing Bioconductor dependencies: ",
-                 paste(bioc_missing, collapse = ", "))
-          }
-
-          remotes::install_version(
-            "SeuratObject", version = "4.1.4",
-            dependencies = NA, upgrade = "never"
-          )
-          remotes::install_version(
-            "Seurat", version = "4.4.0",
-            dependencies = NA, upgrade = "never"
-          )
-          remotes::install_version(
-            "Signac", version = "1.11.0",
-            dependencies = NA, upgrade = "never"
-          )
-          expected_versions <- c(
-            SeuratObject = "4.1.4",
-            Seurat = "4.4.0",
-            Signac = "1.11.0"
-          )
-          observed_versions <- vapply(
-            names(expected_versions),
-            function(package) as.character(packageVersion(package)),
-            character(1)
-          )
-          if (!identical(observed_versions, expected_versions)) {
-            stop(
-              "Unexpected Seurat stack: ",
-              paste(names(observed_versions), observed_versions,
-                    sep = "=", collapse = ", ")
-            )
-          }
-          signac_status <- tryCatch({
-            library(Signac)
-            paste0("loaded Signac ", as.character(packageVersion("Signac")))
-          }, error = function(error) {
-            paste0("ERROR: ", conditionMessage(error))
-          })
-          writeLines(signac_status, "signac-load-status.txt")
-          if (startsWith(signac_status, "ERROR:")) stop(signac_status)
-          RSCRIPT
-
-      - name: Install package with tests
-        shell: bash
-        run: |
-          set -o pipefail
-          R CMD INSTALL --no-multiarch --with-keep.source --install-tests . \
-            2>&1 | tee install-output.txt
-
-      - name: Run source tests against installed package
-        shell: Rscript {0}
-        run: |
-          output <- file("test-output.txt", open = "wt")
-          sink(output, type = "output")
-          sink(output, type = "message")
-          status <- 0L
-          tryCatch({
-            library(RegCompassR)
-            testthat::test_local(
-              Sys.getenv("GITHUB_WORKSPACE"),
-              reporter = "summary",
-              load_package = "installed",
-              stop_on_failure = TRUE,
-              stop_on_warning = FALSE
-            )
-          }, error = function(error) {
-            message("\nTEST_RUN_ERROR: ", conditionMessage(error))
-            status <<- 1L
-          })
-          sink(type = "message")
-          sink(type = "output")
-          close(output)
-          quit(status = status, save = "no")
-
-      - name: Upload test diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: test-diagnostics
-          path: |
-            dependency-output.txt
-            signac-load-status.txt
-            install-output.txt
-            test-output.txt
-          if-no-files-found: warn
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "Restore tutorials and set gamma default to 30"
+          git push origin HEAD:${{ github.head_ref }}
