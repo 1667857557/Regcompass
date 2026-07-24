@@ -13,17 +13,12 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
   pando_args = list(), layer2_args = list(), upstream_workers = NULL,
   layer2_workers = NULL,
   parallel_backend = c("auto", "serial", "snow", "multicore"),
+  progress = getOption("RegCompassR.progress", TRUE),
   species = c("auto", "human", "mouse"))
 }
-\description{
-Runs single-cell RNA normalization, cell-type-shared ATAC TF-IDF, condition-by-cell-type Pando GRNs, condition-only SuperCell2 metacells, GRN-derived meta-modules, Layer 1 integration, and Layer 2 scoring.
-}
+\description{Runs the six canonical GRN, metacell, meta-module, Layer 1, Layer 2, and result stages.}
 \details{
-The default Pando peak filter is \code{peak_cor = 0.01}. The default metacell resolution is \code{gamma = 75}. Normalized RNA and ATAC matrices are aligned by cell ID; different order is accepted, while different cell sets are rejected. Cell-type-local all-zero peaks are omitted from that cell type's TF-IDF calculation and restored as exact zeros.
+With \code{parallel_backend = "auto"}, Windows uses SOCK/SnowParam workers and Linux/macOS use MulticoreParam workers. Explicit multicore execution is rejected on Windows. Requested and resolved backends, worker counts, and OS type are saved in the result.
 
-On Linux, \code{parallel_backend = "multicore"} uses \code{BiocParallel::MulticoreParam}. \code{upstream_workers} controls condition-by-cell-type Pando groups, local FASTCORE completion of individual meta-modules, and Layer 1 GPR/reaction-capacity calculations. \code{layer2_workers} controls shared-model-by-metacell directional LP tasks. Keep Pando's inner \code{parallel = FALSE} when outer group-level parallelism is enabled. Structural model-cache construction and metacell construction are not parallelized by these worker arguments.
-
-Pando may be installed from GitHub or a local source package. RegCompass validates the required Pando API and does not require GitHub remote metadata for local installations. The default HiGHS LP backend is a required dependency, and the selected solver is checked before medium-constrained model construction.
-
-Sample balancing and sample-based weighting are not implemented. The \code{celltype_col} annotation is automatically passed to SuperCell2 before aggregation to reduce annotated cell-type mixing; the canonical workflow accepts no separate label-column argument. Cell type is not a hard metacell stratum; dominant member-cell type and purity are audited afterwards.
+Each stage reports progress and writes \code{step_timing.tsv}. The complete workflow writes \code{00_execution_timing.tsv} and stores stage and total elapsed time in \code{result$timing}. Set \code{progress = FALSE} or \code{options(RegCompassR.progress = FALSE)} for quiet execution.
 }
