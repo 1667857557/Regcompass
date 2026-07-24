@@ -1,3 +1,12 @@
+# RegCompassR 1.8.3
+
+- Added operating-system-aware parallel configuration. `parallel_backend = "auto"` resolves to SOCK/SnowParam workers on Windows and MulticoreParam workers on Linux/macOS; explicit multicore execution is rejected on Windows. Requested and actual backends, worker counts, and OS type are retained in the result.
+- Bundled validated Human-GEM 2.0.0 and Mouse-GEM 1.8.0 RegCompass assets under `inst/extdata/gem`. Canonical runs load them offline by default. Cache-first, explicit bundled-only, download, force-rebuild, and low-level download/update paths remain available.
+- Added `rc_bundled_gem_manifest()` and exported `rc_download_species_gem()`. The installed manifest records model source, release, checksum, size, citation DOI, and CC BY 4.0 attribution.
+- Added progress output and elapsed-time auditing to every public workflow stage and to the complete six-stage run. Each stage writes `step_timing.tsv`; one-shot execution writes `00_execution_timing.tsv` and stores stage and total timings in `result$timing`.
+- Added `progress = FALSE` and `options(RegCompassR.progress = FALSE)` controls for non-interactive or quiet execution.
+- Added cross-platform backend, bundled-model integrity, offline loading, progress-control, and timing-output tests.
+
 # RegCompassR 1.8.2
 
 - Added `rc_regcompass_step_target_union()` for a second LP pass after the original core analysis. Selected previous core reactions are mapping anchors only. The function directly identifies non-core reactions sharing KEGG, Reactome, or master-Rhea identifiers with a selected core and scores them in the exact cached global union GEM. Same-subsystem, recursive/transitive, FASTCORE-only, generic union, and metabolite-neighbour expansion are not used; previously scored global cores are not recomputed.
@@ -38,37 +47,3 @@
 - Added explicit `reaction_ranking` output containing reaction ID, direction, medium, median minimum penalty, support score, and within-condition priority rank.
 - Deleted obsolete sample-level differential/statistics code and unused pseudobulk interfaces that were incompatible with the pooled-metacell inference semantics.
 - Deleted the retired strict-stratum global workflow, Q95 calibration implementation, Pando reaction-confidence implementation, Layer 2 confidence alignment functions, confidence placeholders, `penalty_weights` API, and metabolite-neighbour expansion helper and controls.
-
-# RegCompassR 1.6.0
-
-- Added `fragment_files = FALSE` support so one-shot and integrated workflows can skip fragment aggregation and use object ATAC peak raw counts when matching fragment files are unavailable.
-- Removed deprecated one-shot `humangem_version` handling; use `gem_version` with `species`.
-- Clarified and tested that `rc_make_medium_scenarios()` can return preset and user-defined custom scenarios together, while preserving literature-derived concentration provenance and relative uptake sensitivity bounds.
-- Updated tutorials, help pages, and public-API tests to document the canonical interfaces only.
-
-# RegCompassR 1.4.2
-
-- Fixed metacell RNA normalization so GPR-gene logCPM uses the full-transcriptome library size computed before filtering to metabolic genes.
-- Replaced the expression term with a COMPASS-like inverse-support penalty, preventing missing/no-GPR evidence from receiving a lower penalty than observed zero expression.
-- Added a shared `compass_model_bounds` medium that preserves GEM exchange directionality and caps exchange fluxes at a uniform limit of 1 by default.
-- Applied structural penalties to exchange, demand, sink and artificial-support reactions independently of how their roles were annotated.
-- Preserved the existing strict-stratum Pando workflow: peak-gene links remain inferred independently within each condition × sample × cell-type group.
-
-# RegCompassR 1.4.1
-
-- Replaced the canonical relative-z/Q95 LP capacity with zero-preserving absolute RNA evidence; Q95 is diagnostic only.
-- Changed canonical integrated GPR defaults to hard-min AND, max OR and no promiscuity down-weighting.
-- Added recursive nested Boolean GPR parsing and fail-fast Human-GEM import diagnostics.
-- Reworked Pando evidence as signed TF–peak–gene regulatory support with TF expression and peak accessibility.
-- Preserved regulator and sign metadata in shared-TF projections.
-- Made missing/neutral regulatory evidence neutral in the LP penalty and prevented silent structural-support penalty overrides.
-- Added explicit named medium backgrounds without retaining compatibility aliases for retired names.
-- Changed the canonical inference unit to sample by cell type; metacell-level scoring is explicitly exploratory.
-- Replaced the MAD-sigmoid display score with a stable within-target empirical penalty rank; raw penalty is the primary output.
-
-# RegCompassR 1.4.0
-
-- Focused the public API on the canonical workflow and its required setup helpers: `rc_prepare_human2_gem()`, `rc_make_medium_scenarios()` and `rc_run_regcompass()`.
-- Kept tutorials concise while still showing adjustable setup steps for Human-GEM preparation and shared medium construction.
-- Removed the adaptive metacell gamma API; the workflow now uses one fixed gamma and skips strata that do not produce enough metacells for downstream analysis.
-- Removed standalone LinkPeaks, staged Layer 1, versioned Human-GEM and legacy reporting interfaces from the supported API surface.
