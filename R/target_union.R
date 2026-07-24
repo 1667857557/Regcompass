@@ -368,13 +368,193 @@
   cache
 }
 
+.rc_target_union_no_constraint_medium <- function(scenario) {
+  data.frame(
+    medium_scenario_id = as.character(scenario),
+    exchange_reaction_id = NA_character_,
+    lb = NA_real_,
+    ub = NA_real_,
+    available = FALSE,
+    .no_constraints = TRUE,
+    stringsAsFactors = FALSE
+  )
+}
+
+.rc_bind_target_union_results <- function(
+    results, model_cache, original_medium_scenarios,
+    omega, target_direction, solver, time_limit, flux_threshold) {
+  if (!length(results)) {
+    stop("No second-pass union-GEM results were produced.", call. = FALSE)
+  }
+  bind_matrix <- function(field) {
+    values <- lapply(results, `[[`, field)
+    out <- do.call(rbind, values)
+    if (is.null(rownames(out)) || anyDuplicated(rownames(out))) {
+      stop("Second-pass target row IDs are missing or duplicated.",
+           call. = FALSE)
+    }
+    out
+  }
+  score <- bind_matrix("score")
+  penalty <- bind_matrix("penalty")
+  vmax <- bind_matrix("vmax")
+  feasible <- bind_matrix("feasible")
+  evaluated <- bind_matrix("evaluated")
+
+  target_direction_table <- unique(.rc_bind_frames_fill(Map(
+    function(result, scenario) {
+      directions <- result$target_direction %||% data.frame()
+      if (nrow(directions)) directions$medium_scenario <- scenario
+      directions
+    },
+    results,
+    names(results)
+  )))
+  direction_diagnostics <- .rc_bind_frames_fill(Map(
+    function(result, scenario) {
+      diagnostics <- result$direction_diagnostics %||% data.frame()
+      if (nrow(diagnostics)) diagnostics$medium_scenario <- scenario
+      diagnostics
+    },
+    results,
+    names(results)
+  ))
+  lp_diagnostics <- .rc_bind_frames_fill(lapply(
+    results, `[[`, "lp_diagnostics"
+  ))
+
+  source_summary <- attr(model_cache, "summary")
+  source_files <- stats::setNames(
+    as.character(source_summary$file),
+    as.character(source_summary$medium_scenario)
+  )
+  model_cache_summary <- .rc_bind_frames_fill(Map(
+    function(result, scenario) {
+      summary <- result$model_cache_summary %||% data.frame()
+      if (nrow(summary)) {
+        summary$source_union_model_file <- unname(source_files[[scenario]])
+        summary$reused_previous_union_gem <- TRUE
+      }
+      summary
+    },
+    results,
+    names(results)
+  ))
+  original_model_diagnostics <- .rc_bind_frames_fill(lapply(
+    seq_len(nrow(source_summary)),
+    function(i) {
+      file <- as.character(source_summary$file[[i]])
+      scenario <- as.character(source_summary$medium_scenario[[i]])
+      model <- readRDS(file)
+      diagnostics <- model$closure_diagnostics %||% data.frame()
+      if (nrow(diagnostics)) {
+        diagnostics$medium_scenario <- scenario
+        diagnostics$source_union_model_file <- file
+        diagnostics$diagnostic_origin <- "original_core_union_build"
+      }
+      diagnostics
+    }
+  ))
+  components_by_medium <- lapply(
+    results,
+    `[[`,
+    "penalty_components"
+  )
+  manifests <- .rc_bind_frames_fill(Map(
+    function(result, scenario) {
+      manifest <- result$model_file_manifest %||% data.frame()
+      if (nrow(manifest)) manifest$medium_scenario <- scenario
+      manifest
+    },
+    results,
+    names(results)
+  ))
+
+  score_semantics <- unique(vapply(
+    results,
+    function(result) as.character(
+      result$score_semantics %||%
+        "within_target_relative_penalty_rank_not_probability"
+    ),
+    character(1)
+  ))
+  if (length(score_semantics) != 1L) {
+    stop("Second-pass score semantics differ across medium scenarios.",
+         call. = FALSE)
+  }
+  noninformative <- unlist(lapply(results, function(result) {
+    value <- result$noninformative_target
+    if (is.null(value)) {
+      value <- stats::setNames(
+        rep(FALSE, nrow(result$score)),
+        rownames(result$score)
+      )
+    }
+    value
+  }), use.names = TRUE)
+  attr(score, "score_semantics") <- score_semantics[[1L]]
+  attr(score, "noninformative_target") <- noninformative
+
+  answer <- list(
+    score = score,
+    penalty = penalty,
+    vmax = vmax,
+    feasible = feasible,
+    evaluated = evaluated,
+    target_direction = target_direction_table,
+    direction_diagnostics = direction_diagnostics,
+    medium_scenarios = original_medium_scenarios,
+    model_mode = "reused_global_union_gem",
+    model_cache_summary = model_cache_summary,
+    model_diagnostics = original_model_diagnostics,
+    lp_diagnostics = lp_diagnostics,
+    penalty_components = if (length(components_by_medium) == 1L) {
+      components_by_medium[[1L]]
+    } else {
+      components_by_medium
+    },
+    penalty_components_by_medium = components_by_medium,
+    evidence_policy = results[[1L]]$evidence_policy,
+    evidence_policy_detail = results[[1L]]$evidence_policy_detail,
+    unit_meta = results[[1L]]$unit_meta,
+    params = list(
+      unit = "metacell",
+      omega = omega,
+      target_direction = target_direction,
+      shared_gem = TRUE,
+      shared_gem_scope = "previous_global_union_by_medium",
+      reused_without_structural_reconstruction = TRUE,
+      second_pass_engine = "canonical_full_gem_microcompass",
+      parallel_task = "reused_union_model_by_metacell",
+      flux_threshold = flux_threshold,
+      solver = solver,
+      time_limit = time_limit
+    ),
+    method = paste(
+      "canonical microCOMPASS directional LP on previously constructed",
+      "global union GEMs"
+    )
+  )
+  if (nrow(manifests)) answer$model_file_manifest <- manifests
+  answer$relative_penalty_rank <- answer$score
+  answer$score_semantics <- score_semantics[[1L]]
+  answer$noninformative_target <- noninformative
+  answer$primary_output <- "penalty"
+  answer$primary_output_semantics <-
+    "minimum evidence-discordance penalty; lower means stronger support"
+  answer
+}
+
 .rc_score_target_union_cache <- function(
     layer1, gem, model_cache, medium_scenarios,
     condition_col, sample_col, celltype_col,
     omega = 0.95,
+    target_direction = c("both", "forward", "reverse"),
     solver = c("highs", "gurobi", "glpk"),
     time_limit = 60, flux_threshold = 1e-8,
+    cache_dir = tempfile("RegCompassR_target_union_"),
     parallel = TRUE, BPPARAM = NULL) {
+  target_direction <- match.arg(target_direction)
   solver <- match.arg(solver)
   if (!is.numeric(omega) || length(omega) != 1L ||
       !is.finite(omega) || omega <= 0 || omega > 1) {
@@ -389,205 +569,77 @@
     stop("`flux_threshold` must be one finite non-negative number.",
          call. = FALSE)
   }
+  if (!is.character(cache_dir) || length(cache_dir) != 1L ||
+      is.na(cache_dir) || !nzchar(cache_dir)) {
+    stop("`cache_dir` must be one non-empty path.", call. = FALSE)
+  }
+  dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 
-  matrices <- rc_layer2_unit_matrices(
-    layer1 = layer1,
-    unit = "metacell",
-    sample_col = sample_col,
-    celltype_col = celltype_col,
-    condition_col = condition_col
-  )
-  gem <- rc_annotate_reaction_roles(gem)
-  row_ids <- names(model_cache)
-  model_keys <- vapply(row_ids, function(row_id) {
-    model_cache[[row_id]]$file
-  }, character(1))
-  names(model_keys) <- row_ids
-  unique_model_keys <- unique(unname(model_keys))
-  representative_rows <- vapply(
-    unique_model_keys,
-    function(key) names(model_keys)[match(key, model_keys)],
-    character(1)
-  )
-  names(representative_rows) <- unique_model_keys
-  all_reactions <- unique(unlist(lapply(
-    representative_rows,
-    function(row_id) colnames(readRDS(model_cache[[row_id]]$file)$S)
-  ), use.names = FALSE))
-  penalties <- rc_compute_multiome_penalty(
-    rc_align_reaction_expression(
-      matrices$reaction_expression,
-      all_reactions,
-      NA_real_
-    ),
-    reaction_roles = gem$reaction_roles
-  )
-
-  units <- colnames(matrices$reaction_expression)
-  penalty <- vmax <- matrix(
-    NA_real_,
-    nrow = length(row_ids),
-    ncol = length(units),
-    dimnames = list(row_ids, units)
-  )
-  feasible <- evaluated <- matrix(
-    FALSE,
-    nrow = length(row_ids),
-    ncol = length(units),
-    dimnames = list(row_ids, units)
-  )
-  tasks <- expand.grid(
-    model_key = unique_model_keys,
-    unit_id = units,
-    stringsAsFactors = FALSE
-  )
-
-  run_one <- function(task) {
-    model_key <- as.character(task$model_key)
-    unit_id <- as.character(task$unit_id)
-    selected_rows <- names(model_keys)[model_keys == model_key]
-    model <- readRDS(model_key)
-    target_results <- lapply(selected_rows, function(row_id) {
-      entry <- model_cache[[row_id]]
-      answer <- rc_compass_two_step_lp_directional(
-        S = model$S,
-        lb = model$lb,
-        ub = model$ub,
-        target_reaction = entry$reaction_id,
-        penalties = penalties$penalty[colnames(model$S), unit_id],
-        target_direction = entry$target_direction,
+  source_summary <- attr(model_cache, "summary")
+  results <- list()
+  safe <- function(value) {
+    paste(sprintf("%02x", as.integer(charToRaw(enc2utf8(value)))), collapse = "")
+  }
+  for (i in seq_len(nrow(source_summary))) {
+    scenario <- as.character(source_summary$medium_scenario[[i]])
+    source_file <- as.character(source_summary$file[[i]])
+    source_model <- readRDS(source_file)
+    target_reactions <- unique(vapply(
+      model_cache[vapply(
+        model_cache,
+        function(entry) identical(
+          as.character(entry$medium_scenario),
+          scenario
+        ),
+        logical(1)
+      )],
+      `[[`,
+      character(1),
+      "reaction_id"
+    ))
+    scenario_cache_dir <- file.path(
+      cache_dir,
+      paste0("medium_", safe(scenario))
+    )
+    results[[scenario]] <- withCallingHandlers(
+      rc_run_microcompass(
+        layer1 = layer1,
+        gem = source_model,
+        target_reactions = target_reactions,
+        medium_scenarios = .rc_target_union_no_constraint_medium(scenario),
+        mode = "full_gem",
+        unit = "metacell",
+        condition_col = condition_col,
+        sample_col = sample_col,
+        celltype_col = celltype_col,
+        model_params = list(cache_dir = scenario_cache_dir),
         omega = omega,
+        target_direction = target_direction,
+        parallel = parallel,
         solver = solver,
         time_limit = time_limit,
-        flux_threshold = flux_threshold
-      )
-      list(
-        row_id = row_id,
-        unit_id = unit_id,
-        penalty = answer$penalty,
-        vmax = answer$vmax,
-        feasible = isTRUE(answer$feasible),
-        diagnostics = data.frame(
-          row_id = row_id,
-          unit_id = unit_id,
-          sample_id = "global",
-          module_id = "GLOBAL_UNION",
-          reaction_id = entry$reaction_id,
-          target_direction = entry$target_direction,
-          medium_scenario = entry$medium_scenario,
-          condition = "all",
-          strict_feasible = isTRUE(answer$feasible),
-          solver_status = answer$solver_status,
-          step1_status = answer$step1_status,
-          step2_status = answer$step2_status,
-          target_status = if (isTRUE(answer$feasible)) {
-            "ok"
-          } else {
-            "structurally_infeasible_in_reused_union"
-          },
-          objective_value = answer$penalty,
-          vmax = answer$vmax,
-          reused_union_model_file = model_key,
-          stringsAsFactors = FALSE
-        )
-      )
-    })
-    list(
-      results = target_results,
-      diagnostics = do.call(
-        rbind,
-        lapply(target_results, `[[`, "diagnostics")
-      )
-    )
-  }
-
-  task_list <- split(tasks, seq_len(nrow(tasks)))
-  grouped <- rc_parallel_lapply(
-    task_list,
-    function(task) run_one(task[1, , drop = FALSE]),
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
-  )
-  results <- unlist(
-    lapply(grouped, `[[`, "results"),
-    recursive = FALSE
-  )
-  for (result in results) {
-    penalty[result$row_id, result$unit_id] <- result$penalty
-    vmax[result$row_id, result$unit_id] <- result$vmax
-    feasible[result$row_id, result$unit_id] <- result$feasible
-    evaluated[result$row_id, result$unit_id] <- TRUE
-  }
-  score <- rc_compass_score_from_penalty(penalty, feasible)
-  lp_diagnostics <- do.call(
-    rbind,
-    lapply(grouped, `[[`, "diagnostics")
-  )
-  model_diagnostics <- .rc_bind_frames_fill(lapply(
-    representative_rows,
-    function(row_id) {
-      entry <- model_cache[[row_id]]
-      model <- readRDS(entry$file)
-      diagnostics <- model$closure_diagnostics %||% data.frame()
-      if (nrow(diagnostics)) {
-        diagnostics$reused_union_model_file <- entry$file
-        diagnostics$medium_scenario <- entry$medium_scenario
+        flux_threshold = flux_threshold,
+        BPPARAM = BPPARAM
+      ),
+      warning = function(w) {
+        if (grepl(
+          "Metacell-level scores are descriptive pseudo-observations",
+          conditionMessage(w),
+          fixed = TRUE
+        )) invokeRestart("muffleWarning")
       }
-      diagnostics
-    }
-  ))
-  directions <- unique(do.call(rbind, lapply(model_cache, function(entry) {
-    data.frame(
-      reaction_id = entry$reaction_id,
-      target_direction = entry$target_direction,
-      medium_scenario = entry$medium_scenario,
-      stringsAsFactors = FALSE
     )
-  })))
-
-  answer <- list(
-    score = score,
-    penalty = penalty,
-    vmax = vmax,
-    feasible = feasible,
-    evaluated = evaluated,
-    target_direction = directions,
-    direction_diagnostics = attr(model_cache, "direction_diagnostics"),
-    medium_scenarios = medium_scenarios,
-    model_mode = "reused_global_union_gem",
-    model_cache_summary = attr(model_cache, "summary"),
-    model_diagnostics = model_diagnostics,
-    lp_diagnostics = lp_diagnostics,
-    penalty_components = penalties$components,
-    evidence_policy = penalties$evidence_policy,
-    evidence_policy_detail = penalties$evidence_policy_detail,
-    unit_meta = matrices$unit_meta,
-    params = list(
-      unit = "metacell",
-      omega = omega,
-      shared_gem = TRUE,
-      shared_gem_scope = "previous_global_union_by_medium",
-      reused_without_rebuilding = TRUE,
-      parallel_task = "reused_union_model_by_metacell",
-      flux_threshold = flux_threshold,
-      solver = solver,
-      time_limit = time_limit
-    ),
-    method = paste(
-      "microCOMPASS directional LP on the previously constructed",
-      "global union GEM"
-    )
+  }
+  .rc_bind_target_union_results(
+    results = results,
+    model_cache = model_cache,
+    original_medium_scenarios = medium_scenarios,
+    omega = omega,
+    target_direction = target_direction,
+    solver = solver,
+    time_limit = time_limit,
+    flux_threshold = flux_threshold
   )
-  answer$relative_penalty_rank <- answer$score
-  answer$score_semantics <- attr(answer$score, "score_semantics") %||%
-    "within_target_relative_penalty_rank_not_probability"
-  answer$noninformative_target <- attr(
-    answer$score,
-    "noninformative_target"
-  )
-  answer$primary_output <- "penalty"
-  answer$primary_output_semantics <-
-    "minimum evidence-discordance penalty; lower means stronger support"
-  answer
 }
 
 #' Re-score annotation-related reactions in a previous global union GEM
@@ -716,9 +768,11 @@ rc_regcompass_step_target_union <- function(
     sample_col = workflow$sample_col,
     celltype_col = workflow$celltype_col,
     omega = omega,
+    target_direction = target_direction,
     solver = solver,
     time_limit = time_limit,
     flux_threshold = flux_threshold,
+    cache_dir = file.path(outdir, "model_cache"),
     parallel = parallel,
     BPPARAM = BPPARAM
   )
