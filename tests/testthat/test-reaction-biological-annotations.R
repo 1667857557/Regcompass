@@ -66,6 +66,12 @@ make_reaction_annotation_fixture <- function() {
     ),
     parsed_gpr = list(
       R_GENE = list(c("GENE1", "GENE2"))
+    ),
+    capacity_params = list(
+      promiscuity_mode = "none",
+      tau = 0.20,
+      and_method = "boltzmann",
+      or_method = "sum"
     )
   )
 
@@ -131,9 +137,23 @@ test_that("reaction annotations contain names formulas GPRs and evidence classes
   )
   expect_equal(control$evidence_class, "RNA-only")
   expect_equal(ms177$evidence_class, "RNA+ATAC")
+  expect_equal(control$evidence_resolution, "reaction_capacity")
+  expect_equal(ms177$evidence_resolution, "reaction_capacity")
+  expect_equal(ms177$atac_modifier_genes, "GENE1")
   expect_equal(ms177$multiome_contributing_genes, "GENE1")
+  expect_false(control$has_active_multiome_contribution)
   expect_true(ms177$has_active_multiome_contribution)
+  expect_equal(control$max_abs_multiome_capacity_shift, 0)
+  expect_gt(ms177$max_abs_multiome_capacity_shift, 0)
+  expect_gt(ms177$median_multiome_capacity_shift, 0)
   expect_equal(structural$evidence_class, "structural/no-GPR")
+  expect_equal(
+    annotation$params$evidence_definition,
+    paste(
+      "RNA+ATAC requires GPR-aggregated reaction capacity from integrated",
+      "gene support to differ from RNA-only reaction capacity"
+    )
+  )
 })
 
 test_that("condition statistics are enriched with reaction biology", {
@@ -154,11 +174,18 @@ test_that("condition statistics are enriched with reaction biology", {
   )
   expect_true(all(c(
     "reaction_name", "tested_formula", "genes", "gpr_rule",
-    "evidence_class_a", "evidence_class_b", "evidence_comparison"
+    "evidence_class_a", "evidence_class_b", "evidence_comparison",
+    "evidence_resolution_a", "evidence_resolution_b",
+    "median_multiome_capacity_shift_a",
+    "median_multiome_capacity_shift_b",
+    "max_abs_multiome_capacity_shift_a",
+    "max_abs_multiome_capacity_shift_b"
   ) %in% colnames(statistics$pairwise)))
   expect_equal(statistics$pairwise$reaction_name, "Gene-associated conversion")
   expect_equal(statistics$pairwise$evidence_class_a, "RNA-only")
   expect_equal(statistics$pairwise$evidence_class_b, "RNA+ATAC")
+  expect_equal(statistics$pairwise$evidence_resolution_b, "reaction_capacity")
+  expect_gt(statistics$pairwise$max_abs_multiome_capacity_shift_b, 0)
   expect_equal(
     statistics$pairwise$tested_formula,
     "metabolite A [c] + 2 metabolite B [c] -> metabolite C [e]"
@@ -180,6 +207,17 @@ test_that("metabolic genes select reactions and significant plot collections", {
   )
   expect_equal(selected$reaction_ids, "R_GENE")
   expect_equal(selected$reactions$matched_genes, "GENE1")
+
+  multiome_selected <- rc_select_gene_reactions(
+    result,
+    genes = "GENE1",
+    cell_types = "stem-cell_like",
+    evidence_class = "RNA+ATAC"
+  )
+  expect_equal(multiome_selected$reaction_ids, "R_GENE")
+  expect_true(all(
+    multiome_selected$evidence$evidence_class == "RNA+ATAC"
+  ))
 
   skip_if_not_installed("ggplot2")
   plots <- rc_plot_condition_gene_reactions(
