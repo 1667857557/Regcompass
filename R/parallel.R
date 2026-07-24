@@ -156,12 +156,12 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
   thread_state <- NULL
   if (!was_started) {
     thread_state <- .rc_set_internal_single_thread()
-    BiocParallel::bpstart(BPPARAM)
     on.exit({
       .rc_release_bpparam(BPPARAM)
       .rc_restore_internal_threads(thread_state)
       invisible(gc(verbose = FALSE, full = TRUE))
     }, add = TRUE)
+    BiocParallel::bpstart(BPPARAM)
   }
   BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
 }
