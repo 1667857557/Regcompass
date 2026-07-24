@@ -39,6 +39,27 @@ condition_stats <- rc_test_condition_reactions(
 The function accepts either the complete RegCompass result or the Layer 2
 `microcompass`/`step5` object.
 
+## Multi-condition comparison
+
+When three or more conditions are retained, one Kruskal-Wallis omnibus test is
+run for every fixed `cell type × reaction × direction × medium` target. Pairwise
+Wilcoxon tests are also returned for every requested condition pair.
+
+For control, JQ1, and MS177 together:
+
+```r
+condition_stats <- rc_test_condition_reactions(
+  result,
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "epithelial_like"
+)
+
+condition_stats$omnibus
+condition_stats$pairwise
+```
+
 ## Outputs
 
 `condition_stats$omnibus` contains one Kruskal-Wallis test per
@@ -76,6 +97,65 @@ condition_stats <- rc_test_condition_reactions(
   target_directions = c("forward", "reverse"),
   medium_scenarios = "high_glucose"
 )
+```
+
+## Plot one reaction across conditions
+
+`rc_plot_condition_reaction()` displays all selected conditions in one plot.
+The boxplot summarizes the distribution and every point is one finite metacell
+score. Pairwise brackets use BH-adjusted P values by default, and the subtitle
+shows the BH-adjusted Kruskal-Wallis omnibus result when three or more conditions
+are present.
+
+```r
+p <- rc_plot_condition_reaction(
+  result,
+  reaction_id = "MAR06231",
+  cell_type = "epithelial_like",
+  target_direction = "reverse",
+  medium_scenario = "high_glucose",
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  comparisons = list(
+    c("control_24hr", "JQ1_24hr"),
+    c("control_24hr", "MS177_24hr"),
+    c("JQ1_24hr", "MS177_24hr")
+  ),
+  annotation_p = "p_adj",
+  show_nonsignificant = FALSE
+)
+
+print(p)
+ggplot2::ggsave(
+  "MAR06231_reverse_epithelial_conditions.pdf",
+  p,
+  width = 6,
+  height = 5
+)
+```
+
+Significance labels follow:
+
+```text
+****  P < 0.0001
+***   P < 0.001
+**    P < 0.01
+*     P < 0.05
+ns    P >= 0.05
+```
+
+The plotter computes multiplicity correction over the full scored reaction set
+within the selected statistical scope before extracting the requested reaction.
+It therefore does not incorrectly treat a single plotted reaction as the entire
+multiple-testing family.
+
+The returned `ggplot` carries the underlying data and tests:
+
+```r
+attr(p, "plot_data")
+attr(p, "annotation_data")
+attr(p, "condition_statistics")
 ```
 
 ## Candidate filtering
