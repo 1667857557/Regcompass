@@ -85,7 +85,7 @@
       }, character(1)))
     }
     gene_reactions <- intersect(mapped, available)
-    if (!length(gene_reactions) && !length(requested_reactions)) {
+    if (!length(gene_reactions)) {
       stop(
         "The selected genes do not resolve to core targets in the previous LP analysis.",
         call. = FALSE
@@ -221,6 +221,12 @@
   rows <- split(seq_len(nrow(catalog)), catalog$reaction_id)
   answer <- do.call(rbind, lapply(rows, function(index) {
     one <- catalog[index, , drop = FALSE]
+    stages <- sort(unique(as.character(
+      one$previous_union_inclusion_stage[
+        !is.na(one$previous_union_inclusion_stage) &
+          nzchar(one$previous_union_inclusion_stage)
+      ]
+    )))
     data.frame(
       sample_id = "global",
       module_id = "GLOBAL_UNION",
@@ -238,15 +244,11 @@
         collapse = ";"
       ),
       previous_union_is_core = FALSE,
-      previous_union_inclusion_stage = paste(
-        sort(unique(as.character(
-          one$previous_union_inclusion_stage[
-            !is.na(one$previous_union_inclusion_stage) &
-              nzchar(one$previous_union_inclusion_stage)
-          ]
-        ))),
-        collapse = ";"
-      ),
+      previous_union_inclusion_stage = if (length(stages)) {
+        paste(stages, collapse = ";")
+      } else {
+        NA_character_
+      },
       score_target = TRUE,
       target_role = "direct_database_crossref_noncore",
       lp_exclusion_reason = NA_character_,
@@ -257,127 +259,7 @@
   answer
 }
 
-.rc_build_target_union_definition <- function(
-    gem, global_core_reactions, global_reaction_membership,
-    core_reaction_ids = NULL, core_genes = NULL,
-    gene_match = c("complete_gpr", "any_direct")) {
-  gene_match <- match.arg(gene_match)
-  if (!is.data.frame(global_core_reactions) ||
-      !"reaction_id" %in% colnames(global_core_reactions)) {
-    stop("`global_core_reactions` must contain reaction_id.", call. = FALSE)
-  }
-  if (!is.data.frame(global_reaction_membership) ||
-      !"reaction_id" %in% colnames(global_reaction_membership)) {
-    stop("`global_reaction_membership` must contain reaction_id.", call. = FALSE)
-  }
-  selected <- .rc_target_union_core_rows(
-    gem = gem,
-    available_core_reactions = global_core_reactions$reaction_id,
-    core_reaction_ids = core_reaction_ids,
-    core_genes = core_genes,
-    gene_match = gene_match
-  )
-  catalog <- .rc_target_union_direct_crossref_relations(gem, selected)
-  if (!nrow(catalog)) {
-    stop(
-      "The selected core reactions have no directly linked KEGG, Reactome, or master-Rhea reactions.",
-      call. = FALSE
-    )
-  }
-  previous_union_ids <- .rc_target_union_normalize_ids(
-    global_reaction_membership$reaction_id
-  )
-  missing_from_union <- setdiff(
-    unique(as.character(catalog$reaction_id)), previous_union_ids
-  )
-  if (length(missing_from_union)) {
-    stop(
-      "Direct database cross-reference expansion produced reactions absent from the previous global union GEM: ",
-      paste(utils::head(missing_from_union, 10L), collapse = ", "),
-      ". Rebuild the original union with matching reaction annotations.",
-      call. = FALSE
-    )
-  }
-  union_match <- match(
-    as.character(catalog$reaction_id),
-    as.character(global_reaction_membership$reaction_id)
-  )
-  catalog$previous_union_is_core <- if (
-    "is_core" %in% colnames(global_reaction_membership)
-  ) {
-    global_reaction_membership$is_core[union_match] %in% TRUE
-  } else {
-    as.character(catalog$reaction_id) %in%
-      as.character(global_core_reactions$reaction_id)
-  }
-  catalog$previous_union_inclusion_stage <- if (
-    "inclusion_stage" %in% colnames(global_reaction_membership)
-  ) {
-    as.character(global_reaction_membership$inclusion_stage[union_match])
-  } else {
-    NA_character_
-  }
-  catalog$score_target <- !catalog$previous_union_is_core
-  catalog$target_role <- ifelse(
-    catalog$previous_union_is_core,
-    "previous_global_core_not_rescored",
-    "direct_database_crossref_noncore"
-  )
-  catalog$lp_exclusion_reason <- ifelse(
-    catalog$previous_union_is_core,
-    "already_scored_in_original_layer2",
-    NA_character_
-  )
-  target_relations <- catalog[catalog$score_target, , drop = FALSE]
-  if (!nrow(target_relations)) {
-    stop(
-      "All directly linked KEGG, Reactome, or master-Rhea reactions were already scored as global cores in the original Layer 2 run.",
-      call. = FALSE
-    )
-  }
-  targets <- .rc_target_union_aggregate_targets(target_relations)
-  rownames(selected) <- NULL
-  rownames(catalog) <- NULL
-  summary <- data.frame(
-    n_selected_previous_core = nrow(selected),
-    n_direct_crossref_relations = nrow(catalog),
-    n_direct_crossref_reactions = length(unique(catalog$reaction_id)),
-    n_previous_core_reactions_not_rescored = length(unique(
-      catalog$reaction_id[catalog$previous_union_is_core]
-    )),
-    n_expanded_score_targets = nrow(targets),
-    n_previous_union_reactions = length(previous_union_ids),
-    gene_match = gene_match,
-    expansion_policy =
-      "direct_from_selected_core_via_kegg_reactome_master_rhea_only",
-    scoring_policy =
-      "direct_database_crossref_noncore_reactions_only",
-    model_policy = "reuse_exact_previous_global_union_gem",
-    stringsAsFactors = FALSE
-  )
-  list(
-    selected_core_reactions = selected,
-    expanded_reaction_catalog = catalog,
-    expanded_scoring_targets = targets,
-    previous_union_membership = global_reaction_membership,
-    summary = summary,
-    params = list(
-      gene_match = gene_match,
-      selected_core_reactions = unique(as.character(selected$reaction_id)),
-      previous_core_reactions_not_rescored = unique(as.character(
-        catalog$reaction_id[catalog$previous_union_is_core]
-      )),
-      score_targets = unique(as.character(targets$reaction_id)),
-      expansion_policy =
-        "direct_from_selected_core_via_kegg_reactome_master_rhea_only"
-    )
-  )
-}
-
-.rc_build_target_union_model_cache <- function(
-    layer2, target_reactions,
-    target_direction = c("both", "forward", "reverse")) {
-  target_direction <- match.arg(target_direction)
+.rc_target_union_model_summary <- function(layer2) {
   if (!inherits(layer2, "regcompass_layer2_step") ||
       !identical(as.character(layer2$model_mode), "meta_module_gem")) {
     stop(
@@ -419,7 +301,167 @@
       paste(utils::head(missing_files, 5L), collapse = ", "), call. = FALSE
     )
   }
+  summary
+}
 
+.rc_target_union_cached_reaction_ids <- function(layer2) {
+  summary <- .rc_target_union_model_summary(layer2)
+  reaction_sets <- lapply(summary$file, function(file) {
+    rc_validate_gem(readRDS(file))$reactions
+  })
+  available <- Reduce(intersect, reaction_sets)
+  available <- .rc_target_union_normalize_ids(available)
+  if (!length(available)) {
+    stop(
+      "The previous medium-specific union GEM files share no reactions.",
+      call. = FALSE
+    )
+  }
+  attr(available, "model_summary") <- summary
+  attr(available, "reaction_counts") <- vapply(
+    reaction_sets, length, integer(1)
+  )
+  available
+}
+
+.rc_build_target_union_definition <- function(
+    gem, global_core_reactions, global_reaction_membership,
+    core_reaction_ids = NULL, core_genes = NULL,
+    gene_match = c("complete_gpr", "any_direct"),
+    cached_reaction_ids = NULL) {
+  gene_match <- match.arg(gene_match)
+  if (!is.data.frame(global_core_reactions) ||
+      !"reaction_id" %in% colnames(global_core_reactions)) {
+    stop("`global_core_reactions` must contain reaction_id.", call. = FALSE)
+  }
+  if (!is.data.frame(global_reaction_membership) ||
+      !"reaction_id" %in% colnames(global_reaction_membership)) {
+    stop("`global_reaction_membership` must contain reaction_id.", call. = FALSE)
+  }
+  selected <- .rc_target_union_core_rows(
+    gem = gem,
+    available_core_reactions = global_core_reactions$reaction_id,
+    core_reaction_ids = core_reaction_ids,
+    core_genes = core_genes,
+    gene_match = gene_match
+  )
+  catalog <- .rc_target_union_direct_crossref_relations(gem, selected)
+  if (!nrow(catalog)) {
+    stop(
+      "The selected core reactions have no directly linked KEGG, Reactome, or master-Rhea reactions.",
+      call. = FALSE
+    )
+  }
+  membership_ids <- .rc_target_union_normalize_ids(
+    global_reaction_membership$reaction_id
+  )
+  available_ids <- if (is.null(cached_reaction_ids)) {
+    membership_ids
+  } else {
+    .rc_target_union_normalize_ids(cached_reaction_ids)
+  }
+  if (!length(available_ids)) {
+    stop("No reusable reactions were found in the previous union GEM cache.",
+         call. = FALSE)
+  }
+  union_match <- match(
+    as.character(catalog$reaction_id),
+    as.character(global_reaction_membership$reaction_id)
+  )
+  catalog$available_in_all_cached_union_models <-
+    catalog$reaction_id %in% available_ids
+  catalog$present_in_previous_union_membership <- !is.na(union_match)
+  catalog$previous_union_is_core <- catalog$reaction_id %in%
+    as.character(global_core_reactions$reaction_id)
+  catalog$previous_union_inclusion_stage <- if (
+    "inclusion_stage" %in% colnames(global_reaction_membership)
+  ) {
+    as.character(global_reaction_membership$inclusion_stage[union_match])
+  } else {
+    rep(NA_character_, nrow(catalog))
+  }
+  support_only <- catalog$available_in_all_cached_union_models &
+    !catalog$present_in_previous_union_membership
+  catalog$previous_union_inclusion_stage[support_only] <-
+    "cached_union_support_not_in_membership"
+  catalog$score_target <- !catalog$previous_union_is_core &
+    catalog$available_in_all_cached_union_models
+  catalog$target_role <- ifelse(
+    catalog$previous_union_is_core,
+    "previous_global_core_not_rescored",
+    ifelse(
+      catalog$available_in_all_cached_union_models,
+      "direct_database_crossref_noncore",
+      "direct_database_crossref_absent_from_cached_union"
+    )
+  )
+  catalog$lp_exclusion_reason <- ifelse(
+    catalog$previous_union_is_core,
+    "already_scored_in_original_layer2",
+    ifelse(
+      catalog$available_in_all_cached_union_models,
+      NA_character_,
+      "absent_from_one_or_more_previous_union_models"
+    )
+  )
+  target_relations <- catalog[catalog$score_target, , drop = FALSE]
+  if (!nrow(target_relations)) {
+    stop(
+      "No directly linked non-core reaction is present in every cached previous union GEM. Previously scored core reactions are not recomputed.",
+      call. = FALSE
+    )
+  }
+  targets <- .rc_target_union_aggregate_targets(target_relations)
+  rownames(selected) <- NULL
+  rownames(catalog) <- NULL
+  summary <- data.frame(
+    n_selected_previous_core = nrow(selected),
+    n_direct_crossref_relations = nrow(catalog),
+    n_direct_crossref_reactions = length(unique(catalog$reaction_id)),
+    n_previous_core_reactions_not_rescored = length(unique(
+      catalog$reaction_id[catalog$previous_union_is_core]
+    )),
+    n_cached_union_unavailable_reactions = length(unique(
+      catalog$reaction_id[!catalog$available_in_all_cached_union_models]
+    )),
+    n_expanded_score_targets = nrow(targets),
+    n_previous_union_membership_reactions = length(membership_ids),
+    n_reactions_shared_by_cached_union_models = length(available_ids),
+    gene_match = gene_match,
+    expansion_policy =
+      "direct_from_selected_core_via_kegg_reactome_master_rhea_only",
+    scoring_policy =
+      "direct_database_crossref_noncore_reactions_present_in_all_cached_union_models",
+    model_policy = "reuse_exact_previous_global_union_gem",
+    stringsAsFactors = FALSE
+  )
+  list(
+    selected_core_reactions = selected,
+    expanded_reaction_catalog = catalog,
+    expanded_scoring_targets = targets,
+    previous_union_membership = global_reaction_membership,
+    summary = summary,
+    params = list(
+      gene_match = gene_match,
+      selected_core_reactions = unique(as.character(selected$reaction_id)),
+      previous_core_reactions_not_rescored = unique(as.character(
+        catalog$reaction_id[catalog$previous_union_is_core]
+      )),
+      cached_union_unavailable_reactions = unique(as.character(
+        catalog$reaction_id[!catalog$available_in_all_cached_union_models]
+      )),
+      score_targets = unique(as.character(targets$reaction_id)),
+      expansion_policy =
+        "direct_from_selected_core_via_kegg_reactome_master_rhea_only"
+    )
+  )
+}
+
+.rc_build_target_union_model_cache <- function(
+    layer2, target_reactions,
+    target_direction = c("both", "forward", "reverse")) {
+  target_direction <- match.arg(target_direction)
+  summary <- .rc_target_union_model_summary(layer2)
   cache <- list()
   diagnostics <- list()
   fingerprints <- character(nrow(summary))
@@ -656,6 +698,8 @@
 #' identifies reactions sharing KEGG, Reactome, or master-Rhea identifiers with
 #' those anchors and scores only reactions that were not global core targets in
 #' the original Layer 2 run. No subsystem or transitive expansion is performed.
+#' Target availability is checked against the actual cached union GEM files used
+#' by Layer 2, not only the pre-FASTCORE membership table.
 #'
 #' @param layer1 Output from [rc_regcompass_step_layer1()].
 #' @param meta_modules Output from [rc_regcompass_step_meta_modules()].
@@ -671,6 +715,7 @@
 #'   `time_limit`, and `flux_threshold` overrides.
 #' @param parallel Whether to parallelize model-by-metacell tasks.
 #' @param BPPARAM Optional BiocParallel parameter object.
+#' @param progress Whether to display stage progress.
 #' @return A `regcompass_target_union_step` with selected core anchors, direct
 #'   database relation rows, unique non-core LP targets, source-model provenance,
 #'   and second-pass LP results.
@@ -717,13 +762,15 @@ rc_regcompass_step_target_union <- function(
     stop("Layer 2 was not generated from the supplied global core reactions.",
          call. = FALSE)
   }
+  cached_reaction_ids <- .rc_target_union_cached_reaction_ids(layer2)
   definition <- .rc_build_target_union_definition(
     gem = gem,
     global_core_reactions = global$global_core_reactions,
     global_reaction_membership = global$global_reaction_membership,
     core_reaction_ids = core_reaction_ids,
     core_genes = core_genes,
-    gene_match = gene_match
+    gene_match = gene_match,
+    cached_reaction_ids = cached_reaction_ids
   )
   target_direction <- match.arg(
     as.character(layer2_args$target_direction %||%
@@ -765,6 +812,8 @@ rc_regcompass_step_target_union <- function(
     nrow(definition$selected_core_reactions)
   scored$params$n_previous_core_reactions_not_rescored <-
     length(definition$params$previous_core_reactions_not_rescored)
+  scored$params$n_cached_union_unavailable_reactions <-
+    length(definition$params$cached_union_unavailable_reactions)
   scored$params$n_expanded_score_targets <-
     length(definition$params$score_targets)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
