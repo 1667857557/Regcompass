@@ -34,6 +34,8 @@ result <- rc_attach_reaction_annotations(
 )
 ```
 
+Older Layer 1 objects that lack enough information to reconstruct RNA-only and integrated GPR-aggregated reaction capacities are marked `evidence_resolution = "reaction_capacity_unavailable"`. Gene-level ATAC changes remain visible, but such reactions are not promoted to `RNA+ATAC` without a reaction-level capacity comparison.
+
 ## Run all requested condition comparisons
 
 ```r
@@ -78,6 +80,7 @@ condition_stats$omnibus[
     "genes",
     "gpr_rule",
     "evidence_by_condition",
+    "evidence_resolution_by_condition",
     "p_adj"
   )
 ]
@@ -94,6 +97,8 @@ condition_stats$pairwise[
     "rank_biserial_b_minus_a",
     "evidence_class_a",
     "evidence_class_b",
+    "evidence_resolution_a",
+    "evidence_resolution_b",
     "p_adj"
   )
 ]
@@ -105,7 +110,7 @@ Forward and reverse targets are distinct LP objectives. Do not combine them into
 
 ## Select reactions associated with target genes
 
-Gene selection uses the Boolean GEM GPR annotation rather than reaction-name text matching.
+Gene selection uses the Boolean GEM GPR annotation rather than reaction-name text matching. Matching is case-insensitive, while reported symbols retain the case stored in the source GEM; this preserves standard mouse symbols such as `Slc22a17`.
 
 ```r
 rela_metabolic_genes <- c(
@@ -152,6 +157,11 @@ multiome_gene_reactions <- rc_select_gene_reactions(
   result,
   genes = rela_metabolic_genes,
   match = "any",
+  conditions = c(
+    "control_24hr",
+    "JQ1_24hr",
+    "MS177_24hr"
+  ),
   cell_types = "stem-cell_like",
   evidence_class = "RNA+ATAC"
 )
@@ -173,13 +183,14 @@ p <- rc_plot_condition_reaction(
     "JQ1_24hr",
     "MS177_24hr"
   ),
+  min_units = 5,
   annotation_p = "p_adj"
 )
 
 print(p)
 ```
 
-The plot shows one point per metacell and adjusted significance brackets. Multiplicity correction is computed over the full scored reaction family within the selected `p_adjust_scope`, not only over the displayed reaction.
+The plot shows one point per metacell and adjusted significance brackets. Multiplicity correction is computed over the full scored reaction family within the selected `p_adjust_scope`, not only over the displayed reaction. The full annotated result is passed into the statistics layer, so reaction names, formulas, GPRs, and evidence classes remain attached to the plot.
 
 ## Plot significant reactions for a gene set
 
@@ -199,6 +210,7 @@ gene_plots <- rc_plot_condition_gene_reactions(
     c("control_24hr", "MS177_24hr"),
     c("JQ1_24hr", "MS177_24hr")
   ),
+  min_units = 5,
   target_directions = c("forward", "reverse"),
   medium_scenario = "high_glucose",
   evidence_class = "RNA+ATAC",
@@ -216,6 +228,8 @@ gene_plots$selected_targets
 gene_plots$pairwise_hits
 print(gene_plots$plots[[1]])
 ```
+
+The `conditions` filter is applied both to evidence-class selection and to condition testing. `min_units` is forwarded to the same statistical engine used by `rc_test_condition_reactions()`; it is not a hidden fixed threshold.
 
 ## Define a biologically interpretable candidate table
 
