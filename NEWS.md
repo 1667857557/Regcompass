@@ -1,5 +1,7 @@
 # RegCompassR 1.8.1
 
+- Added `rc_test_condition_reactions()` for same-reaction, same-direction, same-medium comparisons between conditions within each cell type under the shared union-GEM. It reports Kruskal-Wallis omnibus tests, pairwise Wilcoxon tests, BH-adjusted P values, median score shifts, rank-biserial/common-language effects, and Cohen's d.
+- Condition-reaction statistics explicitly distinguish within-dataset metacell significance from biological-replicate-level treatment inference and verify that target `vmax` is invariant across units before testing.
 - Fixed `mouse_plasma` so it no longer inherits human HPLM concentrations or provenance. Healthy-mouse glucose (4.381 mM), lactate (3.088 mM), and glutamine (0.934 mM) define the only quantitative relative uptake caps; all other mouse components are availability-only.
 - Separated the healthy-mouse quantitative reference from the broader murine plasma and tumor-interstitial-fluid availability evidence, and removed the unrelated Mouse-GEM reconstruction DOI from medium-composition provenance.
 - Removed the redundant public `metacell_label_col` and stepwise `label_col` arguments. The canonical workflow now exposes its actual behavior directly: `celltype_col` is always passed to SuperCell2 before aggregation, while condition remains the only hard metacell stratum.
@@ -38,23 +40,3 @@
 - Replaced the expression term with a COMPASS-like inverse-support penalty, preventing missing/no-GPR evidence from receiving a lower penalty than observed zero expression.
 - Added a shared `compass_model_bounds` medium that preserves GEM exchange directionality and caps exchange fluxes at a uniform limit of 1 by default.
 - Applied structural penalties to exchange, demand, sink and artificial-support reactions independently of how their roles were annotated.
-- Preserved the existing strict-stratum Pando workflow: peak-gene links remain inferred independently within each condition × sample × cell-type group.
-
-# RegCompassR 1.4.1
-
-- Replaced the canonical relative-z/Q95 LP capacity with zero-preserving absolute RNA evidence; Q95 is diagnostic only.
-- Changed canonical integrated GPR defaults to hard-min AND, max OR and no promiscuity down-weighting.
-- Added recursive nested Boolean GPR parsing and fail-fast Human-GEM import diagnostics.
-- Reworked Pando evidence as signed TF–peak–gene regulatory support with TF expression and peak accessibility.
-- Preserved regulator and sign metadata in shared-TF projections.
-- Made missing/neutral regulatory evidence neutral in the LP penalty and prevented silent structural-support penalty overrides.
-- Added explicit named medium backgrounds without retaining compatibility aliases for retired names.
-- Changed the canonical inference unit to sample by cell type; metacell-level scoring is explicitly exploratory.
-- Replaced the MAD-sigmoid display score with a stable within-target empirical penalty rank; raw penalty is the primary output.
-
-# RegCompassR 1.4.0
-
-- Focused the public API on the canonical workflow and its required setup helpers: `rc_prepare_human2_gem()`, `rc_make_medium_scenarios()` and `rc_run_regcompass()`.
-- Kept tutorials concise while still showing adjustable setup steps for Human-GEM preparation and shared medium construction.
-- Removed the adaptive metacell gamma API; the workflow now uses one fixed gamma and skips strata that do not produce enough metacells for downstream analysis.
-- Removed standalone LinkPeaks, staged Layer 1, versioned Human-GEM and legacy reporting interfaces from the supported API surface.
