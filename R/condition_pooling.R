@@ -17,11 +17,26 @@
   unname(as.character(tools::md5sum(path)))
 }
 
+.rc_condition_metacell_projection_weights <- function(n, a, b) {
+  index <- as.numeric(seq_len(n))
+  ((a * index + b * index^2) %% 1000003) + 1
+}
+
 .rc_condition_metacell_matrix_fingerprint <- function(x) {
   if (is.null(dim(x)) || length(dim(x)) != 2L) {
     stop("Metacell cache fingerprinting requires a two-dimensional matrix.",
          call. = FALSE)
   }
+  row_weight_a <- .rc_condition_metacell_projection_weights(nrow(x), 104729, 37)
+  row_weight_b <- .rc_condition_metacell_projection_weights(nrow(x), 130363, 53)
+  col_weight_a <- .rc_condition_metacell_projection_weights(ncol(x), 155921, 71)
+  col_weight_b <- .rc_condition_metacell_projection_weights(ncol(x), 196613, 89)
+  value_projection <- list(
+    rows_a = as.numeric(x %*% col_weight_a),
+    rows_b = as.numeric(x %*% col_weight_b),
+    columns_a = as.numeric(Matrix::crossprod(x, row_weight_a)),
+    columns_b = as.numeric(Matrix::crossprod(x, row_weight_b))
+  )
   list(
     dim = as.integer(dim(x)),
     row_ids_md5 = .rc_condition_metacell_md5(as.character(rownames(x))),
@@ -33,7 +48,7 @@
     col_sums_md5 = .rc_condition_metacell_md5(
       as.numeric(Matrix::colSums(x))
     ),
-    values_md5 = .rc_condition_metacell_md5(x)
+    values_md5 = .rc_condition_metacell_md5(value_projection)
   )
 }
 
