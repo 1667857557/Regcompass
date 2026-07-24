@@ -9,12 +9,17 @@
 - `rc_regcompass_step_layer1()`: integrate metacell RNA and ATAC evidence into reaction expression. GPR/reaction-capacity work accepts `parallel` and `BPPARAM`.
 - `rc_regcompass_step_layer2()`: preflight the selected LP solver, construct the persistent structural-model cache, and distribute shared-model × metacell LP tasks through `parallel` and `BPPARAM`. The default HiGHS solver is a required dependency.
 - `rc_regcompass_step_results()`: assemble rankings and retain both condition-specific and global meta-module outputs.
+- `rc_test_condition_reactions()`: compare one shared-GEM reaction target across two or more conditions within each selected cell type. It reports Kruskal-Wallis omnibus tests, pairwise Wilcoxon tests, BH-adjusted P values, median shifts, rank-biserial/common-language effects, and Cohen's d.
+- `rc_plot_condition_reaction()`: draw one selected `reaction × direction × medium × cell type` across conditions as a boxplot with one point per metacell, an omnibus subtitle, and pairwise significance brackets based on raw or adjusted P values. Requires the suggested package `ggplot2`.
 - `rc_available_workers()` and `rc_default_bpparam()`: detect workers and construct an automatic, serial, socket, or multicore backend.
 
 Sample balancing APIs are not part of the workflow. `sample_col` is optional provenance only and does not affect cell selection, weighting, grouping, or graph construction. Cell type is not a metacell stratification variable.
+
+Metacell-level condition tests describe within-dataset separation and are not automatically biological-replicate-level treatment inference. See [Condition-associated reaction statistics](condition-reaction-statistics.md) for the score definition, multiple-testing scope, plotting examples, and inference boundary.
 
 ## Tutorial level by API surface
 
 - [Level 1](tutorial-01-quick-start.md) uses `rc_run_regcompass_one_shot()` with explicit Linux worker counts.
 - [Level 2](tutorial-02-stepwise-audit.md) uses all six `rc_regcompass_step_*()` functions with `MulticoreParam` examples and input/output audit gates.
 - [Level 3](tutorial-03-advanced-restart.md) covers worker allocation, restart, serial debugging, solver, medium, and model-scope diagnostics.
+- [Condition statistics and plots](condition-reaction-statistics.md) covers `rc_test_condition_reactions()` and `rc_plot_condition_reaction()` for post-Layer-2 comparison.
