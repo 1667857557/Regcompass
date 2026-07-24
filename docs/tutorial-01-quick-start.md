@@ -1,6 +1,6 @@
 # Tutorial Level 1: minimal one-shot run
 
-Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.8.3. See [portable execution](portable-execution.md), [Level 2](tutorial-02-stepwise-audit.md), and [Level 3](tutorial-03-advanced-restart.md) for additional controls.
+Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.8.3. The canonical complete workflow automatically selects the operating-system-specific parallel backend, uses separate upstream and Layer 2 worker counts, and releases every stage worker pool immediately after use.
 
 ## Install
 
@@ -56,15 +56,19 @@ medium_scenarios <- rc_make_medium_scenarios(
 
 Use `source = "download"` only when intentionally rebuilding or updating the model.
 
-## Run on Linux or Windows
+## Configure numerical-library threads
 
-On Linux, set numerical-library threads to one before launching multiple outer workers:
+On Linux, set numerical-library threads to one before starting R when multiple outer workers are used:
 
 ```bash
 export OMP_NUM_THREADS=1
 export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 ```
+
+## Run the complete workflow
+
+The defaults are `upstream_workers = 6L` and `layer2_workers = 30L`. Windows automatically uses SOCK workers; Linux/macOS automatically use multicore workers. Set both values to `1L` for a fully serial run.
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -95,8 +99,7 @@ result <- rc_run_regcompass_one_shot(
     local_fastcore = TRUE,
     local_fastcore_args = list(
       solver = "highs",
-      time_limit = 300,
-      parallel = TRUE
+      time_limit = 300
     )
   ),
   layer2_args = list(
@@ -104,14 +107,15 @@ result <- rc_run_regcompass_one_shot(
     solver = "highs",
     time_limit = 60
   ),
-  upstream_workers = 16L,
-  layer2_workers = 12L,
-  parallel_backend = "auto",
+  upstream_workers = 6L,
+  layer2_workers = 30L,
   progress = TRUE
 )
 ```
 
-`auto` selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS. Keep Pando's inner `parallel = FALSE` when outer group parallelism is enabled.
+Do not provide `parallel_backend`, `BPPARAM`, or per-FASTCORE worker fields to the canonical complete workflow. Operating-system selection and stage assignment are automatic. Pando's inner `parallel = FALSE` remains required because GRN groups are distributed by the outer upstream worker layer.
+
+Each parallel stage creates, starts, stops, and releases its own pool. Cleanup also runs on errors, and full garbage collection follows pool release. The upstream pool is therefore not retained while Layer 2 is running.
 
 ## Confirm completion and timing
 
@@ -127,6 +131,10 @@ stopifnot(
 result$timing$stages
 result$timing$total
 result$params$parallel_backend_resolved
+result$params$upstream_workers
+result$params$layer2_workers
+result$params$parallel_worker_lifecycle
+result$params$parallel_stage_groups
 ```
 
 Every stage directory also contains `step_timing.tsv`. Use `progress = FALSE` for quiet batch execution.
