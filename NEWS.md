@@ -1,5 +1,9 @@
 # RegCompassR 1.8.1
 
+- Added formal reaction annotation to Stage 6 and condition-statistics outputs: reaction names, stoichiometry-derived formulas with metabolite names and compartments, direction-specific substrates/products, subsystems, GPR rules, participating genes, and database cross-references.
+- Added condition-by-cell-type evidence provenance that distinguishes active `RNA+ATAC` support from `RNA-only`, `GPR/no-observed-RNA`, and `structural/no-GPR` reactions. Active multiome support requires integrated gene support to differ from RNA support, while non-zero ATAC modifiers are reported separately.
+- Added `rc_build_reaction_annotations()` and `rc_attach_reaction_annotations()` for new and previously generated results.
+- Added `rc_select_gene_reactions()` and `rc_plot_condition_gene_reactions()` for selecting scored reactions by metabolic genes and generating a ranked collection of significant, biologically annotated condition boxplots.
 - Added `rc_test_condition_reactions()` for same-reaction, same-direction, same-medium comparisons between conditions within each cell type under the shared union-GEM. It reports Kruskal-Wallis omnibus tests, pairwise Wilcoxon tests, BH-adjusted P values, median score shifts, rank-biserial/common-language effects, and Cohen's d.
 - Added `rc_plot_condition_reaction()` for multi-condition boxplots of a selected reaction target, with every metacell shown as a jittered point, Kruskal-Wallis omnibus annotation, and pairwise significance brackets based on raw or reaction-wide multiplicity-adjusted P values.
 - Condition-reaction statistics explicitly distinguish within-dataset metacell significance from biological-replicate-level treatment inference and verify that target `vmax` is invariant across units before testing.
