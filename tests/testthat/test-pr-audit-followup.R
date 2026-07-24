@@ -116,11 +116,24 @@ test_that("downstream stages reject legacy metacell provenance", {
   )
 })
 
-test_that("DESCRIPTION exact pins match the runtime version gate", {
-  imports <- packageDescription("RegCompassR")$Imports
-  expect_match(imports, "SeuratObject \\(= 4.1.4\\)")
-  expect_match(imports, "Seurat \\(= 4.4.0\\)")
-  expect_match(imports, "Signac \\(= 1.11.0\\)")
+test_that("DESCRIPTION minimums and config pins match the runtime gate", {
+  description <- packageDescription("RegCompassR")
+  imports <- description$Imports
+  expect_match(imports, "SeuratObject \\(>= 4.1.4\\)")
+  expect_match(imports, "Seurat \\(>= 4.4.0\\)")
+  expect_match(imports, "Signac \\(>= 1.11.0\\)")
+  expect_identical(
+    description[["Config/RegCompassR/SeuratObjectVersion"]],
+    "4.1.4"
+  )
+  expect_identical(
+    description[["Config/RegCompassR/SeuratVersion"]],
+    "4.4.0"
+  )
+  expect_identical(
+    description[["Config/RegCompassR/SignacVersion"]],
+    "1.11.0"
+  )
 })
 
 test_that("the public function index identifies the true stepwise tutorial", {
