@@ -111,7 +111,7 @@ reaction_annotations = (
     + zz[plot_caption:plot_wrapper]
     + annotation_helper
 )
-(ROOT / "R" / "reaction_annotations.R").write_text(
+(R / "reaction_annotations.R").write_text(
     reaction_annotations, encoding="utf-8"
 )
 
@@ -119,7 +119,7 @@ reaction_gene_plots = (
     "# Gene-centered collections of condition-reaction plots.\n\n"
     + zz[precomputed_plot:]
 )
-(ROOT / "R" / "reaction_gene_plots.R").write_text(
+(R / "reaction_gene_plots.R").write_text(
     reaction_gene_plots, encoding="utf-8"
 )
 
@@ -204,4 +204,90 @@ stepwise_path.write_text(stepwise, encoding="utf-8")
 
 # Replace Collate entries with direct modules in dependency order.
 description_path = ROOT / "DESCRIPTION"
-description = description_path.read_text(encoding="utf-8")n
+description = description_path.read_text(encoding="utf-8")
+old_collate = '''    'condition_layer1.R'
+    'condition_statistics.R'
+    'condition_plot.R'
+    'layer1_builder.R'
+    'parallel.R'
+    'v170_microcompass_contract.R'
+    'penalty.R'
+    'reaction_roles.R'
+    'stepwise_workflow.R'
+    'zz_reaction_annotations.R'
+    'reaction_evidence.R'
+    'reaction_plot_annotations.R'
+    'regcompass.R' '''
+new_collate = '''    'condition_layer1.R'
+    'reaction_annotations.R'
+    'reaction_evidence.R'
+    'condition_statistics.R'
+    'condition_plot.R'
+    'reaction_gene_plots.R'
+    'layer1_builder.R'
+    'parallel.R'
+    'v170_microcompass_contract.R'
+    'penalty.R'
+    'reaction_roles.R'
+    'stepwise_workflow.R'
+    'regcompass.R' '''
+if old_collate not in description:
+    raise RuntimeError("Could not locate old reaction Collate block")
+description = description.replace(old_collate, new_collate, 1)
+description_path.write_text(description, encoding="utf-8")
+
+# Update source-architecture tests to assert direct integration.
+public_api_path = ROOT / "tests" / "testthat" / "test_public_api.R"
+public_api = public_api_path.read_text(encoding="utf-8")
+public_api = public_api.replace(
+    '  expect_match(collate, "zz_reaction_annotations.R", fixed = TRUE)\n'
+    '  expect_match(collate, "reaction_evidence.R", fixed = TRUE)',
+    '  expect_match(collate, "reaction_annotations.R", fixed = TRUE)\n'
+    '  expect_match(collate, "reaction_evidence.R", fixed = TRUE)\n'
+    '  expect_match(collate, "reaction_gene_plots.R", fixed = TRUE)'
+)
+public_api_path.write_text(public_api, encoding="utf-8")
+
+stage_contract_path = ROOT / "tests" / "testthat" / "test-stage-io-contracts.R"
+stage_contract = stage_contract_path.read_text(encoding="utf-8")
+old_stage_test = '''test_that("final results retain modules and add reaction interpretation", {
+  assembly_text <- paste(deparse(body(.rc_step_results_core)), collapse = "\\n")
+  expect_match(assembly_text, "condition_grn_meta_modules", fixed = TRUE)
+  expect_match(assembly_text, "global_grn_meta_modules", fixed = TRUE)
+  expect_match(assembly_text, "grn_metacell_group_coverage", fixed = TRUE)
+
+  annotation_text <- paste(
+    deparse(body(rc_regcompass_step_results)), collapse = "\\n"
+  )
+  expect_match(annotation_text, "reaction_catalog", fixed = TRUE)
+  expect_match(annotation_text, "reaction_evidence", fixed = TRUE)
+})'''
+new_stage_test = '''test_that("final results retain modules and add reaction interpretation", {
+  body_text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\\n")
+  expect_match(body_text, "condition_grn_meta_modules", fixed = TRUE)
+  expect_match(body_text, "global_grn_meta_modules", fixed = TRUE)
+  expect_match(body_text, "grn_metacell_group_coverage", fixed = TRUE)
+  expect_match(body_text, "reaction_catalog", fixed = TRUE)
+  expect_match(body_text, "reaction_evidence", fixed = TRUE)
+})'''
+if old_stage_test not in stage_contract:
+    raise RuntimeError("Could not locate wrapper-based Stage 6 test")
+stage_contract = stage_contract.replace(old_stage_test, new_stage_test, 1)
+stage_contract_path.write_text(stage_contract, encoding="utf-8")
+
+rd_path = ROOT / "man" / "reaction_annotations.Rd"
+rd = rd_path.read_text(encoding="utf-8")
+rd = rd.replace(
+    "% Please edit documentation in R/zz_reaction_annotations.R and R/zzz_reaction_evidence_hardening.R",
+    "% Please edit documentation in R/reaction_annotations.R and R/reaction_evidence.R"
+)
+rd_path.write_text(rd, encoding="utf-8")
+
+# Remove load-order wrapper sources after their reusable components are moved.
+for obsolete in (
+    R / "zz_reaction_annotations.R",
+    R / "reaction_plot_annotations.R",
+):
+    obsolete.unlink()
+
+print("Reaction annotations integrated directly into canonical source files.")
