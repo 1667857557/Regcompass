@@ -14,7 +14,6 @@ single-cell RNA normalization
 → optional direct database-linked non-core scoring in the same union GEM
 ```
 
-Canonical defaults are `peak_cor = 0.01` and `gamma = 75`. Sample metadata are provenance only; they are not used for balancing, weighting, or grouping.
 
 ## Installation
 
