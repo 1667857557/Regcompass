@@ -106,14 +106,26 @@
 
 .rc_step_monitor_start <- function(
     stage, outdir, progress = TRUE, total_parts = 1L) {
+  progress <- .rc_progress_enabled(progress)
   monitor <- new.env(parent = emptyenv())
   monitor$timer <- .rc_timing_start(stage)
   monitor$outdir <- outdir
+  monitor$old_progress_option <- options(RegCompassR.progress = progress)
   monitor$progress <- .rc_progress_new(
     total_parts, paste0("RegCompass ", stage), progress
   )
   monitor$finished <- FALSE
+  monitor$option_restored <- FALSE
   monitor
+}
+
+.rc_restore_monitor_progress_option <- function(monitor) {
+  if (!is.null(monitor) && is.environment(monitor) &&
+      !isTRUE(monitor$option_restored)) {
+    do.call(options, monitor$old_progress_option)
+    monitor$option_restored <- TRUE
+  }
+  invisible(NULL)
 }
 
 .rc_step_monitor_finish <- function(
@@ -124,6 +136,7 @@
   )
   monitor$finished <- TRUE
   .rc_progress_done(monitor$progress, status)
+  .rc_restore_monitor_progress_option(monitor)
   if (is.list(value)) value$timing <- timing
   value
 }
@@ -137,6 +150,7 @@
     .rc_progress_done(monitor$progress, "error")
     monitor$finished <- TRUE
   }
+  .rc_restore_monitor_progress_option(monitor)
   invisible(NULL)
 }
 
