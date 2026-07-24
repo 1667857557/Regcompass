@@ -61,6 +61,22 @@ rc_run_regcompass <- function(
       call. = FALSE
     )
   }
+
+  pando_infer_args <- pando_args$pando_infer_args %||% list()
+  if (!is.list(pando_infer_args)) {
+    stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+  }
+  if (!is.null(pando_infer_args$parallel) &&
+      !identical(pando_infer_args$parallel, FALSE)) {
+    warning(
+      "Ignoring `pando_args$pando_infer_args$parallel`; canonical outer ",
+      "parallelism requires each Pando fit to remain single-threaded.",
+      call. = FALSE
+    )
+  }
+  pando_infer_args$parallel <- FALSE
+  pando_args$pando_infer_args <- pando_infer_args
+
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
   if (is.null(medium_scenarios)) {
@@ -252,6 +268,7 @@ rc_run_regcompass <- function(
   result$params$upstream_workers <- upstream_config$workers
   result$params$layer2_workers <- layer2_config$workers
   result$params$internal_threads_per_task <- 1L
+  result$params$pando_internal_parallel <- FALSE
   result$params$parallel_worker_lifecycle <-
     "stage_scoped_create_start_stop_release_full_gc"
   result$params$parallel_stage_groups <- list(
