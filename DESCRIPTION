@@ -51,6 +51,7 @@ Collate:
     'penalty.R'
     'reaction_roles.R'
     'stepwise_workflow.R'
+    'zz_reaction_annotations.R'
     'regcompass.R'
     'one_shot.R'
     'stratum_filter.R'
