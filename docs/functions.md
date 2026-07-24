@@ -21,7 +21,7 @@ The canonical complete workflow exposes only the two layered worker counts. Wind
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
 - `rc_regcompass_step_target_union()`: directly map selected previous cores through shared KEGG, Reactome, or master-Rhea identifiers and score only mapped non-core reactions.
 
-Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Every public stage returns a timing table and writes `step_timing.tsv`. Low-level stage functions remain available for restart and debugging; normal complete analyses should use the canonical runner so worker lifecycle and nested-thread controls are applied consistently.
+Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Current condition-metacell artifacts also contain a cache contract covering ordered cells, condition/cell-type labels, assay fingerprints, construction labels, and analysis parameters. Existing checkpoints without this contract, or checkpoints whose contract differs from the requested run, must be rebuilt with `metacell_args = list(overwrite = TRUE)` rather than being silently reused. Every public stage returns a timing table and writes `step_timing.tsv`. Low-level stage functions remain available for restart and debugging; normal complete analyses should use the canonical runner so worker lifecycle and nested-thread controls are applied consistently.
 
 ## Interpretation and plotting
 
@@ -36,7 +36,7 @@ Sample balancing is not part of the canonical workflow. Metacell-level compariso
 
 - [Portable execution, bundled GEMs, progress, timing, and worker cleanup](portable-execution.md)
 - [Level 1: quick start](tutorial-01-quick-start.md)
-- [Level 2: saved-stage audit](tutorial-02-stepwise-audit.md)
+- [Level 2: true stepwise workflow](tutorial-02-stepwise-audit.md)
 - [Level 3: restart and diagnostics](tutorial-03-advanced-restart.md)
-- [Direct database-linked non-core scoring](target-union-scoring.md)
-- [Condition statistics and plots](condition-reaction-statistics.md)
+- [Level 4: targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md)
+- [Level 5: condition differential analysis](tutorial-05-condition-differential-analysis.md)
