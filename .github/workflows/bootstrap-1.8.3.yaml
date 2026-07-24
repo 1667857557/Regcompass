@@ -6,6 +6,7 @@ on:
     paths:
       - .github/workflows/bootstrap-1.8.3.yaml
       - scripts/bootstrap_1_8_3.py
+      - scripts/fix_bootstrap_monitor_quotes.py
       - scripts/build-bundled-gems.R
 
 permissions:
@@ -32,7 +33,10 @@ jobs:
           install.packages(c("Matrix", "yaml"))
 
       - name: Apply 1.8.3 source patches
-        run: python scripts/bootstrap_1_8_3.py
+        shell: bash
+        run: |
+          python scripts/bootstrap_1_8_3.py
+          python scripts/fix_bootstrap_monitor_quotes.py
 
       - name: Build bundled Human-GEM and Mouse-GEM assets
         shell: bash
