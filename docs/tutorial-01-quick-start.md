@@ -68,7 +68,7 @@ export MKL_NUM_THREADS=1
 
 ## Run the complete workflow
 
-The defaults are `upstream_workers = 6L` and `layer2_workers = 30L`. Windows automatically uses SOCK workers; Linux/macOS automatically use multicore workers. Set both values to `1L` for a fully serial run.
+The defaults are `upstream_workers = 6L`, `layer2_workers = 30L`, and `gamma = 30`. Windows automatically uses SOCK workers; Linux/macOS automatically use multicore workers. Set both worker values to `1L` for a fully serial run.
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -91,7 +91,7 @@ result <- rc_run_regcompass_one_shot(
     )
   ),
   metacell_args = list(
-    gamma = 75,
+    gamma = 30,
     min_cells_per_stratum = 500,
     min_metacell_size = 10
   ),
@@ -122,6 +122,7 @@ Each parallel stage creates, starts, stops, and releases its own pool. Cleanup a
 ```r
 stopifnot(
   identical(result$version, "1.8.3"),
+  identical(result$params$metacell_gamma, 30L),
   nrow(result$reaction_ranking) > 0,
   file.exists("RegCompass_result/05_layer2/step_layer2.rds"),
   file.exists("RegCompass_result/06_results/regcompass_result.rds"),
