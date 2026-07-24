@@ -83,9 +83,18 @@
     stop("Layer 1 evidence matrices and metadata contain different units.", call. = FALSE)
   }
   meta <- meta[match(colnames(rna), unit_ids), , drop = FALSE]
-  rownames(rna) <- tolower(rownames(rna))
-  rownames(modifier) <- tolower(rownames(modifier))
-  rownames(multiome) <- tolower(rownames(multiome))
+  original_gene_ids <- as.character(rownames(rna))
+  normalized_gene_ids <- tolower(original_gene_ids)
+  if (anyDuplicated(normalized_gene_ids)) {
+    stop(
+      "Layer 1 evidence contains gene IDs duplicated after case-insensitive normalization.",
+      call. = FALSE
+    )
+  }
+  gene_display <- stats::setNames(original_gene_ids, normalized_gene_ids)
+  rownames(rna) <- normalized_gene_ids
+  rownames(modifier) <- normalized_gene_ids
+  rownames(multiome) <- normalized_gene_ids
   capacities <- .rc_ra_reaction_capacity_pair(catalog, layer1)
   if (!is.null(capacities$rna)) {
     capacities$rna <- capacities$rna[, colnames(rna), drop = FALSE]
@@ -102,6 +111,11 @@
     tolower(.rc_ra_split(x))
   })
   names(gene_lists) <- catalog$reaction_id
+  display_genes <- function(x) {
+    x <- unname(gene_display[x])
+    x <- x[!is.na(x) & nzchar(x)]
+    .rc_ra_collapse(x)
+  }
   output <- vector("list", nrow(groups))
   for (group_index in seq_len(nrow(groups))) {
     condition <- groups$condition[[group_index]]
@@ -159,9 +173,9 @@
           max_abs_shift <- max(abs(shifts))
         }
       } else {
-        evidence_resolution <- "gene_support_fallback"
+        evidence_resolution <- "reaction_capacity_unavailable"
         has_rna_capacity <- length(rna_genes) > 0L
-        has_capacity_shift <- length(contribution_genes) > 0L
+        has_capacity_shift <- FALSE
       }
       evidence_class <- if (!length(all_genes)) {
         "structural/no-GPR"
@@ -179,12 +193,11 @@
         evidence_class = evidence_class,
         evidence_resolution = evidence_resolution,
         n_units = sum(keep),
-        rna_supported_genes = .rc_ra_collapse(toupper(rna_genes)),
+        rna_supported_genes = display_genes(rna_genes),
         n_rna_supported_genes = length(rna_genes),
-        atac_modifier_genes = .rc_ra_collapse(toupper(modifier_genes)),
+        atac_modifier_genes = display_genes(modifier_genes),
         n_atac_modifier_genes = length(modifier_genes),
-        multiome_contributing_genes =
-          .rc_ra_collapse(toupper(contribution_genes)),
+        multiome_contributing_genes = display_genes(contribution_genes),
         n_multiome_contributing_genes = length(contribution_genes),
         has_rna_evidence = has_rna_capacity,
         has_atac_regulatory_evidence = length(modifier_genes) > 0L,
@@ -243,14 +256,18 @@
     max_shift <- suppressWarnings(as.numeric(
       one$max_abs_multiome_capacity_shift
     ))
-    overall <- if (any(classes == "RNA+ATAC", na.rm = TRUE)) {
+    overall <- if (all(is.na(classes))) {
+      "unknown/unavailable"
+    } else if (any(classes == "RNA+ATAC", na.rm = TRUE)) {
       "RNA+ATAC"
     } else if (any(classes == "RNA-only", na.rm = TRUE)) {
       "RNA-only"
     } else if (any(classes == "GPR/no-observed-RNA", na.rm = TRUE)) {
       "GPR/no-observed-RNA"
-    } else {
+    } else if (any(classes == "structural/no-GPR", na.rm = TRUE)) {
       "structural/no-GPR"
+    } else {
+      "unknown/unavailable"
     }
     format_number <- function(x) {
       ifelse(
@@ -278,7 +295,7 @@
         conditions, "=", format_number(max_shift), collapse = ";"
       ),
       multiome_supported_conditions = .rc_ra_collapse(
-        conditions[classes == "RNA+ATAC"]
+        conditions[!is.na(classes) & classes == "RNA+ATAC"]
       ),
       has_active_multiome_contribution = any(
         one$has_active_multiome_contribution %in% TRUE, na.rm = TRUE
@@ -291,7 +308,21 @@
   data
 }
 
-# Public annotation entry point with reaction-level evidence semantics.
+#' Build formal reaction annotations and evidence provenance
+#'
+#' Constructs reaction names, formulas, direction-specific substrates and
+#' products, GPR genes, database identifiers, and condition-by-cell-type evidence
+#' classes. `RNA+ATAC` is assigned only when a GPR-aggregated reaction-capacity
+#' comparison is available and differs from the RNA-only capacity.
+#'
+#' @param gem A validated RegCompass GEM.
+#' @param layer1 Optional Layer 1 result used for GPR and evidence provenance.
+#' @param reaction_ids Optional reactions to annotate.
+#' @param condition_col,celltype_col Optional Layer 1 metadata columns.
+#' @param evidence_tolerance Non-negative numerical comparison tolerance.
+#' @return A `regcompass_reaction_annotations` list containing `reactions`,
+#'   `evidence`, and `params`.
+#' @export
 rc_build_reaction_annotations <- function(
     gem, layer1 = NULL, reaction_ids = NULL,
     condition_col = NULL, celltype_col = NULL,
