@@ -36,6 +36,7 @@ Collate:
     'metacell_peak_calling.R'
     'metacell.R'
     'microcompass.R'
+    'target_union.R'
     'pando_evidence_utils.R'
     'pando_grn.R'
     'shared_tfidf.R'
