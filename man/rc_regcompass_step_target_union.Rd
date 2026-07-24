@@ -2,7 +2,7 @@
 % Please edit documentation in R/target_union.R
 \name{rc_regcompass_step_target_union}
 \alias{rc_regcompass_step_target_union}
-\title{Score annotation-expanded non-core reactions in an existing union GEM}
+\title{Score directly database-linked non-core reactions in an existing union GEM}
 \usage{
 rc_regcompass_step_target_union(
   layer1,
@@ -13,9 +13,6 @@ rc_regcompass_step_target_union(
   core_reaction_ids = NULL,
   core_genes = NULL,
   gene_match = c("complete_gpr", "any_direct"),
-  subsystem_table = NULL,
-  expansion_mode = c("ordered_once", "fixed_point"),
-  max_iterations = 10L,
   layer2_args = list(),
   parallel = TRUE,
   BPPARAM = NULL
@@ -32,17 +29,11 @@ rc_regcompass_step_target_union(
 
 \item{outdir}{Output directory.}
 
-\item{core_reaction_ids}{Previous core reaction IDs used only as expansion anchors.}
+\item{core_reaction_ids}{Previous core reaction IDs used only as direct database-mapping anchors.}
 
 \item{core_genes}{Genes used to resolve previous core anchors through GPR rules.}
 
 \item{gene_match}{\code{"complete_gpr"} requires one complete GPR AND group. \code{"any_direct"} allows an intentional partial-complex match.}
-
-\item{subsystem_table}{Optional reaction-to-subsystem table.}
-
-\item{expansion_mode}{\code{"ordered_once"} or \code{"fixed_point"}.}
-
-\item{max_iterations}{Maximum fixed-point iterations.}
 
 \item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, \code{time_limit}, and \code{flux_threshold} overrides.}
 
@@ -51,13 +42,13 @@ rc_regcompass_step_target_union(
 \item{BPPARAM}{Optional BiocParallel parameter object.}
 }
 \value{
-A \code{regcompass_target_union_step} containing selected core anchors, the complete annotation-expansion catalog, non-core LP targets, source-model provenance, and second-pass LP results.
+A \code{regcompass_target_union_step} containing selected core anchors, direct anchor-to-reaction database relation rows, unique non-core LP targets, source-model provenance, and second-pass LP results.
 }
 \description{
-Uses previously scored global core reactions as anchors, expands them through same-subsystem, KEGG, Reactome, and master-Rhea mappings, and scores only linked reactions that were not global core targets in the original Layer 2 run.
+Uses previously scored global core reactions as anchors, directly identifies reactions sharing KEGG, Reactome, or master-Rhea identifiers with those anchors, and scores only linked reactions that were not global core targets in the original Layer 2 run.
 }
 \details{
-The valid second-pass targets are reactions with expansion stages \code{same_core_subsystem}, \code{shared_kegg_or_reactome_reaction}, or \code{shared_master_rhea_reaction}, after removing all previously scored global cores. The function does not score selected cores again and does not add FASTCORE-only support reactions, generic union members, or metabolite-neighbour reactions.
+No same-subsystem, metabolite-neighbour, fixed-point, or transitive expansion is performed. A reaction linked only through an intermediate mapped reaction is not included. Selected cores and any other previously scored global cores are not re-scored.
 
 Stage classes, workflow parameters, GEM fingerprints, ordered metacell IDs, the previous core set, and source-model hashes are validated. The original union GEM and bounds are reused without rebuilding FASTCORE.
 }
