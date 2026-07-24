@@ -27,6 +27,10 @@ test_that("workflow vignette documents the 1.8.2 staged API", {
     "rc_regcompass_step_results(",
     "regcompass_layer1_step",
     "regcompass_layer2_step",
+    "shared_kegg_reaction",
+    "shared_reactome_reaction",
+    "shared_master_rhea_reaction",
+    "direct_kegg_reactome_master_rhea_noncore_only",
     "structural_model_reused_exactly",
     "result$version, \"1.8.2\""
   )
@@ -35,6 +39,9 @@ test_that("workflow vignette documents the 1.8.2 staged API", {
     "metacell_label_col",
     "label_col =",
     "sample_balance = TRUE",
+    "expansion_mode =",
+    "subsystem_table =",
+    "max_iterations =",
     "_v170",
     "RegCompassR.inference_unit"
   )
@@ -69,16 +76,22 @@ test_that("tutorials cover quick start, strict stage audit, and restart", {
   expect_match(text[[2L]], "regcompass_layer1_step", fixed = TRUE)
   expect_match(text[[2L]], "regcompass_layer2_step", fixed = TRUE)
   expect_match(text[[2L]], "rc_regcompass_step_target_union(", fixed = TRUE)
+  expect_match(text[[2L]], "shared_kegg_reaction", fixed = TRUE)
+  expect_match(text[[2L]], "direct_kegg_reactome_master_rhea_noncore_only", fixed = TRUE)
   expect_match(text[[2L]], "structural_model_reused_exactly", fixed = TRUE)
   expect_match(text[[3L]], "Tutorial Level 3", fixed = TRUE)
   expect_match(text[[3L]], "Earliest stage to rerun", fixed = TRUE)
   expect_match(text[[3L]], "Serial troubleshooting", fixed = TRUE)
-  expect_match(text[[4L]], "exact cached model file", fixed = TRUE)
+  expect_match(text[[4L]], "No same-subsystem expansion", fixed = TRUE)
+  expect_match(text[[4L]], "anchor_core_reaction_id", fixed = TRUE)
   expect_match(text[[4L]], "source_model_md5", fixed = TRUE)
   combined <- paste(unlist(text), collapse = "\n")
   expect_match(combined, "peak_cor = 0.01", fixed = TRUE)
   expect_match(combined, "gamma = 75", fixed = TRUE)
   expect_match(combined, "OMP_NUM_THREADS=1", fixed = TRUE)
+  expect_false(grepl("expansion_mode =", combined, fixed = TRUE))
+  expect_false(grepl("subsystem_table =", combined, fixed = TRUE))
+  expect_false(grepl("max_iterations =", combined, fixed = TRUE))
   expect_false(grepl("_v170", combined, fixed = TRUE))
 })
 
@@ -110,8 +123,10 @@ test_that("README and API index expose current public workflow only", {
     "rc_regcompass_step_target_union",
     "GEM fingerprint",
     "ordered metacell IDs",
-    "exact cached global union GEM",
+    "KEGG",
+    "Reactome",
     "master-Rhea",
+    "Same-subsystem",
     "medium-presets.md"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
@@ -119,7 +134,10 @@ test_that("README and API index expose current public workflow only", {
     "v170_microcompass_contract",
     "internal_apply",
     "metacell_label_col",
-    "sample_balance_seed"
+    "sample_balance_seed",
+    "expansion_mode =",
+    "subsystem_table =",
+    "max_iterations ="
   )
   expect_false(any(vapply(forbidden, grepl, logical(1), x = text, fixed = TRUE)))
 })
