@@ -8,14 +8,14 @@ test_that("single-cell GRN keeps only finite Pando R-squared values", {
   expect_false(exists(".rc_pando_rsq_is_reliable", inherits = TRUE))
 })
 
-test_that("zero regulatory reliability falls back to RNA support", {
+test_that("zero regulatory modifier falls back to RNA support", {
   rna <- matrix(
     c(0, 0.2, 0.8, 1),
     nrow = 2,
     dimnames = list(c("g1", "g2"), c("m1", "m2"))
   )
   modifier <- matrix(0, nrow = 2, ncol = 2, dimnames = dimnames(rna))
-  integrated <- .rc_integrate_regulatory_support_v170(
+  integrated <- .rc_integrate_regulatory_support(
     rna_support = rna,
     regulatory_modifier = modifier,
     alpha = 1
