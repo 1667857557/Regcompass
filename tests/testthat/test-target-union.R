@@ -179,7 +179,7 @@ test_that("second LP pass evaluates targets directly on the cached union", {
   expect_true(all(is.finite(result$penalty)))
   expect_identical(result$model_cache_summary$file, file)
   expect_true(result$params$structural_model_reused_exactly)
-  expect_false(any(grepl("model_cache", list.files(dirname(file)))))
+  expect_identical(result$model_file_manifest$file, file)
 })
 
 test_that("invalid selections fail before scoring", {
