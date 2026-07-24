@@ -2,12 +2,13 @@
 % Please edit documentation in R/target_union.R
 \name{rc_regcompass_step_target_union}
 \alias{rc_regcompass_step_target_union}
-\title{Score manually selected core reactions in an annotation-expanded union GEM}
+\title{Re-score annotation-related reactions in a previous global union GEM}
 \usage{
 rc_regcompass_step_target_union(
   layer1,
+  meta_modules,
+  layer2,
   gem,
-  medium_scenarios,
   outdir,
   core_reaction_ids = NULL,
   core_genes = NULL,
@@ -15,28 +16,27 @@ rc_regcompass_step_target_union(
   subsystem_table = NULL,
   expansion_mode = c("ordered_once", "fixed_point"),
   max_iterations = 10L,
-  condition_col = "condition",
-  sample_col = "sample_id",
-  celltype_col = "cell_type",
   layer2_args = list(),
   parallel = TRUE,
   BPPARAM = NULL
 )
 }
 \arguments{
-\item{layer1}{Output from \code{rc_regcompass_step_layer1()} or another compatible Layer 1 object containing reaction expression and unit metadata.}
+\item{layer1}{Output from \code{rc_regcompass_step_layer1()}.}
 
-\item{gem}{Validated GEM with reaction metadata and a parsed GPR table.}
+\item{meta_modules}{Output from \code{rc_regcompass_step_meta_modules()}.}
 
-\item{medium_scenarios}{Shared medium table used for all scored units.}
+\item{layer2}{Completed original core LP output from \code{rc_regcompass_step_layer2()} using \code{model_mode = "meta_module_gem"}.}
+
+\item{gem}{The same validated GEM used by the original analysis.}
 
 \item{outdir}{Persistent output directory.}
 
-\item{core_reaction_ids}{Character vector of reactions to score.}
+\item{core_reaction_ids}{One or more reactions that were core targets in the previous LP analysis.}
 
-\item{core_genes}{Character vector of genes used to select directly associated reactions.}
+\item{core_genes}{Genes used to resolve previous core reactions through GPR rules.}
 
-\item{gene_match}{\code{"complete_gpr"} requires all genes in at least one GPR AND group. \code{"any_direct"} permits intentionally selecting a reaction from one directly mapped subunit.}
+\item{gene_match}{\code{"complete_gpr"} requires one complete GPR AND group. \code{"any_direct"} permits an intentional partial-complex match.}
 
 \item{subsystem_table}{Optional external reaction-to-subsystem table.}
 
@@ -44,17 +44,15 @@ rc_regcompass_step_target_union(
 
 \item{max_iterations}{Maximum fixed-point annotation-expansion iterations.}
 
-\item{condition_col, sample_col, celltype_col}{Layer 1 metadata columns.}
-
-\item{layer2_args}{Additional arguments passed to the directional microCOMPASS engine.}
+\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, \code{time_limit}, and \code{flux_threshold} overrides for the second scoring pass.}
 
 \item{parallel}{Whether LP tasks may run in parallel.}
 
 \item{BPPARAM}{Optional BiocParallel parameter object.}
 }
 \value{
-A \code{regcompass_target_union_step} containing the selected cores, model-only union membership, expansion summary, and microCOMPASS result.
+A \code{regcompass_target_union_step} containing selected previous cores, expanded LP targets, the reused union membership, and the second-pass microCOMPASS result.
 }
 \description{
-Accepts one or more reaction IDs and/or genes that directly map to GEM GPR rules. Selected reactions are the only directional scoring targets. Reactions sharing a core subsystem, KEGG or Reactome reaction ID, or master Rhea ID are added to one union GEM as model-only reactions. Existing add-only FASTCORE completion may add further support reactions when required for parent-GEM feasibility.
+Starts from reactions that were already core targets in the original LP analysis. The selected cores are expanded through same-subsystem, shared KEGG or Reactome reaction, and shared master-Rhea mappings. Every expanded reaction is scored as a directional LP target. The structural model is loaded from the previous Layer-2 global union-GEM cache and is not reconstructed.
 }
