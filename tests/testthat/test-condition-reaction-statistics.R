@@ -129,3 +129,39 @@ test_that("condition statistics can be exported", {
     outdir, "condition_reaction_statistics.rds"
   )))
 })
+
+test_that("one reaction can be plotted across multiple conditions", {
+  skip_if_not_installed("ggplot2")
+  microcompass <- make_condition_statistics_fixture()
+  plot <- rc_plot_condition_reaction(
+    microcompass,
+    reaction_id = "R_shift",
+    cell_type = "epithelial_like",
+    target_direction = "forward",
+    medium_scenario = "base",
+    condition_col = "condition",
+    celltype_col = "cell_type",
+    conditions = c("control", "JQ1", "MS177"),
+    show_nonsignificant = TRUE
+  )
+
+  expect_s3_class(plot, "ggplot")
+  plot_data <- attr(plot, "plot_data")
+  annotation_data <- attr(plot, "annotation_data")
+  statistics <- attr(plot, "condition_statistics")
+  expect_equal(nrow(plot_data), 18L)
+  expect_equal(
+    levels(plot_data$condition),
+    c("control", "JQ1", "MS177")
+  )
+  expect_equal(nrow(annotation_data), 3L)
+  expect_true(all(annotation_data$label %in% c("ns", "*", "**", "***", "****")))
+  expect_equal(nrow(statistics$pairwise), 6L)
+  expect_equal(nrow(statistics$omnibus), 2L)
+  expect_true(all(
+    statistics$pairwise$p_adj >= statistics$pairwise$p_value - 1e-12,
+    na.rm = TRUE
+  ))
+  built <- ggplot2::ggplot_build(plot)
+  expect_gte(length(built$data), 2L)
+})
