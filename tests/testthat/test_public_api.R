@@ -7,12 +7,15 @@ test_that("public API exposes the GRN-first restartable workflow", {
       "rc_run_regcompass_one_shot", "rc_regcompass_step_grn",
       "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
       "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
-      "rc_regcompass_step_results"
+      "rc_regcompass_step_results", "rc_test_condition_reactions",
+      "rc_plot_condition_reaction", "rc_build_reaction_annotations",
+      "rc_attach_reaction_annotations", "rc_select_gene_reactions",
+      "rc_plot_condition_gene_reactions"
     )
   )
 })
 
-test_that("canonical source architecture has no load-order compatibility layers", {
+test_that("canonical source architecture has no retired compatibility layers", {
   description <- utils::packageDescription("RegCompassR")
   collate <- description$Collate %||% ""
   retired <- c(
@@ -25,6 +28,8 @@ test_that("canonical source architecture has no load-order compatibility layers"
   expect_match(collate, "shared_tfidf.R", fixed = TRUE)
   expect_match(collate, "grn_inference.R", fixed = TRUE)
   expect_match(collate, "regulatory_modifier.R", fixed = TRUE)
+  expect_match(collate, "zz_reaction_annotations.R", fixed = TRUE)
+  expect_match(collate, "reaction_evidence.R", fixed = TRUE)
 
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
