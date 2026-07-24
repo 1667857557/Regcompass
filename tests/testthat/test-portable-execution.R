@@ -25,6 +25,7 @@ test_that("canonical workflow exposes only two layered worker counts", {
   expect_identical(args$upstream_workers, 6L)
   expect_identical(args$layer2_workers, 30L)
   expect_false("parallel_backend" %in% names(args))
+  expect_lt(match("species", names(args)), match("progress", names(args)))
 
   upstream <- .rc_stage_worker_config(1L, "upstream_workers")
   layer2 <- .rc_stage_worker_config(1L, "layer2_workers")
@@ -108,17 +109,25 @@ test_that("bundled GEM manifest and files are complete", {
   expect_identical(unname(tools::md5sum(paths)), manifest$md5)
 })
 
-test_that("bundled human and mouse GEMs load without download", {
+test_that("bundled human and mouse GEMs persist to requested cache files", {
+  human_path <- tempfile(fileext = ".rds")
+  mouse_path <- tempfile(fileext = ".rds")
   human <- rc_prepare_gem(
-    species = "human", version = "2.0.0", source = "bundled"
+    species = "human", version = "2.0.0", source = "bundled",
+    save_rds = human_path
   )
   mouse <- rc_prepare_gem(
-    species = "mouse", version = "1.8.0", source = "bundled"
+    species = "mouse", version = "1.8.0", source = "bundled",
+    save_rds = mouse_path
   )
+  expect_true(file.exists(human_path))
+  expect_true(file.exists(mouse_path))
   expect_silent(rc_validate_species_gem(human, "human"))
   expect_silent(rc_validate_species_gem(mouse, "mouse"))
   expect_identical(human$model_info$distribution, "bundled_with_RegCompassR")
   expect_identical(mouse$model_info$distribution, "bundled_with_RegCompassR")
+  expect_identical(readRDS(human_path)$model_info$species, "human")
+  expect_identical(readRDS(mouse_path)$model_info$species, "mouse")
 })
 
 test_that("step monitor writes timing and can suppress progress", {
@@ -131,6 +140,28 @@ test_that("step monitor writes timing and can suppress progress", {
   expect_identical(value$timing$stage, "unit_test")
   expect_true(value$timing$elapsed_seconds >= 0)
   expect_true(file.exists(file.path(outdir, "step_timing.tsv")))
+})
+
+test_that("known stages report success only after the final RDS is committed", {
+  outdir <- tempfile("regcompass-stage-commit-")
+  monitor <- .rc_step_monitor_start("grn", outdir, progress = FALSE)
+  value <- .rc_step_monitor_finish(list(ok = TRUE), monitor)
+  expect_false(file.exists(file.path(outdir, "step_timing.tsv")))
+  saveRDS(value, file.path(outdir, "step_grn.rds"))
+  .rc_step_monitor_fail(monitor)
+  timing <- utils::read.delim(
+    file.path(outdir, "step_timing.tsv"), stringsAsFactors = FALSE
+  )
+  expect_identical(timing$status, "success")
+
+  failed_outdir <- tempfile("regcompass-stage-fail-")
+  failed <- .rc_step_monitor_start("layer1", failed_outdir, progress = FALSE)
+  .rc_step_monitor_finish(list(ok = TRUE), failed)
+  .rc_step_monitor_fail(failed)
+  failed_timing <- utils::read.delim(
+    file.path(failed_outdir, "step_timing.tsv"), stringsAsFactors = FALSE
+  )
+  expect_identical(failed_timing$status, "error")
 })
 
 test_that("every public workflow stage exposes progress control", {
