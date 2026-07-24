@@ -2,7 +2,7 @@
 % Please edit documentation in R/target_union.R
 \name{rc_regcompass_step_target_union}
 \alias{rc_regcompass_step_target_union}
-\title{Re-score annotation-related reactions in a previous global union GEM}
+\title{Score annotation-related reactions in an existing union GEM}
 \usage{
 rc_regcompass_step_target_union(
   layer1,
@@ -26,33 +26,36 @@ rc_regcompass_step_target_union(
 
 \item{meta_modules}{Output from \code{rc_regcompass_step_meta_modules()}.}
 
-\item{layer2}{Completed original core LP output from \code{rc_regcompass_step_layer2()} using \code{model_mode = "meta_module_gem"}.}
+\item{layer2}{Output from \code{rc_regcompass_step_layer2()} with \code{model_mode = "meta_module_gem"}.}
 
-\item{gem}{The same validated GEM used by the original analysis.}
+\item{gem}{The same GEM used for the original run.}
 
-\item{outdir}{Persistent output directory.}
+\item{outdir}{Output directory.}
 
-\item{core_reaction_ids}{One or more reactions that were core targets in the previous LP analysis.}
+\item{core_reaction_ids}{Previous core reaction IDs used as expansion anchors.}
 
 \item{core_genes}{Genes used to resolve previous core reactions through GPR rules.}
 
-\item{gene_match}{\code{"complete_gpr"} requires one complete GPR AND group. \code{"any_direct"} permits an intentional partial-complex match.}
+\item{gene_match}{\code{"complete_gpr"} requires one complete GPR AND group. \code{"any_direct"} allows an intentional partial-complex match.}
 
-\item{subsystem_table}{Optional external reaction-to-subsystem table.}
+\item{subsystem_table}{Optional reaction-to-subsystem table.}
 
-\item{expansion_mode}{Either \code{"ordered_once"} or \code{"fixed_point"}.}
+\item{expansion_mode}{\code{"ordered_once"} or \code{"fixed_point"}.}
 
-\item{max_iterations}{Maximum fixed-point annotation-expansion iterations.}
+\item{max_iterations}{Maximum fixed-point iterations.}
 
-\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, \code{time_limit}, and \code{flux_threshold} overrides for the second scoring pass.}
+\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, \code{time_limit}, and \code{flux_threshold} overrides.}
 
-\item{parallel}{Whether LP tasks may run in parallel.}
+\item{parallel}{Whether to parallelize reused-model by metacell tasks.}
 
 \item{BPPARAM}{Optional BiocParallel parameter object.}
 }
 \value{
-A \code{regcompass_target_union_step} containing selected previous cores, expanded LP targets, the reused union membership, and the second-pass microCOMPASS result.
+A \code{regcompass_target_union_step} containing selected core anchors, expanded LP targets, source-model provenance, and second-pass LP results.
 }
 \description{
-Starts from reactions that were already core targets in the original LP analysis. The selected cores are expanded through same-subsystem, shared KEGG or Reactome reaction, and shared master-Rhea mappings. Every expanded reaction is scored as a directional LP target. The structural model is loaded from the previous Layer-2 global union-GEM cache and is not reconstructed.
+Selects core reactions from a completed Layer 2 run, expands them through same-subsystem, KEGG/Reactome, and master-Rhea mappings, and scores every expanded reaction using the exact cached global union GEM and bounds from the original run.
+}
+\details{
+The function validates stage classes, workflow parameters, GEM fingerprints, ordered metacell IDs, the previous core set, and source-model hashes. It does not rerun FASTCORE or rebuild the union GEM. Every row in \code{expanded_scoring_targets} is an LP target.
 }
