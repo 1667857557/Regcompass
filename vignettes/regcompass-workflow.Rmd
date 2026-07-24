@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.1 tiered GRN-first workflow"
+title: "RegCompassR 1.8.2 GRN-first workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.1 tiered GRN-first workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.2 GRN-first workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -11,19 +11,9 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-RegCompassR first fits Pando GRNs on single cells and then constructs condition-only metacells. RNA is normalized once across all cells. ATAC TF-IDF is calculated within each cell type using all conditions as the shared reference. Pando is fitted separately for each `condition_col × celltype_col` group with `peak_cor = 0.01` by default. SuperCell2 then uses condition as its only varying stratum, with `gamma = 75` by default, while the existing cell-type annotation is passed as its construction label to reduce cell-type mixing.
+RegCompassR fits condition-by-cell-type Pando GRNs, builds condition-level SuperCell2 metacells, maps complete-GPR core reactions, constructs a FASTCORE-completed global union GEM, integrates RNA and ATAC evidence, and performs directional minimum-penalty LP scoring.
 
-## Tutorial levels
-
-The documentation is deliberately separated into three execution levels:
-
-1. **Level 1 — minimal one-shot run:** installation, minimum input validation, GEM/medium preparation, canonical Linux multicore execution, and completion checks. See `docs/tutorial-01-quick-start.md`.
-2. **Level 2 — stepwise run with audit gates:** explicit stage inputs, outputs, files, Linux `MulticoreParam` objects, and mandatory continuation checks. This vignette provides the compact Level 2 workflow; the complete version is `docs/tutorial-02-stepwise-audit.md`.
-3. **Level 3 — restart and diagnostics:** stage reuse, worker allocation, sensitivity runs, alternative media, solver/model controls, and failure classification. See `docs/tutorial-03-advanced-restart.md`.
-
-After Layer 2, use `docs/condition-reaction-statistics.md` for multi-condition same-reaction tests, formal reaction formulas and genes, RNA-only versus RNA+ATAC evidence provenance, gene-centered reaction selection, and boxplots with one metacell per point.
-
-The complete medium catalog and its interpretation rules are in `docs/medium-presets.md`.
+Version 1.8.2 adds strict stage provenance and an optional second LP pass over the subsystem and database context of selected core reactions.
 
 ## Installation
 
@@ -34,19 +24,15 @@ remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
 remotes::install_github("1667857557/Regcompass", upgrade = "never")
 ```
 
-A downloaded Pando source archive is also valid:
+A local Pando archive is also accepted:
 
 ```{r}
 install.packages("~/Pando_regcompass.tar.gz", repos = NULL, type = "source")
 ```
 
-RegCompass validates the Pando API and does not require GitHub remote metadata for local installations.
+## Input and workers
 
-## Required object and Linux workers
-
-The Seurat object must contain paired RNA and ATAC counts for the same cell IDs, an ATAC `ChromatinAssay`, complete condition and cell-type metadata, and peak coordinates matching the selected genome. Cell order may differ between assay matrices; RegCompass aligns normalized data by cell name.
-
-`pfm` must be a motif PFM/PWM collection accepted by Pando and motifmatchr. Use `Pando::motifs`; do not pass the `motif2tf` annotation table.
+The Seurat object must contain paired RNA and ATAC counts for the same cells, complete condition/cell-type metadata, and an ATAC `ChromatinAssay`. Use `Pando::motifs`; do not pass `motif2tf` as `pfm`.
 
 ```{r}
 library(RegCompassR)
@@ -55,18 +41,8 @@ library(BiocParallel)
 library(BSgenome.Hsapiens.UCSC.hg38)
 
 data(motifs, package = "Pando")
-
 condition_col <- "dataset"
 celltype_col <- "epithelial_or_stem"
-
-stopifnot(
-  inherits(A, "Seurat"),
-  all(c("RNA", "ATAC") %in% names(A@assays)),
-  inherits(A[["ATAC"]], "ChromatinAssay"),
-  all(c(condition_col, celltype_col) %in% colnames(A@meta.data)),
-  !anyNA(A@meta.data[[condition_col]]),
-  !anyNA(A@meta.data[[celltype_col]])
-)
 
 gem <- rc_prepare_gem(species = "human", version = "2.0.0")
 medium_scenarios <- rc_make_medium_scenarios(
@@ -75,17 +51,13 @@ medium_scenarios <- rc_make_medium_scenarios(
   species = "human"
 )
 
-upstream_workers <- 16L
-layer2_workers <- 12L
-upstream_bp <- MulticoreParam(workers = upstream_workers, progressbar = TRUE)
-layer2_bp <- MulticoreParam(workers = layer2_workers, progressbar = TRUE)
+upstream_bp <- MulticoreParam(workers = 16L, progressbar = TRUE)
+layer2_bp <- MulticoreParam(workers = 12L, progressbar = TRUE)
 ```
 
-`physiologic` is the species-specific plasma baseline. `rpmi1640`, `dmem_high_glucose`, targeted glucose/lactate/glutamine sensitivity scenarios, technical baselines, and `custom` are optional alternatives. Concentrations are provenance rather than measured uptake fluxes, and medium bounds never expand GEM directionality.
+Set `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, and `MKL_NUM_THREADS=1` before starting a multicore R session.
 
-On Linux, set `OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`, and `MKL_NUM_THREADS=1` before starting R to avoid nested BLAS threads.
-
-## Stage 1: single-cell GRNs
+## Stage 1: GRNs
 
 ```{r}
 step1 <- rc_regcompass_step_grn(
@@ -110,16 +82,15 @@ step1 <- rc_regcompass_step_grn(
   BPPARAM = upstream_bp
 )
 
-status1 <- step1$grn_result$sample_status
 stopifnot(
-  all(status1$status == "ok"),
-  all(status1$n_significant_edges > 0)
+  all(step1$grn_result$sample_status$status == "ok"),
+  nzchar(step1$gem_fingerprint)
 )
 ```
 
-Stage 1 parallelizes independent condition × cell-type groups. Pando's inner `parallel` setting remains `FALSE` to avoid nested worker pools. The stage writes `single_cell_grn.rds`, `step_grn.rds`, Pando group status, all/significant edge tables, and optional fitted Pando objects.
+RNA is normalized once. ATAC TF-IDF is calculated within each cell type across conditions. Pando is then fitted for each condition × cell-type group.
 
-## Stage 2: cell-type-guided metacells within condition
+## Stage 2: metacells
 
 ```{r}
 step2 <- rc_regcompass_step_metacells(
@@ -136,17 +107,13 @@ step2 <- rc_regcompass_step_metacells(
 )
 
 stopifnot(
-  !any(step2$pooled$metacell_meta$dominant_celltype_tied %in% TRUE),
-  setequal(
-    colnames(step2$metacell_object),
-    step2$pooled$metacell_meta$metacell_id
-  )
+  !any(step2$pooled$metacell_meta$dominant_celltype_tied %in% TRUE)
 )
 ```
 
-The existing `celltype_col` annotation is automatically supplied before aggregation, so SuperCell2 can avoid indiscriminate mixing of annotated types without accepting a separate workflow label parameter. Cell type is also audited after construction from member-cell composition. Exact dominant-cell-type ties are rejected. Stage 2 is not controlled by the workflow `BPPARAM`.
+Condition is the hard stratum. The existing cell-type annotation guides SuperCell2 before aggregation and is audited afterwards from member-cell composition.
 
-## Stage 3: parallel local FASTCORE meta-modules
+## Stage 3: core reactions and meta-modules
 
 ```{r}
 step3 <- rc_regcompass_step_meta_modules(
@@ -160,7 +127,7 @@ step3 <- rc_regcompass_step_meta_modules(
       solver = "highs",
       strict = TRUE,
       parallel = TRUE,
-      workers = upstream_workers,
+      workers = 16L,
       backend = "multicore"
     )
   )
@@ -168,17 +135,13 @@ step3 <- rc_regcompass_step_meta_modules(
 
 stopifnot(
   all(step3$group_coverage$coverage_complete),
-  nrow(step3$condition_modules$core_gene_reaction) > 0
+  nrow(step3$global_modules$global_core_reactions) > 0
 )
-
-unique(step3$condition_modules$local_fastcore_summary[, c(
-  "parallel_task", "parallel_backend", "parallel_workers"
-)])
 ```
 
-Each GRN defines metabolic-gene components and complete-GPR core reactions. Meta-modules add core-reaction subsystems and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE completion uses the `local_fastcore_by_meta_module` task scope and is parallelized by `sample_id × module_id`; projection and identifier expansion remain serial setup operations.
+Meta-modules contain complete-GPR cores, same-subsystem reactions, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. FASTCORE adds separately labelled feasibility support.
 
-## Stages 4-6: reaction evidence and scoring
+## Stage 4 and Stage 5
 
 ```{r}
 step4 <- rc_regcompass_step_layer1(
@@ -196,14 +159,50 @@ step5 <- rc_regcompass_step_layer2(
   gem = gem,
   medium_scenarios = medium_scenarios,
   outdir = "steps/05_layer2",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs"
-  ),
+  model_mode = "meta_module_gem",
+  layer2_args = list(target_direction = "both", solver = "highs"),
   parallel = TRUE,
   BPPARAM = layer2_bp
 )
 
+stopifnot(
+  inherits(step4, "regcompass_layer1_step"),
+  inherits(step5, "regcompass_layer2_step"),
+  identical(step4$gem_fingerprint, step5$gem_fingerprint),
+  identical(colnames(step4$reaction_expression), colnames(step5$penalty)),
+  any(step5$evaluated)
+)
+```
+
+The raw minimum penalty is the primary result. Lower values indicate stronger compatibility between the required target flux and integrated evidence. The relative score is a within-target rank, not a probability.
+
+## Expanded target scoring
+
+```{r}
+expanded <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "steps/05b_expanded_targets",
+  core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
+  gene_match = "complete_gpr",
+  parallel = TRUE,
+  BPPARAM = layer2_bp
+)
+
+stopifnot(
+  all(expanded$expanded_scoring_targets$score_target),
+  expanded$microcompass$params$structural_model_reused_exactly,
+  all(expanded$microcompass$model_cache_summary$reused_without_rebuilding)
+)
+```
+
+The second pass reuses the exact original union-GEM files and bounds. It changes only the LP targets.
+
+## Assemble and interpret results
+
+```{r}
 result <- rc_regcompass_step_results(
   grn = step1,
   metacells = step2,
@@ -215,124 +214,13 @@ result <- rc_regcompass_step_results(
 )
 
 stopifnot(
-  identical(
-    colnames(step4$reaction_expression),
-    as.character(step4$unit_meta$pool_id)
-  ),
-  any(step5$evaluated),
+  identical(result$version, "1.8.2"),
   nrow(result$reaction_ranking) > 0,
   nrow(result$reaction_catalog) > 0,
   nrow(result$reaction_evidence) > 0
 )
-
-table(step5$feasible)
-head(result$reaction_ranking)
-head(result$reaction_catalog)
-head(result$reaction_evidence)
 ```
 
-Stage 4 parallelizes GPR/reaction-capacity work. Stage 5 parallelizes shared-model × metacell LP tasks; structural model-cache construction remains serial. The default HiGHS backend is checked before any medium-constrained model is constructed. A missing solver is reported as a solver installation problem rather than as GEM infeasibility.
+For condition tests and plots, see `docs/condition-reaction-statistics.md`. For medium definitions, see `docs/medium-presets.md`. For restart and diagnostics, see `docs/tutorial-03-advanced-restart.md`.
 
-Stage 6 reconstructs formal reaction formulas directly from the scored GEM, includes metabolite names and compartments, retains the complete Boolean GPR, and classifies each `condition × cell type × reaction` as `RNA+ATAC`, `RNA-only`, `GPR/no-observed-RNA`, or `structural/no-GPR`. The `RNA+ATAC` label requires the GPR-aggregated reaction capacity to change relative to an RNA-only calculation; a non-zero ATAC modifier on one gene is retained as provenance but is not sufficient by itself.
-
-## Multi-condition reaction statistics and plots
-
-All Layer 2 metacells use the same shared structural GEM. For a fixed `reaction × direction × medium`, condition differences therefore reflect unit-specific multiome penalties rather than different model structures.
-
-```{r}
-condition_stats <- rc_test_condition_reactions(
-  result,
-  condition_col = condition_col,
-  celltype_col = celltype_col,
-  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  cell_types = "epithelial_like",
-  p_adjust_method = "BH",
-  p_adjust_scope = "celltype_contrast_medium",
-  outdir = "steps/07_condition_statistics"
-)
-
-head(condition_stats$omnibus[, c(
-  "reaction_id", "reaction_name", "target_direction", "tested_formula",
-  "genes", "gpr_rule", "evidence_by_condition", "p_adj"
-)])
-
-head(condition_stats$pairwise[, c(
-  "reaction_id", "reaction_name", "tested_formula",
-  "condition_a", "condition_b", "evidence_class_a", "evidence_class_b",
-  "delta_median_score_b_minus_a", "rank_biserial_b_minus_a", "p_adj"
-)])
-```
-
-Three or more conditions receive a Kruskal-Wallis omnibus test. Pairwise contrasts use two-sided Wilcoxon tests and report adjusted P values, effect sizes, reaction biology, and condition-specific evidence provenance.
-
-```{r}
-p <- rc_plot_condition_reaction(
-  result,
-  reaction_id = "MAR06231",
-  cell_type = "epithelial_like",
-  target_direction = "reverse",
-  medium_scenario = "physiologic",
-  condition_col = condition_col,
-  celltype_col = celltype_col,
-  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  annotation_p = "p_adj",
-  show_nonsignificant = FALSE
-)
-
-print(p)
-```
-
-The plot contains one box per condition, one jittered point per finite metacell score, an adjusted omnibus result in the subtitle, and pairwise significance brackets. For annotated results, its title and caption also report the formal reaction name, tested directional formula, GPR genes, and evidence classes.
-
-## Select reactions and plots by metabolic genes
-
-```{r}
-glutathione_genes <- c(
-  "SLC7A11", "GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"
-)
-
-gene_reactions <- rc_select_gene_reactions(
-  result,
-  genes = glutathione_genes,
-  match = "any",
-  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  cell_types = "stem-cell_like"
-)
-
-head(gene_reactions$reactions[, c(
-  "reaction_id", "reaction_name", "model_formula",
-  "genes", "gpr_rule", "matched_genes"
-)])
-
-head(gene_reactions$evidence[, c(
-  "reaction_id", "condition", "evidence_class",
-  "atac_modifier_genes", "multiome_contributing_genes",
-  "median_multiome_capacity_shift", "max_abs_multiome_capacity_shift"
-)])
-
-gene_plots <- rc_plot_condition_gene_reactions(
-  result,
-  genes = glutathione_genes,
-  cell_type = "stem-cell_like",
-  condition_col = condition_col,
-  celltype_col = celltype_col,
-  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  comparisons = list(
-    c("control_24hr", "MS177_24hr"),
-    c("JQ1_24hr", "MS177_24hr")
-  ),
-  evidence_class = "RNA+ATAC",
-  p_adj_max = 0.05,
-  min_abs_rank_biserial = 0.30,
-  max_reactions = 12,
-  outdir = "steps/07_condition_statistics/glutathione_gene_plots"
-)
-
-names(gene_plots$plots)
-gene_plots$selected_targets
-print(gene_plots$plots[[1]])
-```
-
-Gene selection is based on exact GPR membership, while the full Boolean GPR is retained to distinguish alternative isozymes from required complexes. The plot collection is ranked after multiple-testing correction over the full scored reaction family, not only the displayed reactions.
-
-Metacell P values quantify within-dataset condition-associated separation; they are not automatically biological-replicate-level treatment inference. Evidence labels state whether RNA+ATAC integration actively changed reaction capacity, but they do not demonstrate measured metabolic flux. See `docs/condition-reaction-statistics.md` for the complete interpretation and filtering rules.
+Metacell-level condition comparisons describe separation within the analyzed dataset; they are not automatically biological-replicate-level treatment inference.
