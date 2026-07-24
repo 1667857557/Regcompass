@@ -4,8 +4,8 @@ Choose the lowest level that provides the required control. All levels use the s
 
 | Level | Use | Tutorial |
 |---|---|---|
-| 1 | validated one-shot analysis | [Quick start](tutorial-01-quick-start.md) |
-| 2 | explicit stages and continuation gates | [Stepwise audit](tutorial-02-stepwise-audit.md) |
+| 1 | validated complete analysis | [Quick start](tutorial-01-quick-start.md) |
+| 2 | audit saved classed stage objects | [Saved-stage audit](tutorial-02-stepwise-audit.md) |
 | 3 | restart, sensitivity, resource allocation, and failure diagnosis | [Advanced restart](tutorial-03-advanced-restart.md) |
 
 The exact input/output requirements for every stage are summarized in [Stage input-output contracts](stage-interface-contracts.md).
@@ -28,24 +28,33 @@ single-cell RNA normalization
 
 Stage 3-6 validate stage classes, workflow metadata, GEM fingerprints, core-target provenance, and ordered scoring units before connecting objects.
 
+## Canonical parallel policy
+
+The complete runner exposes only:
+
+```r
+upstream_workers <- 6L
+layer2_workers <- 30L
+```
+
+The package selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS. Set both values to one for fully serial execution. `parallel_backend`, manually created `BPPARAM` objects, and independent local-FASTCORE worker fields are not part of the canonical complete-run interface.
+
+| Stage | Parallel unit | Worker layer |
+|---|---|---|
+| GRN | condition × cell type | upstream |
+| Metacells | no workflow-level BiocParallel loop | serial |
+| Meta-modules | local FASTCORE completion per module | upstream |
+| Layer 1 | GPR/reaction capacity | upstream |
+| Layer 2 | shared model × metacell | Layer 2 |
+| Direct database-linked targets | reused union model × metacell | restart worker budget |
+| Results | serial assembly | serial |
+
+Each worker processes one internally single-threaded task. Pando's inner parallelism is disabled, numerical libraries are fixed to one thread, and package-managed worker pools are stopped and garbage-collected after their stage. No upstream pool remains active during Layer 2.
+
 ## Optional analyses after Layer 2
 
 - [Direct database-linked non-core scoring](target-union-scoring.md): use previous core reactions or GPR genes as anchors, directly map reactions sharing KEGG, Reactome, or master-Rhea IDs, and score only mapped non-core reactions in the exact cached union GEM. Same-subsystem and recursive expansion are not used.
 - [Condition-associated reaction statistics](condition-reaction-statistics.md): compare the same reaction, direction, medium, and cell type across conditions.
-
-## Parallel units
-
-| Stage | Parallel unit |
-|---|---|
-| GRN | condition × cell type |
-| Metacells | no workflow-level BiocParallel loop |
-| Meta-modules | local FASTCORE completion per module |
-| Layer 1 | GPR/reaction capacity |
-| Layer 2 | shared model × metacell |
-| Direct database-linked targets | reused union model × metacell |
-| Results | serial assembly |
-
-On Linux use `BiocParallel::MulticoreParam` or `parallel_backend = "multicore"`. Keep Pando's inner `parallel = FALSE` and set numerical-library thread counts to one.
 
 ## Required input
 
