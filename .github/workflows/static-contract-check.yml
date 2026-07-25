@@ -21,6 +21,30 @@ jobs:
         run: |
           files <- list.files("R", pattern = "\\.R$", full.names = TRUE)
           invisible(lapply(files, parse))
+      - name: Validate NAMESPACE exports
+        shell: Rscript {0}
+        run: |
+          files <- list.files("R", pattern = "\\.R$", full.names = TRUE)
+          expressions <- unlist(lapply(files, parse), recursive = FALSE)
+          definitions <- unique(vapply(
+            Filter(function(expression) {
+              is.call(expression) &&
+                identical(expression[[1L]], as.name("<-")) &&
+                is.symbol(expression[[2L]])
+            }, expressions),
+            function(expression) as.character(expression[[2L]]),
+            character(1)
+          ))
+          namespace <- trimws(readLines("NAMESPACE", warn = FALSE))
+          exports <- grep("^export\\(", namespace, value = TRUE)
+          exports <- sub("^export\\((.*)\\)$", "\\1", exports)
+          missing <- setdiff(exports, definitions)
+          if (length(missing)) {
+            stop(
+              "NAMESPACE exports without top-level definitions: ",
+              paste(missing, collapse = ", ")
+            )
+          }
       - name: Parse tests
         shell: Rscript {0}
         run: |
