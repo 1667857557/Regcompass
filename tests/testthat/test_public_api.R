@@ -1,4 +1,4 @@
-test_that("public API exposes the GRN-first restartable workflow", {
+test_that("public API exposes the significant-target restartable workflow", {
   expect_setequal(
     getNamespaceExports("RegCompassR"),
     c(
@@ -19,14 +19,16 @@ test_that("public API exposes the GRN-first restartable workflow", {
 test_that("canonical source architecture has no retired compatibility layers", {
   description <- utils::packageDescription("RegCompassR")
   collate <- description$Collate %||% ""
-  retired <- c(
+  retired_files <- c(
     "v170_sample_balance.R", "v170_aliases.R",
     "v170_stepwise_parallel.R", "v170_tfidf.R",
     "v170_pando_reuse.R", "v170_rsq_metadata.R",
     "v170_microcompass_contract.R", "internal_apply.R",
     "pando_rsq_reliability.R", "workflow_stage_", "zzz"
   )
-  expect_false(any(vapply(retired, grepl, logical(1), x = collate, fixed = TRUE)))
+  expect_false(any(vapply(
+    retired_files, grepl, logical(1), x = collate, fixed = TRUE
+  )))
   required <- c(
     "stage_contracts.R", "shared_tfidf.R", "grn_inference.R",
     "regulatory_modifier.R", "reaction_annotations.R", "reaction_evidence.R",
@@ -43,7 +45,7 @@ test_that("canonical source architecture has no retired compatibility layers", {
   candidates <- candidates[dir.exists(candidates)]
   if (!length(candidates)) skip("Source R files are unavailable.")
   source_dir <- normalizePath(candidates[[1L]], mustWork = TRUE)
-  source_retired <- retired[grepl("[.]R$", retired)]
+  source_retired <- retired_files[grepl("[.]R$", retired_files)]
   expect_false(any(file.exists(file.path(source_dir, source_retired))))
   source_text <- paste(
     unlist(lapply(list.files(source_dir, full.names = TRUE), readLines,
@@ -51,12 +53,28 @@ test_that("canonical source architecture has no retired compatibility layers", {
     collapse = "\n"
   )
   expect_false(grepl("_v170", source_text, fixed = TRUE))
+  retired_functions <- c(
+    ".rc_build_metabolic_projection_graph",
+    ".rc_mm_empty_edges",
+    ".rc_mm_components",
+    ".rc_signed_relation",
+    "rc_project_metabolic_grn",
+    ".rc_remap_projection_metadata",
+    "rc_run_pando_meta_modules"
+  )
+  expect_false(any(vapply(
+    retired_functions, grepl, logical(1), x = source_text, fixed = TRUE
+  )))
 })
 
-test_that("canonical order is GRN then metacells then meta-modules", {
+test_that("canonical order is Pando then metacells then meta-modules", {
   run_body <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   positions <- vapply(
-    c("rc_regcompass_step_grn", "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules"),
+    c(
+      "rc_regcompass_step_grn",
+      "rc_regcompass_step_metacells",
+      "rc_regcompass_step_meta_modules"
+    ),
     function(x) regexpr(x, run_body, fixed = TRUE)[[1L]], integer(1)
   )
   expect_true(all(positions > 0L))
@@ -64,11 +82,21 @@ test_that("canonical order is GRN then metacells then meta-modules", {
   expect_true(positions[[2L]] < positions[[3L]])
 })
 
+test_that("canonical formals separate Stage 3 and Layer 1 settings", {
+  run_formals <- names(formals(rc_run_regcompass))
+  stage3_formals <- names(formals(rc_regcompass_step_meta_modules))
+  expect_true("meta_module_args" %in% run_formals)
+  expect_true("layer1_args" %in% run_formals)
+  expect_true("meta_module_args" %in% stage3_formals)
+  expect_false("layer1_args" %in% stage3_formals)
+})
+
 test_that("GRN and metacell defaults match the canonical design", {
   grn_body <- paste(deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n")
   metacell_body <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
   expect_match(grn_body, "peak_cor = 0.01", fixed = TRUE)
   expect_match(grn_body, "condition_col, celltype_col", fixed = TRUE)
+  expect_match(grn_body, ".rc_default_pando_regions", fixed = TRUE)
   expect_match(metacell_body, "gamma <- 30L", fixed = TRUE)
   expect_match(metacell_body, 'pooling_scope <- "condition_only"', fixed = TRUE)
   expect_match(metacell_body, "metacell_grouping = condition_col", fixed = TRUE)
