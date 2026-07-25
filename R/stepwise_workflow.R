@@ -120,7 +120,8 @@ rc_regcompass_step_grn <- function(
     pando_args = list(),
     parallel = TRUE,
     BPPARAM = NULL,
-    progress = getOption("RegCompassR.progress", TRUE)) {
+    progress = getOption("RegCompassR.progress", TRUE),
+    species = c("auto", "human", "mouse")) {
   monitor <- .rc_step_monitor_start("grn", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   if (!is.list(pando_args)) {
@@ -129,6 +130,7 @@ rc_regcompass_step_grn <- function(
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
   }
+  species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   object <- .rc_normalize_single_cell_grn_object(
@@ -140,7 +142,7 @@ rc_regcompass_step_grn <- function(
   )
   reserved <- intersect(names(pando_args), c(
     "object", "gem", "outdir", "pfm", "genome", "condition_col",
-    "celltype_col", "rna_assay", "atac_assay", "BPPARAM"
+    "celltype_col", "rna_assay", "atac_assay", "BPPARAM", "species"
   ))
   if (length(reserved)) {
     stop(
@@ -160,7 +162,8 @@ rc_regcompass_step_grn <- function(
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE,
-    on_group_error = "stop"
+    on_group_error = "stop",
+    species = species
   )
   defaults[names(pando_args)] <- NULL
   grn_result <- do.call(
@@ -175,7 +178,8 @@ rc_regcompass_step_grn <- function(
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       pando_args = pando_args,
-      parallel = parallel
+      parallel = parallel,
+      species = species
     )
   )
   class(answer) <- c("regcompass_grn_step", "list")
