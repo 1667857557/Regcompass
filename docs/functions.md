@@ -14,12 +14,46 @@ The complete workflow exposes two worker counts. `upstream_workers` covers Pando
 ## Inspectable stages
 
 - `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for all Human-GEM GPR genes present in the RNA assay. When `pfm` is omitted, Pando's bundled `motifs` data object is used. Human analyses default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects unless `pando_initiate_args$regions` is supplied.
-- `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA is the default geometry; an existing Harmony reduction can be selected through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
+- `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and `seed = 12345L` are the defaults; an existing Harmony reduction can replace PCA through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
 - `rc_regcompass_step_meta_modules()`: summarize significantly supported metabolic target genes, map complete-GPR cores, perform one fixed ordered subsystem/KEGG/Reactome/master-Rhea expansion pass, and deduplicate reaction IDs into a merged catalogue. No target projection, connected-component analysis, fixed-point recursion, one-hop expansion, FASTCORE, or GEM construction occurs here.
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
 - `rc_regcompass_step_layer2()`: first construct one medium-specific union GEM with global FASTCORE, then cache it and run directional LP scoring; or use shared full-GEM scoring when `model_mode = "full_gem"`.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
 - `rc_regcompass_step_target_union()`: map selected original core reactions through shared KEGG, Reactome, or master-Rhea identifiers and score mapped non-core reactions in the exact final Stage 5 union GEMs.
+
+## Stage 1 evidence controls
+
+The canonical Pando evidence defaults are:
+
+```r
+pando_args = list(
+  min_cells = 20L,
+  padj_threshold = 0.05,
+  min_abs_estimate = 0,
+  min_model_rsq = 0.1,
+  require_padj = TRUE
+)
+```
+
+All enabled conditions must pass before a TF–peak–target coefficient enters the significant evidence table.
+
+## Stage 2 geometry and reproducibility
+
+```r
+metacell_args = list(
+  rna_reduction = "pca",
+  rna_dims = 1:30,
+  atac_reduction = "lsi",
+  atac_dims = 2:30,
+  gamma = 30L,
+  seed = 12345L,
+  min_cells_per_stratum = 100L,
+  min_metacell_size = 20L,
+  min_metacells_per_stratum = 2L
+)
+```
+
+For ordered condition strata, the SuperCell2 seed is `seed + stratum_index - 1`. These fields and the selected embedding fingerprints participate in cache validation.
 
 ## Stage 3 evidence and catalogue fields
 
@@ -29,6 +63,12 @@ step3$condition_modules$core_gene_reaction
 step3$condition_modules$meta_module_summary$expansion_policy
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
+```
+
+The recorded expansion policy is:
+
+```text
+single_ordered_annotation_pass
 ```
 
 `meta_module_args` accepts only an optional `subsystem_table`. Expansion is always one ordered pass:
