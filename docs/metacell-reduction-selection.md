@@ -2,10 +2,63 @@
 
 RegCompass Stage 2 constructs multimodal SuperCell2 metacells from two cell-level embedding geometries:
 
-- RNA reduction: `pca` dimensions 1:30 by default;
-- ATAC reduction: `lsi` dimensions 2:30 by default.
+- RNA reduction: `pca` dimensions `1:30` by default;
+- ATAC reduction: `lsi` dimensions `2:30` by default;
+- base random seed: `12345L` by default.
 
-The RNA reduction is selectable. A precomputed Harmony reduction can therefore replace PCA without changing how metacell RNA or ATAC counts are aggregated.
+The RNA reduction is selectable. A precomputed Harmony reduction can replace PCA without changing how metacell RNA or ATAC counts are aggregated.
+
+## Complete Stage 2 parameter example
+
+```r
+step2 <- rc_regcompass_step_metacells(
+  object = A,
+  outdir = "RegCompass_steps/02_condition_metacells",
+  sample_col = NULL,
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
+  fragment_files = FALSE,
+  metacell_args = list(
+    rna_reduction = "pca",
+    rna_dims = 1:30,
+    atac_reduction = "lsi",
+    atac_dims = 2:30,
+    gamma = 30,
+    seed = 12345L,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10,
+    min_metacells_per_stratum = 2L,
+    overwrite = FALSE
+  )
+)
+```
+
+The implementation defaults are:
+
+```r
+rna_reduction = "pca"
+rna_dims = 1:30
+atac_reduction = "lsi"
+atac_dims = 2:30
+gamma = 30L
+seed = 12345L
+min_cells_per_stratum = 100L
+min_metacell_size = 20L
+min_metacells_per_stratum = 2L
+overwrite = FALSE
+```
+
+The same fields can be supplied to `rc_run_regcompass()` or `rc_run_regcompass_one_shot()` through `metacell_args`.
+
+## Seed handling
+
+`seed` is the reproducible base seed. RegCompass builds condition strata in a deterministic order and passes a stratum-specific seed to SuperCell2:
+
+```text
+seed_for_stratum = seed + stratum_index - 1
+```
+
+Thus repeated runs with the same cells, metadata, reductions, dimensions, and seed use the same seed sequence. Changing the ordering or identity of condition strata changes the assigned stratum-specific seeds and invalidates the cache contract.
 
 ## Use Harmony for the RNA geometry
 
@@ -30,29 +83,25 @@ step2 <- rc_regcompass_step_metacells(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30,
+    seed = 12345L,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10
+    min_metacell_size = 10,
+    min_metacells_per_stratum = 2L,
+    overwrite = TRUE
   )
 )
 ```
 
-The same fields can be supplied to `rc_run_regcompass()` or `rc_run_regcompass_one_shot()` through `metacell_args`.
+## What each geometry parameter changes
 
-## Use PCA instead
+- `rna_reduction`: the RNA embedding used to calculate multimodal cell similarity.
+- `rna_dims`: the exact RNA coordinates supplied to SuperCell2.
+- `atac_reduction`: the ATAC embedding used to calculate multimodal cell similarity.
+- `atac_dims`: the exact ATAC coordinates supplied to SuperCell2. LSI dimension 1 is excluded by default because it often tracks sequencing depth.
+- `gamma`: approximate cells-per-metacell compression target.
+- `seed`: deterministic base seed for SuperCell2.
 
-PCA remains the default:
-
-```r
-metacell_args = list(
-  rna_reduction = "pca",
-  rna_dims = 1:30,
-  atac_reduction = "lsi",
-  atac_dims = 2:30,
-  gamma = 30
-)
-```
-
-Omitting the four reduction fields is equivalent to this configuration.
+The reduction names must exist in `A@reductions`, and the maximum requested dimension must not exceed the number of columns in the corresponding embedding.
 
 ## What Harmony changes
 
@@ -75,9 +124,9 @@ The Stage 2 cache contract records:
 - fingerprints of the selected embeddings;
 - ordered cells and labels;
 - RNA and ATAC assay fingerprints;
-- `gamma`, seed, and metacell thresholds.
+- `gamma`, `seed`, and metacell thresholds.
 
-Changing from PCA to Harmony, changing dimensions, or recomputing the Harmony embedding invalidates existing Stage 2 checkpoints. Rebuild explicitly:
+Changing any of these inputs invalidates existing Stage 2 checkpoints. Rebuild explicitly:
 
 ```r
 metacell_args = list(
@@ -86,21 +135,28 @@ metacell_args = list(
   atac_reduction = "lsi",
   atac_dims = 2:30,
   gamma = 30,
+  seed = 12345L,
   overwrite = TRUE
 )
 ```
 
-## Verify the selected reduction
+## Verify the selected reduction and seed
 
 ```r
 step2$pooled$cache_contract$analysis_args[c(
   "rna_reduction",
   "rna_dims",
   "atac_reduction",
-  "atac_dims"
+  "atac_dims",
+  "gamma",
+  "seed",
+  "min_cells_per_stratum",
+  "min_metacell_size",
+  "min_metacells_per_stratum"
 )]
 
 step2$pooled$cache_contract$rna_reduction$embedding
+step2$pooled$cache_contract$atac_reduction$embedding
 ```
 
-The second object is the fingerprint of the exact Harmony or PCA coordinates used to construct the metacells.
+The embedding objects are fingerprints of the exact coordinates used to construct the metacells.
