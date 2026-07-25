@@ -52,19 +52,8 @@ Contract:
 - `merged_reaction_membership` contains deduplicated biological reactions only;
 - `merged_modules$is_gem` is `FALSE`;
 - `merged_modules$fastcore_applied` is `FALSE`;
-- Stage 3 does not apply medium constraints or run FASTCORE.
-
-Removed fields:
-
-```text
-global_modules
-global_core_reactions
-global_reaction_membership
-local_completed_reaction_membership
-local_fastcore_summary
-local_fastcore_diagnostics
-local_fastcore_completion_iterations
-```
+- Stage 3 does not apply medium constraints or run FASTCORE;
+- the merged object is a catalogue and must not be described as a union GEM.
 
 ## Stage 4: Layer 1
 
@@ -103,22 +92,33 @@ step5$penalty
 step5$vmax
 ```
 
-Each `model_cache_summary` row identifies one cached medium-specific union GEM. Its model must record:
+Each `model_cache_summary` row identifies one final medium-specific union GEM and records at least:
+
+```r
+medium_scenario
+file
+file_checksum
+build_strategy
+completion_stage
+```
+
+The cached model must record:
 
 ```r
 model$is_union_gem
 model$union_gem_medium_scenario
 model$build_params$completion_stage
-model$reaction_meta$fastcore_support
+model$reaction_meta$global_fastcore_support
 ```
 
-The only permitted completion stage is:
+The required build metadata are:
 
 ```text
-single_global_fastcore_after_meta_module_merge
+build_strategy = medium_specific_union_gem
+completion_stage = single_global_fastcore_after_meta_module_merge
 ```
 
-All conditions and metacells within the same medium must resolve to the same model file.
+All conditions and metacells within the same medium must resolve to the same model file. Different media may resolve to different union-GEM structures because their global FASTCORE support sets may differ.
 
 ## Stage 6: results
 
@@ -133,18 +133,11 @@ result$condition_summary
 result$condition_contrast
 ```
 
-`global_grn_meta_modules` is removed. `grn_meta_modules` remains a generic alias of `merged_grn_meta_modules`.
+`merged_grn_meta_modules` is the Stage 3 catalogue. `microcompass$model_cache_summary` identifies the final Stage 5 union GEMs.
 
-## Canonical runner argument contract
+## Global FASTCORE configuration
 
-The following are rejected:
-
-```r
-layer1_args = list(local_fastcore = TRUE)
-layer1_args = list(local_fastcore_args = list(...))
-```
-
-Use:
+The only structural completion controls are supplied at Stage 5:
 
 ```r
 layer2_args = list(
@@ -161,9 +154,10 @@ layer2_args = list(
 
 `rc_regcompass_step_target_union()` requires:
 
-- the original Stage 3 merged catalogue;
+- the original Stage 3 merged catalogue for anchor provenance;
 - the original Layer 1 matrix;
 - the completed `meta_module_gem` Stage 5 object;
-- accessible cached union-GEM files.
+- accessible final Stage 5 union-GEM files;
+- matching model-file checksums and medium identifiers.
 
-Target availability is checked against the actual cached union GEMs, not against the pre-FASTCORE Stage 3 catalogue alone.
+The selected genes or reaction IDs determine mapping anchors only. Target availability and all LP calculations are evaluated in the exact cached final union GEMs. The second pass does not rebuild a GEM, does not change medium bounds, and does not rerun FASTCORE.
