@@ -80,10 +80,17 @@ test_that("medium-specific union GEM scores every metacell", {
   expect_true(result$noninformative_target[[1L]])
   expect_equal(nrow(result$model_cache_summary), 1L)
   expect_true(result$params$shared_gem)
-  expect_equal(result$params$shared_gem_scope, "all_metacells")
+  expect_equal(
+    result$params$shared_gem_scope,
+    "one_final_union_gem_per_medium_shared_across_all_units"
+  )
   expect_identical(
     result$model_cache_summary$build_strategy,
     "medium_specific_union_gem"
+  )
+  expect_identical(
+    result$model_cache_summary$completion_stage,
+    "single_global_fastcore_after_meta_module_merge"
   )
 })
 
@@ -150,7 +157,7 @@ test_that("v2 exporter writes model and LP diagnostics", {
     ),
     model_diagnostics = data.frame(
       reaction_id = "R1",
-      completion_status = "fastcore_completed",
+      completion_status = "global_fastcore_completed",
       stringsAsFactors = FALSE
     ),
     lp_diagnostics = data.frame(
