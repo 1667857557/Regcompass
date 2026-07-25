@@ -1,10 +1,20 @@
 test_that("stepwise tutorial defines portable BiocParallel backends", {
-  root <- rc_doc_root()
-  if (is.null(root)) skip("Source documentation is unavailable.")
+  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
+  roots <- unique(c(
+    if (nzchar(workspace)) workspace else character(),
+    ".", "..", file.path("..", "..")
+  ))
+  roots <- roots[vapply(
+    roots,
+    function(path) file.exists(file.path(path, "DESCRIPTION")),
+    logical(1)
+  )]
+  if (!length(roots)) skip("Source documentation is unavailable.")
 
+  root <- normalizePath(roots[[1L]], mustWork = TRUE)
   path <- file.path(root, "docs", "tutorial-02-stepwise-audit.md")
   expect_true(file.exists(path))
-  text <- rc_read_doc(path)
+  text <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
   required <- c(
     "library(BiocParallel)",
