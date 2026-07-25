@@ -8,7 +8,8 @@
 \alias{rc_regcompass_step_results}
 \title{Run RegCompass through inspectable significant-target stages}
 \usage{
-rc_regcompass_step_grn(object, gem, outdir, pfm = NULL, genome,
+rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
+  species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   rna_assay = "RNA", atac_assay = "ATAC", pando_args = list(),
   parallel = TRUE, BPPARAM = NULL,
@@ -44,11 +45,12 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{object}{Paired-cell Seurat RNA+ATAC object.}
 \item{gem}{Prepared genome-scale metabolic model.}
 \item{outdir}{Stage output directory.}
-\item{pfm}{Optional motif collection accepted by Pando and motifmatchr. When omitted, Pando's bundled \code{motifs} data object is used.}
 \item{genome}{Genome object matching ATAC coordinates.}
+\item{pfm}{Optional motif collection accepted by Pando and motifmatchr. When omitted, Pando's bundled \code{motifs} data object is used.}
+\item{species}{Species identifier or \code{"auto"}. Human uses phastCons plus SCREEN ccRE default regions; mouse uses phastCons only.}
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Pando GRN configuration. Evidence defaults include \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Human analyses default to the union of Pando's \code{phastConsElements20Mammals.UCSC.hg38} and \code{SCREEN.ccRE.UCSC.hg38} data unless \code{pando_initiate_args$regions} is supplied.}
+\item{pando_args}{Pando GRN configuration. Evidence defaults include \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Explicit \code{pando_initiate_args$regions} overrides the species-specific region default.}
 \item{metacell_args}{SuperCell2 configuration. Defaults are RNA \code{"pca"} dimensions 1:30, ATAC \code{"lsi"} dimensions 2:30, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. The base seed is incremented by ordered condition-stratum index. Changing cached inputs requires \code{overwrite = TRUE}.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}. Stage 3 expansion is fixed to one ordered subsystem, KEGG/Reactome, and master-Rhea pass. The retired \code{expansion_mode}, \code{max_iterations}, fixed-point, and one-hop APIs are rejected.}
 \item{regulatory_alpha}{Strength of the ATAC regulatory modifier in Layer 1.}
@@ -63,11 +65,12 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from the preceding stages.}
 \item{medium_scenarios}{Condition-invariant medium table.}
 \item{model_mode}{Use one medium-specific union GEM reconstructed from the merged biological catalogue, or reuse the full GEM.}
-\item{species}{Species identifier or \code{"auto"}.}
 }
 \description{Runs the canonical workflow as separately restartable, validated stages.}
 \details{
-Stage 1 fits Pando to Human-GEM GPR target genes for each condition by cell-type group. A coefficient must satisfy the adjusted-P-value, absolute-estimate, and target-model-R-squared filters. Positive and negative coefficients both count as regulatory evidence.
+Stage 1 public arguments are ordered by processing sequence: model/genome inputs, motif and species policy, metadata and assays, Pando settings, then execution controls.
+
+Stage 1 fits Pando to GEM GPR target genes for each condition by cell-type group. A coefficient must satisfy the adjusted-P-value, absolute-estimate, and target-model-R-squared filters. Positive and negative coefficients both count as regulatory evidence.
 
 Stage 2 constructs condition-level metacells from explicit RNA and ATAC reductions and dimensions. Reduction names, selected dimensions, embedding fingerprints, seed, gamma, and thresholds are part of the restart contract.
 
