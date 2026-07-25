@@ -2,12 +2,14 @@
     metacell_object, meta_modules, gem, metacell_meta,
     sample_col = "sample_id", condition_col = "condition",
     celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC",
-    regulatory_alpha = 1, gpr_tau = 0.20,
+    regulatory_alpha = 1,
+    gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
     parallel = TRUE, BPPARAM = NULL) {
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
   }
+  gpr_and_method <- match.arg(gpr_and_method)
   parsed <- rc_parse_gpr_table(gem$gpr_table)
   gpr_genes <- unique(tolower(unlist(parsed, use.names = FALSE)))
   counts <- .rc_get_assay_counts(metacell_object, rna_assay)
@@ -73,14 +75,13 @@
     parsed,
     gene_multiome_support,
     promiscuity_mode = "none",
-    tau = gpr_tau,
-    and_method = "boltzmann",
+    and_method = gpr_and_method,
     or_method = "sum",
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
 
   list(
-    schema_version = "regcompass_condition_only_layer1_v2",
+    schema_version = "regcompass_condition_only_layer1_v3",
     reaction_expression = reaction_expression,
     rna_metacell_logcpm = rna_logcpm,
     gene_support_rna = gene_rna_support,
@@ -95,8 +96,7 @@
       regulatory_alpha = regulatory_alpha,
       gene_half_saturation = gene_half_saturation,
       promiscuity_mode = "none",
-      and_method = "boltzmann",
-      tau = gpr_tau,
+      and_method = gpr_and_method,
       or_method = "sum",
       parallel = parallel,
       bpparam_class = if (is.null(BPPARAM)) {
@@ -110,7 +110,8 @@
     evidence_formula = paste(
       "Pando coefficient-weighted ATAC accessibility modifier ->",
       "zero-preserving RNA support log-odds update ->",
-      "Boltzmann AND and additive isozyme OR"
+      paste0("COMPASS-compatible ", gpr_and_method, " GPR-AND"),
+      "and additive isozyme OR"
     ),
     evidence_provenance = list(
       direct_metacell_evidence = c("target_gene_RNA", "peak_ATAC"),
