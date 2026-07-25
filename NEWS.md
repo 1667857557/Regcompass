@@ -1,3 +1,12 @@
+# RegCompassR development
+
+- Redefined Stage 3 around the actual analysis target: for each `condition × cell type`, Human-GEM metabolic genes with at least one significant Pando TF–peak–gene coefficient form one supported gene set, and reactions become core only when a complete GPR branch is contained in that set.
+- Removed the retired shared-TF target projection, signed target-target component construction, top-k pruning, TF-Jaccard filtering, and per-TF target truncation code. The associated functions, output fields, parameters, tests, and documentation were deleted rather than retained as compatibility wrappers.
+- Added `supported_metabolic_genes`, a condition-by-cell-type gene evidence table reporting significant edge, TF, region, adjusted-P-value, coefficient, model-R², and positive/negative edge summaries.
+- Split canonical configuration into `meta_module_args` for Stage 3 annotation expansion and `layer1_args` for Stage 4 integrated-evidence parameters.
+- Added a canonical human Pando region default. Unless overridden by `pando_initiate_args$regions`, Stage 1 loads `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` from Pando and passes their union to `Pando::initiate_grn()`. Non-human analyses must provide species-appropriate regions.
+- Updated the README, stepwise and one-shot tutorials, workflow vignette, mathematical workflow, stage contracts, generated help, and regression tests.
+
 # RegCompassR 1.8.4
 
 - Removed per-meta-module local FASTCORE from the canonical workflow. Stage 3 now produces biological meta-modules and a deduplicated merged reaction catalogue only.
@@ -22,7 +31,6 @@
 - Added `rc_bundled_gem_manifest()` and exported `rc_download_species_gem()`. The installed manifest records model source, release, checksum, size, citation DOI, and CC BY 4.0 attribution.
 - Added progress output and elapsed-time auditing to every public workflow stage and to the complete six-stage run. Each stage writes `step_timing.tsv`; one-shot execution writes `00_execution_timing.tsv` and stores stage and total timings in `result$timing`.
 - Added `progress = FALSE` and `options(RegCompassR.progress = FALSE)` controls for non-interactive or quiet execution.
-- Added cross-platform backend, layered-default, single-thread-child, worker-release, bundled-model integrity, offline loading, progress-control, and timing-output tests.
 - Added an audited condition-metacell cache contract. Checkpoints are no longer reused by file existence alone: ordered cells and labels, scalable full-content RNA/ATAC fingerprints, selected PCA/LSI embedding fingerprints, the SuperCell2 label, `gamma`, seed, reductions/dimensions, and metacell thresholds must match, or the user must rebuild with `overwrite = TRUE`.
 - Downstream stages now reject legacy metacell objects that lack the current condition-only label-guided construction and cache provenance instead of assigning current provenance to an unverifiable artifact.
 - Kept legal minimum-version Imports for SeuratObject 4.1.4, Seurat 4.4.0, and Signac 1.11.0 while retaining exact validated versions in package Config fields and the `.onLoad` runtime gate; R dependency fields do not support equality constraints.
