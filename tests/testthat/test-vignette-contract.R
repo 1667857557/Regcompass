@@ -30,12 +30,13 @@ rc_current_user_docs <- function(root) {
     file.path(root, "man", c(
       "rc_regcompass_stepwise.Rd",
       "rc_regcompass_step_target_union.Rd",
-      "rc_run_regcompass.Rd"
+      "rc_run_regcompass.Rd",
+      "rc_run_regcompass_one_shot.Rd"
     ))
   )
 }
 
-test_that("workflow vignette documents significant-target cores and global FASTCORE", {
+test_that("workflow vignette documents canonical motifs cores GPR and FASTCORE", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   path <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
@@ -45,9 +46,15 @@ test_that("workflow vignette documents significant-target cores and global FASTC
   required <- c(
     "RegCompassR 1.8.4",
     "rc_run_regcompass_one_shot(",
+    "data(\"motifs\", package = \"Pando\")",
+    "padj_threshold = 0.05",
+    "min_abs_estimate = 0",
+    "min_model_rsq = 0.1",
+    "complete-GPR core reactions",
+    "one ordered subsystem/cross-reference expansion pass",
+    "gpr_and_method = \"min\"",
     "rc_regcompass_step_meta_modules(",
     "supported_metabolic_genes",
-    "complete-GPR core reactions",
     "phastConsElements20Mammals.UCSC.hg38",
     "SCREEN.ccRE.UCSC.hg38",
     "rc_regcompass_step_layer2(",
@@ -86,10 +93,23 @@ test_that("all five tutorials use the current stage contract", {
   combined <- paste(unlist(text), collapse = "\n")
 
   expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
-  expect_match(text[[1L]], "meta_module_args", fixed = TRUE)
+  expect_match(text[[1L]], 'data("motifs", package = "Pando")', fixed = TRUE)
+  expect_match(text[[1L]], "padj_threshold = 0.05", fixed = TRUE)
+  expect_match(text[[1L]], "min_abs_estimate = 0", fixed = TRUE)
+  expect_match(text[[1L]], "min_model_rsq = 0.1", fixed = TRUE)
+  expect_match(text[[1L]], 'rna_reduction = "pca"', fixed = TRUE)
+  expect_match(text[[1L]], "rna_dims = 1:30", fixed = TRUE)
+  expect_match(text[[1L]], 'atac_reduction = "lsi"', fixed = TRUE)
+  expect_match(text[[1L]], "atac_dims = 2:30", fixed = TRUE)
+  expect_match(text[[1L]], "seed = 12345L", fixed = TRUE)
+  expect_match(text[[1L]], 'gpr_and_method = "min"', fixed = TRUE)
+
   expect_match(text[[2L]], "supported_metabolic_genes", fixed = TRUE)
   expect_match(text[[2L]], "rc_regcompass_step_results(", fixed = TRUE)
   expect_match(text[[2L]], "merged_modules", fixed = TRUE)
+  expect_match(text[[2L]], 'rna_reduction = "pca"', fixed = TRUE)
+  expect_match(text[[2L]], "seed = 12345L", fixed = TRUE)
+  expect_match(text[[3L]], 'gpr_and_method = "mean"', fixed = TRUE)
   expect_match(text[[3L]], "global_fastcore_support", fixed = TRUE)
   expect_match(text[[4L]], "rc_regcompass_step_target_union(", fixed = TRUE)
   expect_match(text[[4L]], "available_in_all_cached_union_gems", fixed = TRUE)
@@ -103,14 +123,14 @@ test_that("all five tutorials use the current stage contract", {
   expect_match(combined, "gamma = 30", fixed = TRUE)
 })
 
-test_that("user documentation contains no retired architecture names", {
+test_that("user examples contain no retired argument assignments", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- rc_current_user_docs(root)
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
 
-  forbidden <- c(
+  forbidden_names <- c(
     "local_fastcore",
     "local_fastcore_args",
     "global_modules",
@@ -130,11 +150,21 @@ test_that("user documentation contains no retired architecture names", {
     "metabolic_gene_edges"
   )
   expect_false(any(vapply(
-    forbidden, grepl, logical(1), x = text, fixed = TRUE
+    forbidden_names, grepl, logical(1), x = text, fixed = TRUE
+  )))
+
+  forbidden_assignments <- c(
+    "(?m)^\\s*expansion_mode\\s*=",
+    "(?m)^\\s*max_iterations\\s*=",
+    "(?m)^\\s*tau\\s*=",
+    "(?m)^\\s*and_method\\s*=\\s*[\"']boltzmann[\"']"
+  )
+  expect_false(any(vapply(
+    forbidden_assignments, grepl, logical(1), x = text, perl = TRUE
   )))
 })
 
-test_that("README API index and Rd files expose current core and model reuse", {
+test_that("README API index and Rd files expose current core model and defaults", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- c(
@@ -142,10 +172,12 @@ test_that("README API index and Rd files expose current core and model reuse", {
     file.path(root, "docs", "functions.md"),
     file.path(root, "docs", "workflow.md"),
     file.path(root, "docs", "stage-interface-contracts.md"),
+    file.path(root, "docs", "metacell-reduction-selection.md"),
     file.path(root, "docs", "target-union-scoring.md"),
     file.path(root, "man", "rc_regcompass_stepwise.Rd"),
     file.path(root, "man", "rc_regcompass_step_target_union.Rd"),
-    file.path(root, "man", "rc_run_regcompass.Rd")
+    file.path(root, "man", "rc_run_regcompass.Rd"),
+    file.path(root, "man", "rc_run_regcompass_one_shot.Rd")
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
@@ -155,7 +187,7 @@ test_that("README API index and Rd files expose current core and model reuse", {
     "supported_metabolic_genes",
     "significant",
     "complete-GPR",
-    "meta_module_args",
+    "single_ordered_annotation_pass",
     "merged_core_reactions",
     "merged_reaction_membership",
     "medium-specific union GEM",
@@ -164,7 +196,17 @@ test_that("README API index and Rd files expose current core and model reuse", {
     "file_checksum",
     "structural_model_reused_exactly",
     "fastcore_rerun",
-    "model_rebuild"
+    "model_rebuild",
+    "motifs",
+    "padj_threshold",
+    "min_abs_estimate",
+    "min_model_rsq",
+    "rna_reduction",
+    "rna_dims",
+    "atac_reduction",
+    "atac_dims",
+    "seed = 12345L",
+    "gpr_and_method"
   )
   expect_true(all(vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
