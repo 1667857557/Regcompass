@@ -73,6 +73,7 @@ Collate:
     'one_shot.R'
     'stratum_filter.R'
     'workflow_z_union_gem.R'
+    'workflow_zz_contract_cleanup.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
