@@ -17,7 +17,7 @@
 }
 
 .rc_expand_ranged_constraints <- function(A, lhs, rhs,
-                                          tolerance = 1e-10) {
+                                           tolerance = 1e-10) {
   if (!nrow(A)) {
     return(list(
       A = A,
@@ -27,19 +27,15 @@
       bound = numeric()
     ))
   }
-
   source_rows <- integer()
   direction <- character()
   bounds <- numeric()
-
   for (i in seq_len(nrow(A))) {
     lower <- lhs[[i]]
     upper <- rhs[[i]]
     lower_finite <- is.finite(lower)
     upper_finite <- is.finite(upper)
-
-    if (lower_finite && upper_finite &&
-        abs(lower - upper) <= tolerance) {
+    if (lower_finite && upper_finite && abs(lower - upper) <= tolerance) {
       source_rows <- c(source_rows, i)
       direction <- c(direction, "==")
       bounds <- c(bounds, (lower + upper) / 2)
@@ -56,7 +52,6 @@
       }
     }
   }
-
   list(
     A = A[source_rows, , drop = FALSE],
     direction = direction,
@@ -69,16 +64,17 @@
   )
 }
 
+# `time_limit` is an internal solver control used by FASTCORE construction.
+# Scoring callers omit it, so scoring LPs use the solver's unlimited default.
 rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
                         solver = c("highs", "gurobi", "glpk"),
-                        time_limit = 60) {
+                        time_limit = Inf) {
   solver <- match.arg(solver)
   obj <- as.numeric(obj)
   lb <- as.numeric(lb)
   ub <- as.numeric(ub)
   lhs <- as.numeric(lhs)
   rhs <- as.numeric(rhs)
-
   if (is.null(dim(A)) || length(dim(A)) != 2L) {
     stop("`A` must be a two-dimensional constraint matrix.", call. = FALSE)
   }
@@ -96,9 +92,9 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
   }
   if (!is.numeric(time_limit) || length(time_limit) != 1L ||
       is.na(time_limit) || time_limit <= 0) {
-    stop("`time_limit` must be one positive number.", call. = FALSE)
+    stop("Internal solver `time_limit` must be one positive number or Inf.",
+         call. = FALSE)
   }
-
   A <- .rc_as_dgCMatrix(A)
   failure <- function(message) {
     list(
@@ -109,11 +105,12 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
       solver_message = as.character(message)
     )
   }
-
   if (identical(solver, "highs")) {
     if (!requireNamespace("highs", quietly = TRUE)) {
       return(failure("Package 'highs' is not installed."))
     }
+    control_args <- list(log_to_console = FALSE)
+    if (is.finite(time_limit)) control_args$time_limit <- time_limit
     answer <- tryCatch(
       highs::highs_solve(
         L = obj,
@@ -123,32 +120,24 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
         lhs = lhs,
         rhs = rhs,
         maximum = FALSE,
-        control = highs::highs_control(
-          time_limit = time_limit,
-          log_to_console = FALSE
-        )
+        control = do.call(highs::highs_control, control_args)
       ),
       error = function(e) e
     )
     if (inherits(answer, "error")) return(failure(conditionMessage(answer)))
-
     status <- .rc_lp_status(
       answer$status_message %||% answer$solver_msg %||% "",
       answer$status %||% NA_integer_
     )
-    solution <- as.numeric(answer$primal_solution %||% numeric())
-    objective <- as.numeric(answer$objective_value %||% NA_real_)
     return(list(
       status = status,
-      solution = solution,
-      objective = objective,
+      solution = as.numeric(answer$primal_solution %||% numeric()),
+      objective = as.numeric(answer$objective_value %||% NA_real_),
       solver = solver,
       solver_message = answer$status_message %||% ""
     ))
   }
-
   expanded <- .rc_expand_ranged_constraints(A, lhs, rhs)
-
   if (identical(solver, "glpk")) {
     if (!requireNamespace("Rglpk", quietly = TRUE)) {
       return(failure("Package 'Rglpk' is not installed."))
@@ -182,7 +171,6 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
       error = function(e) e
     )
     if (inherits(answer, "error")) return(failure(conditionMessage(answer)))
-
     status <- if (identical(as.integer(answer$status), 0L)) {
       "optimal"
     } else {
@@ -196,7 +184,6 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
       solver_message = paste0("Rglpk status ", answer$status)
     ))
   }
-
   if (!requireNamespace("gurobi", quietly = TRUE)) {
     return(failure("Package 'gurobi' is not installed."))
   }
@@ -205,8 +192,10 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     obj = obj,
     lb = lb,
     ub = ub,
-    sense = ifelse(expanded$direction == "==", "=",
-                   ifelse(expanded$direction == ">=", ">", "<")),
+    sense = ifelse(
+      expanded$direction == "==", "=",
+      ifelse(expanded$direction == ">=", ">", "<")
+    ),
     rhs = expanded$rhs,
     modelsense = "min"
   )
@@ -217,10 +206,8 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     error = function(e) e
   )
   if (inherits(answer, "error")) return(failure(conditionMessage(answer)))
-
-  status <- .rc_lp_status(answer$status %||% "")
   list(
-    status = status,
+    status = .rc_lp_status(answer$status %||% ""),
     solution = as.numeric(answer$x %||% numeric()),
     objective = as.numeric(answer$objval %||% NA_real_),
     solver = solver,
@@ -228,11 +215,12 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
   )
 }
 
-rc_compass_vmax_directional <- function(S, lb, ub, target_reaction,
-                                        direction = c("forward", "reverse"),
-                                        solver = c("highs", "gurobi", "glpk"),
-                                        time_limit = 60,
-                                        flux_threshold = 1e-8) {
+rc_compass_vmax_directional <- function(
+    S, lb, ub, target_reaction,
+    direction = c("forward", "reverse"),
+    solver = c("highs", "gurobi", "glpk"),
+    time_limit = Inf,
+    flux_threshold = 1e-8) {
   direction <- match.arg(direction)
   solver <- match.arg(solver)
   S <- .rc_as_dgCMatrix(S)
@@ -257,7 +245,6 @@ rc_compass_vmax_directional <- function(S, lb, ub, target_reaction,
     stop("Reaction lower bounds cannot exceed upper bounds.", call. = FALSE)
   }
   target_index <- match(target_reaction, reactions)
-
   allowed <- if (identical(direction, "forward")) {
     ub[[target_index]] > flux_threshold
   } else {
@@ -271,7 +258,6 @@ rc_compass_vmax_directional <- function(S, lb, ub, target_reaction,
       flux = numeric()
     ))
   }
-
   objective <- rep(0, length(reactions))
   objective[[target_index]] <- if (identical(direction, "forward")) -1 else 1
   answer <- rc_solve_lp(
@@ -293,7 +279,6 @@ rc_compass_vmax_directional <- function(S, lb, ub, target_reaction,
       flux = numeric()
     ))
   }
-
   flux <- answer$solution
   names(flux) <- reactions
   vmax <- if (identical(direction, "forward")) {
@@ -315,7 +300,6 @@ rc_compass_two_step_lp_directional <- function(
     target_direction = c("forward", "reverse"),
     omega = 0.95,
     solver = c("highs", "gurobi", "glpk"),
-    time_limit = 60,
     flux_threshold = 1e-8) {
   target_direction <- match.arg(target_direction)
   solver <- match.arg(solver)
@@ -323,7 +307,6 @@ rc_compass_two_step_lp_directional <- function(
       !is.finite(omega) || omega <= 0 || omega > 1) {
     stop("`omega` must be in (0, 1].", call. = FALSE)
   }
-
   reactions <- colnames(S)
   if (is.null(reactions) || anyNA(reactions) || any(!nzchar(reactions)) ||
       anyDuplicated(reactions)) {
@@ -339,13 +322,14 @@ rc_compass_two_step_lp_directional <- function(
   if (any(lb > ub)) {
     stop("Reaction lower bounds cannot exceed upper bounds.", call. = FALSE)
   }
-
   if (!is.null(names(penalties))) {
     missing_penalties <- setdiff(reactions, names(penalties))
     if (length(missing_penalties)) {
-      stop("Reaction penalties are missing for: ",
-           paste(utils::head(missing_penalties, 10L), collapse = ", "),
-           call. = FALSE)
+      stop(
+        "Reaction penalties are missing for: ",
+        paste(utils::head(missing_penalties, 10L), collapse = ", "),
+        call. = FALSE
+      )
     }
     penalties <- as.numeric(penalties[reactions])
   } else {
@@ -356,7 +340,6 @@ rc_compass_two_step_lp_directional <- function(
     stop("`penalties` must provide one finite non-negative value per reaction.",
          call. = FALSE)
   }
-
   step1 <- rc_compass_vmax_directional(
     S = S,
     lb = lb,
@@ -364,7 +347,6 @@ rc_compass_two_step_lp_directional <- function(
     target_reaction = target_reaction,
     direction = target_direction,
     solver = solver,
-    time_limit = time_limit,
     flux_threshold = flux_threshold
   )
   if (!isTRUE(step1$feasible)) {
@@ -378,38 +360,31 @@ rc_compass_two_step_lp_directional <- function(
       flux = numeric()
     ))
   }
-
   S <- .rc_as_dgCMatrix(S)
   n_reactions <- ncol(S)
   zero <- Matrix::Matrix(
-    0,
-    nrow = nrow(S),
-    ncol = n_reactions,
-    sparse = TRUE
+    0, nrow = nrow(S), ncol = n_reactions, sparse = TRUE
   )
   mass_balance <- cbind(S, zero)
-
   positive <- Matrix::Matrix(
-    0,
-    nrow = n_reactions,
-    ncol = 2L * n_reactions,
-    sparse = TRUE
+    0, nrow = n_reactions, ncol = 2L * n_reactions, sparse = TRUE
   )
   negative <- positive
   positive[cbind(seq_len(n_reactions), seq_len(n_reactions))] <- 1
-  positive[cbind(seq_len(n_reactions), n_reactions + seq_len(n_reactions))] <- -1
+  positive[cbind(
+    seq_len(n_reactions), n_reactions + seq_len(n_reactions)
+  )] <- -1
   negative[cbind(seq_len(n_reactions), seq_len(n_reactions))] <- -1
-  negative[cbind(seq_len(n_reactions), n_reactions + seq_len(n_reactions))] <- -1
-
+  negative[cbind(
+    seq_len(n_reactions), n_reactions + seq_len(n_reactions)
+  )] <- -1
   target <- Matrix::Matrix(
-    0,
-    nrow = 1,
-    ncol = 2L * n_reactions,
-    sparse = TRUE
+    0, nrow = 1, ncol = 2L * n_reactions, sparse = TRUE
   )
   target_index <- match(target_reaction, reactions)
-  target[1, target_index] <- if (identical(target_direction, "forward")) 1 else -1
-
+  target[1, target_index] <- if (
+    identical(target_direction, "forward")
+  ) 1 else -1
   A <- rbind(mass_balance, positive, negative, target)
   lhs <- c(
     rep(0, nrow(S)),
@@ -422,7 +397,6 @@ rc_compass_two_step_lp_directional <- function(
     Inf
   )
   auxiliary_upper <- pmax(abs(lb), abs(ub))
-
   step2 <- rc_solve_lp(
     obj = c(rep(0, n_reactions), penalties),
     A = A,
@@ -430,8 +404,7 @@ rc_compass_two_step_lp_directional <- function(
     rhs = rhs,
     lb = c(lb, rep(0, n_reactions)),
     ub = c(ub, auxiliary_upper),
-    solver = solver,
-    time_limit = time_limit
+    solver = solver
   )
   if (!identical(step2$status, "optimal") ||
       length(step2$solution) != 2L * n_reactions) {
@@ -445,7 +418,6 @@ rc_compass_two_step_lp_directional <- function(
       flux = numeric()
     ))
   }
-
   flux <- step2$solution[seq_len(n_reactions)]
   names(flux) <- reactions
   list(
@@ -459,17 +431,18 @@ rc_compass_two_step_lp_directional <- function(
   )
 }
 
-rc_build_abs_penalty_lp <- function(S, lb, ub, penalties, target_index,
-                                    target_min,
-                                    target_direction = c("forward", "reverse"),
-                                    penalty_floor = 1e-12) {
+rc_build_abs_penalty_lp <- function(
+    S, lb, ub, penalties, target_index, target_min,
+    target_direction = c("forward", "reverse"),
+    penalty_floor = 1e-12) {
   target_direction <- match.arg(target_direction)
   S <- .rc_as_dgCMatrix(S)
   n <- ncol(S)
   reactions <- colnames(S)
   if (is.null(reactions) || anyNA(reactions) || any(!nzchar(reactions)) ||
       anyDuplicated(reactions)) {
-    stop("`S` must have unique non-empty reaction IDs in colnames().", call. = FALSE)
+    stop("`S` must have unique non-empty reaction IDs in colnames().",
+         call. = FALSE)
   }
   if (length(target_index) != 1L || is.na(target_index) ||
       target_index < 1L || target_index > n) {
@@ -477,54 +450,65 @@ rc_build_abs_penalty_lp <- function(S, lb, ub, penalties, target_index,
   }
   if (!is.numeric(target_min) || length(target_min) != 1L ||
       !is.finite(target_min) || target_min < 0) {
-    stop("`target_min` must be one finite non-negative number.", call. = FALSE)
+    stop("`target_min` must be one finite non-negative number.",
+         call. = FALSE)
   }
   if (!is.numeric(penalty_floor) || length(penalty_floor) != 1L ||
       !is.finite(penalty_floor) || penalty_floor < 0) {
-    stop("`penalty_floor` must be one finite non-negative number.", call. = FALSE)
+    stop("`penalty_floor` must be one finite non-negative number.",
+         call. = FALSE)
   }
   lb <- rc_align_bound(lb, reactions, default = -1000, name = "lb")
   ub <- rc_align_bound(ub, reactions, default = 1000, name = "ub")
-
   if (is.null(names(penalties))) {
     if (length(penalties) != n) {
-      stop("Unnamed `penalties` must have one value per reaction.", call. = FALSE)
+      stop("Unnamed `penalties` must have one value per reaction.",
+           call. = FALSE)
     }
     penalty <- as.numeric(penalties)
   } else {
     penalty_names <- as.character(names(penalties))
     if (anyNA(penalty_names) || any(!nzchar(penalty_names)) ||
         anyDuplicated(penalty_names)) {
-      stop("Named `penalties` must have unique non-empty reaction IDs.", call. = FALSE)
+      stop("Named `penalties` must have unique non-empty reaction IDs.",
+           call. = FALSE)
     }
     missing <- setdiff(reactions, penalty_names)
     unknown <- setdiff(penalty_names, reactions)
     if (length(missing)) {
-      stop("Named `penalties` is missing reactions: ",
-           paste(utils::head(missing, 10L), collapse = ", "), call. = FALSE)
+      stop(
+        "Named `penalties` is missing reactions: ",
+        paste(utils::head(missing, 10L), collapse = ", "),
+        call. = FALSE
+      )
     }
     if (length(unknown)) {
-      stop("Named `penalties` contains unknown reactions: ",
-           paste(utils::head(unknown, 10L), collapse = ", "), call. = FALSE)
+      stop(
+        "Named `penalties` contains unknown reactions: ",
+        paste(utils::head(unknown, 10L), collapse = ", "),
+        call. = FALSE
+      )
     }
     penalty <- as.numeric(penalties[reactions])
   }
   if (any(!is.finite(penalty)) || any(penalty < 0)) {
-    stop("`penalties` must contain finite non-negative values.", call. = FALSE)
+    stop("`penalties` must contain finite non-negative values.",
+         call. = FALSE)
   }
   penalty <- pmax(penalty, penalty_floor)
-
   identity <- Matrix::Diagonal(n)
   zero <- Matrix::Matrix(0, nrow = nrow(S), ncol = n, sparse = TRUE)
   mass_balance <- cbind(S, zero)
   abs_positive <- cbind(identity, -identity)
   abs_negative <- cbind(-identity, -identity)
   target <- Matrix::Matrix(0, nrow = 1L, ncol = 2L * n, sparse = TRUE)
-  target[1L, target_index] <- if (identical(target_direction, "reverse")) -1 else 1
-
+  target[1L, target_index] <- if (
+    identical(target_direction, "reverse")
+  ) -1 else 1
   absolute_upper <- pmax(abs(lb), abs(ub))
   if (any(!is.finite(absolute_upper))) {
-    stop("Absolute flux bounds must be finite for the penalty LP.", call. = FALSE)
+    stop("Absolute flux bounds must be finite for the penalty LP.",
+         call. = FALSE)
   }
   list(
     obj = c(rep(0, n), penalty),
