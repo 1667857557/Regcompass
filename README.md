@@ -2,30 +2,17 @@
 
 RegCompassR 1.8.4 implements a GRN-first RNA+ATAC metabolic workflow for paired single-cell multiome data.
 
-## Canonical architecture
+## Workflow
 
 ```text
-condition × cell type single cells
-→ one Pando GRN per group
-→ condition-level multimodal metacells
-→ metabolic-gene GRN components
-→ complete-GPR core reactions
-→ core-subsystem + KEGG/Reactome + master-Rhea expansion
-→ biological meta-modules
-→ deduplicated merged meta-module catalogue
+condition × cell type cells
+→ group-specific Pando GRNs and condition-level metacells
+→ complete-GPR reaction meta-modules
 → integrated RNA+ATAC reaction support
-→ one medium-specific union GEM
-→ one global FASTCORE completion
-→ directional two-step COMPASS-like LP scoring
+→ one medium-constrained model with global FASTCORE completion
+→ directional COMPASS-like LP scoring
+→ annotated rankings and condition contrasts
 ```
-
-### Terminology
-
-- **Meta-module**: a biological reaction set defined from the GRN, complete GPRs, subsystem membership, and direct reaction cross-references.
-- **Merged meta-module catalogue**: the reaction-ID deduplication of all biological meta-modules. It is not flux-completed and is not a GEM.
-- **Union GEM**: the medium-constrained Stage 5 model created from the merged catalogue plus global FASTCORE support. Only this model is called a union GEM.
-
-FASTCORE is applied once for each medium-specific union GEM. Biological meta-modules and their merged catalogue are never FASTCORE-completed independently.
 
 ## Installation
 
@@ -112,43 +99,43 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
+## Medium presets
+
+`rc_make_medium_scenarios()` supports physiological, culture-medium, nutrient-sensitivity, technical, and custom scenarios:
+
+`physiologic`, `normal_human_plasma`, `mouse_plasma`, `rpmi1640`, `dmem_high_glucose`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, `minimal`, `compass_model_bounds`, `permissive_all_exchange`, and `custom`.
+
+See [Predefined extracellular medium scenarios](docs/medium-presets.md) for species restrictions, assumptions, and custom-medium examples.
+
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: condition-by-cell-type Pando GRNs.
-- `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells.
-- `rc_regcompass_step_meta_modules()`: complete-GPR cores and biological reaction expansion; no FASTCORE and no GEM construction.
-- `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support.
-- `rc_regcompass_step_layer2()`: medium-specific union-GEM construction, global FASTCORE, and directional LP scoring.
-- `rc_regcompass_step_results()`: rankings, evidence provenance, annotations, and condition contrasts.
-- `rc_regcompass_step_target_union()`: second-pass scoring of directly KEGG/Reactome/master-Rhea-linked non-core reactions in the exact cached final medium-specific union GEMs.
+- `rc_regcompass_step_grn()`: infer condition-by-cell-type Pando GRNs.
+- `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells.
+- `rc_regcompass_step_meta_modules()`: map GRN components to complete-GPR reaction modules.
+- `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support.
+- `rc_regcompass_step_layer2()`: build medium-specific models and run directional LP scoring.
+- `rc_regcompass_step_results()`: assemble rankings, annotations, provenance, and contrasts.
+- `rc_regcompass_step_target_union()`: remap selected core genes or reactions and score directly linked targets in the cached Stage 5 models.
 
-## Key object fields
+## Main outputs
 
 ```r
-step3$condition_modules
-step3$merged_modules$merged_core_reactions
-step3$merged_modules$merged_reaction_membership
-
-step5$model_cache_summary
-result$merged_grn_meta_modules
 result$reaction_ranking
 result$condition_contrast
+result$merged_grn_meta_modules$merged_core_reactions
+result$merged_grn_meta_modules$merged_reaction_membership
+result$microcompass$model_cache_summary
 ```
 
-## Structural interpretation
-
-For one medium scenario, all conditions and metacells use the same union GEM, reaction bounds, target-flux fraction, and direction-specific `vmax`. Condition differences arise from the multiome penalty matrix.
-
-Different medium scenarios may produce different global FASTCORE support sets and therefore different union GEM structures. Cross-medium comparisons must be interpreted as different structural contexts.
-
-The optional second-pass remapping workflow uses selected original core reactions as database-mapping anchors. It reuses the exact Stage 5 union-GEM files, medium bounds, and reaction structure; it does not rebuild a model or rerun FASTCORE.
+Within one medium scenario, all conditions use the same structural model and reaction bounds; condition differences arise from the multiome penalty matrix. Different media may produce different FASTCORE support sets and should be interpreted as different structural contexts.
 
 ## Tutorials
 
 - [Level 1: minimal one-shot run](docs/tutorial-01-quick-start.md)
-- [Level 2: true stepwise run with audit gates](docs/tutorial-02-stepwise-audit.md)
+- [Level 2: stepwise run](docs/tutorial-02-stepwise-audit.md)
 - [Level 3: restart, sensitivity, and diagnostics](docs/tutorial-03-advanced-restart.md)
 - [Level 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
 - [Level 5: condition differential analysis](docs/tutorial-05-condition-differential-analysis.md)
+- [Medium presets](docs/medium-presets.md)
 - [Workflow and mathematical interpretation](docs/workflow.md)
 - [Stage input-output contracts](docs/stage-interface-contracts.md)
