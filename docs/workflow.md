@@ -4,10 +4,8 @@
 
 ```text
 condition × cell type cells
-→ Pando TF–peak–metabolic-gene GRN
-→ condition-level multimodal metacells
-→ signed metabolic-gene projection
-→ GRN connected components
+→ Pando TF–peak–Human-GEM-gene models
+→ significantly supported metabolic target genes
 → complete-GPR core reactions
 → core-subsystem expansion
 → KEGG/Reactome reaction-equivalence expansion
@@ -21,19 +19,44 @@ condition × cell type cells
 → within-condition ranking and descriptive contrasts
 ```
 
-## 1. GRN and metacell analysis units
+## 1. Pando targets and regulatory regions
 
-Pando is fitted separately for each `condition × cell type` group. Metacells are condition-level pseudo-observations with cell-type-guided construction. Original biological-sample metadata are provenance only and are not used for balancing or weighting.
-
-## 2. Biological meta-modules
-
-For a GRN component `m`, a reaction is a core reaction only when at least one complete GPR isozyme group is represented:
+Pando is fitted separately for each `condition × cell type` group. Its candidate target set is:
 
 \[
-C_m = \{r : \exists k,\; GPR_{r,k} \subseteq G_m\}.
+T = G_{Human-GEM\ GPR} \cap G_{RNA\ assay}.
 \]
 
-Partially represented enzyme complexes are retained as diagnostics but are not core anchors.
+For human hg38 analyses, the default `Pando::initiate_grn()` region set is:
+
+\[
+R = phastConsElements20Mammals.UCSC.hg38
+\cup SCREEN.ccRE.UCSC.hg38.
+\]
+
+Both objects are loaded from the installed Pando package. A user-supplied `pando_initiate_args$regions` overrides the default. Because the bundled default is hg38-specific, non-human analyses must provide an appropriate region set.
+
+A TF–peak–target row is retained as significant evidence when it passes the configured adjusted-P-value, absolute-estimate, and target-model-R² thresholds. Positive and negative coefficients both indicate regulatory evidence.
+
+## 2. Supported metabolic gene sets and core reactions
+
+For condition `c` and cell type `k`, let `E_{c,k}` be the significant Pando coefficient table. The supported Human-GEM metabolic genes are:
+
+\[
+M_{c,k} = \{g \in T : \exists (t,p,g) \in E_{c,k}\}.
+\]
+
+No shared-TF projection, target-target graph, top-k pruning, or GRN connected-component calculation is performed.
+
+A reaction is a core reaction only when at least one complete GPR isozyme branch is represented:
+
+\[
+C_{c,k} = \{r : \exists j,\; GPR_{r,j} \subseteq M_{c,k}\}.
+\]
+
+Partially represented enzyme complexes are retained as diagnostics but are not core anchors. This group-level definition allows required subunits supported by different TFs or peaks to satisfy the same complete GPR branch.
+
+## 3. Biological meta-modules
 
 Annotation-defined expansion is ordered:
 
@@ -47,27 +70,29 @@ No metabolite-neighbour, one-hop, currency-metabolite, or stoichiometric-adjacen
 The resulting biological reaction set is:
 
 \[
-B_m = C_m \cup S_m \cup D_m \cup R_m.
+B_{c,k} = C_{c,k} \cup S_{c,k} \cup D_{c,k} \cup R_{c,k}.
 \]
 
-## 3. Merged meta-module catalogue
+## 4. Merged meta-module catalogue
 
-Stage 3 deduplicates reaction IDs across all biological meta-modules:
+Stage 3 deduplicates reaction IDs across all condition-by-cell-type biological meta-modules:
 
 \[
-B_{merged} = \bigcup_m B_m,
+B_{merged} = \bigcup_{c,k} B_{c,k},
 \qquad
-C_{merged} = \bigcup_m C_m.
+C_{merged} = \bigcup_{c,k} C_{c,k}.
 \]
 
-This operation does not apply medium constraints, does not test flux consistency, and does not run FASTCORE. It produces a **merged reaction catalogue**, not a GEM and not a union GEM.
+This operation does not apply medium constraints, test flux consistency, or run FASTCORE. It produces a **merged reaction catalogue**, not a GEM and not a union GEM.
 
 ```r
+step3$condition_modules$supported_metabolic_genes
+step3$condition_modules$core_gene_reaction
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 ```
 
-## 4. Multiome reaction support
+## 5. Multiome reaction support
 
 For gene `g` in metacell `u`, RNA logCPM is converted to bounded support:
 
@@ -91,7 +116,7 @@ Complete GPR complexes use a normalized soft minimum; isozyme groups are additiv
 p_{r,u}=\frac{1}{1+\log_2(1+E_{r,u})}.
 \]
 
-## 5. Medium-specific union GEM
+## 6. Medium-specific union GEM
 
 For each medium scenario `q`, Stage 5 builds a medium-constrained FASTCC-consistent parent GEM. Demand, sink, and artificial-support reactions are disabled for reconstruction.
 
@@ -122,7 +147,7 @@ layer2_args$model_params <- list(
 )
 ```
 
-## 6. Directional two-step LP
+## 7. Directional two-step LP
 
 For target reaction `r` and direction `d`, Step 1 computes:
 
@@ -161,7 +186,7 @@ Cross-reaction ranking uses:
 
 Lower normalized penalty means stronger support in the fixed union-GEM context.
 
-## 7. Structural comparison policy
+## 8. Structural comparison policy
 
 Within one medium scenario:
 
@@ -171,7 +196,7 @@ Within one medium scenario:
 
 Across different media, global FASTCORE may select different support sets. Results therefore represent different structural contexts and should not be pooled into one ranking.
 
-## 8. Targeted second-pass scoring
+## 9. Targeted second-pass scoring
 
 Selected core reaction IDs or genes are used only to define KEGG, Reactome, or master-Rhea mapping anchors. The mapped non-core reactions are scored only when present in every required final Stage 5 union GEM.
 
