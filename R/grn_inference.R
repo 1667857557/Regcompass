@@ -25,7 +25,7 @@
 }
 
 .rc_run_condition_single_cell_grns <- function(
-    object, gem, outdir, pfm, genome,
+    object, gem, outdir, pfm = NULL, genome,
     condition_col = "condition", celltype_col = "cell_type",
     rna_assay = "RNA", atac_assay = "ATAC",
     min_cells = 20L,
@@ -72,6 +72,14 @@
     )
   }
   pando_install <- .rc_validate_pando_repository()
+  motif_policy <- "user_supplied"
+  if (is.null(pfm)) {
+    pfm <- .rc_default_pando_motifs()
+    motif_policy <- "Pando::motifs"
+  }
+  if (!length(pfm)) {
+    stop("`pfm` must be a non-empty motif collection.", call. = FALSE)
+  }
   group_cols <- c(condition_col, celltype_col)
   missing <- setdiff(group_cols, colnames(object@meta.data))
   if (length(missing)) {
@@ -267,7 +275,7 @@
     stop("No significant Pando TF-peak-gene edges were available.", call. = FALSE)
   }
   answer <- list(
-    schema_version = "regcompass_single_cell_grn_v2",
+    schema_version = "regcompass_single_cell_grn_v3",
     pando_installed_version = pando_install$version,
     pando_installation = pando_install,
     target_metabolic_genes = target_genes,
@@ -284,6 +292,7 @@
         "globally absent peaks are removed; cell-type-local absent peaks",
         "remain exact zeros and are not passed to RunTFIDF"
       ),
+      pando_motifs = motif_policy,
       pando_regions = region_policy,
       pando_peak_cor = pando_infer_args$peak_cor %||% 0.01,
       pando_rsq = paste0("finite rsq >= ", min_model_rsq)
