@@ -1,4 +1,4 @@
-test_that("global meta-module model scores every metacell", {
+test_that("medium-specific union GEM scores every metacell", {
   skip_if_not(
     requireNamespace("highs", quietly = TRUE) ||
       requireNamespace("Rglpk", quietly = TRUE) ||
@@ -35,8 +35,8 @@ test_that("global meta-module model scores every metacell", {
     )
   )
   membership <- data.frame(
-    sample_id = "global",
-    module_id = "GLOBAL_UNION",
+    sample_id = "merged",
+    module_id = "MERGED_META_MODULES",
     reaction_id = "R1",
     is_core = TRUE,
     stringsAsFactors = FALSE
@@ -81,6 +81,10 @@ test_that("global meta-module model scores every metacell", {
   expect_equal(nrow(result$model_cache_summary), 1L)
   expect_true(result$params$shared_gem)
   expect_equal(result$params$shared_gem_scope, "all_metacells")
+  expect_identical(
+    result$model_cache_summary$build_strategy,
+    "medium_specific_union_gem"
+  )
 })
 
 test_that("condition-specific medium is rejected for shared-GEM scoring", {
@@ -91,8 +95,12 @@ test_that("condition-specific medium is rejected for shared-GEM scoring", {
       dimnames = list("R1", "u1")
     ),
     unit_meta = data.frame(
-      pool_id = "u1", unit_id = "u1", sample_id = "S1",
-      condition = "A", cell_type = "T", stringsAsFactors = FALSE
+      pool_id = "u1",
+      unit_id = "u1",
+      sample_id = "S1",
+      condition = "A",
+      cell_type = "T",
+      stringsAsFactors = FALSE
     )
   )
   gem <- rc_make_gem(
@@ -101,8 +109,12 @@ test_that("condition-specific medium is rejected for shared-GEM scoring", {
     ub = c(R1 = 1)
   )
   medium <- data.frame(
-    medium_scenario_id = "custom", exchange_reaction_id = "R1",
-    lb = 0, ub = 1, available = TRUE, condition = "A"
+    medium_scenario_id = "custom",
+    exchange_reaction_id = "R1",
+    lb = 0,
+    ub = 1,
+    available = TRUE,
+    condition = "A"
   )
   expect_error(
     rc_run_microcompass(
@@ -133,7 +145,7 @@ test_that("v2 exporter writes model and LP diagnostics", {
     ),
     model_cache_summary = data.frame(
       sample_id = "global",
-      module_id = "GLOBAL_UNION",
+      module_id = "MEDIUM_UNION_GEM",
       stringsAsFactors = FALSE
     ),
     model_diagnostics = data.frame(
