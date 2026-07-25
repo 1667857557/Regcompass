@@ -3,7 +3,9 @@
 #' With `model_mode = "meta_module_gem"`, this stage is the only place where
 #' FASTCORE is applied. For each medium scenario it constructs one union GEM
 #' from the merged biological meta-module catalogue plus global FASTCORE support,
-#' then reuses that exact model for every condition and metacell.
+#' then reuses that exact model for every condition and metacell. Only union-GEM
+#' construction accepts `model_params$completion_time_limit`; scoring LPs have
+#' no time-limit parameter.
 #'
 #' @export
 rc_regcompass_step_layer2 <- function(
@@ -21,6 +23,19 @@ rc_regcompass_step_layer2 <- function(
   if (!is.list(layer2_args)) {
     stop("`layer2_args` must be a list.", call. = FALSE)
   }
+  allowed <- c(
+    "model_params", "omega", "target_direction", "solver", "flux_threshold"
+  )
+  unknown <- setdiff(names(layer2_args), allowed)
+  if (length(unknown)) {
+    stop(
+      "Unsupported `layer2_args`: ", paste(unknown, collapse = ", "),
+      ". Scoring `time_limit` has been removed. Use only ",
+      "`layer2_args$model_params$completion_time_limit` to limit global ",
+      "FASTCORE union-GEM construction.",
+      call. = FALSE
+    )
+  }
   params <- meta_modules$workflow_params
   .rc_require_stage_gem(meta_modules, gem, "meta_modules")
   .rc_validate_layer1_stage(
@@ -29,6 +44,9 @@ rc_regcompass_step_layer2 <- function(
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   layer2_args$model_params <- layer2_args$model_params %||% list()
+  if (!is.list(layer2_args$model_params)) {
+    stop("`layer2_args$model_params` must be a list.", call. = FALSE)
+  }
   layer2_args$model_params$cache_dir <- file.path(
     outdir, "model_cache", model_mode
   )
