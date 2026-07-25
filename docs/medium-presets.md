@@ -1,6 +1,6 @@
 # Predefined extracellular medium scenarios
 
-`rc_make_medium_scenarios()` converts a named extracellular environment into reaction-level exchange bounds for the prepared Human-GEM or Mouse-GEM model. The canonical workflow uses one shared medium across conditions (`condition = "all"`) so condition contrasts are not confounded by different environmental constraints.
+`rc_make_medium_scenarios()` converts a named extracellular environment into reaction-level exchange bounds for the prepared Human-GEM or Mouse-GEM model.
 
 ## Available scenarios
 
@@ -31,18 +31,17 @@
 
 These values come from the healthy-mouse plasma medium described by Gardner and Stuart. Sullivan et al.'s quantitative murine plasma and tumor-interstitial-fluid study supports the broader availability catalog and demonstrates that extracellular metabolite levels vary with tumor model, anatomical location, diet, and sampling. RegCompass therefore does not assign one tumor-bearing concentration to every mouse row.
 
-## Important interpretation rules
+## Interpretation rules
 
 1. **Concentration is not uptake flux.** Concentrations are retained as provenance. Only the explicitly flagged glucose, lactate, and glutamine rows convert concentration ratios into relative uptake caps; these are sensitivity assumptions, not measured transport rates.
 2. **Human values do not populate the mouse preset.** Non-target mouse components are availability-only and cannot retain a human HPLM concentration, concentration basis, or component DOI.
 3. **GEM directionality is never expanded.** Requested medium bounds are intersected with the original GEM bounds. A preset cannot open an uptake or secretion direction that the model originally blocked.
 4. **Unlisted uptake is closed during medium application.** By default, exchanges absent from the selected catalog receive `exchange_default_lb = 0`; originally permitted secretion can remain open when `allow_secretion = TRUE`.
 5. **Culture presets are basal formulations.** `rpmi1640` and `dmem_high_glucose` do not automatically represent serum, dialyzed serum, pyruvate supplementation, or laboratory-specific additives. Use `custom` for the actual experimental formulation.
-6. **Compare media with all other settings fixed.** Reuse the same GEM, Layer 1 reaction expression, target reactions, target directions, solver, and convergence criteria.
 
 ## Examples
 
-### Recommended physiological baseline
+### Physiological baseline
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
@@ -52,22 +51,22 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-### Culture-medium sensitivity analysis
+### Culture medium
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = c("rpmi1640", "dmem_high_glucose"),
+  scenario = "dmem_high_glucose",
   species = "human"
 )
 ```
 
-### Targeted nutrient sensitivity analysis
+### Nutrient sensitivity
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = c("physiologic", "low_glucose", "high_lactate"),
+  scenario = "low_glucose",
   species = "human"
 )
 ```
