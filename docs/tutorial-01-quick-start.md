@@ -9,7 +9,7 @@ condition × cell type cells
 → Pando GRNs and multimodal metacells
 → complete-GPR reaction meta-modules
 → integrated RNA+ATAC reaction support
-→ medium-specific model and global FASTCORE completion
+→ one model per medium with one global FASTCORE completion
 → directional LP scoring and condition contrasts
 ```
 
@@ -97,7 +97,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-`layer2_args$model_params` controls the medium-specific FASTCORE completion. One cached structural model is shared by all conditions analysed under the same medium.
+`layer2_args$model_params` controls FASTCORE completion. One cached structural model is shared by all conditions analysed under the same medium.
 
 ## Inspect the main outputs
 
