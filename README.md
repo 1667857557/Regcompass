@@ -6,7 +6,7 @@ RegCompassR 1.8.4 implements a GRN-first RNA+ATAC metabolic workflow for paired 
 
 ```text
 condition × cell type cells
-→ group-specific Pando GRNs and condition-level metacells
+→ condition-level Pando GRNs and metacells
 → complete-GPR reaction meta-modules
 → integrated RNA+ATAC reaction support
 → medium-constrained model with global FASTCORE completion
@@ -32,7 +32,7 @@ remotes::install_github("1667857557/Pando_regcompass")
 library(RegCompassR)
 library(BSgenome.Hsapiens.UCSC.hg38)
 
-data(motif2tf, package = "Pando")
+data(motifs, package = "Pando")
 
 gem <- rc_prepare_gem(
   species = "human",
@@ -49,23 +49,17 @@ medium_scenarios <- rc_make_medium_scenarios(
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
-  pfm = motif2tf,
+  pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
   gem = gem,
   species = "human",
   medium_scenarios = medium_scenarios,
-  sample_col = NULL,
   condition_col = "Group",
   celltype_col = "cell_type",
   model_mode = "meta_module_gem",
-  metacell_args = list(
-    gamma = 30,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10
-  ),
   pando_args = list(
-    min_cells = 100,
+    min_cells = 300,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -73,6 +67,11 @@ result <- rc_run_regcompass_one_shot(
       adjust_method = "fdr",
       parallel = FALSE
     )
+  ),
+  metacell_args = list(
+    gamma = 30,
+    min_cells_per_stratum = 300,
+    min_metacell_size = 10
   ),
   layer1_args = list(
     top_k_neighbors = 5,
