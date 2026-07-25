@@ -2,7 +2,7 @@
 
 Use this tutorial after a completed stepwise `meta_module_gem` analysis when selected complete-GPR core reactions should be used as anchors to identify and score directly database-linked non-core reactions.
 
-This operation reuses the **actual medium-specific union GEM files** created by Stage 5. It does not treat the Stage 3 merged meta-module catalogue as a GEM.
+This operation reuses the **exact final medium-specific union GEM files** created by Stage 5. It does not treat the Stage 3 merged meta-module catalogue as a GEM.
 
 ## Load the completed stages
 
@@ -20,7 +20,14 @@ stopifnot(
   inherits(step4, "regcompass_layer1_step"),
   inherits(step5, "regcompass_layer2_step"),
   identical(step5$model_mode, "meta_module_gem"),
-  nrow(step5$model_cache_summary) > 0
+  nrow(step5$model_cache_summary) > 0,
+  all(c(
+    "medium_scenario",
+    "file",
+    "file_checksum",
+    "build_strategy",
+    "completion_stage"
+  ) %in% colnames(step5$model_cache_summary))
 )
 ```
 
@@ -78,11 +85,20 @@ The second-pass target catalogue includes non-core reactions sharing a direct:
 
 with one or more selected core anchors.
 
-It does not perform subsystem expansion, transitive cross-reference expansion, metabolite-neighbour expansion, or a new FASTCORE reconstruction.
+It does not perform subsystem expansion, transitive cross-reference expansion, metabolite-neighbour expansion, model reconstruction, or FASTCORE completion.
 
-## Why no FASTCORE is rerun
+## Exact model-reuse contract
 
-The target reaction must already be present in every reused medium-specific union GEM required by the analysis. The exact cached model structure and medium bounds are reused. This keeps the second-pass score directly comparable with the original Layer 2 structural context.
+A mapped reaction is scoreable only when it is present in every final medium-specific union GEM required by the analysis. For each Stage 5 cache row, RegCompass validates:
+
+- the cached file path;
+- `file_checksum`;
+- `build_strategy = "medium_specific_union_gem"`;
+- `completion_stage = "single_global_fastcore_after_meta_module_merge"`;
+- `model$is_union_gem`;
+- the model's medium-scenario identifier.
+
+The exact stoichiometric matrix, bounds, medium constraints, and support reactions are reused. The second pass does not rebuild a GEM and does not rerun FASTCORE.
 
 ```r
 targeted$selected_core_reactions
@@ -90,6 +106,22 @@ targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
 targeted$merged_catalogue_membership
 targeted$microcompass$model_cache_summary
+
+targeted$microcompass$params[c(
+  "structural_model_reused_exactly",
+  "fastcore_rerun",
+  "model_rebuild"
+)]
+```
+
+The expected flags are:
+
+```r
+stopifnot(
+  isTRUE(targeted$microcompass$params$structural_model_reused_exactly),
+  identical(targeted$microcompass$params$fastcore_rerun, FALSE),
+  identical(targeted$microcompass$params$model_rebuild, FALSE)
+)
 ```
 
 ## Inspect provenance
@@ -104,7 +136,7 @@ targeted$expanded_reaction_catalog[, c(
   "source_annotation",
   "present_in_merged_catalogue",
   "merged_catalogue_inclusion_stage",
-  "available_in_all_cached_union_models"
+  "available_in_all_cached_union_gems"
 )]
 ```
 
@@ -120,12 +152,10 @@ targeted$expanded_scoring_targets[, c(
 )]
 ```
 
-`merged_catalogue_inclusion_stage` describes whether the reaction was already a biological member of the merged Stage 3 catalogue. Reactions absent from that catalogue can still be available when global FASTCORE added them to every reused medium-specific union GEM.
+`merged_catalogue_inclusion_stage` describes whether the reaction was already a biological member of the merged Stage 3 catalogue. Reactions absent from that catalogue can still be scoreable when global FASTCORE added them to every reused final union GEM.
 
 The persistent catalogue file is:
 
 ```text
 merged_meta_module_catalogue_membership.tsv.gz
 ```
-
-Do not use the removed fields `global_modules`, `global_core_reactions`, `global_reaction_membership`, or the former target-union field `previous_union_membership`.
