@@ -2,7 +2,7 @@
 
 Use this tutorial after a completed stepwise `meta_module_gem` analysis to score non-core reactions that are directly linked to selected complete-GPR core reactions.
 
-The second pass reuses the cached Stage 5 models. It does not rebuild the model or rerun FASTCORE.
+The second pass reuses the cached Stage 5 models. It validates the cache checksums and medium identities, and does not rebuild the model or rerun FASTCORE.
 
 ## Load the completed stages
 
@@ -72,6 +72,11 @@ targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
 targeted$merged_catalogue_membership
 targeted$microcompass$model_cache_summary
+targeted$microcompass$params[c(
+  "structural_model_reused_exactly",
+  "fastcore_rerun",
+  "model_rebuild"
+)]
 ```
 
 Relation-level provenance:
