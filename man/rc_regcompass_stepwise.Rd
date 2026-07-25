@@ -47,7 +47,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Pando GRN configuration.}
-\item{layer1_args}{Meta-module projection/annotation parameters in Stage 3 and integrated-evidence parameters used by the canonical runner. The removed \code{local_fastcore} and \code{local_fastcore_args} fields are invalid.}
+\item{layer1_args}{Meta-module projection and annotation parameters in Stage 3 and integrated-evidence parameters used by the canonical runner.}
 \item{layer2_args}{Layer 2 scoring and union-GEM configuration. Global FASTCORE controls belong in \code{layer2_args$model_params}.}
 \item{metacell_args}{SuperCell2 configuration. The default embedding is RNA \code{"pca"} dimensions 1:30 plus ATAC \code{"lsi"} dimensions 2:30. An existing Harmony reduction can be selected with \code{rna_reduction = "harmony"} and \code{rna_dims}; \code{atac_reduction} and \code{atac_dims} remain independently selectable. Reduction names, selected dimensions, and embedding fingerprints are part of the Stage 2 cache contract.}
 \item{parallel}{Whether the supported stage loop is parallelized.}
