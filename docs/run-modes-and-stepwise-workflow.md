@@ -3,7 +3,8 @@
 All execution modes follow the same main workflow:
 
 ```text
-GRNs and multimodal metacells
+condition × cell type Pando evidence for Human-GEM genes
+→ significantly supported metabolic targets
 → complete-GPR reaction modules
 → integrated RNA+ATAC support
 → medium-constrained structural model
@@ -14,8 +15,10 @@ GRNs and multimodal metacells
 
 Use [Tutorial 1](tutorial-01-quick-start.md) for a complete run with `rc_run_regcompass_one_shot()`.
 
-- `upstream_workers`: GRN inference and Layer 1.
+- `upstream_workers`: Pando inference and Layer 1.
 - `layer2_workers`: model completion and LP scoring.
+- `meta_module_args`: Stage 3 subsystem and reaction-equivalence expansion.
+- `layer1_args`: Stage 4 integrated-evidence transformation.
 
 ## Level 2: explicit stepwise workflow
 
@@ -30,12 +33,15 @@ rc_regcompass_step_layer2()
 rc_regcompass_step_results()
 ```
 
+Stage 3 directly maps significant Pando target genes to complete-GPR cores. It does not perform shared-TF projection or connected-component analysis.
+
 ## Level 3: restart and sensitivity analysis
 
 Use [Tutorial 3](tutorial-03-advanced-restart.md).
 
+- Change Pando thresholds or regulatory regions: rerun Stage 1 onward.
 - Change metacell construction: rerun Stage 2 onward.
-- Change GRN mapping or reaction expansion: rerun Stage 3 onward.
+- Change subsystem or reaction-equivalence expansion: rerun Stage 3 onward.
 - Change multiome support transformation: rerun Stage 4 onward.
 - Change medium, FASTCORE, or LP settings: rerun Stage 5 onward.
 
