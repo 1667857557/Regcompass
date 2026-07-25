@@ -100,7 +100,7 @@ test_that("canonical formals separate Stage 3 and Layer 1 settings", {
   )
 })
 
-test_that("Pando defaults use bundled motifs regions and explicit filters", {
+test_that("Pando defaults use bundled motifs and species-specific regions", {
   expect_null(eval(formals(rc_run_regcompass)$pfm))
   expect_null(eval(formals(rc_run_regcompass_one_shot)$pfm))
   expect_null(eval(formals(rc_regcompass_step_grn)$pfm))
@@ -112,10 +112,17 @@ test_that("Pando defaults use bundled motifs regions and explicit filters", {
   motif_helper <- paste(deparse(body(.rc_default_pando_motifs)), collapse = "\n")
   region_helper <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
   expect_match(grn_body, ".rc_default_pando_motifs", fixed = TRUE)
-  expect_match(grn_body, ".rc_default_pando_regions", fixed = TRUE)
+  expect_match(grn_body, ".rc_default_pando_regions(species)", fixed = TRUE)
   expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
   expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
   expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(region_helper, 'identical(species, "mouse")', fixed = TRUE)
+  expect_match(region_helper, "return(phast_cons)", fixed = TRUE)
+  expect_match(region_helper, "BiocGenerics::union", fixed = TRUE)
+  expect_identical(
+    eval(formals(.rc_default_pando_regions)$species),
+    c("human", "mouse")
+  )
 
   grn_formals <- formals(.rc_run_condition_single_cell_grns)
   expect_identical(grn_formals$min_cells, 20L)
