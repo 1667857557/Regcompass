@@ -37,6 +37,12 @@
   x
 }
 
+.rc_replace_exact_nonmissing <- function(x, old, new) {
+  selected <- !is.na(x) & x == old
+  x[selected] <- new
+  x
+}
+
 .rc_clean_target_union_contract <- function(answer) {
   answer$merged_catalogue_membership <-
     answer$previous_union_membership %||% data.frame()
@@ -60,18 +66,23 @@
       "merged_catalogue_inclusion_stage"
     )
     if ("target_role" %in% colnames(value)) {
-      value$target_role[value$target_role ==
-        "previous_global_core_not_rescored"] <-
+      value$target_role <- .rc_replace_exact_nonmissing(
+        value$target_role,
+        "previous_global_core_not_rescored",
         "merged_core_not_rescored"
-      value$target_role[value$target_role ==
-        "direct_database_crossref_absent_from_cached_union"] <-
+      )
+      value$target_role <- .rc_replace_exact_nonmissing(
+        value$target_role,
+        "direct_database_crossref_absent_from_cached_union",
         "direct_database_crossref_absent_from_cached_union_gem"
+      )
     }
     if ("lp_exclusion_reason" %in% colnames(value)) {
-      value$lp_exclusion_reason[
-        value$lp_exclusion_reason ==
-          "absent_from_one_or_more_previous_union_models"
-      ] <- "absent_from_one_or_more_cached_union_gems"
+      value$lp_exclusion_reason <- .rc_replace_exact_nonmissing(
+        value$lp_exclusion_reason,
+        "absent_from_one_or_more_previous_union_models",
+        "absent_from_one_or_more_cached_union_gems"
+      )
     }
     answer[[name]] <- value
   }
