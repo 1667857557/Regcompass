@@ -33,6 +33,10 @@ For Layer 1 reaction support, genes joined by a GPR AND relationship are aggrega
 
 ## Installation
 
+### Default validated profile: Seurat v4
+
+The canonical and release-validation environment remains the pinned Seurat v4 stack. This is the default profile for reproducing RegCompass analyses and for creating new input objects.
+
 ```r
 install.packages("remotes")
 remotes::install_version("SeuratObject", "4.1.4", upgrade = "never")
@@ -44,6 +48,18 @@ remotes::install_github(
 remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
+
+### Optional compatible profile: Seurat v5
+
+RegCompass also accepts SeuratObject/Seurat 5.x with Signac 1.x from version 1.12.0 onward. For the closest behavior to the default profile, create v3-style assays while running Seurat v5:
+
+```r
+options(Seurat.object.assay.version = "v3")
+```
+
+An existing v5 `Assay5` is supported when its `counts.*` and optional `data.*` layers can be joined without ambiguity. The canonical Stage 1 and Stage 2 functions join those layers in a working copy and record the operation in `object@misc$regcompass_seurat_compatibility`; the caller's original object is not rewritten. Signac 2.x `ChromatinAssay5` is not yet supported.
+
+See [Seurat v4/v5 compatibility](docs/seurat-compatibility.md) for the version matrix, layer policy, provenance, and migration checks.
 
 ## Minimal complete run
 
@@ -192,6 +208,7 @@ result$microcompass$model_cache_summary
 - [Level 3: restart, sensitivity, and diagnostics](docs/tutorial-03-advanced-restart.md)
 - [Level 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
 - [Level 5: condition differential analysis](docs/tutorial-05-condition-differential-analysis.md)
+- [Seurat v4/v5 compatibility](docs/seurat-compatibility.md)
 - [Metacell reduction and seed selection](docs/metacell-reduction-selection.md)
 - [Medium presets](docs/medium-presets.md)
 - [Workflow and mathematical interpretation](docs/workflow.md)
