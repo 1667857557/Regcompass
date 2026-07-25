@@ -6,8 +6,10 @@ Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.8.4
 
 ```text
 condition × cell type cells
-→ Pando GRNs and multimodal metacells
-→ complete-GPR reaction meta-modules
+→ Pando models of Human-GEM GPR genes
+→ significantly supported metabolic target genes
+→ complete-GPR core reactions
+→ biological reaction expansion
 → integrated RNA+ATAC reaction support
 → medium-constrained model with global FASTCORE completion
 → directional LP scoring and condition contrasts
@@ -36,7 +38,9 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-The Seurat object must contain normalized RNA and ATAC assays and the metadata columns supplied below. Pando is fitted separately for each `condition × cell type` group.
+The Seurat object must contain normalized RNA and ATAC assays and the metadata columns supplied below. Pando is fitted separately for each `condition × cell type` group. Its target list is the intersection of Human-GEM GPR genes and RNA-assay row names.
+
+By default, human analyses load the Pando data objects `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38`, take their union, and pass that `GRanges` object to `Pando::initiate_grn(regions = ...)`. Override this only through `pando_args$pando_initiate_args$regions`. Non-human analyses must provide species-appropriate regions explicitly.
 
 Available medium presets include physiological plasma, RPMI-1640, high-glucose DMEM, glucose/lactate/glutamine sensitivity scenarios, technical exchange baselines, and custom media. See [medium presets](medium-presets.md) for the complete list and assumptions.
 
@@ -63,6 +67,9 @@ result <- rc_run_regcompass_one_shot(
   ),
   pando_args = list(
     min_cells = 100,
+    padj_threshold = 0.05,
+    min_abs_estimate = 0,
+    min_model_rsq = 0.1,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -71,12 +78,10 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
+  meta_module_args = list(
+    expansion_mode = "ordered_once"
+  ),
   layer1_args = list(
-    top_k_neighbors = 5,
-    min_shared_tfs = 1,
-    min_tf_jaccard = 0,
-    max_targets_per_tf = 200,
-    expansion_mode = "ordered_once",
     regulatory_alpha = 1,
     tau = 0.20
   ),
@@ -97,11 +102,13 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-`layer2_args$model_params` controls FASTCORE completion.
+The Stage 1 evidence filter defines the Stage 3 gene set. A target gene is supported when at least one TF–peak–gene row passes the adjusted-P-value, absolute-estimate, and model-R² filters. Both positive and negative coefficients count as regulatory evidence. `meta_module_args` controls only annotation expansion. `layer1_args` controls the RNA+ATAC reaction-support transformation. `layer2_args$model_params` controls FASTCORE completion.
 
 ## Inspect the main outputs
 
 ```r
+result$condition_grn_meta_modules$supported_metabolic_genes
+result$condition_grn_meta_modules$core_gene_reaction
 result$reaction_ranking
 result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions
