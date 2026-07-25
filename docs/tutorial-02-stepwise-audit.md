@@ -10,6 +10,7 @@ step1 <- rc_regcompass_step_grn(
   gem = gem,
   outdir = "RegCompass_steps/01_grn",
   genome = BSgenome.Hsapiens.UCSC.hg38,
+  species = "human",
   condition_col = "Group",
   celltype_col = "cell_type",
   pando_args = list(
@@ -34,20 +35,27 @@ step1$grn_result$sample_status
 step1$grn_result$target_metabolic_genes
 ```
 
+The Stage 1 runner arguments are ordered as shared inputs → motif/region policy → metadata/assays → Pando settings → execution controls.
+
 When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes `motifs` to `Pando::find_motifs()`. Supply `pfm = custom_motifs` only to override this default.
 
-The candidate targets are all Human-GEM GPR genes present in the RNA assay. Unless `pando_args$pando_initiate_args$regions` is supplied, the human workflow uses:
+The candidate targets are all GEM GPR genes present in the RNA assay. Unless `pando_args$pando_initiate_args$regions` is supplied, the default regions are:
 
 ```r
-data("phastConsElements20Mammals.UCSC.hg38", package = "Pando")
-data("SCREEN.ccRE.UCSC.hg38", package = "Pando")
+# human
 regions <- union(
-  phastConsElements20Mammals.UCSC.hg38,
-  SCREEN.ccRE.UCSC.hg38
+  get("phastConsElements20Mammals.UCSC.hg38", asNamespace("Pando")),
+  get("SCREEN.ccRE.UCSC.hg38", asNamespace("Pando"))
+)
+
+# mouse
+regions <- get(
+  "phastConsElements20Mammals.UCSC.hg38",
+  asNamespace("Pando")
 )
 ```
 
-This union is passed to `Pando::initiate_grn(regions = regions)`. The default is hg38-specific; mouse or other genomes require an explicit region object.
+The implementation loads these objects with `data(..., package = "Pando")`. Human uses phastCons plus SCREEN ccRE; mouse uses only `phastConsElements20Mammals.UCSC.hg38`. An explicit region object overrides either default.
 
 ### Stage 1 filter meanings
 
@@ -150,7 +158,7 @@ step3 <- rc_regcompass_step_meta_modules(
 Stage 3 no longer projects targets through shared TFs and does not calculate GRN connected components. For each `condition × cell type`, it performs the following operations exactly once:
 
 ```text
-significant Pando TF–peak–Human-GEM-target rows
+significant Pando TF–peak–GEM-target rows
 → unique supported metabolic target genes
 → complete-GPR core reactions
 → all reactions in core-reaction subsystems
