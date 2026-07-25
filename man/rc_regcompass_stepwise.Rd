@@ -46,7 +46,9 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args, layer1_args, layer2_args}{Stage-specific configuration lists.}
+\item{pando_args}{Pando GRN configuration.}
+\item{layer1_args}{Meta-module projection/annotation parameters in Stage 3 and integrated-evidence parameters used by the canonical runner. The removed \code{local_fastcore} and \code{local_fastcore_args} fields are invalid.}
+\item{layer2_args}{Layer 2 scoring and union-GEM configuration. Global FASTCORE controls belong in \code{layer2_args$model_params}.}
 \item{metacell_args}{SuperCell2 configuration. The default embedding is RNA \code{"pca"} dimensions 1:30 plus ATAC \code{"lsi"} dimensions 2:30. An existing Harmony reduction can be selected with \code{rna_reduction = "harmony"} and \code{rna_dims}; \code{atac_reduction} and \code{atac_dims} remain independently selectable. Reduction names, selected dimensions, and embedding fingerprints are part of the Stage 2 cache contract.}
 \item{parallel}{Whether the supported stage loop is parallelized.}
 \item{BPPARAM}{BiocParallel parameter object, \code{NULL}, or \code{FALSE}.}
@@ -56,11 +58,15 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from the preceding stages.}
 \item{regulatory_alpha, tau, gene_half_saturation}{Layer 1 evidence parameters.}
 \item{medium_scenarios}{Condition-invariant medium table.}
-\item{model_mode}{Global union meta-module GEM or full GEM.}
+\item{model_mode}{Use one medium-specific union GEM reconstructed from the merged biological catalogue, or reuse the full GEM.}
 \item{species}{Species identifier or \code{"auto"}.}
 }
 \description{Runs the canonical workflow as separately restartable, validated stages.}
 \details{
+Stage 3 maps complete-GPR core reactions and annotation-defined biological meta-modules, then deduplicates their reaction IDs into \code{merged_modules$merged_core_reactions} and \code{merged_modules$merged_reaction_membership}. This merged catalogue is not a GEM and has no FASTCORE support.
+
+With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium scenario, runs one global FASTCORE completion on the merged catalogue, and saves the resulting medium-specific union GEM. All conditions and metacells in that medium reuse the same cached model.
+
 Each stage returns a \code{timing} table and writes \code{step_timing.tsv} to its output directory. Failed stages also write an error-status timing row. Stage contracts reject mixed GEMs, workflows, core sets, or metacell orders.
 
 Harmony selection changes only the RNA cell-embedding geometry used by SuperCell2. Aggregated metacell RNA and ATAC counts still come from the original assays. Switching reduction names or dimensions, or recomputing an embedding, requires rebuilding existing Stage 2 checkpoints with \code{overwrite = TRUE}.
