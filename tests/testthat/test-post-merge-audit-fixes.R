@@ -79,17 +79,28 @@ test_that("incompatible legacy species caches are invalidated", {
   expect_false(file.exists(file))
 })
 
-test_that("species arguments preserve legacy positional ordering", {
-  workflow_formals <- names(formals(rc_run_regcompass))
-  one_shot_formals <- names(formals(rc_run_regcompass_one_shot))
-
-  expect_lt(
-    match("sample_col", workflow_formals),
-    match("species", workflow_formals)
+test_that("public runner arguments follow processing order", {
+  expect_identical(
+    names(formals(rc_run_regcompass)),
+    c(
+      "object", "gem", "outdir", "genome", "pfm", "species",
+      "condition_col", "celltype_col", "rna_assay", "atac_assay",
+      "pando_args",
+      "sample_col", "fragment_files", "metacell_args",
+      "meta_module_args",
+      "layer1_args",
+      "medium_scenarios", "model_mode", "layer2_args",
+      "upstream_workers", "layer2_workers", "progress"
+    )
   )
-  expect_lt(match("gem", one_shot_formals), match("species", one_shot_formals))
-  expect_lt(
-    match("medium_scenarios", one_shot_formals),
-    match("species", one_shot_formals)
+  expect_identical(
+    names(formals(rc_run_regcompass_one_shot)),
+    c(
+      "object", "outdir", "genome",
+      "species", "gem", "gem_version", "gem_source",
+      "pfm", "fragment_files",
+      "medium_scenario", "medium_scenarios",
+      "progress", "..."
+    )
   )
 })
