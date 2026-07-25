@@ -133,7 +133,6 @@ step5 <- rc_regcompass_step_layer2(
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    time_limit = 600,
     model_params = list(
       completion_time_limit = 600,
       fastcore_epsilon = 1e-4,
@@ -146,7 +145,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-Stage 5 applies the selected medium, performs global FASTCORE completion, caches the model, and runs directional LP scoring. See [medium presets](medium-presets.md) for available presets and custom media.
+Stage 5 first applies the selected medium and performs global FASTCORE completion to construct the union GEM. `completion_time_limit` applies only to this construction phase. The completed union GEM is then cached and reused for directional scoring; scoring LPs have no time-limit parameter. See [medium presets](medium-presets.md) for available presets and custom media.
 
 ```r
 step5$model_cache_summary[, c(
