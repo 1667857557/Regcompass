@@ -1,3 +1,33 @@
+#' Load the canonical Pando motif collection
+#'
+#' The canonical RegCompass GRN uses the `motifs` data object bundled with the
+#' required Pando fork. Users can override this default by supplying `pfm`.
+.rc_default_pando_motifs <- function() {
+  if (!requireNamespace("Pando", quietly = TRUE)) {
+    stop("Package 'Pando' is required.", call. = FALSE)
+  }
+  data_environment <- new.env(parent = emptyenv())
+  utils::data(
+    list = "motifs",
+    package = "Pando",
+    envir = data_environment
+  )
+  if (!exists("motifs", envir = data_environment, inherits = FALSE)) {
+    stop(
+      paste(
+        "Installed Pando does not provide the required `motifs` data object.",
+        "Install 1667857557/Pando_regcompass."
+      ),
+      call. = FALSE
+    )
+  }
+  motifs <- get("motifs", envir = data_environment, inherits = FALSE)
+  if (is.null(motifs) || !length(motifs)) {
+    stop("Pando `motifs` must be a non-empty motif collection.", call. = FALSE)
+  }
+  motifs
+}
+
 #' Load the canonical Pando regulatory-region union
 #'
 #' The canonical RegCompass GRN uses the union of the conserved-element and
@@ -32,8 +62,12 @@
       call. = FALSE
     )
   }
-  phast_cons <- get(region_names[[1L]], envir = data_environment, inherits = FALSE)
-  screen_ccre <- get(region_names[[2L]], envir = data_environment, inherits = FALSE)
+  phast_cons <- get(
+    region_names[[1L]], envir = data_environment, inherits = FALSE
+  )
+  screen_ccre <- get(
+    region_names[[2L]], envir = data_environment, inherits = FALSE
+  )
   if (!methods::is(phast_cons, "GenomicRanges") ||
       !methods::is(screen_ccre, "GenomicRanges")) {
     stop("Pando regulatory-region data must be GRanges objects.", call. = FALSE)
@@ -97,7 +131,9 @@ rc_extract_pando_tf_peak_gene <- function(
   coefs$tf <- toupper(as.character(coefs$tf))
   coefs$target <- toupper(as.character(coefs$target))
   coefs$region <- as.character(coefs$region)
-  coefs <- coefs[, c("sample_id", setdiff(colnames(coefs), "sample_id")), drop = FALSE]
+  coefs <- coefs[
+    , c("sample_id", setdiff(colnames(coefs), "sample_id")), drop = FALSE
+  ]
 
   estimate <- suppressWarnings(as.numeric(coefs$estimate))
   rsq <- suppressWarnings(as.numeric(coefs$rsq))
