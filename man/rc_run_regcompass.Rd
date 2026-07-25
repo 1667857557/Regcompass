@@ -2,7 +2,7 @@
 % Please edit documentation in R/regcompass.R
 \name{rc_run_regcompass}
 \alias{rc_run_regcompass}
-\title{Run the canonical GRN-first RegCompass workflow}
+\title{Run the canonical significant-Pando-target RegCompass workflow}
 \usage{
 rc_run_regcompass(object, gem, outdir, pfm, genome,
   fragment_files = FALSE, sample_col = NULL,
@@ -10,23 +10,31 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
   rna_assay = "RNA", atac_assay = "ATAC",
   model_mode = c("meta_module_gem", "full_gem"),
   medium_scenarios = NULL, metacell_args = list(), layer1_args = list(),
-  pando_args = list(), layer2_args = list(), upstream_workers = 6L,
-  layer2_workers = 30L,
+  pando_args = list(), meta_module_args = list(), layer2_args = list(),
+  upstream_workers = 6L, layer2_workers = 30L,
   species = c("auto", "human", "mouse"),
   progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
+\item{meta_module_args}{Stage 3 annotation-expansion arguments: \code{subsystem_table}, \code{expansion_mode}, and \code{max_iterations}.}
+
+\item{layer1_args}{Stage 4 integrated-evidence arguments: \code{regulatory_alpha}, \code{tau}, and \code{gene_half_saturation}.}
+
 \item{upstream_workers}{Worker count for GRN inference and Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for serial upstream execution. Stage 3 performs catalogue construction without FASTCORE.}
 
 \item{layer2_workers}{Worker count for medium-specific union-GEM completion and Layer 2 LP scoring. Defaults to 30. Set to 1 for serial Layer 2 execution.}
 
-\item{species}{Model species or \code{"auto"} inference from GEM provenance. This argument retains its position ahead of the later \code{progress} control for positional-call compatibility.}
+\item{species}{Model species or \code{"auto"} inference from GEM provenance.}
 
 \item{progress}{Display workflow and stage progress. Set \code{FALSE} or use \code{options(RegCompassR.progress = FALSE)} for quiet execution.}
 }
-\description{Runs the six canonical GRN, metacell, biological meta-module, Layer 1, medium-specific union-GEM/Layer 2, and result stages.}
+\description{Runs the six canonical Pando, metacell, biological meta-module, Layer 1, medium-specific union-GEM/Layer 2, and result stages.}
 \details{
-Stage 3 constructs complete-GPR biological meta-modules and a deduplicated merged reaction catalogue. It does not run FASTCORE and does not create a GEM. With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium to the merged biological reaction set, performs the only global FASTCORE completion, and saves one union GEM shared by all conditions and metacells in that medium.
+Stage 1 fits Pando separately for each condition by cell-type group using all Human-GEM GPR genes present in the RNA assay. Human analyses default to the union of Pando's hg38 phastCons and SCREEN ccRE data unless \code{pando_args$pando_initiate_args$regions} is supplied.
+
+Stage 3 collects Human-GEM target genes with significant TF-peak-gene evidence and maps complete GPR branches directly to core reactions. Both positive and negative coefficients count as regulatory evidence. Shared-TF projection, target-target graph construction, top-k pruning, and connected-component analysis are not used.
+
+Stage 3 constructs annotation-expanded biological meta-modules and a deduplicated merged reaction catalogue. It does not run FASTCORE and does not create a GEM. With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium to the merged biological reaction set, performs the only global FASTCORE completion, and saves one union GEM shared by all conditions and metacells in that medium.
 
 Global FASTCORE is configured through \code{layer2_args$model_params}, including \code{completion_time_limit}, \code{fastcore_epsilon}, \code{max_support_reactions}, and \code{strict}.
 
