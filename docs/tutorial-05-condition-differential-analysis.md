@@ -1,8 +1,6 @@
 # Tutorial Level 5: compare reactions between conditions
 
-Use this tutorial after Stage 6 or a complete one-shot run. Comparisons must use the same reaction, direction, medium scenario, and cell type.
-
-Within one medium, all conditions share the same structural model. Condition differences therefore reflect the RNA+ATAC penalty matrix. Do not pool results from different media into one structural comparison.
+Use this tutorial after Stage 6 or a complete one-shot run.
 
 ## Inspect rankings and contrasts
 
@@ -20,9 +18,9 @@ The primary normalized score is:
 normalized_penalty = penalty / (omega × vmax)
 ```
 
-Lower normalized penalty indicates stronger multiome support for the target reaction in the fixed model context.
+Lower normalized penalty indicates stronger multiome support for the target reaction.
 
-## Select one reaction-direction-medium target
+## Select one reaction target
 
 ```r
 reaction_id <- "MAR04324"
@@ -55,8 +53,6 @@ comparison$summary
 comparison$contrast
 ```
 
-The statistical unit is one metacell. These tests describe within-dataset condition-associated separation; condition-pooled metacells do not replace sample-level biological replication.
-
 ## Plot one reaction
 
 ```r
@@ -74,7 +70,7 @@ rc_plot_condition_reaction(
 
 ```r
 cache <- result$microcompass$model_cache_summary
-cache[cache$medium_scenario == medium_id, c(
+cache[, c(
   "medium_scenario",
   "file",
   "n_merged_biological_reactions",
@@ -83,8 +79,5 @@ cache[cache$medium_scenario == medium_id, c(
 )]
 ```
 
-For a fixed target:
-
 - positive `delta_support` means stronger support in the first condition;
-- negative `delta_support` means stronger support in the second condition;
-- interpretation is conditional on the selected medium and target-flux requirement.
+- negative `delta_support` means stronger support in the second condition.
