@@ -1,3 +1,16 @@
+# RegCompassR 1.8.4
+
+- Removed per-meta-module local FASTCORE from the canonical workflow. Stage 3 now produces biological meta-modules and a deduplicated merged reaction catalogue only.
+- Reserved the term **union GEM** for the medium-constrained Stage 5 model. Merging meta-module reaction IDs no longer creates or names a union GEM.
+- Added one global FASTCORE completion per medium-specific union GEM. The merged biological reactions are retained, and only globally required FASTCORE support reactions are added under the selected medium.
+- Replaced Stage 3 `global_modules`, `global_core_reactions`, and `global_reaction_membership` outputs with `merged_modules`, `merged_core_reactions`, and `merged_reaction_membership`.
+- Removed `local_completed_reaction_membership`, `local_fastcore_summary`, `local_fastcore_diagnostics`, and `local_fastcore_completion_iterations` from current workflow outputs.
+- Removed the `layer1_args$local_fastcore` and `layer1_args$local_fastcore_args` interfaces. Global FASTCORE controls now live exclusively in `layer2_args$model_params`.
+- Updated the canonical runner so `upstream_workers` covers GRN inference and Layer 1 only; Stage 3 no longer allocates a FASTCORE worker pool.
+- Updated target-union scoring to validate anchors against the merged Stage 3 catalogue while reusing the exact cached medium-specific union GEM files.
+- Synchronized README, workflow documentation, all five tutorials, the vignette, stage contracts, and generated Rd files with the global-only FASTCORE architecture.
+- Added regression tests for the merged-catalogue contract, union-GEM naming, removal of local FASTCORE from Stage 3, and absence of obsolete public API names.
+
 # RegCompassR 1.8.3
 
 - Added a canonical two-layer worker model with `upstream_workers = 6L` for GRN/local-FASTCORE/Layer-1 tasks and `layer2_workers = 30L` for LP scoring. Setting both values to one produces a fully serial run.

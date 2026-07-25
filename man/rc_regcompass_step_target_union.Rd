@@ -2,7 +2,7 @@
 % Please edit documentation in R/target_union.R
 \name{rc_regcompass_step_target_union}
 \alias{rc_regcompass_step_target_union}
-\title{Score directly database-linked non-core reactions in an existing union GEM}
+\title{Score database-linked non-core reactions in final union GEMs}
 \usage{
 rc_regcompass_step_target_union(
   layer1, meta_modules, layer2, gem, outdir,
@@ -13,17 +13,17 @@ rc_regcompass_step_target_union(
 )
 }
 \arguments{
-\item{layer1, meta_modules, layer2}{Validated outputs from the original meta-module GEM run.}
+\item{layer1, meta_modules, layer2}{Validated outputs from the original \code{meta_module_gem} run. Stage 3 supplies the merged biological catalogue; Stage 5 supplies the final cached medium-specific union GEMs.}
 \item{gem}{The same GEM used for the original run.}
 \item{outdir}{Output directory.}
-\item{core_reaction_ids}{Previously scored core reaction IDs used only as direct database-mapping anchors.}
-\item{core_genes}{Genes used to resolve previous core anchors through GPR rules. Every supplied gene selector must resolve to at least one previously scored core; an invalid gene selection is not ignored when reaction IDs are also supplied.}
-\item{gene_match}{Complete-GPR or intentional partial-complex matching.}
-\item{layer2_args}{Optional LP overrides.}
+\item{core_reaction_ids}{Previously scored complete-GPR core reaction IDs used only as direct database-mapping anchors.}
+\item{core_genes}{Genes used to resolve original core anchors through GPR rules. Every supplied gene selector must resolve to at least one originally scored core.}
+\item{gene_match}{Complete-GPR or intentional direct-gene matching.}
+\item{layer2_args}{Optional LP overrides. This restart does not rebuild a union GEM or rerun FASTCORE.}
 \item{parallel}{Whether to parallelize reused-model by metacell tasks.}
 \item{BPPARAM}{Optional BiocParallel parameter object.}
 \item{progress}{Display stage progress.}
 }
 \value{A \code{regcompass_target_union_step} containing anchor mappings, unique non-core targets, source-model provenance, LP results, and timing.}
-\description{Directly maps selected cores through shared KEGG, Reactome, or master-Rhea identifiers and scores only linked non-core reactions not scored in the original Layer 2 run.}
-\details{Same-subsystem, metabolite-neighbour, recursive/transitive, generic union, and FASTCORE-only expansion are excluded. The exact cached medium-specific union GEM files and bounds are reused. Candidate availability is checked against the actual reactions present in every cached model, not only the pre-FASTCORE membership table; a directly mapped support reaction added during model completion can therefore be scored when it exists in all reused models. The stage writes \code{step_timing.tsv}.}
+\description{Directly maps selected merged core reactions through shared KEGG, Reactome, or master-Rhea identifiers and scores linked non-core reactions in the exact final Stage 5 union GEMs.}
+\details{Same-subsystem, metabolite-neighbour, recursive/transitive, model-reconstruction, and new FASTCORE expansion are excluded. The exact cached medium-specific union GEM files and bounds are reused. Each cache file is validated against its recorded checksum, build strategy, completion stage, union-GEM marker, and medium identifier. Candidate availability is checked against the actual reactions present in every required cached model, not only the Stage 3 catalogue. The second-pass result records \code{structural_model_reused_exactly = TRUE}, \code{fastcore_rerun = FALSE}, and \code{model_rebuild = FALSE}. The stage writes \code{step_timing.tsv}.}

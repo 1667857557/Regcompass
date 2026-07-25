@@ -1,3 +1,20 @@
+.rc_phase_bpparam <- function(
+    workers = NULL,
+    backend = c("auto", "serial", "snow", "multicore")) {
+  backend <- match.arg(backend)
+  if (identical(backend, "serial")) return(FALSE)
+  param <- rc_default_bpparam(workers = workers, backend = backend)
+  param %||% FALSE
+}
+
+.rc_release_bpparam <- function(param) {
+  if (!identical(param, FALSE) && !is.null(param) &&
+      requireNamespace("BiocParallel", quietly = TRUE)) {
+    try(BiocParallel::bpstop(param), silent = TRUE)
+  }
+  invisible(gc(verbose = FALSE))
+}
+
 .rc_internal_thread_env <- function() {
   c(
     OMP_NUM_THREADS = "1",

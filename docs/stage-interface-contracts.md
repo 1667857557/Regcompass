@@ -1,43 +1,163 @@
 # Stage input-output contracts
 
-RegCompassR 1.8.3 connects stages only when their classes, workflow settings, GEM provenance, metacell construction/cache provenance, and scoring-unit order agree.
+RegCompassR 1.8.4 connects stages only when classes, workflow settings, GEM provenance, metacell construction provenance, and scoring-unit order agree.
 
-| Function | Required input | Output class | Downstream contract |
-|---|---|---|---|
-| `rc_regcompass_step_grn()` | paired RNA+ATAC object, GEM, motifs, genome | `regcompass_grn_step` | stores condition/cell-type/assay settings and GEM fingerprint |
-| `rc_regcompass_step_metacells()` | original paired object and the same metadata-column names | `regcompass_metacell_step` | stores metacell object, membership, audited labels, workflow parameters, label-guided construction policy, and an input/parameter cache contract |
-| `rc_regcompass_step_meta_modules()` | matching GRN and metacell stages plus the Stage 1 GEM | `regcompass_meta_module_step` | verifies metacell construction provenance, group coverage, and GEM fingerprint; stores global core and union memberships |
-| `rc_regcompass_step_layer1()` | metacell and meta-module stages from the same workflow and GEM | `regcompass_layer1_step` | verifies metacell construction provenance; reaction-expression columns must be identical to ordered `unit_meta$pool_id` |
-| `rc_regcompass_step_layer2()` | Layer 1, matching global modules, GEM, and shared medium | `regcompass_layer2_step` | matrices share identical target/unit dimnames; stores core set, workflow parameters, GEM fingerprint, and persistent model files |
-| `rc_regcompass_step_target_union()` | matching Stage 3-5 objects from a union-GEM run | `regcompass_target_union_step` | anchors must be previous core targets; second-pass targets must be non-core reactions directly sharing KEGG, Reactome, or master-Rhea IDs with an anchor and must exist in every reused cached union GEM |
-| `rc_regcompass_step_results()` | matching Stage 1-5 objects and GEM | final result list | rejects different GEMs, workflow settings, classes, metacell construction/cache provenance, or unit order before ranking and annotation |
+## Stage 1: GRN
 
-## Files that must persist
+Class: `regcompass_grn_step`
 
-- Each stage wrapper RDS used for restart.
-- Stage 2 `condition_metacell_cache_contract.rds` while its per-stratum checkpoints may be reused.
-- Stage 5 files listed in `model_cache_summary$file`.
-- The same GEM object or a GEM with an identical fingerprint.
+Required outputs:
 
-Compact inspection artifacts do not replace their stage wrapper because they do not carry the full input contract.
+```r
+step1$grn_result$tf_peak_gene_significant
+step1$grn_result$sample_status
+step1$gem_fingerprint
+step1$params
+```
 
-## Stage 2 checkpoint reuse
+Every scored `condition × cell type` group must have a successful GRN with significant edges.
 
-The condition-metacell cache contract covers ordered cell IDs with condition/cell-type assignments, complete sparse RNA and ATAC assay values without dense materialization, the exact PCA/LSI embedding values in the selected dimensions, the fixed SuperCell2 construction label, reduction names and dimensions, `gamma`, seed, and metacell thresholds. When checkpoint files already exist and `overwrite = FALSE`, the requested contract must be identical. A missing or changed contract requires `metacell_args = list(overwrite = TRUE)`.
+## Stage 2: metacells
 
-## Fail-fast conditions
+Class: `regcompass_metacell_step`
 
-The workflow stops when:
+Required outputs:
 
-- a required stage class is absent;
-- condition, cell-type, assay values, or selected reduction embeddings differ;
-- an existing Stage 2 checkpoint lacks or disagrees with the current cache contract;
-- a metacell stage lacks the current condition-only label-guided construction provenance;
-- the GEM fingerprint differs;
-- Layer 1 and Layer 2 scoring units are missing, duplicated, or reordered;
-- the Stage 5 core set differs from Stage 3;
-- selected cores have no direct KEGG, Reactome, or master-Rhea-linked non-core reactions;
-- a directly mapped target is absent from one or more reused union GEMs;
-- a cached union-model file is missing or has changed provenance.
+```r
+step2$pooled$metacell_meta
+step2$pooled$membership
+step2$metacell_object
+step2$params
+```
 
-Same-subsystem, fixed-point, and transitive target-union expansion are not supported. These checks prevent numerically valid but biologically unrelated stage objects from being combined.
+The merged metacell object and metadata must contain the same ordered units. Reduction names, dimensions, cell labels, assay fingerprints, and embedding fingerprints are part of the cache contract.
+
+## Stage 3: biological meta-modules
+
+Class: `regcompass_meta_module_step`
+
+Required outputs:
+
+```r
+step3$condition_modules$core_gene_reaction
+step3$condition_modules$reaction_membership
+step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
+step3$group_coverage
+```
+
+Contract:
+
+- `merged_core_reactions` contains deduplicated complete-GPR core reactions;
+- `merged_reaction_membership` contains deduplicated biological reactions only;
+- `merged_modules$is_gem` is `FALSE`;
+- `merged_modules$fastcore_applied` is `FALSE`;
+- Stage 3 does not apply medium constraints or run FASTCORE;
+- the merged object is a catalogue and must not be described as a union GEM.
+
+## Stage 4: Layer 1
+
+Class: `regcompass_layer1_step`
+
+Required outputs:
+
+```r
+step4$reaction_expression
+step4$metacell_meta
+step4$workflow_params
+step4$gem_fingerprint
+```
+
+The reaction-expression matrix must contain every merged core reaction and the same ordered metacells represented by Stage 2.
+
+## Stage 5: Layer 2
+
+Class: `regcompass_layer2_step`
+
+For `model_mode = "meta_module_gem"`, required inputs are:
+
+```r
+step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
+```
+
+Required outputs include:
+
+```r
+step5$model_cache_summary
+step5$source_core_reactions
+step5$source_merged_reaction_membership
+step5$score
+step5$penalty
+step5$vmax
+```
+
+Each `model_cache_summary` row identifies one final medium-specific union GEM and records at least:
+
+```r
+medium_scenario
+file
+file_checksum
+build_strategy
+completion_stage
+```
+
+The cached model must record:
+
+```r
+model$is_union_gem
+model$union_gem_medium_scenario
+model$build_params$completion_stage
+model$reaction_meta$global_fastcore_support
+```
+
+The required build metadata are:
+
+```text
+build_strategy = medium_specific_union_gem
+completion_stage = single_global_fastcore_after_meta_module_merge
+```
+
+All conditions and metacells within the same medium must resolve to the same model file. Different media may resolve to different union-GEM structures because their global FASTCORE support sets may differ.
+
+## Stage 6: results
+
+The final result contains:
+
+```r
+result$condition_grn_meta_modules
+result$merged_grn_meta_modules
+result$microcompass
+result$reaction_ranking
+result$condition_summary
+result$condition_contrast
+```
+
+`merged_grn_meta_modules` is the Stage 3 catalogue. `microcompass$model_cache_summary` identifies the final Stage 5 union GEMs.
+
+## Global FASTCORE configuration
+
+The only structural completion controls are supplied at Stage 5:
+
+```r
+layer2_args = list(
+  model_params = list(
+    completion_time_limit = 600,
+    fastcore_epsilon = 1e-4,
+    max_support_reactions = 2000,
+    strict = TRUE
+  )
+)
+```
+
+## Target-union restart contract
+
+`rc_regcompass_step_target_union()` requires:
+
+- the original Stage 3 merged catalogue for anchor provenance;
+- the original Layer 1 matrix;
+- the completed `meta_module_gem` Stage 5 object;
+- accessible final Stage 5 union-GEM files;
+- matching model-file checksums and medium identifiers.
+
+The selected genes or reaction IDs determine mapping anchors only. Target availability and all LP calculations are evaluated in the exact cached final union GEMs. The second pass does not rebuild a GEM, does not change medium bounds, and does not rerun FASTCORE.

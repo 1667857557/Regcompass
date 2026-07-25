@@ -75,17 +75,9 @@ test_that("reaction directions are derived only from signed bounds", {
     lb = c(F = 0, R = -10, B = -10, Z = 0),
     ub = c(F = 10, R = 0, B = 10, Z = 0)
   )
-  directions <- rc_prepare_directional_targets(
-    gem,
-    colnames(S),
-    "both"
-  )
+  directions <- rc_prepare_directional_targets(gem, colnames(S), "both")
   expect_setequal(
-    paste(
-      directions$reaction_id,
-      directions$target_direction,
-      sep = ":"
-    ),
+    paste(directions$reaction_id, directions$target_direction, sep = ":"),
     c("F:forward", "R:reverse", "B:forward", "B:reverse", "Z:none")
   )
   expect_true("Z" %in% directions$reaction_id)
@@ -98,12 +90,7 @@ test_that("reaction directions are derived only from signed bounds", {
 test_that("signed absolute-penalty LP preserves forced non-zero bounds", {
   skip_if_not(rc_fastcore_solver_available())
   solver <- rc_fastcore_test_solver()
-  S <- matrix(
-    0,
-    nrow = 1,
-    ncol = 1,
-    dimnames = list("dummy", "R")
-  )
+  S <- matrix(0, nrow = 1, ncol = 1, dimnames = list("dummy", "R"))
 
   forward <- rc_compass_two_step_lp_directional(
     S,
@@ -134,23 +121,19 @@ test_that("signed absolute-penalty LP preserves forced non-zero bounds", {
   expect_equal(reverse$penalty, 5, tolerance = 1e-7)
 })
 
-test_that("add-only FASTCORE preserves the full biological set", {
+test_that("global add-only FASTCORE preserves the merged biological set", {
   skip_if_not(rc_fastcore_solver_available())
   gem <- rc_fastcore_forward_toy()
   membership <- data.frame(
-    sample_id = "S1",
-    module_id = "S1::GRN0001",
     reaction_id = c("Rcore", "Ralt"),
     is_core = c(TRUE, FALSE),
     stringsAsFactors = FALSE
   )
   core <- membership[membership$is_core, , drop = FALSE]
-  model <- rc_build_meta_module_gem(
-    gem,
-    membership,
-    core,
-    sample_id = "S1",
-    module_id = "S1::GRN0001",
+  model <- .rc_complete_medium_union_gem(
+    gem = gem,
+    reaction_membership = membership,
+    core_reactions = core,
     solver = rc_fastcore_test_solver(),
     strict = TRUE
   )
@@ -158,7 +141,7 @@ test_that("add-only FASTCORE preserves the full biological set", {
   expect_true(all(c("Rcore", "Ralt") %in% colnames(model$S)))
   expect_setequal(
     model$reaction_meta$reaction_id[
-      model$reaction_meta$fastcore_support
+      model$reaction_meta$global_fastcore_support
     ],
     c("EX_A", "EX_B")
   )
@@ -167,9 +150,14 @@ test_that("add-only FASTCORE preserves the full biological set", {
       model$closure_diagnostics$feasible
     ]
   ))
+  expect_true(model$is_union_gem)
   expect_equal(
     model$build_params$algorithm,
     "add_only_direction_preserving_fastcore_lp7_lp10"
+  )
+  expect_equal(
+    model$build_params$completion_stage,
+    "single_global_fastcore_after_meta_module_merge"
   )
 })
 
@@ -177,29 +165,22 @@ test_that("reverse-only core reactions are completed by orientation", {
   skip_if_not(rc_fastcore_solver_available())
   gem <- rc_fastcore_reverse_toy()
   membership <- data.frame(
-    sample_id = "S1",
-    module_id = "S1::GRN0002",
     reaction_id = "Rrev",
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
-  model <- rc_build_meta_module_gem(
-    gem,
-    membership,
-    membership,
-    sample_id = "S1",
-    module_id = "S1::GRN0002",
+  model <- .rc_complete_medium_union_gem(
+    gem = gem,
+    reaction_membership = membership,
+    core_reactions = membership,
     solver = rc_fastcore_test_solver(),
     strict = TRUE
   )
-  expect_equal(
-    model$target_directions$target_direction,
-    "reverse"
-  )
+  expect_equal(model$target_directions$target_direction, "reverse")
   expect_true(model$closure_diagnostics$final_feasible)
   expect_setequal(
     model$reaction_meta$reaction_id[
-      model$reaction_meta$fastcore_support
+      model$reaction_meta$global_fastcore_support
     ],
     c("EX_A", "EX_B")
   )
@@ -207,11 +188,7 @@ test_that("reverse-only core reactions are completed by orientation", {
 
 test_that("parent-blocked core reactions are not gap-filled", {
   skip_if_not(rc_fastcore_solver_available())
-  S <- matrix(
-    1,
-    nrow = 1,
-    dimnames = list("A_c", "Rblocked")
-  )
+  S <- matrix(1, nrow = 1, dimnames = list("A_c", "Rblocked"))
   gem <- rc_make_gem(
     S,
     lb = c(Rblocked = 0),
@@ -224,26 +201,19 @@ test_that("parent-blocked core reactions are not gap-filled", {
     )
   )
   membership <- data.frame(
-    sample_id = "S1",
-    module_id = "M1",
     reaction_id = "Rblocked",
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
-  model <- rc_build_meta_module_gem(
-    gem,
-    membership,
-    membership,
-    sample_id = "S1",
-    module_id = "M1",
+  model <- .rc_complete_medium_union_gem(
+    gem = gem,
+    reaction_membership = membership,
+    core_reactions = membership,
     solver = rc_fastcore_test_solver(),
     strict = TRUE
   )
-  expect_equal(
-    model$closure_diagnostics$completion_status,
-    "parent_blocked"
-  )
-  expect_false(any(model$reaction_meta$fastcore_support))
+  expect_equal(model$closure_diagnostics$completion_status, "parent_blocked")
+  expect_false(any(model$reaction_meta$global_fastcore_support))
 })
 
 test_that("LP-10 scaling retains smaller stoichiometric support flux", {
@@ -272,25 +242,21 @@ test_that("LP-10 scaling retains smaller stoichiometric support flux", {
     )
   )
   membership <- data.frame(
-    sample_id = "S1",
-    module_id = "Mscale",
     reaction_id = "Rcore",
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
-  model <- rc_build_meta_module_gem(
-    gem,
-    membership,
-    membership,
-    sample_id = "S1",
-    module_id = "Mscale",
+  model <- .rc_complete_medium_union_gem(
+    gem = gem,
+    reaction_membership = membership,
+    core_reactions = membership,
     solver = rc_fastcore_test_solver(),
     fastcore_epsilon = 1e-4,
     strict = TRUE
   )
   expect_setequal(
     model$reaction_meta$reaction_id[
-      model$reaction_meta$fastcore_support
+      model$reaction_meta$global_fastcore_support
     ],
     c("EX_2A", "EX_B")
   )
@@ -371,11 +337,12 @@ test_that("the Layer 2 API exposes exactly two structural modes", {
     "rc_build_microgem_cache",
     "rc_build_module_meso_gem",
     "rc_build_module_gem_cache",
+    "rc_build_meta_module_gem",
     "rc_run_regcompass_v12"
   ) %in% exports))
 })
 
-test_that("v1.3 labeled row IDs retain sample and module", {
+test_that("labeled row IDs retain optional sample and module fields", {
   parsed <- rc_parse_microcompass_row_id(
     "sample=S1::module=S1%3A%3AM1::reaction=R1::direction=forward::medium=base"
   )

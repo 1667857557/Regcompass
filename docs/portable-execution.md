@@ -1,6 +1,6 @@
 # Portable execution, bundled GEMs, progress, timing, and worker cleanup
 
-RegCompassR 1.8.3 removes three setup assumptions from the canonical workflow:
+RegCompassR 1.8.4 removes three setup assumptions from the canonical workflow:
 
 1. users do not need to prepare the default Human-GEM or Mouse-GEM;
 2. users do not choose a platform-specific parallel backend;
@@ -60,10 +60,15 @@ layer2_workers <- 30L
 `upstream_workers` applies to:
 
 - condition-by-cell-type Pando GRNs;
-- local FASTCORE completion;
-- Layer 1 reaction-expression calculation.
+- Layer 1 reaction-support calculation.
 
-`layer2_workers` applies to directional LP scoring.
+Stage 3 meta-module construction does not run FASTCORE and does not own a worker pool for feasibility completion.
+
+`layer2_workers` applies to:
+
+- one medium-specific union-GEM construction task per medium;
+- the single global FASTCORE completion performed within each union-GEM build;
+- directional LP scoring across metacells.
 
 Set both values to one for fully serial execution:
 
@@ -91,7 +96,7 @@ The public complete-workflow interface therefore does not require `parallel_back
 
 RegCompass uses task-level parallelism only. Every analysis running inside an outer worker is constrained to one internal thread.
 
-The workflow temporarily sets the following values before workers are created:
+The workflow temporarily sets:
 
 ```text
 OMP_NUM_THREADS=1
@@ -103,7 +108,7 @@ NUMEXPR_NUM_THREADS=1
 RCPP_PARALLEL_NUM_THREADS=1
 ```
 
-It also sets `mc.cores = 1L` and keeps Pando's internal `parallel = FALSE`. Package-managed child processes inherit the single-thread environment. This prevents an outer pool of 30 LP tasks from expanding into 30 nested multi-threaded solver or BLAS workloads.
+It also sets `mc.cores = 1L` and keeps Pando's internal `parallel = FALSE`. Package-managed child processes inherit the single-thread environment. This prevents an outer pool of LP tasks from expanding into nested multi-threaded solver or BLAS workloads.
 
 HiGHS uses a one-thread control default. GLPK is used as a serial solver backend. Alternative low-level solver interfaces remain available, but the canonical tutorials use HiGHS.
 
@@ -124,11 +129,28 @@ resolve operating-system backend
 → run gc(full = TRUE)
 ```
 
-Cleanup is registered before the pool is started, so startup failures and analysis errors use the same release path. Step 1, Step 4, and Step 5 each receive a fresh pool. Local FASTCORE owns and releases its own Step 3 pool. No upstream worker pool remains active while Layer 2 is running.
+Cleanup is registered before pool startup. Stage 1, Stage 4, and Stage 5 each receive a fresh pool when parallel work is requested. Stage 3 is a catalogue-construction stage and does not create a feasibility-completion pool. No upstream worker pool remains active while Layer 2 is running.
+
+## Global FASTCORE configuration
+
+Configure the single medium-specific completion through:
+
+```r
+layer2_args = list(
+  model_params = list(
+    completion_time_limit = 600,
+    fastcore_epsilon = 1e-4,
+    max_support_reactions = 2000,
+    strict = TRUE
+  )
+)
+```
+
+Each medium scenario receives its own final union GEM. All conditions and metacells evaluated under that medium reuse that one model file.
 
 ## Linux numerical-library setup
 
-The package applies single-thread settings during execution. For cluster batch jobs, setting them before launching R remains recommended because it also covers package loading and any user-side preprocessing:
+The package applies single-thread settings during execution. For cluster batch jobs, setting them before launching R remains recommended because it also covers package loading and user-side preprocessing:
 
 ```bash
 export OMP_NUM_THREADS=1
@@ -185,4 +207,4 @@ result$params$parallel_worker_lifecycle
 result$params$parallel_stage_groups
 ```
 
-Timing columns include stage, status, start and finish timestamps, elapsed seconds, formatted elapsed time, OS type, and R version. Failed stages write an error-status timing row before propagating the original error.
+Timing columns include stage, status, timestamps, elapsed seconds, formatted elapsed time, OS type, and R version. Failed stages write an error-status timing row before propagating the original error.

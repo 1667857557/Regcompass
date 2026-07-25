@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.3 GRN-first workflow"
+title: "RegCompassR 1.8.4 GRN-first workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.3 GRN-first workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.4 GRN-first workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -11,69 +11,64 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-RegCompassR fits condition-by-cell-type Pando GRNs, builds condition-level SuperCell2 metacells, maps complete-GPR core reactions, constructs a FASTCORE-completed global union GEM, integrates RNA and ATAC evidence, and performs directional minimum-penalty LP scoring.
+# Overview
 
-The canonical complete runner uses `gamma = 30` and two automatic worker layers: `upstream_workers = 6L` and `layer2_workers = 30L`. It selects the operating-system backend, keeps every task inside an outer worker single-threaded, and releases each stage pool before the next unrelated stage.
+RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level support and directional COMPASS-like scores.
 
-## Installation
-
-```{r}
-install.packages(c("remotes", "highs", "BiocManager", "ggplot2"))
-BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
-remotes::install_github("1667857557/Pando_regcompass", upgrade = "never")
-remotes::install_github("1667857557/Regcompass", upgrade = "never")
+```text
+condition × cell type GRNs
+→ biological meta-modules
+→ merged meta-module catalogue
+→ integrated RNA+ATAC reaction support
+→ medium-specific union GEM
+→ single global FASTCORE completion
+→ directional LP scoring
 ```
 
-A local Pando archive is also accepted:
+Stage 3 does not run FASTCORE and does not create a GEM. Only the medium-constrained Stage 5 model is called a union GEM.
 
-```{r}
-install.packages("~/Pando_regcompass.tar.gz", repos = NULL, type = "source")
-```
-
-## Input, GEM, and medium
-
-The Seurat object must contain paired RNA and ATAC counts for the same cells, complete condition/cell-type metadata, and an ATAC `ChromatinAssay`. Use `Pando::motifs`; do not pass `motif2tf` as `pfm`.
+# Prepare the GEM and medium
 
 ```{r}
 library(RegCompassR)
-library(Pando)
 library(BSgenome.Hsapiens.UCSC.hg38)
 
-data(motifs, package = "Pando")
-condition_col <- "dataset"
-celltype_col <- "epithelial_or_stem"
+data(motif2tf, package = "Pando")
 
-gem <- rc_prepare_gem(species = "human", version = "2.0.0")
+gem <- rc_prepare_gem(
+  species = "human",
+  version = "2.0.0",
+  source = "bundled"
+)
+
 medium_scenarios <- rc_make_medium_scenarios(
-  gem = gem,
-  scenario = "physiologic",
+  gem,
+  scenario = "high_glucose",
   species = "human"
 )
 ```
 
-On Linux, set numerical-library threads before launching R:
-
-```bash
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-```
-
-The package repeats this single-thread restriction during execution so package-managed workers inherit it.
-
-## Complete run with automatic layered workers
+# Complete workflow
 
 ```{r}
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
-  pfm = motifs,
+  pfm = motif2tf,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
+  gem = gem,
   species = "human",
   medium_scenarios = medium_scenarios,
-  condition_col = condition_col,
-  celltype_col = celltype_col,
+  sample_col = NULL,
+  condition_col = "Group",
+  celltype_col = "cell_type",
+  model_mode = "meta_module_gem",
+  metacell_args = list(
+    gamma = 30,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10
+  ),
   pando_args = list(
     min_cells = 100,
     pando_infer_args = list(
@@ -84,108 +79,173 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
-  metacell_args = list(
-    gamma = 30,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10
-  ),
   layer1_args = list(
-    local_fastcore = TRUE,
-    local_fastcore_args = list(
-      solver = "highs",
-      strict = TRUE,
-      time_limit = 300
-    )
+    top_k_neighbors = 5,
+    min_shared_tfs = 1,
+    min_tf_jaccard = 0,
+    max_targets_per_tf = 200,
+    expansion_mode = "ordered_once",
+    regulatory_alpha = 1,
+    tau = 0.20
   ),
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    time_limit = 60
+    time_limit = 600,
+    model_params = list(
+      completion_time_limit = 600,
+      fastcore_epsilon = 1e-4,
+      max_support_reactions = 2000,
+      strict = TRUE
+    )
   ),
-  upstream_workers = 6L,
-  layer2_workers = 30L,
-  progress = TRUE
+  upstream_workers = 6,
+  layer2_workers = 30
 )
 ```
 
-Do not supply `parallel_backend`, per-stage `BPPARAM` objects, or local-FASTCORE worker/backend fields to the complete runner. Windows automatically uses SOCK/SnowParam; Linux/macOS use MulticoreParam. Set both worker counts to `1L` for a fully serial run.
+FASTCORE is configured at Stage 5 through `layer2_args$model_params`.
 
-Every outer worker executes one single-thread analysis. Pando's inner `parallel = FALSE` is retained, numerical-library and nested R worker settings are fixed at one, and each package-managed worker pool is stopped and followed by `gc(full = TRUE)` after its stage.
-
-## Audit saved stages
-
-The complete run writes classed stage objects:
+# Stepwise workflow
 
 ```{r}
-step1 <- readRDS("RegCompass_result/01_single_cell_grn/step_grn.rds")
-step2 <- readRDS("RegCompass_result/02_condition_metacells/step_metacells.rds")
-step3 <- readRDS("RegCompass_result/03_meta_modules/step_meta_modules.rds")
-step4 <- readRDS("RegCompass_result/04_layer1/step_layer1.rds")
-step5 <- readRDS("RegCompass_result/05_layer2/step_layer2.rds")
-result <- readRDS("RegCompass_result/06_results/regcompass_result.rds")
-```
+step1 <- rc_regcompass_step_grn(
+  object = A,
+  gem = gem,
+  outdir = "RegCompass_steps/01_grn",
+  pfm = motif2tf,
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  condition_col = "Group",
+  celltype_col = "cell_type",
+  pando_args = list(min_cells = 100)
+)
 
-```{r}
-stopifnot(
-  inherits(step1, "regcompass_grn_step"),
-  inherits(step2, "regcompass_metacell_step"),
-  inherits(step3, "regcompass_meta_module_step"),
-  inherits(step4, "regcompass_layer1_step"),
-  inherits(step5, "regcompass_layer2_step"),
-  all(step1$grn_result$sample_status$status == "ok"),
-  !any(step2$pooled$metacell_meta$dominant_celltype_tied %in% TRUE),
-  all(step3$group_coverage$coverage_complete),
-  identical(step2$params$metacell_args$gamma, 30L),
-  identical(step4$gem_fingerprint, step5$gem_fingerprint),
-  identical(colnames(step4$reaction_expression), colnames(step5$penalty)),
-  any(step5$evaluated),
-  all(file.exists(step5$model_cache_summary$file)),
-  identical(result$version, "1.8.3"),
-  identical(result$params$upstream_workers, 6L),
-  identical(result$params$layer2_workers, 30L),
-  identical(result$params$internal_threads_per_task, 1L),
-  identical(
-    result$params$parallel_worker_lifecycle,
-    "stage_scoped_create_start_stop_release_full_gc"
+step2 <- rc_regcompass_step_metacells(
+  object = A,
+  outdir = "RegCompass_steps/02_metacells",
+  sample_col = NULL,
+  condition_col = "Group",
+  celltype_col = "cell_type",
+  fragment_files = FALSE,
+  metacell_args = list(gamma = 30)
+)
+
+step3 <- rc_regcompass_step_meta_modules(
+  grn = step1,
+  metacells = step2,
+  gem = gem,
+  outdir = "RegCompass_steps/03_meta_modules",
+  layer1_args = list(expansion_mode = "ordered_once")
+)
+
+step4 <- rc_regcompass_step_layer1(
+  metacells = step2,
+  meta_modules = step3,
+  gem = gem,
+  outdir = "RegCompass_steps/04_layer1",
+  regulatory_alpha = 1,
+  tau = 0.20
+)
+
+step5 <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "RegCompass_steps/05_layer2",
+  model_mode = "meta_module_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    time_limit = 600,
+    model_params = list(
+      completion_time_limit = 600,
+      fastcore_epsilon = 1e-4,
+      max_support_reactions = 2000,
+      strict = TRUE
+    )
   )
 )
+
+result <- rc_regcompass_step_results(
+  grn = step1,
+  metacells = step2,
+  meta_modules = step3,
+  layer1 = step4,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_steps/06_results",
+  species = "human"
+)
 ```
 
-Meta-modules contain complete-GPR cores, same-subsystem reactions, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. FASTCORE adds separately labelled feasibility support. The raw minimum penalty is the primary result; the relative score is a within-target rank, not a probability.
-
-The complete stage-by-stage execution, rather than one-shot execution followed by RDS loading, is documented in `docs/tutorial-02-stepwise-audit.md`.
-
-## Direct database-linked non-core scoring
+# Inspect the Stage 3 catalogue
 
 ```{r}
-expanded <- rc_regcompass_step_target_union(
+step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
+step3$merged_modules$is_gem
+step3$merged_modules$fastcore_applied
+```
+
+The merged catalogue contains biological reactions only. It has no medium bounds and no FASTCORE support.
+
+# Inspect the Stage 5 union GEM
+
+```{r}
+step5$model_cache_summary[, c(
+  "medium_scenario",
+  "file",
+  "file_checksum",
+  "n_merged_biological_reactions",
+  "n_global_fastcore_support_reactions",
+  "completion_stage"
+)]
+
+union_gem <- readRDS(step5$model_cache_summary$file[[1]])
+
+union_gem$is_union_gem
+union_gem$union_gem_medium_scenario
+union_gem$reaction_meta[
+  union_gem$reaction_meta$global_fastcore_support %in% TRUE,
+  , drop = FALSE
+]
+```
+
+One union GEM is built per medium scenario and shared by all conditions and metacells in that scenario.
+
+# Targeted second-pass scoring
+
+```{r}
+targeted <- rc_regcompass_step_target_union(
   layer1 = step4,
   meta_modules = step3,
   layer2 = step5,
   gem = gem,
-  outdir = "RegCompass_result/05b_expanded_targets",
-  core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
-  gene_match = "complete_gpr"
+  outdir = "RegCompass_targeted",
+  core_reaction_ids = "MAR04324",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    time_limit = 600
+  )
 )
 
-stopifnot(
-  all(expanded$expanded_scoring_targets$score_target),
-  all(expanded$expanded_reaction_catalog$expansion_type %in% c(
-    "shared_kegg_reaction",
-    "shared_reactome_reaction",
-    "shared_master_rhea_reaction"
-  )),
-  identical(
-    expanded$microcompass$params$target_scope,
-    "direct_kegg_reactome_master_rhea_noncore_only"
-  ),
-  expanded$microcompass$params$structural_model_reused_exactly,
-  all(expanded$microcompass$model_cache_summary$reused_without_rebuilding)
-)
+targeted$microcompass$params[c(
+  "structural_model_reused_exactly",
+  "fastcore_rerun",
+  "model_rebuild"
+)]
 ```
 
-The selected core reactions are mapping anchors and are not scored again. Only non-core reactions directly sharing a KEGG, Reactome, or master-Rhea identifier with a selected core enter the second LP. Same-subsystem and transitive expansion are excluded. The exact original union-GEM files and bounds are reused.
+Selected genes or reaction IDs define mapping anchors. The second pass verifies each Stage 5 cache file checksum and medium identifier, reuses the exact final medium-specific union GEM, and neither rebuilds the model nor reruns FASTCORE.
 
-For gene/reaction-targeted remapping, see `docs/tutorial-04-targeted-reaction-remapping.md`. For condition tests and plots, see `docs/tutorial-05-condition-differential-analysis.md`. For medium definitions, see `docs/medium-presets.md`. For restart and diagnostics, see `docs/tutorial-03-advanced-restart.md`.
+# Restart policy
 
-Metacell-level condition comparisons describe separation within the analyzed dataset; they are not automatically biological-replicate-level treatment inference.
+- Change GRN projection or annotation expansion: rerun Stage 3 onward.
+- Change the RNA+ATAC transformation: rerun Stage 4 onward.
+- Change medium or global FASTCORE settings: rerun Stage 5 onward.
+
+# Condition comparisons
+
+Within one medium, all conditions use the same union GEM and target-specific `vmax`. Condition differences therefore reflect the multiome penalty matrix. Different media may use different global FASTCORE support sets and must be interpreted as separate structural contexts.

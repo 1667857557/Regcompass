@@ -1,172 +1,154 @@
 # Tutorial Level 3: restart, sensitivity, and diagnostics
 
-Use saved classed stage objects. RegCompassR 1.8.3 rejects cross-run object mixing when GEM fingerprints, workflow parameters, stage classes, metacell cache/construction provenance, core sets, or ordered scoring units differ.
+Use saved classed stage objects. RegCompass rejects cross-run object mixing when workflow settings, GEM fingerprints, metacell provenance, merged core sets, or ordered scoring units differ.
 
-## Load a completed canonical run
-
-```r
-step1 <- readRDS("RegCompass_result/01_single_cell_grn/step_grn.rds")
-step2 <- readRDS("RegCompass_result/02_condition_metacells/step_metacells.rds")
-step3 <- readRDS("RegCompass_result/03_meta_modules/step_meta_modules.rds")
-step4 <- readRDS("RegCompass_result/04_layer1/step_layer1.rds")
-step5 <- readRDS("RegCompass_result/05_layer2/step_layer2.rds")
-result <- readRDS("RegCompass_result/06_results/regcompass_result.rds")
-```
-
-Use the stage wrapper RDS, not a compact inspection artifact. Keep all files referenced by `step5$model_cache_summary$file`.
-
-## Earliest stage to rerun
-
-| Change | Rerun from |
-|---|---:|
-| Pando model, `tf_cor`, `peak_cor`, minimum cells | Stage 1 |
-| metacell `gamma` or cell-size thresholds | Stage 2 |
-| condition/cell-type metadata or assay names | Stage 1 and Stage 2 |
-| GRN projection, subsystem/cross-reference expansion, local FASTCORE | Stage 3 |
-| regulatory integration, GPR `tau`, RNA half-saturation | Stage 4 |
-| medium, structural mode, solver, `omega`, target direction | Stage 5 |
-| selected core anchors for direct database-linked scoring | target-union step only |
-| ranking/annotation assembly | Stage 6 |
-
-A changed GEM invalidates Stage 1, Stage 3, Stage 4, Stage 5, Stage 6, and target-union outputs because their fingerprints no longer match.
-
-### Rebuild Stage 2 safely
-
-The Stage 2 output directory contains `condition_metacell_cache_contract.rds`. It fingerprints the ordered cells and condition/cell-type labels, RNA and ATAC assay contents, the SuperCell2 construction label, reductions/dimensions, `gamma`, seed, and metacell size thresholds.
-
-Unchanged inputs and parameters may reuse the existing per-stratum checkpoints. Any changed contract, or a checkpoint directory created before this contract existed, stops rather than silently reusing stale memberships. Rebuild in the same output directory explicitly:
+## Load a completed stepwise run
 
 ```r
-step2 <- rc_regcompass_step_metacells(
-  object = A,
-  outdir = "RegCompass_result/02_condition_metacells",
-  sample_col = NULL,
-  condition_col = condition_col,
-  celltype_col = celltype_col,
-  fragment_files = FALSE,
-  metacell_args = list(
-    gamma = 30,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10,
-    overwrite = TRUE
-  )
-)
+step1 <- readRDS("RegCompass_steps/01_grn/step_grn.rds")
+step2 <- readRDS("RegCompass_steps/02_metacells/step_metacells.rds")
+step3 <- readRDS("RegCompass_steps/03_meta_modules/step_meta_modules.rds")
+step4 <- readRDS("RegCompass_steps/04_layer1/step_layer1.rds")
+step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 ```
 
-After rebuilding Stage 2, rerun Stage 3 onward because downstream objects contain the previous metacell identities and workflow provenance.
+## Restart boundaries
 
-## Worker policy
+### Rerun Stage 2 onward
 
-The canonical complete run uses:
+Rerun metacells and every downstream stage after changing:
+
+- `gamma`;
+- RNA PCA/Harmony reduction or dimensions;
+- ATAC LSI reduction or dimensions;
+- cell membership or condition/cell-type metadata;
+- RNA or ATAC count matrices.
+
+### Rerun Stage 3 onward
+
+Rerun meta-modules, Layer 1, Layer 2, and results after changing:
+
+- Pando significance filtering;
+- `top_k_neighbors`;
+- `min_shared_tfs`;
+- `min_tf_jaccard`;
+- `max_targets_per_tf`;
+- `expansion_mode`;
+- subsystem or reaction cross-reference annotations;
+- GEM GPR rules.
+
+Stage 3 writes `merged_meta_modules.rds`. This object is a deduplicated biological reaction catalogue and contains no FASTCORE support.
+
+### Rerun Stage 4 onward
+
+Rerun Layer 1, Layer 2, and results after changing:
+
+- `regulatory_alpha`;
+- `tau`;
+- gene half-saturation;
+- metacell RNA or ATAC evidence while retaining the same Stage 3 catalogue.
+
+### Rerun Stage 5 onward
+
+Rerun only Layer 2 and results after changing:
+
+- medium composition or exchange bounds;
+- `target_direction`;
+- LP solver or scoring `time_limit`;
+- `omega`;
+- global FASTCORE controls in `layer2_args$model_params`:
+  - `completion_time_limit`;
+  - `fastcore_epsilon`;
+  - `max_support_reactions`;
+  - `strict`.
+
+## Rebuild only the medium-specific union GEMs
 
 ```r
-upstream_workers <- 6L
-layer2_workers <- 30L
-```
-
-The backend is always selected automatically: SOCK on Windows and multicore on Linux/macOS. Each stage owns its worker pool and releases it before the next unrelated stage starts.
-
-For low-level restart functions, set the worker budget before starting R rather than constructing a `BiocParallelParam` manually:
-
-```bash
-export OMP_NUM_THREADS=1
-export OPENBLAS_NUM_THREADS=1
-export MKL_NUM_THREADS=1
-export REGCOMPASS_WORKERS=30
-```
-
-| Stage | Parallel unit | Canonical worker layer |
-|---|---|---|
-| 1 | condition × cell-type Pando group | upstream |
-| 2 | no workflow-level BiocParallel loop | serial |
-| 3 | local FASTCORE completion per meta-module | upstream |
-| 4 | GPR/reaction-capacity calculation | upstream |
-| 5 | shared model × metacell | Layer 2 |
-| target union | reused union model × metacell | Layer 2-style restart budget |
-| 6 | serial assembly | serial |
-
-Keep Pando's inner `parallel = FALSE`. Lower the Layer 2 worker count when memory, not CPU, is limiting.
-
-## Restart Stage 5 with a new medium
-
-Set `REGCOMPASS_WORKERS` to the desired Layer 2 restart count before starting R, then run the stage without manually creating a backend:
-
-```r
-medium_scenarios <- rc_make_medium_scenarios(
-  gem,
-  scenario = c("normal_human_plasma", "dmem_high_glucose"),
-  species = "human"
-)
-
-step5_medium <- rc_regcompass_step_layer2(
+step5_new <- rc_regcompass_step_layer2(
   layer1 = step4,
   meta_modules = step3,
   gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_result/05_layer2_medium",
+  medium_scenarios = new_medium_scenarios,
+  outdir = "RegCompass_restart/05_layer2",
   model_mode = "meta_module_gem",
   layer2_args = list(
+    target_direction = "both",
     solver = "highs",
-    target_direction = "both"
-  )
+    time_limit = 900,
+    model_params = list(
+      completion_time_limit = 900,
+      fastcore_epsilon = 1e-4,
+      max_support_reactions = 2500,
+      strict = TRUE
+    )
+  ),
+  parallel = TRUE,
+  BPPARAM = layer2_bp
 )
 ```
 
-When `BPPARAM` is omitted, the stage resolves the platform backend automatically. The internally created worker pool is released when the parallel loop completes. Medium bounds can restrict existing GEM directions but cannot create a direction absent from the source model.
+This reuses:
 
-## Restart direct database-linked scoring
+- the same biological meta-module definitions;
+- the same merged complete-GPR target set;
+- the same Layer 1 reaction-support matrix.
+
+It reconstructs one union GEM for each new medium and performs one global FASTCORE completion per medium.
+
+## Diagnose union-GEM completion
 
 ```r
-expanded <- rc_regcompass_step_target_union(
-  layer1 = step4,
-  meta_modules = step3,
-  layer2 = step5,
-  gem = gem,
-  outdir = "RegCompass_result/05b_glutathione",
-  core_reaction_ids = "MAR04324"
+summary <- step5_new$model_cache_summary
+summary[, c(
+  "medium_scenario",
+  "n_merged_biological_reactions",
+  "n_global_fastcore_support_reactions",
+  "target_status",
+  "file",
+  "file_checksum"
+)]
+
+models <- lapply(summary$file, readRDS)
+
+diagnostics <- do.call(
+  rbind,
+  Map(function(model, medium) {
+    x <- model$closure_diagnostics
+    x$medium_scenario <- medium
+    x
+  }, models, summary$medium_scenario)
 )
+
+table(diagnostics$medium_scenario, diagnostics$completion_status)
 ```
 
-The selected core is not scored again. Only non-core reactions directly sharing a KEGG, Reactome, or master-Rhea ID with the selected core are evaluated. Same-subsystem and transitive expansion are unavailable by design.
+Interpretation:
 
-This restart is valid only while the original union-GEM cache files remain unchanged and available. The output records their paths, fingerprints, MD5 hashes, and sizes.
+- `already_feasible`: the merged biological catalogue already supported the target under that medium;
+- `global_fastcore_completed`: global FASTCORE added supporting reactions;
+- `parent_blocked`: the target direction is infeasible in the medium-constrained parent GEM;
+- `unresolved`: completion failed under the requested constraints;
+- `no_allowed_direction`: the original GEM bounds do not permit the requested direction.
 
-## Serial troubleshooting
-
-Set the global restart worker budget to one before starting R:
-
-```bash
-export REGCOMPASS_WORKERS=1
-```
-
-With one available worker, the automatic backend resolves to serial execution. For Stage 3, omit manual `workers`, `backend`, and `BPPARAM` fields unless debugging the lower-level implementation itself.
-
-Classify failures in this order:
-
-1. **Input contract:** missing assays, metadata, stage class, fingerprint, metacell cache provenance, or reordered units.
-2. **Installation:** unavailable Pando, SuperCell2, genome package, or LP solver.
-3. **Model construction:** missing core reactions, invalid GPRs, or incomplete FASTCORE support.
-4. **Database mapping:** selected cores have no direct KEGG, Reactome, or master-Rhea-linked non-core reactions in the original union.
-5. **Medium:** exchange mapping or restrictive bounds.
-6. **Target direction:** reaction blocked in the fixed model.
-7. **Evidence:** finite LP result but weak or non-informative variation.
-
-Do not interpret a solver-installation error as biological infeasibility. Do not interpret a blocked direction as evidence that the opposite direction is inactive without checking the signed model bounds.
-
-## Validate a restart before interpretation
+## Compare support sets across media
 
 ```r
-stopifnot(
-  inherits(step3, "regcompass_meta_module_step"),
-  inherits(step4, "regcompass_layer1_step"),
-  inherits(step5, "regcompass_layer2_step"),
-  identical(step3$gem_fingerprint, step4$gem_fingerprint),
-  identical(step4$gem_fingerprint, step5$gem_fingerprint),
-  identical(step4$workflow_params, step5$workflow_params),
-  identical(colnames(step4$reaction_expression), colnames(step5$penalty)),
-  all(file.exists(step5$model_cache_summary$file)
-  )
+support_by_medium <- do.call(
+  rbind,
+  Map(function(model, medium) {
+    ids <- model$reaction_meta$reaction_id[
+      model$reaction_meta$global_fastcore_support %in% TRUE
+    ]
+    data.frame(
+      medium_scenario = medium,
+      reaction_id = ids,
+      stringsAsFactors = FALSE
+    )
+  }, models, summary$medium_scenario)
 )
+
+table(support_by_medium$medium_scenario)
 ```
 
-See [Predefined extracellular medium scenarios](medium-presets.md) and [Direct database-linked non-core scoring](target-union-scoring.md) for the corresponding contracts.
+Differences in these support sets are structural consequences of different medium constraints. They should not be interpreted as condition-specific expression effects.
