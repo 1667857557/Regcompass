@@ -43,8 +43,8 @@ jobs:
           BiocManager::install(
             c(
               "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
-              "GenomicRanges", "sparseMatrixStats", "limma",
-              "Rhtslib", "Rsamtools"
+              "GenomicRanges", "sparseMatrixStats", "MatrixGenerics",
+              "limma", "Rhtslib", "Rsamtools", "TFBSTools", "motifmatchr"
             ),
             ask = FALSE,
             update = FALSE
@@ -63,6 +63,11 @@ jobs:
           )
           remotes::install_github(
             "1667857557/SuperCell_Seurat_V4@agent/current-seurat-v5-layer-api",
+            dependencies = NA,
+            upgrade = "never"
+          )
+          remotes::install_github(
+            "1667857557/Pando_regcompass",
             dependencies = NA,
             upgrade = "never"
           )
@@ -88,14 +93,16 @@ jobs:
         run: |
           R CMD INSTALL --no-multiarch --with-keep.source --install-tests .
 
-      - name: Run Seurat and SuperCell compatibility tests
+      - name: Run Seurat, Pando, and SuperCell compatibility tests
         shell: Rscript {0}
         run: |
           library(RegCompassR)
+          library(Pando)
           profile <- RegCompassR:::.rc_validate_seurat_stack_versions(
             RegCompassR:::.rc_seurat_stack_versions()
           )
           stopifnot(identical(profile$profile, "seurat_v5_compatible"))
+          stopifnot(is.function(Pando::LayerData))
 
           old_option <- getOption("Seurat.object.assay.version")
           on.exit(options(Seurat.object.assay.version = old_option), add = TRUE)
