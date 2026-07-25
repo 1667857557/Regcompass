@@ -18,8 +18,7 @@
       gpr_list = parsed,
       gene_score = gene_support,
       promiscuity_mode = params$promiscuity_mode %||% "none",
-      tau = params$tau %||% 0.20,
-      and_method = params$and_method %||% "boltzmann",
+      and_method = params$and_method %||% "min",
       or_method = params$or_method %||% "sum",
       BPPARAM = FALSE
     )
@@ -70,17 +69,25 @@
   multiome <- as.matrix(layer1$gene_support_multiome)
   if (!identical(dimnames(rna), dimnames(modifier)) ||
       !identical(dimnames(rna), dimnames(multiome))) {
-    stop("Layer 1 RNA, ATAC modifier, and multiome matrices must align.", call. = FALSE)
+    stop(
+      "Layer 1 RNA, ATAC modifier, and multiome matrices must align.",
+      call. = FALSE
+    )
   }
   meta <- layer1$unit_meta
   columns <- .rc_ra_infer_group_columns(meta, condition_col, celltype_col)
   condition_col <- columns$condition_col
   celltype_col <- columns$celltype_col
   unit_col <- .rc_ra_first_col(meta, c("unit_id", "pool_id", "metacell_id"))
-  if (is.null(unit_col)) stop("Layer 1 metadata lack unit identifiers.", call. = FALSE)
+  if (is.null(unit_col)) {
+    stop("Layer 1 metadata lack unit identifiers.", call. = FALSE)
+  }
   unit_ids <- as.character(meta[[unit_col]])
   if (!setequal(colnames(rna), unit_ids)) {
-    stop("Layer 1 evidence matrices and metadata contain different units.", call. = FALSE)
+    stop(
+      "Layer 1 evidence matrices and metadata contain different units.",
+      call. = FALSE
+    )
   }
   meta <- meta[match(colnames(rna), unit_ids), , drop = FALSE]
   original_gene_ids <- as.character(rownames(rna))
@@ -118,8 +125,10 @@
     cell_type = as.character(meta[[celltype_col]]),
     stringsAsFactors = FALSE
   ))
-  groups <- groups[.rc_ra_nonempty(groups$condition) &
-                     .rc_ra_nonempty(groups$cell_type), , drop = FALSE]
+  groups <- groups[
+    .rc_ra_nonempty(groups$condition) & .rc_ra_nonempty(groups$cell_type),
+    , drop = FALSE
+  ]
   gene_lists <- lapply(catalog$genes, function(x) {
     tolower(.rc_ra_split(x))
   })
@@ -174,7 +183,9 @@
       if (!is.null(capacities$rna) &&
           reaction_id %in% rownames(capacities$rna)) {
         rna_capacity <- capacities$rna[reaction_id, keep, drop = TRUE]
-        multiome_capacity <- capacities$multiome[reaction_id, keep, drop = TRUE]
+        multiome_capacity <- capacities$multiome[
+          reaction_id, keep, drop = TRUE
+        ]
         has_rna_capacity <- any(
           is.finite(rna_capacity) & rna_capacity > evidence_tolerance
         )
@@ -307,65 +318,58 @@
       max_abs_multiome_capacity_shift_by_condition = paste0(
         conditions, "=", format_number(max_shift), collapse = ";"
       ),
-      multiome_supported_conditions = .rc_ra_collapse(
-        conditions[!is.na(classes) & classes == "RNA+ATAC"]
-      ),
-      has_active_multiome_contribution = any(
-        one$has_active_multiome_contribution %in% TRUE, na.rm = TRUE
-      ),
       stringsAsFactors = FALSE
     )
   })
-  summary <- do.call(rbind, summary)
-  for (column in colnames(summary)) data[[column]] <- summary[[column]]
-  data
+  cbind(data, do.call(rbind, summary), stringsAsFactors = FALSE)
 }
 
-#' Build formal reaction annotations and evidence provenance
-#'
-#' Constructs reaction names, formulas, direction-specific substrates and
-#' products, GPR genes, database identifiers, and condition-by-cell-type evidence
-#' classes. `RNA+ATAC` is assigned only when a GPR-aggregated reaction-capacity
-#' comparison is available and differs from the RNA-only capacity.
-#'
-#' @param gem A validated RegCompass GEM.
-#' @param layer1 Optional Layer 1 result used for GPR and evidence provenance.
-#' @param reaction_ids Optional reactions to annotate.
-#' @param condition_col,celltype_col Optional Layer 1 metadata columns.
-#' @param evidence_tolerance Non-negative numerical comparison tolerance.
-#' @return A `regcompass_reaction_annotations` list containing `reactions`,
-#'   `evidence`, and `params`.
-#' @export
-rc_build_reaction_annotations <- function(
-    gem, layer1 = NULL, reaction_ids = NULL,
-    condition_col = NULL, celltype_col = NULL,
-    evidence_tolerance = 1e-8) {
-  if (!is.numeric(evidence_tolerance) || length(evidence_tolerance) != 1L ||
-      !is.finite(evidence_tolerance) || evidence_tolerance < 0) {
-    stop("`evidence_tolerance` must be one non-negative finite number.",
-         call. = FALSE)
-  }
-  catalog <- .rc_ra_reaction_catalog(gem, layer1, reaction_ids)
-  evidence <- .rc_ra_group_evidence(
-    catalog = catalog,
-    layer1 = layer1,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    evidence_tolerance = evidence_tolerance
+.rc_ra_evidence_index <- function(evidence) {
+  paste(
+    evidence$reaction_id,
+    evidence$condition,
+    evidence$cell_type,
+    sep = "\001"
   )
-  answer <- list(
-    reactions = catalog,
-    evidence = evidence,
-    params = list(
-      condition_col = condition_col,
-      celltype_col = celltype_col,
-      evidence_tolerance = evidence_tolerance,
-      evidence_definition = paste(
-        "RNA+ATAC requires GPR-aggregated reaction capacity from integrated",
-        "gene support to differ from RNA-only reaction capacity"
-      )
+}
+
+.rc_ra_first_col <- function(data, candidates) {
+  found <- candidates[candidates %in% colnames(data)]
+  if (length(found)) found[[1L]] else NULL
+}
+
+.rc_ra_nonempty <- function(x) {
+  !is.na(x) & nzchar(trimws(as.character(x)))
+}
+
+.rc_ra_split <- function(x) {
+  if (is.null(x) || !length(x) || all(is.na(x))) return(character())
+  out <- unlist(strsplit(as.character(x), "[;|,]", perl = TRUE))
+  out <- trimws(out)
+  unique(out[!is.na(out) & nzchar(out)])
+}
+
+.rc_ra_collapse <- function(x) {
+  x <- unique(trimws(as.character(x)))
+  x <- x[!is.na(x) & nzchar(x)]
+  if (!length(x)) NA_character_ else paste(sort(x), collapse = ";")
+}
+
+.rc_ra_infer_group_columns <- function(
+    meta, condition_col = NULL, celltype_col = NULL) {
+  condition_col <- condition_col %||% .rc_ra_first_col(
+    meta, c("condition", "Group", "group")
+  )
+  celltype_col <- celltype_col %||% .rc_ra_first_col(
+    meta, c("cell_type", "celltype", "cell.type")
+  )
+  if (is.null(condition_col) || is.null(celltype_col) ||
+      !condition_col %in% colnames(meta) ||
+      !celltype_col %in% colnames(meta)) {
+    stop(
+      "Layer 1 metadata lack condition or cell-type columns.",
+      call. = FALSE
     )
-  )
-  class(answer) <- c("regcompass_reaction_annotations", "list")
-  answer
+  }
+  list(condition_col = condition_col, celltype_col = celltype_col)
 }
