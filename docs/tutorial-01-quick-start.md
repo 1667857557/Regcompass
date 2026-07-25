@@ -6,7 +6,7 @@ Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.8.4
 
 ```text
 condition × cell type cells
-→ Pando models of Human-GEM GPR genes
+→ Pando models of GEM GPR genes
 → significantly supported metabolic target genes
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
@@ -36,41 +36,36 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-The Seurat object must contain normalized RNA and ATAC assays, the requested reductions, and the metadata columns supplied below. Pando is fitted separately for each `condition × cell type` group. Its target list is the intersection of Human-GEM GPR genes and RNA-assay row names.
+The Seurat object must contain normalized RNA and ATAC assays, the requested reductions, and the metadata columns supplied below. Pando is fitted separately for each `condition × cell type` group. Its target list is the intersection of GEM GPR genes and RNA-assay row names.
 
 When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes the resulting `motifs` object to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
 
-By default, human analyses also load the Pando data objects `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38`, take their union, and pass that `GRanges` object to `Pando::initiate_grn(regions = ...)`. Override this only through `pando_args$pando_initiate_args$regions`. Non-human analyses must provide species-appropriate regions explicitly.
+The default Pando regions are species-specific:
+
+```text
+human: phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
+mouse: phastConsElements20Mammals.UCSC.hg38 only
+```
+
+Both objects are loaded from Pando. An explicit `pando_args$pando_initiate_args$regions` overrides the default.
 
 Available medium presets include physiological plasma, RPMI-1640, high-glucose DMEM, glucose/lactate/glutamine sensitivity scenarios, technical exchange baselines, and custom media. See [medium presets](medium-presets.md) for the complete list and assumptions.
 
 ## Run the complete workflow
+
+The public runner arguments and the example below follow the processing sequence: model/shared inputs → Stage 1 Pando → Stage 2 metacells → Stage 3 meta-modules → Stage 4 Layer 1 → Stage 5 Layer 2 → execution controls.
 
 ```r
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,
-  gem = gem,
   species = "human",
-  medium_scenarios = medium_scenarios,
-  sample_col = NULL,
+  gem = gem,
+
+  # Stage 1: Pando GRN evidence
   condition_col = "Group",
   celltype_col = "cell_type",
-  model_mode = "meta_module_gem",
-  metacell_args = list(
-    rna_reduction = "pca",
-    rna_dims = 1:30,
-    atac_reduction = "lsi",
-    atac_dims = 2:30,
-    gamma = 30,
-    seed = 12345L,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10,
-    min_metacells_per_stratum = 2L,
-    overwrite = FALSE
-  ),
   pando_args = list(
     min_cells = 100,
     padj_threshold = 0.05,
@@ -85,10 +80,32 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
+
+  # Stage 2: metacells
+  sample_col = NULL,
+  fragment_files = FALSE,
+  metacell_args = list(
+    rna_reduction = "pca",
+    rna_dims = 1:30,
+    atac_reduction = "lsi",
+    atac_dims = 2:30,
+    gamma = 30,
+    seed = 12345L,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10,
+    min_metacells_per_stratum = 2L,
+    overwrite = FALSE
+  ),
+
+  # Stage 4: integrated evidence and GPR aggregation
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
+
+  # Stage 5: medium-specific union GEM and scoring
+  medium_scenarios = medium_scenarios,
+  model_mode = "meta_module_gem",
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -99,6 +116,7 @@ result <- rc_run_regcompass_one_shot(
       strict = TRUE
     )
   ),
+
   upstream_workers = 6,
   layer2_workers = 30,
   progress = TRUE
