@@ -1,13 +1,13 @@
 #' Construct significant-target complete-GPR cores and biological meta-modules
 #'
 #' Stage 3 defines biological reaction membership only. For each condition by
-#' cell-type group, Human-GEM metabolic genes with significant Pando
-#' TF-peak-gene evidence are treated as one supported gene set. Reactions become
-#' core only when at least one complete GPR branch is contained in that set.
-#' Biological expansion is one fixed ordered pass: core subsystem, direct
-#' KEGG/Reactome reaction equivalence, then direct master-Rhea equivalence.
-#' There is no recursive, fixed-point, one-hop, or stoichiometric-neighbour
-#' expansion. Stage 3 does not run FASTCORE and does not construct a GEM.
+#' cell-type group, GEM metabolic genes with significant Pando TF-peak-gene
+#' evidence are treated as one supported gene set. Reactions become core only
+#' when at least one complete GPR branch is contained in that set. Biological
+#' expansion is one fixed ordered pass: core subsystem, direct KEGG/Reactome
+#' reaction equivalence, then direct master-Rhea equivalence. There is no
+#' recursive, fixed-point, one-hop, or stoichiometric-neighbour expansion.
+#' Stage 3 does not run FASTCORE and does not construct a GEM.
 #'
 #' @export
 rc_regcompass_step_meta_modules <- function(
@@ -40,7 +40,7 @@ rc_regcompass_step_meta_modules <- function(
       "Unknown `meta_module_args` fields: ",
       paste(unknown, collapse = ", "),
       ". Meta-module expansion is always one ordered pass; the retired ",
-      "`expansion_mode` and `max_iterations` APIs have been removed.",
+      "`expansion_mode`, `max_iterations`, and one-hop APIs have been removed.",
       call. = FALSE
     )
   }
@@ -99,7 +99,6 @@ rc_regcompass_step_meta_modules <- function(
       core_definition =
         "condition_celltype_significant_pando_targets_complete_gpr",
       expansion_policy = "single_ordered_annotation_pass",
-      one_hop_expansion = FALSE,
       feasibility_completion = "layer2_medium_specific_only",
       merge_creates_gem = FALSE
     )
