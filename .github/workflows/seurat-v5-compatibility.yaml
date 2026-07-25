@@ -1,0 +1,101 @@
+name: Seurat v5 compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  seurat-v5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install system libraries
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libglpk-dev \
+            libbz2-dev \
+            liblzma-dev \
+            zlib1g-dev
+
+      - name: Install Seurat v5 stack and package dependencies
+        shell: Rscript {0}
+        run: |
+          options(timeout = 1200)
+          install.packages(c(
+            "Matrix", "matrixStats", "testthat", "highs",
+            "BiocManager", "remotes"
+          ))
+          BiocManager::install(
+            c(
+              "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
+              "GenomicRanges", "sparseMatrixStats", "limma",
+              "Rhtslib", "Rsamtools"
+            ),
+            ask = FALSE,
+            update = FALSE
+          )
+          remotes::install_version(
+            "SeuratObject", version = "5.0.2",
+            dependencies = NA, upgrade = "never"
+          )
+          remotes::install_version(
+            "Seurat", version = "5.0.3",
+            dependencies = NA, upgrade = "never"
+          )
+          remotes::install_version(
+            "Signac", version = "1.14.0",
+            dependencies = NA, upgrade = "never"
+          )
+          expected <- c(
+            SeuratObject = "5.0.2",
+            Seurat = "5.0.3",
+            Signac = "1.14.0"
+          )
+          observed <- vapply(
+            names(expected),
+            function(package) as.character(packageVersion(package)),
+            character(1)
+          )
+          if (!identical(observed, expected)) {
+            stop(
+              "Unexpected Seurat v5 stack: ",
+              paste(names(observed), observed, sep = "=", collapse = ", ")
+            )
+          }
+
+      - name: Install RegCompassR
+        shell: bash
+        run: |
+          R CMD INSTALL --no-multiarch --with-keep.source --install-tests .
+
+      - name: Run Seurat compatibility tests
+        shell: Rscript {0}
+        run: |
+          library(RegCompassR)
+          profile <- RegCompassR:::.rc_validate_seurat_stack_versions(
+            RegCompassR:::.rc_seurat_stack_versions()
+          )
+          stopifnot(identical(profile$profile, "seurat_v5_compatible"))
+          testthat::test_local(
+            Sys.getenv("GITHUB_WORKSPACE"),
+            filter = "seurat-compatibility",
+            reporter = "summary",
+            load_package = "installed",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
+          )
