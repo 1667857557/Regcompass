@@ -12,7 +12,7 @@
     target_reactions = NULL, medium_scenarios = NULL,
     cache_dir = tempfile("RegCompassR_medium_union_gem_"),
     target_direction = c("both", "forward", "reverse"),
-    solver = "highs", completion_time_limit = 300,
+    solver = "highs", time_limit = 300,
     fastcore_epsilon = 1e-4,
     max_support_reactions = 2000,
     strict = TRUE) {
@@ -41,10 +41,9 @@
     stop("No merged core reactions remain for union-GEM scoring.",
          call. = FALSE)
   }
-  if (!is.numeric(completion_time_limit) ||
-      length(completion_time_limit) != 1L ||
-      !is.finite(completion_time_limit) || completion_time_limit <= 0) {
-    stop("`completion_time_limit` must be one positive finite number.",
+  if (!is.numeric(time_limit) || length(time_limit) != 1L ||
+      !is.finite(time_limit) || time_limit <= 0) {
+    stop("Internal union-GEM construction time limit must be positive.",
          call. = FALSE)
   }
 
@@ -78,7 +77,7 @@
       medium_table = medium,
       target_direction = target_direction,
       solver = solver,
-      completion_time_limit = completion_time_limit,
+      time_limit = time_limit,
       fastcore_epsilon = fastcore_epsilon,
       max_support_reactions = max_support_reactions,
       strict = strict
@@ -109,7 +108,7 @@
       build_strategy = "medium_specific_union_gem",
       completion_stage =
         "single_global_fastcore_after_meta_module_merge",
-      completion_time_limit = completion_time_limit,
+      completion_time_limit = time_limit,
       stringsAsFactors = FALSE
     )
 
