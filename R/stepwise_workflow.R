@@ -112,7 +112,9 @@
 #' Infer condition-by-cell-type Pando GRNs from single cells
 #' @export
 rc_regcompass_step_grn <- function(
-    object, gem, outdir, pfm = NULL, genome,
+    object, gem, outdir, genome,
+    pfm = NULL,
+    species = c("auto", "human", "mouse"),
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
@@ -120,8 +122,7 @@ rc_regcompass_step_grn <- function(
     pando_args = list(),
     parallel = TRUE,
     BPPARAM = NULL,
-    progress = getOption("RegCompassR.progress", TRUE),
-    species = c("auto", "human", "mouse")) {
+    progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("grn", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   if (!is.list(pando_args)) {
@@ -141,8 +142,8 @@ rc_regcompass_step_grn <- function(
     atac_assay = atac_assay
   )
   reserved <- intersect(names(pando_args), c(
-    "object", "gem", "outdir", "pfm", "genome", "condition_col",
-    "celltype_col", "rna_assay", "atac_assay", "BPPARAM", "species"
+    "object", "gem", "outdir", "genome", "pfm", "species",
+    "condition_col", "celltype_col", "rna_assay", "atac_assay", "BPPARAM"
   ))
   if (length(reserved)) {
     stop(
@@ -155,15 +156,15 @@ rc_regcompass_step_grn <- function(
     object = object,
     gem = gem,
     outdir = outdir,
-    pfm = pfm,
     genome = genome,
+    pfm = pfm,
+    species = species,
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE,
-    on_group_error = "stop",
-    species = species
+    on_group_error = "stop"
   )
   defaults[names(pando_args)] <- NULL
   grn_result <- do.call(
