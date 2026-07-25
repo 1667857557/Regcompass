@@ -19,6 +19,7 @@
 - Condition plots retain full reaction annotations and evidence. Gene-associated plot collections now apply the requested condition filter to evidence selection and expose/forward `min_units` instead of using a hidden fixed value.
 - Target-union scoring now validates gene and reaction selectors independently and determines target availability from the actual medium-specific cached union GEM files. Directly database-linked support reactions added during model completion remain eligible when present in all reused models, even if absent from the pre-completion membership table.
 - Added a function-by-function audit of PRs #166–#171, synchronized generated help and Tutorials 3–5, and expanded regression coverage for every still-valid unresolved review finding.
+- Formally documented and tested optional Harmony-based RNA geometry for Stage 2 metacells through `metacell_args$rna_reduction` and `rna_dims`; PCA remains the default, ATAC LSI remains independently selectable, and reduction names/dimensions/embedding fingerprints remain part of cache invalidation.
 
 # RegCompassR 1.8.2
 
