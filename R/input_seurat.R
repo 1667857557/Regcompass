@@ -221,6 +221,10 @@
     stop("Seurat object is missing assays: ", paste(missing, collapse = ", "),
          call. = FALSE)
   }
+  previous <- tryCatch(
+    object@misc$regcompass_seurat_compatibility,
+    error = function(e) NULL
+  )
   joined <- list()
   process_layer <- function(assay, layer, required) {
     result <- .rc_join_assay_layer(
@@ -238,8 +242,19 @@
     for (layer in required_layers) process_layer(assay, layer, TRUE)
     for (layer in optional_layers) process_layer(assay, layer, FALSE)
   }
+  previous_assays <- if (is.list(previous$assay_classes)) {
+    names(previous$assay_classes)
+  } else {
+    names(previous$assay_classes %||% character())
+  }
+  all_assays <- unique(c(previous_assays, assays))
+  previous_joined <- previous$joined_layers %||% list()
+  all_joined <- c(previous_joined, joined)
+  if (length(all_joined) && anyDuplicated(names(all_joined))) {
+    all_joined <- all_joined[!duplicated(names(all_joined), fromLast = TRUE)]
+  }
   object@misc$regcompass_seurat_compatibility <-
-    .rc_seurat_compatibility_summary(object, assays, joined)
+    .rc_seurat_compatibility_summary(object, all_assays, all_joined)
   object
 }
 
