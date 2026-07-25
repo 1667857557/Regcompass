@@ -19,23 +19,22 @@ RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level su
 condition × cell type Pando TF–peak–Human-GEM-gene models
 → significant metabolic target-gene sets
 → complete-GPR core reactions
-→ annotation-defined biological meta-modules
+→ one ordered subsystem/cross-reference expansion pass
 → merged meta-module catalogue
 → integrated RNA+ATAC reaction support
+→ COMPASS-compatible GPR-AND aggregation
 → medium-specific union GEM
 → single global FASTCORE completion
 → directional LP scoring
 ```
 
-Stage 3 does not project targets through shared TFs, calculate GRN connected components, run FASTCORE, or create a GEM. Only the medium-constrained Stage 5 model is called a union GEM.
+Stage 3 does not project targets through shared TFs, calculate GRN connected components, run FASTCORE, create a GEM, recurse to a fixed point, or perform one-hop reaction expansion. Only the medium-constrained Stage 5 model is called a union GEM.
 
 # Prepare the GEM and medium
 
 ```{r}
 library(RegCompassR)
 library(BSgenome.Hsapiens.UCSC.hg38)
-
-data(motif2tf, package = "Pando")
 
 gem <- rc_prepare_gem(
   species = "human",
@@ -50,6 +49,8 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
+When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes `motifs` to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
+
 For human analyses, RegCompass loads `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` from Pando, takes their union, and passes it to `Pando::initiate_grn(regions = ...)`. Supply `pando_args$pando_initiate_args$regions` to override this default. Non-human analyses require species-appropriate regions explicitly.
 
 # Complete workflow
@@ -58,7 +59,6 @@ For human analyses, RegCompass loads `phastConsElements20Mammals.UCSC.hg38` and 
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
-  pfm = motif2tf,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
   gem = gem,
@@ -86,12 +86,9 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
-  meta_module_args = list(
-    expansion_mode = "ordered_once"
-  ),
   layer1_args = list(
     regulatory_alpha = 1,
-    tau = 0.20
+    gpr_and_method = "min"
   ),
   layer2_args = list(
     target_direction = "both",
@@ -108,7 +105,20 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The Stage 1 adjusted-P-value, effect-size, and model-R² filters define which Human-GEM target genes enter Stage 3. Both positive and negative Pando coefficients count as regulatory evidence. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`. `completion_time_limit` limits union-GEM construction only; the later scoring LPs have no time-limit parameter.
+The Stage 1 adjusted-P-value, effect-size, and model-R² filters define which Human-GEM target genes enter Stage 3. Both positive and negative Pando coefficients count as regulatory evidence.
+
+Stage 3 expansion is fixed to one pass:
+
+```text
+core subsystem
+→ KEGG/Reactome reaction equivalence
+→ master-Rhea reaction equivalence
+→ stop
+```
+
+The removed Stage 3 APIs are `expansion_mode`, `max_iterations`, fixed-point recursion, and one-hop/stoichiometric-neighbour expansion.
+
+`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"` and defaults to `"min"`. The former Boltzmann soft-min and `tau` API are removed. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`. `completion_time_limit` limits union-GEM construction only; the later scoring LPs have no time-limit parameter.
 
 # Stepwise workflow
 
@@ -117,7 +127,6 @@ step1 <- rc_regcompass_step_grn(
   object = A,
   gem = gem,
   outdir = "RegCompass_steps/01_grn",
-  pfm = motif2tf,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   condition_col = "Group",
   celltype_col = "cell_type",
@@ -142,8 +151,7 @@ step3 <- rc_regcompass_step_meta_modules(
   grn = step1,
   metacells = step2,
   gem = gem,
-  outdir = "RegCompass_steps/03_meta_modules",
-  meta_module_args = list(expansion_mode = "ordered_once")
+  outdir = "RegCompass_steps/03_meta_modules"
 )
 
 step4 <- rc_regcompass_step_layer1(
@@ -152,7 +160,7 @@ step4 <- rc_regcompass_step_layer1(
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
   regulatory_alpha = 1,
-  tau = 0.20
+  gpr_and_method = "min"
 )
 
 step5 <- rc_regcompass_step_layer2(
@@ -192,6 +200,7 @@ result <- rc_regcompass_step_results(
 step3$condition_modules$supported_metabolic_genes
 step3$condition_modules$core_gene_reaction
 step3$condition_modules$reaction_membership
+step3$condition_modules$meta_module_summary$expansion_policy
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 step3$merged_modules$is_gem
@@ -201,6 +210,16 @@ step3$merged_modules$fastcore_applied
 The supported-gene table contains one row per condition, cell type, and significantly supported Human-GEM target gene. It reports the number of significant edges, distinct TFs, distinct regions, minimum adjusted P value, maximum absolute coefficient, model R², and positive/negative edge counts.
 
 The merged catalogue contains biological reactions only. It has no medium bounds and no FASTCORE support.
+
+# Inspect Layer 1 GPR aggregation
+
+```{r}
+step4$capacity_params$and_method
+step4$capacity_params$or_method
+step4$evidence_formula
+```
+
+The default AND rule is `min`; `median` and `mean` are available for sensitivity analysis. The canonical OR rule remains additive.
 
 # Inspect the Stage 5 union GEM
 
@@ -254,9 +273,9 @@ Selected genes or reaction IDs define mapping anchors. The second pass verifies 
 
 # Restart policy
 
-- Change Pando evidence thresholds or regulatory regions: rerun Stage 1 onward.
-- Change subsystem or reaction-equivalence expansion: rerun Stage 3 onward.
-- Change the RNA+ATAC transformation: rerun Stage 4 onward.
+- Change Pando evidence thresholds, motifs, or regulatory regions: rerun Stage 1 onward.
+- Change subsystem annotations or GEM GPR rules: rerun Stage 3 onward.
+- Change `gpr_and_method` or another RNA+ATAC transformation: rerun Stage 4 onward.
 - Change medium or global FASTCORE construction settings: rerun Stage 5 onward.
 
 # Condition comparisons
