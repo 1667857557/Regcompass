@@ -1,0 +1,249 @@
+--- a/R/medium.R
++++ b/R/medium.R
+@@ -279,43 +279,59 @@
+       )
+     )
+   )
+-  human_concentrations <- c(
+-    glucose = 5.0, lactate = 1.5, glutamine = 0.55, arginine = 0.11,
+-    alanine = 0.35, glycine = 0.25, serine = 0.12, pyruvate = 0.08,
+-    acetate = 0.10, citrate = 0.10, urate = 0.35, urea = 5.0,
+-    creatinine = 0.08, bicarbonate = 25, sodium = 140, potassium = 4.5,
+-    calcium = 1.2, magnesium = 0.8, chloride = 103, phosphate = 1.0,
+-    glutathione = 0.024999188, acetone = 0.06000344,
+-    fructose = 0.03999778, galactose = 0.060002223,
+-    glycerol = 0.11999132, hypoxanthine = 0.01,
+-    uridine = 0.003001638, acetylcarnitine = 0.005002086,
++  # Exact HPLM formulation concentrations are used where the catalog has a
++  # direct one-to-one component. Rounded serum/plasma reference values are kept
++  # only for ions that are represented by several salts in the formulation.
++  hplm_concentrations <- c(
++    glycine = 0.3, alanine = 0.43000337, arginine = 0.1100019,
++    asparagine = 0.05, aspartate = 0.02, cysteine = 0.03999886,
++    cystine = 0.1, glutamate = 0.07999728, glutamine = 0.55000347,
++    histidine = 0.10999857, isoleucine = 0.07000077,
++    leucine = 0.15999848, lysine = 0.2, methionine = 0.029997988,
++    phenylalanine = 0.07999879, proline = 0.2, serine = 0.15000476,
++    threonine = 0.14000167, tryptophan = 0.06000098,
++    tyrosine = 0.079998896, valine = 0.22, hydroxyproline = 0.020003049,
++    biotin = 8.186321e-4, choline = 0.021486893,
++    pantothenate = 5.2461494e-4, folate = 0.0022655188,
++    niacinamide = 0.008187996, p_aminobenzoate = 0.0072918185,
++    pyridoxine = 0.0048628673, riboflavin = 5.31392e-4,
++    thiamine = 0.0029649837, vitamin_b12 = 3.6890021e-6,
++    inositol = 0.19427176, glutathione = 0.024999188,
++    acetone = 0.06000344, creatine = 0.03516594,
++    creatinine = 0.075, glucose = 5.0, fructose = 0.03999778,
++    galactose = 0.060002223, glycerol = 0.11999132,
++    hypoxanthine = 0.01, urea = 4.9999995, uridine = 0.003001638,
++    acetylcarnitine = 0.005002086, carnitine = 0.04,
+     betaine = 0.07000427, alpha_aminobutyrate = 0.019996122,
+     citrulline = 0.04, ornithine = 0.06999763,
+     n_acetylglycine = 0.089999996, taurine = 0.09000319,
+-    alpha_ketoglutarate = 0.005003422, formate = 0.04998914,
+-    malate = 0.0049966443, malonate = 0.010003844,
+-    succinate = 0.020001695, ammonium = 0.12002288,
+-    nitrate = 0.01999783
++    beta_hydroxybutyrate = 0.050003964,
++    alpha_ketoglutarate = 0.005003422, citrate = 0.13000052,
++    formate = 0.04998914, malate = 0.0049966443,
++    malonate = 0.010003844, acetate = 0.039997563,
++    lactate = 1.6, pyruvate = 0.049999997,
++    succinate = 0.020001695, urate = 0.35
++  )
++  serum_ion_concentrations <- c(
++    bicarbonate = 25, sodium = 140, potassium = 4.5, calcium = 1.2,
++    magnesium = 0.8, chloride = 103, phosphate = 1.0
+   )
++  human_concentrations <- c(hplm_concentrations, serum_ion_concentrations)
+   hit <- match(physiologic$metabolite_name, names(human_concentrations))
+   physiologic$concentration_mM[!is.na(hit)] <-
+     human_concentrations[hit[!is.na(hit)]]
+-  physiologic$concentration_basis <- ifelse(
+-    is.na(physiologic$concentration_mM),
+-    "availability_only",
+-    "human_plasma_or_HPLM_reference"
+-  )
+-  physiologic$component_reference_doi <- ifelse(
+-    physiologic$metabolite_name %in% c(
+-      "glutathione", "acetone", "fructose", "galactose", "glycerol",
+-      "hypoxanthine", "uridine", "acetylcarnitine", "betaine",
+-      "alpha_aminobutyrate", "citrulline", "ornithine",
+-      "n_acetylglycine", "taurine", "alpha_ketoglutarate", "formate",
+-      "malate", "malonate", "succinate", "ammonium", "nitrate"
+-    ),
+-    "10.1016/j.cell.2017.03.023",
++  hplm_row <- physiologic$metabolite_name %in% names(hplm_concentrations)
++  serum_ion_row <- physiologic$metabolite_name %in%
++    names(serum_ion_concentrations)
++  physiologic$concentration_basis <- "availability_only"
++  physiologic$concentration_basis[hplm_row] <- "HPLM_formulation"
++  physiologic$concentration_basis[serum_ion_row] <-
++    "adult_human_serum_or_plasma_reference"
++  physiologic$component_reference_doi <- NA_character_
++  physiologic$component_reference_doi[hplm_row] <-
++    "10.1016/j.cell.2017.03.023"
++  physiologic$component_reference_doi[serum_ion_row] <-
+     "10.1371/journal.pone.0016957"
+-  )
+   sensitivity_reference <- c(glucose = 25, lactate = 20, glutamine = 2)
+   sensitivity_index <- match(
+     physiologic$metabolite_name, names(sensitivity_reference)
+@@ -448,16 +464,18 @@
+     return(out)
+   }
+ 
+-  base_id <- if (identical(species, "mouse")) {
+-    "mouse_plasma"
+-  } else {
+-    "normal_human_plasma"
+-  }
+   if (preset_id %in% c(
+     "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+     "low_glutamine"
+   )) {
+-    out <- .rc_medium_catalog(base_id, species)
++    if (!identical(species, "human")) {
++      stop(
++        "`", preset_id, "` is a human-derived nutrient challenge and ",
++        "requires a Human-GEM run.",
++        call. = FALSE
++      )
++    }
++    out <- .rc_medium_catalog("normal_human_plasma", "human")
+     target <- switch(
+       preset_id,
+       high_glucose = "glucose",
+@@ -477,9 +495,26 @@
+     reference_high <- switch(
+       target, glucose = 25, lactate = 20, glutamine = 2
+     )
++    concentration_basis <- switch(
++      preset_id,
++      high_glucose = "human_endometrial_cell_glucose_challenge_Han_2015",
++      low_glucose = "human_endometrial_cell_glucose_challenge_Han_2015",
++      high_lactate = "human_MCF7_lactate_challenge_San_Millan_2019",
++      low_lactate = "human_T_cell_lactate_control_Cho_2025",
++      low_glutamine = "human_tumor_cell_glutamine_deprivation_Visagie_2015"
++    )
++    component_reference_doi <- switch(
++      preset_id,
++      high_glucose = "10.1016/j.ygyno.2015.06.036",
++      low_glucose = "10.1016/j.ygyno.2015.06.036",
++      high_lactate = "10.3389/fonc.2019.01536",
++      low_lactate = "10.14814/phy2.70450",
++      low_glutamine = "10.1186/s13578-015-0030-1"
++    )
+     selected <- out$metabolite_name == target
+     out$concentration_mM[selected] <- concentration
+-    out$concentration_basis[selected] <- "explicit_sensitivity_scenario"
++    out$concentration_basis[selected] <- concentration_basis
++    out$component_reference_doi[selected] <- component_reference_doi
+     out$uptake_fraction[selected] <- concentration / reference_high
+     out$target_exchange_flag[selected] <- TRUE
+     out$required_match[selected] <- TRUE
+@@ -497,7 +532,7 @@
+     ),
+     species = c(
+       "Homo sapiens", "Mus musculus", "not species-specific",
+-      "not species-specific", rep("species-specific plasma background", 5),
++      "not species-specific", rep("Homo sapiens", 5),
+       "user supplied"
+     ),
+     reference_label = c(
+@@ -511,11 +546,11 @@
+       ),
+       "Moore et al., JAMA 1967; Thermo Fisher RPMI-1640 formulation 11875",
+       "Dulbecco and Freeman, Virology 1959; Thermo Fisher DMEM formulation 11965",
+-      "plasma background with explicit glucose sensitivity bound",
+-      "plasma background with explicit glucose sensitivity bound",
+-      "plasma background with explicit lactate sensitivity bound",
+-      "plasma background with explicit lactate sensitivity bound",
+-      "plasma background with explicit glutamine sensitivity bound",
++      "Han et al., Gynecol Oncol 2015; human cells at 25 mM glucose",
++      "Han et al., Gynecol Oncol 2015; human cells at 1 mM glucose",
++      "San-Millan et al., Front Oncol 2019; human MCF7 cells at 20 mM lactate",
++      "Cho et al., Physiol Rep 2025; human T cells at 0.5 mM lactate",
++      "Visagie et al., Cell Biosci 2015; human tumor cells at 0.05 mM glutamine",
+       "user supplied"
+     ),
+     reference_doi = c(
+@@ -523,19 +558,23 @@
+       "10.1152/ajpcell.00452.2024;10.7554/eLife.44235",
+       "10.1001/jama.1967.03120080053007",
+       "10.1016/0042-6822(59)90063-3",
+-      NA_character_, NA_character_, NA_character_, NA_character_,
+-      NA_character_, NA_character_
++      "10.1016/j.ygyno.2015.06.036",
++      "10.1016/j.ygyno.2015.06.036",
++      "10.3389/fonc.2019.01536",
++      "10.14814/phy2.70450",
++      "10.1186/s13578-015-0030-1",
++      NA_character_
+     ),
+     evidence_scope = c(
+       "adult human plasma-like polar nutrient availability",
+       "murine plasma and tumor interstitial-fluid polar nutrient availability",
+       "serum-free RPMI-1640 basal formulation",
+       "DMEM high-glucose basal formulation",
+-      "glucose sensitivity on a physiological plasma background",
+-      "glucose sensitivity on a physiological plasma background",
+-      "lactate sensitivity on a physiological plasma background",
+-      "lactate sensitivity on a physiological plasma background",
+-      "glutamine sensitivity on a physiological plasma background",
++      "human glucose challenge on a normal-human-plasma background",
++      "human glucose challenge on a normal-human-plasma background",
++      "human lactate challenge on a normal-human-plasma background",
++      "human low-lactate condition on a normal-human-plasma background",
++      "human glutamine-deprivation challenge on a normal-human-plasma background",
+       "user-supplied extracellular environment"
+     ),
+     stringsAsFactors = FALSE
+@@ -999,16 +1038,21 @@
+ #' Build shared extracellular medium scenarios
+ #'
+ #' Named physiological and cell-culture media are curated availability catalogs
+-#' rather than exhaustive representations of serum or plasma. Concentrations are
+-#' stored as provenance and do not become fluxes except for the explicitly
+-#' flagged glucose, lactate, and glutamine sensitivity scenarios. Official
+-#' Human-GEM and Mouse-GEM models are matched through the exact extracellular
+-#' metabolite attached to each exchange reaction.
++#' rather than exhaustive representations of serum or plasma. Human plasma and
++#' the five nutrient-challenge presets are restricted to Human-GEM; mouse plasma
++#' is restricted to Mouse-GEM. RPMI-1640 and DMEM are chemical formulations and
++#' are not species-specific. Concentrations are provenance and do not become
++#' fluxes except for explicitly flagged glucose, lactate, and glutamine rows.
++#' Official Human-GEM and Mouse-GEM models are matched through the exact
++#' extracellular metabolite attached to each exchange reaction.
+ #'
+ #' @param gem A validated RegCompass GEM.
+ #' @param scenario One or more medium scenario identifiers. `"physiologic"`
+ #'   resolves to human or mouse plasma according to `species`.
+-#' @param species `"auto"`, `"human"`, or `"mouse"`.
++#' @param species `"auto"`, `"human"`, or `"mouse"`. Human-derived plasma
++#'   and nutrient-challenge presets require `"human"`; `"mouse_plasma"`
++#'   requires `"mouse"`. Culture formulations and technical presets are
++#'   species-neutral but are mapped to the selected GEM.
+ #' @param custom_medium Exact reaction-level medium rows.
+ #' @param custom_metabolites Metabolite availability rows.
+ #' @param uptake_scale Non-negative global or named sensitivity multipliers.
+@@ -1056,8 +1100,17 @@
+   } else {
+     "mouse_plasma"
+   }
+-  if (identical(species, "mouse") && any(scenario %in% "normal_human_plasma")) {
+-    stop("Human plasma presets cannot be used with a Mouse-GEM run.", call. = FALSE)
++  human_only_presets <- c(
++    "normal_human_plasma", "high_glucose", "low_glucose",
++    "high_lactate", "low_lactate", "low_glutamine"
++  )
++  invalid_human <- intersect(scenario, human_only_presets)
++  if (identical(species, "mouse") && length(invalid_human)) {
++    stop(
++      "Human-derived medium presets cannot be used with a Mouse-GEM run: ",
++      paste(invalid_human, collapse = ", "), ".",
++      call. = FALSE
++    )
+   }
+   if (identical(species, "human") && "mouse_plasma" %in% scenario) {
+     stop("`mouse_plasma` requires a Mouse-GEM run.", call. = FALSE)
