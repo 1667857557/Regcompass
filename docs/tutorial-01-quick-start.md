@@ -68,25 +68,30 @@ export MKL_NUM_THREADS=1
 
 ## Choose the metacell embedding
 
-Stage 2 uses RNA PCA and ATAC LSI by default. Any existing Seurat reduction can be selected through `metacell_args`. To construct metacells from a Harmony-corrected RNA embedding while retaining ATAC LSI, first confirm that the reductions contain all input cells and the requested dimensions:
+Stage 2 uses RNA PCA and ATAC LSI by default. Set the following switch to `TRUE` only when an existing Harmony reduction should define the RNA geometry used by SuperCell2:
 
 ```r
-stopifnot(
-  "harmony" %in% names(A@reductions),
-  "lsi" %in% names(A@reductions),
-  ncol(Embeddings(A[["harmony"]])) >= 30,
-  ncol(Embeddings(A[["lsi"]])) >= 30
-)
+use_harmony_for_metacells <- FALSE
 
-metacell_embedding_args <- list(
-  rna_reduction = "harmony",
-  rna_dims = 1:30,
-  atac_reduction = "lsi",
-  atac_dims = 2:30
-)
+metacell_embedding_args <- if (use_harmony_for_metacells) {
+  stopifnot(
+    "harmony" %in% names(A@reductions),
+    "lsi" %in% names(A@reductions),
+    ncol(SeuratObject::Embeddings(A[["harmony"]])) >= 30,
+    ncol(SeuratObject::Embeddings(A[["lsi"]])) >= 30
+  )
+  list(
+    rna_reduction = "harmony",
+    rna_dims = 1:30,
+    atac_reduction = "lsi",
+    atac_dims = 2:30
+  )
+} else {
+  list()
+}
 ```
 
-To use uncorrected RNA PCA instead, omit these four fields or set `rna_reduction = "pca"`. Harmony is used only as the RNA cell-embedding geometry for SuperCell2; RNA and ATAC metacell counts are still aggregated from the original assays.
+With the default `FALSE`, the four reduction fields are omitted and RegCompass uses RNA `pca` dimensions 1:30 plus ATAC `lsi` dimensions 2:30. Harmony changes only the RNA cell-embedding geometry; RNA and ATAC metacell counts are still aggregated from the original assays.
 
 ## Run the complete workflow
 
