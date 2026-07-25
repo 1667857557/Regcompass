@@ -39,23 +39,24 @@ The Stage 1 runner arguments are ordered as shared inputs → motif/region polic
 
 When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes `motifs` to `Pando::find_motifs()`. Supply `pfm = custom_motifs` only to override this default.
 
-The candidate targets are all GEM GPR genes present in the RNA assay. Unless `pando_args$pando_initiate_args$regions` is supplied, the default regions are:
+The candidate targets are all GEM GPR genes present in the RNA assay. Unless `pando_args$pando_initiate_args$regions` is supplied, the default regions are equivalent to:
 
 ```r
-# human
-regions <- union(
-  get("phastConsElements20Mammals.UCSC.hg38", asNamespace("Pando")),
-  get("SCREEN.ccRE.UCSC.hg38", asNamespace("Pando"))
+# Load the Pando data objects.
+data("phastConsElements20Mammals.UCSC.hg38", package = "Pando")
+data("SCREEN.ccRE.UCSC.hg38", package = "Pando")
+
+# Human default.
+human_regions <- union(
+  phastConsElements20Mammals.UCSC.hg38,
+  SCREEN.ccRE.UCSC.hg38
 )
 
-# mouse
-regions <- get(
-  "phastConsElements20Mammals.UCSC.hg38",
-  asNamespace("Pando")
-)
+# Mouse default.
+mouse_regions <- phastConsElements20Mammals.UCSC.hg38
 ```
 
-The implementation loads these objects with `data(..., package = "Pando")`. Human uses phastCons plus SCREEN ccRE; mouse uses only `phastConsElements20Mammals.UCSC.hg38`. An explicit region object overrides either default.
+Human uses phastCons plus SCREEN ccRE; mouse uses only `phastConsElements20Mammals.UCSC.hg38`. An explicit region object overrides either default.
 
 ### Stage 1 filter meanings
 
