@@ -44,10 +44,11 @@ test_that("Pando evidence-filter parameters are validated before inference", {
   expect_error(
     .rc_run_condition_single_cell_grns(
       object = NULL,
-      gem = NULL,
+      gem = list(model_info = list(species = "human")),
       outdir = tempfile(),
       genome = NULL,
-      min_cells = 0
+      min_cells = 0,
+      species = "human"
     ),
     "min_cells"
   )
