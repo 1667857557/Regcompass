@@ -45,7 +45,12 @@ audit_reaction_fixture <- function() {
     ncol = length(units),
     dimnames = list(c("GENE1", "GENE2"), units)
   )
-  modifier <- matrix(0, nrow = 2, ncol = length(units), dimnames = dimnames(rna))
+  modifier <- matrix(
+    0,
+    nrow = 2,
+    ncol = length(units),
+    dimnames = dimnames(rna)
+  )
   modifier["GENE1", conditions == "MS177"] <- 0.5
   modifier["GENE1", conditions == "JQ1"] <- 0.2
   multiome <- rna
@@ -64,8 +69,7 @@ audit_reaction_fixture <- function() {
     parsed_gpr = list(R_GENE = list(c("GENE1", "GENE2"))),
     capacity_params = list(
       promiscuity_mode = "none",
-      tau = 0.20,
-      and_method = "boltzmann",
+      and_method = "min",
       or_method = "sum"
     )
   )
@@ -79,10 +83,16 @@ audit_reaction_fixture <- function() {
   microcompass <- list(
     penalty = penalty,
     vmax = matrix(
-      100, nrow = 1, ncol = length(units), dimnames = dimnames(penalty)
+      100,
+      nrow = 1,
+      ncol = length(units),
+      dimnames = dimnames(penalty)
     ),
     feasible = matrix(
-      TRUE, nrow = 1, ncol = length(units), dimnames = dimnames(penalty)
+      TRUE,
+      nrow = 1,
+      ncol = length(units),
+      dimnames = dimnames(penalty)
     ),
     unit_meta = layer1$unit_meta,
     params = list(omega = 0.95, unit = "metacell")
