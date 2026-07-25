@@ -92,12 +92,14 @@
   if (!is.list(meta_module_args)) {
     stop("`meta_module_args` must be a list.", call. = FALSE)
   }
-  allowed <- c("subsystem_table", "expansion_mode", "max_iterations")
+  allowed <- "subsystem_table"
   unknown <- setdiff(names(meta_module_args), allowed)
   if (length(unknown)) {
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown, collapse = ", "),
+      ". Meta-module expansion is always one ordered pass; the retired ",
+      "`expansion_mode` and `max_iterations` APIs have been removed.",
       call. = FALSE
     )
   }
@@ -142,9 +144,7 @@
   expanded <- rc_expand_meta_module_reactions(
     gem,
     core,
-    subsystem_table = meta_module_args$subsystem_table %||% NULL,
-    expansion_mode = meta_module_args$expansion_mode %||% "ordered_once",
-    max_iterations = meta_module_args$max_iterations %||% 10L
+    subsystem_table = meta_module_args$subsystem_table %||% NULL
   )
   if (nrow(expanded$reaction_membership)) {
     expanded$reaction_membership <- merge(
@@ -183,6 +183,11 @@
     core_definition = paste(
       "complete Human-GEM GPR branch contained in the significant Pando",
       "target-gene set for one condition-by-cell-type group"
+    ),
+    expansion_definition = paste(
+      "one ordered pass: core subsystem, then KEGG/Reactome reaction",
+      "equivalence, then master-Rhea reaction equivalence; no one-hop",
+      "stoichiometric-neighbour or recursive expansion"
     ),
     analysis_group_unit =
       "condition_x_celltype_significant_pando_metabolic_targets",
