@@ -20,7 +20,7 @@ The one-shot runner manages two worker counts:
 - `upstream_workers`: GRN inference and Layer 1;
 - `layer2_workers`: union-GEM completion and LP scoring.
 
-Stage 3 no longer runs a parallel local FASTCORE task.
+Stage 3 constructs the biological catalogue without FASTCORE.
 
 ## Level 2: explicit stepwise workflow
 
@@ -42,7 +42,7 @@ step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 ```
 
-These are catalogues, not GEM objects.
+These are catalogue tables, not GEM objects.
 
 ## Level 3: restart and sensitivity analysis
 
@@ -52,13 +52,13 @@ Use [Tutorial 3](tutorial-03-advanced-restart.md).
 - Change multiome transformation: rerun Stage 4 onward.
 - Change medium or global FASTCORE settings: rerun Stage 5 onward.
 
-Global FASTCORE settings are supplied through `layer2_args$model_params`. The removed `layer1_args$local_fastcore` and `layer1_args$local_fastcore_args` interfaces must not be used.
+Global FASTCORE settings are supplied through `layer2_args$model_params`.
 
 ## Level 4: targeted second-pass scoring
 
 Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) after a completed `meta_module_gem` Stage 5 run.
 
-The second pass reuses exact cached union GEM files. It does not rerun FASTCORE and does not reinterpret the merged Stage 3 catalogue as a GEM.
+The second pass reuses the exact final Stage 5 union-GEM files. It verifies the cached file checksum and medium identity, does not rerun FASTCORE, and does not reinterpret the merged Stage 3 catalogue as a GEM.
 
 ## Level 5: condition comparison
 
