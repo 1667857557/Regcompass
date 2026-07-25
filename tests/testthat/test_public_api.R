@@ -14,6 +14,7 @@ test_that("public API exposes the significant-target restartable workflow", {
       "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
     )
   )
+  expect_true(is.function(rc_build_reaction_annotations))
 })
 
 test_that("canonical source architecture has no retired compatibility layers", {
@@ -31,9 +32,9 @@ test_that("canonical source architecture has no retired compatibility layers", {
   )))
   required <- c(
     "stage_contracts.R", "shared_tfidf.R", "grn_inference.R",
-    "regulatory_modifier.R", "reaction_annotations.R", "reaction_evidence.R",
-    "reaction_gene_plots.R", "execution_monitor.R", "bundled_gems.R",
-    "parallel.R"
+    "regulatory_modifier.R", "reaction_evidence.R", "reaction_annotations.R",
+    "reaction_annotation_api.R", "reaction_gene_plots.R",
+    "execution_monitor.R", "bundled_gems.R", "parallel.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
 
