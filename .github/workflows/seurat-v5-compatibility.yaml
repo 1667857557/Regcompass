@@ -32,7 +32,7 @@ jobs:
             liblzma-dev \
             zlib1g-dev
 
-      - name: Install Seurat v5 stack and package dependencies
+      - name: Install current Seurat v5 stack and package dependencies
         shell: Rscript {0}
         run: |
           options(timeout = 1200)
@@ -50,21 +50,21 @@ jobs:
             update = FALSE
           )
           remotes::install_version(
-            "SeuratObject", version = "5.0.2",
+            "SeuratObject", version = "5.4.0",
             dependencies = NA, upgrade = "never"
           )
           remotes::install_version(
-            "Seurat", version = "5.0.3",
+            "Seurat", version = "5.4.0",
             dependencies = NA, upgrade = "never"
           )
           remotes::install_version(
-            "Signac", version = "1.14.0",
+            "Signac", version = "1.17.1",
             dependencies = NA, upgrade = "never"
           )
           expected <- c(
-            SeuratObject = "5.0.2",
-            Seurat = "5.0.3",
-            Signac = "1.14.0"
+            SeuratObject = "5.4.0",
+            Seurat = "5.4.0",
+            Signac = "1.17.1"
           )
           observed <- vapply(
             names(expected),
