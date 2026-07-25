@@ -6,7 +6,7 @@
 \alias{rc_regcompass_step_layer1}
 \alias{rc_regcompass_step_layer2}
 \alias{rc_regcompass_step_results}
-\title{Run RegCompass through inspectable GRN-first stages}
+\title{Run RegCompass through inspectable significant-target stages}
 \usage{
 rc_regcompass_step_grn(object, gem, outdir, pfm, genome,
   condition_col = "condition", celltype_col = "cell_type",
@@ -21,7 +21,8 @@ rc_regcompass_step_metacells(object, outdir, sample_col = NULL,
   progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
-  layer1_args = list(), progress = getOption("RegCompassR.progress", TRUE))
+  meta_module_args = list(),
+  progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_layer1(metacells, meta_modules, gem, outdir,
   regulatory_alpha = 1, tau = 0.2,
@@ -46,8 +47,8 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Pando GRN configuration.}
-\item{layer1_args}{Meta-module projection and annotation parameters in Stage 3 and integrated-evidence parameters used by the canonical runner.}
+\item{pando_args}{Pando GRN configuration. Human analyses default to the union of Pando's \code{phastConsElements20Mammals.UCSC.hg38} and \code{SCREEN.ccRE.UCSC.hg38} data unless \code{pando_initiate_args$regions} is supplied.}
+\item{meta_module_args}{Stage 3 annotation-expansion controls: \code{subsystem_table}, \code{expansion_mode}, and \code{max_iterations}.}
 \item{layer2_args}{Layer 2 scoring and union-GEM configuration. Global FASTCORE controls belong in \code{layer2_args$model_params}.}
 \item{metacell_args}{SuperCell2 configuration. The default embedding is RNA \code{"pca"} dimensions 1:30 plus ATAC \code{"lsi"} dimensions 2:30. An existing Harmony reduction can be selected with \code{rna_reduction = "harmony"} and \code{rna_dims}; \code{atac_reduction} and \code{atac_dims} remain independently selectable. Reduction names, selected dimensions, and embedding fingerprints are part of the Stage 2 cache contract.}
 \item{parallel}{Whether the supported stage loop is parallelized.}
@@ -63,11 +64,11 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 }
 \description{Runs the canonical workflow as separately restartable, validated stages.}
 \details{
-Stage 3 maps complete-GPR core reactions and annotation-defined biological meta-modules, then deduplicates their reaction IDs into \code{merged_modules$merged_core_reactions} and \code{merged_modules$merged_reaction_membership}. This merged catalogue is not a GEM and has no FASTCORE support.
+Stage 1 fits Pando to Human-GEM GPR target genes for each condition by cell-type group. Stage 3 collects target genes with significant TF-peak-gene evidence and maps complete GPR branches directly to core reactions. Positive and negative coefficients both count as regulatory evidence. No shared-TF projection, top-k pruning, or connected-component analysis is performed.
+
+Stage 3 expands complete-GPR cores through core subsystems, KEGG/Reactome reaction equivalence, and master-Rhea reaction equivalence, then deduplicates reaction IDs into \code{merged_modules$merged_core_reactions} and \code{merged_modules$merged_reaction_membership}. This merged catalogue is not a GEM and has no FASTCORE support.
 
 With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium scenario, runs one global FASTCORE completion on the merged catalogue, and saves the resulting medium-specific union GEM. All conditions and metacells in that medium reuse the same cached model.
 
 Each stage returns a \code{timing} table and writes \code{step_timing.tsv} to its output directory. Failed stages also write an error-status timing row. Stage contracts reject mixed GEMs, workflows, core sets, or metacell orders.
-
-Harmony selection changes only the RNA cell-embedding geometry used by SuperCell2. Aggregated metacell RNA and ATAC counts still come from the original assays. Switching reduction names or dimensions, or recomputing an embedding, requires rebuilding existing Stage 2 checkpoints with \code{overwrite = TRUE}.
 }
