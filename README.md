@@ -92,7 +92,6 @@ result <- rc_run_regcompass_one_shot(
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    time_limit = 600,
     model_params = list(
       completion_time_limit = 600,
       fastcore_epsilon = 1e-4,
@@ -104,6 +103,8 @@ result <- rc_run_regcompass_one_shot(
   layer2_workers = 30
 )
 ```
+
+`completion_time_limit` applies only while FASTCORE constructs the medium-specific union GEM. Directional scoring LPs run without a time-limit parameter.
 
 Unless `pando_args$pando_initiate_args$regions` is supplied, human analyses load the two Pando data objects below and pass their union to `Pando::initiate_grn()`:
 
