@@ -14,34 +14,42 @@ test_that("Seurat stack profiles retain v4 default and accept v5", {
   ))
   expect_identical(v4_later$profile, "seurat_v4_default")
 
-  v5 <- .rc_validate_seurat_stack_versions(c(
-    SeuratObject = "5.0.2",
-    Seurat = "5.0.3",
-    Signac = "1.14.0"
+  v5_minimum <- .rc_validate_seurat_stack_versions(c(
+    SeuratObject = "5.0.0",
+    Seurat = "5.0.0",
+    Signac = "1.12.0"
   ))
-  expect_identical(v5$profile, "seurat_v5_compatible")
-  expect_false(v5$default)
+  expect_identical(v5_minimum$profile, "seurat_v5_compatible")
+  expect_false(v5_minimum$default)
+
+  v5_current <- .rc_validate_seurat_stack_versions(c(
+    SeuratObject = "5.4.0",
+    Seurat = "5.4.0",
+    Signac = "1.17.1"
+  ))
+  expect_identical(v5_current$profile, "seurat_v5_compatible")
+  expect_false(v5_current$default)
 
   expect_error(
     .rc_validate_seurat_stack_versions(c(
-      SeuratObject = "5.0.2",
+      SeuratObject = "5.4.0",
       Seurat = "4.4.0",
-      Signac = "1.12.0"
+      Signac = "1.17.1"
     )),
     "same major version"
   )
   expect_error(
     .rc_validate_seurat_stack_versions(c(
-      SeuratObject = "5.0.2",
-      Seurat = "5.0.3",
+      SeuratObject = "5.4.0",
+      Seurat = "5.4.0",
       Signac = "1.11.0"
     )),
     "Signac >=1.12.0"
   )
   expect_error(
     .rc_validate_seurat_stack_versions(c(
-      SeuratObject = "5.0.2",
-      Seurat = "5.0.3",
+      SeuratObject = "5.4.0",
+      Seurat = "5.4.0",
       Signac = "2.0.0"
     )),
     "ChromatinAssay5"
@@ -49,7 +57,7 @@ test_that("Seurat stack profiles retain v4 default and accept v5", {
   unsupported <- .rc_validate_seurat_stack_versions(c(
     SeuratObject = "6.0.0",
     Seurat = "6.0.0",
-    Signac = "1.17.0"
+    Signac = "1.17.1"
   ), error = FALSE)
   expect_identical(unsupported$profile, "unsupported")
   expect_false(unsupported$supported)
