@@ -7,26 +7,30 @@
 - `rc_download_species_gem()`: lower-level official repository download/parse path.
 - `rc_parallel_config()`: inspect OS-specific backend resolution.
 - `rc_make_medium_scenarios()`: create one shared medium table; see [medium presets](medium-presets.md).
-- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete GRN-first workflow with progress, timing, automatic backend selection, `upstream_workers = 6L`, and `layer2_workers = 30L`.
+- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete significant-Pando-target workflow with progress, timing, automatic backend selection, `upstream_workers = 6L`, and `layer2_workers = 30L`.
 
-The complete workflow exposes two worker counts. `upstream_workers` covers GRN inference and Layer 1. `layer2_workers` covers medium-specific union-GEM construction, global FASTCORE completion, and directional LP scoring. Stage 3 performs biological catalogue construction without FASTCORE.
+The complete workflow exposes two worker counts. `upstream_workers` covers Pando inference and Layer 1. `layer2_workers` covers medium-specific union-GEM construction, global FASTCORE completion, and directional LP scoring. Stage 3 performs biological catalogue construction without FASTCORE.
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: condition-by-cell-type Pando GRNs.
+- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for all Human-GEM GPR genes present in the RNA assay. Human analyses default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects unless `pando_initiate_args$regions` is supplied.
 - `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA is the default geometry; an existing Harmony reduction can be selected through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
-- `rc_regcompass_step_meta_modules()`: complete-GPR cores and subsystem/database-defined biological meta-modules, followed by reaction-ID deduplication into a merged catalogue. No FASTCORE and no GEM construction occur here.
+- `rc_regcompass_step_meta_modules()`: summarize significantly supported metabolic target genes, map complete-GPR cores, perform subsystem/KEGG/Reactome/master-Rhea expansion, and deduplicate reaction IDs into a merged catalogue. No target projection, connected-component analysis, FASTCORE, or GEM construction occurs here.
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support.
 - `rc_regcompass_step_layer2()`: one medium-specific union GEM, one global FASTCORE completion, persistent model cache, and directional LP scoring; or shared full-GEM scoring when `model_mode = "full_gem"`.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
 - `rc_regcompass_step_target_union()`: map selected original core reactions through shared KEGG, Reactome, or master-Rhea identifiers and score mapped non-core reactions in the exact final Stage 5 union GEMs.
 
-## Stage 3 catalogue fields
+## Stage 3 evidence and catalogue fields
 
 ```r
+step3$condition_modules$supported_metabolic_genes
+step3$condition_modules$core_gene_reaction
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 ```
+
+`meta_module_args` accepts only `subsystem_table`, `expansion_mode`, and `max_iterations`. `layer1_args` accepts only `regulatory_alpha`, `tau`, and `gene_half_saturation`.
 
 The merged object is a biological reaction catalogue, not a GEM. It contains no medium constraints or FASTCORE support.
 
