@@ -1,6 +1,6 @@
-# Tutorial Level 2: true stepwise run with audit gates
+# Tutorial Level 2: stepwise run
 
-Use this tutorial when each RegCompass stage must be run, inspected, saved, and restarted independently.
+Use this tutorial when each RegCompass stage should be run and saved independently.
 
 ## Stage 1: infer condition-by-cell-type GRNs
 
@@ -27,10 +27,7 @@ step1 <- rc_regcompass_step_grn(
   BPPARAM = upstream_bp
 )
 
-stopifnot(
-  inherits(step1, "regcompass_grn_step"),
-  all(step1$grn_result$sample_status$status == "ok")
-)
+step1$grn_result$sample_status
 ```
 
 ## Stage 2: construct condition-level metacells
@@ -50,16 +47,10 @@ step2 <- rc_regcompass_step_metacells(
   )
 )
 
-stopifnot(
-  inherits(step2, "regcompass_metacell_step"),
-  setequal(
-    colnames(step2$metacell_object),
-    step2$pooled$metacell_meta$metacell_id
-  )
-)
+step2$pooled$metacell_meta
 ```
 
-## Stage 3: construct biological meta-modules
+## Stage 3: construct reaction meta-modules
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -77,31 +68,16 @@ step3 <- rc_regcompass_step_meta_modules(
 )
 ```
 
-Stage 3 performs:
-
-1. metabolic-gene GRN projection;
-2. connected-component meta-module definition;
-3. complete-GPR core mapping;
-4. core-subsystem expansion;
-5. KEGG/Reactome and master-Rhea reaction equivalence expansion;
-6. reaction-ID deduplication across meta-modules.
-
-It does **not** run FASTCORE and does **not** create a GEM.
+Stage 3 projects metabolic-gene GRN components to complete-GPR core reactions, expands them through subsystem and direct KEGG/Reactome/master-Rhea annotations, and deduplicates reaction IDs across modules.
 
 ```r
 catalogue <- step3$merged_modules
-
-stopifnot(
-  identical(catalogue$is_gem, FALSE),
-  identical(catalogue$fastcore_applied, FALSE),
-  nrow(catalogue$merged_core_reactions) > 0,
-  nrow(catalogue$merged_reaction_membership) > 0
-)
-
+catalogue$merged_core_reactions
+catalogue$merged_reaction_membership
 table(catalogue$merged_reaction_membership$inclusion_stage)
 ```
 
-## Stage 4: build integrated reaction support
+## Stage 4: calculate integrated RNA+ATAC reaction support
 
 ```r
 step4 <- rc_regcompass_step_layer1(
@@ -114,11 +90,9 @@ step4 <- rc_regcompass_step_layer1(
   parallel = TRUE,
   BPPARAM = upstream_bp
 )
-
-stopifnot(inherits(step4, "regcompass_layer1_step"))
 ```
 
-## Stage 5: build medium-specific union GEMs and score reactions
+## Stage 5: build the medium-constrained model and score reactions
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -144,14 +118,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-For each medium scenario, Stage 5:
-
-1. applies the medium to the validated parent GEM;
-2. starts from the merged biological reaction catalogue;
-3. uses all merged complete-GPR reactions as targets;
-4. performs the only FASTCORE completion;
-5. saves one union GEM shared by all conditions and metacells;
-6. runs directional two-step LP scoring.
+Stage 5 applies the selected medium, performs global FASTCORE completion, caches the model, and runs directional LP scoring. See [medium presets](medium-presets.md) for available presets and custom media.
 
 ```r
 step5$model_cache_summary[, c(
@@ -159,19 +126,8 @@ step5$model_cache_summary[, c(
   "n_merged_biological_reactions",
   "n_global_fastcore_support_reactions",
   "n_reactions",
-  "build_strategy",
-  "completion_stage",
-  "file_checksum"
+  "file"
 )]
-
-union_gem <- readRDS(step5$model_cache_summary$file[[1]])
-stopifnot(
-  isTRUE(union_gem$is_union_gem),
-  identical(
-    union_gem$build_params$completion_stage,
-    "single_global_fastcore_after_meta_module_merge"
-  )
-)
 ```
 
 ## Stage 6: assemble annotated results
@@ -192,7 +148,3 @@ result$reaction_ranking
 result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions
 ```
-
-## Audit rule
-
-A merged meta-module catalogue is not flux-completed and must not be called a union GEM. Only the cached, medium-constrained Stage 5 model is a union GEM.

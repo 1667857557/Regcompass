@@ -2,22 +2,16 @@
 
 Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.8.4.
 
-## Current architecture
+## Workflow
 
 ```text
-condition × cell type single cells
-→ Pando GRN
-→ complete-GPR core reactions
-→ subsystem + KEGG/Reactome + master-Rhea expansion
-→ biological meta-modules
-→ deduplicated merged meta-module catalogue
-→ Layer 1 RNA+ATAC reaction support
-→ one medium-specific union GEM
-→ one global FASTCORE completion
-→ directional COMPASS-like LP scoring
+condition × cell type cells
+→ Pando GRNs and multimodal metacells
+→ complete-GPR reaction meta-modules
+→ integrated RNA+ATAC reaction support
+→ medium-constrained model with global FASTCORE completion
+→ directional LP scoring and condition contrasts
 ```
-
-Stage 3 does **not** run FASTCORE and does **not** create a GEM. The phrase **union GEM** is reserved for the medium-constrained model created in Stage 5 after all biological meta-modules have been merged.
 
 ## Prepare the object and model
 
@@ -43,6 +37,8 @@ medium_scenarios <- rc_make_medium_scenarios(
 ```
 
 The Seurat object must contain normalized RNA and ATAC assays and the metadata columns supplied below. Pando is fitted separately for each `condition × cell type` group.
+
+Available medium presets include physiological plasma, RPMI-1640, high-glucose DMEM, glucose/lactate/glutamine sensitivity scenarios, technical exchange baselines, and custom media. See [medium presets](medium-presets.md) for the complete list and assumptions.
 
 ## Run the complete workflow
 
@@ -101,7 +97,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-FASTCORE is configured through `layer2_args$model_params` and is applied once to each medium-specific union GEM.
+`layer2_args$model_params` controls FASTCORE completion.
 
 ## Inspect the main outputs
 
@@ -112,20 +108,3 @@ result$merged_grn_meta_modules$merged_core_reactions
 result$merged_grn_meta_modules$merged_reaction_membership
 result$microcompass$model_cache_summary
 ```
-
-`merged_grn_meta_modules` is a reaction catalogue, not a GEM. To inspect an actual union GEM:
-
-```r
-union_summary <- result$microcompass$model_cache_summary
-union_gem <- readRDS(union_summary$file[[1]])
-
-union_gem$is_union_gem
-union_gem$union_gem_medium_scenario
-union_gem$build_params[c(
-  "n_merged_biological_reactions",
-  "n_global_fastcore_support_reactions",
-  "completion_stage"
-)]
-```
-
-All conditions and metacells evaluated under the same medium scenario use the same cached union GEM. Their differences arise from the RNA+ATAC penalty matrix, not condition-specific network structures.
