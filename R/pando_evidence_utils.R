@@ -1,17 +1,12 @@
 .rc_pando_assay_data <- function(object, assay) {
   value <- tryCatch(
-    SeuratObject::GetAssayData(object, assay = assay, slot = "data"),
+    .rc_get_assay_matrix(object, assay, "data"),
     error = function(e) NULL
   )
-  if (is.null(value)) {
-    value <- tryCatch(
-      SeuratObject::GetAssayData(object, assay = assay, layer = "data"),
-      error = function(e) NULL
-    )
-  }
   if (is.null(value) || nrow(value) == 0L || ncol(value) == 0L) {
     stop(
-      "Pando evidence projection requires non-empty normalized assay data.",
+      "Pando evidence projection requires one non-empty normalized `data` ",
+      "layer per assay.",
       call. = FALSE
     )
   }

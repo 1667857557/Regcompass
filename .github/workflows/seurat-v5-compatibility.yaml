@@ -1,0 +1,146 @@
+name: Seurat v5 compatibility
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  seurat-v5:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: release
+          use-public-rspm: true
+
+      - name: Install system libraries
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libcurl4-openssl-dev \
+            libssl-dev \
+            libxml2-dev \
+            libglpk-dev \
+            libbz2-dev \
+            liblzma-dev \
+            zlib1g-dev
+
+      - name: Install latest Seurat v5 stack and package dependencies
+        shell: Rscript {0}
+        run: |
+          options(timeout = 1200)
+          install.packages(c(
+            "Matrix", "matrixStats", "testthat", "highs",
+            "BiocManager", "remotes"
+          ))
+          BiocManager::install(
+            c(
+              "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
+              "GenomicRanges", "sparseMatrixStats", "MatrixGenerics",
+              "limma", "Rhtslib", "Rsamtools", "TFBSTools", "motifmatchr"
+            ),
+            ask = FALSE,
+            update = FALSE
+          )
+          remotes::install_version(
+            "SeuratObject", version = "5.4.0",
+            dependencies = NA, upgrade = "never"
+          )
+          remotes::install_version(
+            "Seurat", version = "5.5.0",
+            dependencies = NA, upgrade = "never"
+          )
+          remotes::install_version(
+            "Signac", version = "1.17.1",
+            dependencies = NA, upgrade = "never"
+          )
+          remotes::install_github(
+            "1667857557/SuperCell_Seurat_V4@agent/current-seurat-v5-layer-api",
+            dependencies = NA,
+            upgrade = "never"
+          )
+          remotes::install_github(
+            "1667857557/Pando_regcompass",
+            dependencies = NA,
+            upgrade = "never"
+          )
+          expected <- c(
+            SeuratObject = "5.4.0",
+            Seurat = "5.5.0",
+            Signac = "1.17.1"
+          )
+          observed <- vapply(
+            names(expected),
+            function(package) as.character(packageVersion(package)),
+            character(1)
+          )
+          if (!identical(observed, expected)) {
+            stop(
+              "Unexpected Seurat v5 stack: ",
+              paste(names(observed), observed, sep = "=", collapse = ", ")
+            )
+          }
+
+      - name: Install RegCompassR
+        shell: bash
+        run: |
+          R CMD INSTALL --no-multiarch --with-keep.source --install-tests .
+
+      - name: Run Seurat, Pando, and SuperCell compatibility tests
+        shell: Rscript {0}
+        run: |
+          library(RegCompassR)
+          library(Pando)
+          profile <- RegCompassR:::.rc_validate_seurat_stack_versions(
+            RegCompassR:::.rc_seurat_stack_versions()
+          )
+          stopifnot(identical(profile$profile, "seurat_v5_compatible"))
+          stopifnot(is.function(Pando::LayerData))
+
+          old_option <- getOption("Seurat.object.assay.version")
+          on.exit(options(Seurat.object.assay.version = old_option), add = TRUE)
+          options(Seurat.object.assay.version = "v3")
+          counts <- Matrix::Matrix(
+            matrix(c(1, 0, 2, 3, 0, 1, 4, 0), nrow = 2),
+            sparse = TRUE,
+            dimnames = list(c("g1", "g2"), paste0("cell", 1:4))
+          )
+          object <- Seurat::CreateSeuratObject(counts = counts)
+          stopifnot(!inherits(object[["RNA"]], "Assay5"))
+          stopifnot(isTRUE(all.equal(
+            as.matrix(SuperCell:::.sc_get_assay_data(
+              object, assay = "RNA", slot = "counts"
+            )),
+            as.matrix(counts)
+          )))
+          peaks <- Matrix::Matrix(
+            matrix(c(1, 0, 0, 2, 0, 3, 1, 0), nrow = 2),
+            sparse = TRUE,
+            dimnames = list(c("chr1-1-10", "chr1-20-30"), colnames(counts))
+          )
+          object[["ATAC"]] <- Signac::CreateChromatinAssay(
+            counts = peaks,
+            sep = c("-", "-")
+          )
+          stopifnot(isTRUE(all.equal(
+            as.matrix(SuperCell:::.sc_get_assay_data(
+              object, assay = "ATAC", slot = "counts"
+            )),
+            as.matrix(peaks)
+          )))
+
+          testthat::test_local(
+            Sys.getenv("GITHUB_WORKSPACE"),
+            filter = "seurat-compatibility",
+            reporter = "summary",
+            load_package = "installed",
+            stop_on_failure = TRUE,
+            stop_on_warning = FALSE
+          )

@@ -43,13 +43,12 @@
     )
   }
   if (!identical(observed, expected)) {
-    assay_object <- object[[assay]]
-    assay_object <- SeuratObject::SetAssayData(
-      object = assay_object,
-      slot = "data",
-      new.data = value[, expected, drop = FALSE]
+    object <- .rc_set_assay_matrix(
+      object = object,
+      assay = assay,
+      layer = "data",
+      new_data = value[, expected, drop = FALSE]
     )
-    object[[assay]] <- assay_object
   }
   object
 }
@@ -63,6 +62,12 @@
   if (!celltype_col %in% colnames(object@meta.data)) {
     stop("Missing cell-type metadata column: ", celltype_col, call. = FALSE)
   }
+  object <- .rc_prepare_seurat_assays(
+    object,
+    assays = atac_assay,
+    required_layers = "counts",
+    optional_layers = "data"
+  )
   filtered <- .rc_drop_zero_count_atac_features(
     object, atac_assay, "Cell-type-shared TF-IDF"
   )
@@ -107,11 +112,12 @@
     stop("Cell-type-shared TF-IDF did not preserve the ATAC matrix layout.",
          call. = FALSE)
   }
-  assay_object <- object[[atac_assay]]
-  assay_object <- SeuratObject::SetAssayData(
-    object = assay_object, slot = "data", new.data = tfidf
+  object <- .rc_set_assay_matrix(
+    object = object,
+    assay = atac_assay,
+    layer = "data",
+    new_data = tfidf
   )
-  object[[atac_assay]] <- assay_object
   object <- .rc_align_normalized_assay(object, atac_assay, "ATAC")
   object@misc$regcompass_atac_normalization <- c(list(
     method = "Signac_TFIDF",
@@ -147,6 +153,12 @@
   if (any(invalid)) {
     stop("Condition and cell-type metadata must be complete.", call. = FALSE)
   }
+  object <- .rc_prepare_seurat_assays(
+    object,
+    assays = c(rna_assay, atac_assay),
+    required_layers = "counts",
+    optional_layers = "data"
+  )
   object <- Seurat::NormalizeData(object, assay = rna_assay, verbose = FALSE)
   object <- .rc_align_normalized_assay(object, rna_assay, "RNA")
   object <- .rc_apply_celltype_shared_tfidf(
@@ -156,7 +168,8 @@
     rna = "global_single_cell_NormalizeData",
     atac = "cell_type_shared_TFIDF_across_conditions",
     condition_col = condition_col,
-    celltype_col = celltype_col
+    celltype_col = celltype_col,
+    seurat_compatibility = object@misc$regcompass_seurat_compatibility
   )
   object
 }
@@ -170,6 +183,12 @@
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     require_complete_fragments = FALSE
+  )
+  object <- .rc_prepare_seurat_assays(
+    object,
+    assays = c(rna_assay, atac_assay),
+    required_layers = "counts",
+    optional_layers = "data"
   )
   object <- Seurat::NormalizeData(object, assay = rna_assay, verbose = FALSE)
   object <- .rc_align_normalized_assay(object, rna_assay, "RNA")

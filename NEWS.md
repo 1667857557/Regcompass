@@ -1,5 +1,7 @@
 # RegCompassR development
 
+- Added explicit Seurat runtime profiles: the pinned SeuratObject 4.1.4 / Seurat 4.4.0 / Signac 1.11.0 stack remains the canonical default, while coherent SeuratObject/Seurat 5.x stacks with Signac >=1.12.0,<2 are accepted as a compatibility profile.
+- Added assay-class-aware matrix access for v3 `Assay`, Signac 1.x `ChromatinAssay`, and joinable Seurat v5 `Assay5` objects. Split `counts.*` and `data.*` layers are joined on a working copy and recorded as provenance; ambiguous layer layouts and Signac 2.x `ChromatinAssay5` stop explicitly.
 - Redefined Stage 3 around the actual analysis target: for each `condition × cell type`, GEM metabolic genes with at least one significant Pando TF–peak–gene coefficient form one supported gene set, and reactions become core only when a complete GPR branch is contained in that set.
 - Removed the retired shared-TF target projection, signed target-target component construction, top-k pruning, TF-Jaccard filtering, and per-TF target truncation code. The associated functions, output fields, parameters, tests, and documentation were deleted rather than retained as compatibility wrappers.
 - Added `supported_metabolic_genes`, a condition-by-cell-type gene evidence table reporting significant edge, TF, region, adjusted-P-value, coefficient, model-R², and positive/negative edge summaries.
@@ -38,7 +40,7 @@
 - Added progress output and elapsed-time auditing to every public workflow stage and to the complete six-stage run. Each stage writes `step_timing.tsv`; one-shot execution writes `00_execution_timing.tsv` and stores stage and total timings in `result$timing`.
 - Added an audited condition-metacell cache contract. Checkpoints are no longer reused by file existence alone: ordered cells and labels, scalable full-content RNA/ATAC fingerprints, selected PCA/LSI embedding fingerprints, the SuperCell2 label, `gamma`, seed, reductions/dimensions, and metacell thresholds must match, or the user must rebuild with `overwrite = TRUE`.
 - Downstream stages now reject legacy metacell objects that lack the current condition-only label-guided construction and cache provenance instead of assigning current provenance to an unverifiable artifact.
-- Kept legal minimum-version Imports for SeuratObject 4.1.4, Seurat 4.4.0, and Signac 1.11.0 while retaining exact validated versions in package Config fields and the `.onLoad` runtime gate; R dependency fields do not support equality constraints.
+- Kept legal minimum-version Imports for SeuratObject 4.1.4, Seurat 4.4.0, and Signac 1.11.0 while retaining the exact default versions in package Config fields; coherent v4 and v5 runtime profiles are validated separately because R dependency fields do not support profile-specific equality constraints.
 - Bundled GEM loading now writes and revalidates the requested `save_rds` path, matching downloaded-model cache semantics. `rc_run_regcompass()` also preserves the prior positional location of `species` ahead of the later `progress` argument.
 - Public-stage timing now records success only after the expected final RDS has been newly committed; failures during the last export/save phase are written as `status = error`.
 - Hardened reaction annotation and evidence provenance: normalized GEM bounds are used, missing roles are inferred rather than forced to internal, mouse symbols retain source case, missing omnibus evidence is `unknown/unavailable`, and unavailable reaction-capacity reconstruction cannot be promoted to `RNA+ATAC` from gene-level changes alone.
@@ -68,7 +70,7 @@
 - Removed the redundant public `metacell_label_col` and stepwise `label_col` arguments. The canonical workflow now exposes its actual behavior directly: `celltype_col` is always passed to SuperCell2 before aggregation, while condition remains the only hard metacell stratum.
 - Retained `label_col` only on the lower-level general-purpose `rc_make_supercell2_metacells()` builder, where it is a functional SuperCell2 option.
 - Updated the README, all three tutorial levels, the workflow vignette, API index, and help pages to use the canonical interface only.
-- Added a complete guide to the predefined extracellular media, including species restrictions, culture versus plasma backgrounds, glucose/lactate/glutamine sensitivity bounds, technical baselines, custom media, and the rule that medium constraints never expand original GEM directionality.
+- Added a complete guide to the predefined extracellular media, including species restrictions, assumptions, and custom-medium examples.
 
 # RegCompassR 1.7.0
 

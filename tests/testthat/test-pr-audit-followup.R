@@ -116,12 +116,24 @@ test_that("downstream stages reject legacy metacell provenance", {
   )
 })
 
-test_that("DESCRIPTION minimums and config pins match the runtime gate", {
+test_that("DESCRIPTION preserves the default v4 profile and supported majors", {
   description <- packageDescription("RegCompassR")
   imports <- description$Imports
   expect_match(imports, "SeuratObject \\(>= 4.1.4\\)")
   expect_match(imports, "Seurat \\(>= 4.4.0\\)")
   expect_match(imports, "Signac \\(>= 1.11.0\\)")
+  expect_identical(
+    description[["Config/RegCompassR/DefaultSeuratProfile"]],
+    "seurat_v4_default"
+  )
+  expect_identical(
+    description[["Config/RegCompassR/SupportedSeuratMajors"]],
+    "4,5"
+  )
+  expect_identical(
+    description[["Config/RegCompassR/SupportedSignacMajor"]],
+    "1"
+  )
   expect_identical(
     description[["Config/RegCompassR/SeuratObjectVersion"]],
     "4.1.4"
