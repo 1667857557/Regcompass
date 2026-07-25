@@ -55,8 +55,8 @@ rc_regcompass_step_results <- function(
   ), names(meta_modules$condition_modules))
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
-    schema_version = "regcompass_grn_first_v3",
-    version = "1.8.3",
+    schema_version = "regcompass_grn_first_v4",
+    version = "1.8.4",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
@@ -108,6 +108,8 @@ rc_regcompass_step_results <- function(
         "medium-constrained merged biological meta-modules plus",
         "global FASTCORE support"
       ),
+      second_pass_model_policy =
+        "reuse_exact_final_medium_specific_union_gem_cache",
       pando_normalization_policy = grn$grn_result$normalization_policy,
       penalty_formula = "1/(1+log2(1+E_multiome))",
       execution_mode = "stepwise"
