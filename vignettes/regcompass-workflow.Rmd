@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.4 GRN-first workflow"
+title: "RegCompassR 1.8.4 significant-Pando-target workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.4 GRN-first workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.4 significant-Pando-target workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -16,8 +16,10 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level support and directional COMPASS-like scores.
 
 ```text
-condition × cell type GRNs
-→ biological meta-modules
+condition × cell type Pando TF–peak–Human-GEM-gene models
+→ significant metabolic target-gene sets
+→ complete-GPR core reactions
+→ annotation-defined biological meta-modules
 → merged meta-module catalogue
 → integrated RNA+ATAC reaction support
 → medium-specific union GEM
@@ -25,7 +27,7 @@ condition × cell type GRNs
 → directional LP scoring
 ```
 
-Stage 3 does not run FASTCORE and does not create a GEM. Only the medium-constrained Stage 5 model is called a union GEM.
+Stage 3 does not project targets through shared TFs, calculate GRN connected components, run FASTCORE, or create a GEM. Only the medium-constrained Stage 5 model is called a union GEM.
 
 # Prepare the GEM and medium
 
@@ -47,6 +49,8 @@ medium_scenarios <- rc_make_medium_scenarios(
   species = "human"
 )
 ```
+
+For human analyses, RegCompass loads `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` from Pando, takes their union, and passes it to `Pando::initiate_grn(regions = ...)`. Supply `pando_args$pando_initiate_args$regions` to override this default. Non-human analyses require species-appropriate regions explicitly.
 
 # Complete workflow
 
@@ -71,6 +75,9 @@ result <- rc_run_regcompass_one_shot(
   ),
   pando_args = list(
     min_cells = 100,
+    padj_threshold = 0.05,
+    min_abs_estimate = 0,
+    min_model_rsq = 0.1,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -79,12 +86,10 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
+  meta_module_args = list(
+    expansion_mode = "ordered_once"
+  ),
   layer1_args = list(
-    top_k_neighbors = 5,
-    min_shared_tfs = 1,
-    min_tf_jaccard = 0,
-    max_targets_per_tf = 200,
-    expansion_mode = "ordered_once",
     regulatory_alpha = 1,
     tau = 0.20
   ),
@@ -104,7 +109,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-FASTCORE is configured at Stage 5 through `layer2_args$model_params`.
+The Stage 1 adjusted-P-value, effect-size, and model-R² filters define which Human-GEM target genes enter Stage 3. Both positive and negative Pando coefficients count as regulatory evidence. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`.
 
 # Stepwise workflow
 
@@ -117,7 +122,11 @@ step1 <- rc_regcompass_step_grn(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   condition_col = "Group",
   celltype_col = "cell_type",
-  pando_args = list(min_cells = 100)
+  pando_args = list(
+    min_cells = 100,
+    padj_threshold = 0.05,
+    min_model_rsq = 0.1
+  )
 )
 
 step2 <- rc_regcompass_step_metacells(
@@ -135,7 +144,7 @@ step3 <- rc_regcompass_step_meta_modules(
   metacells = step2,
   gem = gem,
   outdir = "RegCompass_steps/03_meta_modules",
-  layer1_args = list(expansion_mode = "ordered_once")
+  meta_module_args = list(expansion_mode = "ordered_once")
 )
 
 step4 <- rc_regcompass_step_layer1(
@@ -179,14 +188,19 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-# Inspect the Stage 3 catalogue
+# Inspect the Stage 3 evidence and catalogue
 
 ```{r}
+step3$condition_modules$supported_metabolic_genes
+step3$condition_modules$core_gene_reaction
+step3$condition_modules$reaction_membership
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 step3$merged_modules$is_gem
 step3$merged_modules$fastcore_applied
 ```
+
+The supported-gene table contains one row per condition, cell type, and significantly supported Human-GEM target gene. It reports the number of significant edges, distinct TFs, distinct regions, minimum adjusted P value, maximum absolute coefficient, model R², and positive/negative edge counts.
 
 The merged catalogue contains biological reactions only. It has no medium bounds and no FASTCORE support.
 
@@ -242,7 +256,8 @@ Selected genes or reaction IDs define mapping anchors. The second pass verifies 
 
 # Restart policy
 
-- Change GRN projection or annotation expansion: rerun Stage 3 onward.
+- Change Pando evidence thresholds or regulatory regions: rerun Stage 1 onward.
+- Change subsystem or reaction-equivalence expansion: rerun Stage 3 onward.
 - Change the RNA+ATAC transformation: rerun Stage 4 onward.
 - Change medium or global FASTCORE settings: rerun Stage 5 onward.
 
