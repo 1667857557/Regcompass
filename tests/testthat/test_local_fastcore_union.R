@@ -1,141 +1,69 @@
-rc_local_solver_available <- function() {
-  requireNamespace("highs", quietly = TRUE) ||
-    requireNamespace("Rglpk", quietly = TRUE) ||
-    requireNamespace("gurobi", quietly = TRUE)
-}
-
-rc_local_test_solver <- function() {
-  if (requireNamespace("highs", quietly = TRUE)) return("highs")
-  if (requireNamespace("Rglpk", quietly = TRUE)) return("glpk")
-  if (requireNamespace("gurobi", quietly = TRUE)) return("gurobi")
-  "highs"
-}
-
-rc_local_forward_toy <- function() {
-  S <- matrix(
-    c(
-       1, -1, -1,  0,
-       0,  1,  1, -1
-    ),
-    nrow = 2,
-    byrow = TRUE,
-    dimnames = list(
-      c("A_c", "B_c"),
-      c("EX_A", "Rcore", "Ralt", "EX_B")
-    )
-  )
-  rc_make_gem(
-    S,
-    lb = c(EX_A = 0, Rcore = 0, Ralt = 0, EX_B = 0),
-    ub = c(EX_A = 1000, Rcore = 1000, Ralt = 1000, EX_B = 1000),
-    reaction_meta = data.frame(
-      reaction_id = colnames(S),
-      role = c("exchange", "internal", "internal", "exchange"),
-      role_source = "curated",
-      stringsAsFactors = FALSE
-    )
-  )
-}
-
-test_that("local FASTCORE completes each biological meta-module", {
-  skip_if_not(rc_local_solver_available())
-  gem <- rc_local_forward_toy()
-  membership <- data.frame(
-    group_id = "C1|T",
-    condition = "C1",
-    sample_id = "C1",
-    cell_type = "T",
-    module_id = "C1|T::GRN0001",
-    reaction_id = c("Rcore", "Ralt"),
-    is_core = c(TRUE, FALSE),
-    inclusion_stage = c("core", "subsystem"),
-    stringsAsFactors = FALSE
-  )
-  core <- membership[membership$is_core, , drop = FALSE]
-  completed <- .rc_complete_stratum_meta_modules(
-    list(reaction_membership = membership, core_gene_reaction = core),
-    gem,
-    outdir = tempfile("local_fastcore_test_"),
-    local_fastcore_args = list(
-      solver = rc_local_test_solver(),
-      save_models = FALSE,
-      strict = TRUE,
-      parallel = FALSE,
-      backend = "serial"
-    )
-  )
-  support <- completed$completed_reaction_membership$reaction_id[
-    completed$completed_reaction_membership$local_fastcore_support
-  ]
-  expect_setequal(support, c("EX_A", "EX_B"))
-  expect_true(all(c("Rcore", "Ralt") %in%
-                    completed$completed_reaction_membership$reaction_id))
-  expect_equal(completed$summary$n_local_fastcore_support, 2)
-  expect_identical(
-    completed$summary$parallel_task,
-    "local_fastcore_by_meta_module"
-  )
-  expect_identical(completed$summary$parallel_backend, "serial")
-  expect_identical(completed$summary$parallel_workers, 1L)
-})
-
-test_that("global union deduplicates local FASTCORE support", {
+test_that("meta-module merging remains a catalogue, not a GEM", {
   biological <- data.frame(
-    group_id = "C1|T",
-    sample_id = "C1",
-    module_id = "C1|T::GRN0001",
-    reaction_id = "Rcore",
-    is_core = TRUE,
+    group_id = c("C1|T", "C2|T"),
+    sample_id = c("C1|T", "C2|T"),
+    module_id = c("C1|T::GRN0001", "C2|T::GRN0001"),
+    reaction_id = c("Rcore", "Rcontext"),
+    is_core = c(TRUE, FALSE),
     stringsAsFactors = FALSE
-  )
-  completed <- rbind(
-    transform(
-      biological,
-      biological_meta_module_member = TRUE,
-      local_fastcore_support = FALSE,
-      inclusion_stage = "core"
-    ),
-    data.frame(
-      group_id = rep("C1|T", 2),
-      sample_id = rep("C1", 2),
-      module_id = rep("C1|T::GRN0001", 2),
-      reaction_id = c("EX_A", "EX_B"),
-      is_core = FALSE,
-      biological_meta_module_member = FALSE,
-      local_fastcore_support = TRUE,
-      inclusion_stage = "local_fastcore_support",
-      stringsAsFactors = FALSE
-    )
   )
   artifact <- list(
-    group_id = "C1|T",
+    group_id = "condition_pooled",
     grn_meta_modules = list(
       sample_status = data.frame(),
       tf_peak_gene_all = data.frame(),
       tf_peak_gene_significant = data.frame(),
       metabolic_gene_nodes = data.frame(),
       metabolic_gene_edges = data.frame(),
-      core_gene_reaction = biological,
+      core_gene_reaction = biological[biological$is_core, , drop = FALSE],
       reaction_membership = biological,
-      meta_module_summary = data.frame(),
-      local_completed_reaction_membership = completed,
-      local_fastcore_summary = data.frame(),
-      local_fastcore_diagnostics = data.frame(),
-      local_fastcore_completion_iterations = data.frame()
+      meta_module_summary = data.frame()
     )
   )
+
   merged <- .rc_merge_stratum_meta_modules(list(artifact))
+
   expect_setequal(
-    merged$global_reaction_membership$reaction_id,
-    c("Rcore", "EX_A", "EX_B")
+    merged$merged_reaction_membership$reaction_id,
+    c("Rcore", "Rcontext")
   )
+  expect_setequal(
+    merged$merged_core_reactions$reaction_id,
+    "Rcore"
+  )
+  expect_false(merged$is_gem)
+  expect_false(merged$fastcore_applied)
   expect_identical(
-    merged$global_union_source,
-    "deduplicated_local_fastcore_completed_meta_modules"
+    merged$merge_source,
+    "deduplicated_biological_meta_module_reactions"
   )
-  expect_true(all(
-    merged$global_reaction_membership$inclusion_stage[
-      merged$global_reaction_membership$reaction_id %in% c("EX_A", "EX_B")
-    ] == "global_union_local_fastcore_support"
-  ))
+  expect_false(any(grepl("union", names(merged), ignore.case = TRUE)))
+  expect_false(any(grepl("fastcore", merged$merged_reaction_membership$inclusion_stage,
+                         ignore.case = TRUE)))
+})
+
+test_that("Stage 3 does not invoke local FASTCORE", {
+  body_text <- paste(deparse(body(.rc_build_condition_meta_modules)),
+                     collapse = "\n")
+  expect_false(grepl("complete_stratum_meta_modules", body_text, fixed = TRUE))
+  expect_false(grepl("local_fastcore", body_text, fixed = TRUE))
+  expect_true(grepl("none_at_meta_module_stage", body_text, fixed = TRUE))
+})
+
+test_that("only the medium-specific cache creates union GEMs", {
+  cache_body <- paste(
+    deparse(body(.rc_build_medium_specific_union_gem_cache)),
+    collapse = "\n"
+  )
+  expect_true(grepl("medium_scenario", cache_body, fixed = TRUE))
+  expect_true(grepl("MEDIUM_UNION_GEM", cache_body, fixed = TRUE))
+  expect_true(grepl("medium_specific_union_gem", cache_body, fixed = TRUE))
+  expect_true(grepl("rc_build_meta_module_gem", cache_body, fixed = TRUE))
+})
+
+test_that("obsolete local FASTCORE controls are not public API", {
+  exports <- getNamespaceExports("RegCompassR")
+  expect_false(any(grepl("local.*fastcore|fastcore.*local", exports,
+                         ignore.case = TRUE)))
+  expect_false("rc_build_meta_module_gem" %in% exports)
 })
