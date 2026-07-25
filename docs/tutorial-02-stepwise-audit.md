@@ -113,15 +113,17 @@ RNA is normalized once. ATAC TF-IDF uses all conditions within each cell type as
 
 ## Stage 2: construct condition-level metacells
 
-By default, SuperCell2 uses RNA `pca` dimensions 1:30 and ATAC `lsi` dimensions 2:30. To use a batch-corrected Harmony RNA geometry, select the existing `harmony` reduction explicitly. The reduction must contain all input cells and at least the requested dimensions.
+By default, SuperCell2 uses RNA `pca` dimensions 1:30 and ATAC `lsi` dimensions 2:30. Set the following switch to `TRUE` only when an existing Harmony reduction should define the RNA geometry used for metacell construction.
 
 ```r
-use_harmony_for_metacells <- TRUE
+use_harmony_for_metacells <- FALSE
 
 metacell_embedding_args <- if (use_harmony_for_metacells) {
   stopifnot(
     "harmony" %in% names(A@reductions),
-    ncol(SeuratObject::Embeddings(A[["harmony"]])) >= 30
+    "lsi" %in% names(A@reductions),
+    ncol(SeuratObject::Embeddings(A[["harmony"]])) >= 30,
+    ncol(SeuratObject::Embeddings(A[["lsi"]])) >= 30
   )
   list(
     rna_reduction = "harmony",
@@ -130,12 +132,7 @@ metacell_embedding_args <- if (use_harmony_for_metacells) {
     atac_dims = 2:30
   )
 } else {
-  list(
-    rna_reduction = "pca",
-    rna_dims = 1:30,
-    atac_reduction = "lsi",
-    atac_dims = 2:30
-  )
+  list()
 }
 
 step2 <- rc_regcompass_step_metacells(
@@ -210,3 +207,164 @@ stopifnot(
 
 step3$condition_modules$local_fastcore_summary
 ```
+
+Biological meta-modules contain complete-GPR cores, same-subsystem reactions, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Local FASTCORE adds separately labelled reactions required for feasibility.
+
+## Stage 4: calculate integrated RNA+ATAC reaction expression
+
+```r
+step4 <- rc_regcompass_step_layer1(
+  metacells = step2,
+  meta_modules = step3,
+  gem = gem,
+  outdir = "RegCompass_steps/04_layer1",
+  regulatory_alpha = 1,
+  tau = 0.20,
+  parallel = TRUE,
+  BPPARAM = upstream_bp,
+  progress = TRUE
+)
+
+stopifnot(
+  inherits(step4, "regcompass_layer1_step"),
+  identical(
+    colnames(step4$reaction_expression),
+    as.character(step4$unit_meta$pool_id)
+  ),
+  identical(step4$workflow_params, step3$workflow_params),
+  identical(step4$gem_fingerprint, step3$gem_fingerprint)
+)
+
+dim(step4$reaction_expression)
+head(step4$gpr_diagnostics)
+```
+
+## Stage 5: run directional COMPASS-like LP scoring
+
+```r
+step5 <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "RegCompass_steps/05_layer2",
+  model_mode = "meta_module_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    time_limit = 60
+  ),
+  parallel = TRUE,
+  BPPARAM = layer2_bp,
+  progress = TRUE
+)
+
+stopifnot(
+  inherits(step5, "regcompass_layer2_step"),
+  any(step5$evaluated),
+  identical(colnames(step5$penalty), colnames(step4$reaction_expression)),
+  identical(step5$workflow_params, step4$workflow_params),
+  identical(step5$gem_fingerprint, step4$gem_fingerprint),
+  all(file.exists(step5$model_cache_summary$file))
+)
+
+table(
+  evaluated = as.vector(step5$evaluated),
+  feasible = as.vector(step5$feasible),
+  useNA = "ifany"
+)
+```
+
+`penalty` is the primary output. Lower values indicate stronger compatibility between the required target flux and integrated evidence. `score` is a within-target relative rank, not a probability or measured flux.
+
+## Stage 6: assemble annotated results
+
+```r
+result <- rc_regcompass_step_results(
+  grn = step1,
+  metacells = step2,
+  meta_modules = step3,
+  layer1 = step4,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_steps/06_results",
+  species = "human",
+  progress = TRUE
+)
+
+stopifnot(
+  identical(result$version, "1.8.3"),
+  identical(result$schema_version, "regcompass_grn_first_v2"),
+  nrow(result$reaction_ranking) > 0,
+  nrow(result$reaction_catalog) > 0,
+  nrow(result$reaction_evidence) > 0,
+  identical(result$gem_fingerprint, step5$gem_fingerprint),
+  identical(result$params$execution_mode, "stepwise")
+)
+```
+
+Each stage writes its own classed RDS and `step_timing.tsv`, so a downstream stage can be restarted without recomputing valid upstream objects.
+
+Stop the user-created workers after all stages finish:
+
+```r
+bpstop(upstream_bp)
+bpstop(layer2_bp)
+gc(full = TRUE)
+```
+
+## Optional Stage 5b: select anchors and remap linked reactions
+
+A targeted second pass may be run from the completed Stage 3–5 objects. The selected genes or reaction IDs must resolve to previous global core reactions.
+
+```r
+expanded <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_steps/05b_targeted_reactions",
+  core_genes = c("GCLC", "GCLM", "GSS", "GSR", "G6PD", "PGD"),
+  gene_match = "complete_gpr",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  ),
+  parallel = TRUE,
+  BPPARAM = layer2_bp,
+  progress = TRUE
+)
+
+stopifnot(
+  inherits(expanded, "regcompass_target_union_step"),
+  expanded$microcompass$params$structural_model_reused_exactly,
+  identical(
+    expanded$microcompass$params$target_scope,
+    "direct_kegg_reactome_master_rhea_noncore_only"
+  )
+)
+```
+
+The complete gene- and reaction-selection tutorial is [Tutorial Level 4](tutorial-04-targeted-reaction-remapping.md).
+
+## Compare conditions after Stage 6
+
+```r
+condition_stats <- rc_test_condition_reactions(
+  result,
+  condition_col = condition_col,
+  celltype_col = celltype_col,
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "stem-cell_like",
+  p_adjust_scope = "celltype_contrast_medium"
+)
+
+condition_stats$omnibus
+condition_stats$pairwise
+```
+
+The complete statistics and plotting tutorial is [Tutorial Level 5](tutorial-05-condition-differential-analysis.md).
+
+## Stop conditions
+
+Do not continue when a required GRN group fails, a metacell has a tied dominant label, GRN/metacell coverage is incomplete, no complete-GPR core remains, stage classes or GEM fingerprints differ, scoring-unit order changes, the LP solver is unavailable, or no Layer 2 target is evaluated.
