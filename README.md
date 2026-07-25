@@ -9,7 +9,7 @@ condition × cell type cells
 → Pando TF–peak–Human-GEM-gene models
 → significantly supported metabolic target genes
 → complete-GPR core reactions
-→ subsystem and reaction-equivalence biological expansion
+→ one ordered subsystem/cross-reference expansion pass
 → integrated RNA+ATAC reaction support
 → medium-constrained model with global FASTCORE completion
 → directional COMPASS-like LP scoring
@@ -17,6 +17,17 @@ condition × cell type cells
 ```
 
 Pando is fitted separately for each `condition × cell type`. The candidate target genes are all Human-GEM GPR genes present in the RNA assay. A gene enters the Stage 3 supported set when at least one TF–peak–gene coefficient passes the configured adjusted-P-value, effect-size, and target-model-R² filters. Positive and negative coefficients both count as regulatory evidence. A reaction is a core only when one complete GPR branch is contained in that supported gene set.
+
+Stage 3 expansion is fixed and executed exactly once:
+
+```text
+complete-GPR cores
+→ all reactions in core-reaction subsystems
+→ direct KEGG/Reactome reaction equivalents
+→ direct master-Rhea reaction equivalents
+```
+
+There is no `expansion_mode`, fixed-point recursion, `max_iterations`, one-hop reaction expansion, or stoichiometric-neighbour expansion.
 
 For Layer 1 reaction support, genes joined by a GPR AND relationship are aggregated with one of the three COMPASS functions: `min`, `median`, or `mean`. RegCompass defaults to `min`, representing the limiting required subunit. Isozyme OR branches remain additive in the canonical workflow.
 
@@ -40,8 +51,6 @@ remotes::install_github("1667857557/Regcompass")
 library(RegCompassR)
 library(BSgenome.Hsapiens.UCSC.hg38)
 
-data(motifs, package = "Pando")
-
 gem <- rc_prepare_gem(
   species = "human",
   version = "2.0.0",
@@ -57,7 +66,6 @@ medium_scenarios <- rc_make_medium_scenarios(
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
-  pfm = motifs,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
   gem = gem,
@@ -84,9 +92,6 @@ result <- rc_run_regcompass_one_shot(
     min_cells_per_stratum = 300,
     min_metacell_size = 10
   ),
-  meta_module_args = list(
-    expansion_mode = "ordered_once"
-  ),
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
@@ -105,6 +110,15 @@ result <- rc_run_regcompass_one_shot(
   layer2_workers = 30
 )
 ```
+
+When `pfm` is omitted, RegCompass internally performs the equivalent of:
+
+```r
+data("motifs", package = "Pando")
+pfm <- motifs
+```
+
+A user-supplied `pfm` still overrides the default.
 
 `gpr_and_method` accepts only `"min"`, `"median"`, or `"mean"`; omitting it uses `"min"`. The retired Boltzmann soft-min and `tau` API are not supported.
 
@@ -133,9 +147,9 @@ See [Predefined extracellular medium scenarios](docs/medium-presets.md) for spec
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for Human-GEM target genes.
+- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for Human-GEM target genes using Pando's bundled `motifs` by default.
 - `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells.
-- `rc_regcompass_step_meta_modules()`: summarize significant metabolic targets, map complete-GPR cores, and perform annotation expansion.
+- `rc_regcompass_step_meta_modules()`: summarize significant metabolic targets, map complete-GPR cores, and perform one fixed ordered annotation expansion pass.
 - `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
 - `rc_regcompass_step_layer2()`: build the medium-constrained model and run directional LP scoring.
 - `rc_regcompass_step_results()`: assemble rankings, annotations, provenance, and contrasts.
