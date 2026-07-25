@@ -1,19 +1,22 @@
 Package: RegCompassR
 Title: GRN-First Multiome Reaction and Meta-Module Analysis
-Version: 1.8.3
+Version: 1.8.4
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Builds condition-by-cell-type regulatory networks from paired
     single-cell RNA and ATAC data, constructs condition-level metacells, maps
-    complete-GPR core reactions, expands annotation-defined meta-modules, and
-    completes feasible models with FASTCORE. Integrated RNA and ATAC evidence is
-    converted to reaction penalties for directional COMPASS-like scoring. A
-    post-Layer-2 step can score non-core reactions directly sharing KEGG,
-    Reactome, or master-Rhea identifiers with selected cores in the exact global
-    union GEM used for the original analysis. Pinned human and mouse GEMs are
-    bundled for offline use, with platform-aware parallel execution and audited
-    progress and timing output.
+    complete-GPR core reactions, and expands annotation-defined biological
+    meta-modules. Meta-modules are deduplicated into a merged reaction catalogue
+    without local FASTCORE completion. For each medium scenario, the package
+    constructs one shared union GEM and performs a single global FASTCORE
+    completion before directional COMPASS-like scoring. Integrated RNA and ATAC
+    evidence is converted to reaction penalties. A post-Layer-2 step can score
+    non-core reactions directly sharing KEGG, Reactome, or master-Rhea
+    identifiers with selected cores in the exact cached medium-specific union
+    GEM used for the original analysis. Pinned human and mouse GEMs are bundled
+    for offline use, with platform-aware parallel execution and audited progress
+    and timing output.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -69,6 +72,7 @@ Collate:
     'regcompass.R'
     'one_shot.R'
     'stratum_filter.R'
+    'workflow_z_union_gem.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
