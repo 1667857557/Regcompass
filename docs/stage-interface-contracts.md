@@ -14,13 +14,22 @@ step1$grn_result$tf_peak_gene_significant
 step1$grn_result$sample_status
 step1$grn_result$normalization_policy$pando_motifs
 step1$grn_result$normalization_policy$pando_regions
+step1$grn_result$normalization_policy$pando_evidence_filters
 step1$gem_fingerprint
 step1$params
 ```
 
 Every `condition × cell type` group must have a successful Pando fit. A successful fit may legitimately have zero significant rows; only groups with supported target genes can contribute complete-GPR cores. `target_metabolic_genes` is the intersection of GEM GPR genes and RNA-assay row names.
 
-When `pfm` is omitted, `pando_motifs` records `Pando::motifs`, loaded with `data("motifs", package = "Pando")`. For human analyses without an explicit `pando_initiate_args$regions`, `pando_regions` records the union of Pando's hg38 phastCons and SCREEN ccRE data objects.
+When `pfm` is omitted, `pando_motifs` records `Pando::motifs`, loaded with `data("motifs", package = "Pando")`. Without an explicit `pando_initiate_args$regions`, the region contract is species-specific:
+
+```text
+human = union(Pando::phastConsElements20Mammals.UCSC.hg38,
+              Pando::SCREEN.ccRE.UCSC.hg38)
+mouse = Pando::phastConsElements20Mammals.UCSC.hg38
+```
+
+`step1$params$species` records the resolved species, and `pando_regions` records the applied default or `user_supplied` policy.
 
 ## Stage 2: metacells
 
@@ -55,7 +64,7 @@ step3$group_coverage
 
 Contract:
 
-- `supported_metabolic_genes` contains one row per condition, cell type, and Human-GEM target gene with at least one significant Pando TF–peak–gene row;
+- `supported_metabolic_genes` contains one row per condition, cell type, and GEM target gene with at least one significant Pando TF–peak–gene row;
 - positive and negative Pando coefficients both count as regulatory evidence;
 - all supported genes in one `condition × cell type` form one GPR-evaluation set;
 - Stage 3 performs no shared-TF target projection, top-k graph pruning, or connected-component analysis;
