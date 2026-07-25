@@ -1,18 +1,22 @@
 # RegCompassR
 
-RegCompassR 1.8.4 implements a GRN-first RNA+ATAC metabolic workflow for paired single-cell multiome data.
+RegCompassR 1.8.4 implements an RNA+ATAC metabolic workflow for paired single-cell multiome data.
 
 ## Workflow
 
 ```text
 condition × cell type cells
-→ condition-level Pando GRNs and metacells
-→ complete-GPR reaction meta-modules
+→ Pando TF–peak–Human-GEM-gene models
+→ significantly supported metabolic target genes
+→ complete-GPR core reactions
+→ subsystem and reaction-equivalence biological expansion
 → integrated RNA+ATAC reaction support
 → medium-constrained model with global FASTCORE completion
 → directional COMPASS-like LP scoring
 → annotated rankings and condition contrasts
 ```
+
+Pando is fitted separately for each `condition × cell type`. The candidate target genes are all Human-GEM GPR genes present in the RNA assay. A gene enters the Stage 3 supported set when at least one TF–peak–gene coefficient passes the configured adjusted-P-value, effect-size, and target-model-R² filters. Positive and negative coefficients both count as regulatory evidence. A reaction is a core only when one complete GPR branch is contained in that supported gene set.
 
 ## Installation
 
@@ -62,6 +66,9 @@ result <- rc_run_regcompass_one_shot(
   model_mode = "meta_module_gem",
   pando_args = list(
     min_cells = 300,
+    padj_threshold = 0.05,
+    min_abs_estimate = 0,
+    min_model_rsq = 0.1,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -75,12 +82,10 @@ result <- rc_run_regcompass_one_shot(
     min_cells_per_stratum = 300,
     min_metacell_size = 10
   ),
+  meta_module_args = list(
+    expansion_mode = "ordered_once"
+  ),
   layer1_args = list(
-    top_k_neighbors = 5,
-    min_shared_tfs = 1,
-    min_tf_jaccard = 0,
-    max_targets_per_tf = 200,
-    expansion_mode = "ordered_once",
     regulatory_alpha = 1,
     tau = 0.20
   ),
@@ -100,6 +105,19 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
+Unless `pando_args$pando_initiate_args$regions` is supplied, human analyses load the two Pando data objects below and pass their union to `Pando::initiate_grn()`:
+
+```r
+data("phastConsElements20Mammals.UCSC.hg38", package = "Pando")
+data("SCREEN.ccRE.UCSC.hg38", package = "Pando")
+regions <- union(
+  phastConsElements20Mammals.UCSC.hg38,
+  SCREEN.ccRE.UCSC.hg38
+)
+```
+
+The bundled default is hg38-specific. Non-human analyses must supply an appropriate `pando_initiate_args$regions` object.
+
 ## Medium presets
 
 `rc_make_medium_scenarios()` supports physiological, culture-medium, nutrient-sensitivity, technical, and custom scenarios:
@@ -110,9 +128,9 @@ See [Predefined extracellular medium scenarios](docs/medium-presets.md) for spec
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: infer condition-by-cell-type Pando GRNs.
+- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for Human-GEM target genes.
 - `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells.
-- `rc_regcompass_step_meta_modules()`: map GRN components to complete-GPR reaction modules.
+- `rc_regcompass_step_meta_modules()`: summarize significant metabolic targets, map complete-GPR cores, and perform annotation expansion.
 - `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support.
 - `rc_regcompass_step_layer2()`: build the medium-constrained model and run directional LP scoring.
 - `rc_regcompass_step_results()`: assemble rankings, annotations, provenance, and contrasts.
@@ -121,6 +139,8 @@ See [Predefined extracellular medium scenarios](docs/medium-presets.md) for spec
 ## Main outputs
 
 ```r
+result$condition_grn_meta_modules$supported_metabolic_genes
+result$condition_grn_meta_modules$core_gene_reaction
 result$reaction_ranking
 result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions
