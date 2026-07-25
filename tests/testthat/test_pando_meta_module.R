@@ -2,46 +2,19 @@ test_that(
   "meta-module cross-reference expansion adds reactions rather than subsystems",
   {
     S <- diag(10)
-    dimnames(S) <- list(
-      paste0("M", 1:10),
-      paste0("R", 1:10)
-    )
+    dimnames(S) <- list(paste0("M", 1:10), paste0("R", 1:10))
     reaction_meta <- data.frame(
       reaction_id = paste0("R", 1:10),
-      subsystem = c(
-        "A", "A",
-        "B", "B",
-        "C", "C",
-        "D", "D",
-        "E", "E"
-      ),
-      metabolic_module = c(
-        "A", "A",
-        "B", "B",
-        "C", "C",
-        "D", "D",
-        "E", "E"
-      ),
+      subsystem = rep(LETTERS[1:5], each = 2),
+      metabolic_module = rep(LETTERS[1:5], each = 2),
       kegg_reaction_id = c(
-        "K1", NA,
-        "K1", NA,
-        NA, NA,
-        "K2", NA,
-        "K2", NA
+        "K1", NA, "K1", NA, NA, NA, "K2", NA, "K2", NA
       ),
       reactome_reaction_id = c(
-        NA, "X1",
-        NA, NA,
-        "X1", NA,
-        NA, NA,
-        NA, NA
+        NA, "X1", NA, NA, "X1", NA, NA, NA, NA, NA
       ),
       rhea_master_id = c(
-        "RM1", NA,
-        NA, NA,
-        "RM2", NA,
-        "RM2", NA,
-        NA, NA
+        "RM1", NA, NA, NA, "RM2", NA, "RM2", NA, NA, NA
       ),
       stringsAsFactors = FALSE
     )
@@ -60,14 +33,10 @@ test_that(
     )
 
     ordered <- rc_expand_meta_module_reactions(
-      gem,
-      core,
-      expansion_mode = "ordered_once"
+      gem, core, expansion_mode = "ordered_once"
     )
     fixed <- rc_expand_meta_module_reactions(
-      gem,
-      core,
-      expansion_mode = "fixed_point"
+      gem, core, expansion_mode = "fixed_point"
     )
 
     expect_setequal(
@@ -92,18 +61,9 @@ test_that(
       ordered$reaction_membership$reaction_id
     )
     expect_identical(stage[["R2"]], "same_core_subsystem")
-    expect_identical(
-      stage[["R3"]],
-      "shared_kegg_or_reactome_reaction"
-    )
-    expect_identical(
-      stage[["R5"]],
-      "shared_kegg_or_reactome_reaction"
-    )
-    expect_identical(
-      stage[["R7"]],
-      "shared_master_rhea_reaction"
-    )
+    expect_identical(stage[["R3"]], "shared_kegg_or_reactome_reaction")
+    expect_identical(stage[["R5"]], "shared_kegg_or_reactome_reaction")
+    expect_identical(stage[["R7"]], "shared_master_rhea_reaction")
     expect_identical(source[["R3"]], "KEGG:K1")
     expect_identical(source[["R5"]], "REACTOME:X1")
     expect_identical(source[["R7"]], "RHEA_MASTER:RM2")
@@ -124,10 +84,7 @@ test_that(
 
 test_that("meta-module summary is recomputed after partial anchors are removed", {
   S <- diag(3)
-  dimnames(S) <- list(
-    paste0("M", 1:3),
-    paste0("R", 1:3)
-  )
+  dimnames(S) <- list(paste0("M", 1:3), paste0("R", 1:3))
   reaction_meta <- data.frame(
     reaction_id = paste0("R", 1:3),
     subsystem = rep("A", 3),
@@ -152,37 +109,25 @@ test_that("meta-module summary is recomputed after partial anchors are removed",
     group_complete = c(TRUE, FALSE),
     is_core = c(TRUE, FALSE),
     is_partial_candidate = c(FALSE, TRUE),
-    inclusion_stage = c(
-      "core_complete_gpr",
-      "partial_gpr_candidate"
-    ),
+    inclusion_stage = c("core_complete_gpr", "partial_gpr_candidate"),
     stringsAsFactors = FALSE
   )
 
   expanded <- rc_expand_meta_module_reactions(gem, core)
 
-  expect_setequal(
-    expanded$reaction_membership$reaction_id,
-    c("R1", "R3")
-  )
+  expect_setequal(expanded$reaction_membership$reaction_id, c("R1", "R3"))
   expect_equal(expanded$summary$n_core_genes, 1)
   expect_equal(expanded$summary$n_core_reactions, 1)
   expect_equal(expanded$summary$n_reactions, 2)
   expect_equal(expanded$summary$n_subsystem_added, 1)
   expect_equal(expanded$summary$n_database_added, 0)
   expect_equal(expanded$summary$n_rhea_added, 0)
-  expect_equal(
-    expanded$summary$n_reactions,
-    nrow(expanded$reaction_membership)
-  )
+  expect_equal(expanded$summary$n_reactions, nrow(expanded$reaction_membership))
 })
 
 test_that("UNASSIGNED subsystem labels are not pooled", {
   S <- diag(3)
-  dimnames(S) <- list(
-    paste0("M", 1:3),
-    paste0("R", 1:3)
-  )
+  dimnames(S) <- list(paste0("M", 1:3), paste0("R", 1:3))
   reaction_meta <- data.frame(
     reaction_id = paste0("R", 1:3),
     subsystem = c("A", "UNASSIGNED", "UNASSIGNED"),
@@ -191,9 +136,7 @@ test_that("UNASSIGNED subsystem labels are not pooled", {
   )
   gem <- rc_make_gem(S, reaction_meta = reaction_meta)
   maps <- rc_reaction_crossref_maps(gem)
-  expect_false(any(
-    toupper(maps$subsystem$subsystem_id) == "UNASSIGNED"
-  ))
+  expect_false(any(toupper(maps$subsystem$subsystem_id) == "UNASSIGNED"))
 })
 
 test_that("Pando projection retains targets and direct TF neighbors", {
@@ -214,21 +157,13 @@ test_that("Pando projection retains targets and direct TF neighbors", {
   )
   expect_setequal(projected$nodes$gene, c("G1", "G2", "G3"))
   expect_equal(length(unique(projected$nodes$module_id)), 1)
-  edge_keys <- paste(
-    projected$edges$gene_a,
-    projected$edges$gene_b,
-    sep = "-"
-  )
+  edge_keys <- paste(projected$edges$gene_a, projected$edges$gene_b, sep = "-")
   expect_true("G1-G2" %in% edge_keys)
   expect_true("G1-G3" %in% edge_keys)
-  expect_true(
-    projected$edges$direct_regulatory[
-      match("G1-G3", edge_keys)
-    ]
-  )
+  expect_true(projected$edges$direct_regulatory[match("G1-G3", edge_keys)])
 })
 
-test_that("GRN mapping remains explicit in the completed model", {
+test_that("GRN mapping remains explicit from catalogue to final union GEM", {
   skip_if_not(
     requireNamespace("highs", quietly = TRUE) ||
       requireNamespace("Rglpk", quietly = TRUE) ||
@@ -242,10 +177,7 @@ test_that("GRN mapping remains explicit in the completed model", {
     "gurobi"
   }
   S <- diag(3)
-  dimnames(S) <- list(
-    paste0("M", 1:3),
-    paste0("R", 1:3)
-  )
+  dimnames(S) <- list(paste0("M", 1:3), paste0("R", 1:3))
   reaction_meta <- data.frame(
     reaction_id = paste0("R", 1:3),
     metabolic_module = c("A", "A", "B"),
@@ -283,20 +215,35 @@ test_that("GRN mapping remains explicit in the completed model", {
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
-  module_gem <- rc_build_meta_module_gem(
-    gem,
-    membership,
-    core,
-    sample_id = "S1",
-    module_id = "S1::GRN0001",
+  artifact <- list(
+    group_id = "condition_pooled",
+    grn_meta_modules = list(
+      sample_status = data.frame(),
+      tf_peak_gene_all = data.frame(),
+      tf_peak_gene_significant = data.frame(),
+      metabolic_gene_nodes = nodes,
+      metabolic_gene_edges = data.frame(),
+      core_gene_reaction = core,
+      reaction_membership = membership,
+      meta_module_summary = data.frame()
+    )
+  )
+  merged <- .rc_merge_stratum_meta_modules(list(artifact))
+  expect_false(merged$is_gem)
+  expect_setequal(merged$merged_reaction_membership$reaction_id, c("R1", "R2"))
+
+  union_gem <- .rc_complete_medium_union_gem(
+    gem = gem,
+    reaction_membership = merged$merged_reaction_membership,
+    core_reactions = merged$merged_core_reactions,
     solver = solver,
     strict = TRUE
   )
-  expect_setequal(colnames(module_gem$S), c("R1", "R2"))
-  expect_true(all(
-    module_gem$reaction_meta$biological_meta_module_member
-  ))
-  expect_false(any(module_gem$reaction_meta$support_only))
+  expect_true(union_gem$is_union_gem)
+  expect_setequal(colnames(union_gem$S), c("R1", "R2"))
+  expect_true(all(union_gem$reaction_meta$merged_meta_module_member))
+  expect_false(any(union_gem$reaction_meta$global_fastcore_support))
+  expect_false(any(union_gem$reaction_meta$support_only))
 })
 
 test_that("Pando validation enforces the configured repository", {
