@@ -31,7 +31,10 @@ rc_make_medium_scenarios(
 human or mouse plasma according to \code{species}. Presets may be combined with
 \code{"custom"} to return literature-backed and user-defined scenarios in one table.}
 
-\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}. Human and mouse plasma presets are restricted to their matching GEM species.}
+\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}. Human plasma
+and the five nutrient-challenge presets require Human-GEM; \code{"mouse_plasma"}
+requires Mouse-GEM. RPMI-1640, DMEM, and technical presets are species-neutral
+formulations or assumptions that are mapped to the selected GEM.}
 
 \item{custom_medium}{Exact reaction-level medium rows. Can be used together with preset \code{scenario} values when \code{"custom"} is included.}
 
@@ -51,12 +54,38 @@ human or mouse plasma according to \code{species}. Presets may be combined with
 A reaction-level medium constraint data frame with mapping, provenance, requested bounds, and sensitivity metadata. Preset mapping diagnostics are stored in the \code{"preset_diagnostics"} attribute.
 }
 \description{
-Named physiological and cell-culture media are curated extracellular availability catalogs rather than exhaustive representations of plasma, serum, or supplemented culture media. Concentrations are retained as provenance. Only explicitly flagged glucose, lactate, and glutamine sensitivity rows convert concentration ratios into relative uptake caps; these are sensitivity assumptions rather than measured transport fluxes.
+Named physiological and cell-culture media are curated extracellular availability
+catalogs rather than exhaustive representations of plasma, serum, or supplemented
+culture media. Human plasma and the five nutrient-challenge presets are restricted
+to Human-GEM; mouse plasma is restricted to Mouse-GEM. RPMI-1640 and DMEM are
+chemical formulations and are not species-specific. Concentrations are provenance
+rather than measured uptake fluxes.
 }
 \details{
-\code{"physiologic"} is the recommended in-vivo baseline. For mouse runs, glucose (4.381 mM), lactate (3.088 mM), and glutamine (0.934 mM) use the healthy-mouse plasma-medium reference from Gardner and Stuart. All other mouse components are availability-only, have \code{concentration_mM = NA}, and do not inherit human HPLM concentrations or provenance. Sullivan et al.'s murine plasma and tumor-interstitial-fluid measurements support the broader mouse availability catalog.
+\code{"physiologic"} is the recommended in-vivo baseline. The human preset uses
+exact HPLM formulation concentrations for directly represented components and
+adult human serum/plasma references for ions represented by multiple formulation
+salts. For mouse runs, glucose (4.381 mM), lactate (3.088 mM), and glutamine
+(0.934 mM) use the healthy-mouse plasma-medium reference from Gardner and Stuart.
+All other mouse components are availability-only, have \code{concentration_mM = NA},
+and do not inherit human HPLM concentrations or provenance. Sullivan et al.'s
+murine plasma and tumour-interstitial-fluid measurements support the broader mouse
+availability catalog.
 
-\code{"rpmi1640"} and \code{"dmem_high_glucose"} describe serum-free basal formulations. \code{"high_glucose"}, \code{"low_glucose"}, \code{"high_lactate"}, \code{"low_lactate"}, and \code{"low_glutamine"} modify one target nutrient on the species-specific plasma background. \code{"minimal"}, \code{"compass_model_bounds"}, and \code{"permissive_all_exchange"} are technical structural-sensitivity baselines rather than biological media.
+\code{"high_glucose"} (25 mM), \code{"low_glucose"} (1 mM),
+\code{"high_lactate"} (20 mM), \code{"low_lactate"} (0.5 mM), and
+\code{"low_glutamine"} (0.05 mM) are human experimental challenge conditions.
+They replace one target nutrient on the normal-human-plasma background and cannot
+be used with Mouse-GEM. Each overridden row records the challenge-study DOI in
+\code{component_reference_doi}.
 
-Every requested bound is intersected with the original GEM bounds. A medium cannot open an uptake or secretion direction that the GEM originally blocked. During medium application, uptake for unlisted exchanges is closed by default, while originally permitted secretion may remain open.
+\code{"rpmi1640"} and \code{"dmem_high_glucose"} describe serum-free basal
+formulations and can be mapped to either species model. \code{"minimal"},
+\code{"compass_model_bounds"}, and \code{"permissive_all_exchange"} are technical
+structural-sensitivity baselines rather than biological media.
+
+Every requested bound is intersected with the original GEM bounds. A medium cannot
+open an uptake or secretion direction that the GEM originally blocked. During
+medium application, uptake for unlisted exchanges is closed by default, while
+originally permitted secretion may remain open.
 }
