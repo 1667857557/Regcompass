@@ -57,6 +57,8 @@ test_that("Stage 3 contains no FASTCORE execution path", {
   expect_false(grepl(".rc_fastcore_", stage, fixed = TRUE))
   expect_true(grepl("none_at_meta_module_stage", construction, fixed = TRUE))
   expect_true(grepl("merge_creates_gem = FALSE", stage, fixed = TRUE))
+  expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
+  expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
 })
 
 test_that("only the medium-specific cache constructs union GEMs", {
@@ -80,7 +82,7 @@ test_that("only the medium-specific cache constructs union GEMs", {
   expect_true(grepl("is_union_gem", completion_body, fixed = TRUE))
 })
 
-test_that("retired reconstruction and projection functions are absent", {
+test_that("retired reconstruction projection GPR and one-hop functions are absent", {
   namespace <- asNamespace("RegCompassR")
   retired <- c(
     ".rc_complete_meta_module",
@@ -96,7 +98,9 @@ test_that("retired reconstruction and projection functions are absent", {
     ".rc_signed_relation",
     "rc_project_metabolic_grn",
     ".rc_remap_projection_metadata",
-    "rc_run_pando_meta_modules"
+    "rc_run_pando_meta_modules",
+    "rc_boltzmann_minavg",
+    ".rc_meta_module_one_hop"
   )
   expect_false(any(vapply(
     retired,
