@@ -55,7 +55,7 @@ comparison$summary
 comparison$contrast
 ```
 
-The statistical unit is one metacell. Condition-pooled metacells do not replace sample-level biological replication.
+The statistical unit is one metacell. These tests describe within-dataset condition-associated separation; condition-pooled metacells do not replace sample-level biological replication.
 
 ## Plot one reaction
 
