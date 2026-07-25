@@ -62,8 +62,6 @@ Rerun only Layer 2 and results after changing:
   - `max_support_reactions`;
   - `strict`.
 
-No local FASTCORE restart exists.
-
 ## Rebuild only the medium-specific union GEMs
 
 ```r
@@ -107,7 +105,8 @@ summary[, c(
   "n_merged_biological_reactions",
   "n_global_fastcore_support_reactions",
   "target_status",
-  "file"
+  "file",
+  "file_checksum"
 )]
 
 models <- lapply(summary$file, readRDS)
@@ -127,7 +126,7 @@ table(diagnostics$medium_scenario, diagnostics$completion_status)
 Interpretation:
 
 - `already_feasible`: the merged biological catalogue already supported the target under that medium;
-- `fastcore_completed`: global FASTCORE added supporting reactions;
+- `global_fastcore_completed`: global FASTCORE added supporting reactions;
 - `parent_blocked`: the target direction is infeasible in the medium-constrained parent GEM;
 - `unresolved`: completion failed under the requested constraints;
 - `no_allowed_direction`: the original GEM bounds do not permit the requested direction.
@@ -139,7 +138,7 @@ support_by_medium <- do.call(
   rbind,
   Map(function(model, medium) {
     ids <- model$reaction_meta$reaction_id[
-      model$reaction_meta$fastcore_support %in% TRUE
+      model$reaction_meta$global_fastcore_support %in% TRUE
     ]
     data.frame(
       medium_scenario = medium,
