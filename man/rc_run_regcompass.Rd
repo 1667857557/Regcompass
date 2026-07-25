@@ -4,7 +4,7 @@
 \alias{rc_run_regcompass}
 \title{Run the canonical significant-Pando-target RegCompass workflow}
 \usage{
-rc_run_regcompass(object, gem, outdir, pfm, genome,
+rc_run_regcompass(object, gem, outdir, pfm = NULL, genome,
   fragment_files = FALSE, sample_col = NULL,
   condition_col = "condition", celltype_col = "cell_type",
   rna_assay = "RNA", atac_assay = "ATAC",
@@ -16,11 +16,39 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
   progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
-\item{meta_module_args}{Stage 3 annotation-expansion arguments: \code{subsystem_table}, \code{expansion_mode}, and \code{max_iterations}.}
+\item{object}{Paired single-cell RNA+ATAC Seurat object.}
 
-\item{layer1_args}{Stage 4 integrated-evidence arguments: \code{regulatory_alpha}, \code{tau}, and \code{gene_half_saturation}.}
+\item{gem}{Prepared genome-scale metabolic model.}
 
-\item{upstream_workers}{Worker count for GRN inference and Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for serial upstream execution. Stage 3 performs catalogue construction without FASTCORE.}
+\item{outdir}{Persistent workflow output directory.}
+
+\item{pfm}{Optional motif position-frequency matrices. When omitted, RegCompass loads \code{data("motifs", package = "Pando")} and uses the resulting \code{motifs} object.}
+
+\item{genome}{Genome object matching the ATAC coordinates and motif collection.}
+
+\item{fragment_files}{Use \code{FALSE} for the canonical existing-peak-count path.}
+
+\item{sample_col}{Optional sample provenance column. It is not used for canonical condition-only metacell grouping or weighting.}
+
+\item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
+
+\item{rna_assay, atac_assay}{RNA and ATAC assay names.}
+
+\item{model_mode}{Use a medium-specific union GEM reconstructed from the merged biological catalogue, or reuse the complete GEM.}
+
+\item{medium_scenarios}{Condition-invariant medium table.}
+
+\item{metacell_args}{Stage 2 controls. Defaults include \code{rna_reduction = "pca"}, \code{rna_dims = 1:30}, \code{atac_reduction = "lsi"}, \code{atac_dims = 2:30}, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. Changing cached inputs requires \code{overwrite = TRUE}.}
+
+\item{pando_args}{Stage 1 Pando controls. Canonical evidence defaults are \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Human analyses default to the union of Pando's hg38 phastCons and SCREEN ccRE data unless \code{pando_initiate_args$regions} is supplied.}
+
+\item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}. Expansion is always one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence. The retired \code{expansion_mode}, \code{max_iterations}, fixed-point, and one-hop APIs are rejected.}
+
+\item{layer1_args}{Stage 4 integrated-evidence controls: \code{regulatory_alpha}, \code{gpr_and_method}, and \code{gene_half_saturation}. \code{gpr_and_method} accepts \code{"min"}, \code{"median"}, or \code{"mean"} and defaults to \code{"min"}. The former Boltzmann soft-min and \code{tau} API are removed.}
+
+\item{layer2_args}{Layer 2 scoring and union-GEM controls. \code{completion_time_limit} belongs only in \code{layer2_args$model_params} and limits union-GEM FASTCORE construction, not scoring.}
+
+\item{upstream_workers}{Worker count for GRN inference and Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for serial upstream execution.}
 
 \item{layer2_workers}{Worker count for medium-specific union-GEM completion and Layer 2 LP scoring. Defaults to 30. Set to 1 for serial Layer 2 execution.}
 
@@ -30,17 +58,15 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
 }
 \description{Runs the six canonical Pando, metacell, biological meta-module, Layer 1, medium-specific union-GEM/Layer 2, and result stages.}
 \details{
-Stage 1 fits Pando separately for each condition by cell-type group using all Human-GEM GPR genes present in the RNA assay. Human analyses default to the union of Pando's hg38 phastCons and SCREEN ccRE data unless \code{pando_args$pando_initiate_args$regions} is supplied.
+Stage 1 fits Pando separately for each condition by cell-type group using all Human-GEM GPR genes present in the RNA assay. A coefficient is retained only when its adjusted P value, absolute estimate, and target-model R-squared satisfy the configured filters. Positive and negative coefficients both count as regulatory evidence.
 
-Stage 3 collects Human-GEM target genes with significant TF-peak-gene evidence and maps complete GPR branches directly to core reactions. Both positive and negative coefficients count as regulatory evidence. Shared-TF projection, target-target graph construction, top-k pruning, and connected-component analysis are not used.
+Stage 2 uses the requested RNA and ATAC reductions and dimensions to construct SuperCell2 metacells. The base seed is incremented deterministically by ordered condition stratum: \code{seed + stratum_index - 1}. Reduction names, dimensions, embedding fingerprints, seed, gamma, and metacell thresholds are part of the cache contract.
 
-Stage 3 constructs annotation-expanded biological meta-modules and a deduplicated merged reaction catalogue. It does not run FASTCORE and does not create a GEM. With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium to the merged biological reaction set, performs the only global FASTCORE completion, and saves one union GEM shared by all conditions and metacells in that medium.
+Stage 3 maps the significant Human-GEM target-gene set directly to complete-GPR cores. Shared-TF projection, target-target graph construction, top-k pruning, and connected-component analysis are not used. Biological expansion is executed exactly once in the fixed subsystem, KEGG/Reactome, and master-Rhea order. No recursive or one-hop expansion is performed.
 
-Global FASTCORE is configured through \code{layer2_args$model_params}, including \code{completion_time_limit}, \code{fastcore_epsilon}, \code{max_support_reactions}, and \code{strict}.
+Stage 4 aggregates required GPR subunits using the selected COMPASS-compatible \code{min}, \code{median}, or \code{mean} function. The canonical default is \code{min}; isozyme OR branches are additive.
 
-The canonical workflow automatically selects SOCK/SnowParam workers on Windows and MulticoreParam workers on Linux/macOS. A worker count of one resolves that layer to serial execution.
+Stage 3 constructs a deduplicated merged reaction catalogue but does not run FASTCORE and does not create a GEM. With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium to the merged biological reaction set, performs the only global FASTCORE completion, and saves one union GEM shared by all conditions and metacells in that medium.
 
-Each parallel stage owns a temporary worker pool. Cleanup is registered before startup, stops the pool after success or failure, removes the pool reference, and runs full garbage collection. Every outer worker runs a single-thread internal task; numerical-library environment variables and nested R worker options are temporarily fixed at one.
-
-Each stage reports progress and writes \code{step_timing.tsv}. Known public stages commit a success status only after their final expected RDS has been written. The complete workflow writes \code{00_execution_timing.tsv} and stores stage and total elapsed time in \code{result$timing}.
+The canonical workflow automatically selects SOCK/SnowParam workers on Windows and MulticoreParam workers on Linux/macOS. A worker count of one resolves that layer to serial execution. Each stage reports progress and writes \code{step_timing.tsv}; the complete workflow writes \code{00_execution_timing.tsv} and stores elapsed time in \code{result$timing}.
 }
