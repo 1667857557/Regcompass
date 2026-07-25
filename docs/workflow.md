@@ -60,16 +60,12 @@ B_{merged} = \bigcup_m B_m,
 C_{merged} = \bigcup_m C_m.
 \]
 
-This operation does not apply medium constraints, does not test flux consistency, and does not run FASTCORE. Therefore it is a **merged reaction catalogue**, not a GEM and not a union GEM.
-
-Current Stage 3 fields are:
+This operation does not apply medium constraints, does not test flux consistency, and does not run FASTCORE. It produces a **merged reaction catalogue**, not a GEM and not a union GEM.
 
 ```r
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 ```
-
-The old `global_*` and `local_fastcore_*` fields were removed.
 
 ## 4. Multiome reaction support
 
@@ -114,6 +110,17 @@ U_q = B_{merged} \cup F_q.
 Only `U_q` is called a union GEM. One cached `U_q` is shared across all conditions and metacells analysed under medium `q`.
 
 FASTCORE does not use RNA or ATAC evidence. It adds flux-consistent support reactions required for direction-specific core feasibility under the medium. Support may include exchange, transport, cofactor-regeneration, redox-balancing, or connecting internal reactions.
+
+Global FASTCORE controls are supplied through:
+
+```r
+layer2_args$model_params <- list(
+  completion_time_limit = 600,
+  fastcore_epsilon = 1e-4,
+  max_support_reactions = 2000,
+  strict = TRUE
+)
+```
 
 ## 6. Directional two-step LP
 
@@ -164,29 +171,8 @@ Within one medium scenario:
 
 Across different media, global FASTCORE may select different support sets. Results therefore represent different structural contexts and should not be pooled into one ranking.
 
-## 8. Removed interfaces
+## 8. Targeted second-pass scoring
 
-The following are obsolete and rejected or absent:
+Selected core reaction IDs or genes are used only to define KEGG, Reactome, or master-Rhea mapping anchors. The mapped non-core reactions are scored only when present in every required final Stage 5 union GEM.
 
-```text
-layer1_args$local_fastcore
-layer1_args$local_fastcore_args
-global_modules
-global_core_reactions
-global_reaction_membership
-local_completed_reaction_membership
-local_fastcore_summary
-local_fastcore_diagnostics
-local_fastcore_completion_iterations
-```
-
-Global FASTCORE controls are supplied only through:
-
-```r
-layer2_args$model_params <- list(
-  completion_time_limit = 600,
-  fastcore_epsilon = 1e-4,
-  max_support_reactions = 2000,
-  strict = TRUE
-)
-```
+The second pass validates each cached model's checksum and medium identifier, then reuses its exact stoichiometric matrix and bounds. It does not rebuild a GEM and does not rerun FASTCORE.
