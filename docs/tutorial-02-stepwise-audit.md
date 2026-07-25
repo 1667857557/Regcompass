@@ -17,6 +17,7 @@ step1 <- rc_regcompass_step_grn(
     padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
+    require_padj = TRUE,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -48,6 +49,18 @@ regions <- union(
 
 This union is passed to `Pando::initiate_grn(regions = regions)`. The default is hg38-specific; mouse or other genomes require an explicit region object.
 
+### Stage 1 filter meanings
+
+| Parameter | Default | Effect |
+|---|---:|---|
+| `min_cells` | `20L` | Minimum cells in each `condition × cell type` Pando group. |
+| `padj_threshold` | `0.05` | Keep coefficients with finite adjusted P value at or below this value. |
+| `min_abs_estimate` | `0` | Keep coefficients whose absolute effect is at least this value. At `0`, every finite effect passing the other filters remains eligible. |
+| `min_model_rsq` | `0.1` | Keep targets whose finite Pando target-model R² is at least this value. |
+| `require_padj` | `TRUE` | Stop if the Pando coefficient table lacks adjusted P values. |
+
+The retained gene set is based on the target column of significant TF–peak–gene rows. Coefficient direction does not affect inclusion: positive and negative coefficients both provide regulatory evidence.
+
 ## Stage 2: construct condition-level metacells
 
 ```r
@@ -59,14 +72,69 @@ step2 <- rc_regcompass_step_metacells(
   celltype_col = "cell_type",
   fragment_files = FALSE,
   metacell_args = list(
+    rna_reduction = "pca",
+    rna_dims = 1:30,
+    atac_reduction = "lsi",
+    atac_dims = 2:30,
     gamma = 30,
+    seed = 12345L,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10
+    min_metacell_size = 10,
+    min_metacells_per_stratum = 2L,
+    overwrite = FALSE
   )
 )
 
 step2$pooled$metacell_meta
+step2$pooled$cache_contract$analysis_args
 ```
+
+The Stage 2 defaults are:
+
+```r
+rna_reduction = "pca"
+rna_dims = 1:30
+atac_reduction = "lsi"
+atac_dims = 2:30
+gamma = 30L
+seed = 12345L
+min_cells_per_stratum = 100L
+min_metacell_size = 20L
+min_metacells_per_stratum = 2L
+```
+
+`rna_reduction` and `atac_reduction` must name reductions already present in `A@reductions`; the selected dimensions must exist. LSI dimension 1 is excluded by default. The base seed is incremented deterministically by condition-stratum order:
+
+```text
+internal_seed = seed + stratum_index - 1
+```
+
+Before running the default geometry, verify:
+
+```r
+stopifnot(
+  "pca" %in% names(A@reductions),
+  "lsi" %in% names(A@reductions),
+  ncol(SeuratObject::Embeddings(A[["pca"]])) >= 30,
+  ncol(SeuratObject::Embeddings(A[["lsi"]])) >= 30
+)
+```
+
+A precomputed Harmony embedding may replace PCA:
+
+```r
+metacell_args = list(
+  rna_reduction = "harmony",
+  rna_dims = 1:30,
+  atac_reduction = "lsi",
+  atac_dims = 2:30,
+  gamma = 30,
+  seed = 12345L,
+  overwrite = TRUE
+)
+```
+
+Harmony affects only the RNA neighbourhood geometry used for membership construction; original assay counts are still aggregated. Do not use a Harmony embedding that removed the biological condition contrast. Changing cells, assay matrices, reduction names, dimensions, embedding values, seed, gamma, or metacell thresholds invalidates Stage 2 checkpoints; use `overwrite = TRUE` to rebuild.
 
 ## Stage 3: construct complete-GPR biological meta-modules
 
