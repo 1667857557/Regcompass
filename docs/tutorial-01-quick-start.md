@@ -88,7 +88,6 @@ result <- rc_run_regcompass_one_shot(
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    time_limit = 600,
     model_params = list(
       completion_time_limit = 600,
       fastcore_epsilon = 1e-4,
@@ -102,7 +101,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The Stage 1 evidence filter defines the Stage 3 gene set. A target gene is supported when at least one TF–peak–gene row passes the adjusted-P-value, absolute-estimate, and model-R² filters. Both positive and negative coefficients count as regulatory evidence. `meta_module_args` controls only annotation expansion. `layer1_args` controls the RNA+ATAC reaction-support transformation. `layer2_args$model_params` controls FASTCORE completion.
+The Stage 1 evidence filter defines the Stage 3 gene set. A target gene is supported when at least one TF–peak–gene row passes the adjusted-P-value, absolute-estimate, and model-R² filters. Both positive and negative coefficients count as regulatory evidence. `meta_module_args` controls only annotation expansion. `layer1_args` controls the RNA+ATAC reaction-support transformation. `layer2_args$model_params$completion_time_limit` applies only to FASTCORE union-GEM construction; scoring LPs have no time-limit parameter.
 
 ## Inspect the main outputs
 
