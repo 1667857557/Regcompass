@@ -1,20 +1,103 @@
-.rc_build_condition_meta_modules <- function(
-    grn_result, gem, outdir, layer1_args = list()) {
+.rc_summarize_supported_metabolic_genes <- function(
+    grn_result, metabolic_genes) {
   if (!is.list(grn_result) ||
       !is.data.frame(grn_result$tf_peak_gene_significant)) {
     stop("`grn_result` is not a valid single-cell GRN result.", call. = FALSE)
   }
-  obsolete <- intersect(
-    names(layer1_args), c("local_fastcore", "local_fastcore_args")
-  )
-  if (length(obsolete)) {
+  group_cols <- as.character(grn_result$group_cols)
+  required <- c("group_id", group_cols, "tf", "target", "region")
+  significant <- grn_result$tf_peak_gene_significant
+  missing <- setdiff(required, colnames(significant))
+  if (length(missing)) {
     stop(
-      paste0(
-        "Local FASTCORE was removed. Delete obsolete `layer1_args` fields: ",
-        paste(obsolete, collapse = ", "),
-        ". Configure the single medium-specific global FASTCORE through ",
-        "`layer2_args$model_params`."
+      "Significant Pando table is missing columns: ",
+      paste(missing, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  metabolic_genes <- unique(toupper(.rc_mm_trim_unique(metabolic_genes)))
+  significant$target <- toupper(trimws(as.character(significant$target)))
+  significant$tf <- toupper(trimws(as.character(significant$tf)))
+  significant$region <- trimws(as.character(significant$region))
+  significant <- significant[
+    significant$target %in% metabolic_genes,
+    , drop = FALSE
+  ]
+  if (!nrow(significant)) {
+    stop(
+      paste(
+        "No Human-GEM metabolic target genes have significant Pando",
+        "TF-peak-gene evidence."
       ),
+      call. = FALSE
+    )
+  }
+
+  key <- paste(significant$group_id, significant$target, sep = "\001")
+  rows <- split(seq_len(nrow(significant)), key)
+  summary_rows <- lapply(rows, function(index) {
+    one <- significant[index, , drop = FALSE]
+    group_id <- as.character(one$group_id[[1L]])
+    target <- as.character(one$target[[1L]])
+    estimate <- if ("estimate" %in% colnames(one)) {
+      suppressWarnings(as.numeric(one$estimate))
+    } else {
+      rep(NA_real_, nrow(one))
+    }
+    padj <- if ("padj" %in% colnames(one)) {
+      suppressWarnings(as.numeric(one$padj))
+    } else {
+      rep(NA_real_, nrow(one))
+    }
+    rsq <- if ("rsq" %in% colnames(one)) {
+      suppressWarnings(as.numeric(one$rsq))
+    } else {
+      rep(NA_real_, nrow(one))
+    }
+    finite_min <- function(value) {
+      value <- value[is.finite(value)]
+      if (length(value)) min(value) else NA_real_
+    }
+    finite_max <- function(value) {
+      value <- value[is.finite(value)]
+      if (length(value)) max(value) else NA_real_
+    }
+    group_values <- one[1L, group_cols, drop = FALSE]
+    data.frame(
+      group_id = group_id,
+      group_values,
+      sample_id = group_id,
+      module_id = paste0(group_id, "::SUPPORTED_METABOLIC_GENES"),
+      gene = target,
+      n_significant_edges = nrow(one),
+      n_regulating_tfs = length(unique(one$tf[nzchar(one$tf)])),
+      n_regulatory_regions = length(unique(one$region[nzchar(one$region)])),
+      min_padj = finite_min(padj),
+      max_abs_estimate = finite_max(abs(estimate)),
+      max_model_rsq = finite_max(rsq),
+      n_positive_edges = sum(is.finite(estimate) & estimate > 0),
+      n_negative_edges = sum(is.finite(estimate) & estimate < 0),
+      evidence_definition = "significant_pando_tf_peak_gene_target",
+      stringsAsFactors = FALSE,
+      check.names = FALSE
+    )
+  })
+  answer <- unique(do.call(rbind, summary_rows))
+  rownames(answer) <- NULL
+  answer
+}
+
+.rc_build_condition_meta_modules <- function(
+    grn_result, gem, outdir, meta_module_args = list()) {
+  if (!is.list(meta_module_args)) {
+    stop("`meta_module_args` must be a list.", call. = FALSE)
+  }
+  allowed <- c("subsystem_table", "expansion_mode", "max_iterations")
+  unknown <- setdiff(names(meta_module_args), allowed)
+  if (length(unknown)) {
+    stop(
+      "Unknown `meta_module_args` fields: ",
+      paste(unknown, collapse = ", "),
       call. = FALSE
     )
   }
@@ -24,52 +107,49 @@
   module_cols <- unique(c(display_cols, "sample_id", "module_id"))
   metabolic_genes <- gem$metabolic_genes %||%
     rc_metabolic_gpr_genes(gem$gpr_table)
-  sig <- grn_result$tf_peak_gene_significant
-  sig$sample_id <- sig$group_id
-  projection <- rc_project_metabolic_grn(
-    sig,
-    metabolic_genes = metabolic_genes,
-    top_k = layer1_args$top_k_neighbors %||% 5L,
-    min_shared_tfs = layer1_args$min_shared_tfs %||% 1L,
-    min_tf_jaccard = layer1_args$min_tf_jaccard %||% 0,
-    max_targets_per_tf = layer1_args$max_targets_per_tf %||% 200L,
-    include_direct_metabolic_tf = TRUE
-  )
-  group_meta <- unique(
-    grn_result$sample_status[, display_cols, drop = FALSE]
-  )
-  group_meta$analysis_unit_id <- group_meta$group_id
-  projection$nodes <- .rc_remap_projection_metadata(
-    projection$nodes, group_meta, "analysis_unit_id", display_cols
-  )
-  projection$edges <- .rc_remap_projection_metadata(
-    projection$edges, group_meta, "analysis_unit_id", display_cols
+
+  supported <- .rc_summarize_supported_metabolic_genes(
+    grn_result = grn_result,
+    metabolic_genes = metabolic_genes
   )
   core <- rc_map_meta_module_core_reactions(
-    projection$nodes, gem$gpr_table
+    supported[, c("sample_id", "module_id", "gene"), drop = FALSE],
+    gem$gpr_table
   )
   if (nrow(core)) {
     core <- merge(
       core,
-      unique(projection$nodes[, module_cols, drop = FALSE]),
-      by = c("sample_id", "module_id"),
+      supported,
+      by = c("sample_id", "module_id", "gene"),
       all.x = TRUE,
       sort = FALSE
     )
     core <- core[, c(
-      display_cols, setdiff(colnames(core), display_cols)
+      display_cols,
+      setdiff(colnames(core), display_cols)
     ), drop = FALSE]
   }
+  if (!nrow(core) || !any(core$is_core %in% TRUE)) {
+    stop(
+      paste(
+        "Significant Pando-supported metabolic genes did not completely",
+        "satisfy any Human-GEM GPR branch."
+      ),
+      call. = FALSE
+    )
+  }
+
   expanded <- rc_expand_meta_module_reactions(
     gem,
     core,
-    subsystem_table = layer1_args$subsystem_table %||% NULL,
-    expansion_mode = layer1_args$expansion_mode %||% "ordered_once"
+    subsystem_table = meta_module_args$subsystem_table %||% NULL,
+    expansion_mode = meta_module_args$expansion_mode %||% "ordered_once",
+    max_iterations = meta_module_args$max_iterations %||% 10L
   )
   if (nrow(expanded$reaction_membership)) {
     expanded$reaction_membership <- merge(
       expanded$reaction_membership,
-      unique(core[, module_cols, drop = FALSE]),
+      unique(supported[, module_cols, drop = FALSE]),
       by = c("sample_id", "module_id"),
       all.x = TRUE,
       sort = FALSE
@@ -79,29 +159,50 @@
       setdiff(colnames(expanded$reaction_membership), display_cols)
     ), drop = FALSE]
   }
+  if (nrow(expanded$summary)) {
+    expanded$summary <- merge(
+      expanded$summary,
+      unique(supported[, module_cols, drop = FALSE]),
+      by = c("sample_id", "module_id"),
+      all.x = TRUE,
+      sort = FALSE
+    )
+    expanded$summary <- expanded$summary[, c(
+      display_cols,
+      setdiff(colnames(expanded$summary), display_cols)
+    ), drop = FALSE]
+  }
+
   out <- c(grn_result, list(
-    metabolic_gene_nodes = projection$nodes,
-    metabolic_gene_edges = projection$edges,
+    supported_metabolic_genes = supported,
     core_gene_reaction = core,
     reaction_membership = expanded$reaction_membership,
     biological_reaction_membership = expanded$reaction_membership,
     meta_module_summary = expanded$summary,
     crossref_maps = expanded$crossref_maps,
-    analysis_group_unit = "condition_x_celltype_single_cell_grn",
+    core_definition = paste(
+      "complete Human-GEM GPR branch contained in the significant Pando",
+      "target-gene set for one condition-by-cell-type group"
+    ),
+    analysis_group_unit =
+      "condition_x_celltype_significant_pando_metabolic_targets",
     feasibility_completion = "none_at_meta_module_stage"
   ))
   .rc_mm_write_tsv_gz(
-    projection$nodes, file.path(outdir, "metabolic_gene_nodes.tsv.gz")
+    supported,
+    file.path(outdir, "supported_metabolic_genes.tsv.gz")
   )
   .rc_mm_write_tsv_gz(
-    projection$edges, file.path(outdir, "metabolic_gene_edges.tsv.gz")
-  )
-  .rc_mm_write_tsv_gz(
-    core, file.path(outdir, "core_gene_reaction.tsv.gz")
+    core,
+    file.path(outdir, "core_gene_reaction.tsv.gz")
   )
   .rc_mm_write_tsv_gz(
     expanded$reaction_membership,
     file.path(outdir, "meta_module_reactions.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    expanded$summary,
+    file.path(outdir, "meta_module_summary.tsv.gz")
   )
   saveRDS(out, file.path(outdir, "condition_meta_modules.rds"))
   out
