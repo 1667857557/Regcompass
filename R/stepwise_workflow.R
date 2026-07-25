@@ -203,6 +203,11 @@ rc_regcompass_step_metacells <- function(
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("metacells", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
+  object <- .rc_prepare_seurat_assays(
+    object,
+    assays = c(rna_assay, atac_assay),
+    required_layers = "counts"
+  )
   if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
     object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
   }
@@ -261,7 +266,9 @@ rc_regcompass_step_metacells <- function(
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       fragment_files = fragment_files,
-      metacell_args = modifyList(list(gamma = 30L), metacell_args)
+      metacell_args = modifyList(list(gamma = 30L), metacell_args),
+      seurat_compatibility =
+        metacell_object@misc$regcompass_seurat_compatibility
     )
   )
   class(answer) <- c("regcompass_metacell_step", "list")
