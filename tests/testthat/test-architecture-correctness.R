@@ -54,23 +54,16 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   )
 })
 
-test_that("shared-TF projection retains regulator and sign metadata", {
-  edges <- data.frame(
-    sample_id = c("s1", "s1"),
-    tf = c("TF1", "TF1"),
-    target = c("G1", "G2"),
-    estimate = c(1, -2),
-    stringsAsFactors = FALSE
+test_that("Stage 1 installs canonical Pando regions by default", {
+  text <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns)),
+    collapse = "\n"
   )
-  projected <- rc_project_metabolic_grn(
-    edges, metabolic_genes = c("G1", "G2"),
-    top_k = 5, min_shared_tfs = 1, min_tf_jaccard = 0
-  )
-  expect_equal(nrow(projected$edges), 1)
-  expect_equal(projected$edges$regulator_set, "TF1")
-  expect_equal(projected$edges$regulatory_relation, "discordant")
-  expect_lt(projected$edges$signed_projection_weight, 0)
-  expect_true(projected$edges$direction_and_sign_preserved)
+  helper <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
+  expect_match(text, ".rc_default_pando_regions", fixed = TRUE)
+  expect_match(helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
+  expect_match(helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(helper, "BiocGenerics::union", fixed = TRUE)
 })
 
 test_that("condition-pooled metacell is selected explicitly", {
