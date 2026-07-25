@@ -32,7 +32,7 @@ jobs:
             liblzma-dev \
             zlib1g-dev
 
-      - name: Install current Seurat v5 stack and package dependencies
+      - name: Install latest Seurat v5 stack and package dependencies
         shell: Rscript {0}
         run: |
           options(timeout = 1200)
@@ -54,16 +54,21 @@ jobs:
             dependencies = NA, upgrade = "never"
           )
           remotes::install_version(
-            "Seurat", version = "5.4.0",
+            "Seurat", version = "5.5.0",
             dependencies = NA, upgrade = "never"
           )
           remotes::install_version(
             "Signac", version = "1.17.1",
             dependencies = NA, upgrade = "never"
           )
+          remotes::install_github(
+            "1667857557/SuperCell_Seurat_V4@agent/current-seurat-v5-layer-api",
+            dependencies = NA,
+            upgrade = "never"
+          )
           expected <- c(
             SeuratObject = "5.4.0",
-            Seurat = "5.4.0",
+            Seurat = "5.5.0",
             Signac = "1.17.1"
           )
           observed <- vapply(
@@ -83,7 +88,7 @@ jobs:
         run: |
           R CMD INSTALL --no-multiarch --with-keep.source --install-tests .
 
-      - name: Run Seurat compatibility tests
+      - name: Run Seurat and SuperCell compatibility tests
         shell: Rscript {0}
         run: |
           library(RegCompassR)
@@ -91,6 +96,39 @@ jobs:
             RegCompassR:::.rc_seurat_stack_versions()
           )
           stopifnot(identical(profile$profile, "seurat_v5_compatible"))
+
+          old_option <- getOption("Seurat.object.assay.version")
+          on.exit(options(Seurat.object.assay.version = old_option), add = TRUE)
+          options(Seurat.object.assay.version = "v3")
+          counts <- Matrix::Matrix(
+            matrix(c(1, 0, 2, 3, 0, 1, 4, 0), nrow = 2),
+            sparse = TRUE,
+            dimnames = list(c("g1", "g2"), paste0("cell", 1:4))
+          )
+          object <- Seurat::CreateSeuratObject(counts = counts)
+          stopifnot(!inherits(object[["RNA"]], "Assay5"))
+          stopifnot(isTRUE(all.equal(
+            as.matrix(SuperCell:::.sc_get_assay_data(
+              object, assay = "RNA", slot = "counts"
+            )),
+            as.matrix(counts)
+          )))
+          peaks <- Matrix::Matrix(
+            matrix(c(1, 0, 0, 2, 0, 3, 1, 0), nrow = 2),
+            sparse = TRUE,
+            dimnames = list(c("chr1-1-10", "chr1-20-30"), colnames(counts))
+          )
+          object[["ATAC"]] <- Signac::CreateChromatinAssay(
+            counts = peaks,
+            sep = c("-", "-")
+          )
+          stopifnot(isTRUE(all.equal(
+            as.matrix(SuperCell:::.sc_get_assay_data(
+              object, assay = "ATAC", slot = "counts"
+            )),
+            as.matrix(peaks)
+          )))
+
           testthat::test_local(
             Sys.getenv("GITHUB_WORKSPACE"),
             filter = "seurat-compatibility",
