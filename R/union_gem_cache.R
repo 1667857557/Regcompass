@@ -41,6 +41,11 @@
     stop("No merged core reactions remain for union-GEM scoring.",
          call. = FALSE)
   }
+  if (!is.numeric(time_limit) || length(time_limit) != 1L ||
+      !is.finite(time_limit) || time_limit <= 0) {
+    stop("Internal union-GEM construction time limit must be positive.",
+         call. = FALSE)
+  }
 
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))
@@ -103,6 +108,7 @@
       build_strategy = "medium_specific_union_gem",
       completion_stage =
         "single_global_fastcore_after_meta_module_merge",
+      completion_time_limit = time_limit,
       stringsAsFactors = FALSE
     )
 

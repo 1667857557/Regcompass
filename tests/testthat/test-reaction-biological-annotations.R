@@ -69,8 +69,7 @@ make_reaction_annotation_fixture <- function() {
     ),
     capacity_params = list(
       promiscuity_mode = "none",
-      tau = 0.20,
-      and_method = "boltzmann",
+      and_method = "min",
       or_method = "sum"
     )
   )
@@ -83,8 +82,18 @@ make_reaction_annotation_fixture <- function() {
   )
   microcompass <- list(
     penalty = penalty,
-    vmax = matrix(100, nrow = 1, ncol = length(units), dimnames = dimnames(penalty)),
-    feasible = matrix(TRUE, nrow = 1, ncol = length(units), dimnames = dimnames(penalty)),
+    vmax = matrix(
+      100,
+      nrow = 1,
+      ncol = length(units),
+      dimnames = dimnames(penalty)
+    ),
+    feasible = matrix(
+      TRUE,
+      nrow = 1,
+      ncol = length(units),
+      dimnames = dimnames(penalty)
+    ),
     unit_meta = layer1$unit_meta,
     params = list(omega = 0.95, unit = "metacell")
   )

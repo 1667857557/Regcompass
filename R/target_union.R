@@ -557,7 +557,7 @@
     condition_col, sample_col, celltype_col,
     omega = 0.95,
     solver = c("highs", "gurobi", "glpk"),
-    time_limit = 60, flux_threshold = 1e-8,
+    flux_threshold = 1e-8,
     parallel = TRUE, BPPARAM = NULL) {
   solver <- match.arg(solver)
   .rc_require_lp_solver(solver)
@@ -611,12 +611,15 @@
     answers <- lapply(selected, function(row_id) {
       entry <- model_cache[[row_id]]
       fit <- rc_compass_two_step_lp_directional(
-        S = model$S, lb = model$lb, ub = model$ub,
+        S = model$S,
+        lb = model$lb,
+        ub = model$ub,
         target_reaction = entry$reaction_id,
         penalties = penalties$penalty[colnames(model$S), unit_id],
         target_direction = entry$target_direction,
-        omega = omega, solver = solver,
-        time_limit = time_limit, flux_threshold = flux_threshold
+        omega = omega,
+        solver = solver,
+        flux_threshold = flux_threshold
       )
       list(
         row_id = row_id,
@@ -722,7 +725,7 @@
       parallel_task = "reused_union_gem_by_metacell",
       flux_threshold = flux_threshold,
       solver = solver,
-      time_limit = time_limit
+      scoring_time_limit = "none"
     ),
     method = paste(
       "microCOMPASS directional LP for direct",
@@ -757,8 +760,8 @@
 #' @param core_reaction_ids Original core reaction IDs used as mapping anchors.
 #' @param core_genes Genes used to resolve original core anchors through GPRs.
 #' @param gene_match Require a complete GPR group or allow any direct gene match.
-#' @param layer2_args Optional `omega`, `target_direction`, `solver`,
-#'   `time_limit`, and `flux_threshold` overrides.
+#' @param layer2_args Optional `omega`, `target_direction`, `solver`, and
+#'   `flux_threshold` overrides. Scoring LPs have no time-limit control.
 #' @param parallel Whether to parallelize model-by-metacell tasks.
 #' @param BPPARAM Optional BiocParallel parameter object.
 #' @param progress Whether to display stage progress.
@@ -790,13 +793,16 @@ rc_regcompass_step_target_union <- function(
   if (!is.list(layer2_args)) {
     stop("`layer2_args` must be a list.", call. = FALSE)
   }
-  allowed <- c(
-    "omega", "target_direction", "solver", "time_limit", "flux_threshold"
-  )
+  allowed <- c("omega", "target_direction", "solver", "flux_threshold")
   unknown <- setdiff(names(layer2_args), allowed)
   if (length(unknown)) {
-    stop("Unsupported `layer2_args`: ", paste(unknown, collapse = ", "),
-         call. = FALSE)
+    stop(
+      "Unsupported `layer2_args`: ", paste(unknown, collapse = ", "),
+      ". Scoring `time_limit` has been removed; only ",
+      "`layer2_args$model_params$completion_time_limit` in the original ",
+      "union-GEM construction stage is supported.",
+      call. = FALSE
+    )
   }
   catalogue <- meta_modules$merged_modules
   if (!is.list(catalogue) ||
@@ -832,7 +838,6 @@ rc_regcompass_step_target_union <- function(
     c("highs", "gurobi", "glpk")
   )
   omega <- layer2_args$omega %||% layer2$params$omega %||% 0.95
-  time_limit <- layer2_args$time_limit %||% 60
   flux_threshold <- layer2_args$flux_threshold %||% 1e-8
   model_cache <- .rc_build_target_union_model_cache(
     layer2 = layer2,
@@ -848,7 +853,6 @@ rc_regcompass_step_target_union <- function(
     celltype_col = workflow$celltype_col,
     omega = omega,
     solver = solver,
-    time_limit = time_limit,
     flux_threshold = flux_threshold,
     parallel = parallel,
     BPPARAM = BPPARAM

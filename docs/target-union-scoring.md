@@ -50,6 +50,10 @@ model$union_gem_medium_scenario matches the cache row
 
 This allows globally added FASTCORE support reactions to be scored when they are present in all reused final models, even when absent from the Stage 3 merged biological catalogue.
 
+## Time-limit policy
+
+`layer2_args$model_params$completion_time_limit` belongs to the original Stage 5 union-GEM construction. The second pass does not reconstruct the model or rerun FASTCORE, so it neither accepts nor reuses a construction timeout. Its scoring LPs have no `time_limit` parameter.
+
 ## Example
 
 ```r
@@ -63,8 +67,7 @@ targeted <- rc_regcompass_step_target_union(
   gene_match = "complete_gpr",
   layer2_args = list(
     target_direction = "both",
-    solver = "highs",
-    time_limit = 600
+    solver = "highs"
   ),
   parallel = TRUE,
   BPPARAM = layer2_bp
@@ -81,13 +84,14 @@ targeted$merged_catalogue_membership
 targeted$microcompass
 ```
 
-The scoring result records the exact reuse policy:
+The scoring result records the exact reuse and timeout policies:
 
 ```r
 targeted$microcompass$params[c(
   "structural_model_reused_exactly",
   "fastcore_rerun",
-  "model_rebuild"
+  "model_rebuild",
+  "scoring_time_limit"
 )]
 ```
 

@@ -29,32 +29,52 @@ test_that("canonical GPR defaults are explicit and option-independent", {
   expect_equal(with_option, without_option)
 })
 
-test_that("alternative GPR heuristics require explicit arguments", {
+test_that("COMPASS GPR-AND alternatives require explicit arguments", {
   gpr <- list(
-    reaction = list(c("g1", "g2"), c("g3"))
+    reaction = list(c("g1", "g2", "g3"))
   )
   gene_score <- matrix(
-    c(0.2, 0.9, 0.5),
+    c(0.2, 0.5, 0.9),
     ncol = 1,
     dimnames = list(c("g1", "g2", "g3"), "u1")
   )
 
-  canonical <- rc_reaction_capacity(
+  minimum <- rc_reaction_capacity(
     gpr,
     gene_score,
+    promiscuity_mode = "none",
+    or_method = "sum",
     BPPARAM = FALSE
   )
-  heuristic <- rc_reaction_capacity(
+  median <- rc_reaction_capacity(
     gpr,
     gene_score,
-    promiscuity_mode = "sqrt",
-    and_method = "boltzmann",
-    or_method = "sum_sqrtK",
+    promiscuity_mode = "none",
+    and_method = "median",
+    or_method = "sum",
+    BPPARAM = FALSE
+  )
+  average <- rc_reaction_capacity(
+    gpr,
+    gene_score,
+    promiscuity_mode = "none",
+    and_method = "mean",
+    or_method = "sum",
     BPPARAM = FALSE
   )
 
-  expect_equal(canonical["reaction", "u1"], 0.5)
-  expect_false(isTRUE(all.equal(heuristic, canonical)))
+  expect_equal(minimum["reaction", "u1"], 0.2)
+  expect_equal(median["reaction", "u1"], 0.5)
+  expect_equal(average["reaction", "u1"], mean(c(0.2, 0.5, 0.9)))
+  expect_error(
+    rc_reaction_capacity(
+      gpr,
+      gene_score,
+      and_method = "boltzmann",
+      BPPARAM = FALSE
+    ),
+    "should be one of"
+  )
 })
 
 test_that("GPR-subset logCPM accepts explicit full-transcriptome library sizes", {
@@ -119,6 +139,13 @@ test_that("integrated workflow validates routing inputs before delegation", {
   expect_error(
     do.call(rc_run_regcompass, c(common, list(layer2_args = "invalid"))),
     "argument bundles must be lists: layer2_args"
+  )
+  expect_error(
+    do.call(
+      rc_run_regcompass,
+      c(common, list(layer1_args = list(tau = 0.2)))
+    ),
+    "retired `tau`/Boltzmann"
   )
   expect_error(.rc_stage_worker_config(0L, "upstream_workers"), "at least 1")
   expect_error(.rc_stage_worker_config(0L, "layer2_workers"), "at least 1")

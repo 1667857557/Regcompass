@@ -4,13 +4,14 @@
 rc_regcompass_step_layer1 <- function(
     metacells, meta_modules, gem, outdir,
     regulatory_alpha = 1,
-    tau = 0.20,
+    gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
     parallel = TRUE,
     BPPARAM = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("layer1", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
+  gpr_and_method <- match.arg(gpr_and_method)
   .rc_require_stage_class(
     metacells, "regcompass_metacell_step", "metacells",
     "rc_regcompass_step_metacells"
@@ -38,7 +39,7 @@ rc_regcompass_step_layer1 <- function(
     rna_assay = params$rna_assay,
     atac_assay = params$atac_assay,
     regulatory_alpha = regulatory_alpha,
-    gpr_tau = tau,
+    gpr_and_method = gpr_and_method,
     gene_half_saturation = gene_half_saturation,
     parallel = parallel,
     BPPARAM = BPPARAM

@@ -79,70 +79,28 @@ test_that("incompatible legacy species caches are invalidated", {
   expect_false(file.exists(file))
 })
 
-test_that("species arguments preserve legacy positional ordering", {
-  workflow_formals <- names(formals(rc_run_regcompass))
-  one_shot_formals <- names(formals(rc_run_regcompass_one_shot))
-
-  expect_lt(
-    match("sample_col", workflow_formals),
-    match("species", workflow_formals)
-  )
-  expect_lt(match("gem", one_shot_formals), match("species", one_shot_formals))
-  expect_lt(
-    match("medium_scenarios", one_shot_formals),
-    match("species", one_shot_formals)
-  )
-})
-
-test_that("multi-sample projected edges receive sample-local module IDs", {
-  input <- data.frame(
-    sample_id = c("s1", "s1", "s2", "s2"),
-    tf = c("TF1", "TF1", "TF2", "TF2"),
-    target = c("A", "B", "A", "C"),
-    estimate = c(1, 1, 1, 1),
-    stringsAsFactors = FALSE
-  )
-  projected <- rc_project_metabolic_grn(
-    input,
-    metabolic_genes = c("A", "B", "C"),
-    top_k = 5,
-    min_shared_tfs = 1,
-    min_tf_jaccard = 0,
-    include_direct_metabolic_tf = FALSE
-  )
-  expect_true(all(
-    startsWith(
-      projected$edges$module_id,
-      paste0(projected$edges$sample_id, "::")
+test_that("public runner arguments follow processing order", {
+  expect_identical(
+    names(formals(rc_run_regcompass)),
+    c(
+      "object", "gem", "outdir", "genome", "pfm", "species",
+      "condition_col", "celltype_col", "rna_assay", "atac_assay",
+      "pando_args",
+      "sample_col", "fragment_files", "metacell_args",
+      "meta_module_args",
+      "layer1_args",
+      "medium_scenarios", "model_mode", "layer2_args",
+      "upstream_workers", "layer2_workers", "progress"
     )
-  ))
-})
-
-test_that("signed eligibility is applied before top-k component pruning", {
-  input <- data.frame(
-    sample_id = rep("s1", 6),
-    tf = c("TF1", "TF1", "TF2", "TF2", "TF3", "TF3"),
-    target = c("A", "B", "A", "C", "C", "D"),
-    estimate = c(10, -10, 1, 1, 10, -10),
-    stringsAsFactors = FALSE
   )
-  projected <- rc_project_metabolic_grn(
-    input,
-    metabolic_genes = c("A", "B", "C", "D"),
-    top_k = 1,
-    min_shared_tfs = 1,
-    min_tf_jaccard = 0,
-    include_direct_metabolic_tf = FALSE
-  )
-  pair <- paste(projected$edges$gene_a, projected$edges$gene_b, sep = "-")
-  concordant <- pair == "A-C"
-  discordant <- pair %in% c("A-B", "C-D")
-
-  expect_true(any(concordant))
-  expect_true(projected$edges$used_for_component[concordant])
-  expect_true(all(!projected$edges$used_for_component[discordant]))
-  expect_equal(
-    projected$nodes$module_id[projected$nodes$gene == "A"],
-    projected$nodes$module_id[projected$nodes$gene == "C"]
+  expect_identical(
+    names(formals(rc_run_regcompass_one_shot)),
+    c(
+      "object", "outdir", "genome",
+      "species", "gem", "gem_version", "gem_source",
+      "pfm", "fragment_files",
+      "medium_scenario", "medium_scenarios",
+      "progress", "..."
+    )
   )
 })

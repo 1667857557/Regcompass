@@ -92,34 +92,20 @@ rc_gene_score <- function(
   score
 }
 
-#' Normalized Boltzmann soft minimum for GPR AND
+#' COMPASS-compatible AND aggregation for one GPR complex
 #'
-#' Computes `-tau * log(mean(exp(-scores / tau)))` using a stable shift.
-#' The normalized form equals the common score when all subunits are equal,
-#' approaches the hard minimum as tau tends to zero, approaches the arithmetic
-#' mean as tau increases, and is monotonically non-decreasing in every subunit.
-rc_boltzmann_minavg <- function(scores, tau = 0.20) {
-  if (!is.numeric(tau) || length(tau) != 1L || is.na(tau) || tau <= 0) {
-    stop("`tau` must be a single positive number.", call. = FALSE)
-  }
-  scores <- scores[is.finite(scores)]
-  if (length(scores) == 0L) return(NA_real_)
-  if (length(scores) == 1L) return(scores)
-  minimum <- min(scores)
-  shifted <- (scores - minimum) / tau
-  minimum - tau * log(mean(exp(-shifted)))
-}
-
-#' AND aggregation for one GPR complex
-rc_and_capacity <- function(scores, method = c("boltzmann", "min", "mean"), tau = 0.20) {
+#' COMPASS exposes `min`, `median`, and `mean` for combining genes joined by
+#' a GPR AND relationship. RegCompass defaults to `min`, which represents the
+#' limiting subunit of a required enzyme complex.
+rc_and_capacity <- function(scores, method = c("min", "median", "mean")) {
   method <- match.arg(method)
   scores <- scores[is.finite(scores)]
   if (length(scores) == 0L) return(NA_real_)
   switch(
     method,
     min = min(scores),
-    mean = mean(scores),
-    boltzmann = rc_boltzmann_minavg(scores, tau = tau)
+    median = stats::median(scores),
+    mean = mean(scores)
   )
 }
 
@@ -143,8 +129,10 @@ rc_or_capacity <- function(and_capacities,
 }
 
 #' Compute capacity for one reaction in one pool
-rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and_method = c("min", "boltzmann", "mean"),
-                                     or_method = c("max", "sum_sqrtK", "prob_or", "sum")) {
+rc_reaction_capacity_one <- function(
+    parsed_gpr, gene_score_vec,
+    and_method = c("min", "median", "mean"),
+    or_method = c("max", "sum_sqrtK", "prob_or", "sum")) {
   and_method <- match.arg(and_method)
   or_method <- match.arg(or_method)
   and_caps <- vapply(parsed_gpr, function(and_group) {
@@ -153,23 +141,24 @@ rc_reaction_capacity_one <- function(parsed_gpr, gene_score_vec, tau = 0.20, and
     if (length(genes) == 0L || anyNA(vals) || any(!is.finite(vals))) {
       return(NA_real_)
     }
-    rc_and_capacity(vals, method = and_method, tau = tau)
+    rc_and_capacity(vals, method = and_method)
   }, numeric(1))
   rc_or_capacity(and_caps, method = or_method)
 }
 
 #' Compute raw Layer 1 reaction capacity
 #'
-#' The canonical workflow uses no promiscuity weighting, normalized Boltzmann
-#' soft-min AND, and additive isozyme OR. Alternative rules remain available to
-#' lower-level callers for sensitivity analysis.
-rc_reaction_capacity <- function(gpr_list,
-                                 gene_score,
-                                 promiscuity_mode = c("none", "sqrt", "linear"),
-                                 tau = 0.20,
-                                 and_method = c("min", "boltzmann", "mean"),
-                                 or_method = c("max", "sum_sqrtK", "prob_or", "sum"),
-                                 BPPARAM = NULL) {
+#' The canonical workflow uses no promiscuity weighting, COMPASS-compatible
+#' GPR-AND aggregation (`min` by default; `median` or `mean` optionally), and
+#' additive isozyme OR. Alternative OR and promiscuity rules remain available
+#' to lower-level callers for sensitivity analysis.
+rc_reaction_capacity <- function(
+    gpr_list,
+    gene_score,
+    promiscuity_mode = c("none", "sqrt", "linear"),
+    and_method = c("min", "median", "mean"),
+    or_method = c("max", "sum_sqrtK", "prob_or", "sum"),
+    BPPARAM = NULL) {
   promiscuity_mode <- match.arg(promiscuity_mode)
   and_method <- match.arg(and_method)
   or_method <- match.arg(or_method)
@@ -178,14 +167,23 @@ rc_reaction_capacity <- function(gpr_list,
   }
   gene_score <- as.matrix(gene_score)
   if (is.null(rownames(gene_score)) || is.null(colnames(gene_score))) {
-    stop("`gene_score` must have rownames as genes and colnames as pools.", call. = FALSE)
+    stop(
+      "`gene_score` must have rownames as genes and colnames as pools.",
+      call. = FALSE
+    )
   }
   normalized_genes <- tolower(trimws(rownames(gene_score)))
   if (anyNA(normalized_genes) || any(!nzchar(normalized_genes))) {
-    stop("`gene_score` gene row names must be non-missing and non-empty.", call. = FALSE)
+    stop(
+      "`gene_score` gene row names must be non-missing and non-empty.",
+      call. = FALSE
+    )
   }
   if (anyDuplicated(normalized_genes)) {
-    stop("`gene_score` contains duplicated gene IDs after case normalization.", call. = FALSE)
+    stop(
+      "`gene_score` contains duplicated gene IDs after case normalization.",
+      call. = FALSE
+    )
   }
   rownames(gene_score) <- normalized_genes
   reaction_ids <- names(gpr_list)
@@ -195,21 +193,35 @@ rc_reaction_capacity <- function(gpr_list,
       dimnames = list(character(), colnames(gene_score))
     ))
   }
-  if (anyNA(reaction_ids) || any(!nzchar(trimws(reaction_ids))) || anyDuplicated(reaction_ids)) {
-    stop("`gpr_list` reaction names must be unique, non-missing, and non-empty.", call. = FALSE)
+  if (anyNA(reaction_ids) || any(!nzchar(trimws(reaction_ids))) ||
+      anyDuplicated(reaction_ids)) {
+    stop(
+      "`gpr_list` reaction names must be unique, non-missing, and non-empty.",
+      call. = FALSE
+    )
   }
 
   weights <- rc_promiscuity_weight(gpr_list, mode = promiscuity_mode)
   common_genes <- intersect(rownames(gene_score), names(weights))
   weighted_score <- gene_score
-  weighted_score[common_genes, ] <- sweep(weighted_score[common_genes, , drop = FALSE], 1, weights[common_genes], "*")
+  weighted_score[common_genes, ] <- sweep(
+    weighted_score[common_genes, , drop = FALSE],
+    1,
+    weights[common_genes],
+    "*"
+  )
 
   per_reaction <- rc_parallel_lapply(reaction_ids, function(rid) {
     parsed <- gpr_list[[rid]]
     vapply(seq_len(ncol(weighted_score)), function(j) {
       score_vector <- weighted_score[, j, drop = TRUE]
       names(score_vector) <- rownames(weighted_score)
-      rc_reaction_capacity_one(parsed, score_vector, tau = tau, and_method = and_method, or_method = or_method)
+      rc_reaction_capacity_one(
+        parsed,
+        score_vector,
+        and_method = and_method,
+        or_method = or_method
+      )
     }, numeric(1))
   }, BPPARAM = BPPARAM)
 
@@ -241,11 +253,25 @@ rc_gpr_diagnostics <- function(gpr_list, gene_ids) {
       n_gpr_genes = n_genes,
       n_and_groups = n_groups,
       n_complete_and_groups = n_complete_groups,
-      complete_and_group_fraction = if (n_groups == 0L) NA_real_ else n_complete_groups / n_groups,
+      complete_and_group_fraction = if (n_groups == 0L) {
+        NA_real_
+      } else {
+        n_complete_groups / n_groups
+      },
       has_isoenzyme = n_groups > 1L,
-      has_multisubunit = any(vapply(normalized_groups, length, integer(1)) > 1L),
-      missing_gene_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
-      missing_subunit_fraction = if (n_genes == 0L) NA_real_ else n_missing / n_genes,
+      has_multisubunit = any(
+        vapply(normalized_groups, length, integer(1)) > 1L
+      ),
+      missing_gene_fraction = if (n_genes == 0L) {
+        NA_real_
+      } else {
+        n_missing / n_genes
+      },
+      missing_subunit_fraction = if (n_genes == 0L) {
+        NA_real_
+      } else {
+        n_missing / n_genes
+      },
       missing_subunit_flag = n_missing > 0L,
       incomplete_and_group_flag = n_groups == 0L || any(!group_complete),
       capacity_missing_flag = n_groups == 0L || !any(group_complete),

@@ -31,6 +31,14 @@ test_that("TF-ATAC integration is zero preserving and signed", {
   expect_true(all(out >= 0 & out <= 1))
 })
 
+test_that("COMPASS GPR-AND functions are exact", {
+  x <- c(0.2, 0.5, 0.9)
+  expect_equal(rc_and_capacity(x), min(x))
+  expect_equal(rc_and_capacity(x, "median"), stats::median(x))
+  expect_equal(rc_and_capacity(x, "mean"), mean(x))
+  expect_error(rc_and_capacity(x, "boltzmann"), "should be one of")
+})
+
 test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   expression <- matrix(
     c(0, 1, 3, NA_real_),
@@ -54,23 +62,25 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   )
 })
 
-test_that("shared-TF projection retains regulator and sign metadata", {
-  edges <- data.frame(
-    sample_id = c("s1", "s1"),
-    tf = c("TF1", "TF1"),
-    target = c("G1", "G2"),
-    estimate = c(1, -2),
-    stringsAsFactors = FALSE
+test_that("Stage 1 installs species-specific Pando motifs and regions", {
+  text <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns)),
+    collapse = "\n"
   )
-  projected <- rc_project_metabolic_grn(
-    edges, metabolic_genes = c("G1", "G2"),
-    top_k = 5, min_shared_tfs = 1, min_tf_jaccard = 0
+  motif_helper <- paste(
+    deparse(body(.rc_default_pando_motifs)), collapse = "\n"
   )
-  expect_equal(nrow(projected$edges), 1)
-  expect_equal(projected$edges$regulator_set, "TF1")
-  expect_equal(projected$edges$regulatory_relation, "discordant")
-  expect_lt(projected$edges$signed_projection_weight, 0)
-  expect_true(projected$edges$direction_and_sign_preserved)
+  region_helper <- paste(
+    deparse(body(.rc_default_pando_regions)), collapse = "\n"
+  )
+  expect_match(text, ".rc_default_pando_motifs", fixed = TRUE)
+  expect_match(text, ".rc_default_pando_regions(species)", fixed = TRUE)
+  expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
+  expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
+  expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(region_helper, 'identical(species, "mouse")', fixed = TRUE)
+  expect_match(region_helper, "return(phast_cons)", fixed = TRUE)
+  expect_match(region_helper, "BiocGenerics::union", fixed = TRUE)
 })
 
 test_that("condition-pooled metacell is selected explicitly", {

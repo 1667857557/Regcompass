@@ -137,12 +137,20 @@ test_that("only direct database-linked non-core reactions are targets", {
   )
 })
 
-test_that("target-union API has no structural reconstruction controls", {
+test_that("target-union API has no reconstruction or scoring timeout controls", {
   retired <- c(
     "subsystem_table", "expansion_mode", "max_iterations",
-    "fastcore_epsilon", "max_support_reactions", "strict"
+    "fastcore_epsilon", "max_support_reactions", "strict", "time_limit"
   )
   expect_false(any(retired %in% names(formals(rc_regcompass_step_target_union))))
+  expect_false("time_limit" %in% names(formals(.rc_score_existing_union_cache)))
+  expect_error(
+    rc_regcompass_step_target_union(
+      layer1 = list(), meta_modules = list(), layer2 = list(), gem = list(),
+      outdir = tempfile(), layer2_args = list(time_limit = 60)
+    ),
+    "output of `rc_regcompass_step_meta_modules"
+  )
 })
 
 test_that("gene selection resolves only original Layer 2 core anchors", {
@@ -254,7 +262,7 @@ test_that("tampered or non-union cache files are rejected", {
   )
 })
 
-test_that("second LP pass evaluates targets without rebuilding the union GEM", {
+test_that("second LP pass evaluates targets without rebuilding or timeout", {
   skip_if_not(requireNamespace("highs", quietly = TRUE))
   S <- matrix(
     c(-1, 1, 1, -1),
@@ -305,7 +313,6 @@ test_that("second LP pass evaluates targets without rebuilding the union GEM", {
     celltype_col = "cell_type",
     omega = 0.95,
     solver = "highs",
-    time_limit = 60,
     flux_threshold = 1e-8,
     parallel = FALSE,
     BPPARAM = FALSE
@@ -320,6 +327,7 @@ test_that("second LP pass evaluates targets without rebuilding the union GEM", {
   expect_true(result$params$structural_model_reused_exactly)
   expect_false(result$params$fastcore_rerun)
   expect_false(result$params$model_rebuild)
+  expect_identical(result$params$scoring_time_limit, "none")
   expect_identical(result$model_file_manifest$file, stub$file)
   expect_identical(unname(tools::md5sum(stub$file)), before)
 })

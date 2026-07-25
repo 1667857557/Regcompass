@@ -29,9 +29,3 @@ test_that("stratum IDs use the shared pipe-separated convention", {
     c("ctrl|s1|T", "stim|s2|B")
   )
 })
-
-test_that("Pando uses strict-stratum grouping", {
-  body_text <- paste(deparse(body(rc_run_pando_meta_modules)), collapse = "\n")
-  expect_match(body_text, "rc_make_stratum_id", fixed = TRUE)
-  expect_match(body_text, "rc_parallel_lapply(group_ids", fixed = TRUE)
-})

@@ -4,70 +4,109 @@
 
 ```text
 condition × cell type cells
-→ Pando TF–peak–metabolic-gene GRN
-→ condition-level multimodal metacells
-→ signed metabolic-gene projection
-→ GRN connected components
+→ Pando TF–peak–GEM-gene models
+→ significantly supported metabolic target genes
 → complete-GPR core reactions
-→ core-subsystem expansion
-→ KEGG/Reactome reaction-equivalence expansion
-→ master-Rhea reaction-equivalence expansion
+→ one ordered subsystem/cross-reference expansion pass
 → biological meta-modules
 → merged meta-module reaction catalogue
 → RNA support modified by ATAC regulatory state
+→ COMPASS-compatible GPR-AND aggregation
 → medium-specific union GEM
 → global FASTCORE completion
 → directional two-step COMPASS-like LP
 → within-condition ranking and descriptive contrasts
 ```
 
-## 1. GRN and metacell analysis units
+## 1. Pando targets, motifs, and regulatory regions
 
-Pando is fitted separately for each `condition × cell type` group. Metacells are condition-level pseudo-observations with cell-type-guided construction. Original biological-sample metadata are provenance only and are not used for balancing or weighting.
-
-## 2. Biological meta-modules
-
-For a GRN component `m`, a reaction is a core reaction only when at least one complete GPR isozyme group is represented:
+Pando is fitted separately for each `condition × cell type` group. Its candidate target set is:
 
 \[
-C_m = \{r : \exists k,\; GPR_{r,k} \subseteq G_m\}.
+T = G_{GEM\ GPR} \cap G_{RNA\ assay}.
 \]
 
-Partially represented enzyme complexes are retained as diagnostics but are not core anchors.
+When `pfm` is omitted, RegCompass loads the Pando data object:
 
-Annotation-defined expansion is ordered:
+```r
+data("motifs", package = "Pando")
+pfm <- motifs
+```
 
-1. complete-GPR core reactions;
-2. all reactions in each core reaction's annotated subsystem;
-3. reactions sharing KEGG or Reactome reaction identifiers with the current set;
-4. reactions sharing a master Rhea identifier with the current set.
+A user-supplied motif collection overrides this default.
 
-No metabolite-neighbour, one-hop, currency-metabolite, or stoichiometric-adjacency expansion is performed.
+The default `Pando::initiate_grn()` region set depends on `species`:
+
+\[
+R_{human} = phastConsElements20Mammals.UCSC.hg38
+\cup SCREEN.ccRE.UCSC.hg38,
+\]
+
+\[
+R_{mouse} = phastConsElements20Mammals.UCSC.hg38.
+\]
+
+The objects are loaded from the installed Pando package. A user-supplied `pando_initiate_args$regions` overrides either species-specific default. The selected policy is recorded in `step1$grn_result$normalization_policy$pando_regions`.
+
+A TF–peak–target row is retained as significant evidence when it passes the configured adjusted-P-value, absolute-estimate, and target-model-R² thresholds. Positive and negative coefficients both indicate regulatory evidence.
+
+## 2. Supported metabolic gene sets and core reactions
+
+For condition `c` and cell type `k`, let `E_{c,k}` be the significant Pando coefficient table. The supported GEM metabolic genes are:
+
+\[
+M_{c,k} = \{g \in T : \exists (t,p,g) \in E_{c,k}\}.
+\]
+
+No shared-TF projection, target-target graph, top-k pruning, or GRN connected-component calculation is performed.
+
+A reaction is a core reaction only when at least one complete GPR isozyme branch is represented:
+
+\[
+C_{c,k} = \{r : \exists j,\; GPR_{r,j} \subseteq M_{c,k}\}.
+\]
+
+Partially represented enzyme complexes are retained as diagnostics but are not core anchors. This group-level definition allows required subunits supported by different TFs or peaks to satisfy the same complete GPR branch.
+
+## 3. Biological meta-modules
+
+Annotation-defined expansion is executed exactly once in the following order:
+
+1. begin with complete-GPR core reactions `C_{c,k}`;
+2. add all reactions in each core reaction's annotated subsystem;
+3. from the resulting core-plus-subsystem set, add direct KEGG or Reactome reaction equivalents;
+4. from the resulting core-plus-subsystem-plus-database set, add direct master-Rhea reaction equivalents;
+5. stop.
+
+A reaction introduced at the master-Rhea step does not trigger another KEGG/Reactome or subsystem pass. There is no `expansion_mode`, fixed-point recursion, `max_iterations`, metabolite-neighbour, one-hop, currency-metabolite, or stoichiometric-adjacency expansion.
 
 The resulting biological reaction set is:
 
 \[
-B_m = C_m \cup S_m \cup D_m \cup R_m.
+B_{c,k} = C_{c,k} \cup S_{c,k} \cup D_{c,k} \cup R_{c,k}.
 \]
 
-## 3. Merged meta-module catalogue
+## 4. Merged meta-module catalogue
 
-Stage 3 deduplicates reaction IDs across all biological meta-modules:
+Stage 3 deduplicates reaction IDs across all condition-by-cell-type biological meta-modules:
 
 \[
-B_{merged} = \bigcup_m B_m,
+B_{merged} = \bigcup_{c,k} B_{c,k},
 \qquad
-C_{merged} = \bigcup_m C_m.
+C_{merged} = \bigcup_{c,k} C_{c,k}.
 \]
 
-This operation does not apply medium constraints, does not test flux consistency, and does not run FASTCORE. It produces a **merged reaction catalogue**, not a GEM and not a union GEM.
+This operation does not apply medium constraints, test flux consistency, or run FASTCORE. It produces a **merged reaction catalogue**, not a GEM and not a union GEM.
 
 ```r
+step3$condition_modules$supported_metabolic_genes
+step3$condition_modules$core_gene_reaction
+step3$condition_modules$meta_module_summary$expansion_policy
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 ```
 
-## 4. Multiome reaction support
+## 5. Multiome reaction support and GPR aggregation
 
 For gene `g` in metacell `u`, RNA logCPM is converted to bounded support:
 
@@ -85,13 +124,36 @@ C^{MO}_{g,u}=
 
 ATAC can raise or lower existing RNA support but cannot create support when RNA support is zero.
 
-Complete GPR complexes use a normalized soft minimum; isozyme groups are additive. Reaction expression support is converted to the LP cost:
+For one GPR AND group `A_{r,j}`, RegCompass uses one of the three COMPASS aggregation functions:
+
+\[
+Q^{min}_{r,j,u}=\min_{g\in A_{r,j}} C^{MO}_{g,u},
+\]
+
+\[
+Q^{median}_{r,j,u}=\operatorname{median}_{g\in A_{r,j}} C^{MO}_{g,u},
+\]
+
+\[
+Q^{mean}_{r,j,u}=\frac{1}{|A_{r,j}|}
+\sum_{g\in A_{r,j}} C^{MO}_{g,u}.
+\]
+
+The canonical default is `gpr_and_method = "min"`, representing the limiting required subunit. `"median"` and `"mean"` are available for sensitivity analysis. The former Boltzmann soft-min and `tau` parameter are removed.
+
+Isozyme OR branches remain additive:
+
+\[
+E_{r,u}=\sum_j Q_{r,j,u}.
+\]
+
+Reaction expression support is converted to the LP cost:
 
 \[
 p_{r,u}=\frac{1}{1+\log_2(1+E_{r,u})}.
 \]
 
-## 5. Medium-specific union GEM
+## 6. Medium-specific union GEM
 
 For each medium scenario `q`, Stage 5 builds a medium-constrained FASTCC-consistent parent GEM. Demand, sink, and artificial-support reactions are disabled for reconstruction.
 
@@ -122,7 +184,7 @@ layer2_args$model_params <- list(
 )
 ```
 
-## 6. Directional two-step LP
+## 7. Directional two-step LP
 
 For target reaction `r` and direction `d`, Step 1 computes:
 
@@ -161,7 +223,7 @@ Cross-reaction ranking uses:
 
 Lower normalized penalty means stronger support in the fixed union-GEM context.
 
-## 7. Structural comparison policy
+## 8. Structural comparison policy
 
 Within one medium scenario:
 
@@ -171,7 +233,7 @@ Within one medium scenario:
 
 Across different media, global FASTCORE may select different support sets. Results therefore represent different structural contexts and should not be pooled into one ranking.
 
-## 8. Targeted second-pass scoring
+## 9. Targeted second-pass scoring
 
 Selected core reaction IDs or genes are used only to define KEGG, Reactome, or master-Rhea mapping anchors. The mapped non-core reactions are scored only when present in every required final Stage 5 union GEM.
 

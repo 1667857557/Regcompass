@@ -47,15 +47,14 @@ rc_regcompass_step_results <- function(
     metacells$pooled$metacell_meta[[params$condition_col]]
   ))
   condition_fields <- intersect(c(
-    "metabolic_gene_nodes", "metabolic_gene_edges",
-    "core_gene_reaction", "biological_reaction_membership",
-    "reaction_membership", "meta_module_summary",
-    "analysis_group_unit", "grn_metacell_group_coverage",
-    "feasibility_completion"
+    "supported_metabolic_genes", "core_gene_reaction",
+    "biological_reaction_membership", "reaction_membership",
+    "meta_module_summary", "core_definition", "analysis_group_unit",
+    "grn_metacell_group_coverage", "feasibility_completion"
   ), names(meta_modules$condition_modules))
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
-    schema_version = "regcompass_grn_first_v4",
+    schema_version = "regcompass_significant_pando_targets_v1",
     version = "1.8.4",
     species = species,
     model_mode = layer2$model_mode,
@@ -82,11 +81,14 @@ rc_regcompass_step_results <- function(
       pando_grouping = c(params$condition_col, params$celltype_col),
       pando_peak_cor =
         grn$grn_result$normalization_policy$pando_peak_cor,
+      pando_regions = grn$grn_result$normalization_policy$pando_regions,
       metacell_grouping = params$condition_col,
       metacell_celltype_assignment =
         "supercell_label_guided_then_dominant_membership_audit",
       metacell_gamma = params$metacell_args$gamma,
       sample_weighting = "none",
+      meta_module_core_definition =
+        "condition_celltype_significant_pando_targets_complete_gpr",
       meta_module_expansion =
         "core_subsystem_plus_kegg_reactome_master_rhea_only",
       meta_module_merge = "reaction_id_deduplication_only_not_a_gem",

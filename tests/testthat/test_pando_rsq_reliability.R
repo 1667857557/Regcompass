@@ -1,11 +1,57 @@
-test_that("single-cell GRN keeps only finite Pando R-squared values", {
-  body_text <- paste(
+test_that("Pando extraction keeps only finite target-model R-squared values", {
+  extraction <- paste(
+    deparse(body(rc_extract_pando_tf_peak_gene)),
+    collapse = "\n"
+  )
+  runner <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)),
     collapse = "\n"
   )
-  expect_match(body_text, "is.finite(value) & value >= min_model_rsq", fixed = TRUE)
-  expect_match(body_text, "rep(FALSE, nrow(tab$significant))", fixed = TRUE)
+  expect_match(extraction, "is.finite(rsq) & rsq >= min_model_rsq", fixed = TRUE)
+  expect_match(extraction, "Pando target-model GOF", fixed = TRUE)
+  expect_match(runner, "pando_evidence_filters", fixed = TRUE)
+  expect_false(grepl("reliable_rsq", runner, fixed = TRUE))
   expect_false(exists(".rc_pando_rsq_is_reliable", inherits = TRUE))
+})
+
+test_that("Pando evidence-filter parameters are validated before inference", {
+  expect_silent(.rc_validate_pando_evidence_filters(
+    padj_threshold = 0.05,
+    min_abs_estimate = 0,
+    min_model_rsq = 0.1,
+    require_padj = TRUE
+  ))
+  expect_error(
+    .rc_validate_pando_evidence_filters(-0.1, 0, 0.1, TRUE),
+    "padj_threshold"
+  )
+  expect_error(
+    .rc_validate_pando_evidence_filters(1.1, 0, 0.1, TRUE),
+    "padj_threshold"
+  )
+  expect_error(
+    .rc_validate_pando_evidence_filters(0.05, -1, 0.1, TRUE),
+    "min_abs_estimate"
+  )
+  expect_error(
+    .rc_validate_pando_evidence_filters(0.05, 0, -0.1, TRUE),
+    "min_model_rsq"
+  )
+  expect_error(
+    .rc_validate_pando_evidence_filters(0.05, 0, 0.1, NA),
+    "require_padj"
+  )
+  expect_error(
+    .rc_run_condition_single_cell_grns(
+      object = NULL,
+      gem = list(model_info = list(species = "human")),
+      outdir = tempfile(),
+      genome = NULL,
+      min_cells = 0,
+      species = "human"
+    ),
+    "min_cells"
+  )
 })
 
 test_that("zero regulatory modifier falls back to RNA support", {

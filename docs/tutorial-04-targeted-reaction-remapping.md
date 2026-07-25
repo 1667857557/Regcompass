@@ -2,7 +2,7 @@
 
 Use this tutorial after a completed stepwise `meta_module_gem` analysis to score non-core reactions that are directly linked to selected complete-GPR core reactions.
 
-The second pass reuses the cached Stage 5 model. It validates the cache checksum and medium identity, and does not rebuild the model or rerun FASTCORE.
+The second pass reuses the cached Stage 5 model. It validates the cache checksum and medium identity, and does not rebuild the model or rerun FASTCORE. Because union-GEM construction is already complete, this scoring-only step has no time-limit parameter.
 
 ## Load the completed stages
 
@@ -27,8 +27,7 @@ targeted <- rc_regcompass_step_target_union(
   gene_match = "complete_gpr",
   layer2_args = list(
     target_direction = "both",
-    solver = "highs",
-    time_limit = 600
+    solver = "highs"
   ),
   parallel = TRUE,
   BPPARAM = layer2_bp
@@ -50,8 +49,7 @@ targeted_gene <- rc_regcompass_step_target_union(
   gene_match = "complete_gpr",
   layer2_args = list(
     target_direction = "both",
-    solver = "highs",
-    time_limit = 600
+    solver = "highs"
   )
 )
 ```
@@ -64,6 +62,8 @@ The second pass includes non-core reactions that share a direct KEGG reaction ID
 
 It does not perform subsystem, transitive, metabolite-neighbour, or one-hop expansion. A mapped reaction is scored only when it is present in the cached Stage 5 model.
 
+The original Stage 5 `layer2_args$model_params$completion_time_limit` applied only when FASTCORE constructed the cached union GEM. It is neither reused nor configurable in this second scoring pass.
+
 ## Inspect outputs and provenance
 
 ```r
@@ -75,7 +75,8 @@ targeted$microcompass$model_cache_summary
 targeted$microcompass$params[c(
   "structural_model_reused_exactly",
   "fastcore_rerun",
-  "model_rebuild"
+  "model_rebuild",
+  "scoring_time_limit"
 )]
 ```
 

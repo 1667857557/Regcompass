@@ -2,20 +2,34 @@
 
 RegCompassR 1.8.4 connects stages only when classes, workflow settings, GEM provenance, metacell construction provenance, and scoring-unit order agree.
 
-## Stage 1: GRN
+## Stage 1: Pando evidence
 
 Class: `regcompass_grn_step`
 
 Required outputs:
 
 ```r
+step1$grn_result$target_metabolic_genes
 step1$grn_result$tf_peak_gene_significant
 step1$grn_result$sample_status
+step1$grn_result$normalization_policy$pando_motifs
+step1$grn_result$normalization_policy$pando_regions
+step1$grn_result$normalization_policy$pando_evidence_filters
 step1$gem_fingerprint
 step1$params
 ```
 
-Every scored `condition × cell type` group must have a successful GRN with significant edges.
+Every `condition × cell type` group must have a successful Pando fit. A successful fit may legitimately have zero significant rows; only groups with supported target genes can contribute complete-GPR cores. `target_metabolic_genes` is the intersection of GEM GPR genes and RNA-assay row names.
+
+When `pfm` is omitted, `pando_motifs` records `Pando::motifs`, loaded with `data("motifs", package = "Pando")`. Without an explicit `pando_initiate_args$regions`, the region contract is species-specific:
+
+```text
+human = union(Pando::phastConsElements20Mammals.UCSC.hg38,
+              Pando::SCREEN.ccRE.UCSC.hg38)
+mouse = Pando::phastConsElements20Mammals.UCSC.hg38
+```
+
+`step1$params$species` records the resolved species, and `pando_regions` records the applied default or `user_supplied` policy.
 
 ## Stage 2: metacells
 
@@ -39,8 +53,10 @@ Class: `regcompass_meta_module_step`
 Required outputs:
 
 ```r
+step3$condition_modules$supported_metabolic_genes
 step3$condition_modules$core_gene_reaction
 step3$condition_modules$reaction_membership
+step3$condition_modules$meta_module_summary
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 step3$group_coverage
@@ -48,12 +64,30 @@ step3$group_coverage
 
 Contract:
 
+- `supported_metabolic_genes` contains one row per condition, cell type, and GEM target gene with at least one significant Pando TF–peak–gene row;
+- positive and negative Pando coefficients both count as regulatory evidence;
+- all supported genes in one `condition × cell type` form one GPR-evaluation set;
+- Stage 3 performs no shared-TF target projection, top-k graph pruning, or connected-component analysis;
+- `core_gene_reaction` marks a reaction as core only when one complete GPR branch is contained in the supported gene set;
+- expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence;
+- a reaction added at the master-Rhea step does not trigger another subsystem or KEGG/Reactome pass;
+- no fixed-point, recursive, one-hop, metabolite-neighbour, or stoichiometric-neighbour expansion is permitted;
 - `merged_core_reactions` contains deduplicated complete-GPR core reactions;
 - `merged_reaction_membership` contains deduplicated biological reactions only;
 - `merged_modules$is_gem` is `FALSE`;
 - `merged_modules$fastcore_applied` is `FALSE`;
 - Stage 3 does not apply medium constraints or run FASTCORE;
 - the merged object is a catalogue and must not be described as a union GEM.
+
+The only optional Stage 3 parameter is a custom subsystem table:
+
+```r
+meta_module_args = list(
+  subsystem_table = custom_subsystem_table
+)
+```
+
+Omitting `meta_module_args` uses the GEM's subsystem annotations. The retired `expansion_mode`, `max_iterations`, fixed-point, and one-hop APIs are rejected.
 
 ## Stage 4: Layer 1
 
@@ -64,11 +98,20 @@ Required outputs:
 ```r
 step4$reaction_expression
 step4$metacell_meta
+step4$capacity_params$and_method
 step4$workflow_params
 step4$gem_fingerprint
 ```
 
 The reaction-expression matrix must contain every merged core reaction and the same ordered metacells represented by Stage 2.
+
+`capacity_params$and_method` must be one of:
+
+```r
+c("min", "median", "mean")
+```
+
+The canonical default is `"min"`. The Boltzmann soft-min and `tau` parameter are not valid Stage 4 inputs.
 
 ## Stage 5: Layer 2
 
@@ -125,7 +168,8 @@ All conditions and metacells within the same medium must resolve to the same mod
 The final result contains:
 
 ```r
-result$condition_grn_meta_modules
+result$condition_grn_meta_modules$supported_metabolic_genes
+result$condition_grn_meta_modules$core_gene_reaction
 result$merged_grn_meta_modules
 result$microcompass
 result$reaction_ranking

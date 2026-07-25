@@ -1,11 +1,24 @@
-#' Run the canonical GRN-first RegCompass workflow
+#' Run the canonical significant-Pando-target RegCompass workflow
 #'
 #' Stage 3 constructs biological meta-modules and a deduplicated merged
-#' reaction catalogue. It does not run FASTCORE and does not create a GEM.
-#' With `model_mode = "meta_module_gem"`, Stage 5 constructs one union GEM per
-#' medium scenario and performs the only FASTCORE completion on that shared
-#' medium-specific structure.
+#' reaction catalogue. Within each condition by cell-type group, Human-GEM
+#' metabolic genes with significant Pando TF-peak-gene evidence define the
+#' supported gene set, and complete GPR branches define core reactions. Stage 3
+#' applies one fixed ordered annotation pass and does not run FASTCORE or create
+#' a GEM. With `model_mode = "meta_module_gem"`, Stage 5 constructs one union
+#' GEM per medium scenario and performs the only FASTCORE completion on that
+#' shared structure.
 #'
+#' @param pfm Optional motif position-frequency matrices. When omitted,
+#'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
+#'   to `Pando::find_motifs()`.
+#' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
+#'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
+#'   master-Rhea equivalence. Recursive and one-hop expansion APIs are removed.
+#' @param layer1_args Stage 4 integrated-evidence arguments:
+#'   `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.
+#'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
+#'   `"mean"`; RegCompass defaults to `"min"`.
 #' @param upstream_workers Worker count for GRN inference and Layer 1
 #'   reaction-expression calculation. Defaults to 6. Set to 1 for serial
 #'   upstream execution.
@@ -13,22 +26,24 @@
 #'   Set to 1 for serial Layer 2 execution.
 #' @export
 rc_run_regcompass <- function(
-    object, gem, outdir, pfm, genome,
-    fragment_files = FALSE,
-    sample_col = NULL,
+    object, gem, outdir, genome,
+    pfm = NULL,
+    species = c("auto", "human", "mouse"),
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
     atac_assay = "ATAC",
-    model_mode = c("meta_module_gem", "full_gem"),
-    medium_scenarios = NULL,
-    metacell_args = list(),
-    layer1_args = list(),
     pando_args = list(),
+    sample_col = NULL,
+    fragment_files = FALSE,
+    metacell_args = list(),
+    meta_module_args = list(),
+    layer1_args = list(),
+    medium_scenarios = NULL,
+    model_mode = c("meta_module_gem", "full_gem"),
     layer2_args = list(),
     upstream_workers = 6L,
     layer2_workers = 30L,
-    species = c("auto", "human", "mouse"),
     progress = getOption("RegCompassR.progress", TRUE)) {
   model_mode <- match.arg(model_mode)
   progress <- .rc_progress_enabled(progress)
@@ -54,9 +69,10 @@ rc_run_regcompass <- function(
   }, add = TRUE)
 
   bundles <- list(
-    metacell_args = metacell_args,
-    layer1_args = layer1_args,
     pando_args = pando_args,
+    metacell_args = metacell_args,
+    meta_module_args = meta_module_args,
+    layer1_args = layer1_args,
     layer2_args = layer2_args
   )
   invalid_bundles <- names(bundles)[
@@ -69,20 +85,35 @@ rc_run_regcompass <- function(
       call. = FALSE
     )
   }
-  obsolete <- intersect(
-    names(layer1_args), c("local_fastcore", "local_fastcore_args")
+  unknown_meta_module <- setdiff(
+    names(meta_module_args),
+    "subsystem_table"
   )
-  if (length(obsolete)) {
+  if (length(unknown_meta_module)) {
     stop(
-      "Local FASTCORE was removed. Delete `",
-      paste(obsolete, collapse = "` and `"),
-      "` from `layer1_args`. Configure the single medium-specific global ",
-      "FASTCORE through `layer2_args$model_params` ",
-      "(`completion_time_limit`, `fastcore_epsilon`, ",
-      "`max_support_reactions`, and `strict`).",
+      "Unknown `meta_module_args` fields: ",
+      paste(unknown_meta_module, collapse = ", "),
+      ". Meta-module expansion is always one ordered pass; the retired ",
+      "`expansion_mode`, `max_iterations`, and one-hop APIs have been removed.",
       call. = FALSE
     )
   }
+  unknown_layer1 <- setdiff(
+    names(layer1_args),
+    c("regulatory_alpha", "gpr_and_method", "gene_half_saturation")
+  )
+  if (length(unknown_layer1)) {
+    stop(
+      "Unknown `layer1_args` fields: ",
+      paste(unknown_layer1, collapse = ", "),
+      ". The retired `tau`/Boltzmann GPR-AND API has been removed.",
+      call. = FALSE
+    )
+  }
+  gpr_and_method <- match.arg(
+    as.character(layer1_args$gpr_and_method %||% "min"),
+    c("min", "median", "mean")
+  )
 
   pando_infer_args <- pando_args$pando_infer_args %||% list()
   if (!is.list(pando_infer_args)) {
@@ -149,7 +180,8 @@ rc_run_regcompass <- function(
           pando_args = pando_args,
           parallel = !identical(config$actual_backend, "serial"),
           BPPARAM = upstream,
-          progress = progress
+          progress = progress,
+          species = species
         )
       }
     )
@@ -180,7 +212,7 @@ rc_run_regcompass <- function(
       metacells = step2,
       gem = gem,
       outdir = file.path(outdir, "03_meta_modules"),
-      layer1_args = layer1_args,
+      meta_module_args = meta_module_args,
       progress = progress
     )
   )
@@ -198,7 +230,7 @@ rc_run_regcompass <- function(
           gem = gem,
           outdir = file.path(outdir, "04_layer1"),
           regulatory_alpha = layer1_args$regulatory_alpha %||% 1,
-          tau = layer1_args$tau %||% 0.20,
+          gpr_and_method = gpr_and_method,
           gene_half_saturation = layer1_args$gene_half_saturation %||%
             getOption("RegCompassR.cpm_half_saturation", 1),
           parallel = !identical(config$actual_backend, "serial"),

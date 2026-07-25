@@ -6,13 +6,15 @@
 #'
 #' @param object A Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
-#' @param pfm Motif position-frequency matrices.
 #' @param genome Genome object matching the selected species and ATAC coordinates.
-#' @param fragment_files Must be `FALSE` for the canonical peak-count path.
 #' @param species `"human"` or `"mouse"`.
 #' @param gem Optional prebuilt species GEM.
 #' @param gem_version Pinned model release.
 #' @param gem_source GEM source: automatic, bundled-only, or download.
+#' @param pfm Optional motif position-frequency matrices. When omitted,
+#'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
+#'   to `Pando::find_motifs()`.
+#' @param fragment_files Must be `FALSE` for the canonical peak-count path.
 #' @param medium_scenario Medium preset identifier.
 #' @param medium_scenarios Optional prebuilt medium table.
 #' @param progress Show stage and total progress.
@@ -20,14 +22,15 @@
 #' @return A canonical RegCompass result list.
 #' @export
 rc_run_regcompass_one_shot <- function(
-    object, outdir, pfm, genome,
-    fragment_files = FALSE,
-    gem = NULL,
-    medium_scenario = "physiologic",
-    medium_scenarios = NULL,
+    object, outdir, genome,
     species = c("human", "mouse"),
+    gem = NULL,
     gem_version = NULL,
     gem_source = c("auto", "bundled", "download"),
+    pfm = NULL,
+    fragment_files = FALSE,
+    medium_scenario = "physiologic",
+    medium_scenarios = NULL,
     progress = getOption("RegCompassR.progress", TRUE),
     ...) {
   species <- match.arg(species)
@@ -42,7 +45,7 @@ rc_run_regcompass_one_shot <- function(
       source = gem_source
     )
   } else {
-    .rc_infer_gem_species(gem, species)
+    species <- .rc_infer_gem_species(gem, species)
   }
   if (is.null(medium_scenarios)) {
     medium_scenarios <- rc_make_medium_scenarios(
@@ -50,10 +53,13 @@ rc_run_regcompass_one_shot <- function(
     )
   }
   rc_run_regcompass(
-    object = object, gem = gem, outdir = outdir,
-    pfm = pfm, genome = genome,
-    fragment_files = fragment_files,
+    object = object,
+    gem = gem,
+    outdir = outdir,
+    genome = genome,
+    pfm = pfm,
     species = species,
+    fragment_files = fragment_files,
     medium_scenarios = medium_scenarios,
     progress = progress,
     ...

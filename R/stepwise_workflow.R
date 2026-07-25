@@ -85,7 +85,9 @@
     by = c(group_cols, "group_id"), all = TRUE, sort = TRUE
   )
   coverage$grn_available <- !is.na(coverage$grn_status) &
-    coverage$grn_status == "ok" & coverage$n_significant_edges > 0
+    coverage$grn_status == "ok"
+  coverage$has_significant_pando_evidence <-
+    !is.na(coverage$n_significant_edges) & coverage$n_significant_edges > 0
   coverage$metacells_available <- !is.na(coverage$n_metacells) &
     coverage$n_metacells > 0
   coverage$coverage_complete <- coverage$grn_available &
@@ -96,8 +98,9 @@
       "GRN and metacell condition-by-cell-type groups do not align: ",
       paste(invalid$group_id, collapse = "; "),
       paste(
-        ". Every scored metacell group requires a successful GRN with",
-        "significant edges, and every GRN group requires at least one metacell."
+        ". Every scored metacell group requires a successful Pando fit,",
+        "and every Pando group requires at least one metacell. A successful",
+        "fit may legitimately contain zero significant target genes."
       ),
       call. = FALSE
     )
@@ -109,7 +112,9 @@
 #' Infer condition-by-cell-type Pando GRNs from single cells
 #' @export
 rc_regcompass_step_grn <- function(
-    object, gem, outdir, pfm, genome,
+    object, gem, outdir, genome,
+    pfm = NULL,
+    species = c("auto", "human", "mouse"),
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
@@ -126,6 +131,7 @@ rc_regcompass_step_grn <- function(
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
   }
+  species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   object <- .rc_normalize_single_cell_grn_object(
@@ -136,8 +142,8 @@ rc_regcompass_step_grn <- function(
     atac_assay = atac_assay
   )
   reserved <- intersect(names(pando_args), c(
-    "object", "gem", "outdir", "pfm", "genome", "condition_col",
-    "celltype_col", "rna_assay", "atac_assay", "BPPARAM"
+    "object", "gem", "outdir", "genome", "pfm", "species",
+    "condition_col", "celltype_col", "rna_assay", "atac_assay", "BPPARAM"
   ))
   if (length(reserved)) {
     stop(
@@ -150,8 +156,9 @@ rc_regcompass_step_grn <- function(
     object = object,
     gem = gem,
     outdir = outdir,
-    pfm = pfm,
     genome = genome,
+    pfm = pfm,
+    species = species,
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
@@ -172,7 +179,8 @@ rc_regcompass_step_grn <- function(
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       pando_args = pando_args,
-      parallel = parallel
+      parallel = parallel,
+      species = species
     )
   )
   class(answer) <- c("regcompass_grn_step", "list")

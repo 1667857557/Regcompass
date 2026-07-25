@@ -4,7 +4,7 @@ test_that("GRN and metacell groups require bidirectional coverage", {
     cell_type = c("T", "T"),
     status = c("ok", "ok"),
     n_cells = c(100L, 120L),
-    n_significant_edges = c(10L, 12L),
+    n_significant_edges = c(10L, 0L),
     stringsAsFactors = FALSE
   ))
   metacells <- data.frame(
@@ -19,6 +19,8 @@ test_that("GRN and metacell groups require bidirectional coverage", {
     grn, metacells, "condition", "cell_type"
   )
   expect_true(all(coverage$coverage_complete))
+  expect_true(coverage$has_significant_pando_evidence[coverage$condition == "A"])
+  expect_false(coverage$has_significant_pando_evidence[coverage$condition == "B"])
   expect_equal(coverage$n_metacells[coverage$condition == "A"], 2L)
   expect_equal(
     coverage$n_mixed_celltype_metacells[coverage$condition == "A"], 1L
@@ -74,6 +76,23 @@ test_that("metacell stage persists required artifacts", {
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
 })
 
+test_that("Stage 3 persists supported genes and core reactions", {
+  text <- paste(
+    deparse(body(.rc_build_condition_meta_modules)), collapse = "\n"
+  )
+  required <- c(
+    "supported_metabolic_genes.tsv.gz",
+    "core_gene_reaction.tsv.gz",
+    "meta_module_reactions.tsv.gz",
+    "condition_meta_modules.rds"
+  )
+  expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
+  expect_match(text, ".rc_summarize_supported_metabolic_genes", fixed = TRUE)
+  expect_false(grepl("rc_project_metabolic_grn", text, fixed = TRUE))
+  expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
+  expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
+})
+
 test_that("Layer 1 uses the canonical schema and stage class", {
   body_text <- paste(
     deparse(body(.rc_build_condition_pooled_layer1)), collapse = "\n"
@@ -81,7 +100,7 @@ test_that("Layer 1 uses the canonical schema and stage class", {
   step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
   expect_match(
     body_text,
-    "regcompass_condition_only_layer1_v2",
+    "regcompass_condition_only_layer1_v3",
     fixed = TRUE
   )
   expect_match(
@@ -89,9 +108,14 @@ test_that("Layer 1 uses the canonical schema and stage class", {
     "condition_only_metacell_with_posthoc_celltype",
     fixed = TRUE
   )
+  expect_match(body_text, "and_method = gpr_and_method", fixed = TRUE)
   expect_match(step_text, "regcompass_layer1_step", fixed = TRUE)
   expect_match(step_text, "gem_fingerprint", fixed = TRUE)
   expect_match(step_text, "workflow_params", fixed = TRUE)
+  expect_identical(
+    eval(formals(rc_regcompass_step_layer1)$gpr_and_method),
+    c("min", "median", "mean")
+  )
 })
 
 test_that("Layer 2 and final results validate upstream provenance", {
@@ -101,10 +125,15 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(layer2_text, "regcompass_layer2_step", fixed = TRUE)
   expect_match(layer2_text, "source_core_reactions", fixed = TRUE)
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
-  expect_match(result_text, "regcompass_grn_first_v2", fixed = TRUE)
-  expect_match(result_text, 'version = "1.8.3"', fixed = TRUE)
+  expect_match(
+    result_text,
+    "regcompass_significant_pando_targets_v1",
+    fixed = TRUE
+  )
+  expect_match(result_text, 'version = "1.8.4"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
-  expect_match(result_text, "global_grn_meta_modules", fixed = TRUE)
+  expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
+  expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)
   expect_match(result_text, "reaction_catalog", fixed = TRUE)
   expect_match(result_text, "reaction_evidence", fixed = TRUE)
 })

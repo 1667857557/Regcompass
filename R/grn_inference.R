@@ -25,7 +25,7 @@
 }
 
 .rc_run_condition_single_cell_grns <- function(
-    object, gem, outdir, pfm, genome,
+    object, gem, outdir, pfm = NULL, genome,
     condition_col = "condition", celltype_col = "cell_type",
     rna_assay = "RNA", atac_assay = "ATAC",
     min_cells = 20L,
@@ -41,8 +41,32 @@
     require_padj = TRUE,
     save_pando_objects = TRUE,
     BPPARAM = NULL,
-    on_group_error = c("record", "stop")) {
+    on_group_error = c("record", "stop"),
+    species = c("auto", "human", "mouse")) {
   on_group_error <- match.arg(on_group_error)
+  species <- .rc_infer_gem_species(gem, species)
+  if (!is.numeric(min_cells) || length(min_cells) != 1L ||
+      !is.finite(min_cells) || min_cells < 1 ||
+      abs(min_cells - round(min_cells)) > sqrt(.Machine$double.eps)) {
+    stop("`min_cells` must be one positive integer.", call. = FALSE)
+  }
+  min_cells <- as.integer(min_cells)
+  .rc_validate_pando_evidence_filters(
+    padj_threshold = padj_threshold,
+    min_abs_estimate = min_abs_estimate,
+    min_model_rsq = min_model_rsq,
+    require_padj = require_padj
+  )
+  if (!is.logical(save_pando_objects) || length(save_pando_objects) != 1L ||
+      is.na(save_pando_objects)) {
+    stop("`save_pando_objects` must be TRUE or FALSE.", call. = FALSE)
+  }
+  if (!is.list(pando_initiate_args)) {
+    stop("`pando_initiate_args` must be a list.", call. = FALSE)
+  }
+  if (!is.list(pando_motif_args)) {
+    stop("`pando_motif_args` must be a list.", call. = FALSE)
+  }
   if (!is.list(pando_infer_args)) {
     stop("`pando_infer_args` must be a list.", call. = FALSE)
   }
@@ -66,6 +90,14 @@
     )
   }
   pando_install <- .rc_validate_pando_repository()
+  motif_policy <- "user_supplied"
+  if (is.null(pfm)) {
+    pfm <- .rc_default_pando_motifs()
+    motif_policy <- "Pando::motifs"
+  }
+  if (!length(pfm)) {
+    stop("`pfm` must be a non-empty motif collection.", call. = FALSE)
+  }
   group_cols <- c(condition_col, celltype_col)
   missing <- setdiff(group_cols, colnames(object@meta.data))
   if (length(missing)) {
@@ -89,6 +121,21 @@
     recursive = TRUE,
     showWarnings = FALSE
   )
+
+  region_policy <- "user_supplied"
+  if (!"regions" %in% names(pando_initiate_args) ||
+      is.null(pando_initiate_args$regions)) {
+    pando_initiate_args$regions <- .rc_default_pando_regions(species)
+    region_policy <- if (identical(species, "human")) {
+      paste(
+        "union(Pando::phastConsElements20Mammals.UCSC.hg38,",
+        "Pando::SCREEN.ccRE.UCSC.hg38)"
+      )
+    } else {
+      "Pando::phastConsElements20Mammals.UCSC.hg38"
+    }
+  }
+
   metabolic_genes <- gem$metabolic_genes %||%
     rc_metabolic_gpr_genes(gem$gpr_table)
   rna_genes <- rownames(.rc_get_assay_counts(object, rna_assay))
@@ -128,7 +175,7 @@
       stringsAsFactors = FALSE
     )
     names(status)[2:3] <- group_cols
-    if (length(cells) < as.integer(min_cells)) {
+    if (length(cells) < min_cells) {
       status$status <- "skipped_too_few_cells"
       return(list(
         status = status,
@@ -163,17 +210,6 @@
         min_model_rsq = min_model_rsq,
         require_padj = require_padj
       )
-      if (nrow(tab$significant)) {
-        reliable_rsq <- if ("rsq" %in% colnames(tab$significant)) {
-          value <- suppressWarnings(as.numeric(tab$significant$rsq))
-          is.finite(value) & value >= min_model_rsq
-        } else {
-          rep(FALSE, nrow(tab$significant))
-        }
-        tab$significant <- tab$significant[
-          reliable_rsq, , drop = FALSE
-        ]
-      }
       add_meta <- function(x) {
         if (!nrow(x)) return(x)
         x$group_id <- group_id
@@ -199,7 +235,7 @@
         )
       }
       tab
-    }, error = function(e) e)
+    }, error = function(error) error)
     if (inherits(one, "error")) {
       status$status <- "failed"
       status$error_class <- class(one)[[1L]]
@@ -251,7 +287,7 @@
     stop("No significant Pando TF-peak-gene edges were available.", call. = FALSE)
   }
   answer <- list(
-    schema_version = "regcompass_single_cell_grn_v1",
+    schema_version = "regcompass_single_cell_grn_v3",
     pando_installed_version = pando_install$version,
     pando_installation = pando_install,
     target_metabolic_genes = target_genes,
@@ -268,7 +304,16 @@
         "globally absent peaks are removed; cell-type-local absent peaks",
         "remain exact zeros and are not passed to RunTFIDF"
       ),
+      pando_motifs = motif_policy,
+      pando_regions = region_policy,
       pando_peak_cor = pando_infer_args$peak_cor %||% 0.01,
+      pando_evidence_filters = list(
+        min_cells = min_cells,
+        padj_threshold = padj_threshold,
+        min_abs_estimate = min_abs_estimate,
+        min_model_rsq = min_model_rsq,
+        require_padj = require_padj
+      ),
       pando_rsq = paste0("finite rsq >= ", min_model_rsq)
     ),
     group_cols = group_cols
