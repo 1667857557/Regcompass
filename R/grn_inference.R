@@ -41,8 +41,10 @@
     require_padj = TRUE,
     save_pando_objects = TRUE,
     BPPARAM = NULL,
-    on_group_error = c("record", "stop")) {
+    on_group_error = c("record", "stop"),
+    species = c("auto", "human", "mouse")) {
   on_group_error <- match.arg(on_group_error)
+  species <- .rc_infer_gem_species(gem, species)
   if (!is.numeric(min_cells) || length(min_cells) != 1L ||
       !is.finite(min_cells) || min_cells < 1 ||
       abs(min_cells - round(min_cells)) > sqrt(.Machine$double.eps)) {
@@ -123,21 +125,15 @@
   region_policy <- "user_supplied"
   if (!"regions" %in% names(pando_initiate_args) ||
       is.null(pando_initiate_args$regions)) {
-    species <- as.character(gem$model_info$species %||% "human")
-    if (!identical(species, "human")) {
-      stop(
-        paste(
-          "The canonical bundled Pando regions are hg38-specific.",
-          "Non-human analyses must supply `pando_initiate_args$regions`."
-        ),
-        call. = FALSE
+    pando_initiate_args$regions <- .rc_default_pando_regions(species)
+    region_policy <- if (identical(species, "human")) {
+      paste(
+        "union(Pando::phastConsElements20Mammals.UCSC.hg38,",
+        "Pando::SCREEN.ccRE.UCSC.hg38)"
       )
+    } else {
+      "Pando::phastConsElements20Mammals.UCSC.hg38"
     }
-    pando_initiate_args$regions <- .rc_default_pando_regions()
-    region_policy <- paste(
-      "union(Pando::phastConsElements20Mammals.UCSC.hg38,",
-      "Pando::SCREEN.ccRE.UCSC.hg38)"
-    )
   }
 
   metabolic_genes <- gem$metabolic_genes %||%
