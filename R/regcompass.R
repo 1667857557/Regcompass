@@ -8,6 +8,9 @@
 #' `model_mode = "meta_module_gem"`, Stage 5 constructs one union GEM per medium
 #' scenario and performs the only FASTCORE completion on that shared structure.
 #'
+#' @param pfm Optional motif position-frequency matrices. When omitted,
+#'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
+#'   to `Pando::find_motifs()`.
 #' @param meta_module_args Stage 3 annotation-expansion arguments:
 #'   `subsystem_table`, `expansion_mode`, and `max_iterations`.
 #' @param layer1_args Stage 4 integrated-evidence arguments:
@@ -21,7 +24,7 @@
 #'   Set to 1 for serial Layer 2 execution.
 #' @export
 rc_run_regcompass <- function(
-    object, gem, outdir, pfm, genome,
+    object, gem, outdir, pfm = NULL, genome,
     fragment_files = FALSE,
     sample_col = NULL,
     condition_col = "condition",
