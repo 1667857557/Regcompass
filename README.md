@@ -18,6 +18,8 @@ condition × cell type cells
 
 Pando is fitted separately for each `condition × cell type`. The candidate target genes are all Human-GEM GPR genes present in the RNA assay. A gene enters the Stage 3 supported set when at least one TF–peak–gene coefficient passes the configured adjusted-P-value, effect-size, and target-model-R² filters. Positive and negative coefficients both count as regulatory evidence. A reaction is a core only when one complete GPR branch is contained in that supported gene set.
 
+For Layer 1 reaction support, genes joined by a GPR AND relationship are aggregated with one of the three COMPASS functions: `min`, `median`, or `mean`. RegCompass defaults to `min`, representing the limiting required subunit. Isozyme OR branches remain additive in the canonical workflow.
+
 ## Installation
 
 ```r
@@ -87,7 +89,7 @@ result <- rc_run_regcompass_one_shot(
   ),
   layer1_args = list(
     regulatory_alpha = 1,
-    tau = 0.20
+    gpr_and_method = "min"
   ),
   layer2_args = list(
     target_direction = "both",
@@ -103,6 +105,8 @@ result <- rc_run_regcompass_one_shot(
   layer2_workers = 30
 )
 ```
+
+`gpr_and_method` accepts only `"min"`, `"median"`, or `"mean"`; omitting it uses `"min"`. The retired Boltzmann soft-min and `tau` API are not supported.
 
 `completion_time_limit` applies only while FASTCORE constructs the medium-specific union GEM. Directional scoring LPs run without a time-limit parameter.
 
@@ -132,7 +136,7 @@ See [Predefined extracellular medium scenarios](docs/medium-presets.md) for spec
 - `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for Human-GEM target genes.
 - `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells.
 - `rc_regcompass_step_meta_modules()`: summarize significant metabolic targets, map complete-GPR cores, and perform annotation expansion.
-- `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support.
+- `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
 - `rc_regcompass_step_layer2()`: build the medium-constrained model and run directional LP scoring.
 - `rc_regcompass_step_results()`: assemble rankings, annotations, provenance, and contrasts.
 - `rc_regcompass_step_target_union()`: remap selected core genes or reactions and score directly linked targets in the cached Stage 5 model.
