@@ -101,17 +101,6 @@ stopifnot(
 table(catalogue$merged_reaction_membership$inclusion_stage)
 ```
 
-The following old fields no longer exist:
-
-```text
-global_modules
-global_core_reactions
-global_reaction_membership
-local_completed_reaction_membership
-local_fastcore_summary
-local_fastcore_diagnostics
-```
-
 ## Stage 4: build integrated reaction support
 
 ```r
@@ -170,7 +159,9 @@ step5$model_cache_summary[, c(
   "n_merged_biological_reactions",
   "n_global_fastcore_support_reactions",
   "n_reactions",
-  "build_strategy"
+  "build_strategy",
+  "completion_stage",
+  "file_checksum"
 )]
 
 union_gem <- readRDS(step5$model_cache_summary$file[[1]])
