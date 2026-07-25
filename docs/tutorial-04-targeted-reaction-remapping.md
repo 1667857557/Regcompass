@@ -88,25 +88,44 @@ The target reaction must already be present in every reused medium-specific unio
 targeted$selected_core_reactions
 targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
+targeted$merged_catalogue_membership
 targeted$microcompass$model_cache_summary
 ```
 
 ## Inspect provenance
 
+Relation-level provenance:
+
 ```r
 targeted$expanded_reaction_catalog[, c(
+  "anchor_core_reaction_id",
+  "reaction_id",
+  "expansion_type",
+  "source_annotation",
+  "present_in_merged_catalogue",
+  "merged_catalogue_inclusion_stage",
+  "available_in_all_cached_union_models"
+)]
+```
+
+Reaction-level aggregated targets:
+
+```r
+targeted$expanded_scoring_targets[, c(
   "reaction_id",
   "anchor_core_reaction_ids",
   "expansion_types",
   "source_annotations",
-  "previous_union_inclusion_stage"
+  "merged_catalogue_inclusion_stage"
 )]
 ```
 
-`previous_union_inclusion_stage` describes the reaction's status in the Stage 5 union GEM context. The Stage 3 catalogue remains available separately as:
+`merged_catalogue_inclusion_stage` describes whether the reaction was already a biological member of the merged Stage 3 catalogue. Reactions absent from that catalogue can still be available when global FASTCORE added them to every reused medium-specific union GEM.
 
-```r
-step3$merged_modules$merged_reaction_membership
+The persistent catalogue file is:
+
+```text
+merged_meta_module_catalogue_membership.tsv.gz
 ```
 
-Do not use the removed fields `global_modules`, `global_core_reactions`, or `global_reaction_membership`.
+Do not use the removed fields `global_modules`, `global_core_reactions`, `global_reaction_membership`, or the former target-union field `previous_union_membership`.
