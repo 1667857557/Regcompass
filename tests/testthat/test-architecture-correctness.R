@@ -62,7 +62,7 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   )
 })
 
-test_that("Stage 1 installs canonical Pando motifs and regions by default", {
+test_that("Stage 1 installs species-specific Pando motifs and regions", {
   text <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)),
     collapse = "\n"
@@ -74,10 +74,12 @@ test_that("Stage 1 installs canonical Pando motifs and regions by default", {
     deparse(body(.rc_default_pando_regions)), collapse = "\n"
   )
   expect_match(text, ".rc_default_pando_motifs", fixed = TRUE)
-  expect_match(text, ".rc_default_pando_regions", fixed = TRUE)
+  expect_match(text, ".rc_default_pando_regions(species)", fixed = TRUE)
   expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
   expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
   expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(region_helper, 'identical(species, "mouse")', fixed = TRUE)
+  expect_match(region_helper, "return(phast_cons)", fixed = TRUE)
   expect_match(region_helper, "BiocGenerics::union", fixed = TRUE)
 })
 
