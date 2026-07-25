@@ -28,7 +28,7 @@ These Stage 3 tables are not GEMs.
 
 ## Mapping rule
 
-Selected previous core reactions are used as anchors. Direct non-core targets are reactions sharing at least one:
+Selected merged core reactions are used as anchors. Direct non-core targets are reactions sharing at least one:
 
 - KEGG reaction identifier;
 - Reactome reaction identifier;
@@ -67,14 +67,22 @@ targeted <- rc_regcompass_step_target_union(
 targeted$selected_core_reactions
 targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
-targeted$previous_union_membership
+targeted$merged_catalogue_membership
 targeted$microcompass
 ```
 
-The output file containing reused model membership is:
+The output catalogue file is:
 
 ```text
-reused_union_gem_membership.tsv.gz
+merged_meta_module_catalogue_membership.tsv.gz
 ```
 
-Removed Stage 3 names such as `global_modules`, `global_core_reactions`, and `global_reaction_membership` must not be used.
+The expanded tables use:
+
+```text
+present_in_merged_catalogue
+merged_catalogue_is_core
+merged_catalogue_inclusion_stage
+```
+
+Removed Stage 3 names such as `global_modules`, `global_core_reactions`, `global_reaction_membership`, and the former public `previous_union_membership` target-union field must not be used.
