@@ -44,15 +44,21 @@
   layers[layers == layer | startsWith(layers, paste0(layer, "."))]
 }
 
-.rc_join_assay_layer <- function(object, assay, layer) {
+.rc_join_assay_layer <- function(object, assay, layer, required = TRUE) {
   assay <- .rc_require_seurat_assay(object, assay)
   assay_object <- object[[assay]]
   if (!inherits(assay_object, "Assay5")) {
+    if (isTRUE(required) && !layer %in% .rc_assay_layer_names(assay_object)) {
+      stop("Assay `", assay, "` has no `", layer, "` matrix.", call. = FALSE)
+    }
     return(list(object = object, joined_layers = character()))
   }
 
   matches <- .rc_matching_assay_layers(assay_object, layer)
   if (!length(matches)) {
+    if (!isTRUE(required)) {
+      return(list(object = object, joined_layers = character()))
+    }
     stop(
       "Assay `", assay, "` has no `", layer, "` layer.",
       call. = FALSE
@@ -205,7 +211,7 @@
 }
 
 .rc_prepare_seurat_assays <- function(
-    object, assays, required_layers = "counts") {
+    object, assays, required_layers = "counts", optional_layers = character()) {
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
@@ -216,15 +222,21 @@
          call. = FALSE)
   }
   joined <- list()
-  for (assay in assays) {
-    for (layer in required_layers) {
-      result <- .rc_join_assay_layer(object, assay, layer)
-      object <- result$object
-      if (length(result$joined_layers)) {
-        joined[[paste(assay, layer, sep = ":")]] <- result$joined_layers
-      }
+  process_layer <- function(assay, layer, required) {
+    result <- .rc_join_assay_layer(
+      object, assay, layer, required = required
+    )
+    object <<- result$object
+    if (length(result$joined_layers)) {
+      joined[[paste(assay, layer, sep = ":")]] <<- result$joined_layers
+    }
+    if (isTRUE(required)) {
       invisible(.rc_get_assay_matrix(object, assay, layer))
     }
+  }
+  for (assay in assays) {
+    for (layer in required_layers) process_layer(assay, layer, TRUE)
+    for (layer in optional_layers) process_layer(assay, layer, FALSE)
   }
   object@misc$regcompass_seurat_compatibility <-
     .rc_seurat_compatibility_summary(object, assays, joined)
