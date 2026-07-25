@@ -47,6 +47,22 @@ rc_regcompass_step_layer2 <- function(
   if (!is.list(layer2_args$model_params)) {
     stop("`layer2_args$model_params` must be a list.", call. = FALSE)
   }
+  allowed_model_params <- c(
+    "completion_time_limit", "fastcore_epsilon",
+    "max_support_reactions", "strict"
+  )
+  unknown_model_params <- setdiff(
+    names(layer2_args$model_params), allowed_model_params
+  )
+  if (length(unknown_model_params)) {
+    stop(
+      "Unsupported `layer2_args$model_params`: ",
+      paste(unknown_model_params, collapse = ", "),
+      ". Only union-GEM construction controls are accepted; ",
+      "`time_limit` is not a scoring or model parameter.",
+      call. = FALSE
+    )
+  }
   layer2_args$model_params$cache_dir <- file.path(
     outdir, "model_cache", model_mode
   )
