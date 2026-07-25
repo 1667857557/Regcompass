@@ -101,7 +101,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-Do not supply `local_fastcore` or `local_fastcore_args`. Those interfaces were removed. FASTCORE is configured only through `layer2_args$model_params` and is applied once to each medium-specific union GEM.
+FASTCORE is configured through `layer2_args$model_params` and is applied once to each medium-specific union GEM.
 
 ## Inspect the main outputs
 
@@ -122,8 +122,8 @@ union_gem <- readRDS(union_summary$file[[1]])
 union_gem$is_union_gem
 union_gem$union_gem_medium_scenario
 union_gem$build_params[c(
-  "n_biological_reactions",
-  "n_fastcore_support_reactions",
+  "n_merged_biological_reactions",
+  "n_global_fastcore_support_reactions",
   "completion_stage"
 )]
 ```
