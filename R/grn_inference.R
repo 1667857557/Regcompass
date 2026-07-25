@@ -43,6 +43,22 @@
     BPPARAM = NULL,
     on_group_error = c("record", "stop")) {
   on_group_error <- match.arg(on_group_error)
+  if (!is.numeric(min_cells) || length(min_cells) != 1L ||
+      !is.finite(min_cells) || min_cells < 1 ||
+      abs(min_cells - round(min_cells)) > sqrt(.Machine$double.eps)) {
+    stop("`min_cells` must be one positive integer.", call. = FALSE)
+  }
+  min_cells <- as.integer(min_cells)
+  .rc_validate_pando_evidence_filters(
+    padj_threshold = padj_threshold,
+    min_abs_estimate = min_abs_estimate,
+    min_model_rsq = min_model_rsq,
+    require_padj = require_padj
+  )
+  if (!is.logical(save_pando_objects) || length(save_pando_objects) != 1L ||
+      is.na(save_pando_objects)) {
+    stop("`save_pando_objects` must be TRUE or FALSE.", call. = FALSE)
+  }
   if (!is.list(pando_initiate_args)) {
     stop("`pando_initiate_args` must be a list.", call. = FALSE)
   }
@@ -163,7 +179,7 @@
       stringsAsFactors = FALSE
     )
     names(status)[2:3] <- group_cols
-    if (length(cells) < as.integer(min_cells)) {
+    if (length(cells) < min_cells) {
       status$status <- "skipped_too_few_cells"
       return(list(
         status = status,
@@ -295,6 +311,13 @@
       pando_motifs = motif_policy,
       pando_regions = region_policy,
       pando_peak_cor = pando_infer_args$peak_cor %||% 0.01,
+      pando_evidence_filters = list(
+        min_cells = min_cells,
+        padj_threshold = padj_threshold,
+        min_abs_estimate = min_abs_estimate,
+        min_model_rsq = min_model_rsq,
+        require_padj = require_padj
+      ),
       pando_rsq = paste0("finite rsq >= ", min_model_rsq)
     ),
     group_cols = group_cols
