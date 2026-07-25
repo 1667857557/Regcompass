@@ -89,6 +89,8 @@ test_that("Stage 3 persists supported genes and core reactions", {
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
   expect_match(text, ".rc_summarize_supported_metabolic_genes", fixed = TRUE)
   expect_false(grepl("rc_project_metabolic_grn", text, fixed = TRUE))
+  expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
+  expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
 })
 
 test_that("Layer 1 uses the canonical schema and stage class", {
@@ -98,7 +100,7 @@ test_that("Layer 1 uses the canonical schema and stage class", {
   step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
   expect_match(
     body_text,
-    "regcompass_condition_only_layer1_v2",
+    "regcompass_condition_only_layer1_v3",
     fixed = TRUE
   )
   expect_match(
@@ -106,9 +108,14 @@ test_that("Layer 1 uses the canonical schema and stage class", {
     "condition_only_metacell_with_posthoc_celltype",
     fixed = TRUE
   )
+  expect_match(body_text, "and_method = gpr_and_method", fixed = TRUE)
   expect_match(step_text, "regcompass_layer1_step", fixed = TRUE)
   expect_match(step_text, "gem_fingerprint", fixed = TRUE)
   expect_match(step_text, "workflow_params", fixed = TRUE)
+  expect_identical(
+    eval(formals(rc_regcompass_step_layer1)$gpr_and_method),
+    c("min", "median", "mean")
+  )
 })
 
 test_that("Layer 2 and final results validate upstream provenance", {
