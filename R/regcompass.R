@@ -26,24 +26,25 @@
 #'   Set to 1 for serial Layer 2 execution.
 #' @export
 rc_run_regcompass <- function(
-    object, gem, outdir, pfm = NULL, genome,
-    fragment_files = FALSE,
-    sample_col = NULL,
+    object, gem, outdir, genome,
+    pfm = NULL,
+    species = c("auto", "human", "mouse"),
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
     atac_assay = "ATAC",
-    model_mode = c("meta_module_gem", "full_gem"),
-    medium_scenarios = NULL,
-    metacell_args = list(),
-    layer1_args = list(),
     pando_args = list(),
+    sample_col = NULL,
+    fragment_files = FALSE,
+    metacell_args = list(),
+    meta_module_args = list(),
+    layer1_args = list(),
+    medium_scenarios = NULL,
+    model_mode = c("meta_module_gem", "full_gem"),
     layer2_args = list(),
     upstream_workers = 6L,
     layer2_workers = 30L,
-    species = c("auto", "human", "mouse"),
-    progress = getOption("RegCompassR.progress", TRUE),
-    meta_module_args = list()) {
+    progress = getOption("RegCompassR.progress", TRUE)) {
   model_mode <- match.arg(model_mode)
   progress <- .rc_progress_enabled(progress)
   old_progress_option <- options(RegCompassR.progress = progress)
@@ -68,10 +69,10 @@ rc_run_regcompass <- function(
   }, add = TRUE)
 
   bundles <- list(
-    metacell_args = metacell_args,
-    layer1_args = layer1_args,
     pando_args = pando_args,
+    metacell_args = metacell_args,
     meta_module_args = meta_module_args,
+    layer1_args = layer1_args,
     layer2_args = layer2_args
   )
   invalid_bundles <- names(bundles)[
