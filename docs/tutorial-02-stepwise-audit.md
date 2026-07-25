@@ -2,6 +2,47 @@
 
 Use this tutorial when each RegCompass stage should be run and saved independently.
 
+## Configure cross-platform parallel backends
+
+The explicit stepwise workflow accepts `BiocParallelParam` objects through `BPPARAM`. Define the upstream and Layer 2 backends once before Stage 1:
+
+```r
+library(BiocParallel)
+
+upstream_workers <- 6L
+layer2_workers <- 30L
+
+upstream_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(
+    workers = upstream_workers,
+    type = "SOCK",
+    progressbar = TRUE
+  )
+} else {
+  MulticoreParam(
+    workers = upstream_workers,
+    progressbar = TRUE
+  )
+}
+
+layer2_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(
+    workers = layer2_workers,
+    type = "SOCK",
+    progressbar = TRUE
+  )
+} else {
+  MulticoreParam(
+    workers = layer2_workers,
+    progressbar = TRUE
+  )
+}
+```
+
+Windows uses socket workers because fork-based `MulticoreParam` is unavailable. Linux and macOS use forked `MulticoreParam` workers. Reuse `upstream_bp` for Stage 1 and Stage 4, and use `layer2_bp` for Stage 5. The values `6L` and `30L` are examples rather than universal defaults; do not request more workers than the CPU and memory allocation available to the R process or batch job.
+
+The one-shot runner does not require these objects. It accepts `upstream_workers` and `layer2_workers` directly and resolves the operating-system backend automatically.
+
 ## Stage 1: infer condition-by-cell-type Pando evidence
 
 ```r
