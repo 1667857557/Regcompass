@@ -17,6 +17,7 @@ test_that("v1.8.4 public workflow is GRN first", {
   )
   expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
   expect_identical(eval(formals(rc_run_regcompass)$fragment_files), FALSE)
+  expect_true("meta_module_args" %in% names(formals(rc_run_regcompass)))
 })
 
 test_that("Pando grouping is condition by cell type", {
@@ -36,22 +37,32 @@ test_that("Pando grouping is condition by cell type", {
   )
 })
 
+test_that("Stage 3 uses significant targets rather than target projection", {
+  text <- paste(
+    deparse(body(.rc_build_condition_meta_modules)),
+    collapse = "\n"
+  )
+  expect_match(text, ".rc_summarize_supported_metabolic_genes", fixed = TRUE)
+  expect_match(text, "rc_map_meta_module_core_reactions", fixed = TRUE)
+  expect_false(grepl("rc_project_metabolic_grn", text, fixed = TRUE))
+  expect_false(grepl("top_k_neighbors", text, fixed = TRUE))
+})
+
 test_that("merged meta-modules contain biological reactions only", {
   condition_modules <- list(
     sample_status = data.frame(status = "ok"),
     tf_peak_gene_all = data.frame(),
     tf_peak_gene_significant = data.frame(),
-    metabolic_gene_nodes = data.frame(),
-    metabolic_gene_edges = data.frame(),
+    supported_metabolic_genes = data.frame(),
     core_gene_reaction = data.frame(
       sample_id = "A|T",
-      module_id = "M1",
+      module_id = "A|T::SUPPORTED_METABOLIC_GENES",
       reaction_id = "R1",
       is_core = TRUE
     ),
     reaction_membership = data.frame(
       sample_id = "A|T",
-      module_id = "M1",
+      module_id = "A|T::SUPPORTED_METABOLIC_GENES",
       reaction_id = c("R1", "R2")
     ),
     meta_module_summary = data.frame()
