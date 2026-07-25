@@ -16,16 +16,20 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
   progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
-\item{upstream_workers}{Worker count for GRN inference, local FASTCORE, and Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for serial upstream execution.}
+\item{upstream_workers}{Worker count for GRN inference and Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for serial upstream execution. Stage 3 no longer runs local FASTCORE.}
 
-\item{layer2_workers}{Worker count for Layer 2 LP scoring. Defaults to 30. Set to 1 for serial Layer 2 execution.}
+\item{layer2_workers}{Worker count for medium-specific union-GEM completion and Layer 2 LP scoring. Defaults to 30. Set to 1 for serial Layer 2 execution.}
 
 \item{species}{Model species or \code{"auto"} inference from GEM provenance. This argument retains its position ahead of the later \code{progress} control for positional-call compatibility.}
 
 \item{progress}{Display workflow and stage progress. Set \code{FALSE} or use \code{options(RegCompassR.progress = FALSE)} for quiet execution.}
 }
-\description{Runs the six canonical GRN, metacell, meta-module, Layer 1, Layer 2, and result stages.}
+\description{Runs the six canonical GRN, metacell, biological meta-module, Layer 1, medium-specific union-GEM/Layer 2, and result stages.}
 \details{
+Stage 3 constructs complete-GPR biological meta-modules and a deduplicated merged reaction catalogue. It does not run FASTCORE and does not create a GEM. With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium to the merged biological reaction set, performs the only global FASTCORE completion, and saves one union GEM shared by all conditions and metacells in that medium.
+
+The obsolete \code{layer1_args$local_fastcore} and \code{layer1_args$local_fastcore_args} interfaces are rejected. Configure global FASTCORE through \code{layer2_args$model_params}, including \code{completion_time_limit}, \code{fastcore_epsilon}, \code{max_support_reactions}, and \code{strict}.
+
 The canonical workflow automatically selects SOCK/SnowParam workers on Windows and MulticoreParam workers on Linux/macOS. A worker count of one resolves that layer to serial execution.
 
 Each parallel stage owns a temporary worker pool. Cleanup is registered before startup, stops the pool after success or failure, removes the pool reference, and runs full garbage collection. Every outer worker runs a single-thread internal task; numerical-library environment variables and nested R worker options are temporarily fixed at one.
