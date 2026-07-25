@@ -63,7 +63,10 @@
     stop("Missing cell-type metadata column: ", celltype_col, call. = FALSE)
   }
   object <- .rc_prepare_seurat_assays(
-    object, assays = atac_assay, required_layers = "counts"
+    object,
+    assays = atac_assay,
+    required_layers = "counts",
+    optional_layers = "data"
   )
   filtered <- .rc_drop_zero_count_atac_features(
     object, atac_assay, "Cell-type-shared TF-IDF"
@@ -153,7 +156,8 @@
   object <- .rc_prepare_seurat_assays(
     object,
     assays = c(rna_assay, atac_assay),
-    required_layers = "counts"
+    required_layers = "counts",
+    optional_layers = "data"
   )
   object <- Seurat::NormalizeData(object, assay = rna_assay, verbose = FALSE)
   object <- .rc_align_normalized_assay(object, rna_assay, "RNA")
@@ -183,7 +187,8 @@
   object <- .rc_prepare_seurat_assays(
     object,
     assays = c(rna_assay, atac_assay),
-    required_layers = "counts"
+    required_layers = "counts",
+    optional_layers = "data"
   )
   object <- Seurat::NormalizeData(object, assay = rna_assay, verbose = FALSE)
   object <- .rc_align_normalized_assay(object, rna_assay, "RNA")
