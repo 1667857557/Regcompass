@@ -23,7 +23,7 @@
     target_direction = c("both", "forward", "reverse"),
     parallel = TRUE,
     solver = c("highs", "gurobi", "glpk"),
-    time_limit = 60, flux_threshold = 1e-8,
+    flux_threshold = 1e-8,
     BPPARAM = NULL) {
   mode <- match.arg(mode)
   unit <- match.arg(unit)
@@ -75,8 +75,7 @@
         tempfile("RegCompassR_medium_union_gem_cache_"),
       target_direction = target_direction,
       solver = solver,
-      time_limit = model_params$completion_time_limit %||%
-        max(time_limit, 300),
+      time_limit = model_params$completion_time_limit %||% 300,
       fastcore_epsilon = model_params$fastcore_epsilon %||% 1e-4,
       max_support_reactions = model_params$max_support_reactions %||% 2000,
       strict = model_params$strict %||% TRUE
@@ -155,7 +154,6 @@
         target_direction = entry$target_direction,
         omega = omega,
         solver = solver,
-        time_limit = time_limit,
         flux_threshold = flux_threshold
       )
       list(
@@ -253,7 +251,8 @@
         "one_full_gem_per_medium_shared_across_all_units"
       },
       parallel_task = "shared_model_by_metacell",
-      flux_threshold = flux_threshold
+      flux_threshold = flux_threshold,
+      scoring_time_limit = "none"
     ),
     method = if (identical(mode, "full_gem")) {
       "microCOMPASS shared full-GEM directional LP"
@@ -279,7 +278,7 @@ rc_run_microcompass <- function(
     target_direction = c("both", "forward", "reverse"),
     parallel = TRUE,
     solver = c("highs", "gurobi", "glpk"),
-    time_limit = 60, flux_threshold = 1e-8,
+    flux_threshold = 1e-8,
     BPPARAM = NULL) {
   mode <- match.arg(mode)
   unit <- match.arg(unit)
@@ -351,7 +350,6 @@ rc_run_microcompass <- function(
     target_direction = target_direction,
     parallel = parallel,
     solver = solver,
-    time_limit = time_limit,
     flux_threshold = flux_threshold,
     BPPARAM = BPPARAM
   )
