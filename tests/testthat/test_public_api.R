@@ -60,7 +60,9 @@ test_that("canonical source architecture has no retired compatibility layers", {
     ".rc_signed_relation",
     "rc_project_metabolic_grn",
     ".rc_remap_projection_metadata",
-    "rc_run_pando_meta_modules"
+    "rc_run_pando_meta_modules",
+    "rc_boltzmann_minavg",
+    ".rc_meta_module_one_hop"
   )
   expect_false(any(vapply(
     retired_functions, grepl, logical(1), x = source_text, fixed = TRUE
@@ -89,18 +91,67 @@ test_that("canonical formals separate Stage 3 and Layer 1 settings", {
   expect_true("layer1_args" %in% run_formals)
   expect_true("meta_module_args" %in% stage3_formals)
   expect_false("layer1_args" %in% stage3_formals)
+  expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
+  expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
+  expect_false("tau" %in% names(formals(rc_regcompass_step_layer1)))
+  expect_identical(
+    eval(formals(rc_regcompass_step_layer1)$gpr_and_method),
+    c("min", "median", "mean")
+  )
 })
 
-test_that("GRN and metacell defaults match the canonical design", {
-  grn_body <- paste(deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n")
-  metacell_body <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
-  expect_match(grn_body, "peak_cor = 0.01", fixed = TRUE)
-  expect_match(grn_body, "condition_col, celltype_col", fixed = TRUE)
+test_that("Pando defaults use bundled motifs regions and explicit filters", {
+  expect_null(eval(formals(rc_run_regcompass)$pfm))
+  expect_null(eval(formals(rc_run_regcompass_one_shot)$pfm))
+  expect_null(eval(formals(rc_regcompass_step_grn)$pfm))
+  expect_null(eval(formals(.rc_run_condition_single_cell_grns)$pfm))
+
+  grn_body <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
+  )
+  motif_helper <- paste(deparse(body(.rc_default_pando_motifs)), collapse = "\n")
+  region_helper <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
+  expect_match(grn_body, ".rc_default_pando_motifs", fixed = TRUE)
   expect_match(grn_body, ".rc_default_pando_regions", fixed = TRUE)
+  expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
+  expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
+  expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+
+  grn_formals <- formals(.rc_run_condition_single_cell_grns)
+  expect_identical(grn_formals$min_cells, 20L)
+  expect_identical(grn_formals$padj_threshold, 0.05)
+  expect_identical(grn_formals$min_abs_estimate, 0)
+  expect_identical(grn_formals$min_model_rsq, 0.1)
+  expect_true(isTRUE(grn_formals$require_padj))
+})
+
+test_that("metacell defaults expose reductions dimensions seed and thresholds", {
+  defaults <- formals(rc_make_supercell2_metacells)
+  expect_identical(eval(defaults$rna_reduction), "pca")
+  expect_identical(eval(defaults$atac_reduction), "lsi")
+  expect_identical(eval(defaults$rna_dims), 1:30)
+  expect_identical(eval(defaults$atac_dims), 2:30)
+  expect_identical(defaults$gamma, 30)
+  expect_identical(defaults$seed, 12345L)
+  expect_identical(defaults$min_cells_per_stratum, 100)
+  expect_identical(defaults$min_metacell_size, 20)
+  expect_identical(defaults$min_metacells_per_stratum, 2L)
+
+  metacell_body <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n"
+  )
+  builder_body <- paste(
+    deparse(body(.rc_build_supercell2_strata)), collapse = "\n"
+  )
   expect_match(metacell_body, "gamma <- 30L", fixed = TRUE)
   expect_match(metacell_body, 'pooling_scope <- "condition_only"', fixed = TRUE)
   expect_match(metacell_body, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(metacell_body, "Sample balancing is not part", fixed = TRUE)
+  expect_match(
+    builder_body,
+    "seed_i <- as.integer(seed) + match(key, names(groups)) - 1L",
+    fixed = TRUE
+  )
   expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
 })
 
