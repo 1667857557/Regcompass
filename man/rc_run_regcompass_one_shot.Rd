@@ -4,10 +4,11 @@
 \alias{rc_run_regcompass_one_shot}
 \title{Run RegCompass from species-aware defaults}
 \usage{
-rc_run_regcompass_one_shot(object, outdir, pfm = NULL, genome,
-  fragment_files = FALSE, gem = NULL, medium_scenario = "physiologic",
-  medium_scenarios = NULL, species = c("human", "mouse"),
-  gem_version = NULL, gem_source = c("auto", "bundled", "download"),
+rc_run_regcompass_one_shot(object, outdir, genome,
+  species = c("human", "mouse"), gem = NULL, gem_version = NULL,
+  gem_source = c("auto", "bundled", "download"), pfm = NULL,
+  fragment_files = FALSE, medium_scenario = "physiologic",
+  medium_scenarios = NULL,
   progress = getOption("RegCompassR.progress", TRUE), ...)
 }
 \arguments{
@@ -15,33 +16,35 @@ rc_run_regcompass_one_shot(object, outdir, pfm = NULL, genome,
 
 \item{outdir}{Persistent workflow output directory.}
 
-\item{pfm}{Optional motif collection. When omitted, RegCompass loads \code{data("motifs", package = "Pando")} and uses \code{motifs}.}
-
 \item{genome}{Genome object matching ATAC coordinates.}
 
-\item{fragment_files}{Use \code{FALSE} for the canonical peak-count path.}
+\item{species}{\code{"human"} or \code{"mouse"}. Human defaults to phastCons plus SCREEN ccRE regions; mouse defaults to phastCons regions only.}
 
 \item{gem}{Optional prepared GEM. When omitted, the pinned species model is loaded.}
-
-\item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
-
-\item{medium_scenarios}{Optional prebuilt medium table.}
-
-\item{species}{\code{"human"} or \code{"mouse"}.}
 
 \item{gem_version}{Pinned model release.}
 
 \item{gem_source}{Automatic, bundled-only, or explicit download model source.}
 
+\item{pfm}{Optional motif collection. When omitted, RegCompass loads \code{data("motifs", package = "Pando")} and uses \code{motifs}.}
+
+\item{fragment_files}{Use \code{FALSE} for the canonical peak-count path.}
+
+\item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
+
+\item{medium_scenarios}{Optional prebuilt medium table.}
+
 \item{progress}{Display workflow and stage progress.}
 
-\item{...}{Arguments passed to \code{rc_run_regcompass()}, including Pando evidence filters, metacell reductions/dimensions/seed, GPR-AND method, and Stage 5 construction controls.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}, including Pando evidence filters, metacell reductions/dimensions/seed, Stage 3 subsystem mapping, GPR-AND method, and Stage 5 construction controls.}
 }
 \description{Loads the bundled pinned Human-GEM or Mouse-GEM when \code{gem} is omitted and delegates to \code{rc_run_regcompass()}.}
 \details{
+Arguments are ordered by preparation and processing sequence: species/model preparation, Stage 1 motif input, Stage 2 fragment policy, Stage 5 medium preparation, and execution controls.
+
 \code{gem_source = "auto"} uses a compatible cache or installed model without network access for the default releases. Use \code{"bundled"} to prohibit fallback and \code{"download"} to rebuild from an official release.
 
-The canonical motif default is Pando's bundled \code{motifs} object. Human regulatory regions default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects. Explicit \code{pfm} and \code{pando_args$pando_initiate_args$regions} values override these defaults.
+The canonical motif default is Pando's bundled \code{motifs} object. Human regulatory regions default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects. Mouse regulatory regions default to Pando's \code{phastConsElements20Mammals.UCSC.hg38} object only. Explicit \code{pfm} and \code{pando_args$pando_initiate_args$regions} values override these defaults.
 
 Pando evidence defaults include \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, and \code{min_model_rsq = 0.1}. Metacell defaults include RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and \code{seed = 12345L}. GPR-AND aggregation defaults to \code{"min"} and accepts \code{"median"} or \code{"mean"}.
 }
