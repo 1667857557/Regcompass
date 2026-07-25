@@ -4,13 +4,44 @@
 \alias{rc_run_regcompass_one_shot}
 \title{Run RegCompass from species-aware defaults}
 \usage{
-rc_run_regcompass_one_shot(object, outdir, pfm, genome,
+rc_run_regcompass_one_shot(object, outdir, pfm = NULL, genome,
   fragment_files = FALSE, gem = NULL, medium_scenario = "physiologic",
   medium_scenarios = NULL, species = c("human", "mouse"),
   gem_version = NULL, gem_source = c("auto", "bundled", "download"),
   progress = getOption("RegCompassR.progress", TRUE), ...)
 }
+\arguments{
+\item{object}{Paired single-cell RNA+ATAC Seurat object.}
+
+\item{outdir}{Persistent workflow output directory.}
+
+\item{pfm}{Optional motif collection. When omitted, RegCompass loads \code{data("motifs", package = "Pando")} and uses \code{motifs}.}
+
+\item{genome}{Genome object matching ATAC coordinates.}
+
+\item{fragment_files}{Use \code{FALSE} for the canonical peak-count path.}
+
+\item{gem}{Optional prepared GEM. When omitted, the pinned species model is loaded.}
+
+\item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
+
+\item{medium_scenarios}{Optional prebuilt medium table.}
+
+\item{species}{\code{"human"} or \code{"mouse"}.}
+
+\item{gem_version}{Pinned model release.}
+
+\item{gem_source}{Automatic, bundled-only, or explicit download model source.}
+
+\item{progress}{Display workflow and stage progress.}
+
+\item{...}{Arguments passed to \code{rc_run_regcompass()}, including Pando evidence filters, metacell reductions/dimensions/seed, GPR-AND method, and Stage 5 construction controls.}
+}
 \description{Loads the bundled pinned Human-GEM or Mouse-GEM when \code{gem} is omitted and delegates to \code{rc_run_regcompass()}.}
 \details{
-\code{gem_source = "auto"} uses a compatible cache or installed model without network access for the default releases. Use \code{"bundled"} to prohibit fallback and \code{"download"} to rebuild from an official release. Progress and timing behavior is inherited from \code{rc_run_regcompass()}.
+\code{gem_source = "auto"} uses a compatible cache or installed model without network access for the default releases. Use \code{"bundled"} to prohibit fallback and \code{"download"} to rebuild from an official release.
+
+The canonical motif default is Pando's bundled \code{motifs} object. Human regulatory regions default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects. Explicit \code{pfm} and \code{pando_args$pando_initiate_args$regions} values override these defaults.
+
+Pando evidence defaults include \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, and \code{min_model_rsq = 0.1}. Metacell defaults include RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and \code{seed = 12345L}. GPR-AND aggregation defaults to \code{"min"} and accepts \code{"median"} or \code{"mean"}.
 }
