@@ -6,7 +6,9 @@
 #'
 #' @param object A Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
-#' @param pfm Motif position-frequency matrices.
+#' @param pfm Optional motif position-frequency matrices. When omitted,
+#'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
+#'   to `Pando::find_motifs()`.
 #' @param genome Genome object matching the selected species and ATAC coordinates.
 #' @param fragment_files Must be `FALSE` for the canonical peak-count path.
 #' @param species `"human"` or `"mouse"`.
@@ -20,7 +22,7 @@
 #' @return A canonical RegCompass result list.
 #' @export
 rc_run_regcompass_one_shot <- function(
-    object, outdir, pfm, genome,
+    object, outdir, pfm = NULL, genome,
     fragment_files = FALSE,
     gem = NULL,
     medium_scenario = "physiologic",
@@ -50,8 +52,11 @@ rc_run_regcompass_one_shot <- function(
     )
   }
   rc_run_regcompass(
-    object = object, gem = gem, outdir = outdir,
-    pfm = pfm, genome = genome,
+    object = object,
+    gem = gem,
+    outdir = outdir,
+    pfm = pfm,
+    genome = genome,
     fragment_files = fragment_files,
     species = species,
     medium_scenarios = medium_scenarios,
