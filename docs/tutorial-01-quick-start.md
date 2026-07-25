@@ -9,7 +9,7 @@ condition × cell type cells
 → Pando models of Human-GEM GPR genes
 → significantly supported metabolic target genes
 → complete-GPR core reactions
-→ biological reaction expansion
+→ one ordered subsystem/cross-reference expansion pass
 → integrated RNA+ATAC reaction support
 → medium-constrained model with global FASTCORE completion
 → directional LP scoring and condition contrasts
@@ -22,8 +22,6 @@ library(RegCompassR)
 library(Seurat)
 library(Signac)
 library(BSgenome.Hsapiens.UCSC.hg38)
-
-data(motif2tf, package = "Pando")
 
 gem <- rc_prepare_gem(
   species = "human",
@@ -40,7 +38,9 @@ medium_scenarios <- rc_make_medium_scenarios(
 
 The Seurat object must contain normalized RNA and ATAC assays and the metadata columns supplied below. Pando is fitted separately for each `condition × cell type` group. Its target list is the intersection of Human-GEM GPR genes and RNA-assay row names.
 
-By default, human analyses load the Pando data objects `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38`, take their union, and pass that `GRanges` object to `Pando::initiate_grn(regions = ...)`. Override this only through `pando_args$pando_initiate_args$regions`. Non-human analyses must provide species-appropriate regions explicitly.
+When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes the resulting `motifs` object to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
+
+By default, human analyses also load the Pando data objects `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38`, take their union, and pass that `GRanges` object to `Pando::initiate_grn(regions = ...)`. Override this only through `pando_args$pando_initiate_args$regions`. Non-human analyses must provide species-appropriate regions explicitly.
 
 Available medium presets include physiological plasma, RPMI-1640, high-glucose DMEM, glucose/lactate/glutamine sensitivity scenarios, technical exchange baselines, and custom media. See [medium presets](medium-presets.md) for the complete list and assumptions.
 
@@ -50,7 +50,6 @@ Available medium presets include physiological plasma, RPMI-1640, high-glucose D
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
-  pfm = motif2tf,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   fragment_files = FALSE,
   gem = gem,
@@ -78,9 +77,6 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
-  meta_module_args = list(
-    expansion_mode = "ordered_once"
-  ),
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
@@ -101,7 +97,17 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The Stage 1 evidence filter defines the Stage 3 gene set. A target gene is supported when at least one TF–peak–gene row passes the adjusted-P-value, absolute-estimate, and model-R² filters. Both positive and negative coefficients count as regulatory evidence. `meta_module_args` controls only annotation expansion.
+The Stage 1 evidence filter defines the Stage 3 gene set. A target gene is supported when at least one TF–peak–gene row passes the adjusted-P-value, absolute-estimate, and model-R² filters. Both positive and negative coefficients count as regulatory evidence.
+
+Stage 3 always performs exactly one ordered expansion pass:
+
+```text
+core subsystem
+→ KEGG/Reactome reaction equivalence
+→ master-Rhea reaction equivalence
+```
+
+The retired `expansion_mode`, `max_iterations`, fixed-point, and one-hop reaction APIs have been removed.
 
 `layer1_args$gpr_and_method` controls genes joined by a GPR AND relationship. Allowed values are `"min"`, `"median"`, and `"mean"`; the default is `"min"`. The retired Boltzmann soft-min and `tau` parameter have been removed. Isozyme OR branches are summed in the canonical Layer 1 calculation.
 
