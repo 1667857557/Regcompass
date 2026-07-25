@@ -4,15 +4,15 @@
 \alias{rc_run_regcompass}
 \title{Run the canonical significant-Pando-target RegCompass workflow}
 \usage{
-rc_run_regcompass(object, gem, outdir, pfm = NULL, genome,
-  fragment_files = FALSE, sample_col = NULL,
-  condition_col = "condition", celltype_col = "cell_type",
-  rna_assay = "RNA", atac_assay = "ATAC",
-  model_mode = c("meta_module_gem", "full_gem"),
-  medium_scenarios = NULL, metacell_args = list(), layer1_args = list(),
-  pando_args = list(), meta_module_args = list(), layer2_args = list(),
-  upstream_workers = 6L, layer2_workers = 30L,
+rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
+  condition_col = "condition", celltype_col = "cell_type",
+  rna_assay = "RNA", atac_assay = "ATAC", pando_args = list(),
+  sample_col = NULL, fragment_files = FALSE, metacell_args = list(),
+  meta_module_args = list(), layer1_args = list(),
+  medium_scenarios = NULL,
+  model_mode = c("meta_module_gem", "full_gem"), layer2_args = list(),
+  upstream_workers = 6L, layer2_workers = 30L,
   progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
@@ -22,29 +22,31 @@ rc_run_regcompass(object, gem, outdir, pfm = NULL, genome,
 
 \item{outdir}{Persistent workflow output directory.}
 
-\item{pfm}{Optional motif position-frequency matrices. When omitted, RegCompass loads \code{data("motifs", package = "Pando")} and uses the resulting \code{motifs} object.}
-
 \item{genome}{Genome object matching the ATAC coordinates and motif collection.}
 
-\item{fragment_files}{Use \code{FALSE} for the canonical existing-peak-count path.}
+\item{pfm}{Optional motif position-frequency matrices. When omitted, RegCompass loads \code{data("motifs", package = "Pando")} and uses the resulting \code{motifs} object.}
 
-\item{sample_col}{Optional sample provenance column. It is not used for canonical condition-only metacell grouping or weighting.}
+\item{species}{Model species or \code{"auto"} inference from GEM provenance. Human analyses default to phastCons plus SCREEN ccRE regions; mouse analyses default to phastCons regions only.}
 
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 
-\item{model_mode}{Use a medium-specific union GEM reconstructed from the merged biological catalogue, or reuse the complete GEM.}
+\item{pando_args}{Stage 1 Pando controls. Canonical evidence defaults are \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Explicit \code{pando_initiate_args$regions} overrides the species-specific default.}
 
-\item{medium_scenarios}{Condition-invariant medium table.}
+\item{sample_col}{Optional sample provenance column. It is not used for canonical condition-only metacell grouping or weighting.}
+
+\item{fragment_files}{Use \code{FALSE} for the canonical existing-peak-count path.}
 
 \item{metacell_args}{Stage 2 controls. Defaults include \code{rna_reduction = "pca"}, \code{rna_dims = 1:30}, \code{atac_reduction = "lsi"}, \code{atac_dims = 2:30}, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. Changing cached inputs requires \code{overwrite = TRUE}.}
-
-\item{pando_args}{Stage 1 Pando controls. Canonical evidence defaults are \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Human analyses default to the union of Pando's hg38 phastCons and SCREEN ccRE data unless \code{pando_initiate_args$regions} is supplied.}
 
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}. Expansion is always one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence. The retired \code{expansion_mode}, \code{max_iterations}, fixed-point, and one-hop APIs are rejected.}
 
 \item{layer1_args}{Stage 4 integrated-evidence controls: \code{regulatory_alpha}, \code{gpr_and_method}, and \code{gene_half_saturation}. \code{gpr_and_method} accepts \code{"min"}, \code{"median"}, or \code{"mean"} and defaults to \code{"min"}. The former Boltzmann soft-min and \code{tau} API are removed.}
+
+\item{medium_scenarios}{Condition-invariant medium table used by Stage 5.}
+
+\item{model_mode}{Use a medium-specific union GEM reconstructed from the merged biological catalogue, or reuse the complete GEM.}
 
 \item{layer2_args}{Layer 2 scoring and union-GEM controls. \code{completion_time_limit} belongs only in \code{layer2_args$model_params} and limits union-GEM FASTCORE construction, not scoring.}
 
@@ -52,17 +54,17 @@ rc_run_regcompass(object, gem, outdir, pfm = NULL, genome,
 
 \item{layer2_workers}{Worker count for medium-specific union-GEM completion and Layer 2 LP scoring. Defaults to 30. Set to 1 for serial Layer 2 execution.}
 
-\item{species}{Model species or \code{"auto"} inference from GEM provenance.}
-
 \item{progress}{Display workflow and stage progress. Set \code{FALSE} or use \code{options(RegCompassR.progress = FALSE)} for quiet execution.}
 }
 \description{Runs the six canonical Pando, metacell, biological meta-module, Layer 1, medium-specific union-GEM/Layer 2, and result stages.}
 \details{
-Stage 1 fits Pando separately for each condition by cell-type group using all Human-GEM GPR genes present in the RNA assay. A coefficient is retained only when its adjusted P value, absolute estimate, and target-model R-squared satisfy the configured filters. Positive and negative coefficients both count as regulatory evidence.
+Public arguments are ordered by processing sequence: shared model inputs, Stage 1 Pando inputs, Stage 2 metacell inputs, Stage 3 meta-module inputs, Stage 4 evidence inputs, Stage 5 medium/model inputs, and execution controls.
+
+Stage 1 fits Pando separately for each condition by cell-type group using all GEM GPR genes present in the RNA assay. A coefficient is retained only when its adjusted P value, absolute estimate, and target-model R-squared satisfy the configured filters. Positive and negative coefficients both count as regulatory evidence.
 
 Stage 2 uses the requested RNA and ATAC reductions and dimensions to construct SuperCell2 metacells. The base seed is incremented deterministically by ordered condition stratum: \code{seed + stratum_index - 1}. Reduction names, dimensions, embedding fingerprints, seed, gamma, and metacell thresholds are part of the cache contract.
 
-Stage 3 maps the significant Human-GEM target-gene set directly to complete-GPR cores. Shared-TF projection, target-target graph construction, top-k pruning, and connected-component analysis are not used. Biological expansion is executed exactly once in the fixed subsystem, KEGG/Reactome, and master-Rhea order. No recursive or one-hop expansion is performed.
+Stage 3 maps the significant target-gene set directly to complete-GPR cores. Shared-TF projection, target-target graph construction, top-k pruning, and connected-component analysis are not used. Biological expansion is executed exactly once in the fixed subsystem, KEGG/Reactome, and master-Rhea order. No recursive or one-hop expansion is performed.
 
 Stage 4 aggregates required GPR subunits using the selected COMPASS-compatible \code{min}, \code{median}, or \code{mean} function. The canonical default is \code{min}; isozyme OR branches are additive.
 
