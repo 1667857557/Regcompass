@@ -31,6 +31,14 @@ test_that("TF-ATAC integration is zero preserving and signed", {
   expect_true(all(out >= 0 & out <= 1))
 })
 
+test_that("COMPASS GPR-AND functions are exact", {
+  x <- c(0.2, 0.5, 0.9)
+  expect_equal(rc_and_capacity(x), min(x))
+  expect_equal(rc_and_capacity(x, "median"), stats::median(x))
+  expect_equal(rc_and_capacity(x, "mean"), mean(x))
+  expect_error(rc_and_capacity(x, "boltzmann"), "should be one of")
+})
+
 test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   expression <- matrix(
     c(0, 1, 3, NA_real_),
@@ -54,16 +62,23 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   )
 })
 
-test_that("Stage 1 installs canonical Pando regions by default", {
+test_that("Stage 1 installs canonical Pando motifs and regions by default", {
   text <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)),
     collapse = "\n"
   )
-  helper <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
+  motif_helper <- paste(
+    deparse(body(.rc_default_pando_motifs)), collapse = "\n"
+  )
+  region_helper <- paste(
+    deparse(body(.rc_default_pando_regions)), collapse = "\n"
+  )
+  expect_match(text, ".rc_default_pando_motifs", fixed = TRUE)
   expect_match(text, ".rc_default_pando_regions", fixed = TRUE)
-  expect_match(helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
-  expect_match(helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
-  expect_match(helper, "BiocGenerics::union", fixed = TRUE)
+  expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
+  expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
+  expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(region_helper, "BiocGenerics::union", fixed = TRUE)
 })
 
 test_that("condition-pooled metacell is selected explicitly", {
