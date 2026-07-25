@@ -19,11 +19,11 @@ rc_regcompass_step_target_union(
 \item{core_reaction_ids}{Previously scored complete-GPR core reaction IDs used only as direct database-mapping anchors.}
 \item{core_genes}{Genes used to resolve original core anchors through GPR rules. Every supplied gene selector must resolve to at least one originally scored core.}
 \item{gene_match}{Complete-GPR or intentional direct-gene matching.}
-\item{layer2_args}{Optional LP overrides. This restart does not rebuild a union GEM or rerun FASTCORE.}
+\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold} overrides. Scoring \code{time_limit} has been removed. This restart does not rebuild a union GEM or rerun FASTCORE.}
 \item{parallel}{Whether to parallelize reused-model by metacell tasks.}
 \item{BPPARAM}{Optional BiocParallel parameter object.}
 \item{progress}{Display stage progress.}
 }
 \value{A \code{regcompass_target_union_step} containing anchor mappings, unique non-core targets, source-model provenance, LP results, and timing.}
 \description{Directly maps selected merged core reactions through shared KEGG, Reactome, or master-Rhea identifiers and scores linked non-core reactions in the exact final Stage 5 union GEMs.}
-\details{Same-subsystem, metabolite-neighbour, recursive/transitive, model-reconstruction, and new FASTCORE expansion are excluded. The exact cached medium-specific union GEM files and bounds are reused. Each cache file is validated against its recorded checksum, build strategy, completion stage, union-GEM marker, and medium identifier. Candidate availability is checked against the actual reactions present in every required cached model, not only the Stage 3 catalogue. The second-pass result records \code{structural_model_reused_exactly = TRUE}, \code{fastcore_rerun = FALSE}, and \code{model_rebuild = FALSE}. The stage writes \code{step_timing.tsv}.}
+\details{Same-subsystem, metabolite-neighbour, recursive/transitive, model-reconstruction, and new FASTCORE expansion are excluded. The exact cached medium-specific union GEM files and bounds are reused. Each cache file is validated against its recorded checksum, build strategy, completion stage, union-GEM marker, and medium identifier. Candidate availability is checked against the actual reactions present in every required cached model, not only the Stage 3 catalogue. The second-pass result records \code{structural_model_reused_exactly = TRUE}, \code{fastcore_rerun = FALSE}, \code{model_rebuild = FALSE}, and \code{scoring_time_limit = "none"}. The original Stage 5 \code{model_params$completion_time_limit} applied only to union-GEM construction and is not reused by this scoring-only stage. The stage writes \code{step_timing.tsv}.}
