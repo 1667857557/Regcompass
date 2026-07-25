@@ -7,21 +7,21 @@ test_that("meta-module merging remains a biological catalogue, not a GEM", {
     is_core = c(TRUE, FALSE),
     stringsAsFactors = FALSE
   )
-  artifact <- list(
-    group_id = "condition_pooled",
-    grn_meta_modules = list(
-      sample_status = data.frame(),
-      tf_peak_gene_all = data.frame(),
-      tf_peak_gene_significant = data.frame(),
-      metabolic_gene_nodes = data.frame(),
-      metabolic_gene_edges = data.frame(),
-      core_gene_reaction = biological[biological$is_core, , drop = FALSE],
-      reaction_membership = biological,
-      meta_module_summary = data.frame()
-    )
+  condition_modules <- list(
+    sample_status = data.frame(
+      group_id = c("C1|T", "C2|T"),
+      stringsAsFactors = FALSE
+    ),
+    tf_peak_gene_all = data.frame(),
+    tf_peak_gene_significant = data.frame(),
+    metabolic_gene_nodes = data.frame(),
+    metabolic_gene_edges = data.frame(),
+    core_gene_reaction = biological[biological$is_core, , drop = FALSE],
+    reaction_membership = biological,
+    meta_module_summary = data.frame()
   )
 
-  merged <- .rc_merge_stratum_meta_modules(list(artifact))
+  merged <- .rc_merge_meta_module_catalogue(condition_modules)
 
   expect_setequal(
     merged$merged_reaction_membership$reaction_id,
@@ -70,19 +70,24 @@ test_that("only the medium-specific cache constructs union GEMs", {
   expect_true(grepl(".rc_complete_medium_union_gem", cache_body, fixed = TRUE))
   expect_true(grepl("medium_specific_union_gem", cache_body, fixed = TRUE))
   expect_true(grepl("MEDIUM_UNION_GEM", cache_body, fixed = TRUE))
-  expect_true(grepl("single_global_fastcore_after_meta_module_merge", completion_body,
-                    fixed = TRUE))
+  expect_true(grepl(
+    "single_global_fastcore_after_meta_module_merge",
+    completion_body,
+    fixed = TRUE
+  ))
   expect_true(grepl("is_union_gem", completion_body, fixed = TRUE))
 })
 
-test_that("retired local meta-module reconstruction functions are absent", {
+test_that("retired reconstruction and merger functions are absent", {
   namespace <- asNamespace("RegCompassR")
   retired <- c(
     ".rc_complete_meta_module",
     ".rc_build_meta_module_gem_core",
     "rc_build_meta_module_gem",
     ".rc_complete_stratum_meta_modules",
-    ".rc_build_global_meta_module_gem_cache"
+    ".rc_build_global_meta_module_gem_cache",
+    ".rc_merge_stratum_meta_modules",
+    ".rc_feasibility_completion_metadata"
   )
   expect_false(any(vapply(
     retired,
@@ -93,6 +98,11 @@ test_that("retired local meta-module reconstruction functions are absent", {
   )))
   expect_true(exists(
     ".rc_complete_medium_union_gem",
+    envir = namespace,
+    inherits = FALSE
+  ))
+  expect_true(exists(
+    ".rc_merge_meta_module_catalogue",
     envir = namespace,
     inherits = FALSE
   ))
