@@ -39,6 +39,12 @@ The complete preset list and custom-medium format are documented in [medium pres
 ## Rebuild Stage 5
 
 ```r
+new_medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "low_glucose",
+  species = "human"
+)
+
 step5_new <- rc_regcompass_step_layer2(
   layer1 = step4,
   meta_modules = step3,
