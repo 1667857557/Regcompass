@@ -1,4 +1,4 @@
-# FASTCC and add-only FASTCORE reconstruction for GRN-defined meta-modules.
+# FASTCC and add-only FASTCORE for medium-specific union GEM construction.
 
 .rc_subset_gem <- function(gem, reactions) {
   validated <- rc_validate_gem(gem)
@@ -42,8 +42,7 @@
 
 .rc_orient_reactions <- function(S, lb, ub, reverse_reactions = character()) {
   reverse_reactions <- intersect(
-    unique(as.character(reverse_reactions)),
-    colnames(S)
+    unique(as.character(reverse_reactions)), colnames(S)
   )
   if (!length(reverse_reactions)) {
     return(list(S = S, lb = lb, ub = ub))
@@ -57,9 +56,9 @@
   list(S = S, lb = lb, ub = ub)
 }
 
-.rc_directional_feasibility <- function(gem, targets, solver = "highs",
-                                        time_limit = 60,
-                                        flux_threshold = 1e-8) {
+.rc_directional_feasibility <- function(
+    gem, targets, solver = "highs", time_limit = 60,
+    flux_threshold = 1e-8) {
   required <- c("reaction_id", "target_direction")
   if (!is.data.frame(targets) || !all(required %in% colnames(targets))) {
     stop("`targets` must contain reaction_id and target_direction.", call. = FALSE)
@@ -96,47 +95,38 @@
       flux_threshold = flux_threshold
     )
     data.frame(
-      reaction_id = reaction, target_direction = direction,
-      feasible = isTRUE(answer$feasible), vmax = answer$vmax,
-      solver_status = answer$status, stringsAsFactors = FALSE
+      reaction_id = reaction,
+      target_direction = direction,
+      feasible = isTRUE(answer$feasible),
+      vmax = answer$vmax,
+      solver_status = answer$status,
+      stringsAsFactors = FALSE
     )
   })
   do.call(rbind, rows)
 }
 
 # FASTCORE LP-7: maximize the number of core reactions carrying epsilon flux.
-.rc_fastcore_lp7 <- function(S, lb, ub, core_reactions, epsilon,
-                             solver, time_limit) {
-  core_reactions <- intersect(
-    unique(as.character(core_reactions)),
-    colnames(S)
-  )
+.rc_fastcore_lp7 <- function(
+    S, lb, ub, core_reactions, epsilon, solver, time_limit) {
+  core_reactions <- intersect(unique(as.character(core_reactions)), colnames(S))
   n_reactions <- ncol(S)
   n_core <- length(core_reactions)
   if (!n_core) {
     return(list(
-      status = "empty_core", flux = numeric(),
-      active = character(), objective = 0
+      status = "empty_core", flux = numeric(), active = character(),
+      objective = 0
     ))
   }
 
   S <- .rc_as_dgCMatrix(S)
-  zero <- Matrix::Matrix(
-    0, nrow = nrow(S), ncol = n_core, sparse = TRUE
-  )
+  zero <- Matrix::Matrix(0, nrow = nrow(S), ncol = n_core, sparse = TRUE)
   mass_balance <- cbind(S, zero)
   activation <- Matrix::Matrix(
-    0, nrow = n_core, ncol = n_reactions + n_core,
-    sparse = TRUE
+    0, nrow = n_core, ncol = n_reactions + n_core, sparse = TRUE
   )
-  activation[cbind(
-    seq_len(n_core),
-    match(core_reactions, colnames(S))
-  )] <- 1
-  activation[cbind(
-    seq_len(n_core),
-    n_reactions + seq_len(n_core)
-  )] <- -1
+  activation[cbind(seq_len(n_core), match(core_reactions, colnames(S)))] <- 1
+  activation[cbind(seq_len(n_core), n_reactions + seq_len(n_core))] <- -1
 
   answer <- rc_solve_lp(
     obj = c(rep(0, n_reactions), rep(-1, n_core)),
@@ -150,8 +140,8 @@
   )
   if (!identical(answer$status, "optimal")) {
     return(list(
-      status = answer$status, flux = numeric(),
-      active = character(), objective = NA_real_
+      status = answer$status, flux = numeric(), active = character(),
+      objective = NA_real_
     ))
   }
   flux <- answer$solution[seq_len(n_reactions)]
@@ -166,18 +156,16 @@
   )
 }
 
-.rc_fastcc_consistent_reactions <- function(gem, solver = "highs",
-                                            time_limit = 300,
-                                            epsilon = 1e-4) {
+.rc_fastcc_consistent_reactions <- function(
+    gem, solver = "highs", time_limit = 300, epsilon = 1e-4) {
   validated <- rc_validate_gem(gem)
   if (!is.finite(epsilon) || epsilon <= 0) {
     stop("`epsilon` must be positive.", call. = FALSE)
   }
 
   collect_active <- function(S, lb, ub, candidates) {
-    candidates <- unique(as.character(candidates))
+    remaining <- unique(as.character(candidates))
     active_all <- character()
-    remaining <- candidates
     while (length(remaining)) {
       batch <- .rc_fastcore_lp7(
         S, lb, ub, remaining, epsilon,
@@ -194,66 +182,48 @@
           S, lb, ub, reaction, epsilon,
           solver = solver, time_limit = time_limit
         )
-        if (length(one$active)) {
-          active_all <- union(active_all, reaction)
-        }
+        if (length(one$active)) active_all <- union(active_all, reaction)
       }
     }
     active_all
   }
 
-  forward_candidates <- validated$reactions[
-    validated$ub >= epsilon
-  ]
+  forward_candidates <- validated$reactions[validated$ub >= epsilon]
   consistent <- collect_active(
-    validated$S, validated$lb, validated$ub,
-    forward_candidates
+    validated$S, validated$lb, validated$ub, forward_candidates
   )
-
   reverse_candidates <- setdiff(
-    validated$reactions[validated$lb <= -epsilon],
-    consistent
+    validated$reactions[validated$lb <= -epsilon], consistent
   )
   if (length(reverse_candidates)) {
     oriented <- .rc_orient_reactions(
-      validated$S, validated$lb, validated$ub,
-      reverse_candidates
+      validated$S, validated$lb, validated$ub, reverse_candidates
     )
     consistent <- union(
       consistent,
       collect_active(
-        oriented$S, oriented$lb, oriented$ub,
-        reverse_candidates
+        oriented$S, oriented$lb, oriented$ub, reverse_candidates
       )
     )
   }
   consistent
 }
 
-# FASTCORE LP-10. Following Vlassis et al., the core constraint and all flux
-# bounds are scaled for numerical stability. Returned fluxes and the objective
-# are converted back to the original GEM units. Support is the numerical
-# non-zero support of the LP solution; it must not be thresholded at the core
-# epsilon because stoichiometric coefficients can require a supporting flux
-# smaller than the active-core flux.
-.rc_fastcore_lp10 <- function(S, lb, ub, active_core,
-                              penalized_reactions,
-                              epsilon, solver, time_limit,
-                              scaling_factor = 1e5) {
-  active_core <- intersect(
-    unique(as.character(active_core)),
-    colnames(S)
-  )
+# FASTCORE LP-10: minimize L1 flux through non-biological reactions while
+# maintaining epsilon flux through the active core set.
+.rc_fastcore_lp10 <- function(
+    S, lb, ub, active_core, penalized_reactions,
+    epsilon, solver, time_limit, scaling_factor = 1e5) {
+  active_core <- intersect(unique(as.character(active_core)), colnames(S))
   penalized_reactions <- intersect(
-    unique(as.character(penalized_reactions)),
-    colnames(S)
+    unique(as.character(penalized_reactions)), colnames(S)
   )
   n_reactions <- ncol(S)
   n_penalized <- length(penalized_reactions)
   if (!length(active_core)) {
     return(list(
-      status = "empty_core", flux = numeric(),
-      new_support = character(), objective = 0
+      status = "empty_core", flux = numeric(), new_support = character(),
+      objective = 0
     ))
   }
   if (!is.finite(epsilon) || epsilon <= 0) {
@@ -271,8 +241,7 @@
   scaled_epsilon <- epsilon * scaling_factor
 
   zero <- Matrix::Matrix(
-    0, nrow = nrow(S), ncol = n_penalized,
-    sparse = TRUE
+    0, nrow = nrow(S), ncol = n_penalized, sparse = TRUE
   )
   blocks <- list(cbind(S, zero))
   lhs <- rep(0, nrow(S))
@@ -280,42 +249,34 @@
 
   if (n_penalized) {
     positive <- Matrix::Matrix(
-      0,
-      nrow = n_penalized,
-      ncol = n_reactions + n_penalized,
+      0, nrow = n_penalized, ncol = n_reactions + n_penalized,
       sparse = TRUE
     )
     negative <- positive
     penalized_index <- match(penalized_reactions, colnames(S))
     positive[cbind(seq_len(n_penalized), penalized_index)] <- 1
     positive[cbind(
-      seq_len(n_penalized),
-      n_reactions + seq_len(n_penalized)
+      seq_len(n_penalized), n_reactions + seq_len(n_penalized)
     )] <- -1
     negative[cbind(seq_len(n_penalized), penalized_index)] <- -1
     negative[cbind(
-      seq_len(n_penalized),
-      n_reactions + seq_len(n_penalized)
+      seq_len(n_penalized), n_reactions + seq_len(n_penalized)
     )] <- -1
     blocks <- c(blocks, list(positive, negative))
     lhs <- c(lhs, rep(-Inf, 2L * n_penalized))
     rhs <- c(rhs, rep(0, 2L * n_penalized))
   }
 
-  n_active <- length(active_core)
   core_constraint <- Matrix::Matrix(
-    0,
-    nrow = n_active,
-    ncol = n_reactions + n_penalized,
-    sparse = TRUE
+    0, nrow = length(active_core),
+    ncol = n_reactions + n_penalized, sparse = TRUE
   )
   core_constraint[cbind(
-    seq_len(n_active),
-    match(active_core, colnames(S))
+    seq_along(active_core), match(active_core, colnames(S))
   )] <- 1
   blocks <- c(blocks, list(core_constraint))
-  lhs <- c(lhs, rep(scaled_epsilon, n_active))
-  rhs <- c(rhs, rep(Inf, n_active))
+  lhs <- c(lhs, rep(scaled_epsilon, length(active_core)))
+  rhs <- c(rhs, rep(Inf, length(active_core)))
 
   auxiliary_upper <- if (n_penalized) {
     pmax(
@@ -337,8 +298,8 @@
   )
   if (!identical(answer$status, "optimal")) {
     return(list(
-      status = answer$status, flux = numeric(),
-      new_support = character(), objective = NA_real_
+      status = answer$status, flux = numeric(), new_support = character(),
+      objective = NA_real_
     ))
   }
   scaled_flux <- answer$solution[seq_len(n_reactions)]
@@ -363,30 +324,17 @@
   )
 }
 
-.rc_fastcore_parent <- function(gem, medium_table = NULL,
-                                condition = NULL,
-                                forbidden_roles = c(
-                                  "demand", "sink",
-                                  "artificial_support"
-                                ),
-                                solver = "highs",
-                                time_limit = 300,
-                                fastcore_epsilon = 1e-4) {
+.rc_fastcore_parent <- function(
+    gem, medium_table = NULL, condition = NULL,
+    forbidden_roles = c("demand", "sink", "artificial_support"),
+    solver = "highs", time_limit = 300, fastcore_epsilon = 1e-4) {
   parent <- rc_build_full_gem(
-    gem,
-    medium_table = medium_table,
-    condition = condition
+    gem, medium_table = medium_table, condition = condition
   )
-  parent <- rc_annotate_reaction_roles(
-    parent,
-    medium_table = medium_table
-  )
+  parent <- rc_annotate_reaction_roles(parent, medium_table = medium_table)
   validated <- rc_validate_gem(parent)
   meta <- parent$reaction_meta[
-    match(
-      validated$reactions,
-      as.character(parent$reaction_meta$reaction_id)
-    ),
+    match(validated$reactions, as.character(parent$reaction_meta$reaction_id)),
     , drop = FALSE
   ]
   role <- if ("role" %in% colnames(meta)) {
@@ -440,16 +388,10 @@
   parent
 }
 
-.rc_fastcore_complete_direction <- function(parent,
-                                             biological_reactions,
-                                             selected_support,
-                                             targets,
-                                             direction,
-                                             epsilon,
-                                             solver,
-                                             time_limit,
-                                             max_support_reactions,
-                                             scaling_factor = 1e5) {
+.rc_fastcore_complete_direction <- function(
+    parent, biological_reactions, selected_support, targets, direction,
+    epsilon, solver, time_limit, max_support_reactions,
+    scaling_factor = 1e5) {
   if (!nrow(targets)) {
     return(list(
       support = selected_support,
@@ -464,8 +406,7 @@
     character()
   }
   oriented <- .rc_orient_reactions(
-    validated$S, validated$lb, validated$ub,
-    reverse_targets
+    validated$S, validated$lb, validated$ub, reverse_targets
   )
   remaining <- unique(as.character(targets$reaction_id))
   iteration_rows <- list()
@@ -473,8 +414,7 @@
 
   local_feasible <- function(reactions, core_ids) {
     local <- .rc_subset_gem(
-      list(S = oriented$S, lb = oriented$lb, ub = oriented$ub),
-      reactions
+      list(S = oriented$S, lb = oriented$lb, ub = oriented$ub), reactions
     )
     do.call(rbind, lapply(core_ids, function(reaction) {
       answer <- rc_compass_vmax_directional(
@@ -498,7 +438,6 @@
     before <- remaining
     unpenalized <- union(biological_reactions, selected_support)
     penalized <- setdiff(colnames(oriented$S), unpenalized)
-
     lp7 <- .rc_fastcore_lp7(
       oriented$S, oriented$lb, oriented$ub,
       remaining, epsilon, solver, time_limit
@@ -512,8 +451,7 @@
     if (length(active)) {
       lp10 <- .rc_fastcore_lp10(
         oriented$S, oriented$lb, oriented$ub,
-        active, penalized, epsilon,
-        solver, time_limit,
+        active, penalized, epsilon, solver, time_limit,
         scaling_factor = scaling_factor
       )
       lp10_status <- lp10$status
@@ -525,20 +463,15 @@
       singleton_mode <- TRUE
       for (reaction in remaining) {
         penalized <- setdiff(
-          colnames(oriented$S),
-          union(biological_reactions, selected_support)
+          colnames(oriented$S), union(biological_reactions, selected_support)
         )
         one <- .rc_fastcore_lp10(
           oriented$S, oriented$lb, oriented$ub,
-          reaction, penalized, epsilon,
-          solver, time_limit,
+          reaction, penalized, epsilon, solver, time_limit,
           scaling_factor = scaling_factor
         )
         if (identical(one$status, "optimal")) {
-          selected_support <- union(
-            selected_support,
-            one$new_support
-          )
+          selected_support <- union(selected_support, one$new_support)
           added <- union(added, one$new_support)
         }
       }
@@ -555,9 +488,7 @@
 
     current_set <- union(biological_reactions, selected_support)
     check <- local_feasible(current_set, remaining)
-    remaining <- as.character(
-      check$reaction_id[!check$feasible]
-    )
+    remaining <- as.character(check$reaction_id[!check$feasible])
     repaired <- setdiff(before, remaining)
     iteration_rows[[iteration]] <- data.frame(
       iteration = iteration,
@@ -574,7 +505,6 @@
       singleton_mode = singleton_mode,
       stringsAsFactors = FALSE
     )
-
     if (!length(repaired)) break
   }
 
@@ -593,103 +523,65 @@
   )
 }
 
-.rc_complete_meta_module <- function(gem, reaction_membership,
-                                     core_reactions,
-                                     sample_id, module_id,
-                                     medium_table = NULL,
-                                     condition = NULL,
-                                     parent_gem = NULL,
-                                     target_direction = "both",
-                                     solver = "highs",
-                                     time_limit = 300,
-                                     fastcore_epsilon = 1e-4,
-                                     max_support_reactions = 2000,
-                                     strict = TRUE) {
+.rc_complete_medium_union_gem <- function(
+    gem, reaction_membership, core_reactions, medium_table = NULL,
+    target_direction = c("both", "forward", "reverse"),
+    solver = "highs", time_limit = 300, fastcore_epsilon = 1e-4,
+    max_support_reactions = 2000, strict = TRUE) {
+  target_direction <- match.arg(target_direction)
   if (!is.finite(fastcore_epsilon) || fastcore_epsilon <= 0) {
     stop("`fastcore_epsilon` must be positive.", call. = FALSE)
   }
   if (!is.finite(max_support_reactions) || max_support_reactions < 0) {
-    stop(
-      "`max_support_reactions` must be non-negative.",
-      call. = FALSE
-    )
+    stop("`max_support_reactions` must be non-negative.", call. = FALSE)
   }
-  required <- c("sample_id", "module_id", "reaction_id")
   if (!is.data.frame(reaction_membership) ||
-      !all(required %in% colnames(reaction_membership))) {
-    stop(
-      paste(
-        "`reaction_membership` must contain sample_id,",
-        "module_id and reaction_id."
-      ),
-      call. = FALSE
-    )
+      !"reaction_id" %in% colnames(reaction_membership)) {
+    stop("`reaction_membership` must contain reaction_id.", call. = FALSE)
   }
   if (!is.data.frame(core_reactions) ||
-      !all(required %in% colnames(core_reactions))) {
-    stop(
-      paste(
-        "`core_reactions` must contain sample_id,",
-        "module_id and reaction_id."
-      ),
-      call. = FALSE
-    )
+      !"reaction_id" %in% colnames(core_reactions)) {
+    stop("`core_reactions` must contain reaction_id.", call. = FALSE)
+  }
+  if ("is_core" %in% colnames(core_reactions)) {
+    core_reactions <- core_reactions[
+      core_reactions$is_core %in% TRUE, , drop = FALSE
+    ]
   }
 
-  parent <- parent_gem %||% .rc_fastcore_parent(
+  parent <- .rc_fastcore_parent(
     gem,
     medium_table = medium_table,
-    condition = condition,
+    condition = NULL,
     solver = solver,
     time_limit = time_limit,
     fastcore_epsilon = fastcore_epsilon
   )
   validated <- rc_validate_gem(parent)
-  in_group <-
-    as.character(reaction_membership$sample_id) ==
-      as.character(sample_id) &
-    as.character(reaction_membership$module_id) ==
-      as.character(module_id)
   biological <- intersect(
-    unique(as.character(
-      reaction_membership$reaction_id[in_group]
-    )),
+    unique(as.character(reaction_membership$reaction_id)),
     validated$reactions
   )
   if (!length(biological)) {
-    stop(
-      "No biological reactions found for the requested sample/module.",
-      call. = FALSE
-    )
+    stop("The merged meta-module catalogue contains no valid reactions.",
+         call. = FALSE)
   }
-
-  core_group <-
-    as.character(core_reactions$sample_id) ==
-      as.character(sample_id) &
-    as.character(core_reactions$module_id) ==
-      as.character(module_id)
   core <- intersect(
-    unique(as.character(core_reactions$reaction_id[core_group])),
-    biological
+    unique(as.character(core_reactions$reaction_id)), biological
   )
   if (!length(core)) {
-    stop(
-      "No core reactions found for the requested sample/module.",
-      call. = FALSE
-    )
+    stop("No merged core reactions remain in the union-GEM catalogue.",
+         call. = FALSE)
   }
 
   direction_model <- parent
   direction_model$lb <- parent$fastcc_original_lb %||% parent$lb
   direction_model$ub <- parent$fastcc_original_ub %||% parent$ub
   target_directions <- rc_prepare_directional_targets(
-    direction_model,
-    core,
-    target_direction = target_direction
+    direction_model, core, target_direction = target_direction
   )
   parent_diagnostics <- .rc_directional_feasibility(
-    parent,
-    target_directions,
+    parent, target_directions,
     solver = solver,
     time_limit = time_limit,
     flux_threshold = fastcore_epsilon
@@ -702,21 +594,17 @@
 
   initial <- .rc_subset_gem(parent, biological)
   initial_diagnostics <- .rc_directional_feasibility(
-    initial,
-    parent_feasible_targets,
+    initial, parent_feasible_targets,
     solver = solver,
     time_limit = time_limit,
     flux_threshold = fastcore_epsilon
   )
-  names(initial_diagnostics)[
-    names(initial_diagnostics) == "feasible"
-  ] <- "initial_feasible"
-  names(initial_diagnostics)[
-    names(initial_diagnostics) == "vmax"
-  ] <- "initial_vmax"
-  names(initial_diagnostics)[
-    names(initial_diagnostics) == "solver_status"
-  ] <- "initial_solver_status"
+  names(initial_diagnostics)[names(initial_diagnostics) == "feasible"] <-
+    "initial_feasible"
+  names(initial_diagnostics)[names(initial_diagnostics) == "vmax"] <-
+    "initial_vmax"
+  names(initial_diagnostics)[names(initial_diagnostics) == "solver_status"] <-
+    "initial_solver_status"
   blocked <- initial_diagnostics[
     !initial_diagnostics$initial_feasible,
     c("reaction_id", "target_direction"),
@@ -725,16 +613,8 @@
 
   selected_support <- character()
   completion_iterations <- list()
-  unresolved <- data.frame(
-    reaction_id = character(),
-    target_direction = character(),
-    stringsAsFactors = FALSE
-  )
   for (direction in c("forward", "reverse")) {
-    task <- blocked[
-      blocked$target_direction == direction,
-      , drop = FALSE
-    ]
+    task <- blocked[blocked$target_direction == direction, , drop = FALSE]
     if (!nrow(task)) next
     completed <- .rc_fastcore_complete_direction(
       parent = parent,
@@ -748,44 +628,32 @@
       max_support_reactions = max_support_reactions
     )
     selected_support <- completed$support
-    unresolved <- rbind(unresolved, completed$unresolved)
     if (nrow(completed$iterations)) {
       completion_iterations[[direction]] <- completed$iterations
     }
   }
 
-  final_reactions <- union(biological, selected_support)
-  final <- .rc_subset_gem(parent, final_reactions)
+  final <- .rc_subset_gem(parent, union(biological, selected_support))
   final_diagnostics <- .rc_directional_feasibility(
-    final,
-    parent_feasible_targets,
+    final, parent_feasible_targets,
     solver = solver,
     time_limit = time_limit,
     flux_threshold = fastcore_epsilon
   )
-  names(final_diagnostics)[
-    names(final_diagnostics) == "feasible"
-  ] <- "final_feasible"
-  names(final_diagnostics)[
-    names(final_diagnostics) == "vmax"
-  ] <- "final_vmax"
-  names(final_diagnostics)[
-    names(final_diagnostics) == "solver_status"
-  ] <- "final_solver_status"
+  names(final_diagnostics)[names(final_diagnostics) == "feasible"] <-
+    "final_feasible"
+  names(final_diagnostics)[names(final_diagnostics) == "vmax"] <-
+    "final_vmax"
+  names(final_diagnostics)[names(final_diagnostics) == "solver_status"] <-
+    "final_solver_status"
 
   diagnostics <- merge(
-    parent_diagnostics,
-    initial_diagnostics,
-    by = c("reaction_id", "target_direction"),
-    all.x = TRUE,
-    sort = FALSE
+    parent_diagnostics, initial_diagnostics,
+    by = c("reaction_id", "target_direction"), all.x = TRUE, sort = FALSE
   )
   diagnostics <- merge(
-    diagnostics,
-    final_diagnostics,
-    by = c("reaction_id", "target_direction"),
-    all.x = TRUE,
-    sort = FALSE
+    diagnostics, final_diagnostics,
+    by = c("reaction_id", "target_direction"), all.x = TRUE, sort = FALSE
   )
   diagnostics$completion_status <- ifelse(
     diagnostics$target_direction == "none",
@@ -798,13 +666,12 @@
         "already_feasible",
         ifelse(
           diagnostics$final_feasible %in% TRUE,
-          "fastcore_completed",
+          "global_fastcore_completed",
           "unresolved"
         )
       )
     )
   )
-
   failed <- diagnostics$feasible %in% TRUE &
     !(diagnostics$final_feasible %in% TRUE)
   if (isTRUE(strict) && any(failed)) {
@@ -817,10 +684,8 @@
       collapse = ", "
     )
     stop(
-      paste0(
-        "FASTCORE meta-module completion failed for ",
-        "parent-feasible targets: ", bad
-      ),
+      "Global FASTCORE union-GEM completion failed for parent-feasible targets: ",
+      bad,
       call. = FALSE
     )
   }
@@ -828,18 +693,18 @@
   meta <- final$reaction_meta
   if (is.null(meta)) {
     meta <- data.frame(
-      reaction_id = colnames(final$S),
-      stringsAsFactors = FALSE
+      reaction_id = colnames(final$S), stringsAsFactors = FALSE
     )
   }
-  meta$biological_meta_module_member <-
+  meta$merged_meta_module_member <-
     as.character(meta$reaction_id) %in% biological
-  meta$fastcore_support <-
+  meta$global_fastcore_support <-
     as.character(meta$reaction_id) %in% selected_support
-  meta$support_only <- !meta$biological_meta_module_member
+  meta$support_only <- meta$global_fastcore_support &
+    !meta$merged_meta_module_member
   final$reaction_meta <- meta
-  final$sample_id <- as.character(sample_id)
-  final$grn_module_id <- as.character(module_id)
+  final$sample_id <- "global"
+  final$grn_module_id <- "MEDIUM_UNION_GEM"
   final$target_directions <- parent_feasible_targets
   final$closure_diagnostics <- diagnostics
   final$completion_iterations <- if (length(completion_iterations)) {
@@ -856,18 +721,23 @@
     "no_allowed_direction"
   } else if (n_no_direction > 0L) {
     "partial_no_allowed_direction"
-  } else if (nrow(diagnostics) > 0L && n_parent_blocked == nrow(diagnostics)) {
+  } else if (nrow(diagnostics) > 0L &&
+             n_parent_blocked == nrow(diagnostics)) {
     "parent_blocked"
   } else if (n_parent_blocked > 0L) {
     "partial_parent_blocked"
   } else {
     "ok"
   }
+  final$is_union_gem <- TRUE
+  final$union_gem_scope <-
+    "one_medium_shared_across_conditions_and_metacells"
   final$build_params <- list(
-    strategy = "meta_module_gem",
+    strategy = "medium_specific_union_gem",
     algorithm = "add_only_direction_preserving_fastcore_lp7_lp10",
-    n_biological_reactions = length(biological),
-    n_fastcore_support_reactions = length(selected_support),
+    completion_stage = "single_global_fastcore_after_meta_module_merge",
+    n_merged_biological_reactions = length(biological),
+    n_global_fastcore_support_reactions = length(selected_support),
     n_fastcc_consistent_parent_reactions = length(
       parent$fastcc_consistent_reactions %||% colnames(parent$S)
     ),
@@ -876,77 +746,10 @@
     ),
     fastcore_epsilon = fastcore_epsilon,
     target_direction = target_direction,
-    biological_reactions = biological,
+    merged_biological_reactions = biological,
     core_reactions = core,
-    forbidden_roles = c(
-      "demand", "sink", "artificial_support"
-    ),
+    forbidden_roles = c("demand", "sink", "artificial_support"),
     strict = strict
   )
   final
-}
-
-#' Build one GRN-defined meta-module GEM with add-only FASTCORE completion
-.rc_build_meta_module_gem_core <- function(gem, reaction_membership,
-                                     core_reactions = NULL,
-                                     sample_id, module_id,
-                                     medium_table = NULL,
-                                     condition = NULL,
-                                     target_direction = c(
-                                       "both", "forward", "reverse"
-                                     ),
-                                     solver = "highs",
-                                     time_limit = 300,
-                                     fastcore_epsilon = 1e-4,
-                                     max_support_reactions = 2000,
-                                     strict = TRUE) {
-  target_direction <- match.arg(target_direction)
-  if (is.null(core_reactions)) {
-    if (!"is_core" %in% colnames(reaction_membership)) {
-      stop(
-        paste(
-          "Supply `core_reactions` or an `is_core` column",
-          "in `reaction_membership`."
-        ),
-        call. = FALSE
-      )
-    }
-    core_reactions <- reaction_membership[
-      reaction_membership$is_core %in% TRUE,
-      , drop = FALSE
-    ]
-  } else if ("is_core" %in% colnames(core_reactions)) {
-    core_reactions <- core_reactions[
-      core_reactions$is_core %in% TRUE,
-      , drop = FALSE
-    ]
-  }
-  .rc_complete_meta_module(
-    gem = gem,
-    reaction_membership = reaction_membership,
-    core_reactions = core_reactions,
-    sample_id = sample_id,
-    module_id = module_id,
-    medium_table = medium_table,
-    condition = condition,
-    target_direction = target_direction,
-    solver = solver,
-    time_limit = time_limit,
-    fastcore_epsilon = fastcore_epsilon,
-    max_support_reactions = max_support_reactions,
-    strict = strict
-  )
-}
-
-rc_build_meta_module_gem <- function(gem, reaction_membership,
-                                     core_reactions = NULL, ...) {
-  if (!is.null(core_reactions)) {
-    core_reactions <- .rc_hard_core_rows(core_reactions)
-  }
-  .rc_build_meta_module_gem_core(
-    gem = gem,
-    reaction_membership = reaction_membership,
-    core_reactions = core_reactions,
-    ...
-  )
 }
