@@ -9,7 +9,7 @@
 - `rc_make_medium_scenarios()`: create one shared medium table; see [medium presets](medium-presets.md).
 - `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete GRN-first workflow with progress, timing, automatic backend selection, `upstream_workers = 6L`, and `layer2_workers = 30L`.
 
-The complete workflow exposes only the two layered worker counts. `upstream_workers` covers GRN inference and Layer 1. `layer2_workers` covers medium-specific union-GEM construction, global FASTCORE completion, and directional LP scoring. Stage 3 no longer owns a local FASTCORE worker pool.
+The complete workflow exposes two worker counts. `upstream_workers` covers GRN inference and Layer 1. `layer2_workers` covers medium-specific union-GEM construction, global FASTCORE completion, and directional LP scoring. Stage 3 performs biological catalogue construction without FASTCORE.
 
 ## Inspectable stages
 
@@ -19,25 +19,18 @@ The complete workflow exposes only the two layered worker counts. `upstream_work
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support.
 - `rc_regcompass_step_layer2()`: one medium-specific union GEM, one global FASTCORE completion, persistent model cache, and directional LP scoring; or shared full-GEM scoring when `model_mode = "full_gem"`.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
-- `rc_regcompass_step_target_union()`: directly map selected previous cores through shared KEGG, Reactome, or master-Rhea identifiers and score mapped non-core reactions in the existing cached union GEMs.
+- `rc_regcompass_step_target_union()`: map selected original core reactions through shared KEGG, Reactome, or master-Rhea identifiers and score mapped non-core reactions in the exact final Stage 5 union GEMs.
 
-## Current Stage 3 fields
+## Stage 3 catalogue fields
 
 ```r
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 ```
 
-The merged object is a biological reaction catalogue, not a GEM. The removed `global_modules`, `global_core_reactions`, `global_reaction_membership`, and `local_fastcore_*` outputs are not current APIs.
+The merged object is a biological reaction catalogue, not a GEM. It contains no medium constraints or FASTCORE support.
 
-The removed runner inputs are:
-
-```text
-layer1_args$local_fastcore
-layer1_args$local_fastcore_args
-```
-
-Configure the only FASTCORE stage through:
+## Stage 5 union-GEM configuration
 
 ```r
 layer2_args$model_params <- list(
@@ -47,6 +40,10 @@ layer2_args$model_params <- list(
   strict = TRUE
 )
 ```
+
+Each row of `step5$model_cache_summary` identifies one final medium-specific union GEM and records its file checksum, reaction counts, FASTCORE support count, build strategy, and completion stage.
+
+The optional second-pass scoring function uses these exact cached files. It validates the checksum and medium identity, does not rebuild a GEM, and does not rerun FASTCORE.
 
 Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Current condition-metacell artifacts also contain a cache contract covering ordered cells, labels, assays, selected PCA/Harmony and LSI embeddings, construction labels, and analysis parameters. Every public stage returns a timing table and writes `step_timing.tsv`.
 
