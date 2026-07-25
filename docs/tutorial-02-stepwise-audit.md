@@ -92,7 +92,7 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
-## Stage 5: build medium-specific models and score reactions
+## Stage 5: build the medium-constrained model and score reactions
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -118,7 +118,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-For each medium, Stage 5 applies the medium constraints, performs one global FASTCORE completion, caches the resulting structural model, and runs directional LP scoring. `medium_scenarios` may contain any supported preset or custom medium; see [medium presets](medium-presets.md).
+Stage 5 applies the selected medium, performs global FASTCORE completion, caches the model, and runs directional LP scoring. See [medium presets](medium-presets.md) for available presets and custom media.
 
 ```r
 step5$model_cache_summary[, c(
