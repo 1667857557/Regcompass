@@ -96,7 +96,6 @@ result <- rc_run_regcompass_one_shot(
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    time_limit = 600,
     model_params = list(
       completion_time_limit = 600,
       fastcore_epsilon = 1e-4,
@@ -109,7 +108,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The Stage 1 adjusted-P-value, effect-size, and model-R² filters define which Human-GEM target genes enter Stage 3. Both positive and negative Pando coefficients count as regulatory evidence. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`.
+The Stage 1 adjusted-P-value, effect-size, and model-R² filters define which Human-GEM target genes enter Stage 3. Both positive and negative Pando coefficients count as regulatory evidence. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`. `completion_time_limit` limits union-GEM construction only; the later scoring LPs have no time-limit parameter.
 
 # Stepwise workflow
 
@@ -166,7 +165,6 @@ step5 <- rc_regcompass_step_layer2(
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    time_limit = 600,
     model_params = list(
       completion_time_limit = 600,
       fastcore_epsilon = 1e-4,
@@ -226,7 +224,7 @@ union_gem$reaction_meta[
 ]
 ```
 
-One union GEM is built per medium scenario and shared by all conditions and metacells in that scenario.
+One union GEM is built per medium scenario and shared by all conditions and metacells in that scenario. The construction phase may be limited with `completion_time_limit`; scoring starts only after this cached model has been completed.
 
 # Targeted second-pass scoring
 
@@ -240,26 +238,26 @@ targeted <- rc_regcompass_step_target_union(
   core_reaction_ids = "MAR04324",
   layer2_args = list(
     target_direction = "both",
-    solver = "highs",
-    time_limit = 600
+    solver = "highs"
   )
 )
 
 targeted$microcompass$params[c(
   "structural_model_reused_exactly",
   "fastcore_rerun",
-  "model_rebuild"
+  "model_rebuild",
+  "scoring_time_limit"
 )]
 ```
 
-Selected genes or reaction IDs define mapping anchors. The second pass verifies each Stage 5 cache file checksum and medium identifier, reuses the exact final medium-specific union GEM, and neither rebuilds the model nor reruns FASTCORE.
+Selected genes or reaction IDs define mapping anchors. The second pass verifies each Stage 5 cache file checksum and medium identifier, reuses the exact final medium-specific union GEM, and neither rebuilds the model nor reruns FASTCORE. It is scoring-only and has no time-limit parameter.
 
 # Restart policy
 
 - Change Pando evidence thresholds or regulatory regions: rerun Stage 1 onward.
 - Change subsystem or reaction-equivalence expansion: rerun Stage 3 onward.
 - Change the RNA+ATAC transformation: rerun Stage 4 onward.
-- Change medium or global FASTCORE settings: rerun Stage 5 onward.
+- Change medium or global FASTCORE construction settings: rerun Stage 5 onward.
 
 # Condition comparisons
 
