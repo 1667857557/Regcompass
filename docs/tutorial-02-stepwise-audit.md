@@ -114,10 +114,19 @@ step4 <- rc_regcompass_step_layer1(
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
   regulatory_alpha = 1,
-  tau = 0.20,
+  gpr_and_method = "min",
   parallel = TRUE,
   BPPARAM = upstream_bp
 )
+```
+
+`gpr_and_method` accepts the COMPASS functions `"min"`, `"median"`, and `"mean"`. RegCompass defaults to `"min"`, so the least-supported required subunit limits a multi-gene GPR complex. The canonical isozyme OR rule remains additive. The former Boltzmann soft-min and `tau` API have been deleted.
+
+The selected rule is recorded in:
+
+```r
+step4$capacity_params$and_method
+step4$evidence_formula
 ```
 
 ## Stage 5: build the medium-constrained model and score reactions
