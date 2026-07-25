@@ -75,6 +75,31 @@
   BiocGenerics::union(phast_cons, screen_ccre)
 }
 
+.rc_validate_pando_evidence_filters <- function(
+    padj_threshold, min_abs_estimate, min_model_rsq, require_padj) {
+  if (!is.numeric(padj_threshold) || length(padj_threshold) != 1L ||
+      !is.finite(padj_threshold) || padj_threshold < 0 ||
+      padj_threshold > 1) {
+    stop("`padj_threshold` must be one finite number in [0, 1].",
+         call. = FALSE)
+  }
+  if (!is.numeric(min_abs_estimate) || length(min_abs_estimate) != 1L ||
+      !is.finite(min_abs_estimate) || min_abs_estimate < 0) {
+    stop("`min_abs_estimate` must be one finite non-negative number.",
+         call. = FALSE)
+  }
+  if (!is.numeric(min_model_rsq) || length(min_model_rsq) != 1L ||
+      !is.finite(min_model_rsq) || min_model_rsq < 0) {
+    stop("`min_model_rsq` must be one finite non-negative number.",
+         call. = FALSE)
+  }
+  if (!is.logical(require_padj) || length(require_padj) != 1L ||
+      is.na(require_padj)) {
+    stop("`require_padj` must be TRUE or FALSE.", call. = FALSE)
+  }
+  invisible(TRUE)
+}
+
 #' Extract and filter a Pando TF-peak-gene coefficient table
 rc_extract_pando_tf_peak_gene <- function(
     grn_object,
@@ -83,6 +108,16 @@ rc_extract_pando_tf_peak_gene <- function(
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     require_padj = TRUE) {
+  .rc_validate_pando_evidence_filters(
+    padj_threshold = padj_threshold,
+    min_abs_estimate = min_abs_estimate,
+    min_model_rsq = min_model_rsq,
+    require_padj = require_padj
+  )
+  if (!is.character(sample_id) || length(sample_id) != 1L ||
+      is.na(sample_id) || !nzchar(trimws(sample_id))) {
+    stop("`sample_id` must be one non-empty character value.", call. = FALSE)
+  }
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop("Package 'Pando' is required.", call. = FALSE)
   }
