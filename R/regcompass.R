@@ -4,15 +4,17 @@
 #' reaction catalogue. Within each condition by cell-type group, Human-GEM
 #' metabolic genes with significant Pando TF-peak-gene evidence define the
 #' supported gene set, and complete GPR branches define core reactions. Stage 3
-#' does not run FASTCORE and does not create a GEM. With
-#' `model_mode = "meta_module_gem"`, Stage 5 constructs one union GEM per medium
-#' scenario and performs the only FASTCORE completion on that shared structure.
+#' applies one fixed ordered annotation pass and does not run FASTCORE or create
+#' a GEM. With `model_mode = "meta_module_gem"`, Stage 5 constructs one union
+#' GEM per medium scenario and performs the only FASTCORE completion on that
+#' shared structure.
 #'
 #' @param pfm Optional motif position-frequency matrices. When omitted,
 #'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
 #'   to `Pando::find_motifs()`.
-#' @param meta_module_args Stage 3 annotation-expansion arguments:
-#'   `subsystem_table`, `expansion_mode`, and `max_iterations`.
+#' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
+#'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
+#'   master-Rhea equivalence. Recursive and one-hop expansion APIs are removed.
 #' @param layer1_args Stage 4 integrated-evidence arguments:
 #'   `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.
 #'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
@@ -84,12 +86,14 @@ rc_run_regcompass <- function(
   }
   unknown_meta_module <- setdiff(
     names(meta_module_args),
-    c("subsystem_table", "expansion_mode", "max_iterations")
+    "subsystem_table"
   )
   if (length(unknown_meta_module)) {
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown_meta_module, collapse = ", "),
+      ". Meta-module expansion is always one ordered pass; the retired ",
+      "`expansion_mode`, `max_iterations`, and one-hop APIs have been removed.",
       call. = FALSE
     )
   }
