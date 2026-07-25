@@ -135,15 +135,18 @@
 }
 
 .rc_read_cached_union_gem <- function(
-    file, medium_scenario, expected_checksum = NA_character_) {
+    file, medium_scenario, expected_checksum) {
   if (!is.character(file) || length(file) != 1L ||
       is.na(file) || !nzchar(file) || !file.exists(file)) {
     stop("A required Stage 5 union GEM cache file is unavailable.",
          call. = FALSE)
   }
+  if (!is.character(expected_checksum) || length(expected_checksum) != 1L ||
+      is.na(expected_checksum) || !nzchar(trimws(expected_checksum))) {
+    stop("A required Stage 5 union GEM checksum is missing.", call. = FALSE)
+  }
   observed_checksum <- unname(tools::md5sum(file))
-  if (!is.na(expected_checksum) && nzchar(expected_checksum) &&
-      !identical(observed_checksum, as.character(expected_checksum))) {
+  if (!identical(observed_checksum, as.character(expected_checksum))) {
     stop("A Stage 5 union GEM cache file failed its checksum check.",
          call. = FALSE)
   }
