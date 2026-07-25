@@ -112,7 +112,7 @@
 #' Infer condition-by-cell-type Pando GRNs from single cells
 #' @export
 rc_regcompass_step_grn <- function(
-    object, gem, outdir, pfm, genome,
+    object, gem, outdir, pfm = NULL, genome,
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
