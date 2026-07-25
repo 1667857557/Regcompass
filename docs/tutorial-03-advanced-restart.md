@@ -24,7 +24,9 @@ Rerun Pando and all downstream stages after changing:
 - `pando_initiate_args$regions`;
 - RNA/ATAC matrices, condition metadata, or cell-type metadata.
 
-The canonical human default region set is the union of Pando's `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` data objects. Changing that set changes the fitted evidence and therefore requires Stage 1 to be rerun.
+When `pfm` is omitted, the canonical motif collection is Pando's `motifs` data object. Supplying a different `pfm` changes the fitted regulatory evidence and therefore requires Stage 1 onward to be rerun.
+
+The canonical human default region set is the union of Pando's `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` data objects. Changing that set also requires Stage 1 onward to be rerun.
 
 ### Rerun Stage 2 onward
 
@@ -34,15 +36,30 @@ Rerun metacells and all downstream stages after changing cell membership, RNA/AT
 
 Rerun reaction meta-modules and downstream stages after changing:
 
-- `meta_module_args$expansion_mode` or `max_iterations`;
-- subsystem/cross-reference annotations;
+- a custom `meta_module_args$subsystem_table`;
+- subsystem, KEGG, Reactome, or master-Rhea annotations;
 - GEM GPR rules.
 
-Pando filtering is no longer a Stage 3 parameter. It defines the significant target-gene set in Stage 1. Stage 3 has no GRN-neighbour, shared-TF, Jaccard, top-k, or connected-component settings.
+Pando filtering is no longer a Stage 3 parameter. It defines the significant target-gene set in Stage 1. Stage 3 has no GRN-neighbour, shared-TF, Jaccard, top-k, connected-component, `expansion_mode`, `max_iterations`, fixed-point, or one-hop settings.
+
+Stage 3 always performs one ordered pass:
+
+```text
+core subsystem
+→ KEGG/Reactome equivalence
+→ master-Rhea equivalence
+```
 
 ### Rerun Stage 4 onward
 
-Rerun Layer 1 and downstream stages after changing `regulatory_alpha`, `tau`, gene half-saturation, or metacell RNA/ATAC evidence while retaining the same Stage 3 reaction catalogue.
+Rerun Layer 1 and downstream stages after changing:
+
+- `regulatory_alpha`;
+- `gpr_and_method` among `"min"`, `"median"`, and `"mean"`;
+- gene half-saturation;
+- metacell RNA or ATAC evidence.
+
+The default GPR-AND method is `"min"`. The retired Boltzmann soft-min and `tau` API are not available.
 
 ### Rerun Stage 5 onward
 
@@ -55,6 +72,23 @@ Rerun Layer 2 and results after changing:
 `completion_time_limit` controls only the FASTCORE/FASTCC work that constructs the medium-specific union GEM. Scoring LPs have no `time_limit` API and run after the union GEM has been completed and cached.
 
 The complete preset list and custom-medium format are documented in [medium presets](medium-presets.md).
+
+## Rerun Stage 4 with another COMPASS GPR-AND rule
+
+```r
+step4_mean <- rc_regcompass_step_layer1(
+  metacells = step2,
+  meta_modules = step3,
+  gem = gem,
+  outdir = "RegCompass_restart/04_layer1_mean",
+  regulatory_alpha = 1,
+  gpr_and_method = "mean",
+  parallel = TRUE,
+  BPPARAM = upstream_bp
+)
+```
+
+Use `"median"` or `"mean"` for sensitivity analysis. The canonical default remains `"min"`.
 
 ## Rebuild Stage 5
 
