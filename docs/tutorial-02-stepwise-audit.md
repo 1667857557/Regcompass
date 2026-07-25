@@ -2,7 +2,7 @@
 
 Use this tutorial when each RegCompass stage should be run and saved independently.
 
-## Stage 1: infer condition-by-cell-type GRNs
+## Stage 1: infer condition-by-cell-type Pando evidence
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -15,6 +15,9 @@ step1 <- rc_regcompass_step_grn(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 100,
+    padj_threshold = 0.05,
+    min_abs_estimate = 0,
+    min_model_rsq = 0.1,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -28,7 +31,21 @@ step1 <- rc_regcompass_step_grn(
 )
 
 step1$grn_result$sample_status
+step1$grn_result$target_metabolic_genes
 ```
+
+The candidate targets are all Human-GEM GPR genes present in the RNA assay. Unless `pando_args$pando_initiate_args$regions` is supplied, the human workflow uses:
+
+```r
+data("phastConsElements20Mammals.UCSC.hg38", package = "Pando")
+data("SCREEN.ccRE.UCSC.hg38", package = "Pando")
+regions <- union(
+  phastConsElements20Mammals.UCSC.hg38,
+  SCREEN.ccRE.UCSC.hg38
+)
+```
+
+This union is passed to `Pando::initiate_grn(regions = regions)`. The default is hg38-specific; mouse or other genomes require an explicit region object.
 
 ## Stage 2: construct condition-level metacells
 
@@ -50,7 +67,7 @@ step2 <- rc_regcompass_step_metacells(
 step2$pooled$metacell_meta
 ```
 
-## Stage 3: construct reaction meta-modules
+## Stage 3: construct complete-GPR biological meta-modules
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -58,23 +75,34 @@ step3 <- rc_regcompass_step_meta_modules(
   metacells = step2,
   gem = gem,
   outdir = "RegCompass_steps/03_meta_modules",
-  layer1_args = list(
-    top_k_neighbors = 5,
-    min_shared_tfs = 1,
-    min_tf_jaccard = 0,
-    max_targets_per_tf = 200,
+  meta_module_args = list(
     expansion_mode = "ordered_once"
   )
 )
 ```
 
-Stage 3 projects metabolic-gene GRN components to complete-GPR core reactions, expands them through subsystem and direct KEGG/Reactome/master-Rhea annotations, and deduplicates reaction IDs across modules.
+Stage 3 no longer projects targets through shared TFs and does not calculate GRN connected components. For each `condition × cell type`, it performs the following operations:
+
+```text
+significant Pando TF–peak–Human-GEM-target rows
+→ unique supported metabolic target genes
+→ complete-GPR core reactions
+→ core-subsystem expansion
+→ KEGG/Reactome reaction-equivalence expansion
+→ master-Rhea reaction-equivalence expansion
+→ biological meta-module
+```
+
+A positive or negative Pando coefficient both count as regulatory evidence. A reaction is core only when at least one complete GPR AND branch is contained in the supported target-gene set. Partial complexes remain diagnostic and do not anchor expansion.
 
 ```r
+step3$condition_modules$supported_metabolic_genes
+step3$condition_modules$core_gene_reaction
+table(step3$condition_modules$reaction_membership$inclusion_stage)
+
 catalogue <- step3$merged_modules
 catalogue$merged_core_reactions
 catalogue$merged_reaction_membership
-table(catalogue$merged_reaction_membership$inclusion_stage)
 ```
 
 ## Stage 4: calculate integrated RNA+ATAC reaction support
@@ -143,7 +171,10 @@ result <- rc_regcompass_step_results(
   outdir = "RegCompass_steps/06_results",
   species = "human"
 )
+```
 
+```r
+result$condition_grn_meta_modules$supported_metabolic_genes
 result$reaction_ranking
 result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions
