@@ -1,14 +1,15 @@
-#' Construct complete-GPR cores and biological meta-modules
+#' Construct significant-target complete-GPR cores and biological meta-modules
 #'
-#' Stage 3 defines biological reaction membership only. It does not run
-#' FASTCORE and does not construct a GEM. Reactions from all modules are
-#' deduplicated into a merged meta-module catalogue for downstream Layer 1 and
-#' medium-specific union-GEM construction.
+#' Stage 3 defines biological reaction membership only. For each condition by
+#' cell-type group, Human-GEM metabolic genes with significant Pando
+#' TF-peak-gene evidence are treated as one supported gene set. Reactions become
+#' core only when at least one complete GPR branch is contained in that set.
+#' Stage 3 does not run FASTCORE and does not construct a GEM.
 #'
 #' @export
 rc_regcompass_step_meta_modules <- function(
     grn, metacells, gem, outdir,
-    layer1_args = list(),
+    meta_module_args = list(),
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("meta_modules", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
@@ -26,19 +27,15 @@ rc_regcompass_step_meta_modules <- function(
       call. = FALSE
     )
   }
-  if (!is.list(layer1_args)) {
-    stop("`layer1_args` must be a list.", call. = FALSE)
+  if (!is.list(meta_module_args)) {
+    stop("`meta_module_args` must be a list.", call. = FALSE)
   }
-  obsolete <- intersect(
-    names(layer1_args), c("local_fastcore", "local_fastcore_args")
-  )
-  if (length(obsolete)) {
+  allowed <- c("subsystem_table", "expansion_mode", "max_iterations")
+  unknown <- setdiff(names(meta_module_args), allowed)
+  if (length(unknown)) {
     stop(
-      paste0(
-        "Local FASTCORE was removed. Delete obsolete `layer1_args` fields: ",
-        paste(obsolete, collapse = ", "),
-        ". Configure global FASTCORE through `layer2_args$model_params`."
-      ),
+      "Unknown `meta_module_args` fields: ",
+      paste(unknown, collapse = ", "),
       call. = FALSE
     )
   }
@@ -56,7 +53,7 @@ rc_regcompass_step_meta_modules <- function(
     file.path(outdir, "grn_metacell_group_coverage.tsv.gz")
   )
   condition_modules <- .rc_build_condition_meta_modules(
-    grn$grn_result, gem, outdir, layer1_args
+    grn$grn_result, gem, outdir, meta_module_args
   )
   condition_modules$grn_metacell_group_coverage <- group_coverage
   if (!is.data.frame(condition_modules$reaction_membership) ||
@@ -93,7 +90,9 @@ rc_regcompass_step_meta_modules <- function(
     grn_params = grn$params,
     gem_fingerprint = .rc_stage_gem_fingerprint(gem),
     params = list(
-      layer1_args = layer1_args,
+      meta_module_args = meta_module_args,
+      core_definition =
+        "condition_celltype_significant_pando_targets_complete_gpr",
       feasibility_completion = "layer2_medium_specific_only",
       merge_creates_gem = FALSE
     )
