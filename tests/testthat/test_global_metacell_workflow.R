@@ -37,29 +37,26 @@ test_that("Pando grouping is condition by cell type", {
 })
 
 test_that("merged meta-modules contain biological reactions only", {
-  artifact <- list(
-    group_id = "condition_pooled",
-    grn_meta_modules = list(
-      sample_status = data.frame(status = "ok"),
-      tf_peak_gene_all = data.frame(),
-      tf_peak_gene_significant = data.frame(),
-      metabolic_gene_nodes = data.frame(),
-      metabolic_gene_edges = data.frame(),
-      core_gene_reaction = data.frame(
-        sample_id = "A|T",
-        module_id = "M1",
-        reaction_id = "R1",
-        is_core = TRUE
-      ),
-      reaction_membership = data.frame(
-        sample_id = "A|T",
-        module_id = "M1",
-        reaction_id = c("R1", "R2")
-      ),
-      meta_module_summary = data.frame()
-    )
+  condition_modules <- list(
+    sample_status = data.frame(status = "ok"),
+    tf_peak_gene_all = data.frame(),
+    tf_peak_gene_significant = data.frame(),
+    metabolic_gene_nodes = data.frame(),
+    metabolic_gene_edges = data.frame(),
+    core_gene_reaction = data.frame(
+      sample_id = "A|T",
+      module_id = "M1",
+      reaction_id = "R1",
+      is_core = TRUE
+    ),
+    reaction_membership = data.frame(
+      sample_id = "A|T",
+      module_id = "M1",
+      reaction_id = c("R1", "R2")
+    ),
+    meta_module_summary = data.frame()
   )
-  out <- .rc_merge_stratum_meta_modules(list(artifact))
+  out <- .rc_merge_meta_module_catalogue(condition_modules)
   expect_setequal(
     out$merged_reaction_membership$reaction_id,
     c("R1", "R2")
