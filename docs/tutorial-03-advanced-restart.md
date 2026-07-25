@@ -49,8 +49,10 @@ Rerun Layer 1 and downstream stages after changing `regulatory_alpha`, `tau`, ge
 Rerun Layer 2 and results after changing:
 
 - medium composition or exchange bounds;
-- `target_direction`, `omega`, solver, or scoring `time_limit`;
+- `target_direction`, `omega`, solver, or `flux_threshold`;
 - `completion_time_limit`, `fastcore_epsilon`, `max_support_reactions`, or `strict` in `layer2_args$model_params`.
+
+`completion_time_limit` controls only the FASTCORE/FASTCC work that constructs the medium-specific union GEM. Scoring LPs have no `time_limit` API and run after the union GEM has been completed and cached.
 
 The complete preset list and custom-medium format are documented in [medium presets](medium-presets.md).
 
@@ -73,7 +75,6 @@ step5_new <- rc_regcompass_step_layer2(
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    time_limit = 900,
     model_params = list(
       completion_time_limit = 900,
       fastcore_epsilon = 1e-4,
@@ -86,7 +87,7 @@ step5_new <- rc_regcompass_step_layer2(
 )
 ```
 
-This reuses the Stage 3 reaction targets and Stage 4 support matrix.
+This reuses the Stage 3 reaction targets and Stage 4 support matrix. The new `completion_time_limit` affects union-GEM reconstruction only; the subsequent scoring phase is not time limited.
 
 ## Diagnose model completion
 
@@ -111,5 +112,5 @@ Common statuses are:
 - `already_feasible`: the initial reaction set supports the target;
 - `global_fastcore_completed`: FASTCORE added supporting reactions;
 - `parent_blocked`: the target direction is infeasible in the medium-constrained parent GEM;
-- `unresolved`: completion did not succeed under the requested limits;
+- `unresolved`: completion did not succeed under the requested construction limit;
 - `no_allowed_direction`: the original GEM bounds block the requested direction.
