@@ -28,20 +28,25 @@
   motifs
 }
 
-#' Load the canonical Pando regulatory-region union
+#' Load the canonical species-specific Pando regulatory regions
 #'
-#' The canonical RegCompass GRN uses the union of the conserved-element and
-#' SCREEN ccRE region sets bundled with the required Pando fork. Users can
-#' override this default through `pando_initiate_args$regions`.
-.rc_default_pando_regions <- function() {
+#' Human analyses use the union of the conserved-element and SCREEN ccRE sets.
+#' Mouse analyses use only `phastConsElements20Mammals.UCSC.hg38`. Users can
+#' override either default through `pando_initiate_args$regions`.
+.rc_default_pando_regions <- function(species = c("human", "mouse")) {
+  species <- match.arg(species)
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop("Package 'Pando' is required.", call. = FALSE)
   }
   data_environment <- new.env(parent = emptyenv())
-  region_names <- c(
-    "phastConsElements20Mammals.UCSC.hg38",
-    "SCREEN.ccRE.UCSC.hg38"
-  )
+  region_names <- if (identical(species, "human")) {
+    c(
+      "phastConsElements20Mammals.UCSC.hg38",
+      "SCREEN.ccRE.UCSC.hg38"
+    )
+  } else {
+    "phastConsElements20Mammals.UCSC.hg38"
+  }
   utils::data(
     list = region_names,
     package = "Pando",
@@ -63,14 +68,28 @@
     )
   }
   phast_cons <- get(
-    region_names[[1L]], envir = data_environment, inherits = FALSE
+    "phastConsElements20Mammals.UCSC.hg38",
+    envir = data_environment,
+    inherits = FALSE
   )
+  if (!methods::is(phast_cons, "GenomicRanges")) {
+    stop(
+      "Pando phastCons regulatory regions must be a GRanges object.",
+      call. = FALSE
+    )
+  }
+  if (identical(species, "mouse")) return(phast_cons)
+
   screen_ccre <- get(
-    region_names[[2L]], envir = data_environment, inherits = FALSE
+    "SCREEN.ccRE.UCSC.hg38",
+    envir = data_environment,
+    inherits = FALSE
   )
-  if (!methods::is(phast_cons, "GenomicRanges") ||
-      !methods::is(screen_ccre, "GenomicRanges")) {
-    stop("Pando regulatory-region data must be GRanges objects.", call. = FALSE)
+  if (!methods::is(screen_ccre, "GenomicRanges")) {
+    stop(
+      "Pando SCREEN ccRE regulatory regions must be a GRanges object.",
+      call. = FALSE
+    )
   }
   BiocGenerics::union(phast_cons, screen_ccre)
 }
