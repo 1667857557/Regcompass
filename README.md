@@ -9,7 +9,7 @@ condition × cell type cells
 → group-specific Pando GRNs and condition-level metacells
 → complete-GPR reaction meta-modules
 → integrated RNA+ATAC reaction support
-→ one model per medium with one global FASTCORE completion
+→ medium-constrained model with global FASTCORE completion
 → directional COMPASS-like LP scoring
 → annotated rankings and condition contrasts
 ```
@@ -113,9 +113,9 @@ See [Predefined extracellular medium scenarios](docs/medium-presets.md) for spec
 - `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells.
 - `rc_regcompass_step_meta_modules()`: map GRN components to complete-GPR reaction modules.
 - `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support.
-- `rc_regcompass_step_layer2()`: build medium-specific models and run directional LP scoring.
+- `rc_regcompass_step_layer2()`: build the medium-constrained model and run directional LP scoring.
 - `rc_regcompass_step_results()`: assemble rankings, annotations, provenance, and contrasts.
-- `rc_regcompass_step_target_union()`: remap selected core genes or reactions and score directly linked targets in the cached Stage 5 models.
+- `rc_regcompass_step_target_union()`: remap selected core genes or reactions and score directly linked targets in the cached Stage 5 model.
 
 ## Main outputs
 
@@ -126,8 +126,6 @@ result$merged_grn_meta_modules$merged_core_reactions
 result$merged_grn_meta_modules$merged_reaction_membership
 result$microcompass$model_cache_summary
 ```
-
-Within one medium scenario, all conditions use the same structural model and reaction bounds; condition differences arise from the multiome penalty matrix. Different media may produce different FASTCORE support sets and should be interpreted as different structural contexts.
 
 ## Tutorials
 
