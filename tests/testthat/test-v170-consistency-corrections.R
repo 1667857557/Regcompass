@@ -117,19 +117,26 @@ test_that("targets without finite Pando R-squared are untrusted", {
 })
 
 test_that("feasibility completion is global and medium specific", {
-  meta_module <- .rc_feasibility_completion_metadata("meta_module_gem")
-  expect_identical(
-    meta_module$feasibility_completion,
-    "single_global_fastcore_on_each_medium_specific_union_gem"
+  stage3 <- paste(
+    deparse(body(rc_regcompass_step_meta_modules)),
+    collapse = "\n"
   )
-  expect_match(
-    meta_module$feasibility_completion_stages$meta_modules,
-    "without FASTCORE",
-    fixed = TRUE
+  stage5 <- paste(
+    deparse(body(rc_regcompass_step_layer2)),
+    collapse = "\n"
   )
+  cache <- paste(
+    deparse(body(.rc_build_medium_specific_union_gem_cache)),
+    collapse = "\n"
+  )
+
+  expect_match(stage3, "merge_creates_gem = FALSE", fixed = TRUE)
+  expect_false(grepl(".rc_complete_medium_union_gem", stage3, fixed = TRUE))
+  expect_match(stage5, "one medium-specific union GEM", fixed = TRUE)
+  expect_match(cache, ".rc_complete_medium_union_gem", fixed = TRUE)
   expect_match(
-    meta_module$feasibility_completion_stages$union_gem,
-    "one global add-only FASTCORE",
+    cache,
+    "single_global_fastcore_after_meta_module_merge",
     fixed = TRUE
   )
 })
