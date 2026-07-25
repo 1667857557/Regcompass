@@ -11,7 +11,9 @@
 #' @param meta_module_args Stage 3 annotation-expansion arguments:
 #'   `subsystem_table`, `expansion_mode`, and `max_iterations`.
 #' @param layer1_args Stage 4 integrated-evidence arguments:
-#'   `regulatory_alpha`, `tau`, and `gene_half_saturation`.
+#'   `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.
+#'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
+#'   `"mean"`; RegCompass defaults to `"min"`.
 #' @param upstream_workers Worker count for GRN inference and Layer 1
 #'   reaction-expression calculation. Defaults to 6. Set to 1 for serial
 #'   upstream execution.
@@ -90,15 +92,20 @@ rc_run_regcompass <- function(
   }
   unknown_layer1 <- setdiff(
     names(layer1_args),
-    c("regulatory_alpha", "tau", "gene_half_saturation")
+    c("regulatory_alpha", "gpr_and_method", "gene_half_saturation")
   )
   if (length(unknown_layer1)) {
     stop(
       "Unknown `layer1_args` fields: ",
       paste(unknown_layer1, collapse = ", "),
+      ". The retired `tau`/Boltzmann GPR-AND API has been removed.",
       call. = FALSE
     )
   }
+  gpr_and_method <- match.arg(
+    as.character(layer1_args$gpr_and_method %||% "min"),
+    c("min", "median", "mean")
+  )
 
   pando_infer_args <- pando_args$pando_infer_args %||% list()
   if (!is.list(pando_infer_args)) {
@@ -214,7 +221,7 @@ rc_run_regcompass <- function(
           gem = gem,
           outdir = file.path(outdir, "04_layer1"),
           regulatory_alpha = layer1_args$regulatory_alpha %||% 1,
-          tau = layer1_args$tau %||% 0.20,
+          gpr_and_method = gpr_and_method,
           gene_half_saturation = layer1_args$gene_half_saturation %||%
             getOption("RegCompassR.cpm_half_saturation", 1),
           parallel = !identical(config$actual_backend, "serial"),
