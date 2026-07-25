@@ -14,13 +14,31 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 
 ## Restart boundaries
 
+### Rerun Stage 1 onward
+
+Rerun Pando and all downstream stages after changing:
+
+- `padj_threshold`, `min_abs_estimate`, or `min_model_rsq`;
+- `tf_cor`, `peak_cor`, model method, or other `pando_infer_args`;
+- motif matrices or genome;
+- `pando_initiate_args$regions`;
+- RNA/ATAC matrices, condition metadata, or cell-type metadata.
+
+The canonical human default region set is the union of Pando's `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` data objects. Changing that set changes the fitted evidence and therefore requires Stage 1 to be rerun.
+
 ### Rerun Stage 2 onward
 
 Rerun metacells and all downstream stages after changing cell membership, RNA/ATAC matrices, condition or cell-type metadata, `gamma`, or the RNA/ATAC reductions used for metacell construction.
 
 ### Rerun Stage 3 onward
 
-Rerun reaction meta-modules and downstream stages after changing Pando filtering, GRN-neighbour parameters, expansion settings, subsystem/cross-reference annotations, or GEM GPR rules.
+Rerun reaction meta-modules and downstream stages after changing:
+
+- `meta_module_args$expansion_mode` or `max_iterations`;
+- subsystem/cross-reference annotations;
+- GEM GPR rules.
+
+Pando filtering is no longer a Stage 3 parameter. It defines the significant target-gene set in Stage 1. Stage 3 has no GRN-neighbour, shared-TF, Jaccard, top-k, or connected-component settings.
 
 ### Rerun Stage 4 onward
 
