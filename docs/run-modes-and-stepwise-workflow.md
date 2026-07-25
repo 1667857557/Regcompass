@@ -1,70 +1,85 @@
-# RegCompassR 1.8.3 tutorial index
+# RegCompassR 1.8.4 tutorial index
 
-Choose the lowest level that provides the required control. All levels use the same GRN-first biological model and `gamma = 30` default.
-
-| Level | Use | Tutorial |
-|---|---|---|
-| 1 | complete one-shot analysis | [One-shot quick start](tutorial-01-quick-start.md) |
-| 2 | execute and audit every stage independently | [True stepwise workflow](tutorial-02-stepwise-audit.md) |
-| 3 | restart, sensitivity, resource allocation, and failure diagnosis | [Advanced restart](tutorial-03-advanced-restart.md) |
-| 4 | remap selected genes or reactions and run second-pass scoring | [Targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md) |
-| 5 | compare reaction support across conditions | [Condition differential analysis](tutorial-05-condition-differential-analysis.md) |
-
-The exact input/output requirements for every stage are summarized in [Stage input-output contracts](stage-interface-contracts.md).
-
-## Canonical workflow
+All execution modes use the same architecture:
 
 ```text
-single-cell RNA normalization
-→ cell-type-shared ATAC TF-IDF across conditions
-→ Pando GRN per condition × cell type (peak_cor = 0.01)
-→ cell-type-guided SuperCell2 metacells within condition (gamma = 30)
-→ complete-GPR core reactions
-→ subsystem + KEGG/Reactome + master-Rhea expansion
-→ local FASTCORE feasibility completion
-→ global union GEM
-→ integrated RNA+ATAC reaction expression
-→ directional COMPASS-like LP scoring
-→ reaction annotation and condition comparisons
+biological meta-modules
+→ merged reaction catalogue
+→ Layer 1 multiome support
+→ medium-specific union GEM
+→ single global FASTCORE
+→ directional LP scoring
 ```
 
-Stage 3-6 validate stage classes, workflow metadata, GEM fingerprints, core-target provenance, and ordered scoring units before connecting objects.
+## Level 1: one-shot workflow
 
-## Canonical parallel policy
+Use [Tutorial 1](tutorial-01-quick-start.md) for the complete canonical run through `rc_run_regcompass_one_shot()`.
 
-The complete runner exposes only:
+The one-shot runner manages two worker counts:
+
+- `upstream_workers`: GRN inference and Layer 1;
+- `layer2_workers`: union-GEM completion and LP scoring.
+
+Stage 3 no longer runs a parallel local FASTCORE task.
+
+## Level 2: explicit stepwise workflow
+
+Use [Tutorial 2](tutorial-02-stepwise-audit.md) to call:
 
 ```r
-upstream_workers <- 6L
-layer2_workers <- 30L
+rc_regcompass_step_grn()
+rc_regcompass_step_metacells()
+rc_regcompass_step_meta_modules()
+rc_regcompass_step_layer1()
+rc_regcompass_step_layer2()
+rc_regcompass_step_results()
 ```
 
-The package selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS. Set both values to one for fully serial execution. `parallel_backend`, manually created `BPPARAM` objects, and independent local-FASTCORE worker fields are not part of the canonical complete-run interface. The true stepwise tutorial deliberately exposes per-stage `BPPARAM` objects because the user controls each stage independently.
+Stage 3 returns:
 
-| Stage | Parallel unit | Worker layer |
-|---|---|---|
-| GRN | condition × cell type | upstream |
-| Metacells | no workflow-level BiocParallel loop | serial |
-| Meta-modules | local FASTCORE completion per module | upstream |
-| Layer 1 | GPR/reaction capacity | upstream |
-| Layer 2 | shared model × metacell | Layer 2 |
-| Direct database-linked targets | reused union model × metacell | restart worker budget |
-| Results | serial assembly | serial |
+```r
+step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
+```
 
-Each worker processes one internally single-threaded task. Pando's inner parallelism is disabled, numerical libraries are fixed to one thread, and package-managed worker pools are stopped and garbage-collected after their stage. No upstream pool remains active during Layer 2.
+These are catalogues, not GEM objects.
 
-## Optional analyses after Layer 2
+## Level 3: restart and sensitivity analysis
 
-- [Tutorial Level 4: targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md): use previous core reactions or GPR genes as anchors, directly map reactions sharing KEGG, Reactome, or master-Rhea IDs, and score only mapped non-core reactions in the exact cached union GEM. Same-subsystem and recursive expansion are not used. The detailed API contract is in [Direct database-linked non-core scoring](target-union-scoring.md).
-- [Tutorial Level 5: condition differential analysis](tutorial-05-condition-differential-analysis.md): compare the same reaction, direction, medium, and cell type across conditions. The detailed statistical contract is in [Condition-associated reaction statistics](condition-reaction-statistics.md).
+Use [Tutorial 3](tutorial-03-advanced-restart.md).
 
-## Required input
+- Change GRN or annotation expansion: rerun Stage 3 onward.
+- Change multiome transformation: rerun Stage 4 onward.
+- Change medium or global FASTCORE settings: rerun Stage 5 onward.
 
-- paired-cell RNA and ATAC counts in a Seurat object;
-- a Signac `ChromatinAssay` and matching genome coordinates;
-- complete condition and cell-type metadata;
-- `Pando::motifs` or another compatible PFM/PWM collection;
-- a validated human or mouse GEM;
-- an installed LP solver.
+Global FASTCORE settings are supplied through `layer2_args$model_params`. The removed `layer1_args$local_fastcore` and `layer1_args$local_fastcore_args` interfaces must not be used.
 
-Sample metadata are optional provenance and are not used for balancing or grouping. Metacell-level condition comparisons are descriptive within-dataset analyses unless independent biological replication is supplied.
+## Level 4: targeted second-pass scoring
+
+Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) after a completed `meta_module_gem` Stage 5 run.
+
+The second pass reuses exact cached union GEM files. It does not rerun FASTCORE and does not reinterpret the merged Stage 3 catalogue as a GEM.
+
+## Level 5: condition comparison
+
+Use [Tutorial 5](tutorial-05-condition-differential-analysis.md) to compare the same reaction-direction-medium target across conditions.
+
+Within one medium, all conditions share one union GEM. Across different media, structural models may differ because global FASTCORE support may differ.
+
+## Structural modes
+
+### `model_mode = "meta_module_gem"`
+
+- Stage 3: biological catalogue only;
+- Stage 5: one medium-specific union GEM;
+- one global FASTCORE completion per medium;
+- all conditions share the same model within a medium.
+
+### `model_mode = "full_gem"`
+
+- Stage 3 still defines complete-GPR targets;
+- the complete validated GEM is reused for scoring;
+- no union-GEM reconstruction is performed;
+- no FASTCORE reconstruction is required.
+
+Results from these two structural modes are separate analyses and should not be merged into one ranking.
