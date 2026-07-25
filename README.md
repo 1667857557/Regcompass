@@ -6,7 +6,7 @@ RegCompassR 1.8.4 implements an RNA+ATAC metabolic workflow for paired single-ce
 
 ```text
 condition × cell type cells
-→ Pando TF–peak–Human-GEM-gene models
+→ Pando TF–peak–GEM-gene models
 → significantly supported metabolic target genes
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
@@ -16,7 +16,7 @@ condition × cell type cells
 → annotated rankings and condition contrasts
 ```
 
-Pando is fitted separately for each `condition × cell type`. The candidate target genes are all Human-GEM GPR genes present in the RNA assay. A gene enters the Stage 3 supported set when at least one TF–peak–gene coefficient passes the configured adjusted-P-value, effect-size, and target-model-R² filters. Positive and negative coefficients both count as regulatory evidence. A reaction is a core only when one complete GPR branch is contained in that supported gene set.
+Pando is fitted separately for each `condition × cell type`. The candidate target genes are all GEM GPR genes present in the RNA assay. A gene enters the Stage 3 supported set when at least one TF–peak–gene coefficient passes the configured adjusted-P-value, effect-size, and target-model-R² filters. Positive and negative coefficients both count as regulatory evidence. A reaction is a core only when one complete GPR branch is contained in that supported gene set.
 
 Stage 3 expansion is fixed and executed exactly once:
 
@@ -67,13 +67,12 @@ result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
   genome = BSgenome.Hsapiens.UCSC.hg38,
-  fragment_files = FALSE,
-  gem = gem,
   species = "human",
-  medium_scenarios = medium_scenarios,
+  gem = gem,
+
+  # Stage 1
   condition_col = "Group",
   celltype_col = "cell_type",
-  model_mode = "meta_module_gem",
   pando_args = list(
     min_cells = 300,
     padj_threshold = 0.05,
@@ -88,6 +87,9 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
+
+  # Stage 2
+  fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
     rna_dims = 1:30,
@@ -100,10 +102,16 @@ result <- rc_run_regcompass_one_shot(
     min_metacells_per_stratum = 2L,
     overwrite = FALSE
   ),
+
+  # Stage 4
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
+
+  # Stage 5
+  medium_scenarios = medium_scenarios,
+  model_mode = "meta_module_gem",
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -118,6 +126,8 @@ result <- rc_run_regcompass_one_shot(
   layer2_workers = 30
 )
 ```
+
+Public runner arguments are ordered by processing sequence: shared model inputs → Stage 1 Pando → Stage 2 metacells → Stage 3 meta-modules → Stage 4 Layer 1 → Stage 5 Layer 2 → execution controls.
 
 When `pfm` is omitted, RegCompass internally performs the equivalent of:
 
@@ -136,18 +146,14 @@ The canonical metacell geometry defaults are RNA `pca` dimensions `1:30`, ATAC `
 
 `completion_time_limit` applies only while FASTCORE constructs the medium-specific union GEM. Directional scoring LPs run without a time-limit parameter.
 
-Unless `pando_args$pando_initiate_args$regions` is supplied, human analyses load the two Pando data objects below and pass their union to `Pando::initiate_grn()`:
+Unless `pando_args$pando_initiate_args$regions` is supplied, RegCompass uses species-specific Pando region defaults:
 
-```r
-data("phastConsElements20Mammals.UCSC.hg38", package = "Pando")
-data("SCREEN.ccRE.UCSC.hg38", package = "Pando")
-regions <- union(
-  phastConsElements20Mammals.UCSC.hg38,
-  SCREEN.ccRE.UCSC.hg38
-)
+```text
+human: phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
+mouse: phastConsElements20Mammals.UCSC.hg38 only
 ```
 
-The bundled default is hg38-specific. Non-human analyses must supply an appropriate `pando_initiate_args$regions` object.
+An explicit region object overrides either default.
 
 ## Medium presets
 
@@ -159,7 +165,7 @@ See [Predefined extracellular medium scenarios](docs/medium-presets.md) for spec
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for Human-GEM target genes using Pando's bundled `motifs` by default.
+- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for GEM target genes using Pando's bundled `motifs` and species-specific default regions.
 - `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells from explicit RNA/ATAC reductions, dimensions, and a reproducible seed.
 - `rc_regcompass_step_meta_modules()`: summarize significant metabolic targets, map complete-GPR cores, and perform one fixed ordered annotation expansion pass.
 - `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
