@@ -25,7 +25,7 @@ condition × cell type single cells
 - **Merged meta-module catalogue**: the reaction-ID deduplication of all biological meta-modules. It is not flux-completed and is not a GEM.
 - **Union GEM**: the medium-constrained Stage 5 model created from the merged catalogue plus global FASTCORE support. Only this model is called a union GEM.
 
-RegCompass no longer runs FASTCORE separately for every meta-module. `local_fastcore` and `local_fastcore_args` were removed. FASTCORE is applied once per medium-specific union GEM.
+FASTCORE is applied once for each medium-specific union GEM. Biological meta-modules and their merged catalogue are never FASTCORE-completed independently.
 
 ## Installation
 
@@ -120,7 +120,7 @@ result <- rc_run_regcompass_one_shot(
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support.
 - `rc_regcompass_step_layer2()`: medium-specific union-GEM construction, global FASTCORE, and directional LP scoring.
 - `rc_regcompass_step_results()`: rankings, evidence provenance, annotations, and condition contrasts.
-- `rc_regcompass_step_target_union()`: second-pass scoring of directly KEGG/Reactome/master-Rhea-linked non-core reactions in the existing cached union GEMs.
+- `rc_regcompass_step_target_union()`: second-pass scoring of directly KEGG/Reactome/master-Rhea-linked non-core reactions in the exact cached final medium-specific union GEMs.
 
 ## Key object fields
 
@@ -135,13 +135,13 @@ result$reaction_ranking
 result$condition_contrast
 ```
 
-The removed fields `global_modules`, `global_core_reactions`, `global_reaction_membership`, and all `local_fastcore_*` outputs are not part of the current interface.
-
 ## Structural interpretation
 
 For one medium scenario, all conditions and metacells use the same union GEM, reaction bounds, target-flux fraction, and direction-specific `vmax`. Condition differences arise from the multiome penalty matrix.
 
 Different medium scenarios may produce different global FASTCORE support sets and therefore different union GEM structures. Cross-medium comparisons must be interpreted as different structural contexts.
+
+The optional second-pass remapping workflow uses selected original core reactions as database-mapping anchors. It reuses the exact Stage 5 union-GEM files, medium bounds, and reaction structure; it does not rebuild a model or rerun FASTCORE.
 
 ## Tutorials
 
