@@ -129,16 +129,9 @@ resolve operating-system backend
 → run gc(full = TRUE)
 ```
 
-Cleanup is registered before pool startup. Stage 1, Stage 4, and Stage 5 each receive a fresh pool when parallel work is requested. Stage 3 is a catalogue-construction stage and does not create a local FASTCORE pool. No upstream worker pool remains active while Layer 2 is running.
+Cleanup is registered before pool startup. Stage 1, Stage 4, and Stage 5 each receive a fresh pool when parallel work is requested. Stage 3 is a catalogue-construction stage and does not create a feasibility-completion pool. No upstream worker pool remains active while Layer 2 is running.
 
 ## Global FASTCORE configuration
-
-The removed interfaces must not be supplied:
-
-```text
-layer1_args$local_fastcore
-layer1_args$local_fastcore_args
-```
 
 Configure the single medium-specific completion through:
 
@@ -153,7 +146,7 @@ layer2_args = list(
 )
 ```
 
-Each medium scenario receives its own union GEM. All conditions and metacells evaluated under that medium reuse that one model file.
+Each medium scenario receives its own final union GEM. All conditions and metacells evaluated under that medium reuse that one model file.
 
 ## Linux numerical-library setup
 
