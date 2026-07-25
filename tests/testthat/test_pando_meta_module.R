@@ -18,7 +18,7 @@ test_that("meta-module expansion adds reactions rather than unrelated subsystems
   )
   core <- data.frame(
     sample_id = "S1",
-    module_id = "S1::GRN0001",
+    module_id = "S1::SUPPORTED_METABOLIC_GENES",
     gene = "G1",
     reaction_id = "R1",
     stringsAsFactors = FALSE
@@ -70,7 +70,7 @@ test_that("partial GPR anchors are removed before module summarization", {
   )
   core <- data.frame(
     sample_id = "S1",
-    module_id = "S1::GRN0001",
+    module_id = "S1::SUPPORTED_METABOLIC_GENES",
     gene = c("G1", "G2"),
     reaction_id = c("R1", "R2"),
     and_group_id = "1",
@@ -107,28 +107,57 @@ test_that("UNASSIGNED subsystem labels are not pooled", {
   expect_false(any(toupper(maps$subsystem$subsystem_id) == "UNASSIGNED"))
 })
 
-test_that("Pando projection retains targets and direct TF neighbours", {
-  tf_peak_gene <- data.frame(
-    sample_id = "S1",
-    tf = c("TF1", "TF1", "G3", "TF2"),
-    target = c("G1", "G2", "G1", "G2"),
+test_that("significant Pando targets define one supported gene set per group", {
+  significant <- data.frame(
+    group_id = rep("control|tumor", 4),
+    condition = rep("control", 4),
+    cell_type = rep("tumor", 4),
+    tf = c("TF1", "TF2", "TF3", "TF4"),
+    target = c("G1", "G1", "G2", "G3"),
     region = paste0("chr1-", 1:4, "-", 11:14),
-    estimate = c(1, 0.8, 0.7, 0.4),
+    estimate = c(1, -0.5, -1, 0.8),
+    padj = c(0.001, 0.01, 0.02, 0.03),
+    rsq = c(0.4, 0.4, 0.3, 0.2),
     stringsAsFactors = FALSE
   )
-  projected <- rc_project_metabolic_grn(
-    tf_peak_gene,
-    metabolic_genes = c("G1", "G2", "G3"),
-    top_k = 5,
-    min_shared_tfs = 1,
-    include_direct_metabolic_tf = TRUE
+  grn_result <- list(
+    group_cols = c("condition", "cell_type"),
+    tf_peak_gene_significant = significant
   )
-  expect_setequal(projected$nodes$gene, c("G1", "G2", "G3"))
-  expect_equal(length(unique(projected$nodes$module_id)), 1)
-  edge_keys <- paste(projected$edges$gene_a, projected$edges$gene_b, sep = "-")
-  expect_true("G1-G2" %in% edge_keys)
-  expect_true("G1-G3" %in% edge_keys)
-  expect_true(projected$edges$direct_regulatory[match("G1-G3", edge_keys)])
+  supported <- .rc_summarize_supported_metabolic_genes(
+    grn_result,
+    metabolic_genes = c("G1", "G2", "G3", "G4")
+  )
+  expect_setequal(supported$gene, c("G1", "G2", "G3"))
+  expect_equal(length(unique(supported$module_id)), 1L)
+  expect_equal(
+    supported$n_significant_edges[supported$gene == "G1"],
+    2L
+  )
+  expect_equal(
+    supported$n_positive_edges[supported$gene == "G1"],
+    1L
+  )
+  expect_equal(
+    supported$n_negative_edges[supported$gene == "G1"],
+    1L
+  )
+
+  gpr <- data.frame(
+    reaction_id = c("R1", "R1", "R2", "R3", "R3"),
+    and_group_id = c(1, 1, 1, 1, 1),
+    gene = c("G1", "G2", "G3", "G1", "G4"),
+    stringsAsFactors = FALSE
+  )
+  mapped <- rc_map_meta_module_core_reactions(
+    supported[, c("sample_id", "module_id", "gene")],
+    gpr
+  )
+  expect_setequal(
+    unique(mapped$reaction_id[mapped$is_core]),
+    c("R1", "R2")
+  )
+  expect_false(unique(mapped$is_core[mapped$reaction_id == "R3"]))
 })
 
 test_that("GRN mapping remains explicit from catalogue to final union GEM", {
@@ -165,17 +194,17 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
     )
   )
   gem$gpr_table <- gpr
-  nodes <- data.frame(
+  supported <- data.frame(
+    group_id = "S1",
     sample_id = "S1",
     gene = c("G1", "G2"),
-    node_role = "significant_target",
-    module_id = "S1::GRN0001",
+    module_id = "S1::SUPPORTED_METABOLIC_GENES",
     stringsAsFactors = FALSE
   )
-  core <- rc_map_meta_module_core_reactions(nodes, gpr)
+  core <- rc_map_meta_module_core_reactions(supported, gpr)
   membership <- data.frame(
     sample_id = "S1",
-    module_id = "S1::GRN0001",
+    module_id = "S1::SUPPORTED_METABOLIC_GENES",
     reaction_id = c("R1", "R2"),
     is_core = TRUE,
     stringsAsFactors = FALSE
@@ -184,8 +213,7 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
     sample_status = data.frame(group_id = "S1"),
     tf_peak_gene_all = data.frame(),
     tf_peak_gene_significant = data.frame(),
-    metabolic_gene_nodes = nodes,
-    metabolic_gene_edges = data.frame(),
+    supported_metabolic_genes = supported,
     core_gene_reaction = core,
     reaction_membership = membership,
     meta_module_summary = data.frame()
