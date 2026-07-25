@@ -1,11 +1,17 @@
-#' Run the canonical GRN-first RegCompass workflow
+#' Run the canonical significant-Pando-target RegCompass workflow
 #'
 #' Stage 3 constructs biological meta-modules and a deduplicated merged
-#' reaction catalogue. It does not run FASTCORE and does not create a GEM.
-#' With `model_mode = "meta_module_gem"`, Stage 5 constructs one union GEM per
-#' medium scenario and performs the only FASTCORE completion on that shared
-#' medium-specific structure.
+#' reaction catalogue. Within each condition by cell-type group, Human-GEM
+#' metabolic genes with significant Pando TF-peak-gene evidence define the
+#' supported gene set, and complete GPR branches define core reactions. Stage 3
+#' does not run FASTCORE and does not create a GEM. With
+#' `model_mode = "meta_module_gem"`, Stage 5 constructs one union GEM per medium
+#' scenario and performs the only FASTCORE completion on that shared structure.
 #'
+#' @param meta_module_args Stage 3 annotation-expansion arguments:
+#'   `subsystem_table`, `expansion_mode`, and `max_iterations`.
+#' @param layer1_args Stage 4 integrated-evidence arguments:
+#'   `regulatory_alpha`, `tau`, and `gene_half_saturation`.
 #' @param upstream_workers Worker count for GRN inference and Layer 1
 #'   reaction-expression calculation. Defaults to 6. Set to 1 for serial
 #'   upstream execution.
@@ -25,6 +31,7 @@ rc_run_regcompass <- function(
     metacell_args = list(),
     layer1_args = list(),
     pando_args = list(),
+    meta_module_args = list(),
     layer2_args = list(),
     upstream_workers = 6L,
     layer2_workers = 30L,
@@ -57,6 +64,7 @@ rc_run_regcompass <- function(
     metacell_args = metacell_args,
     layer1_args = layer1_args,
     pando_args = pando_args,
+    meta_module_args = meta_module_args,
     layer2_args = layer2_args
   )
   invalid_bundles <- names(bundles)[
@@ -69,17 +77,25 @@ rc_run_regcompass <- function(
       call. = FALSE
     )
   }
-  obsolete <- intersect(
-    names(layer1_args), c("local_fastcore", "local_fastcore_args")
+  unknown_meta_module <- setdiff(
+    names(meta_module_args),
+    c("subsystem_table", "expansion_mode", "max_iterations")
   )
-  if (length(obsolete)) {
+  if (length(unknown_meta_module)) {
     stop(
-      "Local FASTCORE was removed. Delete `",
-      paste(obsolete, collapse = "` and `"),
-      "` from `layer1_args`. Configure the single medium-specific global ",
-      "FASTCORE through `layer2_args$model_params` ",
-      "(`completion_time_limit`, `fastcore_epsilon`, ",
-      "`max_support_reactions`, and `strict`).",
+      "Unknown `meta_module_args` fields: ",
+      paste(unknown_meta_module, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  unknown_layer1 <- setdiff(
+    names(layer1_args),
+    c("regulatory_alpha", "tau", "gene_half_saturation")
+  )
+  if (length(unknown_layer1)) {
+    stop(
+      "Unknown `layer1_args` fields: ",
+      paste(unknown_layer1, collapse = ", "),
       call. = FALSE
     )
   }
@@ -180,7 +196,7 @@ rc_run_regcompass <- function(
       metacells = step2,
       gem = gem,
       outdir = file.path(outdir, "03_meta_modules"),
-      layer1_args = layer1_args,
+      meta_module_args = meta_module_args,
       progress = progress
     )
   )
