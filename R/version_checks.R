@@ -26,9 +26,10 @@
 
   versions <- lapply(observed, numeric_version)
   names(versions) <- packages
-  seurat_object_major <- versions$SeuratObject[[1L]]
-  seurat_major <- versions$Seurat[[1L]]
-  signac_major <- versions$Signac[[1L]]
+  major <- function(version) as.integer(unclass(version)[[1L]][[1L]])
+  seurat_object_major <- major(versions$SeuratObject)
+  seurat_major <- major(versions$Seurat)
+  signac_major <- major(versions$Signac)
 
   if (!identical(seurat_object_major, seurat_major)) {
     return(fail(paste0(
