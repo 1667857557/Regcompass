@@ -1,10 +1,15 @@
-test_that("single-cell GRN keeps only finite Pando R-squared values", {
-  body_text <- paste(
+test_that("Pando extraction keeps only finite target-model R-squared values", {
+  extraction <- paste(
+    deparse(body(rc_extract_pando_tf_peak_gene)),
+    collapse = "\n"
+  )
+  runner <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)),
     collapse = "\n"
   )
-  expect_match(body_text, "is.finite(value) & value >= min_model_rsq", fixed = TRUE)
-  expect_match(body_text, "rep(FALSE, nrow(tab$significant))", fixed = TRUE)
+  expect_match(extraction, "is.finite(rsq) & rsq >= min_model_rsq", fixed = TRUE)
+  expect_match(extraction, "Pando target-model GOF", fixed = TRUE)
+  expect_false(grepl("reliable_rsq", runner, fixed = TRUE))
   expect_false(exists(".rc_pando_rsq_is_reliable", inherits = TRUE))
 })
 
