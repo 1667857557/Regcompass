@@ -6,7 +6,7 @@ All execution modes follow the same main workflow:
 GRNs and multimodal metacells
 → complete-GPR reaction modules
 → integrated RNA+ATAC support
-→ medium-specific structural model
+→ medium-constrained structural model
 → directional LP scoring
 ```
 
@@ -41,21 +41,21 @@ Use [Tutorial 3](tutorial-03-advanced-restart.md).
 
 ## Level 4: targeted second-pass scoring
 
-Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) to remap selected genes or core reactions through direct KEGG, Reactome, or master-Rhea links and score the mapped targets in the cached Stage 5 models.
+Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) to remap selected genes or core reactions through direct KEGG, Reactome, or master-Rhea links and score the mapped targets in the cached Stage 5 model.
 
 ## Level 5: condition comparison
 
-Use [Tutorial 5](tutorial-05-condition-differential-analysis.md) to compare a fixed reaction, direction, medium, and cell type across conditions.
+Use [Tutorial 5](tutorial-05-condition-differential-analysis.md) to compare reaction scores between conditions.
 
 ## Medium scenarios
 
-Use [Predefined extracellular medium scenarios](medium-presets.md) for all built-in physiological, culture-medium, nutrient-sensitivity, technical, and custom options.
+Use [Predefined extracellular medium scenarios](medium-presets.md) for physiological, culture-medium, nutrient-sensitivity, technical, and custom options.
 
 ## Structural modes
 
 ### `model_mode = "meta_module_gem"`
 
-Stage 5 builds one medium-specific structural model and applies one global FASTCORE completion per medium. All conditions share that model within the medium.
+Stage 5 builds the medium-constrained structural model and applies global FASTCORE completion.
 
 ### `model_mode = "full_gem"`
 
