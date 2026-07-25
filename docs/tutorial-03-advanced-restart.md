@@ -36,7 +36,7 @@ Rerun Layer 2 and results after changing:
 
 The complete preset list and custom-medium format are documented in [medium presets](medium-presets.md).
 
-## Rebuild Stage 5 for new media or solver settings
+## Rebuild Stage 5
 
 ```r
 step5_new <- rc_regcompass_step_layer2(
@@ -62,7 +62,7 @@ step5_new <- rc_regcompass_step_layer2(
 )
 ```
 
-This reuses the Stage 3 reaction targets and Stage 4 support matrix, then constructs one cached model for each requested medium.
+This reuses the Stage 3 reaction targets and Stage 4 support matrix.
 
 ## Diagnose model completion
 
@@ -77,18 +77,9 @@ summary[, c(
   "file_checksum"
 )]
 
-models <- lapply(summary$file, readRDS)
-
-diagnostics <- do.call(
-  rbind,
-  Map(function(model, medium) {
-    x <- model$closure_diagnostics
-    x$medium_scenario <- medium
-    x
-  }, models, summary$medium_scenario)
-)
-
-table(diagnostics$medium_scenario, diagnostics$completion_status)
+model <- readRDS(summary$file[[1]])
+diagnostics <- model$closure_diagnostics
+table(diagnostics$completion_status)
 ```
 
 Common statuses are:
@@ -98,25 +89,3 @@ Common statuses are:
 - `parent_blocked`: the target direction is infeasible in the medium-constrained parent GEM;
 - `unresolved`: completion did not succeed under the requested limits;
 - `no_allowed_direction`: the original GEM bounds block the requested direction.
-
-## Compare FASTCORE support across media
-
-```r
-support_by_medium <- do.call(
-  rbind,
-  Map(function(model, medium) {
-    ids <- model$reaction_meta$reaction_id[
-      model$reaction_meta$global_fastcore_support %in% TRUE
-    ]
-    data.frame(
-      medium_scenario = medium,
-      reaction_id = ids,
-      stringsAsFactors = FALSE
-    )
-  }, models, summary$medium_scenario)
-)
-
-table(support_by_medium$medium_scenario)
-```
-
-Differences between media reflect different environmental constraints and should not be interpreted as condition-specific expression effects.
