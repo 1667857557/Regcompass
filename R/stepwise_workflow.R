@@ -85,7 +85,9 @@
     by = c(group_cols, "group_id"), all = TRUE, sort = TRUE
   )
   coverage$grn_available <- !is.na(coverage$grn_status) &
-    coverage$grn_status == "ok" & coverage$n_significant_edges > 0
+    coverage$grn_status == "ok"
+  coverage$has_significant_pando_evidence <-
+    !is.na(coverage$n_significant_edges) & coverage$n_significant_edges > 0
   coverage$metacells_available <- !is.na(coverage$n_metacells) &
     coverage$n_metacells > 0
   coverage$coverage_complete <- coverage$grn_available &
@@ -96,8 +98,9 @@
       "GRN and metacell condition-by-cell-type groups do not align: ",
       paste(invalid$group_id, collapse = "; "),
       paste(
-        ". Every scored metacell group requires a successful GRN with",
-        "significant edges, and every GRN group requires at least one metacell."
+        ". Every scored metacell group requires a successful Pando fit,",
+        "and every Pando group requires at least one metacell. A successful",
+        "fit may legitimately contain zero significant target genes."
       ),
       call. = FALSE
     )
