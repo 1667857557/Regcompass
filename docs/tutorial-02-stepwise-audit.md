@@ -9,7 +9,6 @@ step1 <- rc_regcompass_step_grn(
   object = A,
   gem = gem,
   outdir = "RegCompass_steps/01_grn",
-  pfm = motif2tf,
   genome = BSgenome.Hsapiens.UCSC.hg38,
   condition_col = "Group",
   celltype_col = "cell_type",
@@ -33,6 +32,8 @@ step1 <- rc_regcompass_step_grn(
 step1$grn_result$sample_status
 step1$grn_result$target_metabolic_genes
 ```
+
+When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes `motifs` to `Pando::find_motifs()`. Supply `pfm = custom_motifs` only to override this default.
 
 The candidate targets are all Human-GEM GPR genes present in the RNA assay. Unless `pando_args$pando_initiate_args$regions` is supplied, the human workflow uses:
 
@@ -74,31 +75,53 @@ step3 <- rc_regcompass_step_meta_modules(
   grn = step1,
   metacells = step2,
   gem = gem,
-  outdir = "RegCompass_steps/03_meta_modules",
-  meta_module_args = list(
-    expansion_mode = "ordered_once"
-  )
+  outdir = "RegCompass_steps/03_meta_modules"
 )
 ```
 
-Stage 3 no longer projects targets through shared TFs and does not calculate GRN connected components. For each `condition × cell type`, it performs the following operations:
+Stage 3 no longer projects targets through shared TFs and does not calculate GRN connected components. For each `condition × cell type`, it performs the following operations exactly once:
 
 ```text
 significant Pando TF–peak–Human-GEM-target rows
 → unique supported metabolic target genes
 → complete-GPR core reactions
-→ core-subsystem expansion
-→ KEGG/Reactome reaction-equivalence expansion
-→ master-Rhea reaction-equivalence expansion
+→ all reactions in core-reaction subsystems
+→ direct KEGG/Reactome reaction-equivalence expansion
+→ direct master-Rhea reaction-equivalence expansion
 → biological meta-module
 ```
 
 A positive or negative Pando coefficient both count as regulatory evidence. A reaction is core only when at least one complete GPR AND branch is contained in the supported target-gene set. Partial complexes remain diagnostic and do not anchor expansion.
 
+The Stage 3 expansion order is fixed. The removed APIs are:
+
+```text
+expansion_mode
+max_iterations
+fixed-point recursion
+one-hop reaction expansion
+stoichiometric-neighbour expansion
+```
+
+A custom subsystem mapping remains possible through:
+
+```r
+step3_custom <- rc_regcompass_step_meta_modules(
+  grn = step1,
+  metacells = step2,
+  gem = gem,
+  outdir = "RegCompass_steps/03_meta_modules_custom",
+  meta_module_args = list(
+    subsystem_table = custom_subsystem_table
+  )
+)
+```
+
 ```r
 step3$condition_modules$supported_metabolic_genes
 step3$condition_modules$core_gene_reaction
 table(step3$condition_modules$reaction_membership$inclusion_stage)
+step3$condition_modules$meta_module_summary$expansion_policy
 
 catalogue <- step3$merged_modules
 catalogue$merged_core_reactions
