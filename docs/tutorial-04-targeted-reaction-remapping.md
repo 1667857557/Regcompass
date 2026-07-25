@@ -2,7 +2,7 @@
 
 Use this tutorial after a completed stepwise `meta_module_gem` analysis to score non-core reactions that are directly linked to selected complete-GPR core reactions.
 
-The second pass reuses the cached Stage 5 models. It validates the cache checksums and medium identities, and does not rebuild the model or rerun FASTCORE.
+The second pass reuses the cached Stage 5 model. It validates the cache checksum and medium identity, and does not rebuild the model or rerun FASTCORE.
 
 ## Load the completed stages
 
@@ -12,7 +12,7 @@ step4 <- readRDS("RegCompass_steps/04_layer1/step_layer1.rds")
 step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 ```
 
-`step5` must come from a completed `model_mode = "meta_module_gem"` run with available model-cache files.
+`step5` must come from a completed `model_mode = "meta_module_gem"` run with an available model-cache file.
 
 ## Select anchors by reaction ID
 
@@ -62,7 +62,7 @@ targeted_gene <- rc_regcompass_step_target_union(
 
 The second pass includes non-core reactions that share a direct KEGG reaction ID, Reactome reaction ID, or master Rhea ID with a selected core anchor.
 
-It does not perform subsystem, transitive, metabolite-neighbour, or one-hop expansion. A mapped reaction is scored only when it is present in every required cached Stage 5 model.
+It does not perform subsystem, transitive, metabolite-neighbour, or one-hop expansion. A mapped reaction is scored only when it is present in the cached Stage 5 model.
 
 ## Inspect outputs and provenance
 
