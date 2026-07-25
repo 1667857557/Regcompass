@@ -10,6 +10,15 @@
 - Added progress output and elapsed-time auditing to every public workflow stage and to the complete six-stage run. Each stage writes `step_timing.tsv`; one-shot execution writes `00_execution_timing.tsv` and stores stage and total timings in `result$timing`.
 - Added `progress = FALSE` and `options(RegCompassR.progress = FALSE)` controls for non-interactive or quiet execution.
 - Added cross-platform backend, layered-default, single-thread-child, worker-release, bundled-model integrity, offline loading, progress-control, and timing-output tests.
+- Added an audited condition-metacell cache contract. Checkpoints are no longer reused by file existence alone: ordered cells and labels, scalable full-content RNA/ATAC fingerprints, selected PCA/LSI embedding fingerprints, the SuperCell2 label, `gamma`, seed, reductions/dimensions, and metacell thresholds must match, or the user must rebuild with `overwrite = TRUE`.
+- Downstream stages now reject legacy metacell objects that lack the current condition-only label-guided construction and cache provenance instead of assigning current provenance to an unverifiable artifact.
+- Kept legal minimum-version Imports for SeuratObject 4.1.4, Seurat 4.4.0, and Signac 1.11.0 while retaining exact validated versions in package Config fields and the `.onLoad` runtime gate; R dependency fields do not support equality constraints.
+- Bundled GEM loading now writes and revalidates the requested `save_rds` path, matching downloaded-model cache semantics. `rc_run_regcompass()` also preserves the prior positional location of `species` ahead of the later `progress` argument.
+- Public-stage timing now records success only after the expected final RDS has been newly committed; failures during the last export/save phase are written as `status = error`.
+- Hardened reaction annotation and evidence provenance: normalized GEM bounds are used, missing roles are inferred rather than forced to internal, mouse symbols retain source case, missing omnibus evidence is `unknown/unavailable`, and unavailable reaction-capacity reconstruction cannot be promoted to `RNA+ATAC` from gene-level changes alone.
+- Condition plots retain full reaction annotations and evidence. Gene-associated plot collections now apply the requested condition filter to evidence selection and expose/forward `min_units` instead of using a hidden fixed value.
+- Target-union scoring now validates gene and reaction selectors independently and determines target availability from the actual medium-specific cached union GEM files. Directly database-linked support reactions added during model completion remain eligible when present in all reused models, even if absent from the pre-completion membership table.
+- Added a function-by-function audit of PRs #166–#171, synchronized generated help and Tutorials 3–5, and expanded regression coverage for every still-valid unresolved review finding.
 
 # RegCompassR 1.8.2
 

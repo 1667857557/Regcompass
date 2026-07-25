@@ -104,6 +104,44 @@
   row
 }
 
+.rc_step_final_artifact <- function(stage, outdir) {
+  filename <- switch(
+    as.character(stage[[1L]]),
+    grn = "step_grn.rds",
+    metacells = "step_metacells.rds",
+    meta_modules = "step_meta_modules.rds",
+    layer1 = "step_layer1.rds",
+    layer2 = "step_layer2.rds",
+    results = "regcompass_result.rds",
+    target_union = "step_target_union.rds",
+    NULL
+  )
+  if (is.null(filename)) return(NULL)
+  file.path(outdir, filename)
+}
+
+.rc_step_artifact_signature <- function(path) {
+  if (is.null(path) || !file.exists(path)) {
+    return(list(exists = FALSE, size = NA_real_, mtime = NA_real_, ctime = NA_real_))
+  }
+  info <- file.info(path)
+  list(
+    exists = TRUE,
+    size = as.numeric(info$size[[1L]]),
+    mtime = as.numeric(info$mtime[[1L]]),
+    ctime = as.numeric(info$ctime[[1L]])
+  )
+}
+
+.rc_step_artifact_committed <- function(path, before) {
+  after <- .rc_step_artifact_signature(path)
+  if (!isTRUE(after$exists)) return(FALSE)
+  if (!is.list(before) || !isTRUE(before$exists)) return(TRUE)
+  !identical(after$size, before$size) ||
+    (!is.na(after$mtime) && !is.na(before$mtime) && after$mtime > before$mtime) ||
+    (!is.na(after$ctime) && !is.na(before$ctime) && after$ctime > before$ctime)
+}
+
 .rc_step_monitor_start <- function(
     stage, outdir, progress = TRUE, total_parts = 1L) {
   progress <- .rc_progress_enabled(progress)
@@ -114,6 +152,13 @@
   monitor$progress <- .rc_progress_new(
     total_parts, paste0("RegCompass ", stage), progress
   )
+  monitor$final_artifact <- .rc_step_final_artifact(stage, outdir)
+  monitor$artifact_before <- .rc_step_artifact_signature(
+    monitor$final_artifact
+  )
+  monitor$finish_requested <- FALSE
+  monitor$finish_status <- "success"
+  monitor$finish_details <- NULL
   monitor$finished <- FALSE
   monitor$option_restored <- FALSE
   monitor
@@ -132,11 +177,26 @@
     value, monitor, status = "success", details = NULL) {
   if (is.null(monitor) || !is.environment(monitor)) return(value)
   timing <- .rc_timing_finish(
-    monitor$timer, status = status, outdir = monitor$outdir, details = details
+    monitor$timer, status = status, outdir = NULL, details = details
   )
-  monitor$finished <- TRUE
-  .rc_progress_done(monitor$progress, status)
-  .rc_restore_monitor_progress_option(monitor)
+  if (is.null(monitor$final_artifact)) {
+    .rc_timing_finish(
+      monitor$timer, status = status, outdir = monitor$outdir,
+      details = details
+    )
+    monitor$finished <- TRUE
+    .rc_progress_done(monitor$progress, status)
+    .rc_restore_monitor_progress_option(monitor)
+  } else {
+    monitor$finish_requested <- TRUE
+    monitor$finish_status <- status
+    monitor$finish_details <- details
+    .rc_progress_update(
+      monitor$progress,
+      monitor$progress$total,
+      "writing final artifacts"
+    )
+  }
   if (is.list(value)) value$timing <- timing
   value
 }
@@ -144,10 +204,17 @@
 .rc_step_monitor_fail <- function(monitor) {
   if (!is.null(monitor) && is.environment(monitor) &&
       !isTRUE(monitor$finished)) {
+    artifact_committed <- isTRUE(monitor$finish_requested) &&
+      .rc_step_artifact_committed(
+        monitor$final_artifact, monitor$artifact_before
+      )
+    status <- if (artifact_committed) monitor$finish_status else "error"
+    details <- if (artifact_committed) monitor$finish_details else NULL
     .rc_timing_finish(
-      monitor$timer, status = "error", outdir = monitor$outdir
+      monitor$timer, status = status, outdir = monitor$outdir,
+      details = details
     )
-    .rc_progress_done(monitor$progress, "error")
+    .rc_progress_done(monitor$progress, status)
     monitor$finished <- TRUE
   }
   .rc_restore_monitor_progress_option(monitor)

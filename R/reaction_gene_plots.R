@@ -138,8 +138,11 @@
 #' @param genes Metabolic gene symbols used to select GPR reactions.
 #' @param cell_type One cell type.
 #' @param condition_col,celltype_col Metadata columns.
-#' @param conditions Ordered conditions.
+#' @param conditions Ordered conditions. The same restriction is applied to
+#'   evidence-class selection and condition testing.
 #' @param comparisons Optional condition pairs.
+#' @param min_units Minimum finite units per condition, forwarded to
+#'   [rc_test_condition_reactions()].
 #' @param target_directions Optional scored directions.
 #' @param medium_scenario Optional medium.
 #' @param evidence_class Optional group evidence classes used for gene-reaction
@@ -154,7 +157,7 @@
 rc_plot_condition_gene_reactions <- function(
     x, genes, cell_type,
     condition_col = NULL, celltype_col = NULL,
-    conditions = NULL, comparisons = NULL,
+    conditions = NULL, comparisons = NULL, min_units = 5L,
     target_directions = NULL, medium_scenario = NULL,
     evidence_class = NULL,
     p_adj_max = 0.05, min_abs_rank_biserial = 0.30,
@@ -176,13 +179,17 @@ rc_plot_condition_gene_reactions <- function(
       !is.finite(min_abs_rank_biserial) || min_abs_rank_biserial < 0 ||
       min_abs_rank_biserial > 1 ||
       !is.numeric(max_reactions) || length(max_reactions) != 1L ||
-      !is.finite(max_reactions) || max_reactions < 1) {
+      !is.finite(max_reactions) || max_reactions < 1 ||
+      !is.numeric(min_units) || length(min_units) != 1L ||
+      !is.finite(min_units) || min_units < 2) {
     stop("Gene-reaction plot selection thresholds are invalid.", call. = FALSE)
   }
   max_reactions <- as.integer(max_reactions)
+  min_units <- as.integer(min_units)
   selection <- rc_select_gene_reactions(
     x = x,
     genes = genes,
+    conditions = conditions,
     cell_types = cell_type,
     evidence_class = evidence_class
   )
@@ -197,7 +204,7 @@ rc_plot_condition_gene_reactions <- function(
     conditions = conditions,
     cell_types = cell_type,
     comparisons = comparisons,
-    min_units = 5L,
+    min_units = min_units,
     include_omnibus = TRUE,
     p_adjust_method = "BH",
     p_adjust_scope = "celltype_contrast_medium",

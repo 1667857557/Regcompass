@@ -41,6 +41,7 @@ rc_plot_condition_gene_reactions(
   celltype_col = NULL,
   conditions = NULL,
   comparisons = NULL,
+  min_units = 5L,
   target_directions = NULL,
   medium_scenario = NULL,
   evidence_class = NULL,
@@ -74,17 +75,21 @@ rc_plot_condition_gene_reactions(
 
 \item{x}{An annotated RegCompass result.}
 
-\item{genes}{One or more metabolic gene symbols.}
+\item{genes}{One or more metabolic gene symbols. Matching is case-insensitive; reported symbols retain the source GEM or Layer 1 case.}
 
 \item{match}{Whether each reaction must contain any or all requested genes in its GPR.}
 
-\item{conditions, cell_types}{Optional condition and cell-type filters.}
+\item{conditions}{Optional ordered conditions. The same restriction is applied to evidence selection and condition testing.}
 
-\item{evidence_class}{Optional evidence classes, including \code{"RNA+ATAC"}, \code{"RNA-only"}, \code{"GPR/no-observed-RNA"}, and \code{"structural/no-GPR"}.}
+\item{cell_types}{Optional cell-type filters for gene-reaction selection.}
+
+\item{evidence_class}{Optional evidence classes, including \code{"RNA+ATAC"}, \code{"RNA-only"}, \code{"GPR/no-observed-RNA"}, \code{"structural/no-GPR"}, and \code{"unknown/unavailable"}.}
 
 \item{cell_type}{One cell type to plot.}
 
 \item{comparisons}{Optional condition pairs.}
+
+\item{min_units}{Minimum finite metacells required in every tested condition.}
 
 \item{target_directions}{Optional scored target directions.}
 
@@ -110,7 +115,7 @@ rc_plot_condition_gene_reactions(
 selected targets, pairwise hits, the complete statistics result, and gene selection.
 }
 \description{
-Reaction formulas are reconstructed from the GEM stoichiometric matrix using
+Reaction formulas are reconstructed from the validated GEM stoichiometric matrix using
 formal metabolite names and compartments. GPR rules and participating genes are
 reported explicitly. Condition-by-cell-type evidence distinguishes reactions
 whose GPR-aggregated reaction capacity is changed by ATAC-integrated gene support
@@ -127,10 +132,11 @@ OR, and isozyme aggregation settings as canonical Layer 1.
 Gene-level provenance is retained separately in \code{atac_modifier_genes} and
 \code{multiome_contributing_genes}. A non-zero ATAC modifier or a changed GPR gene
 is not, by itself, sufficient to label the whole reaction \code{RNA+ATAC}; the
-GPR-aggregated reaction capacity must change. The size of this change is reported
-through \code{median_multiome_capacity_shift} and
-\code{max_abs_multiome_capacity_shift}, and \code{evidence_resolution} records
-whether reaction-capacity comparison or a fallback was used.
+GPR-aggregated reaction capacity must change. When that comparison is unavailable,
+\code{evidence_resolution = "reaction_capacity_unavailable"} is reported and the
+reaction cannot be promoted to \code{RNA+ATAC}. The size of an available change is
+reported through \code{median_multiome_capacity_shift} and
+\code{max_abs_multiome_capacity_shift}.
 
 Selecting a gene identifies every scored reaction in which that gene participates
 in the GPR. The complete Boolean GPR rule is retained so that membership is not

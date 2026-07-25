@@ -1,36 +1,43 @@
 # Stage input-output contracts
 
-RegCompassR 1.8.3 connects stages only when their classes, workflow settings, GEM provenance, and scoring-unit order agree.
+RegCompassR 1.8.3 connects stages only when their classes, workflow settings, GEM provenance, metacell construction/cache provenance, and scoring-unit order agree.
 
 | Function | Required input | Output class | Downstream contract |
 |---|---|---|---|
 | `rc_regcompass_step_grn()` | paired RNA+ATAC object, GEM, motifs, genome | `regcompass_grn_step` | stores condition/cell-type/assay settings and GEM fingerprint |
-| `rc_regcompass_step_metacells()` | original paired object and the same metadata-column names | `regcompass_metacell_step` | stores metacell object, membership, audited labels, and workflow parameters |
-| `rc_regcompass_step_meta_modules()` | matching GRN and metacell stages plus the Stage 1 GEM | `regcompass_meta_module_step` | verifies group coverage and GEM fingerprint; stores global core and union memberships |
-| `rc_regcompass_step_layer1()` | metacell and meta-module stages from the same workflow and GEM | `regcompass_layer1_step` | reaction-expression columns must be identical to ordered `unit_meta$pool_id` |
+| `rc_regcompass_step_metacells()` | original paired object and the same metadata-column names | `regcompass_metacell_step` | stores metacell object, membership, audited labels, workflow parameters, label-guided construction policy, and an input/parameter cache contract |
+| `rc_regcompass_step_meta_modules()` | matching GRN and metacell stages plus the Stage 1 GEM | `regcompass_meta_module_step` | verifies metacell construction provenance, group coverage, and GEM fingerprint; stores global core and union memberships |
+| `rc_regcompass_step_layer1()` | metacell and meta-module stages from the same workflow and GEM | `regcompass_layer1_step` | verifies metacell construction provenance; reaction-expression columns must be identical to ordered `unit_meta$pool_id` |
 | `rc_regcompass_step_layer2()` | Layer 1, matching global modules, GEM, and shared medium | `regcompass_layer2_step` | matrices share identical target/unit dimnames; stores core set, workflow parameters, GEM fingerprint, and persistent model files |
-| `rc_regcompass_step_target_union()` | matching Stage 3-5 objects from a union-GEM run | `regcompass_target_union_step` | anchors must be previous core targets; second-pass targets must be non-core reactions directly sharing KEGG, Reactome, or master-Rhea IDs with an anchor and must exist in the original cached union GEM |
-| `rc_regcompass_step_results()` | matching Stage 1-5 objects and GEM | final result list | rejects different GEMs, workflow settings, classes, or unit order before ranking and annotation |
+| `rc_regcompass_step_target_union()` | matching Stage 3-5 objects from a union-GEM run | `regcompass_target_union_step` | anchors must be previous core targets; second-pass targets must be non-core reactions directly sharing KEGG, Reactome, or master-Rhea IDs with an anchor and must exist in every reused cached union GEM |
+| `rc_regcompass_step_results()` | matching Stage 1-5 objects and GEM | final result list | rejects different GEMs, workflow settings, classes, metacell construction/cache provenance, or unit order before ranking and annotation |
 
 ## Files that must persist
 
 - Each stage wrapper RDS used for restart.
+- Stage 2 `condition_metacell_cache_contract.rds` while its per-stratum checkpoints may be reused.
 - Stage 5 files listed in `model_cache_summary$file`.
 - The same GEM object or a GEM with an identical fingerprint.
 
 Compact inspection artifacts do not replace their stage wrapper because they do not carry the full input contract.
+
+## Stage 2 checkpoint reuse
+
+The condition-metacell cache contract covers ordered cell IDs with condition/cell-type assignments, complete sparse RNA and ATAC assay values without dense materialization, the exact PCA/LSI embedding values in the selected dimensions, the fixed SuperCell2 construction label, reduction names and dimensions, `gamma`, seed, and metacell thresholds. When checkpoint files already exist and `overwrite = FALSE`, the requested contract must be identical. A missing or changed contract requires `metacell_args = list(overwrite = TRUE)`.
 
 ## Fail-fast conditions
 
 The workflow stops when:
 
 - a required stage class is absent;
-- condition, cell-type, or assay settings differ;
+- condition, cell-type, assay values, or selected reduction embeddings differ;
+- an existing Stage 2 checkpoint lacks or disagrees with the current cache contract;
+- a metacell stage lacks the current condition-only label-guided construction provenance;
 - the GEM fingerprint differs;
 - Layer 1 and Layer 2 scoring units are missing, duplicated, or reordered;
 - the Stage 5 core set differs from Stage 3;
 - selected cores have no direct KEGG, Reactome, or master-Rhea-linked non-core reactions;
-- a directly mapped target is absent from the original union;
+- a directly mapped target is absent from one or more reused union GEMs;
 - a cached union-model file is missing or has changed provenance.
 
 Same-subsystem, fixed-point, and transitive target-union expansion are not supported. These checks prevent numerically valid but biologically unrelated stage objects from being combined.

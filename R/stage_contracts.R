@@ -2,12 +2,68 @@
   .rc_full_gem_cache_fingerprint(gem)
 }
 
+.rc_validate_metacell_artifact_contract <- function(x, argument = "metacells") {
+  params <- x$params
+  pooled <- x$pooled
+  design <- pooled$input_design
+  contract <- pooled$cache_contract
+  valid <- is.list(params) && is.list(pooled) && is.list(design) &&
+    is.list(contract)
+  expected_label <- if (is.list(params)) {
+    trimws(as.character(params$celltype_col %||% ""))
+  } else {
+    ""
+  }
+  expected_gamma <- if (is.list(params) && is.list(params$metacell_args)) {
+    suppressWarnings(as.integer(params$metacell_args$gamma))
+  } else {
+    NA_integer_
+  }
+  if (valid) {
+    design_label <- trimws(as.character(design$supercell_label_col %||% ""))
+    design_assignment <- as.character(design$celltype_assignment %||% "")
+    design_gamma <- suppressWarnings(as.integer(design$gamma))
+    contract_gamma <- suppressWarnings(as.integer(
+      contract$analysis_args$gamma %||% NA_integer_
+    ))
+    valid <- identical(
+      as.character(contract$schema_version %||% ""),
+      "regcompass_condition_metacell_cache_v1"
+    ) &&
+      isTRUE(design$condition_only_stratification) &&
+      nzchar(expected_label) && identical(design_label, expected_label) &&
+      length(design_assignment) == 1L &&
+      grepl("label-guided", design_assignment, fixed = TRUE) &&
+      length(expected_gamma) == 1L && !is.na(expected_gamma) &&
+      identical(design_gamma, expected_gamma) &&
+      identical(contract_gamma, expected_gamma) &&
+      identical(as.character(contract$condition_col), params$condition_col) &&
+      identical(as.character(contract$celltype_col), params$celltype_col) &&
+      identical(as.character(contract$rna_assay), params$rna_assay) &&
+      identical(as.character(contract$atac_assay), params$atac_assay) &&
+      identical(as.character(contract$label_col), params$celltype_col)
+  }
+  if (!isTRUE(valid)) {
+    stop(
+      "`", argument, "` is a legacy or incompatible metacell artifact. ",
+      "Rerun `rc_regcompass_step_metacells()` with ",
+      "`metacell_args = list(overwrite = TRUE)` before using it in a ",
+      "current downstream stage.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 .rc_require_stage_class <- function(x, class_name, argument, producer) {
   if (!inherits(x, class_name)) {
     stop(
       "`", argument, "` must be the output of `", producer, "()`.",
       call. = FALSE
     )
+  }
+  if (identical(class_name, "regcompass_metacell_step")) {
+    .rc_validate_metacell_artifact_contract(x, argument = argument)
   }
   invisible(TRUE)
 }

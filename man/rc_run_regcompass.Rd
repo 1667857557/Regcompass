@@ -12,13 +12,17 @@ rc_run_regcompass(object, gem, outdir, pfm, genome,
   medium_scenarios = NULL, metacell_args = list(), layer1_args = list(),
   pando_args = list(), layer2_args = list(), upstream_workers = 6L,
   layer2_workers = 30L,
-  progress = getOption("RegCompassR.progress", TRUE),
-  species = c("auto", "human", "mouse"))
+  species = c("auto", "human", "mouse"),
+  progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
 \item{upstream_workers}{Worker count for GRN inference, local FASTCORE, and Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for serial upstream execution.}
 
 \item{layer2_workers}{Worker count for Layer 2 LP scoring. Defaults to 30. Set to 1 for serial Layer 2 execution.}
+
+\item{species}{Model species or \code{"auto"} inference from GEM provenance. This argument retains its position ahead of the later \code{progress} control for positional-call compatibility.}
+
+\item{progress}{Display workflow and stage progress. Set \code{FALSE} or use \code{options(RegCompassR.progress = FALSE)} for quiet execution.}
 }
 \description{Runs the six canonical GRN, metacell, meta-module, Layer 1, Layer 2, and result stages.}
 \details{
@@ -26,5 +30,5 @@ The canonical workflow automatically selects SOCK/SnowParam workers on Windows a
 
 Each parallel stage owns a temporary worker pool. Cleanup is registered before startup, stops the pool after success or failure, removes the pool reference, and runs full garbage collection. Every outer worker runs a single-thread internal task; numerical-library environment variables and nested R worker options are temporarily fixed at one.
 
-Each stage reports progress and writes \code{step_timing.tsv}. The complete workflow writes \code{00_execution_timing.tsv} and stores stage and total elapsed time in \code{result$timing}. Set \code{progress = FALSE} or \code{options(RegCompassR.progress = FALSE)} for quiet execution.
+Each stage reports progress and writes \code{step_timing.tsv}. Known public stages commit a success status only after their final expected RDS has been written. The complete workflow writes \code{00_execution_timing.tsv} and stores stage and total elapsed time in \code{result$timing}.
 }

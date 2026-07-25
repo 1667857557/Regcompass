@@ -75,17 +75,17 @@
     table <- table[.rc_ra_nonempty(table$reaction_id) &
                      .rc_ra_nonempty(table$gene), , drop = FALSE]
     if (nrow(table)) {
-      table$reaction_id <- as.character(table$reaction_id)
-      table$gene <- toupper(trimws(as.character(table$gene)))
+      table$reaction_id <- trimws(as.character(table$reaction_id))
+      table$gene <- trimws(as.character(table$gene))
       return(split(table, table$reaction_id))
     }
   }
   parsed <- if (is.list(layer1)) layer1$parsed_gpr else NULL
   if (!is.list(parsed) || !length(parsed)) return(list())
-  lapply(names(parsed), function(reaction_id) {
+  answer <- lapply(names(parsed), function(reaction_id) {
     groups <- parsed[[reaction_id]]
     rows <- lapply(seq_along(groups), function(i) {
-      genes <- toupper(trimws(as.character(groups[[i]])))
+      genes <- trimws(as.character(groups[[i]]))
       genes <- unique(genes[.rc_ra_nonempty(genes)])
       if (!length(genes)) return(NULL)
       data.frame(
@@ -97,19 +97,19 @@
     })
     rows <- rows[!vapply(rows, is.null, logical(1))]
     if (length(rows)) do.call(rbind, rows) else NULL
-  }) |>
-    stats::setNames(names(parsed))
+  })
+  stats::setNames(answer, names(parsed))
 }
 
 .rc_ra_gpr_strings <- function(gpr_rows) {
   if (is.null(gpr_rows) || !is.data.frame(gpr_rows) || !nrow(gpr_rows)) {
     return(list(genes = NA_character_, gpr_rule = NA_character_, n_genes = 0L))
   }
-  genes <- sort(unique(toupper(trimws(as.character(gpr_rows$gene)))))
+  genes <- sort(unique(trimws(as.character(gpr_rows$gene))))
   genes <- genes[.rc_ra_nonempty(genes)]
   groups <- split(gpr_rows, as.character(gpr_rows$and_group_id))
   group_rules <- vapply(groups, function(one) {
-    values <- unique(toupper(trimws(as.character(one$gene))))
+    values <- unique(trimws(as.character(one$gene)))
     values <- values[.rc_ra_nonempty(values)]
     if (!length(values)) return(NA_character_)
     rule <- paste(values, collapse = " and ")
@@ -124,7 +124,11 @@
 }
 
 .rc_ra_reaction_catalog <- function(gem, layer1 = NULL, reaction_ids = NULL) {
-  rc_validate_gem(gem)
+  validated <- rc_validate_gem(gem)
+  gem$S <- validated$S
+  gem$lb <- validated$lb
+  gem$ub <- validated$ub
+  gem <- rc_annotate_reaction_roles(gem)
   S <- gem$S
   all_ids <- colnames(S)
   if (is.null(reaction_ids)) reaction_ids <- all_ids
@@ -182,23 +186,23 @@
       " -/-> "
     }
     idx <- meta_idx[match(reaction_id, reaction_ids)]
-    reaction_name <- if (!is.null(name_col) && is.finite(idx)) {
+    reaction_name <- if (!is.null(name_col) && !is.na(idx)) {
       as.character(reaction_meta[[name_col]][idx])
     } else {
       NA_character_
     }
     if (!.rc_ra_nonempty(reaction_name)) reaction_name <- reaction_id
-    subsystem <- if (!is.null(subsystem_col) && is.finite(idx)) {
+    subsystem <- if (!is.null(subsystem_col) && !is.na(idx)) {
       as.character(reaction_meta[[subsystem_col]][idx])
     } else {
       NA_character_
     }
-    role <- if (!is.null(role_col) && is.finite(idx)) {
+    role <- if (!is.null(role_col) && !is.na(idx)) {
       as.character(reaction_meta[[role_col]][idx])
     } else {
-      "internal"
+      "unknown"
     }
-    if (!.rc_ra_nonempty(role)) role <- "internal"
+    if (!.rc_ra_nonempty(role)) role <- "unknown"
     gpr <- .rc_ra_gpr_strings(gpr_split[[reaction_id]])
     row <- data.frame(
       reaction_id = reaction_id,
@@ -223,7 +227,7 @@
     )
     for (target in names(crossref_candidates)) {
       column <- .rc_ra_first_col(reaction_meta, crossref_candidates[[target]])
-      row[[target]] <- if (!is.null(column) && is.finite(idx)) {
+      row[[target]] <- if (!is.null(column) && !is.na(idx)) {
         as.character(reaction_meta[[column]][idx])
       } else {
         NA_character_
@@ -400,7 +404,8 @@
     n_group_evidence_rows = nrow(annotation$evidence),
     evidence_tolerance = evidence_tolerance,
     evidence_classes = c(
-      "RNA+ATAC", "RNA-only", "GPR/no-observed-RNA", "structural/no-GPR"
+      "RNA+ATAC", "RNA-only", "GPR/no-observed-RNA",
+      "structural/no-GPR", "unknown/unavailable"
     )
   )
   result
@@ -462,10 +467,13 @@ rc_select_gene_reactions <- function(
   if (!length(genes)) stop("`genes` must contain at least one symbol.", call. = FALSE)
   catalog <- annotation$reactions
   matched <- lapply(catalog$genes, function(value) {
-    intersect(genes, toupper(.rc_ra_split(value)))
+    source_genes <- .rc_ra_split(value)
+    source_genes[toupper(source_genes) %in% genes]
   })
   keep <- if (identical(match, "all")) {
-    vapply(matched, length, integer(1)) == length(genes)
+    vapply(matched, function(x) {
+      length(unique(toupper(x))) == length(genes)
+    }, logical(1))
   } else {
     vapply(matched, length, integer(1)) > 0L
   }
@@ -526,8 +534,6 @@ rc_select_gene_reactions <- function(
   )
   if (length(parts)) paste(parts, collapse = "\n") else NULL
 }
-
-
 
 .rc_ra_annotate_condition_plot <- function(
     plot, statistics, reaction_id, cell_type,
