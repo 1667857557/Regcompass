@@ -1,4 +1,4 @@
-test_that("meta-module expansion adds reactions rather than unrelated subsystems", {
+test_that("meta-module expansion is one fixed ordered pass", {
   S <- diag(10)
   dimnames(S) <- list(paste0("M", 1:10), paste0("R", 1:10))
   reaction_meta <- data.frame(
@@ -24,36 +24,37 @@ test_that("meta-module expansion adds reactions rather than unrelated subsystems
     stringsAsFactors = FALSE
   )
 
-  ordered <- rc_expand_meta_module_reactions(
-    gem, core, expansion_mode = "ordered_once"
-  )
-  fixed <- rc_expand_meta_module_reactions(
-    gem, core, expansion_mode = "fixed_point"
-  )
+  expanded <- rc_expand_meta_module_reactions(gem, core)
 
   expect_setequal(
-    ordered$reaction_membership$reaction_id,
+    expanded$reaction_membership$reaction_id,
     c("R1", "R2", "R3", "R5", "R7")
   )
-  expect_setequal(
-    fixed$reaction_membership$reaction_id,
-    c("R1", "R2", "R3", "R5", "R7", "R9")
-  )
+  expect_false("R9" %in% expanded$reaction_membership$reaction_id)
   expect_false(any(
     c("R4", "R6", "R8", "R10") %in%
-      fixed$reaction_membership$reaction_id
+      expanded$reaction_membership$reaction_id
   ))
   stage <- stats::setNames(
-    ordered$reaction_membership$inclusion_stage,
-    ordered$reaction_membership$reaction_id
+    expanded$reaction_membership$inclusion_stage,
+    expanded$reaction_membership$reaction_id
   )
   expect_identical(stage[["R2"]], "same_core_subsystem")
   expect_identical(stage[["R3"]], "shared_kegg_or_reactome_reaction")
   expect_identical(stage[["R7"]], "shared_master_rhea_reaction")
-  expect_equal(ordered$summary$n_core_reactions, 1)
-  expect_equal(ordered$summary$n_subsystem_added, 1)
-  expect_equal(ordered$summary$n_database_added, 2)
-  expect_equal(ordered$summary$n_rhea_added, 1)
+  expect_equal(expanded$summary$n_core_reactions, 1)
+  expect_equal(expanded$summary$n_subsystem_added, 1)
+  expect_equal(expanded$summary$n_database_added, 2)
+  expect_equal(expanded$summary$n_rhea_added, 1)
+  expect_identical(
+    expanded$summary$expansion_policy,
+    "single_ordered_annotation_pass"
+  )
+  expect_false("expansion_mode" %in% colnames(expanded$reaction_membership))
+  expect_false("iterations" %in% colnames(expanded$summary))
+  expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
+  expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
+  expect_false(exists(".rc_meta_module_one_hop", inherits = TRUE))
 })
 
 test_that("partial GPR anchors are removed before module summarization", {
@@ -220,7 +221,10 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
   )
   merged <- .rc_merge_meta_module_catalogue(condition_modules)
   expect_false(merged$is_gem)
-  expect_setequal(merged$merged_reaction_membership$reaction_id, c("R1", "R2"))
+  expect_setequal(
+    merged$merged_reaction_membership$reaction_id,
+    c("R1", "R2")
+  )
 
   union_gem <- .rc_complete_medium_union_gem(
     gem = gem,
