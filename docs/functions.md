@@ -17,7 +17,7 @@ The complete workflow exposes two worker counts. `upstream_workers` covers Pando
 - `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA is the default geometry; an existing Harmony reduction can be selected through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
 - `rc_regcompass_step_meta_modules()`: summarize significantly supported metabolic target genes, map complete-GPR cores, perform subsystem/KEGG/Reactome/master-Rhea expansion, and deduplicate reaction IDs into a merged catalogue. No target projection, connected-component analysis, FASTCORE, or GEM construction occurs here.
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support.
-- `rc_regcompass_step_layer2()`: one medium-specific union GEM, one global FASTCORE completion, persistent model cache, and directional LP scoring; or shared full-GEM scoring when `model_mode = "full_gem"`.
+- `rc_regcompass_step_layer2()`: first construct one medium-specific union GEM with global FASTCORE, then cache it and run directional LP scoring; or use shared full-GEM scoring when `model_mode = "full_gem"`.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
 - `rc_regcompass_step_target_union()`: map selected original core reactions through shared KEGG, Reactome, or master-Rhea identifiers and score mapped non-core reactions in the exact final Stage 5 union GEMs.
 
@@ -45,9 +45,11 @@ layer2_args$model_params <- list(
 )
 ```
 
+`completion_time_limit` applies exclusively to FASTCC/FASTCORE union-GEM construction. The directional scoring API has no `time_limit` parameter and begins only after the structural model has been completed and cached.
+
 Each row of `step5$model_cache_summary` identifies one final medium-specific union GEM and records its file checksum, reaction counts, FASTCORE support count, build strategy, and completion stage.
 
-The optional second-pass scoring function uses these exact cached files. It validates the checksum and medium identity, does not rebuild a GEM, and does not rerun FASTCORE.
+The optional second-pass scoring function uses these exact cached files. It validates the checksum and medium identity, does not rebuild a GEM, does not rerun FASTCORE, and has no scoring timeout control.
 
 Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Current condition-metacell artifacts also contain a cache contract covering ordered cells, labels, assays, selected PCA/Harmony and LSI embeddings, construction labels, and analysis parameters. Every public stage returns a timing table and writes `step_timing.tsv`.
 
