@@ -38,12 +38,12 @@ rc_run_regcompass <- function(
     metacell_args = list(),
     layer1_args = list(),
     pando_args = list(),
-    meta_module_args = list(),
     layer2_args = list(),
     upstream_workers = 6L,
     layer2_workers = 30L,
     species = c("auto", "human", "mouse"),
-    progress = getOption("RegCompassR.progress", TRUE)) {
+    progress = getOption("RegCompassR.progress", TRUE),
+    meta_module_args = list()) {
   model_mode <- match.arg(model_mode)
   progress <- .rc_progress_enabled(progress)
   old_progress_option <- options(RegCompassR.progress = progress)
@@ -179,7 +179,8 @@ rc_run_regcompass <- function(
           pando_args = pando_args,
           parallel = !identical(config$actual_backend, "serial"),
           BPPARAM = upstream,
-          progress = progress
+          progress = progress,
+          species = species
         )
       }
     )
