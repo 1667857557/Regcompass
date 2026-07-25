@@ -130,7 +130,8 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
 #'
 #' Expansion is restricted to reactions in core-reaction subsystems and reactions
 #' sharing KEGG, Reactome or master-Rhea identifiers. No stoichiometric-neighbour
-#' expansion is performed. Flux-feasibility support is added later by FASTCORE.
+#' expansion is performed. Flux-feasibility support is considered only when
+#' Stage 5 constructs each medium-specific union GEM.
 .rc_expand_meta_module_reactions_core <- function(
     gem, core_reactions, subsystem_table = NULL,
     expansion_mode = c("ordered_once", "fixed_point"),
