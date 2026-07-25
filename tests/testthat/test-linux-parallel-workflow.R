@@ -1,19 +1,23 @@
-test_that("Stage 3 does not run a local FASTCORE loop", {
+test_that("Stage 3 does not run FASTCORE", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
-    if (nzchar(workspace)) file.path(workspace, "R", "workflow_z_union_gem.R") else character(),
-    file.path("R", "workflow_z_union_gem.R"),
-    file.path("..", "R", "workflow_z_union_gem.R"),
-    file.path("..", "..", "R", "workflow_z_union_gem.R")
+    if (nzchar(workspace)) {
+      file.path(workspace, "R", "meta_module_construction.R")
+    } else {
+      character()
+    },
+    file.path("R", "meta_module_construction.R"),
+    file.path("..", "R", "meta_module_construction.R"),
+    file.path("..", "..", "R", "meta_module_construction.R")
   ))
   candidates <- candidates[file.exists(candidates)]
-  if (!length(candidates)) skip("workflow_z_union_gem.R is unavailable.")
+  if (!length(candidates)) skip("meta_module_construction.R is unavailable.")
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
 
   expect_match(text, ".rc_build_condition_meta_modules <- function", fixed = TRUE)
   expect_match(text, "none_at_meta_module_stage", fixed = TRUE)
-  expect_false(grepl(".rc_complete_stratum_meta_modules(", text, fixed = TRUE))
-  expect_false(grepl("local_fastcore_by_meta_module", text, fixed = TRUE))
+  expect_false(grepl(".rc_complete_medium_union_gem(", text, fixed = TRUE))
+  expect_false(grepl(".rc_fastcore_", text, fixed = TRUE))
 })
 
 test_that("canonical workflow injects layered workers and automatic backend", {
@@ -34,11 +38,9 @@ test_that("canonical workflow injects layered workers and automatic backend", {
   expect_match(text, ".rc_with_stage_workers(", fixed = TRUE)
   expect_match(text, "pando_infer_args$parallel <- FALSE", fixed = TRUE)
   expect_match(text, "result$params$pando_internal_parallel <- FALSE", fixed = TRUE)
-  expect_match(text, "Local FASTCORE was removed", fixed = TRUE)
   expect_match(text, "layer2_args$model_params", fixed = TRUE)
   expect_match(text, "result$params$internal_threads_per_task <- 1L", fixed = TRUE)
   expect_match(text, "parallel_worker_lifecycle", fixed = TRUE)
-  expect_false(grepl("local_fastcore_args$workers", text, fixed = TRUE))
   expect_false(grepl("parallel_backend =", text, fixed = TRUE))
 })
 
