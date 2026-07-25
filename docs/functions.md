@@ -1,29 +1,54 @@
-# Public functions in RegCompassR 1.8.3
+# Public functions in RegCompassR 1.8.4
 
 ## Setup and complete runs
 
-- `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: load the bundled pinned model by default or explicitly download/rebuild an updated release.
-- `rc_bundled_gem_manifest()`: inspect installed Human-GEM/Mouse-GEM release, checksum, size, citation, and license metadata.
-- `rc_download_species_gem()`: lower-level official repository download/parse path retained for updates.
-- `rc_parallel_config()`: inspect OS-specific backend resolution for diagnostics and package development.
+- `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: load a bundled pinned model or explicitly download/rebuild a release.
+- `rc_bundled_gem_manifest()`: inspect installed Human-GEM/Mouse-GEM release, checksum, citation, and license metadata.
+- `rc_download_species_gem()`: lower-level official repository download/parse path.
+- `rc_parallel_config()`: inspect OS-specific backend resolution.
 - `rc_make_medium_scenarios()`: create one shared medium table; see [medium presets](medium-presets.md).
 - `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete GRN-first workflow with progress, timing, automatic backend selection, `upstream_workers = 6L`, and `layer2_workers = 30L`.
 
-The canonical complete workflow exposes only the two layered worker counts. Windows automatically uses SOCK/SnowParam, Linux/macOS use MulticoreParam, and a count of one makes that layer serial. Every outer worker runs one internally single-threaded analysis. Package-managed worker pools are released after each stage and followed by full garbage collection.
+The complete workflow exposes only the two layered worker counts. `upstream_workers` covers GRN inference and Layer 1. `layer2_workers` covers medium-specific union-GEM construction, global FASTCORE completion, and directional LP scoring. Stage 3 no longer owns a local FASTCORE worker pool.
 
 ## Inspectable stages
 
 - `rc_regcompass_step_grn()`: condition-by-cell-type Pando GRNs.
 - `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA is the default geometry; an existing Harmony reduction can be selected through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
-- `rc_regcompass_step_meta_modules()`: complete-GPR cores, subsystem/database expansion, and local FASTCORE completion.
-- `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction expression.
-- `rc_regcompass_step_layer2()`: persistent union/full-GEM cache and directional LP scoring.
+- `rc_regcompass_step_meta_modules()`: complete-GPR cores and subsystem/database-defined biological meta-modules, followed by reaction-ID deduplication into a merged catalogue. No FASTCORE and no GEM construction occur here.
+- `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support.
+- `rc_regcompass_step_layer2()`: one medium-specific union GEM, one global FASTCORE completion, persistent model cache, and directional LP scoring; or shared full-GEM scoring when `model_mode = "full_gem"`.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
-- `rc_regcompass_step_target_union()`: directly map selected previous cores through shared KEGG, Reactome, or master-Rhea identifiers and score only mapped non-core reactions.
+- `rc_regcompass_step_target_union()`: directly map selected previous cores through shared KEGG, Reactome, or master-Rhea identifiers and score mapped non-core reactions in the existing cached union GEMs.
 
-Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Current condition-metacell artifacts also contain a cache contract covering ordered cells, condition/cell-type labels, assay fingerprints, selected PCA/Harmony and LSI embeddings, construction labels, and analysis parameters. Existing checkpoints without this contract, or checkpoints whose contract differs from the requested run, must be rebuilt with `metacell_args = list(overwrite = TRUE)` rather than being silently reused. Every public stage returns a timing table and writes `step_timing.tsv`. Low-level stage functions remain available for restart and debugging; normal complete analyses should use the canonical runner so worker lifecycle and nested-thread controls are applied consistently.
+## Current Stage 3 fields
 
-See [metacell reduction selection](metacell-reduction-selection.md) for PCA-versus-Harmony configuration and restart rules.
+```r
+step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
+```
+
+The merged object is a biological reaction catalogue, not a GEM. The removed `global_modules`, `global_core_reactions`, `global_reaction_membership`, and `local_fastcore_*` outputs are not current APIs.
+
+The removed runner inputs are:
+
+```text
+layer1_args$local_fastcore
+layer1_args$local_fastcore_args
+```
+
+Configure the only FASTCORE stage through:
+
+```r
+layer2_args$model_params <- list(
+  completion_time_limit = 600,
+  fastcore_epsilon = 1e-4,
+  max_support_reactions = 2000,
+  strict = TRUE
+)
+```
+
+Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Current condition-metacell artifacts also contain a cache contract covering ordered cells, labels, assays, selected PCA/Harmony and LSI embeddings, construction labels, and analysis parameters. Every public stage returns a timing table and writes `step_timing.tsv`.
 
 ## Interpretation and plotting
 
