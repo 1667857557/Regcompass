@@ -66,6 +66,33 @@ export OPENBLAS_NUM_THREADS=1
 export MKL_NUM_THREADS=1
 ```
 
+## Choose the metacell embedding
+
+Stage 2 uses RNA PCA and ATAC LSI by default. Set the following switch to `TRUE` only when an existing Harmony reduction should define the RNA geometry used by SuperCell2:
+
+```r
+use_harmony_for_metacells <- FALSE
+
+metacell_embedding_args <- if (use_harmony_for_metacells) {
+  stopifnot(
+    "harmony" %in% names(A@reductions),
+    "lsi" %in% names(A@reductions),
+    ncol(SeuratObject::Embeddings(A[["harmony"]])) >= 30,
+    ncol(SeuratObject::Embeddings(A[["lsi"]])) >= 30
+  )
+  list(
+    rna_reduction = "harmony",
+    rna_dims = 1:30,
+    atac_reduction = "lsi",
+    atac_dims = 2:30
+  )
+} else {
+  list()
+}
+```
+
+With the default `FALSE`, the four reduction fields are omitted and RegCompass uses RNA `pca` dimensions 1:30 plus ATAC `lsi` dimensions 2:30. Harmony changes only the RNA cell-embedding geometry; RNA and ATAC metacell counts are still aggregated from the original assays.
+
 ## Run the complete workflow
 
 The defaults are `upstream_workers = 6L`, `layer2_workers = 30L`, and `gamma = 30`. Windows automatically uses SOCK workers; Linux/macOS automatically use multicore workers. Set both worker values to `1L` for a fully serial run.
@@ -90,10 +117,13 @@ result <- rc_run_regcompass_one_shot(
       parallel = FALSE
     )
   ),
-  metacell_args = list(
-    gamma = 30,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10
+  metacell_args = c(
+    metacell_embedding_args,
+    list(
+      gamma = 30,
+      min_cells_per_stratum = 500,
+      min_metacell_size = 10
+    )
   ),
   layer1_args = list(
     local_fastcore = TRUE,
@@ -116,6 +146,8 @@ result <- rc_run_regcompass_one_shot(
 Do not provide `parallel_backend`, `BPPARAM`, or per-FASTCORE worker fields to the canonical complete workflow. Operating-system selection and stage assignment are automatic. Pando's inner `parallel = FALSE` remains required because GRN groups are distributed by the outer upstream worker layer.
 
 Each parallel stage creates, starts, stops, and releases its own pool. Cleanup also runs on errors, and full garbage collection follows pool release. The upstream pool is therefore not retained while Layer 2 is running.
+
+Changing `rna_reduction`, `rna_dims`, `atac_reduction`, or `atac_dims` changes the Stage 2 cache contract. Existing metacell checkpoints must then be rebuilt with `metacell_args$overwrite = TRUE`.
 
 ## Confirm completion and timing
 

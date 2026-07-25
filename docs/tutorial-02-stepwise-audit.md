@@ -113,7 +113,28 @@ RNA is normalized once. ATAC TF-IDF uses all conditions within each cell type as
 
 ## Stage 2: construct condition-level metacells
 
+By default, SuperCell2 uses RNA `pca` dimensions 1:30 and ATAC `lsi` dimensions 2:30. Set the following switch to `TRUE` only when an existing Harmony reduction should define the RNA geometry used for metacell construction.
+
 ```r
+use_harmony_for_metacells <- FALSE
+
+metacell_embedding_args <- if (use_harmony_for_metacells) {
+  stopifnot(
+    "harmony" %in% names(A@reductions),
+    "lsi" %in% names(A@reductions),
+    ncol(SeuratObject::Embeddings(A[["harmony"]])) >= 30,
+    ncol(SeuratObject::Embeddings(A[["lsi"]])) >= 30
+  )
+  list(
+    rna_reduction = "harmony",
+    rna_dims = 1:30,
+    atac_reduction = "lsi",
+    atac_dims = 2:30
+  )
+} else {
+  list()
+}
+
 step2 <- rc_regcompass_step_metacells(
   object = A,
   outdir = "RegCompass_steps/02_condition_metacells",
@@ -121,10 +142,13 @@ step2 <- rc_regcompass_step_metacells(
   condition_col = condition_col,
   celltype_col = celltype_col,
   fragment_files = FALSE,
-  metacell_args = list(
-    gamma = 30,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10
+  metacell_args = c(
+    metacell_embedding_args,
+    list(
+      gamma = 30,
+      min_cells_per_stratum = 500,
+      min_metacell_size = 10
+    )
   ),
   progress = TRUE
 )
@@ -133,6 +157,10 @@ meta2 <- step2$pooled$metacell_meta
 stopifnot(
   inherits(step2, "regcompass_metacell_step"),
   identical(step2$params$metacell_args$gamma, 30L),
+  identical(
+    step2$pooled$cache_contract$analysis_args$rna_reduction,
+    if (use_harmony_for_metacells) "harmony" else "pca"
+  ),
   !any(meta2$dominant_celltype_tied %in% TRUE),
   setequal(colnames(step2$metacell_object), meta2$metacell_id)
 )
@@ -141,6 +169,8 @@ table(meta2[[condition_col]], meta2[[celltype_col]])
 ```
 
 Condition is the only hard stratum. `celltype_col` is passed to SuperCell2 as a construction label and is audited again from member-cell composition. `sample_col` is optional provenance and is not used for balancing.
+
+Harmony affects only the RNA embedding used to define cell-to-metacell geometry. RNA and ATAC metacell counts remain sums from the original assays. Switching between PCA and Harmony, changing dimensions, or recomputing either reduction changes the Stage 2 cache contract; existing checkpoints must be rebuilt with `overwrite = TRUE`.
 
 ## Stage 3: build core reactions and meta-modules
 

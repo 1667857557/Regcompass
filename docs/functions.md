@@ -14,14 +14,16 @@ The canonical complete workflow exposes only the two layered worker counts. Wind
 ## Inspectable stages
 
 - `rc_regcompass_step_grn()`: condition-by-cell-type Pando GRNs.
-- `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells.
+- `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA is the default geometry; an existing Harmony reduction can be selected through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
 - `rc_regcompass_step_meta_modules()`: complete-GPR cores, subsystem/database expansion, and local FASTCORE completion.
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction expression.
 - `rc_regcompass_step_layer2()`: persistent union/full-GEM cache and directional LP scoring.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
 - `rc_regcompass_step_target_union()`: directly map selected previous cores through shared KEGG, Reactome, or master-Rhea identifiers and score only mapped non-core reactions.
 
-Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Current condition-metacell artifacts also contain a cache contract covering ordered cells, condition/cell-type labels, assay fingerprints, construction labels, and analysis parameters. Existing checkpoints without this contract, or checkpoints whose contract differs from the requested run, must be rebuilt with `metacell_args = list(overwrite = TRUE)` rather than being silently reused. Every public stage returns a timing table and writes `step_timing.tsv`. Low-level stage functions remain available for restart and debugging; normal complete analyses should use the canonical runner so worker lifecycle and nested-thread controls are applied consistently.
+Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Current condition-metacell artifacts also contain a cache contract covering ordered cells, condition/cell-type labels, assay fingerprints, selected PCA/Harmony and LSI embeddings, construction labels, and analysis parameters. Existing checkpoints without this contract, or checkpoints whose contract differs from the requested run, must be rebuilt with `metacell_args = list(overwrite = TRUE)` rather than being silently reused. Every public stage returns a timing table and writes `step_timing.tsv`. Low-level stage functions remain available for restart and debugging; normal complete analyses should use the canonical runner so worker lifecycle and nested-thread controls are applied consistently.
+
+See [metacell reduction selection](metacell-reduction-selection.md) for PCA-versus-Harmony configuration and restart rules.
 
 ## Interpretation and plotting
 
@@ -35,6 +37,7 @@ Sample balancing is not part of the canonical workflow. Metacell-level compariso
 ## Tutorials
 
 - [Portable execution, bundled GEMs, progress, timing, and worker cleanup](portable-execution.md)
+- [Metacell PCA/Harmony reduction selection](metacell-reduction-selection.md)
 - [Level 1: quick start](tutorial-01-quick-start.md)
 - [Level 2: true stepwise workflow](tutorial-02-stepwise-audit.md)
 - [Level 3: restart and diagnostics](tutorial-03-advanced-restart.md)

@@ -46,7 +46,8 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args, metacell_args, layer1_args, layer2_args}{Stage-specific configuration lists.}
+\item{pando_args, layer1_args, layer2_args}{Stage-specific configuration lists.}
+\item{metacell_args}{SuperCell2 configuration. The default embedding is RNA \code{"pca"} dimensions 1:30 plus ATAC \code{"lsi"} dimensions 2:30. An existing Harmony reduction can be selected with \code{rna_reduction = "harmony"} and \code{rna_dims}; \code{atac_reduction} and \code{atac_dims} remain independently selectable. Reduction names, selected dimensions, and embedding fingerprints are part of the Stage 2 cache contract.}
 \item{parallel}{Whether the supported stage loop is parallelized.}
 \item{BPPARAM}{BiocParallel parameter object, \code{NULL}, or \code{FALSE}.}
 \item{progress}{Display stage progress. Set to \code{FALSE} for quiet execution.}
@@ -61,4 +62,6 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \description{Runs the canonical workflow as separately restartable, validated stages.}
 \details{
 Each stage returns a \code{timing} table and writes \code{step_timing.tsv} to its output directory. Failed stages also write an error-status timing row. Stage contracts reject mixed GEMs, workflows, core sets, or metacell orders.
+
+Harmony selection changes only the RNA cell-embedding geometry used by SuperCell2. Aggregated metacell RNA and ATAC counts still come from the original assays. Switching reduction names or dimensions, or recomputing an embedding, requires rebuilding existing Stage 2 checkpoints with \code{overwrite = TRUE}.
 }
