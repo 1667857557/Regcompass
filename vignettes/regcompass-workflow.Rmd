@@ -104,7 +104,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The removed `local_fastcore` and `local_fastcore_args` fields are rejected.
+FASTCORE is configured at Stage 5 through `layer2_args$model_params`.
 
 # Stepwise workflow
 
@@ -193,25 +193,58 @@ The merged catalogue contains biological reactions only. It has no medium bounds
 # Inspect the Stage 5 union GEM
 
 ```{r}
-step5$model_cache_summary
+step5$model_cache_summary[, c(
+  "medium_scenario",
+  "file",
+  "file_checksum",
+  "n_merged_biological_reactions",
+  "n_global_fastcore_support_reactions",
+  "completion_stage"
+)]
+
 union_gem <- readRDS(step5$model_cache_summary$file[[1]])
 
 union_gem$is_union_gem
 union_gem$union_gem_medium_scenario
 union_gem$reaction_meta[
-  union_gem$reaction_meta$fastcore_support %in% TRUE,
+  union_gem$reaction_meta$global_fastcore_support %in% TRUE,
   , drop = FALSE
 ]
 ```
 
 One union GEM is built per medium scenario and shared by all conditions and metacells in that scenario.
 
+# Targeted second-pass scoring
+
+```{r}
+targeted <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_targeted",
+  core_reaction_ids = "MAR04324",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    time_limit = 600
+  )
+)
+
+targeted$microcompass$params[c(
+  "structural_model_reused_exactly",
+  "fastcore_rerun",
+  "model_rebuild"
+)]
+```
+
+Selected genes or reaction IDs define mapping anchors. The second pass verifies each Stage 5 cache file checksum and medium identifier, reuses the exact final medium-specific union GEM, and neither rebuilds the model nor reruns FASTCORE.
+
 # Restart policy
 
 - Change GRN projection or annotation expansion: rerun Stage 3 onward.
 - Change the RNA+ATAC transformation: rerun Stage 4 onward.
 - Change medium or global FASTCORE settings: rerun Stage 5 onward.
-- No local FASTCORE restart exists.
 
 # Condition comparisons
 
