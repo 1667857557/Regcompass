@@ -35,7 +35,7 @@ rc_current_user_docs <- function(root) {
   )
 }
 
-test_that("workflow vignette documents global-only FASTCORE", {
+test_that("workflow vignette documents significant-target cores and global FASTCORE", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   path <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
@@ -46,6 +46,10 @@ test_that("workflow vignette documents global-only FASTCORE", {
     "RegCompassR 1.8.4",
     "rc_run_regcompass_one_shot(",
     "rc_regcompass_step_meta_modules(",
+    "supported_metabolic_genes",
+    "complete-GPR core reactions",
+    "phastConsElements20Mammals.UCSC.hg38",
+    "SCREEN.ccRE.UCSC.hg38",
     "rc_regcompass_step_layer2(",
     "rc_regcompass_step_target_union(",
     "merged_modules$merged_core_reactions",
@@ -82,6 +86,8 @@ test_that("all five tutorials use the current stage contract", {
   combined <- paste(unlist(text), collapse = "\n")
 
   expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
+  expect_match(text[[1L]], "meta_module_args", fixed = TRUE)
+  expect_match(text[[2L]], "supported_metabolic_genes", fixed = TRUE)
   expect_match(text[[2L]], "rc_regcompass_step_results(", fixed = TRUE)
   expect_match(text[[2L]], "merged_modules", fixed = TRUE)
   expect_match(text[[3L]], "global_fastcore_support", fixed = TRUE)
@@ -115,14 +121,20 @@ test_that("user documentation contains no retired architecture names", {
     "workflow_z_union_gem",
     "rc_build_meta_module_gem",
     "reaction_meta$fastcore_support",
-    "available_in_all_cached_union_models"
+    "available_in_all_cached_union_models",
+    "top_k_neighbors",
+    "min_shared_tfs",
+    "min_tf_jaccard",
+    "max_targets_per_tf",
+    "rc_project_metabolic_grn",
+    "metabolic_gene_edges"
   )
   expect_false(any(vapply(
     forbidden, grepl, logical(1), x = text, fixed = TRUE
   )))
 })
 
-test_that("README API index and Rd files expose final model reuse", {
+test_that("README API index and Rd files expose current core and model reuse", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- c(
@@ -140,6 +152,10 @@ test_that("README API index and Rd files expose final model reuse", {
 
   required <- c(
     "RegCompassR 1.8.4",
+    "supported_metabolic_genes",
+    "significant",
+    "complete-GPR",
+    "meta_module_args",
     "merged_core_reactions",
     "merged_reaction_membership",
     "medium-specific union GEM",
