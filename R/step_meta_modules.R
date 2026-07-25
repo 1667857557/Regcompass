@@ -77,10 +77,7 @@ rc_regcompass_step_meta_modules <- function(
       call. = FALSE
     )
   }
-  merged_modules <- .rc_merge_stratum_meta_modules(list(list(
-    group_id = "condition_pooled",
-    grn_meta_modules = condition_modules
-  )))
+  merged_modules <- .rc_merge_meta_module_catalogue(condition_modules)
   if (!is.data.frame(merged_modules$merged_core_reactions) ||
       !nrow(merged_modules$merged_core_reactions)) {
     stop(
