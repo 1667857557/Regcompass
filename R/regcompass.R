@@ -1,8 +1,14 @@
 #' Run the canonical GRN-first RegCompass workflow
 #'
-#' @param upstream_workers Worker count for GRN inference, local FASTCORE, and
-#'   Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for
-#'   serial upstream execution.
+#' Stage 3 constructs biological meta-modules and a deduplicated merged
+#' reaction catalogue. It does not run FASTCORE and does not create a GEM.
+#' With `model_mode = "meta_module_gem"`, Stage 5 constructs one union GEM per
+#' medium scenario and performs the only FASTCORE completion on that shared
+#' medium-specific structure.
+#'
+#' @param upstream_workers Worker count for GRN inference and Layer 1
+#'   reaction-expression calculation. Defaults to 6. Set to 1 for serial
+#'   upstream execution.
 #' @param layer2_workers Worker count for Layer 2 LP scoring. Defaults to 30.
 #'   Set to 1 for serial Layer 2 execution.
 #' @export
@@ -53,11 +59,27 @@ rc_run_regcompass <- function(
     pando_args = pando_args,
     layer2_args = layer2_args
   )
-  invalid_bundles <- names(bundles)[!vapply(bundles, is.list, logical(1))]
+  invalid_bundles <- names(bundles)[
+    !vapply(bundles, is.list, logical(1))
+  ]
   if (length(invalid_bundles)) {
     stop(
       "Workflow argument bundles must be lists: ",
       paste(invalid_bundles, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  obsolete <- intersect(
+    names(layer1_args), c("local_fastcore", "local_fastcore_args")
+  )
+  if (length(obsolete)) {
+    stop(
+      "Local FASTCORE was removed. Delete `",
+      paste(obsolete, collapse = "` and `"),
+      "` from `layer1_args`. Configure the single medium-specific global ",
+      "FASTCORE through `layer2_args$model_params` ",
+      "(`completion_time_limit`, `fastcore_epsilon`, ",
+      "`max_support_reactions`, and `strict`).",
       call. = FALSE
     )
   }
@@ -150,28 +172,6 @@ rc_run_regcompass <- function(
     )
   )
 
-  step3_args <- layer1_args
-  local_fastcore_args <- step3_args$local_fastcore_args %||% list()
-  managed_fastcore_fields <- intersect(
-    names(local_fastcore_args),
-    c("parallel", "workers", "backend", "BPPARAM")
-  )
-  if (length(managed_fastcore_fields)) {
-    warning(
-      "Ignoring canonical local FASTCORE parallel fields controlled by ",
-      "`upstream_workers`: ",
-      paste(managed_fastcore_fields, collapse = ", "),
-      call. = FALSE
-    )
-    local_fastcore_args[managed_fastcore_fields] <- NULL
-  }
-  local_fastcore_args$parallel <- !identical(
-    upstream_config$actual_backend, "serial"
-  )
-  local_fastcore_args$workers <- upstream_config$workers
-  local_fastcore_args$backend <- "auto"
-  step3_args$local_fastcore_args <- local_fastcore_args
-
   step3 <- run_stage(
     3L,
     "meta_modules",
@@ -180,7 +180,7 @@ rc_run_regcompass <- function(
       metacells = step2,
       gem = gem,
       outdir = file.path(outdir, "03_meta_modules"),
-      layer1_args = step3_args,
+      layer1_args = layer1_args,
       progress = progress
     )
   )
@@ -272,7 +272,7 @@ rc_run_regcompass <- function(
   result$params$parallel_worker_lifecycle <-
     "stage_scoped_create_start_stop_release_full_gc"
   result$params$parallel_stage_groups <- list(
-    upstream = c("single_cell_grn", "meta_modules", "layer1"),
+    upstream = c("single_cell_grn", "layer1"),
     layer2 = "layer2"
   )
   result$params$operating_system <- .Platform$OS.type
