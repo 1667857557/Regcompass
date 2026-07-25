@@ -4,7 +4,7 @@
 
 ```text
 condition × cell type cells
-→ Pando TF–peak–Human-GEM-gene models
+→ Pando TF–peak–GEM-gene models
 → significantly supported metabolic target genes
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
@@ -23,7 +23,7 @@ condition × cell type cells
 Pando is fitted separately for each `condition × cell type` group. Its candidate target set is:
 
 \[
-T = G_{Human-GEM\ GPR} \cap G_{RNA\ assay}.
+T = G_{GEM\ GPR} \cap G_{RNA\ assay}.
 \]
 
 When `pfm` is omitted, RegCompass loads the Pando data object:
@@ -35,20 +35,24 @@ pfm <- motifs
 
 A user-supplied motif collection overrides this default.
 
-For human hg38 analyses, the default `Pando::initiate_grn()` region set is:
+The default `Pando::initiate_grn()` region set depends on `species`:
 
 \[
-R = phastConsElements20Mammals.UCSC.hg38
-\cup SCREEN.ccRE.UCSC.hg38.
+R_{human} = phastConsElements20Mammals.UCSC.hg38
+\cup SCREEN.ccRE.UCSC.hg38,
 \]
 
-Both objects are loaded from the installed Pando package. A user-supplied `pando_initiate_args$regions` overrides the default. Because the bundled default is hg38-specific, non-human analyses must provide an appropriate region set.
+\[
+R_{mouse} = phastConsElements20Mammals.UCSC.hg38.
+\]
+
+The objects are loaded from the installed Pando package. A user-supplied `pando_initiate_args$regions` overrides either species-specific default. The selected policy is recorded in `step1$grn_result$normalization_policy$pando_regions`.
 
 A TF–peak–target row is retained as significant evidence when it passes the configured adjusted-P-value, absolute-estimate, and target-model-R² thresholds. Positive and negative coefficients both indicate regulatory evidence.
 
 ## 2. Supported metabolic gene sets and core reactions
 
-For condition `c` and cell type `k`, let `E_{c,k}` be the significant Pando coefficient table. The supported Human-GEM metabolic genes are:
+For condition `c` and cell type `k`, let `E_{c,k}` be the significant Pando coefficient table. The supported GEM metabolic genes are:
 
 \[
 M_{c,k} = \{g \in T : \exists (t,p,g) \in E_{c,k}\}.
