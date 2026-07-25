@@ -49,7 +49,14 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes `motifs` to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
+When `pfm` is omitted, RegCompass loads:
+
+```r
+data("motifs", package = "Pando")
+pfm <- motifs
+```
+
+The resulting `motifs` object is passed to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
 
 For human analyses, RegCompass loads `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` from Pando, takes their union, and passes it to `Pando::initiate_grn(regions = ...)`. Supply `pando_args$pando_initiate_args$regions` to override this default. Non-human analyses require species-appropriate regions explicitly.
 
@@ -69,15 +76,23 @@ result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   model_mode = "meta_module_gem",
   metacell_args = list(
+    rna_reduction = "pca",
+    rna_dims = 1:30,
+    atac_reduction = "lsi",
+    atac_dims = 2:30,
     gamma = 30,
+    seed = 12345L,
     min_cells_per_stratum = 500,
-    min_metacell_size = 10
+    min_metacell_size = 10,
+    min_metacells_per_stratum = 2L,
+    overwrite = FALSE
   ),
   pando_args = list(
     min_cells = 100,
     padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
+    require_padj = TRUE,
     pando_infer_args = list(
       method = "glm",
       tf_cor = 0.1,
@@ -105,7 +120,43 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The Stage 1 adjusted-P-value, effect-size, and model-R² filters define which Human-GEM target genes enter Stage 3. Both positive and negative Pando coefficients count as regulatory evidence.
+# Pando evidence filters
+
+A TF–peak–target coefficient enters the significant evidence table only when all enabled filters pass:
+
+- `padj_threshold = 0.05`: finite adjusted P value no greater than 0.05;
+- `min_abs_estimate = 0`: finite absolute coefficient no smaller than the threshold;
+- `min_model_rsq = 0.1`: finite target-model R² no smaller than 0.1;
+- `require_padj = TRUE`: fail rather than silently proceed when adjusted P values are unavailable;
+- `min_cells`: minimum cells required in the `condition × cell type` group.
+
+Both positive and negative Pando coefficients count as regulatory evidence. The filters determine which Human-GEM target genes enter Stage 3; coefficient direction is retained as provenance but does not change supported-gene membership.
+
+# Metacell reductions, dimensions, and seed
+
+The canonical Stage 2 defaults are:
+
+```r
+rna_reduction = "pca"
+rna_dims = 1:30
+atac_reduction = "lsi"
+atac_dims = 2:30
+gamma = 30L
+seed = 12345L
+min_cells_per_stratum = 100L
+min_metacell_size = 20L
+min_metacells_per_stratum = 2L
+```
+
+Reduction names must exist in `A@reductions`, and the requested dimensions must exist in their embedding matrices. LSI dimension 1 is excluded by default. For ordered condition strata, RegCompass passes the deterministic seed:
+
+```text
+seed_for_stratum = seed + stratum_index - 1
+```
+
+A precomputed Harmony embedding can replace PCA through `rna_reduction = "harmony"` and the corresponding `rna_dims`. Harmony changes membership geometry only; the original RNA and ATAC assay counts are aggregated. Changing cells, assays, reductions, dimensions, embedding values, seed, gamma, or thresholds invalidates the Stage 2 cache and requires `overwrite = TRUE`.
+
+# Fixed Stage 3 expansion
 
 Stage 3 expansion is fixed to one pass:
 
@@ -117,6 +168,8 @@ core subsystem
 ```
 
 The removed Stage 3 APIs are `expansion_mode`, `max_iterations`, fixed-point recursion, and one-hop/stoichiometric-neighbour expansion.
+
+# GPR-AND and model construction
 
 `gpr_and_method` accepts `"min"`, `"median"`, or `"mean"` and defaults to `"min"`. The former Boltzmann soft-min and `tau` API are removed. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`. `completion_time_limit` limits union-GEM construction only; the later scoring LPs have no time-limit parameter.
 
@@ -133,7 +186,9 @@ step1 <- rc_regcompass_step_grn(
   pando_args = list(
     min_cells = 100,
     padj_threshold = 0.05,
-    min_model_rsq = 0.1
+    min_abs_estimate = 0,
+    min_model_rsq = 0.1,
+    require_padj = TRUE
   )
 )
 
@@ -144,7 +199,17 @@ step2 <- rc_regcompass_step_metacells(
   condition_col = "Group",
   celltype_col = "cell_type",
   fragment_files = FALSE,
-  metacell_args = list(gamma = 30)
+  metacell_args = list(
+    rna_reduction = "pca",
+    rna_dims = 1:30,
+    atac_reduction = "lsi",
+    atac_dims = 2:30,
+    gamma = 30,
+    seed = 12345L,
+    min_cells_per_stratum = 500,
+    min_metacell_size = 10,
+    min_metacells_per_stratum = 2L
+  )
 )
 
 step3 <- rc_regcompass_step_meta_modules(
@@ -192,6 +257,21 @@ result <- rc_regcompass_step_results(
   outdir = "RegCompass_steps/06_results",
   species = "human"
 )
+```
+
+# Inspect Stage 1 and Stage 2 provenance
+
+```{r}
+step1$grn_result$normalization_policy[c(
+  "pando_motifs",
+  "pando_regions",
+  "pando_peak_cor",
+  "pando_rsq"
+)]
+
+step2$pooled$cache_contract$analysis_args
+step2$pooled$cache_contract$rna_reduction$embedding
+step2$pooled$cache_contract$atac_reduction$embedding
 ```
 
 # Inspect the Stage 3 evidence and catalogue
@@ -274,6 +354,7 @@ Selected genes or reaction IDs define mapping anchors. The second pass verifies 
 # Restart policy
 
 - Change Pando evidence thresholds, motifs, or regulatory regions: rerun Stage 1 onward.
+- Change metacell cells, assays, reductions, dimensions, seed, gamma, or thresholds: rerun Stage 2 onward with `overwrite = TRUE`.
 - Change subsystem annotations or GEM GPR rules: rerun Stage 3 onward.
 - Change `gpr_and_method` or another RNA+ATAC transformation: rerun Stage 4 onward.
 - Change medium or global FASTCORE construction settings: rerun Stage 5 onward.
