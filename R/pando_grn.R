@@ -34,8 +34,8 @@
   }
   phast_cons <- get(region_names[[1L]], envir = data_environment, inherits = FALSE)
   screen_ccre <- get(region_names[[2L]], envir = data_environment, inherits = FALSE)
-  if (!inherits(phast_cons, "GenomicRanges") ||
-      !inherits(screen_ccre, "GenomicRanges")) {
+  if (!methods::is(phast_cons, "GenomicRanges") ||
+      !methods::is(screen_ccre, "GenomicRanges")) {
     stop("Pando regulatory-region data must be GRanges objects.", call. = FALSE)
   }
   BiocGenerics::union(phast_cons, screen_ccre)
@@ -63,7 +63,7 @@ rc_extract_pando_tf_peak_gene <- function(
     )
     return(list(all = empty, significant = empty))
   }
-  required <- c("tf", "target", "region")
+  required <- c("tf", "target", "region", "estimate")
   missing <- setdiff(required, colnames(coefs))
   if (length(missing)) {
     stop(
@@ -76,36 +76,33 @@ rc_extract_pando_tf_peak_gene <- function(
     as.data.frame(Pando::gof(grn_object), stringsAsFactors = FALSE),
     error = function(error) data.frame()
   )
-  if (nrow(fit) && "target" %in% colnames(fit)) {
-    keep_fit <- setdiff(
-      colnames(fit),
-      intersect(colnames(fit), setdiff(colnames(coefs), "target"))
-    )
-    coefs <- merge(
-      coefs,
-      fit[, keep_fit, drop = FALSE],
-      by = "target",
-      all.x = TRUE,
-      sort = FALSE
+  if (!nrow(fit) || !all(c("target", "rsq") %in% colnames(fit))) {
+    stop(
+      "Pando target-model GOF must contain `target` and `rsq`.",
+      call. = FALSE
     )
   }
+  keep_fit <- setdiff(
+    colnames(fit),
+    intersect(colnames(fit), setdiff(colnames(coefs), "target"))
+  )
+  coefs <- merge(
+    coefs,
+    fit[, keep_fit, drop = FALSE],
+    by = "target",
+    all.x = TRUE,
+    sort = FALSE
+  )
   coefs$sample_id <- as.character(sample_id)
   coefs$tf <- toupper(as.character(coefs$tf))
   coefs$target <- toupper(as.character(coefs$target))
   coefs$region <- as.character(coefs$region)
   coefs <- coefs[, c("sample_id", setdiff(colnames(coefs), "sample_id")), drop = FALSE]
 
-  keep <- rep(TRUE, nrow(coefs))
-  if ("estimate" %in% colnames(coefs)) {
-    estimate <- suppressWarnings(as.numeric(coefs$estimate))
-    keep <- keep & is.finite(estimate) & abs(estimate) >= min_abs_estimate
-  }
-  if ("rsq" %in% colnames(coefs)) {
-    rsq <- suppressWarnings(as.numeric(coefs$rsq))
-    keep <- keep & is.finite(rsq) & rsq >= min_model_rsq
-  } else {
-    keep <- rep(FALSE, nrow(coefs))
-  }
+  estimate <- suppressWarnings(as.numeric(coefs$estimate))
+  rsq <- suppressWarnings(as.numeric(coefs$rsq))
+  keep <- is.finite(estimate) & abs(estimate) >= min_abs_estimate &
+    is.finite(rsq) & rsq >= min_model_rsq
   if ("padj" %in% colnames(coefs)) {
     padj <- suppressWarnings(as.numeric(coefs$padj))
     keep <- keep & is.finite(padj) & padj <= padj_threshold
