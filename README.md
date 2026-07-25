@@ -9,7 +9,7 @@ condition × cell type cells
 → group-specific Pando GRNs and condition-level metacells
 → complete-GPR reaction meta-modules
 → integrated RNA+ATAC reaction support
-→ one medium-constrained model with global FASTCORE completion
+→ one model per medium with one global FASTCORE completion
 → directional COMPASS-like LP scoring
 → annotated rankings and condition contrasts
 ```
