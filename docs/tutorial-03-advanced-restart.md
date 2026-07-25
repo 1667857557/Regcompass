@@ -18,6 +18,7 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 
 Rerun Pando and all downstream stages after changing:
 
+- `species`;
 - `padj_threshold`, `min_abs_estimate`, or `min_model_rsq`;
 - `tf_cor`, `peak_cor`, model method, or other `pando_infer_args`;
 - motif matrices or genome;
@@ -26,7 +27,14 @@ Rerun Pando and all downstream stages after changing:
 
 When `pfm` is omitted, the canonical motif collection is Pando's `motifs` data object. Supplying a different `pfm` changes the fitted regulatory evidence and therefore requires Stage 1 onward to be rerun.
 
-The canonical human default region set is the union of Pando's `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` data objects. Changing that set also requires Stage 1 onward to be rerun.
+The species-specific default region policies are:
+
+```text
+human = phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
+mouse = phastConsElements20Mammals.UCSC.hg38 only
+```
+
+Changing `species`, overriding the region object, or changing either default region source requires Stage 1 onward to be rerun.
 
 ### Rerun Stage 2 onward
 
