@@ -5,8 +5,9 @@ All execution modes follow the same main workflow:
 ```text
 condition × cell type Pando evidence for Human-GEM genes
 → significantly supported metabolic targets
-→ complete-GPR reaction modules
-→ integrated RNA+ATAC support
+→ complete-GPR core reactions
+→ one ordered subsystem/cross-reference expansion pass
+→ integrated RNA+ATAC support with COMPASS GPR-AND aggregation
 → medium-constrained structural model
 → directional LP scoring
 ```
@@ -15,10 +16,11 @@ condition × cell type Pando evidence for Human-GEM genes
 
 Use [Tutorial 1](tutorial-01-quick-start.md) for a complete run with `rc_run_regcompass_one_shot()`.
 
+- `pfm` is optional; Pando's bundled `motifs` data object is the default.
 - `upstream_workers`: Pando inference and Layer 1.
 - `layer2_workers`: model completion and LP scoring.
-- `meta_module_args`: Stage 3 subsystem and reaction-equivalence expansion.
-- `layer1_args`: Stage 4 integrated-evidence transformation.
+- `meta_module_args`: optional custom subsystem table only.
+- `layer1_args`: `regulatory_alpha`, `gpr_and_method`, and gene half-saturation.
 
 ## Level 2: explicit stepwise workflow
 
@@ -33,16 +35,18 @@ rc_regcompass_step_layer2()
 rc_regcompass_step_results()
 ```
 
-Stage 3 directly maps significant Pando target genes to complete-GPR cores. It does not perform shared-TF projection or connected-component analysis.
+Stage 3 directly maps significant Pando target genes to complete-GPR cores. It does not perform shared-TF projection or connected-component analysis. Expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence. The removed interfaces are `expansion_mode`, `max_iterations`, fixed-point recursion, and one-hop reaction expansion.
+
+Stage 4 uses `gpr_and_method = "min"` by default. `"median"` and `"mean"` are available for sensitivity analysis. The former Boltzmann soft-min and `tau` API are removed.
 
 ## Level 3: restart and sensitivity analysis
 
 Use [Tutorial 3](tutorial-03-advanced-restart.md).
 
-- Change Pando thresholds or regulatory regions: rerun Stage 1 onward.
+- Change Pando thresholds, motifs, or regulatory regions: rerun Stage 1 onward.
 - Change metacell construction: rerun Stage 2 onward.
-- Change subsystem or reaction-equivalence expansion: rerun Stage 3 onward.
-- Change multiome support transformation: rerun Stage 4 onward.
+- Change subsystem annotations or GEM GPR rules: rerun Stage 3 onward.
+- Change `gpr_and_method` or another multiome support setting: rerun Stage 4 onward.
 - Change medium, FASTCORE, or LP settings: rerun Stage 5 onward.
 
 ## Level 4: targeted second-pass scoring
