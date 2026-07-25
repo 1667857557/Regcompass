@@ -2,20 +2,22 @@
 
 RegCompassR 1.8.4 connects stages only when classes, workflow settings, GEM provenance, metacell construction provenance, and scoring-unit order agree.
 
-## Stage 1: GRN
+## Stage 1: Pando evidence
 
 Class: `regcompass_grn_step`
 
 Required outputs:
 
 ```r
+step1$grn_result$target_metabolic_genes
 step1$grn_result$tf_peak_gene_significant
 step1$grn_result$sample_status
+step1$grn_result$normalization_policy$pando_regions
 step1$gem_fingerprint
 step1$params
 ```
 
-Every scored `condition × cell type` group must have a successful GRN with significant edges.
+Every scored `condition × cell type` group must have a successful Pando fit with significant edges. `target_metabolic_genes` is the intersection of GEM GPR genes and RNA-assay row names. For human analyses without an explicit `pando_initiate_args$regions`, `pando_regions` records the union of Pando's hg38 phastCons and SCREEN ccRE data objects.
 
 ## Stage 2: metacells
 
@@ -39,6 +41,7 @@ Class: `regcompass_meta_module_step`
 Required outputs:
 
 ```r
+step3$condition_modules$supported_metabolic_genes
 step3$condition_modules$core_gene_reaction
 step3$condition_modules$reaction_membership
 step3$merged_modules$merged_core_reactions
@@ -48,12 +51,27 @@ step3$group_coverage
 
 Contract:
 
+- `supported_metabolic_genes` contains one row per condition, cell type, and Human-GEM target gene with at least one significant Pando TF–peak–gene row;
+- positive and negative Pando coefficients both count as regulatory evidence;
+- all supported genes in one `condition × cell type` form one GPR-evaluation set;
+- Stage 3 performs no shared-TF target projection, top-k graph pruning, or connected-component analysis;
+- `core_gene_reaction` marks a reaction as core only when one complete GPR branch is contained in the supported gene set;
 - `merged_core_reactions` contains deduplicated complete-GPR core reactions;
 - `merged_reaction_membership` contains deduplicated biological reactions only;
 - `merged_modules$is_gem` is `FALSE`;
 - `merged_modules$fastcore_applied` is `FALSE`;
 - Stage 3 does not apply medium constraints or run FASTCORE;
 - the merged object is a catalogue and must not be described as a union GEM.
+
+The only Stage 3 parameters are:
+
+```r
+meta_module_args = list(
+  subsystem_table = NULL,
+  expansion_mode = "ordered_once",
+  max_iterations = 10
+)
+```
 
 ## Stage 4: Layer 1
 
@@ -125,7 +143,8 @@ All conditions and metacells within the same medium must resolve to the same mod
 The final result contains:
 
 ```r
-result$condition_grn_meta_modules
+result$condition_grn_meta_modules$supported_metabolic_genes
+result$condition_grn_meta_modules$core_gene_reaction
 result$merged_grn_meta_modules
 result$microcompass
 result$reaction_ranking
