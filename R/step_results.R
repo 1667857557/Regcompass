@@ -130,7 +130,6 @@ rc_regcompass_step_results <- function(
       } else {
         "not_applicable"
       },
-      biological_sample_metadata = "not_used_or_required",
       meta_module_core_definition = if (multitask) {
         "condition_celltype_bootstrap_stable_subgrn_targets_complete_gpr"
       } else {
