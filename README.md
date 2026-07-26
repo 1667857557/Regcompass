@@ -6,11 +6,11 @@ RegCompassR 1.8.8 implements a shared-background regulatory–metabolic workflow
 
 ```text
 all conditions within one cell type
-→ one shared Pando structural TF–peak–metabolic-gene candidate universe
+→ one validated Pando structural TF–peak–metabolic-gene candidate universe
 → condition-balanced multitask elastic-net model
 → global GRN backbone + condition-specific deviations
-→ stability-selected condition sub-GRNs
-→ condition-specific regulated metabolic genes
+→ condition-stratified bootstrap stability
+→ condition-specific sub-GRNs and regulated metabolic genes
 → complete-GPR condition core reactions
 → ordered subsystem / KEGG–Reactome / master-Rhea expansion
 → one merged reaction catalogue
@@ -19,7 +19,7 @@ all conditions within one cell type
 → directional COMPASS-like LP scoring
 ```
 
-The canonical coefficient model for edge \(e=(TF,peak,target)\) is
+For edge \(e=(TF,peak,target)\), the condition coefficient is
 
 \[
 \theta_{e,c}=\beta_e+\delta_{e,c},
@@ -29,7 +29,7 @@ The canonical coefficient model for edge \(e=(TF,peak,target)\) is
 
 `beta` is the cell-type-wide backbone coefficient. `delta` is the symmetric condition deviation. All conditions use the same edge dictionary, feature scaling, penalty structure, and stoichiometric model.
 
-A condition-specific metabolic gene is supported when at least one stable active edge targets it. A reaction is a condition core only when one complete GPR branch is contained in that supported gene set. Positive and negative stable edges both establish that a gene is regulated.
+A condition-specific metabolic gene is supported when at least one bootstrap-stable active edge targets it. A reaction is a condition core only when one complete GPR branch is contained in that supported gene set. Positive and negative stable edges both establish that a gene is regulated.
 
 ## Installation
 
@@ -47,9 +47,20 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-Pando 1.1.2 or later is required because RegCompass 1.8.8 uses `Pando::prepare_grn_design()` and `Pando::validate_grn_design()`.
+Pando 1.1.3 or later is required. RegCompass validates the version-2 Pando design fingerprint before fitting the multitask GRN.
 
 SeuratObject/Seurat 5.x with Signac 1.12–1.x is also accepted. See [Seurat compatibility](docs/seurat-compatibility.md).
+
+## Required metadata
+
+The canonical workflow requires only:
+
+```text
+condition_col
+celltype_col
+```
+
+No biological-sample column is accepted or interpreted by `rc_run_regcompass()`, `rc_regcompass_step_grn()`, or `rc_regcompass_step_metacells()`.
 
 ## Minimal complete run
 
@@ -77,7 +88,6 @@ result <- rc_run_regcompass_one_shot(
   gem = gem,
   condition_col = "Group",
   celltype_col = "cell_type",
-  sample_col = "sample_id",
 
   # Stage 1: shared candidate background + condition sub-GRNs
   grn_mode = "multitask_shared_backbone",
@@ -96,8 +106,7 @@ result <- rc_run_regcompass_one_shot(
     deviation_penalty_factor = 2,
     lambda_rule = "lambda.1se",
     nfolds = 5,
-    n_stability = 50,
-    stability_fraction = 0.8,
+    n_bootstrap = 100,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
     candidate_screen_threshold = 0,
@@ -105,7 +114,7 @@ result <- rc_run_regcompass_one_shot(
     seed = 12345L
   ),
 
-  # Stage 2
+  # Stage 2: condition-only, label-guided metacells
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
@@ -144,14 +153,9 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-When `pfm` is omitted, RegCompass loads:
+The package default is `n_bootstrap = 50L`; `100` is shown for a final analysis with a more stable estimate of selection probabilities.
 
-```r
-data("motifs", package = "Pando")
-pfm <- motifs
-```
-
-Unless `pando_args$pando_initiate_args$regions` is supplied, the default regulatory regions are:
+When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")`. Unless `pando_args$pando_initiate_args$regions` is supplied, regulatory-region defaults are:
 
 ```text
 human: phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
@@ -166,26 +170,45 @@ For a candidate edge \(e=(t,p,g)\), the Pando-style predictor is
 x_{e,u}=T_{t,u}A_{p,u}.
 \]
 
-Target and predictors are centred within condition, or within `condition × sample` when `sample_col` is supplied. Edge scales are computed across all conditions of the cell type. Observation weights are proportional to \(1/n_c\), giving every condition the same total loss weight.
+Target expression and every TF-by-ATAC predictor are centred within condition. Edge scales are estimated once across all conditions of the cell type. Observation weights are proportional to \(1/n_c\), so each condition contributes the same total regression loss.
 
-The stability-adjusted condition coefficient is
+For bootstrap replicate \(b\), every condition is resampled with replacement at its original cell count. The resampled target and predictors are then re-centred within condition and fitted at the full-data selected \(\lambda\). This gives
+
+\[
+\Pi_{e,c}=\frac{1}{B}\sum_{b=1}^{B}
+I\!\left(\theta^{(b)}_{e,c}\ne 0\right),
+\]
+
+and conditional sign stability
+
+\[
+\rho_{e,c}=
+\left|
+\frac{
+\sum_b I(\theta^{(b)}_{e,c}\ne0)
+\operatorname{sign}(\theta^{(b)}_{e,c})
+}{
+\sum_b I(\theta^{(b)}_{e,c}\ne0)
+}
+\right|.
+\]
+
+The reliability-weighted coefficient used by Layer 1 is
 
 \[
 \widetilde\theta_{e,c}
 =
-\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c},
+\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c}.
 \]
 
-where `Pi` is the selection frequency and `rho` is the conditional sign stability.
-
-Layer 1 converts these coefficients to an ATAC-only modifier. TFs sharing the same measured peak are signed-summed before the peak is projected. One target-specific denominator is shared by all conditions, so weak condition networks are not independently rescaled to the same magnitude as strong networks. A missing condition edge gives `R = 0`, and the existing log-odds update then returns exact RNA-only support.
+Layer 1 converts these coefficients to an ATAC-only modifier. TFs sharing the same measured peak are signed-summed before the peak is projected. One target-specific denominator is shared across conditions, so weak condition networks are not independently rescaled to the same magnitude as strong networks. A missing active condition edge gives \(R=0\), and the log-odds update returns exact RNA-only support.
 
 See [Shared-background multitask GRN mathematics and object contracts](docs/multitask-shared-grn.md).
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: build a shared Pando candidate background and fit global plus condition GRN coefficients.
-- `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells and retain cell-type/sample provenance.
+- `rc_regcompass_step_grn()`: build one validated Pando candidate background per cell type, fit global plus condition coefficients, and calculate bootstrap stability.
+- `rc_regcompass_step_metacells()`: construct condition-only multimodal metacells with cell type used as the SuperCell2 label.
 - `rc_regcompass_step_meta_modules()`: map condition sub-GRN targets to complete-GPR cores and biological reaction modules.
 - `rc_regcompass_step_layer1()`: calculate RNA support, ATAC regulatory modifiers, and reaction expression.
 - `rc_regcompass_step_layer2()`: build one shared medium-specific union GEM and run directional LP scoring.
@@ -200,6 +223,7 @@ result$grn$tf_peak_gene_global
 result$grn$tf_peak_gene_condition_all
 result$grn$tf_peak_gene_significant
 result$grn$condition_target_genes
+result$grn$stability_diagnostics
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
 result$merged_grn_meta_modules$merged_core_reactions
@@ -231,7 +255,7 @@ result_legacy <- rc_run_regcompass_one_shot(
 )
 ```
 
-Legacy Pando inference thresholds belong only to that mode. They are not interpreted as significance thresholds in the multitask model.
+Legacy Pando thresholds belong only to that mode. They are not interpreted as significance thresholds in the multitask model.
 
 ## Tutorials
 

@@ -1,7 +1,7 @@
 .rc_build_condition_pooled_layer1 <- function(
     metacell_object, meta_modules, gem, metacell_meta,
-    sample_col = "sample_id", condition_col = "condition",
-    celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC",
+    condition_col = "condition", celltype_col = "cell_type",
+    rna_assay = "RNA", atac_assay = "ATAC",
     regulatory_alpha = 1,
     gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
@@ -34,11 +34,16 @@
   } else {
     stop("Pooled metacell metadata lack metacell_id/pool_id.", call. = FALSE)
   }
+  required_meta <- c(condition_col, celltype_col)
+  missing_meta <- setdiff(required_meta, colnames(unit_meta))
+  if (length(missing_meta)) {
+    stop(
+      "Pooled metacell metadata lack condition/cell-type columns: ",
+      paste(missing_meta, collapse = ", "), call. = FALSE
+    )
+  }
   unit_meta$pool_id <- as.character(unit_meta[[id_col]])
   unit_meta$unit_id <- unit_meta$pool_id
-  unit_meta[[sample_col]] <- paste0(
-    as.character(unit_meta[[condition_col]]), "__pooled"
-  )
   unit_meta <- unit_meta[
     match(colnames(rna_logcpm), unit_meta$pool_id), , drop = FALSE
   ]
@@ -81,7 +86,7 @@
   )
 
   list(
-    schema_version = "regcompass_condition_only_layer1_v3",
+    schema_version = "regcompass_condition_only_layer1_v4",
     reaction_expression = reaction_expression,
     rna_metacell_logcpm = rna_logcpm,
     gene_support_rna = gene_rna_support,
@@ -108,7 +113,7 @@
       }
     ),
     evidence_formula = paste(
-      "Pando coefficient-weighted ATAC accessibility modifier ->",
+      "bootstrap-stable multitask coefficient-weighted ATAC modifier ->",
       "zero-preserving RNA support log-odds update ->",
       paste0("COMPASS-compatible ", gpr_and_method, " GPR-AND"),
       "and additive isozyme OR"
@@ -116,7 +121,7 @@
     evidence_inputs = c(
       "target_gene_RNA",
       "peak_ATAC",
-      "condition_x_celltype_Pando_coefficients"
+      "condition_x_celltype_bootstrap_stable_coefficients"
     )
   )
 }

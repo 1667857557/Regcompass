@@ -4,10 +4,10 @@
 
 ```text
 all conditions within one cell type
-→ one Pando structural TF–peak–GEM-gene candidate universe
+→ one validated Pando TF–peak–GEM-gene candidate universe
 → condition-balanced multitask regression
-→ global GRN backbone + condition-specific deviations
-→ stability-selected condition sub-GRNs
+→ global GRN backbone + symmetric condition deviations
+→ full-size condition-stratified bootstrap stability
 → condition-specific metabolic target genes
 → complete-GPR condition core reactions
 → one ordered subsystem/cross-reference expansion pass
@@ -19,6 +19,8 @@ all conditions within one cell type
 → directional two-step LP scoring
 ```
 
+The canonical workflow uses condition and cell type metadata only. It does not accept or interpret a biological-sample column.
+
 ## 1. Shared Pando candidate background
 
 For cell type `m`, Pando constructs:
@@ -27,11 +29,11 @@ For cell type `m`, Pando constructs:
 \mathcal U_m=\{e=(t,p,g)\},
 \]
 
-where `t` is a measured TF, `p` is a measured peak supported by a Pando regulatory region and a TF motif, and `g` is a GEM GPR target gene present in the RNA assay.
+where `t` is a measured TF, `p` is an exact measured ATAC feature supported by a Pando regulatory region and TF motif, and `g` is a GEM GPR target gene present in the RNA assay.
 
-`Pando::prepare_grn_design()` is run once per cell type. Exact predictors are deduplicated by `(TF, ATAC feature, target)`. The candidate dictionary is independent of condition coefficients and pooled p-values.
+`Pando::prepare_grn_design()` runs once per cell type. Exact predictors are deduplicated by `(TF, ATAC feature, target)`. All supporting regulatory regions remain provenance. The version-2 design fingerprint and feature mappings are validated before fitting. The dictionary does not depend on fitted condition coefficients or pooled p-values.
 
-Default regulatory regions are:
+Default regions are:
 
 \[
 R_{human}=phastCons\cup SCREEN\ ccRE,
@@ -47,7 +49,23 @@ For edge `e=(t,p,g)` and cell `u`:
 x_{e,u}=T_{t,u}A_{p,u}.
 \]
 
-Target and predictor values are centred within condition, or within `condition × sample` when `sample_col` is supplied. The edge scale is shared across all conditions of the cell type.
+Target and predictor values are centred within condition:
+
+\[
+y^\circ_{g,u}=y_{g,u}-\bar y_{g,c(u)},
+\qquad
+x^\circ_{e,u}=x_{e,u}-\bar x_{e,c(u)}.
+\]
+
+The edge scale is shared across all conditions of the cell type:
+
+\[
+s_{e,m}=
+\sqrt{
+\frac1C\sum_c\frac1{n_c}
+\sum_{u\in c}(x^\circ_{e,u})^2
+}.
+\]
 
 RegCompass estimates:
 
@@ -63,25 +81,41 @@ The symmetric condition basis is:
 H=I_C-\frac1C\mathbf 1\mathbf 1^T.
 \]
 
-Every condition has total observation weight one up to a common scaling:
+Every condition contributes equal total loss weight:
 
 \[
 w_u\propto1/n_{c(u)}.
 \]
 
-The elastic-net fit uses stronger default shrinkage for condition deviations than for the global backbone. `alpha` must be below one so the centred redundant deviation representation has a unique ridge-regularised solution.
+The elastic-net fit applies stronger default shrinkage to condition deviations. `alpha < 1` is required because the symmetric deviation representation is rank deficient and needs a ridge component for a unique regularised solution.
 
-## 3. Stability-selected condition sub-GRNs
+## 3. Bootstrap-stable condition sub-GRNs
 
-Repeated stratified subsampling gives selection frequency `Pi` and conditional sign stability `rho`:
+For bootstrap replicate `b`, every condition is resampled with replacement at its original cell count. Target and predictor matrices are re-centred inside the bootstrap condition, then scaled using the full-data shared edge scale and fitted at the full-data selected lambda.
+
+Selection frequency and conditional sign stability are:
+
+\[
+\Pi_{e,c}=\frac1B\sum_bI(\theta^{(b)}_{e,c}\neq0),
+\]
+
+\[
+\rho_{e,c}=
+\left|
+\frac{\sum_bI(\theta^{(b)}_{e,c}\neq0)
+\operatorname{sign}(\theta^{(b)}_{e,c})}
+{\sum_bI(\theta^{(b)}_{e,c}\neq0)}
+\right|.
+\]
+
+The reliability-weighted coefficient is:
 
 \[
 \widetilde\theta_{e,c}
-=
-\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c}.
+=\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c}.
 \]
 
-The active edge table retains global, deviation, effective and stable coefficients. Multitask coefficients do not receive classical adjusted p-values; `padj` is `NA` and the evidence type records stability selection.
+The active edge table retains global, deviation, effective, bootstrap, and stable coefficients. Multitask coefficients do not receive classical adjusted p-values; `padj` is `NA`.
 
 The condition metabolic target set is:
 
@@ -93,7 +127,7 @@ Positive and negative active edges both establish regulatory membership.
 
 ## 4. Complete-GPR core reactions
 
-For reaction `r` with alternative GPR branches `B_rk`:
+For reaction `r` with alternative GPR branches `B_{r,k}`:
 
 \[
 Core_{r,m,c}=1
@@ -101,11 +135,11 @@ Core_{r,m,c}=1
 \exists k:B_{r,k}\subseteq G_{m,c}.
 \]
 
-Required subunits joined by AND must all be present. Alternative isozyme branches remain OR alternatives. Partially represented complexes are diagnostic only.
+Required AND subunits must all be present. Alternative isozyme branches remain OR alternatives. Partial complexes are diagnostic only.
 
 ## 5. Biological meta-modules
 
-For each condition and cell type, annotation expansion is executed exactly once:
+For each `condition × cell type` `group_id`, annotation expansion is executed exactly once:
 
 1. complete-GPR core reactions;
 2. all reactions in core-reaction subsystems;
@@ -113,7 +147,7 @@ For each condition and cell type, annotation expansion is executed exactly once:
 4. direct master-Rhea equivalents;
 5. stop.
 
-The resulting condition sets are merged by reaction ID:
+The resulting sets are merged by reaction ID:
 
 \[
 B_{merged}=\bigcup_{m,c}B_{m,c},
@@ -125,7 +159,7 @@ This is a reaction catalogue, not a GEM. Stage 3 applies no medium and runs no F
 
 ## 6. ATAC regulatory projection and RNA support
 
-For each fitted edge, the ATAC-only projection coefficient is proportional to:
+For each fitted edge, the ATAC-only projection coefficient is:
 
 \[
 \omega_{tpg,c}
@@ -158,13 +192,13 @@ where `D` is the robust ATAC deviation and
 q_{g,m}=\sqrt{\operatorname{clip}(R^2_{CV},0,1)}.
 \]
 
-RNA logCPM is converted to bounded support:
+RNA support is:
 
 \[
 C^{RNA}_{g,u}=\frac{x_{g,u}}{x_{g,u}+h}.
 \]
 
-The regulatory modifier acts on the RNA-support log odds:
+The modifier acts on RNA-support log odds:
 
 \[
 C^{MO}_{g,u,c}=
@@ -172,17 +206,17 @@ C^{MO}_{g,u,c}=
 {1-C^{RNA}_{g,u,c}+C^{RNA}_{g,u,c}2^{\alpha R_{g,u,c}}}.
 \]
 
-When no active edge exists for a condition, `R = 0` and `C_MO = C_RNA` exactly.
+No active edge gives `R = 0` and exact `C_MO = C_RNA` fallback.
 
 ## 7. GPR reaction support and penalty
 
-For one GPR AND branch, the canonical aggregation is:
+For one GPR AND branch, canonical aggregation is:
 
 \[
 Q_{r,k,u}=\min_{g\in B_{r,k}}C^{MO}_{g,u}.
 \]
 
-`median` and `mean` are available as sensitivity options. Isozyme OR branches are additive:
+`median` and `mean` are sensitivity options. Isozyme OR branches are additive:
 
 \[
 E_{r,u}=\sum_kQ_{r,k,u}.
@@ -206,7 +240,7 @@ F_q=FASTCORE(P_q,B_{merged},C_{merged}),
 U_q=B_{merged}\cup F_q.
 \]
 
-Only `U_q` is called a union GEM. For every condition in medium `q`:
+Only `U_q` is a union GEM. For every condition in medium `q`:
 
 \[
 S_c=S^{U_q},
@@ -216,14 +250,14 @@ lb_c=lb^{U_q},
 ub_c=ub^{U_q}.
 \]
 
-Therefore condition differences arise from evidence-derived penalties, not different stoichiometric models.
+Condition differences therefore arise from evidence-derived penalties, not different stoichiometric models.
 
 ## 9. Directional two-step LP
 
 For target reaction `r` and direction `d`, Step 1 computes:
 
 \[
-v^{max}_{r,d}=\max_v dv_r
+v^{max}_{r,d}=\max_vdv_r
 \]
 
 subject to:
@@ -250,10 +284,10 @@ Sv=0,
 dv_r\ge\omega v^{max}_{r,d}.
 \]
 
-The default is `omega = 0.95`. Lower normalized penalty indicates stronger support in the fixed union-GEM context.
+The default is `omega = 0.95`. Lower normalized penalty means stronger support in the fixed union-GEM context.
 
 ## 10. Interpretation boundary
 
-The GRN and RNA support are learned from the same paired multiome dataset. Condition/sample centring and ATAC-only downstream projection reduce direct duplicate weighting but do not create statistically independent evidence. Condition-level metacell scores remain descriptive pseudo-observations unless biological-replicate-level validation is performed.
+The GRN and RNA support are learned from the same paired multiome dataset. Condition centring and ATAC-only downstream projection reduce direct duplicate weighting but do not create statistically independent evidence. Bootstrap estimates model-selection stability under cell resampling; it is not a substitute for biological-replicate inference. Condition-level metacell scores remain descriptive pseudo-observations unless separately validated.
 
-See [multitask GRN mathematics and object contracts](multitask-shared-grn.md) for the detailed Stage 1 derivation and table schemas.
+See [multitask GRN mathematics and object contracts](multitask-shared-grn.md) for detailed Stage 1 derivation and table schemas.

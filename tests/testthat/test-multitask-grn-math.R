@@ -38,15 +38,79 @@ test_that("condition balancing gives every condition equal total loss weight", {
   expect_equal(mean(weight), 1, tolerance = 1e-12)
 })
 
-test_that("multitask validation requires a ridge component", {
+test_that("bootstrap resamples full condition sizes with replacement", {
+  condition <- c(rep("A", 8), rep("B", 11), rep("C", 6))
+  set.seed(17)
+  index <- RegCompassR:::.rc_condition_stratified_bootstrap_indices(condition)
+
+  expect_length(index, length(condition))
+  expect_equal(
+    unname(table(condition[index])),
+    unname(table(condition))
+  )
+  duplicate_within_condition <- vapply(
+    split(index, condition[index]),
+    function(value) anyDuplicated(value) > 0L,
+    logical(1)
+  )
+  expect_true(any(duplicate_within_condition))
+})
+
+test_that("bootstrap data are re-centred within each condition", {
+  condition <- c(rep("A", 6), rep("B", 7))
+  x <- cbind(x1 = seq_along(condition), x2 = seq_along(condition)^2)
+  y <- seq_along(condition) * 0.5
+  set.seed(2)
+  index <- RegCompassR:::.rc_condition_stratified_bootstrap_indices(condition)
+  boot_condition <- condition[index]
+  x_centered <- RegCompassR:::.rc_residualize_matrix(x[index, ], boot_condition)
+  y_centered <- RegCompassR:::.rc_residualize_vector(y[index], boot_condition)
+
+  for (level in unique(boot_condition)) {
+    rows <- boot_condition == level
+    expect_equal(
+      colMeans(x_centered[rows, , drop = FALSE]), c(0, 0),
+      tolerance = 1e-12
+    )
+    expect_equal(mean(y_centered[rows]), 0, tolerance = 1e-12)
+  }
+})
+
+test_that("multitask validation requires sparse elastic net and bootstrap quality", {
+  expect_error(
+    RegCompassR:::.rc_validate_multitask_grn_args(list(alpha = 0)),
+    "positive lasso"
+  )
   expect_error(
     RegCompassR:::.rc_validate_multitask_grn_args(list(alpha = 1)),
     "non-zero ridge component"
   )
-  expect_equal(
-    RegCompassR:::.rc_validate_multitask_grn_args(list(alpha = 0.5))$alpha,
-    0.5
+  expect_error(
+    RegCompassR:::.rc_validate_multitask_grn_args(list(n_bootstrap = 0)),
+    "at least 1"
   )
+  expect_error(
+    RegCompassR:::.rc_validate_multitask_grn_args(list(
+      min_bootstrap_success_fraction = 0
+    )),
+    "must be in (0, 1]"
+  )
+  args <- RegCompassR:::.rc_validate_multitask_grn_args(list(
+    alpha = 0.5,
+    n_bootstrap = 20,
+    min_bootstrap_success_fraction = 0.9
+  ))
+  expect_equal(args$alpha, 0.5)
+  expect_identical(args$n_bootstrap, 20L)
+  expect_equal(args$min_bootstrap_success_fraction, 0.9)
+  expect_false("n_stability" %in% names(args))
+  expect_false("stability_fraction" %in% names(args))
+})
+
+test_that("public canonical workflow does not expose a sample column", {
+  expect_false("sample_col" %in% names(formals(rc_run_regcompass)))
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_grn)))
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
 })
 
 test_that("zero regulatory evidence exactly returns RNA-only support", {
@@ -65,7 +129,7 @@ test_that("zero regulatory evidence exactly returns RNA-only support", {
 
 test_that("different condition gene sets produce different complete-GPR cores", {
   genes <- data.frame(
-    sample_id = c("A", "A", "A", "B"),
+    group_id = c("A", "A", "A", "B"),
     module_id = c("MA", "MA", "MA", "MB"),
     gene = c("G1", "G2", "G3", "G1"),
     stringsAsFactors = FALSE
@@ -79,21 +143,21 @@ test_that("different condition gene sets produce different complete-GPR cores", 
   mapped <- RegCompassR:::rc_map_meta_module_core_reactions(genes, gpr)
 
   a_core <- unique(mapped$reaction_id[
-    mapped$sample_id == "A" & mapped$is_core %in% TRUE
+    mapped$group_id == "A" & mapped$is_core %in% TRUE
   ])
   b_core <- unique(mapped$reaction_id[
-    mapped$sample_id == "B" & mapped$is_core %in% TRUE
+    mapped$group_id == "B" & mapped$is_core %in% TRUE
   ])
   expect_setequal(a_core, c("R_complex", "R_iso"))
   expect_setequal(b_core, "R_iso")
   expect_false("R_complex" %in% b_core)
 })
 
-test_that("merged catalogue preserves multitask provenance and one reaction union", {
+test_that("merged catalogue preserves bootstrap provenance and reaction union", {
   condition_modules <- list(
     grn_mode = "multitask_shared_backbone",
     celltype_fit_status = data.frame(cell_type = "T", status = "ok"),
-    sample_status = data.frame(group_id = c("A_T", "B_T")),
+    group_status = data.frame(group_id = c("A_T", "B_T")),
     tf_peak_gene_candidates = data.frame(
       edge_universe_id = "u1", edge_id = "e1"
     ),
@@ -103,7 +167,10 @@ test_that("merged catalogue preserves multitask provenance and one reaction unio
     tf_peak_gene_significant = data.frame(edge_id = "e1"),
     condition_target_genes = data.frame(target = "G1"),
     target_model_diagnostics = data.frame(target = "G1"),
-    stability_diagnostics = data.frame(edge_id = "e1"),
+    stability_diagnostics = data.frame(
+      edge_id = "e1",
+      bootstrap_method = "condition_stratified_full_size_nonparametric"
+    ),
     supported_metabolic_genes = data.frame(gene = "G1"),
     core_gene_reaction = data.frame(
       reaction_id = c("R1", "R2"), is_core = TRUE
@@ -117,7 +184,7 @@ test_that("merged catalogue preserves multitask provenance and one reaction unio
 
   expect_identical(
     merged$schema_version,
-    "regcompass_merged_multitask_meta_modules_v1"
+    "regcompass_merged_multitask_meta_modules_v2"
   )
   expect_setequal(
     merged$merged_core_reactions$reaction_id,
@@ -128,4 +195,5 @@ test_that("merged catalogue preserves multitask provenance and one reaction unio
     c("R1", "R2", "R3")
   )
   expect_identical(merged$source_edge_universe_ids, "u1")
+  expect_setequal(merged$source_group_ids, c("A_T", "B_T"))
 })

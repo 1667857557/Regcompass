@@ -2,10 +2,11 @@
 #'
 #' The canonical mode builds one structural Pando TF-peak-target candidate
 #' universe per cell type and jointly estimates a global regulatory backbone
-#' plus symmetric condition deviations. Stability-selected condition sub-GRN
-#' target genes define complete-GPR core reactions. Stage 3 performs biological
-#' annotation expansion only; Stage 5 constructs one union GEM per medium and
-#' reuses that exact stoichiometric structure for every condition and metacell.
+#' plus symmetric condition deviations. Full-size condition-stratified
+#' bootstrap fits identify stable condition sub-GRN edges. Their target genes
+#' define complete-GPR core reactions. Stage 3 performs biological annotation
+#' expansion only; Stage 5 constructs one union GEM per medium and reuses that
+#' exact stoichiometric structure for every condition and metacell.
 #'
 #' @param pfm Optional motif position-frequency matrices. When omitted,
 #'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
@@ -14,7 +15,7 @@
 #'   canonical RegCompass 1.8.8 mode. `"legacy_condition_pando"` retains
 #'   independent condition-by-cell-type Pando fits.
 #' @param multitask_args Shared-backbone elastic-net, cross-validation, and
-#'   stability-selection controls passed to Stage 1.
+#'   condition-stratified bootstrap controls passed to Stage 1.
 #' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
 #'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
 #'   master-Rhea equivalence.
@@ -34,7 +35,6 @@ rc_run_regcompass <- function(
     grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
     pando_args = list(),
     multitask_args = list(),
-    sample_col = NULL,
     fragment_files = FALSE,
     metacell_args = list(),
     meta_module_args = list(),
@@ -93,15 +93,13 @@ rc_run_regcompass <- function(
     warning("`multitask_args` are ignored in legacy GRN mode.", call. = FALSE)
   }
   unknown_meta_module <- setdiff(
-    names(meta_module_args),
-    "subsystem_table"
+    names(meta_module_args), "subsystem_table"
   )
   if (length(unknown_meta_module)) {
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown_meta_module, collapse = ", "),
-      ". Allowed field: `subsystem_table`.",
-      call. = FALSE
+      ". Allowed field: `subsystem_table`.", call. = FALSE
     )
   }
   unknown_layer1 <- setdiff(
@@ -113,8 +111,7 @@ rc_run_regcompass <- function(
       "Unknown `layer1_args` fields: ",
       paste(unknown_layer1, collapse = ", "),
       ". Allowed fields: `regulatory_alpha`, `gpr_and_method`, and ",
-      "`gene_half_saturation`.",
-      call. = FALSE
+      "`gene_half_saturation`.", call. = FALSE
     )
   }
   gpr_and_method <- match.arg(
@@ -182,7 +179,6 @@ rc_run_regcompass <- function(
           outdir = file.path(outdir, "01_single_cell_grn"),
           pfm = pfm,
           genome = genome,
-          sample_col = sample_col,
           condition_col = condition_col,
           celltype_col = celltype_col,
           rna_assay = rna_assay,
@@ -205,7 +201,6 @@ rc_run_regcompass <- function(
     rc_regcompass_step_metacells(
       object = object,
       outdir = file.path(outdir, "02_condition_metacells"),
-      sample_col = sample_col,
       condition_col = condition_col,
       celltype_col = celltype_col,
       rna_assay = rna_assay,

@@ -1,12 +1,12 @@
 #' Construct condition sub-GRN complete-GPR cores and biological meta-modules
 #'
-#' Stage 3 defines biological reaction membership only. In the canonical
-#' multitask mode, each condition-by-cell-type supported gene set consists of
-#' stability-selected target genes from the condition sub-GRN. Reactions become
-#' core only when at least one complete GPR branch is contained in that set.
-#' Biological expansion is one fixed ordered pass: core subsystem, direct
-#' KEGG/Reactome reaction equivalence, then direct master-Rhea equivalence.
-#' Stage 3 does not run FASTCORE and does not construct a GEM.
+#' Stage 3 defines biological reaction membership only. In canonical multitask
+#' mode, each condition-by-cell-type supported gene set contains targets with at
+#' least one active edge selected by condition-stratified bootstrap stability.
+#' A reaction becomes core only when at least one complete GPR branch is
+#' contained in that set. Expansion is one fixed ordered pass: core subsystem,
+#' direct KEGG/Reactome equivalence, then direct master-Rhea equivalence. Stage 3
+#' does not run FASTCORE and does not construct a GEM.
 #'
 #' @export
 rc_regcompass_step_meta_modules <- function(
@@ -38,8 +38,7 @@ rc_regcompass_step_meta_modules <- function(
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown, collapse = ", "),
-      ". Allowed field: `subsystem_table`.",
-      call. = FALSE
+      ". Allowed field: `subsystem_table`.", call. = FALSE
     )
   }
   .rc_require_stage_gem(grn, gem, "grn")
@@ -61,10 +60,8 @@ rc_regcompass_step_meta_modules <- function(
   condition_modules$grn_metacell_group_coverage <- group_coverage
   if (!is.data.frame(condition_modules$reaction_membership) ||
       !nrow(condition_modules$reaction_membership)) {
-    stop(
-      "Meta-module construction produced no reaction membership.",
-      call. = FALSE
-    )
+    stop("Meta-module construction produced no reaction membership.",
+         call. = FALSE)
   }
   missing <- setdiff(
     unique(as.character(condition_modules$reaction_membership$reaction_id)),
@@ -100,7 +97,7 @@ rc_regcompass_step_meta_modules <- function(
       meta_module_args = meta_module_args,
       grn_mode = grn$grn_result$grn_mode %||% "legacy_condition_pando",
       core_definition = if (multitask) {
-        "condition_celltype_stability_selected_subgrn_targets_complete_gpr"
+        "condition_celltype_bootstrap_stable_subgrn_targets_complete_gpr"
       } else {
         "condition_celltype_significant_pando_targets_complete_gpr"
       },

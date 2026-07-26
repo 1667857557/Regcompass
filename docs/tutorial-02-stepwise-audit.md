@@ -20,7 +20,7 @@ layer2_bp <- if (.Platform$OS.type == "windows") {
 }
 ```
 
-Stage 1 parallelises cell types and target models; each individual `glmnet` fit remains single-threaded. Stage 4 reuses `upstream_bp`; Stage 5 uses `layer2_bp`.
+Stage 1 parallelises cell types; each target-level `glmnet` fit remains single-threaded. Stage 4 reuses `upstream_bp`; Stage 5 uses `layer2_bp`.
 
 ## Stage 1: shared GRN background and condition sub-GRNs
 
@@ -31,7 +31,6 @@ step1 <- rc_regcompass_step_grn(
   outdir = "RegCompass_steps/01_grn",
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
-  sample_col = "sample_id",
   condition_col = "Group",
   celltype_col = "cell_type",
   grn_mode = "multitask_shared_backbone",
@@ -50,8 +49,7 @@ step1 <- rc_regcompass_step_grn(
     deviation_penalty_factor = 2,
     lambda_rule = "lambda.1se",
     nfolds = 5,
-    n_stability = 50,
-    stability_fraction = 0.8,
+    n_bootstrap = 100,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
     candidate_screen_threshold = 0,
@@ -63,11 +61,13 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
+The canonical Stage 1 API accepts no biological-sample column. It centres target expression and TF-by-ATAC predictors within condition only.
+
 Inspect the Stage 1 contract:
 
 ```r
 step1$grn_result$celltype_fit_status
-step1$grn_result$sample_status
+step1$grn_result$group_status
 step1$grn_result$tf_peak_gene_candidates
 step1$grn_result$tf_peak_gene_global
 step1$grn_result$tf_peak_gene_condition_all
@@ -77,39 +77,48 @@ step1$grn_result$target_model_diagnostics
 step1$grn_result$stability_diagnostics
 ```
 
-For a given cell type, every condition must have the same `edge_universe_id`. The condition coefficient fields satisfy:
+For a given cell type, every condition has the same `edge_universe_id`. The coefficient fields satisfy:
 
 ```text
 effective_estimate = global_estimate + condition_deviation
 estimate = effective_estimate × selection_frequency × sign_stability
 ```
 
-The sum of `condition_deviation` over all conditions is zero for each edge. `padj` is `NA` in multitask mode because regularised stability selection, rather than a classical coefficient test, defines active edges.
+The sum of `condition_deviation` over all conditions is zero for each edge. `padj` is `NA` in multitask mode because bootstrap stability, rather than a classical coefficient test, defines active edges.
+
+The bootstrap contract is:
+
+```text
+for every bootstrap b and condition c:
+  sample n_c cells from condition c with replacement
+  re-centre y and every TF×ATAC predictor inside the bootstrap condition
+  divide by the full-data shared edge scale
+  fit at the full-data selected lambda
+```
 
 Stage 1 writes:
 
 ```text
-pando_celltype_fit_status.tsv.gz
+pando_celltype_status.tsv.gz
 pando_group_status.tsv.gz
 pando_tf_peak_gene_candidates.tsv.gz
 pando_tf_peak_gene_global.tsv.gz
 pando_tf_peak_gene_condition_all.tsv.gz
-pando_tf_peak_gene_all.tsv.gz
 pando_tf_peak_gene_significant.tsv.gz
 condition_target_genes.tsv.gz
-pando_target_model_diagnostics.tsv.gz
-pando_edge_stability.tsv.gz
-single_cell_grn.rds
+target_model_diagnostics.tsv.gz
+bootstrap_stability_diagnostics.tsv.gz
+pando_designs/
+pando_objects/
 step_grn.rds
 ```
 
-## Stage 2: construct condition-level metacells
+## Stage 2: construct condition-only metacells
 
 ```r
 step2 <- rc_regcompass_step_metacells(
   object = A,
   outdir = "RegCompass_steps/02_metacells",
-  sample_col = "sample_id",
   condition_col = "Group",
   celltype_col = "cell_type",
   fragment_files = FALSE,
@@ -131,7 +140,7 @@ step2$pooled$metacell_meta
 step2$pooled$cache_contract$analysis_args
 ```
 
-Metacells are built within condition, with cell type used as a SuperCell2 label and audited after aggregation. The sample column is retained as provenance; it does not split the Stage 2 strata.
+Condition is the only hard pooling stratum. Cell type is supplied as the SuperCell2 label and audited after aggregation. No sample column, sample balancing, sample composition, or sample-level inference is part of the canonical Stage 2 contract.
 
 ## Stage 3: condition-specific complete-GPR cores
 
@@ -144,10 +153,10 @@ step3 <- rc_regcompass_step_meta_modules(
 )
 ```
 
-For each `condition × cell type`:
+For each `condition × cell type` `group_id`:
 
 ```text
-stable active TF–peak–metabolic-gene edges
+bootstrap-active TF–peak–metabolic-gene edges
 → unique regulated metabolic target genes
 → complete-GPR core reactions
 → core-reaction subsystems
@@ -165,6 +174,7 @@ step3$condition_modules$reaction_membership
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 step3$merged_modules$source_edge_universe_ids
+step3$merged_modules$source_group_ids
 ```
 
 The merged output is a reaction catalogue, not a GEM.
@@ -223,7 +233,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-For each medium, Stage 5 performs the only FASTCORE completion and saves one union GEM. All conditions and metacells reuse the exact same reaction IDs, stoichiometric matrix and bounds.
+For each medium, Stage 5 performs the only FASTCORE completion and saves one union GEM. All conditions and metacells reuse the exact same reaction IDs, stoichiometric matrix, and bounds.
 
 ```r
 step5$model_cache_summary
@@ -259,6 +269,6 @@ result$reaction_catalog
 result$reaction_evidence
 ```
 
-Each public stage writes a `step_*.rds` restart object and validates the GEM fingerprint, metadata/assay signature, metacell order and upstream class before continuing.
+Each public stage writes a restart object and validates the GEM fingerprint, metadata/assay signature, metacell order, and upstream class before continuing.
 
 See [multitask GRN mathematics and object contracts](multitask-shared-grn.md).

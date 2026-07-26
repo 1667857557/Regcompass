@@ -9,7 +9,7 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   condition_col = "condition", celltype_col = "cell_type",
   rna_assay = "RNA", atac_assay = "ATAC",
   grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
-  pando_args = list(), multitask_args = list(), sample_col = NULL,
+  pando_args = list(), multitask_args = list(),
   fragment_files = FALSE, metacell_args = list(),
   meta_module_args = list(), layer1_args = list(),
   medium_scenarios = NULL,
@@ -30,21 +30,19 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 
 \item{species}{Model species or \code{"auto"} inference from GEM provenance. Human analyses default to phastCons plus SCREEN ccRE regions; mouse analyses default to phastCons regions only.}
 
-\item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
+\item{condition_col, celltype_col}{Complete condition and cell-type metadata columns. The canonical workflow does not accept or interpret a biological-sample column.}
 
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 
-\item{grn_mode}{GRN architecture. \code{"multitask_shared_backbone"} builds one structural TF-peak-target universe per cell type and jointly estimates global and condition-specific coefficients. \code{"legacy_condition_pando"} retains independent condition-by-cell-type Pando fits.}
+\item{grn_mode}{GRN architecture. \code{"multitask_shared_backbone"} builds one validated structural TF-peak-target universe per cell type and jointly estimates global and condition-specific coefficients. \code{"legacy_condition_pando"} retains independent condition-by-cell-type Pando fits.}
 
 \item{pando_args}{Stage 1 Pando controls. In multitask mode these include \code{min_cells}, \code{pando_initiate_args}, \code{pando_motif_args}, \code{pando_design_args}, and \code{save_pando_objects}. Explicit \code{pando_initiate_args$regions} overrides the species-specific default.}
 
-\item{multitask_args}{Elastic-net and stability-selection controls: \code{alpha}, global and deviation penalty factors, lambda rule, fold count, stability repetitions and fraction, selection/sign thresholds, minimum effect and cross-validated R-squared, shared candidate screen, edge cap, and seed. A non-zero ridge component is required, so \code{alpha} must be less than one.}
-
-\item{sample_col}{Optional biological-sample column. When supplied, Stage 1 removes sample means from target and TF-by-peak predictors and uses sample-blocked folds when at least three samples per condition are available. Stage 2 retains the same column as metacell provenance.}
+\item{multitask_args}{Elastic-net, cross-validation, and bootstrap controls: \code{alpha}, global and deviation penalty factors, lambda rule, condition-stratified fold count, \code{n_bootstrap}, selection/sign thresholds, minimum effect and cross-validated R-squared, shared candidate screen, edge cap, and seed. \code{alpha} must be less than one.}
 
 \item{fragment_files}{Use \code{FALSE} for the canonical existing-peak-count path.}
 
-\item{metacell_args}{Stage 2 controls. Defaults include \code{gamma = 30L}; changing cached inputs requires \code{overwrite = TRUE}.}
+\item{metacell_args}{Stage 2 condition-only metacell controls. Defaults include \code{gamma = 30L}; changing cached inputs requires \code{overwrite = TRUE}. Cell type is supplied as the SuperCell2 label.}
 
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}. Expansion is one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence.}
 
@@ -63,29 +61,34 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{progress}{Display workflow and stage progress.}
 }
 \description{
-Runs the six shared-background GRN, metacell, condition meta-module, Layer 1,
-medium-specific union-GEM/Layer 2, and result stages.
+Runs the six shared-background GRN, condition-only metacell, condition
+meta-module, Layer 1, medium-specific union-GEM/Layer 2, and result stages.
 }
 \details{
-In the canonical mode, Pando supplies one condition-agnostic structural candidate
-set for each cell type. RegCompass uses TF-expression by peak-accessibility
-predictors and estimates
+Pando supplies one version-2 condition-agnostic structural candidate set for
+each cell type. RegCompass uses TF-expression by peak-accessibility predictors
+and estimates
 \deqn{\theta_{e,c}=\beta_e+\delta_{e,c},\qquad \sum_c\delta_{e,c}=0.}
-Every condition contributes the same total regression weight. The condition
-coding is symmetric and all deviation blocks receive the same elastic-net
-penalty. Stability selection multiplies the fitted coefficient by its selection
-frequency and conditional sign stability.
+Every condition contributes equal total regression weight. Condition coding is
+symmetric, and all deviation blocks receive the same elastic-net penalty.
 
-A condition metabolic gene is supported when at least one stable active edge
+Edge stability is estimated by full-size nonparametric bootstrap within each
+condition. Each condition is sampled with replacement at its original cell
+count; target and predictor values are re-centred within the bootstrap
+condition; and the model is refitted at the full-data selected lambda and shared
+edge scale. The Layer 1 coefficient is the full-data condition coefficient
+multiplied by bootstrap selection frequency and conditional sign stability.
+
+A condition metabolic gene is supported when at least one bootstrap-active edge
 targets that gene. A reaction becomes a condition-specific core only when one
 complete GPR AND branch is contained in the supported gene set. Positive and
-negative stable regulatory edges both establish regulated-gene membership.
+negative stable edges both establish regulated-gene membership.
 
 Layer 1 projects the stable TF-peak-target model onto metacell ATAC deviations.
 TFs sharing one measured peak are signed-summed before projection, and one
 target-specific denominator is shared across conditions. A gene with no active
-edge in one condition receives a zero regulatory modifier and therefore exactly
-falls back to its RNA-only support.
+edge receives a zero regulatory modifier and exactly falls back to RNA-only
+support.
 
 Stage 3 creates condition-specific biological catalogues but no GEM. Stage 5
 merges their reaction union, applies the medium, performs the only global

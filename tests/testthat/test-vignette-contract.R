@@ -36,7 +36,7 @@ rc_current_user_docs <- function(root) {
   )
 }
 
-test_that("canonical documentation describes RegCompassR 1.8.8 multitask GRNs", {
+test_that("canonical documentation describes bootstrap-stable 1.8.8 GRNs", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- c(
@@ -62,6 +62,9 @@ test_that("canonical documentation describes RegCompassR 1.8.8 multitask GRNs", 
     "condition_target_genes",
     "selection_frequency",
     "sign_stability",
+    "n_bootstrap",
+    "with replacement",
+    "re-centred",
     "complete-GPR",
     "medium-specific union GEM",
     "same stoichiometric",
@@ -88,15 +91,19 @@ test_that("quick-start and stepwise tutorials use the current Stage 1 contract",
     expect_match(value, 'grn_mode = "multitask_shared_backbone"', fixed = TRUE)
     expect_match(value, "pando_design_args = list(", fixed = TRUE)
     expect_match(value, "multitask_args = list(", fixed = TRUE)
+    expect_match(value, "n_bootstrap = 100", fixed = TRUE)
     expect_match(value, "candidate_screen_threshold = 0", fixed = TRUE)
     expect_match(value, "max_edges_per_target = Inf", fixed = TRUE)
     expect_match(value, "seed = 12345L", fixed = TRUE)
+    expect_false(grepl("sample_col", value, fixed = TRUE))
+    expect_false(grepl("n_stability", value, fixed = TRUE))
+    expect_false(grepl("stability_fraction", value, fixed = TRUE))
   }
   expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
   expect_match(text[[2L]], "rc_regcompass_step_results(", fixed = TRUE)
 })
 
-test_that("current user examples contain no retired argument assignments", {
+test_that("current user examples contain no retired or sample-column assignments", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- rc_current_user_docs(root)
@@ -120,13 +127,18 @@ test_that("current user examples contain no retired argument assignments", {
     "min_tf_jaccard",
     "max_targets_per_tf",
     "rc_project_metabolic_grn",
-    "metabolic_gene_edges"
+    "metabolic_gene_edges",
+    "n_stability",
+    "stability_fraction",
+    "sample-blocked",
+    "sample-aware"
   )
   expect_false(any(vapply(
     forbidden_names, grepl, logical(1), x = text, fixed = TRUE
   )))
 
   forbidden_assignments <- c(
+    "(?m)^\\s*sample_col\\s*=",
     "(?m)^\\s*expansion_mode\\s*=",
     "(?m)^\\s*max_iterations\\s*=",
     "(?m)^\\s*tau\\s*=",
@@ -137,7 +149,7 @@ test_that("current user examples contain no retired argument assignments", {
   )))
 })
 
-test_that("generated help exposes the new GRN controls and shared model policy", {
+test_that("generated help exposes bootstrap controls and no sample formal", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- file.path(root, "man", c(
@@ -153,8 +165,8 @@ test_that("generated help exposes the new GRN controls and shared model policy",
     "multitask_args",
     "multitask_shared_backbone",
     "legacy_condition_pando",
-    "sample_col",
-    "global",
+    "n_bootstrap",
+    "with replacement",
     "condition deviations",
     "complete GPR",
     "union GEM"
@@ -162,4 +174,5 @@ test_that("generated help exposes the new GRN controls and shared model policy",
   expect_true(all(vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
   )))
+  expect_false(grepl("sample_col", text, fixed = TRUE))
 })

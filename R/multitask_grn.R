@@ -5,8 +5,7 @@
     deviation_penalty_factor = 2,
     lambda_rule = "lambda.1se",
     nfolds = 5L,
-    n_stability = 25L,
-    stability_fraction = 0.8,
+    n_bootstrap = 50L,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
     min_abs_effect = 0,
@@ -31,22 +30,12 @@
     )
   }
   out <- modifyList(defaults, args)
-  fraction <- c("min_selection_frequency", "min_sign_stability")
-  for (name in fraction) {
+  for (name in c("min_selection_frequency", "min_sign_stability")) {
     value <- out[[name]]
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
         value < 0 || value > 1) {
       stop("`multitask_args$", name, "` must be in [0, 1].", call. = FALSE)
     }
-  }
-  if (!is.numeric(out$stability_fraction) ||
-      length(out$stability_fraction) != 1L ||
-      !is.finite(out$stability_fraction) ||
-      out$stability_fraction <= 0 || out$stability_fraction > 1) {
-    stop(
-      "`multitask_args$stability_fraction` must be in (0, 1].",
-      call. = FALSE
-    )
   }
   if (!is.numeric(out$alpha) || length(out$alpha) != 1L ||
       !is.finite(out$alpha) || out$alpha < 0 || out$alpha >= 1) {
@@ -56,33 +45,33 @@
       call. = FALSE
     )
   }
-  positive <- c("global_penalty_factor", "deviation_penalty_factor")
-  for (name in positive) {
+  for (name in c("global_penalty_factor", "deviation_penalty_factor")) {
     value <- out[[name]]
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
         value <= 0) {
       stop("`multitask_args$", name, "` must be positive.", call. = FALSE)
     }
   }
-  nonnegative <- c(
+  for (name in c(
     "min_abs_effect", "min_cv_rsq", "zero_tolerance",
     "candidate_screen_threshold"
-  )
-  for (name in nonnegative) {
+  )) {
     value <- out[[name]]
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
         value < 0) {
       stop("`multitask_args$", name, "` must be non-negative.", call. = FALSE)
     }
   }
-  integer_fields <- c("nfolds", "n_stability", "seed")
-  for (name in integer_fields) {
+  for (name in c("nfolds", "n_bootstrap", "seed")) {
     value <- out[[name]]
+    minimum <- if (identical(name, "nfolds")) 3L else 1L
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
-        value < if (name == "n_stability") 0 else 1 ||
+        value < minimum ||
         abs(value - round(value)) > sqrt(.Machine$double.eps)) {
-      stop("`multitask_args$", name, "` must be an integer in its valid range.",
-           call. = FALSE)
+      stop(
+        "`multitask_args$", name, "` must be an integer of at least ", minimum,
+        ".", call. = FALSE
+      )
     }
     out[[name]] <- as.integer(value)
   }
@@ -104,9 +93,6 @@
   out$lambda_rule <- match.arg(
     as.character(out$lambda_rule), c("lambda.1se", "lambda.min")
   )
-  if (out$nfolds < 3L) {
-    stop("`multitask_args$nfolds` must be at least 3.", call. = FALSE)
-  }
   out
 }
 
@@ -123,12 +109,11 @@
   contrast
 }
 
-.rc_residualize_matrix <- function(x, block) {
+.rc_residualize_matrix <- function(x, condition) {
   x <- as.matrix(x)
-  block <- as.character(block)
+  condition <- as.character(condition)
   out <- x
-  rows <- split(seq_len(nrow(x)), block)
-  for (index in rows) {
+  for (index in split(seq_len(nrow(x)), condition)) {
     out[index, ] <- sweep(
       x[index, , drop = FALSE], 2L,
       colMeans(x[index, , drop = FALSE]), "-"
@@ -137,12 +122,13 @@
   out
 }
 
-.rc_residualize_vector <- function(x, block) {
+.rc_residualize_vector <- function(x, condition) {
   x <- as.numeric(x)
-  block <- as.character(block)
+  condition <- as.character(condition)
   out <- x
-  rows <- split(seq_along(x), block)
-  for (index in rows) out[index] <- x[index] - mean(x[index])
+  for (index in split(seq_along(x), condition)) {
+    out[index] <- x[index] - mean(x[index])
+  }
   out
 }
 
@@ -153,37 +139,29 @@
   weight / mean(weight)
 }
 
-.rc_multitask_foldid <- function(condition, sample = NULL, nfolds = 5L, seed = 1L) {
+.rc_multitask_foldid <- function(condition, nfolds = 5L, seed = 1L) {
   condition <- as.character(condition)
-  set.seed(seed)
-  if (!is.null(sample)) {
-    sample <- paste(condition, as.character(sample), sep = "\001")
-    samples_by_condition <- split(unique(sample), condition[match(unique(sample), sample)])
-    min_samples <- min(vapply(samples_by_condition, length, integer(1)))
-    if (is.finite(min_samples) && min_samples >= 3L) {
-      k <- min(nfolds, min_samples)
-      sample_fold <- integer()
-      for (values in samples_by_condition) {
-        values <- base::sample(values, length(values))
-        fold <- rep(seq_len(k), length.out = length(values))
-        sample_fold[values] <- fold
-      }
-      return(as.integer(sample_fold[sample]))
-    }
-  }
   count <- table(condition)
-  k <- min(nfolds, min(count))
+  k <- min(as.integer(nfolds), min(count))
   if (k < 3L) {
     stop("At least three cells per condition are required for cross-validation.",
          call. = FALSE)
   }
+  set.seed(seed)
   foldid <- integer(length(condition))
   for (level in names(count)) {
     index <- which(condition == level)
-    index <- base::sample(index, length(index))
+    index <- base::sample(index, length(index), replace = FALSE)
     foldid[index] <- rep(seq_len(k), length.out = length(index))
   }
   foldid
+}
+
+.rc_condition_stratified_bootstrap_indices <- function(condition) {
+  condition <- as.character(condition)
+  unlist(lapply(split(seq_along(condition), condition), function(index) {
+    base::sample(index, length(index), replace = TRUE)
+  }), use.names = FALSE)
 }
 
 .rc_edge_screen_score <- function(x, y, condition) {
@@ -201,6 +179,17 @@
   scores
 }
 
+.rc_multitask_design_matrix <- function(x_scaled, condition, contrast) {
+  condition <- as.character(condition)
+  contrast_rows <- contrast[condition, , drop = FALSE]
+  blocks <- list(x_scaled)
+  for (j in seq_len(ncol(contrast_rows))) {
+    blocks[[length(blocks) + 1L]] <-
+      x_scaled * as.numeric(contrast_rows[, j])
+  }
+  do.call(cbind, blocks)
+}
+
 .rc_decode_multitask_coefficients <- function(coef, n_edges, contrast) {
   beta <- coef[seq_len(n_edges)]
   n_conditions <- nrow(contrast)
@@ -215,7 +204,9 @@
 
 .rc_extract_glmnet_vector <- function(fit, s, expected) {
   value <- as.matrix(stats::coef(fit, s = s))[, 1L]
-  if ("(Intercept)" %in% names(value)) value <- value[names(value) != "(Intercept)"]
+  if ("(Intercept)" %in% names(value)) {
+    value <- value[names(value) != "(Intercept)"]
+  }
   value <- as.numeric(value)
   if (length(value) != expected) {
     stop("glmnet returned an unexpected coefficient vector length.", call. = FALSE)
@@ -224,7 +215,8 @@
 }
 
 .rc_weighted_rsq <- function(observed, predicted, weight) {
-  keep <- is.finite(observed) & is.finite(predicted) & is.finite(weight) & weight > 0
+  keep <- is.finite(observed) & is.finite(predicted) &
+    is.finite(weight) & weight > 0
   if (sum(keep) < 3L) return(NA_real_)
   observed <- observed[keep]
   predicted <- predicted[keep]
@@ -236,16 +228,19 @@
 }
 
 .rc_fit_multitask_target <- function(
-    edges, target, rna, atac, meta, condition_col, sample_col, args) {
+    edges, target, rna, atac, meta, condition_col, args) {
   empty <- list(
-    global = data.frame(), condition = data.frame(), diagnostics = data.frame(
-      target = target, status = "no_candidates", stringsAsFactors = FALSE
+    global = data.frame(),
+    condition = data.frame(),
+    diagnostics = data.frame(
+      target = target,
+      status = "no_candidates",
+      stringsAsFactors = FALSE
     )
   )
   if (!nrow(edges)) return(empty)
   cells <- colnames(rna)
-  condition <- as.character(meta[[condition_col]])
-  sample <- if (!is.null(sample_col)) as.character(meta[[sample_col]]) else NULL
+  condition <- trimws(as.character(meta[[condition_col]]))
   y <- as.numeric(rna[target, cells, drop = TRUE])
   tf <- as.matrix(Matrix::t(rna[edges$tf_feature_id, cells, drop = FALSE]))
   peak <- as.matrix(Matrix::t(atac[edges$atac_feature_id, cells, drop = FALSE]))
@@ -277,23 +272,19 @@
   tf <- tf[, order_index, drop = FALSE]
   screen_score <- screen_score[order_index]
 
-  residual_block <- if (!is.null(sample)) {
-    paste(condition, sample, sep = "\001")
-  } else {
-    condition
-  }
-  x_residual <- .rc_residualize_matrix(x_raw, residual_block)
-  y_residual <- .rc_residualize_vector(y, residual_block)
+  x_residual <- .rc_residualize_matrix(x_raw, condition)
+  y_residual <- .rc_residualize_vector(y, condition)
   condition_rows <- split(seq_along(condition), condition)
   edge_scale <- sqrt(Reduce(`+`, lapply(condition_rows, function(index) {
     colMeans(x_residual[index, , drop = FALSE]^2)
   })) / length(condition_rows))
   variable <- is.finite(edge_scale) & edge_scale > args$zero_tolerance
   if (!any(variable)) {
-    empty$diagnostics$status <- "no_within_group_edge_variation"
+    empty$diagnostics$status <- "no_within_condition_edge_variation"
     return(empty)
   }
   edges <- edges[variable, , drop = FALSE]
+  x_raw <- x_raw[, variable, drop = FALSE]
   x_residual <- x_residual[, variable, drop = FALSE]
   tf <- tf[, variable, drop = FALSE]
   screen_score <- screen_score[variable]
@@ -304,22 +295,16 @@
     colMeans(tf[index, , drop = FALSE])
   })) / length(condition_rows)
   contrast <- .rc_multitask_contrast(condition)
-  contrast_rows <- contrast[condition, , drop = FALSE]
-  design_blocks <- list(x_scaled)
-  for (j in seq_len(ncol(contrast_rows))) {
-    design_blocks[[length(design_blocks) + 1L]] <-
-      x_scaled * as.numeric(contrast_rows[, j])
-  }
-  design <- do.call(cbind, design_blocks)
+  design <- .rc_multitask_design_matrix(x_scaled, condition, contrast)
   n_edges <- ncol(x_scaled)
+  expected <- ncol(design)
   penalty_factor <- c(
     rep(args$global_penalty_factor, n_edges),
-    rep(args$deviation_penalty_factor, n_edges * ncol(contrast))
+    rep(args$deviation_penalty_factor, n_edges * nrow(contrast))
   )
   weight <- .rc_condition_balanced_weights(condition)
   foldid <- .rc_multitask_foldid(
     condition = condition,
-    sample = sample,
     nfolds = args$nfolds,
     seed = args$seed + sum(utf8ToInt(target))
   )
@@ -345,7 +330,6 @@
     return(empty)
   }
   lambda <- cvfit[[args$lambda_rule]]
-  expected <- ncol(design)
   coef <- .rc_extract_glmnet_vector(cvfit, args$lambda_rule, expected)
   decoded <- .rc_decode_multitask_coefficients(coef, n_edges, contrast)
   lambda_index <- which.min(abs(cvfit$lambda - lambda))
@@ -353,63 +337,72 @@
   cv_rsq <- .rc_weighted_rsq(y_residual, prediction, weight)
 
   condition_levels <- rownames(contrast)
-  selection_count <- matrix(0, nrow = length(condition_levels), ncol = n_edges)
-  sign_sum <- matrix(0, nrow = length(condition_levels), ncol = n_edges)
-  n_stability_success <- 0L
-  if (args$n_stability > 0L) {
-    set.seed(args$seed + 31L + sum(utf8ToInt(target)))
-    for (b in seq_len(args$n_stability)) {
-      stability_rows <- split(seq_along(condition), residual_block)
-      selected_cells <- unlist(lapply(stability_rows, function(index) {
-        size <- max(3L, floor(length(index) * args$stability_fraction))
-        base::sample(index, min(length(index), size), replace = FALSE)
-      }), use.names = FALSE)
-      fit <- tryCatch(
-        glmnet::glmnet(
-          x = design[selected_cells, , drop = FALSE],
-          y = y_residual[selected_cells],
-          weights = weight[selected_cells],
-          family = "gaussian",
-          alpha = args$alpha,
-          lambda = lambda,
-          intercept = FALSE,
-          standardize = FALSE,
-          penalty.factor = penalty_factor
-        ),
-        error = function(error) NULL
-      )
-      if (is.null(fit)) next
-      value <- tryCatch(
-        .rc_extract_glmnet_vector(fit, lambda, expected),
-        error = function(error) NULL
-      )
-      if (is.null(value)) next
-      theta <- .rc_decode_multitask_coefficients(
-        value, n_edges, contrast
-      )$theta
-      selected <- abs(theta) > args$zero_tolerance
-      selection_count <- selection_count + selected
-      sign_sum <- sign_sum + sign(theta) * selected
-      n_stability_success <- n_stability_success + 1L
-    }
+  selection_count <- matrix(
+    0, nrow = length(condition_levels), ncol = n_edges,
+    dimnames = list(condition_levels, edges$edge_id)
+  )
+  sign_sum <- selection_count
+  n_bootstrap_success <- 0L
+  set.seed(args$seed + 31L + sum(utf8ToInt(target)))
+  for (b in seq_len(args$n_bootstrap)) {
+    bootstrap_index <- .rc_condition_stratified_bootstrap_indices(condition)
+    bootstrap_condition <- condition[bootstrap_index]
+    bootstrap_x <- x_raw[bootstrap_index, , drop = FALSE]
+    bootstrap_y <- y[bootstrap_index]
+
+    # Re-centering is required after resampling with replacement: a bootstrap
+    # sample does not retain the zero means of the full-data residual matrix.
+    bootstrap_x <- .rc_residualize_matrix(
+      bootstrap_x, bootstrap_condition
+    )
+    bootstrap_y <- .rc_residualize_vector(
+      bootstrap_y, bootstrap_condition
+    )
+    bootstrap_x <- sweep(bootstrap_x, 2L, edge_scale, "/")
+    bootstrap_design <- .rc_multitask_design_matrix(
+      bootstrap_x, bootstrap_condition, contrast
+    )
+    bootstrap_weight <- .rc_condition_balanced_weights(bootstrap_condition)
+    fit <- tryCatch(
+      glmnet::glmnet(
+        x = bootstrap_design,
+        y = bootstrap_y,
+        weights = bootstrap_weight,
+        family = "gaussian",
+        alpha = args$alpha,
+        lambda = lambda,
+        intercept = FALSE,
+        standardize = FALSE,
+        penalty.factor = penalty_factor
+      ),
+      error = function(error) NULL
+    )
+    if (is.null(fit)) next
+    value <- tryCatch(
+      .rc_extract_glmnet_vector(fit, lambda, expected),
+      error = function(error) NULL
+    )
+    if (is.null(value)) next
+    theta <- .rc_decode_multitask_coefficients(
+      value, n_edges, contrast
+    )$theta
+    selected <- abs(theta) > args$zero_tolerance
+    selection_count <- selection_count + selected
+    sign_sum <- sign_sum + sign(theta) * selected
+    n_bootstrap_success <- n_bootstrap_success + 1L
   }
-  if (n_stability_success > 0L) {
-    selection_frequency <- selection_count / n_stability_success
+  if (n_bootstrap_success > 0L) {
+    selection_frequency <- selection_count / n_bootstrap_success
     sign_stability <- matrix(
-      0, nrow = nrow(selection_count), ncol = ncol(selection_count)
+      0, nrow = nrow(selection_count), ncol = ncol(selection_count),
+      dimnames = dimnames(selection_count)
     )
     nonzero <- selection_count > 0
     sign_stability[nonzero] <-
       abs(sign_sum[nonzero]) / selection_count[nonzero]
-  } else if (args$n_stability == 0L) {
-    selected <- abs(decoded$theta) > args$zero_tolerance
-    selection_frequency <- selected * 1
-    sign_stability <- selected * 1
   } else {
-    selection_frequency <- matrix(
-      0, nrow = nrow(selection_count), ncol = ncol(selection_count)
-    )
-    sign_stability <- selection_frequency
+    selection_frequency <- selection_count
+    sign_stability <- selection_count
   }
   stable_estimate <- decoded$theta * selection_frequency * sign_stability
   active <- selection_frequency >= args$min_selection_frequency &
@@ -426,41 +419,49 @@
       tf_reference = tf_reference,
       cv_rsq = cv_rsq,
       lambda = lambda,
+      bootstrap_method = "condition_stratified_full_size_nonparametric",
+      n_bootstrap_requested = args$n_bootstrap,
+      n_bootstrap_success = n_bootstrap_success,
       stringsAsFactors = FALSE
     )
   )
-  condition_output <- do.call(rbind, lapply(seq_along(condition_levels), function(i) {
-    data.frame(
-      edges,
-      condition = condition_levels[[i]],
-      global_estimate = as.numeric(decoded$beta),
-      condition_deviation = as.numeric(decoded$delta[i, ]),
-      effective_estimate = as.numeric(decoded$theta[i, ]),
-      selection_frequency = as.numeric(selection_frequency[i, ]),
-      sign_stability = as.numeric(sign_stability[i, ]),
-      stability_weight = as.numeric(selection_frequency[i, ] * sign_stability[i, ]),
-      stable_estimate = as.numeric(stable_estimate[i, ]),
-      estimate = as.numeric(stable_estimate[i, ]),
-      active_edge = as.logical(active[i, ]),
-      candidate_screen_score = screen_score,
-      edge_scale = edge_scale,
-      tf_reference = tf_reference,
-      atac_projection_weight = as.numeric(
-        stable_estimate[i, ] * tf_reference / pmax(edge_scale, args$zero_tolerance)
-      ),
-      cv_rsq = cv_rsq,
-      rsq = cv_rsq,
-      lambda = lambda,
-      padj = NA_real_,
-      evidence_type = "multitask_stability_selected",
-      stringsAsFactors = FALSE,
-      check.names = FALSE
-    )
-  }))
-  sign_by_edge <- split(
-    condition_output,
-    condition_output$edge_id
-  )
+  condition_output <- do.call(rbind, lapply(
+    seq_along(condition_levels), function(i) {
+      data.frame(
+        edges,
+        condition = condition_levels[[i]],
+        global_estimate = as.numeric(decoded$beta),
+        condition_deviation = as.numeric(decoded$delta[i, ]),
+        effective_estimate = as.numeric(decoded$theta[i, ]),
+        selection_frequency = as.numeric(selection_frequency[i, ]),
+        sign_stability = as.numeric(sign_stability[i, ]),
+        stability_weight = as.numeric(
+          selection_frequency[i, ] * sign_stability[i, ]
+        ),
+        stable_estimate = as.numeric(stable_estimate[i, ]),
+        estimate = as.numeric(stable_estimate[i, ]),
+        active_edge = as.logical(active[i, ]),
+        candidate_screen_score = screen_score,
+        edge_scale = edge_scale,
+        tf_reference = tf_reference,
+        atac_projection_weight = as.numeric(
+          stable_estimate[i, ] * tf_reference /
+            pmax(edge_scale, args$zero_tolerance)
+        ),
+        cv_rsq = cv_rsq,
+        rsq = cv_rsq,
+        lambda = lambda,
+        bootstrap_method = "condition_stratified_full_size_nonparametric",
+        n_bootstrap_requested = args$n_bootstrap,
+        n_bootstrap_success = n_bootstrap_success,
+        padj = NA_real_,
+        evidence_type = "multitask_bootstrap_stability_selected",
+        stringsAsFactors = FALSE,
+        check.names = FALSE
+      )
+    }
+  ))
+  sign_by_edge <- split(condition_output, condition_output$edge_id)
   flip <- vapply(sign_by_edge, function(one) {
     one <- one[one$active_edge %in% TRUE, , drop = FALSE]
     length(unique(sign(one$effective_estimate))) > 1L
@@ -477,20 +478,17 @@
     cv_rsq = cv_rsq,
     lambda = lambda,
     lambda_rule = args$lambda_rule,
-    n_stability_requested = args$n_stability,
-    n_stability_success = n_stability_success,
-    residualization_block = if (is.null(sample)) {
-      "condition"
-    } else {
-      "condition_x_sample"
-    },
+    residualization_block = "condition",
+    bootstrap_method = "condition_stratified_full_size_nonparametric",
+    n_bootstrap_requested = args$n_bootstrap,
+    n_bootstrap_success = n_bootstrap_success,
     stringsAsFactors = FALSE
   )
   list(global = global, condition = condition_output, diagnostics = diagnostics)
 }
 
 .rc_fit_multitask_celltype_grn <- function(
-    design, rna, atac, meta, condition_col, sample_col = NULL,
+    design, rna, atac, meta, condition_col,
     multitask_args = list()) {
   args <- .rc_validate_multitask_grn_args(multitask_args)
   Pando::validate_grn_design(design)
@@ -515,8 +513,10 @@
   )
   missing_atac <- setdiff(unique(candidates$atac_feature_id), rownames(atac))
   if (length(missing_rna) || length(missing_atac)) {
-    stop("Pando design feature IDs are absent from normalized assay matrices.",
-         call. = FALSE)
+    stop(
+      "Pando design feature IDs are absent from normalized assay matrices.",
+      call. = FALSE
+    )
   }
   targets <- unique(as.character(candidates$target))
   fits <- lapply(targets, function(target) {
@@ -527,7 +527,6 @@
       atac = atac,
       meta = meta,
       condition_col = condition_col,
-      sample_col = sample_col,
       args = args
     )
   })
