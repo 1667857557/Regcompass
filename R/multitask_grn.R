@@ -32,7 +32,7 @@
   }
   out <- modifyList(defaults, args)
   fraction <- c(
-    "alpha", "stability_fraction", "min_selection_frequency",
+    "stability_fraction", "min_selection_frequency",
     "min_sign_stability"
   )
   for (name in fraction) {
@@ -41,6 +41,14 @@
         value < 0 || value > 1) {
       stop("`multitask_args$", name, "` must be in [0, 1].", call. = FALSE)
     }
+  }
+  if (!is.numeric(out$alpha) || length(out$alpha) != 1L ||
+      !is.finite(out$alpha) || out$alpha < 0 || out$alpha >= 1) {
+    stop(
+      "`multitask_args$alpha` must be in [0, 1); a non-zero ridge component ",
+      "is required for a unique symmetric condition-deviation solution.",
+      call. = FALSE
+    )
   }
   positive <- c("global_penalty_factor", "deviation_penalty_factor")
   for (name in positive) {
@@ -84,14 +92,13 @@
 .rc_multitask_contrast <- function(condition) {
   levels <- sort(unique(as.character(condition)))
   if (!length(levels)) stop("No conditions were available.", call. = FALSE)
-  if (length(levels) == 1L) {
-    contrast <- matrix(numeric(), nrow = 1L, ncol = 0L)
-    rownames(contrast) <- levels
-    return(contrast)
-  }
-  contrast <- stats::contr.sum(length(levels))
+  contrast <- diag(length(levels)) - matrix(
+    1 / length(levels),
+    nrow = length(levels),
+    ncol = length(levels)
+  )
   rownames(contrast) <- levels
-  colnames(contrast) <- paste0("condition_deviation_", seq_len(ncol(contrast)))
+  colnames(contrast) <- paste0("condition_deviation_", levels)
   contrast
 }
 
@@ -136,7 +143,7 @@
       k <- min(nfolds, min_samples)
       sample_fold <- integer()
       for (values in samples_by_condition) {
-        values <- sample(values, length(values))
+        values <- base::sample(values, length(values))
         fold <- rep(seq_len(k), length.out = length(values))
         sample_fold[values] <- fold
       }
@@ -152,7 +159,7 @@
   foldid <- integer(length(condition))
   for (level in names(count)) {
     index <- which(condition == level)
-    index <- sample(index, length(index))
+    index <- base::sample(index, length(index))
     foldid[index] <- rep(seq_len(k), length.out = length(index))
   }
   foldid
@@ -175,17 +182,14 @@
 
 .rc_decode_multitask_coefficients <- function(coef, n_edges, contrast) {
   beta <- coef[seq_len(n_edges)]
-  if (!ncol(contrast)) {
-    delta <- matrix(0, nrow = nrow(contrast), ncol = n_edges)
-  } else {
-    gamma <- coef[n_edges + seq_len(n_edges * ncol(contrast))]
-    gamma <- matrix(gamma, nrow = n_edges, ncol = ncol(contrast))
-    delta <- contrast %*% t(gamma)
-  }
+  n_conditions <- nrow(contrast)
+  gamma <- coef[n_edges + seq_len(n_edges * n_conditions)]
+  gamma <- matrix(gamma, nrow = n_edges, ncol = n_conditions)
+  delta <- contrast %*% t(gamma)
   theta <- sweep(delta, 2L, beta, "+")
   rownames(delta) <- rownames(contrast)
   rownames(theta) <- rownames(contrast)
-  list(beta = beta, delta = delta, theta = theta)
+  list(beta = beta, gamma = gamma, delta = delta, theta = theta)
 }
 
 .rc_extract_glmnet_vector <- function(fit, s, expected) {
@@ -239,7 +243,11 @@
   x_raw <- x_raw[, keep, drop = FALSE]
   tf <- tf[, keep, drop = FALSE]
   screen_score <- screen_score[keep]
-  order_index <- order(-screen_score, edges$edge_id)
+  order_index <- if (args$candidate_screen_threshold > 0) {
+    order(-screen_score, edges$edge_id)
+  } else {
+    order(edges$edge_id)
+  }
   if (length(order_index) > args$max_edges_per_target) {
     order_index <- order_index[seq_len(args$max_edges_per_target)]
   }
@@ -248,7 +256,11 @@
   tf <- tf[, order_index, drop = FALSE]
   screen_score <- screen_score[order_index]
 
-  residual_block <- if (!is.null(sample)) sample else condition
+  residual_block <- if (!is.null(sample)) {
+    paste(condition, sample, sep = "\001")
+  } else {
+    condition
+  }
   x_residual <- .rc_residualize_matrix(x_raw, residual_block)
   y_residual <- .rc_residualize_vector(y, residual_block)
   condition_rows <- split(seq_along(condition), condition)
@@ -273,11 +285,9 @@
   contrast <- .rc_multitask_contrast(condition)
   contrast_rows <- contrast[condition, , drop = FALSE]
   design_blocks <- list(x_scaled)
-  if (ncol(contrast_rows)) {
-    for (j in seq_len(ncol(contrast_rows))) {
-      design_blocks[[length(design_blocks) + 1L]] <-
-        x_scaled * as.numeric(contrast_rows[, j])
-    }
+  for (j in seq_len(ncol(contrast_rows))) {
+    design_blocks[[length(design_blocks) + 1L]] <-
+      x_scaled * as.numeric(contrast_rows[, j])
   }
   design <- do.call(cbind, design_blocks)
   n_edges <- ncol(x_scaled)
@@ -328,9 +338,10 @@
   if (args$n_stability > 0L) {
     set.seed(args$seed + 31L + sum(utf8ToInt(target)))
     for (b in seq_len(args$n_stability)) {
-      selected_cells <- unlist(lapply(condition_rows, function(index) {
+      stability_rows <- split(seq_along(condition), residual_block)
+      selected_cells <- unlist(lapply(stability_rows, function(index) {
         size <- max(3L, floor(length(index) * args$stability_fraction))
-        sample(index, min(length(index), size), replace = FALSE)
+        base::sample(index, min(length(index), size), replace = FALSE)
       }), use.names = FALSE)
       fit <- tryCatch(
         glmnet::glmnet(
@@ -363,13 +374,21 @@
   }
   if (n_stability_success > 0L) {
     selection_frequency <- selection_count / n_stability_success
-    sign_stability <- matrix(0, nrow = nrow(selection_count), ncol = ncol(selection_count))
+    sign_stability <- matrix(
+      0, nrow = nrow(selection_count), ncol = ncol(selection_count)
+    )
     nonzero <- selection_count > 0
-    sign_stability[nonzero] <- abs(sign_sum[nonzero]) / selection_count[nonzero]
-  } else {
+    sign_stability[nonzero] <-
+      abs(sign_sum[nonzero]) / selection_count[nonzero]
+  } else if (args$n_stability == 0L) {
     selected <- abs(decoded$theta) > args$zero_tolerance
     selection_frequency <- selected * 1
     sign_stability <- selected * 1
+  } else {
+    selection_frequency <- matrix(
+      0, nrow = nrow(selection_count), ncol = ncol(selection_count)
+    )
+    sign_stability <- selection_frequency
   }
   stable_estimate <- decoded$theta * selection_frequency * sign_stability
   active <- selection_frequency >= args$min_selection_frequency &
@@ -439,7 +458,11 @@
     lambda_rule = args$lambda_rule,
     n_stability_requested = args$n_stability,
     n_stability_success = n_stability_success,
-    residualization_block = if (is.null(sample)) "condition" else "sample",
+    residualization_block = if (is.null(sample)) {
+      "condition"
+    } else {
+      "condition_x_sample"
+    },
     stringsAsFactors = FALSE
   )
   list(global = global, condition = condition_output, diagnostics = diagnostics)
@@ -456,8 +479,11 @@
   }
   rna <- rna[, cells, drop = FALSE]
   atac <- atac[, cells, drop = FALSE]
-  meta <- meta[match(cells, rownames(meta)), , drop = FALSE]
-  if (anyNA(rownames(meta))) stop("Cell metadata do not align to the Pando design.", call. = FALSE)
+  meta_index <- match(cells, rownames(meta))
+  if (anyNA(meta_index)) {
+    stop("Cell metadata do not align to the Pando design.", call. = FALSE)
+  }
+  meta <- meta[meta_index, , drop = FALSE]
   candidates <- design$candidate_edges
   if (!nrow(candidates)) {
     stop("Pando produced no structural TF-peak-target candidates.", call. = FALSE)
@@ -485,8 +511,7 @@
     )
   })
   bind <- function(name) {
-    value <- do.call(rbind, lapply(fits, `[[`, name))
-    if (is.null(value)) data.frame() else value
+    .rc_bind_frames_fill(lapply(fits, `[[`, name))
   }
   list(
     global = bind("global"),
