@@ -78,7 +78,7 @@ test_that("metacell stage persists required artifacts", {
 
 test_that("Stage 3 persists supported genes and core reactions", {
   text <- paste(
-    deparse(body(.rc_build_condition_meta_modules)), collapse = "\n"
+    deparse(body(.rc_build_condition_meta_modules_core)), collapse = "\n"
   )
   required <- c(
     "supported_metabolic_genes.tsv.gz",
@@ -127,10 +127,10 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(
     result_text,
-    "regcompass_significant_pando_targets_v1",
+    "regcompass_multitask_shared_grn_v1",
     fixed = TRUE
   )
-  expect_match(result_text, 'version = "1.8.4"', fixed = TRUE)
+  expect_match(result_text, 'version = "1.8.8"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)
