@@ -11,7 +11,7 @@ Required outputs in canonical mode:
 ```r
 step1$grn_result$target_metabolic_genes
 step1$grn_result$celltype_fit_status
-step1$grn_result$sample_status
+step1$grn_result$group_status
 step1$grn_result$tf_peak_gene_candidates
 step1$grn_result$tf_peak_gene_global
 step1$grn_result$tf_peak_gene_condition_all
@@ -26,14 +26,19 @@ step1$params
 
 Contract:
 
-- one Pando candidate universe is built per cell type and identified by `edge_universe_id`;
-- every condition in that cell type uses the same edge dictionary;
+- one validated Pando version-2 candidate universe is built per cell type and identified by `edge_universe_id`;
+- every condition in that cell type uses the same edge dictionary and edge scale;
 - `effective_estimate = global_estimate + condition_deviation`;
 - condition deviations sum to zero for every edge;
-- `estimate` is the stability-adjusted coefficient consumed downstream;
-- an active edge satisfies the configured effect, cross-validated reliability, selection-frequency and sign-stability thresholds;
-- `padj` is `NA` in multitask mode and `evidence_type` records the stability-selection policy;
-- every `condition × cell type` group has one `sample_status` row, even when it has no active edges.
+- cross-validation folds are stratified within condition;
+- every bootstrap replicate resamples each condition with replacement at the original condition cell count;
+- target and TF-by-ATAC predictors are re-centred inside each bootstrap condition;
+- `estimate` is the full-data condition coefficient multiplied by bootstrap selection frequency and conditional sign stability;
+- an active edge satisfies effect, `cv_rsq`, bootstrap selection-frequency, and sign-stability thresholds;
+- `padj` is `NA` in multitask mode and `evidence_type` records bootstrap stability selection;
+- every `condition × cell type` group has one `group_status` row, even when it has no active edges.
+
+The public Stage 1 API accepts no biological-sample column.
 
 The default structural regions remain species specific:
 
@@ -56,7 +61,9 @@ step2$metacell_object
 step2$params
 ```
 
-The merged metacell object and metadata must contain the same ordered units. Condition remains the hard pooling stratum; cell type is used as the SuperCell2 label and audited after aggregation. Biological sample composition remains provenance.
+Condition is the only hard pooling stratum. Cell type is passed as the SuperCell2 label and audited after aggregation. The public Stage 2 API accepts no biological-sample column, performs no sample balancing, and exports no sample-level provenance.
+
+The merged metacell object and metadata must contain the same ordered units.
 
 ## Stage 3: condition biological meta-modules
 
@@ -72,13 +79,15 @@ step3$condition_modules$meta_module_summary
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 step3$merged_modules$source_edge_universe_ids
+step3$merged_modules$source_group_ids
 step3$group_coverage
 ```
 
 Contract:
 
-- `supported_metabolic_genes` contains condition sub-GRN targets with active stable edges;
-- positive and negative stable edges both establish regulated-gene membership;
+- `group_id` identifies the actual `condition × cell type` analysis unit throughout Stage 3;
+- `supported_metabolic_genes` contains targets with at least one active bootstrap-stable edge;
+- positive and negative active edges both establish regulated-gene membership;
 - a reaction is core only when one complete GPR branch is contained in the condition target set;
 - partial GPR complexes cannot anchor expansion;
 - expansion is one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence;
@@ -113,7 +122,7 @@ step4$gem_fingerprint
 
 The regulatory modifier:
 
-- uses Stage 1 stable condition coefficients;
+- uses Stage 1 bootstrap-stable condition coefficients;
 - projects only metacell ATAC deviations;
 - signed-sums TFs sharing one measured peak and target;
 - uses one target denominator shared across conditions;
@@ -144,7 +153,7 @@ step5$penalty
 step5$vmax
 ```
 
-For each medium, Stage 5 constructs one final union GEM and performs one global FASTCORE completion. All conditions and metacells in that medium must resolve to the same model file and therefore the same reaction IDs, stoichiometric matrix, lower bounds and upper bounds.
+For each medium, Stage 5 constructs one final union GEM and performs one global FASTCORE completion. All conditions and metacells in that medium resolve to the same model file and therefore the same reaction IDs, stoichiometric matrix, lower bounds, and upper bounds.
 
 Different media may produce different support-completed structures. Within a medium, structural variation across conditions is prohibited.
 
@@ -179,7 +188,7 @@ result$condition_summary
 result$condition_contrast
 ```
 
-`result$grn` preserves the full Stage 1 candidate/global/condition/stability contract. `merged_grn_meta_modules` remains the Stage 3 catalogue. `microcompass$model_cache_summary` identifies the final Stage 5 union GEMs.
+`result$grn` preserves the full Stage 1 candidate/global/condition/bootstrap contract. `merged_grn_meta_modules` remains the Stage 3 catalogue. `microcompass$model_cache_summary` identifies the final Stage 5 union GEMs.
 
 ## Target-union restart contract
 
