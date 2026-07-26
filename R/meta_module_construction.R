@@ -11,8 +11,7 @@
   if (length(missing)) {
     stop(
       "Active GRN edge table is missing columns: ",
-      paste(missing, collapse = ", "),
-      call. = FALSE
+      paste(missing, collapse = ", "), call. = FALSE
     )
   }
   metabolic_genes <- unique(toupper(.rc_mm_trim_unique(metabolic_genes)))
@@ -20,8 +19,7 @@
   significant$tf <- toupper(trimws(as.character(significant$tf)))
   significant$region <- trimws(as.character(significant$region))
   significant <- significant[
-    significant$target %in% metabolic_genes,
-    , drop = FALSE
+    significant$target %in% metabolic_genes, , drop = FALSE
   ]
   if (!nrow(significant)) {
     stop(
@@ -57,6 +55,7 @@
     }
     selection <- numeric_column("selection_frequency")
     sign_stability <- numeric_column("sign_stability")
+    bootstrap_success <- numeric_column("n_bootstrap_success")
     finite_min <- function(value) {
       value <- value[is.finite(value)]
       if (length(value)) min(value) else NA_real_
@@ -74,10 +73,9 @@
     data.frame(
       group_id = group_id,
       group_values,
-      sample_id = group_id,
       module_id = paste0(group_id, "::SUPPORTED_METABOLIC_GENES"),
       gene = target,
-      n_significant_edges = nrow(one),
+      n_active_edges = nrow(one),
       n_regulating_tfs = length(unique(one$tf[nzchar(one$tf)])),
       n_regulatory_regions = length(unique(one$region[nzchar(one$region)])),
       min_padj = finite_min(padj),
@@ -86,6 +84,7 @@
       max_model_rsq = finite_max(rsq),
       min_selection_frequency = finite_min(selection),
       min_sign_stability = finite_min(sign_stability),
+      min_bootstrap_success = finite_min(bootstrap_success),
       n_positive_edges = sum(is.finite(effective) & effective > 0),
       n_negative_edges = sum(is.finite(effective) & effective < 0),
       evidence_definition = evidence,
@@ -109,14 +108,13 @@
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown, collapse = ", "),
-      ". Allowed field: `subsystem_table`.",
-      call. = FALSE
+      ". Allowed field: `subsystem_table`.", call. = FALSE
     )
   }
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   group_cols <- grn_result$group_cols
   display_cols <- c("group_id", group_cols)
-  module_cols <- unique(c(display_cols, "sample_id", "module_id"))
+  module_cols <- unique(c(display_cols, "module_id"))
   metabolic_genes <- gem$metabolic_genes %||%
     rc_metabolic_gpr_genes(gem$gpr_table)
 
@@ -125,14 +123,14 @@
     metabolic_genes = metabolic_genes
   )
   core <- rc_map_meta_module_core_reactions(
-    supported[, c("sample_id", "module_id", "gene"), drop = FALSE],
+    supported[, c("group_id", "module_id", "gene"), drop = FALSE],
     gem$gpr_table
   )
   if (nrow(core)) {
     core <- merge(
       core,
       supported,
-      by = c("sample_id", "module_id", "gene"),
+      by = c("group_id", "module_id", "gene"),
       all.x = TRUE,
       sort = FALSE
     )
@@ -160,7 +158,7 @@
     expanded$reaction_membership <- merge(
       expanded$reaction_membership,
       unique(supported[, module_cols, drop = FALSE]),
-      by = c("sample_id", "module_id"),
+      by = c("group_id", "module_id"),
       all.x = TRUE,
       sort = FALSE
     )
@@ -173,7 +171,7 @@
     expanded$summary <- merge(
       expanded$summary,
       unique(supported[, module_cols, drop = FALSE]),
-      by = c("sample_id", "module_id"),
+      by = c("group_id", "module_id"),
       all.x = TRUE,
       sort = FALSE
     )
@@ -196,7 +194,7 @@
     crossref_maps = expanded$crossref_maps,
     core_definition = if (multitask) {
       paste(
-        "complete GEM GPR branch contained in the stability-selected",
+        "complete GEM GPR branch contained in the bootstrap-stable",
         "condition sub-GRN target-gene set for one condition-by-cell-type group"
       )
     } else {
@@ -210,7 +208,7 @@
       "equivalence, then master-Rhea reaction equivalence"
     ),
     analysis_group_unit = if (multitask) {
-      "condition_x_celltype_stability_selected_multitask_metabolic_targets"
+      "condition_x_celltype_bootstrap_stable_multitask_metabolic_targets"
     } else {
       "condition_x_celltype_significant_pando_metabolic_targets"
     },
