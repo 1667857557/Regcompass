@@ -20,7 +20,16 @@
     as.numeric(args$min_abs_effect),
     as.numeric(args$zero_tolerance)
   )
+  bootstrap_fraction <- suppressWarnings(
+    as.numeric(condition$n_bootstrap_success) /
+      as.numeric(condition$n_bootstrap_requested)
+  )
+  bootstrap_adequate <- is.finite(bootstrap_fraction) &
+    bootstrap_fraction >= args$min_bootstrap_success_fraction
+  condition$bootstrap_success_fraction <- bootstrap_fraction
+  condition$bootstrap_completion_adequate <- bootstrap_adequate
   condition$active_edge <-
+    bootstrap_adequate &
     is.finite(condition$selection_frequency) &
     condition$selection_frequency >= args$min_selection_frequency &
     is.finite(condition$sign_stability) &
@@ -42,6 +51,13 @@
   condition$sign_flip_flag <- unname(flip[condition$edge_id])
   answer$condition <- condition
 
+  global <- answer$global
+  if (is.data.frame(global) && nrow(global)) {
+    global$bootstrap_success_fraction <- bootstrap_fraction[[1L]]
+    global$bootstrap_completion_adequate <- bootstrap_adequate[[1L]]
+    answer$global <- global
+  }
+
   diagnostics <- answer$diagnostics
   if (is.data.frame(diagnostics) && nrow(diagnostics)) {
     diagnostics$n_active_condition_edges <- sum(
@@ -51,6 +67,10 @@
       condition$condition[condition$active_edge %in% TRUE]
     ))
     diagnostics$active_effect_threshold <- effect_threshold
+    diagnostics$bootstrap_success_fraction <- bootstrap_fraction[[1L]]
+    diagnostics$min_bootstrap_success_fraction <-
+      args$min_bootstrap_success_fraction
+    diagnostics$bootstrap_completion_adequate <- bootstrap_adequate[[1L]]
     answer$diagnostics <- diagnostics
   }
   answer
