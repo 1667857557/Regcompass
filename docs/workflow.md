@@ -1,240 +1,259 @@
-# RegCompassR 1.8.4 workflow
+# RegCompassR 1.8.8 workflow
 
 ## Canonical data flow
 
 ```text
-condition × cell type cells
-→ Pando TF–peak–GEM-gene models
-→ significantly supported metabolic target genes
-→ complete-GPR core reactions
+all conditions within one cell type
+→ one Pando structural TF–peak–GEM-gene candidate universe
+→ condition-balanced multitask regression
+→ global GRN backbone + condition-specific deviations
+→ stability-selected condition sub-GRNs
+→ condition-specific metabolic target genes
+→ complete-GPR condition core reactions
 → one ordered subsystem/cross-reference expansion pass
-→ biological meta-modules
-→ merged meta-module reaction catalogue
+→ merged biological reaction catalogue
 → RNA support modified by ATAC regulatory state
-→ COMPASS-compatible GPR-AND aggregation
-→ medium-specific union GEM
-→ global FASTCORE completion
-→ directional two-step COMPASS-like LP
-→ within-condition ranking and descriptive contrasts
+→ COMPASS-compatible GPR aggregation
+→ one medium-specific union GEM
+→ one global FASTCORE completion
+→ directional two-step LP scoring
 ```
 
-## 1. Pando targets, motifs, and regulatory regions
+## 1. Shared Pando candidate background
 
-Pando is fitted separately for each `condition × cell type` group. Its candidate target set is:
-
-\[
-T = G_{GEM\ GPR} \cap G_{RNA\ assay}.
-\]
-
-When `pfm` is omitted, RegCompass loads the Pando data object:
-
-```r
-data("motifs", package = "Pando")
-pfm <- motifs
-```
-
-A user-supplied motif collection overrides this default.
-
-The default `Pando::initiate_grn()` region set depends on `species`:
+For cell type `m`, Pando constructs:
 
 \[
-R_{human} = phastConsElements20Mammals.UCSC.hg38
-\cup SCREEN.ccRE.UCSC.hg38,
+\mathcal U_m=\{e=(t,p,g)\},
 \]
+
+where `t` is a measured TF, `p` is a measured peak supported by a Pando regulatory region and a TF motif, and `g` is a GEM GPR target gene present in the RNA assay.
+
+`Pando::prepare_grn_design()` is run once per cell type. Exact predictors are deduplicated by `(TF, ATAC feature, target)`. The candidate dictionary is independent of condition coefficients and pooled p-values.
+
+Default regulatory regions are:
 
 \[
-R_{mouse} = phastConsElements20Mammals.UCSC.hg38.
+R_{human}=phastCons\cup SCREEN\ ccRE,
+\qquad
+R_{mouse}=phastCons.
 \]
 
-The objects are loaded from the installed Pando package. A user-supplied `pando_initiate_args$regions` overrides either species-specific default. The selected policy is recorded in `step1$grn_result$normalization_policy$pando_regions`.
+## 2. Multitask condition coefficients
 
-A TF–peak–target row is retained as significant evidence when it passes the configured adjusted-P-value, absolute-estimate, and target-model-R² thresholds. Positive and negative coefficients both indicate regulatory evidence.
-
-## 2. Supported metabolic gene sets and core reactions
-
-For condition `c` and cell type `k`, let `E_{c,k}` be the significant Pando coefficient table. The supported GEM metabolic genes are:
+For edge `e=(t,p,g)` and cell `u`:
 
 \[
-M_{c,k} = \{g \in T : \exists (t,p,g) \in E_{c,k}\}.
+x_{e,u}=T_{t,u}A_{p,u}.
 \]
 
-No shared-TF projection, target-target graph, top-k pruning, or GRN connected-component calculation is performed.
+Target and predictor values are centred within condition, or within `condition × sample` when `sample_col` is supplied. The edge scale is shared across all conditions of the cell type.
 
-A reaction is a core reaction only when at least one complete GPR isozyme branch is represented:
+RegCompass estimates:
 
 \[
-C_{c,k} = \{r : \exists j,\; GPR_{r,j} \subseteq M_{c,k}\}.
+\theta_{e,c}=\beta_e+\delta_{e,c},
+\qquad
+\sum_c\delta_{e,c}=0.
 \]
 
-Partially represented enzyme complexes are retained as diagnostics but are not core anchors. This group-level definition allows required subunits supported by different TFs or peaks to satisfy the same complete GPR branch.
+The symmetric condition basis is:
 
-## 3. Biological meta-modules
+\[
+H=I_C-\frac1C\mathbf 1\mathbf 1^T.
+\]
 
-Annotation-defined expansion is executed exactly once in the following order:
+Every condition has total observation weight one up to a common scaling:
 
-1. begin with complete-GPR core reactions `C_{c,k}`;
-2. add all reactions in each core reaction's annotated subsystem;
-3. from the resulting core-plus-subsystem set, add direct KEGG or Reactome reaction equivalents;
-4. from the resulting core-plus-subsystem-plus-database set, add direct master-Rhea reaction equivalents;
+\[
+w_u\propto1/n_{c(u)}.
+\]
+
+The elastic-net fit uses stronger default shrinkage for condition deviations than for the global backbone. `alpha` must be below one so the centred redundant deviation representation has a unique ridge-regularised solution.
+
+## 3. Stability-selected condition sub-GRNs
+
+Repeated stratified subsampling gives selection frequency `Pi` and conditional sign stability `rho`:
+
+\[
+\widetilde\theta_{e,c}
+=
+\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c}.
+\]
+
+The active edge table retains global, deviation, effective and stable coefficients. Multitask coefficients do not receive classical adjusted p-values; `padj` is `NA` and the evidence type records stability selection.
+
+The condition metabolic target set is:
+
+\[
+G_{m,c}=\{g:\exists e=(t,p,g)\text{ active in }c\}.
+\]
+
+Positive and negative active edges both establish regulatory membership.
+
+## 4. Complete-GPR core reactions
+
+For reaction `r` with alternative GPR branches `B_rk`:
+
+\[
+Core_{r,m,c}=1
+\iff
+\exists k:B_{r,k}\subseteq G_{m,c}.
+\]
+
+Required subunits joined by AND must all be present. Alternative isozyme branches remain OR alternatives. Partially represented complexes are diagnostic only.
+
+## 5. Biological meta-modules
+
+For each condition and cell type, annotation expansion is executed exactly once:
+
+1. complete-GPR core reactions;
+2. all reactions in core-reaction subsystems;
+3. direct KEGG or Reactome reaction equivalents;
+4. direct master-Rhea equivalents;
 5. stop.
 
-A reaction introduced at the master-Rhea step does not trigger another KEGG/Reactome or subsystem pass.
-
-The resulting biological reaction set is:
+The resulting condition sets are merged by reaction ID:
 
 \[
-B_{c,k} = C_{c,k} \cup S_{c,k} \cup D_{c,k} \cup R_{c,k}.
-\]
-
-## 4. Merged meta-module catalogue
-
-Stage 3 deduplicates reaction IDs across all condition-by-cell-type biological meta-modules:
-
-\[
-B_{merged} = \bigcup_{c,k} B_{c,k},
+B_{merged}=\bigcup_{m,c}B_{m,c},
 \qquad
-C_{merged} = \bigcup_{c,k} C_{c,k}.
+C_{merged}=\bigcup_{m,c}Core_{m,c}.
 \]
 
-This operation does not apply medium constraints, test flux consistency, or run FASTCORE. It produces a **merged reaction catalogue**, not a GEM and not a union GEM.
+This is a reaction catalogue, not a GEM. Stage 3 applies no medium and runs no FASTCORE.
 
-```r
-step3$condition_modules$supported_metabolic_genes
-step3$condition_modules$core_gene_reaction
-step3$condition_modules$meta_module_summary$expansion_policy
-step3$merged_modules$merged_core_reactions
-step3$merged_modules$merged_reaction_membership
-```
+## 6. ATAC regulatory projection and RNA support
 
-## 5. Multiome reaction support and GPR aggregation
+For each fitted edge, the ATAC-only projection coefficient is proportional to:
 
-For gene `g` in metacell `u`, RNA logCPM is converted to bounded support:
+\[
+\omega_{tpg,c}
+=
+\widetilde\theta_{tpg,c}\bar T_{t,m}/s_{tpg,m}.
+\]
+
+TFs sharing the same measured peak and target are signed-summed. A single target denominator is shared by all conditions:
+
+\[
+L_{g,m}=\max_c\sum_p|\psi_{p,g,c}|.
+\]
+
+The bounded modifier is:
+
+\[
+R_{g,u,c}
+=
+q_{g,m}
+\operatorname{clip}
+\left(
+\frac{\sum_p\psi_{p,g,c}D_{p,u}}
+{L_{g,m}+\varepsilon},-1,1
+\right),
+\]
+
+where `D` is the robust ATAC deviation and
+
+\[
+q_{g,m}=\sqrt{\operatorname{clip}(R^2_{CV},0,1)}.
+\]
+
+RNA logCPM is converted to bounded support:
 
 \[
 C^{RNA}_{g,u}=\frac{x_{g,u}}{x_{g,u}+h}.
 \]
 
-Peak accessibility is robustly centred and scaled within cell type across conditions. Signed Pando coefficients define an ATAC regulatory modifier `R_{g,u}`. The modifier acts on RNA support on the log-odds scale:
+The regulatory modifier acts on the RNA-support log odds:
 
 \[
-C^{MO}_{g,u}=
-\frac{C^{RNA}_{g,u}2^{\alpha R_{g,u}}}
-{1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{\alpha R_{g,u}}}.
+C^{MO}_{g,u,c}=
+\frac{C^{RNA}_{g,u,c}2^{\alpha R_{g,u,c}}}
+{1-C^{RNA}_{g,u,c}+C^{RNA}_{g,u,c}2^{\alpha R_{g,u,c}}}.
 \]
 
-ATAC can raise or lower existing RNA support but cannot create support when RNA support is zero.
+When no active edge exists for a condition, `R = 0` and `C_MO = C_RNA` exactly.
 
-For one GPR AND group `A_{r,j}`, RegCompass uses one of the three COMPASS aggregation functions:
+## 7. GPR reaction support and penalty
+
+For one GPR AND branch, the canonical aggregation is:
 
 \[
-Q^{min}_{r,j,u}=\min_{g\in A_{r,j}} C^{MO}_{g,u},
+Q_{r,k,u}=\min_{g\in B_{r,k}}C^{MO}_{g,u}.
+\]
+
+`median` and `mean` are available as sensitivity options. Isozyme OR branches are additive:
+
+\[
+E_{r,u}=\sum_kQ_{r,k,u}.
+\]
+
+Reaction support becomes the LP cost:
+
+\[
+p_{r,u}=\frac1{1+\log_2(1+E_{r,u})}.
+\]
+
+## 8. Shared medium-specific union GEM
+
+For each medium `q`, Stage 5 starts from `B_merged`, applies the medium to the parent GEM, and performs one global add-only FASTCORE completion:
+
+\[
+F_q=FASTCORE(P_q,B_{merged},C_{merged}),
 \]
 
 \[
-Q^{median}_{r,j,u}=\operatorname{median}_{g\in A_{r,j}} C^{MO}_{g,u},
+U_q=B_{merged}\cup F_q.
 \]
+
+Only `U_q` is called a union GEM. For every condition in medium `q`:
 
 \[
-Q^{mean}_{r,j,u}=\frac{1}{|A_{r,j}|}
-\sum_{g\in A_{r,j}} C^{MO}_{g,u}.
+S_c=S^{U_q},
+\qquad
+lb_c=lb^{U_q},
+\qquad
+ub_c=ub^{U_q}.
 \]
 
-The canonical default is `gpr_and_method = "min"`, representing the limiting required subunit. `"median"` and `"mean"` are available for sensitivity analysis.
+Therefore condition differences arise from evidence-derived penalties, not different stoichiometric models.
 
-Isozyme OR branches remain additive:
-
-\[
-E_{r,u}=\sum_j Q_{r,j,u}.
-\]
-
-Reaction expression support is converted to the LP cost:
-
-\[
-p_{r,u}=\frac{1}{1+\log_2(1+E_{r,u})}.
-\]
-
-## 6. Medium-specific union GEM
-
-For each medium scenario `q`, Stage 5 builds a medium-constrained FASTCC-consistent parent GEM. Demand, sink, and artificial-support reactions are disabled for reconstruction.
-
-The initial structural set is `B_merged`, and the target set is `C_merged`. A single global add-only FASTCORE completion identifies support reactions:
-
-\[
-F_q = FASTCORE(P_q, B_{merged}, C_{merged}).
-\]
-
-The union GEM is:
-
-\[
-U_q = B_{merged} \cup F_q.
-\]
-
-Only `U_q` is called a union GEM. One cached `U_q` is shared across all conditions and metacells analysed under medium `q`.
-
-FASTCORE does not use RNA or ATAC evidence. It adds flux-consistent support reactions required for direction-specific core feasibility under the medium. Support may include exchange, transport, cofactor-regeneration, redox-balancing, or connecting internal reactions.
-
-Global FASTCORE controls are supplied through:
-
-```r
-layer2_args$model_params <- list(
-  completion_time_limit = 600,
-  fastcore_epsilon = 1e-4,
-  max_support_reactions = 2000,
-  strict = TRUE
-)
-```
-
-## 7. Directional two-step LP
+## 9. Directional two-step LP
 
 For target reaction `r` and direction `d`, Step 1 computes:
 
 \[
-v^{max}_{r,d}=\max_v d v_r
-\]
-
-subject to:
-
-\[
-Sv=0,\qquad l\le v\le u.
-\]
-
-Step 2 minimizes network-wide evidence discordance:
-
-\[
-P^*_{r,d,u}=\min_{v,t}\sum_j p_{j,u}t_j
+v^{max}_{r,d}=\max_v dv_r
 \]
 
 subject to:
 
 \[
 Sv=0,
-\quad -t_j\le v_j\le t_j,
-\quad d v_r\ge \omega v^{max}_{r,d}.
+\qquad
+lb\le v\le ub.
 \]
 
-The default target-flux fraction is `omega = 0.95`.
-
-Cross-reaction ranking uses:
+Step 2 minimizes evidence-weighted absolute flux:
 
 \[
-\widetilde P_{r,d,u}=\frac{P^*_{r,d,u}}
-{\omega v^{max}_{r,d}}.
+P^*_{r,d,u}=\min_{v,z}\sum_jp_{j,u}z_j
 \]
 
-Lower normalized penalty means stronger support in the fixed union-GEM context.
+subject to:
 
-## 8. Structural comparison policy
+\[
+Sv=0,
+\quad
+-z_j\le v_j\le z_j,
+\quad
+dv_r\ge\omega v^{max}_{r,d}.
+\]
 
-Within one medium scenario:
+The default is `omega = 0.95`. Lower normalized penalty indicates stronger support in the fixed union-GEM context.
 
-- all conditions use the same union GEM;
-- bounds and target-specific `vmax` are shared;
-- condition differences arise from multiome penalties.
+## 10. Interpretation boundary
 
-Across different media, global FASTCORE may select different support sets. Results therefore represent different structural contexts and should not be pooled into one ranking.
+The GRN and RNA support are learned from the same paired multiome dataset. Condition/sample centring and ATAC-only downstream projection reduce direct duplicate weighting but do not create statistically independent evidence. Condition-level metacell scores remain descriptive pseudo-observations unless biological-replicate-level validation is performed.
 
-## 9. Targeted second-pass scoring
-
-Selected core reaction IDs or genes are used only to define KEGG, Reactome, or master-Rhea mapping anchors. The mapped non-core reactions are scored only when present in every required final Stage 5 union GEM.
-
-The second pass validates each cached model's checksum and medium identifier, then reuses its exact stoichiometric matrix and bounds. It does not rebuild a GEM and does not rerun FASTCORE.
+See [multitask GRN mathematics and object contracts](multitask-shared-grn.md) for the detailed Stage 1 derivation and table schemas.
