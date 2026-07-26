@@ -1,8 +1,5 @@
-# Extend target-union remapping to any valid GEM reaction-ID anchor while
-# preserving the existing public argument names and core-only output fields.
-
-.rc_target_union_definition_core_only <- .rc_build_target_union_definition
-.rc_target_union_step_core_only <- rc_regcompass_step_target_union
+# Extend target-union remapping to any valid GEM reaction-ID anchor.
+# Gene selectors retain the original core-only behavior.
 
 .rc_target_union_core_rows <- function(
     gem, available_core_reactions,
@@ -14,6 +11,11 @@
     .rc_target_union_normalize_ids(available_core_reactions),
     validated$reactions
   )
+  if (!length(original_core)) {
+    stop("The original Layer 2 run contains no valid core reactions.",
+         call. = FALSE)
+  }
+
   requested_reactions <- .rc_target_union_normalize_ids(core_reaction_ids)
   requested_genes <- toupper(.rc_target_union_normalize_ids(core_genes))
   if (!length(requested_reactions) && !length(requested_genes)) {
@@ -22,6 +24,7 @@
       call. = FALSE
     )
   }
+
   missing_reactions <- setdiff(requested_reactions, validated$reactions)
   if (length(missing_reactions)) {
     stop(
@@ -109,6 +112,7 @@
       paste(genes, collapse = ";")
   }, character(1))
   is_core <- reactions %in% original_core
+
   data.frame(
     catalogue_id = "MERGED_META_MODULES",
     gene = mapped_genes,
@@ -125,45 +129,49 @@
     core_reaction_ids = NULL, core_genes = NULL,
     gene_match = c("complete_gpr", "any_direct"),
     cached_reaction_ids = NULL) {
-  answer <- tryCatch(
-    .rc_target_union_definition_core_only(
-      gem = gem,
-      merged_core_reactions = merged_core_reactions,
-      merged_reaction_membership = merged_reaction_membership,
-      core_reaction_ids = core_reaction_ids,
-      core_genes = core_genes,
-      gene_match = gene_match,
-      cached_reaction_ids = cached_reaction_ids
-    ),
-    error = function(error) {
-      message <- conditionMessage(error)
-      message <- sub(
-        "The selected core reactions have no directly linked",
-        "The selected anchor reactions have no directly linked",
-        message,
-        fixed = TRUE
-      )
-      stop(message, call. = FALSE)
-    }
-  )
-
-  anchors <- answer$selected_core_reactions
-  if (!"is_core" %in% colnames(anchors)) {
-    anchors$is_core <- anchors$reaction_id %in%
-      as.character(merged_core_reactions$reaction_id)
+  gene_match <- match.arg(gene_match)
+  if (!is.data.frame(merged_core_reactions) ||
+      !"reaction_id" %in% colnames(merged_core_reactions)) {
+    stop("`merged_core_reactions` must contain reaction_id.",
+         call. = FALSE)
   }
-  if (!"anchor_role" %in% colnames(anchors)) {
-    anchors$anchor_role <- ifelse(
-      anchors$is_core, "original_layer2_core", "gem_noncore"
+  if (!is.data.frame(merged_reaction_membership) ||
+      !"reaction_id" %in% colnames(merged_reaction_membership)) {
+    stop("`merged_reaction_membership` must contain reaction_id.",
+         call. = FALSE)
+  }
+
+  selected_anchors <- .rc_target_union_core_rows(
+    gem = gem,
+    available_core_reactions = merged_core_reactions$reaction_id,
+    core_reaction_ids = core_reaction_ids,
+    core_genes = core_genes,
+    gene_match = gene_match
+  )
+  selected_core <- selected_anchors[
+    selected_anchors$is_core %in% TRUE, , drop = FALSE
+  ]
+  selected_noncore <- selected_anchors[
+    !selected_anchors$is_core %in% TRUE, , drop = FALSE
+  ]
+
+  catalogue <- .rc_target_union_direct_crossref_relations(
+    gem, selected_anchors
+  )
+  if (!nrow(catalogue)) {
+    stop(
+      paste(
+        "The selected anchor reactions have no directly linked KEGG, Reactome,",
+        "or master-Rhea reactions."
+      ),
+      call. = FALSE
     )
   }
-  core_anchors <- anchors[anchors$is_core %in% TRUE, , drop = FALSE]
-  noncore_anchors <- anchors[!anchors$is_core %in% TRUE, , drop = FALSE]
 
-  catalogue <- answer$expanded_reaction_catalog
   catalogue$anchor_reaction_id <- catalogue$anchor_core_reaction_id
   anchor_is_core <- stats::setNames(
-    as.logical(anchors$is_core), as.character(anchors$reaction_id)
+    as.logical(selected_anchors$is_core),
+    as.character(selected_anchors$reaction_id)
   )
   catalogue$anchor_is_original_core <- unname(
     anchor_is_core[as.character(catalogue$anchor_reaction_id)]
@@ -172,83 +180,129 @@
     is.na(catalogue$anchor_is_original_core)
   ] <- FALSE
 
-  targets <- answer$expanded_scoring_targets
-  if ("anchor_core_reaction_ids" %in% colnames(targets)) {
-    targets$anchor_reaction_ids <- targets$anchor_core_reaction_ids
+  membership_ids <- .rc_target_union_normalize_ids(
+    merged_reaction_membership$reaction_id
+  )
+  available_ids <- .rc_target_union_normalize_ids(cached_reaction_ids)
+  if (!length(available_ids)) {
+    stop("No reusable reactions were found in the final union GEM cache.",
+         call. = FALSE)
   }
 
-  expansion_policy <- if (nrow(noncore_anchors)) {
+  catalogue_match <- match(
+    as.character(catalogue$reaction_id),
+    as.character(merged_reaction_membership$reaction_id)
+  )
+  catalogue$available_in_all_cached_union_gems <-
+    catalogue$reaction_id %in% available_ids
+  catalogue$present_in_merged_catalogue <- !is.na(catalogue_match)
+  catalogue$merged_catalogue_is_core <- catalogue$reaction_id %in%
+    as.character(merged_core_reactions$reaction_id)
+  catalogue$merged_catalogue_inclusion_stage <- if (
+    "inclusion_stage" %in% colnames(merged_reaction_membership)
+  ) {
+    as.character(merged_reaction_membership$inclusion_stage[catalogue_match])
+  } else {
+    rep(NA_character_, nrow(catalogue))
+  }
+  support_only <- catalogue$available_in_all_cached_union_gems &
+    !catalogue$present_in_merged_catalogue
+  catalogue$merged_catalogue_inclusion_stage[support_only] <-
+    "global_fastcore_support_not_in_merged_catalogue"
+  catalogue$score_target <- !catalogue$merged_catalogue_is_core &
+    catalogue$available_in_all_cached_union_gems
+  catalogue$target_role <- ifelse(
+    catalogue$merged_catalogue_is_core,
+    "merged_core_not_rescored",
+    ifelse(
+      catalogue$available_in_all_cached_union_gems,
+      "direct_database_crossref_noncore",
+      "direct_database_crossref_absent_from_cached_union_gem"
+    )
+  )
+  catalogue$lp_exclusion_reason <- ifelse(
+    catalogue$merged_catalogue_is_core,
+    "already_scored_in_original_layer2",
+    ifelse(
+      catalogue$available_in_all_cached_union_gems,
+      NA_character_,
+      "absent_from_one_or_more_cached_union_gems"
+    )
+  )
+
+  target_relations <- catalogue[catalogue$score_target, , drop = FALSE]
+  if (!nrow(target_relations)) {
+    stop(
+      paste(
+        "No directly linked non-core reaction is present in every final",
+        "medium-specific union GEM. Original core reactions are not recomputed."
+      ),
+      call. = FALSE
+    )
+  }
+  targets <- .rc_target_union_aggregate_targets(target_relations)
+  targets$anchor_reaction_ids <- targets$anchor_core_reaction_ids
+
+  rownames(selected_anchors) <- NULL
+  rownames(selected_core) <- NULL
+  rownames(selected_noncore) <- NULL
+  rownames(catalogue) <- NULL
+
+  expansion_policy <- if (nrow(selected_noncore)) {
     "direct_from_selected_anchors_via_kegg_reactome_master_rhea_only"
   } else {
     "direct_from_selected_core_via_kegg_reactome_master_rhea_only"
   }
-  answer$selected_anchor_reactions <- anchors
-  answer$selected_core_reactions <- core_anchors
-  answer$selected_noncore_reactions <- noncore_anchors
-  answer$expanded_reaction_catalog <- catalogue
-  answer$expanded_scoring_targets <- targets
-  answer$summary$n_selected_anchors <- nrow(anchors)
-  answer$summary$n_selected_core <- nrow(core_anchors)
-  answer$summary$n_selected_noncore_anchors <- nrow(noncore_anchors)
-  answer$summary$expansion_policy <- expansion_policy
-  answer$params$selected_anchor_reactions <- unique(
-    as.character(anchors$reaction_id)
-  )
-  answer$params$selected_core_reactions <- unique(
-    as.character(core_anchors$reaction_id)
-  )
-  answer$params$selected_noncore_reactions <- unique(
-    as.character(noncore_anchors$reaction_id)
-  )
-  answer$params$expansion_policy <- expansion_policy
-  answer
-}
-
-# Public wrapper retaining the existing argument names. Reaction-ID selectors
-# may refer to original cores or other reactions in the supplied GEM. Gene
-# selectors retain their original complete-GPR core-anchor behavior. The
-# existing implementation performs cache validation and LP scoring; this
-# wrapper adds anchor-specific outputs and metadata.
-rc_regcompass_step_target_union <- function(
-    layer1, meta_modules, layer2, gem, outdir,
-    core_reaction_ids = NULL, core_genes = NULL,
-    gene_match = c("complete_gpr", "any_direct"),
-    layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
-    progress = getOption("RegCompassR.progress", TRUE)) {
-  answer <- .rc_target_union_step_core_only(
-    layer1 = layer1,
-    meta_modules = meta_modules,
-    layer2 = layer2,
-    gem = gem,
-    outdir = outdir,
-    core_reaction_ids = core_reaction_ids,
-    core_genes = core_genes,
+  summary <- data.frame(
+    n_selected_anchors = nrow(selected_anchors),
+    n_selected_core = nrow(selected_core),
+    n_selected_noncore_anchors = nrow(selected_noncore),
+    n_direct_crossref_relations = nrow(catalogue),
+    n_direct_crossref_reactions = length(unique(catalogue$reaction_id)),
+    n_merged_core_reactions_not_rescored = length(unique(
+      catalogue$reaction_id[catalogue$merged_catalogue_is_core]
+    )),
+    n_cached_union_unavailable_reactions = length(unique(
+      catalogue$reaction_id[!catalogue$available_in_all_cached_union_gems]
+    )),
+    n_expanded_score_targets = nrow(targets),
+    n_merged_catalogue_reactions = length(membership_ids),
+    n_reactions_shared_by_cached_union_gems = length(available_ids),
     gene_match = gene_match,
-    layer2_args = layer2_args,
-    parallel = parallel,
-    BPPARAM = BPPARAM,
-    progress = progress
+    expansion_policy = expansion_policy,
+    scoring_policy =
+      "direct_noncore_reactions_present_in_all_final_union_gems",
+    model_policy = "reuse_exact_final_medium_specific_union_gems",
+    stringsAsFactors = FALSE
   )
 
-  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  .rc_mm_write_tsv_gz(
-    answer$selected_anchor_reactions,
-    file.path(outdir, "selected_anchor_reactions.tsv.gz")
+  list(
+    selected_anchor_reactions = selected_anchors,
+    selected_core_reactions = selected_core,
+    selected_noncore_reactions = selected_noncore,
+    expanded_reaction_catalog = catalogue,
+    expanded_scoring_targets = targets,
+    merged_catalogue_membership = merged_reaction_membership,
+    summary = summary,
+    params = list(
+      gene_match = gene_match,
+      selected_anchor_reactions = unique(as.character(
+        selected_anchors$reaction_id
+      )),
+      selected_core_reactions = unique(as.character(
+        selected_core$reaction_id
+      )),
+      selected_noncore_reactions = unique(as.character(
+        selected_noncore$reaction_id
+      )),
+      merged_core_reactions_not_rescored = unique(as.character(
+        catalogue$reaction_id[catalogue$merged_catalogue_is_core]
+      )),
+      cached_union_unavailable_reactions = unique(as.character(
+        catalogue$reaction_id[!catalogue$available_in_all_cached_union_gems]
+      )),
+      score_targets = unique(as.character(targets$reaction_id)),
+      expansion_policy = expansion_policy
+    )
   )
-  .rc_mm_write_tsv_gz(
-    answer$selected_noncore_reactions,
-    file.path(outdir, "selected_noncore_reactions.tsv.gz")
-  )
-  answer$microcompass$params$n_selected_anchors <-
-    nrow(answer$selected_anchor_reactions)
-  answer$microcompass$params$n_selected_core <-
-    nrow(answer$selected_core_reactions)
-  answer$microcompass$params$n_selected_noncore_anchors <-
-    nrow(answer$selected_noncore_reactions)
-  if (nrow(answer$selected_noncore_reactions)) {
-    answer$microcompass$params$target_scope <-
-      "direct_kegg_reactome_master_rhea_noncore_from_any_gem_anchor"
-  }
-  saveRDS(answer, file.path(outdir, "step_target_union.rds"))
-  answer
 }
