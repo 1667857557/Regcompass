@@ -13,7 +13,7 @@
     min_cv_rsq = 0,
     zero_tolerance = 1e-8,
     candidate_screen_threshold = 0,
-    max_edges_per_target = 500L,
+    max_edges_per_target = Inf,
     seed = 12345L
   )
 }
@@ -31,16 +31,22 @@
     )
   }
   out <- modifyList(defaults, args)
-  fraction <- c(
-    "stability_fraction", "min_selection_frequency",
-    "min_sign_stability"
-  )
+  fraction <- c("min_selection_frequency", "min_sign_stability")
   for (name in fraction) {
     value <- out[[name]]
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
         value < 0 || value > 1) {
       stop("`multitask_args$", name, "` must be in [0, 1].", call. = FALSE)
     }
+  }
+  if (!is.numeric(out$stability_fraction) ||
+      length(out$stability_fraction) != 1L ||
+      !is.finite(out$stability_fraction) ||
+      out$stability_fraction <= 0 || out$stability_fraction > 1) {
+    stop(
+      "`multitask_args$stability_fraction` must be in (0, 1].",
+      call. = FALSE
+    )
   }
   if (!is.numeric(out$alpha) || length(out$alpha) != 1L ||
       !is.finite(out$alpha) || out$alpha < 0 || out$alpha >= 1) {
@@ -69,7 +75,7 @@
       stop("`multitask_args$", name, "` must be non-negative.", call. = FALSE)
     }
   }
-  integer_fields <- c("nfolds", "n_stability", "max_edges_per_target", "seed")
+  integer_fields <- c("nfolds", "n_stability", "seed")
   for (name in integer_fields) {
     value <- out[[name]]
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
@@ -79,6 +85,21 @@
            call. = FALSE)
     }
     out[[name]] <- as.integer(value)
+  }
+  max_edges <- out$max_edges_per_target
+  if (!is.numeric(max_edges) || length(max_edges) != 1L ||
+      is.na(max_edges) || max_edges <= 0 ||
+      (is.finite(max_edges) &&
+       abs(max_edges - round(max_edges)) > sqrt(.Machine$double.eps))) {
+    stop(
+      "`multitask_args$max_edges_per_target` must be a positive integer or Inf.",
+      call. = FALSE
+    )
+  }
+  out$max_edges_per_target <- if (is.finite(max_edges)) {
+    as.integer(max_edges)
+  } else {
+    Inf
   }
   out$lambda_rule <- match.arg(
     as.character(out$lambda_rule), c("lambda.1se", "lambda.min")
