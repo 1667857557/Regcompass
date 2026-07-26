@@ -1,5 +1,34 @@
 # Canonical condition-only wrapper loaded after condition_pooling.R.
 
+.rc_strict_stratum_cols <- function(...) {
+  cols <- unname(unlist(list(...), use.names = FALSE))
+  cols <- unique(as.character(cols))
+  cols <- cols[!is.na(cols) & nzchar(cols)]
+  if (length(cols) < 1L) {
+    stop("At least one non-empty metacell stratum field is required.",
+         call. = FALSE)
+  }
+  cols
+}
+
+.rc_add_stratum_id <- function(meta, cols) {
+  missing <- setdiff(cols, colnames(meta))
+  if (length(missing)) {
+    stop(
+      "Missing metacell stratum columns: ",
+      paste(missing, collapse = ", "), call. = FALSE
+    )
+  }
+  invalid <- vapply(meta[, cols, drop = FALSE], function(value) {
+    anyNA(value) || any(!nzchar(trimws(as.character(value))))
+  }, logical(1))
+  if (any(invalid)) {
+    stop("Metacell stratum columns contain missing values.", call. = FALSE)
+  }
+  meta$.rc_stratum_id <- rc_make_stratum_id(meta, cols)
+  meta
+}
+
 .rc_condition_only_pool_col <- function(meta) {
   candidate <- ".rc_condition_pool_id"
   while (candidate %in% colnames(meta)) candidate <- paste0(candidate, "_")
@@ -23,8 +52,10 @@
   required <- unique(c(condition_col, celltype_col))
   missing <- setdiff(required, colnames(object@meta.data))
   if (length(missing)) {
-    stop("Missing metadata columns: ", paste(missing, collapse = ", "),
-         call. = FALSE)
+    stop(
+      "Missing metadata columns: ", paste(missing, collapse = ", "),
+      call. = FALSE
+    )
   }
   invalid <- vapply(
     object@meta.data[, required, drop = FALSE],
@@ -41,15 +72,6 @@
         "and aggregates the existing ATAC peak-count assay."
       ),
       call. = FALSE
-    )
-  }
-  unsupported <- intersect(
-    names(metacell_args), c("sample_balance", "sample_balance_seed")
-  )
-  if (length(unsupported)) {
-    stop(
-      "Biological-sample balancing is not part of the condition-only workflow: ",
-      paste(unsupported, collapse = ", "), call. = FALSE
     )
   }
   reserved <- intersect(names(metacell_args), c(
@@ -85,36 +107,36 @@
   )
 
   # The generic SuperCell2 adapter predates the condition-only workflow and
-  # requires one technical stratum identifier. This private field is generated
-  # exclusively from condition and is never interpreted as biological sample
-  # metadata or exposed in the public result contract.
+  # expects one leading technical pool identifier. The private identifier below
+  # is generated exclusively from condition and is removed from public output.
   internal_pool_col <- .rc_condition_only_pool_col(object@meta.data)
   object@meta.data[[internal_pool_col]] <- paste0(
     as.character(object@meta.data[[condition_col]]), "__condition_pool"
   )
   internal_celltype_col <- .rc_condition_only_celltype_col(object@meta.data)
   object@meta.data[[internal_celltype_col]] <- "all_celltypes"
-  defaults <- list(
-    object = object,
-    outdir = outdir,
-    sample_col = internal_pool_col,
-    condition_col = condition_col,
-    celltype_col = internal_celltype_col,
-    label_col = celltype_col,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    fragment_files = FALSE,
-    save_metacell_object = TRUE,
-    save_counts = TRUE,
-    save_fragments = FALSE,
-    require_fragment_aggregation = FALSE,
-    fragment_aggregation_backend = "none",
-    on_stratum_error = "stop"
+
+  adapter_args <- c(
+    list(object, outdir, internal_pool_col),
+    list(
+      condition_col = condition_col,
+      celltype_col = internal_celltype_col,
+      label_col = celltype_col,
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
+      fragment_files = FALSE,
+      save_metacell_object = TRUE,
+      save_counts = TRUE,
+      save_fragments = FALSE,
+      require_fragment_aggregation = FALSE,
+      fragment_aggregation_backend = "none",
+      on_stratum_error = "stop"
+    )
   )
-  defaults[names(metacell_args)] <- NULL
+  adapter_args[names(metacell_args)] <- NULL
   pooled <- do.call(
     rc_make_supercell2_metacells,
-    c(defaults, metacell_args)
+    c(adapter_args, metacell_args)
   )
   pooled <- .rc_assign_metacell_dominant_celltype(
     pooled = pooled,
@@ -133,7 +155,7 @@
   pooled$condition_col <- condition_col
   pooled$celltype_col <- celltype_col
   pooled$internal_celltype_col <- internal_celltype_col
-  pooled$analysis_pool_col <- internal_pool_col
+  pooled$analysis_pool_col <- "condition_pool_id"
   pooled$pooling_scope <- "condition_only"
   pooled$cache_contract <- cache_contract
   pooled$input_design <- list(
