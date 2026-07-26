@@ -53,3 +53,38 @@
   answer$params$sample_column <- NULL
   answer
 }
+
+.rc_regcompass_step_target_union_sample_core <-
+  rc_regcompass_step_target_union
+
+#' Score direct database-linked reactions without sample aggregation
+#'
+#' @inheritParams rc_regcompass_step_target_union
+#' @export
+rc_regcompass_step_target_union <- function(
+    layer1, meta_modules, layer2, gem, outdir,
+    core_reaction_ids = NULL, core_genes = NULL,
+    gene_match = c("complete_gpr", "any_direct"),
+    layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+    progress = getOption("RegCompassR.progress", TRUE)) {
+  meta_modules$workflow_params$sample_col <- NULL
+  layer1$workflow_params$sample_col <- NULL
+  layer2$workflow_params$sample_col <- NULL
+  answer <- .rc_regcompass_step_target_union_sample_core(
+    layer1 = layer1,
+    meta_modules = meta_modules,
+    layer2 = layer2,
+    gem = gem,
+    outdir = outdir,
+    core_reaction_ids = core_reaction_ids,
+    core_genes = core_genes,
+    gene_match = gene_match,
+    layer2_args = layer2_args,
+    parallel = parallel,
+    BPPARAM = BPPARAM,
+    progress = progress
+  )
+  answer$workflow_params$sample_col <- NULL
+  answer$microcompass$workflow_params$sample_col <- NULL
+  answer
+}
