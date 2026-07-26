@@ -36,7 +36,8 @@
   .rc_result_unique(targets, columns)
 }
 
-.rc_compact_core_reactions <- function(condition_modules) {
+.rc_compact_core_reactions <- function(
+    condition_modules, condition_col, celltype_col) {
   core <- condition_modules$core_gene_reaction
   if (!is.data.frame(core) || !nrow(core)) return(data.frame())
   if ("reaction_is_core" %in% colnames(core)) {
@@ -45,17 +46,18 @@
     core <- core[core$is_core %in% TRUE, , drop = FALSE]
   }
   columns <- c(
-    "group_id", "module_id", "condition", "cell_type", "reaction_id",
+    "group_id", "module_id", condition_col, celltype_col, "reaction_id",
     "reaction_is_core", "n_complete_gpr_branches", "inclusion_stage"
   )
   .rc_result_unique(core, columns)
 }
 
-.rc_compact_meta_module_summary <- function(condition_modules) {
+.rc_compact_meta_module_summary <- function(
+    condition_modules, condition_col, celltype_col) {
   .rc_result_unique(
     condition_modules$meta_module_summary,
     c(
-      "group_id", "module_id", "condition", "cell_type",
+      "group_id", "module_id", condition_col, celltype_col,
       "n_supported_genes", "n_core_reactions", "n_module_reactions"
     )
   )
@@ -74,8 +76,11 @@
 .rc_compact_reaction_evidence <- function(evidence) {
   .rc_result_unique(evidence, c(
     "reaction_id", "condition", "cell_type", "evidence_class",
-    "rna_capacity_median", "multiome_capacity_median",
-    "delta_capacity_median", "n_metacells", "evidence_available"
+    "evidence_resolution", "n_units", "n_rna_supported_genes",
+    "n_atac_modifier_genes", "n_multiome_contributing_genes",
+    "has_rna_evidence", "has_atac_regulatory_evidence",
+    "has_active_multiome_contribution", "median_multiome_capacity_shift",
+    "max_abs_multiome_capacity_shift"
   ))
 }
 
