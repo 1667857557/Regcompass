@@ -1,10 +1,10 @@
 test_that("GRN and metacell groups require bidirectional coverage", {
-  grn <- list(sample_status = data.frame(
+  grn <- list(group_status = data.frame(
     condition = c("A", "B"),
     cell_type = c("T", "T"),
     status = c("ok", "ok"),
     n_cells = c(100L, 120L),
-    n_significant_edges = c(10L, 0L),
+    n_active_edges = c(10L, 0L),
     stringsAsFactors = FALSE
   ))
   metacells <- data.frame(
@@ -19,8 +19,8 @@ test_that("GRN and metacell groups require bidirectional coverage", {
     grn, metacells, "condition", "cell_type"
   )
   expect_true(all(coverage$coverage_complete))
-  expect_true(coverage$has_significant_pando_evidence[coverage$condition == "A"])
-  expect_false(coverage$has_significant_pando_evidence[coverage$condition == "B"])
+  expect_true(coverage$has_active_grn_evidence[coverage$condition == "A"])
+  expect_false(coverage$has_active_grn_evidence[coverage$condition == "B"])
   expect_equal(coverage$n_metacells[coverage$condition == "A"], 2L)
   expect_equal(
     coverage$n_mixed_celltype_metacells[coverage$condition == "A"], 1L
@@ -63,7 +63,7 @@ test_that("condition-only metacells reject tied dominant cell types", {
   )
 })
 
-test_that("metacell stage persists required artifacts", {
+test_that("metacell stage persists required condition-only artifacts", {
   text <- paste(deparse(body(rc_regcompass_step_metacells)), collapse = "\n")
   required <- c(
     "metacell_metadata.tsv.gz",
@@ -74,9 +74,10 @@ test_that("metacell stage persists required artifacts", {
     "step_metacells.rds"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
 })
 
-test_that("Stage 1 persists the shared candidate and condition-edge contract", {
+test_that("Stage 1 persists shared candidates and bootstrap condition edges", {
   text <- paste(
     deparse(body(.rc_run_celltype_multitask_grns)), collapse = "\n"
   )
@@ -86,16 +87,19 @@ test_that("Stage 1 persists the shared candidate and condition-edge contract", {
     "pando_tf_peak_gene_condition_all.tsv.gz",
     "pando_tf_peak_gene_significant.tsv.gz",
     "condition_target_genes.tsv.gz",
-    "pando_target_model_diagnostics.tsv.gz",
-    "pando_edge_stability.tsv.gz",
-    "single_cell_grn.rds"
+    "target_model_diagnostics.tsv.gz",
+    "bootstrap_stability_diagnostics.tsv.gz",
+    "pando_celltype_status.tsv.gz",
+    "pando_group_status.tsv.gz"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
-  expect_match(text, "regcompass_multitask_grn_v1", fixed = TRUE)
+  expect_match(text, "regcompass_multitask_grn_v2", fixed = TRUE)
   expect_match(text, "multitask_shared_backbone", fixed = TRUE)
+  expect_match(text, "condition_stratified_full_size_nonparametric", fixed = TRUE)
+  expect_match(text, "pando_grn_design_v2", fixed = TRUE)
 })
 
-test_that("Stage 3 persists supported genes and core reactions", {
+test_that("Stage 3 persists bootstrap-supported genes and complete cores", {
   text <- paste(
     deparse(body(.rc_build_condition_meta_modules)), collapse = "\n"
   )
@@ -107,19 +111,20 @@ test_that("Stage 3 persists supported genes and core reactions", {
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
   expect_match(text, ".rc_summarize_supported_metabolic_genes", fixed = TRUE)
+  expect_match(text, "group_id", fixed = TRUE)
   expect_false(grepl("rc_project_metabolic_grn", text, fixed = TRUE))
   expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
   expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
 })
 
-test_that("Layer 1 uses the canonical schema and stage class", {
+test_that("Layer 1 uses the condition-only v4 schema and stage class", {
   body_text <- paste(
     deparse(body(.rc_build_condition_pooled_layer1)), collapse = "\n"
   )
   step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
   expect_match(
     body_text,
-    "regcompass_condition_only_layer1_v3",
+    "regcompass_condition_only_layer1_v4",
     fixed = TRUE
   )
   expect_match(
@@ -128,6 +133,8 @@ test_that("Layer 1 uses the canonical schema and stage class", {
     fixed = TRUE
   )
   expect_match(body_text, "and_method = gpr_and_method", fixed = TRUE)
+  expect_match(body_text, "bootstrap-stable", fixed = TRUE)
+  expect_false("sample_col" %in% names(formals(.rc_build_condition_pooled_layer1)))
   expect_match(step_text, "regcompass_layer1_step", fixed = TRUE)
   expect_match(step_text, "gem_fingerprint", fixed = TRUE)
   expect_match(step_text, "workflow_params", fixed = TRUE)
@@ -146,7 +153,7 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(
     result_text,
-    "regcompass_multitask_condition_subgrn_v1",
+    "regcompass_multitask_condition_subgrn_v2",
     fixed = TRUE
   )
   expect_match(result_text, 'version = "1.8.8"', fixed = TRUE)
