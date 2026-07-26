@@ -12,12 +12,12 @@ Description: Fits condition-by-cell-type Pando models for Human-GEM or
     without local FASTCORE completion. For each medium scenario, the package
     constructs one shared union GEM and performs a single global FASTCORE
     completion before directional COMPASS-like scoring. Integrated RNA and ATAC
-    evidence is converted to reaction penalties. A post-Layer-2 step can score
-    non-core reactions directly sharing KEGG, Reactome, or master-Rhea
-    identifiers with selected cores in the exact cached medium-specific union
-    GEM used for the original analysis. Pinned human and mouse GEMs are bundled
-    for offline use, with platform-aware parallel execution and audited progress
-    and timing output.
+    evidence is converted to reaction penalties. A post-Layer-2 step can use
+    any GEM reaction as a direct KEGG, Reactome, or master-Rhea mapping anchor
+    and score linked non-core reactions in the exact cached medium-specific
+    union GEM used for the original analysis. Pinned human and mouse GEMs are
+    bundled for offline use, with platform-aware parallel execution and audited
+    progress and timing output.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -56,6 +56,7 @@ Collate:
     'union_gem_cache.R'
     'microcompass_engine.R'
     'target_union.R'
+    'target_union_anchors.R'
     'pando_evidence_utils.R'
     'pando_grn.R'
     'shared_tfidf.R'
