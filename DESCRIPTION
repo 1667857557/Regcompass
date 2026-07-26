@@ -17,8 +17,8 @@ Description: Builds one validated Pando structural TF-peak-target candidate
     converted to reaction penalties while preserving the same stoichiometric
     model across conditions. The canonical workflow is condition based and uses
     the current SuperCell2 strata-plus-label contract without a sample-column
-    argument. Final results retain primary analysis tables and stage references,
-    while detailed intermediate objects remain in their stage checkpoints.
+    argument. Final results retain primary analysis tables and compact Layer 2
+    scores, while detailed intermediate objects remain in stage checkpoints.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -63,6 +63,7 @@ Collate:
     'microcompass_no_sample_contract.R'
     'target_union.R'
     'target_union_anchors.R'
+    'target_union_no_sample_contract.R'
     'pando_evidence_utils.R'
     'pando_grn.R'
     'shared_tfidf.R'
@@ -90,6 +91,7 @@ Collate:
     'penalty.R'
     'reaction_roles.R'
     'result_compaction.R'
+    'microcompass_result_compaction.R'
     'stepwise_workflow.R'
     'step_meta_modules.R'
     'step_layer1.R'
