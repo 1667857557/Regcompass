@@ -201,16 +201,10 @@
   answer
 }
 
-#' Score database-linked non-core reactions from GEM reaction anchors
-#'
-#' `core_reaction_ids` and `core_genes` are retained as public argument names for
-#' compatibility. They may resolve to either original Layer 2 core reactions or
-#' other reactions in the supplied GEM. Anchors are used only for direct KEGG,
-#' Reactome, or master-Rhea remapping. A remapped target is scored only when it
-#' is non-core and present in every required cached Stage 5 union GEM.
-#'
-#' @inheritParams rc_regcompass_step_target_union
-#' @export
+# Public wrapper retaining the existing argument names. Reaction and gene
+# selectors may resolve to original cores or other reactions in the supplied
+# GEM. The existing implementation performs cache validation and LP scoring;
+# this wrapper adds anchor-specific outputs and metadata.
 rc_regcompass_step_target_union <- function(
     layer1, meta_modules, layer2, gem, outdir,
     core_reaction_ids = NULL, core_genes = NULL,
