@@ -1,6 +1,6 @@
 # Tutorial Level 3: restart, sensitivity, and diagnostics
 
-RegCompass saves classed stage objects so downstream stages can be rerun without repeating unchanged work. Objects from incompatible runs are rejected through workflow settings, GEM fingerprints and ordered-unit contracts.
+RegCompass saves classed stage objects so downstream stages can be rerun without repeating unchanged work. Incompatible workflow settings, GEM fingerprints, and ordered-unit contracts are rejected.
 
 ## Load a completed stepwise run
 
@@ -18,17 +18,17 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 
 Rerun Stage 1 and every downstream stage after changing:
 
-- motif matrices, genome or Pando regulatory regions;
+- motif matrices, genome, or Pando regulatory regions;
 - `pando_design_args`, including peak-to-gene domains or structural detection filters;
-- `multitask_args`, including elastic-net penalties, lambda rule, folds, stability repetitions or thresholds;
+- `multitask_args`, including elastic-net penalties, lambda rule, condition-stratified folds, `n_bootstrap`, or active-edge thresholds;
 - `grn_mode`;
-- biological sample, condition or cell-type metadata;
+- condition or cell-type metadata;
 - single-cell RNA or ATAC matrices;
 - GEM GPR target genes.
 
-The canonical Stage 1 object records the candidate universe, global coefficients, all condition coefficients, active edges and stability diagnostics. Changing only downstream plots does not require Stage 1 to be rerun.
+The canonical workflow does not accept a biological-sample column. Stage 1 centring, CV, and bootstrap are condition based.
 
-Legacy `padj_threshold`, `min_abs_estimate`, `min_model_rsq` and `pando_infer_args` apply only when:
+Legacy `padj_threshold`, `min_abs_estimate`, `min_model_rsq`, and `pando_infer_args` apply only under:
 
 ```r
 grn_mode = "legacy_condition_pando"
@@ -42,17 +42,19 @@ Rerun metacells and downstream stages after changing:
 - RNA/ATAC matrices used for aggregation;
 - condition or cell-type metadata;
 - RNA/ATAC reductions or dimensions;
-- `gamma`, seed or metacell thresholds.
+- `gamma`, seed, or metacell thresholds.
 
-Changing the Stage 1 GRN without changing the underlying cells does not require Stage 2 itself to be rebuilt, but Stage 3 onward must be rerun because supported condition genes may change.
+Condition remains the only hard stratum. Cell type is the SuperCell2 label. No sample balancing or sample composition is calculated.
+
+Changing Stage 1 without changing cells does not require Stage 2 to be rebuilt, but Stage 3 onward must be rerun because condition target genes may change.
 
 ### Rerun Stage 3 onward
 
 Rerun condition meta-modules and downstream stages after changing:
 
-- active condition sub-GRN edges or target genes;
+- active bootstrap-stable condition edges or target genes;
 - a custom `meta_module_args$subsystem_table`;
-- subsystem, KEGG, Reactome or master-Rhea annotations;
+- subsystem, KEGG, Reactome, or master-Rhea annotations;
 - GEM GPR rules.
 
 Stage 3 always performs one ordered pass:
@@ -70,7 +72,7 @@ complete-GPR cores
 Rerun Layer 1 and downstream stages after changing:
 
 - `regulatory_alpha`;
-- `gpr_and_method` among `min`, `median` and `mean`;
+- `gpr_and_method` among `min`, `median`, and `mean`;
 - gene or ATAC half-saturation options;
 - metacell RNA or ATAC evidence;
 - Stage 1 stable coefficients or ATAC projection weights.
@@ -82,14 +84,14 @@ The default GPR-AND method is `min`.
 Rerun Layer 2 and results after changing:
 
 - medium composition or exchange bounds;
-- `target_direction`, `omega`, solver or `flux_threshold`;
-- `completion_time_limit`, `fastcore_epsilon`, `max_support_reactions` or `strict` in `layer2_args$model_params`;
+- `target_direction`, `omega`, solver, or `flux_threshold`;
+- `completion_time_limit`, `fastcore_epsilon`, `max_support_reactions`, or `strict`;
 - Stage 3 merged reaction membership;
 - Stage 4 reaction penalties.
 
 `completion_time_limit` applies only to construction of the medium-specific union GEM. Scoring LPs do not accept a time-limit parameter.
 
-## Stage 1 sensitivity example
+## Stage 1 bootstrap sensitivity example
 
 ```r
 step1_sensitive <- rc_regcompass_step_grn(
@@ -98,7 +100,6 @@ step1_sensitive <- rc_regcompass_step_grn(
   outdir = "RegCompass_restart/01_grn_sensitive",
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
-  sample_col = "sample_id",
   condition_col = "Group",
   celltype_col = "cell_type",
   grn_mode = "multitask_shared_backbone",
@@ -116,8 +117,8 @@ step1_sensitive <- rc_regcompass_step_grn(
     global_penalty_factor = 1,
     deviation_penalty_factor = 3,
     lambda_rule = "lambda.1se",
-    n_stability = 100,
-    stability_fraction = 0.8,
+    nfolds = 5,
+    n_bootstrap = 200,
     min_selection_frequency = 0.8,
     min_sign_stability = 0.9,
     candidate_screen_threshold = 0,
@@ -127,15 +128,29 @@ step1_sensitive <- rc_regcompass_step_grn(
 )
 ```
 
-Compare candidate and active-edge counts by cell type and condition rather than comparing coefficient tables without confirming their shared universe IDs:
+Increasing `n_bootstrap` reduces Monte Carlo error in `selection_frequency` and `sign_stability`; it does not add independent biological replicates. Compare candidate and active-edge counts only after confirming shared `edge_universe_id` values:
 
 ```r
 step1$grn_result$celltype_fit_status
 step1_sensitive$grn_result$celltype_fit_status
 
+unique(step1$grn_result$tf_peak_gene_candidates$edge_universe_id)
+unique(step1_sensitive$grn_result$tf_peak_gene_candidates$edge_universe_id)
+
 table(step1$grn_result$tf_peak_gene_significant$Group)
 table(step1_sensitive$grn_result$tf_peak_gene_significant$Group)
 ```
+
+Inspect bootstrap completion before interpreting stability:
+
+```r
+with(
+  step1_sensitive$grn_result$target_model_diagnostics,
+  summary(n_bootstrap_success / n_bootstrap_requested)
+)
+```
+
+Targets with failed bootstrap fits should be diagnosed rather than treated as low biological stability.
 
 ## Rerun Stage 4 with another GPR-AND rule
 
@@ -204,4 +219,4 @@ model <- readRDS(summary$file[[1]])
 table(model$closure_diagnostics$completion_status)
 ```
 
-Common statuses include `already_feasible`, `global_fastcore_completed`, `parent_blocked`, `unresolved` and `no_allowed_direction`.
+Common statuses include `already_feasible`, `global_fastcore_completed`, `parent_blocked`, `unresolved`, and `no_allowed_direction`.
