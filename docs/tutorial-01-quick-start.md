@@ -5,10 +5,10 @@ Use this tutorial for paired single-cell RNA+ATAC data and RegCompassR 1.8.8.
 ## Workflow
 
 ```text
-one shared Pando TF–peak–target background per cell type
-→ global GRN backbone + condition deviations
-→ stability-selected condition sub-GRNs
-→ condition-specific metabolic target genes
+one validated Pando TF–peak–target background per cell type
+→ global GRN backbone + symmetric condition deviations
+→ full-size condition-stratified bootstrap stability
+→ condition-specific sub-GRNs and metabolic target genes
 → complete-GPR condition core reactions
 → one ordered subsystem/cross-reference expansion pass
 → one shared medium-specific union GEM
@@ -36,7 +36,7 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-The object must contain paired RNA and ATAC measurements, `condition_col`, `celltype_col`, and optionally a biological `sample_col`. RegCompass normalises RNA globally and ATAC with one TF-IDF reference per cell type across conditions.
+The object must contain paired RNA and ATAC measurements and complete metadata columns supplied as `condition_col` and `celltype_col`. The canonical workflow does not accept a biological-sample column. RNA is normalised globally, and ATAC uses one TF-IDF reference per cell type across conditions.
 
 When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")`. Default regulatory regions are:
 
@@ -57,7 +57,6 @@ result <- rc_run_regcompass_one_shot(
 
   condition_col = "Group",
   celltype_col = "cell_type",
-  sample_col = "sample_id",
 
   # Stage 1: shared candidate background and condition sub-GRNs
   grn_mode = "multitask_shared_backbone",
@@ -76,8 +75,7 @@ result <- rc_run_regcompass_one_shot(
     deviation_penalty_factor = 2,
     lambda_rule = "lambda.1se",
     nfolds = 5,
-    n_stability = 50,
-    stability_fraction = 0.8,
+    n_bootstrap = 100,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
     candidate_screen_threshold = 0,
@@ -85,7 +83,7 @@ result <- rc_run_regcompass_one_shot(
     seed = 12345L
   ),
 
-  # Stage 2: condition-level metacells
+  # Stage 2: condition-only, cell-type-label-guided metacells
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
@@ -125,25 +123,30 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
+The package default is `n_bootstrap = 50L`; `100` is shown for a final analysis with a more stable empirical selection-frequency estimate.
+
 ## Stage 1 parameters
 
 | Parameter | Default | Meaning |
 |---|---:|---|
 | `min_cells` | `20L` | Minimum cells in every condition of a cell type. |
-| `alpha` | `0.5` | Elastic-net mixing value. It must be below one so the symmetric deviation solution has a ridge component. |
+| `alpha` | `0.5` | Elastic-net mixing value; it must remain below one so the symmetric deviation solution contains a ridge component. |
 | `global_penalty_factor` | `1` | Penalty factor for the shared backbone. |
-| `deviation_penalty_factor` | `2` | Stronger shrinkage for condition deviations. |
-| `n_stability` | `25L` | Repeated stratified subsamples. Use a larger value for final analyses. |
-| `min_selection_frequency` | `0.7` | Minimum fraction of successful subsamples selecting the condition edge. |
-| `min_sign_stability` | `0.8` | Minimum conditional sign agreement. |
-| `candidate_screen_threshold` | `0` | Default retains the complete structural Pando candidate universe. |
-| `max_edges_per_target` | `Inf` | Default does not truncate the shared candidate universe. |
+| `deviation_penalty_factor` | `2` | Stronger default shrinkage for condition deviations. |
+| `nfolds` | `5L` | Maximum number of condition-stratified cell-level CV folds. |
+| `n_bootstrap` | `50L` | Full-size nonparametric bootstrap replicates, sampled with replacement within each condition. |
+| `min_selection_frequency` | `0.7` | Minimum fraction of successful bootstrap fits selecting the condition edge. |
+| `min_sign_stability` | `0.8` | Minimum conditional sign agreement among selected bootstrap fits. |
+| `candidate_screen_threshold` | `0` | Retains the complete structural Pando candidate universe by default. |
+| `max_edges_per_target` | `Inf` | Does not truncate the shared candidate universe by default. |
 
-The multitask model does not assign classical adjusted p-values to regularised coefficients. `padj` is `NA`; edge support is defined by stability selection and target-model cross-validated reliability.
+For every bootstrap replicate, each condition contributes exactly its original cell count, sampled with replacement. The resampled target and TF-by-ATAC predictors are re-centred within condition before refitting at the full-data selected lambda.
+
+The multitask model does not assign classical adjusted p-values to regularised coefficients. `padj` is `NA`; edge support is defined by bootstrap selection frequency, conditional sign stability, the full-data absolute effect, and target-model cross-validated reliability.
 
 ## Core reaction rule
 
-For condition target set `G_c`, reaction `r` becomes a core only when one complete GPR branch is present:
+For condition target set `G_c`, reaction `r` becomes core only when one complete GPR branch is present:
 
 \[
 Core_{r,c}=1\iff\exists k:B_{r,k}\subseteq G_c.
@@ -159,6 +162,8 @@ result$grn$tf_peak_gene_global
 result$grn$tf_peak_gene_condition_all
 result$grn$tf_peak_gene_significant
 result$grn$condition_target_genes
+result$grn$stability_diagnostics
+result$grn$group_status
 
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
