@@ -15,7 +15,10 @@ rc_make_supercell2_metacells(object, outdir,
   fragment_files = FALSE, bgzip_path = "bgzip", tabix_path = "tabix",
   fragment_nb_cl = 1L, save_metacell_object = TRUE,
   save_counts = TRUE, overwrite = FALSE, BPPARAM = NULL,
-  on_stratum_error = c("record", "stop"), ...)
+  on_stratum_error = c("record", "stop"),
+  call_peaks_from_fragments = TRUE, macs2_path = NULL,
+  peak_calling_effective_genome_size = NULL,
+  peak_calling_args = list(), ...)
 }
 \arguments{
 \item{object}{A preprocessed paired RNA+ATAC Seurat object.}
@@ -33,11 +36,15 @@ rc_make_supercell2_metacells(object, outdir,
 \item{fragment_files}{\code{FALSE} for aggregation of the existing ATAC peak-count assay, one fragment path, a list named by exact RegCompass stratum ID, or a manifest with \code{stratum_id} and \code{fragment_file}.}
 \item{bgzip_path, tabix_path}{Executables used when SuperCell2 aggregates fragment files.}
 \item{fragment_nb_cl}{Worker count passed to SuperCell2 fragment aggregation.}
-\item{save_metacell_object}{Save each per-stratum Seurat metacell object.}
+\item{save_metacell_object}{Save each per-stratum Seurat metacell object. Required for fragment recounting.}
 \item{save_counts}{Save per-stratum RNA and ATAC count matrices. This must be \code{TRUE}.}
-\item{overwrite}{Rebuild existing complete stratum checkpoints.}
+\item{overwrite}{Rebuild existing complete stratum checkpoints and fragment recounts.}
 \item{BPPARAM}{Optional BiocParallel parameter object for the RegCompass stratum loop.}
 \item{on_stratum_error}{Record failed strata or stop immediately.}
+\item{call_peaks_from_fragments}{When fragment files are supplied, call de novo peaks from aggregated metacell fragments before recomputing the ATAC matrix.}
+\item{macs2_path}{Optional MACS2 executable used for de novo peak calling.}
+\item{peak_calling_effective_genome_size}{Optional effective genome size passed to peak calling.}
+\item{peak_calling_args}{Additional peak-calling arguments.}
 \item{...}{Additional formal arguments of the installed \code{SuperCell::SCimplify_for_Seurat()} function. Unknown arguments are rejected.}
 }
 \description{
@@ -52,8 +59,9 @@ through SuperCell2's \code{label} argument. Membership is audited after
 aggregation, and downstream Layer 1 rejects mixed-label metacells.
 
 When \code{fragment_files = FALSE}, the existing ATAC peak-count assay is
-aggregated. Fragment provenance, when requested, is keyed by exact RegCompass
-stratum IDs rather than by a biological-sample column.
+aggregated. When fragment files are supplied, SuperCell2 produces a stratum-keyed
+fragment manifest and RegCompass optionally calls peaks and recomputes the ATAC
+counts from those metacell fragments. No biological-sample column is involved.
 }
 \value{
 A list containing aligned metacell metadata, membership, RNA and ATAC count
