@@ -66,6 +66,7 @@ Collate:
     'grn_inference.R'
     'pando_grn_group_contract.R'
     'multitask_grn.R'
+    'multitask_grn_bootstrap_contract.R'
     'multitask_grn_active_contract.R'
     'multitask_grn_inference.R'
     'regulatory_modifier.R'
