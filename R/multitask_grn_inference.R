@@ -1,6 +1,5 @@
 .rc_run_celltype_multitask_grns <- function(
     object, gem, outdir, pfm = NULL, genome,
-    sample_col = NULL,
     condition_col = "condition", celltype_col = "cell_type",
     rna_assay = "RNA", atac_assay = "ATAC",
     min_cells = 20L,
@@ -25,7 +24,9 @@
     stop("`save_pando_objects` must be TRUE or FALSE.", call. = FALSE)
   }
   for (value in list(pando_initiate_args, pando_motif_args, pando_design_args)) {
-    if (!is.list(value)) stop("Pando argument bundles must be lists.", call. = FALSE)
+    if (!is.list(value)) {
+      stop("Pando argument bundles must be lists.", call. = FALSE)
+    }
   }
   multitask_args <- .rc_validate_multitask_grn_args(multitask_args)
   if (!inherits(object, "Seurat")) {
@@ -35,18 +36,22 @@
     stop("Install 1667857557/Pando_regcompass before GRN inference.",
          call. = FALSE)
   }
-  if (!exists("prepare_grn_design", envir = asNamespace("Pando"),
+  pando_version <- tryCatch(
+    utils::packageVersion("Pando"), error = function(error) NULL
+  )
+  if (is.null(pando_version) || pando_version < "1.1.3" ||
+      !exists("prepare_grn_design", envir = asNamespace("Pando"),
               inherits = FALSE) ||
       !exists("validate_grn_design", envir = asNamespace("Pando"),
               inherits = FALSE)) {
     stop(
-      "Installed Pando lacks the shared GRN design API. Install Pando >= 1.1.2 ",
-      "from 1667857557/Pando_regcompass.",
-      call. = FALSE
+      "Multitask GRN inference requires Pando >= 1.1.3 from ",
+      "1667857557/Pando_regcompass.", call. = FALSE
     )
   }
   if (!requireNamespace("glmnet", quietly = TRUE)) {
-    stop("Package 'glmnet' is required for multitask GRN inference.", call. = FALSE)
+    stop("Package 'glmnet' is required for multitask GRN inference.",
+         call. = FALSE)
   }
   pando_install <- .rc_validate_pando_repository()
   motif_policy <- "user_supplied"
@@ -57,11 +62,18 @@
   if (!length(pfm)) stop("`pfm` must be non-empty.", call. = FALSE)
 
   required_meta <- c(condition_col, celltype_col)
-  if (!is.null(sample_col)) required_meta <- c(required_meta, sample_col)
   missing <- setdiff(required_meta, colnames(object@meta.data))
   if (length(missing)) {
     stop("Missing metadata columns: ", paste(missing, collapse = ", "),
          call. = FALSE)
+  }
+  invalid_meta <- vapply(
+    object@meta.data[, required_meta, drop = FALSE],
+    function(x) anyNA(x) || any(!nzchar(trimws(as.character(x)))),
+    logical(1)
+  )
+  if (any(invalid_meta)) {
+    stop("Condition and cell-type metadata must be complete.", call. = FALSE)
   }
   .rc_require_normalized_assay(object, rna_assay, "RNA")
   .rc_require_normalized_assay(object, atac_assay, "ATAC")
@@ -108,27 +120,24 @@
   meta <- object@meta.data
   meta[[condition_col]] <- trimws(as.character(meta[[condition_col]]))
   meta[[celltype_col]] <- trimws(as.character(meta[[celltype_col]]))
-  if (!is.null(sample_col)) {
-    meta[[sample_col]] <- trimws(as.character(meta[[sample_col]]))
-  }
   celltypes <- sort(unique(meta[[celltype_col]]))
   conditions <- sort(unique(meta[[condition_col]]))
   expected_groups <- expand.grid(
-    condition = conditions,
-    cell_type = celltypes,
+    condition_value = conditions,
+    celltype_value = celltypes,
     stringsAsFactors = FALSE
   )
   names(expected_groups) <- c(condition_col, celltype_col)
-  expected_groups$group_id <- rc_make_stratum_id(expected_groups, c(
-    condition_col, celltype_col
-  ))
+  expected_groups$group_id <- rc_make_stratum_id(
+    expected_groups, c(condition_col, celltype_col)
+  )
 
   run_one_celltype <- function(celltype_value) {
     cells <- rownames(meta)[meta[[celltype_col]] == celltype_value]
     cell_meta <- meta[cells, , drop = FALSE]
     count <- table(factor(cell_meta[[condition_col]], levels = conditions))
     status <- data.frame(
-      cell_type = celltype_value,
+      celltype_value = celltype_value,
       n_cells = length(cells),
       n_conditions = sum(count > 0),
       min_cells_per_condition = if (length(count)) min(count) else 0,
@@ -176,6 +185,10 @@
         c(design_defaults, pando_design_args)
       )
       Pando::validate_grn_design(design)
+      if (!identical(design$schema_version, "pando_grn_design_v2")) {
+        stop("Pando did not return the required version-2 GRN design contract.",
+             call. = FALSE)
+      }
       rna <- .rc_pando_assay_data(obj, rna_assay)
       atac <- .rc_pando_assay_data(obj, atac_assay)
       fit <- .rc_fit_multitask_celltype_grn(
@@ -184,7 +197,6 @@
         atac = atac,
         meta = cell_meta,
         condition_col = condition_col,
-        sample_col = sample_col,
         multitask_args = multitask_args
       )
       candidates <- design$candidate_edges
@@ -275,23 +287,23 @@
     "group_id", condition_col, celltype_col,
     setdiff(colnames(condition_all), c("group_id", condition_col, celltype_col))
   ), drop = FALSE]
-  significant <- condition_all[condition_all$active_edge %in% TRUE, , drop = FALSE]
+  significant <- condition_all[
+    condition_all$active_edge %in% TRUE, , drop = FALSE
+  ]
   if (!nrow(significant)) {
-    stop("No stability-selected multitask TF-peak-gene edges were available.",
+    stop("No bootstrap-stable multitask TF-peak-gene edges were available.",
          call. = FALSE)
   }
 
   condition_targets <- unique(significant[, c(
     "group_id", condition_col, celltype_col, "target"
   ), drop = FALSE])
-  active_key <- paste(
-    significant$group_id, significant$target, sep = "\001"
-  )
+  active_key <- paste(significant$group_id, significant$target, sep = "\001")
   condition_targets$n_active_edges <- as.integer(table(active_key)[paste(
     condition_targets$group_id, condition_targets$target, sep = "\001"
   )])
   condition_targets$evidence_definition <-
-    "stability_selected_multitask_tf_peak_gene_target"
+    "bootstrap_stability_selected_multitask_tf_peak_gene_target"
 
   status_rows <- lapply(seq_len(nrow(expected_groups)), function(i) {
     one <- expected_groups[i, , drop = FALSE]
@@ -299,31 +311,31 @@
       meta[[celltype_col]] == one[[celltype_col]]
     selected_edges <- significant[[condition_col]] == one[[condition_col]] &
       significant[[celltype_col]] == one[[celltype_col]]
+    selected_targets <- condition_targets[[condition_col]] == one[[condition_col]] &
+      condition_targets[[celltype_col]] == one[[celltype_col]]
     data.frame(
-      group_id = one$group_id,
-      one[, c(condition_col, celltype_col), drop = FALSE],
+      one,
       n_cells = sum(selected_cells),
-      n_target_genes = length(target_genes),
-      n_significant_edges = sum(selected_edges),
+      n_active_edges = sum(selected_edges),
+      n_active_targets = sum(selected_targets),
       status = "ok",
       stringsAsFactors = FALSE,
       check.names = FALSE
     )
   })
-  sample_status <- do.call(rbind, status_rows)
-  stability <- condition_all[, intersect(c(
-    "group_id", condition_col, celltype_col, "edge_id", "tf", "region",
-    "target", "effective_estimate", "selection_frequency",
-    "sign_stability", "stability_weight", "stable_estimate", "active_edge",
-    "sign_flip_flag", "cv_rsq"
-  ), colnames(condition_all)), drop = FALSE]
+  group_status <- do.call(rbind, status_rows)
+  rownames(group_status) <- NULL
 
-  .rc_mm_write_tsv_gz(
-    celltype_status, file.path(outdir, "pando_celltype_fit_status.tsv.gz")
-  )
-  .rc_mm_write_tsv_gz(
-    sample_status, file.path(outdir, "pando_group_status.tsv.gz")
-  )
+  stability_columns <- intersect(c(
+    "group_id", condition_col, celltype_col, "edge_universe_id",
+    "edge_id", "tf", "region", "atac_feature_id", "target",
+    "global_estimate", "condition_deviation", "effective_estimate",
+    "selection_frequency", "sign_stability", "stability_weight",
+    "stable_estimate", "active_edge", "sign_flip_flag", "cv_rsq",
+    "bootstrap_method", "n_bootstrap_requested", "n_bootstrap_success"
+  ), colnames(condition_all))
+  stability <- condition_all[, stability_columns, drop = FALSE]
+
   .rc_mm_write_tsv_gz(
     candidates, file.path(outdir, "pando_tf_peak_gene_candidates.tsv.gz")
   )
@@ -334,29 +346,28 @@
     condition_all, file.path(outdir, "pando_tf_peak_gene_condition_all.tsv.gz")
   )
   .rc_mm_write_tsv_gz(
-    condition_all, file.path(outdir, "pando_tf_peak_gene_all.tsv.gz")
-  )
-  .rc_mm_write_tsv_gz(
     significant, file.path(outdir, "pando_tf_peak_gene_significant.tsv.gz")
   )
   .rc_mm_write_tsv_gz(
     condition_targets, file.path(outdir, "condition_target_genes.tsv.gz")
   )
   .rc_mm_write_tsv_gz(
-    diagnostics, file.path(outdir, "pando_target_model_diagnostics.tsv.gz")
+    diagnostics, file.path(outdir, "target_model_diagnostics.tsv.gz")
   )
   .rc_mm_write_tsv_gz(
-    stability, file.path(outdir, "pando_edge_stability.tsv.gz")
+    stability, file.path(outdir, "bootstrap_stability_diagnostics.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    celltype_status, file.path(outdir, "pando_celltype_status.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    group_status, file.path(outdir, "pando_group_status.tsv.gz")
   )
 
-  answer <- list(
-    schema_version = "regcompass_multitask_grn_v1",
+  list(
+    schema_version = "regcompass_multitask_grn_v2",
     grn_mode = "multitask_shared_backbone",
-    pando_installed_version = pando_install$version,
-    pando_installation = pando_install,
     target_metabolic_genes = target_genes,
-    celltype_fit_status = celltype_status,
-    sample_status = sample_status,
     tf_peak_gene_candidates = candidates,
     tf_peak_gene_global = global,
     tf_peak_gene_condition_all = condition_all,
@@ -365,30 +376,44 @@
     condition_target_genes = condition_targets,
     target_model_diagnostics = diagnostics,
     stability_diagnostics = stability,
-    multitask_params = multitask_args,
+    celltype_fit_status = celltype_status,
+    group_status = group_status,
+    group_cols = c(condition_col, celltype_col),
+    pando_objects = if (isTRUE(save_pando_objects)) {
+      file.path(outdir, "pando_objects")
+    } else {
+      NULL
+    },
+    pando_designs = if (isTRUE(save_pando_objects)) {
+      file.path(outdir, "pando_designs")
+    } else {
+      NULL
+    },
     normalization_policy = list(
-      rna = "global single-cell NormalizeData before cell-type multitask fitting",
-      atac = "cell-type-shared TF-IDF across conditions",
-      candidate_background = paste(
-        "one Pando structural TF-peak-target universe per cell type shared",
-        "by all conditions"
+      rna = "log-normalized RNA",
+      atac = normalization,
+      candidate_background =
+        "one validated Pando structural design per cell type across conditions",
+      residualization = "condition-centred target and TF-by-ATAC predictors",
+      condition_balance = "equal total regression loss weight per condition",
+      condition_parameterization =
+        "global coefficient plus symmetric zero-sum condition deviations",
+      stability = paste(
+        "full-size nonparametric bootstrap with replacement within each",
+        "condition; bootstrap samples are re-centred within condition and",
+        "fitted at the full-data selected lambda"
       ),
-      coefficient_model =
-        "condition effective coefficient = global backbone + sum-contrast deviation",
-      residualization = if (is.null(sample_col)) {
-        "condition mean removed from target and TF-peak activity"
-      } else {
-        "sample mean removed from target and TF-peak activity"
-      },
-      condition_balance = "equal total loss weight per condition",
+      downstream_projection = paste(
+        "bootstrap-stable TF-peak-target coefficients are projected with",
+        "metacell ATAC only; condition-specific TF RNA is not reused"
+      ),
       pando_motifs = motif_policy,
       pando_regions = region_policy,
-      pando_peak_cor = NA_real_,
-      pando_design_args = pando_design_args,
-      multitask_args = multitask_args
+      pando_design_schema = "pando_grn_design_v2"
     ),
-    group_cols = c(condition_col, celltype_col)
+    multitask_args = multitask_args,
+    pando_installation = pando_install,
+    pando_version = as.character(pando_version),
+    species = species
   )
-  saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
-  answer
 }
