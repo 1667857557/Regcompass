@@ -6,7 +6,7 @@ test_that("symmetric condition coding has a zero-sum deviation basis", {
   expect_equal(rownames(contrast), c("control", "other", "treated"))
   expect_equal(rowSums(contrast), rep(0, 3), tolerance = 1e-12)
   expect_equal(colSums(contrast), rep(0, 3), tolerance = 1e-12)
-  expect_equal(contrast, diag(3) - matrix(1 / 3, 3, 3))
+  expect_equal(unname(contrast), diag(3) - matrix(1 / 3, 3, 3))
 })
 
 test_that("decoded condition deviations sum to zero and preserve global mean", {
@@ -76,7 +76,7 @@ test_that("different condition gene sets produce different complete-GPR cores", 
     gene = c("G1", "G2", "G3", "G1"),
     stringsAsFactors = FALSE
   )
-  mapped <- rc_map_meta_module_core_reactions(genes, gpr)
+  mapped <- RegCompassR:::rc_map_meta_module_core_reactions(genes, gpr)
 
   a_core <- unique(mapped$reaction_id[
     mapped$sample_id == "A" & mapped$is_core %in% TRUE
