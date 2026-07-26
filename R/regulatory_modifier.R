@@ -24,7 +24,7 @@
   missing_edges <- setdiff(required_edges, colnames(significant_edges))
   if (length(missing_edges)) {
     stop(
-      "Pando edge table is missing columns: ",
+      "GRN edge table is missing columns: ",
       paste(missing_edges, collapse = ", "),
       call. = FALSE
     )
@@ -55,97 +55,138 @@
     dimnames = list(genes, units)
   )
   attr(modifier, "reliability_policy") <- paste(
-    "only finite Pando R-squared values are trusted; targets without finite",
-    "R-squared receive regulatory reliability zero"
+    "joint cross-validated target R-squared is preferred; legacy finite",
+    "Pando R-squared is used only when cross-validated R-squared is absent"
+  )
+  attr(modifier, "projection_policy") <- paste(
+    "TF-peak-target stable coefficients are converted to ATAC-only projection",
+    "weights; TFs sharing one peak are signed-summed; each target uses one",
+    "cell-type-wide denominator shared across conditions"
   )
   if (!nrow(significant_edges) || !length(genes)) return(modifier)
 
   edges <- significant_edges
-  rsq <- if ("rsq" %in% colnames(edges)) {
-    suppressWarnings(as.numeric(edges$rsq))
-  } else {
-    rep(NA_real_, nrow(edges))
-  }
-  edges <- edges[is.finite(rsq), , drop = FALSE]
-  if (!nrow(edges)) return(modifier)
   edges$target <- toupper(trimws(as.character(edges$target)))
   edges$tf <- toupper(trimws(as.character(edges$tf)))
   edges$region <- trimws(as.character(edges$region))
   edges$estimate <- suppressWarnings(as.numeric(edges$estimate))
+  projection_weight <- if ("atac_projection_weight" %in% colnames(edges)) {
+    suppressWarnings(as.numeric(edges$atac_projection_weight))
+  } else {
+    edges$estimate
+  }
+  edges$.projection_weight <- projection_weight
   edges <- edges[
     !is.na(edges$target) & nzchar(edges$target) &
       !is.na(edges$tf) & nzchar(edges$tf) &
       !is.na(edges$region) & nzchar(edges$region) &
-      is.finite(edges$estimate) & edges$estimate != 0,
+      is.finite(edges$estimate) & is.finite(edges$.projection_weight) &
+      edges$.projection_weight != 0,
     , drop = FALSE
   ]
   if (!nrow(edges)) return(modifier)
 
   atac <- .rc_pando_assay_data(object, atac_assay)
-  peak_keys <- toupper(.rc_pando_region_key(rownames(atac)))
-  peak_keep <- !is.na(peak_keys) & nzchar(peak_keys) & !duplicated(peak_keys)
-  peak_lookup <- stats::setNames(rownames(atac)[peak_keep], peak_keys[peak_keep])
-  edges$.peak_id <- unname(
-    peak_lookup[toupper(.rc_pando_region_key(edges$region))]
-  )
+  if ("atac_feature_id" %in% colnames(edges)) {
+    feature <- trimws(as.character(edges$atac_feature_id))
+    feature[!feature %in% rownames(atac)] <- NA_character_
+    edges$.peak_id <- feature
+  } else {
+    peak_keys <- toupper(.rc_pando_region_key(rownames(atac)))
+    peak_keep <- !is.na(peak_keys) & nzchar(peak_keys) & !duplicated(peak_keys)
+    peak_lookup <- stats::setNames(rownames(atac)[peak_keep], peak_keys[peak_keep])
+    edges$.peak_id <- unname(
+      peak_lookup[toupper(.rc_pando_region_key(edges$region))]
+    )
+  }
   edges <- edges[
     !is.na(edges$.peak_id) & nzchar(edges$.peak_id), , drop = FALSE
   ]
   if (!nrow(edges)) return(modifier)
 
-  group_key_edges <- paste(
-    as.character(edges[[condition_col]]),
-    as.character(edges[[celltype_col]]),
-    sep = "\001"
-  )
-  group_key_units <- paste(
-    as.character(unit_meta[[condition_col]]),
-    as.character(unit_meta[[celltype_col]]),
-    sep = "\001"
-  )
-  for (group_key in unique(group_key_edges)) {
-    group_edges <- edges[group_key_edges == group_key, , drop = FALSE]
-    group_units <- units[group_key_units == group_key]
-    if (!nrow(group_edges) || !length(group_units)) next
-    for (target in unique(group_edges$target)) {
-      selected <- group_edges[group_edges$target == target, , drop = FALSE]
+  reliability_column <- if ("cv_rsq" %in% colnames(edges)) {
+    "cv_rsq"
+  } else if ("rsq" %in% colnames(edges)) {
+    "rsq"
+  } else {
+    NULL
+  }
+  celltypes <- unique(as.character(edges[[celltype_col]]))
+  for (celltype_value in celltypes) {
+    celltype_edges <- edges[
+      as.character(edges[[celltype_col]]) == celltype_value,
+      , drop = FALSE
+    ]
+    reference_units <- units[
+      as.character(unit_meta[[celltype_col]]) == celltype_value
+    ]
+    if (!nrow(celltype_edges) || !length(reference_units)) next
+
+    for (target in unique(celltype_edges$target)) {
+      target_edges <- celltype_edges[
+        celltype_edges$target == target, , drop = FALSE
+      ]
       gene_id <- tolower(target)
-      if (!gene_id %in% rownames(modifier) || !nrow(selected)) next
+      if (!gene_id %in% rownames(modifier) || !nrow(target_edges)) next
+      condition_edges <- split(
+        target_edges,
+        as.character(target_edges[[condition_col]])
+      )
+      collapsed <- lapply(condition_edges, function(one) {
+        value <- tapply(
+          one$.projection_weight,
+          one$.peak_id,
+          sum,
+          na.rm = TRUE
+        )
+        value <- value[is.finite(value) & value != 0]
+        value
+      })
+      denominator <- max(vapply(collapsed, function(value) {
+        sum(abs(value))
+      }, numeric(1)), na.rm = TRUE)
+      if (!is.finite(denominator) || denominator <= 0) next
+      peak_ids <- unique(unlist(lapply(collapsed, names), use.names = FALSE))
+      peak_ids <- intersect(peak_ids, rownames(atac))
+      if (!length(peak_ids)) next
+
       edge_activity <- rc_gene_score(
-        as.matrix(atac[selected$.peak_id, units, drop = FALSE]),
+        as.matrix(atac[peak_ids, units, drop = FALSE]),
         mode = "absolute",
         half_saturation = getOption("RegCompassR.atac_half_saturation", 1)
       )
-      celltype_value <- as.character(group_edges[[celltype_col]][[1L]])
-      reference_units <- units[
-        as.character(unit_meta[[celltype_col]]) == celltype_value
-      ]
-      if (!length(reference_units)) next
       edge_deviation_reference <- .rc_edge_activity_deviation(
         edge_activity[, reference_units, drop = FALSE],
         min_scale = min_scale
       )
-      edge_deviation <- edge_deviation_reference[, group_units, drop = FALSE]
-      weight <- abs(selected$estimate)
-      weight[!is.finite(weight)] <- 0
-      if (!any(weight > 0)) next
-      weight <- weight / sum(weight)
-      model_rsq <- if ("rsq" %in% colnames(selected)) {
-        suppressWarnings(as.numeric(selected$rsq))
+      reliability_values <- if (!is.null(reliability_column)) {
+        suppressWarnings(as.numeric(target_edges[[reliability_column]]))
       } else {
         numeric()
       }
-      model_rsq <- model_rsq[is.finite(model_rsq)]
-      reliability <- if (length(model_rsq)) {
-        sqrt(min(max(stats::median(model_rsq), 0), 1))
+      reliability_values <- reliability_values[is.finite(reliability_values)]
+      reliability <- if (length(reliability_values)) {
+        sqrt(min(max(stats::median(reliability_values), 0), 1))
       } else {
-        1
+        0
       }
-      signed_weight <- weight * sign(selected$estimate)
-      value <- reliability * as.numeric(
-        crossprod(signed_weight, edge_deviation)
-      )
-      modifier[gene_id, group_units] <- pmax(pmin(value, 1), -1)
+
+      for (condition_value in names(collapsed)) {
+        group_units <- units[
+          as.character(unit_meta[[celltype_col]]) == celltype_value &
+            as.character(unit_meta[[condition_col]]) == condition_value
+        ]
+        if (!length(group_units)) next
+        weight <- stats::setNames(rep(0, length(peak_ids)), peak_ids)
+        value <- collapsed[[condition_value]]
+        common <- intersect(names(value), peak_ids)
+        weight[common] <- value[common] / denominator
+        edge_deviation <- edge_deviation_reference[
+          peak_ids, group_units, drop = FALSE
+        ]
+        score <- reliability * as.numeric(crossprod(weight, edge_deviation))
+        modifier[gene_id, group_units] <- pmax(pmin(score, 1), -1)
+      }
     }
   }
   modifier
