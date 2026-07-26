@@ -9,14 +9,14 @@
 \title{Run RegCompass through inspectable shared-background stages}
 \usage{
 rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
-  species = c("auto", "human", "mouse"), sample_col = NULL,
+  species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   rna_assay = "RNA", atac_assay = "ATAC",
   grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
   pando_args = list(), multitask_args = list(), parallel = TRUE,
   BPPARAM = NULL, progress = getOption("RegCompassR.progress", TRUE))
 
-rc_regcompass_step_metacells(object, outdir, sample_col = NULL,
+rc_regcompass_step_metacells(object, outdir,
   condition_col = "condition", celltype_col = "cell_type",
   rna_assay = "RNA", atac_assay = "ATAC",
   fragment_files = FALSE, metacell_args = list(),
@@ -49,13 +49,12 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{pfm}{Optional motif collection accepted by Pando and motifmatchr.}
 \item{species}{Species identifier or \code{"auto"}.}
-\item{sample_col}{Optional biological-sample column used for sample-aware GRN residualization and folds, and retained as metacell provenance.}
-\item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
+\item{condition_col, celltype_col}{Complete condition and cell-type metadata columns. Stage 1 and Stage 2 do not accept a biological-sample column.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{grn_mode}{Use one cell-type-shared Pando structural background with multitask condition coefficients, or the legacy independent condition Pando fits.}
+\item{grn_mode}{Use one validated cell-type-shared Pando structural background with multitask condition coefficients, or legacy independent condition Pando fits.}
 \item{pando_args}{Pando candidate-design configuration in multitask mode, or Pando fit configuration in legacy mode.}
-\item{multitask_args}{Condition-balanced elastic-net, cross-validation, and stability-selection controls.}
-\item{metacell_args}{SuperCell2 configuration.}
+\item{multitask_args}{Condition-balanced elastic-net, condition-stratified cross-validation, full-size nonparametric bootstrap, and active-edge controls.}
+\item{metacell_args}{Condition-only SuperCell2 configuration. Cell type is passed as the label; no sample balancing or sample provenance is calculated.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{regulatory_alpha}{Strength of the ATAC regulatory modifier in Layer 1.}
 \item{gpr_and_method}{Aggregation for required genes joined by GPR AND.}
@@ -73,19 +72,24 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 Runs the canonical workflow as separately restartable, validated stages.
 }
 \details{
-Stage 1 constructs one Pando structural TF-peak-target universe per cell type in
-the canonical mode. The same edge dictionary is used for every condition.
+Stage 1 constructs one version-2 Pando structural TF-peak-target universe per
+cell type. The same edge dictionary is used for every condition.
 Condition-balanced elastic-net regression estimates a global edge coefficient
-and symmetric zero-sum condition deviations. Stable condition edges are selected
-from repeated stratified subsamples.
+and symmetric zero-sum condition deviations.
 
-Stage 2 constructs condition-level metacells while retaining cell-type and
-sample provenance. Stage 3 maps each condition sub-GRN target-gene set to core
-reactions only through complete GPR branches, then performs one ordered
-subsystem, KEGG/Reactome, and master-Rhea annotation expansion.
+Stability is calculated by full-size condition-stratified nonparametric
+bootstrap. Every condition is sampled with replacement at its original cell
+count. The resampled target and TF-by-ATAC predictors are re-centred inside the
+bootstrap condition, and the model is refitted at the full-data selected lambda
+and shared edge scale.
 
-Stage 4 combines RNA support with an ATAC-only projection of the fitted GRN.
-A missing condition edge gives a zero modifier and exact RNA-only fallback.
-Stage 5 builds one medium-specific union GEM from all condition catalogues and
-reuses the same stoichiometric structure for every condition and metacell.
+Stage 2 constructs condition-only metacells with cell type supplied as the
+SuperCell2 label. Stage 3 maps each condition sub-GRN target set to core reactions
+only through complete GPR branches, then performs one ordered subsystem,
+KEGG/Reactome, and master-Rhea annotation expansion.
+
+Stage 4 combines RNA support with an ATAC-only projection of the fitted GRN. A
+missing condition edge gives a zero modifier and exact RNA-only fallback. Stage
+5 builds one medium-specific union GEM from all condition catalogues and reuses
+the same stoichiometric structure for every condition and metacell.
 }
