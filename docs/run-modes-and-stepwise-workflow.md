@@ -3,15 +3,17 @@
 All canonical execution modes follow the same architecture:
 
 ```text
-one shared Pando structural candidate background per cell type
-→ global GRN backbone + condition deviations
-→ stability-selected condition sub-GRNs
-→ condition metabolic target genes
+one validated Pando structural candidate background per cell type
+→ global GRN backbone + symmetric condition deviations
+→ full-size condition-stratified bootstrap stability
+→ condition sub-GRNs and metabolic target genes
 → complete-GPR condition cores
 → one ordered biological annotation expansion
 → one shared medium-specific union GEM
 → condition/metacell-specific penalties and directional LP scores
 ```
+
+The canonical public API requires `condition_col` and `celltype_col`. It does not accept a biological-sample metadata column.
 
 ## GRN modes
 
@@ -19,24 +21,25 @@ one shared Pando structural candidate background per cell type
 
 This is the RegCompassR 1.8.8 default.
 
-- Pando runs once per cell type to build the structural TF–peak–target dictionary.
+- Pando runs once per cell type to build one version-2 structural TF–peak–target dictionary.
 - All conditions use the same edge universe and edge scaling.
 - RegCompass estimates global coefficients and symmetric zero-sum condition deviations.
-- Stability selection defines active condition edges.
+- Cross-validation folds are stratified within condition.
+- Every bootstrap resamples each condition with replacement at its original cell count and re-centres target and predictors inside the bootstrap condition.
 - `padj` is not used for regularised multitask coefficients.
 
 ### `grn_mode = "legacy_condition_pando"`
 
-This mode reproduces independent `condition × cell type` Pando fits. Legacy adjusted-p-value, coefficient and model-R² filters belong only to this mode.
+This mode reproduces independent `condition × cell type` Pando fits. Legacy adjusted-p-value, coefficient, and target-model-R² filters belong only to this mode.
 
-The two GRN modes should be treated as different analyses rather than mixed within one result.
+The two GRN modes are different analyses and must not be mixed within one result.
 
 ## Level 1: one-shot workflow
 
 Use [Tutorial 1](tutorial-01-quick-start.md) with `rc_run_regcompass_one_shot()`.
 
 - `pando_args` controls structural candidate construction.
-- `multitask_args` controls elastic-net fitting, cross-validation and stability selection.
+- `multitask_args` controls elastic-net fitting, condition-stratified CV, bootstrap count, and active-edge thresholds.
 - `upstream_workers` covers Stage 1 and Layer 1.
 - `layer2_workers` covers union-GEM construction and LP scoring.
 
@@ -59,20 +62,20 @@ Stage 3 maps condition sub-GRN target genes to complete-GPR cores. Stage 3 does 
 
 Use [Tutorial 3](tutorial-03-advanced-restart.md).
 
-- Change motifs, Pando regions, structural detection filters or target genes: rerun Stage 1 onward.
-- Change multitask penalties, folds, stability thresholds or candidate screening: rerun Stage 1 onward.
+- Change motifs, Pando regions, structural detection filters, or target genes: rerun Stage 1 onward.
+- Change multitask penalties, folds, `n_bootstrap`, active-edge thresholds, or candidate screening: rerun Stage 1 onward.
 - Change metacell construction: rerun Stage 2 onward.
 - Change subsystem annotations or GEM GPR rules: rerun Stage 3 onward.
 - Change `regulatory_alpha` or `gpr_and_method`: rerun Stage 4 onward.
-- Change medium, FASTCORE or LP settings: rerun Stage 5 onward.
+- Change medium, FASTCORE, or LP settings: rerun Stage 5 onward.
 
 ## Level 4: targeted second-pass scoring
 
-Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) to remap selected genes or reactions through direct KEGG, Reactome or master-Rhea links and score them in the exact cached Stage 5 union GEM.
+Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) to remap selected genes or reactions through direct KEGG, Reactome, or master-Rhea links and score them in the exact cached Stage 5 union GEM.
 
 ## Level 5: condition comparison
 
-Use [Tutorial 5](tutorial-05-condition-differential-analysis.md) to compare scores for the same reaction, direction, medium and cell type between conditions.
+Use [Tutorial 5](tutorial-05-condition-differential-analysis.md) to compare scores for the same reaction, direction, medium, and cell type between conditions.
 
 ## Structural modes
 
