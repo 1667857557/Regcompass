@@ -50,6 +50,7 @@ Collate:
     'condition_pooling.R'
     'grn_inference.R'
     'multitask_grn.R'
+    'multitask_grn_contracts.R'
     'regulatory_modifier.R'
     'condition_layer1.R'
     'reaction_evidence.R'
