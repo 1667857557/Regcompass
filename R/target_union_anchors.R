@@ -1,4 +1,4 @@
-# Extend target-union remapping to any valid GEM reaction anchor while
+# Extend target-union remapping to any valid GEM reaction-ID anchor while
 # preserving the existing public argument names and core-only output fields.
 
 .rc_target_union_definition_core_only <- .rc_build_target_union_definition
@@ -39,7 +39,7 @@
     if (!is.data.frame(gpr) || !all(required %in% colnames(gpr))) {
       stop(
         paste(
-          "Gene-selected anchors require a GEM `gpr_table` containing",
+          "Gene-selected cores require a GEM `gpr_table` containing",
           "reaction_id, and_group_id and gene."
         ),
         call. = FALSE
@@ -57,7 +57,7 @@
     absent_genes <- setdiff(requested_genes, unique(gpr$gene))
     if (length(absent_genes)) {
       stop(
-        "Selected genes do not map to GEM GPR rules: ",
+        "Selected core genes do not map to GEM GPR rules: ",
         paste(utils::head(absent_genes, 10L), collapse = ", "),
         call. = FALSE
       )
@@ -74,10 +74,10 @@
         gpr$reaction_id[rows[[1L]]]
       }, character(1)))
     }
-    gene_reactions <- intersect(mapped, validated$reactions)
+    gene_reactions <- intersect(mapped, original_core)
     if (!length(gene_reactions)) {
       stop(
-        "The selected genes do not resolve to GEM reaction anchors under `gene_match`.",
+        "The selected genes do not resolve to original Layer 2 core targets.",
         call. = FALSE
       )
     }
@@ -94,13 +94,13 @@
     by_id <- reaction %in% requested_reactions
     by_gene <- reaction %in% gene_reactions
     if (by_id && by_gene) {
-      "reaction_id+gene"
+      "reaction_id+core_gene"
     } else if (by_id) {
       "reaction_id"
     } else if (identical(gene_match, "complete_gpr")) {
-      "gene_complete_gpr"
+      "core_gene_complete_gpr"
     } else {
-      "gene_any_direct"
+      "core_gene_any_direct"
     }
   }, character(1))
   mapped_genes <- vapply(reactions, function(reaction) {
@@ -177,6 +177,11 @@
     targets$anchor_reaction_ids <- targets$anchor_core_reaction_ids
   }
 
+  expansion_policy <- if (nrow(noncore_anchors)) {
+    "direct_from_selected_anchors_via_kegg_reactome_master_rhea_only"
+  } else {
+    "direct_from_selected_core_via_kegg_reactome_master_rhea_only"
+  }
   answer$selected_anchor_reactions <- anchors
   answer$selected_core_reactions <- core_anchors
   answer$selected_noncore_reactions <- noncore_anchors
@@ -185,8 +190,7 @@
   answer$summary$n_selected_anchors <- nrow(anchors)
   answer$summary$n_selected_core <- nrow(core_anchors)
   answer$summary$n_selected_noncore_anchors <- nrow(noncore_anchors)
-  answer$summary$expansion_policy <-
-    "direct_from_selected_anchors_via_kegg_reactome_master_rhea_only"
+  answer$summary$expansion_policy <- expansion_policy
   answer$params$selected_anchor_reactions <- unique(
     as.character(anchors$reaction_id)
   )
@@ -196,15 +200,15 @@
   answer$params$selected_noncore_reactions <- unique(
     as.character(noncore_anchors$reaction_id)
   )
-  answer$params$expansion_policy <-
-    "direct_from_selected_anchors_via_kegg_reactome_master_rhea_only"
+  answer$params$expansion_policy <- expansion_policy
   answer
 }
 
-# Public wrapper retaining the existing argument names. Reaction and gene
-# selectors may resolve to original cores or other reactions in the supplied
-# GEM. The existing implementation performs cache validation and LP scoring;
-# this wrapper adds anchor-specific outputs and metadata.
+# Public wrapper retaining the existing argument names. Reaction-ID selectors
+# may refer to original cores or other reactions in the supplied GEM. Gene
+# selectors retain their original complete-GPR core-anchor behavior. The
+# existing implementation performs cache validation and LP scoring; this
+# wrapper adds anchor-specific outputs and metadata.
 rc_regcompass_step_target_union <- function(
     layer1, meta_modules, layer2, gem, outdir,
     core_reaction_ids = NULL, core_genes = NULL,
@@ -241,8 +245,10 @@ rc_regcompass_step_target_union <- function(
     nrow(answer$selected_core_reactions)
   answer$microcompass$params$n_selected_noncore_anchors <-
     nrow(answer$selected_noncore_reactions)
-  answer$microcompass$params$target_scope <-
-    "direct_kegg_reactome_master_rhea_noncore_from_any_gem_anchor"
+  if (nrow(answer$selected_noncore_reactions)) {
+    answer$microcompass$params$target_scope <-
+      "direct_kegg_reactome_master_rhea_noncore_from_any_gem_anchor"
+  }
   saveRDS(answer, file.path(outdir, "step_target_union.rds"))
   answer
 }
