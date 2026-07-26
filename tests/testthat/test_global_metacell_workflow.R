@@ -1,4 +1,4 @@
-test_that("v1.8.8 public workflow is GRN first", {
+test_that("v1.8.8 public workflow is GRN first and condition only", {
   text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   stages <- c(
     "rc_regcompass_step_grn",
@@ -15,7 +15,9 @@ test_that("v1.8.8 public workflow is GRN first", {
     positions[[1L]] < positions[[2L]] &&
       positions[[2L]] < positions[[3L]]
   )
-  expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
+  expect_false("sample_col" %in% names(formals(rc_run_regcompass)))
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_grn)))
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
   expect_identical(eval(formals(rc_run_regcompass)$fragment_files), FALSE)
   expect_true("meta_module_args" %in% names(formals(rc_run_regcompass)))
   expect_true("multitask_args" %in% names(formals(rc_run_regcompass)))
@@ -34,6 +36,7 @@ test_that("canonical Pando background is shared by cell type", {
   expect_match(text, "Pando::prepare_grn_design", fixed = TRUE)
   expect_match(text, ".rc_fit_multitask_celltype_grn", fixed = TRUE)
   expect_match(text, "edge_universe_id", fixed = TRUE)
+  expect_match(text, "pando_grn_design_v2", fixed = TRUE)
   expect_match(
     text,
     "Every cell-type multitask GRN must complete successfully",
@@ -58,32 +61,33 @@ test_that("legacy Pando grouping remains available explicitly", {
   )
 })
 
-test_that("Stage 3 uses active targets rather than target projection", {
+test_that("Stage 3 uses active bootstrap targets rather than target projection", {
   text <- paste(
     deparse(body(.rc_build_condition_meta_modules)),
     collapse = "\n"
   )
   expect_match(text, ".rc_summarize_supported_metabolic_genes", fixed = TRUE)
   expect_match(text, "rc_map_meta_module_core_reactions", fixed = TRUE)
-  expect_match(text, "stability-selected", fixed = TRUE)
+  expect_match(text, "bootstrap-stable", fixed = TRUE)
   expect_false(grepl("rc_project_metabolic_grn", text, fixed = TRUE))
   expect_false(grepl("top_k_neighbors", text, fixed = TRUE))
 })
 
 test_that("merged meta-modules contain biological reactions only", {
   condition_modules <- list(
-    sample_status = data.frame(status = "ok"),
+    group_status = data.frame(group_id = "A|T", status = "ok"),
+    tf_peak_gene_candidates = data.frame(edge_universe_id = "u1"),
     tf_peak_gene_all = data.frame(),
     tf_peak_gene_significant = data.frame(),
     supported_metabolic_genes = data.frame(),
     core_gene_reaction = data.frame(
-      sample_id = "A|T",
+      group_id = "A|T",
       module_id = "A|T::SUPPORTED_METABOLIC_GENES",
       reaction_id = "R1",
       is_core = TRUE
     ),
     reaction_membership = data.frame(
-      sample_id = "A|T",
+      group_id = "A|T",
       module_id = "A|T::SUPPORTED_METABOLIC_GENES",
       reaction_id = c("R1", "R2")
     ),
@@ -97,6 +101,8 @@ test_that("merged meta-modules contain biological reactions only", {
   expect_setequal(out$merged_core_reactions$reaction_id, "R1")
   expect_false(out$is_gem)
   expect_false(out$fastcore_applied)
+  expect_identical(out$source_edge_universe_ids, "u1")
+  expect_identical(out$source_group_ids, "A|T")
   expect_false(any(grepl(
     "fastcore",
     out$merged_reaction_membership$inclusion_stage,
@@ -104,7 +110,7 @@ test_that("merged meta-modules contain biological reactions only", {
   )))
 })
 
-test_that("metacell construction is condition-only without sample balancing", {
+test_that("metacell construction is condition only and label guided", {
   text <- paste(
     deparse(body(.rc_make_condition_pooled_metacells)),
     collapse = "\n"
@@ -115,13 +121,11 @@ test_that("metacell construction is condition-only without sample balancing", {
     fixed = TRUE
   )
   expect_match(text, 'pooling_scope <- "condition_only"', fixed = TRUE)
-  expect_match(text, 'sample_weighting <- "none"', fixed = TRUE)
   expect_match(text, "metacell_grouping = condition_col", fixed = TRUE)
-  expect_match(text, "gamma <- 30L", fixed = TRUE)
-  expect_match(text, "Sample balancing is not part", fixed = TRUE)
+  expect_match(text, "metacell_args$gamma <- 30L", fixed = TRUE)
   expect_match(text, "label_col = celltype_col", fixed = TRUE)
-  expect_match(text, '"label_col"', fixed = TRUE)
-  expect_false(grepl("label_col = label_col", text, fixed = TRUE))
+  expect_false(grepl("sample_balance", text, fixed = TRUE))
+  expect_false(grepl("sample_weighting", text, fixed = TRUE))
 })
 
 test_that("canonical metacells automatically use cell type as the label", {
@@ -130,6 +134,8 @@ test_that("canonical metacells automatically use cell type as the label", {
 
   expect_false("label_col" %in% names(step_formals))
   expect_false("metacell_label_col" %in% names(run_formals))
+  expect_false("sample_col" %in% names(step_formals))
+  expect_false("sample_col" %in% names(run_formals))
 })
 
 test_that("dominant cell type is assigned after condition-only metacells", {
