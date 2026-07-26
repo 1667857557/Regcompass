@@ -1,8 +1,10 @@
-test_that("scoring APIs expose no time-limit parameter", {
+test_that("scoring APIs expose no time-limit or sample parameter", {
   expect_false("time_limit" %in% names(formals(rc_compass_two_step_lp_directional)))
   expect_false("time_limit" %in% names(formals(rc_run_microcompass)))
   expect_false("time_limit" %in% names(formals(.rc_run_microcompass_engine)))
   expect_false("time_limit" %in% names(formals(.rc_score_existing_union_cache)))
+  expect_false("sample_col" %in% names(formals(rc_run_microcompass)))
+  expect_false("sample_col" %in% names(formals(.rc_score_existing_union_cache)))
 })
 
 test_that("only union-GEM construction receives the completion limit", {
@@ -11,7 +13,7 @@ test_that("only union-GEM construction receives the completion limit", {
     deparse(body(rc_compass_two_step_lp_directional)), collapse = "\n"
   )
   target_scoring <- paste(
-    deparse(body(.rc_score_existing_union_cache)), collapse = "\n"
+    deparse(body(.rc_score_existing_union_cache_sample_core)), collapse = "\n"
   )
 
   expect_match(engine, "model_params$completion_time_limit", fixed = TRUE)
@@ -20,18 +22,25 @@ test_that("only union-GEM construction receives the completion limit", {
   expect_false(grepl("time_limit =", target_scoring, fixed = TRUE))
 })
 
-test_that("Stage 5 rejects retired timeout arguments", {
+test_that("Stage 5 rejects retired timeout and sample arguments", {
   body_text <- paste(deparse(body(rc_regcompass_step_layer2)), collapse = "\n")
-  expect_match(body_text, "Scoring `time_limit` has been removed", fixed = TRUE)
+  expect_match(body_text, "Scoring `time_limit`, sample aggregation", fixed = TRUE)
   expect_match(body_text, "completion_time_limit", fixed = TRUE)
   expect_match(body_text, "allowed_model_params", fixed = TRUE)
+  expect_match(body_text, 'unit = "metacell"', fixed = TRUE)
+  expect_false(grepl("params$sample_col", body_text, fixed = TRUE))
 })
 
-test_that("target-union results record unlimited scoring", {
-  target_body <- paste(
+test_that("target-union results record unlimited metacell scoring", {
+  target_core <- paste(
+    deparse(body(.rc_score_existing_union_cache_sample_core)), collapse = "\n"
+  )
+  active <- paste(
     deparse(body(.rc_score_existing_union_cache)), collapse = "\n"
   )
-  expect_match(target_body, 'scoring_time_limit = "none"', fixed = TRUE)
+  expect_match(target_core, 'scoring_time_limit = "none"', fixed = TRUE)
+  expect_match(active, 'answer$params$unit <- "metacell"', fixed = TRUE)
+  expect_match(active, 'answer$params$aggregation <- "none"', fixed = TRUE)
 })
 
 test_that("user examples contain no standalone scoring time_limit", {
