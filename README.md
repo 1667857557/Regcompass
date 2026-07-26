@@ -1,39 +1,39 @@
 # RegCompassR
 
-RegCompassR 1.8.4 implements an RNA+ATAC metabolic workflow for paired single-cell multiome data.
+RegCompassR 1.8.8 implements a shared-background regulatory–metabolic workflow for paired single-cell RNA+ATAC data.
 
-## Workflow
+## Canonical architecture
 
 ```text
-condition × cell type cells
-→ Pando TF–peak–GEM-gene models
-→ significantly supported metabolic target genes
-→ complete-GPR core reactions
-→ one ordered subsystem/cross-reference expansion pass
-→ integrated RNA+ATAC reaction support
-→ medium-constrained model with global FASTCORE completion
+all conditions within one cell type
+→ one shared Pando structural TF–peak–metabolic-gene candidate universe
+→ condition-balanced multitask elastic-net model
+→ global GRN backbone + condition-specific deviations
+→ stability-selected condition sub-GRNs
+→ condition-specific regulated metabolic genes
+→ complete-GPR condition core reactions
+→ ordered subsystem / KEGG–Reactome / master-Rhea expansion
+→ one merged reaction catalogue
+→ one medium-specific union GEM reused by every condition and metacell
+→ RNA+ATAC reaction penalties
 → directional COMPASS-like LP scoring
-→ annotated rankings and condition contrasts
 ```
 
-Pando is fitted separately for each `condition × cell type`. The candidate target genes are all GEM GPR genes present in the RNA assay. A gene enters the Stage 3 supported set when at least one TF–peak–gene coefficient passes the configured adjusted-P-value, effect-size, and target-model-R² filters. Positive and negative coefficients both count as regulatory evidence. A reaction is a core only when one complete GPR branch is contained in that supported gene set.
+The canonical coefficient model for edge \(e=(TF,peak,target)\) is
 
-Stage 3 expansion is fixed and executed exactly once:
+\[
+\theta_{e,c}=\beta_e+\delta_{e,c},
+\qquad
+\sum_c\delta_{e,c}=0.
+\]
 
-```text
-complete-GPR cores
-→ all reactions in core-reaction subsystems
-→ direct KEGG/Reactome reaction equivalents
-→ direct master-Rhea reaction equivalents
-```
+`beta` is the cell-type-wide backbone coefficient. `delta` is the symmetric condition deviation. All conditions use the same edge dictionary, feature scaling, penalty structure, and stoichiometric model.
 
-For Layer 1 reaction support, genes joined by a GPR AND relationship are aggregated with one of the three COMPASS functions: `min`, `median`, or `mean`. RegCompass defaults to `min`, representing the limiting required subunit. Isozyme OR branches remain additive in the canonical workflow.
+A condition-specific metabolic gene is supported when at least one stable active edge targets it. A reaction is a condition core only when one complete GPR branch is contained in that supported gene set. Positive and negative stable edges both establish that a gene is regulated.
 
 ## Installation
 
-### Default validated profile: Seurat v4
-
-The canonical and release-validation environment remains the pinned Seurat v4 stack. This is the default profile for reproducing RegCompass analyses and for creating new input objects.
+The validated default profile remains Seurat v4:
 
 ```r
 install.packages("remotes")
@@ -47,17 +47,9 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-### Optional compatible profile: Seurat v5
+Pando 1.1.2 or later is required because RegCompass 1.8.8 uses `Pando::prepare_grn_design()` and `Pando::validate_grn_design()`.
 
-RegCompass also accepts SeuratObject/Seurat 5.x with Signac 1.x from version 1.12.0 onward. For the closest behavior to the default profile, create v3-style assays while running Seurat v5:
-
-```r
-options(Seurat.object.assay.version = "v3")
-```
-
-An existing v5 `Assay5` is supported when its `counts.*` and optional `data.*` layers can be joined without ambiguity. The canonical Stage 1 and Stage 2 functions join those layers in a working copy and record the operation in `object@misc$regcompass_seurat_compatibility`; the caller's original object is not rewritten. Signac 2.x `ChromatinAssay5` is not yet supported.
-
-See [Seurat v4/v5 compatibility](docs/seurat-compatibility.md) for the version matrix, layer policy, provenance, and migration checks.
+SeuratObject/Seurat 5.x with Signac 1.12–1.x is also accepted. See [Seurat compatibility](docs/seurat-compatibility.md).
 
 ## Minimal complete run
 
@@ -83,23 +75,34 @@ result <- rc_run_regcompass_one_shot(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
   gem = gem,
-
-  # Stage 1
   condition_col = "Group",
   celltype_col = "cell_type",
+  sample_col = "sample_id",
+
+  # Stage 1: shared candidate background + condition sub-GRNs
+  grn_mode = "multitask_shared_backbone",
   pando_args = list(
     min_cells = 300,
-    padj_threshold = 0.05,
-    min_abs_estimate = 0,
-    min_model_rsq = 0.1,
-    require_padj = TRUE,
-    pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0.01,
-      adjust_method = "fdr",
-      parallel = FALSE
+    pando_design_args = list(
+      peak_to_gene_method = "Signac",
+      min_tf_detection = 0.01,
+      min_peak_detection = 0.01,
+      min_target_detection = 0.01
     )
+  ),
+  multitask_args = list(
+    alpha = 0.5,
+    global_penalty_factor = 1,
+    deviation_penalty_factor = 2,
+    lambda_rule = "lambda.1se",
+    nfolds = 5,
+    n_stability = 50,
+    stability_fraction = 0.8,
+    min_selection_frequency = 0.7,
+    min_sign_stability = 0.8,
+    candidate_screen_threshold = 0,
+    max_edges_per_target = Inf,
+    seed = 12345L
   ),
 
   # Stage 2
@@ -141,73 +144,87 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-Public runner arguments are ordered by processing sequence: shared model inputs → Stage 1 Pando → Stage 2 metacells → Stage 3 meta-modules → Stage 4 Layer 1 → Stage 5 Layer 2 → execution controls.
-
-When `pfm` is omitted, RegCompass internally performs the equivalent of:
+When `pfm` is omitted, RegCompass loads:
 
 ```r
 data("motifs", package = "Pando")
 pfm <- motifs
 ```
 
-A user-supplied `pfm` still overrides the default.
-
-The canonical Pando evidence defaults are `padj_threshold = 0.05`, `min_abs_estimate = 0`, `min_model_rsq = 0.1`, and `require_padj = TRUE`. All conditions must pass for a TF–peak–target row to enter the supported metabolic-gene set.
-
-The canonical metacell geometry defaults are RNA `pca` dimensions `1:30`, ATAC `lsi` dimensions `2:30`, and `seed = 12345L`. For ordered condition strata, the internal SuperCell2 seed is `seed + stratum_index - 1`. Changing cells, assay matrices, reductions, dimensions, seed, gamma, or metacell thresholds requires `overwrite = TRUE` to rebuild Stage 2 checkpoints.
-
-`gpr_and_method` accepts only `"min"`, `"median"`, or `"mean"`; omitting it uses `"min"`.
-
-`completion_time_limit` applies only while FASTCORE constructs the medium-specific union GEM. Directional scoring LPs run without a time-limit parameter.
-
-Unless `pando_args$pando_initiate_args$regions` is supplied, RegCompass uses species-specific Pando region defaults:
+Unless `pando_args$pando_initiate_args$regions` is supplied, the default regulatory regions are:
 
 ```text
 human: phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
-mouse: phastConsElements20Mammals.UCSC.hg38 only
+mouse: phastConsElements20Mammals.UCSC.hg38
 ```
 
-An explicit region object overrides either default.
+## Core calculations
 
-## Medium presets
+For a candidate edge \(e=(t,p,g)\), the Pando-style predictor is
 
-`rc_make_medium_scenarios()` supports physiological, culture-medium, nutrient-sensitivity, technical, and custom scenarios:
+\[
+x_{e,u}=T_{t,u}A_{p,u}.
+\]
 
-`physiologic`, `normal_human_plasma`, `mouse_plasma`, `rpmi1640`, `dmem_high_glucose`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, `minimal`, `compass_model_bounds`, `permissive_all_exchange`, and `custom`.
+Target and predictors are centred within condition, or within `condition × sample` when `sample_col` is supplied. Edge scales are computed across all conditions of the cell type. Observation weights are proportional to \(1/n_c\), giving every condition the same total loss weight.
 
-See [Predefined extracellular medium scenarios](docs/medium-presets.md) for species restrictions, assumptions, and custom-medium examples.
+The stability-adjusted condition coefficient is
+
+\[
+\widetilde\theta_{e,c}
+=
+\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c},
+\]
+
+where `Pi` is the selection frequency and `rho` is the conditional sign stability.
+
+Layer 1 converts these coefficients to an ATAC-only modifier. TFs sharing the same measured peak are signed-summed before the peak is projected. One target-specific denominator is shared by all conditions, so weak condition networks are not independently rescaled to the same magnitude as strong networks. A missing condition edge gives `R = 0`, and the existing log-odds update then returns exact RNA-only support.
+
+See [Shared-background multitask GRN mathematics and object contracts](docs/multitask-shared-grn.md).
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for GEM target genes using Pando's bundled `motifs` and species-specific default regions.
-- `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells from explicit RNA/ATAC reductions, dimensions, and a reproducible seed.
-- `rc_regcompass_step_meta_modules()`: summarize significant metabolic targets, map complete-GPR cores, and perform one fixed ordered annotation expansion pass.
-- `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
-- `rc_regcompass_step_layer2()`: build the medium-constrained model and run directional LP scoring.
-- `rc_regcompass_step_results()`: assemble rankings, annotations, provenance, and contrasts.
-- `rc_regcompass_step_target_union()`: remap selected core genes or reactions and score directly linked targets in the cached Stage 5 model.
+- `rc_regcompass_step_grn()`: build a shared Pando candidate background and fit global plus condition GRN coefficients.
+- `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells and retain cell-type/sample provenance.
+- `rc_regcompass_step_meta_modules()`: map condition sub-GRN targets to complete-GPR cores and biological reaction modules.
+- `rc_regcompass_step_layer1()`: calculate RNA support, ATAC regulatory modifiers, and reaction expression.
+- `rc_regcompass_step_layer2()`: build one shared medium-specific union GEM and run directional LP scoring.
+- `rc_regcompass_step_results()`: assemble rankings, annotations, provenance, and condition contrasts.
+- `rc_regcompass_step_target_union()`: score additional mapped targets in the exact cached union GEM.
 
 ## Main outputs
 
 ```r
+result$grn$tf_peak_gene_candidates
+result$grn$tf_peak_gene_global
+result$grn$tf_peak_gene_condition_all
+result$grn$tf_peak_gene_significant
+result$grn$condition_target_genes
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
-result$reaction_ranking
-result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions
 result$merged_grn_meta_modules$merged_reaction_membership
+result$reaction_ranking
+result$condition_contrast
 result$microcompass$model_cache_summary
 ```
 
+## Legacy mode
+
+Independent condition-by-cell-type Pando fitting remains available for reproducibility:
+
+```r
+grn_mode = "legacy_condition_pando"
+```
+
+Legacy Pando inference thresholds belong only to that mode. They are not interpreted as significance thresholds in the multitask model.
+
 ## Tutorials
 
-- [Level 1: minimal one-shot run](docs/tutorial-01-quick-start.md)
-- [Level 2: stepwise run](docs/tutorial-02-stepwise-audit.md)
-- [Level 3: restart, sensitivity, and diagnostics](docs/tutorial-03-advanced-restart.md)
-- [Level 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
-- [Level 5: condition differential analysis](docs/tutorial-05-condition-differential-analysis.md)
-- [Seurat v4/v5 compatibility](docs/seurat-compatibility.md)
-- [Metacell reduction and seed selection](docs/metacell-reduction-selection.md)
+- [Quick start](docs/tutorial-01-quick-start.md)
+- [Stepwise audit](docs/tutorial-02-stepwise-audit.md)
+- [Advanced restart and diagnostics](docs/tutorial-03-advanced-restart.md)
+- [Targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
+- [Condition differential analysis](docs/tutorial-05-condition-differential-analysis.md)
+- [Stage contracts](docs/stage-interface-contracts.md)
 - [Medium presets](docs/medium-presets.md)
-- [Workflow and mathematical interpretation](docs/workflow.md)
-- [Stage input-output contracts](docs/stage-interface-contracts.md)
