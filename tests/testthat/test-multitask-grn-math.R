@@ -68,13 +68,19 @@ test_that("bootstrap data are re-centred within each condition", {
 
   for (level in unique(boot_condition)) {
     rows <- boot_condition == level
-    expect_equal(colMeans(x_centered[rows, , drop = FALSE]), c(0, 0),
-                 tolerance = 1e-12)
+    expect_equal(
+      colMeans(x_centered[rows, , drop = FALSE]), c(0, 0),
+      tolerance = 1e-12
+    )
     expect_equal(mean(y_centered[rows]), 0, tolerance = 1e-12)
   }
 })
 
-test_that("multitask validation requires ridge and positive bootstrap count", {
+test_that("multitask validation requires sparse elastic net and bootstrap quality", {
+  expect_error(
+    RegCompassR:::.rc_validate_multitask_grn_args(list(alpha = 0)),
+    "positive lasso"
+  )
   expect_error(
     RegCompassR:::.rc_validate_multitask_grn_args(list(alpha = 1)),
     "non-zero ridge component"
@@ -83,11 +89,20 @@ test_that("multitask validation requires ridge and positive bootstrap count", {
     RegCompassR:::.rc_validate_multitask_grn_args(list(n_bootstrap = 0)),
     "at least 1"
   )
+  expect_error(
+    RegCompassR:::.rc_validate_multitask_grn_args(list(
+      min_bootstrap_success_fraction = 0
+    )),
+    "must be in (0, 1]"
+  )
   args <- RegCompassR:::.rc_validate_multitask_grn_args(list(
-    alpha = 0.5, n_bootstrap = 20
+    alpha = 0.5,
+    n_bootstrap = 20,
+    min_bootstrap_success_fraction = 0.9
   ))
   expect_equal(args$alpha, 0.5)
   expect_identical(args$n_bootstrap, 20L)
+  expect_equal(args$min_bootstrap_success_fraction, 0.9)
   expect_false("n_stability" %in% names(args))
   expect_false("stability_fraction" %in% names(args))
 })
