@@ -17,7 +17,7 @@ Each cache row must record the model file, checksum, medium scenario, build stra
 - global FASTCORE support;
 - the original direction-specific core target set.
 
-The Stage 3 object supplies anchor provenance through:
+The Stage 3 object supplies the original core set and merged catalogue through:
 
 ```r
 meta_modules$merged_modules$merged_core_reactions
@@ -28,17 +28,19 @@ These Stage 3 tables are catalogue tables, not GEMs.
 
 ## Mapping rule
 
-Selected merged core reactions are used as anchors. Direct non-core targets are reactions sharing at least one:
+Reaction IDs supplied through `core_reaction_ids` are direct mapping anchors. The parameter name is retained for compatibility, but each ID may be either an original core reaction or another valid reaction in the supplied GEM.
+
+Direct candidate targets are reactions sharing at least one:
 
 - KEGG reaction identifier;
 - Reactome reaction identifier;
 - master Rhea identifier.
 
-No subsystem expansion, transitive expansion, metabolite-neighbour expansion, model reconstruction, or FASTCORE completion is performed.
+`core_genes` continues to resolve anchors within the original complete-GPR core set. No subsystem expansion, transitive expansion, metabolite-neighbour expansion, model reconstruction, or FASTCORE completion is performed.
 
 ## Availability and validation rule
 
-A mapped reaction is scoreable only when it is present in every required final union GEM. Before scoring, RegCompass verifies:
+A mapped reaction is scoreable only when it is non-core and present in every required final union GEM. Before scoring, RegCompass verifies:
 
 ```text
 file_checksum
@@ -48,7 +50,7 @@ model$is_union_gem = TRUE
 model$union_gem_medium_scenario matches the cache row
 ```
 
-This allows globally added FASTCORE support reactions to be scored when they are present in all reused final models, even when absent from the Stage 3 merged biological catalogue.
+This allows globally added FASTCORE support reactions to be scored when they are present in all reused final models, even when absent from the Stage 3 merged biological catalogue. Original Layer 2 core targets are not recomputed.
 
 ## Time-limit policy
 
@@ -63,7 +65,11 @@ targeted <- rc_regcompass_step_target_union(
   layer2 = step5,
   gem = gem,
   outdir = "RegCompass_targeted",
-  core_reaction_ids = c("MAR04324"),
+  core_reaction_ids = c(
+    "MAR04381",
+    "MAR04379",
+    "MAR04391"
+  ),
   gene_match = "complete_gpr",
   layer2_args = list(
     target_direction = "both",
@@ -77,35 +83,47 @@ targeted <- rc_regcompass_step_target_union(
 ## Outputs
 
 ```r
+targeted$selected_anchor_reactions
 targeted$selected_core_reactions
+targeted$selected_noncore_reactions
 targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
 targeted$merged_catalogue_membership
 targeted$microcompass
 ```
 
-The scoring result records the exact reuse and timeout policies:
+The relation table includes:
+
+```text
+anchor_reaction_id
+anchor_is_original_core
+reaction_id
+expansion_type
+source_annotation
+present_in_merged_catalogue
+merged_catalogue_is_core
+merged_catalogue_inclusion_stage
+available_in_all_cached_union_gems
+```
+
+The persistent anchor files are:
+
+```text
+selected_anchor_reactions.tsv.gz
+selected_core_reactions.tsv.gz
+selected_noncore_reactions.tsv.gz
+```
+
+The scoring result records the exact model-reuse policy:
 
 ```r
 targeted$microcompass$params[c(
+  "n_selected_anchors",
+  "n_selected_core",
+  "n_selected_noncore_anchors",
   "structural_model_reused_exactly",
   "fastcore_rerun",
   "model_rebuild",
   "scoring_time_limit"
 )]
-```
-
-The output catalogue file is:
-
-```text
-merged_meta_module_catalogue_membership.tsv.gz
-```
-
-The expanded tables use:
-
-```text
-present_in_merged_catalogue
-merged_catalogue_is_core
-merged_catalogue_inclusion_stage
-available_in_all_cached_union_gems
 ```
