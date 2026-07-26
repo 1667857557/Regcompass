@@ -21,9 +21,12 @@ test_that("canonical source architecture loads current contracts", {
   collate <- description$Collate %||% ""
   required <- c(
     "condition_metacell_cache.R", "supercell2_current_contract.R",
-    "supercell2_label_contract.R", "multitask_grn_bootstrap_contract.R",
-    "multitask_grn_cv_contract.R", "meta_module_core_contract.R",
-    "result_compaction.R", "reaction_evidence.R", "reaction_annotations.R"
+    "supercell2_label_contract.R", "microcompass_no_sample_contract.R",
+    "target_union_no_sample_contract.R",
+    "multitask_grn_bootstrap_contract.R", "multitask_grn_cv_contract.R",
+    "meta_module_core_contract.R", "result_compaction.R",
+    "microcompass_result_compaction.R", "reaction_evidence.R",
+    "reaction_annotations.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
 
@@ -49,7 +52,7 @@ test_that("canonical order is GRN then metacells then meta-modules", {
   expect_true(positions[[2L]] < positions[[3L]])
 })
 
-test_that("canonical formals separate stage settings", {
+test_that("canonical formals separate stage settings and remove sample columns", {
   run_formals <- names(formals(rc_run_regcompass))
   stage3_formals <- names(formals(rc_regcompass_step_meta_modules))
   expect_true("meta_module_args" %in% run_formals)
@@ -61,6 +64,9 @@ test_that("canonical formals separate stage settings", {
   expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
   expect_false("sample_col" %in% names(formals(rc_make_supercell2_metacells)))
   expect_false("pool_col" %in% names(formals(rc_make_supercell2_metacells)))
+  expect_false("sample_col" %in% names(formals(rc_run_microcompass)))
+  expect_false("sample_col" %in% names(formals(.rc_score_existing_union_cache)))
+  expect_identical(eval(formals(rc_run_microcompass)$unit), "metacell")
 })
 
 test_that("current SuperCell2 defaults are explicit", {
@@ -80,6 +86,32 @@ test_that("current SuperCell2 defaults are explicit", {
     rc_make_supercell2_metacells(NULL, tempfile(), label_col = NULL),
     "label_col"
   )
+})
+
+test_that("compact Layer 2 retains downstream fields and omits diagnostics", {
+  layer2 <- structure(list(
+    score = matrix(1, 1, 1),
+    penalty = matrix(1, 1, 1),
+    vmax = matrix(1, 1, 1),
+    feasible = matrix(TRUE, 1, 1),
+    target_direction = data.frame(reaction_id = "R1"),
+    unit_meta = data.frame(unit_id = "u1"),
+    params = list(unit = "metacell"),
+    model_mode = "meta_module_gem",
+    model_cache_summary = data.frame(medium_scenario = "m"),
+    lp_diagnostics = data.frame(x = 1),
+    penalty_components = list(x = 1),
+    source_core_reactions = data.frame(reaction_id = "R1")
+  ), class = c("regcompass_layer2_step", "list"))
+  compact <- .rc_compact_microcompass(layer2)
+  expect_s3_class(compact, "regcompass_layer2_step")
+  expect_true(all(c(
+    "score", "penalty", "vmax", "feasible", "unit_meta",
+    "model_cache_summary"
+  ) %in% names(compact)))
+  expect_false(any(c(
+    "lp_diagnostics", "penalty_components", "source_core_reactions"
+  ) %in% names(compact)))
 })
 
 test_that("Pando defaults and structural design remain explicit", {
