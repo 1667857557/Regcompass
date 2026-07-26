@@ -26,6 +26,8 @@
   out$params$unit <- "metacell"
   out$params$aggregation <- "none"
   attr(out, "omitted_stage5_fields") <- setdiff(names(layer2), names(out))
-  class(out) <- c("regcompass_compact_microcompass", "list")
+  class(out) <- unique(c(
+    "regcompass_compact_microcompass", class(layer2), "list"
+  ))
   out
 }
