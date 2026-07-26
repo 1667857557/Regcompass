@@ -36,20 +36,65 @@ rc_current_user_docs <- function(root) {
   )
 }
 
-test_that("workflow vignette documents canonical motifs cores GPR and FASTCORE", {
+test_that("shared-backbone mathematical documentation is complete", {
+  root <- rc_doc_root()
+  if (is.null(root)) skip("Source documentation is unavailable.")
+  path <- file.path(root, "docs", "multitask-shared-grn.md")
+  expect_true(file.exists(path))
+  text <- rc_read_doc(path)
+  required <- c(
+    "Pando structural TF-peak-target universe",
+    "theta[e,m,c] = beta[e,m] + delta[e,m,c]",
+    "sum_c delta[e,c] = 0",
+    "selection frequency",
+    "sign stability",
+    "complete-GPR condition cores",
+    "TF edges sharing the same peak",
+    "R[g,u,c]",
+    "R[g,u,c] = 0  =>  C_MO[g,u,c] = C_RNA[g,u,c]",
+    "S_union, lb_union, ub_union",
+    "tf_peak_gene_candidates",
+    "condition_target_genes"
+  )
+  expect_true(all(vapply(
+    required, grepl, logical(1), x = text, fixed = TRUE
+  )))
+})
+
+test_that("README exposes the 1.8.8 default and legacy modes", {
+  root <- rc_doc_root()
+  if (is.null(root)) skip("Source documentation is unavailable.")
+  text <- rc_read_doc(file.path(root, "README.md"))
+  required <- c(
+    "RegCompassR 1.8.8",
+    'grn_mode = "multitask_shared_backbone"',
+    'grn_mode = "legacy_condition_pando"',
+    "pando_design_args",
+    "multitask_args",
+    "global_penalty_factor",
+    "deviation_penalty_factor",
+    "min_selection_frequency",
+    "min_sign_stability",
+    "condition_target_genes",
+    "sign_flip_flag",
+    "complete-GPR",
+    "one shared union GEM",
+    "gpr_and_method = \"min\"",
+    "completion_time_limit"
+  )
+  expect_true(all(vapply(
+    required, grepl, logical(1), x = text, fixed = TRUE
+  )))
+})
+
+test_that("workflow vignette retains the complete metabolic stage contract", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   path <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
   expect_true(file.exists(path))
   text <- rc_read_doc(path)
-
   required <- c(
-    "RegCompassR 1.8.4",
     "rc_run_regcompass_one_shot(",
-    "data(\"motifs\", package = \"Pando\")",
-    "padj_threshold = 0.05",
-    "min_abs_estimate = 0",
-    "min_model_rsq = 0.1",
     "complete-GPR core reactions",
     "one ordered subsystem/cross-reference expansion pass",
     "gpr_and_method = \"min\"",
@@ -63,18 +108,15 @@ test_that("workflow vignette documents canonical motifs cores GPR and FASTCORE",
     "merged_modules$merged_reaction_membership",
     "medium-specific union GEM",
     "single global FASTCORE completion",
-    "global_fastcore_support",
     "file_checksum",
-    "structural_model_reused_exactly",
-    "fastcore_rerun",
-    "model_rebuild"
+    "structural_model_reused_exactly"
   )
   expect_true(all(vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
   )))
 })
 
-test_that("all five tutorials use the current stage contract", {
+test_that("all five tutorials preserve downstream stage examples", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- file.path(root, "docs", sprintf(
@@ -93,33 +135,21 @@ test_that("all five tutorials use the current stage contract", {
   combined <- paste(unlist(text), collapse = "\n")
 
   expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
-  expect_match(text[[1L]], 'data("motifs", package = "Pando")', fixed = TRUE)
-  expect_match(text[[1L]], "padj_threshold = 0.05", fixed = TRUE)
-  expect_match(text[[1L]], "min_abs_estimate = 0", fixed = TRUE)
-  expect_match(text[[1L]], "min_model_rsq = 0.1", fixed = TRUE)
-  expect_match(text[[1L]], 'rna_reduction = "pca"', fixed = TRUE)
-  expect_match(text[[1L]], "rna_dims = 1:30", fixed = TRUE)
-  expect_match(text[[1L]], 'atac_reduction = "lsi"', fixed = TRUE)
-  expect_match(text[[1L]], "atac_dims = 2:30", fixed = TRUE)
-  expect_match(text[[1L]], "seed = 12345L", fixed = TRUE)
   expect_match(text[[1L]], 'gpr_and_method = "min"', fixed = TRUE)
-
+  expect_match(text[[1L]], 'rna_reduction = "pca"', fixed = TRUE)
+  expect_match(text[[1L]], 'atac_reduction = "lsi"', fixed = TRUE)
+  expect_match(text[[1L]], "seed = 12345L", fixed = TRUE)
   expect_match(text[[2L]], "supported_metabolic_genes", fixed = TRUE)
   expect_match(text[[2L]], "rc_regcompass_step_results(", fixed = TRUE)
   expect_match(text[[2L]], "merged_modules", fixed = TRUE)
-  expect_match(text[[2L]], 'rna_reduction = "pca"', fixed = TRUE)
-  expect_match(text[[2L]], "seed = 12345L", fixed = TRUE)
   expect_match(text[[3L]], 'gpr_and_method = "mean"', fixed = TRUE)
   expect_match(text[[3L]], "global_fastcore_support", fixed = TRUE)
   expect_match(text[[4L]], "rc_regcompass_step_target_union(", fixed = TRUE)
   expect_match(text[[4L]], "available_in_all_cached_union_gems", fixed = TRUE)
   expect_match(text[[4L]], "file_checksum", fixed = TRUE)
-  expect_match(text[[4L]], "fastcore_rerun", fixed = TRUE)
-  expect_match(text[[4L]], "model_rebuild", fixed = TRUE)
   expect_match(text[[5L]], "rc_test_condition_reactions(", fixed = TRUE)
   expect_match(combined, "medium-specific union GEM", fixed = TRUE)
   expect_match(combined, "global FASTCORE", fixed = TRUE)
-  expect_match(combined, "peak_cor = 0.01", fixed = TRUE)
   expect_match(combined, "gamma = 30", fixed = TRUE)
 })
 
@@ -164,16 +194,15 @@ test_that("user examples contain no retired argument assignments", {
   )))
 })
 
-test_that("README API index and Rd files expose current core model and defaults", {
+test_that("API documentation retains shared-model and union-GEM terms", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- c(
     file.path(root, "README.md"),
+    file.path(root, "docs", "multitask-shared-grn.md"),
     file.path(root, "docs", "functions.md"),
     file.path(root, "docs", "workflow.md"),
     file.path(root, "docs", "stage-interface-contracts.md"),
-    file.path(root, "docs", "metacell-reduction-selection.md"),
-    file.path(root, "docs", "target-union-scoring.md"),
     file.path(root, "man", "rc_regcompass_stepwise.Rd"),
     file.path(root, "man", "rc_regcompass_step_target_union.Rd"),
     file.path(root, "man", "rc_run_regcompass.Rd"),
@@ -181,11 +210,9 @@ test_that("README API index and Rd files expose current core model and defaults"
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
-
   required <- c(
-    "RegCompassR 1.8.4",
+    "RegCompassR 1.8.8",
     "supported_metabolic_genes",
-    "significant",
     "complete-GPR",
     "single_ordered_annotation_pass",
     "merged_core_reactions",
@@ -195,17 +222,9 @@ test_that("README API index and Rd files expose current core model and defaults"
     "layer2_args$model_params",
     "file_checksum",
     "structural_model_reused_exactly",
-    "fastcore_rerun",
-    "model_rebuild",
     "motifs",
-    "padj_threshold",
-    "min_abs_estimate",
-    "min_model_rsq",
     "rna_reduction",
-    "rna_dims",
     "atac_reduction",
-    "atac_dims",
-    "seed = 12345L",
     "gpr_and_method"
   )
   expect_true(all(vapply(
