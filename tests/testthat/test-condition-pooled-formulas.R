@@ -21,14 +21,14 @@ test_that("reaction penalty is positive and decreases with expression", {
   expect_true(all(is.finite(P) & P > 0))
 })
 
-test_that("Pando grouping excludes biological sample", {
+test_that("Pando grouping uses condition and cell type", {
   text <- paste(deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n")
   expect_match(text, "group_cols <- c(condition_col, celltype_col)", fixed = TRUE)
   expect_false("sample_col" %in% names(formals(.rc_run_condition_single_cell_grns)))
   expect_false("strict_biological_defaults" %in% names(formals(rc_run_regcompass)))
 })
 
-test_that("per-metacell regulatory state uses ATAC rather than TF RNA", {
+test_that("per-metacell regulatory state uses peak accessibility", {
   body_text <- paste(deparse(body(.rc_condition_gene_regulatory_modifier)), collapse = "\n")
   expect_match(body_text, ".rc_pando_assay_data(object, atac_assay)", fixed = TRUE)
   expect_false(grepl("tf_score", body_text, fixed = TRUE))
@@ -56,7 +56,7 @@ test_that("single-condition scoring uses penalty per required target flux", {
   expect_equal(nrow(answer$contrast), 0L)
 })
 
-test_that("multiple conditions produce every pairwise descriptive comparison", {
+test_that("multiple conditions produce every pairwise comparison", {
   row_id <- "reaction=R1::direction=forward::medium=base"
   units <- c("uA", "uB", "uC")
   microcompass <- list(

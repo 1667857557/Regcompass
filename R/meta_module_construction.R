@@ -98,8 +98,7 @@
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown, collapse = ", "),
-      ". Meta-module expansion is always one ordered pass; the retired ",
-      "`expansion_mode` and `max_iterations` APIs have been removed.",
+      ". Allowed field: `subsystem_table`.",
       call. = FALSE
     )
   }
@@ -186,8 +185,7 @@
     ),
     expansion_definition = paste(
       "one ordered pass: core subsystem, then KEGG/Reactome reaction",
-      "equivalence, then master-Rhea reaction equivalence; no one-hop",
-      "stoichiometric-neighbour or recursive expansion"
+      "equivalence, then master-Rhea reaction equivalence"
     ),
     analysis_group_unit =
       "condition_x_celltype_significant_pando_metabolic_targets",

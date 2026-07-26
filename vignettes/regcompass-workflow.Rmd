@@ -28,7 +28,7 @@ condition × cell type Pando TF–peak–GEM-gene models
 → directional LP scoring
 ```
 
-Stage 3 does not project targets through shared TFs, calculate GRN connected components, run FASTCORE, create a GEM, recurse to a fixed point, or perform one-hop reaction expansion. Only the medium-constrained Stage 5 model is called a union GEM.
+Stage 3 maps significant targets to complete-GPR cores and applies one ordered annotation pass. Only the medium-constrained Stage 5 model is called a union GEM and runs FASTCORE completion.
 
 # Prepare the GEM and medium
 
@@ -184,11 +184,9 @@ core subsystem
 → stop
 ```
 
-The removed Stage 3 APIs are `expansion_mode`, `max_iterations`, fixed-point recursion, and one-hop/stoichiometric-neighbour expansion.
-
 # GPR-AND and model construction
 
-`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"` and defaults to `"min"`. The former Boltzmann soft-min and `tau` API are removed. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`. `completion_time_limit` limits union-GEM construction only; the later scoring LPs have no time-limit parameter.
+`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"` and defaults to `"min"`. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`. `completion_time_limit` limits union-GEM construction only; the later scoring LPs have no time-limit parameter.
 
 # Stepwise workflow
 

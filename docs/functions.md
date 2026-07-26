@@ -9,7 +9,7 @@
 - `rc_make_medium_scenarios()`: create one shared medium table; see [medium presets](medium-presets.md).
 - `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete significant-Pando-target workflow with progress, timing, automatic backend selection, `upstream_workers = 6L`, and `layer2_workers = 30L`.
 
-Public runner arguments are arranged by processing sequence rather than historical compatibility order: shared inputs, Stage 1 Pando, Stage 2 metacells, Stage 3 meta-modules, Stage 4 Layer 1, Stage 5 Layer 2, and execution controls.
+Public runner arguments are arranged by processing sequence: shared inputs, Stage 1 Pando, Stage 2 metacells, Stage 3 meta-modules, Stage 4 Layer 1, Stage 5 Layer 2, and execution controls.
 
 The complete workflow exposes two worker counts. `upstream_workers` covers Pando inference and Layer 1. `layer2_workers` covers medium-specific union-GEM construction, global FASTCORE completion, and directional LP scoring. Stage 3 performs biological catalogue construction without FASTCORE.
 
@@ -17,7 +17,7 @@ The complete workflow exposes two worker counts. `upstream_workers` covers Pando
 
 - `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for all GEM GPR genes present in the RNA assay. When `pfm` is omitted, Pando's bundled `motifs` data object is used. Human defaults to phastCons plus SCREEN ccRE regions; mouse defaults to phastCons regions only. Explicit `pando_initiate_args$regions` overrides either default.
 - `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and `seed = 12345L` are the defaults; an existing Harmony reduction can replace PCA through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
-- `rc_regcompass_step_meta_modules()`: summarize significantly supported metabolic target genes, map complete-GPR cores, perform one fixed ordered subsystem/KEGG/Reactome/master-Rhea expansion pass, and deduplicate reaction IDs into a merged catalogue. No target projection, connected-component analysis, fixed-point recursion, one-hop expansion, FASTCORE, or GEM construction occurs here.
+- `rc_regcompass_step_meta_modules()`: summarize significantly supported metabolic target genes, map complete-GPR cores, perform one fixed ordered subsystem/KEGG/Reactome/master-Rhea expansion pass, and deduplicate reaction IDs into a merged catalogue. No target projection, connected-component analysis, FASTCORE, or GEM construction occurs here.
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
 - `rc_regcompass_step_layer2()`: first construct one medium-specific union GEM with global FASTCORE, then cache it and run directional LP scoring; or use shared full-GEM scoring when `model_mode = "full_gem"`.
 - `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
@@ -81,9 +81,7 @@ core subsystem
 → master-Rhea reaction equivalence
 ```
 
-The retired `expansion_mode`, `max_iterations`, fixed-point, one-hop, and stoichiometric-neighbour APIs have been removed.
-
-`layer1_args` accepts only `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`. `gpr_and_method` accepts `"min"`, `"median"`, or `"mean"` and defaults to `"min"`. The former Boltzmann soft-min and `tau` API are removed.
+`layer1_args` accepts only `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`. `gpr_and_method` accepts `"min"`, `"median"`, or `"mean"` and defaults to `"min"`.
 
 The merged object is a biological reaction catalogue, not a GEM. It contains no medium constraints or FASTCORE support.
 

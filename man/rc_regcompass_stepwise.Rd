@@ -52,7 +52,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Pando GRN configuration. Evidence defaults include \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Explicit \code{pando_initiate_args$regions} overrides the species-specific region default.}
 \item{metacell_args}{SuperCell2 configuration. Defaults are RNA \code{"pca"} dimensions 1:30, ATAC \code{"lsi"} dimensions 2:30, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. The base seed is incremented by ordered condition-stratum index. Changing cached inputs requires \code{overwrite = TRUE}.}
-\item{meta_module_args}{Optional custom \code{subsystem_table}. Stage 3 expansion is fixed to one ordered subsystem, KEGG/Reactome, and master-Rhea pass. The retired \code{expansion_mode}, \code{max_iterations}, fixed-point, and one-hop APIs are rejected.}
+\item{meta_module_args}{Optional custom \code{subsystem_table}. Stage 3 expansion is one ordered subsystem, KEGG/Reactome, and master-Rhea pass.}
 \item{regulatory_alpha}{Strength of the ATAC regulatory modifier in Layer 1.}
 \item{gpr_and_method}{COMPASS-compatible aggregation for genes joined by GPR AND. Accepts \code{"min"}, \code{"median"}, or \code{"mean"}; default is \code{"min"}.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
@@ -74,9 +74,9 @@ Stage 1 fits Pando to GEM GPR target genes for each condition by cell-type group
 
 Stage 2 constructs condition-level metacells from explicit RNA and ATAC reductions and dimensions. Reduction names, selected dimensions, embedding fingerprints, seed, gamma, and thresholds are part of the restart contract.
 
-Stage 3 collects target genes with significant TF-peak-gene evidence and maps complete GPR branches directly to core reactions. No shared-TF projection, top-k pruning, connected-component analysis, recursive expansion, or one-hop reaction expansion is performed. Expansion is exactly one ordered pass through core subsystems, direct KEGG/Reactome reaction equivalence, and direct master-Rhea reaction equivalence.
+Stage 3 collects target genes with significant TF-peak-gene evidence and maps complete GPR branches directly to core reactions. Expansion is exactly one ordered pass through core subsystems, direct KEGG/Reactome reaction equivalence, and direct master-Rhea reaction equivalence.
 
-Stage 4 aggregates each required GPR complex with \code{min}, \code{median}, or \code{mean}; the default is \code{min}. The former Boltzmann soft-min and \code{tau} API have been deleted. Isozyme OR branches remain additive.
+Stage 4 aggregates each required GPR complex with \code{min}, \code{median}, or \code{mean}; the default is \code{min}. Isozyme OR branches remain additive.
 
 With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium scenario, runs one global FASTCORE completion on the merged catalogue, and saves the resulting medium-specific union GEM. All conditions and metacells in that medium reuse the same cached model.
 

@@ -27,8 +27,6 @@ complete-GPR cores
 → direct master-Rhea reaction equivalents
 ```
 
-There is no `expansion_mode`, fixed-point recursion, `max_iterations`, one-hop reaction expansion, or stoichiometric-neighbour expansion.
-
 For Layer 1 reaction support, genes joined by a GPR AND relationship are aggregated with one of the three COMPASS functions: `min`, `median`, or `mean`. RegCompass defaults to `min`, representing the limiting required subunit. Isozyme OR branches remain additive in the canonical workflow.
 
 ## Installation
@@ -158,7 +156,7 @@ The canonical Pando evidence defaults are `padj_threshold = 0.05`, `min_abs_esti
 
 The canonical metacell geometry defaults are RNA `pca` dimensions `1:30`, ATAC `lsi` dimensions `2:30`, and `seed = 12345L`. For ordered condition strata, the internal SuperCell2 seed is `seed + stratum_index - 1`. Changing cells, assay matrices, reductions, dimensions, seed, gamma, or metacell thresholds requires `overwrite = TRUE` to rebuild Stage 2 checkpoints.
 
-`gpr_and_method` accepts only `"min"`, `"median"`, or `"mean"`; omitting it uses `"min"`. The retired Boltzmann soft-min and `tau` API are not supported.
+`gpr_and_method` accepts only `"min"`, `"median"`, or `"mean"`; omitting it uses `"min"`.
 
 `completion_time_limit` applies only while FASTCORE constructs the medium-specific union GEM. Directional scoring LPs run without a time-limit parameter.
 

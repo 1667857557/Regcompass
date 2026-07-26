@@ -153,8 +153,6 @@
       ranking_metric = "minimum_penalty_per_required_target_flux",
       ranking_scope = "condition_x_celltype_x_medium",
       n_metacells = sum(keep),
-      descriptive_only = TRUE,
-      biological_replicate_inference = FALSE,
       stringsAsFactors = FALSE
     )
   })
@@ -221,8 +219,6 @@
           pair[[2L]],
           ifelse(a$support_score > b$support_score, pair[[1L]], "tie")
         ),
-        descriptive_only = TRUE,
-        biological_replicate_inference = FALSE,
         stringsAsFactors = FALSE
       )
       contrast_index <- contrast_index + 1L
@@ -248,11 +244,9 @@
     analysis_mode = analysis_mode,
     ranking_formula = "penalty / (omega * vmax)",
     ranking_scope = "condition_x_celltype_x_medium",
-    inference_policy = paste(
-      "condition-only metacells are descriptive pseudo-observations;",
+    comparison_workflow = paste(
       "reaction priority uses minimum penalty per required target flux",
-      "within each condition, cell type and medium;",
-      "biological-sample-level significance testing is not performed"
+      "within each condition, cell type and medium"
     )
   )
 }

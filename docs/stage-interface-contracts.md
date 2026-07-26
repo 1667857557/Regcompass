@@ -71,7 +71,6 @@ Contract:
 - `core_gene_reaction` marks a reaction as core only when one complete GPR branch is contained in the supported gene set;
 - expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence;
 - a reaction added at the master-Rhea step does not trigger another subsystem or KEGG/Reactome pass;
-- no fixed-point, recursive, one-hop, metabolite-neighbour, or stoichiometric-neighbour expansion is permitted;
 - `merged_core_reactions` contains deduplicated complete-GPR core reactions;
 - `merged_reaction_membership` contains deduplicated biological reactions only;
 - `merged_modules$is_gem` is `FALSE`;
@@ -87,7 +86,7 @@ meta_module_args = list(
 )
 ```
 
-Omitting `meta_module_args` uses the GEM's subsystem annotations. The retired `expansion_mode`, `max_iterations`, fixed-point, and one-hop APIs are rejected.
+Omitting `meta_module_args` uses the GEM's subsystem annotations.
 
 ## Stage 4: Layer 1
 
@@ -111,7 +110,7 @@ The reaction-expression matrix must contain every merged core reaction and the s
 c("min", "median", "mean")
 ```
 
-The canonical default is `"min"`. The Boltzmann soft-min and `tau` parameter are not valid Stage 4 inputs.
+The canonical default is `"min"`.
 
 ## Stage 5: Layer 2
 

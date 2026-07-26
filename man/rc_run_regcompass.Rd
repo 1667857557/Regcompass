@@ -40,9 +40,9 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 
 \item{metacell_args}{Stage 2 controls. Defaults include \code{rna_reduction = "pca"}, \code{rna_dims = 1:30}, \code{atac_reduction = "lsi"}, \code{atac_dims = 2:30}, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. Changing cached inputs requires \code{overwrite = TRUE}.}
 
-\item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}. Expansion is always one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence. The retired \code{expansion_mode}, \code{max_iterations}, fixed-point, and one-hop APIs are rejected.}
+\item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}. Expansion is one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence.}
 
-\item{layer1_args}{Stage 4 integrated-evidence controls: \code{regulatory_alpha}, \code{gpr_and_method}, and \code{gene_half_saturation}. \code{gpr_and_method} accepts \code{"min"}, \code{"median"}, or \code{"mean"} and defaults to \code{"min"}. The former Boltzmann soft-min and \code{tau} API are removed.}
+\item{layer1_args}{Stage 4 integrated-evidence controls: \code{regulatory_alpha}, \code{gpr_and_method}, and \code{gene_half_saturation}. \code{gpr_and_method} accepts \code{"min"}, \code{"median"}, or \code{"mean"} and defaults to \code{"min"}.}
 
 \item{medium_scenarios}{Condition-invariant medium table used by Stage 5.}
 
@@ -64,7 +64,7 @@ Stage 1 fits Pando separately for each condition by cell-type group using all GE
 
 Stage 2 uses the requested RNA and ATAC reductions and dimensions to construct SuperCell2 metacells. The base seed is incremented deterministically by ordered condition stratum: \code{seed + stratum_index - 1}. Reduction names, dimensions, embedding fingerprints, seed, gamma, and metacell thresholds are part of the cache contract.
 
-Stage 3 maps the significant target-gene set directly to complete-GPR cores. Shared-TF projection, target-target graph construction, top-k pruning, and connected-component analysis are not used. Biological expansion is executed exactly once in the fixed subsystem, KEGG/Reactome, and master-Rhea order. No recursive or one-hop expansion is performed.
+Stage 3 maps the significant target-gene set directly to complete-GPR cores. Biological expansion is executed exactly once in the subsystem, KEGG/Reactome, and master-Rhea order.
 
 Stage 4 aggregates required GPR subunits using the selected COMPASS-compatible \code{min}, \code{median}, or \code{mean} function. The canonical default is \code{min}; isozyme OR branches are additive.
 

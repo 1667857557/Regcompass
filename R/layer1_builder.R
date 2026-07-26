@@ -113,20 +113,10 @@
       paste0("COMPASS-compatible ", gpr_and_method, " GPR-AND"),
       "and additive isozyme OR"
     ),
-    evidence_provenance = list(
-      direct_metacell_evidence = c("target_gene_RNA", "peak_ATAC"),
-      learned_parameters =
-        "condition_x_celltype Pando coefficients fit from single-cell RNA+ATAC",
-      metacell_assignment = paste(
-        "condition-only metacells are mapped to GRNs by condition and",
-        "post hoc dominant member-cell type"
-      ),
-      excluded_duplicate_evidence =
-        "metacell TF RNA is not multiplied into the regulatory modifier",
-      circularity_scope = paste(
-        "Pando parameters remain estimated from the same pooled dataset;",
-        "outputs are descriptive unless external fitting or cross-fitting is supplied"
-      )
+    evidence_inputs = c(
+      "target_gene_RNA",
+      "peak_ATAC",
+      "condition_x_celltype_Pando_coefficients"
     )
   )
 }
