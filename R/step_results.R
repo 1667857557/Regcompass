@@ -55,9 +55,6 @@ rc_regcompass_step_results <- function(
   multitask <- identical(grn_mode, "multitask_shared_backbone")
   condition_modules <- meta_modules$condition_modules
 
-  # Layer 1 is present only while formal scored-reaction annotations are built.
-  # It is removed immediately afterward because the complete Stage 4 checkpoint
-  # is already persisted independently.
   result <- list(
     schema_version = if (multitask) {
       "regcompass_compact_multitask_result_v3"
@@ -142,20 +139,28 @@ rc_regcompass_step_results <- function(
     celltype_col = params$celltype_col
   )
 
+  result$reaction_ranking <- .rc_compact_reaction_ranking(
+    result$reaction_ranking
+  )
+  result$condition_contrast <- .rc_compact_condition_contrast(
+    result$condition_contrast
+  )
   result$active_regulatory_edges <- .rc_compact_active_edges(
     grn$grn_result, params$condition_col, params$celltype_col
   )
   result$condition_target_genes <- .rc_compact_condition_targets(
     grn$grn_result, params$condition_col, params$celltype_col
   )
-  result$core_reactions <- .rc_compact_core_reactions(condition_modules)
-  result$meta_module_summary <- .rc_compact_meta_module_summary(condition_modules)
+  result$core_reactions <- .rc_compact_core_reactions(
+    condition_modules, params$condition_col, params$celltype_col
+  )
+  result$meta_module_summary <- .rc_compact_meta_module_summary(
+    condition_modules, params$condition_col, params$celltype_col
+  )
   result$grn_metacell_group_coverage <- meta_modules$group_coverage
   result$reaction_catalog <- .rc_compact_reaction_catalog(result$reaction_catalog)
   result$reaction_evidence <- .rc_compact_reaction_evidence(result$reaction_evidence)
 
-  # `comparison$summary` is the same condition-level ranking table retained as
-  # `reaction_ranking`; do not store a duplicate alias in the final object.
   result$condition_summary <- NULL
   result$layer1 <- NULL
   result$stage_provenance <- list(
