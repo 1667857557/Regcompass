@@ -60,6 +60,7 @@ Collate:
     'microcompass.R'
     'union_gem_cache.R'
     'microcompass_engine.R'
+    'microcompass_no_sample_contract.R'
     'target_union.R'
     'target_union_anchors.R'
     'pando_evidence_utils.R'
