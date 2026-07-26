@@ -1,23 +1,25 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 1.8.4
+Version: 1.8.8
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Fits condition-by-cell-type Pando models for Human-GEM or
-    Mouse-GEM GPR target genes in paired single-cell RNA and ATAC data,
-    identifies metabolic target genes with significant TF-peak-gene evidence,
-    maps complete-GPR core reactions, and expands annotation-defined biological
-    meta-modules. Meta-modules are deduplicated into a merged reaction catalogue
-    without local FASTCORE completion. For each medium scenario, the package
-    constructs one shared union GEM and performs a single global FASTCORE
-    completion before directional COMPASS-like scoring. Integrated RNA and ATAC
-    evidence is converted to reaction penalties. A post-Layer-2 step can use
-    any GEM reaction as a direct KEGG, Reactome, or master-Rhea mapping anchor
-    and score linked non-core reactions in the exact cached medium-specific
-    union GEM used for the original analysis. Pinned human and mouse GEMs are
-    bundled for offline use, with platform-aware parallel execution and audited
-    progress and timing output.
+Description: Builds one Pando structural TF-peak-target candidate universe per
+    cell type and jointly estimates a shared regulatory backbone plus
+    condition-specific deviations for Human-GEM or Mouse-GEM GPR target genes
+    in paired single-cell RNA and ATAC data. Stability-selected condition
+    sub-GRNs define condition-specific metabolic target genes and complete-GPR
+    core reactions. Biological meta-modules are deduplicated into one merged
+    reaction catalogue without local FASTCORE completion. For each medium
+    scenario, the package constructs one shared union GEM and performs one
+    global FASTCORE completion before directional COMPASS-like scoring.
+    Integrated RNA and ATAC evidence is converted to reaction penalties while
+    preserving the same stoichiometric model across conditions. A post-Layer-2
+    step can use any GEM reaction as a direct KEGG, Reactome, or master-Rhea
+    mapping anchor and score linked non-core reactions in the exact cached
+    medium-specific union GEM used for the original analysis. Pinned human and
+    mouse GEMs are bundled for offline use, with platform-aware parallel
+    execution and audited progress and timing output.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -62,6 +64,8 @@ Collate:
     'shared_tfidf.R'
     'condition_pooling.R'
     'grn_inference.R'
+    'multitask_grn.R'
+    'multitask_grn_inference.R'
     'regulatory_modifier.R'
     'condition_layer1.R'
     'reaction_evidence.R'
@@ -91,13 +95,14 @@ Imports:
     Matrix,
     matrixStats,
     methods,
+    glmnet,
     highs,
     SeuratObject (>= 4.1.4),
     Seurat (>= 4.4.0),
     Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
-    Pando,
+    Pando (>= 1.1.2),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
