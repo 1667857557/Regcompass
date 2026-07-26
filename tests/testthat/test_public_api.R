@@ -21,9 +21,9 @@ test_that("canonical source architecture loads current contracts", {
   collate <- description$Collate %||% ""
   required <- c(
     "condition_metacell_cache.R", "supercell2_current_contract.R",
-    "multitask_grn_bootstrap_contract.R", "multitask_grn_cv_contract.R",
-    "meta_module_core_contract.R", "result_compaction.R",
-    "reaction_evidence.R", "reaction_annotations.R"
+    "supercell2_label_contract.R", "multitask_grn_bootstrap_contract.R",
+    "multitask_grn_cv_contract.R", "meta_module_core_contract.R",
+    "result_compaction.R", "reaction_evidence.R", "reaction_annotations.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
 
@@ -66,7 +66,7 @@ test_that("canonical formals separate stage settings", {
 test_that("current SuperCell2 defaults are explicit", {
   defaults <- formals(rc_make_supercell2_metacells)
   expect_identical(eval(defaults$strata_cols), "condition")
-  expect_null(eval(defaults$label_col))
+  expect_identical(eval(defaults$label_col), "cell_type")
   expect_identical(eval(defaults$rna_reduction), "pca")
   expect_identical(eval(defaults$atac_reduction), "lsi")
   expect_identical(eval(defaults$rna_dims), 1:30)
@@ -76,6 +76,10 @@ test_that("current SuperCell2 defaults are explicit", {
   expect_identical(defaults$min_cells_per_stratum, 100L)
   expect_identical(defaults$min_metacell_size, 20L)
   expect_identical(defaults$min_metacells_per_stratum, 2L)
+  expect_error(
+    rc_make_supercell2_metacells(NULL, tempfile(), label_col = NULL),
+    "label_col"
+  )
 })
 
 test_that("Pando defaults and structural design remain explicit", {
