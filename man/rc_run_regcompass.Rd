@@ -2,13 +2,15 @@
 % Please edit documentation in R/regcompass.R
 \name{rc_run_regcompass}
 \alias{rc_run_regcompass}
-\title{Run the canonical significant-Pando-target RegCompass workflow}
+\title{Run the shared-background condition-sub-GRN RegCompass workflow}
 \usage{
 rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
-  rna_assay = "RNA", atac_assay = "ATAC", pando_args = list(),
-  sample_col = NULL, fragment_files = FALSE, metacell_args = list(),
+  rna_assay = "RNA", atac_assay = "ATAC",
+  grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
+  pando_args = list(), multitask_args = list(), sample_col = NULL,
+  fragment_files = FALSE, metacell_args = list(),
   meta_module_args = list(), layer1_args = list(),
   medium_scenarios = NULL,
   model_mode = c("meta_module_gem", "full_gem"), layer2_args = list(),
@@ -32,17 +34,21 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 
-\item{pando_args}{Stage 1 Pando controls. Canonical evidence defaults are \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Explicit \code{pando_initiate_args$regions} overrides the species-specific default.}
+\item{grn_mode}{GRN architecture. \code{"multitask_shared_backbone"} builds one structural TF-peak-target universe per cell type and jointly estimates global and condition-specific coefficients. \code{"legacy_condition_pando"} retains independent condition-by-cell-type Pando fits.}
 
-\item{sample_col}{Optional sample provenance column. It is not used for canonical condition-only metacell grouping or weighting.}
+\item{pando_args}{Stage 1 Pando controls. In multitask mode these include \code{min_cells}, \code{pando_initiate_args}, \code{pando_motif_args}, \code{pando_design_args}, and \code{save_pando_objects}. Explicit \code{pando_initiate_args$regions} overrides the species-specific default.}
+
+\item{multitask_args}{Elastic-net and stability-selection controls: \code{alpha}, global and deviation penalty factors, lambda rule, fold count, stability repetitions and fraction, selection/sign thresholds, minimum effect and cross-validated R-squared, shared candidate screen, edge cap, and seed. A non-zero ridge component is required, so \code{alpha} must be less than one.}
+
+\item{sample_col}{Optional biological-sample column. When supplied, Stage 1 removes sample means from target and TF-by-peak predictors and uses sample-blocked folds when at least three samples per condition are available. Stage 2 retains the same column as metacell provenance.}
 
 \item{fragment_files}{Use \code{FALSE} for the canonical existing-peak-count path.}
 
-\item{metacell_args}{Stage 2 controls. Defaults include \code{rna_reduction = "pca"}, \code{rna_dims = 1:30}, \code{atac_reduction = "lsi"}, \code{atac_dims = 2:30}, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. Changing cached inputs requires \code{overwrite = TRUE}.}
+\item{metacell_args}{Stage 2 controls. Defaults include \code{gamma = 30L}; changing cached inputs requires \code{overwrite = TRUE}.}
 
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}. Expansion is one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence.}
 
-\item{layer1_args}{Stage 4 integrated-evidence controls: \code{regulatory_alpha}, \code{gpr_and_method}, and \code{gene_half_saturation}. \code{gpr_and_method} accepts \code{"min"}, \code{"median"}, or \code{"mean"} and defaults to \code{"min"}.}
+\item{layer1_args}{Stage 4 integrated-evidence controls: \code{regulatory_alpha}, \code{gpr_and_method}, and \code{gene_half_saturation}.}
 
 \item{medium_scenarios}{Condition-invariant medium table used by Stage 5.}
 
@@ -50,25 +56,39 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 
 \item{layer2_args}{Layer 2 scoring and union-GEM controls. \code{completion_time_limit} belongs only in \code{layer2_args$model_params} and limits union-GEM FASTCORE construction, not scoring.}
 
-\item{upstream_workers}{Worker count for GRN inference and Layer 1 reaction-expression calculation. Defaults to 6. Set to 1 for serial upstream execution.}
+\item{upstream_workers}{Worker count for GRN inference and Layer 1 reaction-expression calculation.}
 
-\item{layer2_workers}{Worker count for medium-specific union-GEM completion and Layer 2 LP scoring. Defaults to 30. Set to 1 for serial Layer 2 execution.}
+\item{layer2_workers}{Worker count for medium-specific union-GEM completion and Layer 2 LP scoring.}
 
-\item{progress}{Display workflow and stage progress. Set \code{FALSE} or use \code{options(RegCompassR.progress = FALSE)} for quiet execution.}
+\item{progress}{Display workflow and stage progress.}
 }
-\description{Runs the six canonical Pando, metacell, biological meta-module, Layer 1, medium-specific union-GEM/Layer 2, and result stages.}
+\description{
+Runs the six shared-background GRN, metacell, condition meta-module, Layer 1,
+medium-specific union-GEM/Layer 2, and result stages.
+}
 \details{
-Public arguments are ordered by processing sequence: shared model inputs, Stage 1 Pando inputs, Stage 2 metacell inputs, Stage 3 meta-module inputs, Stage 4 evidence inputs, Stage 5 medium/model inputs, and execution controls.
+In the canonical mode, Pando supplies one condition-agnostic structural candidate
+set for each cell type. RegCompass uses TF-expression by peak-accessibility
+predictors and estimates
+\deqn{\theta_{e,c}=\beta_e+\delta_{e,c},\qquad \sum_c\delta_{e,c}=0.}
+Every condition contributes the same total regression weight. The condition
+coding is symmetric and all deviation blocks receive the same elastic-net
+penalty. Stability selection multiplies the fitted coefficient by its selection
+frequency and conditional sign stability.
 
-Stage 1 fits Pando separately for each condition by cell-type group using all GEM GPR genes present in the RNA assay. A coefficient is retained only when its adjusted P value, absolute estimate, and target-model R-squared satisfy the configured filters. Positive and negative coefficients both count as regulatory evidence.
+A condition metabolic gene is supported when at least one stable active edge
+targets that gene. A reaction becomes a condition-specific core only when one
+complete GPR AND branch is contained in the supported gene set. Positive and
+negative stable regulatory edges both establish regulated-gene membership.
 
-Stage 2 uses the requested RNA and ATAC reductions and dimensions to construct SuperCell2 metacells. The base seed is incremented deterministically by ordered condition stratum: \code{seed + stratum_index - 1}. Reduction names, dimensions, embedding fingerprints, seed, gamma, and metacell thresholds are part of the cache contract.
+Layer 1 projects the stable TF-peak-target model onto metacell ATAC deviations.
+TFs sharing one measured peak are signed-summed before projection, and one
+target-specific denominator is shared across conditions. A gene with no active
+edge in one condition receives a zero regulatory modifier and therefore exactly
+falls back to its RNA-only support.
 
-Stage 3 maps the significant target-gene set directly to complete-GPR cores. Biological expansion is executed exactly once in the subsystem, KEGG/Reactome, and master-Rhea order.
-
-Stage 4 aggregates required GPR subunits using the selected COMPASS-compatible \code{min}, \code{median}, or \code{mean} function. The canonical default is \code{min}; isozyme OR branches are additive.
-
-Stage 3 constructs a deduplicated merged reaction catalogue but does not run FASTCORE and does not create a GEM. With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium to the merged biological reaction set, performs the only global FASTCORE completion, and saves one union GEM shared by all conditions and metacells in that medium.
-
-The canonical workflow automatically selects SOCK/SnowParam workers on Windows and MulticoreParam workers on Linux/macOS. A worker count of one resolves that layer to serial execution. Each stage reports progress and writes \code{step_timing.tsv}; the complete workflow writes \code{00_execution_timing.tsv} and stores elapsed time in \code{result$timing}.
+Stage 3 creates condition-specific biological catalogues but no GEM. Stage 5
+merges their reaction union, applies the medium, performs the only global
+FASTCORE completion, and reuses identical reaction IDs, stoichiometric matrix,
+and bounds for all conditions and metacells in that medium.
 }
