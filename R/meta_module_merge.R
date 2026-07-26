@@ -2,9 +2,11 @@
 
 .rc_merge_meta_module_catalogue <- function(condition_modules) {
   names_to_merge <- c(
-    "sample_status", "tf_peak_gene_all", "tf_peak_gene_significant",
-    "supported_metabolic_genes", "core_gene_reaction",
-    "reaction_membership", "meta_module_summary"
+    "sample_status", "celltype_fit_status",
+    "tf_peak_gene_candidates", "tf_peak_gene_global",
+    "tf_peak_gene_condition_all", "tf_peak_gene_all",
+    "tf_peak_gene_significant", "supported_metabolic_genes",
+    "core_gene_reaction", "reaction_membership", "meta_module_summary"
   )
   out <- lapply(names_to_merge, function(name) {
     value <- condition_modules[[name]]
@@ -55,7 +57,7 @@
     ),
     stringsAsFactors = FALSE
   )
-  out$schema_version <- "regcompass_merged_meta_modules_v2"
+  out$schema_version <- "regcompass_merged_meta_modules_v3"
   out$source_group_ids <- if (
     "group_id" %in% colnames(out$sample_status)
   ) {
@@ -64,7 +66,7 @@
     character()
   }
   out$core_definition <-
-    "condition_celltype_significant_pando_targets_complete_gpr"
+    "condition_celltype_active_regulatory_targets_complete_gpr"
   out$merge_source <- "deduplicated_biological_meta_module_reactions"
   out$is_gem <- FALSE
   out$fastcore_applied <- FALSE
