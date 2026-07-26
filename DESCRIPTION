@@ -64,6 +64,7 @@ Collate:
     'condition_pooling.R'
     'condition_pooling_no_sample.R'
     'grn_inference.R'
+    'pando_grn_group_contract.R'
     'multitask_grn.R'
     'multitask_grn_inference.R'
     'regulatory_modifier.R'
