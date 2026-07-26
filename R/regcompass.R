@@ -14,7 +14,7 @@
 #'   to `Pando::find_motifs()`.
 #' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
 #'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
-#'   master-Rhea equivalence. Recursive and one-hop expansion APIs are removed.
+#'   master-Rhea equivalence.
 #' @param layer1_args Stage 4 integrated-evidence arguments:
 #'   `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.
 #'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
@@ -93,8 +93,7 @@ rc_run_regcompass <- function(
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown_meta_module, collapse = ", "),
-      ". Meta-module expansion is always one ordered pass; the retired ",
-      "`expansion_mode`, `max_iterations`, and one-hop APIs have been removed.",
+      ". Allowed field: `subsystem_table`.",
       call. = FALSE
     )
   }
@@ -106,7 +105,8 @@ rc_run_regcompass <- function(
     stop(
       "Unknown `layer1_args` fields: ",
       paste(unknown_layer1, collapse = ", "),
-      ". The retired `tau`/Boltzmann GPR-AND API has been removed.",
+      ". Allowed fields: `regulatory_alpha`, `gpr_and_method`, and ",
+      "`gene_half_saturation`.",
       call. = FALSE
     )
   }

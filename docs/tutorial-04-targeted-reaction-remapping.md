@@ -1,6 +1,6 @@
 # Tutorial Level 4: remap selected genes or reactions
 
-Use this tutorial after a completed stepwise `meta_module_gem` analysis to score non-core reactions that are directly linked to selected complete-GPR core reactions.
+Use this tutorial after a completed stepwise `meta_module_gem` analysis to score non-core reactions that are directly linked to selected reaction anchors.
 
 The second pass reuses the cached Stage 5 model. It validates the cache checksum and medium identity, and does not rebuild the model or rerun FASTCORE. Because union-GEM construction is already complete, this scoring-only step has no time-limit parameter.
 
@@ -23,7 +23,11 @@ targeted <- rc_regcompass_step_target_union(
   layer2 = step5,
   gem = gem,
   outdir = "RegCompass_targeted/reaction_anchors",
-  core_reaction_ids = c("MAR04324"),
+  core_reaction_ids = c(
+    "MAR04381",
+    "MAR04379",
+    "MAR04391"
+  ),
   gene_match = "complete_gpr",
   layer2_args = list(
     target_direction = "both",
@@ -34,9 +38,14 @@ targeted <- rc_regcompass_step_target_union(
 )
 ```
 
-Selected reaction IDs must have been complete-GPR core targets in the original Stage 5 run.
+The argument name `core_reaction_ids` is retained for compatibility. Each supplied ID may be either:
 
-## Select anchors by gene
+- an original complete-GPR core reaction;
+- a non-core reaction in the supplied GEM.
+
+A reaction-ID anchor is used only to find direct KEGG, Reactome, or master-Rhea equivalents. The anchor itself does not need to be an original Layer 2 core and is not automatically rescored.
+
+## Select original core anchors by gene
 
 ```r
 targeted_gene <- rc_regcompass_step_target_union(
@@ -54,20 +63,22 @@ targeted_gene <- rc_regcompass_step_target_union(
 )
 ```
 
-`gene_match = "complete_gpr"` requires the selected genes to satisfy at least one full GPR isozyme group. Use `"any_direct"` only for exploratory mapping.
+`gene_match = "complete_gpr"` requires the selected genes to satisfy at least one full GPR isozyme group among the original core reactions. Use `"any_direct"` only for direct-gene matching within the original core set.
 
 ## Mapping scope
 
-The second pass includes non-core reactions that share a direct KEGG reaction ID, Reactome reaction ID, or master Rhea ID with a selected core anchor.
+The second pass includes non-core reactions that share a direct KEGG reaction ID, Reactome reaction ID, or master Rhea ID with a selected reaction anchor.
 
-It does not perform subsystem, transitive, metabolite-neighbour, or one-hop expansion. A mapped reaction is scored only when it is present in the cached Stage 5 model.
+It does not perform subsystem, transitive, metabolite-neighbour, or one-hop expansion. A mapped reaction is scored only when it is present in every cached Stage 5 union GEM required by the analysis. Original Stage 5 core targets are not recomputed.
 
 The original Stage 5 `layer2_args$model_params$completion_time_limit` applied only when FASTCORE constructed the cached union GEM. It is neither reused nor configurable in this second scoring pass.
 
 ## Inspect outputs and provenance
 
 ```r
+targeted$selected_anchor_reactions
 targeted$selected_core_reactions
+targeted$selected_noncore_reactions
 targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
 targeted$merged_catalogue_membership
@@ -84,7 +95,8 @@ Relation-level provenance:
 
 ```r
 targeted$expanded_reaction_catalog[, c(
-  "anchor_core_reaction_id",
+  "anchor_reaction_id",
+  "anchor_is_original_core",
   "reaction_id",
   "expansion_type",
   "source_annotation",
@@ -99,14 +111,14 @@ Reaction-level targets:
 ```r
 targeted$expanded_scoring_targets[, c(
   "reaction_id",
-  "anchor_core_reaction_ids",
+  "anchor_reaction_ids",
   "expansion_types",
   "source_annotations",
   "merged_catalogue_inclusion_stage"
 )]
 ```
 
-The persistent mapping table is written to:
+The persistent merged catalogue table is:
 
 ```text
 merged_meta_module_catalogue_membership.tsv.gz

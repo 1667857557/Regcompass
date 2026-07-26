@@ -78,7 +78,7 @@ Annotation-defined expansion is executed exactly once in the following order:
 4. from the resulting core-plus-subsystem-plus-database set, add direct master-Rhea reaction equivalents;
 5. stop.
 
-A reaction introduced at the master-Rhea step does not trigger another KEGG/Reactome or subsystem pass. There is no `expansion_mode`, fixed-point recursion, `max_iterations`, metabolite-neighbour, one-hop, currency-metabolite, or stoichiometric-adjacency expansion.
+A reaction introduced at the master-Rhea step does not trigger another KEGG/Reactome or subsystem pass.
 
 The resulting biological reaction set is:
 
@@ -139,7 +139,7 @@ Q^{mean}_{r,j,u}=\frac{1}{|A_{r,j}|}
 \sum_{g\in A_{r,j}} C^{MO}_{g,u}.
 \]
 
-The canonical default is `gpr_and_method = "min"`, representing the limiting required subunit. `"median"` and `"mean"` are available for sensitivity analysis. The former Boltzmann soft-min and `tau` parameter are removed.
+The canonical default is `gpr_and_method = "min"`, representing the limiting required subunit. `"median"` and `"mean"` are available for sensitivity analysis.
 
 Isozyme OR branches remain additive:
 

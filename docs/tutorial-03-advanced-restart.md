@@ -48,7 +48,7 @@ Rerun reaction meta-modules and downstream stages after changing:
 - subsystem, KEGG, Reactome, or master-Rhea annotations;
 - GEM GPR rules.
 
-Pando filtering is no longer a Stage 3 parameter. It defines the significant target-gene set in Stage 1. Stage 3 has no GRN-neighbour, shared-TF, Jaccard, top-k, connected-component, `expansion_mode`, `max_iterations`, fixed-point, or one-hop settings.
+Pando filtering is configured in Stage 1. Stage 3 uses the resulting supported target-gene set and accepts an optional custom subsystem table.
 
 Stage 3 always performs one ordered pass:
 
@@ -67,7 +67,7 @@ Rerun Layer 1 and downstream stages after changing:
 - gene half-saturation;
 - metacell RNA or ATAC evidence.
 
-The default GPR-AND method is `"min"`. The retired Boltzmann soft-min and `tau` API are not available.
+The default GPR-AND method is `"min"`.
 
 ### Rerun Stage 5 onward
 

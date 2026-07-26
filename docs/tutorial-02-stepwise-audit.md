@@ -197,7 +197,7 @@ step3 <- rc_regcompass_step_meta_modules(
 )
 ```
 
-Stage 3 no longer projects targets through shared TFs and does not calculate GRN connected components. For each `condition × cell type`, it performs the following operations exactly once:
+For each `condition × cell type`, Stage 3 performs the following operations exactly once:
 
 ```text
 significant Pando TF–peak–GEM-target rows
@@ -210,16 +210,6 @@ significant Pando TF–peak–GEM-target rows
 ```
 
 A positive or negative Pando coefficient both count as regulatory evidence. A reaction is core only when at least one complete GPR AND branch is contained in the supported target-gene set. Partial complexes remain diagnostic and do not anchor expansion.
-
-The Stage 3 expansion order is fixed. The removed APIs are:
-
-```text
-expansion_mode
-max_iterations
-fixed-point recursion
-one-hop reaction expansion
-stoichiometric-neighbour expansion
-```
 
 A custom subsystem mapping remains possible through:
 
@@ -261,7 +251,7 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
-`gpr_and_method` accepts the COMPASS functions `"min"`, `"median"`, and `"mean"`. RegCompass defaults to `"min"`, so the least-supported required subunit limits a multi-gene GPR complex. The canonical isozyme OR rule remains additive. The former Boltzmann soft-min and `tau` API have been deleted.
+`gpr_and_method` accepts the COMPASS functions `"min"`, `"median"`, and `"mean"`. RegCompass defaults to `"min"`, so the least-supported required subunit limits a multi-gene GPR complex. The canonical isozyme OR rule remains additive.
 
 The selected rule is recorded in:
 

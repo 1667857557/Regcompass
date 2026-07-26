@@ -5,9 +5,8 @@
 #' evidence are treated as one supported gene set. Reactions become core only
 #' when at least one complete GPR branch is contained in that set. Biological
 #' expansion is one fixed ordered pass: core subsystem, direct KEGG/Reactome
-#' reaction equivalence, then direct master-Rhea equivalence. There is no
-#' recursive, fixed-point, one-hop, or stoichiometric-neighbour expansion.
-#' Stage 3 does not run FASTCORE and does not construct a GEM.
+#' reaction equivalence, then direct master-Rhea equivalence. Stage 3 does not
+#' run FASTCORE and does not construct a GEM.
 #'
 #' @export
 rc_regcompass_step_meta_modules <- function(
@@ -39,8 +38,7 @@ rc_regcompass_step_meta_modules <- function(
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown, collapse = ", "),
-      ". Meta-module expansion is always one ordered pass; the retired ",
-      "`expansion_mode`, `max_iterations`, and one-hop APIs have been removed.",
+      ". Allowed field: `subsystem_table`.",
       call. = FALSE
     )
   }
