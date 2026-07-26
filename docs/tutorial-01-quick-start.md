@@ -1,21 +1,26 @@
 # Tutorial Level 1: minimal one-shot run
 
-Use this tutorial for paired single-cell RNA+ATAC data and RegCompassR 1.8.8.
+**This tutorial:** runs the complete RegCompassR 1.8.9 workflow and introduces the compact final result.
+
+**Next:** [Tutorial 2 — stepwise run and audit](tutorial-02-stepwise-audit.md) reproduces the same analysis stage by stage and exposes the detailed objects intentionally omitted from `result`.
 
 ## Workflow
 
 ```text
-one validated Pando TF–peak–target background per cell type
-→ global GRN backbone + symmetric condition deviations
-→ full-size condition-stratified bootstrap stability
-→ condition-specific sub-GRNs and metabolic target genes
-→ complete-GPR condition core reactions
-→ one ordered subsystem/cross-reference expansion pass
-→ one shared medium-specific union GEM
-→ RNA+ATAC penalties and directional LP scoring
+shared Pando TF–peak–target candidates per cell type
+→ condition-balanced multitask elastic net
+→ global backbone + condition deviations
+→ condition-stratified bootstrap-active sub-GRNs
+→ condition target genes
+→ complete-GPR reaction cores
+→ biological module expansion
+→ shared medium-specific union GEM
+→ RNA+ATAC penalties
+→ direction-specific LP scoring
+→ compact analysis result
 ```
 
-## Prepare the model
+## 1. Prepare the model
 
 ```r
 library(RegCompassR)
@@ -36,16 +41,24 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-The object must contain paired RNA and ATAC measurements and complete metadata columns supplied as `condition_col` and `celltype_col`. The canonical workflow does not accept a biological-sample column. RNA is normalised globally, and ATAC uses one TF-IDF reference per cell type across conditions.
-
-When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")`. Default regulatory regions are:
+The paired Seurat object must contain RNA and ATAC assays, the requested PCA/LSI reductions, and complete metadata columns named by:
 
 ```text
-human: phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
-mouse: phastConsElements20Mammals.UCSC.hg38
+condition_col
+celltype_col
 ```
 
-## Run the complete workflow
+No sample column is accepted or interpreted by the canonical workflow.
+
+Stage 2 uses the current SuperCell2 contract:
+
+```text
+RegCompass splits cells by condition
+→ SCimplify_for_Seurat(label = celltype_col)
+→ exact label-preserving metacells
+```
+
+## 2. Run the complete workflow
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -54,11 +67,9 @@ result <- rc_run_regcompass_one_shot(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
   gem = gem,
-
   condition_col = "Group",
   celltype_col = "cell_type",
 
-  # Stage 1: shared candidate background and condition sub-GRNs
   grn_mode = "multitask_shared_backbone",
   pando_args = list(
     min_cells = 100,
@@ -78,12 +89,12 @@ result <- rc_run_regcompass_one_shot(
     n_bootstrap = 100,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
+    min_bootstrap_success_fraction = 0.8,
     candidate_screen_threshold = 0,
     max_edges_per_target = Inf,
     seed = 12345L
   ),
 
-  # Stage 2: condition-only, cell-type-label-guided metacells
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
@@ -98,13 +109,11 @@ result <- rc_run_regcompass_one_shot(
     overwrite = FALSE
   ),
 
-  # Stage 4: integrated evidence and GPR aggregation
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
 
-  # Stage 5: one shared model per medium
   medium_scenarios = medium_scenarios,
   model_mode = "meta_module_gem",
   layer2_args = list(
@@ -123,58 +132,86 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The package default is `n_bootstrap = 50L`; `100` is shown for a final analysis with a more stable empirical selection-frequency estimate.
+The package default is `n_bootstrap = 50L`; `100` is suitable for a final run with lower Monte Carlo error in empirical selection frequencies.
 
-## Stage 1 parameters
+## 3. Understand the key calculations
 
-| Parameter | Default | Meaning |
-|---|---:|---|
-| `min_cells` | `20L` | Minimum cells in every condition of a cell type. |
-| `alpha` | `0.5` | Elastic-net mixing value; it must remain below one so the symmetric deviation solution contains a ridge component. |
-| `global_penalty_factor` | `1` | Penalty factor for the shared backbone. |
-| `deviation_penalty_factor` | `2` | Stronger default shrinkage for condition deviations. |
-| `nfolds` | `5L` | Maximum number of condition-stratified cell-level CV folds. |
-| `n_bootstrap` | `50L` | Full-size nonparametric bootstrap replicates, sampled with replacement within each condition. |
-| `min_selection_frequency` | `0.7` | Minimum fraction of successful bootstrap fits selecting the condition edge. |
-| `min_sign_stability` | `0.8` | Minimum conditional sign agreement among selected bootstrap fits. |
-| `candidate_screen_threshold` | `0` | Retains the complete structural Pando candidate universe by default. |
-| `max_edges_per_target` | `Inf` | Does not truncate the shared candidate universe by default. |
+For candidate edge `e = (TF t, peak p, target g)`:
 
-For every bootstrap replicate, each condition contributes exactly its original cell count, sampled with replacement. The resampled target and TF-by-ATAC predictors are re-centred within condition before refitting at the full-data selected lambda.
+\[
+x_{e,u}=T_{t,u}A_{p,u}.
+\]
 
-The multitask model does not assign classical adjusted p-values to regularised coefficients. `padj` is `NA`; edge support is defined by bootstrap selection frequency, conditional sign stability, the full-data absolute effect, and target-model cross-validated reliability.
+The condition coefficient is
 
-## Core reaction rule
+\[
+\theta_{e,c}=\beta_e+\delta_{e,c},
+\qquad \sum_c\delta_{e,c}=0.
+\]
 
-For condition target set `G_c`, reaction `r` becomes core only when one complete GPR branch is present:
+Each bootstrap resamples every condition with replacement at its original cell count and recalculates within-condition centring. An edge becomes active only after passing selection-frequency, sign-stability, effect-size, CV-reliability, and bootstrap-completion thresholds.
+
+For condition target-gene set `G_c`, a reaction is core only when one complete GPR branch is present:
 
 \[
 Core_{r,c}=1\iff\exists k:B_{r,k}\subseteq G_c.
 \]
 
-Positive and negative active regulatory edges both allow a target gene to enter `G_c`.
+Positive and negative active edges both establish regulated-gene membership; the coefficient sign is retained in the ATAC projection.
 
-## Inspect outputs
+## 4. Inspect the compact final result
 
 ```r
-result$grn$tf_peak_gene_candidates
-result$grn$tf_peak_gene_global
-result$grn$tf_peak_gene_condition_all
-result$grn$tf_peak_gene_significant
-result$grn$condition_target_genes
-result$grn$stability_diagnostics
-result$grn$group_status
-
-result$condition_grn_meta_modules$supported_metabolic_genes
-result$condition_grn_meta_modules$core_gene_reaction
-result$merged_grn_meta_modules$merged_core_reactions
-result$merged_grn_meta_modules$merged_reaction_membership
-
-result$reaction_ranking
-result$condition_contrast
-result$microcompass$model_cache_summary
+result$schema_version
+result$version
+result$table_manifest
 ```
 
-The merged catalogue is a reaction union, not a GEM. Stage 5 constructs one medium-specific union GEM and reuses its exact stoichiometry and bounds for every condition and metacell.
+Primary tables are:
 
-See [multitask GRN mathematics and stage contracts](multitask-shared-grn.md).
+```r
+result$reaction_ranking
+result$condition_contrast
+result$active_regulatory_edges
+result$condition_target_genes
+result$core_reactions
+result$meta_module_summary
+result$grn_metacell_group_coverage
+result$reaction_catalog
+result$reaction_evidence
+```
+
+`reaction_ranking` and `condition_contrast` contain only analysis columns. Reaction names, formulas, GPRs, and database cross-references occur once in `reaction_catalog` rather than being repeated in every ranking row.
+
+The final object retains `result$microcompass` because direction-specific condition testing and plotting require the unit-level scores. It does not embed the full GRN candidate universe, all coefficient rows, metacell assay matrices, Layer 1 matrices, or full module membership.
+
+```r
+result$stage_provenance$detailed_sources
+```
+
+## 5. Locate detailed stage outputs
+
+The one-shot run writes stage checkpoints under the output directory. Use them only when detailed auditing is required:
+
+```r
+step1 <- readRDS("RegCompass_result/01_grn/step_grn.rds")
+step2 <- readRDS("RegCompass_result/02_metacells/step_metacells.rds")
+step3 <- readRDS("RegCompass_result/03_meta_modules/step_meta_modules.rds")
+step4 <- readRDS("RegCompass_result/04_layer1/step_layer1.rds")
+step5 <- readRDS("RegCompass_result/05_layer2/step_layer2.rds")
+```
+
+Actual subdirectory names may follow the one-shot stage layout shown in the run log; `result$stage_provenance` records which scientific information belongs to each stage.
+
+## 6. Exit checks before Tutorial 2 or Tutorial 5
+
+```r
+stopifnot(
+  identical(result$version, "1.8.9"),
+  isTRUE(!result$stage_provenance$detailed_intermediates_embedded),
+  nrow(result$reaction_ranking) > 0L,
+  nrow(result$reaction_catalog) > 0L
+)
+```
+
+For a transparent stage-by-stage reconstruction, continue to [Tutorial 2](tutorial-02-stepwise-audit.md). For biological interpretation after a completed run, continue to [Tutorial 5](tutorial-05-condition-differential-analysis.md).
