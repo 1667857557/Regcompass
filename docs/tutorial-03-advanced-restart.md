@@ -1,6 +1,6 @@
 # Tutorial Level 3: restart, sensitivity, and diagnostics
 
-RegCompass saves classed stage objects so downstream stages can be rerun without repeating unchanged work. Objects from incompatible runs are rejected through stored workflow and GEM provenance.
+RegCompass saves classed stage objects so downstream stages can be rerun without repeating unchanged work. Objects from incompatible runs are rejected through workflow settings, GEM fingerprints and ordered-unit contracts.
 
 ## Load a completed stepwise run
 
@@ -16,46 +16,53 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 
 ### Rerun Stage 1 onward
 
-Rerun Pando and all downstream stages after changing:
+Rerun Stage 1 and every downstream stage after changing:
 
-- `species`;
-- `padj_threshold`, `min_abs_estimate`, or `min_model_rsq`;
-- `tf_cor`, `peak_cor`, model method, or other `pando_infer_args`;
-- motif matrices or genome;
-- `pando_initiate_args$regions`;
-- RNA/ATAC matrices, condition metadata, or cell-type metadata.
+- motif matrices, genome or Pando regulatory regions;
+- `pando_design_args`, including peak-to-gene domains or structural detection filters;
+- `multitask_args`, including elastic-net penalties, lambda rule, folds, stability repetitions or thresholds;
+- `grn_mode`;
+- biological sample, condition or cell-type metadata;
+- single-cell RNA or ATAC matrices;
+- GEM GPR target genes.
 
-When `pfm` is omitted, the canonical motif collection is Pando's `motifs` data object. Supplying a different `pfm` changes the fitted regulatory evidence and therefore requires Stage 1 onward to be rerun.
+The canonical Stage 1 object records the candidate universe, global coefficients, all condition coefficients, active edges and stability diagnostics. Changing only downstream plots does not require Stage 1 to be rerun.
 
-The species-specific default region policies are:
+Legacy `padj_threshold`, `min_abs_estimate`, `min_model_rsq` and `pando_infer_args` apply only when:
 
-```text
-human = phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
-mouse = phastConsElements20Mammals.UCSC.hg38 only
+```r
+grn_mode = "legacy_condition_pando"
 ```
-
-Changing `species`, overriding the region object, or changing either default region source requires Stage 1 onward to be rerun.
 
 ### Rerun Stage 2 onward
 
-Rerun metacells and all downstream stages after changing cell membership, RNA/ATAC matrices, condition or cell-type metadata, `gamma`, or the RNA/ATAC reductions used for metacell construction.
+Rerun metacells and downstream stages after changing:
+
+- cell membership;
+- RNA/ATAC matrices used for aggregation;
+- condition or cell-type metadata;
+- RNA/ATAC reductions or dimensions;
+- `gamma`, seed or metacell thresholds.
+
+Changing the Stage 1 GRN without changing the underlying cells does not require Stage 2 itself to be rebuilt, but Stage 3 onward must be rerun because supported condition genes may change.
 
 ### Rerun Stage 3 onward
 
-Rerun reaction meta-modules and downstream stages after changing:
+Rerun condition meta-modules and downstream stages after changing:
 
+- active condition sub-GRN edges or target genes;
 - a custom `meta_module_args$subsystem_table`;
-- subsystem, KEGG, Reactome, or master-Rhea annotations;
+- subsystem, KEGG, Reactome or master-Rhea annotations;
 - GEM GPR rules.
-
-Pando filtering is configured in Stage 1. Stage 3 uses the resulting supported target-gene set and accepts an optional custom subsystem table.
 
 Stage 3 always performs one ordered pass:
 
 ```text
-core subsystem
-→ KEGG/Reactome equivalence
-→ master-Rhea equivalence
+complete-GPR cores
+→ core subsystems
+→ direct KEGG/Reactome equivalence
+→ direct master-Rhea equivalence
+→ stop
 ```
 
 ### Rerun Stage 4 onward
@@ -63,25 +70,74 @@ core subsystem
 Rerun Layer 1 and downstream stages after changing:
 
 - `regulatory_alpha`;
-- `gpr_and_method` among `"min"`, `"median"`, and `"mean"`;
-- gene half-saturation;
-- metacell RNA or ATAC evidence.
+- `gpr_and_method` among `min`, `median` and `mean`;
+- gene or ATAC half-saturation options;
+- metacell RNA or ATAC evidence;
+- Stage 1 stable coefficients or ATAC projection weights.
 
-The default GPR-AND method is `"min"`.
+The default GPR-AND method is `min`.
 
 ### Rerun Stage 5 onward
 
 Rerun Layer 2 and results after changing:
 
 - medium composition or exchange bounds;
-- `target_direction`, `omega`, solver, or `flux_threshold`;
-- `completion_time_limit`, `fastcore_epsilon`, `max_support_reactions`, or `strict` in `layer2_args$model_params`.
+- `target_direction`, `omega`, solver or `flux_threshold`;
+- `completion_time_limit`, `fastcore_epsilon`, `max_support_reactions` or `strict` in `layer2_args$model_params`;
+- Stage 3 merged reaction membership;
+- Stage 4 reaction penalties.
 
-`completion_time_limit` controls only the FASTCORE/FASTCC work that constructs the medium-specific union GEM. Scoring LPs have no `time_limit` API and run after the union GEM has been completed and cached.
+`completion_time_limit` applies only to construction of the medium-specific union GEM. Scoring LPs do not accept a time-limit parameter.
 
-The complete preset list and custom-medium format are documented in [medium presets](medium-presets.md).
+## Stage 1 sensitivity example
 
-## Rerun Stage 4 with another COMPASS GPR-AND rule
+```r
+step1_sensitive <- rc_regcompass_step_grn(
+  object = A,
+  gem = gem,
+  outdir = "RegCompass_restart/01_grn_sensitive",
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  species = "human",
+  sample_col = "sample_id",
+  condition_col = "Group",
+  celltype_col = "cell_type",
+  grn_mode = "multitask_shared_backbone",
+  pando_args = list(
+    min_cells = 100,
+    pando_design_args = list(
+      peak_to_gene_method = "Signac",
+      min_tf_detection = 0.02,
+      min_peak_detection = 0.02,
+      min_target_detection = 0.02
+    )
+  ),
+  multitask_args = list(
+    alpha = 0.25,
+    global_penalty_factor = 1,
+    deviation_penalty_factor = 3,
+    lambda_rule = "lambda.1se",
+    n_stability = 100,
+    stability_fraction = 0.8,
+    min_selection_frequency = 0.8,
+    min_sign_stability = 0.9,
+    candidate_screen_threshold = 0,
+    max_edges_per_target = Inf,
+    seed = 12345L
+  )
+)
+```
+
+Compare candidate and active-edge counts by cell type and condition rather than comparing coefficient tables without confirming their shared universe IDs:
+
+```r
+step1$grn_result$celltype_fit_status
+step1_sensitive$grn_result$celltype_fit_status
+
+table(step1$grn_result$tf_peak_gene_significant$Group)
+table(step1_sensitive$grn_result$tf_peak_gene_significant$Group)
+```
+
+## Rerun Stage 4 with another GPR-AND rule
 
 ```r
 step4_mean <- rc_regcompass_step_layer1(
@@ -96,9 +152,9 @@ step4_mean <- rc_regcompass_step_layer1(
 )
 ```
 
-Use `"median"` or `"mean"` for sensitivity analysis. The canonical default remains `"min"`.
+Use `median` or `mean` for sensitivity analysis. The canonical default remains `min`.
 
-## Rebuild Stage 5
+## Rebuild Stage 5 under another medium
 
 ```r
 new_medium_scenarios <- rc_make_medium_scenarios(
@@ -129,7 +185,7 @@ step5_new <- rc_regcompass_step_layer2(
 )
 ```
 
-This reuses the Stage 3 reaction targets and Stage 4 support matrix. The new `completion_time_limit` affects union-GEM reconstruction only; the subsequent scoring phase is not time limited.
+The new medium may require a different global FASTCORE support set. Within each medium, all conditions still share one final model.
 
 ## Diagnose model completion
 
@@ -145,14 +201,7 @@ summary[, c(
 )]
 
 model <- readRDS(summary$file[[1]])
-diagnostics <- model$closure_diagnostics
-table(diagnostics$completion_status)
+table(model$closure_diagnostics$completion_status)
 ```
 
-Common statuses are:
-
-- `already_feasible`: the initial reaction set supports the target;
-- `global_fastcore_completed`: FASTCORE added supporting reactions;
-- `parent_blocked`: the target direction is infeasible in the medium-constrained parent GEM;
-- `unresolved`: completion did not succeed under the requested construction limit;
-- `no_allowed_direction`: the original GEM bounds block the requested direction.
+Common statuses include `already_feasible`, `global_fastcore_completed`, `parent_blocked`, `unresolved` and `no_allowed_direction`.
