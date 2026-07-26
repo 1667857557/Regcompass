@@ -1,4 +1,4 @@
-test_that("v1.8.4 public workflow is GRN first", {
+test_that("v1.8.8 public workflow is GRN first", {
   text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   stages <- c(
     "rc_regcompass_step_grn",
@@ -18,9 +18,14 @@ test_that("v1.8.4 public workflow is GRN first", {
   expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
   expect_identical(eval(formals(rc_run_regcompass)$fragment_files), FALSE)
   expect_true("meta_module_args" %in% names(formals(rc_run_regcompass)))
+  expect_true("multitask_args" %in% names(formals(rc_run_regcompass)))
+  expect_identical(
+    eval(formals(rc_run_regcompass)$grn_mode)[[1L]],
+    "multitask_shared_backbone"
+  )
 })
 
-test_that("Pando grouping is condition by cell type", {
+test_that("legacy Pando mode remains condition by cell type", {
   text <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)),
     collapse = "\n"
@@ -37,9 +42,24 @@ test_that("Pando grouping is condition by cell type", {
   )
 })
 
-test_that("Stage 3 uses significant targets rather than target projection", {
+test_that("default GRN mode builds one shared design per cell type", {
   text <- paste(
-    deparse(body(.rc_build_condition_meta_modules)),
+    deparse(body(.rc_run_celltype_multitask_grns_core)),
+    collapse = "\n"
+  )
+  expect_match(
+    text,
+    "cell_types <- sort(unique(as.character(meta[[celltype_col]])))",
+    fixed = TRUE
+  )
+  expect_match(text, "Pando::prepare_grn_design", fixed = TRUE)
+  expect_match(text, ".rc_mt_fit_target", fixed = TRUE)
+  expect_match(text, "tf_peak_gene_condition_all", fixed = TRUE)
+})
+
+test_that("Stage 3 maps active targets through complete GPR branches", {
+  text <- paste(
+    deparse(body(.rc_build_condition_meta_modules_core)),
     collapse = "\n"
   )
   expect_match(text, ".rc_summarize_supported_metabolic_genes", fixed = TRUE)
