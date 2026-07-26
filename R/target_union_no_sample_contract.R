@@ -276,7 +276,10 @@ rc_regcompass_step_target_union <- function(
     "rc_regcompass_step_meta_modules"
   )
   workflow <- meta_modules$workflow_params
+  workflow <- workflow[setdiff(names(workflow), "sample_col")]
   .rc_require_stage_gem(meta_modules, gem, "meta_modules")
+  layer1$workflow_params <- workflow
+  layer2$workflow_params <- workflow
   .rc_validate_layer1_stage(
     layer1, workflow_params = workflow, gem = gem, argument = "layer1"
   )
@@ -349,7 +352,6 @@ rc_regcompass_step_target_union <- function(
     BPPARAM = BPPARAM
   )
   scored$workflow_params <- workflow
-  scored$workflow_params$sample_col <- NULL
   scored$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   scored$params$target_direction <- target_direction
   scored$params$target_scope <-
@@ -386,7 +388,6 @@ rc_regcompass_step_target_union <- function(
   rc_export_microcompass(scored, file.path(outdir, "scores"))
   answer <- c(definition, list(microcompass = scored))
   answer$workflow_params <- workflow
-  answer$workflow_params$sample_col <- NULL
   answer$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   class(answer) <- c("regcompass_target_union_step", "list")
   answer <- .rc_step_monitor_finish(answer, monitor)
