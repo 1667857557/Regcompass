@@ -6,14 +6,15 @@
 \alias{rc_regcompass_step_layer1}
 \alias{rc_regcompass_step_layer2}
 \alias{rc_regcompass_step_results}
-\title{Run RegCompass through inspectable significant-target stages}
+\title{Run RegCompass through inspectable regulatory-metabolic stages}
 \usage{
 rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
-  species = c("auto", "human", "mouse"),
+  species = c("auto", "human", "mouse"), sample_col = NULL,
   condition_col = "condition", celltype_col = "cell_type",
-  rna_assay = "RNA", atac_assay = "ATAC", pando_args = list(),
-  parallel = TRUE, BPPARAM = NULL,
-  progress = getOption("RegCompassR.progress", TRUE))
+  rna_assay = "RNA", atac_assay = "ATAC",
+  grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
+  pando_args = list(), multitask_args = list(), parallel = TRUE,
+  BPPARAM = NULL, progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_metacells(object, outdir, sample_col = NULL,
   condition_col = "condition", celltype_col = "cell_type",
@@ -48,10 +49,13 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{pfm}{Optional motif collection accepted by Pando and motifmatchr. When omitted, Pando's bundled \code{motifs} data object is used.}
 \item{species}{Species identifier or \code{"auto"}. Human uses phastCons plus SCREEN ccRE default regions; mouse uses phastCons only.}
+\item{sample_col}{Optional biological-sample metadata column. In shared-backbone mode it defines unpenalized condition-by-sample intercept strata and stability-resampling strata; Stage 2 still pools by condition.}
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Pando GRN configuration. Evidence defaults include \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Explicit \code{pando_initiate_args$regions} overrides the species-specific region default.}
-\item{metacell_args}{SuperCell2 configuration. Defaults are RNA \code{"pca"} dimensions 1:30, ATAC \code{"lsi"} dimensions 2:30, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. The base seed is incremented by ordered condition-stratum index. Changing cached inputs requires \code{overwrite = TRUE}.}
+\item{grn_mode}{The default \code{"multitask_shared_backbone"} builds one Pando structural candidate universe per cell type and jointly estimates condition effects. \code{"legacy_condition_pando"} preserves independent condition-by-cell-type Pando fits.}
+\item{pando_args}{Pando candidate/design controls. Shared mode accepts \code{min_cells}, \code{pando_initiate_args}, \code{pando_motif_args}, \code{pando_design_args}, and \code{save_pando_objects}. The default structural design does not filter candidates by pooled target-RNA significance. Legacy mode additionally accepts adjusted-P-value and Pando fitting controls.}
+\item{multitask_args}{Elastic-net and stability controls for shared mode, including \code{alpha}, global and deviation penalty factors, lambda rule, fold count, stability resampling, active-edge thresholds, interaction scale, and seed. Deviations must be penalized more strongly than the global block and \code{alpha} must be below one.}
+\item{metacell_args}{SuperCell2 configuration. Defaults are RNA \code{"pca"} dimensions 1:30, ATAC \code{"lsi"} dimensions 2:30, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. Changing cached inputs requires \code{overwrite = TRUE}.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}. Stage 3 expansion is one ordered subsystem, KEGG/Reactome, and master-Rhea pass.}
 \item{regulatory_alpha}{Strength of the ATAC regulatory modifier in Layer 1.}
 \item{gpr_and_method}{COMPASS-compatible aggregation for genes joined by GPR AND. Accepts \code{"min"}, \code{"median"}, or \code{"mean"}; default is \code{"min"}.}
@@ -60,7 +64,6 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{parallel}{Whether the supported stage loop is parallelized.}
 \item{BPPARAM}{BiocParallel parameter object, \code{NULL}, or \code{FALSE}.}
 \item{progress}{Display stage progress. Set to \code{FALSE} for quiet execution.}
-\item{sample_col}{Optional provenance column.}
 \item{fragment_files}{Use \code{FALSE} for the peak-count path.}
 \item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from the preceding stages.}
 \item{medium_scenarios}{Condition-invariant medium table.}
@@ -68,17 +71,15 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 }
 \description{Runs the canonical workflow as separately restartable, validated stages.}
 \details{
-Stage 1 public arguments are ordered by processing sequence: model/genome inputs, motif and species policy, metadata and assays, Pando settings, then execution controls.
-
-Stage 1 fits Pando to GEM GPR target genes for each condition by cell-type group. A coefficient must satisfy the adjusted-P-value, absolute-estimate, and target-model-R-squared filters. Positive and negative coefficients both count as regulatory evidence.
+In the default Stage 1 mode, Pando constructs one explicit TF-peak-metabolic-target candidate universe for each cell type across all conditions. RegCompass fits normalized TF-RNA by peak-ATAC interactions using a condition-balanced elastic net with a shared global block and more strongly penalized condition blocks. Reported effective coefficients are decomposed into the condition mean global coefficient and zero-sum condition deviations. Condition-stratified cross-validation and stability subsampling define active edges; their selection frequency and sign stability are not classical p-values.
 
 Stage 2 constructs condition-level metacells from explicit RNA and ATAC reductions and dimensions. Reduction names, selected dimensions, embedding fingerprints, seed, gamma, and thresholds are part of the restart contract.
 
-Stage 3 collects target genes with significant TF-peak-gene evidence and maps complete GPR branches directly to core reactions. Expansion is exactly one ordered pass through core subsystems, direct KEGG/Reactome reaction equivalence, and direct master-Rhea reaction equivalence.
+Stage 3 collects metabolic targets with active positive or negative regulatory edges and maps complete GPR branches to condition-specific core reactions. Expansion is exactly one ordered pass through core subsystems, direct KEGG/Reactome equivalence, and direct master-Rhea equivalence.
 
-Stage 4 aggregates each required GPR complex with \code{min}, \code{median}, or \code{mean}; the default is \code{min}. Isozyme OR branches remain additive.
+Stage 4 projects accessibility-only regulatory deviations with a target/cell-type scale shared across conditions, then integrates the bounded modifier on the RNA-support log-odds scale. Required GPR complexes use \code{min}, \code{median}, or \code{mean}; isozyme OR branches remain additive.
 
-With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium scenario, runs one global FASTCORE completion on the merged catalogue, and saves the resulting medium-specific union GEM. All conditions and metacells in that medium reuse the same cached model.
+With \code{model_mode = "meta_module_gem"}, Stage 5 merges all condition/cell-type memberships, applies each medium, runs one global FASTCORE completion, and saves one medium-specific union GEM. Every condition and metacell reuses the exact same stoichiometric matrix, bounds and target catalogue.
 
-Each stage returns a \code{timing} table and writes \code{step_timing.tsv} to its output directory. Failed stages also write an error-status timing row. Stage contracts reject mixed GEMs, workflows, core sets, or metacell orders.
+Each stage returns timing provenance and writes its final RDS only after contract validation. Stage contracts reject mixed GEMs, workflows, core sets or metacell orders.
 }
