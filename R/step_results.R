@@ -52,7 +52,7 @@ rc_regcompass_step_results <- function(
   )
   multitask <- identical(grn_mode, "multitask_shared_backbone")
   condition_fields <- intersect(c(
-    "celltype_fit_status", "sample_status",
+    "celltype_fit_status", "group_status",
     "tf_peak_gene_candidates", "tf_peak_gene_global",
     "tf_peak_gene_condition_all", "tf_peak_gene_all",
     "tf_peak_gene_significant", "condition_target_genes",
@@ -65,7 +65,7 @@ rc_regcompass_step_results <- function(
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
     schema_version = if (multitask) {
-      "regcompass_multitask_condition_subgrn_v1"
+      "regcompass_multitask_condition_subgrn_v2"
     } else {
       "regcompass_significant_pando_targets_v1"
     },
@@ -95,7 +95,7 @@ rc_regcompass_step_results <- function(
       ),
       grn_mode = grn_mode,
       grn_background = if (multitask) {
-        "one_celltype_shared_pando_structural_tf_peak_target_universe"
+        "one_celltype_shared_validated_pando_tf_peak_target_universe"
       } else {
         "independent_condition_x_celltype_pando_candidates"
       },
@@ -105,7 +105,11 @@ rc_regcompass_step_results <- function(
         "independent_condition_models"
       },
       grn_stability_policy = if (multitask) {
-        "selection_frequency_times_conditional_sign_stability"
+        paste(
+          "full_size_condition_stratified_nonparametric_bootstrap;",
+          "stable_effect_equals_full_data_effect_times_selection_frequency",
+          "times_conditional_sign_stability"
+        )
       } else {
         "legacy_adjusted_p_value_filter"
       },
@@ -121,13 +125,14 @@ rc_regcompass_step_results <- function(
       metacell_celltype_assignment =
         "supercell_label_guided_then_dominant_membership_audit",
       metacell_gamma = params$metacell_args$gamma,
-      sample_weighting = if (multitask) {
+      condition_balance = if (multitask) {
         "equal_total_GRN_loss_weight_per_condition"
       } else {
-        "none"
+        "not_applicable"
       },
+      biological_sample_metadata = "not_used_or_required",
       meta_module_core_definition = if (multitask) {
-        "condition_celltype_stability_selected_subgrn_targets_complete_gpr"
+        "condition_celltype_bootstrap_stable_subgrn_targets_complete_gpr"
       } else {
         "condition_celltype_significant_pando_targets_complete_gpr"
       },
