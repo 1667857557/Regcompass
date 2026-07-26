@@ -1,5 +1,8 @@
 #' Build integrated RNA+ATAC reaction expression
 #'
+#' Uses condition and cell-type metadata from the validated metacell stage. The
+#' canonical Layer 1 contract contains no biological-sample field.
+#'
 #' @export
 rc_regcompass_step_layer1 <- function(
     metacells, meta_modules, gem, outdir,
@@ -33,7 +36,6 @@ rc_regcompass_step_layer1 <- function(
     meta_modules = meta_modules$condition_modules,
     gem = gem,
     metacell_meta = metacells$pooled$metacell_meta,
-    sample_col = params$sample_col,
     condition_col = params$condition_col,
     celltype_col = params$celltype_col,
     rna_assay = params$rna_assay,
