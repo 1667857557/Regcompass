@@ -2,7 +2,7 @@
 
 .rc_merge_meta_module_catalogue <- function(condition_modules) {
   names_to_merge <- c(
-    "celltype_fit_status", "sample_status",
+    "celltype_fit_status", "group_status",
     "tf_peak_gene_candidates", "tf_peak_gene_global",
     "tf_peak_gene_condition_all", "tf_peak_gene_all",
     "tf_peak_gene_significant", "condition_target_genes",
@@ -64,14 +64,14 @@
     "multitask_shared_backbone"
   )
   out$schema_version <- if (multitask) {
-    "regcompass_merged_multitask_meta_modules_v1"
+    "regcompass_merged_multitask_meta_modules_v2"
   } else {
     "regcompass_merged_meta_modules_v2"
   }
   out$source_group_ids <- if (
-    "group_id" %in% colnames(out$sample_status)
+    "group_id" %in% colnames(out$group_status)
   ) {
-    unique(as.character(out$sample_status$group_id))
+    unique(as.character(out$group_status$group_id))
   } else {
     character()
   }
@@ -83,7 +83,7 @@
     character()
   }
   out$core_definition <- if (multitask) {
-    "condition_celltype_stability_selected_subgrn_targets_complete_gpr"
+    "condition_celltype_bootstrap_stable_subgrn_targets_complete_gpr"
   } else {
     "condition_celltype_significant_pando_targets_complete_gpr"
   }
