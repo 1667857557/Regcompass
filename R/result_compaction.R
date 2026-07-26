@@ -13,6 +13,12 @@
   unique(x)
 }
 
+.rc_result_metadata_column <- function(x, supplied, candidates) {
+  if (!is.null(supplied) && supplied %in% colnames(x)) return(supplied)
+  hit <- candidates[candidates %in% colnames(x)]
+  if (length(hit)) hit[[1L]] else NULL
+}
+
 .rc_compact_active_edges <- function(grn_result, condition_col, celltype_col) {
   edges <- grn_result$tf_peak_gene_significant
   columns <- c(
@@ -37,9 +43,15 @@
 }
 
 .rc_compact_core_reactions <- function(
-    condition_modules, condition_col, celltype_col) {
+    condition_modules, condition_col = NULL, celltype_col = NULL) {
   core <- condition_modules$core_gene_reaction
   if (!is.data.frame(core) || !nrow(core)) return(data.frame())
+  condition_col <- .rc_result_metadata_column(
+    core, condition_col, c("condition", "Group", "group", "treatment")
+  )
+  celltype_col <- .rc_result_metadata_column(
+    core, celltype_col, c("cell_type", "celltype", "CellType")
+  )
   if ("reaction_is_core" %in% colnames(core)) {
     core <- core[core$reaction_is_core %in% TRUE, , drop = FALSE]
   } else if ("is_core" %in% colnames(core)) {
@@ -53,9 +65,17 @@
 }
 
 .rc_compact_meta_module_summary <- function(
-    condition_modules, condition_col, celltype_col) {
+    condition_modules, condition_col = NULL, celltype_col = NULL) {
+  summary <- condition_modules$meta_module_summary
+  if (!is.data.frame(summary)) return(data.frame())
+  condition_col <- .rc_result_metadata_column(
+    summary, condition_col, c("condition", "Group", "group", "treatment")
+  )
+  celltype_col <- .rc_result_metadata_column(
+    summary, celltype_col, c("cell_type", "celltype", "CellType")
+  )
   .rc_result_unique(
-    condition_modules$meta_module_summary,
+    summary,
     c(
       "group_id", "module_id", condition_col, celltype_col,
       "n_supported_genes", "n_core_reactions", "n_module_reactions"
