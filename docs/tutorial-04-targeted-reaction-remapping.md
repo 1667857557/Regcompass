@@ -84,9 +84,6 @@ targeted$expanded_scoring_targets
 targeted$merged_catalogue_membership
 targeted$microcompass$model_cache_summary
 targeted$microcompass$params[c(
-  "n_selected_anchors",
-  "n_selected_core",
-  "n_selected_noncore_anchors",
   "structural_model_reused_exactly",
   "fastcore_rerun",
   "model_rebuild",
@@ -119,14 +116,6 @@ targeted$expanded_scoring_targets[, c(
   "source_annotations",
   "merged_catalogue_inclusion_stage"
 )]
-```
-
-Persistent anchor tables are written to:
-
-```text
-selected_anchor_reactions.tsv.gz
-selected_core_reactions.tsv.gz
-selected_noncore_reactions.tsv.gz
 ```
 
 The persistent merged catalogue table is:
