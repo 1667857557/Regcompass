@@ -32,15 +32,23 @@
   } else if ("pool_id" %in% colnames(unit_meta)) {
     "pool_id"
   } else {
-    stop("Pooled metacell metadata lack metacell_id/pool_id.", call. = FALSE)
+    stop("Metacell metadata lack metacell_id/pool_id.", call. = FALSE)
   }
   required_meta <- c(condition_col, celltype_col)
   missing_meta <- setdiff(required_meta, colnames(unit_meta))
   if (length(missing_meta)) {
     stop(
-      "Pooled metacell metadata lack condition/cell-type columns: ",
+      "Metacell metadata lack condition/cell-type columns: ",
       paste(missing_meta, collapse = ", "), call. = FALSE
     )
+  }
+  if ("n_celltypes" %in% colnames(unit_meta) &&
+      any(unit_meta$n_celltypes != 1L, na.rm = TRUE)) {
+    stop("Layer 1 requires SuperCell2 label-pure metacells.", call. = FALSE)
+  }
+  if ("mixed_celltype_metacell" %in% colnames(unit_meta) &&
+      any(unit_meta$mixed_celltype_metacell %in% TRUE, na.rm = TRUE)) {
+    stop("Layer 1 cannot use mixed-cell-type metacells.", call. = FALSE)
   }
   unit_meta$pool_id <- as.character(unit_meta[[id_col]])
   unit_meta$unit_id <- unit_meta$pool_id
@@ -48,8 +56,7 @@
     match(colnames(rna_logcpm), unit_meta$pool_id), , drop = FALSE
   ]
   if (anyNA(unit_meta$pool_id)) {
-    stop("Pooled metacell metadata do not align with RNA counts.",
-         call. = FALSE)
+    stop("Metacell metadata do not align with RNA counts.", call. = FALSE)
   }
 
   gene_rna_support <- rc_gene_score(
@@ -86,7 +93,7 @@
   )
 
   list(
-    schema_version = "regcompass_condition_only_layer1_v4",
+    schema_version = "regcompass_condition_only_layer1_v5_supercell_label",
     reaction_expression = reaction_expression,
     rna_metacell_logcpm = rna_logcpm,
     gene_support_rna = gene_rna_support,
@@ -96,7 +103,7 @@
     gpr_diagnostics = rc_gpr_diagnostics(parsed, rownames(rna_logcpm)),
     unit_meta = unit_meta,
     metacell_meta = unit_meta,
-    layer1_unit = "condition_only_metacell_with_posthoc_celltype",
+    layer1_unit = "condition_stratified_supercell2_label_exact_celltype",
     capacity_params = list(
       regulatory_alpha = regulatory_alpha,
       gene_half_saturation = gene_half_saturation,
