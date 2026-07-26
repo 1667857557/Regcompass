@@ -77,20 +77,22 @@ test_that("reaction IDs outside the original core can be remap anchors", {
   expect_equal(definition$summary$n_selected_anchors, 1L)
   expect_equal(definition$summary$n_selected_core, 0L)
   expect_equal(definition$summary$n_selected_noncore_anchors, 1L)
+  expect_identical(
+    definition$summary$expansion_policy,
+    "direct_from_selected_anchors_via_kegg_reactome_master_rhea_only"
+  )
 })
 
-test_that("genes can resolve non-core GEM reactions as remap anchors", {
-  selected <- .rc_target_union_core_rows(
-    gem = target_union_noncore_test_gem(),
-    available_core_reactions = "R1",
-    core_genes = "G2",
-    gene_match = "complete_gpr"
+test_that("gene anchors retain original core-only resolution", {
+  expect_error(
+    .rc_target_union_core_rows(
+      gem = target_union_noncore_test_gem(),
+      available_core_reactions = "R1",
+      core_genes = "G2",
+      gene_match = "complete_gpr"
+    ),
+    "do not resolve to original Layer 2 core targets"
   )
-
-  expect_identical(selected$reaction_id, "R2")
-  expect_false(selected$is_core)
-  expect_identical(selected$anchor_role, "gem_noncore")
-  expect_identical(selected$selection_source, "gene_complete_gpr")
 })
 
 test_that("original core anchors retain compatibility outputs", {
@@ -106,4 +108,8 @@ test_that("original core anchors retain compatibility outputs", {
   expect_identical(definition$selected_core_reactions$reaction_id, "R1")
   expect_equal(nrow(definition$selected_noncore_reactions), 0L)
   expect_identical(definition$expanded_scoring_targets$reaction_id, "R4")
+  expect_identical(
+    definition$summary$expansion_policy,
+    "direct_from_selected_core_via_kegg_reactome_master_rhea_only"
+  )
 })
