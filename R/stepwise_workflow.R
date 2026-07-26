@@ -98,9 +98,9 @@
       "GRN and metacell condition-by-cell-type groups do not align: ",
       paste(invalid$group_id, collapse = "; "),
       paste(
-        ". Every scored metacell group requires a successful Pando fit,",
-        "and every Pando group requires at least one metacell. A successful",
-        "fit may legitimately contain zero significant target genes."
+        ". Every scored metacell group requires a successful GRN fit,",
+        "and every GRN group requires at least one metacell. A successful",
+        "fit may legitimately contain zero active target genes."
       ),
       call. = FALSE
     )
@@ -109,24 +109,36 @@
   coverage
 }
 
-#' Infer condition-by-cell-type Pando GRNs from single cells
+#' Infer condition-comparable regulatory networks from single cells
+#'
+#' The default mode builds one Pando structural TF-peak-target universe per cell
+#' type, then jointly estimates a global backbone and condition-specific edge
+#' deviations. `legacy_condition_pando` preserves the former independent
+#' condition-by-cell-type Pando fits.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
     pfm = NULL,
     species = c("auto", "human", "mouse"),
+    sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
     atac_assay = "ATAC",
+    grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
     pando_args = list(),
+    multitask_args = list(),
     parallel = TRUE,
     BPPARAM = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("grn", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
+  grn_mode <- match.arg(grn_mode)
   if (!is.list(pando_args)) {
     stop("`pando_args` must be a list.", call. = FALSE)
+  }
+  if (!is.list(multitask_args)) {
+    stop("`multitask_args` must be a list.", call. = FALSE)
   }
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
@@ -142,8 +154,9 @@ rc_regcompass_step_grn <- function(
     atac_assay = atac_assay
   )
   reserved <- intersect(names(pando_args), c(
-    "object", "gem", "outdir", "genome", "pfm", "species",
-    "condition_col", "celltype_col", "rna_assay", "atac_assay", "BPPARAM"
+    "object", "gem", "outdir", "genome", "pfm", "species", "sample_col",
+    "condition_col", "celltype_col", "rna_assay", "atac_assay", "BPPARAM",
+    "multitask_args"
   ))
   if (length(reserved)) {
     stop(
@@ -152,33 +165,81 @@ rc_regcompass_step_grn <- function(
       call. = FALSE
     )
   }
-  defaults <- list(
-    object = object,
-    gem = gem,
-    outdir = outdir,
-    genome = genome,
-    pfm = pfm,
-    species = species,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE,
-    on_group_error = "stop"
-  )
-  defaults[names(pando_args)] <- NULL
-  grn_result <- do.call(
-    .rc_run_condition_single_cell_grns, c(defaults, pando_args)
-  )
-  answer <- list(
-    grn_result = grn_result,
-    gem_fingerprint = .rc_stage_gem_fingerprint(gem),
-    params = list(
+
+  if (identical(grn_mode, "multitask_shared_backbone")) {
+    legacy_only <- intersect(names(pando_args), c(
+      "pando_infer_args", "padj_threshold", "min_abs_estimate",
+      "min_model_rsq", "require_padj", "on_group_error"
+    ))
+    if (length(legacy_only)) {
+      warning(
+        "Ignoring legacy independent-Pando arguments in shared-backbone mode: ",
+        paste(legacy_only, collapse = ", "),
+        ". Use `pando_design_args` and `multitask_args` instead.",
+        call. = FALSE
+      )
+      pando_args[legacy_only] <- NULL
+    }
+    defaults <- list(
+      object = object,
+      gem = gem,
+      outdir = outdir,
+      genome = genome,
+      pfm = pfm,
+      species = species,
+      sample_col = sample_col,
       condition_col = condition_col,
       celltype_col = celltype_col,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
+      multitask_args = multitask_args,
+      BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
+    )
+    defaults[names(pando_args)] <- NULL
+    grn_result <- do.call(
+      .rc_run_celltype_multitask_grns, c(defaults, pando_args)
+    )
+  } else {
+    if (length(multitask_args)) {
+      warning(
+        "`multitask_args` are ignored in legacy condition-Pando mode.",
+        call. = FALSE
+      )
+    }
+    defaults <- list(
+      object = object,
+      gem = gem,
+      outdir = outdir,
+      genome = genome,
+      pfm = pfm,
+      species = species,
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
+      BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE,
+      on_group_error = "stop"
+    )
+    defaults[names(pando_args)] <- NULL
+    grn_result <- do.call(
+      .rc_run_condition_single_cell_grns, c(defaults, pando_args)
+    )
+    grn_result$grn_mode <- "legacy_condition_pando"
+  }
+  answer <- list(
+    grn_result = grn_result,
+    gem_fingerprint = .rc_stage_gem_fingerprint(gem),
+    params = list(
+      input_sample_col = sample_col,
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
+      grn_mode = grn_mode,
       pando_args = pando_args,
+      multitask_args = if (identical(
+        grn_mode, "multitask_shared_backbone"
+      )) .rc_mt_validate_args(multitask_args) else list(),
       parallel = parallel,
       species = species
     )
