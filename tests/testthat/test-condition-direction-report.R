@@ -67,6 +67,8 @@ test_that("direction report preserves directional results and adds summaries", {
     c("forward", "reverse")))
   expect_true(all(report$reaction_pairwise$report_metric %in%
     c("any_direction_support", "directional_balance")))
+  expect_true(all(report$directional_pairwise$source_label == "fixture"))
+  expect_true(all(report$reaction_pairwise$source_label == "fixture"))
   expect_match(report$reporting_policy, "not net flux")
 })
 
@@ -141,6 +143,30 @@ test_that("directional balance reports support shifts but not net flux", {
   expect_false(any(
     report$reaction_pairwise$reaction_id == "R_forward_only" &
       report$reaction_pairwise$report_metric == "directional_balance"
+  ))
+})
+
+test_that("reports containing only irreversible targets remain valid", {
+  microcompass <- make_condition_direction_report_fixture()
+  keep <- grepl("direction=forward", rownames(microcompass$penalty), fixed = TRUE)
+  microcompass$penalty <- microcompass$penalty[keep, , drop = FALSE]
+  microcompass$vmax <- microcompass$vmax[keep, , drop = FALSE]
+  microcompass$feasible <- microcompass$feasible[keep, , drop = FALSE]
+
+  report <- rc_report_condition_directions(
+    microcompass,
+    condition_col = "condition",
+    celltype_col = "cell_type",
+    min_units = 5L
+  )
+
+  expect_true(all(
+    report$reaction_pairwise$report_metric == "any_direction_support"
+  ))
+  expect_equal(nrow(report$reaction_pairwise), 9L)
+  expect_equal(nrow(report$reaction_omnibus), 3L)
+  expect_true(all(
+    report$direction_diagnostics$direction_pair_status == "forward_only"
   ))
 })
 
