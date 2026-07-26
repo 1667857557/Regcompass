@@ -106,21 +106,10 @@ merged_catalogue_inclusion_stage
 available_in_all_cached_union_gems
 ```
 
-The persistent anchor files are:
-
-```text
-selected_anchor_reactions.tsv.gz
-selected_core_reactions.tsv.gz
-selected_noncore_reactions.tsv.gz
-```
-
-The scoring result records the exact model-reuse policy:
+The scoring result records exact cached-model reuse through:
 
 ```r
 targeted$microcompass$params[c(
-  "n_selected_anchors",
-  "n_selected_core",
-  "n_selected_noncore_anchors",
   "structural_model_reused_exactly",
   "fastcore_rerun",
   "model_rebuild",
