@@ -52,6 +52,7 @@ Collate:
     'multitask_grn.R'
     'multitask_grn_contracts.R'
     'regulatory_modifier.R'
+    'regulatory_modifier_dispatch.R'
     'condition_layer1.R'
     'reaction_evidence.R'
     'reaction_annotations.R'
