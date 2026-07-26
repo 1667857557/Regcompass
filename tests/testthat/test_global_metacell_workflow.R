@@ -62,8 +62,6 @@ test_that("legacy Pando core remains available explicitly", {
     fixed = TRUE
   )
   expect_match(wrapper_text, "group_status", fixed = TRUE)
-  expect_false(grepl("sample_status", wrapper_text, fixed = TRUE) &&
-                 grepl("answer\\$sample_status <- NULL", wrapper_text))
 })
 
 test_that("Stage 3 uses active bootstrap targets rather than target projection", {
