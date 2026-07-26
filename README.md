@@ -214,7 +214,21 @@ result$microcompass$model_cache_summary
 Independent condition-by-cell-type Pando fitting remains available for reproducibility:
 
 ```r
-grn_mode = "legacy_condition_pando"
+result_legacy <- rc_run_regcompass_one_shot(
+  ...,
+  grn_mode = "legacy_condition_pando",
+  pando_args = list(
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0.01,
+      adjust_method = "fdr",
+      parallel = FALSE
+    ),
+    padj_threshold = 0.05,
+    min_model_rsq = 0.1
+  )
+)
 ```
 
 Legacy Pando inference thresholds belong only to that mode. They are not interpreted as significance thresholds in the multitask model.
