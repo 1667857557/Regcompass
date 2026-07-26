@@ -31,5 +31,17 @@
     )
   }
   out$min_bootstrap_success_fraction <- as.numeric(value)
+  if (!identical(as.numeric(out$candidate_screen_threshold), 0)) {
+    stop(
+      paste(
+        "`multitask_args$candidate_screen_threshold` must be 0 in the",
+        "canonical model. Outcome-based full-data correlation screening would",
+        "make cross-validated target reliability optimistic; use Pando's",
+        "structural detection filters instead."
+      ),
+      call. = FALSE
+    )
+  }
+  out$candidate_screen_threshold <- 0
   out
 }
