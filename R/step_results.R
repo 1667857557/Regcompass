@@ -1,10 +1,10 @@
 #' Assemble compact final RegCompass results
 #'
 #' The final object contains primary analysis tables, compact regulatory and
-#' complete-GPR summaries, scored-reaction annotations, and the Layer 2 object
-#' required by downstream directional comparisons. Detailed Stage 1--4
-#' intermediates remain in their stage checkpoints and are not duplicated in
-#' `regcompass_result.rds`.
+#' complete-GPR summaries, scored-reaction annotations, and the compact Layer 2
+#' score object required by downstream directional comparisons. Detailed Stage
+#' 1--5 intermediates remain in their stage checkpoints and are not duplicated
+#' in `regcompass_result.rds`.
 #'
 #' @export
 rc_regcompass_step_results <- function(
@@ -55,6 +55,9 @@ rc_regcompass_step_results <- function(
   multitask <- identical(grn_mode, "multitask_shared_backbone")
   condition_modules <- meta_modules$condition_modules
 
+  # Full Layer 1 and Layer 2 objects are used transiently to build formal
+  # reaction annotations and evidence. Only the compact score subset is retained
+  # in the final result; complete stage objects remain in their checkpoint RDS.
   result <- list(
     schema_version = if (multitask) {
       "regcompass_compact_multitask_result_v3"
@@ -126,8 +129,10 @@ rc_regcompass_step_results <- function(
         "IDs, stoichiometric matrix, lower bounds, and upper bounds"
       ),
       penalty_formula = "1/(1+log2(1+E_multiome))",
-      result_storage_policy =
-        "primary_tables_plus_layer2; detailed_stage_intermediates_not_embedded",
+      result_storage_policy = paste(
+        "primary_tables_plus_compact_layer2_scores;",
+        "detailed_stage_intermediates_not_embedded"
+      ),
       execution_mode = "stepwise"
     )
   )
@@ -160,6 +165,7 @@ rc_regcompass_step_results <- function(
   result$grn_metacell_group_coverage <- meta_modules$group_coverage
   result$reaction_catalog <- .rc_compact_reaction_catalog(result$reaction_catalog)
   result$reaction_evidence <- .rc_compact_reaction_evidence(result$reaction_evidence)
+  result$microcompass <- .rc_compact_microcompass(layer2)
 
   result$condition_summary <- NULL
   result$layer1 <- NULL
@@ -170,6 +176,9 @@ rc_regcompass_step_results <- function(
     meta_module_stage_class = class(meta_modules)[[1L]],
     layer1_stage_class = class(layer1)[[1L]],
     layer2_stage_class = class(layer2)[[1L]],
+    compact_layer2_omitted_fields = attr(
+      result$microcompass, "omitted_stage5_fields"
+    ),
     detailed_sources = .rc_result_intermediate_policy()
   )
   result$table_manifest <- .rc_result_table_manifest(list(
