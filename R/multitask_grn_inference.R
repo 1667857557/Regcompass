@@ -256,8 +256,7 @@
     )
   }
   bind <- function(name) {
-    value <- do.call(rbind, lapply(results, `[[`, name))
-    if (is.null(value)) data.frame() else value
+    .rc_bind_frames_fill(lapply(results, `[[`, name))
   }
   candidates <- bind("candidates")
   global <- bind("global")
