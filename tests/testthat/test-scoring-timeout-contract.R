@@ -4,6 +4,8 @@ test_that("scoring APIs expose no time-limit or sample parameter", {
   expect_false("time_limit" %in% names(formals(.rc_run_microcompass_engine)))
   expect_false("time_limit" %in% names(formals(.rc_score_existing_union_cache)))
   expect_false("sample_col" %in% names(formals(rc_run_microcompass)))
+  expect_false("sample_col" %in% names(formals(.rc_run_microcompass_engine)))
+  expect_false("sample_col" %in% names(formals(rc_layer2_unit_matrices)))
   expect_false("sample_col" %in% names(formals(.rc_score_existing_union_cache)))
 })
 
@@ -13,7 +15,7 @@ test_that("only union-GEM construction receives the completion limit", {
     deparse(body(rc_compass_two_step_lp_directional)), collapse = "\n"
   )
   target_scoring <- paste(
-    deparse(body(.rc_score_existing_union_cache_sample_core)), collapse = "\n"
+    deparse(body(.rc_score_existing_union_cache)), collapse = "\n"
   )
 
   expect_match(engine, "model_params$completion_time_limit", fixed = TRUE)
@@ -32,15 +34,13 @@ test_that("Stage 5 rejects retired timeout and sample arguments", {
 })
 
 test_that("target-union results record unlimited metacell scoring", {
-  target_core <- paste(
-    deparse(body(.rc_score_existing_union_cache_sample_core)), collapse = "\n"
-  )
   active <- paste(
     deparse(body(.rc_score_existing_union_cache)), collapse = "\n"
   )
-  expect_match(target_core, 'scoring_time_limit = "none"', fixed = TRUE)
-  expect_match(active, 'answer$params$unit <- "metacell"', fixed = TRUE)
-  expect_match(active, 'answer$params$aggregation <- "none"', fixed = TRUE)
+  expect_match(active, 'scoring_time_limit = "none"', fixed = TRUE)
+  expect_match(active, 'unit = "metacell"', fixed = TRUE)
+  expect_match(active, 'aggregation = "none"', fixed = TRUE)
+  expect_false(grepl("sample_id", active, fixed = TRUE))
 })
 
 test_that("user examples contain no standalone scoring time_limit", {
