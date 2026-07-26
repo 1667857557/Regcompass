@@ -19,6 +19,29 @@
   if (length(hit)) hit[[1L]] else NULL
 }
 
+.rc_compact_reaction_ranking <- function(x) {
+  .rc_result_select_columns(x, c(
+    "row_id", "reaction_id", "target_direction", "medium_scenario",
+    "condition", "cell_type", "median_penalty", "median_vmax",
+    "median_required_target_flux", "median_penalty_per_target_flux",
+    "support_score", "priority_rank", "n_metacells", "evidence_class",
+    "evidence_resolution", "median_multiome_capacity_shift",
+    "has_active_multiome_contribution"
+  ))
+}
+
+.rc_compact_condition_contrast <- function(x) {
+  .rc_result_select_columns(x, c(
+    "row_id", "reaction_id", "target_direction", "medium_scenario",
+    "cell_type", "condition_a", "condition_b", "median_penalty_a",
+    "median_penalty_b", "median_penalty_per_target_flux_a",
+    "median_penalty_per_target_flux_b", "priority_rank_a",
+    "priority_rank_b", "delta_support_b_minus_a",
+    "higher_supported_condition", "evidence_class_a", "evidence_class_b",
+    "median_multiome_capacity_shift_a", "median_multiome_capacity_shift_b"
+  ))
+}
+
 .rc_compact_active_edges <- function(grn_result, condition_col, celltype_col) {
   edges <- grn_result$tf_peak_gene_significant
   columns <- c(
