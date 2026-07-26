@@ -107,7 +107,8 @@ Stages validate workflow parameters, GEM fingerprints, stage classes, and ordere
 ## Interpretation and plotting
 
 - `rc_build_reaction_annotations()` and `rc_attach_reaction_annotations()`: reaction names, formulas, GPRs, and evidence classes.
-- `rc_test_condition_reactions()`: descriptive same-target comparisons across conditions within cell type.
+- `rc_test_condition_reactions()`: descriptive same-target, same-direction comparisons across conditions within cell type.
+- `rc_report_condition_directions()`: preserve forward/reverse LP results, diagnose numerically indistinguishable directions, and add non-additive best-direction and directional-asymmetry summaries without claiming net flux.
 - `rc_select_gene_reactions()`: select scored reactions by GPR gene.
 - `rc_plot_condition_reaction()` and `rc_plot_condition_gene_reactions()`: annotated condition plots.
 
@@ -117,6 +118,7 @@ Sample balancing is not part of the canonical workflow. Metacell-level compariso
 
 - [Portable execution, bundled GEMs, progress, timing, and worker cleanup](portable-execution.md)
 - [Metacell PCA/Harmony reduction selection](metacell-reduction-selection.md)
+- [Direction-aware final reporting](direction-aware-condition-reporting.md)
 - [Level 1: quick start](tutorial-01-quick-start.md)
 - [Level 2: true stepwise workflow](tutorial-02-stepwise-audit.md)
 - [Level 3: restart and diagnostics](tutorial-03-advanced-restart.md)
