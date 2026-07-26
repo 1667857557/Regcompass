@@ -10,7 +10,7 @@ target_union_noncore_test_gem <- function() {
       reaction_id = reactions,
       subsystem = c("A", "B", "C", "D"),
       metabolic_module = c("A", "B", "C", "D"),
-      kegg_reaction_id = c("K1", "K2", "K2", NA),
+      kegg_reaction_id = c("K1", "K2", "K2", "K1"),
       reactome_reaction_id = NA_character_,
       rhea_master_id = c(NA, "RM2", "RM2", NA),
       role = "internal",
@@ -68,12 +68,12 @@ test_that("reaction IDs outside the original core can be remap anchors", {
   expect_identical(definition$selected_noncore_reactions$reaction_id, "R2")
   expect_identical(definition$expanded_scoring_targets$reaction_id, "R3")
   expect_identical(
-    definition$expanded_reaction_catalog$anchor_reaction_id,
+    unique(definition$expanded_reaction_catalog$anchor_reaction_id),
     "R2"
   )
-  expect_false(
+  expect_false(any(
     definition$expanded_reaction_catalog$anchor_is_original_core
-  )
+  ))
   expect_equal(definition$summary$n_selected_anchors, 1L)
   expect_equal(definition$summary$n_selected_core, 0L)
   expect_equal(definition$summary$n_selected_noncore_anchors, 1L)
@@ -105,4 +105,5 @@ test_that("original core anchors retain compatibility outputs", {
   expect_identical(definition$selected_anchor_reactions$reaction_id, "R1")
   expect_identical(definition$selected_core_reactions$reaction_id, "R1")
   expect_equal(nrow(definition$selected_noncore_reactions), 0L)
+  expect_identical(definition$expanded_scoring_targets$reaction_id, "R4")
 })
