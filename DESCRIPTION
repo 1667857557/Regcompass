@@ -4,21 +4,20 @@ Version: 1.8.8
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Builds one Pando structural TF-peak-target candidate universe per
-    cell type and jointly estimates a shared regulatory backbone plus
-    condition-specific deviations for Human-GEM or Mouse-GEM GPR target genes
-    in paired single-cell RNA and ATAC data. Stability-selected condition
-    sub-GRNs define condition-specific metabolic target genes and complete-GPR
-    core reactions. Biological meta-modules are deduplicated into one merged
-    reaction catalogue without local FASTCORE completion. For each medium
-    scenario, the package constructs one shared union GEM and performs one
-    global FASTCORE completion before directional COMPASS-like scoring.
-    Integrated RNA and ATAC evidence is converted to reaction penalties while
-    preserving the same stoichiometric model across conditions. A post-Layer-2
-    step can use any GEM reaction as a direct KEGG, Reactome, or master-Rhea
-    mapping anchor and score linked non-core reactions in the exact cached
-    medium-specific union GEM used for the original analysis. Pinned human and
-    mouse GEMs are bundled for offline use, with platform-aware parallel
+Description: Builds one validated Pando structural TF-peak-target candidate
+    universe per cell type and jointly estimates a shared regulatory backbone
+    plus condition-specific deviations for Human-GEM or Mouse-GEM GPR target
+    genes in paired single-cell RNA and ATAC data. Full-size condition-stratified
+    nonparametric bootstrap fits identify stable condition sub-GRNs, which define
+    condition-specific metabolic target genes and complete-GPR core reactions.
+    Biological meta-modules are deduplicated into one merged reaction catalogue
+    without local FASTCORE completion. For each medium scenario, the package
+    constructs one shared union GEM and performs one global FASTCORE completion
+    before directional COMPASS-like scoring. Integrated RNA and ATAC evidence is
+    converted to reaction penalties while preserving the same stoichiometric
+    model across conditions. The canonical workflow is condition based and does
+    not require or interpret a biological-sample metadata column. Pinned human
+    and mouse GEMs are bundled for offline use, with platform-aware parallel
     execution and audited progress and timing output.
 License: MIT + file LICENSE
 Encoding: UTF-8
@@ -63,6 +62,7 @@ Collate:
     'pando_grn.R'
     'shared_tfidf.R'
     'condition_pooling.R'
+    'condition_pooling_no_sample.R'
     'grn_inference.R'
     'multitask_grn.R'
     'multitask_grn_inference.R'
@@ -102,7 +102,7 @@ Imports:
     Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
-    Pando (>= 1.1.2),
+    Pando (>= 1.1.3),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
@@ -121,7 +121,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@supercell-2.0,
-    1667857557/Pando_regcompass@df1f46f40592b1085f32abe82ade80a549fb425c
+    1667857557/Pando_regcompass@agent/audit-grn-design-contract
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
