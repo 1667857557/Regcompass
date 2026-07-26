@@ -1,18 +1,28 @@
 test_that("GRN-first defaults are encoded in canonical functions", {
   expect_true(exists("rc_regcompass_step_grn", mode = "function"))
-  grn_formals <- paste(deparse(formals(.rc_run_condition_single_cell_grns)$pando_infer_args), collapse = " ")
+  grn_formals <- paste(
+    deparse(formals(.rc_run_condition_single_cell_grns)$pando_infer_args),
+    collapse = " "
+  )
   expect_match(grn_formals, "peak_cor = 0.01", fixed = TRUE)
-  expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
 })
 
-test_that("metacells are condition-only with gamma 30", {
-  body_text <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
-  expect_match(body_text, "gamma <- 30L", fixed = TRUE)
-  expect_identical(eval(formals(.rc_build_supercell2_strata)$gamma), 30)
-  expect_identical(eval(formals(rc_make_supercell2_metacells)$gamma), 30)
+test_that("current SuperCell2 builder uses strata and label without sample adapters", {
+  builder <- formals(rc_make_supercell2_metacells)
+  expect_true(all(c("strata_cols", "label_col") %in% names(builder)))
+  expect_false(any(c("sample_col", "pool_col") %in% names(builder)))
+  expect_identical(eval(builder$strata_cols), "condition")
+  expect_identical(builder$gamma, 30)
+
+  body_text <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n"
+  )
+  expect_match(body_text, "strata_cols = condition_col", fixed = TRUE)
+  expect_match(body_text, "label_col = celltype_col", fixed = TRUE)
   expect_match(body_text, 'pooling_scope <- "condition_only"', fixed = TRUE)
-  expect_match(body_text, "metacell_grouping = condition_col", fixed = TRUE)
-  expect_match(body_text, "Sample balancing is not part", fixed = TRUE)
+  expect_false(grepl("condition_pool_id", body_text, fixed = TRUE))
+  expect_false(grepl("sample_col", body_text, fixed = TRUE))
 })
 
 test_that("stepwise meta-modules consume GRN and metacells", {
