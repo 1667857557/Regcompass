@@ -1,29 +1,24 @@
-#' Run the canonical significant-Pando-target RegCompass workflow
+#' Run the canonical RegCompass workflow
 #'
-#' Stage 3 constructs biological meta-modules and a deduplicated merged
-#' reaction catalogue. Within each condition by cell-type group, Human-GEM
-#' metabolic genes with significant Pando TF-peak-gene evidence define the
-#' supported gene set, and complete GPR branches define core reactions. Stage 3
-#' applies one fixed ordered annotation pass and does not run FASTCORE or create
-#' a GEM. With `model_mode = "meta_module_gem"`, Stage 5 constructs one union
-#' GEM per medium scenario and performs the only FASTCORE completion on that
-#' shared structure.
+#' The default GRN mode builds one Pando structural TF-peak-target candidate
+#' universe per cell type, jointly estimates a global regulatory backbone and
+#' condition-specific deviations, and uses stability-selected condition
+#' sub-networks to define complete-GPR core reactions. Stage 3 constructs
+#' biological meta-modules without FASTCORE. With
+#' `model_mode = "meta_module_gem"`, Stage 5 constructs one shared union GEM per
+#' medium and performs the only global FASTCORE completion before directional
+#' COMPASS-like scoring.
 #'
-#' @param pfm Optional motif position-frequency matrices. When omitted,
-#'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
-#'   to `Pando::find_motifs()`.
-#' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
-#'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
-#'   master-Rhea equivalence.
+#' @param pfm Optional motif position-frequency matrices.
+#' @param grn_mode `"multitask_shared_backbone"` or the compatibility mode
+#'   `"legacy_condition_pando"`.
+#' @param multitask_args Shared-backbone elastic-net, cross-validation and
+#'   stability-selection controls.
+#' @param meta_module_args Optional Stage 3 custom `subsystem_table`.
 #' @param layer1_args Stage 4 integrated-evidence arguments:
 #'   `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.
-#'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
-#'   `"mean"`; RegCompass defaults to `"min"`.
-#' @param upstream_workers Worker count for GRN inference and Layer 1
-#'   reaction-expression calculation. Defaults to 6. Set to 1 for serial
-#'   upstream execution.
-#' @param layer2_workers Worker count for Layer 2 LP scoring. Defaults to 30.
-#'   Set to 1 for serial Layer 2 execution.
+#' @param upstream_workers Worker count for GRN inference and Layer 1.
+#' @param layer2_workers Worker count for Layer 2 LP scoring.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -33,7 +28,9 @@ rc_run_regcompass <- function(
     celltype_col = "cell_type",
     rna_assay = "RNA",
     atac_assay = "ATAC",
+    grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
     pando_args = list(),
+    multitask_args = list(),
     sample_col = NULL,
     fragment_files = FALSE,
     metacell_args = list(),
@@ -46,6 +43,7 @@ rc_run_regcompass <- function(
     layer2_workers = 30L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   model_mode <- match.arg(model_mode)
+  grn_mode <- match.arg(grn_mode)
   progress <- .rc_progress_enabled(progress)
   old_progress_option <- options(RegCompassR.progress = progress)
   on.exit(do.call(options, old_progress_option), add = TRUE)
@@ -70,6 +68,7 @@ rc_run_regcompass <- function(
 
   bundles <- list(
     pando_args = pando_args,
+    multitask_args = multitask_args,
     metacell_args = metacell_args,
     meta_module_args = meta_module_args,
     layer1_args = layer1_args,
@@ -115,20 +114,24 @@ rc_run_regcompass <- function(
     c("min", "median", "mean")
   )
 
-  pando_infer_args <- pando_args$pando_infer_args %||% list()
-  if (!is.list(pando_infer_args)) {
-    stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+  if (identical(grn_mode, "legacy_condition_pando")) {
+    pando_infer_args <- pando_args$pando_infer_args %||% list()
+    if (!is.list(pando_infer_args)) {
+      stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+    }
+    if (!is.null(pando_infer_args$parallel) &&
+        !identical(pando_infer_args$parallel, FALSE)) {
+      warning(
+        "Ignoring `pando_args$pando_infer_args$parallel`; outer parallelism ",
+        "requires each legacy Pando fit to remain single-threaded.",
+        call. = FALSE
+      )
+    }
+    pando_infer_args$parallel <- FALSE
+    pando_args$pando_infer_args <- pando_infer_args
+  } else {
+    multitask_args <- .rc_mt_validate_args(multitask_args)
   }
-  if (!is.null(pando_infer_args$parallel) &&
-      !identical(pando_infer_args$parallel, FALSE)) {
-    warning(
-      "Ignoring `pando_args$pando_infer_args$parallel`; canonical outer ",
-      "parallelism requires each Pando fit to remain single-threaded.",
-      call. = FALSE
-    )
-  }
-  pando_infer_args$parallel <- FALSE
-  pando_args$pando_infer_args <- pando_infer_args
 
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
@@ -173,15 +176,18 @@ rc_run_regcompass <- function(
           outdir = file.path(outdir, "01_single_cell_grn"),
           pfm = pfm,
           genome = genome,
+          species = species,
+          sample_col = sample_col,
           condition_col = condition_col,
           celltype_col = celltype_col,
           rna_assay = rna_assay,
           atac_assay = atac_assay,
+          grn_mode = grn_mode,
           pando_args = pando_args,
+          multitask_args = multitask_args,
           parallel = !identical(config$actual_backend, "serial"),
           BPPARAM = upstream,
-          progress = progress,
-          species = species
+          progress = progress
         )
       }
     )
@@ -292,6 +298,7 @@ rc_run_regcompass <- function(
     total = total_row
   )
   result$params$execution_mode <- "one_shot"
+  result$params$grn_mode <- grn_mode
   result$params$parallel_backend_requested <- "auto"
   result$params$parallel_backend_resolved <- list(
     upstream = upstream_config$actual_backend,
