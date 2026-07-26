@@ -1,20 +1,27 @@
-# RegCompassR development
+# RegCompassR 1.8.8
+
+- Added the default `multitask_shared_backbone` GRN mode. Pando now constructs one structural TF–peak–metabolic-target candidate universe per cell type across all conditions, and RegCompass fits condition effects on identical design columns.
+- Added a condition-balanced elastic-net model with a common global block and more strongly penalized condition-specific blocks. The exported reference-free decomposition is `effective = global + condition_deviation`, with global defined as the condition mean and deviations constrained to sum to zero after canonicalization.
+- Added condition-stratified cross-validation and stability subsampling. Condition edges report selection frequency, sign stability, stability weight, active-edge state, effective direction and stable sign-reversal flags instead of treating regularized coefficients as classical adjusted-p-value tests.
+- Added explicit `tf_peak_gene_candidates`, `tf_peak_gene_global`, `tf_peak_gene_condition_all`, `condition_target_genes`, `celltype_fit_status`, and shared Pando `design_id` outputs.
+- Preserved the complete TF–peak–gene chain through explicit source RNA/ATAC feature identifiers exported by Pando 1.1.2.
+- Defined condition-regulated metabolic genes from active positive or negative edges. Stage 3 retains the strict complete-GPR rule: a reaction becomes a condition core only when at least one complete GPR AND branch is contained in that condition/cell-type target set.
+- Replaced condition-local multitask edge normalization in Layer 1 with a target/cell-type scale shared across conditions. Effective coefficients are multiplied by stability, a condition-balanced TF reference and the original interaction scale; TF edges sharing one ATAC peak are signed-summed before accessibility projection.
+- Preserved `legacy_condition_pando` as an explicit compatibility mode, including the former adjusted-p-value filtering and condition-local Layer 1 weight normalization.
+- Retained the Stage 5 structural contract: each medium produces one shared union GEM with one global FASTCORE completion, and the exact stoichiometric matrix, bounds and target catalogue are reused for every condition and metacell.
+- Added mathematical-invariant, schema, compatibility and workflow regression tests; added `glmnet` as a direct dependency; updated the README and shared-backbone mathematical documentation.
+
+# RegCompassR development before 1.8.8
 
 - Added `rc_report_condition_directions()` as a final reporting layer that retains forward/reverse LP targets, diagnoses numerically indistinguishable directions, and derives non-additive `any_direction_support` and `directional_balance` summaries. The latter is explicitly support asymmetry rather than net flux.
 - Added explicit Seurat runtime profiles: the pinned SeuratObject 4.1.4 / Seurat 4.4.0 / Signac 1.11.0 stack remains the canonical default, while coherent SeuratObject/Seurat 5.x stacks with Signac >=1.12.0,<2 are accepted as a compatibility profile.
 - Added assay-class-aware matrix access for v3 `Assay`, Signac 1.x `ChromatinAssay`, and joinable Seurat v5 `Assay5` objects. Split `counts.*` and `data.*` layers are joined on a working copy and recorded as provenance; ambiguous layer layouts and Signac 2.x `ChromatinAssay5` stop explicitly.
-- Redefined Stage 3 around the actual analysis target: for each `condition × cell type`, GEM metabolic genes with at least one significant Pando TF–peak–gene coefficient form one supported gene set, and reactions become core only when a complete GPR branch is contained in that set.
-- Removed the retired shared-TF target projection, signed target-target component construction, top-k pruning, TF-Jaccard filtering, and per-TF target truncation code. The associated functions, output fields, parameters, tests, and documentation were deleted rather than retained as compatibility wrappers.
-- Added `supported_metabolic_genes`, a condition-by-cell-type gene evidence table reporting significant edge, TF, region, adjusted-P-value, coefficient, model-R², and positive/negative edge summaries.
-- Made Pando's bundled `motifs` data object the canonical default when `pfm` is omitted. Explicit user-supplied motif collections remain supported.
-- Added species-specific Pando region defaults. Unless overridden by `pando_initiate_args$regions`, human Stage 1 loads `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` from Pando and uses their union, while mouse Stage 1 uses only `phastConsElements20Mammals.UCSC.hg38`.
-- Replaced the former Boltzmann GPR-AND calculation with the three COMPASS aggregation functions `min`, `median`, and `mean`. The canonical default is `min`; the Boltzmann helper, `tau` parameter, associated tests, and compatibility paths were deleted.
-- Fixed Stage 3 expansion to one ordered pass: core-subsystem reactions, direct KEGG/Reactome reaction equivalents, then direct master-Rhea reaction equivalents. Removed `expansion_mode`, `max_iterations`, fixed-point recursion, iteration output fields, and any one-hop/stoichiometric-neighbour expansion interface.
-- Split canonical configuration into `meta_module_args` for an optional custom subsystem table and `layer1_args` for Stage 4 integrated-evidence parameters.
-- Reordered public runner arguments by processing sequence: shared inputs, Stage 1 Pando, Stage 2 metacells, Stage 3 meta-modules, Stage 4 Layer 1, Stage 5 Layer 2, and execution controls.
-- Removed scoring `time_limit` from directional LP and second-pass APIs. `layer2_args$model_params$completion_time_limit` remains exclusively for FASTCORE construction of the medium-specific union GEM.
-- Expanded the main and stepwise tutorials with Pando evidence filters (`padj_threshold`, `min_abs_estimate`, and `min_model_rsq`) and complete metacell geometry/reproducibility settings (`rna_reduction`, `rna_dims`, `atac_reduction`, `atac_dims`, `seed`, and cache rebuilding).
-- Updated the README, stepwise and one-shot tutorials, workflow vignette, mathematical workflow, stage contracts, generated help, and regression tests.
+- Redefined Stage 3 around the actual analysis target: for each `condition × cell type`, GEM metabolic genes with regulatory TF–peak–gene evidence form one supported gene set, and reactions become core only when a complete GPR branch is contained in that set.
+- Removed the retired shared-TF target projection, signed target-target component construction, top-k pruning, TF-Jaccard filtering, and per-TF target truncation code.
+- Added species-specific Pando motif and regulatory-region defaults.
+- Replaced the former Boltzmann GPR-AND calculation with COMPASS-compatible `min`, `median`, and `mean`; the canonical default is `min`.
+- Fixed Stage 3 expansion to one ordered pass: core-subsystem reactions, direct KEGG/Reactome equivalents, then direct master-Rhea equivalents.
+- Removed scoring `time_limit` from directional LP and second-pass APIs. `layer2_args$model_params$completion_time_limit` remains exclusively for FASTCORE construction.
 
 # RegCompassR 1.8.4
 
@@ -22,71 +29,28 @@
 - Reserved the term **union GEM** for the medium-constrained Stage 5 model. Merging meta-module reaction IDs no longer creates or names a union GEM.
 - Added one global FASTCORE completion per medium-specific union GEM. The merged biological reactions are retained, and only globally required FASTCORE support reactions are added under the selected medium.
 - Replaced Stage 3 `global_modules`, `global_core_reactions`, and `global_reaction_membership` outputs with `merged_modules`, `merged_core_reactions`, and `merged_reaction_membership`.
-- Removed `local_completed_reaction_membership`, `local_fastcore_summary`, `local_fastcore_diagnostics`, and `local_fastcore_completion_iterations` from current workflow outputs.
-- Removed the `layer1_args$local_fastcore` and `layer1_args$local_fastcore_args` interfaces. Global FASTCORE controls now live exclusively in `layer2_args$model_params`.
-- Updated the canonical runner so `upstream_workers` covers GRN inference and Layer 1 only; Stage 3 no longer allocates a FASTCORE worker pool.
+- Removed local FASTCORE outputs and interfaces from Stage 3 and Layer 1.
 - Updated target-union scoring to validate anchors against the merged Stage 3 catalogue while reusing the exact cached medium-specific union GEM files.
-- Synchronized README, workflow documentation, all five tutorials, the vignette, stage contracts, and generated Rd files with the global-only FASTCORE architecture.
-- Added regression tests for the merged-catalogue contract, union-GEM naming, removal of local FASTCORE from Stage 3, and absence of obsolete public API names.
 
 # RegCompassR 1.8.3
 
-- Added a canonical two-layer worker model with `upstream_workers = 6L` for GRN/local-FASTCORE/Layer-1 tasks and `layer2_workers = 30L` for LP scoring. Setting both values to one produces a fully serial run.
-- Removed `parallel_backend` from the complete-workflow interface. The package now always resolves SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS automatically.
-- Changed complete-run worker lifetime from a shared upstream pool to stage-scoped pools. Every package-managed pool is created for one stage, stopped on success or failure, dereferenced, and followed by `gc(full = TRUE)` before the next unrelated stage.
-- Added a strict no-nested-threading contract. BLAS/OpenMP/RcppParallel and nested R worker settings are temporarily fixed at one, while Pando remains internally serial, so outer parallelism executes multiple independent single-thread analyses rather than multiplying threads inside each worker.
-- Added operating-system-aware parallel configuration. Requested and actual backends, layered worker counts, one internal thread per task, OS type, stage groups, and lifecycle policy are retained in the result.
-- Bundled validated Human-GEM 2.0.0 and Mouse-GEM 1.8.0 RegCompass assets under `inst/extdata/gem`. Canonical runs load them offline by default. Cache-first, explicit bundled-only, download, force-rebuild, and low-level download/update paths remain available.
-- Added `rc_bundled_gem_manifest()` and exported `rc_download_species_gem()`. The installed manifest records model source, release, checksum, size, citation DOI, and CC BY 4.0 attribution.
-- Added progress output and elapsed-time auditing to every public workflow stage and to the complete six-stage run. Each stage writes `step_timing.tsv`; one-shot execution writes `00_execution_timing.tsv` and stores stage and total timings in `result$timing`.
-- Added an audited condition-metacell cache contract. Checkpoints are no longer reused by file existence alone: ordered cells and labels, scalable full-content RNA/ATAC fingerprints, selected PCA/LSI embedding fingerprints, the SuperCell2 label, `gamma`, seed, reductions/dimensions, and metacell thresholds must match, or the user must rebuild with `overwrite = TRUE`.
-- Downstream stages now reject legacy metacell objects that lack the current condition-only label-guided construction and cache provenance instead of assigning current provenance to an unverifiable artifact.
-- Kept legal minimum-version Imports for SeuratObject 4.1.4, Seurat 4.4.0, and Signac 1.11.0 while retaining the exact default versions in package Config fields; coherent v4 and v5 runtime profiles are validated separately because R dependency fields do not support profile-specific equality constraints.
-- Bundled GEM loading now writes and revalidates the requested `save_rds` path, matching downloaded-model cache semantics. `rc_run_regcompass()` also preserves the prior positional location of `species` ahead of the later `progress` argument.
-- Public-stage timing now records success only after the expected final RDS has been newly committed; failures during the last export/save phase are written as `status = error`.
-- Hardened reaction annotation and evidence provenance: normalized GEM bounds are used, missing roles are inferred rather than forced to internal, mouse symbols retain source case, missing omnibus evidence is `unknown/unavailable`, and unavailable reaction-capacity reconstruction cannot be promoted to `RNA+ATAC` from gene-level changes alone.
-- Condition plots retain full reaction annotations and evidence. Gene-associated plot collections now apply the requested condition filter to evidence selection and expose/forward `min_units` instead of using a hidden fixed value.
-- Target-union scoring now validates gene and reaction selectors independently and determines target availability from the actual medium-specific cached union GEM files. Directly database-linked support reactions added during model completion remain eligible when present in all reused models, even if absent from the pre-completion membership table.
-- Added a function-by-function audit of PRs #166–#171, synchronized generated help and Tutorials 3–5, and expanded regression coverage for every still-valid unresolved review finding.
-- Formally documented and tested optional Harmony-based RNA geometry for Stage 2 metacells through `metacell_args$rna_reduction` and `rna_dims`; PCA remains the default, ATAC LSI remains independently selectable, and reduction names/dimensions/embedding fingerprints remain part of cache invalidation.
+- Added a canonical two-layer worker model with `upstream_workers = 6L` for GRN and Layer-1 tasks and `layer2_workers = 30L` for LP scoring.
+- Added stage-scoped worker pools, a strict no-nested-threading contract, operating-system-aware parallel configuration, progress output, elapsed-time auditing, and audited metacell cache fingerprints.
+- Bundled validated Human-GEM 2.0.0 and Mouse-GEM 1.8.0 assets for offline use.
+- Hardened reaction annotation, evidence provenance, medium handling and target-union scoring.
 
 # RegCompassR 1.8.2
 
-- Added `rc_regcompass_step_target_union()` for a second LP pass after the original core analysis. Selected previous core reactions are mapping anchors only. The function directly identifies non-core reactions sharing KEGG, Reactome, or master-Rhea identifiers with a selected core and scores them in the exact cached global union GEM. Same-subsystem, recursive/transitive, FASTCORE-only, generic union, and metabolite-neighbour expansion are not used; previously scored global cores are not recomputed.
-- Added strict stage contracts. Layer 1 and Layer 2 now carry classes, workflow parameters, GEM fingerprints, and ordered unit identifiers; Stage 3-6 reject objects from a different GEM, workflow, or metacell order.
-- Removed the retired `v170_microcompass_contract.R` compatibility override and the redundant `internal_apply.R` wrapper. Renamed the active regulatory integration helper without a historical version suffix and replaced package-version-specific algorithm labels with semantic schema identifiers.
-- Updated the tutorials, vignette, README, API index, and help pages for the 1.8.2 workflow. Repetitive migration text and the obsolete architecture correction document were removed.
+- Added `rc_regcompass_step_target_union()` for a second LP pass using direct KEGG, Reactome, or master-Rhea links while reusing the exact cached union GEM.
+- Added strict stage classes, workflow parameters, GEM fingerprints and unit-order validation.
+- Updated tutorials, vignette, README, API index and help pages.
 
 # RegCompassR 1.8.1
 
-- Added formal reaction annotation to Stage 6 and condition-statistics outputs: reaction names, stoichiometry-derived formulas with metabolite names and compartments, direction-specific substrates/products, subsystems, GPR rules, participating genes, and database cross-references.
-- Added condition-by-cell-type evidence provenance that distinguishes active `RNA+ATAC` support from `RNA-only`, `GPR/no-observed-RNA`, and `structural/no-GPR` reactions. `RNA+ATAC` now requires the GPR-aggregated reaction capacity calculated from integrated evidence to differ from the otherwise identical RNA-only reaction capacity; gene-level ATAC modifiers and contribution genes are reported separately.
-- Added `rc_build_reaction_annotations()` and `rc_attach_reaction_annotations()` for new and previously generated results.
-- Added `rc_select_gene_reactions()` and `rc_plot_condition_gene_reactions()` for selecting scored reactions by metabolic genes and generating a ranked collection of significant, biologically annotated condition boxplots.
-- Added `rc_test_condition_reactions()` for same-reaction, same-direction, same-medium comparisons between conditions within each cell type. It reports Kruskal-Wallis omnibus tests, pairwise Wilcoxon tests, BH-adjusted P values, median score shifts, rank-biserial/common-language effects, and Cohen's d.
-- Added `rc_plot_condition_reaction()` for multi-condition boxplots of a selected reaction target, with every metacell shown as a jittered point, Kruskal-Wallis omnibus annotation, and pairwise significance brackets based on raw or reaction-wide multiplicity-adjusted P values.
-- Condition-reaction statistics explicitly distinguish within-dataset metacell significance from biological-replicate-level treatment inference and verify that target `vmax` is invariant across units before testing.
-- Fixed `mouse_plasma` so it no longer inherits human HPLM concentrations or provenance. Healthy-mouse glucose (4.381 mM), lactate (3.088 mM), and glutamine (0.934 mM) define the only quantitative relative uptake caps; all other mouse components are availability-only.
-- Separated the healthy-mouse quantitative reference from the broader murine plasma and tumor-interstitial-fluid availability evidence, and removed the unrelated Mouse-GEM reconstruction DOI from medium-composition provenance.
-- Removed the redundant public `metacell_label_col` and stepwise `label_col` arguments. The canonical workflow now exposes its actual behavior directly: `celltype_col` is always passed to SuperCell2 before aggregation, while condition remains the only hard metacell stratum.
-- Retained `label_col` only on the lower-level general-purpose `rc_make_supercell2_metacells()` builder, where it is a functional SuperCell2 option.
-- Updated the README, all three tutorial levels, the workflow vignette, API index, and help pages to use the canonical interface only.
-- Added a complete guide to the predefined extracellular media, including species restrictions, assumptions, and custom-medium examples.
+- Added reaction annotations, evidence provenance, gene–reaction selection and plotting, condition reaction statistics and condition reaction plots.
+- Added medium presets and removed redundant public metacell label arguments.
 
 # RegCompassR 1.7.0
 
-- Changed the canonical metacell scope to `condition × cell type`, deliberately pooling cells from all biological samples within each condition before SuperCell2 while retaining per-metacell biological-sample composition diagnostics.
-- Changed Pando inference and GRN meta-module construction to the same condition-by-cell-type scope.
-- Allows Pando installed from a locally downloaded source archive when GitHub remote metadata are unavailable. Such installations continue with an explicit warning and are marked as having an unverified repository origin; explicitly conflicting remote username or repository metadata still fail.
-- Uses condition-specific Pando coefficients learned from RNA+ATAC to weight accessibility-only regulatory deviations at the metacell level; metacell TF RNA is not multiplied into the modifier, reducing direct duplicate RNA weighting.
-- Clarifies that coefficients estimated from the same pooled dataset are fitted parameters rather than independent validation evidence; condition-pooled outputs remain descriptive unless external fitting or cross-fitting is supplied.
-- Fixed the canonical GPR calculation to a normalized, monotone Boltzmann soft-min AND, additive isozyme OR, and no promiscuity weighting. This historical rule is superseded in the development version by COMPASS `min`/`median`/`mean` aggregation.
-- Replaced the previous decomposed expression-plus-confidence objective with one COMPASS-like positive cost, `1 / (1 + log2(1 + E_multiome))`.
-- Restricts fixed structural penalties to exchange, demand, sink, and artificial-support reactions. Transport and cofactor reactions with GPR evidence retain the integrated multiome reaction-expression cost.
-- Builds biological meta-modules only from complete-GPR core reactions, core-reaction subsystems, and reactions sharing KEGG, Reactome, or master-Rhea identifiers. Metabolite-neighbour expansion is not used; local FASTCORE is the sole mechanism for adding reactions required for flux feasibility.
-- Supports both shared union meta-module GEM and shared full-GEM scoring modes with the same Layer 1 evidence, medium, target-flux fraction, and ranking outputs.
-- Allows one or more biological samples per condition. Sample counts are retained as provenance and do not block the descriptive pooled-metacell workflow.
-- Allows one condition. Single-condition runs return within-condition reaction priorities; multi-condition runs additionally return all pairwise descriptive priority contrasts within each cell type.
-- Added explicit `reaction_ranking` output containing reaction ID, direction, medium, median minimum penalty, support score, and within-condition priority rank.
-- Deleted obsolete sample-level differential/statistics code and unused pseudobulk interfaces that were incompatible with the pooled-metacell inference semantics.
-- Deleted the retired strict-stratum global workflow, Q95 calibration implementation, Pando reaction-confidence implementation, Layer 2 confidence alignment functions, confidence placeholders, `penalty_weights` API, and metabolite-neighbour expansion helper and controls.
+- Introduced condition-pooled metacells, condition-specific regulatory evidence, COMPASS-like reaction penalties and shared union/full-GEM scoring modes.
+- Clarified that coefficients learned from the same pooled data are fitted parameters rather than independent validation evidence.
