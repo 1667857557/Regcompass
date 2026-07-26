@@ -51,6 +51,7 @@ Collate:
     'grn_inference.R'
     'multitask_grn.R'
     'multitask_grn_contracts.R'
+    'meta_module_multitask.R'
     'regulatory_modifier.R'
     'regulatory_modifier_dispatch.R'
     'condition_layer1.R'
