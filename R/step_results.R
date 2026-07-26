@@ -46,7 +46,17 @@ rc_regcompass_step_results <- function(
   conditions <- unique(as.character(
     metacells$pooled$metacell_meta[[params$condition_col]]
   ))
+  grn_mode <- as.character(
+    grn$grn_result$grn_mode %||% grn$params$grn_mode %||%
+      "legacy_condition_pando"
+  )
+  multitask <- identical(grn_mode, "multitask_shared_backbone")
   condition_fields <- intersect(c(
+    "celltype_fit_status", "sample_status",
+    "tf_peak_gene_candidates", "tf_peak_gene_global",
+    "tf_peak_gene_condition_all", "tf_peak_gene_all",
+    "tf_peak_gene_significant", "condition_target_genes",
+    "target_model_diagnostics", "stability_diagnostics",
     "supported_metabolic_genes", "core_gene_reaction",
     "biological_reaction_membership", "reaction_membership",
     "meta_module_summary", "core_definition", "analysis_group_unit",
@@ -54,11 +64,16 @@ rc_regcompass_step_results <- function(
   ), names(meta_modules$condition_modules))
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
-    schema_version = "regcompass_significant_pando_targets_v1",
-    version = "1.8.4",
+    schema_version = if (multitask) {
+      "regcompass_multitask_condition_subgrn_v1"
+    } else {
+      "regcompass_significant_pando_targets_v1"
+    },
+    version = "1.8.8",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
+    grn_mode = grn_mode,
     grn = grn$grn_result,
     metacells = metacells$pooled,
     layer1 = layer1,
@@ -78,17 +93,44 @@ rc_regcompass_step_results <- function(
         "single_cell_grn", "condition_metacells", "meta_modules",
         "layer1", "medium_specific_union_gem_layer2"
       ),
-      pando_grouping = c(params$condition_col, params$celltype_col),
+      grn_mode = grn_mode,
+      grn_background = if (multitask) {
+        "one_celltype_shared_pando_structural_tf_peak_target_universe"
+      } else {
+        "independent_condition_x_celltype_pando_candidates"
+      },
+      grn_condition_model = if (multitask) {
+        "global_backbone_plus_symmetric_sum_zero_condition_deviation"
+      } else {
+        "independent_condition_models"
+      },
+      grn_stability_policy = if (multitask) {
+        "selection_frequency_times_conditional_sign_stability"
+      } else {
+        "legacy_adjusted_p_value_filter"
+      },
+      pando_grouping = if (multitask) {
+        params$celltype_col
+      } else {
+        c(params$condition_col, params$celltype_col)
+      },
       pando_peak_cor =
-        grn$grn_result$normalization_policy$pando_peak_cor,
+        grn$grn_result$normalization_policy$pando_peak_cor %||% NA_real_,
       pando_regions = grn$grn_result$normalization_policy$pando_regions,
       metacell_grouping = params$condition_col,
       metacell_celltype_assignment =
         "supercell_label_guided_then_dominant_membership_audit",
       metacell_gamma = params$metacell_args$gamma,
-      sample_weighting = "none",
-      meta_module_core_definition =
-        "condition_celltype_significant_pando_targets_complete_gpr",
+      sample_weighting = if (multitask) {
+        "equal_total_GRN_loss_weight_per_condition"
+      } else {
+        "none"
+      },
+      meta_module_core_definition = if (multitask) {
+        "condition_celltype_stability_selected_subgrn_targets_complete_gpr"
+      } else {
+        "condition_celltype_significant_pando_targets_complete_gpr"
+      },
       meta_module_expansion =
         "core_subsystem_plus_kegg_reactome_master_rhea_only",
       meta_module_merge = "reaction_id_deduplication_only_not_a_gem",
@@ -107,8 +149,12 @@ rc_regcompass_step_results <- function(
         "none"
       },
       union_gem_definition = paste(
-        "medium-constrained merged biological meta-modules plus",
-        "global FASTCORE support"
+        "medium-constrained union of all condition/cell-type biological",
+        "meta-modules plus one global FASTCORE support completion"
+      ),
+      structural_comparability = paste(
+        "all conditions and metacells in one medium reuse identical reaction",
+        "IDs, stoichiometric matrix, lower bounds, and upper bounds"
       ),
       second_pass_model_policy =
         "reuse_exact_final_medium_specific_union_gem_cache",

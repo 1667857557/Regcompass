@@ -10,7 +10,7 @@
   missing <- setdiff(required, colnames(significant))
   if (length(missing)) {
     stop(
-      "Significant Pando table is missing columns: ",
+      "Active GRN edge table is missing columns: ",
       paste(missing, collapse = ", "),
       call. = FALSE
     )
@@ -25,10 +25,7 @@
   ]
   if (!nrow(significant)) {
     stop(
-      paste(
-        "No Human-GEM metabolic target genes have significant Pando",
-        "TF-peak-gene evidence."
-      ),
+      "No GEM metabolic target genes have active TF-peak-gene evidence.",
       call. = FALSE
     )
   }
@@ -39,21 +36,27 @@
     one <- significant[index, , drop = FALSE]
     group_id <- as.character(one$group_id[[1L]])
     target <- as.character(one$target[[1L]])
-    estimate <- if ("estimate" %in% colnames(one)) {
-      suppressWarnings(as.numeric(one$estimate))
-    } else {
-      rep(NA_real_, nrow(one))
+    numeric_column <- function(name) {
+      if (name %in% colnames(one)) {
+        suppressWarnings(as.numeric(one[[name]]))
+      } else {
+        rep(NA_real_, nrow(one))
+      }
     }
-    padj <- if ("padj" %in% colnames(one)) {
-      suppressWarnings(as.numeric(one$padj))
+    estimate <- numeric_column("estimate")
+    effective <- if ("effective_estimate" %in% colnames(one)) {
+      numeric_column("effective_estimate")
     } else {
-      rep(NA_real_, nrow(one))
+      estimate
     }
-    rsq <- if ("rsq" %in% colnames(one)) {
-      suppressWarnings(as.numeric(one$rsq))
+    padj <- numeric_column("padj")
+    rsq <- if ("cv_rsq" %in% colnames(one)) {
+      numeric_column("cv_rsq")
     } else {
-      rep(NA_real_, nrow(one))
+      numeric_column("rsq")
     }
+    selection <- numeric_column("selection_frequency")
+    sign_stability <- numeric_column("sign_stability")
     finite_min <- function(value) {
       value <- value[is.finite(value)]
       if (length(value)) min(value) else NA_real_
@@ -61,6 +64,11 @@
     finite_max <- function(value) {
       value <- value[is.finite(value)]
       if (length(value)) max(value) else NA_real_
+    }
+    evidence <- if ("evidence_type" %in% colnames(one)) {
+      paste(sort(unique(as.character(one$evidence_type))), collapse = ";")
+    } else {
+      "legacy_significant_pando_tf_peak_gene_target"
     }
     group_values <- one[1L, group_cols, drop = FALSE]
     data.frame(
@@ -74,10 +82,13 @@
       n_regulatory_regions = length(unique(one$region[nzchar(one$region)])),
       min_padj = finite_min(padj),
       max_abs_estimate = finite_max(abs(estimate)),
+      max_abs_effective_estimate = finite_max(abs(effective)),
       max_model_rsq = finite_max(rsq),
-      n_positive_edges = sum(is.finite(estimate) & estimate > 0),
-      n_negative_edges = sum(is.finite(estimate) & estimate < 0),
-      evidence_definition = "significant_pando_tf_peak_gene_target",
+      min_selection_frequency = finite_min(selection),
+      min_sign_stability = finite_min(sign_stability),
+      n_positive_edges = sum(is.finite(effective) & effective > 0),
+      n_negative_edges = sum(is.finite(effective) & effective < 0),
+      evidence_definition = evidence,
       stringsAsFactors = FALSE,
       check.names = FALSE
     )
@@ -133,8 +144,8 @@
   if (!nrow(core) || !any(core$is_core %in% TRUE)) {
     stop(
       paste(
-        "Significant Pando-supported metabolic genes did not completely",
-        "satisfy any Human-GEM GPR branch."
+        "Active GRN-supported metabolic genes did not completely satisfy",
+        "any GEM GPR branch."
       ),
       call. = FALSE
     )
@@ -172,6 +183,10 @@
     ), drop = FALSE]
   }
 
+  multitask <- identical(
+    as.character(grn_result$grn_mode %||% ""),
+    "multitask_shared_backbone"
+  )
   out <- c(grn_result, list(
     supported_metabolic_genes = supported,
     core_gene_reaction = core,
@@ -179,16 +194,26 @@
     biological_reaction_membership = expanded$reaction_membership,
     meta_module_summary = expanded$summary,
     crossref_maps = expanded$crossref_maps,
-    core_definition = paste(
-      "complete Human-GEM GPR branch contained in the significant Pando",
-      "target-gene set for one condition-by-cell-type group"
-    ),
+    core_definition = if (multitask) {
+      paste(
+        "complete GEM GPR branch contained in the stability-selected",
+        "condition sub-GRN target-gene set for one condition-by-cell-type group"
+      )
+    } else {
+      paste(
+        "complete GEM GPR branch contained in the significant Pando",
+        "target-gene set for one condition-by-cell-type group"
+      )
+    },
     expansion_definition = paste(
       "one ordered pass: core subsystem, then KEGG/Reactome reaction",
       "equivalence, then master-Rhea reaction equivalence"
     ),
-    analysis_group_unit =
-      "condition_x_celltype_significant_pando_metabolic_targets",
+    analysis_group_unit = if (multitask) {
+      "condition_x_celltype_stability_selected_multitask_metabolic_targets"
+    } else {
+      "condition_x_celltype_significant_pando_metabolic_targets"
+    },
     feasibility_completion = "none_at_meta_module_stage"
   ))
   .rc_mm_write_tsv_gz(

@@ -1,21 +1,21 @@
 # Tutorial Level 1: minimal one-shot run
 
-Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.8.4.
+Use this tutorial for paired single-cell RNA+ATAC data and RegCompassR 1.8.8.
 
 ## Workflow
 
 ```text
-condition × cell type cells
-→ Pando models of GEM GPR genes
-→ significantly supported metabolic target genes
-→ complete-GPR core reactions
+one shared Pando TF–peak–target background per cell type
+→ global GRN backbone + condition deviations
+→ stability-selected condition sub-GRNs
+→ condition-specific metabolic target genes
+→ complete-GPR condition core reactions
 → one ordered subsystem/cross-reference expansion pass
-→ integrated RNA+ATAC reaction support
-→ medium-constrained model with global FASTCORE completion
-→ directional LP scoring and condition contrasts
+→ one shared medium-specific union GEM
+→ RNA+ATAC penalties and directional LP scoring
 ```
 
-## Prepare the object and model
+## Prepare the model
 
 ```r
 library(RegCompassR)
@@ -36,24 +36,16 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-The Seurat object must contain normalized RNA and ATAC assays, the requested reductions, and the metadata columns supplied below. Pando is fitted separately for each `condition × cell type` group. Its target list is the intersection of GEM GPR genes and RNA-assay row names.
+The object must contain paired RNA and ATAC measurements, `condition_col`, `celltype_col`, and optionally a biological `sample_col`. RegCompass normalises RNA globally and ATAC with one TF-IDF reference per cell type across conditions.
 
-When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes the resulting `motifs` object to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
-
-The default Pando regions are species-specific:
+When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")`. Default regulatory regions are:
 
 ```text
 human: phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
-mouse: phastConsElements20Mammals.UCSC.hg38 only
+mouse: phastConsElements20Mammals.UCSC.hg38
 ```
 
-Both objects are loaded from Pando. An explicit `pando_args$pando_initiate_args$regions` overrides the default.
-
-Available medium presets include physiological plasma, RPMI-1640, high-glucose DMEM, glucose/lactate/glutamine sensitivity scenarios, technical exchange baselines, and custom media. See [medium presets](medium-presets.md) for the complete list and assumptions.
-
 ## Run the complete workflow
-
-The public runner arguments and the example below follow the processing sequence: model/shared inputs → Stage 1 Pando → Stage 2 metacells → Stage 3 meta-modules → Stage 4 Layer 1 → Stage 5 Layer 2 → execution controls.
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -63,26 +55,37 @@ result <- rc_run_regcompass_one_shot(
   species = "human",
   gem = gem,
 
-  # Stage 1: Pando GRN evidence
   condition_col = "Group",
   celltype_col = "cell_type",
+  sample_col = "sample_id",
+
+  # Stage 1: shared candidate background and condition sub-GRNs
+  grn_mode = "multitask_shared_backbone",
   pando_args = list(
     min_cells = 100,
-    padj_threshold = 0.05,
-    min_abs_estimate = 0,
-    min_model_rsq = 0.1,
-    require_padj = TRUE,
-    pando_infer_args = list(
-      method = "glm",
-      tf_cor = 0.1,
-      peak_cor = 0.01,
-      adjust_method = "fdr",
-      parallel = FALSE
+    pando_design_args = list(
+      peak_to_gene_method = "Signac",
+      min_tf_detection = 0.01,
+      min_peak_detection = 0.01,
+      min_target_detection = 0.01
     )
   ),
+  multitask_args = list(
+    alpha = 0.5,
+    global_penalty_factor = 1,
+    deviation_penalty_factor = 2,
+    lambda_rule = "lambda.1se",
+    nfolds = 5,
+    n_stability = 50,
+    stability_fraction = 0.8,
+    min_selection_frequency = 0.7,
+    min_sign_stability = 0.8,
+    candidate_screen_threshold = 0,
+    max_edges_per_target = Inf,
+    seed = 12345L
+  ),
 
-  # Stage 2: metacells
-  sample_col = NULL,
+  # Stage 2: condition-level metacells
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
@@ -103,7 +106,7 @@ result <- rc_run_regcompass_one_shot(
     gpr_and_method = "min"
   ),
 
-  # Stage 5: medium-specific union GEM and scoring
+  # Stage 5: one shared model per medium
   medium_scenarios = medium_scenarios,
   model_mode = "meta_module_gem",
   layer2_args = list(
@@ -116,87 +119,57 @@ result <- rc_run_regcompass_one_shot(
       strict = TRUE
     )
   ),
-
   upstream_workers = 6,
   layer2_workers = 30,
   progress = TRUE
 )
 ```
 
-## Pando evidence-filter parameters
-
-A TF–peak–target row is retained only when all configured requirements are met:
+## Stage 1 parameters
 
 | Parameter | Default | Meaning |
 |---|---:|---|
-| `min_cells` | `20L` | Minimum cells required for each `condition × cell type` Pando fit. The example uses `100`. |
-| `padj_threshold` | `0.05` | Maximum adjusted P value for a TF–peak–target coefficient. |
-| `min_abs_estimate` | `0` | Minimum absolute Pando coefficient. `0` retains every finite effect that passes the other filters. |
-| `min_model_rsq` | `0.1` | Minimum finite target-model R² from `Pando::gof()`. |
-| `require_padj` | `TRUE` | Require the coefficient table to contain valid adjusted P values. |
+| `min_cells` | `20L` | Minimum cells in every condition of a cell type. |
+| `alpha` | `0.5` | Elastic-net mixing value. It must be below one so the symmetric deviation solution has a ridge component. |
+| `global_penalty_factor` | `1` | Penalty factor for the shared backbone. |
+| `deviation_penalty_factor` | `2` | Stronger shrinkage for condition deviations. |
+| `n_stability` | `25L` | Repeated stratified subsamples. Use a larger value for final analyses. |
+| `min_selection_frequency` | `0.7` | Minimum fraction of successful subsamples selecting the condition edge. |
+| `min_sign_stability` | `0.8` | Minimum conditional sign agreement. |
+| `candidate_screen_threshold` | `0` | Default retains the complete structural Pando candidate universe. |
+| `max_edges_per_target` | `Inf` | Default does not truncate the shared candidate universe. |
 
-The Stage 1 evidence filter defines the Stage 3 supported metabolic-gene set. Positive and negative coefficients both count as regulatory evidence because the question is whether a gene has significant epigenetic regulatory support, not whether the inferred effect is activating or repressing.
+The multitask model does not assign classical adjusted p-values to regularised coefficients. `padj` is `NA`; edge support is defined by stability selection and target-model cross-validated reliability.
 
-## Metacell geometry and reproducibility
+## Core reaction rule
 
-The four reduction fields determine the cell-level geometry used by SuperCell2:
+For condition target set `G_c`, reaction `r` becomes a core only when one complete GPR branch is present:
 
-| Parameter | Default | Meaning |
-|---|---:|---|
-| `rna_reduction` | `"pca"` | RNA reduction stored in `A@reductions`. A precomputed `"harmony"` reduction may be used instead. |
-| `rna_dims` | `1:30` | RNA dimensions passed to SuperCell2. |
-| `atac_reduction` | `"lsi"` | ATAC reduction stored in `A@reductions`. |
-| `atac_dims` | `2:30` | ATAC dimensions passed to SuperCell2; LSI dimension 1 is excluded by default. |
-| `seed` | `12345L` | Base random seed. For ordered condition strata, the internal seed is `seed + stratum_index - 1`. |
-| `gamma` | `30L` | Approximate cells-per-metacell compression target. |
-| `min_cells_per_stratum` | `100L` | Minimum cells required for a condition stratum. |
-| `min_metacell_size` | `20L` | Metacells below this size are marked low-power. |
-| `min_metacells_per_stratum` | `2L` | Minimum accepted number of metacells per condition stratum. |
-| `overwrite` | `FALSE` | Set to `TRUE` when rebuilding checkpoints after changing cells, assays, reductions, dimensions, seed, gamma, or thresholds. |
+\[
+Core_{r,c}=1\iff\exists k:B_{r,k}\subseteq G_c.
+\]
 
-Before running, verify that the requested reductions and dimensions exist:
+Positive and negative active regulatory edges both allow a target gene to enter `G_c`.
+
+## Inspect outputs
 
 ```r
-stopifnot(
-  "pca" %in% names(A@reductions),
-  "lsi" %in% names(A@reductions),
-  ncol(SeuratObject::Embeddings(A[["pca"]])) >= 30,
-  ncol(SeuratObject::Embeddings(A[["lsi"]])) >= 30
-)
-```
+result$grn$tf_peak_gene_candidates
+result$grn$tf_peak_gene_global
+result$grn$tf_peak_gene_condition_all
+result$grn$tf_peak_gene_significant
+result$grn$condition_target_genes
 
-Using Harmony changes only the RNA neighbourhood geometry used to assign metacell membership; RegCompass still aggregates the original RNA and ATAC assay counts. Do not use a Harmony embedding that removed the biological condition effect being analysed.
-
-Stage 2 records the exact reduction names, dimensions, embedding fingerprints, seed, gamma, and metacell thresholds in:
-
-```r
-result$metacell_data$pooled$cache_contract$analysis_args
-```
-
-## Fixed Stage 3 expansion
-
-Stage 3 always performs exactly one ordered expansion pass:
-
-```text
-core subsystem
-→ KEGG/Reactome reaction equivalence
-→ master-Rhea reaction equivalence
-```
-
-## GPR-AND aggregation
-
-`layer1_args$gpr_and_method` controls genes joined by a GPR AND relationship. Allowed values are `"min"`, `"median"`, and `"mean"`; the default is `"min"`. Isozyme OR branches are summed in the canonical Layer 1 calculation.
-
-`layer2_args$model_params$completion_time_limit` applies only to FASTCORE union-GEM construction; scoring LPs have no time-limit parameter.
-
-## Inspect the main outputs
-
-```r
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
-result$reaction_ranking
-result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions
 result$merged_grn_meta_modules$merged_reaction_membership
+
+result$reaction_ranking
+result$condition_contrast
 result$microcompass$model_cache_summary
 ```
+
+The merged catalogue is a reaction union, not a GEM. Stage 5 constructs one medium-specific union GEM and reuses its exact stoichiometry and bounds for every condition and metacell.
+
+See [multitask GRN mathematics and stage contracts](multitask-shared-grn.md).

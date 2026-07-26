@@ -76,6 +76,25 @@ test_that("metacell stage persists required artifacts", {
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
 })
 
+test_that("Stage 1 persists the shared candidate and condition-edge contract", {
+  text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns)), collapse = "\n"
+  )
+  required <- c(
+    "pando_tf_peak_gene_candidates.tsv.gz",
+    "pando_tf_peak_gene_global.tsv.gz",
+    "pando_tf_peak_gene_condition_all.tsv.gz",
+    "pando_tf_peak_gene_significant.tsv.gz",
+    "condition_target_genes.tsv.gz",
+    "pando_target_model_diagnostics.tsv.gz",
+    "pando_edge_stability.tsv.gz",
+    "single_cell_grn.rds"
+  )
+  expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
+  expect_match(text, "regcompass_multitask_grn_v1", fixed = TRUE)
+  expect_match(text, "multitask_shared_backbone", fixed = TRUE)
+})
+
 test_that("Stage 3 persists supported genes and core reactions", {
   text <- paste(
     deparse(body(.rc_build_condition_meta_modules)), collapse = "\n"
@@ -127,10 +146,10 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(
     result_text,
-    "regcompass_significant_pando_targets_v1",
+    "regcompass_multitask_condition_subgrn_v1",
     fixed = TRUE
   )
-  expect_match(result_text, 'version = "1.8.4"', fixed = TRUE)
+  expect_match(result_text, 'version = "1.8.8"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)

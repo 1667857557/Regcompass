@@ -1,26 +1,44 @@
-# RegCompassR 1.8.4 tutorial index
+# RegCompassR 1.8.8 execution modes
 
-All execution modes follow the same main workflow:
+All canonical execution modes follow the same architecture:
 
 ```text
-condition × cell type Pando evidence for Human-GEM genes
-→ significantly supported metabolic targets
-→ complete-GPR core reactions
-→ one ordered subsystem/cross-reference expansion pass
-→ integrated RNA+ATAC support with COMPASS GPR-AND aggregation
-→ medium-constrained structural model
-→ directional LP scoring
+one shared Pando structural candidate background per cell type
+→ global GRN backbone + condition deviations
+→ stability-selected condition sub-GRNs
+→ condition metabolic target genes
+→ complete-GPR condition cores
+→ one ordered biological annotation expansion
+→ one shared medium-specific union GEM
+→ condition/metacell-specific penalties and directional LP scores
 ```
+
+## GRN modes
+
+### `grn_mode = "multitask_shared_backbone"`
+
+This is the RegCompassR 1.8.8 default.
+
+- Pando runs once per cell type to build the structural TF–peak–target dictionary.
+- All conditions use the same edge universe and edge scaling.
+- RegCompass estimates global coefficients and symmetric zero-sum condition deviations.
+- Stability selection defines active condition edges.
+- `padj` is not used for regularised multitask coefficients.
+
+### `grn_mode = "legacy_condition_pando"`
+
+This mode reproduces independent `condition × cell type` Pando fits. Legacy adjusted-p-value, coefficient and model-R² filters belong only to this mode.
+
+The two GRN modes should be treated as different analyses rather than mixed within one result.
 
 ## Level 1: one-shot workflow
 
-Use [Tutorial 1](tutorial-01-quick-start.md) for a complete run with `rc_run_regcompass_one_shot()`.
+Use [Tutorial 1](tutorial-01-quick-start.md) with `rc_run_regcompass_one_shot()`.
 
-- `pfm` is optional; Pando's bundled `motifs` data object is the default.
-- `upstream_workers`: Pando inference and Layer 1.
-- `layer2_workers`: model completion and LP scoring.
-- `meta_module_args`: optional custom subsystem table only.
-- `layer1_args`: `regulatory_alpha`, `gpr_and_method`, and gene half-saturation.
+- `pando_args` controls structural candidate construction.
+- `multitask_args` controls elastic-net fitting, cross-validation and stability selection.
+- `upstream_workers` covers Stage 1 and Layer 1.
+- `layer2_workers` covers union-GEM construction and LP scoring.
 
 ## Level 2: explicit stepwise workflow
 
@@ -35,40 +53,37 @@ rc_regcompass_step_layer2()
 rc_regcompass_step_results()
 ```
 
-Stage 3 directly maps significant Pando target genes to complete-GPR cores. It does not perform shared-TF projection or connected-component analysis. Expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence.
-
-Stage 4 uses `gpr_and_method = "min"` by default. `"median"` and `"mean"` are available for sensitivity analysis.
+Stage 3 maps condition sub-GRN target genes to complete-GPR cores. Stage 3 does not construct a GEM. Stage 5 builds the single medium-specific union GEM used by every condition and metacell.
 
 ## Level 3: restart and sensitivity analysis
 
 Use [Tutorial 3](tutorial-03-advanced-restart.md).
 
-- Change Pando thresholds, motifs, or regulatory regions: rerun Stage 1 onward.
+- Change motifs, Pando regions, structural detection filters or target genes: rerun Stage 1 onward.
+- Change multitask penalties, folds, stability thresholds or candidate screening: rerun Stage 1 onward.
 - Change metacell construction: rerun Stage 2 onward.
 - Change subsystem annotations or GEM GPR rules: rerun Stage 3 onward.
-- Change `gpr_and_method` or another multiome support setting: rerun Stage 4 onward.
-- Change medium, FASTCORE, or LP settings: rerun Stage 5 onward.
+- Change `regulatory_alpha` or `gpr_and_method`: rerun Stage 4 onward.
+- Change medium, FASTCORE or LP settings: rerun Stage 5 onward.
 
 ## Level 4: targeted second-pass scoring
 
-Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) to remap selected genes or core reactions through direct KEGG, Reactome, or master-Rhea links and score the mapped targets in the cached Stage 5 model.
+Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) to remap selected genes or reactions through direct KEGG, Reactome or master-Rhea links and score them in the exact cached Stage 5 union GEM.
 
 ## Level 5: condition comparison
 
-Use [Tutorial 5](tutorial-05-condition-differential-analysis.md) to compare reaction scores between conditions.
-
-## Medium scenarios
-
-Use [Predefined extracellular medium scenarios](medium-presets.md) for physiological, culture-medium, nutrient-sensitivity, technical, and custom options.
+Use [Tutorial 5](tutorial-05-condition-differential-analysis.md) to compare scores for the same reaction, direction, medium and cell type between conditions.
 
 ## Structural modes
 
 ### `model_mode = "meta_module_gem"`
 
-Stage 5 builds the medium-constrained structural model and applies global FASTCORE completion.
+Stage 5 builds one medium-specific union GEM from all condition biological catalogues and performs one global FASTCORE completion.
 
 ### `model_mode = "full_gem"`
 
-The complete validated GEM is reused directly for scoring; no union-model reconstruction or FASTCORE completion is required.
+The complete validated GEM is reused directly. No union reconstruction or FASTCORE completion is performed.
 
-Treat the two modes as separate analyses.
+In either structural mode, all conditions within the same analysis use the same stoichiometric matrix and bounds.
+
+See [multitask GRN mathematics and object contracts](multitask-shared-grn.md).
