@@ -89,6 +89,7 @@ Collate:
     'stage_parallel_lifecycle.R'
     'penalty.R'
     'reaction_roles.R'
+    'result_compaction.R'
     'stepwise_workflow.R'
     'step_meta_modules.R'
     'step_layer1.R'
