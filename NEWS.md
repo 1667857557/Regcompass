@@ -1,3 +1,16 @@
+# RegCompassR 1.8.8
+
+- Added the canonical `multitask_shared_backbone` GRN mode. Pando now supplies one condition-agnostic structural TF–peak–target candidate universe per cell type, and RegCompass jointly estimates a global backbone plus symmetric zero-sum condition deviations.
+- Added condition-balanced elastic-net fitting. Every condition contributes the same total loss weight, and `alpha < 1` is required so the centred condition-deviation parameterisation has a unique ridge-regularised solution.
+- Added condition- or sample-aware residualisation, sample-blocked cross-validation when replicate coverage permits, and stratified stability selection with selection-frequency and conditional sign-stability outputs.
+- Added explicit Stage 1 output contracts for candidate edges, global coefficients, all condition coefficients, active condition edges, condition target genes, model diagnostics, and stability diagnostics.
+- Replaced condition-wise coefficient normalisation in the Layer 1 regulatory modifier. TFs sharing one measured peak are signed-summed, and one target-specific denominator is shared across conditions, preserving differences in total regulatory strength.
+- Preserved the existing zero regulatory modifier fallback: a gene without a stable active edge in one condition uses its RNA-only support exactly.
+- Kept complete-GPR condition core construction and the one-pass subsystem/KEGG–Reactome/master-Rhea expansion, while recording the new stability-selected sub-GRN provenance.
+- Kept one medium-specific union GEM per medium. All conditions and metacells reuse identical reaction IDs, stoichiometry, lower bounds, and upper bounds; only evidence-derived penalties differ.
+- Added mathematical, stage-contract, and regression tests for symmetric condition coding, zero-sum deviations, equal condition weights, RNA-only fallback, condition-specific complete-GPR cores, and merged-reaction provenance.
+- Added `glmnet` as a direct dependency and raised the required Pando fork to version 1.1.2 for the shared structural design API.
+
 # RegCompassR development
 
 - Added `rc_report_condition_directions()` as a final reporting layer that retains forward/reverse LP targets, diagnoses numerically indistinguishable directions, and derives non-additive `any_direction_support` and `directional_balance` summaries. The latter is explicitly support asymmetry rather than net flux.
@@ -37,7 +50,6 @@
 - Added a strict no-nested-threading contract. BLAS/OpenMP/RcppParallel and nested R worker settings are temporarily fixed at one, while Pando remains internally serial, so outer parallelism executes multiple independent single-thread analyses rather than multiplying threads inside each worker.
 - Added operating-system-aware parallel configuration. Requested and actual backends, layered worker counts, one internal thread per task, OS type, stage groups, and lifecycle policy are retained in the result.
 - Bundled validated Human-GEM 2.0.0 and Mouse-GEM 1.8.0 RegCompass assets under `inst/extdata/gem`. Canonical runs load them offline by default. Cache-first, explicit bundled-only, download, force-rebuild, and low-level download/update paths remain available.
-- Added `rc_bundled_gem_manifest()` and exported `rc_download_species_gem()`. The installed manifest records model source, release, checksum, size, citation DOI, and CC BY 4.0 attribution.
 - Added progress output and elapsed-time auditing to every public workflow stage and to the complete six-stage run. Each stage writes `step_timing.tsv`; one-shot execution writes `00_execution_timing.tsv` and stores stage and total timings in `result$timing`.
 - Added an audited condition-metacell cache contract. Checkpoints are no longer reused by file existence alone: ordered cells and labels, scalable full-content RNA/ATAC fingerprints, selected PCA/LSI embedding fingerprints, the SuperCell2 label, `gamma`, seed, reductions/dimensions, and metacell thresholds must match, or the user must rebuild with `overwrite = TRUE`.
 - Downstream stages now reject legacy metacell objects that lack the current condition-only label-guided construction and cache provenance instead of assigning current provenance to an unverifiable artifact.
