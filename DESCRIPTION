@@ -69,6 +69,7 @@ Collate:
     'reaction_roles.R'
     'stepwise_workflow.R'
     'step_meta_modules.R'
+    'step_meta_modules_contracts.R'
     'step_layer1.R'
     'step_layer2.R'
     'step_results.R'
