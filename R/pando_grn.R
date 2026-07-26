@@ -122,7 +122,7 @@
 #' Extract and filter a Pando TF-peak-gene coefficient table
 rc_extract_pando_tf_peak_gene <- function(
     grn_object,
-    sample_id,
+    group_id,
     padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
@@ -133,9 +133,9 @@ rc_extract_pando_tf_peak_gene <- function(
     min_model_rsq = min_model_rsq,
     require_padj = require_padj
   )
-  if (!is.character(sample_id) || length(sample_id) != 1L ||
-      is.na(sample_id) || !nzchar(trimws(sample_id))) {
-    stop("`sample_id` must be one non-empty character value.", call. = FALSE)
+  if (!is.character(group_id) || length(group_id) != 1L ||
+      is.na(group_id) || !nzchar(trimws(group_id))) {
+    stop("`group_id` must be one non-empty character value.", call. = FALSE)
   }
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop("Package 'Pando' is required.", call. = FALSE)
@@ -143,7 +143,7 @@ rc_extract_pando_tf_peak_gene <- function(
   coefs <- as.data.frame(stats::coef(grn_object), stringsAsFactors = FALSE)
   if (!nrow(coefs)) {
     empty <- data.frame(
-      sample_id = character(),
+      group_id = character(),
       tf = character(),
       target = character(),
       region = character(),
@@ -181,12 +181,12 @@ rc_extract_pando_tf_peak_gene <- function(
     all.x = TRUE,
     sort = FALSE
   )
-  coefs$sample_id <- as.character(sample_id)
+  coefs$group_id <- as.character(group_id)
   coefs$tf <- toupper(as.character(coefs$tf))
   coefs$target <- toupper(as.character(coefs$target))
   coefs$region <- as.character(coefs$region)
   coefs <- coefs[
-    , c("sample_id", setdiff(colnames(coefs), "sample_id")), drop = FALSE
+    , c("group_id", setdiff(colnames(coefs), "group_id")), drop = FALSE
   ]
 
   estimate <- suppressWarnings(as.numeric(coefs$estimate))
