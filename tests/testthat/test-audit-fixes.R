@@ -40,19 +40,28 @@ test_that("zero-count ATAC features are removed by default", {
   expect_equal(filtered$diagnostics$n_retained_peaks, 1)
 })
 
-test_that("condition pool identifiers do not use sample labels", {
-  first <- data.frame(sample_id = c("s1", "s2"), condition = c("A", "B"))
-  second <- first
-  second$sample_id <- rev(second$sample_id)
-  expect_identical(.rc_condition_only_sample_col(first), .rc_condition_only_sample_col(second))
+test_that("condition-only metacell construction does not consume sample labels", {
+  step_formals <- formals(rc_regcompass_step_metacells)
+  builder_text <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells)),
+    collapse = "\n"
+  )
+  expect_false("sample_col" %in% names(step_formals))
+  expect_match(builder_text, "strata_cols = condition_col", fixed = TRUE)
+  expect_match(builder_text, "label_col = celltype_col", fixed = TRUE)
+  expect_match(builder_text, 'pooling_scope <- "condition_only"', fixed = TRUE)
+  expect_false(grepl("sample_balance", builder_text, fixed = TRUE))
 })
 
-test_that("canonical metacell APIs exclude sample balancing", {
-  expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
+test_that("canonical metacell APIs keep sample bootstrap out of Stage 2", {
   expect_null(eval(formals(rc_run_regcompass)$sample_col))
-  wrapper_text <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
-  expect_match(wrapper_text, ".rc_condition_only_sample_col", fixed = TRUE)
-  expect_match(wrapper_text, "Sample balancing is not part", fixed = TRUE)
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
+  wrapper_text <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells)),
+    collapse = "\n"
+  )
+  expect_match(wrapper_text, "metacell_grouping = condition_col", fixed = TRUE)
+  expect_match(wrapper_text, "supercell_label_col = celltype_col", fixed = TRUE)
   expect_false(grepl(".rc_balance_condition_celltype_cells", wrapper_text, fixed = TRUE))
 })
 
