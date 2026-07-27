@@ -145,7 +145,7 @@ test_that("integrated workflow validates routing inputs before delegation", {
       rc_run_regcompass,
       c(common, list(layer1_args = list(tau = 0.2)))
     ),
-    "retired `tau`/Boltzmann"
+    "Unknown `layer1_args` fields: tau"
   )
   expect_error(.rc_stage_worker_config(0L, "upstream_workers"), "at least 1")
   expect_error(.rc_stage_worker_config(0L, "layer2_workers"), "at least 1")
