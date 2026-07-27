@@ -33,6 +33,8 @@ Cell-type and condition-by-cell-type status tables additionally report sample co
 
 The policy affects Stage 1 bootstrap only. Cross-validation remains condition-stratified at the cell level, Stage 2 remains condition-only, and Stage 5 still constructs one shared union GEM per medium.
 
+The canonical multitask design does not use Pando outcome-correlation filtering. For legacy Pando sensitivity runs, the documented compatibility default remains `peak_cor = 0.01`; this value must not be inserted into the canonical `prepare_grn_design()` argument bundle.
+
 ## Timing
 
 Each public stage prints elapsed time and final status in the R console after the final stage artifact is committed. Timing is not retained in returned objects and no timing TSV file is produced.
