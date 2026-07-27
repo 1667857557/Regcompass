@@ -36,8 +36,7 @@ test_that("condition and universal networks must share one edge dictionary", {
 
   expect_error(
     .rc_build_condition_effect_table(condition, universal, fit, fit),
-    "one edge dictionary",
-    fixed = TRUE
+    "one edge dictionary"
   )
 })
 
@@ -50,8 +49,7 @@ test_that("TF-by-ATAC activity uses the Pando interaction predictor", {
   expect_equal(.rc_tf_peak_interaction(tf, peak), tf * peak)
   expect_error(
     .rc_tf_peak_interaction(tf, peak[, 1, drop = FALSE]),
-    "identical dimensions",
-    fixed = TRUE
+    "identical dimensions"
   )
 })
 
