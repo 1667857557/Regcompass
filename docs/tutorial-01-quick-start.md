@@ -7,7 +7,9 @@
 ## Workflow
 
 ```text
-shared Pando TF–peak–target candidates per cell type
+shared Pando TF–peak–target structural candidates per cell type
+→ condition-aware TF×peak/target observability filter
+→ one shared model edge universe across conditions
 → condition-balanced multitask elastic net
 → global backbone + condition deviations
 → condition-stratified bootstrap-active sub-GRNs
@@ -75,23 +77,31 @@ result <- rc_run_regcompass_one_shot(
     min_cells = 100,
     pando_design_args = list(
       peak_to_gene_method = "Signac",
-      min_tf_detection = 0.01,
-      min_peak_detection = 0.01,
-      min_target_detection = 0.01
+      upstream = 100000,
+      downstream = 0,
+      extend = 1000000,
+      only_tss = FALSE,
+      min_tf_detection = 0,
+      min_peak_detection = 0,
+      min_target_detection = 0,
+      max_edges_per_target = Inf
     )
   ),
   multitask_args = list(
     alpha = 0.5,
     global_penalty_factor = 1,
-    deviation_penalty_factor = 2,
+    deviation_penalty_factor = 1,
     lambda_rule = "lambda.1se",
     nfolds = 5,
     n_bootstrap = 100,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
     min_bootstrap_success_fraction = 0.8,
+    min_cv_rsq = 0,
     candidate_screen_threshold = 0,
     max_edges_per_target = Inf,
+    min_detected_cells_per_condition = 10,
+    min_detection_fraction_per_condition = 0.01,
     seed = 12345L
   ),
 
@@ -132,7 +142,7 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The package default is `n_bootstrap = 50L`; `100` is suitable for a final run with lower Monte Carlo error in empirical selection frequencies.
+The canonical default is `n_bootstrap = 100L`. RegCompass reports the Monte Carlo standard error and Wilson 95% interval of each condition-edge selection frequency.
 
 ## 3. Understand the key calculations
 
@@ -142,6 +152,14 @@ For candidate edge `e = (TF t, peak p, target g)`:
 x_{e,u}=T_{t,u}A_{p,u}.
 \]
 
+The pooled Pando detection thresholds remain zero so a condition-restricted regulator is not removed before multitask fitting. RegCompass retains an edge in the shared model universe only when the non-zero `TF × peak` predictor and target RNA each occur in at least
+
+\[
+m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right)
+\]
+
+cells of at least one condition.
+
 The condition coefficient is
 
 \[
@@ -149,7 +167,17 @@ The condition coefficient is
 \qquad \sum_c\delta_{e,c}=0.
 \]
 
-Each bootstrap resamples every condition with replacement at its original cell count and recalculates within-condition centring. An edge becomes active only after passing selection-frequency, sign-stability, effect-size, CV-reliability, and bootstrap-completion thresholds.
+`alpha = 0.5` combines sparse selection with ridge stabilization of correlated TF–peak predictors. Global and deviation coordinates use equal explicit penalty factors by default. A deviation factor above one is a prespecified sensitivity prior, not the canonical value.
+
+Each bootstrap resamples every condition with replacement at its original cell count and recalculates within-condition centring. An edge becomes active only after passing selection-frequency, sign-stability, effect-size, strictly positive out-of-fold CV R-squared, and bootstrap-completion thresholds.
+
+For sign stability
+
+\[
+\rho=|2q-1|,
+\]
+
+so `min_sign_stability = 0.8` requires at least 90% agreement on one sign among selected bootstrap fits.
 
 For condition target-gene set `G_c`, a reaction is core only when one complete GPR branch is present:
 
@@ -158,6 +186,8 @@ Core_{r,c}=1\iff\exists k:B_{r,k}\subseteq G_c.
 \]
 
 Positive and negative active edges both establish regulated-gene membership; the coefficient sign is retained in the ATAC projection.
+
+See [Pando and multitask GRN parameter policy](grn-parameter-policy.md) for the full default rationale and supported sensitivity analyses.
 
 ## 4. Inspect the compact final result
 
