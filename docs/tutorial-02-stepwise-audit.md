@@ -2,11 +2,15 @@
 
 **Previous:** [Tutorial 1 — minimal one-shot run](tutorial-01-quick-start.md).
 
-**This tutorial:** reproduces the same RegCompassR 1.8.9 workflow as six explicit stages. Use it when intermediate tables, mathematical invariants, or restart points must be inspected.
+**This tutorial:** reproduces the RegCompassR 1.8.9 workflow as six explicit
+stages. Use it when candidate universes, direct condition coefficients,
+metacells, complete-GPR cores, reaction penalties, or union-GEM construction
+must be inspected.
 
-**Next:** [Tutorial 3 — restart and sensitivity](tutorial-03-advanced-restart.md) reuses these stage objects. [Tutorial 5](tutorial-05-condition-differential-analysis.md) connects the final tables back to Stage 1–5 evidence.
+**Next:** [Tutorial 3 — restart and sensitivity](tutorial-03-advanced-restart.md)
+reuses these objects.
 
-Use stable object names throughout:
+Use stable object names:
 
 ```text
 step1 = GRN
@@ -35,9 +39,10 @@ layer2_bp <- if (.Platform$OS.type == "windows") {
 }
 ```
 
-Stage 1 parallelises cell types; target-level `glmnet` fits remain single-threaded. Stage 4 can reuse `upstream_bp`; Stage 5 uses `layer2_bp`.
+Stage 1 parallelises cell types; target-level `glmnet` fits remain
+single-threaded. Stage 4 can reuse `upstream_bp`; Stage 5 uses `layer2_bp`.
 
-## 2. Stage 1 — shared structural GRN and condition sub-GRNs
+## 2. Stage 1 — shared GREAT candidates and condition-sparse GRNs
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -52,7 +57,7 @@ step1 <- rc_regcompass_step_grn(
   pando_args = list(
     min_cells = 100,
     pando_design_args = list(
-      peak_to_gene_method = "Signac",
+      peak_to_gene_method = "GREAT",
       upstream = 100000,
       downstream = 0,
       extend = 1000000,
@@ -85,6 +90,12 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
+The canonical GREAT rule builds basal-plus-extension peak-to-gene domains. It
+uses genomic structure rather than fitted target-expression correlation to
+admit candidates. With `extend = 1000000`, distal candidates remain possible,
+so downstream observability, CV, regularisation and bootstrap filtering are
+essential.
+
 Detailed Stage 1 tables:
 
 ```r
@@ -99,10 +110,10 @@ step1$grn_result$target_model_diagnostics
 step1$grn_result$stability_diagnostics
 ```
 
-The candidate table distinguishes two universes:
+The candidate table distinguishes:
 
 ```text
-edge_universe_id       = Pando structural motif/domain universe
+edge_universe_id       = Pando motif + GREAT-domain structural universe
 model_edge_universe_id = condition-aware observable model universe
 model_observable       = structural edge retained for fitting
 ```
@@ -113,34 +124,37 @@ For condition \(c\), the observability threshold is
 m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right).
 \]
 
-An edge enters the shared model universe when the non-zero TF-RNA × peak-ATAC predictor and target RNA each meet \(m_c\) in at least one condition. This uses detection only; it does not use target correlation or effect size.
+An edge enters the shared model universe when the non-zero
+`TF RNA × peak ATAC` predictor and target RNA each meet \(m_c\) in at least one
+condition. This uses detection only; it does not use target correlation or
+fitted effect size.
 
-For each cell type, every condition must use the same `model_edge_universe_id`. The fitted fields satisfy:
-
-```text
-effective_estimate = global_estimate + condition_deviation
-stable_estimate = effective_estimate × selection_frequency × sign_stability
-```
-
-and for every edge:
+The fitted model acts directly on condition coefficients:
 
 \[
+y_u^\circ=\sum_e\widetilde x_{e,u}\theta_{e,c(u)}+\varepsilon_u.
+\]
+
+The L1 term can therefore produce
+
+\[
+\theta_{e,A}\ne0,\qquad\theta_{e,B}=0.
+\]
+
+The exported backbone and deviation satisfy
+
+\[
+\beta_e=\frac1C\sum_c\theta_{e,c},
+\qquad
+\delta_{e,c}=\theta_{e,c}-\beta_e,
+\qquad
 \sum_c\delta_{e,c}=0.
 \]
 
-Global and condition-deviation coordinates use equal explicit penalty factors by default. Values above one are explicit sensitivity priors for a more conserved shared backbone.
+The two historical penalty-factor names are compatibility aliases for one
+common direct-theta penalty and must be equal.
 
-The bootstrap is full-size and condition stratified:
-
-```text
-for each bootstrap and each condition:
-  sample n_c cells with replacement
-  recalculate condition centres
-  apply the shared edge scale
-  fit at the full-data selected lambda
-```
-
-Check predictive validity and bootstrap completion before interpreting stability:
+Audit predictive validity and bootstrap completion:
 
 ```r
 with(
@@ -165,9 +179,9 @@ step1$grn_result$stability_diagnostics[, intersect(c(
 ), colnames(step1$grn_result$stability_diagnostics)), drop = FALSE]
 ```
 
-An active edge must have strictly positive out-of-fold \(R^2\). `min_sign_stability = 0.8` corresponds to at least 90% majority-sign agreement among selected bootstrap fits because \(\rho=|2q-1|\).
-
-See [Pando and multitask GRN parameter policy](grn-parameter-policy.md) for the parameter derivations and supported sensitivity analyses.
+An active edge must have strictly positive out-of-fold \(R^2\).
+`min_sign_stability = 0.8` corresponds to at least 90% majority-sign agreement
+among selected bootstrap fits because \(\rho=|2q-1|\).
 
 Stage 1 checkpoint:
 
@@ -175,7 +189,7 @@ Stage 1 checkpoint:
 RegCompass_steps/01_grn/step_grn.rds
 ```
 
-## 3. Stage 2 — condition strata plus exact SuperCell2 cell-type labels
+## 3. Stage 2 — condition strata and exact cell-type labels
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -206,17 +220,8 @@ RegCompass strata_cols = condition_col
 SuperCell2 label = celltype_col
 ```
 
-There is no `sample_col`, artificial condition-pool column, sample balancing, or sample-level grouping.
-
-```r
-formals(rc_make_supercell2_metacells)
-step2$pooled$strata_cols
-step2$pooled$label_col
-step2$pooled$metacell_meta
-step2$pooled$celltype_composition_summary
-```
-
-Every metacell must be label pure:
+There is no `sample_col`, artificial condition-pool column, sample balancing,
+or sample-level grouping.
 
 ```r
 stopifnot(
@@ -225,7 +230,7 @@ stopifnot(
 )
 ```
 
-Stage 2 checkpoint:
+Stage 2 checkpoints:
 
 ```text
 RegCompass_steps/02_metacells/step_metacells.rds
@@ -243,10 +248,10 @@ step3 <- rc_regcompass_step_meta_modules(
 )
 ```
 
-For each `condition × cell type` `group_id`:
+For each `condition × cell type` group:
 
 ```text
-bootstrap-active edges
+bootstrap-active direct-theta edges
 → regulated metabolic targets
 → complete GPR branches
 → core reactions
@@ -256,12 +261,8 @@ bootstrap-active edges
 → biological meta-module
 ```
 
-A reaction is a core when at least one branch is complete. The branch table distinguishes:
-
-```text
-reaction_is_core = any complete branch exists
-is_core/group_complete = this branch is complete
-```
+A reaction is core when at least one GPR branch is complete. Partial complexes
+remain diagnostic only.
 
 ```r
 step3$condition_modules$supported_metabolic_genes
@@ -272,12 +273,6 @@ step3$merged_modules$merged_reaction_membership
 ```
 
 The merged output is a biological reaction catalogue, not yet a GEM.
-
-Stage 3 checkpoint:
-
-```text
-RegCompass_steps/03_meta_modules/step_meta_modules.rds
-```
 
 ## 5. Stage 4 — RNA support, ATAC modifier, and GPR aggregation
 
@@ -302,19 +297,15 @@ step4$reaction_expression
 step4$gpr_diagnostics
 ```
 
-TFs sharing one measured peak are signed-summed before ATAC projection. The denominator is shared across conditions for each target. When no active edge exists, the modifier is zero and multiome support equals RNA support exactly.
+TFs sharing one measured peak are signed-summed before ATAC projection. The
+denominator is shared across conditions for each target. When no active edge
+exists, the modifier is zero and multiome support equals RNA support exactly.
 
 The canonical GPR rule is:
 
 ```text
 AND = min
 OR = additive isozyme support
-```
-
-Stage 4 checkpoint:
-
-```text
-RegCompass_steps/04_layer1/step_layer1.rds
 ```
 
 ## 6. Stage 5 — one shared union GEM per medium
@@ -342,7 +333,8 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-Stage 5 performs the only FASTCORE completion. Within each medium, all conditions and metacells reuse identical reaction IDs, `S`, `lb`, and `ub`.
+Stage 5 performs the only FASTCORE completion. Within each medium, all
+conditions and metacells reuse identical reaction IDs, `S`, `lb`, and `ub`.
 
 ```r
 step5$model_cache_summary
@@ -351,15 +343,10 @@ step5$source_merged_reaction_membership
 step5$union_gem_policy
 ```
 
-`completion_time_limit` applies only to union-GEM construction, not to directional scoring LPs.
+`completion_time_limit` applies only to union-GEM construction, not to
+directional scoring LPs.
 
-Stage 5 checkpoint:
-
-```text
-RegCompass_steps/05_layer2/step_layer2.rds
-```
-
-## 7. Stage 6 — assemble a compact final result
+## 7. Stage 6 — compact final result
 
 ```r
 result <- rc_regcompass_step_results(
@@ -385,19 +372,9 @@ result$reaction_catalog
 result$reaction_evidence
 ```
 
-The final object does not duplicate the full Stage 1–4 objects:
+Use `result` for ranking, condition analysis, selection, and plotting. Use
+`step1`–`step5` when auditing all candidates, coefficients, matrices, or full
+membership tables.
 
-```r
-result$stage_provenance$detailed_intermediates_embedded
-result$stage_provenance$detailed_sources
-```
-
-Use `result` for ranking, condition analysis, selection, and plotting. Use `step1`–`step5` when auditing all candidates, all coefficients, matrices, or complete membership tables.
-
-## 8. Handoff to later tutorials
-
-For sensitivity or restart, continue to [Tutorial 3](tutorial-03-advanced-restart.md) with `step1`–`step5`.
-
-For direct database-equivalent non-core targets, continue to [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) with `step3`, `step4`, and `step5`.
-
-For biological interpretation and condition comparison, continue to [Tutorial 5](tutorial-05-condition-differential-analysis.md) with `result` and optionally the stage objects.
+Continue to [Tutorial 3](tutorial-03-advanced-restart.md) for GREAT-versus-Signac
+structural sensitivity and direct-theta threshold sensitivity.
