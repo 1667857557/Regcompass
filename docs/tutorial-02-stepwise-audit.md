@@ -53,23 +53,31 @@ step1 <- rc_regcompass_step_grn(
     min_cells = 100,
     pando_design_args = list(
       peak_to_gene_method = "Signac",
-      min_tf_detection = 0.01,
-      min_peak_detection = 0.01,
-      min_target_detection = 0.01
+      upstream = 100000,
+      downstream = 0,
+      extend = 1000000,
+      only_tss = FALSE,
+      min_tf_detection = 0,
+      min_peak_detection = 0,
+      min_target_detection = 0,
+      max_edges_per_target = Inf
     )
   ),
   multitask_args = list(
     alpha = 0.5,
     global_penalty_factor = 1,
-    deviation_penalty_factor = 2,
+    deviation_penalty_factor = 1,
     lambda_rule = "lambda.1se",
     nfolds = 5,
     n_bootstrap = 100,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
     min_bootstrap_success_fraction = 0.8,
+    min_cv_rsq = 0,
     candidate_screen_threshold = 0,
     max_edges_per_target = Inf,
+    min_detected_cells_per_condition = 10,
+    min_detection_fraction_per_condition = 0.01,
     seed = 12345L
   ),
   parallel = TRUE,
@@ -91,7 +99,23 @@ step1$grn_result$target_model_diagnostics
 step1$grn_result$stability_diagnostics
 ```
 
-For each cell type, every condition must use the same `edge_universe_id`. The fitted fields satisfy:
+The candidate table distinguishes two universes:
+
+```text
+edge_universe_id       = Pando structural motif/domain universe
+model_edge_universe_id = condition-aware observable model universe
+model_observable       = structural edge retained for fitting
+```
+
+For condition \(c\), the observability threshold is
+
+\[
+m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right).
+\]
+
+An edge enters the shared model universe when the non-zero TF-RNA × peak-ATAC predictor and target RNA each meet \(m_c\) in at least one condition. This uses detection only; it does not use target correlation or effect size.
+
+For each cell type, every condition must use the same `model_edge_universe_id`. The fitted fields satisfy:
 
 ```text
 effective_estimate = global_estimate + condition_deviation
@@ -104,6 +128,8 @@ and for every edge:
 \sum_c\delta_{e,c}=0.
 \]
 
+Global and condition-deviation coordinates use equal explicit penalty factors by default. Values above one are explicit sensitivity priors for a more conserved shared backbone.
+
 The bootstrap is full-size and condition stratified:
 
 ```text
@@ -114,14 +140,34 @@ for each bootstrap and each condition:
   fit at the full-data selected lambda
 ```
 
-Check completion before interpreting stability:
+Check predictive validity and bootstrap completion before interpreting stability:
 
 ```r
 with(
   step1$grn_result$target_model_diagnostics,
+  summary(cv_rsq)
+)
+
+with(
+  step1$grn_result$target_model_diagnostics,
   summary(n_bootstrap_success / n_bootstrap_requested)
 )
+
+step1$grn_result$stability_diagnostics[, intersect(c(
+  "selection_frequency",
+  "selection_frequency_mc_se",
+  "selection_frequency_lower_95",
+  "selection_frequency_upper_95",
+  "sign_stability",
+  "sign_agreement_fraction",
+  "cv_predictive_above_null",
+  "active_edge"
+), colnames(step1$grn_result$stability_diagnostics)), drop = FALSE]
 ```
+
+An active edge must have strictly positive out-of-fold \(R^2\). `min_sign_stability = 0.8` corresponds to at least 90% majority-sign agreement among selected bootstrap fits because \(\rho=|2q-1|\).
+
+See [Pando and multitask GRN parameter policy](grn-parameter-policy.md) for the parameter derivations and supported sensitivity analyses.
 
 Stage 1 checkpoint:
 
