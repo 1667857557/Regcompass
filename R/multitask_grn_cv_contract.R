@@ -557,6 +557,3 @@
   )
   list(global = global, condition = condition_output, diagnostics = diagnostics)
 }
-
-# One explicit estimator binding replaces the former order/active wrapper chain.
-.rc_fit_multitask_target <- .rc_fit_multitask_target_direct
