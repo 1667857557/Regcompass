@@ -75,6 +75,7 @@ Collate:
     'multitask_grn_order_contract.R'
     'multitask_grn_active_contract.R'
     'multitask_grn_inference.R'
+    'multitask_grn_parameter_policy.R'
     'multitask_grn_output_contract.R'
     'regulatory_modifier.R'
     'condition_layer1.R'
