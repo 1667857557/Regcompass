@@ -24,7 +24,7 @@ The canonical complete runner and Stage 1/2 functions require `condition_col` an
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: build one validated Pando structural TF–peak–target universe per cell type, apply a condition-aware observability filter, estimate global and condition coefficients with condition-balanced elastic net, and calculate bootstrap reproducibility.
+- `rc_regcompass_step_grn()`: build one validated GREAT-domain Pando structural TF–peak–target universe per cell type, apply a condition-aware observability filter, estimate direct condition-specific coefficients with condition-balanced elastic net, and calculate bootstrap reproducibility.
 - `rc_regcompass_step_metacells()`: build condition-stratified, cell-type-labelled SuperCell2 metacells.
 - `rc_regcompass_step_meta_modules()`: map active condition sub-GRN targets to complete-GPR core reactions and one ordered subsystem/KEGG–Reactome/master-Rhea expansion.
 - `rc_regcompass_step_layer1()`: combine RNA support with an ATAC-only projection of the fitted condition sub-GRN and aggregate through GPR rules.
@@ -38,7 +38,7 @@ The canonical complete runner and Stage 1/2 functions require `condition_col` an
 pando_args = list(
   min_cells = 100L,
   pando_design_args = list(
-    peak_to_gene_method = "Signac",
+    peak_to_gene_method = "GREAT",
     upstream = 100000,
     downstream = 0,
     extend = 1000000,
@@ -53,7 +53,7 @@ pando_args = list(
 
 `Pando::prepare_grn_design()` creates a version-2 condition-agnostic dictionary. Exact predictors are deduplicated by TF, measured ATAC feature, and target. `supporting_regions` retains multiple regulatory regions mapping to one peak. RegCompass validates the design fingerprint and feature mapping before fitting.
 
-The pooled Pando detection thresholds remain zero so a condition-restricted TF, peak, or target is not removed before the shared model is formed. A finite `max_edges_per_target` is rejected because Pando candidate order is deterministic but not an evidence ranking.
+The canonical `GREAT` method creates basal-plus-extension regulatory domains and keeps candidate admission independent of fitted target-expression correlation. `extend = 1000000` permits distal hypotheses. The pooled Pando detection thresholds remain zero so a condition-restricted TF, peak, or target is not removed before the shared model is formed. A finite `max_edges_per_target` is rejected because Pando candidate order is deterministic but not an evidence ranking. `Signac` remains an explicit narrower-domain sensitivity option.
 
 ## Stage 1 multitask, observability, and bootstrap controls
 
@@ -86,7 +86,15 @@ m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right).
 
 An edge enters the shared model universe only when the non-zero TF-RNA × peak-ATAC predictor and target RNA each occur in at least \(m_c\) cells of one or more conditions. TF and peak must be non-zero in the same cells. This filter uses detection only and does not use target correlation or fitted effect size.
 
-`alpha = 0.5` retains a lasso component for sparse selection and a ridge component for correlated TF–peak predictors. Global and zero-sum condition-deviation coordinates use equal explicit penalty factors by default. `deviation_penalty_factor > 1` is an optional sensitivity prior favoring a more conserved shared backbone.
+`alpha = 0.5` retains a lasso component for direct condition-specific sparsity and a ridge component for correlated TF–peak predictors. The fitted coefficients are \(\theta_{e,c}\). The reported global backbone and zero-sum deviations are derived as
+
+\[
+\beta_e=\frac1C\sum_c\theta_{e,c},
+\qquad
+\delta_{e,c}=\theta_{e,c}-\beta_e.
+\]
+
+`global_penalty_factor` and `deviation_penalty_factor` are compatibility aliases for one common direct-theta penalty and must be equal. Unequal values are rejected.
 
 Five-fold cross-validation estimates condition centres and edge scales from each training fold. An active target requires strictly positive out-of-fold `cv_rsq`; a positive `min_cv_rsq` adds a stronger floor.
 
@@ -110,7 +118,7 @@ step1$grn_result$group_status
 The candidate table distinguishes:
 
 ```text
-edge_universe_id       = complete Pando structural universe
+edge_universe_id       = complete Pando GREAT-domain structural universe
 model_edge_universe_id = observability-filtered shared model universe
 model_observable       = whether a structural edge entered fitting
 ```

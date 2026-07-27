@@ -6,11 +6,11 @@ RegCompassR 1.8.9 implements a shared-background regulatory–metabolic workflow
 
 ```text
 all conditions within one cell type
-→ one validated Pando structural TF–peak–metabolic-gene universe
+→ one validated GREAT-domain Pando structural TF–peak–metabolic-gene universe
 → condition-aware TF×peak/target observability filter
 → one shared model edge universe across conditions
-→ condition-balanced multitask elastic net
-→ global GRN backbone + symmetric condition deviations
+→ condition-balanced direct condition-theta elastic net
+→ derived cross-condition GRN backbone + zero-sum deviations
 → condition-stratified full-size bootstrap reproducibility
 → condition-specific active sub-GRNs and metabolic targets
 → complete-GPR condition core reactions
@@ -22,15 +22,24 @@ all conditions within one cell type
 → compact final analysis tables
 ```
 
-For edge \(e=(TF,peak,target)\):
+For edge \(e=(TF,peak,target)\), RegCompass directly estimates the
+condition-specific coefficient \(\theta_{e,c}\). The reported backbone and
+deviation are derived summaries:
 
 \[
-\theta_{e,c}=\beta_e+\delta_{e,c},
+\beta_e=\frac1C\sum_c\theta_{e,c},
+\qquad
+\delta_{e,c}=\theta_{e,c}-\beta_e,
 \qquad
 \sum_c\delta_{e,c}=0.
 \]
 
-All conditions of one cell type use the same structural edge dictionary, filtered model edge universe, predictor scale, penalty structure, and candidate ordering. A reaction becomes a condition core only when at least one complete GPR branch is contained in the condition target-gene set.
+All conditions of one cell type use the same structural edge dictionary,
+filtered model edge universe, predictor scale, penalty structure, and candidate
+ordering. The elastic-net L1 penalty acts directly on \(\theta_{e,c}\), so an
+edge may be exactly zero in one condition and non-zero in another. A reaction
+becomes a condition core only when at least one complete GPR branch is contained
+in the condition target-gene set.
 
 ## Installation
 
@@ -106,7 +115,7 @@ result <- rc_run_regcompass_one_shot(
   pando_args = list(
     min_cells = 100,
     pando_design_args = list(
-      peak_to_gene_method = "Signac",
+      peak_to_gene_method = "GREAT",
       upstream = 100000,
       downstream = 0,
       extend = 1000000,
@@ -171,6 +180,12 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
+The canonical peak-to-gene rule is `GREAT`. With `extend = 1000000`, it creates
+a broad distal regulatory-domain hypothesis without using target-expression
+correlation to admit candidates. The subsequent condition-aware observability
+filter and regularised direct-theta model determine which candidates have usable
+support. `Signac` remains available only as an explicit sensitivity override.
+
 The canonical default is `n_bootstrap = 100L`. At a true selection probability of 0.7, the binomial Monte Carlo standard error is approximately 0.046; RegCompass also reports Wilson 95% intervals for each edge.
 
 ## Grounded GRN parameter policy
@@ -195,7 +210,7 @@ and
 
 The TF and peak must therefore produce a non-zero interaction predictor in the same cells. This filter uses detection only, not target correlation or fitted effect size.
 
-`alpha = 0.5` retains both lasso sparsity and ridge stabilization for correlated TF–peak predictors. `deviation_penalty_factor = 1` is the neutral default: global and deviation coordinates receive the same explicit factor, while the zero-sum deviation block already carries multiplicity and lower column norms. Values above one are sensitivity priors for a more conserved shared backbone, not universal defaults.
+`alpha = 0.5` retains both lasso sparsity and ridge stabilization for correlated TF–peak predictors. `global_penalty_factor` and `deviation_penalty_factor` are compatibility aliases for one common direct-theta penalty and must be equal. They no longer represent separately penalised backbone and deviation coordinates.
 
 `min_sign_stability = 0.8` means at least 90% agreement on one sign among bootstrap fits in which the edge is selected, because \(\rho=|2q-1|\). An active edge must also have strictly positive out-of-fold \(R^2\), so it improves on the condition-centred null predictor.
 
@@ -211,7 +226,15 @@ The Pando-style candidate predictor is
 x_{e,u}=T_{t,u}A_{p,u}.
 \]
 
-Target expression and predictors are centred within condition. Edge scales are shared across conditions, and observation weights make each condition contribute the same total regression loss.
+Target expression and predictors are centred within condition. Edge scales are shared across conditions, and observation weights make each condition contribute the same total regression loss. The direct condition-theta objective is
+
+\[
+\min_\Theta
+\frac12\sum_u w_u
+\left(y_u^\circ-\sum_e\widetilde x_{e,u}\theta_{e,c(u)}\right)^2
++\lambda\alpha p_\theta\sum_{e,c}|\theta_{e,c}|
++\frac{\lambda(1-\alpha)p_\theta}{2}\sum_{e,c}\theta_{e,c}^2.
+\]
 
 For successful bootstrap fits:
 

@@ -14,7 +14,8 @@
       "model_edge_universe_id", "edge_id", "tf", "region",
       "atac_feature_id", "target", "n_observable_conditions",
       "observable_conditions", "global_estimate", "condition_deviation",
-      "effective_estimate", "selection_frequency",
+      "effective_estimate", "coefficient_parameterization",
+      "theta_penalty_factor", "selection_frequency",
       "selection_frequency_mc_se", "selection_frequency_lower_95",
       "selection_frequency_upper_95", "sign_stability",
       "sign_agreement_fraction", "stability_weight", "stable_estimate",
@@ -42,6 +43,10 @@
   answer$normalization_policy$candidate_screen <- paste(
     "structural Pando candidates followed by condition-aware non-zero",
     "observability; outcome-based correlation threshold fixed at zero"
+  )
+  answer$normalization_policy$coefficient_parameterization <- paste(
+    "elastic-net sparsity is applied directly to condition-specific theta;",
+    "the global backbone is the cross-condition mean and deviations are derived"
   )
   answer
 }

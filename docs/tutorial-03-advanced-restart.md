@@ -29,7 +29,7 @@ Never combine stages from different cells, metadata, GEM fingerprints, or assay 
 
 ```text
 Stage 1 GRN ───────┐
-                   ├→ Stage 3 modules → Stage 4 evidence → Stage 5 scoring → Stage 6 result
+                    ├→ Stage 3 modules → Stage 4 evidence → Stage 5 scoring → Stage 6 result
 Stage 2 metacells ─┘
 ```
 
@@ -38,7 +38,7 @@ Stage 2 metacells ─┘
 - motifs, genome, regulatory regions, or peak-to-gene domains;
 - Pando structural detection thresholds;
 - condition-aware observability thresholds;
-- multitask penalties, CV rule, bootstrap number, or active-edge thresholds;
+- direct-theta elastic-net settings, CV rule, bootstrap number, or active-edge thresholds;
 - condition/cell-type metadata used by Stage 1;
 - single-cell RNA or ATAC matrices;
 - GEM GPR target genes.
@@ -91,9 +91,11 @@ SuperCell2 receives label = celltype_col
 
 Stage 6 does not refit biology or LP models.
 
-## 3. GRN sensitivity with an unchanged structural universe
+## 3. GRN sensitivity with an unchanged GREAT structural universe
 
-The following analysis changes model regularization, observability, and bootstrap thresholds while preserving the Pando structural candidate definition.
+The following analysis changes regularisation, observability, bootstrap size and
+activation thresholds while preserving the canonical GREAT structural candidate
+definition.
 
 ```r
 step1_sensitive <- rc_regcompass_step_grn(
@@ -108,7 +110,7 @@ step1_sensitive <- rc_regcompass_step_grn(
   pando_args = list(
     min_cells = 100,
     pando_design_args = list(
-      peak_to_gene_method = "Signac",
+      peak_to_gene_method = "GREAT",
       upstream = 100000,
       downstream = 0,
       extend = 1000000,
@@ -120,9 +122,9 @@ step1_sensitive <- rc_regcompass_step_grn(
     )
   ),
   multitask_args = list(
-    alpha = 0.25,
+    alpha = 0.75,
     global_penalty_factor = 1,
-    deviation_penalty_factor = 3,
+    deviation_penalty_factor = 1,
     lambda_rule = "lambda.1se",
     nfolds = 5,
     n_bootstrap = 200,
@@ -139,15 +141,18 @@ step1_sensitive <- rc_regcompass_step_grn(
 )
 ```
 
-This is deliberately more conservative than the canonical model:
+This is deliberately more selective than the canonical model:
 
-- `alpha = 0.25` increases ridge stabilization and reduces the lasso component;
-- `deviation_penalty_factor = 3` imposes a stronger prior for a conserved shared backbone;
+- `alpha = 0.75` increases the L1 contribution acting directly on condition-specific \(\theta_{e,c}\);
+- both compatibility penalty aliases remain equal because there is one direct-theta penalty;
 - `min_cv_rsq = 0.05` requires stronger out-of-fold predictive value;
 - the observability rule changes from `max(10, 1%)` to `max(20, 2%)`;
 - 200 bootstrap fits reduce Monte Carlo error but do not add biological replicates.
 
-These are sensitivity assumptions, not replacement defaults.
+Unequal settings such as `global_penalty_factor = 1` and
+`deviation_penalty_factor = 3` are rejected. The direct-theta model has no
+separate latent deviation-coordinate penalty; a conserved-backbone prior would
+require a separate fused or grouped estimator.
 
 Compare both universe identifiers:
 
@@ -179,7 +184,9 @@ structural_old == structural_new
 model_old may differ from model_new
 ```
 
-The Pando structural universe should remain unchanged because its domain, motif, and pooled detection settings are unchanged. The model universe may change because the condition-aware observability threshold changed.
+The Pando structural universe should remain unchanged because its GREAT domain,
+motif, and pooled detection settings are unchanged. The model universe may
+change because the condition-aware observability threshold changed.
 
 Check predictive validity and bootstrap completion:
 
@@ -207,17 +214,19 @@ step1_sensitive$grn_result$stability_diagnostics[, intersect(c(
 ), colnames(step1_sensitive$grn_result$stability_diagnostics)), drop = FALSE]
 ```
 
-Targets with inadequate bootstrap completion or non-positive out-of-fold R-squared must not be interpreted as biologically unstable regulatory edges.
+Targets with inadequate bootstrap completion or non-positive out-of-fold R-squared must not be interpreted as stable regulatory edges.
 
-## 4. Structural-domain sensitivity
+## 4. Structural-domain sensitivity: GREAT versus Signac
 
-Changing Signac to GREAT changes the biological candidate hypothesis and therefore the Pando structural fingerprint:
+Changing the canonical GREAT domains to the narrower Signac-style domain rule
+changes the biological candidate hypothesis and therefore the Pando structural
+fingerprint:
 
 ```r
-step1_great <- rc_regcompass_step_grn(
+step1_signac <- rc_regcompass_step_grn(
   object = A,
   gem = gem,
-  outdir = "RegCompass_restart/01_grn_great",
+  outdir = "RegCompass_restart/01_grn_signac",
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
   condition_col = "Group",
@@ -226,7 +235,7 @@ step1_great <- rc_regcompass_step_grn(
   pando_args = list(
     min_cells = 100,
     pando_design_args = list(
-      peak_to_gene_method = "GREAT",
+      peak_to_gene_method = "Signac",
       upstream = 100000,
       downstream = 0,
       extend = 1000000,
@@ -240,7 +249,12 @@ step1_great <- rc_regcompass_step_grn(
 )
 ```
 
-Compare complete-GPR cores only after acknowledging that any difference can arise from a changed structural candidate universe, not only from coefficient estimation.
+Both Pando methods are structural domain rules in this workflow; neither uses a
+fitted target-expression correlation threshold to admit candidates. GREAT is
+canonical because it retains distal regulatory hypotheses, while Signac remains
+a narrower structural sensitivity analysis. Compare complete-GPR cores only
+after acknowledging that differences can arise from the changed structural
+candidate universe, not only from coefficient estimation.
 
 ## 5. Rebuild dependent Stage 3–6 objects
 

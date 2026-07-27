@@ -56,13 +56,19 @@ test_that("manual CV records fold-specific preprocessing", {
   expect_match(text, "training_condition", fixed = TRUE)
   expect_match(text, "x_centers", fixed = TRUE)
   expect_match(text, "train_scale", fixed = TRUE)
+  expect_match(text, ".rc_condition_theta_design_matrix", fixed = TRUE)
   expect_false(grepl("cv.glmnet", text, fixed = TRUE))
 })
 
 test_that("edge ordering is fixed before predictor matrices are constructed", {
   text <- paste(
-    deparse(body(RegCompassR:::.rc_fit_multitask_target)),
+    deparse(body(RegCompassR:::.rc_fit_multitask_target_direct)),
     collapse = "\n"
   )
-  expect_match(text, "order(as.character(edges$edge_id))", fixed = TRUE)
+  expect_match(text, ".rc_order_target_edges(edges)", fixed = TRUE)
+  expect_match(text, "rna[edges$tf_feature_id", fixed = TRUE)
+  expect_lt(
+    regexpr(".rc_order_target_edges(edges)", text, fixed = TRUE)[[1]],
+    regexpr("rna[edges$tf_feature_id", text, fixed = TRUE)[[1]]
+  )
 })
