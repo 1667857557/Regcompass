@@ -54,6 +54,11 @@ rc_regcompass_step_results <- function(
   )
   multitask <- identical(grn_mode, "multitask_shared_backbone")
   condition_modules <- meta_modules$condition_modules
+  bootstrap_policy <- grn$grn_result$bootstrap_policy %||% list(
+    resampling_unit = "cell",
+    sample_col = NULL,
+    fallback_reason = "legacy Stage 1 object without bootstrap provenance"
+  )
 
   # Full Layer 1 and Layer 2 objects are used transiently to build formal
   # reaction annotations and evidence. Only the compact score subset is retained
@@ -64,7 +69,7 @@ rc_regcompass_step_results <- function(
     } else {
       "regcompass_compact_legacy_result_v2"
     },
-    version = "1.8.9",
+    version = "1.8.10",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
@@ -95,13 +100,22 @@ rc_regcompass_step_results <- function(
       },
       grn_stability_policy = if (multitask) {
         paste(
-          "full_size_condition_stratified_nonparametric_bootstrap;",
+          paste0(
+            "condition_stratified_", bootstrap_policy$resampling_unit,
+            "_nonparametric_bootstrap;"
+          ),
           "stable_projection_weight_equals_full_data_effect_times_selection",
           "frequency_times_conditional_sign_stability"
         )
       } else {
         "legacy_adjusted_p_value_filter"
       },
+      sample_col = bootstrap_policy$sample_col %||%
+        (grn$params$sample_col %||% NULL),
+      bootstrap_resampling_unit =
+        bootstrap_policy$resampling_unit %||% NA_character_,
+      bootstrap_fallback_reason =
+        bootstrap_policy$fallback_reason %||% NA_character_,
       metacell_grouping = params$condition_col,
       metacell_label = params$celltype_col,
       metacell_contract =
@@ -179,6 +193,7 @@ rc_regcompass_step_results <- function(
     compact_layer2_omitted_fields = attr(
       result$microcompass, "omitted_stage5_fields"
     ),
+    bootstrap_policy = bootstrap_policy,
     detailed_sources = .rc_result_intermediate_policy()
   )
   result$table_manifest <- .rc_result_table_manifest(list(
