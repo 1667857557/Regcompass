@@ -11,7 +11,7 @@
 rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
-  rna_assay = "RNA", atac_assay = "ATAC",
+  sample_col = NULL, rna_assay = "RNA", atac_assay = "ATAC",
   grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
   pando_args = list(), multitask_args = list(), parallel = TRUE,
   BPPARAM = NULL, progress = getOption("RegCompassR.progress", TRUE))
@@ -49,47 +49,31 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{genome}{Genome object matching ATAC coordinates.}
 \item{pfm}{Optional motif collection accepted by Pando and motifmatchr.}
 \item{species}{Species identifier or \code{"auto"}.}
-\item{condition_col, celltype_col}{Complete condition and cell-type metadata columns. Stage 1 and Stage 2 do not accept a biological-sample column.}
+\item{condition_col, celltype_col}{Complete condition and cell-type metadata columns.}
+\item{sample_col}{Optional biological sample/donor column used only by Stage 1 bootstrap. Missing input prints a fallback warning and uses within-condition cell resampling. Existing incomplete IDs are errors.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{grn_mode}{Use one validated cell-type-shared Pando structural background with multitask condition coefficients, or legacy independent condition Pando fits.}
-\item{pando_args}{Pando candidate-design configuration in multitask mode, or Pando fit configuration in legacy mode.}
-\item{multitask_args}{Condition-balanced elastic-net, condition-stratified cross-validation, full-size nonparametric bootstrap, and active-edge controls.}
-\item{metacell_args}{Condition-only SuperCell2 configuration. Cell type is passed as the label; no sample balancing or sample provenance is calculated.}
+\item{grn_mode}{Shared-background multitask coefficients or legacy independent Pando fits.}
+\item{pando_args}{Pando candidate-design or legacy-fit configuration.}
+\item{multitask_args}{Condition-balanced elastic-net, condition-stratified cross-validation, bootstrap, and active-edge controls.}
+\item{metacell_args}{Condition-only SuperCell2 configuration. Stage 2 does not accept or use \code{sample_col}.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{regulatory_alpha}{Strength of the ATAC regulatory modifier in Layer 1.}
-\item{gpr_and_method}{Aggregation for required genes joined by GPR AND.}
+\item{gpr_and_method}{Aggregation for required GPR AND genes.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
 \item{layer2_args}{Layer 2 scoring and union-GEM configuration.}
 \item{parallel}{Whether the supported stage loop is parallelized.}
 \item{BPPARAM}{BiocParallel parameter object, \code{NULL}, or \code{FALSE}.}
 \item{progress}{Display stage progress.}
 \item{fragment_files}{Use \code{FALSE} for the peak-count path.}
-\item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from the preceding stages.}
+\item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
 \item{medium_scenarios}{Condition-invariant medium table.}
-\item{model_mode}{Use one medium-specific union GEM reconstructed from the merged biological catalogue, or reuse the full GEM.}
+\item{model_mode}{Medium-specific union GEM or full GEM.}
 }
-\description{
-Runs the canonical workflow as separately restartable, validated stages.
-}
+\description{Runs the canonical workflow as separately restartable, validated stages.}
 \details{
-Stage 1 constructs one version-2 Pando structural TF-peak-target universe per
-cell type. The same edge dictionary is used for every condition.
-Condition-balanced elastic-net regression estimates a global edge coefficient
-and symmetric zero-sum condition deviations.
+Stage 1 constructs one Pando structural edge universe per cell type. When \code{sample_col} is valid, stability is calculated by sample-cluster bootstrap within condition; otherwise a warning records the reason for cell-bootstrap fallback. The selected bootstrap mode and sample counts are propagated into Stage 1 diagnostics before Stage 3 reads active edges.
 
-Stability is calculated by full-size condition-stratified nonparametric
-bootstrap. Every condition is sampled with replacement at its original cell
-count. The resampled target and TF-by-ATAC predictors are re-centred inside the
-bootstrap condition, and the model is refitted at the full-data selected lambda
-and shared edge scale.
+Stage 2 remains condition-only with cell type supplied as the SuperCell2 label. Stage 3 maps stability-selected targets to complete-GPR cores. Stage 5 constructs one shared medium-specific union GEM for all conditions and metacells.
 
-Stage 2 constructs condition-only metacells with cell type supplied as the
-SuperCell2 label. Stage 3 maps each condition sub-GRN target set to core reactions
-only through complete GPR branches, then performs one ordered subsystem,
-KEGG/Reactome, and master-Rhea annotation expansion.
-
-Stage 4 combines RNA support with an ATAC-only projection of the fitted GRN. A
-missing condition edge gives a zero modifier and exact RNA-only fallback. Stage
-5 builds one medium-specific union GEM from all condition catalogues and reuses
-the same stoichiometric structure for every condition and metacell.
+Every stage prints its elapsed time and final status after its final artifact is committed. Timing is not attached to the returned stage object and is not written to timing files.
 }
