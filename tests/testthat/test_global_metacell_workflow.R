@@ -23,25 +23,41 @@ test_that("v1.8.9 public workflow is GRN first and condition only", {
   expect_true("multitask_args" %in% names(formals(rc_run_regcompass)))
 })
 
-test_that("canonical Pando core constructs one shared background per cell type", {
-  core_text <- paste(
-    deparse(body(.rc_run_celltype_multitask_grns_core)), collapse = "\n"
+test_that("canonical Pando core and parameter policy remain separately auditable", {
+  pando_core_text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns_pre_policy)),
+    collapse = "\n"
   )
-  wrapper_text <- paste(
-    deparse(body(.rc_run_celltype_multitask_grns)), collapse = "\n"
+  policy_text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns_core)),
+    collapse = "\n"
   )
-  expect_match(core_text, "celltypes <- sort(unique", fixed = TRUE)
-  expect_match(core_text, "Pando::prepare_grn_design", fixed = TRUE)
-  expect_match(core_text, ".rc_fit_multitask_celltype_grn", fixed = TRUE)
-  expect_match(core_text, "edge_universe_id", fixed = TRUE)
-  expect_match(core_text, "pando_grn_design_v2", fixed = TRUE)
+  output_text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns)),
+    collapse = "\n"
+  )
+
+  expect_match(pando_core_text, "celltypes <- sort(unique", fixed = TRUE)
+  expect_match(pando_core_text, "Pando::prepare_grn_design", fixed = TRUE)
+  expect_match(pando_core_text, ".rc_fit_multitask_celltype_grn", fixed = TRUE)
+  expect_match(pando_core_text, "edge_universe_id", fixed = TRUE)
+  expect_match(pando_core_text, "pando_grn_design_v2", fixed = TRUE)
   expect_match(
-    core_text,
+    pando_core_text,
     "Every cell-type multitask GRN must complete successfully",
     fixed = TRUE
   )
-  expect_match(wrapper_text, "bootstrap_stability_diagnostics.tsv.gz", fixed = TRUE)
-  expect_match(wrapper_text, "candidate_screen", fixed = TRUE)
+
+  expect_match(policy_text, ".rc_validate_multitask_grn_args", fixed = TRUE)
+  expect_match(policy_text, ".rc_validate_canonical_pando_design_args", fixed = TRUE)
+  expect_match(policy_text, "model_edge_universe_id", fixed = TRUE)
+  expect_match(policy_text, "candidate_observability", fixed = TRUE)
+  expect_match(policy_text, "100 full-size", fixed = TRUE)
+
+  expect_match(
+    output_text, "bootstrap_stability_diagnostics.tsv.gz", fixed = TRUE
+  )
+  expect_match(output_text, "candidate_screen", fixed = TRUE)
 })
 
 test_that("legacy Pando core remains available explicitly", {

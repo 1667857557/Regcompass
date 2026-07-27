@@ -7,9 +7,11 @@ RegCompassR 1.8.9 implements a shared-background regulatory–metabolic workflow
 ```text
 all conditions within one cell type
 → one validated Pando structural TF–peak–metabolic-gene universe
+→ condition-aware TF×peak/target observability filter
+→ one shared model edge universe across conditions
 → condition-balanced multitask elastic net
 → global GRN backbone + symmetric condition deviations
-→ condition-stratified full-size bootstrap
+→ condition-stratified full-size bootstrap reproducibility
 → condition-specific active sub-GRNs and metabolic targets
 → complete-GPR condition core reactions
 → ordered subsystem / KEGG–Reactome / master-Rhea expansion
@@ -28,7 +30,7 @@ For edge \(e=(TF,peak,target)\):
 \sum_c\delta_{e,c}=0.
 \]
 
-All conditions of one cell type use the same structural edge dictionary, predictor scale, penalty structure, and candidate ordering. A reaction becomes a condition core only when at least one complete GPR branch is contained in the condition target-gene set.
+All conditions of one cell type use the same structural edge dictionary, filtered model edge universe, predictor scale, penalty structure, and candidate ordering. A reaction becomes a condition core only when at least one complete GPR branch is contained in the condition target-gene set.
 
 ## Installation
 
@@ -102,26 +104,34 @@ result <- rc_run_regcompass_one_shot(
 
   grn_mode = "multitask_shared_backbone",
   pando_args = list(
-    min_cells = 300,
+    min_cells = 100,
     pando_design_args = list(
       peak_to_gene_method = "Signac",
-      min_tf_detection = 0.01,
-      min_peak_detection = 0.01,
-      min_target_detection = 0.01
+      upstream = 100000,
+      downstream = 0,
+      extend = 1000000,
+      only_tss = FALSE,
+      min_tf_detection = 0,
+      min_peak_detection = 0,
+      min_target_detection = 0,
+      max_edges_per_target = Inf
     )
   ),
   multitask_args = list(
     alpha = 0.5,
     global_penalty_factor = 1,
-    deviation_penalty_factor = 2,
+    deviation_penalty_factor = 1,
     lambda_rule = "lambda.1se",
     nfolds = 5,
     n_bootstrap = 100,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
     min_bootstrap_success_fraction = 0.8,
+    min_cv_rsq = 0,
     candidate_screen_threshold = 0,
     max_edges_per_target = Inf,
+    min_detected_cells_per_condition = 10,
+    min_detection_fraction_per_condition = 0.01,
     seed = 12345L
   ),
 
@@ -161,7 +171,37 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The default is `n_bootstrap = 50L`; `100` is shown for a final run with lower Monte Carlo error.
+The canonical default is `n_bootstrap = 100L`. At a true selection probability of 0.7, the binomial Monte Carlo standard error is approximately 0.046; RegCompass also reports Wilson 95% intervals for each edge.
+
+## Grounded GRN parameter policy
+
+The Pando structural design remains condition agnostic. Its pooled detection thresholds stay at zero so a regulator that is restricted to one condition is not removed before the multitask model. RegCompass then applies a condition-aware observability rule. For condition \(c\),
+
+\[
+m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right).
+\]
+
+An edge enters the shared model universe when, in at least one condition,
+
+\[
+\sum_{u\in c}I(T_{t,u}>0\land A_{p,u}>0)\ge m_c
+\]
+
+and
+
+\[
+\sum_{u\in c}I(Y_{g,u}>0)\ge m_c.
+\]
+
+The TF and peak must therefore produce a non-zero interaction predictor in the same cells. This filter uses detection only, not target correlation or fitted effect size.
+
+`alpha = 0.5` retains both lasso sparsity and ridge stabilization for correlated TF–peak predictors. `deviation_penalty_factor = 1` is the neutral default: global and deviation coordinates receive the same explicit factor, while the zero-sum deviation block already carries multiplicity and lower column norms. Values above one are sensitivity priors for a more conserved shared backbone, not universal defaults.
+
+`min_sign_stability = 0.8` means at least 90% agreement on one sign among bootstrap fits in which the edge is selected, because \(\rho=|2q-1|\). An active edge must also have strictly positive out-of-fold \(R^2\), so it improves on the condition-centred null predictor.
+
+Finite `max_edges_per_target` values are rejected in the canonical model. Pando candidate order is deterministic but is not an evidence ranking; arbitrary top-K truncation would change the biological hypothesis without a statistical criterion.
+
+See [GRN parameter policy](docs/grn-parameter-policy.md) and [Shared-background multitask GRN mathematics](docs/multitask-shared-grn.md).
 
 ## Core calculations
 
@@ -196,11 +236,9 @@ The Layer 1 projection weight is
 =\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c}.
 \]
 
-Bootstrap stability is cell-resampling stability, not biological-replicate inference.
+The full-size bootstrap estimates cell-resampling reproducibility. It is not described as formal half-sample stability-selection PFER control.
 
 Layer 1 collapses TF coefficients sharing the same measured peak before ATAC projection. One target-specific normalization is shared across conditions. If no active edge exists, the modifier is zero and multiome support equals RNA-only support.
-
-See [Shared-background multitask GRN mathematics](docs/multitask-shared-grn.md).
 
 ## Compact final result
 
@@ -231,7 +269,7 @@ This reduces result size without arbitrary top-N filtering or discarding scored 
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: structural candidates, multitask coefficients, CV, and bootstrap.
+- `rc_regcompass_step_grn()`: structural candidates, observability-filtered model universe, multitask coefficients, CV, and bootstrap.
 - `rc_regcompass_step_metacells()`: condition-stratified, cell-type-labelled SuperCell2 metacells.
 - `rc_regcompass_step_meta_modules()`: target genes, complete-GPR cores, and biological modules.
 - `rc_regcompass_step_layer1()`: RNA support, ATAC modifier, and reaction capacity.
@@ -273,6 +311,7 @@ Legacy adjusted-P-value thresholds are not interpreted as significance threshold
 
 Additional references:
 
+- [GRN parameter policy](docs/grn-parameter-policy.md)
 - [Stage contracts](docs/stage-interface-contracts.md)
 - [Medium presets](docs/medium-presets.md)
 - [Direction-aware reporting](docs/direction-aware-condition-reporting.md)

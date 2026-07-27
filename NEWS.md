@@ -8,6 +8,14 @@
 - Added `table_manifest` and `stage_provenance` so every compact table and detailed checkpoint has an explicit role and source.
 - Rebuilt all five tutorials as a continuous workflow. Tutorial 5 now traces bootstrap-active regulatory edges through target genes, complete GPR cores, shared union-GEM scoring, direction-aware interpretation, metacell-level statistics, quality control, and compact evidence export.
 - Clarified that metacell P values are within-dataset association statistics, not biological-replicate treatment inference, and that forward/reverse LP targets are counterfactual support directions rather than net flux.
+- Replaced weakly justified Stage 1 defaults with an auditable parameter policy. The canonical minimum is 100 cells per condition and cell type, `n_bootstrap = 100`, `alpha = 0.5`, five condition-stratified folds, and `lambda.1se`.
+- Changed the neutral `deviation_penalty_factor` from 2 to 1. Values above one remain supported as explicit sensitivity priors favoring a more conserved shared backbone.
+- Kept pooled Pando TF, peak, and target detection thresholds at zero and added a condition-aware observability filter after structural design construction. An edge must have a non-zero TF-RNA × peak-ATAC predictor and detected target RNA in at least `max(10, ceiling(0.01 * n_condition))` cells of one or more conditions.
+- Added a separate MD5 `model_edge_universe_id` for the observability-filtered shared model dictionary while preserving the complete Pando `edge_universe_id`.
+- Disabled full-data outcome-correlation screening and finite top-K candidate truncation in canonical mode. Pando candidate order is deterministic but is not treated as an evidence ranking.
+- Required strictly positive out-of-fold CV R-squared before an edge can be active. A positive `min_cv_rsq` remains available as a stronger predictive floor.
+- Added selection-frequency Monte Carlo standard errors, Wilson 95% intervals, and majority-sign agreement diagnostics. Full-size bootstrap results are reported as cell-resampling reproducibility rather than formal half-sample stability-selection error control.
+- Added the single-source `docs/grn-parameter-policy.md` specification and synchronized the README, tutorials, function index, and workflow vignette.
 
 # RegCompassR 1.8.8
 

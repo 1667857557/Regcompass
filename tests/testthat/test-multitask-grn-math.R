@@ -79,11 +79,11 @@ test_that("bootstrap data are re-centred within each condition", {
 test_that("multitask validation requires sparse elastic net and bootstrap quality", {
   expect_error(
     RegCompassR:::.rc_validate_multitask_grn_args(list(alpha = 0)),
-    "positive lasso"
+    "lasso component"
   )
   expect_error(
     RegCompassR:::.rc_validate_multitask_grn_args(list(alpha = 1)),
-    "non-zero ridge component"
+    "ridge component"
   )
   expect_error(
     RegCompassR:::.rc_validate_multitask_grn_args(list(n_bootstrap = 0)),

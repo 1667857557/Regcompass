@@ -15,7 +15,7 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{object}{Paired single-cell RNA+ATAC Seurat object.}
 \item{outdir}{Persistent workflow output directory.}
 \item{genome}{Genome object matching ATAC coordinates.}
-\item{species}{\code{"human"} or \code{"mouse"}. Human defaults to phastCons plus SCREEN ccRE regions; mouse defaults to phastCons regions only.}
+\item{species}{\code{"human"} or \code{"mouse"}. Human defaults to phastCons plus SCREEN ccRE regions; mouse defaults to the available Pando phastCons region resource.}
 \item{gem}{Optional prepared GEM. When omitted, the pinned species model is loaded.}
 \item{gem_version}{Pinned model release.}
 \item{gem_source}{Automatic, bundled-only, or explicit download model source.}
@@ -24,7 +24,7 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
 \item{medium_scenarios}{Optional prebuilt medium table.}
 \item{progress}{Display workflow and stage progress.}
-\item{...}{Arguments passed to \code{rc_run_regcompass()}, including condition and cell-type columns, Pando structural-design controls, multitask bootstrap controls, metacell geometry, Layer 1 integration, and Stage 5 model controls. The canonical delegated function does not accept a biological-sample column.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}, including condition and cell-type columns, Pando structural-design controls, multitask observability/CV/bootstrap controls, metacell geometry, Layer 1 integration, and Stage 5 model controls. The canonical delegated function does not accept a biological-sample column.}
 }
 \description{Loads the bundled pinned Human-GEM or Mouse-GEM when \code{gem} is omitted and delegates to \code{rc_run_regcompass()}.}
 \details{
@@ -32,7 +32,7 @@ Arguments are ordered by preparation and processing sequence: species/model prep
 
 \code{gem_source = "auto"} uses a compatible cache or installed model without network access for the default releases. Use \code{"bundled"} to prohibit fallback and \code{"download"} to rebuild from an official release.
 
-The canonical motif default is Pando's bundled \code{motifs} object. Human regulatory regions default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects. Mouse regulatory regions default to Pando's \code{phastConsElements20Mammals.UCSC.hg38} object only. Explicit \code{pfm} and \code{pando_args$pando_initiate_args$regions} values override these defaults.
+The canonical motif default is Pando's bundled \code{motifs} object. Human regulatory regions default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects. Explicit \code{pfm} and \code{pando_args$pando_initiate_args$regions} values override these defaults.
 
-The canonical GRN mode is \code{"multitask_shared_backbone"}. Its defaults include \code{alpha = 0.5}, \code{nfolds = 5L}, \code{n_bootstrap = 50L}, \code{min_selection_frequency = 0.7}, and \code{min_sign_stability = 0.8}. Each bootstrap samples every condition with replacement at its original cell count and re-centres target and predictor values within the bootstrap condition. Metacell defaults include RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and \code{seed = 12345L}. GPR-AND aggregation defaults to \code{"min"} and accepts \code{"median"} or \code{"mean"}.
+The canonical GRN mode is \code{"multitask_shared_backbone"}. Structural defaults use the Signac peak-to-gene domain with 100000 upstream, 0 downstream, and no pooled detection threshold; finite top-K candidate caps are rejected. The observable shared model dictionary requires the non-zero TF-RNA by peak-ATAC predictor and target RNA in at least \code{max(10, ceiling(0.01 * n_condition))} cells of one or more conditions. Multitask defaults include \code{alpha = 0.5}, equal global/deviation penalty factors, \code{nfolds = 5L}, \code{lambda.1se}, \code{n_bootstrap = 100L}, \code{min_selection_frequency = 0.7}, \code{min_sign_stability = 0.8}, at least 80 percent successful bootstrap fits, and strictly positive out-of-fold R-squared for active edges. Bootstrap selection-frequency Monte Carlo standard errors and Wilson 95 percent intervals are reported. Metacell defaults include RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and \code{seed = 12345L}. GPR-AND aggregation defaults to \code{"min"} and accepts \code{"median"} or \code{"mean"}.
 }
