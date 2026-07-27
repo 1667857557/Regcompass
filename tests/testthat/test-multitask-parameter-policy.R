@@ -32,9 +32,9 @@ test_that("canonical candidate universes reject arbitrary top-K truncation", {
   )
 })
 
-test_that("canonical Pando structural defaults are explicit", {
+test_that("canonical Pando structural defaults use GREAT", {
   defaults <- .rc_validate_canonical_pando_design_args()
-  expect_identical(defaults$peak_to_gene_method, "Signac")
+  expect_identical(defaults$peak_to_gene_method, "GREAT")
   expect_identical(defaults$upstream, 100000)
   expect_identical(defaults$downstream, 0)
   expect_identical(defaults$extend, 1000000)
@@ -43,6 +43,11 @@ test_that("canonical Pando structural defaults are explicit", {
   expect_identical(defaults$min_peak_detection, 0)
   expect_identical(defaults$min_target_detection, 0)
   expect_identical(defaults$max_edges_per_target, Inf)
+
+  override <- .rc_validate_canonical_pando_design_args(list(
+    peak_to_gene_method = "Signac"
+  ))
+  expect_identical(override$peak_to_gene_method, "Signac")
 })
 
 test_that("candidate observability requires a non-zero TF x peak predictor", {
