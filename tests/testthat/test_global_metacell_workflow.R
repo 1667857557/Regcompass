@@ -1,4 +1,4 @@
-test_that("v1.8.9 public workflow is GRN first and condition only", {
+test_that("v1.8.10 public workflow is GRN first with optional sample bootstrap", {
   text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   stages <- c(
     "rc_regcompass_step_grn",
@@ -15,8 +15,8 @@ test_that("v1.8.9 public workflow is GRN first and condition only", {
     positions[[1L]] < positions[[2L]] &&
       positions[[2L]] < positions[[3L]]
   )
-  expect_false("sample_col" %in% names(formals(rc_run_regcompass)))
-  expect_false("sample_col" %in% names(formals(rc_regcompass_step_grn)))
+  expect_true("sample_col" %in% names(formals(rc_run_regcompass)))
+  expect_true("sample_col" %in% names(formals(rc_regcompass_step_grn)))
   expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
   expect_identical(eval(formals(rc_run_regcompass)$fragment_files), FALSE)
   expect_true("meta_module_args" %in% names(formals(rc_run_regcompass)))
@@ -58,6 +58,8 @@ test_that("canonical Pando core and parameter policy remain separately auditable
     output_text, "bootstrap_stability_diagnostics.tsv.gz", fixed = TRUE
   )
   expect_match(output_text, "candidate_screen", fixed = TRUE)
+  expect_match(output_text, "sample_col", fixed = TRUE)
+  expect_match(output_text, "bootstrap_resampling_unit", fixed = TRUE)
 })
 
 test_that("legacy Pando core remains available explicitly", {
@@ -153,7 +155,7 @@ test_that("canonical workflow fixes cell type as the SuperCell2 label", {
   expect_false("label_col" %in% names(step_formals))
   expect_false("metacell_label_col" %in% names(run_formals))
   expect_false("sample_col" %in% names(step_formals))
-  expect_false("sample_col" %in% names(run_formals))
+  expect_true("sample_col" %in% names(run_formals))
   expect_identical(eval(builder_formals$label_col), "cell_type")
 })
 
