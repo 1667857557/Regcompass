@@ -93,7 +93,7 @@ test_that("documentation separates sample bootstrap from SuperCell2", {
   )
   required <- c(
     "strata_cols", "label = celltype_col", "no artificial condition-pool",
-    "sample_col is intentionally absent", "reaction_catalog",
+    "`sample_col` is intentionally absent", "reaction_catalog",
     "reaction_evidence", "detailed stage checkpoints",
     "Timing is not"
   )
