@@ -4,7 +4,7 @@
 
 ```text
 all conditions within one cell type
-→ one validated Pando TF–peak–GEM-gene candidate universe
+→ one validated GREAT-domain Pando TF–peak–GEM-gene candidate universe
 → condition-aware observability filter
 → direct condition-specific theta elastic net
 → derived cross-condition backbone and zero-sum deviations
@@ -33,8 +33,10 @@ For cell type \(m\), Pando constructs one condition-agnostic structural set
 
 where \(t\) is a measured TF, \(p\) is an exact measured ATAC feature supported
 by a regulatory region and motif, and \(g\) is a GEM GPR target gene present in
-the RNA assay. Every condition uses the same candidate dictionary and design
-fingerprint.
+the RNA assay. The canonical `peak_to_gene_method = "GREAT"` builds broad
+basal-plus-extension regulatory domains (`extend = 1000000`) without using
+target-expression correlation to admit candidates. Every condition uses the
+same candidate dictionary and design fingerprint.
 
 RegCompass then retains candidates that have an observable
 `TF RNA × peak ATAC` predictor and observable target RNA in at least one
@@ -69,7 +71,7 @@ The elastic-net objective is
 \]
 
 with \(w_u\propto1/n_{c(u)}\). The L1 penalty therefore acts directly on
-\(	heta_{e,c}\), so an edge can be exactly zero in one condition while remaining
+\(\theta_{e,c}\), so an edge can be exactly zero in one condition while remaining
 non-zero in another.
 
 The reported shared backbone and deviations are derived summaries:
@@ -113,7 +115,7 @@ and
 
 An active condition edge must pass bootstrap completion, selection-frequency,
 sign-stability, effect-size and CV gates. Because sparsity is applied directly
-to \(	heta\), binary condition sub-GRN differences are now part of the fitted
+to \(\theta\), binary condition sub-GRN differences are now part of the fitted
 model rather than being produced only by post-fit cancellation and thresholds.
 
 ## 4. Condition genes and complete-GPR cores
