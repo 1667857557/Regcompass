@@ -7,11 +7,11 @@
 ## Workflow
 
 ```text
-shared Pando TF–peak–target structural candidates per cell type
+shared GREAT-domain Pando TF–peak–target structural candidates per cell type
 → condition-aware TF×peak/target observability filter
 → one shared model edge universe across conditions
-→ condition-balanced multitask elastic net
-→ global backbone + condition deviations
+→ condition-balanced direct condition-theta elastic net
+→ derived global backbone + zero-sum condition deviations
 → condition-stratified bootstrap-active sub-GRNs
 → condition target genes
 → complete-GPR reaction cores
@@ -76,7 +76,7 @@ result <- rc_run_regcompass_one_shot(
   pando_args = list(
     min_cells = 100,
     pando_design_args = list(
-      peak_to_gene_method = "Signac",
+      peak_to_gene_method = "GREAT",
       upstream = 100000,
       downstream = 0,
       extend = 1000000,
@@ -142,6 +142,12 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
+The canonical peak-to-gene method is `GREAT`. Its basal-plus-extension domains
+permit distal structural candidates without using target-expression correlation
+to admit edges. With `extend = 1000000`, the hypothesis space is deliberately
+broad and is subsequently constrained by condition-aware observability,
+regularisation, CV, and bootstrap stability.
+
 The canonical default is `n_bootstrap = 100L`. RegCompass reports the Monte Carlo standard error and Wilson 95% interval of each condition-edge selection frequency.
 
 ## 3. Understand the key calculations
@@ -160,14 +166,25 @@ m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right)
 
 cells of at least one condition.
 
-The condition coefficient is
+RegCompass directly estimates
 
 \[
-\theta_{e,c}=\beta_e+\delta_{e,c},
-\qquad \sum_c\delta_{e,c}=0.
+y_u^\circ=\sum_e\widetilde x_{e,u}\theta_{e,c(u)}+\varepsilon_u.
 \]
 
-`alpha = 0.5` combines sparse selection with ridge stabilization of correlated TF–peak predictors. Global and deviation coordinates use equal explicit penalty factors by default. A deviation factor above one is a prespecified sensitivity prior, not the canonical value.
+The L1 penalty acts on each \(\theta_{e,c}\), allowing an edge to be exactly zero
+in one condition and non-zero in another. The global backbone and deviations are
+derived summaries:
+
+\[
+\beta_e=\frac1C\sum_c\theta_{e,c},
+\qquad
+\delta_{e,c}=\theta_{e,c}-\beta_e,
+\qquad
+\sum_c\delta_{e,c}=0.
+\]
+
+`alpha = 0.5` combines sparse selection with ridge stabilization of correlated TF–peak predictors. `global_penalty_factor` and `deviation_penalty_factor` are compatibility aliases for one common direct-theta penalty and must be equal.
 
 Each bootstrap resamples every condition with replacement at its original cell count and recalculates within-condition centring. An edge becomes active only after passing selection-frequency, sign-stability, effect-size, strictly positive out-of-fold CV R-squared, and bootstrap-completion thresholds.
 
