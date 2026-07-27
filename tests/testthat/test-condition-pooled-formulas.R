@@ -120,7 +120,7 @@ test_that("meta-module expansion excludes metabolite-neighbour reactions", {
     reaction_meta = reaction_meta
   )
   core <- data.frame(
-    sample_id = "A", module_id = "A::GRN0001",
+    group_id = "A|T", module_id = "A::GRN0001",
     gene = "G1", reaction_id = "R1"
   )
   expanded <- rc_expand_meta_module_reactions(gem, core)
