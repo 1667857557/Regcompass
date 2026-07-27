@@ -130,38 +130,50 @@ test_that("bundled human and mouse GEMs persist to requested cache files", {
   expect_identical(readRDS(mouse_path)$model_info$species, "mouse")
 })
 
-test_that("step monitor writes timing and can suppress progress", {
+test_that("step monitor prints timing and does not persist it", {
   outdir <- tempfile("regcompass-timing-")
   monitor <- .rc_step_monitor_start(
     "unit_test", outdir = outdir, progress = FALSE
   )
-  value <- .rc_step_monitor_finish(list(ok = TRUE), monitor)
-  expect_true(is.data.frame(value$timing))
-  expect_identical(value$timing$stage, "unit_test")
-  expect_true(value$timing$elapsed_seconds >= 0)
-  expect_true(file.exists(file.path(outdir, "step_timing.tsv")))
+  value <- expect_message(
+    .rc_step_monitor_finish(list(ok = TRUE), monitor),
+    "RegCompass timing: unit_test \\[success\\]"
+  )
+  expect_true(value$ok)
+  expect_null(value$timing)
+  expect_false(file.exists(file.path(outdir, "step_timing.tsv")))
 })
 
-test_that("known stages report success only after the final RDS is committed", {
+test_that("known stages print final status only after artifact commit", {
   outdir <- tempfile("regcompass-stage-commit-")
   monitor <- .rc_step_monitor_start("grn", outdir, progress = FALSE)
   value <- .rc_step_monitor_finish(list(ok = TRUE), monitor)
   expect_false(file.exists(file.path(outdir, "step_timing.tsv")))
   saveRDS(value, file.path(outdir, "step_grn.rds"))
-  .rc_step_monitor_fail(monitor)
-  timing <- utils::read.delim(
-    file.path(outdir, "step_timing.tsv"), stringsAsFactors = FALSE
+  expect_message(
+    .rc_step_monitor_fail(monitor),
+    "RegCompass timing: grn \\[success\\]"
   )
-  expect_identical(timing$status, "success")
+  expect_false(file.exists(file.path(outdir, "step_timing.tsv")))
 
   failed_outdir <- tempfile("regcompass-stage-fail-")
   failed <- .rc_step_monitor_start("layer1", failed_outdir, progress = FALSE)
   .rc_step_monitor_finish(list(ok = TRUE), failed)
-  .rc_step_monitor_fail(failed)
-  failed_timing <- utils::read.delim(
-    file.path(failed_outdir, "step_timing.tsv"), stringsAsFactors = FALSE
+  expect_message(
+    .rc_step_monitor_fail(failed),
+    "RegCompass timing: layer1 \\[error\\]"
   )
-  expect_identical(failed_timing$status, "error")
+  expect_false(file.exists(file.path(failed_outdir, "step_timing.tsv")))
+})
+
+test_that("execution timing writer removes stale timing files", {
+  outdir <- tempfile("regcompass-execution-timing-")
+  dir.create(outdir, recursive = TRUE)
+  stale <- file.path(outdir, "00_execution_timing.tsv")
+  writeLines("stale", stale)
+  timing <- data.frame(stage = "x", elapsed_seconds = 1)
+  expect_invisible(.rc_write_execution_timing(timing, outdir))
+  expect_false(file.exists(stale))
 })
 
 test_that("every public workflow stage exposes progress control", {
