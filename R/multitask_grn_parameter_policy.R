@@ -1,7 +1,6 @@
-# Biologically and statistically grounded parameter policy for the canonical
-# multitask GRN. Loaded after the core fitter and inference functions.
+# Canonical parameter and observability policy for direct condition-theta GRNs.
+# Loaded after the direct fitter and inference functions.
 
-.rc_fit_multitask_target_pre_policy <- .rc_fit_multitask_target
 .rc_run_celltype_multitask_grns_pre_policy <- .rc_run_celltype_multitask_grns
 
 .rc_multitask_grn_defaults <- function() {
@@ -45,30 +44,36 @@
     stop(
       paste(
         "`multitask_args$alpha` must be in (0, 1). A positive lasso",
-        "component is required for sparse edge selection, and a positive ridge",
-        "component stabilizes correlated TF-peak predictors and the symmetric",
-        "condition-deviation parameterization."
+        "component is required for direct condition-specific sparsity, and a",
+        "positive ridge component stabilizes correlated TF-peak predictors."
       ),
       call. = FALSE
     )
   }
 
-  if (!is.numeric(out$global_penalty_factor) ||
-      length(out$global_penalty_factor) != 1L ||
-      !is.finite(out$global_penalty_factor) ||
-      out$global_penalty_factor <= 0) {
-    stop("`multitask_args$global_penalty_factor` must be positive.",
-         call. = FALSE)
+  for (name in c("global_penalty_factor", "deviation_penalty_factor")) {
+    value <- out[[name]]
+    if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
+        value <= 0) {
+      stop("`multitask_args$", name, "` must be positive.", call. = FALSE)
+    }
   }
-  deviation <- out$deviation_penalty_factor
-  if (!is.numeric(deviation) || length(deviation) != 1L ||
-      !is.finite(deviation) || deviation <= 0) {
+  if (!isTRUE(all.equal(
+    as.numeric(out$global_penalty_factor),
+    as.numeric(out$deviation_penalty_factor),
+    tolerance = sqrt(.Machine$double.eps)
+  ))) {
     stop(
-      "`multitask_args$deviation_penalty_factor` must be positive.",
+      paste(
+        "`global_penalty_factor` and `deviation_penalty_factor` must be equal.",
+        "The direct condition-theta model applies one common elastic-net",
+        "penalty to theta[e,c]; the two names remain compatibility aliases."
+      ),
       call. = FALSE
     )
   }
-  out$deviation_penalty_factor <- as.numeric(deviation)
+  out$global_penalty_factor <- as.numeric(out$global_penalty_factor)
+  out$deviation_penalty_factor <- out$global_penalty_factor
 
   for (name in c("min_selection_frequency", "min_sign_stability")) {
     value <- out[[name]]
@@ -126,8 +131,9 @@
   }
   out$max_edges_per_target <- Inf
 
-  for (name in c("nfolds", "n_bootstrap", "seed",
-                 "min_detected_cells_per_condition")) {
+  for (name in c(
+    "nfolds", "n_bootstrap", "seed", "min_detected_cells_per_condition"
+  )) {
     value <- out[[name]]
     minimum <- if (identical(name, "nfolds")) 3L else 1L
     if (!is.numeric(value) || length(value) != 1L || !is.finite(value) ||
@@ -186,7 +192,7 @@
 
 .rc_fit_multitask_target <- function(
     edges, target, rna, atac, meta, condition_col, args) {
-  answer <- .rc_fit_multitask_target_pre_policy(
+  answer <- .rc_fit_multitask_target_direct(
     edges = edges,
     target = target,
     rna = rna,
@@ -198,9 +204,7 @@
   condition <- answer$condition
   if (!is.data.frame(condition) || !nrow(condition)) return(answer)
 
-  cv_ok <- .rc_cv_predictive_gate(
-    condition$cv_rsq, args$min_cv_rsq
-  )
+  cv_ok <- .rc_cv_predictive_gate(condition$cv_rsq, args$min_cv_rsq)
   condition$cv_predictive_above_null <- cv_ok
   condition$active_edge <- condition$active_edge %in% TRUE & cv_ok
   bootstrap_total <- suppressWarnings(as.numeric(
@@ -241,8 +245,9 @@
     diagnostics$n_active_conditions <- length(unique(
       condition$condition[condition$active_edge %in% TRUE]
     ))
-    diagnostics$deviation_penalty_factor <-
-      as.numeric(args$deviation_penalty_factor)
+    diagnostics$coefficient_parameterization <- "direct_condition_theta"
+    diagnostics$theta_penalty_factor <-
+      as.numeric(args$global_penalty_factor)
     diagnostics$cv_activation_rule <- if (args$min_cv_rsq > 0) {
       paste0("cv_rsq >= ", args$min_cv_rsq, " and cv_rsq > 0")
     } else {
@@ -261,7 +266,8 @@
 }
 
 .rc_filter_shared_candidate_observability <- function(
-    candidates, rna, atac, meta, condition_col, args, design_fingerprint) {
+    candidates, rna, atac, meta, condition_col, args,
+    design_fingerprint) {
   if (!is.data.frame(candidates) || !nrow(candidates)) {
     stop("Pando produced no structural TF-peak-target candidates.",
          call. = FALSE)
@@ -576,11 +582,13 @@
     tf_peak_same_cell_detection = TRUE,
     target_same_condition_detection = TRUE
   )
-  answer$normalization_policy$deviation_penalty <- paste(
-    "global and condition-deviation coordinates use equal penalty factors by",
-    "default; the symmetric zero-sum deviation block already incurs",
-    "multiplicity and lower-design-norm shrinkage; values above one are",
-    "explicit sensitivity priors for a more conserved shared backbone"
+  answer$normalization_policy$coefficient_parameterization <- paste(
+    "elastic-net penalties act directly on condition-specific theta[e,c];",
+    "beta is the cross-condition mean and delta is derived as theta - beta"
+  )
+  answer$normalization_policy$penalty_aliases <- paste(
+    "global_penalty_factor and deviation_penalty_factor are compatibility",
+    "aliases for one common theta penalty and must be equal"
   )
   answer$normalization_policy$bootstrap_precision <- paste(
     "100 full-size condition-stratified bootstrap replicates by default;",
