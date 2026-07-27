@@ -44,3 +44,34 @@ test_that("sample-aware Stage 1 status is written before downstream core mapping
   expect_match(text, "bootstrap_stability_diagnostics.tsv.gz", fixed = TRUE)
   expect_match(text, "bootstrap_policy", fixed = TRUE)
 })
+
+test_that("bootstrap policy reaches compact result parameters and provenance", {
+  text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
+  policy <- regexpr(
+    "bootstrap_policy <- grn$grn_result$bootstrap_policy",
+    text,
+    fixed = TRUE
+  )[[1L]]
+  params <- regexpr(
+    "bootstrap_resampling_unit",
+    text,
+    fixed = TRUE
+  )[[1L]]
+  provenance <- regexpr(
+    "stage_provenance",
+    text,
+    fixed = TRUE
+  )[[1L]]
+  expect_true(all(c(policy, params, provenance) > 0L))
+  expect_true(policy < params)
+  expect_true(params < provenance)
+  expect_match(text, "bootstrap_fallback_reason", fixed = TRUE)
+})
+
+test_that("public workflow forwards sample_col only to Stage 1 and strips timing", {
+  text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  expect_match(text, "pando_args$sample_col <- sample_col", fixed = TRUE)
+  expect_match(text, "answer$timing <- NULL", fixed = TRUE)
+  expect_match(text, "00_execution_timing.tsv", fixed = TRUE)
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
+})

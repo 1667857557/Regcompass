@@ -1,11 +1,7 @@
-test_that("strict-stratum metadata are validated", {
-  expect_identical(
-    .rc_strict_stratum_cols("sample_id", "condition", "cell_type"),
-    c("condition", "sample_id", "cell_type")
-  )
+test_that("public stratum metadata are validated", {
   expect_error(
-    .rc_strict_stratum_cols("sample_id", "sample_id", "cell_type"),
-    "distinct"
+    rc_make_stratum_id(data.frame(), character()),
+    "at least one metadata column"
   )
   meta <- data.frame(
     condition = c("ctrl", "ctrl"),
@@ -13,8 +9,12 @@ test_that("strict-stratum metadata are validated", {
     cell_type = c("T", "T")
   )
   expect_error(
-    .rc_add_stratum_id(meta, c("condition", "sample_id", "cell_type")),
-    "missing"
+    rc_make_stratum_id(meta, c("condition", "sample_id", "cell_type")),
+    "missing or empty"
+  )
+  expect_error(
+    rc_make_stratum_id(meta, c("condition", "missing")),
+    "Missing stratum columns"
   )
 })
 

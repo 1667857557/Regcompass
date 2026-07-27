@@ -21,9 +21,21 @@ test_that("reaction penalty is positive and decreases with expression", {
   expect_true(all(is.finite(P) & P > 0))
 })
 
-test_that("Pando grouping uses condition and cell type", {
-  text <- paste(deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n")
-  expect_match(text, "group_cols <- c(condition_col, celltype_col)", fixed = TRUE)
+test_that("legacy Pando grouping uses condition and cell type", {
+  core_text <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns_legacy)),
+    collapse = "\n"
+  )
+  wrapper_text <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns)),
+    collapse = "\n"
+  )
+  expect_match(
+    core_text,
+    "group_cols <- c(condition_col, celltype_col)",
+    fixed = TRUE
+  )
+  expect_match(wrapper_text, "group_status", fixed = TRUE)
   expect_false("sample_col" %in% names(formals(.rc_run_condition_single_cell_grns)))
   expect_false("strict_biological_defaults" %in% names(formals(rc_run_regcompass)))
 })
@@ -108,7 +120,7 @@ test_that("meta-module expansion excludes metabolite-neighbour reactions", {
     reaction_meta = reaction_meta
   )
   core <- data.frame(
-    sample_id = "A", module_id = "A::GRN0001",
+    group_id = "A|T", module_id = "A::GRN0001",
     gene = "G1", reaction_id = "R1"
   )
   expanded <- rc_expand_meta_module_reactions(gem, core)
