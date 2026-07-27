@@ -433,7 +433,7 @@
     stop("`pando_design_args` must be a list.", call. = FALSE)
   }
   defaults <- list(
-    peak_to_gene_method = "Signac",
+    peak_to_gene_method = "GREAT",
     upstream = 100000,
     downstream = 0,
     extend = 1000000,
@@ -468,7 +468,7 @@
   }
   out$max_edges_per_target <- Inf
   out$peak_to_gene_method <- match.arg(
-    as.character(out$peak_to_gene_method), c("Signac", "GREAT")
+    as.character(out$peak_to_gene_method), c("GREAT", "Signac")
   )
   for (name in c("upstream", "downstream", "extend")) {
     value <- out[[name]]
@@ -581,6 +581,11 @@
       validated_multitask$min_detection_fraction_per_condition,
     tf_peak_same_cell_detection = TRUE,
     target_same_condition_detection = TRUE
+  )
+  answer$normalization_policy$peak_to_gene_policy <- paste(
+    "GREAT is the canonical structural peak-to-gene domain rule; it uses",
+    "genomic regulatory domains without target-expression correlation",
+    "screening before the shared multitask model"
   )
   answer$normalization_policy$coefficient_parameterization <- paste(
     "elastic-net penalties act directly on condition-specific theta[e,c];",
