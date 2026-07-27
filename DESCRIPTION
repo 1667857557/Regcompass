@@ -57,6 +57,7 @@ Collate:
     'condition_metacell_cache.R'
     'supercell2_current_contract.R'
     'supercell2_label_contract.R'
+    'metacell_import_no_sample_contract.R'
     'microcompass.R'
     'union_gem_cache.R'
     'microcompass_engine.R'
