@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.9 shared-background condition-sub-GRN workflow"
+title: "RegCompassR 1.8.10 shared-background condition-sub-GRN workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.9 shared-background condition-sub-GRN workflow}
+  %\VignetteIndexEntry{RegCompassR 1.8.10 shared-background condition-sub-GRN workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -13,20 +13,18 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 # Overview
 
-RegCompassR 1.8.9 separates a shared structural regulatory hypothesis from
-condition-specific sparse regulatory coefficients.
+RegCompassR 1.8.10 separates a shared structural regulatory hypothesis from condition-specific sparse coefficients and records the biological unit used for bootstrap stability.
 
 ```text
 one validated GREAT-domain Pando TF–peak–target universe per cell type
 → condition-aware TF×peak/target observability filter
 → one shared model edge universe across conditions
 → direct condition-specific theta elastic net
-→ derived cross-condition backbone and zero-sum deviations
-→ leakage-resistant condition-stratified cross-validation
-→ full-size condition-stratified bootstrap reproducibility
+→ leakage-resistant condition-stratified cell-level cross-validation
+→ condition-stratified sample/donor cluster bootstrap when sample_col is valid
+→ explicit warning and condition-stratified cell-bootstrap fallback otherwise
 → condition-specific metabolic target genes
 → complete-GPR condition cores
-→ one ordered annotation expansion pass
 → one merged reaction catalogue
 → one medium-specific union GEM and one global FASTCORE completion
 → identical stoichiometric structure across conditions
@@ -34,8 +32,7 @@ one validated GREAT-domain Pando TF–peak–target universe per cell type
 → compact final result
 ```
 
-For edge \(e\), RegCompass directly estimates \(\theta_{e,c}\). The exported
-backbone and deviation are derived:
+For edge \(e\), RegCompass estimates \(\theta_{e,c}\). The exported backbone and deviation are derived:
 
 \[
 \beta_e=\frac1C\sum_c\theta_{e,c},
@@ -45,10 +42,7 @@ backbone and deviation are derived:
 \sum_c\delta_{e,c}=0.
 \]
 
-Every condition uses the same Pando structural dictionary and the same
-observability-filtered model dictionary. Each condition contributes the same
-total regression loss weight. The canonical public workflow uses condition and
-cell type metadata only; it does not accept a biological-sample column.
+Every condition uses the same Pando structural and observability-filtered dictionaries. The optional biological sample column affects bootstrap resampling only. Stage 2 remains condition-only.
 
 # Prepare the GEM and medium
 
@@ -69,10 +63,6 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")`.
-Human analyses use phastCons plus SCREEN ccRE regions; mouse analyses use the
-available phastCons resource unless overridden.
-
 # Complete workflow
 
 ```{r}
@@ -84,7 +74,7 @@ result <- rc_run_regcompass_one_shot(
   gem = gem,
   condition_col = "Group",
   celltype_col = "cell_type",
-
+  sample_col = "sample_id",
   grn_mode = "multitask_shared_backbone",
   pando_args = list(
     min_cells = 100,
@@ -117,7 +107,6 @@ result <- rc_run_regcompass_one_shot(
     min_detection_fraction_per_condition = 0.01,
     seed = 12345L
   ),
-
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
@@ -131,12 +120,10 @@ result <- rc_run_regcompass_one_shot(
     min_metacells_per_stratum = 2L,
     overwrite = FALSE
   ),
-
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
-
   medium_scenarios = medium_scenarios,
   model_mode = "meta_module_gem",
   layer2_args = list(
@@ -148,136 +135,38 @@ result <- rc_run_regcompass_one_shot(
       max_support_reactions = 2000,
       strict = TRUE
     )
-  ),
-  upstream_workers = 6,
-  layer2_workers = 30
+  )
 )
 ```
 
-# GREAT structural candidate universe
+# Sample-aware bootstrap
 
-`Pando::prepare_grn_design()` constructs structural candidates before fitting.
-The canonical `peak_to_gene_method = "GREAT"` creates basal-plus-extension
-regulatory domains and permits distal hypotheses up to `extend = 1000000`.
-Candidate admission does not use fitted target-expression correlation,
-coefficients, P values, or condition effects.
+For condition \(c\), let \(D_c\) be its observed sample/donor identifiers. Each replicate draws \(|D_c|\) sample IDs with replacement. Every selected sample contributes all cells assigned to that sample and condition. This preserves donor clusters; replicate cell counts may vary.
 
-An edge requires a target-linked regulatory region, a matched TF motif, an exact
-measured ATAC feature, and measured TF/target RNA features. Predictors are
-deduplicated by `(TF, ATAC feature, target)`, and the version-2 design
-fingerprint is validated before use. `Signac` remains an explicit
-narrower-domain sensitivity option.
+When `sample_col = NULL`, or the named column does not exist, RegCompass prints the exact fallback reason and draws \(n_c\) cells with replacement inside each condition. An existing sample column with missing or empty IDs is rejected.
 
-The predictor is
+Both modes re-centre bootstrap target and predictor matrices within condition and refit at the full-data lambda. Selection frequency and sign stability are calculated from the resulting direct condition coefficients.
 
-\[
-x_{e,u}=T_{t,u}A_{p,u}.
-\]
+```{r}
+step1 <- readRDS(
+  "RegCompass_result/01_single_cell_grn/step_grn.rds"
+)
+step1$grn_result$bootstrap_policy
+head(step1$grn_result$stability_diagnostics[, c(
+  "bootstrap_method",
+  "bootstrap_resampling_unit",
+  "bootstrap_sample_col",
+  "bootstrap_fallback_reason",
+  "selection_frequency",
+  "sign_stability"
+)])
+```
 
-Pando pooled detection thresholds remain zero so condition-restricted
-candidates are not removed prematurely. RegCompass defines
+Sample-cluster bootstrap measures reproducibility across observed samples. Cross-validation remains cell-level, and neither output is a donor-level treatment-effect test.
 
-\[
-m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right)
-\]
+# Condition genes, reactions, and shared GEM
 
-and retains an edge for modelling only when, in at least one condition,
-
-\[
-\sum_{u\in c}I(T_{t,u}>0\land A_{p,u}>0)\ge m_c
-\]
-
-and
-
-\[
-\sum_{u\in c}I(Y_{g,u}>0)\ge m_c.
-\]
-
-TF and peak must therefore be observed together in the same cells. This
-detection filter does not use target correlation or fitted coefficients. The
-complete structural universe and filtered model universe receive separate
-fingerprints.
-
-# Direct condition-theta model and predictive validation
-
-Target and predictor values are centred within condition. Predictor scales are
-shared across conditions, while observation weights give every condition equal
-total loss. The model is
-
-\[
-y_u^\circ=\sum_e\widetilde x_{e,u}\theta_{e,c(u)}+\varepsilon_u.
-\]
-
-The elastic-net objective penalises \(\theta_{e,c}\) directly:
-
-\[
-\min_\Theta
-\frac12\sum_u w_u
-\left(y_u^\circ-\sum_e\widetilde x_{e,u}\theta_{e,c(u)}\right)^2
-+\lambda\alpha p_\theta\sum_{e,c}|\theta_{e,c}|
-+\frac{\lambda(1-\alpha)p_\theta}{2}\sum_{e,c}\theta_{e,c}^2.
-\]
-
-Thus a fitted edge may satisfy
-
-\[
-\theta_{e,A}\ne0,\qquad\theta_{e,B}=0.
-\]
-
-`global_penalty_factor` and `deviation_penalty_factor` are retained as
-compatibility aliases for the same \(p_\theta\) and must be equal.
-
-For every cross-validation fold, condition centres and edge scales are estimated
-from training cells and applied to validation cells. Lambda uses the
-one-standard-error rule. A target model can produce active edges only when
-
-\[
-R^2_{CV}>0.
-\]
-
-A positive `min_cv_rsq` adds a stronger predictive floor.
-
-# Bootstrap reproducibility
-
-For each bootstrap replicate, condition \(c\) is resampled with replacement at
-its original size \(n_c\). The target and predictors are re-centred within
-condition, scaled by the shared full-data scale, and fitted at the selected
-lambda.
-
-For successful bootstrap set \(\mathcal B_s\),
-
-\[
-\Pi_{e,c}=\frac1{|\mathcal B_s|}
-\sum_{b\in\mathcal B_s}I(|\theta^{(b)}_{e,c}|>\varepsilon),
-\]
-
-\[
-\rho_{e,c}=\left|
-\frac{\sum_bI^{(b)}_{e,c}\operatorname{sign}(\theta^{(b)}_{e,c})}
-{\sum_bI^{(b)}_{e,c}}
-\right|,
-\]
-
-\[
-\widetilde\theta_{e,c}
-=\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c}.
-\]
-
-The canonical default is 100 bootstrap replicates. RegCompass reports
-selection-frequency Monte Carlo standard error and Wilson 95% intervals.
-`min_sign_stability = 0.8` requires at least 90% majority-sign agreement among
-selected fits because \(\rho=|2q-1|\).
-
-Regularized coefficients do not receive classical adjusted P values; `padj`
-remains `NA`. The bootstrap quantifies cell-resampling reproducibility, not
-biological-replicate significance.
-
-# Condition genes and complete-GPR cores
-
-A gene enters the condition target set when at least one active edge targets it.
-Positive and negative directions both establish membership.
-
-For reaction \(r\) with GPR branches \(B_{r,k}\):
+A gene enters the condition target set when at least one active edge targets it. For reaction \(r\) with GPR branches \(B_{r,k}\):
 
 \[
 Core_{r,c}=1
@@ -285,38 +174,7 @@ Core_{r,c}=1
 \exists k:B_{r,k}\subseteq G_c.
 \]
 
-Stage 3 then performs exactly one ordered expansion:
-
-```text
-complete-GPR cores
-→ core-reaction subsystems
-→ direct KEGG/Reactome equivalents
-→ direct master-Rhea equivalents
-→ stop
-```
-
-# Layer 1 and shared metabolic model
-
-Stage 1 uses RNA and ATAC to fit the GRN. Stage 4 reprojects only metacell ATAC.
-TF edges sharing one measured peak are signed-summed before projection. One
-target denominator is shared across conditions.
-
-A gene with no active condition edge has `R = 0`, and the log-odds update returns
-RNA-only support exactly:
-
-\[
-C^{MO}=
-\frac{C^{RNA}2^{\alpha R}}
-{1-C^{RNA}+C^{RNA}2^{\alpha R}}.
-\]
-
-Condition core sets may differ, but Stage 3 merges their reaction catalogues
-before Stage 5. For each medium, Stage 5 constructs one union GEM and runs the
-only global FASTCORE completion. All conditions and metacells reuse identical
-reaction IDs, stoichiometric matrix, and bounds.
-
-`completion_time_limit` limits FASTCORE union-GEM construction only.
-Directional scoring LPs have no time-limit parameter.
+Condition core sets may differ. Stage 3 merges their reaction catalogues before Stage 5 constructs one union GEM per medium. All conditions and metacells then reuse identical reaction IDs, stoichiometric matrix, lower bounds, and upper bounds.
 
 # Stepwise inspection
 
@@ -329,6 +187,7 @@ step1 <- rc_regcompass_step_grn(
   species = "human",
   condition_col = "Group",
   celltype_col = "cell_type",
+  sample_col = "sample_id",
   grn_mode = "multitask_shared_backbone",
   pando_args = list(
     pando_design_args = list(peak_to_gene_method = "GREAT")
@@ -381,7 +240,4 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-Detailed Stage 1 outputs remain in `step1`; compact analysis tables remain in
-`result`. See `docs/grn-parameter-policy.md` for the canonical parameter
-contract and `docs/tutorial-03-advanced-restart.md` for GREAT-versus-Signac
-structural sensitivity.
+Each public stage prints elapsed time and final status in R after its final artifact is committed. Timing is not stored in stage objects, the compact result, or timing TSV files.
