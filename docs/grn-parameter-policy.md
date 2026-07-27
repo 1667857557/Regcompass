@@ -23,15 +23,23 @@ This document is the canonical parameter contract for
 | Parameter | Default | Role |
 |---|---:|---|
 | `min_cells` | `100` | Minimum cells in every condition of a cell type. |
-| `peak_to_gene_method` | `"Signac"` | Peak-to-gene domain rule. |
-| `upstream` | `100000` | Candidate region upstream of the gene. |
-| `downstream` | `0` | Candidate region downstream of the gene. |
-| `extend` | `1000000` | GREAT extension when GREAT is selected. |
-| `only_tss` | `FALSE` | Measure the Signac window from the gene body. |
+| `peak_to_gene_method` | `"GREAT"` | GREAT-style basal-plus-extension regulatory-domain rule. |
+| `upstream` | `100000` | Basal regulatory domain upstream of the gene/TSS anchor. |
+| `downstream` | `0` | Basal regulatory domain downstream of the gene/TSS anchor. |
+| `extend` | `1000000` | Maximum GREAT domain extension. |
+| `only_tss` | `FALSE` | Use the annotated gene body rather than TSS-only anchoring. |
 | `min_tf_detection` | `0` | Do not remove condition-restricted TFs in pooled Pando preprocessing. |
 | `min_peak_detection` | `0` | Do not remove condition-restricted peaks in pooled Pando preprocessing. |
 | `min_target_detection` | `0` | Do not remove condition-restricted targets in pooled Pando preprocessing. |
 | `max_edges_per_target` | `Inf` | Preserve the complete structural candidate set. |
+
+`GREAT` is the canonical structural rule because it allows distal regulatory
+coverage while keeping candidate construction independent of target-expression
+correlation, fitted coefficients and condition effects. With
+`extend = 1000000`, it deliberately creates a broad hypothesis space; the
+condition-aware observability filter and direct-theta regularisation must
+therefore remain enabled. `Signac` remains an explicit sensitivity option, but
+is no longer the default.
 
 ### Multitask model
 
@@ -58,7 +66,7 @@ Pando returns
 
 \[
 \mathcal U_m^{struct}
-=\{e=(t,p,g):\text{motif and peak-to-gene rules support }e\}
+=\{e=(t,p,g):\text{motif and GREAT peak-to-gene domains support }e\}
 \]
 
 for cell type \(m\), using all conditions together.
