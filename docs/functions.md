@@ -1,4 +1,4 @@
-# Public functions in RegCompassR 1.8.8
+# Public functions in RegCompassR 1.8.9
 
 ## Setup and complete runs
 
@@ -24,21 +24,25 @@ The canonical complete runner and Stage 1/2 functions require `condition_col` an
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: build one validated Pando TF–peak–target universe per cell type, estimate global and condition-specific coefficients with condition-balanced elastic net, and calculate condition-stratified bootstrap stability.
-- `rc_regcompass_step_metacells()`: build condition-only, cell-type-label-guided SuperCell2 metacells.
+- `rc_regcompass_step_grn()`: build one validated Pando structural TF–peak–target universe per cell type, apply a condition-aware observability filter, estimate global and condition coefficients with condition-balanced elastic net, and calculate bootstrap reproducibility.
+- `rc_regcompass_step_metacells()`: build condition-stratified, cell-type-labelled SuperCell2 metacells.
 - `rc_regcompass_step_meta_modules()`: map active condition sub-GRN targets to complete-GPR core reactions and one ordered subsystem/KEGG–Reactome/master-Rhea expansion.
 - `rc_regcompass_step_layer1()`: combine RNA support with an ATAC-only projection of the fitted condition sub-GRN and aggregate through GPR rules.
 - `rc_regcompass_step_layer2()`: build one medium-specific union GEM, apply one global FASTCORE completion, and run directional COMPASS-like LP scoring.
-- `rc_regcompass_step_results()`: assemble GRN provenance, reaction annotations, rankings, and condition contrasts.
+- `rc_regcompass_step_results()`: assemble compact rankings, contrasts, regulatory evidence, complete-GPR cores, and provenance.
 - `rc_regcompass_step_target_union()`: map additional targets and score them in the exact cached Stage 5 model.
 
 ## Stage 1 structural design controls
 
 ```r
 pando_args = list(
-  min_cells = 20L,
+  min_cells = 100L,
   pando_design_args = list(
     peak_to_gene_method = "Signac",
+    upstream = 100000,
+    downstream = 0,
+    extend = 1000000,
+    only_tss = FALSE,
     min_tf_detection = 0,
     min_peak_detection = 0,
     min_target_detection = 0,
@@ -49,29 +53,46 @@ pando_args = list(
 
 `Pando::prepare_grn_design()` creates a version-2 condition-agnostic dictionary. Exact predictors are deduplicated by TF, measured ATAC feature, and target. `supporting_regions` retains multiple regulatory regions mapping to one peak. RegCompass validates the design fingerprint and feature mapping before fitting.
 
-## Stage 1 multitask and bootstrap controls
+The pooled Pando detection thresholds remain zero so a condition-restricted TF, peak, or target is not removed before the shared model is formed. A finite `max_edges_per_target` is rejected because Pando candidate order is deterministic but not an evidence ranking.
+
+## Stage 1 multitask, observability, and bootstrap controls
 
 ```r
 multitask_args = list(
   alpha = 0.5,
   global_penalty_factor = 1,
-  deviation_penalty_factor = 2,
+  deviation_penalty_factor = 1,
   lambda_rule = "lambda.1se",
   nfolds = 5L,
-  n_bootstrap = 50L,
+  n_bootstrap = 100L,
   min_selection_frequency = 0.7,
   min_sign_stability = 0.8,
   min_abs_effect = 0,
   min_cv_rsq = 0,
+  min_bootstrap_success_fraction = 0.8,
   candidate_screen_threshold = 0,
   max_edges_per_target = Inf,
+  min_detected_cells_per_condition = 10L,
+  min_detection_fraction_per_condition = 0.01,
   seed = 12345L
 )
 ```
 
-`alpha` must remain below one because the symmetric centred condition-deviation representation requires a ridge component for a unique regularised solution. The default candidate screen and cap retain the complete Pando structural universe.
+For condition \(c\), RegCompass uses
 
-`n_bootstrap` controls full-size nonparametric bootstrap fits. Every condition is sampled with replacement at its original cell count. Bootstrap targets and predictors are re-centred within condition before fitting at the full-data lambda and scale.
+\[
+m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right).
+\]
+
+An edge enters the shared model universe only when the non-zero TF-RNA × peak-ATAC predictor and target RNA each occur in at least \(m_c\) cells of one or more conditions. TF and peak must be non-zero in the same cells. This filter uses detection only and does not use target correlation or fitted effect size.
+
+`alpha = 0.5` retains a lasso component for sparse selection and a ridge component for correlated TF–peak predictors. Global and zero-sum condition-deviation coordinates use equal explicit penalty factors by default. `deviation_penalty_factor > 1` is an optional sensitivity prior favoring a more conserved shared backbone.
+
+Five-fold cross-validation estimates condition centres and edge scales from each training fold. An active target requires strictly positive out-of-fold `cv_rsq`; a positive `min_cv_rsq` adds a stronger floor.
+
+`n_bootstrap = 100` controls full-size nonparametric bootstrap fits. Every condition is sampled with replacement at its original cell count. Bootstrap targets and predictors are re-centred within condition before fitting at the full-data lambda and scale. Edge tables report selection-frequency Monte Carlo standard errors and Wilson 95% intervals.
+
+`min_sign_stability = 0.8` corresponds to at least 90% agreement on one sign among selected bootstrap fits because \(\rho=|2q-1|\).
 
 Principal Stage 1 outputs:
 
@@ -84,6 +105,14 @@ step1$grn_result$condition_target_genes
 step1$grn_result$target_model_diagnostics
 step1$grn_result$stability_diagnostics
 step1$grn_result$group_status
+```
+
+The candidate table distinguishes:
+
+```text
+edge_universe_id       = complete Pando structural universe
+model_edge_universe_id = observability-filtered shared model universe
+model_observable       = whether a structural edge entered fitting
 ```
 
 ## Stage 2 geometry
@@ -102,7 +131,7 @@ metacell_args = list(
 )
 ```
 
-Condition is the only hard stratum. Cell type is passed to SuperCell2 as the label. An existing Harmony reduction may replace PCA. Changing cells, assays, reductions, dimensions, seed, gamma, or thresholds invalidates the Stage 2 cache.
+Condition is the RegCompass stratum. Cell type is passed to SuperCell2 as the exact label. An existing Harmony reduction may replace PCA. Changing cells, assays, reductions, dimensions, seed, gamma, or thresholds invalidates the Stage 2 cache.
 
 ## Stage 3 condition and merged catalogues
 
@@ -112,8 +141,6 @@ step3$condition_modules$core_gene_reaction
 step3$condition_modules$reaction_membership
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
-step3$merged_modules$source_edge_universe_ids
-step3$merged_modules$source_group_ids
 ```
 
 `group_id` is the `condition × cell type` analysis identifier. A reaction becomes core only when one complete GPR branch is contained in the condition target set. The merged object is a biological reaction catalogue, not a GEM.
@@ -155,10 +182,11 @@ layer2_args = list(
 - `rc_select_gene_reactions()`: select scored reactions by GPR gene.
 - `rc_plot_condition_reaction()` and `rc_plot_condition_gene_reactions()`: condition plots with reaction and evidence annotations.
 
-Bootstrap measures selection stability under cell resampling; it does not create biological-replicate inference. GRN fitting and RNA support use the same paired multiome dataset. Condition centring and ATAC-only projection reduce direct duplicate weighting but do not create independent validation evidence. Metacell-level tests remain descriptive pseudo-observation analyses.
+Bootstrap measures selection reproducibility under cell resampling; it does not create biological-replicate inference. GRN fitting and RNA support use the same paired multiome dataset. Condition centring and ATAC-only projection reduce direct duplicate weighting but do not create independent validation evidence. Metacell-level tests remain descriptive pseudo-observation analyses.
 
 ## Documentation
 
+- [Pando and multitask GRN parameter policy](grn-parameter-policy.md)
 - [Mathematics and object contracts](multitask-shared-grn.md)
 - [Quick start](tutorial-01-quick-start.md)
 - [Stepwise audit](tutorial-02-stepwise-audit.md)
