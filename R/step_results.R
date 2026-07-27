@@ -1,4 +1,10 @@
-#' Assemble final RegCompass results
+#' Assemble compact final RegCompass results
+#'
+#' The final object contains primary analysis tables, compact regulatory and
+#' complete-GPR summaries, scored-reaction annotations, and the compact Layer 2
+#' score object required by downstream directional comparisons. Detailed Stage
+#' 1--5 intermediates remain in their stage checkpoints and are not duplicated
+#' in `regcompass_result.rds`.
 #'
 #' @export
 rc_regcompass_step_results <- function(
@@ -20,9 +26,7 @@ rc_regcompass_step_results <- function(
   )
   params <- metacells$params
   if (!identical(params, meta_modules$workflow_params) ||
-      !identical(
-        .rc_workflow_signature(grn), .rc_workflow_signature(metacells)
-      )) {
+      !identical(.rc_workflow_signature(grn), .rc_workflow_signature(metacells))) {
     stop("Upstream stages use different workflow parameters.", call. = FALSE)
   }
   .rc_require_stage_gem(grn, gem, "grn")
@@ -31,12 +35,10 @@ rc_regcompass_step_results <- function(
     layer1, workflow_params = params, gem = gem, argument = "layer1"
   )
   .rc_validate_layer2_stage(
-    layer2,
-    layer1 = layer1,
-    workflow_params = params,
-    gem = gem,
+    layer2, layer1 = layer1, workflow_params = params, gem = gem,
     argument = "layer2"
   )
+
   species <- .rc_infer_gem_species(gem, species)
   comparison <- .rc_condition_penalty_comparison(
     layer2,
@@ -51,36 +53,23 @@ rc_regcompass_step_results <- function(
       "legacy_condition_pando"
   )
   multitask <- identical(grn_mode, "multitask_shared_backbone")
-  condition_fields <- intersect(c(
-    "celltype_fit_status", "group_status",
-    "tf_peak_gene_candidates", "tf_peak_gene_global",
-    "tf_peak_gene_condition_all", "tf_peak_gene_all",
-    "tf_peak_gene_significant", "condition_target_genes",
-    "target_model_diagnostics", "stability_diagnostics",
-    "supported_metabolic_genes", "core_gene_reaction",
-    "biological_reaction_membership", "reaction_membership",
-    "meta_module_summary", "core_definition", "analysis_group_unit",
-    "grn_metacell_group_coverage", "feasibility_completion"
-  ), names(meta_modules$condition_modules))
-  condition_modules <- meta_modules$condition_modules[condition_fields]
+  condition_modules <- meta_modules$condition_modules
+
+  # Full Layer 1 and Layer 2 objects are used transiently to build formal
+  # reaction annotations and evidence. Only the compact score subset is retained
+  # in the final result; complete stage objects remain in their checkpoint RDS.
   result <- list(
     schema_version = if (multitask) {
-      "regcompass_multitask_condition_subgrn_v2"
+      "regcompass_compact_multitask_result_v3"
     } else {
-      "regcompass_significant_pando_targets_v1"
+      "regcompass_compact_legacy_result_v2"
     },
-    version = "1.8.8",
+    version = "1.8.9",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
     grn_mode = grn_mode,
-    grn = grn$grn_result,
-    metacells = metacells$pooled,
     layer1 = layer1,
-    condition_grn_meta_modules = condition_modules,
-    merged_grn_meta_modules = meta_modules$merged_modules,
-    grn_meta_modules = meta_modules$merged_modules,
-    grn_metacell_group_coverage = meta_modules$group_coverage,
     microcompass = layer2,
     reaction_ranking = comparison$ranking,
     condition_summary = comparison$summary,
@@ -91,7 +80,7 @@ rc_regcompass_step_results <- function(
       n_conditions = length(conditions),
       workflow_order = c(
         "single_cell_grn", "condition_metacells", "meta_modules",
-        "layer1", "medium_specific_union_gem_layer2"
+        "layer1", "medium_specific_union_gem_layer2", "compact_results"
       ),
       grn_mode = grn_mode,
       grn_background = if (multitask) {
@@ -107,23 +96,16 @@ rc_regcompass_step_results <- function(
       grn_stability_policy = if (multitask) {
         paste(
           "full_size_condition_stratified_nonparametric_bootstrap;",
-          "stable_effect_equals_full_data_effect_times_selection_frequency",
-          "times_conditional_sign_stability"
+          "stable_projection_weight_equals_full_data_effect_times_selection",
+          "frequency_times_conditional_sign_stability"
         )
       } else {
         "legacy_adjusted_p_value_filter"
       },
-      pando_grouping = if (multitask) {
-        params$celltype_col
-      } else {
-        c(params$condition_col, params$celltype_col)
-      },
-      pando_peak_cor =
-        grn$grn_result$normalization_policy$pando_peak_cor %||% NA_real_,
-      pando_regions = grn$grn_result$normalization_policy$pando_regions,
       metacell_grouping = params$condition_col,
-      metacell_celltype_assignment =
-        "supercell_label_guided_then_dominant_membership_audit",
+      metacell_label = params$celltype_col,
+      metacell_contract =
+        "split_by_condition_then_SuperCell2_label_exact_celltype",
       metacell_gamma = params$metacell_args$gamma,
       condition_balance = if (multitask) {
         "equal_total_GRN_loss_weight_per_condition"
@@ -131,57 +113,107 @@ rc_regcompass_step_results <- function(
         "not_applicable"
       },
       meta_module_core_definition = if (multitask) {
-        "condition_celltype_bootstrap_stable_subgrn_targets_complete_gpr"
+        "condition_celltype_bootstrap_active_targets_complete_gpr"
       } else {
-        "condition_celltype_significant_pando_targets_complete_gpr"
+        "condition_celltype_significant_targets_complete_gpr"
       },
       meta_module_expansion =
         "core_subsystem_plus_kegg_reactome_master_rhea_only",
-      meta_module_merge = "reaction_id_deduplication_only_not_a_gem",
-      feasibility_completion = if (
-        identical(layer2$model_mode, "meta_module_gem")
-      ) {
+      feasibility_completion = if (identical(layer2$model_mode, "meta_module_gem")) {
         "single_global_fastcore_on_each_medium_specific_union_gem"
       } else {
         "not_applicable_full_gem"
       },
-      feasibility_completion_stages = if (
-        identical(layer2$model_mode, "meta_module_gem")
-      ) {
-        "layer2_medium_specific_only"
-      } else {
-        "none"
-      },
-      union_gem_definition = paste(
-        "medium-constrained union of all condition/cell-type biological",
-        "meta-modules plus one global FASTCORE support completion"
-      ),
       structural_comparability = paste(
         "all conditions and metacells in one medium reuse identical reaction",
         "IDs, stoichiometric matrix, lower bounds, and upper bounds"
       ),
-      second_pass_model_policy =
-        "reuse_exact_final_medium_specific_union_gem_cache",
-      pando_normalization_policy = grn$grn_result$normalization_policy,
       penalty_formula = "1/(1+log2(1+E_multiome))",
+      result_storage_policy = paste(
+        "primary_tables_plus_compact_layer2_scores;",
+        "detailed_stage_intermediates_not_embedded"
+      ),
       execution_mode = "stepwise"
     )
   )
+
   result <- .rc_ra_attach_to_result(
     result = result,
     gem = gem,
     condition_col = params$condition_col,
     celltype_col = params$celltype_col
   )
+
+  result$reaction_ranking <- .rc_compact_reaction_ranking(
+    result$reaction_ranking
+  )
+  result$condition_contrast <- .rc_compact_condition_contrast(
+    result$condition_contrast
+  )
+  result$active_regulatory_edges <- .rc_compact_active_edges(
+    grn$grn_result, params$condition_col, params$celltype_col
+  )
+  result$condition_target_genes <- .rc_compact_condition_targets(
+    grn$grn_result, params$condition_col, params$celltype_col
+  )
+  result$core_reactions <- .rc_compact_core_reactions(
+    condition_modules, params$condition_col, params$celltype_col
+  )
+  result$meta_module_summary <- .rc_compact_meta_module_summary(
+    condition_modules, params$condition_col, params$celltype_col
+  )
+  result$grn_metacell_group_coverage <- meta_modules$group_coverage
+  result$reaction_catalog <- .rc_compact_reaction_catalog(result$reaction_catalog)
+  result$reaction_evidence <- .rc_compact_reaction_evidence(result$reaction_evidence)
+  result$microcompass <- .rc_compact_microcompass(layer2)
+
+  result$condition_summary <- NULL
+  result$layer1 <- NULL
+  result$stage_provenance <- list(
+    detailed_intermediates_embedded = FALSE,
+    grn_stage_class = class(grn)[[1L]],
+    metacell_stage_class = class(metacells)[[1L]],
+    meta_module_stage_class = class(meta_modules)[[1L]],
+    layer1_stage_class = class(layer1)[[1L]],
+    layer2_stage_class = class(layer2)[[1L]],
+    compact_layer2_omitted_fields = attr(
+      result$microcompass, "omitted_stage5_fields"
+    ),
+    detailed_sources = .rc_result_intermediate_policy()
+  )
+  result$table_manifest <- .rc_result_table_manifest(list(
+    reaction_ranking = result$reaction_ranking,
+    condition_contrast = result$condition_contrast,
+    active_regulatory_edges = result$active_regulatory_edges,
+    condition_target_genes = result$condition_target_genes,
+    core_reactions = result$core_reactions,
+    meta_module_summary = result$meta_module_summary,
+    grn_metacell_group_coverage = result$grn_metacell_group_coverage,
+    reaction_catalog = result$reaction_catalog,
+    reaction_evidence = result$reaction_evidence
+  ))
+
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  .rc_write_tsv_gz(
-    result$reaction_catalog,
-    file.path(outdir, "reaction_catalog.tsv.gz")
+  tables <- list(
+    reaction_ranking = result$reaction_ranking,
+    condition_contrast = result$condition_contrast,
+    active_regulatory_edges = result$active_regulatory_edges,
+    condition_target_genes = result$condition_target_genes,
+    core_reactions = result$core_reactions,
+    meta_module_summary = result$meta_module_summary,
+    grn_metacell_group_coverage = result$grn_metacell_group_coverage,
+    reaction_catalog = result$reaction_catalog,
+    reaction_evidence_by_condition_celltype = result$reaction_evidence,
+    result_table_manifest = result$table_manifest,
+    result_intermediate_policy = result$stage_provenance$detailed_sources
   )
-  .rc_write_tsv_gz(
-    result$reaction_evidence,
-    file.path(outdir, "reaction_evidence_by_condition_celltype.tsv.gz")
-  )
+  for (name in names(tables)) {
+    value <- tables[[name]]
+    if (is.data.frame(value)) {
+      .rc_write_tsv_gz(value, file.path(outdir, paste0(name, ".tsv.gz")))
+    }
+  }
+
   result <- .rc_step_monitor_finish(result, monitor)
   saveRDS(comparison, file.path(outdir, "step_comparison.rds"))
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))

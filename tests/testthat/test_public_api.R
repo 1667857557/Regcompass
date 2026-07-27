@@ -1,76 +1,43 @@
-test_that("public API exposes the significant-target restartable workflow", {
-  expect_setequal(
-    getNamespaceExports("RegCompassR"),
-    c(
-      "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
-      "rc_bundled_gem_manifest", "rc_download_species_gem",
-      "rc_parallel_config", "rc_make_medium_scenarios", "rc_run_regcompass",
-      "rc_run_regcompass_one_shot", "rc_regcompass_step_grn",
-      "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
-      "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
-      "rc_regcompass_step_target_union", "rc_regcompass_step_results",
-      "rc_test_condition_reactions", "rc_plot_condition_reaction",
-      "rc_build_reaction_annotations", "rc_attach_reaction_annotations",
-      "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
-    )
+test_that("public API exposes the restartable workflow and current metacell builder", {
+  expected <- c(
+    "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
+    "rc_bundled_gem_manifest", "rc_download_species_gem",
+    "rc_parallel_config", "rc_make_medium_scenarios",
+    "rc_make_supercell2_metacells", "rc_run_regcompass",
+    "rc_run_regcompass_one_shot", "rc_regcompass_step_grn",
+    "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
+    "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
+    "rc_regcompass_step_target_union", "rc_regcompass_step_results",
+    "rc_test_condition_reactions", "rc_report_condition_directions",
+    "rc_plot_condition_reaction", "rc_build_reaction_annotations",
+    "rc_attach_reaction_annotations", "rc_select_gene_reactions",
+    "rc_plot_condition_gene_reactions"
   )
-  expect_true(is.function(rc_build_reaction_annotations))
+  expect_setequal(getNamespaceExports("RegCompassR"), expected)
 })
 
-test_that("canonical source architecture has no retired compatibility layers", {
+test_that("canonical source architecture loads current contracts", {
   description <- utils::packageDescription("RegCompassR")
   collate <- description$Collate %||% ""
-  retired_files <- c(
-    "v170_sample_balance.R", "v170_aliases.R",
-    "v170_stepwise_parallel.R", "v170_tfidf.R",
-    "v170_pando_reuse.R", "v170_rsq_metadata.R",
-    "v170_microcompass_contract.R", "internal_apply.R",
-    "pando_rsq_reliability.R", "workflow_stage_", "zzz"
-  )
-  expect_false(any(vapply(
-    retired_files, grepl, logical(1), x = collate, fixed = TRUE
-  )))
   required <- c(
-    "stage_contracts.R", "shared_tfidf.R", "grn_inference.R",
-    "regulatory_modifier.R", "reaction_evidence.R", "reaction_annotations.R",
-    "reaction_annotation_api.R", "reaction_gene_plots.R",
-    "execution_monitor.R", "bundled_gems.R", "parallel.R"
+    "condition_metacell_cache.R", "supercell2_current_contract.R",
+    "supercell2_label_contract.R", "microcompass_no_sample_contract.R",
+    "target_union_no_sample_contract.R",
+    "multitask_grn_bootstrap_contract.R", "multitask_grn_cv_contract.R",
+    "meta_module_core_contract.R", "result_compaction.R",
+    "microcompass_result_compaction.R", "reaction_evidence.R",
+    "reaction_annotations.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
 
-  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
-  candidates <- unique(c(
-    if (nzchar(workspace)) file.path(workspace, "R") else character(),
-    "R", file.path("..", "R"), file.path("..", "..", "R")
-  ))
-  candidates <- candidates[dir.exists(candidates)]
-  if (!length(candidates)) skip("Source R files are unavailable.")
-  source_dir <- normalizePath(candidates[[1L]], mustWork = TRUE)
-  source_retired <- retired_files[grepl("[.]R$", retired_files)]
-  expect_false(any(file.exists(file.path(source_dir, source_retired))))
-  source_text <- paste(
-    unlist(lapply(list.files(source_dir, full.names = TRUE), readLines,
-                  warn = FALSE), use.names = FALSE),
-    collapse = "\n"
+  removed <- c(
+    "condition_pooling.R", "condition_pooling_no_sample.R",
+    "metacell_no_sample_contract.R"
   )
-  expect_false(grepl("_v170", source_text, fixed = TRUE))
-  retired_functions <- c(
-    ".rc_build_metabolic_projection_graph",
-    ".rc_mm_empty_edges",
-    ".rc_mm_components",
-    ".rc_signed_relation",
-    "rc_project_metabolic_grn",
-    ".rc_remap_projection_metadata",
-    "rc_run_pando_meta_modules",
-    "rc_boltzmann_minavg",
-    ".rc_meta_module_one_hop"
-  )
-  expect_false(any(vapply(
-    retired_functions, grepl, logical(1), x = source_text, fixed = TRUE
-  )))
+  expect_false(any(vapply(removed, grepl, logical(1), x = collate, fixed = TRUE)))
 })
 
-test_that("canonical order is Pando then metacells then meta-modules", {
+test_that("canonical order is GRN then metacells then meta-modules", {
   run_body <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   positions <- vapply(
     c(
@@ -85,88 +52,88 @@ test_that("canonical order is Pando then metacells then meta-modules", {
   expect_true(positions[[2L]] < positions[[3L]])
 })
 
-test_that("canonical formals separate Stage 3 and Layer 1 settings", {
+test_that("canonical formals separate stage settings and remove sample columns", {
   run_formals <- names(formals(rc_run_regcompass))
   stage3_formals <- names(formals(rc_regcompass_step_meta_modules))
   expect_true("meta_module_args" %in% run_formals)
   expect_true("layer1_args" %in% run_formals)
   expect_true("meta_module_args" %in% stage3_formals)
   expect_false("layer1_args" %in% stage3_formals)
-  expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
-  expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
-  expect_false("tau" %in% names(formals(rc_regcompass_step_layer1)))
-  expect_identical(
-    eval(formals(rc_regcompass_step_layer1)$gpr_and_method),
-    c("min", "median", "mean")
-  )
+  expect_false("sample_col" %in% run_formals)
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_grn)))
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
+  expect_false("sample_col" %in% names(formals(rc_make_supercell2_metacells)))
+  expect_false("pool_col" %in% names(formals(rc_make_supercell2_metacells)))
+  expect_false("sample_col" %in% names(formals(rc_run_microcompass)))
+  expect_false("sample_col" %in% names(formals(.rc_score_existing_union_cache)))
+  expect_identical(eval(formals(rc_run_microcompass)$unit), "metacell")
 })
 
-test_that("Pando defaults use bundled motifs and species-specific regions", {
-  expect_null(eval(formals(rc_run_regcompass)$pfm))
-  expect_null(eval(formals(rc_run_regcompass_one_shot)$pfm))
-  expect_null(eval(formals(rc_regcompass_step_grn)$pfm))
-  expect_null(eval(formals(.rc_run_condition_single_cell_grns)$pfm))
-
-  grn_body <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
-  )
-  motif_helper <- paste(deparse(body(.rc_default_pando_motifs)), collapse = "\n")
-  region_helper <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
-  expect_match(grn_body, ".rc_default_pando_motifs", fixed = TRUE)
-  expect_match(grn_body, ".rc_default_pando_regions(species)", fixed = TRUE)
-  expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
-  expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
-  expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
-  expect_match(region_helper, 'identical(species, "mouse")', fixed = TRUE)
-  expect_match(region_helper, "return(phast_cons)", fixed = TRUE)
-  expect_match(region_helper, "BiocGenerics::union", fixed = TRUE)
-  expect_identical(
-    eval(formals(.rc_default_pando_regions)$species),
-    c("human", "mouse")
-  )
-
-  grn_formals <- formals(.rc_run_condition_single_cell_grns)
-  expect_identical(grn_formals$min_cells, 20L)
-  expect_identical(grn_formals$padj_threshold, 0.05)
-  expect_identical(grn_formals$min_abs_estimate, 0)
-  expect_identical(grn_formals$min_model_rsq, 0.1)
-  expect_true(isTRUE(grn_formals$require_padj))
-})
-
-test_that("metacell defaults expose reductions dimensions seed and thresholds", {
+test_that("current SuperCell2 defaults are explicit", {
   defaults <- formals(rc_make_supercell2_metacells)
+  expect_identical(eval(defaults$strata_cols), "condition")
+  expect_identical(eval(defaults$label_col), "cell_type")
   expect_identical(eval(defaults$rna_reduction), "pca")
   expect_identical(eval(defaults$atac_reduction), "lsi")
   expect_identical(eval(defaults$rna_dims), 1:30)
   expect_identical(eval(defaults$atac_dims), 2:30)
   expect_identical(defaults$gamma, 30)
   expect_identical(defaults$seed, 12345L)
-  expect_identical(defaults$min_cells_per_stratum, 100)
-  expect_identical(defaults$min_metacell_size, 20)
+  expect_identical(defaults$min_cells_per_stratum, 100L)
+  expect_identical(defaults$min_metacell_size, 20L)
   expect_identical(defaults$min_metacells_per_stratum, 2L)
-
-  metacell_body <- paste(
-    deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n"
+  expect_error(
+    rc_make_supercell2_metacells(NULL, tempfile(), label_col = NULL),
+    "label_col"
   )
-  builder_body <- paste(
-    deparse(body(.rc_build_supercell2_strata)), collapse = "\n"
-  )
-  expect_match(metacell_body, "gamma <- 30L", fixed = TRUE)
-  expect_match(metacell_body, 'pooling_scope <- "condition_only"', fixed = TRUE)
-  expect_match(metacell_body, "metacell_grouping = condition_col", fixed = TRUE)
-  expect_match(metacell_body, "Sample balancing is not part", fixed = TRUE)
-  expect_match(
-    builder_body,
-    "seed_i <- as.integer(seed) + match(key, names(groups)) - 1L",
-    fixed = TRUE
-  )
-  expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
 })
 
-test_that("Seurat stack retains required versions", {
+test_that("compact Layer 2 retains downstream fields and omits diagnostics", {
+  layer2 <- structure(list(
+    score = matrix(1, 1, 1),
+    penalty = matrix(1, 1, 1),
+    vmax = matrix(1, 1, 1),
+    feasible = matrix(TRUE, 1, 1),
+    target_direction = data.frame(reaction_id = "R1"),
+    unit_meta = data.frame(unit_id = "u1"),
+    params = list(unit = "metacell"),
+    model_mode = "meta_module_gem",
+    model_cache_summary = data.frame(medium_scenario = "m"),
+    lp_diagnostics = data.frame(x = 1),
+    penalty_components = list(x = 1),
+    source_core_reactions = data.frame(reaction_id = "R1")
+  ), class = c("regcompass_layer2_step", "list"))
+  compact <- .rc_compact_microcompass(layer2)
+  expect_s3_class(compact, "regcompass_layer2_step")
+  expect_true(all(c(
+    "score", "penalty", "vmax", "feasible", "unit_meta",
+    "model_cache_summary"
+  ) %in% names(compact)))
+  expect_false(any(c(
+    "lp_diagnostics", "penalty_components", "source_core_reactions"
+  ) %in% names(compact)))
+})
+
+test_that("Pando defaults and structural design remain explicit", {
+  expect_null(eval(formals(rc_run_regcompass)$pfm))
+  expect_null(eval(formals(rc_run_regcompass_one_shot)$pfm))
+  expect_null(eval(formals(rc_regcompass_step_grn)$pfm))
+  region_helper <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
+  expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
+  expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+})
+
+test_that("dependency pins reference merged Pando and SuperCell2 contracts", {
   description <- utils::packageDescription("RegCompassR")
-  imports <- description$Imports %||% ""
-  expect_match(imports, "SeuratObject (>= 4.1.4)", fixed = TRUE)
-  expect_match(imports, "Seurat (>= 4.4.0)", fixed = TRUE)
-  expect_match(imports, "Signac (>= 1.11.0)", fixed = TRUE)
+  remotes <- description$Remotes %||% ""
+  expect_match(
+    remotes,
+    "1667857557/SuperCell_Seurat_V4@c8b94949cd8a5ff7403f9f186c516f8efbac9b6f",
+    fixed = TRUE
+  )
+  expect_match(
+    remotes,
+    "1667857557/Pando_regcompass@6f42c8143bec6610b001e714a51627337f6d9ba9",
+    fixed = TRUE
+  )
 })

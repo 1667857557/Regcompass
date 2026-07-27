@@ -64,7 +64,7 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
 
 test_that("Stage 1 installs species-specific Pando motifs and regions", {
   text <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)),
+    deparse(body(.rc_run_condition_single_cell_grns_legacy)),
     collapse = "\n"
   )
   motif_helper <- paste(
@@ -83,11 +83,13 @@ test_that("Stage 1 installs species-specific Pando motifs and regions", {
   expect_match(region_helper, "BiocGenerics::union", fixed = TRUE)
 })
 
-test_that("condition-pooled metacell is selected explicitly", {
+test_that("canonical scoring is metacell only", {
   expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
-  expect_identical(
-    eval(formals(rc_run_microcompass)$unit),
-    c("sample_celltype", "metacell")
+  expect_identical(eval(formals(rc_run_microcompass)$unit), "metacell")
+  expect_false("sample_col" %in% names(formals(rc_run_microcompass)))
+  expect_error(
+    rc_run_microcompass(NULL, NULL, unit = "sample_celltype"),
+    "historical sample-by-cell-type aggregation mode"
   )
   expect_identical(
     eval(formals(rc_run_regcompass_one_shot)$medium_scenario),

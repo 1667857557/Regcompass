@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 1.8.8
+Version: 1.8.9
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -15,10 +15,10 @@ Description: Builds one validated Pando structural TF-peak-target candidate
     constructs one shared union GEM and performs one global FASTCORE completion
     before directional COMPASS-like scoring. Integrated RNA and ATAC evidence is
     converted to reaction penalties while preserving the same stoichiometric
-    model across conditions. The canonical workflow is condition based and does
-    not require or interpret a biological-sample metadata column. Pinned human
-    and mouse GEMs are bundled for offline use, with platform-aware parallel
-    execution and audited progress and timing output.
+    model across conditions. The canonical workflow is condition based and uses
+    the current SuperCell2 strata-plus-label contract without a sample-column
+    argument. Final results retain primary analysis tables and compact Layer 2
+    scores, while detailed intermediate objects remain in stage checkpoints.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -54,17 +54,19 @@ Collate:
     'metacell_import.R'
     'metacell_peak_calling.R'
     'metacell.R'
-    'metacell_no_sample_contract.R'
+    'condition_metacell_cache.R'
+    'supercell2_current_contract.R'
+    'supercell2_label_contract.R'
     'microcompass.R'
     'union_gem_cache.R'
     'microcompass_engine.R'
+    'microcompass_no_sample_contract.R'
     'target_union.R'
     'target_union_anchors.R'
+    'target_union_no_sample_contract.R'
     'pando_evidence_utils.R'
     'pando_grn.R'
     'shared_tfidf.R'
-    'condition_pooling.R'
-    'condition_pooling_no_sample.R'
     'grn_inference.R'
     'pando_grn_group_contract.R'
     'multitask_grn.R'
@@ -88,6 +90,8 @@ Collate:
     'stage_parallel_lifecycle.R'
     'penalty.R'
     'reaction_roles.R'
+    'result_compaction.R'
+    'microcompass_result_compaction.R'
     'stepwise_workflow.R'
     'step_meta_modules.R'
     'step_layer1.R'
@@ -127,8 +131,8 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@supercell-2.0,
-    1667857557/Pando_regcompass@agent/audit-grn-design-contract
+    1667857557/SuperCell_Seurat_V4@c8b94949cd8a5ff7403f9f186c516f8efbac9b6f,
+    1667857557/Pando_regcompass@6f42c8143bec6610b001e714a51627337f6d9ba9
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5

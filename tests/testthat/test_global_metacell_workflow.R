@@ -1,4 +1,4 @@
-test_that("v1.8.8 public workflow is GRN first and condition only", {
+test_that("v1.8.9 public workflow is GRN first and condition only", {
   text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   stages <- c(
     "rc_regcompass_step_grn",
@@ -21,44 +21,47 @@ test_that("v1.8.8 public workflow is GRN first and condition only", {
   expect_identical(eval(formals(rc_run_regcompass)$fragment_files), FALSE)
   expect_true("meta_module_args" %in% names(formals(rc_run_regcompass)))
   expect_true("multitask_args" %in% names(formals(rc_run_regcompass)))
-  expect_identical(
-    eval(formals(rc_run_regcompass)$grn_mode),
-    c("multitask_shared_backbone", "legacy_condition_pando")
-  )
 })
 
-test_that("canonical Pando background is shared by cell type", {
-  text <- paste(
-    deparse(body(.rc_run_celltype_multitask_grns)),
-    collapse = "\n"
+test_that("canonical Pando core constructs one shared background per cell type", {
+  core_text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns_core)), collapse = "\n"
   )
-  expect_match(text, "celltypes <- sort(unique", fixed = TRUE)
-  expect_match(text, "Pando::prepare_grn_design", fixed = TRUE)
-  expect_match(text, ".rc_fit_multitask_celltype_grn", fixed = TRUE)
-  expect_match(text, "edge_universe_id", fixed = TRUE)
-  expect_match(text, "pando_grn_design_v2", fixed = TRUE)
+  wrapper_text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns)), collapse = "\n"
+  )
+  expect_match(core_text, "celltypes <- sort(unique", fixed = TRUE)
+  expect_match(core_text, "Pando::prepare_grn_design", fixed = TRUE)
+  expect_match(core_text, ".rc_fit_multitask_celltype_grn", fixed = TRUE)
+  expect_match(core_text, "edge_universe_id", fixed = TRUE)
+  expect_match(core_text, "pando_grn_design_v2", fixed = TRUE)
   expect_match(
-    text,
+    core_text,
     "Every cell-type multitask GRN must complete successfully",
     fixed = TRUE
   )
+  expect_match(wrapper_text, "bootstrap_stability_diagnostics.tsv.gz", fixed = TRUE)
+  expect_match(wrapper_text, "candidate_screen", fixed = TRUE)
 })
 
-test_that("legacy Pando grouping remains available explicitly", {
-  text <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)),
-    collapse = "\n"
+test_that("legacy Pando core remains available explicitly", {
+  core_text <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns_legacy)), collapse = "\n"
+  )
+  wrapper_text <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
   )
   expect_match(
-    text,
+    core_text,
     "group_cols <- c(condition_col, celltype_col)",
     fixed = TRUE
   )
   expect_match(
-    text,
+    core_text,
     "Every condition-by-cell-type Pando GRN must complete successfully",
     fixed = TRUE
   )
+  expect_match(wrapper_text, "group_status", fixed = TRUE)
 })
 
 test_that("Stage 3 uses active bootstrap targets rather than target projection", {
@@ -110,41 +113,39 @@ test_that("merged meta-modules contain biological reactions only", {
   )))
 })
 
-test_that("metacell construction is condition only and label guided", {
+test_that("metacell construction is condition-stratified and label exact", {
   text <- paste(
     deparse(body(.rc_make_condition_pooled_metacells)),
     collapse = "\n"
   )
-  expect_match(
-    text,
-    'object@meta.data[[internal_celltype_col]] <- "all_celltypes"',
-    fixed = TRUE
-  )
+  expect_match(text, "strata_cols = condition_col", fixed = TRUE)
+  expect_match(text, "label_col = celltype_col", fixed = TRUE)
   expect_match(text, 'pooling_scope <- "condition_only"', fixed = TRUE)
   expect_match(text, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(text, "metacell_args$gamma <- 30L", fixed = TRUE)
-  expect_match(text, "label_col = celltype_col", fixed = TRUE)
+  expect_match(text, "exact_label_preserving_membership", fixed = TRUE)
+  expect_false(grepl("internal_celltype_col", text, fixed = TRUE))
+  expect_false(grepl("condition_pool_id", text, fixed = TRUE))
   expect_false(grepl("sample_balance", text, fixed = TRUE))
-  expect_false(grepl("sample_weighting", text, fixed = TRUE))
 })
 
-test_that("canonical metacells automatically use cell type as the label", {
+test_that("canonical workflow fixes cell type as the SuperCell2 label", {
   step_formals <- formals(rc_regcompass_step_metacells)
   run_formals <- formals(rc_run_regcompass)
+  builder_formals <- formals(rc_make_supercell2_metacells)
 
   expect_false("label_col" %in% names(step_formals))
   expect_false("metacell_label_col" %in% names(run_formals))
   expect_false("sample_col" %in% names(step_formals))
   expect_false("sample_col" %in% names(run_formals))
+  expect_identical(eval(builder_formals$label_col), "cell_type")
 })
 
-test_that("dominant cell type is assigned after condition-only metacells", {
+test_that("cell-type membership audit detects mixed metacells", {
   skip_if_not_installed("SeuratObject")
   counts <- Matrix::Matrix(
     matrix(
-      1,
-      nrow = 1,
-      ncol = 6,
+      1, nrow = 1, ncol = 6,
       dimnames = list("g1", paste0("c", 1:6))
     ),
     sparse = TRUE
@@ -159,9 +160,7 @@ test_that("dominant cell type is assigned after condition-only metacells", {
     metacell_meta = data.frame(metacell_id = c("m1", "m2"))
   )
   out <- .rc_assign_metacell_dominant_celltype(
-    pooled,
-    object,
-    "cell_type"
+    pooled, object, "cell_type"
   )
   expect_identical(out$metacell_meta$cell_type, c("T", "B"))
   expect_equal(
@@ -169,17 +168,18 @@ test_that("dominant cell type is assigned after condition-only metacells", {
     c(2 / 3, 2 / 3)
   )
   expect_true(all(out$metacell_meta$mixed_celltype_metacell))
-  expect_false(any(out$metacell_meta$dominant_celltype_tied))
+  expect_true(any(out$celltype_composition_summary$n_celltypes > 1L))
 })
 
-test_that("condition metacells reject fragment pooling without maps", {
-  text <- paste(
-    deparse(body(.rc_make_condition_pooled_metacells)),
-    collapse = "\n"
+test_that("fragment inputs are keyed by current stratum identifiers", {
+  builder <- names(formals(rc_make_supercell2_metacells))
+  expect_true(all(c(
+    "fragment_files", "call_peaks_from_fragments", "macs2_path",
+    "peak_calling_effective_genome_size", "peak_calling_args"
+  ) %in% builder))
+  helper_text <- paste(
+    deparse(body(.rc_supercell2_fragment_files_for_stratum)), collapse = "\n"
   )
-  expect_match(
-    text,
-    "requires `fragment_files = FALSE`",
-    fixed = TRUE
-  )
+  expect_match(helper_text, "stratum_id", fixed = TRUE)
+  expect_false(grepl("sample_id", helper_text, fixed = TRUE))
 })

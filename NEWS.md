@@ -1,3 +1,14 @@
+# RegCompassR 1.8.9
+
+- Replaced the transitional SuperCell2 pool/sample adapter with the current `SCimplify_for_Seurat(label = ...)` contract. RegCompass now splits cells explicitly by `strata_cols`, uses condition as the canonical stratum, passes cell type through `label`, and validates label-pure membership.
+- Removed the artificial condition-pool metadata field and transitional `sample_col`/`pool_col` wrapper files from the package load path. The canonical and lower-level active SuperCell2 builders expose no sample-column argument.
+- Pinned the tested SuperCell2 label-support merge commit and the merged Pando 1.1.3 design-contract commit in `DESCRIPTION`.
+- Reworked Stage 6 into a compact final-result schema. Full GRN candidates/all coefficients, metacell assay objects, Layer 1 matrices, full module membership, and duplicate module objects remain in stage checkpoints instead of being duplicated in `regcompass_result.rds`.
+- Removed the exact duplicate `condition_summary` alias. `reaction_ranking` and `condition_contrast` now retain analysis fields only; reaction formulas, GPRs, database cross-references, and evidence provenance are stored once in `reaction_catalog` and `reaction_evidence`.
+- Added `table_manifest` and `stage_provenance` so every compact table and detailed checkpoint has an explicit role and source.
+- Rebuilt all five tutorials as a continuous workflow. Tutorial 5 now traces bootstrap-active regulatory edges through target genes, complete GPR cores, shared union-GEM scoring, direction-aware interpretation, metacell-level statistics, quality control, and compact evidence export.
+- Clarified that metacell P values are within-dataset association statistics, not biological-replicate treatment inference, and that forward/reverse LP targets are counterfactual support directions rather than net flux.
+
 # RegCompassR 1.8.8
 
 - Added the canonical `multitask_shared_backbone` GRN mode. Pando supplies one validated, condition-agnostic structural TF–peak–target candidate universe per cell type, and RegCompass jointly estimates a global backbone plus symmetric zero-sum condition deviations.

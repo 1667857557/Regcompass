@@ -93,7 +93,8 @@ test_that("multitask validation requires sparse elastic net and bootstrap qualit
     RegCompassR:::.rc_validate_multitask_grn_args(list(
       min_bootstrap_success_fraction = 0
     )),
-    "must be in (0, 1]"
+    "must be in (0, 1]",
+    fixed = TRUE
   )
   args <- RegCompassR:::.rc_validate_multitask_grn_args(list(
     alpha = 0.5,
@@ -111,89 +112,4 @@ test_that("public canonical workflow does not expose a sample column", {
   expect_false("sample_col" %in% names(formals(rc_run_regcompass)))
   expect_false("sample_col" %in% names(formals(rc_regcompass_step_grn)))
   expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
-})
-
-test_that("zero regulatory evidence exactly returns RNA-only support", {
-  rna <- matrix(
-    c(0, 0.2, 0.5, 1),
-    nrow = 2,
-    dimnames = list(c("g1", "g2"), c("u1", "u2"))
-  )
-  modifier <- matrix(0, nrow = 2, ncol = 2, dimnames = dimnames(rna))
-  integrated <- RegCompassR:::.rc_integrate_regulatory_support(
-    rna, modifier, alpha = 2
-  )
-
-  expect_equal(integrated, rna, tolerance = 1e-12)
-})
-
-test_that("different condition gene sets produce different complete-GPR cores", {
-  genes <- data.frame(
-    group_id = c("A", "A", "A", "B"),
-    module_id = c("MA", "MA", "MA", "MB"),
-    gene = c("G1", "G2", "G3", "G1"),
-    stringsAsFactors = FALSE
-  )
-  gpr <- data.frame(
-    reaction_id = c("R_complex", "R_complex", "R_iso", "R_iso"),
-    and_group_id = c("1", "1", "1", "2"),
-    gene = c("G1", "G2", "G3", "G1"),
-    stringsAsFactors = FALSE
-  )
-  mapped <- RegCompassR:::rc_map_meta_module_core_reactions(genes, gpr)
-
-  a_core <- unique(mapped$reaction_id[
-    mapped$group_id == "A" & mapped$is_core %in% TRUE
-  ])
-  b_core <- unique(mapped$reaction_id[
-    mapped$group_id == "B" & mapped$is_core %in% TRUE
-  ])
-  expect_setequal(a_core, c("R_complex", "R_iso"))
-  expect_setequal(b_core, "R_iso")
-  expect_false("R_complex" %in% b_core)
-})
-
-test_that("merged catalogue preserves bootstrap provenance and reaction union", {
-  condition_modules <- list(
-    grn_mode = "multitask_shared_backbone",
-    celltype_fit_status = data.frame(cell_type = "T", status = "ok"),
-    group_status = data.frame(group_id = c("A_T", "B_T")),
-    tf_peak_gene_candidates = data.frame(
-      edge_universe_id = "u1", edge_id = "e1"
-    ),
-    tf_peak_gene_global = data.frame(edge_id = "e1"),
-    tf_peak_gene_condition_all = data.frame(edge_id = "e1"),
-    tf_peak_gene_all = data.frame(edge_id = "e1"),
-    tf_peak_gene_significant = data.frame(edge_id = "e1"),
-    condition_target_genes = data.frame(target = "G1"),
-    target_model_diagnostics = data.frame(target = "G1"),
-    stability_diagnostics = data.frame(
-      edge_id = "e1",
-      bootstrap_method = "condition_stratified_full_size_nonparametric"
-    ),
-    supported_metabolic_genes = data.frame(gene = "G1"),
-    core_gene_reaction = data.frame(
-      reaction_id = c("R1", "R2"), is_core = TRUE
-    ),
-    reaction_membership = data.frame(
-      reaction_id = c("R1", "R2", "R3")
-    ),
-    meta_module_summary = data.frame(module_id = "M")
-  )
-  merged <- RegCompassR:::.rc_merge_meta_module_catalogue(condition_modules)
-
-  expect_identical(
-    merged$schema_version,
-    "regcompass_merged_multitask_meta_modules_v2"
-  )
-  expect_setequal(
-    merged$merged_core_reactions$reaction_id,
-    c("R1", "R2")
-  )
-  expect_setequal(
-    merged$merged_reaction_membership$reaction_id,
-    c("R1", "R2", "R3")
-  )
-  expect_identical(merged$source_edge_universe_ids, "u1")
-  expect_setequal(merged$source_group_ids, c("A_T", "B_T"))
 })

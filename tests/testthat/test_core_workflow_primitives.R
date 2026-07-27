@@ -26,7 +26,7 @@ test_that("LP backend preserves ranged constraints", {
 
 test_that("partial GPR matches remain candidates but not hard core", {
   nodes <- data.frame(
-    sample_id = "S1",
+    group_id = "S1",
     module_id = "M1",
     gene = c("G1", "G3")
   )
@@ -42,6 +42,7 @@ test_that("partial GPR matches remain candidates but not hard core", {
   expect_true(unique(mapped$is_partial_candidate[mapped$reaction_id == "R1"]))
   expect_true(unique(mapped$is_core[mapped$reaction_id == "R2"]))
   expect_true(all(c(
-    "required_genes", "matched_genes", "missing_genes", "group_complete"
+    "required_genes", "matched_genes", "missing_genes", "group_complete",
+    "reaction_is_core"
   ) %in% colnames(mapped)))
 })

@@ -1,8 +1,23 @@
-# Tutorial Level 2: stepwise run and audit
+# Tutorial Level 2: stepwise run and scientific audit
 
-Run each RegCompassR 1.8.8 stage independently when intermediate objects, tables, or restart points must be inspected.
+**Previous:** [Tutorial 1 — minimal one-shot run](tutorial-01-quick-start.md).
 
-## Parallel backends
+**This tutorial:** reproduces the same RegCompassR 1.8.9 workflow as six explicit stages. Use it when intermediate tables, mathematical invariants, or restart points must be inspected.
+
+**Next:** [Tutorial 3 — restart and sensitivity](tutorial-03-advanced-restart.md) reuses these stage objects. [Tutorial 5](tutorial-05-condition-differential-analysis.md) connects the final tables back to Stage 1–5 evidence.
+
+Use stable object names throughout:
+
+```text
+step1 = GRN
+step2 = metacells
+step3 = meta-modules
+step4 = Layer 1 evidence
+step5 = Layer 2 shared-model scoring
+result = compact Stage 6 output
+```
+
+## 1. Parallel backends
 
 ```r
 library(BiocParallel)
@@ -20,9 +35,9 @@ layer2_bp <- if (.Platform$OS.type == "windows") {
 }
 ```
 
-Stage 1 parallelises cell types; each target-level `glmnet` fit remains single-threaded. Stage 4 reuses `upstream_bp`; Stage 5 uses `layer2_bp`.
+Stage 1 parallelises cell types; target-level `glmnet` fits remain single-threaded. Stage 4 can reuse `upstream_bp`; Stage 5 uses `layer2_bp`.
 
-## Stage 1: shared GRN background and condition sub-GRNs
+## 2. Stage 1 — shared structural GRN and condition sub-GRNs
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -52,6 +67,7 @@ step1 <- rc_regcompass_step_grn(
     n_bootstrap = 100,
     min_selection_frequency = 0.7,
     min_sign_stability = 0.8,
+    min_bootstrap_success_fraction = 0.8,
     candidate_screen_threshold = 0,
     max_edges_per_target = Inf,
     seed = 12345L
@@ -61,9 +77,7 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-The canonical Stage 1 API accepts no biological-sample column. It centres target expression and TF-by-ATAC predictors within condition only.
-
-Inspect the Stage 1 contract:
+Detailed Stage 1 tables:
 
 ```r
 step1$grn_result$celltype_fit_status
@@ -77,43 +91,45 @@ step1$grn_result$target_model_diagnostics
 step1$grn_result$stability_diagnostics
 ```
 
-For a given cell type, every condition has the same `edge_universe_id`. The coefficient fields satisfy:
+For each cell type, every condition must use the same `edge_universe_id`. The fitted fields satisfy:
 
 ```text
 effective_estimate = global_estimate + condition_deviation
-estimate = effective_estimate × selection_frequency × sign_stability
+stable_estimate = effective_estimate × selection_frequency × sign_stability
 ```
 
-The sum of `condition_deviation` over all conditions is zero for each edge. `padj` is `NA` in multitask mode because bootstrap stability, rather than a classical coefficient test, defines active edges.
+and for every edge:
 
-The bootstrap contract is:
+\[
+\sum_c\delta_{e,c}=0.
+\]
+
+The bootstrap is full-size and condition stratified:
 
 ```text
-for every bootstrap b and condition c:
-  sample n_c cells from condition c with replacement
-  re-centre y and every TF×ATAC predictor inside the bootstrap condition
-  divide by the full-data shared edge scale
+for each bootstrap and each condition:
+  sample n_c cells with replacement
+  recalculate condition centres
+  apply the shared edge scale
   fit at the full-data selected lambda
 ```
 
-Stage 1 writes:
+Check completion before interpreting stability:
 
-```text
-pando_celltype_status.tsv.gz
-pando_group_status.tsv.gz
-pando_tf_peak_gene_candidates.tsv.gz
-pando_tf_peak_gene_global.tsv.gz
-pando_tf_peak_gene_condition_all.tsv.gz
-pando_tf_peak_gene_significant.tsv.gz
-condition_target_genes.tsv.gz
-target_model_diagnostics.tsv.gz
-bootstrap_stability_diagnostics.tsv.gz
-pando_designs/
-pando_objects/
-step_grn.rds
+```r
+with(
+  step1$grn_result$target_model_diagnostics,
+  summary(n_bootstrap_success / n_bootstrap_requested)
+)
 ```
 
-## Stage 2: construct condition-only metacells
+Stage 1 checkpoint:
+
+```text
+RegCompass_steps/01_grn/step_grn.rds
+```
+
+## 3. Stage 2 — condition strata plus exact SuperCell2 cell-type labels
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -135,14 +151,42 @@ step2 <- rc_regcompass_step_metacells(
     overwrite = FALSE
   )
 )
-
-step2$pooled$metacell_meta
-step2$pooled$cache_contract$analysis_args
 ```
 
-Condition is the only hard pooling stratum. Cell type is supplied as the SuperCell2 label and audited after aggregation. No sample column, sample balancing, sample composition, or sample-level inference is part of the canonical Stage 2 contract.
+The current contract is:
 
-## Stage 3: condition-specific complete-GPR cores
+```text
+RegCompass strata_cols = condition_col
+SuperCell2 label = celltype_col
+```
+
+There is no `sample_col`, artificial condition-pool column, sample balancing, or sample-level grouping.
+
+```r
+formals(rc_make_supercell2_metacells)
+step2$pooled$strata_cols
+step2$pooled$label_col
+step2$pooled$metacell_meta
+step2$pooled$celltype_composition_summary
+```
+
+Every metacell must be label pure:
+
+```r
+stopifnot(
+  all(step2$pooled$celltype_composition_summary$n_celltypes == 1L),
+  !any(step2$pooled$celltype_composition_summary$mixed_celltype_metacell)
+)
+```
+
+Stage 2 checkpoint:
+
+```text
+RegCompass_steps/02_metacells/step_metacells.rds
+RegCompass_steps/02_metacells/merged_metacell_object.rds
+```
+
+## 4. Stage 3 — condition-specific complete-GPR cores
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -156,16 +200,22 @@ step3 <- rc_regcompass_step_meta_modules(
 For each `condition × cell type` `group_id`:
 
 ```text
-bootstrap-active TF–peak–metabolic-gene edges
-→ unique regulated metabolic target genes
-→ complete-GPR core reactions
-→ core-reaction subsystems
+bootstrap-active edges
+→ regulated metabolic targets
+→ complete GPR branches
+→ core reactions
+→ core subsystems
 → direct KEGG/Reactome equivalents
 → direct master-Rhea equivalents
-→ biological condition meta-module
+→ biological meta-module
 ```
 
-A reaction is core only when at least one complete GPR AND branch is present. Partial complexes remain diagnostic and cannot anchor expansion.
+A reaction is a core when at least one branch is complete. The branch table distinguishes:
+
+```text
+reaction_is_core = any complete branch exists
+is_core/group_complete = this branch is complete
+```
 
 ```r
 step3$condition_modules$supported_metabolic_genes
@@ -173,13 +223,17 @@ step3$condition_modules$core_gene_reaction
 step3$condition_modules$reaction_membership
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
-step3$merged_modules$source_edge_universe_ids
-step3$merged_modules$source_group_ids
 ```
 
-The merged output is a reaction catalogue, not a GEM.
+The merged output is a biological reaction catalogue, not yet a GEM.
 
-## Stage 4: RNA+ATAC reaction support
+Stage 3 checkpoint:
+
+```text
+RegCompass_steps/03_meta_modules/step_meta_modules.rds
+```
+
+## 5. Stage 4 — RNA support, ATAC modifier, and GPR aggregation
 
 ```r
 step4 <- rc_regcompass_step_layer1(
@@ -194,8 +248,6 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
-Inspect:
-
 ```r
 step4$gene_support_rna
 step4$gene_regulatory_modifier
@@ -204,11 +256,22 @@ step4$reaction_expression
 step4$gpr_diagnostics
 ```
 
-The regulatory modifier uses only metacell ATAC during projection. TFs sharing the same measured peak are signed-summed, and one target denominator is shared across conditions. A gene without an active condition edge has modifier zero and exact RNA-only support.
+TFs sharing one measured peak are signed-summed before ATAC projection. The denominator is shared across conditions for each target. When no active edge exists, the modifier is zero and multiome support equals RNA support exactly.
 
-`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"`; the canonical default is `"min"`. Isozyme OR branches remain additive.
+The canonical GPR rule is:
 
-## Stage 5: shared medium-specific union GEM and LP scoring
+```text
+AND = min
+OR = additive isozyme support
+```
+
+Stage 4 checkpoint:
+
+```text
+RegCompass_steps/04_layer1/step_layer1.rds
+```
+
+## 6. Stage 5 — one shared union GEM per medium
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -233,7 +296,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-For each medium, Stage 5 performs the only FASTCORE completion and saves one union GEM. All conditions and metacells reuse the exact same reaction IDs, stoichiometric matrix, and bounds.
+Stage 5 performs the only FASTCORE completion. Within each medium, all conditions and metacells reuse identical reaction IDs, `S`, `lb`, and `ub`.
 
 ```r
 step5$model_cache_summary
@@ -242,9 +305,15 @@ step5$source_merged_reaction_membership
 step5$union_gem_policy
 ```
 
-`completion_time_limit` limits union-GEM construction only; scoring LPs do not accept a time-limit parameter.
+`completion_time_limit` applies only to union-GEM construction, not to directional scoring LPs.
 
-## Stage 6: assemble results
+Stage 5 checkpoint:
+
+```text
+RegCompass_steps/05_layer2/step_layer2.rds
+```
+
+## 7. Stage 6 — assemble a compact final result
 
 ```r
 result <- rc_regcompass_step_results(
@@ -260,15 +329,29 @@ result <- rc_regcompass_step_results(
 ```
 
 ```r
-result$schema_version
-result$version
-result$grn_mode
+result$table_manifest
 result$reaction_ranking
 result$condition_contrast
+result$active_regulatory_edges
+result$condition_target_genes
+result$core_reactions
 result$reaction_catalog
 result$reaction_evidence
 ```
 
-Each public stage writes a restart object and validates the GEM fingerprint, metadata/assay signature, metacell order, and upstream class before continuing.
+The final object does not duplicate the full Stage 1–4 objects:
 
-See [multitask GRN mathematics and object contracts](multitask-shared-grn.md).
+```r
+result$stage_provenance$detailed_intermediates_embedded
+result$stage_provenance$detailed_sources
+```
+
+Use `result` for ranking, condition analysis, selection, and plotting. Use `step1`–`step5` when auditing all candidates, all coefficients, matrices, or complete membership tables.
+
+## 8. Handoff to later tutorials
+
+For sensitivity or restart, continue to [Tutorial 3](tutorial-03-advanced-restart.md) with `step1`–`step5`.
+
+For direct database-equivalent non-core targets, continue to [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) with `step3`, `step4`, and `step5`.
+
+For biological interpretation and condition comparison, continue to [Tutorial 5](tutorial-05-condition-differential-analysis.md) with `result` and optionally the stage objects.
