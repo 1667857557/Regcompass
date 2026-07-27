@@ -1,10 +1,10 @@
 test_that("GRN-first defaults are encoded in canonical functions", {
   expect_true(exists("rc_regcompass_step_grn", mode = "function"))
-  grn_formals <- paste(
-    deparse(formals(.rc_run_condition_single_cell_grns)$pando_infer_args),
+  legacy_formals <- paste(
+    deparse(formals(.rc_run_condition_single_cell_grns_legacy)$pando_infer_args),
     collapse = " "
   )
-  expect_match(grn_formals, "peak_cor = 0.01", fixed = TRUE)
+  expect_match(legacy_formals, "peak_cor = 0.01", fixed = TRUE)
   expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
 })
 
