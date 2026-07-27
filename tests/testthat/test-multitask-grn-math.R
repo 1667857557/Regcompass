@@ -1,32 +1,45 @@
-test_that("symmetric condition coding has a zero-sum deviation basis", {
-  contrast <- RegCompassR:::.rc_multitask_contrast(
-    c("treated", "control", "treated", "other")
+test_that("condition-theta design creates one sparse block per condition", {
+  x <- cbind(E1 = c(1, 2, 3, 4), E2 = c(5, 6, 7, 8))
+  condition <- c("B", "A", "B", "A")
+  design <- RegCompassR:::.rc_condition_theta_design_matrix(
+    x,
+    condition,
+    condition_levels = c("A", "B")
   )
 
-  expect_equal(rownames(contrast), c("control", "other", "treated"))
-  expect_equal(rowSums(contrast), rep(0, 3), tolerance = 1e-12)
-  expect_equal(colSums(contrast), rep(0, 3), tolerance = 1e-12)
-  expect_equal(unname(contrast), diag(3) - matrix(1 / 3, 3, 3))
+  expect_identical(
+    colnames(design),
+    c("A::E1", "A::E2", "B::E1", "B::E2")
+  )
+  expect_equal(design[condition == "A", 1:2, drop = FALSE],
+               x[condition == "A", , drop = FALSE])
+  expect_equal(design[condition == "A", 3:4, drop = FALSE],
+               matrix(0, nrow = 2, ncol = 2))
+  expect_equal(design[condition == "B", 1:2, drop = FALSE],
+               matrix(0, nrow = 2, ncol = 2))
+  expect_equal(design[condition == "B", 3:4, drop = FALSE],
+               x[condition == "B", , drop = FALSE])
 })
 
-test_that("decoded condition deviations sum to zero and preserve global mean", {
-  condition <- c("A", "B", "C")
-  contrast <- RegCompassR:::.rc_multitask_contrast(condition)
-  beta <- c(0.5, -0.25)
-  gamma <- matrix(
-    c(1, 2, -1, 0.5, 0.2, -0.4),
-    nrow = 2,
-    ncol = 3
-  )
-  decoded <- RegCompassR:::.rc_decode_multitask_coefficients(
-    c(beta, as.numeric(gamma)),
+test_that("direct theta decoding derives zero-sum deviations", {
+  decoded <- RegCompassR:::.rc_decode_condition_theta(
+    coefficient = c(
+      0.8, 0,
+      0.2, -0.6,
+      -0.1, 0.3
+    ),
     n_edges = 2,
-    contrast = contrast
+    condition_levels = c("A", "B", "C"),
+    edge_ids = c("E1", "E2")
   )
 
-  expect_equal(colSums(decoded$delta), c(0, 0), tolerance = 1e-12)
-  expect_equal(colMeans(decoded$theta), beta, tolerance = 1e-12)
-  expect_equal(decoded$theta, sweep(decoded$delta, 2, beta, "+"))
+  expect_equal(decoded$theta["A", ], c(E1 = 0.8, E2 = 0))
+  expect_equal(decoded$beta, colMeans(decoded$theta))
+  expect_equal(colSums(decoded$delta), c(E1 = 0, E2 = 0),
+               tolerance = 1e-12)
+  expect_equal(decoded$theta,
+               sweep(decoded$delta, 2L, decoded$beta, "+"))
+  expect_identical(decoded$theta["A", "E2"], 0)
 })
 
 test_that("condition balancing gives every condition equal total loss weight", {
