@@ -5,20 +5,22 @@ Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut",
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Builds one validated Pando structural TF-peak-target candidate
-    universe per cell type and jointly estimates a shared regulatory backbone
-    plus condition-specific deviations for Human-GEM or Mouse-GEM GPR target
-    genes in paired single-cell RNA and ATAC data. Full-size condition-stratified
-    nonparametric bootstrap fits identify stable condition sub-GRNs, which define
-    condition-specific metabolic target genes and complete-GPR core reactions.
-    Biological meta-modules are deduplicated into one merged reaction catalogue
-    without local FASTCORE completion. For each medium scenario, the package
-    constructs one shared union GEM and performs one global FASTCORE completion
-    before directional COMPASS-like scoring. Integrated RNA and ATAC evidence is
-    converted to reaction penalties while preserving the same stoichiometric
-    model across conditions. The canonical workflow is condition based and uses
-    the current SuperCell2 strata-plus-label contract without a sample-column
-    argument. Final results retain primary analysis tables and compact Layer 2
-    scores, while detailed intermediate objects remain in stage checkpoints.
+    universe per cell type and jointly estimates condition-specific sparse
+    regulatory coefficients for Human-GEM or Mouse-GEM GPR target genes in
+    paired single-cell RNA and ATAC data. A shared backbone is derived as the
+    cross-condition coefficient mean, with zero-sum condition deviations.
+    Full-size condition-stratified nonparametric bootstrap fits identify stable
+    condition sub-GRNs, which define condition-specific metabolic target genes
+    and complete-GPR core reactions. Biological meta-modules are deduplicated
+    into one merged reaction catalogue without local FASTCORE completion. For
+    each medium scenario, the package constructs one shared union GEM and
+    performs one global FASTCORE completion before directional COMPASS-like
+    scoring. Integrated RNA and ATAC evidence is converted to reaction penalties
+    while preserving the same stoichiometric model across conditions. The
+    canonical workflow is condition based and uses the current SuperCell2
+    strata-plus-label contract without a sample-column argument. Final results
+    retain primary analysis tables and compact Layer 2 scores, while detailed
+    intermediate objects remain in stage checkpoints.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -71,10 +73,7 @@ Collate:
     'grn_inference.R'
     'pando_grn_group_contract.R'
     'multitask_grn.R'
-    'multitask_grn_bootstrap_contract.R'
     'multitask_grn_cv_contract.R'
-    'multitask_grn_order_contract.R'
-    'multitask_grn_active_contract.R'
     'multitask_grn_inference.R'
     'multitask_grn_parameter_policy.R'
     'pando_argument_boundary_contract.R'
@@ -120,27 +119,7 @@ Suggests:
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
-    SuperCell,
-    yaml,
-    future,
-    ggplot2,
-    igraph,
-    slam,
-    gurobi,
-    Rglpk,
     knitr,
     rmarkdown,
-    roxygen2,
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
-Remotes:
-    1667857557/SuperCell_Seurat_V4@c8b94949cd8a5ff7403f9f186c516f8efbac9b6f,
-    1667857557/Pando_regcompass@6f42c8143bec6610b001e714a51627337f6d9ba9
-Config/roxygen2/version: 8.0.0
-Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
-Config/RegCompassR/SupportedSeuratMajors: 4,5
-Config/RegCompassR/SupportedSignacMajor: 1
-Config/RegCompassR/SeuratObjectVersion: 4.1.4
-Config/RegCompassR/SeuratVersion: 4.4.0
-Config/RegCompassR/SignacVersion: 1.11.0
-Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
