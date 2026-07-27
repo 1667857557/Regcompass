@@ -51,10 +51,13 @@ test_that("condition balancing gives every condition equal total loss weight", {
   expect_equal(mean(weight), 1, tolerance = 1e-12)
 })
 
-test_that("bootstrap resamples full condition sizes with replacement", {
+test_that("fallback bootstrap resamples full condition sizes by cell", {
   condition <- c(rep("A", 8), rep("B", 11), rep("C", 6))
   set.seed(17)
-  index <- RegCompassR:::.rc_condition_stratified_bootstrap_indices(condition)
+  index <- RegCompassR:::.rc_condition_stratified_bootstrap_indices(
+    condition,
+    sample = NULL
+  )
 
   expect_length(index, length(condition))
   expect_equal(
@@ -67,6 +70,57 @@ test_that("bootstrap resamples full condition sizes with replacement", {
     logical(1)
   )
   expect_true(any(duplicate_within_condition))
+})
+
+test_that("sample bootstrap resamples whole donor clusters within condition", {
+  condition <- c(rep("A", 6), rep("B", 7))
+  sample <- c(
+    rep("A1", 2), rep("A2", 1), rep("A3", 3),
+    rep("B1", 2), rep("B2", 4), rep("B3", 1)
+  )
+  set.seed(31)
+  index <- RegCompassR:::.rc_sample_cluster_bootstrap_indices(condition, sample)
+
+  expect_setequal(unique(condition[index]), c("A", "B"))
+  for (sample_id in unique(sample)) {
+    cells <- which(sample == sample_id)
+    multiplicity <- vapply(cells, function(cell) {
+      sum(index == cell)
+    }, integer(1))
+    expect_equal(length(unique(multiplicity)), 1L)
+  }
+  for (level in unique(condition)) {
+    sample_ids <- unique(sample[condition == level])
+    multiplicity <- vapply(sample_ids, function(sample_id) {
+      first_cell <- which(sample == sample_id & condition == level)[[1L]]
+      sum(index == first_cell)
+    }, integer(1))
+    expect_equal(sum(multiplicity), length(sample_ids))
+  }
+})
+
+test_that("sample bootstrap resolution warns only when it degrades", {
+  meta <- data.frame(
+    condition = rep(c("A", "B"), each = 4),
+    donor = rep(c("d1", "d2", "d3", "d4"), each = 2),
+    stringsAsFactors = FALSE
+  )
+  resolved <- expect_silent(
+    RegCompassR:::.rc_resolve_bootstrap_sample(
+      meta, sample_col = "donor", condition_col = "condition"
+    )
+  )
+  expect_identical(resolved$resampling_unit, "sample")
+  expect_identical(resolved$sample_col, "donor")
+
+  fallback <- expect_warning(
+    RegCompassR:::.rc_resolve_bootstrap_sample(
+      meta, sample_col = "missing", condition_col = "condition"
+    ),
+    "metadata column `missing` does not exist"
+  )
+  expect_identical(fallback$resampling_unit, "cell")
+  expect_match(fallback$fallback_reason, "does not exist", fixed = TRUE)
 })
 
 test_that("bootstrap data are re-centred within each condition", {
@@ -121,8 +175,9 @@ test_that("multitask validation requires sparse elastic net and bootstrap qualit
   expect_false("stability_fraction" %in% names(args))
 })
 
-test_that("public canonical workflow does not expose a sample column", {
-  expect_false("sample_col" %in% names(formals(rc_run_regcompass)))
-  expect_false("sample_col" %in% names(formals(rc_regcompass_step_grn)))
+test_that("public canonical workflow exposes sample bootstrap only in Stage 1", {
+  expect_true("sample_col" %in% names(formals(rc_run_regcompass)))
+  expect_true("sample_col" %in% names(formals(rc_run_regcompass_one_shot)))
+  expect_true("sample_col" %in% names(formals(rc_regcompass_step_grn)))
   expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
 })
