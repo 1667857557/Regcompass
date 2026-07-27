@@ -5,7 +5,7 @@ This document is the canonical parameter contract for `grn_mode = "multitask_sha
 ## Design invariants
 
 1. Every condition of one cell type uses the same structural Pando candidate dictionary.
-2. Candidate removal before fitting cannot use full-data target correlation, fitted effect size, or P values.
+2. Candidate removal before fitting cannot use full-data target correlation, fitted effect size or P values.
 3. Condition coefficients are estimated on one shared edge scale.
 4. Elastic-net sparsity acts directly on the condition coefficient \(\theta_{e,c}\), permitting exact condition-specific zeros.
 5. The reported global backbone is a derived cross-condition mean, not a separately penalised latent coefficient.
@@ -24,12 +24,12 @@ This document is the canonical parameter contract for `grn_mode = "multitask_sha
 | `downstream` | `0` | Basal regulatory domain downstream of the gene/TSS anchor. |
 | `extend` | `1000000` | Maximum GREAT domain extension. |
 | `only_tss` | `FALSE` | Use the annotated gene body rather than TSS-only anchoring. |
-| `min_tf_detection` | `0` | Preserve condition-restricted TFs in pooled preprocessing. |
-| `min_peak_detection` | `0` | Preserve condition-restricted peaks in pooled preprocessing. |
-| `min_target_detection` | `0` | Preserve condition-restricted targets in pooled preprocessing. |
+| `min_tf_detection` | `0` | Do not remove condition-restricted TFs in pooled Pando preprocessing. |
+| `min_peak_detection` | `0` | Do not remove condition-restricted peaks in pooled Pando preprocessing. |
+| `min_target_detection` | `0` | Do not remove condition-restricted targets in pooled Pando preprocessing. |
 | `max_edges_per_target` | `Inf` | Preserve the complete structural candidate set. |
 
-`GREAT` is canonical because it allows distal structural hypotheses while keeping candidate construction independent of target-expression correlation and fitted effects. The condition-aware observability filter and direct-theta regularisation must remain enabled. `Signac` remains an explicit sensitivity option.
+`GREAT` is the canonical structural rule because it allows distal regulatory coverage while keeping candidate construction independent of target-expression correlation, fitted coefficients and condition effects. With `extend = 1000000`, it deliberately creates a broad hypothesis space; the condition-aware observability filter and direct-theta regularisation must therefore remain enabled. `Signac` remains an explicit sensitivity option, but is no longer the default.
 
 ### Multitask model
 
@@ -44,7 +44,7 @@ This document is the canonical parameter contract for `grn_mode = "multitask_sha
 | `min_selection_frequency` | `0.7` | Minimum direct-theta bootstrap selection frequency. |
 | `min_sign_stability` | `0.8` | Minimum conditional sign stability. |
 | `min_bootstrap_success_fraction` | `0.8` | Minimum completed bootstrap fraction. |
-| `min_cv_rsq` | `0` | User floor; activation still requires positive OOF R-squared. |
+| `min_cv_rsq` | `0` | User floor; activation still requires strictly positive out-of-fold R-squared. |
 | `candidate_screen_threshold` | `0` | Full-data outcome screening is disabled. |
 | `max_edges_per_target` | `Inf` | No deterministic top-K truncation. |
 | `min_detected_cells_per_condition` | `10` | Absolute observability floor. |
@@ -54,7 +54,7 @@ This document is the canonical parameter contract for `grn_mode = "multitask_sha
 
 | Argument | Default | Role |
 |---|---:|---|
-| `sample_col` | `NULL` | Biological sample/donor column for Stage 1 cluster bootstrap. |
+| `sample_col` | `NULL` | Biological sample/donor column for Stage 1 condition-stratified cluster bootstrap. |
 
 A valid `sample_col` activates sample-cluster bootstrap. `sample_col = NULL` or a named column that does not exist prints a warning with the exact reason and falls back to condition-stratified cell resampling. An existing sample column with missing or empty IDs is rejected. Fewer than two samples in a condition produces a low-replication warning but does not silently switch resampling units.
 
@@ -66,7 +66,7 @@ Pando returns
 
 \[
 \mathcal U_m^{struct}
-=\{e=(t,p,g):\text{motif and GREAT domains support }e\}
+=\{e=(t,p,g):\text{motif and GREAT peak-to-gene domains support }e\}
 \]
 
 for cell type \(m\), using all conditions together.
@@ -75,6 +75,19 @@ For condition \(c\), define
 
 \[
 m_c=\min\left(n_c,\max\left(10,\lceil0.01n_c\rceil\right)\right).
+\]
+
+For edge \(e=(t,p,g)\), let
+
+\[
+N^{TF\times peak}_{e,c}
+=\sum_{u\in c}I(T_{t,u}>0\land A_{p,u}>0)
+\]
+
+and
+
+\[
+N^{target}_{e,c}=\sum_{u\in c}I(Y_{g,u}>0).
 \]
 
 The shared model universe is
@@ -96,7 +109,7 @@ For predictor
 x_{e,u}=T_{t,u}A_{p,u},
 \]
 
-target and predictors are centred within condition and predictors are divided by one edge scale shared across conditions:
+target and predictors are centred within condition and predictors are divided by one edge scale shared across conditions. The design contains one coefficient for every edge-condition pair:
 
 \[
 y_u^\circ=\sum_e\widetilde x_{e,u}\theta_{e,c(u)}+\varepsilon_u.
@@ -110,13 +123,24 @@ The weighted elastic-net objective is
 &\frac12\sum_u w_u
 \left(y_u^\circ-\sum_e\widetilde x_{e,u}\theta_{e,c(u)}\right)^2\\
 &+\lambda\alpha p_\theta\sum_{e,c}|\theta_{e,c}|\\
-&+\frac{\lambda(1-\alpha)p_\theta}{2}\sum_{e,c}\theta_{e,c}^2,
+&+\frac{\lambda(1-\alpha)p_\theta}{2}
+\sum_{e,c}\theta_{e,c}^2,
 \end{aligned}
 \]
 
-where \(w_u\propto1/n_{c(u)}\).
+where
 
-The reported summaries are
+\[
+w_u\propto\frac1{n_{c(u)}}.
+\]
+
+Because the L1 penalty is applied directly to \(\theta_{e,c}\), the solution can naturally contain
+
+\[
+\theta_{e,A}\ne0,\qquad\theta_{e,B}=0.
+\]
+
+The reported backbone and deviations are derived:
 
 \[
 \beta_e=\frac1C\sum_c\theta_{e,c},
@@ -126,33 +150,44 @@ The reported summaries are
 \sum_c\delta_{e,c}=0.
 \]
 
-`global_penalty_factor` and `deviation_penalty_factor` refer to the same \(p_\theta\) and must be equal.
+This replaces the former parameterisation that penalised \((\beta,\gamma)\) and only indirectly produced sparse condition topology.
+
+## Penalty aliases
+
+For compatibility, `global_penalty_factor` and `deviation_penalty_factor` remain accepted. They refer to the same \(p_\theta\) and therefore must be equal. A configuration such as
+
+```r
+global_penalty_factor = 1
+deviation_penalty_factor = 2
+```
+
+is rejected because the direct-theta model has no separate deviation-coordinate penalty. A stronger conserved-backbone prior would require a distinct fused or grouped multitask penalty and is not silently approximated.
 
 ## Cross-validation
 
 Five folds are assigned separately within every condition. For each fold:
 
-1. target and predictor condition means are estimated on training cells;
+1. condition means for target and predictors are estimated on training cells;
 2. training means are applied to validation cells;
 3. predictor scales are estimated on training cells;
 4. training scales are applied to validation cells;
 5. every lambda is evaluated on validation residuals.
 
-The selected lambda uses the one-standard-error rule. Active edges require strictly positive joint target-model out-of-fold \(R^2\). Cross-validation remains cell-level and is not a biological-replicate significance test.
+The selected lambda uses the one-standard-error rule. Active edges require strictly positive joint target-model out-of-fold \(R^2\). This is an internal predictive reliability statistic, not a biological-replicate significance test. Cross-validation remains cell-level even when bootstrap uses donor/sample clusters.
 
 ## Bootstrap reproducibility
 
-For condition \(c\), let \(D_c\) denote its observed sample IDs.
+For condition \(c\), let \(D_c\) denote its observed sample/donor IDs.
 
 ### Sample-cluster mode
 
-A replicate draws \(|D_c|\) sample IDs with replacement from \(D_c\). Every selected sample contributes all cells belonging to that sample and condition. Donor cluster sizes are preserved, so replicate cell counts may vary.
+A bootstrap replicate draws \(|D_c|\) sample IDs with replacement from \(D_c\). Every occurrence of a selected sample contributes all cells belonging to that sample and condition. Donor cluster sizes are preserved, so replicate cell counts may vary.
 
 ### Cell fallback mode
 
-A replicate draws \(n_c\) cells with replacement from condition \(c\). This is used only when `sample_col` is not supplied or the named column does not exist, and the fallback reason is printed and recorded.
+When `sample_col` is omitted or the named metadata column does not exist, RegCompass prints the exact fallback reason and draws \(n_c\) cells with replacement from condition \(c\). An existing column with missing or empty sample IDs is an error.
 
-Both modes re-centre the resampled matrices and refit at the selected lambda. Selection frequency is
+Both modes re-centre the resampled matrices and refit at the selected lambda. Selection frequency is based on direct condition coefficients:
 
 \[
 \widehat\Pi_{e,c}
@@ -163,7 +198,8 @@ I(|\widehat\theta^{(b)}_{e,c}|>\varepsilon).
 Conditional sign stability is
 
 \[
-\rho_{e,c}=\left|
+\rho_{e,c}=
+\left|
 \frac{\sum_bI^{(b)}_{e,c}\operatorname{sign}(\widehat\theta^{(b)}_{e,c})}
 {\sum_bI^{(b)}_{e,c}}
 \right|.
@@ -176,7 +212,7 @@ The reliability-weighted estimate is
 =\widehat\theta_{e,c}\widehat\Pi_{e,c}\rho_{e,c}.
 \]
 
-Sample-cluster bootstrap measures reproducibility across observed sample clusters, not a treatment effect. Cell fallback measures cell-resampling reproducibility only. Neither substitutes for donor-level differential inference.
+Sample-cluster bootstrap estimates reproducibility across the observed biological sample clusters. It does not provide a donor-level treatment-effect estimate or formal half-sample stability-selection error control. Cell fallback estimates cell-resampling reproducibility only.
 
 ## Active-edge rule
 
@@ -195,9 +231,9 @@ An edge is active only when all conditions hold:
 
 `padj` remains `NA` because this is bootstrap stability selection rather than a classical per-edge hypothesis test.
 
-## Auditable output fields
+## Output and timing contract
 
-Stage 1 reports:
+Stage 1 coefficient, stability, cell-type status, and condition-by-cell-type status outputs retain:
 
 ```text
 bootstrap_method
@@ -206,11 +242,6 @@ bootstrap_sample_col
 n_bootstrap_samples_total
 min_bootstrap_samples_per_condition
 bootstrap_fallback_reason
-selection_frequency
-selection_frequency_mc_se
-selection_frequency_lower_95
-selection_frequency_upper_95
-sign_stability
 ```
 
-The compact final result carries the selected bootstrap policy in result parameters and `stage_provenance`. Timing is printed in R and is not persisted in result objects or files.
+The compact final result retains the workflow-level bootstrap policy and edge-level provenance before Stage 3 core construction. Each public stage prints elapsed time and final status in R; timing is not stored in stage objects, `result$timing`, `step_timing.tsv`, or `00_execution_timing.tsv`.
