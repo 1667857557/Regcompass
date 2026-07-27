@@ -14,24 +14,26 @@ rc_doc_root <- function() {
 
 rc_read_doc <- function(path) paste(readLines(path, warn = FALSE), collapse = "\n")
 
-test_that("canonical documentation describes RegCompassR 1.8.9", {
+test_that("canonical documentation describes RegCompassR 1.8.10", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- c(
     file.path(root, "README.md"),
     file.path(root, "docs", "tutorial-01-quick-start.md"),
     file.path(root, "docs", "tutorial-02-stepwise-audit.md"),
-    file.path(root, "docs", "tutorial-05-condition-differential-analysis.md")
+    file.path(root, "docs", "tutorial-05-condition-differential-analysis.md"),
+    file.path(root, "docs", "sample-aware-bootstrap.md")
   )
   expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
   required <- c(
-    "RegCompassR 1.8.9", "multitask_shared_backbone",
-    "condition-stratified", "with replacement", "selection_frequency",
-    "sign_stability", "complete-GPR", "shared medium-specific union GEM",
+    "RegCompassR 1.8.10", "multitask_shared_backbone",
+    "condition-stratified", "with replacement", "sample_col",
+    "sample-cluster bootstrap", "selection_frequency", "sign_stability",
+    "complete-GPR", "shared medium-specific union GEM",
     "candidate_screen_threshold = 0", "max_edges_per_target = Inf",
     "gpr_and_method = \"min\"", "compact", "table_manifest",
-    "stage_provenance", "biological-replicate"
+    "stage_provenance", "biological-replicate", "console"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
 })
@@ -76,12 +78,12 @@ test_that("quick-start and stepwise examples use current contracts", {
     expect_match(value, "min_bootstrap_success_fraction = 0.8", fixed = TRUE)
     expect_match(value, "candidate_screen_threshold = 0", fixed = TRUE)
     expect_match(value, "max_edges_per_target = Inf", fixed = TRUE)
-    expect_false(grepl("(?m)^\\s*sample_col\\s*=", value, perl = TRUE))
+    expect_match(value, 'sample_col = "', fixed = TRUE)
     expect_false(grepl("(?m)^\\s*pool_col\\s*=", value, perl = TRUE))
   }
 })
 
-test_that("documentation explains current SuperCell2 and compact results", {
+test_that("documentation separates sample bootstrap from SuperCell2", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   text <- paste(
@@ -91,7 +93,9 @@ test_that("documentation explains current SuperCell2 and compact results", {
   )
   required <- c(
     "strata_cols", "label = celltype_col", "no artificial condition-pool",
-    "reaction_catalog", "reaction_evidence", "detailed stage checkpoints"
+    "sample_col is intentionally absent", "reaction_catalog",
+    "reaction_evidence", "detailed stage checkpoints",
+    "Timing is not"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
 })
