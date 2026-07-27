@@ -37,6 +37,7 @@ Stage 2 metacells ─┘
 
 - motifs, genome, regulatory regions, or peak-to-gene domains;
 - Pando structural detection thresholds;
+- condition-aware observability thresholds;
 - multitask penalties, CV rule, bootstrap number, or active-edge thresholds;
 - condition/cell-type metadata used by Stage 1;
 - single-cell RNA or ATAC matrices;
@@ -90,7 +91,9 @@ SuperCell2 receives label = celltype_col
 
 Stage 6 does not refit biology or LP models.
 
-## 3. GRN bootstrap sensitivity
+## 3. GRN sensitivity with an unchanged structural universe
+
+The following analysis changes model regularization, observability, and bootstrap thresholds while preserving the Pando structural candidate definition.
 
 ```r
 step1_sensitive <- rc_regcompass_step_grn(
@@ -106,9 +109,14 @@ step1_sensitive <- rc_regcompass_step_grn(
     min_cells = 100,
     pando_design_args = list(
       peak_to_gene_method = "Signac",
-      min_tf_detection = 0.02,
-      min_peak_detection = 0.02,
-      min_target_detection = 0.02
+      upstream = 100000,
+      downstream = 0,
+      extend = 1000000,
+      only_tss = FALSE,
+      min_tf_detection = 0,
+      min_peak_detection = 0,
+      min_target_detection = 0,
+      max_edges_per_target = Inf
     )
   ),
   multitask_args = list(
@@ -121,45 +129,120 @@ step1_sensitive <- rc_regcompass_step_grn(
     min_selection_frequency = 0.8,
     min_sign_stability = 0.9,
     min_bootstrap_success_fraction = 0.8,
+    min_cv_rsq = 0.05,
     candidate_screen_threshold = 0,
     max_edges_per_target = Inf,
+    min_detected_cells_per_condition = 20,
+    min_detection_fraction_per_condition = 0.02,
     seed = 12345L
   )
 )
 ```
 
-`alpha` must remain strictly between zero and one. A lasso component is required for sparse bootstrap selection, and a ridge component is required for a unique symmetric condition-deviation solution.
+This is deliberately more conservative than the canonical model:
 
-Increasing `n_bootstrap` reduces Monte Carlo error; it does not add independent biological replicates.
+- `alpha = 0.25` increases ridge stabilization and reduces the lasso component;
+- `deviation_penalty_factor = 3` imposes a stronger prior for a conserved shared backbone;
+- `min_cv_rsq = 0.05` requires stronger out-of-fold predictive value;
+- the observability rule changes from `max(10, 1%)` to `max(20, 2%)`;
+- 200 bootstrap fits reduce Monte Carlo error but do not add biological replicates.
 
-Compare the same structural universe before comparing active-edge counts:
+These are sensitivity assumptions, not replacement defaults.
+
+Compare both universe identifiers:
 
 ```r
-old_universe <- unique(
+structural_old <- unique(
   step1$grn_result$tf_peak_gene_candidates$edge_universe_id
 )
-new_universe <- unique(
+structural_new <- unique(
   step1_sensitive$grn_result$tf_peak_gene_candidates$edge_universe_id
 )
 
-old_universe
-new_universe
+model_old <- unique(na.omit(
+  step1$grn_result$tf_peak_gene_candidates$model_edge_universe_id
+))
+model_new <- unique(na.omit(
+  step1_sensitive$grn_result$tf_peak_gene_candidates$model_edge_universe_id
+))
+
+structural_old
+structural_new
+model_old
+model_new
 ```
 
-If structural thresholds changed, different universes are expected. Then changes in active-edge counts reflect both candidate-space and coefficient-selection changes.
+Expected interpretation:
 
-Check bootstrap completion:
+```text
+structural_old == structural_new
+model_old may differ from model_new
+```
+
+The Pando structural universe should remain unchanged because its domain, motif, and pooled detection settings are unchanged. The model universe may change because the condition-aware observability threshold changed.
+
+Check predictive validity and bootstrap completion:
 
 ```r
-with(
-  step1_sensitive$grn_result$target_model_diagnostics,
-  summary(n_bootstrap_success / n_bootstrap_requested)
+step1_sensitive$grn_result$target_model_diagnostics[, intersect(c(
+  "target",
+  "cv_rsq",
+  "cv_predictive_above_null",
+  "n_bootstrap_requested",
+  "n_bootstrap_success",
+  "bootstrap_success_fraction",
+  "n_active_condition_edges"
+), colnames(step1_sensitive$grn_result$target_model_diagnostics)), drop = FALSE]
+
+step1_sensitive$grn_result$stability_diagnostics[, intersect(c(
+  "edge_id",
+  "selection_frequency",
+  "selection_frequency_mc_se",
+  "selection_frequency_lower_95",
+  "selection_frequency_upper_95",
+  "sign_stability",
+  "sign_agreement_fraction",
+  "cv_rsq",
+  "active_edge"
+), colnames(step1_sensitive$grn_result$stability_diagnostics)), drop = FALSE]
+```
+
+Targets with inadequate bootstrap completion or non-positive out-of-fold R-squared must not be interpreted as biologically unstable regulatory edges.
+
+## 4. Structural-domain sensitivity
+
+Changing Signac to GREAT changes the biological candidate hypothesis and therefore the Pando structural fingerprint:
+
+```r
+step1_great <- rc_regcompass_step_grn(
+  object = A,
+  gem = gem,
+  outdir = "RegCompass_restart/01_grn_great",
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  species = "human",
+  condition_col = "Group",
+  celltype_col = "cell_type",
+  grn_mode = "multitask_shared_backbone",
+  pando_args = list(
+    min_cells = 100,
+    pando_design_args = list(
+      peak_to_gene_method = "GREAT",
+      upstream = 100000,
+      downstream = 0,
+      extend = 1000000,
+      only_tss = FALSE,
+      min_tf_detection = 0,
+      min_peak_detection = 0,
+      min_target_detection = 0,
+      max_edges_per_target = Inf
+    )
+  )
 )
 ```
 
-Targets with inadequate bootstrap completion must not be interpreted as biologically unstable edges.
+Compare complete-GPR cores only after acknowledging that any difference can arise from a changed structural candidate universe, not only from coefficient estimation.
 
-## 4. Rebuild dependent Stage 3–6 objects
+## 5. Rebuild dependent Stage 3–6 objects
 
 ```r
 step3_sensitive <- rc_regcompass_step_meta_modules(
@@ -215,7 +298,7 @@ result_sensitive <- rc_regcompass_step_results(
 
 Do not pair `step1_sensitive` with the old `step3`, because target genes and core reactions may have changed.
 
-## 5. GPR aggregation sensitivity
+## 6. GPR aggregation sensitivity
 
 ```r
 step4_mean <- rc_regcompass_step_layer1(
@@ -232,7 +315,7 @@ step4_mean <- rc_regcompass_step_layer1(
 
 The canonical default `min` represents limiting-subunit logic. `median` and `mean` are sensitivity analyses, not equivalent biological assumptions. After changing Stage 4, rebuild Stage 5 and Stage 6.
 
-## 6. Medium sensitivity
+## 7. Medium sensitivity
 
 ```r
 low_glucose_medium <- rc_make_medium_scenarios(
@@ -271,8 +354,10 @@ step5_low_glucose$model_cache_summary
 
 `completion_time_limit` constrains union-GEM construction only. Directional scoring LPs do not accept a scoring time limit.
 
-## 7. Handoff
+## 8. Handoff
 
 Use the unchanged `step3`, `step4`, and `step5` for [Tutorial 4](tutorial-04-targeted-reaction-remapping.md).
 
 Use either `result` or `result_sensitive` in [Tutorial 5](tutorial-05-condition-differential-analysis.md), but keep each result paired with its own stage checkpoints when tracing evidence.
+
+See [Pando and multitask GRN parameter policy](grn-parameter-policy.md) for the canonical defaults and the boundary between structural and modelling sensitivity analyses.
