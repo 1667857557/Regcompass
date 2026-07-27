@@ -1,4 +1,4 @@
-# Public functions in RegCompassR 1.8.9
+# Public functions in RegCompassR 1.8.10
 
 ## Setup and complete runs
 
@@ -14,22 +14,24 @@ Canonical GRN mode:
 grn_mode = "multitask_shared_backbone"
 ```
 
-Legacy reproducibility mode:
+Recommended metadata input:
 
 ```r
-grn_mode = "legacy_condition_pando"
+condition_col = "condition"
+celltype_col = "cell_type"
+sample_col = "sample_id"
 ```
 
-The canonical complete runner and Stage 1/2 functions require `condition_col` and `celltype_col` only. They do not expose a biological-sample column.
+`condition_col` and `celltype_col` are required. `sample_col` is optional and is used only for Stage 1 bootstrap. A valid sample column activates condition-stratified sample/donor cluster resampling. When the argument is omitted or names an absent column, RegCompass prints the exact fallback reason and uses condition-stratified cell resampling. Stage 2 does not expose `sample_col` and remains condition-only.
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: build one validated GREAT-domain Pando structural TF–peak–target universe per cell type, apply a condition-aware observability filter, estimate direct condition-specific coefficients with condition-balanced elastic net, and calculate bootstrap reproducibility.
+- `rc_regcompass_step_grn()`: build one validated GREAT-domain Pando structural TF–peak–target universe per cell type, apply a condition-aware observability filter, estimate direct condition-specific coefficients, and calculate sample-aware bootstrap reproducibility.
 - `rc_regcompass_step_metacells()`: build condition-stratified, cell-type-labelled SuperCell2 metacells.
 - `rc_regcompass_step_meta_modules()`: map active condition sub-GRN targets to complete-GPR core reactions and one ordered subsystem/KEGG–Reactome/master-Rhea expansion.
 - `rc_regcompass_step_layer1()`: combine RNA support with an ATAC-only projection of the fitted condition sub-GRN and aggregate through GPR rules.
 - `rc_regcompass_step_layer2()`: build one medium-specific union GEM, apply one global FASTCORE completion, and run directional COMPASS-like LP scoring.
-- `rc_regcompass_step_results()`: assemble compact rankings, contrasts, regulatory evidence, complete-GPR cores, and provenance.
+- `rc_regcompass_step_results()`: assemble compact rankings, contrasts, regulatory evidence, complete-GPR cores, bootstrap provenance, and structural provenance.
 - `rc_regcompass_step_target_union()`: map additional targets and score them in the exact cached Stage 5 model.
 
 ## Stage 1 structural design controls
@@ -51,11 +53,9 @@ pando_args = list(
 )
 ```
 
-`Pando::prepare_grn_design()` creates a version-2 condition-agnostic dictionary. Exact predictors are deduplicated by TF, measured ATAC feature, and target. `supporting_regions` retains multiple regulatory regions mapping to one peak. RegCompass validates the design fingerprint and feature mapping before fitting.
+`Pando::prepare_grn_design()` creates a version-2 condition-agnostic dictionary. Exact predictors are deduplicated by TF, measured ATAC feature, and target. The canonical `GREAT` method keeps candidate admission independent of fitted target-expression correlation. A finite `max_edges_per_target` is rejected because candidate order is not an evidence ranking.
 
-The canonical `GREAT` method creates basal-plus-extension regulatory domains and keeps candidate admission independent of fitted target-expression correlation. `extend = 1000000` permits distal hypotheses. The pooled Pando detection thresholds remain zero so a condition-restricted TF, peak, or target is not removed before the shared model is formed. A finite `max_edges_per_target` is rejected because Pando candidate order is deterministic but not an evidence ranking. `Signac` remains an explicit narrower-domain sensitivity option.
-
-## Stage 1 multitask, observability, and bootstrap controls
+## Stage 1 multitask and bootstrap controls
 
 ```r
 multitask_args = list(
@@ -78,29 +78,14 @@ multitask_args = list(
 )
 ```
 
-For condition \(c\), RegCompass uses
+Cross-validation remains cell-level and condition-stratified. Bootstrap uses one of two explicit methods:
 
-\[
-m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right).
-\]
+```text
+condition_stratified_sample_cluster_nonparametric
+condition_stratified_cell_nonparametric_fallback
+```
 
-An edge enters the shared model universe only when the non-zero TF-RNA × peak-ATAC predictor and target RNA each occur in at least \(m_c\) cells of one or more conditions. TF and peak must be non-zero in the same cells. This filter uses detection only and does not use target correlation or fitted effect size.
-
-`alpha = 0.5` retains a lasso component for direct condition-specific sparsity and a ridge component for correlated TF–peak predictors. The fitted coefficients are \(\theta_{e,c}\). The reported global backbone and zero-sum deviations are derived as
-
-\[
-\beta_e=\frac1C\sum_c\theta_{e,c},
-\qquad
-\delta_{e,c}=\theta_{e,c}-\beta_e.
-\]
-
-`global_penalty_factor` and `deviation_penalty_factor` are compatibility aliases for one common direct-theta penalty and must be equal. Unequal values are rejected.
-
-Five-fold cross-validation estimates condition centres and edge scales from each training fold. An active target requires strictly positive out-of-fold `cv_rsq`; a positive `min_cv_rsq` adds a stronger floor.
-
-`n_bootstrap = 100` controls full-size nonparametric bootstrap fits. Every condition is sampled with replacement at its original cell count. Bootstrap targets and predictors are re-centred within condition before fitting at the full-data lambda and scale. Edge tables report selection-frequency Monte Carlo standard errors and Wilson 95% intervals.
-
-`min_sign_stability = 0.8` corresponds to at least 90% agreement on one sign among selected bootstrap fits because \(\rho=|2q-1|\).
+For sample-cluster bootstrap, each condition contributes its observed number of sample IDs sampled with replacement. Each selected sample contributes all of its cells; total bootstrap cell count may vary. Fallback cell bootstrap retains the original number of cells per condition.
 
 Principal Stage 1 outputs:
 
@@ -112,15 +97,20 @@ step1$grn_result$tf_peak_gene_significant
 step1$grn_result$condition_target_genes
 step1$grn_result$target_model_diagnostics
 step1$grn_result$stability_diagnostics
+step1$grn_result$celltype_fit_status
 step1$grn_result$group_status
+step1$grn_result$bootstrap_policy
 ```
 
-The candidate table distinguishes:
+Bootstrap provenance fields include:
 
 ```text
-edge_universe_id       = complete Pando GREAT-domain structural universe
-model_edge_universe_id = observability-filtered shared model universe
-model_observable       = whether a structural edge entered fitting
+bootstrap_method
+bootstrap_resampling_unit
+bootstrap_sample_col
+n_bootstrap_samples_total
+min_bootstrap_samples_per_condition
+bootstrap_fallback_reason
 ```
 
 ## Stage 2 geometry
@@ -139,21 +129,11 @@ metacell_args = list(
 )
 ```
 
-Condition is the RegCompass stratum. Cell type is passed to SuperCell2 as the exact label. An existing Harmony reduction may replace PCA. Changing cells, assays, reductions, dimensions, seed, gamma, or thresholds invalidates the Stage 2 cache.
+Condition is the RegCompass stratum. Cell type is passed to SuperCell2 as the exact label. The Stage 1 sample column does not alter this geometry.
 
-## Stage 3 condition and merged catalogues
+## Stage 3–5 contracts
 
-```r
-step3$condition_modules$supported_metabolic_genes
-step3$condition_modules$core_gene_reaction
-step3$condition_modules$reaction_membership
-step3$merged_modules$merged_core_reactions
-step3$merged_modules$merged_reaction_membership
-```
-
-`group_id` is the `condition × cell type` analysis identifier. A reaction becomes core only when one complete GPR branch is contained in the condition target set. The merged object is a biological reaction catalogue, not a GEM.
-
-## Stage 4 integrated evidence
+A reaction becomes core only when one complete GPR branch is contained in the condition target set. The merged Stage 3 object is a biological reaction catalogue, not a GEM.
 
 ```r
 layer1_args = list(
@@ -162,10 +142,6 @@ layer1_args = list(
   gene_half_saturation = 1
 )
 ```
-
-`gpr_and_method` accepts `min`, `median`, or `mean`. Isozyme OR branches are additive. A gene without an active condition edge has a zero regulatory modifier and exactly returns its RNA-only support.
-
-## Stage 5 union-GEM controls
 
 ```r
 layer2_args = list(
@@ -180,22 +156,19 @@ layer2_args = list(
 )
 ```
 
-`completion_time_limit` applies only to union-GEM construction. Directional scoring LPs have no time-limit argument. Every condition and metacell under one medium uses the same cached model file, reaction IDs, stoichiometry, and bounds.
+Every condition and metacell under one medium uses the same cached model file, reaction IDs, stoichiometry, and bounds.
 
-## Interpretation and plotting
+## Timing and interpretation
 
-- `rc_build_reaction_annotations()` and `rc_attach_reaction_annotations()`: attach reaction names, formulas, GPRs, and database cross-references.
-- `rc_test_condition_reactions()`: descriptive same-reaction, same-direction, same-medium comparisons within cell type.
-- `rc_report_condition_directions()`: retain forward/reverse targets and report direction-aware support without claiming net flux.
-- `rc_select_gene_reactions()`: select scored reactions by GPR gene.
-- `rc_plot_condition_reaction()` and `rc_plot_condition_gene_reactions()`: condition plots with reaction and evidence annotations.
+Every stage prints elapsed time and status in the R console. Timing is not stored in returned objects or timing TSV files.
 
-Bootstrap measures selection reproducibility under cell resampling; it does not create biological-replicate inference. GRN fitting and RNA support use the same paired multiome dataset. Condition centring and ATAC-only projection reduce direct duplicate weighting but do not create independent validation evidence. Metacell-level tests remain descriptive pseudo-observation analyses.
+Sample-aware bootstrap measures reproducibility across the observed sample clusters but does not itself constitute donor-level treatment-effect inference. Cross-validation remains cell-level. Metacell-level tests remain descriptive pseudo-observation analyses.
 
 ## Documentation
 
 - [Pando and multitask GRN parameter policy](grn-parameter-policy.md)
 - [Mathematics and object contracts](multitask-shared-grn.md)
+- [Sample-aware bootstrap contract](sample-aware-bootstrap.md)
 - [Quick start](tutorial-01-quick-start.md)
 - [Stepwise audit](tutorial-02-stepwise-audit.md)
 - [Restart and diagnostics](tutorial-03-advanced-restart.md)
