@@ -10,21 +10,34 @@ all conditions within one cell type
 → condition-aware TF×peak/target observability filter
 → one shared model edge universe across conditions
 → condition-balanced direct condition-theta elastic net
+→ derived cross-condition GRN backbone + zero-sum deviations
 → condition-stratified sample/donor cluster bootstrap when sample_col is valid
 → explicit warning and condition-stratified cell-bootstrap fallback otherwise
 → condition-specific active sub-GRNs and metabolic targets
 → complete-GPR condition core reactions
 → ordered subsystem / KEGG–Reactome / master-Rhea expansion
 → merged biological reaction catalogue
-→ one shared medium-specific union GEM reused by every condition and metacell
+→ one medium-specific union GEM reused by every condition and metacell
 → RNA+ATAC penalties
 → directional COMPASS-like LP scoring
 → compact final analysis tables
 ```
 
-For edge `e = (TF, peak, target)`, RegCompass estimates a condition-specific coefficient `theta[e,c]`. All conditions of one cell type use the same structural candidates, filtered model dictionary, edge scale, penalty structure, and candidate ordering.
+For edge \(e=(TF,peak,target)\), RegCompass directly estimates the condition-specific coefficient \(\theta_{e,c}\). The reported backbone and deviation are derived summaries:
+
+\[
+\beta_e=\frac1C\sum_c\theta_{e,c},
+\qquad
+\delta_{e,c}=\theta_{e,c}-\beta_e,
+\qquad
+\sum_c\delta_{e,c}=0.
+\]
+
+All conditions of one cell type use the same structural edge dictionary, filtered model edge universe, predictor scale, penalty structure, and candidate ordering. The elastic-net L1 penalty acts directly on \(\theta_{e,c}\), so an edge may be exactly zero in one condition and non-zero in another. A reaction becomes a condition core only when at least one complete GPR branch is contained in the condition target-gene set.
 
 ## Installation
+
+The validated default profile remains Seurat v4:
 
 ```r
 install.packages("remotes")
@@ -40,35 +53,38 @@ remotes::install_github(
 remotes::install_github("1667857557/Regcompass")
 ```
 
-## Metadata contract
+Pando 1.1.3 or later is required. RegCompass validates the Pando version-2 design fingerprint before fitting the multitask GRN.
 
-Required metadata:
+SeuratObject/Seurat 5.x with Signac 1.12–1.x is also accepted. See [Seurat compatibility](docs/seurat-compatibility.md).
+
+## Required metadata and current SuperCell2 contract
+
+The canonical workflow requires:
 
 ```text
 condition_col
 celltype_col
 ```
 
-Recommended metadata:
+A biological sample/donor column is optional but recommended:
 
 ```text
 sample_col
 ```
 
-`sample_col` is used only for Stage 1 bootstrap stability. When valid, samples/donors are sampled with replacement separately within each condition and every selected sample contributes all of its cells. This is a cluster bootstrap, so bootstrap cell counts may vary with sample size.
+`sample_col` is accepted by `rc_run_regcompass()`, `rc_run_regcompass_one_shot()`, and `rc_regcompass_step_grn()` only. A valid column activates condition-stratified sample-cluster bootstrap: sample IDs are drawn with replacement separately inside each condition and every selected sample contributes all of its cells. When `sample_col = NULL`, or the named column does not exist, RegCompass prints the exact fallback reason and uses condition-stratified cell resampling. An existing sample column with missing or empty IDs is rejected.
 
-When `sample_col = NULL`, or the named metadata column does not exist, RegCompass prints the exact fallback reason and uses condition-stratified cell resampling. An existing sample column with missing or empty IDs is an error. Conditions with fewer than two unique samples retain cluster bootstrap but emit a low-replication warning.
-
-Stage 2 remains condition-only:
+Stage 2 follows the current SuperCell2 API:
 
 ```text
-strata_cols = condition_col
-label = celltype_col
+RegCompass splits the Seurat object by `strata_cols = condition_col`
+→ calls SCimplify_for_Seurat(label = celltype_col)
+→ validates exact label-pure membership
 ```
 
-There is no artificial condition-pool metadata field. The sample column does not alter metacell strata or reconstruct separate metabolic models.
+There is no artificial condition-pool metadata field. `sample_col` does not alter Stage 2 strata or create sample-specific metabolic models.
 
-## Minimal run
+## Minimal complete run
 
 ```r
 library(RegCompassR)
@@ -95,6 +111,7 @@ result <- rc_run_regcompass_one_shot(
   condition_col = "Group",
   celltype_col = "cell_type",
   sample_col = "sample_id",
+
   grn_mode = "multitask_shared_backbone",
   pando_args = list(
     min_cells = 100,
@@ -127,21 +144,26 @@ result <- rc_run_regcompass_one_shot(
     min_detection_fraction_per_condition = 0.01,
     seed = 12345L
   ),
+
   fragment_files = FALSE,
   metacell_args = list(
-    gamma = 30,
+    rna_reduction = "pca",
     rna_dims = 1:30,
+    atac_reduction = "lsi",
     atac_dims = 2:30,
-    min_cells_per_stratum = 500,
+    gamma = 30,
+    seed = 12345L,
+    min_cells_per_stratum = 300,
     min_metacell_size = 10,
     min_metacells_per_stratum = 2L,
-    seed = 12345L,
     overwrite = FALSE
   ),
+
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
+
   medium_scenarios = medium_scenarios,
   model_mode = "meta_module_gem",
   layer2_args = list(
@@ -153,40 +175,96 @@ result <- rc_run_regcompass_one_shot(
       max_support_reactions = 2000,
       strict = TRUE
     )
-  )
+  ),
+  upstream_workers = 6,
+  layer2_workers = 30
 )
 ```
 
-## Bootstrap provenance
+The canonical peak-to-gene rule is `GREAT`. With `extend = 1000000`, it creates a broad distal regulatory-domain hypothesis without using target-expression correlation to admit candidates. The subsequent condition-aware observability filter and regularised direct-theta model determine which candidates have usable support. `Signac` remains available only as an explicit sensitivity override.
 
-Detailed Stage 1 outputs include:
+The canonical default is `n_bootstrap = 100L`. At a true selection probability of 0.7, the binomial Monte Carlo standard error is approximately 0.046; RegCompass also reports Wilson 95% intervals for each edge.
 
-```text
-bootstrap_method
-bootstrap_resampling_unit
-bootstrap_sample_col
-n_bootstrap_samples_total
-min_bootstrap_samples_per_condition
-bootstrap_fallback_reason
-selection_frequency
-sign_stability
-```
+With a valid `sample_col`, those replicates resample observed sample/donor clusters rather than individual cells. Cluster sizes are preserved, so bootstrap cell counts may vary. Without a usable sample column, the warning-reported fallback retains the original number of cells per condition.
 
-These fields are propagated through `tf_peak_gene_condition_all`, `stability_diagnostics`, `celltype_fit_status`, and `group_status` before Stage 3 builds condition targets and complete-GPR cores.
+## Grounded GRN parameter policy
 
-## Console-only timing
+The Pando structural design remains condition agnostic. Its pooled detection thresholds stay at zero so a regulator that is restricted to one condition is not removed before the multitask model. RegCompass then applies a condition-aware observability rule. For condition \(c\),
 
-Every public workflow stage prints elapsed time and final status in R:
+\[
+m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right).
+\]
 
-```text
-RegCompass timing: grn [success] 00:12:34.567
-```
+An edge enters the shared model universe when, in at least one condition,
 
-Timing is not stored in `result$timing`, stage-object `timing` fields, `step_timing.tsv`, or `00_execution_timing.tsv`.
+\[
+\sum_{u\in c}I(T_{t,u}>0\land A_{p,u}>0)\ge m_c
+\]
 
-## Compact result and detailed checkpoints
+and
 
-Primary compact tables include:
+\[
+\sum_{u\in c}I(Y_{g,u}>0)\ge m_c.
+\]
+
+The TF and peak must therefore produce a non-zero interaction predictor in the same cells. This filter uses detection only, not target correlation or fitted effect size.
+
+`alpha = 0.5` retains both lasso sparsity and ridge stabilization for correlated TF–peak predictors. `global_penalty_factor` and `deviation_penalty_factor` are compatibility aliases for one common direct-theta penalty and must be equal. They no longer represent separately penalised backbone and deviation coordinates.
+
+`min_sign_stability = 0.8` means at least 90% agreement on one sign among bootstrap fits in which the edge is selected, because \(\rho=|2q-1|\). An active edge must also have strictly positive out-of-fold \(R^2\), so it improves on the condition-centred null predictor.
+
+Finite `max_edges_per_target` values are rejected in the canonical model. Pando candidate order is deterministic but is not an evidence ranking; arbitrary top-K truncation would change the biological hypothesis without a statistical criterion.
+
+See [GRN parameter policy](docs/grn-parameter-policy.md), [Shared-background multitask GRN mathematics](docs/multitask-shared-grn.md), and [Sample-aware bootstrap contract](docs/sample-aware-bootstrap.md).
+
+## Core calculations
+
+The Pando-style candidate predictor is
+
+\[
+x_{e,u}=T_{t,u}A_{p,u}.
+\]
+
+Target expression and predictors are centred within condition. Edge scales are shared across conditions, and observation weights make each condition contribute the same total regression loss. The direct condition-theta objective is
+
+\[
+\min_\Theta
+\frac12\sum_u w_u
+\left(y_u^\circ-\sum_e\widetilde x_{e,u}\theta_{e,c(u)}\right)^2
++\lambda\alpha p_\theta\sum_{e,c}|\theta_{e,c}|
++\frac{\lambda(1-\alpha)p_\theta}{2}\sum_{e,c}\theta_{e,c}^2.
+\]
+
+For successful bootstrap fits:
+
+\[
+\Pi_{e,c}=
+\frac{1}{B_s}\sum_{b\in\mathcal B_s}
+I\!\left(|\theta_{e,c}^{(b)}|>\varepsilon\right),
+\]
+
+\[
+\rho_{e,c}=
+\left|
+\frac{\sum_b I_e^{(b)}\operatorname{sign}(\theta_{e,c}^{(b)})}
+     {\sum_b I_e^{(b)}}
+\right|.
+\]
+
+The Layer 1 projection weight is
+
+\[
+\widetilde\theta_{e,c}
+=\widehat\theta_{e,c}\Pi_{e,c}\rho_{e,c}.
+\]
+
+Sample-cluster bootstrap estimates reproducibility across the observed biological samples. It does not by itself estimate a treatment effect. Cell fallback estimates cell-resampling reproducibility only. Neither is formal half-sample stability-selection PFER control.
+
+Layer 1 collapses TF coefficients sharing the same measured peak before ATAC projection. One target-specific normalization is shared across conditions. If no active edge exists, the modifier is zero and multiome support equals RNA-only support.
+
+## Compact final result
+
+Stage 6 deliberately does not embed full Stage 1–4 objects. Primary tables are:
 
 ```r
 result$table_manifest
@@ -196,12 +274,66 @@ result$active_regulatory_edges
 result$condition_target_genes
 result$core_reactions
 result$meta_module_summary
+result$grn_metacell_group_coverage
 result$reaction_catalog
 result$reaction_evidence
-result$stage_provenance
 ```
 
-Full candidates, coefficients, bootstrap diagnostics, metacell matrices, Layer 1 matrices, and reaction memberships remain in detailed stage checkpoints. Metacell-level tests are descriptive within-dataset analyses and are not biological-replicate treatment inference.
+`active_regulatory_edges` retains bootstrap method, resampling unit, sample column, sample counts, and fallback reason. The global Stage 1 bootstrap policy is also retained in `result$params` and `result$stage_provenance`.
+
+`reaction_ranking` and `condition_contrast` contain only comparison fields. Reaction name, formula, GPR, and cross-references are stored once per reaction in `reaction_catalog`.
+
+`result$microcompass` remains available because downstream reaction tests, direction reports, and plots require unit-level Layer 2 scores. Detailed candidate edges, all coefficients, metacell matrices, Layer 1 matrices, and full module membership remain in their stage checkpoints:
+
+```r
+result$stage_provenance$detailed_sources
+```
+
+This reduces result size without arbitrary top-N filtering or discarding scored reactions.
+
+## Execution timing
+
+Every public stage prints elapsed time and final status in R after its final artifact is committed:
+
+```text
+RegCompass timing: grn [success] 00:12:34.567
+```
+
+Timing is not stored in `result$timing`, stage-object `timing` fields, `step_timing.tsv`, or `00_execution_timing.tsv`.
+
+## Inspectable stages
+
+- `rc_regcompass_step_grn()`: structural candidates, observability-filtered model universe, multitask coefficients, CV, sample-aware bootstrap, and fallback provenance.
+- `rc_regcompass_step_metacells()`: condition-stratified, cell-type-labelled SuperCell2 metacells.
+- `rc_regcompass_step_meta_modules()`: target genes, complete-GPR cores, and biological modules.
+- `rc_regcompass_step_layer1()`: RNA support, ATAC modifier, and reaction capacity.
+- `rc_regcompass_step_layer2()`: shared union GEM and directional LP scoring.
+- `rc_regcompass_step_results()`: compact analysis tables and provenance.
+- `rc_regcompass_step_target_union()`: direct-equivalent second-pass targets in the cached model.
+
+## Legacy mode
+
+Independent condition-by-cell-type Pando fitting remains available only for reproducibility:
+
+```r
+result_legacy <- rc_run_regcompass_one_shot(
+  ...,
+  grn_mode = "legacy_condition_pando",
+  pando_args = list(
+    pando_infer_args = list(
+      method = "glm",
+      tf_cor = 0.1,
+      peak_cor = 0.01,
+      adjust_method = "fdr",
+      parallel = FALSE
+    ),
+    padj_threshold = 0.05,
+    min_model_rsq = 0.1
+  )
+)
+```
+
+Legacy adjusted-P-value thresholds are not interpreted as significance thresholds in multitask mode.
 
 ## Tutorials
 
@@ -209,5 +341,12 @@ Full candidates, coefficients, bootstrap diagnostics, metacell matrices, Layer 1
 2. [Stepwise audit](docs/tutorial-02-stepwise-audit.md)
 3. [Restart and sensitivity](docs/tutorial-03-advanced-restart.md)
 4. [Targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
-5. [Condition differential analysis](docs/tutorial-05-condition-differential-analysis.md)
-6. [Sample-aware bootstrap contract](docs/sample-aware-bootstrap.md)
+5. [Condition analysis from GRN to reaction](docs/tutorial-05-condition-differential-analysis.md)
+
+Additional references:
+
+- [Sample-aware bootstrap contract](docs/sample-aware-bootstrap.md)
+- [GRN parameter policy](docs/grn-parameter-policy.md)
+- [Stage contracts](docs/stage-interface-contracts.md)
+- [Medium presets](docs/medium-presets.md)
+- [Direction-aware reporting](docs/direction-aware-condition-reporting.md)
