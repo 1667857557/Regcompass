@@ -64,8 +64,15 @@ test_that("metacell stage persists required condition-only artifacts", {
   expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
 })
 
-test_that("Stage 1 persists shared candidates and bootstrap condition edges", {
-  text <- paste(deparse(body(.rc_run_celltype_multitask_grns)), collapse = "\n")
+test_that("Stage 1 persists shared candidates and sample-bootstrap provenance", {
+  core_text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns_pre_sample_bootstrap)),
+    collapse = "\n"
+  )
+  policy_text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns)), collapse = "\n"
+  )
+  text <- paste(core_text, policy_text, sep = "\n")
   required <- c(
     "pando_tf_peak_gene_candidates.tsv.gz",
     "pando_tf_peak_gene_global.tsv.gz",
@@ -78,7 +85,14 @@ test_that("Stage 1 persists shared candidates and bootstrap condition edges", {
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
   expect_match(text, "regcompass_multitask_grn_v2", fixed = TRUE)
   expect_match(text, "multitask_shared_backbone", fixed = TRUE)
-  expect_match(text, "condition_stratified_full_size_nonparametric", fixed = TRUE)
+  expect_match(
+    text, "condition_stratified_sample_cluster_nonparametric", fixed = TRUE
+  )
+  expect_match(
+    text, "condition_stratified_cell_nonparametric_fallback", fixed = TRUE
+  )
+  expect_match(text, "bootstrap_resampling_unit", fixed = TRUE)
+  expect_match(text, "bootstrap_fallback_reason", fixed = TRUE)
   expect_match(text, "pando_grn_design_v2", fixed = TRUE)
 })
 
@@ -122,7 +136,9 @@ test_that("Layer 2 and compact final results validate provenance", {
   expect_match(
     result_text, "regcompass_compact_multitask_result_v3", fixed = TRUE
   )
-  expect_match(result_text, 'version = "1.8.9"', fixed = TRUE)
+  expect_match(result_text, 'version = "1.8.10"', fixed = TRUE)
+  expect_match(result_text, "bootstrap_policy", fixed = TRUE)
+  expect_match(result_text, "bootstrap_resampling_unit", fixed = TRUE)
   expect_match(result_text, "active_regulatory_edges", fixed = TRUE)
   expect_match(result_text, "condition_target_genes", fixed = TRUE)
   expect_match(result_text, "core_reactions", fixed = TRUE)

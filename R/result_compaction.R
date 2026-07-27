@@ -49,7 +49,10 @@
     "region", "target", "global_estimate", "condition_deviation",
     "effective_estimate", "selection_frequency", "sign_stability",
     "stable_estimate", "sign_flip_flag", "cv_rsq",
-    "bootstrap_success_fraction", "active_edge", "evidence_type"
+    "bootstrap_method", "bootstrap_resampling_unit", "bootstrap_sample_col",
+    "n_bootstrap_samples_total", "min_bootstrap_samples_per_condition",
+    "bootstrap_fallback_reason", "bootstrap_success_fraction",
+    "active_edge", "evidence_type"
   )
   .rc_result_unique(edges, columns)
 }
@@ -138,7 +141,8 @@
         name,
         reaction_ranking = "primary within-condition reaction ranking",
         condition_contrast = "primary between-condition descriptive contrast",
-        active_regulatory_edges = "bootstrap-active TF-peak-target evidence",
+        active_regulatory_edges =
+          "bootstrap-active TF-peak-target evidence with sampling provenance",
         condition_target_genes = "condition-specific regulated metabolic genes",
         core_reactions = "condition-specific complete-GPR reaction cores",
         meta_module_summary = "module-level counts only",

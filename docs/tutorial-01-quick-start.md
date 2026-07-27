@@ -1,6 +1,6 @@
 # Tutorial Level 1: minimal one-shot run
 
-**This tutorial:** runs the complete RegCompassR 1.8.9 workflow and introduces the compact final result.
+**This tutorial:** runs the complete RegCompassR 1.8.10 workflow, uses donor/sample-aware Stage 1 bootstrap when available, and introduces the compact final result.
 
 **Next:** [Tutorial 2 — stepwise run and audit](tutorial-02-stepwise-audit.md) reproduces the same analysis stage by stage and exposes the detailed objects intentionally omitted from `result`.
 
@@ -12,7 +12,9 @@ shared GREAT-domain Pando TF–peak–target structural candidates per cell type
 → one shared model edge universe across conditions
 → condition-balanced direct condition-theta elastic net
 → derived global backbone + zero-sum condition deviations
-→ condition-stratified bootstrap-active sub-GRNs
+→ condition-stratified sample/donor cluster bootstrap when sample_col is valid
+→ explicit warning and condition-stratified cell-bootstrap fallback otherwise
+→ condition-specific bootstrap-active sub-GRNs
 → condition target genes
 → complete-GPR reaction cores
 → biological module expansion
@@ -50,7 +52,13 @@ condition_col
 celltype_col
 ```
 
-No sample column is accepted or interpreted by the canonical workflow.
+A biological sample/donor column is optional but recommended:
+
+```text
+sample_col
+```
+
+A valid `sample_col` is used only for Stage 1 bootstrap stability. Sample IDs are sampled with replacement separately within each condition, and every selected sample contributes all of its cells. When `sample_col = NULL`, or the named column does not exist, RegCompass prints the exact fallback reason and uses condition-stratified cell resampling. An existing sample column with missing or empty IDs is an error.
 
 Stage 2 uses the current SuperCell2 contract:
 
@@ -59,6 +67,8 @@ RegCompass splits cells by condition
 → SCimplify_for_Seurat(label = celltype_col)
 → exact label-preserving metacells
 ```
+
+The sample column does not alter Stage 2 strata and does not create sample-specific metabolic models.
 
 ## 2. Run the complete workflow
 
@@ -71,6 +81,7 @@ result <- rc_run_regcompass_one_shot(
   gem = gem,
   condition_col = "Group",
   celltype_col = "cell_type",
+  sample_col = "sample_id",
 
   grn_mode = "multitask_shared_backbone",
   pando_args = list(
@@ -142,13 +153,29 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The canonical peak-to-gene method is `GREAT`. Its basal-plus-extension domains
-permit distal structural candidates without using target-expression correlation
-to admit edges. With `extend = 1000000`, the hypothesis space is deliberately
-broad and is subsequently constrained by condition-aware observability,
-regularisation, CV, and bootstrap stability.
+The canonical peak-to-gene method is `GREAT`. Its basal-plus-extension domains permit distal structural candidates without using target-expression correlation to admit edges. With `extend = 1000000`, the hypothesis space is deliberately broad and is subsequently constrained by condition-aware observability, regularisation, CV, and bootstrap stability.
 
 The canonical default is `n_bootstrap = 100L`. RegCompass reports the Monte Carlo standard error and Wilson 95% interval of each condition-edge selection frequency.
+
+With a valid sample column, the Stage 1 method is:
+
+```text
+condition_stratified_sample_cluster_nonparametric
+```
+
+If the sample column is omitted or absent, R prints the reason and the method becomes:
+
+```text
+condition_stratified_cell_nonparametric_fallback
+```
+
+Each public stage also prints elapsed time and final status after its final artifact is committed, for example:
+
+```text
+RegCompass timing: grn [success] 00:12:34.567
+```
+
+Timing is not stored in `result$timing`, stage-object `timing` fields, `step_timing.tsv`, or `00_execution_timing.tsv`.
 
 ## 3. Understand the key calculations
 
@@ -172,9 +199,7 @@ RegCompass directly estimates
 y_u^\circ=\sum_e\widetilde x_{e,u}\theta_{e,c(u)}+\varepsilon_u.
 \]
 
-The L1 penalty acts on each \(\theta_{e,c}\), allowing an edge to be exactly zero
-in one condition and non-zero in another. The global backbone and deviations are
-derived summaries:
+The L1 penalty acts on each \(\theta_{e,c}\), allowing an edge to be exactly zero in one condition and non-zero in another. The global backbone and deviations are derived summaries:
 
 \[
 \beta_e=\frac1C\sum_c\theta_{e,c},
@@ -186,7 +211,9 @@ derived summaries:
 
 `alpha = 0.5` combines sparse selection with ridge stabilization of correlated TF–peak predictors. `global_penalty_factor` and `deviation_penalty_factor` are compatibility aliases for one common direct-theta penalty and must be equal.
 
-Each bootstrap resamples every condition with replacement at its original cell count and recalculates within-condition centring. An edge becomes active only after passing selection-frequency, sign-stability, effect-size, strictly positive out-of-fold CV R-squared, and bootstrap-completion thresholds.
+When a valid sample column exists, each bootstrap resamples the observed number of sample/donor clusters with replacement within every condition and includes all cells from each selected cluster. Cluster sizes are preserved, so bootstrap cell counts can vary. The fallback instead resamples each condition at its original cell count. Both modes recalculate within-condition centring and fit at the full-data selected lambda.
+
+An edge becomes active only after passing selection-frequency, sign-stability, effect-size, strictly positive out-of-fold CV R-squared, and bootstrap-completion thresholds.
 
 For sign stability
 
@@ -204,7 +231,7 @@ Core_{r,c}=1\iff\exists k:B_{r,k}\subseteq G_c.
 
 Positive and negative active edges both establish regulated-gene membership; the coefficient sign is retained in the ATAC projection.
 
-See [Pando and multitask GRN parameter policy](grn-parameter-policy.md) for the full default rationale and supported sensitivity analyses.
+See [Pando and multitask GRN parameter policy](grn-parameter-policy.md) and [Sample-aware bootstrap contract](sample-aware-bootstrap.md) for the full default rationale, resampling semantics, and supported sensitivity analyses.
 
 ## 4. Inspect the compact final result
 
@@ -230,6 +257,15 @@ result$reaction_evidence
 
 `reaction_ranking` and `condition_contrast` contain only analysis columns. Reaction names, formulas, GPRs, and database cross-references occur once in `reaction_catalog` rather than being repeated in every ranking row.
 
+`active_regulatory_edges` retains the bootstrap method, resampling unit, sample column, sample counts, and fallback reason. The global Stage 1 policy is also retained in:
+
+```r
+result$params$sample_col
+result$params$bootstrap_resampling_unit
+result$params$bootstrap_fallback_reason
+result$stage_provenance$bootstrap_policy
+```
+
 The final object retains `result$microcompass` because direction-specific condition testing and plotting require the unit-level scores. It does not embed the full GRN candidate universe, all coefficient rows, metacell assay matrices, Layer 1 matrices, or full module membership.
 
 ```r
@@ -250,11 +286,31 @@ step5 <- readRDS("RegCompass_result/05_layer2/step_layer2.rds")
 
 Actual subdirectory names may follow the one-shot stage layout shown in the run log; `result$stage_provenance` records which scientific information belongs to each stage.
 
+Audit the Stage 1 sampling provenance directly:
+
+```r
+step1$grn_result$bootstrap_policy
+head(step1$grn_result$stability_diagnostics[, intersect(c(
+  "bootstrap_method",
+  "bootstrap_resampling_unit",
+  "bootstrap_sample_col",
+  "n_bootstrap_samples_total",
+  "min_bootstrap_samples_per_condition",
+  "bootstrap_fallback_reason",
+  "selection_frequency",
+  "sign_stability"
+), colnames(step1$grn_result$stability_diagnostics)), drop = FALSE])
+```
+
+These fields are finalized before Stage 3 consumes `tf_peak_gene_significant`, so condition target genes and complete-GPR cores are derived from the correctly resampled stability-selected sub-GRN.
+
 ## 6. Exit checks before Tutorial 2 or Tutorial 5
 
 ```r
 stopifnot(
-  identical(result$version, "1.8.9"),
+  identical(result$version, "1.8.10"),
+  identical(result$params$sample_col, "sample_id"),
+  identical(result$params$bootstrap_resampling_unit, "sample"),
   isTRUE(!result$stage_provenance$detailed_intermediates_embedded),
   nrow(result$reaction_ranking) > 0L,
   nrow(result$reaction_catalog) > 0L

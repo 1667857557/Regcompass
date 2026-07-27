@@ -1,6 +1,6 @@
 # Portable execution, bundled GEMs, progress, timing, and worker cleanup
 
-RegCompassR 1.8.4 removes three setup assumptions from the canonical workflow:
+RegCompassR removes three setup assumptions from the canonical workflow:
 
 1. users do not need to prepare the default Human-GEM or Mouse-GEM;
 2. users do not choose a platform-specific parallel backend;
@@ -59,7 +59,7 @@ layer2_workers <- 30L
 
 `upstream_workers` applies to:
 
-- condition-by-cell-type Pando GRNs;
+- shared-background Pando GRNs;
 - Layer 1 reaction-support calculation.
 
 Stage 3 meta-module construction does not run FASTCORE and does not own a worker pool for feasibility completion.
@@ -180,25 +180,30 @@ result <- rc_run_regcompass_one_shot(..., progress = FALSE)
 
 The complete workflow reports progress across six stages. Each independently run stage reports its own start and completion status.
 
-## Timing and execution provenance
+## Console-only timing
 
-Every stage writes:
+Every stage prints elapsed time and final status in R after its final artifact has been committed:
+
+```text
+RegCompass timing: grn [success] 00:12:34.567
+RegCompass timing: layer2 [success] 00:42:10.231
+RegCompass timing: total_workflow [success] 01:05:19.882
+```
+
+Failed stages print an `error` status before the original error propagates. The timer remains diagnostic output rather than scientific result data.
+
+The workflow no longer creates or retains:
 
 ```text
 <stage-output>/step_timing.tsv
-```
-
-A complete run writes:
-
-```text
 <outdir>/00_execution_timing.tsv
+result$timing
+stage_object$timing
 ```
 
-and stores:
+Parallel execution provenance remains available in the main result parameters:
 
 ```r
-result$timing$stages
-result$timing$total
 result$params$parallel_backend_resolved
 result$params$upstream_workers
 result$params$layer2_workers
@@ -206,5 +211,3 @@ result$params$internal_threads_per_task
 result$params$parallel_worker_lifecycle
 result$params$parallel_stage_groups
 ```
-
-Timing columns include stage, status, timestamps, elapsed seconds, formatted elapsed time, OS type, and R version. Failed stages write an error-status timing row before propagating the original error.
