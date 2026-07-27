@@ -22,17 +22,16 @@ test_that("canonical source architecture loads current contracts", {
   required <- c(
     "condition_metacell_cache.R", "supercell2_current_contract.R",
     "supercell2_label_contract.R", "microcompass_no_sample_contract.R",
-    "target_union_no_sample_contract.R",
-    "multitask_grn_bootstrap_contract.R", "multitask_grn_cv_contract.R",
+    "target_union_no_sample_contract.R", "multitask_grn_cv_contract.R",
     "meta_module_core_contract.R", "result_compaction.R",
     "microcompass_result_compaction.R", "reaction_evidence.R",
-    "reaction_annotations.R"
+    "reaction_annotations.R", "sample_bootstrap_timing_policy.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
 
   removed <- c(
     "condition_pooling.R", "condition_pooling_no_sample.R",
-    "metacell_no_sample_contract.R"
+    "metacell_no_sample_contract.R", "multitask_grn_bootstrap_contract.R"
   )
   expect_false(any(vapply(removed, grepl, logical(1), x = collate, fixed = TRUE)))
 })
@@ -52,16 +51,18 @@ test_that("canonical order is GRN then metacells then meta-modules", {
   expect_true(positions[[2L]] < positions[[3L]])
 })
 
-test_that("canonical formals separate stage settings and remove sample columns", {
+test_that("canonical formals separate sample bootstrap from metacell grouping", {
   run_formals <- names(formals(rc_run_regcompass))
+  stage1_formals <- names(formals(rc_regcompass_step_grn))
+  stage2_formals <- names(formals(rc_regcompass_step_metacells))
   stage3_formals <- names(formals(rc_regcompass_step_meta_modules))
   expect_true("meta_module_args" %in% run_formals)
   expect_true("layer1_args" %in% run_formals)
   expect_true("meta_module_args" %in% stage3_formals)
   expect_false("layer1_args" %in% stage3_formals)
-  expect_false("sample_col" %in% run_formals)
-  expect_false("sample_col" %in% names(formals(rc_regcompass_step_grn)))
-  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
+  expect_true("sample_col" %in% run_formals)
+  expect_true("sample_col" %in% stage1_formals)
+  expect_false("sample_col" %in% stage2_formals)
   expect_false("sample_col" %in% names(formals(rc_make_supercell2_metacells)))
   expect_false("pool_col" %in% names(formals(rc_make_supercell2_metacells)))
   expect_false("sample_col" %in% names(formals(rc_run_microcompass)))
