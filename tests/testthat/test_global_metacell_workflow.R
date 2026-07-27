@@ -28,8 +28,12 @@ test_that("canonical Pando core and parameter policy remain separately auditable
     deparse(body(.rc_run_celltype_multitask_grns_pre_policy)),
     collapse = "\n"
   )
-  policy_text <- paste(
+  boundary_text <- paste(
     deparse(body(.rc_run_celltype_multitask_grns_core)),
+    collapse = "\n"
+  )
+  policy_text <- paste(
+    deparse(body(.rc_run_celltype_multitask_grns_parameter_policy_core)),
     collapse = "\n"
   )
   output_text <- paste(
@@ -48,6 +52,11 @@ test_that("canonical Pando core and parameter policy remain separately auditable
     fixed = TRUE
   )
 
+  expect_match(
+    boundary_text,
+    ".rc_run_celltype_multitask_grns_parameter_policy_core",
+    fixed = TRUE
+  )
   expect_match(policy_text, ".rc_validate_multitask_grn_args", fixed = TRUE)
   expect_match(policy_text, ".rc_validate_canonical_pando_design_args", fixed = TRUE)
   expect_match(policy_text, "model_edge_universe_id", fixed = TRUE)
