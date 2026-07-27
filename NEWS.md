@@ -1,3 +1,12 @@
+# RegCompassR 1.8.10
+
+- Added top-level and Stage 1 `sample_col` input for condition-stratified donor/sample cluster bootstrap. Within each condition, sample IDs are drawn with replacement and every selected sample contributes all of its cells.
+- Added explicit fallback behavior: omitted or absent sample columns print the exact reason and use condition-stratified cell resampling; existing columns with missing/empty IDs stop; conditions with fewer than two samples emit a low-replication warning.
+- Propagated bootstrap provenance through coefficient, stability, cell-type status, condition-by-cell-type status, Stage 1 policy, and compact final-result provenance before complete-GPR core construction.
+- Kept Stage 2 metacells condition-only. `sample_col` affects Stage 1 bootstrap stability only and does not create sample-specific metacells or metabolic models.
+- Changed execution timing to console-only reporting after final stage artifacts are committed. Timing is no longer stored in stage objects, `result$timing`, `step_timing.tsv`, or `00_execution_timing.tsv`.
+- Updated tutorials, workflow vignette, parameter/mathematical contracts, function index, portable-execution documentation, Rd files, and regression tests.
+
 # RegCompassR 1.8.9
 
 - Replaced the transitional SuperCell2 pool/sample adapter with the current `SCimplify_for_Seurat(label = ...)` contract. RegCompass now splits cells explicitly by `strata_cols`, uses condition as the canonical stratum, passes cell type through `label`, and validates label-pure membership.
