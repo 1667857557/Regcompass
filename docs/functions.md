@@ -4,7 +4,7 @@ RegCompass exposes a one-shot workflow and six restartable stages. Pando 1.2.1
 is the sole condition-GRN estimator; RegCompass consumes its versioned
 `ConditionGRNFit` and does not refit condition coefficient matrices.
 
-## Complete workflows
+## Level 1: complete workflows
 
 | Function | Purpose |
 |---|---|
@@ -15,7 +15,7 @@ The complete workflow accepts `pando_args`, `metacell_args`,
 `meta_module_args`, `layer1_args`, `layer2_args`, `upstream_workers`, and
 `layer2_workers`.
 
-## Restartable stages
+## Level 2: stepwise workflow
 
 | Stage | Function | Main output |
 |---:|---|---|
