@@ -26,16 +26,18 @@ test_that("canonical source architecture has no retired compatibility layers", {
     "v170_stepwise_parallel.R", "v170_tfidf.R",
     "v170_pando_reuse.R", "v170_rsq_metadata.R",
     "v170_microcompass_contract.R", "internal_apply.R",
-    "pando_rsq_reliability.R", "workflow_stage_", "zzz"
+    "pando_rsq_reliability.R", "workflow_stage_"
   )
   expect_false(any(vapply(
     retired_files, grepl, logical(1), x = collate, fixed = TRUE
   )))
   required <- c(
     "stage_contracts.R", "shared_tfidf.R", "grn_inference.R",
-    "condition_grn_contract.R", "reaction_evidence.R", "reaction_annotations.R",
-    "reaction_annotation_api.R", "reaction_gene_plots.R",
-    "execution_monitor.R", "bundled_gems.R", "parallel.R"
+    "condition_grn_contract.R", "condition_comparability_fix.R",
+    "zzz_pando_bridge_alignment.R", "reaction_evidence.R",
+    "reaction_annotations.R", "reaction_annotation_api.R",
+    "reaction_gene_plots.R", "execution_monitor.R", "bundled_gems.R",
+    "parallel.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
 
@@ -102,25 +104,43 @@ test_that("canonical formals separate Stage 3 and Layer 1 settings", {
   )
 })
 
-test_that("Pando defaults use bundled motifs and species-specific regions", {
+test_that("Pando defaults use bundled human inputs and guard mouse regions", {
   expect_null(eval(formals(rc_run_regcompass)$pfm))
   expect_null(eval(formals(rc_run_regcompass_one_shot)$pfm))
   expect_null(eval(formals(rc_regcompass_step_grn)$pfm))
   expect_null(eval(formals(.rc_run_condition_single_cell_grns)$pfm))
 
-  grn_body <- paste(
+  implementation <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
+    collapse = "\n"
+  )
+  bridge <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
   )
   motif_helper <- paste(deparse(body(.rc_default_pando_motifs)), collapse = "\n")
-  region_helper <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
-  expect_match(grn_body, ".rc_default_pando_motifs", fixed = TRUE)
-  expect_match(grn_body, ".rc_default_pando_regions(species)", fixed = TRUE)
+  region_guard <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
+  human_region_helper <- paste(
+    deparse(body(.rc_default_pando_regions_without_genome_guard)),
+    collapse = "\n"
+  )
+  expect_match(implementation, ".rc_default_pando_motifs", fixed = TRUE)
+  expect_match(implementation, ".rc_default_pando_regions(species)", fixed = TRUE)
+  expect_match(bridge, 'candidate_screen <- "motif_domain"', fixed = TRUE)
   expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
-  expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
-  expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
-  expect_match(region_helper, 'identical(species, "mouse")', fixed = TRUE)
-  expect_match(region_helper, "return(phast_cons)", fixed = TRUE)
-  expect_match(region_helper, "BiocGenerics::union", fixed = TRUE)
+  expect_match(
+    human_region_helper,
+    "phastConsElements20Mammals.UCSC.hg38",
+    fixed = TRUE
+  )
+  expect_match(human_region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(human_region_helper, "BiocGenerics::union", fixed = TRUE)
+  expect_match(region_guard, 'identical(species, "mouse")', fixed = TRUE)
+  expect_match(region_guard, "not valid for mouse input", fixed = TRUE)
+  expect_error(
+    .rc_default_pando_regions("mouse"),
+    "hg38 conserved-element set is not valid for mouse input",
+    fixed = TRUE
+  )
   expect_identical(
     eval(formals(.rc_default_pando_regions)$species),
     c("human", "mouse")
@@ -134,6 +154,7 @@ test_that("Pando defaults use bundled motifs and species-specific regions", {
   expect_false(isTRUE(grn_formals$require_padj))
   infer_defaults <- eval(grn_formals$pando_infer_args)
   expect_identical(infer_defaults$method, "shared_design_independent")
+  expect_identical(infer_defaults$candidate_screen, "motif_domain")
   expect_identical(infer_defaults$condition_mix, 1)
   expect_identical(infer_defaults$condition_weight, "equal")
   expect_true(infer_defaults$scale)

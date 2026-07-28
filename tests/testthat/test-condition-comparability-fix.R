@@ -6,6 +6,12 @@ test_that("condition comparison mask requires support in both conditions", {
     dimnames = list(c("edge_both", "edge_reference_only"),
                     c("Control", "Drug"))
   )
+  comparison <- eligibility & matrix(
+    eligibility[, "Control"],
+    nrow = nrow(eligibility),
+    ncol = ncol(eligibility),
+    dimnames = dimnames(eligibility)
+  )
   fit <- list(
     beta = matrix(
       c(1, 2, 1, 0),
@@ -14,6 +20,7 @@ test_that("condition comparison mask requires support in both conditions", {
       dimnames = dimnames(eligibility)
     ),
     eligibility_mask = eligibility,
+    comparison_mask = comparison,
     reference_condition = "Control"
   )
 
@@ -32,6 +39,12 @@ test_that("non-estimable reference contrasts cannot enter active effects", {
     dimnames = list(c("edge_both", "edge_reference_only"),
                     c("Control", "Drug"))
   )
+  comparison <- eligibility & matrix(
+    eligibility[, "Control"],
+    nrow = nrow(eligibility),
+    ncol = ncol(eligibility),
+    dimnames = dimnames(eligibility)
+  )
   beta <- matrix(
     c(1, 2, 1, 0),
     nrow = 2L,
@@ -42,6 +55,7 @@ test_that("non-estimable reference contrasts cannot enter active effects", {
     cell_type = "T",
     beta = beta,
     eligibility_mask = eligibility,
+    comparison_mask = comparison,
     reference_condition = "Control"
   )
   condition_all <- data.frame(

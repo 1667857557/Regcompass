@@ -132,7 +132,7 @@ test_that("Layer 2 and final results validate upstream provenance", {
     "regcompass_condition_grn_fit_v2",
     fixed = TRUE
   )
-  expect_match(result_text, 'version = "1.9.1"', fixed = TRUE)
+  expect_match(result_text, 'version = "1.9.3"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)

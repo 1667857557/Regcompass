@@ -73,7 +73,7 @@ jobs:
           remotes::install_github(
             paste0(
               "1667857557/Pando_regcompass@",
-              "75f764d64d7c9d8db7d17a637c88a637a04ed6c5"
+              "ec83995513313379e8633d2ede89ecbd72a50037"
             ),
             dependencies = NA,
             upgrade = "never",
@@ -95,6 +95,13 @@ jobs:
               paste(names(observed), observed, sep = "=", collapse = ", ")
             )
           }
+          if (packageVersion("Pando") < package_version("1.2.1")) {
+            stop("Pando >= 1.2.1 is required")
+          }
+          stopifnot(
+            is.function(Pando::infer_condition_grn),
+            is.function(Pando::condition_grn_fit)
+          )
 
       - name: Install RegCompassR
         shell: bash

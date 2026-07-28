@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 1.9.2
+Version: 1.9.3
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -89,6 +89,7 @@ Collate:
     'stratum_filter.R'
     'condition_grn_contract.R'
     'condition_comparability_fix.R'
+    'zzz_pando_bridge_alignment.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
@@ -121,7 +122,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@Supercell2,
-    1667857557/Pando_regcompass@75f764d64d7c9d8db7d17a637c88a637a04ed6c5
+    1667857557/Pando_regcompass@ec83995513313379e8633d2ede89ecbd72a50037
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5

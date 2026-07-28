@@ -1,31 +1,35 @@
 # Tutorial Level 1: minimal one-shot run
 
-Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.9.1.
+This tutorial uses RegCompassR 1.9.3 with the Pando 1.2.1
+`ConditionGRNFit` contract. It assumes a paired-cell RNA+ATAC Seurat object.
 
-Current complete-run entry point: `rc_run_regcompass_one_shot()`. For explicit
-stage control use the six `rc_regcompass_step_*()` functions in
-[Tutorial 2](tutorial-02-stepwise-audit.md). The complete public API is indexed
-in [functions.md](functions.md).
+## 1. Required object state
 
-## Workflow
+The object must contain:
 
-```text
-cell type cells across conditions
-→ one shared Pando edge design with independent condition coefficients
-→ supported metabolic target genes
-→ complete-GPR core reactions
-→ one ordered subsystem/cross-reference expansion pass
-→ integrated RNA+ATAC reaction support
-→ medium-constrained model with global FASTCORE completion
-→ directional LP scoring and condition contrasts
+- normalized RNA and ATAC assays;
+- the condition and cell-type metadata columns used below;
+- RNA PCA and ATAC LSI reductions when the default metacell geometry is used;
+- paired RNA and ATAC measurements for the same cells.
+
+```r
+stopifnot(
+  all(c("Group", "cell_type") %in% colnames(A@meta.data)),
+  "pca" %in% names(A@reductions),
+  "lsi" %in% names(A@reductions),
+  ncol(SeuratObject::Embeddings(A[["pca"]])) >= 30,
+  ncol(SeuratObject::Embeddings(A[["lsi"]])) >= 30
+)
 ```
 
-## Prepare the object and model
+RegCompass intersects GEM GPR genes with RNA-assay row names and passes that
+complete metabolic target set to Pando. Do not override `genes` inside
+`pando_infer_args`.
+
+## 2. Prepare the GEM and medium
 
 ```r
 library(RegCompassR)
-library(Seurat)
-library(Signac)
 library(BSgenome.Hsapiens.UCSC.hg38)
 
 gem <- rc_prepare_gem(
@@ -41,29 +45,11 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-The Seurat object must contain normalized RNA and ATAC assays, the requested
-reductions, and the metadata columns supplied below. Pando is fitted once per
-cell type using one edge dictionary and pooled edge scale. Within each target,
-conditions share a lambda path and selected lambda but their coefficients are
-estimated independently. The target list is the intersection of GEM GPR genes
-and RNA-assay row names.
+When `pfm` is omitted, RegCompass loads Pando's bundled `motifs` object. Human
+runs also use the bundled hg38 phastCons plus SCREEN ccRE union unless
+`pando_initiate_args$regions` is supplied.
 
-When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes the resulting `motifs` object to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
-
-The default Pando regions are species-specific:
-
-```text
-human: phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
-mouse: phastConsElements20Mammals.UCSC.hg38 only
-```
-
-Both objects are loaded from Pando. An explicit `pando_args$pando_initiate_args$regions` overrides the default.
-
-Available medium presets include physiological plasma, RPMI-1640, high-glucose DMEM, glucose/lactate/glutamine sensitivity scenarios, technical exchange baselines, and custom media. See [medium presets](medium-presets.md) for the complete list and assumptions.
-
-## Run the complete workflow
-
-The public runner arguments and the example below follow the processing sequence: model/shared inputs → Stage 1 Pando → Stage 2 metacells → Stage 3 meta-modules → Stage 4 Layer 1 → Stage 5 Layer 2 → execution controls.
+## 3. Run the workflow
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -72,17 +58,16 @@ result <- rc_run_regcompass_one_shot(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
   gem = gem,
-
-  # Stage 1: Pando GRN evidence
   condition_col = "Group",
   celltype_col = "cell_type",
+
   pando_args = list(
-    min_cells = 100,
+    min_cells = 100L,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
       method = "shared_design_independent",
-      candidate_screen = "condition_union",
+      candidate_screen = "motif_domain",
       tf_cor = 0.1,
       peak_cor = 0.01,
       alpha = 0.5,
@@ -92,33 +77,28 @@ result <- rc_run_regcompass_one_shot(
       nlambda = 50L,
       nfolds = 5L,
       lambda_selection = "lambda.1se",
-      scale = TRUE,
-      parallel = FALSE
+      scale = TRUE
     )
   ),
 
-  # Stage 2: metacells
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
     rna_dims = 1:30,
     atac_reduction = "lsi",
     atac_dims = 2:30,
-    gamma = 30,
+    gamma = 30L,
     seed = 12345L,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10,
+    min_cells_per_stratum = 500L,
+    min_metacell_size = 10L,
     min_metacells_per_stratum = 2L,
     overwrite = FALSE
   ),
 
-  # Stage 4: integrated evidence and GPR aggregation
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
-
-  # Stage 5: medium-specific union GEM and scoring
   medium_scenarios = medium_scenarios,
   model_mode = "meta_module_gem",
   layer2_args = list(
@@ -131,85 +111,71 @@ result <- rc_run_regcompass_one_shot(
       strict = TRUE
     )
   ),
-
-  upstream_workers = 6,
-  layer2_workers = 30,
+  upstream_workers = 6L,
+  layer2_workers = 30L,
   progress = TRUE
 )
 ```
 
-## Pando fit and evidence parameters
+The one-shot workflow controls Pando execution through `upstream_workers`.
+Do not add `parallel` or `BPPARAM` to `pando_infer_args`.
 
-| Parameter | Default | Meaning |
-|---|---:|---|
-| `min_cells` | `20L` | Minimum cells required for each condition of a cell-type fit. |
-| `method` | `"shared_design_independent"` | Independently estimate each condition inside one comparable design. |
-| `candidate_screen` | `"condition_union"` | Union complete edges that pass within at least one condition. |
-| `condition_mix` | `1` | Removes cross-condition group coupling. |
-| `condition_weight` | `"equal"` | Uses the same per-condition loss convention as separate fits. |
-| `reference_condition` | first condition level | Baseline for `β_condition - β_reference`; set explicitly in reproducible analyses. |
-| `scale` | `TRUE` | Pool and standardize the final TF-RNA × peak-ATAC predictor. |
-| `min_abs_estimate` | `0` | Minimum absolute condition coefficient or reference contrast. |
-| `min_model_rsq` | `0.1` | Minimum finite condition target-model R². |
+## 4. Why `motif_domain` is the default
 
-The regularized condition solver does not use coefficient-level adjusted P
-values. Positive and negative active condition coefficients both define Stage
-3 regulatory support. Penalty modulation instead uses the explicit reference
-contrast and Pando's stored predictor transform.
+Pando fits the interaction predictor
 
-## Metacell geometry and reproducibility
+```text
+TF_RNA × peak_ATAC
+```
 
-The four reduction fields determine the cell-level geometry used by SuperCell2:
+A useful interaction can coexist with weak marginal TF-target and peak-target
+correlations. `candidate_screen = "motif_domain"` therefore retains the
+motif/domain-supported dictionary and leaves edge selection to elastic-net
+regularization. `condition_union` and `pooled` remain optional marginal-screen
+sensitivity modes.
 
-| Parameter | Default | Meaning |
-|---|---:|---|
-| `rna_reduction` | `"pca"` | RNA reduction stored in `A@reductions`. A precomputed `"harmony"` reduction may be used instead. |
-| `rna_dims` | `1:30` | RNA dimensions passed to SuperCell2. |
-| `atac_reduction` | `"lsi"` | ATAC reduction stored in `A@reductions`. |
-| `atac_dims` | `2:30` | ATAC dimensions passed to SuperCell2; LSI dimension 1 is excluded by default. |
-| `seed` | `12345L` | Base random seed. For ordered condition strata, the internal seed is `seed + stratum_index - 1`. |
-| `gamma` | `30L` | Approximate cells-per-metacell compression target. |
-| `min_cells_per_stratum` | `100L` | Minimum cells required for a condition stratum. |
-| `min_metacell_size` | `20L` | Metacells below this size are marked low-power. |
-| `min_metacells_per_stratum` | `2L` | Minimum accepted number of metacells per condition stratum. |
-| `overwrite` | `FALSE` | Set to `TRUE` when rebuilding checkpoints after changing cells, assays, reductions, dimensions, seed, gamma, or thresholds. |
-
-Before running, verify that the requested reductions and dimensions exist:
+The directly comparable coefficient contract requires:
 
 ```r
-stopifnot(
-  "pca" %in% names(A@reductions),
-  "lsi" %in% names(A@reductions),
-  ncol(SeuratObject::Embeddings(A[["pca"]])) >= 30,
-  ncol(SeuratObject::Embeddings(A[["lsi"]])) >= 30
+method = "shared_design_independent"
+condition_mix = 1
+condition_weight = "equal"
+scale = TRUE
+```
+
+Set `reference_condition` explicitly. Pando otherwise uses the first condition
+level within each cell type.
+
+## 5. Comparison support
+
+For condition `c` and reference `r`, Pando exports:
+
+```text
+comparison_mask[e, c] = eligibility_mask[e, c] && eligibility_mask[e, r]
+```
+
+RegCompass uses `beta[e, c] - beta[e, r]` only where this mask is true. This
+prevents a coefficient fixed to zero because an edge was non-estimable from
+being interpreted as a biological loss.
+
+```r
+head(result$grn$tf_peak_gene_condition_effect_all[, c(
+  "edge_id",
+  "Group",
+  "cell_type",
+  "condition_estimate",
+  "reference_estimate",
+  "condition_effect",
+  "comparable_to_reference"
+)])
+
+table(
+  result$grn$tf_peak_gene_condition_effect_all$comparable_to_reference,
+  useNA = "ifany"
 )
 ```
 
-Using Harmony changes only the RNA neighbourhood geometry used to assign metacell membership; RegCompass still aggregates the original RNA and ATAC assay counts. Do not use a Harmony embedding that removed the biological condition effect being analysed.
-
-Stage 2 records the exact reduction names, dimensions, embedding fingerprints, seed, gamma, and metacell thresholds in:
-
-```r
-result$metacell_data$pooled$cache_contract$analysis_args
-```
-
-## Fixed Stage 3 expansion
-
-Stage 3 always performs exactly one ordered expansion pass:
-
-```text
-core subsystem
-→ KEGG/Reactome reaction equivalence
-→ master-Rhea reaction equivalence
-```
-
-## GPR-AND aggregation
-
-`layer1_args$gpr_and_method` controls genes joined by a GPR AND relationship. Allowed values are `"min"`, `"median"`, and `"mean"`; the default is `"min"`. Isozyme OR branches are summed in the canonical Layer 1 calculation.
-
-`layer2_args$model_params$completion_time_limit` applies only to FASTCORE union-GEM construction; scoring LPs have no time-limit parameter.
-
-## Inspect the main outputs
+## 6. Inspect the main outputs
 
 ```r
 result$grn$condition_grn_fits
@@ -221,13 +187,53 @@ result$condition_grn_meta_modules$core_gene_reaction
 result$reaction_ranking
 result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions
-result$merged_grn_meta_modules$merged_reaction_membership
 result$microcompass$model_cache_summary
 ```
 
-The fit contract and transform files are also persisted as:
+Stage 1 provenance includes the actual candidate policy and comparison rule:
 
-```text
-01_grn/pando_condition_grn_fits.rds
-01_grn/pando_edge_predictor_transforms.tsv.gz
+```r
+result$grn$normalization_policy[c(
+  "pando_candidate_screen",
+  "comparison_support",
+  "reference_condition",
+  "coefficient_scale",
+  "min_model_rsq"
+)]
 ```
+
+## 7. Mouse input
+
+The bundled Pando regulatory regions are hg38 and must not be used for mouse
+ATAC coordinates. Supply a build-matched `GRanges` object:
+
+```r
+library(BSgenome.Mmusculus.UCSC.mm10)
+
+mouse_regions <- readRDS("mm10_regulatory_regions.rds")
+stopifnot(methods::is(mouse_regions, "GenomicRanges"))
+
+mouse_result <- rc_run_regcompass_one_shot(
+  object = A_mouse,
+  outdir = "RegCompass_mouse",
+  genome = BSgenome.Mmusculus.UCSC.mm10,
+  species = "mouse",
+  condition_col = "Group",
+  celltype_col = "cell_type",
+  pando_args = list(
+    pando_initiate_args = list(regions = mouse_regions),
+    pando_infer_args = list(
+      candidate_screen = "motif_domain",
+      reference_condition = "Control"
+    )
+  )
+)
+```
+
+The region build must match both the ATAC peak coordinates and the genome used
+for motif scanning.
+
+## 8. Next step
+
+Use [Tutorial 2](tutorial-02-stepwise-audit.md) when each stage should be saved,
+validated, and restarted independently.

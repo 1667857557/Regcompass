@@ -13,49 +13,26 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 }
 \arguments{
 \item{object}{Paired single-cell RNA+ATAC Seurat object.}
-
 \item{outdir}{Persistent workflow output directory.}
-
-\item{genome}{Genome object matching ATAC coordinates.}
-
-\item{species}{\code{"human"} or \code{"mouse"}. Human defaults to phastCons plus SCREEN ccRE regions; mouse defaults to phastCons regions only.}
-
+\item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
+\item{species}{\code{"human"} or \code{"mouse"}. Human runs may use the bundled hg38 phastCons plus SCREEN ccRE union. Mouse runs must provide a build-matched \code{GRanges} through \code{pando_args$pando_initiate_args$regions}.}
 \item{gem}{Optional prepared GEM. When omitted, the pinned species model is loaded.}
-
 \item{gem_version}{Pinned model release.}
-
 \item{gem_source}{Automatic, bundled-only, or explicit download model source.}
-
-\item{pfm}{Optional motif collection. When omitted, RegCompass loads \code{data("motifs", package = "Pando")} and uses \code{motifs}.}
-
-\item{fragment_files}{Use \code{FALSE} for the canonical peak-count path.}
-
+\item{pfm}{Optional motif collection. When omitted, RegCompass loads Pando's bundled \code{motifs} object.}
+\item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
 \item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
-
 \item{medium_scenarios}{Optional prebuilt medium table.}
-
 \item{progress}{Display workflow and stage progress.}
-
-\item{...}{Arguments passed to \code{rc_run_regcompass()}, including the
-shared-design Pando condition contract, reference condition, active-edge
-filters, metacell reductions/dimensions/seed, Stage 3 subsystem mapping,
-GPR-AND method, and Stage 5 construction controls.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}, including \code{condition_col}, \code{celltype_col}, \code{pando_args}, metacell settings, Layer 1/2 controls, and worker budgets.}
 }
-\description{Provides the species-aware complete-run API. It loads the bundled pinned Human-GEM or Mouse-GEM and constructs a shared medium when they are omitted, then delegates without changing the \code{ConditionGRNFit} or downstream stage contracts to \code{rc_run_regcompass()}.}
+\description{Provides the RegCompassR 1.9.3 species-aware complete-run API. It loads a pinned Human-GEM or Mouse-GEM and medium when omitted, then delegates without changing the Pando 1.2.1 \code{ConditionGRNFit} contract.}
 \details{
-Arguments are ordered by preparation and processing sequence: species/model preparation, Stage 1 motif input, Stage 2 fragment policy, Stage 5 medium preparation, and execution controls.
+Canonical Pando settings use \code{method = "shared_design_independent"}, \code{candidate_screen = "motif_domain"}, \code{condition_mix = 1}, \code{condition_weight = "equal"}, and \code{scale = TRUE}. Set \code{reference_condition} explicitly.
 
-\code{gem_source = "auto"} uses a compatible cache or installed model without network access for the default releases. Use \code{"bundled"} to prohibit fallback and \code{"download"} to rebuild from an official release.
+Pando's explicit \code{comparison_mask} requires an edge to be eligible in both the requested and reference conditions. RegCompass exposes \code{comparable_to_reference} and excludes unsupported contrasts from the active condition-effect table and penalty projection.
 
-The canonical motif default is Pando's bundled \code{motifs} object. Human regulatory regions default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects. Mouse regulatory regions default to Pando's \code{phastConsElements20Mammals.UCSC.hg38} object only. Explicit \code{pfm} and \code{pando_args$pando_initiate_args$regions} values override these defaults.
+\code{pando_initiate_args}, \code{pando_motif_args}, and \code{pando_infer_args} are routed to the corresponding Pando functions. RegCompass owns the object, assays, genome, motifs, grouping columns, GEM target genes, network name, minimum condition size, error policy, and \code{BPPARAM}. Canonical Stage 1 rejects Pando aggregation columns because Stage 2 owns metacells.
 
-Pando defaults use \code{shared_design_independent},
-\code{condition_union}, \code{condition_mix = 1},
-\code{condition_weight = "equal"}, and pooled final-edge scaling. Set
-\code{reference_condition} explicitly to define
-\code{beta_condition - beta_reference}. Active-edge defaults include
-\code{min_abs_estimate = 0} and \code{min_model_rsq = 0.1}. Metacell defaults
-include RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and
-\code{seed = 12345L}. GPR-AND aggregation defaults to \code{"min"} and accepts
-\code{"median"} or \code{"mean"}.
+Parallel Stage 1 execution is controlled by \code{upstream_workers}; users should not put \code{parallel} or \code{BPPARAM} inside \code{pando_infer_args}. Mouse runs stop unless a mouse-coordinate regulatory-region \code{GRanges} is supplied; the bundled hg38 region set is never applied silently.
 }
