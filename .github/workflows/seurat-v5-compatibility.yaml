@@ -28,12 +28,15 @@ jobs:
             libssl-dev \
             libxml2-dev \
             libglpk-dev \
+            libgsl-dev \
             libbz2-dev \
             liblzma-dev \
             zlib1g-dev
 
       - name: Install latest Seurat v5 stack and package dependencies
         shell: Rscript {0}
+        env:
+          GITHUB_PAT: ${{ github.token }}
         run: |
           options(timeout = 1200)
           install.packages(c(
@@ -64,12 +67,17 @@ jobs:
           remotes::install_github(
             "1667857557/SuperCell_Seurat_V4@agent/current-seurat-v5-layer-api",
             dependencies = NA,
-            upgrade = "never"
+            upgrade = "never",
+            auth_token = Sys.getenv("GITHUB_PAT")
           )
           remotes::install_github(
-            "1667857557/Pando_regcompass",
+            paste0(
+              "1667857557/Pando_regcompass@",
+              "f98923101b00a138652479bddee44ab0b24b07b6"
+            ),
             dependencies = NA,
-            upgrade = "never"
+            upgrade = "never",
+            auth_token = Sys.getenv("GITHUB_PAT")
           )
           expected <- c(
             SeuratObject = "5.4.0",
