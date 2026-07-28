@@ -61,12 +61,8 @@ install.packages("remotes")
 remotes::install_version("SeuratObject", "4.1.4", upgrade = "never")
 remotes::install_version("Seurat", "4.4.0", upgrade = "never")
 remotes::install_version("Signac", "1.11.0", upgrade = "never")
-remotes::install_github(
-  "1667857557/SuperCell_Seurat_V4@supercell-2.0"
-)
-remotes::install_github(
-  "1667857557/Pando_regcompass@f98923101b00a138652479bddee44ab0b24b07b6"
-)
+remotes::install_github("1667857557/SuperCell_Seurat_V4")
+remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
