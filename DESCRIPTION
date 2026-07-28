@@ -119,7 +119,7 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@supercell-2.0,
+    1667857557/SuperCell_Seurat_V4@Supercell2,
     1667857557/Pando_regcompass@f98923101b00a138652479bddee44ab0b24b07b6
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
