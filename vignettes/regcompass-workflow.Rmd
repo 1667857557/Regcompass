@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.9.1 condition-comparable Pando workflow"
+title: "RegCompassR 1.9.3 condition-comparable Pando workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.9.1 condition-comparable Pando workflow}
+  %\VignetteIndexEntry{RegCompassR 1.9.3 condition-comparable Pando workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -13,29 +13,26 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 # Overview
 
-RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level support and directional COMPASS-like scores.
-
-The current public entry points are `rc_run_regcompass_one_shot()` for a
-species-aware complete run, `rc_run_regcompass()` for an explicit complete run,
-and six `rc_regcompass_step_*()` functions for restartable execution.
+RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level
+support and directional COMPASS-like scores.
 
 ```text
-shared cell-type Pando TF–peak–GEM-gene design
-→ independent, comparable condition coefficients
-→ supported metabolic target-gene sets
-→ complete-GPR core reactions
-→ one ordered subsystem/cross-reference expansion pass
-→ merged meta-module catalogue
-→ integrated RNA+ATAC reaction support
-→ COMPASS-compatible GPR-AND aggregation
-→ medium-specific union GEM
-→ single global FASTCORE completion
+one Pando motif/domain edge dictionary per cell type
+→ pooled TF-RNA × peak-ATAC predictor transforms
+→ independently estimated condition coefficients at a shared lambda
+→ explicit condition-versus-reference comparison mask
+→ supported metabolic genes and complete-GPR cores
+→ one ordered biological expansion pass
+→ condition-level multimodal metacells
+→ integrated reaction support and penalties
+→ one shared medium-specific GEM
 → directional LP scoring
 ```
 
-Stage 3 maps active targets to complete-GPR cores and applies one ordered annotation pass. Only the medium-constrained Stage 5 model is called a union GEM and runs FASTCORE completion.
+Pando 1.2.1 is the sole GRN estimator. RegCompass consumes its
+`ConditionGRNFit` contracts without refitting coefficient matrices.
 
-# Prepare the GEM and medium
+# Prepare the human GEM and medium
 
 ```{r}
 library(RegCompassR)
@@ -54,27 +51,11 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-When `pfm` is omitted, RegCompass loads:
-
-```r
-data("motifs", package = "Pando")
-pfm <- motifs
-```
-
-The resulting `motifs` object is passed to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
-
-The default Pando regions are species-specific:
-
-```text
-human: phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
-mouse: phastConsElements20Mammals.UCSC.hg38 only
-```
-
-An explicit `pando_args$pando_initiate_args$regions` overrides either default.
+When `pfm` is omitted, RegCompass loads Pando's bundled `motifs` object. Human
+analyses also use the bundled hg38 phastCons plus SCREEN ccRE union unless
+`pando_initiate_args$regions` is supplied.
 
 # Complete workflow
-
-Public runner arguments are ordered by processing sequence.
 
 ```{r}
 result <- rc_run_regcompass_one_shot(
@@ -83,17 +64,16 @@ result <- rc_run_regcompass_one_shot(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
   gem = gem,
-
-  # Stage 1
   condition_col = "Group",
   celltype_col = "cell_type",
+
   pando_args = list(
-    min_cells = 100,
+    min_cells = 100L,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
       method = "shared_design_independent",
-      candidate_screen = "condition_union",
+      candidate_screen = "motif_domain",
       tf_cor = 0.1,
       peak_cor = 0.01,
       alpha = 0.5,
@@ -103,33 +83,28 @@ result <- rc_run_regcompass_one_shot(
       nlambda = 50L,
       nfolds = 5L,
       lambda_selection = "lambda.1se",
-      scale = TRUE,
-      parallel = FALSE
+      scale = TRUE
     )
   ),
 
-  # Stage 2
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
     rna_dims = 1:30,
     atac_reduction = "lsi",
     atac_dims = 2:30,
-    gamma = 30,
+    gamma = 30L,
     seed = 12345L,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10,
+    min_cells_per_stratum = 500L,
+    min_metacell_size = 10L,
     min_metacells_per_stratum = 2L,
     overwrite = FALSE
   ),
 
-  # Stage 4
   layer1_args = list(
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
-
-  # Stage 5
   medium_scenarios = medium_scenarios,
   model_mode = "meta_module_gem",
   layer2_args = list(
@@ -142,68 +117,84 @@ result <- rc_run_regcompass_one_shot(
       strict = TRUE
     )
   ),
-  upstream_workers = 6,
-  layer2_workers = 30
+  upstream_workers = 6L,
+  layer2_workers = 30L
 )
 ```
 
-# Pando shared-design condition contract
+The one-shot runner controls Pando execution through `upstream_workers` and a
+stage-scoped backend. `pando_infer_args$parallel` and `BPPARAM` are not part of
+the nested inference example.
 
-Pando fits one complete edge dictionary per cell type and applies one pooled
-transform to every final TF-RNA × peak-ATAC edge predictor. Within each target,
-conditions share one lambda path and selected lambda. With
-`method = "shared_design_independent"`,
-`condition_mix = 1`, and `condition_weight = "equal"`, the condition
-coefficient vectors are estimated independently at that target-specific lambda.
+# Pando shared-design contract
 
-`reference_condition` defines the exported contrast
-`beta_condition - beta_reference`. Active condition coefficients determine
-which GEM target genes enter Stage 3. The reference contrasts and stored edge
-transforms define the Layer 1 penalty modifier; their absolute magnitudes are
-not renormalized.
-
-# Metacell reductions, dimensions, and seed
-
-The canonical Stage 2 defaults are:
-
-```r
-rna_reduction = "pca"
-rna_dims = 1:30
-atac_reduction = "lsi"
-atac_dims = 2:30
-gamma = 30L
-seed = 12345L
-min_cells_per_stratum = 100L
-min_metacell_size = 20L
-min_metacells_per_stratum = 2L
-```
-
-Reduction names must exist in `A@reductions`, and the requested dimensions must exist in their embedding matrices. LSI dimension 1 is excluded by default. For ordered condition strata, RegCompass passes the deterministic seed:
+For edge `e` and unit `u`, Pando fits the interaction predictor:
 
 ```text
-seed_for_stratum = seed + stratum_index - 1
+x[e, u] = RNA[TF(e), u] × ATAC[peak(e), u]
 ```
 
-A precomputed Harmony embedding can replace PCA through `rna_reduction = "harmony"` and the corresponding `rna_dims`. Harmony changes membership geometry only; the original RNA and ATAC assay counts are aggregated. Changing cells, assays, reductions, dimensions, embedding values, seed, gamma, or thresholds invalidates the Stage 2 cache and requires `overwrite = TRUE`.
+The final interaction is centered and scaled once over all cells of the cell
+type. Conditions share this transform, the target transform, and a
+target-specific lambda path/selection. With
+`method = "shared_design_independent"`, `condition_mix = 1`, and
+`condition_weight = "equal"`, condition coefficient vectors are estimated
+independently at the selected lambda.
 
-# Fixed Stage 3 expansion
+The interaction-safe candidate default is `motif_domain`. The optional
+`condition_union` and `pooled` modes apply marginal-correlation screens and are
+sensitivity modes rather than canonical defaults.
 
-Stage 3 expansion is fixed to one pass:
+# Reference contrasts and comparison support
+
+Pando exports:
 
 ```text
-core subsystem
-→ KEGG/Reactome reaction equivalence
-→ master-Rhea reaction equivalence
-→ stop
+contrast[e, c] = beta[e, c] - beta[e, reference]
+comparison_mask[e, c] =
+  eligibility_mask[e, c] && eligibility_mask[e, reference]
 ```
 
-# GPR-AND and model construction
-
-`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"` and defaults to `"min"`. FASTCORE is configured only at Stage 5 through `layer2_args$model_params`. `completion_time_limit` limits union-GEM construction only; the later scoring LPs have no time-limit parameter.
-
-# Stepwise workflow
+RegCompass requires the explicit `comparison_mask`. A coefficient fixed to zero
+because an edge is non-estimable cannot enter the active effect table or the
+Layer 1 penalty projection.
 
 ```{r}
+all_effects <- result$grn$tf_peak_gene_condition_effect_all
+all_effects[, c(
+  "edge_id", "Group", "cell_type",
+  "condition_estimate", "reference_estimate", "condition_effect",
+  "comparable_to_reference"
+)]
+
+table(all_effects$comparable_to_reference, useNA = "ifany")
+```
+
+# Pando argument routing
+
+```text
+pando_initiate_args → Pando::initiate_grn()
+pando_motif_args    → Pando::find_motifs()
+pando_infer_args    → Pando::infer_condition_grn()
+```
+
+RegCompass owns the object, assays, motif object, genome, metadata columns,
+complete GEM target set, network name, minimum condition size, error policy,
+and `BPPARAM`. Nested attempts to override these fields stop before Pando is
+called. Stage 1 also rejects Pando aggregation columns because Stage 2 owns
+metacell construction.
+
+# Restartable Stage 1
+
+```{r}
+library(BiocParallel)
+
+upstream_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(workers = 6L, type = "SOCK")
+} else {
+  MulticoreParam(workers = 6L)
+}
+
 step1 <- rc_regcompass_step_grn(
   object = A,
   gem = gem,
@@ -213,20 +204,36 @@ step1 <- rc_regcompass_step_grn(
   condition_col = "Group",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 100,
-    min_abs_estimate = 0,
+    min_cells = 100L,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      method = "shared_design_independent",
-      candidate_screen = "condition_union",
-      condition_mix = 1,
-      condition_weight = "equal",
-      reference_condition = "Control",
-      scale = TRUE
+      candidate_screen = "motif_domain",
+      reference_condition = "Control"
     )
-  )
+  ),
+  parallel = TRUE,
+  BPPARAM = upstream_bp
 )
 
+step1$params$pando_parallel
+step1$grn_result$condition_grn_fits
+step1$grn_result$normalization_policy[c(
+  "pando_motifs",
+  "pando_regions",
+  "pando_candidate_screen",
+  "comparison_support",
+  "pando_peak_cor",
+  "min_model_rsq"
+)]
+```
+
+With `parallel = TRUE` and `BPPARAM = NULL`, RegCompass enables Pando's native
+map backend. With `parallel = FALSE`, Stage 1 is serial. `BPPARAM = TRUE` is
+invalid.
+
+# Stages 2–6
+
+```{r}
 step2 <- rc_regcompass_step_metacells(
   object = A,
   outdir = "RegCompass_steps/02_metacells",
@@ -238,10 +245,10 @@ step2 <- rc_regcompass_step_metacells(
     rna_dims = 1:30,
     atac_reduction = "lsi",
     atac_dims = 2:30,
-    gamma = 30,
+    gamma = 30L,
     seed = 12345L,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10,
+    min_cells_per_stratum = 500L,
+    min_metacell_size = 10L,
     min_metacells_per_stratum = 2L
   )
 )
@@ -259,7 +266,9 @@ step4 <- rc_regcompass_step_layer1(
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
   regulatory_alpha = 1,
-  gpr_and_method = "min"
+  gpr_and_method = "min",
+  parallel = TRUE,
+  BPPARAM = upstream_bp
 )
 
 step5 <- rc_regcompass_step_layer2(
@@ -293,115 +302,37 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-# Inspect Stage 1 and Stage 2 provenance
+Stage 3 performs one complete-GPR/subsystem/cross-reference expansion pass and
+does not run FASTCORE. Stage 4 reconstructs Pando's model-space predictor and
+uses only comparable effects. Stage 5 performs the only global FASTCORE
+completion for the shared medium-specific model.
+
+# Mouse input
+
+Pando's bundled regulatory-region objects are hg38. Mouse runs must supply a
+build-matched `GRanges` object:
 
 ```{r}
-step1$grn_result$normalization_policy[c(
-  "pando_motifs",
-  "pando_regions",
-  "pando_peak_cor",
-  "pando_rsq"
-)]
+library(BSgenome.Mmusculus.UCSC.mm10)
 
-step1$grn_result$condition_grn_fits
-step1$grn_result$condition_fit_status
-step1$grn_result$tf_peak_gene_condition
-step1$grn_result$tf_peak_gene_condition_effect
+mouse_regions <- readRDS("mm10_regulatory_regions.rds")
 
-step2$pooled$cache_contract$analysis_args
-step2$pooled$cache_contract$rna_reduction$embedding
-step2$pooled$cache_contract$atac_reduction$embedding
-```
-
-# Inspect the Stage 3 evidence and catalogue
-
-```{r}
-step3$condition_modules$supported_metabolic_genes
-step3$condition_modules$core_gene_reaction
-step3$condition_modules$reaction_membership
-step3$condition_modules$meta_module_summary$expansion_policy
-step3$merged_modules$merged_core_reactions
-step3$merged_modules$merged_reaction_membership
-step3$merged_modules$is_gem
-step3$merged_modules$fastcore_applied
-```
-
-The supported-gene table contains one row per condition, cell type, and active
-GEM target gene. It reports active-edge counts, distinct TFs and regions,
-coefficient magnitude, target-model R², and positive/negative edge counts.
-Coefficient-level adjusted P values are not part of the regularized
-condition-GRN contract.
-
-The merged catalogue contains biological reactions only. It has no medium bounds and no FASTCORE support.
-
-# Inspect Layer 1 GPR aggregation
-
-```{r}
-step4$capacity_params$and_method
-step4$capacity_params$or_method
-step4$evidence_formula
-```
-
-The default AND rule is `min`; `median` and `mean` are available for sensitivity analysis. The canonical OR rule remains additive.
-
-# Inspect the Stage 5 union GEM
-
-```{r}
-step5$model_cache_summary[, c(
-  "medium_scenario",
-  "file",
-  "file_checksum",
-  "n_merged_biological_reactions",
-  "n_global_fastcore_support_reactions",
-  "completion_stage"
-)]
-
-union_gem <- readRDS(step5$model_cache_summary$file[[1]])
-
-union_gem$is_union_gem
-union_gem$union_gem_medium_scenario
-union_gem$reaction_meta[
-  union_gem$reaction_meta$global_fastcore_support %in% TRUE,
-  , drop = FALSE
-]
-```
-
-One union GEM is built per medium scenario and shared by all conditions and metacells in that scenario. The construction phase may be limited with `completion_time_limit`; scoring starts only after this cached model has been completed.
-
-# Targeted second-pass scoring
-
-```{r}
-targeted <- rc_regcompass_step_target_union(
-  layer1 = step4,
-  meta_modules = step3,
-  layer2 = step5,
-  gem = gem,
-  outdir = "RegCompass_targeted",
-  core_reaction_ids = "MAR04324",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs"
+mouse_step1 <- rc_regcompass_step_grn(
+  object = A_mouse,
+  gem = mouse_gem,
+  outdir = "RegCompass_mouse/01_grn",
+  genome = BSgenome.Mmusculus.UCSC.mm10,
+  species = "mouse",
+  condition_col = "Group",
+  celltype_col = "cell_type",
+  pando_args = list(
+    pando_initiate_args = list(regions = mouse_regions),
+    pando_infer_args = list(
+      candidate_screen = "motif_domain",
+      reference_condition = "Control"
+    )
   )
 )
-
-targeted$microcompass$params[c(
-  "structural_model_reused_exactly",
-  "fastcore_rerun",
-  "model_rebuild",
-  "scoring_time_limit"
-)]
 ```
 
-Selected genes or reaction IDs define mapping anchors. The second pass verifies each Stage 5 cache file checksum and medium identifier, reuses the exact final medium-specific union GEM, and neither rebuilds the model nor reruns FASTCORE. It is scoring-only and has no time-limit parameter.
-
-# Restart policy
-
-- Change Pando evidence thresholds, motifs, species, or regulatory regions: rerun Stage 1 onward.
-- Change metacell cells, assays, reductions, dimensions, seed, gamma, or thresholds: rerun Stage 2 onward with `overwrite = TRUE`.
-- Change subsystem annotations or GEM GPR rules: rerun Stage 3 onward.
-- Change `gpr_and_method` or another RNA+ATAC transformation: rerun Stage 4 onward.
-- Change medium or global FASTCORE construction settings: rerun Stage 5 onward.
-
-# Condition comparisons
-
-Within one medium, all conditions use the same union GEM and target-specific `vmax`. Condition differences therefore reflect the multiome penalty matrix. Different media may use different global FASTCORE support sets and must be interpreted as separate structural contexts.
+RegCompass stops instead of silently applying hg38 regions to mouse ATAC peaks.
