@@ -6,8 +6,8 @@ The examples target RegCompassR 1.9.3 and Pando 1.2.1.
 ## Configure Stage 1 and Stage 4 workers
 
 A supplied `BiocParallelParam` is forwarded to Pando. When `parallel = TRUE`
-and `BPPARAM = NULL`, RegCompass instead enables Pando's native map backend.
-When `parallel = FALSE`, Stage 1 is serial. Do not set
+and `BPPARAM = NULL`, RegCompass enables the Pando native map backend. When
+`parallel = FALSE`, Stage 1 is serial. Do not set
 `pando_infer_args$parallel` separately.
 
 ```r
@@ -333,3 +333,6 @@ result$reaction_ranking
 result$condition_contrast
 result$grn$normalization_policy
 ```
+
+API index: [functions.md](functions.md). It documents stage arguments, return
+contracts, and restart boundaries.

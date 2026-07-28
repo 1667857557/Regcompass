@@ -62,25 +62,43 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   )
 })
 
-test_that("Stage 1 installs species-specific Pando motifs and regions", {
-  text <- paste(
+test_that("Stage 1 installs human Pando motifs and guards mouse regions", {
+  implementation <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
+    collapse = "\n"
+  )
+  bridge <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)),
     collapse = "\n"
   )
   motif_helper <- paste(
     deparse(body(.rc_default_pando_motifs)), collapse = "\n"
   )
-  region_helper <- paste(
+  region_guard <- paste(
     deparse(body(.rc_default_pando_regions)), collapse = "\n"
   )
-  expect_match(text, ".rc_default_pando_motifs", fixed = TRUE)
-  expect_match(text, ".rc_default_pando_regions(species)", fixed = TRUE)
+  human_region_helper <- paste(
+    deparse(body(.rc_default_pando_regions_without_genome_guard)),
+    collapse = "\n"
+  )
+  expect_match(implementation, ".rc_default_pando_motifs", fixed = TRUE)
+  expect_match(implementation, ".rc_default_pando_regions(species)", fixed = TRUE)
+  expect_match(bridge, ".rc_validate_pando_bridge_args", fixed = TRUE)
   expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
-  expect_match(region_helper, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
-  expect_match(region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
-  expect_match(region_helper, 'identical(species, "mouse")', fixed = TRUE)
-  expect_match(region_helper, "return(phast_cons)", fixed = TRUE)
-  expect_match(region_helper, "BiocGenerics::union", fixed = TRUE)
+  expect_match(
+    human_region_helper,
+    "phastConsElements20Mammals.UCSC.hg38",
+    fixed = TRUE
+  )
+  expect_match(human_region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(human_region_helper, "BiocGenerics::union", fixed = TRUE)
+  expect_match(region_guard, 'identical(species, "mouse")', fixed = TRUE)
+  expect_match(region_guard, "valid for mouse input.", fixed = TRUE)
+  expect_error(
+    .rc_default_pando_regions("mouse"),
+    "hg38 conserved-element set is not valid for mouse input",
+    fixed = TRUE
+  )
 })
 
 test_that("condition-pooled metacell is selected explicitly", {

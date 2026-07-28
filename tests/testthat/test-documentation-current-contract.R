@@ -110,9 +110,14 @@ test_that("each tutorial links the current API index", {
 })
 
 test_that("current condition fit status is exported with legacy compatibility", {
-  body_text <- paste(
+  implementation <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
+    collapse = "\n"
+  )
+  bridge <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
   )
-  expect_match(body_text, "condition_fit_status = status", fixed = TRUE)
-  expect_match(body_text, "sample_status = status", fixed = TRUE)
+  expect_match(implementation, "condition_fit_status = status", fixed = TRUE)
+  expect_match(implementation, "sample_status = status", fixed = TRUE)
+  expect_match(bridge, "comparison_support", fixed = TRUE)
 })

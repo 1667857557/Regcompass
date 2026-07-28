@@ -236,4 +236,4 @@ for motif scanning.
 ## 8. Next step
 
 Use [Tutorial 2](tutorial-02-stepwise-audit.md) when each stage should be saved,
-validated, and restarted independently.
+validated, and restarted independently. API index: [functions.md](functions.md).

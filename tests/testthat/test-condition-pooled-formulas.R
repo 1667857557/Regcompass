@@ -22,8 +22,19 @@ test_that("reaction penalty is positive and decreases with expression", {
 })
 
 test_that("Pando grouping uses condition and cell type", {
-  text <- paste(deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n")
-  expect_match(text, "group_cols <- c(condition_col, celltype_col)", fixed = TRUE)
+  implementation <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
+    collapse = "\n"
+  )
+  bridge <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
+  )
+  expect_match(
+    implementation,
+    "group_cols <- c(condition_col, celltype_col)",
+    fixed = TRUE
+  )
+  expect_match(bridge, ".rc_validate_pando_bridge_args", fixed = TRUE)
   expect_false("sample_col" %in% names(formals(.rc_run_condition_single_cell_grns)))
   expect_false("strict_biological_defaults" %in% names(formals(rc_run_regcompass)))
 })
