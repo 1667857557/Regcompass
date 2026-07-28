@@ -73,7 +73,7 @@ jobs:
           remotes::install_github(
             paste0(
               "1667857557/Pando_regcompass@",
-              "f98923101b00a138652479bddee44ab0b24b07b6"
+              "75f764d64d7c9d8db7d17a637c88a637a04ed6c5"
             ),
             dependencies = NA,
             upgrade = "never",
