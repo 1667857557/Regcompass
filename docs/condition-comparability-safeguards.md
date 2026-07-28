@@ -1,52 +1,98 @@
 # Condition-comparability safeguards
 
-## Why this change is required
+## Explicit comparison support
 
-Pando estimates condition coefficients on one shared TF–peak–target dictionary. An edge can nevertheless be non-estimable in one condition because the TF, peak, or final TF-by-peak predictor has no eligible variation in that condition.
+Pando fits condition coefficients on one shared TF–peak–target dictionary. An
+edge can still be non-estimable in one condition because its TF, peak, or final
+`TF RNA × peak ATAC` predictor lacks eligible variation.
 
-A coefficient fixed to zero by the eligibility mask is therefore not equivalent to an estimated zero coefficient. For an explicit reference condition, RegCompass now requires
+A coefficient fixed to zero by an eligibility constraint is not equivalent to
+an eligible coefficient estimated as zero. Pando 1.2.1 therefore exports:
 
 ```text
-comparable_to_reference[e, c] =
-    eligible[e, c] && eligible[e, reference]
+comparison_mask[e, c] =
+  eligibility_mask[e, c] && eligibility_mask[e, reference]
 ```
 
-before an edge-level condition effect can enter the regulatory modifier or penalty calculation.
-
-The complete edge tables retain all rows and add `comparable_to_reference`. The active condition-effect table excludes non-comparable rows.
+RegCompass validates and requires this explicit matrix. It no longer silently
+reconstructs comparison support for older Pando objects. The complete condition
+effect table retains every edge and adds `comparable_to_reference`; the active
+effect table excludes non-comparable rows before Layer 1 or penalty calculation.
 
 ## Candidate-edge policy
 
-The fitted Pando predictor is
+The fitted Pando predictor is:
 
 ```text
-TF_RNA * peak_ATAC
+TF_RNA × peak_ATAC
 ```
 
-Marginal TF–target and peak–target correlations can both be near zero when the interaction predictor is strongly associated with the target. RegCompass therefore defaults to
+Marginal TF-target and peak-target correlations can both be near zero even when
+the interaction predictor is informative. RegCompass therefore defaults to:
 
 ```r
 candidate_screen = "motif_domain"
 ```
 
-which retains the structurally supported motif/domain edge dictionary and lets the shared elastic-net model perform coefficient selection. Users can still explicitly request `condition_union` or `pooled`, but those faster modes impose marginal-correlation assumptions that are not guaranteed by the interaction model.
+This retains the structurally supported motif/domain dictionary and lets the
+shared elastic-net model select coefficients. Users can explicitly request
+`condition_union` or `pooled` as faster marginal-screen sensitivity analyses.
+
+## Pando argument ownership
+
+RegCompass routes:
+
+```text
+pando_initiate_args → initiate_grn
+pando_motif_args    → find_motifs
+pando_infer_args    → infer_condition_grn
+```
+
+It rejects nested overrides of the object, assays, motif object, genome,
+condition/cell-type columns, GEM target genes, network name, minimum condition
+size, error policy, and `BPPARAM`. This prevents a nested argument from changing
+the fit coordinate system while downstream extraction still assumes the
+RegCompass-managed contract.
+
+`aggregate_rna_col` and `aggregate_peaks_col` are rejected in canonical Stage 1.
+Pando is fitted on paired single cells; RegCompass Stage 2 owns metacell
+aggregation.
+
+## Parallel routing
+
+For `rc_regcompass_step_grn()`:
+
+```text
+parallel = FALSE                         → serial
+parallel = TRUE + BiocParallelParam      → supplied backend
+parallel = TRUE + BPPARAM NULL/FALSE     → Pando native map
+BPPARAM = TRUE                           → error
+```
+
+The resolved route is stored in `step1$params$pando_parallel`. The one-shot
+workflow uses `upstream_workers` and a stage-scoped backend, so nested
+`pando_infer_args$parallel` should not be supplied.
 
 ## Genome-build safety
 
-The Pando fork bundles an hg38 conserved-element region set. It is invalid for mouse ATAC coordinates. Mouse analyses must supply a species- and build-matched `GRanges` object through
+Pando bundles hg38 conserved-element/SCREEN regions. Those coordinates are
+invalid for mouse ATAC peaks. Mouse analyses must supply a species- and
+build-matched `GRanges` object through:
 
 ```r
 pando_initiate_args = list(regions = mouse_regions)
 ```
 
-The region genome build must match both the ATAC peak coordinates and the genome object passed to motif scanning. RegCompass now stops rather than silently applying hg38 regions to mouse input.
+The region genome build must match both the ATAC peak coordinates and the genome
+object passed to motif scanning. RegCompass stops rather than silently applying
+hg38 regions to mouse input.
 
 ## Unchanged model properties
 
-This correction does not change:
+These safeguards do not change:
 
-- the shared TF–peak–target edge coordinate system;
+- the shared TF–peak–target coordinate system;
 - pooled predictor and target transformations;
 - target-specific shared lambda paths;
-- independently estimated condition coefficient columns at a fixed lambda;
+- independently estimated condition coefficients at a fixed lambda;
 - the shared GEM and stoichiometric reaction space.
