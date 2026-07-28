@@ -236,6 +236,38 @@ result$merged_grn_meta_modules$merged_reaction_membership
 result$microcompass$model_cache_summary
 ```
 
+## Compare the same reaction across conditions
+
+Condition statistics operate on metacell-level scores from the shared GEM. The
+example below compares `control_24hr`, `JQ1_24hr`, and `MS177_24hr`, retains the
+reverse target direction explicitly, and draws one point per metacell with
+adjusted-P-value significance brackets:
+
+```r
+condition_stats <- rc_test_condition_reactions(
+  result,
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "stem-cell_like",
+  target_direction = "reverse",
+  p_adjust_scope = "celltype_contrast_medium"
+)
+
+condition_stats$omnibus
+condition_stats$pairwise
+
+rc_plot_condition_reaction(
+  condition_stats,
+  reaction_id = "selected_reaction",
+  annotation_p = "p_adj"
+)
+```
+
+See [Condition-associated reaction statistics](docs/condition-reaction-statistics.md)
+for Kruskal-Wallis and pairwise Wilcoxon tests, adjustment scopes, diagnostics,
+and plotting details.
+
 ## Tutorials
 
 - [Level 1: minimal one-shot run](docs/tutorial-01-quick-start.md)

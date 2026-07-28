@@ -10,6 +10,7 @@ test_that("public API exposes the condition-comparable restartable workflow", {
       "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
       "rc_regcompass_step_target_union", "rc_regcompass_step_results",
       "rc_test_condition_reactions", "rc_plot_condition_reaction",
+      "rc_report_condition_directions",
       "rc_build_reaction_annotations", "rc_attach_reaction_annotations",
       "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
     )
@@ -162,8 +163,10 @@ test_that("metacell defaults expose reductions dimensions seed and thresholds", 
   expect_match(metacell_body, "Sample balancing is not part", fixed = TRUE)
   expect_match(
     builder_body,
-    "seed_i <- as.integer(seed) + match(key, names(groups)) - 1L",
-    fixed = TRUE
+    paste0(
+      "seed_i <- as.integer\\(seed\\) \\+ ",
+      "match\\(key, names\\(groups\\)\\) -\\s+1L"
+    )
   )
   expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
 })

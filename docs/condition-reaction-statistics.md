@@ -6,6 +6,10 @@ formal reaction names, stoichiometric formulas, substrates, products, GPR rules,
 participating genes, and RNA-versus-multiome evidence provenance to every result
 row.
 
+The plot shows one point per metacell. Pairwise significance brackets can use
+raw or adjusted P values, while every test remains a metacell-level comparison
+within a fixed cell type, medium, reaction, and target direction.
+
 ## Why the comparison is valid
 
 RegCompass builds one deduplicated global union-GEM from the locally completed

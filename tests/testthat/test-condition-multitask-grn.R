@@ -2,6 +2,7 @@ test_that("condition effects use an explicit reference condition", {
   beta <- matrix(
     c(0.5, 2.0, -0.25, -1.0),
     nrow = 2,
+    byrow = TRUE,
     dimnames = list(
       c("edge1", "edge2"),
       c("Control", "Drug")
@@ -9,8 +10,8 @@ test_that("condition effects use an explicit reference condition", {
   )
   observed <- .rc_reference_contrast(beta, "Control")
 
-  expect_equal(observed[, "Control"], c(0, 0))
-  expect_equal(observed[, "Drug"], c(1.5, -0.75))
+  expect_equal(unname(observed[, "Control"]), c(0, 0))
+  expect_equal(unname(observed[, "Drug"]), c(1.5, -0.75))
   expect_error(
     .rc_reference_contrast(beta, "Missing"),
     "Reference condition is absent"
