@@ -101,8 +101,8 @@
         call. = FALSE
       )
     }
-    if (utils::package_version(result$version) <
-        utils::package_version("1.2.1")) {
+    if (base::package_version(result$version) <
+        base::package_version("1.2.1")) {
       stop(
         "RegCompass requires Pando >= 1.2.1 for the explicit ",
         "ConditionGRNFit comparison mask; installed version is ",
@@ -186,6 +186,13 @@
     BPPARAM = NULL,
     on_group_error = c("record", "stop"),
     species = c("auto", "human", "mouse")) {
+  if (identical(BPPARAM, TRUE)) {
+    stop(
+      "`BPPARAM = TRUE` is invalid. Supply a BiocParallelParam object, ",
+      "`NULL`, or `FALSE`.",
+      call. = FALSE
+    )
+  }
   .rc_validate_pando_bridge_args(
     pando_initiate_args = pando_initiate_args,
     pando_motif_args = pando_motif_args,
