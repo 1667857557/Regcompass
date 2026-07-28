@@ -63,6 +63,11 @@ test_that("ConditionGRNFit extraction writes metadata without sample remapping",
   )
   expect_match(
     bridge,
+    ".rc_extract_condition_grn_contract_without_comparison_guard",
+    fixed = TRUE
+  )
+  expect_match(
+    bridge,
     ".rc_apply_condition_comparison_semantics",
     fixed = TRUE
   )
