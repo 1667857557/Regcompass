@@ -108,7 +108,7 @@ test_that("UNASSIGNED subsystem labels are not pooled", {
   expect_false(any(toupper(maps$subsystem$subsystem_id) == "UNASSIGNED"))
 })
 
-test_that("significant Pando targets define one supported gene set per group", {
+test_that("active Pando targets define one supported gene set per group", {
   significant <- data.frame(
     group_id = rep("control|tumor", 4),
     condition = rep("control", 4),
@@ -134,6 +134,14 @@ test_that("significant Pando targets define one supported gene set per group", {
   expect_equal(
     supported$n_significant_edges[supported$gene == "G1"],
     2L
+  )
+  expect_equal(
+    supported$n_active_edges[supported$gene == "G1"],
+    2L
+  )
+  expect_identical(
+    unique(supported$evidence_definition),
+    "active_pando_tf_peak_gene_target"
   )
   expect_equal(
     supported$n_positive_edges[supported$gene == "G1"],

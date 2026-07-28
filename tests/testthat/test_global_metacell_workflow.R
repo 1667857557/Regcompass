@@ -1,4 +1,4 @@
-test_that("v1.8.4 public workflow is GRN first", {
+test_that("v1.9.1 public workflow is GRN first", {
   text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   stages <- c(
     "rc_regcompass_step_grn",
@@ -20,7 +20,7 @@ test_that("v1.8.4 public workflow is GRN first", {
   expect_true("meta_module_args" %in% names(formals(rc_run_regcompass)))
 })
 
-test_that("Pando grouping is condition by cell type", {
+test_that("Pando shares one cell-type fit across conditions", {
   text <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)),
     collapse = "\n"
@@ -30,14 +30,11 @@ test_that("Pando grouping is condition by cell type", {
     "group_cols <- c(condition_col, celltype_col)",
     fixed = TRUE
   )
-  expect_match(
-    text,
-    "Every condition-by-cell-type Pando GRN must complete successfully",
-    fixed = TRUE
-  )
+  expect_match(text, "Pando::infer_condition_grn", fixed = TRUE)
+  expect_match(text, "condition_grn_fits", fixed = TRUE)
 })
 
-test_that("Stage 3 uses significant targets rather than target projection", {
+test_that("Stage 3 uses active targets rather than target projection", {
   text <- paste(
     deparse(body(.rc_build_condition_meta_modules)),
     collapse = "\n"

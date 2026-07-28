@@ -1,6 +1,6 @@
 # Stage input-output contracts
 
-RegCompassR 1.8.4 connects stages only when classes, workflow settings, GEM provenance, metacell construction provenance, and scoring-unit order agree.
+RegCompassR 1.9.1 connects stages only when classes, workflow settings, GEM provenance, metacell construction provenance, and scoring-unit order agree.
 
 ## Stage 1: Pando evidence
 
@@ -64,7 +64,7 @@ step3$group_coverage
 
 Contract:
 
-- `supported_metabolic_genes` contains one row per condition, cell type, and GEM target gene with at least one significant Pando TF–peak–gene row;
+- `supported_metabolic_genes` contains one row per condition, cell type, and GEM target gene with at least one active Pando TF–peak–gene row;
 - positive and negative Pando coefficients both count as regulatory evidence;
 - all supported genes in one `condition × cell type` form one GPR-evaluation set;
 - Stage 3 performs no shared-TF target projection, top-k graph pruning, or connected-component analysis;

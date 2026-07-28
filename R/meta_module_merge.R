@@ -64,7 +64,7 @@
     character()
   }
   out$core_definition <-
-    "condition_celltype_significant_pando_targets_complete_gpr"
+    "condition_celltype_active_pando_targets_complete_gpr"
   out$merge_source <- "deduplicated_biological_meta_module_reactions"
   out$is_gem <- FALSE
   out$fastcore_applied <- FALSE

@@ -54,8 +54,8 @@ rc_regcompass_step_results <- function(
   ), names(meta_modules$condition_modules))
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
-    schema_version = "regcompass_significant_pando_targets_v1",
-    version = "1.8.4",
+    schema_version = "regcompass_condition_grn_fit_v2",
+    version = "1.9.1",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
@@ -78,7 +78,13 @@ rc_regcompass_step_results <- function(
         "single_cell_grn", "condition_metacells", "meta_modules",
         "layer1", "medium_specific_union_gem_layer2"
       ),
-      pando_grouping = c(params$condition_col, params$celltype_col),
+      pando_grouping = params$celltype_col,
+      pando_condition_design = paste(
+        "shared complete edge dictionary, eligibility mask, pooled final-edge",
+        "scale and lambda; independently estimated condition coefficients"
+      ),
+      pando_condition_effect =
+        "beta_condition_minus_explicit_reference_condition",
       pando_peak_cor =
         grn$grn_result$normalization_policy$pando_peak_cor,
       pando_regions = grn$grn_result$normalization_policy$pando_regions,
@@ -88,7 +94,7 @@ rc_regcompass_step_results <- function(
       metacell_gamma = params$metacell_args$gamma,
       sample_weighting = "none",
       meta_module_core_definition =
-        "condition_celltype_significant_pando_targets_complete_gpr",
+        "condition_celltype_active_pando_targets_complete_gpr",
       meta_module_expansion =
         "core_subsystem_plus_kegg_reactome_master_rhea_only",
       meta_module_merge = "reaction_id_deduplication_only_not_a_gem",

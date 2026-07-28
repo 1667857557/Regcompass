@@ -1,4 +1,4 @@
-# RegCompassR 1.8.4 tutorial index
+# RegCompassR 1.9.1 tutorial index
 
 All execution modes follow the same main workflow:
 
@@ -35,7 +35,7 @@ rc_regcompass_step_layer2()
 rc_regcompass_step_results()
 ```
 
-Stage 3 directly maps significant Pando target genes to complete-GPR cores. It does not perform shared-TF projection or connected-component analysis. Expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence.
+Stage 3 directly maps active Pando target genes to complete-GPR cores. It does not perform shared-TF projection or connected-component analysis. Expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence.
 
 Stage 4 uses `gpr_and_method = "min"` by default. `"median"` and `"mean"` are available for sensitivity analysis.
 

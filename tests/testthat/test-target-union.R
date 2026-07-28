@@ -347,14 +347,14 @@ test_that("invalid selections fail before scoring", {
     ),
     "absent from the GEM"
   )
-  expect_error(
-    .rc_target_union_core_rows(
-      gem,
-      available_core_reactions = available,
-      core_reaction_ids = "R3"
-    ),
-    "not core reactions in the original Layer 2 run"
+  noncore <- .rc_target_union_core_rows(
+    gem,
+    available_core_reactions = available,
+    core_reaction_ids = "R3"
   )
+  expect_identical(noncore$reaction_id, "R3")
+  expect_false(noncore$is_core)
+  expect_identical(noncore$anchor_role, "gem_noncore")
   expect_error(
     .rc_target_union_core_rows(
       gem,

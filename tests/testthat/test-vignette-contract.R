@@ -44,10 +44,12 @@ test_that("workflow vignette documents canonical motifs cores GPR and FASTCORE",
   text <- rc_read_doc(path)
 
   required <- c(
-    "RegCompassR 1.8.4",
+    "RegCompassR 1.9.1",
     "rc_run_regcompass_one_shot(",
     "data(\"motifs\", package = \"Pando\")",
-    "padj_threshold = 0.05",
+    'method = "shared_design_independent"',
+    'condition_mix = 1',
+    'reference_condition = "Control"',
     "min_abs_estimate = 0",
     "min_model_rsq = 0.1",
     "complete-GPR core reactions",
@@ -94,7 +96,13 @@ test_that("all five tutorials use the current stage contract", {
 
   expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
   expect_match(text[[1L]], 'data("motifs", package = "Pando")', fixed = TRUE)
-  expect_match(text[[1L]], "padj_threshold = 0.05", fixed = TRUE)
+  expect_match(
+    text[[1L]], 'method = "shared_design_independent"', fixed = TRUE
+  )
+  expect_match(text[[1L]], "condition_mix = 1", fixed = TRUE)
+  expect_match(
+    text[[1L]], 'reference_condition = "Control"', fixed = TRUE
+  )
   expect_match(text[[1L]], "min_abs_estimate = 0", fixed = TRUE)
   expect_match(text[[1L]], "min_model_rsq = 0.1", fixed = TRUE)
   expect_match(text[[1L]], 'rna_reduction = "pca"', fixed = TRUE)
@@ -183,7 +191,7 @@ test_that("README API index and Rd files expose current core model and defaults"
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
 
   required <- c(
-    "RegCompassR 1.8.4",
+    "RegCompassR 1.9.1",
     "supported_metabolic_genes",
     "significant",
     "complete-GPR",
@@ -198,7 +206,11 @@ test_that("README API index and Rd files expose current core model and defaults"
     "fastcore_rerun",
     "model_rebuild",
     "motifs",
-    "padj_threshold",
+    "shared_design_independent",
+    "reference_condition",
+    "condition_mix",
+    "condition_weight",
+    "scale = TRUE",
     "min_abs_estimate",
     "min_model_rsq",
     "rna_reduction",

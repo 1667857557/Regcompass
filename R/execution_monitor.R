@@ -145,6 +145,9 @@
 .rc_step_monitor_start <- function(
     stage, outdir, progress = TRUE, total_parts = 1L) {
   progress <- .rc_progress_enabled(progress)
+  if (!is.null(outdir)) {
+    dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  }
   monitor <- new.env(parent = emptyenv())
   monitor$timer <- .rc_timing_start(stage)
   monitor$outdir <- outdir

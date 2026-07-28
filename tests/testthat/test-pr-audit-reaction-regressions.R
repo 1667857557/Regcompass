@@ -45,6 +45,7 @@ audit_reaction_fixture <- function() {
     ncol = length(units),
     dimnames = list(c("GENE1", "GENE2"), units)
   )
+  rna["GENE1", ] <- 0.4
   modifier <- matrix(
     0,
     nrow = 2,

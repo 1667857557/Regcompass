@@ -39,6 +39,12 @@
       n_significant_edges = sum(
         as.numeric(one$n_significant_edges %||% 0), na.rm = TRUE
       ),
+      n_active_edges = sum(
+        as.numeric(
+          one$n_active_edges %||% one$n_significant_edges %||% 0
+        ),
+        na.rm = TRUE
+      ),
       stringsAsFactors = FALSE,
       check.names = FALSE
     )
@@ -88,6 +94,8 @@
     coverage$grn_status == "ok"
   coverage$has_significant_pando_evidence <-
     !is.na(coverage$n_significant_edges) & coverage$n_significant_edges > 0
+  coverage$has_active_pando_evidence <-
+    !is.na(coverage$n_active_edges) & coverage$n_active_edges > 0
   coverage$metacells_available <- !is.na(coverage$n_metacells) &
     coverage$n_metacells > 0
   coverage$coverage_complete <- coverage$grn_available &
@@ -100,7 +108,7 @@
       paste(
         ". Every scored metacell group requires a successful Pando fit,",
         "and every Pando group requires at least one metacell. A successful",
-        "fit may legitimately contain zero significant target genes."
+        "fit may legitimately contain zero active target genes."
       ),
       call. = FALSE
     )
@@ -109,7 +117,7 @@
   coverage
 }
 
-#' Infer condition-by-cell-type Pando GRNs from single cells
+#' Infer shared-design, condition-comparable Pando GRNs from single cells
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,

@@ -1,4 +1,4 @@
-test_that("public API exposes the significant-target restartable workflow", {
+test_that("public API exposes the condition-comparable restartable workflow", {
   expect_setequal(
     getNamespaceExports("RegCompassR"),
     c(
@@ -10,6 +10,7 @@ test_that("public API exposes the significant-target restartable workflow", {
       "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
       "rc_regcompass_step_target_union", "rc_regcompass_step_results",
       "rc_test_condition_reactions", "rc_plot_condition_reaction",
+      "rc_report_condition_directions",
       "rc_build_reaction_annotations", "rc_attach_reaction_annotations",
       "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
     )
@@ -32,7 +33,7 @@ test_that("canonical source architecture has no retired compatibility layers", {
   )))
   required <- c(
     "stage_contracts.R", "shared_tfidf.R", "grn_inference.R",
-    "regulatory_modifier.R", "reaction_evidence.R", "reaction_annotations.R",
+    "condition_grn_contract.R", "reaction_evidence.R", "reaction_annotations.R",
     "reaction_annotation_api.R", "reaction_gene_plots.R",
     "execution_monitor.R", "bundled_gems.R", "parallel.R"
   )
@@ -130,7 +131,12 @@ test_that("Pando defaults use bundled motifs and species-specific regions", {
   expect_identical(grn_formals$padj_threshold, 0.05)
   expect_identical(grn_formals$min_abs_estimate, 0)
   expect_identical(grn_formals$min_model_rsq, 0.1)
-  expect_true(isTRUE(grn_formals$require_padj))
+  expect_false(isTRUE(grn_formals$require_padj))
+  infer_defaults <- eval(grn_formals$pando_infer_args)
+  expect_identical(infer_defaults$method, "shared_design_independent")
+  expect_identical(infer_defaults$condition_mix, 1)
+  expect_identical(infer_defaults$condition_weight, "equal")
+  expect_true(infer_defaults$scale)
 })
 
 test_that("metacell defaults expose reductions dimensions seed and thresholds", {
@@ -157,8 +163,10 @@ test_that("metacell defaults expose reductions dimensions seed and thresholds", 
   expect_match(metacell_body, "Sample balancing is not part", fixed = TRUE)
   expect_match(
     builder_body,
-    "seed_i <- as.integer(seed) + match(key, names(groups)) - 1L",
-    fixed = TRUE
+    paste0(
+      "seed_i <- as.integer\\(seed\\) \\+ ",
+      "match\\(key, names\\(groups\\)\\) -\\s+1L"
+    )
   )
   expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
 })

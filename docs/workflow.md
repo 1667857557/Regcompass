@@ -1,11 +1,11 @@
-# RegCompassR 1.8.4 workflow
+# RegCompassR 1.9.1 workflow
 
 ## Canonical data flow
 
 ```text
-condition × cell type cells
-→ Pando TF–peak–GEM-gene models
-→ significantly supported metabolic target genes
+cell type cells across conditions
+→ shared Pando edge design and independent condition coefficients
+→ supported metabolic target genes
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
 → biological meta-modules
@@ -20,7 +20,10 @@ condition × cell type cells
 
 ## 1. Pando targets, motifs, and regulatory regions
 
-Pando is fitted separately for each `condition × cell type` group. Its candidate target set is:
+Pando is fitted once per cell type across conditions. The complete edge
+dictionary, edge eligibility mask, and pooled final-predictor scale are shared.
+Within each target, the lambda path and selected lambda are also shared;
+condition coefficients are independently estimated. Its candidate target set is:
 
 \[
 T = G_{GEM\ GPR} \cap G_{RNA\ assay}.
@@ -48,11 +51,14 @@ R_{mouse} = phastConsElements20Mammals.UCSC.hg38.
 
 The objects are loaded from the installed Pando package. A user-supplied `pando_initiate_args$regions` overrides either species-specific default. The selected policy is recorded in `step1$grn_result$normalization_policy$pando_regions`.
 
-A TF–peak–target row is retained as significant evidence when it passes the configured adjusted-P-value, absolute-estimate, and target-model-R² thresholds. Positive and negative coefficients both indicate regulatory evidence.
+An active condition TF–peak–target coefficient is retained when it passes the
+configured absolute-estimate and target-model-R² thresholds. Positive and
+negative coefficients both indicate regulatory evidence. The regularized
+solver does not emit adjusted P values.
 
 ## 2. Supported metabolic gene sets and core reactions
 
-For condition `c` and cell type `k`, let `E_{c,k}` be the significant Pando coefficient table. The supported GEM metabolic genes are:
+For condition `c` and cell type `k`, let `E_{c,k}` be the active Pando coefficient table after the configured absolute-effect and model-quality filters. The supported GEM metabolic genes are:
 
 \[
 M_{c,k} = \{g \in T : \exists (t,p,g) \in E_{c,k}\}.
@@ -114,7 +120,29 @@ For gene `g` in metacell `u`, RNA logCPM is converted to bounded support:
 C^{RNA}_{g,u}=\frac{x_{g,u}}{x_{g,u}+h}.
 \]
 
-Peak accessibility is robustly centred and scaled within cell type across conditions. Signed Pando coefficients define an ATAC regulatory modifier `R_{g,u}`. The modifier acts on RNA support on the log-odds scale:
+For condition \(c\), RegCompass uses the explicit Pando contrast
+\(\Delta\beta_{e,c}=\beta_{e,c}-\beta_{e,reference}\). It reconstructs each
+edge predictor from metacell TF RNA and peak ATAC, then applies the exact pooled
+center and scale stored by Pando:
+
+\[
+z_{e,u} =
+\frac{\mathrm{RNA}_{TF(e),u}\mathrm{ATAC}_{peak(e),u}-\mu_e}{s_e}.
+\]
+
+The raw model-space projection and bounded modifier are
+
+\[
+M_{g,c,u} =
+\sqrt{\operatorname{clamp}(R^2_{g,c},0,1)}
+\sum_{e:\,target(e)=g}\Delta\beta_{e,c}z_{e,u},
+\qquad
+R_{g,c,u}=\tanh(M_{g,c,u}).
+\]
+
+There is no downstream metacell robust re-scaling and no division by the
+absolute sum of edge effects. The modifier acts on RNA support on the log-odds
+scale:
 
 \[
 C^{MO}_{g,u}=

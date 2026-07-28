@@ -21,6 +21,8 @@ test_that("GRN and metacell groups require bidirectional coverage", {
   expect_true(all(coverage$coverage_complete))
   expect_true(coverage$has_significant_pando_evidence[coverage$condition == "A"])
   expect_false(coverage$has_significant_pando_evidence[coverage$condition == "B"])
+  expect_true(coverage$has_active_pando_evidence[coverage$condition == "A"])
+  expect_false(coverage$has_active_pando_evidence[coverage$condition == "B"])
   expect_equal(coverage$n_metacells[coverage$condition == "A"], 2L)
   expect_equal(
     coverage$n_mixed_celltype_metacells[coverage$condition == "A"], 1L
@@ -100,7 +102,7 @@ test_that("Layer 1 uses the canonical schema and stage class", {
   step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
   expect_match(
     body_text,
-    "regcompass_condition_only_layer1_v3",
+    "regcompass_condition_grn_layer1_v2",
     fixed = TRUE
   )
   expect_match(
@@ -127,10 +129,10 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(
     result_text,
-    "regcompass_significant_pando_targets_v1",
+    "regcompass_condition_grn_fit_v2",
     fixed = TRUE
   )
-  expect_match(result_text, 'version = "1.8.4"', fixed = TRUE)
+  expect_match(result_text, 'version = "1.9.1"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)

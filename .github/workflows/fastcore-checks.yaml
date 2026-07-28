@@ -201,6 +201,7 @@ jobs:
           status <- 0L
           tryCatch({
             library(RegCompassR)
+            testthat::set_max_fails(Inf)
             testthat::test_local(
               Sys.getenv("GITHUB_WORKSPACE"),
               reporter = "summary",

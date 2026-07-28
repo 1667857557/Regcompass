@@ -1,13 +1,16 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 1.9.0
+Version: 1.9.1
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Fits one cell-type-level sparse-group multi-task Pando model across
-    conditions for Human-GEM or Mouse-GEM GPR target genes in paired single-cell
-    RNA and ATAC data. The shared TF-peak-target edge dictionary produces a
-    universal cell-type GRN, condition-level GRNs, and explicit condition effects.
+Description: Fits one cell-type-level Pando design across conditions for
+    Human-GEM or Mouse-GEM GPR target genes in paired single-cell RNA and ATAC
+    data. Condition elastic-net coefficients use the same TF-peak-target edge
+    dictionary, eligibility masks, and pooled predictor scale. Within each
+    target they also share a lambda path and selected lambda, but are estimated
+    independently. Pando emits explicit reference-condition
+    contrasts and the exact predictor transforms used by RegCompass.
     Active condition-level edges define metabolic target genes and complete-GPR
     core reactions, while condition effects are projected through metacell
     TF-expression by peak-accessibility interactions to modify reaction penalties.
@@ -64,7 +67,6 @@ Collate:
     'shared_tfidf.R'
     'condition_pooling.R'
     'grn_inference.R'
-    'regulatory_modifier.R'
     'condition_layer1.R'
     'reaction_evidence.R'
     'reaction_annotations.R'
@@ -73,7 +75,6 @@ Collate:
     'condition_direction_report.R'
     'condition_plot.R'
     'reaction_gene_plots.R'
-    'layer1_builder.R'
     'parallel.R'
     'stage_parallel_lifecycle.R'
     'penalty.R'
@@ -86,7 +87,7 @@ Collate:
     'regcompass.R'
     'one_shot.R'
     'stratum_filter.R'
-    'zz_condition_multitask_grn.R'
+    'condition_grn_contract.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
@@ -100,7 +101,7 @@ Imports:
     Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
-    Pando,
+    Pando (>= 1.2.0),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
@@ -119,11 +120,12 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@supercell-2.0,
-    1667857557/Pando_regcompass@d6cce00059a5d2b3fb2d05a36d9ea74b1cd555cf
+    1667857557/Pando_regcompass@f98923101b00a138652479bddee44ab0b24b07b6
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
 Config/RegCompassR/SupportedSignacMajor: 1
+Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
 Config/RegCompassR/SeuratObjectVersion: 4.1.4
 Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0

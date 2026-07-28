@@ -6,7 +6,7 @@
 \alias{rc_regcompass_step_layer1}
 \alias{rc_regcompass_step_layer2}
 \alias{rc_regcompass_step_results}
-\title{Run RegCompass through inspectable significant-target stages}
+\title{Run RegCompass through inspectable condition-comparable stages}
 \usage{
 rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
@@ -50,7 +50,14 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{species}{Species identifier or \code{"auto"}. Human uses phastCons plus SCREEN ccRE default regions; mouse uses phastCons only.}
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Pando GRN configuration. Evidence defaults include \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Explicit \code{pando_initiate_args$regions} overrides the species-specific region default.}
+\item{pando_args}{Pando GRN configuration. Comparable-condition defaults inside
+\code{pando_infer_args} are
+\code{method = "shared_design_independent"},
+\code{candidate_screen = "condition_union"}, \code{condition_mix = 1},
+\code{condition_weight = "equal"}, and \code{scale = TRUE}. Set
+\code{reference_condition} explicitly for reproducible contrasts. Active-edge
+defaults are \code{min_abs_estimate = 0} and
+\code{min_model_rsq = 0.1}.}
 \item{metacell_args}{SuperCell2 configuration. Defaults are RNA \code{"pca"} dimensions 1:30, ATAC \code{"lsi"} dimensions 2:30, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}. The base seed is incremented by ordered condition-stratum index. Changing cached inputs requires \code{overwrite = TRUE}.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}. Stage 3 expansion is one ordered subsystem, KEGG/Reactome, and master-Rhea pass.}
 \item{regulatory_alpha}{Strength of the ATAC regulatory modifier in Layer 1.}
@@ -70,13 +77,21 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \details{
 Stage 1 public arguments are ordered by processing sequence: model/genome inputs, motif and species policy, metadata and assays, Pando settings, then execution controls.
 
-Stage 1 fits Pando to GEM GPR target genes for each condition by cell-type group. A coefficient must satisfy the adjusted-P-value, absolute-estimate, and target-model-R-squared filters. Positive and negative coefficients both count as regulatory evidence.
+Stage 1 fits Pando to GEM GPR targets once per cell type. Condition
+coefficients are estimated independently within one exact edge dictionary,
+eligibility mask, pooled final-predictor transform, and lambda choice. Active
+condition coefficients pass the absolute-estimate and target-model-R-squared
+filters; the regularized solver has no adjusted-P-value filter.
 
 Stage 2 constructs condition-level metacells from explicit RNA and ATAC reductions and dimensions. Reduction names, selected dimensions, embedding fingerprints, seed, gamma, and thresholds are part of the restart contract.
 
 Stage 3 collects target genes with significant TF-peak-gene evidence and maps complete GPR branches directly to core reactions. Expansion is exactly one ordered pass through core subsystems, direct KEGG/Reactome reaction equivalence, and direct master-Rhea reaction equivalence.
 
-Stage 4 aggregates each required GPR complex with \code{min}, \code{median}, or \code{mean}; the default is \code{min}. Isozyme OR branches remain additive.
+Stage 4 projects explicit condition-minus-reference coefficients through the
+stored Pando transform of metacell TF RNA by peak ATAC, without absolute-sum
+edge normalization. It then aggregates each required GPR complex with
+\code{min}, \code{median}, or \code{mean}; the default is \code{min}. Isozyme
+OR branches remain additive.
 
 With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium scenario, runs one global FASTCORE completion on the merged catalogue, and saves the resulting medium-specific union GEM. All conditions and metacells in that medium reuse the same cached model.
 

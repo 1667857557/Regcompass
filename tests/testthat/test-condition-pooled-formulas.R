@@ -31,8 +31,11 @@ test_that("Pando grouping uses condition and cell type", {
 test_that("per-metacell regulatory state uses peak accessibility", {
   body_text <- paste(deparse(body(.rc_condition_gene_regulatory_modifier)), collapse = "\n")
   expect_match(body_text, ".rc_pando_assay_data(object, atac_assay)", fixed = TRUE)
+  expect_match(body_text, "predictor_center", fixed = TRUE)
+  expect_match(body_text, "predictor_scale", fixed = TRUE)
+  expect_match(body_text, ".rc_project_condition_edges", fixed = TRUE)
+  expect_false(grepl("sum(abs", body_text, fixed = TRUE))
   expect_false(grepl("tf_score", body_text, fixed = TRUE))
-  expect_false(grepl("rna_assay", body_text, fixed = TRUE))
 })
 
 test_that("single-condition scoring uses penalty per required target flux", {

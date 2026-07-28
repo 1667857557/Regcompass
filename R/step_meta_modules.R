@@ -1,7 +1,7 @@
-#' Construct significant-target complete-GPR cores and biological meta-modules
+#' Construct active-target complete-GPR cores and biological meta-modules
 #'
 #' Stage 3 defines biological reaction membership only. For each condition by
-#' cell-type group, GEM metabolic genes with significant Pando TF-peak-gene
+#' cell-type group, GEM metabolic genes with active condition Pando TF-peak-gene
 #' evidence are treated as one supported gene set. Reactions become core only
 #' when at least one complete GPR branch is contained in that set. Biological
 #' expansion is one fixed ordered pass: core subsystem, direct KEGG/Reactome
@@ -95,7 +95,7 @@ rc_regcompass_step_meta_modules <- function(
     params = list(
       meta_module_args = meta_module_args,
       core_definition =
-        "condition_celltype_significant_pando_targets_complete_gpr",
+        "condition_celltype_active_pando_targets_complete_gpr",
       expansion_policy = "single_ordered_annotation_pass",
       feasibility_completion = "layer2_medium_specific_only",
       merge_creates_gem = FALSE

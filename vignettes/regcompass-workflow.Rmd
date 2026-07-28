@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 1.8.4 significant-Pando-target workflow"
+title: "RegCompassR 1.9.1 condition-comparable Pando workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.8.4 significant-Pando-target workflow}
+  %\VignetteIndexEntry{RegCompassR 1.9.1 condition-comparable Pando workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -16,8 +16,9 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level support and directional COMPASS-like scores.
 
 ```text
-condition × cell type Pando TF–peak–GEM-gene models
-→ significant metabolic target-gene sets
+shared cell-type Pando TF–peak–GEM-gene design
+→ independent, comparable condition coefficients
+→ supported metabolic target-gene sets
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
 → merged meta-module catalogue
@@ -28,7 +29,7 @@ condition × cell type Pando TF–peak–GEM-gene models
 → directional LP scoring
 ```
 
-Stage 3 maps significant targets to complete-GPR cores and applies one ordered annotation pass. Only the medium-constrained Stage 5 model is called a union GEM and runs FASTCORE completion.
+Stage 3 maps active targets to complete-GPR cores and applies one ordered annotation pass. Only the medium-constrained Stage 5 model is called a union GEM and runs FASTCORE completion.
 
 # Prepare the GEM and medium
 
@@ -84,15 +85,21 @@ result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 100,
-    padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
-    require_padj = TRUE,
     pando_infer_args = list(
-      method = "glm",
+      method = "shared_design_independent",
+      candidate_screen = "condition_union",
       tf_cor = 0.1,
       peak_cor = 0.01,
-      adjust_method = "fdr",
+      alpha = 0.5,
+      condition_mix = 1,
+      condition_weight = "equal",
+      reference_condition = "Control",
+      nlambda = 50L,
+      nfolds = 5L,
+      lambda_selection = "lambda.1se",
+      scale = TRUE,
       parallel = FALSE
     )
   ),
@@ -137,17 +144,20 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-# Pando evidence filters
+# Pando shared-design condition contract
 
-A TF–peak–target coefficient enters the significant evidence table only when all enabled filters pass:
+Pando fits one complete edge dictionary per cell type and applies one pooled
+transform to every final TF-RNA × peak-ATAC edge predictor. Within each target,
+conditions share one lambda path and selected lambda. With
+`method = "shared_design_independent"`,
+`condition_mix = 1`, and `condition_weight = "equal"`, the condition
+coefficient vectors are estimated independently at that target-specific lambda.
 
-- `padj_threshold = 0.05`: finite adjusted P value no greater than 0.05;
-- `min_abs_estimate = 0`: finite absolute coefficient no smaller than the threshold;
-- `min_model_rsq = 0.1`: finite target-model R² no smaller than 0.1;
-- `require_padj = TRUE`: fail rather than silently proceed when adjusted P values are unavailable;
-- `min_cells`: minimum cells required in the `condition × cell type` group.
-
-Both positive and negative Pando coefficients count as regulatory evidence. The filters determine which GEM target genes enter Stage 3; coefficient direction is retained as provenance but does not change supported-gene membership.
+`reference_condition` defines the exported contrast
+`beta_condition - beta_reference`. Active condition coefficients determine
+which GEM target genes enter Stage 3. The reference contrasts and stored edge
+transforms define the Layer 1 penalty modifier; their absolute magnitudes are
+not renormalized.
 
 # Metacell reductions, dimensions, and seed
 
@@ -201,10 +211,16 @@ step1 <- rc_regcompass_step_grn(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 100,
-    padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
-    require_padj = TRUE
+    pando_infer_args = list(
+      method = "shared_design_independent",
+      candidate_screen = "condition_union",
+      condition_mix = 1,
+      condition_weight = "equal",
+      reference_condition = "Control",
+      scale = TRUE
+    )
   )
 )
 
