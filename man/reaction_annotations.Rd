@@ -5,7 +5,7 @@
 \alias{rc_attach_reaction_annotations}
 \alias{rc_select_gene_reactions}
 \alias{rc_plot_condition_gene_reactions}
-\title{Annotate reactions and select gene-associated condition responses}
+\title{Annotate, select, and plot gene-associated reaction responses}
 \usage{
 rc_build_reaction_annotations(
   gem,
@@ -121,6 +121,9 @@ reported explicitly. Condition-by-cell-type evidence distinguishes reactions
 whose GPR-aggregated reaction capacity is changed by ATAC-integrated gene support
 (\code{RNA+ATAC}) from reactions supported by RNA without an active reaction-level
 ATAC contribution (\code{RNA-only}).
+The ATAC contribution originates from the stored Pando
+\code{beta_condition - beta_reference} contrast projected through the exact
+pooled TF-RNA by peak-ATAC transform; these functions do not refit a GRN.
 }
 \details{
 \code{RNA+ATAC} is assigned only when the reaction capacity calculated from

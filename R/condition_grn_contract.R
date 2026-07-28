@@ -545,6 +545,7 @@
     pando_installed_version = pando_install$version,
     pando_installation = pando_install,
     target_metabolic_genes = target_genes,
+    condition_fit_status = status,
     sample_status = status,
     pando_network_index = extracted$network_index,
     pando_fit_diagnostics = extracted$fit_diagnostics,

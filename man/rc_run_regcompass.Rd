@@ -41,7 +41,7 @@ contrast. Downstream active-edge defaults are \code{min_abs_estimate = 0} and
 \code{min_model_rsq = 0.1}. Explicit \code{pando_initiate_args$regions}
 overrides the species-specific default.}
 
-\item{sample_col}{Optional sample provenance column. It is not used for canonical condition-only metacell grouping or weighting.}
+\item{sample_col}{Deprecated compatibility input. It is recorded as provenance only and is not used for canonical grouping, sample balancing, weighting, stability selection, or refitting.}
 
 \item{fragment_files}{Use \code{FALSE} for the canonical existing-peak-count path.}
 
@@ -63,7 +63,7 @@ overrides the species-specific default.}
 
 \item{progress}{Display workflow and stage progress. Set \code{FALSE} or use \code{options(RegCompassR.progress = FALSE)} for quiet execution.}
 }
-\description{Runs the six canonical Pando, metacell, biological meta-module, Layer 1, medium-specific union-GEM/Layer 2, and result stages.}
+\description{Runs the six canonical stages using Pando as the sole condition-GRN estimator, condition-pooled metacells, biological meta-modules, exact TF-by-ATAC effect projection, one shared structural model per medium, directional LP scoring, and annotated result assembly.}
 \details{
 Public arguments are ordered by processing sequence: shared model inputs, Stage 1 Pando inputs, Stage 2 metacell inputs, Stage 3 meta-module inputs, Stage 4 evidence inputs, Stage 5 medium/model inputs, and execution controls.
 

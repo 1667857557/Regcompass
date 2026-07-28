@@ -14,7 +14,6 @@ The RNA reduction is selectable. A precomputed Harmony reduction can replace PCA
 step2 <- rc_regcompass_step_metacells(
   object = A,
   outdir = "RegCompass_steps/02_condition_metacells",
-  sample_col = NULL,
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
   fragment_files = FALSE,
@@ -73,7 +72,6 @@ stopifnot(
 step2 <- rc_regcompass_step_metacells(
   object = A,
   outdir = "RegCompass_steps/02_condition_metacells",
-  sample_col = NULL,
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
   fragment_files = FALSE,

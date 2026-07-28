@@ -1,6 +1,8 @@
 # Tutorial Level 2: stepwise run
 
 Use this tutorial when each RegCompass stage should be run and saved independently.
+Each function below is part of the current exported API; see
+[functions.md](functions.md) for the complete argument and return-value index.
 
 ## Configure cross-platform parallel backends
 
@@ -78,7 +80,7 @@ step1 <- rc_regcompass_step_grn(
   BPPARAM = upstream_bp
 )
 
-step1$grn_result$sample_status
+step1$grn_result$condition_fit_status
 step1$grn_result$target_metabolic_genes
 ```
 
@@ -143,7 +145,6 @@ read.delim(gzfile(file.path(
 step2 <- rc_regcompass_step_metacells(
   object = A,
   outdir = "RegCompass_steps/02_metacells",
-  sample_col = NULL,
   condition_col = "Group",
   celltype_col = "cell_type",
   fragment_files = FALSE,
@@ -340,6 +341,10 @@ result <- rc_regcompass_step_results(
 
 ```r
 result$condition_grn_meta_modules$supported_metabolic_genes
+result$grn$condition_grn_fits
+result$grn$condition_fit_status
+result$grn$tf_peak_gene_condition
+result$grn$tf_peak_gene_condition_effect
 result$reaction_ranking
 result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions

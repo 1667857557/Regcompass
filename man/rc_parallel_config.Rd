@@ -14,4 +14,4 @@ rc_parallel_config(
 \item{backend}{Requested backend. \code{"auto"} selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS.}
 }
 \value{A list containing OS type, requested and resolved backends, actual backend, worker count, and BiocParallel availability.}
-\description{Reports the execution configuration used by RegCompass without starting workers. Sequential execution is selected when one worker is requested or BiocParallel is unavailable.}
+\description{Reports the execution configuration used by RegCompass without starting workers. Automatic resolution uses SOCK workers on Windows and multicore workers on Linux/macOS; one worker or unavailable BiocParallel resolves to sequential execution. Complete workflows expose separate upstream and Layer 2 worker budgets.}

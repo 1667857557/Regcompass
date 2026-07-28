@@ -41,7 +41,7 @@ shared-design Pando condition contract, reference condition, active-edge
 filters, metacell reductions/dimensions/seed, Stage 3 subsystem mapping,
 GPR-AND method, and Stage 5 construction controls.}
 }
-\description{Loads the bundled pinned Human-GEM or Mouse-GEM when \code{gem} is omitted and delegates to \code{rc_run_regcompass()}.}
+\description{Provides the species-aware complete-run API. It loads the bundled pinned Human-GEM or Mouse-GEM and constructs a shared medium when they are omitted, then delegates without changing the \code{ConditionGRNFit} or downstream stage contracts to \code{rc_run_regcompass()}.}
 \details{
 Arguments are ordered by preparation and processing sequence: species/model preparation, Stage 1 motif input, Stage 2 fragment policy, Stage 5 medium preparation, and execution controls.
 

@@ -1,4 +1,11 @@
-#' Build integrated RNA+ATAC reaction expression
+#' Project condition GRN effects and build RNA+ATAC reaction support
+#'
+#' Reconstructs each Pando edge predictor as metacell TF RNA multiplied by peak
+#' ATAC, applies the pooled edge transform stored in `ConditionGRNFit`, and
+#' projects the explicit condition-minus-reference coefficient contrast. The
+#' reliability-weighted gene modifier is bounded once and combined with RNA
+#' support before complete GPR rules are evaluated. No absolute-sum coefficient
+#' normalization or GRN refitting occurs in this stage.
 #'
 #' @export
 rc_regcompass_step_layer1 <- function(

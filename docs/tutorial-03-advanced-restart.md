@@ -2,6 +2,10 @@
 
 RegCompass saves classed stage objects so downstream stages can be rerun without repeating unchanged work. Objects from incompatible runs are rejected through stored workflow and GEM provenance.
 
+This tutorial uses the current six-stage API documented in
+[functions.md](functions.md). Restart from the earliest stage whose persisted
+contract changes.
+
 ## Load a completed stepwise run
 
 ```r
@@ -19,13 +23,18 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 Rerun Pando and all downstream stages after changing:
 
 - `species`;
-- `padj_threshold`, `min_abs_estimate`, or `min_model_rsq`;
-- `tf_cor`, `peak_cor`, model method, or other `pando_infer_args`;
+- `min_abs_estimate` or `min_model_rsq`;
+- `reference_condition`, `tf_cor`, `peak_cor`, alpha, lambda-path/CV settings,
+  or other supported `pando_infer_args`;
 - motif matrices or genome;
 - `pando_initiate_args$regions`;
 - RNA/ATAC matrices, condition metadata, or cell-type metadata.
 
 When `pfm` is omitted, the canonical motif collection is Pando's `motifs` data object. Supplying a different `pfm` changes the fitted regulatory evidence and therefore requires Stage 1 onward to be rerun.
+
+Changing the edge dictionary, eligibility mask, pooled TF×ATAC transform,
+target scale, or selected lambda invalidates every downstream condition effect
+and requires Stage 1 onward to be rerun.
 
 The species-specific default region policies are:
 

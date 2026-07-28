@@ -15,6 +15,10 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level support and directional COMPASS-like scores.
 
+The current public entry points are `rc_run_regcompass_one_shot()` for a
+species-aware complete run, `rc_run_regcompass()` for an explicit complete run,
+and six `rc_regcompass_step_*()` functions for restartable execution.
+
 ```text
 shared cell-type Pando TF–peak–GEM-gene design
 → independent, comparable condition coefficients
@@ -105,7 +109,6 @@ result <- rc_run_regcompass_one_shot(
   ),
 
   # Stage 2
-  sample_col = NULL,
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
@@ -227,7 +230,6 @@ step1 <- rc_regcompass_step_grn(
 step2 <- rc_regcompass_step_metacells(
   object = A,
   outdir = "RegCompass_steps/02_metacells",
-  sample_col = NULL,
   condition_col = "Group",
   celltype_col = "cell_type",
   fragment_files = FALSE,
@@ -301,6 +303,11 @@ step1$grn_result$normalization_policy[c(
   "pando_rsq"
 )]
 
+step1$grn_result$condition_grn_fits
+step1$grn_result$condition_fit_status
+step1$grn_result$tf_peak_gene_condition
+step1$grn_result$tf_peak_gene_condition_effect
+
 step2$pooled$cache_contract$analysis_args
 step2$pooled$cache_contract$rna_reduction$embedding
 step2$pooled$cache_contract$atac_reduction$embedding
@@ -319,7 +326,11 @@ step3$merged_modules$is_gem
 step3$merged_modules$fastcore_applied
 ```
 
-The supported-gene table contains one row per condition, cell type, and significantly supported GEM target gene. It reports the number of significant edges, distinct TFs, distinct regions, minimum adjusted P value, maximum absolute coefficient, model R², and positive/negative edge counts.
+The supported-gene table contains one row per condition, cell type, and active
+GEM target gene. It reports active-edge counts, distinct TFs and regions,
+coefficient magnitude, target-model R², and positive/negative edge counts.
+Coefficient-level adjusted P values are not part of the regularized
+condition-GRN contract.
 
 The merged catalogue contains biological reactions only. It has no medium bounds and no FASTCORE support.
 

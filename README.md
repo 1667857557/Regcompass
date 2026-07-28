@@ -187,9 +187,8 @@ The condition-comparable Pando defaults are
 `condition_weight = "equal"`, and `scale = TRUE`. RegCompass rejects
 incompatible overrides because they would change the meaning or units of
 condition contrasts. `min_abs_estimate = 0` and `min_model_rsq = 0.1` control
-the downstream active-edge filter. Adjusted P values are not produced by this
-regularized solver; the legacy `padj_threshold` and `require_padj` fields are
-retained only for call compatibility.
+the downstream active-edge filter. Stage 1 does not use coefficient-level
+adjusted P values.
 
 The canonical metacell geometry defaults are RNA `pca` dimensions `1:30`, ATAC `lsi` dimensions `2:30`, and `seed = 12345L`. For ordered condition strata, the internal SuperCell2 seed is `seed + stratum_index - 1`. Changing cells, assay matrices, reductions, dimensions, seed, gamma, or metacell thresholds requires `overwrite = TRUE` to rebuild Stage 2 checkpoints.
 
@@ -218,15 +217,19 @@ See [Predefined extracellular medium scenarios](docs/medium-presets.md) for spec
 
 - `rc_regcompass_step_grn()`: fit one shared-design, condition-comparable Pando model per cell type for GEM target genes.
 - `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells from explicit RNA/ATAC reductions, dimensions, and a reproducible seed.
-- `rc_regcompass_step_meta_modules()`: summarize significant metabolic targets, map complete-GPR cores, and perform one fixed ordered annotation expansion pass.
+- `rc_regcompass_step_meta_modules()`: summarize active condition-level metabolic targets, map complete-GPR cores, and perform one fixed ordered annotation expansion pass.
 - `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
 - `rc_regcompass_step_layer2()`: build the medium-constrained model and run directional LP scoring.
 - `rc_regcompass_step_results()`: assemble rankings, annotations, provenance, and contrasts.
-- `rc_regcompass_step_target_union()`: remap selected core genes or reactions and score directly linked targets in the cached Stage 5 model.
+- `rc_regcompass_step_target_union()`: remap selected original-core genes or any valid GEM reaction-ID anchors and score directly linked non-core targets in the cached Stage 5 model.
 
 ## Main outputs
 
 ```r
+result$grn$condition_grn_fits
+result$grn$condition_fit_status
+result$grn$tf_peak_gene_condition
+result$grn$tf_peak_gene_condition_effect
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
 result$reaction_ranking
@@ -250,7 +253,7 @@ condition_stats <- rc_test_condition_reactions(
   celltype_col = "epithelial_or_stem",
   conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
   cell_types = "stem-cell_like",
-  target_direction = "reverse",
+  target_directions = "reverse",
   p_adjust_scope = "celltype_contrast_medium"
 )
 
@@ -258,8 +261,10 @@ condition_stats$omnibus
 condition_stats$pairwise
 
 rc_plot_condition_reaction(
-  condition_stats,
+  result,
   reaction_id = "selected_reaction",
+  cell_type = "stem-cell_like",
+  target_direction = "reverse",
   annotation_p = "p_adj"
 )
 ```
@@ -275,7 +280,8 @@ and plotting details.
 - [Level 3: restart, sensitivity, and diagnostics](docs/tutorial-03-advanced-restart.md)
 - [Level 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
 - [Level 5: condition differential analysis](docs/tutorial-05-condition-differential-analysis.md)
-- [Condition-comparable Pando contract and penalty projection](docs/condition_multitask_grn.md)
+- [Condition-comparable Pando contract and penalty projection](docs/condition-comparable-grn.md)
+- [Public function and API index](docs/functions.md)
 - [Seurat v4/v5 compatibility](docs/seurat-compatibility.md)
 - [Metacell reduction and seed selection](docs/metacell-reduction-selection.md)
 - [Medium presets](docs/medium-presets.md)

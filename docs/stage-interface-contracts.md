@@ -10,8 +10,10 @@ Required outputs:
 
 ```r
 step1$grn_result$target_metabolic_genes
-step1$grn_result$tf_peak_gene_significant
-step1$grn_result$sample_status
+step1$grn_result$condition_grn_fits
+step1$grn_result$condition_fit_status
+step1$grn_result$tf_peak_gene_condition
+step1$grn_result$tf_peak_gene_condition_effect
 step1$grn_result$normalization_policy$pando_motifs
 step1$grn_result$normalization_policy$pando_regions
 step1$grn_result$normalization_policy$pando_evidence_filters
@@ -19,7 +21,22 @@ step1$gem_fingerprint
 step1$params
 ```
 
-Every `condition × cell type` group must have a successful Pando fit. A successful fit may legitimately have zero significant rows; only groups with supported target genes can contribute complete-GPR cores. `target_metabolic_genes` is the intersection of GEM GPR genes and RNA-assay row names.
+Every condition represented within a cell-type `ConditionGRNFit` must complete
+successfully. A successful condition layer may legitimately have zero active
+coefficients; only groups with active supported target genes can contribute
+complete-GPR cores. `target_metabolic_genes` is the intersection of GEM GPR
+genes and RNA-assay row names.
+
+The complete fit contract must use schema
+`pando_condition_grn_fit_v2`, the
+`shared_design_independent_elastic_net` engine, pooled final-edge and target
+standardization, one explicit `reference_condition`, aligned `beta`,
+`contrast`, and `eligibility_mask` matrices, and stored predictor/response
+transforms. The contrast must equal
+`beta_condition - beta_reference`.
+
+`sample_status`, `tf_peak_gene_all`, and `tf_peak_gene_significant` are retained
+as compatibility aliases. New code should use the current fields listed above.
 
 When `pfm` is omitted, `pando_motifs` records `Pando::motifs`, loaded with `data("motifs", package = "Pando")`. Without an explicit `pando_initiate_args$regions`, the region contract is species-specific:
 
@@ -45,6 +62,10 @@ step2$params
 ```
 
 The merged metacell object and metadata must contain the same ordered units. Reduction names, dimensions, cell labels, assay fingerprints, and embedding fingerprints are part of the cache contract.
+
+Cells are grouped by condition only. Cell type is a construction label followed
+by dominant-membership auditing. User sample metadata do not enter selection,
+weighting, grouping, stability selection, or model refitting.
 
 ## Stage 3: biological meta-modules
 
@@ -103,6 +124,11 @@ step4$gem_fingerprint
 ```
 
 The reaction-expression matrix must contain every merged core reaction and the same ordered metacells represented by Stage 2.
+
+The gene-level modifier must be reconstructed from the stored Pando transform
+of metacell `TF RNA × peak ATAC` and the explicit reference contrast. Layer 1
+must not refit the GRN, use the Universal row mean as a baseline, or normalize
+condition effects by their absolute sum.
 
 `capacity_params$and_method` must be one of:
 
@@ -169,6 +195,10 @@ The final result contains:
 ```r
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
+result$grn$condition_grn_fits
+result$grn$condition_fit_status
+result$grn$tf_peak_gene_condition
+result$grn$tf_peak_gene_condition_effect
 result$merged_grn_meta_modules
 result$microcompass
 result$reaction_ranking
@@ -203,4 +233,8 @@ layer2_args = list(
 - accessible final Stage 5 union-GEM files;
 - matching model-file checksums and medium identifiers.
 
-The selected genes or reaction IDs determine mapping anchors only. Target availability and all LP calculations are evaluated in the exact cached final union GEMs. The second pass does not rebuild a GEM, does not change medium bounds, and does not rerun FASTCORE.
+Selected genes resolve only original complete-GPR cores. Reaction-ID anchors
+may be any valid reaction in the supplied GEM. Both determine direct mapping
+anchors only. Target availability and all LP calculations are evaluated in the
+exact cached final union GEMs. The second pass does not rebuild a GEM, change
+medium bounds, or rerun FASTCORE.

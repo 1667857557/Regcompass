@@ -631,8 +631,11 @@
 #'   `model_mode = "meta_module_gem"`.
 #' @param gem The same GEM used for the original run.
 #' @param outdir Output directory.
-#' @param core_reaction_ids Original core reaction IDs used as mapping anchors.
+#' @param core_reaction_ids GEM reaction IDs used as direct mapping anchors.
+#'   The historical argument name is retained for compatibility; an ID may be
+#'   an original Layer 2 core or any other valid reaction in `gem`.
 #' @param core_genes Genes used to resolve original core anchors through GPRs.
+#'   Gene selection intentionally remains restricted to original cores.
 #' @param gene_match Require a complete GPR group or allow any direct gene match.
 #' @param layer2_args Optional `omega`, `target_direction`, `solver`, and
 #'   `flux_threshold` overrides. Scoring LPs have no time-limit control.

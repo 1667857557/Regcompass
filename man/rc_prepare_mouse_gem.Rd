@@ -22,5 +22,5 @@ rc_prepare_mouse_gem(
 \item{source}{Use a cache/bundled-first automatic path, require the bundled model, or download and rebuild.}
 }
 \description{
-Species-specific Mouse-GEM entry point. Mouse-GEM 1.8.0 is bundled with RegCompassR 1.8.3 and is used offline by default; explicit download and rebuild remain available for updates.
+Species-specific Mouse-GEM entry point. Mouse-GEM 1.8.0 is bundled with RegCompassR 1.9.1 and is used offline by default; explicit download and rebuild remain available for updates. Mouse gene symbols retain the source model representation rather than being converted through human orthologues.
 }

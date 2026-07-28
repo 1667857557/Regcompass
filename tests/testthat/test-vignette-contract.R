@@ -193,7 +193,9 @@ test_that("README API index and Rd files expose current core model and defaults"
   required <- c(
     "RegCompassR 1.9.1",
     "supported_metabolic_genes",
-    "significant",
+    "condition_grn_fits",
+    "condition_fit_status",
+    "tf_peak_gene_condition_effect",
     "complete-GPR",
     "single_ordered_annotation_pass",
     "merged_core_reactions",

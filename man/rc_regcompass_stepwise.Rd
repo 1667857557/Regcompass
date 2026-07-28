@@ -6,7 +6,7 @@
 \alias{rc_regcompass_step_layer1}
 \alias{rc_regcompass_step_layer2}
 \alias{rc_regcompass_step_results}
-\title{Run RegCompass through inspectable condition-comparable stages}
+\title{Run the six validated condition-comparable RegCompass stages}
 \usage{
 rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
@@ -67,13 +67,13 @@ defaults are \code{min_abs_estimate = 0} and
 \item{parallel}{Whether the supported stage loop is parallelized.}
 \item{BPPARAM}{BiocParallel parameter object, \code{NULL}, or \code{FALSE}.}
 \item{progress}{Display stage progress. Set to \code{FALSE} for quiet execution.}
-\item{sample_col}{Optional provenance column.}
+\item{sample_col}{Deprecated compatibility input. It is recorded as provenance only. Canonical metacells are grouped by condition, use cell type as a construction label, and do not use sample selection, balancing, weighting, stability selection, or refitting.}
 \item{fragment_files}{Use \code{FALSE} for the peak-count path.}
 \item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from the preceding stages.}
 \item{medium_scenarios}{Condition-invariant medium table.}
 \item{model_mode}{Use one medium-specific union GEM reconstructed from the merged biological catalogue, or reuse the full GEM.}
 }
-\description{Runs the canonical workflow as separately restartable, validated stages.}
+\description{Runs the same canonical analysis as the complete workflow through six separately restartable stages: shared-design Pando GRNs, condition-pooled metacells, biological meta-modules, RNA+ATAC reaction support, shared-model directional LP scoring, and annotated results.}
 \details{
 Stage 1 public arguments are ordered by processing sequence: model/genome inputs, motif and species policy, metadata and assays, Pando settings, then execution controls.
 
@@ -85,7 +85,7 @@ filters; the regularized solver has no adjusted-P-value filter.
 
 Stage 2 constructs condition-level metacells from explicit RNA and ATAC reductions and dimensions. Reduction names, selected dimensions, embedding fingerprints, seed, gamma, and thresholds are part of the restart contract.
 
-Stage 3 collects target genes with significant TF-peak-gene evidence and maps complete GPR branches directly to core reactions. Expansion is exactly one ordered pass through core subsystems, direct KEGG/Reactome reaction equivalence, and direct master-Rhea reaction equivalence.
+Stage 3 collects target genes with active condition TF-peak-gene coefficients and maps complete GPR branches directly to core reactions. Expansion is exactly one ordered pass through core subsystems, direct KEGG/Reactome reaction equivalence, and direct master-Rhea reaction equivalence.
 
 Stage 4 projects explicit condition-minus-reference coefficients through the
 stored Pando transform of metacell TF RNA by peak ATAC, without absolute-sum
@@ -96,4 +96,9 @@ OR branches remain additive.
 With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium scenario, runs one global FASTCORE completion on the merged catalogue, and saves the resulting medium-specific union GEM. All conditions and metacells in that medium reuse the same cached model.
 
 Each stage returns a \code{timing} table and writes \code{step_timing.tsv} to its output directory. Failed stages also write an error-status timing row. Stage contracts reject mixed GEMs, workflows, core sets, or metacell orders.
+
+Current Stage 1 outputs are \code{condition_grn_fits},
+\code{condition_fit_status}, \code{tf_peak_gene_condition}, and
+\code{tf_peak_gene_condition_effect}. Historical status and significant-edge
+field names are retained as compatibility aliases only.
 }

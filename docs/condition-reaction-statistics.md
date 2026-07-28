@@ -12,11 +12,13 @@ within a fixed cell type, medium, reaction, and target direction.
 
 ## Why the comparison is valid
 
-RegCompass builds one deduplicated global union-GEM from the locally completed
-meta-modules identified across all condition-by-cell-type strata. Every metacell
-is scored with the same stoichiometric matrix, bounds, medium, reaction
-direction, and target-flux fraction. The only unit-specific term in the Layer 2
-objective is the multiome-derived reaction penalty.
+RegCompass first merges the condition/cell-type biological reaction catalogue
+without local feasibility completion. For each medium, Stage 5 then performs
+one global FASTCORE completion and caches one medium-specific union GEM. Every
+metacell compared within that medium is scored with the same stoichiometric
+matrix, bounds, reaction direction, and target-flux fraction. The only
+unit-specific term in the Layer 2 objective is the multiome-derived reaction
+penalty.
 
 For reaction target `r` and unit `j`, the tested support score is
 

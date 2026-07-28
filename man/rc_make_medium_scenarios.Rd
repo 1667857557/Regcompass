@@ -60,6 +60,8 @@ culture media. Human plasma and the five nutrient-challenge presets are restrict
 to Human-GEM; mouse plasma is restricted to Mouse-GEM. RPMI-1640 and DMEM are
 chemical formulations and are not species-specific. Concentrations are provenance
 rather than measured uptake fluxes.
+The returned medium is condition-invariant: all conditions compared within one
+scenario use the same exchange bounds and structural model.
 }
 \details{
 \code{"physiologic"} is the recommended in-vivo baseline. The human preset uses

@@ -128,10 +128,10 @@
   plot
 }
 
-#' Plot significant condition responses for reactions selected by genes
+#' Plot condition-associated reaction responses selected by metabolic genes
 #'
 #' Runs the condition statistics once, selects scored reactions containing the
-#' requested metabolic genes, ranks significant reaction-direction targets, and
+#' requested metabolic genes, ranks retained reaction-direction targets, and
 #' returns a named collection of annotated boxplots.
 #'
 #' @param x Annotated RegCompass result.

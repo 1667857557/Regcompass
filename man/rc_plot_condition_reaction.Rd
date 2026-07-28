@@ -2,7 +2,7 @@
 % Please edit documentation in R/condition_plot.R
 \name{rc_plot_condition_reaction}
 \alias{rc_plot_condition_reaction}
-\title{Plot one reaction target across conditions}
+\title{Plot one shared-model reaction target across conditions}
 \usage{
 rc_plot_condition_reaction(
   x,
