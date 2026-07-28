@@ -89,10 +89,14 @@ test_that("targets without finite Pando R-squared are untrusted", {
   )
   object <- Seurat::CreateSeuratObject(counts = counts, assay = "RNA")
   edges <- data.frame(
+    edge_id = "edge1",
     target = "GENE1",
     region = "p1",
     tf = "TF1",
     estimate = 1,
+    predictor_center = 0,
+    predictor_scale = 1,
+    response_scale = 1,
     rsq = NA_real_,
     condition = "A",
     cell_type = "T"

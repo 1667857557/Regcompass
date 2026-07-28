@@ -64,7 +64,8 @@ All nine are corrected in this follow-up.
 
 Two review findings had already been fixed by later strict stage contracts: cross-run stage mixing and loss of blocked-direction diagnostics. Two remained valid:
 
-- target availability was inferred from `global_reaction_membership` rather than the exact cached union GEM files;
+- target availability was inferred from a legacy global membership table rather
+  than the exact cached union GEM files;
 - an invalid `core_genes` selector could be ignored when a valid explicit reaction ID was also supplied.
 
 The second-pass definition now reads each cached medium-specific GEM, uses their reaction intersection as the reusable target universe, and validates gene and reaction selectors independently.

@@ -123,3 +123,13 @@ The persistent merged catalogue table is:
 ```text
 merged_meta_module_catalogue_membership.tsv.gz
 ```
+
+The cache summary records both the exact model file and its checksum:
+
+```r
+targeted$microcompass$model_cache_summary[, c(
+  "medium_scenario",
+  "file",
+  "file_checksum"
+)]
+```

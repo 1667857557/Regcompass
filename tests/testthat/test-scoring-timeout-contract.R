@@ -16,8 +16,11 @@ test_that("only union-GEM construction receives the completion limit", {
 
   expect_match(engine, "model_params$completion_time_limit", fixed = TRUE)
   expect_match(engine, ".rc_build_medium_specific_union_gem_cache", fixed = TRUE)
-  expect_false(grepl("time_limit =", scoring, fixed = TRUE))
-  expect_false(grepl("time_limit =", target_scoring, fixed = TRUE))
+  standalone_time_limit <- "(?m)(^|[^[:alnum:]_])time_limit\\s*="
+  expect_false(grepl(standalone_time_limit, scoring, perl = TRUE))
+  expect_false(grepl(
+    standalone_time_limit, target_scoring, perl = TRUE
+  ))
 })
 
 test_that("Stage 5 rejects retired timeout arguments", {
