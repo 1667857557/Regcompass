@@ -1,26 +1,25 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 1.8.10
+Version: 1.9.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Builds one validated Pando structural TF-peak-target candidate
-    universe per cell type and jointly estimates condition-specific sparse
-    regulatory coefficients for Human-GEM or Mouse-GEM GPR target genes in
-    paired single-cell RNA and ATAC data. A shared backbone is derived as the
-    cross-condition coefficient mean, with zero-sum condition deviations.
-    Condition-stratified bootstrap stability uses donor/sample clusters when a
-    valid sample metadata column is supplied and explicitly falls back to cell
-    resampling when that column is unavailable. Condition sub-GRNs define
-    condition-specific metabolic target genes and complete-GPR core reactions.
-    Biological meta-modules are deduplicated into one merged reaction catalogue
-    without local FASTCORE completion. For each medium scenario, the package
-    constructs one shared union GEM and performs one global FASTCORE completion
-    before directional COMPASS-like scoring. Integrated RNA and ATAC evidence is
-    converted to reaction penalties while preserving the same stoichiometric
-    model across conditions. The canonical metacell workflow remains condition
-    based and uses the current SuperCell2 strata-plus-label contract. Execution
-    times are printed in R rather than persisted in result objects or files.
+Description: Fits one cell-type-level sparse-group multi-task Pando model across
+    conditions for Human-GEM or Mouse-GEM GPR target genes in paired single-cell
+    RNA and ATAC data. The shared TF-peak-target edge dictionary produces a
+    universal cell-type GRN, condition-level GRNs, and explicit condition effects.
+    Active condition-level edges define metabolic target genes and complete-GPR
+    core reactions, while condition effects are projected through metacell
+    TF-expression by peak-accessibility interactions to modify reaction penalties.
+    Annotation-defined biological meta-modules are deduplicated into a merged
+    reaction catalogue without local FASTCORE completion. For each medium
+    scenario, the package constructs one shared union GEM and performs a single
+    global FASTCORE completion before directional COMPASS-like scoring. A
+    post-Layer-2 step can use any GEM reaction as a direct KEGG, Reactome, or
+    master-Rhea mapping anchor and score linked non-core reactions in the exact
+    cached medium-specific union GEM used for the original analysis. Pinned human
+    and mouse GEMs are bundled for offline use, with platform-aware parallel
+    execution and audited progress and timing output.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -101,7 +100,8 @@ Collate:
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
-    'sample_bootstrap_timing_policy.R'
+    'stratum_filter.R'
+    'zz_condition_multitask_grn.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
@@ -134,8 +134,8 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@c8b94949cd8a5ff7403f9f186c516f8efbac9b6f,
-    1667857557/Pando_regcompass@6f42c8143bec6610b001e714a51627337f6d9ba9
+    1667857557/SuperCell_Seurat_V4@supercell-2.0,
+    1667857557/Pando_regcompass@d6cce00059a5d2b3fb2d05a36d9ea74b1cd555cf
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
@@ -143,4 +143,3 @@ Config/RegCompassR/SupportedSignacMajor: 1
 Config/RegCompassR/SeuratObjectVersion: 4.1.4
 Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
-Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
