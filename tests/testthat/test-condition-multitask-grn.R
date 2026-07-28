@@ -23,13 +23,15 @@ test_that("RegCompass enforces the shared-design independent Pando contract", {
     formals(.rc_run_condition_single_cell_grns)$pando_infer_args
   )
   expect_identical(defaults$method, "shared_design_independent")
-  expect_identical(defaults$candidate_screen, "condition_union")
+  expect_identical(defaults$candidate_screen, "motif_domain")
   expect_identical(defaults$condition_mix, 1)
   expect_identical(defaults$condition_weight, "equal")
   expect_true(defaults$scale)
 
   body_text <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
+    deparse(body(
+      .rc_run_condition_single_cell_grns_without_safe_defaults
+    )), collapse = "\n"
   )
   expect_match(body_text, ".rc_extract_condition_grn_contract", fixed = TRUE)
   expect_match(body_text, "condition_grn_fit_v2.rds", fixed = TRUE)
