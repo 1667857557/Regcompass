@@ -118,7 +118,8 @@ assays, seed, gamma, and thresholds are part of the cache contract.
 ## Stages 3–5
 
 Stage 3 maps active condition target genes to complete-GPR cores and performs
-one ordered annotation pass:
+one ordered annotation pass, recorded as
+`single_ordered_annotation_pass`:
 
 ```text
 core subsystem

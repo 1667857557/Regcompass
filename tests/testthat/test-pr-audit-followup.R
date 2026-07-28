@@ -148,9 +148,10 @@ test_that("DESCRIPTION preserves the default v4 profile and supported majors", {
   )
 })
 
-test_that("the public function index identifies the true stepwise tutorial", {
+test_that("the public function index identifies the current stepwise tutorial", {
   path <- testthat::test_path("..", "..", "docs", "functions.md")
   text <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(text, "Level 2: true stepwise workflow", fixed = TRUE)
+  expect_match(text, "Level 2: stepwise workflow", fixed = TRUE)
+  expect_false(grepl("Level 2: true stepwise workflow", text, fixed = TRUE))
   expect_false(grepl("Level 2: saved-stage audit", text, fixed = TRUE))
 })
