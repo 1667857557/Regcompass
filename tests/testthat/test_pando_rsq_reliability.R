@@ -3,14 +3,19 @@ test_that("Pando extraction keeps only finite target-model R-squared values", {
     deparse(body(rc_extract_pando_tf_peak_gene)),
     collapse = "\n"
   )
-  runner <- paste(
+  implementation <- paste(
+    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
+    collapse = "\n"
+  )
+  bridge <- paste(
     deparse(body(.rc_run_condition_single_cell_grns)),
     collapse = "\n"
   )
   expect_match(extraction, "is.finite(rsq) & rsq >= min_model_rsq", fixed = TRUE)
   expect_match(extraction, "Pando target-model GOF", fixed = TRUE)
-  expect_match(runner, "pando_evidence_filters", fixed = TRUE)
-  expect_false(grepl("reliable_rsq", runner, fixed = TRUE))
+  expect_match(implementation, "pando_evidence_filters", fixed = TRUE)
+  expect_match(bridge, "min_model_rsq = min_model_rsq", fixed = TRUE)
+  expect_false(grepl("reliable_rsq", implementation, fixed = TRUE))
   expect_false(exists(".rc_pando_rsq_is_reliable", inherits = TRUE))
 })
 
