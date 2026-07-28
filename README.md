@@ -65,7 +65,7 @@ remotes::install_github(
   "1667857557/SuperCell_Seurat_V4@supercell-2.0"
 )
 remotes::install_github(
-  "1667857557/Pando_regcompass@ae60a7190d1994e7c847798ce62735c94428a2e5"
+  "1667857557/Pando_regcompass@f98923101b00a138652479bddee44ab0b24b07b6"
 )
 remotes::install_github("1667857557/Regcompass")
 ```
