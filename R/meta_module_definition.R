@@ -1,11 +1,12 @@
-# Significant-Pando-target to reaction biological meta-module definition.
+# Condition-sub-GRN target to reaction biological meta-module definition.
 
-#' Map supported metabolic genes to complete-GPR core Human-GEM reactions
+#' Map supported metabolic genes to complete-GPR core GEM reactions
 rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
+  required_nodes <- c("group_id", "gene", "module_id")
   if (!is.data.frame(gene_nodes) ||
-      !all(c("sample_id", "gene", "module_id") %in% colnames(gene_nodes))) {
+      !all(required_nodes %in% colnames(gene_nodes))) {
     stop(
-      "`gene_nodes` must contain sample_id, gene and module_id.",
+      "`gene_nodes` must contain group_id, gene and module_id.",
       call. = FALSE
     )
   }
@@ -22,28 +23,32 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
   }
 
   nodes <- unique(
-    gene_nodes[, c("sample_id", "module_id", "gene"), drop = FALSE]
+    gene_nodes[, c("group_id", "module_id", "gene"), drop = FALSE]
   )
-  nodes$sample_id <- as.character(nodes$sample_id)
+  nodes$group_id <- as.character(nodes$group_id)
   nodes$module_id <- as.character(nodes$module_id)
   nodes$gene <- toupper(trimws(as.character(nodes$gene)))
-  nodes <- nodes[!is.na(nodes$gene) & nzchar(nodes$gene), , drop = FALSE]
+  nodes <- nodes[
+    !is.na(nodes$group_id) & nzchar(nodes$group_id) &
+      !is.na(nodes$module_id) & nzchar(nodes$module_id) &
+      !is.na(nodes$gene) & nzchar(nodes$gene),
+    , drop = FALSE
+  ]
 
   gpr <- gpr_table
   gpr$reaction_id <- trimws(as.character(gpr$reaction_id))
   gpr$gene <- toupper(trimws(as.character(gpr$gene)))
+  gpr$and_group_id <- as.character(gpr$and_group_id)
   gpr <- gpr[
     !is.na(gpr$reaction_id) & nzchar(gpr$reaction_id) &
+      !is.na(gpr$and_group_id) & nzchar(gpr$and_group_id) &
       !is.na(gpr$gene) & nzchar(gpr$gene),
-    , drop = FALSE
+    c("reaction_id", "and_group_id", "gene"), drop = FALSE
   ]
-  gpr$and_group_id <- as.character(gpr$and_group_id)
-  gpr <- unique(
-    gpr[, c("reaction_id", "and_group_id", "gene"), drop = FALSE]
-  )
+  gpr <- unique(gpr)
 
   empty <- data.frame(
-    sample_id = character(),
+    group_id = character(),
     module_id = character(),
     gene = character(),
     reaction_id = character(),
@@ -61,7 +66,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
 
   module_rows <- split(
     seq_len(nrow(nodes)),
-    paste(nodes$sample_id, nodes$module_id, sep = "\001")
+    paste(nodes$group_id, nodes$module_id, sep = "\001")
   )
   output <- list()
   output_index <- 0L
@@ -69,7 +74,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
   for (module_key in names(module_rows)) {
     module_index <- module_rows[[module_key]]
     module_genes <- unique(nodes$gene[module_index])
-    sample_id <- nodes$sample_id[module_index[[1L]]]
+    group_id <- nodes$group_id[module_index[[1L]]]
     module_id <- nodes$module_id[module_index[[1L]]]
     candidate_reactions <- unique(gpr$reaction_id[gpr$gene %in% module_genes])
 
@@ -78,13 +83,13 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
       group_rows <- split(
         seq_len(nrow(reaction_gpr)), reaction_gpr$and_group_id
       )
-      group_complete <- vapply(group_rows, function(rows) {
+      complete_by_branch <- vapply(group_rows, function(rows) {
         all(unique(reaction_gpr$gene[rows]) %in% module_genes)
       }, logical(1))
-      reaction_core <- any(group_complete)
+      reaction_core <- any(complete_by_branch)
 
-      for (group_id in names(group_rows)) {
-        rows <- group_rows[[group_id]]
+      for (branch_id in names(group_rows)) {
+        rows <- group_rows[[branch_id]]
         required <- sort(unique(reaction_gpr$gene[rows]))
         matched <- intersect(required, module_genes)
         if (!length(matched)) next
@@ -94,11 +99,11 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
         for (gene in matched) {
           output_index <- output_index + 1L
           output[[output_index]] <- data.frame(
-            sample_id = sample_id,
+            group_id = group_id,
             module_id = module_id,
             gene = gene,
             reaction_id = reaction_id,
-            and_group_id = group_id,
+            and_group_id = branch_id,
             required_genes = paste(required, collapse = ";"),
             matched_genes = paste(sort(matched), collapse = ";"),
             missing_genes = paste(sort(missing), collapse = ";"),
@@ -140,23 +145,17 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
 
 #' Expand complete-GPR cores through one fixed ordered annotation pass
 #'
-#' The fixed order is: all reactions in core-reaction subsystems, then direct
-#' KEGG/Reactome reaction equivalents of the resulting set, then direct
-#' master-Rhea reaction equivalents of that resulting set. The sequence is
-#' executed exactly once. There is no fixed-point, recursive, one-hop,
-#' metabolite-neighbour, or stoichiometric-neighbour expansion. Flux-feasibility
-#' support is considered only when Stage 5 constructs each medium-specific
-#' union GEM.
+#' The order is core-reaction subsystems, direct KEGG/Reactome reaction
+#' equivalents of the resulting set, and direct master-Rhea equivalents of that
+#' resulting set. The sequence is executed once. Flux-feasibility completion is
+#' deferred to the shared medium-specific union GEM in Stage 5.
 .rc_expand_meta_module_reactions_core <- function(
     gem, core_reactions, subsystem_table = NULL) {
-  required <- c("sample_id", "module_id", "gene", "reaction_id")
+  required <- c("group_id", "module_id", "gene", "reaction_id")
   if (!is.data.frame(core_reactions) ||
       !all(required %in% colnames(core_reactions))) {
     stop(
-      paste(
-        "`core_reactions` must contain sample_id, module_id,",
-        "gene and reaction_id."
-      ),
+      "`core_reactions` must contain group_id, module_id, gene and reaction_id.",
       call. = FALSE
     )
   }
@@ -173,24 +172,19 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
     maps$rhea_master, "rhea_master_id"
   )
   if (!nrow(maps$subsystem)) {
-    stop(
-      "No usable reaction-to-subsystem annotations were found.",
-      call. = FALSE
-    )
+    stop("No usable reaction-to-subsystem annotations were found.",
+         call. = FALSE)
   }
 
   validated <- rc_validate_gem(gem)
   valid_reactions <- colnames(validated$S)
-
   if ("is_core" %in% colnames(core_reactions)) {
     core_reactions <- core_reactions[
-      core_reactions$is_core %in% TRUE,
-      , drop = FALSE
+      core_reactions$is_core %in% TRUE, , drop = FALSE
     ]
   }
   core_reactions <- core_reactions[
-    core_reactions$reaction_id %in% valid_reactions,
-    , drop = FALSE
+    core_reactions$reaction_id %in% valid_reactions, , drop = FALSE
   ]
   if (!nrow(core_reactions)) {
     stop("No complete-GPR cores map to valid GEM reactions.", call. = FALSE)
@@ -198,7 +192,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
 
   groups <- split(
     seq_len(nrow(core_reactions)),
-    paste(core_reactions$sample_id, core_reactions$module_id, sep = "\001")
+    paste(core_reactions$group_id, core_reactions$module_id, sep = "\001")
   )
   membership_rows <- list()
   summary_rows <- list()
@@ -206,7 +200,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
   for (key in names(groups)) {
     index <- groups[[key]]
     core <- unique(as.character(core_reactions$reaction_id[index]))
-    sample_id <- as.character(core_reactions$sample_id[index[[1L]]])
+    group_id <- as.character(core_reactions$group_id[index[[1L]]])
     module_id <- as.character(core_reactions$module_id[index[[1L]]])
     included <- core
     reasons <- stats::setNames(rep("core_complete_gpr", length(core)), core)
@@ -323,7 +317,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
     )
 
     membership <- data.frame(
-      sample_id = sample_id,
+      group_id = group_id,
       module_id = module_id,
       reaction_id = included,
       is_core = included %in% core,
@@ -333,7 +327,7 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
     )
     membership_rows[[key]] <- membership
     summary_rows[[key]] <- data.frame(
-      sample_id = sample_id,
+      group_id = group_id,
       module_id = module_id,
       n_core_genes = length(unique(core_reactions$gene[index])),
       n_core_reactions = length(core),
@@ -342,12 +336,10 @@ rc_map_meta_module_core_reactions <- function(gene_nodes, gpr_table) {
         membership$inclusion_stage == "same_core_subsystem"
       ),
       n_database_added = sum(
-        membership$inclusion_stage ==
-          "shared_kegg_or_reactome_reaction"
+        membership$inclusion_stage == "shared_kegg_or_reactome_reaction"
       ),
       n_rhea_added = sum(
-        membership$inclusion_stage ==
-          "shared_master_rhea_reaction"
+        membership$inclusion_stage == "shared_master_rhea_reaction"
       ),
       expansion_policy = "single_ordered_annotation_pass",
       stringsAsFactors = FALSE
@@ -372,7 +364,7 @@ rc_expand_meta_module_reactions <- function(
   if (!"is_core" %in% colnames(core_reactions)) return(answer)
 
   key <- function(data) paste(
-    as.character(data$sample_id),
+    as.character(data$group_id),
     as.character(data$module_id),
     as.character(data$reaction_id),
     sep = "\001"
@@ -386,16 +378,15 @@ rc_expand_meta_module_reactions <- function(
   partial_anchor <- membership_keys %in% setdiff(candidate_keys, hard_keys)
   if (any(partial_anchor)) {
     answer$reaction_membership <- answer$reaction_membership[
-      !partial_anchor,
-      , drop = FALSE
+      !partial_anchor, , drop = FALSE
     ]
   }
 
   if (is.data.frame(answer$summary) && nrow(answer$summary)) {
     for (i in seq_len(nrow(answer$summary))) {
-      sample_id <- as.character(answer$summary$sample_id[[i]])
+      group_id <- as.character(answer$summary$group_id[[i]])
       module_id <- as.character(answer$summary$module_id[[i]])
-      selected <- as.character(core_reactions$sample_id) == sample_id &
+      selected <- as.character(core_reactions$group_id) == group_id &
         as.character(core_reactions$module_id) == module_id &
         core_reactions$is_core %in% TRUE
       gene_selected <- selected
@@ -405,11 +396,10 @@ rc_expand_meta_module_reactions <- function(
       }
 
       membership_selected <-
-        as.character(answer$reaction_membership$sample_id) == sample_id &
+        as.character(answer$reaction_membership$group_id) == group_id &
         as.character(answer$reaction_membership$module_id) == module_id
       membership <- answer$reaction_membership[
-        membership_selected,
-        , drop = FALSE
+        membership_selected, , drop = FALSE
       ]
       count_stage <- function(stage) {
         length(unique(as.character(

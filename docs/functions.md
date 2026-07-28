@@ -1,45 +1,152 @@
-# Public functions in RegCompassR 1.8.4
+# Public functions in RegCompassR 1.8.10
 
 ## Setup and complete runs
 
-- `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: load a bundled pinned model or explicitly download/rebuild a release.
-- `rc_bundled_gem_manifest()`: inspect installed Human-GEM/Mouse-GEM release, checksum, citation, and license metadata.
-- `rc_download_species_gem()`: lower-level official repository download/parse path.
-- `rc_parallel_config()`: inspect OS-specific backend resolution.
-- `rc_make_medium_scenarios()`: create one shared medium table; see [medium presets](medium-presets.md).
-- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the complete significant-Pando-target workflow with progress, timing, automatic backend selection, `upstream_workers = 6L`, and `layer2_workers = 30L`.
+- `rc_prepare_gem()`, `rc_prepare_human2_gem()`, `rc_prepare_mouse_gem()`: load bundled pinned GEMs or explicitly rebuild an upstream release.
+- `rc_bundled_gem_manifest()`: inspect bundled model provenance.
+- `rc_make_medium_scenarios()`: create the shared medium table.
+- `rc_run_regcompass()` and `rc_run_regcompass_one_shot()`: execute the six-stage shared-background condition-sub-GRN workflow.
+- `rc_parallel_config()`: inspect operating-system backend resolution.
 
-Public runner arguments are arranged by processing sequence: shared inputs, Stage 1 Pando, Stage 2 metacells, Stage 3 meta-modules, Stage 4 Layer 1, Stage 5 Layer 2, and execution controls.
+Canonical GRN mode:
 
-The complete workflow exposes two worker counts. `upstream_workers` covers Pando inference and Layer 1. `layer2_workers` covers medium-specific union-GEM construction, global FASTCORE completion, and directional LP scoring. Stage 3 performs biological catalogue construction without FASTCORE.
+```r
+grn_mode = "multitask_shared_backbone"
+```
+
+Legacy reproducibility mode:
+
+```r
+grn_mode = "legacy_condition_pando"
+```
+
+The canonical complete runner and Stage 1 require `condition_col` and `celltype_col`. They optionally accept `sample_col` as a donor/sample bootstrap unit. Stage 2 remains condition-only and does not expose a sample-column argument.
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for all GEM GPR genes present in the RNA assay. When `pfm` is omitted, Pando's bundled `motifs` data object is used. Human defaults to phastCons plus SCREEN ccRE regions; mouse defaults to phastCons regions only. Explicit `pando_initiate_args$regions` overrides either default.
-- `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and `seed = 12345L` are the defaults; an existing Harmony reduction can replace PCA through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
-- `rc_regcompass_step_meta_modules()`: summarize significantly supported metabolic target genes, map complete-GPR cores, perform one fixed ordered subsystem/KEGG/Reactome/master-Rhea expansion pass, and deduplicate reaction IDs into a merged catalogue. No target projection, connected-component analysis, FASTCORE, or GEM construction occurs here.
-- `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
-- `rc_regcompass_step_layer2()`: first construct one medium-specific union GEM with global FASTCORE, then cache it and run directional LP scoring; or use shared full-GEM scoring when `model_mode = "full_gem"`.
-- `rc_regcompass_step_results()`: rankings, reaction annotations, evidence provenance, and condition contrasts.
-- `rc_regcompass_step_target_union()`: map selected original core reactions through shared KEGG, Reactome, or master-Rhea identifiers and score mapped non-core reactions in the exact final Stage 5 union GEMs.
+- `rc_regcompass_step_grn()`: build one validated GREAT-domain Pando structural TF–peak–target universe per cell type, apply a condition-aware observability filter, estimate direct condition-specific coefficients with condition-balanced elastic net, and calculate sample-aware bootstrap reproducibility.
+- `rc_regcompass_step_metacells()`: build condition-stratified, cell-type-labelled SuperCell2 metacells.
+- `rc_regcompass_step_meta_modules()`: map active condition sub-GRN targets to complete-GPR core reactions and one ordered subsystem/KEGG–Reactome/master-Rhea expansion.
+- `rc_regcompass_step_layer1()`: combine RNA support with an ATAC-only projection of the fitted condition sub-GRN and aggregate through GPR rules.
+- `rc_regcompass_step_layer2()`: build one medium-specific union GEM, apply one global FASTCORE completion, and run directional COMPASS-like LP scoring.
+- `rc_regcompass_step_results()`: assemble compact rankings, contrasts, regulatory evidence, complete-GPR cores, bootstrap provenance, and structural provenance.
+- `rc_regcompass_step_target_union()`: map additional targets and score them in the exact cached Stage 5 model.
 
-## Stage 1 evidence controls
-
-The canonical Pando evidence defaults are:
+## Stage 1 structural design controls
 
 ```r
 pando_args = list(
-  min_cells = 20L,
-  padj_threshold = 0.05,
-  min_abs_estimate = 0,
-  min_model_rsq = 0.1,
-  require_padj = TRUE
+  min_cells = 100L,
+  pando_design_args = list(
+    peak_to_gene_method = "GREAT",
+    upstream = 100000,
+    downstream = 0,
+    extend = 1000000,
+    only_tss = FALSE,
+    min_tf_detection = 0,
+    min_peak_detection = 0,
+    min_target_detection = 0,
+    max_edges_per_target = Inf
+  )
 )
 ```
 
-All enabled conditions must pass before a TF–peak–target coefficient enters the significant evidence table.
+`Pando::prepare_grn_design()` creates a version-2 condition-agnostic dictionary. Exact predictors are deduplicated by TF, measured ATAC feature, and target. `supporting_regions` retains multiple regulatory regions mapping to one peak. RegCompass validates the design fingerprint and feature mapping before fitting.
 
-## Stage 2 geometry and reproducibility
+The canonical `GREAT` method creates basal-plus-extension regulatory domains and keeps candidate admission independent of fitted target-expression correlation. `extend = 1000000` permits distal hypotheses. The pooled Pando detection thresholds remain zero so a condition-restricted TF, peak, or target is not removed before the shared model is formed. A finite `max_edges_per_target` is rejected because Pando candidate order is deterministic but not an evidence ranking. `Signac` remains an explicit narrower-domain sensitivity option.
+
+## Stage 1 multitask, observability, and bootstrap controls
+
+```r
+multitask_args = list(
+  alpha = 0.5,
+  global_penalty_factor = 1,
+  deviation_penalty_factor = 1,
+  lambda_rule = "lambda.1se",
+  nfolds = 5L,
+  n_bootstrap = 100L,
+  min_selection_frequency = 0.7,
+  min_sign_stability = 0.8,
+  min_abs_effect = 0,
+  min_cv_rsq = 0,
+  min_bootstrap_success_fraction = 0.8,
+  candidate_screen_threshold = 0,
+  max_edges_per_target = Inf,
+  min_detected_cells_per_condition = 10L,
+  min_detection_fraction_per_condition = 0.01,
+  seed = 12345L
+)
+```
+
+Recommended public metadata argument:
+
+```r
+sample_col = "sample_id"
+```
+
+For condition \(c\), RegCompass uses
+
+\[
+m_c=\min\left(n_c,\max\left(10,\left\lceil0.01n_c\right\rceil\right)\right).
+\]
+
+An edge enters the shared model universe only when the non-zero TF-RNA × peak-ATAC predictor and target RNA each occur in at least \(m_c\) cells of one or more conditions. TF and peak must be non-zero in the same cells. This filter uses detection only and does not use target correlation or fitted effect size.
+
+`alpha = 0.5` retains a lasso component for direct condition-specific sparsity and a ridge component for correlated TF–peak predictors. The fitted coefficients are \(\theta_{e,c}\). The reported global backbone and zero-sum deviations are derived as
+
+\[
+\beta_e=\frac1C\sum_c\theta_{e,c},
+\qquad
+\delta_{e,c}=\theta_{e,c}-\beta_e.
+\]
+
+`global_penalty_factor` and `deviation_penalty_factor` are compatibility aliases for one common direct-theta penalty and must be equal. Unequal values are rejected.
+
+Five-fold cross-validation estimates condition centres and edge scales from each training fold. An active target requires strictly positive out-of-fold `cv_rsq`; a positive `min_cv_rsq` adds a stronger floor. Cross-validation remains condition-stratified at the cell level.
+
+`n_bootstrap = 100` controls nonparametric bootstrap fits. With a valid `sample_col`, every condition draws its observed number of sample/donor IDs with replacement and every selected sample contributes all of its cells. Cluster sizes are preserved, so replicate cell counts may vary. When `sample_col = NULL`, or the named column does not exist, RegCompass prints the exact fallback reason and resamples each condition at its original cell count. Existing columns with missing or empty IDs are errors.
+
+Both bootstrap modes re-centre targets and predictors within condition before fitting at the full-data lambda and scale. Edge tables report selection-frequency Monte Carlo standard errors and Wilson 95% intervals.
+
+`min_sign_stability = 0.8` corresponds to at least 90% agreement on one sign among selected bootstrap fits because \(\rho=|2q-1|\).
+
+Principal Stage 1 outputs:
+
+```r
+step1$grn_result$tf_peak_gene_candidates
+step1$grn_result$tf_peak_gene_global
+step1$grn_result$tf_peak_gene_condition_all
+step1$grn_result$tf_peak_gene_significant
+step1$grn_result$condition_target_genes
+step1$grn_result$target_model_diagnostics
+step1$grn_result$stability_diagnostics
+step1$grn_result$group_status
+step1$grn_result$celltype_fit_status
+step1$grn_result$bootstrap_policy
+```
+
+The candidate table distinguishes:
+
+```text
+edge_universe_id       = complete Pando GREAT-domain structural universe
+model_edge_universe_id = observability-filtered shared model universe
+model_observable       = whether a structural edge entered fitting
+```
+
+Bootstrap provenance includes:
+
+```text
+bootstrap_method
+bootstrap_resampling_unit
+bootstrap_sample_col
+n_bootstrap_samples_total
+min_bootstrap_samples_per_condition
+bootstrap_fallback_reason
+```
+
+These fields are present before Stage 3 maps active targets to complete-GPR cores. Sample-cluster bootstrap measures reproducibility across the observed samples but does not itself constitute donor-level treatment-effect inference. Cell fallback measures cell-resampling reproducibility only.
+
+## Stage 2 geometry
 
 ```r
 metacell_args = list(
@@ -55,72 +162,72 @@ metacell_args = list(
 )
 ```
 
-For ordered condition strata, the SuperCell2 seed is `seed + stratum_index - 1`. These fields and the selected embedding fingerprints participate in cache validation.
+Condition is the RegCompass stratum. Cell type is passed to SuperCell2 as the exact label. An existing Harmony reduction may replace PCA. Changing cells, assays, reductions, dimensions, seed, gamma, or thresholds invalidates the Stage 2 cache. `sample_col` does not alter this geometry.
 
-## Stage 3 evidence and catalogue fields
+## Stage 3 condition and merged catalogues
 
 ```r
 step3$condition_modules$supported_metabolic_genes
 step3$condition_modules$core_gene_reaction
-step3$condition_modules$meta_module_summary$expansion_policy
+step3$condition_modules$reaction_membership
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 ```
 
-The recorded expansion policy is:
+`group_id` is the `condition × cell type` analysis identifier. A reaction becomes core only when one complete GPR branch is contained in the condition target set. The merged object is a biological reaction catalogue, not a GEM.
 
-```text
-single_ordered_annotation_pass
-```
-
-`meta_module_args` accepts only an optional `subsystem_table`. Expansion is always one ordered pass:
-
-```text
-core subsystem
-→ KEGG/Reactome reaction equivalence
-→ master-Rhea reaction equivalence
-```
-
-`layer1_args` accepts only `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`. `gpr_and_method` accepts `"min"`, `"median"`, or `"mean"` and defaults to `"min"`.
-
-The merged object is a biological reaction catalogue, not a GEM. It contains no medium constraints or FASTCORE support.
-
-## Stage 5 union-GEM configuration
+## Stage 4 integrated evidence
 
 ```r
-layer2_args$model_params <- list(
-  completion_time_limit = 600,
-  fastcore_epsilon = 1e-4,
-  max_support_reactions = 2000,
-  strict = TRUE
+layer1_args = list(
+  regulatory_alpha = 1,
+  gpr_and_method = "min",
+  gene_half_saturation = 1
 )
 ```
 
-`completion_time_limit` applies exclusively to FASTCC/FASTCORE union-GEM construction. The directional scoring API has no `time_limit` parameter and begins only after the structural model has been completed and cached.
+`gpr_and_method` accepts `min`, `median`, or `mean`. Isozyme OR branches are additive. A gene without an active condition edge has a zero regulatory modifier and exactly returns its RNA-only support.
 
-Each row of `step5$model_cache_summary` identifies one final medium-specific union GEM and records its file checksum, reaction counts, FASTCORE support count, build strategy, and completion stage.
+## Stage 5 union-GEM controls
 
-The optional second-pass scoring function uses these exact cached files. It validates the checksum and medium identity, does not rebuild a GEM, does not rerun FASTCORE, and has no scoring timeout control.
+```r
+layer2_args = list(
+  target_direction = "both",
+  solver = "highs",
+  model_params = list(
+    completion_time_limit = 600,
+    fastcore_epsilon = 1e-4,
+    max_support_reactions = 2000,
+    strict = TRUE
+  )
+)
+```
 
-Stages validate workflow parameters, GEM fingerprints, stage classes, and ordered metacell IDs before accepting an upstream object. Current condition-metacell artifacts also contain a cache contract covering ordered cells, labels, assays, selected PCA/Harmony and LSI embeddings, construction labels, and analysis parameters. Every public stage returns a timing table and writes `step_timing.tsv`.
+`completion_time_limit` applies only to union-GEM construction. Directional scoring LPs have no time-limit argument. Every condition and metacell under one medium uses the same cached model file, reaction IDs, stoichiometry, and bounds.
 
 ## Interpretation and plotting
 
-- `rc_build_reaction_annotations()` and `rc_attach_reaction_annotations()`: reaction names, formulas, GPRs, and evidence classes.
-- `rc_test_condition_reactions()`: descriptive same-target, same-direction comparisons across conditions within cell type.
-- `rc_report_condition_directions()`: preserve forward/reverse LP results, diagnose numerically indistinguishable directions, and add non-additive best-direction and directional-asymmetry summaries without claiming net flux.
+- `rc_build_reaction_annotations()` and `rc_attach_reaction_annotations()`: attach reaction names, formulas, GPRs, and database cross-references.
+- `rc_test_condition_reactions()`: descriptive same-reaction, same-direction, same-medium comparisons within cell type.
+- `rc_report_condition_directions()`: retain forward/reverse targets and report direction-aware support without claiming net flux.
 - `rc_select_gene_reactions()`: select scored reactions by GPR gene.
-- `rc_plot_condition_reaction()` and `rc_plot_condition_gene_reactions()`: annotated condition plots.
+- `rc_plot_condition_reaction()` and `rc_plot_condition_gene_reactions()`: condition plots with reaction and evidence annotations.
 
-Sample balancing is not part of the canonical workflow. Metacell-level comparisons are descriptive pseudo-observation analyses rather than automatic biological-replicate inference.
+GRN fitting and RNA support use the same paired multiome dataset. Condition centring and ATAC-only projection reduce direct duplicate weighting but do not create independent validation evidence. Metacell-level tests remain descriptive pseudo-observation analyses.
 
-## Tutorials
+## Timing
 
-- [Portable execution, bundled GEMs, progress, timing, and worker cleanup](portable-execution.md)
-- [Metacell PCA/Harmony reduction selection](metacell-reduction-selection.md)
-- [Direction-aware final reporting](direction-aware-condition-reporting.md)
-- [Level 1: quick start](tutorial-01-quick-start.md)
-- [Level 2: true stepwise workflow](tutorial-02-stepwise-audit.md)
-- [Level 3: restart and diagnostics](tutorial-03-advanced-restart.md)
-- [Level 4: targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md)
-- [Level 5: condition differential analysis](tutorial-05-condition-differential-analysis.md)
+Every public stage prints elapsed time and final status in R after its final artifact is committed. Timing is not retained in stage objects, the compact result, `step_timing.tsv`, or `00_execution_timing.tsv`.
+
+## Documentation
+
+- [Pando and multitask GRN parameter policy](grn-parameter-policy.md)
+- [Mathematics and object contracts](multitask-shared-grn.md)
+- [Sample-aware bootstrap contract](sample-aware-bootstrap.md)
+- [Quick start](tutorial-01-quick-start.md)
+- [Stepwise audit](tutorial-02-stepwise-audit.md)
+- [Restart and diagnostics](tutorial-03-advanced-restart.md)
+- [Targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md)
+- [Condition differential analysis](tutorial-05-condition-differential-analysis.md)
+- [Stage contracts](stage-interface-contracts.md)
+- [Portable execution](portable-execution.md)

@@ -60,7 +60,7 @@ test_that("database source annotations omit empty prefixes", {
     reaction_meta = reaction_meta
   )
   core <- data.frame(
-    sample_id = "S1",
+    group_id = "S1|T",
     module_id = "S1::GRN0001",
     gene = "G1",
     reaction_id = "R1",

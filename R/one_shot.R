@@ -19,6 +19,21 @@
 #' @param medium_scenarios Optional prebuilt medium table.
 #' @param progress Show stage and total progress.
 #' @param ... Arguments passed to [rc_run_regcompass()].
+#' @details
+#' The canonical GRN mode is `"multitask_shared_backbone"`. Pando constructs a
+#' condition-agnostic structural TF-peak-target universe using the Signac
+#' peak-to-gene rule by default, with pooled TF, peak and target detection
+#' thresholds fixed at zero and no finite top-K edge cap. RegCompass then applies
+#' a shared condition-aware observability filter to the actual TF-RNA by
+#' peak-ATAC predictor and target RNA.
+#'
+#' Multitask defaults use `alpha = 0.5`, equal explicit global and condition-
+#' deviation penalty factors, five condition-stratified folds, `lambda.1se`, 100
+#' full-size condition-stratified bootstrap replicates, minimum selection
+#' frequency 0.7, minimum sign stability 0.8, at least 80 percent completed
+#' bootstrap fits, and strictly positive out-of-fold R-squared for active edges.
+#' Bootstrap selection-frequency Monte Carlo standard errors and Wilson 95
+#' percent intervals are retained in Stage 1 diagnostics.
 #' @return A canonical RegCompass result list.
 #' @export
 rc_run_regcompass_one_shot <- function(

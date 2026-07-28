@@ -7,7 +7,7 @@
     grn_result, metacell_meta,
     condition_col = "condition", celltype_col = "cell_type") {
   group_cols <- c(condition_col, celltype_col)
-  status <- grn_result$sample_status
+  status <- grn_result$group_status
   if (!is.data.frame(status) ||
       !all(c(group_cols, "status") %in% colnames(status))) {
     stop(
@@ -29,16 +29,25 @@
   grn_summary <- do.call(rbind, lapply(grn_rows, function(rows) {
     one <- status[rows, , drop = FALSE]
     values <- one[1L, group_cols, drop = FALSE]
+    edge_column <- if ("n_active_edges" %in% colnames(one)) {
+      "n_active_edges"
+    } else if ("n_significant_edges" %in% colnames(one)) {
+      "n_significant_edges"
+    } else {
+      NULL
+    }
+    n_edges <- if (is.null(edge_column)) 0 else
+      sum(suppressWarnings(as.numeric(one[[edge_column]])), na.rm = TRUE)
     data.frame(
       values,
       group_id = as.character(one$.group_id[[1L]]),
       grn_status = paste(
         sort(unique(as.character(one$status))), collapse = ";"
       ),
-      n_single_cells = sum(as.numeric(one$n_cells %||% 0), na.rm = TRUE),
-      n_significant_edges = sum(
-        as.numeric(one$n_significant_edges %||% 0), na.rm = TRUE
+      n_single_cells = sum(
+        suppressWarnings(as.numeric(one$n_cells %||% 0)), na.rm = TRUE
       ),
+      n_active_edges = n_edges,
       stringsAsFactors = FALSE,
       check.names = FALSE
     )
@@ -86,8 +95,8 @@
   )
   coverage$grn_available <- !is.na(coverage$grn_status) &
     coverage$grn_status == "ok"
-  coverage$has_significant_pando_evidence <-
-    !is.na(coverage$n_significant_edges) & coverage$n_significant_edges > 0
+  coverage$has_active_grn_evidence <-
+    !is.na(coverage$n_active_edges) & coverage$n_active_edges > 0
   coverage$metacells_available <- !is.na(coverage$n_metacells) &
     coverage$n_metacells > 0
   coverage$coverage_complete <- coverage$grn_available &
@@ -98,9 +107,9 @@
       "GRN and metacell condition-by-cell-type groups do not align: ",
       paste(invalid$group_id, collapse = "; "),
       paste(
-        ". Every scored metacell group requires a successful Pando fit,",
-        "and every Pando group requires at least one metacell. A successful",
-        "fit may legitimately contain zero significant target genes."
+        ". Every scored metacell group requires a successful GRN fit,",
+        "and every GRN group requires at least one metacell. A successful",
+        "fit may legitimately contain zero active target genes."
       ),
       call. = FALSE
     )
@@ -109,7 +118,15 @@
   coverage
 }
 
-#' Infer condition-by-cell-type Pando GRNs from single cells
+#' Infer shared-background condition sub-GRNs from single cells
+#'
+#' The default mode constructs one Pando structural TF-peak-target universe per
+#' cell type, then jointly estimates a global edge coefficient and symmetric
+#' zero-sum condition deviations with condition-balanced elastic-net regression.
+#' Edge stability is estimated by full-size nonparametric bootstrap sampling
+#' with replacement within every condition. `legacy_condition_pando` retains
+#' the earlier independent condition-by-cell-type Pando fits.
+#'
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
@@ -119,14 +136,18 @@ rc_regcompass_step_grn <- function(
     celltype_col = "cell_type",
     rna_assay = "RNA",
     atac_assay = "ATAC",
+    grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
     pando_args = list(),
+    multitask_args = list(),
     parallel = TRUE,
     BPPARAM = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("grn", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
-  if (!is.list(pando_args)) {
-    stop("`pando_args` must be a list.", call. = FALSE)
+  grn_mode <- match.arg(grn_mode)
+  if (!is.list(pando_args)) stop("`pando_args` must be a list.", call. = FALSE)
+  if (!is.list(multitask_args)) {
+    stop("`multitask_args` must be a list.", call. = FALSE)
   }
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
@@ -148,10 +169,10 @@ rc_regcompass_step_grn <- function(
   if (length(reserved)) {
     stop(
       "`pando_args` cannot override workflow fields: ",
-      paste(reserved, collapse = ", "),
-      call. = FALSE
+      paste(reserved, collapse = ", "), call. = FALSE
     )
   }
+
   defaults <- list(
     object = object,
     gem = gem,
@@ -163,13 +184,42 @@ rc_regcompass_step_grn <- function(
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE,
-    on_group_error = "stop"
+    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
-  defaults[names(pando_args)] <- NULL
-  grn_result <- do.call(
-    .rc_run_condition_single_cell_grns, c(defaults, pando_args)
-  )
+  if (identical(grn_mode, "multitask_shared_backbone")) {
+    legacy_only <- intersect(names(pando_args), c(
+      "pando_infer_args", "padj_threshold", "min_abs_estimate",
+      "min_model_rsq", "require_padj", "on_group_error"
+    ))
+    if (length(legacy_only)) {
+      stop(
+        "The multitask GRN does not accept legacy independent-fit fields: ",
+        paste(legacy_only, collapse = ", "),
+        ". Use `pando_design_args` and `multitask_args`, or select ",
+        "`grn_mode = \"legacy_condition_pando\"`.", call. = FALSE
+      )
+    }
+    defaults$multitask_args <- multitask_args
+    defaults$on_celltype_error <- "stop"
+    defaults[names(pando_args)] <- NULL
+    grn_result <- do.call(
+      .rc_run_celltype_multitask_grns, c(defaults, pando_args)
+    )
+  } else {
+    if (length(multitask_args)) {
+      warning("`multitask_args` are ignored in legacy GRN mode.", call. = FALSE)
+    }
+    defaults$on_group_error <- "stop"
+    defaults[names(pando_args)] <- NULL
+    grn_result <- do.call(
+      .rc_run_condition_single_cell_grns, c(defaults, pando_args)
+    )
+    if (is.null(grn_result$group_status) &&
+        is.data.frame(grn_result$sample_status)) {
+      grn_result$group_status <- grn_result$sample_status
+      grn_result$sample_status <- NULL
+    }
+  }
   answer <- list(
     grn_result = grn_result,
     gem_fingerprint = .rc_stage_gem_fingerprint(gem),
@@ -178,7 +228,9 @@ rc_regcompass_step_grn <- function(
       celltype_col = celltype_col,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
+      grn_mode = grn_mode,
       pando_args = pando_args,
+      multitask_args = multitask_args,
       parallel = parallel,
       species = species
     )
@@ -190,10 +242,14 @@ rc_regcompass_step_grn <- function(
 }
 
 #' Build condition-only SuperCell2 metacells
+#'
+#' Cells are stratified only by condition. Cell type is passed as the
+#' SuperCell2 label and is retained as metacell provenance; no biological-sample
+#' column, balancing rule, or sample-level grouping is used.
+#'
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
-    sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
@@ -215,7 +271,6 @@ rc_regcompass_step_metacells <- function(
   pooled <- .rc_make_condition_pooled_metacells(
     object = object,
     outdir = outdir,
-    sample_col = sample_col,
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
@@ -259,8 +314,6 @@ rc_regcompass_step_metacells <- function(
     pooled = pooled,
     metacell_object = metacell_object,
     params = list(
-      input_sample_col = sample_col,
-      sample_col = pooled$analysis_sample_col,
       condition_col = condition_col,
       celltype_col = celltype_col,
       rna_assay = rna_assay,

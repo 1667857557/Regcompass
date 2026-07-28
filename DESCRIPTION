@@ -48,22 +48,35 @@ Collate:
     'medium.R'
     'medium_exchange_mapping.R'
     'meta_module_definition.R'
+    'meta_module_core_contract.R'
     'meta_module_construction.R'
     'meta_module_merge.R'
     'metacell_fragments.R'
     'metacell_import.R'
     'metacell_peak_calling.R'
     'metacell.R'
+    'condition_metacell_cache.R'
+    'supercell2_current_contract.R'
+    'supercell2_label_contract.R'
+    'metacell_import_no_sample_contract.R'
     'microcompass.R'
     'union_gem_cache.R'
     'microcompass_engine.R'
+    'microcompass_no_sample_contract.R'
     'target_union.R'
     'target_union_anchors.R'
+    'target_union_no_sample_contract.R'
     'pando_evidence_utils.R'
     'pando_grn.R'
     'shared_tfidf.R'
-    'condition_pooling.R'
     'grn_inference.R'
+    'pando_grn_group_contract.R'
+    'multitask_grn.R'
+    'multitask_grn_cv_contract.R'
+    'multitask_grn_inference.R'
+    'multitask_grn_parameter_policy.R'
+    'pando_argument_boundary_contract.R'
+    'multitask_grn_output_contract.R'
     'regulatory_modifier.R'
     'condition_layer1.R'
     'reaction_evidence.R'
@@ -78,6 +91,8 @@ Collate:
     'stage_parallel_lifecycle.R'
     'penalty.R'
     'reaction_roles.R'
+    'result_compaction.R'
+    'microcompass_result_compaction.R'
     'stepwise_workflow.R'
     'step_meta_modules.R'
     'step_layer1.R'
@@ -94,13 +109,14 @@ Imports:
     Matrix,
     matrixStats,
     methods,
+    glmnet,
     highs,
     SeuratObject (>= 4.1.4),
     Seurat (>= 4.4.0),
     Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
-    Pando,
+    Pando (>= 1.1.3),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,

@@ -30,9 +30,9 @@ rc_regcompass_step_layer2 <- function(
   if (length(unknown)) {
     stop(
       "Unsupported `layer2_args`: ", paste(unknown, collapse = ", "),
-      ". Scoring `time_limit` has been removed. Use only ",
-      "`layer2_args$model_params$completion_time_limit` to limit global ",
-      "FASTCORE union-GEM construction.",
+      ". Scoring `time_limit`, sample aggregation, and sample columns have ",
+      "been removed. Use only `layer2_args$model_params$completion_time_limit` ",
+      "to limit global FASTCORE union-GEM construction.",
       call. = FALSE
     )
   }
@@ -123,7 +123,6 @@ rc_regcompass_step_layer2 <- function(
       NULL
     },
     unit = "metacell",
-    sample_col = params$sample_col,
     condition_col = params$condition_col,
     celltype_col = params$celltype_col,
     parallel = parallel,

@@ -1,29 +1,28 @@
-#' Run the canonical significant-Pando-target RegCompass workflow
+#' Run the shared-background condition-sub-GRN RegCompass workflow
 #'
-#' Stage 3 constructs biological meta-modules and a deduplicated merged
-#' reaction catalogue. Within each condition by cell-type group, Human-GEM
-#' metabolic genes with significant Pando TF-peak-gene evidence define the
-#' supported gene set, and complete GPR branches define core reactions. Stage 3
-#' applies one fixed ordered annotation pass and does not run FASTCORE or create
-#' a GEM. With `model_mode = "meta_module_gem"`, Stage 5 constructs one union
-#' GEM per medium scenario and performs the only FASTCORE completion on that
-#' shared structure.
+#' The canonical mode builds one structural Pando TF-peak-target candidate
+#' universe per cell type and jointly estimates a global regulatory backbone
+#' plus symmetric condition deviations. Full-size condition-stratified
+#' bootstrap fits identify stable condition sub-GRN edges. Their target genes
+#' define complete-GPR core reactions. Stage 3 performs biological annotation
+#' expansion only; Stage 5 constructs one union GEM per medium and reuses that
+#' exact stoichiometric structure for every condition and metacell.
 #'
 #' @param pfm Optional motif position-frequency matrices. When omitted,
 #'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
 #'   to `Pando::find_motifs()`.
+#' @param grn_mode GRN architecture. `"multitask_shared_backbone"` is the
+#'   canonical RegCompass 1.8.8 mode. `"legacy_condition_pando"` retains
+#'   independent condition-by-cell-type Pando fits.
+#' @param multitask_args Shared-backbone elastic-net, cross-validation, and
+#'   condition-stratified bootstrap controls passed to Stage 1.
 #' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
 #'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
 #'   master-Rhea equivalence.
 #' @param layer1_args Stage 4 integrated-evidence arguments:
 #'   `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.
-#'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
-#'   `"mean"`; RegCompass defaults to `"min"`.
-#' @param upstream_workers Worker count for GRN inference and Layer 1
-#'   reaction-expression calculation. Defaults to 6. Set to 1 for serial
-#'   upstream execution.
-#' @param layer2_workers Worker count for Layer 2 LP scoring. Defaults to 30.
-#'   Set to 1 for serial Layer 2 execution.
+#' @param upstream_workers Worker count for GRN inference and Layer 1.
+#' @param layer2_workers Worker count for Layer 2 LP scoring.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -33,8 +32,9 @@ rc_run_regcompass <- function(
     celltype_col = "cell_type",
     rna_assay = "RNA",
     atac_assay = "ATAC",
+    grn_mode = c("multitask_shared_backbone", "legacy_condition_pando"),
     pando_args = list(),
-    sample_col = NULL,
+    multitask_args = list(),
     fragment_files = FALSE,
     metacell_args = list(),
     meta_module_args = list(),
@@ -46,6 +46,7 @@ rc_run_regcompass <- function(
     layer2_workers = 30L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   model_mode <- match.arg(model_mode)
+  grn_mode <- match.arg(grn_mode)
   progress <- .rc_progress_enabled(progress)
   old_progress_option <- options(RegCompassR.progress = progress)
   on.exit(do.call(options, old_progress_option), add = TRUE)
@@ -70,6 +71,7 @@ rc_run_regcompass <- function(
 
   bundles <- list(
     pando_args = pando_args,
+    multitask_args = multitask_args,
     metacell_args = metacell_args,
     meta_module_args = meta_module_args,
     layer1_args = layer1_args,
@@ -85,16 +87,19 @@ rc_run_regcompass <- function(
       call. = FALSE
     )
   }
+  if (identical(grn_mode, "multitask_shared_backbone")) {
+    multitask_args <- .rc_validate_multitask_grn_args(multitask_args)
+  } else if (length(multitask_args)) {
+    warning("`multitask_args` are ignored in legacy GRN mode.", call. = FALSE)
+  }
   unknown_meta_module <- setdiff(
-    names(meta_module_args),
-    "subsystem_table"
+    names(meta_module_args), "subsystem_table"
   )
   if (length(unknown_meta_module)) {
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown_meta_module, collapse = ", "),
-      ". Allowed field: `subsystem_table`.",
-      call. = FALSE
+      ". Allowed field: `subsystem_table`.", call. = FALSE
     )
   }
   unknown_layer1 <- setdiff(
@@ -106,8 +111,7 @@ rc_run_regcompass <- function(
       "Unknown `layer1_args` fields: ",
       paste(unknown_layer1, collapse = ", "),
       ". Allowed fields: `regulatory_alpha`, `gpr_and_method`, and ",
-      "`gene_half_saturation`.",
-      call. = FALSE
+      "`gene_half_saturation`.", call. = FALSE
     )
   }
   gpr_and_method <- match.arg(
@@ -115,20 +119,22 @@ rc_run_regcompass <- function(
     c("min", "median", "mean")
   )
 
-  pando_infer_args <- pando_args$pando_infer_args %||% list()
-  if (!is.list(pando_infer_args)) {
-    stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+  if (identical(grn_mode, "legacy_condition_pando")) {
+    pando_infer_args <- pando_args$pando_infer_args %||% list()
+    if (!is.list(pando_infer_args)) {
+      stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+    }
+    if (!is.null(pando_infer_args$parallel) &&
+        !identical(pando_infer_args$parallel, FALSE)) {
+      warning(
+        "Ignoring `pando_args$pando_infer_args$parallel`; canonical outer ",
+        "parallelism requires each Pando fit to remain single-threaded.",
+        call. = FALSE
+      )
+    }
+    pando_infer_args$parallel <- FALSE
+    pando_args$pando_infer_args <- pando_infer_args
   }
-  if (!is.null(pando_infer_args$parallel) &&
-      !identical(pando_infer_args$parallel, FALSE)) {
-    warning(
-      "Ignoring `pando_args$pando_infer_args$parallel`; canonical outer ",
-      "parallelism requires each Pando fit to remain single-threaded.",
-      call. = FALSE
-    )
-  }
-  pando_infer_args$parallel <- FALSE
-  pando_args$pando_infer_args <- pando_infer_args
 
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
@@ -177,7 +183,9 @@ rc_run_regcompass <- function(
           celltype_col = celltype_col,
           rna_assay = rna_assay,
           atac_assay = atac_assay,
+          grn_mode = grn_mode,
           pando_args = pando_args,
+          multitask_args = multitask_args,
           parallel = !identical(config$actual_backend, "serial"),
           BPPARAM = upstream,
           progress = progress,
@@ -193,7 +201,6 @@ rc_run_regcompass <- function(
     rc_regcompass_step_metacells(
       object = object,
       outdir = file.path(outdir, "02_condition_metacells"),
-      sample_col = sample_col,
       condition_col = condition_col,
       celltype_col = celltype_col,
       rna_assay = rna_assay,

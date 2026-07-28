@@ -4,7 +4,7 @@ test_that("Pando extraction keeps only finite target-model R-squared values", {
     collapse = "\n"
   )
   runner <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)),
+    deparse(body(.rc_run_condition_single_cell_grns_legacy)),
     collapse = "\n"
   )
   expect_match(extraction, "is.finite(rsq) & rsq >= min_model_rsq", fixed = TRUE)

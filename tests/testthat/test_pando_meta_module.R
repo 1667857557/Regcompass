@@ -17,7 +17,7 @@ test_that("meta-module expansion is one fixed ordered pass", {
     reaction_meta = reaction_meta
   )
   core <- data.frame(
-    sample_id = "S1",
+    group_id = "S1",
     module_id = "S1::SUPPORTED_METABOLIC_GENES",
     gene = "G1",
     reaction_id = "R1",
@@ -70,7 +70,7 @@ test_that("partial GPR anchors are removed before module summarization", {
     )
   )
   core <- data.frame(
-    sample_id = "S1",
+    group_id = "S1",
     module_id = "S1::SUPPORTED_METABOLIC_GENES",
     gene = c("G1", "G2"),
     reaction_id = c("R1", "R2"),
@@ -108,7 +108,7 @@ test_that("UNASSIGNED subsystem labels are not pooled", {
   expect_false(any(toupper(maps$subsystem$subsystem_id) == "UNASSIGNED"))
 })
 
-test_that("significant Pando targets define one supported gene set per group", {
+test_that("active GRN targets define one supported gene set per group", {
   significant <- data.frame(
     group_id = rep("control|tumor", 4),
     condition = rep("control", 4),
@@ -119,6 +119,7 @@ test_that("significant Pando targets define one supported gene set per group", {
     estimate = c(1, -0.5, -1, 0.8),
     padj = c(0.001, 0.01, 0.02, 0.03),
     rsq = c(0.4, 0.4, 0.3, 0.2),
+    evidence_type = "multitask_bootstrap_stability_selected",
     stringsAsFactors = FALSE
   )
   grn_result <- list(
@@ -132,7 +133,7 @@ test_that("significant Pando targets define one supported gene set per group", {
   expect_setequal(supported$gene, c("G1", "G2", "G3"))
   expect_equal(length(unique(supported$module_id)), 1L)
   expect_equal(
-    supported$n_significant_edges[supported$gene == "G1"],
+    supported$n_active_edges[supported$gene == "G1"],
     2L
   )
   expect_equal(
@@ -151,7 +152,7 @@ test_that("significant Pando targets define one supported gene set per group", {
     stringsAsFactors = FALSE
   )
   mapped <- rc_map_meta_module_core_reactions(
-    supported[, c("sample_id", "module_id", "gene")],
+    supported[, c("group_id", "module_id", "gene")],
     gpr
   )
   expect_setequal(
@@ -197,21 +198,20 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
   gem$gpr_table <- gpr
   supported <- data.frame(
     group_id = "S1",
-    sample_id = "S1",
     gene = c("G1", "G2"),
     module_id = "S1::SUPPORTED_METABOLIC_GENES",
     stringsAsFactors = FALSE
   )
   core <- rc_map_meta_module_core_reactions(supported, gpr)
   membership <- data.frame(
-    sample_id = "S1",
+    group_id = "S1",
     module_id = "S1::SUPPORTED_METABOLIC_GENES",
     reaction_id = c("R1", "R2"),
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
   condition_modules <- list(
-    sample_status = data.frame(group_id = "S1"),
+    group_status = data.frame(group_id = "S1"),
     tf_peak_gene_all = data.frame(),
     tf_peak_gene_significant = data.frame(),
     supported_metabolic_genes = supported,

@@ -1,12 +1,12 @@
-#' Construct significant-target complete-GPR cores and biological meta-modules
+#' Construct condition sub-GRN complete-GPR cores and biological meta-modules
 #'
-#' Stage 3 defines biological reaction membership only. For each condition by
-#' cell-type group, GEM metabolic genes with significant Pando TF-peak-gene
-#' evidence are treated as one supported gene set. Reactions become core only
-#' when at least one complete GPR branch is contained in that set. Biological
-#' expansion is one fixed ordered pass: core subsystem, direct KEGG/Reactome
-#' reaction equivalence, then direct master-Rhea equivalence. Stage 3 does not
-#' run FASTCORE and does not construct a GEM.
+#' Stage 3 defines biological reaction membership only. In canonical multitask
+#' mode, each condition-by-cell-type supported gene set contains targets with at
+#' least one active edge selected by condition-stratified bootstrap stability.
+#' A reaction becomes core only when at least one complete GPR branch is
+#' contained in that set. Expansion is one fixed ordered pass: core subsystem,
+#' direct KEGG/Reactome equivalence, then direct master-Rhea equivalence. Stage 3
+#' does not run FASTCORE and does not construct a GEM.
 #'
 #' @export
 rc_regcompass_step_meta_modules <- function(
@@ -23,7 +23,7 @@ rc_regcompass_step_meta_modules <- function(
     "rc_regcompass_step_metacells"
   )
   if (!identical(.rc_workflow_signature(grn),
-                 .rc_workflow_signature(metacells))) {
+                  .rc_workflow_signature(metacells))) {
     stop(
       "GRN and metacell stages use different metadata or assay settings.",
       call. = FALSE
@@ -38,8 +38,7 @@ rc_regcompass_step_meta_modules <- function(
     stop(
       "Unknown `meta_module_args` fields: ",
       paste(unknown, collapse = ", "),
-      ". Allowed field: `subsystem_table`.",
-      call. = FALSE
+      ". Allowed field: `subsystem_table`.", call. = FALSE
     )
   }
   .rc_require_stage_gem(grn, gem, "grn")
@@ -61,10 +60,8 @@ rc_regcompass_step_meta_modules <- function(
   condition_modules$grn_metacell_group_coverage <- group_coverage
   if (!is.data.frame(condition_modules$reaction_membership) ||
       !nrow(condition_modules$reaction_membership)) {
-    stop(
-      "Meta-module construction produced no reaction membership.",
-      call. = FALSE
-    )
+    stop("Meta-module construction produced no reaction membership.",
+         call. = FALSE)
   }
   missing <- setdiff(
     unique(as.character(condition_modules$reaction_membership$reaction_id)),
@@ -85,6 +82,10 @@ rc_regcompass_step_meta_modules <- function(
       call. = FALSE
     )
   }
+  multitask <- identical(
+    as.character(grn$grn_result$grn_mode %||% ""),
+    "multitask_shared_backbone"
+  )
   answer <- list(
     condition_modules = condition_modules,
     merged_modules = merged_modules,
@@ -94,11 +95,17 @@ rc_regcompass_step_meta_modules <- function(
     gem_fingerprint = .rc_stage_gem_fingerprint(gem),
     params = list(
       meta_module_args = meta_module_args,
-      core_definition =
-        "condition_celltype_significant_pando_targets_complete_gpr",
+      grn_mode = grn$grn_result$grn_mode %||% "legacy_condition_pando",
+      core_definition = if (multitask) {
+        "condition_celltype_bootstrap_stable_subgrn_targets_complete_gpr"
+      } else {
+        "condition_celltype_significant_pando_targets_complete_gpr"
+      },
       expansion_policy = "single_ordered_annotation_pass",
       feasibility_completion = "layer2_medium_specific_only",
-      merge_creates_gem = FALSE
+      merge_creates_gem = FALSE,
+      final_model_policy =
+        "one medium-specific union GEM shared by all conditions and metacells"
     )
   )
   class(answer) <- c("regcompass_meta_module_step", "list")
