@@ -59,7 +59,7 @@ layer2_workers <- 30L
 
 `upstream_workers` applies to:
 
-- condition-by-cell-type Pando GRNs;
+- one shared-design Pando condition fit per cell type;
 - Layer 1 reaction-support calculation.
 
 Stage 3 meta-module construction does not run FASTCORE and does not own a worker pool for feasibility completion.

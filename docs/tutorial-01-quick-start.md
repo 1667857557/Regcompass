@@ -2,6 +2,11 @@
 
 Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.9.1.
 
+Current complete-run entry point: `rc_run_regcompass_one_shot()`. For explicit
+stage control use the six `rc_regcompass_step_*()` functions in
+[Tutorial 2](tutorial-02-stepwise-audit.md). The complete public API is indexed
+in [functions.md](functions.md).
+
 ## Workflow
 
 ```text
@@ -93,7 +98,6 @@ result <- rc_run_regcompass_one_shot(
   ),
 
   # Stage 2: metacells
-  sample_col = NULL,
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
@@ -148,11 +152,10 @@ result <- rc_run_regcompass_one_shot(
 | `min_abs_estimate` | `0` | Minimum absolute condition coefficient or reference contrast. |
 | `min_model_rsq` | `0.1` | Minimum finite condition target-model R². |
 
-The regularized Pando solver does not produce adjusted P values.
-`padj_threshold` and `require_padj` remain accepted only for compatibility with
-older calls. Positive and negative active condition coefficients both define
-Stage 3 regulatory support. Penalty modulation instead uses the explicit
-reference contrast and Pando's stored predictor transform.
+The regularized condition solver does not use coefficient-level adjusted P
+values. Positive and negative active condition coefficients both define Stage
+3 regulatory support. Penalty modulation instead uses the explicit reference
+contrast and Pando's stored predictor transform.
 
 ## Metacell geometry and reproducibility
 
@@ -209,6 +212,10 @@ core subsystem
 ## Inspect the main outputs
 
 ```r
+result$grn$condition_grn_fits
+result$grn$condition_fit_status
+result$grn$tf_peak_gene_condition
+result$grn$tf_peak_gene_condition_effect
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
 result$reaction_ranking
@@ -216,4 +223,11 @@ result$condition_contrast
 result$merged_grn_meta_modules$merged_core_reactions
 result$merged_grn_meta_modules$merged_reaction_membership
 result$microcompass$model_cache_summary
+```
+
+The fit contract and transform files are also persisted as:
+
+```text
+01_grn/pando_condition_grn_fits.rds
+01_grn/pando_edge_predictor_transforms.tsv.gz
 ```

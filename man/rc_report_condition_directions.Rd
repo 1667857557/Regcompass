@@ -2,7 +2,7 @@
 % Please edit documentation in R/condition_direction_report.R
 \name{rc_report_condition_directions}
 \alias{rc_report_condition_directions}
-\title{Build a direction-aware condition report}
+\title{Build a direction-preserving condition comparison report}
 \usage{
 rc_report_condition_directions(
   x,

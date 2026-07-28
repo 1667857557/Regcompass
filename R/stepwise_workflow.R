@@ -197,7 +197,12 @@ rc_regcompass_step_grn <- function(
   answer
 }
 
-#' Build condition-only SuperCell2 metacells
+#' Build condition-pooled, cell-type-guided SuperCell2 metacells
+#'
+#' Cells are stratified only by condition. The cell-type column is supplied to
+#' SuperCell2 as a construction label and audited again by dominant membership
+#' after aggregation. `sample_col` is retained only for call compatibility; it
+#' is not used for grouping, balancing, weighting, or model fitting.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,

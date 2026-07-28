@@ -26,4 +26,4 @@ rc_download_species_gem(
 \item{download_fun}{Download function compatible with \code{utils::download.file}.}
 }
 \value{Parsed official model tables with source archive and download diagnostics stored as attributes.}
-\description{Retained for users rebuilding bundled models or preparing a newer pinned Human-GEM or Mouse-GEM release. Canonical analyses normally use \code{rc_prepare_gem()} and the installed assets.}
+\description{Downloads and parses an official upstream Human-GEM or Mouse-GEM release for asset rebuilding or preparation of a newer pinned model. Canonical analyses should use \code{rc_prepare_gem()} and the validated bundled/cache path.}

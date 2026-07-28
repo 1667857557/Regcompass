@@ -2,7 +2,7 @@
 % Please edit documentation in R/target_union.R and R/target_union_anchors.R
 \name{rc_regcompass_step_target_union}
 \alias{rc_regcompass_step_target_union}
-\title{Score database-linked non-core reactions in final union GEMs}
+\title{Score directly linked non-core reactions in cached union GEMs}
 \usage{
 rc_regcompass_step_target_union(
   layer1, meta_modules, layer2, gem, outdir,

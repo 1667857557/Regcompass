@@ -16,6 +16,10 @@
 #' @param pfm Optional motif position-frequency matrices. When omitted,
 #'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
 #'   to `Pando::find_motifs()`.
+#' @param sample_col Deprecated compatibility input. It is recorded as
+#'   provenance only. Canonical metacells are grouped by condition, use cell
+#'   type as a construction label, and never use sample selection, balancing,
+#'   weighting, or sample-level refitting.
 #' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
 #'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
 #'   master-Rhea equivalence.

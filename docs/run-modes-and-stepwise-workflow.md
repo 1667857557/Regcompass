@@ -3,8 +3,9 @@
 All execution modes follow the same main workflow:
 
 ```text
-condition × cell type Pando evidence for Human-GEM genes
-→ significantly supported metabolic targets
+one shared Pando design per cell type
+→ independently estimated condition coefficient layers
+→ active condition-level metabolic targets
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
 → integrated RNA+ATAC support with COMPASS GPR-AND aggregation
@@ -35,7 +36,12 @@ rc_regcompass_step_layer2()
 rc_regcompass_step_results()
 ```
 
-Stage 3 directly maps active Pando target genes to complete-GPR cores. It does not perform shared-TF projection or connected-component analysis. Expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence.
+Stage 1 exports the complete `ConditionGRNFit`, current condition coefficient
+and reference-effect tables, and predictor transforms. Stage 3 directly maps
+active condition target genes to complete-GPR cores. It does not perform
+shared-TF projection or connected-component analysis. Expansion is exactly one
+ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct
+master-Rhea equivalence.
 
 Stage 4 uses `gpr_and_method = "min"` by default. `"median"` and `"mean"` are available for sensitivity analysis.
 
@@ -43,7 +49,9 @@ Stage 4 uses `gpr_and_method = "min"` by default. `"median"` and `"mean"` are av
 
 Use [Tutorial 3](tutorial-03-advanced-restart.md).
 
-- Change Pando thresholds, motifs, or regulatory regions: rerun Stage 1 onward.
+- Change the reference condition, shared edge design, Pando thresholds, motifs,
+  regulatory regions, lambda settings, or coefficient scaling: rerun Stage 1
+  onward.
 - Change metacell construction: rerun Stage 2 onward.
 - Change subsystem annotations or GEM GPR rules: rerun Stage 3 onward.
 - Change `gpr_and_method` or another multiome support setting: rerun Stage 4 onward.
@@ -51,7 +59,10 @@ Use [Tutorial 3](tutorial-03-advanced-restart.md).
 
 ## Level 4: targeted second-pass scoring
 
-Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) to remap selected genes or core reactions through direct KEGG, Reactome, or master-Rhea links and score the mapped targets in the cached Stage 5 model.
+Use [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) to remap selected
+original-core genes or any valid GEM reaction-ID anchors through direct KEGG,
+Reactome, or master-Rhea links and score mapped non-core targets in the cached
+Stage 5 model.
 
 ## Level 5: condition comparison
 
@@ -72,3 +83,6 @@ Stage 5 builds the medium-constrained structural model and applies global FASTCO
 The complete validated GEM is reused directly for scoring; no union-model reconstruction or FASTCORE completion is required.
 
 Treat the two modes as separate analyses.
+
+See the [complete public function and API index](functions.md) for current
+arguments, return objects, compatibility aliases, and interpretation limits.

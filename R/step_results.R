@@ -1,4 +1,10 @@
-#' Assemble final RegCompass results
+#' Assemble the annotated RegCompass result contract
+#'
+#' Combines the authoritative Pando `ConditionGRNFit` outputs, condition-pooled
+#' metacells, biological reaction catalogue, Layer 1 evidence, and shared-model
+#' directional LP results. The returned object includes reaction annotations,
+#' rankings, descriptive condition contrasts, provenance, and the exact cached
+#' model summary used for scoring.
 #'
 #' @export
 rc_regcompass_step_results <- function(

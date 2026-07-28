@@ -1,9 +1,12 @@
-# Condition-comparable Pando GRNs
+# Shared-design, condition-comparable Pando GRNs
 
 RegCompass Stage 1 passes the complete normalized multiome object once through
 `Pando::initiate_grn()` and `Pando::find_motifs()`, then calls
 `Pando::infer_condition_grn()`. Pando fits one cell-type design across its
 conditions and returns a versioned `ConditionGRNFit`.
+
+The current public entry point is `rc_regcompass_step_grn()`. The complete-run
+wrappers call the same function and preserve the same fit contract.
 
 ## Why the default is shared-design independent
 
@@ -102,6 +105,18 @@ The complete values are retained in:
 RegCompass writes the fit contracts to
 `pando_condition_grn_fits.rds` and the edge transforms to
 `pando_edge_predictor_transforms.tsv.gz`.
+
+The in-memory current API is:
+
+```r
+step1$grn_result$condition_grn_fits
+step1$grn_result$condition_fit_status
+step1$grn_result$tf_peak_gene_condition
+step1$grn_result$tf_peak_gene_condition_effect
+```
+
+Historical `sample_status`, `tf_peak_gene_all`, and
+`tf_peak_gene_significant` fields are retained only as compatibility aliases.
 
 ## Reference contrasts
 

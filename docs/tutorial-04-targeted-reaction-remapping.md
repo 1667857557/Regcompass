@@ -2,6 +2,10 @@
 
 Use this tutorial after a completed stepwise `meta_module_gem` analysis to score non-core reactions that are directly linked to selected reaction anchors.
 
+Current API entry point: `rc_regcompass_step_target_union()`. It is an optional
+post-Stage-5 scorer, not a seventh reconstruction stage; see
+[functions.md](functions.md).
+
 The second pass reuses the cached Stage 5 model. It validates the cache checksum and medium identity, and does not rebuild the model or rerun FASTCORE. Because union-GEM construction is already complete, this scoring-only step has no time-limit parameter.
 
 ## Load the completed stages

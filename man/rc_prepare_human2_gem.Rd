@@ -22,5 +22,5 @@ rc_prepare_human2_gem(
 \item{source}{Use a cache/bundled-first automatic path, require the bundled model, or download and rebuild.}
 }
 \description{
-Species-specific Human-GEM 2 entry point. Human-GEM 2.0.0 is bundled with RegCompassR 1.8.3 and is used offline by default; explicit download and rebuild remain available for updates.
+Species-specific Human-GEM 2 entry point. Human-GEM 2.0.0 is bundled with RegCompassR 1.9.1 and is used offline by default; explicit download and rebuild remain available for updates.
 }

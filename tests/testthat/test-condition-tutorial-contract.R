@@ -53,6 +53,7 @@ test_that("README demonstrates multi-condition testing and plotting", {
   expect_match(text, "MS177_24hr", fixed = TRUE)
   expect_match(text, "condition_stats$omnibus", fixed = TRUE)
   expect_match(text, "condition_stats$pairwise", fixed = TRUE)
+  expect_match(text, "target_directions = \"reverse\"", fixed = TRUE)
   expect_match(text, "target_direction = \"reverse\"", fixed = TRUE)
   expect_match(text, "annotation_p = \"p_adj\"", fixed = TRUE)
 })

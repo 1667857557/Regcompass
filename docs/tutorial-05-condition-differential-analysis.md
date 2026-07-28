@@ -3,6 +3,10 @@
 Use this tutorial after Stage 6, a complete one-shot run, or a target-union
 second pass.
 
+Current APIs are `rc_test_condition_reactions()`,
+`rc_report_condition_directions()`, `rc_plot_condition_reaction()`, and
+`rc_plot_condition_gene_reactions()`; see [functions.md](functions.md).
+
 ## Inspect rankings and descriptive contrasts
 
 ```r
