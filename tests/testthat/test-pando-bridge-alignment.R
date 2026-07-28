@@ -85,7 +85,7 @@ test_that("canonical Stage 1 defaults and parallel routing match Pando", {
   step_body <- paste(deparse(body(rc_regcompass_step_grn)), collapse = "\n")
   expect_match(step_body, "use_bpparam", fixed = TRUE)
   expect_match(step_body, "use_pando_native", fixed = TRUE)
-  expect_match(step_body, "BPPARAM = TRUE", fixed = TRUE)
+  expect_match(step_body, "identical(BPPARAM, TRUE)", fixed = TRUE)
   expect_match(step_body, "pando_parallel", fixed = TRUE)
 })
 
