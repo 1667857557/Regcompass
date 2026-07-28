@@ -39,12 +39,32 @@ test_that("metacell metadata contract rejects duplicate IDs", {
 })
 
 test_that("ConditionGRNFit extraction writes metadata without sample remapping", {
-  extraction <- paste(
-    deparse(body(.rc_extract_condition_grn_contract)),
+  implementation <- paste(
+    deparse(body(.rc_extract_condition_grn_contract_without_comparison_guard)),
     collapse = "\n"
   )
-  expect_match(extraction, "tab[[condition_col]] <- condition", fixed = TRUE)
-  expect_match(extraction, "tab[[celltype_col]] <- fit$cell_type", fixed = TRUE)
-  expect_match(extraction, "tab$group_id <- rc_make_stratum_id(", fixed = TRUE)
+  bridge <- paste(
+    deparse(body(.rc_extract_condition_grn_contract)), collapse = "\n"
+  )
+  expect_match(
+    implementation,
+    "tab[[condition_col]] <- condition",
+    fixed = TRUE
+  )
+  expect_match(
+    implementation,
+    "tab[[celltype_col]] <- fit$cell_type",
+    fixed = TRUE
+  )
+  expect_match(
+    implementation,
+    "tab$group_id <- rc_make_stratum_id(",
+    fixed = TRUE
+  )
+  expect_match(
+    bridge,
+    ".rc_apply_condition_comparison_semantics",
+    fixed = TRUE
+  )
   expect_false(exists(".rc_remap_projection_metadata", inherits = TRUE))
 })
