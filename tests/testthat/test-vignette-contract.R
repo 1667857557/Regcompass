@@ -60,7 +60,7 @@ test_that("workflow vignette documents the current Pando bridge", {
     "BPPARAM = upstream_bp",
     "step1$params$pando_parallel",
     "gpr_and_method = \"min\"",
-    "single global FASTCORE",
+    "global FASTCORE",
     "Mouse runs must supply"
   )
   expect_true(all(vapply(
