@@ -282,14 +282,14 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
 
 .rc_require_supercell2 <- function() {
   if (!requireNamespace("SuperCell", quietly = TRUE)) {
-    stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). Install the SuperCell2 branch with `remotes::install_github(\"1667857557/SuperCell_Seurat_V4@supercell-2.0\")` (or the upstream mirror `GfellerLab/SuperCell@supercell-2.0`).", call. = FALSE)
+    stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). Install the SuperCell2 branch with `remotes::install_github(\"1667857557/SuperCell_Seurat_V4@Supercell2\")`.", call. = FALSE)
   }
   if (!exists("SCimplify_for_Seurat", envir = asNamespace("SuperCell"), inherits = FALSE)) {
     stop("Installed package 'SuperCell' does not export SCimplify_for_Seurat(); install the SuperCell2 branch before running metacells.", call. = FALSE)
   }
   version <- tryCatch(utils::packageVersion("SuperCell"), error = function(e) NULL)
   if (!is.null(version) && version < "2.0") {
-    stop("RegCompass requires SuperCell2 (>= 2.0) for multimodal Seurat metacells. Reinstall with `remotes::install_github(\"1667857557/SuperCell_Seurat_V4@supercell-2.0\")`.", call. = FALSE)
+    stop("RegCompass requires SuperCell2 (>= 2.0) for multimodal Seurat metacells. Reinstall with `remotes::install_github(\"1667857557/SuperCell_Seurat_V4@Supercell2\")`.", call. = FALSE)
   }
   invisible(TRUE)
 }
