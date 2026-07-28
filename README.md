@@ -35,7 +35,7 @@ contrasts.
 
 ## Installation
 
-### Validated Seurat v4 profile
+### Default validated profile: Seurat v4
 
 ```r
 install.packages("remotes")
@@ -47,14 +47,18 @@ remotes::install_github("1667857557/Pando_regcompass")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-A coherent SeuratObject/Seurat 5.x stack with Signac 1.12–1.x is also accepted.
-For v3-style assay behavior under Seurat 5:
+### Optional compatible profile: Seurat v5
+
+A coherent SeuratObject/Seurat 5.x stack with Signac 1.12–1.x is accepted. For
+v3-style assay behavior under Seurat 5:
 
 ```r
 options(Seurat.object.assay.version = "v3")
 ```
 
-See [Seurat compatibility](docs/seurat-compatibility.md).
+Signac 2.x `ChromatinAssay5` is not yet supported. See
+[Seurat compatibility](docs/seurat-compatibility.md) for the validated version
+matrix and assay constraints.
 
 ## Minimal human one-shot run
 
