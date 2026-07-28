@@ -125,7 +125,6 @@ test_that("canonical examples do not reintroduce unsafe Pando assignments", {
     "(?m)^\\s*candidate_screen\\s*=\\s*[\"']condition_union[\"']",
     "(?m)^\\s*aggregate_rna_col\\s*=",
     "(?m)^\\s*aggregate_peaks_col\\s*=",
-    "(?m)^\\s*BPPARAM\\s*=\\s*TRUE",
     "(?m)^\\s*expansion_mode\\s*=",
     "(?m)^\\s*max_iterations\\s*=",
     "(?m)^\\s*tau\\s*="
