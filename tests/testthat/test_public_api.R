@@ -135,7 +135,7 @@ test_that("Pando defaults use bundled human inputs and guard mouse regions", {
   expect_match(human_region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
   expect_match(human_region_helper, "BiocGenerics::union", fixed = TRUE)
   expect_match(region_guard, 'identical(species, "mouse")', fixed = TRUE)
-  expect_match(region_guard, "not valid for mouse input", fixed = TRUE)
+  expect_match(region_guard, "valid for mouse input.", fixed = TRUE)
   expect_error(
     .rc_default_pando_regions("mouse"),
     "hg38 conserved-element set is not valid for mouse input",
