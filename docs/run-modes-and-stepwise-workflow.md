@@ -1,10 +1,12 @@
-# RegCompassR 1.9.1 tutorial index
+# RegCompassR 1.9.3 tutorial index
 
 All execution modes follow the same main workflow:
 
 ```text
-one shared Pando design per cell type
+one shared Pando motif/domain design per cell type
+→ pooled predictor transforms and target-specific shared lambda
 → independently estimated condition coefficient layers
+→ explicit condition-versus-reference comparison support
 → active condition-level metabolic targets
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
@@ -13,15 +15,24 @@ one shared Pando design per cell type
 → directional LP scoring
 ```
 
+Stage 1 requires Pando 1.2.1's explicit `comparison_mask`; unsupported
+condition-versus-reference contrasts cannot enter Layer 1.
+
 ## Level 1: one-shot workflow
 
 Use [Tutorial 1](tutorial-01-quick-start.md) for a complete run with `rc_run_regcompass_one_shot()`.
 
 - `pfm` is optional; Pando's bundled `motifs` data object is the default.
+- `candidate_screen = "motif_domain"` is the canonical interaction-safe default.
+- Set `reference_condition` explicitly in `pando_infer_args`.
 - `upstream_workers`: Pando inference and Layer 1.
 - `layer2_workers`: model completion and LP scoring.
 - `meta_module_args`: optional custom subsystem table only.
 - `layer1_args`: `regulatory_alpha`, `gpr_and_method`, and gene half-saturation.
+
+Mouse runs must supply a build-matched regulatory-region `GRanges` through
+`pando_initiate_args$regions`; the bundled hg38 regions are not applied to mouse
+ATAC coordinates.
 
 ## Level 2: explicit stepwise workflow
 
@@ -37,13 +48,17 @@ rc_regcompass_step_results()
 ```
 
 Stage 1 exports the complete `ConditionGRNFit`, current condition coefficient
-and reference-effect tables, and predictor transforms. Stage 3 directly maps
-active condition target genes to complete-GPR cores. It does not perform
-shared-TF projection or connected-component analysis. Expansion is exactly one
-ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct
-master-Rhea equivalence.
+and reference-effect tables, explicit comparison support, and predictor
+transforms. With `parallel = TRUE`, a supplied `BiocParallelParam` is forwarded
+to Pando; without one, Pando native mapping is used. `BPPARAM = TRUE` is invalid.
 
-Stage 4 uses `gpr_and_method = "min"` by default. `"median"` and `"mean"` are available for sensitivity analysis.
+Stage 3 directly maps active condition target genes to complete-GPR cores. It
+does not perform shared-TF projection or connected-component analysis.
+Expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome
+equivalence, then direct master-Rhea equivalence.
+
+Stage 4 uses `gpr_and_method = "min"` by default. `"median"` and `"mean"` are
+available for sensitivity analysis.
 
 ## Level 3: restart and sensitivity analysis
 
@@ -76,7 +91,7 @@ Use [Predefined extracellular medium scenarios](medium-presets.md) for physiolog
 
 ### `model_mode = "meta_module_gem"`
 
-Stage 5 builds the medium-constrained structural model and applies global FASTCORE completion.
+Stage 5 builds the medium-constrained structural model and applies one global FASTCORE completion.
 
 ### `model_mode = "full_gem"`
 
