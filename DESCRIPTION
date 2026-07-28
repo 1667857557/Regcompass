@@ -121,7 +121,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@Supercell2,
-    1667857557/Pando_regcompass@eaea5b451ee239fbe68170d2c8cd7d1721d4aed6
+    1667857557/Pando_regcompass@75f764d64d7c9d8db7d17a637c88a637a04ed6c5
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
