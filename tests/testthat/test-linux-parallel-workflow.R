@@ -38,7 +38,7 @@ test_that("canonical workflow injects layered workers and automatic backend", {
   expect_match(text, ".rc_with_stage_workers(", fixed = TRUE)
   expect_match(text, "pando_infer_args$parallel <- FALSE", fixed = TRUE)
   expect_match(text, "result$params$pando_internal_parallel <- FALSE", fixed = TRUE)
-  expect_match(text, "layer2_args$model_params", fixed = TRUE)
+  expect_match(text, "layer2_args = layer2_args", fixed = TRUE)
   expect_match(text, "result$params$internal_threads_per_task <- 1L", fixed = TRUE)
   expect_match(text, "parallel_worker_lifecycle", fixed = TRUE)
   expect_false(grepl("parallel_backend =", text, fixed = TRUE))

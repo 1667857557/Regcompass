@@ -45,6 +45,7 @@ make_reaction_annotation_fixture <- function() {
     ncol = length(units),
     dimnames = list(c("gene1", "gene2"), units)
   )
+  rna["gene1", ] <- 0.4
   modifier <- matrix(
     0,
     nrow = 2,

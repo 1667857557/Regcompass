@@ -101,6 +101,14 @@ rc_run_regcompass <- function(
       call. = FALSE
     )
   }
+  if ("tau" %in% names(layer1_args)) {
+    stop(
+      "The retired `tau`/Boltzmann Layer 1 transform is not supported. ",
+      "Use `regulatory_alpha`, `gpr_and_method`, and ",
+      "`gene_half_saturation`.",
+      call. = FALSE
+    )
+  }
   unknown_layer1 <- setdiff(
     names(layer1_args),
     c("regulatory_alpha", "gpr_and_method", "gene_half_saturation")

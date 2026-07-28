@@ -68,7 +68,10 @@ test_that("Harmony selection is forwarded through the canonical metacell path", 
     deparse(body(.rc_make_condition_pooled_metacells)),
     collapse = "\n"
   )
-  expect_match(forwarding, "c(defaults, metacell_args)", fixed = TRUE)
+  expect_match(
+    forwarding,
+    "c\\(defaults,\\s+metacell_args\\)"
+  )
   expect_false(grepl(
     'c\\([^)]*"rna_reduction"',
     forwarding,
