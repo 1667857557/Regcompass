@@ -221,6 +221,50 @@ BiocParallel backend, Pando's native map backend, or serial execution:
 step1$params$pando_parallel
 ```
 
+## Compare the same reaction across conditions
+
+After Stage 6, compare a fixed reaction/direction/medium target across
+condition-level metacells:
+
+```r
+condition_stats <- rc_test_condition_reactions(
+  result,
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  cell_types = "stem-cell_like",
+  min_units = 5,
+  p_adjust_method = "BH",
+  p_adjust_scope = "celltype_contrast_medium"
+)
+
+condition_stats$omnibus
+condition_stats$pairwise
+
+reverse_report <- rc_report_condition_directions(
+  result,
+  target_directions = "reverse"
+)
+
+p <- rc_plot_condition_reaction(
+  result,
+  reaction_id = "MAR06231",
+  cell_type = "epithelial_like",
+  target_direction = "reverse",
+  medium_scenario = "high_glucose",
+  condition_col = "dataset",
+  celltype_col = "epithelial_or_stem",
+  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
+  annotation_p = "p_adj"
+)
+```
+
+The omnibus test is Kruskal-Wallis; pairwise contrasts use Wilcoxon tests with
+explicit multiplicity scope. The plot retains one point per metacell and
+adjusted-P-value significance brackets. These are metacell-level descriptive
+comparisons unless biological replicate-level inference is supplied separately.
+See [Condition-associated reaction statistics](docs/condition-reaction-statistics.md).
+
 ## Restartable stages
 
 - `rc_regcompass_step_grn()` — Pando condition GRNs and fit contracts.
@@ -237,6 +281,7 @@ step1$params$pando_parallel
 - [Level 3: restart and sensitivity](docs/tutorial-03-advanced-restart.md)
 - [Level 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
 - [Level 5: condition differential analysis](docs/tutorial-05-condition-differential-analysis.md)
+- [Condition-associated reaction statistics](docs/condition-reaction-statistics.md)
 - [Pando condition-comparable contract](docs/condition-comparable-grn.md)
 - [Condition-comparability safeguards](docs/condition-comparability-safeguards.md)
 - [Public API index](docs/functions.md)
