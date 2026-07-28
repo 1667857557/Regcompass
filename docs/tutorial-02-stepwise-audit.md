@@ -333,3 +333,6 @@ result$reaction_ranking
 result$condition_contrast
 result$grn$normalization_policy
 ```
+
+See the complete [public function and API index](functions.md) for stage
+arguments, return contracts, and restart boundaries.
