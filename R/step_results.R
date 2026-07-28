@@ -61,7 +61,7 @@ rc_regcompass_step_results <- function(
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
     schema_version = "regcompass_condition_grn_fit_v2",
-    version = "1.9.1",
+    version = "1.9.3",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
