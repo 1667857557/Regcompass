@@ -1,20 +1,14 @@
-# RegCompassR development
+# RegCompassR 1.9.3
 
-- Added `rc_report_condition_directions()` as a final reporting layer that retains forward/reverse LP targets, diagnoses numerically indistinguishable directions, and derives non-additive `any_direction_support` and `directional_balance` summaries. The latter is explicitly support asymmetry rather than net flux.
-- Added explicit Seurat runtime profiles: the pinned SeuratObject 4.1.4 / Seurat 4.4.0 / Signac 1.11.0 stack remains the canonical default, while coherent SeuratObject/Seurat 5.x stacks with Signac >=1.12.0,<2 are accepted as a compatibility profile.
-- Added assay-class-aware matrix access for v3 `Assay`, Signac 1.x `ChromatinAssay`, and joinable Seurat v5 `Assay5` objects. Split `counts.*` and `data.*` layers are joined on a working copy and recorded as provenance; ambiguous layer layouts and Signac 2.x `ChromatinAssay5` stop explicitly.
-- Redefined Stage 3 around the actual analysis target: for each `condition × cell type`, GEM metabolic genes with at least one significant Pando TF–peak–gene coefficient form one supported gene set, and reactions become core only when a complete GPR branch is contained in that set.
-- Removed the retired shared-TF target projection, signed target-target component construction, top-k pruning, TF-Jaccard filtering, and per-TF target truncation code. The associated functions, output fields, parameters, tests, and documentation were deleted rather than retained as compatibility wrappers.
-- Added `supported_metabolic_genes`, a condition-by-cell-type gene evidence table reporting significant edge, TF, region, adjusted-P-value, coefficient, model-R², and positive/negative edge summaries.
-- Made Pando's bundled `motifs` data object the canonical default when `pfm` is omitted. Explicit user-supplied motif collections remain supported.
-- Added species-specific Pando region defaults. Unless overridden by `pando_initiate_args$regions`, human Stage 1 loads `phastConsElements20Mammals.UCSC.hg38` and `SCREEN.ccRE.UCSC.hg38` from Pando and uses their union, while mouse Stage 1 uses only `phastConsElements20Mammals.UCSC.hg38`.
-- Replaced the former Boltzmann GPR-AND calculation with the three COMPASS aggregation functions `min`, `median`, and `mean`. The canonical default is `min`; the Boltzmann helper, `tau` parameter, associated tests, and compatibility paths were deleted.
-- Fixed Stage 3 expansion to one ordered pass: core-subsystem reactions, direct KEGG/Reactome reaction equivalents, then direct master-Rhea reaction equivalents. Removed `expansion_mode`, `max_iterations`, fixed-point recursion, iteration output fields, and any one-hop/stoichiometric-neighbour expansion interface.
-- Split canonical configuration into `meta_module_args` for an optional custom subsystem table and `layer1_args` for Stage 4 integrated-evidence parameters.
-- Reordered public runner arguments by processing sequence: shared inputs, Stage 1 Pando, Stage 2 metacells, Stage 3 meta-modules, Stage 4 Layer 1, Stage 5 Layer 2, and execution controls.
-- Removed scoring `time_limit` from directional LP and second-pass APIs. `layer2_args$model_params$completion_time_limit` remains exclusively for FASTCORE construction of the medium-specific union GEM.
-- Expanded the main and stepwise tutorials with Pando evidence filters (`padj_threshold`, `min_abs_estimate`, and `min_model_rsq`) and complete metacell geometry/reproducibility settings (`rna_reduction`, `rna_dims`, `atac_reduction`, `atac_dims`, `seed`, and cache rebuilding).
-- Updated the README, stepwise and one-shot tutorials, workflow vignette, mathematical workflow, stage contracts, generated help, and regression tests.
+- Added a final Pando bridge validation layer for Pando 1.2.1. RegCompass now verifies the public `infer_condition_grn()` and `condition_grn_fit()` APIs and requires the explicit `ConditionGRNFit$comparison_mask` contract.
+- Condition effects can enter Layer 1 only when Pando marks the edge eligible in both the requested condition and the explicit reference condition. Complete effect tables retain all rows with `comparable_to_reference`; unsupported contrasts are excluded from active effects.
+- Made `candidate_screen = "motif_domain"` the documented interaction-safe default. `condition_union` and `pooled` remain explicit marginal-screen sensitivity modes.
+- Added strict ownership checks for `pando_initiate_args`, `pando_motif_args`, and `pando_infer_args`. Nested overrides of the object, assays, genome, motifs, metadata columns, GEM target genes, network name, minimum group size, error policy, and `BPPARAM` now stop before Pando is called.
+- Rejected `aggregate_rna_col` and `aggregate_peaks_col` in canonical Stage 1 because Pando is fitted on paired single cells and RegCompass Stage 2 owns metacell aggregation.
+- Unified Stage 1 parallel semantics. A supplied `BiocParallelParam` is forwarded to Pando; otherwise `parallel = TRUE` enables Pando native mapping, while `parallel = FALSE` is serial. `BPPARAM = TRUE` now stops explicitly. The resolved route is persisted in `step1$params$pando_parallel`.
+- Pinned the merged Pando comparison-mask commit and advanced the package/result version to 1.9.3.
+- Rewrote the README, one-shot and stepwise tutorials, workflow vignette, Pando mathematical contract, API index, generated help, and regression tests around the actual Pando 1.2.1 interface.
+- Corrected mouse examples and help. The bundled regulatory-region objects are hg38; mouse runs must supply a species- and build-matched `GRanges` through `pando_initiate_args$regions`.
 
 # RegCompassR 1.8.4
 
