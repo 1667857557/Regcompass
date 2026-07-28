@@ -43,7 +43,7 @@ Windows uses socket workers because fork-based `MulticoreParam` is unavailable. 
 
 The one-shot runner does not require these objects. It accepts `upstream_workers` and `layer2_workers` directly and resolves the operating-system backend automatically.
 
-## Stage 1: infer condition-by-cell-type Pando evidence
+## Stage 1: infer condition-comparable Pando evidence
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -56,15 +56,21 @@ step1 <- rc_regcompass_step_grn(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 100,
-    padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
-    require_padj = TRUE,
     pando_infer_args = list(
-      method = "glm",
+      method = "shared_design_independent",
+      candidate_screen = "condition_union",
       tf_cor = 0.1,
       peak_cor = 0.01,
-      adjust_method = "fdr",
+      alpha = 0.5,
+      condition_mix = 1,
+      condition_weight = "equal",
+      reference_condition = "Control",
+      nlambda = 50L,
+      nfolds = 5L,
+      lambda_selection = "lambda.1se",
+      scale = TRUE,
       parallel = FALSE
     )
   ),
@@ -103,13 +109,33 @@ Human uses phastCons plus SCREEN ccRE; mouse uses only `phastConsElements20Mamma
 
 | Parameter | Default | Effect |
 |---|---:|---|
-| `min_cells` | `20L` | Minimum cells in each `condition × cell type` Pando group. |
-| `padj_threshold` | `0.05` | Keep coefficients with finite adjusted P value at or below this value. |
-| `min_abs_estimate` | `0` | Keep coefficients whose absolute effect is at least this value. At `0`, every finite effect passing the other filters remains eligible. |
-| `min_model_rsq` | `0.1` | Keep targets whose finite Pando target-model R² is at least this value. |
-| `require_padj` | `TRUE` | Stop if the Pando coefficient table lacks adjusted P values. |
+| `min_cells` | `20L` | Minimum cells in every condition of a cell-type fit. |
+| `method` | `"shared_design_independent"` | Independent condition coefficients in one comparable design. |
+| `candidate_screen` | `"condition_union"` | Union only complete edges retained within a condition. |
+| `condition_mix` | `1` | No cross-condition group penalty. |
+| `condition_weight` | `"equal"` | Equal-condition loss convention. |
+| `reference_condition` | first level | Baseline for explicit coefficient differences; set it explicitly for an audit. |
+| `scale` | `TRUE` | Pooled scaling of each final TF-RNA × peak-ATAC edge predictor. |
+| `min_abs_estimate` | `0` | Minimum absolute condition coefficient/reference contrast. |
+| `min_model_rsq` | `0.1` | Minimum finite condition target-model R². |
 
-The retained gene set is based on the target column of significant TF–peak–gene rows. Coefficient direction does not affect inclusion: positive and negative coefficients both provide regulatory evidence.
+The retained gene set is based on active condition coefficients. Coefficient
+direction does not affect inclusion. The penalty path uses
+`β_condition - β_reference`, the stored Pando edge transform, and the actual
+metacell TF RNA × peak ATAC predictor. The regularized solver has no adjusted
+P-value filter.
+
+Audit the lossless contract and transform exports before Stage 2:
+
+```r
+step1$grn_result$condition_grn_fits
+step1$grn_result$tf_peak_gene_condition_effect
+
+read.delim(gzfile(file.path(
+  "RegCompass_steps/01_grn",
+  "pando_edge_predictor_transforms.tsv.gz"
+)))
+```
 
 ## Stage 2: construct condition-level metacells
 
@@ -200,7 +226,7 @@ step3 <- rc_regcompass_step_meta_modules(
 For each `condition × cell type`, Stage 3 performs the following operations exactly once:
 
 ```text
-significant Pando TF–peak–GEM-target rows
+active Pando TF–peak–GEM-target rows
 → unique supported metabolic target genes
 → complete-GPR core reactions
 → all reactions in core-reaction subsystems

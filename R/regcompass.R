@@ -1,9 +1,13 @@
-#' Run the canonical significant-Pando-target RegCompass workflow
+#' Run the canonical condition-comparable Pando RegCompass workflow
 #'
 #' Stage 3 constructs biological meta-modules and a deduplicated merged
-#' reaction catalogue. Within each condition by cell-type group, Human-GEM
-#' metabolic genes with significant Pando TF-peak-gene evidence define the
-#' supported gene set, and complete GPR branches define core reactions. Stage 3
+#' reaction catalogue. Within each cell type, Pando shares one complete edge
+#' design and pooled predictor scale across conditions. Within each target it
+#' also shares a lambda path and selected lambda while estimating condition
+#' coefficients independently. Active condition-level
+#' edges define the supported Human-GEM metabolic genes, and complete GPR
+#' branches define core reactions. Explicit condition-minus-reference effects
+#' are projected through the stored Pando transform in Layer 1. Stage 3
 #' applies one fixed ordered annotation pass and does not run FASTCORE or create
 #' a GEM. With `model_mode = "meta_module_gem"`, Stage 5 constructs one union
 #' GEM per medium scenario and performs the only FASTCORE completion on that

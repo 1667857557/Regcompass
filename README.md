@@ -1,13 +1,15 @@
 # RegCompassR
 
-RegCompassR 1.8.4 implements an RNA+ATAC metabolic workflow for paired single-cell multiome data.
+RegCompassR 1.9.1 implements an RNA+ATAC metabolic workflow for paired
+single-cell multiome data.
 
 ## Workflow
 
 ```text
-condition × cell type cells
-→ Pando TF–peak–GEM-gene models
-→ significantly supported metabolic target genes
+cell type cells across conditions
+→ one shared Pando TF–peak–GEM-gene design
+→ independently estimated, directly comparable condition coefficients
+→ supported metabolic target genes
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
 → integrated RNA+ATAC reaction support
@@ -16,7 +18,26 @@ condition × cell type cells
 → annotated rankings and condition contrasts
 ```
 
-Pando is fitted separately for each `condition × cell type`. The candidate target genes are all GEM GPR genes present in the RNA assay. A gene enters the Stage 3 supported set when at least one TF–peak–gene coefficient passes the configured adjusted-P-value, effect-size, and target-model-R² filters. Positive and negative coefficients both count as regulatory evidence. A reaction is a core only when one complete GPR branch is contained in that supported gene set.
+Pando is fitted once per cell type across all conditions. Conditions use the
+same complete TF–peak–target edge dictionary, edge eligibility mask, and pooled
+final-predictor scale. Within each target, they also share a lambda path and
+selected lambda, while their elastic-net coefficients are estimated
+independently. This is designed to retain the
+interpretation of separate condition fits without allowing edge definitions or
+coefficient units to drift.
+
+The candidate target genes are all GEM GPR genes present in the RNA assay. A
+gene enters the Stage 3 supported set when at least one active
+condition-level TF–peak–gene coefficient passes the effect-size and
+target-model-R² filters. Positive and negative coefficients both count as
+regulatory evidence. A reaction is a core only when one complete GPR branch is
+contained in that supported gene set.
+
+For the condition-dependent penalty modifier, RegCompass uses Pando's explicit
+reference contrast
+`Δβ = β_condition - β_reference` and reconstructs the exact standardized
+predictor from metacell TF RNA and peak ATAC. It does not divide edge effects by
+their absolute sum, so fitted effect amplitude is preserved.
 
 Stage 3 expansion is fixed and executed exactly once:
 
@@ -43,7 +64,9 @@ remotes::install_version("Signac", "1.11.0", upgrade = "never")
 remotes::install_github(
   "1667857557/SuperCell_Seurat_V4@supercell-2.0"
 )
-remotes::install_github("1667857557/Pando_regcompass")
+remotes::install_github(
+  "1667857557/Pando_regcompass@ae60a7190d1994e7c847798ce62735c94428a2e5"
+)
 remotes::install_github("1667857557/Regcompass")
 ```
 
@@ -89,15 +112,21 @@ result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 300,
-    padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
-    require_padj = TRUE,
     pando_infer_args = list(
-      method = "glm",
+      method = "shared_design_independent",
+      candidate_screen = "condition_union",
       tf_cor = 0.1,
       peak_cor = 0.01,
-      adjust_method = "fdr",
+      alpha = 0.5,
+      condition_mix = 1,
+      condition_weight = "equal",
+      reference_condition = "Control",
+      nlambda = 50L,
+      nfolds = 5L,
+      lambda_selection = "lambda.1se",
+      scale = TRUE,
       parallel = FALSE
     )
   ),
@@ -152,7 +181,15 @@ pfm <- motifs
 
 A user-supplied `pfm` still overrides the default.
 
-The canonical Pando evidence defaults are `padj_threshold = 0.05`, `min_abs_estimate = 0`, `min_model_rsq = 0.1`, and `require_padj = TRUE`. All conditions must pass for a TF–peak–target row to enter the supported metabolic-gene set.
+The condition-comparable Pando defaults are
+`method = "shared_design_independent"`,
+`candidate_screen = "condition_union"`, `condition_mix = 1`,
+`condition_weight = "equal"`, and `scale = TRUE`. RegCompass rejects
+incompatible overrides because they would change the meaning or units of
+condition contrasts. `min_abs_estimate = 0` and `min_model_rsq = 0.1` control
+the downstream active-edge filter. Adjusted P values are not produced by this
+regularized solver; the legacy `padj_threshold` and `require_padj` fields are
+retained only for call compatibility.
 
 The canonical metacell geometry defaults are RNA `pca` dimensions `1:30`, ATAC `lsi` dimensions `2:30`, and `seed = 12345L`. For ordered condition strata, the internal SuperCell2 seed is `seed + stratum_index - 1`. Changing cells, assay matrices, reductions, dimensions, seed, gamma, or metacell thresholds requires `overwrite = TRUE` to rebuild Stage 2 checkpoints.
 
@@ -179,7 +216,7 @@ See [Predefined extracellular medium scenarios](docs/medium-presets.md) for spec
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for GEM target genes using Pando's bundled `motifs` and species-specific default regions.
+- `rc_regcompass_step_grn()`: fit one shared-design, condition-comparable Pando model per cell type for GEM target genes.
 - `rc_regcompass_step_metacells()`: construct condition-level multimodal metacells from explicit RNA/ATAC reductions, dimensions, and a reproducible seed.
 - `rc_regcompass_step_meta_modules()`: summarize significant metabolic targets, map complete-GPR cores, and perform one fixed ordered annotation expansion pass.
 - `rc_regcompass_step_layer1()`: calculate integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
@@ -206,6 +243,7 @@ result$microcompass$model_cache_summary
 - [Level 3: restart, sensitivity, and diagnostics](docs/tutorial-03-advanced-restart.md)
 - [Level 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
 - [Level 5: condition differential analysis](docs/tutorial-05-condition-differential-analysis.md)
+- [Condition-comparable Pando contract and penalty projection](docs/condition_multitask_grn.md)
 - [Seurat v4/v5 compatibility](docs/seurat-compatibility.md)
 - [Metacell reduction and seed selection](docs/metacell-reduction-selection.md)
 - [Medium presets](docs/medium-presets.md)

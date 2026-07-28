@@ -2,7 +2,7 @@
 % Please edit documentation in R/regcompass.R
 \name{rc_run_regcompass}
 \alias{rc_run_regcompass}
-\title{Run the canonical significant-Pando-target RegCompass workflow}
+\title{Run the canonical condition-comparable Pando RegCompass workflow}
 \usage{
 rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
@@ -32,7 +32,14 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 
-\item{pando_args}{Stage 1 Pando controls. Canonical evidence defaults are \code{min_cells = 20L}, \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, \code{min_model_rsq = 0.1}, and \code{require_padj = TRUE}. Explicit \code{pando_initiate_args$regions} overrides the species-specific default.}
+\item{pando_args}{Stage 1 Pando controls. Condition-comparable defaults are
+\code{method = "shared_design_independent"},
+\code{candidate_screen = "condition_union"}, \code{condition_mix = 1},
+\code{condition_weight = "equal"}, and \code{scale = TRUE} inside
+\code{pando_infer_args}. Set \code{reference_condition} explicitly for a stable
+contrast. Downstream active-edge defaults are \code{min_abs_estimate = 0} and
+\code{min_model_rsq = 0.1}. Explicit \code{pando_initiate_args$regions}
+overrides the species-specific default.}
 
 \item{sample_col}{Optional sample provenance column. It is not used for canonical condition-only metacell grouping or weighting.}
 
@@ -60,13 +67,25 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \details{
 Public arguments are ordered by processing sequence: shared model inputs, Stage 1 Pando inputs, Stage 2 metacell inputs, Stage 3 meta-module inputs, Stage 4 evidence inputs, Stage 5 medium/model inputs, and execution controls.
 
-Stage 1 fits Pando separately for each condition by cell-type group using all GEM GPR genes present in the RNA assay. A coefficient is retained only when its adjusted P value, absolute estimate, and target-model R-squared satisfy the configured filters. Positive and negative coefficients both count as regulatory evidence.
+Stage 1 fits one Pando model per cell type using all GEM GPR genes present in
+the RNA assay. Conditions share the exact edge dictionary, eligibility mask,
+and pooled final-predictor scale. Within each target they also share the lambda
+path and selected lambda, while their coefficients are independently estimated.
+Active coefficients passing the
+absolute-estimate and target-model R-squared filters define regulatory
+evidence. The regularized solver does not use adjusted P values.
 
 Stage 2 uses the requested RNA and ATAC reductions and dimensions to construct SuperCell2 metacells. The base seed is incremented deterministically by ordered condition stratum: \code{seed + stratum_index - 1}. Reduction names, dimensions, embedding fingerprints, seed, gamma, and metacell thresholds are part of the cache contract.
 
-Stage 3 maps the significant target-gene set directly to complete-GPR cores. Biological expansion is executed exactly once in the subsystem, KEGG/Reactome, and master-Rhea order.
+Stage 3 maps the active target-gene set directly to complete-GPR cores. Biological expansion is executed exactly once in the subsystem, KEGG/Reactome, and master-Rhea order.
 
-Stage 4 aggregates required GPR subunits using the selected COMPASS-compatible \code{min}, \code{median}, or \code{mean} function. The canonical default is \code{min}; isozyme OR branches are additive.
+Stage 4 projects \code{beta_condition - beta_reference} through the actual
+metacell TF-RNA by peak-ATAC interaction using Pando's stored pooled transform.
+No absolute-sum edge normalization is applied. The signed result modifies
+target-gene RNA support before required GPR subunits are aggregated with the
+selected COMPASS-compatible \code{min}, \code{median}, or \code{mean}
+function. The canonical default is \code{min}; isozyme OR branches are
+additive.
 
 Stage 3 constructs a deduplicated merged reaction catalogue but does not run FASTCORE and does not create a GEM. With \code{model_mode = "meta_module_gem"}, Stage 5 applies each medium to the merged biological reaction set, performs the only global FASTCORE completion, and saves one union GEM shared by all conditions and metacells in that medium.
 

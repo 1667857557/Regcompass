@@ -6,37 +6,37 @@
   }
   group_cols <- as.character(grn_result$group_cols)
   required <- c("group_id", group_cols, "tf", "target", "region")
-  significant <- grn_result$tf_peak_gene_significant
-  missing <- setdiff(required, colnames(significant))
+  active <- grn_result$tf_peak_gene_significant
+  missing <- setdiff(required, colnames(active))
   if (length(missing)) {
     stop(
-      "Significant Pando table is missing columns: ",
+      "Active Pando edge table is missing columns: ",
       paste(missing, collapse = ", "),
       call. = FALSE
     )
   }
   metabolic_genes <- unique(toupper(.rc_mm_trim_unique(metabolic_genes)))
-  significant$target <- toupper(trimws(as.character(significant$target)))
-  significant$tf <- toupper(trimws(as.character(significant$tf)))
-  significant$region <- trimws(as.character(significant$region))
-  significant <- significant[
-    significant$target %in% metabolic_genes,
+  active$target <- toupper(trimws(as.character(active$target)))
+  active$tf <- toupper(trimws(as.character(active$tf)))
+  active$region <- trimws(as.character(active$region))
+  active <- active[
+    active$target %in% metabolic_genes,
     , drop = FALSE
   ]
-  if (!nrow(significant)) {
+  if (!nrow(active)) {
     stop(
       paste(
-        "No Human-GEM metabolic target genes have significant Pando",
+        "No Human-GEM metabolic target genes have active Pando",
         "TF-peak-gene evidence."
       ),
       call. = FALSE
     )
   }
 
-  key <- paste(significant$group_id, significant$target, sep = "\001")
-  rows <- split(seq_len(nrow(significant)), key)
+  key <- paste(active$group_id, active$target, sep = "\001")
+  rows <- split(seq_len(nrow(active)), key)
   summary_rows <- lapply(rows, function(index) {
-    one <- significant[index, , drop = FALSE]
+    one <- active[index, , drop = FALSE]
     group_id <- as.character(one$group_id[[1L]])
     target <- as.character(one$target[[1L]])
     estimate <- if ("estimate" %in% colnames(one)) {
@@ -69,6 +69,8 @@
       sample_id = group_id,
       module_id = paste0(group_id, "::SUPPORTED_METABOLIC_GENES"),
       gene = target,
+      n_active_edges = nrow(one),
+      # Retained as a compatibility alias for RegCompassR <= 1.9.0.
       n_significant_edges = nrow(one),
       n_regulating_tfs = length(unique(one$tf[nzchar(one$tf)])),
       n_regulatory_regions = length(unique(one$region[nzchar(one$region)])),
@@ -77,7 +79,7 @@
       max_model_rsq = finite_max(rsq),
       n_positive_edges = sum(is.finite(estimate) & estimate > 0),
       n_negative_edges = sum(is.finite(estimate) & estimate < 0),
-      evidence_definition = "significant_pando_tf_peak_gene_target",
+      evidence_definition = "active_pando_tf_peak_gene_target",
       stringsAsFactors = FALSE,
       check.names = FALSE
     )
@@ -180,7 +182,7 @@
     meta_module_summary = expanded$summary,
     crossref_maps = expanded$crossref_maps,
     core_definition = paste(
-      "complete Human-GEM GPR branch contained in the significant Pando",
+      "complete Human-GEM GPR branch contained in the active Pando",
       "target-gene set for one condition-by-cell-type group"
     ),
     expansion_definition = paste(
@@ -188,7 +190,7 @@
       "equivalence, then master-Rhea reaction equivalence"
     ),
     analysis_group_unit =
-      "condition_x_celltype_significant_pando_metabolic_targets",
+      "condition_x_celltype_active_pando_metabolic_targets",
     feasibility_completion = "none_at_meta_module_stage"
   ))
   .rc_mm_write_tsv_gz(

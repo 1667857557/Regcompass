@@ -36,7 +36,10 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 
 \item{progress}{Display workflow and stage progress.}
 
-\item{...}{Arguments passed to \code{rc_run_regcompass()}, including Pando evidence filters, metacell reductions/dimensions/seed, Stage 3 subsystem mapping, GPR-AND method, and Stage 5 construction controls.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}, including the
+shared-design Pando condition contract, reference condition, active-edge
+filters, metacell reductions/dimensions/seed, Stage 3 subsystem mapping,
+GPR-AND method, and Stage 5 construction controls.}
 }
 \description{Loads the bundled pinned Human-GEM or Mouse-GEM when \code{gem} is omitted and delegates to \code{rc_run_regcompass()}.}
 \details{
@@ -46,5 +49,13 @@ Arguments are ordered by preparation and processing sequence: species/model prep
 
 The canonical motif default is Pando's bundled \code{motifs} object. Human regulatory regions default to the union of Pando's hg38 phastCons and SCREEN ccRE data objects. Mouse regulatory regions default to Pando's \code{phastConsElements20Mammals.UCSC.hg38} object only. Explicit \code{pfm} and \code{pando_args$pando_initiate_args$regions} values override these defaults.
 
-Pando evidence defaults include \code{padj_threshold = 0.05}, \code{min_abs_estimate = 0}, and \code{min_model_rsq = 0.1}. Metacell defaults include RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and \code{seed = 12345L}. GPR-AND aggregation defaults to \code{"min"} and accepts \code{"median"} or \code{"mean"}.
+Pando defaults use \code{shared_design_independent},
+\code{condition_union}, \code{condition_mix = 1},
+\code{condition_weight = "equal"}, and pooled final-edge scaling. Set
+\code{reference_condition} explicitly to define
+\code{beta_condition - beta_reference}. Active-edge defaults include
+\code{min_abs_estimate = 0} and \code{min_model_rsq = 0.1}. Metacell defaults
+include RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and
+\code{seed = 12345L}. GPR-AND aggregation defaults to \code{"min"} and accepts
+\code{"median"} or \code{"mean"}.
 }

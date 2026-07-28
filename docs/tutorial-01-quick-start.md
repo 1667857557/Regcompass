@@ -1,13 +1,13 @@
 # Tutorial Level 1: minimal one-shot run
 
-Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.8.4.
+Use this tutorial for a paired-cell RNA+ATAC Seurat object and RegCompassR 1.9.1.
 
 ## Workflow
 
 ```text
-condition × cell type cells
-→ Pando models of GEM GPR genes
-→ significantly supported metabolic target genes
+cell type cells across conditions
+→ one shared Pando edge design with independent condition coefficients
+→ supported metabolic target genes
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
 → integrated RNA+ATAC reaction support
@@ -36,7 +36,12 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-The Seurat object must contain normalized RNA and ATAC assays, the requested reductions, and the metadata columns supplied below. Pando is fitted separately for each `condition × cell type` group. Its target list is the intersection of GEM GPR genes and RNA-assay row names.
+The Seurat object must contain normalized RNA and ATAC assays, the requested
+reductions, and the metadata columns supplied below. Pando is fitted once per
+cell type using one edge dictionary and pooled edge scale. Within each target,
+conditions share a lambda path and selected lambda but their coefficients are
+estimated independently. The target list is the intersection of GEM GPR genes
+and RNA-assay row names.
 
 When `pfm` is omitted, RegCompass loads `data("motifs", package = "Pando")` and passes the resulting `motifs` object to `Pando::find_motifs()`. A user-supplied `pfm` overrides this default.
 
@@ -68,15 +73,21 @@ result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 100,
-    padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
-    require_padj = TRUE,
     pando_infer_args = list(
-      method = "glm",
+      method = "shared_design_independent",
+      candidate_screen = "condition_union",
       tf_cor = 0.1,
       peak_cor = 0.01,
-      adjust_method = "fdr",
+      alpha = 0.5,
+      condition_mix = 1,
+      condition_weight = "equal",
+      reference_condition = "Control",
+      nlambda = 50L,
+      nfolds = 5L,
+      lambda_selection = "lambda.1se",
+      scale = TRUE,
       parallel = FALSE
     )
   ),
@@ -123,19 +134,25 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-## Pando evidence-filter parameters
-
-A TF–peak–target row is retained only when all configured requirements are met:
+## Pando fit and evidence parameters
 
 | Parameter | Default | Meaning |
 |---|---:|---|
-| `min_cells` | `20L` | Minimum cells required for each `condition × cell type` Pando fit. The example uses `100`. |
-| `padj_threshold` | `0.05` | Maximum adjusted P value for a TF–peak–target coefficient. |
-| `min_abs_estimate` | `0` | Minimum absolute Pando coefficient. `0` retains every finite effect that passes the other filters. |
-| `min_model_rsq` | `0.1` | Minimum finite target-model R² from `Pando::gof()`. |
-| `require_padj` | `TRUE` | Require the coefficient table to contain valid adjusted P values. |
+| `min_cells` | `20L` | Minimum cells required for each condition of a cell-type fit. |
+| `method` | `"shared_design_independent"` | Independently estimate each condition inside one comparable design. |
+| `candidate_screen` | `"condition_union"` | Union complete edges that pass within at least one condition. |
+| `condition_mix` | `1` | Removes cross-condition group coupling. |
+| `condition_weight` | `"equal"` | Uses the same per-condition loss convention as separate fits. |
+| `reference_condition` | first condition level | Baseline for `β_condition - β_reference`; set explicitly in reproducible analyses. |
+| `scale` | `TRUE` | Pool and standardize the final TF-RNA × peak-ATAC predictor. |
+| `min_abs_estimate` | `0` | Minimum absolute condition coefficient or reference contrast. |
+| `min_model_rsq` | `0.1` | Minimum finite condition target-model R². |
 
-The Stage 1 evidence filter defines the Stage 3 supported metabolic-gene set. Positive and negative coefficients both count as regulatory evidence because the question is whether a gene has significant epigenetic regulatory support, not whether the inferred effect is activating or repressing.
+The regularized Pando solver does not produce adjusted P values.
+`padj_threshold` and `require_padj` remain accepted only for compatibility with
+older calls. Positive and negative active condition coefficients both define
+Stage 3 regulatory support. Penalty modulation instead uses the explicit
+reference contrast and Pando's stored predictor transform.
 
 ## Metacell geometry and reproducibility
 

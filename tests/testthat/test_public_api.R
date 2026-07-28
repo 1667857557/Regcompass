@@ -1,4 +1,4 @@
-test_that("public API exposes the significant-target restartable workflow", {
+test_that("public API exposes the condition-comparable restartable workflow", {
   expect_setequal(
     getNamespaceExports("RegCompassR"),
     c(
@@ -32,7 +32,7 @@ test_that("canonical source architecture has no retired compatibility layers", {
   )))
   required <- c(
     "stage_contracts.R", "shared_tfidf.R", "grn_inference.R",
-    "regulatory_modifier.R", "reaction_evidence.R", "reaction_annotations.R",
+    "condition_grn_contract.R", "reaction_evidence.R", "reaction_annotations.R",
     "reaction_annotation_api.R", "reaction_gene_plots.R",
     "execution_monitor.R", "bundled_gems.R", "parallel.R"
   )
@@ -130,7 +130,12 @@ test_that("Pando defaults use bundled motifs and species-specific regions", {
   expect_identical(grn_formals$padj_threshold, 0.05)
   expect_identical(grn_formals$min_abs_estimate, 0)
   expect_identical(grn_formals$min_model_rsq, 0.1)
-  expect_true(isTRUE(grn_formals$require_padj))
+  expect_false(isTRUE(grn_formals$require_padj))
+  infer_defaults <- eval(grn_formals$pando_infer_args)
+  expect_identical(infer_defaults$method, "shared_design_independent")
+  expect_identical(infer_defaults$condition_mix, 1)
+  expect_identical(infer_defaults$condition_weight, "equal")
+  expect_true(infer_defaults$scale)
 })
 
 test_that("metacell defaults expose reductions dimensions seed and thresholds", {

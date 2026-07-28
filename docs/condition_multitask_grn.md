@@ -1,118 +1,185 @@
-# Unified cell-type condition GRN architecture
+# Condition-comparable Pando GRNs
 
-## Scope
+RegCompass Stage 1 passes the complete normalized multiome object once through
+`Pando::initiate_grn()` and `Pando::find_motifs()`, then calls
+`Pando::infer_condition_grn()`. Pando fits one cell-type design across its
+conditions and returns a versioned `ConditionGRNFit`.
 
-RegCompass no longer fits a separate Pando model for every `condition × cell type` subset. The complete normalized multiome object is passed once to `Pando::initiate_grn()` and `Pando::find_motifs()`, followed by one call to `Pando::infer_condition_grn()`.
+## Why the default is shared-design independent
 
-Pando then fits each cell type across all of its conditions using one candidate TF–peak–target dictionary and one sparse-group multi-task objective. RegCompass consumes the resulting universal and condition-level Pando `Network` objects without reconstructing condition GRNs independently.
+The objective is to approximate separate condition-specific Pando fits while
+making their coefficients directly comparable. The default
+`shared_design_independent` engine therefore shares:
 
-The implementation is pinned to `1667857557/Pando_regcompass@d6cce00059a5d2b3fb2d05a36d9ea74b1cd555cf`.
+- the complete TF–peak–target edge dictionary;
+- the edge-by-condition eligibility mask;
+- the pooled transform of every final `TF RNA × peak ATAC` predictor;
+- the target transform;
+- within each target, the lambda path and selected lambda.
 
-## Joint condition model
+It does not add a group penalty that shrinks the same edge across conditions.
+For condition \(c\), Pando minimizes an ordinary elastic-net objective at the
+target-specific \(\lambda\) shared by conditions:
 
-For one cell type, target gene `g`, edge `e = (TF, peak, g)`, condition `c`, and cell or aggregate unit `i`, Pando uses the interaction predictor
+\[
+\frac{1}{2n_c}\lVert y_c-\alpha_c-X_c\beta_c\rVert_2^2
++\lambda\left[
+  \eta\lVert\beta_c\rVert_1+
+  \frac{1-\eta}{2}\lVert\beta_c\rVert_2^2
+\right].
+\]
 
-```text
-X_eic = RNA_TF,ic × ATAC_peak,ic
+The condition coefficient vectors are separable at fixed \(\lambda\).
+Cross-condition information is used only to define the common design,
+transform, validation loss, and tuning choice.
+
+RegCompass enforces:
+
+```r
+pando_infer_args = list(
+  method = "shared_design_independent",
+  candidate_screen = "condition_union",
+  condition_mix = 1,
+  condition_weight = "equal",
+  scale = TRUE
+)
 ```
 
-and jointly estimates the condition coefficient matrix `B = {beta_ec}`. In schematic form, the fitted objective is
+`reference_condition` should be set explicitly for a stable biological
+interpretation, for example `"Control"`. When omitted, Pando uses the first
+condition level within each cell type.
 
-```text
-sum_c w_c / 2 ||y_gc - a_gc - X_gc beta_gc||²
-+ lambda (1 - alpha) / 2 ||B_g||²_F
-+ lambda alpha [(1 - eta) sum_e ||B_ge,.||_2
-                + eta sum_e,c |beta_gec|]
-```
+## Exact edge union
 
-where `eta` is Pando's `condition_mix`. The row-group term couples the same TF–peak–target edge across conditions, while the elementwise term permits condition selection and sign changes.
+For `candidate_screen = "condition_union"`, the TF and peak of an edge must
+both pass screening inside the same condition. Pando then takes the union of
+those complete edges:
 
-This is not a block of independently fitted condition models. Conditions share the edge dictionary, scaling policy, lambda path, and the joint sparse-group penalty.
+\[
+\mathcal E =
+\bigcup_c
+\{(TF,peak,target): TF\text{ and }peak\text{ pass in }c\}.
+\]
 
-## Three coefficient views
+This prevents a false edge from being created by pairing a TF retained only in
+condition A with a peak retained only in condition B. The
+`eligibility_mask[edge, condition]` records the exact result. A structurally
+ineligible coefficient is fixed at zero and remains distinguishable from an
+eligible fitted zero.
 
-For every cell type and TF–peak–target edge:
+## Common coefficient units
 
-```text
-beta_universal,e = mean_c(beta_condition,e,c)
-Delta_e,c = beta_condition,e,c - beta_universal,e
-```
+Pando first forms the raw edge predictor
 
-RegCompass exports:
+\[
+x_{e,u} =
+\mathrm{RNA}_{TF(e),u}\,
+\mathrm{ATAC}_{peak(e),u}.
+\]
 
-- `tf_peak_gene_universal`: cell-type universal coefficients.
-- `tf_peak_gene_condition`: active condition-level coefficients.
-- `tf_peak_gene_condition_effect`: active `Delta_e,c` coefficients.
+It then calculates one center \(\mu_e\) and scale \(s_e\) across all cells of
+the cell type and uses
 
-The legacy fields `tf_peak_gene_all` and `tf_peak_gene_significant` remain internal aliases of the condition-level tables so the existing Stage 3 complete-GPR machinery receives the new unified-scale condition GRN rather than separately fitted networks.
+\[
+z_{e,u} = \frac{x_{e,u}-\mu_e}{s_e}.
+\]
 
-## Analysis routing
+Scaling the final interaction is important: separately scaling RNA and ATAC
+before multiplication does not produce the same predictor. The target is also
+centered and scaled once over the pooled cell type.
 
-### Condition GRN → metabolic target and core-reaction path
+The complete values are retained in:
 
-A condition-level edge is active when its coefficient magnitude exceeds the numerical activity threshold and its target model passes `min_model_rsq`.
+- `edge_table`
+- `beta`
+- `contrast`
+- `eligibility_mask`
+- `predictor_transform`
+- `response_transform`
+- `target_fit`
+- `target_rsq`
 
-For each `condition × cell type`, active condition-level edges define the supported metabolic target-gene set. A reaction becomes core only when at least one complete GPR branch is contained in that set. Shared and condition-specific edges therefore contribute to biological reaction membership according to the actual condition GRN.
+RegCompass writes the fit contracts to
+`pando_condition_grn_fits.rds` and the edge transforms to
+`pando_edge_predictor_transforms.tsv.gz`.
 
-### Condition effect → TF×ATAC penalty path
+## Reference contrasts
 
-Condition effects do not redefine the structural reaction catalogue. They modify the evidence supplied to the reaction penalty calculation.
+Condition effects use an explicit reference:
 
-For metacell `u`, edge activity is
+\[
+\Delta\beta_{e,c}
+=\beta_{e,c}-\beta_{e,reference}.
+\]
 
-```text
-A_eu = RNA_TF,u × ATAC_peak,u
-```
+The reference column is exactly zero. The Universal Pando `Network` remains an
+equal-condition coefficient mean for compatibility and visualization only; it
+is never used as the contrast baseline.
 
-Within each cell type, edge activity is robustly centered and scaled across all conditions and bounded by `tanh`:
+Stage 3 uses active \(\beta_{e,c}\) values to identify supported target genes
+and complete-GPR core reactions. The condition-effect table
+`tf_peak_gene_condition_effect` contains \(\Delta\beta\) and is used only for
+the downstream regulatory modifier.
 
-```text
-Z_eu = tanh[(A_eu - median_u(A_eu)) / robust_scale_e]
-```
+## Exact RegCompass model-space projection
 
-For target gene `g` in condition `c`, the signed modifier is
+For metacell \(u\), RegCompass reads the same TF RNA and peak ATAC features,
+applies Pando's stored transform, and computes
 
-```text
-R_gu = reliability_gc ×
-       sum_e q_ec sign(Delta_e,c) Z_eu
+\[
+M_{g,c,u} =
+\sqrt{\operatorname{clamp}(R^2_{g,c},0,1)}
+\sum_{e:\,target(e)=g}
+\Delta\beta_{e,c}\,z_{e,u}.
+\]
 
-q_ec = |Delta_e,c| / sum_e |Delta_e,c|
-```
+No metacell-wise robust rescaling is applied. Edge weights are not divided by
+\(\sum_e|\Delta\beta_e|\); doubling every fitted effect therefore doubles the
+raw projection instead of disappearing under normalization.
 
-`reliability_gc` is derived from the finite condition-network target `R²`. The modifier is bounded to `[-1, 1]`.
+The bounded signed modifier is
 
-The target metabolic-gene RNA support remains the baseline:
+\[
+R_{g,c,u}=\tanh(M_{g,c,u}).
+\]
 
-```text
-C_multiome = C_RNA × 2^(alpha R) /
-             [1 - C_RNA + C_RNA × 2^(alpha R)]
-```
+It updates bounded target-gene RNA support \(C\) on the log-odds scale:
 
-This update is zero preserving and bounded. It changes the support log-odds but cannot create support when target-gene RNA support is zero.
+\[
+C_{\mathrm{multiome}} =
+\frac{C\,2^{\alpha R}}
+{1-C+C\,2^{\alpha R}}.
+\]
 
-## Why TF RNA is admitted
+Layer 1 stores both:
 
-Pando's predictive feature is the TF-expression by peak-accessibility interaction, not peak accessibility alone. The previous RegCompass projection retained the fitted Pando coefficient but discarded the TF-expression component at the metacell projection stage.
+- `gene_regulatory_model_projection`: raw \(M\);
+- `gene_regulatory_modifier`: bounded \(R\).
 
-The new projection restores the fitted predictor. RegCompass also records `tf_metabolic_target_overlap` and the modifier-level `tf_target_overlap` diagnostic. In the intended use case, regulatory TF genes and metabolic target genes do not overlap, so TF RNA supplies regulatory-state information distinct from the target metabolic-gene RNA baseline.
+## One shared metabolic model
 
-## Statistical semantics
+After regulatory evidence defines the merged biological reaction catalogue,
+RegCompass applies each medium and performs one global FASTCORE completion.
+All conditions and metacells in that medium reuse the same stoichiometric
+matrix and identical lower/upper bounds. Condition differences enter the
+directional scoring problem only through the reaction penalty derived from
+Layer 1 evidence.
 
-The condition-aware Pando solver is regularized and does not provide per-edge adjusted P values. Edge admission therefore uses coefficient activity plus target-model `R²`; `padj_threshold` and `require_padj` are retained only as recorded legacy inputs and are not used for the multi-task edge decision.
-
-The resulting modifier is predictive regulatory evidence. It is not an independent validation measurement and is not a flux estimate. Downstream forward and reverse LP targets remain separate counterfactual penalty calculations; their combination must not be interpreted as net flux.
-
-## Output files
+## Output audit
 
 Stage 1 writes:
 
-- `pando_tf_peak_gene_universal.tsv.gz`
+- `pando_group_status.tsv.gz`
 - `pando_tf_peak_gene_condition_all.tsv.gz`
 - `pando_tf_peak_gene_condition_active.tsv.gz`
 - `pando_tf_peak_gene_condition_effect_all.tsv.gz`
 - `pando_tf_peak_gene_condition_effect_active.tsv.gz`
+- `pando_tf_peak_gene_universal.tsv.gz` (summary only)
 - `pando_condition_network_index.tsv.gz`
-- `pando_condition_fit_diagnostics.tsv.gz`, when available
-- `pando_objects/condition_multitask_grn.rds`, when object saving is enabled
+- `pando_condition_fit_diagnostics.tsv.gz`
+- `pando_edge_predictor_transforms.tsv.gz`
+- `pando_condition_grn_fits.rds`
+- `pando_objects/condition_grn_fit_v2.rds`, when enabled
 
-Layer 1 records `regulatory_mode = condition_effect_coefficient_x_TF_RNA_x_peak_ATAC` and exports the bounded gene-level regulatory modifier used for the reaction-capacity calculation.
+These artifacts preserve the inputs required to reproduce the coefficient
+contrast and RegCompass projection without re-fitting a GRN.

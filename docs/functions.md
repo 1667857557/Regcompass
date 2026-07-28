@@ -1,4 +1,4 @@
-# Public functions in RegCompassR 1.8.4
+# Public functions in RegCompassR 1.9.1
 
 ## Setup and complete runs
 
@@ -15,7 +15,7 @@ The complete workflow exposes two worker counts. `upstream_workers` covers Pando
 
 ## Inspectable stages
 
-- `rc_regcompass_step_grn()`: fit condition-by-cell-type Pando models for all GEM GPR genes present in the RNA assay. When `pfm` is omitted, Pando's bundled `motifs` data object is used. Human defaults to phastCons plus SCREEN ccRE regions; mouse defaults to phastCons regions only. Explicit `pando_initiate_args$regions` overrides either default.
+- `rc_regcompass_step_grn()`: fit one shared-design Pando model per cell type with independently estimated, directly comparable condition coefficients for all GEM GPR genes present in the RNA assay. When `pfm` is omitted, Pando's bundled `motifs` data object is used. Human defaults to phastCons plus SCREEN ccRE regions; mouse defaults to phastCons regions only. Explicit `pando_initiate_args$regions` overrides either default.
 - `rc_regcompass_step_metacells()`: condition-level, cell-type-guided SuperCell2 metacells. RNA PCA dimensions 1:30, ATAC LSI dimensions 2:30, and `seed = 12345L` are the defaults; an existing Harmony reduction can replace PCA through `metacell_args$rna_reduction` and `metacell_args$rna_dims`.
 - `rc_regcompass_step_meta_modules()`: summarize significantly supported metabolic target genes, map complete-GPR cores, perform one fixed ordered subsystem/KEGG/Reactome/master-Rhea expansion pass, and deduplicate reaction IDs into a merged catalogue. No target projection, connected-component analysis, FASTCORE, or GEM construction occurs here.
 - `rc_regcompass_step_layer1()`: integrated RNA+ATAC reaction support with COMPASS-compatible GPR-AND aggregation.
@@ -25,19 +25,26 @@ The complete workflow exposes two worker counts. `upstream_workers` covers Pando
 
 ## Stage 1 evidence controls
 
-The canonical Pando evidence defaults are:
+The canonical Pando fit and evidence defaults are:
 
 ```r
 pando_args = list(
   min_cells = 20L,
-  padj_threshold = 0.05,
   min_abs_estimate = 0,
   min_model_rsq = 0.1,
-  require_padj = TRUE
+  pando_infer_args = list(
+    method = "shared_design_independent",
+    candidate_screen = "condition_union",
+    condition_mix = 1,
+    condition_weight = "equal",
+    scale = TRUE
+  )
 )
 ```
 
-All enabled conditions must pass before a TF–peak–target coefficient enters the significant evidence table.
+Active condition coefficients define the supported-gene table. Explicit
+condition-minus-reference coefficients and the stored Pando transform feed the
+Layer 1 regulatory projection.
 
 ## Stage 2 geometry and reproducibility
 
