@@ -125,6 +125,7 @@ Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
 Config/RegCompassR/SupportedSignacMajor: 1
+Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
 Config/RegCompassR/SeuratObjectVersion: 4.1.4
 Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0

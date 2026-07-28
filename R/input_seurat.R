@@ -87,7 +87,7 @@
   object <- join_fun(
     object = object,
     assay = assay,
-    layers = matches,
+    layers = layer,
     new = layer
   )
   if (!layer %in% .rc_assay_layer_names(object[[assay]])) {
