@@ -65,7 +65,7 @@ test_that("Harmony selection is forwarded through the canonical metacell path", 
   expect_identical(low_level$atac_reduction, "lsi")
 
   forwarding <- paste(
-    deparse(body(.rc_make_condition_pooled_metacells)),
+    deparse(body(.rc_make_condition_celltype_metacells)),
     collapse = "\n"
   )
   expect_match(

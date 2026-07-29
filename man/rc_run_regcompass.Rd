@@ -7,8 +7,9 @@
 rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
+  cell_type = NULL,
   rna_assay = "RNA", atac_assay = "ATAC", pando_args = list(),
-  sample_col = "sample_id", fragment_files = FALSE, metacell_args = list(),
+  fragment_files = FALSE, metacell_args = list(),
   meta_module_args = list(), layer1_args = list(),
   medium_scenarios = NULL,
   model_mode = c("meta_module_gem", "full_gem"), layer2_args = list(),
@@ -23,13 +24,18 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{pfm}{Optional motif position-frequency matrices. When omitted, RegCompass loads Pando's bundled \code{motifs} object.}
 \item{species}{Model species or \code{"auto"}. Human analyses may use the bundled hg38 phastCons plus SCREEN ccRE union. Mouse analyses require a build-matched \code{GRanges} supplied through \code{pando_args$pando_initiate_args$regions}; hg38 regions are rejected for mouse input.}
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
+\item{cell_type}{Optional broad cell-type label or labels. When omitted, every
+observed type is processed independently.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. Canonical inference uses \code{method = "shared_baseline_condition_sparse"}, \code{candidate_screen = "motif_domain"}, \code{condition_mix = 0.5}, \code{condition_weight = "equal"}, \code{scale = TRUE}, and \code{cv_block_col = sample_col}.}
-\item{sample_col}{Complete biological sample/donor metadata used for Pando sample-blocked validation and SuperCell composition diagnostics. It is never part of the SuperCell hard strata.}
+\item{pando_args}{Stage 1 controls. Canonical inference uses
+\code{candidate_screen = "motif_domain"}, \code{condition_mix = 0.5},
+\code{condition_weight = "equal"}, and \code{scale = TRUE}.}
 \item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
 \item{metacell_args}{Stage 2 controls, including RNA/ATAC reductions and dimensions, \code{gamma}, seed, size thresholds, and cache rebuilding.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}. Expansion is one ordered subsystem, KEGG/Reactome, and master-Rhea pass.}
-\item{layer1_args}{Stage 4 controls: \code{projection_component}, \code{comparison_support}, \code{projection_mode}, \code{regulatory_reliability}, \code{regulatory_alpha}, \code{gpr_and_method}, and \code{gene_half_saturation}.}
+\item{layer1_args}{Stage 4 controls: \code{projection_component},
+\code{comparison_support}, \code{regulatory_alpha}, \code{gpr_and_method}, and
+\code{gene_half_saturation}.}
 \item{medium_scenarios}{Condition-invariant medium table used by Stage 5.}
 \item{model_mode}{Use a medium-specific shared model reconstructed from the biological catalogue, or reuse the complete GEM.}
 \item{layer2_args}{Layer 2 scoring and global FASTCORE controls. \code{completion_time_limit} belongs in \code{layer2_args$model_params} and limits model construction only.}
@@ -39,7 +45,10 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 }
 \description{Runs RegCompassR 2.0.0 using Pando 1.4.0 ConditionGRNFit v4, condition-by-broad-cell-type SuperCells, cell-first TF-by-ATAC projection, complete-GPR meta-modules, and shared-model directional LP scoring.}
 \details{
-Pando conditions share one TF-peak-target dictionary, pooled transforms, and a condition-sparse model with common-metric refit. Lambda selection and preprocessing are fold-local. When any condition in a cell type has only one biological sample, cell-level folds select lambda but sample-blocked OOF metrics are unavailable; Layer 1 assigns regulatory reliability zero rather than treating cells or metacells as biological replicates.
+Pando fits an independent TF-peak-target dictionary, pooled transform, and
+condition-sparse common-metric refit for each broad cell type. Lambda selection
+and preprocessing use condition-stratified cell folds within that type.
+Biological sample count is not an input or reliability gate.
 
 The exported effect is \code{beta_condition - beta_reference}. RegCompass requires Pando's explicit \code{comparison_mask}, which is true only when an edge is eligible in both the requested and reference conditions. Complete effect tables expose \code{comparable_to_reference}; unsupported contrasts are excluded from the active effect table and downstream penalty projection.
 

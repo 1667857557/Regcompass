@@ -123,7 +123,6 @@ rc_regcompass_step_layer2 <- function(
       NULL
     },
     unit = "metacell",
-    sample_col = params$sample_col,
     condition_col = params$condition_col,
     celltype_col = params$celltype_col,
     parallel = parallel,

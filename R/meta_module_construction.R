@@ -1,12 +1,12 @@
 .rc_summarize_supported_metabolic_genes <- function(
     grn_result, metabolic_genes) {
   if (!is.list(grn_result) ||
-      !is.data.frame(grn_result$tf_peak_gene_significant)) {
+      !is.data.frame(grn_result$tf_peak_gene_condition)) {
     stop("`grn_result` is not a valid single-cell GRN result.", call. = FALSE)
   }
   group_cols <- as.character(grn_result$group_cols)
   required <- c("group_id", group_cols, "tf", "target", "region")
-  active <- grn_result$tf_peak_gene_significant
+  active <- grn_result$tf_peak_gene_condition
   missing <- setdiff(required, colnames(active))
   if (length(missing)) {
     stop(
@@ -70,8 +70,6 @@
       module_id = paste0(group_id, "::SUPPORTED_METABOLIC_GENES"),
       gene = target,
       n_active_edges = nrow(one),
-      # Retained as a compatibility alias for RegCompassR <= 1.9.0.
-      n_significant_edges = nrow(one),
       n_regulating_tfs = length(unique(one$tf[nzchar(one$tf)])),
       n_regulatory_regions = length(unique(one$region[nzchar(one$region)])),
       min_padj = finite_min(padj),
@@ -173,6 +171,18 @@
       setdiff(colnames(expanded$summary), display_cols)
     ), drop = FALSE]
   }
+
+  drop_internal_group_alias <- function(x) {
+    if (is.data.frame(x) && "sample_id" %in% colnames(x)) {
+      x$sample_id <- NULL
+    }
+    x
+  }
+  supported <- drop_internal_group_alias(supported)
+  core <- drop_internal_group_alias(core)
+  expanded$reaction_membership <-
+    drop_internal_group_alias(expanded$reaction_membership)
+  expanded$summary <- drop_internal_group_alias(expanded$summary)
 
   out <- c(grn_result, list(
     supported_metabolic_genes = supported,

@@ -33,8 +33,7 @@ test_that("canonical source architecture has no retired compatibility layers", {
   )))
   required <- c(
     "stage_contracts.R", "shared_tfidf.R", "grn_inference.R",
-    "condition_grn_contract.R", "condition_comparability_fix.R",
-    "zzz_pando_bridge_alignment.R", "reaction_evidence.R",
+    "condition_grn_contract.R", "reaction_evidence.R",
     "reaction_annotations.R", "reaction_annotation_api.R",
     "reaction_gene_plots.R", "execution_monitor.R", "bundled_gems.R",
     "parallel.R"
@@ -108,37 +107,28 @@ test_that("Pando defaults use bundled human inputs and guard mouse regions", {
   expect_null(eval(formals(rc_run_regcompass)$pfm))
   expect_null(eval(formals(rc_run_regcompass_one_shot)$pfm))
   expect_null(eval(formals(rc_regcompass_step_grn)$pfm))
-  expect_null(eval(formals(.rc_run_condition_single_cell_grns)$pfm))
+  expect_null(eval(formals(.rc_fit_condition_grns_by_cell_type)$pfm))
 
   implementation <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
-    collapse = "\n"
-  )
-  bridge <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
+    deparse(body(.rc_fit_condition_grns_by_cell_type)), collapse = "\n"
   )
   motif_helper <- paste(deparse(body(.rc_default_pando_motifs)), collapse = "\n")
   region_guard <- paste(deparse(body(.rc_default_pando_regions)), collapse = "\n")
-  human_region_helper <- paste(
-    deparse(body(.rc_default_pando_regions_without_genome_guard)),
-    collapse = "\n"
-  )
   expect_match(implementation, ".rc_default_pando_motifs", fixed = TRUE)
   expect_match(implementation, ".rc_default_pando_regions(species)", fixed = TRUE)
-  expect_match(bridge, 'candidate_screen <- "motif_domain"', fixed = TRUE)
   expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
   expect_match(
-    human_region_helper,
+    region_guard,
     "phastConsElements20Mammals.UCSC.hg38",
     fixed = TRUE
   )
-  expect_match(human_region_helper, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
-  expect_match(human_region_helper, "BiocGenerics::union", fixed = TRUE)
+  expect_match(region_guard, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(region_guard, "BiocGenerics::union", fixed = TRUE)
   expect_match(region_guard, 'identical(species, "mouse")', fixed = TRUE)
-  expect_match(region_guard, "valid for mouse input.", fixed = TRUE)
+  expect_match(region_guard, "No mouse-coordinate", fixed = TRUE)
   expect_error(
     .rc_default_pando_regions("mouse"),
-    "hg38 conserved-element set is not valid for mouse input",
+    "No mouse-coordinate regulatory-region set is bundled",
     fixed = TRUE
   )
   expect_identical(
@@ -146,16 +136,11 @@ test_that("Pando defaults use bundled human inputs and guard mouse regions", {
     c("human", "mouse")
   )
 
-  grn_formals <- formals(.rc_run_condition_single_cell_grns)
+  grn_formals <- formals(.rc_fit_condition_grns_by_cell_type)
   expect_identical(grn_formals$min_cells, 20L)
-  expect_identical(grn_formals$padj_threshold, 0.05)
   expect_identical(grn_formals$min_abs_estimate, 0)
   expect_identical(grn_formals$min_model_rsq, 0.1)
-  expect_false(isTRUE(grn_formals$require_padj))
   infer_defaults <- eval(grn_formals$pando_infer_args)
-  expect_identical(
-    infer_defaults$method, "shared_baseline_condition_sparse"
-  )
   expect_identical(infer_defaults$candidate_screen, "motif_domain")
   expect_identical(infer_defaults$condition_mix, 0.5)
   expect_identical(infer_defaults$condition_weight, "equal")
@@ -175,7 +160,7 @@ test_that("metacell defaults expose reductions dimensions seed and thresholds", 
   expect_identical(defaults$min_metacells_per_stratum, 2L)
 
   metacell_body <- paste(
-    deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n"
+    deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
   builder_body <- paste(
     deparse(body(.rc_build_supercell2_strata)), collapse = "\n"
@@ -189,7 +174,9 @@ test_that("metacell defaults expose reductions dimensions seed and thresholds", 
     metacell_body, "metacell_grouping = c(condition_col, celltype_col)",
     fixed = TRUE
   )
-  expect_match(metacell_body, "Sample balancing is not part", fixed = TRUE)
+  expect_match(metacell_body, "supercell_stratum_col", fixed = TRUE)
+  expect_match(metacell_body, "pooled$membership[[supercell_stratum_col]] <- NULL",
+               fixed = TRUE)
   expect_match(
     builder_body,
     paste0(

@@ -1,5 +1,7 @@
 # Tutorial Level 1: minimal one-shot run
 
+> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+
 This tutorial uses RegCompassR 2.0.0 with the Pando 1.4.0
 `ConditionGRNFit` contract. It assumes a paired-cell RNA+ATAC Seurat object.
 
@@ -66,7 +68,6 @@ result <- rc_run_regcompass_one_shot(
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      method = "shared_baseline_condition_sparse",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
       peak_cor = 0,
@@ -136,7 +137,6 @@ regularization. `pooled_within_condition` remains an optional marginal-screen se
 The directly comparable coefficient contract requires:
 
 ```r
-method = "shared_baseline_condition_sparse"
 condition_mix = 0.5
 condition_weight = "equal"
 scale = TRUE
@@ -238,8 +238,8 @@ Use [Tutorial 2](tutorial-02-stepwise-audit.md) when each stage should be saved,
 validated, and restarted independently. API index: [functions.md](functions.md).
 
 
-Use `sample_col = "sample_id"` for biological-sample provenance.
+Sample metadata are not used as model input, provenance, or composition diagnostics.
 
-Set `cv_block_col = "sample_id"` for sample-blocked OOF validation.
+OOF validation uses condition-stratified cells within the fitted cell type.
 
 SuperCell hard strata are exactly condition × broad cell type.

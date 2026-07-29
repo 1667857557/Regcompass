@@ -1,10 +1,10 @@
 test_that("GRN and metacell groups require bidirectional coverage", {
-  grn <- list(sample_status = data.frame(
+  grn <- list(condition_fit_status = data.frame(
     condition = c("A", "B"),
     cell_type = c("T", "T"),
     status = c("ok", "ok"),
     n_cells = c(100L, 120L),
-    n_significant_edges = c(10L, 0L),
+    n_active_edges = c(10L, 0L),
     stringsAsFactors = FALSE
   ))
   metacells <- data.frame(
@@ -43,7 +43,7 @@ test_that("retired condition-only dominant-cell-type path is absent", {
     inherits = TRUE
   ))
   text <- paste(
-    deparse(body(.rc_make_condition_pooled_metacells)),
+    deparse(body(.rc_make_condition_celltype_metacells)),
     collapse = "\n"
   )
   expect_match(text, ".rc_condition_celltype_pool_col", fixed = TRUE)

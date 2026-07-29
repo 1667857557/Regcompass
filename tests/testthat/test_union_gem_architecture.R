@@ -11,12 +11,12 @@ test_that("meta-module merging remains a biological catalogue, not a GEM", {
     stringsAsFactors = FALSE
   )
   condition_modules <- list(
-    sample_status = data.frame(
+    condition_fit_status = data.frame(
       group_id = c("C1|T", "C2|T"),
       stringsAsFactors = FALSE
     ),
-    tf_peak_gene_all = data.frame(),
-    tf_peak_gene_significant = data.frame(),
+    tf_peak_gene_condition_all = data.frame(),
+    tf_peak_gene_condition = data.frame(),
     supported_metabolic_genes = data.frame(),
     core_gene_reaction = biological[biological$is_core, , drop = FALSE],
     reaction_membership = biological,

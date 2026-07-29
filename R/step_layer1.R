@@ -1,6 +1,6 @@
 .rc_cell_first_projection_layer1 <- function(
     grn_result, metacell_object, membership, metacell_meta, gem,
-    sample_col, condition_col, celltype_col, rna_assay,
+    condition_col, celltype_col, rna_assay,
     projection_component, comparison_support, regulatory_alpha,
     gpr_and_method, gene_half_saturation, parallel, BPPARAM) {
   if (!identical(
@@ -120,14 +120,17 @@
       )
     }
     project_one <- function(component) {
-      Pando::project_condition_grn_groups(
+      cell_projection <- Pando::project_condition_grn_cells(
         object = grn_result$pando_grn_data,
         fit = fit,
-        membership = membership,
-        group_col = "metacell_id",
         component = component,
         scale = "std",
         support_policy = fit_comparison_support
+      )
+      Pando::aggregate_condition_grn_projection(
+        projection = cell_projection,
+        membership = membership,
+        group_col = "metacell_id"
       )
     }
     absolute <- project_one("condition")
@@ -144,14 +147,13 @@
     )
     fit_units <- rownames(absolute$gene_score)
     expected_units <- as.character(unit_meta$pool_id[
-      as.character(unit_meta[[celltype_col]]) == fit$cell_type &
-        as.character(unit_meta[[condition_col]]) %in%
-          fit$condition_levels
+      as.character(unit_meta[[condition_col]]) %in% fit$condition_levels &
+        as.character(unit_meta[[celltype_col]]) == fit$cell_type
     ])
     if (!setequal(fit_units, expected_units)) {
       stop(
-        "Pando paired cells do not cover every SuperCell in cell type `",
-        fit$cell_type, "`.", call. = FALSE
+        "Pando paired cells do not cover every condition-by-cell-type ",
+        "SuperCell.", call. = FALSE
       )
     }
     pooled_oof <- fit$target_rsq_oof_pooled
@@ -161,52 +163,64 @@
            call. = FALSE)
     }
     names(pooled_oof) <- tolower(names(pooled_oof))
-    blocked_available <- fit$sample_blocked_oof_available
-    if (!is.logical(blocked_available) || anyNA(blocked_available) ||
-        is.null(names(blocked_available)) ||
-        !setequal(names(blocked_available), names(
+    predictive_oof_available <- fit$predictive_oof_available
+    oof_validation_level <- fit$oof_validation_level
+    if (!is.logical(predictive_oof_available) ||
+        anyNA(predictive_oof_available) ||
+        is.null(names(predictive_oof_available)) ||
+        !setequal(names(predictive_oof_available), names(
           fit$target_rsq_oof_pooled
-        ))) {
+        )) ||
+        !is.character(oof_validation_level) ||
+        anyNA(oof_validation_level) ||
+        !setequal(names(oof_validation_level), names(
+          fit$target_rsq_oof_pooled
+        )) ||
+        !all(
+          oof_validation_level ==
+            "within_cell_type_condition_stratified_cells"
+        )) {
       stop(
-        "ConditionGRNFit v4 sample-blocked OOF availability is invalid.",
+        "ConditionGRNFit v4 within-cell-type cell OOF availability is invalid.",
         call. = FALSE
       )
     }
-    names(blocked_available) <- tolower(names(blocked_available))
-    response_independent_candidates <- identical(
-      fit$candidate_screen, "motif_domain"
-    )
+    names(predictive_oof_available) <-
+      tolower(names(predictive_oof_available))
+    response_independent_candidates <-
+      identical(fit$candidate_screen, "motif_domain")
     status <- absolute$source_projection$target_condition_status
     status_targets <- tolower(as.character(status$target))
     if (anyNA(status_targets) || any(!nzchar(status_targets)) ||
         any(!status_targets %in% names(pooled_oof)) ||
-        any(!status_targets %in% names(blocked_available))) {
+        any(!status_targets %in% names(predictive_oof_available))) {
       stop(
         "Pando target status is not aligned to pooled OOF reliability fields.",
         call. = FALSE
       )
     }
     fit_targets <- intersect(names(pooled_oof), genes)
-    q <- sqrt(pmax(0, as.numeric(pooled_oof[fit_targets])))
+    q <- sqrt(pmin(1, pmax(0, as.numeric(pooled_oof[fit_targets]))))
     available <- response_independent_candidates &
-      as.logical(blocked_available[fit_targets]) &
+      as.logical(predictive_oof_available[fit_targets]) &
       is.finite(as.numeric(pooled_oof[fit_targets]))
     q[!available | !is.finite(q)] <- 0
     reliability[fit_targets, fit_units] <- q
     reliability_available[fit_targets, fit_units] <- available
-    status$cell_type <- fit$cell_type
     status$comparison_support <- fit_comparison_support
     status$response_independent_candidate_graph <-
       response_independent_candidates
-    status$sample_blocked_oof_available <- as.logical(
-      blocked_available[tolower(status$target)]
+    status$predictive_oof_available <- as.logical(
+      predictive_oof_available[tolower(status$target)]
     )
+    status$oof_validation_level <-
+      "within_cell_type_condition_stratified_cells"
     status$gene_regulatory_reliability_available <-
       status$response_independent_candidate_graph &
-      status$sample_blocked_oof_available &
+      status$predictive_oof_available &
       is.finite(as.numeric(pooled_oof[tolower(status$target)]))
-    status$regulatory_reliability <- sqrt(pmax(
-      0, as.numeric(pooled_oof[tolower(status$target)])
+    status$regulatory_reliability <- sqrt(pmin(
+      1, pmax(0, as.numeric(pooled_oof[tolower(status$target)]))
     ))
     status$regulatory_reliability[
       !status$gene_regulatory_reliability_available |
@@ -291,7 +305,8 @@
       regulatory_mode = paste0(
         "Pando_cell_first_", projection_component, "_", comparison_support
       ),
-      regulatory_reliability = "sqrt(max(0, pooled_sample_blocked_OOF_R2))",
+      regulatory_reliability =
+        "sqrt(min(1, max(0, within_cell_type_pooled_OOF_R2)))",
       promiscuity_mode = "none",
       and_method = gpr_and_method,
       or_method = "sum",
@@ -329,8 +344,6 @@ rc_regcompass_step_layer1 <- function(
       "auto", "pairwise_common", "global_common",
       "condition_estimable", "strict"
     ),
-    projection_mode = "metacell_specific",
-    regulatory_reliability = "sample_blocked_oof",
     regulatory_alpha = 1,
     gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
@@ -342,13 +355,6 @@ rc_regcompass_step_layer1 <- function(
   projection_component <- match.arg(projection_component)
   comparison_support <- match.arg(comparison_support)
   gpr_and_method <- match.arg(gpr_and_method)
-  if (!identical(projection_mode, "metacell_specific") ||
-      !identical(regulatory_reliability, "sample_blocked_oof")) {
-    stop(
-      "Canonical Layer 1 requires projection_mode='metacell_specific' and ",
-      "regulatory_reliability='sample_blocked_oof'.", call. = FALSE
-    )
-  }
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
   )
@@ -375,7 +381,6 @@ rc_regcompass_step_layer1 <- function(
     membership = metacells$pooled$membership,
     gem = gem,
     metacell_meta = metacells$pooled$metacell_meta,
-    sample_col = params$sample_col,
     condition_col = params$condition_col,
     celltype_col = params$celltype_col,
     rna_assay = params$rna_assay,

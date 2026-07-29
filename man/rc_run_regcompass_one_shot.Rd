@@ -28,11 +28,17 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 }
 \description{Provides the RegCompassR 2.0.0 species-aware complete-run API and preserves Pando 1.4.0's ConditionGRNFit v4 contract.}
 \details{
-Canonical Pando settings use \code{method = "shared_baseline_condition_sparse"}, \code{candidate_screen = "motif_domain"}, \code{condition_mix = 0.5}, \code{condition_weight = "equal"}, and biological-sample CV blocks.
+Canonical Pando settings use \code{candidate_screen = "motif_domain"},
+\code{condition_mix = 0.5}, and \code{condition_weight = "equal"}. Each broad
+cell type is trained, validated and refitted independently.
 
 Pando's explicit \code{comparison_mask} requires an edge to be eligible in both the requested and reference conditions. RegCompass exposes \code{comparable_to_reference} and excludes unsupported contrasts from the active condition-effect table and penalty projection.
 
 \code{pando_initiate_args}, \code{pando_motif_args}, and \code{pando_infer_args} are routed to the corresponding Pando functions. RegCompass owns the object, assays, genome, motifs, grouping columns, GEM target genes, network name, minimum condition size, error policy, and \code{BPPARAM}. Canonical Stage 1 rejects Pando aggregation columns because Stage 2 owns metacells.
 
-SuperCells are hard-stratified only by condition and broad cell type. A single-sample condition is accepted, but its sample-blocked OOF performance is unavailable and Layer 1 regulatory reliability is zero. Parallel Stage 1 execution is controlled by \code{upstream_workers}. Mouse runs stop unless a mouse-coordinate regulatory-region \code{GRanges} is supplied.
+SuperCells are hard-stratified only by condition and broad cell type.
+Single- and multi-sample conditions use the same paired RNA+ATAC path and
+within-cell-type cell OOF; sample count is not an analysis requirement.
+Parallel Stage 1 execution is controlled by \code{upstream_workers}. Mouse runs
+stop unless a mouse-coordinate regulatory-region \code{GRanges} is supplied.
 }

@@ -84,9 +84,9 @@ test_that("public runner arguments follow processing order", {
     names(formals(rc_run_regcompass)),
     c(
       "object", "gem", "outdir", "genome", "pfm", "species",
-      "condition_col", "celltype_col", "rna_assay", "atac_assay",
+      "condition_col", "celltype_col", "cell_type", "rna_assay", "atac_assay",
       "pando_args",
-      "sample_col", "fragment_files", "metacell_args",
+      "fragment_files", "metacell_args",
       "meta_module_args",
       "layer1_args",
       "medium_scenarios", "model_mode", "layer2_args",

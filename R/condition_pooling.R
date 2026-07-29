@@ -192,11 +192,11 @@
   invisible(TRUE)
 }
 
-.rc_make_condition_pooled_metacells <- function(
+.rc_make_condition_celltype_metacells <- function(
     object, outdir,
-    sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
+    cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     fragment_files = FALSE,
@@ -207,21 +207,28 @@
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
   }
-  required <- unique(c(condition_col, celltype_col, sample_col))
-  required <- required[!is.na(required) & nzchar(required)]
-  missing <- setdiff(required, colnames(object@meta.data))
-  if (length(missing)) {
-    stop("Missing metadata columns: ", paste(missing, collapse = ", "),
-         call. = FALSE)
-  }
-  invalid <- vapply(
-    object@meta.data[, required, drop = FALSE],
-    function(x) anyNA(x) || any(!nzchar(trimws(as.character(x)))),
-    logical(1)
+  .rc_validate_condition_celltype_metadata(
+    object@meta.data, condition_col, celltype_col
   )
-  if (any(invalid)) {
-    stop("Condition and cell-type metadata must be complete.",
-         call. = FALSE)
+  if (!is.null(cell_type)) {
+    cell_type <- trimws(as.character(cell_type))
+    if (!length(cell_type) || anyNA(cell_type) ||
+        any(!nzchar(cell_type)) || anyDuplicated(cell_type)) {
+      stop("`cell_type` must be NULL or contain unique non-empty labels.",
+           call. = FALSE)
+    }
+    available <- unique(as.character(object@meta.data[[celltype_col]]))
+    missing_cell_types <- setdiff(cell_type, available)
+    if (length(missing_cell_types)) {
+      stop(
+        "Requested cell types were not found: ",
+        paste(missing_cell_types, collapse = ", "), ".", call. = FALSE
+      )
+    }
+    selected_cells <- rownames(object@meta.data)[
+      as.character(object@meta.data[[celltype_col]]) %in% cell_type
+    ]
+    object <- subset(object, cells = selected_cells)
   }
   if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
     stop(
@@ -231,15 +238,6 @@
         "peak-count assay."
       ),
       call. = FALSE
-    )
-  }
-  unsupported <- intersect(
-    names(metacell_args), c("sample_balance", "sample_balance_seed")
-  )
-  if (length(unsupported)) {
-    stop(
-      "Sample balancing is not part of the canonical workflow: ",
-      paste(unsupported, collapse = ", "), call. = FALSE
     )
   }
   reserved <- intersect(names(metacell_args), c(
@@ -274,8 +272,8 @@
     cache_contract,
     file.path(outdir, "condition_metacell_cache_contract.rds")
   )
-  internal_pool_col <- .rc_condition_celltype_pool_col(object@meta.data)
-  object@meta.data[[internal_pool_col]] <- paste0(
+  supercell_stratum_col <- .rc_condition_celltype_pool_col(object@meta.data)
+  object@meta.data[[supercell_stratum_col]] <- paste0(
     as.character(object@meta.data[[condition_col]]), "__",
     as.character(object@meta.data[[celltype_col]]),
     "__condition_celltype_pool"
@@ -283,7 +281,7 @@
   defaults <- list(
     object = object,
     outdir = outdir,
-    sample_col = internal_pool_col,
+    sample_col = supercell_stratum_col,
     condition_col = condition_col,
     celltype_col = celltype_col,
     label_col = NULL,
@@ -309,7 +307,24 @@
       call. = FALSE
     )
   }
-  meta$condition_celltype_pool_id <- meta[[internal_pool_col]]
+  meta$condition_celltype_pool_id <- meta[[supercell_stratum_col]]
+  meta[[supercell_stratum_col]] <- NULL
+  if (supercell_stratum_col %in% colnames(pooled$membership)) {
+    pooled$membership[[supercell_stratum_col]] <- NULL
+  }
+  if (is.data.frame(pooled$stratum_status) &&
+      supercell_stratum_col %in% colnames(pooled$stratum_status)) {
+    pooled$stratum_status[[supercell_stratum_col]] <- NULL
+  }
+  if (is.list(pooled$metacell_objects)) {
+    pooled$metacell_objects <- lapply(pooled$metacell_objects, function(x) {
+      if (inherits(x, "Seurat") &&
+          supercell_stratum_col %in% colnames(x@meta.data)) {
+        x@meta.data[[supercell_stratum_col]] <- NULL
+      }
+      x
+    })
+  }
   cell_index <- match(
     as.character(pooled$membership$cell_id), rownames(object@meta.data)
   )
@@ -366,22 +381,6 @@
     stop("SuperCell metadata disagree with membership hard strata.",
          call. = FALSE)
   }
-  if (!is.null(sample_col) && nzchar(sample_col)) {
-    pooled$membership[[sample_col]] <- as.character(
-      object@meta.data[[sample_col]][cell_index]
-    )
-    pooled$sample_composition <- stats::aggregate(
-      rep.int(1L, nrow(pooled$membership)),
-      by = list(
-        metacell_id = as.character(pooled$membership$metacell_id),
-        sample_id = as.character(pooled$membership[[sample_col]])
-      ),
-      FUN = sum
-    )
-    colnames(pooled$sample_composition)[[3L]] <- "n_cells"
-  } else {
-    pooled$sample_composition <- data.frame()
-  }
   pooled$celltype_composition <- data.frame(
     metacell_id = as.character(meta$metacell_id),
     value = as.character(meta[[celltype_col]]),
@@ -399,16 +398,16 @@
     stringsAsFactors = FALSE
   )
   meta$pooling_scope <- "condition_by_cell_type"
-  meta$sample_weighting <- "none"
-  meta$sample_col_role <- "internal_condition_celltype_pool_id"
   meta$celltype_role <- "hard_stratum"
   pooled$metacell_meta <- meta
-  pooled$input_sample_col <- sample_col
-  pooled$analysis_sample_col <- internal_pool_col
   pooled$condition_col <- condition_col
   pooled$celltype_col <- celltype_col
+  pooled$selected_cell_types <- if (is.null(cell_type)) {
+    unique(as.character(meta[[celltype_col]]))
+  } else {
+    cell_type
+  }
   pooled$pooling_scope <- "condition_by_cell_type"
-  pooled$sample_weighting <- "none"
   pooled$cache_contract <- cache_contract
   pooled$input_design <- list(
     metacell_grouping = c(condition_col, celltype_col),
@@ -419,11 +418,9 @@
     ambiguous_celltype_policy = "not_applicable_strata_are_pure",
     gamma = metacell_args$gamma,
     cache_contract_schema = cache_contract$schema_version,
-    inference_policy = paste(
-      "cells are stratified by condition and broad cell type; sample metadata",
-      "are retained for composition diagnostics but are not used for",
-      "selection, weighting, or metacell grouping"
-    )
+    inference_policy =
+      "cells are stratified only by condition and broad cell type",
+    sample_metadata = "not_used_or_retained"
   )
   pooled
 }

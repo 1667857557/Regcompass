@@ -10,7 +10,7 @@ cells of one cell type across conditions
 → one Pando motif/domain TF–peak–GEM-gene dictionary
 → pooled TF-RNA × peak-ATAC predictor transforms
 → condition-sparse selection and common-metric refit
-→ sample-blocked OOF reliability
+→ condition-stratified cell OOF within that cell type
 → active metabolic targets and complete-GPR core reactions
 → one ordered subsystem / KEGG–Reactome / master-Rhea expansion
 → SuperCell metacells within condition × broad-cell-type strata
@@ -89,21 +89,19 @@ result <- rc_run_regcompass_one_shot(
   gem = gem,
   condition_col = "Group",
   celltype_col = "cell_type",
-  sample_col = "sample_id",
+  cell_type = "T_cell",
 
   pando_args = list(
     min_cells = 300L,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      method = "shared_baseline_condition_sparse",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
       peak_cor = 0,
       alpha = 0.5,
       condition_mix = 0.5,
       condition_weight = "equal",
-      cv_block_col = "sample_id",
       reference_condition = "Control",
       nlambda = 50L,
       nfolds = 5L,
@@ -129,8 +127,6 @@ result <- rc_run_regcompass_one_shot(
   layer1_args = list(
     projection_component = "condition",
     comparison_support = "auto",
-    projection_mode = "metacell_specific",
-    regulatory_reliability = "sample_blocked_oof",
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
@@ -181,18 +177,15 @@ Layer 1 reliability; RegCompass sets `q = 0` for that sensitivity path.
 
 ### Conditions with one biological sample
 
-`sample_col` is required for provenance and Pando cross-validation, but a
-condition may contain only one sample. Pando then uses cell-level folds only
-to select lambda and records sample-blocked OOF performance as unavailable.
-RegCompass retains the fitted GRN as exploratory edge evidence, sets its
-regulatory reliability to zero, and falls back to RNA-only support in Layer 1.
-It never treats cells, mixed-sample metacells, or multiple metacells from one
-sample as biological replicates.
+Biological sample count is not an analysis gate. Single- and multi-sample
+conditions use the same paired RNA+ATAC model and the same condition-stratified
+cell OOF inside each independently fitted broad cell type. Sample metadata are
+not an inference input, a SuperCell stratum, a reliability gate, provenance, or
+a composition diagnostic.
 
-Conditions with at least two samples continue to use strict sample-blocked OOF
-validation. SuperCell construction is unchanged in both cases: the only hard
-strata are condition × broad cell type (`condition_col × celltype_col`);
-sample IDs are retained solely for composition diagnostics and GRN validation.
+SuperCell construction uses only condition × broad cell type
+(`condition_col × celltype_col`). If `cell_type` is supplied, only those labels
+are processed; otherwise every observed type is processed independently.
 
 ## Human and mouse regulatory regions
 

@@ -57,22 +57,16 @@ test_that("cell-type-shared TF-IDF is computed across conditions", {
 
 test_that("single-cell Pando reuses shared normalized data", {
   implementation <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
-    collapse = "\n"
-  )
-  bridge <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)),
-    collapse = "\n"
+    deparse(body(.rc_fit_condition_grns_by_cell_type)), collapse = "\n"
   )
   expect_false(grepl("Signac::RunTFIDF", implementation, fixed = TRUE))
   expect_false(grepl("Seurat::NormalizeData", implementation, fixed = TRUE))
   expect_match(implementation, ".rc_require_normalized_assay", fixed = TRUE)
   expect_match(implementation, "cell_type_across_conditions", fixed = TRUE)
-  expect_match(bridge, ".rc_validate_pando_bridge_args", fixed = TRUE)
   expect_match(
     paste(
       deparse(formals(
-        .rc_run_condition_single_cell_grns
+        .rc_fit_condition_grns_by_cell_type
       )$pando_infer_args),
       collapse = " "
     ),
@@ -81,7 +75,7 @@ test_that("single-cell Pando reuses shared normalized data", {
   )
 })
 
-test_that("unavailable sample-blocked OOF forces Layer 1 reliability zero", {
+test_that("within-cell-type OOF controls Layer 1 reliability", {
   body_text <- paste(
     deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
@@ -93,6 +87,9 @@ test_that("unavailable sample-blocked OOF forces Layer 1 reliability zero", {
   )
   expect_match(
     body_text, "gene_regulatory_reliability_available", fixed = TRUE
+  )
+  expect_match(
+    body_text, "within_cell_type_condition_stratified_cells", fixed = TRUE
   )
 })
 

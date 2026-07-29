@@ -401,7 +401,6 @@
         "::medium=", utils::URLencode(scenario, reserved = TRUE)
       )
       cache[[key]] <- list(
-        sample_id = "global",
         module_id = "MEDIUM_UNION_GEM",
         reaction_id = reaction,
         target_direction = direction,
@@ -428,7 +427,7 @@
 
 .rc_score_existing_union_cache <- function(
     layer1, gem, model_cache,
-    condition_col, sample_col, celltype_col,
+    condition_col, celltype_col,
     omega = 0.95,
     solver = c("highs", "gurobi", "glpk"),
     flux_threshold = 1e-8,
@@ -440,7 +439,7 @@
     stop("`omega` must be one finite value in (0, 1].", call. = FALSE)
   }
   matrices <- rc_layer2_unit_matrices(
-    layer1, "metacell", sample_col, celltype_col, condition_col
+    layer1, "metacell", NULL, celltype_col, condition_col
   )
   row_ids <- names(model_cache)
   units <- colnames(matrices$reaction_expression)
@@ -504,7 +503,6 @@
         diagnostics = data.frame(
           row_id = row_id,
           unit_id = unit_id,
-          sample_id = "global",
           module_id = "MEDIUM_UNION_GEM",
           reaction_id = entry$reaction_id,
           target_direction = entry$target_direction,
@@ -726,7 +724,6 @@ rc_regcompass_step_target_union <- function(
     gem = gem,
     model_cache = model_cache,
     condition_col = workflow$condition_col,
-    sample_col = workflow$sample_col,
     celltype_col = workflow$celltype_col,
     omega = omega,
     solver = solver,

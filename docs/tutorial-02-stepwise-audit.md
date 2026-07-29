@@ -1,5 +1,7 @@
 # Tutorial Level 2: stepwise run and Pando audit
 
+> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+
 Use this workflow when every stage should be saved and inspected independently.
 The examples target RegCompassR 2.0.0 and Pando 1.4.0.
 
@@ -61,7 +63,6 @@ step1 <- rc_regcompass_step_grn(
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      method = "shared_baseline_condition_sparse",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
       peak_cor = 0,
@@ -337,6 +338,6 @@ API index: [functions.md](functions.md). It documents stage arguments, return
 contracts, and restart boundaries.
 
 
-Use `sample_col = "sample_id"` for biological-sample provenance.
+Sample metadata are not used as model input, provenance, or composition diagnostics.
 
-Set `cv_block_col = "sample_id"` for sample-blocked OOF validation.
+OOF validation uses condition-stratified cells within the fitted cell type.

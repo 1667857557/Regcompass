@@ -165,7 +165,6 @@
         diagnostics = data.frame(
           row_id = row_id,
           unit_id = unit_id,
-          sample_id = "global",
           module_id = if (identical(mode, "meta_module_gem")) {
             "MEDIUM_UNION_GEM"
           } else {

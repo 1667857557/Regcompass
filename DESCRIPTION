@@ -9,8 +9,9 @@ Description: Fits one cell-type-level Pando design across conditions for
     data. Condition-sparse coefficients use the same TF-peak-target edge
     dictionary, estimability masks, pooled predictor scale, lambda path, and
     selected lambda. Pando emits absolute condition, shared, deviation, and
-    reference-contrast coefficients together with sample-blocked out-of-fold
-    diagnostics and exact projection transforms. Active condition-level edges
+    reference-contrast coefficients together with condition-stratified
+    cell-level out-of-fold diagnostics computed inside each cell type and exact
+    projection transforms. Active condition-level edges
     define metabolic target genes and complete-GPR core reactions. Regulatory
     effects are calculated in paired single cells before aggregation through
     the exact SuperCell membership table; metacells are constructed only within
@@ -90,8 +91,6 @@ Collate:
     'one_shot.R'
     'stratum_filter.R'
     'condition_grn_contract.R'
-    'condition_comparability_fix.R'
-    'zzz_pando_bridge_alignment.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
@@ -124,7 +123,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@Supercell2,
-    1667857557/Pando_regcompass@349e28fc886e2eab1d56714598671d4dcb70d8d6
+    1667857557/Pando_regcompass@0fe7a586c6c08a29e2c6698d8f01c8d56e15e5e5
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5

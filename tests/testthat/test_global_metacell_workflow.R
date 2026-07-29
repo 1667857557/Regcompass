@@ -22,12 +22,7 @@ test_that("v2.0.0 public workflow is GRN first", {
 
 test_that("Pando shares one cell-type fit across conditions", {
   implementation <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
-    collapse = "\n"
-  )
-  bridge <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)),
-    collapse = "\n"
+    deparse(body(.rc_fit_condition_grns_by_cell_type)), collapse = "\n"
   )
   expect_match(
     implementation,
@@ -36,8 +31,7 @@ test_that("Pando shares one cell-type fit across conditions", {
   )
   expect_match(implementation, "Pando::infer_condition_grn", fixed = TRUE)
   expect_match(implementation, "condition_grn_fits", fixed = TRUE)
-  expect_match(bridge, ".rc_validate_pando_bridge_args", fixed = TRUE)
-  expect_match(bridge, "comparison_support", fixed = TRUE)
+  expect_match(implementation, "cell_type = cell_type", fixed = TRUE)
 })
 
 test_that("Stage 3 uses active targets rather than target projection", {
@@ -53,9 +47,9 @@ test_that("Stage 3 uses active targets rather than target projection", {
 
 test_that("merged meta-modules contain biological reactions only", {
   condition_modules <- list(
-    sample_status = data.frame(status = "ok"),
-    tf_peak_gene_all = data.frame(),
-    tf_peak_gene_significant = data.frame(),
+    condition_fit_status = data.frame(status = "ok"),
+    tf_peak_gene_condition_all = data.frame(),
+    tf_peak_gene_condition = data.frame(),
     supported_metabolic_genes = data.frame(),
     core_gene_reaction = data.frame(
       sample_id = "A|T",
@@ -87,17 +81,18 @@ test_that("merged meta-modules contain biological reactions only", {
 
 test_that("metacells use only condition and broad cell type as hard strata", {
   text <- paste(
-    deparse(body(.rc_make_condition_pooled_metacells)),
+    deparse(body(.rc_make_condition_celltype_metacells)),
     collapse = "\n"
   )
   expect_match(text, 'pooling_scope <- "condition_by_cell_type"', fixed = TRUE)
-  expect_match(text, 'sample_weighting <- "none"', fixed = TRUE)
   expect_match(
     text, "metacell_grouping = c(condition_col, celltype_col)",
     fixed = TRUE
   )
   expect_match(text, "gamma <- 30L", fixed = TRUE)
-  expect_match(text, "Sample balancing is not part", fixed = TRUE)
+  expect_match(
+    text, "pooled$membership[[supercell_stratum_col]] <- NULL", fixed = TRUE
+  )
   expect_match(text, "label_col = NULL", fixed = TRUE)
   expect_match(text, '"label_col"', fixed = TRUE)
   expect_false(grepl("label_col = label_col", text, fixed = TRUE))
@@ -113,7 +108,7 @@ test_that("canonical metacells automatically use cell type as the label", {
 
 test_that("canonical construction does not use posthoc cell-type assignment", {
   text <- paste(
-    deparse(body(.rc_make_condition_pooled_metacells)),
+    deparse(body(.rc_make_condition_celltype_metacells)),
     collapse = "\n"
   )
   expect_false(grepl(
@@ -126,7 +121,7 @@ test_that("canonical construction does not use posthoc cell-type assignment", {
 
 test_that("condition metacells reject fragment pooling without maps", {
   text <- paste(
-    deparse(body(.rc_make_condition_pooled_metacells)),
+    deparse(body(.rc_make_condition_celltype_metacells)),
     collapse = "\n"
   )
   expect_match(

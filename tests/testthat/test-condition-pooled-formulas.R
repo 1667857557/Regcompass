@@ -23,19 +23,16 @@ test_that("reaction penalty is positive and decreases with expression", {
 
 test_that("Pando grouping uses condition and cell type", {
   implementation <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
-    collapse = "\n"
-  )
-  bridge <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
+    deparse(body(.rc_fit_condition_grns_by_cell_type)), collapse = "\n"
   )
   expect_match(
     implementation,
     "group_cols <- c(condition_col, celltype_col)",
     fixed = TRUE
   )
-  expect_match(bridge, ".rc_validate_pando_bridge_args", fixed = TRUE)
-  expect_false("sample_col" %in% names(formals(.rc_run_condition_single_cell_grns)))
+  expect_match(implementation, "cell_type = cell_type", fixed = TRUE)
+  expect_false("sample_col" %in%
+                 names(formals(.rc_fit_condition_grns_by_cell_type)))
   expect_false("strict_biological_defaults" %in% names(formals(rc_run_regcompass)))
 })
 
@@ -44,13 +41,16 @@ test_that("Layer 1 delegates cell-first projection to Pando", {
     deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
   expect_match(
-    body_text, "Pando::project_condition_grn_groups", fixed = TRUE
+    body_text, "Pando::project_condition_grn_cells", fixed = TRUE
+  )
+  expect_match(
+    body_text, "Pando::aggregate_condition_grn_projection", fixed = TRUE
   )
   expect_match(body_text, 'absolute <- project_one("condition")', fixed = TRUE)
-  expect_match(body_text, "sqrt(pmax(0", fixed = TRUE)
+  expect_match(body_text, "sqrt(pmin(1, pmax(0", fixed = TRUE)
   expect_match(body_text, "!available | !is.finite(q)", fixed = TRUE)
   expect_match(
-    body_text, "sample_blocked_oof_available", fixed = TRUE
+    body_text, "predictive_oof_available", fixed = TRUE
   )
   expect_match(body_text, "reliability * tanh(projection)", fixed = TRUE)
   expect_false(grepl(

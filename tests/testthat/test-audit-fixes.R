@@ -52,10 +52,10 @@ test_that("condition-by-cell-type pool identifiers do not use sample labels", {
 
 test_that("canonical metacell APIs exclude sample balancing", {
   expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
-  expect_identical(eval(formals(rc_run_regcompass)$sample_col), "sample_id")
-  wrapper_text <- paste(deparse(body(.rc_make_condition_pooled_metacells)), collapse = "\n")
+  expect_false("sample_col" %in% names(formals(rc_run_regcompass)))
+  wrapper_text <- paste(deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n")
   expect_match(wrapper_text, ".rc_condition_celltype_pool_col", fixed = TRUE)
-  expect_match(wrapper_text, "Sample balancing is not part", fixed = TRUE)
+  expect_match(wrapper_text, "supercell_stratum_col", fixed = TRUE)
   expect_false(grepl(".rc_balance_condition_celltype_cells", wrapper_text, fixed = TRUE))
 })
 

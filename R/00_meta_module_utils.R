@@ -45,7 +45,11 @@
         call. = FALSE
       )
     }
-    required_exports <- c("initiate_grn", "find_motifs", "infer_grn", "gof")
+    required_exports <- c(
+      "initiate_grn", "find_motifs", "infer_condition_grn",
+      "condition_grn_fit", "project_condition_grn_cells",
+      "aggregate_condition_grn_projection"
+    )
     namespace <- asNamespace("Pando")
     missing_exports <- required_exports[!vapply(
       required_exports,
@@ -65,6 +69,14 @@
     installed_version <- as.character(utils::packageVersion("Pando"))
   }
   installed_version <- as.character(installed_version)
+  if (isTRUE(validate_api) &&
+      base::package_version(installed_version) <
+      base::package_version("1.4.0")) {
+    stop(
+      "RegCompass requires Pando >= 1.4.0 for the ConditionGRNFit v4 ",
+      "projection contract.", call. = FALSE
+    )
+  }
   if (is.null(description)) description <- utils::packageDescription("Pando")
 
   normalize_remote_field <- function(value) {

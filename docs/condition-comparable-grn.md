@@ -1,5 +1,7 @@
 # Pando shared-design, condition-comparable GRNs
 
+> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+
 RegCompass Stage 1 calls `Pando::initiate_grn()`, `Pando::find_motifs()`, and
 `Pando::infer_condition_grn()` once on the normalized paired-cell multiome
 object. Pando returns one versioned `ConditionGRNFit` per cell type.
@@ -10,7 +12,6 @@ The canonical configuration is:
 
 ```r
 pando_infer_args = list(
-  method = "shared_baseline_condition_sparse",
   candidate_screen = "motif_domain",
   condition_mix = 0.5,
   condition_weight = "equal",

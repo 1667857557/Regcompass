@@ -31,22 +31,28 @@
 #' Load the canonical species-specific Pando regulatory regions
 #'
 #' Human analyses use the union of the conserved-element and SCREEN ccRE sets.
-#' Mouse analyses use only `phastConsElements20Mammals.UCSC.hg38`. Users can
-#' override either default through `pando_initiate_args$regions`.
+#' Mouse analyses require user-supplied mouse-coordinate regions through
+#' `pando_initiate_args$regions`.
 .rc_default_pando_regions <- function(species = c("human", "mouse")) {
   species <- match.arg(species)
+  if (identical(species, "mouse")) {
+    stop(
+      paste(
+        "No mouse-coordinate regulatory-region set is bundled.",
+        "Supply `pando_initiate_args$regions` in the same mouse genome build",
+        "as the ATAC peaks and `genome`."
+      ),
+      call. = FALSE
+    )
+  }
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop("Package 'Pando' is required.", call. = FALSE)
   }
   data_environment <- new.env(parent = emptyenv())
-  region_names <- if (identical(species, "human")) {
-    c(
-      "phastConsElements20Mammals.UCSC.hg38",
-      "SCREEN.ccRE.UCSC.hg38"
-    )
-  } else {
-    "phastConsElements20Mammals.UCSC.hg38"
-  }
+  region_names <- c(
+    "phastConsElements20Mammals.UCSC.hg38",
+    "SCREEN.ccRE.UCSC.hg38"
+  )
   utils::data(
     list = region_names,
     package = "Pando",
@@ -78,8 +84,6 @@
       call. = FALSE
     )
   }
-  if (identical(species, "mouse")) return(phast_cons)
-
   screen_ccre <- get(
     "SCREEN.ccRE.UCSC.hg38",
     envir = data_environment,

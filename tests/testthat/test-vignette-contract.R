@@ -46,11 +46,9 @@ test_that("workflow vignette documents the current Pando bridge", {
   required <- c(
     "RegCompassR 2.0.0",
     "rc_run_regcompass_one_shot(",
-    'method = "shared_baseline_condition_sparse"',
     'candidate_screen = "motif_domain"',
     "condition_mix = 0.5",
-    'sample_col = "sample_id"',
-    'cv_block_col = "sample_id"',
+    "cell_type",
     'reference_condition = "Control"',
     "comparison_mask",
     "comparable_to_reference",
@@ -64,7 +62,7 @@ test_that("workflow vignette documents the current Pando bridge", {
     "grn = step1",
     'comparison_support = "auto"',
     "condition × broad cell type",
-    "sample-blocked OOF",
+    "condition-stratified cell OOF",
     "gpr_and_method = \"min\"",
     "global FASTCORE",
     "Mouse runs must supply"
@@ -85,12 +83,8 @@ test_that("the first two tutorials expose executable Pando routing", {
   text <- lapply(paths, rc_read_doc)
 
   for (one in text) {
-    expect_match(
-      one, 'method = "shared_baseline_condition_sparse"', fixed = TRUE
-    )
     expect_match(one, 'candidate_screen = "motif_domain"', fixed = TRUE)
-    expect_match(one, 'sample_col = "sample_id"', fixed = TRUE)
-    expect_match(one, 'cv_block_col = "sample_id"', fixed = TRUE)
+    expect_match(one, "cell_type", fixed = TRUE)
     expect_match(one, 'reference_condition = "Control"', fixed = TRUE)
     expect_match(one, "comparison_mask", fixed = TRUE)
     expect_match(one, "comparable_to_reference", fixed = TRUE)
@@ -173,10 +167,9 @@ test_that("README API index and help agree on the Pando contract", {
     "comparison_mask",
     "comparable_to_reference",
     "motif_domain",
-    "shared_baseline_condition_sparse",
     "ConditionGRNFit v4",
     "condition × broad cell type",
-    "sample-blocked OOF",
+    "condition-stratified cell OOF",
     "reference_condition",
     "condition_mix",
     "condition_weight",

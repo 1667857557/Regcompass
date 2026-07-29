@@ -1,5 +1,7 @@
 # Public functions and API contract in RegCompassR 2.0.0
 
+> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+
 RegCompass exposes a one-shot workflow and six restartable stages. Pando 1.4.0
 is the sole condition-GRN estimator; RegCompass consumes its versioned
 `ConditionGRNFit` and does not refit condition coefficient matrices.
@@ -34,7 +36,6 @@ pando_args = list(
   min_abs_estimate = 0,
   min_model_rsq = 0.1,
   pando_infer_args = list(
-    method = "shared_baseline_condition_sparse",
     candidate_screen = "motif_domain",
     condition_mix = 0.5,
     condition_weight = "equal",
