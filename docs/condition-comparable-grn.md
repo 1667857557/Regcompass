@@ -35,13 +35,11 @@ The condition columns are not independent elastic-net fits.
 
 ## Candidate screening
 
-`candidate_screen = "motif_domain"` is the canonical mode. It avoids
-response-dependent marginal screening before nested validation.
+RegCompass requires `candidate_screen = "motif_domain"`. The wrapper sets this
+value when omitted and stops if another value is supplied.
 
-`candidate_screen = "pooled_within_condition"` remains available as a
-sensitivity mode. Its projection is marked ineligible for primary penalty
-construction because candidate screening uses the response outside the nested
-OOF loop.
+Pando may expose additional candidate-screening modes, but they are not accepted
+by the current RegCompass Stage 1 interface.
 
 ## `ConditionGRNFit` v5 fields
 
