@@ -28,7 +28,7 @@ cell-type column, Pando arguments.
 **Key behavior:**
 
 - targets are GEM GPR genes present in the RNA assay;
-- `candidate_screen = "motif_domain"` is the default;
+- `candidate_screen = "motif_domain"` is required and alternative values are rejected;
 - outer-heldout projections are generated within each fitted cell type;
 - absolute condition coefficients are used downstream;
 - reference-condition effects are interpretation outputs;
@@ -92,6 +92,7 @@ membership, merged core reactions, and merged reaction catalogue.
 - the primary regulatory input is Pando's outer-heldout common-support score;
 - single-cell regulatory scores are averaged using exact SuperCell membership;
 - reference-condition coefficient effects are not used for the primary penalty;
+- `projection_component` must be `"condition"`;
 - `gpr_and_method = "min"` is the default;
 - `"median"` and `"mean"` are available for sensitivity analysis;
 - RNA-only, condition-full, depth, and alpha routes are diagnostic or sensitivity outputs.
