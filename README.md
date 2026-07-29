@@ -135,8 +135,8 @@ Do not set `parallel` or `BPPARAM` inside `pando_infer_args`.
 
 ### Candidate screening
 
-- `motif_domain`: canonical response-independent candidate set;
-- `pooled_within_condition`: sensitivity mode; not eligible for the primary penalty.
+RegCompass requires `candidate_screen = "motif_domain"`. Alternative Pando
+candidate-screen modes are not accepted by the current Stage 1 wrapper.
 
 ### GPR AND aggregation
 
