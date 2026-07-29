@@ -2,7 +2,7 @@
 % Please edit documentation in R/regcompass.R
 \name{rc_run_regcompass}
 \alias{rc_run_regcompass}
-\title{Run the canonical condition-comparable Pando RegCompass workflow}
+\title{Run the complete RegCompass workflow}
 \usage{
 rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
@@ -21,47 +21,38 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{gem}{Prepared genome-scale metabolic model.}
 \item{outdir}{Persistent workflow output directory.}
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
-\item{pfm}{Optional motif position-frequency matrices. When omitted, RegCompass loads Pando's bundled \code{motifs} object.}
-\item{species}{Model species or \code{"auto"}. Human analyses may use the bundled hg38 phastCons plus SCREEN ccRE union. Mouse analyses require a build-matched \code{GRanges} supplied through \code{pando_args$pando_initiate_args$regions}; hg38 regions are rejected for mouse input.}
-\item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
-\item{cell_type}{Optional broad cell-type label or labels. When omitted, every
-observed type is processed independently.}
+\item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
+\item{species}{Model species or \code{"auto"}. Mouse runs require build-matched regulatory regions.}
+\item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
+\item{cell_type}{Optional broad-cell-type labels.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. Canonical inference uses
-\code{candidate_screen = "motif_domain"}, \code{condition_mix = 0.5},
-\code{condition_weight = "equal"}, and \code{scale = TRUE}.}
+\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"}.}
 \item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
-\item{metacell_args}{Stage 2 controls, including RNA/ATAC reductions and dimensions, \code{gamma}, seed, size thresholds, and cache rebuilding.}
-\item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}. Expansion is one ordered subsystem, KEGG/Reactome, and master-Rhea pass.}
-\item{layer1_args}{Stage 4 controls: \code{projection_component},
-\code{comparison_support}, \code{regulatory_alpha}, \code{gpr_and_method}, and
-\code{gene_half_saturation}.}
-\item{medium_scenarios}{Condition-invariant medium table used by Stage 5.}
-\item{model_mode}{Use a medium-specific shared model reconstructed from the biological catalogue, or reuse the complete GEM.}
-\item{layer2_args}{Layer 2 scoring and global FASTCORE controls. \code{completion_time_limit} belongs in \code{layer2_args$model_params} and limits model construction only.}
-\item{upstream_workers}{Worker count for Pando Stage 1 and Layer 1. The complete workflow supplies a stage-scoped BiocParallel backend and keeps Pando native nested execution serial.}
-\item{layer2_workers}{Worker count for Stage 5 completion and directional LP scoring.}
+\item{metacell_args}{Stage 2 reductions, dimensions, gamma, seed, thresholds, and cache controls.}
+\item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
+\item{layer1_args}{Stage 4 controls. \code{projection_component} must be \code{"condition"}.}
+\item{medium_scenarios}{Condition-invariant medium table.}
+\item{model_mode}{Build a shared model from the reaction catalogue or use the full GEM.}
+\item{layer2_args}{Directional scoring and model-completion controls.}
+\item{upstream_workers}{Worker count for Stage 1 and Stage 4.}
+\item{layer2_workers}{Worker count for Stage 5.}
 \item{progress}{Display workflow and stage progress.}
 }
 \value{
-A validated complete RegCompass result. The audited
-\code{reaction_comparison_by_metacell} table contains common-OOF,
-condition-full-OOF, RNA-only, depth and alpha penalty routes aligned on the
-same reaction, direction, medium, metacell and shared GEM structure.
+A validated complete RegCompass result containing stage outputs, reaction
+rankings, condition contrasts, and provenance.
 }
-\description{Runs RegCompassR 2.1.0 using Pando 1.5.0 ConditionGRNFit v5, condition-by-broad-cell-type SuperCells, nested outer-heldout TF-by-ATAC projection, complete-GPR meta-modules, and shared-model directional LP scoring.}
+\description{
+Runs the six-stage RegCompassR 2.1.0 workflow.
+}
 \details{
-Pando fits one TF-peak-target dictionary and equal-condition transform for each
-broad cell type. Every outer fold learns its preprocessing, lambda and
-coefficients from training cells only, then projects held-out cells.
-Biological sample count is not an input or reliability gate.
+Stage 1 fits Pando ConditionGRNFit v5 models. Stage 2 constructs condition by
+broad cell type SuperCells. Stage 3 builds supported metabolic genes and the
+merged reaction catalogue. Stage 4 calculates RNA and regulatory reaction
+penalties from outer-heldout common-support scores. Stage 5 builds one shared
+model per medium and scores reaction directions. Stage 6 assembles results.
 
-The primary penalty uses common-support OOF projections. Condition-full OOF is
-exploratory, RNA-only is a separate baseline, and the full-data sub-GRN is used
-only for network interpretation. Missing/unavailable support remains
-\code{NA}; an observed zero remains a true zero.
-
-The complete workflow controls Stage 1 parallel execution through \code{upstream_workers}; users should not set \code{pando_infer_args$parallel}. The interaction-safe candidate default is \code{"motif_domain"}; \code{"pooled_within_condition"} is an optional marginal-screen sensitivity mode and is ineligible for penalty construction.
-
-Stage 2 calls SuperCell_Seurat_V4 and hard-stratifies only by condition and broad cell type while recording shared depth targets. Stage 4 aggregates Pando held-out scores through \code{misc$membership_table}, uses bounded calibrated modifiers with primary \code{regulatory_alpha = 0.5}, and reports RNA-only/depth/alpha sensitivities. Stage 5 applies each medium and performs one global FASTCORE completion before reusing the exact same structure for every comparison route. Formal effect sizes use \code{penalty / (omega * vmax)}; ECDF scores are display-only.
+Reference-condition coefficient effects and condition-full projections are
+interpretation or sensitivity outputs; the primary penalty uses absolute
+condition common-support projections.
 }
