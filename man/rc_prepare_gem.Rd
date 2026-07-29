@@ -28,5 +28,5 @@ rc_prepare_gem(
 Loads the bundled pinned Human-GEM or Mouse-GEM by default. The official download and conversion path remains available for custom or updated releases. Mouse genes remain mouse symbols and are not converted through human orthologues.
 }
 \details{
-RegCompassR 1.9.1 bundles Human-GEM 2.0.0 and Mouse-GEM 1.8.0 under \code{inst/extdata/gem}. Use \code{rc_bundled_gem_manifest()} to inspect source, release, checksum, size, citation, and license metadata. A bundled asset is copied to \code{save_rds} rather than returned only from the package installation directory, so later cache-first calls and explicit custom output paths behave consistently with downloaded models.
+RegCompassR 2.1.0 bundles Human-GEM 2.0.0 and Mouse-GEM 1.8.0 under \code{inst/extdata/gem}. Use \code{rc_bundled_gem_manifest()} to inspect source, release, checksum, size, citation, and license metadata. A bundled asset is copied to \code{save_rds} rather than returned only from the package installation directory, so later cache-first calls and explicit custom output paths behave consistently with downloaded models.
 }

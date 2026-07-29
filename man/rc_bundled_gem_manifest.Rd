@@ -5,4 +5,4 @@
 \title{List GEM models bundled with RegCompassR}
 \usage{rc_bundled_gem_manifest()}
 \value{A data frame containing species, release, installed filename, RDS checksum, file size, upstream source/ref, citation DOI, and license.}
-\description{Reads the installed manifest for the pinned Human-GEM 2.0.0 and Mouse-GEM 1.8.0 assets distributed with RegCompassR 1.9.1. The manifest is the authoritative source for bundled model release, checksum, citation, and license provenance.}
+\description{Reads the installed manifest for the pinned Human-GEM 2.0.0 and Mouse-GEM 1.8.0 assets distributed with RegCompassR 2.1.0. The manifest is the authoritative source for bundled model release, checksum, citation, and license provenance.}

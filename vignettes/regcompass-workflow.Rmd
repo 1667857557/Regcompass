@@ -1,10 +1,8 @@
 ---
-
-> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
-title: "RegCompassR 2.0.0 condition-comparable Pando workflow"
+title: "RegCompassR 2.1.0 outer-OOF condition workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 2.0.0 condition-comparable Pando workflow}
+  %\VignetteIndexEntry{RegCompassR 2.1.0 outer-OOF condition workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -13,6 +11,11 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
+> Each broad cell type is trained, validated, and refitted independently. If
+> `cell_type` is supplied, only those labels are processed. OOF folds contain
+> condition-stratified cells from the same fitted type; biological sample
+> metadata and sample count are not inputs or gates.
+
 # Overview
 
 RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level
@@ -20,19 +23,20 @@ support and directional COMPASS-like scores.
 
 ```text
 one Pando motif/domain edge dictionary per cell type
-→ pooled TF-RNA × peak-ATAC predictor transforms
-→ condition-sparse selection followed by common-metric refit
-→ explicit condition-versus-reference comparison mask
+→ nested outer-heldout cell projection with inner lambda selection
+→ training-only equal-condition TF-RNA × peak-ATAC transforms
+→ common-support primary and condition-full exploratory routes
 → supported metabolic genes and complete-GPR cores
 → one ordered biological expansion pass
 → condition × broad cell type SuperCells
-→ integrated reaction support and penalties
+→ latent depth-aware RNA and bounded regulatory support
+→ separate common/full/RNA/depth/alpha GPR and penalty routes
 → one shared medium-specific GEM
 → directional LP scoring
 ```
 
-Pando 1.4.0 is the sole GRN estimator. RegCompass consumes its
-`ConditionGRNFit v4` contracts without refitting coefficient matrices.
+Pando 1.5.0 is the sole GRN estimator. RegCompass consumes its
+`ConditionGRNFit v5` contracts. Only outer-heldout projections enter penalties.
 
 # Prepare the human GEM and medium
 
@@ -82,7 +86,9 @@ result <- rc_run_regcompass_one_shot(
       condition_weight = "equal",
       reference_condition = "Control",
       nlambda = 50L,
-      nfolds = 5L,
+      comparison_conditions = c("Control", "Drug"),
+      outer_nfolds = 5L,
+      inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
       scale = TRUE
     )
@@ -95,6 +101,7 @@ result <- rc_run_regcompass_one_shot(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
+    depth_balance = TRUE,
     seed = 12345L,
     min_cells_per_stratum = 500L,
     min_metacell_size = 10L,
@@ -104,7 +111,7 @@ result <- rc_run_regcompass_one_shot(
 
   layer1_args = list(
     comparison_support = "auto",
-  regulatory_alpha = 1,
+    regulatory_alpha = 0.5,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -136,17 +143,20 @@ For edge `e` and unit `u`, Pando fits the interaction predictor:
 x[e, u] = RNA[TF(e), u] × ATAC[peak(e), u]
 ```
 
-The final interaction is centered and scaled once over all cells of the cell
-type. Conditions share this transform, the target transform, and a
-target-specific lambda path/selection. With
-`condition_mix = 0.5` and
-`condition_weight = "equal"`, condition-specific supports are selected jointly and then refit on one pooled common metric.
+For every outer fold, the interaction center is the mean of condition means
+and its scale is the square root of the mean condition-specific population
+variance. The transform and lambda are learned only inside that outer training
+set. Each cell receives exactly one held-out projection. A separate full-data
+refit is used only to interpret the final sub-GRN.
 
-The interaction-safe candidate default is `motif_domain`. The optional `pooled_within_condition` mode applies response-dependent marginal-correlation screening and is a sensitivity mode rather than a canonical default; its OOF score is not used as confirmatory Layer 1 reliability (`q = 0`).
+The interaction-safe candidate default is `motif_domain`. The optional
+`pooled_within_condition` mode applies response-dependent marginal-correlation
+screening and is a sensitivity mode; its projection is ineligible for penalty
+construction.
 
-# Reference contrasts and comparison support
+# Interpretation contrasts and primary support
 
-Pando exports:
+Pando retains full-data edge contrasts for sub-GRN interpretation:
 
 ```text
 contrast[e, c] = beta[e, c] - beta[e, reference]
@@ -154,9 +164,11 @@ comparison_mask[e, c] =
   eligibility_mask[e, c] && eligibility_mask[e, reference]
 ```
 
-RegCompass requires the explicit `comparison_mask`. A coefficient fixed to zero
-because an edge is non-estimable cannot enter the active effect table or the
-Layer 1 penalty projection.
+These tables do not drive the primary penalty. The penalty route instead uses
+the outer-fold pairwise-common support for two conditions or global-common
+support for an omnibus analysis. `condition_estimable` and `strict` are
+diagnostic-only. An estimable inactive coefficient remains zero; an
+unavailable coefficient remains `NA`.
 
 ```{r}
 all_effects <- result$grn$tf_peak_gene_condition_effect_all
@@ -245,6 +257,7 @@ step2 <- rc_regcompass_step_metacells(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
+    depth_balance = TRUE,
     seed = 12345L,
     min_cells_per_stratum = 500L,
     min_metacell_size = 10L,
@@ -265,7 +278,7 @@ step4 <- rc_regcompass_step_layer1(
   meta_modules = step3,
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
-  regulatory_alpha = 1,
+  regulatory_alpha = 0.5,
   gpr_and_method = "min",
   parallel = TRUE,
   BPPARAM = upstream_bp
@@ -303,8 +316,56 @@ result <- rc_regcompass_step_results(
 ```
 
 Stage 3 performs one complete-GPR/subsystem/cross-reference expansion pass and
-does not run FASTCORE. Stage 4 delegates cell-first TF×ATAC projection to Pando and aggregates completed gene projections through exact SuperCell membership. Stage 5 performs the only global FASTCORE
-completion for the shared medium-specific model.
+does not run FASTCORE. Stage 4 aggregates Pando outer-heldout cell projections
+through exact SuperCell membership and estimates latent RNA with a
+library-offset Gamma-Poisson model. Stage 5 builds each shared structural model
+once, then completely reruns GPR, penalty and LP scoring for common OOF,
+condition-full OOF, RNA-only, depth, and alpha-sensitivity routes.
+
+The primary modifier is
+
+\[
+R_{gm}=q_g\tanh(G^{OOF}_{gm}/s_g),
+\qquad
+q_g=\sqrt{\operatorname{clamp}(R^2_{OOF,g},0,1)},
+\]
+
+where \(s_g\) is estimated jointly across conditions within a cell type.
+`regulatory_alpha = 0.5` bounds the regulatory odds multiplier at
+\(2^{0.5}\); Stage 4 also records the grid `0, 0.25, 0.5, 1`.
+
+# Audited reaction comparison output
+
+```{r}
+result$reaction_comparison_by_metacell[, c(
+  "reaction_id", "direction", "medium", "cell_type", "condition",
+  "metacell_id", "penalty_rna_only", "penalty_common_oof",
+  "penalty_condition_full_oof", "penalty_unique_increment",
+  "penalty_per_target_flux", "vmax", "projection_oof_available",
+  "common_support_fraction", "condition_full_support_fraction",
+  "depth_sensitivity_flag", "zero_support_sensitive",
+  "link_saturation_sensitive", "alpha", "inference_class",
+  "comparability_class"
+)]
+```
+
+Common, condition-full, RNA-only, depth-matched and alpha-grid penalties are
+produced by complete GPR, penalty and LP reruns on the same GEM, reaction order,
+bounds, medium, target direction and \(v_{max}\). The formal quantitative basis
+is `penalty / (omega * vmax)`. Within-target ECDF scores are composition
+dependent and display-only.
+
+With those structural inputs fixed, the directional LP value is
+coordinatewise nondecreasing in its penalty vector, positively 1-homogeneous,
+and concave. This establishes the stated mathematical comparison properties;
+it does not identify whether an upstream penalty difference is biological or
+technical. Depth, zero-pattern, link-saturation and alpha sensitivity results
+must be interpreted alongside the primary common-OOF result.
+
+Metacells are the statistical units for within-dataset Wilcoxon and
+Kruskal--Wallis comparisons, with multiplicity-adjusted P values and effect
+sizes retained. They are not sample/donor-level biological replicates, so these
+tests do not constitute biological-replicate-level treatment inference.
 
 # Mouse input
 

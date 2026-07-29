@@ -11,20 +11,72 @@
   .rc_cache_gem(entry)
 }
 
+.rc_microcompass_object_checksum <- function(x) {
+  file <- tempfile("regcompass-contract-", fileext = ".rds")
+  on.exit(unlink(file, force = TRUE), add = TRUE)
+  saveRDS(x, file, version = 2)
+  unname(tools::md5sum(file)[[1L]])
+}
+
+.rc_microcompass_model_contract <- function(model_cache, mode) {
+  if (!is.list(model_cache) || !length(model_cache)) {
+    stop("The shared model cache is empty.", call. = FALSE)
+  }
+  file_key <- vapply(model_cache, function(entry) {
+    as.character(entry$file %||% "")
+  }, character(1))
+  representative <- match(unique(file_key), file_key)
+  rows <- lapply(representative, function(i) {
+    entry <- model_cache[[i]]
+    model <- .rc_load_microcompass_model(entry, mode)
+    validated <- rc_validate_gem(model)
+    reaction_order <- colnames(validated$S)
+    metabolite_order <- rownames(validated$S)
+    data.frame(
+      model_file = as.character(entry$file %||% ""),
+      model_file_checksum = if (
+        !is.null(entry$file) && file.exists(entry$file)
+      ) {
+        unname(tools::md5sum(entry$file)[[1L]])
+      } else {
+        NA_character_
+      },
+      medium_scenario = as.character(entry$medium_scenario),
+      n_reactions = ncol(validated$S),
+      n_metabolites = nrow(validated$S),
+      reaction_order_checksum =
+        .rc_microcompass_object_checksum(reaction_order),
+      metabolite_order_checksum =
+        .rc_microcompass_object_checksum(metabolite_order),
+      stoichiometry_bounds_checksum =
+        .rc_microcompass_object_checksum(list(
+          S = validated$S,
+          lb = validated$lb,
+          ub = validated$ub
+        )),
+      stringsAsFactors = FALSE
+    )
+  })
+  answer <- do.call(rbind, rows)
+  rownames(answer) <- NULL
+  answer[order(answer$medium_scenario, answer$model_file), , drop = FALSE]
+}
+
 .rc_run_microcompass_engine <- function(
     layer1, gem, target_reactions = NULL,
     medium_table = NULL, medium_scenarios = NULL,
     mode = c("full_gem", "meta_module_gem"),
     reaction_membership = NULL, core_reactions = NULL,
     unit = c("metacell", "sample_celltype"),
-    condition_col = "condition", sample_col = "sample_id",
+    condition_col = "condition", sample_col = NULL,
     celltype_col = "cell_type", model_params = list(),
     omega = 0.95,
     target_direction = c("both", "forward", "reverse"),
     parallel = TRUE,
     solver = c("highs", "gurobi", "glpk"),
     flux_threshold = 1e-8,
-    BPPARAM = NULL) {
+    BPPARAM = NULL,
+    model_cache_override = NULL) {
   mode <- match.arg(mode)
   unit <- match.arg(unit)
   solver <- match.arg(solver)
@@ -40,7 +92,32 @@
   gem <- rc_annotate_reaction_roles(gem)
   direction_diagnostics <- NULL
 
-  if (identical(mode, "full_gem")) {
+  if (!is.null(model_cache_override)) {
+    if (!is.list(model_cache_override) || !length(model_cache_override) ||
+        is.null(attr(model_cache_override, "summary"))) {
+      stop("`model_cache_override` is not an audited shared model cache.",
+           call. = FALSE)
+    }
+    model_cache <- model_cache_override
+    directions <- unique(do.call(rbind, lapply(
+      model_cache,
+      function(entry) {
+        data.frame(
+          reaction_id = as.character(entry$reaction_id),
+          target_direction = as.character(entry$target_direction),
+          medium_scenario = as.character(entry$medium_scenario),
+          stringsAsFactors = FALSE
+        )
+      }
+    )))
+    cached_media <- unique(as.character(directions$medium_scenario))
+    requested_media <- unique(as.character(
+      medium_scenarios$medium_scenario_id
+    ))
+    if (!setequal(cached_media, requested_media)) {
+      stop("The shared cache and requested media differ.", call. = FALSE)
+    }
+  } else if (identical(mode, "full_gem")) {
     if (is.null(target_reactions) || !length(target_reactions)) {
       stop("`target_reactions` is required in full-GEM mode.", call. = FALSE)
     }
@@ -145,23 +222,40 @@
     model <- .rc_load_microcompass_model(first_entry, mode)
     target_results <- lapply(selected_rows, function(row_id) {
       entry <- model_cache[[row_id]]
+      unit_penalty <- penalties$penalty[colnames(model$S), unit_id]
+      target_index <- match(entry$reaction_id, colnames(model$S))
+      if (is.na(target_index)) {
+        stop("A target reaction is absent from its shared model.",
+             call. = FALSE)
+      }
+      target_penalty <- unit_penalty[[target_index]]
+      evidence_available <- is.finite(unit_penalty)
+      solver_penalty <- unit_penalty
+      solver_penalty[!evidence_available] <- 0
       answer <- rc_compass_two_step_lp_directional(
         S = model$S,
         lb = model$lb,
         ub = model$ub,
         target_reaction = entry$reaction_id,
-        penalties = penalties$penalty[colnames(model$S), unit_id],
+        penalties = solver_penalty,
         target_direction = entry$target_direction,
         omega = omega,
         solver = solver,
         flux_threshold = flux_threshold
       )
+      target_evidence_available <- is.finite(target_penalty)
       list(
         row_id = row_id,
         unit_id = unit_id,
-        penalty = answer$penalty,
+        penalty = if (target_evidence_available) {
+          answer$penalty
+        } else {
+          NA_real_
+        },
         vmax = answer$vmax,
         feasible = isTRUE(answer$feasible),
+        evaluated = isTRUE(answer$feasible) &&
+          target_evidence_available,
         diagnostics = data.frame(
           row_id = row_id,
           unit_id = unit_id,
@@ -180,8 +274,15 @@
           step2_status = answer$step2_status,
           target_status = model$target_status %||%
             if (isTRUE(answer$feasible)) "ok" else "structurally_infeasible",
-          objective_value = answer$penalty,
+          objective_value = if (target_evidence_available) {
+            answer$penalty
+          } else {
+            NA_real_
+          },
           vmax = answer$vmax,
+          target_expression_available = target_evidence_available,
+          objective_evidence_fraction = mean(evidence_available),
+          unavailable_objective_terms = sum(!evidence_available),
           stringsAsFactors = FALSE
         )
       )
@@ -207,7 +308,7 @@
     penalty[result$row_id, result$unit_id] <- result$penalty
     vmax[result$row_id, result$unit_id] <- result$vmax
     feasible[result$row_id, result$unit_id] <- result$feasible
-    evaluated[result$row_id, result$unit_id] <- TRUE
+    evaluated[result$row_id, result$unit_id] <- result$evaluated
   }
   score <- rc_compass_score_from_penalty(penalty, feasible)
   lp_diagnostics <- do.call(
@@ -232,7 +333,10 @@
     direction_diagnostics = direction_diagnostics,
     medium_scenarios = medium_scenarios,
     model_mode = mode,
+    shared_model_cache = model_cache,
     model_cache_summary = attr(model_cache, "summary"),
+    structural_model_contract =
+      .rc_microcompass_model_contract(model_cache, mode),
     model_diagnostics = model_diagnostics,
     lp_diagnostics = lp_diagnostics,
     penalty_components = penalties$components,
@@ -270,8 +374,8 @@ rc_run_microcompass <- function(
     medium_table = NULL, medium_scenarios = NULL,
     mode = c("full_gem", "meta_module_gem"),
     reaction_membership = NULL, core_reactions = NULL,
-    unit = c("sample_celltype", "metacell"),
-    condition_col = "condition", sample_col = "sample_id",
+    unit = c("metacell", "sample_celltype"),
+    condition_col = "condition", sample_col = NULL,
     celltype_col = "cell_type", model_params = list(),
     omega = 0.95,
     target_direction = c("both", "forward", "reverse"),
@@ -289,8 +393,8 @@ rc_run_microcompass <- function(
   if (identical(unit, "metacell")) {
     warning(
       paste(
-        "Metacell-level scores are descriptive pseudo-observations and are not",
-        "independent biological replicates."
+        "Metacells are valid within-dataset statistical units, but their",
+        "P values are not sample-level biological-replicate inference."
       ),
       call. = FALSE
     )

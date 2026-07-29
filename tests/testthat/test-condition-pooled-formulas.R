@@ -17,8 +17,8 @@ test_that("reaction penalty is positive and decreases with expression", {
   expect_equal(P[["R1"]], 1)
   expect_gt(P[["R1"]], P[["R2"]])
   expect_gt(P[["R2"]], P[["R3"]])
-  expect_equal(P[["R4"]], 1)
-  expect_true(all(is.finite(P) & P > 0))
+  expect_true(is.na(P[["R4"]]))
+  expect_true(all(is.finite(P[1:3]) & P[1:3] > 0))
 })
 
 test_that("Pando grouping uses condition and cell type", {
@@ -46,13 +46,17 @@ test_that("Layer 1 delegates cell-first projection to Pando", {
   expect_match(
     body_text, "Pando::aggregate_condition_grn_projection", fixed = TRUE
   )
-  expect_match(body_text, 'absolute <- project_one("condition")', fixed = TRUE)
+  expect_match(body_text, 'common <- project(resolved)', fixed = TRUE)
   expect_match(body_text, "sqrt(pmin(1, pmax(0", fixed = TRUE)
-  expect_match(body_text, "!available | !is.finite(q)", fixed = TRUE)
+  expect_match(body_text, "available[is.na(available)] <- FALSE", fixed = TRUE)
   expect_match(
     body_text, "predictive_oof_available", fixed = TRUE
   )
-  expect_match(body_text, "reliability * tanh(projection)", fixed = TRUE)
+  expect_match(
+    body_text,
+    ".rc_scaled_oof_modifier",
+    fixed = TRUE
+  )
   expect_false(grepl(
     ".rc_condition_gene_regulatory_modifier", body_text, fixed = TRUE
   ))

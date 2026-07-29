@@ -198,7 +198,7 @@ test_that("parallel and serial full-GEM scoring agree", {
       target_direction = "forward",
       parallel = FALSE
     ),
-    "descriptive pseudo-observations"
+    "valid within-dataset statistical units"
   )
   parallel <- expect_warning(
     rc_run_microcompass(
@@ -211,7 +211,7 @@ test_that("parallel and serial full-GEM scoring agree", {
       parallel = TRUE,
       BPPARAM = FALSE
     ),
-    "descriptive pseudo-observations"
+    "valid within-dataset statistical units"
   )
   expect_equal(serial$score, parallel$score, tolerance = 1e-8)
   expect_equal(serial$penalty, parallel$penalty, tolerance = 1e-8)

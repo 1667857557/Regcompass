@@ -73,17 +73,17 @@
   universal_rows <- list()
   row_index <- 1L
   for (fit in fits) {
-    if (!identical(fit$schema_version, "pando_condition_grn_fit_v4") ||
+    if (!identical(fit$schema_version, "pando_condition_grn_fit_v5") ||
         !identical(
           fit$fit_engine, "condition_sparse_within_cell_type_oof_refit"
         ) ||
         !identical(
           fit$coefficient_scale,
-          "pooled_cell_type_standardized_refit"
+          "equal_condition_within_variance_standardized_refit"
         )) {
       stop(
-        "RegCompass requires one pooled-within-cell-type condition-sparse ",
-        "ConditionGRNFit v4 per broad cell type.", call. = FALSE
+        "RegCompass requires one balanced nested-OOF ConditionGRNFit v5 ",
+        "per broad cell type.", call. = FALSE
       )
     }
     fit_cell_type <- trimws(as.character(fit$cell_type %||% ""))
@@ -154,7 +154,7 @@
         !identical(dimnames(value), dimnames(beta))
     }, logical(1))
     if (any(invalid_mask) || any(support & !mask) || any(active & !mask)) {
-      stop("ConditionGRNFit v4 support masks are invalid.", call. = FALSE)
+      stop("ConditionGRNFit v5 support masks are invalid.", call. = FALSE)
     }
     beta_reference <- beta[, fit$reference_condition]
     expected_contrast <- .rc_reference_contrast(
@@ -182,11 +182,31 @@
         is.null(names(oof_validation_level)) ||
         !all(
           oof_validation_level ==
-            "within_cell_type_condition_stratified_cells"
+            "outer_condition_stratified_heldout_cells"
         )) {
       stop(
-        "ConditionGRNFit v4 lacks complete within-cell-type ",
-        "condition-stratified cell OOF.",
+        "ConditionGRNFit v5 lacks complete outer-heldout projections.",
+        call. = FALSE
+      )
+    }
+    if (!identical(
+          fit$projection_origin,
+          "outer_condition_stratified_cell_oof"
+        ) ||
+        !isTRUE(fit$projection_used_for_penalty) ||
+        !identical(fit$full_fit_projection_used_for_penalty, FALSE) ||
+        any(fit$oof_cell_coverage != 1) ||
+        !is.numeric(fit$oof_projection_available_fraction) ||
+        !identical(
+          names(fit$oof_projection_available_fraction),
+          names(fit$oof_cell_coverage)
+        ) ||
+        any(!is.finite(fit$oof_projection_available_fraction)) ||
+        any(fit$oof_projection_available_fraction < 0 |
+            fit$oof_projection_available_fraction > 1) ||
+        any(fit$oof_assignment_count != 1L)) {
+      stop(
+        "ConditionGRNFit v5 OOF projection provenance or coverage is invalid.",
         call. = FALSE
       )
     }
@@ -273,8 +293,8 @@
         is.finite(tab$rsq_oof_pooled)
       tab$reliability_status <- ifelse(
         tab$oof_reliability_available,
-        "within_cell_type_condition_stratified_cell_oof",
-        "nonfinite_within_cell_type_cell_oof"
+        "outer_condition_stratified_cell_oof",
+        "nonfinite_outer_condition_stratified_cell_oof"
       )
       tab$rsq <- tab$rsq_oof_pooled
       tab[[condition_col]] <- condition
@@ -358,7 +378,8 @@
       condition_mix = 0.5,
       condition_weight = "equal",
       nlambda = 50L,
-      nfolds = 5L,
+      outer_nfolds = 5L,
+      inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
       scale = TRUE,
       parallel = FALSE
@@ -405,14 +426,14 @@
   if (!exists("infer_condition_grn", envir = asNamespace("Pando"),
               inherits = FALSE)) {
     stop(
-      "Installed Pando lacks `infer_condition_grn`; install Pando_regcompass >= 1.4.0.",
+      "Installed Pando lacks `infer_condition_grn`; install Pando_regcompass >= 1.5.0.",
       call. = FALSE
     )
   }
   if (!exists("condition_grn_fit", envir = asNamespace("Pando"),
               inherits = FALSE)) {
     stop(
-      "Installed Pando lacks the ConditionGRNFit v4 accessor.",
+      "Installed Pando lacks the ConditionGRNFit v5 accessor.",
       call. = FALSE
     )
   }
@@ -425,7 +446,8 @@
       condition_mix = 0.5,
       condition_weight = "equal",
       nlambda = 50L,
-      nfolds = 5L,
+      outer_nfolds = 5L,
+      inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
       scale = TRUE,
       parallel = FALSE
@@ -441,18 +463,21 @@
       paste(retired_infer, collapse = ", "), ".", call. = FALSE
     )
   }
-  nfolds <- pando_infer_args$nfolds
-  if (!is.numeric(nfolds) || length(nfolds) != 1L ||
-      !is.finite(nfolds) ||
-      abs(nfolds - round(nfolds)) > sqrt(.Machine$double.eps) ||
-      nfolds > .Machine$integer.max ||
-      nfolds < 2L) {
-    stop("Pando `nfolds` must be one integer of at least 2.",
+  fold_counts <- unlist(pando_infer_args[
+    c("outer_nfolds", "inner_nfolds")
+  ])
+  if (!is.numeric(fold_counts) || length(fold_counts) != 2L ||
+      any(!is.finite(fold_counts)) ||
+      any(abs(fold_counts - round(fold_counts)) >
+          sqrt(.Machine$double.eps)) ||
+      any(fold_counts > .Machine$integer.max) ||
+      any(fold_counts < 2L)) {
+    stop("Pando outer_nfolds and inner_nfolds must be integers >= 2.",
          call. = FALSE)
   }
-  if (min_cells < as.integer(nfolds)) {
+  if (min_cells < as.integer(pando_infer_args$outer_nfolds)) {
     stop(
-      "`min_cells` must be no smaller than Pando `nfolds` for ",
+      "`min_cells` must be no smaller than Pando `outer_nfolds` for ",
       "within-cell-type OOF.", call. = FALSE
     )
   }
@@ -620,7 +645,7 @@
   }, integer(1))
   status$predictive_oof_available <- TRUE
   status$oof_validation_level <-
-    "within_cell_type_condition_stratified_cells"
+    "outer_condition_stratified_heldout_cells"
   status$grn_evidence_role <- "within_cell_type_multiomic"
   status$error_class <- ifelse(status$status == "ok", NA_character_,
                                "missing_condition_network")
@@ -702,7 +727,7 @@
   )
   if (isTRUE(save_pando_objects)) {
     saveRDS(grn, file.path(outdir, "pando_objects",
-                           "condition_grn_fit_v4.rds"))
+                           "condition_grn_fit_v5.rds"))
   }
 
   tf_metabolic_target_overlap <- intersect(
@@ -710,7 +735,7 @@
     unique(toupper(target_genes))
   )
   answer <- list(
-    schema_version = "regcompass_condition_grn_fit_v4",
+    schema_version = "regcompass_condition_grn_fit_v5",
     pando_installed_version = pando_install$version,
     pando_installation = pando_install,
     pando_file_fingerprint =
@@ -750,7 +775,7 @@
       atac = "cell-type-shared TF-IDF across conditions",
       grn_fit = paste(
         "one independent Pando condition fit per broad cell type with",
-        "condition-stratified cell OOF and a within-cell-type",
+        "nested outer-heldout cell OOF and a within-cell-type",
         "common-metric refit"
       ),
       universal_coefficient = "visualization-only row mean; never used as a contrast baseline",
@@ -759,11 +784,11 @@
       )),
       condition_effect = "condition coefficient minus explicit reference-condition coefficient",
       coefficient_scale =
-        "pooled within-cell-type TF-by-ATAC edge and target standardization",
+        "equal-condition center and within-condition variance standardization",
       core_reaction_evidence =
         "active condition-level TF-peak-target coefficients",
       penalty_regulatory_evidence = paste(
-        "absolute condition coefficients applied to Pando cell-first",
+        "outer-heldout condition coefficients applied to Pando cell-first",
         "TF RNA by peak ATAC projections, then aggregated by",
         "SuperCell membership"
       ),
@@ -780,7 +805,7 @@
 }
 
 .rc_integrate_regulatory_support <- function(
-    rna_support, regulatory_modifier, alpha = 1) {
+    rna_support, regulatory_modifier, alpha = 0.5) {
   rna_support <- as.matrix(rna_support)
   regulatory_modifier <- as.matrix(regulatory_modifier)
   if (!identical(dim(rna_support), dim(regulatory_modifier)) ||
@@ -794,6 +819,13 @@
   }
   C <- pmin(pmax(rna_support, 0), 1)
   R <- pmin(pmax(regulatory_modifier, -1), 1)
+  if (alpha == 0) {
+    dimnames(C) <- dimnames(rna_support)
+    attr(C, "integration_formula") <- "C_multiome = C_RNA when alpha = 0"
+    attr(C, "score_semantics") <-
+      "RNA-only zero-preserving bounded support"
+    return(C)
+  }
   multiplier <- 2^(alpha * R)
   numerator <- C * multiplier
   denominator <- 1 - C + numerator

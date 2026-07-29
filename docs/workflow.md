@@ -1,10 +1,10 @@
-# RegCompassR 1.9.1 workflow
+# RegCompassR 2.1.0 workflow
 
 ## Canonical data flow
 
 ```text
 cell type cells across conditions
-→ shared Pando edge design, condition-sparse selection, and common-metric refit
+→ shared Pando edge design and nested outer-heldout condition projection
 → supported metabolic target genes
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
@@ -15,15 +15,16 @@ cell type cells across conditions
 → medium-specific union GEM
 → global FASTCORE completion
 → directional two-step COMPASS-like LP
-→ within-condition ranking and descriptive contrasts
+→ within-condition ranking and metacell-level statistical contrasts
 ```
 
 ## 1. Pando targets, motifs, and regulatory regions
 
 Pando is fitted once per cell type across conditions. The complete edge
-dictionary, edge eligibility mask, and pooled final-predictor scale are shared.
-Within each target, the lambda path and selected lambda are also shared;
-condition coefficients are selected sparsely and refit on a common metric. Its candidate target set is:
+dictionary, edge eligibility mask, lambda path, and equal-condition transform
+definition are shared. Every outer fold estimates numerical transforms and
+selects lambda from training cells only, then projects held-out cells exactly
+once. The full-data refit is interpretation-only. Its candidate target set is:
 
 \[
 T = G_{GEM\ GPR} \cap G_{RNA\ assay}.

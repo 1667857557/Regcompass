@@ -131,8 +131,10 @@
 #' [rc_test_condition_reactions()] and can use raw or multiplicity-adjusted P
 #' values. The statistics layer is run over the full scored reaction set before
 #' the selected target is extracted, so adjusted P values retain the requested
-#' reaction-wide multiplicity correction. When three or more conditions are
-#' present, the Kruskal-Wallis omnibus result is shown in the subtitle by default.
+#' reaction-wide multiplicity correction. For metacell input these are
+#' within-dataset metacell-level P values, not sample-level biological-
+#' replicate inference. When three or more conditions are present, the
+#' Kruskal-Wallis result is shown in the subtitle by default.
 #'
 #' The plotted score is
 #' `-log(penalty / (omega * vmax) + eps)`, with larger values indicating stronger
@@ -368,7 +370,8 @@ rc_plot_condition_reaction <- function(
     ]
     if (nrow(omnibus) == 1L && is.finite(omnibus$p_adj[[1L]])) {
       omnibus_subtitle <- paste0(
-        "Kruskal-Wallis ", p_adjust_method, "-adjusted P = ",
+        "Metacell Kruskal-Wallis ", p_adjust_method,
+        "-adjusted P = ",
         format.pval(omnibus$p_adj[[1L]], digits = 3, eps = 1e-4)
       )
     }

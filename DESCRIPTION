@@ -1,14 +1,14 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.0.0
+Version: 2.1.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Fits one cell-type-level Pando design across conditions for
     Human-GEM or Mouse-GEM GPR target genes in paired single-cell RNA and ATAC
     data. Condition-sparse coefficients use the same TF-peak-target edge
-    dictionary, estimability masks, pooled predictor scale, lambda path, and
-    selected lambda. Pando emits absolute condition, shared, deviation, and
+    dictionary and estimability masks, with nested outer-heldout projections
+    and equal-condition transforms. Pando emits absolute condition, shared, deviation, and
     reference-contrast coefficients together with condition-stratified
     cell-level out-of-fold diagnostics computed inside each cell type and exact
     projection transforms. Active condition-level edges
@@ -16,7 +16,10 @@ Description: Fits one cell-type-level Pando design across conditions for
     effects are calculated in paired single cells before aggregation through
     the exact SuperCell membership table; metacells are constructed only within
     condition by broad-cell-type strata. Absolute condition projections and
-    shared pooled out-of-fold reliability modify reaction penalties.
+    shared outer-heldout reliability modify reaction penalties through a
+    bounded calibrated link. Common-support, condition-full, RNA-only, depth,
+    and alpha-sensitivity evidence routes are recomputed through the complete
+    GPR, penalty, and LP pipeline on the same structural models.
     Annotation-defined biological meta-modules are deduplicated into a merged
     reaction catalogue without local FASTCORE completion. For each medium
     scenario, the package constructs one shared union GEM and performs a single
@@ -85,6 +88,7 @@ Collate:
     'stepwise_workflow.R'
     'step_meta_modules.R'
     'step_layer1.R'
+    'step_layer1_oof.R'
     'step_layer2.R'
     'step_results.R'
     'regcompass.R'
@@ -104,7 +108,7 @@ Imports:
     Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
-    Pando (>= 1.4.0),
+    Pando (>= 1.5.0),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,

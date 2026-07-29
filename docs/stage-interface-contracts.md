@@ -1,6 +1,6 @@
 # Stage input-output contracts
 
-RegCompassR 1.9.1 connects stages only when classes, workflow settings, GEM provenance, metacell construction provenance, and scoring-unit order agree.
+RegCompassR 2.1.0 connects stages only when classes, workflow settings, GEM provenance, metacell construction provenance, and scoring-unit order agree.
 
 ## Stage 1: Pando evidence
 
@@ -27,23 +27,22 @@ coefficients; only groups with active supported target genes can contribute
 complete-GPR cores. `target_metabolic_genes` is the intersection of GEM GPR
 genes and RNA-assay row names.
 
-The complete fit contract must use schema
-`pando_condition_grn_fit_v2`, the
-`condition_sparse_within_cell_type_oof_refit` engine, pooled final-edge and target
-standardization, one explicit `reference_condition`, aligned `beta`,
-`contrast`, and `eligibility_mask` matrices, and stored predictor/response
-transforms. The contrast must equal
-`beta_condition - beta_reference`.
-
-`sample_status`, `tf_peak_gene_all`, and `tf_peak_gene_significant` are retained
-as compatibility aliases. New code should use the current fields listed above.
+The complete fit contract must use Pando 1.5.0
+`pando_condition_grn_fit_v5`, the
+`condition_sparse_within_cell_type_oof_refit` engine with nested cross-fitting,
+training-only
+equal-condition transforms, one explicit `reference_condition`, aligned
+`beta`, `contrast`, `eligibility_mask`, and common-support projection
+matrices, exactly-once OOF assignment, and stored outer/inner fold provenance.
+The full-fit contrast must equal `beta_condition - beta_reference`, but it is
+interpretation-only and cannot enter Layer 1 penalties.
 
 When `pfm` is omitted, `pando_motifs` records `Pando::motifs`, loaded with `data("motifs", package = "Pando")`. Without an explicit `pando_initiate_args$regions`, the region contract is species-specific:
 
 ```text
 human = union(Pando::phastConsElements20Mammals.UCSC.hg38,
               Pando::SCREEN.ccRE.UCSC.hg38)
-mouse = Pando::phastConsElements20Mammals.UCSC.hg38
+mouse = user-supplied build-matched GRanges (required)
 ```
 
 `step1$params$species` records the resolved species, and `pando_regions` records the applied default or `user_supplied` policy.
@@ -63,9 +62,9 @@ step2$params
 
 The merged metacell object and metadata must contain the same ordered units. Reduction names, dimensions, cell labels, assay fingerprints, and embedding fingerprints are part of the cache contract.
 
-Cells are grouped by condition only. Cell type is a construction label followed
-by dominant-membership auditing. User sample metadata do not enter selection,
-weighting, grouping, stability selection, or model refitting.
+Cells are hard-stratified by condition × broad cell type. User sample metadata
+do not enter selection, weighting, grouping, stability selection, or model
+refitting.
 
 ## Stage 3: biological meta-modules
 

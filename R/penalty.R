@@ -29,8 +29,7 @@ rc_compute_multiome_penalty <- function(
       demand = 20,
       sink = 20,
       artificial_support = 20
-    ),
-    missing_penalty = 1) {
+    )) {
   E <- as.matrix(reaction_expression)
   if (!is.numeric(E) || is.null(rownames(E)) || is.null(colnames(E)) ||
       anyDuplicated(rownames(E)) || anyDuplicated(colnames(E))) {
@@ -41,11 +40,9 @@ rc_compute_multiome_penalty <- function(
   }
   if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0 ||
       !is.numeric(penalty_cap) || length(penalty_cap) != 1L ||
-      !is.finite(penalty_cap) || penalty_cap <= 0 ||
-      !is.numeric(missing_penalty) || length(missing_penalty) != 1L ||
-      !is.finite(missing_penalty) || missing_penalty != 1) {
+      !is.finite(penalty_cap) || penalty_cap <= 0) {
     stop(
-      "Penalty constants are invalid; `missing_penalty` must remain 1 so unmeasured expression is treated as zero expression.",
+      "`eps` and `penalty_cap` must be finite positive constants.",
       call. = FALSE
     )
   }
@@ -64,8 +61,7 @@ rc_compute_multiome_penalty <- function(
 
   observed <- is.finite(E)
   E_effective <- E
-  E_effective[!observed] <- 0
-  E_effective <- pmax(E_effective, 0)
+  E_effective[observed] <- pmax(E_effective[observed], 0)
   P_expr <- 1 / (1 + log2(1 + E_effective))
   dimnames(P_expr) <- dimnames(E)
 
@@ -81,8 +77,15 @@ rc_compute_multiome_penalty <- function(
   if (any(override)) {
     penalty[override, ] <- as.numeric(support_penalty[role[override]])
   }
-  penalty <- pmin(pmax(penalty, eps), penalty_cap)
-  penalty[!is.finite(penalty)] <- penalty_cap
+  finite_penalty <- is.finite(penalty)
+  penalty[finite_penalty] <- pmin(
+    pmax(penalty[finite_penalty], eps),
+    penalty_cap
+  )
+  availability <- observed
+  if (any(override)) {
+    availability[override, ] <- TRUE
+  }
 
   list(
     penalty = penalty,
@@ -93,22 +96,23 @@ rc_compute_multiome_penalty <- function(
       role = role,
       role_source = role_source,
       role_override_flag = override,
+      penalty_available = availability,
       missing_expression_flag = !observed,
-      zero_or_missing_expression_flag = !observed | E_effective <= 0
+      observed_zero_expression_flag = observed & E_effective <= 0
     ),
     evidence_policy = "penalty_only",
     evidence_policy_detail = paste(
-      "unmeasured and explicit zero reaction expression are both treated as",
-      "zero support and receive the strictest expression-linked penalty;",
+      "unmeasured reaction expression remains unavailable (NA), whereas an",
+      "observed zero receives the strictest expression-linked penalty;",
       "fixed costs are used only for exchange/demand/sink/artificial-support reactions"
     ),
-    penalty_version = "gene_integrated_multiome_penalty_v1",
+    penalty_version = "gene_integrated_multiome_penalty_v2",
     evidence_description = paste(
       "Condition-specific Pando coefficients learned from RNA+ATAC weight",
       "accessibility-only regulatory deviations integrated into gene support",
       "before GPR aggregation; expression-linked reactions use",
-      "1/(1+log2(1+reaction_expression)), with missing expression zero-filled."
+      "1/(1+log2(1+reaction_expression)); missing expression remains NA."
     ),
-    penalty_formula = "1 / (1 + log2(1 + pmax(E_multiome, 0))); missing E_multiome := 0"
+    penalty_formula = "1 / (1 + log2(1 + pmax(E_multiome, 0))); missing E_multiome := NA"
   )
 }

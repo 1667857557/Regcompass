@@ -69,7 +69,12 @@ Pairwise differences use two-sided Wilcoxon rank-sum tests and report median shi
 
 For annotated results, \code{tested_formula} follows the scored forward or reverse direction. \code{evidence_class_a} and \code{evidence_class_b} distinguish active \code{RNA+ATAC} contribution from \code{RNA-only}, \code{GPR/no-observed-RNA}, and \code{structural/no-GPR} support.
 
-Metacell tests quantify within-dataset condition-associated separation. They do not turn metacells into independent biological replicates. The returned inference fields record this distinction explicitly.
+Metacell tests use each metacell as a statistical unit and quantify
+within-dataset condition-associated separation. They are not sample/donor-level
+biological-replicate inference. The returned \code{inference_level},
+\code{metacell_statistical_inference}, and
+\code{biological_replicate_inference} fields record this distinction
+explicitly.
 }
 \examples{
 \dontrun{

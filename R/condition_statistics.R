@@ -182,9 +182,10 @@
 #' omnibus test is also performed. P values are adjusted across reaction targets
 #' using the requested scope.
 #'
-#' Metacell tests quantify within-dataset condition-associated separation. They
-#' do not turn metacells into independent biological replicates. The returned
-#' inference fields record this distinction explicitly.
+#' Metacell tests use each metacell as a statistical unit and quantify
+#' within-dataset condition-associated separation. They are not sample/donor-
+#' level biological-replicate inference. The returned inference fields record
+#' this distinction explicitly.
 #'
 #' @param x A microCOMPASS result, such as `step5`, or a complete RegCompass
 #'   result containing a `microcompass` element.
@@ -389,6 +390,9 @@ rc_test_condition_reactions <- function(
 
   analysis_unit <- as.character(microcompass$params$unit %||% "unknown")
   biological_replicate_inference <- identical(analysis_unit, "sample_celltype")
+  metacell_statistical_inference <- identical(analysis_unit, "metacell")
+  statistical_inference_available <-
+    biological_replicate_inference || metacell_statistical_inference
   inference_level <- if (biological_replicate_inference) {
     "biological_sample_celltype"
   } else if (identical(analysis_unit, "metacell")) {
@@ -442,7 +446,9 @@ rc_test_condition_reactions <- function(
           },
           analysis_unit = analysis_unit,
           inference_level = inference_level,
-          descriptive_only = !biological_replicate_inference,
+          descriptive_only = !statistical_inference_available,
+          metacell_statistical_inference =
+            metacell_statistical_inference,
           biological_replicate_inference = biological_replicate_inference,
           stringsAsFactors = FALSE
         )
@@ -522,7 +528,9 @@ rc_test_condition_reactions <- function(
           test_status = status,
           analysis_unit = analysis_unit,
           inference_level = inference_level,
-          descriptive_only = !biological_replicate_inference,
+          descriptive_only = !statistical_inference_available,
+          metacell_statistical_inference =
+            metacell_statistical_inference,
           biological_replicate_inference = biological_replicate_inference,
           stringsAsFactors = FALSE
         )
@@ -581,7 +589,27 @@ rc_test_condition_reactions <- function(
       p_adjust_method = p_adjust_method,
       p_adjust_scope = p_adjust_scope,
       wilcox_correct = wilcox_correct,
-      analysis_unit = analysis_unit
+      analysis_unit = analysis_unit,
+      inference_class = if (biological_replicate_inference) {
+        "biological_replicate_inference"
+      } else if (metacell_statistical_inference) {
+        "metacell_statistical_unit_within_dataset"
+      } else {
+        "descriptive_unknown_unit"
+      },
+      statistical_unit = analysis_unit,
+      metacell_pvalue_reported = metacell_statistical_inference,
+      metacell_statistical_inference =
+        metacell_statistical_inference,
+      formal_biological_replicate_pvalue =
+        biological_replicate_inference,
+      pvalue_interpretation = if (biological_replicate_inference) {
+        "independent_biological_sample_units"
+      } else if (metacell_statistical_inference) {
+        "within_dataset_metacell_units_not_sample_level_replicates"
+      } else {
+        "unknown_analysis_unit"
+      }
     ),
     inference_policy = inference_policy
   )

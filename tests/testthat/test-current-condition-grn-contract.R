@@ -33,7 +33,7 @@ test_that("contract extraction requires within-cell-type cell OOF", {
   )
   expect_match(
     implementation,
-    "within_cell_type_condition_stratified_cells",
+    "outer_condition_stratified_heldout_cells",
     fixed = TRUE
   )
   expect_match(implementation, "fit_cell_type", fixed = TRUE)
