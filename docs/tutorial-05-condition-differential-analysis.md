@@ -177,5 +177,6 @@ cache[, c(
 
 The same shared structural GEM, bounds, medium, target direction, and target-flux
 fraction must be used for every compared unit. Metacell-level P values quantify
-within-dataset condition-associated separation and are not biological-replicate
-level treatment inference.
+within-dataset condition-associated separation, using each metacell as a
+statistical unit. They are not sample/donor-level biological-replicate
+inference.

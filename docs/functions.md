@@ -1,8 +1,8 @@
-# Public functions and API contract in RegCompassR 2.0.0
+# Public functions and API contract in RegCompassR 2.1.0
 
 > Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
 
-RegCompass exposes a one-shot workflow and six restartable stages. Pando 1.4.0
+RegCompass exposes a one-shot workflow and six restartable stages. Pando 1.5.0
 is the sole condition-GRN estimator; RegCompass consumes its versioned
 `ConditionGRNFit` and does not refit condition coefficient matrices.
 
@@ -48,12 +48,15 @@ pando_args = list(
 Within each cell type, Pando shares:
 
 - one TF–peak–target edge dictionary;
-- pooled final `TF RNA × peak ATAC` predictor transforms;
-- one pooled target transform;
-- one target-specific lambda path and selected lambda.
+- one target-specific lambda path;
+- equal-condition transform definitions and coefficient scales.
 
-Condition-specific supports are selected jointly and then refit on one pooled common metric. `candidate_screen = "motif_domain"` is the interaction-safe default.
-The optional `pooled_within_condition` mode imposes a response-dependent marginal-correlation screen and is intended only for sensitivity analysis; its OOF score is not used as confirmatory Layer 1 reliability (`q = 0`).
+Every outer fold estimates its predictor/target transforms and selects lambda
+using training cells only. Condition-specific supports are selected jointly,
+projected exactly once on held-out cells, and then refit on full data only for
+network interpretation. `candidate_screen = "motif_domain"` is the
+interaction-safe default.
+The optional `pooled_within_condition` mode imposes a response-dependent marginal-correlation screen and is intended only for sensitivity analysis; its projection is ineligible for penalty construction.
 
 ### Comparison support
 
@@ -64,9 +67,10 @@ comparison_mask[e, c] =
   eligibility_mask[e, c] && eligibility_mask[e, reference]
 ```
 
-RegCompass requires the explicit Pando 1.4.0 mask. All effect rows expose
-`comparable_to_reference`; only comparable rows can enter
-`tf_peak_gene_condition_effect` and the Layer 1 regulatory projection.
+RegCompass retains the explicit Pando 1.5.0 mask for full-fit interpretation.
+All effect rows expose `comparable_to_reference`; only comparable rows enter
+`tf_peak_gene_condition_effect`. Layer 1 penalties instead use Pando's
+outer-heldout pairwise/global-common absolute condition projection.
 
 ### Pando argument routing
 
@@ -114,9 +118,6 @@ step1$grn_result$normalization_policy
 step1$params$pando_parallel
 ```
 
-Compatibility aliases `sample_status`, `tf_peak_gene_all`, and
-`tf_peak_gene_significant` remain available but should not be used by new code.
-
 ## Regulatory regions
 
 Human Stage 1 defaults to the union of Pando's hg38 phastCons and SCREEN ccRE
@@ -153,10 +154,12 @@ complete-GPR cores, and one ordered expansion pass:
 core subsystems → direct KEGG/Reactome equivalents → direct master-Rhea equivalents
 ```
 
-Stage 4 delegates standardized single-cell interaction projection to Pando and
-projects only comparable condition-versus-reference coefficients. GPR AND
-accepts `"min"`, `"median"`, or `"mean"`; the default is `"min"`. Isozyme OR
-branches remain additive.
+Stage 4 delegates standardized single-cell interaction projection to Pando.
+The primary route accepts only outer-heldout pairwise/global-common absolute
+condition projections; condition-full OOF is exploratory and full-fit
+condition-versus-reference contrasts are interpretation-only. GPR AND accepts
+`"min"`, `"median"`, or `"mean"`; the default is `"min"`. Isozyme OR branches
+remain additive.
 
 With `model_mode = "meta_module_gem"`, Stage 5 applies each medium, performs one
 global FASTCORE completion, caches one shared model, and reuses it for every

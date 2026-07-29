@@ -41,7 +41,7 @@ rc_import_supercell2_metacells <- function(
     metacell_dirs,
     rna_assay = "RNA",
     atac_assay = "ATAC",
-    sample_col = "sample_id",
+    sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
     require_fragments = FALSE) {

@@ -71,7 +71,7 @@ test_that("medium-specific union GEM scores every metacell", {
       parallel = FALSE,
       solver = solver
     ),
-    "descriptive pseudo-observations"
+    "valid within-dataset statistical units"
   )
   expect_true(all(result$evaluated[1L, ]))
   expect_true(all(result$feasible[1L, ]))

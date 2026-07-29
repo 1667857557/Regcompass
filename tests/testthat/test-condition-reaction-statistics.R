@@ -67,8 +67,16 @@ test_that("shared-GEM reaction scores support pairwise condition tests", {
   expect_lt(shifted$p_value, 0.05)
   expect_true(is.finite(shifted$p_adj))
   expect_equal(shifted$inference_level, "metacell_within_dataset")
-  expect_true(shifted$descriptive_only)
+  expect_false(shifted$descriptive_only)
+  expect_true(shifted$metacell_statistical_inference)
   expect_false(shifted$biological_replicate_inference)
+  expect_identical(
+    result$params$inference_class,
+    "metacell_statistical_unit_within_dataset"
+  )
+  expect_identical(result$params$statistical_unit, "metacell")
+  expect_true(result$params$metacell_pvalue_reported)
+  expect_false(result$params$formal_biological_replicate_pvalue)
 
   constant <- subset(
     result$pairwise,

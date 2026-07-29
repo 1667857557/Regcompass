@@ -98,7 +98,7 @@ step4_mean <- rc_regcompass_step_layer1(
   meta_modules = step3,
   gem = gem,
   outdir = "RegCompass_restart/04_layer1_mean",
-  regulatory_alpha = 1,
+  regulatory_alpha = 0.5,
   gpr_and_method = "mean",
   parallel = TRUE,
   BPPARAM = upstream_bp

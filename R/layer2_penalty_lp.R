@@ -60,6 +60,9 @@ rc_compass_score_from_penalty <- function(P, feasible,
   attr(score, "noninformative_target") <- stats::setNames(
     noninformative, rownames(P)
   )
+  attr(score, "composition_dependent") <- TRUE
+  attr(score, "effect_size_eligible") <- FALSE
+  attr(score, "display_only") <- TRUE
   score
 }
 
@@ -93,6 +96,15 @@ rc_layer2_unit_matrices <- function(
   if (is.null(layer1$unit_meta) || !is.data.frame(layer1$unit_meta)) {
     stop("sample_celltype units require data-frame `layer1$unit_meta`.",
          call. = FALSE)
+  }
+  if (is.null(sample_col) || !is.character(sample_col) ||
+      length(sample_col) != 1L || is.na(sample_col) ||
+      !nzchar(trimws(sample_col))) {
+    stop(
+      "Legacy `sample_celltype` mode requires an explicit `sample_col`; ",
+      "the canonical metacell path has no sample variable.",
+      call. = FALSE
+    )
   }
   pm <- layer1$unit_meta
   required <- c("pool_id", sample_col, celltype_col)

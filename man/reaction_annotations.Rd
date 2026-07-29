@@ -122,8 +122,8 @@ whose GPR-aggregated reaction capacity is changed by ATAC-integrated gene suppor
 (\code{RNA+ATAC}) from reactions supported by RNA without an active reaction-level
 ATAC contribution (\code{RNA-only}).
 The ATAC contribution originates from the stored Pando
-\code{beta_condition - beta_reference} contrast projected through the exact
-pooled TF-RNA by peak-ATAC transform; these functions do not refit a GRN.
+\code{outer-heldout common-support condition} score projected through the exact
+outer-training TF-RNA by peak-ATAC transform; these functions do not refit a GRN.
 }
 \details{
 \code{RNA+ATAC} is assigned only when the reaction capacity calculated from

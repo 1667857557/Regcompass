@@ -1,4 +1,4 @@
-# RegCompassR 2.0.0 tutorial index
+# RegCompassR 2.1.0 tutorial index
 
 All execution modes follow the same main workflow:
 
@@ -15,7 +15,7 @@ one shared Pando motif/domain design per cell type
 → directional LP scoring
 ```
 
-Stage 1 requires Pando 1.4.0's explicit `comparison_mask`; unsupported
+Stage 1 requires Pando 1.5.0's `ConditionGRNFit v5` nested OOF contract; unsupported
 condition-versus-reference contrasts cannot enter Layer 1.
 
 ## Level 1: one-shot workflow
@@ -100,4 +100,4 @@ The complete validated GEM is reused directly for scoring; no union-model recons
 Treat the two modes as separate analyses.
 
 See the [complete public function and API index](functions.md) for current
-arguments, return objects, compatibility aliases, and interpretation limits.
+arguments, return objects, and interpretation limits.

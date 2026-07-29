@@ -49,6 +49,23 @@ rc_regcompass_step_results <- function(
     condition_col = params$condition_col,
     celltype_col = params$celltype_col
   )
+  condition_full_comparison <- .rc_condition_penalty_route(
+    layer2,
+    layer2$penalty_condition_full,
+    condition_col = params$condition_col,
+    celltype_col = params$celltype_col
+  )
+  rna_only_comparison <- .rc_condition_penalty_route(
+    layer2,
+    layer2$penalty_rna_only,
+    condition_col = params$condition_col,
+    celltype_col = params$celltype_col
+  )
+  unique_increment_summary <- .rc_condition_increment_summary(
+    layer2,
+    condition_col = params$condition_col,
+    celltype_col = params$celltype_col
+  )
   conditions <- unique(as.character(
     metacells$pooled$metacell_meta[[params$condition_col]]
   ))
@@ -60,8 +77,8 @@ rc_regcompass_step_results <- function(
   ), names(meta_modules$condition_modules))
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
-    schema_version = "regcompass_condition_grn_fit_v4",
-    version = "2.0.0",
+    schema_version = "regcompass_condition_grn_fit_v5",
+    version = "2.1.0",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
@@ -73,9 +90,17 @@ rc_regcompass_step_results <- function(
     grn_meta_modules = meta_modules$merged_modules,
     grn_metacell_group_coverage = meta_modules$group_coverage,
     microcompass = layer2,
+    reaction_comparison_by_metacell = layer2$comparison_table,
     reaction_ranking = comparison$ranking,
     condition_summary = comparison$summary,
     condition_contrast = comparison$contrast,
+    condition_full_exploratory_summary =
+      condition_full_comparison$summary,
+    condition_full_exploratory_contrast =
+      condition_full_comparison$contrast,
+    rna_only_control_summary = rna_only_comparison$summary,
+    rna_only_control_contrast = rna_only_comparison$contrast,
+    unique_grn_increment_summary = unique_increment_summary,
     inference_policy = comparison$inference_policy,
     gem_fingerprint = .rc_stage_gem_fingerprint(gem),
     params = list(
@@ -86,11 +111,11 @@ rc_regcompass_step_results <- function(
       ),
       pando_grouping = params$celltype_col,
       pando_condition_design = paste(
-        "shared candidate dictionary, estimability masks, pooled transform,",
-        "condition-sparse selection, and common-metric refit"
+        "shared candidate dictionary, estimability masks, equal-condition",
+        "within-variance transform, nested OOF selection, and common-metric refit"
       ),
       pando_condition_effect =
-        "absolute_beta_condition_for_penalty; contrasts_are_reporting_only",
+        "outer-heldout_common_support_projection_for_primary_penalty",
       pando_peak_cor =
         grn$grn_result$normalization_policy$pando_peak_cor,
       pando_regions = grn$grn_result$normalization_policy$pando_regions,
@@ -98,7 +123,7 @@ rc_regcompass_step_results <- function(
       metacell_celltype_assignment =
         "hard_condition_by_broad_cell_type_stratum",
       metacell_gamma = params$metacell_args$gamma,
-      sample_weighting = "none",
+      sample_variable = "absent_from_canonical_workflow",
       meta_module_core_definition =
         "condition_celltype_active_pando_targets_complete_gpr",
       meta_module_expansion =

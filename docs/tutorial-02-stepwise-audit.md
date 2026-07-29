@@ -3,7 +3,7 @@
 > Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
 
 Use this workflow when every stage should be saved and inspected independently.
-The examples target RegCompassR 2.0.0 and Pando 1.4.0.
+The examples target RegCompassR 2.1.0 and Pando 1.5.0.
 
 ## Configure Stage 1 and Stage 4 workers
 
@@ -71,7 +71,8 @@ step1 <- rc_regcompass_step_grn(
       condition_weight = "equal",
       reference_condition = "Control",
       nlambda = 50L,
-      nfolds = 5L,
+      outer_nfolds = 5L,
+      inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
       scale = TRUE
     )
@@ -135,7 +136,7 @@ paired single cells and Stage 2 owns metacell aggregation.
 
 The canonical default is `candidate_screen = "motif_domain"`. It retains the
 structural motif/domain edge dictionary and lets elastic net select the
-`TF RNA × peak ATAC` interaction predictors. `pooled_within_condition` remains an explicit marginal-screen sensitivity mode; its response-dependent screen makes its OOF score ineligible for confirmatory Layer 1 reliability (`q = 0`).
+`TF RNA × peak ATAC` interaction predictors. `pooled_within_condition` remains an explicit marginal-screen sensitivity mode; its response-dependent screen makes its projection ineligible for penalty construction.
 
 ### Audit the Pando fit contract
 
@@ -273,7 +274,7 @@ step4 <- rc_regcompass_step_layer1(
   meta_modules = step3,
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
-  regulatory_alpha = 1,
+  regulatory_alpha = 0.5,
   gpr_and_method = "min",
   parallel = TRUE,
   BPPARAM = upstream_bp
@@ -283,10 +284,11 @@ step4$capacity_params$and_method
 step4$evidence_formula
 ```
 
-Stage 4 delegates standardized single-cell interaction projection to Pando, applies the
-stored condition-versus-reference coefficient, and excludes non-comparable
-edges. It does not refit Pando or normalize coefficient effects by their
-absolute sum.
+Stage 4 delegates standardized single-cell interaction projection to Pando and
+uses only outer-heldout pairwise/global-common absolute condition projections
+for the primary penalty. Condition-full OOF is exploratory, and the stored
+full-fit condition-versus-reference contrast is interpretation-only. RegCompass
+does not refit Pando or normalize coefficient effects by their absolute sum.
 
 ## Stage 5: shared medium-specific model and LP scores
 
@@ -313,7 +315,14 @@ step5 <- rc_regcompass_step_layer2(
 )
 
 step5$model_cache_summary
+step5$comparison_table
 ```
+
+`comparison_table` aligns common OOF, condition-full OOF, RNA-only,
+depth-matched, common-depth-interval and alpha-grid reruns by the same reaction,
+direction, medium, metacell, GEM checksum, bounds, target flux and reaction
+order. A mismatch in any shared structural field is a hard error rather than a
+reported biological difference.
 
 ## Stage 6: assemble results
 

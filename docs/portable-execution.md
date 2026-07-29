@@ -1,6 +1,6 @@
 # Portable execution, bundled GEMs, progress, timing, and worker cleanup
 
-RegCompassR 1.9.1 removes three setup assumptions from the canonical workflow:
+RegCompassR 2.1.0 removes three setup assumptions from the canonical workflow:
 
 1. users do not need to prepare the default Human-GEM or Mouse-GEM;
 2. users do not choose a platform-specific parallel backend;

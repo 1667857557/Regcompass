@@ -1,6 +1,6 @@
 # RegCompassR
 
-RegCompassR 2.0.0 implements a condition-comparable regulatory–metabolic
+RegCompassR 2.1.0 implements a condition-comparable regulatory–metabolic
 workflow for paired single-cell RNA+ATAC data.
 
 ## Canonical architecture
@@ -8,9 +8,9 @@ workflow for paired single-cell RNA+ATAC data.
 ```text
 cells of one cell type across conditions
 → one Pando motif/domain TF–peak–GEM-gene dictionary
-→ pooled TF-RNA × peak-ATAC predictor transforms
-→ condition-sparse selection and common-metric refit
-→ condition-stratified cell OOF within that cell type
+→ outer-training equal-condition TF-RNA × peak-ATAC transforms
+→ nested condition-stratified cell OOF within that cell type
+→ condition-sparse selection and interpretation-only full-data refit
 → active metabolic targets and complete-GPR core reactions
 → one ordered subsystem / KEGG–Reactome / master-Rhea expansion
 → SuperCell metacells within condition × broad-cell-type strata
@@ -20,21 +20,29 @@ cells of one cell type across conditions
 → directional COMPASS-like LP scoring
 ```
 
-Pando is the sole GRN estimator. RegCompass consumes Pando 1.4.0's versioned
-`ConditionGRNFit v4` without refitting its coefficient matrices. For the main
-penalty path, the target-gene projection for cell `i`, gene `g`, and condition
-`c` is
+Pando is the sole GRN estimator. RegCompass consumes Pando 1.5.0's versioned
+`ConditionGRNFit v5` without refitting its coefficient matrices. The primary
+penalty path accepts only the pairwise/global-common outer-heldout projection.
+For target gene `g`, condition `c`, and a cell `i` held out from outer fold `k`,
 
 ```text
-G[i, g, c] = sum_e z[i, e] * beta_condition[e, c]
+G_OOF[i, g, c] = sum_e z_training(-k)[i, e] * beta_training(-k)[e, c]
 ```
 
-Two-condition quantitative comparisons use the pairwise intersection of
-estimable edges. Reference contrasts remain available for interpretation but
-do not enter the main metabolic penalty. Pando calculates TF×ATAC and applies
-its pooled transform in single cells; RegCompass then averages the completed
-gene projections using SuperCell's exact
+Two-condition quantitative comparisons use pairwise-common support; analyses
+with more than two conditions use global-common support. Condition-estimable
+and strict projections are diagnostic only. Pando calculates TF×ATAC and
+applies an outer-training transform in single cells; RegCompass then averages
+the completed gene projections using SuperCell's exact
 `misc$membership_table(cell_id, metacell_id)`.
+
+For a fixed shared GEM, medium, reaction order, target direction and
+`vmax`, the directional LP value is coordinatewise nondecreasing in the
+penalty vector, positively 1-homogeneous, and concave. These mathematical
+properties validate like-for-like comparisons but do not distinguish a
+biological penalty difference from an upstream technical penalty difference;
+the reported depth, zero-pattern, link-saturation and alpha sensitivities must
+therefore accompany the primary result.
 
 ## Installation
 
@@ -104,7 +112,8 @@ result <- rc_run_regcompass_one_shot(
       condition_weight = "equal",
       reference_condition = "Control",
       nlambda = 50L,
-      nfolds = 5L,
+      outer_nfolds = 5L,
+      inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
       scale = TRUE
     )
@@ -127,7 +136,7 @@ result <- rc_run_regcompass_one_shot(
   layer1_args = list(
     projection_component = "condition",
     comparison_support = "auto",
-    regulatory_alpha = 1,
+    regulatory_alpha = 0.5,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -173,7 +182,7 @@ edges based on the fitted `TF RNA × peak ATAC` predictor. The optional
 `pooled_within_condition` applies marginal TF-target and peak-target screening
 and should be treated as a sensitivity analysis. Because that screen uses the
 response before cross-validation, its OOF score is not used as confirmatory
-Layer 1 reliability; RegCompass sets `q = 0` for that sensitivity path.
+Layer 1 reliability; that projection is unavailable for penalty construction.
 
 ### Conditions with one biological sample
 
@@ -284,8 +293,9 @@ p <- rc_plot_condition_reaction(
 
 The omnibus test is Kruskal-Wallis; pairwise contrasts use Wilcoxon tests with
 explicit multiplicity scope. The plot retains one point per metacell and
-adjusted-P-value significance brackets. These are metacell-level descriptive
-comparisons unless biological replicate-level inference is supplied separately.
+adjusted-P-value significance brackets. Metacells are the statistical units for
+these within-dataset tests; the resulting P values are not sample/donor-level
+biological-replicate inference.
 See [Condition-associated reaction statistics](docs/condition-reaction-statistics.md).
 
 ## Restartable stages

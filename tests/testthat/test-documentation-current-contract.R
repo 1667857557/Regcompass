@@ -62,12 +62,13 @@ test_that("tutorials and Rd use the current condition-GRN vocabulary", {
   ))
 
   current <- c(
-    "ConditionGRNFit v4",
-    "condition × broad cell type", "condition-stratified cell OOF",
+    "ConditionGRNFit v5",
+    "condition × broad cell type", "outer-heldout",
     "condition_grn_fits",
     "condition_fit_status", "tf_peak_gene_condition",
-    "tf_peak_gene_condition_effect", "beta_condition - beta_reference",
-    "TF RNA × peak ATAC", "single global FASTCORE completion"
+    "tf_peak_gene_condition_effect", "common-support",
+    "TF RNA × peak ATAC", "single global FASTCORE completion",
+    "penalty / (omega * vmax)"
   )
   expect_true(all(vapply(
     current, grepl, logical(1), x = all_docs, fixed = TRUE
@@ -75,7 +76,8 @@ test_that("tutorials and Rd use the current condition-GRN vocabulary", {
 
   retired <- c(
     "RegCompassR 1.8.3", "RegCompassR 1.9.3",
-    "Pando 1.2.1", "shared_design_independent",
+    "Pando 1.2.1", "ConditionGRNFit v4", "Pando 1.4.0",
+    "shared_design_independent",
     "condition_multitask_grn.md",
     "condition × cell type Pando evidence",
     "condition-by-cell-type Pando GRNs", "local FASTCORE",
@@ -112,7 +114,7 @@ test_that("each tutorial links the current API index", {
   )))
 })
 
-test_that("current condition fit status is exported with legacy compatibility", {
+test_that("current condition fit status excludes retired aliases", {
   implementation <- paste(
     deparse(body(.rc_fit_condition_grns_by_cell_type)), collapse = "\n"
   )

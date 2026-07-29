@@ -43,16 +43,25 @@ observed type is processed independently.}
 \item{layer2_workers}{Worker count for Stage 5 completion and directional LP scoring.}
 \item{progress}{Display workflow and stage progress.}
 }
-\description{Runs RegCompassR 2.0.0 using Pando 1.4.0 ConditionGRNFit v4, condition-by-broad-cell-type SuperCells, cell-first TF-by-ATAC projection, complete-GPR meta-modules, and shared-model directional LP scoring.}
+\value{
+A validated complete RegCompass result. The audited
+\code{reaction_comparison_by_metacell} table contains common-OOF,
+condition-full-OOF, RNA-only, depth and alpha penalty routes aligned on the
+same reaction, direction, medium, metacell and shared GEM structure.
+}
+\description{Runs RegCompassR 2.1.0 using Pando 1.5.0 ConditionGRNFit v5, condition-by-broad-cell-type SuperCells, nested outer-heldout TF-by-ATAC projection, complete-GPR meta-modules, and shared-model directional LP scoring.}
 \details{
-Pando fits an independent TF-peak-target dictionary, pooled transform, and
-condition-sparse common-metric refit for each broad cell type. Lambda selection
-and preprocessing use condition-stratified cell folds within that type.
+Pando fits one TF-peak-target dictionary and equal-condition transform for each
+broad cell type. Every outer fold learns its preprocessing, lambda and
+coefficients from training cells only, then projects held-out cells.
 Biological sample count is not an input or reliability gate.
 
-The exported effect is \code{beta_condition - beta_reference}. RegCompass requires Pando's explicit \code{comparison_mask}, which is true only when an edge is eligible in both the requested and reference conditions. Complete effect tables expose \code{comparable_to_reference}; unsupported contrasts are excluded from the active effect table and downstream penalty projection.
+The primary penalty uses common-support OOF projections. Condition-full OOF is
+exploratory, RNA-only is a separate baseline, and the full-data sub-GRN is used
+only for network interpretation. Missing/unavailable support remains
+\code{NA}; an observed zero remains a true zero.
 
-The complete workflow controls Stage 1 parallel execution through \code{upstream_workers}; users should not set \code{pando_infer_args$parallel}. The interaction-safe candidate default is \code{"motif_domain"}; \code{"pooled_within_condition"} is an optional marginal-screen sensitivity mode. Because it uses the response before cross-validation, its OOF score is not used as Layer 1 reliability and \eqn{q=0}.
+The complete workflow controls Stage 1 parallel execution through \code{upstream_workers}; users should not set \code{pando_infer_args$parallel}. The interaction-safe candidate default is \code{"motif_domain"}; \code{"pooled_within_condition"} is an optional marginal-screen sensitivity mode and is ineligible for penalty construction.
 
-Stage 2 calls SuperCell_Seurat_V4 and hard-stratifies only by condition and broad cell type. Stage 4 delegates single-cell TF-RNA by peak-ATAC projection to Pando and aggregates completed gene scores through \code{misc$membership_table}. Stage 5 applies each medium and performs the single global FASTCORE completion before shared-model directional scoring.
+Stage 2 calls SuperCell_Seurat_V4 and hard-stratifies only by condition and broad cell type while recording shared depth targets. Stage 4 aggregates Pando held-out scores through \code{misc$membership_table}, uses bounded calibrated modifiers with primary \code{regulatory_alpha = 0.5}, and reports RNA-only/depth/alpha sensitivities. Stage 5 applies each medium and performs one global FASTCORE completion before reusing the exact same structure for every comparison route. Formal effect sizes use \code{penalty / (omega * vmax)}; ECDF scores are display-only.
 }

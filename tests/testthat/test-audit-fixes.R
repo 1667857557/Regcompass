@@ -1,14 +1,19 @@
-test_that("missing and explicit zero expression have identical strict penalties", {
+test_that("missing and explicit zero expression have distinct availability", {
   expression <- matrix(c(NA_real_, 0, 0.5, 4), nrow = 4,
     dimnames = list(c("missing", "zero", "low", "high"), "u1"))
   out <- rc_compute_multiome_penalty(expression)
-  expect_equal(out$penalty["missing", "u1"], 1)
+  expect_true(is.na(out$penalty["missing", "u1"]))
   expect_equal(out$penalty["zero", "u1"], 1)
-  expect_equal(out$components$effective_reaction_expression["missing", "u1"], 0)
+  expect_true(is.na(
+    out$components$effective_reaction_expression["missing", "u1"]
+  ))
   expect_true(out$components$missing_expression_flag["missing", "u1"])
   expect_false(out$components$missing_expression_flag["zero", "u1"])
   expect_true(all(out$penalty[c("low", "high"), "u1"] < 1))
-  expect_error(rc_compute_multiome_penalty(expression, missing_penalty = 2), "must remain 1")
+  expect_error(
+    rc_compute_multiome_penalty(expression, missing_penalty = 2),
+    "unused argument"
+  )
 })
 
 test_that("GPR diagnostics require at least one complete isozyme group", {

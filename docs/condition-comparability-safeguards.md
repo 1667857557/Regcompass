@@ -7,7 +7,7 @@ edge can still be non-estimable in one condition because its TF, peak, or final
 `TF RNA × peak ATAC` predictor lacks eligible variation.
 
 A coefficient fixed to zero by an eligibility constraint is not equivalent to
-an eligible coefficient estimated as zero. Pando 1.4.0 therefore exports:
+an eligible coefficient estimated as zero. Pando 1.5.0 therefore exports:
 
 ```text
 comparison_mask[e, c] =
@@ -36,7 +36,7 @@ candidate_screen = "motif_domain"
 
 This retains the structurally supported motif/domain dictionary and lets the
 shared elastic-net model select coefficients. Users can explicitly request
-`pooled_within_condition` as a marginal-screen sensitivity analysis. Its response-dependent screen makes its OOF score ineligible for confirmatory Layer 1 reliability (`q = 0`).
+`pooled_within_condition` as a marginal-screen sensitivity analysis. Its response-dependent screen makes its projection ineligible for penalty construction.
 
 ## Pando argument ownership
 

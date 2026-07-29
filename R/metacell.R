@@ -3,7 +3,7 @@ rc_validate_metacell_inputs <- function(rna_metacell_counts,
                                         metacell_meta,
                                         atac_metacell_counts = NULL,
                                         metacell_id_col = "metacell_id",
-                                        sample_col = "sample_id",
+                                        sample_col = NULL,
                                         condition_col = "condition",
                                         celltype_col = "cell_type") {
   if (is.null(dim(rna_metacell_counts)) || length(dim(rna_metacell_counts)) != 2L) stop("`rna_metacell_counts` must be a feature-by-metacell matrix.", call. = FALSE)
@@ -331,6 +331,7 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
                                          min_cells_per_stratum = 100,
                                          min_metacell_size = 20,
                                          min_metacells_per_stratum = 2L,
+                                         depth_balance = TRUE,
                                          label_col = NULL,
                                          fragment_files = NULL,
                                          bgzip_path = "bgzip",
@@ -383,6 +384,32 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
   if (length(missing) > 0L) stop("Missing metadata columns: ", paste(missing, collapse = ", "), call. = FALSE)
   group_cols <- .rc_strict_stratum_cols(sample_col = sample_col, condition_col = condition_col, celltype_col = celltype_col)
   meta <- .rc_add_stratum_id(meta, group_cols)
+  cell_order <- rownames(meta)
+  rna_depth <- Matrix::colSums(
+    .rc_get_assay_counts_safe(object, rna_assay)[
+      , cell_order, drop = FALSE
+    ]
+  )
+  atac_depth <- Matrix::colSums(
+    .rc_get_assay_counts_safe(object, atac_assay)[
+      , cell_order, drop = FALSE
+    ]
+  )
+  meta$.rc_rna_depth <- as.numeric(rna_depth[cell_order])
+  meta$.rc_atac_depth <- as.numeric(atac_depth[cell_order])
+  celltypes <- unique(as.character(meta[[celltype_col]]))
+  depth_targets <- do.call(rbind, lapply(celltypes, function(value) {
+    selected <- as.character(meta[[celltype_col]]) == value
+    data.frame(
+      cell_type = value,
+      target_rna_umi = as.numeric(gamma) *
+        stats::median(meta$.rc_rna_depth[selected]),
+      target_atac_fragments = as.numeric(gamma) *
+        stats::median(meta$.rc_atac_depth[selected]),
+      target_cell_count = as.numeric(gamma),
+      stringsAsFactors = FALSE
+    )
+  }))
   fragment_manifest <- .rc_normalize_fragment_manifest(fragment_files, sample_ids = meta[[sample_col]], atac_assay = atac_assay)
   .rc_assert_shell_safe_paths(outdir, fragment_manifest$fragment_file)
   meta$cell_id <- rownames(meta)
@@ -419,7 +446,34 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
     dir.create(file.path(stratum_dir, "fragments"), recursive = TRUE, showWarnings = FALSE)
     dir.create(file.path(stratum_dir, "qc"), recursive = TRUE, showWarnings = FALSE)
     min_required_cells <- as.integer(min_cells_per_stratum)
-    gamma_i <- as.integer(gamma)
+    target_row <- depth_targets[
+      depth_targets$cell_type ==
+        as.character(vals[[celltype_col]][[1L]]),
+      , drop = FALSE
+    ]
+    gamma_candidates <- c(
+      target_row$target_cell_count,
+      target_row$target_rna_umi /
+        stats::median(one_meta$.rc_rna_depth),
+      target_row$target_atac_fragments /
+        stats::median(one_meta$.rc_atac_depth)
+    )
+    gamma_candidates <- gamma_candidates[
+      is.finite(gamma_candidates) & gamma_candidates > 0
+    ]
+    gamma_i <- if (isTRUE(depth_balance) && length(gamma_candidates)) {
+      as.integer(round(stats::median(gamma_candidates)))
+    } else {
+      as.integer(gamma)
+    }
+    maximum_gamma <- max(
+      1L,
+      floor(length(cells) / as.integer(min_metacells_per_stratum))
+    )
+    gamma_i <- min(
+      max(as.integer(min_metacell_size), gamma_i),
+      maximum_gamma
+    )
     if (length(cells) < min_required_cells) {
       reason <- "stratum_below_min_cells_per_stratum"
       diag <- data.frame(group_id = key, n_cells = length(cells), skipped = TRUE, skip_reason = reason, gamma = gamma, min_required_cells = min_required_cells, stringsAsFactors = FALSE)
@@ -487,6 +541,38 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
     }
     display_ids <- paste0(prefix, "_MC", sprintf(paste0("%0", max(3, nchar(length(mc_ids))), "d"), seq_along(mc_ids)))
     membership <- .rc_extract_supercell_membership(mc, cells, mc_ids)
+    membership_depth_index <- match(
+      as.character(membership$cell_id), rownames(one_meta)
+    )
+    if (anyNA(membership_depth_index)) {
+      stop("SuperCell membership cannot be aligned for depth validation.",
+           call. = FALSE)
+    }
+    extreme_rna_cutoff <- unname(stats::quantile(
+      one_meta$.rc_rna_depth, 0.99, na.rm = TRUE
+    ))
+    extreme_atac_cutoff <- unname(stats::quantile(
+      one_meta$.rc_atac_depth, 0.99, na.rm = TRUE
+    ))
+    extreme_cell <- (
+      one_meta$.rc_rna_depth[membership_depth_index] >
+        extreme_rna_cutoff
+    ) | (
+      one_meta$.rc_atac_depth[membership_depth_index] >
+        extreme_atac_cutoff
+    )
+    extreme_per_metacell <- tapply(
+      extreme_cell,
+      as.character(membership$metacell_id),
+      sum
+    )
+    if (any(extreme_per_metacell > 1L)) {
+      stop(
+        "Depth-aware construction rejected a metacell containing multiple ",
+        "top-1% RNA/ATAC-depth cells; adjust gamma or the input-depth QC.",
+        call. = FALSE
+      )
+    }
     fragment_manifest_i <- NULL
     if (identical(fragment_aggregation_backend, "supercell") && save_fragments) {
       fragment_manifest_i <- tryCatch(mc@misc$fragment_manifest, error = function(e) NULL)
@@ -527,8 +613,34 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
     mc_meta$metacell_display_id <- display_ids[match(as.character(mc_meta$metacell_id), mc_ids)]
     mc_meta$low_power_metacell <- !is.na(mc_meta$n_cells) & mc_meta$n_cells < min_metacell_size
     mc_meta$effective_gamma <- gamma_i
+    mc_meta$extreme_depth_cells <- as.integer(
+      extreme_per_metacell[
+        match(as.character(mc_meta$metacell_id), names(extreme_per_metacell))
+      ]
+    )
     rna_counts <- .rc_as_sparse(.rc_get_assay_counts_safe(mc, rna_assay))
     atac_counts <- .rc_as_sparse(.rc_get_assay_counts_safe(mc, atac_assay))
+    mc_meta$rna_total_umi <- as.numeric(
+      Matrix::colSums(rna_counts)[
+        match(as.character(mc_meta$metacell_id), colnames(rna_counts))
+      ]
+    )
+    mc_meta$atac_total_fragments <- as.numeric(
+      Matrix::colSums(atac_counts)[
+        match(as.character(mc_meta$metacell_id), colnames(atac_counts))
+      ]
+    )
+    mc_meta$target_rna_umi <- target_row$target_rna_umi
+    mc_meta$target_atac_fragments <- target_row$target_atac_fragments
+    mc_meta$target_cell_count <- target_row$target_cell_count
+    mc_meta$depth_balance_policy <-
+      "shared_celltype_RNA_ATAC_cellcount_targets"
+    mc_meta$rna_depth_relative_error <-
+      (mc_meta$rna_total_umi - mc_meta$target_rna_umi) /
+      pmax(mc_meta$target_rna_umi, 1)
+    mc_meta$atac_depth_relative_error <-
+      (mc_meta$atac_total_fragments - mc_meta$target_atac_fragments) /
+      pmax(mc_meta$target_atac_fragments, 1)
     if (save_metacell_object) saveRDS(mc, file.path(stratum_dir, "metacell_object.rds"))
     .rc_write_tsv_gz(membership, file.path(stratum_dir, "membership.tsv.gz"))
     .rc_write_tsv_gz(mc_meta, file.path(stratum_dir, "metacell_metadata.tsv.gz"))
@@ -555,6 +667,7 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
         min_cells_per_stratum = min_cells_per_stratum,
         min_metacell_size = min_metacell_size,
         min_metacells_per_stratum = min_metacells_per_stratum,
+        depth_balance = depth_balance,
         label_col = label_col,
         fragment_files = fragment_manifest,
         bgzip_path = bgzip_path,
@@ -631,7 +744,8 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
 rc_make_supercell2_metacells <- function(
     object,
     outdir,
-    sample_col = "sample_id",
+    sample_col = NULL,
+    stratum_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
     state_col = NULL,
@@ -646,6 +760,7 @@ rc_make_supercell2_metacells <- function(
     min_cells_per_stratum = 100,
     min_metacell_size = 20,
     min_metacells_per_stratum = 2L,
+    depth_balance = TRUE,
     label_col = NULL,
     fragment_files = NULL,
     bgzip_path = "bgzip",
@@ -665,6 +780,19 @@ rc_make_supercell2_metacells <- function(
     peak_calling_args = list()) {
   fragment_aggregation_backend <- match.arg(fragment_aggregation_backend)
   on_stratum_error <- match.arg(on_stratum_error)
+  if (is.null(stratum_col)) {
+    stratum_col <- sample_col
+  }
+  if (is.null(stratum_col) || !is.character(stratum_col) ||
+      length(stratum_col) != 1L || is.na(stratum_col) ||
+      !nzchar(trimws(stratum_col))) {
+    stop(
+      "`stratum_col` is required. `sample_col` is a deprecated explicit ",
+      "legacy alias and is never inferred by the canonical workflow.",
+      call. = FALSE
+    )
+  }
+  sample_col <- stratum_col
   if (!is.logical(call_peaks_from_fragments) ||
       length(call_peaks_from_fragments) != 1L ||
       is.na(call_peaks_from_fragments)) {
@@ -711,6 +839,7 @@ rc_make_supercell2_metacells <- function(
     min_cells_per_stratum = min_cells_per_stratum,
     min_metacell_size = min_metacell_size,
     min_metacells_per_stratum = min_metacells_per_stratum,
+    depth_balance = depth_balance,
     label_col = label_col,
     fragment_files = fragment_files,
     bgzip_path = bgzip_path,

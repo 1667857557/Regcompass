@@ -2,7 +2,7 @@
 
 > Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
 
-This tutorial uses RegCompassR 2.0.0 with the Pando 1.4.0
+This tutorial uses RegCompassR 2.1.0 with the Pando 1.5.0
 `ConditionGRNFit` contract. It assumes a paired-cell RNA+ATAC Seurat object.
 
 ## 1. Required object state
@@ -76,7 +76,8 @@ result <- rc_run_regcompass_one_shot(
       condition_weight = "equal",
       reference_condition = "Control",
       nlambda = 50L,
-      nfolds = 5L,
+      outer_nfolds = 5L,
+      inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
       scale = TRUE
     )
@@ -97,7 +98,7 @@ result <- rc_run_regcompass_one_shot(
   ),
 
   layer1_args = list(
-    regulatory_alpha = 1,
+    regulatory_alpha = 0.5,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -132,7 +133,7 @@ TF_RNA × peak_ATAC
 A useful interaction can coexist with weak marginal TF-target and peak-target
 correlations. `candidate_screen = "motif_domain"` therefore retains the
 motif/domain-supported dictionary and leaves edge selection to elastic-net
-regularization. `pooled_within_condition` remains an optional marginal-screen sensitivity mode; its response-dependent screen makes its OOF score ineligible for confirmatory Layer 1 reliability (`q = 0`).
+regularization. `pooled_within_condition` remains an optional marginal-screen sensitivity mode; its response-dependent screen makes its projection ineligible for penalty construction.
 
 The directly comparable coefficient contract requires:
 
@@ -185,9 +186,30 @@ result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
 result$reaction_ranking
 result$condition_contrast
+result$reaction_comparison_by_metacell
 result$merged_grn_meta_modules$merged_core_reactions
 result$microcompass$model_cache_summary
 ```
+
+The audited comparison table exposes the primary and sensitivity routes on
+identical targets:
+
+```r
+head(result$reaction_comparison_by_metacell[, c(
+  "reaction_id", "direction", "medium", "cell_type", "condition",
+  "metacell_id", "penalty_rna_only", "penalty_common_oof",
+  "penalty_condition_full_oof", "penalty_unique_increment",
+  "penalty_per_target_flux", "vmax", "projection_oof_available",
+  "common_support_fraction", "condition_full_support_fraction",
+  "depth_sensitivity_flag", "zero_support_sensitive",
+  "link_saturation_sensitive", "alpha", "inference_class",
+  "comparability_class"
+)])
+```
+
+Common OOF is the primary route. Condition-full OOF, RNA-only, depth and alpha
+columns are sensitivity or attribution routes, not substitutions for the
+primary result.
 
 Stage 1 provenance includes the actual candidate policy and comparison rule:
 

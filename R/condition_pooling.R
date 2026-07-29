@@ -95,6 +95,7 @@
     rna_dims = 1:30,
     atac_dims = 2:30,
     gamma = 30L,
+    depth_balance = TRUE,
     seed = 12345L,
     min_cells_per_stratum = 100L,
     min_metacell_size = 20L,
@@ -113,6 +114,7 @@
   }
   analysis_args$rna_dims <- as.integer(analysis_args$rna_dims)
   analysis_args$atac_dims <- as.integer(analysis_args$atac_dims)
+  analysis_args$depth_balance <- isTRUE(analysis_args$depth_balance)
   meta_signature <- data.frame(
     cell_id = cells,
     condition = as.character(
@@ -124,7 +126,7 @@
     stringsAsFactors = FALSE
   )
   list(
-    schema_version = "regcompass_condition_celltype_metacell_cache_v2",
+    schema_version = "regcompass_condition_celltype_metacell_cache_v3",
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
@@ -241,7 +243,8 @@
     )
   }
   reserved <- intersect(names(metacell_args), c(
-    "object", "outdir", "sample_col", "condition_col", "celltype_col",
+    "object", "outdir", "sample_col", "stratum_col",
+    "condition_col", "celltype_col",
     "label_col", "rna_assay", "atac_assay", "fragment_files",
     "save_metacell_object", "save_counts", "save_fragments",
     "require_fragment_aggregation", "fragment_aggregation_backend",
@@ -254,6 +257,9 @@
     )
   }
   if (is.null(metacell_args$gamma)) metacell_args$gamma <- 30L
+  if (is.null(metacell_args$depth_balance)) {
+    metacell_args$depth_balance <- TRUE
+  }
   cache_contract <- .rc_condition_metacell_cache_contract(
     object = object,
     condition_col = condition_col,
@@ -281,7 +287,7 @@
   defaults <- list(
     object = object,
     outdir = outdir,
-    sample_col = supercell_stratum_col,
+    stratum_col = supercell_stratum_col,
     condition_col = condition_col,
     celltype_col = celltype_col,
     label_col = NULL,
@@ -417,6 +423,11 @@
     celltype_assignment = "hard condition-by-cell-type stratum",
     ambiguous_celltype_policy = "not_applicable_strata_are_pure",
     gamma = metacell_args$gamma,
+    depth_balance = isTRUE(metacell_args$depth_balance %||% TRUE),
+    depth_balance_policy = paste(
+      "SuperCell local-state simplification with shared cell-type RNA UMI,",
+      "ATAC fragment, and cell-count targets"
+    ),
     cache_contract_schema = cache_contract$schema_version,
     inference_policy =
       "cells are stratified only by condition and broad cell type",

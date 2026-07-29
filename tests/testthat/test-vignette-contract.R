@@ -44,7 +44,7 @@ test_that("workflow vignette documents the current Pando bridge", {
   text <- rc_read_doc(path)
 
   required <- c(
-    "RegCompassR 2.0.0",
+    "RegCompassR 2.1.0",
     "rc_run_regcompass_one_shot(",
     'candidate_screen = "motif_domain"',
     "condition_mix = 0.5",
@@ -62,7 +62,7 @@ test_that("workflow vignette documents the current Pando bridge", {
     "grn = step1",
     'comparison_support = "auto"',
     "condition × broad cell type",
-    "condition-stratified cell OOF",
+    "outer-heldout",
     "gpr_and_method = \"min\"",
     "global FASTCORE",
     "Mouse runs must supply"
@@ -161,15 +161,15 @@ test_that("README API index and help agree on the Pando contract", {
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
 
   required <- c(
-    "RegCompassR 2.0.0",
+    "RegCompassR 2.1.0",
     "condition_grn_fits",
     "tf_peak_gene_condition_effect",
     "comparison_mask",
     "comparable_to_reference",
     "motif_domain",
-    "ConditionGRNFit v4",
+    "ConditionGRNFit v5",
     "condition × broad cell type",
-    "condition-stratified cell OOF",
+    "outer-heldout",
     "reference_condition",
     "condition_mix",
     "condition_weight",

@@ -91,6 +91,15 @@ rc_export_microcompass <- function(result, outdir,
         file.path(microcompass_dir, "lp_diagnostics.tsv.gz")
       )
     }
+    if (!is.null(result$comparison_table)) {
+      write_tsv_gz(
+        result$comparison_table,
+        file.path(
+          microcompass_dir,
+          "common_full_rna_comparison_by_metacell.tsv.gz"
+        )
+      )
+    }
   }
 
   writeLines(

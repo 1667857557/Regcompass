@@ -373,12 +373,14 @@ reaction direction, not direct observation of net flux.
 ## Inference boundary
 
 For `unit = "metacell"`, the P values quantify within-dataset separation of
-condition-associated metacell score distributions. They do not make metacells
-independent biological replicates. Results therefore carry:
+condition-associated metacell score distributions, with metacells as the
+statistical units. They are not sample/donor-level biological replicates.
+Results therefore carry:
 
 ```text
 inference_level = metacell_within_dataset
-descriptive_only = TRUE
+descriptive_only = FALSE
+metacell_statistical_inference = TRUE
 biological_replicate_inference = FALSE
 ```
 

@@ -71,9 +71,9 @@
   installed_version <- as.character(installed_version)
   if (isTRUE(validate_api) &&
       base::package_version(installed_version) <
-      base::package_version("1.4.0")) {
+      base::package_version("1.5.0")) {
     stop(
-      "RegCompass requires Pando >= 1.4.0 for the ConditionGRNFit v4 ",
+      "RegCompass requires Pando >= 1.5.0 for the ConditionGRNFit v5 ",
       "projection contract.", call. = FALSE
     )
   }

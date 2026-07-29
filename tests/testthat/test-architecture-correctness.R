@@ -48,17 +48,17 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   answer <- rc_compute_multiome_penalty(expression)
   penalty <- answer$penalty[, "u1"]
   expect_equal(penalty[["zero"]], 1)
-  expect_equal(penalty[["missing"]], 1)
-  expect_equal(
-    answer$components$effective_reaction_expression["missing", "u1"], 0
-  )
+  expect_true(is.na(penalty[["missing"]]))
+  expect_true(is.na(
+    answer$components$effective_reaction_expression["missing", "u1"]
+  ))
   expect_gt(penalty[["zero"]], penalty[["low"]])
   expect_gt(penalty[["low"]], penalty[["high"]])
-  expect_true(all(is.finite(penalty) & penalty > 0))
+  expect_true(all(is.finite(penalty[1:3]) & penalty[1:3] > 0))
   expect_identical(answer$evidence_policy, "penalty_only")
   expect_identical(
     answer$penalty_version,
-    "gene_integrated_multiome_penalty_v1"
+    "gene_integrated_multiome_penalty_v2"
   )
 })
 

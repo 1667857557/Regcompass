@@ -33,7 +33,7 @@ Condition coefficient columns are separable at fixed lambda. Cross-condition
 sharing is restricted to quantities required for direct comparison:
 
 - one TF–peak–target coordinate system;
-- one pooled transform of each final interaction predictor;
+- one equal-condition, within-condition-variance transform of each interaction predictor, learned inside each outer fold;
 - one pooled target transform;
 - one lambda path and selected lambda per target;
 - explicit edge-by-condition estimability metadata.
@@ -55,7 +55,7 @@ One optional Pando mode remains available:
 
 - `pooled_within_condition`: remove condition means, then apply marginal TF-target and peak-target screening before model fitting.
 
-This is a sensitivity/performance mode, not the canonical interaction-safe default. Because the response is used before cross-validation, RegCompass does not use its OOF score as confirmatory Layer 1 reliability (`q = 0`).
+This is a sensitivity/performance mode, not the canonical interaction-safe default. Because the response is used before cross-validation, its projection is ineligible for penalty construction.
 
 ## Common coefficient units
 
@@ -100,7 +100,7 @@ A zero coefficient can have two distinct meanings:
 2. a coefficient fixed to zero because the edge is not estimable in that
    condition.
 
-Pando 1.4.0 resolves this ambiguity with:
+Pando 1.5.0 retains this interpretation-layer distinction with:
 
 \[
 comparison\_mask_{e,c}=

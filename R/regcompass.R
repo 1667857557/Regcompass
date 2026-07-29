@@ -2,12 +2,13 @@
 #'
 #' Stage 3 constructs biological meta-modules and a deduplicated merged
 #' reaction catalogue. Within each cell type, Pando shares one complete edge
-#' design and pooled predictor scale across conditions. Within each target it
-#' also shares a lambda path and selected lambda while estimating condition
-#' coefficients independently. Active condition-level
+#' design and equal-condition predictor scale across conditions. Within each
+#' outer fold, preprocessing and lambda selection use only training cells.
+#' Active condition-level
 #' edges define the supported Human-GEM metabolic genes, and complete GPR
-#' branches define core reactions. Explicit condition-minus-reference effects
-#' are projected through the stored Pando transform in Layer 1. Stage 3
+#' branches define core reactions. Common-support outer-heldout condition
+#' projections enter the primary Layer 1 path; condition-full projections are
+#' exploratory and full-data coefficients are interpretation-only. Stage 3
 #' applies one fixed ordered annotation pass and does not run FASTCORE or create
 #' a GEM. With `model_mode = "meta_module_gem"`, Stage 5 constructs one union
 #' GEM per medium scenario and performs the only FASTCORE completion on that

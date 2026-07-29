@@ -73,7 +73,7 @@ rc_plot_condition_reaction(
 A \code{ggplot} object. The underlying statistics, plotted metacells, and annotation table are attached as \code{condition_statistics}, \code{plot_data}, and \code{annotation_data} attributes.
 }
 \description{
-Draws a condition-level boxplot for one fixed reaction, direction, medium, and cell type. Every finite metacell score is displayed as a jittered point. Pairwise significance brackets are derived from \code{rc_test_condition_reactions()} and can use raw or multiplicity-adjusted P values. The statistics layer is run over the full scored reaction set before the selected target is extracted, so adjusted P values retain the requested reaction-wide multiplicity correction. When three or more conditions are present, the Kruskal-Wallis omnibus result is shown in the subtitle by default.
+Draws a condition-level boxplot for one fixed reaction, direction, medium, and cell type. Every finite metacell score is displayed as a jittered point. Pairwise significance brackets are derived from \code{rc_test_condition_reactions()} and can use raw or multiplicity-adjusted P values. The statistics layer is run over the full scored reaction set before the selected target is extracted, so adjusted P values retain the requested reaction-wide multiplicity correction. Metacells are the within-dataset statistical units; these P values are not sample/donor-level biological-replicate inference. When three or more conditions are present, the Kruskal-Wallis omnibus result is shown in the subtitle by default.
 }
 \details{
 The plotted score is \code{-log(penalty / (omega * vmax) + eps)}, with larger values indicating stronger multiome support for the selected reaction direction under the shared structural GEM.

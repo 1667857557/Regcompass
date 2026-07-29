@@ -26,13 +26,20 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{progress}{Display workflow and stage progress.}
 \item{...}{Arguments passed to \code{rc_run_regcompass()}, including \code{condition_col}, \code{celltype_col}, \code{pando_args}, metacell settings, Layer 1/2 controls, and worker budgets.}
 }
-\description{Provides the RegCompassR 2.0.0 species-aware complete-run API and preserves Pando 1.4.0's ConditionGRNFit v4 contract.}
+\value{
+A validated complete RegCompass result, including
+\code{reaction_comparison_by_metacell} and all stage provenance.
+}
+\description{Provides the RegCompassR 2.1.0 species-aware complete-run API and requires Pando 1.5.0's ConditionGRNFit v5 contract.}
 \details{
 Canonical Pando settings use \code{candidate_screen = "motif_domain"},
 \code{condition_mix = 0.5}, and \code{condition_weight = "equal"}. Each broad
 cell type is trained, validated and refitted independently.
 
-Pando's explicit \code{comparison_mask} requires an edge to be eligible in both the requested and reference conditions. RegCompass exposes \code{comparable_to_reference} and excludes unsupported contrasts from the active condition-effect table and penalty projection.
+The primary penalty accepts only pairwise/global-common outer-heldout
+projections. Condition-full OOF, RNA-only, depth-matched and alpha-grid routes
+are reported separately and rerun through the complete GPR, penalty and LP
+pipeline on one shared structural model.
 
 \code{pando_initiate_args}, \code{pando_motif_args}, and \code{pando_infer_args} are routed to the corresponding Pando functions. RegCompass owns the object, assays, genome, motifs, grouping columns, GEM target genes, network name, minimum condition size, error policy, and \code{BPPARAM}. Canonical Stage 1 rejects Pando aggregation columns because Stage 2 owns metacells.
 

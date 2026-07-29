@@ -82,14 +82,12 @@ test_that("within-cell-type OOF controls Layer 1 reliability", {
   expect_false(exists(
     ".rc_condition_gene_regulatory_modifier", inherits = TRUE
   ))
-  expect_match(
-    body_text, "q[!available | !is.finite(q)] <- 0", fixed = TRUE
-  )
+  expect_match(body_text, "q[!available] <- NA_real_", fixed = TRUE)
   expect_match(
     body_text, "gene_regulatory_reliability_available", fixed = TRUE
   )
   expect_match(
-    body_text, "within_cell_type_condition_stratified_cells", fixed = TRUE
+    body_text, "outer_condition_stratified_cell_oof", fixed = TRUE
   )
 })
 

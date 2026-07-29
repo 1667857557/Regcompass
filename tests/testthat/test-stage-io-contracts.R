@@ -87,7 +87,7 @@ test_that("Layer 1 uses the canonical schema and stage class", {
   step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
   expect_match(
     body_text,
-    "regcompass_condition_grn_layer1_v3",
+    "regcompass_condition_grn_layer1_v4",
     fixed = TRUE
   )
   expect_match(
@@ -119,10 +119,10 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(
     result_text,
-    "regcompass_condition_grn_fit_v4",
+    "regcompass_condition_grn_fit_v5",
     fixed = TRUE
   )
-  expect_match(result_text, 'version = "2.0.0"', fixed = TRUE)
+  expect_match(result_text, 'version = "2.1.0"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)
