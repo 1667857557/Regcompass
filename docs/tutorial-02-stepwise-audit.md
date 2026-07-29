@@ -1,53 +1,30 @@
-# Tutorial Level 2: stepwise run and Pando audit
+# Tutorial 2: stepwise workflow
 
-> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+Use the stepwise API to save, inspect, and restart individual stages. Equations
+are in [Mathematical model](mathematical-model.md).
 
-Use this workflow when every stage should be saved and inspected independently.
-The examples target RegCompassR 2.1.0 and Pando 1.5.0.
-
-## Configure Stage 1 and Stage 4 workers
-
-A supplied `BiocParallelParam` is forwarded to Pando. When `parallel = TRUE`
-and `BPPARAM = NULL`, RegCompass enables the Pando native map backend. When
-`parallel = FALSE`, Stage 1 is serial. Do not set
-`pando_infer_args$parallel` separately.
+## Parallel backends
 
 ```r
 library(BiocParallel)
 
-upstream_workers <- 6L
-layer2_workers <- 30L
-
 upstream_bp <- if (.Platform$OS.type == "windows") {
-  SnowParam(
-    workers = upstream_workers,
-    type = "SOCK",
-    progressbar = TRUE
-  )
+  SnowParam(workers = 6L, type = "SOCK", progressbar = TRUE)
 } else {
-  MulticoreParam(
-    workers = upstream_workers,
-    progressbar = TRUE
-  )
+  MulticoreParam(workers = 6L, progressbar = TRUE)
 }
 
 layer2_bp <- if (.Platform$OS.type == "windows") {
-  SnowParam(
-    workers = layer2_workers,
-    type = "SOCK",
-    progressbar = TRUE
-  )
+  SnowParam(workers = 30L, type = "SOCK", progressbar = TRUE)
 } else {
-  MulticoreParam(
-    workers = layer2_workers,
-    progressbar = TRUE
-  )
+  MulticoreParam(workers = 30L, progressbar = TRUE)
 }
 ```
 
-`BPPARAM = TRUE` is invalid because it is not a `BiocParallelParam` object.
+`BPPARAM = TRUE` is invalid. Do not set `parallel` inside
+`pando_infer_args`.
 
-## Stage 1: condition-comparable Pando inference
+## Stage 1: Pando GRNs
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -64,13 +41,9 @@ step1 <- rc_regcompass_step_grn(
     min_model_rsq = 0.1,
     pando_infer_args = list(
       candidate_screen = "motif_domain",
-      tf_cor = 0.1,
-      peak_cor = 0,
-      alpha = 0.5,
       condition_mix = 0.5,
       condition_weight = "equal",
       reference_condition = "Control",
-      nlambda = 50L,
       outer_nfolds = 5L,
       inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
@@ -82,133 +55,24 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-Alternative without an explicit BiocParallel backend:
-
-```r
-step1_native <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "RegCompass_steps/01_grn_native",
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  species = "human",
-  condition_col = "Group",
-  celltype_col = "cell_type",
-  pando_args = list(
-    pando_infer_args = list(
-      candidate_screen = "motif_domain",
-      reference_condition = "Control"
-    )
-  ),
-  parallel = TRUE,
-  BPPARAM = NULL
-)
-```
-
-The resolved execution route is persisted:
+Inspect:
 
 ```r
 step1$params$pando_parallel
-```
-
-### Argument ownership
-
-RegCompass forwards:
-
-```text
-pando_initiate_args → Pando::initiate_grn()
-pando_motif_args    → Pando::find_motifs()
-pando_infer_args    → Pando::infer_condition_grn()
-```
-
-The following are controlled by RegCompass and cannot be overridden inside the
-nested lists:
-
-```text
-object, peak_assay, rna_assay, pfm, genome,
-cell_type_col, condition_col, genes, network_name,
-min_cells_per_condition, on_small_condition, BPPARAM
-```
-
-`aggregate_rna_col` and `aggregate_peaks_col` are rejected because Stage 1 fits
-paired single cells and Stage 2 owns metacell aggregation.
-
-### Candidate policy
-
-The canonical default is `candidate_screen = "motif_domain"`. It retains the
-structural motif/domain edge dictionary and lets elastic net select the
-`TF RNA × peak ATAC` interaction predictors. `pooled_within_condition` remains an explicit marginal-screen sensitivity mode; its response-dependent screen makes its projection ineligible for penalty construction.
-
-### Audit the Pando fit contract
-
-```r
 step1$grn_result$condition_fit_status
 step1$grn_result$condition_grn_fits
 step1$grn_result$tf_peak_gene_condition
 step1$grn_result$tf_peak_gene_condition_effect
-
-all_effects <- step1$grn_result$tf_peak_gene_condition_effect_all
-all_effects[, c(
-  "edge_id", "Group", "cell_type",
-  "condition_estimate", "reference_estimate", "condition_effect",
-  "eligible_in_condition", "comparable_to_reference"
-)]
-
-table(all_effects$comparable_to_reference, useNA = "ifany")
+step1$grn_result$normalization_policy
 ```
 
-For edge `e`, condition `c`, and reference `r`:
+The absolute condition table is used downstream. The reference-effect table is
+for interpretation. See [Pando condition contract](condition-comparable-grn.md).
 
-```text
-comparison_mask[e, c] = eligibility_mask[e, c] && eligibility_mask[e, r]
-```
+Mouse runs must supply build-matched regions through
+`pando_args$pando_initiate_args$regions`.
 
-Only rows with `comparable_to_reference = TRUE` can enter the active
-condition-effect table and downstream penalty projection.
-
-The complete fit and transforms are written to:
-
-```text
-RegCompass_steps/01_grn/pando_condition_grn_fits.rds
-RegCompass_steps/01_grn/pando_edge_predictor_transforms.tsv.gz
-RegCompass_steps/01_grn/pando_tf_peak_gene_condition_effect_all.tsv.gz
-RegCompass_steps/01_grn/pando_tf_peak_gene_condition_effect_active.tsv.gz
-```
-
-## Mouse Stage 1
-
-Pando's bundled regulatory-region set is hg38. Mouse input therefore requires a
-user-supplied build-matched `GRanges` object:
-
-```r
-library(BSgenome.Mmusculus.UCSC.mm10)
-
-mouse_regions <- readRDS("mm10_regulatory_regions.rds")
-stopifnot(methods::is(mouse_regions, "GenomicRanges"))
-
-mouse_step1 <- rc_regcompass_step_grn(
-  object = A_mouse,
-  gem = mouse_gem,
-  outdir = "RegCompass_mouse/01_grn",
-  genome = BSgenome.Mmusculus.UCSC.mm10,
-  species = "mouse",
-  condition_col = "Group",
-  celltype_col = "cell_type",
-  pando_args = list(
-    pando_initiate_args = list(regions = mouse_regions),
-    pando_infer_args = list(
-      candidate_screen = "motif_domain",
-      reference_condition = "Control"
-    )
-  ),
-  parallel = TRUE,
-  BPPARAM = upstream_bp
-)
-```
-
-The regulatory-region build must match the ATAC coordinates and motif-scanning
-genome.
-
-## Stage 2: condition × broad cell type SuperCells
+## Stage 2: metacells
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -230,16 +94,21 @@ step2 <- rc_regcompass_step_metacells(
     overwrite = FALSE
   )
 )
+```
 
+Inspect:
+
+```r
 step2$pooled$metacell_meta
+step2$pooled$membership
+step2$pooled$stratum_status
 step2$pooled$cache_contract$analysis_args
 ```
 
-Changing cells, assays, reductions, dimensions, embedding values, seed, gamma,
-or thresholds invalidates the Stage 2 checkpoint. Set `overwrite = TRUE` to
-rebuild.
+Set `overwrite = TRUE` after changing cells, assays, reductions, dimensions,
+seed, gamma, or thresholds.
 
-## Stage 3: complete-GPR biological catalogue
+## Stage 3: reaction catalogue
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -248,49 +117,51 @@ step3 <- rc_regcompass_step_meta_modules(
   gem = gem,
   outdir = "RegCompass_steps/03_meta_modules"
 )
+```
 
+Inspect:
+
+```r
 step3$condition_modules$supported_metabolic_genes
 step3$condition_modules$core_gene_reaction
 step3$condition_modules$reaction_membership
 step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
 ```
 
-Stage 3 performs one ordered expansion pass:
+Stage 3 requires complete GPR support for core reactions, performs one ordered
+annotation expansion, and does not run FASTCORE.
 
-```text
-complete-GPR cores
-→ reactions in core-reaction subsystems
-→ direct KEGG/Reactome equivalents
-→ direct master-Rhea equivalents
-```
-
-It does not run FASTCORE.
-
-## Stage 4: integrated reaction support
+## Stage 4: reaction penalties
 
 ```r
 step4 <- rc_regcompass_step_layer1(
+  grn = step1,
   metacells = step2,
   meta_modules = step3,
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
+  projection_component = "condition",
+  comparison_support = "auto",
   regulatory_alpha = 0.5,
   gpr_and_method = "min",
   parallel = TRUE,
   BPPARAM = upstream_bp
 )
-
-step4$capacity_params$and_method
-step4$evidence_formula
 ```
 
-Stage 4 delegates standardized single-cell interaction projection to Pando and
-uses only outer-heldout pairwise/global-common absolute condition projections
-for the primary penalty. Condition-full OOF is exploratory, and the stored
-full-fit condition-versus-reference contrast is interpretation-only. RegCompass
-does not refit Pando or normalize coefficient effects by their absolute sum.
+Inspect:
 
-## Stage 5: shared medium-specific model and LP scores
+```r
+step4$capacity_params
+step4$evidence_formula
+step4$projection_diagnostics
+```
+
+The primary route uses outer-heldout common-support target-gene scores. RNA-only,
+condition-full, depth, and alpha routes are sensitivity outputs.
+
+## Stage 5: shared model and LP scoring
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -313,18 +184,22 @@ step5 <- rc_regcompass_step_layer2(
   parallel = TRUE,
   BPPARAM = layer2_bp
 )
-
-step5$model_cache_summary
-step5$comparison_table
 ```
 
-`comparison_table` aligns common OOF, condition-full OOF, RNA-only,
-depth-matched, common-depth-interval and alpha-grid reruns by the same reaction,
-direction, medium, metacell, GEM checksum, bounds, target flux and reaction
-order. A mismatch in any shared structural field is a hard error rather than a
-reported biological difference.
+Inspect:
 
-## Stage 6: assemble results
+```r
+step5$model_cache_summary
+step5$comparison_table
+step5$penalty
+step5$vmax
+step5$feasible
+```
+
+One model is built per medium and reused across conditions and metacells. See
+[Medium presets](medium-presets.md).
+
+## Stage 6: results
 
 ```r
 result <- rc_regcompass_step_results(
@@ -337,16 +212,27 @@ result <- rc_regcompass_step_results(
   outdir = "RegCompass_steps/06_results",
   species = "human"
 )
+```
 
+Inspect:
+
+```r
 result$reaction_ranking
 result$condition_contrast
+result$reaction_comparison_by_metacell
 result$grn$normalization_policy
 ```
 
-API index: [functions.md](functions.md). It documents stage arguments, return
-contracts, and restart boundaries.
+## Saved stage files
 
+```text
+01_grn/step_grn.rds
+02_metacells/step_metacells.rds
+03_meta_modules/step_meta_modules.rds
+04_layer1/step_layer1.rds
+05_layer2/step_layer2.rds
+06_results/step_results.rds
+```
 
-Sample metadata are not used as model input, provenance, or composition diagnostics.
-
-OOF validation uses condition-stratified cells within the fitted cell type.
+Restart guidance: [Tutorial 3](tutorial-03-advanced-restart.md). Public API:
+[functions.md](functions.md).
