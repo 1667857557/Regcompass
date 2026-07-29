@@ -28,10 +28,9 @@ zero.
 
 ## Candidate screening
 
-`candidate_screen = "motif_domain"` is the canonical mode.
-
-`pooled_within_condition` is a response-dependent sensitivity mode and is
-ineligible for primary penalty construction.
+RegCompass Stage 1 requires `candidate_screen = "motif_domain"`. The value is
+inserted when omitted and any alternative value is rejected before Pando is
+called.
 
 ## Stage ownership
 
