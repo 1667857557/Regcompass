@@ -1,14 +1,13 @@
-# Tutorial Level 4: remap selected genes or reactions
+# Tutorial 4: targeted reaction scoring
 
-Use this tutorial after a completed stepwise `meta_module_gem` analysis to score non-core reactions that are directly linked to selected reaction anchors.
+Use `rc_regcompass_step_target_union()` after a completed
+`model_mode = "meta_module_gem"` run to score direct database equivalents of
+selected reaction anchors.
 
-Current API entry point: `rc_regcompass_step_target_union()`. It is an optional
-post-Stage-5 scorer, not a seventh reconstruction stage; see
-[functions.md](functions.md).
+This function reuses the cached Stage 5 model. It does not rebuild the model or
+rerun FASTCORE.
 
-The second pass reuses the cached Stage 5 model. It validates the cache checksum and medium identity, and does not rebuild the model or rerun FASTCORE. Because union-GEM construction is already complete, this scoring-only step has no time-limit parameter.
-
-## Load the completed stages
+## Load stages
 
 ```r
 step3 <- readRDS("RegCompass_steps/03_meta_modules/step_meta_modules.rds")
@@ -16,9 +15,9 @@ step4 <- readRDS("RegCompass_steps/04_layer1/step_layer1.rds")
 step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 ```
 
-`step5` must come from a completed `model_mode = "meta_module_gem"` run with an available model-cache file.
+`step5$model_cache_summary$file` must point to an available completed model.
 
-## Select anchors by reaction ID
+## Select reaction anchors
 
 ```r
 targeted <- rc_regcompass_step_target_union(
@@ -27,11 +26,7 @@ targeted <- rc_regcompass_step_target_union(
   layer2 = step5,
   gem = gem,
   outdir = "RegCompass_targeted/reaction_anchors",
-  core_reaction_ids = c(
-    "MAR04381",
-    "MAR04379",
-    "MAR04391"
-  ),
+  core_reaction_ids = c("MAR04381", "MAR04379", "MAR04391"),
   gene_match = "complete_gpr",
   layer2_args = list(
     target_direction = "both",
@@ -42,14 +37,12 @@ targeted <- rc_regcompass_step_target_union(
 )
 ```
 
-The argument name `core_reaction_ids` is retained for compatibility. Each supplied ID may be either:
+Despite the retained argument name, `core_reaction_ids` may contain an original
+core reaction or another reaction present in the supplied GEM. The anchor is
+used to find direct KEGG, Reactome, or master-Rhea equivalents and is not
+automatically rescored.
 
-- an original complete-GPR core reaction;
-- a non-core reaction in the supplied GEM.
-
-A reaction-ID anchor is used only to find direct KEGG, Reactome, or master-Rhea equivalents. The anchor itself does not need to be an original Layer 2 core and is not automatically rescored.
-
-## Select original core anchors by gene
+## Select anchors by gene
 
 ```r
 targeted_gene <- rc_regcompass_step_target_union(
@@ -67,17 +60,19 @@ targeted_gene <- rc_regcompass_step_target_union(
 )
 ```
 
-`gene_match = "complete_gpr"` requires the selected genes to satisfy at least one full GPR isozyme group among the original core reactions. Use `"any_direct"` only for direct-gene matching within the original core set.
+- `complete_gpr`: selected genes must satisfy a complete GPR branch in the original core set;
+- `any_direct`: match any directly associated gene in the original core set.
 
 ## Mapping scope
 
-The second pass includes non-core reactions that share a direct KEGG reaction ID, Reactome reaction ID, or master Rhea ID with a selected reaction anchor.
+The function includes only direct equivalents sharing a KEGG reaction ID,
+Reactome reaction ID, or master Rhea ID with an anchor.
 
-It does not perform subsystem, transitive, metabolite-neighbour, or one-hop expansion. A mapped reaction is scored only when it is present in every cached Stage 5 union GEM required by the analysis. Original Stage 5 core targets are not recomputed.
+It does not perform subsystem, transitive, metabolite-neighbour, or one-hop
+expansion. A mapped target is scored only when it is available in every required
+cached model.
 
-The original Stage 5 `layer2_args$model_params$completion_time_limit` applied only when FASTCORE constructed the cached union GEM. It is neither reused nor configurable in this second scoring pass.
-
-## Inspect outputs and provenance
+## Inspect outputs
 
 ```r
 targeted$selected_anchor_reactions
@@ -85,14 +80,7 @@ targeted$selected_core_reactions
 targeted$selected_noncore_reactions
 targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
-targeted$merged_catalogue_membership
 targeted$microcompass$model_cache_summary
-targeted$microcompass$params[c(
-  "structural_model_reused_exactly",
-  "fastcore_rerun",
-  "model_rebuild",
-  "scoring_time_limit"
-)]
 ```
 
 Relation-level provenance:
@@ -104,36 +92,24 @@ targeted$expanded_reaction_catalog[, c(
   "reaction_id",
   "expansion_type",
   "source_annotation",
-  "present_in_merged_catalogue",
-  "merged_catalogue_inclusion_stage",
   "available_in_all_cached_union_gems"
 )]
 ```
 
-Reaction-level targets:
+Target-level output:
 
 ```r
 targeted$expanded_scoring_targets[, c(
   "reaction_id",
   "anchor_reaction_ids",
   "expansion_types",
-  "source_annotations",
-  "merged_catalogue_inclusion_stage"
+  "source_annotations"
 )]
 ```
 
-The persistent merged catalogue table is:
+The persistent catalogue is written to
+`merged_meta_module_catalogue_membership.tsv.gz`. The model cache checksum is
+retained to verify exact structural reuse.
 
-```text
-merged_meta_module_catalogue_membership.tsv.gz
-```
-
-The cache summary records both the exact model file and its checksum:
-
-```r
-targeted$microcompass$model_cache_summary[, c(
-  "medium_scenario",
-  "file",
-  "file_checksum"
-)]
-```
+Public API: [functions.md](functions.md). Mathematical definitions:
+[Mathematical model](mathematical-model.md).
