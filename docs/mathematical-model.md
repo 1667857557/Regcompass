@@ -4,6 +4,13 @@ This chapter contains the mathematical definitions used by the canonical
 RegCompassR workflow. Other documentation describes functions, parameters,
 outputs, and interpretation without repeating these equations.
 
+Implementation terminology used elsewhere in the package:
+
+- `TF RNA × peak ATAC`: Pando edge predictor;
+- `outer-heldout common-support`: primary regulatory projection;
+- `single global FASTCORE completion`: one completed model per medium;
+- `penalty / (omega * vmax)`: normalized directional reaction penalty.
+
 ## 1. Condition-aware Pando model
 
 For one broad cell type, target gene `g`, condition `c`, and candidate edge `e`,
