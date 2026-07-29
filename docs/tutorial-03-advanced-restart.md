@@ -1,12 +1,9 @@
-# Tutorial Level 3: restart, sensitivity, and diagnostics
+# Tutorial 3: restart and sensitivity
 
-RegCompass saves classed stage objects so downstream stages can be rerun without repeating unchanged work. Objects from incompatible runs are rejected through stored workflow and GEM provenance.
+RegCompass saves one object per stage. Restart from the earliest stage affected
+by a changed input or parameter.
 
-This tutorial uses the current six-stage API documented in
-[functions.md](functions.md). Restart from the earliest stage whose persisted
-contract changes.
-
-## Load a completed stepwise run
+## Load a completed run
 
 ```r
 step1 <- readRDS("RegCompass_steps/01_grn/step_grn.rds")
@@ -18,86 +15,31 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 
 ## Restart boundaries
 
-### Rerun Stage 1 onward
+| Restart from | Changes |
+|---|---|
+| Stage 1 | RNA/ATAC data, condition or cell-type labels, genome, regulatory regions, motifs, Pando fitting or filtering arguments |
+| Stage 2 | reductions, dimensions, gamma, seed, metacell thresholds, or cells |
+| Stage 3 | GPR rules, subsystem table, KEGG/Reactome mappings, or master-Rhea mappings |
+| Stage 4 | `regulatory_alpha`, `gpr_and_method`, gene half-saturation, or metacell evidence |
+| Stage 5 | medium, exchange bounds, target direction, omega, solver, or model-completion settings |
+| Stage 6 | annotations, reporting filters, or contrast settings only |
 
-Rerun Pando and all downstream stages after changing:
+Changing an earlier stage invalidates every downstream stage.
 
-- `species`;
-- `min_abs_estimate` or `min_model_rsq`;
-- `reference_condition`, `tf_cor`, `peak_cor`, alpha, lambda-path/CV settings,
-  or other supported `pando_infer_args`;
-- motif matrices or genome;
-- `pando_initiate_args$regions`;
-- RNA/ATAC matrices, condition metadata, or cell-type metadata.
+## Stage 4 sensitivity
 
-When `pfm` is omitted, the canonical motif collection is Pando's `motifs` data object. Supplying a different `pfm` changes the fitted regulatory evidence and therefore requires Stage 1 onward to be rerun.
-
-Changing the edge dictionary, eligibility mask, pooled TF×ATAC transform,
-target scale, or selected lambda invalidates every downstream condition effect
-and requires Stage 1 onward to be rerun.
-
-The species-specific default region policies are:
-
-```text
-human = phastConsElements20Mammals.UCSC.hg38 ∪ SCREEN.ccRE.UCSC.hg38
-mouse = phastConsElements20Mammals.UCSC.hg38 only
-```
-
-Changing `species`, overriding the region object, or changing either default region source requires Stage 1 onward to be rerun.
-
-### Rerun Stage 2 onward
-
-Rerun metacells and all downstream stages after changing cell membership, RNA/ATAC matrices, condition or cell-type metadata, `gamma`, or the RNA/ATAC reductions used for metacell construction.
-
-### Rerun Stage 3 onward
-
-Rerun reaction meta-modules and downstream stages after changing:
-
-- a custom `meta_module_args$subsystem_table`;
-- subsystem, KEGG, Reactome, or master-Rhea annotations;
-- GEM GPR rules.
-
-Pando filtering is configured in Stage 1. Stage 3 uses the resulting supported target-gene set and accepts an optional custom subsystem table.
-
-Stage 3 always performs one ordered pass:
-
-```text
-core subsystem
-→ KEGG/Reactome equivalence
-→ master-Rhea equivalence
-```
-
-### Rerun Stage 4 onward
-
-Rerun Layer 1 and downstream stages after changing:
-
-- `regulatory_alpha`;
-- `gpr_and_method` among `"min"`, `"median"`, and `"mean"`;
-- gene half-saturation;
-- metacell RNA or ATAC evidence.
-
-The default GPR-AND method is `"min"`.
-
-### Rerun Stage 5 onward
-
-Rerun Layer 2 and results after changing:
-
-- medium composition or exchange bounds;
-- `target_direction`, `omega`, solver, or `flux_threshold`;
-- `completion_time_limit`, `fastcore_epsilon`, `max_support_reactions`, or `strict` in `layer2_args$model_params`.
-
-`completion_time_limit` controls only the FASTCORE/FASTCC work that constructs the medium-specific union GEM. Scoring LPs have no `time_limit` API and run after the union GEM has been completed and cached.
-
-The complete preset list and custom-medium format are documented in [medium presets](medium-presets.md).
-
-## Rerun Stage 4 with another COMPASS GPR-AND rule
+The default GPR AND rule is `"min"`. Use `"median"` or `"mean"` to test
+sensitivity to complex aggregation.
 
 ```r
 step4_mean <- rc_regcompass_step_layer1(
+  grn = step1,
   metacells = step2,
   meta_modules = step3,
   gem = gem,
   outdir = "RegCompass_restart/04_layer1_mean",
+  projection_component = "condition",
+  comparison_support = "auto",
   regulatory_alpha = 0.5,
   gpr_and_method = "mean",
   parallel = TRUE,
@@ -105,9 +47,13 @@ step4_mean <- rc_regcompass_step_layer1(
 )
 ```
 
-Use `"median"` or `"mean"` for sensitivity analysis. The canonical default remains `"min"`.
+Other useful Stage 4 sensitivity settings:
 
-## Rebuild Stage 5
+- `regulatory_alpha`: regulatory contribution to RNA support;
+- `gene_half_saturation`: RNA support saturation;
+- `comparison_support`: `pairwise_common` or `global_common` when explicit control is required.
+
+## Change medium
 
 ```r
 new_medium_scenarios <- rc_make_medium_scenarios(
@@ -121,7 +67,7 @@ step5_new <- rc_regcompass_step_layer2(
   meta_modules = step3,
   gem = gem,
   medium_scenarios = new_medium_scenarios,
-  outdir = "RegCompass_restart/05_layer2",
+  outdir = "RegCompass_restart/05_layer2_low_glucose",
   model_mode = "meta_module_gem",
   layer2_args = list(
     target_direction = "both",
@@ -138,9 +84,19 @@ step5_new <- rc_regcompass_step_layer2(
 )
 ```
 
-This reuses the Stage 3 reaction targets and Stage 4 support matrix. The new `completion_time_limit` affects union-GEM reconstruction only; the subsequent scoring phase is not time limited.
+Medium choices:
 
-## Diagnose model completion
+- `physiologic`: species-specific baseline;
+- `normal_human_plasma` or `mouse_plasma`: explicit physiological preset;
+- `rpmi1640` or `dmem_high_glucose`: culture formulation;
+- nutrient challenge presets: human-only sensitivity scenarios;
+- `minimal`, `compass_model_bounds`, `permissive_all_exchange`: technical sensitivity scenarios;
+- `custom`: experiment-specific medium.
+
+See [Medium presets](medium-presets.md) for species restrictions and preset
+contents.
+
+## Model-completion diagnostics
 
 ```r
 summary <- step5_new$model_cache_summary
@@ -154,14 +110,33 @@ summary[, c(
 )]
 
 model <- readRDS(summary$file[[1]])
-diagnostics <- model$closure_diagnostics
-table(diagnostics$completion_status)
+table(model$closure_diagnostics$completion_status)
 ```
 
-Common statuses are:
+Common statuses:
 
-- `already_feasible`: the initial reaction set supports the target;
-- `global_fastcore_completed`: FASTCORE added supporting reactions;
-- `parent_blocked`: the target direction is infeasible in the medium-constrained parent GEM;
-- `unresolved`: completion did not succeed under the requested construction limit;
-- `no_allowed_direction`: the original GEM bounds block the requested direction.
+- `already_feasible`: no additional support reaction was required;
+- `global_fastcore_completed`: FASTCORE added support reactions;
+- `parent_blocked`: target direction is infeasible in the parent model;
+- `unresolved`: completion failed under the configured limits;
+- `no_allowed_direction`: original bounds block the direction.
+
+`completion_time_limit` applies to model completion, not the later scoring LPs.
+
+## Reassemble results
+
+```r
+result_new <- rc_regcompass_step_results(
+  grn = step1,
+  metacells = step2,
+  meta_modules = step3,
+  layer1 = step4,
+  layer2 = step5_new,
+  gem = gem,
+  outdir = "RegCompass_restart/06_results_low_glucose",
+  species = "human"
+)
+```
+
+Mathematical definitions: [Mathematical model](mathematical-model.md). Public
+API: [functions.md](functions.md).

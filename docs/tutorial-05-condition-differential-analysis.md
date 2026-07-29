@@ -1,13 +1,15 @@
-# Tutorial Level 5: compare reactions between conditions
+# Tutorial 5: compare reactions between conditions
 
-Use this tutorial after Stage 6, a complete one-shot run, or a target-union
-second pass.
+Use these functions after Stage 6, a one-shot run, or targeted reaction scoring:
 
-Current APIs are `rc_test_condition_reactions()`,
-`rc_report_condition_directions()`, `rc_plot_condition_reaction()`, and
-`rc_plot_condition_gene_reactions()`; see [functions.md](functions.md).
+- `rc_test_condition_reactions()`;
+- `rc_report_condition_directions()`;
+- `rc_plot_condition_reaction()`;
+- `rc_plot_condition_gene_reactions()`.
 
-## Inspect rankings and descriptive contrasts
+Mathematical definitions are in [Mathematical model](mathematical-model.md).
+
+## Inspect available targets
 
 ```r
 ranking <- result$reaction_ranking
@@ -17,27 +19,15 @@ head(ranking)
 head(contrast)
 ```
 
-The primary normalized penalty is:
+Lower normalized penalty indicates stronger network-constrained support for the
+specified reaction direction. It is not a measured flux.
 
-```text
-normalized_penalty = penalty / (omega × vmax)
-```
-
-The condition-statistics support score is:
-
-```text
-support = -log(normalized_penalty + eps)
-```
-
-Lower normalized penalty and higher support indicate stronger multiome support
-for the specified reaction direction.
-
-## Select one reaction target
+## Select a fixed target
 
 ```r
 reaction_id <- "MAR04324"
 direction <- "forward"
-medium_id <- "high_glucose"
+medium_id <- "physiologic"
 cell_type <- "stem-cell_like"
 
 one <- ranking[
@@ -49,7 +39,10 @@ one <- ranking[
 ]
 ```
 
-## Run direction-specific comparisons
+Condition comparisons must use the same reaction, direction, medium, and broad
+cell type.
+
+## Pairwise and omnibus tests
 
 ```r
 comparison <- rc_test_condition_reactions(
@@ -70,21 +63,16 @@ comparison$pairwise
 comparison$omnibus
 ```
 
-Each row compares one fixed:
+A positive `delta_median_score_b_minus_a` indicates stronger support in
+`condition_b`.
 
-```text
-reaction × direction × medium × cell type
-```
+Pairwise tests use Wilcoxon statistics. With at least three conditions, the
+optional omnibus test uses Kruskal-Wallis statistics. Multiple-testing scope is
+controlled by `p_adjust_scope`.
 
-A positive `delta_median_score_b_minus_a` means stronger support in
-`condition_b`. These are direction-specific LP support results, not measured
-net fluxes.
+## Direction-aware report
 
-## Build the final direction-aware report
-
-For a reversible reaction, forward and reverse are separate counterfactual LP
-targets. They may be numerically identical when the shared GEM and evidence
-costs cannot distinguish direction. Do not add the two scores.
+Forward and reverse directions are separate targets. Do not add their scores.
 
 ```r
 direction_report <- rc_report_condition_directions(
@@ -104,52 +92,21 @@ direction_report <- rc_report_condition_directions(
 )
 ```
 
-Inspect the primary direction-specific tables:
+Inspect:
 
 ```r
 direction_report$directional_pairwise
 direction_report$directional_omnibus
-```
-
-Inspect the non-additive reaction-level tables:
-
-```r
 direction_report$reaction_pairwise
 direction_report$reaction_omnibus
+direction_report$direction_diagnostics
 ```
 
-The reaction-level `report_metric` values are:
+`any_direction_support` reports the best-supported available direction.
+`directional_balance` reports forward-versus-reverse support asymmetry; it is
+not net flux.
 
-```text
-any_direction_support = max(forward_support, reverse_support)
-directional_balance  = forward_support - reverse_support
-```
-
-`any_direction_support` is the best-supported available direction and avoids
-double counting identical forward/reverse rows. `directional_balance` describes
-support asymmetry and is not net flux.
-
-Inspect direction identifiability:
-
-```r
-direction_report$direction_diagnostics[
-  ,
-  c(
-    "reaction_id",
-    "condition",
-    "direction_pair_status",
-    "max_abs_forward_reverse_difference",
-    "directionally_indistinguishable",
-    "preferred_direction"
-  )
-]
-```
-
-See [Direction-aware final reporting](direction-aware-condition-reporting.md)
-for target-union reporting, combined core/non-core testing families, and
-interpretation rules.
-
-## Plot one reaction direction
+## Plot one target
 
 ```r
 rc_plot_condition_reaction(
@@ -158,25 +115,38 @@ rc_plot_condition_reaction(
   target_direction = direction,
   medium_scenario = medium_id,
   cell_type = cell_type,
-  condition_col = "Group"
+  condition_col = "Group",
+  annotation_p = "p_adj"
 )
 ```
 
-## Inspect the cached model
+For gene-based selection and plotting:
 
 ```r
-cache <- result$microcompass$model_cache_summary
-cache[, c(
+rc_plot_condition_gene_reactions(
+  result,
+  genes = c("SLC7A11", "GCLC"),
+  condition_col = "Group",
+  medium_scenario = medium_id
+)
+```
+
+## Verify structural comparability
+
+```r
+result$microcompass$model_cache_summary[, c(
   "medium_scenario",
   "file",
+  "file_checksum",
   "n_merged_biological_reactions",
-  "n_global_fastcore_support_reactions",
-  "build_strategy"
+  "n_global_fastcore_support_reactions"
 )]
 ```
 
-The same shared structural GEM, bounds, medium, target direction, and target-flux
-fraction must be used for every compared unit. Metacell-level P values quantify
-within-dataset condition-associated separation, using each metacell as a
-statistical unit. They are not sample/donor-level biological-replicate
-inference.
+Compared units must share the same cached model, reaction order, bounds, target
+direction, target-flux fraction, and `vmax`.
+
+Metacells are the statistical units. Reported P values describe within-dataset
+condition-associated separation and are not sample- or donor-level inference.
+
+Public API: [functions.md](functions.md).

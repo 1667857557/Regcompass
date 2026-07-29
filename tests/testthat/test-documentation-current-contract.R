@@ -82,7 +82,8 @@ test_that("tutorials and Rd use the current condition-GRN vocabulary", {
     "condition × cell type Pando evidence",
     "condition-by-cell-type Pando GRNs", "local FASTCORE",
     "locally completed meta-modules", "significantly supported GEM target",
-    "number of significant edges", "minimum adjusted P value"
+    "number of significant edges", "minimum adjusted P value",
+    "TF–peak–GEM-gene"
   )
   expect_false(any(vapply(
     retired, grepl, logical(1), x = all_docs, fixed = TRUE
@@ -120,4 +121,56 @@ test_that("current condition fit status excludes retired aliases", {
   )
   expect_match(implementation, "condition_fit_status = status", fixed = TRUE)
   expect_false(grepl("sample_status = status", implementation, fixed = TRUE))
+})
+
+test_that("mathematical details are centralized", {
+  root <- documentation_root()
+  if (is.null(root)) skip("Source documentation is unavailable.")
+
+  mathematical_path <- file.path(root, "docs", "mathematical-model.md")
+  expect_true(file.exists(mathematical_path))
+  mathematical <- paste(
+    readLines(mathematical_path, warn = FALSE), collapse = "\n"
+  )
+
+  required <- c(
+    "Sparse-group multitask objective",
+    "Outer-heldout regulatory projection",
+    "Reliability and calibration",
+    "GPR aggregation and reaction penalty",
+    "Shared metabolic model",
+    "Condition statistics"
+  )
+  expect_true(all(vapply(
+    required, grepl, logical(1), x = mathematical, fixed = TRUE
+  )))
+  expect_true(grepl("\\[", mathematical, fixed = TRUE))
+
+  narrative_paths <- c(
+    file.path(root, "README.md"),
+    file.path(root, "docs", "workflow.md"),
+    file.path(root, "docs", "condition-comparable-grn.md"),
+    file.path(root, "docs", "condition-comparability-safeguards.md"),
+    file.path(root, "docs", "functions.md"),
+    list.files(
+      file.path(root, "docs"), pattern = "^tutorial-0[1-5].*\\.md$",
+      full.names = TRUE
+    ),
+    file.path(root, "vignettes", "regcompass-workflow.Rmd")
+  )
+  narrative <- read_documentation(narrative_paths)
+  expect_false(grepl("\\[", narrative, fixed = TRUE))
+
+  retired <- c(
+    "solves an ordinary elastic-net problem for each condition",
+    "Condition coefficient columns are separable at fixed lambda",
+    "Stage 4 uses only comparable condition effects",
+    "No metacell-wise robust rescaling",
+    "condition_grn_fit_v2.rds"
+  )
+  expect_false(any(vapply(
+    retired, grepl, logical(1), x = read_documentation(c(
+      mathematical_path, narrative_paths
+    )), fixed = TRUE
+  )))
 })

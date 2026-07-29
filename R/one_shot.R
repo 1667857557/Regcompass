@@ -1,25 +1,24 @@
 #' Run RegCompass from species-aware defaults
 #'
-#' Uses the bundled pinned Human-GEM or Mouse-GEM by default when `gem` is
-#' omitted. Set `gem_source = "download"` when rebuilding from an upstream
-#' release.
+#' Loads a pinned Human-GEM or Mouse-GEM when `gem` is omitted, prepares the
+#' requested medium, and calls [rc_run_regcompass()].
 #'
-#' @param object A Seurat RNA+ATAC object.
+#' @param object A paired-cell Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
-#' @param genome Genome object matching the selected species and ATAC coordinates.
+#' @param genome Genome object matching the selected species, ATAC coordinates,
+#'   and regulatory regions.
 #' @param species `"human"` or `"mouse"`.
-#' @param gem Optional prebuilt species GEM.
+#' @param gem Optional prepared species GEM.
 #' @param gem_version Pinned model release.
 #' @param gem_source GEM source: automatic, bundled-only, or download.
-#' @param pfm Optional motif position-frequency matrices. When omitted,
-#'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
-#'   to `Pando::find_motifs()`.
+#' @param pfm Optional motif collection. Pando's bundled motifs are used when
+#'   omitted.
 #' @param fragment_files Must be `FALSE` for the canonical peak-count path.
-#' @param medium_scenario Medium preset identifier.
+#' @param medium_scenario Medium preset used when `medium_scenarios` is omitted.
 #' @param medium_scenarios Optional prebuilt medium table.
 #' @param progress Show stage and total progress.
 #' @param ... Arguments passed to [rc_run_regcompass()].
-#' @return A canonical RegCompass result list.
+#' @return A complete RegCompass result.
 #' @export
 rc_run_regcompass_one_shot <- function(
     object, outdir, genome,

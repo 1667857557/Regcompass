@@ -15,37 +15,30 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{object}{Paired single-cell RNA+ATAC Seurat object.}
 \item{outdir}{Persistent workflow output directory.}
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
-\item{species}{\code{"human"} or \code{"mouse"}. Human runs may use the bundled hg38 phastCons plus SCREEN ccRE union. Mouse runs must provide a build-matched \code{GRanges} through \code{pando_args$pando_initiate_args$regions}.}
-\item{gem}{Optional prepared GEM. When omitted, the pinned species model is loaded.}
+\item{species}{\code{"human"} or \code{"mouse"}. Mouse runs require build-matched regulatory regions.}
+\item{gem}{Optional prepared GEM. The pinned species model is loaded when omitted.}
 \item{gem_version}{Pinned model release.}
-\item{gem_source}{Automatic, bundled-only, or explicit download model source.}
-\item{pfm}{Optional motif collection. When omitted, RegCompass loads Pando's bundled \code{motifs} object.}
+\item{gem_source}{Automatic, bundled-only, or download model source.}
+\item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
 \item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
 \item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
 \item{medium_scenarios}{Optional prebuilt medium table.}
 \item{progress}{Display workflow and stage progress.}
-\item{...}{Arguments passed to \code{rc_run_regcompass()}, including \code{condition_col}, \code{celltype_col}, \code{pando_args}, metacell settings, Layer 1/2 controls, and worker budgets.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}.}
 }
 \value{
-A validated complete RegCompass result, including
-\code{reaction_comparison_by_metacell} and all stage provenance.
+A validated complete RegCompass result and stage provenance.
 }
-\description{Provides the RegCompassR 2.1.0 species-aware complete-run API and requires Pando 1.5.0's ConditionGRNFit v5 contract.}
+\description{
+Loads species-aware defaults and runs the complete RegCompass workflow.
+}
 \details{
-Canonical Pando settings use \code{candidate_screen = "motif_domain"},
-\code{condition_mix = 0.5}, and \code{condition_weight = "equal"}. Each broad
-cell type is trained, validated and refitted independently.
+RegCompass requires \code{candidate_screen = "motif_domain"} for Stage 1.
+The primary penalty uses pairwise- or global-common outer-heldout absolute
+condition projections. Reference-condition effects and condition-full
+projections are interpretation or sensitivity outputs.
 
-The primary penalty accepts only pairwise/global-common outer-heldout
-projections. Condition-full OOF, RNA-only, depth-matched and alpha-grid routes
-are reported separately and rerun through the complete GPR, penalty and LP
-pipeline on one shared structural model.
-
-\code{pando_initiate_args}, \code{pando_motif_args}, and \code{pando_infer_args} are routed to the corresponding Pando functions. RegCompass owns the object, assays, genome, motifs, grouping columns, GEM target genes, network name, minimum condition size, error policy, and \code{BPPARAM}. Canonical Stage 1 rejects Pando aggregation columns because Stage 2 owns metacells.
-
-SuperCells are hard-stratified only by condition and broad cell type.
-Single- and multi-sample conditions use the same paired RNA+ATAC path and
-within-cell-type cell OOF; sample count is not an analysis requirement.
-Parallel Stage 1 execution is controlled by \code{upstream_workers}. Mouse runs
-stop unless a mouse-coordinate regulatory-region \code{GRanges} is supplied.
+The default medium is \code{"physiologic"}. Supply \code{medium_scenarios} for
+an explicit preset or custom medium. Mouse runs must provide regulatory regions
+matching the ATAC coordinates and motif-scanning genome.
 }

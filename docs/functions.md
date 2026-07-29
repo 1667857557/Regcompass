@@ -1,38 +1,41 @@
-# Public functions and API contract in RegCompassR 2.1.0
+# RegCompassR public API
 
-> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+This page lists exported functions and their main purpose. See
+[Workflow](workflow.md) for stage responsibilities and
+[Mathematical model](mathematical-model.md) for equations.
 
-RegCompass exposes a one-shot workflow and six restartable stages. Pando 1.5.0
-is the sole condition-GRN estimator; RegCompass consumes its versioned
-`ConditionGRNFit` and does not refit condition coefficient matrices.
-
-## Level 1: complete workflows
+## Complete workflows
 
 | Function | Purpose |
 |---|---|
-| `rc_run_regcompass_one_shot()` | Load species-aware GEM/medium defaults and run all stages. |
-| `rc_run_regcompass()` | Run all stages with an explicit GEM, medium, and worker budgets. |
+| `rc_run_regcompass_one_shot()` | Prepare defaults and run all stages. |
+| `rc_run_regcompass()` | Run all stages with explicit GEM, medium, and worker settings. |
 
-The complete workflow accepts `pando_args`, `metacell_args`,
-`meta_module_args`, `layer1_args`, `layer2_args`, `upstream_workers`, and
-`layer2_workers`.
+Common argument groups:
 
-## Level 2: stepwise workflow
+- `pando_args`: GRN fitting and filtering;
+- `metacell_args`: reductions, dimensions, gamma, seed, and thresholds;
+- `meta_module_args`: reaction catalogue expansion inputs;
+- `layer1_args`: regulatory strength and GPR aggregation;
+- `layer2_args`: direction, solver, and model completion;
+- `upstream_workers`, `layer2_workers`: stage worker budgets.
+
+## Restartable stages
 
 | Stage | Function | Main output |
 |---:|---|---|
-| 1 | `rc_regcompass_step_grn()` | Pando `ConditionGRNFit` objects plus condition coefficient/effect tables |
-| 2 | `rc_regcompass_step_metacells()` | condition × broad cell type SuperCells and cache provenance |
-| 3 | `rc_regcompass_step_meta_modules()` | complete-GPR cores and merged biological reaction catalogue |
-| 4 | `rc_regcompass_step_layer1()` | RNA-only and RNA+ATAC reaction support |
-| 5 | `rc_regcompass_step_layer2()` | shared medium-specific model and directional LP scores |
-| 6 | `rc_regcompass_step_results()` | annotated rankings, contrasts, evidence, and provenance |
+| 1 | `rc_regcompass_step_grn()` | Pando fit contracts and condition coefficient tables |
+| 2 | `rc_regcompass_step_metacells()` | condition × broad-cell-type metacells and cache provenance |
+| 3 | `rc_regcompass_step_meta_modules()` | supported genes, core reactions, and merged reaction catalogue |
+| 4 | `rc_regcompass_step_layer1()` | gene support, regulatory modifiers, and reaction penalties |
+| 5 | `rc_regcompass_step_layer2()` | shared medium-specific models and directional scores |
+| 6 | `rc_regcompass_step_results()` | annotations, rankings, evidence, and contrasts |
 
-## Stage 1 Pando contract
+## Stage 1 arguments
 
 ```r
 pando_args = list(
-  min_cells = 20L,
+  min_cells = 100L,
   min_abs_estimate = 0,
   min_model_rsq = 0.1,
   pando_infer_args = list(
@@ -45,88 +48,28 @@ pando_args = list(
 )
 ```
 
-Within each cell type, Pando shares:
+Nested argument routing:
 
-- one TF–peak–target edge dictionary;
-- one target-specific lambda path;
-- equal-condition transform definitions and coefficient scales.
-
-Every outer fold estimates its predictor/target transforms and selects lambda
-using training cells only. Condition-specific supports are selected jointly,
-projected exactly once on held-out cells, and then refit on full data only for
-network interpretation. `candidate_screen = "motif_domain"` is the
-interaction-safe default.
-The optional `pooled_within_condition` mode imposes a response-dependent marginal-correlation screen and is intended only for sensitivity analysis; its projection is ineligible for penalty construction.
-
-### Comparison support
-
-Pando exports both `eligibility_mask` and `comparison_mask`:
-
-```text
-comparison_mask[e, c] =
-  eligibility_mask[e, c] && eligibility_mask[e, reference]
-```
-
-RegCompass retains the explicit Pando 1.5.0 mask for full-fit interpretation.
-All effect rows expose `comparable_to_reference`; only comparable rows enter
-`tf_peak_gene_condition_effect`. Layer 1 penalties instead use Pando's
-outer-heldout pairwise/global-common absolute condition projection.
-
-### Pando argument routing
-
-| Nested bundle | Target function |
+| Bundle | Target function |
 |---|---|
 | `pando_initiate_args` | `Pando::initiate_grn()` |
 | `pando_motif_args` | `Pando::find_motifs()` |
 | `pando_infer_args` | `Pando::infer_condition_grn()` |
 
-RegCompass rejects nested overrides of:
+RegCompass controls the object, assays, genome, metadata columns, target genes,
+network name, minimum condition size, error policy, and `BPPARAM`.
 
-```text
-object, peak_assay, rna_assay, pfm, genome,
-cell_type_col, condition_col, genes, network_name,
-min_cells_per_condition, on_small_condition, BPPARAM
-```
-
-It also rejects `aggregate_rna_col` and `aggregate_peaks_col` because canonical
-Stage 1 fits paired single cells and Stage 2 owns aggregation.
-
-### Stage 1 parallel execution
-
-For `rc_regcompass_step_grn()`:
-
-| `parallel` | `BPPARAM` | Pando route |
-|---|---|---|
-| `FALSE` | any | serial; a supplied backend is ignored with a warning |
-| `TRUE` | `BiocParallelParam` | Pando receives that backend |
-| `TRUE` | `NULL`/`FALSE` | Pando native map backend |
-
-`BPPARAM = TRUE` is invalid. The resolved route is stored in
-`step1$params$pando_parallel`. Complete workflows use `upstream_workers` and a
-stage-scoped backend; users should not set `pando_infer_args$parallel`.
-
-### Stage 1 outputs
+Important outputs:
 
 ```r
 step1$grn_result$condition_grn_fits
 step1$grn_result$condition_fit_status
-step1$grn_result$tf_peak_gene_condition_all
 step1$grn_result$tf_peak_gene_condition
-step1$grn_result$tf_peak_gene_condition_effect_all
 step1$grn_result$tf_peak_gene_condition_effect
 step1$grn_result$normalization_policy
-step1$params$pando_parallel
 ```
 
-## Regulatory regions
-
-Human Stage 1 defaults to the union of Pando's hg38 phastCons and SCREEN ccRE
-objects. Pando does not bundle a mouse-coordinate equivalent. Mouse runs must
-supply a build-matched `GRanges` through
-`pando_args$pando_initiate_args$regions`; RegCompass stops rather than applying
-hg38 regions to mouse peaks.
-
-## Stage 2 metacells
+## Stage 2 arguments
 
 ```r
 metacell_args = list(
@@ -142,44 +85,62 @@ metacell_args = list(
 )
 ```
 
-Reduction names, dimensions, embedding fingerprints, ordered cells, assays,
-seed, gamma, and thresholds are part of the cache contract.
+Cache validation includes cells, assays, reductions, dimensions, seed, gamma,
+and thresholds.
 
-## Stages 3–5
+## Stage 4 arguments
 
-Stage 3 maps active condition coefficients to supported metabolic genes,
-complete-GPR cores, and one ordered expansion pass:
-
-```text
-core subsystems → direct KEGG/Reactome equivalents → direct master-Rhea equivalents
+```r
+rc_regcompass_step_layer1(
+  grn,
+  metacells,
+  meta_modules,
+  gem,
+  outdir,
+  projection_component = "condition",
+  comparison_support = "auto",
+  regulatory_alpha = 0.5,
+  gpr_and_method = "min"
+)
 ```
 
-Stage 4 delegates standardized single-cell interaction projection to Pando.
-The primary route accepts only outer-heldout pairwise/global-common absolute
-condition projections; condition-full OOF is exploratory and full-fit
-condition-versus-reference contrasts are interpretation-only. GPR AND accepts
-`"min"`, `"median"`, or `"mean"`; the default is `"min"`. Isozyme OR branches
-remain additive.
+`projection_component` must be `"condition"`. `comparison_support` accepts
+`"auto"`, `"pairwise_common"`, or `"global_common"`.
+`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"`.
 
-With `model_mode = "meta_module_gem"`, Stage 5 applies each medium, performs one
-global FASTCORE completion, caches one shared model, and reuses it for every
-condition and metacell in that medium.
-
-## Other public analysis functions
+## GEM and medium
 
 | Function | Purpose |
 |---|---|
-| `rc_prepare_gem()` | Load/validate a pinned Human-GEM or Mouse-GEM. |
-| `rc_make_medium_scenarios()` | Construct condition-invariant medium constraints. |
-| `rc_build_reaction_annotations()` | Build reaction names, formulas, GPRs, and database cross-references. |
-| `rc_attach_reaction_annotations()` | Attach the current annotation contract to an existing result. |
-| `rc_select_gene_reactions()` | Select scored reactions by metabolic gene. |
-| `rc_test_condition_reactions()` | Compare fixed reaction-direction targets across conditions. |
-| `rc_report_condition_directions()` | Retain forward/reverse targets and derive support summaries. |
-| `rc_plot_condition_reaction()` | Plot one reaction-direction target across conditions. |
-| `rc_plot_condition_gene_reactions()` | Select and plot reaction targets associated with genes. |
-| `rc_regcompass_step_target_union()` | Score directly database-linked non-core targets in cached Stage 5 models. |
+| `rc_prepare_gem()` | Load and validate a pinned Human-GEM or Mouse-GEM. |
+| `rc_make_medium_scenarios()` | Build preset or custom exchange bounds. |
+| `rc_build_reaction_annotations()` | Build reaction names, formulas, GPRs, and cross-references. |
+| `rc_attach_reaction_annotations()` | Attach annotations to an existing result. |
 
-See [Tutorial 1](tutorial-01-quick-start.md),
-[Tutorial 2](tutorial-02-stepwise-audit.md), and the
-[Pando contract](condition-comparable-grn.md).
+See [Medium presets](medium-presets.md).
+
+## Condition analysis
+
+| Function | Purpose |
+|---|---|
+| `rc_test_condition_reactions()` | Compare fixed reaction-direction targets across conditions. |
+| `rc_report_condition_directions()` | Summarize forward and reverse targets without adding them. |
+| `rc_plot_condition_reaction()` | Plot one reaction direction across conditions. |
+| `rc_plot_condition_gene_reactions()` | Select and plot reaction targets associated with genes. |
+| `rc_select_gene_reactions()` | Select scored reactions by metabolic gene. |
+
+Metacell tests describe within-dataset separation and are not donor-level
+inference.
+
+## Targeted scoring
+
+`rc_regcompass_step_target_union()` scores direct KEGG, Reactome, or master-Rhea
+equivalents of selected anchors using the cached Stage 5 model. It does not
+rerun FASTCORE.
+
+## Parallel execution
+
+- complete workflows: use `upstream_workers` and `layer2_workers`;
+- stepwise functions: pass a `BiocParallelParam` through `BPPARAM`;
+- `BPPARAM = TRUE` is invalid;
+- do not set nested `pando_infer_args$parallel` in complete-workflow examples.
