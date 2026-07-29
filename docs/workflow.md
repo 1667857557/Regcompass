@@ -1,294 +1,151 @@
-# RegCompassR 2.1.0 workflow
+# RegCompassR workflow
 
-## Canonical data flow
+This page describes stage responsibilities, inputs, and outputs. Mathematical
+definitions are centralized in [Mathematical model](mathematical-model.md).
+
+## Data flow
 
 ```text
 paired RNA+ATAC cells
-→ condition-aware GRN inference within each broad cell type
+→ condition-aware Pando GRNs
 → condition × broad-cell-type metacells
-→ supported metabolic genes and complete-GPR core reactions
-→ merged biological reaction catalogue
-→ regulatory modification of metacell RNA support
+→ supported metabolic genes and core reactions
+→ merged reaction catalogue
+→ RNA support modified by regulatory scores
 → GPR-based reaction penalties
-→ one shared medium-specific metabolic model
-→ directional COMPASS-like LP scoring
-→ reaction ranking and condition comparison
+→ shared medium-specific metabolic model
+→ directional LP scores
+→ condition comparisons
 ```
 
-The workflow separates two roles:
+## Stage 1: `rc_regcompass_step_grn()`
 
-- **Pando** estimates condition-aware regulatory models and outer-heldout target-gene scores.
-- **RegCompass** maps those results to metabolic genes, reactions, metacells, penalties, and flux-constrained reaction scores.
+**Purpose:** fit one condition-aware Pando model per broad cell type.
 
-The main comparison unit is the same reaction, direction, medium, and broad cell
-type across conditions. Reference-condition coefficient contrasts are retained
-for network interpretation but are not the primary Stage 4 penalty input.
+**Main inputs:** paired RNA+ATAC Seurat object, GEM, genome, condition column,
+cell-type column, Pando arguments.
 
-## Stage 1: condition-aware GRN inference
+**Key behavior:**
 
-`rc_regcompass_step_grn()` calls Pando once per broad cell type using cells from
-all eligible conditions in that type. The target set is
+- targets are GEM GPR genes present in the RNA assay;
+- `candidate_screen = "motif_domain"` is the default;
+- outer-heldout projections are generated within each fitted cell type;
+- absolute condition coefficients are used downstream;
+- reference-condition effects are interpretation outputs;
+- mouse analyses require build-matched regulatory regions.
 
-\[
-T = G_{GEM\ GPR} \cap G_{RNA\ assay}.
-\]
-
-Pando uses one shared candidate-edge dictionary and an equal-condition
-coordinate system. Sparse supports are selected jointly across conditions,
-while coefficients may differ in magnitude, sign, or activity status. Nested
-condition-stratified outer folds generate held-out target-gene projections;
-the full-data refit is retained for network interpretation only.
-
-The canonical `candidate_screen = "motif_domain"` mode keeps motif/domain
-candidates without response-dependent marginal screening. The optional
-`pooled_within_condition` mode is a sensitivity analysis and is ineligible for
-primary penalty construction.
-
-Stage 1 retains two distinct coefficient views:
-
-- absolute condition coefficients `beta_condition`, used to define supported metabolic targets and to generate the primary OOF projection;
-- reference contrasts `contrast = beta_condition - beta_reference`, used only for interpretation tables.
-
-An active coefficient can be positive or negative. Pando does not emit adjusted
-P values for these regularized coefficients.
-
-Key outputs are:
+**Main outputs:**
 
 ```r
 step1$grn_result$condition_grn_fits
+step1$grn_result$condition_fit_status
 step1$grn_result$tf_peak_gene_condition
 step1$grn_result$tf_peak_gene_condition_effect
-step1$grn_result$condition_fit_status
 ```
 
-## Stage 2: condition-stratified metacells
+Detailed model fields and equations: [Pando condition contract](condition-comparable-grn.md)
+and [Mathematical model](mathematical-model.md).
 
-`rc_regcompass_step_metacells()` constructs SuperCell metacells separately
-within each condition × broad-cell-type stratum. A metacell is rejected if its
-membership mixes either condition or broad cell type.
+## Stage 2: `rc_regcompass_step_metacells()`
 
-The cache contract records the ordered cells, assay contents, reduction
-embeddings, dimensions, seed, gamma, and construction thresholds. RNA and ATAC
-counts are aggregated from the same membership.
+**Purpose:** construct multimodal SuperCell metacells.
 
-The primary Pando projection is computed at the single-cell level first and is
-then averaged over the exact SuperCell membership. RegCompass does not rebuild
-the regulatory predictor from metacell means.
+**Grouping:** condition × broad cell type. Metacells mixing either field are
+rejected.
 
-## Stage 3: metabolic targets and reaction catalogue
+**Important parameters:** RNA/ATAC reductions and dimensions, `gamma`, `seed`,
+`min_cells_per_stratum`, `min_metacell_size`, and
+`min_metacells_per_stratum`.
 
-`rc_regcompass_step_meta_modules()` maps active absolute condition coefficients
-to supported metabolic target genes. For condition `c` and cell type `k`, let
-`E_{c,k}` be the active coefficient table. The supported metabolic genes are
+**Main outputs:** metacell RNA and ATAC counts, membership table, metacell
+metadata, cache contract, and stratum status.
 
-\[
-M_{c,k} = \{g \in T : \exists e \in E_{c,k},\ target(e)=g\}.
-\]
+Changing cells, assays, reductions, dimensions, seed, gamma, or thresholds
+invalidates the cache.
 
-A reaction is a core reaction only when at least one complete GPR isozyme branch
-is represented:
+## Stage 3: `rc_regcompass_step_meta_modules()`
 
-\[
-C_{c,k} = \{r : \exists j,\ GPR_{r,j} \subseteq M_{c,k}\}.
-\]
+**Purpose:** map active condition coefficients to metabolic genes and reaction
+sets.
 
-Partially represented enzyme complexes remain diagnostics and are not core
-anchors.
+**Processing:**
 
-Each core set is expanded once in this order:
+1. identify supported metabolic genes;
+2. require a complete GPR branch for a core reaction;
+3. add reactions from the core subsystem;
+4. add direct KEGG/Reactome equivalents;
+5. add direct master-Rhea equivalents;
+6. merge condition- and cell-type-specific sets into one reaction catalogue.
 
-1. reactions in the same annotated subsystem;
-2. direct KEGG or Reactome reaction equivalents;
-3. direct master-Rhea reaction equivalents.
+Stage 3 does not run FASTCORE and does not create the final GEM.
 
-No newly added reaction restarts an earlier expansion step. The condition- and
-cell-type-specific sets are then merged into one deduplicated reaction
-catalogue. This catalogue is not yet a flux-consistent GEM.
+**Main outputs:** supported genes, core gene-reaction mapping, reaction
+membership, merged core reactions, and merged reaction catalogue.
 
-Key outputs are:
+## Stage 4: `rc_regcompass_step_layer1()`
 
-```r
-step3$condition_modules$supported_metabolic_genes
-step3$condition_modules$core_gene_reaction
-step3$merged_modules$merged_core_reactions
-step3$merged_modules$merged_reaction_membership
-```
+**Purpose:** calculate metacell gene support and reaction penalties.
 
-## Stage 4: regulatory modification and reaction penalties
+**Key behavior:**
 
-`rc_regcompass_step_layer1()` combines metacell RNA support with the Pando
-outer-heldout common-support projection.
+- RNA support is estimated from metacell counts;
+- the primary regulatory input is Pando's outer-heldout common-support score;
+- single-cell regulatory scores are averaged using exact SuperCell membership;
+- reference-condition coefficient effects are not used for the primary penalty;
+- `gpr_and_method = "min"` is the default;
+- `"median"` and `"mean"` are available for sensitivity analysis;
+- RNA-only, condition-full, depth, and alpha routes are diagnostic or sensitivity outputs.
 
-### RNA support
+**Main outputs:** gene support, regulatory modifiers, reaction support, reaction
+penalties, and route diagnostics.
 
-Metacell RNA counts are converted to latent log expression and then to bounded
-gene support:
+## Stage 5: `rc_regcompass_step_layer2()`
 
-\[
-C^{RNA}_{g,u}=\frac{x_{g,u}}{x_{g,u}+h}.
-\]
+**Purpose:** build a shared medium-specific model and score reaction directions.
 
-Observed structural zeros remain zero; unavailable genes remain unavailable.
+**Key behavior:**
 
-### Pando regulatory score
+- one global FASTCORE completion is run per medium;
+- the completed model is reused for every condition and metacell in that medium;
+- forward and reverse directions are scored separately;
+- lower normalized penalty indicates stronger network-constrained support;
+- the score is not a measured flux.
 
-For held-out cell `i`, condition `c`, and target gene `g`, Pando stores the
-absolute-condition common-support projection
+**Important parameters:** medium scenario, `target_direction`, `omega`, solver,
+`completion_time_limit`, `fastcore_epsilon`, `max_support_reactions`, and
+`strict`.
 
-\[
-G^{OOF}_{i,g,c}=\sum_{e:\,target(e)=g,\,m_e=1}
-\beta^{(-k)}_{e,c}z^{(-k)}_{i,e},
-\]
+**Main outputs:** model cache, model diagnostics, directional penalties, `vmax`,
+feasibility, and comparison tables.
 
-where `m_e` is the pairwise-common or global-common estimability mask. The cell
-scores are averaged within each metacell:
+Medium choices: [Medium presets](medium-presets.md).
 
-\[
-G^{OOF}_{u,g,c}=\frac{1}{|\mathcal M_u|}
-\sum_{i\in\mathcal M_u}G^{OOF}_{i,g,c}.
-\]
+## Stage 6: `rc_regcompass_step_results()`
 
-The primary route does not use the reference contrast `Delta beta`. A
-condition-estimable projection is retained only as a diagnostic comparator.
+**Purpose:** assemble annotations, rankings, evidence, provenance, and condition
+contrasts.
 
-### Reliability and calibration
+Condition comparisons must use the same reaction, direction, medium, broad cell
+type, model, bounds, and target-flux fraction.
 
-Pando supplies one pooled outer-heldout target `R^2`:
+Metacell P values describe within-dataset condition-associated separation. They
+are not sample- or donor-level biological-replicate inference.
 
-\[
-q_g=\sqrt{clamp(R^2_{OOF,pooled,g},0,1)}.
-\]
+## Optional targeted scoring
 
-RegCompass computes one robust projection scale for each target gene and broad
-cell type using all finite common-support metacell projections in that type:
+`rc_regcompass_step_target_union()` scores direct KEGG, Reactome, or master-Rhea
+equivalents of selected reaction anchors in the existing Stage 5 model. It does
+not rebuild the model or rerun FASTCORE.
 
-\[
-\sigma_{g,t}=\max\left(
-\frac{IQR(G_{g,t})}{1.349},
-MAD_{1.4826}(G_{g,t}),
-\sqrt{mean(G_{g,t}^2)},
-10^{-6}
-\right).
-\]
+## Restart boundaries
 
-The signed modifier is
-
-\[
-R_{g,c,u}=q_g\tanh\left(\frac{G^{OOF}_{u,g,c}}{\sigma_{g,t}}\right).
-\]
-
-This is a pooled broad-cell-type calibration, not a condition-specific
-rescaling. Because the scale is estimated from the projection distribution,
-the modifier is not 1-homogeneous in the Pando coefficients.
-
-### Integrated gene and reaction support
-
-The regulatory modifier acts on RNA support on the log-odds scale:
-
-\[
-C^{MO}_{g,u}=
-\frac{C^{RNA}_{g,u}2^{\alpha R_{g,u}}}
-{1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{\alpha R_{g,u}}}.
-\]
-
-Regulatory evidence can raise or lower existing RNA support but cannot create
-support when RNA support is exactly zero.
-
-For a GPR AND group `A_{r,j}`, the default aggregation is the limiting required
-subunit:
-
-\[
-Q_{r,j,u}=\min_{g\in A_{r,j}} C^{MO}_{g,u}.
-\]
-
-`"median"` and `"mean"` are available as sensitivity options. Isozyme OR
-branches are additive:
-
-\[
-E_{r,u}=\sum_j Q_{r,j,u}.
-\]
-
-Reaction support is converted to the LP penalty
-
-\[
-p_{r,u}=\frac{1}{1+\log_2(1+E_{r,u})}.
-\]
-
-Missing reaction support remains unavailable rather than being converted to
-zero.
-
-## Stage 5: shared metabolic model and directional LP
-
-`rc_regcompass_step_layer2()` applies each medium scenario to the same merged
-reaction catalogue. A single global FASTCORE completion creates one
-medium-specific flux-consistent model, which is reused for every condition and
-metacell in that medium.
-
-FASTCORE uses structural feasibility only; it does not use RNA or ATAC evidence.
-It may add exchange, transport, cofactor-regeneration, redox-balancing, or other
-support reactions required for core feasibility.
-
-For target reaction `r` and direction `d`, the first LP computes the maximum
-feasible target flux:
-
-\[
-v^{max}_{r,d}=\max_v d v_r
-\]
-
-subject to
-
-\[
-Sv=0,\qquad l\le v\le u.
-\]
-
-The second LP minimizes the network-wide penalty while requiring the target to
-reach a fraction `omega` of that maximum:
-
-\[
-P^*_{r,d,u}=\min_{v,t}\sum_j p_{j,u}t_j
-\]
-
-subject to
-
-\[
-Sv=0,\quad -t_j\le v_j\le t_j,\quad
- d v_r\ge \omega v^{max}_{r,d}.
-\]
-
-The default is `omega = 0.95`. Cross-reaction ranking uses
-
-\[
-\widetilde P_{r,d,u}=\frac{P^*_{r,d,u}}
-{\omega v^{max}_{r,d}}.
-\]
-
-Lower normalized penalty indicates stronger support within the fixed shared
-model and medium. The score is a network-constrained support cost, not a direct
-measurement of reaction flux.
-
-## Stage 6: results and condition comparisons
-
-`rc_regcompass_step_results()` attaches reaction annotations, evidence records,
-rankings, and condition contrasts.
-
-Within a medium scenario, all conditions use the same reaction set,
-stoichiometric matrix, bounds, target direction, and target-specific `vmax`.
-Condition differences therefore enter through the metacell penalty vectors.
-Different media may produce different completed models and should be treated as
-separate structural contexts.
-
-`rc_test_condition_reactions()` compares the same reaction, direction, medium,
-and broad cell type across conditions using metacells as statistical units. The
-reported Wilcoxon and Kruskal–Wallis P values quantify within-dataset metacell
-separation; they are not donor- or sample-level biological-replicate inference.
-
-## Restartable functions
-
-| Stage | Function | Main output |
-|---:|---|---|
-| 1 | `rc_regcompass_step_grn()` | Pando condition-aware GRNs and OOF fit contracts |
-| 2 | `rc_regcompass_step_metacells()` | pure condition × broad-cell-type SuperCells |
-| 3 | `rc_regcompass_step_meta_modules()` | supported genes, core reactions, merged reaction catalogue |
-| 4 | `rc_regcompass_step_layer1()` | RNA support, regulatory modifiers, reaction penalties |
-| 5 | `rc_regcompass_step_layer2()` | shared medium-specific models and directional LP scores |
-| 6 | `rc_regcompass_step_results()` | annotations, rankings, provenance, and contrasts |
+| Earliest stage to rerun | Changes |
+|---|---|
+| Stage 1 | RNA/ATAC data, cell labels, genome, regions, motifs, Pando fitting or filtering arguments |
+| Stage 2 | metacell reductions, dimensions, gamma, seed, thresholds, or membership inputs |
+| Stage 3 | GPR rules, subsystem table, or reaction cross-references |
+| Stage 4 | regulatory alpha, RNA support settings, GPR aggregation rule, or metacell evidence |
+| Stage 5 | medium, bounds, target direction, omega, solver, or model-completion settings |
+| Stage 6 | annotations, reporting filters, or contrast settings only |
+
+Public API index: [functions.md](functions.md).
