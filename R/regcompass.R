@@ -16,15 +16,15 @@
 #' @param pfm Optional motif position-frequency matrices. When omitted,
 #'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
 #'   to `Pando::find_motifs()`.
-#' @param sample_col Deprecated compatibility input. It is recorded as
-#'   provenance only. Canonical metacells are grouped by condition, use cell
-#'   type as a construction label, and never use sample selection, balancing,
-#'   weighting, or sample-level refitting.
+#' @param cell_type Optional broad cell-type label or labels. When omitted,
+#'   every observed type is processed independently.
 #' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
 #'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
 #'   master-Rhea equivalence.
 #' @param layer1_args Stage 4 integrated-evidence arguments:
-#'   `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.
+#'   `projection_component`, `comparison_support`, `regulatory_alpha`,
+#'   `gpr_and_method`, and
+#'   `gene_half_saturation`.
 #'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
 #'   `"mean"`; RegCompass defaults to `"min"`.
 #' @param upstream_workers Worker count for GRN inference and Layer 1
@@ -39,10 +39,10 @@ rc_run_regcompass <- function(
     species = c("auto", "human", "mouse"),
     condition_col = "condition",
     celltype_col = "cell_type",
+    cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
-    sample_col = NULL,
     fragment_files = FALSE,
     metacell_args = list(),
     meta_module_args = list(),
@@ -108,21 +108,24 @@ rc_run_regcompass <- function(
   if ("tau" %in% names(layer1_args)) {
     stop(
       "The retired `tau`/Boltzmann Layer 1 transform is not supported. ",
-      "Use `regulatory_alpha`, `gpr_and_method`, and ",
-      "`gene_half_saturation`.",
+      "Use the Pando cell-first projection controls and `regulatory_alpha`.",
       call. = FALSE
     )
   }
   unknown_layer1 <- setdiff(
     names(layer1_args),
-    c("regulatory_alpha", "gpr_and_method", "gene_half_saturation")
+    c(
+      "projection_component", "comparison_support",
+      "regulatory_alpha", "gpr_and_method",
+      "gene_half_saturation"
+    )
   )
   if (length(unknown_layer1)) {
     stop(
       "Unknown `layer1_args` fields: ",
       paste(unknown_layer1, collapse = ", "),
-      ". Allowed fields: `regulatory_alpha`, `gpr_and_method`, and ",
-      "`gene_half_saturation`.",
+      ". Allowed fields: `projection_component`, `comparison_support`, ",
+      "`regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.",
       call. = FALSE
     )
   }
@@ -134,6 +137,15 @@ rc_run_regcompass <- function(
   pando_infer_args <- pando_args$pando_infer_args %||% list()
   if (!is.list(pando_infer_args)) {
     stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+  }
+  retired_infer <- intersect(
+    names(pando_infer_args), c("cv_block_col", "sample_col", "method")
+  )
+  if (length(retired_infer)) {
+    stop(
+      "Retired Pando inference arguments are not supported: ",
+      paste(retired_infer, collapse = ", "), ".", call. = FALSE
+    )
   }
   if (!is.null(pando_infer_args$parallel) &&
       !identical(pando_infer_args$parallel, FALSE)) {
@@ -191,6 +203,7 @@ rc_run_regcompass <- function(
           genome = genome,
           condition_col = condition_col,
           celltype_col = celltype_col,
+          cell_type = cell_type,
           rna_assay = rna_assay,
           atac_assay = atac_assay,
           pando_args = pando_args,
@@ -209,9 +222,9 @@ rc_run_regcompass <- function(
     rc_regcompass_step_metacells(
       object = object,
       outdir = file.path(outdir, "02_condition_metacells"),
-      sample_col = sample_col,
       condition_col = condition_col,
       celltype_col = celltype_col,
+      cell_type = cell_type,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       fragment_files = fragment_files,
@@ -241,10 +254,15 @@ rc_run_regcompass <- function(
       argument = "upstream_workers",
       FUN = function(upstream, config) {
         rc_regcompass_step_layer1(
+          grn = step1,
           metacells = step2,
           meta_modules = step3,
           gem = gem,
           outdir = file.path(outdir, "04_layer1"),
+          projection_component =
+            layer1_args$projection_component %||% "condition",
+          comparison_support =
+            layer1_args$comparison_support %||% "auto",
           regulatory_alpha = layer1_args$regulatory_alpha %||% 1,
           gpr_and_method = gpr_and_method,
           gene_half_saturation = layer1_args$gene_half_saturation %||%

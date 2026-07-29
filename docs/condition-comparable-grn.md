@@ -1,18 +1,19 @@
 # Pando shared-design, condition-comparable GRNs
 
+> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+
 RegCompass Stage 1 calls `Pando::initiate_grn()`, `Pando::find_motifs()`, and
 `Pando::infer_condition_grn()` once on the normalized paired-cell multiome
 object. Pando returns one versioned `ConditionGRNFit` per cell type.
 
-## Shared-design independent model
+## Condition-sparse common-metric model
 
 The canonical configuration is:
 
 ```r
 pando_infer_args = list(
-  method = "shared_design_independent",
   candidate_screen = "motif_domain",
-  condition_mix = 1,
+  condition_mix = 0.5,
   condition_weight = "equal",
   reference_condition = "Control",
   scale = TRUE
@@ -50,14 +51,11 @@ interaction predicts the target. RegCompass therefore defaults to
 `candidate_screen = "motif_domain"`: structural motif/domain candidates are
 retained, and elastic-net regularization performs coefficient selection.
 
-Two optional Pando modes remain available:
+One optional Pando mode remains available:
 
-- `condition_union`: retain complete edges whose TF and peak pass marginal
-  screening within at least one condition;
-- `pooled`: apply the marginal screen after pooling conditions.
+- `pooled_within_condition`: remove condition means, then apply marginal TF-target and peak-target screening before model fitting.
 
-These are sensitivity/performance modes, not the canonical interaction-safe
-default.
+This is a sensitivity/performance mode, not the canonical interaction-safe default. Because the response is used before cross-validation, RegCompass does not use its OOF score as confirmatory Layer 1 reliability (`q = 0`).
 
 ## Common coefficient units
 
@@ -102,7 +100,7 @@ A zero coefficient can have two distinct meanings:
 2. a coefficient fixed to zero because the edge is not estimable in that
    condition.
 
-Pando 1.2.1 resolves this ambiguity with:
+Pando 1.4.0 resolves this ambiguity with:
 
 \[
 comparison\_mask_{e,c}=

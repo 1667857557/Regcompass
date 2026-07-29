@@ -23,30 +23,39 @@ test_that("reaction penalty is positive and decreases with expression", {
 
 test_that("Pando grouping uses condition and cell type", {
   implementation <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
-    collapse = "\n"
-  )
-  bridge <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
+    deparse(body(.rc_fit_condition_grns_by_cell_type)), collapse = "\n"
   )
   expect_match(
     implementation,
     "group_cols <- c(condition_col, celltype_col)",
     fixed = TRUE
   )
-  expect_match(bridge, ".rc_validate_pando_bridge_args", fixed = TRUE)
-  expect_false("sample_col" %in% names(formals(.rc_run_condition_single_cell_grns)))
+  expect_match(implementation, "cell_type = cell_type", fixed = TRUE)
+  expect_false("sample_col" %in%
+                 names(formals(.rc_fit_condition_grns_by_cell_type)))
   expect_false("strict_biological_defaults" %in% names(formals(rc_run_regcompass)))
 })
 
-test_that("per-metacell regulatory state uses peak accessibility", {
-  body_text <- paste(deparse(body(.rc_condition_gene_regulatory_modifier)), collapse = "\n")
-  expect_match(body_text, ".rc_pando_assay_data(object, atac_assay)", fixed = TRUE)
-  expect_match(body_text, "predictor_center", fixed = TRUE)
-  expect_match(body_text, "predictor_scale", fixed = TRUE)
-  expect_match(body_text, ".rc_project_condition_edges", fixed = TRUE)
-  expect_false(grepl("sum(abs", body_text, fixed = TRUE))
-  expect_false(grepl("tf_score", body_text, fixed = TRUE))
+test_that("Layer 1 delegates cell-first projection to Pando", {
+  body_text <- paste(
+    deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
+  )
+  expect_match(
+    body_text, "Pando::project_condition_grn_cells", fixed = TRUE
+  )
+  expect_match(
+    body_text, "Pando::aggregate_condition_grn_projection", fixed = TRUE
+  )
+  expect_match(body_text, 'absolute <- project_one("condition")', fixed = TRUE)
+  expect_match(body_text, "sqrt(pmin(1, pmax(0", fixed = TRUE)
+  expect_match(body_text, "!available | !is.finite(q)", fixed = TRUE)
+  expect_match(
+    body_text, "predictive_oof_available", fixed = TRUE
+  )
+  expect_match(body_text, "reliability * tanh(projection)", fixed = TRUE)
+  expect_false(grepl(
+    ".rc_condition_gene_regulatory_modifier", body_text, fixed = TRUE
+  ))
 })
 
 test_that("single-condition scoring uses penalty per required target flux", {

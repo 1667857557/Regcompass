@@ -123,7 +123,7 @@ test_that("active Pando targets define one supported gene set per group", {
   )
   grn_result <- list(
     group_cols = c("condition", "cell_type"),
-    tf_peak_gene_significant = significant
+    tf_peak_gene_condition = significant
   )
   supported <- .rc_summarize_supported_metabolic_genes(
     grn_result,
@@ -219,9 +219,9 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
     stringsAsFactors = FALSE
   )
   condition_modules <- list(
-    sample_status = data.frame(group_id = "S1"),
-    tf_peak_gene_all = data.frame(),
-    tf_peak_gene_significant = data.frame(),
+    condition_fit_status = data.frame(group_id = "S1"),
+    tf_peak_gene_condition_all = data.frame(),
+    tf_peak_gene_condition = data.frame(),
     supported_metabolic_genes = supported,
     core_gene_reaction = core,
     reaction_membership = membership,

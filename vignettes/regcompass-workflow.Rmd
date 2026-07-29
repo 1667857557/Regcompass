@@ -1,8 +1,10 @@
 ---
-title: "RegCompassR 1.9.3 condition-comparable Pando workflow"
+
+> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+title: "RegCompassR 2.0.0 condition-comparable Pando workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 1.9.3 condition-comparable Pando workflow}
+  %\VignetteIndexEntry{RegCompassR 2.0.0 condition-comparable Pando workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -19,18 +21,18 @@ support and directional COMPASS-like scores.
 ```text
 one Pando motif/domain edge dictionary per cell type
 → pooled TF-RNA × peak-ATAC predictor transforms
-→ independently estimated condition coefficients at a shared lambda
+→ condition-sparse selection followed by common-metric refit
 → explicit condition-versus-reference comparison mask
 → supported metabolic genes and complete-GPR cores
 → one ordered biological expansion pass
-→ condition-level multimodal metacells
+→ condition × broad cell type SuperCells
 → integrated reaction support and penalties
 → one shared medium-specific GEM
 → directional LP scoring
 ```
 
-Pando 1.2.1 is the sole GRN estimator. RegCompass consumes its
-`ConditionGRNFit` contracts without refitting coefficient matrices.
+Pando 1.4.0 is the sole GRN estimator. RegCompass consumes its
+`ConditionGRNFit v4` contracts without refitting coefficient matrices.
 
 # Prepare the human GEM and medium
 
@@ -72,12 +74,11 @@ result <- rc_run_regcompass_one_shot(
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      method = "shared_design_independent",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
-      peak_cor = 0.01,
+      peak_cor = 0,
       alpha = 0.5,
-      condition_mix = 1,
+      condition_mix = 0.5,
       condition_weight = "equal",
       reference_condition = "Control",
       nlambda = 50L,
@@ -102,7 +103,8 @@ result <- rc_run_regcompass_one_shot(
   ),
 
   layer1_args = list(
-    regulatory_alpha = 1,
+    comparison_support = "auto",
+  regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -137,13 +139,10 @@ x[e, u] = RNA[TF(e), u] × ATAC[peak(e), u]
 The final interaction is centered and scaled once over all cells of the cell
 type. Conditions share this transform, the target transform, and a
 target-specific lambda path/selection. With
-`method = "shared_design_independent"`, `condition_mix = 1`, and
-`condition_weight = "equal"`, condition coefficient vectors are estimated
-independently at the selected lambda.
+`condition_mix = 0.5` and
+`condition_weight = "equal"`, condition-specific supports are selected jointly and then refit on one pooled common metric.
 
-The interaction-safe candidate default is `motif_domain`. The optional
-`condition_union` and `pooled` modes apply marginal-correlation screens and are
-sensitivity modes rather than canonical defaults.
+The interaction-safe candidate default is `motif_domain`. The optional `pooled_within_condition` mode applies response-dependent marginal-correlation screening and is a sensitivity mode rather than a canonical default; its OOF score is not used as confirmatory Layer 1 reliability (`q = 0`).
 
 # Reference contrasts and comparison support
 
@@ -261,6 +260,7 @@ step3 <- rc_regcompass_step_meta_modules(
 )
 
 step4 <- rc_regcompass_step_layer1(
+  grn = step1,
   metacells = step2,
   meta_modules = step3,
   gem = gem,
@@ -303,8 +303,7 @@ result <- rc_regcompass_step_results(
 ```
 
 Stage 3 performs one complete-GPR/subsystem/cross-reference expansion pass and
-does not run FASTCORE. Stage 4 reconstructs Pando's model-space predictor and
-uses only comparable effects. Stage 5 performs the only global FASTCORE
+does not run FASTCORE. Stage 4 delegates cell-first TF×ATAC projection to Pando and aggregates completed gene projections through exact SuperCell membership. Stage 5 performs the only global FASTCORE
 completion for the shared medium-specific model.
 
 # Mouse input
@@ -336,3 +335,8 @@ mouse_step1 <- rc_regcompass_step_grn(
 ```
 
 RegCompass stops instead of silently applying hg38 regions to mouse ATAC peaks.
+
+
+# Single-sample conditions and SuperCell strata
+
+SuperCell hard strata are exactly condition × broad cell type. Biological sample count is not an analysis requirement: single- and multi-sample conditions use the same paired RNA+ATAC path and the same condition-stratified cell OOF within each fitted cell type.

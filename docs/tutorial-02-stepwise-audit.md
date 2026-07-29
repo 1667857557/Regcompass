@@ -1,7 +1,9 @@
 # Tutorial Level 2: stepwise run and Pando audit
 
+> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+
 Use this workflow when every stage should be saved and inspected independently.
-The examples target RegCompassR 1.9.3 and Pando 1.2.1.
+The examples target RegCompassR 2.0.0 and Pando 1.4.0.
 
 ## Configure Stage 1 and Stage 4 workers
 
@@ -61,12 +63,11 @@ step1 <- rc_regcompass_step_grn(
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      method = "shared_design_independent",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
-      peak_cor = 0.01,
+      peak_cor = 0,
       alpha = 0.5,
-      condition_mix = 1,
+      condition_mix = 0.5,
       condition_weight = "equal",
       reference_condition = "Control",
       nlambda = 50L,
@@ -134,8 +135,7 @@ paired single cells and Stage 2 owns metacell aggregation.
 
 The canonical default is `candidate_screen = "motif_domain"`. It retains the
 structural motif/domain edge dictionary and lets elastic net select the
-`TF RNA × peak ATAC` interaction predictors. `condition_union` and `pooled`
-remain explicit marginal-screen sensitivity modes.
+`TF RNA × peak ATAC` interaction predictors. `pooled_within_condition` remains an explicit marginal-screen sensitivity mode; its response-dependent screen makes its OOF score ineligible for confirmatory Layer 1 reliability (`q = 0`).
 
 ### Audit the Pando fit contract
 
@@ -207,7 +207,7 @@ mouse_step1 <- rc_regcompass_step_grn(
 The regulatory-region build must match the ATAC coordinates and motif-scanning
 genome.
 
-## Stage 2: condition-level multimodal metacells
+## Stage 2: condition × broad cell type SuperCells
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -283,7 +283,7 @@ step4$capacity_params$and_method
 step4$evidence_formula
 ```
 
-Stage 4 reconstructs Pando's standardized interaction predictor, applies the
+Stage 4 delegates standardized single-cell interaction projection to Pando, applies the
 stored condition-versus-reference coefficient, and excludes non-comparable
 edges. It does not refit Pando or normalize coefficient effects by their
 absolute sum.
@@ -336,3 +336,8 @@ result$grn$normalization_policy
 
 API index: [functions.md](functions.md). It documents stage arguments, return
 contracts, and restart boundaries.
+
+
+Sample metadata are not used as model input, provenance, or composition diagnostics.
+
+OOF validation uses condition-stratified cells within the fitted cell type.

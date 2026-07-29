@@ -133,26 +133,64 @@
   object
 }
 
+.rc_validate_condition_celltype_metadata <- function(
+    metadata, condition_col = "condition", celltype_col = "cell_type") {
+  if (!is.data.frame(metadata)) {
+    stop("Cell metadata must be a data frame.", call. = FALSE)
+  }
+  columns <- list(condition_col = condition_col, celltype_col = celltype_col)
+  invalid_column <- vapply(columns, function(value) {
+    !is.character(value) || length(value) != 1L || is.na(value) ||
+      !nzchar(trimws(value))
+  }, logical(1))
+  if (any(invalid_column)) {
+    stop(
+      "`condition_col` and `celltype_col` must be non-empty column names.",
+      call. = FALSE
+    )
+  }
+  if (identical(condition_col, celltype_col)) {
+    stop(
+      "`condition_col` and `celltype_col` must name different columns.",
+      call. = FALSE
+    )
+  }
+  required <- c(condition_col, celltype_col)
+  missing <- setdiff(required, colnames(metadata))
+  if (length(missing)) {
+    stop("Missing metadata columns: ", paste(missing, collapse = ", "),
+         call. = FALSE)
+  }
+  invalid_label <- vapply(
+    metadata[, required, drop = FALSE],
+    function(x) {
+      value <- as.character(x)
+      anyNA(value) || any(!nzchar(trimws(value))) ||
+        any(value != trimws(value))
+    },
+    logical(1)
+  )
+  if (any(invalid_label)) {
+    stop(
+      paste(
+        "Condition and cell-type metadata must be complete, non-empty,",
+        "and free of surrounding whitespace."
+      ),
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 .rc_normalize_single_cell_grn_object <- function(
     object, condition_col = "condition", celltype_col = "cell_type",
     rna_assay = "RNA", atac_assay = "ATAC") {
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
-  required <- c(condition_col, celltype_col)
-  missing <- setdiff(required, colnames(object@meta.data))
-  if (length(missing)) {
-    stop("Missing metadata columns: ", paste(missing, collapse = ", "),
-         call. = FALSE)
-  }
-  invalid <- vapply(
-    object@meta.data[, required, drop = FALSE],
-    function(x) anyNA(x) || any(!nzchar(trimws(as.character(x)))),
-    logical(1)
+  .rc_validate_condition_celltype_metadata(
+    object@meta.data, condition_col, celltype_col
   )
-  if (any(invalid)) {
-    stop("Condition and cell-type metadata must be complete.", call. = FALSE)
-  }
   object <- .rc_prepare_seurat_assays(
     object,
     assays = c(rna_assay, atac_assay),

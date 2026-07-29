@@ -1,5 +1,33 @@
 # Authoritative Pando ConditionGRNFit integration.
 
+.rc_condition_fit_comparison_mask <- function(fit) {
+  beta <- as.matrix(fit$beta)
+  eligibility <- as.matrix(fit$eligibility_mask)
+  comparison <- as.matrix(fit$comparison_mask)
+  if (!is.logical(eligibility) || anyNA(eligibility) ||
+      !identical(dim(eligibility), dim(beta)) ||
+      !identical(dimnames(eligibility), dimnames(beta)) ||
+      !is.logical(comparison) || anyNA(comparison) ||
+      !identical(dim(comparison), dim(beta)) ||
+      !identical(dimnames(comparison), dimnames(beta)) ||
+      !fit$reference_condition %in% colnames(eligibility)) {
+    stop("ConditionGRNFit comparison matrices are invalid.", call. = FALSE)
+  }
+  expected <- eligibility & matrix(
+    eligibility[, fit$reference_condition],
+    nrow = nrow(eligibility),
+    ncol = ncol(eligibility)
+  )
+  dimnames(expected) <- dimnames(eligibility)
+  if (!identical(comparison, expected)) {
+    stop(
+      "ConditionGRNFit comparison mask is inconsistent with estimability.",
+      call. = FALSE
+    )
+  }
+  comparison
+}
+
 .rc_reference_contrast <- function(beta, reference_condition) {
   beta <- as.matrix(beta)
   if (!is.character(reference_condition) ||
@@ -9,6 +37,19 @@
          call. = FALSE)
   }
   sweep(beta, 1L, beta[, reference_condition], "-")
+}
+
+.rc_installed_package_file_fingerprint <- function(package) {
+  root <- system.file(package = package)
+  if (!nzchar(root) || !dir.exists(root)) return(NA_character_)
+  files <- list.files(root, recursive = TRUE, full.names = TRUE)
+  files <- files[file.info(files)$isdir %in% FALSE]
+  if (!length(files)) return(NA_character_)
+  relative <- substring(files, nchar(root) + 2L)
+  md5 <- unname(as.character(tools::md5sum(files)))
+  .rc_condition_metacell_md5(data.frame(
+    file = relative, md5 = md5, stringsAsFactors = FALSE
+  ))
 }
 
 .rc_extract_condition_grn_contract <- function(
@@ -32,18 +73,24 @@
   universal_rows <- list()
   row_index <- 1L
   for (fit in fits) {
-    if (!identical(fit$schema_version, "pando_condition_grn_fit_v2") ||
+    if (!identical(fit$schema_version, "pando_condition_grn_fit_v4") ||
         !identical(
-          fit$fit_engine, "shared_design_independent_elastic_net"
+          fit$fit_engine, "condition_sparse_within_cell_type_oof_refit"
         ) ||
         !identical(
           fit$coefficient_scale,
-          "pooled_cell_type_edge_and_target_standardized"
+          "pooled_cell_type_standardized_refit"
         )) {
       stop(
-        "RegCompass requires a pooled-scale shared_design_independent ",
-        "ConditionGRNFit v2.", call. = FALSE
+        "RegCompass requires one pooled-within-cell-type condition-sparse ",
+        "ConditionGRNFit v4 per broad cell type.", call. = FALSE
       )
+    }
+    fit_cell_type <- trimws(as.character(fit$cell_type %||% ""))
+    if (length(fit_cell_type) != 1L || is.na(fit_cell_type) ||
+        !nzchar(fit_cell_type)) {
+      stop("ConditionGRNFit must identify one fitted cell type.",
+           call. = FALSE)
     }
     edge <- as.data.frame(fit$edge_table, stringsAsFactors = FALSE)
     transform <- as.data.frame(
@@ -71,9 +118,14 @@
       stop("ConditionGRNFit predictor transform is incomplete.",
            call. = FALSE)
     }
-    beta <- as.matrix(fit$beta)
+    beta <- as.matrix(fit$beta_condition_std)
     contrast <- as.matrix(fit$contrast)
-    mask <- as.matrix(fit$eligibility_mask)
+    mask <- as.matrix(fit$estimability_mask)
+    structural <- as.matrix(fit$structural_candidate_mask)
+    screening <- as.matrix(fit$screening_mask)
+    support <- as.matrix(fit$support_mask)
+    active <- as.matrix(fit$active_mask)
+    comparison <- as.matrix(fit$comparison_mask)
     if (!identical(dim(beta), c(nrow(edge), length(fit$condition_levels))) ||
         !identical(dim(contrast), dim(beta)) ||
         !identical(dim(mask), dim(beta)) ||
@@ -83,11 +135,26 @@
         !identical(rownames(beta), edge$edge_id) ||
         !identical(rownames(contrast), edge$edge_id) ||
         !identical(rownames(mask), edge$edge_id) ||
-        any(!is.finite(beta)) || any(!is.finite(contrast)) ||
+        any(!is.finite(beta[mask])) || any(!is.na(beta[!mask])) ||
         !is.logical(mask) || anyNA(mask) ||
         !fit$reference_condition %in% colnames(beta)) {
       stop("ConditionGRNFit coefficient matrices are misaligned.",
            call. = FALSE)
+    }
+    masks <- list(
+      structural_candidate_mask = structural,
+      screening_mask = screening,
+      support_mask = support,
+      active_mask = active,
+      comparison_mask = comparison
+    )
+    invalid_mask <- vapply(masks, function(value) {
+      !is.logical(value) || anyNA(value) ||
+        !identical(dim(value), dim(beta)) ||
+        !identical(dimnames(value), dimnames(beta))
+    }, logical(1))
+    if (any(invalid_mask) || any(support & !mask) || any(active & !mask)) {
+      stop("ConditionGRNFit v4 support masks are invalid.", call. = FALSE)
     }
     beta_reference <- beta[, fit$reference_condition]
     expected_contrast <- .rc_reference_contrast(
@@ -99,7 +166,30 @@
       stop("ConditionGRNFit reference contrasts are inconsistent.",
            call. = FALSE)
     }
-    target_rsq <- as.matrix(fit$target_rsq)
+    target_rsq <- as.matrix(fit$condition_rsq_train)
+    target_rsq_oof <- suppressWarnings(as.numeric(
+      fit$target_rsq_oof_pooled
+    ))
+    names(target_rsq_oof) <- names(fit$target_rsq_oof_pooled)
+    predictive_oof_available <- fit$predictive_oof_available
+    oof_validation_level <- fit$oof_validation_level
+    if (!is.logical(predictive_oof_available) ||
+        anyNA(predictive_oof_available) ||
+        is.null(names(predictive_oof_available)) ||
+        !all(predictive_oof_available) ||
+        !is.character(oof_validation_level) ||
+        anyNA(oof_validation_level) ||
+        is.null(names(oof_validation_level)) ||
+        !all(
+          oof_validation_level ==
+            "within_cell_type_condition_stratified_cells"
+        )) {
+      stop(
+        "ConditionGRNFit v4 lacks complete within-cell-type ",
+        "condition-stratified cell OOF.",
+        call. = FALSE
+      )
+    }
     if (!all(c("target", "center", "scale") %in% colnames(response))) {
       stop("ConditionGRNFit target transforms are incomplete.",
            call. = FALSE)
@@ -109,11 +199,42 @@
         any(!is.finite(response$center)) ||
         any(!is.finite(response$scale) | response$scale <= 0) ||
         is.null(rownames(target_rsq)) ||
-        !identical(colnames(target_rsq), fit$condition_levels)) {
+        !identical(colnames(target_rsq), fit$condition_levels) ||
+        !identical(names(target_rsq_oof), rownames(target_rsq)) ||
+        !identical(
+          names(predictive_oof_available), rownames(target_rsq)
+        ) ||
+        !identical(
+          names(oof_validation_level), rownames(target_rsq)
+        )) {
       stop("ConditionGRNFit target transforms or diagnostics are invalid.",
            call. = FALSE)
     }
+    provenance <- as.data.frame(
+      fit$cell_provenance, stringsAsFactors = FALSE
+    )
+    if (!all(c("cell_id", "condition", "cell_type") %in%
+             colnames(provenance)) ||
+        anyNA(provenance[, c("condition", "cell_type"), drop = FALSE])) {
+      stop("ConditionGRNFit cell provenance is invalid.", call. = FALSE)
+    }
+    if (!all(as.character(provenance$cell_type) == fit_cell_type) ||
+        !setequal(
+          unique(as.character(provenance$condition)),
+          fit$condition_levels
+        )) {
+      stop(
+        "ConditionGRNFit provenance must contain only the fitted cell type ",
+        "and all fitted conditions.", call. = FALSE
+      )
+    }
     for (condition in fit$condition_levels) {
+      if (!any(as.character(provenance$condition) == condition)) {
+        stop(
+          "ConditionGRNFit has no fitted cells for condition `",
+          condition, "`.", call. = FALSE
+        )
+      }
       tab <- edge
       tab$tf <- toupper(trimws(as.character(tab$tf)))
       tab$target <- toupper(trimws(as.character(tab$target)))
@@ -124,6 +245,11 @@
       tab$estimate <- tab$condition_estimate
       tab$corr <- NA_real_
       tab$eligible_in_condition <- as.logical(mask[, condition])
+      tab$structural_candidate <- as.logical(structural[, condition])
+      tab$screened_in_condition <- as.logical(screening[, condition])
+      tab$selected_support <- as.logical(support[, condition])
+      tab$active_in_condition <- as.logical(active[, condition])
+      tab$comparable_to_reference <- as.logical(comparison[, condition])
       tab$reference_condition <- fit$reference_condition
       tab$predictor_center <- transform$center
       tab$predictor_scale <- transform$scale
@@ -131,16 +257,31 @@
       rsq_index <- match(tab$target, toupper(rownames(target_rsq)))
       if (anyNA(response_index) || anyNA(rsq_index)) {
         stop(
-          "ConditionGRNFit edge targets do not align with target transforms ",
-          "and diagnostics.", call. = FALSE
+          "ConditionGRNFit edge targets do not align with target ",
+          "transforms and diagnostics.", call. = FALSE
         )
       }
       tab$response_center <- response$center[response_index]
       tab$response_scale <- response$scale[response_index]
-      tab$rsq <- target_rsq[rsq_index, condition]
+      tab$rsq_train <- target_rsq[rsq_index, condition]
+      tab$rsq_oof_pooled <- target_rsq_oof[rsq_index]
+      tab$predictive_oof_available <-
+        predictive_oof_available[rsq_index]
+      tab$oof_validation_level <- oof_validation_level[rsq_index]
+      tab$oof_reliability_available <-
+        tab$predictive_oof_available &
+        is.finite(tab$rsq_oof_pooled)
+      tab$reliability_status <- ifelse(
+        tab$oof_reliability_available,
+        "within_cell_type_condition_stratified_cell_oof",
+        "nonfinite_within_cell_type_cell_oof"
+      )
+      tab$rsq <- tab$rsq_oof_pooled
       tab[[condition_col]] <- condition
-      tab[[celltype_col]] <- fit$cell_type
-      group_values <- tab[1L, c(condition_col, celltype_col), drop = FALSE]
+      tab[[celltype_col]] <- fit_cell_type
+      group_values <- tab[
+        1L, c(condition_col, celltype_col), drop = FALSE
+      ]
       tab$group_id <- rc_make_stratum_id(
         group_values, c(condition_col, celltype_col)
       )
@@ -148,33 +289,43 @@
       tab$coefficient_scale <- fit$coefficient_scale
       tab <- tab[, c(
         "group_id", condition_col, celltype_col,
-        setdiff(colnames(tab), c("group_id", condition_col, celltype_col))
+        setdiff(
+          colnames(tab), c("group_id", condition_col, celltype_col)
+        )
       ), drop = FALSE]
       condition_rows[[row_index]] <- tab
       row_index <- row_index + 1L
     }
     summary <- edge
-    summary$estimate <- rowMeans(beta)
+    summary$estimate <- rowMeans(beta, na.rm = TRUE)
     summary$corr <- NA_real_
-    summary[[celltype_col]] <- fit$cell_type
+    summary[[celltype_col]] <- fit_cell_type
     summary$reference_condition <- fit$reference_condition
     summary$summary_only <- TRUE
     universal_rows[[length(universal_rows) + 1L]] <- summary
   }
   all_edges <- do.call(rbind, condition_rows)
   rownames(all_edges) <- NULL
+  reliable <- all_edges$oof_reliability_available &
+    is.finite(all_edges$rsq_oof_pooled) &
+    all_edges$rsq_oof_pooled >= min_model_rsq
   condition_active <- all_edges[
     is.finite(all_edges$condition_estimate) &
       abs(all_edges$condition_estimate) >= active_tol &
-      is.finite(all_edges$rsq) & all_edges$rsq >= min_model_rsq,
+      all_edges$eligible_in_condition %in% TRUE &
+      reliable,
     , drop = FALSE
   ]
   effect_all <- all_edges
   effect_all$estimate <- effect_all$condition_effect
+  effect_reliable <- effect_all$oof_reliability_available &
+    is.finite(effect_all$rsq_oof_pooled) &
+    effect_all$rsq_oof_pooled >= min_model_rsq
   effect_active <- effect_all[
     is.finite(effect_all$condition_effect) &
       abs(effect_all$condition_effect) >= active_tol &
-      is.finite(effect_all$rsq) & effect_all$rsq >= min_model_rsq,
+      effect_all$comparable_to_reference %in% TRUE &
+      effect_reliable,
     , drop = FALSE
   ]
   params <- methods::slot(methods::slot(grn_object, "grn"), "params")
@@ -191,20 +342,20 @@
   )
 }
 
-.rc_run_condition_single_cell_grns <- function(
+.rc_fit_condition_grns_by_cell_type <- function(
     object, gem, outdir, pfm = NULL, genome,
     condition_col = "condition", celltype_col = "cell_type",
+    cell_type = NULL,
     rna_assay = "RNA", atac_assay = "ATAC",
     min_cells = 20L,
     pando_initiate_args = list(exclude_exons = TRUE),
     pando_motif_args = list(),
     pando_infer_args = list(
-      method = "shared_design_independent",
-      candidate_screen = "condition_union",
+      candidate_screen = "motif_domain",
       tf_cor = 0.1,
-      peak_cor = 0.01,
+      peak_cor = 0,
       alpha = 0.5,
-      condition_mix = 1,
+      condition_mix = 0.5,
       condition_weight = "equal",
       nlambda = 50L,
       nfolds = 5L,
@@ -212,15 +363,11 @@
       scale = TRUE,
       parallel = FALSE
     ),
-    padj_threshold = 0.05,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
-    require_padj = FALSE,
     save_pando_objects = TRUE,
     BPPARAM = NULL,
-    on_group_error = c("record", "stop"),
     species = c("auto", "human", "mouse")) {
-  on_group_error <- match.arg(on_group_error)
   species <- .rc_infer_gem_species(gem, species)
   if (!is.numeric(min_cells) || length(min_cells) != 1L ||
       !is.finite(min_cells) || min_cells < 1 ||
@@ -228,12 +375,16 @@
     stop("`min_cells` must be one positive integer.", call. = FALSE)
   }
   min_cells <- as.integer(min_cells)
-  .rc_validate_pando_evidence_filters(
-    padj_threshold = padj_threshold,
-    min_abs_estimate = min_abs_estimate,
-    min_model_rsq = min_model_rsq,
-    require_padj = require_padj
-  )
+  if (!is.numeric(min_abs_estimate) || length(min_abs_estimate) != 1L ||
+      !is.finite(min_abs_estimate) || min_abs_estimate < 0 ||
+      !is.numeric(min_model_rsq) || length(min_model_rsq) != 1L ||
+      !is.finite(min_model_rsq) || min_model_rsq < 0 ||
+      min_model_rsq > 1) {
+    stop(
+      "`min_abs_estimate` and `min_model_rsq` are invalid.",
+      call. = FALSE
+    )
+  }
   if (!is.list(pando_initiate_args) || !is.list(pando_motif_args) ||
       !is.list(pando_infer_args)) {
     stop("Pando initiate, motif, and inference arguments must be lists.",
@@ -242,6 +393,9 @@
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
+  .rc_validate_condition_celltype_metadata(
+    object@meta.data, condition_col, celltype_col
+  )
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop(
       "Install 1667857557/Pando_regcompass before condition-aware GRN inference.",
@@ -251,25 +405,24 @@
   if (!exists("infer_condition_grn", envir = asNamespace("Pando"),
               inherits = FALSE)) {
     stop(
-      "Installed Pando lacks `infer_condition_grn`; install the v1.2.0 companion PR.",
+      "Installed Pando lacks `infer_condition_grn`; install Pando_regcompass >= 1.4.0.",
       call. = FALSE
     )
   }
   if (!exists("condition_grn_fit", envir = asNamespace("Pando"),
               inherits = FALSE)) {
     stop(
-      "Installed Pando lacks the ConditionGRNFit v2 accessor.",
+      "Installed Pando lacks the ConditionGRNFit v4 accessor.",
       call. = FALSE
     )
   }
   pando_infer_args <- utils::modifyList(
     list(
-      method = "shared_design_independent",
-      candidate_screen = "condition_union",
+      candidate_screen = "motif_domain",
       tf_cor = 0.1,
-      peak_cor = 0.01,
+      peak_cor = 0,
       alpha = 0.5,
-      condition_mix = 1,
+      condition_mix = 0.5,
       condition_weight = "equal",
       nlambda = 50L,
       nfolds = 5L,
@@ -279,20 +432,38 @@
     ),
     pando_infer_args
   )
+  retired_infer <- intersect(
+    names(pando_infer_args), c("method", "cv_block_col", "sample_col")
+  )
+  if (length(retired_infer)) {
+    stop(
+      "Retired Pando inference arguments are not supported: ",
+      paste(retired_infer, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  nfolds <- pando_infer_args$nfolds
+  if (!is.numeric(nfolds) || length(nfolds) != 1L ||
+      !is.finite(nfolds) ||
+      abs(nfolds - round(nfolds)) > sqrt(.Machine$double.eps) ||
+      nfolds > .Machine$integer.max ||
+      nfolds < 2L) {
+    stop("Pando `nfolds` must be one integer of at least 2.",
+         call. = FALSE)
+  }
+  if (min_cells < as.integer(nfolds)) {
+    stop(
+      "`min_cells` must be no smaller than Pando `nfolds` for ",
+      "within-cell-type OOF.", call. = FALSE
+    )
+  }
   required_infer <- list(
-    method = "shared_design_independent",
-    condition_mix = 1,
+    candidate_screen = "motif_domain",
     condition_weight = "equal",
     scale = TRUE
   )
   invalid_infer <- names(required_infer)[!vapply(
     names(required_infer),
     function(name) {
-      if (identical(name, "condition_mix")) {
-        return(isTRUE(all.equal(
-          suppressWarnings(as.numeric(pando_infer_args[[name]])), 1
-        )))
-      }
       if (identical(name, "scale")) {
         return(isTRUE(pando_infer_args[[name]]))
       }
@@ -311,13 +482,6 @@
         collapse = ", "
       ),
       ". Incompatible fields: ", paste(invalid_infer, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  if (isTRUE(require_padj)) {
-    warning(
-      "`require_padj = TRUE` is ignored by the regularized condition solver; ",
-      "active coefficients and target-level R-squared are used.",
       call. = FALSE
     )
   }
@@ -376,7 +540,7 @@
   }
 
   filtered <- .rc_drop_zero_count_atac_features(
-    object, atac_assay, "Pando unified condition GRN"
+    object, atac_assay, "Pando condition GRNs by cell type"
   )
   object <- filtered$object
   init_defaults <- list(
@@ -394,11 +558,11 @@
     object = grn,
     cell_type_col = celltype_col,
     condition_col = condition_col,
+    cell_type = cell_type,
     genes = target_genes,
     network_name = "regcompass_condition_grn",
     min_cells_per_condition = min_cells,
-    on_small_condition = if (identical(on_group_error, "stop")) "error" else
-      "skip_cell_type",
+    small_condition_action = "error",
     BPPARAM = if (identical(BPPARAM, FALSE)) NULL else BPPARAM
   )
   infer_defaults[names(pando_infer_args)] <- NULL
@@ -415,7 +579,13 @@
     min_model_rsq = min_model_rsq
   )
   meta <- object@meta.data
-  expected <- unique(meta[, group_cols, drop = FALSE])
+  fitted_cell_types <- unique(vapply(
+    extracted$fit_contracts, `[[`, character(1), "cell_type"
+  ))
+  selected_cells <- rownames(meta)[
+    as.character(meta[[celltype_col]]) %in% fitted_cell_types
+  ]
+  expected <- unique(meta[selected_cells, group_cols, drop = FALSE])
   expected$n_cells <- vapply(seq_len(nrow(expected)), function(i) {
     sum(
       as.character(meta[[condition_col]]) ==
@@ -425,41 +595,41 @@
     )
   }, integer(1))
   expected$group_id <- rc_make_stratum_id(expected, group_cols)
-  condition_index <- extracted$network_index[
-    extracted$network_index$network_level == "condition", , drop = FALSE
-  ]
-  index_key <- paste(
-    as.character(condition_index$condition),
-    as.character(condition_index$cell_type),
-    sep = "\001"
-  )
-  expected_key <- paste(
-    as.character(expected[[condition_col]]),
-    as.character(expected[[celltype_col]]),
-    sep = "\001"
-  )
-  index_match <- match(expected_key, index_key)
   status <- expected
   status$n_target_genes <- length(target_genes)
   status$n_atac_peaks_input <- filtered$diagnostics$n_input_peaks
   status$n_zero_count_peaks_excluded <-
     filtered$diagnostics$n_zero_count_peaks_excluded
   status$n_atac_peaks_used <- filtered$diagnostics$n_retained_peaks
-  status$status <- ifelse(is.na(index_match), "failed_missing_condition_network", "ok")
+  available_group_ids <- unique(as.character(
+    extracted$condition_all$group_id
+  ))
+  status$status <- ifelse(
+    status$group_id %in% available_group_ids,
+    "ok",
+    "failed_missing_condition_celltype_projection"
+  )
   status$n_edges <- vapply(status$group_id, function(id) {
     sum(extracted$condition_all$group_id == id)
   }, integer(1))
-  status$n_significant_edges <- vapply(status$group_id, function(id) {
+  status$n_active_edges <- vapply(status$group_id, function(id) {
     sum(extracted$condition_active$group_id == id)
   }, integer(1))
   status$n_condition_effect_edges <- vapply(status$group_id, function(id) {
     sum(extracted$condition_effect_active$group_id == id)
   }, integer(1))
+  status$predictive_oof_available <- TRUE
+  status$oof_validation_level <-
+    "within_cell_type_condition_stratified_cells"
+  status$grn_evidence_role <- "within_cell_type_multiomic"
   status$error_class <- ifelse(status$status == "ok", NA_character_,
                                "missing_condition_network")
   status$error_message <- ifelse(
     status$status == "ok", NA_character_,
-    "Pando did not emit a condition network for this condition-by-cell-type group."
+    paste(
+      "Pando did not cover this condition-by-broad-cell-type projection",
+      "group."
+    )
   )
   status <- status[, c(
     "group_id", group_cols,
@@ -517,7 +687,6 @@
         all.x = TRUE,
         sort = FALSE
       )
-      out$cell_type <- fit$cell_type
       out$reference_condition <- fit$reference_condition
       out$coefficient_scale <- fit$coefficient_scale
       out
@@ -533,7 +702,7 @@
   )
   if (isTRUE(save_pando_objects)) {
     saveRDS(grn, file.path(outdir, "pando_objects",
-                           "condition_grn_fit_v2.rds"))
+                           "condition_grn_fit_v4.rds"))
   }
 
   tf_metabolic_target_overlap <- intersect(
@@ -541,12 +710,32 @@
     unique(toupper(target_genes))
   )
   answer <- list(
-    schema_version = "regcompass_condition_grn_fit_v2",
+    schema_version = "regcompass_condition_grn_fit_v4",
     pando_installed_version = pando_install$version,
     pando_installation = pando_install,
+    pando_file_fingerprint =
+      .rc_installed_package_file_fingerprint("Pando"),
+    pando_grn_data = grn,
+    paired_cell_ids = selected_cells,
+    paired_cell_metadata = data.frame(
+      cell_id = selected_cells,
+      condition = as.character(object@meta.data[
+        selected_cells, condition_col
+      ]),
+      cell_type = as.character(object@meta.data[
+        selected_cells, celltype_col
+      ]),
+      stringsAsFactors = FALSE
+    ),
+    assay_contract = list(
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
+      rna_layer = "data",
+      atac_layer = "data",
+      paired_cell_order = selected_cells
+    ),
     target_metabolic_genes = target_genes,
     condition_fit_status = status,
-    sample_status = status,
     pando_network_index = extracted$network_index,
     pando_fit_diagnostics = extracted$fit_diagnostics,
     condition_grn_fits = extracted$fit_contracts,
@@ -556,14 +745,13 @@
     tf_peak_gene_condition_effect_all = extracted$condition_effect_all,
     tf_peak_gene_condition_effect = extracted$condition_effect_active,
     tf_metabolic_target_overlap = tf_metabolic_target_overlap,
-    tf_peak_gene_all = extracted$condition_all,
-    tf_peak_gene_significant = extracted$condition_active,
     normalization_policy = list(
       rna = "global single-cell normalized RNA shared by all conditions",
       atac = "cell-type-shared TF-IDF across conditions",
       grn_fit = paste(
-        "one Pando fit contract per cell type with one TF-peak-target",
-        "edge dictionary and independently estimated condition coefficients"
+        "one independent Pando condition fit per broad cell type with",
+        "condition-stratified cell OOF and a within-cell-type",
+        "common-metric refit"
       ),
       universal_coefficient = "visualization-only row mean; never used as a contrast baseline",
       reference_condition = unique(vapply(
@@ -571,22 +759,17 @@
       )),
       condition_effect = "condition coefficient minus explicit reference-condition coefficient",
       coefficient_scale =
-        "pooled cell-type TF-by-ATAC edge and target standardization",
+        "pooled within-cell-type TF-by-ATAC edge and target standardization",
       core_reaction_evidence =
         "active condition-level TF-peak-target coefficients",
       penalty_regulatory_evidence = paste(
-        "condition-minus-reference coefficients projected through metacell",
-        "TF RNA by peak ATAC activity using Pando's stored edge transform"
+        "absolute condition coefficients applied to Pando cell-first",
+        "TF RNA by peak ATAC projections, then aggregated by",
+        "SuperCell membership"
       ),
       pando_motifs = motif_policy,
       pando_regions = region_policy,
-      pando_padj = paste(
-        "not applicable to the regularized condition solver;",
-        "active coefficients and target-level R-squared are used"
-      ),
       pando_peak_cor = pando_infer_args$peak_cor,
-      legacy_padj_threshold = padj_threshold,
-      legacy_require_padj = require_padj,
       active_tolerance = extracted$active_tol,
       min_model_rsq = min_model_rsq
     ),
@@ -594,211 +777,6 @@
   )
   saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
   answer
-}
-
-.rc_tf_peak_interaction <- function(tf_activity, peak_activity) {
-  tf_activity <- as.matrix(tf_activity)
-  peak_activity <- as.matrix(peak_activity)
-  if (!identical(dim(tf_activity), dim(peak_activity))) {
-    stop("TF RNA and peak ATAC edge matrices must have identical dimensions.",
-         call. = FALSE)
-  }
-  if (!identical(colnames(tf_activity), colnames(peak_activity))) {
-    stop("TF RNA and peak ATAC matrices must contain identically ordered units.",
-         call. = FALSE)
-  }
-  tf_activity * peak_activity
-}
-
-.rc_project_condition_edges <- function(
-    standardized_edge_activity, coefficient_contrast, target_rsq) {
-  standardized_edge_activity <- as.matrix(standardized_edge_activity)
-  coefficient_contrast <- suppressWarnings(as.numeric(coefficient_contrast))
-  if (nrow(standardized_edge_activity) != length(coefficient_contrast) ||
-      any(!is.finite(standardized_edge_activity)) ||
-      any(!is.finite(coefficient_contrast))) {
-    stop(
-      "Standardized edge activity and coefficient contrast must align and be finite.",
-      call. = FALSE
-    )
-  }
-  target_rsq <- suppressWarnings(as.numeric(target_rsq))
-  target_rsq <- target_rsq[is.finite(target_rsq)]
-  reliability <- if (length(target_rsq)) {
-    sqrt(min(max(stats::median(target_rsq), 0), 1))
-  } else {
-    0
-  }
-  reliability * as.numeric(
-    crossprod(coefficient_contrast, standardized_edge_activity)
-  )
-}
-
-.rc_condition_gene_regulatory_modifier <- function(
-    significant_edges, object, unit_meta,
-    condition_col = "condition", celltype_col = "cell_type",
-    rna_assay = "RNA", atac_assay = "ATAC",
-    target_genes = NULL) {
-  if (!is.data.frame(significant_edges)) {
-    stop("`significant_edges` must be a data.frame.", call. = FALSE)
-  }
-  required_edges <- c(
-    "edge_id", "target", "region", "tf", "estimate",
-    "predictor_center", "predictor_scale", "response_scale",
-    condition_col, celltype_col
-  )
-  missing_edges <- setdiff(required_edges, colnames(significant_edges))
-  if (length(missing_edges)) {
-    stop(
-      "Condition-effect edge table is missing columns: ",
-      paste(missing_edges, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  if (!is.data.frame(unit_meta) ||
-      !all(c("pool_id", condition_col, celltype_col) %in% colnames(unit_meta))) {
-    stop("`unit_meta` is incomplete for condition-pooled regulatory scoring.",
-         call. = FALSE)
-  }
-  units <- colnames(object)
-  unit_meta <- unit_meta[
-    match(units, as.character(unit_meta$pool_id)), , drop = FALSE
-  ]
-  if (anyNA(unit_meta$pool_id)) {
-    stop("Metacell metadata do not align to the scoring object.", call. = FALSE)
-  }
-  genes <- unique(tolower(trimws(as.character(target_genes))))
-  genes <- genes[!is.na(genes) & nzchar(genes)]
-  if (!length(genes)) {
-    genes <- unique(tolower(trimws(as.character(significant_edges$target))))
-  }
-  modifier <- matrix(
-    0,
-    nrow = length(genes),
-    ncol = length(units),
-    dimnames = list(genes, units)
-  )
-  raw_projection <- modifier
-  attr(modifier, "reliability_policy") <- paste(
-    "finite condition-network R-squared is mapped through sqrt(clamp(median R2,0,1));",
-    "targets without finite R-squared receive regulatory reliability zero"
-  )
-  attr(modifier, "regulatory_predictor") <- paste(
-    "tanh of the unnormalised model-space projection:",
-    "sum_edge standardized(TF_RNA x peak_ATAC) * (beta_condition-beta_reference)"
-  )
-  attr(modifier, "raw_model_projection") <- raw_projection
-  attr(modifier, "projection_formula") <- paste(
-    "sqrt(clamp(target_R2,0,1)) * sum_edge",
-    "[(TF_RNA*peak_ATAC-center_edge)/scale_edge] *",
-    "(beta_condition-beta_reference); no L1 edge-weight normalisation"
-  )
-  if (!nrow(significant_edges) || !length(genes)) return(modifier)
-
-  edges <- significant_edges
-  rsq <- if ("rsq" %in% colnames(edges)) {
-    suppressWarnings(as.numeric(edges$rsq))
-  } else {
-    rep(NA_real_, nrow(edges))
-  }
-  edges <- edges[is.finite(rsq), , drop = FALSE]
-  if (!nrow(edges)) return(modifier)
-  edges$target <- toupper(trimws(as.character(edges$target)))
-  edges$tf <- toupper(trimws(as.character(edges$tf)))
-  edges$region <- trimws(as.character(edges$region))
-  edges$estimate <- suppressWarnings(as.numeric(edges$estimate))
-  edges$predictor_center <- suppressWarnings(
-    as.numeric(edges$predictor_center)
-  )
-  edges$predictor_scale <- suppressWarnings(
-    as.numeric(edges$predictor_scale)
-  )
-  edges$response_scale <- suppressWarnings(
-    as.numeric(edges$response_scale)
-  )
-  edges <- edges[
-    !is.na(edges$target) & nzchar(edges$target) &
-      !is.na(edges$tf) & nzchar(edges$tf) &
-      !is.na(edges$region) & nzchar(edges$region) &
-      is.finite(edges$estimate) & edges$estimate != 0 &
-      is.finite(edges$predictor_center) &
-      is.finite(edges$predictor_scale) & edges$predictor_scale > 0 &
-      is.finite(edges$response_scale) & edges$response_scale > 0,
-    , drop = FALSE
-  ]
-  if (!nrow(edges)) return(modifier)
-
-  rna <- .rc_pando_assay_data(object, rna_assay)
-  atac <- .rc_pando_assay_data(object, atac_assay)
-  if (!setequal(colnames(rna), units) || !setequal(colnames(atac), units)) {
-    stop("Normalized RNA/ATAC data and metacell units do not match.",
-         call. = FALSE)
-  }
-  rna <- rna[, units, drop = FALSE]
-  atac <- atac[, units, drop = FALSE]
-  tf_keys <- toupper(trimws(rownames(rna)))
-  tf_keep <- !is.na(tf_keys) & nzchar(tf_keys) & !duplicated(tf_keys)
-  tf_lookup <- stats::setNames(rownames(rna)[tf_keep], tf_keys[tf_keep])
-  peak_keys <- toupper(.rc_pando_region_key(rownames(atac)))
-  peak_keep <- !is.na(peak_keys) & nzchar(peak_keys) & !duplicated(peak_keys)
-  peak_lookup <- stats::setNames(rownames(atac)[peak_keep], peak_keys[peak_keep])
-  edges$.tf_id <- unname(tf_lookup[edges$tf])
-  edges$.peak_id <- unname(
-    peak_lookup[toupper(.rc_pando_region_key(edges$region))]
-  )
-  edges <- edges[
-    !is.na(edges$.tf_id) & nzchar(edges$.tf_id) &
-      !is.na(edges$.peak_id) & nzchar(edges$.peak_id),
-    , drop = FALSE
-  ]
-  if (!nrow(edges)) return(modifier)
-
-  group_key_edges <- paste(
-    as.character(edges[[condition_col]]),
-    as.character(edges[[celltype_col]]),
-    sep = "\001"
-  )
-  group_key_units <- paste(
-    as.character(unit_meta[[condition_col]]),
-    as.character(unit_meta[[celltype_col]]),
-    sep = "\001"
-  )
-  for (group_key in unique(group_key_edges)) {
-    group_edges <- edges[group_key_edges == group_key, , drop = FALSE]
-    group_units <- units[group_key_units == group_key]
-    if (!nrow(group_edges) || !length(group_units)) next
-    for (target in unique(group_edges$target)) {
-      selected <- group_edges[group_edges$target == target, , drop = FALSE]
-      gene_id <- tolower(target)
-      if (!gene_id %in% rownames(modifier) || !nrow(selected)) next
-      tf_activity <- as.matrix(
-        rna[selected$.tf_id, units, drop = FALSE]
-      )
-      peak_activity <- as.matrix(
-        atac[selected$.peak_id, units, drop = FALSE]
-      )
-      edge_activity <- .rc_tf_peak_interaction(tf_activity, peak_activity)
-      edge_model <- sweep(
-        edge_activity, 1L, selected$predictor_center, "-"
-      )
-      edge_model <- sweep(
-        edge_model, 1L, selected$predictor_scale, "/"
-      )
-      edge_model <- edge_model[, group_units, drop = FALSE]
-      value_raw <- .rc_project_condition_edges(
-        standardized_edge_activity = edge_model,
-        coefficient_contrast = selected$estimate,
-        target_rsq = selected$rsq
-      )
-      raw_projection[gene_id, group_units] <- value_raw
-      modifier[gene_id, group_units] <- tanh(value_raw)
-    }
-  }
-  attr(modifier, "tf_target_overlap") <- intersect(
-    unique(edges$tf), unique(edges$target)
-  )
-  attr(modifier, "raw_model_projection") <- raw_projection
-  modifier
 }
 
 .rc_integrate_regulatory_support <- function(
@@ -833,157 +811,4 @@
     "condition-effect TF-by-ATAC modifier on the support log-odds scale"
   )
   out
-}
-
-.rc_build_condition_pooled_layer1 <- function(
-    metacell_object, meta_modules, gem, metacell_meta,
-    sample_col = "sample_id", condition_col = "condition",
-    celltype_col = "cell_type", rna_assay = "RNA", atac_assay = "ATAC",
-    regulatory_alpha = 1,
-    gpr_and_method = c("min", "median", "mean"),
-    gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
-    parallel = TRUE, BPPARAM = NULL) {
-  if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
-    stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
-  }
-  gpr_and_method <- match.arg(gpr_and_method)
-  parsed <- rc_parse_gpr_table(gem$gpr_table)
-  gpr_genes <- unique(tolower(unlist(parsed, use.names = FALSE)))
-  counts <- .rc_get_assay_counts(metacell_object, rna_assay)
-  full_library_size <- Matrix::colSums(counts)
-  keep <- tolower(rownames(counts)) %in% gpr_genes
-  rna_counts <- counts[keep, , drop = FALSE]
-  rna_logcpm <- .rc_metacell_logcpm(
-    rna_counts,
-    library_size = full_library_size[colnames(rna_counts)]
-  )
-  rownames(rna_logcpm) <- tolower(rownames(rna_logcpm))
-  if (anyDuplicated(rownames(rna_logcpm))) {
-    stop("Duplicated GPR gene identifiers after case normalization.",
-         call. = FALSE)
-  }
-
-  unit_meta <- metacell_meta
-  id_col <- if ("metacell_id" %in% colnames(unit_meta)) {
-    "metacell_id"
-  } else if ("pool_id" %in% colnames(unit_meta)) {
-    "pool_id"
-  } else {
-    stop("Pooled metacell metadata lack metacell_id/pool_id.", call. = FALSE)
-  }
-  unit_meta$pool_id <- as.character(unit_meta[[id_col]])
-  unit_meta$unit_id <- unit_meta$pool_id
-  unit_meta[[sample_col]] <- paste0(
-    as.character(unit_meta[[condition_col]]), "__pooled"
-  )
-  unit_meta <- unit_meta[
-    match(colnames(rna_logcpm), unit_meta$pool_id), , drop = FALSE
-  ]
-  if (anyNA(unit_meta$pool_id)) {
-    stop("Pooled metacell metadata do not align with RNA counts.",
-         call. = FALSE)
-  }
-
-  gene_rna_support <- rc_gene_score(
-    rna_logcpm,
-    mode = "absolute",
-    half_saturation = gene_half_saturation
-  )
-  regulatory_edges <- meta_modules$tf_peak_gene_condition_effect
-  if (!is.data.frame(regulatory_edges)) {
-    stop(
-      "Stage 3 lacks condition-effect TF-peak-target edges. Rerun GRN and ",
-      "meta-module stages with the unified condition-aware Pando workflow.",
-      call. = FALSE
-    )
-  }
-  modifier <- .rc_condition_gene_regulatory_modifier(
-    significant_edges = regulatory_edges,
-    object = metacell_object,
-    unit_meta = unit_meta,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    target_genes = rownames(gene_rna_support)
-  )
-  raw_projection <- attr(modifier, "raw_model_projection")
-  if (is.null(raw_projection)) {
-    raw_projection <- matrix(
-      0, nrow = nrow(modifier), ncol = ncol(modifier),
-      dimnames = dimnames(modifier)
-    )
-  }
-  modifier <- modifier[
-    rownames(gene_rna_support),
-    colnames(gene_rna_support),
-    drop = FALSE
-  ]
-  raw_projection <- raw_projection[
-    rownames(gene_rna_support),
-    colnames(gene_rna_support),
-    drop = FALSE
-  ]
-  gene_multiome_support <- .rc_integrate_regulatory_support(
-    gene_rna_support,
-    modifier,
-    alpha = regulatory_alpha
-  )
-  reaction_expression <- rc_reaction_capacity(
-    parsed,
-    gene_multiome_support,
-    promiscuity_mode = "none",
-    and_method = gpr_and_method,
-    or_method = "sum",
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
-  )
-
-  list(
-    schema_version = "regcompass_condition_grn_layer1_v2",
-    reaction_expression = reaction_expression,
-    rna_metacell_logcpm = rna_logcpm,
-    gene_support_rna = gene_rna_support,
-    gene_regulatory_modifier = modifier,
-    gene_regulatory_model_projection = raw_projection,
-    gene_support_multiome = gene_multiome_support,
-    parsed_gpr = parsed,
-    gpr_diagnostics = rc_gpr_diagnostics(parsed, rownames(rna_logcpm)),
-    unit_meta = unit_meta,
-    metacell_meta = unit_meta,
-    layer1_unit = "condition_only_metacell_with_posthoc_celltype",
-    capacity_params = list(
-      regulatory_alpha = regulatory_alpha,
-      gene_half_saturation = gene_half_saturation,
-      regulatory_mode =
-        "fixed_pando_transform_x_reference_coefficient_contrast",
-      promiscuity_mode = "none",
-      and_method = gpr_and_method,
-      or_method = "sum",
-      parallel = parallel,
-      bpparam_class = if (is.null(BPPARAM)) {
-        "auto_or_sequential"
-      } else if (identical(BPPARAM, FALSE)) {
-        "sequential"
-      } else {
-        class(BPPARAM)[[1L]]
-      }
-    ),
-    evidence_formula = paste(
-      "condition GRN active edges define metabolic targets/core reactions;",
-      "Pando reference contrasts project the identically transformed TF RNA x peak ATAC predictor;",
-      "edge effects are summed without L1 normalisation and bounded once with tanh;",
-      "the signed modifier updates target-gene RNA support on the log-odds scale;",
-      paste0("COMPASS-compatible ", gpr_and_method, " GPR-AND"),
-      "and additive isozyme OR"
-    ),
-    evidence_inputs = c(
-      "target_metabolic_gene_RNA",
-      "regulatory_TF_RNA",
-      "regulatory_peak_ATAC",
-      "condition_level_Pando_coefficient",
-      "reference_condition_Pando_coefficient",
-      "condition_minus_reference_coefficient",
-      "Pando_pooled_edge_center_and_scale"
-    )
-  )
 }

@@ -44,11 +44,11 @@ test_that("workflow vignette documents the current Pando bridge", {
   text <- rc_read_doc(path)
 
   required <- c(
-    "RegCompassR 1.9.3",
+    "RegCompassR 2.0.0",
     "rc_run_regcompass_one_shot(",
-    'method = "shared_design_independent"',
     'candidate_screen = "motif_domain"',
-    "condition_mix = 1",
+    "condition_mix = 0.5",
+    "cell_type",
     'reference_condition = "Control"',
     "comparison_mask",
     "comparable_to_reference",
@@ -59,6 +59,10 @@ test_that("workflow vignette documents the current Pando bridge", {
     "rc_regcompass_step_grn(",
     "BPPARAM = upstream_bp",
     "step1$params$pando_parallel",
+    "grn = step1",
+    'comparison_support = "auto"',
+    "condition × broad cell type",
+    "condition-stratified cell OOF",
     "gpr_and_method = \"min\"",
     "global FASTCORE",
     "Mouse runs must supply"
@@ -80,6 +84,7 @@ test_that("the first two tutorials expose executable Pando routing", {
 
   for (one in text) {
     expect_match(one, 'candidate_screen = "motif_domain"', fixed = TRUE)
+    expect_match(one, "cell_type", fixed = TRUE)
     expect_match(one, 'reference_condition = "Control"', fixed = TRUE)
     expect_match(one, "comparison_mask", fixed = TRUE)
     expect_match(one, "comparable_to_reference", fixed = TRUE)
@@ -96,7 +101,9 @@ test_that("the first two tutorials expose executable Pando routing", {
   expect_match(text[[2L]], "rc_regcompass_step_grn(", fixed = TRUE)
   expect_match(text[[2L]], "BPPARAM = upstream_bp", fixed = TRUE)
   expect_match(text[[2L]], "Pando native map backend", fixed = TRUE)
-  expect_match(text[[2L]], "Stage 2 owns metacell aggregation", fixed = TRUE)
+  expect_match(
+    text[[2L]], "condition × broad cell type", fixed = TRUE
+  )
   expect_match(text[[2L]], "rc_regcompass_step_results(", fixed = TRUE)
 })
 
@@ -122,7 +129,7 @@ test_that("canonical examples do not reintroduce unsafe Pando assignments", {
   )))
 
   forbidden_assignments <- c(
-    "(?m)^\\s*candidate_screen\\s*=\\s*[\"']condition_union[\"']",
+    "(?m)^\\s*candidate_screen\\s*=\\s*[\"']pooled_within_condition[\"']",
     "(?m)^\\s*aggregate_rna_col\\s*=",
     "(?m)^\\s*aggregate_peaks_col\\s*=",
     "(?m)^\\s*expansion_mode\\s*=",
@@ -154,13 +161,15 @@ test_that("README API index and help agree on the Pando contract", {
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
 
   required <- c(
-    "RegCompassR 1.9.3",
+    "RegCompassR 2.0.0",
     "condition_grn_fits",
     "tf_peak_gene_condition_effect",
     "comparison_mask",
     "comparable_to_reference",
     "motif_domain",
-    "shared_design_independent",
+    "ConditionGRNFit v4",
+    "condition × broad cell type",
+    "condition-stratified cell OOF",
     "reference_condition",
     "condition_mix",
     "condition_weight",

@@ -1,6 +1,6 @@
 #' Assemble the annotated RegCompass result contract
 #'
-#' Combines the authoritative Pando `ConditionGRNFit` outputs, condition-pooled
+#' Combines the authoritative Pando `ConditionGRNFit` outputs, condition-by-cell-type
 #' metacells, biological reaction catalogue, Layer 1 evidence, and shared-model
 #' directional LP results. The returned object includes reaction annotations,
 #' rankings, descriptive condition contrasts, provenance, and the exact cached
@@ -60,8 +60,8 @@ rc_regcompass_step_results <- function(
   ), names(meta_modules$condition_modules))
   condition_modules <- meta_modules$condition_modules[condition_fields]
   result <- list(
-    schema_version = "regcompass_condition_grn_fit_v2",
-    version = "1.9.3",
+    schema_version = "regcompass_condition_grn_fit_v4",
+    version = "2.0.0",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = comparison$analysis_mode,
@@ -86,17 +86,17 @@ rc_regcompass_step_results <- function(
       ),
       pando_grouping = params$celltype_col,
       pando_condition_design = paste(
-        "shared complete edge dictionary, eligibility mask, pooled final-edge",
-        "scale and lambda; independently estimated condition coefficients"
+        "shared candidate dictionary, estimability masks, pooled transform,",
+        "condition-sparse selection, and common-metric refit"
       ),
       pando_condition_effect =
-        "beta_condition_minus_explicit_reference_condition",
+        "absolute_beta_condition_for_penalty; contrasts_are_reporting_only",
       pando_peak_cor =
         grn$grn_result$normalization_policy$pando_peak_cor,
       pando_regions = grn$grn_result$normalization_policy$pando_regions,
-      metacell_grouping = params$condition_col,
+      metacell_grouping = c(params$condition_col, params$celltype_col),
       metacell_celltype_assignment =
-        "supercell_label_guided_then_dominant_membership_audit",
+        "hard_condition_by_broad_cell_type_stratum",
       metacell_gamma = params$metacell_args$gamma,
       sample_weighting = "none",
       meta_module_core_definition =

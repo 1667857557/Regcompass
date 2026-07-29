@@ -40,10 +40,6 @@ test_that("metacell metadata contract rejects duplicate IDs", {
 
 test_that("ConditionGRNFit extraction writes metadata without sample remapping", {
   implementation <- paste(
-    deparse(body(.rc_extract_condition_grn_contract_without_comparison_guard)),
-    collapse = "\n"
-  )
-  bridge <- paste(
     deparse(body(.rc_extract_condition_grn_contract)), collapse = "\n"
   )
   expect_match(
@@ -53,7 +49,7 @@ test_that("ConditionGRNFit extraction writes metadata without sample remapping",
   )
   expect_match(
     implementation,
-    "tab[[celltype_col]] <- fit$cell_type",
+    "tab[[celltype_col]] <- fit_cell_type",
     fixed = TRUE
   )
   expect_match(
@@ -62,14 +58,35 @@ test_that("ConditionGRNFit extraction writes metadata without sample remapping",
     fixed = TRUE
   )
   expect_match(
-    bridge,
-    ".rc_extract_condition_grn_contract_without_comparison_guard",
-    fixed = TRUE
-  )
-  expect_match(
-    bridge,
-    ".rc_apply_condition_comparison_semantics",
+    implementation,
+    ".rc_condition_fit_comparison_mask",
     fixed = TRUE
   )
   expect_false(exists(".rc_remap_projection_metadata", inherits = TRUE))
+})
+
+test_that("condition and cell-type labels define exact biological scopes", {
+  metadata <- data.frame(
+    condition = c("Control", "Drug"),
+    cell_type = c("T", "B"),
+    stringsAsFactors = FALSE
+  )
+  expect_silent(.rc_validate_condition_celltype_metadata(
+    metadata, "condition", "cell_type"
+  ))
+
+  whitespace <- metadata
+  whitespace$cell_type[[1L]] <- " T"
+  expect_error(
+    .rc_validate_condition_celltype_metadata(
+      whitespace, "condition", "cell_type"
+    ),
+    "surrounding whitespace"
+  )
+  expect_error(
+    .rc_validate_condition_celltype_metadata(
+      metadata, "condition", "condition"
+    ),
+    "different columns"
+  )
 })

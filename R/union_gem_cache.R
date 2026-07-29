@@ -124,7 +124,6 @@
         "::medium=", utils::URLencode(scenario, reserved = TRUE)
       )
       cache[[key]] <- list(
-        sample_id = "global",
         module_id = "MEDIUM_UNION_GEM",
         reaction_id = reaction,
         target_direction = direction,

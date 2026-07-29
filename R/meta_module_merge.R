@@ -2,7 +2,8 @@
 
 .rc_merge_meta_module_catalogue <- function(condition_modules) {
   names_to_merge <- c(
-    "sample_status", "tf_peak_gene_all", "tf_peak_gene_significant",
+    "condition_fit_status", "tf_peak_gene_condition_all",
+    "tf_peak_gene_condition",
     "supported_metabolic_genes", "core_gene_reaction",
     "reaction_membership", "meta_module_summary"
   )
@@ -57,9 +58,9 @@
   )
   out$schema_version <- "regcompass_merged_meta_modules_v2"
   out$source_group_ids <- if (
-    "group_id" %in% colnames(out$sample_status)
+    "group_id" %in% colnames(out$condition_fit_status)
   ) {
-    unique(as.character(out$sample_status$group_id))
+    unique(as.character(out$condition_fit_status$group_id))
   } else {
     character()
   }

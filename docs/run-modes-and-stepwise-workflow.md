@@ -1,11 +1,11 @@
-# RegCompassR 1.9.3 tutorial index
+# RegCompassR 2.0.0 tutorial index
 
 All execution modes follow the same main workflow:
 
 ```text
 one shared Pando motif/domain design per cell type
 → pooled predictor transforms and target-specific shared lambda
-→ independently estimated condition coefficient layers
+→ condition-sparse coefficient layers on a common metric
 → explicit condition-versus-reference comparison support
 → active condition-level metabolic targets
 → complete-GPR core reactions
@@ -15,7 +15,7 @@ one shared Pando motif/domain design per cell type
 → directional LP scoring
 ```
 
-Stage 1 requires Pando 1.2.1's explicit `comparison_mask`; unsupported
+Stage 1 requires Pando 1.4.0's explicit `comparison_mask`; unsupported
 condition-versus-reference contrasts cannot enter Layer 1.
 
 ## Level 1: one-shot workflow

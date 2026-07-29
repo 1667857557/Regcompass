@@ -62,7 +62,9 @@ test_that("tutorials and Rd use the current condition-GRN vocabulary", {
   ))
 
   current <- c(
-    "shared_design_independent", "condition_grn_fits",
+    "ConditionGRNFit v4",
+    "condition × broad cell type", "condition-stratified cell OOF",
+    "condition_grn_fits",
     "condition_fit_status", "tf_peak_gene_condition",
     "tf_peak_gene_condition_effect", "beta_condition - beta_reference",
     "TF RNA × peak ATAC", "single global FASTCORE completion"
@@ -72,7 +74,9 @@ test_that("tutorials and Rd use the current condition-GRN vocabulary", {
   )))
 
   retired <- c(
-    "RegCompassR 1.8.3", "condition_multitask_grn.md",
+    "RegCompassR 1.8.3", "RegCompassR 1.9.3",
+    "Pando 1.2.1", "shared_design_independent",
+    "condition_multitask_grn.md",
     "condition × cell type Pando evidence",
     "condition-by-cell-type Pando GRNs", "local FASTCORE",
     "locally completed meta-modules", "significantly supported GEM target",
@@ -81,7 +85,6 @@ test_that("tutorials and Rd use the current condition-GRN vocabulary", {
   expect_false(any(vapply(
     retired, grepl, logical(1), x = all_docs, fixed = TRUE
   )))
-  expect_false(grepl("sample_col = NULL", user_workflows, fixed = TRUE))
   expect_false(grepl("padj_threshold", user_workflows, fixed = TRUE))
   expect_false(grepl("require_padj", user_workflows, fixed = TRUE))
   expect_false(file.exists(file.path(root, "docs", "recent-pr-audit.md")))
@@ -111,13 +114,8 @@ test_that("each tutorial links the current API index", {
 
 test_that("current condition fit status is exported with legacy compatibility", {
   implementation <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns_without_safe_defaults)),
-    collapse = "\n"
-  )
-  bridge <- paste(
-    deparse(body(.rc_run_condition_single_cell_grns)), collapse = "\n"
+    deparse(body(.rc_fit_condition_grns_by_cell_type)), collapse = "\n"
   )
   expect_match(implementation, "condition_fit_status = status", fixed = TRUE)
-  expect_match(implementation, "sample_status = status", fixed = TRUE)
-  expect_match(bridge, "comparison_support", fixed = TRUE)
+  expect_false(grepl("sample_status = status", implementation, fixed = TRUE))
 })

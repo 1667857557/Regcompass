@@ -1,6 +1,8 @@
 # Tutorial Level 1: minimal one-shot run
 
-This tutorial uses RegCompassR 1.9.3 with the Pando 1.2.1
+> Each broad cell type is trained, validated, and refitted independently. If `cell_type` is supplied, only that label or those labels are processed. OOF folds are condition-stratified cells from the same fitted type; no cells from another type enter training or validation. Biological sample metadata and sample count are not inputs or gates.
+
+This tutorial uses RegCompassR 2.0.0 with the Pando 1.4.0
 `ConditionGRNFit` contract. It assumes a paired-cell RNA+ATAC Seurat object.
 
 ## 1. Required object state
@@ -66,12 +68,11 @@ result <- rc_run_regcompass_one_shot(
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      method = "shared_design_independent",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
-      peak_cor = 0.01,
+      peak_cor = 0,
       alpha = 0.5,
-      condition_mix = 1,
+      condition_mix = 0.5,
       condition_weight = "equal",
       reference_condition = "Control",
       nlambda = 50L,
@@ -131,14 +132,12 @@ TF_RNA × peak_ATAC
 A useful interaction can coexist with weak marginal TF-target and peak-target
 correlations. `candidate_screen = "motif_domain"` therefore retains the
 motif/domain-supported dictionary and leaves edge selection to elastic-net
-regularization. `condition_union` and `pooled` remain optional marginal-screen
-sensitivity modes.
+regularization. `pooled_within_condition` remains an optional marginal-screen sensitivity mode; its response-dependent screen makes its OOF score ineligible for confirmatory Layer 1 reliability (`q = 0`).
 
 The directly comparable coefficient contract requires:
 
 ```r
-method = "shared_design_independent"
-condition_mix = 1
+condition_mix = 0.5
 condition_weight = "equal"
 scale = TRUE
 ```
@@ -237,3 +236,10 @@ for motif scanning.
 
 Use [Tutorial 2](tutorial-02-stepwise-audit.md) when each stage should be saved,
 validated, and restarted independently. API index: [functions.md](functions.md).
+
+
+Sample metadata are not used as model input, provenance, or composition diagnostics.
+
+OOF validation uses condition-stratified cells within the fitted cell type.
+
+SuperCell hard strata are exactly condition × broad cell type.

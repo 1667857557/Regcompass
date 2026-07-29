@@ -1,13 +1,15 @@
 .rc_workflow_signature <- function(x) {
   params <- x$params %||% x$workflow_params %||% list()
-  params[c("condition_col", "celltype_col", "rna_assay", "atac_assay")]
+  params[c(
+    "condition_col", "celltype_col", "cell_type", "rna_assay", "atac_assay"
+  )]
 }
 
 .rc_validate_grn_metacell_group_coverage <- function(
     grn_result, metacell_meta,
     condition_col = "condition", celltype_col = "cell_type") {
   group_cols <- c(condition_col, celltype_col)
-  status <- grn_result$sample_status
+  status <- grn_result$condition_fit_status
   if (!is.data.frame(status) ||
       !all(c(group_cols, "status") %in% colnames(status))) {
     stop(
@@ -36,13 +38,8 @@
         sort(unique(as.character(one$status))), collapse = ";"
       ),
       n_single_cells = sum(as.numeric(one$n_cells %||% 0), na.rm = TRUE),
-      n_significant_edges = sum(
-        as.numeric(one$n_significant_edges %||% 0), na.rm = TRUE
-      ),
       n_active_edges = sum(
-        as.numeric(
-          one$n_active_edges %||% one$n_significant_edges %||% 0
-        ),
+        as.numeric(one$n_active_edges %||% 0),
         na.rm = TRUE
       ),
       stringsAsFactors = FALSE,
@@ -92,8 +89,6 @@
   )
   coverage$grn_available <- !is.na(coverage$grn_status) &
     coverage$grn_status == "ok"
-  coverage$has_significant_pando_evidence <-
-    !is.na(coverage$n_significant_edges) & coverage$n_significant_edges > 0
   coverage$has_active_pando_evidence <-
     !is.na(coverage$n_active_edges) & coverage$n_active_edges > 0
   coverage$metacells_available <- !is.na(coverage$n_metacells) &
@@ -125,6 +120,7 @@ rc_regcompass_step_grn <- function(
     species = c("auto", "human", "mouse"),
     condition_col = "condition",
     celltype_col = "cell_type",
+    cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
@@ -139,6 +135,58 @@ rc_regcompass_step_grn <- function(
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
   }
+  if (identical(BPPARAM, TRUE)) {
+    stop(
+      "`BPPARAM = TRUE` is invalid. Supply a BiocParallelParam object, ",
+      "`NULL`, or `FALSE`.",
+      call. = FALSE
+    )
+  }
+  supplied_bpparam <- !is.null(BPPARAM) && !identical(BPPARAM, FALSE)
+  if (!isTRUE(parallel) && supplied_bpparam) {
+    warning(
+      "Ignoring `BPPARAM` because `parallel = FALSE`.",
+      call. = FALSE
+    )
+  }
+  infer_args <- pando_args$pando_infer_args %||% list()
+  if (!is.list(infer_args)) {
+    stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+  }
+  retired_infer <- intersect(
+    names(infer_args), c("method", "cv_block_col", "sample_col")
+  )
+  if (length(retired_infer)) {
+    stop(
+      "Retired Pando inference arguments are not supported: ",
+      paste(retired_infer, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  forbidden_infer <- intersect(
+    names(infer_args),
+    c(
+      "object", "cell_type_col", "condition_col", "genes", "network_name",
+      "cell_type", "min_cells_per_condition", "small_condition_action",
+      "BPPARAM"
+    )
+  )
+  if (length(forbidden_infer)) {
+    stop(
+      "`pando_infer_args` cannot override managed fields: ",
+      paste(forbidden_infer, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  if (!is.null(infer_args$candidate_screen) &&
+      !identical(as.character(infer_args$candidate_screen), "motif_domain")) {
+    stop(
+      "RegCompass requires the response-independent motif_domain ",
+      "candidate graph.", call. = FALSE
+    )
+  }
+  infer_args$candidate_screen <- "motif_domain"
+  infer_args$parallel <- isTRUE(parallel) && !supplied_bpparam
+  pando_args$pando_infer_args <- infer_args
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
@@ -151,7 +199,8 @@ rc_regcompass_step_grn <- function(
   )
   reserved <- intersect(names(pando_args), c(
     "object", "gem", "outdir", "genome", "pfm", "species",
-    "condition_col", "celltype_col", "rna_assay", "atac_assay", "BPPARAM"
+    "condition_col", "celltype_col", "cell_type", "rna_assay", "atac_assay",
+    "BPPARAM"
   ))
   if (length(reserved)) {
     stop(
@@ -169,14 +218,14 @@ rc_regcompass_step_grn <- function(
     species = species,
     condition_col = condition_col,
     celltype_col = celltype_col,
+    cell_type = cell_type,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE,
-    on_group_error = "stop"
+    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
   defaults[names(pando_args)] <- NULL
   grn_result <- do.call(
-    .rc_run_condition_single_cell_grns, c(defaults, pando_args)
+    .rc_fit_condition_grns_by_cell_type, c(defaults, pando_args)
   )
   answer <- list(
     grn_result = grn_result,
@@ -184,6 +233,7 @@ rc_regcompass_step_grn <- function(
     params = list(
       condition_col = condition_col,
       celltype_col = celltype_col,
+      cell_type = cell_type,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       pando_args = pando_args,
@@ -197,18 +247,15 @@ rc_regcompass_step_grn <- function(
   answer
 }
 
-#' Build condition-pooled, cell-type-guided SuperCell2 metacells
+#' Build condition-by-cell-type SuperCell2 metacells
 #'
-#' Cells are stratified only by condition. The cell-type column is supplied to
-#' SuperCell2 as a construction label and audited again by dominant membership
-#' after aggregation. `sample_col` is retained only for call compatibility; it
-#' is not used for grouping, balancing, weighting, or model fitting.
+#' Cells are hard-stratified by condition and broad cell type.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
-    sample_col = NULL,
     condition_col = "condition",
     celltype_col = "cell_type",
+    cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
     fragment_files = FALSE,
@@ -225,12 +272,12 @@ rc_regcompass_step_metacells <- function(
     object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
   }
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  pooled <- .rc_make_condition_pooled_metacells(
+  pooled <- .rc_make_condition_celltype_metacells(
     object = object,
     outdir = outdir,
-    sample_col = sample_col,
     condition_col = condition_col,
     celltype_col = celltype_col,
+    cell_type = cell_type,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     fragment_files = fragment_files,
@@ -272,10 +319,9 @@ rc_regcompass_step_metacells <- function(
     pooled = pooled,
     metacell_object = metacell_object,
     params = list(
-      input_sample_col = sample_col,
-      sample_col = pooled$analysis_sample_col,
       condition_col = condition_col,
       celltype_col = celltype_col,
+      cell_type = cell_type,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       fragment_files = fragment_files,

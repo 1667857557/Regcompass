@@ -1,19 +1,22 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 1.9.3
+Version: 2.0.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Fits one cell-type-level Pando design across conditions for
     Human-GEM or Mouse-GEM GPR target genes in paired single-cell RNA and ATAC
-    data. Condition elastic-net coefficients use the same TF-peak-target edge
-    dictionary, eligibility masks, and pooled predictor scale. Within each
-    target they also share a lambda path and selected lambda, but are estimated
-    independently. Pando emits explicit reference-condition
-    contrasts and the exact predictor transforms used by RegCompass.
-    Active condition-level edges define metabolic target genes and complete-GPR
-    core reactions, while condition effects are projected through metacell
-    TF-expression by peak-accessibility interactions to modify reaction penalties.
+    data. Condition-sparse coefficients use the same TF-peak-target edge
+    dictionary, estimability masks, pooled predictor scale, lambda path, and
+    selected lambda. Pando emits absolute condition, shared, deviation, and
+    reference-contrast coefficients together with condition-stratified
+    cell-level out-of-fold diagnostics computed inside each cell type and exact
+    projection transforms. Active condition-level edges
+    define metabolic target genes and complete-GPR core reactions. Regulatory
+    effects are calculated in paired single cells before aggregation through
+    the exact SuperCell membership table; metacells are constructed only within
+    condition by broad-cell-type strata. Absolute condition projections and
+    shared pooled out-of-fold reliability modify reaction penalties.
     Annotation-defined biological meta-modules are deduplicated into a merged
     reaction catalogue without local FASTCORE completion. For each medium
     scenario, the package constructs one shared union GEM and performs a single
@@ -88,8 +91,6 @@ Collate:
     'one_shot.R'
     'stratum_filter.R'
     'condition_grn_contract.R'
-    'condition_comparability_fix.R'
-    'zzz_pando_bridge_alignment.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
@@ -103,7 +104,7 @@ Imports:
     Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
-    Pando (>= 1.2.1),
+    Pando (>= 1.4.0),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
@@ -122,7 +123,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@Supercell2,
-    1667857557/Pando_regcompass@ec83995513313379e8633d2ede89ecbd72a50037
+    1667857557/Pando_regcompass
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
