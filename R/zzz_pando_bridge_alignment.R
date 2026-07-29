@@ -62,10 +62,10 @@
   if (!is.null(pando_infer_args$candidate_screen)) {
     candidate_screen <- as.character(pando_infer_args$candidate_screen)
     if (length(candidate_screen) != 1L || is.na(candidate_screen) ||
-        !candidate_screen %in% c("motif_domain", "condition_union", "pooled")) {
+        !candidate_screen %in% c("motif_domain", "pooled_within_condition")) {
       stop(
         "`pando_infer_args$candidate_screen` must be one of ",
-        "\"motif_domain\", \"condition_union\", or \"pooled\".",
+        "\"motif_domain\" or \"pooled_within_condition\".",
         call. = FALSE
       )
     }
@@ -97,15 +97,15 @@
       stop(
         "Installed Pando is missing the condition-comparable API: ",
         paste(missing, collapse = ", "),
-        ". Install 1667857557/Pando_regcompass >= 1.2.1.",
+        ". Install 1667857557/Pando_regcompass >= 1.4.0.",
         call. = FALSE
       )
     }
     if (base::package_version(result$version) <
-        base::package_version("1.2.1")) {
+        base::package_version("1.4.0")) {
       stop(
-        "RegCompass requires Pando >= 1.2.1 for the explicit ",
-        "ConditionGRNFit comparison mask; installed version is ",
+        "RegCompass requires Pando >= 1.4.0 for the ",
+        "ConditionGRNFit v4 projection contract; installed version is ",
         result$version, ".",
         call. = FALSE
       )
@@ -126,7 +126,7 @@
   if (is.null(fit$comparison_mask)) {
     stop(
       "ConditionGRNFit lacks the explicit `comparison_mask`; install ",
-      "1667857557/Pando_regcompass >= 1.2.1.",
+      "1667857557/Pando_regcompass >= 1.4.0.",
       call. = FALSE
     )
   }
@@ -165,13 +165,14 @@
     pando_initiate_args = list(exclude_exons = TRUE),
     pando_motif_args = list(),
     pando_infer_args = list(
-      method = "shared_design_independent",
+      method = "shared_baseline_condition_sparse",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
-      peak_cor = 0.01,
+      peak_cor = 0,
       alpha = 0.5,
-      condition_mix = 1,
+      condition_mix = 0.5,
       condition_weight = "equal",
+      cv_block_col = "sample_id",
       nlambda = 50L,
       nfolds = 5L,
       lambda_selection = "lambda.1se",

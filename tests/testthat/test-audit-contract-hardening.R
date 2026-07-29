@@ -1,7 +1,7 @@
-test_that("v1.8.0 workflow preserves canonical GPR architecture", {
+test_that("v2 workflow preserves canonical GPR architecture", {
   workflow_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   layer1_text <- paste(
-    deparse(body(.rc_build_condition_pooled_layer1)), collapse = "\n"
+    deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
   expect_match(workflow_text, "rc_regcompass_step_grn", fixed = TRUE)
   expect_match(workflow_text, "rc_regcompass_step_metacells", fixed = TRUE)
@@ -10,7 +10,7 @@ test_that("v1.8.0 workflow preserves canonical GPR architecture", {
   expect_match(layer1_text, 'or_method = "sum"', fixed = TRUE)
   expect_match(layer1_text, "gene_support_multiome", fixed = TRUE)
   expect_identical(
-    eval(formals(.rc_build_condition_pooled_layer1)$gpr_and_method),
+    eval(formals(rc_regcompass_step_layer1)$gpr_and_method),
     c("min", "median", "mean")
   )
 })

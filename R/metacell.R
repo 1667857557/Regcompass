@@ -72,10 +72,7 @@ rc_build_metacell_metadata <- function(membership,
     return(out)
   }
 
-  strict_columns <- intersect(
-    c("sample_id", "condition", "cell_type"),
-    colnames(x)
-  )
+  strict_columns <- intersect(c("condition", "cell_type"), colnames(x))
   split_rows <- split(seq_len(nrow(x)), x[[metacell_id_col]])
   for (metacell in names(split_rows)) {
     rows <- split_rows[[metacell]]
@@ -119,72 +116,40 @@ rc_build_metacell_metadata <- function(membership,
 }
 
 .rc_extract_supercell_membership <- function(mc_object, original_cells, metacell_ids) {
-  make_df <- function(cell_id, metacell_id) {
-    out <- data.frame(cell_id = as.character(cell_id), metacell_id = as.character(metacell_id), stringsAsFactors = FALSE)
-    out <- out[!is.na(out$cell_id) & nzchar(out$cell_id) & !is.na(out$metacell_id) & nzchar(out$metacell_id), , drop = FALSE]
-    out <- out[!duplicated(out$cell_id), , drop = FALSE]
-    rownames(out) <- NULL
-    out
-  }
-  normalize_ids <- function(x) {
-    x <- as.character(x)
-    if (length(x) > 0L && all(x %in% metacell_ids)) return(x)
-    suppressWarnings(ix <- as.integer(x))
-    if (length(ix) > 0L && all(is.finite(ix)) && all(ix >= 1L) && all(ix <= length(metacell_ids))) return(metacell_ids[ix])
-    x
-  }
   misc_table <- tryCatch(mc_object@misc$membership_table, error = function(e) NULL)
-  if (is.data.frame(misc_table) && all(c("cell_id", "metacell_id") %in% colnames(misc_table))) {
-    out <- misc_table[, c("cell_id", "metacell_id"), drop = FALSE]
-    out$cell_id <- as.character(out$cell_id)
-    out$metacell_id <- as.character(out$metacell_id)
-    if (anyDuplicated(out$cell_id)) stop("Duplicated cell IDs in SuperCell membership_table.", call. = FALSE)
-    if (!setequal(unique(out$metacell_id), as.character(metacell_ids))) {
-      stop("SuperCell membership_table metacell IDs do not match metacell object colnames.", call. = FALSE)
-    }
-    out <- out[out$cell_id %in% original_cells, , drop = FALSE]
-    rownames(out) <- NULL
-    return(out)
+  if (!is.data.frame(misc_table) ||
+      !all(c("cell_id", "metacell_id") %in% colnames(misc_table))) {
+    stop(
+      "SuperCell output must provide misc$membership_table with ",
+      "cell_id and metacell_id columns.", call. = FALSE
+    )
   }
-  meta <- mc_object@meta.data
-  candidates <- c("cell_membership", "membership", "cells", "cell_ids", "single_cell_ids", "SC")
-  for (nm in intersect(candidates, colnames(meta))) {
-    vals <- meta[[nm]]
-    if (is.list(vals)) {
-      return(do.call(rbind, lapply(seq_along(vals), function(i) make_df(vals[[i]], metacell_ids[[i]]))))
-    }
+  out <- misc_table[, c("cell_id", "metacell_id"), drop = FALSE]
+  out$cell_id <- trimws(as.character(out$cell_id))
+  out$metacell_id <- trimws(as.character(out$metacell_id))
+  if (anyNA(out$cell_id) || any(!nzchar(out$cell_id)) ||
+      anyNA(out$metacell_id) || any(!nzchar(out$metacell_id)) ||
+      anyDuplicated(out$cell_id)) {
+    stop(
+      "SuperCell membership_table contains missing, empty, or duplicated IDs.",
+      call. = FALSE
+    )
   }
-  misc_mem <- tryCatch(mc_object@misc$membership, error = function(e) NULL)
-  if (!is.null(misc_mem)) {
-    if (is.data.frame(misc_mem)) {
-      if (!"cell_id" %in% colnames(misc_mem) && "cell" %in% colnames(misc_mem)) misc_mem$cell_id <- misc_mem$cell
-      if (!"metacell_id" %in% colnames(misc_mem) && "metacell" %in% colnames(misc_mem)) misc_mem$metacell_id <- misc_mem$metacell
-      if (all(c("cell_id", "metacell_id") %in% colnames(misc_mem))) return(make_df(misc_mem$cell_id, normalize_ids(misc_mem$metacell_id)))
-    }
-    if (is.atomic(misc_mem) && length(misc_mem) == length(original_cells)) {
-      cell_ids <- names(misc_mem)
-      if (is.null(cell_ids) || any(!nzchar(cell_ids))) cell_ids <- original_cells
-      return(make_df(cell_ids, normalize_ids(misc_mem)))
-    }
+  if (!setequal(out$cell_id, as.character(original_cells))) {
+    stop(
+      "SuperCell membership_table does not cover exactly the input cells.",
+      call. = FALSE
+    )
   }
-  wt <- tryCatch(mc_object@misc$walktrap_clusters, error = function(e) NULL)
-  if (!is.null(wt) && is.atomic(wt) && length(wt) == length(original_cells)) {
-    cell_ids <- names(wt)
-    if (is.null(cell_ids) || any(!nzchar(cell_ids))) cell_ids <- original_cells
-    return(make_df(cell_ids, normalize_ids(wt)))
+  if (!setequal(unique(out$metacell_id), as.character(metacell_ids))) {
+    stop(
+      "SuperCell membership_table metacell IDs do not match assay columns.",
+      call. = FALSE
+    )
   }
-  hierarchy <- tryCatch(mc_object@misc$metacells_hierarchy, error = function(e) NULL)
-  if (!is.null(hierarchy) && requireNamespace("igraph", quietly = TRUE)) {
-    mem <- tryCatch(igraph::membership(hierarchy), error = function(e) NULL)
-    if (!is.null(mem) && length(mem) == length(original_cells)) {
-      cell_ids <- names(mem)
-      if (is.null(cell_ids) || any(!nzchar(cell_ids))) cell_ids <- original_cells
-      return(make_df(cell_ids, normalize_ids(mem)))
-    }
-  }
-  attr_map <- attr(mc_object, "membership")
-  if (!is.null(attr_map) && is.data.frame(attr_map) && all(c("cell_id", "metacell_id") %in% colnames(attr_map))) return(make_df(attr_map$cell_id, normalize_ids(attr_map$metacell_id)))
-  data.frame(cell_id = character(0), metacell_id = character(0), stringsAsFactors = FALSE)
+  out <- out[match(as.character(original_cells), out$cell_id), , drop = FALSE]
+  rownames(out) <- NULL
+  out
 }
 
 #' Aggregate ATAC fragments by metacell membership
@@ -284,8 +249,22 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
   if (!requireNamespace("SuperCell", quietly = TRUE)) {
     stop("Package 'SuperCell' is required for rc_make_supercell2_metacells(). Install the SuperCell2 branch with `remotes::install_github(\"1667857557/SuperCell_Seurat_V4@Supercell2\")`.", call. = FALSE)
   }
-  if (!exists("SCimplify_for_Seurat", envir = asNamespace("SuperCell"), inherits = FALSE)) {
-    stop("Installed package 'SuperCell' does not export SCimplify_for_Seurat(); install the SuperCell2 branch before running metacells.", call. = FALSE)
+  required_api <- c("SCimplify_for_Seurat", "validate_metacell_output")
+  missing_api <- required_api[!vapply(
+    required_api,
+    function(name) {
+      exists(name, envir = asNamespace("SuperCell"), inherits = FALSE) &&
+        name %in% getNamespaceExports("SuperCell")
+    },
+    logical(1)
+  )]
+  if (length(missing_api)) {
+    stop(
+      "Installed package 'SuperCell' lacks the required exported API: ",
+      paste(missing_api, collapse = ", "),
+      ". Install 1667857557/SuperCell_Seurat_V4@Supercell2.",
+      call. = FALSE
+    )
   }
   version <- tryCatch(utils::packageVersion("SuperCell"), error = function(e) NULL)
   if (!is.null(version) && version < "2.0") {
@@ -477,6 +456,14 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
         stop("SuperCell2 metacell construction failed: ", conditionMessage(e), call. = FALSE)
       }
     )
+    SuperCell::validate_metacell_output(
+      mc,
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
+      require_fragments = isTRUE(require_fragment_aggregation),
+      require_complete_fragment_coverage =
+        isTRUE(require_fragment_aggregation)
+    )
     mc_ids <- colnames(.rc_get_assay_counts_safe(mc, rna_assay))
     mc_ids <- as.character(mc_ids)
     if (anyDuplicated(mc_ids)) stop("Duplicated metacell IDs within stratum.", call. = FALSE)
@@ -500,7 +487,6 @@ rc_aggregate_fragments_by_membership <- function(fragment_files, membership, out
     }
     display_ids <- paste0(prefix, "_MC", sprintf(paste0("%0", max(3, nchar(length(mc_ids))), "d"), seq_along(mc_ids)))
     membership <- .rc_extract_supercell_membership(mc, cells, mc_ids)
-    if (nrow(membership) == 0L) stop("Could not infer single-cell membership from SuperCell output for stratum ", key, call. = FALSE)
     fragment_manifest_i <- NULL
     if (identical(fragment_aggregation_backend, "supercell") && save_fragments) {
       fragment_manifest_i <- tryCatch(mc@misc$fragment_manifest, error = function(e) NULL)

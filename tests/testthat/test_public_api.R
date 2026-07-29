@@ -153,9 +153,11 @@ test_that("Pando defaults use bundled human inputs and guard mouse regions", {
   expect_identical(grn_formals$min_model_rsq, 0.1)
   expect_false(isTRUE(grn_formals$require_padj))
   infer_defaults <- eval(grn_formals$pando_infer_args)
-  expect_identical(infer_defaults$method, "shared_design_independent")
+  expect_identical(
+    infer_defaults$method, "shared_baseline_condition_sparse"
+  )
   expect_identical(infer_defaults$candidate_screen, "motif_domain")
-  expect_identical(infer_defaults$condition_mix, 1)
+  expect_identical(infer_defaults$condition_mix, 0.5)
   expect_identical(infer_defaults$condition_weight, "equal")
   expect_true(infer_defaults$scale)
 })
@@ -179,8 +181,14 @@ test_that("metacell defaults expose reductions dimensions seed and thresholds", 
     deparse(body(.rc_build_supercell2_strata)), collapse = "\n"
   )
   expect_match(metacell_body, "gamma <- 30L", fixed = TRUE)
-  expect_match(metacell_body, 'pooling_scope <- "condition_only"', fixed = TRUE)
-  expect_match(metacell_body, "metacell_grouping = condition_col", fixed = TRUE)
+  expect_match(
+    metacell_body, 'pooling_scope <- "condition_by_cell_type"',
+    fixed = TRUE
+  )
+  expect_match(
+    metacell_body, "metacell_grouping = c(condition_col, celltype_col)",
+    fixed = TRUE
+  )
   expect_match(metacell_body, "Sample balancing is not part", fixed = TRUE)
   expect_match(
     builder_body,

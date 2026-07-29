@@ -1,11 +1,5 @@
-.rc_condition_only_sample_col <- function(meta) {
+.rc_condition_celltype_pool_col <- function(meta) {
   candidate <- ".rc_condition_pool_id"
-  while (candidate %in% colnames(meta)) candidate <- paste0(candidate, "_")
-  candidate
-}
-
-.rc_condition_only_celltype_col <- function(meta) {
-  candidate <- ".rc_condition_only_celltype"
   while (candidate %in% colnames(meta)) candidate <- paste0(candidate, "_")
   candidate
 }
@@ -130,12 +124,12 @@
     stringsAsFactors = FALSE
   )
   list(
-    schema_version = "regcompass_condition_metacell_cache_v1",
+    schema_version = "regcompass_condition_celltype_metacell_cache_v2",
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    label_col = celltype_col,
+    label_col = NULL,
     ordered_cell_metadata_md5 = .rc_condition_metacell_md5(meta_signature),
     analysis_args = analysis_args,
     rna_counts = .rc_condition_metacell_matrix_fingerprint(
@@ -198,83 +192,6 @@
   invisible(TRUE)
 }
 
-.rc_assign_metacell_dominant_celltype <- function(
-    pooled, object, celltype_col) {
-  membership <- pooled$membership
-  if (!is.data.frame(membership) ||
-      !all(c("cell_id", "metacell_id") %in% colnames(membership))) {
-    stop("Condition-only metacells require cell-to-metacell membership.",
-         call. = FALSE)
-  }
-  cell_index <- match(as.character(membership$cell_id), rownames(object@meta.data))
-  if (anyNA(cell_index)) {
-    stop("Metacell membership contains cells absent from the input object.",
-         call. = FALSE)
-  }
-  cell_type <- trimws(as.character(object@meta.data[[celltype_col]][cell_index]))
-  if (anyNA(cell_type) || any(!nzchar(cell_type))) {
-    stop("Cell-type metadata are incomplete in metacell membership.",
-         call. = FALSE)
-  }
-  membership[[celltype_col]] <- cell_type
-  composition <- stats::aggregate(
-    rep.int(1L, nrow(membership)),
-    by = list(
-      metacell_id = as.character(membership$metacell_id),
-      cell_type = cell_type
-    ),
-    FUN = sum
-  )
-  colnames(composition) <- c("metacell_id", celltype_col, "n_cells")
-  split_rows <- split(seq_len(nrow(composition)), composition$metacell_id)
-  summary <- do.call(rbind, lapply(names(split_rows), function(id) {
-    z <- composition[split_rows[[id]], , drop = FALSE]
-    ord <- order(-z$n_cells, as.character(z[[celltype_col]]))
-    z <- z[ord, , drop = FALSE]
-    total <- sum(z$n_cells)
-    top_count <- max(z$n_cells)
-    tied <- sum(z$n_cells == top_count) > 1L
-    data.frame(
-      metacell_id = id,
-      dominant_celltype = if (tied) NA_character_ else
-        as.character(z[[celltype_col]][[1L]]),
-      dominant_celltype_fraction = top_count / total,
-      n_celltypes = nrow(z),
-      mixed_celltype_metacell = nrow(z) > 1L,
-      dominant_celltype_tied = tied,
-      stringsAsFactors = FALSE
-    )
-  }))
-  tied_ids <- as.character(summary$metacell_id[
-    summary$dominant_celltype_tied %in% TRUE
-  ])
-  if (length(tied_ids)) {
-    stop(
-      "Condition-only SuperCell2 produced metacells with tied dominant cell types: ",
-      paste(utils::head(tied_ids, 10L), collapse = ", "),
-      ". A condition-by-cell-type GRN cannot be assigned unambiguously.",
-      call. = FALSE
-    )
-  }
-  meta <- pooled$metacell_meta
-  index <- match(as.character(meta$metacell_id), summary$metacell_id)
-  if (anyNA(index)) {
-    stop("Dominant cell-type summaries do not align with metacell metadata.",
-         call. = FALSE)
-  }
-  meta[[celltype_col]] <- summary$dominant_celltype[index]
-  meta$dominant_celltype_fraction <-
-    summary$dominant_celltype_fraction[index]
-  meta$n_celltypes <- summary$n_celltypes[index]
-  meta$mixed_celltype_metacell <- summary$mixed_celltype_metacell[index]
-  meta$dominant_celltype_tied <- summary$dominant_celltype_tied[index]
-  pooled$membership <- membership
-  pooled$metacell_meta <- meta
-  pooled$celltype_composition <- composition
-  pooled$celltype_composition_summary <- summary
-  pooled
-}
-
 .rc_make_condition_pooled_metacells <- function(
     object, outdir,
     sample_col = NULL,
@@ -290,7 +207,8 @@
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
   }
-  required <- unique(c(condition_col, celltype_col))
+  required <- unique(c(condition_col, celltype_col, sample_col))
+  required <- required[!is.na(required) & nzchar(required)]
   missing <- setdiff(required, colnames(object@meta.data))
   if (length(missing)) {
     stop("Missing metadata columns: ", paste(missing, collapse = ", "),
@@ -308,8 +226,9 @@
   if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
     stop(
       paste(
-        "The canonical condition-only path requires `fragment_files = FALSE`",
-        "and aggregates the existing ATAC peak-count assay."
+        "The canonical condition-by-cell-type path requires",
+        "`fragment_files = FALSE` and aggregates the existing ATAC",
+        "peak-count assay."
       ),
       call. = FALSE
     )
@@ -355,19 +274,19 @@
     cache_contract,
     file.path(outdir, "condition_metacell_cache_contract.rds")
   )
-  internal_sample_col <- .rc_condition_only_sample_col(object@meta.data)
-  object@meta.data[[internal_sample_col]] <- paste0(
-    as.character(object@meta.data[[condition_col]]), "__condition_pool"
+  internal_pool_col <- .rc_condition_celltype_pool_col(object@meta.data)
+  object@meta.data[[internal_pool_col]] <- paste0(
+    as.character(object@meta.data[[condition_col]]), "__",
+    as.character(object@meta.data[[celltype_col]]),
+    "__condition_celltype_pool"
   )
-  internal_celltype_col <- .rc_condition_only_celltype_col(object@meta.data)
-  object@meta.data[[internal_celltype_col]] <- "all_celltypes"
   defaults <- list(
     object = object,
     outdir = outdir,
-    sample_col = internal_sample_col,
+    sample_col = internal_pool_col,
     condition_col = condition_col,
-    celltype_col = internal_celltype_col,
-    label_col = celltype_col,
+    celltype_col = celltype_col,
+    label_col = NULL,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     fragment_files = FALSE,
@@ -383,44 +302,127 @@
     rc_make_supercell2_metacells,
     c(defaults, metacell_args)
   )
-  pooled <- .rc_assign_metacell_dominant_celltype(
-    pooled = pooled,
-    object = object,
-    celltype_col = celltype_col
-  )
   meta <- pooled$metacell_meta
   if (!is.data.frame(meta) || !nrow(meta)) {
-    stop("Condition-only SuperCell2 produced no metacells.", call. = FALSE)
+    stop(
+      "Condition-by-cell-type SuperCell2 produced no metacells.",
+      call. = FALSE
+    )
   }
-  meta$pooled_sample_id <- meta[[internal_sample_col]]
-  meta$pooling_scope <- "condition_only"
+  meta$condition_celltype_pool_id <- meta[[internal_pool_col]]
+  cell_index <- match(
+    as.character(pooled$membership$cell_id), rownames(object@meta.data)
+  )
+  if (anyNA(cell_index)) {
+    stop("Metacell membership cannot be aligned to input cell metadata.",
+         call. = FALSE)
+  }
+  pooled$membership[[condition_col]] <- as.character(
+    object@meta.data[[condition_col]][cell_index]
+  )
+  pooled$membership[[celltype_col]] <- as.character(
+    object@meta.data[[celltype_col]][cell_index]
+  )
+  membership_groups <- split(
+    seq_len(nrow(pooled$membership)),
+    as.character(pooled$membership$metacell_id)
+  )
+  impure <- names(membership_groups)[vapply(
+    membership_groups, function(rows) {
+      length(unique(pooled$membership[[condition_col]][rows])) != 1L ||
+        length(unique(pooled$membership[[celltype_col]][rows])) != 1L
+    }, logical(1)
+  )]
+  if (length(impure)) {
+    stop(
+      "SuperCell returned metacells mixing condition or broad cell type: ",
+      paste(utils::head(impure, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  meta_index <- match(
+    as.character(meta$metacell_id), names(membership_groups)
+  )
+  if (anyNA(meta_index)) {
+    stop("SuperCell metadata do not cover every membership group.",
+         call. = FALSE)
+  }
+  observed_condition <- vapply(
+    membership_groups, function(rows) {
+      pooled$membership[[condition_col]][rows[[1L]]]
+    }, character(1)
+  )
+  observed_celltype <- vapply(
+    membership_groups, function(rows) {
+      pooled$membership[[celltype_col]][rows[[1L]]]
+    }, character(1)
+  )
+  if (any(
+    as.character(meta[[condition_col]]) !=
+      observed_condition[as.character(meta$metacell_id)] |
+    as.character(meta[[celltype_col]]) !=
+      observed_celltype[as.character(meta$metacell_id)]
+  )) {
+    stop("SuperCell metadata disagree with membership hard strata.",
+         call. = FALSE)
+  }
+  if (!is.null(sample_col) && nzchar(sample_col)) {
+    pooled$membership[[sample_col]] <- as.character(
+      object@meta.data[[sample_col]][cell_index]
+    )
+    pooled$sample_composition <- stats::aggregate(
+      rep.int(1L, nrow(pooled$membership)),
+      by = list(
+        metacell_id = as.character(pooled$membership$metacell_id),
+        sample_id = as.character(pooled$membership[[sample_col]])
+      ),
+      FUN = sum
+    )
+    colnames(pooled$sample_composition)[[3L]] <- "n_cells"
+  } else {
+    pooled$sample_composition <- data.frame()
+  }
+  pooled$celltype_composition <- data.frame(
+    metacell_id = as.character(meta$metacell_id),
+    value = as.character(meta[[celltype_col]]),
+    n_cells = as.integer(meta$n_cells),
+    stringsAsFactors = FALSE
+  )
+  colnames(pooled$celltype_composition)[[2L]] <- celltype_col
+  pooled$celltype_composition_summary <- data.frame(
+    metacell_id = as.character(meta$metacell_id),
+    dominant_celltype = as.character(meta[[celltype_col]]),
+    dominant_celltype_fraction = 1,
+    n_celltypes = 1L,
+    mixed_celltype_metacell = FALSE,
+    dominant_celltype_tied = FALSE,
+    stringsAsFactors = FALSE
+  )
+  meta$pooling_scope <- "condition_by_cell_type"
   meta$sample_weighting <- "none"
-  meta$sample_col_role <- "internal_condition_pool_id"
-  meta$celltype_role <- "label_guided_posthoc_dominant_membership"
+  meta$sample_col_role <- "internal_condition_celltype_pool_id"
+  meta$celltype_role <- "hard_stratum"
   pooled$metacell_meta <- meta
   pooled$input_sample_col <- sample_col
-  pooled$analysis_sample_col <- internal_sample_col
+  pooled$analysis_sample_col <- internal_pool_col
   pooled$condition_col <- condition_col
   pooled$celltype_col <- celltype_col
-  pooled$internal_celltype_col <- internal_celltype_col
-  pooled$pooling_scope <- "condition_only"
+  pooled$pooling_scope <- "condition_by_cell_type"
   pooled$sample_weighting <- "none"
   pooled$cache_contract <- cache_contract
   pooled$input_design <- list(
-    metacell_grouping = condition_col,
-    condition_only_stratification = TRUE,
-    supercell_label_col = celltype_col,
-    celltype_assignment = paste0(
-      "SuperCell2 label-guided construction using `", celltype_col,
-      "`, followed by dominant membership assignment"
-    ),
-    ambiguous_celltype_policy = "error_on_tied_dominant_membership",
+    metacell_grouping = c(condition_col, celltype_col),
+    condition_celltype_stratification = TRUE,
+    condition_only_stratification = FALSE,
+    supercell_label_col = NULL,
+    celltype_assignment = "hard condition-by-cell-type stratum",
+    ambiguous_celltype_policy = "not_applicable_strata_are_pure",
     gamma = metacell_args$gamma,
     cache_contract_schema = cache_contract$schema_version,
     inference_policy = paste(
-      "cells are stratified only by condition; the supplied label is passed",
-      "to SuperCell2 before aggregation to discourage label mixing; sample",
-      "metadata are not used for selection, weighting or metacell grouping"
+      "cells are stratified by condition and broad cell type; sample metadata",
+      "are retained for composition diagnostics but are not used for",
+      "selection, weighting, or metacell grouping"
     )
   )
   pooled

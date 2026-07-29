@@ -1,4 +1,4 @@
-test_that("v1.9.3 public workflow is GRN first", {
+test_that("v2.0.0 public workflow is GRN first", {
   text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   stages <- c(
     "rc_regcompass_step_grn",
@@ -85,22 +85,20 @@ test_that("merged meta-modules contain biological reactions only", {
   )))
 })
 
-test_that("metacell construction is condition-only without sample balancing", {
+test_that("metacells use only condition and broad cell type as hard strata", {
   text <- paste(
     deparse(body(.rc_make_condition_pooled_metacells)),
     collapse = "\n"
   )
+  expect_match(text, 'pooling_scope <- "condition_by_cell_type"', fixed = TRUE)
+  expect_match(text, 'sample_weighting <- "none"', fixed = TRUE)
   expect_match(
-    text,
-    'object@meta.data[[internal_celltype_col]] <- "all_celltypes"',
+    text, "metacell_grouping = c(condition_col, celltype_col)",
     fixed = TRUE
   )
-  expect_match(text, 'pooling_scope <- "condition_only"', fixed = TRUE)
-  expect_match(text, 'sample_weighting <- "none"', fixed = TRUE)
-  expect_match(text, "metacell_grouping = condition_col", fixed = TRUE)
   expect_match(text, "gamma <- 30L", fixed = TRUE)
   expect_match(text, "Sample balancing is not part", fixed = TRUE)
-  expect_match(text, "label_col = celltype_col", fixed = TRUE)
+  expect_match(text, "label_col = NULL", fixed = TRUE)
   expect_match(text, '"label_col"', fixed = TRUE)
   expect_false(grepl("label_col = label_col", text, fixed = TRUE))
 })
@@ -113,38 +111,17 @@ test_that("canonical metacells automatically use cell type as the label", {
   expect_false("metacell_label_col" %in% names(run_formals))
 })
 
-test_that("dominant cell type is assigned after condition-only metacells", {
-  skip_if_not_installed("SeuratObject")
-  counts <- Matrix::Matrix(
-    matrix(
-      1,
-      nrow = 1,
-      ncol = 6,
-      dimnames = list("g1", paste0("c", 1:6))
-    ),
-    sparse = TRUE
+test_that("canonical construction does not use posthoc cell-type assignment", {
+  text <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells)),
+    collapse = "\n"
   )
-  object <- SeuratObject::CreateSeuratObject(counts = counts)
-  object$cell_type <- c("T", "T", "B", "B", "B", "T")
-  pooled <- list(
-    membership = data.frame(
-      cell_id = paste0("c", 1:6),
-      metacell_id = c("m1", "m1", "m1", "m2", "m2", "m2")
-    ),
-    metacell_meta = data.frame(metacell_id = c("m1", "m2"))
+  expect_false(grepl(
+    ".rc_assign_metacell_dominant_celltype", text, fixed = TRUE
+  ))
+  expect_match(
+    text, "mixing condition or broad cell type", fixed = TRUE
   )
-  out <- .rc_assign_metacell_dominant_celltype(
-    pooled,
-    object,
-    "cell_type"
-  )
-  expect_identical(out$metacell_meta$cell_type, c("T", "B"))
-  expect_equal(
-    out$metacell_meta$dominant_celltype_fraction,
-    c(2 / 3, 2 / 3)
-  )
-  expect_true(all(out$metacell_meta$mixed_celltype_metacell))
-  expect_false(any(out$metacell_meta$dominant_celltype_tied))
 })
 
 test_that("condition metacells reject fragment pooling without maps", {

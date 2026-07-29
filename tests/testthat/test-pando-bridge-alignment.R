@@ -30,7 +30,7 @@ test_that("Pando comparison support must be explicit and reference aligned", {
   fit$comparison_mask <- NULL
   expect_error(
     .rc_condition_fit_comparison_mask(fit),
-    "Pando_regcompass >= 1.2.1",
+    "Pando_regcompass >= 1.4.0",
     fixed = TRUE
   )
 })
@@ -76,9 +76,12 @@ test_that("canonical Stage 1 defaults and parallel routing match Pando", {
   infer_defaults <- eval(
     formals(.rc_run_condition_single_cell_grns)$pando_infer_args
   )
-  expect_identical(infer_defaults$method, "shared_design_independent")
+  expect_identical(
+    infer_defaults$method, "shared_baseline_condition_sparse"
+  )
   expect_identical(infer_defaults$candidate_screen, "motif_domain")
-  expect_identical(infer_defaults$condition_mix, 1)
+  expect_identical(infer_defaults$condition_mix, 0.5)
+  expect_identical(infer_defaults$cv_block_col, "sample_id")
   expect_identical(infer_defaults$condition_weight, "equal")
   expect_true(infer_defaults$scale)
 

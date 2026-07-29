@@ -66,6 +66,7 @@ test_that("non-estimable reference contrasts cannot enter active effects", {
     condition_effect = c(0, 0, beta[, "Drug"] - beta[, "Control"]),
     estimate = c(beta[, "Control"], beta[, "Drug"]),
     rsq = 0.8,
+    sample_blocked_oof_available = TRUE,
     eligible_in_condition = c(
       eligibility[, "Control"], eligibility[, "Drug"]
     ),
@@ -98,6 +99,25 @@ test_that("non-estimable reference contrasts cannot enter active effects", {
   expect_true("edge_both" %in% observed$condition_effect_active$edge_id)
   expect_false("edge_reference_only" %in%
                  observed$condition_effect_active$edge_id)
+
+  single_sample <- extracted
+  single_sample$condition_all$rsq <- NA_real_
+  single_sample$condition_all$sample_blocked_oof_available <- FALSE
+  single_sample$condition_effect_all$rsq <- NA_real_
+  single_sample$condition_effect_all$sample_blocked_oof_available <- FALSE
+  exploratory <- .rc_apply_condition_comparison_semantics(
+    single_sample,
+    condition_col = "condition",
+    celltype_col = "cell_type",
+    min_abs_estimate = 0,
+    min_model_rsq = 0.1
+  )
+  expect_true("edge_both" %in% exploratory$condition_effect_active$edge_id)
+  expect_match(
+    exploratory$reliability_policy,
+    "zero regulatory reliability",
+    fixed = TRUE
+  )
 })
 
 test_that("mouse analyses cannot silently use hg38 regulatory regions", {

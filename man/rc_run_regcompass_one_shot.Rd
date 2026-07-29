@@ -26,13 +26,13 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{progress}{Display workflow and stage progress.}
 \item{...}{Arguments passed to \code{rc_run_regcompass()}, including \code{condition_col}, \code{celltype_col}, \code{pando_args}, metacell settings, Layer 1/2 controls, and worker budgets.}
 }
-\description{Provides the RegCompassR 1.9.3 species-aware complete-run API. It loads a pinned Human-GEM or Mouse-GEM and medium when omitted, then delegates without changing the Pando 1.2.1 \code{ConditionGRNFit} contract.}
+\description{Provides the RegCompassR 2.0.0 species-aware complete-run API and preserves Pando 1.4.0's ConditionGRNFit v4 contract.}
 \details{
-Canonical Pando settings use \code{method = "shared_design_independent"}, \code{candidate_screen = "motif_domain"}, \code{condition_mix = 1}, \code{condition_weight = "equal"}, and \code{scale = TRUE}. Set \code{reference_condition} explicitly.
+Canonical Pando settings use \code{method = "shared_baseline_condition_sparse"}, \code{candidate_screen = "motif_domain"}, \code{condition_mix = 0.5}, \code{condition_weight = "equal"}, and biological-sample CV blocks.
 
 Pando's explicit \code{comparison_mask} requires an edge to be eligible in both the requested and reference conditions. RegCompass exposes \code{comparable_to_reference} and excludes unsupported contrasts from the active condition-effect table and penalty projection.
 
 \code{pando_initiate_args}, \code{pando_motif_args}, and \code{pando_infer_args} are routed to the corresponding Pando functions. RegCompass owns the object, assays, genome, motifs, grouping columns, GEM target genes, network name, minimum condition size, error policy, and \code{BPPARAM}. Canonical Stage 1 rejects Pando aggregation columns because Stage 2 owns metacells.
 
-Parallel Stage 1 execution is controlled by \code{upstream_workers}; users should not put \code{parallel} or \code{BPPARAM} inside \code{pando_infer_args}. Mouse runs stop unless a mouse-coordinate regulatory-region \code{GRanges} is supplied; the bundled hg38 region set is never applied silently.
+SuperCells are hard-stratified only by condition and broad cell type. A single-sample condition is accepted, but its sample-blocked OOF performance is unavailable and Layer 1 regulatory reliability is zero. Parallel Stage 1 execution is controlled by \code{upstream_workers}. Mouse runs stop unless a mouse-coordinate regulatory-region \code{GRanges} is supplied.
 }

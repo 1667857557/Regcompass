@@ -109,20 +109,49 @@
   } else {
     rep(TRUE, nrow(condition_all))
   }
+  if (!"sample_blocked_oof_available" %in% colnames(condition_all) ||
+      !"sample_blocked_oof_available" %in% colnames(effect_all)) {
+    stop(
+      "Condition edge tables lack sample-blocked OOF availability.",
+      call. = FALSE
+    )
+  }
+  condition_oof_available <- if (
+      "confirmatory_oof_available" %in% colnames(condition_all)) {
+    condition_all$confirmatory_oof_available
+  } else {
+    condition_all$sample_blocked_oof_available
+  }
+  effect_oof_available <- if (
+      "confirmatory_oof_available" %in% colnames(effect_all)) {
+    effect_all$confirmatory_oof_available
+  } else {
+    effect_all$sample_blocked_oof_available
+  }
+  condition_reliable_or_unavailable <-
+    !condition_oof_available |
+    (
+      is.finite(condition_all$rsq) &
+      condition_all$rsq >= min_model_rsq
+    )
+  effect_reliable_or_unavailable <-
+    !effect_oof_available |
+    (
+      is.finite(effect_all$rsq) &
+      effect_all$rsq >= min_model_rsq
+    )
   condition_active <- condition_all[
     eligible &
       is.finite(condition_all$condition_estimate) &
       abs(condition_all$condition_estimate) >= active_tol &
-      is.finite(condition_all$rsq) &
-      condition_all$rsq >= min_model_rsq,
+      condition_reliable_or_unavailable,
     , drop = FALSE
   ]
   effect_active <- effect_all[
     effect_all$comparable_to_reference %in% TRUE &
       is.finite(effect_all$condition_effect) &
       abs(effect_all$condition_effect) >= active_tol &
-      is.finite(effect_all$rsq) &
-      effect_all$rsq >= min_model_rsq,
+      effect_reliable_or_unavailable,
     , drop = FALSE
   ]
 
@@ -133,6 +162,11 @@
   extracted$comparison_policy <- paste(
     "condition effects require eligibility in both the condition and",
     "the explicit reference condition"
+  )
+  extracted$reliability_policy <- paste(
+    "min_model_rsq is applied only where sample-blocked OOF is estimable;",
+    "single-sample conditions retain exploratory coefficients but receive",
+    "zero regulatory reliability in Layer 1"
   )
   extracted
 }
@@ -170,13 +204,14 @@
     pando_initiate_args = list(exclude_exons = TRUE),
     pando_motif_args = list(),
     pando_infer_args = list(
-      method = "shared_design_independent",
+      method = "shared_baseline_condition_sparse",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
-      peak_cor = 0.01,
+      peak_cor = 0,
       alpha = 0.5,
-      condition_mix = 1,
+      condition_mix = 0.5,
       condition_weight = "equal",
+      cv_block_col = "sample_id",
       nlambda = 50L,
       nfolds = 5L,
       lambda_selection = "lambda.1se",

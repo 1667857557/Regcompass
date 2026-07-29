@@ -37,32 +37,17 @@ test_that("GRN and metacell groups require bidirectional coverage", {
   )
 })
 
-test_that("condition-only metacells reject tied dominant cell types", {
-  skip_if_not_installed("SeuratObject")
-  counts <- Matrix::Matrix(
-    matrix(
-      seq_len(8), nrow = 2,
-      dimnames = list(c("g1", "g2"), paste0("c", 1:4))
-    ),
-    sparse = TRUE
+test_that("retired condition-only dominant-cell-type path is absent", {
+  expect_false(exists(
+    ".rc_assign_metacell_dominant_celltype",
+    inherits = TRUE
+  ))
+  text <- paste(
+    deparse(body(.rc_make_condition_pooled_metacells)),
+    collapse = "\n"
   )
-  object <- SeuratObject::CreateSeuratObject(counts = counts)
-  object$cell_type <- c("T", "B", "T", "B")
-  pooled <- list(
-    membership = data.frame(
-      cell_id = paste0("c", 1:4),
-      metacell_id = c("mc1", "mc1", "mc2", "mc2"),
-      stringsAsFactors = FALSE
-    ),
-    metacell_meta = data.frame(
-      metacell_id = c("mc1", "mc2"),
-      stringsAsFactors = FALSE
-    )
-  )
-  expect_error(
-    .rc_assign_metacell_dominant_celltype(pooled, object, "cell_type"),
-    "tied dominant cell types"
-  )
+  expect_match(text, ".rc_condition_celltype_pool_col", fixed = TRUE)
+  expect_match(text, "condition_celltype_stratification", fixed = TRUE)
 })
 
 test_that("metacell stage persists required artifacts", {
@@ -97,23 +82,28 @@ test_that("Stage 3 persists supported genes and core reactions", {
 
 test_that("Layer 1 uses the canonical schema and stage class", {
   body_text <- paste(
-    deparse(body(.rc_build_condition_pooled_layer1)), collapse = "\n"
+    deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
   step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
   expect_match(
     body_text,
-    "regcompass_condition_grn_layer1_v2",
+    "regcompass_condition_grn_layer1_v3",
     fixed = TRUE
   )
   expect_match(
     body_text,
-    "condition_only_metacell_with_posthoc_celltype",
+    "SuperCell_condition_by_broad_cell_type",
     fixed = TRUE
   )
   expect_match(body_text, "and_method = gpr_and_method", fixed = TRUE)
   expect_match(step_text, "regcompass_layer1_step", fixed = TRUE)
   expect_match(step_text, "gem_fingerprint", fixed = TRUE)
   expect_match(step_text, "workflow_params", fixed = TRUE)
+  expect_true("grn" %in% names(formals(rc_regcompass_step_layer1)))
+  expect_identical(
+    eval(formals(rc_regcompass_step_layer1)$comparison_support)[[1L]],
+    "auto"
+  )
   expect_identical(
     eval(formals(rc_regcompass_step_layer1)$gpr_and_method),
     c("min", "median", "mean")
@@ -129,10 +119,10 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(
     result_text,
-    "regcompass_condition_grn_fit_v2",
+    "regcompass_condition_grn_fit_v4",
     fixed = TRUE
   )
-  expect_match(result_text, 'version = "1.9.3"', fixed = TRUE)
+  expect_match(result_text, 'version = "2.0.0"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)

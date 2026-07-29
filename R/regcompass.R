@@ -16,15 +16,17 @@
 #' @param pfm Optional motif position-frequency matrices. When omitted,
 #'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
 #'   to `Pando::find_motifs()`.
-#' @param sample_col Deprecated compatibility input. It is recorded as
-#'   provenance only. Canonical metacells are grouped by condition, use cell
-#'   type as a construction label, and never use sample selection, balancing,
-#'   weighting, or sample-level refitting.
+#' @param sample_col Biological sample/donor column used only for
+#'   sample-blocked Pando cross-validation and metacell composition
+#'   diagnostics. SuperCell construction never includes this column: its hard
+#'   strata are exactly `condition_col` by `celltype_col`.
 #' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
 #'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
 #'   master-Rhea equivalence.
 #' @param layer1_args Stage 4 integrated-evidence arguments:
-#'   `regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.
+#'   `projection_component`, `comparison_support`, `projection_mode`,
+#'   `regulatory_reliability`, `regulatory_alpha`, `gpr_and_method`, and
+#'   `gene_half_saturation`.
 #'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
 #'   `"mean"`; RegCompass defaults to `"min"`.
 #' @param upstream_workers Worker count for GRN inference and Layer 1
@@ -42,7 +44,7 @@ rc_run_regcompass <- function(
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
-    sample_col = NULL,
+    sample_col = "sample_id",
     fragment_files = FALSE,
     metacell_args = list(),
     meta_module_args = list(),
@@ -108,21 +110,25 @@ rc_run_regcompass <- function(
   if ("tau" %in% names(layer1_args)) {
     stop(
       "The retired `tau`/Boltzmann Layer 1 transform is not supported. ",
-      "Use `regulatory_alpha`, `gpr_and_method`, and ",
-      "`gene_half_saturation`.",
+      "Use the Pando cell-first projection controls and `regulatory_alpha`.",
       call. = FALSE
     )
   }
   unknown_layer1 <- setdiff(
     names(layer1_args),
-    c("regulatory_alpha", "gpr_and_method", "gene_half_saturation")
+    c(
+      "projection_component", "comparison_support", "projection_mode",
+      "regulatory_reliability", "regulatory_alpha", "gpr_and_method",
+      "gene_half_saturation"
+    )
   )
   if (length(unknown_layer1)) {
     stop(
       "Unknown `layer1_args` fields: ",
       paste(unknown_layer1, collapse = ", "),
-      ". Allowed fields: `regulatory_alpha`, `gpr_and_method`, and ",
-      "`gene_half_saturation`.",
+      ". Allowed fields: `projection_component`, `comparison_support`, ",
+      "`projection_mode`, `regulatory_reliability`, `regulatory_alpha`, ",
+      "`gpr_and_method`, and `gene_half_saturation`.",
       call. = FALSE
     )
   }
@@ -134,6 +140,30 @@ rc_run_regcompass <- function(
   pando_infer_args <- pando_args$pando_infer_args %||% list()
   if (!is.list(pando_infer_args)) {
     stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+  }
+  if (!is.character(sample_col) || length(sample_col) != 1L ||
+      is.na(sample_col) || !nzchar(trimws(sample_col)) ||
+      !sample_col %in% colnames(object@meta.data)) {
+    stop(
+      "`sample_col` must name complete biological sample/donor metadata; ",
+      "it is required for sample-blocked Pando cross-validation.",
+      call. = FALSE
+    )
+  }
+  sample_values <- trimws(as.character(object@meta.data[[sample_col]]))
+  if (anyNA(sample_values) || any(!nzchar(sample_values))) {
+    stop("`sample_col` must be complete and non-empty.", call. = FALSE)
+  }
+  if (is.null(pando_infer_args$cv_block_col)) {
+    pando_infer_args$cv_block_col <- sample_col
+  } else if (!identical(
+    trimws(as.character(pando_infer_args$cv_block_col)), sample_col
+  )) {
+    stop(
+      "`pando_args$pando_infer_args$cv_block_col` must equal `sample_col` ",
+      "so that OOF reliability is biological-sample blocked.",
+      call. = FALSE
+    )
   }
   if (!is.null(pando_infer_args$parallel) &&
       !identical(pando_infer_args$parallel, FALSE)) {
@@ -241,10 +271,19 @@ rc_run_regcompass <- function(
       argument = "upstream_workers",
       FUN = function(upstream, config) {
         rc_regcompass_step_layer1(
+          grn = step1,
           metacells = step2,
           meta_modules = step3,
           gem = gem,
           outdir = file.path(outdir, "04_layer1"),
+          projection_component =
+            layer1_args$projection_component %||% "condition",
+          comparison_support =
+            layer1_args$comparison_support %||% "auto",
+          projection_mode =
+            layer1_args$projection_mode %||% "metacell_specific",
+          regulatory_reliability =
+            layer1_args$regulatory_reliability %||% "sample_blocked_oof",
           regulatory_alpha = layer1_args$regulatory_alpha %||% 1,
           gpr_and_method = gpr_and_method,
           gene_half_saturation = layer1_args$gene_half_saturation %||%

@@ -1,6 +1,6 @@
 # RegCompassR
 
-RegCompassR 1.9.3 implements a condition-comparable regulatory–metabolic
+RegCompassR 2.0.0 implements a condition-comparable regulatory–metabolic
 workflow for paired single-cell RNA+ATAC data.
 
 ## Canonical architecture
@@ -9,29 +9,32 @@ workflow for paired single-cell RNA+ATAC data.
 cells of one cell type across conditions
 → one Pando motif/domain TF–peak–GEM-gene dictionary
 → pooled TF-RNA × peak-ATAC predictor transforms
-→ independently estimated condition coefficients at a shared lambda
-→ explicit condition-versus-reference comparison support
+→ condition-sparse selection and common-metric refit
+→ sample-blocked OOF reliability
 → active metabolic targets and complete-GPR core reactions
 → one ordered subsystem / KEGG–Reactome / master-Rhea expansion
-→ condition-level multimodal metacells
+→ SuperCell metacells within condition × broad-cell-type strata
+→ single-cell TF×ATAC projection followed by membership aggregation
 → RNA+ATAC reaction support and penalties
 → one shared medium-specific GEM
 → directional COMPASS-like LP scoring
 ```
 
-Pando is the sole GRN estimator. RegCompass consumes Pando 1.2.1's versioned
-`ConditionGRNFit` without refitting its coefficient matrices. For an edge `e`
-and condition `c`, the regulatory effect is
+Pando is the sole GRN estimator. RegCompass consumes Pando 1.4.0's versioned
+`ConditionGRNFit v4` without refitting its coefficient matrices. For the main
+penalty path, the target-gene projection for cell `i`, gene `g`, and condition
+`c` is
 
 ```text
-beta[e, c] - beta[e, reference]
+G[i, g, c] = sum_e z[i, e] * beta_condition[e, c]
 ```
 
-and it is usable only when Pando's explicit `comparison_mask[e, c]` is `TRUE`.
-That mask requires the edge to be estimable in both the requested and reference
-conditions. Complete tables retain all rows and expose
-`comparable_to_reference`; the active effect table excludes unsupported
-contrasts.
+Two-condition quantitative comparisons use the pairwise intersection of
+estimable edges. Reference contrasts remain available for interpretation but
+do not enter the main metabolic penalty. Pando calculates TF×ATAC and applies
+its pooled transform in single cells; RegCompass then averages the completed
+gene projections using SuperCell's exact
+`misc$membership_table(cell_id, metacell_id)`.
 
 ## Installation
 
@@ -86,19 +89,21 @@ result <- rc_run_regcompass_one_shot(
   gem = gem,
   condition_col = "Group",
   celltype_col = "cell_type",
+  sample_col = "sample_id",
 
   pando_args = list(
     min_cells = 300L,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      method = "shared_design_independent",
+      method = "shared_baseline_condition_sparse",
       candidate_screen = "motif_domain",
       tf_cor = 0.1,
-      peak_cor = 0.01,
+      peak_cor = 0,
       alpha = 0.5,
-      condition_mix = 1,
+      condition_mix = 0.5,
       condition_weight = "equal",
+      cv_block_col = "sample_id",
       reference_condition = "Control",
       nlambda = 50L,
       nfolds = 5L,
@@ -122,6 +127,10 @@ result <- rc_run_regcompass_one_shot(
   ),
 
   layer1_args = list(
+    projection_component = "condition",
+    comparison_support = "auto",
+    projection_mode = "metacell_specific",
+    regulatory_reliability = "sample_blocked_oof",
     regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
@@ -165,8 +174,25 @@ name, minimum condition size, group-error policy, and `BPPARAM`.
 The interaction-safe default is `candidate_screen = "motif_domain"`. It retains
 motif/domain-supported candidates and lets elastic-net regularization select
 edges based on the fitted `TF RNA × peak ATAC` predictor. The optional
-`condition_union` and `pooled` modes apply faster marginal TF-target and
-peak-target screening and should be treated as sensitivity analyses.
+`pooled_within_condition` applies marginal TF-target and peak-target screening
+and should be treated as a sensitivity analysis. Because that screen uses the
+response before cross-validation, its OOF score is not used as confirmatory
+Layer 1 reliability; RegCompass sets `q = 0` for that sensitivity path.
+
+### Conditions with one biological sample
+
+`sample_col` is required for provenance and Pando cross-validation, but a
+condition may contain only one sample. Pando then uses cell-level folds only
+to select lambda and records sample-blocked OOF performance as unavailable.
+RegCompass retains the fitted GRN as exploratory edge evidence, sets its
+regulatory reliability to zero, and falls back to RNA-only support in Layer 1.
+It never treats cells, mixed-sample metacells, or multiple metacells from one
+sample as biological replicates.
+
+Conditions with at least two samples continue to use strict sample-blocked OOF
+validation. SuperCell construction is unchanged in both cases: the only hard
+strata are condition × broad cell type (`condition_col × celltype_col`);
+sample IDs are retained solely for composition diagnostics and GRN validation.
 
 ## Human and mouse regulatory regions
 
@@ -228,7 +254,7 @@ step1$params$pando_parallel
 ## Compare the same reaction across conditions
 
 After Stage 6, compare a fixed reaction/direction/medium target across
-condition-level metacells:
+condition-by-broad-cell-type SuperCells:
 
 ```r
 condition_stats <- rc_test_condition_reactions(

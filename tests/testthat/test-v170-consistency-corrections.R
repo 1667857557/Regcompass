@@ -76,52 +76,23 @@ test_that("single-cell Pando reuses shared normalized data", {
       )$pando_infer_args),
       collapse = " "
     ),
-    "peak_cor = 0.01",
+    "peak_cor = 0",
     fixed = TRUE
   )
 })
 
-test_that("targets without finite Pando R-squared are untrusted", {
-  skip_if_not_installed("Seurat")
-  skip_if_not_installed("SeuratObject")
-  counts <- Matrix::Matrix(
-    matrix(
-      c(2, 3, 1, 1),
-      nrow = 2,
-      dimnames = list(c("G1", "G2"), c("mc1", "mc2"))
-    ),
-    sparse = TRUE
+test_that("unavailable sample-blocked OOF forces Layer 1 reliability zero", {
+  body_text <- paste(
+    deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
-  object <- Seurat::CreateSeuratObject(counts = counts, assay = "RNA")
-  edges <- data.frame(
-    edge_id = "edge1",
-    target = "GENE1",
-    region = "p1",
-    tf = "TF1",
-    estimate = 1,
-    predictor_center = 0,
-    predictor_scale = 1,
-    response_scale = 1,
-    rsq = NA_real_,
-    condition = "A",
-    cell_type = "T"
-  )
-  unit_meta <- data.frame(
-    pool_id = c("mc1", "mc2"),
-    condition = "A",
-    cell_type = "T"
-  )
-  modifier <- .rc_condition_gene_regulatory_modifier(
-    significant_edges = edges,
-    object = object,
-    unit_meta = unit_meta,
-    target_genes = "gene1"
-  )
-  expect_true(all(modifier == 0))
+  expect_false(exists(
+    ".rc_condition_gene_regulatory_modifier", inherits = TRUE
+  ))
   expect_match(
-    attr(modifier, "reliability_policy"),
-    "reliability zero",
-    fixed = TRUE
+    body_text, "q[!available | !is.finite(q)] <- 0", fixed = TRUE
+  )
+  expect_match(
+    body_text, "gene_regulatory_reliability_available", fixed = TRUE
   )
 })
 

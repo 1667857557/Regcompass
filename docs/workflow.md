@@ -4,7 +4,7 @@
 
 ```text
 cell type cells across conditions
-→ shared Pando edge design and independent condition coefficients
+→ shared Pando edge design, condition-sparse selection, and common-metric refit
 → supported metabolic target genes
 → complete-GPR core reactions
 → one ordered subsystem/cross-reference expansion pass
@@ -23,7 +23,7 @@ cell type cells across conditions
 Pando is fitted once per cell type across conditions. The complete edge
 dictionary, edge eligibility mask, and pooled final-predictor scale are shared.
 Within each target, the lambda path and selected lambda are also shared;
-condition coefficients are independently estimated. Its candidate target set is:
+condition coefficients are selected sparsely and refit on a common metric. Its candidate target set is:
 
 \[
 T = G_{GEM\ GPR} \cap G_{RNA\ assay}.

@@ -28,12 +28,13 @@
     ))
     valid <- identical(
       as.character(contract$schema_version %||% ""),
-      "regcompass_condition_metacell_cache_v1"
+      "regcompass_condition_celltype_metacell_cache_v2"
     ) &&
-      isTRUE(design$condition_only_stratification) &&
-      nzchar(expected_label) && identical(design_label, expected_label) &&
+      isTRUE(design$condition_celltype_stratification) &&
+      !isTRUE(design$condition_only_stratification) &&
+      nzchar(expected_label) && !nzchar(design_label) &&
       length(design_assignment) == 1L &&
-      grepl("label-guided", design_assignment, fixed = TRUE) &&
+      grepl("hard condition-by-cell-type", design_assignment, fixed = TRUE) &&
       length(expected_gamma) == 1L && !is.na(expected_gamma) &&
       identical(design_gamma, expected_gamma) &&
       identical(contract_gamma, expected_gamma) &&
@@ -41,7 +42,7 @@
       identical(as.character(contract$celltype_col), params$celltype_col) &&
       identical(as.character(contract$rna_assay), params$rna_assay) &&
       identical(as.character(contract$atac_assay), params$atac_assay) &&
-      identical(as.character(contract$label_col), params$celltype_col)
+      is.null(contract$label_col)
   }
   if (!isTRUE(valid)) {
     stop(
@@ -132,6 +133,75 @@
     "rc_regcompass_step_layer1"
   )
   ids <- .rc_layer1_unit_ids(layer1)
+  required_gene_matrices <- c(
+    "gene_projection", "gene_projection_absolute",
+    "gene_projection_shared", "gene_projection_deviation",
+    "gene_regulatory_reliability", "gene_regulatory_reliability_available",
+    "gene_regulatory_modifier", "gene_rna_support",
+    "gene_multiome_support"
+  )
+  missing_gene_matrices <- required_gene_matrices[
+    !vapply(required_gene_matrices, function(name) {
+      !is.null(layer1[[name]]) && !is.null(dim(layer1[[name]]))
+    }, logical(1))
+  ]
+  if (length(missing_gene_matrices)) {
+    stop(
+      "Layer 1 is missing audited gene matrices: ",
+      paste(missing_gene_matrices, collapse = ", "), call. = FALSE
+    )
+  }
+  reference <- layer1$gene_projection
+  if (!is.numeric(reference) || is.null(rownames(reference)) ||
+      is.null(colnames(reference)) || anyDuplicated(rownames(reference)) ||
+      anyDuplicated(colnames(reference)) ||
+      !identical(colnames(reference), ids)) {
+    stop("Layer 1 gene projections require aligned unique gene and unit IDs.",
+         call. = FALSE)
+  }
+  for (name in setdiff(required_gene_matrices, "gene_projection")) {
+    value <- layer1[[name]]
+    if (!identical(dimnames(value), dimnames(reference))) {
+      stop("Layer 1 `", name, "` is not aligned with `gene_projection`.",
+           call. = FALSE)
+    }
+  }
+  if (!is.logical(layer1$gene_regulatory_reliability_available) ||
+      anyNA(layer1$gene_regulatory_reliability_available)) {
+    stop("Layer 1 regulatory-reliability availability must be logical.",
+         call. = FALSE)
+  }
+  reliability <- layer1$gene_regulatory_reliability
+  available <- layer1$gene_regulatory_reliability_available
+  if (any(!is.finite(reliability[available])) ||
+      any(reliability[available] < 0 | reliability[available] > 1 + 1e-8)) {
+    stop("Layer 1 available reliability values must lie in [0, 1].",
+         call. = FALSE)
+  }
+  projection <- layer1$gene_projection
+  expected_modifier <- reliability * tanh(projection)
+  expected_modifier[!is.finite(projection)] <- 0
+  observed_modifier <- layer1$gene_regulatory_modifier
+  comparable <- is.finite(expected_modifier) & is.finite(observed_modifier)
+  if (any(is.finite(expected_modifier) != is.finite(observed_modifier)) ||
+      any(abs(
+        expected_modifier[comparable] - observed_modifier[comparable]
+      ) > 1e-10)) {
+    stop("Layer 1 regulatory modifier is not q * tanh(projection).",
+         call. = FALSE)
+  }
+  provenance <- layer1$projection_provenance
+  if (!identical(layer1$schema_version,
+                 "regcompass_condition_grn_layer1_v3") ||
+      !is.list(provenance) ||
+      !identical(provenance$pando_schema, "pando_condition_grn_fit_v4") ||
+      !identical(
+        provenance$supercell_membership,
+        "misc$membership_table(cell_id, metacell_id)"
+      )) {
+    stop("Layer 1 projection provenance is absent or incompatible.",
+         call. = FALSE)
+  }
   if (!is.null(workflow_params)) {
     .rc_require_workflow_params(layer1, workflow_params, argument)
   }

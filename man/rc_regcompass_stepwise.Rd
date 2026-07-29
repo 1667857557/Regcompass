@@ -25,7 +25,12 @@ rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
   meta_module_args = list(),
   progress = getOption("RegCompassR.progress", TRUE))
 
-rc_regcompass_step_layer1(metacells, meta_modules, gem, outdir,
+rc_regcompass_step_layer1(grn, metacells, meta_modules, gem, outdir,
+  projection_component = c("condition", "shared", "deviation"),
+  comparison_support = c("auto", "pairwise_common", "global_common",
+    "condition_estimable", "strict"),
+  projection_mode = "metacell_specific",
+  regulatory_reliability = "sample_blocked_oof",
   regulatory_alpha = 1,
   gpr_and_method = c("min", "median", "mean"),
   gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
@@ -50,31 +55,39 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{species}{Species identifier or \code{"auto"}. Human can use the bundled hg38 phastCons plus SCREEN ccRE union. Mouse requires a species- and build-matched \code{GRanges} supplied through \code{pando_initiate_args$regions}; hg38 regions are rejected for mouse input.}
 \item{condition_col, celltype_col}{Condition and cell-type metadata columns.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 Pando controls. The canonical \code{pando_infer_args} use \code{method = "shared_design_independent"}, \code{candidate_screen = "motif_domain"}, \code{condition_mix = 1}, \code{condition_weight = "equal"}, and \code{scale = TRUE}. Set \code{reference_condition} explicitly. \code{pando_initiate_args}, \code{pando_motif_args}, and \code{pando_infer_args} are forwarded to \code{initiate_grn()}, \code{find_motifs()}, and \code{infer_condition_grn()}, respectively. RegCompass rejects nested overrides of managed objects, assays, genome, motifs, grouping columns, target genes, network name, minimum group size, error policy, and \code{BPPARAM}. Pando aggregation columns are rejected because Stage 2 owns metacell aggregation.}
+\item{pando_args}{Stage 1 Pando controls. Canonical inference uses \code{method = "shared_baseline_condition_sparse"}, \code{candidate_screen = "motif_domain"}, \code{condition_mix = 0.5}, \code{condition_weight = "equal"}, and biological-sample CV blocks.}
 \item{metacell_args}{SuperCell2 controls. Defaults include RNA \code{"pca"} dimensions 1:30, ATAC \code{"lsi"} dimensions 2:30, \code{gamma = 30L}, \code{seed = 12345L}, \code{min_cells_per_stratum = 100L}, \code{min_metacell_size = 20L}, and \code{min_metacells_per_stratum = 2L}.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}. Stage 3 performs one ordered subsystem, KEGG/Reactome, and master-Rhea pass.}
 \item{regulatory_alpha}{Strength of the ATAC regulatory modifier in Layer 1.}
+\item{projection_component}{Use absolute condition, shared, or deviation
+Pando projections. The canonical penalty uses absolute condition effects.}
+\item{comparison_support}{Use \code{"auto"} to select pairwise-common support
+for two conditions and global-common support for more than two.}
+\item{projection_mode}{Must be \code{"metacell_specific"}; projection occurs
+in single cells before exact membership aggregation.}
+\item{regulatory_reliability}{Must be \code{"sample_blocked_oof"}. Targets
+without estimable sample-blocked OOF receive reliability zero.}
 \item{gpr_and_method}{COMPASS-compatible aggregation for genes joined by GPR AND. Accepts \code{"min"}, \code{"median"}, or \code{"mean"}; default is \code{"min"}.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
 \item{layer2_args}{Layer 2 scoring and shared-model controls. Global FASTCORE controls belong in \code{layer2_args$model_params}.}
 \item{parallel}{For Stage 1, \code{FALSE} is serial. With \code{TRUE} and a supplied \code{BiocParallelParam}, Pando uses that backend. With \code{TRUE} and \code{BPPARAM = NULL} or \code{FALSE}, Pando native map execution is enabled.}
 \item{BPPARAM}{A \code{BiocParallelParam}, \code{NULL}, or \code{FALSE}. \code{BPPARAM = TRUE} is invalid.}
 \item{progress}{Display stage progress.}
-\item{sample_col}{Deprecated compatibility input retained as provenance only.}
+\item{sample_col}{Optional sample/donor metadata retained for composition diagnostics. It is never used to define SuperCell strata.}
 \item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
 \item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
 \item{medium_scenarios}{Condition-invariant medium table.}
 \item{model_mode}{Use a medium-specific shared model reconstructed from the biological catalogue, or reuse the full GEM.}
 }
-\description{Runs the canonical RegCompassR 1.9.3 analysis as six restartable stages: Pando condition GRNs, condition-level metacells, complete-GPR biological meta-modules, RNA+ATAC reaction support, shared-model directional scoring, and annotated results.}
+\description{Runs RegCompassR 2.0.0 as six restartable stages with Pando ConditionGRNFit v4 and condition-by-broad-cell-type SuperCells.}
 \details{
-Stage 1 requires Pando 1.2.1's versioned \code{ConditionGRNFit}. Conditions share the TF-peak-target dictionary, pooled final interaction transform, target transform, and target-specific lambda choice while their coefficient columns are independently estimated.
+Stage 1 requires Pando 1.4.0's \code{ConditionGRNFit v4}. Conditions share the candidate dictionary and pooled metric. Single-sample conditions retain exploratory coefficients, but sample-blocked OOF is unavailable and Layer 1 reliability is zero.
 
 The condition effect is \code{beta_condition - beta_reference}. Pando's explicit \code{comparison_mask} requires eligibility in both the requested and reference conditions. Complete tables expose \code{comparable_to_reference}; unsupported contrasts cannot enter the active condition-effect table or Layer 1 penalty calculation.
 
-The interaction-safe default is \code{candidate_screen = "motif_domain"}. The optional \code{"condition_union"} and \code{"pooled"} settings are marginal-screen sensitivity modes.
+The interaction-safe default is \code{candidate_screen = "motif_domain"}. The optional \code{"pooled_within_condition"} setting is a marginal-screen sensitivity mode; because it uses the response before cross-validation, its OOF score is not used as Layer 1 reliability and \eqn{q=0}.
 
 The resolved Stage 1 execution route is stored in \code{step1$params$pando_parallel}. Current Stage 1 outputs include \code{condition_grn_fits}, \code{condition_fit_status}, \code{tf_peak_gene_condition}, \code{tf_peak_gene_condition_effect_all}, and \code{tf_peak_gene_condition_effect}.
 
-Stage 3 maps active target genes to complete-GPR cores. Stage 4 reconstructs Pando's standardized TF-RNA by peak-ATAC interaction and projects only comparable effects. Stage 5 performs the single global FASTCORE completion for each shared medium-specific model.
+Stage 2 calls SuperCell_Seurat_V4 with hard strata defined only by condition and broad cell type. Stage 4 calls Pando's cell-first projection and aggregates by exact SuperCell membership. Stage 5 performs the single global FASTCORE completion for each shared medium-specific model.
 }

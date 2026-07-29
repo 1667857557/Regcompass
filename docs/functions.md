@@ -1,6 +1,6 @@
-# Public functions and API contract in RegCompassR 1.9.3
+# Public functions and API contract in RegCompassR 2.0.0
 
-RegCompass exposes a one-shot workflow and six restartable stages. Pando 1.2.1
+RegCompass exposes a one-shot workflow and six restartable stages. Pando 1.4.0
 is the sole condition-GRN estimator; RegCompass consumes its versioned
 `ConditionGRNFit` and does not refit condition coefficient matrices.
 
@@ -20,7 +20,7 @@ The complete workflow accepts `pando_args`, `metacell_args`,
 | Stage | Function | Main output |
 |---:|---|---|
 | 1 | `rc_regcompass_step_grn()` | Pando `ConditionGRNFit` objects plus condition coefficient/effect tables |
-| 2 | `rc_regcompass_step_metacells()` | condition-level multimodal metacells and cache provenance |
+| 2 | `rc_regcompass_step_metacells()` | condition × broad cell type SuperCells and cache provenance |
 | 3 | `rc_regcompass_step_meta_modules()` | complete-GPR cores and merged biological reaction catalogue |
 | 4 | `rc_regcompass_step_layer1()` | RNA-only and RNA+ATAC reaction support |
 | 5 | `rc_regcompass_step_layer2()` | shared medium-specific model and directional LP scores |
@@ -34,9 +34,9 @@ pando_args = list(
   min_abs_estimate = 0,
   min_model_rsq = 0.1,
   pando_infer_args = list(
-    method = "shared_design_independent",
+    method = "shared_baseline_condition_sparse",
     candidate_screen = "motif_domain",
-    condition_mix = 1,
+    condition_mix = 0.5,
     condition_weight = "equal",
     reference_condition = "Control",
     scale = TRUE
@@ -51,10 +51,8 @@ Within each cell type, Pando shares:
 - one pooled target transform;
 - one target-specific lambda path and selected lambda.
 
-Condition coefficient columns are estimated independently at the selected
-lambda. `candidate_screen = "motif_domain"` is the interaction-safe default.
-The optional `condition_union` and `pooled` modes impose marginal-correlation
-screens and are intended for explicit sensitivity analyses.
+Condition-specific supports are selected jointly and then refit on one pooled common metric. `candidate_screen = "motif_domain"` is the interaction-safe default.
+The optional `pooled_within_condition` mode imposes a response-dependent marginal-correlation screen and is intended only for sensitivity analysis; its OOF score is not used as confirmatory Layer 1 reliability (`q = 0`).
 
 ### Comparison support
 
@@ -65,7 +63,7 @@ comparison_mask[e, c] =
   eligibility_mask[e, c] && eligibility_mask[e, reference]
 ```
 
-RegCompass requires the explicit Pando 1.2.1 mask. All effect rows expose
+RegCompass requires the explicit Pando 1.4.0 mask. All effect rows expose
 `comparable_to_reference`; only comparable rows can enter
 `tf_peak_gene_condition_effect` and the Layer 1 regulatory projection.
 
@@ -154,7 +152,7 @@ complete-GPR cores, and one ordered expansion pass:
 core subsystems → direct KEGG/Reactome equivalents → direct master-Rhea equivalents
 ```
 
-Stage 4 reconstructs Pando's stored standardized interaction predictors and
+Stage 4 delegates standardized single-cell interaction projection to Pando and
 projects only comparable condition-versus-reference coefficients. GPR AND
 accepts `"min"`, `"median"`, or `"mean"`; the default is `"min"`. Isozyme OR
 branches remain additive.

@@ -29,7 +29,7 @@ genes and RNA-assay row names.
 
 The complete fit contract must use schema
 `pando_condition_grn_fit_v2`, the
-`shared_design_independent_elastic_net` engine, pooled final-edge and target
+`shared_baseline_condition_sparse_elastic_net` engine, pooled final-edge and target
 standardization, one explicit `reference_condition`, aligned `beta`,
 `contrast`, and `eligibility_mask` matrices, and stored predictor/response
 transforms. The contrast must equal

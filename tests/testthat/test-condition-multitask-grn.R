@@ -18,13 +18,14 @@ test_that("condition effects use an explicit reference condition", {
   )
 })
 
-test_that("RegCompass enforces the shared-design independent Pando contract", {
+test_that("RegCompass enforces the condition-sparse Pando v4 contract", {
   defaults <- eval(
     formals(.rc_run_condition_single_cell_grns)$pando_infer_args
   )
-  expect_identical(defaults$method, "shared_design_independent")
+  expect_identical(defaults$method, "shared_baseline_condition_sparse")
   expect_identical(defaults$candidate_screen, "motif_domain")
-  expect_identical(defaults$condition_mix, 1)
+  expect_identical(defaults$condition_mix, 0.5)
+  expect_identical(defaults$cv_block_col, "sample_id")
   expect_identical(defaults$condition_weight, "equal")
   expect_true(defaults$scale)
 
@@ -34,47 +35,26 @@ test_that("RegCompass enforces the shared-design independent Pando contract", {
     )), collapse = "\n"
   )
   expect_match(body_text, ".rc_extract_condition_grn_contract", fixed = TRUE)
-  expect_match(body_text, "condition_grn_fit_v2.rds", fixed = TRUE)
+  expect_match(body_text, "condition_grn_fit_v4.rds", fixed = TRUE)
   expect_match(body_text, "pando_edge_predictor_transforms", fixed = TRUE)
 })
 
-test_that("TF-by-ATAC activity uses the Pando interaction predictor", {
-  tf <- matrix(
-    c(1, 2, 3, 4), nrow = 2,
-    dimnames = list(c("TF1", "TF2"), c("u1", "u2"))
+test_that("Layer 1 never reconstructs TF-by-ATAC from metacell means", {
+  text <- paste(
+    deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
-  peak <- matrix(
-    c(5, 6, 7, 8), nrow = 2,
-    dimnames = list(c("P1", "P2"), c("u1", "u2"))
+  expect_match(
+    text, "Pando::project_condition_grn_groups", fixed = TRUE
   )
-
-  expect_equal(.rc_tf_peak_interaction(tf, peak), tf * peak)
-  expect_error(
-    .rc_tf_peak_interaction(tf, peak[, 1, drop = FALSE]),
-    "identical dimensions"
-  )
+  expect_false(grepl(".rc_tf_peak_interaction", text, fixed = TRUE))
 })
 
-test_that("model-space projection preserves coefficient-effect magnitude", {
-  edge_model <- matrix(
-    c(1, -1, 2, 3), nrow = 2, byrow = TRUE,
-    dimnames = list(c("edge1", "edge2"), c("u1", "u2"))
-  )
-  delta <- c(0.5, -0.25)
-  observed <- .rc_project_condition_edges(
-    edge_model, delta, target_rsq = 0.64
-  )
-  expected <- sqrt(0.64) * as.numeric(crossprod(delta, edge_model))
-
-  expect_equal(observed, expected)
-  expect_equal(
-    .rc_project_condition_edges(edge_model, 2 * delta, 0.64),
-    2 * observed
-  )
-  expect_equal(
-    .rc_project_condition_edges(edge_model, c(0, 0), 0.64),
-    c(0, 0)
-  )
+test_that("model-space modifier uses shared pooled OOF reliability", {
+  projection <- matrix(c(-2, 0, 2), nrow = 1L)
+  q <- sqrt(max(0, 0.64))
+  observed <- q * tanh(projection)
+  expect_equal(observed, 0.8 * tanh(projection))
+  expect_true(all(abs(observed) <= q))
 })
 
 test_that("regulatory integration remains bounded and zero preserving", {
