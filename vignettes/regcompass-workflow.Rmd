@@ -1,8 +1,8 @@
 ---
-title: "RegCompassR 2.1.0 outer-OOF condition workflow"
+title: "RegCompassR workflow"
 output: rmarkdown::html_vignette
 vignette: >
-  %\VignetteIndexEntry{RegCompassR 2.1.0 outer-OOF condition workflow}
+  %\VignetteIndexEntry{RegCompassR workflow}
   %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
 ---
@@ -11,34 +11,28 @@ vignette: >
 knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 ```
 
-> Each broad cell type is trained, validated, and refitted independently. If
-> `cell_type` is supplied, only those labels are processed. OOF folds contain
-> condition-stratified cells from the same fitted type; biological sample
-> metadata and sample count are not inputs or gates.
-
 # Overview
 
-RegCompassR converts paired single-cell RNA+ATAC evidence into reaction-level
-support and directional COMPASS-like scores.
+RegCompassR converts paired single-cell RNA+ATAC data into condition-comparable
+reaction support and directional metabolic scores.
 
 ```text
-one Pando motif/domain edge dictionary per cell type
-→ nested outer-heldout cell projection with inner lambda selection
-→ training-only equal-condition TF-RNA × peak-ATAC transforms
-→ common-support primary and condition-full exploratory routes
-→ supported metabolic genes and complete-GPR cores
-→ one ordered biological expansion pass
-→ condition × broad cell type SuperCells
-→ latent depth-aware RNA and bounded regulatory support
-→ separate common/full/RNA/depth/alpha GPR and penalty routes
-→ one shared medium-specific GEM
-→ directional LP scoring
+Pando condition-aware GRNs
+→ condition × broad-cell-type metacells
+→ supported metabolic genes and reactions
+→ regulatory modification of RNA support
+→ shared medium-specific metabolic model
+→ directional scores and condition tests
 ```
 
-Pando 1.5.0 is the sole GRN estimator. RegCompass consumes its
-`ConditionGRNFit v5` contracts. Only outer-heldout projections enter penalties.
+Pando `ConditionGRNFit v5` outer-heldout common-support projections are the
+primary regulatory input. Reference-condition coefficient effects are retained
+for interpretation only.
 
-# Prepare the human GEM and medium
+Mathematical definitions are centralized in
+[Mathematical model](../docs/mathematical-model.md).
+
+# Prepare GEM and medium
 
 ```{r}
 library(RegCompassR)
@@ -52,16 +46,16 @@ gem <- rc_prepare_gem(
 
 medium_scenarios <- rc_make_medium_scenarios(
   gem,
-  scenario = "high_glucose",
+  scenario = "physiologic",
   species = "human"
 )
 ```
 
-When `pfm` is omitted, RegCompass loads Pando's bundled `motifs` object. Human
-analyses also use the bundled hg38 phastCons plus SCREEN ccRE union unless
-`pando_initiate_args$regions` is supplied.
+Use `physiologic` for a species-specific baseline, a culture formulation for
+in-vitro sensitivity analysis, or `custom` for experiment-specific exchange
+bounds. See [Medium presets](../docs/medium-presets.md).
 
-# Complete workflow
+# One-shot workflow
 
 ```{r}
 result <- rc_run_regcompass_one_shot(
@@ -72,28 +66,21 @@ result <- rc_run_regcompass_one_shot(
   gem = gem,
   condition_col = "Group",
   celltype_col = "cell_type",
-
   pando_args = list(
     min_cells = 100L,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
       candidate_screen = "motif_domain",
-      tf_cor = 0.1,
-      peak_cor = 0,
-      alpha = 0.5,
       condition_mix = 0.5,
       condition_weight = "equal",
       reference_condition = "Control",
-      nlambda = 50L,
-      comparison_conditions = c("Control", "Drug"),
       outer_nfolds = 5L,
       inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
       scale = TRUE
     )
   ),
-
   fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
@@ -101,15 +88,13 @@ result <- rc_run_regcompass_one_shot(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
-    depth_balance = TRUE,
     seed = 12345L,
     min_cells_per_stratum = 500L,
     min_metacell_size = 10L,
-    min_metacells_per_stratum = 2L,
-    overwrite = FALSE
+    min_metacells_per_stratum = 2L
   ),
-
   layer1_args = list(
+    projection_component = "condition",
     comparison_support = "auto",
     regulatory_alpha = 0.5,
     gpr_and_method = "min"
@@ -131,71 +116,28 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The one-shot runner controls Pando execution through `upstream_workers` and a
-stage-scoped backend. `pando_infer_args$parallel` and `BPPARAM` are not part of
-the nested inference example.
+The one-shot runner controls Stage 1 parallelism. Do not put `parallel` or
+`BPPARAM` inside `pando_infer_args`.
 
-# Pando shared-design contract
-
-For edge `e` and unit `u`, Pando fits the interaction predictor:
-
-```text
-x[e, u] = RNA[TF(e), u] × ATAC[peak(e), u]
-```
-
-For every outer fold, the interaction center is the mean of condition means
-and its scale is the square root of the mean condition-specific population
-variance. The transform and lambda are learned only inside that outer training
-set. Each cell receives exactly one held-out projection. A separate full-data
-refit is used only to interpret the final sub-GRN.
-
-The interaction-safe candidate default is `motif_domain`. The optional
-`pooled_within_condition` mode applies response-dependent marginal-correlation
-screening and is a sensitivity mode; its projection is ineligible for penalty
-construction.
-
-# Interpretation contrasts and primary support
-
-Pando retains full-data edge contrasts for sub-GRN interpretation:
-
-```text
-contrast[e, c] = beta[e, c] - beta[e, reference]
-comparison_mask[e, c] =
-  eligibility_mask[e, c] && eligibility_mask[e, reference]
-```
-
-These tables do not drive the primary penalty. The penalty route instead uses
-the outer-fold pairwise-common support for two conditions or global-common
-support for an omnibus analysis. `condition_estimable` and `strict` are
-diagnostic-only. An estimable inactive coefficient remains zero; an
-unavailable coefficient remains `NA`.
+# Main outputs
 
 ```{r}
-all_effects <- result$grn$tf_peak_gene_condition_effect_all
-all_effects[, c(
-  "edge_id", "Group", "cell_type",
-  "condition_estimate", "reference_estimate", "condition_effect",
-  "comparable_to_reference"
-)]
-
-table(all_effects$comparable_to_reference, useNA = "ifany")
+result$grn$condition_fit_status
+result$grn$condition_grn_fits
+result$grn$tf_peak_gene_condition
+result$condition_grn_meta_modules$supported_metabolic_genes
+result$condition_grn_meta_modules$core_gene_reaction
+result$microcompass$model_cache_summary
+result$reaction_ranking
+result$condition_contrast
+result$reaction_comparison_by_metacell
 ```
 
-# Pando argument routing
+The primary route uses outer-heldout common-support regulatory scores. RNA-only,
+condition-full, depth, zero-pattern, link-saturation, and alpha outputs are
+sensitivity or attribution results.
 
-```text
-pando_initiate_args → Pando::initiate_grn()
-pando_motif_args    → Pando::find_motifs()
-pando_infer_args    → Pando::infer_condition_grn()
-```
-
-RegCompass owns the object, assays, motif object, genome, metadata columns,
-complete GEM target set, network name, minimum condition size, error policy,
-and `BPPARAM`. Nested attempts to override these fields stop before Pando is
-called. Stage 1 also rejects Pando aggregation columns because Stage 2 owns
-metacell construction.
-
-# Restartable Stage 1
+# Stepwise workflow
 
 ```{r}
 library(BiocParallel)
@@ -226,25 +168,6 @@ step1 <- rc_regcompass_step_grn(
   BPPARAM = upstream_bp
 )
 
-step1$params$pando_parallel
-step1$grn_result$condition_grn_fits
-step1$grn_result$normalization_policy[c(
-  "pando_motifs",
-  "pando_regions",
-  "pando_candidate_screen",
-  "comparison_support",
-  "pando_peak_cor",
-  "min_model_rsq"
-)]
-```
-
-With `parallel = TRUE` and `BPPARAM = NULL`, RegCompass enables Pando's native
-map backend. With `parallel = FALSE`, Stage 1 is serial. `BPPARAM = TRUE` is
-invalid.
-
-# Stages 2–6
-
-```{r}
 step2 <- rc_regcompass_step_metacells(
   object = A,
   outdir = "RegCompass_steps/02_metacells",
@@ -257,7 +180,6 @@ step2 <- rc_regcompass_step_metacells(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
-    depth_balance = TRUE,
     seed = 12345L,
     min_cells_per_stratum = 500L,
     min_metacell_size = 10L,
@@ -278,6 +200,7 @@ step4 <- rc_regcompass_step_layer1(
   meta_modules = step3,
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
+  comparison_support = "auto",
   regulatory_alpha = 0.5,
   gpr_and_method = "min",
   parallel = TRUE,
@@ -315,89 +238,54 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-Stage 3 performs one complete-GPR/subsystem/cross-reference expansion pass and
-does not run FASTCORE. Stage 4 aggregates Pando outer-heldout cell projections
-through exact SuperCell membership and estimates latent RNA with a
-library-offset Gamma-Poisson model. Stage 5 builds each shared structural model
-once, then completely reruns GPR, penalty and LP scoring for common OOF,
-condition-full OOF, RNA-only, depth, and alpha-sensitivity routes.
-
-The primary modifier is
-
-\[
-R_{gm}=q_g\tanh(G^{OOF}_{gm}/s_g),
-\qquad
-q_g=\sqrt{\operatorname{clamp}(R^2_{OOF,g},0,1)},
-\]
-
-where \(s_g\) is estimated jointly across conditions within a cell type.
-`regulatory_alpha = 0.5` bounds the regulatory odds multiplier at
-\(2^{0.5}\); Stage 4 also records the grid `0, 0.25, 0.5, 1`.
-
-# Audited reaction comparison output
+# Condition comparison
 
 ```{r}
-result$reaction_comparison_by_metacell[, c(
-  "reaction_id", "direction", "medium", "cell_type", "condition",
-  "metacell_id", "penalty_rna_only", "penalty_common_oof",
-  "penalty_condition_full_oof", "penalty_unique_increment",
-  "penalty_per_target_flux", "vmax", "projection_oof_available",
-  "common_support_fraction", "condition_full_support_fraction",
-  "depth_sensitivity_flag", "zero_support_sensitive",
-  "link_saturation_sensitive", "alpha", "inference_class",
-  "comparability_class"
-)]
+comparison <- rc_test_condition_reactions(
+  result,
+  condition_col = "Group",
+  reaction_ids = "MAR04324",
+  target_directions = "forward",
+  medium_scenarios = "physiologic",
+  comparisons = list(c("Control", "Drug"))
+)
+
+comparison$pairwise
+comparison$omnibus
 ```
 
-Common, condition-full, RNA-only, depth-matched and alpha-grid penalties are
-produced by complete GPR, penalty and LP reruns on the same GEM, reaction order,
-bounds, medium, target direction and \(v_{max}\). The formal quantitative basis
-is `penalty / (omega * vmax)`. Within-target ECDF scores are composition
-dependent and display-only.
-
-With those structural inputs fixed, the directional LP value is
-coordinatewise nondecreasing in its penalty vector, positively 1-homogeneous,
-and concave. This establishes the stated mathematical comparison properties;
-it does not identify whether an upstream penalty difference is biological or
-technical. Depth, zero-pattern, link-saturation and alpha sensitivity results
-must be interpreted alongside the primary common-OOF result.
-
-Metacells are the statistical units for within-dataset Wilcoxon and
-Kruskal--Wallis comparisons, with multiplicity-adjusted P values and effect
-sizes retained. They are not sample/donor-level biological replicates, so these
-tests do not constitute biological-replicate-level treatment inference.
+Compare the same reaction, direction, medium, and broad cell type. Metacells are
+the statistical units; P values describe within-dataset separation and are not
+donor-level inference.
 
 # Mouse input
 
-Pando's bundled regulatory-region objects are hg38. Mouse runs must supply a
-build-matched `GRanges` object:
+Mouse runs require a regulatory-region object matching the ATAC coordinates and
+the motif-scanning genome:
 
 ```{r}
 library(BSgenome.Mmusculus.UCSC.mm10)
 
 mouse_regions <- readRDS("mm10_regulatory_regions.rds")
 
-mouse_step1 <- rc_regcompass_step_grn(
+mouse_result <- rc_run_regcompass_one_shot(
   object = A_mouse,
-  gem = mouse_gem,
-  outdir = "RegCompass_mouse/01_grn",
+  outdir = "RegCompass_mouse",
   genome = BSgenome.Mmusculus.UCSC.mm10,
   species = "mouse",
   condition_col = "Group",
   celltype_col = "cell_type",
   pando_args = list(
     pando_initiate_args = list(regions = mouse_regions),
-    pando_infer_args = list(
-      candidate_screen = "motif_domain",
-      reference_condition = "Control"
-    )
+    pando_infer_args = list(reference_condition = "Control")
   )
 )
 ```
 
-RegCompass stops instead of silently applying hg38 regions to mouse ATAC peaks.
+# Further documentation
 
-
-# Single-sample conditions and SuperCell strata
-
-SuperCell hard strata are exactly condition × broad cell type. Biological sample count is not an analysis requirement: single- and multi-sample conditions use the same paired RNA+ATAC path and the same condition-stratified cell OOF within each fitted cell type.
+- [Workflow](../docs/workflow.md)
+- [Pando condition contract](../docs/condition-comparable-grn.md)
+- [Restart and sensitivity](../docs/tutorial-03-advanced-restart.md)
+- [Medium presets](../docs/medium-presets.md)
+- [Public API](../docs/functions.md)
