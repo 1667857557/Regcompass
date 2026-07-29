@@ -144,7 +144,7 @@ test_that("mathematical details are centralized", {
   expect_true(all(vapply(
     required, grepl, logical(1), x = mathematical, fixed = TRUE
   )))
-  expect_true(grepl("\\\\[", mathematical))
+  expect_true(grepl("\\[", mathematical, fixed = TRUE))
 
   narrative_paths <- c(
     file.path(root, "README.md"),
@@ -159,7 +159,7 @@ test_that("mathematical details are centralized", {
     file.path(root, "vignettes", "regcompass-workflow.Rmd")
   )
   narrative <- read_documentation(narrative_paths)
-  expect_false(grepl("\\\\[", narrative))
+  expect_false(grepl("\\[", narrative, fixed = TRUE))
 
   retired <- c(
     "solves an ordinary elastic-net problem for each condition",
