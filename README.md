@@ -6,18 +6,17 @@ workflow for paired single-cell RNA+ATAC data.
 ## Canonical architecture
 
 ```text
-cells of one cell type across conditions
-→ one Pando motif/domain TF–peak–GEM-gene dictionary
-→ outer-training equal-condition TF-RNA × peak-ATAC transforms
-→ nested condition-stratified cell OOF within that cell type
-→ condition-sparse selection and interpretation-only full-data refit
-→ active metabolic targets and complete-GPR core reactions
-→ one ordered subsystem / KEGG–Reactome / master-Rhea expansion
-→ SuperCell metacells within condition × broad-cell-type strata
-→ single-cell TF×ATAC projection followed by membership aggregation
-→ RNA+ATAC reaction support and penalties
+paired RNA+ATAC cells grouped by broad cell type and condition
+→ condition-aware Pando GRN inference for metabolic target genes
+→ outer-heldout common-support regulatory scores
+→ condition-supported metabolic genes and core reactions
+→ biological expansion into a merged reaction catalogue
+→ condition × broad-cell-type SuperCell metacells
+→ RNA support modified by the Pando regulatory score
+→ GPR-based reaction support and penalties
 → one shared medium-specific GEM
 → directional COMPASS-like LP scoring
+→ reaction ranking and condition comparison
 ```
 
 Pando is the sole GRN estimator. RegCompass consumes Pando 1.5.0's versioned
@@ -31,9 +30,9 @@ G_OOF[i, g, c] = sum_e z_training(-k)[i, e] * beta_training(-k)[e, c]
 
 Two-condition quantitative comparisons use pairwise-common support; analyses
 with more than two conditions use global-common support. Condition-estimable
-and strict projections are diagnostic only. Pando calculates TF×ATAC and
-applies an outer-training transform in single cells; RegCompass then averages
-the completed gene projections using SuperCell's exact
+and strict projections are diagnostic only. Pando computes the regulatory
+score in single cells using the stored training-fold transform; RegCompass then
+averages the completed target-gene scores using SuperCell's exact
 `misc$membership_table(cell_id, metacell_id)`.
 
 For a fixed shared GEM, medium, reaction order, target direction and
@@ -168,7 +167,7 @@ RegCompass exposes three nested bundles and validates their ownership:
 |---|---|---|
 | `pando_initiate_args` | `Pando::initiate_grn()` | `regions`, `exclude_exons` |
 | `pando_motif_args` | `Pando::find_motifs()` | motif matching controls |
-| `pando_infer_args` | `Pando::infer_condition_grn()` | `candidate_screen`, `reference_condition`, elastic-net/CV controls |
+| `pando_infer_args` | `Pando::infer_condition_grn()` | `candidate_screen`, `reference_condition`, sparse-group/CV controls |
 
 RegCompass owns and rejects nested overrides of the Seurat object, assay names,
 genome, motif object, condition/cell-type columns, GEM target genes, network
@@ -177,12 +176,11 @@ name, minimum condition size, group-error policy, and `BPPARAM`.
 1 fits paired single cells, while Stage 2 owns metacell aggregation.
 
 The interaction-safe default is `candidate_screen = "motif_domain"`. It retains
-motif/domain-supported candidates and lets elastic-net regularization select
-edges based on the fitted `TF RNA × peak ATAC` predictor. The optional
-`pooled_within_condition` applies marginal TF-target and peak-target screening
-and should be treated as a sensitivity analysis. Because that screen uses the
-response before cross-validation, its OOF score is not used as confirmatory
-Layer 1 reliability; that projection is unavailable for penalty construction.
+motif/domain-supported candidate edges and lets the condition-sparse model
+select coefficients from the fitted RNA–ATAC interaction predictor. The
+optional `pooled_within_condition` applies response-dependent marginal
+screening and should be treated as a sensitivity analysis. Its projection is
+not eligible for primary Layer 1 penalty construction.
 
 ### Conditions with one biological sample
 
@@ -300,10 +298,10 @@ See [Condition-associated reaction statistics](docs/condition-reaction-statistic
 
 ## Restartable stages
 
-- `rc_regcompass_step_grn()` — Pando condition GRNs and fit contracts.
-- `rc_regcompass_step_metacells()` — condition-level multimodal metacells.
-- `rc_regcompass_step_meta_modules()` — complete-GPR cores and biological catalogue.
-- `rc_regcompass_step_layer1()` — RNA and RNA+ATAC reaction support.
+- `rc_regcompass_step_grn()` — condition-aware Pando GRNs and fit contracts.
+- `rc_regcompass_step_metacells()` — condition × broad-cell-type metacells.
+- `rc_regcompass_step_meta_modules()` — complete-GPR cores and merged reaction catalogue.
+- `rc_regcompass_step_layer1()` — RNA support, regulatory modification, and reaction penalties.
 - `rc_regcompass_step_layer2()` — shared structural model and directional LPs.
 - `rc_regcompass_step_results()` — annotations, rankings, provenance, and contrasts.
 
