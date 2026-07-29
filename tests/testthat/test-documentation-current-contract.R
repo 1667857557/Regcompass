@@ -121,3 +121,35 @@ test_that("current condition fit status excludes retired aliases", {
   expect_match(implementation, "condition_fit_status = status", fixed = TRUE)
   expect_false(grepl("sample_status = status", implementation, fixed = TRUE))
 })
+
+test_that("condition GRN architecture documentation matches current functions", {
+  root <- documentation_root()
+  if (is.null(root)) skip("Source documentation is unavailable.")
+  path <- file.path(root, "docs", "condition-comparable-grn.md")
+  expect_true(file.exists(path))
+  documentation <- paste(readLines(path, warn = FALSE), collapse = "\n")
+
+  current <- c(
+    "coupled sparse-group multitask objective",
+    "not independent elastic-net fits",
+    "absolute condition coefficients, not `Delta beta`",
+    "condition-pooled OOF reliability",
+    "broad-cell-type pooled robust projection scale",
+    "not 1-homogeneous",
+    "condition_grn_fit_v5.rds"
+  )
+  expect_true(all(vapply(
+    current, grepl, logical(1), x = documentation, fixed = TRUE
+  )))
+
+  retired <- c(
+    "solves an ordinary elastic-net problem for each condition",
+    "Condition coefficient columns are separable at fixed lambda",
+    "Stage 4 uses only comparable condition effects",
+    "No metacell-wise robust rescaling",
+    "condition_grn_fit_v2.rds"
+  )
+  expect_false(any(vapply(
+    retired, grepl, logical(1), x = documentation, fixed = TRUE
+  )))
+})
