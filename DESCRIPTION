@@ -8,8 +8,9 @@ Description: Fits one cell-type-level Pando design across conditions for
     Human-GEM or Mouse-GEM GPR target genes in paired single-cell RNA and ATAC
     data. Condition-sparse coefficients use the same TF-peak-target edge
     dictionary and equal-condition transforms with nested outer-heldout
-    projections. Pando supplies absolute condition effects only; no
-    reference-condition contrast enters RegCompass. Non-estimable edge
+    projections. Pando supplies the single canonical pando_condition_grn_fit
+    contract with absolute condition effects only; version-suffixed schemas and
+    reference-condition contrasts do not enter RegCompass. Non-estimable edge
     contributions are structural zeros in the primary projection path and enter
     target aggregation, metacell means, GPR aggregation, reaction expression and
     penalty construction. Metacells are constructed within condition by broad
@@ -98,6 +99,7 @@ Collate:
     'zzz01_fixed_gamma_metacells.R'
     'zzz02_layer1_policy.R'
     'zzz03_compass_gpr_penalty.R'
+    'zzz04_canonical_pando_fit_schema.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
