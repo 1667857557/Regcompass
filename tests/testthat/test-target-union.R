@@ -51,7 +51,8 @@ target_union_merged_membership <- function() {
   )
 }
 
-target_union_layer2_stub <- function(gem, scenario = "physiologic") {
+target_union_layer2_stub <- function(
+    gem, scenario = "normal_human_plasma") {
   file <- tempfile(fileext = ".rds")
   gem$is_union_gem <- TRUE
   gem$union_gem_medium_scenario <- scenario
