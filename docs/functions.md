@@ -14,9 +14,9 @@ This page lists exported functions and their main purpose. See
 Common argument groups:
 
 - `pando_args`: GRN fitting and filtering;
-- `metacell_args`: reductions, dimensions, gamma, seed, and thresholds;
+- `metacell_args`: reductions, dimensions, fixed gamma, seed, and thresholds;
 - `meta_module_args`: reaction catalogue expansion inputs;
-- `layer1_args`: regulatory strength and GPR aggregation;
+- `layer1_args`: comparison support and GPR aggregation;
 - `layer2_args`: direction, solver, and model completion;
 - `upstream_workers`, `layer2_workers`: stage worker budgets.
 
@@ -24,12 +24,12 @@ Common argument groups:
 
 | Stage | Function | Main output |
 |---:|---|---|
-| 1 | `rc_regcompass_step_grn()` | Pando fit contracts and condition coefficient tables |
-| 2 | `rc_regcompass_step_metacells()` | condition × broad-cell-type metacells and cache provenance |
+| 1 | `rc_regcompass_step_grn()` | Pando `ConditionGRNFit v5` contracts and absolute condition coefficient tables |
+| 2 | `rc_regcompass_step_metacells()` | fixed-γ condition × broad-cell-type metacells and cache provenance |
 | 3 | `rc_regcompass_step_meta_modules()` | supported genes, core reactions, and merged reaction catalogue |
-| 4 | `rc_regcompass_step_layer1()` | gene support, regulatory modifiers, and reaction penalties |
+| 4 | `rc_regcompass_step_layer1()` | RNA support, structural-zero regulation, RNA-only fallback and reaction expression |
 | 5 | `rc_regcompass_step_layer2()` | shared medium-specific models and directional scores |
-| 6 | `rc_regcompass_step_results()` | annotations, rankings, evidence, and contrasts |
+| 6 | `rc_regcompass_step_results()` | annotations, rankings, evidence, and metabolic comparisons |
 
 ## Stage 1 arguments
 
@@ -42,7 +42,8 @@ pando_args = list(
     candidate_screen = "motif_domain",
     condition_mix = 0.5,
     condition_weight = "equal",
-    reference_condition = "Control",
+    outer_nfolds = 5L,
+    inner_nfolds = 5L,
     scale = TRUE
   )
 )
@@ -59,13 +60,15 @@ Nested argument routing:
 RegCompass controls the object, assays, genome, metadata columns, target genes,
 network name, minimum condition size, error policy, and `BPPARAM`.
 
+Condition coefficients are absolute effects on one shared equal-condition
+coordinate. No baseline-condition coefficient contrast is returned or consumed.
+
 Important outputs:
 
 ```r
 step1$grn_result$condition_grn_fits
 step1$grn_result$condition_fit_status
 step1$grn_result$tf_peak_gene_condition
-step1$grn_result$tf_peak_gene_condition_effect
 step1$grn_result$normalization_policy
 ```
 
@@ -85,6 +88,10 @@ metacell_args = list(
 )
 ```
 
+The same `gamma = 30L` is passed to every condition × broad-cell-type stratum.
+Depth does not modify gamma. Top-1% RNA/ATAC depth cells are recorded only for
+QC and never reject a metacell.
+
 Cache validation includes cells, assays, reductions, dimensions, seed, gamma,
 and thresholds.
 
@@ -99,14 +106,24 @@ rc_regcompass_step_layer1(
   outdir,
   projection_component = "condition",
   comparison_support = "auto",
-  regulatory_alpha = 0.5,
+  regulatory_alpha = 1,
   gpr_and_method = "min"
 )
 ```
 
 `projection_component` must be `"condition"`. `comparison_support` accepts
 `"auto"`, `"pairwise_common"`, or `"global_common"`.
+`regulatory_alpha = 1` is fixed; other values are rejected.
 `gpr_and_method` accepts `"min"`, `"median"`, or `"mean"`.
+
+The RNA Gamma–Poisson prior is estimated separately by broad cell type. A
+non-estimable Pando edge contributes a structural zero in the main analysis. A
+non-finite target modifier uses a neutral value and therefore equals RNA-only
+support for that gene–metacell entry.
+
+COMPASS GPR semantics are used: OR isozyme branches are summed while unavailable
+branches are ignored. Missing final reaction expression is set to zero before
+penalty conversion and receives the maximum expression-linked penalty.
 
 ## GEM and medium
 
