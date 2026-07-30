@@ -1,28 +1,28 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.1.1
+Version: 2.2.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     with genome-scale metabolic reaction analysis. When two or more condition
-    levels are available, RegCompass fits one comparable condition-aware Pando
-    design per broad cell type and uses outer-heldout TF-by-ATAC projections.
-    When condition metadata are absent or contain one level, it automatically
-    runs the original Pando infer_grn workflow and enters its standard
-    coefficients into the same reaction-support and penalty path without
-    calculating condition coefficients. Metacell graphs are built independently
-    for each broad cell type while all conditions of that cell type share one
-    multimodal embedding transform and k-nearest-neighbour graph. Condition is
-    applied only after graph clustering to retain condition-pure metacells.
-    Metacell RNA and ATAC counts are aggregated from exact SuperCell membership.
-    RNA latent-expression priors are estimated by broad cell type, regulatory
+    levels are available, RegCompass fits one condition-aware Pando design per
+    broad cell type and uses condition-full outer-heldout TF-by-ATAC projections
+    as the primary regulatory penalty. Jointly estimable edges form an auditable
+    common-support component; edges non-estimable in one or both conditions
+    contribute projectable structural zeros in those conditions. When condition
+    metadata are absent or contain one level, the original Pando infer_grn
+    workflow enters the same reaction-support and penalty path without condition
+    coefficients. Metacell graphs are built independently for each broad cell
+    type while all conditions share one multimodal transform and graph.
+    Condition is applied after graph clustering to retain condition-pure
+    metacells. Metacell RNA and ATAC counts use exact SuperCell membership. RNA
+    latent-expression priors are estimated by broad cell type, regulatory
     modifiers act on bounded RNA-support odds, GPR rules produce reaction
-    expression, and missing reaction expression receives the COMPASS maximum
-    expression-linked penalty. Each medium uses one shared union GEM and global
-    FASTCORE completion. Canonical behavior is implemented directly in the
-    defining functions; runtime function replacement and schema rewriting are
-    not used.
+    expression, and each medium uses one shared union GEM and global FASTCORE
+    completion. Depth matching, common-depth restriction, alpha sensitivity,
+    zero-support sensitivity and link-saturation propagation are not part of the
+    canonical workflow.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -69,6 +69,7 @@ Collate:
     'condition_pooling.R'
     'grn_inference.R'
     'condition_grn_contract.R'
+    'condition_full_contract.R'
     'standard_pando.R'
     'condition_layer1.R'
     'reaction_evidence.R'
@@ -104,7 +105,7 @@ Imports:
     Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
-    Pando (>= 1.5.0),
+    Pando (>= 1.5.1),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
@@ -122,8 +123,8 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@agent/celltype-joint-condition-graphs,
-    1667857557/Pando_regcompass
+    1667857557/SuperCell_Seurat_V4@Supercell2,
+    1667857557/Pando_regcompass@agent/condition-full-primary
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
