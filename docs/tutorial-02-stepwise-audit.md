@@ -203,6 +203,26 @@ result$common_support_component_summary
 result$condition_unique_penalty_increment_summary
 ```
 
+## Optional targeted reaction remapping
+
+```r
+targeted <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_steps/07_targeted_remapping",
+  core_reaction_ids = c("MAR04381", "MAR04379"),
+  layer2_args = list(target_direction = "both", solver = "highs"),
+  parallel = TRUE,
+  BPPARAM = layer2_bp
+)
+```
+
+This pass uses `step4$reaction_expression`, which is the condition-full primary
+reaction-expression route in condition mode, and reuses the exact cached Stage 5
+union GEM without rebuilding it or rerunning FASTCORE.
+
 Saved stages:
 
 ```text
@@ -212,7 +232,9 @@ Saved stages:
 04_layer1/step_layer1.rds
 05_layer2/step_layer2.rds
 06_results/regcompass_result.rds
+07_targeted_remapping/step_target_union.rds
 ```
 
-Use [Tutorial 4](tutorial-04-condition-differential-analysis.md) for condition
-statistics.
+See [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) for targeted
+reaction extension and [Tutorial 5](tutorial-05-condition-differential-analysis.md)
+for condition statistics.
