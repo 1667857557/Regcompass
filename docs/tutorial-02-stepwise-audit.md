@@ -145,55 +145,106 @@ step4$projection_provenance
 Condition-full OOF is primary. Common support is the jointly estimable
 component. Each non-estimable edge side contributes zero.
 
-## Build the Stage 5 medium
+## Build Stage 5 media
 
-The canonical built-in scenario is publication-bound:
+### Plasma scenarios
 
 ```r
-medium_scenarios <- rc_make_medium_scenarios(
-  gem = gem,
-  scenario = "cantor2017_hplm",
+human_medium <- rc_make_medium_scenarios(
+  gem = human_gem,
+  scenario = "normal_human_plasma",
   species = "human"
-)
-
-attr(medium_scenarios, "preset_diagnostics")
-```
-
-`cantor2017_hplm` refers to Cantor et al., *Cell* 2017
-(doi:10.1016/j.cell.2017.03.023). Only HPLM components with exact published
-concentrations and direct one-to-one GEM exchange mapping are encoded. Ambiguous
-salt-to-free-ion conversions are omitted, concentrations are not converted to
-uptake fluxes, and `uptake_scale` must remain `1`.
-
-For another published medium, set `scenario = NULL` and provide exact rows with
-`reference_label` and `reference_doi`. Mouse analyses currently require this
-path because the previous partial `mouse_plasma` implementation was removed
-rather than presented as a complete MPM formulation.
-
-```r
-published_custom <- data.frame(
-  medium_scenario_id = "published_mouse_environment_2024",
-  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
-  lb = c(-0.20, -0.10),
-  ub = c(1, 1),
-  available = TRUE,
-  reference_label = "Author et al., Journal 2024",
-  reference_doi = "10.xxxx/published.article",
-  stringsAsFactors = FALSE
 )
 
 mouse_medium <- rc_make_medium_scenarios(
   gem = mouse_gem,
-  scenario = NULL,
-  species = "mouse",
-  custom_medium = published_custom
+  scenario = "mouse_plasma",
+  species = "mouse"
 )
 ```
 
-Changing the cited scenario, custom-medium rows, DOI provenance, exchange limits,
-or resulting bounds invalidates Stage 5 and downstream results but does not
-require rerunning Stages 1-4. See
-[Published medium scenarios](medium-presets.md).
+`normal_human_plasma` combines HPLM and adult human plasma/serum evidence.
+`mouse_plasma` combines mouse plasma medium and murine plasma/tumour-interstitial
+fluid evidence. Unsupported quantitative values remain availability-only rather
+than being inferred from another species.
+
+### Culture challenge scenarios
+
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = human_gem,
+  scenario = c(
+    "high_glucose",
+    "low_glucose",
+    "high_lactate",
+    "low_lactate",
+    "low_glutamine"
+  ),
+  species = "human"
+)
+```
+
+The five challenge scenarios retain the common nutrients of their published
+RPMI, DMEM, or plasma-like background and replace only the named target
+concentration:
+
+```text
+high_glucose   glucose 25 mM   Han 2015
+low_glucose    glucose 1 mM    Han 2015
+high_lactate   lactate 20 mM   San-Millan 2020
+low_lactate    lactate 0.5 mM  Cho 2025
+low_glutamine  glutamine 0.5 mM Visagie 2015 Methods
+```
+
+Inspect background and challenge provenance separately:
+
+```r
+unique(medium_scenarios[, intersect(c(
+  "medium_scenario_id",
+  "medium_background_id",
+  "background_reference_label",
+  "background_reference_doi",
+  "challenge_reference_label",
+  "challenge_reference_doi",
+  "scenario_construction"
+), colnames(medium_scenarios))])
+```
+
+The challenge scenarios are composite literature-backed modelling environments,
+not claims that one paper supplied every background metabolite. Target
+concentration-derived uptake caps remain sensitivity assumptions rather than
+measured transporter rates.
+
+### User-defined composition
+
+```r
+custom_medium <- data.frame(
+  medium_scenario_id = "my_measured_medium",
+  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
+  lb = c(-0.20, -0.10),
+  ub = c(1, 1),
+  available = TRUE,
+  reference_label = "Optional experiment or publication label",
+  reference_doi = "10.xxxx/optional.reference",
+  stringsAsFactors = FALSE
+)
+
+custom_medium <- rc_make_medium_scenarios(
+  gem = human_gem,
+  scenario = "custom",
+  species = "human",
+  custom_medium = custom_medium
+)
+```
+
+`scenario = NULL` is accepted for a custom-only run. `custom_metabolites` can be
+used instead of reaction-level bounds. Built-in and custom scenarios may also be
+returned together.
+
+Changing the scenario list, custom composition, exchange limit, target
+`uptake_scale`, or any resulting bound invalidates Stage 5 and downstream
+results but does not require rerunning Stages 1-4. See
+[Medium scenarios and evidence](medium-presets.md).
 
 ## Stage 5: shared model and LP scoring
 
