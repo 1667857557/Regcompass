@@ -67,7 +67,7 @@ jobs:
           remotes::install_github(
             paste0(
               "1667857557/SuperCell_Seurat_V4@",
-              "d65c259346f5fba40f37e525f17d175befea6c4c"
+              "fe21a151211eca4a2cc77c85b5849102302ecf57"
             ),
             dependencies = NA,
             upgrade = "never",
@@ -182,7 +182,8 @@ jobs:
             identical(
               graph_result$condition_scope,
               "joint_within_graph_group_then_membership_split"
-            )
+            ),
+            isTRUE(graph_result$graph_supercells_available)
           )
           membership_groups <- split(
             names(graph_result$membership), graph_result$membership
