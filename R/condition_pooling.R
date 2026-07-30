@@ -105,14 +105,17 @@
     stringsAsFactors = FALSE
   )
   list(
-    schema_version = "regcompass_native_supercell_metacell_cache_v1",
+    schema_version = "regcompass_celltype_graph_condition_joint_cache_v2",
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    native_supercell_api = "SCimplify_from_embedding",
+    native_supercell_api = "SCimplify_by_graph_group_from_embedding",
+    graph_group_argument = "cell.graph.group",
     condition_argument = "cell.split.condition",
-    celltype_argument = "cell.annotation",
+    graph_scope = "one_independent_graph_per_cell_type",
+    condition_scope = "all_conditions_joint_within_cell_type_graph",
+    embedding_scaling = "within_celltype_joint_condition_equal_modality_blocks",
     ordered_cell_metadata_md5 = .rc_condition_metacell_md5(meta_signature),
     analysis_args = analysis_args,
     rna_counts = .rc_condition_metacell_matrix_fingerprint(
@@ -149,7 +152,7 @@
   if (!file.exists(contract_file) ||
       !identical(readRDS(contract_file), contract)) {
     stop(
-      "Existing metacell checkpoints use a different native SuperCell contract; set `metacell_args$overwrite = TRUE`.",
+      "Existing metacell checkpoints use a different cell-type graph contract; set `metacell_args$overwrite = TRUE`.",
       call. = FALSE
     )
   }
@@ -163,11 +166,37 @@
   if (ncol(x)) x / sqrt(ncol(x)) else x
 }
 
+.rc_scale_embedding_block_by_group <- function(x, group) {
+  x <- as.matrix(x)
+  group <- as.character(group)
+  if (nrow(x) != length(group)) {
+    stop("Embedding rows cannot be aligned to graph groups.", call. = FALSE)
+  }
+  out <- matrix(0, nrow = nrow(x), ncol = ncol(x),
+                dimnames = dimnames(x))
+  for (level in unique(group)) {
+    rows <- which(group == level)
+    out[rows, ] <- .rc_scale_embedding_block(x[rows, , drop = FALSE])
+  }
+  out
+}
+
 .rc_native_supercell_membership <- function(
     object, condition_col, celltype_col, rna_reduction, atac_reduction,
     rna_dims, atac_dims, gamma, seed, k.knn, do.approx, approx.N,
     block.size, igraph.clustering) {
+  required_api <- "SCimplify_by_graph_group_from_embedding"
+  if (!requireNamespace("SuperCell", quietly = TRUE) ||
+      !required_api %in% getNamespaceExports("SuperCell")) {
+    stop(
+      "RegCompass requires SuperCell::SCimplify_by_graph_group_from_embedding(). Install the companion SuperCell PR/branch before building metacells.",
+      call. = FALSE
+    )
+  }
   cells <- colnames(object)
+  meta <- object@meta.data[cells, , drop = FALSE]
+  celltype <- as.character(meta[[celltype_col]])
+  condition <- as.character(meta[[condition_col]])
   rna <- SeuratObject::Embeddings(object[[rna_reduction]])[
     cells, as.integer(rna_dims), drop = FALSE
   ]
@@ -175,24 +204,23 @@
     cells, as.integer(atac_dims), drop = FALSE
   ]
   embedding <- cbind(
-    .rc_scale_embedding_block(rna),
-    .rc_scale_embedding_block(atac)
+    .rc_scale_embedding_block_by_group(rna, celltype),
+    .rc_scale_embedding_block_by_group(atac, celltype)
   )
-  meta <- object@meta.data[cells, , drop = FALSE]
-  condition <- as.character(meta[[condition_col]])
+  rownames(embedding) <- cells
   condition_input <- if (grepl("^\\.regcompass_condition", condition_col) &&
       length(unique(condition)) == 1L) {
     NULL
   } else {
-    condition
+    stats::setNames(condition, cells)
   }
-  result <- SuperCell::SCimplify_from_embedding(
+  result <- SuperCell::SCimplify_by_graph_group_from_embedding(
     X = embedding,
-    cell.annotation = as.character(meta[[celltype_col]]),
+    cell.graph.group = stats::setNames(celltype, cells),
     cell.split.condition = condition_input,
     gamma = as.integer(gamma),
     k.knn = as.integer(k.knn),
-    n.pc = ncol(embedding),
+    n.pc = seq_len(ncol(embedding)),
     do.approx = isTRUE(do.approx),
     approx.N = as.integer(approx.N),
     block.size = as.integer(block.size),
@@ -201,6 +229,14 @@
     return.singlecell.NW = FALSE,
     return.hierarchical.structure = TRUE
   )
+  if (!identical(result$graph_scope, "independent_by_cell.graph.group") ||
+      !identical(
+        result$condition_scope,
+        "joint_within_graph_group_then_membership_split"
+      )) {
+    stop("SuperCell returned an incompatible graph-scope contract.",
+         call. = FALSE)
+  }
   raw <- as.character(result$membership)
   if (length(raw) != length(cells)) {
     stop("SuperCell membership length differs from the input cell count.",
@@ -208,7 +244,11 @@
   }
   if (!is.null(names(result$membership))) {
     index <- match(cells, names(result$membership))
-    if (!anyNA(index)) raw <- raw[index]
+    if (anyNA(index)) {
+      stop("SuperCell membership does not cover every input cell.",
+           call. = FALSE)
+    }
+    raw <- raw[index]
   }
   levels <- unique(raw)
   width <- max(3L, nchar(length(levels)))
@@ -261,18 +301,25 @@
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
-  if (!is.list(metacell_args)) stop("`metacell_args` must be a list.", call. = FALSE)
+  if (!is.list(metacell_args)) {
+    stop("`metacell_args` must be a list.", call. = FALSE)
+  }
   if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
-    stop("Native SuperCell metacells aggregate the existing ATAC count assay; `fragment_files` must be FALSE.", call. = FALSE)
+    stop(
+      "Native SuperCell metacells aggregate the existing ATAC count assay; `fragment_files` must be FALSE.",
+      call. = FALSE
+    )
   }
   .rc_validate_condition_celltype_metadata(
     object@meta.data, condition_col, celltype_col
   )
   if (!is.null(cell_type)) {
     requested <- unique(trimws(as.character(cell_type)))
-    missing <- setdiff(requested, unique(as.character(object@meta.data[[celltype_col]])))
+    available <- unique(as.character(object@meta.data[[celltype_col]]))
+    missing <- setdiff(requested, available)
     if (length(missing)) {
-      stop("Requested cell types were not found: ", paste(missing, collapse = ", "), ".", call. = FALSE)
+      stop("Requested cell types were not found: ",
+           paste(missing, collapse = ", "), ".", call. = FALSE)
     }
     cells <- rownames(object@meta.data)[
       as.character(object@meta.data[[celltype_col]]) %in% requested
@@ -281,8 +328,8 @@
   }
   reserved <- intersect(names(metacell_args), c(
     "object", "outdir", "condition_col", "celltype_col", "cell_type",
-    "rna_assay", "atac_assay", "fragment_files", "cell.annotation",
-    "cell.split.condition"
+    "rna_assay", "atac_assay", "fragment_files", "cell.graph.group",
+    "cell.annotation", "cell.split.condition"
   ))
   if (length(reserved)) {
     stop("`metacell_args` cannot override managed fields: ",
@@ -326,7 +373,8 @@
   if (any(stratum_size < args$min_cells_per_stratum)) {
     stop(
       "Condition/cell-type strata below `min_cells_per_stratum`: ",
-      paste(names(stratum_size)[stratum_size < args$min_cells_per_stratum], collapse = ", "),
+      paste(names(stratum_size)[stratum_size < args$min_cells_per_stratum],
+            collapse = ", "),
       call. = FALSE
     )
   }
@@ -336,7 +384,8 @@
   .rc_validate_condition_metacell_cache(
     outdir, contract, overwrite = isTRUE(args$overwrite)
   )
-  if (.rc_condition_metacell_has_checkpoints(outdir) && !isTRUE(args$overwrite)) {
+  if (.rc_condition_metacell_has_checkpoints(outdir) &&
+      !isTRUE(args$overwrite)) {
     mc <- readRDS(file.path(outdir, "metacell_object.rds"))
     membership <- utils::read.delim(
       gzfile(file.path(outdir, "membership.tsv.gz")),
@@ -384,7 +433,7 @@
         length(unique(membership[[celltype_col]][rows])) != 1L
     }, logical(1))]
     if (length(impure)) {
-      stop("Native SuperCell returned mixed condition/cell-type metacells: ",
+      stop("SuperCell returned mixed condition/cell-type metacells: ",
            paste(utils::head(impure, 10L), collapse = ", "), call. = FALSE)
     }
     stratum_mc <- table(interaction(
@@ -392,15 +441,17 @@
       drop = TRUE, lex.order = TRUE
     ))
     if (any(stratum_mc < args$min_metacells_per_stratum)) {
-      stop("Native SuperCell produced too few metacells in strata: ",
-           paste(names(stratum_mc)[stratum_mc < args$min_metacells_per_stratum], collapse = ", "), call. = FALSE)
+      stop("SuperCell produced too few metacells in strata: ",
+           paste(names(stratum_mc)[stratum_mc < args$min_metacells_per_stratum],
+                 collapse = ", "), call. = FALSE)
     }
     mc_meta$low_power_metacell <- mc_meta$n_cells < args$min_metacell_size
     mc_meta$effective_gamma <- args$gamma
     mc_meta$requested_gamma <- args$gamma
     mc_meta$fixed_gamma <- TRUE
-    mc_meta$pooling_scope <- "native_supercell_condition_and_celltype"
-    mc_meta$celltype_role <- "SuperCell_cell.annotation"
+    mc_meta$pooling_scope <- "celltype_independent_graph_condition_joint"
+    mc_meta$celltype_role <- "SuperCell_cell.graph.group"
+    mc_meta$condition_role <- "SuperCell_cell.split.condition_after_joint_graph"
     aggregated <- .rc_aggregate_native_metacell_counts(
       object, membership, rna_assay, atac_assay
     )
@@ -444,18 +495,25 @@
     condition_col = condition_col,
     celltype_col = celltype_col,
     selected_cell_types = unique(as.character(mc_meta[[celltype_col]])),
-    pooling_scope = "native_supercell_condition_and_celltype",
+    pooling_scope = "celltype_independent_graph_condition_joint",
     cache_contract = contract,
     input_design = list(
-      metacell_grouping = c(condition_col, celltype_col),
-      native_supercell_api = "SCimplify_from_embedding",
+      metacell_purity_grouping = c(condition_col, celltype_col),
+      graph_grouping = celltype_col,
+      condition_pooling = condition_col,
+      native_supercell_api = "SCimplify_by_graph_group_from_embedding",
+      graph_group_argument = "cell.graph.group",
       condition_argument = "cell.split.condition",
-      celltype_argument = "cell.annotation",
+      graph_scope = "one_independent_graph_per_cell_type",
+      condition_scope = "all_conditions_joint_within_cell_type_graph",
+      membership_split_timing = "after_joint_graph_clustering",
+      embedding_scaling = "within_celltype_joint_condition_equal_modality_blocks",
       temporary_combined_stratum = FALSE,
       gamma = args$gamma,
       inference_policy = paste(
-        "SuperCell receives condition and cell type as separate native inputs;",
-        "no concatenated condition__cell_type field is created"
+        "Each broad cell type receives an independent multimodal graph;",
+        "all conditions of that cell type share one embedding transform and graph;",
+        "condition is applied only to split memberships after graph clustering"
       ),
       sample_metadata = "not_used_or_retained"
     )
