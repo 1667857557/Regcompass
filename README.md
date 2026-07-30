@@ -40,7 +40,24 @@ result <- rc_run_regcompass_one_shot(
 ```
 
 With at least two conditions, Stage 1 uses `condition_grn`; otherwise it uses
-`standard_pando` through `Pando::infer_grn()` and calculates No condition coefficients.
+`standard_pando` through `Pando::infer_grn()` and calculates No condition
+coefficients.
+
+A canonical run may explicitly omit condition metadata:
+
+```r
+single_result <- rc_run_regcompass(
+  object = A,
+  gem = gem,
+  outdir = "RegCompass_single",
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  condition_col = NULL,
+  celltype_col = "cell_type"
+)
+```
+
+In this route, `single_result$reaction_ranking` remains available and
+`single_result$condition_contrast` is empty.
 
 For condition-aware analysis:
 
