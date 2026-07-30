@@ -85,20 +85,25 @@ test_that("new HPLM concentrations are retained as provenance", {
   expect_equal(unname(concentration["acetylcarnitine"]), 0.005002086)
 })
 
-test_that("sensitivity scenarios retain the expanded plasma background", {
+test_that("glucose challenges use culture rather than plasma backgrounds", {
+  gem <- make_exact_plasma_medium_gem("human")
   high <- rc_make_medium_scenarios(
-    make_exact_plasma_medium_gem("human"),
+    gem,
     scenario = "high_glucose",
     strict_preset_matching = FALSE
   )
 
-  expect_true(all(c(
-    "hypoxanthine", "uridine", "taurine", "succinate"
-  ) %in% high$preset_metabolite))
   expect_equal(
     high$concentration_mM[high$preset_metabolite == "glucose"],
     25
   )
+  expect_true(all(high$medium_background_id ==
+                    "published_RPMI_DMEM_nutrient_union"))
+  expect_true(all(high$scenario_construction ==
+                    "published_background_plus_named_nutrient_override"))
+  expect_false(any(c(
+    "hypoxanthine", "uridine", "taurine", "succinate"
+  ) %in% high$preset_metabolite))
 })
 
 test_that("mouse plasma uses mouse-only quantitative provenance", {
