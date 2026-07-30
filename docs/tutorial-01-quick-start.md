@@ -19,7 +19,7 @@ stopifnot(
 )
 ```
 
-## GEM and publication-bound medium
+## GEM and medium
 
 ```r
 library(RegCompassR)
@@ -33,39 +33,104 @@ gem <- rc_prepare_gem(
 
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = "cantor2017_hplm",
+  scenario = "normal_human_plasma",
   species = "human"
 )
 ```
 
-### Built-in scenario policy
+### Built-in biological scenarios
 
-The only current built-in scenario is:
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
 
-| `scenario` | Published definition | Encoded scope |
+| Scenario | Background | Named override and primary challenge reference |
 |---|---|---|
-| `"cantor2017_hplm"` | Cantor et al., *Cell* 2017; doi:10.1016/j.cell.2017.03.023 | HPLM components with exact published concentrations and direct one-to-one GEM exchange mapping. |
+| `normal_human_plasma` | HPLM plus adult human plasma/serum evidence | Cantor 2017 and Psychogios 2011 |
+| `mouse_plasma` | Published mouse plasma and tumour-interstitial-fluid availability | Gardner and Stuart 2024; Sullivan 2019 |
+| `high_glucose` | Published RPMI/DMEM nutrient-availability union | glucose 25 mM; Han 2015 |
+| `low_glucose` | Published RPMI/DMEM nutrient-availability union | glucose 1 mM; Han 2015 |
+| `high_lactate` | Published DMEM nutrient background | lactate 20 mM; San-Millan 2020 |
+| `low_lactate` | Published plasma-like nutrient background | lactate 0.5 mM; Cho 2025 |
+| `low_glutamine` | Published DMEM nutrient background | glutamine 0.5 mM; Visagie 2015 Methods |
 
-RegCompass deliberately does not retain the previous `physiologic`,
-`normal_human_plasma`, `mouse_plasma`, RPMI/DMEM, single-nutrient challenge,
-`minimal`, `compass_model_bounds`, or `permissive_all_exchange` identifiers as
-built-in biological scenarios. Those labels either combined multiple evidence
-sources, depended on manufacturer-only formulations, represented incomplete
-implementations, or were technical model settings rather than published media.
-
-For another published extracellular environment, supply exact reaction-level or
-metabolite-level rows with `scenario = NULL`. Every row must contain
-`reference_label` and a valid `reference_doi`:
+The challenge scenarios retain common amino acids, vitamins, ions, glucose,
+oxygen and other nutrients represented by their basal culture background. The
+named treatment concentration replaces only its target row. A challenge output
+stores both sets of provenance:
 
 ```r
-published_custom <- data.frame(
-  medium_scenario_id = "published_environment_2024",
+unique(medium_scenarios[, intersect(c(
+  "medium_scenario_id",
+  "medium_background_id",
+  "background_reference_doi",
+  "challenge_reference_doi",
+  "scenario_construction"
+), colnames(medium_scenarios))])
+```
+
+These scenarios are literature-backed modelling environments, not measured
+transporter fluxes. Concentration-derived target caps remain explicit sensitivity
+assumptions and are intersected with the original GEM directionality.
+
+### Several built-in scenarios
+
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = c(
+    "normal_human_plasma",
+    "high_glucose",
+    "low_glucose",
+    "high_lactate",
+    "low_lactate",
+    "low_glutamine"
+  ),
+  species = "human"
+)
+```
+
+### User-defined medium composition
+
+Reaction-level bounds can be supplied directly:
+
+```r
+custom_medium <- data.frame(
+  medium_scenario_id = "my_measured_medium",
   exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
   lb = c(-0.20, -0.10),
   ub = c(1, 1),
   available = TRUE,
-  reference_label = "Author et al., Journal 2024",
-  reference_doi = "10.xxxx/published.article",
+  reference_label = "Optional experiment or publication label",
+  reference_doi = "10.xxxx/optional.reference",
+  stringsAsFactors = FALSE
+)
+
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "custom",
+  species = "human",
+  custom_medium = custom_medium
+)
+```
+
+Metabolite-level availability is also supported:
+
+```r
+custom_metabolites <- data.frame(
+  metabolite_name = c("glucose", "glutamine", "lactate"),
+  available = c(TRUE, TRUE, TRUE),
+  concentration_mM = c(5, 0.55, 1.6),
+  uptake_fraction = c(0.2, 0.275, 0.08),
+  target_exchange_flag = c(TRUE, TRUE, TRUE),
+  required_match = TRUE,
   stringsAsFactors = FALSE
 )
 
@@ -73,15 +138,13 @@ medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
   scenario = NULL,
   species = "human",
-  custom_medium = published_custom
+  custom_metabolites = custom_metabolites
 )
 ```
 
-Published concentrations are provenance; RegCompass does not convert them into
-measured transporter fluxes. `uptake_scale` is fixed at `1`. Ambiguous
-salt-to-free-ion conversions are omitted rather than approximated. The formal
-contract and retained HPLM evidence are documented in
-[Published medium scenarios](medium-presets.md).
+Built-in and custom scenarios may be generated together by supplying a built-in
+scenario vector plus `custom_medium` or `custom_metabolites`. Full references and
+interpretation rules are in [Medium scenarios and evidence](medium-presets.md).
 
 ## Run
 
