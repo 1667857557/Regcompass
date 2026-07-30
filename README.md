@@ -24,31 +24,50 @@ With two or more conditions, the canonical unversioned
 projections. Conditions are represented by absolute coefficients on one
 within-cell-type equal-condition coordinate.
 
-## Native SuperCell construction
+## Cell-type-independent, condition-joint SuperCell construction
 
-RegCompass does not create a temporary `condition__cell_type` metadata field.
-It calls the native SuperCell2 interface directly:
+RegCompass separates graph scope from metacell purity. It does not create a
+temporary `condition__cell_type` metadata field and does not build a graph per
+condition. Instead, RNA and ATAC embedding blocks are standardized within each
+broad cell type using all conditions of that cell type, then passed to:
 
 ```r
-SuperCell::SCimplify_from_embedding(
+SuperCell::SCimplify_by_graph_group_from_embedding(
   X = joint_rna_pca_atac_lsi_embedding,
-  cell.annotation = cell_type,
+  cell.graph.group = cell_type,
   cell.split.condition = condition,
   gamma = 30
 )
 ```
 
-`cell.annotation` enforces broad-cell-type purity and
-`cell.split.condition` prevents condition mixing. For an omitted condition,
-`cell.split.condition` is `NULL`. RNA and ATAC raw counts are then aggregated
-from the returned `cell_id → metacell_id` membership.
+The invariants are:
+
+- each broad cell type has an independent kNN graph;
+- all conditions of that cell type are jointly present during embedding
+  standardization, neighbour search, and graph clustering;
+- condition is applied after clustering to split mixed preliminary memberships;
+- final metacells are pure for both cell type and condition;
+- no `sample` column is used for graph construction or membership splitting.
+
+For an omitted condition, `cell.split.condition` is `NULL`. RNA and ATAC raw
+counts are then aggregated from the returned `cell_id → metacell_id` membership.
+The cache and stage contract records:
+
+```text
+graph_scope = one_independent_graph_per_cell_type
+condition_scope = all_conditions_joint_within_cell_type_graph
+membership_split_timing = after_joint_graph_clustering
+embedding_scaling = within_celltype_joint_condition_equal_modality_blocks
+temporary_combined_stratum = FALSE
+```
 
 ## Workflow
 
 ```text
 paired RNA+ATAC cells
 → automatic standard/condition-aware Pando routing
-→ native SuperCell condition and cell-type inputs
+→ one multimodal graph per cell type with conditions jointly embedded
+→ condition-pure metacell membership after graph clustering
 → cell-type Gamma–Poisson RNA latent expression
 → cell-first TF×ATAC regulatory projection
 → GPR reaction expression and COMPASS-like penalties
@@ -66,10 +85,13 @@ install.packages("remotes")
 remotes::install_version("SeuratObject", "4.1.4", upgrade = "never")
 remotes::install_version("Seurat", "4.4.0", upgrade = "never")
 remotes::install_version("Signac", "1.11.0", upgrade = "never")
-remotes::install_github("1667857557/SuperCell_Seurat_V4@Supercell2")
+remotes::install_github("1667857557/SuperCell_Seurat_V4@agent/celltype-joint-condition-graphs")
 remotes::install_github("1667857557/Pando_regcompass")
-remotes::install_github("1667857557/Regcompass")
+remotes::install_github("1667857557/Regcompass@agent/celltype-joint-condition-graphs")
 ```
+
+The branch-qualified SuperCell dependency is temporary while the companion PR is
+under review. After that PR is merged, install the merged `Supercell2` branch.
 
 ## Required input
 
@@ -153,6 +175,7 @@ result$analysis_mode
 result$condition_coefficients_calculated
 result$grn
 result$metacells$membership
+result$metacells$input_design
 result$layer1$projection_provenance
 result$microcompass$model_cache_summary
 result$reaction_ranking
@@ -168,6 +191,7 @@ units, not biological replicates.
 
 - [Workflow](docs/workflow.md)
 - [Stage contracts](docs/stage-interface-contracts.md)
+- [Metacell graph contract](docs/metacell-graph-contract.md)
 - [Run modes](docs/run-modes-and-stepwise-workflow.md)
 - [Mathematical model](docs/mathematical-model.md)
 - [Public API](docs/functions.md)
