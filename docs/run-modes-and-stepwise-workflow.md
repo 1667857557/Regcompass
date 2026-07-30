@@ -53,6 +53,11 @@ result <- rc_regcompass_step_results(...)
 Stage 1 and Stage 2 independently resolve the design and their `analysis_mode`
 values must agree.
 
+After Stage 5, `rc_regcompass_step_target_union()` remains available as an
+optional targeted-remapping pass. It reuses the cached Stage 5 union GEM and the
+canonical Layer 1 `reaction_expression` route; in condition mode that route is
+`reaction_expression_condition_full_oof`.
+
 ## SuperCell graph and purity inputs
 
 Stage 2 calls `SCimplify_by_graph_group_from_embedding()` with:
@@ -60,7 +65,7 @@ Stage 2 calls `SCimplify_by_graph_group_from_embedding()` with:
 ```text
 cell.graph.group       = broad cell type
 cell.split.condition   = condition, or NULL when omitted
-gamma                   = requested graining level
+gamma                  = requested graining level
 ```
 
 `cell.graph.group` partitions cells before neighbour construction. All conditions
@@ -79,7 +84,8 @@ records `one_independent_graph_per_cell_type`,
 - reductions, dimensions, gamma or SuperCell settings changed: rerun Stage 2 onward;
 - GPR or catalogue annotations changed: rerun Stage 3 onward;
 - projection, RNA support or GPR aggregation changed: rerun Stage 4 onward;
-- medium, union GEM, FASTCORE or LP controls changed: rerun Stage 5 onward.
+- medium, union GEM, FASTCORE or LP controls changed: rerun Stage 5 onward;
+- targeted anchors or direct cross-reference targets changed: rerun only targeted remapping.
 
 ## Result behavior
 
@@ -91,5 +97,6 @@ empty condition contrast.
 See [Tutorial 1](tutorial-01-quick-start.md),
 [Tutorial 2](tutorial-02-stepwise-audit.md),
 [Tutorial 3](tutorial-03-mathematical-model.md),
-[Tutorial 4](tutorial-04-condition-differential-analysis.md), and the
+[Tutorial 4](tutorial-04-targeted-reaction-remapping.md),
+[Tutorial 5](tutorial-05-condition-differential-analysis.md), and the
 [public API index](functions.md).
