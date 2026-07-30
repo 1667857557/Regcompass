@@ -1,7 +1,9 @@
 #' Run RegCompass from species-aware defaults
 #'
 #' Loads a pinned Human-GEM or Mouse-GEM when `gem` is omitted, prepares the
-#' requested medium, and calls [rc_run_regcompass()].
+#' requested medium, and calls [rc_run_regcompass()]. Metacells use one
+#' independent graph per broad cell type while all conditions of that cell type
+#' are embedded jointly and split only after graph clustering.
 #'
 #' @param object A paired-cell Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
