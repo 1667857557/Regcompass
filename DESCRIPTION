@@ -54,6 +54,7 @@ Collate:
     'meta_module_merge.R'
     'metacell_fragments.R'
     'metacell_import.R'
+    'metacell_object_merge.R'
     'metacell_peak_calling.R'
     'metacell.R'
     'microcompass.R'
