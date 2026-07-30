@@ -2,20 +2,27 @@
 
 - Restored the documented biological medium scenarios `normal_human_plasma`,
   `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`,
-  `low_lactate`, and `low_glutamine`, with explicit published background and
-  challenge provenance.
-- Culture challenges now retain the nutrients of a published RPMI, DMEM, or
-  plasma-like basal environment and override only the named glucose, lactate,
-  or glutamine concentration. Outputs record background and challenge citations
-  separately and mark the construction as
-  `published_background_plus_named_nutrient_override`.
+  `low_lactate`, and `low_glutamine`, with separate composition and challenge
+  provenance.
+- Replaced RPMI/DMEM and lower-tier serum surveys as canonical composition
+  sources. Human composition now uses HPLM from *Cell* 2017 and updated HPLM
+  from *Cell Metabolism* 2021; Plasmax from *Science Advances* 2019 is retained
+  as independent validation and is not numerically averaged with HPLM.
+- Anchored `mouse_plasma` to absolute mouse plasma and interstitial-fluid
+  metabolomics in *Nature* 2026. Unsupported mouse components are omitted
+  rather than inherited from human HPLM; glucose, lactate, and glutamine retain
+  limited quantitative secondary values.
+- All five culture challenges now use the identical authoritative HPLM 2017/2021
+  background and override only the named glucose, lactate, or glutamine
+  concentration. Outputs mark the construction as
+  `authoritative_HPLM_background_plus_named_nutrient_override`.
 - Corrected `low_glutamine` to the Methods-defined 0.5 mM condition from Visagie
   et al. rather than the prior 0.05 mM value.
 - Retained reaction-level and metabolite-level user-defined media through
   `scenario = "custom"` or `scenario = NULL`, including mixed built-in and
   custom scenario runs.
 - Kept technical GEM boundary modes out of the public biological-medium
-  interface. Human and mouse workflows now default explicitly to
+  interface. Human and mouse workflows default explicitly to
   `normal_human_plasma` and `mouse_plasma`, respectively.
 - Preserved the runnable minimal workflow at the beginning of `README.md` and
   synchronized Tutorials 1, 2, and 5, the workflow vignette, public API index,
