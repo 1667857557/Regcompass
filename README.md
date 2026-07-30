@@ -3,10 +3,23 @@
 RegCompassR connects paired single-cell RNA+ATAC regulatory evidence to
 metacell-level GEM and COMPASS-like reaction scoring.
 
-## Canonical workflow
+## Minimal workflow
 
 ```r
 library(RegCompassR)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+gem <- rc_prepare_gem(
+  species = "human",
+  version = "2.0.0",
+  source = "bundled"
+)
+
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "cantor2017_hplm",
+  species = "human"
+)
 
 result <- rc_run_regcompass_one_shot(
   object = A,
@@ -38,6 +51,13 @@ result <- rc_run_regcompass_one_shot(
   )
 )
 ```
+
+`cantor2017_hplm` is the only current built-in medium scenario. It is tied to
+Cantor et al., *Cell* 2017 (doi:10.1016/j.cell.2017.03.023) and includes only
+published HPLM components with exact concentrations and direct one-to-one GEM
+exchange mapping. Ambiguous salt-to-free-ion conversions are omitted rather
+than approximated. Other environments must be supplied as DOI-cited custom
+medium tables with `scenario = NULL`.
 
 With at least two conditions, Stage 1 uses `condition_grn`; otherwise it uses
 `standard_pando` through `Pando::infer_grn()` and calculates No condition
@@ -97,6 +117,7 @@ not a comparability guardrail, and uses the canonical Layer 1
 - [Tutorial 3: mathematical model](docs/tutorial-03-mathematical-model.md)
 - [Tutorial 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
 - [Tutorial 5: condition comparison](docs/tutorial-05-condition-differential-analysis.md)
+- [Published medium contract](docs/medium-presets.md)
 - [Public functions](docs/functions.md)
 - [Stage schemas](docs/stage-interface-contracts.md)
 
