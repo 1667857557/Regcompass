@@ -1,16 +1,13 @@
 # Literature-backed extracellular-medium contract.
 #
-# R/medium.R retains the low-level mapping and custom-medium implementation. The
-# public entry point below exposes only biological scenarios supported by
-# published extracellular measurements or published cell-culture experiments.
-# Technical GEM boundary modes remain internal and are not biological media.
+# R/medium.R retains the low-level exchange mapping and custom-medium machinery.
+# This file defines the public biological scenarios and their evidence policy.
+# Nutrient composition is taken from high-authority, directly reproducible
+# formulations or quantitative extracellular metabolomics. Challenge papers
+# supply only the named treatment concentration; they do not define the basal
+# nutrient composition unless a complete formulation is provided.
 
 .rc_make_medium_scenarios_unrestricted <- rc_make_medium_scenarios
-
-.rc_valid_doi <- function(x) {
-  x <- trimws(as.character(x))
-  !is.na(x) & nzchar(x) & grepl("^10\\.[0-9]{4,9}/[^[:space:]]+$", x)
-}
 
 .rc_collapse_nonempty <- function(x) {
   x <- trimws(as.character(x))
@@ -31,98 +28,191 @@
   .rc_bind_frames_fill(list(compounds, row))
 }
 
-.rc_culture_union_background <- function() {
-  rpm <- .rc_medium_catalog("rpmi1640", "human")
-  dmem <- .rc_medium_catalog("dmem_high_glucose", "human")
-  rpm$background_source <- "RPMI_1640"
-  dmem$background_source <- "DMEM"
-  combined <- .rc_bind_frames_fill(list(rpm, dmem))
-  groups <- split(seq_len(nrow(combined)), combined$metabolite_name)
-  rows <- lapply(groups, function(index) {
-    block <- combined[index, , drop = FALSE]
-    row <- block[1L, , drop = FALSE]
-    row$concentration_mM <- NA_real_
-    row$uptake_fraction <- 1
-    row$target_exchange_flag <- FALSE
-    row$required_match <- any(block$required_match %in% TRUE)
-    row$concentration_basis <-
-      "published_RPMI_DMEM_component_availability_union"
-    row$component_reference_doi <- .rc_collapse_nonempty(
-      block$component_reference_doi
-    )
-    row$background_source <- .rc_collapse_nonempty(block$background_source)
-    row
-  })
-  out <- do.call(rbind, rows)
-  rownames(out) <- NULL
+.rc_authoritative_hplm_background <- function() {
+  compounds <- .rc_medium_catalog("normal_human_plasma", "human")
+  cell_2017 <- "10.1016/j.cell.2017.03.023"
+  cell_metabolism_2021 <- "10.1016/j.cmet.2021.02.005"
+  updated_components <- c(
+    "alpha_ketoglutarate", "acetylcarnitine", "malate", "uridine"
+  )
+
+  # Keep only components with an exact HPLM concentration. Rounded serum-ion
+  # substitutions and availability-only additions are excluded rather than
+  # merged into the authoritative culture background.
+  keep <- is.finite(compounds$concentration_mM) & (
+    compounds$component_reference_doi == cell_2017 |
+      compounds$metabolite_name %in% updated_components
+  )
+  keep[is.na(keep)] <- FALSE
+  compounds <- compounds[keep, , drop = FALSE]
+  if (!nrow(compounds)) {
+    stop("The authoritative HPLM component table is unavailable.", call. = FALSE)
+  }
+
+  updated <- compounds$metabolite_name %in% updated_components
+  compounds$component_reference_doi[!updated] <- cell_2017
+  compounds$component_reference_doi[updated] <- cell_metabolism_2021
+  compounds$concentration_basis[!updated] <-
+    "Cantor_2017_Cell_HPLM_formulation"
+  compounds$concentration_basis[updated] <-
+    "Rossiter_2021_Cell_Metabolism_updated_HPLM_formulation"
+  compounds$uptake_fraction <- 1
+  compounds$target_exchange_flag <- FALSE
+  compounds$background_source <- ifelse(
+    updated,
+    "Cell_Metabolism_2021_updated_HPLM",
+    "Cell_2017_HPLM"
+  )
+  rownames(compounds) <- NULL
+  compounds
+}
+
+.rc_build_authoritative_human_plasma <- function(
+    gem, condition, exchange_limit, uptake_scale,
+    exchange_roles, strict_preset_matching) {
+  primary_doi <- paste(
+    "10.1016/j.cell.2017.03.023",
+    "10.1016/j.cmet.2021.02.005",
+    sep = ";"
+  )
+  validation_doi <- "10.1126/sciadv.aau7314"
+  reference <- data.frame(
+    preset_id = "normal_human_plasma",
+    species = "Homo sapiens",
+    reference_label = paste(
+      "Cantor et al., Cell 2017 HPLM;",
+      "Rossiter et al., Cell Metabolism 2021 updated HPLM;",
+      "Vande Voorde et al., Science Advances 2019 Plasmax validation"
+    ),
+    reference_doi = paste(primary_doi, validation_doi, sep = ";"),
+    reference_pmid = "28388410;33651980;30613774",
+    evidence_scope = paste(
+      "Exact HPLM component concentrations from Cell and Cell Metabolism;",
+      "Plasmax is retained as an independent physiological-medium validation",
+      "and is not numerically averaged with HPLM."
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  out <- .rc_build_medium_preset(
+    gem = gem,
+    preset_id = "normal_human_plasma",
+    species = "human",
+    exchange_limit = exchange_limit,
+    uptake_scale = uptake_scale,
+    condition = condition %||% "all",
+    exchange_roles = exchange_roles,
+    strict_preset_matching = strict_preset_matching,
+    compounds = .rc_authoritative_hplm_background(),
+    custom_reference = reference
+  )
+  out$medium_scenario_id <- "normal_human_plasma"
+  out$medium_background_id <- "authoritative_HPLM_2017_2021"
+  out$composition_primary_reference_doi <- primary_doi
+  out$composition_validation_reference_doi <- validation_doi
+  out$scenario_construction <-
+    "authoritative_HPLM_composition_without_cross_study_averaging"
   out
 }
 
-.rc_prepare_challenge_background <- function(scenario_id) {
-  if (scenario_id %in% c("high_glucose", "low_glucose")) {
-    return(list(
-      compounds = .rc_culture_union_background(),
-      background_id = "published_RPMI_DMEM_nutrient_union",
-      background_reference_label = paste(
-        "Moore et al., JAMA 1967 RPMI lineage;",
-        "Dulbecco and Freeman, Virology 1959 DMEM lineage"
-      ),
-      background_reference_doi = paste(
-        "10.1001/jama.1967.03120080053007",
-        "10.1016/0042-6822(59)90063-3",
-        sep = ";"
-      )
-    ))
+.rc_authoritative_mouse_compounds <- function() {
+  compounds <- .rc_medium_catalog("mouse_plasma", "mouse")
+  nature_2026 <- "10.1038/s41586-025-09898-9"
+  quantitative_secondary <- "10.1152/ajpcell.00452.2024"
+
+  # Conservative subset explicitly supported by the Nature 2026 plasma and
+  # tissue-fluid metabolomics study. The study quantified 124 metabolites in
+  # plasma and extracellular fluids across NSG and C57BL/6J mice. Components
+  # outside this auditable set are omitted rather than inherited from HPLM.
+  supported <- c(
+    "glucose", "lactate", "glutamine", "arginine", "ornithine",
+    "citrulline", "isoleucine", "leucine", "valine", "serine",
+    "asparagine", "proline", "hypoxanthine", "uridine", "creatine"
+  )
+  compounds <- compounds[
+    compounds$metabolite_name %in% supported,
+    ,
+    drop = FALSE
+  ]
+  if (!nrow(compounds)) {
+    stop("The authoritative mouse-plasma component table is unavailable.",
+         call. = FALSE)
   }
-  if (identical(scenario_id, "high_lactate")) {
-    compounds <- .rc_medium_catalog("dmem_high_glucose", "human")
-    compounds$uptake_fraction <- 1
-    compounds$target_exchange_flag <- FALSE
-    return(list(
-      compounds = compounds,
-      background_id = "published_DMEM_nutrient_background",
-      background_reference_label =
-        "Dulbecco and Freeman, Virology 1959; DMEM nutrient formulation",
-      background_reference_doi = "10.1016/0042-6822(59)90063-3"
-    ))
-  }
-  if (identical(scenario_id, "low_lactate")) {
-    compounds <- .rc_medium_catalog("normal_human_plasma", "human")
-    compounds$uptake_fraction <- 1
-    compounds$target_exchange_flag <- FALSE
-    return(list(
-      compounds = compounds,
-      background_id = "published_plasma_like_nutrient_background",
-      background_reference_label = paste(
-        "Cantor et al., Cell 2017 HPLM;",
-        "Vande Voorde et al., Science Advances 2019 Plasmax"
-      ),
-      background_reference_doi = paste(
-        "10.1016/j.cell.2017.03.023",
-        "10.1126/sciadv.aau7314",
-        sep = ";"
-      )
-    ))
-  }
-  if (identical(scenario_id, "low_glutamine")) {
-    compounds <- .rc_medium_catalog("dmem_high_glucose", "human")
-    compounds$uptake_fraction <- 1
-    compounds$target_exchange_flag <- FALSE
-    return(list(
-      compounds = compounds,
-      background_id = "published_DMEM_nutrient_background",
-      background_reference_label = paste(
-        "Dulbecco and Freeman, Virology 1959 DMEM lineage;",
-        "Visagie et al., Cell Bioscience 2015 DMEM deprivation system"
-      ),
-      background_reference_doi = paste(
-        "10.1016/0042-6822(59)90063-3",
-        "10.1186/s13578-015-0030-1",
-        sep = ";"
-      )
-    ))
-  }
-  stop("Unsupported culture challenge scenario: ", scenario_id, call. = FALSE)
+
+  quantitative <- compounds$metabolite_name %in%
+    c("glucose", "lactate", "glutamine")
+  compounds$component_reference_doi[!quantitative] <- nature_2026
+  compounds$concentration_basis[!quantitative] <-
+    "Abbott_2026_Nature_mouse_plasma_detected_availability"
+  compounds$uptake_fraction[!quantitative] <- 1
+  compounds$target_exchange_flag[!quantitative] <- FALSE
+  compounds$required_match[!quantitative] <- FALSE
+  compounds$component_reference_doi[quantitative] <- quantitative_secondary
+  rownames(compounds) <- NULL
+  compounds
+}
+
+.rc_build_authoritative_mouse_plasma <- function(
+    gem, condition, exchange_limit, uptake_scale,
+    exchange_roles, strict_preset_matching) {
+  primary_doi <- "10.1038/s41586-025-09898-9"
+  quantitative_secondary <- "10.1152/ajpcell.00452.2024"
+  reference <- data.frame(
+    preset_id = "mouse_plasma",
+    species = "Mus musculus",
+    reference_label = paste(
+      "Abbott et al., Nature 2026 absolute metabolite quantification in",
+      "mouse plasma and tissue interstitial fluids; Gardner and Stuart 2024",
+      "for the retained glucose, lactate and glutamine quantitative values"
+    ),
+    reference_doi = paste(primary_doi, quantitative_secondary, sep = ";"),
+    reference_pmid = NA_character_,
+    evidence_scope = paste(
+      "Conservative mouse-plasma availability set anchored to Nature 2026;",
+      "only glucose, lactate and glutamine retain the secondary quantitative",
+      "mouse-plasma values. Unsupported components are omitted."
+    ),
+    stringsAsFactors = FALSE
+  )
+
+  out <- .rc_build_medium_preset(
+    gem = gem,
+    preset_id = "mouse_plasma",
+    species = "mouse",
+    exchange_limit = exchange_limit,
+    uptake_scale = uptake_scale,
+    condition = condition %||% "all",
+    exchange_roles = exchange_roles,
+    strict_preset_matching = strict_preset_matching,
+    compounds = .rc_authoritative_mouse_compounds(),
+    custom_reference = reference
+  )
+  out$medium_scenario_id <- "mouse_plasma"
+  out$medium_background_id <- "Abbott_2026_Nature_mouse_plasma"
+  out$composition_primary_reference_doi <- primary_doi
+  out$quantitative_secondary_reference_doi <- quantitative_secondary
+  out$scenario_construction <-
+    "Nature_2026_mouse_plasma_availability_with_limited_quantitative_secondary"
+  out
+}
+
+.rc_prepare_challenge_background <- function() {
+  list(
+    compounds = .rc_authoritative_hplm_background(),
+    background_id = "authoritative_HPLM_2017_2021",
+    background_reference_label = paste(
+      "Cantor et al., Cell 2017 HPLM;",
+      "Rossiter et al., Cell Metabolism 2021 updated HPLM"
+    ),
+    background_reference_doi = paste(
+      "10.1016/j.cell.2017.03.023",
+      "10.1016/j.cmet.2021.02.005",
+      sep = ";"
+    ),
+    background_validation_reference_label =
+      "Vande Voorde et al., Science Advances 2019 Plasmax",
+    background_validation_reference_doi = "10.1126/sciadv.aau7314"
+  )
 }
 
 .rc_challenge_definition <- function(scenario_id) {
@@ -165,14 +255,15 @@
       ),
       challenge_reference_doi = "10.1186/s13578-015-0030-1"
     ),
-    stop("Unsupported culture challenge scenario: ", scenario_id, call. = FALSE)
+    stop("Unsupported culture challenge scenario: ", scenario_id,
+         call. = FALSE)
   )
 }
 
 .rc_build_literature_challenge <- function(
     gem, scenario_id, condition, exchange_limit, uptake_scale,
     exchange_roles, strict_preset_matching) {
-  background <- .rc_prepare_challenge_background(scenario_id)
+  background <- .rc_prepare_challenge_background()
   definition <- .rc_challenge_definition(scenario_id)
   compounds <- .rc_add_compound_if_missing(
     background$compounds,
@@ -190,6 +281,7 @@
 
   all_doi <- .rc_collapse_nonempty(c(
     background$background_reference_doi,
+    background$background_validation_reference_doi,
     definition$challenge_reference_doi
   ))
   reference <- data.frame(
@@ -197,15 +289,16 @@
     species = "Homo sapiens",
     reference_label = paste(
       background$background_reference_label,
+      background$background_validation_reference_label,
       definition$challenge_reference_label,
       sep = "; "
     ),
     reference_doi = all_doi,
     reference_pmid = NA_character_,
     evidence_scope = paste(
-      "Composite literature-backed cell-culture environment:",
-      background$background_id,
-      "with the named nutrient concentration overridden by the challenge paper."
+      "Authoritative HPLM basal composition from Cell and Cell Metabolism,",
+      "independently validated against Plasmax in Science Advances, with only",
+      "the named nutrient concentration overridden by the challenge paper."
     ),
     stringsAsFactors = FALSE
   )
@@ -225,21 +318,25 @@
   out$medium_background_id <- background$background_id
   out$background_reference_label <- background$background_reference_label
   out$background_reference_doi <- background$background_reference_doi
+  out$background_validation_reference_label <-
+    background$background_validation_reference_label
+  out$background_validation_reference_doi <-
+    background$background_validation_reference_doi
   out$challenge_reference_label <- definition$challenge_reference_label
   out$challenge_reference_doi <- definition$challenge_reference_doi
   out$scenario_construction <-
-    "published_background_plus_named_nutrient_override"
+    "authoritative_HPLM_background_plus_named_nutrient_override"
   out
 }
 
 #' Build literature-backed extracellular medium scenarios
 #'
-#' Biological presets combine published plasma measurements or published cell
-#' culture formulations with explicit challenge concentrations. Plasma scenarios
-#' may synthesize several published sources to represent nutrients known to be
-#' available; unsupported quantitative values remain availability-only. Culture
-#' challenges retain the usual nutrients of their published basal medium and
-#' override only the named glucose, lactate, or glutamine concentration.
+#' Human plasma and culture backgrounds use exact HPLM composition from Cell
+#' 2017 and the updated formulation in Cell Metabolism 2021. Plasmax from Science
+#' Advances 2019 is an independent validation source and is not numerically
+#' averaged with HPLM. Mouse plasma uses a conservative availability set anchored
+#' to absolute metabolite measurements in Nature 2026; unsupported components are
+#' omitted. Challenge papers provide only the named nutrient concentration.
 #'
 #' @param gem A validated RegCompass GEM.
 #' @param scenario One or more identifiers from `"normal_human_plasma"`,
@@ -261,7 +358,7 @@
 #'   directionality.
 #' @param strict_preset_matching Stop when required components cannot be mapped
 #'   one-to-one to GEM exchanges.
-#' @return A reaction-level medium table with background and challenge citations.
+#' @return A reaction-level medium table with composition and challenge citations.
 #' @export
 rc_make_medium_scenarios <- function(
     gem,
@@ -321,10 +418,11 @@ rc_make_medium_scenarios <- function(
     "normal_human_plasma", "high_glucose", "low_glucose",
     "high_lactate", "low_lactate", "low_glutamine"
   )
-  if (identical(species, "mouse") && length(intersect(scenario, human_only))) {
+  invalid_human <- intersect(scenario, human_only)
+  if (identical(species, "mouse") && length(invalid_human)) {
     stop(
       "Human-derived medium scenarios cannot be used with Mouse-GEM: ",
-      paste(intersect(scenario, human_only), collapse = ", "), ".",
+      paste(invalid_human, collapse = ", "), ".",
       call. = FALSE
     )
   }
@@ -333,22 +431,25 @@ rc_make_medium_scenarios <- function(
   }
 
   pieces <- list()
-  plasma_ids <- intersect(
-    scenario,
-    c("normal_human_plasma", "mouse_plasma")
-  )
-  if (length(plasma_ids)) {
-    pieces[[length(pieces) + 1L]] <-
-      .rc_make_medium_scenarios_unrestricted(
-        gem = gem,
-        scenario = plasma_ids,
-        species = species,
-        uptake_scale = uptake_scale,
-        exchange_roles = exchange_roles,
-        condition = condition,
-        exchange_limit = exchange_limit,
-        strict_preset_matching = strict_preset_matching
-      )
+  if ("normal_human_plasma" %in% scenario) {
+    pieces[[length(pieces) + 1L]] <- .rc_build_authoritative_human_plasma(
+      gem = gem,
+      condition = condition,
+      exchange_limit = exchange_limit,
+      uptake_scale = uptake_scale,
+      exchange_roles = exchange_roles,
+      strict_preset_matching = strict_preset_matching
+    )
+  }
+  if ("mouse_plasma" %in% scenario) {
+    pieces[[length(pieces) + 1L]] <- .rc_build_authoritative_mouse_plasma(
+      gem = gem,
+      condition = condition,
+      exchange_limit = exchange_limit,
+      uptake_scale = uptake_scale,
+      exchange_roles = exchange_roles,
+      strict_preset_matching = strict_preset_matching
+    )
   }
 
   challenge_ids <- intersect(
@@ -408,6 +509,6 @@ rc_make_medium_scenarios <- function(
   attr(output, "preset_diagnostics") <- diagnostics
   attr(output, "species") <- species
   attr(output, "medium_policy") <-
-    "published_plasma_or_culture_background_with_explicit_overrides"
+    "authoritative_journal_composition_with_explicit_overrides"
   output
 }
