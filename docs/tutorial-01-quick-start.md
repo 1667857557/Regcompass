@@ -19,7 +19,7 @@ stopifnot(
 )
 ```
 
-## GEM and medium
+## GEM and publication-bound medium
 
 ```r
 library(RegCompassR)
@@ -32,49 +32,56 @@ gem <- rc_prepare_gem(
 )
 
 medium_scenarios <- rc_make_medium_scenarios(
-  gem,
-  scenario = "physiologic",
+  gem = gem,
+  scenario = "cantor2017_hplm",
   species = "human"
 )
 ```
 
-### Predefined medium scenarios
+### Built-in scenario policy
 
-`rc_make_medium_scenarios()` accepts one or more of the following identifiers.
-Each requested scenario produces a separate medium-specific structural model,
-but the exchange bounds within one scenario are identical across all conditions
-and metacells.
+The only current built-in scenario is:
 
-| Category | `scenario` values | Species and intended use |
+| `scenario` | Published definition | Encoded scope |
 |---|---|---|
-| Physiological | `"physiologic"`, `"normal_human_plasma"`, `"mouse_plasma"` | `physiologic` resolves by GEM species; the explicit plasma presets are human-only or mouse-only. |
-| Culture formulations | `"rpmi1640"`, `"dmem_high_glucose"` | Species-neutral basal formulations; serum and laboratory supplements are not inferred. |
-| Human nutrient challenges | `"high_glucose"`, `"low_glucose"`, `"high_lactate"`, `"low_lactate"`, `"low_glutamine"` | Human-GEM only; each changes one nutrient on the normal-human-plasma background. |
-| Technical baselines | `"minimal"`, `"compass_model_bounds"`, `"permissive_all_exchange"` | Structural or modelling controls, not physiological media. |
-| User supplied | `"custom"` | Exact reaction-level bounds or metabolite-availability rows supplied by the user. |
+| `"cantor2017_hplm"` | Cantor et al., *Cell* 2017; doi:10.1016/j.cell.2017.03.023 | HPLM components with exact published concentrations and direct one-to-one GEM exchange mapping. |
 
-Several predefined scenarios can be generated together:
+RegCompass deliberately does not retain the previous `physiologic`,
+`normal_human_plasma`, `mouse_plasma`, RPMI/DMEM, single-nutrient challenge,
+`minimal`, `compass_model_bounds`, or `permissive_all_exchange` identifiers as
+built-in biological scenarios. Those labels either combined multiple evidence
+sources, depended on manufacturer-only formulations, represented incomplete
+implementations, or were technical model settings rather than published media.
+
+For another published extracellular environment, supply exact reaction-level or
+metabolite-level rows with `scenario = NULL`. Every row must contain
+`reference_label` and a valid `reference_doi`:
 
 ```r
+published_custom <- data.frame(
+  medium_scenario_id = "published_environment_2024",
+  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
+  lb = c(-0.20, -0.10),
+  ub = c(1, 1),
+  available = TRUE,
+  reference_label = "Author et al., Journal 2024",
+  reference_doi = "10.xxxx/published.article",
+  stringsAsFactors = FALSE
+)
+
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = c(
-    "physiologic",
-    "rpmi1640",
-    "dmem_high_glucose",
-    "low_glucose"
-  ),
-  species = "human"
+  scenario = NULL,
+  species = "human",
+  custom_medium = published_custom
 )
 ```
 
-Use `scenario = "custom"` for measured plasma or tumour-interstitial-fluid
-conditions, serum supplementation, dialysed serum, added pyruvate, mouse-specific
-nutrient challenges, or any laboratory-specific formulation. Preset
-concentrations describe extracellular availability and sensitivity assumptions;
-they are not measured uptake fluxes. The full provenance, species restrictions,
-custom-medium schema, and concentration tables are retained in
-[Predefined extracellular medium scenarios](medium-presets.md).
+Published concentrations are provenance; RegCompass does not convert them into
+measured transporter fluxes. `uptake_scale` is fixed at `1`. Ambiguous
+salt-to-free-ion conversions are omitted rather than approximated. The formal
+contract and retained HPLM evidence are documented in
+[Published medium scenarios](medium-presets.md).
 
 ## Run
 
