@@ -47,7 +47,7 @@ test_that("human nutrient challenges are rejected for Mouse-GEM", {
   }
 })
 
-test_that("challenge outputs record background and intervention DOIs", {
+test_that("challenge outputs record authoritative background and intervention DOIs", {
   gem <- make_provenance_test_gem("human")
   expected <- c(
     high_glucose = "10.1016/j.ygyno.2015.06.036",
@@ -66,10 +66,23 @@ test_that("challenge outputs record background and intervention DOIs", {
     rows <- medium[medium$medium_scenario_id == scenario, , drop = FALSE]
     expect_true(nrow(rows) > 0L)
     expect_true(all(rows$challenge_reference_doi == expected[[scenario]]))
-    expect_true(all(!is.na(rows$background_reference_doi)))
-    expect_true(all(nzchar(rows$background_reference_doi)))
-    expect_true(all(rows$scenario_construction ==
-                      "published_background_plus_named_nutrient_override"))
+    expect_true(all(grepl(
+      "10.1016/j.cell.2017.03.023",
+      rows$background_reference_doi,
+      fixed = TRUE
+    )))
+    expect_true(all(grepl(
+      "10.1016/j.cmet.2021.02.005",
+      rows$background_reference_doi,
+      fixed = TRUE
+    )))
+    expect_true(all(
+      rows$background_validation_reference_doi == "10.1126/sciadv.aau7314"
+    ))
+    expect_true(all(
+      rows$scenario_construction ==
+        "authoritative_HPLM_background_plus_named_nutrient_override"
+    ))
   }
 })
 
