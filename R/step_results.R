@@ -44,18 +44,8 @@ rc_regcompass_step_results <- function(
     condition_col = params$condition_col,
     celltype_col = params$celltype_col
   )
-  condition_full_comparison <- .rc_condition_penalty_route(
-    layer2, layer2$penalty_condition_full,
-    condition_col = params$condition_col,
-    celltype_col = params$celltype_col
-  )
   rna_only_comparison <- .rc_condition_penalty_route(
     layer2, layer2$penalty_rna_only,
-    condition_col = params$condition_col,
-    celltype_col = params$celltype_col
-  )
-  unique_increment_summary <- .rc_condition_increment_summary(
-    layer2,
     condition_col = params$condition_col,
     celltype_col = params$celltype_col
   )
@@ -71,8 +61,8 @@ rc_regcompass_step_results <- function(
   condition_modules <- meta_modules$condition_modules[condition_fields]
   mode <- params$analysis_mode
   result <- list(
-    schema_version = "regcompass_regulatory_metabolic_result_v1",
-    version = "2.1.1",
+    schema_version = "regcompass_regulatory_metabolic_result_v2",
+    version = "2.2.0",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = mode,
@@ -90,11 +80,8 @@ rc_regcompass_step_results <- function(
     reaction_ranking = comparison$ranking,
     condition_summary = comparison$summary,
     condition_contrast = comparison$contrast,
-    condition_full_exploratory_summary = condition_full_comparison$summary,
-    condition_full_exploratory_contrast = condition_full_comparison$contrast,
     rna_only_control_summary = rna_only_comparison$summary,
     rna_only_control_contrast = rna_only_comparison$contrast,
-    unique_grn_increment_summary = unique_increment_summary,
     inference_policy = comparison$inference_policy %||%
       "metacell statistical units within one dataset",
     gem_fingerprint = .rc_stage_gem_fingerprint(gem),
@@ -105,18 +92,23 @@ rc_regcompass_step_results <- function(
       fallback_reason = params$fallback_reason,
       workflow_order = c(
         "single_cell_grn", "celltype_joint_condition_supercell_metacells",
-        "meta_modules", "layer1", "medium_specific_union_gem_layer2"
+        "meta_modules", "condition_specific_layer1",
+        "medium_specific_union_gem_layer2"
       ),
       pando_grouping = params$celltype_col,
       pando_design = if (identical(mode, "condition_grn")) {
         paste(
-          "shared candidate dictionary, equal-condition transforms, nested",
-          "outer-heldout projection, and common support"
+          "shared candidate dictionary and equal-condition coordinates with",
+          "condition-specific outer-heldout estimable-edge projection"
         )
       } else {
         "original Pando infer_grn per broad cell type; no condition coefficients"
       },
       pando_regulatory_projection = layer1$projection_provenance,
+      condition_unique_edges_allowed_in_primary_penalty =
+        identical(mode, "condition_grn"),
+      common_support_required = FALSE,
+      removed_guardrails = layer2$comparison_contract$removed_guardrails,
       metacell_purity_grouping = c(params$condition_col, params$celltype_col),
       metacell_graph_grouping = params$celltype_col,
       metacell_graph_group_argument = "SuperCell cell.graph.group",
