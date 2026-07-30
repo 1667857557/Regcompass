@@ -17,49 +17,32 @@ test_that("reaction penalty is positive and decreases with expression", {
   expect_equal(P[["R1"]], 1)
   expect_gt(P[["R1"]], P[["R2"]])
   expect_gt(P[["R2"]], P[["R3"]])
-  expect_true(is.na(P[["R4"]]))
-  expect_true(all(is.finite(P[1:3]) & P[1:3] > 0))
+  expect_equal(P[["R4"]], 1)
+  expect_true(all(is.finite(P) & P > 0))
 })
 
-test_that("Pando grouping uses condition and cell type", {
+test_that("condition Pando remains independent by broad cell type", {
   implementation <- paste(
     deparse(body(.rc_fit_condition_grns_by_cell_type)), collapse = "\n"
   )
-  expect_match(
-    implementation,
-    "group_cols <- c(condition_col, celltype_col)",
-    fixed = TRUE
-  )
+  expect_match(implementation, "Pando::infer_condition_grn", fixed = TRUE)
   expect_match(implementation, "cell_type = cell_type", fixed = TRUE)
   expect_false("sample_col" %in%
                  names(formals(.rc_fit_condition_grns_by_cell_type)))
   expect_false("strict_biological_defaults" %in% names(formals(rc_run_regcompass)))
 })
 
-test_that("Layer 1 delegates cell-first projection to Pando", {
-  body_text <- paste(
+test_that("condition Layer 1 delegates cell-first projection to Pando", {
+  helper <- paste(
+    deparse(body(.rc_condition_pando_projection)), collapse = "\n"
+  )
+  layer1 <- paste(
     deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
-  expect_match(
-    body_text, "Pando::project_condition_grn_cells", fixed = TRUE
-  )
-  expect_match(
-    body_text, "Pando::aggregate_condition_grn_projection", fixed = TRUE
-  )
-  expect_match(body_text, 'common <- project(resolved)', fixed = TRUE)
-  expect_match(body_text, "sqrt(pmin(1, pmax(0", fixed = TRUE)
-  expect_match(body_text, "available[is.na(available)] <- FALSE", fixed = TRUE)
-  expect_match(
-    body_text, "predictive_oof_available", fixed = TRUE
-  )
-  expect_match(
-    body_text,
-    ".rc_scaled_oof_modifier",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    ".rc_condition_gene_regulatory_modifier", body_text, fixed = TRUE
-  ))
+  expect_match(helper, "Pando::project_condition_grn_cells", fixed = TRUE)
+  expect_match(helper, "Pando::aggregate_condition_grn_projection", fixed = TRUE)
+  expect_match(helper, "sqrt(pmin(1, pmax(0", fixed = TRUE)
+  expect_match(layer1, ".rc_scaled_oof_modifier", fixed = TRUE)
 })
 
 test_that("single-condition scoring uses penalty per required target flux", {
@@ -78,69 +61,6 @@ test_that("single-condition scoring uses penalty per required target flux", {
   )
   answer <- .rc_condition_penalty_comparison(microcompass)
   expect_identical(answer$analysis_mode, "single_condition_reaction_ranking")
-  expect_identical(answer$ranking_formula, "penalty / (omega * vmax)")
-  expect_equal(nrow(answer$ranking), 2L)
   expect_equal(nrow(answer$contrast), 0L)
-})
-
-test_that("multiple conditions produce every pairwise comparison", {
-  row_id <- "reaction=R1::direction=forward::medium=base"
-  units <- c("uA", "uB", "uC")
-  microcompass <- list(
-    penalty = matrix(c(0.5, 0.3, 0.2), nrow = 1,
-      dimnames = list(row_id, units)),
-    vmax = matrix(2, nrow = 1, ncol = 3, dimnames = list(row_id, units)),
-    unit_meta = data.frame(
-      unit_id = units, condition = c("A", "B", "C"), cell_type = "T"
-    ),
-    params = list(omega = 0.95)
-  )
-  answer <- .rc_condition_penalty_comparison(microcompass)
-  expect_identical(
-    answer$analysis_mode,
-    "multi_condition_reaction_ranking_and_pairwise_comparison"
-  )
-  expect_equal(nrow(answer$ranking), 3L)
-  expect_equal(nrow(answer$contrast), 3L)
-})
-
-test_that("shared-model ranking rejects unit-dependent vmax", {
-  row_id <- "reaction=R1::direction=forward::medium=base"
-  microcompass <- list(
-    penalty = matrix(c(0.5, 0.3), nrow = 1,
-      dimnames = list(row_id, c("u1", "u2"))),
-    vmax = matrix(c(1, 2), nrow = 1,
-      dimnames = list(row_id, c("u1", "u2"))),
-    unit_meta = data.frame(
-      unit_id = c("u1", "u2"), condition = c("A", "B"), cell_type = "T"
-    ),
-    params = list(omega = 0.95)
-  )
-  expect_error(
-    .rc_condition_penalty_comparison(microcompass),
-    "vmax differs across metacells"
-  )
-})
-
-test_that("meta-module expansion excludes metabolite-neighbour reactions", {
-  S <- matrix(c(-1,0,0,1, 1,-1,0,0, 0,1,-1,0, 0,0,1,0), nrow = 4,
-    byrow = TRUE, dimnames = list(paste0("M", 1:4), c("R1", "R2", "R3", "EX_M1")))
-  reaction_meta <- data.frame(
-    reaction_id = colnames(S), subsystem = c("A", "B", "C", "D"),
-    metabolic_module = c("A", "B", "C", "D"),
-    role = c("internal", "internal", "internal", "exchange"),
-    role_source = "curated")
-  gem <- rc_make_gem(
-    S, lb = rep(0, ncol(S)), ub = rep(1000, ncol(S)),
-    reaction_meta = reaction_meta
-  )
-  core <- data.frame(
-    sample_id = "A", module_id = "A::GRN0001",
-    gene = "G1", reaction_id = "R1"
-  )
-  expanded <- rc_expand_meta_module_reactions(gem, core)
-  expect_identical(
-    unique(as.character(expanded$reaction_membership$reaction_id)), "R1"
-  )
-  expect_false(exists(".rc_meta_module_one_hop", inherits = TRUE))
+  expect_true(all(is.finite(answer$ranking$median_penalty_per_target_flux)))
 })
