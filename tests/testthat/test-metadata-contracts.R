@@ -12,9 +12,7 @@ test_that("authoritative metacell metadata restores non-syntactic names", {
     check.names = FALSE
   )
   restored <- .rc_restore_metacell_metadata(
-    object_meta,
-    metacell_meta,
-    expected_ids = c("MC1", "MC2")
+    object_meta, metacell_meta, expected_ids = c("MC1", "MC2")
   )
   expect_identical(rownames(restored), c("MC1", "MC2"))
   expect_true("_rc_condition" %in% colnames(restored))
@@ -27,8 +25,7 @@ test_that("authoritative metacell metadata restores non-syntactic names", {
 test_that("metacell metadata contract rejects duplicate IDs", {
   object_meta <- data.frame(row.names = c("MC1", "MC2"))
   metacell_meta <- data.frame(
-    metacell_id = c("MC1", "MC1"),
-    check.names = FALSE
+    metacell_id = c("MC1", "MC1"), check.names = FALSE
   )
   expect_error(
     .rc_restore_metacell_metadata(
@@ -38,30 +35,28 @@ test_that("metacell metadata contract rejects duplicate IDs", {
   )
 })
 
-test_that("ConditionGRNFit extraction writes metadata without sample remapping", {
+test_that("canonical condition extraction writes absolute metadata directly", {
   implementation <- paste(
     deparse(body(.rc_extract_condition_grn_contract)), collapse = "\n"
   )
   expect_match(
-    implementation,
-    "tab[[condition_col]] <- condition",
+    implementation, "tab[[condition_col]] <- condition", fixed = TRUE
+  )
+  expect_match(
+    implementation, "tab[[celltype_col]] <- fit_cell_type", fixed = TRUE
+  )
+  expect_match(
+    implementation, "tab$group_id <- rc_make_stratum_id(", fixed = TRUE
+  )
+  expect_match(
+    implementation, 'tab$effect_definition <- "absolute_condition_coefficient"',
     fixed = TRUE
   )
   expect_match(
-    implementation,
-    "tab[[celltype_col]] <- fit_cell_type",
+    implementation, 'tab$coefficient_contract <- "absolute_condition_effects_only"',
     fixed = TRUE
   )
-  expect_match(
-    implementation,
-    "tab$group_id <- rc_make_stratum_id(",
-    fixed = TRUE
-  )
-  expect_match(
-    implementation,
-    ".rc_condition_fit_comparison_mask",
-    fixed = TRUE
-  )
+  expect_false(grepl("comparison_mask", implementation, fixed = TRUE))
   expect_false(exists(".rc_remap_projection_metadata", inherits = TRUE))
 })
 
@@ -74,7 +69,6 @@ test_that("condition and cell-type labels define exact biological scopes", {
   expect_silent(.rc_validate_condition_celltype_metadata(
     metadata, "condition", "cell_type"
   ))
-
   whitespace <- metadata
   whitespace$cell_type[[1L]] <- " T"
   expect_error(
