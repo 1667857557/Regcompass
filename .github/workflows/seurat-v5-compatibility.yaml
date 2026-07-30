@@ -67,7 +67,7 @@ jobs:
           remotes::install_github(
             paste0(
               "1667857557/SuperCell_Seurat_V4@",
-              "fe21a151211eca4a2cc77c85b5849102302ecf57"
+              "054486ae03c380435178b0c8a4b62a691d644992"
             ),
             dependencies = NA,
             upgrade = "never",
@@ -170,11 +170,12 @@ jobs:
             cell.split.condition = condition,
             gamma = 2,
             k.knn = 1,
-            n.pc = 1:2,
+            n.pc = c(2, 1),
             return.singlecell.NW = TRUE,
             return.hierarchical.structure = FALSE
           )
           stopifnot(
+            identical(graph_result$n.pc, c(2L, 1L)),
             identical(
               graph_result$graph_scope,
               "independent_by_cell.graph.group"
