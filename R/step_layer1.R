@@ -1,14 +1,14 @@
 #' Build RNA plus Pando reaction support
 #'
-#' Condition mode uses outer-heldout condition projections. Standard mode uses
-#' the original Pando full-fit TF-by-ATAC projection and calculates no condition
-#' coefficients. Both modes use exact native SuperCell membership.
+#' Condition mode uses condition-specific outer-heldout projections, including
+#' edges estimable in only one condition. Standard mode uses the original Pando
+#' full-fit TF-by-ATAC projection and calculates no condition coefficients. Both
+#' modes use exact native SuperCell membership.
 #'
 #' @export
 rc_regcompass_step_layer1 <- function(
     grn, metacells, meta_modules, gem, outdir,
     projection_component = "condition",
-    comparison_support = c("auto", "pairwise_common", "global_common"),
     regulatory_alpha = 1,
     gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
@@ -25,7 +25,6 @@ rc_regcompass_step_layer1 <- function(
     stop("Canonical RegCompass requires `regulatory_alpha = 1`.",
          call. = FALSE)
   }
-  comparison_support <- match.arg(comparison_support)
   gpr_and_method <- match.arg(gpr_and_method)
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
@@ -59,7 +58,6 @@ rc_regcompass_step_layer1 <- function(
     celltype_col = params$celltype_col,
     rna_assay = params$rna_assay,
     projection_component = projection_component,
-    comparison_support = comparison_support,
     regulatory_alpha = 1,
     gpr_and_method = gpr_and_method,
     gene_half_saturation = gene_half_saturation,
