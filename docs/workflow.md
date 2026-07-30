@@ -1,6 +1,7 @@
 # RegCompassR workflow
 
-This page describes the six canonical stages. Equations are in
+This page describes the six canonical stages and the optional targeted reaction
+remapping pass. Equations are in
 [Tutorial 3](tutorial-03-mathematical-model.md).
 
 ## Data flow
@@ -14,6 +15,7 @@ paired RNA+ATAC cells
 → condition-full regulatory reaction support
 → shared medium-specific metabolic model
 → directional penalties and condition comparisons
+→ optional direct database-linked targeted remapping
 ```
 
 ## Stage 1: `rc_regcompass_step_grn()`
@@ -102,6 +104,31 @@ Condition comparisons must fix reaction, direction, medium, broad cell type,
 model, bounds and target-flux fraction. Metacell P values describe within-dataset
 separation and are not donor-level inference.
 
+## Optional targeted remapping: `rc_regcompass_step_target_union()`
+
+After Stage 5, selected reaction anchors can be used to identify directly linked
+non-core reactions sharing KEGG, Reactome or master-Rhea identifiers. The second
+pass reuses the exact cached medium-specific union GEMs and does not rerun
+FASTCORE or reconstruct a model.
+
+```r
+targeted <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_targeted",
+  core_reaction_ids = c("MAR04381", "MAR04379"),
+  layer2_args = list(target_direction = "both", solver = "highs")
+)
+```
+
+In condition mode, `step4$reaction_expression` is the canonical alias of
+`reaction_expression_condition_full_oof`; targeted reactions therefore use the
+same primary regulatory evidence route as the original Stage 5 scoring. This is
+an optional target-extension analysis, not one of the removed sensitivity or
+comparability guardrails.
+
 ## Restart boundaries
 
 | Earliest stage | Changes |
@@ -112,5 +139,7 @@ separation and are not donor-level inference.
 | Stage 4 | projection, RNA support or GPR aggregation |
 | Stage 5 | medium, bounds, direction, omega, solver or model completion |
 | Stage 6 | annotations or reporting filters |
+| Targeted remapping | selected anchors or direct cross-reference target set only |
 
+Tutorial: [targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md).
 Public API: [functions.md](functions.md).
