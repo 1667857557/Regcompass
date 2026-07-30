@@ -14,35 +14,32 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 # Overview
 
 RegCompassR converts paired single-cell RNA+ATAC data into regulatory reaction
-support and directional metabolic scores. It automatically selects one of two
-Pando routes:
+support and directional metabolic scores.
 
 ```text
->=2 condition levels -> canonical condition_grn with outer-heldout projection
-0 or 1 condition level -> standard_pando using original Pando::infer_grn()
+>=2 condition levels -> condition_grn
+0 or 1 condition level -> standard_pando using Pando::infer_grn()
 ```
 
-The standard route does not calculate condition coefficients. It projects the
-standard TF–peak–gene coefficients as cell-level TF RNA × peak ATAC terms and
-continues through the same metacell, GPR, penalty, and metabolic-model stages.
+Condition mode uses condition-full outer-heldout projection as the primary
+regulatory route. Jointly estimable edges form the common-support component. A
+non-estimable edge side remains projectable and contributes exactly zero.
 
-SuperCell receives separate graph and purity inputs:
+Stage 2 uses:
 
 ```text
 cell.graph.group = broad cell type
 cell.split.condition = condition, or NULL when omitted
 ```
 
-Each broad cell type is built as an independent graph. All conditions within
-that cell type are standardized and embedded jointly, and condition is applied
-only after graph clustering to keep final metacells condition-pure. No sample or
-temporary combined condition-by-cell-type field is used.
+Each broad cell type has an independent graph; all its conditions share the
+graph before condition-pure membership splitting. No sample or temporary
+condition-by-cell-type stratum is used.
 
 Mathematical definitions are centralized in
-[Mathematical model](../docs/mathematical-model.md) and the
-[metacell graph contract](../docs/metacell-graph-contract.md).
+[Tutorial 3](../docs/tutorial-03-mathematical-model.md).
 
-# Prepare GEM and medium
+# Run
 
 ```{r}
 library(RegCompassR)
@@ -59,11 +56,7 @@ medium_scenarios <- rc_make_medium_scenarios(
   scenario = "physiologic",
   species = "human"
 )
-```
 
-# Multiple-condition workflow
-
-```{r}
 result <- rc_run_regcompass(
   object = A,
   gem = gem,
@@ -102,127 +95,34 @@ result <- rc_run_regcompass(
 )
 ```
 
-This route returns `result$analysis_mode == "condition_grn"` and uses the
-canonical unversioned `pando_condition_grn_fit` contract. Stage 2 records:
-
-```r
-result$metacells$input_design$graph_scope
-result$metacells$input_design$condition_scope
-```
-
-with values `"one_independent_graph_per_cell_type"` and
-`"all_conditions_joint_within_cell_type_graph"`.
-
-# Standard Pando workflow
-
-Omit the condition column or provide one level:
+# Inspect
 
 ```{r}
-standard_result <- rc_run_regcompass(
-  object = A,
-  gem = gem,
-  outdir = "RegCompass_standard",
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  species = "human",
-  condition_col = NULL,
-  celltype_col = "cell_type",
-  metacell_args = list(
-    rna_reduction = "pca",
-    atac_reduction = "lsi",
-    gamma = 30L
-  )
-)
-
-standard_result$analysis_mode
-standard_result$condition_coefficients_calculated
-standard_result$reaction_ranking
+result$analysis_mode
+result$metacells$input_design
+result$layer1$gene_projection_condition_full_oof
+result$layer1$gene_projection_common_oof
+result$microcompass$penalty_condition_full_oof
+result$microcompass$penalty_common_oof
+result$microcompass$penalty_condition_unique_increment
+result$reaction_ranking
+result$condition_contrast
 ```
 
-The expected values are `"standard_pando"` and `FALSE`. The condition contrast
-is empty because no second condition is manufactured.
+`reaction_ranking` and `condition_contrast` use the condition-full penalty.
+Common-support and RNA-only routes are decomposition/control outputs. All routes
+reuse the exact same medium-specific model and `vmax`.
 
-# Stepwise workflow
+The canonical schema does not contain depth matching, common-depth restriction,
+alpha sensitivity, zero-support sensitivity, or link-saturation propagation.
 
-```{r}
-step1 <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "steps/01_grn",
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = "Group",
-  celltype_col = "cell_type"
-)
+Metacells are within-dataset statistical units, not biological replicates.
 
-step2 <- rc_regcompass_step_metacells(
-  object = A,
-  outdir = "steps/02_metacells",
-  condition_col = "Group",
-  celltype_col = "cell_type",
-  metacell_args = list(
-    rna_reduction = "pca",
-    atac_reduction = "lsi",
-    gamma = 30L
-  )
-)
+# Documentation
 
-step3 <- rc_regcompass_step_meta_modules(
-  grn = step1,
-  metacells = step2,
-  gem = gem,
-  outdir = "steps/03_meta_modules"
-)
-
-step4 <- rc_regcompass_step_layer1(
-  grn = step1,
-  metacells = step2,
-  meta_modules = step3,
-  gem = gem,
-  outdir = "steps/04_layer1",
-  comparison_support = "auto",
-  regulatory_alpha = 1,
-  gpr_and_method = "min"
-)
-
-step5 <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "steps/05_layer2"
-)
-
-result <- rc_regcompass_step_results(
-  grn = step1,
-  metacells = step2,
-  meta_modules = step3,
-  layer1 = step4,
-  layer2 = step5,
-  gem = gem,
-  outdir = "steps/06_results"
-)
-```
-
-Stage 1 and Stage 2 independently resolve the analysis mode and must agree.
-
-# Interpretation
-
-- condition mode: primary regulatory evidence is outer-heldout common-support
-  projection;
-- standard mode: regulatory evidence comes from the original Pando full fit;
-- both modes calculate TF×ATAC before metacell aggregation;
-- each cell type has an independent graph and all its conditions share that
-  graph before condition-pure membership splitting;
-- non-finite target modifiers use neutral `R=0`, exactly matching RNA-only
-  support for that entry;
-- `regulatory_alpha = 1` is fixed;
-- missing final reaction expression is converted to `E=0` and receives the
-  maximum expression-linked penalty;
-- metacells are within-dataset statistical units, not biological replicates.
-
-# Further documentation
-
-- [Workflow](../docs/workflow.md)
-- [Run modes](../docs/run-modes-and-stepwise-workflow.md)
+- [Tutorial 1](../docs/tutorial-01-quick-start.md)
+- [Tutorial 2](../docs/tutorial-02-stepwise-audit.md)
+- [Tutorial 3](../docs/tutorial-03-mathematical-model.md)
+- [Tutorial 4](../docs/tutorial-04-condition-differential-analysis.md)
 - [Stage contracts](../docs/stage-interface-contracts.md)
-- [Metacell graph contract](../docs/metacell-graph-contract.md)
 - [Public API](../docs/functions.md)
