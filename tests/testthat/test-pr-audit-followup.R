@@ -1,4 +1,4 @@
-test_that("native SuperCell checkpoints require an identical cache contract", {
+test_that("cell-type graph checkpoints require an identical cache contract", {
   outdir <- tempfile("regcompass-metacell-cache-")
   dir.create(outdir, recursive = TRUE)
   file.create(file.path(outdir, "metacell_metadata.tsv.gz"))
@@ -8,16 +8,18 @@ test_that("native SuperCell checkpoints require an identical cache contract", {
   file.create(file.path(outdir, "metacell_object.rds"))
 
   contract <- list(
-    schema_version = "regcompass_native_supercell_metacell_cache_v1",
+    schema_version = "regcompass_celltype_graph_condition_joint_cache_v2",
     condition_col = "condition",
     celltype_col = "cell_type",
+    graph_scope = "one_independent_graph_per_cell_type",
+    condition_scope = "all_conditions_joint_within_cell_type_graph",
     analysis_args = list(gamma = 30L)
   )
   expect_error(
     .rc_validate_condition_metacell_cache(
       outdir, contract, overwrite = FALSE
     ),
-    "different native SuperCell contract"
+    "different cell-type graph contract"
   )
   saveRDS(
     contract,
@@ -32,7 +34,7 @@ test_that("native SuperCell checkpoints require an identical cache contract", {
     .rc_validate_condition_metacell_cache(
       outdir, changed, overwrite = FALSE
     ),
-    "different native SuperCell contract"
+    "different cell-type graph contract"
   )
   expect_false(.rc_validate_condition_metacell_cache(
     outdir, changed, overwrite = TRUE
@@ -64,7 +66,7 @@ test_that("matrix fingerprints detect value changes beyond marginal sums", {
   ))
 })
 
-test_that("downstream stages require native SuperCell provenance", {
+test_that("downstream stages require cell-type-independent condition-joint provenance", {
   params <- list(
     condition_col = "condition",
     celltype_col = "cell_type",
@@ -77,13 +79,20 @@ test_that("downstream stages require native SuperCell provenance", {
     list(
       pooled = list(
         input_design = list(
-          native_supercell_api = "SCimplify_from_embedding",
+          native_supercell_api =
+            "SCimplify_by_graph_group_from_embedding",
+          graph_group_argument = "cell.graph.group",
           condition_argument = "cell.split.condition",
-          celltype_argument = "cell.annotation",
+          graph_scope = "one_independent_graph_per_cell_type",
+          condition_scope = "all_conditions_joint_within_cell_type_graph",
+          membership_split_timing = "after_joint_graph_clustering",
+          embedding_scaling =
+            "within_celltype_joint_condition_equal_modality_blocks",
           temporary_combined_stratum = FALSE
         ),
         cache_contract = list(
-          schema_version = "regcompass_native_supercell_metacell_cache_v1",
+          schema_version =
+            "regcompass_celltype_graph_condition_joint_cache_v2",
           condition_col = "condition",
           celltype_col = "cell_type",
           rna_assay = "RNA",
@@ -109,7 +118,7 @@ test_that("downstream stages require native SuperCell provenance", {
       "metacells",
       "rc_regcompass_step_metacells"
     ),
-    "not a native SuperCell"
+    "not a cell-type-independent, condition-joint SuperCell artifact"
   )
 })
 
