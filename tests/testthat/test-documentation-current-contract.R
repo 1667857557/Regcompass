@@ -93,14 +93,18 @@ test_that("primary documentation rejects obsolete runtime and guardrail schemas"
   )))
 })
 
-test_that("only four canonical tutorials remain", {
+test_that("five canonical tutorials include targeted remapping", {
   root <- documentation_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
-  tutorials <- list.files(
-    file.path(root, "docs"), pattern = "^tutorial-0[1-4].*\\.md$",
-    full.names = TRUE
+  expected <- c(
+    "tutorial-01-quick-start.md",
+    "tutorial-02-stepwise-audit.md",
+    "tutorial-03-mathematical-model.md",
+    "tutorial-04-targeted-reaction-remapping.md",
+    "tutorial-05-condition-differential-analysis.md"
   )
-  expect_length(tutorials, 4L)
+  tutorials <- file.path(root, "docs", expected)
+  expect_true(all(file.exists(tutorials)))
   expect_true(all(vapply(
     tutorials,
     function(path) grepl(
@@ -112,10 +116,33 @@ test_that("only four canonical tutorials remain", {
   )))
   removed <- c(
     "tutorial-03-advanced-restart.md",
-    "tutorial-04-targeted-reaction-remapping.md",
-    "tutorial-05-condition-differential-analysis.md"
+    "tutorial-04-condition-differential-analysis.md"
   )
   expect_false(any(file.exists(file.path(root, "docs", removed))))
+})
+
+test_that("targeted remapping retains exact model and condition-full contracts", {
+  root <- documentation_root()
+  if (is.null(root)) skip("Source documentation is unavailable.")
+  text <- read_documentation(c(
+    file.path(root, "README.md"),
+    file.path(root, "docs", "functions.md"),
+    file.path(root, "docs", "tutorial-04-targeted-reaction-remapping.md"),
+    file.path(root, "docs", "target-union-scoring.md"),
+    file.path(root, "docs", "workflow.md")
+  ))
+  required <- c(
+    "rc_regcompass_step_target_union",
+    "reaction_expression_condition_full_oof",
+    "exact cached Stage 5 union GEM",
+    "does not rerun FASTCORE",
+    "KEGG",
+    "Reactome",
+    "master-Rhea"
+  )
+  for (term in required) {
+    expect_match(text, term, fixed = TRUE, info = term)
+  }
 })
 
 test_that("mathematical details remain centralized in Tutorial 3", {
@@ -137,7 +164,7 @@ test_that("mathematical details remain centralized in Tutorial 3", {
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
   other_tutorials <- list.files(
     file.path(root, "docs"),
-    pattern = "^tutorial-0[124].*\\.md$",
+    pattern = "^tutorial-0[1245].*\\.md$",
     full.names = TRUE
   )
   other_text <- read_documentation(other_tutorials)
