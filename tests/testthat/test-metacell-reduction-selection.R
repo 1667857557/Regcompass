@@ -32,9 +32,14 @@ test_that("Stage 2 accepts an existing Harmony RNA reduction", {
   expect_identical(contract$rna_reduction$reduction, "harmony")
   expect_identical(contract$rna_reduction$dims, 1:2)
   expect_true(nzchar(contract$rna_reduction$embedding$values_md5))
+  expect_identical(contract$graph_scope, "one_independent_graph_per_cell_type")
+  expect_identical(
+    contract$condition_scope,
+    "all_conditions_joint_within_cell_type_graph"
+  )
 })
 
-test_that("Harmony selection reaches the native SuperCell embedding path", {
+test_that("Harmony selection reaches the graph-grouped SuperCell path", {
   native <- paste(
     deparse(body(.rc_native_supercell_membership)), collapse = "\n"
   )
@@ -45,7 +50,10 @@ test_that("Harmony selection reaches the native SuperCell embedding path", {
   expect_match(native, "object[[atac_reduction]]", fixed = TRUE)
   expect_match(wrapper, "rna_reduction = args$rna_reduction", fixed = TRUE)
   expect_match(wrapper, "atac_reduction = args$atac_reduction", fixed = TRUE)
-  expect_match(native, "SCimplify_from_embedding", fixed = TRUE)
+  expect_match(
+    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
+  )
+  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
 })
 
 test_that("a missing requested Harmony reduction fails before checkpoint reuse", {
