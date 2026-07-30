@@ -1,4 +1,4 @@
-test_that("metacell construction uses native SuperCell inputs and fixed gamma", {
+test_that("metacell construction uses cell-type graphs and fixed gamma", {
   native <- paste(
     deparse(body(RegCompassR:::.rc_native_supercell_membership)),
     collapse = "\n"
@@ -7,9 +7,13 @@ test_that("metacell construction uses native SuperCell inputs and fixed gamma", 
     deparse(body(RegCompassR:::.rc_make_condition_celltype_metacells)),
     collapse = "\n"
   )
-  expect_match(native, "SCimplify_from_embedding", fixed = TRUE)
-  expect_match(native, "cell.annotation", fixed = TRUE)
+  expect_match(
+    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
+  )
+  expect_match(native, "cell.graph.group", fixed = TRUE)
   expect_match(native, "cell.split.condition", fixed = TRUE)
+  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
+  expect_false(grepl("cell.annotation", native, fixed = TRUE))
   expect_match(wrapper, "gamma = 30L", fixed = TRUE)
   expect_false(grepl("depth_balance", wrapper, fixed = TRUE))
   expect_false(grepl("stratum_col", wrapper, fixed = TRUE))
