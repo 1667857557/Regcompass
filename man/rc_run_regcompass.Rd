@@ -29,7 +29,7 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Stage 1 controls. Nested \code{pando_infer_args} are passed to the selected Pando route.}
 \item{fragment_files}{Must be \code{FALSE} for the native count-assay metacell path.}
-\item{metacell_args}{Native SuperCell reductions, dimensions, gamma, seed, and graph controls.}
+\item{metacell_args}{SuperCell reductions, dimensions, gamma, seed, and within-cell-type graph controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
 \item{layer1_args}{Stage 4 projection, GPR, and half-saturation controls. \code{regulatory_alpha} is fixed at 1.}
 \item{medium_scenarios}{Shared medium table.}
@@ -45,8 +45,9 @@ or \code{"standard_pando"}; \code{condition_coefficients_calculated} reports
 whether condition coefficients were fitted.
 }
 \description{
-Runs the six-stage RegCompass workflow with automatic GRN routing and native
-SuperCell condition/cell-type inputs.
+Runs the six-stage RegCompass workflow with automatic GRN routing and one
+independent SuperCell graph per broad cell type, pooling all conditions within
+each cell-type graph.
 }
 \details{
 Two or more condition levels use the canonical unversioned Pando condition fit
@@ -54,9 +55,13 @@ and outer-heldout common-support projections. One or zero usable condition
 levels use original \code{Pando::infer_grn()} within each broad cell type and do
 not calculate condition coefficients.
 
-Stage 2 calls \code{SuperCell::SCimplify_from_embedding()} with broad cell type
-as \code{cell.annotation} and condition as \code{cell.split.condition}. No
-concatenated condition-by-cell-type metadata field is created.
+Stage 2 calls
+\code{SuperCell::SCimplify_by_graph_group_from_embedding()} with broad cell type
+as \code{cell.graph.group} and condition as \code{cell.split.condition}. RNA
+and ATAC embedding blocks are standardized within cell type across all
+conditions. Each cell type receives an independent graph; condition is applied
+after graph clustering to retain condition-pure metacells. No sample-derived or
+concatenated condition-by-cell-type grouping field is created.
 
 Both Pando routes then use cell-first TF-by-ATAC projection, exact SuperCell
 membership, cell-type RNA latent-expression priors, GPR reaction expression,
