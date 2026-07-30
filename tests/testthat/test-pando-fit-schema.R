@@ -1,6 +1,31 @@
 test_that("RegCompass accepts only the canonical Pando fit schema", {
+  topology <- matrix(
+    TRUE, 1, 2,
+    dimnames = list("edge", c("A", "B"))
+  )
+  estimable <- matrix(
+    c(TRUE, FALSE), 1, 2,
+    dimnames = dimnames(topology)
+  )
   canonical <- structure(
-    list(schema_version = "pando_condition_grn_fit"),
+    list(
+      schema_version = "pando_condition_grn_fit",
+      topology_mask = topology,
+      estimability_mask = estimable,
+      coefficient_estimable_mask = estimable,
+      projectable_structural_zero_mask = topology & !estimable,
+      projection_support_mask = topology,
+      primary_projection = "projection_condition_full_oof",
+      nonestimable_projection_policy = "structural_zero_by_condition",
+      projection_condition_full_oof = matrix(
+        0, 2, 1,
+        dimnames = list(c("c1", "c2"), "target")
+      ),
+      projection_common_oof = matrix(
+        0, 2, 1,
+        dimnames = list(c("c1", "c2"), "target")
+      )
+    ),
     class = c("ConditionGRNFit", "list")
   )
   expect_silent(
