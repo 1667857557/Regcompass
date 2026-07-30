@@ -52,7 +52,7 @@ test_that("workflow vignette exposes canonical condition-full route and graph sc
   rc_expect_doc_terms(text, required)
 })
 
-test_that("workflow vignette exposes supported media and user composition", {
+test_that("workflow vignette exposes authoritative media and user composition", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   text <- rc_read_doc(file.path(root, "vignettes", "regcompass-workflow.Rmd"))
@@ -66,9 +66,11 @@ test_that("workflow vignette exposes supported media and user composition", {
     "low_glutamine",
     "custom_medium",
     "custom_metabolites",
+    "authoritative_HPLM_2017_2021",
     "background_reference_doi",
+    "background_validation_reference_doi",
     "challenge_reference_doi",
-    "published_background_plus_named_nutrient_override"
+    "authoritative_HPLM_background_plus_named_nutrient_override"
   )
   rc_expect_doc_terms(text, required)
 })
@@ -93,7 +95,9 @@ test_that("vignette rejects removed runtime and guardrail architecture", {
     'scenario = "physiologic"',
     'scenario = "minimal"',
     'scenario = "compass_model_bounds"',
-    'scenario = "permissive_all_exchange"'
+    'scenario = "permissive_all_exchange"',
+    "published_RPMI_DMEM_nutrient_union",
+    "published_background_plus_named_nutrient_override"
   )
   present <- forbidden[vapply(
     forbidden, grepl, logical(1), x = text, fixed = TRUE
