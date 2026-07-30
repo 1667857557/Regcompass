@@ -105,7 +105,7 @@ Imports:
     Signac (>= 1.11.0)
 Suggests:
     BiocParallel,
-    Pando (>= 1.5.1),
+    Pando (>= 1.5.0),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
