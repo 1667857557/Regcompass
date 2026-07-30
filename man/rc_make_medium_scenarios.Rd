@@ -39,15 +39,17 @@ rc_make_medium_scenarios(
 \item{strict_preset_matching}{Stop when required components cannot be mapped one-to-one to GEM exchanges.}
 }
 \value{
-A reaction-level medium table with background and challenge citations.
+A reaction-level medium table with composition and challenge citations.
 }
 \description{
-Biological presets combine published plasma measurements or published cell-culture formulations with explicit challenge concentrations. Plasma scenarios may synthesize several published sources to represent nutrients known to be available; unsupported quantitative values remain availability-only. Culture challenges retain the usual nutrients of their published basal medium and override only the named glucose, lactate, or glutamine concentration.
+Human plasma and culture backgrounds use exact HPLM composition from \emph{Cell} 2017 and the updated formulation in \emph{Cell Metabolism} 2021. Plasmax from \emph{Science Advances} 2019 is an independent validation source and is not numerically averaged with HPLM. Mouse plasma uses a conservative availability set anchored to absolute metabolite measurements in \emph{Nature} 2026; unsupported components are omitted. Challenge papers provide only the named nutrient concentration.
 }
 \details{
-\code{"normal_human_plasma"} integrates HPLM and adult human plasma or serum evidence. \code{"mouse_plasma"} integrates mouse plasma medium and murine plasma or tumour-interstitial-fluid measurements without copying human concentrations.
+\code{"normal_human_plasma"} records \code{medium_background_id = "authoritative_HPLM_2017_2021"}, the composition DOI values \code{10.1016/j.cell.2017.03.023} and \code{10.1016/j.cmet.2021.02.005}, and the independent validation DOI \code{10.1126/sciadv.aau7314}.
 
-The culture challenge presets use a published RPMI, DMEM, or plasma-like nutrient background. They store \code{background_reference_doi} and \code{challenge_reference_doi} separately and mark their construction as \code{published_background_plus_named_nutrient_override}. Target concentration-derived caps are explicit sensitivity assumptions rather than measured uptake fluxes.
+\code{"mouse_plasma"} is anchored to \code{10.1038/s41586-025-09898-9}. Only glucose, lactate, and glutamine retain limited quantitative secondary values; unsupported mouse components are omitted rather than copied from human HPLM.
+
+All five culture challenge presets use the identical authoritative HPLM background and override only the named glucose, lactate, or glutamine concentration. They store \code{background_reference_doi}, \code{background_validation_reference_doi}, and \code{challenge_reference_doi}, and mark their construction as \code{authoritative_HPLM_background_plus_named_nutrient_override}. The medium policy is \code{authoritative_journal_composition_with_explicit_overrides}. Target concentration-derived caps are sensitivity assumptions rather than measured uptake fluxes.
 
 User-defined compositions may be supplied through \code{scenario = "custom"} or \code{scenario = NULL}. Technical GEM boundary constructions are not accepted as biological scenarios.
 }
