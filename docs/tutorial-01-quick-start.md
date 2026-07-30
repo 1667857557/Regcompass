@@ -32,11 +32,124 @@ gem <- rc_prepare_gem(
 )
 
 medium_scenarios <- rc_make_medium_scenarios(
-  gem,
-  scenario = "physiologic",
+  gem = gem,
+  scenario = "normal_human_plasma",
   species = "human"
 )
 ```
+
+### Built-in biological scenarios
+
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
+
+| Scenario | Authoritative composition source | Named override |
+|---|---|---|
+| `normal_human_plasma` | HPLM: *Cell* 2017 plus updated HPLM: *Cell Metabolism* 2021; Plasmax in *Science Advances* 2019 is validation only | none |
+| `mouse_plasma` | absolute mouse plasma/interstitial-fluid metabolomics: *Nature* 2026; limited quantitative secondary values from Gardner and Stuart 2024 | none |
+| `high_glucose` | identical HPLM 2017/2021 background | glucose 25 mM; Han 2015 |
+| `low_glucose` | identical HPLM 2017/2021 background | glucose 1 mM; Han 2015 |
+| `high_lactate` | identical HPLM 2017/2021 background | lactate 20 mM; San-Millan 2020 |
+| `low_lactate` | identical HPLM 2017/2021 background | lactate 0.5 mM; Cho 2025 |
+| `low_glutamine` | identical HPLM 2017/2021 background | glutamine 0.5 mM; Visagie 2015 Methods |
+
+The five challenge scenarios use the same basal nutrient composition. Only the
+named treatment row is changed, so a high-versus-low comparison does not also
+compare unrelated RPMI, DMEM, or Plasmax backgrounds. Plasmax is retained as an
+independent validation source and is not numerically averaged with HPLM.
+
+Inspect composition and challenge provenance:
+
+```r
+unique(medium_scenarios[, intersect(c(
+  "medium_scenario_id",
+  "medium_background_id",
+  "composition_primary_reference_doi",
+  "composition_validation_reference_doi",
+  "background_reference_doi",
+  "background_validation_reference_doi",
+  "challenge_reference_doi",
+  "scenario_construction"
+), colnames(medium_scenarios))])
+```
+
+These are modelling environments, not measured transporter fluxes.
+Concentration-derived target caps remain explicit sensitivity assumptions and
+are intersected with the original GEM directionality.
+
+### Several built-in scenarios
+
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = c(
+    "normal_human_plasma",
+    "high_glucose",
+    "low_glucose",
+    "high_lactate",
+    "low_lactate",
+    "low_glutamine"
+  ),
+  species = "human"
+)
+```
+
+### User-defined medium composition
+
+Reaction-level bounds can be supplied directly:
+
+```r
+custom_medium <- data.frame(
+  medium_scenario_id = "my_measured_medium",
+  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
+  lb = c(-0.20, -0.10),
+  ub = c(1, 1),
+  available = TRUE,
+  reference_label = "Optional experiment or publication label",
+  reference_doi = "10.xxxx/optional.reference",
+  stringsAsFactors = FALSE
+)
+
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "custom",
+  species = "human",
+  custom_medium = custom_medium
+)
+```
+
+Metabolite-level availability is also supported:
+
+```r
+custom_metabolites <- data.frame(
+  metabolite_name = c("glucose", "glutamine", "lactate"),
+  available = c(TRUE, TRUE, TRUE),
+  concentration_mM = c(5, 0.55, 1.6),
+  uptake_fraction = c(0.2, 0.275, 0.08),
+  target_exchange_flag = c(TRUE, TRUE, TRUE),
+  required_match = TRUE,
+  stringsAsFactors = FALSE
+)
+
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = NULL,
+  species = "human",
+  custom_metabolites = custom_metabolites
+)
+```
+
+Built-in and custom scenarios may be generated together by supplying a built-in
+scenario vector plus `custom_medium` or `custom_metabolites`. Full references and
+interpretation rules are in [Medium scenarios and evidence](medium-presets.md).
 
 ## Run
 

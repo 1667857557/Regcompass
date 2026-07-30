@@ -60,11 +60,18 @@ test_that("missing and no-GPR expression receive maximum expression penalty", {
   expect_equal(answer$penalty["demand", "u1"], 20)
 })
 
-test_that("species-matched physiological media remain defaults", {
-  expect_identical(eval(formals(rc_make_medium_scenarios)$scenario),
-                   "physiologic")
-  expect_identical(eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
-                   "physiologic")
+test_that("species-matched plasma media remain workflow defaults", {
+  expect_identical(
+    eval(formals(rc_make_medium_scenarios)$scenario),
+    "normal_human_plasma"
+  )
+  expect_null(eval(formals(rc_run_regcompass_one_shot)$medium_scenario))
+  one_shot <- paste(deparse(body(rc_run_regcompass_one_shot)), collapse = "\n")
+  workflow <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
+  for (term in c("normal_human_plasma", "mouse_plasma")) {
+    expect_match(one_shot, term, fixed = TRUE)
+    expect_match(workflow, term, fixed = TRUE)
+  }
 })
 
 test_that("main workflow routes Pando by condition and cell type", {

@@ -1,4 +1,4 @@
-test_that("Human-GEM MAR exchange reactions can be used by medium scenarios", {
+test_that("Human-GEM MAR exchange reactions can be used by biological media", {
   S <- Matrix::Matrix(c(-1, 0, 1), nrow = 3, ncol = 1, sparse = TRUE)
   rownames(S) <- c("MAM00001e", "MAM00001c", "MAM00002c")
   colnames(S) <- "MAR09034"
@@ -6,6 +6,7 @@ test_that("Human-GEM MAR exchange reactions can be used by medium scenarios", {
     S = S,
     lb = c(MAR09034 = -1000),
     ub = c(MAR09034 = 1000),
+    model_info = list(species = "human"),
     reaction_meta = data.frame(
       reaction_id = "MAR09034",
       reaction_name = "Exchange of glucose",
@@ -14,20 +15,45 @@ test_that("Human-GEM MAR exchange reactions can be used by medium scenarios", {
   )
   gem <- rc_annotate_reaction_roles(gem)
   expect_equal(gem$reaction_meta$role, "exchange")
-  medium <- rc_make_medium_scenarios(
-    gem, scenario = "permissive_all_exchange"
-  )
-  expect_gt(nrow(medium), 0)
-  expect_true(all(medium$assumption_level == "technical_sensitivity_baseline"))
+
   named_medium <- rc_make_medium_scenarios(
     gem,
     scenario = "normal_human_plasma",
+    species = "human",
     strict_preset_matching = FALSE
   )
   expect_true(all(named_medium$medium_scenario_id == "normal_human_plasma"))
   expect_true(all(
     named_medium$evidence_source == "literature_backed_medium_catalog"
   ))
+  expect_true("MAR09034" %in% named_medium$exchange_reaction_id)
+})
+
+test_that("technical boundary modes are rejected by the biological medium API", {
+  S <- Matrix::Matrix(c(-1), nrow = 1, ncol = 1, sparse = TRUE)
+  rownames(S) <- "MAM00001e"
+  colnames(S) <- "MAR09034"
+  gem <- list(
+    S = S,
+    lb = c(MAR09034 = -1000),
+    ub = c(MAR09034 = 1000),
+    model_info = list(species = "human"),
+    reaction_meta = data.frame(
+      reaction_id = "MAR09034",
+      reaction_name = "Exchange of glucose",
+      role = "exchange",
+      stringsAsFactors = FALSE
+    )
+  )
+  for (scenario in c(
+    "permissive_all_exchange", "compass_model_bounds", "minimal"
+  )) {
+    expect_error(
+      rc_make_medium_scenarios(gem, scenario = scenario),
+      "Unsupported biological medium scenario",
+      info = scenario
+    )
+  }
 })
 
 test_that("medium scenarios fail informatively when no exchange reactions are annotated", {

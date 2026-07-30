@@ -5,6 +5,10 @@
 #' independent graph per broad cell type while all conditions of that cell type
 #' are embedded jointly and split only after graph clustering.
 #'
+#' When both medium arguments are omitted, Human-GEM uses
+#' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`. Users may pass
+#' any supported biological scenario or a prebuilt custom medium table.
+#'
 #' @param object A paired-cell Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
 #' @param genome Genome object matching the selected species, ATAC coordinates,
@@ -16,8 +20,8 @@
 #' @param pfm Optional motif collection. Pando's bundled motifs are used when
 #'   omitted.
 #' @param fragment_files Must be `FALSE` for the canonical peak-count path.
-#' @param medium_scenario Medium preset used when `medium_scenarios` is omitted.
-#' @param medium_scenarios Optional prebuilt medium table.
+#' @param medium_scenario Optional built-in biological scenario.
+#' @param medium_scenarios Optional prebuilt user-defined or built-in medium table.
 #' @param progress Show stage and total progress.
 #' @param ... Arguments passed to [rc_run_regcompass()].
 #' @return A complete RegCompass result.
@@ -30,7 +34,7 @@ rc_run_regcompass_one_shot <- function(
     gem_source = c("auto", "bundled", "download"),
     pfm = NULL,
     fragment_files = FALSE,
-    medium_scenario = "physiologic",
+    medium_scenario = NULL,
     medium_scenarios = NULL,
     progress = getOption("RegCompassR.progress", TRUE),
     ...) {
@@ -49,8 +53,17 @@ rc_run_regcompass_one_shot <- function(
     species <- .rc_infer_gem_species(gem, species)
   }
   if (is.null(medium_scenarios)) {
+    if (is.null(medium_scenario)) {
+      medium_scenario <- if (identical(species, "human")) {
+        "normal_human_plasma"
+      } else {
+        "mouse_plasma"
+      }
+    }
     medium_scenarios <- rc_make_medium_scenarios(
-      gem = gem, scenario = medium_scenario, species = species
+      gem = gem,
+      scenario = medium_scenario,
+      species = species
     )
   }
   rc_run_regcompass(

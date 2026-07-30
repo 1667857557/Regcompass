@@ -7,7 +7,7 @@
 rc_run_regcompass_one_shot(object, outdir, genome,
   species = c("human", "mouse"), gem = NULL, gem_version = NULL,
   gem_source = c("auto", "bundled", "download"), pfm = NULL,
-  fragment_files = FALSE, medium_scenario = "physiologic",
+  fragment_files = FALSE, medium_scenario = NULL,
   medium_scenarios = NULL,
   progress = getOption("RegCompassR.progress", TRUE), ...)
 }
@@ -21,8 +21,8 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{gem_source}{Automatic, bundled-only, or download model source.}
 \item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
 \item{fragment_files}{Use \code{FALSE} for the existing ATAC peak-count path.}
-\item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
-\item{medium_scenarios}{Optional prebuilt medium table.}
+\item{medium_scenario}{Optional built-in biological medium scenario.}
+\item{medium_scenarios}{Optional prebuilt built-in or user-defined medium table.}
 \item{progress}{Display workflow and stage progress.}
 \item{...}{Arguments passed to \code{rc_run_regcompass()}, including optional \code{condition_col}.}
 }
@@ -33,6 +33,11 @@ A complete RegCompass result with explicit \code{analysis_mode} and stage proven
 Loads species-aware defaults and runs the complete RegCompass workflow.
 }
 \details{
+When both medium arguments are omitted, Human-GEM uses
+\code{"normal_human_plasma"} and Mouse-GEM uses \code{"mouse_plasma"}. A
+supported culture-challenge scenario or a prebuilt custom medium table may be
+supplied explicitly.
+
 The wrapped workflow automatically selects condition-aware Pando for two or more
 condition levels and original \code{Pando::infer_grn()} for one or zero usable
 levels. The standard route calculates no condition coefficients.

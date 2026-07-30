@@ -97,8 +97,8 @@ test_that("metacell is the canonical scoring unit", {
     eval(formals(rc_run_microcompass)$unit),
     c("metacell", "sample_celltype")
   )
-  expect_identical(
-    eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
-    "physiologic"
-  )
+  expect_null(eval(formals(rc_run_regcompass_one_shot)$medium_scenario))
+  one_shot <- paste(deparse(body(rc_run_regcompass_one_shot)), collapse = "\n")
+  expect_match(one_shot, "normal_human_plasma", fixed = TRUE)
+  expect_match(one_shot, "mouse_plasma", fixed = TRUE)
 })

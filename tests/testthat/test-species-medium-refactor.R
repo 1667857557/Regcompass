@@ -80,39 +80,116 @@ test_that("Mouse-GEM GPR rules retain mouse symbols directly", {
   expect_false(any(grepl("ENSG", prepared$gpr_table$gene)))
 })
 
-test_that("literature media are complete catalogs rather than marker lists", {
-  human_plasma <- .rc_medium_catalog("normal_human_plasma", "human")
-  mouse_plasma <- .rc_medium_catalog("mouse_plasma", "mouse")
-  rpm <- .rc_medium_catalog("rpmi1640", "human")
-  dmem <- .rc_medium_catalog("dmem_high_glucose", "human")
-  expect_gte(nrow(human_plasma), 55)
-  expect_gte(nrow(mouse_plasma), 55)
-  expect_gte(nrow(rpm), 40)
-  expect_gte(nrow(dmem), 30)
-  expect_true(all(c(
-    "glucose", "glutamine", "leucine", "methionine", "tryptophan",
-    "choline", "folate", "thiamine", "sodium", "potassium",
-    "chloride", "bicarbonate", "phosphate", "oxygen", "water"
-  ) %in% rpm$metabolite_name))
-  expect_true(all(c(
-    "glucose", "glutamine", "leucine", "methionine", "tryptophan",
-    "choline", "folate", "thiamine", "sodium", "calcium",
-    "magnesium", "chloride", "bicarbonate", "phosphate", "oxygen",
-    "water"
-  ) %in% dmem$metabolite_name))
-})
-
-test_that("physiological default follows GEM species", {
+test_that("human and mouse plasma presets are species restricted", {
   human <- rc_make_medium_scenarios(
-    make_species_medium_gem("human"), strict_preset_matching = FALSE
+    make_species_medium_gem("human"),
+    scenario = "normal_human_plasma",
+    species = "human",
+    strict_preset_matching = FALSE
   )
   mouse <- rc_make_medium_scenarios(
-    make_species_medium_gem("mouse"), strict_preset_matching = FALSE
+    make_species_medium_gem("mouse"),
+    scenario = "mouse_plasma",
+    species = "mouse",
+    strict_preset_matching = FALSE
   )
   expect_true(all(human$medium_scenario_id == "normal_human_plasma"))
   expect_true(all(mouse$medium_scenario_id == "mouse_plasma"))
   expect_identical(attr(human, "species"), "human")
   expect_identical(attr(mouse, "species"), "mouse")
+  expect_true(all(
+    human$medium_background_id == "authoritative_HPLM_2017_2021"
+  ))
+  expect_true(all(
+    mouse$medium_background_id == "Abbott_2026_Nature_mouse_plasma"
+  ))
+
+  expect_error(
+    rc_make_medium_scenarios(
+      make_species_medium_gem("mouse"),
+      scenario = "normal_human_plasma",
+      species = "mouse",
+      strict_preset_matching = FALSE
+    ),
+    "Human-derived medium scenarios"
+  )
+  expect_error(
+    rc_make_medium_scenarios(
+      make_species_medium_gem("human"),
+      scenario = "mouse_plasma",
+      species = "human",
+      strict_preset_matching = FALSE
+    ),
+    "requires Mouse-GEM"
+  )
+})
+
+test_that("mouse plasma is Nature anchored and does not inherit human values", {
+  mouse <- rc_make_medium_scenarios(
+    make_species_medium_gem("mouse"),
+    scenario = "mouse_plasma",
+    species = "mouse",
+    strict_preset_matching = FALSE
+  )
+  glucose <- mouse[mouse$exchange_reaction_id == "EX_glucose", , drop = FALSE]
+  lactate <- mouse[mouse$exchange_reaction_id == "EX_lactate", , drop = FALSE]
+  glutamine <- mouse[mouse$exchange_reaction_id == "EX_glutamine", , drop = FALSE]
+  expect_equal(glucose$concentration_mM, 4.381)
+  expect_equal(lactate$concentration_mM, 3.088)
+  expect_equal(glutamine$concentration_mM, 0.934)
+  expect_true(all(grepl(
+    "10.1038/s41586-025-09898-9", mouse$reference_doi, fixed = TRUE
+  )))
+  expect_true(all(grepl(
+    "10.1152/ajpcell.00452.2024", mouse$reference_doi, fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "10.7554/eLife.44235", mouse$reference_doi, fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "human|HPLM", mouse$concentration_basis, ignore.case = TRUE
+  )))
+})
+
+test_that("human culture challenges are rejected for Mouse-GEM", {
+  gem <- make_species_medium_gem("mouse")
+  for (scenario in c(
+    "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+    "low_glutamine"
+  )) {
+    expect_error(
+      rc_make_medium_scenarios(
+        gem,
+        scenario = scenario,
+        species = "mouse",
+        strict_preset_matching = FALSE
+      ),
+      "Human-derived medium scenarios",
+      info = scenario
+    )
+  }
+})
+
+test_that("custom media remain available for both species", {
+  for (species in c("human", "mouse")) {
+    gem <- make_species_medium_gem(species)
+    custom <- data.frame(
+      medium_scenario_id = paste0(species, "_custom"),
+      exchange_reaction_id = "EX_glucose",
+      lb = -0.2,
+      ub = 1,
+      available = TRUE,
+      stringsAsFactors = FALSE
+    )
+    medium <- rc_make_medium_scenarios(
+      gem,
+      scenario = "custom",
+      species = species,
+      custom_medium = custom
+    )
+    expect_equal(unique(medium$medium_scenario_id), paste0(species, "_custom"))
+    expect_identical(attr(medium, "species"), species)
+  }
 })
 
 test_that("medium application never expands blocked GEM directions", {
@@ -151,13 +228,13 @@ test_that("canonical Layer 2 owns a persistent model cache", {
   expect_match(micro_text, "tools::md5sum", fixed = TRUE)
 })
 
-test_that("one-shot species argument routes setup by species", {
+test_that("one-shot species argument routes setup and medium by species", {
   expect_identical(
     eval(formals(rc_run_regcompass_one_shot)$species), c("human", "mouse")
   )
   body_text <- paste(deparse(body(rc_run_regcompass_one_shot)), collapse = "\n")
   expect_match(body_text, "rc_prepare_gem", fixed = TRUE)
-  expect_match(body_text, "species = species", fixed = TRUE)
+  expect_match(body_text, "normal_human_plasma", fixed = TRUE)
+  expect_match(body_text, "mouse_plasma", fixed = TRUE)
   expect_match(body_text, "rc_make_medium_scenarios", fixed = TRUE)
-  expect_match(body_text, "Mouse-GEM|1.8.0")
 })

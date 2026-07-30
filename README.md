@@ -3,10 +3,23 @@
 RegCompassR connects paired single-cell RNA+ATAC regulatory evidence to
 metacell-level GEM and COMPASS-like reaction scoring.
 
-## Canonical workflow
+## Minimal workflow
 
 ```r
 library(RegCompassR)
+library(BSgenome.Hsapiens.UCSC.hg38)
+
+gem <- rc_prepare_gem(
+  species = "human",
+  version = "2.0.0",
+  source = "bundled"
+)
+
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "normal_human_plasma",
+  species = "human"
+)
 
 result <- rc_run_regcompass_one_shot(
   object = A,
@@ -38,6 +51,33 @@ result <- rc_run_regcompass_one_shot(
   )
 )
 ```
+
+Built-in biological scenarios are:
+
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
+
+The human nutrient composition is anchored to HPLM from *Cell* 2017 and its
+updated formulation from *Cell Metabolism* 2021. Plasmax from *Science
+Advances* 2019 is retained as independent validation and is not numerically
+averaged with HPLM. `mouse_plasma` uses a conservative metabolite set anchored
+to absolute mouse plasma and interstitial-fluid measurements in *Nature* 2026;
+unsupported components are omitted rather than copied from human HPLM.
+
+All five culture challenges use the same HPLM 2017/2021 basal composition and
+override only the named glucose, lactate, or glutamine concentration from the
+challenge paper. Background and challenge references are stored separately in
+the output. User-defined reaction or metabolite compositions remain supported
+through `scenario = "custom"` or `scenario = NULL` with `custom_medium` or
+`custom_metabolites`.
 
 With at least two conditions, Stage 1 uses `condition_grn`; otherwise it uses
 `standard_pando` through `Pando::infer_grn()` and calculates No condition
@@ -97,6 +137,7 @@ not a comparability guardrail, and uses the canonical Layer 1
 - [Tutorial 3: mathematical model](docs/tutorial-03-mathematical-model.md)
 - [Tutorial 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
 - [Tutorial 5: condition comparison](docs/tutorial-05-condition-differential-analysis.md)
+- [Medium scenarios and references](docs/medium-presets.md)
 - [Public functions](docs/functions.md)
 - [Stage schemas](docs/stage-interface-contracts.md)
 

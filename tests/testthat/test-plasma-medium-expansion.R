@@ -44,7 +44,7 @@ make_exact_plasma_medium_gem <- function(species = "human") {
   )
 }
 
-test_that("plasma presets map literature nutrients to exact GEM metabolites", {
+test_that("human plasma maps authoritative HPLM nutrients exactly", {
   medium <- rc_make_medium_scenarios(
     make_exact_plasma_medium_gem("human"),
     scenario = "normal_human_plasma",
@@ -68,118 +68,88 @@ test_that("plasma presets map literature nutrients to exact GEM metabolites", {
       medium$preset_metabolite %in% expected
     ])
   ))
+  expect_true(all(
+    medium$medium_background_id == "authoritative_HPLM_2017_2021"
+  ))
 })
 
-test_that("new HPLM concentrations are retained as provenance", {
-  catalog <- .rc_medium_catalog("normal_human_plasma", "human")
-  concentration <- stats::setNames(
-    catalog$concentration_mM,
-    catalog$metabolite_name
+test_that("updated HPLM components cite Cell Metabolism 2021", {
+  medium <- rc_make_medium_scenarios(
+    make_exact_plasma_medium_gem("human"),
+    scenario = "normal_human_plasma",
+    strict_preset_matching = FALSE
   )
-
-  expect_equal(unname(concentration["hypoxanthine"]), 0.01)
-  expect_equal(unname(concentration["uridine"]), 0.003001638)
-  expect_equal(unname(concentration["taurine"]), 0.09000319)
-  expect_equal(unname(concentration["succinate"]), 0.020001695)
-  expect_equal(unname(concentration["glycerol"]), 0.11999132)
-  expect_equal(unname(concentration["acetylcarnitine"]), 0.005002086)
+  updated <- medium$preset_metabolite %in%
+    c("uridine", "acetylcarnitine", "alpha_ketoglutarate")
+  expect_true(all(
+    medium$component_reference_doi[updated] == "10.1016/j.cmet.2021.02.005"
+  ))
+  expect_true(all(grepl(
+    "updated_HPLM", medium$concentration_basis[updated], fixed = TRUE
+  )))
 })
 
-test_that("sensitivity scenarios retain the expanded plasma background", {
+test_that("challenge backgrounds retain authoritative HPLM small molecules", {
   high <- rc_make_medium_scenarios(
     make_exact_plasma_medium_gem("human"),
     scenario = "high_glucose",
     strict_preset_matching = FALSE
   )
 
-  expect_true(all(c(
-    "hypoxanthine", "uridine", "taurine", "succinate"
-  ) %in% high$preset_metabolite))
   expect_equal(
     high$concentration_mM[high$preset_metabolite == "glucose"],
     25
   )
-})
-
-test_that("mouse plasma uses mouse-only quantitative provenance", {
-  mouse <- .rc_medium_catalog("mouse_plasma", "mouse")
-  targets <- c("glucose", "lactate", "glutamine")
-  target_rows <- mouse$metabolite_name %in% targets
-  target <- mouse[target_rows, , drop = FALSE]
-  target <- target[match(targets, target$metabolite_name), , drop = FALSE]
-
-  expect_equal(target$concentration_mM, c(4.381, 3.088, 0.934))
-  expect_equal(
-    target$uptake_fraction,
-    c(4.381 / 25, 3.088 / 20, 0.934 / 2)
-  )
-  expect_true(all(target$target_exchange_flag))
   expect_true(all(
-    target$concentration_basis == "healthy_mouse_plasma_MPM_reference"
+    high$medium_background_id == "authoritative_HPLM_2017_2021"
   ))
   expect_true(all(
-    target$component_reference_doi == "10.1152/ajpcell.00452.2024"
+    high$scenario_construction ==
+      "authoritative_HPLM_background_plus_named_nutrient_override"
   ))
-
-  availability_only <- mouse[!target_rows, , drop = FALSE]
-  expect_true(all(is.na(availability_only$concentration_mM)))
-  expect_true(all(availability_only$uptake_fraction == 1))
-  expect_false(any(availability_only$target_exchange_flag))
-  expect_true(all(
-    availability_only$concentration_basis ==
-      "mouse_plasma_availability_only_no_quantitative_bound"
-  ))
-  expect_true(all(is.na(availability_only$component_reference_doi)))
-  expect_false(any(grepl(
-    "human|HPLM", mouse$concentration_basis, ignore.case = TRUE
-  )))
+  expect_true(all(c(
+    "hypoxanthine", "uridine", "taurine", "succinate"
+  ) %in% high$preset_metabolite))
 })
 
-test_that("mouse medium separates quantitative and availability evidence", {
-  reference <- .rc_medium_reference_catalog()
-  mouse <- reference[reference$preset_id == "mouse_plasma", , drop = FALSE]
-
-  expect_equal(nrow(mouse), 1)
-  expect_match(mouse$reference_label, "Gardner and Stuart", fixed = TRUE)
-  expect_match(mouse$reference_label, "Sullivan et al.", fixed = TRUE)
-  expect_match(
-    mouse$reference_doi,
-    "10.1152/ajpcell.00452.2024",
-    fixed = TRUE
-  )
-  expect_match(mouse$reference_doi, "10.7554/eLife.44235", fixed = TRUE)
-  expect_false(grepl(
-    "10.1073/pnas.2102344118", mouse$reference_doi, fixed = TRUE
-  ))
-})
-
-test_that("mapped mouse availability rows do not borrow human concentrations", {
+test_that("mouse plasma exposes only the conservative Nature-supported subset", {
   medium <- rc_make_medium_scenarios(
     make_exact_plasma_medium_gem("mouse"),
     scenario = "mouse_plasma",
     strict_preset_matching = FALSE
   )
 
-  taurine <- medium[medium$preset_metabolite == "taurine", , drop = FALSE]
-  expect_equal(nrow(taurine), 1)
-  expect_true(is.na(taurine$concentration_mM))
-  expect_equal(
-    taurine$concentration_basis,
-    "mouse_plasma_availability_only_no_quantitative_bound"
-  )
-  expect_true(is.na(taurine$component_reference_doi))
-  expect_equal(taurine$uptake_fraction, 1)
-  expect_false(taurine$target_exchange_flag)
+  expect_true(all(c(
+    "glucose", "hypoxanthine", "uridine"
+  ) %in% medium$preset_metabolite))
+  expect_false(any(c(
+    "taurine", "succinate", "glycerol", "acetylcarnitine",
+    "alpha_ketoglutarate", "alpha_aminobutyrate", "n_acetylglycine"
+  ) %in% medium$preset_metabolite))
+  expect_true(all(
+    medium$medium_background_id == "Abbott_2026_Nature_mouse_plasma"
+  ))
+  expect_true(all(grepl(
+    "10.1038/s41586-025-09898-9",
+    medium$reference_doi,
+    fixed = TRUE
+  )))
+  availability <- medium[medium$preset_metabolite %in%
+                           c("hypoxanthine", "uridine"), , drop = FALSE]
+  expect_true(all(is.na(availability$concentration_mM)))
+  expect_true(all(
+    availability$component_reference_doi == "10.1038/s41586-025-09898-9"
+  ))
+  expect_false(any(availability$target_exchange_flag))
 })
 
-test_that("preset diagnostics report exact aliases and unmatched nutrients", {
+test_that("preset diagnostics retain source-specific component provenance", {
   medium <- rc_make_medium_scenarios(
     make_exact_plasma_medium_gem("human"),
     scenario = "normal_human_plasma",
     strict_preset_matching = FALSE
   )
   diagnostics <- attr(medium, "preset_diagnostics")
-
   expect_true(all(c(
     "gem_metabolite_aliases", "match_method", "concentration_basis",
     "component_reference_doi"
@@ -187,7 +157,7 @@ test_that("preset diagnostics report exact aliases and unmatched nutrients", {
   expect_true(
     diagnostics$matched[diagnostics$preset_metabolite == "hypoxanthine"]
   )
-  expect_false(
-    diagnostics$matched[diagnostics$preset_metabolite == "folate"]
+  expect_true(
+    diagnostics$matched[diagnostics$preset_metabolite == "uridine"]
   )
 })

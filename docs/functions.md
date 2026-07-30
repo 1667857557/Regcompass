@@ -11,7 +11,7 @@ Main workflow tutorials: [one-shot](tutorial-01-quick-start.md),
 | Function | Purpose |
 |---|---|
 | `rc_run_regcompass()` | Run all six stages with automatic standard/condition-aware Pando routing. |
-| `rc_run_regcompass_one_shot()` | Convenience wrapper around the complete workflow. |
+| `rc_run_regcompass_one_shot()` | Convenience wrapper around the complete workflow with species-aware plasma defaults. |
 
 `condition_col` may be absent, single-level or multi-level. The selected route is
 returned in `result$analysis_mode`: `standard_pando` or `condition_grn`.
@@ -143,9 +143,39 @@ same primary evidence scale as the original Stage 5 targets.
 | Function | Purpose |
 |---|---|
 | `rc_prepare_gem()` | Load and validate a pinned Human-GEM or Mouse-GEM. |
-| `rc_make_medium_scenarios()` | Build preset or custom exchange bounds. |
+| `rc_make_medium_scenarios()` | Build authoritative-journal plasma or culture-challenge scenarios and user-defined exchange bounds. |
 | `rc_build_reaction_annotations()` | Build reaction names, formulas, GPRs and cross-references. |
 | `rc_attach_reaction_annotations()` | Attach annotations to an existing result. |
+
+Supported biological medium identifiers:
+
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
+
+Human composition uses HPLM from *Cell* 2017 and updated HPLM from *Cell
+Metabolism* 2021. Plasmax from *Science Advances* 2019 is an independent
+validation source and is not numerically averaged with HPLM. Mouse composition
+is anchored to absolute mouse plasma and interstitial-fluid metabolomics in
+*Nature* 2026.
+
+All five challenges use `medium_background_id = authoritative_HPLM_2017_2021`
+and override only the named nutrient. Their construction is
+`authoritative_HPLM_background_plus_named_nutrient_override`. Output provenance
+includes `background_reference_doi`, `background_validation_reference_doi`,
+`challenge_reference_doi`, and `scenario_construction`.
+
+Users may supply reaction-level `custom_medium` or metabolite-level
+`custom_metabolites` with `scenario = "custom"` or `scenario = NULL`. Technical
+GEM boundary modes are not biological scenarios. The medium policy is
+`authoritative_journal_composition_with_explicit_overrides`.
 
 ## Condition analysis
 

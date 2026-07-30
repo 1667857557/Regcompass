@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.2.0
+Version: 2.2.1
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -20,9 +20,10 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     latent-expression priors are estimated by broad cell type, regulatory
     modifiers act on bounded RNA-support odds, GPR rules produce reaction
     expression, and each medium uses one shared union GEM and global FASTCORE
-    completion. Depth matching, common-depth restriction, alpha sensitivity,
-    zero-support sensitivity and link-saturation propagation are not part of the
-    canonical workflow.
+    completion. Built-in medium scenarios are restricted to formulations with
+    direct published-paper provenance. Depth matching, common-depth restriction,
+    alpha sensitivity, zero-support sensitivity and link-saturation propagation
+    are not part of the canonical workflow.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -49,6 +50,7 @@ Collate:
     'lp_solver.R'
     'solver_preflight.R'
     'medium.R'
+    'published_medium_contract.R'
     'medium_exchange_mapping.R'
     'meta_module_definition.R'
     'meta_module_construction.R'

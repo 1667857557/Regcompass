@@ -145,6 +145,109 @@ step4$projection_provenance
 Condition-full OOF is primary. Common support is the jointly estimable
 component. Each non-estimable edge side contributes zero.
 
+## Build Stage 5 media
+
+### Plasma scenarios
+
+```r
+human_medium <- rc_make_medium_scenarios(
+  gem = human_gem,
+  scenario = "normal_human_plasma",
+  species = "human"
+)
+
+mouse_medium <- rc_make_medium_scenarios(
+  gem = mouse_gem,
+  scenario = "mouse_plasma",
+  species = "mouse"
+)
+```
+
+`normal_human_plasma` encodes HPLM composition from *Cell* 2017 and the updated
+HPLM formulation from *Cell Metabolism* 2021. Plasmax from *Science Advances*
+2019 is validation only and is not averaged with HPLM. `mouse_plasma` uses a
+conservative metabolite set anchored to absolute plasma and interstitial-fluid
+measurements in *Nature* 2026. Unsupported mouse components are omitted rather
+than inferred from human HPLM.
+
+### Culture challenge scenarios
+
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = human_gem,
+  scenario = c(
+    "high_glucose",
+    "low_glucose",
+    "high_lactate",
+    "low_lactate",
+    "low_glutamine"
+  ),
+  species = "human"
+)
+```
+
+All five challenge scenarios use the identical HPLM 2017/2021 basal nutrient
+composition. The challenge paper replaces only the named target concentration:
+
+```text
+high_glucose   glucose 25 mM    Han 2015
+low_glucose    glucose 1 mM     Han 2015
+high_lactate   lactate 20 mM    San-Millan 2020
+low_lactate    lactate 0.5 mM   Cho 2025
+low_glutamine  glutamine 0.5 mM Visagie 2015 Methods
+```
+
+This removes RPMI-versus-DMEM-versus-Plasmax composition as a confounder between
+challenge scenarios. Inspect composition, validation and challenge provenance:
+
+```r
+unique(medium_scenarios[, intersect(c(
+  "medium_scenario_id",
+  "medium_background_id",
+  "background_reference_label",
+  "background_reference_doi",
+  "background_validation_reference_label",
+  "background_validation_reference_doi",
+  "challenge_reference_label",
+  "challenge_reference_doi",
+  "scenario_construction"
+), colnames(medium_scenarios))])
+```
+
+Target concentration-derived uptake caps remain sensitivity assumptions rather
+than measured transporter rates.
+
+### User-defined composition
+
+```r
+custom_medium <- data.frame(
+  medium_scenario_id = "my_measured_medium",
+  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
+  lb = c(-0.20, -0.10),
+  ub = c(1, 1),
+  available = TRUE,
+  reference_label = "Optional experiment or publication label",
+  reference_doi = "10.xxxx/optional.reference",
+  stringsAsFactors = FALSE
+)
+
+custom_medium <- rc_make_medium_scenarios(
+  gem = human_gem,
+  scenario = "custom",
+  species = "human",
+  custom_medium = custom_medium
+)
+```
+
+`scenario = NULL` is accepted for a custom-only run. `custom_metabolites` can be
+used instead of reaction-level bounds. Built-in and custom scenarios may also be
+returned together.
+
+Changing the scenario list, custom composition, exchange limit, target
+`uptake_scale`, or any resulting bound invalidates Stage 5 and downstream
+results but does not require rerunning Stages 1-4. See
+[Medium scenarios and evidence](medium-presets.md).
+
 ## Stage 5: shared model and LP scoring
 
 ```r

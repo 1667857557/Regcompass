@@ -1,145 +1,261 @@
-# Predefined extracellular medium scenarios
+# Medium scenarios and published evidence
 
-`rc_make_medium_scenarios()` converts a named extracellular environment into reaction-level exchange bounds for a prepared Human-GEM or Mouse-GEM model. Preset concentrations are provenance for extracellular availability and sensitivity analysis; they are **not measured uptake fluxes**.
+`rc_make_medium_scenarios()` separates two evidence layers:
 
-## Species policy
+1. **basal nutrient composition**, which must come from a high-authority,
+   reproducible formulation or quantitative extracellular metabolomics study;
+2. **challenge concentration**, which may come from the experiment that defined
+   the glucose, lactate, or glutamine treatment.
 
-The biological origin of a concentration and the species accepted by the software are kept explicit.
+A challenge article is therefore not used to invent the rest of the medium. The
+output records basal-composition and challenge provenance separately.
 
-| `scenario` | Accepted GEM species | Biological or formulation origin | Intended use |
-|---|---|---|---|
-| `"physiologic"` | Human or mouse | Resolves to `normal_human_plasma` for Human-GEM and `mouse_plasma` for Mouse-GEM | Recommended in-vivo baseline |
-| `"normal_human_plasma"` | **Human only** | Adult human plasma/HPLM | Human physiological extracellular environment |
-| `"mouse_plasma"` | **Mouse only** | Healthy-mouse plasma medium plus murine plasma/TIF availability evidence | Mouse physiological extracellular environment |
-| `"rpmi1640"` | Human or mouse | Serum-free RPMI-1640 chemical formulation | Culture-medium sensitivity analysis; not species-specific physiology |
-| `"dmem_high_glucose"` | Human or mouse | Serum-free high-glucose DMEM chemical formulation | Culture-medium sensitivity analysis; not species-specific physiology |
-| `"high_glucose"` | **Human only** | Human-cell glucose challenge at 25 mM | High-glucose sensitivity on the human-plasma background |
-| `"low_glucose"` | **Human only** | Human-cell glucose challenge at 1 mM | Low-glucose sensitivity on the human-plasma background |
-| `"high_lactate"` | **Human only** | Human MCF7-cell lactate challenge at 20 mM | High-lactate sensitivity on the human-plasma background |
-| `"low_lactate"` | **Human only** | Human T-cell lactate condition at 0.5 mM | Low-lactate sensitivity on the human-plasma background |
-| `"low_glutamine"` | **Human only** | Human breast/cervical tumour-cell glutamine deprivation at 0.05 mM | Low-glutamine sensitivity on the human-plasma background |
-| `"minimal"` | Human or mouse | Technical nutrient catalog | Structural sensitivity analysis, not a physiological medium |
-| `"compass_model_bounds"` | Human or mouse | Original GEM exchange directions with a uniform cap | Model-defined technical baseline |
-| `"permissive_all_exchange"` | Human or mouse | Current all-exchange technical construction | Technical sensitivity baseline |
-| `"custom"` | Must match the selected GEM | User supplied | Measured or explicitly assumed environment |
+## Supported identifiers
 
-The five nutrient-challenge presets were previously allowed to inherit `mouse_plasma`. Their defining concentrations are from human experimental systems, so that behaviour mixed species evidence. They now require Human-GEM. For a mouse nutrient challenge, use `scenario = "custom"` with a murine or experiment-specific concentration.
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
 
-RPMI-1640 and DMEM are not “human values” or “mouse values”: they are chemically defined culture formulations. They remain usable with either GEM, but do not represent serum supplementation, dialysed serum, pyruvate additions, or laboratory-specific modifications.
+The technical constructions `minimal`, `compass_model_bounds`, and
+`permissive_all_exchange` are not biological media. The ambiguous alias
+`physiologic` is also rejected.
 
-## Quantitative provenance
+## Evidence hierarchy
 
-### Physiological presets
+For nutrient **composition**, the canonical priority is:
 
-`normal_human_plasma` uses two evidence layers:
+1. *Cell* or *Cell Metabolism* complete physiological formulations;
+2. *Nature* quantitative plasma/interstitial-fluid metabolomics;
+3. *Science Advances* independently developed physiological formulations;
+4. lower-tier or older studies only for a named treatment concentration or a
+   quantitatively unsupported secondary value.
 
-1. Components mapping one-to-one to Human Plasma-Like Medium (HPLM) use the exact formulation concentration. Examples include glucose 5.0 mM, lactate 1.6 mM, glutamine 0.55000347 mM, alanine 0.43000337 mM, serine 0.15000476 mM, pyruvate 0.049999997 mM, acetate 0.039997563 mM, and citrate 0.13000052 mM.
-2. Ions represented by several salts in HPLM retain representative adult human serum/plasma values from Psychogios et al. rather than inferring a free-ion concentration by summing formulation salts.
+No concentrations are averaged across publications. A secondary publication can
+validate a formulation without contributing a numerical row.
 
-The reaction-level output records `concentration_mM`, `concentration_basis`, and `component_reference_doi` for every mapped quantitative component. Components without defensible quantitative correspondence remain availability-only (`concentration_mM = NA`).
+## Human plasma and physiological culture background
 
-`mouse_plasma` does not inherit any human HPLM concentration. Only the three target nutrients below receive quantitative sensitivity caps; other murine rows remain availability-only because plasma and tumour-interstitial-fluid concentrations depend on tumour model, anatomical site, diet, and sampling procedure.
+`normal_human_plasma` uses:
 
-| Nutrient | Human HPLM baseline (mM) | Mouse plasma-medium baseline (mM) | High reference for relative cap (mM) |
-|---|---:|---:|---:|
-| glucose | 5.0 | 4.381 | 25 |
-| lactate | 1.6 | 3.088 | 20 |
-| glutamine | 0.55000347 | 0.934 | 2 |
+- Cantor et al., *Cell* 2017 HPLM as the primary formulation;
+- Rossiter et al., *Cell Metabolism* 2021 for the updated HPLM formulation,
+  including alpha-ketoglutarate, acetylcarnitine, malate, and uridine;
+- Vande Voorde et al., *Science Advances* 2019 Plasmax as independent validation
+  that physiological media alter cancer-cell metabolism.
 
-The relative cap is `min(1, concentration / high_reference)`. It is a modelling sensitivity assumption, not a measured transporter rate.
-
-### Culture formulations
-
-| Preset | Defining formulation values | Source |
-|---|---|---|
-| `rpmi1640` | glucose 11.111111 mM; glutamine 2.0547945 mM; other stored components follow Gibco formulation 11875 | Moore et al. and the manufacturer formulation |
-| `dmem_high_glucose` | glucose 25 mM; glutamine 4 mM; other stored components follow Gibco formulation 11965 | Dulbecco and Freeman and the manufacturer formulation |
-
-These presets describe basal formulation only. Protein, lipid, hormone, and growth-factor contributions from serum are not inferred.
-
-### Human nutrient challenges
-
-| Preset | Overridden nutrient | Concentration (mM) | Experimental provenance | DOI |
-|---|---|---:|---|---|
-| `high_glucose` | glucose | 25 | ECC-1 and Ishikawa human endometrial cancer cells | [10.1016/j.ygyno.2015.06.036](https://doi.org/10.1016/j.ygyno.2015.06.036) |
-| `low_glucose` | glucose | 1 | ECC-1 and Ishikawa human endometrial cancer cells | [10.1016/j.ygyno.2015.06.036](https://doi.org/10.1016/j.ygyno.2015.06.036) |
-| `high_lactate` | lactate | 20 | Human MCF7 breast cancer cells | [10.3389/fonc.2019.01536](https://doi.org/10.3389/fonc.2019.01536) |
-| `low_lactate` | lactate | 0.5 | Human T cells | [10.14814/phy2.70450](https://doi.org/10.14814/phy2.70450) |
-| `low_glutamine` | glutamine | 0.05 | Human breast and cervical tumourigenic cell lines | [10.1186/s13578-015-0030-1](https://doi.org/10.1186/s13578-015-0030-1) |
-
-Only the named nutrient is replaced. The remaining components come from `normal_human_plasma`. The overridden row records the challenge study in `component_reference_doi` rather than retaining the baseline plasma DOI.
-
-## Interpretation rules
-
-1. **Concentration is not uptake flux.** Only explicitly flagged glucose, lactate, and glutamine rows convert a concentration ratio into a relative uptake cap.
-2. **Species provenance is enforced.** Human plasma and human nutrient challenges cannot be used with Mouse-GEM; mouse plasma cannot be used with Human-GEM.
-3. **Culture formulations are species-neutral, not physiological.** Their values describe bottle formulations rather than an organism.
-4. **GEM directionality is never expanded.** Requested bounds are intersected with original GEM bounds.
-5. **Unlisted uptake is closed during medium application.** Exchanges absent from the catalog receive `exchange_default_lb = 0`; originally permitted secretion may remain open when `allow_secretion = TRUE`.
-6. **Use a custom medium for the actual experiment.** This includes serum supplementation, dialysed serum, added pyruvate, mouse-specific nutrient challenges, measured plasma/TIF samples, and laboratory-specific formulations.
-
-## Examples
+The encoded concentrations come from HPLM. Plasmax is **not numerically averaged**
+with HPLM. Rounded ion values from lower-tier serum surveys are not used to fill
+ambiguous salt-to-free-ion conversions.
 
 ```r
 human_medium <- rc_make_medium_scenarios(
   gem = human_gem,
-  scenario = "physiologic",
+  scenario = "normal_human_plasma",
   species = "human"
 )
+```
 
+The output includes:
+
+```text
+medium_background_id = authoritative_HPLM_2017_2021
+composition_primary_reference_doi
+composition_validation_reference_doi
+scenario_construction = authoritative_HPLM_composition_without_cross_study_averaging
+```
+
+## Mouse plasma
+
+`mouse_plasma` is now anchored to Abbott et al., *Nature* 2026, which quantified
+absolute levels of 124 metabolites across mouse plasma, cerebrospinal fluid, and
+multiple tissue interstitial fluids in NSG and C57BL/6J mice.
+
+The built-in catalog is deliberately conservative. It retains an auditable set
+of metabolites supported by that study. Components outside the supported set are
+omitted rather than inherited from human HPLM. Glucose, lactate, and glutamine
+retain the published mouse quantitative values from Gardner and Stuart 2024 as a
+secondary source; other retained rows are availability-only unless an exact
+mouse concentration is encoded.
+
+```r
 mouse_medium <- rc_make_medium_scenarios(
   gem = mouse_gem,
-  scenario = "physiologic",
+  scenario = "mouse_plasma",
   species = "mouse"
 )
+```
 
-human_low_glucose <- rc_make_medium_scenarios(
+The output records:
+
+```text
+medium_background_id = Abbott_2026_Nature_mouse_plasma
+composition_primary_reference_doi = 10.1038/s41586-025-09898-9
+quantitative_secondary_reference_doi = 10.1152/ajpcell.00452.2024
+```
+
+Human concentrations are never copied into `mouse_plasma`.
+
+## Cell-culture challenge scenarios
+
+All five challenge presets use the **same authoritative physiological basal
+composition**:
+
+```text
+Cell 2017 HPLM
++ Cell Metabolism 2021 updated HPLM components
+```
+
+Plasmax from *Science Advances* 2019 is stored as an independent validation
+reference. The challenge paper overrides only the named nutrient.
+
+| Scenario | Authoritative basal background | Target override | Challenge source |
+|---|---|---:|---|
+| `high_glucose` | HPLM 2017/2021 | glucose 25 mM | Han et al. 2015 |
+| `low_glucose` | HPLM 2017/2021 | glucose 1 mM | Han et al. 2015 |
+| `high_lactate` | HPLM 2017/2021 | lactate 20 mM | San-Millan et al. 2020 |
+| `low_lactate` | HPLM 2017/2021 | lactate 0.5 mM | Cho et al. 2025 |
+| `low_glutamine` | HPLM 2017/2021 | glutamine 0.5 mM | Visagie et al. 2015 Methods |
+
+The previous RPMI/DMEM union is not used as the canonical composition source.
+The original JAMA and Virology formulation papers may explain the historical
+media lineage, but they are not the primary nutrient-composition evidence for
+these RegCompass scenarios.
+
+The expected construction string is:
+
+```text
+authoritative_HPLM_background_plus_named_nutrient_override
+```
+
+Inspect provenance with:
+
+```r
+unique(medium_scenarios[, intersect(c(
+  "medium_scenario_id",
+  "medium_background_id",
+  "background_reference_label",
+  "background_reference_doi",
+  "background_validation_reference_label",
+  "background_validation_reference_doi",
+  "challenge_reference_label",
+  "challenge_reference_doi",
+  "scenario_construction"
+), colnames(medium_scenarios))])
+```
+
+## Multiple scenarios
+
+```r
+medium_scenarios <- rc_make_medium_scenarios(
   gem = human_gem,
-  scenario = "low_glucose",
+  scenario = c(
+    "normal_human_plasma",
+    "high_glucose",
+    "low_glucose",
+    "high_lactate",
+    "low_lactate",
+    "low_glutamine"
+  ),
   species = "human"
 )
 ```
 
-For a mouse experiment-specific challenge:
+Each scenario receives its own medium-specific structural model. Within one
+scenario, all conditions and metacells use identical exchange bounds.
+
+## User-defined medium composition
+
+User-defined media remain supported through either `scenario = "custom"` or
+`scenario = NULL`. Publication metadata are optional and retained when supplied.
+
+### Exact reaction-level bounds
 
 ```r
-mouse_glucose <- data.frame(
-  medium_scenario_id = "mouse_glucose_measured",
-  exchange_reaction_id = "EX_glc_D_e",
-  lb = -0.2,
-  ub = 1,
-  available = TRUE
+custom_medium <- data.frame(
+  medium_scenario_id = "my_measured_medium",
+  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
+  lb = c(-0.20, -0.10),
+  ub = c(1, 1),
+  available = TRUE,
+  reference_label = "Optional experiment or publication label",
+  reference_doi = "10.xxxx/optional.reference",
+  stringsAsFactors = FALSE
 )
 
-mouse_medium <- rc_make_medium_scenarios(
-  gem = mouse_gem,
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = human_gem,
   scenario = "custom",
-  species = "mouse",
-  custom_medium = mouse_glucose
+  species = "human",
+  custom_medium = custom_medium
 )
 ```
 
-Inspect provenance and mapping diagnostics before scoring:
+### Metabolite-level composition
 
 ```r
-medium_scenarios[, c(
-  "medium_scenario_id", "exchange_reaction_id", "preset_metabolite",
-  "lb", "ub", "concentration_mM", "concentration_basis",
-  "component_reference_doi", "rate_bound_source"
-)]
+custom_metabolites <- data.frame(
+  metabolite_name = c("glucose", "glutamine", "lactate"),
+  available = TRUE,
+  concentration_mM = c(5, 0.55, 1.6),
+  uptake_fraction = c(0.2, 0.275, 0.08),
+  target_exchange_flag = TRUE,
+  required_match = TRUE,
+  reference_label = "Optional experiment or publication label",
+  reference_doi = "10.xxxx/optional.reference",
+  stringsAsFactors = FALSE
+)
+
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = human_gem,
+  scenario = NULL,
+  species = "human",
+  custom_metabolites = custom_metabolites
+)
+```
+
+A built-in scenario vector and one custom table may be supplied together.
+
+## Interpretation rules
+
+1. **Concentration is not uptake flux.** Target concentration ratios define
+   explicit relative sensitivity caps, not measured transporter rates.
+2. Every requested bound is intersected with the original GEM bounds; a medium
+   cannot open a direction blocked by the GEM.
+3. Uptake for unlisted exchanges is closed during medium application; originally
+   permitted secretion may remain open.
+4. Human and mouse plasma scenarios are species-restricted.
+5. The challenge scenarios use an identical HPLM background, so comparisons such
+   as `high_lactate` versus `low_lactate` differ in the named target concentration
+   rather than in unrelated basal nutrients.
+
+## Diagnostics
+
+```r
 attr(medium_scenarios, "preset_diagnostics")
+attr(medium_scenarios, "medium_policy")
+```
+
+The expected policy is:
+
+```text
+authoritative_journal_composition_with_explicit_overrides
 ```
 
 ## References
 
-- Cantor JR, Abu-Remaileh M, Kanarek N, et al. Physiologic Medium Rewires Cellular Metabolism and Reveals Uric Acid as an Endogenous Inhibitor of UMP Synthase. *Cell*. 2017;169:258-272.e17. [doi:10.1016/j.cell.2017.03.023](https://doi.org/10.1016/j.cell.2017.03.023).
-- Psychogios N, Hau DD, Peng J, et al. The Human Serum Metabolome. *PLoS ONE*. 2011;6:e16957. [doi:10.1371/journal.pone.0016957](https://doi.org/10.1371/journal.pone.0016957).
-- Gardner GL, Stuart JA. Tumor microenvironment-like conditions alter pancreatic cancer cell metabolism and behavior. *Am J Physiol Cell Physiol*. 2024. [doi:10.1152/ajpcell.00452.2024](https://doi.org/10.1152/ajpcell.00452.2024).
-- Sullivan MR, Danai LV, Lewis CA, et al. Quantification of microenvironmental metabolites in murine cancers reveals determinants of tumor nutrient availability. *eLife*. 2019;8:e44235. [doi:10.7554/eLife.44235](https://doi.org/10.7554/eLife.44235).
-- Moore GE, Gerner RE, Franklin HA. Culture of normal human leukocytes. *JAMA*. 1967;199:519-524. [doi:10.1001/jama.1967.03120080053007](https://doi.org/10.1001/jama.1967.03120080053007).
-- Dulbecco R, Freeman G. Plaque production by the polyoma virus. *Virology*. 1959;8:396-397. [doi:10.1016/0042-6822(59)90063-3](https://doi.org/10.1016/0042-6822(59)90063-3).
-- Han J, Zhang L, Guo H, et al. Glucose promotes cell proliferation, glucose uptake and invasion in endometrial cancer cells via AMPK/mTOR/S6 and MAPK signaling. *Gynecol Oncol*. 2015;138:668-675. [doi:10.1016/j.ygyno.2015.06.036](https://doi.org/10.1016/j.ygyno.2015.06.036).
-- San-Millán I, Julian CG, Matarazzo C, Martinez J, Brooks GA. Is Lactate an Oncometabolite? *Front Oncol*. 2019;9:1536. [doi:10.3389/fonc.2019.01536](https://doi.org/10.3389/fonc.2019.01536).
-- Cho E, Spielmann G, Irving BA. Effects of lactate concentration on T-cell phenotype and mitochondrial respiration. *Physiol Rep*. 2025;13:e70450. [doi:10.14814/phy2.70450](https://doi.org/10.14814/phy2.70450).
-- Visagie MH, Mqoco TV, Liebenberg L, et al. Influence of partial and complete glutamine- and glucose-deprivation of breast- and cervical tumourigenic cell lines. *Cell Biosci*. 2015;5:37. [doi:10.1186/s13578-015-0030-1](https://doi.org/10.1186/s13578-015-0030-1).
-- Gibco/Thermo Fisher Scientific. [Human Plasma-Like Medium formulation](https://www.thermofisher.com/us/en/home/technical-resources/media-formulation.360.html), [RPMI-1640 formulation 11875](https://www.thermofisher.com/us/en/home/technical-resources/media-formulation.114.html), and [DMEM high-glucose formulation 11965](https://www.thermofisher.com/us/en/home/technical-resources/media-formulation.8.html).
+- Cantor JR, Abu-Remaileh M, Kanarek N, et al. *Cell*. 2017. doi:10.1016/j.cell.2017.03.023.
+- Rossiter NJ, Huggler KS, Adelmann CH, et al. *Cell Metabolism*. 2021. doi:10.1016/j.cmet.2021.02.005.
+- Vande Voorde J, Ackermann T, Pfetzer N, et al. *Science Advances*. 2019. doi:10.1126/sciadv.aau7314.
+- Abbott KL, Subudhi S, Ferreira R, et al. *Nature*. 2026. doi:10.1038/s41586-025-09898-9.
+- Gardner GL, Stuart JA. *Am J Physiol Cell Physiol*. 2024. doi:10.1152/ajpcell.00452.2024.
+- Han J, Zhang L, Guo H, et al. *Gynecologic Oncology*. 2015. doi:10.1016/j.ygyno.2015.06.036.
+- San-Millan I, Julian CG, Matarazzo C, et al. *Frontiers in Oncology*. 2020. doi:10.3389/fonc.2019.01536.
+- Cho E, Spielmann G, Irving BA. *Physiological Reports*. 2025. doi:10.14814/phy2.70450.
+- Visagie MH, Mqoco TV, Liebenberg L, et al. *Cell & Bioscience*. 2015. doi:10.1186/s13578-015-0030-1.
