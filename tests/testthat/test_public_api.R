@@ -17,7 +17,7 @@ test_that("public API exposes the restartable workflow", {
   )
 })
 
-test_that("canonical source architecture has no runtime override layers", {
+test_that("canonical source architecture has no versioned runtime override layers", {
   description <- utils::packageDescription("RegCompassR")
   collate <- description$Collate %||% ""
   retired <- c(
@@ -30,11 +30,15 @@ test_that("canonical source architecture has no runtime override layers", {
   )
   expect_false(any(vapply(retired, grepl, logical(1), x = collate, fixed = TRUE)))
   required <- c(
-    "condition_grn_contract.R", "standard_pando.R",
-    "condition_pooling.R", "metacell_object_merge.R",
-    "step_layer1_oof.R", "penalty.R"
+    "condition_grn_contract.R", "condition_full_contract.R",
+    "standard_pando.R", "condition_pooling.R",
+    "metacell_object_merge.R", "step_layer1_oof.R", "penalty.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
+  expect_lt(
+    regexpr("condition_layer1.R", collate, fixed = TRUE)[[1L]],
+    regexpr("condition_full_contract.R", collate, fixed = TRUE)[[1L]]
+  )
 })
 
 test_that("canonical order is GRN then metacells then meta-modules", {
