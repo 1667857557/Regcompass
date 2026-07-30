@@ -80,12 +80,22 @@ and RNA-only penalties are retained as decomposition/control outputs. The
 canonical schema does not calculate depth matching, common-depth restriction,
 alpha sensitivity, zero-support sensitivity, or link-saturation propagation.
 
+## Optional targeted reaction remapping
+
+After a completed `model_mode = "meta_module_gem"` run,
+`rc_regcompass_step_target_union()` can score direct KEGG-, Reactome-, or
+master-Rhea-linked non-core reactions. It reuses the exact cached Stage 5 union
+GEM and global FASTCORE completion. It is an optional second LP pass, not a
+comparability guardrail, and uses the canonical Layer 1 `reaction_expression`
+input, which is `reaction_expression_condition_full_oof` in condition mode.
+
 ## Documentation
 
 - [Tutorial 1: one-shot workflow](docs/tutorial-01-quick-start.md)
 - [Tutorial 2: stepwise workflow](docs/tutorial-02-stepwise-audit.md)
 - [Tutorial 3: mathematical model](docs/tutorial-03-mathematical-model.md)
-- [Tutorial 4: condition comparison](docs/tutorial-04-condition-differential-analysis.md)
+- [Tutorial 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
+- [Tutorial 5: condition comparison](docs/tutorial-05-condition-differential-analysis.md)
 - [Public functions](docs/functions.md)
 - [Stage schemas](docs/stage-interface-contracts.md)
 
