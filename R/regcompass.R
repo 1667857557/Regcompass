@@ -2,8 +2,9 @@
 #'
 #' Stage 1 selects condition-aware Pando only when at least two condition levels
 #' are present. Otherwise it uses original Pando `infer_grn()` and calculates no
-#' condition coefficients. Stage 2 passes condition and cell type separately to
-#' native SuperCell inputs.
+#' condition coefficients. Stage 2 builds one independent multimodal graph per
+#' broad cell type while pooling all conditions within that graph; condition is
+#' applied only after graph clustering to preserve condition-pure metacells.
 #'
 #' @export
 rc_run_regcompass <- function(
@@ -152,9 +153,17 @@ rc_run_regcompass <- function(
   result$params$requested_condition_col <- condition_col
   result$params$effective_condition_col <- step1$params$condition_col
   result$params$native_supercell_inputs <- c(
-    condition = "cell.split.condition",
-    cell_type = "cell.annotation"
+    graph_group = "cell.graph.group",
+    condition = "cell.split.condition"
   )
+  result$params$metacell_graph_scope <-
+    "one_independent_graph_per_cell_type"
+  result$params$metacell_condition_scope <-
+    "all_conditions_joint_within_cell_type_graph"
+  result$params$metacell_membership_split_timing <-
+    "after_joint_graph_clustering"
+  result$params$metacell_embedding_scaling <-
+    "within_celltype_joint_condition_equal_modality_blocks"
   result$params$temporary_combined_stratum <- FALSE
   result$params$upstream_workers <- upstream_config$workers
   result$params$layer2_workers <- layer2_config$workers
