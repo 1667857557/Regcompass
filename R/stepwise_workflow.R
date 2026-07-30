@@ -123,7 +123,8 @@ rc_regcompass_step_grn <- function(
          paste(reserved, collapse = ", "), call. = FALSE)
   }
   infer_args <- pando_args$pando_infer_args %||% list()
-  pando_args$pando_infer_args <- NULL
+  extra_args <- pando_args
+  extra_args$pando_infer_args <- NULL
   defaults <- list(
     object = object,
     gem = gem,
@@ -137,7 +138,10 @@ rc_regcompass_step_grn <- function(
     rna_assay = rna_assay,
     atac_assay = atac_assay
   )
-  defaults[names(pando_args)] <- NULL
+  call_args <- c(
+    defaults[setdiff(names(defaults), names(extra_args))],
+    extra_args
+  )
   if (identical(design$analysis_mode, "condition_grn")) {
     retired <- intersect(names(infer_args), c("method", "sample_col", "cv_block_col"))
     if (length(retired)) {
@@ -146,19 +150,21 @@ rc_regcompass_step_grn <- function(
     }
     infer_args$candidate_screen <- infer_args$candidate_screen %||% "motif_domain"
     infer_args$parallel <- FALSE
-    defaults$pando_infer_args <- infer_args
-    defaults$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
-    grn_result <- do.call(.rc_fit_condition_grns_by_cell_type, defaults)
+    call_args$pando_infer_args <- infer_args
+    call_args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
+    grn_result <- do.call(.rc_fit_condition_grns_by_cell_type, call_args)
   } else {
-    defaults$pando_infer_args <- infer_args
-    defaults$parallel <- isTRUE(parallel)
-    grn_result <- do.call(.rc_fit_standard_pando_by_cell_type, defaults)
+    call_args$pando_infer_args <- infer_args
+    call_args$parallel <- isTRUE(parallel)
+    grn_result <- do.call(.rc_fit_standard_pando_by_cell_type, call_args)
   }
   grn_result$analysis_mode <- design$analysis_mode
   grn_result$requested_condition_col <- design$requested_condition_col
   grn_result$effective_condition_col <- effective_condition_col
   grn_result$condition_levels <- design$condition_levels
   grn_result$fallback_reason <- design$fallback_reason
+  grn_result$rna_assay <- rna_assay
+  grn_result$atac_assay <- atac_assay
   answer <- list(
     grn_result = grn_result,
     gem_fingerprint = .rc_stage_gem_fingerprint(gem),
@@ -172,7 +178,7 @@ rc_regcompass_step_grn <- function(
       cell_type = cell_type,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
-      pando_args = c(pando_args, list(pando_infer_args = infer_args)),
+      pando_args = c(extra_args, list(pando_infer_args = infer_args)),
       parallel = parallel,
       species = species
     )
