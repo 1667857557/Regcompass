@@ -61,8 +61,11 @@ test_that("GRN and metacell stages share automatic design resolution", {
   metacell_text <- paste(
     deparse(body(rc_regcompass_step_metacells)), collapse = "\n"
   )
+  resolver_text <- paste(
+    deparse(body(.rc_resolve_condition_design)), collapse = "\n"
+  )
   expect_match(grn_text, ".rc_resolve_condition_design", fixed = TRUE)
   expect_match(metacell_text, ".rc_resolve_condition_design", fixed = TRUE)
-  expect_match(grn_text, '"standard_pando"', fixed = TRUE)
-  expect_match(grn_text, '"condition_grn"', fixed = TRUE)
+  expect_match(resolver_text, '"standard_pando"', fixed = TRUE)
+  expect_match(resolver_text, '"condition_grn"', fixed = TRUE)
 })
