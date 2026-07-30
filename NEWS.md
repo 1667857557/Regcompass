@@ -1,3 +1,26 @@
+# RegCompassR 2.2.1
+
+- Restored the documented biological medium scenarios `normal_human_plasma`,
+  `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`,
+  `low_lactate`, and `low_glutamine`, with explicit published background and
+  challenge provenance.
+- Culture challenges now retain the nutrients of a published RPMI, DMEM, or
+  plasma-like basal environment and override only the named glucose, lactate,
+  or glutamine concentration. Outputs record background and challenge citations
+  separately and mark the construction as
+  `published_background_plus_named_nutrient_override`.
+- Corrected `low_glutamine` to the Methods-defined 0.5 mM condition from Visagie
+  et al. rather than the prior 0.05 mM value.
+- Retained reaction-level and metabolite-level user-defined media through
+  `scenario = "custom"` or `scenario = NULL`, including mixed built-in and
+  custom scenario runs.
+- Kept technical GEM boundary modes out of the public biological-medium
+  interface. Human and mouse workflows now default explicitly to
+  `normal_human_plasma` and `mouse_plasma`, respectively.
+- Preserved the runnable minimal workflow at the beginning of `README.md` and
+  synchronized Tutorials 1, 2, and 5, the workflow vignette, public API index,
+  generated help, and medium regression tests.
+
 # RegCompassR 2.2.0
 
 - Made `condition_full_oof` the primary regulatory and metabolic penalty route.
