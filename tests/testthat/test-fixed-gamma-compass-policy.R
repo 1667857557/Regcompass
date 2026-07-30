@@ -132,7 +132,7 @@ test_that("condition Layer 1 records condition-full structural-zero policy", {
   )
   expect_match(body_text, "condition_full_oof", fixed = TRUE)
   expect_match(body_text, "gene_projection_condition_unique_oof", fixed = TRUE)
-  expect_match(body_text, "structural_zero_by_condition", fixed = TRUE)
+  expect_match(body_text, "nonestimable_projection_policy", fixed = TRUE)
   expect_match(body_text, "condition_grn", fixed = TRUE)
   expect_match(body_text, "standard_pando", fixed = TRUE)
 })
