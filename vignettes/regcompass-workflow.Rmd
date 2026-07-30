@@ -108,11 +108,18 @@ low_glutamine
 custom
 ```
 
-The five challenge scenarios retain a published RPMI, DMEM, or plasma-like
-nutrient background and override only the named glucose, lactate, or glutamine
-concentration. Their output separates `background_reference_doi` from
-`challenge_reference_doi` and records
-`published_background_plus_named_nutrient_override` in
+Human composition is anchored to HPLM from *Cell* 2017 and updated HPLM from
+*Cell Metabolism* 2021. Plasmax from *Science Advances* 2019 is retained as an
+independent validation source and is not numerically averaged with HPLM. Mouse
+composition is anchored to absolute plasma and interstitial-fluid metabolomics
+in *Nature* 2026.
+
+All five challenge scenarios use
+`medium_background_id = authoritative_HPLM_2017_2021` and override only the
+named glucose, lactate, or glutamine concentration. Their output separates
+`background_reference_doi`, `background_validation_reference_doi`, and
+`challenge_reference_doi`, and records
+`authoritative_HPLM_background_plus_named_nutrient_override` in
 `scenario_construction`. User-defined `custom_medium` and `custom_metabolites`
 remain supported through `scenario = "custom"` or `scenario = NULL`.
 
