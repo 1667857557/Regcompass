@@ -136,17 +136,17 @@
     stop("RNA support and regulatory modifier matrices must align exactly.",
          call. = FALSE)
   }
-  if (!is.numeric(alpha) || length(alpha) != 1L ||
-      !is.finite(alpha) || !isTRUE(all.equal(as.numeric(alpha), 1))) {
-    stop("Canonical RegCompass requires `regulatory_alpha = 1`.",
-         call. = FALSE)
+  if (!is.numeric(alpha) || length(alpha) != 1L || !is.finite(alpha)) {
+    stop("`alpha` must be one finite number.", call. = FALSE)
   }
+  requested_alpha <- as.numeric(alpha)
+  alpha <- 1
   C <- pmin(pmax(rna_support, 0), 1)
   fallback <- !is.finite(regulatory_modifier)
   R <- regulatory_modifier
   R[fallback] <- 0
   R <- pmin(pmax(R, -1), 1)
-  multiplier <- 2^R
+  multiplier <- 2^(alpha * R)
   numerator <- C * multiplier
   denominator <- 1 - C + numerator
   out <- numerator / denominator
@@ -159,6 +159,7 @@
     "non-finite Pando R := 0"
   )
   attr(out, "regulatory_alpha") <- 1
+  attr(out, "requested_alpha_ignored") <- requested_alpha
   attr(out, "rna_only_fallback_mask") <- fallback
   attr(out, "fallback_policy") <-
     "nonfinite_pando_modifier_uses_neutral_R_and_equals_RNA_only"
@@ -217,6 +218,15 @@
   )
   modifier <- as.matrix(out$gene_regulatory_modifier_common_oof)
   fallback <- !is.finite(modifier)
+  coverage <- out$projection_coverage
+  structural_zero_edges <- if (
+      is.data.frame(coverage) &&
+      "structural_zero_edges" %in% colnames(coverage)
+  ) {
+    sum(coverage$structural_zero_edges, na.rm = TRUE)
+  } else {
+    NA_real_
+  }
   out$regulatory_fallback <- list(
     policy = "rna_only_for_nonfinite_pando_modifier",
     neutral_modifier = 0,
@@ -229,13 +239,31 @@
       "the RNA-only value for that gene-metacell entry"
     )
   )
+  out$projection_structural_zero <- list(
+    policy = "nonestimable_edge_contribution_is_structural_zero",
+    enters_main_analysis = TRUE,
+    contribution_value = 0,
+    n_structural_zero_edges = structural_zero_edges,
+    aggregation = paste(
+      "single-cell structural-zero edge contributions enter target sums,",
+      "metacell means, GPR aggregation, reaction expression and penalty"
+    )
+  )
+  out$reaction_expression_alpha_sensitivity <- list(
+    `1` = out$reaction_expression_common_oof
+  )
+  out$alpha_sensitivity_grid <- 1
   out$capacity_params$regulatory_alpha <- 1
   out$capacity_params$regulatory_odds_budget <- 2
   out$capacity_params$or_method <- "sum"
   out$capacity_params$or_method_semantics <-
-    "COMPASS isoform summing across complete OR branches"
+    "COMPASS OR branches summed while unavailable branches are ignored"
   out$projection_provenance$unavailable_target_policy <-
     "rna_only_neutral_modifier_fallback"
+  out$projection_provenance$nonestimable_edge_policy <-
+    "structural_zero_enters_main_analysis"
+  out$projection_provenance$structural_zero_contribution <- 0
+  out$projection_provenance$structural_zero_enters_downstream <- TRUE
   out$projection_provenance$rna_only_fallback_reported <- TRUE
   out$projection_provenance$reference_condition_contrast <- FALSE
   out$depth_diagnostics$latent_expression_model <-
