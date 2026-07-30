@@ -29,5 +29,5 @@ test_that("stepwise tutorial defines portable BiocParallel backends", {
   missing <- required[!vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
   )]
-  expect_length(missing, 0L, info = paste("Missing tutorial entries:", paste(missing, collapse = ", ")))
+  expect_length(missing, 0L)
 })
