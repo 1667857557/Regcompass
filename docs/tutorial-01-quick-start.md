@@ -132,6 +132,7 @@ result$reaction_ranking
 result$condition_contrast
 ```
 
-Use [Tutorial 2](tutorial-02-stepwise-audit.md) for restartable stages and
-[Tutorial 4](tutorial-04-condition-differential-analysis.md) for condition
-statistics.
+Use [Tutorial 2](tutorial-02-stepwise-audit.md) for restartable stages,
+[Tutorial 4](tutorial-04-targeted-reaction-remapping.md) for targeted reaction
+extension, and [Tutorial 5](tutorial-05-condition-differential-analysis.md) for
+condition statistics.
