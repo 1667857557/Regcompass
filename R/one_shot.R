@@ -5,6 +5,10 @@
 #' independent graph per broad cell type while all conditions of that cell type
 #' are embedded jointly and split only after graph clustering.
 #'
+#' Human runs use the publication-bound `"cantor2017_hplm"` scenario when both
+#' `medium_scenario` and `medium_scenarios` are omitted. Mouse runs have no
+#' partial built-in medium and must supply a DOI-cited `medium_scenarios` table.
+#'
 #' @param object A paired-cell Seurat RNA+ATAC object.
 #' @param outdir Persistent output directory.
 #' @param genome Genome object matching the selected species, ATAC coordinates,
@@ -16,8 +20,9 @@
 #' @param pfm Optional motif collection. Pando's bundled motifs are used when
 #'   omitted.
 #' @param fragment_files Must be `FALSE` for the canonical peak-count path.
-#' @param medium_scenario Medium preset used when `medium_scenarios` is omitted.
-#' @param medium_scenarios Optional prebuilt medium table.
+#' @param medium_scenario Optional publication-bound built-in scenario. The only
+#'   current value is `"cantor2017_hplm"` for Human-GEM.
+#' @param medium_scenarios Optional prebuilt DOI-cited medium table.
 #' @param progress Show stage and total progress.
 #' @param ... Arguments passed to [rc_run_regcompass()].
 #' @return A complete RegCompass result.
@@ -30,7 +35,7 @@ rc_run_regcompass_one_shot <- function(
     gem_source = c("auto", "bundled", "download"),
     pfm = NULL,
     fragment_files = FALSE,
-    medium_scenario = "physiologic",
+    medium_scenario = NULL,
     medium_scenarios = NULL,
     progress = getOption("RegCompassR.progress", TRUE),
     ...) {
@@ -49,8 +54,21 @@ rc_run_regcompass_one_shot <- function(
     species <- .rc_infer_gem_species(gem, species)
   }
   if (is.null(medium_scenarios)) {
+    if (is.null(medium_scenario)) {
+      if (identical(species, "human")) {
+        medium_scenario <- "cantor2017_hplm"
+      } else {
+        stop(
+          "Mouse one-shot runs require an explicit DOI-cited ",
+          "`medium_scenarios` table; no partial mouse-plasma preset is retained.",
+          call. = FALSE
+        )
+      }
+    }
     medium_scenarios <- rc_make_medium_scenarios(
-      gem = gem, scenario = medium_scenario, species = species
+      gem = gem,
+      scenario = medium_scenario,
+      species = species
     )
   }
   rc_run_regcompass(
