@@ -2,18 +2,18 @@
 % Please edit documentation in R/regcompass.R
 \name{rc_run_regcompass}
 \alias{rc_run_regcompass}
-\title{Run the complete RegCompass workflow}
+\title{Run RegCompass with automatic Pando mode selection}
 \usage{
 rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
-  cell_type = NULL,
-  rna_assay = "RNA", atac_assay = "ATAC", pando_args = list(),
-  fragment_files = FALSE, metacell_args = list(),
-  meta_module_args = list(), layer1_args = list(),
-  medium_scenarios = NULL,
-  model_mode = c("meta_module_gem", "full_gem"), layer2_args = list(),
-  upstream_workers = 6L, layer2_workers = 30L,
+  cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
+  pando_args = list(), fragment_files = FALSE,
+  metacell_args = list(), meta_module_args = list(),
+  layer1_args = list(), medium_scenarios = NULL,
+  model_mode = c("meta_module_gem", "full_gem"),
+  layer2_args = list(), upstream_workers = 6L,
+  layer2_workers = 30L,
   progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
@@ -22,37 +22,45 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{outdir}{Persistent workflow output directory.}
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
 \item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
-\item{species}{Model species or \code{"auto"}. Mouse runs require build-matched regulatory regions.}
-\item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
-\item{cell_type}{Optional broad-cell-type labels.}
+\item{species}{Model species or \code{"auto"}.}
+\item{condition_col}{Optional condition metadata column. Omitted, absent, or single-level conditions select standard Pando.}
+\item{celltype_col}{Broad-cell-type metadata column.}
+\item{cell_type}{Optional broad-cell-type labels to process.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"} and consumes absolute condition coefficients.}
-\item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
-\item{metacell_args}{Stage 2 reductions, dimensions, fixed gamma (default 30), seed, thresholds, and cache controls.}
+\item{pando_args}{Stage 1 controls. Nested \code{pando_infer_args} are passed to the selected Pando route.}
+\item{fragment_files}{Must be \code{FALSE} for the native count-assay metacell path.}
+\item{metacell_args}{Native SuperCell reductions, dimensions, gamma, seed, and graph controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
-\item{layer1_args}{Stage 4 controls. \code{projection_component} must be \code{"condition"} and \code{regulatory_alpha = 1}.}
-\item{medium_scenarios}{Condition-invariant medium table.}
-\item{model_mode}{Build a shared model from the reaction catalogue or use the full GEM.}
+\item{layer1_args}{Stage 4 projection, GPR, and half-saturation controls. \code{regulatory_alpha} is fixed at 1.}
+\item{medium_scenarios}{Shared medium table.}
+\item{model_mode}{Build a shared catalogue-derived model or use the full GEM.}
 \item{layer2_args}{Directional scoring and model-completion controls.}
 \item{upstream_workers}{Worker count for Stage 1 and Stage 4.}
 \item{layer2_workers}{Worker count for Stage 5.}
 \item{progress}{Display workflow and stage progress.}
 }
 \value{
-A validated complete RegCompass result containing stage outputs, reaction
-rankings, downstream metabolic condition comparisons, and provenance.
+A complete RegCompass result. \code{analysis_mode} is \code{"condition_grn"}
+or \code{"standard_pando"}; \code{condition_coefficients_calculated} reports
+whether condition coefficients were fitted.
 }
 \description{
-Runs the six-stage RegCompassR 2.1.0 workflow.
+Runs the six-stage RegCompass workflow with automatic GRN routing and native
+SuperCell condition/cell-type inputs.
 }
 \details{
-Stage 1 fits Pando ConditionGRNFit v5 models with absolute condition effects.
-Stage 2 constructs fixed-gamma condition by broad cell type SuperCells without
-depth-dependent gamma or top-1-percent rejection. Stage 3 builds supported
-metabolic genes and the merged reaction catalogue. Stage 4 estimates RNA priors
-by cell type, treats non-estimable edge contributions as structural zero, uses
-an RNA-only fallback for unavailable target modifiers, fixes
-\code{regulatory_alpha = 1}, and applies COMPASS GPR/penalty semantics. Stage 5
-builds one shared model per medium and scores reaction directions. Stage 6
-assembles results.
+Two or more condition levels use the canonical unversioned Pando condition fit
+and outer-heldout common-support projections. One or zero usable condition
+levels use original \code{Pando::infer_grn()} within each broad cell type and do
+not calculate condition coefficients.
+
+Stage 2 calls \code{SuperCell::SCimplify_from_embedding()} with broad cell type
+as \code{cell.annotation} and condition as \code{cell.split.condition}. No
+concatenated condition-by-cell-type metadata field is created.
+
+Both Pando routes then use cell-first TF-by-ATAC projection, exact SuperCell
+membership, cell-type RNA latent-expression priors, GPR reaction expression,
+COMPASS-like penalties, and one shared medium-specific metabolic model. A
+single-condition result contains reaction rankings and an empty condition
+contrast.
 }
