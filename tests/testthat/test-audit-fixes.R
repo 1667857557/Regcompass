@@ -1,19 +1,18 @@
-test_that("missing and explicit zero expression have distinct availability", {
-  expression <- matrix(c(NA_real_, 0, 0.5, 4), nrow = 4,
-    dimnames = list(c("missing", "zero", "low", "high"), "u1"))
+test_that("missing expression receives the COMPASS maximum expression penalty", {
+  expression <- matrix(
+    c(NA_real_, 0, 0.5, 4),
+    nrow = 4,
+    dimnames = list(c("missing", "zero", "low", "high"), "u1")
+  )
   out <- rc_compute_multiome_penalty(expression)
-  expect_true(is.na(out$penalty["missing", "u1"]))
+  expect_equal(out$penalty["missing", "u1"], 1)
   expect_equal(out$penalty["zero", "u1"], 1)
-  expect_true(is.na(
-    out$components$effective_reaction_expression["missing", "u1"]
-  ))
+  expect_equal(
+    out$components$effective_reaction_expression["missing", "u1"], 0
+  )
   expect_true(out$components$missing_expression_flag["missing", "u1"])
   expect_false(out$components$missing_expression_flag["zero", "u1"])
   expect_true(all(out$penalty[c("low", "high"), "u1"] < 1))
-  expect_error(
-    rc_compute_multiome_penalty(expression, missing_penalty = 2),
-    "unused argument"
-  )
 })
 
 test_that("GPR diagnostics require at least one complete isozyme group", {
@@ -27,15 +26,28 @@ test_that("GPR diagnostics require at least one complete isozyme group", {
 })
 
 test_that("parallel helper rejects logical TRUE as BPPARAM", {
-  expect_error(rc_parallel_lapply(1:2, identity, BPPARAM = TRUE), "logical TRUE is not valid")
-  expect_equal(unlist(rc_parallel_lapply(1:2, identity, BPPARAM = FALSE)), 1:2)
+  expect_error(
+    rc_parallel_lapply(1:2, identity, BPPARAM = TRUE),
+    "logical TRUE is not valid"
+  )
+  expect_equal(
+    unlist(rc_parallel_lapply(1:2, identity, BPPARAM = FALSE)), 1:2
+  )
 })
 
 test_that("zero-count ATAC features are removed by default", {
-  rna <- Matrix::Matrix(matrix(c(1, 2, 3, 4), nrow = 2,
-    dimnames = list(c("g1", "g2"), c("c1", "c2"))), sparse = TRUE)
-  atac <- Matrix::Matrix(matrix(c(0, 0, 1, 2), nrow = 2, byrow = TRUE,
-    dimnames = list(c("p0", "p1"), c("c1", "c2"))), sparse = TRUE)
+  rna <- Matrix::Matrix(
+    matrix(
+      c(1, 2, 3, 4), nrow = 2,
+      dimnames = list(c("g1", "g2"), c("c1", "c2"))
+    ), sparse = TRUE
+  )
+  atac <- Matrix::Matrix(
+    matrix(
+      c(0, 0, 1, 2), nrow = 2, byrow = TRUE,
+      dimnames = list(c("p0", "p1"), c("c1", "c2"))
+    ), sparse = TRUE
+  )
   object <- SeuratObject::CreateSeuratObject(counts = rna)
   object[["ATAC"]] <- SeuratObject::CreateAssayObject(counts = atac)
   filtered <- .rc_drop_zero_count_atac_features(object, "ATAC")
@@ -45,22 +57,19 @@ test_that("zero-count ATAC features are removed by default", {
   expect_equal(filtered$diagnostics$n_retained_peaks, 1)
 })
 
-test_that("condition-by-cell-type pool identifiers do not use sample labels", {
-  first <- data.frame(sample_id = c("s1", "s2"), condition = c("A", "B"))
-  second <- first
-  second$sample_id <- rev(second$sample_id)
-  expect_identical(
-    .rc_condition_celltype_pool_col(first),
-    .rc_condition_celltype_pool_col(second)
-  )
-})
-
-test_that("canonical metacell APIs exclude sample balancing", {
-  expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
+test_that("native metacell APIs exclude sample balancing and combined strata", {
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
   expect_false("sample_col" %in% names(formals(rc_run_regcompass)))
-  wrapper_text <- paste(deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n")
-  expect_match(wrapper_text, ".rc_condition_celltype_pool_col", fixed = TRUE)
-  expect_match(wrapper_text, "supercell_stratum_col", fixed = TRUE)
+  wrapper_text <- paste(
+    deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
+  )
+  native_text <- paste(
+    deparse(body(.rc_native_supercell_membership)), collapse = "\n"
+  )
+  expect_match(native_text, "cell.annotation", fixed = TRUE)
+  expect_match(native_text, "cell.split.condition", fixed = TRUE)
+  expect_false(grepl("supercell_stratum_col", wrapper_text, fixed = TRUE))
+  expect_false(grepl(".rc_condition_celltype_pool_col", wrapper_text, fixed = TRUE))
   expect_false(grepl(".rc_balance_condition_celltype_cells", wrapper_text, fixed = TRUE))
 })
 
@@ -71,10 +80,17 @@ test_that("retired inference-unit compatibility path is absent", {
 })
 
 test_that("parallel contracts apply to GRN, Layer 1 and Layer 2", {
-  for (fun in list(rc_regcompass_step_grn, rc_regcompass_step_layer1, rc_regcompass_step_layer2)) {
+  for (fun in list(
+    rc_regcompass_step_grn,
+    rc_regcompass_step_layer1,
+    rc_regcompass_step_layer2
+  )) {
     f <- formals(fun)
     expect_identical(eval(f$parallel), TRUE)
     expect_null(eval(f$BPPARAM))
   }
-  expect_false(any(c("parallel", "BPPARAM") %in% names(formals(rc_regcompass_step_meta_modules))))
+  expect_false(any(
+    c("parallel", "BPPARAM") %in%
+      names(formals(rc_regcompass_step_meta_modules))
+  ))
 })
