@@ -143,7 +143,7 @@ same primary evidence scale as the original Stage 5 targets.
 | Function | Purpose |
 |---|---|
 | `rc_prepare_gem()` | Load and validate a pinned Human-GEM or Mouse-GEM. |
-| `rc_make_medium_scenarios()` | Build literature-backed plasma or culture-challenge scenarios and user-defined exchange bounds. |
+| `rc_make_medium_scenarios()` | Build authoritative-journal plasma or culture-challenge scenarios and user-defined exchange bounds. |
 | `rc_build_reaction_annotations()` | Build reaction names, formulas, GPRs and cross-references. |
 | `rc_attach_reaction_annotations()` | Attach annotations to an existing result. |
 
@@ -160,12 +160,22 @@ low_glutamine
 custom
 ```
 
-The five challenge scenarios retain nutrients from a published basal culture
-background and override only the named target concentration. Their output stores
-`background_reference_doi`, `challenge_reference_doi`, and
-`scenario_construction`. Users may supply reaction-level `custom_medium` or
-metabolite-level `custom_metabolites` with `scenario = "custom"` or
-`scenario = NULL`. Technical GEM boundary modes are not biological scenarios.
+Human composition uses HPLM from *Cell* 2017 and updated HPLM from *Cell
+Metabolism* 2021. Plasmax from *Science Advances* 2019 is an independent
+validation source and is not numerically averaged with HPLM. Mouse composition
+is anchored to absolute mouse plasma and interstitial-fluid metabolomics in
+*Nature* 2026.
+
+All five challenges use `medium_background_id = authoritative_HPLM_2017_2021`
+and override only the named nutrient. Their construction is
+`authoritative_HPLM_background_plus_named_nutrient_override`. Output provenance
+includes `background_reference_doi`, `background_validation_reference_doi`,
+`challenge_reference_doi`, and `scenario_construction`.
+
+Users may supply reaction-level `custom_medium` or metabolite-level
+`custom_metabolites` with `scenario = "custom"` or `scenario = NULL`. Technical
+GEM boundary modes are not biological scenarios. The medium policy is
+`authoritative_journal_composition_with_explicit_overrides`.
 
 ## Condition analysis
 
