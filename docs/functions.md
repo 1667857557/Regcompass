@@ -1,7 +1,8 @@
 # RegCompassR public API
 
-See [Workflow](workflow.md), [run modes](run-modes-and-stepwise-workflow.md), and
-[stage contracts](stage-interface-contracts.md).
+See [Workflow](workflow.md), [run modes](run-modes-and-stepwise-workflow.md),
+[stage contracts](stage-interface-contracts.md), and the
+[metacell graph contract](metacell-graph-contract.md).
 
 ## Complete workflows
 
@@ -18,7 +19,7 @@ multi-level. The selected route is returned in `result$analysis_mode`.
 | Stage | Function | Main output |
 |---:|---|---|
 | 1 | `rc_regcompass_step_grn()` | standard Pando networks or canonical condition-aware fits |
-| 2 | `rc_regcompass_step_metacells()` | native SuperCell membership and aggregated RNA/ATAC counts |
+| 2 | `rc_regcompass_step_metacells()` | cell-type-independent graphs, condition-pure membership, and aggregated RNA/ATAC counts |
 | 3 | `rc_regcompass_step_meta_modules()` | supported genes, complete-GPR cores, reaction catalogue |
 | 4 | `rc_regcompass_step_layer1()` | RNA support, regulatory projection, GPR reaction expression |
 | 5 | `rc_regcompass_step_layer2()` | shared medium-specific models and directional LP scores |
@@ -64,7 +65,7 @@ step1$grn_result$condition_grn_fits       # condition mode
 step1$grn_result$tf_peak_gene_condition
 ```
 
-## Stage 2 native SuperCell arguments
+## Stage 2 SuperCell graph arguments
 
 ```r
 metacell_args = list(
@@ -78,15 +79,24 @@ metacell_args = list(
 )
 ```
 
-RegCompass calls `SuperCell::SCimplify_from_embedding()` with:
+RegCompass constructs a cell-type-specific multimodal embedding and calls
+`SuperCell::SCimplify_by_graph_group_from_embedding()` with:
 
 ```text
-cell.annotation = broad cell type
+cell.graph.group = broad cell type
 cell.split.condition = condition or NULL
 ```
 
-It does not expose or construct a combined stratum column. Cache provenance is
-stored in `step2$pooled$cache_contract`.
+`cell.graph.group` creates one independent kNN graph per cell type.
+`cell.split.condition` acts only after graph clustering, so all conditions share
+the cell-type graph but final metacells remain condition-pure. Embedding blocks
+are standardized within cell type across all conditions and divided by the
+square root of their dimension count before concatenation.
+
+It does not use `sample`, expose a combined stratum column, or build separate
+condition graphs. Cache provenance is stored in
+`step2$pooled$cache_contract`; the complete formal contract is stored in
+`step2$pooled$input_design`.
 
 ## Stage 4 regulatory support
 
