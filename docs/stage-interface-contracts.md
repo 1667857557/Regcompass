@@ -27,15 +27,15 @@ coefficients; only groups with active supported target genes can contribute
 complete-GPR cores. `target_metabolic_genes` is the intersection of GEM GPR
 genes and RNA-assay row names.
 
-The complete fit contract must use Pando 1.5.0
-`pando_condition_grn_fit_v5`, the
+The complete Pando 1.5.0 fit contract uses the single stable schema identifier
+`pando_condition_grn_fit`. Version-suffixed schemas such as
+`pando_condition_grn_fit_v4` and `pando_condition_grn_fit_v5` are rejected.
+Each broad cell type uses the
 `condition_sparse_within_cell_type_oof_refit` engine with nested cross-fitting,
-training-only
-equal-condition transforms, one explicit `reference_condition`, aligned
-`beta`, `contrast`, `eligibility_mask`, and common-support projection
-matrices, exactly-once OOF assignment, and stored outer/inner fold provenance.
-The full-fit contrast must equal `beta_condition - beta_reference`, but it is
-interpretation-only and cannot enter Layer 1 penalties.
+training-only equal-condition transforms, aligned absolute-condition
+coefficients and estimability/support matrices, exactly-once OOF assignment,
+and stored outer/inner fold provenance. No reference-condition coefficient,
+stored reference contrast, or comparison mask enters RegCompass.
 
 When `pfm` is omitted, `pando_motifs` records `Pando::motifs`, loaded with `data("motifs", package = "Pando")`. Without an explicit `pando_initiate_args$regions`, the region contract is species-specific:
 
@@ -64,7 +64,9 @@ The merged metacell object and metadata must contain the same ordered units. Red
 
 Cells are hard-stratified by condition × broad cell type. User sample metadata
 do not enter selection, weighting, grouping, stability selection, or model
-refitting.
+refitting. One fixed gamma is used across all strata; the canonical default is
+30. RNA/ATAC high-depth cells are retained and reported diagnostically rather
+than rejected.
 
 ## Stage 3: biological meta-modules
 
@@ -124,10 +126,14 @@ step4$gem_fingerprint
 
 The reaction-expression matrix must contain every merged core reaction and the same ordered metacells represented by Stage 2.
 
-The gene-level modifier must be reconstructed from the stored Pando transform
-of metacell `TF RNA × peak ATAC` and the explicit reference contrast. Layer 1
-must not refit the GRN, use the Universal row mean as a baseline, or normalize
-condition effects by their absolute sum.
+The target-level regulatory modifier is reconstructed from stored Pando
+outer-heldout single-cell projections and exact SuperCell membership, then
+aggregated within condition × broad cell type. Layer 1 must not refit the GRN,
+recompute TF×ATAC from metacell means, use a reference contrast, use the
+Universal row mean as a baseline, or normalize condition effects by their
+absolute sum. Non-estimable edge contributions are structural zeros. When a
+target-level modifier is unavailable, support falls back exactly to RNA-only
+and the fallback is annotated.
 
 `capacity_params$and_method` must be one of:
 
@@ -135,7 +141,7 @@ condition effects by their absolute sum.
 c("min", "median", "mean")
 ```
 
-The canonical default is `"min"`.
+The canonical default is `"min"`. `regulatory_alpha` is fixed at `1`.
 
 ## Stage 5: Layer 2
 
@@ -187,6 +193,11 @@ completion_stage = single_global_fastcore_after_meta_module_merge
 
 All conditions and metacells within the same medium must resolve to the same model file. Different media may resolve to different union-GEM structures because their global FASTCORE support sets may differ.
 
+GPR aggregation follows COMPASS semantics: OR isozyme branches are summed while
+missing branches are ignored; AND behavior follows the selected `and_method`.
+A missing final reaction expression is set to zero before conversion to the
+expression-linked penalty and therefore receives penalty `1`.
+
 ## Stage 6: results
 
 The final result contains:
@@ -205,7 +216,7 @@ result$condition_summary
 result$condition_contrast
 ```
 
-`merged_grn_meta_modules` is the Stage 3 catalogue. `microcompass$model_cache_summary` identifies the final Stage 5 union GEMs.
+`merged_grn_meta_modules` is the Stage 3 catalogue. `microcompass$model_cache_summary` identifies the final Stage 5 union GEMs. `condition_contrast` is a downstream metabolic comparison and is unrelated to a Pando reference-condition contrast.
 
 ## Global FASTCORE configuration
 
