@@ -24,7 +24,7 @@ rc_expect_doc_terms <- function(text, required) {
   expect_length(missing, 0L)
 }
 
-test_that("workflow vignette exposes both Pando modes", {
+test_that("workflow vignette exposes both Pando modes and graph scope", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   path <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
@@ -40,8 +40,10 @@ test_that("workflow vignette exposes both Pando modes", {
     '"standard_pando"',
     "Pando::infer_grn()",
     "pando_condition_grn_fit",
-    "cell.annotation",
+    "cell.graph.group",
     "cell.split.condition",
+    "one_independent_graph_per_cell_type",
+    "all_conditions_joint_within_cell_type_graph",
     "gamma = 30L",
     "regulatory_alpha = 1",
     'gpr_and_method = "min"',
@@ -56,7 +58,7 @@ test_that("workflow vignette exposes both Pando modes", {
   rc_expect_doc_terms(text, required)
 })
 
-test_that("vignette rejects removed runtime architecture", {
+test_that("vignette rejects removed runtime and graph architecture", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   text <- rc_read_doc(file.path(root, "vignettes", "regcompass-workflow.Rmd"))
@@ -65,6 +67,7 @@ test_that("vignette rejects removed runtime architecture", {
     "reference_condition",
     "regulatory_alpha = 0.5",
     "supercell_stratum_col",
+    "cell.annotation",
     "zzz00_absolute_pando_contract",
     "zzz04_canonical_pando_fit_schema"
   )
@@ -82,6 +85,7 @@ test_that("primary documentation agrees on enforced arguments", {
     file.path(root, "docs", "functions.md"),
     file.path(root, "docs", "stage-interface-contracts.md"),
     file.path(root, "docs", "condition-comparable-grn.md"),
+    file.path(root, "docs", "metacell-graph-contract.md"),
     file.path(root, "vignettes", "regcompass-workflow.Rmd")
   )
   expect_true(all(file.exists(paths)))
@@ -92,8 +96,11 @@ test_that("primary documentation agrees on enforced arguments", {
     "condition_coefficients_calculated",
     "motif_domain",
     "outer-heldout",
-    "cell.annotation",
+    "SCimplify_by_graph_group_from_embedding",
+    "cell.graph.group",
     "cell.split.condition",
+    "one_independent_graph_per_cell_type",
+    "all_conditions_joint_within_cell_type_graph",
     "gamma = 30L",
     "regulatory_alpha = 1",
     "pairwise_common",
