@@ -80,39 +80,49 @@ test_that("Mouse-GEM GPR rules retain mouse symbols directly", {
   expect_false(any(grepl("ENSG", prepared$gpr_table$gene)))
 })
 
-test_that("literature media are complete catalogs rather than marker lists", {
-  human_plasma <- .rc_medium_catalog("normal_human_plasma", "human")
-  mouse_plasma <- .rc_medium_catalog("mouse_plasma", "mouse")
-  rpm <- .rc_medium_catalog("rpmi1640", "human")
-  dmem <- .rc_medium_catalog("dmem_high_glucose", "human")
-  expect_gte(nrow(human_plasma), 55)
-  expect_gte(nrow(mouse_plasma), 55)
-  expect_gte(nrow(rpm), 40)
-  expect_gte(nrow(dmem), 30)
-  expect_true(all(c(
-    "glucose", "glutamine", "leucine", "methionine", "tryptophan",
-    "choline", "folate", "thiamine", "sodium", "potassium",
-    "chloride", "bicarbonate", "phosphate", "oxygen", "water"
-  ) %in% rpm$metabolite_name))
-  expect_true(all(c(
-    "glucose", "glutamine", "leucine", "methionine", "tryptophan",
-    "choline", "folate", "thiamine", "sodium", "calcium",
-    "magnesium", "chloride", "bicarbonate", "phosphate", "oxygen",
-    "water"
-  ) %in% dmem$metabolite_name))
+test_that("the built-in published medium is explicitly human-only", {
+  human <- rc_make_medium_scenarios(
+    make_species_medium_gem("human"),
+    scenario = "cantor2017_hplm",
+    species = "human",
+    strict_preset_matching = FALSE
+  )
+  expect_true(all(human$medium_scenario_id == "cantor2017_hplm"))
+  expect_true(all(human$reference_doi == "10.1016/j.cell.2017.03.023"))
+  expect_identical(attr(human, "species"), "human")
+
+  expect_error(
+    rc_make_medium_scenarios(
+      make_species_medium_gem("mouse"),
+      scenario = "cantor2017_hplm",
+      species = "mouse",
+      strict_preset_matching = FALSE
+    ),
+    "requires a Human-GEM"
+  )
 })
 
-test_that("physiological default follows GEM species", {
-  human <- rc_make_medium_scenarios(
-    make_species_medium_gem("human"), strict_preset_matching = FALSE
+test_that("mouse media require DOI-cited custom rows", {
+  gem <- make_species_medium_gem("mouse")
+  custom <- data.frame(
+    medium_scenario_id = "published_mouse_medium",
+    exchange_reaction_id = "EX_glucose",
+    lb = -0.2,
+    ub = 1,
+    available = TRUE,
+    reference_label = "Author et al., Journal 2024",
+    reference_doi = "10.1234/example.mouse.2024",
+    stringsAsFactors = FALSE
   )
-  mouse <- rc_make_medium_scenarios(
-    make_species_medium_gem("mouse"), strict_preset_matching = FALSE
+  medium <- rc_make_medium_scenarios(
+    gem,
+    scenario = NULL,
+    species = "mouse",
+    custom_medium = custom
   )
-  expect_true(all(human$medium_scenario_id == "normal_human_plasma"))
-  expect_true(all(mouse$medium_scenario_id == "mouse_plasma"))
-  expect_identical(attr(human, "species"), "human")
-  expect_identical(attr(mouse, "species"), "mouse")
+  expect_equal(unique(medium$medium_scenario_id), "published_mouse_medium")
+  expect_equal(unique(medium$reference_doi), "10.1234/example.mouse.2024")
+  expect_identical(attr(medium, "species"), "mouse")
 })
 
 test_that("medium application never expands blocked GEM directions", {
