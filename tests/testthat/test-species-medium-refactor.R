@@ -97,6 +97,12 @@ test_that("human and mouse plasma presets are species restricted", {
   expect_true(all(mouse$medium_scenario_id == "mouse_plasma"))
   expect_identical(attr(human, "species"), "human")
   expect_identical(attr(mouse, "species"), "mouse")
+  expect_true(all(
+    human$medium_background_id == "authoritative_HPLM_2017_2021"
+  ))
+  expect_true(all(
+    mouse$medium_background_id == "Abbott_2026_Nature_mouse_plasma"
+  ))
 
   expect_error(
     rc_make_medium_scenarios(
@@ -118,7 +124,7 @@ test_that("human and mouse plasma presets are species restricted", {
   )
 })
 
-test_that("mouse plasma does not inherit human concentrations", {
+test_that("mouse plasma is Nature anchored and does not inherit human values", {
   mouse <- rc_make_medium_scenarios(
     make_species_medium_gem("mouse"),
     scenario = "mouse_plasma",
@@ -131,10 +137,18 @@ test_that("mouse plasma does not inherit human concentrations", {
   expect_equal(glucose$concentration_mM, 4.381)
   expect_equal(lactate$concentration_mM, 3.088)
   expect_equal(glutamine$concentration_mM, 0.934)
-  expect_true(all(grepl("10.1152/ajpcell.00452.2024", mouse$reference_doi,
-                        fixed = TRUE)))
-  expect_true(all(grepl("10.7554/eLife.44235", mouse$reference_doi,
-                        fixed = TRUE)))
+  expect_true(all(grepl(
+    "10.1038/s41586-025-09898-9", mouse$reference_doi, fixed = TRUE
+  )))
+  expect_true(all(grepl(
+    "10.1152/ajpcell.00452.2024", mouse$reference_doi, fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "10.7554/eLife.44235", mouse$reference_doi, fixed = TRUE
+  )))
+  expect_false(any(grepl(
+    "human|HPLM", mouse$concentration_basis, ignore.case = TRUE
+  )))
 })
 
 test_that("human culture challenges are rejected for Mouse-GEM", {
