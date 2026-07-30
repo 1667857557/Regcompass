@@ -43,7 +43,6 @@ step1 <- rc_regcompass_step_grn(
       candidate_screen = "motif_domain",
       condition_mix = 0.5,
       condition_weight = "equal",
-      reference_condition = "Control",
       outer_nfolds = 5L,
       inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
@@ -62,17 +61,17 @@ step1$params$pando_parallel
 step1$grn_result$condition_fit_status
 step1$grn_result$condition_grn_fits
 step1$grn_result$tf_peak_gene_condition
-step1$grn_result$tf_peak_gene_condition_effect
 step1$grn_result$normalization_policy
 ```
 
-The absolute condition table is used downstream. The reference-effect table is
-for interpretation. See [Pando condition contract](condition-comparable-grn.md).
+The absolute condition table is used downstream. No baseline-condition GRN
+contrast is stored or consumed. See
+[Pando condition contract](condition-comparable-grn.md).
 
 Mouse runs must supply build-matched regions through
 `pando_args$pando_initiate_args$regions`.
 
-## Stage 2: metacells
+## Stage 2: fixed-γ metacells
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -102,8 +101,13 @@ Inspect:
 step2$pooled$metacell_meta
 step2$pooled$membership
 step2$pooled$stratum_status
+step2$pooled$construction_policy
 step2$pooled$cache_contract$analysis_args
 ```
+
+Every condition × broad-cell-type stratum receives the same `gamma = 30L`.
+RNA/ATAC depth does not modify gamma. Top-1% depth cells are counted for QC only
+and do not trigger metacell rejection.
 
 Set `overwrite = TRUE` after changing cells, assays, reductions, dimensions,
 seed, gamma, or thresholds.
@@ -132,7 +136,7 @@ step3$merged_modules$merged_reaction_membership
 Stage 3 requires complete GPR support for core reactions, performs one ordered
 annotation expansion, and does not run FASTCORE.
 
-## Stage 4: reaction penalties
+## Stage 4: reaction expression and penalties
 
 ```r
 step4 <- rc_regcompass_step_layer1(
@@ -143,7 +147,7 @@ step4 <- rc_regcompass_step_layer1(
   outdir = "RegCompass_steps/04_layer1",
   projection_component = "condition",
   comparison_support = "auto",
-  regulatory_alpha = 0.5,
+  regulatory_alpha = 1,
   gpr_and_method = "min",
   parallel = TRUE,
   BPPARAM = upstream_bp
@@ -154,12 +158,22 @@ Inspect:
 
 ```r
 step4$capacity_params
-step4$evidence_formula
-step4$projection_diagnostics
+step4$projection_structural_zero
+step4$regulatory_fallback
+step4$reaction_support_contract
+step4$projection_coverage
 ```
 
-The primary route uses outer-heldout common-support target-gene scores. RNA-only,
-condition-full, depth, and alpha routes are sensitivity outputs.
+The RNA empirical-Bayes prior is estimated separately by broad cell type.
+Non-estimable edge contributions are structural zeros in the primary path and
+enter target sums, metacell means, GPR aggregation and penalties. A non-finite
+target modifier falls back exactly to RNA-only support. `regulatory_alpha = 1`
+is fixed.
+
+COMPASS GPR semantics are used: the selected AND method is applied within each
+complete complex and OR isozyme branches are summed while unavailable branches
+are ignored. Missing final reaction expression receives the maximum
+expression-linked penalty.
 
 ## Stage 5: shared model and LP scoring
 
@@ -222,6 +236,9 @@ result$condition_contrast
 result$reaction_comparison_by_metacell
 result$grn$normalization_policy
 ```
+
+`result$condition_contrast` is a downstream metabolic comparison between
+conditions, not a Pando coefficient contrast.
 
 ## Saved stage files
 
