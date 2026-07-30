@@ -2,26 +2,30 @@
 
 .RC_PANDO_CONDITION_GRN_FIT_SCHEMA <- "pando_condition_grn_fit"
 
-.rc_replace_pando_fit_schema_literal <- function(x) {
-  if (is.character(x)) {
-    x[x %in% c(
-      "pando_condition_grn_fit_v4",
-      "pando_condition_grn_fit_v5"
-    )] <- .RC_PANDO_CONDITION_GRN_FIT_SCHEMA
-    return(x)
-  }
-  if (is.call(x) || is.pairlist(x) || is.expression(x)) {
-    for (i in seq_along(x)) {
-      x[[i]] <- .rc_replace_pando_fit_schema_literal(x[[i]])
+.rc_schema_transform <- local({
+  old_schema <- c(
+    "pando_condition_grn_fit_v4",
+    "pando_condition_grn_fit_v5"
+  )
+  canonical_schema <- .RC_PANDO_CONDITION_GRN_FIT_SCHEMA
+  function(x) {
+    if (is.character(x)) {
+      x[x %in% old_schema] <- canonical_schema
+      return(x)
     }
+    if (is.call(x) || is.pairlist(x) || is.expression(x)) {
+      for (i in seq_along(x)) {
+        x[[i]] <- Recall(x[[i]])
+      }
+    }
+    x
   }
-  x
-}
+})
 
 .rc_schema_environment <- environment()
-.rc_schema_functions <- ls(
-  envir = .rc_schema_environment,
-  all.names = TRUE
+.rc_schema_functions <- setdiff(
+  ls(envir = .rc_schema_environment, all.names = TRUE),
+  c(".rc_schema_transform")
 )
 for (.rc_schema_name in .rc_schema_functions) {
   .rc_schema_value <- get(
@@ -30,7 +34,7 @@ for (.rc_schema_name in .rc_schema_functions) {
     inherits = FALSE
   )
   if (!is.function(.rc_schema_value)) next
-  body(.rc_schema_value) <- .rc_replace_pando_fit_schema_literal(
+  body(.rc_schema_value) <- .rc_schema_transform(
     body(.rc_schema_value)
   )
   assign(
@@ -71,5 +75,6 @@ rm(
   .rc_schema_environment,
   .rc_schema_functions,
   .rc_schema_name,
-  .rc_schema_value
+  .rc_schema_value,
+  .rc_schema_transform
 )
