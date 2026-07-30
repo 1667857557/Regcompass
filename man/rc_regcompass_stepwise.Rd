@@ -30,7 +30,7 @@ rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
 rc_regcompass_step_layer1(grn, metacells, meta_modules, gem, outdir,
   projection_component = "condition",
   comparison_support = c("auto", "pairwise_common", "global_common"),
-  regulatory_alpha = 0.5,
+  regulatory_alpha = 1,
   gpr_and_method = c("min", "median", "mean"),
   gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
   parallel = TRUE, BPPARAM = NULL,
@@ -55,13 +55,13 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"}; alternative candidate-screen values are rejected.}
-\item{metacell_args}{Stage 2 reductions, dimensions, gamma, seed, size thresholds, and cache controls.}
+\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"}; alternative candidate-screen values are rejected. Condition effects are absolute coefficients.}
+\item{metacell_args}{Stage 2 reductions, dimensions, fixed gamma (default 30), seed, size thresholds, and cache controls. Depth does not alter gamma and top-1-percent depth cells are diagnostic only.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{projection_component}{Must be \code{"condition"}.}
 \item{comparison_support}{\code{"auto"}, \code{"pairwise_common"}, or \code{"global_common"}.}
-\item{regulatory_alpha}{Strength of regulatory modification of RNA support.}
-\item{gpr_and_method}{GPR AND aggregation: \code{"min"}, \code{"median"}, or \code{"mean"}.}
+\item{regulatory_alpha}{Fixed at \code{1}. Other values are rejected.}
+\item{gpr_and_method}{GPR AND aggregation: \code{"min"}, \code{"median"}, or \code{"mean"}. COMPASS OR isozyme branches are summed.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
 \item{layer2_args}{Directional scoring and shared-model completion controls.}
 \item{parallel}{Enable stage parallel execution.}
@@ -77,15 +77,18 @@ Each function returns a validated stage object and writes its stage RDS to
 \code{outdir}.
 }
 \description{
-Runs the GRN, metacell, reaction-catalogue, reaction-penalty, metabolic-model,
+Runs the GRN, metacell, reaction-catalogue, reaction-expression, metabolic-model,
 and results stages independently.
 }
 \details{
-Stage 1 returns Pando ConditionGRNFit v5 objects and outer-heldout projections.
-Stage 2 constructs condition by broad cell type SuperCells. Stage 3 builds
-complete-GPR core reactions and the merged reaction catalogue. Stage 4 uses
-absolute-condition common-support projections; reference-condition effects are
-interpretation outputs. Stage 5 builds one shared model per medium and scores
-reaction directions. Stage 6 assembles rankings, annotations, provenance, and
-condition contrasts.
+Stage 1 returns Pando ConditionGRNFit v5 objects with absolute condition effects
+and outer-heldout projections. Stage 2 constructs fixed-gamma condition by broad
+cell type SuperCells. Stage 3 builds complete-GPR core reactions and the merged
+reaction catalogue. Stage 4 estimates the RNA prior by cell type, assigns a
+structural zero to every non-estimable edge contribution, uses an RNA-only
+fallback when the target modifier is unavailable, and applies
+\code{regulatory_alpha = 1}. Missing final reaction expression receives the
+maximum expression-linked penalty. Stage 5 builds one shared model per medium
+and scores reaction directions. Stage 6 assembles rankings, annotations,
+provenance, and downstream metabolic condition comparisons.
 }
