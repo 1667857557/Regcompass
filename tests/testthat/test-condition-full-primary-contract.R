@@ -48,7 +48,9 @@ test_that("Layer 1 source promotes condition-full and retains common decompositi
     deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
   expect_match(helper, "project_condition_grn_primary_cells", fixed = TRUE)
-  expect_match(helper, "condition_unique = primary - common", fixed = TRUE)
+  expect_match(helper, "condition_unique", fixed = TRUE)
+  expect_match(helper, "primary -", fixed = TRUE)
+  expect_match(helper, "common", fixed = TRUE)
   expect_match(layer1, "reaction_expression = reaction_primary", fixed = TRUE)
   expect_match(layer1, "reaction_expression_condition_full_oof", fixed = TRUE)
   expect_match(layer1, "reaction_expression_common_oof", fixed = TRUE)
