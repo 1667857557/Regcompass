@@ -1,26 +1,24 @@
-test_that("condition-metacell checkpoints require an identical cache contract", {
+test_that("native SuperCell checkpoints require an identical cache contract", {
   outdir <- tempfile("regcompass-metacell-cache-")
-  dir.create(file.path(outdir, "condition=A"), recursive = TRUE)
-  file.create(file.path(
-    outdir, "condition=A", "metacell_metadata.tsv.gz"
-  ))
-  file.create(file.path(outdir, "condition=A", "rna_counts.rds"))
-  file.create(file.path(outdir, "condition=A", "atac_counts.rds"))
+  dir.create(outdir, recursive = TRUE)
+  file.create(file.path(outdir, "metacell_metadata.tsv.gz"))
+  file.create(file.path(outdir, "membership.tsv.gz"))
+  file.create(file.path(outdir, "rna_counts.rds"))
+  file.create(file.path(outdir, "atac_counts.rds"))
+  file.create(file.path(outdir, "metacell_object.rds"))
 
   contract <- list(
-    schema_version = "regcompass_condition_metacell_cache_v1",
+    schema_version = "regcompass_native_supercell_metacell_cache_v1",
     condition_col = "condition",
     celltype_col = "cell_type",
     analysis_args = list(gamma = 30L)
   )
-
   expect_error(
     .rc_validate_condition_metacell_cache(
       outdir, contract, overwrite = FALSE
     ),
-    "predate the audited cache contract"
+    "different native SuperCell contract"
   )
-
   saveRDS(
     contract,
     file.path(outdir, "condition_metacell_cache_contract.rds")
@@ -28,14 +26,13 @@ test_that("condition-metacell checkpoints require an identical cache contract", 
   expect_true(.rc_validate_condition_metacell_cache(
     outdir, contract, overwrite = FALSE
   ))
-
   changed <- contract
   changed$analysis_args$gamma <- 31L
   expect_error(
     .rc_validate_condition_metacell_cache(
       outdir, changed, overwrite = FALSE
     ),
-    "different cells, labels, assay contents"
+    "different native SuperCell contract"
   )
   expect_false(.rc_validate_condition_metacell_cache(
     outdir, changed, overwrite = TRUE
@@ -53,56 +50,56 @@ test_that("matrix fingerprints detect value changes beyond marginal sums", {
   )
   first_fingerprint <- .rc_condition_metacell_matrix_fingerprint(first)
   second_fingerprint <- .rc_condition_metacell_matrix_fingerprint(second)
-  expect_identical(first_fingerprint$row_sums_md5,
-                   second_fingerprint$row_sums_md5)
-  expect_identical(first_fingerprint$col_sums_md5,
-                   second_fingerprint$col_sums_md5)
-  expect_false(identical(first_fingerprint$values_md5,
-                         second_fingerprint$values_md5))
+  expect_identical(
+    first_fingerprint$row_sums_md5,
+    second_fingerprint$row_sums_md5
+  )
+  expect_identical(
+    first_fingerprint$col_sums_md5,
+    second_fingerprint$col_sums_md5
+  )
+  expect_false(identical(
+    first_fingerprint$values_md5,
+    second_fingerprint$values_md5
+  ))
 })
 
-test_that("downstream stages reject legacy metacell provenance", {
+test_that("downstream stages require native SuperCell provenance", {
   params <- list(
     condition_col = "condition",
     celltype_col = "cell_type",
     rna_assay = "RNA",
     atac_assay = "ATAC",
+    analysis_mode = "condition_grn",
     metacell_args = list(gamma = 30L)
   )
   current <- structure(
     list(
       pooled = list(
         input_design = list(
-          condition_only_stratification = TRUE,
-          supercell_label_col = "cell_type",
-          celltype_assignment = paste(
-            "SuperCell2 label-guided construction followed by",
-            "dominant membership assignment"
-          ),
-          gamma = 30L
+          native_supercell_api = "SCimplify_from_embedding",
+          condition_argument = "cell.split.condition",
+          celltype_argument = "cell.annotation",
+          temporary_combined_stratum = FALSE
         ),
         cache_contract = list(
-          schema_version = "regcompass_condition_metacell_cache_v1",
+          schema_version = "regcompass_native_supercell_metacell_cache_v1",
           condition_col = "condition",
           celltype_col = "cell_type",
           rna_assay = "RNA",
-          atac_assay = "ATAC",
-          label_col = "cell_type",
-          analysis_args = list(gamma = 30L)
+          atac_assay = "ATAC"
         )
       ),
       params = params
     ),
     class = c("regcompass_metacell_step", "list")
   )
-
   expect_invisible(.rc_require_stage_class(
     current,
     "regcompass_metacell_step",
     "metacells",
     "rc_regcompass_step_metacells"
   ))
-
   legacy <- current
   legacy$pooled$cache_contract <- NULL
   expect_error(
@@ -112,7 +109,7 @@ test_that("downstream stages reject legacy metacell provenance", {
       "metacells",
       "rc_regcompass_step_metacells"
     ),
-    "legacy or incompatible metacell artifact"
+    "not a native SuperCell"
   )
 })
 
@@ -148,10 +145,11 @@ test_that("DESCRIPTION preserves the default v4 profile and supported majors", {
   )
 })
 
-test_that("the public function index identifies the current stepwise tutorial", {
+test_that("the public function index identifies automatic and stepwise modes", {
   path <- testthat::test_path("..", "..", "docs", "functions.md")
   text <- paste(readLines(path, warn = FALSE), collapse = "\n")
-  expect_match(text, "Level 2: stepwise workflow", fixed = TRUE)
-  expect_false(grepl("Level 2: true stepwise workflow", text, fixed = TRUE))
-  expect_false(grepl("Level 2: saved-stage audit", text, fixed = TRUE))
+  expect_match(text, "Complete workflows", fixed = TRUE)
+  expect_match(text, "Restartable stages", fixed = TRUE)
+  expect_match(text, "standard_pando", fixed = TRUE)
+  expect_match(text, "condition_grn", fixed = TRUE)
 })
