@@ -86,7 +86,9 @@
     stop("Layer 1 reaction expression requires unique reaction and unit IDs.",
          call. = FALSE)
   }
-  if (!is.data.frame(meta)) stop("Layer 1 `unit_meta` must be a data frame.", call. = FALSE)
+  if (!is.data.frame(meta)) {
+    stop("Layer 1 `unit_meta` must be a data frame.", call. = FALSE)
+  }
   id_col <- if ("pool_id" %in% colnames(meta)) "pool_id" else "unit_id"
   ids <- as.character(meta[[id_col]])
   if (anyNA(ids) || any(!nzchar(ids)) || anyDuplicated(ids) ||
@@ -108,17 +110,23 @@
     stop("Layer 1 analysis mode is invalid.", call. = FALSE)
   }
   required_gene_matrices <- c(
-    "gene_projection_common_oof", "gene_projection_condition_full_oof",
-    "gene_projection_scale", "gene_regulatory_reliability",
+    "gene_projection_condition_full_oof",
+    "gene_projection_common_oof",
+    "gene_projection_condition_unique_oof",
+    "gene_projection_scale",
+    "gene_regulatory_reliability",
     "gene_regulatory_reliability_available",
+    "gene_regulatory_modifier_condition_full_oof",
     "gene_regulatory_modifier_common_oof",
-    "gene_regulatory_modifier_condition_full_oof", "gene_support_rna",
-    "gene_support_common_oof", "gene_support_condition_full_oof"
+    "gene_support_rna",
+    "gene_support_condition_full_oof",
+    "gene_support_common_oof"
   )
-  reference <- layer1$gene_projection_common_oof
+  reference <- layer1$gene_projection_condition_full_oof
   if (!is.numeric(reference) || is.null(dim(reference)) ||
       !identical(colnames(reference), ids)) {
-    stop("Layer 1 gene projections are invalid.", call. = FALSE)
+    stop("Layer 1 condition-full gene projection is invalid.",
+         call. = FALSE)
   }
   for (name in required_gene_matrices) {
     value <- layer1[[name]]
@@ -127,6 +135,17 @@
       stop("Layer 1 `", name, "` is missing or misaligned.",
            call. = FALSE)
     }
+  }
+  expected_unique <- layer1$gene_projection_condition_full_oof -
+    layer1$gene_projection_common_oof
+  if (!isTRUE(all.equal(
+        layer1$gene_projection_condition_unique_oof,
+        expected_unique,
+        tolerance = 1e-12,
+        check.attributes = TRUE
+      ))) {
+    stop("Layer 1 condition-unique projection is inconsistent.",
+         call. = FALSE)
   }
   if (!is.logical(layer1$gene_regulatory_reliability_available) ||
       anyNA(layer1$gene_regulatory_reliability_available)) {
@@ -138,16 +157,16 @@
     !is.finite(reference) |
       !is.finite(layer1$gene_regulatory_reliability)
   ] <- NA_real_
-  observed <- layer1$gene_regulatory_modifier_common_oof
+  observed <- layer1$gene_regulatory_modifier_condition_full_oof
   finite <- is.finite(expected_modifier) & is.finite(observed)
   if (any(is.finite(expected_modifier) != is.finite(observed)) ||
       any(abs(expected_modifier[finite] - observed[finite]) > 1e-10)) {
-    stop("Layer 1 modifier is not reliability*tanh(projection/scale).",
+    stop("Layer 1 primary modifier is not reliability*tanh(full/scale).",
          call. = FALSE)
   }
   reaction_fields <- c(
-    "reaction_expression_common_oof",
     "reaction_expression_condition_full_oof",
+    "reaction_expression_common_oof",
     "reaction_expression_rna_only"
   )
   for (name in reaction_fields) {
@@ -157,13 +176,32 @@
       stop("Layer 1 reaction matrices are misaligned.", call. = FALSE)
     }
   }
+  if (!identical(
+        layer1$reaction_expression,
+        layer1$reaction_expression_condition_full_oof
+      )) {
+    stop("Layer 1 primary expression must be condition-full OOF support.",
+         call. = FALSE)
+  }
+  forbidden <- c(
+    "reaction_expression_depth_matched_rna",
+    "reaction_expression_common_depth_interval_rna",
+    "reaction_expression_alpha_sensitivity",
+    "reaction_zero_support_sensitivity",
+    "reaction_link_saturation_sensitivity",
+    "alpha_sensitivity_grid",
+    "zero_pattern_diagnostics"
+  )
+  if (any(forbidden %in% names(layer1))) {
+    stop("Layer 1 contains removed guardrail fields.", call. = FALSE)
+  }
   provenance <- layer1$projection_provenance
   expected_origin <- if (identical(mode, "condition_grn")) {
     "outer_condition_stratified_cell_oof"
   } else {
     "standard_pando_full_fit"
   }
-  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v1") ||
+  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v2") ||
       !is.list(provenance) ||
       !identical(provenance$analysis_mode, mode) ||
       !identical(provenance$projection_origin, expected_origin) ||
@@ -177,6 +215,15 @@
         "membership_table(cell_id, metacell_id)"
       )) {
     stop("Layer 1 projection provenance is incompatible.", call. = FALSE)
+  }
+  if (identical(mode, "condition_grn") &&
+      (!identical(provenance$primary_projection, "condition_full_oof") ||
+       !identical(
+         provenance$nonestimable_edge_policy,
+         "structural_zero_by_condition"
+       ))) {
+    stop("Condition-full structural-zero projection is not primary.",
+         call. = FALSE)
   }
   if (!is.null(workflow_params)) {
     .rc_require_workflow_params(layer1, workflow_params, argument)
@@ -217,9 +264,10 @@
   )
   ids <- .rc_layer2_unit_ids(layer2)
   comparison_matrices <- c(
-    "penalty_common", "penalty_condition_full", "penalty_rna_only",
-    "penalty_depth_matched_rna", "penalty_common_depth_interval_rna",
-    "penalty_unique_increment"
+    "penalty_condition_full_oof",
+    "penalty_common_oof",
+    "penalty_condition_unique_increment",
+    "penalty_rna_only"
   )
   for (name in comparison_matrices) {
     value <- layer2[[name]]
@@ -228,6 +276,52 @@
       stop("Layer 2 comparison matrices are missing or misaligned.",
            call. = FALSE)
     }
+  }
+  if (!identical(layer2$schema_version, "regcompass_regulatory_layer2_v2") ||
+      !identical(layer2$penalty, layer2$penalty_condition_full_oof)) {
+    stop("Layer 2 primary penalty schema is incompatible.", call. = FALSE)
+  }
+  expected_increment <- layer2$penalty_condition_full_oof -
+    layer2$penalty_common_oof
+  finite <- is.finite(expected_increment) &
+    is.finite(layer2$penalty_condition_unique_increment)
+  if (any(is.finite(expected_increment) !=
+          is.finite(layer2$penalty_condition_unique_increment)) ||
+      any(abs(expected_increment[finite] -
+              layer2$penalty_condition_unique_increment[finite]) > 1e-10)) {
+    stop("Layer 2 condition-unique penalty increment is inconsistent.",
+         call. = FALSE)
+  }
+  forbidden <- c(
+    "penalty_depth_matched_rna",
+    "penalty_common_depth_interval_rna",
+    "penalty_alpha_sensitivity",
+    "score_depth_matched_rna_display_only",
+    "score_common_depth_interval_rna_display_only",
+    "score_alpha_sensitivity_display_only"
+  )
+  if (any(forbidden %in% names(layer2))) {
+    stop("Layer 2 contains removed guardrail fields.", call. = FALSE)
+  }
+  contract <- layer2$comparison_contract
+  if (!is.list(contract) ||
+      !identical(contract$primary, "penalty_condition_full_oof") ||
+      !identical(contract$common_component, "penalty_common_oof") ||
+      !identical(
+        contract$nonestimable_edge_policy,
+        "structural_zero_by_condition"
+      ) ||
+      !setequal(contract$removed_guardrails, c(
+        "depth_matching",
+        "common_depth_restriction",
+        "alpha_sensitivity",
+        "zero_support_sensitivity",
+        "link_saturation_propagation"
+      ))) {
+    stop("Layer 2 comparison contract is incompatible.", call. = FALSE)
+  }
+  if (!is.null(layer1)) {
+    .rc_validate_layer1_stage(layer1, argument = "layer1")
   }
   if (!is.null(workflow_params)) {
     .rc_require_workflow_params(layer2, workflow_params, argument)
