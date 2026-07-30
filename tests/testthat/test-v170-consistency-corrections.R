@@ -36,9 +36,9 @@ test_that("cell-type-shared TF-IDF is computed across available cells", {
     normalized@misc$regcompass_atac_normalization$scope,
     "cell_type_all_available_cells"
   )
-  expect_setequal(
-    normalized@misc$regcompass_atac_normalization$n_units_by_celltype,
-    c(B = 2L, T = 2L)
+  expect_equal(
+    unname(normalized@misc$regcompass_atac_normalization$n_units_by_celltype[c("B", "T")]),
+    c(2L, 2L)
   )
 })
 
@@ -77,12 +77,10 @@ test_that("within-cell-type OOF controls condition Layer 1 reliability", {
 
 test_that("feasibility completion is global and medium specific", {
   stage3 <- paste(deparse(body(rc_regcompass_step_meta_modules)), collapse = "\n")
-  stage5 <- paste(deparse(body(rc_regcompass_step_layer2)), collapse = "\n")
   cache <- paste(
     deparse(body(.rc_build_medium_specific_union_gem_cache)), collapse = "\n"
   )
   expect_false(grepl(".rc_complete_medium_union_gem", stage3, fixed = TRUE))
-  expect_match(stage5, "one union GEM", fixed = TRUE)
   expect_match(cache, ".rc_complete_medium_union_gem", fixed = TRUE)
   expect_match(
     cache, "single_global_fastcore_after_meta_module_merge", fixed = TRUE

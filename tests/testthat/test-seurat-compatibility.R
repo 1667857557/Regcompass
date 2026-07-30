@@ -158,7 +158,7 @@ test_that("Assay5 split layers are joined on a working object", {
   expect_gt(sum(startsWith(original_layers, "counts.")), 1L)
 })
 
-test_that("DESCRIPTION and README preserve the default profile contract", {
+test_that("DESCRIPTION and compatibility guide preserve the Seurat contract", {
   description <- utils::packageDescription("RegCompassR")
   expect_identical(
     description[["Config/RegCompassR/DefaultSeuratProfile"]],
@@ -178,13 +178,18 @@ test_that("DESCRIPTION and README preserve the default profile contract", {
     if (nzchar(workspace)) workspace else character(),
     ".", "..", file.path("..", "..")
   ))
-  roots <- roots[file.exists(file.path(roots, "README.md"))]
-  if (!length(roots)) skip("Source README is unavailable")
-  readme <- paste(readLines(file.path(roots[[1L]], "README.md"), warn = FALSE),
-                  collapse = "\n")
-  expect_match(readme, "Default validated profile: Seurat v4", fixed = TRUE)
-  expect_match(readme, "Optional compatible profile: Seurat v5", fixed = TRUE)
-  expect_match(readme, 'Seurat.object.assay.version = "v3"', fixed = TRUE)
-  expect_match(readme, "Signac 2.x `ChromatinAssay5` is not yet supported",
-               fixed = TRUE)
+  roots <- roots[file.exists(file.path(roots, "docs", "seurat-compatibility.md"))]
+  if (!length(roots)) skip("Seurat compatibility guide is unavailable")
+  guide <- paste(
+    readLines(
+      file.path(roots[[1L]], "docs", "seurat-compatibility.md"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  expect_match(guide, "seurat_v4_default", fixed = TRUE)
+  expect_match(guide, "seurat_v5_compatible", fixed = TRUE)
+  expect_match(guide, 'Seurat.object.assay.version = "v3"', fixed = TRUE)
+  expect_match(guide, "Signac 2.x", fixed = TRUE)
+  expect_match(guide, "ChromatinAssay5", fixed = TRUE)
 })

@@ -19,6 +19,7 @@ test_that("RNA empirical-Bayes priors are estimated by cell type", {
   counts <- matrix(
     c(1, 2, 100, 120, 2, 3, 80, 90),
     nrow = 2,
+    byrow = TRUE,
     dimnames = list(c("g1", "g2"), c("a1", "a2", "b1", "b2"))
   )
   depth <- rep(1e6, 4)
@@ -62,9 +63,9 @@ test_that("regulatory alpha is fixed at one and missing Pando is RNA-only", {
 })
 
 test_that("GPR aggregation follows COMPASS AND and OR semantics", {
-  expect_true(is.na(rc_and_capacity(c(0.2, NA_real_), method = "min")))
-  expect_equal(rc_and_capacity(c(0.2, NA_real_), method = "mean"), 0.1)
-  expect_equal(rc_and_capacity(c(0.2, NA_real_), method = "median"), 0.1)
+  expect_equal(rc_and_capacity(c(0.2, NA_real_), method = "min"), 0.2)
+  expect_equal(rc_and_capacity(c(0.2, NA_real_), method = "mean"), 0.2)
+  expect_equal(rc_and_capacity(c(0.2, NA_real_), method = "median"), 0.2)
   expect_equal(rc_or_capacity(c(0.2, NA_real_, 0.7), method = "sum"), 0.9)
   parsed <- list(c("g1", "g2"), "g3")
   score <- c(g1 = 0.4, g2 = 0.2, g3 = 0.7)

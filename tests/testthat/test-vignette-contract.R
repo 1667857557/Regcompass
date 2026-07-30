@@ -17,6 +17,13 @@ rc_read_doc <- function(path) {
   paste(readLines(path, warn = FALSE), collapse = "\n")
 }
 
+rc_expect_doc_terms <- function(text, required) {
+  missing <- required[!vapply(
+    required, grepl, logical(1), x = text, fixed = TRUE
+  )]
+  expect_length(missing, 0L)
+}
+
 test_that("workflow vignette exposes both Pando modes", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
@@ -46,9 +53,7 @@ test_that("workflow vignette exposes both Pando modes", {
     "rc_regcompass_step_results(",
     "Mathematical model"
   )
-  expect_true(all(vapply(
-    required, grepl, logical(1), x = text, fixed = TRUE
-  )))
+  rc_expect_doc_terms(text, required)
 })
 
 test_that("vignette rejects removed runtime architecture", {
@@ -63,9 +68,10 @@ test_that("vignette rejects removed runtime architecture", {
     "zzz00_absolute_pando_contract",
     "zzz04_canonical_pando_fit_schema"
   )
-  expect_false(any(vapply(
+  present <- forbidden[vapply(
     forbidden, grepl, logical(1), x = text, fixed = TRUE
-  )))
+  )]
+  expect_length(present, 0L)
 })
 
 test_that("primary documentation agrees on enforced arguments", {
@@ -75,8 +81,10 @@ test_that("primary documentation agrees on enforced arguments", {
     file.path(root, "README.md"),
     file.path(root, "docs", "functions.md"),
     file.path(root, "docs", "stage-interface-contracts.md"),
+    file.path(root, "docs", "condition-comparable-grn.md"),
     file.path(root, "vignettes", "regcompass-workflow.Rmd")
   )
+  expect_true(all(file.exists(paths)))
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
   required <- c(
     "standard_pando",
@@ -92,7 +100,5 @@ test_that("primary documentation agrees on enforced arguments", {
     "global_common",
     "gpr_and_method"
   )
-  expect_true(all(vapply(
-    required, grepl, logical(1), x = text, fixed = TRUE
-  )))
+  rc_expect_doc_terms(text, required)
 })

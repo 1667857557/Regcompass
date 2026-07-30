@@ -3,7 +3,7 @@ name: Seurat v5 compatibility
 on:
   pull_request:
   push:
-    branches: [main]
+    branches: [Main]
 
 permissions:
   contents: read
@@ -65,7 +65,10 @@ jobs:
             dependencies = NA, upgrade = "never"
           )
           remotes::install_github(
-            "1667857557/SuperCell_Seurat_V4@agent/current-seurat-v5-layer-api",
+            paste0(
+              "1667857557/SuperCell_Seurat_V4@",
+              "c8b94949cd8a5ff7403f9f186c516f8efbac9b6f"
+            ),
             dependencies = NA,
             upgrade = "never",
             auth_token = Sys.getenv("GITHUB_PAT")
@@ -73,7 +76,7 @@ jobs:
           remotes::install_github(
             paste0(
               "1667857557/Pando_regcompass@",
-              "ec83995513313379e8633d2ede89ecbd72a50037"
+              "b6e344601a4ed2d5a16ef4e9e6da38ae8b2b3594"
             ),
             dependencies = NA,
             upgrade = "never",
@@ -95,8 +98,8 @@ jobs:
               paste(names(observed), observed, sep = "=", collapse = ", ")
             )
           }
-          if (packageVersion("Pando") < package_version("1.2.1")) {
-            stop("Pando >= 1.2.1 is required")
+          if (packageVersion("Pando") < package_version("1.5.0")) {
+            stop("Pando >= 1.5.0 is required")
           }
           stopifnot(
             is.function(Pando::infer_condition_grn),
@@ -151,10 +154,12 @@ jobs:
             as.matrix(peaks)
           )))
 
+          testthat::set_max_fails(Inf)
+          reporter <- testthat::SummaryReporter$new(max_reports = Inf)
           testthat::test_local(
             Sys.getenv("GITHUB_WORKSPACE"),
             filter = "seurat-compatibility",
-            reporter = "summary",
+            reporter = reporter,
             load_package = "installed",
             stop_on_failure = TRUE,
             stop_on_warning = FALSE

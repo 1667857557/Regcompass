@@ -18,17 +18,16 @@ test_that("stepwise tutorial defines portable BiocParallel backends", {
 
   required <- c(
     "library(BiocParallel)",
-    "upstream_workers <- 6L",
-    "layer2_workers <- 30L",
     ".Platform$OS.type == \"windows\"",
-    "SnowParam(",
-    "type = \"SOCK\"",
-    "MulticoreParam(",
+    "SnowParam(workers = 6L",
+    "SnowParam(workers = 30L",
+    "MulticoreParam(workers = 6L",
+    "MulticoreParam(workers = 30L",
     "BPPARAM = upstream_bp",
     "BPPARAM = layer2_bp"
   )
-
-  expect_true(all(vapply(
+  missing <- required[!vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
-  )))
+  )]
+  expect_length(missing, 0L)
 })
