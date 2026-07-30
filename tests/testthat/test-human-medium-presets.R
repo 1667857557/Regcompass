@@ -15,6 +15,7 @@ make_human_medium_test_gem <- function() {
     S = S,
     lb = stats::setNames(c(rep(-1000, 8), 0), reactions),
     ub = stats::setNames(rep(1000, length(reactions)), reactions),
+    model_info = list(species = "human"),
     reaction_meta = data.frame(
       reaction_id = reactions,
       role = c(rep("exchange", 8), "internal"),
@@ -31,172 +32,91 @@ medium_row <- function(medium, reaction_id) {
   medium[as.character(medium$exchange_reaction_id) == reaction_id, , drop = FALSE]
 }
 
-test_that("normal human plasma is a cited human uptake-availability preset", {
+test_that("Cantor 2017 HPLM is the publication-bound built-in scenario", {
   gem <- make_human_medium_test_gem()
   medium <- rc_make_medium_scenarios(
-    gem, scenario = "normal_human_plasma", exchange_limit = 1,
+    gem,
+    scenario = "cantor2017_hplm",
+    species = "human",
+    exchange_limit = 1,
     strict_preset_matching = FALSE
   )
+
+  expect_true(nrow(medium) > 0L)
+  expect_true(all(medium$medium_scenario_id == "cantor2017_hplm"))
   expect_true(all(medium$species == "Homo sapiens"))
-  expect_true(all(nzchar(medium$reference_doi)))
-  expect_true(all(c(
-    "EX_glucose", "EX_lactate", "EX_glutamine",
-    "EX_arginine", "EX_oxygen", "EX_urate"
-  ) %in% medium$exchange_reaction_id))
-  expect_false("EX_unknown" %in% medium$exchange_reaction_id)
+  expect_true(all(medium$reference_doi == "10.1016/j.cell.2017.03.023"))
+  expect_true(all(medium$component_reference_doi ==
+                    "10.1016/j.cell.2017.03.023"))
+  expect_true(all(medium$concentration_basis ==
+                    "Cantor_2017_HPLM_formulation"))
+  expect_true(all(medium$uptake_fraction == 1))
+  expect_false(any(medium$target_exchange_flag))
+  expect_false(any(medium$concentration_used_for_rate_bound))
+  expect_identical(
+    attr(medium, "medium_policy"),
+    "published_paper_bound_presets_only"
+  )
+
   expect_equal(medium_row(medium, "EX_glucose")$concentration_mM, 5)
   expect_equal(medium_row(medium, "EX_lactate")$concentration_mM, 1.6)
   expect_equal(
     medium_row(medium, "EX_glutamine")$concentration_mM,
     0.55000347
   )
-  expect_equal(
-    medium_row(medium, "EX_lactate")$component_reference_doi,
-    "10.1016/j.cell.2017.03.023"
-  )
-  constrained <- rc_apply_medium_constraints(gem, medium)$gem
-  expect_lt(unname(constrained$lb["EX_glucose"]), 0)
-  expect_lt(unname(constrained$lb["EX_lactate"]), 0)
-  expect_equal(unname(constrained$lb["EX_unknown"]), 0)
-  expect_equal(unname(constrained$lb["EX_customfuel"]), 0)
+  expect_false("EX_oxygen" %in% medium$exchange_reaction_id)
+  expect_false("EX_unknown" %in% medium$exchange_reaction_id)
 })
 
-test_that("glucose presets change glucose uptake without changing lactate", {
-  gem <- make_human_medium_test_gem()
-  low <- rc_make_medium_scenarios(
-    gem, scenario = "low_glucose", exchange_limit = 1,
-    strict_preset_matching = FALSE
-  )
-  normal <- rc_make_medium_scenarios(
-    gem, scenario = "normal_human_plasma", exchange_limit = 1,
-    strict_preset_matching = FALSE
-  )
-  high <- rc_make_medium_scenarios(
-    gem, scenario = "high_glucose", exchange_limit = 1,
-    strict_preset_matching = FALSE
-  )
-  glucose_lb <- c(
-    low = medium_row(low, "EX_glucose")$lb,
-    normal = medium_row(normal, "EX_glucose")$lb,
-    high = medium_row(high, "EX_glucose")$lb
-  )
-  expect_true(abs(glucose_lb[["high"]]) > abs(glucose_lb[["normal"]]))
-  expect_true(abs(glucose_lb[["normal"]]) > abs(glucose_lb[["low"]]))
-  expect_equal(medium_row(low, "EX_glucose")$concentration_mM, 1)
-  expect_equal(medium_row(high, "EX_glucose")$concentration_mM, 25)
-  expect_equal(
-    medium_row(low, "EX_glucose")$component_reference_doi,
-    "10.1016/j.ygyno.2015.06.036"
-  )
-  expect_equal(
-    medium_row(low, "EX_lactate")$lb,
-    medium_row(high, "EX_lactate")$lb
-  )
-})
-
-test_that("lactate presets change lactate uptake without changing glucose", {
-  gem <- make_human_medium_test_gem()
-  low <- rc_make_medium_scenarios(
-    gem, scenario = "low_lactate", exchange_limit = 1,
-    strict_preset_matching = FALSE
-  )
-  normal <- rc_make_medium_scenarios(
-    gem, scenario = "normal_human_plasma", exchange_limit = 1,
-    strict_preset_matching = FALSE
-  )
-  high <- rc_make_medium_scenarios(
-    gem, scenario = "high_lactate", exchange_limit = 1,
-    strict_preset_matching = FALSE
-  )
-  lactate_lb <- c(
-    low = medium_row(low, "EX_lactate")$lb,
-    normal = medium_row(normal, "EX_lactate")$lb,
-    high = medium_row(high, "EX_lactate")$lb
-  )
-  expect_true(abs(lactate_lb[["high"]]) > abs(lactate_lb[["normal"]]))
-  expect_true(abs(lactate_lb[["normal"]]) > abs(lactate_lb[["low"]]))
-  expect_equal(medium_row(low, "EX_lactate")$concentration_mM, 0.5)
-  expect_equal(medium_row(high, "EX_lactate")$concentration_mM, 20)
-  expect_equal(
-    medium_row(low, "EX_lactate")$component_reference_doi,
-    "10.14814/phy2.70450"
-  )
-  expect_equal(
-    medium_row(high, "EX_lactate")$component_reference_doi,
-    "10.3389/fonc.2019.01536"
-  )
-  expect_equal(
-    medium_row(low, "EX_glucose")$lb,
-    medium_row(high, "EX_glucose")$lb
-  )
-})
-
-test_that("RPMI-1640 enables basal formulation nutrients but not plasma-only rows", {
+test_that("published concentrations do not become uptake-rate scalers", {
   gem <- make_human_medium_test_gem()
   medium <- rc_make_medium_scenarios(
-    gem, scenario = "rpmi1640", exchange_limit = 1,
+    gem,
+    scenario = "cantor2017_hplm",
+    species = "human",
+    exchange_limit = 2,
     strict_preset_matching = FALSE
   )
-  expect_true(all(c(
-    "EX_glucose", "EX_glutamine", "EX_arginine", "EX_oxygen"
-  ) %in% medium$exchange_reaction_id))
-  expect_false("EX_lactate" %in% medium$exchange_reaction_id)
-  expect_false("EX_urate" %in% medium$exchange_reaction_id)
-  expect_equal(
-    medium_row(medium, "EX_glucose")$concentration_mM,
-    11.111111, tolerance = 1e-6
+  expect_equal(medium_row(medium, "EX_glucose")$lb, -2)
+  expect_equal(medium_row(medium, "EX_lactate")$lb, -2)
+  expect_equal(medium_row(medium, "EX_glutamine")$lb, -2)
+  expect_error(
+    rc_make_medium_scenarios(
+      gem,
+      scenario = "cantor2017_hplm",
+      species = "human",
+      uptake_scale = 0.5,
+      strict_preset_matching = FALSE
+    ),
+    "uptake_scale = 1"
   )
-  expect_match(medium_row(medium, "EX_glucose")$reference_label, "RPMI|Moore")
 })
 
-test_that("custom metabolite presets map availability and relative uptake", {
+test_that("insufficiently documented legacy scenario identifiers are rejected", {
   gem <- make_human_medium_test_gem()
-  compounds <- data.frame(
-    metabolite_name = "customfuel",
-    metabolite_pattern = "customfuel",
-    available = TRUE,
-    concentration_mM = 3,
-    uptake_fraction = 0.3,
-    target_exchange_flag = TRUE,
-    required_match = TRUE,
-    reference_label = "Example human measurement",
-    reference_doi = "10.0000/example",
-    reference_pmid = "12345678",
-    stringsAsFactors = FALSE
+  retired <- c(
+    "physiologic", "normal_human_plasma", "mouse_plasma", "rpmi1640",
+    "dmem_high_glucose", "high_glucose", "low_glucose", "high_lactate",
+    "low_lactate", "low_glutamine", "minimal", "compass_model_bounds",
+    "permissive_all_exchange", "custom"
   )
-  medium <- rc_make_medium_scenarios(
-    gem, scenario = "custom", custom_metabolites = compounds,
-    exchange_limit = 2
-  )
-  row <- medium_row(medium, "EX_customfuel")
-  expect_equal(row$lb, -0.6)
-  expect_equal(row$ub, 2)
-  expect_equal(row$concentration_mM, 3)
-  expect_equal(row$reference_doi, "10.0000/example")
-  constrained <- rc_apply_medium_constraints(gem, medium)$gem
-  expect_equal(unname(constrained$lb["EX_customfuel"]), -0.6)
-  expect_equal(unname(constrained$lb["EX_unknown"]), 0)
-})
-
-test_that("retired medium aliases are not accepted", {
-  gem <- make_human_medium_test_gem()
-  for (alias in c(
-    "blood_like", "culture_like", "tumor_low_glucose",
-    "lactate_available", "human_plasma", "hplm"
-  )) {
+  for (scenario in retired) {
     expect_error(
       rc_make_medium_scenarios(
-        gem, scenario = alias, exchange_limit = 1,
+        gem,
+        scenario = scenario,
+        species = "human",
         strict_preset_matching = FALSE
       ),
-      "should be one of"
+      "Unsupported or insufficiently documented medium scenario",
+      info = scenario
     )
   }
 })
 
-test_that("preset and user-defined medium scenarios can be returned together", {
+test_that("custom media require published-paper provenance", {
   gem <- make_human_medium_test_gem()
-  custom <- data.frame(
+  missing_reference <- data.frame(
     medium_scenario_id = "measured_custom",
     exchange_reaction_id = "EX_customfuel",
     lb = -0.4,
@@ -204,61 +124,103 @@ test_that("preset and user-defined medium scenarios can be returned together", {
     available = TRUE,
     stringsAsFactors = FALSE
   )
+  expect_error(
+    rc_make_medium_scenarios(
+      gem,
+      scenario = NULL,
+      species = "human",
+      custom_medium = missing_reference
+    ),
+    "publication provenance columns"
+  )
+
+  invalid_doi <- transform(
+    missing_reference,
+    reference_label = "Unpublished example",
+    reference_doi = "not-a-doi"
+  )
+  expect_error(
+    rc_make_medium_scenarios(
+      gem,
+      scenario = NULL,
+      species = "human",
+      custom_medium = invalid_doi
+    ),
+    "valid published-paper"
+  )
+})
+
+test_that("DOI-cited custom media are accepted without a custom scenario alias", {
+  gem <- make_human_medium_test_gem()
+  custom <- data.frame(
+    medium_scenario_id = "published_custom_2024",
+    exchange_reaction_id = "EX_customfuel",
+    lb = -0.4,
+    ub = 1,
+    available = TRUE,
+    reference_label = "Example et al., Example Journal 2024",
+    reference_doi = "10.1234/example.2024.1",
+    stringsAsFactors = FALSE
+  )
   medium <- rc_make_medium_scenarios(
     gem,
-    scenario = c("normal_human_plasma", "custom"),
+    scenario = NULL,
+    species = "human",
+    custom_medium = custom
+  )
+  row <- medium_row(medium, "EX_customfuel")
+  expect_equal(row$medium_scenario_id, "published_custom_2024")
+  expect_equal(row$reference_doi, "10.1234/example.2024.1")
+  expect_equal(row$lb, -0.4)
+  expect_identical(
+    attr(medium, "medium_policy"),
+    "published_paper_bound_presets_only"
+  )
+})
+
+test_that("built-in and DOI-cited custom environments can be returned together", {
+  gem <- make_human_medium_test_gem()
+  custom <- data.frame(
+    medium_scenario_id = "published_custom_2024",
+    exchange_reaction_id = "EX_customfuel",
+    lb = -0.4,
+    ub = 1,
+    available = TRUE,
+    reference_label = "Example et al., Example Journal 2024",
+    reference_doi = "10.1234/example.2024.1",
+    stringsAsFactors = FALSE
+  )
+  medium <- rc_make_medium_scenarios(
+    gem,
+    scenario = "cantor2017_hplm",
+    species = "human",
     custom_medium = custom,
-    exchange_limit = 1,
     strict_preset_matching = FALSE
   )
   expect_setequal(
     unique(medium$medium_scenario_id),
-    c("normal_human_plasma", "measured_custom")
+    c("cantor2017_hplm", "published_custom_2024")
   )
-  expect_equal(
-    medium_row(medium, "EX_customfuel")$medium_scenario_id,
-    "measured_custom"
-  )
-  expect_true("EX_glucose" %in% medium$exchange_reaction_id)
 })
 
-test_that("documented concentration-derived sensitivity bounds are internally consistent", {
+test_that("mouse analyses require a DOI-cited custom environment", {
   gem <- make_human_medium_test_gem()
-  medium <- rc_make_medium_scenarios(
-    gem,
-    scenario = c(
-      "normal_human_plasma", "high_glucose", "low_glucose",
-      "high_lactate", "low_lactate", "low_glutamine"
+  gem$model_info$species <- "mouse"
+  expect_error(
+    rc_make_medium_scenarios(
+      gem,
+      scenario = "cantor2017_hplm",
+      species = "mouse",
+      strict_preset_matching = FALSE
     ),
-    exchange_limit = 1,
-    strict_preset_matching = FALSE
+    "requires a Human-GEM"
   )
-  row_for <- function(scenario_id, reaction_id) {
-    medium[
-      medium$medium_scenario_id == scenario_id &
-        medium$exchange_reaction_id == reaction_id,
-      ,
-      drop = FALSE
-    ]
-  }
-  expect_equal(
-    row_for("normal_human_plasma", "EX_glucose")$uptake_fraction,
-    5 / 25
-  )
-  expect_equal(row_for("high_glucose", "EX_glucose")$uptake_fraction, 1)
-  expect_equal(row_for("low_glucose", "EX_glucose")$uptake_fraction, 1 / 25)
-  expect_equal(
-    row_for("normal_human_plasma", "EX_lactate")$uptake_fraction,
-    1.6 / 20
-  )
-  expect_equal(row_for("high_lactate", "EX_lactate")$uptake_fraction, 1)
-  expect_equal(row_for("low_lactate", "EX_lactate")$uptake_fraction, 0.5 / 20)
-  expect_equal(
-    row_for("low_glutamine", "EX_glutamine")$uptake_fraction,
-    0.05 / 2
-  )
-  expect_equal(
-    row_for("low_glutamine", "EX_glutamine")$component_reference_doi,
-    "10.1186/s13578-015-0030-1"
+  expect_error(
+    rc_make_medium_scenarios(
+      gem,
+      scenario = NULL,
+      species = "mouse"
+    ),
+    "Provide `scenario"
   )
 })
