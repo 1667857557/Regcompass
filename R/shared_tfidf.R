@@ -59,9 +59,7 @@
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
-  if (!celltype_col %in% colnames(object@meta.data)) {
-    stop("Missing cell-type metadata column: ", celltype_col, call. = FALSE)
-  }
+  .rc_validate_celltype_metadata(object@meta.data, celltype_col)
   object <- .rc_prepare_seurat_assays(
     object,
     assays = atac_assay,
@@ -78,9 +76,6 @@
     match(units, rownames(object@meta.data)), , drop = FALSE
   ]
   cell_type <- trimws(as.character(meta[[celltype_col]]))
-  if (anyNA(cell_type) || any(!nzchar(cell_type))) {
-    stop("Cell-type metadata are incomplete for shared TF-IDF.", call. = FALSE)
-  }
   groups <- split(units, cell_type)
   local_zero <- vapply(groups, function(group_units) {
     sum(Matrix::rowSums(counts[, group_units, drop = FALSE]) <= 0)
@@ -121,12 +116,13 @@
   object <- .rc_align_normalized_assay(object, atac_assay, "ATAC")
   object@misc$regcompass_atac_normalization <- c(list(
     method = "Signac_TFIDF",
-    scope = "cell_type_across_conditions",
+    scope = "cell_type_all_available_cells",
     celltype_col = celltype_col,
-    idf_reference = "all cells of the same cell type across conditions",
+    idf_reference = "all cells of the same cell type",
     n_units_by_celltype = vapply(groups, length, integer(1)),
     n_zero_count_peaks_by_celltype = local_zero,
-    celltype_local_zero_peak_policy = "retain_as_zero_without_passing_to_RunTFIDF",
+    celltype_local_zero_peak_policy =
+      "retain_as_zero_without_passing_to_RunTFIDF",
     tfidf_method = method,
     scale_factor = scale.factor
   ), filtered$diagnostics)
@@ -134,62 +130,48 @@
 }
 
 .rc_validate_condition_celltype_metadata <- function(
-    metadata, condition_col = "condition", celltype_col = "cell_type") {
-  if (!is.data.frame(metadata)) {
-    stop("Cell metadata must be a data frame.", call. = FALSE)
-  }
-  columns <- list(condition_col = condition_col, celltype_col = celltype_col)
-  invalid_column <- vapply(columns, function(value) {
-    !is.character(value) || length(value) != 1L || is.na(value) ||
-      !nzchar(trimws(value))
-  }, logical(1))
-  if (any(invalid_column)) {
-    stop(
-      "`condition_col` and `celltype_col` must be non-empty column names.",
-      call. = FALSE
-    )
+    metadata, condition_col = "condition", celltype_col = "cell_type",
+    require_multiple_conditions = FALSE) {
+  .rc_validate_celltype_metadata(metadata, celltype_col)
+  if (is.null(condition_col) || !is.character(condition_col) ||
+      length(condition_col) != 1L || is.na(condition_col) ||
+      !nzchar(trimws(condition_col)) || !condition_col %in% colnames(metadata)) {
+    if (isTRUE(require_multiple_conditions)) {
+      stop("A valid `condition_col` is required for condition GRN mode.",
+           call. = FALSE)
+    }
+    return(invisible(TRUE))
   }
   if (identical(condition_col, celltype_col)) {
-    stop(
-      "`condition_col` and `celltype_col` must name different columns.",
-      call. = FALSE
-    )
-  }
-  required <- c(condition_col, celltype_col)
-  missing <- setdiff(required, colnames(metadata))
-  if (length(missing)) {
-    stop("Missing metadata columns: ", paste(missing, collapse = ", "),
+    stop("`condition_col` and `celltype_col` must name different columns.",
          call. = FALSE)
   }
-  invalid_label <- vapply(
-    metadata[, required, drop = FALSE],
-    function(x) {
-      value <- as.character(x)
-      anyNA(value) || any(!nzchar(trimws(value))) ||
-        any(value != trimws(value))
-    },
-    logical(1)
-  )
-  if (any(invalid_label)) {
+  value <- as.character(metadata[[condition_col]])
+  if (anyNA(value) || any(!nzchar(trimws(value))) ||
+      any(value != trimws(value))) {
     stop(
-      paste(
-        "Condition and cell-type metadata must be complete, non-empty,",
-        "and free of surrounding whitespace."
-      ),
+      "Condition labels must be complete, non-empty, and free of surrounding whitespace.",
       call. = FALSE
     )
+  }
+  if (isTRUE(require_multiple_conditions) && length(unique(value)) < 2L) {
+    stop("Condition GRN mode requires at least two condition levels.",
+         call. = FALSE)
   }
   invisible(TRUE)
 }
 
 .rc_normalize_single_cell_grn_object <- function(
-    object, condition_col = "condition", celltype_col = "cell_type",
+    object, condition_col = NULL, celltype_col = "cell_type",
     rna_assay = "RNA", atac_assay = "ATAC") {
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
   .rc_validate_condition_celltype_metadata(
-    object@meta.data, condition_col, celltype_col
+    object@meta.data,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    require_multiple_conditions = FALSE
   )
   object <- .rc_prepare_seurat_assays(
     object,
@@ -204,7 +186,7 @@
   )
   object@misc$regcompass_grn_normalization <- list(
     rna = "global_single_cell_NormalizeData",
-    atac = "cell_type_shared_TFIDF_across_conditions",
+    atac = "cell_type_shared_TFIDF_all_available_cells",
     condition_col = condition_col,
     celltype_col = celltype_col,
     seurat_compatibility = object@misc$regcompass_seurat_compatibility
