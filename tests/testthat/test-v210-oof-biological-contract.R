@@ -2,6 +2,7 @@ test_that("missing reaction expression receives maximum penalty", {
   expression <- matrix(
     c(0, NA, 3, NA),
     nrow = 2,
+    byrow = TRUE,
     dimnames = list(c("R_gene", "R_EX"), c("m1", "m2"))
   )
   roles <- data.frame(
@@ -11,8 +12,8 @@ test_that("missing reaction expression receives maximum penalty", {
     stringsAsFactors = FALSE
   )
   result <- rc_compute_multiome_penalty(expression, reaction_roles = roles)
-  expect_equal(result$penalty["R_gene", ], c(1, 1))
-  expect_equal(result$penalty["R_EX", ], c(1, 1))
+  expect_equal(unname(result$penalty["R_gene", ]), c(1, 1))
+  expect_equal(unname(result$penalty["R_EX", ]), c(1, 1))
   expect_true(result$components$penalty_available["R_gene", "m2"])
   expect_true(result$components$missing_expression_imputed_zero[
     "R_gene", "m2"
