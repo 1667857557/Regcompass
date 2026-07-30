@@ -40,7 +40,10 @@ rc_run_regcompass <- function(
          paste(invalid, collapse = ", "), call. = FALSE)
   }
   if ("tau" %in% names(layer1_args)) {
-    stop("The retired tau transform is not supported.", call. = FALSE)
+    stop(
+      "The retired `tau`/Boltzmann Layer 1 transform is not supported.",
+      call. = FALSE
+    )
   }
   allowed_layer1 <- c(
     "projection_component", "comparison_support", "regulatory_alpha",
