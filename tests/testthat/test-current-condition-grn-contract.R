@@ -56,15 +56,20 @@ test_that("condition Layer 1 uses cell-first Pando projection", {
   expect_match(implementation, "global_common", fixed = TRUE)
 })
 
-test_that("metacell builder uses native SuperCell inputs", {
+test_that("metacell builder uses graph-grouped SuperCell inputs", {
   expect_true(exists(
     ".rc_make_condition_celltype_metacells", inherits = TRUE
   ))
   native <- paste(
     deparse(body(.rc_native_supercell_membership)), collapse = "\n"
   )
-  expect_match(native, "cell.annotation", fixed = TRUE)
+  expect_match(
+    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
+  )
+  expect_match(native, "cell.graph.group", fixed = TRUE)
   expect_match(native, "cell.split.condition", fixed = TRUE)
+  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
+  expect_false(grepl("cell.annotation", native, fixed = TRUE))
   expect_false(grepl("stratum_col", native, fixed = TRUE))
 })
 
