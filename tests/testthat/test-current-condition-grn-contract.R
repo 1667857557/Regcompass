@@ -21,31 +21,35 @@ test_that("canonical Pando bridge is independent by cell type", {
                fixed = TRUE)
 })
 
-test_that("contract extraction requires within-cell-type cell OOF", {
+test_that("contract extraction adds condition-full projection masks", {
   implementation <- paste(
     deparse(body(.rc_extract_condition_grn_contract)),
     collapse = "\n"
   )
   expect_match(
     implementation,
-    "condition_sparse_within_cell_type_oof_refit",
+    ".rc_extract_condition_grn_contract_unmodified",
     fixed = TRUE
   )
-  expect_match(
-    implementation,
-    "outer_condition_stratified_cell_oof",
-    fixed = TRUE
-  )
-  expect_match(implementation, "fit_cell_type", fixed = TRUE)
-  expect_match(implementation, "absolute_condition_effects_only", fixed = TRUE)
-  expect_false(grepl("reference_condition", implementation, fixed = TRUE))
+  expect_match(implementation, "coefficient_estimable", fixed = TRUE)
+  expect_match(implementation, "projectable_structural_zero", fixed = TRUE)
+  expect_match(implementation, "projection_supported", fixed = TRUE)
+  expect_match(implementation, 'primary = "condition_full_oof"', fixed = TRUE)
+  expect_match(implementation, 'common_component = "common_support_oof"',
+               fixed = TRUE)
+  expect_false(grepl("comparison_mask", implementation, fixed = TRUE))
   expect_false(grepl("sample_blocked", implementation, fixed = TRUE))
 })
 
-test_that("condition Layer 1 uses cell-first Pando projection", {
+test_that("condition Layer 1 uses cell-first primary and common Pando projections", {
   implementation <- paste(
     deparse(body(.rc_condition_pando_projection)),
     collapse = "\n"
+  )
+  expect_match(
+    implementation,
+    "Pando::project_condition_grn_primary_cells",
+    fixed = TRUE
   )
   expect_match(implementation, "Pando::project_condition_grn_cells",
                fixed = TRUE)
@@ -54,6 +58,7 @@ test_that("condition Layer 1 uses cell-first Pando projection", {
   expect_match(implementation, "sqrt(pmin(1, pmax(0", fixed = TRUE)
   expect_match(implementation, "pairwise_common", fixed = TRUE)
   expect_match(implementation, "global_common", fixed = TRUE)
+  expect_match(implementation, "condition_unique", fixed = TRUE)
 })
 
 test_that("metacell builder uses graph-grouped SuperCell inputs", {
