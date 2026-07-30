@@ -51,34 +51,39 @@ low_glutamine
 custom
 ```
 
-| Scenario | Background | Named override and primary challenge reference |
+| Scenario | Authoritative composition source | Named override |
 |---|---|---|
-| `normal_human_plasma` | HPLM plus adult human plasma/serum evidence | Cantor 2017 and Psychogios 2011 |
-| `mouse_plasma` | Published mouse plasma and tumour-interstitial-fluid availability | Gardner and Stuart 2024; Sullivan 2019 |
-| `high_glucose` | Published RPMI/DMEM nutrient-availability union | glucose 25 mM; Han 2015 |
-| `low_glucose` | Published RPMI/DMEM nutrient-availability union | glucose 1 mM; Han 2015 |
-| `high_lactate` | Published DMEM nutrient background | lactate 20 mM; San-Millan 2020 |
-| `low_lactate` | Published plasma-like nutrient background | lactate 0.5 mM; Cho 2025 |
-| `low_glutamine` | Published DMEM nutrient background | glutamine 0.5 mM; Visagie 2015 Methods |
+| `normal_human_plasma` | HPLM: *Cell* 2017 plus updated HPLM: *Cell Metabolism* 2021; Plasmax in *Science Advances* 2019 is validation only | none |
+| `mouse_plasma` | absolute mouse plasma/interstitial-fluid metabolomics: *Nature* 2026; limited quantitative secondary values from Gardner and Stuart 2024 | none |
+| `high_glucose` | identical HPLM 2017/2021 background | glucose 25 mM; Han 2015 |
+| `low_glucose` | identical HPLM 2017/2021 background | glucose 1 mM; Han 2015 |
+| `high_lactate` | identical HPLM 2017/2021 background | lactate 20 mM; San-Millan 2020 |
+| `low_lactate` | identical HPLM 2017/2021 background | lactate 0.5 mM; Cho 2025 |
+| `low_glutamine` | identical HPLM 2017/2021 background | glutamine 0.5 mM; Visagie 2015 Methods |
 
-The challenge scenarios retain common amino acids, vitamins, ions, glucose,
-oxygen and other nutrients represented by their basal culture background. The
-named treatment concentration replaces only its target row. A challenge output
-stores both sets of provenance:
+The five challenge scenarios use the same basal nutrient composition. Only the
+named treatment row is changed, so a high-versus-low comparison does not also
+compare unrelated RPMI, DMEM, or Plasmax backgrounds. Plasmax is retained as an
+independent validation source and is not numerically averaged with HPLM.
+
+Inspect composition and challenge provenance:
 
 ```r
 unique(medium_scenarios[, intersect(c(
   "medium_scenario_id",
   "medium_background_id",
+  "composition_primary_reference_doi",
+  "composition_validation_reference_doi",
   "background_reference_doi",
+  "background_validation_reference_doi",
   "challenge_reference_doi",
   "scenario_construction"
 ), colnames(medium_scenarios))])
 ```
 
-These scenarios are literature-backed modelling environments, not measured
-transporter fluxes. Concentration-derived target caps remain explicit sensitivity
-assumptions and are intersected with the original GEM directionality.
+These are modelling environments, not measured transporter fluxes.
+Concentration-derived target caps remain explicit sensitivity assumptions and
+are intersected with the original GEM directionality.
 
 ### Several built-in scenarios
 
