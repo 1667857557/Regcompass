@@ -1,15 +1,20 @@
 test_that("condition design selects the intended Pando mode", {
-  object <- methods::new("Seurat")
-  object@meta.data <- data.frame(
-    cell_type = c("T", "T", "T"),
-    condition = c("A", "A", "B"),
-    row.names = paste0("cell", 1:3)
+  counts <- Matrix::Matrix(
+    matrix(
+      c(1, 0, 2, 0, 1, 1),
+      nrow = 2,
+      dimnames = list(c("g1", "g2"), paste0("cell", 1:3))
+    ),
+    sparse = TRUE
   )
+  object <- SeuratObject::CreateSeuratObject(counts = counts)
+  object$cell_type <- c("T", "T", "T")
+  object$condition <- c("A", "A", "B")
   design <- RegCompassR:::.rc_resolve_condition_design(object, "condition")
   expect_identical(design$analysis_mode, "condition_grn")
   expect_setequal(design$condition_levels, c("A", "B"))
 
-  object@meta.data$condition <- "A"
+  object$condition <- "A"
   design <- RegCompassR:::.rc_resolve_condition_design(object, "condition")
   expect_identical(design$analysis_mode, "standard_pando")
   expect_identical(design$fallback_reason, "fewer_than_two_condition_levels")
