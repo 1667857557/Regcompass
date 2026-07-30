@@ -72,7 +72,7 @@ rc_regcompass_step_results <- function(
   mode <- params$analysis_mode
   result <- list(
     schema_version = "regcompass_regulatory_metabolic_result_v1",
-    version = "2.1.0",
+    version = "2.1.1",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = mode,
@@ -104,8 +104,8 @@ rc_regcompass_step_results <- function(
       effective_condition_col = params$condition_col,
       fallback_reason = params$fallback_reason,
       workflow_order = c(
-        "single_cell_grn", "native_supercell_metacells", "meta_modules",
-        "layer1", "medium_specific_union_gem_layer2"
+        "single_cell_grn", "celltype_joint_condition_supercell_metacells",
+        "meta_modules", "layer1", "medium_specific_union_gem_layer2"
       ),
       pando_grouping = params$celltype_col,
       pando_design = if (identical(mode, "condition_grn")) {
@@ -117,9 +117,16 @@ rc_regcompass_step_results <- function(
         "original Pando infer_grn per broad cell type; no condition coefficients"
       },
       pando_regulatory_projection = layer1$projection_provenance,
-      metacell_grouping = c(params$condition_col, params$celltype_col),
-      metacell_celltype_assignment = "SuperCell cell.annotation",
+      metacell_purity_grouping = c(params$condition_col, params$celltype_col),
+      metacell_graph_grouping = params$celltype_col,
+      metacell_graph_group_argument = "SuperCell cell.graph.group",
       metacell_condition_assignment = "SuperCell cell.split.condition",
+      metacell_graph_scope = "one_independent_graph_per_cell_type",
+      metacell_condition_scope =
+        "all_conditions_joint_within_cell_type_graph",
+      metacell_membership_split_timing = "after_joint_graph_clustering",
+      metacell_embedding_scaling =
+        "within_celltype_joint_condition_equal_modality_blocks",
       metacell_temporary_combined_stratum = FALSE,
       metacell_gamma = params$metacell_args$gamma,
       sample_variable = "not_used",
