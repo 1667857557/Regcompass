@@ -38,6 +38,44 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
+### Predefined medium scenarios
+
+`rc_make_medium_scenarios()` accepts one or more of the following identifiers.
+Each requested scenario produces a separate medium-specific structural model,
+but the exchange bounds within one scenario are identical across all conditions
+and metacells.
+
+| Category | `scenario` values | Species and intended use |
+|---|---|---|
+| Physiological | `"physiologic"`, `"normal_human_plasma"`, `"mouse_plasma"` | `physiologic` resolves by GEM species; the explicit plasma presets are human-only or mouse-only. |
+| Culture formulations | `"rpmi1640"`, `"dmem_high_glucose"` | Species-neutral basal formulations; serum and laboratory supplements are not inferred. |
+| Human nutrient challenges | `"high_glucose"`, `"low_glucose"`, `"high_lactate"`, `"low_lactate"`, `"low_glutamine"` | Human-GEM only; each changes one nutrient on the normal-human-plasma background. |
+| Technical baselines | `"minimal"`, `"compass_model_bounds"`, `"permissive_all_exchange"` | Structural or modelling controls, not physiological media. |
+| User supplied | `"custom"` | Exact reaction-level bounds or metabolite-availability rows supplied by the user. |
+
+Several predefined scenarios can be generated together:
+
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = c(
+    "physiologic",
+    "rpmi1640",
+    "dmem_high_glucose",
+    "low_glucose"
+  ),
+  species = "human"
+)
+```
+
+Use `scenario = "custom"` for measured plasma or tumour-interstitial-fluid
+conditions, serum supplementation, dialysed serum, added pyruvate, mouse-specific
+nutrient challenges, or any laboratory-specific formulation. Preset
+concentrations describe extracellular availability and sensitivity assumptions;
+they are not measured uptake fluxes. The full provenance, species restrictions,
+custom-medium schema, and concentration tables are retained in
+[Predefined extracellular medium scenarios](medium-presets.md).
+
 ## Run
 
 ```r
