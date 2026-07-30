@@ -6,7 +6,6 @@ test_that("RegCompass accepts only the canonical Pando fit schema", {
   expect_silent(
     RegCompassR:::.rc_require_pando_condition_grn_fit(canonical)
   )
-
   for (schema in c(
     "pando_condition_grn_fit_v4",
     "pando_condition_grn_fit_v5"
@@ -15,14 +14,15 @@ test_that("RegCompass accepts only the canonical Pando fit schema", {
     legacy$schema_version <- schema
     expect_error(
       RegCompassR:::.rc_require_pando_condition_grn_fit(legacy),
-      "version-suffixed schemas are unsupported"
+      "canonical pando_condition_grn_fit"
     )
   }
 })
 
-test_that("runtime consumers contain no version-suffixed schema contract", {
+test_that("canonical consumers are direct definitions", {
   consumers <- c(
-    ".rc_extract_condition_grn_contract_canonical",
+    ".rc_extract_condition_grn_contract",
+    ".rc_fit_condition_grns_by_cell_type",
     ".rc_validate_layer1_stage"
   )
   for (name in consumers) {
@@ -30,5 +30,7 @@ test_that("runtime consumers contain no version-suffixed schema contract", {
     text <- paste(deparse(body(fun)), collapse = "\n")
     expect_false(grepl("pando_condition_grn_fit_v4", text, fixed = TRUE))
     expect_false(grepl("pando_condition_grn_fit_v5", text, fixed = TRUE))
+    expect_false(grepl("body(", text, fixed = TRUE))
+    expect_false(grepl("assign(", text, fixed = TRUE))
   }
 })
