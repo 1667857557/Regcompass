@@ -32,22 +32,26 @@ test_that("all exported APIs have Rd aliases", {
   expect_setequal(exports, aliases)
 })
 
-test_that("primary documentation describes automatic Pando routing", {
+test_that("primary documentation describes automatic Pando routing and graph scope", {
   root <- documentation_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   docs <- read_documentation(c(
     file.path(root, "README.md"),
     file.path(root, "docs", "functions.md"),
     file.path(root, "docs", "run-modes-and-stepwise-workflow.md"),
-    file.path(root, "docs", "stage-interface-contracts.md")
+    file.path(root, "docs", "stage-interface-contracts.md"),
+    file.path(root, "docs", "metacell-graph-contract.md")
   ))
   required <- c(
     "standard_pando",
     "condition_grn",
     "Pando::infer_grn()",
     "pando_condition_grn_fit",
-    "cell.annotation",
+    "SCimplify_by_graph_group_from_embedding",
+    "cell.graph.group",
     "cell.split.condition",
+    "one_independent_graph_per_cell_type",
+    "all_conditions_joint_within_cell_type_graph",
     "temporary_combined_stratum = FALSE",
     "No condition coefficients"
   )
@@ -64,6 +68,7 @@ test_that("primary documentation rejects obsolete runtime implementation", {
     file.path(root, "docs", "functions.md"),
     file.path(root, "docs", "run-modes-and-stepwise-workflow.md"),
     file.path(root, "docs", "stage-interface-contracts.md"),
+    file.path(root, "docs", "metacell-graph-contract.md"),
     file.path(root, "DESCRIPTION")
   ))
   retired <- c(
