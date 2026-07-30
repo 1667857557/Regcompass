@@ -67,7 +67,7 @@ jobs:
           remotes::install_github(
             paste0(
               "1667857557/SuperCell_Seurat_V4@",
-              "c8b94949cd8a5ff7403f9f186c516f8efbac9b6f"
+              "b5d95076a9bd845eb640f53ed04797a7b649354a"
             ),
             dependencies = NA,
             upgrade = "never",
@@ -103,7 +103,8 @@ jobs:
           }
           stopifnot(
             is.function(Pando::infer_condition_grn),
-            is.function(Pando::condition_grn_fit)
+            is.function(Pando::condition_grn_fit),
+            is.function(SuperCell::SCimplify_by_graph_group_from_embedding)
           )
 
       - name: Install RegCompassR
@@ -153,6 +154,50 @@ jobs:
             )),
             as.matrix(peaks)
           )))
+
+          cell_ids <- paste0("x", seq_len(12))
+          embedding <- rbind(
+            c(0, 0), c(0.01, 0), c(1, 0), c(1.01, 0), c(2, 0), c(2.01, 0),
+            c(0, 0.001), c(0.01, 0.001), c(1, 0.001), c(1.01, 0.001),
+            c(2, 0.001), c(2.01, 0.001)
+          )
+          rownames(embedding) <- cell_ids
+          graph_group <- stats::setNames(rep(c("A", "B"), each = 6), cell_ids)
+          condition <- stats::setNames(rep(c("C", "D"), 6), cell_ids)
+          graph_result <- SuperCell::SCimplify_by_graph_group_from_embedding(
+            X = embedding,
+            cell.graph.group = graph_group,
+            cell.split.condition = condition,
+            gamma = 2,
+            k.knn = 1,
+            n.pc = 1:2,
+            return.singlecell.NW = TRUE,
+            return.hierarchical.structure = FALSE
+          )
+          stopifnot(
+            identical(
+              graph_result$graph_scope,
+              "independent_by_cell.graph.group"
+            ),
+            identical(
+              graph_result$condition_scope,
+              "joint_within_graph_group_then_membership_split"
+            )
+          )
+          membership_groups <- split(
+            names(graph_result$membership), graph_result$membership
+          )
+          stopifnot(all(vapply(membership_groups, function(ids) {
+            length(unique(graph_group[ids])) == 1L &&
+              length(unique(condition[ids])) == 1L
+          }, logical(1))))
+          edges <- igraph::as_edgelist(
+            graph_result$graph.singlecell, names = TRUE
+          )
+          stopifnot(
+            all(graph_group[edges[, 1]] == graph_group[edges[, 2]]),
+            any(condition[edges[, 1]] != condition[edges[, 2]])
+          )
 
           testthat::set_max_fails(Inf)
           reporter <- testthat::SummaryReporter$new(max_reports = Inf)
