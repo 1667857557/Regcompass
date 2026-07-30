@@ -145,6 +145,64 @@ step4$projection_provenance
 Condition-full OOF is primary. Common support is the jointly estimable
 component. Each non-estimable edge side contributes zero.
 
+## Build medium scenarios for Stage 5
+
+The predefined `scenario` identifiers are retained as part of the stepwise
+workflow:
+
+```text
+physiologic
+normal_human_plasma
+mouse_plasma
+rpmi1640
+dmem_high_glucose
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+minimal
+compass_model_bounds
+permissive_all_exchange
+custom
+```
+
+Recommended use:
+
+- `physiologic` resolves to human or mouse plasma from the GEM species;
+- `normal_human_plasma` is Human-GEM only and `mouse_plasma` is Mouse-GEM only;
+- `rpmi1640` and `dmem_high_glucose` are species-neutral basal culture
+  formulations, not serum-complete experimental media;
+- the five glucose, lactate and glutamine challenge presets are Human-GEM only;
+- `minimal`, `compass_model_bounds` and `permissive_all_exchange` are technical
+  structural controls;
+- `custom` is required for measured or laboratory-specific environments.
+
+One Stage 5 run may contain several scenarios. Each scenario receives its own
+medium-specific union GEM and global FASTCORE completion, while every condition
+and metacell within that scenario uses identical exchange bounds.
+
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = c(
+    "physiologic",
+    "rpmi1640",
+    "dmem_high_glucose",
+    "low_glucose"
+  ),
+  species = "human"
+)
+
+attr(medium_scenarios, "preset_diagnostics")
+```
+
+Changing the scenario set, custom-medium rows, `uptake_scale`, exchange limits,
+or any resulting bounds invalidates Stage 5 and all downstream results, but does
+not require rerunning Stages 1-4. See
+[Predefined extracellular medium scenarios](medium-presets.md) for the complete
+species policy, concentration provenance and custom-medium schema.
+
 ## Stage 5: shared model and LP scoring
 
 ```r
