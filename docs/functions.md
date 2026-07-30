@@ -11,7 +11,7 @@ Main workflow tutorials: [one-shot](tutorial-01-quick-start.md),
 | Function | Purpose |
 |---|---|
 | `rc_run_regcompass()` | Run all six stages with automatic standard/condition-aware Pando routing. |
-| `rc_run_regcompass_one_shot()` | Convenience wrapper around the complete workflow. |
+| `rc_run_regcompass_one_shot()` | Convenience wrapper around the complete workflow with species-aware plasma defaults. |
 
 `condition_col` may be absent, single-level or multi-level. The selected route is
 returned in `result$analysis_mode`: `standard_pando` or `condition_grn`.
@@ -143,9 +143,29 @@ same primary evidence scale as the original Stage 5 targets.
 | Function | Purpose |
 |---|---|
 | `rc_prepare_gem()` | Load and validate a pinned Human-GEM or Mouse-GEM. |
-| `rc_make_medium_scenarios()` | Build preset or custom exchange bounds. |
+| `rc_make_medium_scenarios()` | Build literature-backed plasma or culture-challenge scenarios and user-defined exchange bounds. |
 | `rc_build_reaction_annotations()` | Build reaction names, formulas, GPRs and cross-references. |
 | `rc_attach_reaction_annotations()` | Attach annotations to an existing result. |
+
+Supported biological medium identifiers:
+
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
+
+The five challenge scenarios retain nutrients from a published basal culture
+background and override only the named target concentration. Their output stores
+`background_reference_doi`, `challenge_reference_doi`, and
+`scenario_construction`. Users may supply reaction-level `custom_medium` or
+metabolite-level `custom_metabolites` with `scenario = "custom"` or
+`scenario = NULL`. Technical GEM boundary modes are not biological scenarios.
 
 ## Condition analysis
 
