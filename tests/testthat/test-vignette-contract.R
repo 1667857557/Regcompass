@@ -24,7 +24,7 @@ rc_expect_doc_terms <- function(text, required) {
   expect_length(missing, 0L)
 }
 
-test_that("workflow vignette exposes both Pando modes and graph scope", {
+test_that("workflow vignette exposes canonical condition-full route and graph scope", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   path <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
@@ -35,30 +35,24 @@ test_that("workflow vignette exposes both Pando modes and graph scope", {
     "rc_make_medium_scenarios(",
     "rc_run_regcompass(",
     'condition_col = "Group"',
-    "condition_col = NULL",
-    '"condition_grn"',
-    '"standard_pando"',
+    "condition_grn",
+    "standard_pando",
     "Pando::infer_grn()",
-    "pando_condition_grn_fit",
+    "condition-full outer-heldout projection",
     "cell.graph.group",
     "cell.split.condition",
-    "one_independent_graph_per_cell_type",
-    "all_conditions_joint_within_cell_type_graph",
     "gamma = 30L",
     "regulatory_alpha = 1",
     'gpr_and_method = "min"',
-    "rc_regcompass_step_grn(",
-    "rc_regcompass_step_metacells(",
-    "rc_regcompass_step_meta_modules(",
-    "rc_regcompass_step_layer1(",
-    "rc_regcompass_step_layer2(",
-    "rc_regcompass_step_results(",
-    "Mathematical model"
+    "penalty_condition_full_oof",
+    "penalty_common_oof",
+    "penalty_condition_unique_increment",
+    "Tutorial 3"
   )
   rc_expect_doc_terms(text, required)
 })
 
-test_that("vignette rejects removed runtime and graph architecture", {
+test_that("vignette rejects removed runtime and guardrail architecture", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   text <- rc_read_doc(file.path(root, "vignettes", "regcompass-workflow.Rmd"))
@@ -69,7 +63,12 @@ test_that("vignette rejects removed runtime and graph architecture", {
     "supercell_stratum_col",
     "cell.annotation",
     "zzz00_absolute_pando_contract",
-    "zzz04_canonical_pando_fit_schema"
+    "zzz04_canonical_pando_fit_schema",
+    "penalty_depth_matched_rna",
+    "penalty_common_depth_interval_rna",
+    "penalty_alpha_sensitivity",
+    "reaction_zero_support_sensitivity",
+    "reaction_link_saturation_sensitivity"
   )
   present <- forbidden[vapply(
     forbidden, grepl, logical(1), x = text, fixed = TRUE
@@ -77,7 +76,7 @@ test_that("vignette rejects removed runtime and graph architecture", {
   expect_length(present, 0L)
 })
 
-test_that("primary documentation agrees on enforced arguments", {
+test_that("primary documentation agrees on enforced arguments and semantics", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   paths <- c(
@@ -93,9 +92,10 @@ test_that("primary documentation agrees on enforced arguments", {
   required <- c(
     "standard_pando",
     "condition_grn",
-    "condition_coefficients_calculated",
     "motif_domain",
     "outer-heldout",
+    "condition_full_oof",
+    "projectable structural zero",
     "SCimplify_by_graph_group_from_embedding",
     "cell.graph.group",
     "cell.split.condition",
@@ -103,8 +103,6 @@ test_that("primary documentation agrees on enforced arguments", {
     "all_conditions_joint_within_cell_type_graph",
     "gamma = 30L",
     "regulatory_alpha = 1",
-    "pairwise_common",
-    "global_common",
     "gpr_and_method"
   )
   rc_expect_doc_terms(text, required)
