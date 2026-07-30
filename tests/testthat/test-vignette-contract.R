@@ -21,11 +21,7 @@ rc_expect_doc_terms <- function(text, required) {
   missing <- required[!vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
   )]
-  expect_length(
-    missing,
-    0L,
-    info = paste("Missing documentation terms:", paste(missing, collapse = ", "))
-  )
+  expect_length(missing, 0L)
 }
 
 test_that("workflow vignette exposes both Pando modes", {
@@ -75,11 +71,7 @@ test_that("vignette rejects removed runtime architecture", {
   present <- forbidden[vapply(
     forbidden, grepl, logical(1), x = text, fixed = TRUE
   )]
-  expect_length(
-    present,
-    0L,
-    info = paste("Removed architecture still documented:", paste(present, collapse = ", "))
-  )
+  expect_length(present, 0L)
 })
 
 test_that("primary documentation agrees on enforced arguments", {
