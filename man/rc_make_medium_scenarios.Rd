@@ -2,11 +2,11 @@
 % Please edit documentation in R/published_medium_contract.R
 \name{rc_make_medium_scenarios}
 \alias{rc_make_medium_scenarios}
-\title{Build publication-bound extracellular medium scenarios}
+\title{Build literature-backed extracellular medium scenarios}
 \usage{
 rc_make_medium_scenarios(
   gem,
-  scenario = "cantor2017_hplm",
+  scenario = "normal_human_plasma",
   species = c("auto", "human", "mouse"),
   custom_medium = NULL,
   custom_metabolites = NULL,
@@ -20,32 +20,34 @@ rc_make_medium_scenarios(
 \arguments{
 \item{gem}{A validated RegCompass GEM.}
 
-\item{scenario}{Zero or more publication-bound built-in scenario identifiers. The accepted built-in value is \code{"cantor2017_hplm"}. Use \code{NULL} for a publication-backed custom environment.}
+\item{scenario}{One or more identifiers from \code{"normal_human_plasma"}, \code{"mouse_plasma"}, \code{"high_glucose"}, \code{"low_glucose"}, \code{"high_lactate"}, \code{"low_lactate"}, \code{"low_glutamine"}, and \code{"custom"}. Use \code{NULL} for a custom-only run.}
 
-\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}. The built-in HPLM preset requires Human-GEM. Mouse analyses must currently provide a published custom medium because no partial mouse-plasma preset is retained.}
+\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}. Human plasma and culture challenges require Human-GEM; mouse plasma requires Mouse-GEM.}
 
-\item{custom_medium}{Exact reaction-level rows. Every row must include \code{reference_label} and a valid published-paper \code{reference_doi}.}
+\item{custom_medium}{User-defined reaction-level bounds. Publication columns are optional and retained when supplied.}
 
-\item{custom_metabolites}{Metabolite-availability rows. Every row must include \code{reference_label} and a valid published-paper \code{reference_doi}.}
+\item{custom_metabolites}{User-defined metabolite availability and optional concentration rows. Publication columns are optional and retained.}
 
-\item{uptake_scale}{Retained for API compatibility. Publication-bound runs require the exact value \code{1}; arbitrary rescaling would no longer represent the cited medium.}
+\item{uptake_scale}{Non-negative global or named sensitivity multipliers for target nutrient relative caps. These are modelling assumptions, not measured transporter rates.}
 
 \item{exchange_roles}{Reaction roles treated as exchange reactions.}
 
 \item{condition}{Shared condition label; canonical scoring requires \code{"all"}.}
 
-\item{exchange_limit}{Shared modelling cap intersected with original GEM directionality. Published concentrations are not converted into uptake flux.}
+\item{exchange_limit}{Shared modelling cap intersected with original GEM directionality.}
 
-\item{strict_preset_matching}{Stop when a published component cannot be mapped one-to-one to a GEM exchange.}
+\item{strict_preset_matching}{Stop when required components cannot be mapped one-to-one to GEM exchanges.}
 }
 \value{
-A reaction-level medium table with publication provenance.
+A reaction-level medium table with background and challenge citations.
 }
 \description{
-Built-in scenario identifiers are restricted to formulations whose encoded components and concentrations can be traced directly to a published paper. The only current built-in preset is \code{"cantor2017_hplm"} (Cantor et al., \emph{Cell} 2017; doi:10.1016/j.cell.2017.03.023).
+Biological presets combine published plasma measurements or published cell-culture formulations with explicit challenge concentrations. Plasma scenarios may synthesize several published sources to represent nutrients known to be available; unsupported quantitative values remain availability-only. Culture challenges retain the usual nutrients of their published basal medium and override only the named glucose, lactate, or glutamine concentration.
 }
 \details{
-\code{"cantor2017_hplm"} keeps only HPLM components with exact published concentrations and direct one-to-one GEM exchange mapping. Ambiguous salt-to-free-ion conversions are omitted rather than approximated. Published concentrations are provenance for extracellular availability and are not converted into measured transporter fluxes.
+\code{"normal_human_plasma"} integrates HPLM and adult human plasma or serum evidence. \code{"mouse_plasma"} integrates mouse plasma medium and murine plasma or tumour-interstitial-fluid measurements without copying human concentrations.
 
-Broad aliases, incomplete reconstructions, manufacturer-only formulations, synthetic single-nutrient challenges, and technical GEM boundary modes are not accepted as built-in biological scenarios. Other published environments must be supplied with \code{scenario = NULL} and DOI-cited custom rows.
+The culture challenge presets use a published RPMI, DMEM, or plasma-like nutrient background. They store \code{background_reference_doi} and \code{challenge_reference_doi} separately and mark their construction as \code{published_background_plus_named_nutrient_override}. Target concentration-derived caps are explicit sensitivity assumptions rather than measured uptake fluxes.
+
+User-defined compositions may be supplied through \code{scenario = "custom"} or \code{scenario = NULL}. Technical GEM boundary constructions are not accepted as biological scenarios.
 }
