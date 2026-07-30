@@ -5,6 +5,8 @@
 #' condition coefficients. Stage 2 builds one independent multimodal graph per
 #' broad cell type while pooling all conditions within that graph; condition is
 #' applied only after graph clustering to preserve condition-pure metacells.
+#' Condition mode sends each condition's own estimable OOF edges to the primary
+#' penalty; common-edge support is not required.
 #'
 #' @export
 rc_run_regcompass <- function(
@@ -47,7 +49,7 @@ rc_run_regcompass <- function(
     )
   }
   allowed_layer1 <- c(
-    "projection_component", "comparison_support", "regulatory_alpha",
+    "projection_component", "regulatory_alpha",
     "gpr_and_method", "gene_half_saturation"
   )
   unknown_layer1 <- setdiff(names(layer1_args), allowed_layer1)
@@ -116,7 +118,6 @@ rc_run_regcompass <- function(
         grn = step1, metacells = step2, meta_modules = step3, gem = gem,
         outdir = file.path(outdir, "04_layer1"),
         projection_component = layer1_args$projection_component %||% "condition",
-        comparison_support = layer1_args$comparison_support %||% "auto",
         regulatory_alpha = 1,
         gpr_and_method = layer1_args$gpr_and_method %||% "min",
         gene_half_saturation = layer1_args$gene_half_saturation %||%
