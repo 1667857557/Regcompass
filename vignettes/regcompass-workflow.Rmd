@@ -118,11 +118,34 @@ alpha sensitivity, zero-support sensitivity, or link-saturation propagation.
 
 Metacells are within-dataset statistical units, not biological replicates.
 
+# Optional targeted reaction remapping
+
+After a completed `model_mode = "meta_module_gem"` run, directly database-linked
+non-core reactions can be scored without rebuilding the model:
+
+```{r}
+targeted <- rc_regcompass_step_target_union(
+  layer1 = result$layer1,
+  meta_modules = result$meta_modules,
+  layer2 = result$microcompass,
+  gem = gem,
+  outdir = "RegCompass_targeted",
+  core_reaction_ids = c("MAR04381", "MAR04379"),
+  layer2_args = list(target_direction = "both", solver = "highs")
+)
+```
+
+The second pass reuses the exact Stage 5 union GEM and global FASTCORE
+completion. In condition mode, `result$layer1$reaction_expression` is the
+canonical alias of `reaction_expression_condition_full_oof`, so targeted targets
+use the same primary evidence route as the original Stage 5 targets.
+
 # Documentation
 
 - [Tutorial 1](../docs/tutorial-01-quick-start.md)
 - [Tutorial 2](../docs/tutorial-02-stepwise-audit.md)
 - [Tutorial 3](../docs/tutorial-03-mathematical-model.md)
-- [Tutorial 4](../docs/tutorial-04-condition-differential-analysis.md)
+- [Tutorial 4: targeted reaction remapping](../docs/tutorial-04-targeted-reaction-remapping.md)
+- [Tutorial 5: condition comparison](../docs/tutorial-05-condition-differential-analysis.md)
 - [Stage contracts](../docs/stage-interface-contracts.md)
 - [Public API](../docs/functions.md)
