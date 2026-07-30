@@ -56,7 +56,7 @@ test_that("primary documentation describes automatic Pando routing", {
   )))
 })
 
-test_that("primary documentation rejects obsolete implementation patterns", {
+test_that("primary documentation rejects obsolete runtime implementation", {
   root <- documentation_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   docs <- read_documentation(c(
@@ -68,7 +68,6 @@ test_that("primary documentation rejects obsolete implementation patterns", {
   ))
   retired <- c(
     "ConditionGRNFit v5",
-    "condition__cell_type",
     "zzz00_absolute_pando_contract.R",
     "zzz01_fixed_gamma_metacells.R",
     "zzz02_layer1_policy.R",
