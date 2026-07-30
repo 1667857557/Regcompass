@@ -71,15 +71,18 @@ rc_compute_multiome_penalty <- function(
         !matrix(override, nrow(E), ncol(E)),
       observed_zero_expression_flag = expression_observed & E_effective <= 0
     ),
-    evidence_policy = "compass_missing_expression_max_penalty",
+    evidence_policy = "penalty_only",
     evidence_policy_detail = paste(
       "GPR expression uses complete AND branches and additive OR branches;",
       "unavailable final reaction expression is set to zero before penalty conversion"
     ),
+    missing_expression_policy = "compass_missing_expression_max_penalty",
     penalty_version = "compass_gpr_missing_zero_penalty_v3",
     evidence_description = paste(
-      "Expression-linked reactions use 1/(1+log2(1+E)); missing E receives",
-      "the maximum expression-linked penalty. Structural reactions use fixed costs."
+      "RNA and Pando regulatory evidence are integrated into gene support before",
+      "GPR aggregation. Expression-linked reactions use 1/(1+log2(1+E));",
+      "missing E receives the maximum expression-linked penalty, while",
+      "structural reactions use fixed costs."
     ),
     penalty_formula =
       "P=1/(1+log2(1+pmax(E,0))); nonfinite E:=0, hence P:=1"
