@@ -14,6 +14,10 @@ read_documentation <- function(paths) {
   paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
 }
 
+normalize_documentation <- function(x) {
+  trimws(gsub("[[:space:]]+", " ", x))
+}
+
 test_that("all exported APIs have Rd aliases", {
   root <- documentation_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
@@ -35,13 +39,13 @@ test_that("all exported APIs have Rd aliases", {
 test_that("primary documentation describes routing, graph scope and condition-full OOF", {
   root <- documentation_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
-  docs <- read_documentation(c(
+  docs <- normalize_documentation(read_documentation(c(
     file.path(root, "README.md"),
     file.path(root, "docs", "tutorial-01-quick-start.md"),
     file.path(root, "docs", "tutorial-02-stepwise-audit.md"),
     file.path(root, "docs", "stage-interface-contracts.md"),
     file.path(root, "docs", "metacell-graph-contract.md")
-  ))
+  )))
   required <- c(
     "standard_pando",
     "condition_grn",
@@ -57,9 +61,9 @@ test_that("primary documentation describes routing, graph scope and condition-fu
     "temporary_combined_stratum = FALSE",
     "No condition coefficients"
   )
-  expect_true(all(vapply(
-    required, grepl, logical(1), x = docs, fixed = TRUE
-  )))
+  for (term in required) {
+    expect_match(docs, term, fixed = TRUE, info = term)
+  }
 })
 
 test_that("primary documentation rejects obsolete runtime and guardrail schemas", {
