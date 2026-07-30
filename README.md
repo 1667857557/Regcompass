@@ -17,7 +17,7 @@ gem <- rc_prepare_gem(
 
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = "cantor2017_hplm",
+  scenario = "normal_human_plasma",
   species = "human"
 )
 
@@ -52,12 +52,31 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-`cantor2017_hplm` is the only current built-in medium scenario. It is tied to
-Cantor et al., *Cell* 2017 (doi:10.1016/j.cell.2017.03.023) and includes only
-published HPLM components with exact concentrations and direct one-to-one GEM
-exchange mapping. Ambiguous salt-to-free-ion conversions are omitted rather
-than approximated. Other environments must be supplied as DOI-cited custom
-medium tables with `scenario = NULL`.
+Built-in biological scenarios are:
+
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
+
+`normal_human_plasma` integrates HPLM and adult human plasma evidence from
+Cantor et al. 2017 and Psychogios et al. 2011. `mouse_plasma` integrates
+Gardner and Stuart 2024 with murine plasma and tumour-interstitial-fluid
+measurements from Sullivan et al. 2019. The five culture challenges retain the
+usual nutrients of a published RPMI, DMEM, or plasma-like culture background and
+override the named glucose, lactate, or glutamine concentration with the
+corresponding challenge paper. Background and challenge references are stored
+separately in the output.
+
+User-defined reaction or metabolite compositions remain supported through
+`scenario = "custom"` or `scenario = NULL` with `custom_medium` or
+`custom_metabolites`.
 
 With at least two conditions, Stage 1 uses `condition_grn`; otherwise it uses
 `standard_pando` through `Pando::infer_grn()` and calculates No condition
@@ -117,7 +136,7 @@ not a comparability guardrail, and uses the canonical Layer 1
 - [Tutorial 3: mathematical model](docs/tutorial-03-mathematical-model.md)
 - [Tutorial 4: targeted reaction remapping](docs/tutorial-04-targeted-reaction-remapping.md)
 - [Tutorial 5: condition comparison](docs/tutorial-05-condition-differential-analysis.md)
-- [Published medium contract](docs/medium-presets.md)
+- [Medium scenarios and references](docs/medium-presets.md)
 - [Public functions](docs/functions.md)
 - [Stage schemas](docs/stage-interface-contracts.md)
 
