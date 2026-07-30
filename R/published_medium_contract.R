@@ -1,9 +1,9 @@
-# Publication-bound extracellular-medium contract.
+# Literature-backed extracellular-medium contract.
 #
-# The original implementation remains an internal builder for exact exchange
-# mapping. The public entry point below restricts built-in scenario identifiers
-# to formulations that are explicitly tied to a published paper and prevents
-# unpublished technical or synthetic media from being presented as presets.
+# R/medium.R retains the low-level mapping and custom-medium implementation. The
+# public entry point below exposes only biological scenarios supported by
+# published extracellular measurements or published cell-culture experiments.
+# Technical GEM boundary modes remain internal and are not biological media.
 
 .rc_make_medium_scenarios_unrestricted <- rc_make_medium_scenarios
 
@@ -12,137 +12,260 @@
   !is.na(x) & nzchar(x) & grepl("^10\\.[0-9]{4,9}/[^[:space:]]+$", x)
 }
 
-.rc_require_published_custom_medium <- function(x, argument) {
-  if (!is.data.frame(x) || !nrow(x)) {
-    stop("`", argument, "` must be a non-empty data frame.", call. = FALSE)
-  }
-  required <- c("reference_label", "reference_doi")
-  missing <- setdiff(required, colnames(x))
-  if (length(missing)) {
-    stop(
-      "`", argument, "` must include publication provenance columns: ",
-      paste(required, collapse = ", "), ".",
-      call. = FALSE
-    )
-  }
-  label <- trimws(as.character(x$reference_label))
-  doi <- trimws(as.character(x$reference_doi))
-  if (anyNA(label) || any(!nzchar(label)) || any(!.rc_valid_doi(doi))) {
-    stop(
-      "Every custom medium row must have a non-empty `reference_label` and ",
-      "a valid published-paper `reference_doi`.",
-      call. = FALSE
-    )
-  }
-  invisible(TRUE)
+.rc_collapse_nonempty <- function(x) {
+  x <- trimws(as.character(x))
+  x <- unique(x[!is.na(x) & nzchar(x)])
+  if (length(x)) paste(x, collapse = ";") else NA_character_
 }
 
-.rc_build_cantor2017_hplm <- function(
-    gem, condition, exchange_limit, exchange_roles,
-    strict_preset_matching) {
-  compounds <- .rc_medium_catalog("normal_human_plasma", "human")
-  doi <- "10.1016/j.cell.2017.03.023"
-  keep <- !is.na(compounds$component_reference_doi) &
-    compounds$component_reference_doi == doi &
-    is.finite(compounds$concentration_mM)
-  compounds <- compounds[keep, , drop = FALSE]
-  if (!nrow(compounds)) {
-    stop("The Cantor 2017 HPLM component table is unavailable.", call. = FALSE)
+.rc_add_compound_if_missing <- function(compounds, metabolite_name) {
+  if (metabolite_name %in% compounds$metabolite_name) return(compounds)
+  row <- .rc_medium_rows(
+    metabolite_name,
+    concentration_mM = NA_real_,
+    category = "challenge_nutrient",
+    required = TRUE
+  )
+  row$concentration_basis <- "challenge_target_only"
+  row$component_reference_doi <- NA_character_
+  .rc_bind_frames_fill(list(compounds, row))
+}
+
+.rc_culture_union_background <- function() {
+  rpm <- .rc_medium_catalog("rpmi1640", "human")
+  dmem <- .rc_medium_catalog("dmem_high_glucose", "human")
+  rpm$background_source <- "RPMI_1640"
+  dmem$background_source <- "DMEM"
+  combined <- .rc_bind_frames_fill(list(rpm, dmem))
+  groups <- split(seq_len(nrow(combined)), combined$metabolite_name)
+  rows <- lapply(groups, function(index) {
+    block <- combined[index, , drop = FALSE]
+    row <- block[1L, , drop = FALSE]
+    row$concentration_mM <- NA_real_
+    row$uptake_fraction <- 1
+    row$target_exchange_flag <- FALSE
+    row$required_match <- any(block$required_match %in% TRUE)
+    row$concentration_basis <-
+      "published_RPMI_DMEM_component_availability_union"
+    row$component_reference_doi <- .rc_collapse_nonempty(
+      block$component_reference_doi
+    )
+    row$background_source <- .rc_collapse_nonempty(block$background_source)
+    row
+  })
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}
+
+.rc_prepare_challenge_background <- function(scenario_id) {
+  if (scenario_id %in% c("high_glucose", "low_glucose")) {
+    return(list(
+      compounds = .rc_culture_union_background(),
+      background_id = "published_RPMI_DMEM_nutrient_union",
+      background_reference_label = paste(
+        "Moore et al., JAMA 1967 RPMI lineage;",
+        "Dulbecco and Freeman, Virology 1959 DMEM lineage"
+      ),
+      background_reference_doi = paste(
+        "10.1001/jama.1967.03120080053007",
+        "10.1016/0042-6822(59)90063-3",
+        sep = ";"
+      )
+    ))
   }
+  if (identical(scenario_id, "high_lactate")) {
+    compounds <- .rc_medium_catalog("dmem_high_glucose", "human")
+    compounds$uptake_fraction <- 1
+    compounds$target_exchange_flag <- FALSE
+    return(list(
+      compounds = compounds,
+      background_id = "published_DMEM_nutrient_background",
+      background_reference_label =
+        "Dulbecco and Freeman, Virology 1959; DMEM nutrient formulation",
+      background_reference_doi = "10.1016/0042-6822(59)90063-3"
+    ))
+  }
+  if (identical(scenario_id, "low_lactate")) {
+    compounds <- .rc_medium_catalog("normal_human_plasma", "human")
+    compounds$uptake_fraction <- 1
+    compounds$target_exchange_flag <- FALSE
+    return(list(
+      compounds = compounds,
+      background_id = "published_plasma_like_nutrient_background",
+      background_reference_label = paste(
+        "Cantor et al., Cell 2017 HPLM;",
+        "Vande Voorde et al., Science Advances 2019 Plasmax"
+      ),
+      background_reference_doi = paste(
+        "10.1016/j.cell.2017.03.023",
+        "10.1126/sciadv.aau7314",
+        sep = ";"
+      )
+    ))
+  }
+  if (identical(scenario_id, "low_glutamine")) {
+    compounds <- .rc_medium_catalog("dmem_high_glucose", "human")
+    compounds$uptake_fraction <- 1
+    compounds$target_exchange_flag <- FALSE
+    return(list(
+      compounds = compounds,
+      background_id = "published_DMEM_nutrient_background",
+      background_reference_label = paste(
+        "Dulbecco and Freeman, Virology 1959 DMEM lineage;",
+        "Visagie et al., Cell Bioscience 2015 DMEM deprivation system"
+      ),
+      background_reference_doi = paste(
+        "10.1016/0042-6822(59)90063-3",
+        "10.1186/s13578-015-0030-1",
+        sep = ";"
+      )
+    ))
+  }
+  stop("Unsupported culture challenge scenario: ", scenario_id, call. = FALSE)
+}
 
-  # Published concentrations are retained as provenance. RegCompass does not
-  # convert them into transporter rates. Every represented component is treated
-  # as available and bounded only by the shared modelling exchange cap and the
-  # original GEM directionality.
-  compounds$uptake_fraction <- 1
-  compounds$target_exchange_flag <- FALSE
-  compounds$required_match <- TRUE
-  compounds$concentration_basis <- "Cantor_2017_HPLM_formulation"
-  compounds$component_reference_doi <- doi
+.rc_challenge_definition <- function(scenario_id) {
+  switch(
+    scenario_id,
+    high_glucose = list(
+      target = "glucose", concentration_mM = 25, reference_high_mM = 25,
+      concentration_basis = "Han_2015_high_glucose_25mM",
+      challenge_reference_label =
+        "Han et al., Gynecologic Oncology 2015; 25 mM glucose",
+      challenge_reference_doi = "10.1016/j.ygyno.2015.06.036"
+    ),
+    low_glucose = list(
+      target = "glucose", concentration_mM = 1, reference_high_mM = 25,
+      concentration_basis = "Han_2015_low_glucose_1mM",
+      challenge_reference_label =
+        "Han et al., Gynecologic Oncology 2015; 1 mM glucose",
+      challenge_reference_doi = "10.1016/j.ygyno.2015.06.036"
+    ),
+    high_lactate = list(
+      target = "lactate", concentration_mM = 20, reference_high_mM = 20,
+      concentration_basis = "San_Millan_2020_high_lactate_20mM",
+      challenge_reference_label =
+        "San-Millan et al., Frontiers in Oncology 2020; 20 mM lactate",
+      challenge_reference_doi = "10.3389/fonc.2019.01536"
+    ),
+    low_lactate = list(
+      target = "lactate", concentration_mM = 0.5, reference_high_mM = 20,
+      concentration_basis = "Cho_2025_low_lactate_0.5mM",
+      challenge_reference_label =
+        "Cho et al., Physiological Reports 2025; 0.5 mM lactate",
+      challenge_reference_doi = "10.14814/phy2.70450"
+    ),
+    low_glutamine = list(
+      target = "glutamine", concentration_mM = 0.5, reference_high_mM = 4,
+      concentration_basis = "Visagie_2015_low_glutamine_0.5mM",
+      challenge_reference_label = paste(
+        "Visagie et al., Cell Bioscience 2015;",
+        "Methods-defined 0.5 mM glutamine condition"
+      ),
+      challenge_reference_doi = "10.1186/s13578-015-0030-1"
+    ),
+    stop("Unsupported culture challenge scenario: ", scenario_id, call. = FALSE)
+  )
+}
 
+.rc_build_literature_challenge <- function(
+    gem, scenario_id, condition, exchange_limit, uptake_scale,
+    exchange_roles, strict_preset_matching) {
+  background <- .rc_prepare_challenge_background(scenario_id)
+  definition <- .rc_challenge_definition(scenario_id)
+  compounds <- .rc_add_compound_if_missing(
+    background$compounds,
+    definition$target
+  )
+  selected <- compounds$metabolite_name == definition$target
+  compounds$concentration_mM[selected] <- definition$concentration_mM
+  compounds$concentration_basis[selected] <- definition$concentration_basis
+  compounds$component_reference_doi[selected] <-
+    definition$challenge_reference_doi
+  compounds$uptake_fraction[selected] <-
+    definition$concentration_mM / definition$reference_high_mM
+  compounds$target_exchange_flag[selected] <- TRUE
+  compounds$required_match[selected] <- TRUE
+
+  all_doi <- .rc_collapse_nonempty(c(
+    background$background_reference_doi,
+    definition$challenge_reference_doi
+  ))
   reference <- data.frame(
-    preset_id = "cantor2017_hplm",
+    preset_id = scenario_id,
     species = "Homo sapiens",
     reference_label = paste(
-      "Cantor et al., Cell 2017:",
-      "Physiologic Medium Rewires Cellular Metabolism and Reveals Uric Acid",
-      "as an Endogenous Inhibitor of UMP Synthase"
+      background$background_reference_label,
+      definition$challenge_reference_label,
+      sep = "; "
     ),
-    reference_doi = doi,
-    reference_pmid = "28388410",
+    reference_doi = all_doi,
+    reference_pmid = NA_character_,
     evidence_scope = paste(
-      "HPLM components with exact published concentrations and direct",
-      "one-to-one GEM exchange mapping; ambiguous salt-to-free-ion",
-      "conversions are omitted rather than approximated"
+      "Composite literature-backed cell-culture environment:",
+      background$background_id,
+      "with the named nutrient concentration overridden by the challenge paper."
     ),
     stringsAsFactors = FALSE
   )
 
   out <- .rc_build_medium_preset(
     gem = gem,
-    preset_id = "cantor2017_hplm",
+    preset_id = scenario_id,
     species = "human",
     exchange_limit = exchange_limit,
-    uptake_scale = 1,
+    uptake_scale = uptake_scale,
     condition = condition %||% "all",
     exchange_roles = exchange_roles,
     strict_preset_matching = strict_preset_matching,
     compounds = compounds,
     custom_reference = reference
   )
-  out$medium_scenario_id <- "cantor2017_hplm"
-  out$evidence_source <- "published_HPLM_Cantor_2017"
-  out$assumption_level <- "published_component_availability_no_flux_inference"
-  out$concentration_used_for_rate_bound <- FALSE
-  out$rate_bound_source <-
-    "published_availability_intersected_with_original_gem_directionality"
-  attr(out, "medium_policy") <- "published_paper_bound_presets_only"
-  diagnostics <- attr(out, "preset_diagnostics")
-  if (is.data.frame(diagnostics) && nrow(diagnostics)) {
-    diagnostics$medium_scenario_id <- "cantor2017_hplm"
-    attr(out, "preset_diagnostics") <- diagnostics
-  }
+  out$medium_background_id <- background$background_id
+  out$background_reference_label <- background$background_reference_label
+  out$background_reference_doi <- background$background_reference_doi
+  out$challenge_reference_label <- definition$challenge_reference_label
+  out$challenge_reference_doi <- definition$challenge_reference_doi
+  out$scenario_construction <-
+    "published_background_plus_named_nutrient_override"
   out
 }
 
-#' Build publication-bound extracellular medium scenarios
+#' Build literature-backed extracellular medium scenarios
 #'
-#' Built-in scenario identifiers are restricted to formulations whose encoded
-#' components and concentrations can be traced directly to a published paper.
-#' The only current built-in preset is `"cantor2017_hplm"` (Cantor et al., Cell
-#' 2017; doi:10.1016/j.cell.2017.03.023). Ambiguous or synthetic presets,
-#' single-nutrient challenges, manufacturer-only formulations, and technical GEM
-#' boundary modes are deliberately not accepted as biological scenarios.
-#'
-#' Custom reaction-level or metabolite-level environments remain supported, but
-#' they are not named presets: set `scenario = NULL` and provide publication
-#' provenance through `reference_label` and `reference_doi` columns.
+#' Biological presets combine published plasma measurements or published cell
+#' culture formulations with explicit challenge concentrations. Plasma scenarios
+#' may synthesize several published sources to represent nutrients known to be
+#' available; unsupported quantitative values remain availability-only. Culture
+#' challenges retain the usual nutrients of their published basal medium and
+#' override only the named glucose, lactate, or glutamine concentration.
 #'
 #' @param gem A validated RegCompass GEM.
-#' @param scenario Zero or more publication-bound built-in scenario identifiers.
-#'   The accepted built-in value is `"cantor2017_hplm"`. Use `NULL` for a
-#'   publication-backed custom environment.
-#' @param species `"auto"`, `"human"`, or `"mouse"`. The built-in HPLM preset
-#'   requires Human-GEM. Mouse analyses must currently provide a published custom
-#'   medium because no partial mouse-plasma preset is retained.
-#' @param custom_medium Exact reaction-level rows. Every row must include
-#'   `reference_label` and a valid published-paper `reference_doi`.
-#' @param custom_metabolites Metabolite-availability rows. Every row must include
-#'   `reference_label` and a valid published-paper `reference_doi`.
-#' @param uptake_scale Retained for API compatibility. Publication-bound runs
-#'   require the exact value `1`; arbitrary rescaling would no longer represent
-#'   the cited medium.
+#' @param scenario One or more identifiers from `"normal_human_plasma"`,
+#'   `"mouse_plasma"`, `"high_glucose"`, `"low_glucose"`,
+#'   `"high_lactate"`, `"low_lactate"`, `"low_glutamine"`, and
+#'   `"custom"`. `NULL` is also accepted for a custom-only run.
+#' @param species `"auto"`, `"human"`, or `"mouse"`. Human plasma and culture
+#'   challenges require Human-GEM; mouse plasma requires Mouse-GEM.
+#' @param custom_medium User-defined reaction-level bounds. Publication columns
+#'   are optional but retained when supplied.
+#' @param custom_metabolites User-defined metabolite availability and optional
+#'   concentration rows. Publication columns are optional but retained.
+#' @param uptake_scale Non-negative global or named sensitivity multipliers for
+#'   target nutrient relative caps. These are modelling assumptions, not measured
+#'   transporter rates.
 #' @param exchange_roles Reaction roles treated as exchange reactions.
 #' @param condition Shared condition label; canonical scoring requires `"all"`.
 #' @param exchange_limit Shared modelling cap intersected with original GEM
-#'   directionality. Published concentrations are not converted into uptake flux.
-#' @param strict_preset_matching Stop when a published component cannot be mapped
-#'   one-to-one to a GEM exchange.
-#' @return A reaction-level medium table with publication provenance.
+#'   directionality.
+#' @param strict_preset_matching Stop when required components cannot be mapped
+#'   one-to-one to GEM exchanges.
+#' @return A reaction-level medium table with background and challenge citations.
 #' @export
 rc_make_medium_scenarios <- function(
     gem,
-    scenario = "cantor2017_hplm",
+    scenario = "normal_human_plasma",
     species = c("auto", "human", "mouse"),
     custom_medium = NULL,
     custom_metabolites = NULL,
@@ -152,18 +275,10 @@ rc_make_medium_scenarios <- function(
     exchange_limit = 1,
     strict_preset_matching = TRUE) {
   species <- .rc_infer_gem_species(gem, species)
-  if (!is.numeric(uptake_scale) || length(uptake_scale) != 1L ||
-      !is.finite(uptake_scale) || uptake_scale != 1) {
-    stop(
-      "Publication-bound medium scenarios require `uptake_scale = 1`.",
-      call. = FALSE
-    )
-  }
   if (!is.null(custom_medium) && !is.null(custom_metabolites)) {
     stop("Supply only one of `custom_medium` or `custom_metabolites`.",
          call. = FALSE)
   }
-
   custom_supplied <- !is.null(custom_medium) || !is.null(custom_metabolites)
   if (is.null(scenario)) {
     scenario <- character()
@@ -175,47 +290,94 @@ rc_make_medium_scenarios <- function(
     }
   }
 
-  choices <- "cantor2017_hplm"
+  choices <- c(
+    "normal_human_plasma", "mouse_plasma",
+    "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+    "low_glutamine", "custom"
+  )
   invalid <- setdiff(scenario, choices)
   if (length(invalid)) {
     stop(
-      "Unsupported or insufficiently documented medium scenario: ",
+      "Unsupported biological medium scenario: ",
       paste(invalid, collapse = ", "),
-      ". Accepted built-in scenario: `cantor2017_hplm`; use `scenario = NULL` ",
-      "with a DOI-cited custom medium for other published formulations.",
+      ". Technical GEM boundary modes and incomplete presets are not accepted.",
+      call. = FALSE
+    )
+  }
+  custom_requested <- "custom" %in% scenario || custom_supplied
+  scenario <- setdiff(scenario, "custom")
+  if (custom_requested && !custom_supplied) {
+    stop(
+      "`custom_medium` or `custom_metabolites` is required for `scenario = 'custom'`.",
       call. = FALSE
     )
   }
   if (!length(scenario) && !custom_supplied) {
+    stop("At least one built-in or user-defined medium is required.",
+         call. = FALSE)
+  }
+
+  human_only <- c(
+    "normal_human_plasma", "high_glucose", "low_glucose",
+    "high_lactate", "low_lactate", "low_glutamine"
+  )
+  if (identical(species, "mouse") && length(intersect(scenario, human_only))) {
     stop(
-      "Provide `scenario = 'cantor2017_hplm'` or a DOI-cited custom medium.",
+      "Human-derived medium scenarios cannot be used with Mouse-GEM: ",
+      paste(intersect(scenario, human_only), collapse = ", "), ".",
       call. = FALSE
     )
   }
-  if (length(scenario) && !identical(species, "human")) {
-    stop("`cantor2017_hplm` requires a Human-GEM run.", call. = FALSE)
+  if (identical(species, "human") && "mouse_plasma" %in% scenario) {
+    stop("`mouse_plasma` requires Mouse-GEM.", call. = FALSE)
   }
 
   pieces <- list()
-  if ("cantor2017_hplm" %in% scenario) {
-    pieces[[length(pieces) + 1L]] <- .rc_build_cantor2017_hplm(
+  plasma_ids <- intersect(
+    scenario,
+    c("normal_human_plasma", "mouse_plasma")
+  )
+  if (length(plasma_ids)) {
+    pieces[[length(pieces) + 1L]] <-
+      .rc_make_medium_scenarios_unrestricted(
+        gem = gem,
+        scenario = plasma_ids,
+        species = species,
+        uptake_scale = uptake_scale,
+        exchange_roles = exchange_roles,
+        condition = condition,
+        exchange_limit = exchange_limit,
+        strict_preset_matching = strict_preset_matching
+      )
+  }
+
+  challenge_ids <- intersect(
+    scenario,
+    c(
+      "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+      "low_glutamine"
+    )
+  )
+  for (scenario_id in challenge_ids) {
+    pieces[[length(pieces) + 1L]] <- .rc_build_literature_challenge(
       gem = gem,
+      scenario_id = scenario_id,
       condition = condition,
       exchange_limit = exchange_limit,
+      uptake_scale = uptake_scale,
       exchange_roles = exchange_roles,
       strict_preset_matching = strict_preset_matching
     )
   }
 
   if (!is.null(custom_medium)) {
-    .rc_require_published_custom_medium(custom_medium, "custom_medium")
     pieces[[length(pieces) + 1L]] <-
       .rc_make_medium_scenarios_unrestricted(
         gem = gem,
         scenario = "custom",
         species = species,
         custom_medium = custom_medium,
-        uptake_scale = 1,
+        uptake_scale = uptake_scale,
         exchange_roles = exchange_roles,
         condition = condition,
         exchange_limit = exchange_limit,
@@ -223,16 +385,13 @@ rc_make_medium_scenarios <- function(
       )
   }
   if (!is.null(custom_metabolites)) {
-    .rc_require_published_custom_medium(
-      custom_metabolites, "custom_metabolites"
-    )
     pieces[[length(pieces) + 1L]] <-
       .rc_make_medium_scenarios_unrestricted(
         gem = gem,
         scenario = "custom",
         species = species,
         custom_metabolites = custom_metabolites,
-        uptake_scale = 1,
+        uptake_scale = uptake_scale,
         exchange_roles = exchange_roles,
         condition = condition,
         exchange_limit = exchange_limit,
@@ -248,6 +407,7 @@ rc_make_medium_scenarios <- function(
   if (!nrow(output)) stop("No medium rows were produced.", call. = FALSE)
   attr(output, "preset_diagnostics") <- diagnostics
   attr(output, "species") <- species
-  attr(output, "medium_policy") <- "published_paper_bound_presets_only"
+  attr(output, "medium_policy") <-
+    "published_plasma_or_culture_background_with_explicit_overrides"
   output
 }
