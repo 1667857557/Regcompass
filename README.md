@@ -65,17 +65,18 @@ low_glutamine
 custom
 ```
 
-`normal_human_plasma` integrates HPLM and adult human plasma evidence from
-Cantor et al. 2017 and Psychogios et al. 2011. `mouse_plasma` integrates
-Gardner and Stuart 2024 with murine plasma and tumour-interstitial-fluid
-measurements from Sullivan et al. 2019. The five culture challenges retain the
-usual nutrients of a published RPMI, DMEM, or plasma-like culture background and
-override the named glucose, lactate, or glutamine concentration with the
-corresponding challenge paper. Background and challenge references are stored
-separately in the output.
+The human nutrient composition is anchored to HPLM from *Cell* 2017 and its
+updated formulation from *Cell Metabolism* 2021. Plasmax from *Science
+Advances* 2019 is retained as independent validation and is not numerically
+averaged with HPLM. `mouse_plasma` uses a conservative metabolite set anchored
+to absolute mouse plasma and interstitial-fluid measurements in *Nature* 2026;
+unsupported components are omitted rather than copied from human HPLM.
 
-User-defined reaction or metabolite compositions remain supported through
-`scenario = "custom"` or `scenario = NULL` with `custom_medium` or
+All five culture challenges use the same HPLM 2017/2021 basal composition and
+override only the named glucose, lactate, or glutamine concentration from the
+challenge paper. Background and challenge references are stored separately in
+the output. User-defined reaction or metabolite compositions remain supported
+through `scenario = "custom"` or `scenario = NULL` with `custom_medium` or
 `custom_metabolites`.
 
 With at least two conditions, Stage 1 uses `condition_grn`; otherwise it uses
