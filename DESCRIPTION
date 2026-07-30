@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.1.0
+Version: 2.1.1
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -11,9 +11,10 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     When condition metadata are absent or contain one level, it automatically
     runs the original Pando infer_grn workflow and enters its standard
     coefficients into the same reaction-support and penalty path without
-    calculating condition coefficients. SuperCell receives broad cell type and
-    condition as separate native cell.annotation and cell.split.condition
-    inputs; no concatenated condition-by-cell-type metadata field is created.
+    calculating condition coefficients. Metacell graphs are built independently
+    for each broad cell type while all conditions of that cell type share one
+    multimodal embedding transform and k-nearest-neighbour graph. Condition is
+    applied only after graph clustering to retain condition-pure metacells.
     Metacell RNA and ATAC counts are aggregated from exact SuperCell membership.
     RNA latent-expression priors are estimated by broad cell type, regulatory
     modifiers act on bounded RNA-support odds, GPR rules produce reaction
@@ -121,7 +122,7 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@Supercell2,
+    1667857557/SuperCell_Seurat_V4@agent/celltype-joint-condition-graphs,
     1667857557/Pando_regcompass
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
