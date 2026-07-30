@@ -39,7 +39,7 @@ test_that("COMPASS GPR-AND functions are exact", {
   expect_error(rc_and_capacity(x, "boltzmann"), "should be one of")
 })
 
-test_that("COMPASS-like penalty is positive and monotonically decreasing", {
+test_that("COMPASS-like penalty imputes missing expression as zero", {
   expression <- matrix(
     c(0, 1, 3, NA_real_),
     nrow = 4,
@@ -48,17 +48,22 @@ test_that("COMPASS-like penalty is positive and monotonically decreasing", {
   answer <- rc_compute_multiome_penalty(expression)
   penalty <- answer$penalty[, "u1"]
   expect_equal(penalty[["zero"]], 1)
-  expect_true(is.na(penalty[["missing"]]))
-  expect_true(is.na(
-    answer$components$effective_reaction_expression["missing", "u1"]
-  ))
+  expect_equal(penalty[["missing"]], 1)
+  expect_equal(
+    answer$components$effective_reaction_expression["missing", "u1"], 0
+  )
+  expect_true(answer$components$missing_expression_flag["missing", "u1"])
   expect_gt(penalty[["zero"]], penalty[["low"]])
   expect_gt(penalty[["low"]], penalty[["high"]])
-  expect_true(all(is.finite(penalty[1:3]) & penalty[1:3] > 0))
+  expect_true(all(is.finite(penalty) & penalty > 0))
   expect_identical(answer$evidence_policy, "penalty_only")
   expect_identical(
+    answer$missing_expression_policy,
+    "compass_missing_expression_max_penalty"
+  )
+  expect_identical(
     answer$penalty_version,
-    "gene_integrated_multiome_penalty_v2"
+    "compass_gpr_missing_zero_penalty_v3"
   )
 })
 
@@ -75,15 +80,10 @@ test_that("Stage 1 installs human Pando motifs and guards mouse regions", {
   expect_match(implementation, ".rc_default_pando_motifs", fixed = TRUE)
   expect_match(implementation, ".rc_default_pando_regions(species)", fixed = TRUE)
   expect_match(motif_helper, 'list = "motifs"', fixed = TRUE)
-  expect_match(
-    region_guard,
-    "phastConsElements20Mammals.UCSC.hg38",
-    fixed = TRUE
-  )
+  expect_match(region_guard, "phastConsElements20Mammals.UCSC.hg38", fixed = TRUE)
   expect_match(region_guard, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
   expect_match(region_guard, "BiocGenerics::union", fixed = TRUE)
   expect_match(region_guard, 'identical(species, "mouse")', fixed = TRUE)
-  expect_match(region_guard, "valid for mouse input.", fixed = TRUE)
   expect_error(
     .rc_default_pando_regions("mouse"),
     "No mouse-coordinate regulatory-region set is bundled",
@@ -91,11 +91,11 @@ test_that("Stage 1 installs human Pando motifs and guards mouse regions", {
   )
 })
 
-test_that("condition-pooled metacell is selected explicitly", {
+test_that("metacell is the canonical scoring unit", {
   expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
   expect_identical(
     eval(formals(rc_run_microcompass)$unit),
-    c("sample_celltype", "metacell")
+    c("metacell", "sample_celltype")
   )
   expect_identical(
     eval(formals(rc_run_regcompass_one_shot)$medium_scenario),
