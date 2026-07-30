@@ -53,7 +53,7 @@ gem <- rc_prepare_gem(
 
 medium_scenarios <- rc_make_medium_scenarios(
   gem,
-  scenario = "physiologic",
+  scenario = "normal_human_plasma",
   species = "human"
 )
 
@@ -94,6 +94,27 @@ result <- rc_run_regcompass(
   model_mode = "meta_module_gem"
 )
 ```
+
+Supported biological medium scenarios are:
+
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
+
+The five challenge scenarios retain a published RPMI, DMEM, or plasma-like
+nutrient background and override only the named glucose, lactate, or glutamine
+concentration. Their output separates `background_reference_doi` from
+`challenge_reference_doi` and records
+`published_background_plus_named_nutrient_override` in
+`scenario_construction`. User-defined `custom_medium` and `custom_metabolites`
+remain supported through `scenario = "custom"` or `scenario = NULL`.
 
 # Inspect
 
@@ -147,5 +168,6 @@ use the same primary evidence route as the original Stage 5 targets.
 - [Tutorial 3](../docs/tutorial-03-mathematical-model.md)
 - [Tutorial 4: targeted reaction remapping](../docs/tutorial-04-targeted-reaction-remapping.md)
 - [Tutorial 5: condition comparison](../docs/tutorial-05-condition-differential-analysis.md)
+- [Medium scenarios and evidence](../docs/medium-presets.md)
 - [Stage contracts](../docs/stage-interface-contracts.md)
 - [Public API](../docs/functions.md)
