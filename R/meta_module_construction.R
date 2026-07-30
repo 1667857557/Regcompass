@@ -19,14 +19,11 @@
   active$target <- toupper(trimws(as.character(active$target)))
   active$tf <- toupper(trimws(as.character(active$tf)))
   active$region <- trimws(as.character(active$region))
-  active <- active[
-    active$target %in% metabolic_genes,
-    , drop = FALSE
-  ]
+  active <- active[active$target %in% metabolic_genes, , drop = FALSE]
   if (!nrow(active)) {
     stop(
       paste(
-        "No Human-GEM metabolic target genes have active Pando",
+        "No metabolic target genes have active Pando",
         "TF-peak-gene evidence."
       ),
       call. = FALSE
@@ -70,6 +67,7 @@
       module_id = paste0(group_id, "::SUPPORTED_METABOLIC_GENES"),
       gene = target,
       n_active_edges = nrow(one),
+      n_significant_edges = nrow(one),
       n_regulating_tfs = length(unique(one$tf[nzchar(one$tf)])),
       n_regulatory_regions = length(unique(one$region[nzchar(one$region)])),
       min_padj = finite_min(padj),
@@ -133,8 +131,8 @@
   if (!nrow(core) || !any(core$is_core %in% TRUE)) {
     stop(
       paste(
-        "Significant Pando-supported metabolic genes did not completely",
-        "satisfy any Human-GEM GPR branch."
+        "Pando-supported metabolic genes did not completely",
+        "satisfy any GEM GPR branch."
       ),
       call. = FALSE
     )
@@ -192,15 +190,15 @@
     meta_module_summary = expanded$summary,
     crossref_maps = expanded$crossref_maps,
     core_definition = paste(
-      "complete Human-GEM GPR branch contained in the active Pando",
-      "target-gene set for one condition-by-cell-type group"
+      "complete GEM GPR branch contained in the active Pando",
+      "target-gene set for one effective condition-by-cell-type group"
     ),
     expansion_definition = paste(
       "one ordered pass: core subsystem, then KEGG/Reactome reaction",
       "equivalence, then master-Rhea reaction equivalence"
     ),
     analysis_group_unit =
-      "condition_x_celltype_active_pando_metabolic_targets",
+      "effective_condition_x_celltype_active_pando_metabolic_targets",
     feasibility_completion = "none_at_meta_module_stage"
   ))
   .rc_mm_write_tsv_gz(
