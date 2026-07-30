@@ -163,10 +163,12 @@ mouse_medium <- rc_make_medium_scenarios(
 )
 ```
 
-`normal_human_plasma` combines HPLM and adult human plasma/serum evidence.
-`mouse_plasma` combines mouse plasma medium and murine plasma/tumour-interstitial
-fluid evidence. Unsupported quantitative values remain availability-only rather
-than being inferred from another species.
+`normal_human_plasma` encodes HPLM composition from *Cell* 2017 and the updated
+HPLM formulation from *Cell Metabolism* 2021. Plasmax from *Science Advances*
+2019 is validation only and is not averaged with HPLM. `mouse_plasma` uses a
+conservative metabolite set anchored to absolute plasma and interstitial-fluid
+measurements in *Nature* 2026. Unsupported mouse components are omitted rather
+than inferred from human HPLM.
 
 ### Culture challenge scenarios
 
@@ -184,19 +186,19 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-The five challenge scenarios retain the common nutrients of their published
-RPMI, DMEM, or plasma-like background and replace only the named target
-concentration:
+All five challenge scenarios use the identical HPLM 2017/2021 basal nutrient
+composition. The challenge paper replaces only the named target concentration:
 
 ```text
-high_glucose   glucose 25 mM   Han 2015
-low_glucose    glucose 1 mM    Han 2015
-high_lactate   lactate 20 mM   San-Millan 2020
-low_lactate    lactate 0.5 mM  Cho 2025
+high_glucose   glucose 25 mM    Han 2015
+low_glucose    glucose 1 mM     Han 2015
+high_lactate   lactate 20 mM    San-Millan 2020
+low_lactate    lactate 0.5 mM   Cho 2025
 low_glutamine  glutamine 0.5 mM Visagie 2015 Methods
 ```
 
-Inspect background and challenge provenance separately:
+This removes RPMI-versus-DMEM-versus-Plasmax composition as a confounder between
+challenge scenarios. Inspect composition, validation and challenge provenance:
 
 ```r
 unique(medium_scenarios[, intersect(c(
@@ -204,16 +206,16 @@ unique(medium_scenarios[, intersect(c(
   "medium_background_id",
   "background_reference_label",
   "background_reference_doi",
+  "background_validation_reference_label",
+  "background_validation_reference_doi",
   "challenge_reference_label",
   "challenge_reference_doi",
   "scenario_construction"
 ), colnames(medium_scenarios))])
 ```
 
-The challenge scenarios are composite literature-backed modelling environments,
-not claims that one paper supplied every background metabolite. Target
-concentration-derived uptake caps remain sensitivity assumptions rather than
-measured transporter rates.
+Target concentration-derived uptake caps remain sensitivity assumptions rather
+than measured transporter rates.
 
 ### User-defined composition
 
