@@ -1,17 +1,15 @@
-# Tutorial 1: minimal one-shot run
+# Tutorial 1: one-shot workflow
 
-Use this tutorial for a complete analysis from a paired-cell RNA+ATAC Seurat
-object. Mathematical definitions are in
-[Mathematical model](mathematical-model.md).
+This is the shortest complete path from a paired-cell RNA+ATAC Seurat object to
+condition-comparable reaction scores. Equations are in
+[Tutorial 3](tutorial-03-mathematical-model.md). Public API:
+[functions.md](functions.md).
 
 ## Required object state
 
-The object must contain:
-
-- paired RNA and ATAC assays for the same cells;
-- condition and broad-cell-type metadata;
-- RNA PCA and ATAC LSI reductions;
-- genome-compatible ATAC peak coordinates.
+The object must contain paired RNA and ATAC assays for the same cells,
+condition and broad-cell-type metadata, RNA PCA, ATAC LSI, and genome-compatible
+peak coordinates.
 
 ```r
 stopifnot(
@@ -21,10 +19,7 @@ stopifnot(
 )
 ```
 
-RegCompass selects GEM GPR genes present in the RNA assay. Do not override
-`genes` inside `pando_infer_args`.
-
-## Prepare GEM and medium
+## GEM and medium
 
 ```r
 library(RegCompassR)
@@ -42,10 +37,6 @@ medium_scenarios <- rc_make_medium_scenarios(
   species = "human"
 )
 ```
-
-Use `physiologic` for the species-specific baseline. Culture-medium and nutrient
-challenge presets are intended for sensitivity analysis. Use `custom` for the
-actual experimental environment. See [Medium presets](medium-presets.md).
 
 ## Run
 
@@ -107,86 +98,41 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-Do not add `parallel` or `BPPARAM` inside `pando_infer_args`; the one-shot runner
-controls Stage 1 workers.
+Do not place `parallel` or `BPPARAM` inside `pando_infer_args`; the runner owns
+Stage 1 parallelism.
 
-## Key parameters and policies
+## Canonical interpretation
 
-- `candidate_screen = "motif_domain"`: canonical candidate policy.
-- Pando condition effects are absolute coefficients on a shared coordinate; no
-  stored baseline-condition contrast enters the workflow.
-- `gamma = 30L`: the same gamma is used for every condition × broad-cell-type
-  stratum. RNA/ATAC depth does not alter gamma.
-- Cells above the stratum 99th percentile of RNA or ATAC depth are diagnostic
-  only and never cause metacell rejection.
-- `regulatory_alpha = 1`: the only accepted regulatory weight.
-- A non-estimable edge contributes a structural zero in the main projection
-  path. A non-finite target modifier falls back exactly to RNA-only support.
-- `gpr_and_method = "min"`: limiting-subunit GPR rule. COMPASS OR isozyme
-  branches are summed.
-- Missing final reaction expression receives the maximum expression-linked
-  penalty.
-- `target_direction = "both"`: score forward and reverse directions separately.
+- `condition_full_oof` is the primary regulatory and metabolic penalty route.
+- Jointly estimable edges form the common-support component selected by
+  `comparison_support`.
+- A non-estimable edge contributes a structural zero in that condition.
+- A predictor equal to zero in every input cell remains represented without a
+  fitted coefficient and contributes zero.
+- Stage 2 builds one graph per cell type while all conditions of that cell type
+  share the graph; condition is applied after graph clustering.
+- `regulatory_alpha = 1` and `gpr_and_method = "min"` are canonical.
+- One medium-specific structural model is reused across all conditions and
+  metacells.
+
+The workflow does not calculate depth matching, common-depth restriction, alpha
+sensitivity, zero-support sensitivity, or link-saturation propagation.
 
 ## Inspect outputs
 
 ```r
 result$grn$condition_fit_status
-result$grn$condition_grn_fits
-result$grn$tf_peak_gene_condition
-result$condition_grn_meta_modules$supported_metabolic_genes
-result$condition_grn_meta_modules$core_gene_reaction
-result$layer1$projection_structural_zero
-result$layer1$regulatory_fallback
-result$microcompass$model_cache_summary
+result$metacells$input_design
+result$layer1$gene_projection_condition_full_oof
+result$layer1$gene_projection_common_oof
+result$microcompass$penalty_condition_full_oof
+result$microcompass$penalty_common_oof
+result$microcompass$penalty_condition_unique_increment
 result$reaction_ranking
 result$condition_contrast
 ```
 
-The primary reaction comparison uses outer-heldout condition projections.
-`result$condition_contrast` is a downstream metabolic comparison, not a stored
-Pando coefficient contrast.
-
-## Mouse input
-
-Mouse analyses require build-matched regulatory regions:
-
-```r
-library(BSgenome.Mmusculus.UCSC.mm10)
-
-mouse_regions <- readRDS("mm10_regulatory_regions.rds")
-
-mouse_result <- rc_run_regcompass_one_shot(
-  object = A_mouse,
-  outdir = "RegCompass_mouse",
-  genome = BSgenome.Mmusculus.UCSC.mm10,
-  species = "mouse",
-  condition_col = "Group",
-  celltype_col = "cell_type",
-  pando_args = list(
-    pando_initiate_args = list(regions = mouse_regions),
-    pando_infer_args = list(
-      candidate_screen = "motif_domain",
-      condition_mix = 0.5,
-      condition_weight = "equal"
-    )
-  ),
-  metacell_args = list(
-    rna_reduction = "pca",
-    atac_reduction = "lsi",
-    gamma = 30L,
-    seed = 12345L
-  ),
-  layer1_args = list(
-    projection_component = "condition",
-    comparison_support = "auto",
-    regulatory_alpha = 1,
-    gpr_and_method = "min"
-  )
-)
-```
-
-The region build must match the ATAC coordinates and motif-scanning genome.
-
-Use [Tutorial 2](tutorial-02-stepwise-audit.md) for restartable stages. Public
-API: [functions.md](functions.md).
+Use [Tutorial 2](tutorial-02-stepwise-audit.md) for restartable stages,
+[Tutorial 4](tutorial-04-targeted-reaction-remapping.md) for targeted reaction
+extension, and [Tutorial 5](tutorial-05-condition-differential-analysis.md) for
+condition statistics.

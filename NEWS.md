@@ -1,3 +1,32 @@
+# RegCompassR 2.2.0
+
+- Made `condition_full_oof` the primary regulatory and metabolic penalty route.
+  Jointly coefficient-estimable edges remain available as the common-support
+  component, and the condition-unique component is reported as condition-full
+  minus common support.
+- Separated coefficient estimability from projection support. A candidate edge
+  that is non-estimable in one or both conditions retains an unavailable
+  coefficient (`NA`) but contributes an exact structural zero in each affected
+  condition. Predictors equal to zero in every input cell remain represented in
+  the shared candidate supergraph.
+- Added the canonical Pando masks `coefficient_estimable_mask`,
+  `projectable_structural_zero_mask`, and `projection_support_mask`, plus the
+  public `project_condition_grn_primary_cells()` handoff.
+- Removed depth matching, common-depth restriction, alpha sensitivity,
+  zero-support sensitivity, and link-saturation propagation from Layer 1,
+  Layer 2, persisted schemas, tests, and current documentation.
+- Retained `rc_regcompass_step_target_union()` as the supported optional
+  targeted-remapping pass. It scores direct KEGG/Reactome/master-Rhea-linked
+  non-core reactions using the primary condition-full Layer 1 evidence and the
+  exact cached Stage 5 union GEM without rebuilding the model or rerunning
+  FASTCORE.
+- The canonical tutorial set contains five documents: one-shot, stepwise,
+  mathematical model, targeted reaction remapping, and condition comparison.
+  All equations are centralized in Tutorial 3.
+- Retained the existing Stage 2 graph contract: one independent graph per broad
+  cell type, all conditions joint within the cell-type graph, and condition-pure
+  metacells assigned after graph clustering.
+
 # RegCompassR 1.9.3
 
 - Added a final Pando bridge validation layer for Pando 1.2.1. RegCompass now verifies the public `infer_condition_grn()` and `condition_grn_fit()` APIs and requires the explicit `ConditionGRNFit$comparison_mask` contract.

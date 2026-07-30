@@ -1,8 +1,10 @@
 # RegCompassR public API
 
-See [Workflow](workflow.md), [run modes](run-modes-and-stepwise-workflow.md),
-[stage contracts](stage-interface-contracts.md), and the
-[metacell graph contract](metacell-graph-contract.md).
+Main workflow tutorials: [one-shot](tutorial-01-quick-start.md),
+[stepwise](tutorial-02-stepwise-audit.md),
+[mathematical model](tutorial-03-mathematical-model.md),
+[targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md), and
+[condition comparison](tutorial-05-condition-differential-analysis.md).
 
 ## Complete workflows
 
@@ -11,19 +13,19 @@ See [Workflow](workflow.md), [run modes](run-modes-and-stepwise-workflow.md),
 | `rc_run_regcompass()` | Run all six stages with automatic standard/condition-aware Pando routing. |
 | `rc_run_regcompass_one_shot()` | Convenience wrapper around the complete workflow. |
 
-`condition_col` may be `NULL`, absent from metadata, single-level, or
-multi-level. The selected route is returned in `result$analysis_mode`.
+`condition_col` may be absent, single-level or multi-level. The selected route is
+returned in `result$analysis_mode`: `standard_pando` or `condition_grn`.
 
 ## Restartable stages
 
 | Stage | Function | Main output |
 |---:|---|---|
-| 1 | `rc_regcompass_step_grn()` | standard Pando networks or canonical condition-aware fits |
-| 2 | `rc_regcompass_step_metacells()` | cell-type-independent graphs, condition-pure membership, and aggregated RNA/ATAC counts |
-| 3 | `rc_regcompass_step_meta_modules()` | supported genes, complete-GPR cores, reaction catalogue |
-| 4 | `rc_regcompass_step_layer1()` | RNA support, regulatory projection, GPR reaction expression |
-| 5 | `rc_regcompass_step_layer2()` | shared medium-specific models and directional LP scores |
-| 6 | `rc_regcompass_step_results()` | annotations, rankings, summaries, and available contrasts |
+| 1 | `rc_regcompass_step_grn()` | standard Pando networks or canonical `pando_condition_grn_fit` contracts |
+| 2 | `rc_regcompass_step_metacells()` | independent cell-type graphs and condition-pure metacells |
+| 3 | `rc_regcompass_step_meta_modules()` | supported genes, complete-GPR cores and reaction catalogue |
+| 4 | `rc_regcompass_step_layer1()` | condition-full, common-support and RNA reaction expression |
+| 5 | `rc_regcompass_step_layer2()` | shared structural model and directional penalties |
+| 6 | `rc_regcompass_step_results()` | annotations, primary rankings and decomposition outputs |
 
 ## Stage 1 routing
 
@@ -43,29 +45,21 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-Nested arguments are routed to:
+In condition mode, `candidate_screen = "motif_domain"`,
+`condition_weight = "equal"`, and `scale = TRUE` are required. Standard mode
+uses `Pando::infer_grn()` and produces No condition coefficients.
 
-| Bundle | Target |
-|---|---|
-| `pando_initiate_args` | `Pando::initiate_grn()` |
-| `pando_motif_args` | `Pando::find_motifs()` |
-| `pando_infer_args` | selected standard or condition-aware Pando inference function |
-
-In condition mode, `candidate_screen="motif_domain"`,
-`condition_weight="equal"`, and `scale=TRUE` are required. In standard mode,
-original `Pando::infer_grn()` is used and no condition coefficient is produced.
-
-Important outputs:
+Condition-mode projection contracts expose:
 
 ```r
-step1$params$analysis_mode
-step1$grn_result$condition_coefficients_calculated
-step1$grn_result$standard_pando_objects   # standard mode
-step1$grn_result$condition_grn_fits       # condition mode
-step1$grn_result$tf_peak_gene_condition
+fit$coefficient_estimable_mask
+fit$projectable_structural_zero_mask
+fit$projection_support_mask
+fit$projection_condition_full_oof
+fit$projection_common_oof
 ```
 
-## Stage 2 SuperCell graph arguments
+## Stage 2 graph contract
 
 ```r
 metacell_args = list(
@@ -74,31 +68,17 @@ metacell_args = list(
   atac_reduction = "lsi",
   atac_dims = 2:30,
   gamma = 30L,
-  k.knn = 5L,
   seed = 12345L
 )
 ```
 
-RegCompass constructs a cell-type-specific multimodal embedding and calls
-`SuperCell::SCimplify_by_graph_group_from_embedding()` with:
+RegCompass calls `SuperCell::SCimplify_by_graph_group_from_embedding()` with
+`cell.graph.group = broad cell type` and
+`cell.split.condition = condition`. This produces
+`one_independent_graph_per_cell_type` while preserving
+`all_conditions_joint_within_cell_type_graph`; `temporary_combined_stratum = FALSE`.
 
-```text
-cell.graph.group = broad cell type
-cell.split.condition = condition or NULL
-```
-
-`cell.graph.group` creates one independent kNN graph per cell type.
-`cell.split.condition` acts only after graph clustering, so all conditions share
-the cell-type graph but final metacells remain condition-pure. Embedding blocks
-are standardized within cell type across all conditions and divided by the
-square root of their dimension count before concatenation.
-
-It does not use `sample`, expose a combined stratum column, or build separate
-condition graphs. Cache provenance is stored in
-`step2$pooled$cache_contract`; the complete formal contract is stored in
-`step2$pooled$input_design`.
-
-## Stage 4 regulatory support
+## Stage 4 condition-full support
 
 ```r
 step4 <- rc_regcompass_step_layer1(
@@ -113,13 +93,50 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
-- condition mode uses common-support outer-heldout projections;
-- standard mode uses standard Pando coefficients and records full-fit origin;
-- both calculate TF RNA × peak ATAC per cell before metacell aggregation;
-- a non-finite target modifier uses neutral `R=0` and equals RNA-only support;
-- `regulatory_alpha` is fixed at `1`;
-- GPR AND accepts `min`, `median`, or `mean`; OR branches are additive;
-- missing final reaction expression is converted to `E=0` and penalty `1`.
+- `gene_projection_condition_full_oof` is primary;
+- `gene_projection_common_oof` is the jointly estimable component;
+- `gene_projection_condition_unique_oof` is their difference;
+- a non-estimable edge side contributes a projectable structural zero;
+- a non-finite target modifier uses neutral `R = 0` and equals RNA-only support;
+- GPR AND uses `min` by default and OR isozyme branches are additive.
+
+## Stage 5 penalty outputs
+
+```r
+step5$penalty_condition_full_oof
+step5$penalty_common_oof
+step5$penalty_condition_unique_increment
+step5$penalty_rna_only
+```
+
+All four matrices share the same medium-specific GEM, bounds, reaction order,
+target direction and `vmax`. The first matrix is the primary penalty.
+
+The schema does not contain depth-matching, common-depth, alpha-sensitivity,
+zero-support-sensitivity or link-saturation-propagation outputs.
+
+## Optional targeted reaction remapping
+
+| Function | Purpose |
+|---|---|
+| `rc_regcompass_step_target_union()` | Score direct KEGG/Reactome/master-Rhea-linked non-core reactions in the exact cached Stage 5 union GEMs. |
+
+```r
+targeted <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_targeted",
+  core_reaction_ids = c("MAR04381", "MAR04379"),
+  layer2_args = list(target_direction = "both", solver = "highs")
+)
+```
+
+The function does not rebuild the model or rerun FASTCORE. In condition mode it
+uses `step4$reaction_expression`, the canonical alias of
+`reaction_expression_condition_full_oof`, so targeted reactions remain on the
+same primary evidence scale as the original Stage 5 targets.
 
 ## GEM and medium
 
@@ -127,19 +144,17 @@ step4 <- rc_regcompass_step_layer1(
 |---|---|
 | `rc_prepare_gem()` | Load and validate a pinned Human-GEM or Mouse-GEM. |
 | `rc_make_medium_scenarios()` | Build preset or custom exchange bounds. |
-| `rc_build_reaction_annotations()` | Build reaction names, formulas, GPRs, and cross-references. |
+| `rc_build_reaction_annotations()` | Build reaction names, formulas, GPRs and cross-references. |
 | `rc_attach_reaction_annotations()` | Attach annotations to an existing result. |
 
 ## Condition analysis
 
 | Function | Purpose |
 |---|---|
-| `rc_test_condition_reactions()` | Compare fixed reaction-direction targets when multiple conditions exist. |
+| `rc_test_condition_reactions()` | Compare fixed reaction-direction targets. |
 | `rc_report_condition_directions()` | Summarize forward and reverse targets. |
 | `rc_plot_condition_reaction()` | Plot one reaction direction across conditions. |
 | `rc_select_gene_reactions()` | Select scored reactions by metabolic gene. |
 
-For one condition, use `result$reaction_ranking` and
-`result$condition_summary`; `result$condition_contrast` is empty.
-
-Metacell tests are within-dataset inference, not biological-replicate inference.
+For one condition, `result$condition_contrast` is empty. Metacell tests are
+within-dataset inference, not biological-replicate inference.

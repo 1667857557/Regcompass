@@ -96,7 +96,7 @@ rc_export_microcompass <- function(result, outdir,
         result$comparison_table,
         file.path(
           microcompass_dir,
-          "common_full_rna_comparison_by_metacell.tsv.gz"
+          "condition_full_common_rna_comparison_by_metacell.tsv.gz"
         )
       )
     }

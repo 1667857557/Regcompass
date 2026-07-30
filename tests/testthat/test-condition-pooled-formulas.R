@@ -32,17 +32,24 @@ test_that("condition Pando remains independent by broad cell type", {
   expect_false("strict_biological_defaults" %in% names(formals(rc_run_regcompass)))
 })
 
-test_that("condition Layer 1 delegates cell-first projection to Pando", {
+test_that("condition Layer 1 delegates primary and common projection to Pando", {
   helper <- paste(
     deparse(body(.rc_condition_pando_projection)), collapse = "\n"
   )
   layer1 <- paste(
     deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
+  expect_match(
+    helper, "Pando::project_condition_grn_primary_cells", fixed = TRUE
+  )
   expect_match(helper, "Pando::project_condition_grn_cells", fixed = TRUE)
   expect_match(helper, "Pando::aggregate_condition_grn_projection", fixed = TRUE)
+  expect_match(helper, "condition_unique", fixed = TRUE)
+  expect_match(helper, "primary -", fixed = TRUE)
+  expect_match(helper, "common", fixed = TRUE)
   expect_match(helper, "sqrt(pmin(1, pmax(0", fixed = TRUE)
   expect_match(layer1, ".rc_scaled_oof_modifier", fixed = TRUE)
+  expect_match(layer1, "gene_projection_condition_full_oof", fixed = TRUE)
 })
 
 test_that("single-condition scoring uses penalty per required target flux", {

@@ -55,13 +55,13 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"}; alternative candidate-screen values are rejected. Condition effects are absolute coefficients.}
-\item{metacell_args}{Stage 2 reductions, dimensions, fixed gamma (default 30), seed, size thresholds, and cache controls. Depth does not alter gamma and top-1-percent depth cells are diagnostic only.}
+\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"}; alternative candidate-screen values are rejected.}
+\item{metacell_args}{Stage 2 reductions, dimensions, fixed gamma, seed, size thresholds and cache controls.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{projection_component}{Must be \code{"condition"}.}
-\item{comparison_support}{\code{"auto"}, \code{"pairwise_common"}, or \code{"global_common"}.}
+\item{comparison_support}{Defines the pairwise/global common-support decomposition. It does not replace the condition-full primary route.}
 \item{regulatory_alpha}{Fixed at \code{1}. Other values are rejected.}
-\item{gpr_and_method}{GPR AND aggregation: \code{"min"}, \code{"median"}, or \code{"mean"}. COMPASS OR isozyme branches are summed.}
+\item{gpr_and_method}{GPR AND aggregation: \code{"min"}, \code{"median"}, or \code{"mean"}. OR isozyme branches are summed.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
 \item{layer2_args}{Directional scoring and shared-model completion controls.}
 \item{parallel}{Enable stage parallel execution.}
@@ -81,14 +81,20 @@ Runs the GRN, metacell, reaction-catalogue, reaction-expression, metabolic-model
 and results stages independently.
 }
 \details{
-Stage 1 returns Pando ConditionGRNFit v5 objects with absolute condition effects
-and outer-heldout projections. Stage 2 constructs fixed-gamma condition by broad
-cell type SuperCells. Stage 3 builds complete-GPR core reactions and the merged
-reaction catalogue. Stage 4 estimates the RNA prior by cell type, assigns a
-structural zero to every non-estimable edge contribution, uses an RNA-only
-fallback when the target modifier is unavailable, and applies
-\code{regulatory_alpha = 1}. Missing final reaction expression receives the
-maximum expression-linked penalty. Stage 5 builds one shared model per medium
-and scores reaction directions. Stage 6 assembles rankings, annotations,
-provenance, and downstream metabolic condition comparisons.
+Stage 1 returns canonical unversioned condition fits with condition-full and
+common-support outer-heldout projections. Coefficient estimability is distinct
+from projectable structural-zero support: an unavailable coefficient remains
+\code{NA}, while its projection contribution is fixed at zero in that condition.
+
+Stage 2 constructs one independent graph per broad cell type while all conditions
+of that cell type share the embedding and graph. Stage 4 uses condition-full OOF
+as the primary reaction-support route; common support is a decomposition and
+RNA-only is a control. Stage 5 reuses one structural model per medium and returns
+\code{penalty_condition_full_oof}, \code{penalty_common_oof},
+\code{penalty_condition_unique_increment}, and \code{penalty_rna_only}.
+
+Depth matching, common-depth restriction, alpha sensitivity, zero-support
+sensitivity, and link-saturation propagation are absent from the canonical
+schema. Stage 6 assembles primary rankings, annotations, provenance and
+condition comparisons.
 }

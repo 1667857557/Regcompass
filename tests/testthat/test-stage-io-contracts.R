@@ -87,24 +87,25 @@ test_that("Stage 3 persists supported genes and core reactions", {
   expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
 })
 
-test_that("Layer 1 uses the dual-mode schema and stage class", {
+test_that("Layer 1 uses condition-full primary schema", {
   body_text <- paste(
     deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
   step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
-  expect_match(
-    body_text,
-    "regcompass_regulatory_layer1_v1",
-    fixed = TRUE
-  )
-  expect_match(
-    body_text,
-    "native_SuperCell_metacell",
-    fixed = TRUE
-  )
+  expect_match(body_text, "regcompass_regulatory_layer1_v2", fixed = TRUE)
+  expect_match(body_text, "native_SuperCell_metacell", fixed = TRUE)
+  expect_match(body_text, "gene_projection_condition_full_oof", fixed = TRUE)
+  expect_match(body_text, "gene_projection_common_oof", fixed = TRUE)
+  expect_match(body_text, "gene_projection_condition_unique_oof", fixed = TRUE)
+  expect_match(body_text, "reaction_expression_condition_full_oof", fixed = TRUE)
   expect_match(body_text, "and_method = gpr_and_method", fixed = TRUE)
   expect_match(body_text, '"standard_pando"', fixed = TRUE)
   expect_match(body_text, '"condition_grn"', fixed = TRUE)
+  expect_false(grepl("reaction_expression_depth_matched_rna", body_text, fixed = TRUE))
+  expect_false(grepl("reaction_expression_common_depth_interval_rna", body_text, fixed = TRUE))
+  expect_false(grepl("reaction_expression_alpha_sensitivity", body_text, fixed = TRUE))
+  expect_false(grepl("reaction_zero_support_sensitivity", body_text, fixed = TRUE))
+  expect_false(grepl("reaction_link_saturation_sensitivity", body_text, fixed = TRUE))
   expect_match(step_text, "regcompass_layer1_step", fixed = TRUE)
   expect_match(step_text, "gem_fingerprint", fixed = TRUE)
   expect_match(step_text, "workflow_params", fixed = TRUE)
@@ -119,19 +120,25 @@ test_that("Layer 1 uses the dual-mode schema and stage class", {
   )
 })
 
-test_that("Layer 2 and final results validate upstream provenance", {
+test_that("Layer 2 and final results use condition-full primary schema", {
   layer2_text <- paste(deparse(body(rc_regcompass_step_layer2)), collapse = "\n")
   result_text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
   expect_match(layer2_text, ".rc_validate_layer1_stage", fixed = TRUE)
   expect_match(layer2_text, "regcompass_layer2_step", fixed = TRUE)
+  expect_match(layer2_text, "penalty_condition_full_oof", fixed = TRUE)
+  expect_match(layer2_text, "penalty_common_oof", fixed = TRUE)
+  expect_match(layer2_text, "penalty_condition_unique_increment", fixed = TRUE)
   expect_match(layer2_text, "source_core_reactions", fixed = TRUE)
+  expect_false(grepl("penalty_depth_matched_rna", layer2_text, fixed = TRUE))
+  expect_false(grepl("penalty_common_depth_interval_rna", layer2_text, fixed = TRUE))
+  expect_false(grepl("penalty_alpha_sensitivity", layer2_text, fixed = TRUE))
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(
     result_text,
-    "regcompass_regulatory_metabolic_result_v1",
+    "regcompass_regulatory_metabolic_result_v2",
     fixed = TRUE
   )
-  expect_match(result_text, 'version = "2.1.1"', fixed = TRUE)
+  expect_match(result_text, 'version = "2.2.0"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)
@@ -139,6 +146,8 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(result_text, "reaction_evidence", fixed = TRUE)
   expect_match(result_text, "metacell_graph_scope", fixed = TRUE)
   expect_match(result_text, "metacell_condition_scope", fixed = TRUE)
+  expect_match(result_text, "common_support_component_summary", fixed = TRUE)
+  expect_match(result_text, "condition_unique_penalty_increment_summary", fixed = TRUE)
 })
 
 test_that("stage validators reject reordered or mismatched units", {

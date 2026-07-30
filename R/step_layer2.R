@@ -1,4 +1,5 @@
-# Layer 2 shared-structure validation and comparison helpers.
+# Layer 2 shared-structure validation and condition-full scoring.
+
 .rc_layer2_direction_contract <- function(x) {
   tab <- as.data.frame(x$lp_diagnostics)
   required <- c(
@@ -9,7 +10,10 @@
   }
   tab <- unique(tab[, required, drop = FALSE])
   tab[order(
-    tab$medium_scenario, tab$reaction_id, tab$target_direction, tab$row_id
+    tab$medium_scenario,
+    tab$reaction_id,
+    tab$target_direction,
+    tab$row_id
   ), , drop = FALSE]
 }
 
@@ -49,7 +53,7 @@
 
 .rc_layer2_comparison_table <- function(
     layer2, layer1, condition_col, celltype_col) {
-  penalty <- layer2$penalty_common
+  penalty <- layer2$penalty
   row_meta <- rc_parse_microcompass_row_id(rownames(penalty))
   unit_meta <- layer2$unit_meta
   unit_id <- if ("unit_id" %in% colnames(unit_meta)) {
@@ -80,84 +84,53 @@
       grid$unit_index
     )])
   }
-  lookup_flag <- function(table, flag) {
-    if (!is.data.frame(table) ||
-        !all(c("reaction_id", "cell_type", flag) %in% colnames(table))) {
-      return(rep(NA, nrow(grid)))
-    }
-    key <- paste(
-      as.character(table$reaction_id),
-      as.character(table$cell_type),
-      sep = "\001"
-    )
-    requested <- paste(
-      reaction,
-      as.character(unit_meta[[celltype_col]][grid$unit_index]),
-      sep = "\001"
-    )
-    as.logical(table[[flag]][match(requested, key)])
-  }
   omega <- layer2$params$omega
   vmax <- index_matrix(layer2$vmax)
-  common <- index_matrix(layer2$penalty_common)
-  normalized <- common / (omega * vmax)
-  normalized[!is.finite(common) | !is.finite(vmax) | vmax <= 0] <- NA_real_
-  common_fraction <- reaction_unit_matrix(
-    layer1$reaction_common_support_fraction
-  )
-  full_fraction <- reaction_unit_matrix(
-    layer1$reaction_condition_full_support_fraction
-  )
+  primary <- index_matrix(layer2$penalty_condition_full_oof)
+  normalized <- primary / (omega * vmax)
+  normalized[
+    !is.finite(primary) | !is.finite(vmax) | vmax <= 0
+  ] <- NA_real_
   data.frame(
     reaction_id = reaction,
     direction = row_meta$target_direction[grid$row_index],
     medium = row_meta$medium_scenario[grid$row_index],
-    cell_type =
-      as.character(unit_meta[[celltype_col]][grid$unit_index]),
-    condition =
-      as.character(unit_meta[[condition_col]][grid$unit_index]),
+    cell_type = as.character(
+      unit_meta[[celltype_col]][grid$unit_index]
+    ),
+    condition = as.character(
+      unit_meta[[condition_col]][grid$unit_index]
+    ),
     metacell_id = unit,
+    penalty_condition_full_oof = primary,
+    penalty_common_oof = index_matrix(layer2$penalty_common_oof),
+    penalty_condition_unique_increment = index_matrix(
+      layer2$penalty_condition_unique_increment
+    ),
     penalty_rna_only = index_matrix(layer2$penalty_rna_only),
-    penalty_common_oof = common,
-    penalty_condition_full_oof =
-      index_matrix(layer2$penalty_condition_full),
-    penalty_unique_increment =
-      index_matrix(layer2$penalty_unique_increment),
     penalty_per_target_flux = normalized,
     vmax = vmax,
-    projection_oof_available =
-      is.finite(common) & is.finite(common_fraction) &
-      common_fraction >= 1 - sqrt(.Machine$double.eps),
-    common_support_fraction = common_fraction,
-    condition_full_support_fraction = full_fraction,
-    depth_sensitivity_flag = lookup_flag(
-      layer1$depth_diagnostics$reaction_depth_sensitivity,
-      "depth_sensitivity_flag"
+    condition_full_oof_available = is.finite(primary),
+    condition_full_support_fraction = reaction_unit_matrix(
+      layer1$reaction_condition_full_support_fraction
     ),
-    zero_support_sensitive = lookup_flag(
-      layer1$reaction_zero_support_sensitivity,
-      "zero_support_sensitive"
+    common_support_fraction = reaction_unit_matrix(
+      layer1$reaction_common_support_fraction
     ),
-    link_saturation_sensitive = lookup_flag(
-      layer1$reaction_link_saturation_sensitivity,
-      "link_saturation_sensitive"
-    ),
-    alpha = layer1$capacity_params$regulatory_alpha,
     inference_class = "metacell_statistical_unit_within_dataset",
-    comparability_class = "common_support_primary",
+    comparability_class =
+      "condition_full_oof_on_shared_model_and_celltype_coordinate",
     stringsAsFactors = FALSE
   )
 }
 
 #' Build medium-specific structural models and run directional LP scoring
 #'
-#' With `model_mode = "meta_module_gem"`, this stage is the only place where
-#' FASTCORE is applied. For each medium scenario it constructs one union GEM
-#' from the merged biological meta-module catalogue plus global FASTCORE
-#' support, then reuses that exact model for every condition, evidence route,
-#' and metacell. Only union-GEM construction accepts
-#' `model_params$completion_time_limit`; scoring LPs have no time-limit
-#' parameter.
+#' The condition-full OOF route is the primary penalty. The common-support route
+#' is retained as its shared-estimable decomposition, and RNA-only scoring is an
+#' interpretation control. All routes reuse the exact same medium-specific model.
+#' Depth matching, common-depth restriction, alpha sensitivity, zero-support
+#' sensitivity and link-saturation propagation are not calculated or persisted.
 #'
 #' @export
 rc_regcompass_step_layer2 <- function(
@@ -169,14 +142,17 @@ rc_regcompass_step_layer2 <- function(
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   model_mode <- match.arg(model_mode)
   .rc_require_stage_class(
-    meta_modules, "regcompass_meta_module_step", "meta_modules",
+    meta_modules,
+    "regcompass_meta_module_step",
+    "meta_modules",
     "rc_regcompass_step_meta_modules"
   )
   if (!is.list(layer2_args)) {
     stop("`layer2_args` must be a list.", call. = FALSE)
   }
   allowed <- c(
-    "model_params", "omega", "target_direction", "solver", "flux_threshold"
+    "model_params", "omega", "target_direction", "solver",
+    "flux_threshold"
   )
   unknown <- setdiff(names(layer2_args), allowed)
   if (length(unknown)) {
@@ -191,7 +167,10 @@ rc_regcompass_step_layer2 <- function(
   params <- meta_modules$workflow_params
   .rc_require_stage_gem(meta_modules, gem, "meta_modules")
   .rc_validate_layer1_stage(
-    layer1, workflow_params = params, gem = gem, argument = "layer1"
+    layer1,
+    workflow_params = params,
+    gem = gem,
+    argument = "layer1"
   )
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
@@ -210,8 +189,7 @@ rc_regcompass_step_layer2 <- function(
     stop(
       "Unsupported `layer2_args$model_params`: ",
       paste(unknown_model_params, collapse = ", "),
-      ". Only union-GEM construction controls are accepted; ",
-      "`time_limit` is not a scoring or model parameter.",
+      ". Only union-GEM construction controls are accepted.",
       call. = FALSE
     )
   }
@@ -240,10 +218,8 @@ rc_regcompass_step_layer2 <- function(
   if (!is.list(catalogue) ||
       !is.data.frame(catalogue$merged_core_reactions) ||
       !is.data.frame(catalogue$merged_reaction_membership)) {
-    stop(
-      "The merged biological meta-module catalogue is incomplete.",
-      call. = FALSE
-    )
+    stop("The merged biological meta-module catalogue is incomplete.",
+         call. = FALSE)
   }
   targets <- unique(as.character(
     catalogue$merged_core_reactions$reaction_id
@@ -286,133 +262,89 @@ rc_regcompass_step_layer2 <- function(
     warning = function(w) {
       if (grepl(
         "Metacells are valid within-dataset statistical units",
-        conditionMessage(w), fixed = TRUE
+        conditionMessage(w),
+        fixed = TRUE
       )) invokeRestart("muffleWarning")
     }
   )
-  run_comparator <- function(expression_field, label) {
-    expression <- if (is.character(expression_field)) {
-      layer1[[expression_field]]
-    } else {
-      expression_field
-    }
+  run_control <- function(expression_field, label) {
+    expression <- layer1[[expression_field]]
     if (!is.numeric(expression) || is.null(dim(expression)) ||
         !identical(
           dimnames(expression),
           dimnames(layer1$reaction_expression)
         )) {
       stop(
-        "Layer 1 comparator `", label,
-        "` is missing or is not aligned with the common OOF expression.",
+        "Layer 1 control `", label,
+        "` is missing or is not aligned with the primary expression.",
         call. = FALSE
       )
     }
-    comparator_layer1 <- layer1
-    comparator_layer1$reaction_expression <- expression
-    comparator_args <- c(defaults, layer2_args)
-    comparator_args$layer1 <- comparator_layer1
-    comparator_args$model_cache_override <- answer$shared_model_cache
+    control_layer1 <- layer1
+    control_layer1$reaction_expression <- expression
+    control_args <- c(defaults, layer2_args)
+    control_args$layer1 <- control_layer1
+    control_args$model_cache_override <- answer$shared_model_cache
     result <- withCallingHandlers(
-      do.call(.rc_run_microcompass_engine, comparator_args),
+      do.call(.rc_run_microcompass_engine, control_args),
       warning = function(w) {
         if (grepl(
           "Metacells are valid within-dataset statistical units",
-          conditionMessage(w), fixed = TRUE
+          conditionMessage(w),
+          fixed = TRUE
         )) invokeRestart("muffleWarning")
       }
     )
     .rc_assert_layer2_shared_contract(answer, result, label)
     result
   }
-  condition_full <- run_comparator(
-    "reaction_expression_condition_full_oof",
-    "condition-full OOF comparator"
+  common <- run_control(
+    "reaction_expression_common_oof",
+    "common-support decomposition"
   )
-  rna_only <- run_comparator(
+  rna_only <- run_control(
     "reaction_expression_rna_only",
-    "RNA-only comparator"
+    "RNA-only control"
   )
-  depth_matched <- run_comparator(
-    "reaction_expression_depth_matched_rna",
-    "depth-matched RNA comparator"
-  )
-  common_depth_interval <- run_comparator(
-    "reaction_expression_common_depth_interval_rna",
-    "common-depth-interval RNA comparator"
-  )
-  alpha_paths <- lapply(
-    names(layer1$reaction_expression_alpha_sensitivity),
-    function(alpha_name) {
-      run_comparator(
-        layer1$reaction_expression_alpha_sensitivity[[alpha_name]],
-        paste0("alpha=", alpha_name, " comparator")
-      )
-    }
-  )
-  names(alpha_paths) <- names(
-    layer1$reaction_expression_alpha_sensitivity
-  )
-  answer$penalty_common <- answer$penalty
-  answer$penalty_condition_full <- condition_full$penalty
+  answer$schema_version <- "regcompass_regulatory_layer2_v2"
+  answer$penalty_condition_full_oof <- answer$penalty
+  answer$penalty_common_oof <- common$penalty
+  answer$penalty_condition_unique_increment <-
+    answer$penalty_condition_full_oof - answer$penalty_common_oof
   answer$penalty_rna_only <- rna_only$penalty
-  answer$penalty_depth_matched_rna <- depth_matched$penalty
-  answer$penalty_common_depth_interval_rna <-
-    common_depth_interval$penalty
-  answer$penalty_alpha_sensitivity <- lapply(
-    alpha_paths, `[[`, "penalty"
-  )
-  answer$penalty_unique_increment <-
-    answer$penalty_condition_full - answer$penalty_common
-  answer$penalty_grn_total_increment <-
-    answer$penalty_condition_full - answer$penalty_rna_only
-  answer$score_common_display_only <- answer$score
-  answer$score_condition_full_display_only <- condition_full$score
+  answer$score_condition_full_oof_display_only <- answer$score
+  answer$score_common_oof_display_only <- common$score
   answer$score_rna_only_display_only <- rna_only$score
-  answer$score_depth_matched_rna_display_only <- depth_matched$score
-  answer$score_common_depth_interval_rna_display_only <-
-    common_depth_interval$score
-  answer$score_alpha_sensitivity_display_only <- lapply(
-    alpha_paths, `[[`, "score"
-  )
   answer$comparison_contract <- list(
-    primary = "penalty_common",
-    exploratory = "penalty_condition_full",
-    control = "penalty_rna_only",
-    depth_sensitivity = c(
-      "penalty_depth_matched_rna",
-      "penalty_common_depth_interval_rna"
+    primary = "penalty_condition_full_oof",
+    common_component = "penalty_common_oof",
+    condition_unique_increment =
+      "penalty_condition_full_oof - penalty_common_oof",
+    rna_control = "penalty_rna_only",
+    nonestimable_edge_policy = "structural_zero_by_condition",
+    removed_guardrails = c(
+      "depth_matching",
+      "common_depth_restriction",
+      "alpha_sensitivity",
+      "zero_support_sensitivity",
+      "link_saturation_propagation"
     ),
-    alpha_sensitivity = paste0(
-      "penalty_alpha_sensitivity[[", names(alpha_paths), "]]"
-    ),
-    unique_increment =
-      "penalty_condition_full - penalty_common",
-    grn_total_increment =
-      "penalty_condition_full - penalty_rna_only",
-    recomputation =
-      "complete GPR, penalty, and LP rerun for each evidence route",
     exact_shared_structure = TRUE,
     structural_model_contract = answer$structural_model_contract,
     effect_size_basis = "penalty / (omega * vmax)",
     ecdf_effect_size_eligible = FALSE
   )
-  condition_full$shared_model_cache <- NULL
+  common$shared_model_cache <- NULL
   rna_only$shared_model_cache <- NULL
-  depth_matched$shared_model_cache <- NULL
-  common_depth_interval$shared_model_cache <- NULL
-  alpha_paths <- lapply(alpha_paths, function(x) {
-    x$shared_model_cache <- NULL
-    x
-  })
   answer$comparison_paths <- list(
-    condition_full_oof = condition_full,
-    rna_only = rna_only,
-    depth_matched_rna = depth_matched,
-    common_depth_interval_rna = common_depth_interval,
-    alpha_sensitivity = alpha_paths
+    common_support = common,
+    rna_only = rna_only
   )
   answer$comparison_table <- .rc_layer2_comparison_table(
-    answer, layer1, params$condition_col, params$celltype_col
+    answer,
+    layer1,
+    params$condition_col,
+    params$celltype_col
   )
   answer$workflow_params <- params
   answer$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)

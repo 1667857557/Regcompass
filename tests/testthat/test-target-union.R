@@ -116,6 +116,26 @@ test_that("target-union API has no sample or scoring-timeout controls", {
   expect_false(any(retired %in% names(formals(.rc_score_existing_union_cache))))
 })
 
+test_that("targeted remapping uses the canonical Layer 1 reaction expression", {
+  implementation <- paste(
+    deparse(body(.rc_score_existing_union_cache)), collapse = "\n"
+  )
+  expect_match(
+    implementation, "matrices$reaction_expression", fixed = TRUE
+  )
+  layer1_source <- paste(
+    deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
+  )
+  expect_match(
+    layer1_source, "reaction_expression = reaction_primary", fixed = TRUE
+  )
+  expect_match(
+    layer1_source,
+    "reaction_expression_condition_full_oof",
+    fixed = TRUE
+  )
+})
+
 test_that("gene selection resolves original Layer 2 core anchors", {
   gem <- target_union_test_gem()
   available <- target_union_merged_core()$reaction_id
@@ -258,11 +278,13 @@ test_that("invalid target selections fail before scoring", {
     "absent from the GEM"
   )
   expect_error(
-    .rc_target_union_core_rows(
-      gem,
-      available_core_reactions = available,
-      core_genes = "missing"
+    .rc_build_target_union_definition(
+      gem = gem,
+      merged_core_reactions = target_union_merged_core(),
+      merged_reaction_membership = target_union_merged_membership(),
+      core_reaction_ids = "R1",
+      cached_reaction_ids = character()
     ),
-    "do not map to GEM GPR rules"
+    "No reusable reactions"
   )
 })

@@ -12,15 +12,17 @@ condition omitted/absent   -> standard_pando
 
 ### Condition mode
 
-`Pando::infer_condition_grn()` fits the canonical unversioned condition contract
-within each broad cell type. The primary penalty uses outer-heldout common-support
-TF RNA × peak ATAC projections.
+`Pando::infer_condition_grn()` fits one canonical `pando_condition_grn_fit`
+contract per broad cell type. The primary penalty uses condition-full
+outer-heldout TF RNA × peak ATAC projection. Jointly estimable edges form the
+common-support component; every non-estimable edge side is a projectable
+structural zero.
 
 ### Standard mode
 
-Original `Pando::infer_grn()` is run within each broad cell type. Standard
-TF–peak–gene coefficients are projected to paired cells and aggregated to
-metacells. No condition coefficients or condition contrast are calculated.
+`Pando::infer_grn()` runs within each broad cell type. Standard coefficients are
+projected to paired cells and aggregated to metacells. No condition coefficients
+or condition contrast are calculated.
 
 ## One-shot workflow
 
@@ -30,13 +32,12 @@ result <- rc_run_regcompass(
   gem = gem,
   outdir = "result",
   genome = genome,
-  condition_col = "condition",  # NULL is allowed
+  condition_col = "condition",
   celltype_col = "cell_type"
 )
 ```
 
-The same entry point handles both modes. `result$analysis_mode` reports the
-selected route.
+`result$analysis_mode` reports the selected route.
 
 ## Stepwise workflow
 
@@ -49,8 +50,13 @@ step5 <- rc_regcompass_step_layer2(...)
 result <- rc_regcompass_step_results(...)
 ```
 
-Stage 1 and Stage 2 independently resolve the input design and their
-`analysis_mode` values must agree.
+Stage 1 and Stage 2 independently resolve the design and their `analysis_mode`
+values must agree.
+
+After Stage 5, `rc_regcompass_step_target_union()` remains available as an
+optional targeted-remapping pass. It reuses the cached Stage 5 union GEM and the
+canonical Layer 1 `reaction_expression` route; in condition mode that route is
+`reaction_expression_condition_full_oof`.
 
 ## SuperCell graph and purity inputs
 
@@ -59,41 +65,38 @@ Stage 2 calls `SCimplify_by_graph_group_from_embedding()` with:
 ```text
 cell.graph.group       = broad cell type
 cell.split.condition   = condition, or NULL when omitted
-gamma                   = requested graining level
+gamma                  = requested graining level
 ```
 
-The graph and condition roles are deliberately asymmetric:
+`cell.graph.group` partitions cells before neighbour construction. All conditions
+within a cell type share one standardized multimodal embedding and graph.
+`cell.split.condition` is applied after graph clustering, so final metacells are
+condition-pure without separate condition graphs.
 
-- `cell.graph.group` partitions the data before neighbour construction, so each
-  cell type has an independent graph;
-- every condition within that cell type is pooled in the same standardized
-  multimodal embedding and graph;
-- `cell.split.condition` is applied after graph clustering, so final metacells
-  are condition-pure without fitting separate condition graphs.
-
-No combined metadata stratum or sample-derived grouping is created. Stage 2
-checks each metacell after construction to ensure one broad cell type and, when
-applicable, one condition. The formal provenance values are
-`one_independent_graph_per_cell_type` and
-`all_conditions_joint_within_cell_type_graph`.
+No combined metadata stratum or sample-derived grouping is created. Provenance
+records `one_independent_graph_per_cell_type`,
+`all_conditions_joint_within_cell_type_graph`, and
+`temporary_combined_stratum = FALSE`.
 
 ## Restart boundaries
 
-- Pando mode, motifs, regions, targets, or Pando fitting arguments changed:
-  rerun Stage 1 onward.
-- reductions, dimensions, gamma, graph grouping, condition membership splitting,
-  or SuperCell arguments changed: rerun Stage 2 onward.
-- GPR or subsystem annotations changed: rerun Stage 3 onward.
-- regulatory support or GPR aggregation changed: rerun Stage 4 onward.
-- medium, union GEM, FASTCORE, or LP controls changed: rerun Stage 5 onward.
+- motifs, regions, targets or Pando fitting changed: rerun Stage 1 onward;
+- reductions, dimensions, gamma or SuperCell settings changed: rerun Stage 2 onward;
+- GPR or catalogue annotations changed: rerun Stage 3 onward;
+- projection, RNA support or GPR aggregation changed: rerun Stage 4 onward;
+- medium, union GEM, FASTCORE or LP controls changed: rerun Stage 5 onward;
+- targeted anchors or direct cross-reference targets changed: rerun only targeted remapping.
 
 ## Result behavior
 
-Multiple conditions produce condition summaries and pairwise contrasts. A single
-effective condition produces reaction rankings and summaries with an empty
-condition contrast. Metacell statistics remain within-dataset inference rather
-than biological-replicate inference.
+Multiple conditions produce primary condition-full summaries and pairwise
+contrasts. Common-support and RNA-only routes remain decomposition/control
+outputs. A single effective condition produces rankings and summaries with an
+empty condition contrast.
 
-See the [public API index](functions.md),
-[stage contracts](stage-interface-contracts.md), and
-[metacell graph contract](metacell-graph-contract.md).
+See [Tutorial 1](tutorial-01-quick-start.md),
+[Tutorial 2](tutorial-02-stepwise-audit.md),
+[Tutorial 3](tutorial-03-mathematical-model.md),
+[Tutorial 4](tutorial-04-targeted-reaction-remapping.md),
+[Tutorial 5](tutorial-05-condition-differential-analysis.md), and the
+[public API index](functions.md).

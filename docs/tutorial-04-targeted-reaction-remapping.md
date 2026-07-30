@@ -1,11 +1,18 @@
-# Tutorial 4: targeted reaction scoring
+# Tutorial 4: targeted reaction remapping
 
 Use `rc_regcompass_step_target_union()` after a completed
 `model_mode = "meta_module_gem"` run to score direct database equivalents of
 selected reaction anchors.
 
-This function reuses the cached Stage 5 model. It does not rebuild the model or
-rerun FASTCORE.
+This is an optional second LP pass, not a condition-comparability guardrail. It
+reuses the exact cached Stage 5 model, does not rebuild the GEM, and does not
+rerun FASTCORE. In condition-aware runs, the Layer 1 `reaction_expression`
+input is the primary `reaction_expression_condition_full_oof` route; the
+common-support and RNA-only matrices remain decomposition/control outputs.
+
+Mathematical definitions remain centralized in
+[Tutorial 3](tutorial-03-mathematical-model.md). Public API:
+[functions.md](functions.md).
 
 ## Load stages
 
@@ -16,6 +23,8 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 ```
 
 `step5$model_cache_summary$file` must point to an available completed model.
+The function validates the stored checksum and union-GEM provenance before
+scoring.
 
 ## Select reaction anchors
 
@@ -60,7 +69,8 @@ targeted_gene <- rc_regcompass_step_target_union(
 )
 ```
 
-- `complete_gpr`: selected genes must satisfy a complete GPR branch in the original core set;
+- `complete_gpr`: selected genes must satisfy a complete GPR branch in the
+  original core set;
 - `any_direct`: match any directly associated gene in the original core set.
 
 ## Mapping scope
@@ -70,28 +80,53 @@ Reactome reaction ID, or master Rhea ID with an anchor.
 
 It does not perform subsystem, transitive, metabolite-neighbour, or one-hop
 expansion. A mapped target is scored only when it is available in every required
-cached model.
+cached medium-specific union GEM. Reactions already scored as original Layer 2
+cores are not recomputed.
+
+## Evidence and structural reuse
+
+The second pass uses:
+
+```r
+step4$reaction_expression
+```
+
+For a condition-aware run this is the canonical alias of:
+
+```r
+step4$reaction_expression_condition_full_oof
+```
+
+The targeted reactions therefore use the same primary condition-full evidence
+route as the original Stage 5 ranking. The following remain fixed and reused:
+
+- medium-specific union GEM file and checksum;
+- reaction order and bounds;
+- global FASTCORE completion;
+- target direction and `omega`;
+- metacell order and condition/cell-type metadata.
 
 ## Inspect outputs
 
 ```r
-targeted$selected_anchor_reactions
 targeted$selected_core_reactions
-targeted$selected_noncore_reactions
 targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
+targeted$merged_catalogue_membership
 targeted$microcompass$model_cache_summary
+targeted$microcompass$penalty
+targeted$microcompass$score
 ```
 
 Relation-level provenance:
 
 ```r
 targeted$expanded_reaction_catalog[, c(
-  "anchor_reaction_id",
-  "anchor_is_original_core",
+  "anchor_core_reaction_id",
   "reaction_id",
   "expansion_type",
   "source_annotation",
+  "present_in_merged_catalogue",
   "available_in_all_cached_union_gems"
 )]
 ```
@@ -101,7 +136,7 @@ Target-level output:
 ```r
 targeted$expanded_scoring_targets[, c(
   "reaction_id",
-  "anchor_reaction_ids",
+  "anchor_core_reaction_ids",
   "expansion_types",
   "source_annotations"
 )]
@@ -110,6 +145,3 @@ targeted$expanded_scoring_targets[, c(
 The persistent catalogue is written to
 `merged_meta_module_catalogue_membership.tsv.gz`. The model cache checksum is
 retained to verify exact structural reuse.
-
-Public API: [functions.md](functions.md). Mathematical definitions:
-[Mathematical model](mathematical-model.md).

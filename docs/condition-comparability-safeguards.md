@@ -1,89 +1,65 @@
-# Condition-comparability safeguards
+# Condition-comparability invariants
 
-Mathematical definitions are in [Mathematical model](mathematical-model.md).
-This page lists validation rules that affect analysis.
+Equations are in [Tutorial 3](tutorial-03-mathematical-model.md). This page lists
+only structural validation rules.
 
-## Pando fit requirements
+## Pando fit contract
 
-RegCompass requires a Pando `ConditionGRNFit v5` with:
+RegCompass requires the canonical unversioned `pando_condition_grn_fit` with:
 
 - one fitted broad cell type;
-- complete condition labels and cell provenance;
-- equal-condition coefficient scaling;
-- nested outer-heldout cell projections;
-- explicit estimability, support, activity, and comparison masks;
-- complete OOF assignment and coverage;
-- no full-data projection in the primary penalty path.
+- a shared candidate supergraph and equal-condition coordinate;
+- nested outer-heldout projections with exactly-once cell assignment;
+- `coefficient_estimable_mask`;
+- `projectable_structural_zero_mask`;
+- `projection_support_mask`;
+- finite condition-full and common-support OOF target scores;
+- no full-data condition projection in the primary penalty.
 
-Unavailable coefficients must be `NA`; estimable inactive coefficients remain
-zero.
+Unavailable coefficients remain `NA`; estimable inactive coefficients remain
+numeric zero. A non-estimable edge contribution is fixed at zero in that
+condition.
 
-## Primary comparison support
+## Primary projection
 
-- two-condition analyses use pairwise-common estimability;
-- multi-condition analyses use global-common estimability;
-- condition-estimable and strict projections are diagnostic only;
-- reference-condition effects are interpretation outputs;
-- condition-specific edges do not enter the primary common-support penalty.
+`condition_full_oof` is primary. Jointly estimable edges form the common-support
+component. Their difference is the condition-unique component.
 
-## Candidate screening
+An exact-zero predictor remains in the shared candidate supergraph, receives no
+fitted coefficient, and contributes zero. The zero decision for held-out cells
+uses only the corresponding training fold.
 
-RegCompass Stage 1 requires `candidate_screen = "motif_domain"`. The value is
-inserted when omitted and any alternative value is rejected before Pando is
-called.
+## Candidate and stage ownership
 
-## Stage ownership
-
-RegCompass routes:
+Stage 1 requires `candidate_screen = "motif_domain"`,
+`condition_weight = "equal"`, and `scale = TRUE`.
 
 ```text
-pando_initiate_args → initiate_grn
-pando_motif_args    → find_motifs
-pando_infer_args    → infer_condition_grn
+pando_initiate_args → Pando::initiate_grn()
+pando_motif_args    → Pando::find_motifs()
+pando_infer_args    → Pando::infer_condition_grn()
 ```
 
-It rejects nested overrides of managed objects, assays, genome, metadata
-columns, target genes, network name, minimum condition size, error policy, and
-`BPPARAM`.
+Stage 2 owns metacell construction; Pando aggregation columns are rejected.
 
-Pando aggregation columns are rejected because Stage 2 owns metacell
-construction.
+## Metacell invariants
 
-## Parallel execution
+- one independent graph per broad cell type;
+- all conditions jointly participate in that cell-type graph;
+- condition is applied after graph clustering;
+- each input cell maps to exactly one metacell;
+- final metacells contain one cell type and one condition;
+- RNA and ATAC metacell matrices have identical ordered IDs;
+- no sample-derived or combined condition-by-cell-type grouping is created.
 
-| `parallel` | `BPPARAM` | Stage 1 route |
-|---|---|---|
-| `FALSE` | any | serial |
-| `TRUE` | `BiocParallelParam` | supplied backend |
-| `TRUE` | `NULL` or `FALSE` | Pando native map |
-| any | `TRUE` | error |
+## Shared metabolic-model invariants
 
-The resolved route is stored in `step1$params$pando_parallel`.
+Within one medium, all compared units share reaction order, stoichiometry,
+bounds, target direction, target-flux fraction and target-specific `vmax`. A
+mismatch is an error rather than a condition difference.
 
-## Metacell checks
+The retired depth-matching, common-depth, alpha-sensitivity, zero-support-
+sensitivity and link-saturation-propagation branches are not stage invariants and
+are not persisted.
 
-- strata are condition × broad cell type;
-- every input cell maps to exactly one metacell;
-- RNA and ATAC metacell matrices must contain identical ordered IDs;
-- mixed condition or mixed broad-cell-type metacells are rejected;
-- cache reuse requires identical cells, assays, reductions, dimensions, seed,
-  gamma, and thresholds.
-
-## Shared metabolic-model checks
-
-Within one medium comparison, all units must share:
-
-- reaction order;
-- stoichiometric matrix and checksum;
-- bounds;
-- target direction;
-- target-flux fraction;
-- target-specific `vmax`.
-
-A mismatch is an error rather than a reported condition difference.
-
-## Genome build
-
-Human analyses may use the bundled hg38 regulatory regions. Mouse analyses must
-supply a build-matched region set. The region build must agree with both ATAC
-coordinates and the motif-scanning genome.
+Public API: [functions.md](functions.md).

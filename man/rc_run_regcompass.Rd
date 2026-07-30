@@ -31,7 +31,7 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{fragment_files}{Must be \code{FALSE} for the native count-assay metacell path.}
 \item{metacell_args}{SuperCell reductions, dimensions, gamma, seed, and within-cell-type graph controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
-\item{layer1_args}{Stage 4 projection, GPR, and half-saturation controls. \code{regulatory_alpha} is fixed at 1.}
+\item{layer1_args}{Stage 4 projection, common-component, GPR and half-saturation controls. \code{regulatory_alpha} is fixed at 1.}
 \item{medium_scenarios}{Shared medium table.}
 \item{model_mode}{Build a shared catalogue-derived model or use the full GEM.}
 \item{layer2_args}{Directional scoring and model-completion controls.}
@@ -50,10 +50,15 @@ independent SuperCell graph per broad cell type, pooling all conditions within
 each cell-type graph.
 }
 \details{
-Two or more condition levels use the canonical unversioned Pando condition fit
-and outer-heldout common-support projections. One or zero usable condition
-levels use original \code{Pando::infer_grn()} within each broad cell type and do
-not calculate condition coefficients.
+Two or more condition levels use the canonical unversioned Pando condition fit.
+The primary regulatory and metabolic route is condition-full outer-heldout
+projection. Jointly estimable edges form a common-support component. An edge
+that is non-estimable in one or both conditions remains projectable and
+contributes exactly zero in each affected condition. An exact-zero predictor
+remains represented without receiving a fitted coefficient.
+
+One or zero usable condition levels use original \code{Pando::infer_grn()} within
+each broad cell type and do not calculate condition coefficients.
 
 Stage 2 calls
 \code{SuperCell::SCimplify_by_graph_group_from_embedding()} with broad cell type
@@ -63,9 +68,9 @@ conditions. Each cell type receives an independent graph; condition is applied
 after graph clustering to retain condition-pure metacells. No sample-derived or
 concatenated condition-by-cell-type grouping field is created.
 
-Both Pando routes then use cell-first TF-by-ATAC projection, exact SuperCell
-membership, cell-type RNA latent-expression priors, GPR reaction expression,
-COMPASS-like penalties, and one shared medium-specific metabolic model. A
-single-condition result contains reaction rankings and an empty condition
-contrast.
+All penalty routes reuse the same medium-specific metabolic model and target
+\code{vmax}. The canonical result schema omits depth matching, common-depth
+restriction, alpha sensitivity, zero-support sensitivity and link-saturation
+propagation. A single-condition result contains reaction rankings and an empty
+condition contrast.
 }

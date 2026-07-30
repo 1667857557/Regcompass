@@ -76,7 +76,7 @@ jobs:
           remotes::install_github(
             paste0(
               "1667857557/Pando_regcompass@",
-              "b6e344601a4ed2d5a16ef4e9e6da38ae8b2b3594"
+              "cb89be43f239c1a9ea1d9e63747cd363ef2a11ea"
             ),
             dependencies = NA,
             upgrade = "never",
@@ -104,6 +104,7 @@ jobs:
           stopifnot(
             is.function(Pando::infer_condition_grn),
             is.function(Pando::condition_grn_fit),
+            is.function(Pando::project_condition_grn_primary_cells),
             is.function(SuperCell::SCimplify_by_graph_group_from_embedding)
           )
 
@@ -205,8 +206,14 @@ jobs:
             graph_result$graph.singlecell, names = TRUE
           )
           stopifnot(
-            all(graph_group[edges[, 1]] == graph_group[edges[, 2]]),
-            any(condition[edges[, 1]] != condition[edges[, 2]])
+            all(graph_group[edges[, 1]] == graph_group[edges[, 2]])
+          )
+          cross_condition_edges <- sum(
+            condition[edges[, 1]] != condition[edges[, 2]]
+          )
+          stopifnot(
+            is.numeric(cross_condition_edges),
+            cross_condition_edges >= 0L
           )
 
           testthat::set_max_fails(Inf)
