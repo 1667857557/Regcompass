@@ -5,22 +5,23 @@ test_that("GRN-first defaults are encoded in canonical functions", {
     collapse = " "
   )
   expect_match(grn_formals, "peak_cor = 0", fixed = TRUE)
-  expect_null(eval(formals(rc_regcompass_step_metacells)$sample_col))
+  expect_true("condition_col" %in% names(formals(rc_regcompass_step_metacells)))
+  expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
 })
 
-test_that("metacells are condition-by-cell-type with gamma 30", {
-  body_text <- paste(deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n")
-  expect_match(body_text, "gamma <- 30L", fixed = TRUE)
-  expect_identical(eval(formals(.rc_build_supercell2_strata)$gamma), 30)
-  expect_identical(eval(formals(rc_make_supercell2_metacells)$gamma), 30)
-  expect_match(
-    body_text, 'pooling_scope <- "condition_by_cell_type"', fixed = TRUE
+test_that("metacells use native condition and cell-type inputs", {
+  body_text <- paste(
+    deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
-  expect_match(
-    body_text, "metacell_grouping = c(condition_col, celltype_col)",
-    fixed = TRUE
+  native_text <- paste(
+    deparse(body(.rc_native_supercell_membership)), collapse = "\n"
   )
-  expect_match(body_text, "supercell_stratum_col", fixed = TRUE)
+  expect_match(body_text, "gamma = 30L", fixed = TRUE)
+  expect_match(native_text, "SCimplify_from_embedding", fixed = TRUE)
+  expect_match(native_text, "cell.annotation", fixed = TRUE)
+  expect_match(native_text, "cell.split.condition", fixed = TRUE)
+  expect_false(grepl("supercell_stratum_col", body_text, fixed = TRUE))
+  expect_false(grepl("stratum_col", body_text, fixed = TRUE))
 })
 
 test_that("stepwise meta-modules consume GRN and metacells", {

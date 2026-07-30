@@ -1,11 +1,18 @@
-test_that("metacell construction uses one fixed gamma without depth rejection", {
-  f <- formals(rc_make_supercell2_metacells)
-  expect_identical(eval(f$gamma), 30L)
-  expect_identical(eval(f$depth_balance), FALSE)
-  body_text <- paste(deparse(body(rc_make_supercell2_metacells)), collapse = "\n")
-  expect_match(body_text, "diagnostic_only_no_top1_rejection", fixed = TRUE)
-  expect_match(body_text, "global_fixed_across_all_strata", fixed = TRUE)
-  expect_false(grepl(".rc_assert_depth_balance", body_text, fixed = TRUE))
+test_that("metacell construction uses native SuperCell inputs and fixed gamma", {
+  native <- paste(
+    deparse(body(RegCompassR:::.rc_native_supercell_membership)),
+    collapse = "\n"
+  )
+  wrapper <- paste(
+    deparse(body(RegCompassR:::.rc_make_condition_celltype_metacells)),
+    collapse = "\n"
+  )
+  expect_match(native, "SCimplify_from_embedding", fixed = TRUE)
+  expect_match(native, "cell.annotation", fixed = TRUE)
+  expect_match(native, "cell.split.condition", fixed = TRUE)
+  expect_match(wrapper, "gamma = 30L", fixed = TRUE)
+  expect_false(grepl("depth_balance", wrapper, fixed = TRUE))
+  expect_false(grepl("stratum_col", wrapper, fixed = TRUE))
 })
 
 test_that("RNA empirical-Bayes priors are estimated by cell type", {
@@ -22,7 +29,6 @@ test_that("RNA empirical-Bayes priors are estimated by cell type", {
   expect_identical(out$prior_estimation_scope, "gene_by_cell_type")
   expect_identical(colnames(out$prior_mean), c("A", "B"))
   expect_true(all(out$prior_mean[, "B"] > out$prior_mean[, "A"]))
-  expect_identical(unname(out$prior_cell_type), unname(cell_type))
 })
 
 test_that("regulatory alpha is fixed at one and missing Pando is RNA-only", {
@@ -36,11 +42,16 @@ test_that("regulatory alpha is fixed at one and missing Pando is RNA-only", {
     dimnames = dimnames(rna)
   )
   integrated <- RegCompassR:::.rc_integrate_regulatory_support(
-    rna, modifier, alpha = 0.25
+    rna, modifier, alpha = 1
   )
   expect_equal(integrated["g1", "u1"], rna["g1", "u1"])
-  expect_identical(attr(integrated, "regulatory_alpha"), 1)
   expect_true(attr(integrated, "rna_only_fallback_mask")["g1", "u1"])
+  expect_error(
+    RegCompassR:::.rc_integrate_regulatory_support(
+      rna, modifier, alpha = 0.25
+    ),
+    "requires `regulatory_alpha = 1`"
+  )
   expect_error(
     rc_regcompass_step_layer1(
       grn = list(), metacells = list(), meta_modules = list(),
@@ -81,28 +92,29 @@ test_that("missing reaction expression receives maximum expression penalty", {
   expect_true(out$components$maximum_expression_penalty_flag[
     "R_missing", "u1"
   ])
-})
-
-test_that("reference-condition fields are removed from RegCompass contracts", {
-  x <- list(
-    reference_condition = "Control",
-    contrast = 1,
-    comparison_mask = TRUE,
-    beta_condition_std = matrix(1),
-    response_transform = data.frame(
-      target = "G1", center = 0, scale = 1,
-      reference_condition = "Control"
-    )
+  expect_identical(
+    out$missing_expression_policy,
+    "compass_missing_expression_max_penalty"
   )
-  out <- RegCompassR:::.rc_strip_reference_contract(x)
-  expect_false(any(c(
-    "reference_condition", "contrast", "comparison_mask"
-  ) %in% names(out)))
-  expect_false("reference_condition" %in% colnames(out$response_transform))
-  expect_identical(out$coefficient_contract, "absolute_condition_effects_only")
 })
 
-test_that("Layer 1 contract admits structural-zero edges to main analysis", {
+test_that("condition contracts are absolute and unversioned", {
+  expect_identical(
+    RegCompassR:::.RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
+    "pando_condition_grn_fit"
+  )
+  extraction <- paste(
+    deparse(body(RegCompassR:::.rc_extract_condition_grn_contract)),
+    collapse = "\n"
+  )
+  expect_match(
+    extraction, "absolute_condition_effects_only", fixed = TRUE
+  )
+  expect_false(grepl("reference_condition", extraction, fixed = TRUE))
+  expect_false(grepl("comparison_mask", extraction, fixed = TRUE))
+})
+
+test_that("condition Layer 1 records structural-zero policy", {
   body_text <- paste(
     deparse(body(RegCompassR:::.rc_cell_first_projection_layer1)),
     collapse = "\n"
@@ -110,6 +122,6 @@ test_that("Layer 1 contract admits structural-zero edges to main analysis", {
   expect_match(
     body_text, "structural_zero_enters_main_analysis", fixed = TRUE
   )
-  expect_match(body_text, "enters_main_analysis = TRUE", fixed = TRUE)
-  expect_match(body_text, "structural_zero_contribution <- 0", fixed = TRUE)
+  expect_match(body_text, "condition_grn", fixed = TRUE)
+  expect_match(body_text, "standard_pando", fixed = TRUE)
 })

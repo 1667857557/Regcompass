@@ -1,38 +1,10 @@
-#' Run the canonical condition-comparable Pando RegCompass workflow
+#' Run the RegCompass workflow with automatic Pando mode selection
 #'
-#' Stage 3 constructs biological meta-modules and a deduplicated merged
-#' reaction catalogue. Within each cell type, Pando shares one complete edge
-#' design and equal-condition predictor scale across conditions. Within each
-#' outer fold, preprocessing and lambda selection use only training cells.
-#' Active condition-level
-#' edges define the supported Human-GEM metabolic genes, and complete GPR
-#' branches define core reactions. Common-support outer-heldout condition
-#' projections enter the primary Layer 1 path; condition-full projections are
-#' exploratory and full-data coefficients are interpretation-only. Stage 3
-#' applies one fixed ordered annotation pass and does not run FASTCORE or create
-#' a GEM. With `model_mode = "meta_module_gem"`, Stage 5 constructs one union
-#' GEM per medium scenario and performs the only FASTCORE completion on that
-#' shared structure.
+#' Stage 1 selects condition-aware Pando only when at least two condition levels
+#' are present. Otherwise it uses original Pando `infer_grn()` and calculates no
+#' condition coefficients. Stage 2 passes condition and cell type separately to
+#' native SuperCell inputs.
 #'
-#' @param pfm Optional motif position-frequency matrices. When omitted,
-#'   RegCompass loads `data("motifs", package = "Pando")` and passes that object
-#'   to `Pando::find_motifs()`.
-#' @param cell_type Optional broad cell-type label or labels. When omitted,
-#'   every observed type is processed independently.
-#' @param meta_module_args Optional Stage 3 custom `subsystem_table`. Expansion
-#'   order is fixed to one pass: core subsystem, KEGG/Reactome equivalence, then
-#'   master-Rhea equivalence.
-#' @param layer1_args Stage 4 integrated-evidence arguments:
-#'   `projection_component`, `comparison_support`, `regulatory_alpha`,
-#'   `gpr_and_method`, and
-#'   `gene_half_saturation`.
-#'   `gpr_and_method` accepts COMPASS-compatible `"min"`, `"median"`, or
-#'   `"mean"`; RegCompass defaults to `"min"`.
-#' @param upstream_workers Worker count for GRN inference and Layer 1
-#'   reaction-expression calculation. Defaults to 6. Set to 1 for serial
-#'   upstream execution.
-#' @param layer2_workers Worker count for Layer 2 LP scoring. Defaults to 30.
-#'   Set to 1 for serial Layer 2 execution.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -55,28 +27,6 @@ rc_run_regcompass <- function(
     layer2_workers = 30L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   model_mode <- match.arg(model_mode)
-  progress <- .rc_progress_enabled(progress)
-  old_progress_option <- options(RegCompassR.progress = progress)
-  on.exit(do.call(options, old_progress_option), add = TRUE)
-
-  thread_state <- .rc_set_internal_single_thread()
-  on.exit(.rc_restore_internal_threads(thread_state), add = TRUE)
-
-  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-
-  total_timer <- .rc_timing_start("total_workflow")
-  overall <- .rc_progress_new(6L, "RegCompass total", progress)
-  workflow_status <- "error"
-  on.exit({
-    if (!identical(workflow_status, "success")) {
-      total_error <- .rc_timing_finish(
-        total_timer, status = "error", outdir = outdir
-      )
-      .rc_write_execution_timing(total_error, outdir)
-      .rc_progress_done(overall, "error")
-    }
-  }, add = TRUE)
-
   bundles <- list(
     pando_args = pando_args,
     metacell_args = metacell_args,
@@ -84,81 +34,31 @@ rc_run_regcompass <- function(
     layer1_args = layer1_args,
     layer2_args = layer2_args
   )
-  invalid_bundles <- names(bundles)[
-    !vapply(bundles, is.list, logical(1))
-  ]
-  if (length(invalid_bundles)) {
-    stop(
-      "Workflow argument bundles must be lists: ",
-      paste(invalid_bundles, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  unknown_meta_module <- setdiff(
-    names(meta_module_args),
-    "subsystem_table"
-  )
-  if (length(unknown_meta_module)) {
-    stop(
-      "Unknown `meta_module_args` fields: ",
-      paste(unknown_meta_module, collapse = ", "),
-      ". Allowed field: `subsystem_table`.",
-      call. = FALSE
-    )
+  invalid <- names(bundles)[!vapply(bundles, is.list, logical(1))]
+  if (length(invalid)) {
+    stop("Workflow argument bundles must be lists: ",
+         paste(invalid, collapse = ", "), call. = FALSE)
   }
   if ("tau" %in% names(layer1_args)) {
     stop(
-      "The retired `tau`/Boltzmann Layer 1 transform is not supported. ",
-      "Use the Pando cell-first projection controls and `regulatory_alpha`.",
+      "The retired `tau`/Boltzmann Layer 1 transform is not supported.",
       call. = FALSE
     )
   }
-  unknown_layer1 <- setdiff(
-    names(layer1_args),
-    c(
-      "projection_component", "comparison_support",
-      "regulatory_alpha", "gpr_and_method",
-      "gene_half_saturation"
-    )
+  allowed_layer1 <- c(
+    "projection_component", "comparison_support", "regulatory_alpha",
+    "gpr_and_method", "gene_half_saturation"
   )
+  unknown_layer1 <- setdiff(names(layer1_args), allowed_layer1)
   if (length(unknown_layer1)) {
-    stop(
-      "Unknown `layer1_args` fields: ",
-      paste(unknown_layer1, collapse = ", "),
-      ". Allowed fields: `projection_component`, `comparison_support`, ",
-      "`regulatory_alpha`, `gpr_and_method`, and `gene_half_saturation`.",
-      call. = FALSE
-    )
+    stop("Unknown `layer1_args`: ", paste(unknown_layer1, collapse = ", "),
+         call. = FALSE)
   }
-  gpr_and_method <- match.arg(
-    as.character(layer1_args$gpr_and_method %||% "min"),
-    c("min", "median", "mean")
-  )
-
-  pando_infer_args <- pando_args$pando_infer_args %||% list()
-  if (!is.list(pando_infer_args)) {
-    stop("`pando_args$pando_infer_args` must be a list.", call. = FALSE)
+  if (!is.null(layer1_args$regulatory_alpha) &&
+      !isTRUE(all.equal(as.numeric(layer1_args$regulatory_alpha), 1))) {
+    stop("Canonical RegCompass requires `regulatory_alpha = 1`.",
+         call. = FALSE)
   }
-  retired_infer <- intersect(
-    names(pando_infer_args), c("cv_block_col", "sample_col", "method")
-  )
-  if (length(retired_infer)) {
-    stop(
-      "Retired Pando inference arguments are not supported: ",
-      paste(retired_infer, collapse = ", "), ".", call. = FALSE
-    )
-  }
-  if (!is.null(pando_infer_args$parallel) &&
-      !identical(pando_infer_args$parallel, FALSE)) {
-    warning(
-      "Ignoring `pando_args$pando_infer_args$parallel`; canonical outer ",
-      "parallelism requires each Pando fit to remain single-threaded.",
-      call. = FALSE
-    )
-  }
-  pando_infer_args$parallel <- FALSE
-  pando_args$pando_infer_args <- pando_infer_args
-
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
   if (is.null(medium_scenarios)) {
@@ -168,6 +68,7 @@ rc_run_regcompass <- function(
   }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   if (is.null(metacell_args$gamma)) metacell_args$gamma <- 30L
+  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   saveRDS(gem$model_info %||% list(), file.path(outdir, "00_model_info.rds"))
   saveRDS(medium_scenarios, file.path(outdir, "00_medium_scenarios.rds"))
 
@@ -177,175 +78,86 @@ rc_run_regcompass <- function(
   layer2_config <- .rc_stage_worker_config(
     layer2_workers, argument = "layer2_workers"
   )
-
-  stage_rows <- list()
-  run_stage <- function(index, label, expression) {
-    timer <- .rc_timing_start(label)
-    value <- force(expression)
-    timing <- .rc_timing_finish(timer, status = "success")
-    stage_rows[[length(stage_rows) + 1L]] <<- timing
-    .rc_progress_update(overall, index, label)
-    invisible(gc(verbose = FALSE, full = TRUE))
-    value
-  }
-
-  step1 <- run_stage(
-    1L,
-    "single_cell_grn",
-    .rc_with_stage_workers(
-      upstream_config$workers,
-      argument = "upstream_workers",
-      FUN = function(upstream, config) {
-        rc_regcompass_step_grn(
-          object = object,
-          gem = gem,
-          outdir = file.path(outdir, "01_single_cell_grn"),
-          pfm = pfm,
-          genome = genome,
-          condition_col = condition_col,
-          celltype_col = celltype_col,
-          cell_type = cell_type,
-          rna_assay = rna_assay,
-          atac_assay = atac_assay,
-          pando_args = pando_args,
-          parallel = !identical(config$actual_backend, "serial"),
-          BPPARAM = upstream,
-          progress = progress,
-          species = species
-        )
-      }
-    )
+  step1 <- .rc_with_stage_workers(
+    upstream_config$workers,
+    argument = "upstream_workers",
+    FUN = function(param, config) {
+      rc_regcompass_step_grn(
+        object = object, gem = gem,
+        outdir = file.path(outdir, "01_single_cell_grn"),
+        genome = genome, pfm = pfm, species = species,
+        condition_col = condition_col, celltype_col = celltype_col,
+        cell_type = cell_type, rna_assay = rna_assay,
+        atac_assay = atac_assay, pando_args = pando_args,
+        parallel = !identical(config$actual_backend, "serial"),
+        BPPARAM = param, progress = progress
+      )
+    }
   )
-
-  step2 <- run_stage(
-    2L,
-    "condition_metacells",
-    rc_regcompass_step_metacells(
-      object = object,
-      outdir = file.path(outdir, "02_condition_metacells"),
-      condition_col = condition_col,
-      celltype_col = celltype_col,
-      cell_type = cell_type,
-      rna_assay = rna_assay,
-      atac_assay = atac_assay,
-      fragment_files = fragment_files,
-      metacell_args = metacell_args,
-      progress = progress
-    )
+  step2 <- rc_regcompass_step_metacells(
+    object = object,
+    outdir = file.path(outdir, "02_metacells"),
+    condition_col = condition_col, celltype_col = celltype_col,
+    cell_type = cell_type, rna_assay = rna_assay,
+    atac_assay = atac_assay, fragment_files = fragment_files,
+    metacell_args = metacell_args, progress = progress
   )
-
-  step3 <- run_stage(
-    3L,
-    "meta_modules",
-    rc_regcompass_step_meta_modules(
-      grn = step1,
-      metacells = step2,
-      gem = gem,
-      outdir = file.path(outdir, "03_meta_modules"),
-      meta_module_args = meta_module_args,
-      progress = progress
-    )
+  step3 <- rc_regcompass_step_meta_modules(
+    grn = step1, metacells = step2, gem = gem,
+    outdir = file.path(outdir, "03_meta_modules"),
+    meta_module_args = meta_module_args, progress = progress
   )
-
-  step4 <- run_stage(
-    4L,
-    "layer1",
-    .rc_with_stage_workers(
-      upstream_config$workers,
-      argument = "upstream_workers",
-      FUN = function(upstream, config) {
-        rc_regcompass_step_layer1(
-          grn = step1,
-          metacells = step2,
-          meta_modules = step3,
-          gem = gem,
-          outdir = file.path(outdir, "04_layer1"),
-          projection_component =
-            layer1_args$projection_component %||% "condition",
-          comparison_support =
-            layer1_args$comparison_support %||% "auto",
-          regulatory_alpha = layer1_args$regulatory_alpha %||% 1,
-          gpr_and_method = gpr_and_method,
-          gene_half_saturation = layer1_args$gene_half_saturation %||%
-            getOption("RegCompassR.cpm_half_saturation", 1),
-          parallel = !identical(config$actual_backend, "serial"),
-          BPPARAM = upstream,
-          progress = progress
-        )
-      }
-    )
+  step4 <- .rc_with_stage_workers(
+    upstream_config$workers,
+    argument = "upstream_workers",
+    FUN = function(param, config) {
+      rc_regcompass_step_layer1(
+        grn = step1, metacells = step2, meta_modules = step3, gem = gem,
+        outdir = file.path(outdir, "04_layer1"),
+        projection_component = layer1_args$projection_component %||% "condition",
+        comparison_support = layer1_args$comparison_support %||% "auto",
+        regulatory_alpha = 1,
+        gpr_and_method = layer1_args$gpr_and_method %||% "min",
+        gene_half_saturation = layer1_args$gene_half_saturation %||%
+          getOption("RegCompassR.cpm_half_saturation", 1),
+        parallel = !identical(config$actual_backend, "serial"),
+        BPPARAM = param, progress = progress
+      )
+    }
   )
-
-  step5 <- run_stage(
-    5L,
-    "layer2",
-    .rc_with_stage_workers(
-      layer2_config$workers,
-      argument = "layer2_workers",
-      FUN = function(layer2_param, config) {
-        rc_regcompass_step_layer2(
-          layer1 = step4,
-          meta_modules = step3,
-          gem = gem,
-          medium_scenarios = medium_scenarios,
-          outdir = file.path(outdir, "05_layer2"),
-          model_mode = model_mode,
-          layer2_args = layer2_args,
-          parallel = !identical(config$actual_backend, "serial"),
-          BPPARAM = layer2_param,
-          progress = progress
-        )
-      }
-    )
+  step5 <- .rc_with_stage_workers(
+    layer2_config$workers,
+    argument = "layer2_workers",
+    FUN = function(param, config) {
+      rc_regcompass_step_layer2(
+        layer1 = step4, meta_modules = step3, gem = gem,
+        medium_scenarios = medium_scenarios,
+        outdir = file.path(outdir, "05_layer2"),
+        model_mode = model_mode, layer2_args = layer2_args,
+        parallel = !identical(config$actual_backend, "serial"),
+        BPPARAM = param, progress = progress
+      )
+    }
   )
-
-  step6 <- run_stage(
-    6L,
-    "results",
-    rc_regcompass_step_results(
-      grn = step1,
-      metacells = step2,
-      meta_modules = step3,
-      layer1 = step4,
-      layer2 = step5,
-      gem = gem,
-      outdir = file.path(outdir, "06_results"),
-      species = species,
-      progress = progress
-    )
-  )
-
-  total_row <- .rc_timing_finish(total_timer, status = "success")
-  execution_timing <- do.call(rbind, c(stage_rows, list(total_row)))
-  .rc_write_execution_timing(execution_timing, outdir)
-
-  result <- step6
-  result$timing <- list(
-    stages = execution_timing[
-      execution_timing$stage != "total_workflow", , drop = FALSE
-    ],
-    total = total_row
+  result <- rc_regcompass_step_results(
+    grn = step1, metacells = step2, meta_modules = step3,
+    layer1 = step4, layer2 = step5, gem = gem,
+    outdir = file.path(outdir, "06_results"),
+    species = species, progress = progress
   )
   result$params$execution_mode <- "one_shot"
-  result$params$parallel_backend_requested <- "auto"
-  result$params$parallel_backend_resolved <- list(
-    upstream = upstream_config$actual_backend,
-    layer2 = layer2_config$actual_backend
+  result$params$analysis_mode <- step1$params$analysis_mode
+  result$params$condition_coefficients_calculated <-
+    identical(step1$params$analysis_mode, "condition_grn")
+  result$params$requested_condition_col <- condition_col
+  result$params$effective_condition_col <- step1$params$condition_col
+  result$params$native_supercell_inputs <- c(
+    condition = "cell.split.condition",
+    cell_type = "cell.annotation"
   )
+  result$params$temporary_combined_stratum <- FALSE
   result$params$upstream_workers <- upstream_config$workers
   result$params$layer2_workers <- layer2_config$workers
-  result$params$internal_threads_per_task <- 1L
-  result$params$pando_internal_parallel <- FALSE
-  result$params$parallel_worker_lifecycle <-
-    "stage_scoped_create_start_stop_release_full_gc"
-  result$params$parallel_stage_groups <- list(
-    upstream = c("single_cell_grn", "layer1"),
-    layer2 = "layer2"
-  )
-  result$params$operating_system <- .Platform$OS.type
-  saveRDS(result, file.path(outdir, "06_results", "regcompass_result.rds"))
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
-  workflow_status <- "success"
-  .rc_progress_done(overall, paste0("complete in ", total_row$elapsed_hms))
   result
 }

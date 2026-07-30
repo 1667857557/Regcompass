@@ -4,31 +4,24 @@ Version: 2.1.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
-Description: Fits one cell-type-level Pando design across conditions for
-    Human-GEM or Mouse-GEM GPR target genes in paired single-cell RNA and ATAC
-    data. Condition-sparse coefficients use the same TF-peak-target edge
-    dictionary and equal-condition transforms with nested outer-heldout
-    projections. Pando supplies the single canonical pando_condition_grn_fit
-    contract with absolute condition effects only; version-suffixed schemas and
-    reference-condition contrasts do not enter RegCompass. Non-estimable edge
-    contributions are structural zeros in the primary projection path and enter
-    target aggregation, metacell means, GPR aggregation, reaction expression and
-    penalty construction. Metacells are constructed within condition by broad
-    cell type with one fixed gamma across all cells and strata (default 30),
-    without top-one-percent depth rejection or depth-dependent gamma adjustment.
-    RNA latent-expression priors are estimated separately for each broad cell
-    type. A non-finite Pando regulatory modifier falls back exactly to RNA-only
-    support and is annotated in the result. The regulatory link uses the single
-    canonical value regulatory_alpha = 1. GPR aggregation follows COMPASS:
-    complete AND branches use the selected AND rule and OR isozyme branches are
-    summed while unavailable branches are ignored. Missing final reaction
-    expression is set to zero before penalty conversion and therefore receives
-    the maximum expression-linked penalty. Annotation-defined biological
-    meta-modules are deduplicated into a merged reaction catalogue. For each
-    medium scenario, the package constructs one shared union GEM, performs
-    global FASTCORE completion and directional COMPASS-like scoring. Pinned
-    human and mouse GEMs are bundled for offline use, with platform-aware
-    parallel execution and audited progress and timing output.
+Description: Integrates paired single-cell RNA and ATAC regulatory evidence
+    with genome-scale metabolic reaction analysis. When two or more condition
+    levels are available, RegCompass fits one comparable condition-aware Pando
+    design per broad cell type and uses outer-heldout TF-by-ATAC projections.
+    When condition metadata are absent or contain one level, it automatically
+    runs the original Pando infer_grn workflow and enters its standard
+    coefficients into the same reaction-support and penalty path without
+    calculating condition coefficients. SuperCell receives broad cell type and
+    condition as separate native cell.annotation and cell.split.condition
+    inputs; no concatenated condition-by-cell-type metadata field is created.
+    Metacell RNA and ATAC counts are aggregated from exact SuperCell membership.
+    RNA latent-expression priors are estimated by broad cell type, regulatory
+    modifiers act on bounded RNA-support odds, GPR rules produce reaction
+    expression, and missing reaction expression receives the COMPASS maximum
+    expression-linked penalty. Each medium uses one shared union GEM and global
+    FASTCORE completion. Canonical behavior is implemented directly in the
+    defining functions; runtime function replacement and schema rewriting are
+    not used.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -61,6 +54,7 @@ Collate:
     'meta_module_merge.R'
     'metacell_fragments.R'
     'metacell_import.R'
+    'metacell_object_merge.R'
     'metacell_peak_calling.R'
     'metacell.R'
     'microcompass.R'
@@ -73,6 +67,8 @@ Collate:
     'shared_tfidf.R'
     'condition_pooling.R'
     'grn_inference.R'
+    'condition_grn_contract.R'
+    'standard_pando.R'
     'condition_layer1.R'
     'reaction_evidence.R'
     'reaction_annotations.R'
@@ -94,12 +90,6 @@ Collate:
     'regcompass.R'
     'one_shot.R'
     'stratum_filter.R'
-    'condition_grn_contract.R'
-    'zzz00_absolute_pando_contract.R'
-    'zzz01_fixed_gamma_metacells.R'
-    'zzz02_layer1_policy.R'
-    'zzz03_compass_gpr_penalty.R'
-    'zzz04_canonical_pando_fit_schema.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
@@ -132,7 +122,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@Supercell2,
-    1667857557/Pando_regcompass
+    1667857557/Pando_regcompass@agent/native-supercell-standard-pando
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5

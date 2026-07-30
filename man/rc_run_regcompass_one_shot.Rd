@@ -15,35 +15,31 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{object}{Paired single-cell RNA+ATAC Seurat object.}
 \item{outdir}{Persistent workflow output directory.}
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
-\item{species}{\code{"human"} or \code{"mouse"}. Mouse runs require build-matched regulatory regions.}
+\item{species}{\code{"human"} or \code{"mouse"}.}
 \item{gem}{Optional prepared GEM. The pinned species model is loaded when omitted.}
 \item{gem_version}{Pinned model release.}
 \item{gem_source}{Automatic, bundled-only, or download model source.}
 \item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
-\item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
+\item{fragment_files}{Use \code{FALSE} for the existing ATAC peak-count path.}
 \item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
 \item{medium_scenarios}{Optional prebuilt medium table.}
 \item{progress}{Display workflow and stage progress.}
-\item{...}{Arguments passed to \code{rc_run_regcompass()}. Use \code{gamma = 30L} in \code{metacell_args} and \code{regulatory_alpha = 1} in \code{layer1_args}.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}, including optional \code{condition_col}.}
 }
 \value{
-A validated complete RegCompass result and stage provenance.
+A complete RegCompass result with explicit \code{analysis_mode} and stage provenance.
 }
 \description{
 Loads species-aware defaults and runs the complete RegCompass workflow.
 }
 \details{
-RegCompass requires \code{candidate_screen = "motif_domain"} for Stage 1 and
-uses absolute condition effects from ConditionGRNFit v5. The primary penalty
-uses pairwise- or global-common outer-heldout condition projections.
-Non-estimable edge contributions are structural zero and enter the main
-analysis. An unavailable target modifier falls back to RNA-only support.
-Metacells use one fixed gamma, default 30, without depth-dependent adjustment or
-top-1-percent rejection. \code{regulatory_alpha = 1} is fixed. COMPASS OR
-isozyme branches are summed and missing final reaction expression receives the
-maximum expression-linked penalty.
+The wrapped workflow automatically selects condition-aware Pando for two or more
+condition levels and original \code{Pando::infer_grn()} for one or zero usable
+levels. The standard route calculates no condition coefficients.
 
-The default medium is \code{"physiologic"}. Supply \code{medium_scenarios} for
-an explicit preset or custom medium. Mouse runs must provide regulatory regions
-matching the ATAC coordinates and motif-scanning genome.
+Metacells use native SuperCell \code{cell.annotation} and
+\code{cell.split.condition} inputs rather than a concatenated stratum field.
+Both routes continue through the same RNA-support, GPR, reaction penalty, shared
+medium-specific model, and directional LP stages. \code{regulatory_alpha = 1}
+is fixed.
 }

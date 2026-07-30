@@ -1,9 +1,3 @@
-.rc_condition_celltype_pool_col <- function(meta) {
-  candidate <- ".rc_condition_pool_id"
-  while (candidate %in% colnames(meta)) candidate <- paste0(candidate, "_")
-  candidate
-}
-
 .rc_condition_metacell_md5 <- function(x) {
   path <- tempfile(fileext = ".rds")
   on.exit(unlink(path), add = TRUE)
@@ -36,12 +30,8 @@
     row_ids_md5 = .rc_condition_metacell_md5(as.character(rownames(x))),
     col_ids_md5 = .rc_condition_metacell_md5(as.character(colnames(x))),
     nnzero = as.numeric(Matrix::nnzero(x)),
-    row_sums_md5 = .rc_condition_metacell_md5(
-      as.numeric(Matrix::rowSums(x))
-    ),
-    col_sums_md5 = .rc_condition_metacell_md5(
-      as.numeric(Matrix::colSums(x))
-    ),
+    row_sums_md5 = .rc_condition_metacell_md5(as.numeric(Matrix::rowSums(x))),
+    col_sums_md5 = .rc_condition_metacell_md5(as.numeric(Matrix::colSums(x))),
     values_md5 = .rc_condition_metacell_md5(value_projection)
   )
 }
@@ -62,13 +52,13 @@
   if (max(dims) > ncol(embeddings)) {
     stop(
       "Reduction `", reduction, "` contains only ", ncol(embeddings),
-      " dimensions but the metacell contract requests dimension ", max(dims),
-      ".", call. = FALSE
+      " dimensions but dimension ", max(dims), " was requested.",
+      call. = FALSE
     )
   }
   index <- match(cells, rownames(embeddings))
   if (anyNA(index)) {
-    stop("Reduction `", reduction, "` lacks input cells required by Stage 2.",
+    stop("Reduction `", reduction, "` lacks required input cells.",
          call. = FALSE)
   }
   selected <- embeddings[index, dims, drop = FALSE]
@@ -89,49 +79,40 @@
     stop("Seurat cell order cannot be aligned to metadata for cache validation.",
          call. = FALSE)
   }
-  analysis_defaults <- list(
+  defaults <- list(
     rna_reduction = "pca",
     atac_reduction = "lsi",
     rna_dims = 1:30,
     atac_dims = 2:30,
     gamma = 30L,
-    depth_balance = TRUE,
     seed = 12345L,
-    min_cells_per_stratum = 100L,
-    min_metacell_size = 20L,
-    min_metacells_per_stratum = 2L
+    min_cells_per_stratum = 20L,
+    min_metacell_size = 1L,
+    min_metacells_per_stratum = 1L,
+    k.knn = 5L,
+    do.approx = FALSE,
+    approx.N = 20000L,
+    block.size = 10000L,
+    igraph.clustering = "walktrap"
   )
-  supplied <- metacell_args[
-    intersect(names(metacell_args), names(analysis_defaults))
-  ]
-  analysis_args <- modifyList(analysis_defaults, supplied)
-  integer_fields <- c(
-    "gamma", "seed", "min_cells_per_stratum", "min_metacell_size",
-    "min_metacells_per_stratum"
-  )
-  for (field in integer_fields) {
-    analysis_args[[field]] <- as.integer(analysis_args[[field]])
-  }
-  analysis_args$rna_dims <- as.integer(analysis_args$rna_dims)
-  analysis_args$atac_dims <- as.integer(analysis_args$atac_dims)
-  analysis_args$depth_balance <- isTRUE(analysis_args$depth_balance)
+  analysis_args <- modifyList(defaults, metacell_args[
+    intersect(names(metacell_args), names(defaults))
+  ])
   meta_signature <- data.frame(
     cell_id = cells,
-    condition = as.character(
-      object@meta.data[[condition_col]][meta_index]
-    ),
-    cell_type = as.character(
-      object@meta.data[[celltype_col]][meta_index]
-    ),
+    condition = as.character(object@meta.data[[condition_col]][meta_index]),
+    cell_type = as.character(object@meta.data[[celltype_col]][meta_index]),
     stringsAsFactors = FALSE
   )
   list(
-    schema_version = "regcompass_condition_celltype_metacell_cache_v3",
+    schema_version = "regcompass_native_supercell_metacell_cache_v1",
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    label_col = NULL,
+    native_supercell_api = "SCimplify_from_embedding",
+    condition_argument = "cell.split.condition",
+    celltype_argument = "cell.annotation",
     ordered_cell_metadata_md5 = .rc_condition_metacell_md5(meta_signature),
     analysis_args = analysis_args,
     rna_counts = .rc_condition_metacell_matrix_fingerprint(
@@ -150,48 +131,122 @@
 }
 
 .rc_condition_metacell_has_checkpoints <- function(outdir) {
-  if (!dir.exists(outdir)) return(FALSE)
-  files <- list.files(
-    outdir, recursive = TRUE, full.names = TRUE, all.files = FALSE,
-    no.. = TRUE
-  )
-  any(basename(files) %in% c(
-    "metacell_metadata.tsv.gz", "rna_counts.rds", "atac_counts.rds"
-  ))
+  all(file.exists(c(
+    file.path(outdir, "metacell_metadata.tsv.gz"),
+    file.path(outdir, "membership.tsv.gz"),
+    file.path(outdir, "rna_counts.rds"),
+    file.path(outdir, "atac_counts.rds"),
+    file.path(outdir, "metacell_object.rds")
+  )))
 }
 
 .rc_validate_condition_metacell_cache <- function(
     outdir, contract, overwrite = FALSE) {
-  has_checkpoints <- .rc_condition_metacell_has_checkpoints(outdir)
-  if (!has_checkpoints || isTRUE(overwrite)) return(invisible(FALSE))
-  contract_file <- file.path(outdir, "condition_metacell_cache_contract.rds")
-  if (!file.exists(contract_file)) {
-    stop(
-      "Existing condition-metacell checkpoints predate the audited cache contract. ",
-      "Set `metacell_args$overwrite = TRUE` to rebuild them before reuse.",
-      call. = FALSE
-    )
+  if (!.rc_condition_metacell_has_checkpoints(outdir) || isTRUE(overwrite)) {
+    return(invisible(FALSE))
   }
-  observed <- tryCatch(
-    readRDS(contract_file),
-    error = function(e) {
-      stop(
-        "The existing condition-metacell cache contract cannot be read: ",
-        conditionMessage(e),
-        ". Set `metacell_args$overwrite = TRUE` to rebuild the checkpoints.",
-        call. = FALSE
-      )
-    }
-  )
-  if (!identical(observed, contract)) {
+  contract_file <- file.path(outdir, "condition_metacell_cache_contract.rds")
+  if (!file.exists(contract_file) ||
+      !identical(readRDS(contract_file), contract)) {
     stop(
-      "Existing condition-metacell checkpoints were created with different ",
-      "cells, labels, assay contents, reduction embeddings, or construction ",
-      "parameters. Set `metacell_args$overwrite = TRUE` to rebuild them.",
+      "Existing metacell checkpoints use a different native SuperCell contract; set `metacell_args$overwrite = TRUE`.",
       call. = FALSE
     )
   }
   invisible(TRUE)
+}
+
+.rc_scale_embedding_block <- function(x) {
+  x <- as.matrix(x)
+  x <- scale(x)
+  x[!is.finite(x)] <- 0
+  if (ncol(x)) x / sqrt(ncol(x)) else x
+}
+
+.rc_native_supercell_membership <- function(
+    object, condition_col, celltype_col, rna_reduction, atac_reduction,
+    rna_dims, atac_dims, gamma, seed, k.knn, do.approx, approx.N,
+    block.size, igraph.clustering) {
+  cells <- colnames(object)
+  rna <- SeuratObject::Embeddings(object[[rna_reduction]])[
+    cells, as.integer(rna_dims), drop = FALSE
+  ]
+  atac <- SeuratObject::Embeddings(object[[atac_reduction]])[
+    cells, as.integer(atac_dims), drop = FALSE
+  ]
+  embedding <- cbind(
+    .rc_scale_embedding_block(rna),
+    .rc_scale_embedding_block(atac)
+  )
+  meta <- object@meta.data[cells, , drop = FALSE]
+  condition <- as.character(meta[[condition_col]])
+  condition_input <- if (grepl("^\\.regcompass_condition", condition_col) &&
+      length(unique(condition)) == 1L) {
+    NULL
+  } else {
+    condition
+  }
+  result <- SuperCell::SCimplify_from_embedding(
+    X = embedding,
+    cell.annotation = as.character(meta[[celltype_col]]),
+    cell.split.condition = condition_input,
+    gamma = as.integer(gamma),
+    k.knn = as.integer(k.knn),
+    n.pc = ncol(embedding),
+    do.approx = isTRUE(do.approx),
+    approx.N = as.integer(approx.N),
+    block.size = as.integer(block.size),
+    seed = as.integer(seed),
+    igraph.clustering = igraph.clustering,
+    return.singlecell.NW = FALSE,
+    return.hierarchical.structure = TRUE
+  )
+  raw <- as.character(result$membership)
+  if (length(raw) != length(cells)) {
+    stop("SuperCell membership length differs from the input cell count.",
+         call. = FALSE)
+  }
+  if (!is.null(names(result$membership))) {
+    index <- match(cells, names(result$membership))
+    if (!anyNA(index)) raw <- raw[index]
+  }
+  levels <- unique(raw)
+  width <- max(3L, nchar(length(levels)))
+  ids <- paste0("MC", sprintf(paste0("%0", width, "d"), seq_along(levels)))
+  map <- stats::setNames(ids, levels)
+  membership <- data.frame(
+    cell_id = cells,
+    metacell_id = unname(map[raw]),
+    stringsAsFactors = FALSE
+  )
+  list(membership = membership, supercell = result)
+}
+
+.rc_aggregate_native_metacell_counts <- function(
+    object, membership, rna_assay, atac_assay) {
+  cells <- colnames(object)
+  membership <- membership[match(cells, membership$cell_id), , drop = FALSE]
+  groups <- unique(membership$metacell_id)
+  design <- Matrix::sparseMatrix(
+    i = seq_along(cells),
+    j = match(membership$metacell_id, groups),
+    x = 1,
+    dims = c(length(cells), length(groups)),
+    dimnames = list(cells, groups)
+  )
+  rna_counts <- .rc_as_sparse(
+    .rc_get_assay_counts(object, rna_assay)[, cells, drop = FALSE] %*% design
+  )
+  atac_counts <- .rc_as_sparse(
+    .rc_get_assay_counts(object, atac_assay)[, cells, drop = FALSE] %*% design
+  )
+  mc <- SeuratObject::CreateSeuratObject(
+    counts = rna_counts,
+    assay = rna_assay,
+    project = "RegCompassNativeSuperCell"
+  )
+  mc[[atac_assay]] <- SeuratObject::CreateAssayObject(counts = atac_counts)
+  list(object = mc, rna_counts = rna_counts, atac_counts = atac_counts)
 }
 
 .rc_make_condition_celltype_metacells <- function(
@@ -206,232 +261,203 @@
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
-  if (!is.list(metacell_args)) {
-    stop("`metacell_args` must be a list.", call. = FALSE)
+  if (!is.list(metacell_args)) stop("`metacell_args` must be a list.", call. = FALSE)
+  if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
+    stop("Native SuperCell metacells aggregate the existing ATAC count assay; `fragment_files` must be FALSE.", call. = FALSE)
   }
   .rc_validate_condition_celltype_metadata(
     object@meta.data, condition_col, celltype_col
   )
   if (!is.null(cell_type)) {
-    cell_type <- trimws(as.character(cell_type))
-    if (!length(cell_type) || anyNA(cell_type) ||
-        any(!nzchar(cell_type)) || anyDuplicated(cell_type)) {
-      stop("`cell_type` must be NULL or contain unique non-empty labels.",
-           call. = FALSE)
+    requested <- unique(trimws(as.character(cell_type)))
+    missing <- setdiff(requested, unique(as.character(object@meta.data[[celltype_col]])))
+    if (length(missing)) {
+      stop("Requested cell types were not found: ", paste(missing, collapse = ", "), ".", call. = FALSE)
     }
-    available <- unique(as.character(object@meta.data[[celltype_col]]))
-    missing_cell_types <- setdiff(cell_type, available)
-    if (length(missing_cell_types)) {
-      stop(
-        "Requested cell types were not found: ",
-        paste(missing_cell_types, collapse = ", "), ".", call. = FALSE
-      )
-    }
-    selected_cells <- rownames(object@meta.data)[
-      as.character(object@meta.data[[celltype_col]]) %in% cell_type
+    cells <- rownames(object@meta.data)[
+      as.character(object@meta.data[[celltype_col]]) %in% requested
     ]
-    object <- subset(object, cells = selected_cells)
-  }
-  if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
-    stop(
-      paste(
-        "The canonical condition-by-cell-type path requires",
-        "`fragment_files = FALSE` and aggregates the existing ATAC",
-        "peak-count assay."
-      ),
-      call. = FALSE
-    )
+    object <- subset(object, cells = cells)
   }
   reserved <- intersect(names(metacell_args), c(
-    "object", "outdir", "sample_col", "stratum_col",
-    "condition_col", "celltype_col",
-    "label_col", "rna_assay", "atac_assay", "fragment_files",
-    "save_metacell_object", "save_counts", "save_fragments",
-    "require_fragment_aggregation", "fragment_aggregation_backend",
-    "on_stratum_error"
+    "object", "outdir", "condition_col", "celltype_col", "cell_type",
+    "rna_assay", "atac_assay", "fragment_files", "cell.annotation",
+    "cell.split.condition"
   ))
   if (length(reserved)) {
+    stop("`metacell_args` cannot override managed fields: ",
+         paste(reserved, collapse = ", "), call. = FALSE)
+  }
+  defaults <- list(
+    rna_reduction = "pca",
+    atac_reduction = "lsi",
+    rna_dims = 1:30,
+    atac_dims = 2:30,
+    gamma = 30L,
+    seed = 12345L,
+    min_cells_per_stratum = 20L,
+    min_metacell_size = 1L,
+    min_metacells_per_stratum = 1L,
+    k.knn = 5L,
+    do.approx = FALSE,
+    approx.N = 20000L,
+    block.size = 10000L,
+    igraph.clustering = "walktrap",
+    overwrite = FALSE
+  )
+  args <- modifyList(defaults, metacell_args)
+  numeric_controls <- c(
+    "gamma", "seed", "min_cells_per_stratum", "min_metacell_size",
+    "min_metacells_per_stratum", "k.knn", "approx.N", "block.size"
+  )
+  for (field in numeric_controls) args[[field]] <- as.integer(args[[field]])
+  if (any(vapply(args[numeric_controls], function(x) {
+    length(x) != 1L || is.na(x) || x < 1L
+  }, logical(1)))) {
+    stop("SuperCell numeric controls must be positive integers.", call. = FALSE)
+  }
+  cells <- colnames(object)
+  meta <- object@meta.data[cells, , drop = FALSE]
+  stratum <- interaction(
+    meta[, c(condition_col, celltype_col), drop = FALSE],
+    drop = TRUE, lex.order = TRUE
+  )
+  stratum_size <- table(stratum)
+  if (any(stratum_size < args$min_cells_per_stratum)) {
     stop(
-      "`metacell_args` cannot override workflow fields: ",
-      paste(reserved, collapse = ", "), call. = FALSE
+      "Condition/cell-type strata below `min_cells_per_stratum`: ",
+      paste(names(stratum_size)[stratum_size < args$min_cells_per_stratum], collapse = ", "),
+      call. = FALSE
     )
   }
-  if (is.null(metacell_args$gamma)) metacell_args$gamma <- 30L
-  if (is.null(metacell_args$depth_balance)) {
-    metacell_args$depth_balance <- TRUE
-  }
-  cache_contract <- .rc_condition_metacell_cache_contract(
-    object = object,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    metacell_args = metacell_args
+  contract <- .rc_condition_metacell_cache_contract(
+    object, condition_col, celltype_col, rna_assay, atac_assay, args
   )
   .rc_validate_condition_metacell_cache(
-    outdir = outdir,
-    contract = cache_contract,
-    overwrite = isTRUE(metacell_args$overwrite %||% FALSE)
+    outdir, contract, overwrite = isTRUE(args$overwrite)
   )
-  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  saveRDS(
-    cache_contract,
-    file.path(outdir, "condition_metacell_cache_contract.rds")
-  )
-  supercell_stratum_col <- .rc_condition_celltype_pool_col(object@meta.data)
-  object@meta.data[[supercell_stratum_col]] <- paste0(
-    as.character(object@meta.data[[condition_col]]), "__",
-    as.character(object@meta.data[[celltype_col]]),
-    "__condition_celltype_pool"
-  )
-  defaults <- list(
-    object = object,
-    outdir = outdir,
-    stratum_col = supercell_stratum_col,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    label_col = NULL,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    fragment_files = FALSE,
-    save_metacell_object = TRUE,
-    save_counts = TRUE,
-    save_fragments = FALSE,
-    require_fragment_aggregation = FALSE,
-    fragment_aggregation_backend = "none",
-    on_stratum_error = "stop"
-  )
-  defaults[names(metacell_args)] <- NULL
-  pooled <- do.call(
-    rc_make_supercell2_metacells,
-    c(defaults, metacell_args)
-  )
-  meta <- pooled$metacell_meta
-  if (!is.data.frame(meta) || !nrow(meta)) {
-    stop(
-      "Condition-by-cell-type SuperCell2 produced no metacells.",
-      call. = FALSE
+  if (.rc_condition_metacell_has_checkpoints(outdir) && !isTRUE(args$overwrite)) {
+    mc <- readRDS(file.path(outdir, "metacell_object.rds"))
+    membership <- utils::read.delim(
+      gzfile(file.path(outdir, "membership.tsv.gz")),
+      stringsAsFactors = FALSE, check.names = FALSE
     )
-  }
-  meta$condition_celltype_pool_id <- meta[[supercell_stratum_col]]
-  meta[[supercell_stratum_col]] <- NULL
-  if (supercell_stratum_col %in% colnames(pooled$membership)) {
-    pooled$membership[[supercell_stratum_col]] <- NULL
-  }
-  if (is.data.frame(pooled$stratum_status) &&
-      supercell_stratum_col %in% colnames(pooled$stratum_status)) {
-    pooled$stratum_status[[supercell_stratum_col]] <- NULL
-  }
-  if (is.list(pooled$metacell_objects)) {
-    pooled$metacell_objects <- lapply(pooled$metacell_objects, function(x) {
-      if (inherits(x, "Seurat") &&
-          supercell_stratum_col %in% colnames(x@meta.data)) {
-        x@meta.data[[supercell_stratum_col]] <- NULL
-      }
-      x
-    })
-  }
-  cell_index <- match(
-    as.character(pooled$membership$cell_id), rownames(object@meta.data)
-  )
-  if (anyNA(cell_index)) {
-    stop("Metacell membership cannot be aligned to input cell metadata.",
-         call. = FALSE)
-  }
-  pooled$membership[[condition_col]] <- as.character(
-    object@meta.data[[condition_col]][cell_index]
-  )
-  pooled$membership[[celltype_col]] <- as.character(
-    object@meta.data[[celltype_col]][cell_index]
-  )
-  membership_groups <- split(
-    seq_len(nrow(pooled$membership)),
-    as.character(pooled$membership$metacell_id)
-  )
-  impure <- names(membership_groups)[vapply(
-    membership_groups, function(rows) {
-      length(unique(pooled$membership[[condition_col]][rows])) != 1L ||
-        length(unique(pooled$membership[[celltype_col]][rows])) != 1L
-    }, logical(1)
-  )]
-  if (length(impure)) {
-    stop(
-      "SuperCell returned metacells mixing condition or broad cell type: ",
-      paste(utils::head(impure, 10L), collapse = ", "),
-      call. = FALSE
+    mc_meta <- utils::read.delim(
+      gzfile(file.path(outdir, "metacell_metadata.tsv.gz")),
+      stringsAsFactors = FALSE, check.names = FALSE
     )
+    aggregated <- list(
+      object = mc,
+      rna_counts = readRDS(file.path(outdir, "rna_counts.rds")),
+      atac_counts = readRDS(file.path(outdir, "atac_counts.rds"))
+    )
+    native <- list(supercell = NULL)
+  } else {
+    native <- .rc_native_supercell_membership(
+      object = object,
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      rna_reduction = args$rna_reduction,
+      atac_reduction = args$atac_reduction,
+      rna_dims = args$rna_dims,
+      atac_dims = args$atac_dims,
+      gamma = args$gamma,
+      seed = args$seed,
+      k.knn = args$k.knn,
+      do.approx = args$do.approx,
+      approx.N = args$approx.N,
+      block.size = args$block.size,
+      igraph.clustering = args$igraph.clustering
+    )
+    membership <- native$membership
+    source_index <- match(membership$cell_id, rownames(object@meta.data))
+    membership[[condition_col]] <- as.character(
+      object@meta.data[[condition_col]][source_index]
+    )
+    membership[[celltype_col]] <- as.character(
+      object@meta.data[[celltype_col]][source_index]
+    )
+    mc_meta <- rc_build_metacell_metadata(membership)
+    groups <- split(seq_len(nrow(membership)), membership$metacell_id)
+    impure <- names(groups)[vapply(groups, function(rows) {
+      length(unique(membership[[condition_col]][rows])) != 1L ||
+        length(unique(membership[[celltype_col]][rows])) != 1L
+    }, logical(1))]
+    if (length(impure)) {
+      stop("Native SuperCell returned mixed condition/cell-type metacells: ",
+           paste(utils::head(impure, 10L), collapse = ", "), call. = FALSE)
+    }
+    stratum_mc <- table(interaction(
+      mc_meta[, c(condition_col, celltype_col), drop = FALSE],
+      drop = TRUE, lex.order = TRUE
+    ))
+    if (any(stratum_mc < args$min_metacells_per_stratum)) {
+      stop("Native SuperCell produced too few metacells in strata: ",
+           paste(names(stratum_mc)[stratum_mc < args$min_metacells_per_stratum], collapse = ", "), call. = FALSE)
+    }
+    mc_meta$low_power_metacell <- mc_meta$n_cells < args$min_metacell_size
+    mc_meta$effective_gamma <- args$gamma
+    mc_meta$requested_gamma <- args$gamma
+    mc_meta$fixed_gamma <- TRUE
+    mc_meta$pooling_scope <- "native_supercell_condition_and_celltype"
+    mc_meta$celltype_role <- "SuperCell_cell.annotation"
+    aggregated <- .rc_aggregate_native_metacell_counts(
+      object, membership, rna_assay, atac_assay
+    )
+    rownames(mc_meta) <- mc_meta$metacell_id
+    aggregated$object@meta.data <- mc_meta[
+      colnames(aggregated$object), , drop = FALSE
+    ]
+    dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+    .rc_write_tsv_gz(membership, file.path(outdir, "membership.tsv.gz"))
+    .rc_write_tsv_gz(mc_meta, file.path(outdir, "metacell_metadata.tsv.gz"))
+    saveRDS(aggregated$rna_counts, file.path(outdir, "rna_counts.rds"))
+    saveRDS(aggregated$atac_counts, file.path(outdir, "atac_counts.rds"))
+    saveRDS(aggregated$object, file.path(outdir, "metacell_object.rds"))
+    saveRDS(contract, file.path(outdir, "condition_metacell_cache_contract.rds"))
   }
-  meta_index <- match(
-    as.character(meta$metacell_id), names(membership_groups)
-  )
-  if (anyNA(meta_index)) {
-    stop("SuperCell metadata do not cover every membership group.",
-         call. = FALSE)
-  }
-  observed_condition <- vapply(
-    membership_groups, function(rows) {
-      pooled$membership[[condition_col]][rows[[1L]]]
-    }, character(1)
-  )
-  observed_celltype <- vapply(
-    membership_groups, function(rows) {
-      pooled$membership[[celltype_col]][rows[[1L]]]
-    }, character(1)
-  )
-  if (any(
-    as.character(meta[[condition_col]]) !=
-      observed_condition[as.character(meta$metacell_id)] |
-    as.character(meta[[celltype_col]]) !=
-      observed_celltype[as.character(meta$metacell_id)]
-  )) {
-    stop("SuperCell metadata disagree with membership hard strata.",
-         call. = FALSE)
-  }
-  pooled$celltype_composition <- data.frame(
-    metacell_id = as.character(meta$metacell_id),
-    value = as.character(meta[[celltype_col]]),
-    n_cells = as.integer(meta$n_cells),
+  celltype_composition <- data.frame(
+    metacell_id = as.character(mc_meta$metacell_id),
+    value = as.character(mc_meta[[celltype_col]]),
+    n_cells = as.integer(mc_meta$n_cells),
     stringsAsFactors = FALSE
   )
-  colnames(pooled$celltype_composition)[[2L]] <- celltype_col
-  pooled$celltype_composition_summary <- data.frame(
-    metacell_id = as.character(meta$metacell_id),
-    dominant_celltype = as.character(meta[[celltype_col]]),
+  colnames(celltype_composition)[[2L]] <- celltype_col
+  celltype_summary <- data.frame(
+    metacell_id = as.character(mc_meta$metacell_id),
+    dominant_celltype = as.character(mc_meta[[celltype_col]]),
     dominant_celltype_fraction = 1,
     n_celltypes = 1L,
     mixed_celltype_metacell = FALSE,
     dominant_celltype_tied = FALSE,
     stringsAsFactors = FALSE
   )
-  meta$pooling_scope <- "condition_by_cell_type"
-  meta$celltype_role <- "hard_stratum"
-  pooled$metacell_meta <- meta
-  pooled$condition_col <- condition_col
-  pooled$celltype_col <- celltype_col
-  pooled$selected_cell_types <- if (is.null(cell_type)) {
-    unique(as.character(meta[[celltype_col]]))
-  } else {
-    cell_type
-  }
-  pooled$pooling_scope <- "condition_by_cell_type"
-  pooled$cache_contract <- cache_contract
-  pooled$input_design <- list(
-    metacell_grouping = c(condition_col, celltype_col),
-    condition_celltype_stratification = TRUE,
-    condition_only_stratification = FALSE,
-    supercell_label_col = NULL,
-    celltype_assignment = "hard condition-by-cell-type stratum",
-    ambiguous_celltype_policy = "not_applicable_strata_are_pure",
-    gamma = metacell_args$gamma,
-    depth_balance = isTRUE(metacell_args$depth_balance %||% TRUE),
-    depth_balance_policy = paste(
-      "SuperCell local-state simplification with shared cell-type RNA UMI,",
-      "ATAC fragment, and cell-count targets"
-    ),
-    cache_contract_schema = cache_contract$schema_version,
-    inference_policy =
-      "cells are stratified only by condition and broad cell type",
-    sample_metadata = "not_used_or_retained"
+  list(
+    metacell_objects = list(native_supercell = aggregated$object),
+    metacell_object = aggregated$object,
+    metacell_meta = mc_meta,
+    membership = membership,
+    rna_counts = aggregated$rna_counts,
+    atac_counts = aggregated$atac_counts,
+    celltype_composition = celltype_composition,
+    celltype_composition_summary = celltype_summary,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    selected_cell_types = unique(as.character(mc_meta[[celltype_col]])),
+    pooling_scope = "native_supercell_condition_and_celltype",
+    cache_contract = contract,
+    input_design = list(
+      metacell_grouping = c(condition_col, celltype_col),
+      native_supercell_api = "SCimplify_from_embedding",
+      condition_argument = "cell.split.condition",
+      celltype_argument = "cell.annotation",
+      temporary_combined_stratum = FALSE,
+      gamma = args$gamma,
+      inference_policy = paste(
+        "SuperCell receives condition and cell type as separate native inputs;",
+        "no concatenated condition__cell_type field is created"
+      ),
+      sample_metadata = "not_used_or_retained"
+    )
   )
-  pooled
 }

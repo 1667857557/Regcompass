@@ -10,7 +10,7 @@ test_that("stepwise workflow functions are exported", {
   }, logical(1))))
 })
 
-test_that("single-cell GRN and computational stages expose optional parallelism", {
+test_that("computational stages expose optional parallelism", {
   stages <- list(
     grn = rc_regcompass_step_grn,
     layer1 = rc_regcompass_step_layer1,
@@ -24,7 +24,7 @@ test_that("single-cell GRN and computational stages expose optional parallelism"
   }
 })
 
-test_that("meta-module stage requires both GRN and metacell outputs", {
+test_that("meta-module stage requires GRN and metacell outputs", {
   expect_error(
     rc_regcompass_step_meta_modules(
       grn = list(), metacells = list(), gem = list(), outdir = tempfile()
@@ -46,18 +46,26 @@ test_that("meta-module stage no longer runs Pando", {
   expect_false(any(c("pfm", "genome", "pando_args", "parallel", "BPPARAM") %in% f))
 })
 
-test_that("one-shot workflow refreshes the restartable Stage 6 result", {
+test_that("one-shot workflow executes and saves Stage 6 output", {
   body_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
-
-  stage6_save <- paste0(
-    'file.path(outdir, "06_results", "regcompass_result.rds")'
+  expect_match(body_text, "rc_regcompass_step_results", fixed = TRUE)
+  expect_match(
+    body_text,
+    'saveRDS(result, file.path(outdir, "regcompass_result.rds"))',
+    fixed = TRUE
   )
-  root_save <- 'file.path(outdir, "regcompass_result.rds")'
+})
 
-  expect_match(body_text, stage6_save, fixed = TRUE)
-  expect_match(body_text, root_save, fixed = TRUE)
-  expect_lt(
-    regexpr(stage6_save, body_text, fixed = TRUE)[[1L]],
-    regexpr(root_save, body_text, fixed = TRUE)[[1L]]
+test_that("GRN and metacell stages share automatic design resolution", {
+  grn_text <- paste(deparse(body(rc_regcompass_step_grn)), collapse = "\n")
+  metacell_text <- paste(
+    deparse(body(rc_regcompass_step_metacells)), collapse = "\n"
   )
+  resolver_text <- paste(
+    deparse(body(.rc_resolve_condition_design)), collapse = "\n"
+  )
+  expect_match(grn_text, ".rc_resolve_condition_design", fixed = TRUE)
+  expect_match(metacell_text, ".rc_resolve_condition_design", fixed = TRUE)
+  expect_match(resolver_text, '"standard_pando"', fixed = TRUE)
+  expect_match(resolver_text, '"condition_grn"', fixed = TRUE)
 })

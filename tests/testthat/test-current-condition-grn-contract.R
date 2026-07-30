@@ -37,38 +37,35 @@ test_that("contract extraction requires within-cell-type cell OOF", {
     fixed = TRUE
   )
   expect_match(implementation, "fit_cell_type", fixed = TRUE)
+  expect_match(implementation, "absolute_condition_effects_only", fixed = TRUE)
+  expect_false(grepl("reference_condition", implementation, fixed = TRUE))
   expect_false(grepl("sample_blocked", implementation, fixed = TRUE))
-  expect_false(grepl("cell_type_blocked", implementation, fixed = TRUE))
 })
 
-test_that("Layer 1 uses cell-first Pando projection and bounded OOF reliability", {
+test_that("condition Layer 1 uses cell-first Pando projection", {
   implementation <- paste(
-    deparse(body(.rc_cell_first_projection_layer1)),
+    deparse(body(.rc_condition_pando_projection)),
     collapse = "\n"
   )
   expect_match(implementation, "Pando::project_condition_grn_cells",
                fixed = TRUE)
   expect_match(implementation, "Pando::aggregate_condition_grn_projection",
                fixed = TRUE)
-  expect_match(
-    implementation,
-    "as.character(unit_meta[[celltype_col]]) == fit$cell_type",
-    fixed = TRUE
-  )
-  expect_match(
-    implementation,
-    "sqrt(pmin(1, pmax(0",
-    fixed = TRUE
-  )
+  expect_match(implementation, "sqrt(pmin(1, pmax(0", fixed = TRUE)
+  expect_match(implementation, "pairwise_common", fixed = TRUE)
+  expect_match(implementation, "global_common", fixed = TRUE)
 })
 
-test_that("metacell builder name states its condition-by-cell-type scope", {
+test_that("metacell builder uses native SuperCell inputs", {
   expect_true(exists(
     ".rc_make_condition_celltype_metacells", inherits = TRUE
   ))
-  expect_false(exists(
-    ".rc_make_condition_pooled_metacells", inherits = TRUE
-  ))
+  native <- paste(
+    deparse(body(.rc_native_supercell_membership)), collapse = "\n"
+  )
+  expect_match(native, "cell.annotation", fixed = TRUE)
+  expect_match(native, "cell.split.condition", fixed = TRUE)
+  expect_false(grepl("stratum_col", native, fixed = TRUE))
 })
 
 test_that("regulatory integration is bounded and zero preserving", {

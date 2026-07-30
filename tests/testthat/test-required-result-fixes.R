@@ -20,7 +20,7 @@ test_that("GPR logCPM uses explicit full-transcriptome library size", {
   )
 })
 
-test_that("missing and no-GPR expression are not cheaper than observed zero", {
+test_that("missing and no-GPR expression receive maximum expression penalty", {
   reactions <- c(
     "observed_zero", "assay_missing", "no_gpr",
     "high_expression", "exchange", "demand"
@@ -43,10 +43,15 @@ test_that("missing and no-GPR expression are not cheaper than observed zero", {
     stringsAsFactors = FALSE
   )
   answer <- rc_compute_multiome_penalty(expression, reaction_roles = roles)
-
   expect_equal(answer$penalty["observed_zero", "u1"], 1)
-  expect_true(is.na(answer$penalty["assay_missing", "u1"]))
-  expect_true(is.na(answer$penalty["no_gpr", "u1"]))
+  expect_equal(answer$penalty["assay_missing", "u1"], 1)
+  expect_equal(answer$penalty["no_gpr", "u1"], 1)
+  expect_true(answer$components$missing_expression_flag[
+    "assay_missing", "u1"
+  ])
+  expect_true(answer$components$missing_expression_flag[
+    "no_gpr", "u1"
+  ])
   expect_equal(
     answer$penalty["high_expression", "u1"],
     1 / (1 + log2(1 + 0.8))

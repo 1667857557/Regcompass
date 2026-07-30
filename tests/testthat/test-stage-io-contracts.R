@@ -11,22 +11,15 @@ test_that("GRN and metacell groups require bidirectional coverage", {
     metacell_id = c("A1", "A2", "B1"),
     condition = c("A", "A", "B"),
     cell_type = "T",
-    dominant_celltype_fraction = c(1, 0.8, 1),
-    mixed_celltype_metacell = c(FALSE, TRUE, FALSE),
     stringsAsFactors = FALSE
   )
   coverage <- .rc_validate_grn_metacell_group_coverage(
     grn, metacells, "condition", "cell_type"
   )
   expect_true(all(coverage$coverage_complete))
-  expect_true(coverage$has_significant_pando_evidence[coverage$condition == "A"])
-  expect_false(coverage$has_significant_pando_evidence[coverage$condition == "B"])
   expect_true(coverage$has_active_pando_evidence[coverage$condition == "A"])
   expect_false(coverage$has_active_pando_evidence[coverage$condition == "B"])
   expect_equal(coverage$n_metacells[coverage$condition == "A"], 2L)
-  expect_equal(
-    coverage$n_mixed_celltype_metacells[coverage$condition == "A"], 1L
-  )
   expect_error(
     .rc_validate_grn_metacell_group_coverage(
       grn,
@@ -37,7 +30,7 @@ test_that("GRN and metacell groups require bidirectional coverage", {
   )
 })
 
-test_that("retired condition-only dominant-cell-type path is absent", {
+test_that("combined-stratum metacell path is absent", {
   expect_false(exists(
     ".rc_assign_metacell_dominant_celltype",
     inherits = TRUE
@@ -46,8 +39,14 @@ test_that("retired condition-only dominant-cell-type path is absent", {
     deparse(body(.rc_make_condition_celltype_metacells)),
     collapse = "\n"
   )
-  expect_match(text, ".rc_condition_celltype_pool_col", fixed = TRUE)
-  expect_match(text, "condition_celltype_stratification", fixed = TRUE)
+  native <- paste(
+    deparse(body(.rc_native_supercell_membership)),
+    collapse = "\n"
+  )
+  expect_match(native, "cell.annotation", fixed = TRUE)
+  expect_match(native, "cell.split.condition", fixed = TRUE)
+  expect_false(grepl(".rc_condition_celltype_pool_col", text, fixed = TRUE))
+  expect_false(grepl("stratum_col", text, fixed = TRUE))
 })
 
 test_that("metacell stage persists required artifacts", {
@@ -80,22 +79,24 @@ test_that("Stage 3 persists supported genes and core reactions", {
   expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
 })
 
-test_that("Layer 1 uses the canonical schema and stage class", {
+test_that("Layer 1 uses the dual-mode schema and stage class", {
   body_text <- paste(
     deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
   step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
   expect_match(
     body_text,
-    "regcompass_condition_grn_layer1_v4",
+    "regcompass_regulatory_layer1_v1",
     fixed = TRUE
   )
   expect_match(
     body_text,
-    "SuperCell_condition_by_broad_cell_type",
+    "native_SuperCell_metacell",
     fixed = TRUE
   )
   expect_match(body_text, "and_method = gpr_and_method", fixed = TRUE)
+  expect_match(body_text, '"standard_pando"', fixed = TRUE)
+  expect_match(body_text, '"condition_grn"', fixed = TRUE)
   expect_match(step_text, "regcompass_layer1_step", fixed = TRUE)
   expect_match(step_text, "gem_fingerprint", fixed = TRUE)
   expect_match(step_text, "workflow_params", fixed = TRUE)
@@ -119,7 +120,7 @@ test_that("Layer 2 and final results validate upstream provenance", {
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
   expect_match(
     result_text,
-    "regcompass_condition_grn_fit_v5",
+    "regcompass_regulatory_metabolic_result_v1",
     fixed = TRUE
   )
   expect_match(result_text, 'version = "2.1.0"', fixed = TRUE)
@@ -133,7 +134,8 @@ test_that("Layer 2 and final results validate upstream provenance", {
 test_that("stage validators reject reordered or mismatched units", {
   params <- list(
     condition_col = "condition", celltype_col = "cell_type",
-    rna_assay = "RNA", atac_assay = "ATAC"
+    rna_assay = "RNA", atac_assay = "ATAC",
+    analysis_mode = "condition_grn"
   )
   layer1 <- list(
     reaction_expression = matrix(
@@ -145,8 +147,9 @@ test_that("stage validators reject reordered or mismatched units", {
       stringsAsFactors = FALSE
     ),
     workflow_params = params,
-    gem_fingerprint = "x"
+    gem_fingerprint = "x",
+    analysis_mode = "condition_grn"
   )
   class(layer1) <- c("regcompass_layer1_step", "list")
-  expect_error(.rc_validate_layer1_stage(layer1), "not identically ordered")
+  expect_error(.rc_validate_layer1_stage(layer1), "not identically aligned")
 })

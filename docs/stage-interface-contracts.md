@@ -1,57 +1,58 @@
 # Stage input-output contracts
 
-RegCompassR 2.1.0 connects stages only when classes, workflow settings, GEM provenance, metacell construction provenance, and scoring-unit order agree.
+RegCompass connects stages only when classes, workflow settings, GEM provenance,
+analysis mode, metacell construction provenance, and unit order agree.
 
 ## Stage 1: Pando evidence
 
-Class: `regcompass_grn_step`
+Class: `regcompass_grn_step`.
 
-Required outputs:
+Common outputs:
 
 ```r
+step1$grn_result$analysis_mode
+step1$grn_result$condition_coefficients_calculated
 step1$grn_result$target_metabolic_genes
-step1$grn_result$condition_grn_fits
 step1$grn_result$condition_fit_status
 step1$grn_result$tf_peak_gene_condition
+step1$params$requested_condition_col
+step1$params$condition_col
+step1$params$celltype_col
+```
+
+### `analysis_mode = "condition_grn"`
+
+Selected only when the effective condition column contains at least two levels.
+Pando uses the canonical unversioned `pando_condition_grn_fit` schema, aligned
+absolute coefficients, equal-condition transforms, nested outer-heldout
+projections, estimability/support masks, and exactly-once OOF assignment.
+
+Additional output:
+
+```r
+step1$grn_result$condition_grn_fits
 step1$grn_result$tf_peak_gene_condition_effect
-step1$grn_result$normalization_policy$pando_motifs
-step1$grn_result$normalization_policy$pando_regions
-step1$grn_result$normalization_policy$pando_evidence_filters
-step1$gem_fingerprint
-step1$params
 ```
 
-Every condition represented within a cell-type `ConditionGRNFit` must complete
-successfully. A successful condition layer may legitimately have zero active
-coefficients; only groups with active supported target genes can contribute
-complete-GPR cores. `target_metabolic_genes` is the intersection of GEM GPR
-genes and RNA-assay row names.
+### `analysis_mode = "standard_pando"`
 
-The complete Pando 1.5.0 fit contract uses the single stable schema identifier
-`pando_condition_grn_fit`. Version-suffixed schemas such as
-`pando_condition_grn_fit_v4` and `pando_condition_grn_fit_v5` are rejected.
-Each broad cell type uses the
-`condition_sparse_within_cell_type_oof_refit` engine with nested cross-fitting,
-training-only equal-condition transforms, aligned absolute-condition
-coefficients and estimability/support matrices, exactly-once OOF assignment,
-and stored outer/inner fold provenance. No reference-condition coefficient,
-stored reference contrast, or comparison mask enters RegCompass.
+Selected when the condition column is omitted, absent, or contains one level.
+RegCompass calls original `Pando::infer_grn()` independently within each broad
+cell type. No `ConditionGRNFit`, condition coefficient, condition deviation, or
+condition contrast is calculated.
 
-When `pfm` is omitted, `pando_motifs` records `Pando::motifs`, loaded with `data("motifs", package = "Pando")`. Without an explicit `pando_initiate_args$regions`, the region contract is species-specific:
-
-```text
-human = union(Pando::phastConsElements20Mammals.UCSC.hg38,
-              Pando::SCREEN.ccRE.UCSC.hg38)
-mouse = user-supplied build-matched GRanges (required)
+```r
+step1$grn_result$standard_pando_objects
+step1$grn_result$condition_grn_fits       # empty list
+step1$grn_result$condition_coefficients_calculated  # FALSE
 ```
 
-`step1$params$species` records the resolved species, and `pando_regions` records the applied default or `user_supplied` policy.
+The effective constant condition label is retained only so downstream tables
+have one grouping value. It is not used to fit the standard Pando model.
 
-## Stage 2: metacells
+## Stage 2: native SuperCell metacells
 
-Class: `regcompass_metacell_step`
-
-Required outputs:
+Class: `regcompass_metacell_step`.
 
 ```r
 step2$pooled$metacell_meta
@@ -60,191 +61,106 @@ step2$metacell_object
 step2$params
 ```
 
-The merged metacell object and metadata must contain the same ordered units. Reduction names, dimensions, cell labels, assay fingerprints, and embedding fingerprints are part of the cache contract.
-
-Cells are hard-stratified by condition × broad cell type. User sample metadata
-do not enter selection, weighting, grouping, stability selection, or model
-refitting. One fixed gamma is used across all strata; the canonical default is
-30. RNA/ATAC high-depth cells are retained and reported diagnostically rather
-than rejected.
-
-## Stage 3: biological meta-modules
-
-Class: `regcompass_meta_module_step`
-
-Required outputs:
+RegCompass passes the two biological labels directly to SuperCell:
 
 ```r
-step3$condition_modules$supported_metabolic_genes
-step3$condition_modules$core_gene_reaction
-step3$condition_modules$reaction_membership
-step3$condition_modules$meta_module_summary
-step3$merged_modules$merged_core_reactions
-step3$merged_modules$merged_reaction_membership
-step3$group_coverage
-```
-
-Contract:
-
-- `supported_metabolic_genes` contains one row per condition, cell type, and GEM target gene with at least one active Pando TF–peak–gene row;
-- positive and negative Pando coefficients both count as regulatory evidence;
-- all supported genes in one `condition × cell type` form one GPR-evaluation set;
-- Stage 3 performs no shared-TF target projection, top-k graph pruning, or connected-component analysis;
-- `core_gene_reaction` marks a reaction as core only when one complete GPR branch is contained in the supported gene set;
-- expansion is exactly one ordered pass: core subsystem, direct KEGG/Reactome equivalence, then direct master-Rhea equivalence;
-- a reaction added at the master-Rhea step does not trigger another subsystem or KEGG/Reactome pass;
-- `merged_core_reactions` contains deduplicated complete-GPR core reactions;
-- `merged_reaction_membership` contains deduplicated biological reactions only;
-- `merged_modules$is_gem` is `FALSE`;
-- `merged_modules$fastcore_applied` is `FALSE`;
-- Stage 3 does not apply medium constraints or run FASTCORE;
-- the merged object is a catalogue and must not be described as a union GEM.
-
-The only optional Stage 3 parameter is a custom subsystem table:
-
-```r
-meta_module_args = list(
-  subsystem_table = custom_subsystem_table
+SuperCell::SCimplify_from_embedding(
+  X = joint_embedding,
+  cell.annotation = cell_type,
+  cell.split.condition = condition,
+  gamma = gamma
 )
 ```
 
-Omitting `meta_module_args` uses the GEM's subsystem annotations.
+For standard mode with an omitted condition,
+`cell.split.condition = NULL`. RegCompass does not create or pass a concatenated
+`condition__cell_type` stratum. The cache schema is
+`regcompass_native_supercell_metacell_cache_v1` and records:
 
-## Stage 4: Layer 1
-
-Class: `regcompass_layer1_step`
-
-Required outputs:
-
-```r
-step4$reaction_expression
-step4$metacell_meta
-step4$capacity_params$and_method
-step4$workflow_params
-step4$gem_fingerprint
+```text
+native_supercell_api = SCimplify_from_embedding
+condition_argument = cell.split.condition
+celltype_argument = cell.annotation
+temporary_combined_stratum = FALSE
 ```
 
-The reaction-expression matrix must contain every merged core reaction and the same ordered metacells represented by Stage 2.
+RNA and ATAC raw counts are aggregated from the exact returned
+`membership(cell_id, metacell_id)` table.
 
-The target-level regulatory modifier is reconstructed from stored Pando
-outer-heldout single-cell projections and exact SuperCell membership, then
-aggregated within condition × broad cell type. Layer 1 must not refit the GRN,
-recompute TF×ATAC from metacell means, use a reference contrast, use the
-Universal row mean as a baseline, or normalize condition effects by their
-absolute sum. Non-estimable edge contributions are structural zeros. When a
-target-level modifier is unavailable, support falls back exactly to RNA-only
-and the fallback is annotated.
+## Stage 3: biological meta-modules
 
-`capacity_params$and_method` must be one of:
+Class: `regcompass_meta_module_step`.
 
-```r
-c("min", "median", "mean")
+Active standard or condition-aware Pando target genes form one supported gene
+set per effective condition and broad cell type. Positive and negative
+coefficients both count as regulatory evidence. A reaction is a core only when
+one complete GPR branch is contained in the supported set.
+
+Expansion is one ordered pass:
+
+1. core subsystem;
+2. direct KEGG/Reactome equivalence;
+3. direct master-Rhea equivalence.
+
+Stage 3 creates a reaction catalogue, not a GEM, and does not run FASTCORE.
+
+## Stage 4: regulatory Layer 1
+
+Class: `regcompass_layer1_step`.
+
+Both modes use cell-first TF RNA × peak ATAC projections followed by exact
+SuperCell membership aggregation. Interactions are never reconstructed from
+metacell means.
+
+- condition mode: outer-heldout common-support Pando projections;
+- standard mode: original Pando full-fit coefficients, with no condition
+  coefficient calculation.
+
+The modes then share the same processing:
+
+```text
+cell-level regulatory projection
+→ metacell mean
+→ cell-type Gamma–Poisson latent RNA support
+→ reliability × tanh(projection / shared scale)
+→ bounded RNA-support odds modifier
+→ GPR reaction expression
 ```
 
-The canonical default is `"min"`. `regulatory_alpha` is fixed at `1`.
+`regulatory_alpha` is fixed at `1`. A non-finite target modifier is neutralized
+to `R = 0`, giving exactly RNA-only support for that gene–metacell entry.
 
 ## Stage 5: Layer 2
 
-Class: `regcompass_layer2_step`
+Class: `regcompass_layer2_step`.
 
-For `model_mode = "meta_module_gem"`, required inputs are:
-
-```r
-step3$merged_modules$merged_core_reactions
-step3$merged_modules$merged_reaction_membership
-```
+For each medium, one shared union GEM and one global FASTCORE completion are used
+for all metacells and both evidence routes. GPR OR branches are summed while
+unavailable branches are ignored. Missing final reaction expression is assigned
+`E = 0` before conversion and therefore receives expression-linked penalty `1`.
 
 Required outputs include:
 
 ```r
-step5$model_cache_summary
-step5$source_core_reactions
-step5$source_merged_reaction_membership
-step5$score
 step5$penalty
 step5$vmax
+step5$score
+step5$model_cache_summary
+step5$structural_model_contract
 ```
-
-Each `model_cache_summary` row identifies one final medium-specific union GEM and records at least:
-
-```r
-medium_scenario
-file
-file_checksum
-build_strategy
-completion_stage
-```
-
-The cached model must record:
-
-```r
-model$is_union_gem
-model$union_gem_medium_scenario
-model$build_params$completion_stage
-model$reaction_meta$global_fastcore_support
-```
-
-The required build metadata are:
-
-```text
-build_strategy = medium_specific_union_gem
-completion_stage = single_global_fastcore_after_meta_module_merge
-```
-
-All conditions and metacells within the same medium must resolve to the same model file. Different media may resolve to different union-GEM structures because their global FASTCORE support sets may differ.
-
-GPR aggregation follows COMPASS semantics: OR isozyme branches are summed while
-missing branches are ignored; AND behavior follows the selected `and_method`.
-A missing final reaction expression is set to zero before conversion to the
-expression-linked penalty and therefore receives penalty `1`.
 
 ## Stage 6: results
 
-The final result contains:
+The final result records the selected mode explicitly:
 
 ```r
-result$condition_grn_meta_modules$supported_metabolic_genes
-result$condition_grn_meta_modules$core_gene_reaction
-result$grn$condition_grn_fits
-result$grn$condition_fit_status
-result$grn$tf_peak_gene_condition
-result$grn$tf_peak_gene_condition_effect
-result$merged_grn_meta_modules
-result$microcompass
+result$analysis_mode
+result$condition_coefficients_calculated
 result$reaction_ranking
 result$condition_summary
 result$condition_contrast
 ```
 
-`merged_grn_meta_modules` is the Stage 3 catalogue. `microcompass$model_cache_summary` identifies the final Stage 5 union GEMs. `condition_contrast` is a downstream metabolic comparison and is unrelated to a Pando reference-condition contrast.
-
-## Global FASTCORE configuration
-
-The only structural completion controls are supplied at Stage 5:
-
-```r
-layer2_args = list(
-  model_params = list(
-    completion_time_limit = 600,
-    fastcore_epsilon = 1e-4,
-    max_support_reactions = 2000,
-    strict = TRUE
-  )
-)
-```
-
-## Target-union restart contract
-
-`rc_regcompass_step_target_union()` requires:
-
-- the original Stage 3 merged catalogue for anchor provenance;
-- the original Layer 1 matrix;
-- the completed `meta_module_gem` Stage 5 object;
-- accessible final Stage 5 union-GEM files;
-- matching model-file checksums and medium identifiers.
-
-Selected genes resolve only original complete-GPR cores. Reaction-ID anchors
-may be any valid reaction in the supplied GEM. Both determine direct mapping
-anchors only. Target availability and all LP calculations are evaluated in the
-exact cached final union GEMs. The second pass does not rebuild a GEM, change
-medium bounds, or rerun FASTCORE.
+For one effective condition, `reaction_ranking` and `condition_summary` are
+returned and `condition_contrast` is empty. No artificial second condition or
+condition coefficient is generated.
