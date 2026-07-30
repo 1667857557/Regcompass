@@ -103,30 +103,36 @@ test_that("missing reaction expression receives maximum expression penalty", {
   )
 })
 
-test_that("condition contracts are absolute and unversioned", {
+test_that("condition contracts are absolute, unversioned and condition-full", {
   expect_identical(
     RegCompassR:::.RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
     "pando_condition_grn_fit"
+  )
+  validator <- paste(
+    deparse(body(RegCompassR:::.rc_require_pando_condition_grn_fit)),
+    collapse = "\n"
   )
   extraction <- paste(
     deparse(body(RegCompassR:::.rc_extract_condition_grn_contract)),
     collapse = "\n"
   )
-  expect_match(
-    extraction, "absolute_condition_effects_only", fixed = TRUE
-  )
-  expect_false(grepl("reference_condition", extraction, fixed = TRUE))
+  expect_match(validator, "coefficient_estimable_mask", fixed = TRUE)
+  expect_match(validator, "projectable_structural_zero_mask", fixed = TRUE)
+  expect_match(validator, "projection_support_mask", fixed = TRUE)
+  expect_match(validator, "projection_condition_full_oof", fixed = TRUE)
+  expect_match(extraction, "projectable_structural_zero", fixed = TRUE)
+  expect_match(extraction, "projection_supported", fixed = TRUE)
   expect_false(grepl("comparison_mask", extraction, fixed = TRUE))
 })
 
-test_that("condition Layer 1 records structural-zero policy", {
+test_that("condition Layer 1 records condition-full structural-zero policy", {
   body_text <- paste(
     deparse(body(RegCompassR:::.rc_cell_first_projection_layer1)),
     collapse = "\n"
   )
-  expect_match(
-    body_text, "structural_zero_enters_main_analysis", fixed = TRUE
-  )
+  expect_match(body_text, "condition_full_oof", fixed = TRUE)
+  expect_match(body_text, "gene_projection_condition_unique_oof", fixed = TRUE)
+  expect_match(body_text, "structural_zero_by_condition", fixed = TRUE)
   expect_match(body_text, "condition_grn", fixed = TRUE)
   expect_match(body_text, "standard_pando", fixed = TRUE)
 })
