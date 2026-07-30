@@ -1,6 +1,6 @@
 # Canonical defaults
 
-The canonical RegCompass settings used by the current workflow are:
+The current main workflow uses:
 
 ```r
 pando_infer_args = list(
@@ -13,7 +13,8 @@ pando_infer_args = list(
 
 metacell_args = list(
   gamma = 30L,
-  depth_balance = FALSE
+  rna_reduction = "pca",
+  atac_reduction = "lsi"
 )
 
 layer1_args = list(
@@ -24,6 +25,21 @@ layer1_args = list(
 )
 ```
 
-One fixed gamma is used across every condition × broad-cell-type stratum.
-Non-estimable regulatory edge contributions are structural zeros in the main
-analysis. A non-finite target-level modifier falls back to RNA-only support.
+Each broad cell type receives one independent multimodal graph. All conditions
+of that cell type participate jointly in the graph, and condition-pure metacells
+are assigned after graph clustering.
+
+`condition_full_oof` is the primary Layer 1 and Layer 2 route. The
+`comparison_support` argument selects the pairwise/global common-support
+component retained for decomposition. It does not replace the primary route.
+
+A non-estimable edge side has an unavailable coefficient and a projectable
+structural-zero contribution. A non-finite target modifier falls back to neutral
+`R = 0`, exactly recovering RNA-only support.
+
+The canonical schema does not calculate depth matching, common-depth
+restriction, alpha sensitivity, zero-support sensitivity, or link-saturation
+propagation.
+
+Equations: [Tutorial 3](tutorial-03-mathematical-model.md). Public API:
+[functions.md](functions.md).
