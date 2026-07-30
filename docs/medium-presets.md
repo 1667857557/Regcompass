@@ -1,10 +1,14 @@
 # Medium scenarios and published evidence
 
-`rc_make_medium_scenarios()` exposes biological environments backed by
-published plasma measurements, published culture formulations, and explicit
-nutrient-challenge studies. A scenario may integrate several papers when no
-single paper supplies a sufficiently complete extracellular environment. The
-output records background and challenge provenance separately.
+`rc_make_medium_scenarios()` separates two evidence layers:
+
+1. **basal nutrient composition**, which must come from a high-authority,
+   reproducible formulation or quantitative extracellular metabolomics study;
+2. **challenge concentration**, which may come from the experiment that defined
+   the glucose, lactate, or glutamine treatment.
+
+A challenge article is therefore not used to invent the rest of the medium. The
+output records basal-composition and challenge provenance separately.
 
 ## Supported identifiers
 
@@ -20,16 +24,35 @@ custom
 ```
 
 The technical constructions `minimal`, `compass_model_bounds`, and
-`permissive_all_exchange` are not biological medium scenarios and are not
-accepted by this public interface. The broad alias `physiologic` is also not
-accepted because it hides the species-specific evidence source.
+`permissive_all_exchange` are not biological media. The ambiguous alias
+`physiologic` is also rejected.
 
-## Plasma scenarios
+## Evidence hierarchy
 
-| `scenario` | Species | Main sources | Quantitative policy |
-|---|---|---|---|
-| `normal_human_plasma` | Human-GEM | Cantor et al. 2017 HPLM; Psychogios et al. 2011 adult human serum/plasma | Exact HPLM concentrations where one-to-one; representative plasma/serum values for selected ions; unsupported rows remain availability-only. |
-| `mouse_plasma` | Mouse-GEM | Gardner and Stuart 2024 mouse plasma medium; Sullivan et al. 2019 murine plasma and tumour-interstitial-fluid metabolomics | Mouse glucose, lactate and glutamine have quantitative values; the wider murine catalog is availability-only when a defensible concentration is unavailable. |
+For nutrient **composition**, the canonical priority is:
+
+1. *Cell* or *Cell Metabolism* complete physiological formulations;
+2. *Nature* quantitative plasma/interstitial-fluid metabolomics;
+3. *Science Advances* independently developed physiological formulations;
+4. lower-tier or older studies only for a named treatment concentration or a
+   quantitatively unsupported secondary value.
+
+No concentrations are averaged across publications. A secondary publication can
+validate a formulation without contributing a numerical row.
+
+## Human plasma and physiological culture background
+
+`normal_human_plasma` uses:
+
+- Cantor et al., *Cell* 2017 HPLM as the primary formulation;
+- Rossiter et al., *Cell Metabolism* 2021 for the updated HPLM formulation,
+  including alpha-ketoglutarate, acetylcarnitine, malate, and uridine;
+- Vande Voorde et al., *Science Advances* 2019 Plasmax as independent validation
+  that physiological media alter cancer-cell metabolism.
+
+The encoded concentrations come from HPLM. Plasmax is **not numerically averaged**
+with HPLM. Rounded ion values from lower-tier serum surveys are not used to fill
+ambiguous salt-to-free-ion conversions.
 
 ```r
 human_medium <- rc_make_medium_scenarios(
@@ -37,7 +60,31 @@ human_medium <- rc_make_medium_scenarios(
   scenario = "normal_human_plasma",
   species = "human"
 )
+```
 
+The output includes:
+
+```text
+medium_background_id = authoritative_HPLM_2017_2021
+composition_primary_reference_doi
+composition_validation_reference_doi
+scenario_construction = authoritative_HPLM_composition_without_cross_study_averaging
+```
+
+## Mouse plasma
+
+`mouse_plasma` is now anchored to Abbott et al., *Nature* 2026, which quantified
+absolute levels of 124 metabolites across mouse plasma, cerebrospinal fluid, and
+multiple tissue interstitial fluids in NSG and C57BL/6J mice.
+
+The built-in catalog is deliberately conservative. It retains an auditable set
+of metabolites supported by that study. Components outside the supported set are
+omitted rather than inherited from human HPLM. Glucose, lactate, and glutamine
+retain the published mouse quantitative values from Gardner and Stuart 2024 as a
+secondary source; other retained rows are availability-only unless an exact
+mouse concentration is encoded.
+
+```r
 mouse_medium <- rc_make_medium_scenarios(
   gem = mouse_gem,
   scenario = "mouse_plasma",
@@ -45,47 +92,49 @@ mouse_medium <- rc_make_medium_scenarios(
 )
 ```
 
-Human values are never copied into `mouse_plasma`. Murine measurements vary by
-model, anatomical site, diet, and sampling method; therefore unknown mouse
-concentrations remain `NA` rather than being filled from human HPLM.
+The output records:
+
+```text
+medium_background_id = Abbott_2026_Nature_mouse_plasma
+composition_primary_reference_doi = 10.1038/s41586-025-09898-9
+quantitative_secondary_reference_doi = 10.1152/ajpcell.00452.2024
+```
+
+Human concentrations are never copied into `mouse_plasma`.
 
 ## Cell-culture challenge scenarios
 
-The five challenge presets include the common nutrients of a published basal
-culture environment. The named nutrient is then replaced by the concentration
-reported in the challenge paper.
+All five challenge presets use the **same authoritative physiological basal
+composition**:
 
-| Scenario | Basal nutrient background | Target override | Challenge source |
+```text
+Cell 2017 HPLM
++ Cell Metabolism 2021 updated HPLM components
+```
+
+Plasmax from *Science Advances* 2019 is stored as an independent validation
+reference. The challenge paper overrides only the named nutrient.
+
+| Scenario | Authoritative basal background | Target override | Challenge source |
 |---|---|---:|---|
-| `high_glucose` | RPMI-1640/DMEM component-availability union | glucose 25 mM | Han et al. 2015 |
-| `low_glucose` | RPMI-1640/DMEM component-availability union | glucose 1 mM | Han et al. 2015 |
-| `high_lactate` | DMEM nutrient background | lactate 20 mM | San-Millan et al. 2020 |
-| `low_lactate` | plasma-like HPLM/Plasmax nutrient background | lactate 0.5 mM | Cho et al. 2025 |
-| `low_glutamine` | DMEM nutrient background | glutamine 0.5 mM | Visagie et al. 2015 Methods |
+| `high_glucose` | HPLM 2017/2021 | glucose 25 mM | Han et al. 2015 |
+| `low_glucose` | HPLM 2017/2021 | glucose 1 mM | Han et al. 2015 |
+| `high_lactate` | HPLM 2017/2021 | lactate 20 mM | San-Millan et al. 2020 |
+| `low_lactate` | HPLM 2017/2021 | lactate 0.5 mM | Cho et al. 2025 |
+| `low_glutamine` | HPLM 2017/2021 | glutamine 0.5 mM | Visagie et al. 2015 Methods |
 
-### Why the background is retained
+The previous RPMI/DMEM union is not used as the canonical composition source.
+The original JAMA and Virology formulation papers may explain the historical
+media lineage, but they are not the primary nutrient-composition evidence for
+these RegCompass scenarios.
 
-The target nutrient is not the only extracellular substrate available to cells.
-The background therefore retains mapped amino acids, vitamins, inorganic ions,
-glucose or other carbon sources, oxygen, water, and other represented nutrients
-from the relevant culture formulation. This prevents a glucose, lactate, or
-glutamine challenge from being interpreted as a medium containing only one
-metabolite.
+The expected construction string is:
 
-For `high_glucose` and `low_glucose`, Han et al. used RPMI-1640 for ECC-1 cells
-and DMEM for Ishikawa cells. RegCompass stores their union as component
-availability; conflicting non-target concentrations are not averaged. For
-`high_lactate`, the published experiment used high-glucose DMEM with added
-lactate. For `low_lactate`, the source experiment used plasma-like Plasmax.
-`low_glutamine` uses the Methods-defined 0.5 mM glutamine condition; the earlier
-0.05 mM package value is not retained because it is inconsistent with the
-explicit Methods condition.
+```text
+authoritative_HPLM_background_plus_named_nutrient_override
+```
 
-### Composite-scenario interpretation
-
-A challenge scenario is a literature-backed modelling construction, not a claim
-that one article supplied every row. The following columns make the construction
-auditable:
+Inspect provenance with:
 
 ```r
 unique(medium_scenarios[, intersect(c(
@@ -93,16 +142,12 @@ unique(medium_scenarios[, intersect(c(
   "medium_background_id",
   "background_reference_label",
   "background_reference_doi",
+  "background_validation_reference_label",
+  "background_validation_reference_doi",
   "challenge_reference_label",
   "challenge_reference_doi",
   "scenario_construction"
 ), colnames(medium_scenarios))])
-```
-
-The expected construction string for these presets is:
-
-```text
-published_background_plus_named_nutrient_override
 ```
 
 ## Multiple scenarios
@@ -122,12 +167,12 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Each scenario receives its own medium-specific structural model. Within a
+Each scenario receives its own medium-specific structural model. Within one
 scenario, all conditions and metacells use identical exchange bounds.
 
 ## User-defined medium composition
 
-User-defined media are supported through either `scenario = "custom"` or
+User-defined media remain supported through either `scenario = "custom"` or
 `scenario = NULL`. Publication metadata are optional and retained when supplied.
 
 ### Exact reaction-level bounds
@@ -175,25 +220,20 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-A built-in scenario vector and one custom table may be supplied together. Custom
-reaction bounds are validated for finite ordered bounds and known exchange IDs.
-Custom metabolite rows are mapped through the same GEM exchange-mapping logic as
-built-in media.
+A built-in scenario vector and one custom table may be supplied together.
 
 ## Interpretation rules
 
-1. Concentration is not uptake flux. Target concentration ratios define explicit
-   relative sensitivity caps, not measured transporter rates.
+1. **Concentration is not uptake flux.** Target concentration ratios define
+   explicit relative sensitivity caps, not measured transporter rates.
 2. Every requested bound is intersected with the original GEM bounds; a medium
    cannot open a direction blocked by the GEM.
 3. Uptake for unlisted exchanges is closed during medium application; originally
    permitted secretion may remain open.
 4. Human and mouse plasma scenarios are species-restricted.
-5. Challenge scenarios are Human-GEM culture models. Mouse challenge conditions
-   should be supplied as user-defined compositions with appropriate evidence.
-6. Comparing `high_lactate` with `low_lactate` also compares their published
-   basal backgrounds. For an isolated lactate contrast, construct two custom
-   scenarios with the same background and different lactate rows.
+5. The challenge scenarios use an identical HPLM background, so comparisons such
+   as `high_lactate` versus `low_lactate` differ in the named target concentration
+   rather than in unrelated basal nutrients.
 
 ## Diagnostics
 
@@ -205,18 +245,16 @@ attr(medium_scenarios, "medium_policy")
 The expected policy is:
 
 ```text
-published_plasma_or_culture_background_with_explicit_overrides
+authoritative_journal_composition_with_explicit_overrides
 ```
 
 ## References
 
 - Cantor JR, Abu-Remaileh M, Kanarek N, et al. *Cell*. 2017. doi:10.1016/j.cell.2017.03.023.
-- Psychogios N, Hau DD, Peng J, et al. *PLoS ONE*. 2011. doi:10.1371/journal.pone.0016957.
-- Gardner GL, Stuart JA. *Am J Physiol Cell Physiol*. 2024. doi:10.1152/ajpcell.00452.2024.
-- Sullivan MR, Danai LV, Lewis CA, et al. *eLife*. 2019. doi:10.7554/eLife.44235.
-- Moore GE, Gerner RE, Franklin HA. *JAMA*. 1967. doi:10.1001/jama.1967.03120080053007.
-- Dulbecco R, Freeman G. *Virology*. 1959. doi:10.1016/0042-6822(59)90063-3.
+- Rossiter NJ, Huggler KS, Adelmann CH, et al. *Cell Metabolism*. 2021. doi:10.1016/j.cmet.2021.02.005.
 - Vande Voorde J, Ackermann T, Pfetzer N, et al. *Science Advances*. 2019. doi:10.1126/sciadv.aau7314.
+- Abbott KL, Subudhi S, Ferreira R, et al. *Nature*. 2026. doi:10.1038/s41586-025-09898-9.
+- Gardner GL, Stuart JA. *Am J Physiol Cell Physiol*. 2024. doi:10.1152/ajpcell.00452.2024.
 - Han J, Zhang L, Guo H, et al. *Gynecologic Oncology*. 2015. doi:10.1016/j.ygyno.2015.06.036.
 - San-Millan I, Julian CG, Matarazzo C, et al. *Frontiers in Oncology*. 2020. doi:10.3389/fonc.2019.01536.
 - Cho E, Spielmann G, Irving BA. *Physiological Reports*. 2025. doi:10.14814/phy2.70450.
