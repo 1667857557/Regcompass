@@ -50,7 +50,7 @@ step1$grn_result$condition_coefficients_calculated  # FALSE
 The effective constant condition label is retained only so downstream tables
 have one grouping value. It is not used to fit the standard Pando model.
 
-## Stage 2: native SuperCell metacells
+## Stage 2: cell-type-independent, condition-joint SuperCell metacells
 
 Class: `regcompass_metacell_step`.
 
@@ -61,31 +61,49 @@ step2$metacell_object
 step2$params
 ```
 
-RegCompass passes the two biological labels directly to SuperCell:
+Graph scope and metacell purity are separate controls. RegCompass first scales
+RNA and ATAC embedding blocks within each broad cell type using every condition
+of that cell type. It then calls:
 
 ```r
-SuperCell::SCimplify_from_embedding(
+SuperCell::SCimplify_by_graph_group_from_embedding(
   X = joint_embedding,
-  cell.annotation = cell_type,
+  cell.graph.group = cell_type,
   cell.split.condition = condition,
   gamma = gamma
 )
 ```
 
+The resulting contract is:
+
+1. one independent kNN graph per broad cell type;
+2. every condition of that cell type participates jointly in distance
+   standardization, neighbour search, and graph clustering;
+3. condition is applied only after graph clustering to split mixed preliminary
+   memberships;
+4. final metacells are pure for both cell type and condition;
+5. no sample-derived grouping or concatenated condition-by-cell-type field is
+   created.
+
 For standard mode with an omitted condition,
-`cell.split.condition = NULL`. RegCompass does not create or pass a concatenated
-`condition__cell_type` stratum. The cache schema is
-`regcompass_native_supercell_metacell_cache_v1` and records:
+`cell.split.condition = NULL`. The cache schema is
+`regcompass_celltype_graph_condition_joint_cache_v2` and records:
 
 ```text
-native_supercell_api = SCimplify_from_embedding
+native_supercell_api = SCimplify_by_graph_group_from_embedding
+graph_group_argument = cell.graph.group
 condition_argument = cell.split.condition
-celltype_argument = cell.annotation
+graph_scope = one_independent_graph_per_cell_type
+condition_scope = all_conditions_joint_within_cell_type_graph
+membership_split_timing = after_joint_graph_clustering
+embedding_scaling = within_celltype_joint_condition_equal_modality_blocks
 temporary_combined_stratum = FALSE
 ```
 
 RNA and ATAC raw counts are aggregated from the exact returned
-`membership(cell_id, metacell_id)` table.
+`membership(cell_id, metacell_id)` table. See
+[metacell-graph-contract.md](metacell-graph-contract.md) for the mathematical
+formulation and invariants.
 
 ## Stage 3: biological meta-modules
 

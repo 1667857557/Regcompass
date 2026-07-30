@@ -52,25 +52,37 @@ result <- rc_regcompass_step_results(...)
 Stage 1 and Stage 2 independently resolve the input design and their
 `analysis_mode` values must agree.
 
-## Native SuperCell inputs
+## SuperCell graph and purity inputs
 
-Stage 2 passes:
+Stage 2 calls `SCimplify_by_graph_group_from_embedding()` with:
 
 ```text
-cell.annotation       = broad cell type
-cell.split.condition  = condition, or NULL when omitted
-gamma                  = requested graining level
+cell.graph.group       = broad cell type
+cell.split.condition   = condition, or NULL when omitted
+gamma                   = requested graining level
 ```
 
-No combined metadata stratum is created. A metacell is checked after construction
-to ensure one broad cell type and, when applicable, one condition.
+The graph and condition roles are deliberately asymmetric:
+
+- `cell.graph.group` partitions the data before neighbour construction, so each
+  cell type has an independent graph;
+- every condition within that cell type is pooled in the same standardized
+  multimodal embedding and graph;
+- `cell.split.condition` is applied after graph clustering, so final metacells
+  are condition-pure without fitting separate condition graphs.
+
+No combined metadata stratum or sample-derived grouping is created. Stage 2
+checks each metacell after construction to ensure one broad cell type and, when
+applicable, one condition. The formal provenance values are
+`one_independent_graph_per_cell_type` and
+`all_conditions_joint_within_cell_type_graph`.
 
 ## Restart boundaries
 
 - Pando mode, motifs, regions, targets, or Pando fitting arguments changed:
   rerun Stage 1 onward.
-- reductions, dimensions, gamma, or SuperCell arguments changed: rerun Stage 2
-  onward.
+- reductions, dimensions, gamma, graph grouping, condition membership splitting,
+  or SuperCell arguments changed: rerun Stage 2 onward.
 - GPR or subsystem annotations changed: rerun Stage 3 onward.
 - regulatory support or GPR aggregation changed: rerun Stage 4 onward.
 - medium, union GEM, FASTCORE, or LP controls changed: rerun Stage 5 onward.
@@ -82,5 +94,6 @@ effective condition produces reaction rankings and summaries with an empty
 condition contrast. Metacell statistics remain within-dataset inference rather
 than biological-replicate inference.
 
-See the [public API index](functions.md) and
-[stage contracts](stage-interface-contracts.md).
+See the [public API index](functions.md),
+[stage contracts](stage-interface-contracts.md), and
+[metacell graph contract](metacell-graph-contract.md).

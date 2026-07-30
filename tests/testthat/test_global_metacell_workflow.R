@@ -80,17 +80,24 @@ test_that("merged meta-modules contain biological reactions only", {
   expect_false(out$fastcore_applied)
 })
 
-test_that("metacells pass separate native condition and cell-type labels", {
+test_that("metacells use one independent graph per cell type across conditions", {
   native <- paste(
     deparse(body(.rc_native_supercell_membership)), collapse = "\n"
   )
   wrapper <- paste(
     deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
-  expect_match(native, "SCimplify_from_embedding", fixed = TRUE)
-  expect_match(native, "cell.annotation", fixed = TRUE)
+  expect_match(
+    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
+  )
+  expect_match(native, "cell.graph.group", fixed = TRUE)
   expect_match(native, "cell.split.condition", fixed = TRUE)
+  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
+  expect_false(grepl("cell.annotation", native, fixed = TRUE))
   expect_match(wrapper, "gamma = 30L", fixed = TRUE)
+  expect_match(
+    wrapper, "celltype_independent_graph_condition_joint", fixed = TRUE
+  )
   expect_false(grepl("supercell_stratum_col", wrapper, fixed = TRUE))
   expect_false(grepl("stratum_col", wrapper, fixed = TRUE))
 })

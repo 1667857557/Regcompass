@@ -81,16 +81,20 @@ test_that("condition and standard Pando implementations are separate", {
   expect_false(grepl("Pando::infer_condition_grn", standard_text, fixed = TRUE))
 })
 
-test_that("native SuperCell API replaces combined strata", {
+test_that("native SuperCell API uses cell-type graph groups", {
   native <- paste(
     deparse(body(.rc_native_supercell_membership)), collapse = "\n"
   )
   pooling <- paste(
     deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
-  expect_match(native, "SCimplify_from_embedding", fixed = TRUE)
-  expect_match(native, "cell.annotation", fixed = TRUE)
+  expect_match(
+    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
+  )
+  expect_match(native, "cell.graph.group", fixed = TRUE)
   expect_match(native, "cell.split.condition", fixed = TRUE)
+  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
+  expect_false(grepl("cell.annotation", native, fixed = TRUE))
   expect_false(grepl("supercell_stratum_col", pooling, fixed = TRUE))
   expect_false(grepl("stratum_col", pooling, fixed = TRUE))
 })

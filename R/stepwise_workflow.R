@@ -189,11 +189,12 @@ rc_regcompass_step_grn <- function(
   answer
 }
 
-#' Build native SuperCell2 metacells
+#' Build cell-type-independent, condition-joint SuperCell2 metacells
 #'
-#' Cell type and condition are passed separately to SuperCell as
-#' `cell.annotation` and `cell.split.condition`; no concatenated stratum field is
-#' created.
+#' Each broad cell type is assigned an independent multimodal k-nearest-neighbour
+#' graph. All conditions within that cell type share the same cell-type-specific
+#' embedding standardization and graph. Condition labels are used only after
+#' graph clustering to split memberships and guarantee condition-pure metacells.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
@@ -270,9 +271,14 @@ rc_regcompass_step_metacells <- function(
       atac_assay = atac_assay,
       fragment_files = fragment_files,
       metacell_args = modifyList(list(gamma = 30L), metacell_args),
-      supercell_api = "SCimplify_from_embedding",
+      supercell_api = "SCimplify_by_graph_group_from_embedding",
+      supercell_graph_group_argument = "cell.graph.group",
       supercell_condition_argument = "cell.split.condition",
-      supercell_celltype_argument = "cell.annotation",
+      graph_scope = "one_independent_graph_per_cell_type",
+      condition_scope = "all_conditions_joint_within_cell_type_graph",
+      membership_split_timing = "after_joint_graph_clustering",
+      embedding_scaling =
+        "within_celltype_joint_condition_equal_modality_blocks",
       temporary_combined_stratum = FALSE,
       seurat_compatibility =
         metacell_object@misc$regcompass_seurat_compatibility

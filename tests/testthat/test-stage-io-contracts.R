@@ -43,8 +43,13 @@ test_that("combined-stratum metacell path is absent", {
     deparse(body(.rc_native_supercell_membership)),
     collapse = "\n"
   )
-  expect_match(native, "cell.annotation", fixed = TRUE)
+  expect_match(
+    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
+  )
+  expect_match(native, "cell.graph.group", fixed = TRUE)
   expect_match(native, "cell.split.condition", fixed = TRUE)
+  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
+  expect_false(grepl("cell.annotation", native, fixed = TRUE))
   expect_false(grepl(".rc_condition_celltype_pool_col", text, fixed = TRUE))
   expect_false(grepl("stratum_col", text, fixed = TRUE))
 })
@@ -57,7 +62,10 @@ test_that("metacell stage persists required artifacts", {
     "metacell_celltype_composition.tsv.gz",
     "metacell_celltype_summary.tsv.gz",
     "merged_metacell_object.rds",
-    "step_metacells.rds"
+    "step_metacells.rds",
+    "SCimplify_by_graph_group_from_embedding",
+    "one_independent_graph_per_cell_type",
+    "all_conditions_joint_within_cell_type_graph"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
 })
@@ -123,12 +131,14 @@ test_that("Layer 2 and final results validate upstream provenance", {
     "regcompass_regulatory_metabolic_result_v1",
     fixed = TRUE
   )
-  expect_match(result_text, 'version = "2.1.0"', fixed = TRUE)
+  expect_match(result_text, 'version = "2.1.1"', fixed = TRUE)
   expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
   expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)
   expect_match(result_text, "reaction_catalog", fixed = TRUE)
   expect_match(result_text, "reaction_evidence", fixed = TRUE)
+  expect_match(result_text, "metacell_graph_scope", fixed = TRUE)
+  expect_match(result_text, "metacell_condition_scope", fixed = TRUE)
 })
 
 test_that("stage validators reject reordered or mismatched units", {
