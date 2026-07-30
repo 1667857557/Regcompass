@@ -2,8 +2,9 @@
 
 Main workflow tutorials: [one-shot](tutorial-01-quick-start.md),
 [stepwise](tutorial-02-stepwise-audit.md),
-[mathematical model](tutorial-03-mathematical-model.md), and
-[condition comparison](tutorial-04-condition-differential-analysis.md).
+[mathematical model](tutorial-03-mathematical-model.md),
+[targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md), and
+[condition comparison](tutorial-05-condition-differential-analysis.md).
 
 ## Complete workflows
 
@@ -113,6 +114,29 @@ target direction and `vmax`. The first matrix is the primary penalty.
 
 The schema does not contain depth-matching, common-depth, alpha-sensitivity,
 zero-support-sensitivity or link-saturation-propagation outputs.
+
+## Optional targeted reaction remapping
+
+| Function | Purpose |
+|---|---|
+| `rc_regcompass_step_target_union()` | Score direct KEGG/Reactome/master-Rhea-linked non-core reactions in the exact cached Stage 5 union GEMs. |
+
+```r
+targeted <- rc_regcompass_step_target_union(
+  layer1 = step4,
+  meta_modules = step3,
+  layer2 = step5,
+  gem = gem,
+  outdir = "RegCompass_targeted",
+  core_reaction_ids = c("MAR04381", "MAR04379"),
+  layer2_args = list(target_direction = "both", solver = "highs")
+)
+```
+
+The function does not rebuild the model or rerun FASTCORE. In condition mode it
+uses `step4$reaction_expression`, the canonical alias of
+`reaction_expression_condition_full_oof`, so targeted reactions remain on the
+same primary evidence scale as the original Stage 5 targets.
 
 ## GEM and medium
 
