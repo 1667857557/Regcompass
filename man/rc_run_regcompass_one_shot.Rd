@@ -37,9 +37,12 @@ The wrapped workflow automatically selects condition-aware Pando for two or more
 condition levels and original \code{Pando::infer_grn()} for one or zero usable
 levels. The standard route calculates no condition coefficients.
 
-Metacells use native SuperCell \code{cell.annotation} and
-\code{cell.split.condition} inputs rather than a concatenated stratum field.
-Both routes continue through the same RNA-support, GPR, reaction penalty, shared
+Metacells use
+\code{SuperCell::SCimplify_by_graph_group_from_embedding()} with broad cell type
+as \code{cell.graph.group} and condition as \code{cell.split.condition}. Each
+cell type has an independent graph, all conditions within that cell type are
+jointly embedded, and condition is applied only after graph clustering. Both
+routes continue through the same RNA-support, GPR, reaction penalty, shared
 medium-specific model, and directional LP stages. \code{regulatory_alpha = 1}
 is fixed.
 }
