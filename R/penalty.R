@@ -16,103 +16,72 @@
   list(role = role, role_source = role_source)
 }
 
-# Compute the canonical COMPASS-like cost from multiome reaction expression.
-# Regulatory evidence is integrated before GPR aggregation; no independent
-# reaction-confidence term is added.
 rc_compute_multiome_penalty <- function(
     reaction_expression,
     reaction_roles = NULL,
     eps = 1e-6,
     penalty_cap = 20,
     support_penalty = c(
-      exchange = 1.0,
-      demand = 20,
-      sink = 20,
-      artificial_support = 20
+      exchange = 1.0, demand = 20, sink = 20, artificial_support = 20
     )) {
   E <- as.matrix(reaction_expression)
   if (!is.numeric(E) || is.null(rownames(E)) || is.null(colnames(E)) ||
       anyDuplicated(rownames(E)) || anyDuplicated(colnames(E))) {
-    stop(
-      "Reaction expression requires a numeric matrix with unique dimnames.",
-      call. = FALSE
-    )
+    stop("Reaction expression requires a numeric matrix with unique dimnames.",
+         call. = FALSE)
   }
+  required_roles <- c("exchange", "demand", "sink", "artificial_support")
   if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0 ||
       !is.numeric(penalty_cap) || length(penalty_cap) != 1L ||
-      !is.finite(penalty_cap) || penalty_cap <= 0) {
-    stop(
-      "`eps` and `penalty_cap` must be finite positive constants.",
-      call. = FALSE
-    )
-  }
-  required_structural_roles <- c(
-    "exchange", "demand", "sink", "artificial_support"
-  )
-  if (!is.numeric(support_penalty) || is.null(names(support_penalty)) ||
-      anyDuplicated(names(support_penalty)) ||
-      any(!required_structural_roles %in% names(support_penalty)) ||
+      !is.finite(penalty_cap) || penalty_cap <= 0 ||
+      !is.numeric(support_penalty) || is.null(names(support_penalty)) ||
+      any(!required_roles %in% names(support_penalty)) ||
       any(!is.finite(support_penalty)) || any(support_penalty < 0)) {
-    stop(
-      "`support_penalty` must provide finite non-negative costs for all structural roles.",
-      call. = FALSE
-    )
+    stop("Penalty controls are invalid.", call. = FALSE)
   }
-
-  observed <- is.finite(E)
+  expression_observed <- is.finite(E)
   E_effective <- E
-  E_effective[observed] <- pmax(E_effective[observed], 0)
+  E_effective[!expression_observed] <- 0
+  E_effective <- pmax(E_effective, 0)
   P_expr <- 1 / (1 + log2(1 + E_effective))
   dimnames(P_expr) <- dimnames(E)
-
   roles <- .rc_condition_role_vectors(rownames(E), reaction_roles)
-  role <- roles$role
-  role_source <- roles$role_source
-  override <- stats::setNames(
-    as.logical(role %in% required_structural_roles),
-    rownames(E)
-  )
-
+  override <- stats::setNames(roles$role %in% required_roles, rownames(E))
   penalty <- P_expr
   if (any(override)) {
-    penalty[override, ] <- as.numeric(support_penalty[role[override]])
+    penalty[override, ] <- as.numeric(support_penalty[roles$role[override]])
   }
-  finite_penalty <- is.finite(penalty)
-  penalty[finite_penalty] <- pmin(
-    pmax(penalty[finite_penalty], eps),
-    penalty_cap
-  )
-  availability <- observed
-  if (any(override)) {
-    availability[override, ] <- TRUE
-  }
-
+  penalty <- pmin(pmax(penalty, eps), penalty_cap)
+  dimnames(penalty) <- dimnames(E)
+  missing <- !expression_observed
   list(
     penalty = penalty,
     components = list(
       reaction_expression = E,
       effective_reaction_expression = E_effective,
       P_expr = P_expr,
-      role = role,
-      role_source = role_source,
+      role = roles$role,
+      role_source = roles$role_source,
       role_override_flag = override,
-      penalty_available = availability,
-      missing_expression_flag = !observed,
-      observed_zero_expression_flag = observed & E_effective <= 0
+      penalty_available = matrix(TRUE, nrow(E), ncol(E), dimnames = dimnames(E)),
+      expression_observed = expression_observed,
+      missing_expression_flag = missing,
+      missing_expression_imputed_zero = missing,
+      maximum_expression_penalty_flag = missing &
+        !matrix(override, nrow(E), ncol(E)),
+      observed_zero_expression_flag = expression_observed & E_effective <= 0
     ),
-    evidence_policy = "penalty_only",
+    evidence_policy = "compass_missing_expression_max_penalty",
     evidence_policy_detail = paste(
-      "unmeasured reaction expression remains unavailable (NA), whereas an",
-      "observed zero receives the strictest expression-linked penalty;",
-      "fixed costs are used only for exchange/demand/sink/artificial-support reactions"
+      "GPR expression uses complete AND branches and additive OR branches;",
+      "unavailable final reaction expression is set to zero before penalty conversion"
     ),
-    penalty_version = "gene_integrated_multiome_penalty_v2",
+    penalty_version = "compass_gpr_missing_zero_penalty_v3",
     evidence_description = paste(
-      "Condition-specific Pando coefficients learned from RNA+ATAC weight",
-      "accessibility-only regulatory deviations integrated into gene support",
-      "before GPR aggregation; expression-linked reactions use",
-      "1/(1+log2(1+reaction_expression)); missing expression remains NA."
+      "Expression-linked reactions use 1/(1+log2(1+E)); missing E receives",
+      "the maximum expression-linked penalty. Structural reactions use fixed costs."
     ),
-    penalty_formula = "1 / (1 + log2(1 + pmax(E_multiome, 0))); missing E_multiome := NA"
+    penalty_formula =
+      "P=1/(1+log2(1+pmax(E,0))); nonfinite E:=0, hence P:=1"
   )
 }
