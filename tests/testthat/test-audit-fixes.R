@@ -57,7 +57,7 @@ test_that("zero-count ATAC features are removed by default", {
   expect_equal(filtered$diagnostics$n_retained_peaks, 1)
 })
 
-test_that("native metacell APIs exclude sample balancing and combined strata", {
+test_that("native metacell APIs isolate cell types without sample strata", {
   expect_false("sample_col" %in% names(formals(rc_regcompass_step_metacells)))
   expect_false("sample_col" %in% names(formals(rc_run_regcompass)))
   wrapper_text <- paste(
@@ -66,8 +66,13 @@ test_that("native metacell APIs exclude sample balancing and combined strata", {
   native_text <- paste(
     deparse(body(.rc_native_supercell_membership)), collapse = "\n"
   )
-  expect_match(native_text, "cell.annotation", fixed = TRUE)
+  expect_match(
+    native_text, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
+  )
+  expect_match(native_text, "cell.graph.group", fixed = TRUE)
   expect_match(native_text, "cell.split.condition", fixed = TRUE)
+  expect_match(native_text, ".rc_scale_embedding_block_by_group", fixed = TRUE)
+  expect_false(grepl("cell.annotation", native_text, fixed = TRUE))
   expect_false(grepl("supercell_stratum_col", wrapper_text, fixed = TRUE))
   expect_false(grepl(".rc_condition_celltype_pool_col", wrapper_text, fixed = TRUE))
   expect_false(grepl(".rc_balance_condition_celltype_cells", wrapper_text, fixed = TRUE))
