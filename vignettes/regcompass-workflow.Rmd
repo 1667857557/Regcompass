@@ -26,17 +26,21 @@ The standard route does not calculate condition coefficients. It projects the
 standard TF–peak–gene coefficients as cell-level TF RNA × peak ATAC terms and
 continues through the same metacell, GPR, penalty, and metabolic-model stages.
 
-SuperCell receives biological labels through its native arguments:
+SuperCell receives separate graph and purity inputs:
 
 ```text
-cell.annotation = broad cell type
+cell.graph.group = broad cell type
 cell.split.condition = condition, or NULL when omitted
 ```
 
-No temporary combined condition-by-cell-type field is created.
+Each broad cell type is built as an independent graph. All conditions within
+that cell type are standardized and embedded jointly, and condition is applied
+only after graph clustering to keep final metacells condition-pure. No sample or
+temporary combined condition-by-cell-type field is used.
 
 Mathematical definitions are centralized in
-[Mathematical model](../docs/mathematical-model.md).
+[Mathematical model](../docs/mathematical-model.md) and the
+[metacell graph contract](../docs/metacell-graph-contract.md).
 
 # Prepare GEM and medium
 
@@ -99,7 +103,15 @@ result <- rc_run_regcompass(
 ```
 
 This route returns `result$analysis_mode == "condition_grn"` and uses the
-canonical unversioned `pando_condition_grn_fit` contract.
+canonical unversioned `pando_condition_grn_fit` contract. Stage 2 records:
+
+```r
+result$metacells$input_design$graph_scope
+result$metacells$input_design$condition_scope
+```
+
+with values `"one_independent_graph_per_cell_type"` and
+`"all_conditions_joint_within_cell_type_graph"`.
 
 # Standard Pando workflow
 
@@ -198,6 +210,8 @@ Stage 1 and Stage 2 independently resolve the analysis mode and must agree.
   projection;
 - standard mode: regulatory evidence comes from the original Pando full fit;
 - both modes calculate TF×ATAC before metacell aggregation;
+- each cell type has an independent graph and all its conditions share that
+  graph before condition-pure membership splitting;
 - non-finite target modifiers use neutral `R=0`, exactly matching RNA-only
   support for that entry;
 - `regulatory_alpha = 1` is fixed;
@@ -210,4 +224,5 @@ Stage 1 and Stage 2 independently resolve the analysis mode and must agree.
 - [Workflow](../docs/workflow.md)
 - [Run modes](../docs/run-modes-and-stepwise-workflow.md)
 - [Stage contracts](../docs/stage-interface-contracts.md)
+- [Metacell graph contract](../docs/metacell-graph-contract.md)
 - [Public API](../docs/functions.md)
