@@ -1,8 +1,24 @@
+medium_tutorial_root <- function() {
+  workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
+  candidates <- unique(c(
+    if (nzchar(workspace)) workspace else character(),
+    ".", "..", file.path("..", "..")
+  ))
+  candidates <- candidates[file.exists(file.path(candidates, "DESCRIPTION"))]
+  if (!length(candidates)) return(NULL)
+  normalizePath(candidates[[1L]], mustWork = TRUE)
+}
+
+read_medium_tutorials <- function(paths) {
+  paths <- paths[file.exists(paths)]
+  paste(unlist(lapply(paths, readLines, warn = FALSE)), collapse = "\n")
+}
+
 test_that("canonical tutorials retain the complete medium preset interface", {
-  root <- documentation_root()
+  root <- medium_tutorial_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
 
-  tutorials <- read_documentation(c(
+  tutorials <- read_medium_tutorials(c(
     file.path(root, "docs", "tutorial-01-quick-start.md"),
     file.path(root, "docs", "tutorial-02-stepwise-audit.md")
   ))
@@ -38,7 +54,7 @@ test_that("canonical tutorials retain the complete medium preset interface", {
 })
 
 test_that("medium preset reference retains species and interpretation policy", {
-  root <- documentation_root()
+  root <- medium_tutorial_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
 
   path <- file.path(root, "docs", "medium-presets.md")
