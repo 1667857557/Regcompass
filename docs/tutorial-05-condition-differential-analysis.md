@@ -20,7 +20,7 @@ A valid comparison fixes the reaction, direction, medium and broad cell type:
 ```r
 reaction_id <- "MAR04324"
 direction <- "forward"
-medium_id <- "physiologic"
+medium_id <- "normal_human_plasma"
 cell_type <- "stem-cell_like"
 
 one <- ranking[
@@ -31,6 +31,9 @@ one <- ranking[
   , drop = FALSE
 ]
 ```
+
+Use the exact `medium_scenario` identifier stored in the result. Comparisons must
+not mix plasma, culture-challenge, or user-defined backgrounds.
 
 ## Pairwise and omnibus tests
 
