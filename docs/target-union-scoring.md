@@ -1,6 +1,9 @@
 # Direct database-linked non-core scoring in final union GEMs
 
-`rc_regcompass_step_target_union()` is an optional second-pass analysis after a completed stepwise Layer 2 run with `model_mode = "meta_module_gem"`.
+`rc_regcompass_step_target_union()` is an optional second-pass analysis after a
+completed stepwise Layer 2 run with `model_mode = "meta_module_gem"`. It remains
+part of the supported workflow and is separate from the removed sensitivity and
+comparability guardrails.
 
 ## Structural source
 
@@ -10,7 +13,8 @@ The function reuses the exact final medium-specific union GEM files recorded by:
 layer2$model_cache_summary
 ```
 
-Each cache row must record the model file, checksum, medium scenario, build strategy, and completion stage. The cached models already contain:
+Each cache row must record the model file, checksum, medium scenario, build
+strategy, and completion stage. The cached models already contain:
 
 - the merged biological meta-module reactions;
 - medium-specific bounds;
@@ -26,9 +30,30 @@ meta_modules$merged_modules$merged_reaction_membership
 
 These Stage 3 tables are catalogue tables, not GEMs.
 
+## Evidence route
+
+The second pass obtains reaction expression from:
+
+```r
+layer1$reaction_expression
+```
+
+For condition-aware runs, this is the canonical alias of:
+
+```r
+layer1$reaction_expression_condition_full_oof
+```
+
+Targeted reactions therefore use the same primary condition-full regulatory
+route as the original Stage 5 ranking. Common-support and RNA-only matrices are
+retained as decomposition/control outputs but are not substituted into the
+canonical targeted pass.
+
 ## Mapping rule
 
-Reaction IDs supplied through `core_reaction_ids` are direct mapping anchors. The parameter name is retained for compatibility, but each ID may be either an original core reaction or another valid reaction in the supplied GEM.
+Reaction IDs supplied through `core_reaction_ids` are direct mapping anchors.
+The parameter name is retained for compatibility, but each ID may be either an
+original core reaction or another valid reaction in the supplied GEM.
 
 Direct candidate targets are reactions sharing at least one:
 
@@ -36,11 +61,14 @@ Direct candidate targets are reactions sharing at least one:
 - Reactome reaction identifier;
 - master Rhea identifier.
 
-`core_genes` continues to resolve anchors within the original complete-GPR core set. No subsystem expansion, transitive expansion, metabolite-neighbour expansion, model reconstruction, or FASTCORE completion is performed.
+`core_genes` continues to resolve anchors within the original complete-GPR core
+set. No subsystem expansion, transitive expansion, metabolite-neighbour
+expansion, model reconstruction, or FASTCORE completion is performed.
 
 ## Availability and validation rule
 
-A mapped reaction is scoreable only when it is non-core and present in every required final union GEM. Before scoring, RegCompass verifies:
+A mapped reaction is scoreable only when it is non-core and present in every
+required final union GEM. Before scoring, RegCompass verifies:
 
 ```text
 file_checksum
@@ -50,11 +78,16 @@ model$is_union_gem = TRUE
 model$union_gem_medium_scenario matches the cache row
 ```
 
-This allows globally added FASTCORE support reactions to be scored when they are present in all reused final models, even when absent from the Stage 3 merged biological catalogue. Original Layer 2 core targets are not recomputed.
+This allows globally added FASTCORE support reactions to be scored when they are
+present in all reused final models, even when absent from the Stage 3 merged
+biological catalogue. Original Layer 2 core targets are not recomputed.
 
 ## Time-limit policy
 
-`layer2_args$model_params$completion_time_limit` belongs to the original Stage 5 union-GEM construction. The second pass does not reconstruct the model or rerun FASTCORE, so it neither accepts nor reuses a construction timeout. Its scoring LPs have no `time_limit` parameter.
+`layer2_args$model_params$completion_time_limit` belongs to the original Stage 5
+union-GEM construction. The second pass does not reconstruct the model or rerun
+FASTCORE, so it neither accepts nor reuses a construction timeout. Its scoring
+LPs have no `time_limit` parameter.
 
 ## Example
 
@@ -83,9 +116,7 @@ targeted <- rc_regcompass_step_target_union(
 ## Outputs
 
 ```r
-targeted$selected_anchor_reactions
 targeted$selected_core_reactions
-targeted$selected_noncore_reactions
 targeted$expanded_reaction_catalog
 targeted$expanded_scoring_targets
 targeted$merged_catalogue_membership
@@ -95,8 +126,7 @@ targeted$microcompass
 The relation table includes:
 
 ```text
-anchor_reaction_id
-anchor_is_original_core
+anchor_core_reaction_id
 reaction_id
 expansion_type
 source_annotation
@@ -116,3 +146,5 @@ targeted$microcompass$params[c(
   "scoring_time_limit"
 )]
 ```
+
+Tutorial: [targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md).
