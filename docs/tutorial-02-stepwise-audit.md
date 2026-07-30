@@ -145,63 +145,55 @@ step4$projection_provenance
 Condition-full OOF is primary. Common support is the jointly estimable
 component. Each non-estimable edge side contributes zero.
 
-## Build medium scenarios for Stage 5
+## Build the Stage 5 medium
 
-The predefined `scenario` identifiers are retained as part of the stepwise
-workflow:
-
-```text
-physiologic
-normal_human_plasma
-mouse_plasma
-rpmi1640
-dmem_high_glucose
-high_glucose
-low_glucose
-high_lactate
-low_lactate
-low_glutamine
-minimal
-compass_model_bounds
-permissive_all_exchange
-custom
-```
-
-Recommended use:
-
-- `physiologic` resolves to human or mouse plasma from the GEM species;
-- `normal_human_plasma` is Human-GEM only and `mouse_plasma` is Mouse-GEM only;
-- `rpmi1640` and `dmem_high_glucose` are species-neutral basal culture
-  formulations, not serum-complete experimental media;
-- the five glucose, lactate and glutamine challenge presets are Human-GEM only;
-- `minimal`, `compass_model_bounds` and `permissive_all_exchange` are technical
-  structural controls;
-- `custom` is required for measured or laboratory-specific environments.
-
-One Stage 5 run may contain several scenarios. Each scenario receives its own
-medium-specific union GEM and global FASTCORE completion, while every condition
-and metacell within that scenario uses identical exchange bounds.
+The canonical built-in scenario is publication-bound:
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
-  scenario = c(
-    "physiologic",
-    "rpmi1640",
-    "dmem_high_glucose",
-    "low_glucose"
-  ),
+  scenario = "cantor2017_hplm",
   species = "human"
 )
 
 attr(medium_scenarios, "preset_diagnostics")
 ```
 
-Changing the scenario set, custom-medium rows, `uptake_scale`, exchange limits,
-or any resulting bounds invalidates Stage 5 and all downstream results, but does
-not require rerunning Stages 1-4. See
-[Predefined extracellular medium scenarios](medium-presets.md) for the complete
-species policy, concentration provenance and custom-medium schema.
+`cantor2017_hplm` refers to Cantor et al., *Cell* 2017
+(doi:10.1016/j.cell.2017.03.023). Only HPLM components with exact published
+concentrations and direct one-to-one GEM exchange mapping are encoded. Ambiguous
+salt-to-free-ion conversions are omitted, concentrations are not converted to
+uptake fluxes, and `uptake_scale` must remain `1`.
+
+For another published medium, set `scenario = NULL` and provide exact rows with
+`reference_label` and `reference_doi`. Mouse analyses currently require this
+path because the previous partial `mouse_plasma` implementation was removed
+rather than presented as a complete MPM formulation.
+
+```r
+published_custom <- data.frame(
+  medium_scenario_id = "published_mouse_environment_2024",
+  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
+  lb = c(-0.20, -0.10),
+  ub = c(1, 1),
+  available = TRUE,
+  reference_label = "Author et al., Journal 2024",
+  reference_doi = "10.xxxx/published.article",
+  stringsAsFactors = FALSE
+)
+
+mouse_medium <- rc_make_medium_scenarios(
+  gem = mouse_gem,
+  scenario = NULL,
+  species = "mouse",
+  custom_medium = published_custom
+)
+```
+
+Changing the cited scenario, custom-medium rows, DOI provenance, exchange limits,
+or resulting bounds invalidates Stage 5 and downstream results but does not
+require rerunning Stages 1-4. See
+[Published medium scenarios](medium-presets.md).
 
 ## Stage 5: shared model and LP scoring
 
