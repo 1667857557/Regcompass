@@ -9,11 +9,26 @@
   contract <- pooled$cache_contract
   valid <- is.list(params) && is.list(pooled) && is.list(design) &&
     is.list(contract) &&
-    identical(contract$schema_version,
-              "regcompass_native_supercell_metacell_cache_v1") &&
-    identical(design$native_supercell_api, "SCimplify_from_embedding") &&
+    identical(
+      contract$schema_version,
+      "regcompass_celltype_graph_condition_joint_cache_v2"
+    ) &&
+    identical(
+      design$native_supercell_api,
+      "SCimplify_by_graph_group_from_embedding"
+    ) &&
+    identical(design$graph_group_argument, "cell.graph.group") &&
     identical(design$condition_argument, "cell.split.condition") &&
-    identical(design$celltype_argument, "cell.annotation") &&
+    identical(design$graph_scope, "one_independent_graph_per_cell_type") &&
+    identical(
+      design$condition_scope,
+      "all_conditions_joint_within_cell_type_graph"
+    ) &&
+    identical(design$membership_split_timing, "after_joint_graph_clustering") &&
+    identical(
+      design$embedding_scaling,
+      "within_celltype_joint_condition_equal_modality_blocks"
+    ) &&
     identical(design$temporary_combined_stratum, FALSE) &&
     identical(contract$condition_col, params$condition_col) &&
     identical(contract$celltype_col, params$celltype_col) &&
@@ -21,7 +36,8 @@
     identical(contract$atac_assay, params$atac_assay)
   if (!isTRUE(valid)) {
     stop(
-      "`", argument, "` is not a native SuperCell condition/cell-type artifact; rerun Stage 2 with overwrite=TRUE.",
+      "`", argument,
+      "` is not a cell-type-independent, condition-joint SuperCell artifact; rerun Stage 2 with overwrite=TRUE.",
       call. = FALSE
     )
   }
