@@ -3,7 +3,8 @@
 .rc_reference_contract_fields <- c(
   "reference_condition", "reference_estimate", "reference_beta",
   "contrast", "comparison_mask", "comparable_to_reference",
-  "contrast_formula", "comparison_mask_formula"
+  "contrast_formula", "pairwise_contrast_formula",
+  "comparison_mask_formula"
 )
 
 .rc_strip_reference_contract <- function(x) {
@@ -200,8 +201,8 @@
     summary$coefficient_contract <- "absolute_condition_effects_only"
     universal_rows[[length(universal_rows) + 1L]] <- summary
 
-    # The legacy writer still reads this field while constructing provenance.
-    # It is removed from every returned and persisted artifact below.
+    # The legacy writer reads this compatibility value before the wrapper
+    # rewrites every artifact. It never survives in a returned or saved result.
     fit$reference_condition <- NA_character_
     fits_internal[[fit_index]] <- fit
   }
@@ -244,12 +245,59 @@
 
 .rc_fit_condition_grns_by_cell_type_reference <-
   .rc_fit_condition_grns_by_cell_type
-.rc_fit_condition_grns_by_cell_type <- function(...) {
-  call <- match.call(expand.dots = TRUE)
-  outdir <- eval(call$outdir, parent.frame())
-  answer <- .rc_fit_condition_grns_by_cell_type_reference(...)
+.rc_fit_condition_grns_by_cell_type <- function(
+    object, gem, outdir, pfm = NULL, genome,
+    condition_col = "condition", celltype_col = "cell_type",
+    cell_type = NULL,
+    rna_assay = "RNA", atac_assay = "ATAC",
+    min_cells = 20L,
+    pando_initiate_args = list(exclude_exons = TRUE),
+    pando_motif_args = list(),
+    pando_infer_args = list(
+      candidate_screen = "motif_domain",
+      tf_cor = 0.1,
+      peak_cor = 0,
+      alpha = 0.5,
+      condition_mix = 0.5,
+      condition_weight = "equal",
+      nlambda = 50L,
+      outer_nfolds = 5L,
+      inner_nfolds = 5L,
+      lambda_selection = "lambda.1se",
+      scale = TRUE,
+      parallel = FALSE
+    ),
+    min_abs_estimate = 0,
+    min_model_rsq = 0.1,
+    save_pando_objects = TRUE,
+    BPPARAM = NULL,
+    species = c("auto", "human", "mouse")) {
+  answer <- .rc_fit_condition_grns_by_cell_type_reference(
+    object = object,
+    gem = gem,
+    outdir = outdir,
+    pfm = pfm,
+    genome = genome,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    cell_type = cell_type,
+    rna_assay = rna_assay,
+    atac_assay = atac_assay,
+    min_cells = min_cells,
+    pando_initiate_args = pando_initiate_args,
+    pando_motif_args = pando_motif_args,
+    pando_infer_args = pando_infer_args,
+    min_abs_estimate = min_abs_estimate,
+    min_model_rsq = min_model_rsq,
+    save_pando_objects = save_pando_objects,
+    BPPARAM = BPPARAM,
+    species = species
+  )
   answer$condition_grn_fits <- lapply(
     answer$condition_grn_fits, .rc_strip_reference_contract
+  )
+  answer$pando_network_index <- .rc_strip_reference_contract(
+    answer$pando_network_index
   )
   absolute_tables <- c(
     "tf_peak_gene_universal", "tf_peak_gene_condition_all",
@@ -267,22 +315,62 @@
   answer$normalization_policy$coefficient_contract <-
     "absolute_condition_effects_only"
   answer$reference_contrast <- NULL
+  answer$coefficient_contract <- "absolute_condition_effects_only"
 
-  saveRDS(
-    answer$condition_grn_fits,
-    file.path(outdir, "pando_condition_grn_fits.rds")
+  .rc_mm_write_tsv_gz(
+    answer$condition_fit_status,
+    file.path(outdir, "pando_group_status.tsv.gz")
   )
+  .rc_mm_write_tsv_gz(
+    answer$tf_peak_gene_condition_all,
+    file.path(outdir, "pando_tf_peak_gene_condition_all.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    answer$tf_peak_gene_condition,
+    file.path(outdir, "pando_tf_peak_gene_condition_active.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    answer$tf_peak_gene_condition_effect_all,
+    file.path(outdir, "pando_tf_peak_gene_condition_effect_all.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    answer$tf_peak_gene_condition_effect,
+    file.path(outdir, "pando_tf_peak_gene_condition_effect_active.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    answer$tf_peak_gene_universal,
+    file.path(outdir, "pando_tf_peak_gene_universal.tsv.gz")
+  )
+  .rc_mm_write_tsv_gz(
+    answer$pando_network_index,
+    file.path(outdir, "pando_condition_network_index.tsv.gz")
+  )
+  if (is.data.frame(answer$pando_fit_diagnostics) &&
+      nrow(answer$pando_fit_diagnostics)) {
+    .rc_mm_write_tsv_gz(
+      answer$pando_fit_diagnostics,
+      file.path(outdir, "pando_condition_fit_diagnostics.tsv.gz")
+    )
+  }
   predictor_transforms <- do.call(rbind, lapply(
     answer$condition_grn_fits,
-    function(fit) merge(
-      fit$edge_table,
-      fit$predictor_transform,
-      by = "edge_id", all.x = TRUE, sort = FALSE
-    )
+    function(fit) {
+      out <- merge(
+        fit$edge_table,
+        fit$predictor_transform,
+        by = "edge_id", all.x = TRUE, sort = FALSE
+      )
+      out$coefficient_scale <- fit$coefficient_scale
+      out
+    }
   ))
   .rc_mm_write_tsv_gz(
     predictor_transforms,
     file.path(outdir, "pando_edge_predictor_transforms.tsv.gz")
+  )
+  saveRDS(
+    answer$condition_grn_fits,
+    file.path(outdir, "pando_condition_grn_fits.rds")
   )
   saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
   answer
