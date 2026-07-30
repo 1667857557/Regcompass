@@ -6,9 +6,8 @@
 #' broad cell type while pooling all conditions within that graph; condition is
 #' applied only after graph clustering to preserve condition-pure metacells.
 #'
-#' When `medium_scenarios` is omitted, Human-GEM uses the publication-bound
-#' `"cantor2017_hplm"` scenario. Mouse-GEM requires an explicit DOI-cited medium
-#' table because no partial mouse-plasma preset is retained.
+#' When `medium_scenarios` is omitted, Human-GEM uses
+#' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
 #'
 #' @export
 rc_run_regcompass <- function(
@@ -67,19 +66,16 @@ rc_run_regcompass <- function(
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
   if (is.null(medium_scenarios)) {
-    if (identical(species, "human")) {
-      medium_scenarios <- rc_make_medium_scenarios(
-        gem,
-        scenario = "cantor2017_hplm",
-        species = "human"
-      )
+    default_scenario <- if (identical(species, "human")) {
+      "normal_human_plasma"
     } else {
-      stop(
-        "Mouse RegCompass runs require an explicit DOI-cited ",
-        "`medium_scenarios` table; no partial mouse-plasma preset is retained.",
-        call. = FALSE
-      )
+      "mouse_plasma"
     }
+    medium_scenarios <- rc_make_medium_scenarios(
+      gem,
+      scenario = default_scenario,
+      species = species
+    )
   }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   if (is.null(metacell_args$gamma)) metacell_args$gamma <- 30L
