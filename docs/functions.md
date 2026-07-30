@@ -13,7 +13,7 @@ Main workflow tutorials: [one-shot](tutorial-01-quick-start.md),
 | `rc_run_regcompass_one_shot()` | Convenience wrapper around the complete workflow. |
 
 `condition_col` may be absent, single-level or multi-level. The selected route is
-returned in `result$analysis_mode`.
+returned in `result$analysis_mode`: `standard_pando` or `condition_grn`.
 
 ## Restartable stages
 
