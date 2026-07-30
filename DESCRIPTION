@@ -7,28 +7,28 @@ Maintainer: RegCompass Developers <dev@example.com>
 Description: Fits one cell-type-level Pando design across conditions for
     Human-GEM or Mouse-GEM GPR target genes in paired single-cell RNA and ATAC
     data. Condition-sparse coefficients use the same TF-peak-target edge
-    dictionary and estimability masks, with nested outer-heldout projections
-    and equal-condition transforms. Pando emits absolute condition, shared, deviation, and
-    reference-contrast coefficients together with condition-stratified
-    cell-level out-of-fold diagnostics computed inside each cell type and exact
-    projection transforms. Active condition-level edges
-    define metabolic target genes and complete-GPR core reactions. Regulatory
-    effects are calculated in paired single cells before aggregation through
-    the exact SuperCell membership table; metacells are constructed only within
-    condition by broad-cell-type strata. Absolute condition projections and
-    shared outer-heldout reliability modify reaction penalties through a
-    bounded calibrated link. Common-support, condition-full, RNA-only, depth,
-    and alpha-sensitivity evidence routes are recomputed through the complete
-    GPR, penalty, and LP pipeline on the same structural models.
-    Annotation-defined biological meta-modules are deduplicated into a merged
-    reaction catalogue without local FASTCORE completion. For each medium
-    scenario, the package constructs one shared union GEM and performs a single
-    global FASTCORE completion before directional COMPASS-like scoring. A
-    post-Layer-2 step can use any GEM reaction as a direct KEGG, Reactome, or
-    master-Rhea mapping anchor and score linked non-core reactions in the exact
-    cached medium-specific union GEM used for the original analysis. Pinned human
-    and mouse GEMs are bundled for offline use, with platform-aware parallel
-    execution and audited progress and timing output.
+    dictionary and equal-condition transforms with nested outer-heldout
+    projections. Pando supplies the single canonical pando_condition_grn_fit
+    contract with absolute condition effects only; version-suffixed schemas and
+    reference-condition contrasts do not enter RegCompass. Non-estimable edge
+    contributions are structural zeros in the primary projection path and enter
+    target aggregation, metacell means, GPR aggregation, reaction expression and
+    penalty construction. Metacells are constructed within condition by broad
+    cell type with one fixed gamma across all cells and strata (default 30),
+    without top-one-percent depth rejection or depth-dependent gamma adjustment.
+    RNA latent-expression priors are estimated separately for each broad cell
+    type. A non-finite Pando regulatory modifier falls back exactly to RNA-only
+    support and is annotated in the result. The regulatory link uses the single
+    canonical value regulatory_alpha = 1. GPR aggregation follows COMPASS:
+    complete AND branches use the selected AND rule and OR isozyme branches are
+    summed while unavailable branches are ignored. Missing final reaction
+    expression is set to zero before penalty conversion and therefore receives
+    the maximum expression-linked penalty. Annotation-defined biological
+    meta-modules are deduplicated into a merged reaction catalogue. For each
+    medium scenario, the package constructs one shared union GEM, performs
+    global FASTCORE completion and directional COMPASS-like scoring. Pinned
+    human and mouse GEMs are bundled for offline use, with platform-aware
+    parallel execution and audited progress and timing output.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -95,6 +95,11 @@ Collate:
     'one_shot.R'
     'stratum_filter.R'
     'condition_grn_contract.R'
+    'zzz00_absolute_pando_contract.R'
+    'zzz01_fixed_gamma_metacells.R'
+    'zzz02_layer1_policy.R'
+    'zzz03_compass_gpr_penalty.R'
+    'zzz04_canonical_pando_fit_schema.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,

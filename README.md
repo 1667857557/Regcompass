@@ -6,17 +6,19 @@ with a shared metabolic model for condition-level reaction comparison.
 ## Workflow
 
 ```text
-condition-aware Pando GRNs
-→ condition × broad-cell-type metacells
-→ supported metabolic genes and reactions
-→ regulatory modification of RNA support
+absolute condition-aware Pando GRNs
+→ condition × broad-cell-type fixed-γ metacells
+→ cell-type-specific RNA latent-expression priors
+→ structural-zero regulatory projection + RNA-only fallback
+→ COMPASS GPR reaction expression and penalties
 → shared medium-specific metabolic model
 → directional reaction scores and condition tests
 ```
 
 Pando is the GRN estimator. RegCompass uses Pando `ConditionGRNFit v5`
-outer-heldout common-support projections for the primary penalty and retains
-reference-condition effects for interpretation only.
+outer-heldout condition projections for the primary penalty. Conditions are
+represented by absolute coefficients on one equal-condition coordinate; no
+reference-condition coefficient or stored GRN contrast enters RegCompass.
 
 Detailed equations: [Mathematical model](docs/mathematical-model.md).
 Stage descriptions: [Workflow](docs/workflow.md).
@@ -86,7 +88,6 @@ result <- rc_run_regcompass_one_shot(
       candidate_screen = "motif_domain",
       condition_mix = 0.5,
       condition_weight = "equal",
-      reference_condition = "Control",
       outer_nfolds = 5L,
       inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
@@ -108,7 +109,7 @@ result <- rc_run_regcompass_one_shot(
   layer1_args = list(
     projection_component = "condition",
     comparison_support = "auto",
-    regulatory_alpha = 0.5,
+    regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -131,17 +132,51 @@ result <- rc_run_regcompass_one_shot(
 The one-shot workflow controls Stage 1 parallelism through `upstream_workers`.
 Do not set `parallel` or `BPPARAM` inside `pando_infer_args`.
 
-## Important choices
+## Canonical analysis policies
+
+### Metacells
+
+Every condition × broad-cell-type stratum uses the same `gamma`, default 30.
+`gamma` is not adjusted by RNA/ATAC depth. Cells above the stratum 99th
+percentile of RNA or ATAC depth are counted for diagnostics only; no metacell is
+rejected because it contains more than one such cell.
+
+### RNA prior
+
+The Gamma–Poisson empirical-Bayes prior is estimated independently for every
+broad cell type. Conditions within the same cell type share that prior, while
+different cell types do not.
+
+### Regulatory projection
+
+A Pando edge that is unavailable under the requested estimability/support policy
+contributes exactly zero at the single-cell projection-contribution layer. This
+structural zero enters target summation, metacell averaging, GPR aggregation,
+reaction expression and the main penalty path; the structural-zero mask remains
+available for audit.
+
+When a target-level Pando modifier is otherwise unavailable or non-finite,
+RegCompass uses a neutral modifier (`R = 0`), making the result exactly equal to
+the RNA-only support for that gene–metacell entry. The fallback is recorded in
+`result$layer1$regulatory_fallback`.
+
+`regulatory_alpha` is fixed at 1. Other values are rejected by the public Layer 1
+API.
+
+### GPR aggregation and penalty
+
+- AND complexes use `min` by default; `median` and `mean` remain sensitivity
+  options. COMPASS missing-value semantics are retained for each AND method.
+- OR isozyme branches are summed while unavailable branches are ignored, matching
+  COMPASS isoform summing.
+- If final reaction expression is unavailable, it is set to zero before penalty
+  conversion. It therefore receives the maximum expression-linked penalty of 1.
+  Structural exchange/demand/sink/support reactions retain their fixed costs.
 
 ### Candidate screening
 
 RegCompass requires `candidate_screen = "motif_domain"`. Alternative Pando
 candidate-screen modes are not accepted by the current Stage 1 wrapper.
-
-### GPR AND aggregation
-
-- `min`: default limiting-subunit rule;
-- `median`, `mean`: sensitivity options.
 
 ### Medium
 
@@ -158,11 +193,17 @@ result$grn$condition_fit_status
 result$grn$tf_peak_gene_condition
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
+result$layer1$projection_structural_zero
+result$layer1$regulatory_fallback
+result$layer1$capacity_params
 result$microcompass$model_cache_summary
 result$reaction_ranking
 result$condition_contrast
 result$reaction_comparison_by_metacell
 ```
+
+`result$condition_contrast` is a downstream metabolic comparison between
+conditions. It is not a Pando reference-condition coefficient contrast.
 
 ## Condition tests
 
@@ -186,11 +227,13 @@ values describe within-dataset separation and are not donor-level inference.
 ## Restartable stages
 
 - `rc_regcompass_step_grn()` — condition-aware Pando models.
-- `rc_regcompass_step_metacells()` — condition × broad-cell-type metacells.
+- `rc_regcompass_step_metacells()` — fixed-γ condition × broad-cell-type metacells.
 - `rc_regcompass_step_meta_modules()` — supported genes and reaction catalogue.
-- `rc_regcompass_step_layer1()` — gene support and reaction penalties.
+- `rc_regcompass_step_layer1()` — RNA support, structural-zero regulation and
+  COMPASS reaction expression.
 - `rc_regcompass_step_layer2()` — shared models and directional scores.
-- `rc_regcompass_step_results()` — rankings, annotations, and contrasts.
+- `rc_regcompass_step_results()` — rankings, annotations, and metabolic condition
+  comparisons.
 
 ## Documentation
 

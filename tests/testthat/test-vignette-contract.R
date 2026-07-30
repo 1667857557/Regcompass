@@ -41,7 +41,7 @@ rc_current_user_docs <- function(root) {
   )
 }
 
-test_that("workflow vignette exposes the executable current workflow", {
+test_that("workflow vignette exposes the canonical executable workflow", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   path <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
@@ -54,8 +54,9 @@ test_that("workflow vignette exposes the executable current workflow", {
     "rc_run_regcompass_one_shot(",
     'candidate_screen = "motif_domain"',
     "condition_mix = 0.5",
-    'reference_condition = "Control"',
+    "gamma = 30L",
     'comparison_support = "auto"',
+    "regulatory_alpha = 1",
     'gpr_and_method = "min"',
     "rc_regcompass_step_grn(",
     "rc_regcompass_step_metacells(",
@@ -70,7 +71,7 @@ test_that("workflow vignette exposes the executable current workflow", {
   expect_true(all(vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
   )))
-  expect_false(grepl("\\[", text, fixed = TRUE))
+  expect_false(grepl("reference_condition", text, fixed = TRUE))
 })
 
 test_that("quick-start and stepwise tutorials retain runnable essentials", {
@@ -84,17 +85,18 @@ test_that("quick-start and stepwise tutorials retain runnable essentials", {
 
   shared <- c(
     'candidate_screen = "motif_domain"',
-    'reference_condition = "Control"',
     "min_model_rsq = 0.1",
     'rna_reduction = "pca"',
     'atac_reduction = "lsi"',
+    "gamma = 30L",
     "seed = 12345L",
+    "regulatory_alpha = 1",
     'gpr_and_method = "min"',
     "[functions.md](functions.md)"
   )
   for (one in text) {
     expect_true(all(vapply(shared, grepl, logical(1), x = one, fixed = TRUE)))
-    expect_false(grepl("\\[", one, fixed = TRUE))
+    expect_false(grepl("reference_condition", one, fixed = TRUE))
   }
 
   expect_match(text[[1L]], "rc_run_regcompass_one_shot(", fixed = TRUE)
@@ -113,6 +115,8 @@ test_that("current documentation rejects retired or unsupported routes", {
   text <- paste(unlist(lapply(paths, rc_read_doc)), collapse = "\n")
 
   forbidden <- c(
+    "reference_condition",
+    "reference-condition coefficient",
     "TF–peak–GEM-gene",
     "local_fastcore",
     "local_fastcore_args",
@@ -124,7 +128,8 @@ test_that("current documentation rejects retired or unsupported routes", {
     "metabolic_gene_edges",
     "condition_grn_fit_v2.rds",
     "Stage 4 uses only comparable condition effects",
-    "No metacell-wise robust rescaling"
+    "No metacell-wise robust rescaling",
+    "regulatory_alpha = 0.5"
   )
   expect_false(any(vapply(
     forbidden, grepl, logical(1), x = text, fixed = TRUE
@@ -135,7 +140,8 @@ test_that("current documentation rejects retired or unsupported routes", {
     "(?m)^\\s*aggregate_rna_col\\s*=",
     "(?m)^\\s*aggregate_peaks_col\\s*=",
     "(?m)^\\s*projection_component\\s*=\\s*[\"'](shared|deviation)[\"']",
-    "(?m)^\\s*tau\\s*="
+    "(?m)^\\s*tau\\s*=",
+    "(?m)^\\s*depth_balance\\s*=\\s*TRUE"
   )
   expect_false(any(vapply(
     unsupported_assignments, grepl, logical(1), x = text, perl = TRUE
@@ -161,8 +167,11 @@ test_that("README API and help agree on enforced arguments", {
     "tf_peak_gene_condition",
     "motif_domain",
     "outer-heldout",
-    "common-support",
-    "reference_condition",
+    "absolute condition",
+    "structural zero",
+    "RNA-only",
+    "gamma = 30L",
+    "regulatory_alpha = 1",
     "condition_mix",
     "condition_weight",
     'projection_component = "condition"',
@@ -174,4 +183,4 @@ test_that("README API and help agree on enforced arguments", {
   expect_true(all(vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
   )))
-}
+})

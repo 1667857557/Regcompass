@@ -24,7 +24,7 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{medium_scenario}{Medium preset used when \code{medium_scenarios} is omitted.}
 \item{medium_scenarios}{Optional prebuilt medium table.}
 \item{progress}{Display workflow and stage progress.}
-\item{...}{Arguments passed to \code{rc_run_regcompass()}.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}. Use \code{gamma = 30L} in \code{metacell_args} and \code{regulatory_alpha = 1} in \code{layer1_args}.}
 }
 \value{
 A validated complete RegCompass result and stage provenance.
@@ -33,10 +33,15 @@ A validated complete RegCompass result and stage provenance.
 Loads species-aware defaults and runs the complete RegCompass workflow.
 }
 \details{
-RegCompass requires \code{candidate_screen = "motif_domain"} for Stage 1.
-The primary penalty uses pairwise- or global-common outer-heldout absolute
-condition projections. Reference-condition effects and condition-full
-projections are interpretation or sensitivity outputs.
+RegCompass requires \code{candidate_screen = "motif_domain"} for Stage 1 and
+uses absolute condition effects from ConditionGRNFit v5. The primary penalty
+uses pairwise- or global-common outer-heldout condition projections.
+Non-estimable edge contributions are structural zero and enter the main
+analysis. An unavailable target modifier falls back to RNA-only support.
+Metacells use one fixed gamma, default 30, without depth-dependent adjustment or
+top-1-percent rejection. \code{regulatory_alpha = 1} is fixed. COMPASS OR
+isozyme branches are summed and missing final reaction expression receives the
+maximum expression-linked penalty.
 
 The default medium is \code{"physiologic"}. Supply \code{medium_scenarios} for
 an explicit preset or custom medium. Mouse runs must provide regulatory regions

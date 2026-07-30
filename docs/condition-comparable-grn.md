@@ -16,7 +16,8 @@ pando_infer_args = list(
   candidate_screen = "motif_domain",
   condition_mix = 0.5,
   condition_weight = "equal",
-  reference_condition = "Control",
+  outer_nfolds = 5L,
+  inner_nfolds = 5L,
   scale = TRUE
 )
 ```
@@ -50,11 +51,9 @@ edge_table
 beta_condition
 beta_shared
 delta_condition
-contrast
 estimability_mask
 support_mask
 active_mask
-comparison_mask
 predictor_transform
 response_transform
 target_fit
@@ -66,19 +65,19 @@ projection_global_common_oof
 cell_provenance
 ```
 
-Unavailable coefficients remain `NA`; an estimable inactive coefficient remains
-numeric zero.
+Unavailable fit coefficients remain `NA`; an estimable inactive coefficient
+remains numeric zero. The public and persisted contract contains no stored
+baseline-condition coefficient, contrast matrix, or comparison mask.
 
-## Absolute coefficients and reference effects
+## Absolute condition effects
 
-RegCompass retains two coefficient views:
+`beta_condition` is the absolute condition effect on the shared
+within-cell-type equal-condition coordinate. RegCompass uses this view for
+supported-gene selection and the primary Stage 4 projection.
 
-- **absolute condition coefficients:** used to identify supported metabolic genes and to generate the primary Stage 4 projection;
-- **reference-condition effects:** used in interpretation tables only.
-
-The effect table includes `comparable_to_reference`, derived from the explicit
-Pando comparison mask. RegCompass validates the mask and does not reconstruct it
-from older objects.
+Conditions may have different active edges and opposite coefficient directions.
+They remain comparable because the candidate dictionary and coefficient scale
+are shared inside the fitted broad cell type.
 
 ## Primary projection contract
 
@@ -90,16 +89,21 @@ origin = "oof"
 support_policy = "pairwise_common" or "global_common"
 ```
 
-- two-condition analyses use pairwise-common estimability;
-- analyses with more than two conditions use global-common estimability;
-- condition-estimable and strict projections are diagnostic only;
-- the primary projection uses absolute condition coefficients, not reference contrasts;
+- two-condition analyses use pairwise-common support;
+- analyses with more than two conditions use global-common support;
 - Pando computes the single-cell score before SuperCell aggregation;
-- RegCompass averages the completed target-gene scores by exact membership;
-- pooled OOF reliability and one pooled broad-cell-type calibration scale are used.
+- a non-estimable edge contributes exactly zero at the projection-contribution
+  layer;
+- the structural zero enters target summation, metacell averaging, GPR
+  aggregation, reaction expression and the main penalty;
+- structural-zero masks and fractions remain available for audit;
+- RegCompass averages completed target-gene scores by exact membership;
+- pooled OOF reliability and one pooled broad-cell-type calibration scale are
+  used.
 
-Condition-specific edges remain available in network and diagnostic outputs but
-do not enter the primary common-support penalty.
+When a target-level regulatory modifier remains unavailable or non-finite,
+RegCompass uses a neutral modifier and therefore returns exactly the RNA-only
+support for that gene–metacell entry. The fallback is explicitly annotated.
 
 ## Stage ownership
 
@@ -120,7 +124,7 @@ fits paired single cells and Stage 2 owns metacell construction.
 
 ## Persisted artifacts
 
-Stage 1 writes:
+Stage 1 writes absolute-condition artifacts only:
 
 ```text
 pando_group_status.tsv.gz
@@ -135,6 +139,10 @@ pando_edge_predictor_transforms.tsv.gz
 pando_condition_grn_fits.rds
 pando_objects/condition_grn_fit_v5.rds
 ```
+
+The legacy `condition_effect` filenames are retained for file compatibility, but
+their numeric definition is the absolute condition coefficient and the tables
+contain `effect_definition = "absolute_condition_coefficient"`.
 
 ## Genome-build requirement
 

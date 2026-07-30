@@ -66,7 +66,6 @@ result <- rc_run_regcompass_one_shot(
       candidate_screen = "motif_domain",
       condition_mix = 0.5,
       condition_weight = "equal",
-      reference_condition = "Control",
       outer_nfolds = 5L,
       inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
@@ -88,7 +87,7 @@ result <- rc_run_regcompass_one_shot(
   layer1_args = list(
     projection_component = "condition",
     comparison_support = "auto",
-    regulatory_alpha = 0.5,
+    regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -111,13 +110,22 @@ result <- rc_run_regcompass_one_shot(
 Do not add `parallel` or `BPPARAM` inside `pando_infer_args`; the one-shot runner
 controls Stage 1 workers.
 
-## Key parameters
+## Key parameters and policies
 
 - `candidate_screen = "motif_domain"`: canonical candidate policy.
-- `reference_condition`: controls interpretation contrasts, not the primary penalty.
-- `gamma`: approximate cells per metacell.
-- `regulatory_alpha`: strength of regulatory modification of RNA support.
-- `gpr_and_method = "min"`: limiting-subunit GPR rule.
+- Pando condition effects are absolute coefficients on a shared coordinate; no
+  stored baseline-condition contrast enters the workflow.
+- `gamma = 30L`: the same gamma is used for every condition × broad-cell-type
+  stratum. RNA/ATAC depth does not alter gamma.
+- Cells above the stratum 99th percentile of RNA or ATAC depth are diagnostic
+  only and never cause metacell rejection.
+- `regulatory_alpha = 1`: the only accepted regulatory weight.
+- A non-estimable edge contributes a structural zero in the main projection
+  path. A non-finite target modifier falls back exactly to RNA-only support.
+- `gpr_and_method = "min"`: limiting-subunit GPR rule. COMPASS OR isozyme
+  branches are summed.
+- Missing final reaction expression receives the maximum expression-linked
+  penalty.
 - `target_direction = "both"`: score forward and reverse directions separately.
 
 ## Inspect outputs
@@ -128,14 +136,16 @@ result$grn$condition_grn_fits
 result$grn$tf_peak_gene_condition
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
+result$layer1$projection_structural_zero
+result$layer1$regulatory_fallback
 result$microcompass$model_cache_summary
 result$reaction_ranking
 result$condition_contrast
 ```
 
-The primary reaction comparison uses outer-heldout common-support regulatory
-scores. Reference-condition coefficient effects and condition-full projections
-are interpretation or sensitivity outputs.
+The primary reaction comparison uses outer-heldout condition projections.
+`result$condition_contrast` is a downstream metabolic comparison, not a stored
+Pando coefficient contrast.
 
 ## Mouse input
 
@@ -155,7 +165,23 @@ mouse_result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   pando_args = list(
     pando_initiate_args = list(regions = mouse_regions),
-    pando_infer_args = list(reference_condition = "Control")
+    pando_infer_args = list(
+      candidate_screen = "motif_domain",
+      condition_mix = 0.5,
+      condition_weight = "equal"
+    )
+  ),
+  metacell_args = list(
+    rna_reduction = "pca",
+    atac_reduction = "lsi",
+    gamma = 30L,
+    seed = 12345L
+  ),
+  layer1_args = list(
+    projection_component = "condition",
+    comparison_support = "auto",
+    regulatory_alpha = 1,
+    gpr_and_method = "min"
   )
 )
 ```

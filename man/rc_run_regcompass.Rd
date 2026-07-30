@@ -26,11 +26,11 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type labels.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"}.}
+\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"} and consumes absolute condition coefficients.}
 \item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
-\item{metacell_args}{Stage 2 reductions, dimensions, gamma, seed, thresholds, and cache controls.}
+\item{metacell_args}{Stage 2 reductions, dimensions, fixed gamma (default 30), seed, thresholds, and cache controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
-\item{layer1_args}{Stage 4 controls. \code{projection_component} must be \code{"condition"}.}
+\item{layer1_args}{Stage 4 controls. \code{projection_component} must be \code{"condition"} and \code{regulatory_alpha = 1}.}
 \item{medium_scenarios}{Condition-invariant medium table.}
 \item{model_mode}{Build a shared model from the reaction catalogue or use the full GEM.}
 \item{layer2_args}{Directional scoring and model-completion controls.}
@@ -40,19 +40,19 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 }
 \value{
 A validated complete RegCompass result containing stage outputs, reaction
-rankings, condition contrasts, and provenance.
+rankings, downstream metabolic condition comparisons, and provenance.
 }
 \description{
 Runs the six-stage RegCompassR 2.1.0 workflow.
 }
 \details{
-Stage 1 fits Pando ConditionGRNFit v5 models. Stage 2 constructs condition by
-broad cell type SuperCells. Stage 3 builds supported metabolic genes and the
-merged reaction catalogue. Stage 4 calculates RNA and regulatory reaction
-penalties from outer-heldout common-support scores. Stage 5 builds one shared
-model per medium and scores reaction directions. Stage 6 assembles results.
-
-Reference-condition coefficient effects and condition-full projections are
-interpretation or sensitivity outputs; the primary penalty uses absolute
-condition common-support projections.
+Stage 1 fits Pando ConditionGRNFit v5 models with absolute condition effects.
+Stage 2 constructs fixed-gamma condition by broad cell type SuperCells without
+depth-dependent gamma or top-1-percent rejection. Stage 3 builds supported
+metabolic genes and the merged reaction catalogue. Stage 4 estimates RNA priors
+by cell type, treats non-estimable edge contributions as structural zero, uses
+an RNA-only fallback for unavailable target modifiers, fixes
+\code{regulatory_alpha = 1}, and applies COMPASS GPR/penalty semantics. Stage 5
+builds one shared model per medium and scores reaction directions. Stage 6
+assembles results.
 }

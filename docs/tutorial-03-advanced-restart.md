@@ -18,18 +18,21 @@ step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 | Restart from | Changes |
 |---|---|
 | Stage 1 | RNA/ATAC data, condition or cell-type labels, genome, regulatory regions, motifs, Pando fitting or filtering arguments |
-| Stage 2 | reductions, dimensions, gamma, seed, metacell thresholds, or cells |
+| Stage 2 | reductions, dimensions, fixed gamma, seed, metacell thresholds, or cells |
 | Stage 3 | GPR rules, subsystem table, KEGG/Reactome mappings, or master-Rhea mappings |
-| Stage 4 | `regulatory_alpha`, `gpr_and_method`, gene half-saturation, or metacell evidence |
+| Stage 4 | `gpr_and_method`, gene half-saturation, comparison support, or metacell evidence |
 | Stage 5 | medium, exchange bounds, target direction, omega, solver, or model-completion settings |
-| Stage 6 | annotations, reporting filters, or contrast settings only |
+| Stage 6 | annotations, reporting filters, or metabolic comparison settings only |
 
 Changing an earlier stage invalidates every downstream stage.
 
-## Stage 4 sensitivity
+`regulatory_alpha` is not a sensitivity parameter: the canonical and only
+accepted value is `1`.
+
+## Stage 4 GPR sensitivity
 
 The default GPR AND rule is `"min"`. Use `"median"` or `"mean"` to test
-sensitivity to complex aggregation.
+sensitivity to complex aggregation. COMPASS OR isozyme branches remain summed.
 
 ```r
 step4_mean <- rc_regcompass_step_layer1(
@@ -40,7 +43,7 @@ step4_mean <- rc_regcompass_step_layer1(
   outdir = "RegCompass_restart/04_layer1_mean",
   projection_component = "condition",
   comparison_support = "auto",
-  regulatory_alpha = 0.5,
+  regulatory_alpha = 1,
   gpr_and_method = "mean",
   parallel = TRUE,
   BPPARAM = upstream_bp
@@ -49,9 +52,14 @@ step4_mean <- rc_regcompass_step_layer1(
 
 Other useful Stage 4 sensitivity settings:
 
-- `regulatory_alpha`: regulatory contribution to RNA support;
 - `gene_half_saturation`: RNA support saturation;
-- `comparison_support`: `pairwise_common` or `global_common` when explicit control is required.
+- `comparison_support`: `pairwise_common` or `global_common` when explicit
+  support control is required;
+- `gpr_and_method`: limiting-subunit, median, or mean complex aggregation.
+
+Non-estimable Pando edges remain structural zeros in every route. A target-level
+modifier that is unavailable falls back exactly to RNA-only support. These are
+fixed analysis semantics, not sensitivity switches.
 
 ## Change medium
 
@@ -90,7 +98,8 @@ Medium choices:
 - `normal_human_plasma` or `mouse_plasma`: explicit physiological preset;
 - `rpmi1640` or `dmem_high_glucose`: culture formulation;
 - nutrient challenge presets: human-only sensitivity scenarios;
-- `minimal`, `compass_model_bounds`, `permissive_all_exchange`: technical sensitivity scenarios;
+- `minimal`, `compass_model_bounds`, `permissive_all_exchange`: technical
+  sensitivity scenarios;
 - `custom`: experiment-specific medium.
 
 See [Medium presets](medium-presets.md) for species restrictions and preset
@@ -130,7 +139,7 @@ result_new <- rc_regcompass_step_results(
   grn = step1,
   metacells = step2,
   meta_modules = step3,
-  layer1 = step4,
+  layer1 = step4_mean,
   layer2 = step5_new,
   gem = gem,
   outdir = "RegCompass_restart/06_results_low_glucose",

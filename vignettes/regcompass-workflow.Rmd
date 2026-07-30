@@ -17,17 +17,18 @@ RegCompassR converts paired single-cell RNA+ATAC data into condition-comparable
 reaction support and directional metabolic scores.
 
 ```text
-Pando condition-aware GRNs
-→ condition × broad-cell-type metacells
-→ supported metabolic genes and reactions
-→ regulatory modification of RNA support
+absolute condition-aware Pando GRNs
+→ condition × broad-cell-type fixed-γ metacells
+→ cell-type-specific RNA priors
+→ structural-zero regulatory projection with RNA-only fallback
+→ COMPASS GPR reaction expression and penalties
 → shared medium-specific metabolic model
 → directional scores and condition tests
 ```
 
-Pando `ConditionGRNFit v5` outer-heldout common-support projections are the
-primary regulatory input. Reference-condition coefficient effects are retained
-for interpretation only.
+Pando `ConditionGRNFit v5` outer-heldout condition projections are the primary
+regulatory input. Conditions use absolute coefficients on one common coordinate;
+no baseline-condition coefficient contrast is stored or consumed.
 
 Mathematical definitions are centralized in
 [Mathematical model](../docs/mathematical-model.md).
@@ -74,7 +75,6 @@ result <- rc_run_regcompass_one_shot(
       candidate_screen = "motif_domain",
       condition_mix = 0.5,
       condition_weight = "equal",
-      reference_condition = "Control",
       outer_nfolds = 5L,
       inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
@@ -96,7 +96,7 @@ result <- rc_run_regcompass_one_shot(
   layer1_args = list(
     projection_component = "condition",
     comparison_support = "auto",
-    regulatory_alpha = 0.5,
+    regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -119,6 +119,19 @@ result <- rc_run_regcompass_one_shot(
 The one-shot runner controls Stage 1 parallelism. Do not put `parallel` or
 `BPPARAM` inside `pando_infer_args`.
 
+Every condition × broad-cell-type stratum uses the same `gamma = 30L`. RNA/ATAC
+depth does not alter gamma, and top-1% depth cells are QC annotations only.
+
+The RNA Gamma–Poisson prior is estimated by broad cell type. A non-estimable
+Pando edge contributes a structural zero in the primary projection path. A
+non-finite target-level modifier falls back exactly to RNA-only support.
+`regulatory_alpha = 1` is fixed.
+
+COMPASS GPR semantics are used: the selected AND rule is applied within
+complexes, OR isozyme branches are summed while unavailable branches are
+ignored, and missing final reaction expression receives the maximum
+expression-linked penalty.
+
 # Main outputs
 
 ```{r}
@@ -127,15 +140,16 @@ result$grn$condition_grn_fits
 result$grn$tf_peak_gene_condition
 result$condition_grn_meta_modules$supported_metabolic_genes
 result$condition_grn_meta_modules$core_gene_reaction
+result$layer1$projection_structural_zero
+result$layer1$regulatory_fallback
 result$microcompass$model_cache_summary
 result$reaction_ranking
 result$condition_contrast
 result$reaction_comparison_by_metacell
 ```
 
-The primary route uses outer-heldout common-support regulatory scores. RNA-only,
-condition-full, depth, zero-pattern, link-saturation, and alpha outputs are
-sensitivity or attribution results.
+`result$condition_contrast` is a downstream metabolic comparison, not a Pando
+coefficient contrast.
 
 # Stepwise workflow
 
@@ -161,7 +175,8 @@ step1 <- rc_regcompass_step_grn(
     min_model_rsq = 0.1,
     pando_infer_args = list(
       candidate_screen = "motif_domain",
-      reference_condition = "Control"
+      condition_mix = 0.5,
+      condition_weight = "equal"
     )
   ),
   parallel = TRUE,
@@ -200,8 +215,9 @@ step4 <- rc_regcompass_step_layer1(
   meta_modules = step3,
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
+  projection_component = "condition",
   comparison_support = "auto",
-  regulatory_alpha = 0.5,
+  regulatory_alpha = 1,
   gpr_and_method = "min",
   parallel = TRUE,
   BPPARAM = upstream_bp
@@ -277,7 +293,23 @@ mouse_result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   pando_args = list(
     pando_initiate_args = list(regions = mouse_regions),
-    pando_infer_args = list(reference_condition = "Control")
+    pando_infer_args = list(
+      candidate_screen = "motif_domain",
+      condition_mix = 0.5,
+      condition_weight = "equal"
+    )
+  ),
+  metacell_args = list(
+    rna_reduction = "pca",
+    atac_reduction = "lsi",
+    gamma = 30L,
+    seed = 12345L
+  ),
+  layer1_args = list(
+    projection_component = "condition",
+    comparison_support = "auto",
+    regulatory_alpha = 1,
+    gpr_and_method = "min"
   )
 )
 ```
