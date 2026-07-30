@@ -35,28 +35,32 @@ test_that("metacell metadata contract rejects duplicate IDs", {
   )
 })
 
-test_that("canonical condition extraction writes absolute metadata directly", {
-  implementation <- paste(
+test_that("canonical condition extraction preserves absolute metadata and adds projection masks", {
+  wrapper <- paste(
     deparse(body(.rc_extract_condition_grn_contract)), collapse = "\n"
   )
-  expect_match(
-    implementation, "tab[[condition_col]] <- condition", fixed = TRUE
+  base <- paste(
+    deparse(body(.rc_extract_condition_grn_contract_unmodified)),
+    collapse = "\n"
   )
+  expect_match(wrapper, ".rc_extract_condition_grn_contract_unmodified",
+               fixed = TRUE)
+  expect_match(wrapper, "coefficient_estimable", fixed = TRUE)
+  expect_match(wrapper, "projectable_structural_zero", fixed = TRUE)
+  expect_match(wrapper, "projection_supported", fixed = TRUE)
+  expect_match(wrapper, 'primary = "condition_full_oof"', fixed = TRUE)
+  expect_match(base, "tab[[condition_col]] <- condition", fixed = TRUE)
+  expect_match(base, "tab[[celltype_col]] <- fit_cell_type", fixed = TRUE)
+  expect_match(base, "tab$group_id <- rc_make_stratum_id(", fixed = TRUE)
   expect_match(
-    implementation, "tab[[celltype_col]] <- fit_cell_type", fixed = TRUE
-  )
-  expect_match(
-    implementation, "tab$group_id <- rc_make_stratum_id(", fixed = TRUE
-  )
-  expect_match(
-    implementation, 'tab$effect_definition <- "absolute_condition_coefficient"',
+    base, 'tab$effect_definition <- "absolute_condition_coefficient"',
     fixed = TRUE
   )
   expect_match(
-    implementation, 'tab$coefficient_contract <- "absolute_condition_effects_only"',
+    base, 'tab$coefficient_contract <- "absolute_condition_effects_only"',
     fixed = TRUE
   )
-  expect_false(grepl("comparison_mask", implementation, fixed = TRUE))
+  expect_false(grepl("comparison_mask", wrapper, fixed = TRUE))
   expect_false(exists(".rc_remap_projection_metadata", inherits = TRUE))
 })
 
