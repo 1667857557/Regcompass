@@ -1,0 +1,34 @@
+name: native-gpr-equivalence
+
+on:
+  pull_request:
+    branches: [Main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  equivalence:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          use-public-rspm: true
+      - name: Install numerical test dependencies
+        shell: Rscript {0}
+        run: install.packages(c("Rcpp", "RcppEigen", "testthat"))
+      - name: Compile and verify submitted GPR kernel
+        shell: Rscript {0}
+        run: |
+          library(testthat)
+          Rcpp::sourceCpp("src/gpr_capacity.cpp")
+          source("R/gpr_parser.R")
+          source("R/gpr_capacity_native.R")
+          source("R/gpr_capacity.R")
+          source("tests/testthat/helper-native-gpr.R")
+          .rc_gpr_capacity_cpp <- rc_gpr_capacity_cpp
+          test_file("tests/testthat/test-gpr-native-methods.R")
+          test_file("tests/testthat/test-gpr-native-random.R")
+          test_file("tests/testthat/test-gpr-native-source.R")
