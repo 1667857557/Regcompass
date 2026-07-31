@@ -28,8 +28,8 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{cell_type}{Optional broad-cell-type labels to process.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Stage 1 controls. Nested \code{pando_infer_args} are passed to the selected Pando route.}
-\item{fragment_files}{Must be \code{FALSE} for the native count-assay metacell path.}
-\item{metacell_args}{SuperCell reductions, dimensions, gamma, seed, and within-cell-type graph controls.}
+\item{fragment_files}{Must be \code{FALSE} for the count-assay metacell path.}
+\item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma, seed, small-metacell marker and cache controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
 \item{layer1_args}{Stage 4 projection, common-component, GPR and half-saturation controls. \code{regulatory_alpha} is fixed at 1.}
 \item{medium_scenarios}{Shared medium table.}
@@ -46,27 +46,26 @@ whether condition coefficients were fitted.
 }
 \description{
 Runs the six-stage RegCompass workflow with automatic GRN routing and one
-independent SuperCell graph per broad cell type, pooling all conditions within
-each cell-type graph.
+independent multimodal WNN graph per broad cell type, pooling all conditions
+within each cell-type graph.
 }
 \details{
-Two or more condition levels use the canonical unversioned Pando condition fit.
-The primary regulatory and metabolic route is condition-full outer-heldout
-projection. Jointly estimable edges form a common-support component. An edge
-that is non-estimable in one or both conditions remains projectable and
-contributes exactly zero in each affected condition. An exact-zero predictor
-remains represented without receiving a fitted coefficient.
+Two or more condition levels use the canonical Pando condition fit. The primary
+regulatory and metabolic route is condition-full outer-heldout projection.
+Jointly estimable edges form a common-support component. An edge that is
+non-estimable in one or both conditions remains projectable and contributes
+exactly zero in each affected condition.
 
 One or zero usable condition levels use original \code{Pando::infer_grn()} within
 each broad cell type and do not calculate condition coefficients.
 
-Stage 2 calls
-\code{SuperCell::SCimplify_by_graph_group_from_embedding()} with broad cell type
-as \code{cell.graph.group} and condition as \code{cell.split.condition}. RNA
-and ATAC embedding blocks are standardized within cell type across all
-conditions. Each cell type receives an independent graph; condition is applied
-after graph clustering to retain condition-pure metacells. No sample-derived or
-concatenated condition-by-cell-type grouping field is created.
+Stage 2 calls \code{SuperCell::SCimplify_by_graph_group()} with broad cell type
+as \code{cell.graph.group} and condition as \code{cell.split.condition}. Each
+broad cell type receives one independent native RNA+ATAC WNN graph. All
+conditions jointly determine adaptive modality weights, neighbours, and
+Walktrap clusters; condition splits parent membership only after clustering.
+Small final metacells are retained and marked, not merged or removed. No sample
+column participates in graph construction or membership.
 
 All penalty routes reuse the same medium-specific metabolic model and target
 \code{vmax}. The canonical result schema omits depth matching, common-depth
