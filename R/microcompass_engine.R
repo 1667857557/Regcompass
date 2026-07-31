@@ -195,6 +195,31 @@
     ),
     reaction_roles = gem$reaction_roles
   )
+  vmax_cache <- .rc_build_microcompass_vmax_cache(
+    model_cache = model_cache,
+    mode = mode,
+    model_keys = model_keys,
+    solver = solver,
+    flux_threshold = flux_threshold,
+    parallel = parallel,
+    BPPARAM = BPPARAM
+  )
+  vmax_cache_diagnostics <- do.call(rbind, lapply(row_ids, function(row_id) {
+    entry <- model_cache[[row_id]]
+    value <- vmax_cache[[row_id]]
+    data.frame(
+      row_id = row_id,
+      reaction_id = as.character(entry$reaction_id),
+      target_direction = as.character(entry$target_direction),
+      medium_scenario = as.character(entry$medium_scenario),
+      vmax = as.numeric(value$vmax),
+      feasible = isTRUE(value$feasible),
+      status = as.character(value$status),
+      computation_scope = "shared_model_x_directional_target_once",
+      stringsAsFactors = FALSE
+    )
+  }))
+  rownames(vmax_cache_diagnostics) <- NULL
 
   penalty <- vmax <- matrix(
     NA_real_,
@@ -232,12 +257,13 @@
       evidence_available <- is.finite(unit_penalty)
       solver_penalty <- unit_penalty
       solver_penalty[!evidence_available] <- 0
-      answer <- rc_compass_two_step_lp_directional(
+      answer <- .rc_compass_step2_from_vmax_directional(
         S = model$S,
         lb = model$lb,
         ub = model$ub,
         target_reaction = entry$reaction_id,
         penalties = solver_penalty,
+        vmax_result = vmax_cache[[row_id]],
         target_direction = entry$target_direction,
         omega = omega,
         solver = solver,
@@ -280,6 +306,7 @@
             NA_real_
           },
           vmax = answer$vmax,
+          vmax_reused_from_shared_cache = TRUE,
           target_expression_available = target_evidence_available,
           objective_evidence_fraction = mean(evidence_available),
           unavailable_objective_terms = sum(!evidence_available),
@@ -338,6 +365,7 @@
     structural_model_contract =
       .rc_microcompass_model_contract(model_cache, mode),
     model_diagnostics = model_diagnostics,
+    vmax_cache_diagnostics = vmax_cache_diagnostics,
     lp_diagnostics = lp_diagnostics,
     penalty_components = penalties$components,
     evidence_policy = penalties$evidence_policy,
@@ -353,7 +381,11 @@
       } else {
         "one_full_gem_per_medium_shared_across_all_units"
       },
-      parallel_task = "shared_model_by_metacell",
+      parallel_task = "shared_model_by_metacell_step2",
+      vmax_computation_scope =
+        "shared_model_x_directional_target_once",
+      vmax_solve_count = length(vmax_cache),
+      vmax_reuse_factor = length(units),
       flux_threshold = flux_threshold,
       scoring_time_limit = "none"
     ),
@@ -475,6 +507,10 @@ rc_run_microcompass <- function(
     saveRDS(
       answer$model_diagnostics,
       file.path(cache_dir, "model_diagnostics.rds")
+    )
+    saveRDS(
+      answer$vmax_cache_diagnostics,
+      file.path(cache_dir, "vmax_cache_diagnostics.rds")
     )
     saveRDS(
       answer$lp_diagnostics,
