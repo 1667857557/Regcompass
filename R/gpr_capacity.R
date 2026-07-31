@@ -211,21 +211,17 @@ rc_reaction_capacity <- function(
     "*"
   )
 
-  per_reaction <- rc_parallel_lapply(reaction_ids, function(rid) {
-    parsed <- gpr_list[[rid]]
-    vapply(seq_len(ncol(weighted_score)), function(j) {
-      score_vector <- weighted_score[, j, drop = TRUE]
-      names(score_vector) <- rownames(weighted_score)
-      rc_reaction_capacity_one(
-        parsed,
-        score_vector,
-        and_method = and_method,
-        or_method = or_method
-      )
-    }, numeric(1))
-  }, BPPARAM = BPPARAM)
-
-  out <- do.call(rbind, per_reaction)
+  index <- .rc_compile_gpr_indices(
+    gpr_list, rownames(weighted_score)
+  )
+  out <- .rc_gpr_capacity_cpp(
+    weighted_score,
+    index$reaction_group_offset,
+    index$group_gene_offset,
+    index$gene_index,
+    and_method,
+    or_method
+  )
   rownames(out) <- reaction_ids
   colnames(out) <- colnames(gene_score)
   out
