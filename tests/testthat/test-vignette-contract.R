@@ -24,7 +24,7 @@ rc_expect_doc_terms <- function(text, required) {
   expect_length(missing, 0L)
 }
 
-test_that("workflow vignette exposes canonical condition-full route and graph scope", {
+test_that("workflow vignette exposes condition-full routing and grouped WNN scope", {
   root <- rc_doc_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   path <- file.path(root, "vignettes", "regcompass-workflow.Rmd")
@@ -39,8 +39,13 @@ test_that("workflow vignette exposes canonical condition-full route and graph sc
     "standard_pando",
     "Pando::infer_grn()",
     "condition-full outer-heldout projection",
+    "SCimplify_by_graph_group",
     "cell.graph.group",
     "cell.split.condition",
+    "one_independent_WNN_graph_per_cell_type",
+    "all_conditions_joint_within_cell_type_graph",
+    "after_joint_WNN_graph_clustering",
+    "adaptive_WNN_within_cell_type",
     "gamma = 30L",
     "regulatory_alpha = 1",
     'gpr_and_method = "min"',
@@ -85,6 +90,8 @@ test_that("vignette rejects removed runtime and guardrail architecture", {
     "regulatory_alpha = 0.5",
     "supercell_stratum_col",
     "cell.annotation",
+    "SCimplify_by_graph_group_from_embedding",
+    "within_celltype_joint_condition_equal_modality_blocks",
     "zzz00_absolute_pando_contract",
     "zzz04_canonical_pando_fit_schema",
     "penalty_depth_matched_rna",
@@ -125,12 +132,14 @@ test_that("primary documentation agrees on enforced arguments and semantics", {
     "outer-heldout",
     "condition_full_oof",
     "projectable structural zero",
-    "SCimplify_by_graph_group_from_embedding",
+    "SCimplify_by_graph_group",
     "cell.graph.group",
     "cell.split.condition",
-    "one_independent_graph_per_cell_type",
+    "one_independent_WNN_graph_per_cell_type",
     "all_conditions_joint_within_cell_type_graph",
-    "gamma = 30L",
+    "after_joint_WNN_graph_clustering",
+    "adaptive_WNN_within_cell_type",
+    "gamma = 30",
     "regulatory_alpha = 1",
     "gpr_and_method"
   )
