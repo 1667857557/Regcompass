@@ -32,25 +32,35 @@ jobs:
             upgrade = "never"
           )
           stopifnot(as.character(packageVersion("Matrix")) == "1.7.4")
-      - name: Install exact Pando native runtime
+      - name: Install latest Pando native runtime
         shell: Rscript {0}
         run: |
           remotes::install_github(
-            "1667857557/Pando_regcompass@69c08100a2658eefe00ced52db48ae69fed635d9",
+            "1667857557/Pando_regcompass",
+            ref = "HEAD",
             dependencies = NA,
             upgrade = "never",
+            force = TRUE,
             build_vignettes = FALSE
           )
-          stopifnot(as.character(packageVersion("Pando")) == "1.5.1")
+          stopifnot(
+            utils::compareVersion(
+              as.character(packageVersion("Pando")), "1.5.1"
+            ) >= 0L
+          )
       - name: Install RegCompassR
         run: R CMD INSTALL . --no-multiarch --with-keep.source
-      - name: Verify installed companion ABI and targeted regressions
+      - name: Verify latest companion ABI and targeted regressions
         shell: Rscript {0}
         run: |
           library(Pando)
           library(RegCompassR)
           library(testthat)
-          stopifnot(as.character(packageVersion("Pando")) == "1.5.1")
+          stopifnot(
+            utils::compareVersion(
+              as.character(packageVersion("Pando")), "1.5.1"
+            ) >= 0L
+          )
           stopifnot(as.character(packageVersion("RegCompassR")) == "2.2.3")
           stopifnot(as.character(packageVersion("Matrix")) == "1.7.4")
           stopifnot(is.loaded(
