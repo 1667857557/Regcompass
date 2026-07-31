@@ -8,7 +8,7 @@ test_that("companion remotes are immutable audited commits", {
   )
   expect_match(
     remotes,
-    "Pando_regcompass@9972d0a576ecc55c8f4898cb85d4fd90f2b30b3b",
+    "Pando_regcompass@7d7f67f0f9fbd67e76e09fde13387696d41c82ab",
     fixed = TRUE
   )
   expect_false(grepl("@Supercell2", remotes, fixed = TRUE))
