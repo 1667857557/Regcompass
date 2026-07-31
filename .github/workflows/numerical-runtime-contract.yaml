@@ -17,7 +17,6 @@ jobs:
         with:
           r-version: '4.5.1'
           use-public-rspm: true
-      - uses: r-lib/actions/setup-pandoc@v2
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: |
@@ -37,7 +36,7 @@ jobs:
         shell: Rscript {0}
         run: |
           remotes::install_github(
-            "1667857557/Pando_regcompass@8401606cfdb53d7adbb6d9d4d574036375c43f11",
+            "1667857557/Pando_regcompass@11de4295438326bb8e422f2e7524a9611c2f9230",
             dependencies = NA,
             upgrade = "never",
             build_vignettes = FALSE
