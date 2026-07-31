@@ -23,6 +23,12 @@
   list(object = object, diagnostics = diagnostics)
 }
 
+.rc_same_matrix_layout <- function(x, y) {
+  identical(dim(x), dim(y)) &&
+    identical(as.character(rownames(x)), as.character(rownames(y))) &&
+    identical(as.character(colnames(x)), as.character(colnames(y)))
+}
+
 .rc_align_normalized_assay <- function(object, assay, context) {
   value <- .rc_pando_assay_data(object, assay)
   expected <- as.character(colnames(object))
@@ -103,10 +109,19 @@
   })
   tfidf <- do.call(cbind, normalized)
   tfidf <- .rc_as_sparse(tfidf[rownames(counts), units, drop = FALSE])
-  if (!identical(dimnames(tfidf), dimnames(counts))) {
-    stop("Cell-type-shared TF-IDF did not preserve the ATAC matrix layout.",
-         call. = FALSE)
+  if (!.rc_same_matrix_layout(tfidf, counts)) {
+    stop(
+      "Cell-type-shared TF-IDF changed the ATAC feature/cell layout. ",
+      "Dimensions: ", paste(dim(tfidf), collapse = " x "),
+      " versus ", paste(dim(counts), collapse = " x "),
+      "; identical rownames: ",
+      identical(as.character(rownames(tfidf)), as.character(rownames(counts))),
+      "; identical colnames: ",
+      identical(as.character(colnames(tfidf)), as.character(colnames(counts))),
+      call. = FALSE
+    )
   }
+  dimnames(tfidf) <- dimnames(counts)
   object <- .rc_set_assay_matrix(
     object = object,
     assay = atac_assay,
