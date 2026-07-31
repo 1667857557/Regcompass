@@ -2,9 +2,10 @@
 #'
 #' Stage 1 selects condition-aware Pando only when at least two condition levels
 #' are present. Otherwise it uses original Pando `infer_grn()` and calculates no
-#' condition coefficients. Stage 2 builds one independent multimodal graph per
-#' broad cell type while pooling all conditions within that graph; condition is
-#' applied only after graph clustering to preserve condition-pure metacells.
+#' condition coefficients. Stage 2 builds one independent multimodal WNN graph
+#' per broad cell type while pooling all conditions within that graph; adaptive
+#' RNA/ATAC modality weights and neighbours are learned jointly, and condition
+#' splits parent membership only after graph clustering.
 #'
 #' When `medium_scenarios` is omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
@@ -78,7 +79,6 @@ rc_run_regcompass <- function(
     )
   }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
-  if (is.null(metacell_args$gamma)) metacell_args$gamma <- 30L
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   saveRDS(gem$model_info %||% list(), file.path(outdir, "00_model_info.rds"))
   saveRDS(medium_scenarios, file.path(outdir, "00_medium_scenarios.rds"))
@@ -162,18 +162,18 @@ rc_run_regcompass <- function(
     identical(step1$params$analysis_mode, "condition_grn")
   result$params$requested_condition_col <- condition_col
   result$params$effective_condition_col <- step1$params$condition_col
+  design <- step2$pooled$input_design
+  result$params$native_supercell_api <- design$native_supercell_api
   result$params$native_supercell_inputs <- c(
-    graph_group = "cell.graph.group",
-    condition = "cell.split.condition"
+    graph_group = design$graph_group_argument,
+    condition = design$condition_argument
   )
-  result$params$metacell_graph_scope <-
-    "one_independent_graph_per_cell_type"
-  result$params$metacell_condition_scope <-
-    "all_conditions_joint_within_cell_type_graph"
+  result$params$metacell_graph_method <- design$graph_method
+  result$params$metacell_graph_scope <- design$graph_scope
+  result$params$metacell_condition_scope <- design$condition_scope
   result$params$metacell_membership_split_timing <-
-    "after_joint_graph_clustering"
-  result$params$metacell_embedding_scaling <-
-    "within_celltype_joint_condition_equal_modality_blocks"
+    design$membership_split_timing
+  result$params$metacell_modality_weighting <- design$modality_weighting
   result$params$temporary_combined_stratum <- FALSE
   result$params$upstream_workers <- upstream_config$workers
   result$params$layer2_workers <- layer2_config$workers
