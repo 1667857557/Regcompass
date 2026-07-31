@@ -21,8 +21,8 @@ structural zero.
 ### Standard mode
 
 `Pando::infer_grn()` runs within each broad cell type. Standard coefficients are
-projected to paired cells and aggregated to metacells. No condition coefficients
-or condition contrast are calculated.
+projected to paired cells and aggregated to metacells. No condition coefficient
+or condition contrast is calculated.
 
 ## One-shot workflow
 
@@ -60,23 +60,37 @@ canonical Layer 1 `reaction_expression` route; in condition mode that route is
 
 ## SuperCell graph and purity inputs
 
-Stage 2 calls `SCimplify_by_graph_group_from_embedding()` with:
+Stage 2 calls `SuperCell::SCimplify_by_graph_group()` with:
 
 ```text
-cell.graph.group       = broad cell type
-cell.split.condition   = condition, or NULL when omitted
-gamma                  = requested graining level
+seurat                  = paired RNA+ATAC Seurat object
+cell.graph.group        = broad cell type
+cell.split.condition    = condition
+gamma                   = 30 by default
+k.knn                   = 30 by default
 ```
 
-`cell.graph.group` partitions cells before neighbour construction. All conditions
-within a cell type share one standardized multimodal embedding and graph.
-`cell.split.condition` is applied after graph clustering, so final metacells are
-condition-pure without separate condition graphs.
+Each broad cell type receives one independent native multimodal WNN graph. All
+conditions within that cell type jointly determine adaptive RNA/ATAC modality
+weights, neighbours and Walktrap parent clusters. `cell.split.condition` is
+applied only after clustering, so final metacells are condition-pure without
+separate condition graphs.
 
 No combined metadata stratum or sample-derived grouping is created. Provenance
-records `one_independent_graph_per_cell_type`,
-`all_conditions_joint_within_cell_type_graph`, and
-`temporary_combined_stratum = FALSE`.
+records:
+
+```text
+native_supercell_api = SCimplify_by_graph_group
+graph_scope = one_independent_WNN_graph_per_cell_type
+condition_scope = all_conditions_joint_within_cell_type_graph
+membership_split_timing = after_joint_WNN_graph_clustering
+modality_weighting = adaptive_WNN_within_cell_type
+temporary_combined_stratum = FALSE
+```
+
+Final RNA and ATAC counts are aggregated using the exact final membership.
+Small condition-split metacells are retained and marked rather than silently
+merged or removed.
 
 ## Restart boundaries
 
