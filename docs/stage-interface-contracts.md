@@ -42,10 +42,10 @@ component.
 
 Selected when the condition column is omitted, absent or single-level.
 RegCompass calls `Pando::infer_grn()` independently within each broad cell type.
-No `ConditionGRNFit`, condition coefficient, condition deviation or condition
-contrast is calculated.
+No condition coefficient, condition deviation or condition contrast is
+calculated.
 
-## Stage 2: independent cell-type graphs, joint conditions
+## Stage 2: cell-type-scoped WNN graphs, joint conditions
 
 Class: `regcompass_metacell_step`.
 
@@ -56,34 +56,46 @@ step2$pooled$input_design
 step2$metacell_object
 ```
 
-RegCompass scales RNA and ATAC embedding blocks within each broad cell type using
-all conditions and calls:
+RegCompass calls the canonical SuperCell grouped builder once on the supplied
+paired RNA+ATAC Seurat object:
 
 ```r
-SuperCell::SCimplify_by_graph_group_from_embedding(
-  X = joint_embedding,
+SuperCell::SCimplify_by_graph_group(
+  seurat = object,
   cell.graph.group = cell_type,
   cell.split.condition = condition,
-  gamma = gamma
+  assay = c(rna_assay, atac_assay),
+  reduction = list(rna_reduction, atac_reduction),
+  dims = list(rna_dims, atac_dims),
+  gamma = 30,
+  k.knn = 30
 )
 ```
 
 The contract is:
 
 ```text
-native_supercell_api = SCimplify_by_graph_group_from_embedding
+native_supercell_api = SCimplify_by_graph_group
 graph_group_argument = cell.graph.group
 condition_argument = cell.split.condition
-graph_scope = one_independent_graph_per_cell_type
+graph_method = multimodal_WNN
+graph_scope = one_independent_WNN_graph_per_cell_type
 condition_scope = all_conditions_joint_within_cell_type_graph
-membership_split_timing = after_joint_graph_clustering
-embedding_scaling = within_celltype_joint_condition_equal_modality_blocks
+membership_split_timing = after_joint_WNN_graph_clustering
+modality_weighting = adaptive_WNN_within_cell_type
 temporary_combined_stratum = FALSE
 ```
 
-Final metacells are pure for cell type and condition. No sample-derived grouping
-or concatenated condition-by-cell-type field is created. RNA and ATAC counts are
-aggregated from exact `membership(cell_id, metacell_id)`.
+For each broad cell type, all conditions jointly determine native RNA+ATAC WNN
+modality weights, neighbours and Walktrap parent clusters. Condition is applied
+only after clustering to obtain condition-pure final memberships. No sample
+column or concatenated condition-by-cell-type stratum is used.
+
+The canonical `gamma` default is 30. Final RNA and ATAC counts are aggregated
+from the exact `membership(cell_id, metacell_id)` by a membership-mode
+`SCimplify_for_Seurat()` call; the graph is not rebuilt during aggregation.
+Small final metacells are retained and marked by `low_power_metacell` rather than
+silently merged or removed.
 
 ## Stage 3: biological meta-modules
 
