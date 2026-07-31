@@ -21,7 +21,7 @@ returned in `result$analysis_mode`: `standard_pando` or `condition_grn`.
 | Stage | Function | Main output |
 |---:|---|---|
 | 1 | `rc_regcompass_step_grn()` | standard Pando networks or canonical `pando_condition_grn_fit` contracts |
-| 2 | `rc_regcompass_step_metacells()` | independent cell-type graphs and condition-pure metacells |
+| 2 | `rc_regcompass_step_metacells()` | cell-type-scoped joint-condition WNN graphs and condition-pure metacells |
 | 3 | `rc_regcompass_step_meta_modules()` | supported genes, complete-GPR cores and reaction catalogue |
 | 4 | `rc_regcompass_step_layer1()` | condition-full, common-support and RNA reaction expression |
 | 5 | `rc_regcompass_step_layer2()` | shared structural model and directional penalties |
@@ -47,7 +47,7 @@ step1 <- rc_regcompass_step_grn(
 
 In condition mode, `candidate_screen = "motif_domain"`,
 `condition_weight = "equal"`, and `scale = TRUE` are required. Standard mode
-uses `Pando::infer_grn()` and produces No condition coefficients.
+uses `Pando::infer_grn()` and produces no condition coefficients.
 
 Condition-mode projection contracts expose:
 
@@ -68,15 +68,24 @@ metacell_args = list(
   atac_reduction = "lsi",
   atac_dims = 2:30,
   gamma = 30L,
-  seed = 12345L
+  k.knn = 30L,
+  seed = 12345L,
+  min_cells_per_stratum = 20L,
+  min_metacell_size = 1L,
+  min_metacells_per_stratum = 1L
 )
 ```
 
-RegCompass calls `SuperCell::SCimplify_by_graph_group_from_embedding()` with
-`cell.graph.group = broad cell type` and
-`cell.split.condition = condition`. This produces
-`one_independent_graph_per_cell_type` while preserving
-`all_conditions_joint_within_cell_type_graph`; `temporary_combined_stratum = FALSE`.
+RegCompass calls `SuperCell::SCimplify_by_graph_group()` with broad cell type as
+`cell.graph.group` and condition as `cell.split.condition`. Each broad cell type
+gets one independent native RNA+ATAC WNN graph. All conditions within that cell
+type jointly determine adaptive modality weights, neighbours and Walktrap
+parent clusters; condition splits membership only after clustering. No sample
+column or concatenated condition-by-cell-type stratum is used.
+
+The canonical default is `gamma = 30`. Small condition-split metacells are
+retained and marked by `low_power_metacell` instead of being silently merged or
+removed.
 
 ## Stage 4 condition-full support
 
@@ -163,8 +172,7 @@ custom
 Human composition uses HPLM from *Cell* 2017 and updated HPLM from *Cell
 Metabolism* 2021. Plasmax from *Science Advances* 2019 is an independent
 validation source and is not numerically averaged with HPLM. Mouse composition
-is anchored to absolute mouse plasma and interstitial-fluid metabolomics in
-*Nature* 2026.
+uses the package's documented mouse-plasma evidence table.
 
 All five challenges use `medium_background_id = authoritative_HPLM_2017_2021`
 and override only the named nutrient. Their construction is
