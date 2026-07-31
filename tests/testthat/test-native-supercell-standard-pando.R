@@ -20,49 +20,77 @@ test_that("condition design selects the intended Pando mode", {
   expect_identical(design$fallback_reason, "fewer_than_two_condition_levels")
 
   object@meta.data$condition <- NULL
-  design <- RegCompassR:::.rc_resolve_condition_design(object, "condition")
+  expect_error(
+    RegCompassR:::.rc_resolve_condition_design(object, "condition"),
+    "Explicitly requested `condition_col` was not found"
+  )
+  design <- RegCompassR:::.rc_resolve_condition_design(object, NULL)
   expect_identical(design$analysis_mode, "standard_pando")
-  expect_identical(design$fallback_reason, "condition_col_absent")
+  expect_identical(design$fallback_reason, "condition_col_not_supplied")
   expect_true(design$condition_col %in% colnames(design$object@meta.data))
 })
 
-test_that("native SuperCell builds independent cell-type graphs jointly across conditions", {
-  fun <- get(
+test_that("metacell workflow delegates graphing and aggregation to upstream SuperCell2", {
+  membership_fun <- get(
     ".rc_native_supercell_membership",
     envir = asNamespace("RegCompassR"),
     inherits = FALSE
   )
-  text <- paste(deparse(body(fun)), collapse = "\n")
-  expect_match(text, "SCimplify_by_graph_group_from_embedding", fixed = TRUE)
-  expect_match(text, "cell.graph.group", fixed = TRUE)
-  expect_match(text, "cell.split.condition", fixed = TRUE)
-  expect_match(text, ".rc_scale_embedding_block_by_group", fixed = TRUE)
-  expect_false(grepl("cell.annotation", text, fixed = TRUE))
-  expect_false(grepl("condition__cell_type", text, fixed = TRUE))
-  expect_false(grepl("stratum_col", text, fixed = TRUE))
+  aggregation_fun <- get(
+    ".rc_aggregate_native_metacell_counts",
+    envir = asNamespace("RegCompassR"),
+    inherits = FALSE
+  )
+  membership_text <- paste(deparse(body(membership_fun)), collapse = "\n")
+  aggregation_text <- paste(deparse(body(aggregation_fun)), collapse = "\n")
+  expect_match(membership_text, "SCimplify_for_Seurat", fixed = TRUE)
+  expect_match(membership_text, "return.seurat = FALSE", fixed = TRUE)
+  expect_match(membership_text, "paste(parent[cells], condition", fixed = TRUE)
+  expect_match(aggregation_text, "membership = numeric_membership", fixed = TRUE)
+  expect_match(aggregation_text, "return.seurat = TRUE", fixed = TRUE)
+  expect_false(grepl("SCimplify_by_graph_group_from_embedding", membership_text,
+                     fixed = TRUE))
+  expect_false(grepl(".rc_scale_embedding_block_by_group", membership_text,
+                     fixed = TRUE))
 })
 
-test_that("cell-type scaling pools conditions but isolates other cell types", {
-  x <- matrix(
+test_that("native SuperCell2 defaults retain WNN-oriented upstream controls", {
+  defaults <- RegCompassR:::.rc_condition_metacell_defaults()
+  expect_identical(defaults$gamma, 20L)
+  expect_identical(defaults$k.knn, 30L)
+  expect_true(defaults$kernel)
+  expect_null(defaults$kith)
+  expect_false(defaults$metacellNormalization)
+  expect_false(defaults$avg.in.data)
+})
+
+test_that("one-condition standard Pando fallback sanitizes condition arguments", {
+  args <- RegCompassR:::.rc_standard_pando_infer_args(list(
+    candidate_screen = "motif_domain",
+    condition_mix = 0.5,
+    condition_weight = "equal",
+    outer_nfolds = 5L,
+    inner_nfolds = 5L,
+    lambda_selection = "lambda.1se",
+    scale = TRUE,
+    family = "gaussian"
+  ))
+  expect_false(args$scale)
+  expect_identical(args$interaction_term, ":")
+  expect_identical(args$family, "gaussian")
+  expect_false(any(c(
+    "candidate_screen", "condition_mix", "condition_weight",
+    "outer_nfolds", "inner_nfolds", "lambda_selection"
+  ) %in% names(args)))
+  adjustment <- attr(args, "standard_fallback_adjustments")
+  expect_true(adjustment$scale_forced_false)
+  expect_setequal(
+    adjustment$dropped_condition_arguments,
     c(
-      0, 1,
-      2, 3,
-      4, 5,
-      100, 101,
-      102, 103,
-      104, 105
-    ),
-    ncol = 2,
-    byrow = TRUE
+      "candidate_screen", "condition_mix", "condition_weight",
+      "outer_nfolds", "inner_nfolds", "lambda_selection"
+    )
   )
-  group <- c("A", "A", "A", "B", "B", "B")
-  first <- .rc_scale_embedding_block_by_group(x, group)
-  changed <- x
-  changed[group == "B", ] <- changed[group == "B", ] * 1000 + 5000
-  second <- .rc_scale_embedding_block_by_group(changed, group)
-  expect_equal(first[group == "A", ], second[group == "A", ], tolerance = 1e-12)
-  expect_equal(colMeans(first[group == "A", , drop = FALSE]), c(0, 0), tolerance = 1e-12)
-  expect_equal(colMeans(first[group == "B", , drop = FALSE]), c(0, 0), tolerance = 1e-12)
 })
 
 test_that("standard Pando path calculates no condition coefficients", {
