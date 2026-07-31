@@ -77,9 +77,9 @@ test_that("relative score is display-only and composition dependent", {
   expect_true(isTRUE(attr(score, "display_only")))
 })
 
-test_that("latent expression separates sampling and structural zeros by cell type", {
+test_that("normalized-unit EB separates depth normalization from shrinkage weight", {
   counts <- matrix(
-    c(0, 0, 10, 20, 0, 1),
+    c(0, 0, 10, 100, 0, 10),
     nrow = 2,
     dimnames = list(c("low", "high"), c("m1", "m2", "m3"))
   )
@@ -94,16 +94,79 @@ test_that("latent expression separates sampling and structural zeros by cell typ
   expect_true(all(
     latent$zero_class %in% c(
       "observed_positive",
-      "sampling_limited_zero",
-      "credible_structural_zero"
+      "observed_zero_continuous_eb"
     )
   ))
   expect_true(all(
     latent$posterior_positive_probability >= 0 &
       latent$posterior_positive_probability <= 1
   ))
-  expect_identical(latent$model, "gamma_poisson_empirical_bayes_by_cell_type_v2")
+  expect_true(all(
+    latent$posterior_zero_probability >= 0 &
+      latent$posterior_zero_probability <= 1
+  ))
+  expect_identical(
+    latent$model,
+    "normalized_unit_gamma_empirical_bayes_by_cell_type_v3"
+  )
   expect_identical(latent$prior_estimation_scope, "gene_by_cell_type")
+  expect_identical(
+    latent$posterior_update_scope,
+    "one_normalized_metacell_unit_independent_of_library_size"
+  )
+  expect_false(latent$hard_structural_zero_used)
+  expect_equal(
+    latent$observation_weight[, "m1"],
+    latent$observation_weight[, "m3"],
+    tolerance = 1e-12
+  )
+  expect_equal(
+    latent$prior_weight[, "m1"],
+    latent$prior_weight[, "m3"],
+    tolerance = 1e-12
+  )
+})
+
+test_that("equivalent CPM observations receive equivalent EB updates across depth", {
+  counts <- matrix(
+    c(1, 10, 4, 40),
+    nrow = 1,
+    dimnames = list("g", c("m1", "m2", "m3", "m4"))
+  )
+  depth <- c(1e4, 1e5, 2e4, 2e5)
+  latent <- RegCompassR:::.rc_latent_metacell_expression(
+    counts,
+    library_size = depth,
+    cell_type = stats::setNames(rep("T", 4), colnames(counts))
+  )
+  expect_equal(latent$latent_cpm[, "m1"], latent$latent_cpm[, "m2"],
+               tolerance = 1e-12)
+  expect_equal(latent$latent_cpm[, "m3"], latent$latent_cpm[, "m4"],
+               tolerance = 1e-12)
+  expect_equal(
+    latent$posterior_positive_probability[, "m1"],
+    latent$posterior_positive_probability[, "m2"],
+    tolerance = 1e-12
+  )
+})
+
+test_that("zero evidence remains continuous and is never threshold-clamped", {
+  counts <- matrix(
+    c(0, 0, 1, 3), nrow = 1,
+    dimnames = list("g", c("m1", "m2", "m3", "m4"))
+  )
+  latent <- RegCompassR:::.rc_latent_metacell_expression(
+    counts,
+    library_size = c(1e4, 1e6, 1e4, 1e4),
+    structural_zero_probability = 0.99,
+    cell_type = stats::setNames(rep("T", 4), colnames(counts))
+  )
+  expect_true(all(latent$latent_cpm > 0))
+  expect_identical(
+    unname(latent$zero_class[, c("m1", "m2")]),
+    rep("observed_zero_continuous_eb", 2)
+  )
+  expect_false(any(latent$zero_class == "credible_structural_zero"))
 })
 
 test_that("latent expression rejects normalized non-count input", {
