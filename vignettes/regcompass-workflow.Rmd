@@ -25,16 +25,31 @@ Condition mode uses condition-full outer-heldout projection as the primary
 regulatory route. Jointly estimable edges form the common-support component. A
 non-estimable edge side remains projectable and contributes exactly zero.
 
-Stage 2 uses:
+Stage 2 calls `SuperCell::SCimplify_by_graph_group()` with:
 
 ```text
 cell.graph.group = broad cell type
-cell.split.condition = condition, or NULL when omitted
+cell.split.condition = condition
+gamma = 30L
+k.knn = 30L
 ```
 
-Each broad cell type has an independent graph; all its conditions share the
-graph before condition-pure membership splitting. No sample or temporary
-condition-by-cell-type stratum is used.
+Each broad cell type has one independent native RNA+ATAC WNN graph. All
+conditions within that cell type jointly determine adaptive modality weights,
+neighbours and Walktrap parent clusters. Condition splits parent membership only
+after clustering, so final metacells are condition-pure without fitting
+condition-specific graphs. No sample or temporary condition-by-cell-type stratum
+is used.
+
+The Stage 2 provenance contract records:
+
+```text
+one_independent_WNN_graph_per_cell_type
+all_conditions_joint_within_cell_type_graph
+after_joint_WNN_graph_clustering
+adaptive_WNN_within_cell_type
+temporary_combined_stratum = FALSE
+```
 
 Mathematical definitions are centralized in
 [Tutorial 3](../docs/tutorial-03-mathematical-model.md).
@@ -83,6 +98,7 @@ result <- rc_run_regcompass(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
+    k.knn = 30L,
     seed = 12345L
   ),
   layer1_args = list(
@@ -111,8 +127,7 @@ custom
 Human composition is anchored to HPLM from *Cell* 2017 and updated HPLM from
 *Cell Metabolism* 2021. Plasmax from *Science Advances* 2019 is retained as an
 independent validation source and is not numerically averaged with HPLM. Mouse
-composition is anchored to absolute plasma and interstitial-fluid metabolomics
-in *Nature* 2026.
+composition follows the package's documented mouse-plasma evidence table.
 
 All five challenge scenarios use
 `medium_background_id = authoritative_HPLM_2017_2021` and override only the
