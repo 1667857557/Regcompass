@@ -19,6 +19,22 @@ test_that("normalized assay validation accepts reordered identical cell sets", {
   )
 })
 
+test_that("matrix layout comparison ignores outer Dimnames labels", {
+  x <- Matrix::Matrix(
+    matrix(1:6, nrow = 2),
+    sparse = TRUE,
+    dimnames = list(c("peak1", "peak2"), c("cell1", "cell2", "cell3"))
+  )
+  y <- x
+  names(y@Dimnames) <- c("features", "cells")
+
+  expect_false(identical(dimnames(x), dimnames(y)))
+  expect_true(RegCompassR:::.rc_same_matrix_layout(x, y))
+
+  y <- y[, c("cell2", "cell1", "cell3"), drop = FALSE]
+  expect_false(RegCompassR:::.rc_same_matrix_layout(x, y))
+})
+
 test_that("cell-type-shared TF-IDF handles locally absent peaks without warnings", {
   skip_if_not_installed("Seurat")
   skip_if_not_installed("Signac")
