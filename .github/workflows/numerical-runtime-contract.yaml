@@ -36,7 +36,7 @@ jobs:
         shell: Rscript {0}
         run: |
           remotes::install_github(
-            "1667857557/Pando_regcompass@11de4295438326bb8e422f2e7524a9611c2f9230",
+            "1667857557/Pando_regcompass@ba6a3aaba023a6cf89f1bc61f631803c4f21b852",
             dependencies = NA,
             upgrade = "never",
             build_vignettes = FALSE
