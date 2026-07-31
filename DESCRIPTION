@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.2.2
+Version: 2.2.3
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -10,20 +10,27 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     broad cell type and uses condition-full outer-heldout TF-by-ATAC projections
     as the primary regulatory penalty. Jointly estimable edges form an auditable
     common-support component; edges non-estimable in one or both conditions
-    contribute projectable structural zeros in those conditions. When condition
-    metadata are absent or contain one level, the original Pando infer_grn
-    workflow enters the same reaction-support and penalty path without condition
-    coefficients. Metacell graphs are built independently for each broad cell
-    type while all conditions share one multimodal transform and graph.
-    Condition is applied after graph clustering to retain condition-pure
-    metacells. Metacell RNA and ATAC counts use exact SuperCell membership. RNA
-    latent-expression priors are estimated by broad cell type, regulatory
-    modifiers act on bounded RNA-support odds, GPR rules produce reaction
-    expression, and each medium uses one shared union GEM and global FASTCORE
-    completion. Built-in medium scenarios are restricted to formulations with
-    direct published-paper provenance. Depth matching, common-depth restriction,
-    alpha sensitivity, zero-support sensitivity and link-saturation propagation
-    are not part of the canonical workflow.
+    contribute projectable structural zeros in those conditions. A supplied
+    single-level condition directly uses original Pando infer_grn with unscaled
+    predictors and no condition coefficients; an explicitly missing condition
+    column is rejected. Condition-aware runs require the registered Pando 1.5.1
+    C++ product and multitask kernels and stop immediately if native registration
+    or execution is unavailable. Metacells retain the SuperCell2
+    SCimplify_for_Seurat multimodal WNN and Walktrap workflow within each broad
+    cell type. Conditions share that native graph, after which membership is
+    split by condition and aggregated again through the native membership mode
+    to guarantee pure metacells. Metacell RNA and ATAC counts use exact SuperCell
+    membership. RNA latent expression uses normalized-unit empirical Bayes
+    updates whose shrinkage weights are independent of library size; observed
+    zeros retain continuous posterior evidence and are not threshold-clamped.
+    Regulatory modifiers act on bounded RNA-support odds, GPR rules produce
+    reaction expression, and each medium uses one shared union GEM and global
+    FASTCORE completion. Directional structural vmax is solved once per shared
+    model and target, then reused across metacells. Built-in medium scenarios are
+    restricted to formulations with direct published-paper provenance. Depth
+    matching, common-depth restriction, alpha sensitivity, zero-support
+    sensitivity and link-saturation propagation are not part of the canonical
+    workflow.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -64,6 +71,7 @@ Collate:
     'metacell.R'
     'microcompass.R'
     'union_gem_cache.R'
+    'microcompass_vmax_cache.R'
     'microcompass_engine.R'
     'target_union.R'
     'target_union_anchors.R'
@@ -114,7 +122,7 @@ LinkingTo:
 SystemRequirements: C++17
 Suggests:
     BiocParallel,
-    Pando (>= 1.5.0),
+    Pando (>= 1.5.1),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
@@ -133,7 +141,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@1319730b15857d88f169a9006f6cf4e88993c0c7,
-    1667857557/Pando_regcompass@7d7f67f0f9fbd67e76e09fde13387696d41c82ab
+    1667857557/Pando_regcompass@69c08100a2658eefe00ced52db48ae69fed635d9
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5

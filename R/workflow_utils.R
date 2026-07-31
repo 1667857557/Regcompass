@@ -49,10 +49,10 @@
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
   metadata <- object@meta.data
-  supplied <- !is.null(condition_col) && is.character(condition_col) &&
-    length(condition_col) == 1L && !is.na(condition_col) &&
-    nzchar(trimws(condition_col)) && condition_col %in% colnames(metadata)
-  if (!supplied) {
+  omitted <- is.null(condition_col) || !is.character(condition_col) ||
+    length(condition_col) != 1L || is.na(condition_col) ||
+    !nzchar(trimws(condition_col))
+  if (omitted) {
     effective <- .rc_internal_condition_col(metadata)
     object@meta.data[[effective]] <- rep(constant_label, nrow(metadata))
     return(list(
@@ -62,14 +62,16 @@
       condition_levels = constant_label,
       analysis_mode = "standard_pando",
       condition_supplied = FALSE,
-      fallback_reason = if (is.null(condition_col) ||
-        !is.character(condition_col) || !length(condition_col) ||
-        is.na(condition_col) || !nzchar(trimws(condition_col))) {
-        "condition_col_not_supplied"
-      } else {
-        "condition_col_absent"
-      }
+      fallback_reason = "condition_col_not_supplied"
     ))
+  }
+  condition_col <- trimws(condition_col)
+  if (!condition_col %in% colnames(metadata)) {
+    stop(
+      "Explicitly requested `condition_col` was not found: `",
+      condition_col, "`.",
+      call. = FALSE
+    )
   }
   values <- as.character(metadata[[condition_col]])
   if (anyNA(values) || any(!nzchar(trimws(values))) ||

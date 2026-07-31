@@ -70,6 +70,28 @@
   )
 }
 
+.rc_condition_metacell_defaults <- function() {
+  list(
+    rna_reduction = "pca",
+    atac_reduction = "lsi",
+    rna_dims = 1:30,
+    atac_dims = 2:30,
+    gamma = 20L,
+    seed = 12345L,
+    min_cells_per_stratum = 20L,
+    min_metacell_size = 1L,
+    min_metacells_per_stratum = 1L,
+    k.knn = 30L,
+    kith = NULL,
+    kernel = TRUE,
+    graph.name = NULL,
+    metacellNormalization = FALSE,
+    avg.in.data = FALSE,
+    verbose = FALSE,
+    overwrite = FALSE
+  )
+}
+
 .rc_condition_metacell_cache_contract <- function(
     object, condition_col, celltype_col, rna_assay, atac_assay,
     metacell_args) {
@@ -79,22 +101,7 @@
     stop("Seurat cell order cannot be aligned to metadata for cache validation.",
          call. = FALSE)
   }
-  defaults <- list(
-    rna_reduction = "pca",
-    atac_reduction = "lsi",
-    rna_dims = 1:30,
-    atac_dims = 2:30,
-    gamma = 30L,
-    seed = 12345L,
-    min_cells_per_stratum = 20L,
-    min_metacell_size = 1L,
-    min_metacells_per_stratum = 1L,
-    k.knn = 5L,
-    do.approx = FALSE,
-    approx.N = 20000L,
-    block.size = 10000L,
-    igraph.clustering = "walktrap"
-  )
+  defaults <- .rc_condition_metacell_defaults()
   analysis_args <- modifyList(defaults, metacell_args[
     intersect(names(metacell_args), names(defaults))
   ])
@@ -105,17 +112,16 @@
     stringsAsFactors = FALSE
   )
   list(
-    schema_version = "regcompass_celltype_graph_condition_joint_cache_v2",
+    schema_version = "regcompass_upstream_supercell2_condition_joint_cache_v3",
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    native_supercell_api = "SCimplify_by_graph_group_from_embedding",
-    graph_group_argument = "cell.graph.group",
-    condition_argument = "cell.split.condition",
-    graph_scope = "one_independent_graph_per_cell_type",
-    condition_scope = "all_conditions_joint_within_cell_type_graph",
-    embedding_scaling = "within_celltype_joint_condition_equal_modality_blocks",
+    native_supercell_api = "SCimplify_for_Seurat",
+    graph_scope = "one_native_multimodal_graph_per_cell_type",
+    condition_scope = "all_conditions_joint_then_membership_split",
+    graph_method = "SuperCell2_ComputeMultimodalKnn_WNN_then_walktrap",
+    aggregation_method = "SuperCell2_SCimplify_for_Seurat_membership_mode",
     ordered_cell_metadata_md5 = .rc_condition_metacell_md5(meta_signature),
     analysis_args = analysis_args,
     rna_counts = .rc_condition_metacell_matrix_fingerprint(
@@ -152,140 +158,181 @@
   if (!file.exists(contract_file) ||
       !identical(readRDS(contract_file), contract)) {
     stop(
-      "Existing metacell checkpoints use a different cell-type graph contract; set `metacell_args$overwrite = TRUE`.",
+      "Existing metacell checkpoints use a different SuperCell2 contract; set `metacell_args$overwrite = TRUE`.",
       call. = FALSE
     )
   }
   invisible(TRUE)
 }
 
-.rc_scale_embedding_block <- function(x) {
-  x <- as.matrix(x)
-  x <- scale(x)
-  x[!is.finite(x)] <- 0
-  if (ncol(x)) x / sqrt(ncol(x)) else x
-}
-
-.rc_scale_embedding_block_by_group <- function(x, group) {
-  x <- as.matrix(x)
-  group <- as.character(group)
-  if (nrow(x) != length(group)) {
-    stop("Embedding rows cannot be aligned to graph groups.", call. = FALSE)
-  }
-  out <- matrix(0, nrow = nrow(x), ncol = ncol(x),
-                dimnames = dimnames(x))
-  for (level in unique(group)) {
-    rows <- which(group == level)
-    out[rows, ] <- .rc_scale_embedding_block(x[rows, , drop = FALSE])
-  }
-  out
-}
-
-.rc_native_supercell_membership <- function(
-    object, condition_col, celltype_col, rna_reduction, atac_reduction,
-    rna_dims, atac_dims, gamma, seed, k.knn, do.approx, approx.N,
-    block.size, igraph.clustering) {
-  required_api <- "SCimplify_by_graph_group_from_embedding"
-  if (!requireNamespace("SuperCell", quietly = TRUE) ||
-      !required_api %in% getNamespaceExports("SuperCell")) {
+.rc_require_upstream_supercell2 <- function() {
+  if (!requireNamespace("SuperCell", quietly = TRUE)) {
     stop(
-      "RegCompass requires SuperCell::SCimplify_by_graph_group_from_embedding(). Install the companion SuperCell PR/branch before building metacells.",
+      "Package 'SuperCell' is required. Install GfellerLab/SuperCell@supercell-2.0 or the compatible Seurat-v4 fork.",
       call. = FALSE
     )
   }
+  api <- "SCimplify_for_Seurat"
+  if (!api %in% getNamespaceExports("SuperCell")) {
+    stop("Installed SuperCell does not export SCimplify_for_Seurat().",
+         call. = FALSE)
+  }
+  fun <- getExportedValue("SuperCell", api)
+  required <- c(
+    "seurat", "k.knn", "kith", "kernel", "gamma", "graph.name",
+    "assay", "reduction", "dims", "membership", "return.seurat"
+  )
+  missing <- setdiff(required, names(formals(fun)))
+  if (length(missing)) {
+    stop("Installed SCimplify_for_Seurat() lacks arguments: ",
+         paste(missing, collapse = ", "), ".", call. = FALSE)
+  }
+  fun
+}
+
+.rc_supercell2_call <- function(fun, args) {
+  supported <- intersect(names(args), names(formals(fun)))
+  do.call(fun, args[supported])
+}
+
+.rc_native_supercell_membership <- function(
+    object, condition_col, celltype_col, rna_assay, atac_assay,
+    rna_reduction, atac_reduction, rna_dims, atac_dims,
+    gamma, seed, k.knn, kith, kernel, graph.name, verbose) {
+  fun <- .rc_require_upstream_supercell2()
   cells <- colnames(object)
   meta <- object@meta.data[cells, , drop = FALSE]
-  celltype <- as.character(meta[[celltype_col]])
-  condition <- as.character(meta[[condition_col]])
-  rna <- SeuratObject::Embeddings(object[[rna_reduction]])[
-    cells, as.integer(rna_dims), drop = FALSE
-  ]
-  atac <- SeuratObject::Embeddings(object[[atac_reduction]])[
-    cells, as.integer(atac_dims), drop = FALSE
-  ]
-  embedding <- cbind(
-    .rc_scale_embedding_block_by_group(rna, celltype),
-    .rc_scale_embedding_block_by_group(atac, celltype)
-  )
-  rownames(embedding) <- cells
-  condition_input <- if (grepl("^\\.regcompass_condition", condition_col) &&
-      length(unique(condition)) == 1L) {
-    NULL
-  } else {
-    stats::setNames(condition, cells)
-  }
-  result <- SuperCell::SCimplify_by_graph_group_from_embedding(
-    X = embedding,
-    cell.graph.group = stats::setNames(celltype, cells),
-    cell.split.condition = condition_input,
-    gamma = as.integer(gamma),
-    k.knn = as.integer(k.knn),
-    n.pc = seq_len(ncol(embedding)),
-    do.approx = isTRUE(do.approx),
-    approx.N = as.integer(approx.N),
-    block.size = as.integer(block.size),
-    seed = as.integer(seed),
-    igraph.clustering = igraph.clustering,
-    return.singlecell.NW = FALSE,
-    return.hierarchical.structure = TRUE
-  )
-  if (!identical(result$graph_scope, "independent_by_cell.graph.group") ||
-      !identical(
-        result$condition_scope,
-        "joint_within_graph_group_then_membership_split"
-      )) {
-    stop("SuperCell returned an incompatible graph-scope contract.",
-         call. = FALSE)
-  }
-  raw <- as.character(result$membership)
-  if (length(raw) != length(cells)) {
-    stop("SuperCell membership length differs from the input cell count.",
-         call. = FALSE)
-  }
-  if (!is.null(names(result$membership))) {
-    index <- match(cells, names(result$membership))
-    if (anyNA(index)) {
-      stop("SuperCell membership does not cover every input cell.",
+  cell_types <- unique(as.character(meta[[celltype_col]]))
+  parent <- character(length(cells))
+  names(parent) <- cells
+  hierarchies <- list()
+  effective_gamma <- integer(length(cell_types))
+  names(effective_gamma) <- cell_types
+  for (i in seq_along(cell_types)) {
+    value <- cell_types[[i]]
+    selected <- cells[as.character(meta[[celltype_col]]) == value]
+    one <- subset(object, cells = selected)
+    gamma_i <- min(as.integer(gamma), length(selected))
+    if (gamma_i < 1L) {
+      stop("A cell type contains no cells after subsetting.", call. = FALSE)
+    }
+    set.seed(as.integer(seed) + i - 1L)
+    result <- .rc_supercell2_call(fun, list(
+      seurat = one,
+      k.knn = as.integer(k.knn),
+      kith = kith,
+      kernel = isTRUE(kernel),
+      gamma = gamma_i,
+      graph.name = graph.name,
+      assay = c(rna_assay, atac_assay),
+      reduction = list(rna_reduction, atac_reduction),
+      dims = list(as.integer(rna_dims), as.integer(atac_dims)),
+      membership = NULL,
+      metacellNormalization = FALSE,
+      avg.in.data = FALSE,
+      fragmentFiles = NULL,
+      label = NULL,
+      return.seurat = FALSE,
+      verbose = isTRUE(verbose)
+    ))
+    raw <- as.character(result$membership)
+    if (length(raw) != length(selected)) {
+      stop("SuperCell membership length differs from the cell-type subset.",
            call. = FALSE)
     }
-    raw <- raw[index]
+    if (!is.null(names(result$membership))) {
+      index <- match(selected, names(result$membership))
+      if (anyNA(index)) {
+        stop("SuperCell membership does not cover every input cell.",
+             call. = FALSE)
+      }
+      raw <- raw[index]
+    }
+    parent[selected] <- paste0(
+      .rc_safe_path_component(value), "::", raw
+    )
+    hierarchies[[value]] <- result$h_membership %||%
+      result$metacells_hierarchy %||% NULL
+    effective_gamma[[value]] <- gamma_i
   }
-  levels <- unique(raw)
+  if (any(!nzchar(parent))) {
+    stop("SuperCell did not assign every input cell.", call. = FALSE)
+  }
+  condition <- as.character(meta[[condition_col]])
+  final_key <- paste(parent[cells], condition, sep = "\001")
+  levels <- unique(final_key)
   width <- max(3L, nchar(length(levels)))
-  ids <- paste0("MC", sprintf(paste0("%0", width, "d"), seq_along(levels)))
-  map <- stats::setNames(ids, levels)
+  stable_ids <- paste0(
+    "MC", sprintf(paste0("%0", width, "d"), seq_along(levels))
+  )
+  map <- stats::setNames(stable_ids, levels)
   membership <- data.frame(
     cell_id = cells,
-    metacell_id = unname(map[raw]),
+    metacell_id = unname(map[final_key]),
+    parent_metacell_id = unname(parent[cells]),
     stringsAsFactors = FALSE
   )
-  list(membership = membership, supercell = result)
+  list(
+    membership = membership,
+    parent_hierarchies = hierarchies,
+    effective_gamma_by_celltype = effective_gamma,
+    upstream_api = "SCimplify_for_Seurat"
+  )
 }
 
 .rc_aggregate_native_metacell_counts <- function(
-    object, membership, rna_assay, atac_assay) {
+    object, membership, rna_assay, atac_assay,
+    rna_reduction, atac_reduction, rna_dims, atac_dims,
+    seed, metacellNormalization, avg.in.data, verbose,
+    parent_hierarchies = list()) {
+  fun <- .rc_require_upstream_supercell2()
   cells <- colnames(object)
-  membership <- membership[match(cells, membership$cell_id), , drop = FALSE]
-  groups <- unique(membership$metacell_id)
-  design <- Matrix::sparseMatrix(
-    i = seq_along(cells),
-    j = match(membership$metacell_id, groups),
-    x = 1,
-    dims = c(length(cells), length(groups)),
-    dimnames = list(cells, groups)
+  index <- match(cells, membership$cell_id)
+  if (anyNA(index)) {
+    stop("Metacell membership does not cover every input cell.", call. = FALSE)
+  }
+  membership <- membership[index, , drop = FALSE]
+  groups <- unique(as.character(membership$metacell_id))
+  numeric_membership <- match(membership$metacell_id, groups)
+  names(numeric_membership) <- cells
+  set.seed(as.integer(seed))
+  mc <- .rc_supercell2_call(fun, list(
+    seurat = object,
+    assay = c(rna_assay, atac_assay),
+    reduction = list(rna_reduction, atac_reduction),
+    dims = list(as.integer(rna_dims), as.integer(atac_dims)),
+    membership = numeric_membership,
+    metacellNormalization = isTRUE(metacellNormalization),
+    avg.in.data = isTRUE(avg.in.data),
+    fragmentFiles = NULL,
+    return.seurat = TRUE,
+    verbose = isTRUE(verbose)
+  ))
+  if (!inherits(mc, "Seurat") || ncol(mc) != length(groups)) {
+    stop("SuperCell membership aggregation returned an incompatible object.",
+         call. = FALSE)
+  }
+  current <- colnames(mc)
+  parsed <- suppressWarnings(as.integer(sub("^.*_", "", current)))
+  if (length(parsed) == length(groups) &&
+      !anyNA(parsed) && setequal(parsed, seq_along(groups))) {
+    mc <- mc[, order(parsed)]
+  }
+  if (ncol(mc) != length(groups)) {
+    stop("SuperCell aggregate columns cannot be aligned to memberships.",
+         call. = FALSE)
+  }
+  mc <- SeuratObject::RenameCells(mc, new.names = groups)
+  rna_counts <- .rc_as_sparse(.rc_get_assay_counts(mc, rna_assay))
+  atac_counts <- .rc_as_sparse(.rc_get_assay_counts(mc, atac_assay))
+  mc@misc$membership_table <- membership
+  mc@misc$regcompass_supercell_parent_hierarchies <- parent_hierarchies
+  mc@misc$regcompass_supercell_aggregation <- list(
+    api = "SCimplify_for_Seurat",
+    mode = "provided_condition_pure_membership",
+    metacellNormalization = isTRUE(metacellNormalization),
+    avg.in.data = isTRUE(avg.in.data)
   )
-  rna_counts <- .rc_as_sparse(
-    .rc_get_assay_counts(object, rna_assay)[, cells, drop = FALSE] %*% design
-  )
-  atac_counts <- .rc_as_sparse(
-    .rc_get_assay_counts(object, atac_assay)[, cells, drop = FALSE] %*% design
-  )
-  mc <- SeuratObject::CreateSeuratObject(
-    counts = rna_counts,
-    assay = rna_assay,
-    project = "RegCompassNativeSuperCell"
-  )
-  mc[[atac_assay]] <- SeuratObject::CreateAssayObject(counts = atac_counts)
   list(object = mc, rna_counts = rna_counts, atac_counts = atac_counts)
 }
 
@@ -306,7 +353,7 @@
   }
   if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
     stop(
-      "Native SuperCell metacells aggregate the existing ATAC count assay; `fragment_files` must be FALSE.",
+      "This condition-joint path aggregates the existing ATAC count assay; `fragment_files` must be FALSE.",
       call. = FALSE
     )
   }
@@ -328,40 +375,48 @@
   }
   reserved <- intersect(names(metacell_args), c(
     "object", "outdir", "condition_col", "celltype_col", "cell_type",
-    "rna_assay", "atac_assay", "fragment_files", "cell.graph.group",
-    "cell.annotation", "cell.split.condition"
+    "rna_assay", "atac_assay", "fragment_files", "membership", "assay",
+    "reduction", "dims", "label", "return.seurat"
   ))
   if (length(reserved)) {
     stop("`metacell_args` cannot override managed fields: ",
          paste(reserved, collapse = ", "), call. = FALSE)
   }
-  defaults <- list(
-    rna_reduction = "pca",
-    atac_reduction = "lsi",
-    rna_dims = 1:30,
-    atac_dims = 2:30,
-    gamma = 30L,
-    seed = 12345L,
-    min_cells_per_stratum = 20L,
-    min_metacell_size = 1L,
-    min_metacells_per_stratum = 1L,
-    k.knn = 5L,
-    do.approx = FALSE,
-    approx.N = 20000L,
-    block.size = 10000L,
-    igraph.clustering = "walktrap",
-    overwrite = FALSE
-  )
-  args <- modifyList(defaults, metacell_args)
-  numeric_controls <- c(
+  retired <- intersect(names(metacell_args), c(
+    "do.approx", "approx.N", "block.size", "igraph.clustering",
+    "cell.graph.group", "cell.split.condition"
+  ))
+  if (length(retired)) {
+    stop(
+      "Custom graph-wrapper arguments are no longer accepted: ",
+      paste(retired, collapse = ", "),
+      ". Use native SCimplify_for_Seurat controls.",
+      call. = FALSE
+    )
+  }
+  args <- modifyList(.rc_condition_metacell_defaults(), metacell_args)
+  integer_controls <- c(
     "gamma", "seed", "min_cells_per_stratum", "min_metacell_size",
-    "min_metacells_per_stratum", "k.knn", "approx.N", "block.size"
+    "min_metacells_per_stratum", "k.knn"
   )
-  for (field in numeric_controls) args[[field]] <- as.integer(args[[field]])
-  if (any(vapply(args[numeric_controls], function(x) {
+  for (field in integer_controls) args[[field]] <- as.integer(args[[field]])
+  if (any(vapply(args[integer_controls], function(x) {
     length(x) != 1L || is.na(x) || x < 1L
   }, logical(1)))) {
     stop("SuperCell numeric controls must be positive integers.", call. = FALSE)
+  }
+  if (!is.null(args$kith)) {
+    args$kith <- as.integer(args$kith)
+    if (length(args$kith) != 1L || is.na(args$kith) || args$kith < 1L) {
+      stop("`kith` must be NULL or one positive integer.", call. = FALSE)
+    }
+  }
+  for (field in c("kernel", "metacellNormalization", "avg.in.data",
+                  "verbose", "overwrite")) {
+    if (!is.logical(args[[field]]) || length(args[[field]]) != 1L ||
+        is.na(args[[field]])) {
+      stop("`", field, "` must be TRUE or FALSE.", call. = FALSE)
+    }
   }
   cells <- colnames(object)
   meta <- object@meta.data[cells, , drop = FALSE]
@@ -400,12 +455,17 @@
       rna_counts = readRDS(file.path(outdir, "rna_counts.rds")),
       atac_counts = readRDS(file.path(outdir, "atac_counts.rds"))
     )
-    native <- list(supercell = NULL)
+    native <- list(
+      parent_hierarchies = list(),
+      effective_gamma_by_celltype = numeric()
+    )
   } else {
     native <- .rc_native_supercell_membership(
       object = object,
       condition_col = condition_col,
       celltype_col = celltype_col,
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
       rna_reduction = args$rna_reduction,
       atac_reduction = args$atac_reduction,
       rna_dims = args$rna_dims,
@@ -413,10 +473,10 @@
       gamma = args$gamma,
       seed = args$seed,
       k.knn = args$k.knn,
-      do.approx = args$do.approx,
-      approx.N = args$approx.N,
-      block.size = args$block.size,
-      igraph.clustering = args$igraph.clustering
+      kith = args$kith,
+      kernel = args$kernel,
+      graph.name = args$graph.name,
+      verbose = args$verbose
     )
     membership <- native$membership
     source_index <- match(membership$cell_id, rownames(object@meta.data))
@@ -433,7 +493,7 @@
         length(unique(membership[[celltype_col]][rows])) != 1L
     }, logical(1))]
     if (length(impure)) {
-      stop("SuperCell returned mixed condition/cell-type metacells: ",
+      stop("Condition split produced impure metacells: ",
            paste(utils::head(impure, 10L), collapse = ", "), call. = FALSE)
     }
     stratum_mc <- table(interaction(
@@ -446,14 +506,30 @@
                  collapse = ", "), call. = FALSE)
     }
     mc_meta$low_power_metacell <- mc_meta$n_cells < args$min_metacell_size
-    mc_meta$effective_gamma <- args$gamma
+    mc_meta$effective_gamma <- as.integer(vapply(
+      as.character(mc_meta[[celltype_col]]),
+      function(value) native$effective_gamma_by_celltype[[value]],
+      integer(1)
+    ))
     mc_meta$requested_gamma <- args$gamma
-    mc_meta$fixed_gamma <- TRUE
-    mc_meta$pooling_scope <- "celltype_independent_graph_condition_joint"
-    mc_meta$celltype_role <- "SuperCell_cell.graph.group"
-    mc_meta$condition_role <- "SuperCell_cell.split.condition_after_joint_graph"
+    mc_meta$fixed_gamma_with_celltype_size_cap <- TRUE
+    mc_meta$pooling_scope <- "upstream_supercell2_celltype_graph_condition_joint"
+    mc_meta$celltype_role <- "one_SCimplify_for_Seurat_call_per_cell_type"
+    mc_meta$condition_role <- "post_walktrap_membership_split"
     aggregated <- .rc_aggregate_native_metacell_counts(
-      object, membership, rna_assay, atac_assay
+      object = object,
+      membership = membership,
+      rna_assay = rna_assay,
+      atac_assay = atac_assay,
+      rna_reduction = args$rna_reduction,
+      atac_reduction = args$atac_reduction,
+      rna_dims = args$rna_dims,
+      atac_dims = args$atac_dims,
+      seed = args$seed,
+      metacellNormalization = args$metacellNormalization,
+      avg.in.data = args$avg.in.data,
+      verbose = args$verbose,
+      parent_hierarchies = native$parent_hierarchies
     )
     rownames(mc_meta) <- mc_meta$metacell_id
     aggregated$object@meta.data <- mc_meta[
@@ -495,25 +571,29 @@
     condition_col = condition_col,
     celltype_col = celltype_col,
     selected_cell_types = unique(as.character(mc_meta[[celltype_col]])),
-    pooling_scope = "celltype_independent_graph_condition_joint",
+    pooling_scope = "upstream_supercell2_celltype_graph_condition_joint",
     cache_contract = contract,
     input_design = list(
       metacell_purity_grouping = c(condition_col, celltype_col),
       graph_grouping = celltype_col,
       condition_pooling = condition_col,
-      native_supercell_api = "SCimplify_by_graph_group_from_embedding",
-      graph_group_argument = "cell.graph.group",
-      condition_argument = "cell.split.condition",
-      graph_scope = "one_independent_graph_per_cell_type",
+      native_supercell_api = "SCimplify_for_Seurat",
+      graph_method = "ComputeMultimodalKnn_WNN",
+      clustering_method = "igraph_cluster_walktrap_and_cut_at",
+      aggregation_method = "SCimplify_for_Seurat_with_membership",
+      graph_scope = "one_independent_native_graph_per_cell_type",
       condition_scope = "all_conditions_joint_within_cell_type_graph",
-      membership_split_timing = "after_joint_graph_clustering",
-      embedding_scaling = "within_celltype_joint_condition_equal_modality_blocks",
+      membership_split_timing = "after_native_walktrap_clustering",
+      embedding_scaling = "native_SuperCell2_WNN_from_supplied_reductions",
       temporary_combined_stratum = FALSE,
       gamma = args$gamma,
+      k.knn = args$k.knn,
+      kernel = args$kernel,
       inference_policy = paste(
-        "Each broad cell type receives an independent multimodal graph;",
-        "all conditions of that cell type share one embedding transform and graph;",
-        "condition is applied only to split memberships after graph clustering"
+        "Each broad cell type is processed by upstream SuperCell2",
+        "SCimplify_for_Seurat using RNA and ATAC reductions; all conditions",
+        "share that graph, and the resulting membership is split by condition",
+        "before a second native membership-mode aggregation"
       ),
       sample_metadata = "not_used_or_retained"
     )
