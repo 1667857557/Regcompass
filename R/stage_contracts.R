@@ -272,13 +272,32 @@
 
 .rc_validate_layer2_stage <- function(
     layer2, layer1 = NULL, workflow_params = NULL, gem = NULL,
-    argument = "layer2") {
+    argument = "layer2", required_mode = NULL) {
   .rc_require_stage_class(
     layer2, "regcompass_layer2_step", argument, "rc_regcompass_step_layer2"
   )
   ids <- .rc_layer2_unit_ids(layer2)
-  if (!layer2$model_mode %in% c("meta_module_gem", "full_gem")) {
+  valid_modes <- c("meta_module_gem", "full_gem")
+  if (!is.character(layer2$model_mode) || length(layer2$model_mode) != 1L ||
+      is.na(layer2$model_mode) || !layer2$model_mode %in% valid_modes) {
     stop("Layer 2 model mode is invalid.", call. = FALSE)
+  }
+  if (!is.null(required_mode)) {
+    if (!is.character(required_mode) || length(required_mode) != 1L ||
+        is.na(required_mode) || !required_mode %in% valid_modes) {
+      stop(
+        "`required_mode` must be one of: ",
+        paste(valid_modes, collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+    if (!identical(layer2$model_mode, required_mode)) {
+      stop(
+        "Layer 2 model mode is `", layer2$model_mode,
+        "`; `", required_mode, "` is required.",
+        call. = FALSE
+      )
+    }
   }
   required_routes <- c(
     "penalty_condition_full_oof", "penalty_common_oof", "penalty_rna_only",
