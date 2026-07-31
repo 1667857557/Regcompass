@@ -20,11 +20,11 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{gem_version}{Pinned model release.}
 \item{gem_source}{Automatic, bundled-only, or download model source.}
 \item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
-\item{fragment_files}{Use \code{FALSE} for the existing ATAC peak-count path.}
+\item{fragment_files}{Use \code{FALSE}; metacell RNA and ATAC counts are aggregated from the existing assays.}
 \item{medium_scenario}{Optional built-in biological medium scenario.}
 \item{medium_scenarios}{Optional prebuilt built-in or user-defined medium table.}
 \item{progress}{Display workflow and stage progress.}
-\item{...}{Arguments passed to \code{rc_run_regcompass()}, including optional \code{condition_col}.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}, including optional \code{condition_col} and grouped-WNN \code{metacell_args}.}
 }
 \value{
 A complete RegCompass result with explicit \code{analysis_mode} and stage provenance.
@@ -42,12 +42,11 @@ The wrapped workflow automatically selects condition-aware Pando for two or more
 condition levels and original \code{Pando::infer_grn()} for one or zero usable
 levels. The standard route calculates no condition coefficients.
 
-Metacells use
-\code{SuperCell::SCimplify_by_graph_group_from_embedding()} with broad cell type
-as \code{cell.graph.group} and condition as \code{cell.split.condition}. Each
-cell type has an independent graph, all conditions within that cell type are
-jointly embedded, and condition is applied only after graph clustering. Both
-routes continue through the same RNA-support, GPR, reaction penalty, shared
-medium-specific model, and directional LP stages. \code{regulatory_alpha = 1}
-is fixed.
+Metacells use \code{SuperCell::SCimplify_by_graph_group()}. Each broad cell type
+has one independent RNA+ATAC WNN graph. All conditions within that cell type
+jointly determine adaptive modality weights, neighbours and Walktrap clusters;
+condition splits parent membership only after clustering. Small metacells are
+retained and marked. Both Pando routes continue through the same RNA-support,
+GPR, reaction penalty, shared medium-specific model, and directional LP stages.
+\code{regulatory_alpha = 1} is fixed.
 }
