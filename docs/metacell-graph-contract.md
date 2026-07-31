@@ -4,104 +4,97 @@ RegCompass Stage 2 separates **graph scope** from **metacell purity**.
 
 ## Required architecture
 
-For cell type \(t\), let
+For broad cell type \(t\), define
 
 \[
-I_t = \{i : c_i = t\}
+I_t = \{i : celltype_i=t\}.
 \]
 
-be all single cells of that cell type across every condition. RNA and ATAC
-embeddings are standardized only within \(I_t\), using all conditions jointly:
+All cells in \(I_t\), across every condition, are supplied together to one
+multimodal RNA+ATAC WNN construction:
 
 \[
-\widetilde Z^{(m)}_{t,ij} =
-\frac{Z^{(m)}_{ij}-\mu^{(m)}_{t,j}}
-     {s^{(m)}_{t,j}\sqrt{d_m}},
-\qquad
-\mu^{(m)}_{t,j}=\frac{1}{|I_t|}\sum_{i\in I_t}Z^{(m)}_{ij},
+G_t = \operatorname{WNN}\left(
+Z^{RNA}_{I_t}, Z^{ATAC}_{I_t}
+\right).
 \]
 
-where \(m\in\{RNA,ATAC\}\), \(d_m\) is the number of retained dimensions, and
-zero-variance dimensions are set to zero. Dividing by \(\sqrt{d_m}\) gives each
-modality block comparable total squared-distance weight.
-
-The joint cell-type embedding is
+The native SuperCell/Seurat WNN implementation learns adaptive RNA and ATAC
+modality weights within that cell type. Different broad cell types never share a
+single-cell graph:
 
 \[
-X_t = [\widetilde Z^{(RNA)}_t,\widetilde Z^{(ATAC)}_t].
+(i,j)\in E_t \Rightarrow celltype_i=celltype_j=t.
 \]
 
-A separate kNN graph \(G_t=(I_t,E_t)\) is constructed for every cell type:
+Walktrap clustering on \(G_t\) produces parent membership \(h_t(i)\). Condition
+is not used to define graphs, choose neighbours, or fit separate condition
+geometries. It is applied only after clustering:
 
 \[
-E_t = \{(i,j): j\in kNN_{X_t}(i)\}.
+M(i)=\operatorname{interaction}\left(t,h_t(i),condition_i\right).
 \]
 
-Therefore, for \(t\neq t'\), no edge can connect \(I_t\) and \(I_{t'}\). All
-conditions inside \(I_t\) are present during distance calculation, neighbour
-search, and graph clustering.
+Therefore final metacells satisfy both invariants:
 
-After graph clustering returns preliminary membership \(h_t(i)\), condition
-purity is imposed by the interaction
+1. **cell-type graph isolation:** graph edges never connect different broad cell types;
+2. **condition purity:** cells in one final metacell have one condition, while all conditions participated jointly in the parent WNN graph.
 
-\[
-M(i)=\operatorname{interaction}(t,h_t(i),q_i),
-\]
-
-where \(q_i\) is condition. Condition does not define a graph and is not used to
-standardize embeddings. It only splits a preliminary cluster when that cluster
-contains multiple conditions.
-
-This gives both required invariants:
-
-1. **cell-type graph isolation**: \((i,j)\in E\Rightarrow c_i=c_j\);
-2. **condition-pure metacells**: \(M(i)=M(j)\Rightarrow q_i=q_j\), while cells
-   from different conditions may still be neighbours in the shared cell-type
-   graph.
+Small condition-split metacells are retained. Stage 2 marks them with
+`low_power_metacell` according to `min_metacell_size`; it does not merge or
+remove them.
 
 ## SuperCell interface
 
-RegCompass calls
-`SuperCell::SCimplify_by_graph_group_from_embedding()` with:
+RegCompass calls:
 
-- `cell.graph.group = cell_type`;
-- `cell.split.condition = condition`;
-- no sample-derived grouping field.
-
-The formal provenance values are:
-
-```text
-native_supercell_api = SCimplify_by_graph_group_from_embedding
-graph_scope = one_independent_graph_per_cell_type
-condition_scope = all_conditions_joint_within_cell_type_graph
-membership_split_timing = after_joint_graph_clustering
-embedding_scaling = within_celltype_joint_condition_equal_modality_blocks
-temporary_combined_stratum = FALSE
+```r
+SuperCell::SCimplify_by_graph_group(
+  seurat = object,
+  cell.graph.group = object[[celltype_col]][, 1],
+  cell.split.condition = object[[condition_col]][, 1],
+  assay = c(rna_assay, atac_assay),
+  reduction = list(rna_reduction, atac_reduction),
+  dims = list(rna_dims, atac_dims),
+  k.knn = k.knn,
+  gamma = gamma
+)
 ```
 
-`cell.graph.group` determines which cells may enter the same graph.
-`cell.split.condition` preserves condition-pure output membership after the
-joint graph has been clustered.
+Canonical provenance values are:
 
-## Why the previous interface was insufficient
+```text
+native_supercell_api = SCimplify_by_graph_group
+graph_group_argument = cell.graph.group
+condition_argument = cell.split.condition
+graph_method = multimodal_WNN
+graph_scope = one_independent_WNN_graph_per_cell_type
+condition_scope = all_conditions_joint_within_cell_type_graph
+membership_split_timing = after_joint_WNN_graph_clustering
+modality_weighting = adaptive_WNN_within_cell_type
+temporary_combined_stratum = FALSE
+sample_metadata = not_used_or_retained
+```
 
-Passing cell type as a post-clustering annotation to a single global graph can
-prevent mixed metacells, but it does not prevent another cell type from changing
-nearest-neighbour ranks, graph density, or clustering cuts before the split.
-Conversely, splitting the input by condition before graph construction creates
-condition-specific geometries and makes metacells less directly comparable.
+RNA PCA and ATAC LSI reductions must already exist in a shared coordinate system
+for all conditions. They must not be recomputed separately by condition.
 
-The current contract avoids both errors: cell type is the graph boundary and
-condition is a post-clustering purity boundary.
+## Count aggregation
 
-## Relationship to Pando modes
+The grouped WNN call determines membership. RegCompass then passes the exact
+condition-pure membership to `SCimplify_for_Seurat()` in membership mode to
+aggregate RNA and ATAC counts. It does not rebuild the WNN graph during count
+aggregation.
 
-This Stage 2 contract is independent of automatic Stage 1 routing:
+## Relationship to Pando
 
-- `condition_grn` uses the canonical `pando_condition_grn_fit` output when at
-  least two condition levels are present;
-- `standard_pando` calls `Pando::infer_grn()` when condition metadata are absent
-  or contain one level. No condition coefficients are calculated in this mode.
+Stage 1 Pando and Stage 2 SuperCell use the same broad cell-type grouping but
+serve different roles:
 
-Both modes consume the same condition-pure metacell matrices and shared
-cell-type graph provenance downstream.
+- Pando jointly fits condition-aware TF–peak–gene effects within each cell type;
+- SuperCell jointly builds the WNN geometry within each cell type and splits
+  membership by condition after clustering;
+- RegCompass aggregates cell-level OOF regulatory projections using the exact
+  final membership.
+
+No `sample` column is required by the canonical workflow.
