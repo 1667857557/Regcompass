@@ -1,9 +1,11 @@
 #' Run RegCompass from species-aware defaults
 #'
 #' Loads a pinned Human-GEM or Mouse-GEM when `gem` is omitted, prepares the
-#' requested medium, and calls [rc_run_regcompass()]. Metacells use one
-#' independent graph per broad cell type while all conditions of that cell type
-#' are embedded jointly and split only after graph clustering.
+#' requested medium, and calls [rc_run_regcompass()]. Stage 2 uses one
+#' independent multimodal WNN graph per broad cell type. All conditions within
+#' that cell type jointly determine adaptive RNA/ATAC modality weights,
+#' neighbours and Walktrap clusters; condition splits parent membership only
+#' after clustering. Small metacells are retained and marked.
 #'
 #' When both medium arguments are omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`. Users may pass
@@ -19,11 +21,13 @@
 #' @param gem_source GEM source: automatic, bundled-only, or download.
 #' @param pfm Optional motif collection. Pando's bundled motifs are used when
 #'   omitted.
-#' @param fragment_files Must be `FALSE` for the canonical peak-count path.
+#' @param fragment_files Must be `FALSE`; metacell RNA and ATAC counts are
+#'   aggregated from the existing assays.
 #' @param medium_scenario Optional built-in biological scenario.
 #' @param medium_scenarios Optional prebuilt user-defined or built-in medium table.
 #' @param progress Show stage and total progress.
-#' @param ... Arguments passed to [rc_run_regcompass()].
+#' @param ... Arguments passed to [rc_run_regcompass()], including grouped-WNN
+#'   `metacell_args`.
 #' @return A complete RegCompass result.
 #' @export
 rc_run_regcompass_one_shot <- function(
