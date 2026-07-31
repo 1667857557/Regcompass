@@ -1,13 +1,13 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.2.1
+Version: 2.2.2
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     with genome-scale metabolic reaction analysis. When two or more condition
     levels are available, RegCompass fits one condition-aware Pando design per
-    broad cell type and uses condition-full outer-heldout TF-by-ATAC projections
+    broad cell type and uses condition-full outerheldout TF-by-ATAC projections
     as the primary regulatory penalty. Jointly estimable edges form an auditable
     common-support component; edges non-estimable in one or both conditions
     contribute projectable structural zeros in those conditions. When condition
@@ -125,8 +125,8 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@Supercell2,
-    1667857557/Pando_regcompass@agent/condition-full-primary
+    1667857557/SuperCell_Seurat_V4@1319730b15857d88f169a9006f6cf4e88993c0c7,
+    1667857557/Pando_regcompass@9972d0a576ecc55c8f4898cb85d4fd90f2b30b3b
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
