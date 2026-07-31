@@ -80,41 +80,37 @@ test_that("merged meta-modules contain biological reactions only", {
   expect_false(out$fastcore_applied)
 })
 
-test_that("metacells use one independent graph per cell type across conditions", {
-  native <- paste(
-    deparse(body(.rc_native_supercell_membership)), collapse = "\n"
+test_that("metacells use one grouped WNN graph per cell type", {
+  builder <- paste(
+    deparse(body(.rc_build_grouped_wnn_membership)), collapse = "\n"
   )
   wrapper <- paste(
     deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
+  expect_match(builder, "SCimplify_by_graph_group", fixed = TRUE)
+  expect_match(builder, "cell.graph.group", fixed = TRUE)
+  expect_match(builder, "cell.split.condition", fixed = TRUE)
+  expect_match(builder, "assay = c(rna_assay, atac_assay)", fixed = TRUE)
+  expect_false(grepl("cell.annotation", builder, fixed = TRUE))
+  expect_identical(.rc_condition_metacell_defaults()$gamma, 30L)
   expect_match(
-    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
-  )
-  expect_match(native, "cell.graph.group", fixed = TRUE)
-  expect_match(native, "cell.split.condition", fixed = TRUE)
-  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
-  expect_false(grepl("cell.annotation", native, fixed = TRUE))
-  expect_match(wrapper, "gamma = 30L", fixed = TRUE)
-  expect_match(
-    wrapper, "celltype_independent_graph_condition_joint", fixed = TRUE
+    wrapper, "celltype_grouped_joint_condition_WNN", fixed = TRUE
   )
   expect_false(grepl("supercell_stratum_col", wrapper, fixed = TRUE))
   expect_false(grepl("stratum_col", wrapper, fixed = TRUE))
 })
 
-test_that("native construction does not use posthoc cell-type assignment", {
+test_that("grouped construction does not use posthoc cell-type assignment", {
   text <- paste(
     deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
   expect_false(grepl(
     ".rc_assign_metacell_dominant_celltype", text, fixed = TRUE
   ))
-  expect_match(
-    text, "mixed condition/cell-type metacells", fixed = TRUE
-  )
+  expect_match(text, "Grouped WNN produced impure metacells", fixed = TRUE)
 })
 
-test_that("native metacells reject fragment pooling", {
+test_that("canonical metacells reject fragment pooling", {
   text <- paste(
     deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
