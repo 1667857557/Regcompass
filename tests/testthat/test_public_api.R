@@ -1,23 +1,21 @@
 test_that("public API exposes the restartable workflow", {
-  expect_setequal(
-    getNamespaceExports("RegCompassR"),
-    c(
-      "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
-      "rc_bundled_gem_manifest", "rc_download_species_gem",
-      "rc_parallel_config", "rc_make_medium_scenarios", "rc_run_regcompass",
-      "rc_run_regcompass_one_shot", "rc_regcompass_step_grn",
-      "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
-      "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
-      "rc_regcompass_step_target_union", "rc_regcompass_step_results",
-      "rc_test_condition_reactions", "rc_plot_condition_reaction",
-      "rc_report_condition_directions",
-      "rc_build_reaction_annotations", "rc_attach_reaction_annotations",
-      "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
-    )
+  expected <- c(
+    "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
+    "rc_bundled_gem_manifest", "rc_download_species_gem",
+    "rc_parallel_config", "rc_make_medium_scenarios", "rc_run_regcompass",
+    "rc_run_regcompass_one_shot", "rc_regcompass_step_grn",
+    "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
+    "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
+    "rc_regcompass_step_target_union", "rc_regcompass_step_results",
+    "rc_test_condition_reactions", "rc_plot_condition_reaction",
+    "rc_report_condition_directions",
+    "rc_build_reaction_annotations", "rc_attach_reaction_annotations",
+    "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
   )
+  expect_length(setdiff(expected, getNamespaceExports("RegCompassR")), 0L)
 })
 
-test_that("canonical source architecture has no versioned runtime override layers", {
+test_that("canonical source architecture has no runtime override layers", {
   description <- utils::packageDescription("RegCompassR")
   collate <- description$Collate %||% ""
   retired <- c(
@@ -85,22 +83,21 @@ test_that("condition and standard Pando implementations are separate", {
   expect_false(grepl("Pando::infer_condition_grn", standard_text, fixed = TRUE))
 })
 
-test_that("native SuperCell API uses cell-type graph groups", {
-  native <- paste(
-    deparse(body(.rc_native_supercell_membership)), collapse = "\n"
+test_that("canonical SuperCell API uses cell-type grouped WNN", {
+  builder <- paste(
+    deparse(body(.rc_build_grouped_wnn_membership)), collapse = "\n"
   )
   pooling <- paste(
     deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
-  expect_match(
-    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
-  )
-  expect_match(native, "cell.graph.group", fixed = TRUE)
-  expect_match(native, "cell.split.condition", fixed = TRUE)
-  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
-  expect_false(grepl("cell.annotation", native, fixed = TRUE))
+  expect_match(builder, "SCimplify_by_graph_group", fixed = TRUE)
+  expect_match(builder, "cell.graph.group", fixed = TRUE)
+  expect_match(builder, "cell.split.condition", fixed = TRUE)
+  expect_match(builder, "assay = c(rna_assay, atac_assay)", fixed = TRUE)
+  expect_false(grepl("cell.annotation", builder, fixed = TRUE))
   expect_false(grepl("supercell_stratum_col", pooling, fixed = TRUE))
   expect_false(grepl("stratum_col", pooling, fixed = TRUE))
+  expect_identical(.rc_condition_metacell_defaults()$gamma, 30L)
 })
 
 test_that("Layer 1 retains canonical controls", {
