@@ -12,6 +12,13 @@
     stop("Latent RNA estimation requires aligned non-negative counts and depth.",
          call. = FALSE)
   }
+  if (!is.numeric(structural_zero_probability) ||
+      length(structural_zero_probability) != 1L ||
+      !is.finite(structural_zero_probability) ||
+      structural_zero_probability < 0 || structural_zero_probability > 1) {
+    stop("`structural_zero_probability` must be in [0, 1].",
+         call. = FALSE)
+  }
   if (any(abs(counts - round(counts)) >
       sqrt(.Machine$double.eps) * pmax(1, abs(counts)))) {
     stop("Latent RNA estimation requires raw integer-like counts.",
@@ -55,8 +62,8 @@
   shape_unit <- prior_shape[, cell_type, drop = FALSE]
   rate_unit <- prior_rate[, cell_type, drop = FALSE]
   colnames(shape_unit) <- colnames(rate_unit) <- colnames(counts)
-  posterior_shape <- counts + shape_unit
-  posterior_rate <- sweep(rate_unit, 2L, exposure, "+")
+  posterior_shape <- observed_cpm + shape_unit
+  posterior_rate <- rate_unit + 1
   latent_cpm <- posterior_shape / posterior_rate
   positive <- matrix(
     stats::pgamma(
@@ -67,27 +74,33 @@
     ),
     nrow = nrow(counts), dimnames = dimnames(counts)
   )
+  observed_zero <- counts == 0
   zero_class <- matrix(
     "observed_positive", nrow(counts), ncol(counts),
     dimnames = dimnames(counts)
   )
-  observed_zero <- counts == 0
-  structural <- observed_zero & positive <= structural_zero_probability
-  zero_class[observed_zero & !structural] <- "sampling_limited_zero"
-  zero_class[structural] <- "credible_structural_zero"
-  latent_cpm[structural] <- 0
+  zero_class[observed_zero] <- "observed_zero_continuous_eb"
+  observation_weight <- 1 / posterior_rate
+  prior_weight <- rate_unit / posterior_rate
   list(
     latent_cpm = latent_cpm,
     latent_log_expression = log1p(latent_cpm),
     posterior_positive_probability = positive,
+    posterior_zero_probability = 1 - positive,
     zero_class = zero_class,
     observed_zero = observed_zero,
     prior_mean = prior_mean,
     prior_variance = prior_variance,
     prior_shape = prior_shape,
     prior_rate = prior_rate,
-    model = "gamma_poisson_empirical_bayes_by_cell_type_v2",
-    prior_estimation_scope = "gene_by_cell_type"
+    prior_weight = prior_weight,
+    observation_weight = observation_weight,
+    hard_structural_zero_used = FALSE,
+    structural_zero_probability_threshold = structural_zero_probability,
+    model = "normalized_unit_gamma_empirical_bayes_by_cell_type_v3",
+    prior_estimation_scope = "gene_by_cell_type",
+    posterior_update_scope =
+      "one_normalized_metacell_unit_independent_of_library_size"
   )
 }
 
@@ -421,7 +434,7 @@
   )
   fallback <- !is.finite(modifier_primary)
   list(
-    schema_version = "regcompass_regulatory_layer1_v2",
+    schema_version = "regcompass_regulatory_layer1_v3",
     analysis_mode = mode,
     reaction_expression = reaction_primary,
     reaction_expression_condition_full_oof = reaction_primary,
@@ -431,8 +444,10 @@
     rna_metacell_latent_log_expression = latent$latent_log_expression,
     rna_metacell_latent_cpm = latent$latent_cpm,
     posterior_positive_probability = latent$posterior_positive_probability,
-    posterior_zero_probability = 1 - latent$posterior_positive_probability,
+    posterior_zero_probability = latent$posterior_zero_probability,
     rna_zero_class = latent$zero_class,
+    eb_prior_weight = latent$prior_weight,
+    eb_observation_weight = latent$observation_weight,
     gene_support_rna = gene_support_rna,
     gene_support_condition_full_oof = gene_support_primary,
     gene_support_common_oof = gene_support_common,
@@ -469,16 +484,19 @@
         as.numeric(library_size[units]), units
       ),
       latent_expression_model = latent$model,
-      prior_estimation_scope = latent$prior_estimation_scope
+      prior_estimation_scope = latent$prior_estimation_scope,
+      posterior_update_scope = latent$posterior_update_scope,
+      eb_weight_library_size_dependent = FALSE
     ),
     zero_diagnostics = list(
       observed_zero_fraction = rowMeans(latent$observed_zero),
-      posterior_sampling_zero_fraction = rowMeans(
-        latent$zero_class == "sampling_limited_zero"
+      mean_posterior_zero_probability = rowMeans(
+        latent$posterior_zero_probability
       ),
-      credible_structural_zero_fraction = rowMeans(
-        latent$zero_class == "credible_structural_zero"
-      )
+      maximum_posterior_zero_probability = apply(
+        latent$posterior_zero_probability, 1L, max
+      ),
+      hard_structural_zero_used = latent$hard_structural_zero_used
     ),
     capacity_params = list(
       regulatory_alpha = 1,
