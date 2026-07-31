@@ -13,21 +13,24 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     contribute projectable structural zeros in those conditions. A supplied
     single-level condition directly uses original Pando infer_grn with unscaled
     predictors and no condition coefficients; an explicitly missing condition
-    column is rejected. Metacells retain the SuperCell2 SCimplify_for_Seurat
-    multimodal WNN and Walktrap workflow within each broad cell type. Conditions
-    share that native graph, after which membership is split by condition and
-    aggregated again through the native membership mode to guarantee pure
-    metacells. Metacell RNA and ATAC counts use exact SuperCell membership. RNA
-    latent expression uses normalized-unit empirical Bayes updates whose
-    shrinkage weights are independent of library size; observed zeros retain
-    continuous posterior evidence and are not threshold-clamped. Regulatory
-    modifiers act on bounded RNA-support odds, GPR rules produce reaction
-    expression, and each medium uses one shared union GEM and global FASTCORE
-    completion. Directional structural vmax is solved once per shared model and
-    target, then reused across metacells. Built-in medium scenarios are restricted
-    to formulations with direct published-paper provenance. Depth matching,
-    common-depth restriction, alpha sensitivity, zero-support sensitivity and
-    link-saturation propagation are not part of the canonical workflow.
+    column is rejected. Condition-aware runs require the registered Pando 1.5.1
+    C++ product and multitask kernels and stop immediately if native registration
+    or execution is unavailable. Metacells retain the SuperCell2
+    SCimplify_for_Seurat multimodal WNN and Walktrap workflow within each broad
+    cell type. Conditions share that native graph, after which membership is
+    split by condition and aggregated again through the native membership mode
+    to guarantee pure metacells. Metacell RNA and ATAC counts use exact SuperCell
+    membership. RNA latent expression uses normalized-unit empirical Bayes
+    updates whose shrinkage weights are independent of library size; observed
+    zeros retain continuous posterior evidence and are not threshold-clamped.
+    Regulatory modifiers act on bounded RNA-support odds, GPR rules produce
+    reaction expression, and each medium uses one shared union GEM and global
+    FASTCORE completion. Directional structural vmax is solved once per shared
+    model and target, then reused across metacells. Built-in medium scenarios are
+    restricted to formulations with direct published-paper provenance. Depth
+    matching, common-depth restriction, alpha sensitivity, zero-support
+    sensitivity and link-saturation propagation are not part of the canonical
+    workflow.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -138,7 +141,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@1319730b15857d88f169a9006f6cf4e88993c0c7,
-    1667857557/Pando_regcompass@651d887af1616fc67765d14c66f641cca4fdd28b
+    1667857557/Pando_regcompass@59f1684c5ee7c426968ced9f40d4597c83c072e3
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
