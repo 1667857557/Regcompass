@@ -141,7 +141,7 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4,
+    1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells,
     1667857557/Pando_regcompass
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
