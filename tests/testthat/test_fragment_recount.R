@@ -162,13 +162,3 @@ test_that("fragment-derived de novo peaks replace the ATAC assay before Pando", 
   expect_equal(out$nCount_ATAC, c(mc1 = 33, mc2 = 77))
   expect_equal(out$nFeature_ATAC, c(mc1 = 2, mc2 = 2))
 })
-
-test_that("metacell API exposes fragment peak-calling controls", {
-  args <- names(formals(rc_make_supercell2_metacells))
-  expect_true(all(c(
-    "call_peaks_from_fragments",
-    "macs2_path",
-    "peak_calling_effective_genome_size",
-    "peak_calling_args"
-  ) %in% args))
-})

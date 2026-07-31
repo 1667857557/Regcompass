@@ -11,25 +11,39 @@
     is.list(contract) &&
     identical(
       contract$schema_version,
-      "regcompass_celltype_graph_condition_joint_cache_v2"
+      "regcompass_celltype_wnn_condition_joint_cache"
     ) &&
-    identical(
-      design$native_supercell_api,
-      "SCimplify_by_graph_group_from_embedding"
-    ) &&
+    identical(design$native_supercell_api, "SCimplify_by_graph_group") &&
     identical(design$graph_group_argument, "cell.graph.group") &&
     identical(design$condition_argument, "cell.split.condition") &&
-    identical(design$graph_scope, "one_independent_graph_per_cell_type") &&
+    identical(design$graph_method, "multimodal_WNN") &&
+    identical(
+      design$graph_scope,
+      "one_independent_WNN_graph_per_cell_type"
+    ) &&
     identical(
       design$condition_scope,
       "all_conditions_joint_within_cell_type_graph"
     ) &&
-    identical(design$membership_split_timing, "after_joint_graph_clustering") &&
     identical(
-      design$embedding_scaling,
-      "within_celltype_joint_condition_equal_modality_blocks"
+      design$membership_split_timing,
+      "after_joint_WNN_graph_clustering"
+    ) &&
+    identical(
+      design$modality_weighting,
+      "adaptive_WNN_within_cell_type"
     ) &&
     identical(design$temporary_combined_stratum, FALSE) &&
+    identical(contract$native_supercell_api, design$native_supercell_api) &&
+    identical(contract$graph_group_argument, design$graph_group_argument) &&
+    identical(contract$condition_argument, design$condition_argument) &&
+    identical(contract$graph_scope, design$graph_scope) &&
+    identical(contract$condition_scope, design$condition_scope) &&
+    identical(
+      contract$membership_split_timing,
+      design$membership_split_timing
+    ) &&
+    identical(contract$modality_weighting, design$modality_weighting) &&
     identical(contract$condition_col, params$condition_col) &&
     identical(contract$celltype_col, params$celltype_col) &&
     identical(contract$rna_assay, params$rna_assay) &&
@@ -37,7 +51,7 @@
   if (!isTRUE(valid)) {
     stop(
       "`", argument,
-      "` is not a cell-type-independent, condition-joint SuperCell artifact; rerun Stage 2 with overwrite=TRUE.",
+      "` is not a cell-type-scoped, joint-condition WNN SuperCell artifact; rerun Stage 2 with overwrite=TRUE.",
       call. = FALSE
     )
   }
@@ -201,7 +215,7 @@
   } else {
     "standard_pando_full_fit"
   }
-  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v2") ||
+  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v3") ||
       !is.list(provenance) ||
       !identical(provenance$analysis_mode, mode) ||
       !identical(provenance$projection_origin, expected_origin) ||
@@ -258,79 +272,67 @@
 
 .rc_validate_layer2_stage <- function(
     layer2, layer1 = NULL, workflow_params = NULL, gem = NULL,
-    required_mode = NULL, argument = "layer2") {
+    argument = "layer2") {
   .rc_require_stage_class(
     layer2, "regcompass_layer2_step", argument, "rc_regcompass_step_layer2"
   )
   ids <- .rc_layer2_unit_ids(layer2)
-  comparison_matrices <- c(
-    "penalty_condition_full_oof",
-    "penalty_common_oof",
-    "penalty_condition_unique_increment",
-    "penalty_rna_only"
+  if (!layer2$model_mode %in% c("meta_module_gem", "full_gem")) {
+    stop("Layer 2 model mode is invalid.", call. = FALSE)
+  }
+  required_routes <- c(
+    "penalty_condition_full_oof", "penalty_common_oof", "penalty_rna_only",
+    "score_condition_full_oof", "score_common_oof", "score_rna_only"
   )
-  for (name in comparison_matrices) {
+  reference <- layer2$penalty
+  for (name in required_routes) {
     value <- layer2[[name]]
     if (!is.numeric(value) || is.null(dim(value)) ||
-        !identical(dimnames(value), dimnames(layer2$penalty))) {
-      stop("Layer 2 comparison matrices are missing or misaligned.",
+        !identical(dimnames(value), dimnames(reference))) {
+      stop("Layer 2 route `", name, "` is missing or misaligned.",
            call. = FALSE)
     }
   }
-  if (!identical(layer2$schema_version, "regcompass_regulatory_layer2_v2") ||
-      !identical(layer2$penalty, layer2$penalty_condition_full_oof)) {
-    stop("Layer 2 primary penalty schema is incompatible.", call. = FALSE)
+  if (!identical(layer2$penalty, layer2$penalty_condition_full_oof) ||
+      !identical(layer2$score, layer2$score_condition_full_oof)) {
+    stop("Layer 2 primary route must be condition-full OOF.", call. = FALSE)
   }
-  expected_increment <- layer2$penalty_condition_full_oof -
-    layer2$penalty_common_oof
-  finite <- is.finite(expected_increment) &
-    is.finite(layer2$penalty_condition_unique_increment)
-  if (any(is.finite(expected_increment) !=
-          is.finite(layer2$penalty_condition_unique_increment)) ||
-      any(abs(expected_increment[finite] -
-              layer2$penalty_condition_unique_increment[finite]) > 1e-10)) {
+  if (!identical(
+        layer2$penalty_condition_unique_increment,
+        layer2$penalty_condition_full_oof - layer2$penalty_common_oof
+      )) {
     stop("Layer 2 condition-unique penalty increment is inconsistent.",
          call. = FALSE)
   }
-  forbidden <- c(
-    "penalty_depth_matched_rna",
-    "penalty_common_depth_interval_rna",
-    "penalty_alpha_sensitivity",
-    "score_depth_matched_rna_display_only",
-    "score_common_depth_interval_rna_display_only",
-    "score_alpha_sensitivity_display_only"
-  )
-  if (any(forbidden %in% names(layer2))) {
-    stop("Layer 2 contains removed guardrail fields.", call. = FALSE)
+  if (!identical(
+        layer2$score_condition_unique_increment,
+        layer2$score_condition_full_oof - layer2$score_common_oof
+      )) {
+    stop("Layer 2 condition-unique score increment is inconsistent.",
+         call. = FALSE)
   }
   contract <- layer2$comparison_contract
-  if (!is.list(contract) ||
-      !identical(contract$primary, "penalty_condition_full_oof") ||
-      !identical(contract$common_component, "penalty_common_oof") ||
-      !identical(
-        contract$nonestimable_edge_policy,
-        "structural_zero_by_condition"
-      ) ||
-      !setequal(contract$removed_guardrails, c(
-        "depth_matching",
-        "common_depth_restriction",
-        "alpha_sensitivity",
-        "zero_support_sensitivity",
-        "link_saturation_propagation"
-      ))) {
-    stop("Layer 2 comparison contract is incompatible.", call. = FALSE)
+  required_contract <- c(
+    "primary_route", "shared_structure", "shared_medium",
+    "shared_directional_vmax", "normalization", "score_transform",
+    "removed_guardrails"
+  )
+  if (!is.list(contract) || !all(required_contract %in% names(contract)) ||
+      !identical(contract$primary_route, "condition_full_oof") ||
+      !identical(contract$shared_structure, TRUE) ||
+      !identical(contract$shared_medium, TRUE) ||
+      !identical(contract$shared_directional_vmax, TRUE)) {
+    stop("Layer 2 comparison contract is incomplete.", call. = FALSE)
   }
   if (!is.null(layer1)) {
     .rc_validate_layer1_stage(layer1, argument = "layer1")
+    if (!identical(ids, .rc_layer1_unit_ids(layer1))) {
+      stop("Layer 1 and Layer 2 unit IDs differ.", call. = FALSE)
+    }
   }
   if (!is.null(workflow_params)) {
     .rc_require_workflow_params(layer2, workflow_params, argument)
   }
   if (!is.null(gem)) .rc_require_stage_gem(layer2, gem, argument)
-  if (!is.null(required_mode) &&
-      !identical(as.character(layer2$model_mode), required_mode)) {
-    stop("`", argument, "` must use model mode `", required_mode, "`.",
-         call. = FALSE)
-  }
   invisible(ids)
 }

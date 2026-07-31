@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.2.3
+Version: 2.2.4
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -15,22 +15,23 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     predictors and no condition coefficients; an explicitly missing condition
     column is rejected. Condition-aware runs require the registered Pando >= 1.5.1
     C++ product and multitask kernels and stop immediately if native registration
-    or execution is unavailable. Metacells retain the SuperCell2
-    SCimplify_for_Seurat multimodal WNN and Walktrap workflow within each broad
-    cell type. Conditions share that native graph, after which membership is
-    split by condition and aggregated again through the native membership mode
-    to guarantee pure metacells. Metacell RNA and ATAC counts use exact SuperCell
-    membership. RNA latent expression uses normalized-unit empirical Bayes
-    updates whose shrinkage weights are independent of library size; observed
-    zeros retain continuous posterior evidence and are not threshold-clamped.
-    Regulatory modifiers act on bounded RNA-support odds, GPR rules produce
-    reaction expression, and each medium uses one shared union GEM and global
-    FASTCORE completion. Directional structural vmax is solved once per shared
-    model and target, then reused across metacells. Built-in medium scenarios are
-    restricted to formulations with direct published-paper provenance. Depth
-    matching, common-depth restriction, alpha sensitivity, zero-support
-    sensitivity and link-saturation propagation are not part of the canonical
-    workflow.
+    or execution is unavailable. Metacells use one independent multimodal WNN
+    graph per broad cell type through SuperCell SCimplify_by_graph_group. All
+    conditions within a cell type jointly determine adaptive RNA and ATAC
+    modality weights, neighbours, and Walktrap clusters; condition splits parent
+    membership only after clustering. Metacell RNA and ATAC counts use exact
+    SuperCell membership. Small metacells are retained and marked rather than
+    merged or removed. RNA latent expression uses normalized-unit empirical
+    Bayes updates whose shrinkage weights are independent of library size;
+    observed zeros retain continuous posterior evidence and are not
+    threshold-clamped. Regulatory modifiers act on bounded RNA-support odds,
+    GPR rules produce reaction expression, and each medium uses one shared union
+    GEM and global FASTCORE completion. Directional structural vmax is solved
+    once per shared model and target, then reused across metacells. Built-in
+    medium scenarios are restricted to formulations with direct published-paper
+    provenance. Depth matching, common-depth restriction, alpha sensitivity,
+    zero-support sensitivity and link-saturation propagation are not part of the
+    canonical workflow.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -140,7 +141,7 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@1319730b15857d88f169a9006f6cf4e88993c0c7,
+    1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells,
     1667857557/Pando_regcompass
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default

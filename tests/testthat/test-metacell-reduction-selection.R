@@ -29,31 +29,50 @@ test_that("Stage 2 accepts an existing Harmony RNA reduction", {
   )
   expect_identical(contract$analysis_args$rna_reduction, "harmony")
   expect_identical(contract$analysis_args$rna_dims, 1:2)
+  expect_identical(contract$analysis_args$gamma, 30L)
   expect_identical(contract$rna_reduction$reduction, "harmony")
   expect_identical(contract$rna_reduction$dims, 1:2)
   expect_true(nzchar(contract$rna_reduction$embedding$values_md5))
-  expect_identical(contract$graph_scope, "one_independent_graph_per_cell_type")
+  expect_identical(
+    contract$native_supercell_api,
+    "SCimplify_by_graph_group"
+  )
+  expect_identical(
+    contract$graph_scope,
+    "one_independent_WNN_graph_per_cell_type"
+  )
   expect_identical(
     contract$condition_scope,
     "all_conditions_joint_within_cell_type_graph"
   )
+  expect_identical(
+    contract$membership_split_timing,
+    "after_joint_WNN_graph_clustering"
+  )
 })
 
-test_that("Harmony selection reaches the graph-grouped SuperCell path", {
-  native <- paste(
-    deparse(body(.rc_native_supercell_membership)), collapse = "\n"
+test_that("Harmony selection reaches the grouped WNN SuperCell path", {
+  builder <- paste(
+    deparse(body(.rc_build_grouped_wnn_membership)), collapse = "\n"
   )
   wrapper <- paste(
     deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
   )
-  expect_match(native, "object[[rna_reduction]]", fixed = TRUE)
-  expect_match(native, "object[[atac_reduction]]", fixed = TRUE)
+  expect_match(builder, "SCimplify_by_graph_group", fixed = TRUE)
+  expect_match(
+    builder,
+    "reduction = list(rna_reduction, atac_reduction)",
+    fixed = TRUE
+  )
+  expect_match(
+    builder,
+    "dims = list(as.integer(rna_dims), as.integer(atac_dims))",
+    fixed = TRUE
+  )
   expect_match(wrapper, "rna_reduction = args$rna_reduction", fixed = TRUE)
   expect_match(wrapper, "atac_reduction = args$atac_reduction", fixed = TRUE)
-  expect_match(
-    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
-  )
-  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
+  expect_false(exists(".rc_native_supercell_membership", inherits = TRUE))
+  expect_false(exists(".rc_scale_embedding_block_by_group", inherits = TRUE))
 })
 
 test_that("a missing requested Harmony reduction fails before checkpoint reuse", {

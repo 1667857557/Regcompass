@@ -1,23 +1,19 @@
-test_that("companion remotes are immutable audited commits", {
-  description <- read.dcf("DESCRIPTION")
+test_that("companion remotes identify the stacked SuperCell dependency", {
+  description_path <- testthat::test_path("..", "..", "DESCRIPTION")
+  description <- read.dcf(description_path)
   remotes <- description[1L, "Remotes"]
   expect_match(
     remotes,
-    "SuperCell_Seurat_V4@1319730b15857d88f169a9006f6cf4e88993c0c7",
+    "1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells",
     fixed = TRUE
   )
-  expect_match(
-    remotes,
-    "Pando_regcompass@7d7f67f0f9fbd67e76e09fde13387696d41c82ab",
-    fixed = TRUE
-  )
-  expect_false(grepl("@Supercell2", remotes, fixed = TRUE))
-  expect_false(grepl("@agent/", remotes, fixed = TRUE))
+  expect_match(remotes, "1667857557/Pando_regcompass", fixed = TRUE)
+  expect_false(grepl("Pando_regcompass@", remotes, fixed = TRUE))
 })
 
 test_that("installed Pando retains optimized condition-GRN dispatch", {
   skip_if_not_installed("Pando")
-  expect_gte(packageVersion("Pando"), package_version("1.5.0"))
+  expect_gte(packageVersion("Pando"), package_version("1.5.1"))
   expect_true(is.function(Pando::infer_condition_grn))
   expect_true(is.function(Pando::condition_grn_fit))
   expect_true(is.function(Pando::project_condition_grn_primary_cells))
@@ -31,17 +27,18 @@ test_that("installed Pando retains optimized condition-GRN dispatch", {
   ))
 })
 
-test_that("installed SuperCell retains grouped graph semantics", {
+test_that("installed SuperCell exposes the canonical grouped WNN API", {
   skip_if_not_installed("SuperCell")
-  expect_true(
+  expect_true("SCimplify_by_graph_group" %in% getNamespaceExports("SuperCell"))
+  expect_false(
     "SCimplify_by_graph_group_from_embedding" %in%
       getNamespaceExports("SuperCell")
   )
-  formals <- names(formals(
-    SuperCell::SCimplify_by_graph_group_from_embedding
-  ))
+  api_formals <- names(formals(SuperCell::SCimplify_by_graph_group))
   expect_true(all(c(
-    "X", "cell.graph.group", "cell.split.condition",
-    "gamma", "k.knn", "n.pc"
-  ) %in% formals))
+    "seurat", "cell.graph.group", "cell.split.condition",
+    "assay", "reduction", "dims", "gamma", "k.knn"
+  ) %in% api_formals))
+  expect_identical(eval(formals(SuperCell::SCimplify_for_Seurat)$gamma), 30)
+  expect_identical(eval(formals(SuperCell::SCimplify_by_graph_group)$gamma), 30)
 })

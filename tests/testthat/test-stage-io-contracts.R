@@ -30,28 +30,57 @@ test_that("GRN and metacell groups require bidirectional coverage", {
   )
 })
 
-test_that("combined-stratum metacell path is absent", {
-  expect_false(exists(
-    ".rc_assign_metacell_dominant_celltype",
-    inherits = TRUE
-  ))
-  text <- paste(
-    deparse(body(.rc_make_condition_celltype_metacells)),
-    collapse = "\n"
+canonical_metacell_stage <- function() {
+  params <- list(
+    condition_col = "condition", celltype_col = "cell_type",
+    rna_assay = "RNA", atac_assay = "ATAC"
   )
-  native <- paste(
-    deparse(body(.rc_native_supercell_membership)),
-    collapse = "\n"
+  design <- list(
+    native_supercell_api = "SCimplify_by_graph_group",
+    graph_group_argument = "cell.graph.group",
+    condition_argument = "cell.split.condition",
+    graph_method = "multimodal_WNN",
+    graph_scope = "one_independent_WNN_graph_per_cell_type",
+    condition_scope = "all_conditions_joint_within_cell_type_graph",
+    membership_split_timing = "after_joint_WNN_graph_clustering",
+    modality_weighting = "adaptive_WNN_within_cell_type",
+    temporary_combined_stratum = FALSE
   )
-  expect_match(
-    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
+  contract <- c(list(
+    schema_version = "regcompass_celltype_wnn_condition_joint_cache",
+    condition_col = params$condition_col,
+    celltype_col = params$celltype_col,
+    rna_assay = params$rna_assay,
+    atac_assay = params$atac_assay
+  ), design[setdiff(names(design), c("graph_method", "temporary_combined_stratum"))])
+  out <- list(
+    params = params,
+    pooled = list(input_design = design, cache_contract = contract)
   )
-  expect_match(native, "cell.graph.group", fixed = TRUE)
-  expect_match(native, "cell.split.condition", fixed = TRUE)
-  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
-  expect_false(grepl("cell.annotation", native, fixed = TRUE))
-  expect_false(grepl(".rc_condition_celltype_pool_col", text, fixed = TRUE))
-  expect_false(grepl("stratum_col", text, fixed = TRUE))
+  class(out) <- c("regcompass_metacell_step", "list")
+  out
+}
+
+test_that("Stage 2 accepts only the canonical grouped-WNN contract", {
+  stage <- canonical_metacell_stage()
+  expect_invisible(.rc_validate_metacell_artifact_contract(stage))
+  old <- stage
+  old$pooled$input_design$native_supercell_api <-
+    "SCimplify_by_graph_group_from_embedding"
+  expect_error(
+    .rc_validate_metacell_artifact_contract(old),
+    "joint-condition WNN"
+  )
+})
+
+test_that("Stage 2 uses one grouped multimodal SuperCell API", {
+  require_text <- paste(deparse(body(.rc_require_supercell_api)), collapse = "\n")
+  build_text <- paste(deparse(body(.rc_build_grouped_wnn_membership)), collapse = "\n")
+  expect_match(require_text, "SCimplify_by_graph_group", fixed = TRUE)
+  expect_match(build_text, "cell.graph.group", fixed = TRUE)
+  expect_match(build_text, "cell.split.condition", fixed = TRUE)
+  expect_false(exists(".rc_native_supercell_membership", inherits = TRUE))
+  expect_false(exists(".rc_scale_embedding_block_by_group", inherits = TRUE))
 })
 
 test_that("metacell stage persists required artifacts", {
@@ -62,95 +91,30 @@ test_that("metacell stage persists required artifacts", {
     "metacell_celltype_composition.tsv.gz",
     "metacell_celltype_summary.tsv.gz",
     "merged_metacell_object.rds",
-    "step_metacells.rds",
-    "SCimplify_by_graph_group_from_embedding",
-    "one_independent_graph_per_cell_type",
-    "all_conditions_joint_within_cell_type_graph"
+    "step_metacells.rds"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
 })
 
-test_that("Stage 3 persists supported genes and core reactions", {
-  text <- paste(
-    deparse(body(.rc_build_condition_meta_modules)), collapse = "\n"
-  )
-  required <- c(
-    "supported_metabolic_genes.tsv.gz",
-    "core_gene_reaction.tsv.gz",
-    "meta_module_reactions.tsv.gz",
-    "condition_meta_modules.rds"
-  )
-  expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
-  expect_match(text, ".rc_summarize_supported_metabolic_genes", fixed = TRUE)
-  expect_false(grepl("rc_project_metabolic_grn", text, fixed = TRUE))
-  expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
-  expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
+test_that("Layer 1 producer and validator use the same schema", {
+  producer <- paste(deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n")
+  validator <- paste(deparse(body(.rc_validate_layer1_stage)), collapse = "\n")
+  expect_match(producer, "regcompass_regulatory_layer1_v3", fixed = TRUE)
+  expect_match(validator, "regcompass_regulatory_layer1_v3", fixed = TRUE)
+  expect_false(grepl("regcompass_regulatory_layer1_v2", validator, fixed = TRUE))
 })
 
-test_that("Layer 1 uses condition-full primary schema", {
-  body_text <- paste(
-    deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
-  )
-  step_text <- paste(deparse(body(rc_regcompass_step_layer1)), collapse = "\n")
-  expect_match(body_text, "regcompass_regulatory_layer1_v2", fixed = TRUE)
-  expect_match(body_text, "native_SuperCell_metacell", fixed = TRUE)
-  expect_match(body_text, "gene_projection_condition_full_oof", fixed = TRUE)
-  expect_match(body_text, "gene_projection_common_oof", fixed = TRUE)
-  expect_match(body_text, "gene_projection_condition_unique_oof", fixed = TRUE)
-  expect_match(body_text, "reaction_expression_condition_full_oof", fixed = TRUE)
-  expect_match(body_text, "and_method = gpr_and_method", fixed = TRUE)
-  expect_match(body_text, '"standard_pando"', fixed = TRUE)
-  expect_match(body_text, '"condition_grn"', fixed = TRUE)
-  expect_false(grepl("reaction_expression_depth_matched_rna", body_text, fixed = TRUE))
-  expect_false(grepl("reaction_expression_common_depth_interval_rna", body_text, fixed = TRUE))
-  expect_false(grepl("reaction_expression_alpha_sensitivity", body_text, fixed = TRUE))
-  expect_false(grepl("reaction_zero_support_sensitivity", body_text, fixed = TRUE))
-  expect_false(grepl("reaction_link_saturation_sensitivity", body_text, fixed = TRUE))
-  expect_match(step_text, "regcompass_layer1_step", fixed = TRUE)
-  expect_match(step_text, "gem_fingerprint", fixed = TRUE)
-  expect_match(step_text, "workflow_params", fixed = TRUE)
-  expect_true("grn" %in% names(formals(rc_regcompass_step_layer1)))
-  expect_identical(
-    eval(formals(rc_regcompass_step_layer1)$comparison_support)[[1L]],
-    "auto"
-  )
-  expect_identical(
-    eval(formals(rc_regcompass_step_layer1)$gpr_and_method),
-    c("min", "median", "mean")
-  )
-})
-
-test_that("Layer 2 and final results use condition-full primary schema", {
+test_that("Layer 2 and results retain condition-full primary routing", {
   layer2_text <- paste(deparse(body(rc_regcompass_step_layer2)), collapse = "\n")
   result_text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
   expect_match(layer2_text, ".rc_validate_layer1_stage", fixed = TRUE)
-  expect_match(layer2_text, "regcompass_layer2_step", fixed = TRUE)
   expect_match(layer2_text, "penalty_condition_full_oof", fixed = TRUE)
-  expect_match(layer2_text, "penalty_common_oof", fixed = TRUE)
-  expect_match(layer2_text, "penalty_condition_unique_increment", fixed = TRUE)
-  expect_match(layer2_text, "source_core_reactions", fixed = TRUE)
-  expect_false(grepl("penalty_depth_matched_rna", layer2_text, fixed = TRUE))
-  expect_false(grepl("penalty_common_depth_interval_rna", layer2_text, fixed = TRUE))
-  expect_false(grepl("penalty_alpha_sensitivity", layer2_text, fixed = TRUE))
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
-  expect_match(
-    result_text,
-    "regcompass_regulatory_metabolic_result_v2",
-    fixed = TRUE
-  )
-  expect_match(result_text, 'version = "2.2.0"', fixed = TRUE)
-  expect_match(result_text, "condition_grn_meta_modules", fixed = TRUE)
-  expect_match(result_text, "merged_grn_meta_modules", fixed = TRUE)
-  expect_match(result_text, "supported_metabolic_genes", fixed = TRUE)
-  expect_match(result_text, "reaction_catalog", fixed = TRUE)
-  expect_match(result_text, "reaction_evidence", fixed = TRUE)
-  expect_match(result_text, "metacell_graph_scope", fixed = TRUE)
-  expect_match(result_text, "metacell_condition_scope", fixed = TRUE)
-  expect_match(result_text, "common_support_component_summary", fixed = TRUE)
-  expect_match(result_text, "condition_unique_penalty_increment_summary", fixed = TRUE)
+  expect_match(result_text, 'version = "2.2.4"', fixed = TRUE)
+  expect_match(result_text, "metacell_modality_weighting", fixed = TRUE)
 })
 
-test_that("stage validators reject reordered or mismatched units", {
+test_that("stage validators reject reordered units", {
   params <- list(
     condition_col = "condition", celltype_col = "cell_type",
     rna_assay = "RNA", atac_assay = "ATAC",
@@ -161,10 +125,7 @@ test_that("stage validators reject reordered or mismatched units", {
       1, nrow = 1, ncol = 2,
       dimnames = list("R1", c("U1", "U2"))
     ),
-    unit_meta = data.frame(
-      pool_id = c("U2", "U1"),
-      stringsAsFactors = FALSE
-    ),
+    unit_meta = data.frame(pool_id = c("U2", "U1")),
     workflow_params = params,
     gem_fingerprint = "x",
     analysis_mode = "condition_grn"

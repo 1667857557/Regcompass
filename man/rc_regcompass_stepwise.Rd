@@ -56,7 +56,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"}; alternative candidate-screen values are rejected.}
-\item{metacell_args}{Stage 2 reductions, dimensions, fixed gamma, seed, size thresholds and cache controls.}
+\item{metacell_args}{Stage 2 RNA/ATAC reductions, dimensions, WNN neighbours, gamma, seed, size markers and cache controls.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{projection_component}{Must be \code{"condition"}.}
 \item{comparison_support}{Defines the pairwise/global common-support decomposition. It does not replace the condition-full primary route.}
@@ -67,7 +67,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{parallel}{Enable stage parallel execution.}
 \item{BPPARAM}{A \code{BiocParallelParam}, \code{NULL}, or \code{FALSE}. \code{TRUE} is invalid.}
 \item{progress}{Display stage progress.}
-\item{fragment_files}{Use \code{FALSE} for the existing peak-count path.}
+\item{fragment_files}{Use \code{FALSE}; Stage 2 aggregates the existing RNA and ATAC count assays by exact membership.}
 \item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
 \item{medium_scenarios}{Condition-invariant medium table.}
 \item{model_mode}{Build a shared model from the reaction catalogue or use the full GEM.}
@@ -81,17 +81,23 @@ Runs the GRN, metacell, reaction-catalogue, reaction-expression, metabolic-model
 and results stages independently.
 }
 \details{
-Stage 1 returns canonical unversioned condition fits with condition-full and
-common-support outer-heldout projections. Coefficient estimability is distinct
-from projectable structural-zero support: an unavailable coefficient remains
-\code{NA}, while its projection contribution is fixed at zero in that condition.
+Stage 1 returns canonical condition fits with condition-full and common-support
+outer-heldout projections. Coefficient estimability is distinct from projectable
+structural-zero support: an unavailable coefficient remains \code{NA}, while its
+projection contribution is fixed at zero in that condition.
 
-Stage 2 constructs one independent graph per broad cell type while all conditions
-of that cell type share the embedding and graph. Stage 4 uses condition-full OOF
-as the primary reaction-support route; common support is a decomposition and
-RNA-only is a control. Stage 5 reuses one structural model per medium and returns
-\code{penalty_condition_full_oof}, \code{penalty_common_oof},
-\code{penalty_condition_unique_increment}, and \code{penalty_rna_only}.
+Stage 2 calls \code{SuperCell::SCimplify_by_graph_group()}. It builds one
+independent multimodal WNN graph per broad cell type. All conditions within that
+cell type jointly determine adaptive RNA/ATAC modality weights, neighbours and
+Walktrap clusters. Condition splits parent membership only after clustering.
+Small metacells are retained and marked with \code{low_power_metacell}; they are
+not merged or removed.
+
+Stage 4 uses condition-full OOF as the primary reaction-support route; common
+support is a decomposition and RNA-only is a control. Stage 5 reuses one
+structural model per medium and returns \code{penalty_condition_full_oof},
+\code{penalty_common_oof}, \code{penalty_condition_unique_increment}, and
+\code{penalty_rna_only}.
 
 Depth matching, common-depth restriction, alpha sensitivity, zero-support
 sensitivity, and link-saturation propagation are absent from the canonical

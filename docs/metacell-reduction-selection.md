@@ -1,12 +1,17 @@
 # Select the RNA and ATAC reductions used for metacells
 
-RegCompass Stage 2 constructs multimodal SuperCell2 metacells from two cell-level embedding geometries:
+RegCompass Stage 2 constructs multimodal SuperCell metacells from two cell-level
+embedding geometries:
 
 - RNA reduction: `pca` dimensions `1:30` by default;
 - ATAC reduction: `lsi` dimensions `2:30` by default;
+- WNN neighbours: `k.knn = 30L` by default;
+- graining target: `gamma = 30L` by default;
 - base random seed: `12345L` by default.
 
-The RNA reduction is selectable. A precomputed Harmony reduction can replace PCA without changing how metacell RNA or ATAC counts are aggregated.
+For every broad cell type, all conditions are supplied jointly to one native
+RNA+ATAC WNN graph. Condition is used only after Walktrap clustering to split
+parent memberships into condition-pure final metacells.
 
 ## Complete Stage 2 parameter example
 
@@ -22,11 +27,12 @@ step2 <- rc_regcompass_step_metacells(
     rna_dims = 1:30,
     atac_reduction = "lsi",
     atac_dims = 2:30,
-    gamma = 30,
+    gamma = 30L,
+    k.knn = 30L,
     seed = 12345L,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10,
-    min_metacells_per_stratum = 2L,
+    min_cells_per_stratum = 20L,
+    min_metacell_size = 1L,
+    min_metacells_per_stratum = 1L,
     overwrite = FALSE
   )
 )
@@ -40,26 +46,45 @@ rna_dims = 1:30
 atac_reduction = "lsi"
 atac_dims = 2:30
 gamma = 30L
+k.knn = 30L
+kith = NULL
+kernel = TRUE
 seed = 12345L
-min_cells_per_stratum = 100L
-min_metacell_size = 20L
-min_metacells_per_stratum = 2L
+min_cells_per_stratum = 20L
+min_metacell_size = 1L
+min_metacells_per_stratum = 1L
+metacellNormalization = FALSE
+avg.in.data = FALSE
+verbose = FALSE
 overwrite = FALSE
 ```
 
-The same fields can be supplied to `rc_run_regcompass()` or `rc_run_regcompass_one_shot()` through `metacell_args`.
+`min_cells_per_stratum` is checked on each final condition × cell-type coverage
+stratum before graph construction. It does not cause separate condition graphs.
+`min_metacell_size` only marks `low_power_metacell`; small final metacells are
+not silently merged or removed.
+
+The same fields can be supplied to `rc_run_regcompass()` or
+`rc_run_regcompass_one_shot()` through `metacell_args`.
 
 ## Seed handling
 
-`seed` is the reproducible base seed. RegCompass builds condition strata in a deterministic order and passes a stratum-specific seed to SuperCell2:
+`seed` is the reproducible base seed. SuperCell processes broad cell-type graph
+groups in deterministic order and uses:
 
 ```text
-seed_for_stratum = seed + stratum_index - 1
+seed_for_graph_group = seed + graph_group_index - 1
 ```
 
-Thus repeated runs with the same cells, metadata, reductions, dimensions, and seed use the same seed sequence. Changing the ordering or identity of condition strata changes the assigned stratum-specific seeds and invalidates the cache contract.
+Repeated runs with the same cells, metadata, reductions, dimensions and seed
+therefore use the same seed sequence. Changing graph-group identity or order,
+condition labels, selected dimensions, counts or other cached inputs invalidates
+the Stage 2 cache contract.
 
 ## Use Harmony for the RNA geometry
+
+A precomputed Harmony reduction can replace PCA without changing how RNA or
+ATAC counts are aggregated:
 
 ```r
 stopifnot(
@@ -80,11 +105,9 @@ step2 <- rc_regcompass_step_metacells(
     rna_dims = 1:30,
     atac_reduction = "lsi",
     atac_dims = 2:30,
-    gamma = 30,
+    gamma = 30L,
+    k.knn = 30L,
     seed = 12345L,
-    min_cells_per_stratum = 500,
-    min_metacell_size = 10,
-    min_metacells_per_stratum = 2L,
     overwrite = TRUE
   )
 )
@@ -92,39 +115,57 @@ step2 <- rc_regcompass_step_metacells(
 
 ## What each geometry parameter changes
 
-- `rna_reduction`: the RNA embedding used to calculate multimodal cell similarity.
-- `rna_dims`: the exact RNA coordinates supplied to SuperCell2.
-- `atac_reduction`: the ATAC embedding used to calculate multimodal cell similarity.
-- `atac_dims`: the exact ATAC coordinates supplied to SuperCell2. LSI dimension 1 is excluded by default because it often tracks sequencing depth.
-- `gamma`: approximate cells-per-metacell compression target.
-- `seed`: deterministic base seed for SuperCell2.
+- `rna_reduction`: RNA embedding used by the multimodal WNN calculation.
+- `rna_dims`: exact RNA coordinates supplied to SuperCell.
+- `atac_reduction`: ATAC embedding used by the multimodal WNN calculation.
+- `atac_dims`: exact ATAC coordinates supplied to SuperCell. LSI dimension 1 is
+  excluded by default because it often tracks sequencing depth.
+- `k.knn`: number of neighbours in the cell-type-scoped WNN graph.
+- `gamma`: approximate cells-per-parent-metacell compression target.
+- `seed`: deterministic base seed for graph-group construction.
 
-The reduction names must exist in `A@reductions`, and the maximum requested dimension must not exceed the number of columns in the corresponding embedding.
+Reduction names must exist in `A@reductions`, and the maximum requested
+dimension must not exceed the number of columns in the corresponding embedding.
 
 ## What Harmony changes
 
-Harmony changes the RNA neighbourhood geometry used by SuperCell2 to decide which cells can be compressed together. It does not replace the RNA assay, alter RNA counts, or generate metacell expression values from Harmony coordinates. After memberships are determined, RegCompass aggregates the original RNA and ATAC assay counts.
+Harmony changes the RNA neighbourhood geometry used by SuperCell to decide which
+cells can be compressed together. It does not replace the RNA assay, alter RNA
+counts or generate metacell expression values from Harmony coordinates. After
+membership is determined, RegCompass aggregates the original RNA and ATAC assay
+counts.
 
-This distinction matters biologically:
+Use Harmony only when it removes technical distortion without erasing the
+biological condition contrast that RegCompass is intended to analyse. Never fit
+separate Harmony coordinates by condition for this workflow: all conditions
+must remain in one shared coordinate system within each broad cell type.
 
-- use PCA when biological condition differences and technical batch differences are already adequately controlled;
-- use Harmony when known technical batches distort the RNA geometry and the Harmony model was fitted without removing the biological contrast that RegCompass is intended to analyse;
-- do not use a Harmony reduction that integrated away the condition effect of interest.
+## Graph scope and condition purity
 
-Condition remains the only hard metacell stratum. `celltype_col` remains the SuperCell2 construction label regardless of whether PCA or Harmony is selected.
+The graph boundary and purity boundary are different:
+
+```text
+graph boundary     = broad cell type
+condition role     = post-clustering membership split
+sample role        = not used
+```
+
+Thus different broad cell types never share graph edges, while all conditions
+within one broad cell type jointly determine the same local WNN geometry.
 
 ## Cache and restart behaviour
 
 The Stage 2 cache contract records:
 
-- reduction names;
-- selected dimensions;
-- fingerprints of the selected embeddings;
-- ordered cells and labels;
-- RNA and ATAC assay fingerprints;
-- `gamma`, `seed`, and metacell thresholds.
+- reduction names and selected dimensions;
+- fingerprints of selected embeddings;
+- ordered cells, broad cell types and conditions;
+- RNA and ATAC count fingerprints;
+- grouped-WNN API and provenance fields;
+- `gamma`, `k.knn`, `seed` and metacell thresholds.
 
-Changing any of these inputs invalidates existing Stage 2 checkpoints. Rebuild explicitly:
+Changing any of these inputs invalidates existing Stage 2 checkpoints. Rebuild
+explicitly:
 
 ```r
 metacell_args = list(
@@ -132,13 +173,14 @@ metacell_args = list(
   rna_dims = 1:30,
   atac_reduction = "lsi",
   atac_dims = 2:30,
-  gamma = 30,
+  gamma = 30L,
+  k.knn = 30L,
   seed = 12345L,
   overwrite = TRUE
 )
 ```
 
-## Verify the selected reduction and seed
+## Verify the selected geometry and seed
 
 ```r
 step2$pooled$cache_contract$analysis_args[c(
@@ -147,14 +189,24 @@ step2$pooled$cache_contract$analysis_args[c(
   "atac_reduction",
   "atac_dims",
   "gamma",
+  "k.knn",
   "seed",
   "min_cells_per_stratum",
   "min_metacell_size",
   "min_metacells_per_stratum"
 )]
 
+step2$pooled$input_design[c(
+  "native_supercell_api",
+  "graph_scope",
+  "condition_scope",
+  "membership_split_timing",
+  "modality_weighting"
+)]
+
 step2$pooled$cache_contract$rna_reduction$embedding
 step2$pooled$cache_contract$atac_reduction$embedding
 ```
 
-The embedding objects are fingerprints of the exact coordinates used to construct the metacells.
+The embedding objects are fingerprints of the exact coordinates used to
+construct the metacells.

@@ -35,6 +35,7 @@ result <- rc_run_regcompass_one_shot(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
+    k.knn = 30L,
     seed = 12345L
   ),
   layer1_args = list(
@@ -51,6 +52,10 @@ result <- rc_run_regcompass_one_shot(
   )
 )
 ```
+
+The canonical metacell default is `gamma = 30`, corresponding to an approximate
+target of 30 cells per parent metacell before the post-clustering condition
+split.
 
 Built-in biological scenarios are:
 
@@ -69,8 +74,8 @@ The human nutrient composition is anchored to HPLM from *Cell* 2017 and its
 updated formulation from *Cell Metabolism* 2021. Plasmax from *Science
 Advances* 2019 is retained as independent validation and is not numerically
 averaged with HPLM. `mouse_plasma` uses a conservative metabolite set anchored
-to absolute mouse plasma and interstitial-fluid measurements in *Nature* 2026;
-unsupported components are omitted rather than copied from human HPLM.
+to absolute mouse plasma and interstitial-fluid measurements; unsupported
+components are omitted rather than copied from human HPLM.
 
 All five culture challenges use the same HPLM 2017/2021 basal composition and
 override only the named glucose, lactate, or glutamine concentration from the
@@ -80,7 +85,7 @@ through `scenario = "custom"` or `scenario = NULL` with `custom_medium` or
 `custom_metabolites`.
 
 With at least two conditions, Stage 1 uses `condition_grn`; otherwise it uses
-`standard_pando` through `Pando::infer_grn()` and calculates No condition
+`standard_pando` through `Pando::infer_grn()` and calculates no condition
 coefficients.
 
 A canonical run may explicitly omit condition metadata:
@@ -109,11 +114,13 @@ For condition-aware analysis:
 - exact-zero predictors remain represented without receiving fitted
   coefficients.
 
-Stage 2 calls `SCimplify_by_graph_group_from_embedding()` with
-`cell.graph.group = cell_type` and `cell.split.condition = condition`. The graph
-scope is `one_independent_graph_per_cell_type`; all conditions are joint within
-that graph (`all_conditions_joint_within_cell_type_graph`) and
-`temporary_combined_stratum = FALSE`.
+Stage 2 calls `SuperCell::SCimplify_by_graph_group()` with
+`cell.graph.group = cell_type` and `cell.split.condition = condition`. For each
+broad cell type, all conditions jointly determine one native RNA+ATAC WNN graph,
+adaptive modality weights, neighbours, and Walktrap parent clusters. Condition
+splits parent membership only after clustering, yielding condition-pure final
+metacells without condition-specific graph fitting. No sample-derived grouping
+or concatenated condition-by-cell-type stratum is used.
 
 The primary metabolic ranking uses the condition-full penalty. Common-support
 and RNA-only penalties are retained as decomposition/control outputs. The

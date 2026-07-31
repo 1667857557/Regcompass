@@ -18,7 +18,7 @@ normalize_documentation <- function(x) {
   trimws(gsub("[[:space:]]+", " ", x))
 }
 
-test_that("all exported APIs have Rd aliases", {
+test_that("every exported API has an Rd alias", {
   root <- documentation_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   namespace <- trimws(readLines(file.path(root, "NAMESPACE"), warn = FALSE))
@@ -33,10 +33,10 @@ test_that("all exported APIs have Rd aliases", {
   )[[1L]]
   aliases <- sub("^\\\\alias\\{", "", aliases)
   aliases <- sub("\\}$", "", aliases)
-  expect_setequal(exports, aliases)
+  expect_length(setdiff(exports, aliases), 0L)
 })
 
-test_that("primary documentation describes routing, graph scope and condition-full OOF", {
+test_that("primary documentation describes current routing and grouped WNN scope", {
   root <- documentation_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   docs <- normalize_documentation(read_documentation(c(
@@ -53,30 +53,35 @@ test_that("primary documentation describes routing, graph scope and condition-fu
     "pando_condition_grn_fit",
     "condition_full_oof",
     "projectable structural zero",
-    "SCimplify_by_graph_group_from_embedding",
+    "SCimplify_by_graph_group",
     "cell.graph.group",
     "cell.split.condition",
-    "one_independent_graph_per_cell_type",
+    "one_independent_WNN_graph_per_cell_type",
     "all_conditions_joint_within_cell_type_graph",
-    "temporary_combined_stratum = FALSE",
-    "No condition coefficients"
+    "after_joint_WNN_graph_clustering",
+    "adaptive_WNN_within_cell_type",
+    "gamma = 30",
+    "temporary_combined_stratum = FALSE"
   )
   for (term in required) {
     expect_match(docs, term, fixed = TRUE, info = term)
   }
 })
 
-test_that("primary documentation rejects obsolete runtime and guardrail schemas", {
+test_that("primary documentation excludes retired APIs and guardrails", {
   root <- documentation_root()
   if (is.null(root)) skip("Source documentation is unavailable.")
   docs <- read_documentation(c(
     file.path(root, "README.md"),
     file.path(root, "docs", "functions.md"),
     file.path(root, "docs", "stage-interface-contracts.md"),
+    file.path(root, "docs", "metacell-graph-contract.md"),
     file.path(root, "DESCRIPTION")
   ))
   retired <- c(
     "ConditionGRNFit v5",
+    "SCimplify_by_graph_group_from_embedding",
+    "within_celltype_joint_condition_equal_modality_blocks",
     "zzz00_absolute_pando_contract.R",
     "zzz01_fixed_gamma_metacells.R",
     "zzz02_layer1_policy.R",

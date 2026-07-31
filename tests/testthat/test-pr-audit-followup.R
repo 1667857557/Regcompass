@@ -1,4 +1,4 @@
-test_that("cell-type graph checkpoints require an identical cache contract", {
+test_that("grouped-WNN checkpoints require an identical cache contract", {
   outdir <- tempfile("regcompass-metacell-cache-")
   dir.create(outdir, recursive = TRUE)
   file.create(file.path(outdir, "metacell_metadata.tsv.gz"))
@@ -8,18 +8,25 @@ test_that("cell-type graph checkpoints require an identical cache contract", {
   file.create(file.path(outdir, "metacell_object.rds"))
 
   contract <- list(
-    schema_version = "regcompass_celltype_graph_condition_joint_cache_v2",
+    schema_version = "regcompass_celltype_wnn_condition_joint_cache",
     condition_col = "condition",
     celltype_col = "cell_type",
-    graph_scope = "one_independent_graph_per_cell_type",
+    rna_assay = "RNA",
+    atac_assay = "ATAC",
+    native_supercell_api = "SCimplify_by_graph_group",
+    graph_group_argument = "cell.graph.group",
+    condition_argument = "cell.split.condition",
+    graph_scope = "one_independent_WNN_graph_per_cell_type",
     condition_scope = "all_conditions_joint_within_cell_type_graph",
+    membership_split_timing = "after_joint_WNN_graph_clustering",
+    modality_weighting = "adaptive_WNN_within_cell_type",
     analysis_args = list(gamma = 30L)
   )
   expect_error(
     .rc_validate_condition_metacell_cache(
       outdir, contract, overwrite = FALSE
     ),
-    "different cell-type graph contract"
+    "different grouped-WNN contract"
   )
   saveRDS(
     contract,
@@ -34,7 +41,7 @@ test_that("cell-type graph checkpoints require an identical cache contract", {
     .rc_validate_condition_metacell_cache(
       outdir, changed, overwrite = FALSE
     ),
-    "different cell-type graph contract"
+    "different grouped-WNN contract"
   )
   expect_false(.rc_validate_condition_metacell_cache(
     outdir, changed, overwrite = TRUE
@@ -66,7 +73,7 @@ test_that("matrix fingerprints detect value changes beyond marginal sums", {
   ))
 })
 
-test_that("downstream stages require cell-type-independent condition-joint provenance", {
+test_that("downstream stages require grouped-WNN condition-joint provenance", {
   params <- list(
     condition_col = "condition",
     celltype_col = "cell_type",
@@ -75,30 +82,27 @@ test_that("downstream stages require cell-type-independent condition-joint prove
     analysis_mode = "condition_grn",
     metacell_args = list(gamma = 30L)
   )
+  design <- list(
+    native_supercell_api = "SCimplify_by_graph_group",
+    graph_group_argument = "cell.graph.group",
+    condition_argument = "cell.split.condition",
+    graph_method = "multimodal_WNN",
+    graph_scope = "one_independent_WNN_graph_per_cell_type",
+    condition_scope = "all_conditions_joint_within_cell_type_graph",
+    membership_split_timing = "after_joint_WNN_graph_clustering",
+    modality_weighting = "adaptive_WNN_within_cell_type",
+    temporary_combined_stratum = FALSE
+  )
+  contract <- c(list(
+    schema_version = "regcompass_celltype_wnn_condition_joint_cache",
+    condition_col = "condition",
+    celltype_col = "cell_type",
+    rna_assay = "RNA",
+    atac_assay = "ATAC"
+  ), design[setdiff(names(design), c("graph_method", "temporary_combined_stratum"))])
   current <- structure(
     list(
-      pooled = list(
-        input_design = list(
-          native_supercell_api =
-            "SCimplify_by_graph_group_from_embedding",
-          graph_group_argument = "cell.graph.group",
-          condition_argument = "cell.split.condition",
-          graph_scope = "one_independent_graph_per_cell_type",
-          condition_scope = "all_conditions_joint_within_cell_type_graph",
-          membership_split_timing = "after_joint_graph_clustering",
-          embedding_scaling =
-            "within_celltype_joint_condition_equal_modality_blocks",
-          temporary_combined_stratum = FALSE
-        ),
-        cache_contract = list(
-          schema_version =
-            "regcompass_celltype_graph_condition_joint_cache_v2",
-          condition_col = "condition",
-          celltype_col = "cell_type",
-          rna_assay = "RNA",
-          atac_assay = "ATAC"
-        )
-      ),
+      pooled = list(input_design = design, cache_contract = contract),
       params = params
     ),
     class = c("regcompass_metacell_step", "list")
@@ -118,7 +122,7 @@ test_that("downstream stages require cell-type-independent condition-joint prove
       "metacells",
       "rc_regcompass_step_metacells"
     ),
-    "not a cell-type-independent, condition-joint SuperCell artifact"
+    "not a cell-type-scoped, joint-condition WNN SuperCell artifact"
   )
 })
 
@@ -161,4 +165,6 @@ test_that("the public function index identifies automatic and stepwise modes", {
   expect_match(text, "Restartable stages", fixed = TRUE)
   expect_match(text, "standard_pando", fixed = TRUE)
   expect_match(text, "condition_grn", fixed = TRUE)
+  expect_match(text, "SCimplify_by_graph_group", fixed = TRUE)
+  expect_match(text, "gamma = 30L", fixed = TRUE)
 })

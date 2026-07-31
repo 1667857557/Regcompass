@@ -61,21 +61,19 @@ test_that("condition Layer 1 uses cell-first primary and common Pando projection
   expect_match(implementation, "condition_unique", fixed = TRUE)
 })
 
-test_that("metacell builder uses graph-grouped SuperCell inputs", {
+test_that("metacell builder uses the canonical grouped WNN API", {
   expect_true(exists(
     ".rc_make_condition_celltype_metacells", inherits = TRUE
   ))
-  native <- paste(
-    deparse(body(.rc_native_supercell_membership)), collapse = "\n"
+  builder <- paste(
+    deparse(body(.rc_build_grouped_wnn_membership)), collapse = "\n"
   )
-  expect_match(
-    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
-  )
-  expect_match(native, "cell.graph.group", fixed = TRUE)
-  expect_match(native, "cell.split.condition", fixed = TRUE)
-  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
-  expect_false(grepl("cell.annotation", native, fixed = TRUE))
-  expect_false(grepl("stratum_col", native, fixed = TRUE))
+  expect_match(builder, "SCimplify_by_graph_group", fixed = TRUE)
+  expect_match(builder, "cell.graph.group", fixed = TRUE)
+  expect_match(builder, "cell.split.condition", fixed = TRUE)
+  expect_match(builder, "return.group.results = FALSE", fixed = TRUE)
+  expect_false(exists(".rc_native_supercell_membership", inherits = TRUE))
+  expect_false(exists(".rc_scale_embedding_block_by_group", inherits = TRUE))
 })
 
 test_that("regulatory integration is bounded and zero preserving", {

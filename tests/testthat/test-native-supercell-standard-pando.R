@@ -30,33 +30,44 @@ test_that("condition design selects the intended Pando mode", {
   expect_true(design$condition_col %in% colnames(design$object@meta.data))
 })
 
-test_that("metacell workflow delegates graphing and aggregation to upstream SuperCell2", {
+test_that("metacell workflow delegates grouped graphing and count aggregation to SuperCell", {
   membership_fun <- get(
-    ".rc_native_supercell_membership",
+    ".rc_build_grouped_wnn_membership",
     envir = asNamespace("RegCompassR"),
     inherits = FALSE
   )
   aggregation_fun <- get(
-    ".rc_aggregate_native_metacell_counts",
+    ".rc_aggregate_metacell_counts",
     envir = asNamespace("RegCompassR"),
     inherits = FALSE
   )
   membership_text <- paste(deparse(body(membership_fun)), collapse = "\n")
   aggregation_text <- paste(deparse(body(aggregation_fun)), collapse = "\n")
-  expect_match(membership_text, "SCimplify_for_Seurat", fixed = TRUE)
-  expect_match(membership_text, "return.seurat = FALSE", fixed = TRUE)
-  expect_match(membership_text, "paste(parent[cells], condition", fixed = TRUE)
+
+  expect_match(membership_text, "SCimplify_by_graph_group", fixed = TRUE)
+  expect_match(membership_text, "cell.graph.group", fixed = TRUE)
+  expect_match(membership_text, "cell.split.condition", fixed = TRUE)
+  expect_match(membership_text, "return.group.results = FALSE", fixed = TRUE)
+  expect_match(membership_text, "assay = c(rna_assay, atac_assay)", fixed = TRUE)
+  expect_match(aggregation_text, "SCimplify_for_Seurat", fixed = TRUE)
   expect_match(aggregation_text, "membership = numeric_membership", fixed = TRUE)
   expect_match(aggregation_text, "return.seurat = TRUE", fixed = TRUE)
-  expect_false(grepl("SCimplify_by_graph_group_from_embedding", membership_text,
-                     fixed = TRUE))
-  expect_false(grepl(".rc_scale_embedding_block_by_group", membership_text,
-                     fixed = TRUE))
+
+  expect_false(exists(
+    ".rc_native_supercell_membership",
+    envir = asNamespace("RegCompassR"),
+    inherits = FALSE
+  ))
+  expect_false(exists(
+    ".rc_aggregate_native_metacell_counts",
+    envir = asNamespace("RegCompassR"),
+    inherits = FALSE
+  ))
 })
 
-test_that("native SuperCell2 defaults retain WNN-oriented upstream controls", {
+test_that("canonical grouped WNN defaults use gamma 30", {
   defaults <- RegCompassR:::.rc_condition_metacell_defaults()
-  expect_identical(defaults$gamma, 20L)
+  expect_identical(defaults$gamma, 30L)
   expect_identical(defaults$k.knn, 30L)
   expect_true(defaults$kernel)
   expect_null(defaults$kith)

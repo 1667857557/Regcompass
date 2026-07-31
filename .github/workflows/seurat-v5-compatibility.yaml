@@ -33,7 +33,7 @@ jobs:
             liblzma-dev \
             zlib1g-dev
 
-      - name: Install latest Seurat v5 stack and package dependencies
+      - name: Install Seurat v5 stack and companion packages
         shell: Rscript {0}
         env:
           GITHUB_PAT: ${{ github.token }}
@@ -41,7 +41,7 @@ jobs:
           options(timeout = 1200)
           install.packages(c(
             "Matrix", "matrixStats", "testthat", "highs",
-            "BiocManager", "remotes"
+            "BiocManager", "remotes", "igraph"
           ))
           BiocManager::install(
             c(
@@ -65,19 +65,13 @@ jobs:
             dependencies = NA, upgrade = "never"
           )
           remotes::install_github(
-            paste0(
-              "1667857557/SuperCell_Seurat_V4@",
-              "1319730b15857d88f169a9006f6cf4e88993c0c7"
-            ),
+            "1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells",
             dependencies = NA,
             upgrade = "never",
             auth_token = Sys.getenv("GITHUB_PAT")
           )
           remotes::install_github(
-            paste0(
-              "1667857557/Pando_regcompass@",
-              "7d7f67f0f9fbd67e76e09fde13387696d41c82ab"
-            ),
+            "1667857557/Pando_regcompass",
             dependencies = NA,
             upgrade = "never",
             auth_token = Sys.getenv("GITHUB_PAT")
@@ -92,28 +86,17 @@ jobs:
             function(package) as.character(packageVersion(package)),
             character(1)
           )
-          if (!identical(observed, expected)) {
-            stop(
-              "Unexpected Seurat v5 stack: ",
-              paste(names(observed), observed, sep = "=", collapse = ", ")
-            )
-          }
-          if (packageVersion("Pando") < package_version("1.5.0")) {
-            stop("Pando >= 1.5.0 is required")
-          }
+          stopifnot(identical(observed, expected))
           stopifnot(
+            packageVersion("Pando") >= package_version("1.5.1"),
             is.function(Pando::infer_condition_grn),
             is.function(Pando::condition_grn_fit),
             is.function(Pando::project_condition_grn_primary_cells),
-            is.function(SuperCell::SCimplify_by_graph_group_from_embedding),
-            all(
-              c("backend", "verified_estimability_mask") %in%
-                names(formals(Pando:::.condition_fit_multitask_path))
-            ),
-            all(
-              c("cache", "estimability_verified", "solver") %in%
-                names(formals(Pando:::.condition_refit_shared_baseline))
-            )
+            is.function(SuperCell::SCimplify_by_graph_group),
+            identical(eval(formals(SuperCell::SCimplify_for_Seurat)$gamma), 30),
+            identical(eval(formals(SuperCell::SCimplify_by_graph_group)$gamma), 30),
+            !("SCimplify_by_graph_group_from_embedding" %in%
+              getNamespaceExports("SuperCell"))
           )
 
       - name: Install RegCompassR
@@ -121,114 +104,94 @@ jobs:
         run: |
           R CMD INSTALL --no-multiarch --with-keep.source --install-tests .
 
-      - name: Run Seurat, Pando, and SuperCell compatibility tests
+      - name: Validate grouped WNN and Seurat v5 contracts
         shell: Rscript {0}
         run: |
           library(RegCompassR)
           library(Pando)
+          library(SuperCell)
+          library(Seurat)
+          library(Signac)
+
           profile <- RegCompassR:::.rc_validate_seurat_stack_versions(
             RegCompassR:::.rc_seurat_stack_versions()
           )
           stopifnot(identical(profile$profile, "seurat_v5_compatible"))
           stopifnot(is.function(Pando::LayerData))
+          stopifnot(identical(
+            RegCompassR:::.rc_condition_metacell_defaults()$gamma,
+            30L
+          ))
 
           old_option <- getOption("Seurat.object.assay.version")
           on.exit(options(Seurat.object.assay.version = old_option), add = TRUE)
           options(Seurat.object.assay.version = "v3")
-          counts <- Matrix::Matrix(
-            matrix(c(1, 0, 2, 3, 0, 1, 4, 0), nrow = 2),
-            sparse = TRUE,
-            dimnames = list(c("g1", "g2"), paste0("cell", 1:4))
-          )
-          object <- Seurat::CreateSeuratObject(counts = counts)
-          stopifnot(!inherits(object[["RNA"]], "Assay5"))
-          stopifnot(isTRUE(all.equal(
-            as.matrix(SuperCell:::.sc_get_assay_data(
-              object, assay = "RNA", slot = "counts"
-            )),
-            as.matrix(counts)
-          )))
-          peaks <- Matrix::Matrix(
-            matrix(c(1, 0, 0, 2, 0, 3, 1, 0), nrow = 2),
-            sparse = TRUE,
-            dimnames = list(c("chr1-1-10", "chr1-20-30"), colnames(counts))
-          )
-          object[["ATAC"]] <- Signac::CreateChromatinAssay(
-            counts = peaks,
-            sep = c("-", "-")
-          )
-          stopifnot(isTRUE(all.equal(
-            as.matrix(SuperCell:::.sc_get_assay_data(
-              object, assay = "ATAC", slot = "counts"
-            )),
-            as.matrix(peaks)
-          )))
 
-          cell_ids <- paste0("x", seq_len(12))
-          embedding <- rbind(
-            c(0, 0), c(0.01, 0), c(1, 0), c(1.01, 0), c(2, 0), c(2.01, 0),
-            c(0, 0.001), c(0.01, 0.001), c(1, 0.001), c(1.01, 0.001),
-            c(2, 0.001), c(2.01, 0.001)
+          cells <- paste0("cell", seq_len(12))
+          rna <- Matrix::Matrix(
+            matrix(seq_len(48), nrow = 4), sparse = TRUE,
+            dimnames = list(paste0("g", 1:4), cells)
           )
-          rownames(embedding) <- cell_ids
-          graph_group <- stats::setNames(rep(c("A", "B"), each = 6), cell_ids)
-          condition <- stats::setNames(rep(c("C", "D"), 6), cell_ids)
-          graph_result <- SuperCell::SCimplify_by_graph_group_from_embedding(
-            X = embedding,
+          atac <- Matrix::Matrix(
+            matrix(rev(seq_len(48)), nrow = 4), sparse = TRUE,
+            dimnames = list(paste0("chr1-", seq(1, 31, 10), "-", seq(10, 40, 10)), cells)
+          )
+          object <- CreateSeuratObject(counts = rna)
+          object[["ATAC"]] <- CreateChromatinAssay(counts = atac, sep = c("-", "-"))
+          object[["pca"]] <- CreateDimReducObject(
+            embeddings = matrix(
+              seq_len(36), nrow = 12,
+              dimnames = list(cells, paste0("PC_", 1:3))
+            ),
+            key = "PC_", assay = "RNA"
+          )
+          object[["lsi"]] <- CreateDimReducObject(
+            embeddings = matrix(
+              rev(seq_len(36)), nrow = 12,
+              dimnames = list(cells, paste0("LSI_", 1:3))
+            ),
+            key = "LSI_", assay = "ATAC"
+          )
+          graph_group <- stats::setNames(rep(c("A", "B"), each = 6), cells)
+          condition <- stats::setNames(rep(c("C", "D"), 6), cells)
+          graph_result <- SuperCell::SCimplify_by_graph_group(
+            seurat = object,
             cell.graph.group = graph_group,
             cell.split.condition = condition,
+            assay = c("RNA", "ATAC"),
+            reduction = list("pca", "lsi"),
+            dims = list(1:3, 1:3),
             gamma = 2,
-            k.knn = 1,
-            n.pc = c(2, 1),
-            return.singlecell.NW = TRUE,
-            return.hierarchical.structure = FALSE
+            k.knn = 2,
+            seed = 11
+          )
+          membership_groups <- split(
+            names(graph_result$membership), graph_result$membership
           )
           stopifnot(
-            identical(graph_result$n.pc, c(2L, 1L)),
             identical(
               graph_result$graph_scope,
-              "independent_by_cell.graph.group"
+              "independent_WNN_by_cell.graph.group"
             ),
             identical(
               graph_result$condition_scope,
               "joint_within_graph_group_then_membership_split"
             ),
-            isTRUE(graph_result$graph_supercells_available)
-          )
-          membership_groups <- split(
-            names(graph_result$membership), graph_result$membership
-          )
-          stopifnot(all(vapply(membership_groups, function(ids) {
-            length(unique(graph_group[ids])) == 1L &&
-              length(unique(condition[ids])) == 1L
-          }, logical(1))))
-          supercell_vertices <- as.character(
-            igraph::V(graph_result$graph.supercells)$name
-          )
-          stopifnot(
-            !anyDuplicated(supercell_vertices),
-            setequal(supercell_vertices, names(membership_groups)),
-            setequal(names(graph_result$supercell_size), names(membership_groups))
-          )
-          edges <- igraph::as_edgelist(
-            graph_result$graph.singlecell, names = TRUE
-          )
-          stopifnot(
-            all(graph_group[edges[, 1]] == graph_group[edges[, 2]])
-          )
-          cross_condition_edges <- sum(
-            condition[edges[, 1]] != condition[edges[, 2]]
-          )
-          stopifnot(
-            is.numeric(cross_condition_edges),
-            cross_condition_edges >= 0L
+            identical(
+              graph_result$modality_weighting,
+              "adaptive_WNN_within_graph_group"
+            ),
+            all(vapply(membership_groups, function(ids) {
+              length(unique(graph_group[ids])) == 1L &&
+                length(unique(condition[ids])) == 1L
+            }, logical(1)))
           )
 
           testthat::set_max_fails(Inf)
           reporter <- testthat::SummaryReporter$new(max_reports = Inf)
           testthat::test_local(
             Sys.getenv("GITHUB_WORKSPACE"),
-            filter = "seurat-compatibility",
+            filter = "seurat-compatibility|companion-package-contract|stage-io-contracts",
             reporter = reporter,
             load_package = "installed",
             stop_on_failure = TRUE,

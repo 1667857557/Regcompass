@@ -1,22 +1,27 @@
-test_that("metacell construction uses cell-type graphs and fixed gamma", {
-  native <- paste(
-    deparse(body(RegCompassR:::.rc_native_supercell_membership)),
+test_that("metacell construction uses grouped WNN and gamma 30", {
+  builder <- paste(
+    deparse(body(RegCompassR:::.rc_build_grouped_wnn_membership)),
     collapse = "\n"
   )
   wrapper <- paste(
     deparse(body(RegCompassR:::.rc_make_condition_celltype_metacells)),
     collapse = "\n"
   )
-  expect_match(
-    native, "SCimplify_by_graph_group_from_embedding", fixed = TRUE
-  )
-  expect_match(native, "cell.graph.group", fixed = TRUE)
-  expect_match(native, "cell.split.condition", fixed = TRUE)
-  expect_match(native, ".rc_scale_embedding_block_by_group", fixed = TRUE)
-  expect_false(grepl("cell.annotation", native, fixed = TRUE))
-  expect_match(wrapper, "gamma = 30L", fixed = TRUE)
+  defaults <- RegCompassR:::.rc_condition_metacell_defaults()
+
+  expect_identical(defaults$gamma, 30L)
+  expect_match(builder, "SCimplify_by_graph_group", fixed = TRUE)
+  expect_match(builder, "cell.graph.group", fixed = TRUE)
+  expect_match(builder, "cell.split.condition", fixed = TRUE)
+  expect_match(builder, "assay = c(rna_assay, atac_assay)", fixed = TRUE)
+  expect_false(grepl("cell.annotation", builder, fixed = TRUE))
   expect_false(grepl("depth_balance", wrapper, fixed = TRUE))
   expect_false(grepl("stratum_col", wrapper, fixed = TRUE))
+  expect_false(exists(
+    ".rc_native_supercell_membership",
+    envir = asNamespace("RegCompassR"),
+    inherits = FALSE
+  ))
 })
 
 test_that("RNA empirical-Bayes priors are estimated by cell type", {
