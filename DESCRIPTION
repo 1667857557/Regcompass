@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.2.4
+Version: 2.2.5
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -13,22 +13,24 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     contribute projectable structural zeros in those conditions. A supplied
     single-level condition directly uses original Pando infer_grn with unscaled
     predictors and no condition coefficients; an explicitly missing condition
-    column is rejected. Condition-aware runs require the registered Pando >= 1.5.1
-    C++ product and multitask kernels and stop immediately if native registration
-    or execution is unavailable. Metacells use one independent multimodal WNN
-    graph per broad cell type through SuperCell SCimplify_by_graph_group. All
-    conditions within a cell type jointly determine adaptive RNA and ATAC
-    modality weights, neighbours, and Walktrap clusters; condition splits parent
-    membership only after clustering. Metacell RNA and ATAC counts use exact
-    SuperCell membership. Small metacells are retained and marked rather than
-    merged or removed. RNA latent expression uses normalized-unit empirical
-    Bayes updates whose shrinkage weights are independent of library size;
-    observed zeros retain continuous posterior evidence and are not
-    threshold-clamped. Regulatory modifiers act on bounded RNA-support odds,
-    GPR rules produce reaction expression, and each medium uses one shared union
-    GEM and global FASTCORE completion. Directional structural vmax is solved
-    once per shared model and target, then reused across metacells. Built-in
-    medium scenarios are restricted to formulations with direct published-paper
+    column is rejected. Condition-aware runs require Pando >= 1.5.2 with native
+    condition ABI 3 and registered C++ product, multitask path and fixed-support
+    direct-Schur refit kernels. Pando stops immediately when native registration,
+    matrix alignment, factorization, finite-arithmetic or residual verification
+    fails; RegCompass does not provide or select an R fallback. Metacells use one
+    independent multimodal WNN graph per broad cell type through SuperCell
+    SCimplify_by_graph_group. All conditions within a cell type jointly determine
+    adaptive RNA and ATAC modality weights, neighbours, and Walktrap clusters;
+    condition splits parent membership only after clustering. Metacell RNA and
+    ATAC counts use exact SuperCell membership. Small metacells are retained and
+    marked rather than merged or removed. RNA latent expression uses normalized-
+    unit empirical Bayes updates whose shrinkage weights are independent of
+    library size; observed zeros retain continuous posterior evidence and are not
+    threshold-clamped. Regulatory modifiers act on bounded RNA-support odds, GPR
+    rules produce reaction expression, and each medium uses one shared union GEM
+    and global FASTCORE completion. Directional structural vmax is solved once
+    per shared model and target, then reused across metacells. Built-in medium
+    scenarios are restricted to formulations with direct published-paper
     provenance. Depth matching, common-depth restriction, alpha sensitivity,
     zero-support sensitivity and link-saturation propagation are not part of the
     canonical workflow.
@@ -123,7 +125,7 @@ LinkingTo:
 SystemRequirements: C++17
 Suggests:
     BiocParallel,
-    Pando (>= 1.5.1),
+    Pando (>= 1.5.2),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
