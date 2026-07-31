@@ -72,9 +72,10 @@ rc_regcompass_step_results <- function(
   ), names(meta_modules$condition_modules))
   condition_modules <- meta_modules$condition_modules[condition_fields]
   mode <- params$analysis_mode
+  metacell_design <- metacells$pooled$input_design
   result <- list(
     schema_version = "regcompass_regulatory_metabolic_result_v2",
-    version = "2.2.0",
+    version = "2.2.4",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = mode,
@@ -107,7 +108,7 @@ rc_regcompass_step_results <- function(
       fallback_reason = params$fallback_reason,
       workflow_order = c(
         "single_cell_grn",
-        "celltype_joint_condition_supercell_metacells",
+        "celltype_joint_condition_WNN_metacells",
         "meta_modules",
         "condition_full_layer1",
         "medium_specific_union_gem_layer2"
@@ -131,14 +132,15 @@ rc_regcompass_step_results <- function(
       removed_guardrails = layer2$comparison_contract$removed_guardrails,
       metacell_purity_grouping = c(params$condition_col, params$celltype_col),
       metacell_graph_grouping = params$celltype_col,
-      metacell_graph_group_argument = "SuperCell cell.graph.group",
-      metacell_condition_assignment = "SuperCell cell.split.condition",
-      metacell_graph_scope = "one_independent_graph_per_cell_type",
-      metacell_condition_scope =
-        "all_conditions_joint_within_cell_type_graph",
-      metacell_membership_split_timing = "after_joint_graph_clustering",
-      metacell_embedding_scaling =
-        "within_celltype_joint_condition_equal_modality_blocks",
+      metacell_supercell_api = metacell_design$native_supercell_api,
+      metacell_graph_group_argument = metacell_design$graph_group_argument,
+      metacell_condition_argument = metacell_design$condition_argument,
+      metacell_graph_method = metacell_design$graph_method,
+      metacell_graph_scope = metacell_design$graph_scope,
+      metacell_condition_scope = metacell_design$condition_scope,
+      metacell_membership_split_timing =
+        metacell_design$membership_split_timing,
+      metacell_modality_weighting = metacell_design$modality_weighting,
       metacell_temporary_combined_stratum = FALSE,
       metacell_gamma = params$metacell_args$gamma,
       sample_variable = "not_used",
