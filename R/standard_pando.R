@@ -22,18 +22,28 @@
     stop("Standard Pando inference arguments cannot override managed fields: ",
          paste(forbidden, collapse = ", "), ".", call. = FALSE)
   }
+  condition_only <- intersect(names(args), c(
+    "candidate_screen", "condition_mix", "condition_weight",
+    "reference_condition", "comparison_conditions", "nlambda", "lambda",
+    "lambda_min_ratio", "outer_nfolds", "inner_nfolds",
+    "lambda_selection", "active_tol", "seed", "max_iter",
+    "tol_objective", "tol_coef", "BPPARAM"
+  ))
+  requested_scale <- args$scale %||% NULL
+  if (length(condition_only)) args[condition_only] <- NULL
   if (!is.null(args$interaction_term) &&
       !identical(as.character(args$interaction_term), ":")) {
     stop("Standard RegCompass projection requires `interaction_term = ':'`.",
          call. = FALSE)
   }
-  if (isTRUE(args$scale)) {
-    stop(
-      "Standard RegCompass fallback requires original unscaled Pando predictors (`scale = FALSE`) so coefficients can be projected to cells.",
-      call. = FALSE
-    )
-  }
-  modifyList(list(interaction_term = ":", scale = FALSE), args)
+  args$scale <- FALSE
+  answer <- modifyList(list(interaction_term = ":", scale = FALSE), args)
+  attr(answer, "standard_fallback_adjustments") <- list(
+    dropped_condition_arguments = condition_only,
+    scale_forced_false = !identical(requested_scale, FALSE),
+    reason = "one_effective_condition_uses_original_pando_projection_scale"
+  )
+  answer
 }
 
 .rc_fit_standard_pando_by_cell_type <- function(
@@ -62,12 +72,30 @@
     stop("Standard Pando mode requires exactly one effective condition level.",
          call. = FALSE)
   }
+  infer_args <- .rc_standard_pando_infer_args(pando_infer_args)
+  fallback_adjustments <- attr(
+    infer_args, "standard_fallback_adjustments", exact = TRUE
+  )
+  attr(infer_args, "standard_fallback_adjustments") <- NULL
+  if (length(fallback_adjustments$dropped_condition_arguments) ||
+      isTRUE(fallback_adjustments$scale_forced_false)) {
+    message(
+      "One effective condition detected: using standard Pando with scale = FALSE",
+      if (length(fallback_adjustments$dropped_condition_arguments)) {
+        paste0(
+          "; ignored condition-only arguments: ",
+          paste(fallback_adjustments$dropped_condition_arguments, collapse = ", ")
+        )
+      } else {
+        ""
+      }
+    )
+  }
   if (is.null(pfm)) pfm <- .rc_default_pando_motifs()
   if (!"regions" %in% names(pando_initiate_args) ||
       is.null(pando_initiate_args$regions)) {
     pando_initiate_args$regions <- .rc_default_pando_regions(species)
   }
-  infer_args <- .rc_standard_pando_infer_args(pando_infer_args)
   metabolic_genes <- gem$metabolic_genes %||%
     rc_metabolic_gpr_genes(gem$gpr_table)
   rna_genes <- rownames(.rc_get_assay_counts(object, rna_assay))
@@ -208,6 +236,7 @@
       grn_fit = "original Pando infer_grn per broad cell type",
       coefficient_contract = "standard_pando_coefficient_no_condition_effect",
       condition_coefficients_calculated = FALSE,
+      standard_fallback_adjustments = fallback_adjustments,
       penalty_regulatory_evidence = paste(
         "standard Pando full-fit TF-by-ATAC cell projections aggregated by",
         "exact SuperCell membership"
