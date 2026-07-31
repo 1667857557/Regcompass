@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.2.1
+Version: 2.2.2
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -125,8 +125,8 @@ Suggests:
     testthat (>= 3.0.0)
 Config/testthat/edition: 3
 Remotes:
-    1667857557/SuperCell_Seurat_V4@Supercell2,
-    1667857557/Pando_regcompass@agent/condition-full-primary
+    1667857557/SuperCell_Seurat_V4@1319730b15857d88f169a9006f6cf4e88993c0c7,
+    1667857557/Pando_regcompass@7d7f67f0f9fbd67e76e09fde13387696d41c82ab
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
