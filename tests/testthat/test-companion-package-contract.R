@@ -1,10 +1,14 @@
-test_that("companion remotes track current repository defaults", {
+test_that("companion remotes identify the stacked SuperCell dependency", {
   description_path <- testthat::test_path("..", "..", "DESCRIPTION")
   description <- read.dcf(description_path)
   remotes <- description[1L, "Remotes"]
-  expect_match(remotes, "1667857557/SuperCell_Seurat_V4", fixed = TRUE)
+  expect_match(
+    remotes,
+    "1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells",
+    fixed = TRUE
+  )
   expect_match(remotes, "1667857557/Pando_regcompass", fixed = TRUE)
-  expect_false(grepl("@", remotes, fixed = TRUE))
+  expect_false(grepl("Pando_regcompass@", remotes, fixed = TRUE))
 })
 
 test_that("installed Pando retains optimized condition-GRN dispatch", {
@@ -35,4 +39,6 @@ test_that("installed SuperCell exposes the canonical grouped WNN API", {
     "seurat", "cell.graph.group", "cell.split.condition",
     "assay", "reduction", "dims", "gamma", "k.knn"
   ) %in% api_formals))
+  expect_identical(eval(formals(SuperCell::SCimplify_for_Seurat)$gamma), 30)
+  expect_identical(eval(formals(SuperCell::SCimplify_by_graph_group)$gamma), 30)
 })
