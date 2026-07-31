@@ -13,7 +13,7 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     contribute projectable structural zeros in those conditions. A supplied
     single-level condition directly uses original Pando infer_grn with unscaled
     predictors and no condition coefficients; an explicitly missing condition
-    column is rejected. Condition-aware runs require the registered Pando 1.5.1
+    column is rejected. Condition-aware runs require the registered Pando >= 1.5.1
     C++ product and multitask kernels and stop immediately if native registration
     or execution is unavailable. Metacells retain the SuperCell2
     SCimplify_for_Seurat multimodal WNN and Walktrap workflow within each broad
@@ -141,7 +141,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@1319730b15857d88f169a9006f6cf4e88993c0c7,
-    1667857557/Pando_regcompass@69c08100a2658eefe00ced52db48ae69fed635d9
+    1667857557/Pando_regcompass
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
