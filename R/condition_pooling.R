@@ -76,7 +76,7 @@
     atac_reduction = "lsi",
     rna_dims = 1:30,
     atac_dims = 2:30,
-    gamma = 20L,
+    gamma = 30L,
     seed = 12345L,
     min_cells_per_stratum = 20L,
     min_metacell_size = 1L,
