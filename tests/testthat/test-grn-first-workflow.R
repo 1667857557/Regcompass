@@ -11,7 +11,7 @@ test_that("GRN-first defaults are encoded in canonical functions", {
 
 test_that("metacells use grouped WNN and post-clustering condition splitting", {
   defaults <- .rc_condition_metacell_defaults()
-  expect_identical(defaults$gamma, 20L)
+  expect_identical(defaults$gamma, 30L)
   build_text <- paste(
     deparse(body(.rc_build_grouped_wnn_membership)), collapse = "\n"
   )
