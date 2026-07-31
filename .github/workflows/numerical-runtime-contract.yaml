@@ -23,7 +23,7 @@ jobs:
           extra-packages: |
             any::testthat
             any::remotes
-          needs: check
+          dependencies: '"hard"'
       - name: Pin Matrix 1.7-4
         shell: Rscript {0}
         run: |
@@ -33,6 +33,16 @@ jobs:
             upgrade = "never"
           )
           stopifnot(as.character(packageVersion("Matrix")) == "1.7.4")
+      - name: Install exact Pando native runtime
+        shell: Rscript {0}
+        run: |
+          remotes::install_github(
+            "1667857557/Pando_regcompass@8401606cfdb53d7adbb6d9d4d574036375c43f11",
+            dependencies = NA,
+            upgrade = "never",
+            build_vignettes = FALSE
+          )
+          stopifnot(as.character(packageVersion("Pando")) == "1.5.1")
       - name: Install RegCompassR
         run: R CMD INSTALL . --no-multiarch --with-keep.source
       - name: Verify installed companion ABI and targeted regressions
@@ -49,6 +59,11 @@ jobs:
           ))
           stopifnot(is.loaded(
             "_Pando_condition_fit_multitask_path_cpp", PACKAGE = "Pando"
+          ))
+          stopifnot(!exists(
+            ".condition_product_matrix_r",
+            envir = asNamespace("Pando"),
+            inherits = FALSE
           ))
           test_file("tests/testthat/test-native-supercell-standard-pando.R")
           test_file("tests/testthat/test-v210-oof-biological-contract.R")
