@@ -31,6 +31,7 @@ VignetteBuilder: knitr
 Collate:
     '00_meta_module_utils.R'
     '00_utils.R'
+    'RcppExports.R'
     'workflow_utils.R'
     'execution_monitor.R'
     'version_checks.R'
@@ -40,6 +41,7 @@ Collate:
     'stage_contracts.R'
     'gem_io.R'
     'gem_validate.R'
+    'gpr_capacity_native.R'
     'gpr_capacity.R'
     'gpr_parser.R'
     'humangem.R'
@@ -102,9 +104,14 @@ Imports:
     matrixStats,
     methods,
     highs,
+    Rcpp,
     SeuratObject (>= 4.1.4),
     Seurat (>= 4.4.0),
     Signac (>= 1.11.0)
+LinkingTo:
+    Rcpp,
+    RcppEigen
+SystemRequirements: C++17
 Suggests:
     BiocParallel,
     Pando (>= 1.5.0),
