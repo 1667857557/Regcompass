@@ -76,8 +76,9 @@
 #' Infer Pando regulatory evidence with automatic mode selection
 #'
 #' Two or more condition levels use the condition-aware nested-OOF model.
-#' Missing or single-level conditions use original Pando `infer_grn()` and do
-#' not calculate condition coefficients.
+#' A valid single-level condition uses original Pando `infer_grn()` and does not
+#' calculate condition coefficients. Set `condition_col = NULL` for an explicit
+#' no-condition analysis; a non-empty missing column name is an error.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
@@ -189,12 +190,13 @@ rc_regcompass_step_grn <- function(
   answer
 }
 
-#' Build cell-type-independent, condition-joint SuperCell2 metacells
+#' Build condition-pure metacells with native SuperCell2 multimodal graphs
 #'
-#' Each broad cell type is assigned an independent multimodal k-nearest-neighbour
-#' graph. All conditions within that cell type share the same cell-type-specific
-#' embedding standardization and graph. Condition labels are used only after
-#' graph clustering to split memberships and guarantee condition-pure metacells.
+#' Each broad cell type is processed by upstream `SCimplify_for_Seurat()` using
+#' its RNA and ATAC reductions, retaining SuperCell2 multimodal KNN/WNN,
+#' Walktrap clustering and hierarchical membership. All conditions within that
+#' cell type share the native graph. Membership is split by condition only after
+#' clustering, then aggregated by a second native membership-mode call.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
@@ -256,6 +258,9 @@ rc_regcompass_step_metacells <- function(
     file.path(outdir, "metacell_celltype_summary.tsv.gz")
   )
   saveRDS(metacell_object, file.path(outdir, "merged_metacell_object.rds"))
+  resolved_metacell_args <- modifyList(
+    .rc_condition_metacell_defaults(), metacell_args
+  )
   answer <- list(
     pooled = pooled,
     metacell_object = metacell_object,
@@ -270,15 +275,15 @@ rc_regcompass_step_metacells <- function(
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       fragment_files = fragment_files,
-      metacell_args = modifyList(list(gamma = 30L), metacell_args),
-      supercell_api = "SCimplify_by_graph_group_from_embedding",
-      supercell_graph_group_argument = "cell.graph.group",
-      supercell_condition_argument = "cell.split.condition",
-      graph_scope = "one_independent_graph_per_cell_type",
+      metacell_args = resolved_metacell_args,
+      supercell_api = "SCimplify_for_Seurat",
+      graph_method = "ComputeMultimodalKnn_WNN",
+      clustering_method = "igraph_cluster_walktrap_and_cut_at",
+      aggregation_method = "SCimplify_for_Seurat_with_membership",
+      graph_scope = "one_independent_native_graph_per_cell_type",
       condition_scope = "all_conditions_joint_within_cell_type_graph",
-      membership_split_timing = "after_joint_graph_clustering",
-      embedding_scaling =
-        "within_celltype_joint_condition_equal_modality_blocks",
+      membership_split_timing = "after_native_walktrap_clustering",
+      embedding_scaling = "native_SuperCell2_WNN_from_supplied_reductions",
       temporary_combined_stratum = FALSE,
       seurat_compatibility =
         metacell_object@misc$regcompass_seurat_compatibility
