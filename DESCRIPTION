@@ -18,10 +18,10 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     or execution is unavailable. Metacells use one independent multimodal WNN
     graph per broad cell type through SuperCell SCimplify_by_graph_group. All
     conditions within a cell type jointly determine adaptive RNA and ATAC
-    modality weights, neighbours, and Walktrap clusters; condition splits the
-    parent memberships only after clustering. Metacell RNA and ATAC counts use
-    exact SuperCell membership. Small metacells are retained and marked rather
-    than merged or removed. RNA latent expression uses normalized-unit empirical
+    modality weights, neighbours, and Walktrap clusters; condition splits parent
+    membership only after clustering. Metacell RNA and ATAC counts use exact
+    SuperCell membership. Small metacells are retained and marked rather than
+    merged or removed. RNA latent expression uses normalized-unit empirical
     Bayes updates whose shrinkage weights are independent of library size;
     observed zeros retain continuous posterior evidence and are not
     threshold-clamped. Regulatory modifiers act on bounded RNA-support odds,
@@ -39,71 +39,85 @@ VignetteBuilder: knitr
 Collate:
     '00_meta_module_utils.R'
     '00_utils.R'
-    'version_checks.R'
-    'parallel.R'
-    'pando_runtime_contract.R'
-    'gem.R'
-    'gem_species.R'
-    'gem_download.R'
-    'bundled_gems.R'
-    'gem_prepare.R'
-    'human_gem.R'
-    'model_invariants.R'
-    'medium.R'
-    'published_media.R'
-    'gpr.R'
     'RcppExports.R'
+    'workflow_utils.R'
+    'execution_monitor.R'
+    'version_checks.R'
+    'export.R'
+    'fastcore.R'
+    'full_gem.R'
+    'stage_contracts.R'
+    'gem_io.R'
+    'gem_validate.R'
+    'gpr_capacity_native.R'
     'gpr_capacity.R'
-    'metacell_metadata.R'
-    'condition_pooling.R'
-    'metacell.R'
-    'pando_grn.R'
-    'condition_grn_runtime.R'
-    'condition_grn_contract.R'
-    'condition_full_contract.R'
-    'pando_grn_standard.R'
-    'condition_layer1.R'
+    'gpr_parser.R'
+    'humangem.R'
+    'bundled_gems.R'
+    'humangem_annotations.R'
+    'input_seurat.R'
     'layer2_penalty_lp.R'
-    'penalty.R'
+    'lp_solver.R'
+    'solver_preflight.R'
+    'medium.R'
+    'published_medium_contract.R'
+    'medium_exchange_mapping.R'
+    'meta_module_definition.R'
+    'meta_module_construction.R'
+    'meta_module_merge.R'
+    'metacell_fragments.R'
+    'metacell_import.R'
+    'metacell_object_merge.R'
+    'metacell_peak_calling.R'
+    'metacell.R'
+    'microcompass.R'
+    'union_gem_cache.R'
     'microcompass_vmax_cache.R'
     'microcompass_engine.R'
-    'microcompass_engine_refactor.R'
-    'fastcore.R'
     'target_union.R'
-    'condition_statistics.R'
-    'meta_module_selection.R'
-    'meta_module_construction.R'
-    'step_layer1_oof.R'
-    'stage_contracts.R'
-    'stepwise_workflow.R'
-    'step_layer1.R'
-    'step_layer2.R'
-    'step_meta_modules.R'
-    'step_results.R'
+    'target_union_anchors.R'
+    'pando_evidence_utils.R'
+    'pando_grn.R'
+    'shared_tfidf.R'
+    'condition_pooling.R'
+    'grn_inference.R'
+    'condition_grn_contract.R'
+    'standard_pando.R'
+    'condition_layer1.R'
+    'condition_full_contract.R'
+    'reaction_evidence.R'
     'reaction_annotations.R'
-    'reaction_plotting.R'
+    'reaction_annotation_api.R'
+    'condition_statistics.R'
+    'condition_direction_report.R'
+    'condition_plot.R'
+    'reaction_gene_plots.R'
+    'parallel.R'
+    'stage_parallel_lifecycle.R'
+    'penalty.R'
+    'reaction_roles.R'
+    'stepwise_workflow.R'
+    'step_meta_modules.R'
+    'step_layer1.R'
+    'step_layer1_oof.R'
+    'step_layer2.R'
+    'step_results.R'
     'regcompass.R'
-    'zzz.R'
-Depends:
-    R (>= 4.3.0)
+    'one_shot.R'
+    'stratum_filter.R'
 Imports:
+    BiocGenerics,
+    GenomeInfoDb,
+    GenomicRanges,
+    Matrix,
+    matrixStats,
     methods,
-    stats,
-    utils,
-    tools,
-    Matrix (>= 1.6-0),
-    data.table,
+    highs,
+    Rcpp,
     SeuratObject (>= 4.1.4),
     Seurat (>= 4.4.0),
-    Signac (>= 1.11.0),
-    GenomicRanges,
-    IRanges,
-    S4Vectors,
-    GenomeInfoDb,
-    Biostrings,
-    motifmatchr,
-    TFBSTools,
-    BiocGenerics,
+    Signac (>= 1.11.0)
+LinkingTo:
     Rcpp,
     RcppEigen
 SystemRequirements: C++17
@@ -135,3 +149,5 @@ Config/RegCompassR/SupportedSeuratMajors: 4,5
 Config/RegCompassR/SupportedSignacMajor: 1
 Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
 Config/RegCompassR/SeuratObjectVersion: 4.1.4
+Config/RegCompassR/SeuratVersion: 4.4.0
+Config/RegCompassR/SignacVersion: 1.11.0
