@@ -190,13 +190,14 @@ rc_regcompass_step_grn <- function(
   answer
 }
 
-#' Build condition-pure metacells with native SuperCell2 multimodal graphs
+#' Build condition-pure metacells with cell-type-scoped WNN graphs
 #'
-#' Each broad cell type is processed by upstream `SCimplify_for_Seurat()` using
-#' its RNA and ATAC reductions, retaining SuperCell2 multimodal KNN/WNN,
-#' Walktrap clustering and hierarchical membership. All conditions within that
-#' cell type share the native graph. Membership is split by condition only after
-#' clustering, then aggregated by a second native membership-mode call.
+#' Calls `SuperCell::SCimplify_by_graph_group()` once on the supplied Seurat
+#' object. Each broad cell type receives one independent multimodal WNN graph;
+#' all conditions within that cell type jointly determine adaptive RNA/ATAC
+#' modality weights, neighbours, and Walktrap clusters. Condition splits the
+#' parent membership only after clustering. Small metacells are retained and
+#' marked in metadata rather than merged or removed.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
@@ -276,14 +277,17 @@ rc_regcompass_step_metacells <- function(
       atac_assay = atac_assay,
       fragment_files = fragment_files,
       metacell_args = resolved_metacell_args,
-      supercell_api = "SCimplify_for_Seurat",
-      graph_method = "ComputeMultimodalKnn_WNN",
-      clustering_method = "igraph_cluster_walktrap_and_cut_at",
-      aggregation_method = "SCimplify_for_Seurat_with_membership",
-      graph_scope = "one_independent_native_graph_per_cell_type",
-      condition_scope = "all_conditions_joint_within_cell_type_graph",
-      membership_split_timing = "after_native_walktrap_clustering",
-      embedding_scaling = "native_SuperCell2_WNN_from_supplied_reductions",
+      supercell_api = pooled$input_design$native_supercell_api,
+      graph_group_argument = pooled$input_design$graph_group_argument,
+      condition_argument = pooled$input_design$condition_argument,
+      graph_method = pooled$input_design$graph_method,
+      clustering_method = pooled$input_design$clustering_method,
+      aggregation_method = pooled$input_design$aggregation_method,
+      graph_scope = pooled$input_design$graph_scope,
+      condition_scope = pooled$input_design$condition_scope,
+      membership_split_timing =
+        pooled$input_design$membership_split_timing,
+      modality_weighting = pooled$input_design$modality_weighting,
       temporary_combined_stratum = FALSE,
       seurat_compatibility =
         metacell_object@misc$regcompass_seurat_compatibility
