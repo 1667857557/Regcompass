@@ -1,0 +1,101 @@
+name: Apply native Pando refit contract
+
+on:
+  push:
+    branches: [agent/require-native-refit-abi]
+    paths:
+      - .github/workflows/agent-apply-native-refit-contract.yml
+
+permissions:
+  contents: write
+
+jobs:
+  patch:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/require-native-refit-abi
+          fetch-depth: 0
+      - name: Patch canonical condition-GRN entry point
+        shell: python
+        run: |
+          from pathlib import Path
+
+          path = Path("R/condition_grn_contract.R")
+          text = path.read_text()
+          old = '''  if (!requireNamespace("Pando", quietly = TRUE)) {
+            stop("Install 1667857557/Pando_regcompass.", call. = FALSE)
+          }
+          if (!exists("infer_condition_grn", envir = asNamespace("Pando"),
+                      inherits = FALSE)) {
+            stop("Installed Pando lacks infer_condition_grn().", call. = FALSE)
+          }
+          '''
+          new = '''  if (!requireNamespace("Pando", quietly = TRUE)) {
+            stop("Install 1667857557/Pando_regcompass.", call. = FALSE)
+          }
+          pando_version <- utils::packageVersion("Pando")
+          if (pando_version < utils::package_version("1.5.2")) {
+            stop(
+              "Condition GRN mode requires Pando >= 1.5.2 with the compiled ",
+              "fixed-support refit kernel; installed version is ",
+              as.character(pando_version), ".",
+              call. = FALSE
+            )
+          }
+          pando_description <- utils::packageDescription("Pando")
+          expected_native <- c(
+            NativeSparseABI = "3",
+            ConditionRefitBackend = "cpp-eigen-direct-path-fail-fast"
+          )
+          observed_native <- c(
+            NativeSparseABI =
+              pando_description[["Config/Pando/NativeSparseABI"]] %||% NA_character_,
+            ConditionRefitBackend =
+              pando_description[["Config/Pando/ConditionRefitBackend"]] %||%
+                NA_character_
+          )
+          if (!identical(observed_native, expected_native)) {
+            stop(
+              "Installed Pando does not expose the required native condition ",
+              "ABI 3 direct-refit contract.",
+              call. = FALSE
+            )
+          }
+          required_native <- c(
+            "_Pando_condition_product_matrix_cpp",
+            "_Pando_condition_fit_multitask_path_cpp",
+            "_Pando_condition_refit_path_cpp"
+          )
+          loaded_native <- vapply(required_native, function(symbol) {
+            is.loaded(symbol, PACKAGE = "Pando")
+          }, logical(1))
+          if (!all(loaded_native)) {
+            stop(
+              "Installed Pando is missing registered native condition kernel(s): ",
+              paste(required_native[!loaded_native], collapse = ", "),
+              ". Reinstall Pando >= 1.5.2 from 1667857557/Pando_regcompass.",
+              call. = FALSE
+            )
+          }
+          if (!exists("infer_condition_grn", envir = asNamespace("Pando"),
+                      inherits = FALSE)) {
+            stop("Installed Pando lacks infer_condition_grn().", call. = FALSE)
+          }
+          '''
+          if text.count(old) != 1:
+              raise SystemExit(
+                  f"Expected one canonical Pando runtime block, found {text.count(old)}"
+              )
+          path.write_text(text.replace(old, new))
+
+          workflow = Path(".github/workflows/agent-apply-native-refit-contract.yml")
+          workflow.unlink()
+      - name: Commit canonical source change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add R/condition_grn_contract.R .github/workflows/agent-apply-native-refit-contract.yml
+          git commit -m "Require native Pando refit runtime"
+          git push origin HEAD:agent/require-native-refit-abi
