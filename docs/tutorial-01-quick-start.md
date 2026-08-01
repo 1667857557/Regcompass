@@ -19,6 +19,14 @@ stopifnot(
 )
 ```
 
+
+Condition-aware Stage 1 requires **Pando >= 1.6.1**, native condition ABI 5,
+and the registered fused C++ target engine. Inner validation uses exact
+sufficient statistics with a deterministic hybrid Gram/sparse path solver;
+only the outer-selected model performs per-cell OOF projection. RegCompass
+checks the ABI, backend metadata and all native symbols before fitting and has
+no R fallback. An incompatible installation stops immediately.
+
 ## GEM and medium
 
 ```r

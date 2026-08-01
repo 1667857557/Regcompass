@@ -16,6 +16,8 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 RegCompassR converts paired single-cell RNA+ATAC data into regulatory reaction
 support and directional metabolic scores.
 
+Each stage writes `step_timing.tsv` and a structured `step_progress.tsv`. With `progress = TRUE`, the console also reports phase, percent and elapsed time. Stage 1 additionally records cell types, conditions, metabolic targets, outer/inner folds, lambda path size, hybrid solver route, contract extraction and artifact writing. Setting `progress = FALSE` suppresses console output but retains the audit log.
+
 ```text
 >=2 condition levels -> condition_grn
 0 or 1 condition level -> standard_pando using Pando::infer_grn()
