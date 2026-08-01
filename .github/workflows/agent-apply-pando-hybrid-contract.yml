@@ -20,25 +20,10 @@ jobs:
         with:
           r-version: '4.5.1'
           use-public-rspm: true
-      - name: Apply canonical integration and progress changes
+      - name: Apply canonical runtime and detailed progress changes
         run: |
           set -euo pipefail
-          python - <<'PY'
-          import base64
-          import gzip
-          from pathlib import Path
-
-          encoded = Path(
-              ".agent-patch/apply_pando_hybrid_contract.py.gz.b64"
-          ).read_bytes()
-          encoded = encoded.removeprefix(b"\xef\xbb\xbf")
-          encoded = b"".join(encoded.split())
-          compressed = base64.b64decode(encoded, validate=True)
-          Path("/tmp/apply_pando_hybrid_contract.py").write_bytes(
-              gzip.decompress(compressed)
-          )
-          PY
-          python /tmp/apply_pando_hybrid_contract.py
+          python .agent-patch/apply_pando_runtime_call.py
           python .agent-patch/apply_detailed_progress.py
           python - <<'PY'
           from pathlib import Path
@@ -58,6 +43,18 @@ jobs:
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
           invisible(lapply(files, parse))
+      - name: Install required Bioconductor infrastructure
+        shell: Rscript {0}
+        run: |
+          install.packages("BiocManager")
+          BiocManager::install(
+            c("Rsamtools", "GenomicAlignments"),
+            ask = FALSE, update = FALSE
+          )
+          stopifnot(
+            requireNamespace("Rsamtools", quietly = TRUE),
+            requireNamespace("GenomicAlignments", quietly = TRUE)
+          )
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: |
@@ -76,6 +73,10 @@ jobs:
           description <- utils::packageDescription("Pando")
           stopifnot(
             identical(description[["Config/Pando/NativeSparseABI"]], "5"),
+            identical(
+              description[["Config/Pando/ConditionTargetEngineBackend"]],
+              "cpp-eigen-fused-hybrid-gram-nested-cv-path-refit-validation-stats-fail-fast"
+            ),
             identical(
               description[["Config/Pando/ConditionInnerCVBackend"]],
               "cpp-eigen-hybrid-gram-sufficient-statistics-fail-fast"
@@ -96,6 +97,7 @@ jobs:
           set -euo pipefail
           grep -Fq 'Config/RegCompass/PandoNativeSparseABI: 5' DESCRIPTION
           grep -Fq 'cpp-eigen-hybrid-gram-sufficient-statistics-fail-fast' DESCRIPTION
+          grep -Fq '.rc_require_pando_hybrid_runtime()' R/condition_grn_contract.R
           grep -Fq 'step_progress.tsv' R/execution_monitor.R
           grep -Fq 'phase = "nested_cv"' R/condition_grn_contract.R
           grep -Fq 'call_args$progress_monitor <- monitor' R/stepwise_workflow.R
