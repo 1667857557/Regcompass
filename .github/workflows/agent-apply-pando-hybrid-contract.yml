@@ -24,6 +24,7 @@ jobs:
         run: |
           set -euo pipefail
           python .agent-patch/apply_pando_runtime_call.py
+          python .agent-patch/fix_detailed_progress_script.py
           python .agent-patch/apply_detailed_progress.py
           python - <<'PY'
           from pathlib import Path
