@@ -67,6 +67,11 @@
   if (!is.list(pando_motif_args)) {
     stop("`pando_motif_args` must be a list.", call. = FALSE)
   }
+  .rc_assert_pando_nested_boundary(
+    pando_motif_args,
+    c("object", "pfm", "genome", "store_motif_positions"),
+    "pando_motif_args"
+  )
   if (!is.list(pando_infer_args)) {
     stop("`pando_infer_args` must be a list.", call. = FALSE)
   }
@@ -196,7 +201,12 @@
       grn <- do.call(
         Pando::initiate_grn, c(init_defaults, pando_initiate_args)
       )
-      motif_defaults <- list(object = grn, pfm = pfm, genome = genome)
+      motif_defaults <- list(
+        object = grn,
+        pfm = pfm,
+        genome = genome,
+        store_motif_positions = FALSE
+      )
       motif_defaults[names(pando_motif_args)] <- NULL
       grn <- do.call(Pando::find_motifs, c(motif_defaults, pando_motif_args))
       infer_defaults <- list(object = grn, genes = target_genes)

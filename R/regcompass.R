@@ -158,7 +158,22 @@ rc_run_regcompass <- function(
   stage_rows <- list()
   run_stage <- function(index, label, expression) {
     timer <- .rc_timing_start(label)
-    value <- force(expression)
+    .rc_progress_update(overall, index - 1L, paste0("starting ", label))
+    value <- withCallingHandlers(
+      force(expression),
+      error = function(condition) {
+        message(
+          "RegCompass total ERROR in stage ", index, "/6 ", label,
+          ": ", conditionMessage(condition)
+        )
+      },
+      interrupt = function(condition) {
+        message(
+          "RegCompass total INTERRUPTED in stage ", index, "/6 ", label,
+          ": ", conditionMessage(condition)
+        )
+      }
+    )
     timing <- .rc_timing_finish(timer, status = "success")
     stage_rows[[length(stage_rows) + 1L]] <<- timing
     .rc_progress_update(overall, index, label)

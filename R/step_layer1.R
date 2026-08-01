@@ -12,7 +12,7 @@ rc_regcompass_step_layer1 <- function(
     parallel = TRUE,
     BPPARAM = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
-  monitor <- .rc_step_monitor_start("layer1", outdir, progress)
+  monitor <- .rc_step_monitor_start("layer1", outdir, progress, total_parts = 4L)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   gpr_and_method <- match.arg(gpr_and_method)
   .rc_require_stage_class(
@@ -31,7 +31,7 @@ rc_regcompass_step_layer1 <- function(
   }
   .rc_require_stage_gem(meta_modules, gem, "meta_modules")
   params <- metacells$params
-  layer1 <- .rc_build_condition_pooled_layer1(
+  layer1 <- .rc_step_run(monitor, 1L, "integrating RNA and ATAC evidence", .rc_build_condition_pooled_layer1(
     metacell_object = metacells$metacell_object,
     meta_modules = meta_modules$condition_modules,
     gem = gem,
@@ -45,18 +45,20 @@ rc_regcompass_step_layer1 <- function(
     gene_half_saturation = gene_half_saturation,
     parallel = parallel,
     BPPARAM = BPPARAM
-  )
+  ))
   layer1$workflow_params <- params
   layer1$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   class(layer1) <- c("regcompass_layer1_step", "list")
-  .rc_validate_layer1_stage(
+  .rc_step_run(monitor, 2L, "validating Layer 1 reaction evidence", .rc_validate_layer1_stage(
     layer1,
     workflow_params = params,
     gem = gem,
     argument = "layer1"
-  )
+  ))
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  .rc_step_progress(monitor, 3L, "assembling Layer 1 checkpoint")
   layer1 <- .rc_step_monitor_finish(layer1, monitor)
+  .rc_step_progress(monitor, 4L, "saving Layer 1 checkpoint")
   saveRDS(layer1, file.path(outdir, "step_layer1.rds"))
   layer1
 }

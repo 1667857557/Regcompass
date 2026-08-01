@@ -13,7 +13,9 @@ rc_regcompass_step_meta_modules <- function(
     grn, metacells, gem, outdir,
     meta_module_args = list(),
     progress = getOption("RegCompassR.progress", TRUE)) {
-  monitor <- .rc_step_monitor_start("meta_modules", outdir, progress)
+  monitor <- .rc_step_monitor_start(
+    "meta_modules", outdir, progress, total_parts = 5L
+  )
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
@@ -44,19 +46,19 @@ rc_regcompass_step_meta_modules <- function(
   .rc_require_stage_gem(grn, gem, "grn")
   validated_gem <- rc_validate_gem(gem)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  group_coverage <- .rc_validate_grn_metacell_group_coverage(
+  group_coverage <- .rc_step_run(monitor, 1L, "validating GRN/metacell coverage", .rc_validate_grn_metacell_group_coverage(
     grn_result = grn$grn_result,
     metacell_meta = metacells$pooled$metacell_meta,
     condition_col = metacells$params$condition_col,
     celltype_col = metacells$params$celltype_col
-  )
+  ))
   .rc_write_tsv_gz(
     group_coverage,
     file.path(outdir, "grn_metacell_group_coverage.tsv.gz")
   )
-  condition_modules <- .rc_build_condition_meta_modules(
+  condition_modules <- .rc_step_run(monitor, 2L, "building condition meta-modules", .rc_build_condition_meta_modules(
     grn$grn_result, gem, outdir, meta_module_args
-  )
+  ))
   condition_modules$grn_metacell_group_coverage <- group_coverage
   if (!is.data.frame(condition_modules$reaction_membership) ||
       !nrow(condition_modules$reaction_membership)) {
@@ -74,7 +76,7 @@ rc_regcompass_step_meta_modules <- function(
       call. = FALSE
     )
   }
-  merged_modules <- .rc_merge_meta_module_catalogue(condition_modules)
+  merged_modules <- .rc_step_run(monitor, 3L, "merging reaction catalogues", .rc_merge_meta_module_catalogue(condition_modules))
   if (!is.data.frame(merged_modules$merged_core_reactions) ||
       !nrow(merged_modules$merged_core_reactions)) {
     stop(
@@ -86,6 +88,7 @@ rc_regcompass_step_meta_modules <- function(
     as.character(grn$grn_result$grn_mode %||% ""),
     "multitask_shared_backbone"
   )
+  .rc_step_progress(monitor, 4L, "assembling meta-module checkpoint")
   answer <- list(
     condition_modules = condition_modules,
     merged_modules = merged_modules,
@@ -110,6 +113,7 @@ rc_regcompass_step_meta_modules <- function(
   )
   class(answer) <- c("regcompass_meta_module_step", "list")
   answer <- .rc_step_monitor_finish(answer, monitor)
+  .rc_step_progress(monitor, 5L, "saving meta-module checkpoint")
   saveRDS(
     condition_modules,
     file.path(outdir, "condition_meta_modules.rds")

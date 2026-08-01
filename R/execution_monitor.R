@@ -52,6 +52,56 @@
   invisible(state)
 }
 
+.rc_step_progress <- function(monitor, current, detail) {
+  if (!is.null(monitor) && is.environment(monitor)) {
+    monitor$current_detail <- as.character(detail[[1L]])
+    .rc_progress_update(monitor$progress, current, monitor$current_detail)
+  }
+  invisible(monitor)
+}
+
+.rc_step_run <- function(monitor, current, detail, code) {
+  code <- substitute(code)
+  .rc_step_progress(monitor, current, detail)
+  withCallingHandlers(
+    eval(code, envir = parent.frame()),
+    error = function(condition) {
+      message(sprintf(
+        "RegCompass %s ERROR during '%s': %s",
+        monitor$timer$stage, detail, conditionMessage(condition)
+      ))
+    },
+    interrupt = function(condition) {
+      message(sprintf(
+        "RegCompass %s INTERRUPTED during '%s': %s",
+        monitor$timer$stage, detail,
+        conditionMessage(condition) %||% "user interrupt"
+      ))
+    }
+  )
+}
+
+.rc_progress_detail_run <- function(detail, code) {
+  code <- substitute(code)
+  enabled <- .rc_progress_enabled(getOption("RegCompassR.progress", TRUE))
+  if (enabled) message("RegCompass detail: ", detail)
+  withCallingHandlers(
+    eval(code, envir = parent.frame()),
+    error = function(condition) {
+      message(
+        "RegCompass detail ERROR during '", detail, "': ",
+        conditionMessage(condition)
+      )
+    },
+    interrupt = function(condition) {
+      message(
+        "RegCompass detail INTERRUPTED during '", detail, "': ",
+        conditionMessage(condition)
+      )
+    }
+  )
+}
+
 .rc_format_elapsed <- function(seconds) {
   seconds <- max(0, as.numeric(seconds[[1L]]))
   hours <- floor(seconds / 3600)
@@ -159,6 +209,7 @@
   monitor$finish_requested <- FALSE
   monitor$finish_status <- "success"
   monitor$finish_details <- NULL
+  monitor$current_detail <- "started"
   monitor$finished <- FALSE
   monitor$option_restored <- FALSE
   monitor
@@ -215,6 +266,13 @@
       details = details
     )
     .rc_progress_done(monitor$progress, status)
+    if (!artifact_committed) {
+      message(
+        "RegCompass ", monitor$timer$stage, " stopped during '",
+        monitor$current_detail %||% "unknown operation",
+        "'; inspect the ERROR/INTERRUPTED message immediately above."
+      )
+    }
     monitor$finished <- TRUE
   }
   .rc_restore_monitor_progress_option(monitor)

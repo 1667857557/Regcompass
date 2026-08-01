@@ -42,7 +42,7 @@
   )
   .rc_assert_pando_nested_boundary(
     pando_motif_args,
-    c("object", "pfm", "genome"),
+    c("object", "pfm", "genome", "store_motif_positions"),
     "pando_motif_args"
   )
   .rc_assert_pando_nested_boundary(

@@ -239,6 +239,11 @@
     stop("Pando initiate, motif, and inference arguments must be lists.",
          call. = FALSE)
   }
+  .rc_assert_pando_nested_boundary(
+    pando_motif_args,
+    c("object", "pfm", "genome", "store_motif_positions"),
+    "pando_motif_args"
+  )
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
@@ -319,10 +324,24 @@
     rna_assay = rna_assay
   )
   init_defaults[names(pando_initiate_args)] <- NULL
-  grn <- do.call(Pando::initiate_grn, c(init_defaults, pando_initiate_args))
-  motif_defaults <- list(object = grn, pfm = pfm, genome = genome)
+  grn <- .rc_progress_detail_run(
+    "Pando initiate_grn: linking regulatory regions to genes",
+    do.call(Pando::initiate_grn, c(init_defaults, pando_initiate_args))
+  )
+  motif_defaults <- list(
+    object = grn,
+    pfm = pfm,
+    genome = genome,
+    store_motif_positions = FALSE
+  )
   motif_defaults[names(pando_motif_args)] <- NULL
-  grn <- do.call(Pando::find_motifs, c(motif_defaults, pando_motif_args))
+  grn <- .rc_progress_detail_run(
+    paste(
+      "Pando find_motifs: building binary peak-by-motif matrix",
+      "without exact hit positions"
+    ),
+    do.call(Pando::find_motifs, c(motif_defaults, pando_motif_args))
+  )
 
   infer_defaults <- list(
     object = grn,
@@ -336,17 +355,23 @@
     BPPARAM = if (identical(BPPARAM, FALSE)) NULL else BPPARAM
   )
   infer_defaults[names(pando_infer_args)] <- NULL
-  grn <- do.call(
-    Pando::infer_condition_grn,
-    c(infer_defaults, pando_infer_args)
+  grn <- .rc_progress_detail_run(
+    "Pando infer_condition_grn: fitting cell-type condition models",
+    do.call(
+      Pando::infer_condition_grn,
+      c(infer_defaults, pando_infer_args)
+    )
   )
 
-  extracted <- .rc_extract_condition_multitask_grn(
+  extracted <- .rc_progress_detail_run(
+    "extracting and validating condition GRN networks",
+    .rc_extract_condition_multitask_grn(
     grn,
     condition_col = condition_col,
     celltype_col = celltype_col,
     min_abs_estimate = min_abs_estimate,
     min_model_rsq = min_model_rsq
+    )
   )
   meta <- object@meta.data
   expected <- unique(meta[, group_cols, drop = FALSE])

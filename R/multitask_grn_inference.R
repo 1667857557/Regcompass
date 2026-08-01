@@ -28,6 +28,11 @@
       stop("Pando argument bundles must be lists.", call. = FALSE)
     }
   }
+  .rc_assert_pando_nested_boundary(
+    pando_motif_args,
+    c("object", "pfm", "genome", "store_motif_positions"),
+    "pando_motif_args"
+  )
   multitask_args <- .rc_validate_multitask_grn_args(multitask_args)
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
@@ -175,7 +180,12 @@
       grn <- do.call(
         Pando::initiate_grn, c(init_defaults, pando_initiate_args)
       )
-      motif_defaults <- list(object = grn, pfm = pfm, genome = genome)
+      motif_defaults <- list(
+        object = grn,
+        pfm = pfm,
+        genome = genome,
+        store_motif_positions = FALSE
+      )
       motif_defaults[names(pando_motif_args)] <- NULL
       grn <- do.call(Pando::find_motifs, c(motif_defaults, pando_motif_args))
       design_defaults <- list(object = grn, genes = target_genes)

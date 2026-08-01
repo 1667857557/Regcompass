@@ -194,3 +194,20 @@ test_that("every public workflow stage exposes progress control", {
     logical(1)
   )))
 })
+
+test_that("step diagnostics report the active operation on failure", {
+  monitor <- .rc_step_monitor_start(
+    "diagnostic_test", tempfile(), progress = TRUE, total_parts = 3L
+  )
+  expect_message(
+    expect_error(
+      .rc_step_run(monitor, 2L, "fitting diagnostic model", {
+        stop("intentional diagnostic failure", call. = FALSE)
+      }),
+      "intentional diagnostic failure"
+    ),
+    "ERROR during 'fitting diagnostic model': intentional diagnostic failure",
+    fixed = TRUE
+  )
+  expect_identical(monitor$current_detail, "fitting diagnostic model")
+})

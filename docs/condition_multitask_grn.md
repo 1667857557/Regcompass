@@ -4,6 +4,12 @@
 
 RegCompass no longer fits a separate Pando model for every `condition × cell type` subset. The complete normalized multiome object is passed once to `Pando::initiate_grn()` and `Pando::find_motifs()`, followed by one call to `Pando::infer_condition_grn()`.
 
+The RegCompass Pando path calls `find_motifs(store_motif_positions = FALSE)`.
+Consequently, the GRN object retains the binary peak-by-motif match matrix used
+to construct candidates, but does not retain exact genomic motif-hit positions.
+This workflow-controlled setting avoids carrying an unnecessary, substantially
+larger positions object through inference and saved checkpoints.
+
 Pando then fits each cell type across all of its conditions using one candidate TF–peak–target dictionary and one sparse-group multi-task objective. RegCompass consumes the resulting universal and condition-level Pando `Network` objects without reconstructing condition GRNs independently.
 
 The implementation is pinned to `1667857557/Pando_regcompass@6f42c8143bec6610b001e714a51627337f6d9ba9`.

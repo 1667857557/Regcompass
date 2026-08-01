@@ -13,7 +13,7 @@ rc_regcompass_step_layer2 <- function(
     model_mode = c("meta_module_gem", "full_gem"),
     layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
-  monitor <- .rc_step_monitor_start("layer2", outdir, progress)
+  monitor <- .rc_step_monitor_start("layer2", outdir, progress, total_parts = 5L)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   model_mode <- match.arg(model_mode)
   .rc_require_stage_class(
@@ -79,6 +79,7 @@ rc_regcompass_step_layer2 <- function(
       call. = FALSE
     )
   }
+  .rc_step_progress(monitor, 1L, "validating medium, model, and solver")
   solver <- match.arg(
     as.character(layer2_args$solver %||% "highs"),
     c("highs", "gurobi", "glpk")
@@ -129,7 +130,7 @@ rc_regcompass_step_layer2 <- function(
     BPPARAM = BPPARAM
   )
   defaults[names(layer2_args)] <- NULL
-  answer <- withCallingHandlers(
+  answer <- .rc_step_run(monitor, 2L, "constructing union GEMs and scoring LPs", withCallingHandlers(
     do.call(rc_run_microcompass, c(defaults, layer2_args)),
     warning = function(w) {
       if (grepl(
@@ -137,7 +138,7 @@ rc_regcompass_step_layer2 <- function(
         conditionMessage(w), fixed = TRUE
       )) invokeRestart("muffleWarning")
     }
-  )
+  ))
   answer$workflow_params <- params
   answer$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   answer$source_core_reactions <- catalogue$merged_core_reactions
@@ -149,15 +150,17 @@ rc_regcompass_step_layer2 <- function(
     "shared full GEM; no union-GEM reconstruction"
   }
   class(answer) <- c("regcompass_layer2_step", "list")
-  .rc_validate_layer2_stage(
+  .rc_step_run(monitor, 3L, "validating Layer 2 score contract", .rc_validate_layer2_stage(
     answer,
     layer1 = layer1,
     workflow_params = params,
     gem = gem,
     argument = "layer2"
-  )
+  ))
+  .rc_step_progress(monitor, 4L, "exporting Layer 2 tables")
   answer <- .rc_step_monitor_finish(answer, monitor)
   rc_export_microcompass(answer, outdir)
+  .rc_step_progress(monitor, 5L, "saving Layer 2 checkpoint")
   saveRDS(answer, file.path(outdir, "step_layer2.rds"))
   answer
 }

@@ -11,7 +11,7 @@ rc_regcompass_step_results <- function(
     grn, metacells, meta_modules, layer1, layer2, gem, outdir,
     species = c("auto", "human", "mouse"),
     progress = getOption("RegCompassR.progress", TRUE)) {
-  monitor <- .rc_step_monitor_start("results", outdir, progress)
+  monitor <- .rc_step_monitor_start("results", outdir, progress, total_parts = 4L)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
@@ -40,11 +40,11 @@ rc_regcompass_step_results <- function(
   )
 
   species <- .rc_infer_gem_species(gem, species)
-  comparison <- .rc_condition_penalty_comparison(
+  comparison <- .rc_step_run(monitor, 1L, "computing condition comparisons", .rc_condition_penalty_comparison(
     layer2,
     condition_col = params$condition_col,
     celltype_col = params$celltype_col
-  )
+  ))
   conditions <- unique(as.character(
     metacells$pooled$metacell_meta[[params$condition_col]]
   ))
@@ -63,6 +63,7 @@ rc_regcompass_step_results <- function(
   # Full Layer 1 and Layer 2 objects are used transiently to build formal
   # reaction annotations and evidence. Only the compact score subset is retained
   # in the final result; complete stage objects remain in their checkpoint RDS.
+  .rc_step_progress(monitor, 2L, "assembling compact result")
   result <- list(
     schema_version = if (multitask) {
       "regcompass_compact_multitask_result_v3"
@@ -222,6 +223,7 @@ rc_regcompass_step_results <- function(
     result_table_manifest = result$table_manifest,
     result_intermediate_policy = result$stage_provenance$detailed_sources
   )
+  .rc_step_progress(monitor, 3L, "writing compact result tables")
   for (name in names(tables)) {
     value <- tables[[name]]
     if (is.data.frame(value)) {
@@ -230,6 +232,7 @@ rc_regcompass_step_results <- function(
   }
 
   result <- .rc_step_monitor_finish(result, monitor)
+  .rc_step_progress(monitor, 4L, "saving final result checkpoint")
   saveRDS(comparison, file.path(outdir, "step_comparison.rds"))
   saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result

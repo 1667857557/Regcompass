@@ -142,7 +142,7 @@ rc_regcompass_step_grn <- function(
     parallel = TRUE,
     BPPARAM = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
-  monitor <- .rc_step_monitor_start("grn", outdir, progress)
+  monitor <- .rc_step_monitor_start("grn", outdir, progress, total_parts = 5L)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   grn_mode <- match.arg(grn_mode)
   if (!is.list(pando_args)) stop("`pando_args` must be a list.", call. = FALSE)
@@ -152,16 +152,19 @@ rc_regcompass_step_grn <- function(
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
   }
-  species <- .rc_infer_gem_species(gem, species)
-  rc_validate_gem(gem)
+  species <- .rc_step_run(monitor, 1L, "validating GEM and species", {
+    species <- .rc_infer_gem_species(gem, species)
+    rc_validate_gem(gem)
+    species
+  })
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  object <- .rc_normalize_single_cell_grn_object(
+  object <- .rc_step_run(monitor, 2L, "normalizing RNA and ATAC assays", .rc_normalize_single_cell_grn_object(
     object,
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay
-  )
+  ))
   reserved <- intersect(names(pando_args), c(
     "object", "gem", "outdir", "genome", "pfm", "species",
     "condition_col", "celltype_col", "rna_assay", "atac_assay", "BPPARAM"
@@ -202,24 +205,25 @@ rc_regcompass_step_grn <- function(
     defaults$multitask_args <- multitask_args
     defaults$on_celltype_error <- "stop"
     defaults[names(pando_args)] <- NULL
-    grn_result <- do.call(
+    grn_result <- .rc_step_run(monitor, 3L, "fitting shared multitask GRN", do.call(
       .rc_run_celltype_multitask_grns, c(defaults, pando_args)
-    )
+    ))
   } else {
     if (length(multitask_args)) {
       warning("`multitask_args` are ignored in legacy GRN mode.", call. = FALSE)
     }
     defaults$on_group_error <- "stop"
     defaults[names(pando_args)] <- NULL
-    grn_result <- do.call(
+    grn_result <- .rc_step_run(monitor, 3L, "fitting condition-specific GRNs", do.call(
       .rc_run_condition_single_cell_grns, c(defaults, pando_args)
-    )
+    ))
     if (is.null(grn_result$group_status) &&
         is.data.frame(grn_result$sample_status)) {
       grn_result$group_status <- grn_result$sample_status
       grn_result$sample_status <- NULL
     }
   }
+  .rc_step_progress(monitor, 4L, "assembling GRN checkpoint")
   answer <- list(
     grn_result = grn_result,
     gem_fingerprint = .rc_stage_gem_fingerprint(gem),
@@ -237,6 +241,7 @@ rc_regcompass_step_grn <- function(
   )
   class(answer) <- c("regcompass_grn_step", "list")
   answer <- .rc_step_monitor_finish(answer, monitor)
+  .rc_step_progress(monitor, 5L, "saving GRN checkpoint")
   saveRDS(answer, file.path(outdir, "step_grn.rds"))
   answer
 }
@@ -257,18 +262,18 @@ rc_regcompass_step_metacells <- function(
     fragment_files = FALSE,
     metacell_args = list(),
     progress = getOption("RegCompassR.progress", TRUE)) {
-  monitor <- .rc_step_monitor_start("metacells", outdir, progress)
+  monitor <- .rc_step_monitor_start("metacells", outdir, progress, total_parts = 5L)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
-  object <- .rc_prepare_seurat_assays(
+  object <- .rc_step_run(monitor, 1L, "validating Seurat assay layers", .rc_prepare_seurat_assays(
     object,
     assays = c(rna_assay, atac_assay),
     required_layers = "counts"
-  )
+  ))
   if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
     object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
   }
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  pooled <- .rc_make_condition_pooled_metacells(
+  pooled <- .rc_step_run(monitor, 2L, "constructing condition-pooled metacells", .rc_make_condition_pooled_metacells(
     object = object,
     outdir = outdir,
     condition_col = condition_col,
@@ -277,10 +282,10 @@ rc_regcompass_step_metacells <- function(
     atac_assay = atac_assay,
     fragment_files = fragment_files,
     metacell_args = metacell_args
-  )
-  metacell_object <- .rc_normalize_condition_metacell_object(
+  ))
+  metacell_object <- .rc_step_run(monitor, 3L, "normalizing merged metacell assays", .rc_normalize_condition_metacell_object(
     pooled, rna_assay, atac_assay
-  )
+  ))
   if (!setequal(
     colnames(metacell_object),
     as.character(pooled$metacell_meta$metacell_id)
@@ -290,6 +295,7 @@ rc_regcompass_step_metacells <- function(
       call. = FALSE
     )
   }
+  .rc_step_progress(monitor, 4L, "writing metacell tables")
   .rc_write_tsv_gz(
     pooled$metacell_meta,
     file.path(outdir, "metacell_metadata.tsv.gz")
@@ -326,6 +332,7 @@ rc_regcompass_step_metacells <- function(
   )
   class(answer) <- c("regcompass_metacell_step", "list")
   answer <- .rc_step_monitor_finish(answer, monitor)
+  .rc_step_progress(monitor, 5L, "saving metacell checkpoint")
   saveRDS(answer, file.path(outdir, "step_metacells.rds"))
   answer
 }
