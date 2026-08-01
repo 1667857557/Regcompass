@@ -1,5 +1,7 @@
-.RC_PANDO_MIN_VERSION <- package_version("1.6.1")
+.RC_PANDO_MIN_VERSION <- package_version("1.6.2")
 .RC_PANDO_NATIVE_SPARSE_ABI <- "5"
+.RC_PANDO_NATIVE_CALL_BINDING <-
+  "registered-symbol-lookup-worker-safe-v1"
 .RC_PANDO_TARGET_ENGINE_BACKEND <-
   "cpp-eigen-fused-hybrid-gram-nested-cv-path-refit-validation-stats-fail-fast"
 .RC_PANDO_INNER_CV_BACKEND <-
@@ -11,11 +13,139 @@
   "_Pando_condition_refit_path_cpp",
   "_Pando_condition_fit_target_engine_cpp"
 )
+.RC_PANDO_NATIVE_WRAPPERS <- c(
+  ".condition_product_matrix_cpp",
+  ".condition_fit_multitask_path_cpp",
+  ".condition_refit_path_cpp",
+  ".condition_fit_target_engine_cpp"
+)
 
-.rc_require_pando_hybrid_runtime <- function() {
+.rc_pando_registered_symbol_available <- function(symbol) {
+  tryCatch({
+    info <- getNativeSymbolInfo(
+      symbol,
+      PACKAGE = "Pando",
+      withRegistrationInfo = TRUE
+    )
+    is.list(info) && !is.null(info$address)
+  }, error = function(error) FALSE)
+}
+
+.rc_pando_worker_runtime_probe <- function(
+    symbols, wrappers, expected_binding, library_paths) {
+  .libPaths(library_paths)
+  loadNamespace("Pando")
+  description <- utils::packageDescription("Pando")
+  observed_binding <- description[["Config/Pando/NativeCallBinding"]]
+  if (!identical(observed_binding, expected_binding)) {
+    stop(
+      "Worker loaded an incompatible Pando native-call binding: ",
+      observed_binding %||% "<missing>",
+      call. = FALSE
+    )
+  }
+  namespace <- asNamespace("Pando")
+  missing_wrappers <- wrappers[!vapply(
+    wrappers,
+    exists,
+    logical(1),
+    envir = namespace,
+    inherits = FALSE
+  )]
+  if (length(missing_wrappers)) {
+    stop(
+      "Worker Pando namespace is missing native wrapper(s): ",
+      paste(missing_wrappers, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  unsafe_wrappers <- wrappers[!vapply(wrappers, function(name) {
+    value <- get(name, envir = namespace, inherits = FALSE)
+    grepl(
+      ".pando_registered_call",
+      paste(deparse(body(value)), collapse = "\n"),
+      fixed = TRUE
+    )
+  }, logical(1))]
+  if (length(unsafe_wrappers)) {
+    stop(
+      "Worker Pando uses namespace-bound Rcpp wrapper(s): ",
+      paste(unsafe_wrappers, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  missing_symbols <- symbols[!vapply(symbols, function(symbol) {
+    tryCatch({
+      info <- getNativeSymbolInfo(
+        symbol,
+        PACKAGE = "Pando",
+        withRegistrationInfo = TRUE
+      )
+      is.list(info) && !is.null(info$address)
+    }, error = function(error) FALSE)
+  }, logical(1))]
+  if (length(missing_symbols)) {
+    stop(
+      "Worker Pando DLL is missing registered native kernel(s): ",
+      paste(missing_symbols, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  TRUE
+}
+
+.rc_validate_pando_worker_runtime <- function(BPPARAM) {
+  if (is.null(BPPARAM) || identical(BPPARAM, FALSE)) {
+    return(invisible(TRUE))
+  }
+  if (!requireNamespace("BiocParallel", quietly = TRUE)) {
+    stop(
+      "BiocParallel is required to validate the supplied `BPPARAM`.",
+      call. = FALSE
+    )
+  }
+  workers <- suppressWarnings(as.integer(BiocParallel::bpnworkers(BPPARAM)))
+  if (!length(workers) || is.na(workers) || workers < 1L) workers <- 1L
+  probes <- min(workers, 2L)
+  result <- tryCatch(
+    BiocParallel::bplapply(
+      seq_len(probes),
+      function(index, symbols, wrappers, expected_binding, library_paths) {
+        .rc_pando_worker_runtime_probe(
+          symbols = symbols,
+          wrappers = wrappers,
+          expected_binding = expected_binding,
+          library_paths = library_paths
+        )
+      },
+      symbols = .RC_PANDO_NATIVE_SYMBOLS,
+      wrappers = .RC_PANDO_NATIVE_WRAPPERS,
+      expected_binding = .RC_PANDO_NATIVE_CALL_BINDING,
+      library_paths = .libPaths(),
+      BPPARAM = BPPARAM
+    ),
+    error = function(error) {
+      stop(
+        "Pando native runtime failed on a BiocParallel worker before GRN ",
+        "fitting: ", conditionMessage(error),
+        ". Reinstall 1667857557/Pando_regcompass >= 1.6.2 and restart R.",
+        call. = FALSE
+      )
+    }
+  )
+  if (!all(vapply(result, isTRUE, logical(1)))) {
+    stop(
+      "Pando native runtime worker probe returned an invalid result.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
+.rc_require_pando_hybrid_runtime <- function(BPPARAM = NULL) {
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop(
-      "Pando >= 1.6.1 with native condition ABI 5 is required. Install 1667857557/Pando_regcompass.",
+      "Pando >= 1.6.2 with native condition ABI 5 and worker-safe registered-symbol lookup is required. Install 1667857557/Pando_regcompass.",
       call. = FALSE
     )
   }
@@ -23,7 +153,7 @@
   if (installed < .RC_PANDO_MIN_VERSION) {
     stop(
       sprintf(
-        "Installed Pando %s is incompatible; RegCompass requires Pando >= 1.6.1 with native condition ABI 5.",
+        "Installed Pando %s is incompatible; RegCompass requires Pando >= 1.6.2 with worker-safe native calls.",
         as.character(installed)
       ),
       call. = FALSE
@@ -32,6 +162,7 @@
   description <- utils::packageDescription("Pando")
   required_fields <- c(
     "Config/Pando/NativeSparseABI",
+    "Config/Pando/NativeCallBinding",
     "Config/Pando/ConditionRefitBackend",
     "Config/Pando/ConditionTargetEngineBackend",
     "Config/Pando/ConditionInnerCVBackend"
@@ -47,12 +178,13 @@
     stop(
       "Installed Pando is missing required native runtime metadata: ",
       paste(missing_fields, collapse = ", "),
-      ". Install 1667857557/Pando_regcompass.",
+      ". Install 1667857557/Pando_regcompass >= 1.6.2.",
       call. = FALSE
     )
   }
   expected <- c(
     "Config/Pando/NativeSparseABI" = .RC_PANDO_NATIVE_SPARSE_ABI,
+    "Config/Pando/NativeCallBinding" = .RC_PANDO_NATIVE_CALL_BINDING,
     "Config/Pando/ConditionRefitBackend" = .RC_PANDO_REFIT_BACKEND,
     "Config/Pando/ConditionTargetEngineBackend" =
       .RC_PANDO_TARGET_ENGINE_BACKEND,
@@ -77,21 +209,55 @@
   missing_symbols <- .RC_PANDO_NATIVE_SYMBOLS[
     !vapply(
       .RC_PANDO_NATIVE_SYMBOLS,
-      is.loaded,
-      logical(1),
-      PACKAGE = "Pando"
+      .rc_pando_registered_symbol_available,
+      logical(1)
     )
   ]
   if (length(missing_symbols)) {
     stop(
       "Installed Pando is missing registered native condition kernel(s): ",
       paste(missing_symbols, collapse = ", "),
-      ". Reinstall 1667857557/Pando_regcompass; no R fallback is permitted.",
+      ". Reinstall 1667857557/Pando_regcompass >= 1.6.2 and restart R; no R fallback is permitted.",
+      call. = FALSE
+    )
+  }
+  namespace <- asNamespace("Pando")
+  missing_wrappers <- .RC_PANDO_NATIVE_WRAPPERS[!vapply(
+    .RC_PANDO_NATIVE_WRAPPERS,
+    exists,
+    logical(1),
+    envir = namespace,
+    inherits = FALSE
+  )]
+  if (length(missing_wrappers)) {
+    stop(
+      "Installed Pando is missing native wrapper(s): ",
+      paste(missing_wrappers, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  unsafe_wrappers <- .RC_PANDO_NATIVE_WRAPPERS[!vapply(
+    .RC_PANDO_NATIVE_WRAPPERS,
+    function(name) {
+      value <- get(name, envir = namespace, inherits = FALSE)
+      grepl(
+        ".pando_registered_call",
+        paste(deparse(body(value)), collapse = "\n"),
+        fixed = TRUE
+      )
+    },
+    logical(1)
+  )]
+  if (length(unsafe_wrappers)) {
+    stop(
+      "Installed Pando still uses namespace-bound Rcpp native wrappers: ",
+      paste(unsafe_wrappers, collapse = ", "),
+      ". Install Pando >= 1.6.2 and restart R.",
       call. = FALSE
     )
   }
   if (!exists(
-        "infer_condition_grn", envir = asNamespace("Pando"),
+        "infer_condition_grn", envir = namespace,
         inherits = FALSE
       )) {
     stop(
@@ -99,13 +265,16 @@
       call. = FALSE
     )
   }
+  .rc_validate_pando_worker_runtime(BPPARAM)
   invisible(list(
     version = as.character(installed),
     native_sparse_abi = observed[["Config/Pando/NativeSparseABI"]],
+    native_call_binding = observed[["Config/Pando/NativeCallBinding"]],
     target_engine_backend =
       observed[["Config/Pando/ConditionTargetEngineBackend"]],
     inner_cv_backend = observed[["Config/Pando/ConditionInnerCVBackend"]],
     refit_backend = observed[["Config/Pando/ConditionRefitBackend"]],
-    native_symbols = .RC_PANDO_NATIVE_SYMBOLS
+    native_symbols = .RC_PANDO_NATIVE_SYMBOLS,
+    native_wrappers = .RC_PANDO_NATIVE_WRAPPERS
   ))
 }
