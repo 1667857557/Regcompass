@@ -23,7 +23,21 @@ jobs:
       - name: Apply canonical integration and progress changes
         run: |
           set -euo pipefail
-          base64 --decode .agent-patch/apply_pando_hybrid_contract.py.gz.b64 | gzip -d > /tmp/apply_pando_hybrid_contract.py
+          python - <<'PY'
+          import base64
+          import gzip
+          from pathlib import Path
+
+          encoded = Path(
+              ".agent-patch/apply_pando_hybrid_contract.py.gz.b64"
+          ).read_bytes()
+          encoded = encoded.removeprefix(b"\xef\xbb\xbf")
+          encoded = b"".join(encoded.split())
+          compressed = base64.b64decode(encoded, validate=True)
+          Path("/tmp/apply_pando_hybrid_contract.py").write_bytes(
+              gzip.decompress(compressed)
+          )
+          PY
           python /tmp/apply_pando_hybrid_contract.py
           python .agent-patch/apply_detailed_progress.py
           python - <<'PY'
