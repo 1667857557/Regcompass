@@ -127,6 +127,7 @@ jobs:
           on.exit(options(Seurat.object.assay.version = old_option), add = TRUE)
           options(Seurat.object.assay.version = "v3")
 
+          set.seed(11)
           cells <- paste0("cell", seq_len(12))
           rna <- Matrix::Matrix(
             matrix(seq_len(48), nrow = 4), sparse = TRUE,
@@ -140,15 +141,15 @@ jobs:
           object[["ATAC"]] <- CreateChromatinAssay(counts = atac, sep = c("-", "-"))
           object[["pca"]] <- CreateDimReducObject(
             embeddings = matrix(
-              seq_len(36), nrow = 12,
-              dimnames = list(cells, paste0("PC_", 1:3))
+              stats::rnorm(length(cells) * 4L), nrow = length(cells),
+              dimnames = list(cells, paste0("PC_", 1:4))
             ),
             key = "PC_", assay = "RNA"
           )
           object[["lsi"]] <- CreateDimReducObject(
             embeddings = matrix(
-              rev(seq_len(36)), nrow = 12,
-              dimnames = list(cells, paste0("LSI_", 1:3))
+              stats::rnorm(length(cells) * 4L), nrow = length(cells),
+              dimnames = list(cells, paste0("LSI_", 1:4))
             ),
             key = "LSI_", assay = "ATAC"
           )
@@ -160,9 +161,11 @@ jobs:
             cell.split.condition = condition,
             assay = c("RNA", "ATAC"),
             reduction = list("pca", "lsi"),
-            dims = list(1:3, 1:3),
+            dims = list(1:4, 1:4),
             gamma = 2,
-            k.knn = 2,
+            # Seurat drops the self-neighbour before applying row-wise SD;
+            # k.nn >= 3 preserves a two-dimensional distance matrix.
+            k.knn = 3,
             seed = 11
           )
           membership_groups <- split(
