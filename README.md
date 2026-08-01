@@ -55,6 +55,44 @@ remotes::install_github("1667857557/Regcompass")
 
 Pando 1.1.3 or later is required. RegCompass validates the Pando version-2 design fingerprint before fitting the multitask GRN. SeuratObject/Seurat 5.x with Signac 1.12–1.x is also accepted; see [Seurat compatibility](docs/seurat-compatibility.md).
 
+### Pando reports that `%dopar%` is missing
+
+An error such as `could not find function "%dopar%"` while Pando is fitting
+target-gene models indicates an incompatible or stale Pando installation; it is
+not caused by the `BiocParallelParam` supplied as `BPPARAM`. Reinstall the
+pinned fork in a fresh R session (rather than attaching `foreach` as a
+session-only workaround), then reinstall RegCompassR:
+
+```r
+remove.packages("Pando")
+remotes::install_github(
+  "1667857557/Pando_regcompass@6f42c8143bec6610b001e714a51627337f6d9ba9",
+  upgrade = "never",
+  force = TRUE
+)
+remotes::install_github("1667857557/Regcompass", upgrade = "never", force = TRUE)
+
+packageVersion("Pando")
+packageDescription("Pando")[c("RemoteRepo", "RemoteSha")]
+```
+
+Restart R again before rerunning Stage 1 so no old namespace remains loaded.
+The separate message `One effective condition detected` means that the cells
+entering that Pando fit contain only one non-missing value in `condition_col`.
+Confirm the metadata before a long run:
+
+```r
+table(A$dataset, useNA = "ifany")
+table(A$cell_type, A$dataset, useNA = "ifany")
+```
+
+If one condition is intentional, the fallback to standard Pando and the listed
+ignored condition-only arguments are expected. If multiple conditions were
+expected, correct `condition_col`, missing values, or upstream subsetting first.
+The warning that `xgboost` was built under a newer patch release of R is
+unrelated to the missing operator; reinstall `xgboost` under the active R
+version only if loading or ABI errors also occur.
+
 ## Metadata and bootstrap contract
 
 The canonical workflow requires `condition_col` and `celltype_col`. A biological donor or sample column is optional but strongly recommended through `sample_col`.
