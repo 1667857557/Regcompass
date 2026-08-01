@@ -313,7 +313,7 @@
     object@meta.data, condition_col, celltype_col,
     require_multiple_conditions = TRUE
   )
-  pando_runtime <- .rc_require_pando_hybrid_runtime()
+  pando_runtime <- .rc_require_pando_hybrid_runtime(BPPARAM = BPPARAM)
   .rc_step_monitor_event(
     progress_monitor, "pando_runtime",
     "validated Pando fused native condition runtime", current = 5L,
@@ -460,6 +460,7 @@
       nlambda = pando_infer_args$nlambda,
       solver = "budgeted_dense_or_sparse_matrix_free",
       validation = "exact_dense_support_or_sparse_residual",
+      dense_validation = "exact_sufficient_statistics",
       oof = "outer_selected_model_only"
     )
   )

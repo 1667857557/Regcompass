@@ -56,8 +56,11 @@ test_that("execution summaries preserve dense and matrix-free diagnostics", {
 })
 
 test_that("Stage 1 advertises bounded batches and fail-fast target events", {
+  source_path <- testthat::test_path(
+    "..", "..", "R", "condition_grn_contract.R"
+  )
   source <- paste(
-    readLines("R/condition_grn_contract.R", warn = FALSE),
+    readLines(source_path, warn = FALSE),
     collapse = "\n"
   )
   for (phase in c(

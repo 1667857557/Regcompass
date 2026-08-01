@@ -1,5 +1,6 @@
 test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", {
-  description <- read.dcf("DESCRIPTION")
+  package_root <- testthat::test_path("..", "..")
+  description <- read.dcf(file.path(package_root, "DESCRIPTION"))
   expect_identical(unname(description[1L, "Version"]), "2.2.7")
   expect_match(
     unname(description[1L, "Suggests"]),
@@ -43,11 +44,24 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
   )
 
   runtime_text <- paste(
-    readLines("R/condition_grn_runtime.R", warn = FALSE),
+    readLines(
+      file.path(package_root, "R", "condition_grn_runtime.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   guard_text <- paste(
-    readLines("R/condition_grn_runtime_guard.R", warn = FALSE),
+    readLines(
+      file.path(package_root, "R", "condition_grn_runtime_guard.R"),
+      warn = FALSE
+    ),
+    collapse = "\n"
+  )
+  contract_text <- paste(
+    readLines(
+      file.path(package_root, "R", "condition_grn_contract.R"),
+      warn = FALSE
+    ),
     collapse = "\n"
   )
   expect_match(runtime_text, 'package_version\\("1\\.6\\.3"\\)')
@@ -90,7 +104,7 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
     fixed = TRUE
   )
   expect_match(
-    guard_text,
+    contract_text,
     ".rc_require_pando_hybrid_runtime(BPPARAM = BPPARAM)",
     fixed = TRUE
   )
