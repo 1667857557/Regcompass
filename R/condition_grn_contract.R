@@ -284,18 +284,27 @@
   )
   init <- list(object = object, peak_assay = atac_assay, rna_assay = rna_assay)
   init[names(pando_initiate_args)] <- NULL
-  grn <- do.call(Pando::initiate_grn, c(init, pando_initiate_args))
   .rc_step_monitor_event(
     progress_monitor, "candidate_initialization",
-    "initialized Pando regulatory candidate space", current = 7L,
+    "initializing Pando regulatory candidate space", current = 7L,
+    context = list(targets = length(target_genes))
+  )
+  grn <- do.call(Pando::initiate_grn, c(init, pando_initiate_args))
+  .rc_step_monitor_event(
+    progress_monitor, "candidate_initialization_complete",
+    "Pando regulatory candidate space initialized", current = 7L,
     context = list(targets = length(target_genes))
   )
   pando_motif_args <- .rc_regcompass_motif_args(pando_motif_args)
   motif <- list(object = grn, pfm = pfm, genome = genome)
   motif[names(pando_motif_args)] <- NULL
-  grn <- do.call(Pando::find_motifs, c(motif, pando_motif_args))
   .rc_step_monitor_event(
     progress_monitor, "motif_mapping",
+    "mapping binary peak-by-motif candidates", current = 8L
+  )
+  grn <- do.call(Pando::find_motifs, c(motif, pando_motif_args))
+  .rc_step_monitor_event(
+    progress_monitor, "motif_mapping_complete",
     "completed motif-to-peak and TF mapping", current = 8L
   )
   infer <- list(
@@ -335,13 +344,17 @@
     progress_monitor, "nested_cv_complete",
     "Pando fused target engine completed", current = 10L
   )
+  .rc_step_monitor_event(
+    progress_monitor, "contract_extraction",
+    "extracting and validating ConditionGRNFit contracts", current = 10L
+  )
   extracted <- .rc_extract_condition_grn_contract(
     grn, condition_col, celltype_col,
     min_abs_estimate = min_abs_estimate,
     min_model_rsq = min_model_rsq
   )
   .rc_step_monitor_event(
-    progress_monitor, "contract_extraction",
+    progress_monitor, "contract_extraction_complete",
     "validated and extracted ConditionGRNFit contracts", current = 10L,
     context = list(
       fitted_cell_types = length(extracted$fit_contracts),

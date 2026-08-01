@@ -199,17 +199,22 @@ rc_regcompass_step_grn <- function(
         backend = "cpp_hybrid_gram_sufficient_statistics"
       )
     )
-    grn_result <- do.call(.rc_fit_condition_grns_by_cell_type, call_args)
+    grn_result <- .rc_with_step_diagnostics(
+      do.call(.rc_fit_condition_grns_by_cell_type, call_args), monitor
+    )
   } else {
     infer_args$verbose <- infer_args$verbose %||%
       .rc_progress_enabled(progress)
     call_args$pando_infer_args <- infer_args
     call_args$parallel <- isTRUE(parallel)
+    call_args$progress_monitor <- monitor
     .rc_step_monitor_event(
       monitor, "standard_pando",
       "dispatching original Pando infer_grn workflow", current = 5L
     )
-    grn_result <- do.call(.rc_fit_standard_pando_by_cell_type, call_args)
+    grn_result <- .rc_with_step_diagnostics(
+      do.call(.rc_fit_standard_pando_by_cell_type, call_args), monitor
+    )
     .rc_step_monitor_event(
       monitor, "standard_pando_complete",
       "original Pando workflow completed", current = 10L

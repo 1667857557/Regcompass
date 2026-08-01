@@ -20,6 +20,12 @@ progress_log[, c("phase", "elapsed_hms", "detail", "context")]
 
 `step_progress.tsv` is written even when `progress = FALSE`; that setting only suppresses console messages. Pando target-level messages are enabled automatically when Stage 1 progress is enabled. Errors terminate immediately and the last audit row is `stage_error`.
 
+Both Stage 1 routes are instrumented. Condition-aware runs report the fused
+nested-CV phases, while standard Pando runs print each cell-type job's candidate
+initialization, binary motif mapping, GRN fit, edge extraction, and artifact
+write. An error or user interrupt is printed immediately with its original
+message and the active phase, even when routine progress output is disabled.
+
 ## Parallel backends
 
 ```r

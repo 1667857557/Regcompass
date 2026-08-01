@@ -315,6 +315,25 @@
   value
 }
 
+.rc_with_step_diagnostics <- function(expr, monitor) {
+  report <- function(condition, kind) {
+    if (!is.null(monitor) && is.environment(monitor)) {
+      monitor$failure_kind <- kind
+      monitor$failure_message <- conditionMessage(condition)
+      message(
+        "RegCompass ", monitor$timer$stage, " ", toupper(kind),
+        " at phase=", monitor$last_phase %||% "stage_start", ": ",
+        monitor$failure_message
+      )
+    }
+  }
+  withCallingHandlers(
+    expr,
+    interrupt = function(condition) report(condition, "interrupt"),
+    error = function(condition) report(condition, "error")
+  )
+}
+
 .rc_step_monitor_fail <- function(monitor) {
   if (!is.null(monitor) && is.environment(monitor) &&
       !isTRUE(monitor$finished)) {
@@ -333,6 +352,12 @@
       monitor$last_phase %||% "stage_start",
       if (nzchar(monitor$last_detail %||% "")) {
         paste0("; last_detail=", monitor$last_detail)
+      } else "",
+      if (nzchar(monitor$failure_message %||% "")) {
+        paste0(
+          "; ", monitor$failure_kind %||% "error", "=",
+          monitor$failure_message
+        )
       } else "",
       ". Inspect step_progress.tsv and step_timing.tsv for diagnosis."
     )

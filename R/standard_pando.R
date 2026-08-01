@@ -55,7 +55,12 @@
     pando_motif_args = list(), pando_infer_args = list(),
     min_abs_estimate = 0, min_model_rsq = 0.1,
     save_pando_objects = TRUE, parallel = FALSE,
+    progress_monitor = NULL,
     species = c("auto", "human", "mouse")) {
+  .rc_step_monitor_event(
+    progress_monitor, "standard_runtime_check",
+    "validating standard Pando runtime and inputs", current = 5L
+  )
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop("Package 'Pando' is required.", call. = FALSE)
   }
@@ -66,6 +71,11 @@
   )
   cell_types <- .rc_standard_pando_cell_types(
     object@meta.data, celltype_col, cell_type
+  )
+  .rc_step_monitor_event(
+    progress_monitor, "standard_design",
+    "resolved standard Pando cell-type jobs", current = 5L,
+    context = list(cell_types = length(cell_types))
   )
   condition_levels <- unique(as.character(object@meta.data[[condition_col]]))
   if (length(condition_levels) != 1L) {
@@ -104,10 +114,23 @@
   if (!length(target_genes)) {
     stop("No overlap between RNA genes and GEM metabolic genes.", call. = FALSE)
   }
+  .rc_step_monitor_event(
+    progress_monitor, "standard_target_selection",
+    "resolved metabolic target genes", current = 6L,
+    context = list(targets = length(target_genes))
+  )
   filtered <- .rc_drop_zero_count_atac_features(
     object, atac_assay, "Standard Pando fallback"
   )
   object <- filtered$object
+  .rc_step_monitor_event(
+    progress_monitor, "standard_atac_filter",
+    "removed globally zero ATAC features", current = 6L,
+    context = list(
+      cells = ncol(object),
+      removed_atac_features = filtered$n_removed %||% NA_integer_
+    )
+  )
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   dir.create(file.path(outdir, "pando_objects"), recursive = TRUE,
              showWarnings = FALSE)
@@ -116,7 +139,16 @@
   active_rows <- list()
   status_rows <- list()
   selected_cells <- character()
-  for (value in cell_types) {
+  for (cell_index in seq_along(cell_types)) {
+    value <- cell_types[[cell_index]]
+    job_context <- list(
+      cell_type = value, job = cell_index, jobs = length(cell_types)
+    )
+    .rc_step_monitor_event(
+      progress_monitor, "standard_cell_type_start",
+      "starting standard Pando cell-type job", current = 7L,
+      context = job_context
+    )
     cells <- rownames(object@meta.data)[
       as.character(object@meta.data[[celltype_col]]) == value
     ]
@@ -127,11 +159,31 @@
     one <- subset(object, cells = cells)
     init <- list(object = one, peak_assay = atac_assay, rna_assay = rna_assay)
     init[names(pando_initiate_args)] <- NULL
+    .rc_step_monitor_event(
+      progress_monitor, "standard_candidate_initialization",
+      "initializing regulatory candidate space", current = 7L,
+      context = c(job_context, list(cells = length(cells)))
+    )
     grn <- do.call(Pando::initiate_grn, c(init, pando_initiate_args))
+    .rc_step_monitor_event(
+      progress_monitor, "standard_candidate_initialization_complete",
+      "regulatory candidate space initialized", current = 7L,
+      context = c(job_context, list(cells = length(cells)))
+    )
     motif_args <- .rc_regcompass_motif_args(pando_motif_args)
     motif <- list(object = grn, pfm = pfm, genome = genome)
     motif[names(motif_args)] <- NULL
+    .rc_step_monitor_event(
+      progress_monitor, "standard_motif_mapping",
+      "mapping binary peak-by-motif candidates", current = 8L,
+      context = job_context
+    )
     grn <- do.call(Pando::find_motifs, c(motif, motif_args))
+    .rc_step_monitor_event(
+      progress_monitor, "standard_motif_mapping_complete",
+      "completed binary peak-by-motif mapping", current = 8L,
+      context = job_context
+    )
     infer <- list(
       object = grn,
       genes = target_genes,
@@ -139,13 +191,36 @@
       parallel = isTRUE(parallel)
     )
     infer[names(infer_args)] <- NULL
+    .rc_step_monitor_event(
+      progress_monitor, "standard_grn_fit",
+      "fitting standard Pando GRN", current = 9L,
+      context = c(job_context, list(targets = length(target_genes)))
+    )
     grn <- do.call(Pando::infer_grn, c(infer, infer_args))
+    .rc_step_monitor_event(
+      progress_monitor, "standard_grn_fit_complete",
+      "standard Pando GRN fit completed", current = 9L,
+      context = job_context
+    )
+    .rc_step_monitor_event(
+      progress_monitor, "standard_contract_extraction",
+      "extracting standard Pando edge contract", current = 10L,
+      context = job_context
+    )
     extracted <- rc_extract_pando_tf_peak_gene(
       grn_object = grn,
       sample_id = value,
       min_abs_estimate = min_abs_estimate,
       min_model_rsq = min_model_rsq,
       require_padj = FALSE
+    )
+    .rc_step_monitor_event(
+      progress_monitor, "standard_contract_extraction_complete",
+      "extracted standard Pando edge contract", current = 10L,
+      context = c(job_context, list(
+        all_edges = nrow(extracted$all),
+        active_edges = nrow(extracted$significant)
+      ))
     )
     add_design <- function(tab) {
       if (!nrow(tab)) return(tab)
@@ -206,6 +281,11 @@
   active_table <- .rc_bind_frames_fill(active_rows)
   status <- do.call(rbind, status_rows)
   rownames(status) <- NULL
+  .rc_step_monitor_event(
+    progress_monitor, "standard_artifacts",
+    "writing standard Pando Stage 1 artifacts", current = 10L,
+    context = list(cell_types = length(cell_types))
+  )
   .rc_write_tsv_gz(status, file.path(outdir, "pando_group_status.tsv.gz"))
   .rc_write_tsv_gz(all_table, file.path(outdir, "pando_tf_peak_gene_standard_all.tsv.gz"))
   .rc_write_tsv_gz(active_table, file.path(outdir, "pando_tf_peak_gene_standard_active.tsv.gz"))

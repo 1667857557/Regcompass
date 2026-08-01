@@ -6,6 +6,10 @@
   retains only the binary peak-by-motif incidence matrix. Interrupted and
   failed stages immediately report their last phase and point to the progress
   and timing logs for diagnosis.
+- Standard Pando now has the same detailed Stage 1 observability as the
+  condition-aware route, including per-cell-type candidate, motif, fit,
+  extraction and artifact events. Errors and interrupts print their original
+  condition message together with the active phase before unwinding.
 
 - Restored the documented biological medium scenarios `normal_human_plasma`,
   `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`,

@@ -71,8 +71,47 @@ test_that("Stage 1 source forwards monitor and verbose status to Pando", {
     collapse = "\n"
   )
   expect_match(source_text, "call_args\\$progress_monitor <- monitor")
+  expect_match(
+    source_text,
+    "do.call(.rc_fit_standard_pando_by_cell_type, call_args)",
+    fixed = TRUE
+  )
   expect_match(source_text, "infer_args\\$verbose <- infer_args\\$verbose")
   expect_match(bridge_text, 'progress_monitor, "nested_cv"', fixed = TRUE)
   expect_match(bridge_text, "exact_sufficient_statistics")
   expect_match(bridge_text, "outer_selected_model_only")
+})
+
+test_that("errors are printed immediately with phase and original message", {
+  outdir <- tempfile("regcompass-progress-error-")
+  monitor <- .rc_step_monitor_start("grn", outdir, progress = FALSE)
+  .rc_step_monitor_event(
+    monitor, "standard_grn_fit", "fitting cell type B", emit = FALSE
+  )
+  messages <- testthat::capture_messages(
+    expect_error(
+      .rc_with_step_diagnostics(stop("native fit failed"), monitor),
+      "native fit failed"
+    )
+  )
+  expect_match(paste(messages, collapse = "\n"), "ERROR at phase=standard_grn_fit")
+  expect_match(paste(messages, collapse = "\n"), "native fit failed")
+  expect_identical(monitor$failure_kind, "error")
+  expect_identical(monitor$failure_message, "native fit failed")
+  .rc_step_monitor_fail(monitor)
+})
+
+test_that("standard Pando reports every expensive per-cell-type phase", {
+  source_text <- paste(
+    readLines(test_path("..", "..", "R", "standard_pando.R"), warn = FALSE),
+    collapse = "\n"
+  )
+  phases <- c(
+    "standard_cell_type_start", "standard_candidate_initialization",
+    "standard_motif_mapping", "standard_grn_fit",
+    "standard_grn_fit_complete", "standard_contract_extraction",
+    "standard_artifacts"
+  )
+  expect_true(all(vapply(phases, grepl, logical(1), x = source_text,
+    fixed = TRUE)))
 })
