@@ -217,6 +217,11 @@ jobs:
           sink(type = "message")
           sink(type = "output")
           close(output)
+          test_log <- readLines("test-output.txt", warn = FALSE)
+          if (length(test_log)) {
+            cat(test_log, sep = "\n", file = stderr())
+            cat("\n", file = stderr())
+          }
           quit(status = status, save = "no")
 
       - name: Upload test diagnostics
