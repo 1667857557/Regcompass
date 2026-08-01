@@ -93,8 +93,14 @@ rc_regcompass_step_grn <- function(
     parallel = TRUE,
     BPPARAM = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
-  monitor <- .rc_step_monitor_start("grn", outdir, progress)
+  monitor <- .rc_step_monitor_start(
+    "grn", outdir, progress, total_parts = 12L
+  )
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
+  .rc_step_monitor_event(
+    monitor, "input_validation",
+    "validating Stage 1 arguments and GEM", current = 1L
+  )
   if (!is.list(pando_args)) stop("`pando_args` must be a list.", call. = FALSE)
   if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
     stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
@@ -104,15 +110,40 @@ rc_regcompass_step_grn <- function(
   }
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
+  .rc_step_monitor_event(
+    monitor, "gem_validated", "GEM contract validated", current = 1L,
+    context = list(species = species)
+  )
   design <- .rc_resolve_condition_design(object, condition_col)
   object <- design$object
   effective_condition_col <- design$condition_col
+  .rc_step_monitor_event(
+    monitor, "design_resolution",
+    "resolved condition-aware versus standard Pando route", current = 2L,
+    context = list(
+      analysis_mode = design$analysis_mode,
+      condition_col = effective_condition_col %||% "<none>",
+      condition_levels = paste(design$condition_levels, collapse = ",")
+    )
+  )
   object <- .rc_normalize_single_cell_grn_object(
     object,
     condition_col = effective_condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
     atac_assay = atac_assay
+  )
+  .rc_step_monitor_event(
+    monitor, "single_cell_normalization",
+    "RNA and ATAC inputs normalized for GRN inference", current = 3L,
+    context = list(
+      cells = ncol(object),
+      cell_types = length(unique(as.character(
+        object@meta.data[[celltype_col]]
+      ))),
+      rna_assay = rna_assay,
+      atac_assay = atac_assay
+    )
   )
   reserved <- intersect(names(pando_args), c(
     "object", "gem", "outdir", "genome", "pfm", "species",
@@ -151,13 +182,43 @@ rc_regcompass_step_grn <- function(
     }
     infer_args$candidate_screen <- infer_args$candidate_screen %||% "motif_domain"
     infer_args$parallel <- FALSE
+    infer_args$verbose <- infer_args$verbose %||%
+      .rc_progress_enabled(progress)
     call_args$pando_infer_args <- infer_args
     call_args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
-    grn_result <- do.call(.rc_fit_condition_grns_by_cell_type, call_args)
+    call_args$progress_monitor <- monitor
+    .rc_step_monitor_event(
+      monitor, "pando_configuration",
+      "configured fused C++ condition-GRN runtime", current = 4L,
+      context = list(
+        candidate_screen = infer_args$candidate_screen,
+        outer_folds = infer_args$outer_nfolds %||% 5L,
+        inner_folds = infer_args$inner_nfolds %||% 5L,
+        nlambda = infer_args$nlambda %||% 50L,
+        lambda_selection = infer_args$lambda_selection %||% "lambda.1se",
+        backend = "cpp_hybrid_gram_sufficient_statistics"
+      )
+    )
+    grn_result <- .rc_with_step_diagnostics(
+      do.call(.rc_fit_condition_grns_by_cell_type, call_args), monitor
+    )
   } else {
+    infer_args$verbose <- infer_args$verbose %||%
+      .rc_progress_enabled(progress)
     call_args$pando_infer_args <- infer_args
     call_args$parallel <- isTRUE(parallel)
-    grn_result <- do.call(.rc_fit_standard_pando_by_cell_type, call_args)
+    call_args$progress_monitor <- monitor
+    .rc_step_monitor_event(
+      monitor, "standard_pando",
+      "dispatching original Pando infer_grn workflow", current = 5L
+    )
+    grn_result <- .rc_with_step_diagnostics(
+      do.call(.rc_fit_standard_pando_by_cell_type, call_args), monitor
+    )
+    .rc_step_monitor_event(
+      monitor, "standard_pando_complete",
+      "original Pando workflow completed", current = 10L
+    )
   }
   grn_result$analysis_mode <- design$analysis_mode
   grn_result$requested_condition_col <- design$requested_condition_col
@@ -166,6 +227,11 @@ rc_regcompass_step_grn <- function(
   grn_result$fallback_reason <- design$fallback_reason
   grn_result$rna_assay <- rna_assay
   grn_result$atac_assay <- atac_assay
+  .rc_step_monitor_event(
+    monitor, "stage_contract",
+    "assembled RegCompass Stage 1 GRN contract", current = 11L,
+    context = list(analysis_mode = design$analysis_mode)
+  )
   answer <- list(
     grn_result = grn_result,
     gem_fingerprint = .rc_stage_gem_fingerprint(gem),

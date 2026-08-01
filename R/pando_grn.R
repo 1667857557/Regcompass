@@ -28,6 +28,40 @@
   motifs
 }
 
+# Keep the RegCompass Pando route memory bounded.  Exact motif-hit coordinates
+# are not consumed anywhere downstream; the candidate construction only needs
+# the peak-by-motif incidence matrix.
+.rc_regcompass_motif_args <- function(args = list()) {
+  if (!is.list(args)) {
+    stop("`pando_motif_args` must be a list.", call. = FALSE)
+  }
+  aliases <- c(
+    "exact_positions", "exact_motif_positions", "keep_motif_positions",
+    "store_motif_positions", "return_motif_positions"
+  )
+  forbidden <- intersect(names(args), aliases)
+  if (length(forbidden)) {
+    stop(
+      "The RegCompass route always skips exact motif positions; remove: ",
+      paste(forbidden, collapse = ", "), call. = FALSE
+    )
+  }
+  available <- names(formals(Pando::find_motifs))
+  position_arg <- aliases[aliases %in% available][1L]
+  if (is.na(position_arg) && "..." %in% available) {
+    position_arg <- "exact_positions"
+  }
+  if (is.na(position_arg)) {
+    stop(
+      "Installed Pando cannot skip exact motif positions. Install the current ",
+      "1667857557/Pando_regcompass release with binary motif storage.",
+      call. = FALSE
+    )
+  }
+  args[[position_arg]] <- FALSE
+  args
+}
+
 #' Load the canonical species-specific Pando regulatory regions
 #'
 #' Human analyses use the union of the conserved-element and SCREEN ccRE sets.

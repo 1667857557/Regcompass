@@ -1,5 +1,16 @@
 # RegCompassR 2.2.1
 
+- Added structured stage progress for Stage 1. Console events now report phase, percent, elapsed time, cell types, conditions, metabolic targets, outer/inner folds, lambda path size, solver route, refit/validation and OOF status. Every run writes `step_progress.tsv`, including when console messages are disabled.
+- Stage 1 now enables Pando target-level verbose output when RegCompass progress is enabled, while retaining the existing public API and fail-fast behavior.
+- The RegCompass Pando route now skips unused exact motif-hit positions and
+  retains only the binary peak-by-motif incidence matrix. Interrupted and
+  failed stages immediately report their last phase and point to the progress
+  and timing logs for diagnosis.
+- Standard Pando now has the same detailed Stage 1 observability as the
+  condition-aware route, including per-cell-type candidate, motif, fit,
+  extraction and artifact events. Errors and interrupts print their original
+  condition message together with the active phase before unwinding.
+
 - Restored the documented biological medium scenarios `normal_human_plasma`,
   `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`,
   `low_lactate`, and `low_glutamine`, with separate composition and challenge

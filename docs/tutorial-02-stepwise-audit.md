@@ -4,6 +4,28 @@ Use the stepwise API to save, inspect and restart the canonical stages.
 Equations are in [Tutorial 3](tutorial-03-mathematical-model.md). Public API:
 [functions.md](functions.md).
 
+## Detailed progress and audit log
+
+All public stages accept `progress = TRUE`. Stage 1 reports input validation, design resolution, normalization, Pando runtime checks, target selection, ATAC filtering, candidate initialization, motif mapping, nested CV, contract extraction and artifact writing. The long-running nested-CV event includes the number of cell types, conditions, metabolic targets, outer/inner folds and lambda values. The RegCompass route skips exact motif-hit coordinates and retains only Pando's binary peak-by-motif incidence matrix, which is the representation used for candidate construction.
+
+```r
+options(RegCompassR.progress = TRUE)
+step1 <- rc_regcompass_step_grn(..., progress = TRUE)
+progress_log <- read.delim(
+  "RegCompass_steps/01_grn/step_progress.tsv",
+  check.names = FALSE
+)
+progress_log[, c("phase", "elapsed_hms", "detail", "context")]
+```
+
+`step_progress.tsv` is written even when `progress = FALSE`; that setting only suppresses console messages. Pando target-level messages are enabled automatically when Stage 1 progress is enabled. Errors terminate immediately and the last audit row is `stage_error`.
+
+Both Stage 1 routes are instrumented. Condition-aware runs report the fused
+nested-CV phases, while standard Pando runs print each cell-type job's candidate
+initialization, binary motif mapping, GRN fit, edge extraction, and artifact
+write. An error or user interrupt is printed immediately with its original
+message and the active phase, even when routine progress output is disabled.
+
 ## Parallel backends
 
 ```r
