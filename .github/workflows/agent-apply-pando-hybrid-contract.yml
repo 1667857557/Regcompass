@@ -9,49 +9,79 @@ permissions:
 
 jobs:
   patch-test-commit:
-    if: github.actor != 'github-actions[bot]'
+    if: github.actor != 'github-actions[bot]' && github.event.pull_request.head.repo.full_name == github.repository
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/require-pando-hybrid-abi5
+          ref: ${{ github.event.pull_request.head.ref }}
           fetch-depth: 0
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5.1'
           use-public-rspm: true
-      - name: Apply canonical integration changes
+      - name: Apply canonical integration and progress changes
         run: |
+          set -euo pipefail
           base64 --decode .agent-patch/apply_pando_hybrid_contract.py.gz.b64 | gzip -d > /tmp/apply_pando_hybrid_contract.py
           python /tmp/apply_pando_hybrid_contract.py
+          python .agent-patch/apply_detailed_progress.py
+      - name: Parse modified R sources and tests
+        shell: Rscript {0}
+        run: |
+          files <- c(
+            list.files("R", pattern = "[.]R$", full.names = TRUE),
+            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
+          )
+          invisible(lapply(files, parse))
       - uses: r-lib/actions/setup-r-dependencies@v2
         with:
           extra-packages: |
             any::testthat
             any::remotes
           dependencies: '"hard"'
-      - name: Install validated Pando feature branch
+      - name: Install validated Pando hybrid branch
         shell: Rscript {0}
         run: |
           remotes::install_github(
-            "1667857557/Pando_regcompass@agent/hybrid-condition-target-engine",
+            "1667857557/Pando_regcompass@agent/finalize-hybrid-engine-source",
             dependencies = TRUE,
             upgrade = "never"
           )
           stopifnot(as.character(packageVersion("Pando")) == "1.6.1")
-      - name: Install RegCompass and run integration contract tests
+          description <- utils::packageDescription("Pando")
+          stopifnot(
+            identical(description[["Config/Pando/NativeSparseABI"]], "5"),
+            identical(
+              description[["Config/Pando/ConditionInnerCVBackend"]],
+              "cpp-eigen-hybrid-gram-sufficient-statistics-fail-fast"
+            )
+          )
+      - name: Install RegCompass
         run: R CMD INSTALL . --no-multiarch --with-keep.source
-      - name: Verify source and installed native ABI
+      - name: Verify native ABI and detailed progress
         shell: Rscript {0}
         run: |
           library(RegCompassR)
           library(Pando)
           library(testthat)
           test_file("tests/testthat/test-pando-native-refit-contract.R")
-      - name: Commit validated integration
+          test_file("tests/testthat/test-detailed-stage-progress.R")
+      - name: Verify source contract
         run: |
+          set -euo pipefail
+          grep -q 'Config/RegCompass/PandoNativeSparseABI: 5' DESCRIPTION
+          grep -q 'cpp-eigen-hybrid-gram-sufficient-statistics-fail-fast' DESCRIPTION
+          grep -q 'step_progress.tsv' R/execution_monitor.R
+          grep -q 'phase = "nested_cv"' R/condition_grn_contract.R
+          grep -q 'call_args$progress_monitor <- monitor' R/stepwise_workflow.R
+      - name: Commit validated canonical implementation
+        run: |
+          set -euo pipefail
+          git checkout HEAD -- .agent-patch .github/workflows
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           git add -A
-          git commit -m "Require Pando hybrid condition target engine"
-          git push origin HEAD:agent/require-pando-hybrid-abi5
+          git diff --cached --quiet && { echo "No canonical changes produced"; exit 1; }
+          git commit -m "Require Pando hybrid engine and add detailed progress"
+          git push origin HEAD:${{ github.event.pull_request.head.ref }}
