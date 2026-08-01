@@ -197,20 +197,31 @@
     ),
     min_abs_estimate = 0, min_model_rsq = 0.1,
     save_pando_objects = TRUE, BPPARAM = NULL,
+    progress_monitor = NULL,
     species = c("auto", "human", "mouse")) {
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
+  .rc_step_monitor_event(
+    progress_monitor, "pando_contract_check",
+    "validating Pando runtime and paired cell metadata", current = 5L,
+    context = list(species = species)
+  )
   .rc_validate_condition_celltype_metadata(
     object@meta.data, condition_col, celltype_col,
     require_multiple_conditions = TRUE
   )
-  if (!requireNamespace("Pando", quietly = TRUE)) {
-    stop("Install 1667857557/Pando_regcompass.", call. = FALSE)
-  }
-  if (!exists("infer_condition_grn", envir = asNamespace("Pando"),
-              inherits = FALSE)) {
-    stop("Installed Pando lacks infer_condition_grn().", call. = FALSE)
-  }
+  pando_runtime <- .rc_require_pando_hybrid_runtime()
+  .rc_step_monitor_event(
+    progress_monitor, "pando_runtime",
+    "validated Pando fused native condition runtime", current = 5L,
+    context = list(
+      pando_version = pando_runtime$version,
+      native_sparse_abi = pando_runtime$native_sparse_abi,
+      target_engine = pando_runtime$target_engine_backend,
+      inner_cv = pando_runtime$inner_cv_backend,
+      refit = pando_runtime$refit_backend
+    )
+  )
   pando_infer_args <- modifyList(list(
     candidate_screen = "motif_domain", tf_cor = 0.1, peak_cor = 0,
     alpha = 0.5, condition_mix = 0.5, condition_weight = "equal",
@@ -225,6 +236,22 @@
       call. = FALSE
     )
   }
+  .rc_step_monitor_event(
+    progress_monitor, "condition_design",
+    "condition-comparable fit controls validated", current = 5L,
+    context = list(
+      conditions = length(unique(as.character(
+        object@meta.data[[condition_col]]
+      ))),
+      cell_types = length(unique(as.character(
+        object@meta.data[[celltype_col]]
+      ))),
+      outer_folds = pando_infer_args$outer_nfolds,
+      inner_folds = pando_infer_args$inner_nfolds,
+      nlambda = pando_infer_args$nlambda,
+      lambda_selection = pando_infer_args$lambda_selection
+    )
+  )
   if (is.null(pfm)) pfm <- .rc_default_pando_motifs()
   if (!"regions" %in% names(pando_initiate_args) ||
       is.null(pando_initiate_args$regions)) {
@@ -238,16 +265,39 @@
   if (!length(target_genes)) {
     stop("No overlap between RNA genes and GEM metabolic genes.", call. = FALSE)
   }
+  .rc_step_monitor_event(
+    progress_monitor, "target_selection",
+    "resolved metabolic target genes shared by RNA and GEM", current = 6L,
+    context = list(targets = length(target_genes))
+  )
   filtered <- .rc_drop_zero_count_atac_features(
     object, atac_assay, "Pando condition GRNs"
   )
   object <- filtered$object
+  .rc_step_monitor_event(
+    progress_monitor, "atac_feature_filter",
+    "removed globally zero ATAC features", current = 6L,
+    context = list(
+      cells = ncol(object),
+      removed_atac_features = filtered$n_removed %||% NA_integer_
+    )
+  )
   init <- list(object = object, peak_assay = atac_assay, rna_assay = rna_assay)
   init[names(pando_initiate_args)] <- NULL
   grn <- do.call(Pando::initiate_grn, c(init, pando_initiate_args))
+  .rc_step_monitor_event(
+    progress_monitor, "candidate_initialization",
+    "initialized Pando regulatory candidate space", current = 7L,
+    context = list(targets = length(target_genes))
+  )
+  pando_motif_args <- .rc_regcompass_motif_args(pando_motif_args)
   motif <- list(object = grn, pfm = pfm, genome = genome)
   motif[names(pando_motif_args)] <- NULL
   grn <- do.call(Pando::find_motifs, c(motif, pando_motif_args))
+  .rc_step_monitor_event(
+    progress_monitor, "motif_mapping",
+    "completed motif-to-peak and TF mapping", current = 8L
+  )
   infer <- list(
     object = grn,
     cell_type_col = celltype_col,
@@ -260,11 +310,44 @@
     BPPARAM = if (identical(BPPARAM, FALSE)) NULL else BPPARAM
   )
   infer[names(pando_infer_args)] <- NULL
+  .rc_step_monitor_event(
+    progress_monitor, "nested_cv",
+    "running fused per-target outer/inner CV, path, refit and validation",
+    current = 9L,
+    context = list(
+      targets = length(target_genes),
+      cell_types = length(unique(as.character(
+        object@meta.data[[celltype_col]]
+      ))),
+      conditions = length(unique(as.character(
+        object@meta.data[[condition_col]]
+      ))),
+      outer_folds = pando_infer_args$outer_nfolds,
+      inner_folds = pando_infer_args$inner_nfolds,
+      nlambda = pando_infer_args$nlambda,
+      solver = "hybrid_gram_or_sparse_matrix_free",
+      validation = "exact_sufficient_statistics",
+      oof = "outer_selected_model_only"
+    )
+  )
   grn <- do.call(Pando::infer_condition_grn, c(infer, pando_infer_args))
+  .rc_step_monitor_event(
+    progress_monitor, "nested_cv_complete",
+    "Pando fused target engine completed", current = 10L
+  )
   extracted <- .rc_extract_condition_grn_contract(
     grn, condition_col, celltype_col,
     min_abs_estimate = min_abs_estimate,
     min_model_rsq = min_model_rsq
+  )
+  .rc_step_monitor_event(
+    progress_monitor, "contract_extraction",
+    "validated and extracted ConditionGRNFit contracts", current = 10L,
+    context = list(
+      fitted_cell_types = length(extracted$fit_contracts),
+      all_edges = nrow(extracted$condition_all),
+      active_edges = nrow(extracted$condition_active)
+    )
   )
   meta <- object@meta.data
   fitted_cell_types <- unique(vapply(
@@ -298,6 +381,11 @@
     setdiff(colnames(expected), c("group_id", condition_col, celltype_col))
   ), drop = FALSE]
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  .rc_step_monitor_event(
+    progress_monitor, "grn_artifacts",
+    "writing Stage 1 GRN tables and fit contracts", current = 11L,
+    context = list(groups = nrow(status))
+  )
   .rc_write_tsv_gz(status, file.path(outdir, "pando_group_status.tsv.gz"))
   .rc_write_tsv_gz(extracted$condition_all,
     file.path(outdir, "pando_tf_peak_gene_condition_all.tsv.gz"))

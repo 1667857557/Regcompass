@@ -109,6 +109,8 @@
     gsub("[\t\r\n]+", " ", as.character(detail[[1L]]))
   }
   monitor$event_sequence <- as.integer(monitor$event_sequence %||% 0L) + 1L
+  monitor$last_phase <- phase
+  monitor$last_detail <- detail_text
   row <- data.frame(
     sequence = monitor$event_sequence,
     timestamp = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3%z"),
@@ -326,17 +328,25 @@
       monitor$timer, status = status, outdir = monitor$outdir,
       details = details
     )
+    diagnostic <- paste0(
+      "stage stopped before completion; last_phase=",
+      monitor$last_phase %||% "stage_start",
+      if (nzchar(monitor$last_detail %||% "")) {
+        paste0("; last_detail=", monitor$last_detail)
+      } else "",
+      ". Inspect step_progress.tsv and step_timing.tsv for diagnosis."
+    )
     .rc_step_monitor_event(
       monitor,
       phase = if (artifact_committed) "stage_complete" else "stage_error",
-      detail = status,
+      detail = if (artifact_committed) status else diagnostic,
       current = if (artifact_committed) {
         monitor$progress$total
       } else {
         monitor$progress$current
       },
       status = status,
-      emit = FALSE
+      emit = !artifact_committed
     )
     .rc_progress_done(monitor$progress, status)
     monitor$finished <- TRUE

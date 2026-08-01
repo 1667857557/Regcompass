@@ -128,9 +128,10 @@
     init <- list(object = one, peak_assay = atac_assay, rna_assay = rna_assay)
     init[names(pando_initiate_args)] <- NULL
     grn <- do.call(Pando::initiate_grn, c(init, pando_initiate_args))
+    motif_args <- .rc_regcompass_motif_args(pando_motif_args)
     motif <- list(object = grn, pfm = pfm, genome = genome)
-    motif[names(pando_motif_args)] <- NULL
-    grn <- do.call(Pando::find_motifs, c(motif, pando_motif_args))
+    motif[names(motif_args)] <- NULL
+    grn <- do.call(Pando::find_motifs, c(motif, motif_args))
     infer <- list(
       object = grn,
       genes = target_genes,
