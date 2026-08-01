@@ -15,16 +15,18 @@
   state$current <- 0L
   state$label <- as.character(label[[1L]])
   state$enabled <- .rc_progress_enabled(progress)
+  state$started_elapsed <- unname(proc.time()[["elapsed"]])
   .rc_progress_update(state, 0L, "started")
   state
 }
 
 .rc_progress_update <- function(state, current, detail = NULL) {
-  if (is.null(state) || !is.environment(state) || !isTRUE(state$enabled)) {
+  if (is.null(state) || !is.environment(state)) {
     return(invisible(state))
   }
   current <- max(0L, min(state$total, as.integer(current[[1L]])))
   state$current <- current
+  if (!isTRUE(state$enabled)) return(invisible(state))
   width <- 24L
   filled <- floor(width * current / state$total)
   cursor <- as.integer(filled < width)
@@ -38,9 +40,15 @@
   } else {
     paste0(" ", as.character(detail[[1L]]))
   }
+  elapsed <- max(
+    0,
+    unname(proc.time()[["elapsed"]]) - as.numeric(state$started_elapsed)
+  )
+  percent <- 100 * current / state$total
   message(sprintf(
-    "%s [%s] %d/%d%s",
-    state$label, bar, current, state$total, suffix
+    "%s [%s] %d/%d (%5.1f%%) elapsed=%s%s",
+    state$label, bar, current, state$total, percent,
+    .rc_format_elapsed(elapsed), suffix
   ))
   invisible(state)
 }
@@ -58,6 +66,84 @@
   minutes <- floor((seconds %% 3600) / 60)
   secs <- seconds %% 60
   sprintf("%02d:%02d:%06.3f", hours, minutes, secs)
+}
+
+.rc_progress_context_string <- function(context) {
+  if (is.null(context) || !length(context)) return("")
+  if (!is.list(context) || is.null(names(context)) || any(!nzchar(names(context)))) {
+    stop("Progress event context must be a named list.", call. = FALSE)
+  }
+  values <- vapply(names(context), function(name) {
+    value <- context[[name]]
+    if (is.null(value) || !length(value)) value <- NA_character_
+    value <- paste(as.character(value), collapse = ",")
+    value <- gsub("[\t\r\n;]+", " ", value)
+    paste0(name, "=", value)
+  }, character(1))
+  paste(values, collapse = ";")
+}
+
+.rc_step_monitor_event <- function(
+    monitor, phase, detail = NULL, current = NULL, total = NULL,
+    context = list(), status = "running", emit = TRUE) {
+  if (is.null(monitor) || !is.environment(monitor)) {
+    return(invisible(monitor))
+  }
+  phase <- as.character(phase[[1L]])
+  status <- as.character(status[[1L]])
+  if (!nzchar(phase) || !nzchar(status)) {
+    stop("Progress event phase and status must be non-empty.", call. = FALSE)
+  }
+  if (is.null(current)) current <- monitor$progress$current
+  if (is.null(total)) total <- monitor$progress$total
+  current <- max(0L, as.integer(current[[1L]]))
+  total <- max(1L, as.integer(total[[1L]]))
+  current <- min(current, total)
+  elapsed <- max(
+    0,
+    unname(proc.time()[["elapsed"]]) -
+      as.numeric(monitor$timer$elapsed_start)
+  )
+  context_text <- .rc_progress_context_string(context)
+  detail_text <- if (is.null(detail) || !length(detail)) "" else {
+    gsub("[\t\r\n]+", " ", as.character(detail[[1L]]))
+  }
+  monitor$event_sequence <- as.integer(monitor$event_sequence %||% 0L) + 1L
+  row <- data.frame(
+    sequence = monitor$event_sequence,
+    timestamp = format(Sys.time(), "%Y-%m-%dT%H:%M:%OS3%z"),
+    stage = as.character(monitor$timer$stage),
+    phase = phase,
+    status = status,
+    current = current,
+    total = total,
+    percent = 100 * current / total,
+    elapsed_seconds = elapsed,
+    elapsed_hms = .rc_format_elapsed(elapsed),
+    detail = detail_text,
+    context = context_text,
+    stringsAsFactors = FALSE
+  )
+  if (!is.null(monitor$progress_log)) {
+    append <- file.exists(monitor$progress_log)
+    utils::write.table(
+      row,
+      file = monitor$progress_log,
+      sep = "\t", quote = FALSE, row.names = FALSE,
+      col.names = !append, append = append
+    )
+  }
+  if (isTRUE(emit)) {
+    console_detail <- paste0(
+      "phase=", phase,
+      if (nzchar(detail_text)) paste0(" | ", detail_text) else "",
+      if (nzchar(context_text)) paste0(" | ", context_text) else ""
+    )
+    .rc_progress_update(monitor$progress, current, console_detail)
+  } else {
+    monitor$progress$current <- current
+  }
+  invisible(row)
 }
 
 .rc_timing_start <- function(stage) {
@@ -155,6 +241,13 @@
   monitor$progress <- .rc_progress_new(
     total_parts, paste0("RegCompass ", stage), progress
   )
+  monitor$progress_log <- if (is.null(outdir)) NULL else {
+    file.path(outdir, "step_progress.tsv")
+  }
+  if (!is.null(monitor$progress_log) && file.exists(monitor$progress_log)) {
+    unlink(monitor$progress_log)
+  }
+  monitor$event_sequence <- 0L
   monitor$final_artifact <- .rc_step_final_artifact(stage, outdir)
   monitor$artifact_before <- .rc_step_artifact_signature(
     monitor$final_artifact
@@ -164,6 +257,15 @@
   monitor$finish_details <- NULL
   monitor$finished <- FALSE
   monitor$option_restored <- FALSE
+  .rc_step_monitor_event(
+    monitor,
+    phase = "stage_start",
+    detail = "stage monitor initialized",
+    current = 0L,
+    status = "running",
+    context = list(progress_enabled = progress),
+    emit = FALSE
+  )
   monitor
 }
 
@@ -182,10 +284,22 @@
   timing <- .rc_timing_finish(
     monitor$timer, status = status, outdir = NULL, details = details
   )
+  finalizing_current <- max(0L, monitor$progress$total - 1L)
+  .rc_step_monitor_event(
+    monitor,
+    phase = "final_artifact",
+    detail = "writing final artifacts",
+    current = finalizing_current,
+    status = "running"
+  )
   if (is.null(monitor$final_artifact)) {
     .rc_timing_finish(
       monitor$timer, status = status, outdir = monitor$outdir,
       details = details
+    )
+    .rc_step_monitor_event(
+      monitor, phase = "stage_complete", detail = status,
+      current = monitor$progress$total, status = status, emit = FALSE
     )
     monitor$finished <- TRUE
     .rc_progress_done(monitor$progress, status)
@@ -194,11 +308,6 @@
     monitor$finish_requested <- TRUE
     monitor$finish_status <- status
     monitor$finish_details <- details
-    .rc_progress_update(
-      monitor$progress,
-      monitor$progress$total,
-      "writing final artifacts"
-    )
   }
   if (is.list(value)) value$timing <- timing
   value
@@ -216,6 +325,18 @@
     .rc_timing_finish(
       monitor$timer, status = status, outdir = monitor$outdir,
       details = details
+    )
+    .rc_step_monitor_event(
+      monitor,
+      phase = if (artifact_committed) "stage_complete" else "stage_error",
+      detail = status,
+      current = if (artifact_committed) {
+        monitor$progress$total
+      } else {
+        monitor$progress$current
+      },
+      status = status,
+      emit = FALSE
     )
     .rc_progress_done(monitor$progress, status)
     monitor$finished <- TRUE
