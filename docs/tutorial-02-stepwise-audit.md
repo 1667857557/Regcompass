@@ -6,7 +6,12 @@ Equations are in [Tutorial 3](tutorial-03-mathematical-model.md). Public API:
 
 ## Detailed progress and audit log
 
-All public stages accept `progress = TRUE`. Stage 1 reports input validation, design resolution, normalization, Pando runtime checks, target selection, ATAC filtering, candidate initialization, motif mapping, nested CV, contract extraction and artifact writing. The long-running nested-CV event includes the number of cell types, conditions, metabolic targets, outer/inner folds and lambda values. The RegCompass route skips exact motif-hit coordinates and retains only Pando's binary peak-by-motif incidence matrix, which is the representation used for candidate construction.
+All public stages accept `progress = TRUE`. Stage 1 reports input validation,
+design resolution, normalization, Pando runtime and numerical self-tests, target
+planning/batches, dense versus sparse matrix-free execution, checkpoints,
+nested CV, contract extraction and artifact writing. The RegCompass route skips
+exact motif-hit coordinates and retains only Pando's binary peak-by-motif
+incidence matrix, which is the representation used for candidate construction.
 
 ```r
 options(RegCompassR.progress = TRUE)
@@ -19,6 +24,11 @@ progress_log[, c("phase", "elapsed_hms", "detail", "context")]
 ```
 
 `step_progress.tsv` is written even when `progress = FALSE`; that setting only suppresses console messages. Pando target-level messages are enabled automatically when Stage 1 progress is enabled. Errors terminate immediately and the last audit row is `stage_error`.
+
+Condition-aware Stage 1 also writes `pando_execution_summary.tsv`. By default,
+target checkpoints live in `<outdir>/target_checkpoints`, compact diagnostics
+are retained, and interrupted reruns resume matching targets. A per-worker
+memory budget can be set explicitly as shown below.
 
 Both Stage 1 routes are instrumented. Condition-aware runs report the fused
 nested-CV phases, while standard Pando runs print each cell-type job's candidate
@@ -69,7 +79,12 @@ step1 <- rc_regcompass_step_grn(
       outer_nfolds = 5L,
       inner_nfolds = 5L,
       lambda_selection = "lambda.1se",
-      scale = TRUE
+      scale = TRUE,
+      engine_control = list(
+        memory_budget_mb = 1024,
+        diagnostics_level = "compact",
+        resume = TRUE
+      )
     )
   ),
   parallel = TRUE,
@@ -81,6 +96,7 @@ step1 <- rc_regcompass_step_grn(
 step1$params$analysis_mode
 step1$grn_result$condition_grn_fits
 step1$grn_result$tf_peak_gene_condition
+step1$grn_result$pando_execution_summary
 ```
 
 With fewer than two condition levels, Stage 1 uses `standard_pando` and No

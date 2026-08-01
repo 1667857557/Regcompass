@@ -1,3 +1,15 @@
+# RegCompassR 2.2.7
+
+- Requires Pando 1.6.3 native ABI 6 and its explicit high-dimensional memory
+  contract. The master process and up to two supplied BiocParallel workers now
+  execute the registered native numerical/allocation self-test before Stage 1.
+- Routes condition-aware Stage 1 through compact diagnostics, bounded target
+  batches, and resumable checkpoints under the actual Stage 1 output directory.
+  User memory budgets and other explicit engine controls remain authoritative.
+- Records dense versus sparse matrix-free target counts, largest predictor and
+  nonzero sizes, PCG diagnostics, and estimated peak bytes without changing the
+  ConditionGRNFit coefficient, mask, transform, nested-CV, or OOF contracts.
+
 # RegCompassR 2.2.1
 
 - Added structured stage progress for Stage 1. Console events now report phase, percent, elapsed time, cell types, conditions, metabolic targets, outer/inner folds, lambda path size, solver route, refit/validation and OOF status. Every run writes `step_progress.tsv`, including when console messages are disabled.

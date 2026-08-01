@@ -2,6 +2,94 @@
 
 .RC_PANDO_CONDITION_GRN_FIT_SCHEMA <- "pando_condition_grn_fit"
 
+.rc_pando_engine_control <- function(outdir, user = list()) {
+  if (is.null(user)) user <- list()
+  if (!is.list(user) || (length(user) &&
+      (is.null(names(user)) || anyNA(names(user)) ||
+       any(!nzchar(names(user))) || anyDuplicated(names(user))))) {
+    stop("`pando_infer_args$engine_control` must be a uniquely named list.",
+         call. = FALSE)
+  }
+  defaults <- list(
+    memory_budget_mb = NULL,
+    dense_max_p = 2048L,
+    lambda_batch_size = 1L,
+    refit_pcg_tol = 1e-8,
+    refit_pcg_max_iter = 2000L,
+    preconditioner = "hybrid",
+    diagnostics_level = "compact",
+    checkpoint_dir = file.path(outdir, "target_checkpoints"),
+    resume = TRUE
+  )
+  unknown <- setdiff(names(user), names(defaults))
+  if (length(unknown)) {
+    stop(
+      "Unknown `pando_infer_args$engine_control` field(s): ",
+      paste(unknown, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  utils::modifyList(defaults, user, keep.null = TRUE)
+}
+
+.rc_pando_execution_summary <- function(diagnostics) {
+  empty <- list(
+    targets_total = 0L, targets_dense = 0L, targets_matrix_free = 0L,
+    targets_failed = 0L, largest_p = NA_integer_, largest_nnz = NA_real_,
+    max_pcg_iterations = NA_integer_, max_pcg_residual = NA_real_,
+    estimated_peak_bytes = NA_real_, observed_peak_rss = NA_real_,
+    wall_time_path = NA_real_, wall_time_refit = NA_real_,
+    wall_time_validation = NA_real_
+  )
+  if (!is.data.frame(diagnostics) || !nrow(diagnostics)) return(empty)
+  if ("network_name" %in% names(diagnostics)) {
+    diagnostics <- diagnostics[
+      diagnostics$network_name %in% "regcompass_condition_grn",
+      , drop = FALSE
+    ]
+  }
+  diagnostics <- diagnostics[
+    !is.na(diagnostics$target) & nzchar(as.character(diagnostics$target)),
+    , drop = FALSE
+  ]
+  if (!nrow(diagnostics)) return(empty)
+  maximum <- function(field, integer = FALSE) {
+    if (!field %in% names(diagnostics)) return(if (integer) NA_integer_ else NA_real_)
+    value <- suppressWarnings(as.numeric(diagnostics[[field]]))
+    value <- value[is.finite(value)]
+    if (!length(value)) return(if (integer) NA_integer_ else NA_real_)
+    answer <- max(value)
+    if (integer) as.integer(answer) else answer
+  }
+  refit <- if ("refit_backend" %in% names(diagnostics)) {
+    as.character(diagnostics$refit_backend)
+  } else {
+    rep(NA_character_, nrow(diagnostics))
+  }
+  complete <- if ("stage" %in% names(diagnostics)) {
+    diagnostics$stage == "complete"
+  } else {
+    rep(FALSE, nrow(diagnostics))
+  }
+  list(
+    targets_total = as.integer(nrow(diagnostics)),
+    targets_dense = as.integer(sum(refit == "dense_direct_schur", na.rm = TRUE)),
+    targets_matrix_free = as.integer(sum(
+      refit == "matrix_free_schur_pcg", na.rm = TRUE
+    )),
+    targets_failed = as.integer(sum(!complete, na.rm = TRUE)),
+    largest_p = maximum("predictors", integer = TRUE),
+    largest_nnz = maximum("nonzeros"),
+    max_pcg_iterations = maximum("pcg_iterations", integer = TRUE),
+    max_pcg_residual = maximum("pcg_residual"),
+    estimated_peak_bytes = maximum("estimated_peak_bytes"),
+    observed_peak_rss = NA_real_,
+    wall_time_path = NA_real_,
+    wall_time_refit = NA_real_,
+    wall_time_validation = NA_real_
+  )
+}
+
 .rc_installed_package_file_fingerprint <- function(package) {
   root <- system.file(package = package)
   if (!nzchar(root) || !dir.exists(root)) return(NA_character_)
@@ -49,6 +137,20 @@
           "equal_condition_within_variance_standardized_refit"
         )) {
       stop("Pando condition fit engine or coefficient scale is incompatible.",
+           call. = FALSE)
+    }
+    if (!is.list(fit$execution) || !length(fit$execution) ||
+        any(!vapply(fit$execution, function(value) {
+          is.list(value) && identical(
+            value$memory_contract, "no_full_p2_on_high_p_path_v1"
+          ) && !(identical(
+            value$refit_backend, "matrix_free_schur_pcg"
+          ) && (!identical(value$path_backend, "sparse_matrix_free") ||
+            !identical(value$validation_backend, "sparse_residual") ||
+            !isTRUE(value$lambda_streaming) ||
+            isTRUE(value$full_predictor_square_allocated)))
+        }, logical(1)))) {
+      stop("ConditionGRNFit execution diagnostics violate the high-p memory contract.",
            call. = FALSE)
     }
     edge <- as.data.frame(fit$edge_table, stringsAsFactors = FALSE)
@@ -178,7 +280,8 @@
     condition_effect_active = active,
     active_tol = active_tol,
     coefficient_contract = "absolute_condition_effects_only",
-    pando_fit_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA
+    pando_fit_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
+    pando_memory_contract = "no-full-p2-on-high-p-path-v1"
   )
 }
 
@@ -228,6 +331,9 @@
     nlambda = 50L, outer_nfolds = 5L, inner_nfolds = 5L,
     lambda_selection = "lambda.1se", scale = TRUE, parallel = FALSE
   ), pando_infer_args)
+  pando_infer_args$engine_control <- .rc_pando_engine_control(
+    outdir, pando_infer_args$engine_control
+  )
   if (!identical(pando_infer_args$candidate_screen, "motif_domain") ||
       !identical(pando_infer_args$condition_weight, "equal") ||
       !isTRUE(pando_infer_args$scale)) {
@@ -320,6 +426,24 @@
   )
   infer[names(pando_infer_args)] <- NULL
   .rc_step_monitor_event(
+    progress_monitor, "target_plan",
+    "planned memory-bounded target execution and resumable batches",
+    current = 9L,
+    context = list(
+      memory_budget_mb = pando_infer_args$engine_control$memory_budget_mb %||%
+        "auto_1024",
+      dense_max_p = pando_infer_args$engine_control$dense_max_p,
+      diagnostics_level = pando_infer_args$engine_control$diagnostics_level,
+      checkpoint_dir = pando_infer_args$engine_control$checkpoint_dir %||%
+        "disabled"
+    )
+  )
+  .rc_step_monitor_event(
+    progress_monitor, "target_batch_start",
+    "starting bounded Pando target batches", current = 9L,
+    context = list(targets = length(target_genes))
+  )
+  .rc_step_monitor_event(
     progress_monitor, "nested_cv",
     "running fused per-target outer/inner CV, path, refit and validation",
     current = 9L,
@@ -334,12 +458,43 @@
       outer_folds = pando_infer_args$outer_nfolds,
       inner_folds = pando_infer_args$inner_nfolds,
       nlambda = pando_infer_args$nlambda,
-      solver = "hybrid_gram_or_sparse_matrix_free",
-      validation = "exact_sufficient_statistics",
+      solver = "budgeted_dense_or_sparse_matrix_free",
+      validation = "exact_dense_support_or_sparse_residual",
       oof = "outer_selected_model_only"
     )
   )
-  grn <- do.call(Pando::infer_condition_grn, c(infer, pando_infer_args))
+  grn <- tryCatch(
+    do.call(Pando::infer_condition_grn, c(infer, pando_infer_args)),
+    error = function(error) {
+      .rc_step_monitor_event(
+        progress_monitor, "target_failure", conditionMessage(error),
+        current = 9L, status = "error"
+      )
+      stop(error)
+    }
+  )
+  checkpoint_count <- if (is.null(
+    pando_infer_args$engine_control$checkpoint_dir
+  )) {
+    0L
+  } else {
+    length(list.files(
+      pando_infer_args$engine_control$checkpoint_dir,
+      pattern = "[.]rds$", recursive = TRUE
+    ))
+  }
+  .rc_step_monitor_event(
+    progress_monitor, "target_batch_complete",
+    "completed bounded Pando target batches", current = 10L,
+    context = list(checkpoints = checkpoint_count)
+  )
+  if (checkpoint_count > 0L) {
+    .rc_step_monitor_event(
+      progress_monitor, "checkpoint_written",
+      "target checkpoints are available for resume", current = 10L,
+      context = list(checkpoints = checkpoint_count)
+    )
+  }
   .rc_step_monitor_event(
     progress_monitor, "nested_cv_complete",
     "Pando fused target engine completed", current = 10L
@@ -353,6 +508,23 @@
     min_abs_estimate = min_abs_estimate,
     min_model_rsq = min_model_rsq
   )
+  execution_summary <- .rc_pando_execution_summary(
+    extracted$fit_diagnostics
+  )
+  if (execution_summary$targets_matrix_free > 0L) {
+    .rc_step_monitor_event(
+      progress_monitor, "matrix_free_target",
+      "completed high-p sparse matrix-free targets", current = 10L,
+      context = list(targets = execution_summary$targets_matrix_free)
+    )
+  }
+  if (execution_summary$targets_dense > 0L) {
+    .rc_step_monitor_event(
+      progress_monitor, "dense_target",
+      "completed budget-approved dense targets", current = 10L,
+      context = list(targets = execution_summary$targets_dense)
+    )
+  }
   .rc_step_monitor_event(
     progress_monitor, "contract_extraction_complete",
     "validated and extracted ConditionGRNFit contracts", current = 10L,
@@ -404,6 +576,11 @@
     file.path(outdir, "pando_tf_peak_gene_condition_all.tsv.gz"))
   .rc_write_tsv_gz(extracted$condition_active,
     file.path(outdir, "pando_tf_peak_gene_condition_active.tsv.gz"))
+  utils::write.table(
+    as.data.frame(execution_summary, stringsAsFactors = FALSE),
+    file = file.path(outdir, "pando_execution_summary.tsv"),
+    sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE
+  )
   saveRDS(extracted$fit_contracts,
     file.path(outdir, "pando_condition_grn_fits.rds"))
   if (isTRUE(save_pando_objects)) {
@@ -433,6 +610,7 @@
     condition_fit_status = status,
     pando_network_index = extracted$network_index,
     pando_fit_diagnostics = extracted$fit_diagnostics,
+    pando_execution_summary = execution_summary,
     condition_grn_fits = extracted$fit_contracts,
     tf_peak_gene_universal = extracted$universal,
     tf_peak_gene_condition_all = extracted$condition_all,

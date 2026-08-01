@@ -91,7 +91,12 @@ result <- rc_run_regcompass(
       condition_weight = "equal",
       outer_nfolds = 5L,
       inner_nfolds = 5L,
-      scale = TRUE
+      scale = TRUE,
+      engine_control = list(
+        memory_budget_mb = 1024,
+        diagnostics_level = "compact",
+        resume = TRUE
+      )
     )
   ),
   metacell_args = list(

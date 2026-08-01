@@ -181,6 +181,9 @@ rc_regcompass_step_grn <- function(
            ".", call. = FALSE)
     }
     infer_args$candidate_screen <- infer_args$candidate_screen %||% "motif_domain"
+    infer_args$engine_control <- .rc_pando_engine_control(
+      outdir, infer_args$engine_control
+    )
     infer_args$parallel <- FALSE
     infer_args$verbose <- infer_args$verbose %||%
       .rc_progress_enabled(progress)
@@ -196,7 +199,11 @@ rc_regcompass_step_grn <- function(
         inner_folds = infer_args$inner_nfolds %||% 5L,
         nlambda = infer_args$nlambda %||% 50L,
         lambda_selection = infer_args$lambda_selection %||% "lambda.1se",
-        backend = "cpp_hybrid_gram_sufficient_statistics"
+        backend = "cpp_memory_bounded_hybrid_target_v1",
+        memory_budget_mb = infer_args$engine_control$memory_budget_mb %||%
+          "auto_1024",
+        checkpoint_dir = infer_args$engine_control$checkpoint_dir %||%
+          "disabled"
       )
     )
     grn_result <- .rc_with_step_diagnostics(

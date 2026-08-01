@@ -7,13 +7,16 @@ test_that("companion remotes identify the stacked SuperCell dependency", {
     "1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells",
     fixed = TRUE
   )
-  expect_match(remotes, "1667857557/Pando_regcompass", fixed = TRUE)
-  expect_false(grepl("Pando_regcompass@", remotes, fixed = TRUE))
+  expect_match(
+    remotes,
+    "1667857557/Pando_regcompass@agent/high-p-memory-bounded-engine",
+    fixed = TRUE
+  )
 })
 
 test_that("installed Pando retains optimized condition-GRN dispatch", {
   skip_if_not_installed("Pando")
-  expect_gte(packageVersion("Pando"), package_version("1.5.1"))
+  expect_gte(packageVersion("Pando"), package_version("1.6.3"))
   expect_true(is.function(Pando::infer_condition_grn))
   expect_true(is.function(Pando::condition_grn_fit))
   expect_true(is.function(Pando::project_condition_grn_primary_cells))

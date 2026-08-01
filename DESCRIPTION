@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.2.6
+Version: 2.2.7
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -13,15 +13,15 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     contribute projectable structural zeros in those conditions. A supplied
     single-level condition directly uses original Pando infer_grn with unscaled
     predictors and no condition coefficients; an explicitly missing condition
-    column is rejected. Condition-aware runs require Pando >= 1.6.2 with native
-    condition ABI 5, worker-safe registered-symbol lookup, the fused C++ target
-    engine, exact sufficient-statistic validation, the hybrid centered-Gram or
-    sparse matrix-free path solver, and registered C++ product, multitask path,
-    direct-Schur refit and target-engine kernels. RegCompass validates this
-    runtime in the main process and on supplied BiocParallel workers before
-    target fitting starts. Pando stops immediately when native registration,
-    matrix alignment, factorization, finite-arithmetic or residual verification
-    fails; RegCompass does not provide or select an R fallback. Metacells use one
+    column is rejected. Condition-aware runs require Pando >= 1.6.3 with native
+    condition ABI 6, worker-safe registered-symbol lookup, budgeted dense or
+    sparse matrix-free target execution, exact residual validation, and exact
+    dense-direct or matrix-free Schur refitting. RegCompass executes Pando's
+    native numerical/allocation self-test in the main process and on up to two
+    supplied BiocParallel workers before target fitting starts. Pando stops
+    immediately when native registration, matrix alignment, factorization,
+    finite arithmetic or residual verification fails; RegCompass does not
+    provide or select an R fallback. Metacells use one
     independent multimodal WNN graph per broad cell type through SuperCell
     SCimplify_by_graph_group. All conditions within a cell type jointly determine
     adaptive RNA and ATAC modality weights, neighbours, and Walktrap clusters;
@@ -131,7 +131,7 @@ LinkingTo:
 SystemRequirements: C++17
 Suggests:
     BiocParallel,
-    Pando (>= 1.6.2),
+    Pando (>= 1.6.3),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
@@ -150,7 +150,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells,
-    1667857557/Pando_regcompass
+    1667857557/Pando_regcompass@agent/high-p-memory-bounded-engine
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
@@ -159,8 +159,9 @@ Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
 Config/RegCompassR/SeuratObjectVersion: 4.1.4
 Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
-Config/RegCompass/PandoNativeSparseABI: 5
+Config/RegCompass/PandoNativeSparseABI: 6
 Config/RegCompass/PandoNativeCallBinding: registered-symbol-lookup-worker-safe-v1
-Config/RegCompass/PandoConditionRefitBackend: cpp-eigen-direct-path-fail-fast
-Config/RegCompass/PandoConditionTargetEngineBackend: cpp-eigen-fused-hybrid-gram-nested-cv-path-refit-validation-stats-fail-fast
-Config/RegCompass/PandoConditionInnerCVBackend: cpp-eigen-hybrid-gram-sufficient-statistics-fail-fast
+Config/RegCompass/PandoConditionRefitBackend: dense-direct-or-matrix-free-schur-pcg-v1
+Config/RegCompass/PandoConditionTargetEngineBackend: cpp-eigen-memory-bounded-hybrid-target-v1
+Config/RegCompass/PandoConditionInnerCVBackend: exact-refit-validation-sparse-residual-v1
+Config/RegCompass/PandoConditionMemoryContract: no-full-p2-on-high-p-path-v1
