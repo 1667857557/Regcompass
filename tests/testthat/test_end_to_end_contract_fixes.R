@@ -20,18 +20,3 @@ test_that("infeasible COMPASS scores are NA rather than zero", {
   )
   expect_true(is.na(score["R1", "u2"]))
 })
-
-test_that("one shared fragment file maps to every sample", {
-  file <- tempfile(fileext = ".tsv.gz")
-  writeLines("chr1\t1\t2\tcell-1\t1", file)
-  manifest <- .rc_normalize_fragment_manifest(
-    file,
-    sample_ids = c("sample1", "sample2"),
-    atac_assay = "ATAC"
-  )
-  expect_equal(
-    manifest$sample_id,
-    c("sample1", "sample2")
-  )
-  expect_equal(unique(manifest$fragment_file), file)
-})

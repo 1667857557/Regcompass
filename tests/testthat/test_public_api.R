@@ -93,7 +93,10 @@ test_that("canonical SuperCell API uses cell-type grouped WNN", {
   expect_match(builder, "SCimplify_by_graph_group", fixed = TRUE)
   expect_match(builder, "cell.graph.group", fixed = TRUE)
   expect_match(builder, "cell.split.condition", fixed = TRUE)
-  expect_match(builder, "assay = c(rna_assay, atac_assay)", fixed = TRUE)
+  expect_match(
+    builder,
+    "assay = c\\(rna_assay,[[:space:]]*atac_assay\\)"
+  )
   expect_false(grepl("cell.annotation", builder, fixed = TRUE))
   expect_false(grepl("supercell_stratum_col", pooling, fixed = TRUE))
   expect_false(grepl("stratum_col", pooling, fixed = TRUE))

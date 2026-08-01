@@ -31,7 +31,10 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
     "no-full-p2-on-high-p-path-v1"
   )
   expect_identical(
-    unname(description[1L, "Remotes"]),
+    gsub(
+      "[[:space:]]+", " ",
+      trimws(unname(description[1L, "Remotes"]))
+    ),
     paste(
       "1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells,",
       "1667857557/Pando_regcompass@agent/high-p-memory-bounded-engine"

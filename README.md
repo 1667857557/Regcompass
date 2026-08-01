@@ -132,9 +132,9 @@ alpha sensitivity, zero-support sensitivity, or link-saturation propagation.
 After a completed `model_mode = "meta_module_gem"` run,
 `rc_regcompass_step_target_union()` can score direct KEGG-, Reactome-, or
 master-Rhea-linked non-core reactions. It reuses the exact cached Stage 5 union
-GEM and global FASTCORE completion. It is a retained optional second LP pass,
-not a comparability guardrail, and uses the canonical Layer 1
-`reaction_expression` input, which is
+GEM and global FASTCORE completion; it does not rerun FASTCORE. It is a
+retained optional second LP pass, not a comparability guardrail, and uses the
+canonical Layer 1 `reaction_expression` input, which is
 `reaction_expression_condition_full_oof` in condition mode.
 
 ## Documentation

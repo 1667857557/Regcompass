@@ -57,12 +57,21 @@ test_that("medium-specific union GEM scores every metacell", {
       stringsAsFactors = FALSE
     )
   )
+  medium <- data.frame(
+    medium_scenario_id = "toy_defined",
+    exchange_reaction_id = c("EX_A", "EX_B"),
+    lb = c(0, 0),
+    ub = c(1000, 1000),
+    available = TRUE,
+    stringsAsFactors = FALSE
+  )
   result <- NULL
   expect_warning(
     result <- rc_run_microcompass(
       layer1 = layer1,
       gem = gem,
       target_reactions = "R1",
+      medium_scenarios = medium,
       mode = "meta_module_gem",
       reaction_membership = membership,
       core_reactions = membership,

@@ -9,6 +9,10 @@
 - Records dense versus sparse matrix-free target counts, largest predictor and
   nonzero sizes, PCG diagnostics, and estimated peak bytes without changing the
   ConditionGRNFit coefficient, mask, transform, nested-CV, or OOF contracts.
+- Resolves automatic downstream media only from recorded human or mouse GEM
+  provenance. GEMs without species provenance now require an explicit
+  biologically justified medium instead of silently selecting a retired
+  technical boundary mode.
 
 # RegCompassR 2.2.1
 
