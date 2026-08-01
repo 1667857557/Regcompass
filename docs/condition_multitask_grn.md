@@ -6,7 +6,7 @@ RegCompass no longer fits a separate Pando model for every `condition × cell ty
 
 Pando then fits each cell type across all of its conditions using one candidate TF–peak–target dictionary and one sparse-group multi-task objective. RegCompass consumes the resulting universal and condition-level Pando `Network` objects without reconstructing condition GRNs independently.
 
-The implementation is pinned to `1667857557/Pando_regcompass@d6cce00059a5d2b3fb2d05a36d9ea74b1cd555cf`.
+The implementation is pinned to `1667857557/Pando_regcompass@6f42c8143bec6610b001e714a51627337f6d9ba9`.
 
 ## Joint condition model
 
