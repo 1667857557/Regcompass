@@ -27,3 +27,27 @@ count = text.count(old)
 if count != 1:
     raise RuntimeError(f"expected one Pando runtime block, found {count}")
 path.write_text(text.replace(old, new, 1))
+
+path = Path("docs/tutorial-01-quick-start.md")
+text = path.read_text()
+anchor = '''```r
+stopifnot(
+  all(c("Group", "cell_type") %in% colnames(A@meta.data)),
+  "pca" %in% names(A@reductions),
+  "lsi" %in% names(A@reductions)
+)
+```
+'''
+addition = '''
+
+Condition-aware Stage 1 requires **Pando >= 1.6.1**, native condition ABI 5,
+and the registered fused C++ target engine. Inner validation uses exact
+sufficient statistics with a deterministic hybrid Gram/sparse path solver;
+only the outer-selected model performs per-cell OOF projection. RegCompass
+checks the ABI, backend metadata and all native symbols before fitting and has
+no R fallback. An incompatible installation stops immediately.
+'''
+count = text.count(anchor)
+if count != 1:
+    raise RuntimeError(f"expected one quick-start object-state anchor, found {count}")
+path.write_text(text.replace(anchor, anchor + addition, 1))
