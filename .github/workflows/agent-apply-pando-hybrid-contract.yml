@@ -26,6 +26,16 @@ jobs:
           base64 --decode .agent-patch/apply_pando_hybrid_contract.py.gz.b64 | gzip -d > /tmp/apply_pando_hybrid_contract.py
           python /tmp/apply_pando_hybrid_contract.py
           python .agent-patch/apply_detailed_progress.py
+          python - <<'PY'
+          from pathlib import Path
+          path = Path("tests/testthat/test-detailed-stage-progress.R")
+          text = path.read_text()
+          text = text.replace(
+              'expect_match(bridge_text, "phase = \\\\"nested_cv\\\\"")',
+              'expect_match(bridge_text, \'phase = "nested_cv"\', fixed = TRUE)'
+          )
+          path.write_text(text)
+          PY
       - name: Parse modified R sources and tests
         shell: Rscript {0}
         run: |
@@ -70,11 +80,11 @@ jobs:
       - name: Verify source contract
         run: |
           set -euo pipefail
-          grep -q 'Config/RegCompass/PandoNativeSparseABI: 5' DESCRIPTION
-          grep -q 'cpp-eigen-hybrid-gram-sufficient-statistics-fail-fast' DESCRIPTION
-          grep -q 'step_progress.tsv' R/execution_monitor.R
-          grep -q 'phase = "nested_cv"' R/condition_grn_contract.R
-          grep -q 'call_args$progress_monitor <- monitor' R/stepwise_workflow.R
+          grep -Fq 'Config/RegCompass/PandoNativeSparseABI: 5' DESCRIPTION
+          grep -Fq 'cpp-eigen-hybrid-gram-sufficient-statistics-fail-fast' DESCRIPTION
+          grep -Fq 'step_progress.tsv' R/execution_monitor.R
+          grep -Fq 'phase = "nested_cv"' R/condition_grn_contract.R
+          grep -Fq 'call_args$progress_monitor <- monitor' R/stepwise_workflow.R
       - name: Commit validated canonical implementation
         run: |
           set -euo pipefail
