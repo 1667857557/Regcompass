@@ -54,18 +54,9 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{pfm}{Optional motif collection. When omitted, Pando's bundled motifs are used.}
 \item{species}{Species identifier or \code{"auto"}. Mouse runs require build-matched regulatory regions supplied through \code{pando_initiate_args$regions}.}
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
-\item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels. Stage 1 removes requested cell types with fewer than 300 cells before normalization.}
+\item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels. In standard-Pando mode each requested cell type must contain at least 300 cells. In condition-Pando mode every condition-by-cell-type stratum must contain at least 300 cells; if one condition fails, the complete cell type is removed before normalization.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. \code{min_cells} is fixed at 300.
-RegCompass requires \code{candidate_screen = "motif_domain"}; alternative
-candidate-screen values are rejected. Standard Pando active edges require
-\code{padj < 0.05} and \code{abs(estimate) > 0.01}. Nested
-\code{pando_infer_args$engine_control} is passed to Pando. Condition-aware
-defaults use compact diagnostics, resumable checkpoints under
-\code{file.path(outdir, "target_checkpoints")}, and Pando's per-worker memory
-planner; an explicit \code{memory_budget_mb} overrides its default. Motif matches
-are cached under \code{file.path(outdir, "motif_cache")} when supported by the
-installed Pando version.}
+\item{pando_args}{Stage 1 controls. \code{min_cells} is fixed at 300 and is the single threshold used both for prefiltering and for the downstream Pando call. RegCompass requires \code{candidate_screen = "motif_domain"}; alternative candidate-screen values are rejected. Standard Pando active edges require \code{padj < 0.05} and \code{abs(estimate) > 0.01}. Nested \code{pando_infer_args$engine_control} is passed to Pando. Condition-aware defaults use compact diagnostics, resumable checkpoints under \code{file.path(outdir, "target_checkpoints")}, and Pando's per-worker memory planner; an explicit \code{memory_budget_mb} overrides its default. Motif matches are cached under \code{file.path(outdir, "motif_cache")} when supported by the installed Pando version.}
 \item{metacell_args}{Stage 2 RNA/ATAC reductions, dimensions, WNN neighbours, gamma, seed, size markers and cache controls.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{projection_component}{Must be \code{"condition"}.}
@@ -92,13 +83,18 @@ Runs the GRN, metacell, reaction-catalogue, reaction-expression, metabolic-model
 and results stages independently.
 }
 \details{
-Stage 1 filters cell types and globally zero ATAC peaks before normalization.
-Cell-type-shared TF-IDF is assembled once from sparse triplets instead of
-non-contiguous assignment into a large sparse matrix. It returns canonical
-condition fits with condition-full and common-support outer-heldout projections.
-Coefficient estimability is distinct from projectable structural-zero support:
-an unavailable coefficient remains \code{NA}, while its projection contribution
-is fixed at zero in that condition.
+Stage 1 applies one fixed \code{min_cells=300} contract before normalization. A
+standard-Pando cell type is retained when its total cell count is at least 300.
+For condition Pando, a cell type is retained only when every observed condition
+contains at least 300 cells for that cell type. A failure in any condition drops
+the entire cell type rather than deleting only one condition, preserving the
+joint condition design. Globally zero ATAC peaks are then removed. Cell-type-
+shared TF-IDF is assembled once from sparse triplets instead of non-contiguous
+assignment into a large sparse matrix. Stage 1 returns canonical condition fits
+with condition-full and common-support outer-heldout projections. Coefficient
+estimability is distinct from projectable structural-zero support: an unavailable
+coefficient remains \code{NA}, while its projection contribution is fixed at zero
+in that condition.
 
 Stage 2 calls \code{SuperCell::SCimplify_by_graph_group()}. It builds one
 independent multimodal WNN graph per broad cell type. All conditions within that
