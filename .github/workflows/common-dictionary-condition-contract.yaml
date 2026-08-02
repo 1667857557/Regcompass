@@ -1,0 +1,51 @@
+name: Common dictionary condition contract
+
+on:
+  pull_request:
+  push:
+    branches: [Main]
+
+jobs:
+  package-check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+          use-public-rspm: true
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          extra-packages: any::rcmdcheck
+          needs: check
+      - name: Verify retired condition runtime is absent
+        shell: bash
+        run: |
+          test ! -e R/condition_grn_runtime.R
+          test ! -e R/condition_grn_runtime_guard.R
+          ! grep -R -n -E 'outer_nfolds|inner_nfolds|condition_mix|engine_control|project_condition_grn_primary_cells' \
+            docs/tutorial-01-quick-start.md \
+            docs/tutorial-02-stepwise-audit.md \
+            docs/condition-comparable-grn.md \
+            vignettes/regcompass-workflow.Rmd
+      - name: Verify installed Pando contract
+        shell: Rscript {0}
+        run: |
+          d <- utils::packageDescription("Pando")
+          stopifnot(identical(
+            d[["Config/Pando/ConditionGRNSchema"]],
+            "pando_condition_grn_common_dictionary_v1"
+          ))
+          required <- c(
+            "infer_condition_grn", "condition_grn_fit",
+            "discover_grn_edges", "union_grn_edges", "fit_grn_from_edges",
+            "project_condition_grn_cells",
+            "aggregate_condition_grn_projection"
+          )
+          ns <- asNamespace("Pando")
+          stopifnot(all(vapply(required, exists, logical(1),
+                               envir = ns, inherits = FALSE)))
+      - name: Check package
+        shell: Rscript {0}
+        run: |
+          rcmdcheck::rcmdcheck(args = c('--no-manual'), error_on = 'error')
