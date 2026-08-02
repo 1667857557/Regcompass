@@ -1,11 +1,10 @@
 test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", {
   package_root <- testthat::test_path("..", "..")
   description <- read.dcf(file.path(package_root, "DESCRIPTION"))
-  expect_identical(unname(description[1L, "Version"]), "2.2.9")
-  expect_match(
-    unname(description[1L, "Suggests"]),
-    "Pando \\(>= 1\\.6\\.3\\)"
-  )
+  expect_identical(unname(description[1L, "Version"]), "2.2.10")
+  suggests <- unname(description[1L, "Suggests"])
+  expect_match(suggests, "Pando", fixed = TRUE)
+  expect_false(grepl("Pando (>=", suggests, fixed = TRUE))
   expect_identical(
     unname(description[1L, "Config/RegCompass/PandoNativeSparseABI"]),
     "6"
@@ -30,16 +29,18 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
     unname(description[1L, "Config/RegCompass/PandoConditionMemoryContract"]),
     "no-full-p2-on-high-p-path-v1"
   )
+  remotes <- gsub(
+    "[[:space:]]+", " ",
+    trimws(unname(description[1L, "Remotes"]))
+  )
   expect_identical(
-    gsub(
-      "[[:space:]]+", " ",
-      trimws(unname(description[1L, "Remotes"]))
-    ),
+    remotes,
     paste(
       "1667857557/SuperCell_Seurat_V4,",
       "1667857557/Pando_regcompass"
     )
   )
+  expect_false(grepl("Pando_regcompass@", remotes, fixed = TRUE))
   expect_match(
     unname(description[1L, "Collate"]),
     "condition_grn_runtime_guard.R",
@@ -67,7 +68,8 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
     ),
     collapse = "\n"
   )
-  expect_match(runtime_text, 'package_version\\("1\\.6\\.3"\\)')
+  expect_false(grepl("RC_PANDO_MIN_VERSION", runtime_text, fixed = TRUE))
+  expect_false(grepl('package_version("1.6.3")', runtime_text, fixed = TRUE))
   expect_match(runtime_text, 'Config/Pando/NativeSparseABI', fixed = TRUE)
   expect_match(runtime_text, 'Config/Pando/NativeCallBinding', fixed = TRUE)
   expect_match(
@@ -125,7 +127,7 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
 })
 
 test_that("an installed compatible Pando passes lightweight runtime checks", {
-  skip_if_not_installed("Pando", minimum_version = "1.6.3")
+  skip_if_not_installed("Pando")
 
   description <- utils::packageDescription("Pando")
   expect_identical(description[["Config/Pando/NativeSparseABI"]], "6")
