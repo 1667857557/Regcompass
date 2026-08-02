@@ -65,7 +65,7 @@ jobs:
             dependencies = NA, upgrade = "never"
           )
           remotes::install_github(
-            "1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells",
+            "1667857557/SuperCell_Seurat_V4",
             dependencies = NA,
             upgrade = "never",
             auth_token = Sys.getenv("GITHUB_PAT")
