@@ -119,9 +119,9 @@ rc_default_bpparam <- function(
 
 #' Apply a function with optional BiocParallel control
 #'
-#' RegCompass starts package-managed pools only after forcing every nested
-#' numerical and solver task to one internal thread. A pool created by this
-#' function is always stopped and followed by full garbage collection.
+#' Every task, including tasks submitted to a caller-started pool, establishes a
+#' one-thread numerical/solver environment inside the worker. Package-managed
+#' pools are always stopped and followed by full garbage collection.
 #'
 #' @param X A vector or list.
 #' @param FUN Function applied to each element.
@@ -129,7 +129,14 @@ rc_default_bpparam <- function(
 #' @param ... Additional arguments.
 #' @return A list.
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
-  if (identical(BPPARAM, FALSE)) return(lapply(X, FUN, ...))
+  if (!is.function(FUN)) stop("`FUN` must be a function.", call. = FALSE)
+  extra <- list(...)
+  worker_fun <- function(x) {
+    .rc_with_internal_single_thread(function() {
+      do.call(FUN, c(list(x), extra))
+    })
+  }
+  if (identical(BPPARAM, FALSE)) return(lapply(X, worker_fun))
   if (!is.null(BPPARAM)) {
     if (is.logical(BPPARAM)) {
       stop(
@@ -148,9 +155,9 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
       )
     }
   }
-  if (length(X) <= 1L) return(lapply(X, FUN, ...))
+  if (length(X) <= 1L) return(lapply(X, worker_fun))
   if (is.null(BPPARAM)) BPPARAM <- rc_default_bpparam()
-  if (is.null(BPPARAM)) return(lapply(X, FUN, ...))
+  if (is.null(BPPARAM)) return(lapply(X, worker_fun))
 
   was_started <- isTRUE(BiocParallel::bpisup(BPPARAM))
   thread_state <- NULL
@@ -163,5 +170,5 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
     }, add = TRUE)
     BiocParallel::bpstart(BPPARAM)
   }
-  BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
+  BiocParallel::bplapply(X, worker_fun, BPPARAM = BPPARAM)
 }
