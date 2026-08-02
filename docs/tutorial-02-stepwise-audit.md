@@ -1,17 +1,17 @@
 # Tutorial 2: stepwise workflow
 
-Use the stepwise API to save, inspect and restart the canonical stages.
-Equations are in [Tutorial 3](tutorial-03-mathematical-model.md). Public API:
+Use the stepwise API to save, inspect and restart each canonical stage. The
+condition-GRN contract is in
+[condition-comparable-grn.md](condition-comparable-grn.md). Public API:
 [functions.md](functions.md).
 
-## Detailed progress and audit log
+## Progress and audit log
 
-All public stages accept `progress = TRUE`. Stage 1 reports input validation,
-design resolution, normalization, Pando runtime and numerical self-tests, target
-planning/batches, dense versus sparse matrix-free execution, checkpoints,
-nested CV, contract extraction and artifact writing. The RegCompass route skips
-exact motif-hit coordinates and retains only Pando's binary peak-by-motif
-incidence matrix, which is the representation used for candidate construction.
+All public stages accept `progress = TRUE` and persist `step_progress.tsv` and
+`step_timing.tsv`. Stage 1 reports design resolution, global normalization,
+candidate initialization, motif mapping, global/condition candidate discovery,
+exact edge union, fixed-dictionary GLM fitting, contract extraction and artifact
+writing.
 
 ```r
 options(RegCompassR.progress = TRUE)
@@ -23,18 +23,9 @@ progress_log <- read.delim(
 progress_log[, c("phase", "elapsed_hms", "detail", "context")]
 ```
 
-`step_progress.tsv` is written even when `progress = FALSE`; that setting only suppresses console messages. Pando target-level messages are enabled automatically when Stage 1 progress is enabled. Errors terminate immediately and the last audit row is `stage_error`.
-
-Condition-aware Stage 1 also writes `pando_execution_summary.tsv`. By default,
-target checkpoints live in `<outdir>/target_checkpoints`, compact diagnostics
-are retained, and interrupted reruns resume matching targets. A per-worker
-memory budget can be set explicitly as shown below.
-
-Both Stage 1 routes are instrumented. Condition-aware runs report the fused
-nested-CV phases, while standard Pando runs print each cell-type job's candidate
-initialization, binary motif mapping, GRN fit, edge extraction, and artifact
-write. An error or user interrupt is printed immediately with its original
-message and the active phase, even when routine progress output is disabled.
+The current condition route has no native condition runtime, lambda path,
+checkpointing, nested CV, dense/matrix-free solver choice or OOF assignment.
+Errors stop immediately and the final audit row records `stage_error`.
 
 ## Parallel backends
 
@@ -54,10 +45,10 @@ layer2_bp <- if (.Platform$OS.type == "windows") {
 }
 ```
 
-`BPPARAM = TRUE` is invalid. Do not set `parallel` inside
+`BPPARAM = TRUE` is invalid. Do not put `parallel` or `BPPARAM` inside
 `pando_infer_args`.
 
-## Stage 1: condition-aware or standard Pando
+## Stage 1: common-dictionary condition GRNs
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -69,22 +60,16 @@ step1 <- rc_regcompass_step_grn(
   condition_col = "Group",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 100L,
+    min_cells = 300L,
     min_abs_estimate = 0,
     min_model_rsq = 0.1,
     pando_infer_args = list(
-      candidate_screen = "motif_domain",
-      condition_mix = 0.5,
-      condition_weight = "equal",
-      outer_nfolds = 5L,
-      inner_nfolds = 5L,
-      lambda_selection = "lambda.1se",
-      scale = TRUE,
-      engine_control = list(
-        memory_budget_mb = 1024,
-        diagnostics_level = "compact",
-        resume = TRUE
-      )
+      tf_cor = 0.1,
+      peak_cor = 0,
+      adjust_method = "BH",
+      padj_threshold = 0.05,
+      rank_action = "mark",
+      min_residual_df = 1L
     )
   ),
   parallel = TRUE,
@@ -92,15 +77,56 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
+The fixed Stage 1 threshold is 300 cells. A different supplied value is
+overridden by the hardening contract before normalization.
+
+For each retained cell type, Stage 1 runs:
+
+```text
+global candidate discovery
++ each-condition candidate discovery
+→ exact (target, TF, region) union
+→ frozen target-specific dictionary
+→ one unscaled Gaussian identity GLM per condition
+→ BH-adjusted coefficient table
+→ padj < 0.05 effects eligible for penalty
+```
+
+Candidate discovery uses Pando peak-to-gene domains, motif support,
+peak-target correlation and TF-target correlation. The first-stage candidate
+coefficients are not reused. The final fit never re-runs correlation screening.
+
+Inspect the complete and penalty-eligible effects:
+
 ```r
 step1$params$analysis_mode
 step1$grn_result$condition_grn_fits
-step1$grn_result$tf_peak_gene_condition
-step1$grn_result$pando_execution_summary
+step1$grn_result$tf_peak_gene_condition_effect_all
+step1$grn_result$tf_peak_gene_condition_effect
+step1$grn_result$condition_fit_status
 ```
 
-With fewer than two condition levels, Stage 1 uses `standard_pando` and No
-condition coefficients are calculated.
+Stage 1 artifacts include:
+
+```text
+pando_group_status.tsv.gz
+pando_tf_peak_gene_condition_all.tsv.gz
+pando_tf_peak_gene_condition_active.tsv.gz
+pando_tf_peak_gene_universal.tsv.gz
+pando_condition_grn_fits.rds
+```
+
+`condition_all` retains `estimate`, `std_err`, `statistic`, `pval`, `padj`,
+`estimable`, `zero_variance`, `aliased`, model `R²`, and the exact edge
+provenance. `condition_active` requires BH significance, estimability, the
+configured absolute-effect gate and `min_model_rsq`.
+
+Ordinary GLM P values are conditional on the frozen dictionary; they do not
+account for candidate-selection uncertainty.
+
+With no condition column or fewer than two condition levels, Stage 1 uses
+`standard_pando` independently for each retained cell type and calculates no
+condition coefficients.
 
 ## Stage 2: cell-type graphs and condition-pure metacells
 
@@ -117,6 +143,7 @@ step2 <- rc_regcompass_step_metacells(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
+    k.knn = 30L,
     seed = 12345L,
     min_cells_per_stratum = 500L,
     min_metacell_size = 10L,
@@ -132,9 +159,9 @@ step2$pooled$membership
 step2$pooled$input_design
 ```
 
-Each cell type has one independent graph. All conditions are joint in that
-graph, and final metacells are condition-pure. Set `overwrite = TRUE` after
-changing cells, reductions, dimensions, gamma, seed or thresholds.
+Each broad cell type has one independent multimodal WNN graph. Conditions share
+that graph, and condition splits the parent membership after clustering so final
+metacells remain condition-pure.
 
 ## Stage 3: reaction catalogue
 
@@ -153,7 +180,7 @@ step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
 ```
 
-## Stage 4: condition-full reaction support
+## Stage 4: regulatory reaction support
 
 ```r
 step4 <- rc_regcompass_step_layer1(
@@ -163,7 +190,6 @@ step4 <- rc_regcompass_step_layer1(
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
   projection_component = "condition",
-  comparison_support = "auto",
   regulatory_alpha = 1,
   gpr_and_method = "min",
   parallel = TRUE,
@@ -171,124 +197,36 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
+For multiple conditions, Stage 4 reconstructs `TF RNA × peak ATAC` on the exact
+paired cells, multiplies by Pando `penalty_effect`, sums by target, and then
+aggregates using the exact SuperCell membership table. No coefficient,
+normalization or edge dictionary is recomputed at metacell level.
+
 ```r
-step4$gene_projection_condition_full_oof
-step4$gene_projection_common_oof
-step4$gene_projection_condition_unique_oof
-step4$reaction_expression_condition_full_oof
-step4$reaction_expression_common_oof
+step4$gene_regulatory_modifier
+step4$reaction_expression
+step4$projection_coverage
 step4$projection_provenance
 ```
 
-Condition-full OOF is primary. Common support is the jointly estimable
-component. Each non-estimable edge side contributes zero.
+Historical output fields containing `_oof`, `common`, or `condition_unique` are
+retained for API compatibility. In the current method, the primary and common
+fields are aliases of the BH-filtered fixed-dictionary full-fit projection, and
+the condition-unique compatibility decomposition is zero.
 
-## Build Stage 5 media
-
-### Plasma scenarios
-
-```r
-human_medium <- rc_make_medium_scenarios(
-  gem = human_gem,
-  scenario = "normal_human_plasma",
-  species = "human"
-)
-
-mouse_medium <- rc_make_medium_scenarios(
-  gem = mouse_gem,
-  scenario = "mouse_plasma",
-  species = "mouse"
-)
-```
-
-`normal_human_plasma` encodes HPLM composition from *Cell* 2017 and the updated
-HPLM formulation from *Cell Metabolism* 2021. Plasmax from *Science Advances*
-2019 is validation only and is not averaged with HPLM. `mouse_plasma` uses a
-conservative metabolite set anchored to absolute plasma and interstitial-fluid
-measurements in *Nature* 2026. Unsupported mouse components are omitted rather
-than inferred from human HPLM.
-
-### Culture challenge scenarios
+## Stage 5: media and directional penalty
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
-  gem = human_gem,
+  gem = gem,
   scenario = c(
+    "normal_human_plasma",
     "high_glucose",
-    "low_glucose",
-    "high_lactate",
-    "low_lactate",
-    "low_glutamine"
+    "low_glucose"
   ),
   species = "human"
 )
-```
 
-All five challenge scenarios use the identical HPLM 2017/2021 basal nutrient
-composition. The challenge paper replaces only the named target concentration:
-
-```text
-high_glucose   glucose 25 mM    Han 2015
-low_glucose    glucose 1 mM     Han 2015
-high_lactate   lactate 20 mM    San-Millan 2020
-low_lactate    lactate 0.5 mM   Cho 2025
-low_glutamine  glutamine 0.5 mM Visagie 2015 Methods
-```
-
-This removes RPMI-versus-DMEM-versus-Plasmax composition as a confounder between
-challenge scenarios. Inspect composition, validation and challenge provenance:
-
-```r
-unique(medium_scenarios[, intersect(c(
-  "medium_scenario_id",
-  "medium_background_id",
-  "background_reference_label",
-  "background_reference_doi",
-  "background_validation_reference_label",
-  "background_validation_reference_doi",
-  "challenge_reference_label",
-  "challenge_reference_doi",
-  "scenario_construction"
-), colnames(medium_scenarios))])
-```
-
-Target concentration-derived uptake caps remain sensitivity assumptions rather
-than measured transporter rates.
-
-### User-defined composition
-
-```r
-custom_medium <- data.frame(
-  medium_scenario_id = "my_measured_medium",
-  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
-  lb = c(-0.20, -0.10),
-  ub = c(1, 1),
-  available = TRUE,
-  reference_label = "Optional experiment or publication label",
-  reference_doi = "10.xxxx/optional.reference",
-  stringsAsFactors = FALSE
-)
-
-custom_medium <- rc_make_medium_scenarios(
-  gem = human_gem,
-  scenario = "custom",
-  species = "human",
-  custom_medium = custom_medium
-)
-```
-
-`scenario = NULL` is accepted for a custom-only run. `custom_metabolites` can be
-used instead of reaction-level bounds. Built-in and custom scenarios may also be
-returned together.
-
-Changing the scenario list, custom composition, exchange limit, target
-`uptake_scale`, or any resulting bound invalidates Stage 5 and downstream
-results but does not require rerunning Stages 1-4. See
-[Medium scenarios and evidence](medium-presets.md).
-
-## Stage 5: shared model and LP scoring
-
-```r
 step5 <- rc_regcompass_step_layer2(
   layer1 = step4,
   meta_modules = step3,
@@ -311,16 +249,18 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
+All conditions and metacells use the same medium-specific model, reaction order,
+bounds, target directions and `vmax`.
+
 ```r
-step5$penalty_condition_full_oof
-step5$penalty_common_oof
-step5$penalty_condition_unique_increment
-step5$penalty_rna_only
+step5$penalty
+step5$vmax
 step5$model_cache_summary
 ```
 
-All routes use the exact same medium-specific model, bounds, target directions
-and `vmax`. The five retired guardrails are absent from the result schema.
+Historical `penalty_condition_full_oof` and `penalty_common_oof` fields are
+compatibility aliases of the current primary penalty; the condition-unique
+increment is zero.
 
 ## Stage 6: final result
 
@@ -340,42 +280,16 @@ result <- rc_regcompass_step_results(
 ```r
 result$reaction_ranking
 result$condition_contrast
-result$common_support_component_summary
-result$condition_unique_penalty_increment_summary
 ```
 
-## Optional targeted reaction remapping
+## Restart rules
 
-```r
-targeted <- rc_regcompass_step_target_union(
-  layer1 = step4,
-  meta_modules = step3,
-  layer2 = step5,
-  gem = gem,
-  outdir = "RegCompass_steps/07_targeted_remapping",
-  core_reaction_ids = c("MAR04381", "MAR04379"),
-  layer2_args = list(target_direction = "both", solver = "highs"),
-  parallel = TRUE,
-  BPPARAM = layer2_bp
-)
-```
+Changing candidate thresholds, target genes, conditions, cell types, RNA/ATAC
+normalization, motif mapping, `padj_threshold`, rank handling or Stage 1 cell
+sets invalidates Stage 1 and every downstream stage.
 
-This pass uses `step4$reaction_expression`, which is the condition-full primary
-reaction-expression route in condition mode, and reuses the exact cached Stage 5
-union GEM without rebuilding it or rerunning FASTCORE.
+Changing metacell graph inputs or membership invalidates Stages 2-6 but does not
+change the already fitted single-cell GRNs.
 
-Saved stages:
-
-```text
-01_grn/step_grn.rds
-02_metacells/step_metacells.rds
-03_meta_modules/step_meta_modules.rds
-04_layer1/step_layer1.rds
-05_layer2/step_layer2.rds
-06_results/regcompass_result.rds
-07_targeted_remapping/step_target_union.rds
-```
-
-See [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) for targeted
-reaction extension and [Tutorial 5](tutorial-05-condition-differential-analysis.md)
-for condition statistics.
+Changing only medium scenarios or LP controls invalidates Stage 5 and final
+results but does not require rerunning Stages 1-4.
