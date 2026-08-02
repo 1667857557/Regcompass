@@ -1,7 +1,11 @@
 test_that("Stage 1 exposes the fixed min_cells and fragment policy", {
   expect_identical(RegCompassR:::.rc_stage1_min_cells_fixed, 300L)
   expect_identical(formals(rc_regcompass_step_grn)$fragment_files, FALSE)
-  body_text <- paste(deparse(body(rc_regcompass_step_grn)), collapse = "\n")
+  body_text <- paste(c(
+    deparse(body(rc_regcompass_step_grn)),
+    deparse(body(RegCompassR:::.rc_build_stage_analysis_cell_set)),
+    deparse(body(RegCompassR:::.rc_original_step_grn_cell_set_contract))
+  ), collapse = "\n")
   expect_match(body_text, ".rc_resolve_stage1_min_cells_contract", fixed = TRUE)
   expect_match(body_text, ".rc_filter_stage1_groups_by_min_cells", fixed = TRUE)
   expect_match(body_text, ".rc_drop_zero_count_atac_features", fixed = TRUE)
