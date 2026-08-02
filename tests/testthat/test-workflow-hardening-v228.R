@@ -1,11 +1,18 @@
-test_that("Stage 1 exposes the fixed prefilter and fragment policy", {
+test_that("Stage 1 exposes the fixed min_cells and fragment policy", {
   expect_identical(RegCompassR:::.rc_stage1_min_cells_fixed, 300L)
   expect_identical(formals(rc_regcompass_step_grn)$fragment_files, FALSE)
   body_text <- paste(deparse(body(rc_regcompass_step_grn)), collapse = "\n")
-  expect_match(body_text, ".rc_prefilter_stage1_celltypes", fixed = TRUE)
+  expect_match(body_text, ".rc_resolve_stage1_min_cells_contract", fixed = TRUE)
+  expect_match(body_text, ".rc_filter_stage1_groups_by_min_cells", fixed = TRUE)
   expect_match(body_text, ".rc_drop_zero_count_atac_features", fixed = TRUE)
   expect_match(body_text, ".rc_clear_signac_fragments", fixed = TRUE)
   expect_match(body_text, "single_cell_grn.rds", fixed = TRUE)
+  filter_text <- paste(
+    deparse(body(RegCompassR:::.rc_filter_stage1_groups_by_min_cells)),
+    collapse = "\n"
+  )
+  expect_match(filter_text, "condition_x_cell_type", fixed = TRUE)
+  expect_match(filter_text, "all(as.integer(x) >= min_cells)", fixed = TRUE)
 })
 
 test_that("standard Pando uses strict adjusted-P and coefficient filters", {
