@@ -70,19 +70,25 @@
     )
     retained_stratum <- count_matrix >= as.integer(min_cells)
     retained_condition_count <- base::rowSums(retained_stratum)
-    retained_type <- rownames(count_matrix)[retained_condition_count >= 2L]
+    retained_type <- rownames(count_matrix)[retained_condition_count >= 1L]
+    pando_type <- rownames(count_matrix)[retained_condition_count >= 2L]
 
     diagnostics <- do.call(rbind, lapply(requested_type, function(type) {
+      stratum_ok <- as.logical(retained_stratum[type, condition_levels])
+      fit_ok <- type %in% pando_type
       data.frame(
         cell_type = type,
         condition = condition_levels,
         n_cells = as.integer(count_matrix[type, condition_levels]),
-        retained_stratum = as.logical(
-          retained_stratum[type, condition_levels]
-        ),
+        retained_stratum = stratum_ok,
         retained_cell_type = type %in% retained_type,
-        retained = type %in% retained_type & as.logical(
-          retained_stratum[type, condition_levels]
+        eligible_for_condition_pando = fit_ok,
+        retained = stratum_ok,
+        fit_status = ifelse(
+          !stratum_ok,
+          "excluded_below_min_cells",
+          ifelse(fit_ok, "eligible_condition_pando",
+                 "skipped_fewer_than_two_conditions")
         ),
         n_retained_conditions = as.integer(
           retained_condition_count[[type]]
@@ -109,13 +115,13 @@
       )
     }
 
-    dropped_type <- setdiff(requested_type, retained_type)
-    if (length(dropped_type)) {
+    skipped_type <- setdiff(retained_type, pando_type)
+    if (length(skipped_type)) {
       message(
-        "Stage 1 excluded cell types with fewer than two retained conditions ",
-        "after condition-level min_cells filtering: ",
+        "Stage 1 retained qualifying strata but skipped condition-Pando fitting ",
+        "for cell types with fewer than two retained conditions: ",
         paste0(
-          dropped_type, "=", as.integer(retained_condition_count[dropped_type]),
+          skipped_type, "=", as.integer(retained_condition_count[skipped_type]),
           " retained condition(s)",
           collapse = "; "
         )
@@ -123,19 +129,15 @@
     }
 
     if (!length(retained_type)) {
-      detail <- vapply(requested_type, function(type) {
-        paste0(
-          type, "{",
-          paste0(
-            condition_levels, "=", as.integer(count_matrix[type, condition_levels]),
-            collapse = ","
-          ),
-          "}"
-        )
-      }, character(1))
       stop(
-        "No requested cell type retains at least two conditions with ",
-        "min_cells=300. Observed: ", paste(detail, collapse = "; "),
+        "No condition x cell-type stratum reaches min_cells=300.",
+        call. = FALSE
+      )
+    }
+    if (!length(pando_type)) {
+      stop(
+        "No cell type retains at least two qualifying conditions for ",
+        "condition-Pando fitting after min_cells=300 filtering.",
         call. = FALSE
       )
     }
@@ -153,12 +155,11 @@
     selected_keep[valid_index] <- retained_stratum[cbind(
       type_index[valid_index], condition_index[valid_index]
     )]
-    selected_keep <- selected_keep &
-      observed_type[selected_rows] %in% retained_type
     keep_cells[selected_rows] <- selected_keep
   } else {
     counts <- table(factor(observed_type[selected], levels = requested_type))
     retained_type <- names(counts)[as.integer(counts) >= min_cells]
+    pando_type <- retained_type
     diagnostics <- data.frame(
       cell_type = names(counts),
       condition = if (length(condition_levels) == 1L) {
@@ -169,7 +170,13 @@
       n_cells = as.integer(counts),
       retained_stratum = as.integer(counts) >= min_cells,
       retained_cell_type = names(counts) %in% retained_type,
+      eligible_for_condition_pando = FALSE,
       retained = names(counts) %in% retained_type,
+      fit_status = ifelse(
+        names(counts) %in% retained_type,
+        "eligible_standard_pando",
+        "excluded_below_min_cells"
+      ),
       n_retained_conditions = if (length(condition_levels) == 1L) {
         as.integer(names(counts) %in% retained_type)
       } else {
@@ -208,6 +215,12 @@
   list(
     object = filtered,
     retained_cell_types = retained_type,
+    pando_cell_types = pando_type,
+    skipped_condition_cell_types = if (condition_mode) {
+      setdiff(retained_type, pando_type)
+    } else {
+      character()
+    },
     diagnostics = diagnostics,
     analysis_mode = if (condition_mode) "condition_grn" else "standard_pando",
     condition_levels = retained_condition_levels
@@ -220,11 +233,12 @@
 #' broad cell type must contain at least 300 cells. In condition-Pando mode,
 #' every condition-by-cell-type stratum is checked independently: strata below
 #' 300 cells are removed while qualifying conditions of the same cell type are
-#' retained. A cell type enters condition Pando only when at least two qualifying
-#' conditions remain. The same value is then passed unchanged into Pando.
-#' Globally zero ATAC peaks are removed before TF-IDF or motif analysis. By
-#' default stale Signac fragment references are cleared because Stage 1 uses the
-#' in-memory peak matrix and genome sequence rather than fragment files.
+#' retained. Cell types with fewer than two qualifying conditions are retained
+#' in the filtered object but skipped for condition-effect fitting. The same
+#' threshold is passed unchanged into Pando. Globally zero ATAC peaks are removed
+#' before TF-IDF or motif analysis. By default stale Signac fragment references
+#' are cleared because Stage 1 uses the in-memory peak matrix and genome sequence
+#' rather than fragment files.
 #'
 #' @param fragment_files Preserve existing Signac fragment references when TRUE.
 #' The default FALSE clears them before Stage 1.
@@ -267,11 +281,15 @@ rc_regcompass_step_grn <- function(
     threshold_scope = if (identical(
       filtered_groups$analysis_mode, "condition_grn"
     )) {
-      "condition_x_cell_type_independent_then_minimum_two_conditions"
+      "condition_x_cell_type_independent"
     } else {
       "cell_type"
     },
     condition_levels = filtered_groups$condition_levels,
+    retained_cell_types = filtered_groups$retained_cell_types,
+    pando_cell_types = filtered_groups$pando_cell_types,
+    skipped_condition_cell_types =
+      filtered_groups$skipped_condition_cell_types,
     applied_before_normalization = TRUE,
     passed_to_pando = TRUE
   )
@@ -315,8 +333,7 @@ rc_regcompass_step_grn <- function(
     species = species,
     condition_col = condition_col,
     celltype_col = celltype_col,
-    cell_type = if (is.null(cell_type)) NULL else
-      filtered_groups$retained_cell_types,
+    cell_type = filtered_groups$pando_cell_types,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
     pando_args = pando_args,
