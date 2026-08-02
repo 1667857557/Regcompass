@@ -178,4 +178,4 @@ Config/RegCompass/PandoNativeCallBinding: registered-symbol-lookup-worker-safe-v
 Config/RegCompass/PandoConditionRefitBackend: dense-direct-or-matrix-free-schur-pcg-v1
 Config/RegCompass/PandoConditionTargetEngineBackend: cpp-eigen-memory-bounded-hybrid-target-v1
 Config/RegCompass/PandoConditionInnerCVBackend: exact-refit-validation-sparse-residual-v1
-Config/RegCompass/PandoConditionMemoryContract: no-full-p2-on-high-p_path-v1
+Config/RegCompass/PandoConditionMemoryContract: no-full-p2-on-high-p-path-v1
