@@ -109,9 +109,10 @@ rc_run_regcompass <- function(
     object = object,
     outdir = file.path(outdir, "02_metacells"),
     condition_col = condition_col, celltype_col = celltype_col,
-    cell_type = cell_type, rna_assay = rna_assay,
+    cell_type = NULL, rna_assay = rna_assay,
     atac_assay = atac_assay, fragment_files = fragment_files,
-    metacell_args = metacell_args, progress = progress
+    metacell_args = metacell_args, progress = progress,
+    grn = step1
   )
   step3 <- rc_regcompass_step_meta_modules(
     grn = step1, metacells = step2, gem = gem,
