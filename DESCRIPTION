@@ -5,45 +5,47 @@ Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut",
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Integrates paired single-cell RNA and ATAC regulatory evidence
-    with genome-scale metabolic reaction analysis. Stage 1 removes broad cell
-    types with fewer than 300 paired cells and globally zero ATAC peaks before
-    normalization, clears stale fragment references by default, and reuses
-    persistent motif matches across identical region layouts. When two or more
-    condition levels are available, RegCompass fits one condition-aware Pando
-    design per broad cell type and uses condition-full outerheldout TF-by-ATAC
-    projections as the primary regulatory penalty. Jointly estimable edges form
-    an auditable common-support component; edges non-estimable in one or both
-    conditions contribute projectable structural zeros in those conditions. A
-    supplied single-level condition directly uses original Pando infer_grn with
-    unscaled predictors and no condition coefficients; its active edges require
-    adjusted P below 0.05 and absolute coefficient above 0.01. Condition-aware
-    runs require Pando >= 1.6.3 with native condition ABI 6, worker-safe
-    registered-symbol lookup, budgeted dense or sparse matrix-free target
-    execution, exact residual validation, and exact dense-direct or matrix-free
-    Schur refitting. RegCompass executes Pando's native numerical/allocation
-    self-test in the main process and on up to two supplied BiocParallel workers
-    before target fitting starts. Pando stops immediately when native
-    registration, matrix alignment, factorization, finite arithmetic or residual
-    verification fails; RegCompass does not provide or select an R fallback.
-    Metacells use one independent multimodal WNN graph per broad cell type
-    through SuperCell SCimplify_by_graph_group. All conditions within a cell type
-    jointly determine adaptive RNA and ATAC modality weights, neighbours, and
-    Walktrap clusters; condition splits parent membership only after clustering.
-    Metacell RNA and ATAC counts use exact SuperCell membership. Small metacells
-    are retained and marked rather than merged or removed. RNA latent expression
-    uses normalized-unit empirical Bayes updates whose shrinkage weights are
-    independent of library size; observed zeros retain continuous posterior
-    evidence and are not threshold-clamped. Regulatory modifiers act on bounded
-    RNA-support odds, GPR rules produce reaction expression, and each medium uses
-    one shared union GEM and global FASTCORE completion. Condition-specific
-    meta-module payloads are stored externally so Stage 5 receives only their
-    merged catalogue and a checksummed reference. Directional LP work is split
-    into model-by-target blocks with one solver thread per worker. Directional
-    structural vmax is solved once per shared model and target, then reused
-    across metacells. Built-in medium scenarios are restricted to formulations
-    with direct published-paper provenance. Depth matching, common-depth
-    restriction, alpha sensitivity, zero-support sensitivity and link-saturation
-    propagation are not part of the canonical workflow.
+    with genome-scale metabolic reaction analysis. Stage 1 fixes
+    pando_args$min_cells at 300 and uses that same value to remove broad cell
+    types below the threshold before normalization; globally zero ATAC peaks are
+    also removed before subsequent analysis. Stage 1 clears stale fragment
+    references by default and reuses persistent motif matches across identical
+    region layouts. When two or more condition levels are available, RegCompass
+    fits one condition-aware Pando design per broad cell type and uses
+    condition-full outerheldout TF-by-ATAC projections as the primary regulatory
+    penalty. Jointly estimable edges form an auditable common-support component;
+    edges non-estimable in one or both conditions contribute projectable
+    structural zeros in those conditions. A supplied single-level condition
+    directly uses original Pando infer_grn with unscaled predictors and no
+    condition coefficients; its active edges require adjusted P below 0.05 and
+    absolute coefficient above 0.01. Condition-aware runs require Pando >= 1.6.3
+    with native condition ABI 6, worker-safe registered-symbol lookup, budgeted
+    dense or sparse matrix-free target execution, exact residual validation, and
+    exact dense-direct or matrix-free Schur refitting. RegCompass executes
+    Pando's native numerical/allocation self-test in the main process and on up
+    to two supplied BiocParallel workers before target fitting starts. Pando
+    stops immediately when native registration, matrix alignment, factorization,
+    finite arithmetic or residual verification fails; RegCompass does not
+    provide or select an R fallback. Metacells use one independent multimodal WNN
+    graph per broad cell type through SuperCell SCimplify_by_graph_group. All
+    conditions within a cell type jointly determine adaptive RNA and ATAC
+    modality weights, neighbours, and Walktrap clusters; condition splits parent
+    membership only after clustering. Metacell RNA and ATAC counts use exact
+    SuperCell membership. Small metacells are retained and marked rather than
+    merged or removed. RNA latent expression uses normalized-unit empirical
+    Bayes updates whose shrinkage weights are independent of library size;
+    observed zeros retain continuous posterior evidence and are not
+    threshold-clamped. Regulatory modifiers act on bounded RNA-support odds, GPR
+    rules produce reaction expression, and each medium uses one shared union GEM
+    and global FASTCORE completion. Condition-specific meta-module payloads are
+    stored externally so Stage 5 receives only their merged catalogue and a
+    checksummed reference. Directional LP work is split into model-by-target
+    blocks with one solver thread per worker. Directional structural vmax is
+    solved once per shared model and target, then reused across metacells.
+    Built-in medium scenarios are restricted to formulations with direct
+    published-paper provenance. Depth matching, common-depth restriction, alpha
+    sensitivity, zero-support sensitivity and link-saturation propagation are
+    not part of the canonical workflow.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -120,6 +122,7 @@ Collate:
     'one_shot.R'
     'stratum_filter.R'
     'zzz_workflow_hardening.R'
+    'zzzz_min_cells_contract.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
