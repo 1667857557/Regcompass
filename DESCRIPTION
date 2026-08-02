@@ -8,12 +8,13 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     with genome-scale metabolic reaction analysis. Stage 1 fixes
     pando_args$min_cells at 300 and uses that same value before normalization.
     Standard Pando retains a broad cell type only when its total cell count is at
-    least 300. Condition Pando retains a broad cell type only when every
-    condition-by-cell-type stratum contains at least 300 cells; if any condition
-    fails, the complete cell type is removed. Globally zero ATAC peaks are also
-    removed before subsequent analysis. Stage 1 clears stale fragment references
-    by default and reuses persistent motif matches across identical region
-    layouts. When two or more condition levels are available, RegCompass fits one
+    least 300. Condition Pando evaluates each condition-by-cell-type stratum
+    independently and removes only strata below 300 cells. Qualifying conditions
+    of the same cell type remain, and the cell type proceeds when at least two
+    qualifying conditions remain. Globally zero ATAC peaks are also removed
+    before subsequent analysis. Stage 1 clears stale fragment references by
+    default and reuses persistent motif matches across identical region layouts.
+    When two or more condition levels are available, RegCompass fits one
     condition-aware Pando design per broad cell type and uses condition-full
     outerheldout TF-by-ATAC projections as the primary regulatory penalty.
     Jointly estimable edges form an auditable common-support component; edges
@@ -177,4 +178,4 @@ Config/RegCompass/PandoNativeCallBinding: registered-symbol-lookup-worker-safe-v
 Config/RegCompass/PandoConditionRefitBackend: dense-direct-or-matrix-free-schur-pcg-v1
 Config/RegCompass/PandoConditionTargetEngineBackend: cpp-eigen-memory-bounded-hybrid-target-v1
 Config/RegCompass/PandoConditionInnerCVBackend: exact-refit-validation-sparse-residual-v1
-Config/RegCompass/PandoConditionMemoryContract: no-full-p2-on-high-p-path-v1
+Config/RegCompass/PandoConditionMemoryContract: no-full-p2-on-high-p_path-v1
