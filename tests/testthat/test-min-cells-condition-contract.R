@@ -29,9 +29,14 @@ test_that("standard Pando applies min_cells to each cell type", {
   expect_true(all(result$diagnostics$threshold_scope == "cell_type"))
 })
 
-test_that("condition Pando requires min_cells in every condition-celltype stratum", {
-  sizes <- c(A_control = 300L, A_treated = 300L,
-             B_control = 300L, B_treated = 299L)
+test_that("condition Pando removes undersized strata without removing qualifying conditions", {
+  sizes <- c(
+    A_control = 300L,
+    A_treated = 299L,
+    A_recovery = 300L,
+    B_control = 300L,
+    B_treated = 299L
+  )
   cells <- unlist(Map(
     function(name, n) paste0(name, "_", seq_len(n)),
     names(sizes), sizes,
@@ -40,12 +45,14 @@ test_that("condition Pando requires min_cells in every condition-celltype stratu
   cell_type <- c(
     rep("A", sizes[["A_control"]]),
     rep("A", sizes[["A_treated"]]),
+    rep("A", sizes[["A_recovery"]]),
     rep("B", sizes[["B_control"]]),
     rep("B", sizes[["B_treated"]])
   )
   condition <- c(
     rep("control", sizes[["A_control"]]),
     rep("treated", sizes[["A_treated"]]),
+    rep("recovery", sizes[["A_recovery"]]),
     rep("control", sizes[["B_control"]]),
     rep("treated", sizes[["B_treated"]])
   )
@@ -70,17 +77,27 @@ test_that("condition Pando requires min_cells in every condition-celltype stratu
     cell_type = NULL,
     min_cells = 300L
   )
+
   expect_identical(result$analysis_mode, "condition_grn")
   expect_identical(result$retained_cell_types, "A")
   expect_equal(ncol(result$object), 600L)
-  expect_true(all(result$diagnostics$threshold_scope == "condition_x_cell_type"))
-  expect_true(all(result$diagnostics$retained[result$diagnostics$cell_type == "A"]))
-  expect_false(any(result$diagnostics$retained[result$diagnostics$cell_type == "B"]))
-  expect_equal(
-    result$diagnostics$n_cells[
-      result$diagnostics$cell_type == "B" &
-        result$diagnostics$condition == "treated"
-    ],
-    299L
-  )
+  expect_setequal(unique(result$object$condition), c("control", "recovery"))
+  expect_true(all(result$object$cell_type == "A"))
+  expect_true(all(
+    result$diagnostics$threshold_scope == "condition_x_cell_type"
+  ))
+
+  a <- result$diagnostics[result$diagnostics$cell_type == "A", ]
+  expect_true(a$retained[a$condition == "control"])
+  expect_true(a$retained[a$condition == "recovery"])
+  expect_false(a$retained_stratum[a$condition == "treated"])
+  expect_false(a$retained[a$condition == "treated"])
+  expect_true(all(a$retained_cell_type))
+  expect_true(all(a$n_retained_conditions == 2L))
+
+  b <- result$diagnostics[result$diagnostics$cell_type == "B", ]
+  expect_true(b$retained_stratum[b$condition == "control"])
+  expect_false(any(b$retained_cell_type))
+  expect_false(any(b$retained))
+  expect_true(all(b$n_retained_conditions == 1L))
 })
