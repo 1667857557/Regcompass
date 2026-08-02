@@ -1,6 +1,6 @@
 # Final Stage 1 threshold contract. This file is collated after the workflow
-# hardening overrides so one fixed `min_cells` value drives both prefiltering and
-# the downstream standard/condition Pando calls.
+# hardening overrides so one fixed `min_cells` value drives prefiltering and the
+# downstream standard/condition Pando calls.
 
 .rc_resolve_stage1_min_cells_contract <- function(pando_args) {
   if (!is.list(pando_args)) {
@@ -16,23 +16,165 @@
 }
 
 .rc_filter_stage1_groups_by_min_cells <- function(
-    object, celltype_col, cell_type, min_cells) {
-  .rc_prefilter_stage1_celltypes(
-    object = object,
-    celltype_col = celltype_col,
-    cell_type = cell_type,
-    min_cells = min_cells
+    object, condition_col, celltype_col, cell_type, min_cells) {
+  if (!inherits(object, "Seurat")) {
+    stop("`object` must inherit from Seurat.", call. = FALSE)
+  }
+  .rc_validate_celltype_metadata(object@meta.data, celltype_col)
+  observed_type <- trimws(as.character(object@meta.data[[celltype_col]]))
+  available_type <- unique(observed_type)
+  requested_type <- if (is.null(cell_type)) {
+    available_type
+  } else {
+    unique(trimws(as.character(cell_type)))
+  }
+  missing_type <- setdiff(requested_type, available_type)
+  if (length(missing_type)) {
+    stop(
+      "Requested cell types were not found: ",
+      paste(missing_type, collapse = ", "),
+      call. = FALSE
+    )
+  }
+  selected <- observed_type %in% requested_type
+  if (!any(selected)) {
+    stop("No cells remain after applying `cell_type`.", call. = FALSE)
+  }
+
+  has_condition <- is.character(condition_col) && length(condition_col) == 1L &&
+    !is.na(condition_col) && nzchar(condition_col) &&
+    condition_col %in% colnames(object@meta.data)
+  if (has_condition) {
+    observed_condition <- trimws(as.character(
+      object@meta.data[[condition_col]]
+    ))
+    invalid_condition <- selected &
+      (is.na(object@meta.data[[condition_col]]) | !nzchar(observed_condition))
+    if (any(invalid_condition)) {
+      stop(
+        "Condition metadata contain missing or empty values in requested cell types.",
+        call. = FALSE
+      )
+    }
+    condition_levels <- unique(observed_condition[selected])
+  } else {
+    observed_condition <- rep(NA_character_, nrow(object@meta.data))
+    condition_levels <- character()
+  }
+
+  condition_mode <- length(condition_levels) >= 2L
+  if (condition_mode) {
+    count_matrix <- table(
+      factor(observed_type[selected], levels = requested_type),
+      factor(observed_condition[selected], levels = condition_levels)
+    )
+    retained_type <- rownames(count_matrix)[
+      apply(count_matrix, 1L, function(x) all(as.integer(x) >= min_cells))
+    ]
+    diagnostics <- do.call(rbind, lapply(requested_type, function(type) {
+      data.frame(
+        cell_type = type,
+        condition = condition_levels,
+        n_cells = as.integer(count_matrix[type, condition_levels]),
+        retained = type %in% retained_type,
+        threshold = as.integer(min_cells),
+        threshold_scope = "condition_x_cell_type",
+        analysis_mode = "condition_grn",
+        stringsAsFactors = FALSE
+      )
+    }))
+    dropped_type <- setdiff(requested_type, retained_type)
+    if (length(dropped_type)) {
+      detail <- vapply(dropped_type, function(type) {
+        paste0(
+          type, "{",
+          paste0(
+            condition_levels, "=", as.integer(count_matrix[type, condition_levels]),
+            collapse = ","
+          ),
+          "}"
+        )
+      }, character(1))
+      message(
+        "Stage 1 excluded cell types because at least one condition has fewer ",
+        "than min_cells=300 before normalization: ",
+        paste(detail, collapse = "; ")
+      )
+    }
+  } else {
+    counts <- table(factor(observed_type[selected], levels = requested_type))
+    retained_type <- names(counts)[as.integer(counts) >= min_cells]
+    diagnostics <- data.frame(
+      cell_type = names(counts),
+      condition = if (length(condition_levels) == 1L) {
+        condition_levels[[1L]]
+      } else {
+        NA_character_
+      },
+      n_cells = as.integer(counts),
+      retained = names(counts) %in% retained_type,
+      threshold = as.integer(min_cells),
+      threshold_scope = "cell_type",
+      analysis_mode = "standard_pando",
+      stringsAsFactors = FALSE
+    )
+    dropped_type <- setdiff(requested_type, retained_type)
+    if (length(dropped_type)) {
+      message(
+        "Stage 1 excluded cell types with fewer than min_cells=300 before ",
+        "normalization: ",
+        paste0(dropped_type, "=", as.integer(counts[dropped_type]), collapse = ", ")
+      )
+    }
+  }
+
+  if (!length(retained_type)) {
+    if (condition_mode) {
+      detail <- vapply(requested_type, function(type) {
+        paste0(
+          type, "{",
+          paste0(
+            condition_levels, "=", as.integer(count_matrix[type, condition_levels]),
+            collapse = ","
+          ),
+          "}"
+        )
+      }, character(1))
+      stop(
+        "No requested cell type has at least min_cells=300 cells in every ",
+        "condition. Observed: ", paste(detail, collapse = "; "),
+        call. = FALSE
+      )
+    }
+    stop(
+      "No requested cell type reaches min_cells=300.",
+      call. = FALSE
+    )
+  }
+
+  keep_cells <- rownames(object@meta.data)[observed_type %in% retained_type]
+  filtered <- subset(object, cells = keep_cells)
+  filtered@misc$regcompass_stage1_group_filter <- diagnostics
+  list(
+    object = filtered,
+    retained_cell_types = retained_type,
+    diagnostics = diagnostics,
+    analysis_mode = if (condition_mode) "condition_grn" else "standard_pando",
+    condition_levels = condition_levels
   )
 }
 
 #' Infer regulatory evidence using the fixed Stage 1 `min_cells` contract
 #'
-#' Stage 1 fixes `pando_args$min_cells` at 300. The same value is first used to
-#' remove broad cell types below the threshold before normalization and is then
-#' passed unchanged into the standard or condition-aware Pando runtime.
-#' Globally zero ATAC peaks are removed before TF-IDF or motif analysis. By
-#' default stale Signac fragment references are cleared because Stage 1 uses the
-#' in-memory peak matrix and genome sequence rather than fragment files.
+#' Stage 1 fixes `pando_args$min_cells` at 300. In standard-Pando mode, each
+#' broad cell type must contain at least 300 cells. In condition-Pando mode,
+#' every condition-by-cell-type stratum must contain at least 300 cells; if any
+#' condition is below the threshold, that complete cell type is excluded before
+#' normalization so the joint condition design remains balanced and comparable.
+#' The same value is then passed unchanged into Pando. Globally zero ATAC peaks
+#' are removed before TF-IDF or motif analysis. By default stale Signac fragment
+#' references are cleared because Stage 1 uses the in-memory peak matrix and
+#' genome sequence rather than fragment files.
 #'
 #' @param fragment_files Preserve existing Signac fragment references when TRUE.
 #' The default FALSE clears them before Stage 1.
@@ -58,6 +200,7 @@ rc_regcompass_step_grn <- function(
   preserve_fragments <- .rc_validate_stage1_fragment_policy(fragment_files)
   filtered_groups <- .rc_filter_stage1_groups_by_min_cells(
     object = object,
+    condition_col = condition_col,
     celltype_col = celltype_col,
     cell_type = cell_type,
     min_cells = min_cells
@@ -70,6 +213,15 @@ rc_regcompass_step_grn <- function(
     min_cells = min_cells,
     source = "pando_args$min_cells",
     fixed = TRUE,
+    analysis_mode = filtered_groups$analysis_mode,
+    threshold_scope = if (identical(
+      filtered_groups$analysis_mode, "condition_grn"
+    )) {
+      "condition_x_cell_type_all_conditions_required"
+    } else {
+      "cell_type"
+    },
+    condition_levels = filtered_groups$condition_levels,
     applied_before_normalization = TRUE,
     passed_to_pando = TRUE
   )
