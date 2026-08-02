@@ -27,27 +27,26 @@ test_that("condition Pando remains independent by broad cell type", {
   )
   expect_match(implementation, "Pando::infer_condition_grn", fixed = TRUE)
   expect_match(implementation, "cell_type = cell_type", fixed = TRUE)
+  expect_match(implementation, "exact-edge union", fixed = TRUE)
   expect_false("sample_col" %in%
                  names(formals(.rc_fit_condition_grns_by_cell_type)))
   expect_false("strict_biological_defaults" %in% names(formals(rc_run_regcompass)))
 })
 
-test_that("condition Layer 1 delegates primary and common projection to Pando", {
+test_that("condition Layer 1 delegates paired-cell projection to Pando", {
   helper <- paste(
     deparse(body(.rc_condition_pando_projection)), collapse = "\n"
   )
   layer1 <- paste(
     deparse(body(.rc_cell_first_projection_layer1)), collapse = "\n"
   )
-  expect_match(
-    helper, "Pando::project_condition_grn_primary_cells", fixed = TRUE
-  )
   expect_match(helper, "Pando::project_condition_grn_cells", fixed = TRUE)
+  expect_match(helper, "significant_only = TRUE", fixed = TRUE)
   expect_match(helper, "Pando::aggregate_condition_grn_projection", fixed = TRUE)
-  expect_match(helper, "condition_unique", fixed = TRUE)
-  expect_match(helper, "primary -", fixed = TRUE)
-  expect_match(helper, "common", fixed = TRUE)
+  expect_match(helper, "common = primary", fixed = TRUE)
+  expect_match(helper, "primary * 0", fixed = TRUE)
   expect_match(helper, "sqrt(pmin(1, pmax(0", fixed = TRUE)
+  expect_false(grepl("project_condition_grn_primary_cells", helper, fixed = TRUE))
   expect_match(layer1, ".rc_scaled_oof_modifier", fixed = TRUE)
   expect_match(layer1, "gene_projection_condition_full_oof", fixed = TRUE)
 })
