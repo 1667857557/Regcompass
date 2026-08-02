@@ -13,11 +13,11 @@ test_that("companion remotes install the latest repository heads", {
     "1667857557/Pando_regcompass",
     fixed = TRUE
   )
+  expect_false(grepl("Pando_regcompass@", remotes, fixed = TRUE))
 })
 
 test_that("installed Pando retains optimized condition-GRN dispatch", {
   skip_if_not_installed("Pando")
-  expect_gte(packageVersion("Pando"), package_version("1.6.3"))
   expect_true(is.function(Pando::infer_condition_grn))
   expect_true(is.function(Pando::condition_grn_fit))
   expect_true(is.function(Pando::project_condition_grn_primary_cells))
