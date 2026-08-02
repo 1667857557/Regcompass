@@ -57,10 +57,14 @@ test_that("one-shot workflow executes and saves Stage 6 output", {
 })
 
 test_that("GRN and metacell stages share automatic design resolution", {
-  grn_text <- paste(deparse(body(rc_regcompass_step_grn)), collapse = "\n")
-  metacell_text <- paste(
-    deparse(body(rc_regcompass_step_metacells)), collapse = "\n"
-  )
+  grn_text <- paste(c(
+    deparse(body(rc_regcompass_step_grn)),
+    deparse(body(RegCompassR:::.rc_original_step_grn_cell_set_contract))
+  ), collapse = "\n")
+  metacell_text <- paste(c(
+    deparse(body(rc_regcompass_step_metacells)),
+    deparse(body(RegCompassR:::.rc_original_step_metacells_cell_set_contract))
+  ), collapse = "\n")
   resolver_text <- paste(
     deparse(body(.rc_resolve_condition_design)), collapse = "\n"
   )
