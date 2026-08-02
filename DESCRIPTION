@@ -6,25 +6,28 @@ Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     with genome-scale metabolic reaction analysis. Stage 1 fixes
-    pando_args$min_cells at 300 and uses that same value to remove broad cell
-    types below the threshold before normalization; globally zero ATAC peaks are
-    also removed before subsequent analysis. Stage 1 clears stale fragment
-    references by default and reuses persistent motif matches across identical
-    region layouts. When two or more condition levels are available, RegCompass
-    fits one condition-aware Pando design per broad cell type and uses
-    condition-full outerheldout TF-by-ATAC projections as the primary regulatory
-    penalty. Jointly estimable edges form an auditable common-support component;
-    edges non-estimable in one or both conditions contribute projectable
-    structural zeros in those conditions. A supplied single-level condition
-    directly uses original Pando infer_grn with unscaled predictors and no
-    condition coefficients; its active edges require adjusted P below 0.05 and
-    absolute coefficient above 0.01. Condition-aware runs require Pando >= 1.6.3
-    with native condition ABI 6, worker-safe registered-symbol lookup, budgeted
-    dense or sparse matrix-free target execution, exact residual validation, and
-    exact dense-direct or matrix-free Schur refitting. RegCompass executes
-    Pando's native numerical/allocation self-test in the main process and on up
-    to two supplied BiocParallel workers before target fitting starts. Pando
-    stops immediately when native registration, matrix alignment, factorization,
+    pando_args$min_cells at 300 and uses that same value before normalization.
+    Standard Pando retains a broad cell type only when its total cell count is at
+    least 300. Condition Pando retains a broad cell type only when every
+    condition-by-cell-type stratum contains at least 300 cells; if any condition
+    fails, the complete cell type is removed. Globally zero ATAC peaks are also
+    removed before subsequent analysis. Stage 1 clears stale fragment references
+    by default and reuses persistent motif matches across identical region
+    layouts. When two or more condition levels are available, RegCompass fits one
+    condition-aware Pando design per broad cell type and uses condition-full
+    outerheldout TF-by-ATAC projections as the primary regulatory penalty.
+    Jointly estimable edges form an auditable common-support component; edges
+    non-estimable in one or both conditions contribute projectable structural
+    zeros in those conditions. A supplied single-level condition directly uses
+    original Pando infer_grn with unscaled predictors and no condition
+    coefficients; its active edges require adjusted P below 0.05 and absolute
+    coefficient above 0.01. Condition-aware runs require Pando >= 1.6.3 with
+    native condition ABI 6, worker-safe registered-symbol lookup, budgeted dense
+    or sparse matrix-free target execution, exact residual validation, and exact
+    dense-direct or matrix-free Schur refitting. RegCompass executes Pando's
+    native numerical/allocation self-test in the main process and on up to two
+    supplied BiocParallel workers before target fitting starts. Pando stops
+    immediately when native registration, matrix alignment, factorization,
     finite arithmetic or residual verification fails; RegCompass does not
     provide or select an R fallback. Metacells use one independent multimodal WNN
     graph per broad cell type through SuperCell SCimplify_by_graph_group. All
