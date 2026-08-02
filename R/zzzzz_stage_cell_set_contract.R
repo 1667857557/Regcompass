@@ -93,8 +93,7 @@
   filtered
 }
 
-#' Infer regulatory evidence and persist the exact downstream cell set
-#' @export
+# Infer regulatory evidence and persist the exact downstream cell set.
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
     pfm = NULL,
@@ -156,11 +155,8 @@ rc_regcompass_step_grn <- function(
   answer
 }
 
-#' Build metacells from the exact Stage 1 cell set
-#' @param grn Optional Stage 1 result. When supplied, Stage 2 is restricted to
-#' the exact ordered cell IDs retained by Stage 1. When omitted, the same fixed
-#' Stage 1 filter is reapplied independently for backward compatibility.
-#' @export
+# Build metacells from the exact Stage 1 cell set. `grn` is optional for
+# backward compatibility; supplying it enables exact ID and parameter checks.
 rc_regcompass_step_metacells <- function(
     object, outdir,
     condition_col = "condition",
@@ -193,9 +189,14 @@ rc_regcompass_step_metacells <- function(
     )
   } else {
     contract <- .rc_validate_stage1_cell_set(grn)
+    expected_condition_col <-
+      grn$params$requested_condition_col %||% grn$params$condition_col
     expected_celltype_col <- grn$params$celltype_col %||% celltype_col
     expected_rna_assay <- grn$params$rna_assay %||% rna_assay
     expected_atac_assay <- grn$params$atac_assay %||% atac_assay
+    if (!identical(condition_col, expected_condition_col)) {
+      stop("Stage 2 `condition_col` differs from Stage 1.", call. = FALSE)
+    }
     if (!identical(celltype_col, expected_celltype_col)) {
       stop("Stage 2 `celltype_col` differs from Stage 1.", call. = FALSE)
     }
