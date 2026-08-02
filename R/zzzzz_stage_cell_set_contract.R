@@ -224,14 +224,11 @@ rc_regcompass_step_metacells <- function(
     metacell_args = metacell_args,
     progress = progress
   )
-  answer$cell_filter <- c(
-    contract,
-    list(
-      n_input_cells = as.integer(n_input),
-      n_stage_cells = as.integer(length(contract$retained_cells)),
-      exact_stage1_match = !is.null(grn)
-    )
-  )
+  answer$cell_filter <- contract
+  answer$cell_filter$stage2_n_input_cells <- as.integer(n_input)
+  answer$cell_filter$n_stage_cells <-
+    as.integer(length(contract$retained_cells))
+  answer$cell_filter$exact_stage1_match <- !is.null(grn)
   answer$params$n_input_cells <- as.integer(n_input)
   answer$params$n_stage_cells <- as.integer(length(contract$retained_cells))
   answer$params$cell_set_contract <- if (is.null(grn)) {
