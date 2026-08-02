@@ -189,8 +189,13 @@ rc_regcompass_step_metacells <- function(
     )
   } else {
     contract <- .rc_validate_stage1_cell_set(grn)
-    expected_condition_col <-
-      grn$params$requested_condition_col %||% grn$params$condition_col
+    expected_condition_col <- if (
+      "requested_condition_col" %in% names(grn$params)
+    ) {
+      grn$params$requested_condition_col
+    } else {
+      grn$params$condition_col
+    }
     expected_celltype_col <- grn$params$celltype_col %||% celltype_col
     expected_rna_assay <- grn$params$rna_assay %||% rna_assay
     expected_atac_assay <- grn$params$atac_assay %||% atac_assay
