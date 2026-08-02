@@ -1,7 +1,7 @@
 test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", {
   package_root <- testthat::test_path("..", "..")
   description <- read.dcf(file.path(package_root, "DESCRIPTION"))
-  expect_identical(unname(description[1L, "Version"]), "2.2.7")
+  expect_identical(unname(description[1L, "Version"]), "2.2.9")
   expect_match(
     unname(description[1L, "Suggests"]),
     "Pando \\(>= 1\\.6\\.3\\)"
@@ -36,8 +36,8 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
       trimws(unname(description[1L, "Remotes"]))
     ),
     paste(
-      "1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells,",
-      "1667857557/Pando_regcompass@agent/high-p-memory-bounded-engine"
+      "1667857557/SuperCell_Seurat_V4,",
+      "1667857557/Pando_regcompass"
     )
   )
   expect_match(
@@ -89,15 +89,21 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
     runtime_text, "dense-direct-or-matrix-free-schur-pcg-v1", fixed = TRUE
   )
   expect_match(runtime_text, "no-full-p2-on-high-p-path-v1", fixed = TRUE)
+  expect_match(
+    runtime_text,
+    "lightweight_metadata_symbol_api_v1",
+    fixed = TRUE
+  )
   for (symbol in c(
     "_Pando_condition_product_matrix_cpp",
     "_Pando_condition_fit_multitask_path_cpp",
     "_Pando_condition_refit_path_cpp",
-    "_Pando_condition_fit_target_engine_cpp",
-    "_Pando_condition_native_self_test_cpp"
+    "_Pando_condition_fit_target_engine_cpp"
   )) {
     expect_match(runtime_text, symbol, fixed = TRUE)
   }
+  expect_false(grepl("condition_native_self_test_cpp", runtime_text, fixed = TRUE))
+  expect_false(grepl("schur_refit_relative_error", runtime_text, fixed = TRUE))
   expect_match(runtime_text, "getNativeSymbolInfo", fixed = TRUE)
   expect_match(runtime_text, "BiocParallel::bplapply", fixed = TRUE)
   expect_match(runtime_text, ".pando_registered_call", fixed = TRUE)
@@ -118,7 +124,7 @@ test_that("RegCompass source requires the memory-bounded Pando ABI 6 contract", 
   )
 })
 
-test_that("an installed compatible Pando exposes the memory-bounded runtime", {
+test_that("an installed compatible Pando passes lightweight runtime checks", {
   skip_if_not_installed("Pando", minimum_version = "1.6.3")
 
   description <- utils::packageDescription("Pando")
@@ -148,8 +154,7 @@ test_that("an installed compatible Pando exposes the memory-bounded runtime", {
     ".condition_product_matrix_cpp",
     ".condition_fit_multitask_path_cpp",
     ".condition_refit_path_cpp",
-    ".condition_fit_target_engine_cpp",
-    ".condition_native_self_test_cpp"
+    ".condition_fit_target_engine_cpp"
   )) {
     value <- get(wrapper, namespace, inherits = FALSE)
     expect_match(
@@ -163,8 +168,7 @@ test_that("an installed compatible Pando exposes the memory-bounded runtime", {
     "_Pando_condition_product_matrix_cpp",
     "_Pando_condition_fit_multitask_path_cpp",
     "_Pando_condition_refit_path_cpp",
-    "_Pando_condition_fit_target_engine_cpp",
-    "_Pando_condition_native_self_test_cpp"
+    "_Pando_condition_fit_target_engine_cpp"
   )) {
     info <- getNativeSymbolInfo(
       symbol,
@@ -173,12 +177,10 @@ test_that("an installed compatible Pando exposes the memory-bounded runtime", {
     )
     expect_true(is.list(info) && !is.null(info$address), info = symbol)
   }
-  self_test <- Pando:::.condition_native_self_test_cpp()
-  expect_true(self_test$passed)
-  expect_true(self_test$budget_guard_passed)
-  expect_true(self_test$numerical$hybrid_preconditioner)
-  expect_true(self_test$numerical$budget_guard_passed)
-  expect_lt(self_test$numerical$schur_refit_relative_error, 1e-8)
-  expect_false(self_test$execution_plan$full_predictor_square_allocated)
-  expect_silent(RegCompassR:::.rc_require_pando_hybrid_runtime())
+  runtime <- RegCompassR:::.rc_require_pando_hybrid_runtime()
+  expect_identical(
+    runtime$runtime_check,
+    "lightweight_metadata_symbol_api_v1"
+  )
+  expect_identical(length(runtime$native_symbols), 4L)
 })
