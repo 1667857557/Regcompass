@@ -69,7 +69,7 @@
       factor(observed_condition[selected], levels = condition_levels)
     )
     retained_stratum <- count_matrix >= as.integer(min_cells)
-    retained_condition_count <- Matrix::rowSums(retained_stratum)
+    retained_condition_count <- base::rowSums(retained_stratum)
     retained_type <- rownames(count_matrix)[retained_condition_count >= 2L]
 
     diagnostics <- do.call(rbind, lapply(requested_type, function(type) {
@@ -140,13 +140,22 @@
       )
     }
 
-    keep_cells <- vapply(seq_len(nrow(object@meta.data)), function(i) {
-      type <- observed_type[[i]]
-      condition <- observed_condition[[i]]
-      selected[[i]] && type %in% retained_type &&
-        condition %in% condition_levels &&
-        isTRUE(retained_stratum[type, condition])
-    }, logical(1))
+    keep_cells <- rep(FALSE, nrow(object@meta.data))
+    selected_rows <- which(selected)
+    type_index <- match(
+      observed_type[selected_rows], rownames(retained_stratum)
+    )
+    condition_index <- match(
+      observed_condition[selected_rows], colnames(retained_stratum)
+    )
+    valid_index <- !is.na(type_index) & !is.na(condition_index)
+    selected_keep <- rep(FALSE, length(selected_rows))
+    selected_keep[valid_index] <- retained_stratum[cbind(
+      type_index[valid_index], condition_index[valid_index]
+    )]
+    selected_keep <- selected_keep &
+      observed_type[selected_rows] %in% retained_type
+    keep_cells[selected_rows] <- selected_keep
   } else {
     counts <- table(factor(observed_type[selected], levels = requested_type))
     retained_type <- names(counts)[as.integer(counts) >= min_cells]
