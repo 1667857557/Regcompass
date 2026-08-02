@@ -1,4 +1,3 @@
-.RC_PANDO_MIN_VERSION <- package_version("1.6.3")
 .RC_PANDO_NATIVE_SPARSE_ABI <- "6"
 .RC_PANDO_NATIVE_CALL_BINDING <-
   "registered-symbol-lookup-worker-safe-v1"
@@ -184,7 +183,8 @@
       stop(
         "Pando lightweight runtime check failed on a BiocParallel worker ",
         "before GRN fitting: ", conditionMessage(error),
-        ". Reinstall 1667857557/Pando_regcompass >= 1.6.3 and restart R.",
+        ". Install the latest 1667857557/Pando_regcompass default-branch ",
+        "version and restart R.",
         call. = FALSE
       )
     }
@@ -201,20 +201,13 @@
 .rc_require_pando_hybrid_runtime <- function(BPPARAM = NULL) {
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop(
-      "Pando >= 1.6.3 with native condition ABI 6 and the high-p memory contract is required. Install 1667857557/Pando_regcompass.",
+      "Pando with native condition ABI 6 and the high-p memory contract is ",
+      "required. Install the latest 1667857557/Pando_regcompass ",
+      "default-branch version.",
       call. = FALSE
     )
   }
   installed <- utils::packageVersion("Pando")
-  if (installed < .RC_PANDO_MIN_VERSION) {
-    stop(
-      sprintf(
-        "Installed Pando %s is incompatible; RegCompass requires Pando >= 1.6.3 with worker-safe memory-bounded native calls.",
-        as.character(installed)
-      ),
-      call. = FALSE
-    )
-  }
   description <- utils::packageDescription("Pando")
   expected <- .rc_pando_expected_runtime_metadata()
   required_fields <- names(expected)
@@ -229,7 +222,8 @@
     stop(
       "Installed Pando is missing required native runtime metadata: ",
       paste(missing_fields, collapse = ", "),
-      ". Install 1667857557/Pando_regcompass >= 1.6.3.",
+      ". Install the latest 1667857557/Pando_regcompass default-branch ",
+      "version.",
       call. = FALSE
     )
   }
@@ -245,7 +239,7 @@
     stop(
       "Installed Pando native runtime is incompatible: ",
       paste(detail, collapse = "; "),
-      ". No R fallback is permitted.",
+      ". Install the latest default-branch Pando; no R fallback is permitted.",
       call. = FALSE
     )
   }
