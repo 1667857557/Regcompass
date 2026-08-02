@@ -25,11 +25,12 @@ test_that("standard Pando applies min_cells to each cell type", {
   )
   expect_identical(result$analysis_mode, "standard_pando")
   expect_identical(result$retained_cell_types, "A")
+  expect_identical(result$pando_cell_types, "A")
   expect_equal(ncol(result$object), 300L)
   expect_true(all(result$diagnostics$threshold_scope == "cell_type"))
 })
 
-test_that("condition Pando removes undersized strata without removing qualifying conditions", {
+test_that("condition Pando removes only undersized condition strata", {
   sizes <- c(
     A_control = 300L,
     A_treated = 299L,
@@ -79,10 +80,13 @@ test_that("condition Pando removes undersized strata without removing qualifying
   )
 
   expect_identical(result$analysis_mode, "condition_grn")
-  expect_identical(result$retained_cell_types, "A")
-  expect_equal(ncol(result$object), 600L)
+  expect_setequal(result$retained_cell_types, c("A", "B"))
+  expect_identical(result$pando_cell_types, "A")
+  expect_identical(result$skipped_condition_cell_types, "B")
+  expect_equal(ncol(result$object), 900L)
   expect_setequal(unique(result$object$condition), c("control", "recovery"))
-  expect_true(all(result$object$cell_type == "A"))
+  expect_equal(sum(result$object$cell_type == "A"), 600L)
+  expect_equal(sum(result$object$cell_type == "B"), 300L)
   expect_true(all(
     result$diagnostics$threshold_scope == "condition_x_cell_type"
   ))
@@ -93,11 +97,18 @@ test_that("condition Pando removes undersized strata without removing qualifying
   expect_false(a$retained_stratum[a$condition == "treated"])
   expect_false(a$retained[a$condition == "treated"])
   expect_true(all(a$retained_cell_type))
+  expect_true(all(a$eligible_for_condition_pando))
   expect_true(all(a$n_retained_conditions == 2L))
 
   b <- result$diagnostics[result$diagnostics$cell_type == "B", ]
   expect_true(b$retained_stratum[b$condition == "control"])
-  expect_false(any(b$retained_cell_type))
-  expect_false(any(b$retained))
+  expect_true(b$retained[b$condition == "control"])
+  expect_true(all(b$retained_cell_type))
+  expect_false(any(b$eligible_for_condition_pando))
+  expect_identical(
+    b$fit_status[b$condition == "control"],
+    "skipped_fewer_than_two_conditions"
+  )
+  expect_false(b$retained_stratum[b$condition == "treated"])
   expect_true(all(b$n_retained_conditions == 1L))
 })
