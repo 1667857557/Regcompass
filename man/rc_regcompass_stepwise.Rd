@@ -22,7 +22,8 @@ rc_regcompass_step_metacells(object, outdir,
   cell_type = NULL,
   rna_assay = "RNA", atac_assay = "ATAC",
   fragment_files = FALSE, metacell_args = list(),
-  progress = getOption("RegCompassR.progress", TRUE))
+  progress = getOption("RegCompassR.progress", TRUE),
+  grn = NULL)
 
 rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
   meta_module_args = list(),
@@ -54,10 +55,11 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{pfm}{Optional motif collection. When omitted, Pando's bundled motifs are used.}
 \item{species}{Species identifier or \code{"auto"}. Mouse runs require build-matched regulatory regions supplied through \code{pando_initiate_args$regions}.}
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
-\item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels. In standard-Pando mode each requested cell type must contain at least 300 cells. In condition-Pando mode each condition-by-cell-type stratum below 300 cells is removed independently. Qualifying strata of the same cell type remain. A cell type with only one qualifying condition is retained in the filtered object but marked \code{skipped_fewer_than_two_conditions} and is not used to estimate a condition effect.}
+\item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels. In standard-Pando mode each requested cell type must contain at least 300 cells. In condition-Pando mode each condition-by-cell-type stratum below 300 cells is removed independently. A cell type must retain at least two qualifying conditions to enter the shared Stage 1/Stage 2 analysis cell set; otherwise it remains in the filter diagnostics with status \code{skipped_fewer_than_two_conditions}.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Stage 1 controls. \code{min_cells} is fixed at 300 and is the single threshold used both for prefiltering and for the downstream Pando call. RegCompass requires \code{candidate_screen = "motif_domain"}; alternative candidate-screen values are rejected. Standard Pando active edges require \code{padj < 0.05} and \code{abs(estimate) > 0.01}. Nested \code{pando_infer_args$engine_control} is passed to Pando. Condition-aware defaults use compact diagnostics, resumable checkpoints under \code{file.path(outdir, "target_checkpoints")}, and Pando's per-worker memory planner; an explicit \code{memory_budget_mb} overrides its default. Motif matches are cached under \code{file.path(outdir, "motif_cache")} when supported by the installed Pando version.}
 \item{metacell_args}{Stage 2 RNA/ATAC reductions, dimensions, WNN neighbours, gamma, seed, size markers and cache controls.}
+\item{grn}{For Stage 2, the Stage 1 result returned by \code{rc_regcompass_step_grn()}. Supplying it makes Stage 2 subset \code{object} to the exact ordered cell IDs used by Stage 1. When omitted, Stage 2 reapplies the fixed Stage 1 filter independently for backward compatibility. In later stages, \code{grn} is the validated Stage 1 output.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{projection_component}{Must be \code{"condition"}.}
 \item{comparison_support}{Defines the pairwise/global common-support decomposition. It does not replace the condition-full primary route.}
@@ -69,14 +71,15 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{BPPARAM}{A \code{BiocParallelParam}, \code{NULL}, or \code{FALSE}. \code{TRUE} is invalid.}
 \item{progress}{Display stage progress. Stage 5 propagates the stage monitor into union-GEM construction, directional feasibility, vmax caching, metacell scoring and control routes.}
 \item{fragment_files}{For Stage 1, \code{FALSE} clears stale Signac fragment references before GRN inference; use \code{TRUE} only to preserve them. For Stage 2, use \code{FALSE}; counts are aggregated by exact membership.}
-\item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages. Stage 3 stores full condition-specific module payloads in an external checksummed RDS, leaving only a lightweight reference in \code{meta_modules}.}
+\item{metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages. Stage 3 stores full condition-specific module payloads in an external checksummed RDS, leaving only a lightweight reference in \code{meta_modules}.}
 \item{medium_scenarios}{Condition-invariant medium table.}
 \item{model_mode}{Build a shared model from the reaction catalogue or use the full GEM.}
 }
 \value{
 Each function returns a validated stage object and writes its stage RDS to
-\code{outdir}. Stage 1 retains only \code{step_grn.rds}; it does not also write
-\code{single_cell_grn.rds}.
+\code{outdir}. Stage 1 stores \code{cell_filter$retained_cells}; Stage 2 stores
+whether it reproduced that exact cell set. Stage 1 retains only
+\code{step_grn.rds}; it does not also write \code{single_cell_grn.rds}.
 }
 \description{
 Runs the GRN, metacell, reaction-catalogue, reaction-expression, metabolic-model,
@@ -88,15 +91,18 @@ standard-Pando cell type is retained when its total cell count is at least 300.
 For condition Pando, every condition-by-cell-type stratum is evaluated
 independently. An undersized stratum is removed without deleting qualifying
 strata of the same cell type. At least two qualifying conditions are required to
-fit a condition effect. A cell type with only one qualifying condition remains
-in the filtered object and diagnostics but is excluded from condition-Pando
-fitting with status \code{skipped_fewer_than_two_conditions}. Globally zero ATAC
-peaks are then removed. Cell-type-shared TF-IDF is assembled once from sparse
-triplets instead of non-contiguous assignment into a large sparse matrix. Stage
-1 returns canonical condition fits with condition-full and common-support
-outer-heldout projections. Coefficient estimability is distinct from projectable
-structural-zero support: an unavailable coefficient remains \code{NA}, while its
-projection contribution is fixed at zero in that condition.
+fit a condition effect and enter the shared analysis cell set. Cell types with
+only one qualifying condition remain in diagnostics but are excluded from both
+Stage 1 analysis and Stage 2 metacell construction. Stage 1 persists the exact
+ordered retained cell IDs. Passing \code{grn = step1} to Stage 2 reproduces that
+cell set exactly and fails if any retained ID is absent or if cell-type/assay
+arguments conflict. Globally zero ATAC peaks are then removed. Cell-type-shared
+TF-IDF is assembled once from sparse triplets instead of non-contiguous
+assignment into a large sparse matrix. Stage 1 returns canonical condition fits
+with condition-full and common-support outer-heldout projections. Coefficient
+estimability is distinct from projectable structural-zero support: an
+unavailable coefficient remains \code{NA}, while its projection contribution is
+fixed at zero in that condition.
 
 Stage 2 calls \code{SuperCell::SCimplify_by_graph_group()}. It builds one
 independent multimodal WNN graph per broad cell type. All conditions within that
