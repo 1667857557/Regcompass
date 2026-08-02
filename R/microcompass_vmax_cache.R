@@ -1,3 +1,22 @@
+.rc_flatten_microcompass_vmax_cache <- function(grouped, expected_names) {
+  expected_names <- as.character(expected_names)
+  answer <- unlist(
+    unname(grouped),
+    recursive = FALSE,
+    use.names = TRUE
+  )
+  observed_names <- names(answer)
+  if (is.null(observed_names) ||
+      length(answer) != length(expected_names) ||
+      anyNA(observed_names) ||
+      any(!nzchar(observed_names)) ||
+      anyDuplicated(observed_names) ||
+      !setequal(observed_names, expected_names)) {
+    stop("The shared directional vmax cache is incomplete.", call. = FALSE)
+  }
+  answer[expected_names]
+}
+
 .rc_build_microcompass_vmax_cache <- function(
     model_cache, mode, model_keys, solver, flux_threshold,
     parallel = TRUE, BPPARAM = NULL) {
@@ -26,12 +45,7 @@
     },
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
-  answer <- unlist(grouped, recursive = FALSE)
-  answer <- answer[names(model_cache)]
-  if (length(answer) != length(model_cache) || anyNA(names(answer))) {
-    stop("The shared directional vmax cache is incomplete.", call. = FALSE)
-  }
-  answer
+  .rc_flatten_microcompass_vmax_cache(grouped, names(model_cache))
 }
 
 .rc_compass_step2_from_vmax_directional <- function(

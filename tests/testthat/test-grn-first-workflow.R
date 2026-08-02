@@ -18,7 +18,10 @@ test_that("metacells use grouped WNN and post-clustering condition splitting", {
   expect_match(build_text, "SCimplify_by_graph_group", fixed = TRUE)
   expect_match(build_text, "cell.graph.group", fixed = TRUE)
   expect_match(build_text, "cell.split.condition", fixed = TRUE)
-  expect_match(build_text, 'assay = c(rna_assay, atac_assay)', fixed = TRUE)
+  expect_match(
+    build_text,
+    "assay = c\\(rna_assay,[[:space:]]*atac_assay\\)"
+  )
   expect_false(exists(".rc_native_supercell_membership", inherits = TRUE))
 })
 

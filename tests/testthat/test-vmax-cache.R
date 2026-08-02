@@ -37,3 +37,33 @@ test_that("microCOMPASS engine reuses structural vmax across metacells", {
   expect_match(text, "vmax_reused_from_shared_cache = TRUE", fixed = TRUE)
   expect_false(grepl("rc_compass_two_step_lp_directional", text, fixed = TRUE))
 })
+
+test_that("grouped vmax results retain exact directional cache row IDs", {
+  row_ids <- c(
+    "reaction=R1::direction=forward::medium=toy",
+    "reaction=R2::direction=reverse::medium=toy"
+  )
+  values <- list(
+    list(feasible = TRUE, vmax = 2, status = "optimal"),
+    list(feasible = TRUE, vmax = 3, status = "optimal")
+  )
+  grouped <- stats::setNames(
+    list(stats::setNames(values, row_ids)),
+    "/tmp/shared-model.rds"
+  )
+
+  answer <- RegCompassR:::.rc_flatten_microcompass_vmax_cache(
+    grouped,
+    rev(row_ids)
+  )
+
+  expect_identical(names(answer), rev(row_ids))
+  expect_identical(answer[[row_ids[[1L]]]], values[[1L]])
+  expect_error(
+    RegCompassR:::.rc_flatten_microcompass_vmax_cache(
+      grouped,
+      c(row_ids, "reaction=missing::direction=forward::medium=toy")
+    ),
+    "cache is incomplete"
+  )
+})

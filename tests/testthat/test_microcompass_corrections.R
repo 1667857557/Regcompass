@@ -188,11 +188,20 @@ test_that("parallel and serial full-GEM scoring agree", {
       stringsAsFactors = FALSE
     )
   )
+  medium <- data.frame(
+    medium_scenario_id = "toy_defined",
+    exchange_reaction_id = c("EX_m1", "EX_m2"),
+    lb = c(0, 0),
+    ub = c(1000, 1000),
+    available = TRUE,
+    stringsAsFactors = FALSE
+  )
   serial <- expect_warning(
     rc_run_microcompass(
       layer1,
       gem,
       "Rtarget",
+      medium_scenarios = medium,
       mode = "full_gem",
       unit = "metacell",
       target_direction = "forward",
@@ -205,6 +214,7 @@ test_that("parallel and serial full-GEM scoring agree", {
       layer1,
       gem,
       "Rtarget",
+      medium_scenarios = medium,
       mode = "full_gem",
       unit = "metacell",
       target_direction = "forward",

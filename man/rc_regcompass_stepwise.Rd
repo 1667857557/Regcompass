@@ -55,7 +55,12 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. RegCompass requires \code{candidate_screen = "motif_domain"}; alternative candidate-screen values are rejected.}
+\item{pando_args}{Stage 1 controls. RegCompass requires
+\code{candidate_screen = "motif_domain"}; alternative candidate-screen values
+are rejected. Nested \code{pando_infer_args$engine_control} is passed to Pando.
+Condition-aware defaults use compact diagnostics, resumable checkpoints under
+\code{file.path(outdir, "target_checkpoints")}, and Pando's per-worker memory
+planner; an explicit \code{memory_budget_mb} overrides its default.}
 \item{metacell_args}{Stage 2 RNA/ATAC reductions, dimensions, WNN neighbours, gamma, seed, size markers and cache controls.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{projection_component}{Must be \code{"condition"}.}

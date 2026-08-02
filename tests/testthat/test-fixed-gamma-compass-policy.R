@@ -13,7 +13,10 @@ test_that("metacell construction uses grouped WNN and gamma 30", {
   expect_match(builder, "SCimplify_by_graph_group", fixed = TRUE)
   expect_match(builder, "cell.graph.group", fixed = TRUE)
   expect_match(builder, "cell.split.condition", fixed = TRUE)
-  expect_match(builder, "assay = c(rna_assay, atac_assay)", fixed = TRUE)
+  expect_match(
+    builder,
+    "assay = c\\(rna_assay,[[:space:]]*atac_assay\\)"
+  )
   expect_false(grepl("cell.annotation", builder, fixed = TRUE))
   expect_false(grepl("depth_balance", wrapper, fixed = TRUE))
   expect_false(grepl("stratum_col", wrapper, fixed = TRUE))

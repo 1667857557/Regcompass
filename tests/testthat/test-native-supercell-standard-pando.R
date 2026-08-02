@@ -48,7 +48,10 @@ test_that("metacell workflow delegates grouped graphing and count aggregation to
   expect_match(membership_text, "cell.graph.group", fixed = TRUE)
   expect_match(membership_text, "cell.split.condition", fixed = TRUE)
   expect_match(membership_text, "return.group.results = FALSE", fixed = TRUE)
-  expect_match(membership_text, "assay = c(rna_assay, atac_assay)", fixed = TRUE)
+  expect_match(
+    membership_text,
+    "assay = c\\(rna_assay,[[:space:]]*atac_assay\\)"
+  )
   expect_match(aggregation_text, "SCimplify_for_Seurat", fixed = TRUE)
   expect_match(aggregation_text, "membership = numeric_membership", fixed = TRUE)
   expect_match(aggregation_text, "return.seurat = TRUE", fixed = TRUE)

@@ -71,10 +71,11 @@
   installed_version <- as.character(installed_version)
   if (isTRUE(validate_api) &&
       base::package_version(installed_version) <
-      base::package_version("1.5.0")) {
+      base::package_version("1.6.3")) {
     stop(
-      "RegCompass requires Pando >= 1.5.0 for the ConditionGRNFit v5 ",
-      "projection contract.", call. = FALSE
+      "RegCompass requires Pando >= 1.6.3 for the ConditionGRNFit v5 ",
+      "projection contract and memory-bounded condition engine.",
+      call. = FALSE
     )
   }
   if (is.null(description)) description <- utils::packageDescription("Pando")

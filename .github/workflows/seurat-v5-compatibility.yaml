@@ -71,7 +71,7 @@ jobs:
             auth_token = Sys.getenv("GITHUB_PAT")
           )
           remotes::install_github(
-            "1667857557/Pando_regcompass",
+            "1667857557/Pando_regcompass@agent/high-p-memory-bounded-engine",
             dependencies = NA,
             upgrade = "never",
             auth_token = Sys.getenv("GITHUB_PAT")
@@ -88,7 +88,7 @@ jobs:
           )
           stopifnot(identical(observed, expected))
           stopifnot(
-            packageVersion("Pando") >= package_version("1.5.1"),
+            packageVersion("Pando") >= package_version("1.6.3"),
             is.function(Pando::infer_condition_grn),
             is.function(Pando::condition_grn_fit),
             is.function(Pando::project_condition_grn_primary_cells),
@@ -127,42 +127,67 @@ jobs:
           on.exit(options(Seurat.object.assay.version = old_option), add = TRUE)
           options(Seurat.object.assay.version = "v3")
 
-          cells <- paste0("cell", seq_len(12))
+          set.seed(11)
+          n_cells <- 500L
+          n_features <- 20L
+          n_dims <- 10L
+          cells <- paste0("cell", seq_len(n_cells))
           rna <- Matrix::Matrix(
-            matrix(seq_len(48), nrow = 4), sparse = TRUE,
-            dimnames = list(paste0("g", 1:4), cells)
+            matrix(
+              stats::rpois(n_features * n_cells, lambda = 3),
+              nrow = n_features
+            ),
+            sparse = TRUE,
+            dimnames = list(paste0("g", seq_len(n_features)), cells)
           )
+          peak_starts <- seq(1L, by = 20L, length.out = n_features)
           atac <- Matrix::Matrix(
-            matrix(rev(seq_len(48)), nrow = 4), sparse = TRUE,
-            dimnames = list(paste0("chr1-", seq(1, 31, 10), "-", seq(10, 40, 10)), cells)
+            matrix(
+              stats::rpois(n_features * n_cells, lambda = 1),
+              nrow = n_features
+            ),
+            sparse = TRUE,
+            dimnames = list(
+              paste0("chr1-", peak_starts, "-", peak_starts + 9L),
+              cells
+            )
           )
           object <- CreateSeuratObject(counts = rna)
           object[["ATAC"]] <- CreateChromatinAssay(counts = atac, sep = c("-", "-"))
           object[["pca"]] <- CreateDimReducObject(
             embeddings = matrix(
-              seq_len(36), nrow = 12,
-              dimnames = list(cells, paste0("PC_", 1:3))
+              stats::rnorm(n_cells * n_dims), nrow = n_cells,
+              dimnames = list(cells, paste0("PC_", seq_len(n_dims)))
             ),
             key = "PC_", assay = "RNA"
           )
           object[["lsi"]] <- CreateDimReducObject(
             embeddings = matrix(
-              rev(seq_len(36)), nrow = 12,
-              dimnames = list(cells, paste0("LSI_", 1:3))
+              stats::rnorm(n_cells * n_dims), nrow = n_cells,
+              dimnames = list(cells, paste0("LSI_", seq_len(n_dims)))
             ),
             key = "LSI_", assay = "ATAC"
           )
-          graph_group <- stats::setNames(rep(c("A", "B"), each = 6), cells)
-          condition <- stats::setNames(rep(c("C", "D"), 6), cells)
+          graph_group <- stats::setNames(
+            rep(c("A", "B"), each = n_cells / 2L),
+            cells
+          )
+          condition <- stats::setNames(
+            rep(c("C", "D"), length.out = n_cells),
+            cells
+          )
           graph_result <- SuperCell::SCimplify_by_graph_group(
             seurat = object,
             cell.graph.group = graph_group,
             cell.split.condition = condition,
             assay = c("RNA", "ATAC"),
             reduction = list("pca", "lsi"),
-            dims = list(1:3, 1:3),
-            gamma = 2,
-            k.knn = 2,
+            dims = list(seq_len(n_dims), seq_len(n_dims)),
+            gamma = 10,
+            # Each biological graph group remains above Seurat's 200-neighbour
+            # search cap, exercising realistic modality-specific candidates
+            # instead of a degenerate all-cell neighbourhood.
+            k.knn = 15,
             seed = 11
           )
           membership_groups <- split(

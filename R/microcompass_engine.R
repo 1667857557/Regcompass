@@ -438,23 +438,29 @@ rc_run_microcompass <- function(
     species_provenance <- recorded_species %in% c("human", "mouse") ||
       grepl("human-gem|mouse-gem", recorded_source)
     if (isTRUE(species_provenance)) {
+      species <- if (
+        identical(recorded_species, "mouse") ||
+          grepl("mouse-gem", recorded_source)
+      ) {
+        "mouse"
+      } else {
+        "human"
+      }
       medium_scenarios <- rc_make_medium_scenarios(
         gem,
-        scenario = "physiologic",
-        species = "auto",
+        scenario = if (identical(species, "mouse")) {
+          "mouse_plasma"
+        } else {
+          "normal_human_plasma"
+        },
+        species = species,
         strict_preset_matching = TRUE
       )
     } else {
-      warning(
-        paste(
-          "GEM species provenance is unavailable; preserving the model's",
-          "original exchange directions instead of assuming a human",
-          "physiological medium."
-        ),
+      stop(
+        "GEM species provenance is unavailable; supply an explicit, ",
+        "biologically justified `medium_scenarios` or `medium_table`.",
         call. = FALSE
-      )
-      medium_scenarios <- rc_make_medium_scenarios(
-        gem, scenario = "compass_model_bounds", species = "auto"
       )
     }
   }

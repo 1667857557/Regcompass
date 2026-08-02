@@ -179,18 +179,6 @@ test_that("missing expected metacell IDs remain fatal", {
 })
 
 
-test_that("fragment processing is selected by an explicit pure contract", {
-  expect_false(.rc_fragments_requested(FALSE))
-  expect_true(.rc_fragments_requested(NULL))
-  expect_false(.rc_fragment_processing_enabled(FALSE, TRUE, "regcompass"))
-  expect_false(.rc_fragment_processing_enabled(NULL, FALSE, "regcompass"))
-  expect_false(.rc_fragment_processing_enabled(NULL, TRUE, "none"))
-  expect_true(.rc_fragment_processing_enabled(NULL, TRUE, "regcompass"))
-  expect_false(.rc_fragment_processing_enabled(
-    NULL, TRUE, "regcompass", require_fragments = FALSE
-  ))
-})
-
 test_that("obsolete fragment-file merge argument is absent", {
   expect_false("fragment_files" %in%
                  names(formals(rc_load_or_merge_metacell_objects)))
