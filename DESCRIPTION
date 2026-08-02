@@ -131,6 +131,7 @@ Collate:
     'stratum_filter.R'
     'zzz_workflow_hardening.R'
     'zzzz_min_cells_contract.R'
+    'zzzzz_stage_cell_set_contract.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
