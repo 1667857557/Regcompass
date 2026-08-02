@@ -12,7 +12,8 @@ rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL,
-  rna_assay = "RNA", atac_assay = "ATAC", pando_args = list(),
+  rna_assay = "RNA", atac_assay = "ATAC",
+  fragment_files = FALSE, pando_args = list(),
   parallel = TRUE, BPPARAM = NULL,
   progress = getOption("RegCompassR.progress", TRUE))
 
@@ -53,14 +54,18 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{pfm}{Optional motif collection. When omitted, Pando's bundled motifs are used.}
 \item{species}{Species identifier or \code{"auto"}. Mouse runs require build-matched regulatory regions supplied through \code{pando_initiate_args$regions}.}
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
-\item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels.}
+\item{cell_type}{Optional broad-cell-type labels. The default processes all observed labels. Stage 1 removes requested cell types with fewer than 300 cells before normalization.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. RegCompass requires
-\code{candidate_screen = "motif_domain"}; alternative candidate-screen values
-are rejected. Nested \code{pando_infer_args$engine_control} is passed to Pando.
-Condition-aware defaults use compact diagnostics, resumable checkpoints under
+\item{pando_args}{Stage 1 controls. \code{min_cells} is fixed at 300.
+RegCompass requires \code{candidate_screen = "motif_domain"}; alternative
+candidate-screen values are rejected. Standard Pando active edges require
+\code{padj < 0.05} and \code{abs(estimate) > 0.01}. Nested
+\code{pando_infer_args$engine_control} is passed to Pando. Condition-aware
+defaults use compact diagnostics, resumable checkpoints under
 \code{file.path(outdir, "target_checkpoints")}, and Pando's per-worker memory
-planner; an explicit \code{memory_budget_mb} overrides its default.}
+planner; an explicit \code{memory_budget_mb} overrides its default. Motif matches
+are cached under \code{file.path(outdir, "motif_cache")} when supported by the
+installed Pando version.}
 \item{metacell_args}{Stage 2 RNA/ATAC reductions, dimensions, WNN neighbours, gamma, seed, size markers and cache controls.}
 \item{meta_module_args}{Optional custom \code{subsystem_table}.}
 \item{projection_component}{Must be \code{"condition"}.}
@@ -68,28 +73,32 @@ planner; an explicit \code{memory_budget_mb} overrides its default.}
 \item{regulatory_alpha}{Fixed at \code{1}. Other values are rejected.}
 \item{gpr_and_method}{GPR AND aggregation: \code{"min"}, \code{"median"}, or \code{"mean"}. OR isozyme branches are summed.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
-\item{layer2_args}{Directional scoring and shared-model completion controls.}
+\item{layer2_args}{Directional scoring and shared-model completion controls. LP work is partitioned into target blocks; each worker forces numerical libraries and HiGHS to one internal thread.}
 \item{parallel}{Enable stage parallel execution.}
 \item{BPPARAM}{A \code{BiocParallelParam}, \code{NULL}, or \code{FALSE}. \code{TRUE} is invalid.}
-\item{progress}{Display stage progress.}
-\item{fragment_files}{Use \code{FALSE}; Stage 2 aggregates the existing RNA and ATAC count assays by exact membership.}
-\item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
+\item{progress}{Display stage progress. Stage 5 propagates the stage monitor into union-GEM construction, directional feasibility, vmax caching, metacell scoring and control routes.}
+\item{fragment_files}{For Stage 1, \code{FALSE} clears stale Signac fragment references before GRN inference; use \code{TRUE} only to preserve them. For Stage 2, use \code{FALSE}; counts are aggregated by exact membership.}
+\item{grn, metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages. Stage 3 stores full condition-specific module payloads in an external checksummed RDS, leaving only a lightweight reference in \code{meta_modules}.}
 \item{medium_scenarios}{Condition-invariant medium table.}
 \item{model_mode}{Build a shared model from the reaction catalogue or use the full GEM.}
 }
 \value{
 Each function returns a validated stage object and writes its stage RDS to
-\code{outdir}.
+\code{outdir}. Stage 1 retains only \code{step_grn.rds}; it does not also write
+\code{single_cell_grn.rds}.
 }
 \description{
 Runs the GRN, metacell, reaction-catalogue, reaction-expression, metabolic-model,
 and results stages independently.
 }
 \details{
-Stage 1 returns canonical condition fits with condition-full and common-support
-outer-heldout projections. Coefficient estimability is distinct from projectable
-structural-zero support: an unavailable coefficient remains \code{NA}, while its
-projection contribution is fixed at zero in that condition.
+Stage 1 filters cell types and globally zero ATAC peaks before normalization.
+Cell-type-shared TF-IDF is assembled once from sparse triplets instead of
+non-contiguous assignment into a large sparse matrix. It returns canonical
+condition fits with condition-full and common-support outer-heldout projections.
+Coefficient estimability is distinct from projectable structural-zero support:
+an unavailable coefficient remains \code{NA}, while its projection contribution
+is fixed at zero in that condition.
 
 Stage 2 calls \code{SuperCell::SCimplify_by_graph_group()}. It builds one
 independent multimodal WNN graph per broad cell type. All conditions within that
@@ -98,14 +107,16 @@ Walktrap clusters. Condition splits parent membership only after clustering.
 Small metacells are retained and marked with \code{low_power_metacell}; they are
 not merged or removed.
 
-Stage 4 uses condition-full OOF as the primary reaction-support route; common
-support is a decomposition and RNA-only is a control. Stage 5 reuses one
-structural model per medium and returns \code{penalty_condition_full_oof},
-\code{penalty_common_oof}, \code{penalty_condition_unique_increment}, and
-\code{penalty_rna_only}.
+Stage 3 writes \code{condition_meta_modules.rds} and keeps only its checksum and
+path in the stage object. Stage 4 and Stage 5 therefore do not carry the full
+condition-specific module payload. Stage 4 uses condition-full OOF as the primary
+reaction-support route; common support is a decomposition and RNA-only is a
+control. Stage 5 reuses one structural model per medium and returns
+\code{penalty_condition_full_oof}, \code{penalty_common_oof},
+\code{penalty_condition_unique_increment}, and \code{penalty_rna_only}.
 
 Depth matching, common-depth restriction, alpha sensitivity, zero-support
 sensitivity, and link-saturation propagation are absent from the canonical
 schema. Stage 6 assembles primary rankings, annotations, provenance and
-condition comparisons.
+condition comparisons and loads the external Stage 3 payload only when needed.
 }
