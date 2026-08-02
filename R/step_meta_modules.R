@@ -85,8 +85,26 @@ rc_regcompass_step_meta_modules <- function(
       call. = FALSE
     )
   }
+
+  condition_modules_file <- file.path(outdir, "condition_meta_modules.rds")
+  merged_modules_file <- file.path(outdir, "merged_meta_modules.rds")
+  saveRDS(condition_modules, condition_modules_file)
+  saveRDS(merged_modules, merged_modules_file)
+  condition_modules_ref <- list(
+    schema_version = "regcompass_external_condition_modules_v1",
+    embedded = FALSE,
+    file = normalizePath(condition_modules_file, mustWork = TRUE),
+    file_checksum = unname(tools::md5sum(condition_modules_file)),
+    n_reaction_membership = nrow(condition_modules$reaction_membership),
+    n_groups = nrow(group_coverage)
+  )
+  class(condition_modules_ref) <- c(
+    "regcompass_external_condition_modules", "list"
+  )
+
   answer <- list(
-    condition_modules = condition_modules,
+    condition_modules = condition_modules_ref,
+    condition_modules_ref = condition_modules_ref,
     merged_modules = merged_modules,
     group_coverage = group_coverage,
     workflow_params = metacells$params,
@@ -98,19 +116,13 @@ rc_regcompass_step_meta_modules <- function(
         "condition_celltype_active_pando_targets_complete_gpr",
       expansion_policy = "single_ordered_annotation_pass",
       feasibility_completion = "layer2_medium_specific_only",
-      merge_creates_gem = FALSE
+      merge_creates_gem = FALSE,
+      condition_modules_embedded = FALSE,
+      condition_modules_storage = "external_rds"
     )
   )
   class(answer) <- c("regcompass_meta_module_step", "list")
   answer <- .rc_step_monitor_finish(answer, monitor)
-  saveRDS(
-    condition_modules,
-    file.path(outdir, "condition_meta_modules.rds")
-  )
-  saveRDS(
-    merged_modules,
-    file.path(outdir, "merged_meta_modules.rds")
-  )
   saveRDS(answer, file.path(outdir, "step_meta_modules.rds"))
   answer
 }
