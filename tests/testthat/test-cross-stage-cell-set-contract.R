@@ -88,4 +88,9 @@ test_that("public workflow passes the Stage 1 contract to Stage 2", {
   stage2 <- paste(deparse(body(rc_regcompass_step_metacells)), collapse = "\n")
   expect_match(stage2, ".rc_subset_to_stage1_cell_set", fixed = TRUE)
   expect_match(stage2, "stage1_exact_cell_ids_v1", fixed = TRUE)
+  expect_match(
+    stage2,
+    '"requested_condition_col" %in% names(grn$params)',
+    fixed = TRUE
+  )
 })
