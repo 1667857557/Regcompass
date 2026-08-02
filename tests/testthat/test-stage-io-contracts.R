@@ -84,7 +84,10 @@ test_that("Stage 2 uses one grouped multimodal SuperCell API", {
 })
 
 test_that("metacell stage persists required artifacts", {
-  text <- paste(deparse(body(rc_regcompass_step_metacells)), collapse = "\n")
+  text <- paste(c(
+    deparse(body(rc_regcompass_step_metacells)),
+    deparse(body(RegCompassR:::.rc_original_step_metacells_cell_set_contract))
+  ), collapse = "\n")
   required <- c(
     "metacell_metadata.tsv.gz",
     "metacell_membership.tsv.gz",
