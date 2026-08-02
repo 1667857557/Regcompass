@@ -12,7 +12,8 @@ test_that("Stage 1 exposes the fixed min_cells and fragment policy", {
     collapse = "\n"
   )
   expect_match(filter_text, "condition_x_cell_type", fixed = TRUE)
-  expect_match(filter_text, "all(as.integer(x) >= min_cells)", fixed = TRUE)
+  expect_match(filter_text, "retained_stratum", fixed = TRUE)
+  expect_match(filter_text, "retained_condition_count >= 2L", fixed = TRUE)
 })
 
 test_that("standard Pando uses strict adjusted-P and coefficient filters", {
