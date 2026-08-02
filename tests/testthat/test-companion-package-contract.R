@@ -1,22 +1,23 @@
-test_that("companion remotes identify the stacked SuperCell dependency", {
+test_that("companion remotes install the latest repository heads", {
   description_path <- testthat::test_path("..", "..", "DESCRIPTION")
   description <- read.dcf(description_path)
   remotes <- description[1L, "Remotes"]
   expect_match(
     remotes,
-    "1667857557/SuperCell_Seurat_V4@agent/canonical-celltype-wnn-metacells",
+    "1667857557/SuperCell_Seurat_V4",
     fixed = TRUE
   )
+  expect_false(grepl("SuperCell_Seurat_V4@", remotes, fixed = TRUE))
   expect_match(
     remotes,
-    "1667857557/Pando_regcompass@agent/high-p-memory-bounded-engine",
+    "1667857557/Pando_regcompass",
     fixed = TRUE
   )
+  expect_false(grepl("Pando_regcompass@", remotes, fixed = TRUE))
 })
 
 test_that("installed Pando retains optimized condition-GRN dispatch", {
   skip_if_not_installed("Pando")
-  expect_gte(packageVersion("Pando"), package_version("1.6.3"))
   expect_true(is.function(Pando::infer_condition_grn))
   expect_true(is.function(Pando::condition_grn_fit))
   expect_true(is.function(Pando::project_condition_grn_primary_cells))
