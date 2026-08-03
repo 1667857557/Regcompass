@@ -123,6 +123,7 @@
   if (!mode %in% c("condition_grn", "standard_pando")) {
     stop("Layer 1 analysis mode is invalid.", call. = FALSE)
   }
+
   required_gene_matrices <- c(
     "gene_projection_condition_full_oof",
     "gene_projection_common_oof",
@@ -139,7 +140,7 @@
   reference <- layer1$gene_projection_condition_full_oof
   if (!is.numeric(reference) || is.null(dim(reference)) ||
       !identical(colnames(reference), ids)) {
-    stop("Layer 1 condition-full gene projection is invalid.",
+    stop("Layer 1 primary regulatory projection is invalid.",
          call. = FALSE)
   }
   for (name in required_gene_matrices) {
@@ -150,21 +151,27 @@
            call. = FALSE)
     }
   }
-  expected_unique <- layer1$gene_projection_condition_full_oof -
-    layer1$gene_projection_common_oof
   if (!isTRUE(all.equal(
+        layer1$gene_projection_common_oof,
+        reference,
+        tolerance = 1e-12,
+        check.attributes = TRUE
+      )) ||
+      !isTRUE(all.equal(
         layer1$gene_projection_condition_unique_oof,
-        expected_unique,
+        reference * 0,
         tolerance = 1e-12,
         check.attributes = TRUE
       ))) {
-    stop("Layer 1 condition-unique projection is inconsistent.",
+    stop("Layer 1 compatibility projection aliases are inconsistent.",
          call. = FALSE)
   }
   if (!is.logical(layer1$gene_regulatory_reliability_available) ||
       anyNA(layer1$gene_regulatory_reliability_available)) {
-    stop("Layer 1 reliability availability must be logical.", call. = FALSE)
+    stop("Layer 1 reliability availability must be logical.",
+         call. = FALSE)
   }
+
   expected_modifier <- layer1$gene_regulatory_reliability *
     tanh(reference / layer1$gene_projection_scale)
   expected_modifier[
@@ -175,9 +182,19 @@
   finite <- is.finite(expected_modifier) & is.finite(observed)
   if (any(is.finite(expected_modifier) != is.finite(observed)) ||
       any(abs(expected_modifier[finite] - observed[finite]) > 1e-10)) {
-    stop("Layer 1 primary modifier is not reliability*tanh(full/scale).",
+    stop("Layer 1 modifier is not reliability*tanh(projection/scale).",
          call. = FALSE)
   }
+  if (!isTRUE(all.equal(
+        layer1$gene_regulatory_modifier_common_oof,
+        observed,
+        tolerance = 1e-12,
+        check.attributes = TRUE
+      ))) {
+    stop("Layer 1 common modifier compatibility alias is inconsistent.",
+         call. = FALSE)
+  }
+
   reaction_fields <- c(
     "reaction_expression_condition_full_oof",
     "reaction_expression_common_oof",
@@ -193,10 +210,17 @@
   if (!identical(
         layer1$reaction_expression,
         layer1$reaction_expression_condition_full_oof
-      )) {
-    stop("Layer 1 primary expression must be condition-full OOF support.",
+      ) ||
+      !isTRUE(all.equal(
+        layer1$reaction_expression_common_oof,
+        layer1$reaction_expression_condition_full_oof,
+        tolerance = 1e-12,
+        check.attributes = TRUE
+      ))) {
+    stop("Layer 1 primary and compatibility reaction routes are inconsistent.",
          call. = FALSE)
   }
+
   forbidden <- c(
     "reaction_expression_depth_matched_rna",
     "reaction_expression_common_depth_interval_rna",
@@ -209,36 +233,44 @@
   if (any(forbidden %in% names(layer1))) {
     stop("Layer 1 contains removed guardrail fields.", call. = FALSE)
   }
+
   provenance <- layer1$projection_provenance
-  expected_origin <- if (identical(mode, "condition_grn")) {
-    "outer_condition_stratified_cell_oof"
+  expected <- if (identical(mode, "condition_grn")) {
+    list(
+      origin = "paired_cell_full_fit_fixed_dictionary_glm_padj_filtered",
+      primary = "padj_filtered_fixed_dictionary_condition_glm",
+      nonestimable =
+        "coefficient_NA_and_zero_realized_penalty_contribution",
+      coefficients = TRUE
+    )
   } else {
-    "standard_pando_full_fit"
+    list(
+      origin = "standard_pando_full_fit",
+      primary = "standard_pando_full_fit",
+      nonestimable = "not_applicable_standard_pando",
+      coefficients = FALSE
+    )
   }
   if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v3") ||
       !is.list(provenance) ||
       !identical(provenance$analysis_mode, mode) ||
-      !identical(provenance$projection_origin, expected_origin) ||
+      !identical(provenance$projection_origin, expected$origin) ||
+      !identical(provenance$primary_projection, expected$primary) ||
+      !identical(provenance$nonestimable_edge_policy, expected$nonestimable) ||
       !isTRUE(provenance$projection_used_for_penalty) ||
+      !isTRUE(provenance$full_fit_projection_used_for_penalty) ||
       !identical(
         provenance$condition_coefficients_calculated,
-        identical(mode, "condition_grn")
+        expected$coefficients
       ) ||
       !identical(
         provenance$supercell_membership,
         "membership_table(cell_id, metacell_id)"
       )) {
-    stop("Layer 1 projection provenance is incompatible.", call. = FALSE)
-  }
-  if (identical(mode, "condition_grn") &&
-      (!identical(provenance$primary_projection, "condition_full_oof") ||
-       !identical(
-         provenance$nonestimable_edge_policy,
-         "structural_zero_by_condition"
-       ))) {
-    stop("Condition-full structural-zero projection is not primary.",
+    stop("Layer 1 regulatory projection provenance is incompatible.",
          call. = FALSE)
   }
+
   if (!is.null(workflow_params)) {
     .rc_require_workflow_params(layer1, workflow_params, argument)
   }
@@ -299,12 +331,20 @@
       )
     }
   }
-  required_routes <- c(
-    "penalty_condition_full_oof", "penalty_common_oof", "penalty_rna_only",
-    "score_condition_full_oof", "score_common_oof", "score_rna_only"
+
+  required_penalty_routes <- c(
+    "penalty_condition_full_oof",
+    "penalty_common_oof",
+    "penalty_condition_unique_increment",
+    "penalty_rna_only"
+  )
+  required_score_routes <- c(
+    "score_condition_full_oof_display_only",
+    "score_common_oof_display_only",
+    "score_rna_only_display_only"
   )
   reference <- layer2$penalty
-  for (name in required_routes) {
+  for (name in c(required_penalty_routes, required_score_routes)) {
     value <- layer2[[name]]
     if (!is.numeric(value) || is.null(dim(value)) ||
         !identical(dimnames(value), dimnames(reference))) {
@@ -313,36 +353,41 @@
     }
   }
   if (!identical(layer2$penalty, layer2$penalty_condition_full_oof) ||
-      !identical(layer2$score, layer2$score_condition_full_oof)) {
-    stop("Layer 2 primary route must be condition-full OOF.", call. = FALSE)
-  }
-  if (!identical(
-        layer2$penalty_condition_unique_increment,
-        layer2$penalty_condition_full_oof - layer2$penalty_common_oof
+      !identical(
+        layer2$score,
+        layer2$score_condition_full_oof_display_only
       )) {
+    stop("Layer 2 primary route is inconsistent.", call. = FALSE)
+  }
+  if (!isTRUE(all.equal(
+        layer2$penalty_condition_unique_increment,
+        layer2$penalty_condition_full_oof - layer2$penalty_common_oof,
+        tolerance = 1e-12,
+        check.attributes = TRUE
+      ))) {
     stop("Layer 2 condition-unique penalty increment is inconsistent.",
          call. = FALSE)
   }
-  if (!identical(
-        layer2$score_condition_unique_increment,
-        layer2$score_condition_full_oof - layer2$score_common_oof
-      )) {
-    stop("Layer 2 condition-unique score increment is inconsistent.",
-         call. = FALSE)
-  }
+
   contract <- layer2$comparison_contract
   required_contract <- c(
-    "primary_route", "shared_structure", "shared_medium",
-    "shared_directional_vmax", "normalization", "score_transform",
-    "removed_guardrails"
+    "primary", "common_component", "condition_unique_increment",
+    "rna_control", "nonestimable_edge_policy", "removed_guardrails",
+    "exact_shared_structure", "structural_model_contract",
+    "effect_size_basis", "ecdf_effect_size_eligible"
   )
-  if (!is.list(contract) || !all(required_contract %in% names(contract)) ||
-      !identical(contract$primary_route, "condition_full_oof") ||
-      !identical(contract$shared_structure, TRUE) ||
-      !identical(contract$shared_medium, TRUE) ||
-      !identical(contract$shared_directional_vmax, TRUE)) {
+  if (!identical(layer2$schema_version, "regcompass_regulatory_layer2_v2") ||
+      !is.list(contract) ||
+      !all(required_contract %in% names(contract)) ||
+      !identical(contract$primary, "penalty_condition_full_oof") ||
+      !isTRUE(contract$exact_shared_structure) ||
+      !identical(
+        contract$nonestimable_edge_policy,
+        "coefficient_NA_and_zero_realized_penalty_contribution"
+      )) {
     stop("Layer 2 comparison contract is incomplete.", call. = FALSE)
   }
+
   if (!is.null(layer1)) {
     .rc_validate_layer1_stage(layer1, argument = "layer1")
     if (!identical(ids, .rc_layer1_unit_ids(layer1))) {
