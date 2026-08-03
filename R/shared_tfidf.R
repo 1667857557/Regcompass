@@ -86,42 +86,55 @@
   local_zero <- vapply(groups, function(group_units) {
     sum(Matrix::rowSums(counts[, group_units, drop = FALSE]) <= 0)
   }, integer(1))
-  normalized <- lapply(groups, function(group_units) {
+
+  row_index <- vector("list", length(groups))
+  col_index <- vector("list", length(groups))
+  values <- vector("list", length(groups))
+  names(row_index) <- names(col_index) <- names(values) <- names(groups)
+  for (group_name in names(groups)) {
+    group_units <- groups[[group_name]]
     group_counts <- counts[, group_units, drop = FALSE]
     keep <- Matrix::rowSums(group_counts) > 0
-    output <- Matrix::Matrix(
+    if (!any(keep)) next
+    normalized <- Signac::RunTFIDF(
+      group_counts[keep, , drop = FALSE],
+      method = method,
+      scale.factor = scale.factor,
+      verbose = FALSE
+    )
+    triplet <- methods::as(.rc_as_sparse(normalized), "TsparseMatrix")
+    if (!length(triplet@x)) next
+    row_index[[group_name]] <- which(keep)[triplet@i + 1L]
+    group_columns <- match(group_units, units)
+    col_index[[group_name]] <- group_columns[triplet@j + 1L]
+    values[[group_name]] <- as.numeric(triplet@x)
+  }
+
+  i <- unlist(row_index, use.names = FALSE)
+  j <- unlist(col_index, use.names = FALSE)
+  x <- unlist(values, use.names = FALSE)
+  if (length(x)) {
+    tfidf <- Matrix::sparseMatrix(
+      i = i, j = j, x = x,
+      dims = dim(counts),
+      dimnames = dimnames(counts),
+      index1 = TRUE,
+      giveCsparse = TRUE
+    )
+  } else {
+    tfidf <- Matrix::Matrix(
       0,
       nrow = nrow(counts),
-      ncol = length(group_units),
+      ncol = ncol(counts),
       sparse = TRUE,
-      dimnames = list(rownames(counts), group_units)
-    )
-    if (any(keep)) {
-      value <- Signac::RunTFIDF(
-        group_counts[keep, , drop = FALSE],
-        method = method,
-        scale.factor = scale.factor,
-        verbose = FALSE
-      )
-      output[keep, ] <- .rc_as_sparse(value)
-    }
-    output
-  })
-  tfidf <- do.call(cbind, normalized)
-  tfidf <- .rc_as_sparse(tfidf[rownames(counts), units, drop = FALSE])
-  if (!.rc_same_matrix_layout(tfidf, counts)) {
-    stop(
-      "Cell-type-shared TF-IDF changed the ATAC feature/cell layout. ",
-      "Dimensions: ", paste(dim(tfidf), collapse = " x "),
-      " versus ", paste(dim(counts), collapse = " x "),
-      "; identical rownames: ",
-      identical(as.character(rownames(tfidf)), as.character(rownames(counts))),
-      "; identical colnames: ",
-      identical(as.character(colnames(tfidf)), as.character(colnames(counts))),
-      call. = FALSE
+      dimnames = dimnames(counts)
     )
   }
-  dimnames(tfidf) <- dimnames(counts)
+  tfidf <- .rc_as_sparse(tfidf)
+  if (!.rc_same_matrix_layout(tfidf, counts)) {
+    stop("Triplet TF-IDF reconstruction changed the ATAC layout.",
+         call. = FALSE)
+  }
   object <- .rc_set_assay_matrix(
     object = object,
     assay = atac_assay,
@@ -131,6 +144,7 @@
   object <- .rc_align_normalized_assay(object, atac_assay, "ATAC")
   object@misc$regcompass_atac_normalization <- c(list(
     method = "Signac_TFIDF",
+    assembly = "single_triplet_reconstruction",
     scope = "cell_type_all_available_cells",
     celltype_col = celltype_col,
     idf_reference = "all cells of the same cell type",

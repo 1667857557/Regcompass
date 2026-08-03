@@ -1,28 +1,29 @@
 # Tutorial 1: one-shot workflow
 
-This is the shortest complete path from a paired-cell RNA+ATAC Seurat object to
-condition-comparable reaction scores. Public API: [functions.md](functions.md).
-The condition-GRN equations and interface contract are described in
-[condition-comparable-grn.md](condition-comparable-grn.md).
+This is the complete one-shot route from a paired-cell RNA+ATAC Seurat object
+to condition-comparable reaction scores. The condition-GRN equations are in
+[Tutorial 3](tutorial-03-mathematical-model.md), while restartable execution is
+covered in [Tutorial 2](tutorial-02-stepwise-audit.md).
 
 ## Required object state
 
-The object must contain paired RNA and ATAC assays for the same cells,
-condition and broad-cell-type metadata, RNA PCA, ATAC LSI, and genome-compatible
-peak coordinates.
+The input must contain paired RNA and ATAC assays for the same cells, broad
+cell-type metadata, RNA PCA, ATAC LSI, and genome-compatible peak coordinates.
+A condition column is optional: two or more effective levels activate the
+common-dictionary condition-GRN route; no condition or one effective level uses
+direct per-cell-type Pando GRNs.
 
 ```r
 stopifnot(
-  all(c("Group", "cell_type") %in% colnames(A@meta.data)),
+  "cell_type" %in% colnames(A@meta.data),
   "pca" %in% names(A@reductions),
   "lsi" %in% names(A@reductions)
 )
 ```
 
-Stage 1 fixes the minimum retained broad-cell-type size at 300 paired cells. For
-multiple conditions, each retained cell type must contain at least two eligible
-condition strata. The condition model does not use sample/donor labels, nested
-cross-validation, a sparse-group lambda path, or a native condition solver.
+Stage 1 fixes the minimum retained broad-cell-type size at 300 paired cells. In
+multi-condition mode, each fitted cell type must retain at least two eligible
+condition strata.
 
 ## GEM and medium
 
@@ -43,7 +44,7 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Supported biological scenarios are:
+### Built-in biological scenarios
 
 ```text
 normal_human_plasma
@@ -56,7 +57,35 @@ low_glutamine
 custom
 ```
 
-Several built-in scenarios may be generated together:
+| Scenario | Biological background | Named override |
+|---|---|---|
+| `normal_human_plasma` | human plasma-like medium | none |
+| `mouse_plasma` | mouse plasma/interstitial-fluid composition | none |
+| `high_glucose` | same human plasma-like background | glucose increased |
+| `low_glucose` | same human plasma-like background | glucose reduced |
+| `high_lactate` | same human plasma-like background | lactate increased |
+| `low_lactate` | same human plasma-like background | lactate reduced |
+| `low_glutamine` | same human plasma-like background | glutamine reduced |
+
+Challenge scenarios retain the same basal background and change only the named
+component. They are modelling environments, not measured transporter fluxes.
+Concentration-derived uptake caps remain explicit assumptions and are
+intersected with the original GEM directionality.
+
+Inspect composition and provenance fields:
+
+```r
+unique(medium_scenarios[, intersect(c(
+  "medium_scenario_id",
+  "medium_background_id",
+  "composition_primary_reference_doi",
+  "composition_validation_reference_doi",
+  "challenge_reference_doi",
+  "scenario_construction"
+), colnames(medium_scenarios))])
+```
+
+### Several built-in scenarios
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
@@ -73,7 +102,9 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Reaction-level custom bounds remain supported:
+### User-defined medium composition
+
+Reaction-level bounds can be supplied directly:
 
 ```r
 custom_medium <- data.frame(
@@ -95,10 +126,31 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Full references and interpretation rules are in
-[Medium scenarios and evidence](medium-presets.md).
+Metabolite-level availability is also supported:
 
-## Run
+```r
+custom_metabolites <- data.frame(
+  metabolite_name = c("glucose", "glutamine", "lactate"),
+  available = c(TRUE, TRUE, TRUE),
+  concentration_mM = c(5, 0.55, 1.6),
+  uptake_fraction = c(0.2, 0.275, 0.08),
+  target_exchange_flag = c(TRUE, TRUE, TRUE),
+  required_match = TRUE,
+  stringsAsFactors = FALSE
+)
+
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = NULL,
+  species = "human",
+  custom_metabolites = custom_metabolites
+)
+```
+
+Built-in and custom scenarios may be generated together. Full references and
+interpretation rules are in [Medium scenarios and evidence](medium-presets.md).
+
+## One-shot run
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -133,7 +185,8 @@ result <- rc_run_regcompass_one_shot(
     seed = 12345L,
     min_cells_per_stratum = 500L,
     min_metacell_size = 10L,
-    min_metacells_per_stratum = 2L
+    min_metacells_per_stratum = 2L,
+    overwrite = FALSE
   ),
   layer1_args = list(
     projection_component = "condition",
@@ -157,8 +210,14 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-Do not place `parallel` or `BPPARAM` inside `pando_infer_args`; the runner owns
-Stage 1 parallelism. The following retired condition-GRN arguments are rejected:
+`upstream_workers` controls the GRN and other upstream parallel stages;
+`layer2_workers` controls the LP-heavy metabolic stage. Layer 2 workers force
+numerical libraries and HiGHS to one internal thread to avoid nested
+oversubscription. On memory-limited systems, reduce `layer2_workers` before
+changing the model definition.
+
+Do not place `parallel` or `BPPARAM` inside `pando_infer_args`; the workflow owns
+Stage 1 parallelism. The following retired condition-GRN controls are rejected:
 
 ```text
 candidate_screen
@@ -175,52 +234,58 @@ comparison_conditions
 
 ## Condition-GRN algorithm
 
-For every broad cell type with at least two eligible conditions:
+For every retained broad cell type with at least two eligible conditions:
 
-1. Pando discovers candidate TF–peak–target edges on all eligible cells of that
-   cell type.
-2. Pando repeats candidate discovery separately in each condition.
-3. Complete `(target, TF, region)` triples are unioned; TF, peak and target node
-   sets are never recombined by Cartesian product.
-4. The resulting target-specific dictionary is frozen.
-5. Every condition fits the same Gaussian identity model
-   `target ~ TF:peak`, using the same globally preprocessed RNA/ATAC layers and
-   `scale = FALSE`.
-6. Condition effects are the fitted coefficients. No global-coefficient
-   calibration is applied.
-7. BH-adjusted P values are computed across the fitted condition network. Only
-   coefficients with `padj < 0.05`, sufficient absolute effect if requested, and
-   target-model `R² >= min_model_rsq` enter the regulatory penalty.
+1. discover candidate TF–peak–target edges on all eligible cells of the cell
+   type;
+2. repeat candidate discovery separately in each condition;
+3. union complete `(target, TF, region)` triples without Cartesian
+   recombination;
+4. freeze the target-specific dictionary;
+5. fit every condition with the same Gaussian identity model
+   `target ~ TF:peak`, using shared preprocessing and `scale = FALSE`;
+6. retain the complete coefficient and uncertainty table;
+7. pass only estimable coefficients with BH `padj < 0.05` to the condition
+   penalty.
 
-The unfiltered coefficient, standard error, P value, adjusted P value,
-estimability and rank diagnostics are retained in Stage 1 artifacts. An
-unavailable coefficient remains `NA`; it is not silently interpreted as a fitted
-zero. Ordinary GLM P values are conditional on the frozen candidate dictionary
-and do not include selective-inference correction for candidate discovery.
+The multi-condition penalty route does not apply an additional absolute-effect
+or model-R² threshold after Pando's significance flag. `min_abs_estimate` and
+`min_model_rsq` remain relevant to the direct standard-Pando fallback where its
+legacy edge extraction is used.
+
+A zero-variance, aliased, non-finite, or insufficient-residual-df coefficient
+remains `NA` and is excluded. A non-significant edge remains in the complete
+table and must not be interpreted as a biological zero. GLM P values are
+conditional on the frozen candidate dictionary.
 
 ## No condition or one condition
 
-When `condition_col = NULL`, the column is absent, or only one non-missing level
-is observed, Stage 1 directly runs the original Pando Gaussian interaction GRN
-independently for each retained broad cell type. No condition coefficient or
-condition fit contract is manufactured. The standard-Pando edge filter remains
-`padj < 0.05` together with the configured model-fit and absolute-effect gates.
+When `condition_col = NULL`, the requested column is absent, or only one
+non-missing level is observed, Stage 1 runs the original Pando Gaussian
+interaction GRN independently for each retained broad cell type. No condition
+coefficient or synthetic condition fit is created.
 
 ## Metacells and penalty handoff
 
-Stage 2 builds one multimodal WNN graph per broad cell type. All conditions of
-that type share the graph, and condition is applied after graph clustering so
-final metacells remain condition-pure.
+Stage 2 builds one independent multimodal WNN graph per broad cell type. All
+conditions of that type share the graph, and condition splits parent membership
+after clustering so final metacells remain condition-pure.
 
-For multiple conditions, Pando reconstructs each retained paired-cell predictor
-`TF RNA × peak ATAC`, multiplies it by the BH-significant `penalty_effect`, sums
-by target, and only then aggregates by exact SuperCell membership. RegCompass
-does not recompute TF×ATAC from metacell averages and does not refit or
-renormalize coefficients after aggregation.
+For multiple conditions, RegCompass computes each retained paired-cell
+contribution as
+
+```text
+penalty_effect × TF_RNA × peak_ATAC
+```
+
+using the coefficient from that cell's own condition, sums contributions by
+target, and only then averages over exact SuperCell membership. It does not
+recompute TF×ATAC from metacell averages or refit coefficients after
+aggregation.
 
 `regulatory_alpha = 1` and `gpr_and_method = "min"` remain canonical. The same
-GEM, reaction order, bounds, direction and medium-specific `vmax` are reused
-across conditions and metacells.
+medium-specific GEM, reaction order, bounds, target direction, and `vmax` are
+reused across conditions and metacells.
 
 ## Inspect outputs
 
@@ -235,22 +300,21 @@ result$reaction_ranking
 result$condition_contrast
 ```
 
-For backward compatibility, several Stage 4/5 fields retain historical names
-containing `_oof` or `common`. In condition mode their current meanings are:
+Several Stage 4/5 fields retain historical names containing `_oof`, `common`, or
+`condition_unique`. In the current condition model:
 
 ```text
-gene_projection_condition_full_oof = BH-filtered fixed-dictionary full-fit projection
-gene_projection_common_oof         = compatibility alias of the same projection
-gene_projection_condition_unique_oof = zero compatibility decomposition
-penalty_condition_full_oof          = penalty derived from the primary projection
-penalty_common_oof                  = compatibility alias
-penalty_condition_unique_increment  = zero compatibility decomposition
+gene_projection_condition_full_oof   = primary fixed-dictionary projection
+gene_projection_common_oof           = compatibility alias of primary
+gene_projection_condition_unique_oof = zero compatibility matrix
+penalty_condition_full_oof            = primary penalty
+penalty_common_oof                    = compatibility alias of primary
+penalty_condition_unique_increment    = zero compatibility matrix
 ```
 
-These names do not imply that the current method performs OOF estimation or a
-common-support decomposition.
+These names do not imply OOF estimation or a shared-slope decomposition.
 
 Use [Tutorial 2](tutorial-02-stepwise-audit.md) for restartable stages,
 [Tutorial 4](tutorial-04-targeted-reaction-remapping.md) for targeted reaction
-extension, and [Tutorial 5](tutorial-05-condition-differential-analysis.md) for
+remapping, and [Tutorial 5](tutorial-05-condition-differential-analysis.md) for
 condition statistics.

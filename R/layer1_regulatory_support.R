@@ -1,4 +1,4 @@
-# Direct Layer 1 implementation for standard and condition-aware Pando modes.
+# Layer 1 RNA and regulatory support integration.
 
 .rc_latent_metacell_expression <- function(
     counts, library_size, mu_min = 0.1,
@@ -169,7 +169,7 @@
   list(scale = scale, diagnostics = do.call(rbind, diagnostics))
 }
 
-.rc_scaled_oof_modifier <- function(projection, reliability, scale) {
+.rc_scaled_regulatory_modifier <- function(projection, reliability, scale) {
   if (!identical(dimnames(projection), dimnames(reliability)) ||
       !identical(dimnames(projection), dimnames(scale))) {
     stop("Projection, reliability, and calibration scale must align.",
@@ -207,92 +207,6 @@
     answer[reaction_id, ] <- apply(fractions, 1L, max)
   }
   answer
-}
-
-.rc_condition_pando_projection <- function(
-    grn_result, membership, unit_meta, genes, comparison_support) {
-  common <- primary <- reliability <- matrix(
-    NA_real_, length(genes), nrow(unit_meta),
-    dimnames = list(genes, unit_meta$unit_id)
-  )
-  coverage <- list()
-  for (fit in grn_result$condition_grn_fits) {
-    .rc_require_pando_condition_grn_fit(fit)
-    support <- if (identical(comparison_support, "auto")) {
-      if (length(fit$condition_levels) == 2L) {
-        "pairwise_common"
-      } else {
-        "global_common"
-      }
-    } else {
-      comparison_support
-    }
-    pair <- if (support == "pairwise_common") {
-      fit$comparison_conditions
-    } else {
-      NULL
-    }
-    common_cell <- Pando::project_condition_grn_cells(
-      object = grn_result$pando_grn_data,
-      fit = fit,
-      component = "condition",
-      scale = "std",
-      support_policy = support,
-      comparison_conditions = pair,
-      origin = "oof",
-      diagnostic_only = FALSE
-    )
-    primary_cell <- Pando::project_condition_grn_primary_cells(
-      object = grn_result$pando_grn_data,
-      fit = fit,
-      scale = "std"
-    )
-    one_common <- Pando::aggregate_condition_grn_projection(
-      common_cell, membership, group_col = "metacell_id"
-    )
-    one_primary <- Pando::aggregate_condition_grn_projection(
-      primary_cell, membership, group_col = "metacell_id"
-    )
-    assign_projection <- function(destination, projected) {
-      score <- t(as.matrix(projected$gene_score))
-      rownames(score) <- tolower(rownames(score))
-      target <- intersect(rownames(score), rownames(destination))
-      units <- intersect(colnames(score), colnames(destination))
-      destination[target, units] <- score[target, units, drop = FALSE]
-      destination
-    }
-    common <- assign_projection(common, one_common)
-    primary <- assign_projection(primary, one_primary)
-    pooled <- fit$target_rsq_oof_pooled
-    names(pooled) <- tolower(names(pooled))
-    target <- intersect(names(pooled), genes)
-    q <- sqrt(pmin(1, pmax(0, as.numeric(pooled[target]))))
-    available <- fit$predictive_oof_available[
-      match(target, tolower(names(fit$predictive_oof_available)))
-    ] & fit$oof_cell_coverage[
-      match(target, tolower(names(fit$oof_cell_coverage)))
-    ] == 1
-    q[!available] <- NA_real_
-    units <- rownames(one_primary$gene_score)
-    reliability[target, units] <- matrix(
-      q, nrow = length(target), ncol = length(units)
-    )
-    coverage[[length(coverage) + 1L]] <-
-      one_primary$source_projection$target_condition_status
-  }
-  list(
-    common = common,
-    primary = primary,
-    condition_unique = primary - common,
-    reliability = reliability,
-    coverage = .rc_bind_frames_fill(coverage),
-    origin = "outer_condition_stratified_cell_oof",
-    full_fit_used = FALSE,
-    pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    primary_projection = "condition_full_oof",
-    common_projection_role = "shared_estimable_component",
-    nonestimable_projection_policy = "structural_zero_by_condition"
-  )
 }
 
 .rc_cell_first_projection_layer1 <- function(
@@ -385,10 +299,10 @@
   calibration <- .rc_projection_scale(
     projection$primary, unit_meta, celltype_col
   )
-  modifier_primary <- .rc_scaled_oof_modifier(
+  modifier_primary <- .rc_scaled_regulatory_modifier(
     projection$primary, projection$reliability, calibration$scale
   )
-  modifier_common <- .rc_scaled_oof_modifier(
+  modifier_common <- .rc_scaled_regulatory_modifier(
     projection$common, projection$reliability, calibration$scale
   )
   gene_support_rna <- rc_gene_score(
@@ -517,13 +431,12 @@
       primary_projection = projection$primary_projection,
       common_projection_role = projection$common_projection_role,
       condition_unique_projection_role =
-        "condition_full_oof_minus_common_support_oof",
+        "zero_compatibility_decomposition_no_common_support_model",
       full_fit_projection_used_for_penalty = projection$full_fit_used,
       condition_coefficients_calculated = identical(mode, "condition_grn"),
       supercell_membership = "membership_table(cell_id, metacell_id)",
       unavailable_target_policy = "rna_only_neutral_modifier_fallback",
-      nonestimable_edge_policy =
-        projection$nonestimable_projection_policy
+      nonestimable_edge_policy = projection$nonestimable_projection_policy
     ),
     inference_class = "metacell_statistical_unit_within_dataset",
     statistical_unit = "metacell",

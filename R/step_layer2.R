@@ -124,13 +124,61 @@
   )
 }
 
+.rc_compact_meta_modules_for_layer2 <- function(meta_modules) {
+  embedded <- meta_modules$condition_modules
+  if (is.list(embedded) && is.data.frame(embedded$reaction_membership)) {
+    meta_modules$condition_modules <- list(
+      schema_version = "regcompass_transient_condition_modules_summary_v1",
+      embedded = FALSE,
+      n_reaction_membership = nrow(embedded$reaction_membership)
+    )
+    class(meta_modules$condition_modules) <- c(
+      "regcompass_external_condition_modules", "list"
+    )
+  }
+  meta_modules
+}
+
+.rc_run_microcompass_monitored <- function(..., progress_monitor = NULL) {
+  args <- list(...)
+  .rc_step_monitor_event(
+    progress_monitor,
+    "layer2_engine_start",
+    "starting union-model construction and directional scoring",
+    context = list(parallel = isTRUE(args$parallel %||% TRUE))
+  )
+  answer <- do.call(rc_run_microcompass, args)
+  .rc_step_monitor_event(
+    progress_monitor,
+    "layer2_engine_complete",
+    "completed union-model construction and directional scoring"
+  )
+  answer
+}
+
+.rc_run_microcompass_engine_monitored <- function(
+    ..., progress_monitor = NULL) {
+  args <- list(...)
+  .rc_step_monitor_event(
+    progress_monitor,
+    "layer2_control_start",
+    "starting shared-model control scoring"
+  )
+  answer <- do.call(.rc_run_microcompass_engine, args)
+  .rc_step_monitor_event(
+    progress_monitor,
+    "layer2_control_complete",
+    "completed shared-model control scoring"
+  )
+  answer
+}
+
 #' Build medium-specific structural models and run directional LP scoring
 #'
-#' The condition-full OOF route is the primary penalty. The common-support route
-#' is retained as its shared-estimable decomposition, and RNA-only scoring is an
-#' interpretation control. All routes reuse the exact same medium-specific model.
-#' Depth matching, common-depth restriction, alpha sensitivity, zero-support
-#' sensitivity and link-saturation propagation are not calculated or persisted.
+#' The primary route uses the current fixed-dictionary regulatory evidence.
+#' Historical `_oof`, `common`, and `condition_unique` fields are retained as
+#' compatibility aliases. RNA-only scoring remains an interpretation control,
+#' and all routes reuse the exact same medium-specific structural model.
 #'
 #' @export
 rc_regcompass_step_layer2 <- function(
@@ -141,6 +189,8 @@ rc_regcompass_step_layer2 <- function(
   monitor <- .rc_step_monitor_start("layer2", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   model_mode <- match.arg(model_mode)
+  meta_modules <- .rc_compact_meta_modules_for_layer2(meta_modules)
+  invisible(gc(verbose = FALSE, full = TRUE))
   .rc_require_stage_class(
     meta_modules,
     "regcompass_meta_module_step",
@@ -258,7 +308,10 @@ rc_regcompass_step_layer2 <- function(
   )
   defaults[names(layer2_args)] <- NULL
   answer <- withCallingHandlers(
-    do.call(rc_run_microcompass, c(defaults, layer2_args)),
+    do.call(
+      .rc_run_microcompass_monitored,
+      c(defaults, layer2_args, list(progress_monitor = monitor))
+    ),
     warning = function(w) {
       if (grepl(
         "Metacells are valid within-dataset statistical units",
@@ -286,7 +339,10 @@ rc_regcompass_step_layer2 <- function(
     control_args$layer1 <- control_layer1
     control_args$model_cache_override <- answer$shared_model_cache
     result <- withCallingHandlers(
-      do.call(.rc_run_microcompass_engine, control_args),
+      do.call(
+        .rc_run_microcompass_engine_monitored,
+        c(control_args, list(progress_monitor = monitor))
+      ),
       warning = function(w) {
         if (grepl(
           "Metacells are valid within-dataset statistical units",
@@ -300,7 +356,7 @@ rc_regcompass_step_layer2 <- function(
   }
   common <- run_control(
     "reaction_expression_common_oof",
-    "common-support decomposition"
+    "common-support compatibility route"
   )
   rna_only <- run_control(
     "reaction_expression_rna_only",
@@ -321,7 +377,8 @@ rc_regcompass_step_layer2 <- function(
     condition_unique_increment =
       "penalty_condition_full_oof - penalty_common_oof",
     rna_control = "penalty_rna_only",
-    nonestimable_edge_policy = "structural_zero_by_condition",
+    nonestimable_edge_policy =
+      "coefficient_NA_and_zero_realized_penalty_contribution",
     removed_guardrails = c(
       "depth_matching",
       "common_depth_restriction",

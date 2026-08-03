@@ -73,204 +73,16 @@
   coverage
 }
 
-#' Infer Pando regulatory evidence with automatic mode selection
+#' Build condition-pure metacells from the Stage 1 analysis cell set
 #'
-#' Two or more condition levels use the condition-aware nested-OOF model.
-#' A valid single-level condition uses original Pando `infer_grn()` and does not
-#' calculate condition coefficients. Set `condition_col = NULL` for an explicit
-#' no-condition analysis; a non-empty missing column name is an error.
-#' @export
-rc_regcompass_step_grn <- function(
-    object, gem, outdir, genome,
-    pfm = NULL,
-    species = c("auto", "human", "mouse"),
-    condition_col = "condition",
-    celltype_col = "cell_type",
-    cell_type = NULL,
-    rna_assay = "RNA",
-    atac_assay = "ATAC",
-    pando_args = list(),
-    parallel = TRUE,
-    BPPARAM = NULL,
-    progress = getOption("RegCompassR.progress", TRUE)) {
-  monitor <- .rc_step_monitor_start(
-    "grn", outdir, progress, total_parts = 12L
-  )
-  on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
-  .rc_step_monitor_event(
-    monitor, "input_validation",
-    "validating Stage 1 arguments and GEM", current = 1L
-  )
-  if (!is.list(pando_args)) stop("`pando_args` must be a list.", call. = FALSE)
-  if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
-    stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
-  }
-  if (identical(BPPARAM, TRUE)) {
-    stop("`BPPARAM = TRUE` is invalid.", call. = FALSE)
-  }
-  species <- .rc_infer_gem_species(gem, species)
-  rc_validate_gem(gem)
-  .rc_step_monitor_event(
-    monitor, "gem_validated", "GEM contract validated", current = 1L,
-    context = list(species = species)
-  )
-  design <- .rc_resolve_condition_design(object, condition_col)
-  object <- design$object
-  effective_condition_col <- design$condition_col
-  .rc_step_monitor_event(
-    monitor, "design_resolution",
-    "resolved condition-aware versus standard Pando route", current = 2L,
-    context = list(
-      analysis_mode = design$analysis_mode,
-      condition_col = effective_condition_col %||% "<none>",
-      condition_levels = paste(design$condition_levels, collapse = ",")
-    )
-  )
-  object <- .rc_normalize_single_cell_grn_object(
-    object,
-    condition_col = effective_condition_col,
-    celltype_col = celltype_col,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay
-  )
-  .rc_step_monitor_event(
-    monitor, "single_cell_normalization",
-    "RNA and ATAC inputs normalized for GRN inference", current = 3L,
-    context = list(
-      cells = ncol(object),
-      cell_types = length(unique(as.character(
-        object@meta.data[[celltype_col]]
-      ))),
-      rna_assay = rna_assay,
-      atac_assay = atac_assay
-    )
-  )
-  reserved <- intersect(names(pando_args), c(
-    "object", "gem", "outdir", "genome", "pfm", "species",
-    "condition_col", "celltype_col", "cell_type", "rna_assay", "atac_assay",
-    "BPPARAM", "parallel"
-  ))
-  if (length(reserved)) {
-    stop("`pando_args` cannot override workflow fields: ",
-         paste(reserved, collapse = ", "), call. = FALSE)
-  }
-  infer_args <- pando_args$pando_infer_args %||% list()
-  extra_args <- pando_args
-  extra_args$pando_infer_args <- NULL
-  defaults <- list(
-    object = object,
-    gem = gem,
-    outdir = outdir,
-    genome = genome,
-    pfm = pfm,
-    species = species,
-    condition_col = effective_condition_col,
-    celltype_col = celltype_col,
-    cell_type = cell_type,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay
-  )
-  call_args <- c(
-    defaults[setdiff(names(defaults), names(extra_args))],
-    extra_args
-  )
-  if (identical(design$analysis_mode, "condition_grn")) {
-    retired <- intersect(names(infer_args), c("method", "sample_col", "cv_block_col"))
-    if (length(retired)) {
-      stop("Condition GRN mode does not accept: ", paste(retired, collapse = ", "),
-           ".", call. = FALSE)
-    }
-    infer_args$candidate_screen <- infer_args$candidate_screen %||% "motif_domain"
-    infer_args$engine_control <- .rc_pando_engine_control(
-      outdir, infer_args$engine_control
-    )
-    infer_args$parallel <- FALSE
-    infer_args$verbose <- infer_args$verbose %||%
-      .rc_progress_enabled(progress)
-    call_args$pando_infer_args <- infer_args
-    call_args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
-    call_args$progress_monitor <- monitor
-    .rc_step_monitor_event(
-      monitor, "pando_configuration",
-      "configured fused C++ condition-GRN runtime", current = 4L,
-      context = list(
-        candidate_screen = infer_args$candidate_screen,
-        outer_folds = infer_args$outer_nfolds %||% 5L,
-        inner_folds = infer_args$inner_nfolds %||% 5L,
-        nlambda = infer_args$nlambda %||% 50L,
-        lambda_selection = infer_args$lambda_selection %||% "lambda.1se",
-        backend = "cpp_memory_bounded_hybrid_target_v1",
-        memory_budget_mb = infer_args$engine_control$memory_budget_mb %||%
-          "auto_1024",
-        checkpoint_dir = infer_args$engine_control$checkpoint_dir %||%
-          "disabled"
-      )
-    )
-    grn_result <- .rc_with_step_diagnostics(
-      do.call(.rc_fit_condition_grns_by_cell_type, call_args), monitor
-    )
-  } else {
-    infer_args$verbose <- infer_args$verbose %||%
-      .rc_progress_enabled(progress)
-    call_args$pando_infer_args <- infer_args
-    call_args$parallel <- isTRUE(parallel)
-    call_args$progress_monitor <- monitor
-    .rc_step_monitor_event(
-      monitor, "standard_pando",
-      "dispatching original Pando infer_grn workflow", current = 5L
-    )
-    grn_result <- .rc_with_step_diagnostics(
-      do.call(.rc_fit_standard_pando_by_cell_type, call_args), monitor
-    )
-    .rc_step_monitor_event(
-      monitor, "standard_pando_complete",
-      "original Pando workflow completed", current = 10L
-    )
-  }
-  grn_result$analysis_mode <- design$analysis_mode
-  grn_result$requested_condition_col <- design$requested_condition_col
-  grn_result$effective_condition_col <- effective_condition_col
-  grn_result$condition_levels <- design$condition_levels
-  grn_result$fallback_reason <- design$fallback_reason
-  grn_result$rna_assay <- rna_assay
-  grn_result$atac_assay <- atac_assay
-  .rc_step_monitor_event(
-    monitor, "stage_contract",
-    "assembled RegCompass Stage 1 GRN contract", current = 11L,
-    context = list(analysis_mode = design$analysis_mode)
-  )
-  answer <- list(
-    grn_result = grn_result,
-    gem_fingerprint = .rc_stage_gem_fingerprint(gem),
-    params = list(
-      requested_condition_col = design$requested_condition_col,
-      condition_col = effective_condition_col,
-      condition_levels = design$condition_levels,
-      analysis_mode = design$analysis_mode,
-      fallback_reason = design$fallback_reason,
-      celltype_col = celltype_col,
-      cell_type = cell_type,
-      rna_assay = rna_assay,
-      atac_assay = atac_assay,
-      pando_args = c(extra_args, list(pando_infer_args = infer_args)),
-      parallel = parallel,
-      species = species
-    )
-  )
-  class(answer) <- c("regcompass_grn_step", "list")
-  answer <- .rc_step_monitor_finish(answer, monitor)
-  saveRDS(answer, file.path(outdir, "step_grn.rds"))
-  answer
-}
-
-#' Build condition-pure metacells with cell-type-scoped WNN graphs
+#' Each broad cell type receives one independent multimodal WNN graph. All
+#' conditions within that cell type jointly determine modality weights,
+#' neighbours, and Walktrap clusters; condition splits parent membership only
+#' after clustering. When a Stage 1 result is supplied, Stage 2 reproduces its
+#' exact ordered cell set and validates workflow parameters.
 #'
-#' Calls `SuperCell::SCimplify_by_graph_group()` once on the supplied Seurat
-#' object. Each broad cell type receives one independent multimodal WNN graph;
-#' all conditions within that cell type jointly determine adaptive RNA/ATAC
-#' modality weights, neighbours, and Walktrap clusters. Condition splits the
-#' parent membership only after clustering. Small metacells are retained and
-#' marked in metadata rather than merged or removed.
+#' @param grn Optional output of `rc_regcompass_step_grn()`. Supplying it enables
+#' exact Stage 1 cell-ID and parameter validation.
 #' @export
 rc_regcompass_step_metacells <- function(
     object, outdir,
@@ -281,9 +93,68 @@ rc_regcompass_step_metacells <- function(
     atac_assay = "ATAC",
     fragment_files = FALSE,
     metacell_args = list(),
-    progress = getOption("RegCompassR.progress", TRUE)) {
+    progress = getOption("RegCompassR.progress", TRUE),
+    grn = NULL) {
   monitor <- .rc_step_monitor_start("metacells", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
+  if (!inherits(object, "Seurat")) {
+    stop("`object` must inherit from Seurat.", call. = FALSE)
+  }
+  if (!is.list(metacell_args)) {
+    stop("`metacell_args` must be a list.", call. = FALSE)
+  }
+
+  n_input <- ncol(object)
+  if (is.null(grn)) {
+    cell_set <- .rc_build_stage_analysis_cell_set(
+      object = object,
+      condition_col = condition_col,
+      celltype_col = celltype_col,
+      cell_type = cell_type,
+      pando_args = list(min_cells = .rc_stage1_min_cells_fixed)
+    )
+    contract <- list(
+      source = "independent_stage1_filter_reapplication",
+      min_cells = cell_set$min_cells,
+      retained_cells = cell_set$retained_cells,
+      retained_cell_types = cell_set$retained_cell_types,
+      skipped_condition_cell_types = cell_set$skipped_condition_cell_types,
+      diagnostics = cell_set$diagnostics,
+      analysis_mode = cell_set$analysis_mode,
+      condition_levels = cell_set$condition_levels
+    )
+  } else {
+    contract <- .rc_validate_stage1_cell_set(grn)
+    expected_condition_col <- if (
+      "requested_condition_col" %in% names(grn$params)
+    ) {
+      grn$params$requested_condition_col
+    } else {
+      grn$params$condition_col
+    }
+    expected_celltype_col <- grn$params$celltype_col %||% celltype_col
+    expected_rna_assay <- grn$params$rna_assay %||% rna_assay
+    expected_atac_assay <- grn$params$atac_assay %||% atac_assay
+    if (!identical(condition_col, expected_condition_col)) {
+      stop("Stage 2 `condition_col` differs from Stage 1.", call. = FALSE)
+    }
+    if (!identical(celltype_col, expected_celltype_col)) {
+      stop("Stage 2 `celltype_col` differs from Stage 1.", call. = FALSE)
+    }
+    if (!identical(rna_assay, expected_rna_assay) ||
+        !identical(atac_assay, expected_atac_assay)) {
+      stop("Stage 2 assay names differ from Stage 1.", call. = FALSE)
+    }
+    if (!is.null(cell_type) &&
+        !setequal(trimws(as.character(cell_type)),
+                  contract$retained_cell_types)) {
+      stop("Stage 2 `cell_type` differs from the Stage 1 retained types.",
+           call. = FALSE)
+    }
+  }
+
+  object <- .rc_subset_to_stage1_cell_set(object, contract)
+  cell_type <- contract$retained_cell_types
   design <- .rc_resolve_condition_design(object, condition_col)
   object <- design$object
   effective_condition_col <- design$condition_col
@@ -295,6 +166,7 @@ rc_regcompass_step_metacells <- function(
   if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
     object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
   }
+
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   pooled <- .rc_make_condition_celltype_metacells(
     object = object,
@@ -317,6 +189,7 @@ rc_regcompass_step_metacells <- function(
     stop("Metacell object and metadata contain different units.",
          call. = FALSE)
   }
+
   .rc_write_tsv_gz(
     pooled$metacell_meta, file.path(outdir, "metacell_metadata.tsv.gz")
   )
@@ -332,12 +205,14 @@ rc_regcompass_step_metacells <- function(
     file.path(outdir, "metacell_celltype_summary.tsv.gz")
   )
   saveRDS(metacell_object, file.path(outdir, "merged_metacell_object.rds"))
+
   resolved_metacell_args <- modifyList(
     .rc_condition_metacell_defaults(), metacell_args
   )
   answer <- list(
     pooled = pooled,
     metacell_object = metacell_object,
+    cell_filter = contract,
     params = list(
       requested_condition_col = design$requested_condition_col,
       condition_col = effective_condition_col,
@@ -358,14 +233,24 @@ rc_regcompass_step_metacells <- function(
       aggregation_method = pooled$input_design$aggregation_method,
       graph_scope = pooled$input_design$graph_scope,
       condition_scope = pooled$input_design$condition_scope,
-      membership_split_timing =
-        pooled$input_design$membership_split_timing,
+      membership_split_timing = pooled$input_design$membership_split_timing,
       modality_weighting = pooled$input_design$modality_weighting,
       temporary_combined_stratum = FALSE,
       seurat_compatibility =
-        metacell_object@misc$regcompass_seurat_compatibility
+        metacell_object@misc$regcompass_seurat_compatibility,
+      n_input_cells = as.integer(n_input),
+      n_stage_cells = as.integer(length(contract$retained_cells)),
+      cell_set_contract = if (is.null(grn)) {
+        "independent_stage1_filter_reapplication_v1"
+      } else {
+        "stage1_exact_cell_ids_v1"
+      }
     )
   )
+  answer$cell_filter$stage2_n_input_cells <- as.integer(n_input)
+  answer$cell_filter$n_stage_cells <-
+    as.integer(length(contract$retained_cells))
+  answer$cell_filter$exact_stage1_match <- !is.null(grn)
   class(answer) <- c("regcompass_metacell_step", "list")
   answer <- .rc_step_monitor_finish(answer, monitor)
   saveRDS(answer, file.path(outdir, "step_metacells.rds"))

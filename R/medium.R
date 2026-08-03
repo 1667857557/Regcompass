@@ -1034,307 +1034,6 @@
   )
   output
 }
-
-#' Build shared extracellular medium scenarios
-#'
-#' Named physiological and cell-culture media are curated availability catalogs
-#' rather than exhaustive representations of serum or plasma. Human plasma and
-#' the five nutrient-challenge presets are restricted to Human-GEM; mouse plasma
-#' is restricted to Mouse-GEM. RPMI-1640 and DMEM are chemical formulations and
-#' are not species-specific. Concentrations are provenance and do not become
-#' fluxes except for explicitly flagged glucose, lactate, and glutamine rows.
-#' Official Human-GEM and Mouse-GEM models are matched through the exact
-#' extracellular metabolite attached to each exchange reaction.
-#'
-#' @param gem A validated RegCompass GEM.
-#' @param scenario One or more medium scenario identifiers. `"physiologic"`
-#'   resolves to human or mouse plasma according to `species`.
-#' @param species `"auto"`, `"human"`, or `"mouse"`. Human-derived plasma
-#'   and nutrient-challenge presets require `"human"`; `"mouse_plasma"`
-#'   requires `"mouse"`. Culture formulations and technical presets are
-#'   species-neutral but are mapped to the selected GEM.
-#' @param custom_medium Exact reaction-level medium rows.
-#' @param custom_metabolites Metabolite availability rows.
-#' @param uptake_scale Non-negative global or named sensitivity multipliers.
-#' @param exchange_roles Reaction roles treated as exchange reactions.
-#' @param condition Shared condition label; canonical scoring requires `"all"`.
-#' @param exchange_limit Absolute cap used for available exchange directions.
-#' @param strict_preset_matching Stop when required medium components cannot be
-#'   mapped to GEM exchange metabolites.
-#' @return A medium constraint data frame.
-#' @export
-rc_make_medium_scenarios <- function(
-    gem,
-    scenario = "physiologic",
-    species = c("auto", "human", "mouse"),
-    custom_medium = NULL,
-    custom_metabolites = NULL,
-    uptake_scale = c(
-      physiologic = 1,
-      normal_human_plasma = 1,
-      mouse_plasma = 1,
-      rpmi1640 = 1,
-      dmem_high_glucose = 1,
-      high_glucose = 1,
-      low_glucose = 1,
-      high_lactate = 1,
-      low_lactate = 1,
-      low_glutamine = 1,
-      permissive_all_exchange = 1,
-      minimal = 0.1
-    ),
-    exchange_roles = c("exchange"),
-    condition = "all",
-    exchange_limit = 1,
-    strict_preset_matching = TRUE) {
-  species <- .rc_infer_gem_species(gem, species)
-  choices <- c(
-    "physiologic", "compass_model_bounds", "permissive_all_exchange",
-    "normal_human_plasma", "mouse_plasma", "rpmi1640",
-    "dmem_high_glucose", "high_glucose", "low_glucose",
-    "high_lactate", "low_lactate", "low_glutamine", "minimal", "custom"
-  )
-  scenario <- match.arg(scenario, choices = choices, several.ok = TRUE)
-  scenario[scenario == "physiologic"] <- if (identical(species, "human")) {
-    "normal_human_plasma"
-  } else {
-    "mouse_plasma"
-  }
-  human_only_presets <- c(
-    "normal_human_plasma", "high_glucose", "low_glucose",
-    "high_lactate", "low_lactate", "low_glutamine"
-  )
-  invalid_human <- intersect(scenario, human_only_presets)
-  if (identical(species, "mouse") && length(invalid_human)) {
-    stop(
-      "Human-derived medium presets cannot be used with a Mouse-GEM run: ",
-      paste(invalid_human, collapse = ", "), ".",
-      call. = FALSE
-    )
-  }
-  if (identical(species, "human") && "mouse_plasma" %in% scenario) {
-    stop("`mouse_plasma` requires a Mouse-GEM run.", call. = FALSE)
-  }
-  if (!is.null(custom_medium) && !is.null(custom_metabolites)) {
-    stop("Supply only one of `custom_medium` or `custom_metabolites`.", call. = FALSE)
-  }
-  pieces <- list()
-  if ("compass_model_bounds" %in% scenario) {
-    pieces[[length(pieces) + 1L]] <- .rc_compass_model_bound_medium(
-      gem,
-      exchange_limit = exchange_limit
-    )
-  }
-  if ("permissive_all_exchange" %in% scenario) {
-    permissive <- .rc_compass_model_bound_medium(gem, exchange_limit)
-    permissive$medium_scenario_id <- "permissive_all_exchange"
-    permissive$evidence_source <- "technical_all_exchange_original_directions"
-    permissive$assumption_level <- "technical_sensitivity_baseline"
-    pieces[[length(pieces) + 1L]] <- permissive
-  }
-  preset_ids <- intersect(
-    scenario,
-    c(
-      "normal_human_plasma", "mouse_plasma", "rpmi1640",
-      "dmem_high_glucose", "high_glucose", "low_glucose",
-      "high_lactate", "low_lactate", "low_glutamine"
-    )
-  )
-  for (preset_id in preset_ids) {
-    pieces[[length(pieces) + 1L]] <- .rc_build_medium_preset(
-      gem = gem,
-      preset_id = preset_id,
-      species = species,
-      exchange_limit = exchange_limit,
-      uptake_scale = uptake_scale,
-      condition = condition %||% "all",
-      exchange_roles = exchange_roles,
-      strict_preset_matching = strict_preset_matching
-    )
-  }
-  if ("minimal" %in% scenario) {
-    compounds <- .rc_medium_rows(
-      c(
-        "glucose", "glutamine", "arginine", "histidine", "isoleucine",
-        "leucine", "lysine", "methionine", "phenylalanine", "threonine",
-        "tryptophan", "valine", "oxygen", "water", "phosphate",
-        "bicarbonate", "sodium", "potassium", "chloride"
-      ),
-      category = "minimal_required_nutrient",
-      required = c(rep(TRUE, 13), rep(FALSE, 6))
-    )
-    compounds$concentration_basis <- "availability_only"
-    compounds$component_reference_doi <- NA_character_
-    pieces[[length(pieces) + 1L]] <- .rc_build_medium_preset(
-      gem = gem,
-      preset_id = "minimal",
-      species = species,
-      exchange_limit = exchange_limit,
-      uptake_scale = uptake_scale,
-      condition = condition %||% "all",
-      exchange_roles = exchange_roles,
-      strict_preset_matching = strict_preset_matching,
-      compounds = compounds
-    )
-  }
-  if ("custom" %in% scenario) {
-    if (is.null(custom_medium) && is.null(custom_metabolites)) {
-      stop(
-        "`custom_medium` or `custom_metabolites` is required for ",
-        "`scenario = 'custom'`.",
-        call. = FALSE
-      )
-    }
-    if (!is.null(custom_medium)) {
-      required <- c(
-        "medium_scenario_id", "exchange_reaction_id", "lb", "ub", "available"
-      )
-      missing <- setdiff(required, colnames(custom_medium))
-      if (length(missing)) {
-        stop(
-          "`custom_medium` missing columns: ",
-          paste(missing, collapse = ", "),
-          call. = FALSE
-        )
-      }
-      custom <- custom_medium
-      custom$exchange_reaction_id <-
-        trimws(as.character(custom$exchange_reaction_id))
-      custom$lb <- suppressWarnings(as.numeric(custom$lb))
-      custom$ub <- suppressWarnings(as.numeric(custom$ub))
-      custom$available <- as.logical(custom$available)
-      if (anyNA(custom$exchange_reaction_id) ||
-          any(!nzchar(custom$exchange_reaction_id)) ||
-          any(!is.finite(custom$lb)) || any(!is.finite(custom$ub)) ||
-          any(custom$lb > custom$ub) || anyNA(custom$available)) {
-        stop(
-          "Custom medium rows require valid reaction IDs, logical ",
-          "availability, and finite ordered bounds.",
-          call. = FALSE
-        )
-      }
-      optional_defaults <- list(
-        metabolite_id = NA_character_,
-        gem_metabolite_name = NA_character_,
-        match_method = "user_supplied_reaction_id",
-        preset_metabolite = NA_character_,
-        nutrient_category = "custom",
-        concentration_mM = NA_real_,
-        concentration_basis = "user_supplied",
-        component_reference_doi = NA_character_,
-        condition = as.character(condition %||% "all"),
-        original_lb = NA_real_,
-        original_ub = NA_real_,
-        exchange_limit = exchange_limit,
-        uptake_fraction = NA_real_,
-        evidence_source = "user_supplied_custom_medium",
-        assumption_level = "user_supplied",
-        target_exchange_flag = FALSE,
-        concentration_used_for_rate_bound = FALSE,
-        rate_bound_source = "user_supplied_bound",
-        species = if (identical(species, "human")) {
-          "Homo sapiens"
-        } else {
-          "Mus musculus"
-        },
-        reference_label = "user supplied",
-        reference_doi = NA_character_,
-        reference_pmid = NA_character_,
-        evidence_scope = "user-supplied reaction-level extracellular constraints"
-      )
-      for (name in names(optional_defaults)) {
-        if (!name %in% colnames(custom)) custom[[name]] <- optional_defaults[[name]]
-      }
-      custom$condition[
-        is.na(custom$condition) | !nzchar(custom$condition)
-      ] <- as.character(condition %||% "all")
-      pieces[[length(pieces) + 1L]] <- custom
-    } else {
-      required <- c("metabolite_name", "available")
-      missing <- setdiff(required, colnames(custom_metabolites))
-      if (length(missing)) {
-        stop(
-          "`custom_metabolites` missing columns: ",
-          paste(missing, collapse = ", "),
-          call. = FALSE
-        )
-      }
-      compounds <- custom_metabolites[
-        custom_metabolites$available %in% TRUE,
-        ,
-        drop = FALSE
-      ]
-      if (!nrow(compounds)) {
-        stop("`custom_metabolites` contains no available metabolites.", call. = FALSE)
-      }
-      defaults <- list(
-        metabolite_pattern = vapply(
-          compounds$metabolite_name,
-          .rc_medium_pattern,
-          character(1)
-        ),
-        gem_metabolite_aliases = vapply(
-          compounds$metabolite_name,
-          function(name) paste(.rc_medium_gem_aliases(name), collapse = ";"),
-          character(1)
-        ),
-        concentration_mM = NA_real_,
-        concentration_basis = "user_supplied",
-        component_reference_doi = NA_character_,
-        uptake_fraction = 1,
-        category = "custom",
-        target_exchange_flag = FALSE,
-        required_match = TRUE
-      )
-      for (name in names(defaults)) {
-        if (!name %in% colnames(compounds)) compounds[[name]] <- defaults[[name]]
-      }
-      custom_reference <- data.frame(
-        preset_id = "custom",
-        species = if (identical(species, "human")) {
-          "Homo sapiens"
-        } else {
-          "Mus musculus"
-        },
-        reference_label = as.character(
-          compounds$reference_label[[1L]] %||% "user supplied"
-        ),
-        reference_doi = as.character(
-          compounds$reference_doi[[1L]] %||% NA_character_
-        ),
-        reference_pmid = as.character(
-          compounds$reference_pmid[[1L]] %||% NA_character_
-        ),
-        evidence_scope = "user-supplied metabolite availability",
-        stringsAsFactors = FALSE
-      )
-      pieces[[length(pieces) + 1L]] <- .rc_build_medium_preset(
-        gem = gem,
-        preset_id = "custom",
-        species = species,
-        exchange_limit = exchange_limit,
-        uptake_scale = uptake_scale,
-        condition = condition %||% "all",
-        exchange_roles = exchange_roles,
-        strict_preset_matching = strict_preset_matching,
-        compounds = compounds,
-        custom_reference = custom_reference
-      )
-    }
-  }
-  diagnostics <- .rc_bind_frames_fill(lapply(
-    pieces,
-    function(piece) attr(piece, "preset_diagnostics") %||% data.frame()
-  ))
-  output <- .rc_bind_frames_fill(pieces)
-  if (!nrow(output)) stop("No medium rows were produced.", call. = FALSE)
-  attr(output, "preset_diagnostics") <- diagnostics
-  attr(output, "species") <- species
-  attr(output, "medium_policy") <-
-    "literature_catalog_with_exact_gem_exchange_mapping"
-  output
-}
-
 #' Apply medium constraints without expanding GEM directionality
 #'
 #' Every requested bound is intersected with the original GEM bounds. Closing
@@ -1518,3 +1217,189 @@ rc_apply_medium_constraints <- function(
   }
   list(gem = gem, medium_diagnostics = diagnostics)
 }
+
+
+#' Build literature-backed extracellular medium scenarios
+#'
+#' Human plasma and culture backgrounds use exact HPLM composition from Cell
+#' 2017 and the updated formulation in Cell Metabolism 2021. Plasmax from Science
+#' Advances 2019 is an independent validation source and is not numerically
+#' averaged with HPLM. Mouse plasma uses a conservative availability set anchored
+#' to absolute metabolite measurements in Nature 2026; unsupported components are
+#' omitted. Challenge papers provide only the named nutrient concentration.
+#'
+#' @param gem A validated RegCompass GEM.
+#' @param scenario One or more identifiers from `"normal_human_plasma"`,
+#'   `"mouse_plasma"`, `"high_glucose"`, `"low_glucose"`,
+#'   `"high_lactate"`, `"low_lactate"`, `"low_glutamine"`, and
+#'   `"custom"`. `NULL` is also accepted for a custom-only run.
+#' @param species `"auto"`, `"human"`, or `"mouse"`. Human plasma and culture
+#'   challenges require Human-GEM; mouse plasma requires Mouse-GEM.
+#' @param custom_medium User-defined reaction-level bounds. Publication columns
+#'   are optional but retained when supplied.
+#' @param custom_metabolites User-defined metabolite availability and optional
+#'   concentration rows. Publication columns are optional but retained.
+#' @param uptake_scale Non-negative global or named sensitivity multipliers for
+#'   target nutrient relative caps. These are modelling assumptions, not measured
+#'   transporter rates.
+#' @param exchange_roles Reaction roles treated as exchange reactions.
+#' @param condition Shared condition label; canonical scoring requires `"all"`.
+#' @param exchange_limit Shared modelling cap intersected with original GEM
+#'   directionality.
+#' @param strict_preset_matching Stop when required components cannot be mapped
+#'   one-to-one to GEM exchanges.
+#' @return A reaction-level medium table with composition and challenge citations.
+#' @export
+rc_make_medium_scenarios <- function(
+    gem,
+    scenario = "normal_human_plasma",
+    species = c("auto", "human", "mouse"),
+    custom_medium = NULL,
+    custom_metabolites = NULL,
+    uptake_scale = 1,
+    exchange_roles = c("exchange"),
+    condition = "all",
+    exchange_limit = 1,
+    strict_preset_matching = TRUE) {
+  species <- .rc_infer_gem_species(gem, species)
+  if (!is.null(custom_medium) && !is.null(custom_metabolites)) {
+    stop("Supply only one of `custom_medium` or `custom_metabolites`.",
+         call. = FALSE)
+  }
+  custom_supplied <- !is.null(custom_medium) || !is.null(custom_metabolites)
+  if (is.null(scenario)) {
+    scenario <- character()
+  } else {
+    scenario <- unique(trimws(as.character(scenario)))
+    if (anyNA(scenario) || any(!nzchar(scenario))) {
+      stop("`scenario` must contain non-empty identifiers or be NULL.",
+           call. = FALSE)
+    }
+  }
+
+  choices <- c(
+    "normal_human_plasma", "mouse_plasma",
+    "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+    "low_glutamine", "custom"
+  )
+  invalid <- setdiff(scenario, choices)
+  if (length(invalid)) {
+    stop(
+      "Unsupported biological medium scenario: ",
+      paste(invalid, collapse = ", "),
+      ". Technical GEM boundary modes and incomplete presets are not accepted.",
+      call. = FALSE
+    )
+  }
+  custom_requested <- "custom" %in% scenario || custom_supplied
+  scenario <- setdiff(scenario, "custom")
+  if (custom_requested && !custom_supplied) {
+    stop(
+      "`custom_medium` or `custom_metabolites` is required for `scenario = 'custom'`.",
+      call. = FALSE
+    )
+  }
+  if (!length(scenario) && !custom_supplied) {
+    stop("At least one built-in or user-defined medium is required.",
+         call. = FALSE)
+  }
+
+  human_only <- c(
+    "normal_human_plasma", "high_glucose", "low_glucose",
+    "high_lactate", "low_lactate", "low_glutamine"
+  )
+  invalid_human <- intersect(scenario, human_only)
+  if (identical(species, "mouse") && length(invalid_human)) {
+    stop(
+      "Human-derived medium scenarios cannot be used with Mouse-GEM: ",
+      paste(invalid_human, collapse = ", "), ".",
+      call. = FALSE
+    )
+  }
+  if (identical(species, "human") && "mouse_plasma" %in% scenario) {
+    stop("`mouse_plasma` requires Mouse-GEM.", call. = FALSE)
+  }
+
+  pieces <- list()
+  if ("normal_human_plasma" %in% scenario) {
+    pieces[[length(pieces) + 1L]] <- .rc_build_authoritative_human_plasma(
+      gem = gem,
+      condition = condition,
+      exchange_limit = exchange_limit,
+      uptake_scale = uptake_scale,
+      exchange_roles = exchange_roles,
+      strict_preset_matching = strict_preset_matching
+    )
+  }
+  if ("mouse_plasma" %in% scenario) {
+    pieces[[length(pieces) + 1L]] <- .rc_build_authoritative_mouse_plasma(
+      gem = gem,
+      condition = condition,
+      exchange_limit = exchange_limit,
+      uptake_scale = uptake_scale,
+      exchange_roles = exchange_roles,
+      strict_preset_matching = strict_preset_matching
+    )
+  }
+
+  challenge_ids <- intersect(
+    scenario,
+    c(
+      "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+      "low_glutamine"
+    )
+  )
+  for (scenario_id in challenge_ids) {
+    pieces[[length(pieces) + 1L]] <- .rc_build_literature_challenge(
+      gem = gem,
+      scenario_id = scenario_id,
+      condition = condition,
+      exchange_limit = exchange_limit,
+      uptake_scale = uptake_scale,
+      exchange_roles = exchange_roles,
+      strict_preset_matching = strict_preset_matching
+    )
+  }
+
+  if (!is.null(custom_medium)) {
+    pieces[[length(pieces) + 1L]] <-
+      .rc_make_medium_scenarios_unrestricted(
+        gem = gem,
+        scenario = "custom",
+        species = species,
+        custom_medium = custom_medium,
+        uptake_scale = uptake_scale,
+        exchange_roles = exchange_roles,
+        condition = condition,
+        exchange_limit = exchange_limit,
+        strict_preset_matching = strict_preset_matching
+      )
+  }
+  if (!is.null(custom_metabolites)) {
+    pieces[[length(pieces) + 1L]] <-
+      .rc_make_medium_scenarios_unrestricted(
+        gem = gem,
+        scenario = "custom",
+        species = species,
+        custom_metabolites = custom_metabolites,
+        uptake_scale = uptake_scale,
+        exchange_roles = exchange_roles,
+        condition = condition,
+        exchange_limit = exchange_limit,
+        strict_preset_matching = strict_preset_matching
+      )
+  }
+
+  diagnostics <- .rc_bind_frames_fill(lapply(
+    pieces,
+    function(piece) attr(piece, "preset_diagnostics") %||% data.frame()
+  ))
+  output <- .rc_bind_frames_fill(pieces)
+  if (!nrow(output)) stop("No medium rows were produced.", call. = FALSE)
+  attr(output, "preset_diagnostics") <- diagnostics
+  attr(output, "species") <- species
+  attr(output, "medium_policy") <-
+    "authoritative_journal_composition_with_explicit_overrides"
+  output
+}
+

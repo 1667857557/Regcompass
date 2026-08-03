@@ -6,14 +6,6 @@
 # Retained only because the Stage 1 dispatcher constructs this field before
 # calling the condition implementation. The common-dictionary GLM has no native
 # engine or memory planner.
-.rc_pando_engine_control <- function(outdir, user = list()) {
-  if (is.null(user)) user <- list()
-  if (!is.list(user)) {
-    stop("`pando_infer_args$engine_control` must be a list.", call. = FALSE)
-  }
-  list(retired = TRUE, ignored_by = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA)
-}
-
 .rc_pando_execution_summary <- function(diagnostics = NULL) {
   list(
     fit_engine = "two_stage_exact_edge_union_fixed_dictionary_glm",
@@ -37,19 +29,24 @@
       .RC_PANDO_CONDITION_GRN_FIT_SCHEMA, "`.", call. = FALSE
     )
   }
+
   required <- c(
     "cell_type", "condition_levels", "condition_cell_ids",
     "edge_dictionary", "coefficients", "fit", "network_names",
     "padj_threshold", "adjust_method", "scale", "interaction",
     "projection_effect_column", "projection_policy"
   )
-  if (!all(required %in% names(fit)) || !identical(fit$scale, FALSE) ||
+  if (!all(required %in% names(fit)) ||
+      !identical(fit$scale, FALSE) ||
       !identical(fit$interaction, ":") ||
       !identical(fit$projection_effect_column, "penalty_effect") ||
-      !identical(fit$projection_policy, "padj_significant_effects_only")) {
+      !identical(fit$projection_policy, "padj_significant_effects_only") ||
+      !identical(toupper(as.character(fit$adjust_method)), "BH") ||
+      !isTRUE(all.equal(as.numeric(fit$padj_threshold), 0.05))) {
     stop("Pando common-dictionary condition fit contract is incomplete.",
          call. = FALSE)
   }
+
   edge <- as.data.frame(fit$edge_dictionary, stringsAsFactors = FALSE)
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
   required_edge <- c(
@@ -61,27 +58,80 @@
     "std_err", "statistic", "pval", "padj", "significant",
     "penalty_effect", "estimable", "zero_variance", "aliased"
   )
-  if (!all(required_edge %in% colnames(edge)) ||
+  if (!nrow(edge) ||
+      !all(required_edge %in% colnames(edge)) ||
       !all(required_coefficient %in% colnames(coefficient)) ||
+      anyNA(edge$edge_id) || any(!nzchar(as.character(edge$edge_id))) ||
       anyDuplicated(edge$edge_id) ||
-      any(!coefficient$condition %in% fit$condition_levels) ||
-      any(coefficient$significant & !coefficient$estimable) ||
-      any(coefficient$significant &
-          (!is.finite(coefficient$padj) |
-           coefficient$padj >= as.numeric(fit$padj_threshold))) ||
-      any(coefficient$significant &
-          coefficient$penalty_effect != coefficient$estimate, na.rm = TRUE) ||
-      any(!coefficient$significant & coefficient$penalty_effect != 0,
-          na.rm = TRUE)) {
-    stop("Pando condition coefficient or exact edge dictionary is invalid.",
+      any(!coefficient$condition %in% fit$condition_levels)) {
+    stop("Pando common-dictionary coefficient table is incomplete.",
          call. = FALSE)
   }
+
+  dictionary_ids <- sort(as.character(edge$edge_id))
+  for (condition in fit$condition_levels) {
+    one <- coefficient[
+      as.character(coefficient$condition) == condition, , drop = FALSE
+    ]
+    if (nrow(one) != nrow(edge) || anyDuplicated(one$edge_id) ||
+        !identical(sort(as.character(one$edge_id)), dictionary_ids)) {
+      stop(
+        "Every condition must contain every frozen dictionary edge exactly once.",
+        call. = FALSE
+      )
+    }
+
+    valid_p <- is.finite(as.numeric(one$pval))
+    expected_padj <- rep(NA_real_, nrow(one))
+    expected_padj[valid_p] <- stats::p.adjust(
+      as.numeric(one$pval[valid_p]), method = "BH"
+    )
+    observed_padj <- as.numeric(one$padj)
+    comparable <- is.finite(expected_padj) & is.finite(observed_padj)
+    if (any(is.finite(expected_padj) != is.finite(observed_padj)) ||
+        any(abs(expected_padj[comparable] - observed_padj[comparable]) > 1e-10)) {
+      stop("Stored condition padj values do not equal BH adjustment.",
+           call. = FALSE)
+    }
+  }
+
+  expected_significant <- coefficient$estimable %in% TRUE &
+    is.finite(as.numeric(coefficient$padj)) &
+    as.numeric(coefficient$padj) < 0.05
+  if (!identical(as.logical(coefficient$significant), expected_significant)) {
+    stop("Pando significant-edge flags are not exactly estimable & padj < 0.05.",
+         call. = FALSE)
+  }
+
+  expected_effect <- ifelse(
+    expected_significant, as.numeric(coefficient$estimate), 0
+  )
+  observed_effect <- as.numeric(coefficient$penalty_effect)
+  comparable_effect <- is.finite(expected_effect) & is.finite(observed_effect)
+  if (any(is.finite(expected_effect) != is.finite(observed_effect)) ||
+      any(abs(expected_effect[comparable_effect] -
+              observed_effect[comparable_effect]) > 1e-12)) {
+    stop("Pando penalty_effect does not match the strict BH edge contract.",
+         call. = FALSE)
+  }
+
+  if ("direction" %in% colnames(coefficient)) {
+    expected_direction <- ifelse(
+      !coefficient$estimable, "undefined",
+      ifelse(coefficient$estimate > 0, "positive",
+             ifelse(coefficient$estimate < 0, "negative", "zero"))
+    )
+    if (!identical(as.character(coefficient$direction), expected_direction)) {
+      stop("Pando coefficient directions are inconsistent with estimates.",
+           call. = FALSE)
+    }
+  }
+
   invisible(TRUE)
 }
 
 .rc_extract_condition_grn_contract <- function(
-    grn_object, condition_col, celltype_col,
-    min_abs_estimate = 0, min_model_rsq = 0.1) {
+    grn_object, condition_col, celltype_col) {
   fits <- Pando::condition_grn_fit(
     grn_object, network_name = "regcompass_condition_grn"
   )
@@ -91,15 +141,6 @@
          call. = FALSE)
   }
   invisible(lapply(fits, .rc_require_pando_condition_grn_fit))
-  min_abs_estimate <- suppressWarnings(as.numeric(min_abs_estimate)[[1L]])
-  min_model_rsq <- suppressWarnings(as.numeric(min_model_rsq)[[1L]])
-  if (!is.finite(min_abs_estimate) || min_abs_estimate < 0) {
-    stop("`min_abs_estimate` must be finite and non-negative.",
-         call. = FALSE)
-  }
-  if (!is.finite(min_model_rsq)) {
-    stop("`min_model_rsq` must be finite.", call. = FALSE)
-  }
 
   rows <- list()
   universal <- list()
@@ -125,7 +166,6 @@
     coefficient$fit_engine <- fit$fit_engine
     coefficient$coefficient_scale <- fit$coefficient_scale
     coefficient$eligible_in_condition <- coefficient$estimable
-    coefficient$active_in_condition <- coefficient$significant
 
     fit_table <- as.data.frame(fit$fit, stringsAsFactors = FALSE)
     fit_table$target <- toupper(as.character(fit_table$target))
@@ -139,15 +179,14 @@
     }
     coefficient$rsq <- as.numeric(fit_table$rsq[fit_index])
     coefficient$fit_status <- as.character(fit_table$fit_status[fit_index])
-    coefficient$reliable_model <- is.finite(coefficient$rsq) &
-      coefficient$rsq >= min_model_rsq &
+    coefficient$reliable_model <-
       coefficient$fit_status %in% c("ok", "rank_deficient")
     coefficient$penalty_eligible <-
-      coefficient$significant %in% TRUE &
       coefficient$estimable %in% TRUE &
-      is.finite(coefficient$penalty_effect) &
-      abs(coefficient$condition_estimate) >= min_abs_estimate &
-      coefficient$reliable_model
+      is.finite(as.numeric(coefficient$padj)) &
+      as.numeric(coefficient$padj) < 0.05 &
+      is.finite(as.numeric(coefficient$penalty_effect))
+    coefficient$active_in_condition <- coefficient$penalty_eligible
     rows[[length(rows) + 1L]] <- coefficient
     diagnostics[[length(diagnostics) + 1L]] <- fit_table
 
@@ -185,7 +224,9 @@
     condition_active = active,
     condition_effect_all = all_edges,
     condition_effect_active = active,
-    active_tol = min_abs_estimate,
+    active_tol = 0,
+    penalty_filter =
+      "estimable & BH-adjusted padj < 0.05; no effect-size or model-R2 gate",
     coefficient_contract =
       "same_exact_edge_dictionary_unscaled_gaussian_glm",
     pando_fit_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
@@ -205,7 +246,6 @@
       padj_threshold = 0.05, rank_action = "mark",
       min_residual_df = 1L, parallel = FALSE
     ),
-    min_abs_estimate = 0, min_model_rsq = 0.1,
     save_pando_objects = TRUE, BPPARAM = NULL,
     progress_monitor = NULL,
     species = c("auto", "human", "mouse")) {
@@ -315,9 +355,7 @@
   )
   grn <- do.call(Pando::infer_condition_grn, infer)
   extracted <- .rc_extract_condition_grn_contract(
-    grn, condition_col, celltype_col,
-    min_abs_estimate = min_abs_estimate,
-    min_model_rsq = min_model_rsq
+    grn, condition_col, celltype_col
   )
   execution_summary <- .rc_pando_execution_summary(
     extracted$fit_diagnostics
@@ -422,9 +460,9 @@
         "unscaled fixed-dictionary condition coefficient",
       coefficient_contract =
         "same_exact_edge_dictionary_unscaled_gaussian_glm",
-      significance = "BH adjusted P below 0.05",
+      significance = "estimable and BH adjusted P below 0.05",
       penalty_regulatory_evidence =
-        "paired-cell TF-by-ATAC projection using penalty_effect"
+        "paired-cell TF-by-ATAC projection using penalty_effect without effect-size or model-R2 gates"
     ),
     group_cols = c(condition_col, celltype_col)
   )

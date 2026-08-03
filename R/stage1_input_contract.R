@@ -1,6 +1,26 @@
-# Final Stage 1 threshold contract. This file is collated after the workflow
-# hardening overrides so one fixed `min_cells` value drives prefiltering and the
-# downstream standard/condition Pando calls.
+.rc_stage1_min_cells_fixed <- 300L
+
+.rc_validate_stage1_fragment_policy <- function(fragment_files) {
+  if (is.null(fragment_files)) return(FALSE)
+  if (!is.logical(fragment_files) || length(fragment_files) != 1L ||
+      is.na(fragment_files)) {
+    stop(
+      "Stage 1 `fragment_files` must be TRUE or FALSE; FALSE clears stale Signac fragment references.",
+      call. = FALSE
+    )
+  }
+  isTRUE(fragment_files)
+}
+
+.rc_pando_supports_motif_cache <- function() {
+  if (!requireNamespace("Pando", quietly = TRUE)) return(FALSE)
+  method <- tryCatch(
+    getS3method("find_motifs", "GRNData", envir = asNamespace("Pando")),
+    error = function(error) NULL
+  )
+  is.function(method) &&
+    all(c("cache_dir", "reuse_cache") %in% names(formals(method)))
+}
 
 .rc_resolve_stage1_min_cells_contract <- function(pando_args) {
   if (!is.list(pando_args)) {
@@ -12,7 +32,7 @@
     message("Stage 1 `min_cells` is fixed at 300; overriding the supplied value.")
   }
   pando_args$min_cells <- .rc_stage1_min_cells_fixed
-  list(min_cells = pando_args$min_cells, pando_args = pando_args)
+  list(min_cells = .rc_stage1_min_cells_fixed, pando_args = pando_args)
 }
 
 .rc_filter_stage1_groups_by_min_cells <- function(
@@ -45,9 +65,7 @@
     !is.na(condition_col) && nzchar(condition_col) &&
     condition_col %in% colnames(object@meta.data)
   if (has_condition) {
-    observed_condition <- trimws(as.character(
-      object@meta.data[[condition_col]]
-    ))
+    observed_condition <- trimws(as.character(object@meta.data[[condition_col]]))
     invalid_condition <- selected &
       (is.na(object@meta.data[[condition_col]]) | !nzchar(observed_condition))
     if (any(invalid_condition)) {
@@ -90,9 +108,7 @@
           ifelse(fit_ok, "eligible_condition_pando",
                  "skipped_fewer_than_two_conditions")
         ),
-        n_retained_conditions = as.integer(
-          retained_condition_count[[type]]
-        ),
+        n_retained_conditions = as.integer(retained_condition_count[[type]]),
         threshold = as.integer(min_cells),
         threshold_scope = "condition_x_cell_type",
         analysis_mode = "condition_grn",
@@ -100,53 +116,40 @@
       )
     }))
 
-    dropped_strata <- diagnostics[
-      !diagnostics$retained_stratum, , drop = FALSE
-    ]
+    dropped_strata <- diagnostics[!diagnostics$retained_stratum, , drop = FALSE]
     if (nrow(dropped_strata)) {
       message(
-        "Stage 1 excluded condition x cell-type strata below min_cells=300 ",
-        "before normalization: ",
+        "Stage 1 excluded condition x cell-type strata below min_cells=300 before normalization: ",
         paste0(
           dropped_strata$cell_type, "{", dropped_strata$condition, "}=",
-          dropped_strata$n_cells,
-          collapse = "; "
+          dropped_strata$n_cells, collapse = "; "
         )
       )
     }
-
     skipped_type <- setdiff(retained_type, pando_type)
     if (length(skipped_type)) {
       message(
-        "Stage 1 retained qualifying strata but skipped condition-Pando fitting ",
-        "for cell types with fewer than two retained conditions: ",
+        "Stage 1 retained qualifying strata but skipped condition-Pando fitting for cell types with fewer than two retained conditions: ",
         paste0(
           skipped_type, "=", as.integer(retained_condition_count[skipped_type]),
-          " retained condition(s)",
-          collapse = "; "
+          " retained condition(s)", collapse = "; "
         )
       )
     }
-
     if (!length(retained_type)) {
-      stop(
-        "No condition x cell-type stratum reaches min_cells=300.",
-        call. = FALSE
-      )
+      stop("No condition x cell-type stratum reaches min_cells=300.",
+           call. = FALSE)
     }
     if (!length(pando_type)) {
       stop(
-        "No cell type retains at least two qualifying conditions for ",
-        "condition-Pando fitting after min_cells=300 filtering.",
+        "No cell type retains at least two qualifying conditions for condition-Pando fitting after min_cells=300 filtering.",
         call. = FALSE
       )
     }
 
     keep_cells <- rep(FALSE, nrow(object@meta.data))
     selected_rows <- which(selected)
-    type_index <- match(
-      observed_type[selected_rows], rownames(retained_stratum)
-    )
+    type_index <- match(observed_type[selected_rows], rownames(retained_stratum))
     condition_index <- match(
       observed_condition[selected_rows], colnames(retained_stratum)
     )
@@ -190,16 +193,12 @@
     dropped_type <- setdiff(requested_type, retained_type)
     if (length(dropped_type)) {
       message(
-        "Stage 1 excluded cell types with fewer than min_cells=300 before ",
-        "normalization: ",
+        "Stage 1 excluded cell types with fewer than min_cells=300 before normalization: ",
         paste0(dropped_type, "=", as.integer(counts[dropped_type]), collapse = ", ")
       )
     }
     if (!length(retained_type)) {
-      stop(
-        "No requested cell type reaches min_cells=300.",
-        call. = FALSE
-      )
+      stop("No requested cell type reaches min_cells=300.", call. = FALSE)
     }
     keep_cells <- selected & observed_type %in% retained_type
   }
@@ -207,11 +206,6 @@
   retained_cells <- rownames(object@meta.data)[keep_cells]
   filtered <- subset(object, cells = retained_cells)
   filtered@misc$regcompass_stage1_group_filter <- diagnostics
-  retained_condition_levels <- if (condition_mode) {
-    unique(observed_condition[keep_cells])
-  } else {
-    condition_levels
-  }
   list(
     object = filtered,
     retained_cell_types = retained_type,
@@ -223,122 +217,96 @@
     },
     diagnostics = diagnostics,
     analysis_mode = if (condition_mode) "condition_grn" else "standard_pando",
-    condition_levels = retained_condition_levels
+    condition_levels = if (condition_mode) {
+      unique(observed_condition[keep_cells])
+    } else {
+      condition_levels
+    }
   )
 }
 
-#' Infer regulatory evidence using the fixed Stage 1 `min_cells` contract
-#'
-#' Stage 1 fixes `pando_args$min_cells` at 300. In standard-Pando mode, each
-#' broad cell type must contain at least 300 cells. In condition-Pando mode,
-#' every condition-by-cell-type stratum is checked independently: strata below
-#' 300 cells are removed while qualifying conditions of the same cell type are
-#' retained. Cell types with fewer than two qualifying conditions are retained
-#' in the filtered object but skipped for condition-effect fitting. The same
-#' threshold is passed unchanged into Pando. Globally zero ATAC peaks are removed
-#' before TF-IDF or motif analysis. By default stale Signac fragment references
-#' are cleared because Stage 1 uses the in-memory peak matrix and genome sequence
-#' rather than fragment files.
-#'
-#' @param fragment_files Preserve existing Signac fragment references when TRUE.
-#' The default FALSE clears them before Stage 1.
-#' @export
-rc_regcompass_step_grn <- function(
-    object, gem, outdir, genome,
-    pfm = NULL,
-    species = c("auto", "human", "mouse"),
-    condition_col = "condition",
-    celltype_col = "cell_type",
-    cell_type = NULL,
-    rna_assay = "RNA",
-    atac_assay = "ATAC",
-    fragment_files = FALSE,
-    pando_args = list(),
-    parallel = TRUE,
-    BPPARAM = NULL,
-    progress = getOption("RegCompassR.progress", TRUE)) {
-  threshold_contract <- .rc_resolve_stage1_min_cells_contract(pando_args)
-  pando_args <- threshold_contract$pando_args
-  min_cells <- threshold_contract$min_cells
-
-  preserve_fragments <- .rc_validate_stage1_fragment_policy(fragment_files)
-  filtered_groups <- .rc_filter_stage1_groups_by_min_cells(
+.rc_build_stage_analysis_cell_set <- function(
+    object, condition_col, celltype_col, cell_type, pando_args) {
+  threshold <- .rc_resolve_stage1_min_cells_contract(pando_args)
+  groups <- .rc_filter_stage1_groups_by_min_cells(
     object = object,
     condition_col = condition_col,
     celltype_col = celltype_col,
     cell_type = cell_type,
-    min_cells = min_cells
+    min_cells = threshold$min_cells
   )
-  object <- filtered_groups$object
-  filtered_groups$diagnostics$threshold_source <-
-    "fixed_pando_args_min_cells"
-  object@misc$regcompass_stage1_group_filter <- filtered_groups$diagnostics
-  object@misc$regcompass_stage1_min_cells_contract <- list(
-    min_cells = min_cells,
-    source = "pando_args$min_cells",
-    fixed = TRUE,
-    analysis_mode = filtered_groups$analysis_mode,
-    threshold_scope = if (identical(
-      filtered_groups$analysis_mode, "condition_grn"
-    )) {
-      "condition_x_cell_type_independent"
-    } else {
-      "cell_type"
-    },
-    condition_levels = filtered_groups$condition_levels,
-    retained_cell_types = filtered_groups$retained_cell_types,
-    pando_cell_types = filtered_groups$pando_cell_types,
-    skipped_condition_cell_types =
-      filtered_groups$skipped_condition_cell_types,
-    applied_before_normalization = TRUE,
-    passed_to_pando = TRUE
-  )
-
-  if (!preserve_fragments) {
-    object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
+  analysis_types <- unique(as.character(groups$pando_cell_types))
+  observed_type <- trimws(as.character(groups$object@meta.data[[celltype_col]]))
+  analysis_cells <- rownames(groups$object@meta.data)[
+    observed_type %in% analysis_types
+  ]
+  if (!length(analysis_cells)) {
+    stop("No cells remain for Stage 1 Pando analysis.", call. = FALSE)
   }
-  zero_filtered <- .rc_drop_zero_count_atac_features(
-    object, atac_assay, "Stage 1 min_cells prefilter"
+  list(
+    object = subset(groups$object, cells = analysis_cells),
+    retained_cells = analysis_cells,
+    retained_cell_types = analysis_types,
+    diagnostics = groups$diagnostics,
+    analysis_mode = groups$analysis_mode,
+    condition_levels = groups$condition_levels,
+    min_cells = threshold$min_cells,
+    pando_args = threshold$pando_args,
+    skipped_condition_cell_types = groups$skipped_condition_cell_types
   )
-  object <- zero_filtered$object
-  object@misc$regcompass_stage1_zero_peak_filter <- zero_filtered$diagnostics
-  object@misc$regcompass_stage1_fragment_policy <- list(
-    fragment_files = preserve_fragments,
-    policy = if (preserve_fragments) "preserve" else "clear_before_stage1"
-  )
+}
 
-  motif_args <- pando_args$pando_motif_args %||% list()
-  if (!is.list(motif_args)) {
-    stop("`pando_motif_args` must be a list.", call. = FALSE)
+.rc_validate_stage1_cell_set <- function(grn) {
+  if (!inherits(grn, "regcompass_grn_step")) {
+    stop("`grn` must be the output of `rc_regcompass_step_grn()`.",
+         call. = FALSE)
   }
-  if (.rc_pando_supports_motif_cache()) {
-    motif_args$cache_dir <- motif_args$cache_dir %||%
-      file.path(outdir, "motif_cache")
-    motif_args$reuse_cache <- motif_args$reuse_cache %||% TRUE
+  contract <- grn$cell_filter
+  if (!is.list(contract)) {
+    stop(
+      "The Stage 1 result has no cell-set contract. Rerun Stage 1 with the current RegCompassR version.",
+      call. = FALSE
+    )
   }
-  pando_args$pando_motif_args <- motif_args
+  cells <- as.character(contract$retained_cells)
+  types <- as.character(contract$retained_cell_types)
+  if (!length(cells) || anyNA(cells) || any(!nzchar(cells)) ||
+      anyDuplicated(cells)) {
+    stop("The Stage 1 retained-cell contract is invalid.", call. = FALSE)
+  }
+  if (!length(types) || anyNA(types) || any(!nzchar(types))) {
+    stop("The Stage 1 retained-cell-type contract is invalid.", call. = FALSE)
+  }
+  contract$retained_cells <- cells
+  contract$retained_cell_types <- unique(types)
+  contract
+}
 
-  duplicate_file <- file.path(outdir, "single_cell_grn.rds")
-  if (file.exists(duplicate_file)) unlink(duplicate_file, force = TRUE)
-  on.exit({
-    if (file.exists(duplicate_file)) unlink(duplicate_file, force = TRUE)
-  }, add = TRUE)
-
-  .rc_original_step_grn_hardening(
-    object = object,
-    gem = gem,
-    outdir = outdir,
-    genome = genome,
-    pfm = pfm,
-    species = species,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    cell_type = filtered_groups$pando_cell_types,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    pando_args = pando_args,
-    parallel = parallel,
-    BPPARAM = BPPARAM,
-    progress = progress
+.rc_subset_to_stage1_cell_set <- function(object, contract) {
+  if (!inherits(object, "Seurat")) {
+    stop("`object` must inherit from Seurat.", call. = FALSE)
+  }
+  missing <- setdiff(contract$retained_cells, colnames(object))
+  if (length(missing)) {
+    stop(
+      "Stage 2 input is missing ", length(missing),
+      " cell(s) retained by Stage 1; first missing ID: ", missing[[1L]],
+      call. = FALSE
+    )
+  }
+  filtered <- subset(object, cells = contract$retained_cells)
+  if (!identical(colnames(filtered), contract$retained_cells)) {
+    filtered <- filtered[, contract$retained_cells]
+  }
+  if (!identical(colnames(filtered), contract$retained_cells)) {
+    stop("Stage 2 could not reproduce the ordered Stage 1 cell set.",
+         call. = FALSE)
+  }
+  filtered@misc$regcompass_cross_stage_cell_set <- list(
+    source = contract$source %||% "stage1_grn_result",
+    n_cells = length(contract$retained_cells),
+    retained_cell_types = contract$retained_cell_types,
+    min_cells = contract$min_cells %||% .rc_stage1_min_cells_fixed
   )
+  filtered
 }

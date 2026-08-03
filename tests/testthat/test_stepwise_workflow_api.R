@@ -56,20 +56,18 @@ test_that("one-shot workflow executes and saves Stage 6 output", {
   )
 })
 
-test_that("GRN and metacell stages share automatic design resolution", {
-  grn_text <- paste(c(
-    deparse(body(rc_regcompass_step_grn)),
-    deparse(body(RegCompassR:::.rc_original_step_grn_cell_set_contract))
-  ), collapse = "\n")
-  metacell_text <- paste(c(
-    deparse(body(rc_regcompass_step_metacells)),
-    deparse(body(RegCompassR:::.rc_original_step_metacells_cell_set_contract))
-  ), collapse = "\n")
+test_that("GRN and metacell stages use direct automatic design resolution", {
+  grn_text <- paste(deparse(body(rc_regcompass_step_grn)), collapse = "\n")
+  metacell_text <- paste(
+    deparse(body(rc_regcompass_step_metacells)), collapse = "\n"
+  )
   resolver_text <- paste(
     deparse(body(.rc_resolve_condition_design)), collapse = "\n"
   )
   expect_match(grn_text, ".rc_resolve_condition_design", fixed = TRUE)
+  expect_match(grn_text, ".rc_build_stage_analysis_cell_set", fixed = TRUE)
   expect_match(metacell_text, ".rc_resolve_condition_design", fixed = TRUE)
+  expect_match(metacell_text, ".rc_validate_stage1_cell_set", fixed = TRUE)
   expect_match(resolver_text, '"standard_pando"', fixed = TRUE)
   expect_match(resolver_text, '"condition_grn"', fixed = TRUE)
 })

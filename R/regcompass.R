@@ -99,7 +99,8 @@ rc_run_regcompass <- function(
         genome = genome, pfm = pfm, species = species,
         condition_col = condition_col, celltype_col = celltype_col,
         cell_type = cell_type, rna_assay = rna_assay,
-        atac_assay = atac_assay, pando_args = pando_args,
+        atac_assay = atac_assay, fragment_files = fragment_files,
+        pando_args = pando_args,
         parallel = !identical(config$actual_backend, "serial"),
         BPPARAM = param, progress = progress
       )

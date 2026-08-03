@@ -1,5 +1,8 @@
 # Standard Pando fallback used when no multi-level condition is available.
 
+.rc_standard_pando_padj_fixed <- 0.05
+.rc_standard_pando_min_abs_fixed <- 0.01
+
 .rc_standard_pando_cell_types <- function(metadata, celltype_col, cell_type) {
   .rc_validate_celltype_metadata(metadata, celltype_col)
   available <- unique(as.character(metadata[[celltype_col]]))
@@ -42,6 +45,40 @@
     dropped_condition_arguments = condition_only,
     scale_forced_false = !identical(requested_scale, FALSE),
     reason = "one_effective_condition_uses_original_pando_projection_scale"
+  )
+  answer
+}
+
+.rc_filter_standard_pando_edges <- function(
+    table, min_abs_estimate, min_model_rsq) {
+  required <- c("estimate", "padj", "rsq")
+  if (!is.data.frame(table) || !all(required %in% colnames(table))) {
+    stop(
+      "Standard Pando requires estimate, padj and rsq for strict edge filtering.",
+      call. = FALSE
+    )
+  }
+  requested_abs <- suppressWarnings(as.numeric(min_abs_estimate)[[1L]])
+  if (!is.finite(requested_abs) || requested_abs < 0) {
+    stop("`min_abs_estimate` must be finite and non-negative.",
+         call. = FALSE)
+  }
+  min_rsq <- suppressWarnings(as.numeric(min_model_rsq)[[1L]])
+  if (!is.finite(min_rsq)) {
+    stop("`min_model_rsq` must be finite.", call. = FALSE)
+  }
+  abs_threshold <- max(.rc_standard_pando_min_abs_fixed, requested_abs)
+  estimate <- suppressWarnings(as.numeric(table$estimate))
+  padj <- suppressWarnings(as.numeric(table$padj))
+  rsq <- suppressWarnings(as.numeric(table$rsq))
+  keep <- is.finite(estimate) & abs(estimate) > abs_threshold &
+    is.finite(padj) & padj < .rc_standard_pando_padj_fixed &
+    is.finite(rsq) & rsq >= min_rsq
+  answer <- table[keep, , drop = FALSE]
+  attr(answer, "edge_filter") <- list(
+    padj = "< 0.05",
+    min_abs_estimate = paste0("> ", format(abs_threshold, scientific = FALSE)),
+    min_model_rsq = min_rsq
   )
   answer
 }
@@ -210,9 +247,15 @@
     extracted <- rc_extract_pando_tf_peak_gene(
       grn_object = grn,
       sample_id = value,
-      min_abs_estimate = min_abs_estimate,
+      min_abs_estimate = 0,
       min_model_rsq = min_model_rsq,
-      require_padj = FALSE
+      padj_threshold = .rc_standard_pando_padj_fixed,
+      require_padj = TRUE
+    )
+    extracted$significant <- .rc_filter_standard_pando_edges(
+      extracted$all,
+      min_abs_estimate = min_abs_estimate,
+      min_model_rsq = min_model_rsq
     )
     .rc_step_monitor_event(
       progress_monitor, "standard_contract_extraction_complete",
@@ -323,7 +366,11 @@
         "exact SuperCell membership"
       ),
       min_model_rsq = min_model_rsq,
-      min_abs_estimate = min_abs_estimate
+      min_abs_estimate = max(
+        .rc_standard_pando_min_abs_fixed,
+        as.numeric(min_abs_estimate)
+      ),
+      padj_threshold = .rc_standard_pando_padj_fixed
     ),
     group_cols = c(condition_col, celltype_col)
   )
