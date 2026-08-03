@@ -12,8 +12,6 @@ remotes::install_github("1667857557/SuperCell_Seurat_V4")
 remotes::install_github("1667857557/Regcompass")
 ```
 
-No companion commit or release is pinned in `DESCRIPTION`.
-
 ## Required input
 
 The input is a paired-cell Seurat object containing:
@@ -24,7 +22,7 @@ The input is a paired-cell Seurat object containing:
 - genome-compatible peak coordinates;
 - an optional condition column.
 
-Stage 1 retains condition-by-cell-type strata with at least 300 paired cells. Within each cell type, two or more retained conditions use the common-dictionary condition GRN; one retained condition uses standard Pando automatically.
+Stage 1 retains condition-by-cell-type strata . Within each cell type, two or more retained conditions use the common-dictionary condition GRN; one retained condition uses standard Pando automatically.
 
 ## One-shot workflow
 
