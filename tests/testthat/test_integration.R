@@ -1,4 +1,4 @@
-test_that("medium-specific union GEM scores every metacell", {
+test_that("cell-type medium union GEM scores matching metacells", {
   skip_if_not(
     requireNamespace("highs", quietly = TRUE) ||
       requireNamespace("Rglpk", quietly = TRUE) ||
@@ -35,8 +35,8 @@ test_that("medium-specific union GEM scores every metacell", {
     )
   )
   membership <- data.frame(
-    sample_id = "merged",
-    module_id = "MERGED_META_MODULES",
+    catalogue_id = "CELLTYPE_META_MODULES::T",
+    cell_type = "T",
     reaction_id = "R1",
     is_core = TRUE,
     stringsAsFactors = FALSE
@@ -52,7 +52,7 @@ test_that("medium-specific union GEM scores every metacell", {
       pool_id = c("u1", "u2"),
       unit_id = c("u1", "u2"),
       sample_id = c("S1", "S2"),
-      condition = c("ctrl", "ctrl"),
+      condition = c("ctrl", "treated"),
       cell_type = c("T", "T"),
       stringsAsFactors = FALSE
     )
@@ -70,7 +70,11 @@ test_that("medium-specific union GEM scores every metacell", {
     result <- rc_run_microcompass(
       layer1 = layer1,
       gem = gem,
-      target_reactions = "R1",
+      target_reactions = data.frame(
+        cell_type = "T",
+        reaction_id = "R1",
+        stringsAsFactors = FALSE
+      ),
       medium_scenarios = medium,
       mode = "meta_module_gem",
       reaction_membership = membership,
@@ -88,18 +92,22 @@ test_that("medium-specific union GEM scores every metacell", {
   expect_true(all(is.na(result$score[1L, ])))
   expect_true(result$noninformative_target[[1L]])
   expect_equal(nrow(result$model_cache_summary), 1L)
+  expect_identical(result$model_cache_summary$cell_type, "T")
   expect_true(result$params$shared_gem)
+  expect_true(result$params$shared_across_conditions)
+  expect_false(result$params$shared_across_cell_types)
+  expect_identical(result$params$structural_scope, "cell_type_x_medium")
   expect_equal(
     result$params$shared_gem_scope,
-    "one_final_union_gem_per_medium_shared_across_all_units"
+    "one_union_gem_per_cell_type_per_medium_shared_within_cell_type"
   )
   expect_identical(
     result$model_cache_summary$build_strategy,
-    "medium_specific_union_gem"
+    "celltype_medium_union_gem"
   )
   expect_identical(
     result$model_cache_summary$completion_stage,
-    "single_global_fastcore_after_meta_module_merge"
+    "celltype_specific_fastcore_after_condition_module_union"
   )
 })
 
@@ -154,22 +162,30 @@ test_that("v2 exporter writes model and LP diagnostics", {
     feasible = matrix(TRUE, nrow = 1, dimnames = list("R1", "u1")),
     evaluated = matrix(TRUE, nrow = 1, dimnames = list("R1", "u1")),
     penalty_components = list(),
-    params = list(model_mode = "meta_module_gem", shared_gem = TRUE),
+    params = list(
+      model_mode = "meta_module_gem",
+      shared_gem = TRUE,
+      shared_across_conditions = TRUE,
+      shared_across_cell_types = FALSE,
+      structural_scope = "cell_type_x_medium"
+    ),
     medium_scenarios = data.frame(
       medium_scenario_id = "base",
       stringsAsFactors = FALSE
     ),
     model_cache_summary = data.frame(
-      sample_id = "global",
-      module_id = "MEDIUM_UNION_GEM",
+      cell_type = "T",
+      module_id = "CELLTYPE_MEDIUM_UNION_GEM",
       stringsAsFactors = FALSE
     ),
     model_diagnostics = data.frame(
+      cell_type = "T",
       reaction_id = "R1",
-      completion_status = "global_fastcore_completed",
+      completion_status = "celltype_fastcore_completed",
       stringsAsFactors = FALSE
     ),
     lp_diagnostics = data.frame(
+      cell_type = "T",
       reaction_id = "R1",
       solver_status = "optimal",
       stringsAsFactors = FALSE
