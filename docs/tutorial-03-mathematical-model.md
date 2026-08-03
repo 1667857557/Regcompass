@@ -1,168 +1,174 @@
 # Tutorial 3: mathematical model
 
-This is the only tutorial containing workflow equations. Other documentation
-links here instead of repeating mathematical definitions.
+This tutorial collects the mathematical definitions used by the complete
+RegCompass workflow. The condition-GRN sections reflect the common-dictionary
+Pando model; the RNA-support, GPR, metabolic LP, and condition-statistics
+sections are retained because those parts of the workflow are unchanged.
 
-## 1. Condition-aware Pando model
+## 1. Common-dictionary condition GRN
 
-For one broad cell type, target gene \(g\), condition \(c\), candidate edge \(e\)
-and paired cell \(i\), the predictor is
+Consider one broad cell type, target gene \(g\), condition \(c\), candidate edge
+\(e\), and paired cell \(i\). An edge is an exact TF–peak–target triple
+
+\[
+e=(TF(e),peak(e),g).
+\]
+
+Candidate discovery is run on all eligible cells of the cell type and separately
+within each condition. Let \(D_g^{global}\) denote the pooled candidate set and
+\(D_{g,c}\) the candidate set from condition \(c\). The common reference is the
+exact triple union
+
+\[
+D_g^{\cup}=D_g^{global}\cup\bigcup_c D_{g,c}.
+\]
+
+The union is performed on complete triples. TFs, peaks, and targets are not
+recombined by Cartesian product. The resulting target-specific dictionary is
+frozen before coefficient estimation.
+
+For every edge in the frozen dictionary, the unscaled interaction predictor is
 
 \[
 x_{e,i}=RNA_{TF(e),i}\,ATAC_{peak(e),i}.
 \]
 
-All conditions of the cell type share the same candidate supergraph and
-coordinate system.
-
-### Equal-condition transform
-
-For \(K\) conditions,
+RNA and ATAC preprocessing is completed before condition splitting, so every
+condition uses the same feature definitions and numerical units. For each
+condition, Pando fits
 
 \[
-\mu_e=\frac{1}{K}\sum_c\bar x_{e,c},
-\qquad
-s_e^2=\frac{1}{K}\sum_c\frac{1}{n_c}
-\sum_{i\in c}(x_{e,i}-\bar x_{e,c})^2,
+y_{g,i}=a_{g,c}+\sum_{e\in D_g^{\cup}}\beta_{e,c}x_{e,i}
++\varepsilon_{g,i},
+\qquad i\in c,
 \]
+
+with a Gaussian identity GLM, an intercept, `interaction_term = ":"`, and
+`scale = FALSE`. The condition effect is the fitted coefficient
+\(\widehat\beta_{e,c}\). A pooled coefficient is not used to centre, scale, or
+calibrate the condition coefficient.
+
+The candidate-discovery correlations (`tf_cor` and `peak_cor`) are not rerun
+after the dictionary is frozen. Consequently, all conditions are fitted against
+the same ordered predictor dictionary even when the significant edge sets or
+coefficient directions differ.
+
+## 2. Estimability, uncertainty, and penalty-edge selection
+
+An edge is estimable in condition \(c\) only when its predictor has usable
+variance and its coefficient is identifiable in the condition-specific design
+matrix. Define
 
 \[
-z_{e,i}=\frac{x_{e,i}-\mu_e}{s_e}.
+a_{e,c}=\mathbf 1\{\widehat\beta_{e,c}\text{ is estimable}\}.
 \]
 
-The target response uses the analogous equal-condition centre and
-within-condition variance scale. Every outer fold estimates these transforms
-from training cells only.
-
-### Sparse-group multitask objective
-
-Let \(B\) contain one coefficient column per condition. For fixed \(\lambda\),
-\(\alpha\), and \(ho=condition\_mix\), Pando minimizes
+A zero-variance, aliased, non-finite, or insufficient-residual-df edge remains
 
 \[
-\sum_c\frac{1}{2n_c}\lVert y_c-a_c-X_c\beta_c\rVert_2^2
-+\frac{\lambda(1-\alpha)}{2}\lVert B\rVert_F^2
-+\lambda\alpha\left[(1-\rho)\sum_e\lVert B_{e,\cdot}\rVert_2
-+\rho\sum_{e,c}|\beta_{e,c}|\right].
+\widehat\beta_{e,c}=NA,\qquad a_{e,c}=0.
 \]
 
-The row-wise term couples selection across conditions; the entry-wise term
-permits condition-specific zeros. A support-constrained common-metric ridge
-refit produces the final condition coefficients.
+It is not converted into a fitted zero and is not interpreted as evidence for
+absence of regulation.
 
-## 2. Estimability and projectable structural zeros
-
-For outer fold \(k\), define the coefficient-estimability indicator
+For estimable coefficients, Pando retains the standard error, test statistic,
+raw P value, and adjusted P value. Benjamini-Hochberg adjustment is performed
+within the fitted condition network. The penalty-selection indicator is
 
 \[
-a^{(-k)}_{e,c}=
-\mathbf 1\left\{Var_{train(-k,c)}(x_e)>0\right\}.
+s_{e,c}=\mathbf 1\left\{
+ a_{e,c}=1\ \land\ padj_{e,c}<0.05
+\right\}.
 \]
 
-A non-estimable candidate remains projectable with deterministic zero
-contribution:
+The coefficient passed to RegCompass is
 
 \[
-s^{(-k)}_{e,c}=1-a^{(-k)}_{e,c},
-\qquad
-\beta^{(-k)}_{e,c}=NA,
-\qquad
-x^{proj}_{e,i,c}=0\quad\text{when }s^{(-k)}_{e,c}=1.
+\theta_{e,c}=
+\begin{cases}
+\widehat\beta_{e,c}, & s_{e,c}=1,\\
+0, & s_{e,c}=0.
+\end{cases}
 \]
 
-Thus coefficient availability and projection availability are distinct:
+The complete coefficient table is retained for audit. A non-significant edge
+therefore remains distinguishable from an unavailable edge and from an
+estimable coefficient that is numerically close to zero.
+
+These ordinary GLM P values are conditional on the selected frozen dictionary;
+they do not include a selective-inference correction for the candidate-discovery
+step.
+
+## 3. Cell-first regulatory projection and metacell aggregation
+
+For a cell in condition \(c\), the regulatory contribution to target \(g\) is
 
 \[
-projection\_support_{e,c}=a_{e,c}\lor s_{e,c}.
+G_{i,g,c}=\sum_{e\in D_g^{\cup}}\theta_{e,c}x_{e,i}
+=\sum_{e\in D_g^{\cup}}
+\theta_{e,c}RNA_{TF(e),i}ATAC_{peak(e),i}.
 \]
 
-An exact-zero predictor, such as a peak closed in every input cell, remains in
-the shared candidate supergraph. It receives no fitted coefficient and
-contributes zero in every condition. The zero status of held-out cells is
-determined from the corresponding training fold only.
+The coefficient is always selected from the cell's own condition. RegCompass
+computes this quantity on paired cells before aggregation; it does not replace
+\(RNA\times ATAC\) with a product of metacell averages.
 
-## 3. Primary condition-full OOF projection
-
-For held-out cell \(i\), target \(g\), condition \(c\), and outer fold \(k\), the
-primary regulatory score is
-
-\[
-G^{full}_{i,g,c}=
-\sum_{e:\,target(e)=g}
-a^{(-k)}_{e,c}\,\beta^{(-k)}_{e,c}z^{(-k)}_{i,e}.
-\]
-
-Every non-estimable edge side contributes zero. Therefore unilateral edges
-contribute only in the estimable condition, and bilaterally non-estimable edges
-contribute zero in both conditions.
-
-For a requested comparison set \(C^*\), the common-support component is
-
-\[
-m^{(-k)}_e=
-\prod_{c\in C^*}a^{(-k)}_{e,c},
-\]
-
-\[
-G^{common}_{i,g,c}=
-\sum_{e:\,target(e)=g}
-m^{(-k)}_e\,
-\beta^{(-k)}_{e,c}z^{(-k)}_{i,e}.
-\]
-
-The condition-unique projection component is
-
-\[
-G^{unique}_{i,g,c}=
-G^{full}_{i,g,c}-G^{common}_{i,g,c}.
-\]
-
-`condition_full_oof` is the primary penalty input. Common support is retained as
-a decomposition, not as the primary route.
-
-For metacell \(u\) with exact membership set \(M_u\),
+For metacell \(u\) with exact SuperCell membership set \(M_u\),
 
 \[
 G_{u,g,c}=\frac{1}{|M_u|}\sum_{i\in M_u}G_{i,g,c}.
 \]
 
-Projection is always computed before metacell aggregation.
+A condition–target combination without a significant estimable edge has no
+finite regulatory modifier and uses the neutral RNA-only fallback downstream.
+It is recorded explicitly in projection coverage rather than represented by a
+manufactured coefficient.
 
-## 4. Reliability and calibration
-
-The pooled outer-heldout target fit is
-
-\[
-R^2_{OOF,g}=1-
-\frac{\sum_c\sum_{i\in c}(y_{i,g}-\hat y^{OOF}_{i,g})^2}
-{\sum_c\sum_{i\in c}(y_{i,g}-\bar y_{c,g})^2}.
-\]
-
-The reliability weight is
+Several output fields retain historical names containing `_oof`, `common`, or
+`condition_unique` for API compatibility. In the current model:
 
 \[
-q_g=\sqrt{clamp(R^2_{OOF,g},0,1)}.
+G^{primary}=G^{common}=G,
+\qquad
+G^{condition\_unique}=0.
 \]
 
-For target \(g\) and cell type \(t\), RegCompass estimates one robust scale from
-the primary condition-full metacell projection:
+These aliases do not imply outer-fold fitting, a shared-slope model, or a
+common-support decomposition.
+
+## 4. Projection calibration and regulatory modifier
+
+For target \(g\) and broad cell type \(t\), RegCompass estimates a robust scale
+from the finite primary metacell projections:
 
 \[
 \sigma_{g,t}=\max\left(
-\frac{IQR(G^{full}_{g,t})}{1.349},
-MAD_{1.4826}(G^{full}_{g,t}),
-\sqrt{mean((G^{full}_{g,t})^2)},
+\frac{IQR(G_{g,t})}{1.349},
+MAD_{1.4826}(G_{g,t}),
+\sqrt{mean(G_{g,t}^2)},
 10^{-6}
 \right).
+\]
+
+For a condition–target combination with at least one significant estimable
+edge, reliability is one. If no such edge exists, reliability is unavailable:
+
+\[
+q_{g,c}=\begin{cases}
+1, & \exists e:s_{e,c}=1,\\
+NA, & \text{otherwise}.
+\end{cases}
 \]
 
 The bounded signed regulatory modifier is
 
 \[
-R_{g,c,u}=q_g\tanh\left(
-\frac{G^{full}_{u,g,c}}{\sigma_{g,t}}
-\right).
+R_{g,c,u}=q_{g,c}\tanh\left(\frac{G_{u,g,c}}{\sigma_{g,t}}\right).
 \]
+
+A non-finite modifier is handled as unavailable regulatory evidence and is
+replaced by the neutral value \(R=0\) only at the RNA/multiome integration step.
 
 ## 5. RNA and multiome gene support
 
@@ -207,7 +213,7 @@ p_{r,u}=\frac{1}{1+\log_2(1+E_{r,u})}.
 
 For each medium, RegCompass applies one global FASTCORE completion to the merged
 reaction catalogue and reuses the resulting stoichiometric model, bounds,
-reaction order and target definitions for every condition and metacell.
+reaction order, and target definitions for every condition and metacell.
 
 For target reaction \(r\) and direction \(d\), the first LP computes
 
@@ -258,11 +264,31 @@ conditions may use a Kruskal-Wallis omnibus test. Metacells are the statistical
 units, so reported P values describe within-dataset separation and are not
 donor-level biological-replicate inference.
 
+Condition-GRN coefficients may also be compared descriptively on the common
+edge dictionary:
+
+\[
+\Delta\beta_{e,c_1,c_2}=
+\widehat\beta_{e,c_1}-\widehat\beta_{e,c_2}.
+\]
+
+Such comparisons require checking estimability and uncertainty in both
+conditions. A non-significant or unavailable coefficient must not be interpreted
+as a biological zero.
+
 ## 9. Canonical scope
 
-The primary schema contains the condition-full, common-support and RNA-only
-routes on one shared structural model. It does not calculate or persist:
+The primary schema contains the BH-filtered fixed-dictionary condition route and
+an RNA-only fallback/control on one shared structural metabolic model. Historical
+`common` fields are aliases of the primary route and historical
+`condition_unique` fields are zero compatibility matrices.
 
+The workflow does not calculate or persist:
+
+- nested or outer-fold condition-GRN estimates;
+- sparse-group condition paths;
+- structural-zero condition coefficients;
+- pooled-coefficient calibration;
 - depth matching;
 - common-depth restriction;
 - alpha sensitivity;
