@@ -1,0 +1,85 @@
+name: One-time finalize cell-type source contract
+
+on:
+  pull_request:
+    branches: [Main]
+
+permissions:
+  contents: write
+
+jobs:
+  finalize:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+          fetch-depth: 0
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+      - name: Apply direct source changes
+        run: python .github/scripts/finalize_celltype_source_contract.py
+      - name: Parse all R and test sources
+        shell: Rscript {0}
+        run: |
+          files <- c(
+            list.files("R", pattern = "[.]R$", full.names = TRUE),
+            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
+          )
+          for (file in files) {
+            tryCatch(
+              parse(file = file),
+              error = function(e) stop(file, ": ", conditionMessage(e))
+            )
+          }
+      - name: Verify final source contract
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          text = '\n'.join(path.read_text() for path in Path('R').glob('*.R'))
+          required = [
+              '.rc_validate_target_union_anchor_request <- function',
+              'direct_database_crossrefs_within_cell_type_only',
+              'Build cell-type and medium structural models',
+              'FASTCORE completion are created for every cell-type and medium'
+          ]
+          missing = [value for value in required if value not in text]
+          if missing:
+              raise RuntimeError(f'missing final source contract: {missing}')
+          for retired in (
+              'definition$params$merged_core_reactions_not_rescored',
+              'definition$params$cached_union_unavailable_reactions',
+              'exact final medium-specific union GEM files created by Stage'
+          ):
+              if retired in text:
+                  raise RuntimeError(f'retired source contract remains: {retired}')
+
+          definitions = {}
+          pattern = re.compile(
+              r'(?m)^([A-Za-z.][A-Za-z0-9._]*)\s*<-\s*function\b'
+          )
+          for path in sorted(Path('R').glob('*.R')):
+              for match in pattern.finditer(path.read_text()):
+                  definitions.setdefault(match.group(1), []).append(str(path))
+          duplicate = {
+              name: paths for name, paths in definitions.items()
+              if len(paths) > 1
+          }
+          if duplicate:
+              raise RuntimeError(f'duplicate function definitions: {duplicate}')
+      - name: Remove temporary files
+        run: |
+          rm .github/scripts/finalize_celltype_source_contract.py
+          rm .github/workflows/one-time-finalize-celltype-source.yaml
+          rmdir .github/scripts 2>/dev/null || true
+      - name: Commit direct implementation
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add -A
+          git commit -m "finalize cell-type structural source contract"
+          git push origin HEAD:${{ github.head_ref }}
