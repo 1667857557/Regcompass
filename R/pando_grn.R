@@ -1,16 +1,34 @@
-# Resolve the Pando library from its loaded namespace. Forked workers can
-# inherit the namespace while their package search path cannot rediscover the
-# package for utils::data().
-.rc_pando_data_library <- function() {
+# Load Pando LazyData directly from its loaded namespace. This avoids package
+# rediscovery through find.package() inside forked or SOCK workers.
+.rc_pando_data_object <- function(name) {
+  if (!is.character(name) || length(name) != 1L ||
+      is.na(name) || !nzchar(name)) {
+    stop("`name` must be one non-empty character value.", call. = FALSE)
+  }
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop("Package 'Pando' is required.", call. = FALSE)
   }
-  package_path <- getNamespaceInfo(asNamespace("Pando"), "path")
-  if (!is.character(package_path) || length(package_path) != 1L ||
-      is.na(package_path) || !nzchar(package_path) || !dir.exists(package_path)) {
-    stop("Cannot resolve the installed Pando namespace path.", call. = FALSE)
+  namespace <- asNamespace("Pando")
+  lazydata <- tryCatch(
+    getNamespaceInfo(namespace, "lazydata"),
+    error = function(error) NULL
+  )
+  if (is.environment(lazydata) &&
+      exists(name, envir = lazydata, inherits = FALSE)) {
+    return(get(name, envir = lazydata, inherits = FALSE))
   }
-  dirname(package_path)
+  package_name <- "package:Pando"
+  if (package_name %in% search()) {
+    package_environment <- as.environment(package_name)
+    if (exists(name, envir = package_environment, inherits = FALSE)) {
+      return(get(name, envir = package_environment, inherits = FALSE))
+    }
+  }
+  stop(
+    "Installed Pando does not provide required data object `", name,
+    "`. Install 1667857557/Pando_regcompass.",
+    call. = FALSE
+  )
 }
 
 #' Load the canonical Pando motif collection
@@ -18,24 +36,7 @@
 #' The canonical RegCompass GRN uses the `motifs` data object bundled with the
 #' required Pando fork. Users can override this default by supplying `pfm`.
 .rc_default_pando_motifs <- function() {
-  pando_lib <- .rc_pando_data_library()
-  data_environment <- new.env(parent = emptyenv())
-  utils::data(
-    list = "motifs",
-    package = "Pando",
-    lib.loc = pando_lib,
-    envir = data_environment
-  )
-  if (!exists("motifs", envir = data_environment, inherits = FALSE)) {
-    stop(
-      paste(
-        "Installed Pando does not provide the required `motifs` data object.",
-        "Install 1667857557/Pando_regcompass."
-      ),
-      call. = FALSE
-    )
-  }
-  motifs <- get("motifs", envir = data_environment, inherits = FALSE)
+  motifs <- .rc_pando_data_object("motifs")
   if (is.null(motifs) || !length(motifs)) {
     stop("Pando `motifs` must be a non-empty motif collection.", call. = FALSE)
   }
@@ -93,37 +94,8 @@
       call. = FALSE
     )
   }
-  pando_lib <- .rc_pando_data_library()
-  data_environment <- new.env(parent = emptyenv())
-  region_names <- c(
-    "phastConsElements20Mammals.UCSC.hg38",
-    "SCREEN.ccRE.UCSC.hg38"
-  )
-  utils::data(
-    list = region_names,
-    package = "Pando",
-    lib.loc = pando_lib,
-    envir = data_environment
-  )
-  missing <- region_names[!vapply(
-    region_names,
-    exists,
-    logical(1),
-    envir = data_environment,
-    inherits = FALSE
-  )]
-  if (length(missing)) {
-    stop(
-      "Installed Pando does not provide required regulatory-region data: ",
-      paste(missing, collapse = ", "),
-      ". Install 1667857557/Pando_regcompass.",
-      call. = FALSE
-    )
-  }
-  phast_cons <- get(
-    "phastConsElements20Mammals.UCSC.hg38",
-    envir = data_environment,
-    inherits = FALSE
+  phast_cons <- .rc_pando_data_object(
+    "phastConsElements20Mammals.UCSC.hg38"
   )
   if (!methods::is(phast_cons, "GenomicRanges")) {
     stop(
@@ -131,11 +103,7 @@
       call. = FALSE
     )
   }
-  screen_ccre <- get(
-    "SCREEN.ccRE.UCSC.hg38",
-    envir = data_environment,
-    inherits = FALSE
-  )
+  screen_ccre <- .rc_pando_data_object("SCREEN.ccRE.UCSC.hg38")
   if (!methods::is(screen_ccre, "GenomicRanges")) {
     stop(
       "Pando SCREEN ccRE regulatory regions must be a GRanges object.",
