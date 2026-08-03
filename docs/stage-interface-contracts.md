@@ -1,8 +1,8 @@
 # Stage input-output contracts
 
 RegCompass connects stages only when classes, workflow settings, GEM provenance,
-analysis mode, metacell construction provenance and unit order agree. Equations
-are in [Tutorial 3](tutorial-03-mathematical-model.md).
+analysis mode, metacell construction provenance, cell-type scope and unit order
+agree. Equations are in [Tutorial 3](tutorial-03-mathematical-model.md).
 
 ## Stage 1: Pando evidence
 
@@ -12,31 +12,53 @@ Class: `regcompass_grn_step`.
 step1$grn_result$analysis_mode
 step1$grn_result$condition_coefficients_calculated
 step1$grn_result$condition_fit_status
-step1$grn_result$tf_peak_gene_condition
+step1$grn_result$condition_grn_fits
+step1$grn_result$tf_peak_gene_condition_effect_all
+step1$grn_result$tf_peak_gene_condition_effect
 ```
 
 ### `analysis_mode = "condition_grn"`
 
-Selected when the effective condition column has at least two levels. The
-canonical `pando_condition_grn_fit` contract contains:
+Selected when the effective condition column has at least two retained levels.
+For each broad cell type, the canonical Pando contract contains:
 
 ```r
-fit$coefficient_estimable_mask
-fit$projectable_structural_zero_mask
-fit$projection_support_mask
-fit$projection_condition_full_oof
-fit$projection_common_oof
-fit$projection_global_common_oof
+fit$edge_dictionary
+fit$coefficients
+fit$condition_levels
+fit$condition_cell_ids
+fit$fit_engine
+fit$coefficient_scale
+fit$interaction
+fit$projection_effect_column
 ```
 
-`coefficient_estimable_mask` records whether a coefficient can be fitted.
-`projectable_structural_zero_mask` records a shared candidate edge whose
-contribution is fixed at zero in that condition. The two masks are mutually
-exclusive, and their union is `projection_support_mask`.
+The contract requires:
 
-`projection_condition_full_oof` is the primary projection. Jointly estimable
-edges form `projection_common_oof`; their difference is the condition-unique
-component.
+```text
+schema = pando_condition_grn_common_dictionary_v1
+fit_engine = two-stage exact-edge-union fixed-dictionary GLM
+coefficient_scale = raw unscaled condition coefficient
+interaction = TF:peak
+```
+
+Candidate discovery is performed in the pooled cell type and separately in each
+condition. The exact observed `(TF, peak, target)` triples are unioned into one
+frozen dictionary; no Cartesian edge expansion is permitted. Every condition
+must contain every dictionary edge exactly once in the complete coefficient
+table.
+
+Within each condition, RegCompass recomputes BH values and requires:
+
+```text
+significant = estimable AND padj < 0.05
+penalty_effect = estimate, when significant
+penalty_effect = 0, otherwise
+```
+
+A non-estimable coefficient remains `NA` in the complete table. It is not a
+structural zero and is excluded from regulatory evidence. Pooled coefficients
+are not used to rescale condition coefficients.
 
 ### `analysis_mode = "standard_pando"`
 
@@ -102,31 +124,52 @@ silently merged or removed.
 Class: `regcompass_meta_module_step`.
 
 Active Pando target genes form one supported set per effective condition and cell
-type. Positive and negative coefficients both count as evidence. A reaction is
-core only when one complete GPR branch is represented. Stage 3 creates the
-reaction catalogue and does not run FASTCORE.
+type. Positive and negative significant coefficients both count as evidence. A
+reaction is core only when one complete GPR branch is represented. The catalogue
+then adds the configured biological subsystem and direct database-equivalence
+relations. Stage 3 does not run FASTCORE and does not construct a GEM.
+
+Condition-specific catalogues are merged only within the same cell type. The
+contract requires:
+
+```r
+step3$merged_modules$cell_type_catalogues
+step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
+```
+
+```text
+merge_scope = cell_type
+cross_celltype_merge = FALSE
+is_gem = FALSE
+fastcore_applied = FALSE
+```
+
+Every merged core and membership row retains the workflow cell-type column.
+Different cell types may contain different core and biological reaction sets.
 
 ## Stage 4: regulatory Layer 1
 
 Class: `regcompass_layer1_step`.
 
-Both modes use cell-first TF RNA × peak ATAC projection followed by exact
-SuperCell aggregation. Interactions are never reconstructed from metacell means.
+Both condition-aware and standard routes use cell-first TF RNA × peak ATAC
+projection followed by exact SuperCell aggregation. Interactions are never
+reconstructed from metacell means.
 
 Condition mode follows:
 
 ```text
-condition-full outer-heldout projection (primary)
-+ common-support outer-heldout component
-+ condition-unique projection difference
-→ metacell mean
+significant estimable fixed-dictionary edges for one condition
+→ penalty_effect × TF_RNA × peak_ATAC per paired cell
+→ sum by target gene
+→ exact metacell mean
 → cell-type latent RNA support
-→ reliability × tanh(primary projection / shared scale)
+→ reliability × tanh(primary projection / shared within-cell-type scale)
 → bounded RNA-support odds modifier
 → GPR reaction expression
 ```
 
-Required schema fields include:
+Required compatibility fields include:
 
 ```r
 step4$reaction_expression_condition_full_oof
@@ -138,21 +181,46 @@ step4$gene_projection_condition_unique_oof
 step4$projection_provenance
 ```
 
-`reaction_expression` is identical to
-`reaction_expression_condition_full_oof`. A non-estimable edge side contributes
-zero. A non-finite target modifier uses neutral `R = 0`, exactly recovering
-RNA-only support.
+The names containing `_oof`, `common` and `condition_unique` are retained for
+schema compatibility. The current estimator is not OOF:
 
-The Stage 4 schema does not contain depth-matching, common-depth,
-alpha-sensitivity, zero-support-sensitivity or link-saturation-propagation
-fields.
+```text
+condition_full_oof = primary fixed-dictionary projection
+common_oof = compatibility alias of primary
+condition_unique_oof = zero compatibility matrix
+```
 
-## Stage 5: shared model and directional penalties
+`reaction_expression` is identical to the primary fixed-dictionary route. A
+target without a significant estimable regulatory edge uses neutral regulatory
+modification, exactly recovering RNA-only support.
+
+## Stage 5: cell-type structural models and directional penalties
 
 Class: `regcompass_layer2_step`.
 
-For each medium, one shared union GEM and one global FASTCORE completion are
-reused for every condition, metacell and evidence route.
+For `model_mode = "meta_module_gem"`, the structural key is:
+
+```text
+cell_type × medium_scenario
+```
+
+For every key, Stage 5:
+
+1. takes only the merged biological reactions for that cell type;
+2. applies the medium-specific bounds;
+3. runs FASTCORE independently for that cell-type model;
+4. writes a distinct model file and checksum;
+5. computes directional `vmax` once per target direction;
+6. reuses the model only for metacells whose cell type matches.
+
+The contract requires:
+
+```text
+shared_across_conditions = TRUE
+shared_across_cell_types = FALSE
+structural_scope = cell_type_x_medium
+completion_stage = celltype_specific_fastcore_after_condition_module_union
+```
 
 ```r
 step5$penalty_condition_full_oof
@@ -164,9 +232,14 @@ step5$model_cache_summary
 step5$structural_model_contract
 ```
 
-`penalty` is identical to `penalty_condition_full_oof`. The condition-unique
-increment is the primary penalty minus the common-support penalty. All routes
-share reaction order, bounds, target direction and `vmax`.
+`penalty` is identical to the primary fixed-dictionary penalty. The common field
+is a compatibility alias and the condition-unique increment is a zero
+compatibility decomposition. All evidence routes for a cell type share its exact
+reaction order, bounds, target direction and `vmax`; no route shares a union GEM
+with another cell type.
+
+The optional `full_gem` mode uses the complete reference GEM and is dispatched to
+a separate full-GEM engine. It does not construct a cross-cell-type union GEM.
 
 ## Stage 6: final result
 
@@ -180,8 +253,9 @@ result$condition_unique_penalty_increment_summary
 result$rna_only_control_summary
 ```
 
-Primary rankings and condition statistics use condition-full OOF. For one
-effective condition, `condition_contrast` is empty and no artificial second
-condition is generated.
+Primary rankings and condition statistics use the fixed-dictionary condition
+route. Comparisons fix cell type, reaction, direction and medium; rows from
+another cell type are excluded. For one effective condition,
+`condition_contrast` is empty and no artificial second condition is generated.
 
 Public API: [functions.md](functions.md).
