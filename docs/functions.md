@@ -22,10 +22,10 @@ returned in `result$analysis_mode`: `standard_pando` or `condition_grn`.
 |---:|---|---|
 | 1 | `rc_regcompass_step_grn()` | standard Pando networks or `pando_condition_grn_common_dictionary_v1` contracts |
 | 2 | `rc_regcompass_step_metacells()` | cell-type-scoped joint-condition WNN graphs and condition-pure metacells |
-| 3 | `rc_regcompass_step_meta_modules()` | supported genes, complete-GPR cores and reaction catalogue |
+| 3 | `rc_regcompass_step_meta_modules()` | condition modules and cell-type-specific merged reaction catalogues |
 | 4 | `rc_regcompass_step_layer1()` | paired-cell regulatory projection and reaction expression |
-| 5 | `rc_regcompass_step_layer2()` | shared structural model and directional penalties |
-| 6 | `rc_regcompass_step_results()` | annotations, rankings and condition contrasts |
+| 5 | `rc_regcompass_step_layer2()` | one structural model per cell type and medium plus directional penalties |
+| 6 | `rc_regcompass_step_results()` | annotations, rankings and within-cell-type condition contrasts |
 
 ## Stage 1 routing
 
@@ -53,7 +53,7 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-In condition mode, Pando performs global plus each-condition candidate discovery,
+In condition mode, Pando performs pooled plus each-condition candidate discovery,
 unions exact `(target, TF, region)` triples, freezes the dictionary, and fits the
 same unscaled Gaussian identity interaction model in every condition. Condition
 effects are the fitted coefficients; no pooled-coefficient calibration is used.
@@ -90,7 +90,7 @@ fit$projection_policy
 
 The coefficient table retains `estimate`, `std_err`, `statistic`, `pval`, `padj`,
 `significant`, `penalty_effect`, `estimable`, `zero_variance` and `aliased`.
-`penalty_effect` equals `estimate` only for `padj < 0.05`.
+`penalty_effect` equals `estimate` only for estimable edges with `padj < 0.05`.
 
 ## Stage 2 graph contract
 
@@ -110,6 +110,28 @@ RegCompass calls `SuperCell::SCimplify_by_graph_group()` with broad cell type as
 `cell.graph.group` and condition as `cell.split.condition`. Each broad cell type
 gets one independent RNA+ATAC WNN graph. Conditions jointly determine that graph
 and split membership only after clustering.
+
+## Stage 3 cell-type catalogue contract
+
+```r
+step3$merged_modules$cell_type_catalogues
+step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
+```
+
+Condition-specific biological modules are merged only within the same cell type.
+The merged core and membership tables retain the workflow cell-type column and
+record:
+
+```text
+merge_scope = cell_type
+cross_celltype_merge = FALSE
+is_gem = FALSE
+fastcore_applied = FALSE
+```
+
+Stage 3 constructs biological catalogues only. It does not construct a GEM and
+does not run FASTCORE.
 
 ## Stage 4 regulatory support
 
@@ -133,13 +155,13 @@ reconstruction is performed.
 
 Historical fields containing `_oof`, `common`, or `condition_unique` are retained
 for API compatibility. The primary and common fields are aliases of the current
-BH-filtered fixed-dictionary full-fit projection; the condition-unique
-compatibility decomposition is zero.
+BH-filtered fixed-dictionary projection; the condition-unique compatibility
+decomposition is zero.
 
 A non-finite target modifier uses neutral `R = 0` and therefore RNA-only support.
 GPR AND uses `min` by default and OR isozyme branches are additive.
 
-## Stage 5 penalty outputs
+## Stage 5 structural models and penalty outputs
 
 ```r
 step5$penalty
@@ -147,18 +169,38 @@ step5$penalty_condition_full_oof
 step5$penalty_common_oof
 step5$penalty_condition_unique_increment
 step5$penalty_rna_only
+step5$vmax
+step5$model_cache_summary
+step5$structural_model_contract
 ```
 
-All matrices share the same medium-specific GEM, bounds, reaction order, target
-direction and `vmax`. `penalty` is primary. Historical full/common fields are
-compatibility aliases and the condition-unique increment is zero under the
-current condition-GRN design.
+For `model_mode = "meta_module_gem"`, the structural key is
+`cell_type × medium_scenario`. Each key has its own biological reaction union,
+union-GEM file, checksum, independent FASTCORE completion, bounds, reaction
+order, directional targets, and `vmax` cache.
+
+Conditions and metacells share a model only within the same cell type. The
+contract records:
+
+```text
+structural_scope = cell_type_x_medium
+shared_across_conditions = TRUE
+shared_across_cell_types = FALSE
+build_strategy = celltype_medium_union_gem
+completion_stage = celltype_specific_fastcore_after_condition_module_union
+```
+
+`penalty` is primary. Historical full/common fields are compatibility aliases and
+the condition-unique increment is zero under the current condition-GRN design.
+
+The optional `full_gem` mode is dispatched to a separate full-GEM engine and does
+not construct a cross-cell-type union GEM.
 
 ## Optional targeted reaction remapping
 
 | Function | Purpose |
 |---|---|
-| `rc_regcompass_step_target_union()` | Score direct KEGG/Reactome/master-Rhea-linked non-core reactions in the cached Stage 5 union GEMs. |
+| `rc_regcompass_step_target_union()` | Score direct KEGG/Reactome/master-Rhea-linked non-core reactions in matching cell-type Stage 5 caches. |
 
 ```r
 targeted <- rc_regcompass_step_target_union(
@@ -171,6 +213,11 @@ targeted <- rc_regcompass_step_target_union(
   layer2_args = list(target_direction = "both", solver = "highs")
 )
 ```
+
+Candidate availability is intersected across media within each cell type. The
+exact cell-type/medium model files are reused without model reconstruction or a
+FASTCORE rerun. A cache from one cell type is never assigned to another cell
+type's metacells.
 
 ## GEM and medium
 
@@ -198,10 +245,11 @@ custom
 
 | Function | Purpose |
 |---|---|
-| `rc_test_condition_reactions()` | Compare fixed reaction-direction targets. |
+| `rc_test_condition_reactions()` | Compare fixed cell-type/reaction/direction/medium targets. |
 | `rc_report_condition_directions()` | Summarize forward and reverse targets. |
 | `rc_plot_condition_reaction()` | Plot one reaction direction across conditions. |
 | `rc_select_gene_reactions()` | Select scored reactions by metabolic gene. |
 
 For one condition, `result$condition_contrast` is empty. Metacell tests are
-within-dataset inference, not biological-replicate inference.
+within-dataset inference, not biological-replicate inference. Cross-cell-type
+penalty or `vmax` comparisons are not interpreted as condition contrasts.
