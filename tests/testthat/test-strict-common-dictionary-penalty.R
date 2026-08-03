@@ -87,6 +87,24 @@ test_that("significance and penalty effect are exactly estimable BH padj below 0
   )
 })
 
+test_that("condition contract is implemented once in functional source files", {
+  root <- testthat::test_path("..", "..")
+  expect_false(file.exists(file.path(
+    root, "R", "zzzzzz_strict_condition_penalty.R"
+  )))
+  r_files <- list.files(file.path(root, "R"), pattern = "\\.R$", full.names = TRUE)
+  source_text <- unlist(lapply(r_files, readLines, warn = FALSE), use.names = FALSE)
+  count_definition <- function(name) {
+    pattern <- paste0("^", gsub("\\.", "\\\\.", name),
+                      "[[:space:]]*<-[[:space:]]*function")
+    sum(grepl(pattern, source_text))
+  }
+  expect_identical(count_definition(".rc_require_pando_condition_grn_fit"), 1L)
+  expect_identical(count_definition(".rc_extract_condition_grn_contract"), 1L)
+  expect_identical(count_definition(".rc_condition_pando_projection"), 1L)
+  expect_false(any(grepl("strict_condition_penalty|_strict_base", source_text)))
+})
+
 test_that("package metadata pins the audited Pando head", {
   description <- read.dcf(testthat::test_path("..", "..", "DESCRIPTION"))
   remotes <- unname(description[1L, "Remotes"])
