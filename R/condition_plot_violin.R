@@ -9,6 +9,7 @@
 #' reaction annotations, and attached plot data produced by
 #' [rc_plot_condition_reaction()].
 #'
+#' @rdname rc_plot_condition_reaction
 #' @param plot_type Geometry used for the condition distributions:
 #'   `"violin_boxplot"` (default), `"violin"`, or `"boxplot"`.
 #' @param violin_width Width of the violin geometry.
