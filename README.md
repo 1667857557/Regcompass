@@ -53,7 +53,7 @@ result <- rc_run_regcompass_one_shot(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
-    min_cells_per_stratum = 500L,
+    min_cells_per_stratum = 300L,
     min_metacell_size = 10L,
     min_metacells_per_stratum = 2L
   )
