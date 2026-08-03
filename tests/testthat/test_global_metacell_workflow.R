@@ -51,31 +51,66 @@ test_that("Stage 3 uses active targets rather than target projection", {
   expect_false(grepl("top_k_neighbors", text, fixed = TRUE))
 })
 
-test_that("merged meta-modules contain biological reactions only", {
+test_that("meta-modules merge conditions within cell type only", {
   condition_modules <- list(
-    condition_fit_status = data.frame(status = "ok"),
+    condition_fit_status = data.frame(
+      group_id = c("A|T", "B|T", "A|B"),
+      condition = c("A", "B", "A"),
+      cell_type = c("T", "T", "B"),
+      status = "ok",
+      stringsAsFactors = FALSE
+    ),
     tf_peak_gene_condition_all = data.frame(),
     tf_peak_gene_condition = data.frame(),
     supported_metabolic_genes = data.frame(),
     core_gene_reaction = data.frame(
-      sample_id = "A|T",
-      module_id = "A|T::SUPPORTED_METABOLIC_GENES",
-      reaction_id = "R1",
-      is_core = TRUE
+      group_id = c("A|T", "B|T", "A|B"),
+      condition = c("A", "B", "A"),
+      cell_type = c("T", "T", "B"),
+      module_id = c(
+        "A|T::SUPPORTED_METABOLIC_GENES",
+        "B|T::SUPPORTED_METABOLIC_GENES",
+        "A|B::SUPPORTED_METABOLIC_GENES"
+      ),
+      reaction_id = c("RT1", "RT2", "RB1"),
+      is_core = TRUE,
+      stringsAsFactors = FALSE
     ),
     reaction_membership = data.frame(
-      sample_id = "A|T",
-      module_id = "A|T::SUPPORTED_METABOLIC_GENES",
-      reaction_id = c("R1", "R2")
+      group_id = c("A|T", "A|T", "B|T", "A|B"),
+      condition = c("A", "A", "B", "A"),
+      cell_type = c("T", "T", "T", "B"),
+      module_id = c(
+        "A|T::SUPPORTED_METABOLIC_GENES",
+        "A|T::SUPPORTED_METABOLIC_GENES",
+        "B|T::SUPPORTED_METABOLIC_GENES",
+        "A|B::SUPPORTED_METABOLIC_GENES"
+      ),
+      reaction_id = c("RT1", "RT3", "RT2", "RB1"),
+      stringsAsFactors = FALSE
     ),
     meta_module_summary = data.frame()
   )
-  out <- .rc_merge_meta_module_catalogue(condition_modules)
-  expect_setequal(
-    out$merged_reaction_membership$reaction_id,
-    c("R1", "R2")
+  out <- .rc_merge_meta_modules_by_cell_type(
+    condition_modules,
+    celltype_col = "cell_type",
+    condition_col = "condition"
   )
-  expect_setequal(out$merged_core_reactions$reaction_id, "R1")
+  expect_setequal(names(out$cell_type_catalogues), c("B", "T"))
+  expect_setequal(
+    out$cell_type_catalogues$T$merged_reaction_membership$reaction_id,
+    c("RT1", "RT2", "RT3")
+  )
+  expect_identical(
+    out$cell_type_catalogues$B$merged_reaction_membership$reaction_id,
+    "RB1"
+  )
+  expect_false("RB1" %in%
+    out$cell_type_catalogues$T$merged_reaction_membership$reaction_id)
+  expect_false(any(c("RT1", "RT2", "RT3") %in%
+    out$cell_type_catalogues$B$merged_reaction_membership$reaction_id))
+  expect_identical(out$merge_scope, "cell_type")
+  expect_false(out$cross_celltype_merge)
   expect_false(out$is_gem)
   expect_false(out$fastcore_applied)
 })
