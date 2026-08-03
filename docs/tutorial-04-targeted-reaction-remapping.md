@@ -182,3 +182,12 @@ Changing only the selected anchors does not require rerunning Stages 1–5.
 Changing the Stage 4 reaction evidence, Stage 5 medium, GEM, FASTCORE completion,
 bounds, direction, or target-flux controls invalidates the targeted pass and
 requires regenerating the relevant upstream cache first.
+
+
+## Cell-type-scoped cache reuse
+
+Targeted remapping preserves the original structural boundary. A target linked
+to a core reaction from cell type `c` is evaluated only in cached
+`cell_type = c` union GEMs. The function intersects candidate reactions across
+media within that cell type; it never intersects or merges cached GEMs from
+different cell types and never reruns FASTCORE.

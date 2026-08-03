@@ -14,7 +14,7 @@ within a fixed cell type, medium, reaction, and target direction.
 
 RegCompass first merges the condition/cell-type biological reaction catalogue
 without local feasibility completion. For each medium, Stage 5 then performs
-one global FASTCORE completion and caches one medium-specific union GEM. Every
+one global FASTCORE completion and caches one cell-type-specific union GEM per medium. Every
 metacell compared within that medium is scored with the same stoichiometric
 matrix, bounds, reaction direction, and target-flux fraction. The only
 unit-specific term in the Layer 2 objective is the multiome-derived reaction

@@ -2,8 +2,9 @@
 
 .rc_load_microcompass_model <- function(entry, mode) {
   if (identical(mode, "meta_module_gem")) {
-    return(.rc_read_cached_union_gem(
+    return(.rc_read_celltype_union_gem(
       file = entry$file,
+      cell_type = entry$cell_type,
       medium_scenario = entry$medium_scenario,
       expected_checksum = entry$file_checksum %||% NA_character_
     ))
@@ -62,7 +63,7 @@
   answer[order(answer$medium_scenario, answer$model_file), , drop = FALSE]
 }
 
-.rc_run_microcompass_engine <- function(
+.rc_run_shared_full_gem_engine <- function(
     layer1, gem, target_reactions = NULL,
     medium_table = NULL, medium_scenarios = NULL,
     mode = c("full_gem", "meta_module_gem"),
@@ -78,6 +79,10 @@
     BPPARAM = NULL,
     model_cache_override = NULL) {
   mode <- match.arg(mode)
+  if (!identical(mode, "full_gem")) {
+    stop("The shared full-GEM engine accepts only `full_gem` mode.",
+         call. = FALSE)
+  }
   unit <- match.arg(unit)
   solver <- match.arg(solver)
   target_direction <- match.arg(target_direction)
@@ -142,33 +147,8 @@
       conditions = "all"
     )
   } else {
-    model_cache <- .rc_build_medium_specific_union_gem_cache(
-      gem = gem,
-      reaction_membership = reaction_membership,
-      core_reactions = core_reactions,
-      target_reactions = target_reactions,
-      medium_scenarios = medium_scenarios,
-      cache_dir = model_params$cache_dir %||%
-        tempfile("RegCompassR_medium_union_gem_cache_"),
-      target_direction = target_direction,
-      solver = solver,
-      time_limit = model_params$completion_time_limit %||% 300,
-      fastcore_epsilon = model_params$fastcore_epsilon %||% 1e-4,
-      max_support_reactions = model_params$max_support_reactions %||% 2000,
-      strict = model_params$strict %||% TRUE
-    )
-    if (!length(model_cache)) {
-      stop("No parent-feasible union-GEM targets were available.",
-           call. = FALSE)
-    }
-    directions <- unique(do.call(rbind, lapply(model_cache, function(entry) {
-      data.frame(
-        reaction_id = entry$reaction_id,
-        target_direction = entry$target_direction,
-        medium_scenario = entry$medium_scenario,
-        stringsAsFactors = FALSE
-      )
-    })))
+    stop("The shared full-GEM engine received a non-full-GEM mode.",
+         call. = FALSE)
   }
 
   units <- colnames(matrices$reaction_expression)
@@ -285,12 +265,8 @@
         diagnostics = data.frame(
           row_id = row_id,
           unit_id = unit_id,
-          module_id = if (identical(mode, "meta_module_gem")) {
-            "MEDIUM_UNION_GEM"
-          } else {
-            NA_character_
-          },
-          reaction_id = entry$reaction_id,
+          module_id = NA_character_,
+reaction_id = entry$reaction_id,
           target_direction = entry$target_direction,
           medium_scenario = entry$medium_scenario,
           condition = "all",
@@ -376,12 +352,9 @@
       omega = omega,
       target_direction = target_direction,
       shared_gem = TRUE,
-      shared_gem_scope = if (identical(mode, "meta_module_gem")) {
-        "one_final_union_gem_per_medium_shared_across_all_units"
-      } else {
-        "one_full_gem_per_medium_shared_across_all_units"
-      },
-      parallel_task = "shared_model_by_metacell_step2",
+      shared_gem_scope =
+        "one_full_gem_per_medium_shared_across_all_units",
+parallel_task = "shared_model_by_metacell_step2",
       vmax_computation_scope =
         "shared_model_x_directional_target_once",
       vmax_solve_count = length(vmax_cache),
@@ -389,14 +362,7 @@
       flux_threshold = flux_threshold,
       scoring_time_limit = "none"
     ),
-    method = if (identical(mode, "full_gem")) {
-      "microCOMPASS shared full-GEM directional LP"
-    } else {
-      paste(
-        "microCOMPASS directional LP on final medium-specific union GEMs",
-        "after one global FASTCORE completion"
-      )
-    }
+    method = "microCOMPASS shared full-GEM directional LP"
   )
 }
 

@@ -1,127 +1,88 @@
-test_that("meta-module merging remains a biological catalogue, not a GEM", {
+test_that("meta-modules merge conditions within cell type only", {
   biological <- data.frame(
-    group_id = c("C1|T", "C2|T"),
-    sample_id = c("C1|T", "C2|T"),
-    module_id = c(
-      "C1|T::SUPPORTED_METABOLIC_GENES",
-      "C2|T::SUPPORTED_METABOLIC_GENES"
-    ),
-    reaction_id = c("Rcore", "Rcontext"),
-    is_core = c(TRUE, FALSE),
+    group_id = c("C1|T", "C2|T", "C1|B"),
+    condition = c("C1", "C2", "C1"),
+    cell_type = c("T", "T", "B"),
+    module_id = c("T1", "T2", "B1"),
+    reaction_id = c("RT1", "RT2", "RB1"),
+    is_core = TRUE,
     stringsAsFactors = FALSE
   )
   condition_modules <- list(
-    condition_fit_status = data.frame(
-      group_id = c("C1|T", "C2|T"),
-      stringsAsFactors = FALSE
-    ),
+    condition_fit_status = biological[, c("group_id", "condition", "cell_type")],
     tf_peak_gene_condition_all = data.frame(),
     tf_peak_gene_condition = data.frame(),
     supported_metabolic_genes = data.frame(),
-    core_gene_reaction = biological[biological$is_core, , drop = FALSE],
+    core_gene_reaction = biological,
     reaction_membership = biological,
     meta_module_summary = data.frame()
   )
-
-  merged <- .rc_merge_meta_module_catalogue(condition_modules)
-
-  expect_setequal(
-    merged$merged_reaction_membership$reaction_id,
-    c("Rcore", "Rcontext")
+  merged <- .rc_merge_meta_modules_by_cell_type(
+    condition_modules, "cell_type", "condition"
   )
-  expect_setequal(merged$merged_core_reactions$reaction_id, "Rcore")
+  expect_setequal(names(merged$cell_type_catalogues), c("T", "B"))
+  expect_setequal(
+    merged$cell_type_catalogues$T$merged_core_reactions$reaction_id,
+    c("RT1", "RT2")
+  )
+  expect_identical(
+    merged$cell_type_catalogues$B$merged_core_reactions$reaction_id,
+    "RB1"
+  )
+  expect_true(all(
+    merged$merged_core_reactions$cell_type ==
+      c("B", "T", "T")[match(
+        merged$merged_core_reactions$reaction_id,
+        c("RB1", "RT1", "RT2")
+      )]
+  ))
+  expect_identical(merged$merge_scope, "cell_type")
+  expect_false(merged$cross_celltype_merge)
   expect_false(merged$is_gem)
   expect_false(merged$fastcore_applied)
-  expect_identical(
-    merged$merge_source,
-    "deduplicated_biological_meta_module_reactions"
-  )
-  expect_false(any(grepl("union", names(merged), ignore.case = TRUE)))
-  expect_false(any(grepl(
-    "fastcore",
-    merged$merged_reaction_membership$inclusion_stage,
-    ignore.case = TRUE
-  )))
 })
 
 test_that("Stage 3 contains no FASTCORE execution path", {
   construction <- paste(
-    deparse(body(.rc_build_condition_meta_modules)),
-    collapse = "\n"
+    deparse(body(.rc_build_condition_meta_modules)), collapse = "\n"
   )
   stage <- paste(deparse(body(rc_regcompass_step_meta_modules)), collapse = "\n")
-
-  expect_false(grepl(".rc_complete_medium_union_gem", construction, fixed = TRUE))
+  expect_false(grepl(".rc_complete_celltype_medium_union_gem", construction,
+                     fixed = TRUE))
   expect_false(grepl(".rc_fastcore_", construction, fixed = TRUE))
-  expect_false(grepl(".rc_complete_medium_union_gem", stage, fixed = TRUE))
+  expect_false(grepl(".rc_complete_celltype_medium_union_gem", stage,
+                     fixed = TRUE))
   expect_false(grepl(".rc_fastcore_", stage, fixed = TRUE))
   expect_true(grepl("none_at_meta_module_stage", construction, fixed = TRUE))
   expect_true(grepl("merge_creates_gem = FALSE", stage, fixed = TRUE))
-  expect_false("expansion_mode" %in% names(formals(rc_expand_meta_module_reactions)))
-  expect_false("max_iterations" %in% names(formals(rc_expand_meta_module_reactions)))
 })
 
-test_that("only the medium-specific cache constructs union GEMs", {
+test_that("union GEM and FASTCORE scopes are cell type by medium", {
   cache_body <- paste(
-    deparse(body(.rc_build_medium_specific_union_gem_cache)),
-    collapse = "\n"
+    deparse(body(.rc_build_celltype_medium_union_gem_cache)), collapse = "\n"
   )
   completion_body <- paste(
-    deparse(body(.rc_complete_medium_union_gem)),
-    collapse = "\n"
+    deparse(body(.rc_complete_celltype_medium_union_gem)), collapse = "\n"
   )
-
-  expect_true(grepl(".rc_complete_medium_union_gem", cache_body, fixed = TRUE))
-  expect_true(grepl("medium_specific_union_gem", cache_body, fixed = TRUE))
-  expect_true(grepl("MEDIUM_UNION_GEM", cache_body, fixed = TRUE))
-  expect_true(grepl(
-    "single_global_fastcore_after_meta_module_merge",
-    completion_body,
-    fixed = TRUE
-  ))
-  expect_true(grepl("is_union_gem", completion_body, fixed = TRUE))
+  engine_body <- paste(
+    deparse(body(.rc_run_celltype_microcompass_engine)), collapse = "\n"
+  )
+  expect_true(grepl("for (cell_type in scoped$cell_types)", cache_body,
+                    fixed = TRUE))
+  expect_true(grepl("celltype_specific_fastcore", cache_body, fixed = TRUE))
+  expect_true(grepl("cell_type = cell_type", completion_body, fixed = TRUE))
+  expect_true(grepl("celltype_fastcore_support", completion_body, fixed = TRUE))
+  expect_true(grepl("unit_celltype == cell_type", engine_body, fixed = TRUE))
+  expect_true(grepl("shared_across_cell_types = FALSE", engine_body,
+                    fixed = TRUE))
 })
 
-test_that("retired reconstruction projection GPR and one-hop functions are absent", {
-  namespace <- asNamespace("RegCompassR")
-  retired <- c(
-    ".rc_complete_meta_module",
-    ".rc_build_meta_module_gem_core",
-    "rc_build_meta_module_gem",
-    ".rc_complete_stratum_meta_modules",
-    ".rc_build_global_meta_module_gem_cache",
-    ".rc_merge_stratum_meta_modules",
-    ".rc_feasibility_completion_metadata",
-    ".rc_build_metabolic_projection_graph",
-    ".rc_mm_empty_edges",
-    ".rc_mm_components",
-    ".rc_signed_relation",
-    "rc_project_metabolic_grn",
-    ".rc_remap_projection_metadata",
-    "rc_run_pando_meta_modules",
-    "rc_boltzmann_minavg",
-    ".rc_meta_module_one_hop"
+test_that("microCOMPASS row IDs retain cell-type structural scope", {
+  parsed <- rc_parse_microcompass_row_id(
+    paste0(
+      "celltype=Tumor%20cell::reaction=R1::direction=forward::medium=base"
+    )
   )
-  expect_false(any(vapply(
-    retired,
-    exists,
-    logical(1),
-    envir = namespace,
-    inherits = FALSE
-  )))
-  expect_true(exists(
-    ".rc_complete_medium_union_gem",
-    envir = namespace,
-    inherits = FALSE
-  ))
-  expect_true(exists(
-    ".rc_merge_meta_module_catalogue",
-    envir = namespace,
-    inherits = FALSE
-  ))
-  expect_true(exists(
-    ".rc_summarize_supported_metabolic_genes",
-    envir = namespace,
-    inherits = FALSE
-  ))
+  expect_identical(parsed$cell_type, "Tumor cell")
+  expect_identical(parsed$reaction_id, "R1")
 })

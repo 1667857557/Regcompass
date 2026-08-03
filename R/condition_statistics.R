@@ -336,7 +336,14 @@ rc_test_condition_reactions <- function(
 
   row_meta <- rc_parse_microcompass_row_id(rownames(penalty))
   row_meta$row_id <- rownames(penalty)
-  row_keep <- rep(TRUE, nrow(row_meta))
+  scoped_types <- unique(row_meta$cell_type[!is.na(row_meta$cell_type)])
+  unknown_scoped <- setdiff(scoped_types, available_cell_types)
+  if (length(unknown_scoped)) {
+    stop("Reaction rows contain unknown cell types: ",
+         paste(unknown_scoped, collapse = ", "), call. = FALSE)
+  }
+  row_keep <- is.na(row_meta$cell_type) |
+    row_meta$cell_type %in% cell_types
   if (!is.null(reaction_ids)) {
     row_keep <- row_keep & row_meta$reaction_id %in% as.character(reaction_ids)
   }
@@ -410,7 +417,9 @@ rc_test_condition_reactions <- function(
       condition_b <- pair[[2L]]
       a_keep <- cell_keep & condition_values == condition_a
       b_keep <- cell_keep & condition_values == condition_b
-      for (i in seq_len(nrow(score))) {
+      row_indices <- which(is.na(row_meta$cell_type) |
+        row_meta$cell_type == cell_type)
+      for (i in row_indices) {
         effect <- .rc_condition_stats_effect(
           score[i, a_keep], score[i, b_keep], min_units, wilcox_correct
         )
@@ -489,7 +498,9 @@ rc_test_condition_reactions <- function(
     omnibus_index <- 0L
     for (cell_type in cell_types) {
       cell_keep <- celltype_values == cell_type
-      for (i in seq_len(nrow(score))) {
+      row_indices <- which(is.na(row_meta$cell_type) |
+        row_meta$cell_type == cell_type)
+      for (i in row_indices) {
         groups <- lapply(conditions, function(condition) {
           values <- score[i, cell_keep & condition_values == condition]
           values[is.finite(values)]
@@ -568,7 +579,7 @@ rc_test_condition_reactions <- function(
     )
   } else {
     paste(
-      "Scores were compared across metacells under one shared structural GEM.",
+      "Scores were compared across metacells under one structural GEM specific to that cell type and medium.",
       "P values quantify within-dataset condition-associated metacell",
       "separation and are not biological-replicate-level treatment inference."
     )

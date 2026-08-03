@@ -217,3 +217,11 @@ Report at minimum:
 - whether the reaction's GPR genes had condition-GRN regulatory support or used
   RNA-only fallback;
 - that metacells, not biological donors, are the statistical units.
+
+
+## Valid comparison scope
+
+Condition contrasts are performed for the same reaction, direction, medium,
+and cell type. Each row is evaluated only in metacells whose cell type matches
+the row's union-GEM scope. Cross-cell-type penalty or `vmax` comparisons are
+not treated as condition contrasts.

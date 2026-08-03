@@ -523,12 +523,17 @@
   )
 }
 
-.rc_complete_medium_union_gem <- function(
-    gem, reaction_membership, core_reactions, medium_table = NULL,
+.rc_complete_celltype_medium_union_gem <- function(
+    gem, reaction_membership, core_reactions, cell_type, medium_table = NULL,
     target_direction = c("both", "forward", "reverse"),
     solver = "highs", time_limit = 300, fastcore_epsilon = 1e-4,
     max_support_reactions = 2000, strict = TRUE) {
   target_direction <- match.arg(target_direction)
+  if (!is.character(cell_type) || length(cell_type) != 1L ||
+      is.na(cell_type) || !nzchar(trimws(cell_type))) {
+    stop("`cell_type` must identify one non-empty cell type.", call. = FALSE)
+  }
+  cell_type <- trimws(cell_type)
   if (!is.finite(fastcore_epsilon) || fastcore_epsilon <= 0) {
     stop("`fastcore_epsilon` must be positive.", call. = FALSE)
   }
@@ -666,7 +671,7 @@
         "already_feasible",
         ifelse(
           diagnostics$final_feasible %in% TRUE,
-          "global_fastcore_completed",
+          "celltype_fastcore_completed",
           "unresolved"
         )
       )
@@ -684,7 +689,8 @@
       collapse = ", "
     )
     stop(
-      "Global FASTCORE union-GEM completion failed for parent-feasible targets: ",
+      "Cell-type FASTCORE union-GEM completion failed for parent-feasible targets in `",
+      cell_type, "`: ",
       bad,
       call. = FALSE
     )
@@ -698,13 +704,14 @@
   }
   meta$merged_meta_module_member <-
     as.character(meta$reaction_id) %in% biological
-  meta$global_fastcore_support <-
+  meta$celltype_fastcore_support <-
     as.character(meta$reaction_id) %in% selected_support
-  meta$support_only <- meta$global_fastcore_support &
+  meta$support_only <- meta$celltype_fastcore_support &
     !meta$merged_meta_module_member
   final$reaction_meta <- meta
-  final$sample_id <- "global"
-  final$grn_module_id <- "MEDIUM_UNION_GEM"
+  final$sample_id <- cell_type
+  final$grn_module_id <- paste0("CELLTYPE_MEDIUM_UNION_GEM::", cell_type)
+  final$cell_type <- cell_type
   final$target_directions <- parent_feasible_targets
   final$closure_diagnostics <- diagnostics
   final$completion_iterations <- if (length(completion_iterations)) {
@@ -731,13 +738,15 @@
   }
   final$is_union_gem <- TRUE
   final$union_gem_scope <-
-    "one_medium_shared_across_conditions_and_metacells"
+    "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
   final$build_params <- list(
-    strategy = "medium_specific_union_gem",
+    strategy = "celltype_medium_union_gem",
+    cell_type = cell_type,
     algorithm = "add_only_direction_preserving_fastcore_lp7_lp10",
-    completion_stage = "single_global_fastcore_after_meta_module_merge",
-    n_merged_biological_reactions = length(biological),
-    n_global_fastcore_support_reactions = length(selected_support),
+    completion_stage =
+      "celltype_specific_fastcore_after_condition_module_union",
+    n_celltype_biological_reactions = length(biological),
+    n_celltype_fastcore_support_reactions = length(selected_support),
     n_fastcc_consistent_parent_reactions = length(
       parent$fastcc_consistent_reactions %||% colnames(parent$S)
     ),

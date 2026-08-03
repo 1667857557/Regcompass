@@ -5,16 +5,19 @@
   required <- c(
     "reaction_id", "target_direction", "medium_scenario", "row_id"
   )
+  if (identical(as.character(x$model_mode), "meta_module_gem")) {
+    required <- c("cell_type", required)
+  }
   if (!all(required %in% colnames(tab))) {
     stop("Layer 2 direction diagnostics are incomplete.", call. = FALSE)
   }
   tab <- unique(tab[, required, drop = FALSE])
-  tab[order(
-    tab$medium_scenario,
-    tab$reaction_id,
-    tab$target_direction,
-    tab$row_id
-  ), , drop = FALSE]
+  order_cols <- intersect(
+    c("cell_type", "medium_scenario", "reaction_id",
+      "target_direction", "row_id"),
+    colnames(tab)
+  )
+  tab[do.call(order, tab[order_cols]), , drop = FALSE]
 }
 
 .rc_assert_layer2_shared_contract <- function(primary, candidate, label) {
@@ -62,12 +65,20 @@
     as.character(unit_meta$pool_id)
   }
   unit_meta <- unit_meta[match(colnames(penalty), unit_id), , drop = FALSE]
+  unit_celltype <- as.character(unit_meta[[celltype_col]])
   grid <- expand.grid(
     row_index = seq_len(nrow(penalty)),
     unit_index = seq_len(ncol(penalty)),
     KEEP.OUT.ATTRS = FALSE,
     stringsAsFactors = FALSE
   )
+  scoped_celltype <- row_meta$cell_type[grid$row_index]
+  matching_scope <- is.na(scoped_celltype) |
+    scoped_celltype == unit_celltype[grid$unit_index]
+  grid <- grid[matching_scope, , drop = FALSE]
+  if (!nrow(grid)) {
+    stop("No Layer 2 rows match their cell-type units.", call. = FALSE)
+  }
   reaction <- row_meta$reaction_id[grid$row_index]
   unit <- colnames(penalty)[grid$unit_index]
   index_matrix <- function(x) {
@@ -75,29 +86,23 @@
   }
   reaction_unit_matrix <- function(x) {
     if (!is.numeric(x) || is.null(dim(x)) ||
-        !all(unique(row_meta$reaction_id) %in% rownames(x)) ||
+        !all(unique(reaction) %in% rownames(x)) ||
         !identical(colnames(x), colnames(penalty))) {
       stop("Layer 1 reaction diagnostics are not aligned.", call. = FALSE)
     }
-    as.numeric(x[cbind(
-      match(reaction, rownames(x)),
-      grid$unit_index
-    )])
+    as.numeric(x[cbind(match(reaction, rownames(x)), grid$unit_index)])
   }
   omega <- layer2$params$omega
   vmax <- index_matrix(layer2$vmax)
   primary <- index_matrix(layer2$penalty_condition_full_oof)
   normalized <- primary / (omega * vmax)
-  normalized[
-    !is.finite(primary) | !is.finite(vmax) | vmax <= 0
-  ] <- NA_real_
+  normalized[!is.finite(primary) | !is.finite(vmax) | vmax <= 0] <- NA_real_
   data.frame(
+    row_id = rownames(penalty)[grid$row_index],
     reaction_id = reaction,
     direction = row_meta$target_direction[grid$row_index],
     medium = row_meta$medium_scenario[grid$row_index],
-    cell_type = as.character(
-      unit_meta[[celltype_col]][grid$unit_index]
-    ),
+    cell_type = unit_celltype[grid$unit_index],
     condition = as.character(
       unit_meta[[condition_col]][grid$unit_index]
     ),
@@ -119,7 +124,7 @@
     ),
     inference_class = "metacell_statistical_unit_within_dataset",
     comparability_class =
-      "condition_full_oof_on_shared_model_and_celltype_coordinate",
+      "same_celltype_conditions_on_one_celltype_medium_union_gem",
     stringsAsFactors = FALSE
   )
 }
@@ -271,6 +276,16 @@ rc_regcompass_step_layer2 <- function(
     stop("The merged biological meta-module catalogue is incomplete.",
          call. = FALSE)
   }
+  required_catalogue_cols <- c(params$celltype_col, "reaction_id")
+  if (!is.list(catalogue$cell_type_catalogues) ||
+      !all(required_catalogue_cols %in%
+           colnames(catalogue$merged_core_reactions)) ||
+      !all(required_catalogue_cols %in%
+           colnames(catalogue$merged_reaction_membership)) ||
+      !identical(catalogue$merge_scope, "cell_type") ||
+      isTRUE(catalogue$cross_celltype_merge)) {
+    stop("Meta-modules are not partitioned by cell type.", call. = FALSE)
+  }
   targets <- unique(as.character(
     catalogue$merged_core_reactions$reaction_id
   ))
@@ -287,7 +302,11 @@ rc_regcompass_step_layer2 <- function(
   defaults <- list(
     layer1 = layer1,
     gem = gem,
-    target_reactions = targets,
+    target_reactions = if (identical(model_mode, "meta_module_gem")) {
+      catalogue$merged_core_reactions
+    } else {
+      targets
+    },
     medium_scenarios = medium_scenarios,
     mode = model_mode,
     reaction_membership = if (identical(model_mode, "meta_module_gem")) {
@@ -409,7 +428,10 @@ rc_regcompass_step_layer2 <- function(
   answer$source_merged_reaction_membership <-
     catalogue$merged_reaction_membership
   answer$union_gem_policy <- if (identical(model_mode, "meta_module_gem")) {
-    "one medium-specific union GEM; single global FASTCORE completion"
+    paste(
+      "one union GEM per cell type and medium; FASTCORE runs",
+      "independently within each cell type"
+    )
   } else {
     "shared full GEM; no union-GEM reconstruction"
   }

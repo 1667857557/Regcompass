@@ -206,6 +206,8 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
   supported <- data.frame(
     group_id = "S1",
     sample_id = "S1",
+    condition = "C1",
+    cell_type = "T",
     gene = c("G1", "G2"),
     module_id = "S1::SUPPORTED_METABOLIC_GENES",
     stringsAsFactors = FALSE
@@ -213,13 +215,17 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
   core <- rc_map_meta_module_core_reactions(supported, gpr)
   membership <- data.frame(
     sample_id = "S1",
+    condition = "C1",
+    cell_type = "T",
     module_id = "S1::SUPPORTED_METABOLIC_GENES",
     reaction_id = c("R1", "R2"),
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
   condition_modules <- list(
-    condition_fit_status = data.frame(group_id = "S1"),
+    condition_fit_status = data.frame(
+      group_id = "S1", condition = "C1", cell_type = "T"
+    ),
     tf_peak_gene_condition_all = data.frame(),
     tf_peak_gene_condition = data.frame(),
     supported_metabolic_genes = supported,
@@ -227,15 +233,18 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
     reaction_membership = membership,
     meta_module_summary = data.frame()
   )
-  merged <- .rc_merge_meta_module_catalogue(condition_modules)
+  merged <- .rc_merge_meta_modules_by_cell_type(
+    condition_modules, "cell_type", "condition"
+  )
   expect_false(merged$is_gem)
   expect_setequal(
     merged$merged_reaction_membership$reaction_id,
     c("R1", "R2")
   )
 
-  union_gem <- .rc_complete_medium_union_gem(
+  union_gem <- .rc_complete_celltype_medium_union_gem(
     gem = gem,
+    cell_type = "T",
     reaction_membership = merged$merged_reaction_membership,
     core_reactions = merged$merged_core_reactions,
     solver = solver,
@@ -244,7 +253,7 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
   expect_true(union_gem$is_union_gem)
   expect_setequal(colnames(union_gem$S), c("R1", "R2"))
   expect_true(all(union_gem$reaction_meta$merged_meta_module_member))
-  expect_false(any(union_gem$reaction_meta$global_fastcore_support))
+  expect_false(any(union_gem$reaction_meta$celltype_fastcore_support))
 })
 
 test_that("Pando validation enforces the configured repository", {

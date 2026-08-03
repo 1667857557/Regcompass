@@ -333,3 +333,16 @@ results but does not require rerunning Stages 1–4.
 
 Changing only the requested condition contrasts invalidates Stage 6 reporting,
 not the GRN, metacell, or metabolic models.
+
+
+## Cell-type boundary for meta-modules and structural models
+
+Stage 3 retains condition-specific evidence, but biological meta-modules are
+unioned **only within the same cell type**. A reaction supported in one cell
+type is never inserted into another cell type's catalogue.
+
+Stage 5 therefore constructs one structural model for every
+`cell_type × medium_scenario` combination. Conditions and metacells from the
+same cell type reuse that model. Different cell types have separate reaction
+memberships, separate union GEM files, separate FASTCORE completion runs,
+separate model checksums, and separate directional `vmax` caches.

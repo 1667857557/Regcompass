@@ -296,3 +296,14 @@ The workflow does not calculate or persist:
 - link-saturation propagation.
 
 Public API: [functions.md](functions.md).
+
+
+## Cell-type-specific union GEM
+
+Let `c` denote cell type, `d` condition, and `m` medium. Condition-specific
+biological reaction sets are unioned only within cell type,
+`B_c = union_d B_{c,d}`. RegCompass then runs FASTCORE independently for every
+`(c,m)` pair and obtains `G_{c,m}`. There is no operation of the form
+`union_c G_{c,m}`. Consequently, conditions are structurally comparable within
+a cell type, while biologically distinct cell types are not forced onto an
+artificial cross-cell-type reaction universe.
