@@ -150,6 +150,28 @@ rc_regcompass_step_grn <- function(
   standard_infer_args$verbose <- standard_infer_args$verbose %||%
     .rc_progress_enabled(progress)
 
+  resources <- .rc_materialize_pando_resources(
+    pfm = pfm,
+    species = species,
+    pando_initiate_args = extra_args$pando_initiate_args %||%
+      list(exclude_exons = TRUE),
+    pando_motif_args = extra_args$pando_motif_args %||% list()
+  )
+  pfm <- resources$pfm
+  extra_args$pando_initiate_args <- resources$pando_initiate_args
+  extra_args$pando_motif_args <- resources$pando_motif_args
+  .rc_step_monitor_event(
+    monitor,
+    "pando_resource_materialization",
+    "materialized Pando reference resources before worker dispatch",
+    current = 5L,
+    context = list(
+      pfm = !is.null(pfm),
+      regions = !is.null(extra_args$pando_initiate_args$regions),
+      motif_tfs = !is.null(extra_args$pando_motif_args$motif_tfs)
+    )
+  )
+
   grn_result <- .rc_with_step_diagnostics(
     .rc_fit_pando_by_celltype_route(
       object = object, gem = gem, outdir = outdir, genome = genome,
