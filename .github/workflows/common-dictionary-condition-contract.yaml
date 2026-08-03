@@ -25,13 +25,17 @@ jobs:
             any::knitr
             any::rmarkdown
             github::1667857557/Pando_regcompass@5c451e192831713ed955cd03276ddf47e89a4ec2
-      - name: Verify condition implementation layout
+      - name: Verify functional source layout
         shell: bash
         run: |
           test ! -e R/condition_grn_runtime.R
           test ! -e R/condition_grn_runtime_guard.R
-          test ! -e R/zzzzzz_strict_condition_penalty.R
-          ! grep -R -n -E 'Pando::project_condition_grn_primary_cells|Pando::condition_grn_native|_strict_base' R NAMESPACE
+          test -z "$(find R -maxdepth 1 -type f -name 'zzz*.R' -print -quit)"
+          ! grep -R -n -E 'Pando::project_condition_grn_primary_cells|Pando::condition_grn_native|_strict_base|\.rc_original_.*hardening|evaluation_environment' R NAMESPACE DESCRIPTION
+          test "$(grep -R -h -E '^rc_regcompass_step_grn[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
+          test "$(grep -R -h -E '^rc_regcompass_step_metacells[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
+          test "$(grep -R -h -E '^rc_regcompass_step_layer2[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
+          test "$(grep -R -h -E '^rc_regcompass_step_results[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
           test "$(grep -R -h -E '^\.rc_require_pando_condition_grn_fit[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
           test "$(grep -R -h -E '^\.rc_extract_condition_grn_contract[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
           test "$(grep -R -h -E '^\.rc_condition_pando_projection[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
