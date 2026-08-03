@@ -1,8 +1,8 @@
 name: One-time API surface audit
 
 on:
-  push:
-    branches: [fix/api-tutorial-check-cleanup]
+  pull_request:
+    branches: [Main]
 
 permissions:
   contents: read
@@ -13,7 +13,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: fix/api-tutorial-check-cleanup
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Scan functions, tutorials, tests and workflows
         run: python .github/scripts/audit_api_surface.py
