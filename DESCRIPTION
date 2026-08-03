@@ -105,7 +105,6 @@ Collate:
     'zzz_workflow_hardening.R'
     'zzzz_min_cells_contract.R'
     'zzzzz_stage_cell_set_contract.R'
-    'zzzzzz_strict_condition_penalty.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
