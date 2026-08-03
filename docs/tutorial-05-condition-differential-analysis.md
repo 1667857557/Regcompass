@@ -17,7 +17,11 @@ arguments, but the current calculation is not OOF. Lower normalized penalty
 indicates stronger network-constrained support for a reaction direction; it is
 not measured flux.
 
-A valid comparison fixes reaction, direction, medium, and broad cell type:
+A valid condition comparison fixes:
+
+```text
+cell type × reaction × direction × medium
+```
 
 ```r
 reaction_id <- "MAR04324"
@@ -34,8 +38,9 @@ one <- ranking[
 ]
 ```
 
-Use the exact `medium_scenario` identifier stored in the result. Comparisons must
-not mix plasma, culture-challenge, or user-defined backgrounds.
+Use the exact `medium_scenario` and `cell_type` identifiers stored in the result.
+Comparisons must not mix plasma, culture-challenge, or user-defined backgrounds,
+and must not combine reaction rows from different cell-type structural models.
 
 ## Pairwise and omnibus tests
 
@@ -62,9 +67,13 @@ A positive `delta_median_score_b_minus_a` indicates stronger support in
 `condition_b`. Pairwise tests use Wilcoxon rank-sum statistics; the optional
 omnibus test uses Kruskal-Wallis statistics.
 
-Metacells are the statistical units. Reported P values describe
-within-dataset condition-associated separation and are not sample- or donor-level
-biological-replicate inference.
+The function filters reaction rows by the selected cell type before testing. A
+row built from another cell type's union GEM is excluded rather than treated as
+a missing observation in the selected cell type.
+
+Metacells are the statistical units. Reported P values describe within-dataset
+condition-associated separation and are not sample- or donor-level biological-
+replicate inference.
 
 ## Direction-aware report
 
@@ -95,11 +104,11 @@ selects the current primary fixed-dictionary penalty route.
 ## Inspect condition-GRN edges supporting a reaction
 
 Condition effects are absolute fixed-dictionary GLM coefficients, not deviations
-from a pooled coefficient. For a shared edge,
+from a pooled coefficient. Within one cell type, for a shared edge,
 
 \[
-\Delta\beta_{e,c_1,c_2}=
-\widehat\beta_{e,c_1}-\widehat\beta_{e,c_2}.
+\Delta\beta_{e,t,c_1,c_2}=
+\widehat\beta_{e,t,c_1}-\widehat\beta_{e,t,c_2}.
 \]
 
 Start from the complete edge table rather than the significant-only table:
@@ -111,7 +120,7 @@ edges_active <- result$grn$tf_peak_gene_condition_effect
 
 For a valid edge-level comparison, verify:
 
-- identical `edge_id`, target, TF, region, and ATAC feature mapping;
+- identical cell type, `edge_id`, target, TF, region, and ATAC feature mapping;
 - estimability in both conditions;
 - residual degrees of freedom and rank diagnostics;
 - coefficient direction and standard error;
@@ -122,7 +131,8 @@ Example:
 ```r
 edge_id <- "TARGET||TF||REGION"
 edge_compare <- edges_all[
-  edges_all$edge_id == edge_id &
+  edges_all$cell_type == cell_type &
+    edges_all$edge_id == edge_id &
     edges_all$condition %in% c("Control", "JQ1"),
   , drop = FALSE
 ]
@@ -160,28 +170,82 @@ result$condition_unique_penalty_increment_summary
 In the current model, `common` is a compatibility alias of the primary
 fixed-dictionary route and the condition-unique increment is a zero compatibility
 matrix. These fields no longer represent a jointly estimable shared-slope or OOF
-decomposition.
+decomposition. Their summaries retain the same row-level cell-type filter as the
+primary route.
 
 ## Structural comparability
 
+For `model_mode = "meta_module_gem"`, inspect the cell-type-specific cache:
+
 ```r
-result$microcompass$model_cache_summary[, c(
+cache <- result$microcompass$model_cache_summary
+
+cache[, c(
+  "cell_type",
   "medium_scenario",
   "file",
   "file_checksum",
-  "n_merged_biological_reactions",
-  "n_global_fastcore_support_reactions"
+  "n_celltype_biological_reactions",
+  "n_celltype_fastcore_support_reactions",
+  "build_strategy",
+  "completion_stage"
 )]
 ```
 
-Compared metacells must share the same cached model, reaction order, bounds,
-target direction, target-flux fraction, and `vmax`. A difference in any of these
-quantities invalidates direct interpretation as a condition effect.
+A valid condition contrast uses one cache row identified by the same
+`cell_type × medium_scenario` key. Conditions of that cell type share:
+
+- the same cell-type biological reaction union;
+- the same independently completed cell-type FASTCORE model;
+- the same model file and checksum;
+- the same reaction order and bounds;
+- the same target direction and target-flux fraction;
+- the same directional `vmax`.
+
+The required structural provenance is:
+
+```text
+structural_scope = cell_type_x_medium
+shared_across_conditions = TRUE
+shared_across_cell_types = FALSE
+build_strategy = celltype_medium_union_gem
+completion_stage = celltype_specific_fastcore_after_condition_module_union
+```
+
+A difference in model file, checksum, reaction order, bounds, direction, medium,
+or `vmax` invalidates direct interpretation as a condition effect.
+
+Different cell types deliberately use different structural models. A comparison
+between their penalties or `vmax` values is a cross-cell-type model comparison,
+not a condition contrast.
+
+## Verify row-to-model assignment
+
+Reaction rows contain cell-type scope in their row IDs and diagnostics:
+
+```r
+row_meta <- rc_parse_microcompass_row_id(
+  rownames(result$microcompass$penalty)
+)
+
+head(row_meta[, c(
+  "cell_type", "reaction_id", "target_direction", "medium_scenario"
+)])
+```
+
+For a selected cell type, only rows with the same `row_meta$cell_type` are used.
+The Layer 2 comparison table records the same relationship:
+
+```r
+result$reaction_comparison_by_metacell[, c(
+  "row_id", "cell_type", "condition", "reaction_id", "direction", "medium"
+)]
+```
 
 ## Multiple media
 
 Run condition tests separately for each medium. The medium identifier is part of
-the comparison key:
+the comparison key, while cell type remains fixed:
 
 ```r
 media <- unique(result$reaction_ranking$medium_scenario)
@@ -201,27 +265,44 @@ by_medium <- lapply(media, function(medium_id) {
 names(by_medium) <- media
 ```
 
-A condition effect that changes across media is a model-context interaction. It
-should not be reported as a medium-independent change in metabolic flux.
+Each medium uses a separate union GEM for the same cell type and its own
+independent FASTCORE completion. A condition effect that changes across media is
+a model-context interaction. It should not be reported as a medium-independent
+change in metabolic flux.
+
+## Optional targeted-reaction results
+
+Targeted remapping retains cell-type scope in both the mapped relation table and
+the scoring rows:
+
+```r
+targeted$expanded_scoring_targets[, c(
+  "cell_type", "reaction_id", "anchor_core_reaction_ids"
+)]
+
+targeted$microcompass$model_cache_summary[, c(
+  "cell_type", "medium_scenario", "file", "file_checksum"
+)]
+```
+
+Targeted condition comparisons follow the same
+`cell type × reaction × direction × medium` rule. Targeted models are exact
+reuses of the corresponding Stage 5 cell-type caches; FASTCORE is not rerun.
 
 ## Reporting checklist
 
 Report at minimum:
 
-- reaction ID and direction;
-- medium scenario and structural-model checksum;
-- broad cell type and condition labels;
-- number of metacells per condition;
+- broad cell type, reaction ID, and direction;
+- medium scenario and cell-type structural-model checksum;
+- condition labels and number of metacells per condition;
 - median score or normalized penalty per condition;
 - effect direction and adjusted P value;
+- `structural_scope = cell_type_x_medium`;
+- that FASTCORE was completed independently for the selected cell type and
+  medium;
 - whether the reaction's GPR genes had condition-GRN regulatory support or used
   RNA-only fallback;
-- that metacells, not biological donors, are the statistical units.
-
-
-## Valid comparison scope
-
-Condition contrasts are performed for the same reaction, direction, medium,
-and cell type. Each row is evaluated only in metacells whose cell type matches
-the row's union-GEM scope. Cross-cell-type penalty or `vmax` comparisons are
-not treated as condition contrasts.
+- that metacells, not biological donors, are the statistical units;
+- that no cross-cell-type penalty or `vmax` comparison was interpreted as a
+  condition effect.
