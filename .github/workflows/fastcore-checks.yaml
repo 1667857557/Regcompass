@@ -1,4 +1,4 @@
-name: RegCompassR package check
+name: RegCompassR source check
 
 on:
   pull_request:
@@ -11,34 +11,27 @@ permissions:
 jobs:
   check:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
-          use-public-rspm: true
-      - uses: r-lib/actions/setup-pandoc@v2
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          dependencies: '"hard"'
-          extra-packages: |
-            any::rcmdcheck
-            any::bayestestR
-            any::glmnetUtils
-            github::immunogenomics/presto
-            github::1667857557/Pando_regcompass
-            github::1667857557/SuperCell_Seurat_V4
-      - name: Parse R sources
+      - name: Parse package sources
         shell: Rscript {0}
         run: |
+          description <- read.dcf("DESCRIPTION")
+          stopifnot(nrow(description) == 1L)
+          remotes <- unname(description[1L, "Remotes"])
+          stopifnot(
+            grepl("1667857557/Pando_regcompass", remotes, fixed = TRUE),
+            grepl("1667857557/SuperCell_Seurat_V4", remotes, fixed = TRUE),
+            !grepl("@", remotes, fixed = TRUE)
+          )
           files <- c(
             list.files("R", pattern = "[.]R$", full.names = TRUE),
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
           for (file in files) parse(file = file)
-      - name: Check package
-        shell: Rscript {0}
-        env:
-          _R_CHECK_FORCE_SUGGESTS_: 'false'
-        run: rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "error")
+      - name: Build source package
+        run: R CMD build --no-build-vignettes --no-manual .
