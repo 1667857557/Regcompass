@@ -5,6 +5,14 @@ Each stage writes an RDS checkpoint to its output directory.
 ## Stage 1: regulatory evidence
 
 ```r
+library(BiocParallel)
+
+upstream_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(workers = 6L, type = "SOCK", progressbar = TRUE)
+} else {
+  MulticoreParam(workers = 6L, progressbar = TRUE)
+}
+
 step1 <- rc_regcompass_step_grn(
   object = A,
   gem = gem,
@@ -22,11 +30,27 @@ step1 <- rc_regcompass_step_grn(
       rank_action = "mark",
       min_residual_df = 1L
     )
-  )
+  ),
+  parallel = TRUE,
+  BPPARAM = upstream_bp
 )
 ```
 
-`step1$grn_result$cell_type_analysis_mode` reports the route used by each cell type.
+Stage 1 resolves the route independently for each retained cell type:
+
+- at least two retained conditions: common-dictionary condition GRN;
+- one retained condition: standard Pando;
+- no retained stratum: excluded.
+
+The same `pando_infer_args` list can be used for all routes. Condition-only arguments (`padj_threshold`, `rank_action`, `min_residual_df`, and layer controls) are disabled before standard Pando is called. Standard-model controls (`method`, `alpha`, `scale`, and related model arguments) are disabled for the fixed common-dictionary condition model. Unknown argument names still fail before model fitting.
+
+When at least two cell-type jobs are available, Stage 1 distributes those jobs through `BPPARAM`. Every worker runs its own Pando job serially, so nested worker pools are not created. With one standard-Pando job, its existing target-level path may be used. A single condition-GRN job remains serial because pooled discovery, condition-specific discovery, dictionary freezing, and condition refits are treated as one coordinated contract.
+
+```r
+step1$grn_result$cell_type_analysis_mode
+step1$grn_result$pando_execution_plan
+step1$grn_result$pando_infer_argument_routing
+```
 
 ## Stage 2: metacells
 

@@ -7,7 +7,11 @@
 #' condition-specific candidate discovery, freezes the exact TF-peak-target
 #' union, and fits the same unscaled Gaussian identity model in every condition.
 #' With no condition or one effective condition, the original per-cell-type
-#' Pando workflow is used without constructing condition coefficients.
+#' Pando workflow is used without constructing condition coefficients. Pando
+#' inference arguments are routed automatically: condition-only controls are
+#' disabled for standard Pando, while standard-model controls are disabled for
+#' common-dictionary condition GRNs. Independent broad-cell-type jobs are
+#' parallelized through `BPPARAM` when more than one job is available.
 #'
 #' @param fragment_files Preserve existing Signac fragment references when TRUE.
 #' The default FALSE clears them before Stage 1 because the workflow uses the
@@ -136,58 +140,16 @@ rc_regcompass_step_grn <- function(
   }
   extra_args <- pando_args
   extra_args$pando_infer_args <- NULL
-  defaults <- list(
-    object = object,
-    gem = gem,
-    outdir = outdir,
-    genome = genome,
-    pfm = pfm,
-    species = species,
-    condition_col = effective_condition_col,
-    celltype_col = celltype_col,
-    cell_type = cell_type,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay
+  routed_infer_args <- .rc_route_pando_infer_args(
+    infer_args,
+    condition_types = condition_types,
+    standard_types = standard_types
   )
-  call_args <- c(
-    defaults[setdiff(names(defaults), names(extra_args))],
-    extra_args
-  )
-
-  condition_infer_args <- infer_args
-  if (length(condition_types)) {
-    allowed_infer_args <- c(
-      "tf_cor", "peak_cor", "adjust_method", "padj_threshold",
-      "rank_action", "min_residual_df", "rna_layer", "peak_layer",
-      "peak_value_type"
-    )
-    unknown_infer_args <- setdiff(names(infer_args), allowed_infer_args)
-    if (length(unknown_infer_args)) {
-      stop("Unsupported `pando_infer_args` in condition mode: ",
-           paste(unknown_infer_args, collapse = ", "), call. = FALSE)
-    }
-    condition_infer_args <- utils::modifyList(list(
-      tf_cor = 0.1, peak_cor = 0, adjust_method = "BH",
-      padj_threshold = 0.05, rank_action = "mark",
-      min_residual_df = 1L
-    ), infer_args)
-    if (!identical(
-          toupper(as.character(condition_infer_args$adjust_method)), "BH"
-        ) ||
-        !isTRUE(all.equal(
-          as.numeric(condition_infer_args$padj_threshold), 0.05
-        ))) {
-      stop("Canonical RegCompass condition effects require BH padj < 0.05.",
-           call. = FALSE)
-    }
-  }
-  standard_infer_args <- if (length(condition_types)) {
-    .rc_standard_pando_runtime_args(condition_infer_args)
-  } else {
-    infer_args
-  }
+  condition_infer_args <- routed_infer_args$condition
+  standard_infer_args <- routed_infer_args$standard
   standard_infer_args$verbose <- standard_infer_args$verbose %||%
     .rc_progress_enabled(progress)
+
   grn_result <- .rc_with_step_diagnostics(
     .rc_fit_pando_by_celltype_route(
       object = object, gem = gem, outdir = outdir, genome = genome,
@@ -215,6 +177,7 @@ rc_regcompass_step_grn <- function(
   )) "cell_type_specific_condition_count" else design$fallback_reason
   grn_result$rna_assay <- rna_assay
   grn_result$atac_assay <- atac_assay
+  grn_result$pando_infer_argument_routing <- routed_infer_args$diagnostics
 
   answer <- list(
     grn_result = grn_result,
@@ -246,9 +209,13 @@ rc_regcompass_step_grn <- function(
       atac_assay = atac_assay,
       fragment_files = preserve_fragments,
       pando_args = c(extra_args, list(
-        pando_infer_args = condition_infer_args
+        pando_infer_args = infer_args,
+        condition_pando_infer_args = condition_infer_args,
+        standard_pando_infer_args = standard_infer_args,
+        infer_argument_routing = routed_infer_args$diagnostics
       )),
       parallel = parallel,
+      pando_execution_plan = grn_result$pando_execution_plan,
       species = species,
       n_input_cells = as.integer(n_input),
       n_stage_cells = as.integer(length(cell_set$retained_cells)),
