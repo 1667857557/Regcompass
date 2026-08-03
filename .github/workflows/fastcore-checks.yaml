@@ -1,4 +1,4 @@
-name: RegCompassR checks
+name: RegCompassR package check
 
 on:
   pull_request:
@@ -9,38 +9,28 @@ permissions:
   contents: read
 
 jobs:
-  test:
-    runs-on: ubuntu-latest
+  package-check:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 90
     steps:
-      - uses: actions/checkout@v7
-
+      - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
         with:
-          r-version: release
+          r-version: '4.5'
           use-public-rspm: true
-
-      - name: Install system libraries
-        shell: bash
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
-            libcurl4-openssl-dev \
-            libssl-dev \
-            libxml2-dev \
-            libglpk-dev \
-            libbz2-dev \
-            liblzma-dev \
-            zlib1g-dev
-
-      - name: Parse sources and verify documented defaults
+      - uses: r-lib/actions/setup-pandoc@v2
+      - uses: r-lib/actions/setup-r-dependencies@v2
+        with:
+          dependencies: '"hard"'
+          extra-packages: |
+            any::rcmdcheck
+            any::testthat
+            any::knitr
+            any::rmarkdown
+            github::1667857557/Pando_regcompass@05246162ab5639fb12407b2b329de5149d9660a4
+      - name: Verify current documented defaults
         shell: Rscript {0}
         run: |
-          files <- c(
-            list.files("R", pattern = "[.]R$", full.names = TRUE),
-            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
-          )
-          invisible(lapply(files, parse))
-
           documentation <- c(
             "README.md",
             list.files("docs", pattern = "[.]md$", full.names = TRUE),
@@ -48,190 +38,44 @@ jobs:
             list.files("man", pattern = "[.]Rd$", full.names = TRUE)
           )
           text <- paste(
-            unlist(lapply(documentation, readLines, warn = FALSE), use.names = FALSE),
+            unlist(lapply(documentation, readLines, warn = FALSE),
+                   use.names = FALSE),
             collapse = "\n"
           )
           forbidden <- c(
-            "gamma = 150",
-            "gamma=150",
-            "peak_cor = 0.05",
-            "peak_cor=0.05",
-            "peak_cor = 0.1",
-            "peak_cor=0.1"
+            "gamma = 150", "gamma=150", "peak_cor = 0.05",
+            "peak_cor=0.05", "peak_cor = 0.1", "peak_cor=0.1",
+            "min_abs_estimate", "min_model_rsq", "condition_full_oof",
+            "common_oof", "condition_unique_oof"
           )
-          present <- forbidden[vapply(forbidden, grepl, logical(1), x = text,
-                                      fixed = TRUE)]
+          present <- forbidden[vapply(
+            forbidden, grepl, logical(1), x = text, fixed = TRUE
+          )]
           if (length(present)) {
-            stop("Stale documented defaults remain: ", paste(present, collapse = ", "))
+            stop("Stale documented contract remains: ",
+                 paste(present, collapse = ", "))
           }
           required <- c("gamma = 30", "peak_cor = 0")
-          missing <- required[!vapply(required, grepl, logical(1), x = text,
-                                      fixed = TRUE)]
+          missing <- required[!vapply(
+            required, grepl, logical(1), x = text, fixed = TRUE
+          )]
           if (length(missing)) {
             stop("Canonical documented defaults are missing: ",
                  paste(missing, collapse = ", "))
           }
-
-      - name: Install dependencies
-        shell: bash
-        run: |
-          set -o pipefail
-          Rscript - <<'RSCRIPT' 2>&1 | tee dependency-output.txt
-          options(timeout = 900)
-          install.packages(c(
-            "Matrix", "matrixStats", "testthat", "highs",
-            "BiocManager", "remotes"
-          ))
-
-          install_bioc_with_retry <- function(packages, attempts = 3L,
-                                              force = FALSE) {
-            packages <- unique(as.character(packages))
-            missing <- packages[!vapply(
-              packages, requireNamespace, logical(1), quietly = TRUE
-            )]
-            if (!length(missing) && !isTRUE(force)) return(invisible(packages))
-
-            for (attempt in seq_len(attempts)) {
-              targets <- if (isTRUE(force) && attempt == 1L) packages else missing
-              if (!length(targets)) break
-              message(
-                "Bioconductor install attempt ", attempt, "/", attempts,
-                " for: ", paste(targets, collapse = ", ")
-              )
-              try(
-                BiocManager::install(
-                  targets,
-                  ask = FALSE,
-                  update = FALSE,
-                  force = isTRUE(force) && attempt == 1L
-                ),
-                silent = FALSE
-              )
-              missing <- packages[!vapply(
-                packages, requireNamespace, logical(1), quietly = TRUE
-              )]
-              if (!length(missing)) break
-              if (attempt < attempts) Sys.sleep(15 * attempt)
-            }
-
-            if (length(missing)) {
-              stop(
-                "Missing Bioconductor dependencies after retries: ",
-                paste(missing, collapse = ", ")
-              )
-            }
-            invisible(packages)
-          }
-
-          bioc_required <- c(
-            "BiocGenerics", "S4Vectors", "IRanges", "GenomeInfoDb",
-            "GenomicRanges", "sparseMatrixStats", "limma"
-          )
-          install_bioc_with_retry(bioc_required, attempts = 3L)
-          install_bioc_with_retry(
-            c("Rhtslib", "Rsamtools"),
-            attempts = 3L,
-            force = TRUE
-          )
-
-          bioc_all <- c(bioc_required, "Rhtslib", "Rsamtools")
-          bioc_missing <- bioc_all[!vapply(
-            bioc_all,
-            requireNamespace,
-            logical(1),
-            quietly = TRUE
-          )]
-          if (length(bioc_missing)) {
-            stop("Missing Bioconductor dependencies: ",
-                 paste(bioc_missing, collapse = ", "))
-          }
-
-          remotes::install_version(
-            "SeuratObject", version = "4.1.4",
-            dependencies = NA, upgrade = "never"
-          )
-          remotes::install_version(
-            "Seurat", version = "4.4.0",
-            dependencies = NA, upgrade = "never"
-          )
-          remotes::install_version(
-            "Signac", version = "1.11.0",
-            dependencies = NA, upgrade = "never"
-          )
-          expected_versions <- c(
-            SeuratObject = "4.1.4",
-            Seurat = "4.4.0",
-            Signac = "1.11.0"
-          )
-          observed_versions <- vapply(
-            names(expected_versions),
-            function(package) as.character(packageVersion(package)),
-            character(1)
-          )
-          if (!identical(observed_versions, expected_versions)) {
-            stop(
-              "Unexpected Seurat stack: ",
-              paste(names(observed_versions), observed_versions,
-                    sep = "=", collapse = ", ")
-            )
-          }
-          signac_status <- tryCatch({
-            library(Signac)
-            paste0("loaded Signac ", as.character(packageVersion("Signac")))
-          }, error = function(error) {
-            paste0("ERROR: ", conditionMessage(error))
-          })
-          writeLines(signac_status, "signac-load-status.txt")
-          if (startsWith(signac_status, "ERROR:")) stop(signac_status)
-          RSCRIPT
-
-      - name: Install package with tests
-        shell: bash
-        run: |
-          set -o pipefail
-          R CMD INSTALL --no-multiarch --with-keep.source --install-tests . \
-            2>&1 | tee install-output.txt
-
-      - name: Run source tests against installed package
+      - name: Check package and tests
         shell: Rscript {0}
+        env:
+          _R_CHECK_FORCE_SUGGESTS_: 'false'
         run: |
-          output <- file("test-output.txt", open = "wt")
-          sink(output, type = "output")
-          sink(output, type = "message")
-          status <- 0L
-          tryCatch({
-            library(RegCompassR)
-            testthat::set_max_fails(Inf)
-            reporter <- testthat::SummaryReporter$new(max_reports = Inf)
-            testthat::test_local(
-              Sys.getenv("GITHUB_WORKSPACE"),
-              reporter = reporter,
-              load_package = "installed",
-              stop_on_failure = TRUE,
-              stop_on_warning = FALSE
-            )
-          }, error = function(error) {
-            message("\nTEST_RUN_ERROR: ", conditionMessage(error))
-            status <<- 1L
-          })
-          sink(type = "message")
-          sink(type = "output")
-          close(output)
-          test_log <- readLines("test-output.txt", warn = FALSE)
-          if (length(test_log)) {
-            cat(test_log, sep = "\n", file = stderr())
-            cat("\n", file = stderr())
-          }
-          quit(status = status, save = "no")
-
-      - name: Upload test diagnostics
+          rcmdcheck::rcmdcheck(
+            args = c('--no-manual'),
+            error_on = 'error'
+          )
+      - name: Upload check diagnostics
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: test-diagnostics
-          path: |
-            dependency-output.txt
-            signac-load-status.txt
-            install-output.txt
-            test-output.txt
-          if-no-files-found: warn
+          name: rcmdcheck-diagnostics
+          path: check
+          if-no-files-found: ignore
