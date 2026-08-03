@@ -153,11 +153,11 @@
     }
   }
   answer$reliability <- reliability
-  answer$origin <- "paired_cell_fixed_dictionary_glm_strict_BH"
-  answer$primary_projection <- "strict_BH_significant_penalty_effect"
+  answer$origin <- "paired_cell_full_fit_fixed_dictionary_glm_padj_filtered"
+  answer$primary_projection <- "padj_filtered_fixed_dictionary_condition_glm"
   answer$common_projection_role <-
     "compatibility_alias_of_primary_no_common_support_decomposition"
   answer$nonestimable_projection_policy <-
-    "excluded; target-condition without significant estimable edges uses RNA-only fallback"
+    "coefficient_NA_and_zero_realized_penalty_contribution"
   answer
 }
