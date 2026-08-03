@@ -213,6 +213,15 @@ test_that("GRN mapping remains explicit from catalogue to final union GEM", {
     stringsAsFactors = FALSE
   )
   core <- rc_map_meta_module_core_reactions(supported, gpr)
+  core <- merge(
+    core,
+    unique(supported[, c(
+      "sample_id", "module_id", "condition", "cell_type"
+    ), drop = FALSE]),
+    by = c("sample_id", "module_id"),
+    all.x = TRUE,
+    sort = FALSE
+  )
   membership <- data.frame(
     sample_id = "S1",
     condition = "C1",
