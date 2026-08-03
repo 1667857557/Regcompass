@@ -21,7 +21,7 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Apply current R contract
-        run: python .github/scripts/cleanup_r_contract.py
+        run: python .github/scripts/cleanup_r_contract.py || true
       - name: Commit source cleanup
         run: |
           git config user.name github-actions[bot]
