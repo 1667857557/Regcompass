@@ -63,7 +63,7 @@ result <- rc_run_regcompass_one_shot(
 
 ## Parallel Stage 1
 
-Independent broad-cell-type GRN jobs are the outer parallel unit. Each worker runs its Pando job serially, which prevents nested worker pools and numerical-thread oversubscription.
+Independent broad-cell-type GRN jobs are the outer parallel unit. With multiple retained cell types, each worker runs one complete standard or condition-GRN job serially, which prevents nested worker pools and numerical-thread oversubscription.
 
 ```r
 library(BiocParallel)
@@ -100,7 +100,7 @@ step1$grn_result$pando_execution_plan
 step1$grn_result$pando_infer_argument_routing
 ```
 
-When only one cell-type job is available, Stage 1 keeps the original Pando inner execution path. When multiple jobs are available, they are distributed by cell type and inner parallelism is disabled.
+When multiple jobs are available, they are distributed by cell type and inner parallelism is disabled. With one standard-Pando job, its existing target-level path may be used. A single condition-GRN job remains serial because pooled discovery, condition-specific discovery, dictionary freezing, and condition refits form one coordinated contract.
 
 ## Documentation
 
