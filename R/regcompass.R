@@ -1,11 +1,11 @@
-#' Run the RegCompass workflow with automatic Pando mode selection
+#' Run the RegCompass workflow with cell-type-specific Pando routing
 #'
-#' Stage 1 selects condition-aware Pando only when at least two condition levels
-#' are present. Otherwise it uses original Pando `infer_grn()` and calculates no
-#' condition coefficients. Stage 2 builds one independent multimodal WNN graph
-#' per broad cell type while pooling all conditions within that graph; adaptive
-#' RNA/ATAC modality weights and neighbours are learned jointly, and condition
-#' splits parent membership only after graph clustering.
+#' Stage 1 resolves the Pando route independently for each retained broad cell
+#' type. Cell types with at least two retained conditions use the common-
+#' dictionary condition GRN; cell types with one retained condition use standard
+#' Pando and do not receive condition coefficients. Stage 2 builds one
+#' independent multimodal WNN graph per broad cell type and keeps final
+#' metacells condition-pure.
 #'
 #' When `medium_scenarios` is omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
@@ -44,24 +44,10 @@ rc_run_regcompass <- function(
     stop("Workflow argument bundles must be lists: ",
          paste(invalid, collapse = ", "), call. = FALSE)
   }
-  if ("tau" %in% names(layer1_args)) {
-    stop(
-      "The retired `tau`/Boltzmann Layer 1 transform is not supported.",
-      call. = FALSE
-    )
-  }
-  allowed_layer1 <- c(
-    "projection_component", "comparison_support", "regulatory_alpha",
-    "gpr_and_method", "gene_half_saturation"
-  )
+  allowed_layer1 <- c("gpr_and_method", "gene_half_saturation")
   unknown_layer1 <- setdiff(names(layer1_args), allowed_layer1)
   if (length(unknown_layer1)) {
     stop("Unknown `layer1_args`: ", paste(unknown_layer1, collapse = ", "),
-         call. = FALSE)
-  }
-  if (!is.null(layer1_args$regulatory_alpha) &&
-      !isTRUE(all.equal(as.numeric(layer1_args$regulatory_alpha), 1))) {
-    stop("Canonical RegCompass requires `regulatory_alpha = 1`.",
          call. = FALSE)
   }
   species <- .rc_infer_gem_species(gem, species)
@@ -127,9 +113,6 @@ rc_run_regcompass <- function(
       rc_regcompass_step_layer1(
         grn = step1, metacells = step2, meta_modules = step3, gem = gem,
         outdir = file.path(outdir, "04_layer1"),
-        projection_component = layer1_args$projection_component %||% "condition",
-        comparison_support = layer1_args$comparison_support %||% "auto",
-        regulatory_alpha = 1,
         gpr_and_method = layer1_args$gpr_and_method %||% "min",
         gene_half_saturation = layer1_args$gene_half_saturation %||%
           getOption("RegCompassR.cpm_half_saturation", 1),
