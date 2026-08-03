@@ -60,7 +60,6 @@ jobs:
           retired = [
               "condition_full_oof", "common_oof", "condition_unique_oof",
               "project_condition_grn_primary_cells",
-              "network_name = \"regcompass_condition_grn\"",
               "min_abs_estimate", "min_model_rsq",
               "structural_zero_probability", "nested_cv_used",
               "projection_component", "comparison_support",
