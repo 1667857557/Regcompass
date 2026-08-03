@@ -266,7 +266,7 @@
           row_id = row_id,
           unit_id = unit_id,
           module_id = NA_character_,
-reaction_id = entry$reaction_id,
+          reaction_id = entry$reaction_id,
           target_direction = entry$target_direction,
           medium_scenario = entry$medium_scenario,
           condition = "all",
@@ -354,7 +354,7 @@ reaction_id = entry$reaction_id,
       shared_gem = TRUE,
       shared_gem_scope =
         "one_full_gem_per_medium_shared_across_all_units",
-parallel_task = "shared_model_by_metacell_step2",
+      parallel_task = "shared_model_by_metacell_step2",
       vmax_computation_scope =
         "shared_model_x_directional_target_once",
       vmax_solve_count = length(vmax_cache),
@@ -363,6 +363,72 @@ parallel_task = "shared_model_by_metacell_step2",
       scoring_time_limit = "none"
     ),
     method = "microCOMPASS shared full-GEM directional LP"
+  )
+}
+
+.rc_run_microcompass_engine <- function(
+    layer1, gem, target_reactions = NULL,
+    medium_table = NULL, medium_scenarios = NULL,
+    mode = c("full_gem", "meta_module_gem"),
+    reaction_membership = NULL, core_reactions = NULL,
+    unit = c("metacell", "sample_celltype"),
+    condition_col = "condition", sample_col = NULL,
+    celltype_col = "cell_type", model_params = list(),
+    omega = 0.95,
+    target_direction = c("both", "forward", "reverse"),
+    parallel = TRUE,
+    solver = c("highs", "gurobi", "glpk"),
+    flux_threshold = 1e-8,
+    BPPARAM = NULL,
+    model_cache_override = NULL) {
+  mode <- match.arg(mode)
+  unit <- match.arg(unit)
+  solver <- match.arg(solver)
+  target_direction <- match.arg(target_direction)
+  if (identical(mode, "meta_module_gem")) {
+    return(.rc_run_celltype_microcompass_engine(
+      layer1 = layer1,
+      gem = gem,
+      target_reactions = target_reactions,
+      medium_table = medium_table,
+      medium_scenarios = medium_scenarios,
+      reaction_membership = reaction_membership,
+      core_reactions = core_reactions,
+      unit = unit,
+      condition_col = condition_col,
+      sample_col = sample_col,
+      celltype_col = celltype_col,
+      model_params = model_params,
+      omega = omega,
+      target_direction = target_direction,
+      parallel = parallel,
+      solver = solver,
+      flux_threshold = flux_threshold,
+      BPPARAM = BPPARAM,
+      model_cache_override = model_cache_override
+    ))
+  }
+  .rc_run_shared_full_gem_engine(
+    layer1 = layer1,
+    gem = gem,
+    target_reactions = target_reactions,
+    medium_table = medium_table,
+    medium_scenarios = medium_scenarios,
+    mode = "full_gem",
+    reaction_membership = NULL,
+    core_reactions = NULL,
+    unit = unit,
+    condition_col = condition_col,
+    sample_col = sample_col,
+    celltype_col = celltype_col,
+    model_params = model_params,
+    omega = omega,
+    target_direction = target_direction,
+    parallel = parallel,
+    solver = solver,
+    flux_threshold = flux_threshold,
+    BPPARAM = BPPARAM,
+    model_cache_override = model_cache_override
   )
 }
 

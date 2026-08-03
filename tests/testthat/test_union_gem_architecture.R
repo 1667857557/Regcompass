@@ -86,3 +86,30 @@ test_that("microCOMPASS row IDs retain cell-type structural scope", {
   expect_identical(parsed$cell_type, "Tumor cell")
   expect_identical(parsed$reaction_id, "R1")
 })
+
+test_that("microCOMPASS dispatches structural modes explicitly", {
+  expect_true(exists(
+    ".rc_run_microcompass_engine",
+    envir = asNamespace("RegCompassR"),
+    inherits = FALSE
+  ))
+  body_text <- paste(
+    deparse(body(.rc_run_microcompass_engine)), collapse = "\n"
+  )
+  expect_true(grepl(
+    ".rc_run_celltype_microcompass_engine", body_text, fixed = TRUE
+  ))
+  expect_true(grepl(
+    ".rc_run_shared_full_gem_engine", body_text, fixed = TRUE
+  ))
+})
+
+test_that("targeted cache reuse may cover a cell-type subset", {
+  body_text <- paste(
+    deparse(body(.rc_run_celltype_microcompass_engine)), collapse = "\n"
+  )
+  expect_true(grepl("is.null(model_cache_override)", body_text, fixed = TRUE))
+  expect_true(grepl(
+    "all(cache_celltypes %in% unit_celltypes)", body_text, fixed = TRUE
+  ))
+})

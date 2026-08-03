@@ -118,9 +118,16 @@
     model_cache, function(entry) as.character(entry$cell_type), character(1)
   )))
   unit_celltypes <- sort(unique(unit_celltype))
-  if (!setequal(cache_celltypes, unit_celltypes)) {
+  if (is.null(model_cache_override)) {
+    if (!setequal(cache_celltypes, unit_celltypes)) {
+      stop(
+        "Stage 5 union GEMs and Layer 1 units cover different cell types.",
+        call. = FALSE
+      )
+    }
+  } else if (!all(cache_celltypes %in% unit_celltypes)) {
     stop(
-      "Cell-type union GEMs and Layer 1 units cover different cell types.",
+      "A reused union-GEM cache contains cell types absent from Layer 1.",
       call. = FALSE
     )
   }
