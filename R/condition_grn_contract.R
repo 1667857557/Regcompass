@@ -6,14 +6,6 @@
 # Retained only because the Stage 1 dispatcher constructs this field before
 # calling the condition implementation. The common-dictionary GLM has no native
 # engine or memory planner.
-.rc_pando_engine_control <- function(outdir, user = list()) {
-  if (is.null(user)) user <- list()
-  if (!is.list(user)) {
-    stop("`pando_infer_args$engine_control` must be a list.", call. = FALSE)
-  }
-  list(retired = TRUE, ignored_by = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA)
-}
-
 .rc_pando_execution_summary <- function(diagnostics = NULL) {
   list(
     fit_engine = "two_stage_exact_edge_union_fixed_dictionary_glm",
