@@ -131,7 +131,9 @@ rc_default_bpparam <- function(
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
   if (!is.function(FUN)) stop("`FUN` must be a function.", call. = FALSE)
   extra <- list(...)
+  caller_libpaths <- .libPaths()
   worker_fun <- function(x) {
+    .libPaths(unique(c(caller_libpaths, .libPaths())))
     .rc_with_internal_single_thread(function() {
       do.call(FUN, c(list(x), extra))
     })
