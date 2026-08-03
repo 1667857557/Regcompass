@@ -16,36 +16,27 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{outdir}{Persistent workflow output directory.}
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
 \item{species}{\code{"human"} or \code{"mouse"}.}
-\item{gem}{Optional prepared GEM. The pinned species model is loaded when omitted.}
-\item{gem_version}{Pinned model release.}
+\item{gem}{Optional prepared GEM.}
+\item{gem_version}{Model release used when \code{gem} is omitted.}
 \item{gem_source}{Automatic, bundled-only, or download model source.}
 \item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
 \item{fragment_files}{Use \code{FALSE}; metacell RNA and ATAC counts are aggregated from the existing assays.}
 \item{medium_scenario}{Optional built-in biological medium scenario.}
 \item{medium_scenarios}{Optional prebuilt built-in or user-defined medium table.}
 \item{progress}{Display workflow and stage progress.}
-\item{...}{Arguments passed to \code{rc_run_regcompass()}, including optional \code{condition_col} and grouped-WNN \code{metacell_args}.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}.}
 }
 \value{
-A complete RegCompass result with explicit \code{analysis_mode} and stage provenance.
+A complete RegCompass result with workflow and cell-type routing provenance.
 }
 \description{
 Loads species-aware defaults and runs the complete RegCompass workflow.
 }
 \details{
 When both medium arguments are omitted, Human-GEM uses
-\code{"normal_human_plasma"} and Mouse-GEM uses \code{"mouse_plasma"}. A
-supported culture-challenge scenario or a prebuilt custom medium table may be
-supplied explicitly.
-
-The wrapped workflow automatically selects condition-aware Pando for two or more
-condition levels and original \code{Pando::infer_grn()} for one or zero usable
-levels. The standard route calculates no condition coefficients.
-
-Metacells use \code{SuperCell::SCimplify_by_graph_group()}. Each broad cell type
-has one independent RNA+ATAC WNN graph. All conditions within that cell type
-jointly determine adaptive modality weights, neighbours and Walktrap clusters;
-condition splits parent membership only after clustering. Small metacells are
-retained and marked. Both Pando routes continue through the same RNA-support,
-GPR, reaction penalty, shared medium-specific model, and directional LP stages.
+\code{"normal_human_plasma"} and Mouse-GEM uses \code{"mouse_plasma"}.
+Pando routing is resolved independently for each retained broad cell type:
+cell types with at least two retained conditions use the condition GRN, while
+cell types with one retained condition use standard Pando. Stage 2 builds one
+RNA+ATAC WNN graph per broad cell type and keeps final metacells condition-pure.
 }
