@@ -52,7 +52,7 @@ test_that("canonical order is GRN then metacells then meta-modules", {
   expect_true(positions[[2L]] < positions[[3L]])
 })
 
-test_that("complete workflow exposes cell-type-specific routing", {
+test_that("complete workflow exposes parallel cell-type routing", {
   run_formals <- formals(rc_run_regcompass)
   expect_identical(eval(run_formals$condition_col), "condition")
   expect_true(all(c(
@@ -62,8 +62,13 @@ test_that("complete workflow exposes cell-type-specific routing", {
   routing_text <- paste(
     deparse(body(.rc_fit_pando_by_celltype_route)), collapse = "\n"
   )
-  expect_match(routing_text, ".rc_fit_condition_grns_by_cell_type", fixed = TRUE)
-  expect_match(routing_text, ".rc_fit_standard_pando_by_cell_type", fixed = TRUE)
+  worker_text <- paste(
+    deparse(body(.rc_run_pando_celltype_job)), collapse = "\n"
+  )
+  expect_match(routing_text, "rc_parallel_lapply", fixed = TRUE)
+  expect_match(worker_text, ".rc_fit_condition_grns_by_cell_type", fixed = TRUE)
+  expect_match(worker_text, ".rc_fit_standard_pando_by_cell_type", fixed = TRUE)
+  expect_match(worker_text, "outer_parallel", fixed = TRUE)
 })
 
 test_that("condition and standard Pando implementations are separate", {
@@ -80,6 +85,20 @@ test_that("condition and standard Pando implementations are separate", {
     standard_text, "condition_coefficients_calculated = FALSE", fixed = TRUE
   )
   expect_false(grepl("Pando::infer_condition_grn", standard_text, fixed = TRUE))
+})
+
+test_that("parallel condition projection preserves cell-type feature spaces", {
+  projection_text <- paste(
+    deparse(body(.rc_condition_pando_projection)), collapse = "\n"
+  )
+  selector_text <- paste(
+    deparse(body(.rc_condition_pando_object_for_fit)), collapse = "\n"
+  )
+  expect_match(
+    projection_text, ".rc_condition_pando_object_for_fit", fixed = TRUE
+  )
+  expect_match(selector_text, "pando_grn_data_by_cell_type", fixed = TRUE)
+  expect_match(selector_text, "fit$condition_cell_ids", fixed = TRUE)
 })
 
 test_that("canonical SuperCell API uses cell-type grouped WNN", {
