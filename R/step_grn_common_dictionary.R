@@ -159,15 +159,16 @@ rc_regcompass_step_grn <- function(
   )
 
   if (identical(design$analysis_mode, "condition_grn")) {
-    retired_top_level <- intersect(
-      names(extra_args), c("min_abs_estimate", "min_model_rsq")
+    standard_only <- intersect(
+      names(call_args), c("min_abs_estimate", "min_model_rsq")
     )
-    if (length(retired_top_level)) {
-      stop(
-        "Multi-condition GRNs do not use additional effect-size or model-R2 filters: ",
-        paste(retired_top_level, collapse = ", "),
-        call. = FALSE
+    if (length(standard_only)) {
+      message(
+        "Ignoring standard-Pando-only edge filters in multi-condition mode: ",
+        paste(standard_only, collapse = ", "),
+        ". The condition penalty is fixed to estimable BH padj < 0.05."
       )
+      call_args[standard_only] <- NULL
     }
     retired <- intersect(names(infer_args), c(
       "candidate_screen", "condition_mix", "condition_weight", "alpha",
