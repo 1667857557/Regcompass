@@ -30,7 +30,7 @@ test_that("supplied Pando resources are preserved before dispatch", {
 
 test_that("Pando data loading never dereferences namespace lazydata", {
   loader_source <- paste(deparse(body(.rc_pando_data_object)), collapse = "\n")
-  expect_false(grepl("getNamespaceInfo\\([^)]*, \\"lazydata\\"", loader_source))
+  expect_false(grepl("lazydata", tolower(loader_source), fixed = TRUE))
   expect_true(grepl("utils::data", loader_source, fixed = TRUE))
   expect_true(grepl("lib.loc", loader_source, fixed = TRUE))
 })
