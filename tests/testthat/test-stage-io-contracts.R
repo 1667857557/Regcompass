@@ -83,11 +83,8 @@ test_that("Stage 2 uses one grouped multimodal SuperCell API", {
   expect_false(exists(".rc_scale_embedding_block_by_group", inherits = TRUE))
 })
 
-test_that("metacell stage persists required artifacts", {
-  text <- paste(c(
-    deparse(body(rc_regcompass_step_metacells)),
-    deparse(body(RegCompassR:::.rc_original_step_metacells_cell_set_contract))
-  ), collapse = "\n")
+test_that("metacell stage persists required artifacts directly", {
+  text <- paste(deparse(body(rc_regcompass_step_metacells)), collapse = "\n")
   required <- c(
     "metacell_metadata.tsv.gz",
     "metacell_membership.tsv.gz",
@@ -97,6 +94,7 @@ test_that("metacell stage persists required artifacts", {
     "step_metacells.rds"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = text, fixed = TRUE)))
+  expect_match(text, ".rc_subset_to_stage1_cell_set", fixed = TRUE)
 })
 
 test_that("Layer 1 producer and validator use the same schema", {
@@ -107,13 +105,15 @@ test_that("Layer 1 producer and validator use the same schema", {
   expect_false(grepl("regcompass_regulatory_layer1_v2", validator, fixed = TRUE))
 })
 
-test_that("Layer 2 and results retain condition-full primary routing", {
+test_that("Layer 2 and results retain primary compatibility routing", {
   layer2_text <- paste(deparse(body(rc_regcompass_step_layer2)), collapse = "\n")
   result_text <- paste(deparse(body(rc_regcompass_step_results)), collapse = "\n")
   expect_match(layer2_text, ".rc_validate_layer1_stage", fixed = TRUE)
   expect_match(layer2_text, "penalty_condition_full_oof", fixed = TRUE)
+  expect_match(layer2_text, ".rc_run_microcompass_monitored", fixed = TRUE)
   expect_match(result_text, ".rc_validate_layer2_stage", fixed = TRUE)
-  expect_match(result_text, 'version = "2.2.4"', fixed = TRUE)
+  expect_match(result_text, 'version = "2.3.0"', fixed = TRUE)
+  expect_match(result_text, ".rc_load_condition_modules", fixed = TRUE)
   expect_match(result_text, "metacell_modality_weighting", fixed = TRUE)
 })
 
