@@ -61,21 +61,16 @@ text = text.replace(
     1
 )
 
-old_method = '''    method = if (identical(mode, "full_gem")) {
-      "microCOMPASS shared full-GEM directional LP"
-    } else {
-      paste(
-        "microCOMPASS directional LP on final medium-specific union GEMs",
-        "after one global FASTCORE completion"
-      )
-    }
-    '''
-if text.count(old_method) != 1:
-    raise RuntimeError('legacy method branch was not found once')
-text = text.replace(
-    old_method,
-    '    method = "microCOMPASS shared full-GEM directional LP"\n',
-    1
+method_start_marker = '    method = if (identical(mode, "full_gem")) {'
+method_end_marker = '\n  )\n}\n\n#\' Run directional minimum-evidence-discordance LPs'
+method_start = text.find(method_start_marker)
+method_end = text.find(method_end_marker, method_start)
+if method_start < 0 or method_end < 0:
+    raise RuntimeError('legacy method branch structural boundary was not found')
+text = (
+    text[:method_start] +
+    '    method = "microCOMPASS shared full-GEM directional LP"' +
+    text[method_end:]
 )
 
 path.write_text(text)
