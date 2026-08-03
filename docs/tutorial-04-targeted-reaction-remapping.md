@@ -7,14 +7,15 @@ selected reaction anchors.
 This is an optional second LP pass, not a condition-comparability guardrail. It
 reuses the exact cached Stage 5 model, does not rebuild the GEM, and does not
 rerun FASTCORE. In condition-aware runs, the Layer 1 `reaction_expression`
-input is the primary `reaction_expression_condition_full_oof` route; the
-common-support and RNA-only matrices remain decomposition/control outputs.
+input is the primary BH-filtered fixed-dictionary regulatory route. Historical
+fields containing `condition_full_oof` remain compatibility aliases and do not
+indicate OOF estimation.
 
-Mathematical definitions remain centralized in
+Mathematical definitions are in
 [Tutorial 3](tutorial-03-mathematical-model.md). Public API:
 [functions.md](functions.md).
 
-## Load stages
+## Load completed stages
 
 ```r
 step3 <- readRDS("RegCompass_steps/03_meta_modules/step_meta_modules.rds")
@@ -22,9 +23,8 @@ step4 <- readRDS("RegCompass_steps/04_layer1/step_layer1.rds")
 step5 <- readRDS("RegCompass_steps/05_layer2/step_layer2.rds")
 ```
 
-`step5$model_cache_summary$file` must point to an available completed model.
-The function validates the stored checksum and union-GEM provenance before
-scoring.
+`step5$model_cache_summary$file` must point to an available completed model. The
+function validates the stored checksum and union-GEM provenance before scoring.
 
 ## Select reaction anchors
 
@@ -65,7 +65,9 @@ targeted_gene <- rc_regcompass_step_target_union(
   layer2_args = list(
     target_direction = "both",
     solver = "highs"
-  )
+  ),
+  parallel = TRUE,
+  BPPARAM = layer2_bp
 )
 ```
 
@@ -83,7 +85,7 @@ expansion. A mapped target is scored only when it is available in every required
 cached medium-specific union GEM. Reactions already scored as original Layer 2
 cores are not recomputed.
 
-## Evidence and structural reuse
+## Regulatory evidence used by the second pass
 
 The second pass uses:
 
@@ -91,20 +93,48 @@ The second pass uses:
 step4$reaction_expression
 ```
 
-For a condition-aware run this is the canonical alias of:
+For a condition-aware run this is the primary fixed-dictionary condition route.
+The historical field below is an equal-valued compatibility alias:
 
 ```r
 step4$reaction_expression_condition_full_oof
 ```
 
-The targeted reactions therefore use the same primary condition-full evidence
-route as the original Stage 5 ranking. The following remain fixed and reused:
+The targeted reactions therefore use the same condition-specific regulatory
+evidence as the original Stage 5 ranking. Targets without significant estimable
+condition-GRN edges retain the same RNA-only neutral fallback used in Stage 4.
+
+## Structural reuse
+
+The following are fixed and reused:
 
 - medium-specific union GEM file and checksum;
 - reaction order and bounds;
 - global FASTCORE completion;
 - target direction and `omega`;
-- metacell order and condition/cell-type metadata.
+- medium-specific `vmax` definition;
+- metacell order and condition/cell-type metadata;
+- Layer 1 GPR aggregation settings.
+
+The targeted pass does not alter the original Stage 5 cache.
+
+## Parallel execution
+
+The same Layer 2 backend can be reused:
+
+```r
+library(BiocParallel)
+
+layer2_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(workers = 30L, type = "SOCK", progressbar = TRUE)
+} else {
+  MulticoreParam(workers = 30L, progressbar = TRUE)
+}
+```
+
+Each worker forces numerical libraries and HiGHS to one internal thread. Reduce
+the number of workers when the cached GEM or target set makes per-worker memory
+the limiting resource.
 
 ## Inspect outputs
 
@@ -145,3 +175,10 @@ targeted$expanded_scoring_targets[, c(
 The persistent catalogue is written to
 `merged_meta_module_catalogue_membership.tsv.gz`. The model cache checksum is
 retained to verify exact structural reuse.
+
+## When to rerun earlier stages
+
+Changing only the selected anchors does not require rerunning Stages 1–5.
+Changing the Stage 4 reaction evidence, Stage 5 medium, GEM, FASTCORE completion,
+bounds, direction, or target-flux controls invalidates the targeted pass and
+requires regenerating the relevant upstream cache first.
