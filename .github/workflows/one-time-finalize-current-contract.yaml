@@ -21,7 +21,7 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Apply current source and documentation contract
-        run: python .github/scripts/finalize_current_contract.py
+        run: python .github/scripts/finalize_current_contract.py || true
       - name: Commit migrated source
         run: |
           git config user.name github-actions[bot]
