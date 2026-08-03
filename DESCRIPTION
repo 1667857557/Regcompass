@@ -75,6 +75,7 @@ Collate:
     'shared_tfidf.R'
     'condition_pooling.R'
     'grn_inference.R'
+    'stage1_input_contract.R'
     'condition_grn_contract.R'
     'standard_pando.R'
     'condition_layer1.R'
@@ -102,9 +103,6 @@ Collate:
     'regcompass.R'
     'one_shot.R'
     'stratum_filter.R'
-    'zzz_workflow_hardening.R'
-    'zzzz_min_cells_contract.R'
-    'zzzzz_stage_cell_set_contract.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
