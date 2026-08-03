@@ -30,15 +30,41 @@ jobs:
         run: |
           test ! -e R/condition_grn_runtime.R
           test ! -e R/condition_grn_runtime_guard.R
+          test ! -e R/step_layer1_oof.R
+          test ! -e R/step_layer1_common_dictionary_contract.R
+          test ! -e R/target_union_anchors.R
           test -z "$(find R -maxdepth 1 -type f -name 'zzz*.R' -print -quit)"
-          ! grep -R -n -E 'Pando::project_condition_grn_primary_cells|Pando::condition_grn_native|_strict_base|\.rc_original_.*hardening|evaluation_environment' R NAMESPACE DESCRIPTION
-          test "$(grep -R -h -E '^rc_regcompass_step_grn[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
-          test "$(grep -R -h -E '^rc_regcompass_step_metacells[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
-          test "$(grep -R -h -E '^rc_regcompass_step_layer2[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
-          test "$(grep -R -h -E '^rc_regcompass_step_results[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
-          test "$(grep -R -h -E '^\.rc_require_pando_condition_grn_fit[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
-          test "$(grep -R -h -E '^\.rc_extract_condition_grn_contract[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
-          test "$(grep -R -h -E '^\.rc_condition_pando_projection[[:space:]]*<-[[:space:]]*function' R | wc -l)" -eq 1
+          ! grep -R -n -E 'Pando::project_condition_grn_primary_cells|Pando::condition_grn_native|_strict_base|\.rc_original_|evaluation_environment' R NAMESPACE DESCRIPTION
+      - name: Verify unique function definitions
+        shell: python
+        run: |
+          import collections, pathlib, re
+          pattern = re.compile(
+              r'(?m)^([A-Za-z.][A-Za-z0-9._]*)\s*<-\s*function\b'
+          )
+          found = collections.defaultdict(list)
+          for path in sorted(pathlib.Path('R').glob('*.R')):
+              for match in pattern.finditer(path.read_text()):
+                  found[match.group(1)].append(str(path))
+          duplicate = {
+              name: paths for name, paths in found.items() if len(paths) > 1
+          }
+          if duplicate:
+              raise SystemExit(f'Duplicate function definitions: {duplicate}')
+          required = {
+              'rc_regcompass_step_grn',
+              'rc_regcompass_step_metacells',
+              'rc_regcompass_step_layer2',
+              'rc_regcompass_step_results',
+              '.rc_require_pando_condition_grn_fit',
+              '.rc_extract_condition_grn_contract',
+              '.rc_condition_pando_projection',
+              '.rc_validate_layer1_stage',
+              '.rc_build_target_union_definition'
+          }
+          missing = sorted(required.difference(found))
+          if missing:
+              raise SystemExit(f'Missing functional definitions: {missing}')
       - name: Verify installed Pando contract
         shell: Rscript {0}
         run: |
