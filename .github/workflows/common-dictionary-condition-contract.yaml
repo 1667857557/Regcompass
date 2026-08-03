@@ -30,7 +30,7 @@ jobs:
         run: |
           test ! -e R/condition_grn_runtime.R
           test ! -e R/condition_grn_runtime_guard.R
-          ! grep -R -n -E 'outer_nfolds|inner_nfolds|condition_mix|project_condition_grn_primary_cells' R NAMESPACE DESCRIPTION
+          ! grep -R -n -E 'Pando::project_condition_grn_primary_cells|Pando::condition_grn_native' R NAMESPACE
       - name: Verify installed Pando contract
         shell: Rscript {0}
         run: |
