@@ -114,5 +114,5 @@ test_that("workflow code has no late-loaded override chain", {
   )))))
   r_files <- list.files(file.path(root, "R"), pattern = "\\.R$", full.names = TRUE)
   source <- unlist(lapply(r_files, readLines, warn = FALSE), use.names = FALSE)
-  expect_false(any(grepl("\.rc_original_.*hardening|evaluation_environment", source)))
+  expect_false(any(grepl("\\.rc_original_.*hardening|evaluation_environment", source)))
 })
