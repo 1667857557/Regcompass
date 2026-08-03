@@ -132,6 +132,54 @@
   )
 }
 
+.rc_validate_target_union_anchor_request <- function(
+    gem, merged_core_reactions,
+    core_reaction_ids = NULL, core_genes = NULL,
+    gene_match = c("complete_gpr", "any_direct")) {
+  gene_match <- match.arg(gene_match)
+  if (!is.data.frame(merged_core_reactions) ||
+      !"reaction_id" %in% colnames(merged_core_reactions)) {
+    stop("`merged_core_reactions` must contain reaction_id.",
+         call. = FALSE)
+  }
+  available_core <- .rc_target_union_normalize_ids(
+    merged_core_reactions$reaction_id
+  )
+  if (!length(available_core)) {
+    stop("No original cell-type core reaction is available.", call. = FALSE)
+  }
+  requested_reactions <- .rc_target_union_normalize_ids(core_reaction_ids)
+  requested_genes <- toupper(.rc_target_union_normalize_ids(core_genes))
+  if (!length(requested_reactions) && !length(requested_genes)) {
+    stop(
+      "Supply at least one `core_reaction_ids` or `core_genes` value.",
+      call. = FALSE
+    )
+  }
+
+  if (length(requested_reactions)) {
+    .rc_target_union_core_rows(
+      gem = gem,
+      available_core_reactions = available_core,
+      core_reaction_ids = requested_reactions,
+      gene_match = gene_match
+    )
+  }
+  if (length(requested_genes)) {
+    .rc_target_union_core_rows(
+      gem = gem,
+      available_core_reactions = available_core,
+      core_genes = requested_genes,
+      gene_match = gene_match
+    )
+  }
+  invisible(list(
+    core_reaction_ids = requested_reactions,
+    core_genes = requested_genes,
+    gene_match = gene_match
+  ))
+}
+
 .rc_build_target_union_definition <- function(
     gem, merged_core_reactions, merged_reaction_membership,
     core_reaction_ids = NULL, core_genes = NULL,
@@ -151,6 +199,13 @@
     stop("Cached reaction IDs must be a named list by cell type.",
          call. = FALSE)
   }
+  .rc_validate_target_union_anchor_request(
+    gem = gem,
+    merged_core_reactions = merged_core_reactions,
+    core_reaction_ids = core_reaction_ids,
+    core_genes = core_genes,
+    gene_match = gene_match
+  )
   core_types <- sort(unique(trimws(as.character(
     merged_core_reactions[[celltype_col]]
   ))))
@@ -706,12 +761,13 @@
   answer
 }
 
-#' Score directly database-linked non-core reactions in final union GEMs
+#' Score directly linked non-core reactions in cell-type union GEMs
 #'
-#' Selected original core reactions are mapping anchors only. The function
-#' scores directly KEGG-, Reactome-, or master-Rhea-linked non-core reactions
-#' by reusing the exact final medium-specific union GEM files created by Stage
-#' 5. It does not rebuild a GEM and does not rerun FASTCORE.
+#' Selected reactions are mapping anchors only. Direct KEGG-, Reactome-, or
+#' master-Rhea-linked non-core reactions are scored by reusing the exact Stage 5
+#' union GEMs for the corresponding cell types and media. Candidate availability
+#' is intersected across media within each cell type. Models from different cell
+#' types are never merged, and FASTCORE is not rerun.
 #'
 #' @param layer1 Output from [rc_regcompass_step_layer1()].
 #' @param meta_modules Output from [rc_regcompass_step_meta_modules()].
@@ -720,18 +776,22 @@
 #' @param gem The same GEM used for the original run.
 #' @param outdir Output directory.
 #' @param core_reaction_ids GEM reaction IDs used as direct mapping anchors.
-#'   The historical argument name is retained for compatibility; an ID may be
-#'   an original Layer 2 core or any other valid reaction in `gem`.
-#' @param core_genes Genes used to resolve original core anchors through GPRs.
-#'   Gene selection intentionally remains restricted to original cores.
+#'   The historical argument name is retained for compatibility. Every supplied
+#'   ID must exist in `gem`; it is evaluated only in cell types where it is
+#'   structurally available.
+#' @param core_genes Genes used to resolve original core anchors through GPRs
+#'   within each cell type. Every supplied gene selector must resolve to at least
+#'   one original cell-type core under `gene_match`.
 #' @param gene_match Require a complete GPR group or allow any direct gene match.
 #' @param layer2_args Optional `omega`, `target_direction`, `solver`, and
-#'   `flux_threshold` overrides. Scoring LPs have no time-limit control.
-#' @param parallel Whether to parallelize model-by-metacell tasks.
+#'   `flux_threshold` overrides. Scoring LPs have no construction time limit.
+#' @param parallel Whether to parallelize reused cell-type-model by matching-
+#'   metacell tasks.
 #' @param BPPARAM Optional BiocParallel parameter object.
 #' @param progress Whether to display stage progress.
-#' @return A `regcompass_target_union_step` containing selected anchors, direct
-#'   database-linked non-core targets, final union-GEM provenance, and LP scores.
+#' @return A `regcompass_target_union_step` containing cell-type-scoped anchors,
+#'   direct database-linked non-core targets, exact model provenance, and LP
+#'   scores.
 #' @export
 rc_regcompass_step_target_union <- function(
     layer1, meta_modules, layer2, gem, outdir,
@@ -832,12 +892,19 @@ rc_regcompass_step_target_union <- function(
   scored$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   scored$params$target_direction <- target_direction
   scored$params$target_scope <-
-    "direct_kegg_reactome_master_rhea_noncore_only"
+    "direct_database_crossrefs_within_cell_type_only"
   scored$params$n_selected_core <- nrow(definition$selected_core_reactions)
-  scored$params$n_merged_core_reactions_not_rescored <-
-    length(definition$params$merged_core_reactions_not_rescored)
-  scored$params$n_cached_union_unavailable_reactions <-
-    length(definition$params$cached_union_unavailable_reactions)
+  relation_catalogue <- definition$expanded_reaction_catalog
+  scored$params$n_merged_core_reactions_not_rescored <- length(unique(
+    as.character(relation_catalogue$reaction_id[
+      relation_catalogue$merged_catalogue_is_core %in% TRUE
+    ])
+  ))
+  scored$params$n_cached_union_unavailable_reactions <- length(unique(
+    as.character(relation_catalogue$reaction_id[
+      !relation_catalogue$available_in_all_cached_union_gems %in% TRUE
+    ])
+  ))
   scored$params$n_expanded_score_targets <-
     nrow(definition$params$score_targets)
 

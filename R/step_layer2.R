@@ -178,12 +178,14 @@
   answer
 }
 
-#' Build medium-specific structural models and run directional LP scoring
+#' Build cell-type and medium structural models and score directional LPs
 #'
-#' The primary route uses the current fixed-dictionary regulatory evidence.
-#' Historical `_oof`, `common`, and `condition_unique` fields are retained as
-#' compatibility aliases. RNA-only scoring remains an interpretation control,
-#' and all routes reuse the exact same medium-specific structural model.
+#' With `model_mode = "meta_module_gem"`, conditions are unioned only within the
+#' same cell type. One union GEM and one independent FASTCORE completion are
+#' created for every cell-type and medium combination. Conditions and metacells
+#' share a model only when their cell type matches. Historical `_oof`, `common`,
+#' and `condition_unique` fields remain compatibility aliases; RNA-only scoring
+#' is an interpretation control. The `full_gem` route uses a separate engine.
 #'
 #' @export
 rc_regcompass_step_layer2 <- function(

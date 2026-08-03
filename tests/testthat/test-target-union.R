@@ -326,6 +326,28 @@ test_that("invalid target selections fail before scoring", {
       gem = gem,
       merged_core_reactions = target_union_merged_core(),
       merged_reaction_membership = target_union_merged_membership(),
+      core_reaction_ids = "missing",
+      cached_reaction_ids = list(C = paste0("R", 1:7)),
+      celltype_col = "cell_type"
+    ),
+    "absent from the GEM"
+  )
+  expect_error(
+    .rc_build_target_union_definition(
+      gem = gem,
+      merged_core_reactions = target_union_merged_core(),
+      merged_reaction_membership = target_union_merged_membership(),
+      core_genes = "NOT_A_GPR_GENE",
+      cached_reaction_ids = list(C = paste0("R", 1:7)),
+      celltype_col = "cell_type"
+    ),
+    "do not map to GEM GPR rules"
+  )
+  expect_error(
+    .rc_build_target_union_definition(
+      gem = gem,
+      merged_core_reactions = target_union_merged_core(),
+      merged_reaction_membership = target_union_merged_membership(),
       core_reaction_ids = "R1",
       cached_reaction_ids = list(C = character()),
       celltype_col = "cell_type"
