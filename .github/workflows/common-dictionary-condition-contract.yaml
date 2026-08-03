@@ -38,11 +38,14 @@ jobs:
           test -e R/celltype_microcompass_engine.R
           test -z "$(find R -maxdepth 1 -type f -name 'zzz*.R' -print -quit)"
           ! grep -R -n -E 'Pando::project_condition_grn_primary_cells|Pando::condition_grn_native|_strict_base|\.rc_original_|evaluation_environment' R NAMESPACE DESCRIPTION
-          ! grep -R -n -E '\.rc_merge_meta_module_catalogue|\.rc_build_medium_specific_union_gem_cache|\.rc_complete_medium_union_gem|\.rc_read_cached_union_gem|one_final_union_gem_per_medium_shared_across_all_units|single_global_fastcore_after_meta_module_merge|shared_across_cell_types[[:space:]]*=[[:space:]]*TRUE' R DESCRIPTION
-      - name: Parse all R sources
+          ! grep -R -n -E '\.rc_merge_meta_module_catalogue|\.rc_build_medium_specific_union_gem_cache|\.rc_complete_medium_union_gem|\.rc_read_cached_union_gem|one_final_union_gem_per_medium_shared_across_all_units|single_global_fastcore_after_meta_module_merge|shared_across_cell_types[[:space:]]*=[[:space:]]*TRUE|definition\$params\$merged_core_reactions_not_rescored|definition\$params\$cached_union_unavailable_reactions' R DESCRIPTION
+      - name: Parse all R and test sources
         shell: Rscript {0}
         run: |
-          files <- list.files("R", pattern = "[.]R$", full.names = TRUE)
+          files <- c(
+            list.files("R", pattern = "[.]R$", full.names = TRUE),
+            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
+          )
           for (file in files) {
             tryCatch(
               parse(file = file),
@@ -79,6 +82,7 @@ jobs:
               '.rc_extract_condition_grn_contract',
               '.rc_condition_pando_projection',
               '.rc_validate_layer1_stage',
+              '.rc_validate_target_union_anchor_request',
               '.rc_build_target_union_definition',
               '.rc_merge_meta_modules_by_cell_type',
               '.rc_build_celltype_medium_union_gem_cache',
@@ -104,7 +108,8 @@ jobs:
               'celltype_specific_fastcore_after_condition_module_union',
               'structural_scope = "cell_type_x_medium"',
               'unit_celltype == cell_type',
-              'all(cache_celltypes %in% unit_celltypes)'
+              'all(cache_celltypes %in% unit_celltypes)',
+              'direct_database_crossrefs_within_cell_type_only'
           ]
           absent = [value for value in required_contracts if value not in all_text]
           if absent:
