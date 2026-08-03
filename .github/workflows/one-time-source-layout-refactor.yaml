@@ -1,9 +1,8 @@
 name: One-time source layout refactor
 
 on:
-  push:
-    branches:
-      - agent/common-dictionary-condition-grn
+  pull_request:
+    branches: [Main]
 
 permissions:
   contents: write
@@ -15,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/common-dictionary-condition-grn
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Integrate target-union definitions
         shell: python
@@ -96,11 +95,13 @@ jobs:
           )
           scoring = scoring[:old_start] + scoring[old_end:]
 
-          normalize_start, normalize_end = function_span(
+          _, normalize_end = function_span(
               scoring, '.rc_target_union_normalize_ids'
           )
-          insertion = core_function + build_function
-          scoring = scoring[:normalize_end] + insertion + scoring[normalize_end:]
+          scoring = (
+              scoring[:normalize_end] + core_function + build_function +
+              scoring[normalize_end:]
+          )
           scoring_path.write_text(scoring)
 
           definition_path.unlink()
@@ -123,7 +124,6 @@ jobs:
           }
           if duplicate:
               raise RuntimeError(f'Duplicate function definitions: {duplicate}')
-
           if list((root / 'R').glob('zzz*.R')):
               raise RuntimeError('Late-loaded zzz source file remains')
           if 'target_union_anchors.R' in description_path.read_text():
@@ -135,4 +135,4 @@ jobs:
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
           git add R/target_union.R R/target_union_anchors.R DESCRIPTION
           git commit -m "integrate target union definitions directly"
-          git push origin HEAD:agent/common-dictionary-condition-grn
+          git push origin HEAD:${{ github.head_ref }}
