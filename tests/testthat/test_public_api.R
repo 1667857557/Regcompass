@@ -18,21 +18,18 @@ test_that("public API exposes the restartable workflow", {
 test_that("canonical source architecture has no runtime override layers", {
   description <- utils::packageDescription("RegCompassR")
   collate <- description$Collate %||% ""
-  retired <- c(
-    "zzz00_absolute_pando_contract.R",
-    "zzz01_fixed_gamma_metacells.R",
-    "zzz02_layer1_policy.R",
-    "zzz03_compass_gpr_penalty.R",
-    "zzz04_canonical_pando_fit_schema.R",
-    "workflow_stage_", "v170_"
-  )
-  expect_false(any(vapply(retired, grepl, logical(1), x = collate, fixed = TRUE)))
+  expect_false(grepl("zzz", collate, fixed = TRUE))
   required <- c(
-    "condition_grn_contract.R", "condition_full_contract.R",
-    "standard_pando.R", "condition_pooling.R",
-    "metacell_object_merge.R", "step_layer1_oof.R", "penalty.R"
+    "stage1_input_contract.R", "condition_grn_contract.R",
+    "condition_full_contract.R", "standard_pando.R",
+    "condition_pooling.R", "shared_tfidf.R", "step_grn_common_dictionary.R",
+    "stepwise_workflow.R", "step_layer2.R", "step_results.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
+  expect_lt(
+    regexpr("stage1_input_contract.R", collate, fixed = TRUE)[[1L]],
+    regexpr("step_grn_common_dictionary.R", collate, fixed = TRUE)[[1L]]
+  )
   expect_lt(
     regexpr("condition_layer1.R", collate, fixed = TRUE)[[1L]],
     regexpr("condition_full_contract.R", collate, fixed = TRUE)[[1L]]
@@ -75,7 +72,7 @@ test_that("condition and standard Pando implementations are separate", {
     deparse(body(.rc_fit_standard_pando_by_cell_type)), collapse = "\n"
   )
   expect_match(condition_text, "Pando::infer_condition_grn", fixed = TRUE)
-  expect_match(condition_text, "pando_condition_grn_fit", fixed = TRUE)
+  expect_match(condition_text, ".rc_extract_condition_grn_contract", fixed = TRUE)
   expect_match(standard_text, "Pando::infer_grn", fixed = TRUE)
   expect_match(
     standard_text, "condition_coefficients_calculated = FALSE", fixed = TRUE
