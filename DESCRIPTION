@@ -77,6 +77,7 @@ Collate:
     'condition_grn_contract.R'
     'standard_pando.R'
     'mixed_pando.R'
+    'mixed_pando.R'
     'condition_layer1.R'
     'reaction_annotation_utils.R'
     'reaction_evidence.R'
