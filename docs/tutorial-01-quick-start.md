@@ -10,6 +10,8 @@ Stage 1 uses a fixed minimum of 300 paired cells. For each cell type:
 - one retained condition: standard Pando;
 - no retained condition stratum: excluded.
 
+The same `pando_infer_args` list can be supplied in all cases. Stage 1 automatically disables condition-only controls before standard Pando and disables standard-model controls for the fixed common-dictionary condition model. With multiple retained cell types, `upstream_workers` distributes independent cell-type GRN jobs and prevents nested worker pools.
+
 ## Install current companion repositories
 
 ```r
@@ -130,6 +132,8 @@ result <- rc_run_regcompass_one_shot(
 ```r
 result$grn$cell_type_analysis_mode
 result$grn$condition_fit_status
+result$grn$pando_execution_plan
+result$grn$pando_infer_argument_routing
 result$layer1$gene_regulatory_modifier
 result$microcompass$penalty
 result$reaction_ranking
