@@ -13,9 +13,10 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     exact TF-peak-target triples are unioned into one frozen dictionary, and
     every condition is refitted with the same unscaled Gaussian identity Pando
     interaction model. Condition effects retain their fitted coefficient,
-    standard error, P value and BH-adjusted P value. Only coefficients with
-    adjusted P below 0.05 and acceptable target model fit enter the regulatory
-    penalty. No pooled-coefficient rescaling, nested condition cross-validation,
+    standard error, P value and BH-adjusted P value. Only estimable coefficients
+    with BH-adjusted P below 0.05 enter the regulatory penalty; no additional
+    absolute-effect or target-model R-squared gate is applied in multi-condition
+    mode. No pooled-coefficient rescaling, nested condition cross-validation,
     sparse-group path, structural-zero coefficient substitution or common-
     support decomposition is used. When no condition is supplied or fewer than
     two levels are observed, Stage 1 directly fits the original Pando GRN within
@@ -104,6 +105,7 @@ Collate:
     'zzz_workflow_hardening.R'
     'zzzz_min_cells_contract.R'
     'zzzzz_stage_cell_set_contract.R'
+    'zzzzzz_strict_condition_penalty.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
@@ -141,7 +143,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4,
-    1667857557/Pando_regcompass@agent/common-dictionary-condition-grn
+    1667857557/Pando_regcompass@5c451e192831713ed955cd03276ddf47e89a4ec2
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
@@ -153,3 +155,5 @@ Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionMethod: two-stage-exact-edge-union-fixed-dictionary-glm
 Config/RegCompass/PandoConditionEffectFilter: BH-adjusted-p-below-0.05
+Config/RegCompass/PandoConditionGRNSchema: pando_condition_grn_common_dictionary_v1
+Config/RegCompass/PandoConditionGRNMethod: two-stage-exact-edge-union-fixed-dictionary-glm
