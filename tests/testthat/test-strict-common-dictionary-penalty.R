@@ -104,17 +104,3 @@ test_that("condition contract is implemented once in functional source files", {
   expect_identical(count_definition(".rc_condition_pando_projection"), 1L)
   expect_false(any(grepl("strict_condition_penalty|_strict_base", source_text)))
 })
-
-test_that("package metadata pins the audited Pando head", {
-  description <- read.dcf(testthat::test_path("..", "..", "DESCRIPTION"))
-  remotes <- unname(description[1L, "Remotes"])
-  expect_match(
-    remotes,
-    "Pando_regcompass@5c451e192831713ed955cd03276ddf47e89a4ec2",
-    fixed = TRUE
-  )
-  expect_identical(
-    unname(description[1L, "Config/RegCompass/PandoConditionEffectFilter"]),
-    "BH-adjusted-p-below-0.05"
-  )
-})

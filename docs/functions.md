@@ -1,247 +1,29 @@
-# RegCompassR public API
+# Function index
 
-Main tutorials: [one-shot](tutorial-01-quick-start.md),
-[stepwise](tutorial-02-stepwise-audit.md),
-[condition-GRN contract](condition-comparable-grn.md),
-[targeted reaction remapping](tutorial-04-targeted-reaction-remapping.md), and
-[condition comparison](tutorial-05-condition-differential-analysis.md).
+## Complete workflow
 
-## Complete workflows
-
-| Function | Purpose |
-|---|---|
-| `rc_run_regcompass()` | Run all six stages with automatic standard/common-dictionary Pando routing. |
-| `rc_run_regcompass_one_shot()` | Convenience wrapper with species-aware plasma defaults. |
-
-`condition_col` may be absent, single-level or multi-level. The selected route is
-returned in `result$analysis_mode`: `standard_pando` or `condition_grn`.
+- `rc_run_regcompass_one_shot()`: prepare defaults and run the complete workflow.
+- `rc_run_regcompass()`: run the complete workflow with explicit stage arguments.
 
 ## Restartable stages
 
-| Stage | Function | Main output |
-|---:|---|---|
-| 1 | `rc_regcompass_step_grn()` | standard Pando networks or `pando_condition_grn_common_dictionary_v1` contracts |
-| 2 | `rc_regcompass_step_metacells()` | cell-type-scoped joint-condition WNN graphs and condition-pure metacells |
-| 3 | `rc_regcompass_step_meta_modules()` | condition modules and cell-type-specific merged reaction catalogues |
-| 4 | `rc_regcompass_step_layer1()` | paired-cell regulatory projection and reaction expression |
-| 5 | `rc_regcompass_step_layer2()` | one structural model per cell type and medium plus directional penalties |
-| 6 | `rc_regcompass_step_results()` | annotations, rankings and within-cell-type condition contrasts |
+- `rc_regcompass_step_grn()`: filter cells and fit cell-type-specific Pando routes.
+- `rc_regcompass_step_metacells()`: construct condition-pure SuperCell metacells.
+- `rc_regcompass_step_meta_modules()`: build condition-by-cell-type biological reaction catalogues.
+- `rc_regcompass_step_layer1()`: combine RNA and regulatory support and apply GPR rules.
+- `rc_regcompass_step_layer2()`: build structural models and score directional reactions.
+- `rc_regcompass_step_results()`: assemble annotations, rankings, and contrasts.
 
-## Stage 1 routing
+## GEM and media
 
-```r
-step1 <- rc_regcompass_step_grn(
-  object,
-  gem,
-  outdir,
-  genome,
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  pando_args = list(
-    min_cells = 300L,
-    pando_infer_args = list(
-      tf_cor = 0.1,
-      peak_cor = 0,
-      adjust_method = "BH",
-      padj_threshold = 0.05,
-      rank_action = "mark",
-      min_residual_df = 1L
-    )
-  )
-)
-```
+- `rc_prepare_gem()`: load and prepare a supported GEM.
+- `rc_validate_gem()`: validate a prepared GEM.
+- `rc_make_medium_scenarios()`: construct built-in or custom medium tables.
 
-In condition mode, Pando performs pooled plus each-condition candidate discovery,
-unions exact `(target, TF, region)` triples, freezes the dictionary, and fits the
-same unscaled Gaussian identity interaction model in every condition. Condition
-effects are the fitted coefficients; no pooled-coefficient calibration is used.
+## Results
 
-The following condition controls are retired and rejected:
+- `rc_regcompass_targeted_reactions()`: rerun scoring for a focused reaction list.
+- `rc_regcompass_condition_contrast()`: extract condition-level comparisons where available.
+- `rc_export_microcompass()`: export Layer 2 matrices and diagnostics.
 
-```text
-candidate_screen
-condition_mix
-condition_weight
-alpha
-nlambda / lambda / lambda_min_ratio
-outer_nfolds / inner_nfolds
-lambda_selection
-scale
-engine_control
-comparison_conditions
-```
-
-Standard mode uses original `Pando::infer_grn()` independently within each broad
-cell type and creates no condition coefficients.
-
-Condition fit contracts expose:
-
-```r
-fit$edge_dictionary
-fit$coefficients
-fit$fit
-fit$condition_cell_ids
-fit$padj_threshold
-fit$projection_effect_column
-fit$projection_policy
-```
-
-The coefficient table retains `estimate`, `std_err`, `statistic`, `pval`, `padj`,
-`significant`, `penalty_effect`, `estimable`, `zero_variance` and `aliased`.
-`penalty_effect` equals `estimate` only for estimable edges with `padj < 0.05`.
-
-## Stage 2 graph contract
-
-```r
-metacell_args = list(
-  rna_reduction = "pca",
-  rna_dims = 1:30,
-  atac_reduction = "lsi",
-  atac_dims = 2:30,
-  gamma = 30L,
-  k.knn = 30L,
-  seed = 12345L
-)
-```
-
-RegCompass calls `SuperCell::SCimplify_by_graph_group()` with broad cell type as
-`cell.graph.group` and condition as `cell.split.condition`. Each broad cell type
-gets one independent RNA+ATAC WNN graph. Conditions jointly determine that graph
-and split membership only after clustering.
-
-## Stage 3 cell-type catalogue contract
-
-```r
-step3$merged_modules$cell_type_catalogues
-step3$merged_modules$merged_core_reactions
-step3$merged_modules$merged_reaction_membership
-```
-
-Condition-specific biological modules are merged only within the same cell type.
-The merged core and membership tables retain the workflow cell-type column and
-record:
-
-```text
-merge_scope = cell_type
-cross_celltype_merge = FALSE
-is_gem = FALSE
-fastcore_applied = FALSE
-```
-
-Stage 3 constructs biological catalogues only. It does not construct a GEM and
-does not run FASTCORE.
-
-## Stage 4 regulatory support
-
-```r
-step4 <- rc_regcompass_step_layer1(
-  grn,
-  metacells,
-  meta_modules,
-  gem,
-  outdir,
-  gpr_and_method = "min"
-)
-```
-
-For multiple conditions, Pando reconstructs paired-cell `TF RNA × peak ATAC`,
-applies `penalty_effect`, sums by target, and RegCompass aggregates by exact
-SuperCell membership. No metacell-level coefficient fitting or TF×ATAC
-reconstruction is performed.
-
-for API compatibility. The primary and common fields are aliases of the current
-BH-filtered fixed-dictionary projection; the condition-unique compatibility
-decomposition is zero.
-
-A non-finite target modifier uses neutral `R = 0` and therefore RNA-only support.
-GPR AND uses `min` by default and OR isozyme branches are additive.
-
-## Stage 5 structural models and penalty outputs
-
-```r
-step5$penalty
-step5$penalty
-step5$penalty_rna_only
-step5$vmax
-step5$model_cache_summary
-step5$structural_model_contract
-```
-
-For `model_mode = "meta_module_gem"`, the structural key is
-`cell_type × medium_scenario`. Each key has its own biological reaction union,
-union-GEM file, checksum, independent FASTCORE completion, bounds, reaction
-order, directional targets, and `vmax` cache.
-
-Conditions and metacells share a model only within the same cell type. The
-contract records:
-
-```text
-structural_scope = cell_type_x_medium
-shared_across_conditions = TRUE
-shared_across_cell_types = FALSE
-build_strategy = celltype_medium_union_gem
-completion_stage = celltype_specific_fastcore_after_condition_module_union
-```
-
-the condition-unique increment is zero under the current condition-GRN design.
-
-The optional `full_gem` mode is dispatched to a separate full-GEM engine and does
-not construct a cross-cell-type union GEM.
-
-## Optional targeted reaction remapping
-
-| Function | Purpose |
-|---|---|
-| `rc_regcompass_step_target_union()` | Score direct KEGG/Reactome/master-Rhea-linked non-core reactions in matching cell-type Stage 5 caches. |
-
-```r
-targeted <- rc_regcompass_step_target_union(
-  layer1 = step4,
-  meta_modules = step3,
-  layer2 = step5,
-  gem = gem,
-  outdir = "RegCompass_targeted",
-  core_reaction_ids = c("MAR04381", "MAR04379"),
-  layer2_args = list(target_direction = "both", solver = "highs")
-)
-```
-
-Candidate availability is intersected across media within each cell type. The
-exact cell-type/medium model files are reused without model reconstruction or a
-FASTCORE rerun. A cache from one cell type is never assigned to another cell
-type's metacells.
-
-## GEM and medium
-
-| Function | Purpose |
-|---|---|
-| `rc_prepare_gem()` | Load and validate a pinned Human-GEM or Mouse-GEM. |
-| `rc_make_medium_scenarios()` | Build plasma, culture-challenge or custom exchange bounds. |
-| `rc_build_reaction_annotations()` | Build reaction names, formulas, GPRs and cross-references. |
-| `rc_attach_reaction_annotations()` | Attach annotations to an existing result. |
-
-Supported biological medium identifiers:
-
-```text
-normal_human_plasma
-mouse_plasma
-high_glucose
-low_glucose
-high_lactate
-low_lactate
-low_glutamine
-custom
-```
-
-## Condition analysis
-
-| Function | Purpose |
-|---|---|
-| `rc_test_condition_reactions()` | Compare fixed cell-type/reaction/direction/medium targets. |
-| `rc_report_condition_directions()` | Summarize forward and reverse targets. |
-| `rc_plot_condition_reaction()` | Plot one reaction direction across conditions. |
-| `rc_select_gene_reactions()` | Select scored reactions by metabolic gene. |
-
-For one condition, `result$condition_contrast` is empty. Metacell tests are
-within-dataset inference, not biological-replicate inference. Cross-cell-type
-penalty or `vmax` comparisons are not interpreted as condition contrasts.
+Use the generated Rd help for complete argument definitions. Mathematical definitions are in [mathematical-model.md](mathematical-model.md).
