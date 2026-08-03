@@ -27,7 +27,7 @@ jobs:
             any::testthat
             any::knitr
             any::rmarkdown
-            github::1667857557/Pando_regcompass@05246162ab5639fb12407b2b329de5149d9660a4
+            github::1667857557/Pando_regcompass@9b8cde926e176e853c824301a7daf6061d036031
       - name: Verify current documented defaults
         shell: Rscript {0}
         run: |
