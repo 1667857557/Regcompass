@@ -46,7 +46,10 @@ human_gem <- rc_prepare_gem(
 )
 ```
 
-`rc_download_species_gem()` remains available for lower-level update and inspection workflows. `scripts/build-bundled-gems.R` reproduces the package assets. Model provenance and CC BY 4.0 attribution are recorded in `inst/extdata/gem/manifest.tsv`.
+`rc_download_species_gem()` remains available for lower-level update and
+inspection workflows. `scripts/build-bundled-gems.R` reproduces the package
+assets. Model provenance and CC BY 4.0 attribution are recorded in
+`inst/extdata/gem/manifest.tsv`.
 
 ## Canonical two-layer worker model
 
@@ -59,16 +62,22 @@ layer2_workers <- 30L
 
 `upstream_workers` applies to:
 
-- one shared-design Pando condition fit per cell type;
+- Pando fixed-dictionary or standard GRN fitting by cell type;
 - Layer 1 reaction-support calculation.
 
-Stage 3 meta-module construction does not run FASTCORE and does not own a worker pool for feasibility completion.
+Stage 3 meta-module construction does not run FASTCORE and does not own a worker
+pool for feasibility completion.
 
-`layer2_workers` applies to:
+`layer2_workers` applies to independent tasks such as:
 
-- one medium-specific union-GEM construction task per medium;
-- the single global FASTCORE completion performed within each union-GEM build;
-- directional LP scoring across metacells.
+- union-GEM construction for each `cell_type × medium_scenario` pair;
+- FASTCORE completion performed independently inside each cell-type union GEM;
+- directional `vmax` calculation for each cell-type model and target direction;
+- directional LP scoring for metacells matching that cell type.
+
+Conditions do not create separate structural models. Conditions of the same
+cell type share its cell-type/medium model; different cell types are separate
+Layer 2 structural tasks.
 
 Set both values to one for fully serial execution:
 
@@ -90,11 +99,14 @@ The canonical workflow always requests `backend = "auto"` internally.
 | Linux/macOS | `BiocParallel::MulticoreParam` |
 | one worker or unavailable BiocParallel | sequential |
 
-The public complete-workflow interface therefore does not require `parallel_backend`. Low-level `rc_parallel_config()` remains available for diagnostics and package development.
+The public complete-workflow interface therefore does not require
+`parallel_backend`. Low-level `rc_parallel_config()` remains available for
+diagnostics and package development.
 
 ## One outer worker equals one single-thread task
 
-RegCompass uses task-level parallelism only. Every analysis running inside an outer worker is constrained to one internal thread.
+RegCompass uses task-level parallelism only. Every analysis running inside an
+outer worker is constrained to one internal thread.
 
 The workflow temporarily sets:
 
@@ -108,9 +120,14 @@ NUMEXPR_NUM_THREADS=1
 RCPP_PARALLEL_NUM_THREADS=1
 ```
 
-It also sets `mc.cores = 1L` and keeps Pando's internal `parallel = FALSE`. Package-managed child processes inherit the single-thread environment. This prevents an outer pool of LP tasks from expanding into nested multi-threaded solver or BLAS workloads.
+It also sets `mc.cores = 1L` and keeps Pando's internal `parallel = FALSE`.
+Package-managed child processes inherit the single-thread environment. This
+prevents an outer pool of LP tasks from expanding into nested multi-threaded
+solver or BLAS workloads.
 
-HiGHS uses a one-thread control default. GLPK is used as a serial solver backend. Alternative low-level solver interfaces remain available, but the canonical tutorials use HiGHS.
+HiGHS uses a one-thread control default. GLPK is used as a serial solver backend.
+Alternative low-level solver interfaces remain available, but the canonical
+tutorials use HiGHS.
 
 ## Stage-scoped worker lifecycle
 
@@ -129,11 +146,14 @@ resolve operating-system backend
 → run gc(full = TRUE)
 ```
 
-Cleanup is registered before pool startup. Stage 1, Stage 4, and Stage 5 each receive a fresh pool when parallel work is requested. Stage 3 is a catalogue-construction stage and does not create a feasibility-completion pool. No upstream worker pool remains active while Layer 2 is running.
+Cleanup is registered before pool startup. Stage 1, Stage 4, and Stage 5 each
+receive a fresh pool when parallel work is requested. Stage 3 is a
+catalogue-construction stage and does not create a feasibility-completion pool.
+No upstream worker pool remains active while Layer 2 is running.
 
-## Global FASTCORE configuration
+## Cell-type FASTCORE configuration
 
-Configure the single medium-specific completion through:
+Configure completion of each `cell_type × medium` union GEM through:
 
 ```r
 layer2_args = list(
@@ -146,11 +166,19 @@ layer2_args = list(
 )
 ```
 
-Each medium scenario receives its own final union GEM. All conditions and metacells evaluated under that medium reuse that one model file.
+`completion_time_limit` applies independently to each cell-type/medium model
+construction. Every resulting model file records its cell type, medium,
+checksum, biological reaction count and cell-type FASTCORE support count.
+Conditions and metacells reuse only the model belonging to their cell type.
+
+Increasing the number of cell types or media increases the number of independent
+structural construction tasks. It does not create one larger cross-cell-type GEM.
 
 ## Linux numerical-library setup
 
-The package applies single-thread settings during execution. For cluster batch jobs, setting them before launching R remains recommended because it also covers package loading and user-side preprocessing:
+The package applies single-thread settings during execution. For cluster batch
+jobs, setting them before launching R remains recommended because it also covers
+package loading and user-side preprocessing:
 
 ```bash
 export OMP_NUM_THREADS=1
@@ -178,7 +206,8 @@ or per call:
 result <- rc_run_regcompass_one_shot(..., progress = FALSE)
 ```
 
-The complete workflow reports progress across six stages. Each independently run stage reports its own start and completion status.
+The complete workflow reports progress across six stages. Each independently
+run stage reports its own start and completion status.
 
 ## Timing and execution provenance
 
@@ -207,4 +236,6 @@ result$params$parallel_worker_lifecycle
 result$params$parallel_stage_groups
 ```
 
-Timing columns include stage, status, timestamps, elapsed seconds, formatted elapsed time, OS type, and R version. Failed stages write an error-status timing row before propagating the original error.
+Timing columns include stage, status, timestamps, elapsed seconds, formatted
+elapsed time, OS type, and R version. Failed stages write an error-status timing
+row before propagating the original error.
