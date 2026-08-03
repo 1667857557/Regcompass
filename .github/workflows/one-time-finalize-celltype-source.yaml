@@ -45,7 +45,8 @@ jobs:
               '.rc_validate_target_union_anchor_request <- function',
               'direct_database_crossrefs_within_cell_type_only',
               'Build cell-type and medium structural models',
-              'FASTCORE completion are created for every cell-type and medium'
+              'one independent FASTCORE completion are',
+              'created for every cell-type and medium combination'
           ]
           missing = [value for value in required if value not in text]
           if missing:
