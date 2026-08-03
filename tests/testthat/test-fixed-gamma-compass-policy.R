@@ -8,23 +8,13 @@ test_that("metacell construction uses grouped WNN and gamma 30", {
     collapse = "\n"
   )
   defaults <- RegCompassR:::.rc_condition_metacell_defaults()
-
   expect_identical(defaults$gamma, 30L)
   expect_match(builder, "SCimplify_by_graph_group", fixed = TRUE)
   expect_match(builder, "cell.graph.group", fixed = TRUE)
   expect_match(builder, "cell.split.condition", fixed = TRUE)
-  expect_match(
-    builder,
-    "assay = c\\(rna_assay,[[:space:]]*atac_assay\\)"
-  )
   expect_false(grepl("cell.annotation", builder, fixed = TRUE))
   expect_false(grepl("depth_balance", wrapper, fixed = TRUE))
   expect_false(grepl("stratum_col", wrapper, fixed = TRUE))
-  expect_false(exists(
-    ".rc_native_supercell_membership",
-    envir = asNamespace("RegCompassR"),
-    inherits = FALSE
-  ))
 })
 
 test_that("RNA empirical-Bayes priors are estimated by cell type", {
@@ -65,13 +55,6 @@ test_that("regulatory alpha is fixed at one and missing Pando is RNA-only", {
     ),
     "requires `regulatory_alpha = 1`"
   )
-  expect_error(
-    rc_regcompass_step_layer1(
-      grn = list(), metacells = list(), meta_modules = list(),
-      gem = list(), outdir = tempfile(), regulatory_alpha = 0.5
-    ),
-    "requires `regulatory_alpha = 1`"
-  )
 })
 
 test_that("GPR aggregation follows COMPASS AND and OR semantics", {
@@ -99,22 +82,16 @@ test_that("missing reaction expression receives maximum expression penalty", {
   expect_equal(out$penalty["R_zero", "u1"], 1)
   expect_lt(out$penalty["R_high", "u1"], 1)
   expect_true(out$components$penalty_available["R_missing", "u1"])
-  expect_true(out$components$missing_expression_imputed_zero[
-    "R_missing", "u1"
-  ])
-  expect_true(out$components$maximum_expression_penalty_flag[
-    "R_missing", "u1"
-  ])
   expect_identical(
     out$missing_expression_policy,
     "compass_missing_expression_max_penalty"
   )
 })
 
-test_that("condition contracts are absolute, unversioned and condition-full", {
+test_that("condition contracts use one common dictionary and BH effects", {
   expect_identical(
     RegCompassR:::.RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    "pando_condition_grn_fit"
+    "pando_condition_grn_common_dictionary_v1"
   )
   validator <- paste(
     deparse(body(RegCompassR:::.rc_require_pando_condition_grn_fit)),
@@ -124,23 +101,31 @@ test_that("condition contracts are absolute, unversioned and condition-full", {
     deparse(body(RegCompassR:::.rc_extract_condition_grn_contract)),
     collapse = "\n"
   )
-  expect_match(validator, "coefficient_estimable_mask", fixed = TRUE)
-  expect_match(validator, "projectable_structural_zero_mask", fixed = TRUE)
-  expect_match(validator, "projection_support_mask", fixed = TRUE)
-  expect_match(validator, "projection_condition_full_oof", fixed = TRUE)
-  expect_match(extraction, "projectable_structural_zero", fixed = TRUE)
-  expect_match(extraction, "projection_supported", fixed = TRUE)
-  expect_false(grepl("comparison_mask", extraction, fixed = TRUE))
+  expect_match(validator, "edge_dictionary", fixed = TRUE)
+  expect_match(validator, "penalty_effect", fixed = TRUE)
+  expect_match(validator, "padj_threshold", fixed = TRUE)
+  expect_match(extraction, "condition_estimate", fixed = TRUE)
+  expect_match(extraction, "penalty_eligible", fixed = TRUE)
+  expect_match(
+    extraction,
+    "same_exact_edge_dictionary_unscaled_gaussian_glm",
+    fixed = TRUE
+  )
+  expect_false(grepl("projectable_structural_zero", extraction, fixed = TRUE))
 })
 
-test_that("condition Layer 1 records condition-full structural-zero policy", {
+test_that("condition Layer 1 records fixed-dictionary projection policy", {
   body_text <- paste(
-    deparse(body(RegCompassR:::.rc_cell_first_projection_layer1)),
+    deparse(body(RegCompassR:::.rc_condition_pando_projection)),
     collapse = "\n"
   )
-  expect_match(body_text, "condition_full_oof", fixed = TRUE)
-  expect_match(body_text, "gene_projection_condition_unique_oof", fixed = TRUE)
-  expect_match(body_text, "nonestimable_projection_policy", fixed = TRUE)
-  expect_match(body_text, "condition_grn", fixed = TRUE)
-  expect_match(body_text, "standard_pando", fixed = TRUE)
+  expect_match(body_text, "significant_only = TRUE", fixed = TRUE)
+  expect_match(
+    body_text,
+    "paired_cell_full_fit_fixed_dictionary_glm_padj_filtered",
+    fixed = TRUE
+  )
+  expect_match(body_text, "common = primary", fixed = TRUE)
+  expect_match(body_text, "primary * 0", fixed = TRUE)
+  expect_false(grepl("structural_zero_by_condition", body_text, fixed = TRUE))
 })

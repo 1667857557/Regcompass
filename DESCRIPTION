@@ -1,59 +1,30 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.2.10
+Version: 2.3.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Integrates paired single-cell RNA and ATAC regulatory evidence
-    with genome-scale metabolic reaction analysis. Stage 1 fixes
-    pando_args$min_cells at 300 and uses that same value before normalization.
-    Standard Pando retains a broad cell type only when its total cell count is at
-    least 300. Condition Pando evaluates each condition-by-cell-type stratum
-    independently and removes only strata below 300 cells. Qualifying conditions
-    of the same cell type remain, and the cell type proceeds when at least two
-    qualifying conditions remain. Globally zero ATAC peaks are also removed
-    before subsequent analysis. Stage 1 clears stale fragment references by
-    default and reuses persistent motif matches across identical region layouts.
-    When two or more condition levels are available, RegCompass fits one
-    condition-aware Pando design per broad cell type and uses condition-full
-    outerheldout TF-by-ATAC projections as the primary regulatory penalty.
-    Jointly estimable edges form an auditable common-support component; edges
-    non-estimable in one or both conditions contribute projectable structural
-    zeros in those conditions. A supplied single-level condition directly uses
-    original Pando infer_grn with unscaled predictors and no condition
-    coefficients; its active edges require adjusted P below 0.05 and absolute
-    coefficient above 0.01. Condition-aware runs install the latest default-
-    branch Pando repository head and require native condition ABI 6, worker-safe
-    registered-symbol lookup, budgeted dense or sparse matrix-free target
-    execution, exact residual validation, and exact dense-direct or matrix-free
-    Schur refitting. Before target fitting, RegCompass performs lightweight
-    compatibility checks in the main process and on up to two supplied
-    BiocParallel workers. These checks validate package metadata, registered
-    production symbols, worker-safe wrappers and required APIs; fixed synthetic-
-    matrix numerical tests are not run at workflow startup. Pando still stops
-    immediately when real target inputs are misaligned, factorization or
-    iterative solving fails, arithmetic is non-finite, OOF assignment is
-    incomplete, the memory contract is violated or target-specific residual
-    verification fails. RegCompass does not provide or select an R fallback.
-    Metacells use one independent multimodal WNN graph per broad cell type
-    through SuperCell SCimplify_by_graph_group. All conditions within a cell type
-    jointly determine adaptive RNA and ATAC modality weights, neighbours, and
-    Walktrap clusters; condition splits parent membership only after clustering.
-    Metacell RNA and ATAC counts use exact SuperCell membership. Small metacells
-    are retained and marked rather than merged or removed. RNA latent expression
-    uses normalized-unit empirical Bayes updates whose shrinkage weights are
-    independent of library size; observed zeros retain continuous posterior
-    evidence and are not threshold-clamped. Regulatory modifiers act on bounded
-    RNA-support odds, GPR rules produce reaction expression, and each medium uses
-    one shared union GEM and global FASTCORE completion. Condition-specific meta-
-    module payloads are stored externally so Stage 5 receives only their merged
-    catalogue and a checksummed reference. Directional LP work is split into
-    model-by-target blocks with one solver thread per worker. Directional
-    structural vmax is solved once per shared model and target, then reused
-    across metacells. Built-in medium scenarios are restricted to formulations
-    with direct published-paper provenance. Depth matching, common-depth
-    restriction, alpha sensitivity, zero-support sensitivity and link-saturation
-    propagation are not part of the canonical workflow.
+    with genome-scale metabolic reaction analysis. Stage 1 fixes min_cells at
+    300 and applies the same cell set before normalization and downstream
+    metacell construction. With two or more conditions, each broad cell type
+    uses one canonical Pando condition-GRN procedure: candidate edges are
+    discovered on the complete cell type and separately in every condition,
+    exact TF-peak-target triples are unioned into one frozen dictionary, and
+    every condition is refitted with the same unscaled Gaussian identity Pando
+    interaction model. Condition effects retain their fitted coefficient,
+    standard error, P value and BH-adjusted P value. Only coefficients with
+    adjusted P below 0.05 and acceptable target model fit enter the regulatory
+    penalty. No pooled-coefficient rescaling, nested condition cross-validation,
+    sparse-group path, structural-zero coefficient substitution or common-
+    support decomposition is used. When no condition is supplied or fewer than
+    two levels are observed, Stage 1 directly fits the original Pando GRN within
+    each broad cell type and creates no condition coefficient. Paired-cell
+    TF-by-ATAC regulatory effects are projected before exact SuperCell
+    aggregation. Metacells use one multimodal WNN graph per broad cell type and
+    remain condition-pure after membership splitting. RNA support, regulatory
+    effects, GPR rules, shared union GEM construction and directional metabolic
+    penalties use consistent reaction ordering, bounds and medium scenarios.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -103,9 +74,7 @@ Collate:
     'shared_tfidf.R'
     'condition_pooling.R'
     'grn_inference.R'
-    'condition_grn_runtime.R'
     'condition_grn_contract.R'
-    'condition_grn_runtime_guard.R'
     'standard_pando.R'
     'condition_layer1.R'
     'condition_full_contract.R'
@@ -121,9 +90,12 @@ Collate:
     'penalty.R'
     'reaction_roles.R'
     'stepwise_workflow.R'
+    'step_grn_common_dictionary.R'
     'step_meta_modules.R'
     'step_layer1.R'
     'step_layer1_oof.R'
+    'step_layer1_common_dictionary.R'
+    'step_layer1_common_dictionary_contract.R'
     'step_layer2.R'
     'step_results.R'
     'regcompass.R'
@@ -169,7 +141,7 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4,
-    1667857557/Pando_regcompass
+    1667857557/Pando_regcompass@agent/common-dictionary-condition-grn
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
 Config/RegCompassR/SupportedSeuratMajors: 4,5
@@ -178,9 +150,6 @@ Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
 Config/RegCompassR/SeuratObjectVersion: 4.1.4
 Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
-Config/RegCompass/PandoNativeSparseABI: 6
-Config/RegCompass/PandoNativeCallBinding: registered-symbol-lookup-worker-safe-v1
-Config/RegCompass/PandoConditionRefitBackend: dense-direct-or-matrix-free-schur-pcg-v1
-Config/RegCompass/PandoConditionTargetEngineBackend: cpp-eigen-memory-bounded-hybrid-target-v1
-Config/RegCompass/PandoConditionInnerCVBackend: exact-refit-validation-sparse-residual-v1
-Config/RegCompass/PandoConditionMemoryContract: no-full-p2-on-high-p-path-v1
+Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
+Config/RegCompass/PandoConditionMethod: two-stage-exact-edge-union-fixed-dictionary-glm
+Config/RegCompass/PandoConditionEffectFilter: BH-adjusted-p-below-0.05

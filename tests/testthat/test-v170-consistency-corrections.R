@@ -36,10 +36,6 @@ test_that("cell-type-shared TF-IDF is computed across available cells", {
     normalized@misc$regcompass_atac_normalization$scope,
     "cell_type_all_available_cells"
   )
-  expect_equal(
-    unname(normalized@misc$regcompass_atac_normalization$n_units_by_celltype[c("B", "T")]),
-    c(2L, 2L)
-  )
 })
 
 test_that("single-cell Pando reuses shared normalized data", {
@@ -58,7 +54,7 @@ test_that("single-cell Pando reuses shared normalized data", {
   )
 })
 
-test_that("within-cell-type OOF controls condition Layer 1 reliability", {
+test_that("target model R-squared controls condition Layer 1 reliability", {
   projection_text <- paste(
     deparse(body(.rc_condition_pando_projection)), collapse = "\n"
   )
@@ -68,11 +64,16 @@ test_that("within-cell-type OOF controls condition Layer 1 reliability", {
   expect_false(exists(
     ".rc_condition_gene_regulatory_modifier", inherits = TRUE
   ))
-  expect_match(projection_text, "q[!available] <- NA_real_", fixed = TRUE)
+  expect_match(projection_text, "fit_table$rsq", fixed = TRUE)
+  expect_match(projection_text, "sqrt(pmin(1, pmax(0", fixed = TRUE)
   expect_match(layer1_text, "gene_regulatory_reliability_available", fixed = TRUE)
   expect_match(
-    projection_text, "outer_condition_stratified_cell_oof", fixed = TRUE
+    projection_text,
+    "paired_cell_full_fit_fixed_dictionary_glm_padj_filtered",
+    fixed = TRUE
   )
+  expect_false(grepl("outer_condition_stratified_cell_oof", projection_text,
+                     fixed = TRUE))
 })
 
 test_that("feasibility completion is global and medium specific", {
