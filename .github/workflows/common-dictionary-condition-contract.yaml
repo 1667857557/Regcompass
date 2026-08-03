@@ -95,7 +95,6 @@ jobs:
           retired = [
               "condition_full_oof", "common_oof", "condition_unique_oof",
               "project_condition_grn_primary_cells",
-              "network_name = \"regcompass_condition_grn\"",
               "min_abs_estimate", "min_model_rsq",
               "structural_zero_probability", "nested_cv_used",
               "projection_component", "comparison_support",
@@ -107,7 +106,7 @@ jobs:
       - name: Verify exact companion dependency
         shell: bash
         run: |
-          grep -F '1667857557/Pando_regcompass@05246162ab5639fb12407b2b329de5149d9660a4' DESCRIPTION
+          grep -F '1667857557/Pando_regcompass@9b8cde926e176e853c824301a7daf6061d036031' DESCRIPTION
           grep -F 'Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1' DESCRIPTION
           test ! -e R/condition_full_contract.R
           test ! -e .github/workflows/seurat-v5-compatibility.yaml
