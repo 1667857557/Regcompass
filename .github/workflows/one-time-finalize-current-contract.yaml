@@ -1,4 +1,4 @@
-name: One-time apply cell-type Pando routing
+name: One-time clean current R contracts
 
 on:
   pull_request:
@@ -8,11 +8,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: regcompass-celltype-routing-${{ github.event.pull_request.number }}
+  group: regcompass-r-contract-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  migrate:
+  clean:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-22.04
     steps:
@@ -20,12 +20,12 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-      - name: Apply cell-type routing
-        run: python .github/scripts/apply_mixed_pando.py || true
-      - name: Commit routed source
+      - name: Apply current R contract
+        run: python .github/scripts/cleanup_r_contract.py
+      - name: Commit source cleanup
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A R DESCRIPTION
-          git commit -m "route Pando by retained condition count"
+          git add -A R
+          git commit -m "remove retired R fields and validate mixed routing"
           git push origin HEAD:${{ github.head_ref }}
