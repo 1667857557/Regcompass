@@ -24,25 +24,25 @@ support and directional metabolic scores.
 For multiple conditions, each broad cell type uses one two-stage Pando design:
 
 ```text
-global candidate discovery
+pooled candidate discovery
 + condition-specific candidate discovery
 → exact TF-peak-target union
 → frozen target-specific dictionary
 → one unscaled Gaussian identity GLM per condition
-→ BH-adjusted condition effects
+→ estimable BH padj < 0.05 condition effects
 ```
 
 The first-stage candidate fits are not final effects. No pooled coefficient is
 used to rescale a condition coefficient. Conditions may have different
-significant edges and opposite directions, while all coefficients remain on the
-same predictor definition and numerical scale.
+significant edges and opposite directions while retaining the same predictor
+definition and numerical scale.
 
 Stage 2 calls `SuperCell::SCimplify_by_graph_group()` with one independent
 multimodal WNN graph per broad cell type. All conditions of that type jointly
 determine the graph; condition splits parent membership only after clustering.
-Final metacells are therefore condition-pure without condition-specific graphs.
+Final metacells are condition-pure without condition-specific graphs.
 
-# Run
+# Medium and GEM
 
 ```{r}
 library(RegCompassR)
@@ -56,11 +56,19 @@ gem <- rc_prepare_gem(
 
 medium_scenarios <- rc_make_medium_scenarios(
   gem,
-  scenario = "normal_human_plasma",
+  scenario = c("normal_human_plasma", "high_glucose", "low_glucose"),
   species = "human"
 )
+```
 
-result <- rc_run_regcompass(
+Built-in scenarios can be combined with custom reaction-level bounds or
+metabolite-level availability. Medium definitions change exchange constraints;
+they are not measured transporter fluxes.
+
+# One-shot run
+
+```{r}
+result <- rc_run_regcompass_one_shot(
   object = A,
   gem = gem,
   outdir = "RegCompass_result",
@@ -96,12 +104,22 @@ result <- rc_run_regcompass(
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
-  model_mode = "meta_module_gem"
+  model_mode = "meta_module_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs"
+  ),
+  upstream_workers = 6L,
+  layer2_workers = 30L
 )
 ```
 
-Stage 1 fixes `min_cells` at 300. The following former condition-GRN parameters
-are rejected:
+Stage 1 fixes `min_cells` at 300. `upstream_workers` controls GRN and other
+upstream tasks; `layer2_workers` controls LP-heavy metabolic scoring. Layer 2
+workers force HiGHS and numerical libraries to one internal thread to avoid
+nested oversubscription.
+
+The following retired condition-GRN parameters are rejected:
 
 ```text
 candidate_screen
@@ -116,30 +134,60 @@ engine_control
 comparison_conditions
 ```
 
+# Restartable stages
+
+The same workflow can be run as six persisted stages:
+
+```{r}
+step1 <- rc_regcompass_step_grn(...)
+step2 <- rc_regcompass_step_metacells(..., grn = step1)
+step3 <- rc_regcompass_step_meta_modules(
+  grn = step1, metacells = step2, gem = gem, outdir = "03_meta_modules"
+)
+step4 <- rc_regcompass_step_layer1(
+  grn = step1, metacells = step2, meta_modules = step3,
+  gem = gem, outdir = "04_layer1"
+)
+step5 <- rc_regcompass_step_layer2(
+  layer1 = step4, meta_modules = step3, gem = gem,
+  medium_scenarios = medium_scenarios, outdir = "05_layer2"
+)
+result <- rc_regcompass_step_results(
+  grn = step1, metacells = step2, meta_modules = step3,
+  layer1 = step4, layer2 = step5, gem = gem,
+  outdir = "06_results"
+)
+```
+
+Each stage writes an RDS artifact plus progress and timing logs. Changes to only
+the medium or LP controls require rerunning Stage 5 and final results, not the
+GRN and metacell stages.
+
 # Condition effect and penalty
 
 For an estimable edge, `estimate` is the complete fixed-dictionary condition
-coefficient. Pando calculates a network-wide BH-adjusted P value and defines:
+coefficient. Pando defines:
 
 ```text
 penalty_effect = estimate when padj < 0.05
 penalty_effect = 0 otherwise
 ```
 
-RegCompass then applies `min_abs_estimate` and `min_model_rsq`. The complete
-coefficient table is retained even when an edge does not enter penalty. A
-zero-variance or aliased coefficient remains `NA` and is not interpreted as a
-fitted zero.
+The multi-condition handoff applies no additional absolute-effect or model-R²
+threshold. `min_abs_estimate` and `min_model_rsq` remain controls for the direct
+standard-Pando fallback. The complete coefficient table is retained even when
+an edge does not enter the penalty. A zero-variance, aliased, non-finite, or
+insufficient-residual-df coefficient remains `NA`.
 
 The GLM P value is conditional on the frozen candidate dictionary and does not
 include selective-inference correction for candidate discovery.
 
 # Cell-first projection
 
-Pando reconstructs each paired-cell predictor `TF RNA × peak ATAC`, applies the
-condition `penalty_effect`, and sums edge contributions by target. RegCompass
-then aggregates these target scores by exact SuperCell membership. It does not
-recompute TF×ATAC from metacell averages or refit after aggregation.
+RegCompass reconstructs each paired-cell predictor `TF RNA × peak ATAC`, applies
+the cell's condition-specific `penalty_effect`, and sums edge contributions by
+target. It then aggregates target scores by exact SuperCell membership. It does
+not recompute TF×ATAC from metacell averages or refit after aggregation.
 
 ```{r}
 result$grn$tf_peak_gene_condition_effect_all
@@ -150,22 +198,21 @@ result$reaction_ranking
 result$condition_contrast
 ```
 
-Several historical fields retain `_oof`, `common`, or `condition_unique` in their
-names for backward compatibility. In the current method, the primary and common
-fields are aliases of the BH-filtered fixed-dictionary full-fit projection, and
-the condition-unique decomposition is zero. The names do not imply OOF fitting
-or a common-support model.
+Historical fields retain `_oof`, `common`, or `condition_unique` in their names
+for backward compatibility. The primary and common fields are aliases of the
+fixed-dictionary projection, and the condition-unique compatibility matrix is
+zero. These names do not imply OOF fitting or a common-support model.
 
 # No condition or one condition
 
-With no usable condition column or one observed condition level, RegCompass
-runs original Pando independently within each retained broad cell type. It does
-not create condition coefficients or a synthetic condition fit contract.
+With no usable condition column or one observed condition level, RegCompass runs
+original Pando independently within each retained broad cell type. It does not
+create condition coefficients or a synthetic condition fit contract.
 
 # Optional targeted reaction remapping
 
 After a completed `model_mode = "meta_module_gem"` run, directly database-linked
-non-core reactions can be scored without rebuilding the model:
+reactions can be scored without rebuilding the cached model:
 
 ```{r}
 targeted <- rc_regcompass_step_target_union(
@@ -180,13 +227,13 @@ targeted <- rc_regcompass_step_target_union(
 ```
 
 The second pass reuses the same Stage 5 union GEM, global FASTCORE completion,
-reaction order, direction, bounds and `vmax`.
+reaction order, direction, bounds, and `vmax`.
 
 # Documentation
 
-- [Tutorial 1](../docs/tutorial-01-quick-start.md)
-- [Tutorial 2](../docs/tutorial-02-stepwise-audit.md)
-- [Condition-GRN contract](../docs/condition-comparable-grn.md)
+- [Tutorial 1: one-shot workflow](../docs/tutorial-01-quick-start.md)
+- [Tutorial 2: stepwise workflow](../docs/tutorial-02-stepwise-audit.md)
+- [Tutorial 3: mathematical model](../docs/tutorial-03-mathematical-model.md)
 - [Tutorial 4: targeted reaction remapping](../docs/tutorial-04-targeted-reaction-remapping.md)
 - [Tutorial 5: condition comparison](../docs/tutorial-05-condition-differential-analysis.md)
 - [Medium scenarios and evidence](../docs/medium-presets.md)
