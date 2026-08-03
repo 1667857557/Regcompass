@@ -1,5 +1,6 @@
-# Load Pando LazyData directly from its loaded namespace. This avoids package
-# rediscovery through find.package() inside forked or SOCK workers.
+# Load one Pando dataset through the installed package data index. Never force
+# namespace LazyData promises: those promises retain the path of the package
+# installation that created them and become invalid after an in-session reinstall.
 .rc_pando_data_object <- function(name) {
   if (!is.character(name) || length(name) != 1L ||
       is.na(name) || !nzchar(name)) {
@@ -8,27 +9,43 @@
   if (!requireNamespace("Pando", quietly = TRUE)) {
     stop("Package 'Pando' is required.", call. = FALSE)
   }
-  namespace <- asNamespace("Pando")
-  lazydata <- tryCatch(
-    getNamespaceInfo(namespace, "lazydata"),
-    error = function(error) NULL
+  package_path <- tryCatch(
+    getNamespaceInfo(asNamespace("Pando"), "path"),
+    error = function(error) ""
   )
-  if (is.environment(lazydata) &&
-      exists(name, envir = lazydata, inherits = FALSE)) {
-    return(get(name, envir = lazydata, inherits = FALSE))
+  if (!is.character(package_path) || length(package_path) != 1L ||
+      is.na(package_path) || !nzchar(package_path) ||
+      !dir.exists(package_path)) {
+    stop("Cannot resolve the active Pando installation path.", call. = FALSE)
   }
-  package_name <- "package:Pando"
-  if (package_name %in% search()) {
-    package_environment <- as.environment(package_name)
-    if (exists(name, envir = package_environment, inherits = FALSE)) {
-      return(get(name, envir = package_environment, inherits = FALSE))
-    }
+
+  data_environment <- new.env(parent = emptyenv())
+  load_error <- tryCatch({
+    utils::data(
+      list = name,
+      package = "Pando",
+      lib.loc = dirname(package_path),
+      envir = data_environment
+    )
+    NULL
+  }, error = function(error) error)
+  if (inherits(load_error, "error")) {
+    stop(
+      "Cannot read Pando bundled data `", name, "` from ", package_path,
+      ": ", conditionMessage(load_error), ". The active Pando installation ",
+      "is incomplete or was replaced after this R session started. Restart R ",
+      "and reinstall 1667857557/Pando_regcompass >= 2.0.2.",
+      call. = FALSE
+    )
   }
-  stop(
-    "Installed Pando does not provide required data object `", name,
-    "`. Install 1667857557/Pando_regcompass.",
-    call. = FALSE
-  )
+  if (!exists(name, envir = data_environment, inherits = FALSE)) {
+    stop(
+      "Installed Pando does not provide required data object `", name,
+      "`. Install 1667857557/Pando_regcompass >= 2.0.2.",
+      call. = FALSE
+    )
+  }
+  get(name, envir = data_environment, inherits = FALSE)
 }
 
 #' Load the canonical Pando motif collection
@@ -43,7 +60,18 @@
   motifs
 }
 
-# Keep the RegCompass Pando route memory bounded.  Exact motif-hit coordinates
+.rc_default_pando_motif2tf <- function() {
+  motif2tf <- .rc_pando_data_object("motif2tf")
+  if (!is.data.frame(motif2tf) || ncol(motif2tf) < 2L) {
+    stop(
+      "Pando `motif2tf` must be a data frame with at least two columns.",
+      call. = FALSE
+    )
+  }
+  motif2tf
+}
+
+# Keep the RegCompass Pando route memory bounded. Exact motif-hit coordinates
 # are not consumed anywhere downstream; the candidate construction only needs
 # the peak-by-motif incidence matrix.
 .rc_regcompass_motif_args <- function(args = list()) {
@@ -111,6 +139,35 @@
     )
   }
   BiocGenerics::union(phast_cons, screen_ccre)
+}
+
+# Resolve every package-backed Pando resource before an outer BiocParallel
+# dispatch. Workers receive ordinary serialized objects and never dereference
+# installation-specific package data promises.
+.rc_materialize_pando_resources <- function(
+    pfm = NULL, species = c("human", "mouse"),
+    pando_initiate_args = list(), pando_motif_args = list()) {
+  species <- match.arg(species)
+  if (!is.list(pando_initiate_args)) {
+    stop("`pando_initiate_args` must be a list.", call. = FALSE)
+  }
+  if (!is.list(pando_motif_args)) {
+    stop("`pando_motif_args` must be a list.", call. = FALSE)
+  }
+  if (is.null(pfm)) pfm <- .rc_default_pando_motifs()
+  if (!"regions" %in% names(pando_initiate_args) ||
+      is.null(pando_initiate_args$regions)) {
+    pando_initiate_args$regions <- .rc_default_pando_regions(species)
+  }
+  if (!"motif_tfs" %in% names(pando_motif_args) ||
+      is.null(pando_motif_args$motif_tfs)) {
+    pando_motif_args$motif_tfs <- .rc_default_pando_motif2tf()
+  }
+  list(
+    pfm = pfm,
+    pando_initiate_args = pando_initiate_args,
+    pando_motif_args = pando_motif_args
+  )
 }
 
 .rc_validate_pando_evidence_filters <- function(
