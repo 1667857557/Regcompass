@@ -105,6 +105,7 @@ rc_regcompass_step_results <- function(
   condition_modules <- meta_modules$condition_modules[condition_fields]
   mode <- params$analysis_mode
   metacell_design <- metacells$pooled$input_design
+  is_celltype_union <- identical(layer2$model_mode, "meta_module_gem")
   result <- list(
     schema_version = "regcompass_regulatory_metabolic_result_v2",
     version = "2.3.0",
@@ -141,9 +142,13 @@ rc_regcompass_step_results <- function(
       workflow_order = c(
         "single_cell_grn",
         "celltype_joint_condition_WNN_metacells",
-        "meta_modules",
+        "celltype_condition_meta_modules",
         "condition_layer1",
-        "medium_specific_union_gem_layer2"
+        if (is_celltype_union) {
+          "celltype_x_medium_union_gem_layer2"
+        } else {
+          "shared_full_gem_layer2"
+        }
       ),
       pando_grouping = params$celltype_col,
       pando_design = if (identical(mode, "condition_grn")) {
@@ -177,16 +182,38 @@ rc_regcompass_step_results <- function(
       metacell_gamma = params$metacell_args$gamma,
       sample_variable = "not_used",
       meta_module_core_definition =
-        "active_pando_targets_complete_gpr_by_effective_group",
+        "active_pando_targets_complete_gpr_by_condition_and_cell_type",
       meta_module_expansion =
         "core_subsystem_plus_kegg_reactome_master_rhea_only",
-      feasibility_completion = if (
-        identical(layer2$model_mode, "meta_module_gem")
-      ) {
-        "single_global_fastcore_on_each_medium_specific_union_gem"
+      meta_module_merge_scope = if (is_celltype_union) {
+        "conditions_within_cell_type_only"
+      } else {
+        "not_used_by_full_gem_mode"
+      },
+      cross_celltype_meta_module_merge = FALSE,
+      structural_scope = layer2$params$structural_scope %||%
+        if (is_celltype_union) "cell_type_x_medium" else "full_gem_x_medium",
+      shared_across_conditions = layer2$params$shared_across_conditions %||%
+        is_celltype_union,
+      shared_across_cell_types = layer2$params$shared_across_cell_types %||%
+        FALSE,
+      union_gem_scope = layer2$params$shared_gem_scope %||%
+        if (is_celltype_union) {
+          "one_union_gem_per_cell_type_per_medium_shared_within_cell_type"
+        } else {
+          "not_applicable_full_gem"
+        },
+      feasibility_completion = if (is_celltype_union) {
+        "independent_fastcore_for_each_celltype_x_medium_union_gem"
       } else {
         "not_applicable_full_gem"
       },
+      vmax_computation_scope = layer2$params$vmax_computation_scope %||%
+        if (is_celltype_union) {
+          "celltype_model_x_directional_target_once"
+        } else {
+          "full_gem_x_directional_target_once"
+        },
       pando_normalization_policy = grn$grn_result$normalization_policy,
       penalty_formula = "1/(1+log2(1+E_multiome)); missing E:=0",
       execution_mode = "stepwise"
