@@ -94,3 +94,53 @@ test_that("canonical condition significance rule remains fixed", {
     "BH padj < 0.05"
   )
 })
+
+test_that("parallel condition jobs preserve separate Pando objects", {
+  make_job <- function(cell_type, cell_id) {
+    fit <- list(cell_type = cell_type)
+    list(
+      pando_grn_data = structure(list(id = cell_type), class = "GRNData"),
+      condition_grn_fits = stats::setNames(list(fit), cell_type),
+      condition_fit_status = data.frame(cell_type = cell_type),
+      pando_network_index = data.frame(cell_type = cell_type),
+      pando_fit_diagnostics = data.frame(cell_type = cell_type),
+      tf_peak_gene_universal = data.frame(cell_type = cell_type),
+      tf_peak_gene_condition_all = data.frame(cell_type = cell_type),
+      tf_peak_gene_condition = data.frame(cell_type = cell_type),
+      tf_peak_gene_condition_effect_all = data.frame(cell_type = cell_type),
+      tf_peak_gene_condition_effect = data.frame(cell_type = cell_type),
+      paired_cell_metadata = data.frame(
+        cell_id = cell_id,
+        condition = "Control",
+        cell_type = cell_type,
+        stringsAsFactors = FALSE
+      ),
+      paired_cell_ids = cell_id,
+      target_metabolic_genes = paste0("GENE_", cell_type),
+      pando_execution_summary = list(
+        fit_engine = "fixed_dictionary",
+        targets_total = 1L,
+        targets_failed = 0L
+      )
+    )
+  }
+
+  jobs <- list(
+    make_job("T_cell", "T1"),
+    make_job("Monocyte", "M1")
+  )
+  merged <- .rc_merge_condition_job_results(jobs)
+
+  expect_setequal(
+    names(merged$pando_grn_data_by_cell_type),
+    c("T_cell", "Monocyte")
+  )
+  expect_null(merged$pando_grn_data)
+  expect_true(merged$parallel_object_contract$preserves_local_peak_space)
+  expect_true(merged$parallel_object_contract$merged_grndata_prohibited)
+  expect_setequal(merged$paired_cell_ids, c("T1", "M1"))
+  expect_setequal(
+    names(merged$condition_grn_fits),
+    c("T_cell", "Monocyte")
+  )
+})
