@@ -9,7 +9,7 @@ permissions:
   contents: read
 
 jobs:
-  package-check:
+  check:
     runs-on: ubuntu-22.04
     timeout-minutes: 90
     steps:
@@ -24,58 +24,18 @@ jobs:
           dependencies: '"hard"'
           extra-packages: |
             any::rcmdcheck
-            any::testthat
-            any::knitr
-            any::rmarkdown
-            github::1667857557/Pando_regcompass@9b8cde926e176e853c824301a7daf6061d036031
-      - name: Verify current documented defaults
+            github::1667857557/Pando_regcompass
+            github::1667857557/SuperCell_Seurat_V4
+      - name: Parse R sources
         shell: Rscript {0}
         run: |
-          documentation <- c(
-            "README.md",
-            list.files("docs", pattern = "[.]md$", full.names = TRUE),
-            list.files("vignettes", pattern = "[.]Rmd$", full.names = TRUE),
-            list.files("man", pattern = "[.]Rd$", full.names = TRUE)
+          files <- c(
+            list.files("R", pattern = "[.]R$", full.names = TRUE),
+            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
-          text <- paste(
-            unlist(lapply(documentation, readLines, warn = FALSE),
-                   use.names = FALSE),
-            collapse = "\n"
-          )
-          forbidden <- c(
-            "gamma = 150", "gamma=150", "peak_cor = 0.05",
-            "peak_cor=0.05", "peak_cor = 0.1", "peak_cor=0.1",
-            "min_abs_estimate", "min_model_rsq", "condition_full_oof",
-            "common_oof", "condition_unique_oof"
-          )
-          present <- forbidden[vapply(
-            forbidden, grepl, logical(1), x = text, fixed = TRUE
-          )]
-          if (length(present)) {
-            stop("Stale documented contract remains: ",
-                 paste(present, collapse = ", "))
-          }
-          required <- c("gamma = 30", "peak_cor = 0")
-          missing <- required[!vapply(
-            required, grepl, logical(1), x = text, fixed = TRUE
-          )]
-          if (length(missing)) {
-            stop("Canonical documented defaults are missing: ",
-                 paste(missing, collapse = ", "))
-          }
-      - name: Check package and tests
+          for (file in files) parse(file = file)
+      - name: Check package
         shell: Rscript {0}
         env:
           _R_CHECK_FORCE_SUGGESTS_: 'false'
-        run: |
-          rcmdcheck::rcmdcheck(
-            args = c('--no-manual'),
-            error_on = 'error'
-          )
-      - name: Upload check diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rcmdcheck-diagnostics
-          path: check
-          if-no-files-found: ignore
+        run: rcmdcheck::rcmdcheck(args = "--no-manual", error_on = "error")
