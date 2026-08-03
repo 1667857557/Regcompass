@@ -18,12 +18,15 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     retained condition uses the original standard Pando GRN and creates no
     condition coefficient. Stage 1 automatically enables only the Pando
     arguments valid for each route and parallelizes independent broad-cell-type
-    jobs without nested worker pools. Paired-cell TF-by-ATAC regulatory effects
-    are projected before exact SuperCell aggregation. Metacells use one
-    multimodal WNN graph per broad cell type and remain condition-pure after
-    membership splitting. RNA support, regulatory effects, GPR rules,
-    cell-type-specific union GEM construction and directional penalties use
-    consistent reaction ordering, bounds and medium scenarios.
+    jobs without nested worker pools. Parallel condition jobs retain one exact
+    Pando object per cell type so local peak and motif feature spaces are never
+    merged incorrectly; Layer 1 routes each fit to its matching object. Paired-
+    cell TF-by-ATAC regulatory effects are projected before exact SuperCell
+    aggregation. Metacells use one multimodal WNN graph per broad cell type and
+    remain condition-pure after membership splitting. RNA support, regulatory
+    effects, GPR rules, cell-type-specific union GEM construction and
+    directional penalties use consistent reaction ordering, bounds and medium
+    scenarios.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -89,6 +92,7 @@ Collate:
     'parallel.R'
     'stage_parallel_lifecycle.R'
     'grn_route_parallel.R'
+    'grn_parallel_output_contract.R'
     'penalty.R'
     'reaction_roles.R'
     'stepwise_workflow.R'
@@ -97,6 +101,7 @@ Collate:
     'step_layer1.R'
     'layer1_regulatory_support.R'
     'step_layer1_common_dictionary.R'
+    'step_layer1_parallel_object_contract.R'
     'step_layer2.R'
     'step_results.R'
     'regcompass.R'
