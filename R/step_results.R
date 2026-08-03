@@ -1,3 +1,29 @@
+.rc_load_condition_modules <- function(meta_modules) {
+  value <- meta_modules$condition_modules
+  if (is.list(value) && is.data.frame(value$reaction_membership)) {
+    return(value)
+  }
+  reference <- meta_modules$condition_modules_ref %||% value
+  if (!is.list(reference) ||
+      !identical(
+        reference$schema_version,
+        "regcompass_external_condition_modules_v1"
+      )) {
+    stop("The condition meta-module reference is invalid.", call. = FALSE)
+  }
+  file <- as.character(reference$file %||% "")
+  if (length(file) != 1L || !nzchar(file) || !file.exists(file)) {
+    stop("The external condition meta-module file is unavailable.",
+         call. = FALSE)
+  }
+  checksum <- unname(tools::md5sum(file))
+  if (!identical(checksum, as.character(reference$file_checksum))) {
+    stop("The external condition meta-module file failed checksum validation.",
+         call. = FALSE)
+  }
+  readRDS(file)
+}
+
 #' Assemble the annotated RegCompass result
 #'
 #' Supports both condition-aware Pando and automatic standard Pando fallback.
@@ -11,6 +37,12 @@ rc_regcompass_step_results <- function(
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("results", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
+
+  materialized_meta_modules <- meta_modules
+  materialized_meta_modules$condition_modules <-
+    .rc_load_condition_modules(meta_modules)
+  meta_modules <- materialized_meta_modules
+
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
   )
@@ -75,7 +107,7 @@ rc_regcompass_step_results <- function(
   metacell_design <- metacells$pooled$input_design
   result <- list(
     schema_version = "regcompass_regulatory_metabolic_result_v2",
-    version = "2.2.4",
+    version = "2.3.0",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = mode,
@@ -110,25 +142,25 @@ rc_regcompass_step_results <- function(
         "single_cell_grn",
         "celltype_joint_condition_WNN_metacells",
         "meta_modules",
-        "condition_full_layer1",
+        "condition_layer1",
         "medium_specific_union_gem_layer2"
       ),
       pando_grouping = params$celltype_col,
       pando_design = if (identical(mode, "condition_grn")) {
         paste(
-          "shared candidate dictionary and equal-condition coordinates with",
-          "condition-full outer-heldout projection; nonestimable edge sides",
-          "are projectable structural zeros"
+          "pooled and condition-specific candidate discovery, exact",
+          "TF-peak-target union, and one unscaled fixed-dictionary Gaussian",
+          "identity GLM per condition"
         )
       } else {
         "original Pando infer_grn per broad cell type; no condition coefficients"
       },
       pando_regulatory_projection = layer1$projection_provenance,
-      primary_penalty = "condition_full_oof",
-      common_support_role = "shared_estimable_component",
-      condition_unique_role =
-        "condition_full_oof_minus_common_support_oof",
-      nonestimable_edge_policy = "structural_zero_by_condition",
+      primary_penalty = "condition_full_oof_compatibility_field",
+      common_support_role = "compatibility_alias_of_primary",
+      condition_unique_role = "zero_compatibility_decomposition",
+      nonestimable_edge_policy =
+        "coefficient_NA_and_zero_realized_penalty_contribution",
       removed_guardrails = layer2$comparison_contract$removed_guardrails,
       metacell_purity_grouping = c(params$condition_col, params$celltype_col),
       metacell_graph_grouping = params$celltype_col,
