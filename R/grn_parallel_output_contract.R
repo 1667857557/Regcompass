@@ -117,21 +117,3 @@
   saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
   answer
 }
-
-.rc_fit_pando_by_celltype_route_base_output_contract <-
-  .rc_fit_pando_by_celltype_route
-
-.rc_fit_pando_by_celltype_route <- function(...) {
-  args <- list(...)
-  answer <- do.call(
-    .rc_fit_pando_by_celltype_route_base_output_contract,
-    args
-  )
-  outdir <- args$outdir
-  if (!is.character(outdir) || length(outdir) != 1L ||
-      is.na(outdir) || !nzchar(outdir)) {
-    stop("The Stage 1 output directory is invalid.", call. = FALSE)
-  }
-  saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
-  answer
-}
