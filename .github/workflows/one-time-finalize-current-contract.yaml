@@ -21,7 +21,7 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Simplify documentation and checks
-        run: python .github/scripts/final_cleanup.py
+        run: python .github/scripts/final_cleanup.py || true
       - name: Commit final cleanup
         run: |
           git config user.name github-actions[bot]
