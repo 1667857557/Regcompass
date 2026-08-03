@@ -1,15 +1,29 @@
+# Resolve the Pando library from its loaded namespace. Forked workers can
+# inherit the namespace while their package search path cannot rediscover the
+# package for utils::data().
+.rc_pando_data_library <- function() {
+  if (!requireNamespace("Pando", quietly = TRUE)) {
+    stop("Package 'Pando' is required.", call. = FALSE)
+  }
+  package_path <- getNamespaceInfo(asNamespace("Pando"), "path")
+  if (!is.character(package_path) || length(package_path) != 1L ||
+      is.na(package_path) || !nzchar(package_path) || !dir.exists(package_path)) {
+    stop("Cannot resolve the installed Pando namespace path.", call. = FALSE)
+  }
+  dirname(package_path)
+}
+
 #' Load the canonical Pando motif collection
 #'
 #' The canonical RegCompass GRN uses the `motifs` data object bundled with the
 #' required Pando fork. Users can override this default by supplying `pfm`.
 .rc_default_pando_motifs <- function() {
-  if (!requireNamespace("Pando", quietly = TRUE)) {
-    stop("Package 'Pando' is required.", call. = FALSE)
-  }
+  pando_lib <- .rc_pando_data_library()
   data_environment <- new.env(parent = emptyenv())
   utils::data(
     list = "motifs",
     package = "Pando",
+    lib.loc = pando_lib,
     envir = data_environment
   )
   if (!exists("motifs", envir = data_environment, inherits = FALSE)) {
@@ -79,9 +93,7 @@
       call. = FALSE
     )
   }
-  if (!requireNamespace("Pando", quietly = TRUE)) {
-    stop("Package 'Pando' is required.", call. = FALSE)
-  }
+  pando_lib <- .rc_pando_data_library()
   data_environment <- new.env(parent = emptyenv())
   region_names <- c(
     "phastConsElements20Mammals.UCSC.hg38",
@@ -90,6 +102,7 @@
   utils::data(
     list = region_names,
     package = "Pando",
+    lib.loc = pando_lib,
     envir = data_environment
   )
   missing <- region_names[!vapply(
