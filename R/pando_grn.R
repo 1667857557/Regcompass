@@ -133,21 +133,11 @@
 }
 
 .rc_validate_pando_evidence_filters <- function(
-    padj_threshold, min_abs_estimate, min_model_rsq, require_padj) {
+    padj_threshold, require_padj) {
   if (!is.numeric(padj_threshold) || length(padj_threshold) != 1L ||
       !is.finite(padj_threshold) || padj_threshold < 0 ||
       padj_threshold > 1) {
     stop("`padj_threshold` must be one finite number in [0, 1].",
-         call. = FALSE)
-  }
-  if (!is.numeric(min_abs_estimate) || length(min_abs_estimate) != 1L ||
-      !is.finite(min_abs_estimate) || min_abs_estimate < 0) {
-    stop("`min_abs_estimate` must be one finite non-negative number.",
-         call. = FALSE)
-  }
-  if (!is.numeric(min_model_rsq) || length(min_model_rsq) != 1L ||
-      !is.finite(min_model_rsq) || min_model_rsq < 0) {
-    stop("`min_model_rsq` must be one finite non-negative number.",
          call. = FALSE)
   }
   if (!is.logical(require_padj) || length(require_padj) != 1L ||
@@ -159,17 +149,10 @@
 
 #' Extract and filter a Pando TF-peak-gene coefficient table
 rc_extract_pando_tf_peak_gene <- function(
-    grn_object,
-    sample_id,
-    padj_threshold = 0.05,
-    min_abs_estimate = 0,
-    min_model_rsq = 0.1,
+    grn_object, sample_id, padj_threshold = 0.05,
     require_padj = TRUE) {
   .rc_validate_pando_evidence_filters(
-    padj_threshold = padj_threshold,
-    min_abs_estimate = min_abs_estimate,
-    min_model_rsq = min_model_rsq,
-    require_padj = require_padj
+    padj_threshold = padj_threshold, require_padj = require_padj
   )
   if (!is.character(sample_id) || length(sample_id) != 1L ||
       is.na(sample_id) || !nzchar(trimws(sample_id))) {
@@ -181,11 +164,8 @@ rc_extract_pando_tf_peak_gene <- function(
   coefs <- as.data.frame(stats::coef(grn_object), stringsAsFactors = FALSE)
   if (!nrow(coefs)) {
     empty <- data.frame(
-      sample_id = character(),
-      tf = character(),
-      target = character(),
-      region = character(),
-      stringsAsFactors = FALSE
+      sample_id = character(), tf = character(), target = character(),
+      region = character(), stringsAsFactors = FALSE
     )
     return(list(all = empty, significant = empty))
   }
@@ -194,31 +174,23 @@ rc_extract_pando_tf_peak_gene <- function(
   if (length(missing)) {
     stop(
       "Pando coefficient table is missing columns: ",
-      paste(missing, collapse = ", "),
-      call. = FALSE
+      paste(missing, collapse = ", "), call. = FALSE
     )
   }
   fit <- tryCatch(
     as.data.frame(Pando::gof(grn_object), stringsAsFactors = FALSE),
     error = function(error) data.frame()
   )
-  if (!nrow(fit) || !all(c("target", "rsq") %in% colnames(fit))) {
-    stop(
-      "Pando target-model GOF must contain `target` and `rsq`.",
-      call. = FALSE
+  if (nrow(fit) && "target" %in% colnames(fit)) {
+    keep_fit <- setdiff(
+      colnames(fit),
+      intersect(colnames(fit), setdiff(colnames(coefs), "target"))
+    )
+    coefs <- merge(
+      coefs, fit[, keep_fit, drop = FALSE], by = "target",
+      all.x = TRUE, sort = FALSE
     )
   }
-  keep_fit <- setdiff(
-    colnames(fit),
-    intersect(colnames(fit), setdiff(colnames(coefs), "target"))
-  )
-  coefs <- merge(
-    coefs,
-    fit[, keep_fit, drop = FALSE],
-    by = "target",
-    all.x = TRUE,
-    sort = FALSE
-  )
   coefs$sample_id <- as.character(sample_id)
   coefs$tf <- toupper(as.character(coefs$tf))
   coefs$target <- toupper(as.character(coefs$target))
@@ -226,20 +198,14 @@ rc_extract_pando_tf_peak_gene <- function(
   coefs <- coefs[
     , c("sample_id", setdiff(colnames(coefs), "sample_id")), drop = FALSE
   ]
-
   estimate <- suppressWarnings(as.numeric(coefs$estimate))
-  rsq <- suppressWarnings(as.numeric(coefs$rsq))
-  keep <- is.finite(estimate) & abs(estimate) >= min_abs_estimate &
-    is.finite(rsq) & rsq >= min_model_rsq
+  keep <- is.finite(estimate)
   if ("padj" %in% colnames(coefs)) {
     padj <- suppressWarnings(as.numeric(coefs$padj))
-    keep <- keep & is.finite(padj) & padj <= padj_threshold
+    keep <- keep & is.finite(padj) & padj < padj_threshold
   } else if (isTRUE(require_padj)) {
     stop(
-      paste(
-        "Pando network does not contain `padj`; use a p-value-producing",
-        "model such as `method = 'glm'`, or set `require_padj = FALSE`."
-      ),
+      "Pando network does not contain `padj`; use a p-value-producing model.",
       call. = FALSE
     )
   }

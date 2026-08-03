@@ -76,20 +76,9 @@ rc_regcompass_step_results <- function(
     condition_col = params$condition_col,
     celltype_col = params$celltype_col
   )
-  common_comparison <- .rc_condition_penalty_route(
-    layer2,
-    layer2$penalty_common_oof,
-    condition_col = params$condition_col,
-    celltype_col = params$celltype_col
-  )
   rna_only_comparison <- .rc_condition_penalty_route(
     layer2,
     layer2$penalty_rna_only,
-    condition_col = params$condition_col,
-    celltype_col = params$celltype_col
-  )
-  unique_increment_summary <- .rc_condition_increment_summary(
-    layer2,
     condition_col = params$condition_col,
     celltype_col = params$celltype_col
   )
@@ -107,13 +96,14 @@ rc_regcompass_step_results <- function(
   metacell_design <- metacells$pooled$input_design
   is_celltype_union <- identical(layer2$model_mode, "meta_module_gem")
   result <- list(
-    schema_version = "regcompass_regulatory_metabolic_result_v2",
-    version = "2.3.0",
+    schema_version = "regcompass_regulatory_metabolic_result_v3",
+    version = "2.4.0",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = mode,
     comparison_analysis_mode = comparison$analysis_mode,
-    condition_coefficients_calculated = identical(mode, "condition_grn"),
+    condition_coefficients_calculated =
+      isTRUE(grn$grn_result$condition_coefficients_calculated),
     grn = grn$grn_result,
     metacells = metacells$pooled,
     layer1 = layer1,
@@ -126,9 +116,6 @@ rc_regcompass_step_results <- function(
     reaction_ranking = comparison$ranking,
     condition_summary = comparison$summary,
     condition_contrast = comparison$contrast,
-    common_support_component_summary = common_comparison$summary,
-    common_support_component_contrast = common_comparison$contrast,
-    condition_unique_penalty_increment_summary = unique_increment_summary,
     rna_only_control_summary = rna_only_comparison$summary,
     rna_only_control_contrast = rna_only_comparison$contrast,
     inference_policy = comparison$inference_policy %||%
@@ -151,22 +138,14 @@ rc_regcompass_step_results <- function(
         }
       ),
       pando_grouping = params$celltype_col,
-      pando_design = if (identical(mode, "condition_grn")) {
-        paste(
-          "pooled and condition-specific candidate discovery, exact",
-          "TF-peak-target union, and one unscaled fixed-dictionary Gaussian",
-          "identity GLM per condition"
-        )
-      } else {
-        "original Pando infer_grn per broad cell type; no condition coefficients"
-      },
+      pando_design =
+        "cell-type-specific routing: common-dictionary condition GRN for at least two retained conditions, standard Pando otherwise",
+      cell_type_analysis_mode = grn$grn_result$cell_type_analysis_mode,
       pando_regulatory_projection = layer1$projection_provenance,
-      primary_penalty = "condition_full_oof_compatibility_field",
-      common_support_role = "compatibility_alias_of_primary",
-      condition_unique_role = "zero_compatibility_decomposition",
+      primary_penalty = "penalty",
+      rna_only_control = "penalty_rna_only",
       nonestimable_edge_policy =
         "coefficient_NA_and_zero_realized_penalty_contribution",
-      removed_guardrails = layer2$comparison_contract$removed_guardrails,
       metacell_purity_grouping = c(params$condition_col, params$celltype_col),
       metacell_graph_grouping = params$celltype_col,
       metacell_supercell_api = metacell_design$native_supercell_api,

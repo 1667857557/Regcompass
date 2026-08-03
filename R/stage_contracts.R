@@ -120,28 +120,23 @@
   )
   ids <- .rc_layer1_unit_ids(layer1)
   mode <- layer1$analysis_mode
-  if (!mode %in% c("condition_grn", "standard_pando")) {
+  valid_modes <- c("condition_grn", "standard_pando", "mixed_pando")
+  if (!is.character(mode) || length(mode) != 1L || is.na(mode) ||
+      !mode %in% valid_modes) {
     stop("Layer 1 analysis mode is invalid.", call. = FALSE)
   }
 
   required_gene_matrices <- c(
-    "gene_projection_condition_full_oof",
-    "gene_projection_common_oof",
-    "gene_projection_condition_unique_oof",
-    "gene_projection_scale",
+    "gene_projection", "gene_projection_scale",
     "gene_regulatory_reliability",
     "gene_regulatory_reliability_available",
-    "gene_regulatory_modifier_condition_full_oof",
-    "gene_regulatory_modifier_common_oof",
-    "gene_support_rna",
-    "gene_support_condition_full_oof",
-    "gene_support_common_oof"
+    "gene_regulatory_modifier", "gene_support_rna",
+    "gene_support_multiome"
   )
-  reference <- layer1$gene_projection_condition_full_oof
+  reference <- layer1$gene_projection
   if (!is.numeric(reference) || is.null(dim(reference)) ||
       !identical(colnames(reference), ids)) {
-    stop("Layer 1 primary regulatory projection is invalid.",
-         call. = FALSE)
+    stop("Layer 1 regulatory projection is invalid.", call. = FALSE)
   }
   for (name in required_gene_matrices) {
     value <- layer1[[name]]
@@ -151,126 +146,87 @@
            call. = FALSE)
     }
   }
-  if (!isTRUE(all.equal(
-        layer1$gene_projection_common_oof,
-        reference,
-        tolerance = 1e-12,
-        check.attributes = TRUE
-      )) ||
-      !isTRUE(all.equal(
-        layer1$gene_projection_condition_unique_oof,
-        reference * 0,
-        tolerance = 1e-12,
-        check.attributes = TRUE
-      ))) {
-    stop("Layer 1 compatibility projection aliases are inconsistent.",
-         call. = FALSE)
-  }
   if (!is.logical(layer1$gene_regulatory_reliability_available) ||
       anyNA(layer1$gene_regulatory_reliability_available)) {
     stop("Layer 1 reliability availability must be logical.",
          call. = FALSE)
   }
-
   expected_modifier <- layer1$gene_regulatory_reliability *
     tanh(reference / layer1$gene_projection_scale)
   expected_modifier[
     !is.finite(reference) |
       !is.finite(layer1$gene_regulatory_reliability)
   ] <- NA_real_
-  observed <- layer1$gene_regulatory_modifier_condition_full_oof
+  observed <- layer1$gene_regulatory_modifier
   finite <- is.finite(expected_modifier) & is.finite(observed)
   if (any(is.finite(expected_modifier) != is.finite(observed)) ||
       any(abs(expected_modifier[finite] - observed[finite]) > 1e-10)) {
-    stop("Layer 1 modifier is not reliability*tanh(projection/scale).",
+    stop("Layer 1 regulatory modifier is inconsistent with its inputs.",
          call. = FALSE)
   }
-  if (!isTRUE(all.equal(
-        layer1$gene_regulatory_modifier_common_oof,
-        observed,
-        tolerance = 1e-12,
-        check.attributes = TRUE
-      ))) {
-    stop("Layer 1 common modifier compatibility alias is inconsistent.",
+  value <- layer1$reaction_expression_rna_only
+  if (!is.numeric(value) || is.null(dim(value)) ||
+      !identical(dimnames(value), dimnames(layer1$reaction_expression))) {
+    stop("Layer 1 RNA-only reaction matrix is misaligned.", call. = FALSE)
+  }
+  if (!is.numeric(layer1$reaction_regulatory_support_fraction) ||
+      !identical(
+        dimnames(layer1$reaction_regulatory_support_fraction),
+        dimnames(layer1$reaction_expression)
+      )) {
+    stop("Layer 1 reaction regulatory support is misaligned.",
          call. = FALSE)
-  }
-
-  reaction_fields <- c(
-    "reaction_expression_condition_full_oof",
-    "reaction_expression_common_oof",
-    "reaction_expression_rna_only"
-  )
-  for (name in reaction_fields) {
-    value <- layer1[[name]]
-    if (!is.numeric(value) || is.null(dim(value)) ||
-        !identical(dimnames(value), dimnames(layer1$reaction_expression))) {
-      stop("Layer 1 reaction matrices are misaligned.", call. = FALSE)
-    }
-  }
-  if (!identical(
-        layer1$reaction_expression,
-        layer1$reaction_expression_condition_full_oof
-      ) ||
-      !isTRUE(all.equal(
-        layer1$reaction_expression_common_oof,
-        layer1$reaction_expression_condition_full_oof,
-        tolerance = 1e-12,
-        check.attributes = TRUE
-      ))) {
-    stop("Layer 1 primary and compatibility reaction routes are inconsistent.",
-         call. = FALSE)
-  }
-
-  forbidden <- c(
-    "reaction_expression_depth_matched_rna",
-    "reaction_expression_common_depth_interval_rna",
-    "reaction_expression_alpha_sensitivity",
-    "reaction_zero_support_sensitivity",
-    "reaction_link_saturation_sensitivity",
-    "alpha_sensitivity_grid",
-    "zero_pattern_diagnostics"
-  )
-  if (any(forbidden %in% names(layer1))) {
-    stop("Layer 1 contains removed guardrail fields.", call. = FALSE)
   }
 
   provenance <- layer1$projection_provenance
-  expected <- if (identical(mode, "condition_grn")) {
-    list(
-      origin = "paired_cell_full_fit_fixed_dictionary_glm_padj_filtered",
-      primary = "padj_filtered_fixed_dictionary_condition_glm",
-      nonestimable =
-        "coefficient_NA_and_zero_realized_penalty_contribution",
-      coefficients = TRUE
-    )
-  } else {
-    list(
-      origin = "standard_pando_full_fit",
-      primary = "standard_pando_full_fit",
-      nonestimable = "not_applicable_standard_pando",
-      coefficients = FALSE
-    )
-  }
-  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v3") ||
+  required_provenance <- c(
+    "analysis_mode", "pando_schema", "projection_origin",
+    "projection_used_for_penalty", "projection_name",
+    "condition_coefficients_calculated", "supercell_membership",
+    "unavailable_target_policy", "nonestimable_edge_policy",
+    "cell_type_analysis_mode"
+  )
+  routing <- provenance$cell_type_analysis_mode
+  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v4") ||
       !is.list(provenance) ||
+      !all(required_provenance %in% names(provenance)) ||
       !identical(provenance$analysis_mode, mode) ||
-      !identical(provenance$projection_origin, expected$origin) ||
-      !identical(provenance$primary_projection, expected$primary) ||
-      !identical(provenance$nonestimable_edge_policy, expected$nonestimable) ||
       !isTRUE(provenance$projection_used_for_penalty) ||
-      !isTRUE(provenance$full_fit_projection_used_for_penalty) ||
-      !identical(
-        provenance$condition_coefficients_calculated,
-        expected$coefficients
-      ) ||
       !identical(
         provenance$supercell_membership,
         "membership_table(cell_id, metacell_id)"
-      )) {
+      ) ||
+      !is.data.frame(routing) ||
+      !all(c("cell_type", "analysis_mode") %in% colnames(routing)) ||
+      !nrow(routing) ||
+      anyNA(routing$cell_type) || anyNA(routing$analysis_mode) ||
+      any(!routing$analysis_mode %in% c("condition_grn", "standard_pando")) ||
+      any(!nzchar(as.character(provenance$pando_schema))) ||
+      any(!nzchar(as.character(provenance$projection_origin))) ||
+      any(!nzchar(as.character(provenance$projection_name))) ||
+      any(!nzchar(as.character(provenance$nonestimable_edge_policy)))) {
     stop("Layer 1 regulatory projection provenance is incompatible.",
          call. = FALSE)
   }
-
+  observed_modes <- sort(unique(as.character(routing$analysis_mode)))
+  expected_modes <- switch(
+    mode,
+    condition_grn = "condition_grn",
+    standard_pando = "standard_pando",
+    mixed_pando = sort(c("condition_grn", "standard_pando"))
+  )
+  if (!identical(observed_modes, expected_modes)) {
+    stop("Layer 1 cell-type routing does not match its analysis mode.",
+         call. = FALSE)
+  }
+  expected_coefficients <- "condition_grn" %in% observed_modes
+  if (!identical(
+        provenance$condition_coefficients_calculated,
+        expected_coefficients
+      )) {
+    stop("Layer 1 condition-coefficient provenance is inconsistent.",
+         call. = FALSE)
+  }
   if (!is.null(workflow_params)) {
     .rc_require_workflow_params(layer1, workflow_params, argument)
   }
@@ -317,34 +273,16 @@
   if (!is.null(required_mode)) {
     if (!is.character(required_mode) || length(required_mode) != 1L ||
         is.na(required_mode) || !required_mode %in% valid_modes) {
-      stop(
-        "`required_mode` must be one of: ",
-        paste(valid_modes, collapse = ", "), ".",
-        call. = FALSE
-      )
+      stop("`required_mode` must be one of: ",
+           paste(valid_modes, collapse = ", "), ".", call. = FALSE)
     }
     if (!identical(layer2$model_mode, required_mode)) {
-      stop(
-        "Layer 2 model mode is `", layer2$model_mode,
-        "`; `", required_mode, "` is required.",
-        call. = FALSE
-      )
+      stop("Layer 2 model mode is `", layer2$model_mode,
+           "`; `", required_mode, "` is required.", call. = FALSE)
     }
   }
-
-  required_penalty_routes <- c(
-    "penalty_condition_full_oof",
-    "penalty_common_oof",
-    "penalty_condition_unique_increment",
-    "penalty_rna_only"
-  )
-  required_score_routes <- c(
-    "score_condition_full_oof_display_only",
-    "score_common_oof_display_only",
-    "score_rna_only_display_only"
-  )
   reference <- layer2$penalty
-  for (name in c(required_penalty_routes, required_score_routes)) {
+  for (name in c("penalty_rna_only", "score_rna_only")) {
     value <- layer2[[name]]
     if (!is.numeric(value) || is.null(dim(value)) ||
         !identical(dimnames(value), dimnames(reference))) {
@@ -352,34 +290,17 @@
            call. = FALSE)
     }
   }
-  if (!identical(layer2$penalty, layer2$penalty_condition_full_oof) ||
-      !identical(
-        layer2$score,
-        layer2$score_condition_full_oof_display_only
-      )) {
-    stop("Layer 2 primary route is inconsistent.", call. = FALSE)
-  }
-  if (!isTRUE(all.equal(
-        layer2$penalty_condition_unique_increment,
-        layer2$penalty_condition_full_oof - layer2$penalty_common_oof,
-        tolerance = 1e-12,
-        check.attributes = TRUE
-      ))) {
-    stop("Layer 2 condition-unique penalty increment is inconsistent.",
-         call. = FALSE)
-  }
-
   contract <- layer2$comparison_contract
   required_contract <- c(
-    "primary", "common_component", "condition_unique_increment",
-    "rna_control", "nonestimable_edge_policy", "removed_guardrails",
+    "primary", "rna_control", "nonestimable_edge_policy",
     "exact_shared_structure", "structural_model_contract",
     "effect_size_basis", "ecdf_effect_size_eligible"
   )
-  if (!identical(layer2$schema_version, "regcompass_regulatory_layer2_v2") ||
+  if (!identical(layer2$schema_version, "regcompass_regulatory_layer2_v3") ||
       !is.list(contract) ||
       !all(required_contract %in% names(contract)) ||
-      !identical(contract$primary, "penalty_condition_full_oof") ||
+      !identical(contract$primary, "penalty") ||
+      !identical(contract$rna_control, "penalty_rna_only") ||
       !isTRUE(contract$exact_shared_structure) ||
       !identical(
         contract$nonestimable_edge_policy,
@@ -387,7 +308,6 @@
       )) {
     stop("Layer 2 comparison contract is incomplete.", call. = FALSE)
   }
-
   if (!is.null(layer1)) {
     .rc_validate_layer1_stage(layer1, argument = "layer1")
     if (!identical(ids, .rc_layer1_unit_ids(layer1))) {

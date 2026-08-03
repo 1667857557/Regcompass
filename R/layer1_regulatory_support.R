@@ -1,8 +1,7 @@
 # Layer 1 RNA and regulatory support integration.
 
 .rc_latent_metacell_expression <- function(
-    counts, library_size, mu_min = 0.1,
-    structural_zero_probability = 0.05, cell_type) {
+    counts, library_size, mu_min = 0.1, cell_type) {
   counts <- as.matrix(counts)
   library_size <- as.numeric(library_size)
   if (!is.numeric(counts) || is.null(rownames(counts)) ||
@@ -10,13 +9,6 @@
       any(!is.finite(library_size)) || any(library_size <= 0) ||
       any(!is.finite(counts)) || any(counts < 0)) {
     stop("Latent RNA estimation requires aligned non-negative counts and depth.",
-         call. = FALSE)
-  }
-  if (!is.numeric(structural_zero_probability) ||
-      length(structural_zero_probability) != 1L ||
-      !is.finite(structural_zero_probability) ||
-      structural_zero_probability < 0 || structural_zero_probability > 1) {
-    stop("`structural_zero_probability` must be in [0, 1].",
          call. = FALSE)
   }
   if (any(abs(counts - round(counts)) >
@@ -95,9 +87,7 @@
     prior_rate = prior_rate,
     prior_weight = prior_weight,
     observation_weight = observation_weight,
-    hard_structural_zero_used = FALSE,
-    structural_zero_probability_threshold = structural_zero_probability,
-    model = "normalized_unit_gamma_empirical_bayes_by_cell_type_v3",
+    model = "normalized_unit_gamma_empirical_bayes_by_cell_type_v4",
     prior_estimation_scope = "gene_by_cell_type",
     posterior_update_scope =
       "one_normalized_metacell_unit_independent_of_library_size"
@@ -212,16 +202,8 @@
 .rc_cell_first_projection_layer1 <- function(
     grn_result, metacell_object, membership, metacell_meta, gem,
     condition_col, celltype_col, rna_assay,
-    projection_component = "condition", comparison_support = "auto",
-    regulatory_alpha = 1, gpr_and_method = "min",
-    gene_half_saturation = 1, parallel = TRUE, BPPARAM = NULL) {
-  if (!identical(projection_component, "condition")) {
-    stop("Only the regulatory projection can enter Layer 1.", call. = FALSE)
-  }
-  if (!isTRUE(all.equal(as.numeric(regulatory_alpha), 1))) {
-    stop("Canonical RegCompass requires `regulatory_alpha = 1`.",
-         call. = FALSE)
-  }
+    gpr_and_method = "min", gene_half_saturation = 1,
+    parallel = TRUE, BPPARAM = NULL) {
   if (!is.data.frame(membership) ||
       !all(c("cell_id", "metacell_id") %in% colnames(membership)) ||
       anyDuplicated(membership$cell_id)) {
@@ -247,9 +229,7 @@
   counts <- .rc_get_assay_counts(metacell_object, rna_assay)
   library_size <- Matrix::colSums(counts)
   rna_counts <- counts[
-    tolower(rownames(counts)) %in% gpr_genes,
-    units,
-    drop = FALSE
+    tolower(rownames(counts)) %in% gpr_genes, units, drop = FALSE
   ]
   rownames(rna_counts) <- tolower(rownames(rna_counts))
   if (anyDuplicated(rownames(rna_counts))) {
@@ -263,98 +243,50 @@
   )
   genes <- rownames(latent$latent_log_expression)
   mode <- grn_result$analysis_mode %||% "condition_grn"
-  projection <- if (identical(mode, "standard_pando")) {
-    standard <- .rc_standard_pando_projection(
-      grn_result,
-      membership,
-      unit_meta,
-      condition_col,
-      celltype_col,
-      rna_assay = grn_result$rna_assay %||% "RNA",
-      atac_assay = grn_result$atac_assay %||% "ATAC",
-      target_genes = genes
-    )
-    list(
-      common = standard$projection,
-      primary = standard$projection,
-      condition_unique = standard$projection * 0,
-      reliability = standard$reliability,
-      coverage = standard$coverage,
-      origin = standard$projection_origin,
-      full_fit_used = TRUE,
-      pando_schema = "standard_pando_network",
-      primary_projection = "standard_pando_full_fit",
-      common_projection_role = "same_as_primary",
-      nonestimable_projection_policy = "not_applicable_standard_pando"
-    )
-  } else {
-    .rc_condition_pando_projection(
-      grn_result,
-      membership,
-      unit_meta,
-      genes,
-      comparison_support
-    )
-  }
+  projection <- .rc_project_pando_by_celltype(
+    grn_result = grn_result,
+    membership = membership,
+    unit_meta = unit_meta,
+    genes = genes,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    rna_assay = grn_result$rna_assay %||% "RNA",
+    atac_assay = grn_result$atac_assay %||% "ATAC"
+  )
   calibration <- .rc_projection_scale(
-    projection$primary, unit_meta, celltype_col
+    projection$projection, unit_meta, celltype_col
   )
-  modifier_primary <- .rc_scaled_regulatory_modifier(
-    projection$primary, projection$reliability, calibration$scale
-  )
-  modifier_common <- .rc_scaled_regulatory_modifier(
-    projection$common, projection$reliability, calibration$scale
+  modifier <- .rc_scaled_regulatory_modifier(
+    projection$projection, projection$reliability, calibration$scale
   )
   gene_support_rna <- rc_gene_score(
     latent$latent_log_expression,
     mode = "absolute",
     half_saturation = gene_half_saturation
   )
-  gene_support_primary <- .rc_integrate_regulatory_support(
-    gene_support_rna, modifier_primary, alpha = 1
-  )
-  gene_support_common <- .rc_integrate_regulatory_support(
-    gene_support_rna, modifier_common, alpha = 1
+  gene_support_multiome <- .rc_integrate_regulatory_support(
+    gene_support_rna, modifier, alpha = 1
   )
   reaction_rna <- rc_reaction_capacity(
-    parsed,
-    gene_support_rna,
-    promiscuity_mode = "none",
-    and_method = gpr_and_method,
-    or_method = "sum",
+    parsed, gene_support_rna, promiscuity_mode = "none",
+    and_method = gpr_and_method, or_method = "sum",
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
-  reaction_primary <- rc_reaction_capacity(
-    parsed,
-    gene_support_primary,
-    promiscuity_mode = "none",
-    and_method = gpr_and_method,
-    or_method = "sum",
+  reaction_multiome <- rc_reaction_capacity(
+    parsed, gene_support_multiome, promiscuity_mode = "none",
+    and_method = gpr_and_method, or_method = "sum",
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
-  reaction_common <- rc_reaction_capacity(
-    parsed,
-    gene_support_common,
-    promiscuity_mode = "none",
-    and_method = gpr_and_method,
-    or_method = "sum",
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
+  support_fraction <- .rc_gpr_best_group_fraction(
+    parsed, is.finite(modifier)
   )
-  primary_fraction <- .rc_gpr_best_group_fraction(
-    parsed, is.finite(modifier_primary)
-  )
-  common_fraction <- .rc_gpr_best_group_fraction(
-    parsed, is.finite(modifier_common)
-  )
-  fallback <- !is.finite(modifier_primary)
+  fallback <- !is.finite(modifier)
   list(
-    schema_version = "regcompass_regulatory_layer1_v3",
+    schema_version = "regcompass_regulatory_layer1_v4",
     analysis_mode = mode,
-    reaction_expression = reaction_primary,
-    reaction_expression_condition_full_oof = reaction_primary,
-    reaction_expression_common_oof = reaction_common,
+    reaction_expression = reaction_multiome,
     reaction_expression_rna_only = reaction_rna,
-    reaction_expression_available = is.finite(reaction_primary),
+    reaction_expression_available = is.finite(reaction_multiome),
     rna_metacell_latent_log_expression = latent$latent_log_expression,
     rna_metacell_latent_cpm = latent$latent_cpm,
     posterior_positive_probability = latent$posterior_positive_probability,
@@ -363,24 +295,17 @@
     eb_prior_weight = latent$prior_weight,
     eb_observation_weight = latent$observation_weight,
     gene_support_rna = gene_support_rna,
-    gene_support_condition_full_oof = gene_support_primary,
-    gene_support_common_oof = gene_support_common,
-    gene_support_multiome = gene_support_primary,
-    gene_projection_condition_full_oof = projection$primary,
-    gene_projection_common_oof = projection$common,
-    gene_projection_condition_unique_oof = projection$condition_unique,
-    gene_projection_raw = projection$primary,
+    gene_support_multiome = gene_support_multiome,
+    gene_projection = projection$projection,
     gene_projection_scale = calibration$scale,
     gene_regulatory_reliability = projection$reliability,
-    gene_regulatory_reliability_available = is.finite(projection$reliability),
-    gene_regulatory_available = is.finite(projection$primary),
-    gene_regulatory_modifier = modifier_primary,
-    gene_regulatory_modifier_condition_full_oof = modifier_primary,
-    gene_regulatory_modifier_common_oof = modifier_common,
+    gene_regulatory_reliability_available =
+      is.finite(projection$reliability),
+    gene_regulatory_available = is.finite(projection$projection),
+    gene_regulatory_modifier = modifier,
     projection_coverage = projection$coverage,
     projection_calibration = calibration$diagnostics,
-    reaction_condition_full_support_fraction = primary_fraction,
-    reaction_common_support_fraction = common_fraction,
+    reaction_regulatory_support_fraction = support_fraction,
     parsed_gpr = parsed,
     gpr_diagnostics = rc_gpr_diagnostics(parsed, genes),
     unit_meta = unit_meta,
@@ -409,11 +334,9 @@
       ),
       maximum_posterior_zero_probability = apply(
         latent$posterior_zero_probability, 1L, max
-      ),
-      hard_structural_zero_used = latent$hard_structural_zero_used
+      )
     ),
     capacity_params = list(
-      regulatory_alpha = 1,
       regulatory_odds_budget = 2,
       gene_half_saturation = gene_half_saturation,
       regulatory_mode = mode,
@@ -428,15 +351,13 @@
       pando_schema = projection$pando_schema,
       projection_origin = projection$origin,
       projection_used_for_penalty = TRUE,
-      primary_projection = projection$primary_projection,
-      common_projection_role = projection$common_projection_role,
-      condition_unique_projection_role =
-        "zero_compatibility_decomposition_no_common_support_model",
-      full_fit_projection_used_for_penalty = projection$full_fit_used,
-      condition_coefficients_calculated = identical(mode, "condition_grn"),
+      projection_name = projection$projection_name,
+      condition_coefficients_calculated =
+        isTRUE(projection$condition_coefficients_calculated),
+      cell_type_analysis_mode = projection$cell_type_analysis_mode,
       supercell_membership = "membership_table(cell_id, metacell_id)",
       unavailable_target_policy = "rna_only_neutral_modifier_fallback",
-      nonestimable_edge_policy = projection$nonestimable_projection_policy
+      nonestimable_edge_policy = projection$nonestimable_policy
     ),
     inference_class = "metacell_statistical_unit_within_dataset",
     statistical_unit = "metacell",

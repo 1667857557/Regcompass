@@ -1,4 +1,4 @@
-# Layer 2 shared-structure validation and condition-full scoring.
+# Layer 2 shared-structure validation and current penalty scoring.
 
 .rc_layer2_direction_contract <- function(x) {
   tab <- as.data.frame(x$lp_diagnostics)
@@ -94,7 +94,8 @@
   }
   omega <- layer2$params$omega
   vmax <- index_matrix(layer2$vmax)
-  primary <- index_matrix(layer2$penalty_condition_full_oof)
+  primary <- index_matrix(layer2$penalty)
+  rna_only <- index_matrix(layer2$penalty_rna_only)
   normalized <- primary / (omega * vmax)
   normalized[!is.finite(primary) | !is.finite(vmax) | vmax <= 0] <- NA_real_
   data.frame(
@@ -103,24 +104,16 @@
     direction = row_meta$target_direction[grid$row_index],
     medium = row_meta$medium_scenario[grid$row_index],
     cell_type = unit_celltype[grid$unit_index],
-    condition = as.character(
-      unit_meta[[condition_col]][grid$unit_index]
-    ),
+    condition = as.character(unit_meta[[condition_col]][grid$unit_index]),
     metacell_id = unit,
-    penalty_condition_full_oof = primary,
-    penalty_common_oof = index_matrix(layer2$penalty_common_oof),
-    penalty_condition_unique_increment = index_matrix(
-      layer2$penalty_condition_unique_increment
-    ),
-    penalty_rna_only = index_matrix(layer2$penalty_rna_only),
+    penalty = primary,
+    penalty_rna_only = rna_only,
+    regulatory_penalty_delta = primary - rna_only,
     penalty_per_target_flux = normalized,
     vmax = vmax,
-    condition_full_oof_available = is.finite(primary),
-    condition_full_support_fraction = reaction_unit_matrix(
-      layer1$reaction_condition_full_support_fraction
-    ),
-    common_support_fraction = reaction_unit_matrix(
-      layer1$reaction_common_support_fraction
+    penalty_available = is.finite(primary),
+    regulatory_support_fraction = reaction_unit_matrix(
+      layer1$reaction_regulatory_support_fraction
     ),
     inference_class = "metacell_statistical_unit_within_dataset",
     comparability_class =
@@ -183,9 +176,9 @@
 #' With `model_mode = "meta_module_gem"`, conditions are unioned only within the
 #' same cell type. One union GEM and one independent FASTCORE completion are
 #' created for every cell-type and medium combination. Conditions and metacells
-#' share a model only when their cell type matches. Historical `_oof`, `common`,
-#' and `condition_unique` fields remain compatibility aliases; RNA-only scoring
-#' is an interpretation control. The `full_gem` route uses a separate engine.
+#' share a model only when their cell type matches. RNA-only scoring is an
+#' interpretation control that reuses the exact structural model cache. The
+#' `full_gem` route uses a separate engine.
 #'
 #' @export
 rc_regcompass_step_layer2 <- function(
@@ -375,49 +368,25 @@ rc_regcompass_step_layer2 <- function(
     .rc_assert_layer2_shared_contract(answer, result, label)
     result
   }
-  common <- run_control(
-    "reaction_expression_common_oof",
-    "common-support compatibility route"
-  )
   rna_only <- run_control(
     "reaction_expression_rna_only",
     "RNA-only control"
   )
-  answer$schema_version <- "regcompass_regulatory_layer2_v2"
-  answer$penalty_condition_full_oof <- answer$penalty
-  answer$penalty_common_oof <- common$penalty
-  answer$penalty_condition_unique_increment <-
-    answer$penalty_condition_full_oof - answer$penalty_common_oof
+  answer$schema_version <- "regcompass_regulatory_layer2_v3"
   answer$penalty_rna_only <- rna_only$penalty
-  answer$score_condition_full_oof_display_only <- answer$score
-  answer$score_common_oof_display_only <- common$score
-  answer$score_rna_only_display_only <- rna_only$score
+  answer$score_rna_only <- rna_only$score
   answer$comparison_contract <- list(
-    primary = "penalty_condition_full_oof",
-    common_component = "penalty_common_oof",
-    condition_unique_increment =
-      "penalty_condition_full_oof - penalty_common_oof",
+    primary = "penalty",
     rna_control = "penalty_rna_only",
     nonestimable_edge_policy =
       "coefficient_NA_and_zero_realized_penalty_contribution",
-    removed_guardrails = c(
-      "depth_matching",
-      "common_depth_restriction",
-      "alpha_sensitivity",
-      "zero_support_sensitivity",
-      "link_saturation_propagation"
-    ),
     exact_shared_structure = TRUE,
     structural_model_contract = answer$structural_model_contract,
     effect_size_basis = "penalty / (omega * vmax)",
     ecdf_effect_size_eligible = FALSE
   )
-  common$shared_model_cache <- NULL
   rna_only$shared_model_cache <- NULL
-  answer$comparison_paths <- list(
-    common_support = common,
-    rna_only = rna_only
-  )
+  answer$comparison_paths <- list(rna_only = rna_only)
   answer$comparison_table <- .rc_layer2_comparison_table(
     answer,
     layer1,

@@ -118,7 +118,8 @@ rc_regcompass_step_metacells <- function(
       min_cells = cell_set$min_cells,
       retained_cells = cell_set$retained_cells,
       retained_cell_types = cell_set$retained_cell_types,
-      skipped_condition_cell_types = cell_set$skipped_condition_cell_types,
+      condition_pando_cell_types = cell_set$condition_pando_cell_types,
+      standard_pando_cell_types = cell_set$standard_pando_cell_types,
       diagnostics = cell_set$diagnostics,
       analysis_mode = cell_set$analysis_mode,
       condition_levels = cell_set$condition_levels
@@ -158,6 +159,16 @@ rc_regcompass_step_metacells <- function(
   design <- .rc_resolve_condition_design(object, condition_col)
   object <- design$object
   effective_condition_col <- design$condition_col
+  resolved_analysis_mode <- if (is.null(grn)) {
+    contract$analysis_mode
+  } else {
+    grn$params$analysis_mode
+  }
+  resolved_fallback_reason <- if (is.null(grn)) {
+    design$fallback_reason
+  } else {
+    grn$params$fallback_reason
+  }
   object <- .rc_prepare_seurat_assays(
     object,
     assays = c(rna_assay, atac_assay),
@@ -217,8 +228,10 @@ rc_regcompass_step_metacells <- function(
       requested_condition_col = design$requested_condition_col,
       condition_col = effective_condition_col,
       condition_levels = design$condition_levels,
-      analysis_mode = design$analysis_mode,
-      fallback_reason = design$fallback_reason,
+      analysis_mode = resolved_analysis_mode,
+      fallback_reason = resolved_fallback_reason,
+      cell_type_analysis_mode = if (is.null(grn)) NULL else
+        grn$params$cell_type_analysis_mode,
       celltype_col = celltype_col,
       cell_type = cell_type,
       rna_assay = rna_assay,

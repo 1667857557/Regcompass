@@ -1,31 +1,27 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.3.0
+Version: 2.4.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     with genome-scale metabolic reaction analysis. Stage 1 fixes min_cells at
     300 and applies the same cell set before normalization and downstream
-    metacell construction. With two or more conditions, each broad cell type
-    uses one canonical Pando condition-GRN procedure: candidate edges are
-    discovered on the complete cell type and separately in every condition,
-    exact TF-peak-target triples are unioned into one frozen dictionary, and
-    every condition is refitted with the same unscaled Gaussian identity Pando
-    interaction model. Condition effects retain their fitted coefficient,
-    standard error, P value and BH-adjusted P value. Only estimable coefficients
-    with BH-adjusted P below 0.05 enter the regulatory penalty; no additional
-    absolute-effect or target-model R-squared gate is applied in multi-condition
-    mode. No pooled-coefficient rescaling, nested condition cross-validation,
-    sparse-group path, structural-zero coefficient substitution or common-
-    support decomposition is used. When no condition is supplied or fewer than
-    two levels are observed, Stage 1 directly fits the original Pando GRN within
-    each broad cell type and creates no condition coefficient. Paired-cell
-    TF-by-ATAC regulatory effects are projected before exact SuperCell
-    aggregation. Metacells use one multimodal WNN graph per broad cell type and
-    remain condition-pure after membership splitting. RNA support, regulatory
-    effects, GPR rules, cell-type-specific union GEM construction and directional
-    penalties use consistent reaction ordering, bounds and medium scenarios.
+    metacell construction. Routing is resolved independently for every broad
+    cell type. A cell type with at least two retained conditions uses the
+    common-dictionary Pando condition-GRN procedure: candidate edges are
+    discovered on the complete cell type and separately in every retained
+    condition, exact TF-peak-target triples are unioned into one frozen
+    dictionary, and every condition is refitted with the same unscaled Gaussian
+    identity Pando interaction model. Only estimable coefficients with
+    BH-adjusted P below 0.05 enter the regulatory penalty. A cell type with one
+    retained condition uses the original standard Pando GRN and creates no
+    condition coefficient. Paired-cell TF-by-ATAC regulatory effects are
+    projected before exact SuperCell aggregation. Metacells use one multimodal
+    WNN graph per broad cell type and remain condition-pure after membership
+    splitting. RNA support, regulatory effects, GPR rules, cell-type-specific
+    union GEM construction and directional penalties use consistent reaction
+    ordering, bounds and medium scenarios.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -78,8 +74,8 @@ Collate:
     'stage1_input_contract.R'
     'condition_grn_contract.R'
     'standard_pando.R'
+    'mixed_pando.R'
     'condition_layer1.R'
-    'condition_full_contract.R'
     'reaction_annotation_utils.R'
     'reaction_evidence.R'
     'reaction_annotations.R'
@@ -140,17 +136,14 @@ Suggests:
 Config/testthat/edition: 3
 Remotes:
     1667857557/SuperCell_Seurat_V4,
-    1667857557/Pando_regcompass@5c451e192831713ed955cd03276ddf47e89a4ec2
+    1667857557/Pando_regcompass
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
-Config/RegCompassR/SupportedSeuratMajors: 4,5
+Config/RegCompassR/SupportedSeuratMajors: 4
 Config/RegCompassR/SupportedSignacMajor: 1
-Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
 Config/RegCompassR/SeuratObjectVersion: 4.1.4
 Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionMethod: two-stage-exact-edge-union-fixed-dictionary-glm
 Config/RegCompass/PandoConditionEffectFilter: BH-adjusted-p-below-0.05
-Config/RegCompass/PandoConditionGRNSchema: pando_condition_grn_common_dictionary_v1
-Config/RegCompass/PandoConditionGRNMethod: two-stage-exact-edge-union-fixed-dictionary-glm

@@ -1,11 +1,9 @@
 #' Run RegCompass from species-aware defaults
 #'
-#' Loads a pinned Human-GEM or Mouse-GEM when `gem` is omitted, prepares the
-#' requested medium, and calls [rc_run_regcompass()]. Stage 2 uses one
-#' independent multimodal WNN graph per broad cell type. All conditions within
-#' that cell type jointly determine adaptive RNA/ATAC modality weights,
-#' neighbours and Walktrap clusters; condition splits parent membership only
-#' after clustering. Small metacells are retained and marked.
+#' Loads a Human-GEM or Mouse-GEM when `gem` is omitted, prepares the requested
+#' medium, and calls [rc_run_regcompass()]. Pando routing is resolved separately
+#' for every retained broad cell type. Stage 2 builds one multimodal WNN graph
+#' per broad cell type and keeps final metacells condition-pure.
 #'
 #' When both medium arguments are omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`. Users may pass
@@ -17,7 +15,7 @@
 #'   and regulatory regions.
 #' @param species `"human"` or `"mouse"`.
 #' @param gem Optional prepared species GEM.
-#' @param gem_version Pinned model release.
+#' @param gem_version Model release used when `gem` is omitted.
 #' @param gem_source GEM source: automatic, bundled-only, or download.
 #' @param pfm Optional motif collection. Pando's bundled motifs are used when
 #'   omitted.
@@ -26,8 +24,7 @@
 #' @param medium_scenario Optional built-in biological scenario.
 #' @param medium_scenarios Optional prebuilt user-defined or built-in medium table.
 #' @param progress Show stage and total progress.
-#' @param ... Arguments passed to [rc_run_regcompass()], including grouped-WNN
-#'   `metacell_args`.
+#' @param ... Arguments passed to [rc_run_regcompass()].
 #' @return A complete RegCompass result.
 #' @export
 rc_run_regcompass_one_shot <- function(

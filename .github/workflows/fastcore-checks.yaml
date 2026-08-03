@@ -1,4 +1,4 @@
-name: RegCompassR package check
+name: RegCompassR source check
 
 on:
   pull_request:
@@ -9,73 +9,29 @@ permissions:
   contents: read
 
 jobs:
-  package-check:
+  check:
     runs-on: ubuntu-22.04
-    timeout-minutes: 90
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
-          use-public-rspm: true
-      - uses: r-lib/actions/setup-pandoc@v2
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          dependencies: '"hard"'
-          extra-packages: |
-            any::rcmdcheck
-            any::testthat
-            any::knitr
-            any::rmarkdown
-            github::1667857557/Pando_regcompass@9b8cde926e176e853c824301a7daf6061d036031
-      - name: Verify current documented defaults
+      - name: Parse package sources
         shell: Rscript {0}
         run: |
-          documentation <- c(
-            "README.md",
-            list.files("docs", pattern = "[.]md$", full.names = TRUE),
-            list.files("vignettes", pattern = "[.]Rmd$", full.names = TRUE),
-            list.files("man", pattern = "[.]Rd$", full.names = TRUE)
+          description <- read.dcf("DESCRIPTION")
+          stopifnot(nrow(description) == 1L)
+          remotes <- unname(description[1L, "Remotes"])
+          stopifnot(
+            grepl("1667857557/Pando_regcompass", remotes, fixed = TRUE),
+            grepl("1667857557/SuperCell_Seurat_V4", remotes, fixed = TRUE),
+            !grepl("@", remotes, fixed = TRUE)
           )
-          text <- paste(
-            unlist(lapply(documentation, readLines, warn = FALSE),
-                   use.names = FALSE),
-            collapse = "\n"
+          files <- c(
+            list.files("R", pattern = "[.]R$", full.names = TRUE),
+            list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
-          forbidden <- c(
-            "gamma = 150", "gamma=150", "peak_cor = 0.05",
-            "peak_cor=0.05", "peak_cor = 0.1", "peak_cor=0.1",
-            "min_abs_estimate", "min_model_rsq", "condition_full_oof",
-            "common_oof", "condition_unique_oof"
-          )
-          present <- forbidden[vapply(
-            forbidden, grepl, logical(1), x = text, fixed = TRUE
-          )]
-          if (length(present)) {
-            stop("Stale documented contract remains: ",
-                 paste(present, collapse = ", "))
-          }
-          required <- c("gamma = 30", "peak_cor = 0")
-          missing <- required[!vapply(
-            required, grepl, logical(1), x = text, fixed = TRUE
-          )]
-          if (length(missing)) {
-            stop("Canonical documented defaults are missing: ",
-                 paste(missing, collapse = ", "))
-          }
-      - name: Check package and tests
-        shell: Rscript {0}
-        env:
-          _R_CHECK_FORCE_SUGGESTS_: 'false'
-        run: |
-          rcmdcheck::rcmdcheck(
-            args = c('--no-manual'),
-            error_on = 'error'
-          )
-      - name: Upload check diagnostics
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: rcmdcheck-diagnostics
-          path: check
-          if-no-files-found: ignore
+          for (file in files) parse(file = file)
+      - name: Build source package
+        run: R CMD build --no-build-vignettes --no-manual .

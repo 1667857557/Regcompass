@@ -26,9 +26,6 @@ rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
   progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_layer1(grn, metacells, meta_modules, gem, outdir,
-  projection_component = "condition",
-  comparison_support = c("auto", "pairwise_common", "global_common"),
-  regulatory_alpha = 1,
   gpr_and_method = c("min", "median", "mean"),
   gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
   parallel = TRUE, BPPARAM = NULL,
@@ -48,68 +45,41 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{gem}{Prepared genome-scale metabolic model.}
 \item{outdir}{Stage output directory.}
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
-\item{pfm}{Optional motif collection. Pando bundled motifs are used when omitted.}
+\item{pfm}{Optional motif collection.}
 \item{species}{Species identifier or \code{"auto"}.}
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
-\item{cell_type}{Optional broad-cell-type labels. Stage 1 fixes the minimum at 300 cells. In condition mode, each condition-by-cell-type stratum is checked independently and a cell type must retain at least two qualifying conditions.}
+\item{cell_type}{Optional broad-cell-type labels. Stage 1 uses a fixed minimum of 300 paired cells per retained condition-by-cell-type stratum.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{fragment_files}{Whether to preserve Signac fragment references. The default clears them because the workflow uses in-memory count matrices.}
-\item{pando_args}{Stage 1 controls. \code{min_cells} is fixed at 300. In multi-condition mode, \code{pando_infer_args} supports candidate-discovery thresholds, BH adjustment, rank handling and minimum residual degrees of freedom. The condition penalty is fixed to estimable edges with BH \code{padj < 0.05}. \code{min_abs_estimate} and \code{min_model_rsq} are standard-Pando-only extraction controls and are ignored in multi-condition mode.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN neighbours, gamma, seed, size markers and cache controls.}
-\item{grn}{For Stage 2, the Stage 1 result. Supplying it reproduces the exact ordered Stage 1 cell set. In later stages, the validated Stage 1 output.}
-\item{meta_module_args}{Optional custom subsystem table and meta-module controls. Condition-specific modules are merged only within the same cell type.}
-\item{projection_component}{Must be \code{"condition"}.}
-\item{comparison_support}{Retained for compatibility with historical projection fields.}
-\item{regulatory_alpha}{Fixed at \code{1}.}
-\item{gpr_and_method}{GPR AND aggregation. OR isozyme branches are summed.}
+\item{fragment_files}{Whether to preserve Signac fragment references.}
+\item{pando_args}{Stage 1 Pando initialization, motif and inference controls.}
+\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed, size and cache controls.}
+\item{grn}{Validated Stage 1 output. In Stage 2 it enforces the exact Stage 1 cell set.}
+\item{meta_module_args}{Optional custom subsystem table.}
+\item{gpr_and_method}{GPR AND aggregation method.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
-\item{layer2_args}{Directional scoring and structural-completion controls. For \code{meta_module_gem}, FASTCORE is run independently for every cell-type and medium combination.}
+\item{layer2_args}{Directional scoring and model-completion controls.}
 \item{parallel}{Enable stage-level parallel execution.}
-\item{BPPARAM}{A \code{BiocParallelParam}, \code{NULL}, or \code{FALSE}. \code{TRUE} is invalid.}
+\item{BPPARAM}{A \code{BiocParallelParam}, \code{NULL}, or \code{FALSE}.}
 \item{progress}{Display and persist stage progress.}
 \item{metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
-\item{medium_scenarios}{Condition-invariant medium table.}
-\item{model_mode}{Build cell-type-specific union GEMs from the reaction catalogues or use the full reference GEM.}
+\item{medium_scenarios}{Shared medium table.}
+\item{model_mode}{Use cell-type meta-module GEMs or the full reference GEM.}
 }
 \value{
-Each function returns a validated stage object and writes its stage artifacts to
-\code{outdir}. Stage 1 stores the exact retained cells; Stage 2 records whether
-it reproduced that cell set. Stage 3 records cell-type-specific biological
-catalogues. Stage 5 records one structural cache entry per cell type and medium.
+Each function returns a validated stage object and writes its artifacts to
+\code{outdir}.
 }
 \description{
-Runs the GRN, metacell, reaction-catalogue, reaction-expression, metabolic-model,
-and results stages independently.
+Runs the regulatory, metacell, reaction-catalogue, reaction-support, metabolic
+scoring and result stages independently.
 }
 \details{
-Stage 1 filters cells before normalization and removes globally zero ATAC peaks.
-For multiple conditions, Pando discovers candidates in the pooled cell type and
-in each condition, unions exact TF-peak-target triples, freezes the dictionary,
-and fits the same unscaled Gaussian identity interaction model in every
-condition. Every condition retains the complete dictionary. Only estimable edges
-with BH-adjusted P below 0.05 enter the regulatory penalty. No native condition
-ABI, nested cross-validation, sparse-group solver, OOF projection, or
-structural-zero coefficient substitution is used.
-
-When condition is absent or has one effective level, Stage 1 runs original
-Pando independently within each retained broad cell type and creates no
-condition coefficients. Stage 2 builds one independent multimodal WNN graph per
-broad cell type and splits memberships by condition only after clustering.
-
-Stage 3 constructs biological modules for each condition-by-cell-type group and
-unions conditions only within the same cell type. It does not construct a GEM or
-run FASTCORE. Stage 4 reconstructs condition-specific TF-by-ATAC contributions
-on paired cells, then aggregates by exact SuperCell membership. Historical
-fields containing \code{_oof}, \code{common}, or \code{condition_unique} are
-retained as compatibility aliases; they do not describe the current estimator.
-
-For \code{model_mode = "meta_module_gem"}, Stage 5 builds one union GEM for
-every \code{cell_type x medium_scenario} key and runs FASTCORE independently in
-that model. Conditions of one cell type share its model, while different cell
-types do not share reaction membership, FASTCORE support, model files, bounds,
-or directional \code{vmax}. The optional \code{full_gem} route is dispatched to
-a separate full-GEM engine and does not construct a cross-cell-type union GEM.
-Stage 6 compares conditions only within a fixed cell type, reaction, direction,
-and medium, and loads the external checksummed condition-module payload only
-when assembling the final result.
+Stage 1 routes each retained cell type independently. At least two retained
+conditions use the common-dictionary condition GRN; one retained condition uses
+standard Pando. Stage 2 reproduces the Stage 1 cell set and keeps final
+metacells condition-pure. Stage 3 builds cell-type-scoped reaction catalogues.
+Stage 4 produces the primary multiome reaction support and an RNA-only control.
+Stage 5 uses cell-type and medium structural models or the full GEM. Stage 6
+assembles rankings, annotations and available condition contrasts. Mathematical
+definitions are maintained in \code{docs/mathematical-model.md}.
 }

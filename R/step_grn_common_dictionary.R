@@ -60,6 +60,8 @@ rc_regcompass_step_grn <- function(
   object <- cell_set$object
   pando_args <- cell_set$pando_args
   cell_type <- cell_set$retained_cell_types
+  condition_types <- cell_set$condition_pando_cell_types
+  standard_types <- cell_set$standard_pando_cell_types
 
   cell_set$diagnostics$threshold_source <- "fixed_pando_args_min_cells"
   object@misc$regcompass_stage1_group_filter <- cell_set$diagnostics
@@ -75,7 +77,8 @@ rc_regcompass_step_grn <- function(
     },
     condition_levels = cell_set$condition_levels,
     retained_cell_types = cell_set$retained_cell_types,
-    skipped_condition_cell_types = cell_set$skipped_condition_cell_types,
+    condition_pando_cell_types = condition_types,
+    standard_pando_cell_types = standard_types,
     applied_before_normalization = TRUE,
     passed_to_pando = TRUE
   )
@@ -107,13 +110,6 @@ rc_regcompass_step_grn <- function(
   design <- .rc_resolve_condition_design(object, condition_col)
   object <- design$object
   effective_condition_col <- design$condition_col
-  if (!identical(design$analysis_mode, cell_set$analysis_mode)) {
-    stop(
-      "Stage 1 cell filtering and condition design resolved different analysis modes.",
-      call. = FALSE
-    )
-  }
-
   object <- .rc_normalize_single_cell_grn_object(
     object,
     condition_col = effective_condition_col,
@@ -158,87 +154,65 @@ rc_regcompass_step_grn <- function(
     extra_args
   )
 
-  if (identical(design$analysis_mode, "condition_grn")) {
-    standard_only <- intersect(
-      names(call_args), c("min_abs_estimate", "min_model_rsq")
+  condition_infer_args <- infer_args
+  if (length(condition_types)) {
+    allowed_infer_args <- c(
+      "tf_cor", "peak_cor", "adjust_method", "padj_threshold",
+      "rank_action", "min_residual_df", "rna_layer", "peak_layer",
+      "peak_value_type"
     )
-    if (length(standard_only)) {
-      message(
-        "Ignoring standard-Pando-only edge filters in multi-condition mode: ",
-        paste(standard_only, collapse = ", "),
-        ". The condition penalty is fixed to estimable BH padj < 0.05."
-      )
-      call_args[standard_only] <- NULL
+    unknown_infer_args <- setdiff(names(infer_args), allowed_infer_args)
+    if (length(unknown_infer_args)) {
+      stop("Unsupported `pando_infer_args` in condition mode: ",
+           paste(unknown_infer_args, collapse = ", "), call. = FALSE)
     }
-    retired <- intersect(names(infer_args), c(
-      "candidate_screen", "condition_mix", "condition_weight", "alpha",
-      "nlambda", "lambda", "lambda_min_ratio", "outer_nfolds",
-      "inner_nfolds", "lambda_selection", "scale", "engine_control",
-      "comparison_conditions", "active_tol", "max_iter", "tol_objective",
-      "tol_coef", "seed", "method", "sample_col", "cv_block_col"
-    ))
-    if (length(retired)) {
-      stop(
-        "Retired condition-GRN parameter(s): ",
-        paste(retired, collapse = ", "),
-        ". Use tf_cor, peak_cor, adjust_method='BH', padj_threshold=0.05, rank_action and min_residual_df.",
-        call. = FALSE
-      )
-    }
-    infer_args <- utils::modifyList(list(
-      tf_cor = 0.1,
-      peak_cor = 0,
-      adjust_method = "BH",
-      padj_threshold = 0.05,
-      rank_action = "mark",
-      min_residual_df = 1L,
-      verbose = .rc_progress_enabled(progress)
+    condition_infer_args <- utils::modifyList(list(
+      tf_cor = 0.1, peak_cor = 0, adjust_method = "BH",
+      padj_threshold = 0.05, rank_action = "mark",
+      min_residual_df = 1L
     ), infer_args)
-    if (!identical(toupper(as.character(infer_args$adjust_method)), "BH") ||
-        !isTRUE(all.equal(as.numeric(infer_args$padj_threshold), 0.05))) {
+    if (!identical(
+          toupper(as.character(condition_infer_args$adjust_method)), "BH"
+        ) ||
+        !isTRUE(all.equal(
+          as.numeric(condition_infer_args$padj_threshold), 0.05
+        ))) {
       stop("Canonical RegCompass condition effects require BH padj < 0.05.",
            call. = FALSE)
     }
-    call_args$pando_infer_args <- infer_args
-    call_args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
-    call_args$progress_monitor <- monitor
-    .rc_step_monitor_event(
-      monitor, "pando_configuration",
-      "configured two-stage exact-edge union and fixed-dictionary GLMs",
-      current = 4L,
-      context = list(
-        tf_cor = infer_args$tf_cor,
-        peak_cor = infer_args$peak_cor,
-        adjust_method = "BH",
-        padj_threshold = 0.05,
-        rank_action = infer_args$rank_action,
-        scale = FALSE,
-        interaction = ":"
-      )
-    )
-    grn_result <- .rc_with_step_diagnostics(
-      do.call(.rc_fit_condition_grns_by_cell_type, call_args), monitor
-    )
-  } else {
-    infer_args$verbose <- infer_args$verbose %||%
-      .rc_progress_enabled(progress)
-    call_args$pando_infer_args <- infer_args
-    call_args$parallel <- isTRUE(parallel)
-    call_args$progress_monitor <- monitor
-    .rc_step_monitor_event(
-      monitor, "standard_pando",
-      "dispatching original per-cell-type Pando GRN workflow", current = 5L
-    )
-    grn_result <- .rc_with_step_diagnostics(
-      do.call(.rc_fit_standard_pando_by_cell_type, call_args), monitor
-    )
   }
+  standard_infer_args <- if (length(condition_types)) {
+    .rc_standard_pando_runtime_args(condition_infer_args)
+  } else {
+    infer_args
+  }
+  standard_infer_args$verbose <- standard_infer_args$verbose %||%
+    .rc_progress_enabled(progress)
+  grn_result <- .rc_with_step_diagnostics(
+    .rc_fit_pando_by_celltype_route(
+      object = object, gem = gem, outdir = outdir, genome = genome,
+      pfm = pfm, species = species,
+      condition_col = effective_condition_col,
+      celltype_col = celltype_col,
+      condition_types = condition_types,
+      standard_types = standard_types,
+      rna_assay = rna_assay, atac_assay = atac_assay,
+      extra_args = extra_args,
+      condition_infer_args = condition_infer_args,
+      standard_infer_args = standard_infer_args,
+      parallel = parallel, BPPARAM = BPPARAM,
+      progress_monitor = monitor
+    ),
+    monitor
+  )
 
-  grn_result$analysis_mode <- design$analysis_mode
+  grn_result$analysis_mode <- cell_set$analysis_mode
   grn_result$requested_condition_col <- design$requested_condition_col
   grn_result$effective_condition_col <- effective_condition_col
   grn_result$condition_levels <- design$condition_levels
-  grn_result$fallback_reason <- design$fallback_reason
+  grn_result$fallback_reason <- if (identical(
+    cell_set$analysis_mode, "mixed_pando"
+  )) "cell_type_specific_condition_count" else design$fallback_reason
   grn_result$rna_assay <- rna_assay
   grn_result$atac_assay <- atac_assay
 
@@ -253,7 +227,8 @@ rc_regcompass_step_grn <- function(
       n_removed_cells = as.integer(n_input - length(cell_set$retained_cells)),
       retained_cells = cell_set$retained_cells,
       retained_cell_types = cell_set$retained_cell_types,
-      skipped_condition_cell_types = cell_set$skipped_condition_cell_types,
+      condition_pando_cell_types = condition_types,
+      standard_pando_cell_types = standard_types,
       diagnostics = cell_set$diagnostics,
       analysis_mode = cell_set$analysis_mode,
       condition_levels = cell_set$condition_levels
@@ -262,14 +237,17 @@ rc_regcompass_step_grn <- function(
       requested_condition_col = design$requested_condition_col,
       condition_col = effective_condition_col,
       condition_levels = design$condition_levels,
-      analysis_mode = design$analysis_mode,
-      fallback_reason = design$fallback_reason,
+      analysis_mode = cell_set$analysis_mode,
+      fallback_reason = grn_result$fallback_reason,
+      cell_type_analysis_mode = grn_result$cell_type_analysis_mode,
       celltype_col = celltype_col,
       cell_type = cell_set$retained_cell_types,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
       fragment_files = preserve_fragments,
-      pando_args = c(extra_args, list(pando_infer_args = infer_args)),
+      pando_args = c(extra_args, list(
+        pando_infer_args = condition_infer_args
+      )),
       parallel = parallel,
       species = species,
       n_input_cells = as.integer(n_input),

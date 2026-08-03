@@ -1,17 +1,16 @@
 # Common-dictionary Pando projection used by Layer 1.
 
 .rc_condition_pando_projection <- function(
-    grn_result, membership, unit_meta, genes, comparison_support) {
-  primary <- matrix(
+    grn_result, membership, unit_meta, genes) {
+  projection <- matrix(
     NA_real_, length(genes), nrow(unit_meta),
     dimnames = list(genes, unit_meta$unit_id)
   )
-  reliability <- primary
+  reliability <- projection
   coverage <- list()
 
   for (fit in grn_result$condition_grn_fits) {
     .rc_require_pando_condition_grn_fit(fit)
-
     cell_projection <- Pando::project_condition_grn_cells(
       object = grn_result$pando_grn_data,
       fit = fit,
@@ -24,9 +23,9 @@
     )
     score <- as.matrix(aggregated$gene_score)
     rownames(score) <- tolower(rownames(score))
-    targets <- intersect(rownames(score), rownames(primary))
-    units <- intersect(colnames(score), colnames(primary))
-    primary[targets, units] <- score[targets, units, drop = FALSE]
+    targets <- intersect(rownames(score), rownames(projection))
+    units <- intersect(colnames(score), colnames(projection))
+    projection[targets, units] <- score[targets, units, drop = FALSE]
 
     coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
     condition_col <- as.character(fit$condition_col)[[1L]]
@@ -35,7 +34,6 @@
       stop("Metacell metadata lack fitted condition or cell-type columns.",
            call. = FALSE)
     }
-
     for (condition in fit$condition_levels) {
       selected_units <- unit_meta$unit_id[
         as.character(unit_meta[[condition_col]]) == condition &
@@ -56,7 +54,6 @@
         reliability[reliable_targets, selected_units] <- 1
       }
     }
-
     coverage[[length(coverage) + 1L]] <- data.frame(
       cell_type = fit$cell_type,
       condition = fit$condition_levels,
@@ -76,22 +73,14 @@
     )
   }
 
-  common <- primary
-  condition_unique <- primary * 0
   list(
-    common = common,
-    primary = primary,
-    condition_unique = condition_unique,
+    projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_full_fit_fixed_dictionary_glm_padj_filtered",
-    full_fit_used = TRUE,
+    origin = "paired_cell_fixed_dictionary_glm_padj_filtered",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    primary_projection = "padj_filtered_fixed_dictionary_condition_glm",
-    common_projection_role =
-      "compatibility_alias_of_primary_no_common_support_decomposition",
-    nonestimable_projection_policy =
-      "coefficient_NA_and_zero_realized_penalty_contribution",
-    comparison_support_ignored = comparison_support
+    projection_name = "padj_filtered_fixed_dictionary_condition_glm",
+    nonestimable_policy =
+      "coefficient_NA_and_zero_realized_penalty_contribution"
   )
 }

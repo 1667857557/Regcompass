@@ -50,11 +50,8 @@
   }
   missing_type <- setdiff(requested_type, available_type)
   if (length(missing_type)) {
-    stop(
-      "Requested cell types were not found: ",
-      paste(missing_type, collapse = ", "),
-      call. = FALSE
-    )
+    stop("Requested cell types were not found: ",
+         paste(missing_type, collapse = ", "), call. = FALSE)
   }
   selected <- observed_type %in% requested_type
   if (!any(selected)) {
@@ -69,10 +66,8 @@
     invalid_condition <- selected &
       (is.na(object@meta.data[[condition_col]]) | !nzchar(observed_condition))
     if (any(invalid_condition)) {
-      stop(
-        "Condition metadata contain missing or empty values in requested cell types.",
-        call. = FALSE
-      )
+      stop("Condition metadata contain missing or empty values in requested cell types.",
+           call. = FALSE)
     }
     condition_levels <- unique(observed_condition[selected])
   } else {
@@ -80,8 +75,8 @@
     condition_levels <- character()
   }
 
-  condition_mode <- length(condition_levels) >= 2L
-  if (condition_mode) {
+  condition_design <- length(condition_levels) >= 2L
+  if (condition_design) {
     count_matrix <- table(
       factor(observed_type[selected], levels = requested_type),
       factor(observed_condition[selected], levels = condition_levels)
@@ -89,61 +84,56 @@
     retained_stratum <- count_matrix >= as.integer(min_cells)
     retained_condition_count <- base::rowSums(retained_stratum)
     retained_type <- rownames(count_matrix)[retained_condition_count >= 1L]
-    pando_type <- rownames(count_matrix)[retained_condition_count >= 2L]
+    condition_type <- rownames(count_matrix)[retained_condition_count >= 2L]
+    standard_type <- rownames(count_matrix)[retained_condition_count == 1L]
 
     diagnostics <- do.call(rbind, lapply(requested_type, function(type) {
       stratum_ok <- as.logical(retained_stratum[type, condition_levels])
-      fit_ok <- type %in% pando_type
+      type_mode <- if (type %in% condition_type) {
+        "condition_grn"
+      } else if (type %in% standard_type) {
+        "standard_pando"
+      } else {
+        "excluded"
+      }
       data.frame(
         cell_type = type,
         condition = condition_levels,
         n_cells = as.integer(count_matrix[type, condition_levels]),
         retained_stratum = stratum_ok,
         retained_cell_type = type %in% retained_type,
-        eligible_for_condition_pando = fit_ok,
+        cell_type_analysis_mode = type_mode,
         retained = stratum_ok,
         fit_status = ifelse(
           !stratum_ok,
           "excluded_below_min_cells",
-          ifelse(fit_ok, "eligible_condition_pando",
-                 "skipped_fewer_than_two_conditions")
+          ifelse(type %in% condition_type,
+                 "eligible_condition_pando",
+                 "eligible_standard_pando_single_condition")
         ),
         n_retained_conditions = as.integer(retained_condition_count[[type]]),
         threshold = as.integer(min_cells),
         threshold_scope = "condition_x_cell_type",
-        analysis_mode = "condition_grn",
         stringsAsFactors = FALSE
       )
     }))
 
-    dropped_strata <- diagnostics[!diagnostics$retained_stratum, , drop = FALSE]
-    if (nrow(dropped_strata)) {
+    dropped <- diagnostics[!diagnostics$retained_stratum, , drop = FALSE]
+    if (nrow(dropped)) {
       message(
-        "Stage 1 excluded condition x cell-type strata below min_cells=300 before normalization: ",
-        paste0(
-          dropped_strata$cell_type, "{", dropped_strata$condition, "}=",
-          dropped_strata$n_cells, collapse = "; "
-        )
-      )
-    }
-    skipped_type <- setdiff(retained_type, pando_type)
-    if (length(skipped_type)) {
-      message(
-        "Stage 1 retained qualifying strata but skipped condition-Pando fitting for cell types with fewer than two retained conditions: ",
-        paste0(
-          skipped_type, "=", as.integer(retained_condition_count[skipped_type]),
-          " retained condition(s)", collapse = "; "
-        )
+        "Stage 1 excluded condition x cell-type strata below min_cells=300: ",
+        paste0(dropped$cell_type, "{", dropped$condition, "}=",
+               dropped$n_cells, collapse = "; ")
       )
     }
     if (!length(retained_type)) {
       stop("No condition x cell-type stratum reaches min_cells=300.",
            call. = FALSE)
     }
-    if (!length(pando_type)) {
-      stop(
-        "No cell type retains at least two qualifying conditions for condition-Pando fitting after min_cells=300 filtering.",
-        call. = FALSE
+    if (length(standard_type)) {
+      message(
+        "Using standard Pando for cell types with one retained condition: ",
+        paste(standard_type, collapse = ", ")
       )
     }
 
@@ -153,16 +143,24 @@
     condition_index <- match(
       observed_condition[selected_rows], colnames(retained_stratum)
     )
-    valid_index <- !is.na(type_index) & !is.na(condition_index)
+    valid <- !is.na(type_index) & !is.na(condition_index)
     selected_keep <- rep(FALSE, length(selected_rows))
-    selected_keep[valid_index] <- retained_stratum[cbind(
-      type_index[valid_index], condition_index[valid_index]
+    selected_keep[valid] <- retained_stratum[cbind(
+      type_index[valid], condition_index[valid]
     )]
     keep_cells[selected_rows] <- selected_keep
+    analysis_mode <- if (length(condition_type) && length(standard_type)) {
+      "mixed_pando"
+    } else if (length(condition_type)) {
+      "condition_grn"
+    } else {
+      "standard_pando"
+    }
   } else {
     counts <- table(factor(observed_type[selected], levels = requested_type))
     retained_type <- names(counts)[as.integer(counts) >= min_cells]
-    pando_type <- retained_type
+    condition_type <- character()
+    standard_type <- retained_type
     diagnostics <- data.frame(
       cell_type = names(counts),
       condition = if (length(condition_levels) == 1L) {
@@ -173,7 +171,9 @@
       n_cells = as.integer(counts),
       retained_stratum = as.integer(counts) >= min_cells,
       retained_cell_type = names(counts) %in% retained_type,
-      eligible_for_condition_pando = FALSE,
+      cell_type_analysis_mode = ifelse(
+        names(counts) %in% retained_type, "standard_pando", "excluded"
+      ),
       retained = names(counts) %in% retained_type,
       fit_status = ifelse(
         names(counts) %in% retained_type,
@@ -187,20 +187,13 @@
       },
       threshold = as.integer(min_cells),
       threshold_scope = "cell_type",
-      analysis_mode = "standard_pando",
       stringsAsFactors = FALSE
     )
-    dropped_type <- setdiff(requested_type, retained_type)
-    if (length(dropped_type)) {
-      message(
-        "Stage 1 excluded cell types with fewer than min_cells=300 before normalization: ",
-        paste0(dropped_type, "=", as.integer(counts[dropped_type]), collapse = ", ")
-      )
-    }
     if (!length(retained_type)) {
       stop("No requested cell type reaches min_cells=300.", call. = FALSE)
     }
     keep_cells <- selected & observed_type %in% retained_type
+    analysis_mode <- "standard_pando"
   }
 
   retained_cells <- rownames(object@meta.data)[keep_cells]
@@ -209,15 +202,11 @@
   list(
     object = filtered,
     retained_cell_types = retained_type,
-    pando_cell_types = pando_type,
-    skipped_condition_cell_types = if (condition_mode) {
-      setdiff(retained_type, pando_type)
-    } else {
-      character()
-    },
+    condition_pando_cell_types = condition_type,
+    standard_pando_cell_types = standard_type,
     diagnostics = diagnostics,
-    analysis_mode = if (condition_mode) "condition_grn" else "standard_pando",
-    condition_levels = if (condition_mode) {
+    analysis_mode = analysis_mode,
+    condition_levels = if (condition_design) {
       unique(observed_condition[keep_cells])
     } else {
       condition_levels
@@ -235,7 +224,7 @@
     cell_type = cell_type,
     min_cells = threshold$min_cells
   )
-  analysis_types <- unique(as.character(groups$pando_cell_types))
+  analysis_types <- unique(as.character(groups$retained_cell_types))
   observed_type <- trimws(as.character(groups$object@meta.data[[celltype_col]]))
   analysis_cells <- rownames(groups$object@meta.data)[
     observed_type %in% analysis_types
@@ -247,12 +236,15 @@
     object = subset(groups$object, cells = analysis_cells),
     retained_cells = analysis_cells,
     retained_cell_types = analysis_types,
+    condition_pando_cell_types =
+      unique(as.character(groups$condition_pando_cell_types)),
+    standard_pando_cell_types =
+      unique(as.character(groups$standard_pando_cell_types)),
     diagnostics = groups$diagnostics,
     analysis_mode = groups$analysis_mode,
     condition_levels = groups$condition_levels,
     min_cells = threshold$min_cells,
-    pando_args = threshold$pando_args,
-    skipped_condition_cell_types = groups$skipped_condition_cell_types
+    pando_args = threshold$pando_args
   )
 }
 
