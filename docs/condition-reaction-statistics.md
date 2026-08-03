@@ -1,7 +1,7 @@
 # Condition-associated reaction statistics
 
 `rc_test_condition_reactions()` compares the same reaction target across
-conditions within the same cell type after Layer 2 scoring. Stage 6 now attaches
+conditions within the same cell type after Layer 2 scoring. Stage 6 attaches
 formal reaction names, stoichiometric formulas, substrates, products, GPR rules,
 participating genes, and RNA-versus-multiome evidence provenance to every result
 row.
@@ -12,23 +12,65 @@ within a fixed cell type, medium, reaction, and target direction.
 
 ## Why the comparison is valid
 
-RegCompass first merges the condition/cell-type biological reaction catalogue
-without local feasibility completion. For each medium, Stage 5 then performs
-one global FASTCORE completion and caches one cell-type-specific union GEM per medium. Every
-metacell compared within that medium is scored with the same stoichiometric
-matrix, bounds, reaction direction, and target-flux fraction. The only
-unit-specific term in the Layer 2 objective is the multiome-derived reaction
-penalty.
-
-For reaction target `r` and unit `j`, the tested support score is
+RegCompass first builds one biological reaction catalogue for every effective
+condition-by-cell-type group. Condition-specific catalogues are unioned only
+within the same cell type:
 
 ```text
-S[r,j] = -log(P[r,j] / (omega * Vmax[r]) + eps)
+B[cell_type] = union over conditions of B[cell_type, condition]
 ```
 
-where `P[r,j]` is the minimum evidence-discordance penalty required to sustain
-`omega * Vmax[r]`. Larger scores indicate stronger support. Before testing, the
-function verifies that `Vmax[r]` is invariant across units under the shared GEM.
+There is no union across cell types. For every `cell_type × medium_scenario`
+combination, Stage 5 then runs an independent FASTCORE completion and caches one
+cell-type-specific union GEM. Conditions and metacells of that cell type reuse
+the same stoichiometric matrix, bounds, reaction order, target direction, and
+target-flux fraction. A model from another cell type is never used in the test.
+
+The only metacell-specific term in the Layer 2 objective is the multiome-derived
+reaction penalty. For reaction `r`, direction `d`, cell type `t`, medium `m`, and
+metacell `j` of type `t`, the tested support score is
+
+```text
+S[r,d,t,m,j] = -log(P[r,d,t,m,j] / (omega * Vmax[r,d,t,m]) + eps)
+```
+
+where `P` is the minimum evidence-discordance penalty required to sustain
+`omega * Vmax`. Larger scores indicate stronger support. Before testing, the
+function verifies that `Vmax[r,d,t,m]` is invariant across the compared units
+assigned to that structural row.
+
+Inspect the structural contract with:
+
+```r
+result$microcompass$model_cache_summary[, c(
+  "cell_type",
+  "medium_scenario",
+  "file",
+  "file_checksum",
+  "n_celltype_biological_reactions",
+  "n_celltype_fastcore_support_reactions",
+  "build_strategy",
+  "completion_stage"
+)]
+
+result$microcompass$params[c(
+  "structural_scope",
+  "shared_across_conditions",
+  "shared_across_cell_types",
+  "shared_gem_scope",
+  "vmax_computation_scope"
+)]
+```
+
+The canonical values are:
+
+```text
+structural_scope = cell_type_x_medium
+shared_across_conditions = TRUE
+shared_across_cell_types = FALSE
+build_strategy = celltype_medium_union_gem
+completion_stage = celltype_specific_fastcore_after_condition_module_union
+```
 
 ## Reaction annotations created by Stage 6
 
@@ -206,6 +248,10 @@ provenance for each contrast.
 
 Positive `delta_median_score_b_minus_a`, Cohen's d, or rank-biserial correlation
 means stronger reaction support in `condition_b`.
+
+Rows whose row-ID cell type differs from the selected cell type are excluded
+before pairwise or omnibus testing. Cross-cell-type penalty or `Vmax` differences
+are structural-model comparisons and are not interpreted as condition effects.
 
 ## Select reactions by metabolic genes
 
