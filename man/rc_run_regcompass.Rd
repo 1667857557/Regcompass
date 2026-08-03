@@ -2,7 +2,7 @@
 % Please edit documentation in R/regcompass.R
 \name{rc_run_regcompass}
 \alias{rc_run_regcompass}
-\title{Run RegCompass with automatic Pando mode selection}
+\title{Run RegCompass with cell-type-specific Pando routing}
 \usage{
 rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
@@ -23,52 +23,36 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
 \item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
 \item{species}{Model species or \code{"auto"}.}
-\item{condition_col}{Optional condition metadata column. Omitted, absent, or single-level conditions select standard Pando.}
+\item{condition_col}{Optional condition metadata column.}
 \item{celltype_col}{Broad-cell-type metadata column.}
 \item{cell_type}{Optional broad-cell-type labels to process.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 controls. Nested \code{pando_infer_args} are passed to the selected Pando route.}
+\item{pando_args}{Stage 1 controls, including nested \code{pando_infer_args}.}
 \item{fragment_files}{Must be \code{FALSE} for the count-assay metacell path.}
-\item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma, seed, small-metacell marker and cache controls.}
+\item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma, seed and cache controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
+\item{layer1_args}{Optional \code{gpr_and_method} and \code{gene_half_saturation}.}
 \item{medium_scenarios}{Shared medium table.}
-\item{model_mode}{Build a shared catalogue-derived model or use the full GEM.}
+\item{model_mode}{Use cell-type meta-module GEMs or the full GEM.}
 \item{layer2_args}{Directional scoring and model-completion controls.}
 \item{upstream_workers}{Worker count for Stage 1 and Stage 4.}
 \item{layer2_workers}{Worker count for Stage 5.}
 \item{progress}{Display workflow and stage progress.}
 }
 \value{
-A complete RegCompass result. \code{analysis_mode} is \code{"condition_grn"}
-or \code{"standard_pando"}; \code{condition_coefficients_calculated} reports
-whether condition coefficients were fitted.
+A complete RegCompass result. \code{analysis_mode} is \code{"condition_grn"},
+\code{"standard_pando"}, or \code{"mixed_pando"}. The
+\code{cell_type_analysis_mode} table records the route used by each cell type.
 }
 \description{
-Runs the six-stage RegCompass workflow with automatic GRN routing and one
-independent multimodal WNN graph per broad cell type, pooling all conditions
-within each cell-type graph.
+Runs the six-stage RegCompass workflow. Cell types with at least two retained
+conditions use the common-dictionary condition GRN. Cell types with one retained
+condition use standard Pando and do not receive condition coefficients.
 }
 \details{
-Two or more condition levels use the canonical Pando condition fit. The primary
-regulatory and metabolic route is condition-full outer-heldout projection.
-Jointly estimable edges form a common-support component. An edge that is
-non-estimable in one or both conditions remains projectable and contributes
-exactly zero in each affected condition.
-
-One or zero usable condition levels use original \code{Pando::infer_grn()} within
-each broad cell type and do not calculate condition coefficients.
-
-Stage 2 calls \code{SuperCell::SCimplify_by_graph_group()} with broad cell type
-as \code{cell.graph.group} and condition as \code{cell.split.condition}. Each
-broad cell type receives one independent native RNA+ATAC WNN graph. All
-conditions jointly determine adaptive modality weights, neighbours, and
-Walktrap clusters; condition splits parent membership only after clustering.
-Small final metacells are retained and marked, not merged or removed. No sample
-column participates in graph construction or membership.
-
-All penalty routes reuse the same medium-specific metabolic model and target
-\code{vmax}. The canonical result schema omits depth matching, common-depth
-restriction, alpha sensitivity, zero-support sensitivity and link-saturation
-propagation. A single-condition result contains reaction rankings and an empty
-condition contrast.
+Stage 2 builds one independent RNA+ATAC WNN graph per broad cell type and keeps
+final metacells condition-pure. Layer 1 accepts only \code{gpr_and_method} and
+\code{gene_half_saturation}. Layer 2 retains the primary penalty and an explicit
+RNA-only control. Mathematical definitions are maintained in
+\code{docs/mathematical-model.md}.
 }
