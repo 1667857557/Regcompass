@@ -48,7 +48,17 @@ test_that("Stage 1 materializes resources before Pando job dispatch", {
   expect_gt(materialize, 0L)
   expect_gt(dispatch, materialize)
   expect_true(grepl(
-    "extra_args$pando_motif_args <- resources$pando_motif_args",
+    "dispatch_extra_args$pando_motif_args <- resources$pando_motif_args",
+    stage_source,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "extra_args = dispatch_extra_args",
+    stage_source,
+    fixed = TRUE
+  ))
+  expect_true(grepl(
+    "stored_in_step_params = FALSE",
     stage_source,
     fixed = TRUE
   ))
