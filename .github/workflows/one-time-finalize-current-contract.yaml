@@ -1,4 +1,4 @@
-name: One-time finalize current RegCompass contract
+name: One-time apply cell-type Pando routing
 
 on:
   pull_request:
@@ -8,11 +8,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: regcompass-current-contract-${{ github.event.pull_request.number }}
+  group: regcompass-celltype-routing-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  finalize:
+  migrate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-22.04
     steps:
@@ -20,12 +20,12 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-      - name: Apply current source and documentation contract
-        run: python .github/scripts/finalize_current_contract.py || true
-      - name: Commit migrated source
+      - name: Apply cell-type routing
+        run: python .github/scripts/apply_mixed_pando.py
+      - name: Commit routed source
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A R DESCRIPTION README.md docs vignettes man tests
-          git commit -m "remove obsolete APIs and align current tutorials"
+          git add -A R DESCRIPTION
+          git commit -m "route Pando by retained condition count"
           git push origin HEAD:${{ github.head_ref }}
