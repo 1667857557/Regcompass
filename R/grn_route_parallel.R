@@ -89,7 +89,7 @@
   )
 }
 
-.rc_merge_pando_grn_data <- function(results) {
+.rc_merge_pando_grn_data <- function(results, full_object) {
   values <- lapply(results, `[[`, "pando_grn_data")
   values <- values[vapply(values, function(x) inherits(x, "GRNData"), logical(1))]
   if (!length(values)) return(NULL)
@@ -105,54 +105,103 @@
       }
     }
   }
+  if (!inherits(full_object, "Seurat")) {
+    stop("The merged condition GRN requires the complete normalized Seurat object.",
+         call. = FALSE)
+  }
+  combined@data <- full_object
   combined@grn@params$condition_grn_fits <- unlist(
     lapply(results, `[[`, "condition_grn_fits"), recursive = FALSE
   )
   combined@grn@params$condition_network_index <- .rc_bind_pando_field(
     results, "pando_network_index"
   )
+  network_names <- names(combined@grn@networks)
+  if (length(network_names)) combined@grn@active_network <- tail(network_names, 1L)
   combined
 }
 
-.rc_merge_condition_job_results <- function(results) {
+.rc_merge_condition_job_results <- function(results, full_object) {
   if (!length(results)) return(NULL)
-  if (length(results) == 1L) return(results[[1L]])
   answer <- results[[1L]]
-  frame_fields <- c(
-    "condition_fit_status", "pando_network_index", "pando_fit_diagnostics",
-    "tf_peak_gene_universal", "tf_peak_gene_condition_all",
-    "tf_peak_gene_condition", "tf_peak_gene_condition_effect_all",
-    "tf_peak_gene_condition_effect", "paired_cell_metadata"
-  )
-  for (field in frame_fields) {
-    answer[[field]] <- .rc_bind_pando_field(results, field)
+  if (length(results) > 1L) {
+    frame_fields <- c(
+      "condition_fit_status", "pando_network_index", "pando_fit_diagnostics",
+      "tf_peak_gene_universal", "tf_peak_gene_condition_all",
+      "tf_peak_gene_condition", "tf_peak_gene_condition_effect_all",
+      "tf_peak_gene_condition_effect", "paired_cell_metadata"
+    )
+    for (field in frame_fields) {
+      answer[[field]] <- .rc_bind_pando_field(results, field)
+    }
+    if (nrow(answer$paired_cell_metadata)) {
+      answer$paired_cell_metadata <- answer$paired_cell_metadata[
+        !duplicated(answer$paired_cell_metadata$cell_id), , drop = FALSE
+      ]
+    }
+    answer$paired_cell_ids <- unique(
+      as.character(answer$paired_cell_metadata$cell_id)
+    )
+    answer$target_metabolic_genes <- unique(unlist(
+      lapply(results, `[[`, "target_metabolic_genes"), use.names = FALSE
+    ))
+    answer$condition_grn_fits <- unlist(
+      lapply(results, `[[`, "condition_grn_fits"), recursive = FALSE
+    )
+    summaries <- lapply(results, `[[`, "pando_execution_summary")
+    answer$pando_execution_summary <- list(
+      fit_engine = paste(unique(unlist(lapply(
+        summaries, `[[`, "fit_engine"
+      ), use.names = FALSE)), collapse = ";"),
+      targets_total = sum(vapply(summaries, function(x) {
+        as.integer(x$targets_total %||% 0L)
+      }, integer(1))),
+      targets_failed = sum(vapply(summaries, function(x) {
+        as.integer(x$targets_failed %||% 0L)
+      }, integer(1)))
+    )
   }
-  if (nrow(answer$paired_cell_metadata)) {
-    answer$paired_cell_metadata <- answer$paired_cell_metadata[
-      !duplicated(answer$paired_cell_metadata$cell_id), , drop = FALSE
-    ]
-  }
-  answer$paired_cell_ids <- unique(as.character(answer$paired_cell_metadata$cell_id))
-  answer$target_metabolic_genes <- unique(unlist(
-    lapply(results, `[[`, "target_metabolic_genes"), use.names = FALSE
-  ))
-  answer$condition_grn_fits <- unlist(
-    lapply(results, `[[`, "condition_grn_fits"), recursive = FALSE
-  )
-  summaries <- lapply(results, `[[`, "pando_execution_summary")
-  answer$pando_execution_summary <- list(
-    fit_engine = paste(unique(unlist(lapply(
-      summaries, `[[`, "fit_engine"
-    ), use.names = FALSE)), collapse = ";"),
-    targets_total = sum(vapply(summaries, function(x) {
-      as.integer(x$targets_total %||% 0L)
-    }, integer(1))),
-    targets_failed = sum(vapply(summaries, function(x) {
-      as.integer(x$targets_failed %||% 0L)
-    }, integer(1)))
-  )
-  answer$pando_grn_data <- .rc_merge_pando_grn_data(results)
+  answer$pando_grn_data <- .rc_merge_pando_grn_data(results, full_object)
   answer
+}
+
+.rc_run_pando_celltype_job <- function(
+    job, base, extra_args, condition_infer_args, standard_infer_args,
+    parallel, outer_parallel, progress_monitor) {
+  if (!is.list(job) || !inherits(job$object, "Seurat")) {
+    stop("Invalid Pando cell-type job.", call. = FALSE)
+  }
+  job_extra <- extra_args
+  motif_args <- job_extra$pando_motif_args %||% list()
+  if (outer_parallel && is.list(motif_args) &&
+      !is.null(motif_args$cache_dir)) {
+    motif_args$cache_dir <- file.path(
+      motif_args$cache_dir, .rc_safe_path_component(job$cell_type)
+    )
+    job_extra$pando_motif_args <- motif_args
+  }
+  args <- c(base[setdiff(names(base), names(job_extra))], job_extra)
+  args$object <- job$object
+  args$cell_type <- job$cell_type
+  args$progress_monitor <- if (outer_parallel) NULL else progress_monitor
+  if (identical(job$route, "condition_grn")) {
+    args$outdir <- file.path(
+      base$outdir, "condition", .rc_safe_path_component(job$cell_type)
+    )
+    args$pando_infer_args <- condition_infer_args
+    args$BPPARAM <- FALSE
+    value <- do.call(.rc_fit_condition_grns_by_cell_type, args)
+  } else if (identical(job$route, "standard_pando")) {
+    args$outdir <- file.path(
+      base$outdir, "standard", .rc_safe_path_component(job$cell_type)
+    )
+    args$pando_infer_args <- standard_infer_args
+    args$parallel <- isTRUE(parallel) && !outer_parallel
+    value <- do.call(.rc_fit_standard_pando_by_cell_type, args)
+  } else {
+    stop("Unknown Pando route: ", job$route, call. = FALSE)
+  }
+  list(cell_type = job$cell_type, route = job$route, result = value)
 }
 
 .rc_fit_pando_by_celltype_route <- function(
@@ -190,62 +239,57 @@
     )
   )
 
+  job_inputs <- lapply(seq_len(nrow(jobs)), function(index) {
+    type <- jobs$cell_type[[index]]
+    cells <- rownames(object@meta.data)[
+      as.character(object@meta.data[[celltype_col]]) == type
+    ]
+    list(
+      cell_type = type,
+      route = jobs$route[[index]],
+      object = subset(object, cells = cells)
+    )
+  })
   base <- list(
-    object = object, gem = gem, outdir = outdir, genome = genome,
+    gem = gem, outdir = outdir, genome = genome,
     pfm = pfm, species = species, condition_col = condition_col,
     celltype_col = celltype_col, rna_assay = rna_assay,
     atac_assay = atac_assay
   )
-  build_args <- function(defaults) {
-    c(defaults[setdiff(names(defaults), names(extra_args))], extra_args)
-  }
-  run_job <- function(index) {
-    type <- jobs$cell_type[[index]]
-    route <- jobs$route[[index]]
-    cells <- rownames(object@meta.data)[
-      as.character(object@meta.data[[celltype_col]]) == type
-    ]
-    one <- subset(object, cells = cells)
-    args <- build_args(base)
-    args$object <- one
-    args$cell_type <- type
-    args$progress_monitor <- if (outer_parallel) NULL else progress_monitor
-    if (identical(route, "condition_grn")) {
-      args$outdir <- file.path(
-        outdir, "condition", .rc_safe_path_component(type)
-      )
-      args$pando_infer_args <- condition_infer_args
-      args$BPPARAM <- FALSE
-      value <- do.call(.rc_fit_condition_grns_by_cell_type, args)
-    } else {
-      args$outdir <- file.path(
-        outdir, "standard", .rc_safe_path_component(type)
-      )
-      args$pando_infer_args <- standard_infer_args
-      args$parallel <- isTRUE(parallel) && !outer_parallel
-      value <- do.call(.rc_fit_standard_pando_by_cell_type, args)
-    }
-    list(cell_type = type, route = route, result = value)
-  }
-
   executed <- rc_parallel_lapply(
-    seq_len(nrow(jobs)), run_job,
-    BPPARAM = if (outer_parallel) BPPARAM else FALSE
+    job_inputs,
+    .rc_run_pando_celltype_job,
+    BPPARAM = if (outer_parallel) BPPARAM else FALSE,
+    base = base,
+    extra_args = extra_args,
+    condition_infer_args = condition_infer_args,
+    standard_infer_args = standard_infer_args,
+    parallel = parallel,
+    outer_parallel = outer_parallel,
+    progress_monitor = progress_monitor
   )
   condition_values <- lapply(executed, function(x) {
     if (identical(x$route, "condition_grn")) x$result else NULL
   })
-  condition_values <- condition_values[!vapply(condition_values, is.null, logical(1))]
+  condition_values <- condition_values[
+    !vapply(condition_values, is.null, logical(1))
+  ]
   standard_values <- lapply(executed, function(x) {
     if (identical(x$route, "standard_pando")) x$result else NULL
   })
-  standard_values <- standard_values[!vapply(standard_values, is.null, logical(1))]
+  standard_values <- standard_values[
+    !vapply(standard_values, is.null, logical(1))
+  ]
   if (length(standard_values)) {
     names(standard_values) <- vapply(executed[
-      vapply(executed, function(x) identical(x$route, "standard_pando"), logical(1))
+      vapply(executed, function(x) {
+        identical(x$route, "standard_pando")
+      }, logical(1))
     ], `[[`, character(1), "cell_type")
   }
-  condition_result <- .rc_merge_condition_job_results(condition_values)
+  condition_result <- .rc_merge_condition_job_results(
+    condition_values, full_object = object
+  )
   answer <- .rc_merge_pando_results(
     condition_result = condition_result,
     standard_results = standard_values,
@@ -255,9 +299,13 @@
     celltype_col = celltype_col,
     outdir = outdir
   )
+  single_standard_inner <- isTRUE(parallel) && !outer_parallel &&
+    nrow(jobs) == 1L && identical(jobs$route[[1L]], "standard_pando")
   answer$pando_execution_plan <- list(
-    scope = if (outer_parallel) "cell_type" else if (isTRUE(parallel)) {
-      "single_job_inner_pando"
+    scope = if (outer_parallel) {
+      "cell_type"
+    } else if (single_standard_inner) {
+      "target_standard_pando"
     } else {
       "serial"
     },
