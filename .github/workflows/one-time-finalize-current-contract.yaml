@@ -20,8 +20,6 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-      - name: Prepare current contract migration
-        run: python .github/scripts/patch_finalizer_audit.py
       - name: Apply current source and documentation contract
         run: python .github/scripts/finalize_current_contract.py
       - name: Commit migrated source
