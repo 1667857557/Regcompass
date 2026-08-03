@@ -7,23 +7,21 @@ Maintainer: RegCompass Developers <dev@example.com>
 Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     with genome-scale metabolic reaction analysis. Stage 1 fixes min_cells at
     300 and applies the same cell set before normalization and downstream
-    metacell construction. With two or more conditions, each broad cell type
-    uses one canonical Pando condition-GRN procedure: candidate edges are
-    discovered on the complete cell type and separately in every condition,
-    exact TF-peak-target triples are unioned into one frozen dictionary, and
-    every condition is refitted with the same unscaled Gaussian identity Pando
-    interaction model. Condition effects retain their fitted coefficient,
-    standard error, P value and BH-adjusted P value. Only estimable coefficients
-    with BH-adjusted P below 0.05 enter the regulatory penalty; no additional
-    absolute-effect or target-model R-squared gate is applied in multi-condition
-    mode. No pooled-coefficient rescaling or alternative condition-effect engine is used. When no condition is supplied or fewer than
-    two levels are observed, Stage 1 directly fits the original Pando GRN within
-    each broad cell type and creates no condition coefficient. Paired-cell
-    TF-by-ATAC regulatory effects are projected before exact SuperCell
-    aggregation. Metacells use one multimodal WNN graph per broad cell type and
-    remain condition-pure after membership splitting. RNA support, regulatory
-    effects, GPR rules, cell-type-specific union GEM construction and directional
-    penalties use consistent reaction ordering, bounds and medium scenarios.
+    metacell construction. Routing is resolved independently for every broad
+    cell type. A cell type with at least two retained conditions uses the
+    common-dictionary Pando condition-GRN procedure: candidate edges are
+    discovered on the complete cell type and separately in every retained
+    condition, exact TF-peak-target triples are unioned into one frozen
+    dictionary, and every condition is refitted with the same unscaled Gaussian
+    identity Pando interaction model. Only estimable coefficients with
+    BH-adjusted P below 0.05 enter the regulatory penalty. A cell type with one
+    retained condition uses the original standard Pando GRN and creates no
+    condition coefficient. Paired-cell TF-by-ATAC regulatory effects are
+    projected before exact SuperCell aggregation. Metacells use one multimodal
+    WNN graph per broad cell type and remain condition-pure after membership
+    splitting. RNA support, regulatory effects, GPR rules, cell-type-specific
+    union GEM construction and directional penalties use consistent reaction
+    ordering, bounds and medium scenarios.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -76,7 +74,6 @@ Collate:
     'stage1_input_contract.R'
     'condition_grn_contract.R'
     'standard_pando.R'
-    'mixed_pando.R'
     'mixed_pando.R'
     'condition_layer1.R'
     'reaction_annotation_utils.R'
@@ -150,5 +147,3 @@ Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionMethod: two-stage-exact-edge-union-fixed-dictionary-glm
 Config/RegCompass/PandoConditionEffectFilter: BH-adjusted-p-below-0.05
-Config/RegCompass/PandoConditionGRNSchema: pando_condition_grn_common_dictionary_v1
-Config/RegCompass/PandoConditionGRNMethod: two-stage-exact-edge-union-fixed-dictionary-glm
