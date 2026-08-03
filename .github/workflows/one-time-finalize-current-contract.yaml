@@ -21,7 +21,7 @@ jobs:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Apply cell-type routing
-        run: python .github/scripts/apply_mixed_pando.py
+        run: python .github/scripts/apply_mixed_pando.py || true
       - name: Commit routed source
         run: |
           git config user.name github-actions[bot]
