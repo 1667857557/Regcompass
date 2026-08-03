@@ -64,8 +64,6 @@ step1 <- rc_regcompass_step_grn(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 300L,
-    min_abs_estimate = 0,
-    min_model_rsq = 0.1,
     pando_infer_args = list(
       tf_cor = 0.1,
       peak_cor = 0,
@@ -217,8 +215,6 @@ step4 <- rc_regcompass_step_layer1(
   meta_modules = step3,
   gem = gem,
   outdir = "RegCompass_steps/04_layer1",
-  projection_component = "condition",
-  regulatory_alpha = 1,
   gpr_and_method = "min",
   parallel = TRUE,
   BPPARAM = upstream_bp,
@@ -238,7 +234,6 @@ step4$projection_coverage
 step4$projection_provenance
 ```
 
-Historical output fields containing `_oof`, `common`, or `condition_unique` are
 retained for API compatibility. The primary and common fields are aliases of the
 BH-filtered fixed-dictionary projection; the condition-unique compatibility
 matrix is zero.
@@ -310,8 +305,6 @@ step5$model_cache_summary[, c(
 step5$structural_model_contract
 ```
 
-Historical `penalty_condition_full_oof` and `penalty_common_oof` fields are
-compatibility aliases of the current primary penalty; the condition-unique
 increment is zero.
 
 ## Stage 6: final result

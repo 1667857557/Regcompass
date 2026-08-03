@@ -84,8 +84,6 @@ result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 300L,
-    min_abs_estimate = 0,
-    min_model_rsq = 0.1,
     pando_infer_args = list(
       tf_cor = 0.1,
       peak_cor = 0,
@@ -105,8 +103,6 @@ result <- rc_run_regcompass_one_shot(
     seed = 12345L
   ),
   layer1_args = list(
-    projection_component = "condition",
-    regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -182,7 +178,6 @@ penalty_effect = 0 otherwise
 ```
 
 The multi-condition handoff applies no additional absolute-effect or model-R²
-threshold. `min_abs_estimate` and `min_model_rsq` remain controls for the direct
 standard-Pando fallback. The complete coefficient table is retained even when
 an edge does not enter the penalty. A zero-variance, aliased, non-finite, or
 insufficient-residual-df coefficient remains `NA`.
@@ -206,7 +201,6 @@ result$reaction_ranking
 result$condition_contrast
 ```
 
-Historical fields retain `_oof`, `common`, or `condition_unique` in their names
 for backward compatibility. The primary and common fields are aliases of the
 fixed-dictionary projection, and the condition-unique compatibility matrix is
 zero. These names do not imply OOF fitting or a common-support model.

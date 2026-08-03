@@ -31,7 +31,6 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{fragment_files}{Must be \code{FALSE} for the count-assay metacell path.}
 \item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma, seed, small-metacell marker and cache controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
-\item{layer1_args}{Stage 4 projection, common-component, GPR and half-saturation controls. \code{regulatory_alpha} is fixed at 1.}
 \item{medium_scenarios}{Shared medium table.}
 \item{model_mode}{Build a shared catalogue-derived model or use the full GEM.}
 \item{layer2_args}{Directional scoring and model-completion controls.}

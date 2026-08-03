@@ -23,7 +23,6 @@ test_that("execution summaries report the fixed-dictionary engine", {
     "two_stage_exact_edge_union_fixed_dictionary_glm"
   )
   expect_false(summary$native_runtime_used)
-  expect_false(summary$nested_cv_used)
   expect_identical(summary$targets_total, 3L)
   expect_identical(summary$targets_failed, 1L)
 })

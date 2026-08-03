@@ -49,36 +49,22 @@
   answer
 }
 
-.rc_filter_standard_pando_edges <- function(
-    table, min_abs_estimate, min_model_rsq) {
-  required <- c("estimate", "padj", "rsq")
+.rc_filter_standard_pando_edges <- function(table) {
+  required <- c("estimate", "padj")
   if (!is.data.frame(table) || !all(required %in% colnames(table))) {
-    stop(
-      "Standard Pando requires estimate, padj and rsq for strict edge filtering.",
-      call. = FALSE
-    )
+    stop("Standard Pando requires estimate and padj columns.", call. = FALSE)
   }
-  requested_abs <- suppressWarnings(as.numeric(min_abs_estimate)[[1L]])
-  if (!is.finite(requested_abs) || requested_abs < 0) {
-    stop("`min_abs_estimate` must be finite and non-negative.",
-         call. = FALSE)
-  }
-  min_rsq <- suppressWarnings(as.numeric(min_model_rsq)[[1L]])
-  if (!is.finite(min_rsq)) {
-    stop("`min_model_rsq` must be finite.", call. = FALSE)
-  }
-  abs_threshold <- max(.rc_standard_pando_min_abs_fixed, requested_abs)
   estimate <- suppressWarnings(as.numeric(table$estimate))
   padj <- suppressWarnings(as.numeric(table$padj))
-  rsq <- suppressWarnings(as.numeric(table$rsq))
-  keep <- is.finite(estimate) & abs(estimate) > abs_threshold &
-    is.finite(padj) & padj < .rc_standard_pando_padj_fixed &
-    is.finite(rsq) & rsq >= min_rsq
+  keep <- is.finite(estimate) &
+    abs(estimate) > .rc_standard_pando_min_abs_fixed &
+    is.finite(padj) & padj < .rc_standard_pando_padj_fixed
   answer <- table[keep, , drop = FALSE]
   attr(answer, "edge_filter") <- list(
     padj = "< 0.05",
-    min_abs_estimate = paste0("> ", format(abs_threshold, scientific = FALSE)),
-    min_model_rsq = min_rsq
+    absolute_estimate = paste0(
+      "> ", format(.rc_standard_pando_min_abs_fixed, scientific = FALSE)
+    )
   )
   answer
 }
@@ -90,7 +76,6 @@
     min_cells = 20L,
     pando_initiate_args = list(exclude_exons = TRUE),
     pando_motif_args = list(), pando_infer_args = list(),
-    min_abs_estimate = 0, min_model_rsq = 0.1,
     save_pando_objects = TRUE, parallel = FALSE,
     progress_monitor = NULL,
     species = c("auto", "human", "mouse")) {
@@ -247,16 +232,10 @@
     extracted <- rc_extract_pando_tf_peak_gene(
       grn_object = grn,
       sample_id = value,
-      min_abs_estimate = 0,
-      min_model_rsq = min_model_rsq,
       padj_threshold = .rc_standard_pando_padj_fixed,
       require_padj = TRUE
     )
-    extracted$significant <- .rc_filter_standard_pando_edges(
-      extracted$all,
-      min_abs_estimate = min_abs_estimate,
-      min_model_rsq = min_model_rsq
-    )
+    extracted$significant <- .rc_filter_standard_pando_edges(extracted$all)
     .rc_step_monitor_event(
       progress_monitor, "standard_contract_extraction_complete",
       "extracted standard Pando edge contract", current = 10L,
@@ -299,8 +278,6 @@
       n_target_genes = length(target_genes),
       n_edges = nrow(extracted$all),
       n_active_edges = nrow(extracted$significant),
-      predictive_oof_available = FALSE,
-      oof_validation_level = "not_applicable_standard_pando",
       grn_evidence_role = "standard_pando_full_fit",
       stringsAsFactors = FALSE,
       check.names = FALSE

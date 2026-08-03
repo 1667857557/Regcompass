@@ -9,8 +9,6 @@
 .rc_pando_execution_summary <- function(diagnostics = NULL) {
   list(
     fit_engine = "two_stage_exact_edge_union_fixed_dictionary_glm",
-    native_runtime_used = FALSE,
-    nested_cv_used = FALSE,
     targets_total = if (is.data.frame(diagnostics)) {
       length(unique(as.character(diagnostics$target)))
     } else 0L,
@@ -34,7 +32,9 @@
     "cell_type", "condition_levels", "condition_cell_ids",
     "edge_dictionary", "coefficients", "fit", "network_names",
     "padj_threshold", "adjust_method", "scale", "interaction",
-    "projection_effect_column", "projection_policy"
+    "projection_effect_column", "projection_policy", "rna_layer",
+    "peak_layer", "peak_value_type", "preprocessing_fingerprint",
+    "dictionary_preprocessing_provenance_verified"
   )
   if (!all(required %in% names(fit)) ||
       !identical(fit$scale, FALSE) ||
@@ -42,7 +42,13 @@
       !identical(fit$projection_effect_column, "penalty_effect") ||
       !identical(fit$projection_policy, "padj_significant_effects_only") ||
       !identical(toupper(as.character(fit$adjust_method)), "BH") ||
-      !isTRUE(all.equal(as.numeric(fit$padj_threshold), 0.05))) {
+      !isTRUE(all.equal(as.numeric(fit$padj_threshold), 0.05)) ||
+      !isTRUE(fit$dictionary_preprocessing_provenance_verified) ||
+      any(!nzchar(c(
+        as.character(fit$rna_layer), as.character(fit$peak_layer),
+        as.character(fit$peak_value_type),
+        as.character(fit$preprocessing_fingerprint)
+      )))) {
     stop("Pando common-dictionary condition fit contract is incomplete.",
          call. = FALSE)
   }
@@ -132,9 +138,7 @@
 
 .rc_extract_condition_grn_contract <- function(
     grn_object, condition_col, celltype_col) {
-  fits <- Pando::condition_grn_fit(
-    grn_object, network_name = "regcompass_condition_grn"
-  )
+  fits <- Pando::condition_grn_fit(grn_object)
   if (inherits(fits, "ConditionGRNFit")) fits <- list(fits)
   if (!is.list(fits) || !length(fits)) {
     stop("Pando did not return common-dictionary condition fits.",
@@ -258,24 +262,18 @@
   if (!is.list(pando_infer_args)) {
     stop("`pando_infer_args` must be a list.", call. = FALSE)
   }
-  retired <- intersect(names(pando_infer_args), c(
-    "condition_mix", "condition_weight", "alpha", "nlambda", "lambda",
-    "lambda_min_ratio", "outer_nfolds", "inner_nfolds",
-    "lambda_selection", "scale", "active_tol", "max_iter",
-    "tol_objective", "tol_coef", "seed", "comparison_conditions"
-  ))
-  if (length(retired)) {
+  allowed_infer_args <- c(
+    "tf_cor", "peak_cor", "adjust_method", "padj_threshold",
+    "rank_action", "min_residual_df", "rna_layer", "peak_layer",
+    "peak_value_type"
+  )
+  unknown_infer_args <- setdiff(names(pando_infer_args), allowed_infer_args)
+  if (length(unknown_infer_args)) {
     stop(
-      "Retired nested-CV condition-GRN argument(s): ",
-      paste(retired, collapse = ", "),
-      ". Use tf_cor, peak_cor, adjust_method, padj_threshold, rank_action and min_residual_df.",
-      call. = FALSE
+      "Unsupported `pando_infer_args`: ",
+      paste(unknown_infer_args, collapse = ", "), call. = FALSE
     )
   }
-  pando_infer_args$candidate_screen <- NULL
-  pando_infer_args$engine_control <- NULL
-  pando_infer_args$parallel <- NULL
-  pando_infer_args$verbose <- NULL
   defaults <- list(
     tf_cor = 0.1,
     peak_cor = 0,

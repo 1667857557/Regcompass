@@ -39,8 +39,6 @@ step1 <- rc_regcompass_step_grn(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 300L,
-    min_abs_estimate = 0,
-    min_model_rsq = 0.1,
     pando_infer_args = list(
       tf_cor = 0.1,
       peak_cor = 0,
@@ -142,8 +140,6 @@ step4 <- rc_regcompass_step_layer1(
   meta_modules,
   gem,
   outdir,
-  projection_component = "condition",
-  regulatory_alpha = 1,
   gpr_and_method = "min"
 )
 ```
@@ -153,7 +149,6 @@ applies `penalty_effect`, sums by target, and RegCompass aggregates by exact
 SuperCell membership. No metacell-level coefficient fitting or TF×ATAC
 reconstruction is performed.
 
-Historical fields containing `_oof`, `common`, or `condition_unique` are retained
 for API compatibility. The primary and common fields are aliases of the current
 BH-filtered fixed-dictionary projection; the condition-unique compatibility
 decomposition is zero.
@@ -165,9 +160,7 @@ GPR AND uses `min` by default and OR isozyme branches are additive.
 
 ```r
 step5$penalty
-step5$penalty_condition_full_oof
-step5$penalty_common_oof
-step5$penalty_condition_unique_increment
+step5$penalty
 step5$penalty_rna_only
 step5$vmax
 step5$model_cache_summary
@@ -190,7 +183,6 @@ build_strategy = celltype_medium_union_gem
 completion_stage = celltype_specific_fastcore_after_condition_module_union
 ```
 
-`penalty` is primary. Historical full/common fields are compatibility aliases and
 the condition-unique increment is zero under the current condition-GRN design.
 
 The optional `full_gem` mode is dispatched to a separate full-GEM engine and does

@@ -148,7 +148,7 @@ test_that("targeted remapping uses canonical Layer 1 expression", {
   )
   expect_match(
     layer1_source,
-    "reaction_expression_condition_full_oof",
+    "reaction_expression",
     fixed = TRUE
   )
 })

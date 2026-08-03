@@ -20,7 +20,7 @@ test_that("installed Pando retains optimized condition-GRN dispatch", {
   skip_if_not_installed("Pando")
   expect_true(is.function(Pando::infer_condition_grn))
   expect_true(is.function(Pando::condition_grn_fit))
-  expect_true(is.function(Pando::project_condition_grn_primary_cells))
+  expect_true(is.function(Pando::project_condition_grn_cells))
   expect_true(all(
     c("backend", "verified_estimability_mask") %in%
       names(formals(Pando:::.condition_fit_multitask_path))

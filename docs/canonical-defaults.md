@@ -18,9 +18,6 @@ metacell_args = list(
 )
 
 layer1_args = list(
-  projection_component = "condition",
-  comparison_support = "auto",
-  regulatory_alpha = 1,
   gpr_and_method = "min"
 )
 ```
@@ -30,11 +27,9 @@ of that cell type participate jointly in the graph, and condition-pure metacells
 are assigned after graph clustering.
 
 `condition_full_oof` is the primary Layer 1 and Layer 2 route. The
-`comparison_support` argument selects the pairwise/global common-support
 component retained for decomposition. It does not replace the primary route.
 
 A non-estimable edge side has an unavailable coefficient and a projectable
-structural-zero contribution. A non-finite target modifier falls back to neutral
 `R = 0`, exactly recovering RNA-only support.
 
 The canonical schema does not calculate depth matching, common-depth

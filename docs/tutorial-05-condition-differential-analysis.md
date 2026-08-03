@@ -164,10 +164,8 @@ Historical decomposition fields remain available:
 ```r
 result$common_support_component_summary
 result$common_support_component_contrast
-result$condition_unique_penalty_increment_summary
 ```
 
-In the current model, `common` is a compatibility alias of the primary
 fixed-dictionary route and the condition-unique increment is a zero compatibility
 matrix. These fields no longer represent a jointly estimable shared-slope or OOF
 decomposition. Their summaries retain the same row-level cell-type filter as the

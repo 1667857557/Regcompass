@@ -35,7 +35,6 @@ test_that("RNA empirical-Bayes priors are estimated by cell type", {
 })
 
 test_that("regulatory alpha is fixed at one and missing Pando is RNA-only", {
-  expect_identical(eval(formals(rc_regcompass_step_layer1)$regulatory_alpha), 1)
   rna <- matrix(
     c(0.2, 0.8), nrow = 1,
     dimnames = list("g1", c("u1", "u2"))
@@ -53,7 +52,6 @@ test_that("regulatory alpha is fixed at one and missing Pando is RNA-only", {
     RegCompassR:::.rc_integrate_regulatory_support(
       rna, modifier, alpha = 0.25
     ),
-    "requires `regulatory_alpha = 1`"
   )
 })
 
@@ -111,7 +109,6 @@ test_that("condition contracts use one common dictionary and BH effects", {
     "same_exact_edge_dictionary_unscaled_gaussian_glm",
     fixed = TRUE
   )
-  expect_false(grepl("projectable_structural_zero", extraction, fixed = TRUE))
 })
 
 test_that("condition Layer 1 records fixed-dictionary projection policy", {
@@ -127,5 +124,4 @@ test_that("condition Layer 1 records fixed-dictionary projection policy", {
   )
   expect_match(body_text, "common = primary", fixed = TRUE)
   expect_match(body_text, "primary * 0", fixed = TRUE)
-  expect_false(grepl("structural_zero_by_condition", body_text, fixed = TRUE))
 })

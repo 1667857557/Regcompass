@@ -163,8 +163,6 @@ result <- rc_run_regcompass_one_shot(
   celltype_col = "cell_type",
   pando_args = list(
     min_cells = 300L,
-    min_abs_estimate = 0,
-    min_model_rsq = 0.1,
     pando_infer_args = list(
       tf_cor = 0.1,
       peak_cor = 0,
@@ -189,8 +187,6 @@ result <- rc_run_regcompass_one_shot(
     overwrite = FALSE
   ),
   layer1_args = list(
-    projection_component = "condition",
-    regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -251,8 +247,6 @@ For every retained broad cell type with at least two eligible conditions:
    penalty.
 
 The multi-condition penalty route does not apply an additional absolute-effect
-or model-R² threshold after Pando's significance flag. `min_abs_estimate` and
-`min_model_rsq` remain relevant to the direct standard-Pando fallback where its
 legacy edge extraction is used.
 
 A zero-variance, aliased, non-finite, or insufficient-residual-df coefficient
@@ -285,7 +279,6 @@ target, and only then averages over exact SuperCell membership. It does not
 recompute TF×ATAC from metacell averages or refit coefficients after
 aggregation.
 
-`regulatory_alpha = 1` and `gpr_and_method = "min"` remain canonical.
 
 ## Cell-type meta-modules, union GEMs, and FASTCORE
 
@@ -360,15 +353,10 @@ result$condition_contrast
 ```
 
 Several Stage 4/5 fields retain historical names containing `_oof`, `common`, or
-`condition_unique`. In the current condition model:
 
 ```text
-gene_projection_condition_full_oof   = primary fixed-dictionary projection
-gene_projection_common_oof           = compatibility alias of primary
-gene_projection_condition_unique_oof = zero compatibility matrix
-penalty_condition_full_oof            = primary penalty
-penalty_common_oof                    = compatibility alias of primary
-penalty_condition_unique_increment    = zero compatibility matrix
+gene_projection   = primary fixed-dictionary projection
+penalty            = primary penalty
 ```
 
 These names do not imply OOF estimation or a shared-slope decomposition.

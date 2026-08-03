@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.3.0
+Version: 2.4.0
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -16,9 +16,7 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     standard error, P value and BH-adjusted P value. Only estimable coefficients
     with BH-adjusted P below 0.05 enter the regulatory penalty; no additional
     absolute-effect or target-model R-squared gate is applied in multi-condition
-    mode. No pooled-coefficient rescaling, nested condition cross-validation,
-    sparse-group path, structural-zero coefficient substitution or common-
-    support decomposition is used. When no condition is supplied or fewer than
+    mode. No pooled-coefficient rescaling or alternative condition-effect engine is used. When no condition is supplied or fewer than
     two levels are observed, Stage 1 directly fits the original Pando GRN within
     each broad cell type and creates no condition coefficient. Paired-cell
     TF-by-ATAC regulatory effects are projected before exact SuperCell
@@ -79,7 +77,6 @@ Collate:
     'condition_grn_contract.R'
     'standard_pando.R'
     'condition_layer1.R'
-    'condition_full_contract.R'
     'reaction_annotation_utils.R'
     'reaction_evidence.R'
     'reaction_annotations.R'
@@ -143,9 +140,8 @@ Remotes:
     1667857557/Pando_regcompass
 Config/roxygen2/version: 8.0.0
 Config/RegCompassR/DefaultSeuratProfile: seurat_v4_default
-Config/RegCompassR/SupportedSeuratMajors: 4,5
+Config/RegCompassR/SupportedSeuratMajors: 4
 Config/RegCompassR/SupportedSignacMajor: 1
-Config/RegCompassR/SeuratV5MinSignacVersion: 1.12.0
 Config/RegCompassR/SeuratObjectVersion: 4.1.4
 Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0

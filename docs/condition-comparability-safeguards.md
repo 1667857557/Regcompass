@@ -11,7 +11,6 @@ RegCompass requires the canonical unversioned `pando_condition_grn_fit` with:
 - a shared candidate supergraph and equal-condition coordinate;
 - nested outer-heldout projections with exactly-once cell assignment;
 - `coefficient_estimable_mask`;
-- `projectable_structural_zero_mask`;
 - `projection_support_mask`;
 - finite condition-full and common-support OOF target scores;
 - no full-data condition projection in the primary penalty.

@@ -128,7 +128,6 @@ It is recorded explicitly in projection coverage rather than represented by a
 manufactured coefficient.
 
 Several output fields retain historical names containing `_oof`, `common`, or
-`condition_unique` for API compatibility. In the current model:
 
 \[
 G^{primary}=G^{common}=G,
@@ -313,14 +312,12 @@ as a biological zero.
 The primary schema contains the BH-filtered fixed-dictionary condition route and
 an RNA-only fallback/control. Structural metabolic models are shared across
 conditions only within one cell type and medium. Historical `common` fields are
-aliases of the primary route and historical `condition_unique` fields are zero
 compatibility matrices.
 
 The workflow does not calculate or persist:
 
 - nested or outer-fold condition-GRN estimates;
 - sparse-group condition paths;
-- structural-zero condition coefficients;
 - pooled-coefficient calibration;
 - cross-cell-type meta-module unions;
 - cross-cell-type union GEMs;

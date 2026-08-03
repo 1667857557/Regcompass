@@ -39,9 +39,6 @@ result <- rc_run_regcompass_one_shot(
     seed = 12345L
   ),
   layer1_args = list(
-    projection_component = "condition",
-    comparison_support = "auto",
-    regulatory_alpha = 1,
     gpr_and_method = "min"
   ),
   medium_scenarios = medium_scenarios,
@@ -125,7 +122,6 @@ pooled fit is used for candidate recall only; coefficients are not rescaled by a
 pooled coefficient.
 
 Historical output names containing `condition_full_oof`, `common`, or
-`condition_unique` remain compatibility aliases. The current estimator is not
 OOF and does not fit a shared-slope/condition-deviation decomposition.
 
 Stage 2 calls `SuperCell::SCimplify_by_graph_group()` with
@@ -149,7 +145,6 @@ type reuse the corresponding model; different cell types never share a union
 GEM, FASTCORE support set, model checksum, or directional `vmax` cache.
 
 The primary metabolic ranking uses the condition-specific fixed-dictionary
-penalty. The historical common-support field is a compatibility alias of the
 primary route, the condition-unique increment is a zero compatibility matrix,
 and RNA-only scoring remains an interpretation control.
 

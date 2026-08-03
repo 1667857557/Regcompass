@@ -56,7 +56,7 @@ values must agree.
 After Stage 5, `rc_regcompass_step_target_union()` remains available as an
 optional targeted-remapping pass. It reuses the cached Stage 5 union GEM and the
 canonical Layer 1 `reaction_expression` route; in condition mode that route is
-`reaction_expression_condition_full_oof`.
+`reaction_expression`.
 
 ## SuperCell graph and purity inputs
 

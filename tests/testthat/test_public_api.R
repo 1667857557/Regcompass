@@ -103,7 +103,6 @@ test_that("canonical SuperCell API uses cell-type grouped WNN", {
 test_that("Layer 1 retains canonical controls", {
   formals_layer1 <- formals(rc_regcompass_step_layer1)
   expect_identical(eval(formals_layer1$gpr_and_method), c("min", "median", "mean"))
-  expect_identical(formals_layer1$regulatory_alpha, 1)
   expect_false("tau" %in% names(formals_layer1))
 })
 

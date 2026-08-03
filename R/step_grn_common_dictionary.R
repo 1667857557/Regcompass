@@ -159,30 +159,16 @@ rc_regcompass_step_grn <- function(
   )
 
   if (identical(design$analysis_mode, "condition_grn")) {
-    standard_only <- intersect(
-      names(call_args), c("min_abs_estimate", "min_model_rsq")
+    allowed_infer_args <- c(
+      "tf_cor", "peak_cor", "adjust_method", "padj_threshold",
+      "rank_action", "min_residual_df", "rna_layer", "peak_layer",
+      "peak_value_type", "verbose"
     )
-    if (length(standard_only)) {
-      message(
-        "Ignoring standard-Pando-only edge filters in multi-condition mode: ",
-        paste(standard_only, collapse = ", "),
-        ". The condition penalty is fixed to estimable BH padj < 0.05."
-      )
-      call_args[standard_only] <- NULL
-    }
-    retired <- intersect(names(infer_args), c(
-      "candidate_screen", "condition_mix", "condition_weight", "alpha",
-      "nlambda", "lambda", "lambda_min_ratio", "outer_nfolds",
-      "inner_nfolds", "lambda_selection", "scale", "engine_control",
-      "comparison_conditions", "active_tol", "max_iter", "tol_objective",
-      "tol_coef", "seed", "method", "sample_col", "cv_block_col"
-    ))
-    if (length(retired)) {
+    unknown_infer_args <- setdiff(names(infer_args), allowed_infer_args)
+    if (length(unknown_infer_args)) {
       stop(
-        "Retired condition-GRN parameter(s): ",
-        paste(retired, collapse = ", "),
-        ". Use tf_cor, peak_cor, adjust_method='BH', padj_threshold=0.05, rank_action and min_residual_df.",
-        call. = FALSE
+        "Unsupported `pando_infer_args`: ",
+        paste(unknown_infer_args, collapse = ", "), call. = FALSE
       )
     }
     infer_args <- utils::modifyList(list(

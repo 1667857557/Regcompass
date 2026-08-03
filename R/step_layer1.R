@@ -7,25 +7,12 @@
 #' @export
 rc_regcompass_step_layer1 <- function(
     grn, metacells, meta_modules, gem, outdir,
-    projection_component = "condition",
-    comparison_support = c("auto", "pairwise_common", "global_common"),
-    regulatory_alpha = 1,
     gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
-    parallel = TRUE,
-    BPPARAM = NULL,
+    parallel = TRUE, BPPARAM = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("layer1", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
-  if (!identical(projection_component, "condition")) {
-    stop("Only the canonical regulatory projection can enter Layer 1.",
-         call. = FALSE)
-  }
-  if (!isTRUE(all.equal(as.numeric(regulatory_alpha), 1))) {
-    stop("Canonical RegCompass requires `regulatory_alpha = 1`.",
-         call. = FALSE)
-  }
-  comparison_support <- match.arg(comparison_support)
   gpr_and_method <- match.arg(gpr_and_method)
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
@@ -58,9 +45,6 @@ rc_regcompass_step_layer1 <- function(
     condition_col = params$condition_col,
     celltype_col = params$celltype_col,
     rna_assay = params$rna_assay,
-    projection_component = projection_component,
-    comparison_support = comparison_support,
-    regulatory_alpha = 1,
     gpr_and_method = gpr_and_method,
     gene_half_saturation = gene_half_saturation,
     parallel = parallel,

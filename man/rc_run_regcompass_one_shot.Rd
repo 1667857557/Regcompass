@@ -48,5 +48,4 @@ jointly determine adaptive modality weights, neighbours and Walktrap clusters;
 condition splits parent membership only after clustering. Small metacells are
 retained and marked. Both Pando routes continue through the same RNA-support,
 GPR, reaction penalty, shared medium-specific model, and directional LP stages.
-\code{regulatory_alpha = 1} is fixed.
 }

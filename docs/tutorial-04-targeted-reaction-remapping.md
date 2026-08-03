@@ -9,7 +9,6 @@ reuses the exact cached Stage 5 models for the corresponding cell types and
 media, does not rebuild a GEM, and does not rerun FASTCORE. In condition-aware
 runs, the Layer 1 `reaction_expression` input is the primary BH-filtered
 fixed-dictionary regulatory route. Historical fields containing
-`condition_full_oof` remain compatibility aliases and do not indicate OOF
 estimation.
 
 Mathematical definitions are in
@@ -130,10 +129,9 @@ step4$reaction_expression
 ```
 
 For a condition-aware run this is the primary fixed-dictionary condition route.
-The historical field below is an equal-valued compatibility alias:
 
 ```r
-step4$reaction_expression_condition_full_oof
+step4$reaction_expression
 ```
 
 The aligned Layer 1 matrix may retain a common reaction-row universe in memory,

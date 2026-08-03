@@ -50,7 +50,7 @@ layer1$reaction_expression
 For condition-aware runs, this is the canonical alias of:
 
 ```r
-layer1$reaction_expression_condition_full_oof
+layer1$reaction_expression
 ```
 
 The aligned expression matrix may contain a common reaction-row universe in

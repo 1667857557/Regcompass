@@ -103,7 +103,6 @@ penalty\_effect_{r,c}=
 \end{cases}
 \]
 
-RegCompass additionally applies `min_abs_estimate` and `min_model_rsq` before an
 edge enters the active penalty table. These gates do not rewrite the complete
 coefficient table.
 
@@ -191,15 +190,10 @@ condition separately.
 ## Stage 4 and Stage 5 compatibility fields
 
 The existing public result schema retains historical names containing `_oof`,
-`common`, and `condition_unique`. Under the current method:
 
 ```text
-gene_projection_condition_full_oof = primary BH-filtered full-fit projection
-gene_projection_common_oof         = compatibility alias of primary
-gene_projection_condition_unique_oof = zero compatibility decomposition
-penalty_condition_full_oof          = primary metabolic penalty
-penalty_common_oof                  = compatibility alias of primary
-penalty_condition_unique_increment  = zero compatibility decomposition
+gene_projection = primary BH-filtered full-fit projection
+penalty          = primary metabolic penalty
 ```
 
 These names no longer denote OOF estimation or a jointly estimable common-support
@@ -222,7 +216,6 @@ engine_control
 comparison_conditions
 ```
 
-The former sparse-group, nested-CV, structural-zero-mask and native C++ condition
 runtime is not part of the current Pando package.
 
 ## No-condition and single-condition behavior

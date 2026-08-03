@@ -82,16 +82,11 @@ averaged using exact metacell membership. RNA support and GPR rules then produce
 reaction-level evidence.
 
 ```r
-step4$gene_projection_condition_full_oof
-step4$gene_projection_common_oof
-step4$gene_projection_condition_unique_oof
-step4$reaction_expression_condition_full_oof
-step4$reaction_expression_common_oof
+step4$gene_projection
+step4$reaction_expression
 ```
 
-These historical field names are compatibility aliases. The current estimator
 is not OOF: `condition_full_oof` is the primary fixed-dictionary route,
-`common_oof` aliases the primary route, and `condition_unique_oof` is a zero
 compatibility matrix. Targets without significant estimable regulatory edges
 use the neutral RNA-only fallback.
 
@@ -108,9 +103,7 @@ computed once per cell-type model and target direction, then reused across
 conditions and metacells of that cell type.
 
 ```r
-step5$penalty_condition_full_oof
-step5$penalty_common_oof
-step5$penalty_condition_unique_increment
+step5$penalty
 step5$penalty_rna_only
 step5$vmax
 step5$model_cache_summary
@@ -132,7 +125,6 @@ result$reaction_ranking
 result$condition_summary
 result$condition_contrast
 result$common_support_component_summary
-result$condition_unique_penalty_increment_summary
 ```
 
 Condition comparisons fix reaction, direction, medium and broad cell type.
@@ -162,7 +154,7 @@ targeted <- rc_regcompass_step_target_union(
 ```
 
 In condition mode, `step4$reaction_expression` is the canonical alias of
-`reaction_expression_condition_full_oof`; targeted reactions therefore use the
+`reaction_expression`; targeted reactions therefore use the
 same primary regulatory evidence route as the original Stage 5 scoring. This is
 an optional target-extension analysis, not a sensitivity or comparability
 branch.

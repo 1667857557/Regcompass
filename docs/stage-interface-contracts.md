@@ -172,22 +172,16 @@ significant estimable fixed-dictionary edges for one condition
 Required compatibility fields include:
 
 ```r
-step4$reaction_expression_condition_full_oof
-step4$reaction_expression_common_oof
+step4$reaction_expression
 step4$reaction_expression_rna_only
-step4$gene_projection_condition_full_oof
-step4$gene_projection_common_oof
-step4$gene_projection_condition_unique_oof
+step4$gene_projection
 step4$projection_provenance
 ```
 
-The names containing `_oof`, `common` and `condition_unique` are retained for
 schema compatibility. The current estimator is not OOF:
 
 ```text
 condition_full_oof = primary fixed-dictionary projection
-common_oof = compatibility alias of primary
-condition_unique_oof = zero compatibility matrix
 ```
 
 `reaction_expression` is identical to the primary fixed-dictionary route. A
@@ -223,9 +217,7 @@ completion_stage = celltype_specific_fastcore_after_condition_module_union
 ```
 
 ```r
-step5$penalty_condition_full_oof
-step5$penalty_common_oof
-step5$penalty_condition_unique_increment
+step5$penalty
 step5$penalty_rna_only
 step5$vmax
 step5$model_cache_summary
@@ -233,7 +225,6 @@ step5$structural_model_contract
 ```
 
 `penalty` is identical to the primary fixed-dictionary penalty. The common field
-is a compatibility alias and the condition-unique increment is a zero
 compatibility decomposition. All evidence routes for a cell type share its exact
 reaction order, bounds, target direction and `vmax`; no route shares a union GEM
 with another cell type.
@@ -249,7 +240,6 @@ result$reaction_ranking
 result$condition_summary
 result$condition_contrast
 result$common_support_component_summary
-result$condition_unique_penalty_increment_summary
 result$rna_only_control_summary
 ```
 
