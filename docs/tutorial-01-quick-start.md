@@ -210,8 +210,10 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-`upstream_workers` controls the GRN and other upstream parallel stages;
-`layer2_workers` controls the LP-heavy metabolic stage. Layer 2 workers force
+`upstream_workers` controls the GRN and other upstream parallel stages.
+`layer2_workers` controls independent cell-type/medium model construction,
+FASTCORE completion inside each cell-type union GEM, directional `vmax`
+calculation, and LP scoring of matching metacells. Layer 2 workers force
 numerical libraries and HiGHS to one internal thread to avoid nested
 oversubscription. On memory-limited systems, reduce `layer2_workers` before
 changing the model definition.
@@ -283,9 +285,66 @@ target, and only then averages over exact SuperCell membership. It does not
 recompute TF×ATAC from metacell averages or refit coefficients after
 aggregation.
 
-`regulatory_alpha = 1` and `gpr_and_method = "min"` remain canonical. The same
-medium-specific GEM, reaction order, bounds, target direction, and `vmax` are
-reused across conditions and metacells.
+`regulatory_alpha = 1` and `gpr_and_method = "min"` remain canonical.
+
+## Cell-type meta-modules, union GEMs, and FASTCORE
+
+Stage 3 constructs biological meta-modules separately for every effective
+condition-by-cell-type group. Conditions are then unioned only within the same
+cell type. No reaction supported in one cell type is inserted into another cell
+type's merged catalogue.
+
+For `model_mode = "meta_module_gem"`, Stage 5 builds one union GEM for every
+`cell_type × medium_scenario` combination. FASTCORE runs independently inside
+each such model. Conditions and metacells reuse a model only when their cell
+type matches it.
+
+Consequently, the following are shared across conditions of one cell type but
+not across cell types:
+
+- biological reaction membership;
+- union-GEM file and checksum;
+- FASTCORE support reactions;
+- reaction order and medium-specific bounds;
+- target direction and directional `vmax`.
+
+`completion_time_limit` applies separately to each cell-type/medium FASTCORE
+construction; it is not one global limit for all cell types.
+
+Inspect the structural outputs:
+
+```r
+result$merged_grn_meta_modules$cell_type_catalogues
+
+result$microcompass$model_cache_summary[, c(
+  "cell_type",
+  "medium_scenario",
+  "file",
+  "file_checksum",
+  "n_celltype_biological_reactions",
+  "n_celltype_fastcore_support_reactions",
+  "build_strategy",
+  "completion_stage"
+)]
+
+result$microcompass$params[c(
+  "structural_scope",
+  "shared_across_conditions",
+  "shared_across_cell_types",
+  "shared_gem_scope",
+  "vmax_computation_scope"
+)]
+```
+
+The expected structural contract is:
+
+```text
+structural_scope = cell_type_x_medium
+shared_across_conditions = TRUE
+shared_across_cell_types = FALSE
+build_strategy = celltype_medium_union_gem
+completion_stage = celltype_specific_fastcore_after_condition_module_union
+```
 
 ## Inspect outputs
 

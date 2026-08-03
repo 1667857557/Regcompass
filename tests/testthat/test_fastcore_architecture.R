@@ -121,7 +121,7 @@ test_that("signed absolute-penalty LP preserves forced non-zero bounds", {
   expect_equal(reverse$penalty, 5, tolerance = 1e-7)
 })
 
-test_that("global add-only FASTCORE preserves the merged biological set", {
+test_that("cell-type add-only FASTCORE preserves the merged biological set", {
   skip_if_not(rc_fastcore_solver_available())
   gem <- rc_fastcore_forward_toy()
   membership <- data.frame(
@@ -130,8 +130,9 @@ test_that("global add-only FASTCORE preserves the merged biological set", {
     stringsAsFactors = FALSE
   )
   core <- membership[membership$is_core, , drop = FALSE]
-  model <- .rc_complete_medium_union_gem(
+  model <- .rc_complete_celltype_medium_union_gem(
     gem = gem,
+    cell_type = "test_cell_type",
     reaction_membership = membership,
     core_reactions = core,
     solver = rc_fastcore_test_solver(),
@@ -141,7 +142,7 @@ test_that("global add-only FASTCORE preserves the merged biological set", {
   expect_true(all(c("Rcore", "Ralt") %in% colnames(model$S)))
   expect_setequal(
     model$reaction_meta$reaction_id[
-      model$reaction_meta$global_fastcore_support
+      model$reaction_meta$celltype_fastcore_support
     ],
     c("EX_A", "EX_B")
   )
@@ -157,7 +158,7 @@ test_that("global add-only FASTCORE preserves the merged biological set", {
   )
   expect_equal(
     model$build_params$completion_stage,
-    "single_global_fastcore_after_meta_module_merge"
+    "celltype_specific_fastcore_after_condition_module_union"
   )
 })
 
@@ -169,8 +170,9 @@ test_that("reverse-only core reactions are completed by orientation", {
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
-  model <- .rc_complete_medium_union_gem(
+  model <- .rc_complete_celltype_medium_union_gem(
     gem = gem,
+    cell_type = "test_cell_type",
     reaction_membership = membership,
     core_reactions = membership,
     solver = rc_fastcore_test_solver(),
@@ -180,7 +182,7 @@ test_that("reverse-only core reactions are completed by orientation", {
   expect_true(model$closure_diagnostics$final_feasible)
   expect_setequal(
     model$reaction_meta$reaction_id[
-      model$reaction_meta$global_fastcore_support
+      model$reaction_meta$celltype_fastcore_support
     ],
     c("EX_A", "EX_B")
   )
@@ -205,15 +207,16 @@ test_that("parent-blocked core reactions are not gap-filled", {
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
-  model <- .rc_complete_medium_union_gem(
+  model <- .rc_complete_celltype_medium_union_gem(
     gem = gem,
+    cell_type = "test_cell_type",
     reaction_membership = membership,
     core_reactions = membership,
     solver = rc_fastcore_test_solver(),
     strict = TRUE
   )
   expect_equal(model$closure_diagnostics$completion_status, "parent_blocked")
-  expect_false(any(model$reaction_meta$global_fastcore_support))
+  expect_false(any(model$reaction_meta$celltype_fastcore_support))
 })
 
 test_that("LP-10 scaling retains smaller stoichiometric support flux", {
@@ -246,8 +249,9 @@ test_that("LP-10 scaling retains smaller stoichiometric support flux", {
     is_core = TRUE,
     stringsAsFactors = FALSE
   )
-  model <- .rc_complete_medium_union_gem(
+  model <- .rc_complete_celltype_medium_union_gem(
     gem = gem,
+    cell_type = "test_cell_type",
     reaction_membership = membership,
     core_reactions = membership,
     solver = rc_fastcore_test_solver(),
@@ -256,7 +260,7 @@ test_that("LP-10 scaling retains smaller stoichiometric support flux", {
   )
   expect_setequal(
     model$reaction_meta$reaction_id[
-      model$reaction_meta$global_fastcore_support
+      model$reaction_meta$celltype_fastcore_support
     ],
     c("EX_2A", "EX_B")
   )
@@ -344,10 +348,11 @@ test_that("the Layer 2 API exposes exactly two structural modes", {
 
 test_that("labeled row IDs retain optional sample and module fields", {
   parsed <- rc_parse_microcompass_row_id(
-    "sample=S1::module=S1%3A%3AM1::reaction=R1::direction=forward::medium=base"
+    "sample=S1::module=S1%3A%3AM1::celltype=T::reaction=R1::direction=forward::medium=base"
   )
   expect_equal(parsed$sample_id, "S1")
   expect_equal(parsed$module_id, "S1::M1")
+  expect_equal(parsed$cell_type, "T")
   expect_equal(parsed$reaction_id, "R1")
   expect_equal(parsed$target_direction, "forward")
   expect_equal(parsed$medium_scenario, "base")

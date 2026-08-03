@@ -1,3 +1,4 @@
+- Union meta-modules, union GEMs, FASTCORE completion, model caches, and directional vmax reuse are now partitioned by cell type; only conditions within the same cell type share a structural model.
 # RegCompassR 2.2.7
 
 - Requires Pando 1.6.3 native ABI 6 and its explicit high-dimensional memory

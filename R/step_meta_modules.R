@@ -77,7 +77,11 @@ rc_regcompass_step_meta_modules <- function(
       call. = FALSE
     )
   }
-  merged_modules <- .rc_merge_meta_module_catalogue(condition_modules)
+  merged_modules <- .rc_merge_meta_modules_by_cell_type(
+    condition_modules,
+    celltype_col = metacells$params$celltype_col,
+    condition_col = metacells$params$condition_col
+  )
   if (!is.data.frame(merged_modules$merged_core_reactions) ||
       !nrow(merged_modules$merged_core_reactions)) {
     stop(
@@ -117,6 +121,8 @@ rc_regcompass_step_meta_modules <- function(
       expansion_policy = "single_ordered_annotation_pass",
       feasibility_completion = "layer2_medium_specific_only",
       merge_creates_gem = FALSE,
+      meta_module_merge_scope = "cell_type",
+      cross_celltype_merge = FALSE,
       condition_modules_embedded = FALSE,
       condition_modules_storage = "external_rds"
     )

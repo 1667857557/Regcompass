@@ -42,6 +42,12 @@ multimodal WNN graph per broad cell type. All conditions of that type jointly
 determine the graph; condition splits parent membership only after clustering.
 Final metacells are condition-pure without condition-specific graphs.
 
+Stage 3 builds condition-specific biological meta-modules, then unions conditions
+within the same cell type only. Stage 5 constructs one union GEM for every
+`cell_type × medium_scenario` pair and runs FASTCORE independently in each model.
+Conditions of one cell type share that cell-type model; different cell types do
+not share reaction unions, FASTCORE support, model files or directional `vmax`.
+
 # Medium and GEM
 
 ```{r}
@@ -115,9 +121,10 @@ result <- rc_run_regcompass_one_shot(
 ```
 
 Stage 1 fixes `min_cells` at 300. `upstream_workers` controls GRN and other
-upstream tasks; `layer2_workers` controls LP-heavy metabolic scoring. Layer 2
-workers force HiGHS and numerical libraries to one internal thread to avoid
-nested oversubscription.
+upstream tasks. `layer2_workers` controls independent cell-type/medium model
+construction, cell-type FASTCORE completion, directional `vmax` calculation and
+matching-metacell LP tasks. Layer 2 workers force HiGHS and numerical libraries
+to one internal thread to avoid nested oversubscription.
 
 The following retired condition-GRN parameters are rejected:
 
@@ -161,7 +168,8 @@ result <- rc_regcompass_step_results(
 
 Each stage writes an RDS artifact plus progress and timing logs. Changes to only
 the medium or LP controls require rerunning Stage 5 and final results, not the
-GRN and metacell stages.
+GRN and metacell stages. Changes to GPR rules or biological reaction annotations
+require rerunning Stage 3 onward because they alter each cell type's catalogue.
 
 # Condition effect and penalty
 
@@ -203,11 +211,32 @@ for backward compatibility. The primary and common fields are aliases of the
 fixed-dictionary projection, and the condition-unique compatibility matrix is
 zero. These names do not imply OOF fitting or a common-support model.
 
+# Cell-type union GEMs
+
+Inspect the structural model catalogue with:
+
+```{r}
+result$microcompass$model_cache_summary[, c(
+  "cell_type",
+  "medium_scenario",
+  "file",
+  "file_checksum",
+  "n_celltype_biological_reactions",
+  "n_celltype_fastcore_support_reactions"
+)]
+```
+
+The unique structural key is `cell_type × medium_scenario`. Within that key, all
+conditions use the same stoichiometric model, bounds and directional `vmax`.
+Rows from another cell type are absent from the comparison rather than evaluated
+on a common global GEM.
+
 # No condition or one condition
 
 With no usable condition column or one observed condition level, RegCompass runs
 original Pando independently within each retained broad cell type. It does not
-create condition coefficients or a synthetic condition fit contract.
+create condition coefficients or a synthetic condition fit contract. Structural
+meta-modules and union GEMs remain separated by cell type.
 
 # Optional targeted reaction remapping
 
@@ -226,8 +255,10 @@ targeted <- rc_regcompass_step_target_union(
 )
 ```
 
-The second pass reuses the same Stage 5 union GEM, global FASTCORE completion,
-reaction order, direction, bounds, and `vmax`.
+The second pass reuses the exact cached union GEMs for the corresponding cell
+type and medium. Candidate reactions are intersected across media within that
+cell type. FASTCORE is not rerun, and cached models from different cell types are
+never merged.
 
 # Documentation
 

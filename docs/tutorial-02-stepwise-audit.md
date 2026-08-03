@@ -48,7 +48,7 @@ layer2_bp <- if (.Platform$OS.type == "windows") {
 `BPPARAM = TRUE` is invalid. Do not place `parallel` or `BPPARAM` inside
 `pando_infer_args`; the stage wrapper owns parallel execution. Layer 2 workers
 force numerical libraries and HiGHS to one internal thread, so the worker count
-controls process-level LP parallelism without nested thread multiplication.
+controls process-level model/LP tasks without nested thread multiplication.
 Reduce `layer2_bp` workers first when memory is limiting.
 
 ## Stage 1: GRN inference
@@ -185,16 +185,28 @@ step3 <- rc_regcompass_step_meta_modules(
 )
 ```
 
+Stage 3 derives one biological reaction catalogue per effective condition and
+cell type. Condition-specific catalogues are unioned only within the same cell
+type; no reaction from another cell type is inserted into that catalogue.
+Stage 3 does not construct a GEM and does not run FASTCORE.
+
 ```r
-step3$condition_modules$core_gene_reaction
+step3$merged_modules$cell_type_catalogues
 step3$merged_modules$merged_core_reactions
 step3$merged_modules$merged_reaction_membership
+step3$merged_modules$merge_scope
+step3$merged_modules$cross_celltype_merge
 ```
 
-Stage 3 derives condition-specific reaction evidence and stores the complete
-condition module payload in a checksummed external RDS. The stage object retains
-a lightweight reference so later stages do not duplicate the full payload in
-memory.
+The complete condition module payload is stored in a checksummed external RDS.
+The stage object retains a lightweight reference so later stages do not duplicate
+the full payload in memory:
+
+```r
+condition_modules <- readRDS(step3$condition_modules_ref$file)
+condition_modules$core_gene_reaction
+condition_modules$reaction_membership
+```
 
 ## Stage 4: regulatory reaction support
 
@@ -231,7 +243,7 @@ retained for API compatibility. The primary and common fields are aliases of the
 BH-filtered fixed-dictionary projection; the condition-unique compatibility
 matrix is zero.
 
-## Stage 5: medium-specific directional penalties
+## Stage 5: cell-type- and medium-specific directional penalties
 
 Create one or more medium scenarios:
 
@@ -274,14 +286,28 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-All conditions and metacells use the same medium-specific structural model,
-reaction order, bounds, target direction, target-flux fraction, and `vmax`.
-Global FASTCORE completion is performed once per medium and cached.
+Stage 5 constructs one union GEM for every `cell_type × medium_scenario` pair.
+For one cell type, biological reactions from all retained conditions are unioned
+before construction. FASTCORE is then run independently in that cell-type and
+medium model. Different cell types have separate union-GEM files, checksums,
+FASTCORE support sets and directional `vmax` caches.
+
+Conditions and metacells reuse a structural model only when their cell type
+matches the model. `completion_time_limit` applies independently to each
+cell-type/medium FASTCORE construction.
 
 ```r
 step5$penalty
 step5$vmax
-step5$model_cache_summary
+step5$model_cache_summary[, c(
+  "cell_type",
+  "medium_scenario",
+  "file",
+  "file_checksum",
+  "n_celltype_biological_reactions",
+  "n_celltype_fastcore_support_reactions"
+)]
+step5$structural_model_contract
 ```
 
 Historical `penalty_condition_full_oof` and `penalty_common_oof` fields are
@@ -310,11 +336,16 @@ result$condition_contrast
 result$microcompass$model_cache_summary
 ```
 
+Condition contrasts compare the same cell type, reaction, direction and medium.
+Rows belonging to another cell type are excluded rather than treated as missing
+observations on a global GEM.
+
 ## Optional targeted reaction remapping
 
 After Stage 5, selected reaction anchors can be mapped to direct KEGG,
 Reactome, or master-Rhea equivalents and scored without rebuilding the cached
-model. See
+model. Candidate availability is intersected across media within each cell type,
+and only the corresponding cell-type union GEMs are reused. See
 [Tutorial 4](tutorial-04-targeted-reaction-remapping.md).
 
 ## Restart rules
@@ -326,7 +357,8 @@ cell set invalidates Stage 1 and all downstream stages.
 Changing metacell graph inputs or membership invalidates Stages 2–6 but does not
 change already fitted single-cell GRNs.
 
-Changing the reaction catalogue invalidates Stages 3–6.
+Changing GPR rules, reaction annotations, or the biological catalogue invalidates
+Stages 3–6.
 
 Changing only medium scenarios or LP controls invalidates Stage 5 and final
 results but does not require rerunning Stages 1–4.

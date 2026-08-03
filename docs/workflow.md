@@ -8,30 +8,37 @@ remapping pass. Equations are in
 
 ```text
 paired RNA+ATAC cells
-→ condition-aware or standard Pando
+→ condition-aware fixed-dictionary or standard Pando
 → independent cell-type graphs with joint conditions
 → condition-pure metacells
-→ supported metabolic genes and reaction catalogue
-→ condition-full regulatory reaction support
-→ shared medium-specific metabolic model
-→ directional penalties and condition comparisons
-→ optional direct database-linked targeted remapping
+→ condition-specific biological meta-modules
+→ union of conditions within each cell type only
+→ cell-type-specific regulatory reaction support
+→ one union GEM and independent FASTCORE per cell type × medium
+→ directional penalties and within-cell-type condition comparisons
+→ optional cell-type-scoped targeted remapping
 ```
 
 ## Stage 1: `rc_regcompass_step_grn()`
 
-Targets are GEM GPR genes present in the RNA assay. With at least two conditions,
-Pando fits one shared candidate supergraph per broad cell type using
-`candidate_screen = "motif_domain"`, equal condition weights and nested
-outer-heldout projection. Otherwise original `Pando::infer_grn()` is used and No
-condition coefficients are calculated.
+Targets are GEM GPR genes present in the RNA assay. With at least two retained
+conditions, Pando performs pooled and per-condition biological candidate
+discovery within each broad cell type. Exact `(TF, peak, target)` triples are
+unioned into one frozen dictionary, and every condition is fit with the same
+unscaled Gaussian identity interaction model. Otherwise original
+`Pando::infer_grn()` is used and no condition coefficients are calculated.
+
+For multi-condition fits, RegCompass accepts only estimable coefficients with
+within-condition BH `padj < 0.05`. The pooled stage supports candidate recall and
+does not rescale condition coefficients.
 
 Main condition-mode outputs:
 
 ```r
 step1$grn_result$condition_grn_fits
 step1$grn_result$condition_fit_status
-step1$grn_result$tf_peak_gene_condition
+step1$grn_result$tf_peak_gene_condition_effect_all
+step1$grn_result$tf_peak_gene_condition_effect
 ```
 
 ## Stage 2: `rc_regcompass_step_metacells()`
@@ -50,16 +57,29 @@ step2$pooled$input_design
 ## Stage 3: `rc_regcompass_step_meta_modules()`
 
 Active condition coefficients identify supported metabolic genes. A core
-reaction requires one complete GPR branch. The catalogue adds direct subsystem,
-KEGG/Reactome and master-Rhea relations, then merges condition- and cell-type-
-specific sets. Stage 3 does not run FASTCORE.
+reaction requires one complete GPR branch. For every condition-by-cell-type
+group, the biological catalogue adds direct subsystem, KEGG/Reactome and
+master-Rhea relations.
+
+Condition-specific catalogues are then unioned **within the same cell type
+only**. Different cell types remain in separate `cell_type_catalogues`; Stage 3
+never creates a GEM and never runs FASTCORE.
+
+```r
+step3$merged_modules$cell_type_catalogues
+step3$merged_modules$merged_core_reactions
+step3$merged_modules$merged_reaction_membership
+```
+
+The merged tables retain the workflow cell-type column and record
+`merge_scope = "cell_type"` and `cross_celltype_merge = FALSE`.
 
 ## Stage 4: `rc_regcompass_step_layer1()`
 
-The primary regulatory input is condition-full OOF projection. Jointly estimable
-edges form the common-support component; each non-estimable edge side contributes
-zero. Single-cell scores are averaged by exact metacell membership before RNA
-support modification and GPR aggregation.
+For each condition, significant fixed-dictionary edge effects are projected to
+paired cells as `penalty_effect × TF_RNA × peak_ATAC`, summed by target gene and
+averaged using exact metacell membership. RNA support and GPR rules then produce
+reaction-level evidence.
 
 ```r
 step4$gene_projection_condition_full_oof
@@ -69,14 +89,23 @@ step4$reaction_expression_condition_full_oof
 step4$reaction_expression_common_oof
 ```
 
-The Stage 4 schema contains no depth-matching, common-depth, alpha-sensitivity,
-zero-support-sensitivity or link-saturation-propagation branches.
+These historical field names are compatibility aliases. The current estimator
+is not OOF: `condition_full_oof` is the primary fixed-dictionary route,
+`common_oof` aliases the primary route, and `condition_unique_oof` is a zero
+compatibility matrix. Targets without significant estimable regulatory edges
+use the neutral RNA-only fallback.
 
 ## Stage 5: `rc_regcompass_step_layer2()`
 
-One global FASTCORE completion is run per medium, and the completed model is
-reused for every condition, metacell and evidence route. Forward and reverse
-directions are scored separately.
+For `model_mode = "meta_module_gem"`, Stage 5 builds one union GEM for every
+`cell_type × medium_scenario` pair. Conditions of that cell type contribute to
+its biological reaction union; reactions from other cell types do not.
+FASTCORE runs independently within each cell-type/medium model.
+
+Each model is reused only for metacells whose cell type matches the model.
+Forward and reverse directions are scored separately. Directional `vmax` is
+computed once per cell-type model and target direction, then reused across
+conditions and metacells of that cell type.
 
 ```r
 step5$penalty_condition_full_oof
@@ -85,10 +114,16 @@ step5$penalty_condition_unique_increment
 step5$penalty_rna_only
 step5$vmax
 step5$model_cache_summary
+step5$structural_model_contract
 ```
 
-The condition-full penalty is primary. Lower normalized penalty indicates
-stronger network-constrained support; it is not measured flux.
+The cache summary carries `cell_type`, medium, model file, checksum, reaction
+counts and cell-type FASTCORE support counts. The condition-specific penalty is
+primary. Lower normalized penalty indicates stronger network-constrained
+support; it is not measured flux.
+
+The optional `full_gem` mode uses the full reference GEM and remains separate
+from cell-type union-GEM construction.
 
 ## Stage 6: `rc_regcompass_step_results()`
 
@@ -100,16 +135,19 @@ result$common_support_component_summary
 result$condition_unique_penalty_increment_summary
 ```
 
-Condition comparisons must fix reaction, direction, medium, broad cell type,
-model, bounds and target-flux fraction. Metacell P values describe within-dataset
+Condition comparisons fix reaction, direction, medium and broad cell type.
+Compared conditions share the same cell-type/medium model, bounds and target
+`vmax`. Cross-cell-type rows are excluded rather than interpreted as missing
+observations on a global model. Metacell P values describe within-dataset
 separation and are not donor-level inference.
 
 ## Optional targeted remapping: `rc_regcompass_step_target_union()`
 
-After Stage 5, selected reaction anchors can be used to identify directly linked
-non-core reactions sharing KEGG, Reactome or master-Rhea identifiers. The second
-pass reuses the exact cached medium-specific union GEMs and does not rerun
-FASTCORE or reconstruct a model.
+After Stage 5, selected reaction anchors can identify directly linked non-core
+reactions sharing KEGG, Reactome or master-Rhea identifiers. The second pass
+reuses the exact cached union GEMs for the corresponding cell type and medium.
+Availability is intersected across media within each cell type; models from
+different cell types are never merged. FASTCORE is not rerun.
 
 ```r
 targeted <- rc_regcompass_step_target_union(
@@ -126,8 +164,8 @@ targeted <- rc_regcompass_step_target_union(
 In condition mode, `step4$reaction_expression` is the canonical alias of
 `reaction_expression_condition_full_oof`; targeted reactions therefore use the
 same primary regulatory evidence route as the original Stage 5 scoring. This is
-an optional target-extension analysis, not one of the removed sensitivity or
-comparability guardrails.
+an optional target-extension analysis, not a sensitivity or comparability
+branch.
 
 ## Restart boundaries
 
@@ -135,9 +173,9 @@ comparability guardrails.
 |---|---|
 | Stage 1 | RNA/ATAC data, labels, genome, regions, motifs or Pando fitting |
 | Stage 2 | reductions, dimensions, gamma, seed, thresholds or cells |
-| Stage 3 | GPR rules or reaction annotations |
+| Stage 3 | GPR rules, reaction annotations or cell-type module membership |
 | Stage 4 | projection, RNA support or GPR aggregation |
-| Stage 5 | medium, bounds, direction, omega, solver or model completion |
+| Stage 5 | medium, bounds, direction, omega, solver or cell-type FASTCORE completion |
 | Stage 6 | annotations or reporting filters |
 | Targeted remapping | selected anchors or direct cross-reference target set only |
 

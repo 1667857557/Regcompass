@@ -24,7 +24,7 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     TF-by-ATAC regulatory effects are projected before exact SuperCell
     aggregation. Metacells use one multimodal WNN graph per broad cell type and
     remain condition-pure after membership splitting. RNA support, regulatory
-    effects, GPR rules, shared union GEM construction and directional metabolic
+    effects, GPR rules, cell-type-specific union GEM construction and directional
     penalties use consistent reaction ordering, bounds and medium scenarios.
 License: MIT + file LICENSE
 Encoding: UTF-8
@@ -65,9 +65,10 @@ Collate:
     'metacell_peak_calling.R'
     'metacell.R'
     'microcompass.R'
-    'union_gem_cache.R'
+    'celltype_union_gem_cache.R'
     'microcompass_vmax_cache.R'
     'microcompass_engine.R'
+    'celltype_microcompass_engine.R'
     'target_union.R'
     'pando_evidence_utils.R'
     'pando_grn.R'

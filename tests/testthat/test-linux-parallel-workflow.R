@@ -11,7 +11,7 @@ test_that("Stage 3 does not run FASTCORE", {
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
   expect_match(text, ".rc_build_condition_meta_modules <- function", fixed = TRUE)
   expect_match(text, "none_at_meta_module_stage", fixed = TRUE)
-  expect_false(grepl(".rc_complete_medium_union_gem(", text, fixed = TRUE))
+  expect_false(grepl(".rc_complete_celltype_medium_union_gem(", text, fixed = TRUE))
   expect_false(grepl(".rc_fastcore_", text, fixed = TRUE))
 })
 

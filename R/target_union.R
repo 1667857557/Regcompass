@@ -82,7 +82,7 @@
       }, character(1)))
     }
     gene_reactions <- intersect(mapped, original_core)
-    if (!length(gene_reactions)) {
+    if (!length(gene_reactions) && !length(requested_reactions)) {
       stop(
         "The selected genes do not resolve to original Layer 2 core targets.",
         call. = FALSE
@@ -97,6 +97,10 @@
   }
 
   reactions <- union(requested_reactions, gene_reactions)
+  if (!length(reactions)) {
+    stop("No selected anchor is available in this cell type.",
+         call. = FALSE)
+  }
   selection_source <- vapply(reactions, function(reaction) {
     by_id <- reaction %in% requested_reactions
     by_gene <- reaction %in% gene_reactions
@@ -128,185 +132,274 @@
   )
 }
 
-.rc_build_target_union_definition <- function(
-    gem, merged_core_reactions, merged_reaction_membership,
+.rc_validate_target_union_anchor_request <- function(
+    gem, merged_core_reactions,
     core_reaction_ids = NULL, core_genes = NULL,
-    gene_match = c("complete_gpr", "any_direct"),
-    cached_reaction_ids = NULL) {
+    gene_match = c("complete_gpr", "any_direct")) {
   gene_match <- match.arg(gene_match)
   if (!is.data.frame(merged_core_reactions) ||
       !"reaction_id" %in% colnames(merged_core_reactions)) {
     stop("`merged_core_reactions` must contain reaction_id.",
          call. = FALSE)
   }
-  if (!is.data.frame(merged_reaction_membership) ||
-      !"reaction_id" %in% colnames(merged_reaction_membership)) {
-    stop("`merged_reaction_membership` must contain reaction_id.",
-         call. = FALSE)
+  available_core <- .rc_target_union_normalize_ids(
+    merged_core_reactions$reaction_id
+  )
+  if (!length(available_core)) {
+    stop("No original cell-type core reaction is available.", call. = FALSE)
+  }
+  requested_reactions <- .rc_target_union_normalize_ids(core_reaction_ids)
+  requested_genes <- toupper(.rc_target_union_normalize_ids(core_genes))
+  if (!length(requested_reactions) && !length(requested_genes)) {
+    stop(
+      "Supply at least one `core_reaction_ids` or `core_genes` value.",
+      call. = FALSE
+    )
   }
 
-  selected_anchors <- .rc_target_union_core_rows(
+  if (length(requested_reactions)) {
+    .rc_target_union_core_rows(
+      gem = gem,
+      available_core_reactions = available_core,
+      core_reaction_ids = requested_reactions,
+      gene_match = gene_match
+    )
+  }
+  if (length(requested_genes)) {
+    .rc_target_union_core_rows(
+      gem = gem,
+      available_core_reactions = available_core,
+      core_genes = requested_genes,
+      gene_match = gene_match
+    )
+  }
+  invisible(list(
+    core_reaction_ids = requested_reactions,
+    core_genes = requested_genes,
+    gene_match = gene_match
+  ))
+}
+
+.rc_build_target_union_definition <- function(
+    gem, merged_core_reactions, merged_reaction_membership,
+    core_reaction_ids = NULL, core_genes = NULL,
+    gene_match = c("complete_gpr", "any_direct"),
+    cached_reaction_ids = NULL,
+    celltype_col = "cell_type") {
+  gene_match <- match.arg(gene_match)
+  required <- c(celltype_col, "reaction_id")
+  if (!is.data.frame(merged_core_reactions) ||
+      !all(required %in% colnames(merged_core_reactions)) ||
+      !is.data.frame(merged_reaction_membership) ||
+      !all(required %in% colnames(merged_reaction_membership))) {
+    stop("Merged meta-module tables must be scoped by cell type.",
+         call. = FALSE)
+  }
+  if (!is.list(cached_reaction_ids) || is.null(names(cached_reaction_ids))) {
+    stop("Cached reaction IDs must be a named list by cell type.",
+         call. = FALSE)
+  }
+  .rc_validate_target_union_anchor_request(
     gem = gem,
-    available_core_reactions = merged_core_reactions$reaction_id,
+    merged_core_reactions = merged_core_reactions,
     core_reaction_ids = core_reaction_ids,
     core_genes = core_genes,
     gene_match = gene_match
   )
-  selected_core <- selected_anchors[
-    selected_anchors$is_core %in% TRUE, , drop = FALSE
-  ]
-  selected_noncore <- selected_anchors[
-    !selected_anchors$is_core %in% TRUE, , drop = FALSE
-  ]
-
-  catalogue <- .rc_target_union_direct_crossref_relations(
-    gem, selected_anchors
-  )
-  if (!nrow(catalogue)) {
-    stop(
-      paste(
-        "The selected anchor reactions have no directly linked KEGG, Reactome,",
-        "or master-Rhea reactions."
-      ),
-      call. = FALSE
-    )
-  }
-
-  catalogue$anchor_reaction_id <- catalogue$anchor_core_reaction_id
-  anchor_is_core <- stats::setNames(
-    as.logical(selected_anchors$is_core),
-    as.character(selected_anchors$reaction_id)
-  )
-  catalogue$anchor_is_original_core <- unname(
-    anchor_is_core[as.character(catalogue$anchor_reaction_id)]
-  )
-  catalogue$anchor_is_original_core[
-    is.na(catalogue$anchor_is_original_core)
-  ] <- FALSE
-
-  membership_ids <- .rc_target_union_normalize_ids(
-    merged_reaction_membership$reaction_id
-  )
-  available_ids <- .rc_target_union_normalize_ids(cached_reaction_ids)
-  if (!length(available_ids)) {
-    stop("No reusable reactions were found in the final union GEM cache.",
+  core_types <- sort(unique(trimws(as.character(
+    merged_core_reactions[[celltype_col]]
+  ))))
+  membership_types <- sort(unique(trimws(as.character(
+    merged_reaction_membership[[celltype_col]]
+  ))))
+  if (!setequal(core_types, membership_types) ||
+      !setequal(core_types, names(cached_reaction_ids))) {
+    stop("Core, membership and cached GEMs cover different cell types.",
          call. = FALSE)
   }
 
-  catalogue_match <- match(
-    as.character(catalogue$reaction_id),
-    as.character(merged_reaction_membership$reaction_id)
-  )
-  catalogue$available_in_all_cached_union_gems <-
-    catalogue$reaction_id %in% available_ids
-  catalogue$present_in_merged_catalogue <- !is.na(catalogue_match)
-  catalogue$merged_catalogue_is_core <- catalogue$reaction_id %in%
-    as.character(merged_core_reactions$reaction_id)
-  catalogue$merged_catalogue_inclusion_stage <- if (
-    "inclusion_stage" %in% colnames(merged_reaction_membership)
-  ) {
-    as.character(merged_reaction_membership$inclusion_stage[catalogue_match])
-  } else {
-    rep(NA_character_, nrow(catalogue))
-  }
-  support_only <- catalogue$available_in_all_cached_union_gems &
-    !catalogue$present_in_merged_catalogue
-  catalogue$merged_catalogue_inclusion_stage[support_only] <-
-    "global_fastcore_support_not_in_merged_catalogue"
-  catalogue$score_target <- !catalogue$merged_catalogue_is_core &
-    catalogue$available_in_all_cached_union_gems
-  catalogue$target_role <- ifelse(
-    catalogue$merged_catalogue_is_core,
-    "merged_core_not_rescored",
-    ifelse(
-      catalogue$available_in_all_cached_union_gems,
-      "direct_database_crossref_noncore",
-      "direct_database_crossref_absent_from_cached_union_gem"
+  build_one <- function(cell_type) {
+    cores <- merged_core_reactions[
+      trimws(as.character(merged_core_reactions[[celltype_col]])) == cell_type,
+      , drop = FALSE
+    ]
+    membership <- merged_reaction_membership[
+      trimws(as.character(merged_reaction_membership[[celltype_col]])) ==
+        cell_type, , drop = FALSE
+    ]
+    available <- .rc_target_union_normalize_ids(
+      cached_reaction_ids[[cell_type]]
     )
-  )
-  catalogue$lp_exclusion_reason <- ifelse(
-    catalogue$merged_catalogue_is_core,
-    "already_scored_in_original_layer2",
-    ifelse(
-      catalogue$available_in_all_cached_union_gems,
-      NA_character_,
-      "absent_from_one_or_more_cached_union_gems"
-    )
-  )
-
-  target_relations <- catalogue[catalogue$score_target, , drop = FALSE]
-  if (!nrow(target_relations)) {
-    stop(
-      paste(
-        "No directly linked non-core reaction is present in every final",
-        "medium-specific union GEM. Original core reactions are not recomputed."
+    requested <- .rc_target_union_normalize_ids(core_reaction_ids)
+    requested <- intersect(requested, union(cores$reaction_id, available))
+    selected <- tryCatch(
+      .rc_target_union_core_rows(
+        gem = gem,
+        available_core_reactions = cores$reaction_id,
+        core_reaction_ids = requested,
+        core_genes = core_genes,
+        gene_match = gene_match
       ),
+      error = function(e) NULL
+    )
+    if (is.null(selected) || !nrow(selected)) return(NULL)
+    selected <- selected[selected$reaction_id %in% available, , drop = FALSE]
+    if (!nrow(selected)) return(NULL)
+    selected[[celltype_col]] <- cell_type
+    selected$catalogue_id <- paste0(
+      "CELLTYPE_META_MODULES::",
+      utils::URLencode(cell_type, reserved = TRUE)
+    )
+    selected_core <- selected[selected$is_core %in% TRUE, , drop = FALSE]
+    selected_noncore <- selected[!selected$is_core %in% TRUE, , drop = FALSE]
+
+    catalogue <- .rc_target_union_direct_crossref_relations(gem, selected)
+    if (!nrow(catalogue)) return(NULL)
+    catalogue[[celltype_col]] <- cell_type
+    catalogue$catalogue_id <- selected$catalogue_id[[1L]]
+    catalogue$anchor_reaction_id <- catalogue$anchor_core_reaction_id
+    anchor_core <- stats::setNames(
+      as.logical(selected$is_core), as.character(selected$reaction_id)
+    )
+    catalogue$anchor_is_original_core <- unname(
+      anchor_core[as.character(catalogue$anchor_reaction_id)]
+    )
+    catalogue$anchor_is_original_core[
+      is.na(catalogue$anchor_is_original_core)
+    ] <- FALSE
+
+    membership_match <- match(
+      catalogue$reaction_id, membership$reaction_id
+    )
+    catalogue$available_in_all_cached_union_gems <-
+      catalogue$reaction_id %in% available
+    catalogue$present_in_merged_catalogue <- !is.na(membership_match)
+    catalogue$merged_catalogue_is_core <-
+      catalogue$reaction_id %in% cores$reaction_id
+    catalogue$merged_catalogue_inclusion_stage <- if (
+      "inclusion_stage" %in% colnames(membership)
+    ) {
+      as.character(membership$inclusion_stage[membership_match])
+    } else {
+      rep(NA_character_, nrow(catalogue))
+    }
+    support_only <- catalogue$available_in_all_cached_union_gems &
+      !catalogue$present_in_merged_catalogue
+    catalogue$merged_catalogue_inclusion_stage[support_only] <-
+      "celltype_fastcore_support_not_in_biological_catalogue"
+    catalogue$score_target <- !catalogue$merged_catalogue_is_core &
+      catalogue$available_in_all_cached_union_gems
+    catalogue$target_role <- ifelse(
+      catalogue$merged_catalogue_is_core,
+      "celltype_core_not_rescored",
+      ifelse(
+        catalogue$available_in_all_cached_union_gems,
+        "direct_database_crossref_noncore",
+        "absent_from_celltype_cached_union_gem"
+      )
+    )
+    catalogue$lp_exclusion_reason <- ifelse(
+      catalogue$merged_catalogue_is_core,
+      "already_scored_in_original_celltype_layer2",
+      ifelse(
+        catalogue$available_in_all_cached_union_gems,
+        NA_character_,
+        "absent_from_one_or_more_celltype_medium_union_gems"
+      )
+    )
+    target_relations <- catalogue[catalogue$score_target, , drop = FALSE]
+    targets <- if (nrow(target_relations)) {
+      .rc_target_union_aggregate_targets(
+        target_relations, celltype_col = celltype_col
+      )
+    } else {
+      data.frame()
+    }
+    if (nrow(targets)) {
+      targets$anchor_reaction_ids <- targets$anchor_core_reaction_ids
+    }
+    expansion_policy <- if (nrow(selected_noncore)) {
+      "direct_from_celltype_anchors_via_kegg_reactome_master_rhea_only"
+    } else {
+      "direct_from_celltype_core_via_kegg_reactome_master_rhea_only"
+    }
+    summary <- data.frame(
+      cell_type = cell_type,
+      n_selected_anchors = nrow(selected),
+      n_selected_core = nrow(selected_core),
+      n_selected_noncore_anchors = nrow(selected_noncore),
+      n_direct_crossref_relations = nrow(catalogue),
+      n_direct_crossref_reactions = length(unique(catalogue$reaction_id)),
+      n_celltype_core_reactions_not_rescored = length(unique(
+        catalogue$reaction_id[catalogue$merged_catalogue_is_core]
+      )),
+      n_cached_union_unavailable_reactions = length(unique(
+        catalogue$reaction_id[!catalogue$available_in_all_cached_union_gems]
+      )),
+      n_expanded_score_targets = nrow(targets),
+      n_celltype_catalogue_reactions =
+        length(unique(membership$reaction_id)),
+      n_reactions_shared_by_celltype_medium_union_gems = length(available),
+      gene_match = gene_match,
+      expansion_policy = expansion_policy,
+      scoring_policy =
+        "celltype_noncore_reactions_present_in_all_media_for_that_celltype",
+      model_policy =
+        "reuse_exact_celltype_medium_union_gems_without_fastcore_rerun",
+      stringsAsFactors = FALSE
+    )
+    list(
+      selected_anchor_reactions = selected,
+      selected_core_reactions = selected_core,
+      selected_noncore_reactions = selected_noncore,
+      expanded_reaction_catalog = catalogue,
+      expanded_scoring_targets = targets,
+      merged_catalogue_membership = membership,
+      summary = summary,
+      params = list(
+        cell_type = cell_type,
+        score_targets = if (nrow(targets)) {
+          targets[, c(celltype_col, "reaction_id"), drop = FALSE]
+        } else {
+          data.frame()
+        },
+        expansion_policy = expansion_policy
+      )
+    )
+  }
+
+  pieces <- Filter(Negate(is.null), lapply(core_types, build_one))
+  if (!length(pieces)) {
+    stop("No targeted reaction can be mapped within any cell type.",
+         call. = FALSE)
+  }
+  bind <- function(field) .rc_bind_frames_fill(lapply(pieces, `[[`, field))
+  targets <- bind("expanded_scoring_targets")
+  if (!nrow(targets)) {
+    stop(
+      "No directly linked non-core target is present in its cell-type union GEMs.",
       call. = FALSE
     )
   }
-  targets <- .rc_target_union_aggregate_targets(target_relations)
-  targets$anchor_reaction_ids <- targets$anchor_core_reaction_ids
-
-  rownames(selected_anchors) <- NULL
-  rownames(selected_core) <- NULL
-  rownames(selected_noncore) <- NULL
-  rownames(catalogue) <- NULL
-
-  expansion_policy <- if (nrow(selected_noncore)) {
-    "direct_from_selected_anchors_via_kegg_reactome_master_rhea_only"
-  } else {
-    "direct_from_selected_core_via_kegg_reactome_master_rhea_only"
-  }
-  summary <- data.frame(
-    n_selected_anchors = nrow(selected_anchors),
-    n_selected_core = nrow(selected_core),
-    n_selected_noncore_anchors = nrow(selected_noncore),
-    n_direct_crossref_relations = nrow(catalogue),
-    n_direct_crossref_reactions = length(unique(catalogue$reaction_id)),
-    n_merged_core_reactions_not_rescored = length(unique(
-      catalogue$reaction_id[catalogue$merged_catalogue_is_core]
-    )),
-    n_cached_union_unavailable_reactions = length(unique(
-      catalogue$reaction_id[!catalogue$available_in_all_cached_union_gems]
-    )),
-    n_expanded_score_targets = nrow(targets),
-    n_merged_catalogue_reactions = length(membership_ids),
-    n_reactions_shared_by_cached_union_gems = length(available_ids),
-    gene_match = gene_match,
-    expansion_policy = expansion_policy,
-    scoring_policy =
-      "direct_noncore_reactions_present_in_all_final_union_gems",
-    model_policy = "reuse_exact_final_medium_specific_union_gems",
-    stringsAsFactors = FALSE
-  )
-
+  selected <- bind("selected_anchor_reactions")
+  catalogue <- bind("expanded_reaction_catalog")
   list(
-    selected_anchor_reactions = selected_anchors,
-    selected_core_reactions = selected_core,
-    selected_noncore_reactions = selected_noncore,
+    selected_anchor_reactions = selected,
+    selected_core_reactions = bind("selected_core_reactions"),
+    selected_noncore_reactions = bind("selected_noncore_reactions"),
     expanded_reaction_catalog = catalogue,
     expanded_scoring_targets = targets,
-    merged_catalogue_membership = merged_reaction_membership,
-    summary = summary,
+    merged_catalogue_membership = bind("merged_catalogue_membership"),
+    summary = bind("summary"),
     params = list(
       gene_match = gene_match,
-      selected_anchor_reactions = unique(as.character(
-        selected_anchors$reaction_id
-      )),
-      selected_core_reactions = unique(as.character(
-        selected_core$reaction_id
-      )),
-      selected_noncore_reactions = unique(as.character(
-        selected_noncore$reaction_id
-      )),
-      merged_core_reactions_not_rescored = unique(as.character(
-        catalogue$reaction_id[catalogue$merged_catalogue_is_core]
-      )),
-      cached_union_unavailable_reactions = unique(as.character(
-        catalogue$reaction_id[!catalogue$available_in_all_cached_union_gems]
-      )),
-      score_targets = unique(as.character(targets$reaction_id)),
-      expansion_policy = expansion_policy
+      celltype_col = celltype_col,
+      cell_types = sort(unique(as.character(selected[[celltype_col]]))),
+      score_targets = unique(
+        targets[, c(celltype_col, "reaction_id"), drop = FALSE]
+      ),
+      expansion_policy =
+        "direct_database_crossrefs_evaluated_within_cell_type_only"
     )
   )
 }
@@ -399,8 +492,16 @@
   answer
 }
 
-.rc_target_union_aggregate_targets <- function(catalogue) {
-  rows <- split(seq_len(nrow(catalogue)), catalogue$reaction_id)
+.rc_target_union_aggregate_targets <- function(
+    catalogue, celltype_col = "cell_type") {
+  if (!all(c(celltype_col, "reaction_id") %in% colnames(catalogue))) {
+    stop("Target relations must be scoped by cell type.", call. = FALSE)
+  }
+  key <- paste(
+    as.character(catalogue[[celltype_col]]),
+    as.character(catalogue$reaction_id), sep = "\001"
+  )
+  rows <- split(seq_len(nrow(catalogue)), key)
   answer <- do.call(rbind, lapply(rows, function(index) {
     one <- catalogue[index, , drop = FALSE]
     stages <- sort(unique(as.character(
@@ -409,20 +510,19 @@
           nzchar(one$merged_catalogue_inclusion_stage)
       ]
     )))
-    data.frame(
-      catalogue_id = "MERGED_META_MODULES",
+    out <- data.frame(
+      catalogue_id = as.character(one$catalogue_id[[1L]]),
+      cell_type = as.character(one[[celltype_col]][[1L]]),
       reaction_id = as.character(one$reaction_id[[1L]]),
       anchor_core_reaction_ids = paste(
         sort(unique(as.character(one$anchor_core_reaction_id))),
         collapse = ";"
       ),
       expansion_types = paste(
-        sort(unique(as.character(one$expansion_type))),
-        collapse = ";"
+        sort(unique(as.character(one$expansion_type))), collapse = ";"
       ),
       source_annotations = paste(
-        sort(unique(as.character(one$source_annotation))),
-        collapse = ";"
+        sort(unique(as.character(one$source_annotation))), collapse = ";"
       ),
       merged_catalogue_is_core = FALSE,
       merged_catalogue_inclusion_stage = if (length(stages)) {
@@ -435,6 +535,8 @@
       lp_exclusion_reason = NA_character_,
       stringsAsFactors = FALSE
     )
+    names(out)[names(out) == "cell_type"] <- celltype_col
+    out
   }))
   rownames(answer) <- NULL
   answer
@@ -444,119 +546,123 @@
   if (!inherits(layer2, "regcompass_layer2_step") ||
       !identical(as.character(layer2$model_mode), "meta_module_gem")) {
     stop(
-      paste(
-        "`layer2` must be the completed core LP stage with",
-        "`model_mode = \"meta_module_gem\"`."
-      ),
+      "`layer2` must be a completed cell-type meta-module GEM run.",
       call. = FALSE
     )
   }
   summary <- layer2$model_cache_summary
   required <- c(
-    "medium_scenario", "file", "file_checksum",
+    "cell_type", "medium_scenario", "file", "file_checksum",
     "build_strategy", "completion_stage"
   )
   if (!is.data.frame(summary) || !all(required %in% colnames(summary)) ||
       !nrow(summary)) {
-    stop(
-      "`layer2$model_cache_summary` does not identify final union GEM files.",
-      call. = FALSE
-    )
+    stop("Layer 2 does not identify cell-type union GEM files.",
+         call. = FALSE)
   }
+  summary$cell_type <- trimws(as.character(summary$cell_type))
   summary$medium_scenario <- trimws(as.character(summary$medium_scenario))
   summary$file <- as.character(summary$file)
   summary$file_checksum <- as.character(summary$file_checksum)
-  summary <- unique(summary[
+  valid <- !is.na(summary$cell_type) & nzchar(summary$cell_type) &
     !is.na(summary$medium_scenario) & nzchar(summary$medium_scenario) &
-      !is.na(summary$file) & nzchar(summary$file),
-    , drop = FALSE
-  ])
-  scenario_files <- split(summary$file, summary$medium_scenario)
-  ambiguous <- names(scenario_files)[vapply(
-    scenario_files, function(x) length(unique(x)) != 1L, logical(1)
+    !is.na(summary$file) & nzchar(summary$file)
+  summary <- unique(summary[valid, , drop = FALSE])
+  key <- paste(summary$cell_type, summary$medium_scenario, sep = "\001")
+  files <- split(summary$file, key)
+  ambiguous <- names(files)[vapply(
+    files, function(x) length(unique(x)) != 1L, logical(1)
   )]
   if (length(ambiguous)) {
-    stop(
-      "Each medium scenario must resolve to one final union GEM file: ",
-      paste(ambiguous, collapse = ", "),
-      call. = FALSE
-    )
+    stop("Each cell type and medium must resolve to one union GEM file.",
+         call. = FALSE)
   }
-  summary <- summary[!duplicated(summary$medium_scenario), , drop = FALSE]
+  summary <- summary[!duplicated(key), , drop = FALSE]
   for (i in seq_len(nrow(summary))) {
-    if (!identical(
-      as.character(summary$build_strategy[[i]]),
-      "medium_specific_union_gem"
-    ) || !identical(
-      as.character(summary$completion_stage[[i]]),
-      "single_global_fastcore_after_meta_module_merge"
-    )) {
-      stop(
-        "Second-pass scoring requires Stage 5 final medium-specific union GEMs.",
-        call. = FALSE
-      )
+    if (!identical(summary$build_strategy[[i]],
+                   "celltype_medium_union_gem") ||
+        !identical(summary$completion_stage[[i]],
+                   "celltype_specific_fastcore_after_condition_module_union")) {
+      stop("Target remapping requires cell-type-specific final union GEMs.",
+           call. = FALSE)
     }
-    .rc_read_cached_union_gem(
-      file = summary$file[[i]],
-      medium_scenario = summary$medium_scenario[[i]],
-      expected_checksum = summary$file_checksum[[i]]
+    .rc_read_celltype_union_gem(
+      summary$file[[i]], summary$cell_type[[i]],
+      summary$medium_scenario[[i]], summary$file_checksum[[i]]
     )
   }
-  summary
+  summary[order(summary$cell_type, summary$medium_scenario), , drop = FALSE]
 }
 
 .rc_target_union_cached_reaction_ids <- function(layer2) {
   summary <- .rc_target_union_model_summary(layer2)
-  reaction_sets <- lapply(seq_len(nrow(summary)), function(i) {
-    model <- .rc_read_cached_union_gem(
-      file = summary$file[[i]],
-      medium_scenario = summary$medium_scenario[[i]],
-      expected_checksum = summary$file_checksum[[i]]
-    )
-    rc_validate_gem(model)$reactions
+  by_celltype <- split(seq_len(nrow(summary)), summary$cell_type)
+  available <- lapply(by_celltype, function(rows) {
+    sets <- lapply(rows, function(i) {
+      model <- .rc_read_celltype_union_gem(
+        summary$file[[i]], summary$cell_type[[i]],
+        summary$medium_scenario[[i]], summary$file_checksum[[i]]
+      )
+      rc_validate_gem(model)$reactions
+    })
+    value <- .rc_target_union_normalize_ids(Reduce(intersect, sets))
+    if (!length(value)) {
+      stop(
+        "Cell type `", summary$cell_type[[rows[[1L]]]],
+        "` has no reactions shared across its medium-specific union GEMs.",
+        call. = FALSE
+      )
+    }
+    value
   })
-  available <- Reduce(intersect, reaction_sets)
-  available <- .rc_target_union_normalize_ids(available)
-  if (!length(available)) {
-    stop("The final medium-specific union GEMs share no reactions.",
-         call. = FALSE)
-  }
   attr(available, "model_summary") <- summary
-  attr(available, "reaction_counts") <- vapply(
-    reaction_sets, length, integer(1)
-  )
   available
 }
 
 .rc_build_target_union_model_cache <- function(
     layer2, target_reactions,
-    target_direction = c("both", "forward", "reverse")) {
+    target_direction = c("both", "forward", "reverse"),
+    celltype_col = "cell_type") {
   target_direction <- match.arg(target_direction)
+  required <- c(celltype_col, "reaction_id")
+  if (!is.data.frame(target_reactions) ||
+      !all(required %in% colnames(target_reactions)) || !nrow(target_reactions)) {
+    stop("Target reactions must be a non-empty cell-type-scoped table.",
+         call. = FALSE)
+  }
   summary <- .rc_target_union_model_summary(layer2)
   cache <- list()
   diagnostics <- list()
   fingerprints <- character(nrow(summary))
   for (i in seq_len(nrow(summary))) {
+    cell_type <- summary$cell_type[[i]]
     scenario <- summary$medium_scenario[[i]]
     file <- summary$file[[i]]
     checksum <- summary$file_checksum[[i]]
-    model <- .rc_read_cached_union_gem(file, scenario, checksum)
+    model <- .rc_read_celltype_union_gem(
+      file, cell_type, scenario, checksum
+    )
     validated <- rc_validate_gem(model)
+    targets <- unique(as.character(target_reactions$reaction_id[
+      as.character(target_reactions[[celltype_col]]) == cell_type
+    ]))
+    if (!length(targets)) next
     fingerprints[[i]] <- .rc_full_gem_cache_fingerprint(model)
-    missing_targets <- setdiff(target_reactions, validated$reactions)
-    if (length(missing_targets)) {
+    missing <- setdiff(targets, validated$reactions)
+    if (length(missing)) {
       stop(
-        "Scoring targets are absent from the final union GEM for `",
-        scenario, "`: ",
-        paste(utils::head(missing_targets, 10L), collapse = ", "),
+        "Targeted reactions are absent from the `", cell_type,
+        "` union GEM for medium `", scenario, "`: ",
+        paste(utils::head(missing, 10L), collapse = ", "),
         call. = FALSE
       )
     }
     directions <- rc_prepare_directional_targets(
-      model, target_reactions, target_direction
+      model, targets, target_direction
     )
+    directions$cell_type <- cell_type
     directions$medium_scenario <- scenario
-    diagnostics[[scenario]] <- directions
+    diagnostics[[paste(cell_type, scenario, sep = "\001")]] <- directions
     allowed <- directions[
       directions$target_direction %in% c("forward", "reverse"),
       , drop = FALSE
@@ -565,32 +671,35 @@
       reaction <- as.character(allowed$reaction_id[[j]])
       direction <- as.character(allowed$target_direction[[j]])
       key <- paste0(
-        "reaction=", utils::URLencode(reaction, reserved = TRUE),
+        "celltype=", utils::URLencode(cell_type, reserved = TRUE),
+        "::reaction=", utils::URLencode(reaction, reserved = TRUE),
         "::direction=", direction,
         "::medium=", utils::URLencode(scenario, reserved = TRUE)
       )
       cache[[key]] <- list(
-        module_id = "MEDIUM_UNION_GEM",
+        module_id = "CELLTYPE_MEDIUM_UNION_GEM",
+        cell_type = cell_type,
         reaction_id = reaction,
         target_direction = direction,
         medium_scenario = scenario,
         condition = "all",
         file = file,
         file_checksum = checksum,
-        build_strategy = "reuse_exact_final_medium_specific_union_gem"
+        build_strategy = "reuse_exact_celltype_medium_union_gem"
       )
     }
   }
   if (!length(cache)) {
-    stop("No direct database-linked non-core reaction direction can be scored.",
+    stop("No cell-type targeted reaction direction can be scored.",
          call. = FALSE)
   }
   summary$source_model_fingerprint <- fingerprints
   summary$reused_without_rebuilding <- TRUE
   summary$second_pass_build_strategy <-
-    "reuse_exact_final_medium_specific_union_gem"
+    "reuse_exact_celltype_medium_union_gem"
   attr(cache, "summary") <- summary
   attr(cache, "direction_diagnostics") <- .rc_bind_frames_fill(diagnostics)
+  attr(cache, "structural_scope") <- "cell_type_x_medium"
   cache
 }
 
@@ -601,179 +710,46 @@
     solver = c("highs", "gurobi", "glpk"),
     flux_threshold = 1e-8,
     parallel = TRUE, BPPARAM = NULL) {
-  solver <- match.arg(solver)
-  .rc_require_lp_solver(solver)
-  if (!is.numeric(omega) || length(omega) != 1L ||
-      !is.finite(omega) || omega <= 0 || omega > 1) {
-    stop("`omega` must be one finite value in (0, 1].", call. = FALSE)
-  }
-  matrices <- rc_layer2_unit_matrices(
-    layer1, "metacell", NULL, celltype_col, condition_col
-  )
-  row_ids <- names(model_cache)
-  units <- colnames(matrices$reaction_expression)
-  model_files <- vapply(model_cache, `[[`, character(1), "file")
-  unique_files <- unique(model_files)
-  representative <- vapply(unique_files, function(file) {
-    row_ids[match(file, model_files)]
-  }, character(1))
-  all_reactions <- unique(unlist(lapply(representative, function(row_id) {
-    entry <- model_cache[[row_id]]
-    model <- .rc_read_cached_union_gem(
-      entry$file, entry$medium_scenario, entry$file_checksum
-    )
-    colnames(model$S)
-  }), use.names = FALSE))
-  gem <- rc_annotate_reaction_roles(gem)
-  penalties <- rc_compute_multiome_penalty(
-    rc_align_reaction_expression(
-      matrices$reaction_expression, all_reactions, NA_real_
-    ),
-    reaction_roles = gem$reaction_roles
-  )
-  penalty <- vmax <- matrix(
-    NA_real_, length(row_ids), length(units),
-    dimnames = list(row_ids, units)
-  )
-  feasible <- evaluated <- matrix(
-    FALSE, length(row_ids), length(units),
-    dimnames = list(row_ids, units)
-  )
-  tasks <- expand.grid(
-    file = unique_files, unit_id = units, stringsAsFactors = FALSE
-  )
-  run_one <- function(task) {
-    file <- as.character(task$file)
-    unit_id <- as.character(task$unit_id)
-    selected <- row_ids[model_files == file]
-    first <- model_cache[[selected[[1L]]]]
-    model <- .rc_read_cached_union_gem(
-      first$file, first$medium_scenario, first$file_checksum
-    )
-    answers <- lapply(selected, function(row_id) {
-      entry <- model_cache[[row_id]]
-      fit <- rc_compass_two_step_lp_directional(
-        S = model$S,
-        lb = model$lb,
-        ub = model$ub,
-        target_reaction = entry$reaction_id,
-        penalties = penalties$penalty[colnames(model$S), unit_id],
-        target_direction = entry$target_direction,
-        omega = omega,
-        solver = solver,
-        flux_threshold = flux_threshold
-      )
-      list(
-        row_id = row_id,
-        unit_id = unit_id,
-        penalty = fit$penalty,
-        vmax = fit$vmax,
-        feasible = isTRUE(fit$feasible),
-        diagnostics = data.frame(
-          row_id = row_id,
-          unit_id = unit_id,
-          module_id = "MEDIUM_UNION_GEM",
-          reaction_id = entry$reaction_id,
-          target_direction = entry$target_direction,
-          medium_scenario = entry$medium_scenario,
-          condition = "all",
-          strict_feasible = isTRUE(fit$feasible),
-          solver_status = fit$solver_status,
-          step1_status = fit$step1_status,
-          step2_status = fit$step2_status,
-          target_status = model$target_status %||%
-            if (isTRUE(fit$feasible)) "ok" else "structurally_infeasible",
-          objective_value = fit$penalty,
-          vmax = fit$vmax,
-          source_union_gem_file = file,
-          stringsAsFactors = FALSE
-        )
-      )
-    })
-    list(
-      results = answers,
-      diagnostics = do.call(rbind, lapply(answers, `[[`, "diagnostics"))
-    )
-  }
-  grouped <- rc_parallel_lapply(
-    split(tasks, seq_len(nrow(tasks))),
-    function(task) run_one(task[1L, , drop = FALSE]),
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
-  )
-  results <- unlist(lapply(grouped, `[[`, "results"), recursive = FALSE)
-  for (result in results) {
-    penalty[result$row_id, result$unit_id] <- result$penalty
-    vmax[result$row_id, result$unit_id] <- result$vmax
-    feasible[result$row_id, result$unit_id] <- result$feasible
-    evaluated[result$row_id, result$unit_id] <- TRUE
-  }
-  score <- rc_compass_score_from_penalty(penalty, feasible)
   summary <- attr(model_cache, "summary")
-  model_diagnostics <- .rc_bind_frames_fill(lapply(
-    seq_len(nrow(summary)), function(i) {
-      model <- .rc_read_cached_union_gem(
-        summary$file[[i]], summary$medium_scenario[[i]],
-        summary$file_checksum[[i]]
-      )
-      out <- model$closure_diagnostics %||% data.frame()
-      if (nrow(out)) {
-        out$medium_scenario <- summary$medium_scenario[[i]]
-        out$source_union_gem_file <- summary$file[[i]]
-      }
-      out
-    }
-  ))
-  directions <- unique(do.call(rbind, lapply(model_cache, function(entry) {
-    data.frame(
-      reaction_id = entry$reaction_id,
-      target_direction = entry$target_direction,
-      medium_scenario = entry$medium_scenario,
-      stringsAsFactors = FALSE
-    )
-  })))
-  manifest <- data.frame(
-    file = summary$file,
-    medium_scenario = summary$medium_scenario,
-    size_bytes = as.numeric(file.info(summary$file)$size),
-    checksum = unname(tools::md5sum(summary$file)),
+  if (!is.data.frame(summary) ||
+      !all(c("cell_type", "medium_scenario") %in% colnames(summary))) {
+    stop("Targeted model cache lacks cell-type provenance.", call. = FALSE)
+  }
+  media <- unique(as.character(summary$medium_scenario))
+  medium_scenarios <- data.frame(
+    medium_scenario_id = media,
+    exchange_reaction_id = NA_character_,
+    lb = NA_real_, ub = NA_real_, available = FALSE,
+    .no_constraints = TRUE,
     stringsAsFactors = FALSE
   )
-  answer <- list(
-    score = score,
-    penalty = penalty,
-    vmax = vmax,
-    feasible = feasible,
-    evaluated = evaluated,
-    target_direction = directions,
-    direction_diagnostics = attr(model_cache, "direction_diagnostics"),
-    model_mode = "reused_medium_specific_union_gem",
-    model_cache_summary = summary,
-    model_diagnostics = model_diagnostics,
-    model_file_manifest = manifest,
-    lp_diagnostics = .rc_bind_frames_fill(lapply(grouped, `[[`, "diagnostics")),
-    penalty_components = penalties$components,
-    evidence_policy = penalties$evidence_policy,
-    evidence_policy_detail = penalties$evidence_policy_detail,
-    unit_meta = matrices$unit_meta,
-    params = list(
-      unit = "metacell",
-      omega = omega,
-      shared_gem = TRUE,
-      shared_gem_scope = "cached_medium_specific_union_gem_by_medium",
-      structural_model_reused_exactly = TRUE,
-      fastcore_rerun = FALSE,
-      model_rebuild = FALSE,
-      parallel_task = "reused_union_gem_by_metacell",
-      flux_threshold = flux_threshold,
-      solver = solver,
-      scoring_time_limit = "none"
-    ),
-    method = paste(
-      "microCOMPASS directional LP for direct",
-      "KEGG/Reactome/master-Rhea-linked non-core reactions on exact cached",
-      "final medium-specific union GEMs"
-    )
+  answer <- .rc_run_celltype_microcompass_engine(
+    layer1 = layer1,
+    gem = gem,
+    target_reactions = NULL,
+    medium_scenarios = medium_scenarios,
+    reaction_membership = NULL,
+    core_reactions = NULL,
+    unit = "metacell",
+    condition_col = condition_col,
+    sample_col = NULL,
+    celltype_col = celltype_col,
+    model_params = list(),
+    omega = omega,
+    target_direction = "both",
+    parallel = parallel,
+    solver = match.arg(solver),
+    flux_threshold = flux_threshold,
+    BPPARAM = BPPARAM,
+    model_cache_override = model_cache
   )
+  answer$model_mode <- "reused_celltype_medium_union_gem"
+  answer$params$structural_model_reused_exactly <- TRUE
+  answer$params$fastcore_rerun <- FALSE
+  answer$params$model_rebuild <- FALSE
+  answer$params$parallel_task <-
+    "reused_celltype_union_gem_by_matching_metacell"
+  answer$direction_diagnostics <- attr(model_cache, "direction_diagnostics")
   answer$relative_penalty_rank <- answer$score
   answer$score_semantics <- attr(answer$score, "score_semantics") %||%
     "within_target_relative_penalty_rank_not_probability"
@@ -785,12 +761,13 @@
   answer
 }
 
-#' Score directly database-linked non-core reactions in final union GEMs
+#' Score directly linked non-core reactions in cell-type union GEMs
 #'
-#' Selected original core reactions are mapping anchors only. The function
-#' scores directly KEGG-, Reactome-, or master-Rhea-linked non-core reactions
-#' by reusing the exact final medium-specific union GEM files created by Stage
-#' 5. It does not rebuild a GEM and does not rerun FASTCORE.
+#' Selected reactions are mapping anchors only. Direct KEGG-, Reactome-, or
+#' master-Rhea-linked non-core reactions are scored by reusing the exact Stage 5
+#' union GEMs for the corresponding cell types and media. Candidate availability
+#' is intersected across media within each cell type. Models from different cell
+#' types are never merged, and FASTCORE is not rerun.
 #'
 #' @param layer1 Output from [rc_regcompass_step_layer1()].
 #' @param meta_modules Output from [rc_regcompass_step_meta_modules()].
@@ -799,18 +776,22 @@
 #' @param gem The same GEM used for the original run.
 #' @param outdir Output directory.
 #' @param core_reaction_ids GEM reaction IDs used as direct mapping anchors.
-#'   The historical argument name is retained for compatibility; an ID may be
-#'   an original Layer 2 core or any other valid reaction in `gem`.
-#' @param core_genes Genes used to resolve original core anchors through GPRs.
-#'   Gene selection intentionally remains restricted to original cores.
+#'   The historical argument name is retained for compatibility. Every supplied
+#'   ID must exist in `gem`; it is evaluated only in cell types where it is
+#'   structurally available.
+#' @param core_genes Genes used to resolve original core anchors through GPRs
+#'   within each cell type. Every supplied gene selector must resolve to at least
+#'   one original cell-type core under `gene_match`.
 #' @param gene_match Require a complete GPR group or allow any direct gene match.
 #' @param layer2_args Optional `omega`, `target_direction`, `solver`, and
-#'   `flux_threshold` overrides. Scoring LPs have no time-limit control.
-#' @param parallel Whether to parallelize model-by-metacell tasks.
+#'   `flux_threshold` overrides. Scoring LPs have no construction time limit.
+#' @param parallel Whether to parallelize reused cell-type-model by matching-
+#'   metacell tasks.
 #' @param BPPARAM Optional BiocParallel parameter object.
 #' @param progress Whether to display stage progress.
-#' @return A `regcompass_target_union_step` containing selected anchors, direct
-#'   database-linked non-core targets, final union-GEM provenance, and LP scores.
+#' @return A `regcompass_target_union_step` containing cell-type-scoped anchors,
+#'   direct database-linked non-core targets, exact model provenance, and LP
+#'   scores.
 #' @export
 rc_regcompass_step_target_union <- function(
     layer1, meta_modules, layer2, gem, outdir,
@@ -855,11 +836,16 @@ rc_regcompass_step_target_union <- function(
     stop("The merged biological meta-module catalogue is unavailable.",
          call. = FALSE)
   }
-  if (!setequal(
-    as.character(layer2$source_core_reactions$reaction_id),
-    as.character(catalogue$merged_core_reactions$reaction_id)
-  )) {
-    stop("Layer 2 was not generated from the supplied merged core reactions.",
+  source_key <- paste(
+    as.character(layer2$source_core_reactions[[workflow$celltype_col]]),
+    as.character(layer2$source_core_reactions$reaction_id), sep = "\001"
+  )
+  catalogue_key <- paste(
+    as.character(catalogue$merged_core_reactions[[workflow$celltype_col]]),
+    as.character(catalogue$merged_core_reactions$reaction_id), sep = "\001"
+  )
+  if (!setequal(source_key, catalogue_key)) {
+    stop("Layer 2 was not generated from the supplied cell-type cores.",
          call. = FALSE)
   }
   cached_reaction_ids <- .rc_target_union_cached_reaction_ids(layer2)
@@ -870,7 +856,8 @@ rc_regcompass_step_target_union <- function(
     core_reaction_ids = core_reaction_ids,
     core_genes = core_genes,
     gene_match = gene_match,
-    cached_reaction_ids = cached_reaction_ids
+    cached_reaction_ids = cached_reaction_ids,
+    celltype_col = workflow$celltype_col
   )
   target_direction <- match.arg(
     as.character(layer2_args$target_direction %||%
@@ -886,7 +873,8 @@ rc_regcompass_step_target_union <- function(
   model_cache <- .rc_build_target_union_model_cache(
     layer2 = layer2,
     target_reactions = definition$params$score_targets,
-    target_direction = target_direction
+    target_direction = target_direction,
+    celltype_col = workflow$celltype_col
   )
   scored <- .rc_score_existing_union_cache(
     layer1 = layer1,
@@ -904,14 +892,21 @@ rc_regcompass_step_target_union <- function(
   scored$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   scored$params$target_direction <- target_direction
   scored$params$target_scope <-
-    "direct_kegg_reactome_master_rhea_noncore_only"
+    "direct_database_crossrefs_within_cell_type_only"
   scored$params$n_selected_core <- nrow(definition$selected_core_reactions)
-  scored$params$n_merged_core_reactions_not_rescored <-
-    length(definition$params$merged_core_reactions_not_rescored)
-  scored$params$n_cached_union_unavailable_reactions <-
-    length(definition$params$cached_union_unavailable_reactions)
+  relation_catalogue <- definition$expanded_reaction_catalog
+  scored$params$n_merged_core_reactions_not_rescored <- length(unique(
+    as.character(relation_catalogue$reaction_id[
+      relation_catalogue$merged_catalogue_is_core %in% TRUE
+    ])
+  ))
+  scored$params$n_cached_union_unavailable_reactions <- length(unique(
+    as.character(relation_catalogue$reaction_id[
+      !relation_catalogue$available_in_all_cached_union_gems %in% TRUE
+    ])
+  ))
   scored$params$n_expanded_score_targets <-
-    length(definition$params$score_targets)
+    nrow(definition$params$score_targets)
 
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   .rc_mm_write_tsv_gz(

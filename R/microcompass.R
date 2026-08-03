@@ -7,24 +7,25 @@ rc_parse_microcompass_row_id <- function(x) {
     equals <- regexpr("=", fields, fixed = TRUE)
     if (any(equals < 2L)) {
       stop(
-        "microCOMPASS row IDs must use `reaction=...::direction=...::medium=...`.",
+        "microCOMPASS row IDs must use labeled key=value fields.",
         call. = FALSE
       )
     }
     keys <- substring(fields, 1L, equals - 1L)
     values <- utils::URLdecode(substring(fields, equals + 1L))
+    if (anyDuplicated(keys)) {
+      stop("microCOMPASS row-ID fields must be unique.", call. = FALSE)
+    }
     required_counts <- table(factor(keys, levels = required))
     required_values <- values[match(required, keys)]
     invalid <- any(required_counts != 1L) ||
-      anyNA(required_values) ||
-      any(!nzchar(trimws(required_values))) ||
+      anyNA(required_values) || any(!nzchar(trimws(required_values))) ||
       !required_values[[2L]] %in% c("forward", "reverse")
     if (invalid) {
       stop(
         paste(
-          "microCOMPASS row IDs must contain exactly one non-empty",
-          "`reaction`, `direction`, and `medium` field; `direction` must be",
-          "`forward` or `reverse`."
+          "microCOMPASS row IDs require one non-empty reaction, direction",
+          "and medium field; direction must be forward or reverse."
         ),
         call. = FALSE
       )
@@ -33,14 +34,13 @@ rc_parse_microcompass_row_id <- function(x) {
     value <- function(name) {
       hit <- named[name]
       if (!length(hit) || is.na(hit[[1L]]) ||
-          !nzchar(trimws(hit[[1L]]))) {
-        return(NA_character_)
-      }
+          !nzchar(trimws(hit[[1L]]))) return(NA_character_)
       unname(hit[[1L]])
     }
     data.frame(
       sample_id = value("sample"),
       module_id = value("module"),
+      cell_type = value("celltype"),
       reaction_id = value("reaction"),
       target_direction = value("direction"),
       medium_scenario = value("medium"),
@@ -48,7 +48,6 @@ rc_parse_microcompass_row_id <- function(x) {
       stringsAsFactors = FALSE
     )
   }
-
   rows <- lapply(x, parse_one)
   out <- do.call(rbind, rows)
   rownames(out) <- NULL

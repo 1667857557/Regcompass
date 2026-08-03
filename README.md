@@ -84,8 +84,8 @@ the output. User-defined reaction or metabolite compositions remain supported
 through `scenario = "custom"` or `scenario = NULL` with `custom_medium` or
 `custom_metabolites`.
 
-With at least two conditions, Stage 1 uses `condition_grn`; otherwise it uses
-`standard_pando` through `Pando::infer_grn()` and calculates no condition
+With at least two retained conditions, Stage 1 uses `condition_grn`; otherwise
+it uses `standard_pando` through `Pando::infer_grn()` and calculates no condition
 coefficients.
 
 A canonical run may explicitly omit condition metadata:
@@ -104,15 +104,29 @@ single_result <- rc_run_regcompass(
 In this route, `single_result$reaction_ranking` remains available and
 `single_result$condition_contrast` is empty.
 
-For condition-aware analysis:
+## Condition-aware regulatory model
 
-- each broad cell type has one shared TF–peak–target candidate supergraph;
-- the primary regulatory signal is `condition_full_oof`;
-- jointly estimable edges form the common-support component;
-- an edge non-estimable in one or both conditions contributes a projectable
-  structural zero in each affected condition;
-- exact-zero predictors remain represented without receiving fitted
-  coefficients.
+For every broad cell type with at least two retained conditions, Pando performs:
+
+1. biological candidate discovery in the pooled cell type and separately in
+   every condition;
+2. exact union of observed `(TF, peak, target)` triples, without a Cartesian
+   product;
+3. one frozen edge dictionary shared by all conditions of that cell type;
+4. one Gaussian identity GLM per condition using the same unscaled predictor
+   definitions and TF–peak interaction term;
+5. within-condition BH adjustment over the complete frozen dictionary.
+
+RegCompass accepts a regulatory edge only when it is estimable and has
+`padj < 0.05`. Its `penalty_effect` is the fitted condition coefficient for an
+accepted edge and zero otherwise. Non-estimable coefficients remain `NA` in the
+complete coefficient table and are not interpreted as biological zeros. The
+pooled fit is used for candidate recall only; coefficients are not rescaled by a
+pooled coefficient.
+
+Historical output names containing `condition_full_oof`, `common`, or
+`condition_unique` remain compatibility aliases. The current estimator is not
+OOF and does not fit a shared-slope/condition-deviation decomposition.
 
 Stage 2 calls `SuperCell::SCimplify_by_graph_group()` with
 `cell.graph.group = cell_type` and `cell.split.condition = condition`. For each
@@ -122,20 +136,31 @@ splits parent membership only after clustering, yielding condition-pure final
 metacells without condition-specific graph fitting. No sample-derived grouping
 or concatenated condition-by-cell-type stratum is used.
 
-The primary metabolic ranking uses the condition-full penalty. Common-support
-and RNA-only penalties are retained as decomposition/control outputs. The
-canonical schema does not calculate depth matching, common-depth restriction,
-alpha sensitivity, zero-support sensitivity, or link-saturation propagation.
+## Cell-type structural models
+
+Stage 3 first constructs condition-specific biological meta-modules, then unions
+them **only within the same cell type**. Different cell types retain independent
+core and reaction-membership catalogues.
+
+For `model_mode = "meta_module_gem"`, Stage 5 builds one structural model for
+every `cell_type × medium_scenario` pair. FASTCORE runs independently within
+each of those cell-type union GEMs. Conditions and metacells of the same cell
+type reuse the corresponding model; different cell types never share a union
+GEM, FASTCORE support set, model checksum, or directional `vmax` cache.
+
+The primary metabolic ranking uses the condition-specific fixed-dictionary
+penalty. The historical common-support field is a compatibility alias of the
+primary route, the condition-unique increment is a zero compatibility matrix,
+and RNA-only scoring remains an interpretation control.
 
 ## Optional targeted reaction remapping
 
 After a completed `model_mode = "meta_module_gem"` run,
 `rc_regcompass_step_target_union()` can score direct KEGG-, Reactome-, or
-master-Rhea-linked non-core reactions. It reuses the exact cached Stage 5 union
-GEM and global FASTCORE completion; it does not rerun FASTCORE. It is a
-retained optional second LP pass, not a comparability guardrail, and uses the
-canonical Layer 1 `reaction_expression` input, which is
-`reaction_expression_condition_full_oof` in condition mode.
+master-Rhea-linked non-core reactions. It reuses the exact cached union GEMs for
+the corresponding cell type and medium, does not rebuild a model, and does not
+rerun FASTCORE. Candidate availability is intersected across media within one
+cell type, never across cell types.
 
 ## Documentation
 
