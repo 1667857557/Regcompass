@@ -392,8 +392,6 @@
         n_target_genes = length(unique(all_rows$target)),
         n_edges = nrow(all_rows),
         n_active_edges = nrow(active_rows),
-        predictive_oof_available = FALSE,
-        oof_validation_level = "not_applicable_fixed_dictionary_glm",
         grn_evidence_role =
           "within_cell_type_common_dictionary_condition_glm",
         stringsAsFactors = FALSE

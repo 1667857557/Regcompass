@@ -243,27 +243,16 @@
   )
   genes <- rownames(latent$latent_log_expression)
   mode <- grn_result$analysis_mode %||% "condition_grn"
-  projection <- if (identical(mode, "standard_pando")) {
-    standard <- .rc_standard_pando_projection(
-      grn_result, membership, unit_meta, condition_col, celltype_col,
-      rna_assay = grn_result$rna_assay %||% "RNA",
-      atac_assay = grn_result$atac_assay %||% "ATAC",
-      target_genes = genes
-    )
-    list(
-      projection = standard$projection,
-      reliability = standard$reliability,
-      coverage = standard$coverage,
-      origin = standard$projection_origin,
-      pando_schema = "standard_pando_network",
-      projection_name = "standard_pando_full_fit",
-      nonestimable_policy = "not_applicable_standard_pando"
-    )
-  } else {
-    .rc_condition_pando_projection(
-      grn_result, membership, unit_meta, genes
-    )
-  }
+  projection <- .rc_project_pando_by_celltype(
+    grn_result = grn_result,
+    membership = membership,
+    unit_meta = unit_meta,
+    genes = genes,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    rna_assay = grn_result$rna_assay %||% "RNA",
+    atac_assay = grn_result$atac_assay %||% "ATAC"
+  )
   calibration <- .rc_projection_scale(
     projection$projection, unit_meta, celltype_col
   )
@@ -363,7 +352,9 @@
       projection_origin = projection$origin,
       projection_used_for_penalty = TRUE,
       projection_name = projection$projection_name,
-      condition_coefficients_calculated = identical(mode, "condition_grn"),
+      condition_coefficients_calculated =
+        isTRUE(projection$condition_coefficients_calculated),
+      cell_type_analysis_mode = projection$cell_type_analysis_mode,
       supercell_membership = "membership_table(cell_id, metacell_id)",
       unavailable_target_policy = "rna_only_neutral_modifier_fallback",
       nonestimable_edge_policy = projection$nonestimable_policy

@@ -102,7 +102,8 @@ rc_regcompass_step_results <- function(
     model_mode = layer2$model_mode,
     analysis_mode = mode,
     comparison_analysis_mode = comparison$analysis_mode,
-    condition_coefficients_calculated = identical(mode, "condition_grn"),
+    condition_coefficients_calculated =
+      isTRUE(grn$grn_result$condition_coefficients_calculated),
     grn = grn$grn_result,
     metacells = metacells$pooled,
     layer1 = layer1,
@@ -137,15 +138,9 @@ rc_regcompass_step_results <- function(
         }
       ),
       pando_grouping = params$celltype_col,
-      pando_design = if (identical(mode, "condition_grn")) {
-        paste(
-          "pooled and condition-specific candidate discovery, exact",
-          "TF-peak-target union, and one unscaled fixed-dictionary Gaussian",
-          "identity GLM per condition"
-        )
-      } else {
-        "original Pando infer_grn per broad cell type; no condition coefficients"
-      },
+      pando_design =
+        "cell-type-specific routing: common-dictionary condition GRN for at least two retained conditions, standard Pando otherwise",
+      cell_type_analysis_mode = grn$grn_result$cell_type_analysis_mode,
       pando_regulatory_projection = layer1$projection_provenance,
       primary_penalty = "penalty",
       rna_only_control = "penalty_rna_only",

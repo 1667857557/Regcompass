@@ -161,7 +161,9 @@ rc_run_regcompass <- function(
   result$params$execution_mode <- "one_shot"
   result$params$analysis_mode <- step1$params$analysis_mode
   result$params$condition_coefficients_calculated <-
-    identical(step1$params$analysis_mode, "condition_grn")
+    isTRUE(step1$grn_result$condition_coefficients_calculated)
+  result$params$cell_type_analysis_mode <-
+    step1$grn_result$cell_type_analysis_mode
   result$params$requested_condition_col <- condition_col
   result$params$effective_condition_col <- step1$params$condition_col
   design <- step2$pooled$input_design

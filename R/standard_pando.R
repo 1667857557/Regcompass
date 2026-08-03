@@ -342,11 +342,7 @@
         "standard Pando full-fit TF-by-ATAC cell projections aggregated by",
         "exact SuperCell membership"
       ),
-      min_model_rsq = min_model_rsq,
-      min_abs_estimate = max(
-        .rc_standard_pando_min_abs_fixed,
-        as.numeric(min_abs_estimate)
-      ),
+      absolute_estimate_threshold = .rc_standard_pando_min_abs_fixed,
       padj_threshold = .rc_standard_pando_padj_fixed
     ),
     group_cols = c(condition_col, celltype_col)

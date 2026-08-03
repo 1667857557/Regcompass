@@ -1,6 +1,6 @@
 #' Build RNA plus Pando reaction support
 #'
-#' Condition mode uses outer-heldout condition projections. Standard mode uses
+#' Each cell type uses its Stage 1 Pando route. Standard mode uses
 #' the original Pando full-fit TF-by-ATAC projection and calculates no condition
 #' coefficients. Both modes use exact native SuperCell membership.
 #'
