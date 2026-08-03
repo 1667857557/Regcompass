@@ -24,6 +24,9 @@ jobs:
           dependencies: '"hard"'
           extra-packages: |
             any::rcmdcheck
+            any::bayestestR
+            any::glmnetUtils
+            github::immunogenomics/presto
             github::1667857557/Pando_regcompass
             github::1667857557/SuperCell_Seurat_V4
       - name: Parse R sources
