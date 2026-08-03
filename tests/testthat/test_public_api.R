@@ -15,24 +15,25 @@ test_that("public API exposes the restartable workflow", {
   expect_length(setdiff(expected, getNamespaceExports("RegCompassR")), 0L)
 })
 
-test_that("canonical source architecture has no runtime override layers", {
+test_that("canonical source architecture has one direct routing layer", {
   description <- utils::packageDescription("RegCompassR")
   collate <- description$Collate %||% ""
   expect_false(grepl("zzz", collate, fixed = TRUE))
   required <- c(
     "stage1_input_contract.R", "condition_grn_contract.R",
-    "condition_full_contract.R", "standard_pando.R",
-    "condition_pooling.R", "shared_tfidf.R", "step_grn_common_dictionary.R",
+    "standard_pando.R", "mixed_pando.R", "condition_pooling.R",
+    "shared_tfidf.R", "step_grn_common_dictionary.R",
     "stepwise_workflow.R", "step_layer2.R", "step_results.R"
   )
   expect_true(all(vapply(required, grepl, logical(1), x = collate, fixed = TRUE)))
+  expect_false(grepl("condition_full_contract.R", collate, fixed = TRUE))
   expect_lt(
     regexpr("stage1_input_contract.R", collate, fixed = TRUE)[[1L]],
     regexpr("step_grn_common_dictionary.R", collate, fixed = TRUE)[[1L]]
   )
   expect_lt(
-    regexpr("condition_layer1.R", collate, fixed = TRUE)[[1L]],
-    regexpr("condition_full_contract.R", collate, fixed = TRUE)[[1L]]
+    regexpr("standard_pando.R", collate, fixed = TRUE)[[1L]],
+    regexpr("mixed_pando.R", collate, fixed = TRUE)[[1L]]
   )
 })
 
@@ -51,17 +52,18 @@ test_that("canonical order is GRN then metacells then meta-modules", {
   expect_true(positions[[2L]] < positions[[3L]])
 })
 
-test_that("complete workflow exposes automatic condition routing", {
+test_that("complete workflow exposes cell-type-specific routing", {
   run_formals <- formals(rc_run_regcompass)
   expect_identical(eval(run_formals$condition_col), "condition")
   expect_true(all(c(
     "pando_args", "metacell_args", "meta_module_args",
     "layer1_args", "layer2_args"
   ) %in% names(run_formals)))
-
-  step_formals <- formals(rc_regcompass_step_grn)
-  expect_identical(eval(step_formals$condition_col), "condition")
-  expect_true(all(c("parallel", "BPPARAM") %in% names(step_formals)))
+  routing_text <- paste(
+    deparse(body(.rc_fit_pando_by_celltype_route)), collapse = "\n"
+  )
+  expect_match(routing_text, ".rc_fit_condition_grns_by_cell_type", fixed = TRUE)
+  expect_match(routing_text, ".rc_fit_standard_pando_by_cell_type", fixed = TRUE)
 })
 
 test_that("condition and standard Pando implementations are separate", {
@@ -100,10 +102,21 @@ test_that("canonical SuperCell API uses cell-type grouped WNN", {
   expect_identical(.rc_condition_metacell_defaults()$gamma, 30L)
 })
 
-test_that("Layer 1 retains canonical controls", {
+test_that("Layer 1 exposes only current controls", {
   formals_layer1 <- formals(rc_regcompass_step_layer1)
   expect_identical(eval(formals_layer1$gpr_and_method), c("min", "median", "mean"))
-  expect_false("tau" %in% names(formals_layer1))
+  expect_true("gene_half_saturation" %in% names(formals_layer1))
+  expect_false(any(c(
+    "tau", "projection_component", "comparison_support", "regulatory_alpha"
+  ) %in% names(formals_layer1)))
+})
+
+test_that("companion repositories are unpinned", {
+  description <- utils::packageDescription("RegCompassR")
+  remotes <- description$Remotes %||% ""
+  expect_match(remotes, "1667857557/Pando_regcompass", fixed = TRUE)
+  expect_match(remotes, "1667857557/SuperCell_Seurat_V4", fixed = TRUE)
+  expect_false(grepl("@", remotes, fixed = TRUE))
 })
 
 test_that("Pando defaults use bundled human inputs and guard mouse regions", {
