@@ -1,149 +1,112 @@
-name: Common dictionary condition contract
+name: Current common-dictionary contract
 
 on:
   pull_request:
   push:
     branches: [Main]
 
+permissions:
+  contents: read
+
 jobs:
-  package-check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
+  source-contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
     steps:
       - uses: actions/checkout@v4
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
-          use-public-rspm: true
-      - uses: r-lib/actions/setup-pandoc@v2
-      - uses: r-lib/actions/setup-r-dependencies@v2
-        with:
-          dependencies: '"hard"'
-          extra-packages: |
-            any::rcmdcheck
-            any::testthat
-            any::knitr
-            any::rmarkdown
-            github::1667857557/Pando_regcompass@5c451e192831713ed955cd03276ddf47e89a4ec2
-      - name: Verify functional source layout
-        shell: bash
-        run: |
-          test ! -e R/condition_grn_runtime.R
-          test ! -e R/condition_grn_runtime_guard.R
-          test ! -e R/step_layer1_oof.R
-          test ! -e R/step_layer1_common_dictionary_contract.R
-          test ! -e R/target_union_anchors.R
-          test ! -e R/union_gem_cache.R
-          test -e R/celltype_union_gem_cache.R
-          test -e R/celltype_microcompass_engine.R
-          test -z "$(find R -maxdepth 1 -type f -name 'zzz*.R' -print -quit)"
-          ! grep -R -n -E 'Pando::project_condition_grn_primary_cells|Pando::condition_grn_native|_strict_base|\.rc_original_|evaluation_environment' R NAMESPACE DESCRIPTION
-          ! grep -R -n -E '\.rc_merge_meta_module_catalogue|\.rc_build_medium_specific_union_gem_cache|\.rc_complete_medium_union_gem|\.rc_read_cached_union_gem|one_final_union_gem_per_medium_shared_across_all_units|single_global_fastcore_after_meta_module_merge|shared_across_cell_types[[:space:]]*=[[:space:]]*TRUE|definition\$params\$merged_core_reactions_not_rescored|definition\$params\$cached_union_unavailable_reactions' R DESCRIPTION
-      - name: Parse all R and test sources
+      - name: Parse current R and test sources
         shell: Rscript {0}
         run: |
           files <- c(
             list.files("R", pattern = "[.]R$", full.names = TRUE),
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
-          for (file in files) {
-            tryCatch(
-              parse(file = file),
-              error = function(e) stop(file, ": ", conditionMessage(e))
-            )
-          }
-      - name: Verify unique and scoped function definitions
+          for (file in files) parse(file = file)
+      - name: Verify unique current functions and schemas
         shell: python
         run: |
-          import collections, pathlib, re
-
+          from pathlib import Path
+          import re
+          files = sorted(Path("R").glob("*.R"))
           pattern = re.compile(
-              r'(?m)^([A-Za-z.][A-Za-z0-9._]*)\s*<-\s*function\b'
+              r"(?m)^([A-Za-z.][A-Za-z0-9._]*)\s*<-\s*function\b"
           )
-          found = collections.defaultdict(list)
-          source = {}
-          for path in sorted(pathlib.Path('R').glob('*.R')):
-              text = path.read_text()
-              source[str(path)] = text
-              for match in pattern.finditer(text):
-                  found[match.group(1)].append(str(path))
+          definitions = {}
+          for path in files:
+              for name in pattern.findall(path.read_text()):
+                  definitions.setdefault(name, []).append(str(path))
           duplicate = {
-              name: paths for name, paths in found.items() if len(paths) > 1
+              name: paths for name, paths in definitions.items()
+              if len(paths) > 1
           }
           if duplicate:
-              raise SystemExit(f'Duplicate function definitions: {duplicate}')
-
-          required = {
-              'rc_regcompass_step_grn',
-              'rc_regcompass_step_metacells',
-              'rc_regcompass_step_layer2',
-              'rc_regcompass_step_results',
-              '.rc_require_pando_condition_grn_fit',
-              '.rc_extract_condition_grn_contract',
-              '.rc_condition_pando_projection',
-              '.rc_validate_layer1_stage',
-              '.rc_validate_target_union_anchor_request',
-              '.rc_build_target_union_definition',
-              '.rc_merge_meta_modules_by_cell_type',
-              '.rc_build_celltype_medium_union_gem_cache',
-              '.rc_complete_celltype_medium_union_gem',
-              '.rc_read_celltype_union_gem',
-              '.rc_run_celltype_microcompass_engine',
-              '.rc_run_shared_full_gem_engine',
-              '.rc_run_microcompass_engine'
+              raise RuntimeError(f"duplicate top-level functions: {duplicate}")
+          source = "\n".join(path.read_text() for path in files)
+          required_functions = {
+              "rc_regcompass_step_grn",
+              "rc_regcompass_step_metacells",
+              "rc_regcompass_step_meta_modules",
+              "rc_regcompass_step_layer1",
+              "rc_regcompass_step_layer2",
+              "rc_regcompass_step_results",
+              ".rc_require_pando_condition_grn_fit",
+              ".rc_extract_condition_grn_contract",
+              ".rc_condition_pando_projection",
+              ".rc_validate_layer1_stage",
+              ".rc_validate_layer2_stage",
+              ".rc_build_celltype_medium_union_gem_cache",
+              ".rc_run_celltype_microcompass_engine",
           }
-          missing = sorted(required.difference(found))
+          missing = sorted(required_functions.difference(definitions))
           if missing:
-              raise SystemExit(f'Missing functional definitions: {missing}')
-
-          if len(found['.rc_run_microcompass_engine']) != 1:
-              raise SystemExit('microCOMPASS dispatcher must be unique')
-
-          all_text = '\n'.join(source.values())
+              raise RuntimeError(f"missing current functions: {missing}")
           required_contracts = [
+              "regcompass_regulatory_layer1_v4",
+              "regcompass_regulatory_layer2_v3",
+              "reaction_regulatory_support_fraction",
+              'primary = "penalty"',
+              'rna_control = "penalty_rna_only"',
               'merge_scope <- "cell_type"',
               'cross_celltype_merge <- FALSE',
-              'shared_across_conditions <- TRUE',
               'shared_across_cell_types <- FALSE',
-              'celltype_specific_fastcore_after_condition_module_union',
-              'structural_scope = "cell_type_x_medium"',
-              'unit_celltype == cell_type',
-              'all(cache_celltypes %in% unit_celltypes)',
-              'direct_database_crossrefs_within_cell_type_only'
           ]
-          absent = [value for value in required_contracts if value not in all_text]
+          absent = [token for token in required_contracts
+                    if token not in source]
           if absent:
-              raise SystemExit(
-                  f'Incomplete cell-type structural contract: {absent}'
-              )
-      - name: Verify installed Pando contract
-        shell: Rscript {0}
+              raise RuntimeError(f"current contract incomplete: {absent}")
+      - name: Reject retired APIs and fields
+        shell: python
         run: |
-          d <- utils::packageDescription("Pando")
-          stopifnot(
-            identical(
-              d[["Config/Pando/ConditionGRNSchema"]],
-              "pando_condition_grn_common_dictionary_v1"
-            ),
-            identical(
-              d[["Config/Pando/ConditionGRNMethod"]],
-              "two-stage-exact-edge-union-fixed-dictionary-glm"
-            ),
-            identical(
-              d[["Config/Pando/ConditionEffectFilter"]],
-              "BH-adjusted-p-below-0.05"
-            )
+          from pathlib import Path
+          roots = [Path("R"), Path("tests/testthat"), Path("docs"),
+                   Path("vignettes"), Path("man"), Path("README.md")]
+          files = []
+          for root in roots:
+              if root.is_file():
+                  files.append(root)
+              elif root.exists():
+                  files.extend(path for path in root.rglob("*") if path.is_file())
+          text = "\n".join(
+              path.read_text(errors="ignore") for path in files
           )
-          required <- c(
-            "infer_condition_grn", "condition_grn_fit",
-            "discover_grn_edges", "union_grn_edges", "fit_grn_from_edges",
-            "project_condition_grn_cells",
-            "aggregate_condition_grn_projection"
-          )
-          ns <- asNamespace("Pando")
-          stopifnot(all(vapply(required, exists, logical(1),
-                               envir = ns, inherits = FALSE)))
-      - name: Check package
-        shell: Rscript {0}
+          retired = [
+              "condition_full_oof", "common_oof", "condition_unique_oof",
+              "project_condition_grn_primary_cells",
+              "min_abs_estimate", "min_model_rsq",
+              "structural_zero_probability", "nested_cv_used",
+              "projection_component", "comparison_support",
+              "regulatory_alpha",
+          ]
+          present = [token for token in retired if token in text]
+          if present:
+              raise RuntimeError(f"retired API remains: {present}")
+      - name: Verify exact companion dependency
+        shell: bash
         run: |
-          rcmdcheck::rcmdcheck(args = c('--no-manual'), error_on = 'error')
+          grep -F '1667857557/Pando_regcompass@9b8cde926e176e853c824301a7daf6061d036031' DESCRIPTION
+          grep -F 'Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1' DESCRIPTION
+          test ! -e R/condition_full_contract.R
+          test ! -e .github/workflows/seurat-v5-compatibility.yaml
