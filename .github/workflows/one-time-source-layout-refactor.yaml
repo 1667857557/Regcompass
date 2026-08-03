@@ -10,7 +10,7 @@ permissions:
 jobs:
   refactor:
     if: github.actor != 'github-actions[bot]'
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
@@ -109,7 +109,6 @@ jobs:
               text = path.read_text().rstrip() + '\n\n'
               path.write_text(text + definition)
 
-          # Targeted reaction remapping: keep one implementation in target_union.R.
           target_path = rdir / 'target_union.R'
           target_anchor_path = rdir / 'target_union_anchors.R'
           target_text = target_path.read_text()
@@ -133,15 +132,11 @@ jobs:
           target_path.write_text(target_text)
           target_anchor_path.unlink()
 
-          # Condition comparison: the current compatibility implementation lives
-          # in condition_full_contract.R; remove the superseded earlier copy.
           remove(
               rdir / 'condition_layer1.R',
               '.rc_condition_increment_summary'
           )
 
-          # Medium construction belongs to medium.R. Preserve the published
-          # evidence-aware implementation and remove both former copies.
           medium_final = extract(
               rdir / 'published_medium_contract.R',
               'rc_make_medium_scenarios',
@@ -159,15 +154,12 @@ jobs:
           )
           append_definition(rdir / 'medium.R', medium_final)
 
-          # The final merge implementation is in metacell_object_merge.R.
           remove(
               rdir / 'metacell_fragments.R',
               'rc_load_or_merge_metacell_objects',
               include_roxygen=True
           )
 
-          # Reaction annotation helpers are shared by annotation and evidence
-          # code, so place them in one explicit utility module.
           reaction_helpers = [
               '.rc_ra_nonempty',
               '.rc_ra_first_col',
@@ -187,8 +179,6 @@ jobs:
               remove(evidence_path, name)
           utility_path.write_text(utility.rstrip() + '\n')
 
-          # Remove the unused compatibility planner left from the retired native
-          # condition engine.
           remove(rdir / 'condition_grn_contract.R', '.rc_pando_engine_control')
 
           description = description_path.read_text()
