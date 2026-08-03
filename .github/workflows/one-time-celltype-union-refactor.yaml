@@ -1,9 +1,8 @@
 name: One-time cell-type union GEM refactor
 
 on:
-  push:
-    branches:
-      - agent/common-dictionary-condition-grn
+  pull_request:
+    branches: [Main]
 
 permissions:
   contents: write
@@ -15,7 +14,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          ref: agent/common-dictionary-condition-grn
+          ref: ${{ github.head_ref }}
           fetch-depth: 0
       - name: Merge latest Main
         run: |
@@ -97,4 +96,4 @@ jobs:
         run: |
           git add -A
           git commit -m "scope meta-modules union GEMs and FASTCORE by cell type"
-          git push origin HEAD:agent/common-dictionary-condition-grn
+          git push origin HEAD:${{ github.head_ref }}
