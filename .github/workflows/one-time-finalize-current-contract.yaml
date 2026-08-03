@@ -1,4 +1,4 @@
-name: One-time clean current R contracts
+name: One-time finalize repository cleanup
 
 on:
   pull_request:
@@ -8,11 +8,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: regcompass-r-contract-${{ github.event.pull_request.number }}
+  group: regcompass-final-cleanup-${{ github.event.pull_request.number }}
   cancel-in-progress: true
 
 jobs:
-  clean:
+  finalize:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-22.04
     steps:
@@ -20,12 +20,12 @@ jobs:
         with:
           ref: ${{ github.head_ref }}
           fetch-depth: 0
-      - name: Apply current R contract
-        run: python .github/scripts/cleanup_r_contract.py || true
-      - name: Commit source cleanup
+      - name: Simplify documentation and checks
+        run: python .github/scripts/final_cleanup.py
+      - name: Commit final cleanup
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add -A R
-          git commit -m "remove retired R fields and validate mixed routing"
+          git add -A
+          git commit -m "simplify documentation and package checks"
           git push origin HEAD:${{ github.head_ref }}
