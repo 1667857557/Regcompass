@@ -159,7 +159,7 @@ rc_regcompass_step_grn <- function(
     allowed_infer_args <- c(
       "tf_cor", "peak_cor", "adjust_method", "padj_threshold",
       "rank_action", "min_residual_df", "rna_layer", "peak_layer",
-      "peak_value_type", "verbose"
+      "peak_value_type"
     )
     unknown_infer_args <- setdiff(names(infer_args), allowed_infer_args)
     if (length(unknown_infer_args)) {
@@ -169,8 +169,7 @@ rc_regcompass_step_grn <- function(
     condition_infer_args <- utils::modifyList(list(
       tf_cor = 0.1, peak_cor = 0, adjust_method = "BH",
       padj_threshold = 0.05, rank_action = "mark",
-      min_residual_df = 1L,
-      verbose = .rc_progress_enabled(progress)
+      min_residual_df = 1L
     ), infer_args)
     if (!identical(
           toupper(as.character(condition_infer_args$adjust_method)), "BH"
