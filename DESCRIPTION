@@ -88,6 +88,7 @@ Collate:
     'condition_statistics.R'
     'condition_direction_report.R'
     'condition_plot.R'
+    'condition_plot_violin.R'
     'reaction_gene_plots.R'
     'parallel.R'
     'stage_parallel_lifecycle.R'
@@ -133,6 +134,7 @@ Suggests:
     yaml,
     future,
     ggplot2,
+    limma,
     igraph,
     slam,
     gurobi,
