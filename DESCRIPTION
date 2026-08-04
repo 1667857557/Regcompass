@@ -129,6 +129,7 @@ Collate:
     'layer2_corda_paper_contract.R'
     'layer2_corda_model.R'
     'layer2_corda_output_contract.R'
+    'layer2_corda_target_contract.R'
     'layer2_corda_runtime.R'
     'layer2_corda_pool_lifecycle.R'
     'step_results.R'
