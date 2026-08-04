@@ -1,4 +1,4 @@
-# Runtime dispatch for optional CORDA-like Layer 2 completion.
+# Runtime dispatch for optional original CORDA Layer 2 completion.
 
 .rc_layer2_completion_context <- new.env(parent = emptyenv())
 .rc_layer2_completion_context$active <- FALSE
@@ -9,6 +9,78 @@
 .rc_regcompass_step_layer2_completion_base <- rc_regcompass_step_layer2
 .rc_build_celltype_medium_union_gem_cache_fastcore <-
   .rc_build_celltype_medium_union_gem_cache
+
+# Correct persistent-solver fallback while retaining basis reuse on success.
+.rc_corda_engine_solve <- function(
+    engine, objective, lower, upper) {
+  engine$n_solves <- engine$n_solves + 1L
+  if (!identical(engine$type, "highs_persistent_cpp")) {
+    return(list(
+      answer = .rc_corda_one_shot_solve(engine, objective, lower, upper),
+      engine = engine
+    ))
+  }
+  persistent <- tryCatch({
+    index <- seq_along(objective) - 1L
+    .rc_corda_highs_call(
+      "hi_solver_set_objective", engine$pointer,
+      index = index, coeff = as.numeric(objective)
+    )
+    .rc_corda_highs_call(
+      "hi_solver_set_variable_bounds", engine$pointer,
+      index = index,
+      lower = as.numeric(lower),
+      upper = as.numeric(upper)
+    )
+    .rc_corda_highs_call("hi_solver_run", engine$pointer)
+    status_message <- .rc_corda_highs_call(
+      "hi_solver_status_message", engine$pointer
+    )
+    status <- .rc_lp_status(status_message)
+    solution <- if (identical(status, "optimal")) {
+      as.numeric(.rc_corda_highs_call(
+        "hi_solver_get_solution", engine$pointer
+      )$col_value)
+    } else {
+      numeric()
+    }
+    info <- tryCatch(
+      .rc_corda_highs_call("hi_solver_info", engine$pointer),
+      error = function(e) list()
+    )
+    list(
+      status = status,
+      solution = solution,
+      objective = as.numeric(
+        info$objective_function_value %||% NA_real_
+      ),
+      backend = "highs_persistent_cpp_basis_reuse",
+      solver_message = as.character(status_message)
+    )
+  }, error = function(e) e)
+  if (!inherits(persistent, "error")) {
+    return(list(answer = persistent, engine = engine))
+  }
+  failure_message <- conditionMessage(persistent)
+  engine$n_fallback <- engine$n_fallback + 1L
+  fallback <- .rc_corda_one_shot_solve(engine, objective, lower, upper)
+  fallback$backend <- "highs_persistent_failed_one_shot_fallback"
+  fallback$solver_message <- paste(
+    failure_message, fallback$solver_message
+  )
+  list(answer = fallback, engine = engine)
+}
+
+.rc_corda_pool_workers <- function(BPPARAM) {
+  if (identical(BPPARAM, FALSE)) return(1L)
+  if (!is.null(BPPARAM) &&
+      requireNamespace("BiocParallel", quietly = TRUE) &&
+      methods::is(BPPARAM, "BiocParallelParam")) {
+    return(max(1L, BiocParallel::bpnworkers(BPPARAM)))
+  }
+  config <- rc_parallel_config(workers = NULL, backend = "auto")
+  max(1L, config$workers)
+}
 
 .rc_build_celltype_medium_union_gem_cache <- function(
     gem, reaction_membership, core_reactions,
@@ -22,7 +94,7 @@
     strict = TRUE) {
   context <- .rc_layer2_completion_context
   if (!isTRUE(context$active) ||
-      !identical(context$model_completion, "corda_like")) {
+      !identical(context$model_completion, "corda")) {
     return(.rc_build_celltype_medium_union_gem_cache_fastcore(
       gem = gem,
       reaction_membership = reaction_membership,
@@ -48,16 +120,16 @@
   evidence_all <- context$reaction_evidence
   corda_options <- context$corda_options
   if (!is.data.frame(evidence_all) || !nrow(evidence_all)) {
-    stop("CORDA-like reaction evidence is unavailable.", call. = FALSE)
+    stop("CORDA reaction evidence is unavailable.", call. = FALSE)
   }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))
   scenarios <- scenarios[!is.na(scenarios) & nzchar(scenarios)]
   if (!length(scenarios)) {
-    stop("No medium scenarios are available for union-GEM construction.",
+    stop("No medium scenarios are available for CORDA construction.",
          call. = FALSE)
   }
-  cache_dir <- file.path(cache_dir, "corda_like")
+  cache_dir <- file.path(cache_dir, "corda")
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   task_grid <- expand.grid(
     cell_type = scoped$cell_types,
@@ -105,7 +177,7 @@
     evidence <- evidence_all[
       as.character(evidence_all$cell_type) == cell_type, , drop = FALSE
     ]
-    model <- .rc_complete_celltype_medium_corda_like_gem(
+    model <- .rc_complete_celltype_medium_corda_gem(
       gem = gem,
       reaction_membership = membership,
       core_reactions = core,
@@ -137,6 +209,10 @@
     .rc_atomic_save_rds(model, file)
     checksum <- unname(tools::md5sum(file))
     build <- model$build_params
+    execution_types <- unique(unlist(lapply(
+      model$corda_execution,
+      function(value) value$solver_runtime %||% character()
+    ), use.names = FALSE))
     summary <- data.frame(
       cell_type = cell_type,
       medium_scenario = scenario,
@@ -153,13 +229,22 @@
         build$n_module_medium_confidence_reactions,
       n_evidence_medium_confidence_reactions =
         build$n_evidence_medium_confidence_reactions,
-      n_corda_support_reactions = build$n_corda_support_reactions,
-      n_other_support_reactions = build$n_other_support_reactions,
-      n_negative_support_reactions = build$n_negative_support_reactions,
+      n_negative_confidence_reactions =
+        build$n_negative_confidence_reactions,
+      n_other_reactions = build$n_other_reactions,
+      n_corda_included_reactions = build$n_corda_included_reactions,
+      n_corda_included_initial_MC = build$n_corda_included_initial_MC,
+      n_corda_included_initial_NC = build$n_corda_included_initial_NC,
+      n_corda_included_initial_OT = build$n_corda_included_initial_OT,
+      n_stage1_associated = build$n_stage1_associated,
+      n_stage2_promoted_nc = build$n_stage2_promoted_nc,
+      n_stage2_promoted_mc = build$n_stage2_promoted_mc,
+      n_stage3_associated_ot = build$n_stage3_associated_ot,
+      solver_runtime = paste(execution_types, collapse = ";"),
       target_status = model$target_status,
-      build_strategy = "celltype_medium_corda_like_evidence_max",
+      build_strategy = "celltype_medium_original_corda",
       completion_stage =
-        "parallel_celltype_specific_corda_like_after_condition_module_union",
+        "original_CORDA_three_stage_after_confidence_mapping",
       completion_time_limit = time_limit,
       stringsAsFactors = FALSE
     )
@@ -185,25 +270,36 @@
           condition = "all",
           file = file,
           file_checksum = checksum,
-          build_strategy = "celltype_medium_corda_like_evidence_max"
+          build_strategy = "celltype_medium_original_corda"
         )
       }
     }
     rm(model)
     list(cache = cache, summary = summary)
   }
-  parts <- if (length(tasks) > 1L) {
-    rc_parallel_lapply(
+
+  task_bpparam <- .rc_layer2_task_bpparam()
+  pool_workers <- .rc_corda_pool_workers(task_bpparam)
+  outer_parallel <- length(tasks) > 1L &&
+    length(tasks) >= pool_workers && pool_workers > 1L
+  if (outer_parallel) {
+    parts <- rc_parallel_lapply(
       tasks,
       function(task) run_one(
         task[1, , drop = FALSE], suppress_nested = TRUE
       ),
-      BPPARAM = .rc_layer2_task_bpparam()
+      BPPARAM = task_bpparam
     )
+    dispatch <- "cell_type_x_medium_outer_parallel"
   } else {
-    lapply(tasks, function(task) {
+    parts <- lapply(tasks, function(task) {
       run_one(task[1, , drop = FALSE], suppress_nested = FALSE)
     })
+    dispatch <- if (pool_workers > 1L) {
+      "models_serial_target_direction_x_replicate_inner_parallel"
+    } else {
+      "serial"
+    }
   }
   cache <- list()
   summaries <- vector("list", length(parts))
@@ -213,7 +309,7 @@
     if (length(part$cache)) {
       duplicated <- intersect(names(cache), names(part$cache))
       if (length(duplicated)) {
-        stop("Parallel CORDA-like tasks produced duplicate cache keys.",
+        stop("Parallel CORDA tasks produced duplicate cache keys.",
              call. = FALSE)
       }
       cache[names(part$cache)] <- part$cache
@@ -222,8 +318,10 @@
   attr(cache, "summary") <- .rc_bind_frames_fill(summaries)
   attr(cache, "celltype_col") <- celltype_col
   attr(cache, "structural_scope") <- "cell_type_x_medium"
-  attr(cache, "completion_method") <- "corda_like"
-  attr(cache, "fastcore_parallel_task") <- "cell_type_x_medium"
+  attr(cache, "completion_method") <- "corda"
+  attr(cache, "structural_parallel_task") <- dispatch
+  attr(cache, "structural_parallel_workers") <- pool_workers
+  attr(cache, "fastcore_parallel_task") <- "not_applicable_to_corda"
   cache
 }
 
@@ -238,23 +336,24 @@ rc_regcompass_step_layer2 <- function(
   }
   model_params <- layer2_args$model_params %||% list()
   corda_options <- .rc_layer2_corda_options(model_params)
-  if (identical(corda_options$model_completion, "corda_like") &&
+  if (identical(corda_options$model_completion, "corda") &&
       !identical(model_mode, "meta_module_gem")) {
     stop(
-      "`model_completion = \"corda_like\"` is available only with ",
+      "`model_completion = \"corda\"` is available only with ",
       "`model_mode = \"meta_module_gem\"`.",
       call. = FALSE
     )
   }
   extracted <- c(
     "model_completion",
+    "corda_gamma", "corda_kappa", "corda_epsilon",
+    "corda_n", "corda_p", "corda_seed", "corda_flux_tolerance",
     "corda_medium_confidence_threshold",
     "corda_negative_confidence_threshold",
     "corda_regulatory_weight",
-    "corda_other_penalty",
-    "corda_negative_penalty",
     "corda_include_evidence_outside_modules",
-    "corda_max_medium_confidence_reactions"
+    "corda_max_medium_confidence_reactions",
+    "corda_other_penalty", "corda_negative_penalty"
   )
   clean_params <- model_params[setdiff(names(model_params), extracted)]
   layer2_args$model_params <- clean_params
@@ -264,7 +363,7 @@ rc_regcompass_step_layer2 <- function(
     corda_options$model_completion
   .rc_layer2_completion_context$corda_options <- corda_options
   .rc_layer2_completion_context$reaction_evidence <- if (
-    identical(corda_options$model_completion, "corda_like")
+    identical(corda_options$model_completion, "corda")
   ) {
     .rc_layer2_corda_reaction_evidence(
       layer1,
@@ -295,25 +394,40 @@ rc_regcompass_step_layer2 <- function(
   answer$completion_contract <- list(
     model_completion = corda_options$model_completion,
     default_unchanged = identical(corda_options$model_completion, "fastcore"),
-    evidence_maximization = if (
-      identical(corda_options$model_completion, "corda_like")
+    algorithm = if (identical(corda_options$model_completion, "corda")) {
+      "Schultz_Qutub_CORDA_2016_three_stage_dependency_assessment"
+    } else {
+      "add_only_compact_FASTCORE"
+    },
+    confidence_mapping = if (
+      identical(corda_options$model_completion, "corda")
     ) {
       paste(
-        "retain all HC core and MC module/evidence reactions, then minimize",
-        "weighted OT/NC support flux while preserving directional feasibility"
+        "HC=merged core; MC=remaining module plus optional high-evidence",
+        "outside-module reactions; NC=low evidence; OT=remaining"
       )
     } else {
-      "add-only compact FASTCORE completion"
+      NULL
     },
-    corda_like = if (
-      identical(corda_options$model_completion, "corda_like")
+    stage_update_policy = if (
+      identical(corda_options$model_completion, "corda")
+    ) "barrier_then_union_order_independent" else NULL,
+    native_solver_acceleration = if (
+      identical(corda_options$model_completion, "corda")
+    ) {
+      "persistent HiGHS C++ solver with objective/bound updates and basis reuse"
+    } else {
+      NULL
+    },
+    corda = if (
+      identical(corda_options$model_completion, "corda")
     ) corda_options else NULL
   )
-  if (identical(corda_options$model_completion, "corda_like")) {
+  if (identical(corda_options$model_completion, "corda")) {
     answer$union_gem_policy <- paste(
-      "one evidence-maximizing CORDA-like union GEM per cell type and medium;",
-      "all HC and MC reactions are retained and OT/NC support uses weighted",
-      "add-only directional completion"
+      "one original-CORDA reconstruction per cell type and medium;",
+      "three dependency-assessment stages use barrier updates; only retained",
+      "parent-feasible HC core directions enter downstream scoring"
     )
   }
   rc_export_microcompass(answer, outdir)
