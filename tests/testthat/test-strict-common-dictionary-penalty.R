@@ -92,6 +92,65 @@ test_that("significance and penalty effect are exactly estimable BH padj below 0
   )
 })
 
+test_that("Layer 1 validates RegCompass-gated fits against both contracts", {
+  fit <- .strict_fit_fixture()
+  fit$coefficients$estimate[[1L]] <- 0.01
+  fit$coefficients$statistic[[1L]] <- 0.1
+  fit$coefficients$penalty_effect[[1L]] <- 0.01
+  fit$coefficients$corr <- 0.2
+
+  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
+  expect_false(gated$coefficients$significant[[1L]])
+  expect_equal(gated$coefficients$penalty_effect[[1L]], 0)
+  expect_error(
+    RegCompassR:::.rc_require_pando_condition_grn_fit(gated),
+    "significant-edge flags"
+  )
+  expect_invisible(
+    RegCompassR:::.rc_require_layer1_condition_grn_fit(gated)
+  )
+
+  wrong_flag <- gated
+  wrong_flag$coefficients$significant[[1L]] <- TRUE
+  expect_error(
+    RegCompassR:::.rc_require_layer1_condition_grn_fit(wrong_flag),
+    "RegCompass-gated significant-edge flags"
+  )
+
+  wrong_effect <- gated
+  wrong_effect$coefficients$penalty_effect[[1L]] <- 0.01
+  expect_error(
+    RegCompassR:::.rc_require_layer1_condition_grn_fit(wrong_effect),
+    "RegCompass-gated penalty_effect"
+  )
+})
+
+test_that("Layer 1 routes gated fits through the layered validator", {
+  selector <- paste(
+    deparse(body(RegCompassR:::.rc_condition_pando_object_for_fit)),
+    collapse = "\n"
+  )
+  projection <- paste(
+    deparse(body(RegCompassR:::.rc_condition_pando_projection)),
+    collapse = "\n"
+  )
+  expect_match(
+    selector, ".rc_require_layer1_condition_grn_fit", fixed = TRUE
+  )
+  expect_match(
+    projection, ".rc_require_layer1_condition_grn_fit", fixed = TRUE
+  )
+  expect_false(grepl(
+    ".rc_require_pando_condition_grn_fit(fit)", selector, fixed = TRUE
+  ))
+  expect_false(grepl(
+    ".rc_require_pando_condition_grn_fit(fit)", projection, fixed = TRUE
+  ))
+  expect_match(
+    projection, "coefficient$significant %in% TRUE", fixed = TRUE
+  )
+})
+
 test_that("condition contract is implemented once in functional source files", {
   root <- testthat::test_path("..", "..")
   r_files <- list.files(file.path(root, "R"), pattern = "\\.R$", full.names = TRUE)
@@ -102,6 +161,7 @@ test_that("condition contract is implemented once in functional source files", {
     sum(grepl(pattern, source_text))
   }
   expect_identical(count_definition(".rc_require_pando_condition_grn_fit"), 1L)
+  expect_identical(count_definition(".rc_require_layer1_condition_grn_fit"), 1L)
   expect_identical(count_definition(".rc_extract_condition_grn_contract"), 1L)
   expect_identical(count_definition(".rc_condition_pando_projection"), 1L)
 })
