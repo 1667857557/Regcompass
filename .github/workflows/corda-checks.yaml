@@ -45,6 +45,7 @@ jobs:
             "R/layer2_corda_paper_contract.R",
             "R/layer2_corda_model.R",
             "R/layer2_corda_output_contract.R",
+            "R/layer2_corda_target_contract.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_pool_lifecycle.R",
             "tests/corda-synthetic-check.R",
