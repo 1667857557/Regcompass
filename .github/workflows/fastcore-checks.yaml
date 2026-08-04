@@ -27,6 +27,7 @@ jobs:
               "Pando (>= 2.0.3)",
               "'condition_grn_contract_compat.R'",
               "'mixed_pando_contract.R'",
+              "'grn_parallel_merge_contract.R'",
               "'grn_integration_contract.R'",
           ]
           missing = [value for value in required_description if value not in description]
@@ -36,6 +37,8 @@ jobs:
               raise RuntimeError("condition contract compatibility file loads too early")
           if description.index("'mixed_pando.R'") > description.index("'mixed_pando_contract.R'"):
               raise RuntimeError("mixed-Pando merge contract loads too early")
+          if description.index("'grn_parallel_output_contract.R'") > description.index("'grn_parallel_merge_contract.R'"):
+              raise RuntimeError("parallel condition merge contract loads too early")
           if description.index("'grn_route_parallel.R'") > description.index("'grn_integration_contract.R'"):
               raise RuntimeError("GRN integration contract loads before argument routing")
           compat = Path("R/condition_grn_contract_compat.R").read_text()
@@ -58,6 +61,15 @@ jobs:
           missing = [value for value in required_mixed if value not in mixed]
           if missing:
               raise RuntimeError(f"mixed Pando route contract missing: {missing}")
+          parallel = Path("R/grn_parallel_merge_contract.R").read_text()
+          required_parallel = [
+              ".rc_validate_condition_job_merge_output",
+              ".rc_merge_condition_job_results_contract_base",
+              "same unique cell-type set",
+          ]
+          missing = [value for value in required_parallel if value not in parallel]
+          if missing:
+              raise RuntimeError(f"parallel condition merge contract missing: {missing}")
           bridge = Path("R/grn_integration_contract.R").read_text()
           required_bridge = [
               "Pando >= 2.0.3",
@@ -112,27 +124,21 @@ jobs:
           stopifnot(isTRUE(.rc_require_pando_condition_grn_fit(fit)))
           overlapping <- fit
           overlapping$condition_cell_ids$treated <- "cell1"
-          rejected <- try(
-            .rc_require_pando_condition_grn_fit(overlapping), silent = TRUE
-          )
+          rejected <- try(.rc_require_pando_condition_grn_fit(overlapping), silent = TRUE)
           stopifnot(inherits(rejected, "try-error"))
           metadata <- data.frame(
             dataset = c("control", "treated"),
             cell_type = c("epithelial_like", "epithelial_like"),
-            row.names = c("cell1", "cell2"),
-            stringsAsFactors = FALSE
+            row.names = c("cell1", "cell2"), stringsAsFactors = FALSE
           )
           stopifnot(isTRUE(.rc_validate_pando_fit_metadata_frame(
             metadata, list(fit), "dataset", "cell_type"
           )))
           wrong_metadata <- metadata
           wrong_metadata["cell2", "dataset"] <- "control"
-          rejected <- try(
-            .rc_validate_pando_fit_metadata_frame(
-              wrong_metadata, list(fit), "dataset", "cell_type"
-            ),
-            silent = TRUE
-          )
+          rejected <- try(.rc_validate_pando_fit_metadata_frame(
+            wrong_metadata, list(fit), "dataset", "cell_type"
+          ), silent = TRUE)
           stopifnot(inherits(rejected, "try-error"))
 
           .rc_merge_pando_results <- function(...) list()
@@ -140,29 +146,44 @@ jobs:
           stopifnot(isTRUE(.rc_validate_pando_route_partition(
             "epithelial_like", "stem_like"
           )))
-          rejected <- try(
-            .rc_validate_pando_route_partition(
-              "epithelial_like", "epithelial_like"
-            ),
-            silent = TRUE
-          )
+          rejected <- try(.rc_validate_pando_route_partition(
+            "epithelial_like", "epithelial_like"
+          ), silent = TRUE)
           stopifnot(inherits(rejected, "try-error"))
           duplicate_results <- list(
             list(paired_cell_metadata = data.frame(cell_id = "cell1")),
             list(paired_cell_metadata = data.frame(cell_id = "cell1"))
           )
-          rejected <- try(
-            .rc_validate_pando_result_cell_partition(duplicate_results),
-            silent = TRUE
-          )
+          rejected <- try(.rc_validate_pando_result_cell_partition(
+            duplicate_results
+          ), silent = TRUE)
           stopifnot(inherits(rejected, "try-error"))
-          target <- matrix(
-            1, nrow = 1, dimnames = list("gene", "unit")
+          target <- matrix(1, nrow = 1, dimnames = list("gene", "unit"))
+          rejected <- try(.rc_overlay_projection(
+            target, target, "Standard-Pando"
+          ), silent = TRUE)
+          stopifnot(inherits(rejected, "try-error"))
+
+          .rc_merge_condition_job_results <- function(...) NULL
+          source("R/grn_parallel_merge_contract.R")
+          fake_object <- structure(list(), class = "GRNData")
+          parallel_answer <- list(
+            condition_grn_fits = list(structure(
+              list(cell_type = "epithelial_like"),
+              class = c("ConditionGRNFit", "list")
+            )),
+            pando_grn_data_by_cell_type = list(
+              epithelial_like = fake_object
+            ),
+            paired_cell_metadata = data.frame(cell_id = "cell1")
           )
-          rejected <- try(
-            .rc_overlay_projection(target, target, "Standard-Pando"),
-            silent = TRUE
-          )
+          stopifnot(isTRUE(.rc_validate_condition_job_merge_output(
+            parallel_answer
+          )))
+          names(parallel_answer$pando_grn_data_by_cell_type) <- "wrong_type"
+          rejected <- try(.rc_validate_condition_job_merge_output(
+            parallel_answer
+          ), silent = TRUE)
           stopifnot(inherits(rejected, "try-error"))
 
           .rc_route_pando_infer_args <- function(
@@ -189,21 +210,16 @@ jobs:
             list(
               rna_layer = "data", peak_layer = "data",
               peak_value_type = "normalized", tf_cor = 0.1
-            ),
-            condition_types = "epithelial_like"
+            ), condition_types = "epithelial_like"
           )
           stopifnot(
             identical(normalized$supplied,
                       c("rna_layer", "peak_layer", "peak_value_type")),
             identical(names(normalized$args), "tf_cor")
           )
-          rejected <- try(
-            .rc_normalize_condition_pando_layer_args(
-              list(rna_layer = "counts"),
-              condition_types = "epithelial_like"
-            ),
-            silent = TRUE
-          )
+          rejected <- try(.rc_normalize_condition_pando_layer_args(
+            list(rna_layer = "counts"), condition_types = "epithelial_like"
+          ), silent = TRUE)
           stopifnot(inherits(rejected, "try-error"))
       - name: Build source package
         run: R CMD build --no-build-vignettes --no-manual .
