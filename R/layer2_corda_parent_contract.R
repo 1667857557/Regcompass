@@ -70,11 +70,53 @@
   )
 }
 
+.rc_corda_medium_id <- function(medium_table) {
+  if (is.null(medium_table) || !is.data.frame(medium_table) ||
+      !nrow(medium_table) ||
+      !"medium_scenario_id" %in% colnames(medium_table)) {
+    return("default")
+  }
+  value <- unique(as.character(medium_table$medium_scenario_id))
+  value <- value[!is.na(value) & nzchar(value)]
+  if (length(value) != 1L) {
+    stop(
+      "CORDA model construction requires exactly one medium scenario.",
+      call. = FALSE
+    )
+  }
+  value
+}
+
+.rc_corda_noise_namespace <- function(cell_type, medium_table) {
+  cell_type <- as.character(cell_type)
+  if (length(cell_type) != 1L || is.na(cell_type) || !nzchar(cell_type)) {
+    stop("CORDA noise namespace requires one non-empty cell type.",
+         call. = FALSE)
+  }
+  medium <- .rc_corda_medium_id(medium_table)
+  paste0(
+    "celltype=", utils::URLencode(cell_type, reserved = TRUE),
+    "::medium=", utils::URLencode(medium, reserved = TRUE)
+  )
+}
+
 .rc_complete_celltype_medium_corda_gem_parent_base <-
   .rc_complete_celltype_medium_corda_gem
 
 .rc_complete_celltype_medium_corda_gem <- function(...) {
   args <- list(...)
+  corda_options <- args$corda_options
+  if (!is.list(corda_options)) {
+    stop("CORDA options are unavailable during model construction.",
+         call. = FALSE)
+  }
+  noise_namespace <- .rc_corda_noise_namespace(
+    cell_type = args$cell_type,
+    medium_table = args$medium_table
+  )
+  corda_options$noise_namespace <- noise_namespace
+  args$corda_options <- corda_options
+
   previous <- getOption("RegCompassR.corda_parent_active", FALSE)
   options(RegCompassR.corda_parent_active = TRUE)
   on.exit(
@@ -108,6 +150,9 @@
     as.numeric(args$fastcore_epsilon %||% NA_real_)
   build$input_fastcore_forbidden_roles_ignored_for_corda <-
     model$corda_ignored_fastcore_forbidden_roles %||% character()
+  build$corda_noise_namespace <- noise_namespace
+  build$corda_noise_task_key <-
+    "namespace_x_stage_x_signed_target_x_repeat"
   model$build_params <- build
   model$corda_parent_contract <- list(
     prepruning = "none",
@@ -118,6 +163,14 @@
     medium_constraints_applied = TRUE,
     fastcore_epsilon_used = FALSE,
     fastcore_forbidden_roles_used = FALSE
+  )
+  model$corda_noise_contract <- list(
+    seed = corda_options$seed,
+    namespace = noise_namespace,
+    task_key = "namespace_x_stage_x_signed_target_x_repeat",
+    distribution = paste0("Uniform(0, ", corda_options$kappa, ")"),
+    scheduling_invariant = TRUE,
+    matlab_rng_bitwise_identity = FALSE
   )
   model
 }
