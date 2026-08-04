@@ -105,6 +105,8 @@ step4 <- rc_regcompass_step_layer1(
 
 ## Stage 5: Layer 2 metabolic scoring
 
+The default remains compact add-only FASTCORE completion:
+
 ```r
 step5 <- rc_regcompass_step_layer2(
   layer1 = step4,
@@ -117,6 +119,7 @@ step5 <- rc_regcompass_step_layer2(
     target_direction = "both",
     solver = "highs",
     model_params = list(
+      model_completion = "fastcore",
       completion_time_limit = 600,
       fastcore_epsilon = 1e-4,
       max_support_reactions = 2000,
@@ -125,6 +128,43 @@ step5 <- rc_regcompass_step_layer2(
   )
 )
 ```
+
+To retain the full HC/MC evidence-supported reaction set and complete every
+parent-feasible HC/MC direction, select the optional CORDA-like route:
+
+```r
+step5_corda <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "run/05_layer2_corda",
+  model_mode = "meta_module_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    model_params = list(
+      model_completion = "corda_like",
+      completion_time_limit = 3000,
+      fastcore_epsilon = 1e-4,
+      max_support_reactions = 3000,
+      strict = TRUE,
+      corda_medium_confidence_threshold = 0.75,
+      corda_negative_confidence_threshold = 0.10,
+      corda_regulatory_weight = 0.20,
+      corda_other_penalty = 1,
+      corda_negative_penalty = 10,
+      corda_include_evidence_outside_modules = TRUE,
+      corda_max_medium_confidence_reactions = Inf
+    )
+  )
+)
+```
+
+The CORDA-like option does not enlarge the downstream score matrix: only HC core
+reactions remain scoring targets. MC reactions enlarge and complete the shared
+cell-type structural model. See `docs/layer2-corda-like.md` for the evidence
+formula, class definitions, weighted support objective and audit fields.
 
 ## Stage 6: result assembly
 
@@ -141,4 +181,4 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-To restart, load the last valid checkpoint and rerun only later stages. Do not combine checkpoints created from different cell sets, GEMs, media, or metadata columns.
+To restart, load the last valid checkpoint and rerun only later stages. Do not combine checkpoints created from different cell sets, GEMs, media, metadata columns, or Layer 2 completion methods.
