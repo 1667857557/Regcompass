@@ -42,6 +42,13 @@ rc_regcompass_step_layer2 <- function(
   )
   answer$params$corda_package_managed_worker_pool <- managed
   if (isTRUE(is_corda)) {
+    answer$params$structural_completion <- "corda"
+    answer$params$structural_completion_algorithm <-
+      "Schultz_Qutub_CORDA_2016_three_stage_dependency_assessment"
+    answer$method <- paste(
+      "microCOMPASS directional LP on cell-type-specific medium models",
+      "reconstructed by original three-stage CORDA"
+    )
     rc_export_microcompass(answer, outdir)
     saveRDS(answer, file.path(outdir, "step_layer2.rds"))
   }
