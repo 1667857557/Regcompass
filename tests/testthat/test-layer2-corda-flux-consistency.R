@@ -42,7 +42,7 @@ test_that("dependency costs match the original CORDA paper", {
   stage3 <- RegCompassR:::.rc_corda_base_cost(
     split, confidence, "stage3_re_ot_dependencies", gamma = 1e5
   )
-  expect_equal(stage3[["R4::forward"]], 1)
+  expect_equal(stage3[["R4::forward"]], 1e5)
 })
 
 test_that("randomized dependency repeats are deterministic by task", {
