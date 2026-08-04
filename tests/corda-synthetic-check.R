@@ -63,10 +63,12 @@ rc_parallel_config <- function(workers = NULL, backend = "auto") {
 }
 .rc_with_internal_single_thread <- function(FUN) FUN()
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
+  extra <- list(...)
+  worker_fun <- function(x) do.call(FUN, c(list(x), extra))
   if (identical(BPPARAM, FALSE) || is.null(BPPARAM)) {
-    return(lapply(X, FUN, ...))
+    return(lapply(X, worker_fun))
   }
-  BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
+  BiocParallel::bplapply(X, worker_fun, BPPARAM = BPPARAM)
 }
 .TEST_BPPARAM <- FALSE
 .rc_layer2_task_bpparam <- function() .TEST_BPPARAM
@@ -150,7 +152,10 @@ stopifnot(
 )
 
 .TEST_BPPARAM <- BiocParallel::SnowParam(
-  workers = 2L, type = "SOCK", progressbar = FALSE
+  workers = 2L,
+  type = "SOCK",
+  progressbar = FALSE,
+  exportglobals = TRUE
 )
 parallel <- .rc_corda_build_three_stage(
   split, classes, options, solver = "highs", time_limit = 60
@@ -166,6 +171,12 @@ stopifnot(
 
 persistent_available <- .rc_corda_highs_api_available()
 if (persistent_available) {
+  stopifnot(any(vapply(serial$execution, function(x) {
+    isTRUE(x$persistent_solver)
+  }, logical(1))))
+  stopifnot(sum(vapply(serial$execution, function(x) {
+    as.integer(x$n_fallback %||% 0L)
+  }, integer(1))) == 0L)
   original_api <- .rc_corda_highs_api_available
   .rc_corda_highs_api_available <- function() FALSE
   one_shot <- .rc_corda_build_three_stage(
