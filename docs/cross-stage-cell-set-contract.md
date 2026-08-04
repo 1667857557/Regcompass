@@ -19,7 +19,17 @@ step1 <- rc_regcompass_step_grn(
   species = "human",
   condition_col = "dataset",
   celltype_col = "cell_type",
-  pando_args = list(min_cells = 300L)
+  pando_args = list(
+    min_cells = 300L,
+    pando_infer_args = list(
+      tf_cor = 0.05,
+      peak_cor = 0.05,
+      adjust_method = "BH",
+      padj_threshold = 0.05,
+      rank_action = "mark",
+      min_residual_df = 1L
+    )
+  )
 )
 
 step2 <- rc_regcompass_step_metacells(
