@@ -80,6 +80,7 @@ Collate:
     'grn_inference.R'
     'stage1_input_contract.R'
     'condition_grn_contract.R'
+    'condition_grn_contract_compat.R'
     'standard_pando.R'
     'mixed_pando.R'
     'condition_layer1.R'
