@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.3
+Version: 2.4.4
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -14,21 +14,28 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     condition, exact TF-peak-target triples are unioned into one frozen
     dictionary, and every condition is refitted with the same unscaled Gaussian
     identity Pando interaction model. Only estimable coefficients with
-    BH-adjusted P below 0.05 enter the regulatory penalty. A cell type with one
-    retained condition uses the original standard Pando GRN and creates no
-    condition coefficient. Stage 1 automatically enables only the Pando
-    arguments valid for each route and parallelizes independent broad-cell-type
-    jobs without nested worker pools. Before outer parallel dispatch, bundled
-    Pando motif matrices, regulatory regions and motif-to-TF mappings are
-    materialized in the controller and passed to workers as ordinary objects.
-    Parallel condition jobs retain one exact Pando object per cell type so local
-    peak and motif feature spaces are never merged incorrectly; Layer 1 routes
-    each fit to its matching object. Paired-cell TF-by-ATAC regulatory effects
-    are projected before exact SuperCell aggregation. Metacells use one
+    BH-adjusted P below 0.05, absolute TF-target correlation at least 0.1, and
+    absolute coefficient at least 0.01 enter the regulatory penalty. A cell type
+    with one retained condition uses the original standard Pando GRN and creates
+    no condition coefficient. Stage 1 validates the required Pando API contract
+    without imposing a package-version floor. Stage 1 automatically enables only
+    the Pando arguments valid for each route and parallelizes independent broad-
+    cell-type jobs without nested worker pools. Before outer parallel dispatch,
+    bundled Pando motif matrices, regulatory regions and motif-to-TF mappings
+    are materialized in the controller and passed to workers as ordinary
+    objects. Parallel condition jobs retain one exact Pando object per cell type
+    so local peak and motif feature spaces are never merged incorrectly; Layer 1
+    routes each fit to its matching object. Paired-cell TF-by-ATAC regulatory
+    effects are projected before exact SuperCell aggregation. Metacells use one
     multimodal WNN graph per broad cell type and remain condition-pure after
     membership splitting. RNA support, regulatory effects, GPR rules,
     cell-type-specific union GEM construction and directional penalties use
-    consistent reaction ordering, bounds and medium scenarios.
+    consistent reaction ordering, bounds and medium scenarios. Stage 5 runs
+    FASTCORE through non-nested cell-type/medium and directional-reaction tasks,
+    and runs directional vmax and Step-2 LP scoring as reaction-granular
+    parallel tasks with per-task
+    checkpoints and full garbage collection. Internal LP solvers are restricted
+    to one thread per worker, including Gurobi.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -100,6 +107,7 @@ Collate:
     'grn_parallel_output_contract.R'
     'grn_parallel_merge_contract.R'
     'grn_integration_contract.R'
+    'condition_penalty_contract.R'
     'penalty.R'
     'reaction_roles.R'
     'stepwise_workflow.R'
@@ -110,6 +118,8 @@ Collate:
     'step_layer1_common_dictionary.R'
     'step_layer1_parallel_object_contract.R'
     'step_layer2.R'
+    'layer2_parallel_runtime.R'
+    'celltype_microcompass_reaction_parallel.R'
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
@@ -132,7 +142,7 @@ LinkingTo:
 SystemRequirements: C++17
 Suggests:
     BiocParallel,
-    Pando (>= 2.0.3),
+    Pando,
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
@@ -162,4 +172,4 @@ Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionMethod: two-stage-exact-edge-union-fixed-dictionary-glm
-Config/RegCompass/PandoConditionEffectFilter: BH-adjusted-p-below-0.05
+Config/RegCompass/PandoConditionEffectFilter: estimable-bh-padj-below-0.05-abs-corr-at-least-0.1-abs-estimate-at-least-0.01
