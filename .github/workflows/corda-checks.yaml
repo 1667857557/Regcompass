@@ -5,12 +5,14 @@ on:
     paths:
       - 'R/layer2_corda_*.R'
       - 'tests/corda-synthetic-check.R'
+      - 'tests/corda-snow-namespace-check.R'
       - '.github/workflows/corda-checks.yaml'
   push:
     branches: [Main]
     paths:
       - 'R/layer2_corda_*.R'
       - 'tests/corda-synthetic-check.R'
+      - 'tests/corda-snow-namespace-check.R'
       - '.github/workflows/corda-checks.yaml'
 
 permissions:
@@ -45,8 +47,11 @@ jobs:
             "R/layer2_corda_output_contract.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_pool_lifecycle.R",
-            "tests/corda-synthetic-check.R"
+            "tests/corda-synthetic-check.R",
+            "tests/corda-snow-namespace-check.R"
           )
           for (file in files) parse(file = file)
       - name: Run synthetic three-stage CORDA checks
         run: Rscript tests/corda-synthetic-check.R
+      - name: Run SnowParam package-namespace check
+        run: Rscript tests/corda-snow-namespace-check.R
