@@ -50,11 +50,15 @@
   direction_model <- parent
   direction_model$lb <- parent$fastcc_original_lb %||% parent$lb
   direction_model$ub <- parent$fastcc_original_ub %||% parent$ub
-  target_directions <- rc_prepare_directional_targets(
+  scoring_target_directions <- rc_prepare_directional_targets(
     direction_model, core, target_direction = target_direction
   )
+  completion_target_directions <- rc_prepare_directional_targets(
+    direction_model, classes$biological,
+    target_direction = target_direction
+  )
   parent_diagnostics <- .rc_directional_feasibility(
-    parent, target_directions,
+    parent, completion_target_directions,
     solver = solver,
     time_limit = time_limit,
     flux_threshold = fastcore_epsilon
@@ -63,6 +67,10 @@
     parent_diagnostics$feasible,
     c("reaction_id", "target_direction"),
     drop = FALSE
+  ]
+  scoring_parent_feasible_targets <- parent_feasible_targets[
+    as.character(parent_feasible_targets$reaction_id) %in% core,
+    , drop = FALSE
   ]
   initial <- .rc_subset_gem(parent, classes$biological)
   initial_diagnostics <- .rc_directional_feasibility(
@@ -126,6 +134,12 @@
     diagnostics, final_diagnostics,
     by = c("reaction_id", "target_direction"), all.x = TRUE, sort = FALSE
   )
+  diagnostics$corda_evidence_class <- unname(
+    classes$evidence_class[as.character(diagnostics$reaction_id)]
+  )
+  diagnostics$corda_evidence_score <- unname(
+    classes$evidence_score[as.character(diagnostics$reaction_id)]
+  )
   diagnostics$completion_status <- ifelse(
     diagnostics$target_direction == "none",
     "no_allowed_direction",
@@ -156,7 +170,7 @@
     )
     stop(
       "Cell-type CORDA-like union-GEM completion failed for parent-feasible ",
-      "targets in `", cell_type, "`: ", bad,
+      "HC/MC directions in `", cell_type, "`: ", bad,
       call. = FALSE
     )
   }
@@ -192,7 +206,8 @@
   final$sample_id <- cell_type
   final$grn_module_id <- paste0("CELLTYPE_MEDIUM_UNION_GEM::", cell_type)
   final$cell_type <- cell_type
-  final$target_directions <- parent_feasible_targets
+  final$target_directions <- scoring_parent_feasible_targets
+  final$corda_completion_target_directions <- parent_feasible_targets
   final$closure_diagnostics <- diagnostics
   final$completion_iterations <- if (length(completion_iterations)) {
     do.call(rbind, completion_iterations)
@@ -237,6 +252,14 @@
     n_corda_support_reactions = length(selected_support),
     n_other_support_reactions = sum(selected_support %in% classes$ot),
     n_negative_support_reactions = sum(selected_support %in% classes$nc),
+    n_parent_feasible_hc_mc_directions = nrow(parent_feasible_targets),
+    n_scoring_core_directions = nrow(scoring_parent_feasible_targets),
+    n_initially_feasible_hc_mc_directions = sum(
+      initial_diagnostics$initial_feasible %in% TRUE
+    ),
+    n_final_feasible_hc_mc_directions = sum(
+      final_diagnostics$final_feasible %in% TRUE
+    ),
     n_fastcc_consistent_parent_reactions = length(
       parent$fastcc_consistent_reactions %||% colnames(parent$S)
     ),
