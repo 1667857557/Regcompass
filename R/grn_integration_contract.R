@@ -14,8 +14,24 @@
   if (installed < required) {
     stop(
       "Condition-GRN projection requires Pando >= 2.0.3 for ",
-      "case-safe target matching and strict fitted-cell alignment; installed ",
-      as.character(installed), ".", call. = FALSE
+      "case-safe target matching, strict fitted-cell alignment, and complete ",
+      "membership aggregation; installed ", as.character(installed), ".",
+      call. = FALSE
+    )
+  }
+  required_api <- c(
+    "condition_grn_fit",
+    "project_condition_grn_cells",
+    "aggregate_condition_grn_projection_strict"
+  )
+  exported <- getNamespaceExports("Pando")
+  missing_api <- setdiff(required_api, exported)
+  if (length(missing_api)) {
+    stop(
+      "Installed Pando ", as.character(installed),
+      " lacks required RegCompass condition-GRN API(s): ",
+      paste(missing_api, collapse = ", "),
+      ". Reinstall Pando before starting Stage 1.", call. = FALSE
     )
   }
   invisible(TRUE)
