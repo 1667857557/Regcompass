@@ -20,6 +20,8 @@ Stage 1 routes each cell type independently:
 - two or more retained conditions: condition GRN;
 - one retained condition: standard Pando.
 
+RegCompass supplies `tf_cor = 0.05` and `peak_cor = 0.05` when those candidate-discovery controls are omitted. Explicit user values are preserved. The companion Pando implementation currently applies strict `>` correlation comparisons, so the effective default boundary excludes correlations exactly equal to `0.05`.
+
 # One-shot run
 
 ```r
@@ -33,8 +35,8 @@ result <- rc_run_regcompass_one_shot(
   pando_args = list(
     min_cells = 300L,
     pando_infer_args = list(
-      tf_cor = 0.1,
-      peak_cor = 0,
+      tf_cor = 0.05,
+      peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
