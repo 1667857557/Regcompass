@@ -38,7 +38,7 @@ jobs:
               "Pando::aggregate_condition_grn_projection_strict",
               ".rc_validate_pando_fit_metadata_frame",
               "aggregation_contract = \"all_projected_cells_have_exact_membership\"",
-              "same unique cell-type set",
+              "unique cell-type set.",
           ]
           missing = [value for value in required if value not in layer1]
           if missing:
