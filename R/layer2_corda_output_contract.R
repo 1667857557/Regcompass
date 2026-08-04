@@ -1,4 +1,4 @@
-# Validate CORDA union models and avoid duplicated large diagnostics.
+# Validate CORDA union models and compact large diagnostics.
 
 .rc_complete_celltype_medium_corda_gem_base <-
   .rc_complete_celltype_medium_corda_gem
@@ -37,6 +37,53 @@
   rownames(answer) <- NULL
   answer[do.call(order, answer[c("stage", "kind", "status", "backend")]),
          , drop = FALSE]
+}
+
+.rc_corda_task_keys <- function(tab) {
+  required <- c("stage", "kind", "variable_id", "replicate")
+  if (!is.data.frame(tab) || !all(required %in% colnames(tab))) {
+    stop("CORDA task diagnostics cannot construct stable task keys.",
+         call. = FALSE)
+  }
+  paste(
+    as.character(tab$stage),
+    as.character(tab$kind),
+    utils::URLencode(as.character(tab$variable_id), reserved = TRUE),
+    as.integer(tab$replicate),
+    sep = "::"
+  )
+}
+
+.rc_corda_normalize_associations <- function(tab) {
+  empty <- data.frame(
+    task_key = character(),
+    associated_reaction_id = character(),
+    stringsAsFactors = FALSE
+  )
+  if (!is.data.frame(tab) || !nrow(tab)) return(empty)
+  if (!"associated" %in% colnames(tab)) {
+    stop("CORDA task diagnostics have no association payload.",
+         call. = FALSE)
+  }
+  task_key <- .rc_corda_task_keys(tab)
+  split_value <- strsplit(
+    as.character(tab$associated), ";", fixed = TRUE
+  )
+  rows <- lapply(seq_along(split_value), function(i) {
+    value <- unique(split_value[[i]])
+    value <- value[!is.na(value) & nzchar(value)]
+    if (!length(value)) return(NULL)
+    data.frame(
+      task_key = rep(task_key[[i]], length(value)),
+      associated_reaction_id = sort(value),
+      stringsAsFactors = FALSE
+    )
+  })
+  rows <- rows[!vapply(rows, is.null, logical(1))]
+  if (!length(rows)) return(empty)
+  answer <- unique(do.call(rbind, rows))
+  rownames(answer) <- NULL
+  answer[order(answer$task_key, answer$associated_reaction_id), , drop = FALSE]
 }
 
 .rc_validate_corda_union_model <- function(model, cell_type) {
@@ -93,15 +140,38 @@
     stop("CORDA build parameters do not identify the published algorithm.",
          call. = FALSE)
   }
+  task_tab <- model$corda_task_diagnostics
+  edge_tab <- model$corda_association_edges
+  if (!is.data.frame(task_tab) || !"task_key" %in% colnames(task_tab) ||
+      anyDuplicated(task_tab$task_key)) {
+    stop("CORDA compact task diagnostics have invalid task keys.",
+         call. = FALSE)
+  }
+  if (!is.data.frame(edge_tab) ||
+      !all(c("task_key", "associated_reaction_id") %in% colnames(edge_tab)) ||
+      any(!edge_tab$task_key %in% task_tab$task_key)) {
+    stop("CORDA normalized association edges do not match task diagnostics.",
+         call. = FALSE)
+  }
+  expected <- sum(as.integer(task_tab$n_associated), na.rm = TRUE)
+  if (nrow(edge_tab) != expected) {
+    stop("CORDA normalized association count does not match task results.",
+         call. = FALSE)
+  }
   invisible(TRUE)
 }
 
 .rc_complete_celltype_medium_corda_gem <- function(...) {
   args <- list(...)
   model <- do.call(.rc_complete_celltype_medium_corda_gem_base, args)
-  model$corda_task_summary <- .rc_corda_task_summary(
-    model$corda_task_diagnostics
-  )
+  task_tab <- model$corda_task_diagnostics
+  model$corda_task_summary <- .rc_corda_task_summary(task_tab)
+  association_edges <- .rc_corda_normalize_associations(task_tab)
+  task_tab$task_key <- .rc_corda_task_keys(task_tab)
+  task_tab$associated <- NULL
+  model$corda_task_diagnostics <- task_tab
+  model$corda_association_edges <- association_edges
+
   reconstruction <- model$corda_reconstruction
   if (is.list(reconstruction)) {
     reconstruction$task_diagnostics <- NULL
@@ -111,8 +181,9 @@
     model$corda_reconstruction <- reconstruction
   }
   model$build_params$diagnostic_storage <- paste(
-    "full task table stored once in corda_task_diagnostics; compact task",
-    "summary stored in corda_task_summary; reconstruction stores stage sets"
+    "task metadata stored once in corda_task_diagnostics; task-to-reaction",
+    "associations normalized in corda_association_edges; compact aggregate",
+    "counts stored in corda_task_summary"
   )
   .rc_validate_corda_union_model(
     model,
