@@ -309,5 +309,20 @@ rc_regcompass_step_layer2 <- function(
       identical(corda_options$model_completion, "corda_like")
     ) corda_options else NULL
   )
+  if (identical(corda_options$model_completion, "corda_like")) {
+    answer$union_gem_policy <- paste(
+      "one evidence-maximizing CORDA-like union GEM per cell type and medium;",
+      "all HC and MC reactions are retained and OT/NC support uses weighted",
+      "add-only directional completion"
+    )
+  }
+  rc_export_microcompass(answer, outdir)
+  model_dir <- file.path(outdir, "03_models")
+  dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
+  saveRDS(
+    answer$completion_contract,
+    file.path(model_dir, "model_completion_contract.rds")
+  )
+  saveRDS(answer, file.path(outdir, "step_layer2.rds"))
   answer
 }
