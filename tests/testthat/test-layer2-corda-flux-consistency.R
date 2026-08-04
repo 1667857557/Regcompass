@@ -17,7 +17,7 @@ test_that("CORDA implements all three paper stages with barriers", {
   )
 })
 
-test_that("dependency costs match CORDA confidence semantics", {
+test_that("dependency costs match the original CORDA paper", {
   S <- Matrix::Diagonal(4)
   dimnames(S) <- list(paste0("M", 1:4), paste0("R", 1:4))
   gem <- list(
@@ -31,7 +31,7 @@ test_that("dependency costs match CORDA confidence semantics", {
     split, confidence, "stage1_hc_dependencies", gamma = 1e5
   )
   expect_equal(stage1[["R1::forward"]], 0)
-  expect_equal(stage1[["R2::forward"]], 1)
+  expect_equal(stage1[["R2::forward"]], sqrt(1e5))
   expect_equal(stage1[["R3::forward"]], 1e5)
   expect_equal(stage1[["R4::forward"]], 0)
   stage2 <- RegCompassR:::.rc_corda_base_cost(
