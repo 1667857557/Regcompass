@@ -1,4 +1,4 @@
-test_that("analysis cell set excludes undersized strata and non-estimable types", {
+test_that("analysis cell set excludes undersized strata and routes retained types", {
   sizes <- c(
     A_control = 300L,
     A_treated = 299L,
@@ -45,15 +45,16 @@ test_that("analysis cell set excludes undersized strata and non-estimable types"
     pando_args = list(min_cells = 300L)
   )
 
-  expect_identical(result$retained_cell_types, "A")
-  expect_equal(ncol(result$object), 600L)
-  expect_true(all(result$object$cell_type == "A"))
+  expect_setequal(result$retained_cell_types, c("A", "B"))
+  expect_identical(result$condition_pando_cell_types, "A")
+  expect_identical(result$standard_pando_cell_types, "B")
+  expect_equal(ncol(result$object), 900L)
   expect_setequal(unique(result$object$condition), c("control", "recovery"))
-  expect_false(any(grepl("A_treated|B_", result$retained_cells)))
-  expect_identical(result$skipped_condition_cell_types, "B")
+  expect_false(any(grepl("A_treated|B_treated", result$retained_cells)))
+  expect_identical(result$retained_cells, unname(colnames(result$object)))
 })
 
-test_that("Stage 2 reproduces the exact ordered Stage 1 cell IDs", {
+test_that("Stage 2 validates the exact Stage 1 cell-ID set", {
   cells <- c("c1", "c2", "c3")
   counts <- Matrix::sparseMatrix(
     i = rep.int(1L, 3L), j = seq_len(3L), x = rep.int(1, 3L),
@@ -62,16 +63,23 @@ test_that("Stage 2 reproduces the exact ordered Stage 1 cell IDs", {
   object <- Seurat::CreateSeuratObject(counts = counts)
   contract <- list(
     source = "stage1_min_cells_before_normalization",
-    retained_cells = c("c3", "c1"),
+    retained_cells = stats::setNames(c("c3", "c1"), c("third", "first")),
     retained_cell_types = "A",
     min_cells = 300L
   )
   filtered <- RegCompassR:::.rc_subset_to_stage1_cell_set(object, contract)
-  expect_identical(colnames(filtered), c("c3", "c1"))
-  expect_equal(
-    filtered@misc$regcompass_cross_stage_cell_set$n_cells,
-    2L
-  )
+  observed <- unname(colnames(filtered))
+  expected <- c("c3", "c1")
+  audit <- filtered@misc$regcompass_cross_stage_cell_set
+
+  expect_setequal(observed, expected)
+  expect_true(audit$exact_cell_set)
+  expect_identical(audit$order_matches_stage1, identical(observed, expected))
+  expect_identical(audit$stage1_order_index, match(observed, expected))
+  expect_true(audit$order_policy %in% c(
+    "stage1_contract_order", "seurat_native_order_exact_set"
+  ))
+  expect_equal(audit$n_cells, 2L)
 
   missing <- contract
   missing$retained_cells <- c("c3", "absent")
