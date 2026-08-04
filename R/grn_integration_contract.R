@@ -77,26 +77,42 @@
     standard_types = standard_types
   )
 
+  active_routes <- c(
+    if (length(condition_types)) "condition_grn" else character(),
+    if (length(standard_types)) "standard_pando" else character()
+  )
   default_rows <- list()
   if (!"tf_cor" %in% supplied_names) {
-    answer$condition$tf_cor <- .RC_PANDO_TF_COR_DEFAULT
-    answer$standard$tf_cor <- .RC_PANDO_TF_COR_DEFAULT
-    default_rows[[length(default_rows) + 1L]] <- data.frame(
-      route = "condition_grn;standard_pando",
-      argument = "tf_cor",
-      action = "defaulted_to_0.05",
-      stringsAsFactors = FALSE
-    )
+    if (length(condition_types)) {
+      answer$condition$tf_cor <- .RC_PANDO_TF_COR_DEFAULT
+    }
+    if (length(standard_types)) {
+      answer$standard$tf_cor <- .RC_PANDO_TF_COR_DEFAULT
+    }
+    if (length(active_routes)) {
+      default_rows[[length(default_rows) + 1L]] <- data.frame(
+        route = active_routes,
+        argument = "tf_cor",
+        action = "defaulted_to_0.05",
+        stringsAsFactors = FALSE
+      )
+    }
   }
   if (!"peak_cor" %in% supplied_names) {
-    answer$condition$peak_cor <- .RC_PANDO_PEAK_COR_DEFAULT
-    answer$standard$peak_cor <- .RC_PANDO_PEAK_COR_DEFAULT
-    default_rows[[length(default_rows) + 1L]] <- data.frame(
-      route = "condition_grn;standard_pando",
-      argument = "peak_cor",
-      action = "defaulted_to_0.05",
-      stringsAsFactors = FALSE
-    )
+    if (length(condition_types)) {
+      answer$condition$peak_cor <- .RC_PANDO_PEAK_COR_DEFAULT
+    }
+    if (length(standard_types)) {
+      answer$standard$peak_cor <- .RC_PANDO_PEAK_COR_DEFAULT
+    }
+    if (length(active_routes)) {
+      default_rows[[length(default_rows) + 1L]] <- data.frame(
+        route = active_routes,
+        argument = "peak_cor",
+        action = "defaulted_to_0.05",
+        stringsAsFactors = FALSE
+      )
+    }
   }
   if (length(default_rows)) {
     answer$diagnostics <- .rc_bind_frames_fill(c(
