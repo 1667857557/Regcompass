@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.4
+Version: 2.4.5
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -30,12 +30,15 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     multimodal WNN graph per broad cell type and remain condition-pure after
     membership splitting. RNA support, regulatory effects, GPR rules,
     cell-type-specific union GEM construction and directional penalties use
-    consistent reaction ordering, bounds and medium scenarios. Stage 5 runs
-    FASTCORE through non-nested cell-type/medium and directional-reaction tasks,
-    and runs directional vmax and Step-2 LP scoring as reaction-granular
-    parallel tasks with per-task
-    checkpoints and full garbage collection. Internal LP solvers are restricted
-    to one thread per worker, including Gurobi.
+    consistent reaction ordering, bounds and medium scenarios. Stage 5 keeps
+    compact FASTCORE completion as the default and optionally retains all
+    high- and medium-confidence reactions through a CORDA-like evidence-max
+    completion with weighted penalties for other and negative-confidence
+    support. Structural completion uses non-nested cell-type/medium and
+    directional-reaction tasks, and directional vmax and Step-2 LP scoring use
+    reaction-granular parallel tasks with per-task checkpoints and full garbage
+    collection. Internal LP solvers are restricted to one thread per worker,
+    including Gurobi.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -120,6 +123,10 @@ Collate:
     'step_layer2.R'
     'layer2_parallel_runtime.R'
     'celltype_microcompass_reaction_parallel.R'
+    'layer2_corda_evidence.R'
+    'layer2_corda_lp.R'
+    'layer2_corda_model.R'
+    'layer2_corda_runtime.R'
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
