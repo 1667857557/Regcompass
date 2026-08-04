@@ -40,6 +40,8 @@ jobs:
               "condition_col", "cell_type_col", "fit_engine",
               "coefficient_scale", "target_genes",
               "target-level fit diagnostics are incomplete",
+              ".rc_validate_pando_fit_metadata_frame",
+              "disagree with stored object metadata",
           ]
           missing = [value for value in required_fit if value not in compat]
           if missing:
@@ -100,6 +102,24 @@ jobs:
           overlapping$condition_cell_ids$treated <- "cell1"
           rejected <- try(
             .rc_require_pando_condition_grn_fit(overlapping), silent = TRUE
+          )
+          stopifnot(inherits(rejected, "try-error"))
+          metadata <- data.frame(
+            dataset = c("control", "treated"),
+            cell_type = c("epithelial_like", "epithelial_like"),
+            row.names = c("cell1", "cell2"),
+            stringsAsFactors = FALSE
+          )
+          stopifnot(isTRUE(.rc_validate_pando_fit_metadata_frame(
+            metadata, list(fit), "dataset", "cell_type"
+          )))
+          wrong_metadata <- metadata
+          wrong_metadata["cell2", "dataset"] <- "control"
+          rejected <- try(
+            .rc_validate_pando_fit_metadata_frame(
+              wrong_metadata, list(fit), "dataset", "cell_type"
+            ),
+            silent = TRUE
           )
           stopifnot(inherits(rejected, "try-error"))
 
