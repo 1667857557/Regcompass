@@ -44,23 +44,7 @@ Stage 1 resolves the route independently for each retained cell type:
 
 The same `pando_infer_args` list can be used for all routes. Condition-only arguments (`padj_threshold`, `rank_action`, `min_residual_df`, and layer controls) are disabled before standard Pando is called. Standard-model controls (`method`, `alpha`, `scale`, and related model arguments) are disabled for the fixed common-dictionary condition model. Unknown argument names still fail before model fitting.
 
-When `tf_cor` or `peak_cor` is omitted, RegCompass supplies `0.05` to both condition-GRN and standard-Pando routes. User-supplied values remain unchanged. The current Pando candidate implementation uses strict comparisons, so the effective default candidate rules are:
-
-```r
-abs(tf_target_cor) > 0.05
-abs(peak_target_cor) > 0.05
-```
-
-These candidate thresholds only determine which TF-peak-target triples enter model fitting. They are not the final RegCompass penalty-entry criteria. A fitted edge contributes to the regulatory penalty only when:
-
-```r
-estimable == TRUE &
-  padj < 0.05 &
-  abs(corr) >= 0.05 &
-  abs(estimate) >= 0.05
-```
-
-The final absolute-value boundaries are inclusive. An edge with `corr = -0.05` and `estimate = -0.05` passes those two gates, whereas an absolute value below `0.05` does not. Edges failing any final gate remain in the complete coefficient table but use `penalty_effect = 0`. For standard Pando, `corr` is the coefficient-table TF-target correlation. For a common-dictionary condition fit without coefficient-level `corr`, RegCompass uses the frozen dictionary's `max_abs_tf_target_cor` and records the provenance in `corr_source`.
+Candidate discovery uses `abs(tf_target_cor) > 0.05` and `abs(peak_target_cor) > 0.05`. Final penalty entry requires `estimable == TRUE`, `padj < 0.05`, `abs(corr) >= 0.05`, and `abs(estimate) >= 0.05`.
 
 When at least two cell-type jobs are available, Stage 1 distributes those jobs through `BPPARAM`. Every worker runs its own Pando job serially, so nested worker pools are not created. With one standard-Pando job, its existing target-level path may be used. A single condition-GRN job remains serial because pooled discovery, condition-specific discovery, dictionary freezing, and condition refits are treated as one coordinated contract.
 
