@@ -60,11 +60,20 @@ jobs:
               raise RuntimeError(f"Pando runtime bridge missing: {missing}")
           if "package_version" in bridge or "packageVersion" in bridge:
               raise RuntimeError("Pando runtime bridge contains a version gate")
+          repository = Path("R/00_meta_module_utils.R").read_text()
+          required_repository = [
+              "required_exported_api_without_version_floor",
+              "getNamespaceExports(\"Pando\")",
+          ]
+          missing = [value for value in required_repository if value not in repository]
+          if missing:
+              raise RuntimeError(f"Pando repository validation missing: {missing}")
+          if "base::package_version" in repository:
+              raise RuntimeError("Pando repository validation still contains a version floor")
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
               "abs(corr) >= .RC_PANDO_PENALTY_CORR_THRESHOLD",
               "abs(estimate) >= .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD",
-              "required_exported_api_without_version_floor",
           ]
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
