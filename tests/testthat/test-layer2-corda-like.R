@@ -1,20 +1,29 @@
-test_that("CORDA-like options preserve FASTCORE by default", {
-  options <- RegCompassR:::.rc_layer2_corda_options(list())
-  expect_identical(options$model_completion, "fastcore")
-  expect_equal(options$medium_confidence_threshold, 0.75)
-  expect_equal(options$negative_confidence_threshold, 0.10)
-  expect_equal(options$other_penalty, 1)
-  expect_equal(options$negative_penalty, 10)
+test_that("CORDA options preserve FASTCORE and match paper defaults", {
+  defaults <- RegCompassR:::.rc_layer2_corda_options(list())
+  expect_identical(defaults$model_completion, "fastcore")
+  corda <- RegCompassR:::.rc_layer2_corda_options(list(
+    model_completion = "corda"
+  ))
+  expect_identical(corda$model_completion, "corda")
+  expect_equal(corda$gamma, 1e5)
+  expect_equal(corda$kappa, 1e-2)
+  expect_equal(corda$epsilon, 1)
+  expect_equal(corda$n, 5L)
+  expect_equal(corda$p, 2L)
+  alias <- RegCompassR:::.rc_layer2_corda_options(list(
+    model_completion = "corda_like"
+  ))
+  expect_identical(alias$model_completion, "corda")
   expect_error(
     RegCompassR:::.rc_layer2_corda_options(list(
-      corda_other_penalty = 2,
-      corda_negative_penalty = 1
+      model_completion = "corda",
+      corda_negative_penalty = 10
     )),
-    "greater than or equal"
+    "Obsolete weighted-FASTCORE"
   )
 })
 
-test_that("CORDA-like evidence is calculated within each cell type", {
+test_that("CORDA evidence is calculated within each cell type", {
   reactions <- paste0("R", 1:4)
   units <- paste0("U", 1:4)
   rna <- matrix(
@@ -27,13 +36,12 @@ test_that("CORDA-like evidence is calculated within each cell type", {
     nrow = 4,
     dimnames = list(reactions, units)
   )
-  multiome <- rna
   regulatory <- matrix(
     0.5, nrow = 4, ncol = 4,
     dimnames = list(reactions, units)
   )
   layer1 <- list(
-    reaction_expression = multiome,
+    reaction_expression = rna,
     reaction_expression_rna_only = rna,
     reaction_regulatory_support_fraction = regulatory,
     unit_meta = data.frame(
@@ -52,11 +60,11 @@ test_that("CORDA-like evidence is calculated within each cell type", {
                   evidence$evidence_score <= 1))
   expect_identical(
     unique(evidence$evidence_schema),
-    "regcompass_corda_like_reaction_evidence_v1"
+    "regcompass_corda_reaction_evidence_v2"
   )
 })
 
-test_that("CORDA-like classes retain HC and all module MC reactions", {
+test_that("confidence mapping leaves MC flexible", {
   evidence <- data.frame(
     reaction_id = paste0("R", 1:7),
     evidence_score = c(0.9, 0.8, 0.7, 0.95, 0.4, 0.05, NA),
@@ -75,53 +83,45 @@ test_that("CORDA-like classes retain HC and all module MC reactions", {
   expect_identical(classes$hc, "R1")
   expect_setequal(classes$mc_module, c("R2", "R3"))
   expect_identical(classes$mc_evidence, "R4")
+  expect_setequal(classes$mc, c("R2", "R3", "R4"))
   expect_identical(classes$nc, "R6")
   expect_setequal(classes$ot, c("R5", "R7"))
-  expect_setequal(classes$biological, c("R1", "R2", "R3", "R4"))
+  expect_false("biological" %in% names(classes))
+  expect_true(all(classes$confidence[classes$mc] != "RE"))
 })
 
-test_that("NC support receives a larger weighted LP cost", {
-  evidence <- data.frame(
-    reaction_id = c("HC", "MC", "OT", "NC"),
-    evidence_score = c(1, 0.8, 0.4, 0),
-    stringsAsFactors = FALSE
+test_that("direction splitting preserves bounds and direction", {
+  S <- Matrix::Matrix(
+    matrix(c(-1, 1, 1, -1), nrow = 2), sparse = TRUE,
+    dimnames = list(c("A", "B"), c("IRR", "REV"))
   )
-  classes <- RegCompassR:::.rc_corda_classify_reactions(
-    parent_reactions = evidence$reaction_id,
-    module_reactions = c("HC", "MC"),
-    core_reactions = "HC",
-    reaction_evidence = evidence,
-    medium_confidence_threshold = 0.75,
-    negative_confidence_threshold = 0.1,
-    include_evidence_outside_modules = FALSE
+  gem <- list(
+    S = S,
+    lb = c(IRR = 0, REV = -5),
+    ub = c(IRR = 10, REV = 7)
   )
-  costs <- RegCompassR:::.rc_corda_support_costs(
-    evidence$reaction_id, classes,
-    other_penalty = 1, negative_penalty = 10
+  split <- RegCompassR:::.rc_corda_split_model(gem, tolerance = 1e-8)
+  expect_setequal(
+    split$direction_table$variable_id,
+    c("IRR::forward", "REV::forward", "REV::reverse")
   )
-  expect_equal(unname(costs[c("HC", "MC")]), c(0, 0))
-  expect_equal(costs[["OT"]], 1)
-  expect_equal(costs[["NC"]], 10)
+  expect_equal(split$ub[["IRR::forward"]], 10)
+  expect_equal(split$ub[["REV::forward"]], 7)
+  expect_equal(split$ub[["REV::reverse"]], 5)
+  expect_equal(
+    as.numeric(split$S[, "REV::reverse"]),
+    -as.numeric(S[, "REV"])
+  )
 })
 
-test_that("Layer 2 exposes optional CORDA-like completion without changing formals", {
+test_that("Layer 2 exposes CORDA without changing public formals", {
   implementation <- paste(
     deparse(body(rc_regcompass_step_layer2)), collapse = "\n"
   )
-  expect_match(implementation, "model_completion", fixed = TRUE)
-  expect_match(implementation, "corda_like", fixed = TRUE)
+  expect_match(implementation, "corda", fixed = TRUE)
   expect_match(
     implementation,
-    ".rc_regcompass_step_layer2_completion_base",
-    fixed = TRUE
-  )
-  expect_match(implementation, "rc_export_microcompass", fixed = TRUE)
-  expect_match(
-    implementation, "model_completion_contract.rds", fixed = TRUE
-  )
-  expect_match(
-    implementation,
-    "saveRDS(answer, file.path(outdir, \"step_layer2.rds\"))",
+    ".rc_regcompass_step_layer2_corda_pool_base",
     fixed = TRUE
   )
   expect_identical(
@@ -133,7 +133,7 @@ test_that("Layer 2 exposes optional CORDA-like completion without changing forma
   )
 })
 
-test_that("CORDA-like cache falls back to the exact FASTCORE implementation", {
+test_that("CORDA cache retains exact FASTCORE fallback", {
   implementation <- paste(
     deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache)),
     collapse = "\n"
@@ -145,7 +145,12 @@ test_that("CORDA-like cache falls back to the exact FASTCORE implementation", {
   )
   expect_match(
     implementation,
-    "celltype_medium_corda_like_evidence_max",
+    "celltype_medium_original_corda",
+    fixed = TRUE
+  )
+  expect_match(
+    implementation,
+    "models_serial_target_direction_x_replicate_inner_parallel",
     fixed = TRUE
   )
 })
