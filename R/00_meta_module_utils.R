@@ -40,45 +40,38 @@
   if (isTRUE(validate_api)) {
     if (!requireNamespace("Pando", quietly = TRUE)) {
       stop(
-        "Package 'Pando' is not installed. Install 1667857557/Pando_regcompass ",
-        "from GitHub or a local source tarball.",
-        call. = FALSE
+        "Package 'Pando' is not installed. Install a build that exports the ",
+        "RegCompass condition-GRN API.", call. = FALSE
       )
     }
     required_exports <- c(
       "initiate_grn", "find_motifs", "infer_condition_grn",
       "condition_grn_fit", "project_condition_grn_cells",
-      "aggregate_condition_grn_projection"
+      "aggregate_condition_grn_projection",
+      "aggregate_condition_grn_projection_strict"
     )
-    namespace <- asNamespace("Pando")
-    missing_exports <- required_exports[!vapply(
-      required_exports,
-      function(name) exists(name, envir = namespace, inherits = FALSE),
-      logical(1)
-    )]
+    exported <- getNamespaceExports("Pando")
+    missing_exports <- setdiff(required_exports, exported)
     if (length(missing_exports)) {
       stop(
         "Installed Pando is incompatible with RegCompassR. Missing API: ",
-        paste(missing_exports, collapse = ", "),
-        ". Install 1667857557/Pando_regcompass from GitHub or a local source tarball.",
+        paste(missing_exports, collapse = ", "), ".",
         call. = FALSE
       )
     }
   }
   if (is.null(installed_version)) {
-    installed_version <- as.character(utils::packageVersion("Pando"))
+    installed_version <- if (requireNamespace("Pando", quietly = TRUE)) {
+      as.character(utils::packageVersion("Pando"))
+    } else {
+      NA_character_
+    }
   }
   installed_version <- as.character(installed_version)
-  if (isTRUE(validate_api) &&
-      base::package_version(installed_version) <
-      base::package_version("1.6.3")) {
-    stop(
-      "RegCompass requires Pando >= 1.6.3 for the ConditionGRNFit v5 ",
-      "projection contract and memory-bounded condition engine.",
-      call. = FALSE
-    )
+  if (is.null(description) && requireNamespace("Pando", quietly = TRUE)) {
+    description <- utils::packageDescription("Pando")
   }
-  if (is.null(description)) description <- utils::packageDescription("Pando")
+  description <- description %||% list()
 
   normalize_remote_field <- function(value) {
     value <- as.character(value %||% NA_character_)
@@ -127,6 +120,7 @@
     remote_sha = remote_sha,
     repository_verified = !remote_metadata_missing,
     api_verified = api_verified,
+    compatibility_basis = "required_exported_api_without_version_floor",
     installation_source = if (remote_metadata_missing) {
       if (api_verified) {
         "local_or_offline_source_api_verified"

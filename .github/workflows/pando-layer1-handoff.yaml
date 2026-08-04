@@ -22,17 +22,29 @@ jobs:
         run: |
           from pathlib import Path
           description = Path("DESCRIPTION").read_text()
-          if "Pando (>= 2.0.3)" not in description:
-              raise RuntimeError("Pando >= 2.0.3 is not required")
+          if "Pando (>= " in description or "Pando (>=" in description:
+              raise RuntimeError("Pando compatibility must not use a version floor")
           bridge = Path("R/grn_integration_contract.R").read_text()
           required_bridge = [
               "getNamespaceExports(\"Pando\")",
               "aggregate_condition_grn_projection_strict",
-              "Reinstall Pando before starting Stage 1",
+              "required API contract",
           ]
           missing = [value for value in required_bridge if value not in bridge]
           if missing:
               raise RuntimeError(f"Pando API preflight missing: {missing}")
+          if "package_version" in bridge or "packageVersion" in bridge:
+              raise RuntimeError("Pando API preflight still contains a version gate")
+          penalty = Path("R/condition_penalty_contract.R").read_text()
+          required_penalty = [
+              ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0.1",
+              ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0.01",
+              "abs(corr) >= .RC_PANDO_PENALTY_CORR_THRESHOLD",
+              "abs(estimate) >= .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD",
+          ]
+          missing = [value for value in required_penalty if value not in penalty]
+          if missing:
+              raise RuntimeError(f"penalty-entry contract missing: {missing}")
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           required = [
               "Pando::aggregate_condition_grn_projection_strict",
@@ -59,6 +71,8 @@ jobs:
             "R/mixed_pando_contract.R",
             "R/grn_parallel_merge_contract.R",
             "R/grn_integration_contract.R",
+            "R/condition_penalty_contract.R",
+            "R/step_layer1_common_dictionary.R",
             "R/step_layer1_parallel_object_contract.R"
           )
           for (file in files) parse(file = file)

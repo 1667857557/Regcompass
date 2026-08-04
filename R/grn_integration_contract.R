@@ -9,16 +9,6 @@
     stop("Package 'Pando' is required for condition-GRN Stage 1.",
          call. = FALSE)
   }
-  installed <- utils::packageVersion("Pando")
-  required <- utils::package_version("2.0.3")
-  if (installed < required) {
-    stop(
-      "Condition-GRN projection requires Pando >= 2.0.3 for ",
-      "case-safe target matching, strict fitted-cell alignment, and complete ",
-      "membership aggregation; installed ", as.character(installed), ".",
-      call. = FALSE
-    )
-  }
   required_api <- c(
     "condition_grn_fit",
     "project_condition_grn_cells",
@@ -28,10 +18,10 @@
   missing_api <- setdiff(required_api, exported)
   if (length(missing_api)) {
     stop(
-      "Installed Pando ", as.character(installed),
-      " lacks required RegCompass condition-GRN API(s): ",
+      "Installed Pando lacks required RegCompass condition-GRN API(s): ",
       paste(missing_api, collapse = ", "),
-      ". Reinstall Pando before starting Stage 1.", call. = FALSE
+      ". Install a Pando build that provides the required API contract.",
+      call. = FALSE
     )
   }
   invisible(TRUE)
