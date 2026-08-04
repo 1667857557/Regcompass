@@ -31,14 +31,15 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     membership splitting. RNA support, regulatory effects, GPR rules,
     cell-type-specific union GEM construction and directional penalties use
     consistent reaction ordering, bounds and medium scenarios. Stage 5 keeps
-    compact FASTCORE completion as the default and optionally retains all
-    high- and medium-confidence reactions through a CORDA-like evidence-max
-    completion with weighted penalties for other and negative-confidence
-    support. Structural completion uses non-nested cell-type/medium and
-    directional-reaction tasks, and directional vmax and Step-2 LP scoring use
-    reaction-granular parallel tasks with per-task checkpoints and full garbage
-    collection. Internal LP solvers are restricted to one thread per worker,
-    including Gurobi.
+    compact FASTCORE completion as the default and optionally applies the
+    original three-stage CORDA dependency-assessment algorithm after mapping
+    cell-type multiome evidence to HC, MC, NC and OT confidence classes. CORDA
+    uses deterministic randomized repetitions, stage barriers, adaptive
+    model-level or target-direction-level parallelism, and a persistent native
+    HiGHS C++ solver with objective and bound updates and simplex-basis reuse.
+    Directional vmax and Step-2 LP scoring remain reaction-granular parallel
+    tasks with per-task checkpoints and full garbage collection. Internal LP
+    solvers are restricted to one thread per worker, including Gurobi.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -127,6 +128,7 @@ Collate:
     'layer2_corda_lp.R'
     'layer2_corda_model.R'
     'layer2_corda_runtime.R'
+    'layer2_corda_pool_lifecycle.R'
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
