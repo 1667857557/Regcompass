@@ -63,6 +63,7 @@
       result = list(
         task = task, status = "target_blocked", associated = character(),
         target_flux = 0, objective = NA_real_, backend = engine$type,
+        solver_message = "target upper bound is below CORDA epsilon",
         opposite_direction_blocked = character(),
         noise_namespace = noise_namespace
       ),
@@ -112,12 +113,15 @@
 .rc_corda_feasibility_task <- function(engine, task, options) {
   split <- engine$split
   target <- as.character(task$variable_id[[1L]])
+  noise_namespace <- as.character(options$noise_namespace %||% "")
   if (!target %in% names(split$ub) || split$ub[[target]] < options$epsilon) {
     return(list(
       result = list(
         task = task, status = "target_blocked", associated = character(),
         target_flux = 0, objective = NA_real_, backend = engine$type,
-        opposite_direction_blocked = character()
+        solver_message = "target upper bound is below CORDA epsilon",
+        opposite_direction_blocked = character(),
+        noise_namespace = noise_namespace
       ),
       engine = engine
     ))
@@ -148,8 +152,38 @@
       objective = answer$objective,
       backend = answer$backend,
       solver_message = answer$solver_message,
-      opposite_direction_blocked = bounds$opposite_variables
+      opposite_direction_blocked = bounds$opposite_variables,
+      noise_namespace = noise_namespace
     ),
     engine = engine
   )
+}
+
+.rc_corda_results_table <- function(results) {
+  if (!length(results)) return(data.frame())
+  rows <- lapply(results, function(x) {
+    task <- x$task
+    data.frame(
+      variable_id = as.character(task$variable_id[[1L]]),
+      reaction_id = as.character(task$reaction_id[[1L]]),
+      direction = as.character(task$direction[[1L]]),
+      stage = as.character(task$stage[[1L]]),
+      replicate = as.integer(task$replicate[[1L]]),
+      kind = as.character(task$kind[[1L]]),
+      status = as.character(x$status),
+      target_flux = as.numeric(x$target_flux),
+      objective = as.numeric(x$objective),
+      backend = as.character(x$backend),
+      solver_message = as.character(x$solver_message %||% ""),
+      noise_namespace = as.character(x$noise_namespace %||% ""),
+      opposite_direction_blocked = paste(
+        x$opposite_direction_blocked %||% character(),
+        collapse = ";"
+      ),
+      n_associated = length(x$associated),
+      associated = paste(x$associated, collapse = ";"),
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
 }
