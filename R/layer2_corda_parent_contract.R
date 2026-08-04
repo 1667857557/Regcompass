@@ -1,4 +1,4 @@
-# Preserve the original CORDA parent-model semantics without FASTCC pruning.
+# Preserve the original CORDA parent-model semantics without pre-pruning.
 
 .rc_fastcore_parent_before_corda_contract <- .rc_fastcore_parent
 
@@ -9,22 +9,6 @@
   parent <- rc_build_full_gem(
     gem, medium_table = medium_table, condition = condition
   )
-  parent <- rc_annotate_reaction_roles(parent, medium_table = medium_table)
-  validated <- rc_validate_gem(parent)
-  meta <- parent$reaction_meta[
-    match(validated$reactions, as.character(parent$reaction_meta$reaction_id)),
-    , drop = FALSE
-  ]
-  role <- if ("role" %in% colnames(meta)) {
-    as.character(meta$role)
-  } else {
-    rep("unknown", nrow(meta))
-  }
-  forbidden <- validated$reactions[role %in% forbidden_roles]
-  if (length(forbidden)) {
-    parent$lb[forbidden] <- 0
-    parent$ub[forbidden] <- 0
-  }
   validated <- rc_validate_gem(parent)
   feasibility <- rc_solve_lp(
     obj = rep(0, length(validated$reactions)),
@@ -43,7 +27,6 @@
       call. = FALSE
     )
   }
-  parent$corda_forbidden_reactions <- forbidden
   parent$corda_parent_original_lb <- validated$lb
   parent$corda_parent_original_ub <- validated$ub
   parent$corda_parent_n_reactions <- length(validated$reactions)
@@ -52,10 +35,13 @@
     validated$lb < 0 | validated$ub > 0
   )
   parent$corda_parent_prepruning <- "none"
+  parent$corda_parent_role_blocking <- "none"
   parent$corda_parent_contract <- paste(
-    "medium and RegCompass forbidden-role bounds are applied, but no",
-    "FASTCC/FASTCORE consistency pruning is performed before CORDA"
+    "the complete input GEM is retained after applying only the requested",
+    "medium bounds; no FASTCC pruning or reaction-role blocking is applied"
   )
+  parent$corda_ignored_fastcore_forbidden_roles <-
+    unique(as.character(forbidden_roles))
   parent
 }
 
@@ -109,29 +95,29 @@
   build$n_parent_open_reactions <- as.integer(
     model$corda_parent_n_open_reactions %||% NA_integer_
   )
-  build$n_parent_forbidden_role_reactions <- length(
-    model$corda_forbidden_reactions %||% character()
-  )
   build$n_fastcc_consistent_parent_reactions <- NULL
   build$n_fastcc_inconsistent_parent_reactions <- NULL
   build$fastcc_epsilon <- NULL
   build$parent_prepruning <- "none"
+  build$parent_role_blocking <- "none"
   build$parent_algorithm_contract <- paste(
-    "original CORDA dependency assessment on the complete constrained",
-    "parent GEM; no FASTCC reaction deletion"
+    "original CORDA dependency assessment on the complete medium-constrained",
+    "input GEM; no FASTCC deletion and no generic role-based reaction block"
   )
   build$input_fastcore_epsilon_ignored_for_corda <-
     as.numeric(args$fastcore_epsilon %||% NA_real_)
+  build$input_fastcore_forbidden_roles_ignored_for_corda <-
+    model$corda_ignored_fastcore_forbidden_roles %||% character()
   model$build_params <- build
   model$corda_parent_contract <- list(
     prepruning = "none",
+    role_blocking = "none",
     n_reactions = build$n_parent_reactions,
     n_metabolites = build$n_parent_metabolites,
     n_open_reactions = build$n_parent_open_reactions,
     medium_constraints_applied = TRUE,
-    forbidden_roles_blocked = c("demand", "sink", "artificial_support"),
-    forbidden_reactions = model$corda_forbidden_reactions %||% character(),
-    fastcore_epsilon_used = FALSE
+    fastcore_epsilon_used = FALSE,
+    fastcore_forbidden_roles_used = FALSE
   )
   model
 }
