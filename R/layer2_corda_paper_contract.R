@@ -11,7 +11,7 @@
   } else if (identical(stage, "stage2_mc_nc_support")) {
     cost[reaction_confidence == "NC"] <- gamma
   } else if (identical(stage, "stage3_re_ot_dependencies")) {
-    cost[reaction_confidence == "OT"] <- 1
+    cost[reaction_confidence == "OT"] <- gamma
   } else {
     stop("Unknown CORDA dependency stage: ", stage, call. = FALSE)
   }
