@@ -1,0 +1,64 @@
+name: Pando Layer 1 handoff contract
+
+on:
+  pull_request:
+  push:
+    branches: [Main]
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+      - name: Verify strict projection handoff
+        shell: python
+        run: |
+          from pathlib import Path
+          description = Path("DESCRIPTION").read_text()
+          if "Pando (>= 2.0.3)" not in description:
+              raise RuntimeError("Pando >= 2.0.3 is not required")
+          bridge = Path("R/grn_integration_contract.R").read_text()
+          required_bridge = [
+              "getNamespaceExports(\"Pando\")",
+              "aggregate_condition_grn_projection_strict",
+              "Reinstall Pando before starting Stage 1",
+          ]
+          missing = [value for value in required_bridge if value not in bridge]
+          if missing:
+              raise RuntimeError(f"Pando API preflight missing: {missing}")
+          layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
+          required = [
+              "Pando::aggregate_condition_grn_projection_strict",
+              ".rc_validate_pando_fit_metadata_frame",
+              "aggregation_contract = \"all_projected_cells_have_exact_membership\"",
+              "unique cell-type set.",
+          ]
+          missing = [value for value in required if value not in layer1]
+          if missing:
+              raise RuntimeError(f"Layer 1 strict handoff missing: {missing}")
+          parallel = Path("R/grn_parallel_merge_contract.R").read_text()
+          required_parallel = [
+              ".rc_validate_pando_result_cell_partition",
+              ".rc_validate_condition_job_merge_output",
+          ]
+          missing = [value for value in required_parallel if value not in parallel]
+          if missing:
+              raise RuntimeError(f"parallel handoff validation missing: {missing}")
+      - name: Parse handoff sources
+        shell: Rscript {0}
+        run: |
+          files <- c(
+            "R/condition_grn_contract_compat.R",
+            "R/mixed_pando_contract.R",
+            "R/grn_parallel_merge_contract.R",
+            "R/grn_integration_contract.R",
+            "R/step_layer1_parallel_object_contract.R"
+          )
+          for (file in files) parse(file = file)

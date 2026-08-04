@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.2
+Version: 2.4.3
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -83,6 +83,7 @@ Collate:
     'condition_grn_contract_compat.R'
     'standard_pando.R'
     'mixed_pando.R'
+    'mixed_pando_contract.R'
     'condition_layer1.R'
     'reaction_annotation_utils.R'
     'reaction_evidence.R'
@@ -97,6 +98,8 @@ Collate:
     'stage_parallel_lifecycle.R'
     'grn_route_parallel.R'
     'grn_parallel_output_contract.R'
+    'grn_parallel_merge_contract.R'
+    'grn_integration_contract.R'
     'penalty.R'
     'reaction_roles.R'
     'stepwise_workflow.R'
@@ -129,7 +132,7 @@ LinkingTo:
 SystemRequirements: C++17
 Suggests:
     BiocParallel,
-    Pando,
+    Pando (>= 2.0.3),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
