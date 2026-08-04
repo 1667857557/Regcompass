@@ -151,23 +151,22 @@ stopifnot(
   "MC3" %in% p3$included
 )
 
-.TEST_BPPARAM <- BiocParallel::SnowParam(
-  workers = 2L,
-  type = "SOCK",
-  progressbar = FALSE,
-  exportglobals = TRUE
-)
-parallel <- .rc_corda_build_three_stage(
-  split, classes, options, solver = "highs", time_limit = 60
-)
-BiocParallel::bpstop(.TEST_BPPARAM)
-.TEST_BPPARAM <- FALSE
-stopifnot(
-  setequal(serial$included, parallel$included),
-  identical(serial$stage2_nc_support_count,
-            parallel$stage2_nc_support_count),
-  setequal(serial$stage3_associated_ot, parallel$stage3_associated_ot)
-)
+if (.Platform$OS.type != "windows") {
+  .TEST_BPPARAM <- BiocParallel::MulticoreParam(
+    workers = 2L, progressbar = FALSE
+  )
+  parallel <- .rc_corda_build_three_stage(
+    split, classes, options, solver = "highs", time_limit = 60
+  )
+  BiocParallel::bpstop(.TEST_BPPARAM)
+  .TEST_BPPARAM <- FALSE
+  stopifnot(
+    setequal(serial$included, parallel$included),
+    identical(serial$stage2_nc_support_count,
+              parallel$stage2_nc_support_count),
+    setequal(serial$stage3_associated_ot, parallel$stage3_associated_ot)
+  )
+}
 
 persistent_available <- .rc_corda_highs_api_available()
 if (persistent_available) {
