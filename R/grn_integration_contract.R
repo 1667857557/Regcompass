@@ -5,6 +5,22 @@
 
 .rc_route_pando_infer_args <- function(
     args, condition_types = character(), standard_types = character()) {
+  if (length(condition_types)) {
+    if (!requireNamespace("Pando", quietly = TRUE)) {
+      stop("Package 'Pando' is required for condition-GRN Stage 1.",
+           call. = FALSE)
+    }
+    installed <- utils::packageVersion("Pando")
+    required <- utils::package_version("2.0.3")
+    if (installed < required) {
+      stop(
+        "Condition-GRN projection requires Pando >= 2.0.3 for ",
+        "case-safe target matching and strict fitted-cell alignment; installed ",
+        as.character(installed), ".", call. = FALSE
+      )
+    }
+  }
+
   layer_fields <- c("rna_layer", "peak_layer", "peak_value_type")
   supplied <- intersect(names(args), layer_fields)
   if (length(condition_types) && length(supplied)) {
