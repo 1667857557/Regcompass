@@ -70,3 +70,49 @@ test_that("CORDA records FASTCORE controls as unused", {
   expect_match(implementation, "parent_prepruning", fixed = TRUE)
   expect_match(implementation, "parent_role_blocking", fixed = TRUE)
 })
+
+test_that("CORDA noise is reproducible within and distinct across models", {
+  medium_a <- data.frame(
+    medium_scenario_id = "M1", stringsAsFactors = FALSE
+  )
+  medium_b <- data.frame(
+    medium_scenario_id = "M2", stringsAsFactors = FALSE
+  )
+  ns_a <- RegCompassR:::.rc_corda_noise_namespace("T", medium_a)
+  ns_b <- RegCompassR:::.rc_corda_noise_namespace("T", medium_b)
+  ns_c <- RegCompassR:::.rc_corda_noise_namespace("B", medium_a)
+  expect_identical(ns_a, "celltype=T::medium=M1")
+  expect_false(identical(ns_a, ns_b))
+  expect_false(identical(ns_a, ns_c))
+
+  first <- RegCompassR:::.rc_corda_noise(
+    20, seed = 9L,
+    key = c(ns_a, "stage1", "R::forward", 1L),
+    kappa = 0.01
+  )
+  repeated <- RegCompassR:::.rc_corda_noise(
+    20, seed = 9L,
+    key = c(ns_a, "stage1", "R::forward", 1L),
+    kappa = 0.01
+  )
+  other_medium <- RegCompassR:::.rc_corda_noise(
+    20, seed = 9L,
+    key = c(ns_b, "stage1", "R::forward", 1L),
+    kappa = 0.01
+  )
+  expect_identical(first, repeated)
+  expect_false(identical(first, other_medium))
+})
+
+test_that("dependency tasks include the model noise namespace", {
+  implementation <- paste(
+    deparse(body(RegCompassR:::.rc_corda_dependency_task)),
+    collapse = "\n"
+  )
+  expect_match(implementation, "noise_namespace", fixed = TRUE)
+  expect_match(
+    implementation,
+    "c(noise_namespace, stage, target, replicate)",
+    fixed = TRUE
+  )
+})
