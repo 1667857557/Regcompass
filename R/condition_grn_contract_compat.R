@@ -60,12 +60,19 @@
          call. = FALSE)
   }
   cells_by_condition <- fit$condition_cell_ids
-  if (!is.list(cells_by_condition) || is.null(names(cells_by_condition)) ||
-      !all(levels %in% names(cells_by_condition))) {
-    stop("Pando condition cell IDs are not named for every condition.",
+  cell_list_names <- names(cells_by_condition)
+  if (!is.list(cells_by_condition) || is.null(cell_list_names) ||
+      anyNA(cell_list_names) || any(!nzchar(cell_list_names)) ||
+      anyDuplicated(cell_list_names) ||
+      !all(levels %in% cell_list_names)) {
+    stop("Pando condition cell IDs are not uniquely named for every condition.",
          call. = FALSE)
   }
   cells_by_condition <- cells_by_condition[levels]
+  if (any(lengths(cells_by_condition) < 1L)) {
+    stop("Every Pando fitted condition must contain at least one cell.",
+         call. = FALSE)
+  }
   cells <- as.character(unlist(cells_by_condition, use.names = FALSE))
   if (!length(cells) || anyNA(cells) || any(!nzchar(cells)) ||
       anyDuplicated(cells)) {
@@ -99,6 +106,58 @@
   invisible(TRUE)
 }
 
+.rc_validate_pando_fit_metadata_frame <- function(
+    metadata, fits, condition_col, celltype_col) {
+  if (!is.data.frame(metadata) ||
+      !all(c(condition_col, celltype_col) %in% colnames(metadata)) ||
+      is.null(rownames(metadata)) || anyDuplicated(rownames(metadata))) {
+    stop("Pando object metadata cannot validate condition fit cell mappings.",
+         call. = FALSE)
+  }
+  if (inherits(fits, "ConditionGRNFit")) fits <- list(fits)
+  if (!is.list(fits) || !length(fits)) {
+    stop("No Pando condition fits are available for metadata validation.",
+         call. = FALSE)
+  }
+  for (fit in fits) {
+    if (!identical(as.character(fit$condition_col), condition_col) ||
+        !identical(as.character(fit$cell_type_col), celltype_col)) {
+      stop(
+        "Pando fit metadata columns do not match the RegCompass request: ",
+        "fit condition_col='", as.character(fit$condition_col),
+        "', cell_type_col='", as.character(fit$cell_type_col),
+        "'; requested condition_col='", condition_col,
+        "', cell_type_col='", celltype_col, "'.",
+        call. = FALSE
+      )
+    }
+    levels <- as.character(fit$condition_levels)
+    cells_by_condition <- fit$condition_cell_ids[levels]
+    for (condition in levels) {
+      cells <- as.character(cells_by_condition[[condition]])
+      missing <- setdiff(cells, rownames(metadata))
+      if (length(missing)) {
+        stop(
+          "Pando fit references cells absent from its stored object; first ",
+          "missing ID: ", missing[[1L]], ".", call. = FALSE
+        )
+      }
+      observed_condition <- as.character(metadata[cells, condition_col])
+      observed_celltype <- as.character(metadata[cells, celltype_col])
+      if (anyNA(observed_condition) || anyNA(observed_celltype) ||
+          any(observed_condition != condition) ||
+          any(observed_celltype != as.character(fit$cell_type))) {
+        stop(
+          "Pando fit cell assignments disagree with stored object metadata ",
+          "for cell type '", as.character(fit$cell_type),
+          "' and condition '", condition, "'.", call. = FALSE
+        )
+      }
+    }
+  }
+  invisible(TRUE)
+}
+
 .rc_complete_pando_condition_fits_in_object <- function(grn_object) {
   grn <- methods::slot(grn_object, "grn")
   params <- methods::slot(grn, "params")
@@ -117,8 +176,19 @@
 
 .rc_extract_condition_grn_contract <- function(
     grn_object, condition_col, celltype_col) {
+  grn_object <- .rc_complete_pando_condition_fits_in_object(grn_object)
+  grn <- methods::slot(grn_object, "grn")
+  params <- methods::slot(grn, "params")
+  data_object <- methods::slot(grn_object, "data")
+  metadata <- methods::slot(data_object, "meta.data")
+  .rc_validate_pando_fit_metadata_frame(
+    metadata = metadata,
+    fits = params$condition_grn_fits,
+    condition_col = condition_col,
+    celltype_col = celltype_col
+  )
   .rc_extract_condition_grn_contract_impl(
-    grn_object = .rc_complete_pando_condition_fits_in_object(grn_object),
+    grn_object = grn_object,
     condition_col = condition_col,
     celltype_col = celltype_col
   )
