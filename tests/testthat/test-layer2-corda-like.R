@@ -115,6 +115,15 @@ test_that("Layer 2 exposes optional CORDA-like completion without changing forma
     ".rc_regcompass_step_layer2_completion_base",
     fixed = TRUE
   )
+  expect_match(implementation, "rc_export_microcompass", fixed = TRUE)
+  expect_match(
+    implementation, "model_completion_contract.rds", fixed = TRUE
+  )
+  expect_match(
+    implementation,
+    "saveRDS(answer, file.path(outdir, \"step_layer2.rds\"))",
+    fixed = TRUE
+  )
   expect_identical(
     names(formals(rc_regcompass_step_layer2)),
     c(
