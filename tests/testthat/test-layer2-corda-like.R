@@ -99,7 +99,7 @@ test_that("NC support receives a larger weighted LP cost", {
     evidence$reaction_id, classes,
     other_penalty = 1, negative_penalty = 10
   )
-  expect_equal(costs[c("HC", "MC")], c(0, 0))
+  expect_equal(unname(costs[c("HC", "MC")]), c(0, 0))
   expect_equal(costs[["OT"]], 1)
   expect_equal(costs[["NC"]], 10)
 })
