@@ -76,6 +76,7 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
 source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
 source("R/layer2_corda_paper_contract.R")
+source("R/layer2_corda_direction_contract.R")
 source("R/layer2_corda_model.R")
 
 metabolites <- c("A", "B", "X", "Y")
