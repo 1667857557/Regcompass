@@ -35,13 +35,17 @@ rc_regcompass_step_layer2 <- function(
       was_started <- isTRUE(BiocParallel::bpisup(BPPARAM))
       if (!was_started) {
         thread_state <- .rc_set_internal_single_thread()
-        BiocParallel::bpstart(BPPARAM)
-        pool_started_here <- TRUE
         on.exit({
-          .rc_release_bpparam(BPPARAM)
+          if (requireNamespace("BiocParallel", quietly = TRUE) &&
+              methods::is(BPPARAM, "BiocParallelParam") &&
+              isTRUE(BiocParallel::bpisup(BPPARAM))) {
+            .rc_release_bpparam(BPPARAM)
+          }
           .rc_restore_internal_threads(thread_state)
           invisible(gc(verbose = FALSE, full = TRUE))
         }, add = TRUE)
+        BiocParallel::bpstart(BPPARAM)
+        pool_started_here <- TRUE
       }
     }
   }
