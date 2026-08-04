@@ -78,6 +78,32 @@ jobs:
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
               raise RuntimeError(f"condition penalty contract missing: {missing}")
+          tutorial_paths = [
+              Path("docs/tutorial-01-quick-start.md"),
+              Path("docs/tutorial-02-stepwise-audit.md"),
+              Path("docs/mathematical-model.md"),
+              Path("vignettes/regcompass-workflow.Rmd"),
+          ]
+          required_tutorial = [
+              "padj < 0.05",
+              "abs(corr) >= 0.05",
+              "abs(estimate) >= 0.05",
+          ]
+          stale_tutorial = [
+              "abs(corr) >= 0.1",
+              "abs(estimate) >= 0.01",
+          ]
+          for path in tutorial_paths:
+              text = path.read_text()
+              missing = [value for value in required_tutorial if value not in text]
+              if missing:
+                  raise RuntimeError(f"tutorial penalty contract missing in {path}: {missing}")
+              stale = [value for value in stale_tutorial if value in text]
+              if stale:
+                  raise RuntimeError(f"stale tutorial penalty threshold in {path}: {stale}")
+          mathematical = Path("docs/mathematical-model.md").read_text()
+          if "\\rho_0=0.05,\\qquad \\beta_0=0.05" not in mathematical:
+              raise RuntimeError("mathematical penalty thresholds are not synchronized")
           runtime = Path("R/layer2_parallel_runtime.R").read_text()
           engine = Path("R/celltype_microcompass_reaction_parallel.R").read_text()
           required_runtime = [
