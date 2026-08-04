@@ -45,9 +45,9 @@ E_r = 0.8\max\{Q_r^{RNA},Q_r^{multiome}\}
       +0.2A_r^{regulatory},
 \]
 
-where `A_regulatory` is the mean GPR regulatory-support fraction. The
-`corda_regulatory_weight` parameter replaces `0.2` and the expression component
-receives weight `1 - corda_regulatory_weight`.
+where `A_regulatory` is the median GPR regulatory-support fraction across the
+matching metacells. The `corda_regulatory_weight` parameter replaces `0.2` and
+the expression component receives weight `1 - corda_regulatory_weight`.
 
 The structural classes are:
 
@@ -61,10 +61,10 @@ The structural classes are:
 - **NC:** remaining reactions with finite evidence at or below
   `corda_negative_confidence_threshold`.
 
-The medium-constrained parent GEM is first filtered to its FASTCC-consistent
-reaction set. The initial cell-type model contains all HC, MC_module and
-MC_evidence reactions. Directional completion then adds OT or NC reactions only
-when required to restore parent-feasible HC directions.
+The medium-constrained parent GEM is FASTCC-audited and inconsistent reactions
+are fixed to zero bounds. The initial cell-type model retains all HC, MC_module
+and MC_evidence structural entries. Directional completion is required only for
+HC directions that are feasible in the audited parent model.
 
 ## Weighted support completion
 
@@ -79,14 +79,15 @@ but replaces the uniform support objective with a weighted L1 objective:
 \]
 
 By default, `c_OT = 1` and `c_NC = 10`. Thus all evidence-supported HC/MC
-reactions are retained, ordinary unclassified support is preferred, and
-negative-confidence support is used only when it is necessary for directional
-flux consistency.
+reactions are retained and NC support is strongly disfavored relative to OT
+support. Because the objective is weighted flux rather than a binary reaction
+count, an NC reaction can still be selected when required for feasibility or
+when it gives the lower total weighted support flux.
 
 This objective does not claim that every retained reaction is active in one
 common flux vector. As in FASTCC/FASTCORE, structural retention means that a
-reaction belongs to the shared feasible model and can carry flux in at least one
-admissible steady state.
+reaction belongs to the shared model; its actual directional feasibility is
+reported separately.
 
 ## Backward compatibility
 
