@@ -63,8 +63,9 @@ The structural classes are:
 
 The medium-constrained parent GEM is FASTCC-audited and inconsistent reactions
 are fixed to zero bounds. The initial cell-type model retains all HC, MC_module
-and MC_evidence structural entries. Directional completion is required only for
-HC directions that are feasible in the audited parent model.
+and MC_evidence entries. Weighted directional completion then restores every
+parent-feasible HC/MC direction; only HC directions remain downstream scoring
+targets, so expanding MC structure does not enlarge the Layer 2 score matrix.
 
 ## Weighted support completion
 
@@ -79,15 +80,15 @@ but replaces the uniform support objective with a weighted L1 objective:
 \]
 
 By default, `c_OT = 1` and `c_NC = 10`. Thus all evidence-supported HC/MC
-reactions are retained and NC support is strongly disfavored relative to OT
-support. Because the objective is weighted flux rather than a binary reaction
-count, an NC reaction can still be selected when required for feasibility or
-when it gives the lower total weighted support flux.
+reactions are retained and made directionally flux-consistent whenever that
+direction is feasible in the audited parent model. NC support is strongly
+disfavored relative to OT support. Because the objective is weighted flux rather
+than a binary reaction count, an NC reaction can still be selected when required
+for feasibility or when it gives the lower total weighted support flux.
 
 This objective does not claim that every retained reaction is active in one
-common flux vector. As in FASTCC/FASTCORE, structural retention means that a
-reaction belongs to the shared model; its actual directional feasibility is
-reported separately.
+common flux vector. Instead, each retained HC/MC direction is required to carry
+at least `fastcore_epsilon` in at least one admissible steady state.
 
 ## Backward compatibility
 
@@ -110,6 +111,7 @@ Each CORDA-like union GEM records:
 - OT/NC support penalty;
 - counts of HC, module MC, evidence MC, OT and NC reactions;
 - counts of OT and NC reactions actually used as support;
+- initial and final counts of parent-feasible HC/MC directions;
 - completion iterations and directional closure diagnostics.
 
 The Layer 2 result reports `params$model_completion` and a
