@@ -46,6 +46,11 @@
   parent$corda_forbidden_reactions <- forbidden
   parent$corda_parent_original_lb <- validated$lb
   parent$corda_parent_original_ub <- validated$ub
+  parent$corda_parent_n_reactions <- length(validated$reactions)
+  parent$corda_parent_n_metabolites <- nrow(validated$S)
+  parent$corda_parent_n_open_reactions <- sum(
+    validated$lb < 0 | validated$ub > 0
+  )
   parent$corda_parent_prepruning <- "none"
   parent$corda_parent_contract <- paste(
     "medium and RegCompass forbidden-role bounds are applied, but no",
@@ -95,9 +100,18 @@
     args
   )
   build <- model$build_params
-  build$n_parent_reactions <- ncol(model$S) +
-    sum(!as.character(model$reaction_meta$reaction_id) %in%
-          as.character(model$reaction_meta$reaction_id))
+  build$n_parent_reactions <- as.integer(
+    model$corda_parent_n_reactions %||% NA_integer_
+  )
+  build$n_parent_metabolites <- as.integer(
+    model$corda_parent_n_metabolites %||% NA_integer_
+  )
+  build$n_parent_open_reactions <- as.integer(
+    model$corda_parent_n_open_reactions %||% NA_integer_
+  )
+  build$n_parent_forbidden_role_reactions <- length(
+    model$corda_forbidden_reactions %||% character()
+  )
   build$n_fastcc_consistent_parent_reactions <- NULL
   build$n_fastcc_inconsistent_parent_reactions <- NULL
   build$fastcc_epsilon <- NULL
@@ -111,8 +125,12 @@
   model$build_params <- build
   model$corda_parent_contract <- list(
     prepruning = "none",
+    n_reactions = build$n_parent_reactions,
+    n_metabolites = build$n_parent_metabolites,
+    n_open_reactions = build$n_parent_open_reactions,
     medium_constraints_applied = TRUE,
     forbidden_roles_blocked = c("demand", "sink", "artificial_support"),
+    forbidden_reactions = model$corda_forbidden_reactions %||% character(),
     fastcore_epsilon_used = FALSE
   )
   model
