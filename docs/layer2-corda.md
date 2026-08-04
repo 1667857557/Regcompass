@@ -104,9 +104,10 @@ The paper defaults are:
 
 ### Stage 1: HC dependencies
 
-All HC directions are assessed `n` times. MC directions have cost `1`, NC
-directions have cost `gamma`, and HC/OT directions have zero base cost. Any MC
-or NC reaction associated with an HC target is promoted to the retained set.
+All HC directions are assessed `n` times. MC directions have cost
+`sqrt(gamma)`, NC directions have cost `gamma`, and HC/OT directions have zero
+base cost. Any MC or NC reaction associated with an HC target is promoted to the
+retained set.
 
 ### Stage 2: flexible MC and shared NC support
 
@@ -119,8 +120,8 @@ promoted when at least one allowed direction can carry `corda_epsilon` flux.
 ### Stage 3: OT dependencies of the retained set
 
 All still-unpromoted MC and NC reactions are blocked. Every retained direction
-is assessed `n` times while OT directions have cost `1`. Associated OT reactions
-are promoted. The final model contains the retained reaction set.
+is assessed `n` times while OT directions have cost `gamma`. Associated OT
+reactions are promoted. The final model contains the retained reaction set.
 
 Confidence updates occur only after all tasks in a stage finish. This barrier
 semantics makes the reconstruction independent of task completion order.
@@ -141,8 +142,15 @@ When the number of cell-type-by-medium models is at least the worker count,
 models run in parallel and each model executes its stages serially inside one
 worker. When there are fewer models than workers, models run sequentially and
 each stage distributes `target direction × repeat` chunks across the full worker
-pool. Direct calls with `BPPARAM = NULL` create one package-managed pool and keep
-it alive across all CORDA stages.
+pool. A supplied but inactive `BPPARAM` is started once for the whole Layer 2
+call and released at exit; an already active caller pool remains active. When
+`BPPARAM = NULL`, the CORDA route creates one package-managed pool and keeps it
+alive across all stages.
+
+The persistent native solver removes repeated model construction and permits
+basis reuse, but the actual speedup depends on model size, presolve behavior and
+worker count. Performance claims should be based on a Human-GEM benchmark rather
+than the synthetic correctness test.
 
 ## Pipeline contracts
 
@@ -162,6 +170,8 @@ it alive across all CORDA stages.
 Each model records initial confidence, final retained status, inclusion stage,
 reaction evidence, dependency tasks, Stage 2 NC-to-MC support pairs, execution
 backend, persistent-solver fallback counts and core-direction closure checks.
-The Layer 2 result records `params$model_completion` and
-`completion_contract`; the exported model-cache summary reports class and stage
-counts for every cell-type-by-medium model.
+The full task table is stored once and a compact stage/status/backend summary is
+stored separately to avoid duplicate model-cache payloads. The Layer 2 result
+records `params$model_completion` and `completion_contract`; the exported
+model-cache summary reports class and stage counts for every cell-type-by-medium
+model.
