@@ -70,7 +70,7 @@
       significant_only = TRUE,
       return_edge_contributions = FALSE
     )
-    aggregated <- Pando::aggregate_condition_grn_projection(
+    aggregated <- Pando::aggregate_condition_grn_projection_strict(
       cell_projection, membership, group_col = "metacell_id"
     )
     score <- as.matrix(aggregated$gene_score)
@@ -122,6 +122,7 @@
       padj_threshold = 0.05,
       projection_effect = "penalty_effect",
       pando_object_scope = "cell_type_exact_feature_space",
+      aggregation_contract = "all_projected_cells_have_exact_membership",
       stringsAsFactors = FALSE
     )
   }
