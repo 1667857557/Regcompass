@@ -10,7 +10,7 @@
   coverage <- list()
 
   for (fit in grn_result$condition_grn_fits) {
-    .rc_require_pando_condition_grn_fit(fit)
+    fit <- .rc_apply_condition_penalty_gate(fit)
     cell_projection <- Pando::project_condition_grn_cells(
       object = grn_result$pando_grn_data,
       fit = fit,
@@ -41,9 +41,7 @@
       ]
       significant_edges <- coefficient[
         as.character(coefficient$condition) == condition &
-          coefficient$estimable %in% TRUE &
-          is.finite(as.numeric(coefficient$padj)) &
-          as.numeric(coefficient$padj) < 0.05,
+          coefficient$significant %in% TRUE,
         , drop = FALSE
       ]
       reliable_targets <- intersect(
@@ -61,13 +59,13 @@
       n_significant_edges = vapply(fit$condition_levels, function(condition) {
         sum(
           coefficient$condition == condition &
-            coefficient$estimable %in% TRUE &
-            is.finite(as.numeric(coefficient$padj)) &
-            as.numeric(coefficient$padj) < 0.05,
+            coefficient$significant %in% TRUE,
           na.rm = TRUE
         )
       }, integer(1)),
       padj_threshold = 0.05,
+      corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
+      estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
       projection_effect = "penalty_effect",
       stringsAsFactors = FALSE
     )
@@ -77,9 +75,10 @@
     projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_fixed_dictionary_glm_padj_filtered",
+    origin = "paired_cell_fixed_dictionary_glm_padj_corr_effect_filtered",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    projection_name = "padj_filtered_fixed_dictionary_condition_glm",
+    projection_name =
+      "padj_corr_effect_filtered_fixed_dictionary_condition_glm",
     nonestimable_policy =
       "coefficient_NA_and_zero_realized_penalty_contribution"
   )
