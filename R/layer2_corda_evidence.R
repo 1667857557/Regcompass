@@ -1,4 +1,4 @@
-# Optional evidence-maximizing CORDA-like completion for Layer 2 union GEMs.
+# Cell-type reaction confidence mapping for the original CORDA algorithm.
 
 .rc_corda_scalar <- function(value, name, lower = -Inf, upper = Inf,
                              finite = TRUE) {
@@ -12,6 +12,18 @@
   value
 }
 
+.rc_corda_integer <- function(value, name, lower = 0L) {
+  numeric_value <- suppressWarnings(as.numeric(value))
+  integer_value <- suppressWarnings(as.integer(numeric_value))
+  if (length(numeric_value) != 1L || is.na(numeric_value) ||
+      !is.finite(numeric_value) || numeric_value != integer_value ||
+      integer_value < lower) {
+    stop("`", name, "` must be one integer >= ", lower, ".",
+         call. = FALSE)
+  }
+  integer_value
+}
+
 .rc_corda_flag <- function(value, name) {
   if (!is.logical(value) || length(value) != 1L || is.na(value)) {
     stop("`", name, "` must be TRUE or FALSE.", call. = FALSE)
@@ -23,10 +35,25 @@
   if (!is.list(model_params)) {
     stop("`layer2_args$model_params` must be a list.", call. = FALSE)
   }
-  model_completion <- match.arg(
-    as.character(model_params$model_completion %||% "fastcore"),
-    c("fastcore", "corda_like")
+  requested <- as.character(model_params$model_completion %||% "fastcore")
+  if (length(requested) != 1L || is.na(requested)) {
+    stop("`model_completion` must be `fastcore` or `corda`.", call. = FALSE)
+  }
+  if (identical(requested, "corda_like")) requested <- "corda"
+  model_completion <- match.arg(requested, c("fastcore", "corda"))
+  obsolete <- intersect(
+    names(model_params),
+    c("corda_other_penalty", "corda_negative_penalty")
   )
+  if (length(obsolete)) {
+    stop(
+      "Obsolete weighted-FASTCORE parameter(s): ",
+      paste(obsolete, collapse = ", "),
+      ". Original CORDA uses `corda_gamma`, `corda_kappa`, `corda_n`, ",
+      "and `corda_p`.",
+      call. = FALSE
+    )
+  }
   max_mc <- suppressWarnings(as.numeric(
     model_params$corda_max_medium_confidence_reactions %||% Inf
   ))
@@ -39,6 +66,34 @@
   if (is.finite(max_mc)) max_mc <- as.integer(floor(max_mc))
   answer <- list(
     model_completion = model_completion,
+    gamma = .rc_corda_scalar(
+      model_params$corda_gamma %||% 1e5,
+      "corda_gamma", 1, Inf
+    ),
+    kappa = .rc_corda_scalar(
+      model_params$corda_kappa %||% 1e-2,
+      "corda_kappa", 0, Inf
+    ),
+    epsilon = .rc_corda_scalar(
+      model_params$corda_epsilon %||% 1,
+      "corda_epsilon", .Machine$double.eps, Inf
+    ),
+    n = .rc_corda_integer(
+      model_params$corda_n %||% 5L,
+      "corda_n", 1L
+    ),
+    p = .rc_corda_integer(
+      model_params$corda_p %||% 2L,
+      "corda_p", 1L
+    ),
+    seed = .rc_corda_integer(
+      model_params$corda_seed %||% 1L,
+      "corda_seed", 0L
+    ),
+    flux_tolerance = .rc_corda_scalar(
+      model_params$corda_flux_tolerance %||% 1e-8,
+      "corda_flux_tolerance", .Machine$double.eps, Inf
+    ),
     medium_confidence_threshold = .rc_corda_scalar(
       model_params$corda_medium_confidence_threshold %||% 0.75,
       "corda_medium_confidence_threshold", 0, 1
@@ -51,14 +106,6 @@
       model_params$corda_regulatory_weight %||% 0.20,
       "corda_regulatory_weight", 0, 1
     ),
-    other_penalty = .rc_corda_scalar(
-      model_params$corda_other_penalty %||% 1,
-      "corda_other_penalty", 0, Inf
-    ),
-    negative_penalty = .rc_corda_scalar(
-      model_params$corda_negative_penalty %||% 10,
-      "corda_negative_penalty", 0, Inf
-    ),
     include_evidence_outside_modules = .rc_corda_flag(
       model_params$corda_include_evidence_outside_modules %||% TRUE,
       "corda_include_evidence_outside_modules"
@@ -67,6 +114,10 @@
     evidence_definition = paste(
       "(1 - regulatory_weight) * max(within-cell-type RNA percentile,",
       "multiome percentile) + regulatory_weight * regulatory support"
+    ),
+    algorithm = "Schultz_Qutub_CORDA_2016_three_stage_dependency_assessment",
+    paper_defaults = c(
+      gamma = 1e5, kappa = 1e-2, epsilon = 1, n = 5, p = 2
     )
   )
   if (answer$negative_confidence_threshold >
@@ -74,13 +125,6 @@
     stop(
       "`corda_negative_confidence_threshold` must not exceed ",
       "`corda_medium_confidence_threshold`.",
-      call. = FALSE
-    )
-  }
-  if (answer$negative_penalty < answer$other_penalty) {
-    stop(
-      "`corda_negative_penalty` must be greater than or equal to ",
-      "`corda_other_penalty`.",
       call. = FALSE
     )
   }
@@ -122,7 +166,7 @@
   }, logical(1))]
   if (length(missing)) {
     stop(
-      "CORDA-like completion requires aligned Layer 1 matrices: ",
+      "CORDA completion requires aligned Layer 1 matrices: ",
       paste(missing, collapse = ", "), ".",
       call. = FALSE
     )
@@ -130,7 +174,7 @@
   reference <- layer1$reaction_expression
   for (name in required[-1L]) {
     if (!identical(dimnames(layer1[[name]]), dimnames(reference))) {
-      stop("CORDA-like Layer 1 evidence matrices are not aligned.",
+      stop("CORDA Layer 1 evidence matrices are not aligned.",
            call. = FALSE)
     }
   }
@@ -138,7 +182,7 @@
   celltype_col <- as.character(params$celltype_col %||% "cell_type")
   unit_meta <- layer1$unit_meta %||% layer1$metacell_meta
   if (!is.data.frame(unit_meta) || !celltype_col %in% colnames(unit_meta)) {
-    stop("CORDA-like completion requires Layer 1 unit cell types.",
+    stop("CORDA completion requires Layer 1 unit cell types.",
          call. = FALSE)
   }
   id_col <- if ("unit_id" %in% colnames(unit_meta)) {
@@ -146,14 +190,14 @@
   } else if ("pool_id" %in% colnames(unit_meta)) {
     "pool_id"
   } else {
-    stop("CORDA-like completion requires unit_id or pool_id.", call. = FALSE)
+    stop("CORDA completion requires unit_id or pool_id.", call. = FALSE)
   }
   unit_meta[[id_col]] <- as.character(unit_meta[[id_col]])
   unit_meta <- unit_meta[
     match(colnames(reference), unit_meta[[id_col]]), , drop = FALSE
   ]
   if (anyNA(unit_meta[[id_col]])) {
-    stop("CORDA-like unit metadata do not align to Layer 1 columns.",
+    stop("CORDA unit metadata do not align to Layer 1 columns.",
          call. = FALSE)
   }
   rows <- lapply(unique(as.character(unit_meta[[celltype_col]])), function(ct) {
@@ -190,7 +234,7 @@
     )
   })
   answer <- .rc_bind_frames_fill(rows)
-  answer$evidence_schema <- "regcompass_corda_like_reaction_evidence_v1"
+  answer$evidence_schema <- "regcompass_corda_reaction_evidence_v2"
   answer
 }
 
@@ -223,9 +267,7 @@
     ]
     if (is.finite(max_medium_confidence_reactions) &&
         length(evidence_mc) > max_medium_confidence_reactions) {
-      ordering <- order(
-        -score[evidence_mc], evidence_mc, na.last = TRUE
-      )
+      ordering <- order(-score[evidence_mc], evidence_mc, na.last = TRUE)
       evidence_mc <- evidence_mc[
         ordering[seq_len(max_medium_confidence_reactions)]
       ]
@@ -234,36 +276,32 @@
   hc <- core_reactions
   mc_module <- setdiff(module_reactions, hc)
   mc_evidence <- setdiff(evidence_mc, union(hc, mc_module))
-  retained <- union(hc, union(mc_module, mc_evidence))
-  rest <- setdiff(parent_reactions, retained)
-  nc <- rest[
-    is.finite(score[rest]) & score[rest] <= negative_confidence_threshold
+  mc <- union(mc_module, mc_evidence)
+  remaining <- setdiff(parent_reactions, union(hc, mc))
+  nc <- remaining[
+    is.finite(score[remaining]) &
+      score[remaining] <= negative_confidence_threshold
   ]
-  ot <- setdiff(rest, nc)
-  class <- stats::setNames(rep("OT", length(parent_reactions)), parent_reactions)
-  class[nc] <- "NC"
-  class[mc_evidence] <- "MC_evidence"
-  class[mc_module] <- "MC_module"
-  class[hc] <- "HC"
+  ot <- setdiff(remaining, nc)
+  confidence <- stats::setNames(rep("OT", length(parent_reactions)),
+                                parent_reactions)
+  confidence[nc] <- "NC"
+  confidence[mc_evidence] <- "MC_evidence"
+  confidence[mc_module] <- "MC_module"
+  confidence[hc] <- "HC"
   list(
     hc = hc,
     mc_module = mc_module,
     mc_evidence = mc_evidence,
-    medium_confidence = union(mc_module, mc_evidence),
-    biological = retained,
-    ot = ot,
+    mc = mc,
     nc = nc,
+    ot = ot,
     evidence_score = score,
-    evidence_class = class
+    confidence = confidence,
+    initial_confidence = confidence,
+    confidence_contract = paste(
+      "HC=merged core; MC=non-core module plus optional high-evidence",
+      "outside-module reactions; NC=finite low evidence; OT=remaining"
+    )
   )
-}
-
-.rc_corda_support_costs <- function(
-    reactions, classes, other_penalty = 1, negative_penalty = 10) {
-  reactions <- unique(as.character(reactions))
-  class <- as.character(classes$evidence_class[reactions])
-  cost <- rep(other_penalty, length(reactions))
-  cost[class == "NC"] <- negative_penalty
-  cost[class %in% c("HC", "MC_module", "MC_evidence")] <- 0
-  stats::setNames(cost, reactions)
 }
