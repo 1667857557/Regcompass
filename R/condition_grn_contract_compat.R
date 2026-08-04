@@ -179,11 +179,19 @@
   grn_object <- .rc_complete_pando_condition_fits_in_object(grn_object)
   grn <- methods::slot(grn_object, "grn")
   params <- methods::slot(grn, "params")
+  fits <- params$condition_grn_fits
+  fit_list <- if (inherits(fits, "ConditionGRNFit")) list(fits) else fits
+  if (!is.list(fit_list) || !length(fit_list)) {
+    stop("Pando did not store condition fits for RegCompass extraction.",
+         call. = FALSE)
+  }
+  invisible(lapply(fit_list, .rc_require_pando_condition_grn_fit))
+
   data_object <- methods::slot(grn_object, "data")
   metadata <- methods::slot(data_object, "meta.data")
   .rc_validate_pando_fit_metadata_frame(
     metadata = metadata,
-    fits = params$condition_grn_fits,
+    fits = fit_list,
     condition_col = condition_col,
     celltype_col = celltype_col
   )
