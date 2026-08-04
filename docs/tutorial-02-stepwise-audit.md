@@ -23,8 +23,8 @@ step1 <- rc_regcompass_step_grn(
   pando_args = list(
     min_cells = 300L,
     pando_infer_args = list(
-      tf_cor = 0.1,
-      peak_cor = 0,
+      tf_cor = 0.05,
+      peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
@@ -44,40 +44,7 @@ Stage 1 resolves the route independently for each retained cell type:
 
 The same `pando_infer_args` list can be used for all routes. Condition-only arguments (`padj_threshold`, `rank_action`, `min_residual_df`, and layer controls) are disabled before standard Pando is called. Standard-model controls (`method`, `alpha`, `scale`, and related model arguments) are disabled for the fixed common-dictionary condition model. Unknown argument names still fail before model fitting.
 
-`tf_cor = 0.1` controls Pando candidate discovery. It must not be interpreted as the final RegCompass penalty-entry threshold. In both the condition-GRN and standard-Pando routes, an edge enters the regulatory penalty only when:
-
-```r
-estimable == TRUE
-padj < 0.05
-abs(corr) >= 0.05
-abs(estimate) >= 0.05
-```
-
-The absolute correlation and effect-size cutoffs are inclusive. A coefficient with `corr = -0.05` and `estimate = -0.05` passes those two gates; values with absolute magnitude below `0.05` do not. Edges that fail a gate are retained for audit in the complete table but use `penalty_effect = 0`.
-
-For common-dictionary condition fits, `corr_source` records whether `corr` came directly from the condition coefficient table or from the frozen dictionary's `max_abs_tf_target_cor`. Standard Pando uses the coefficient-table TF–target correlation.
-
-Inspect the condition-GRN penalty fields before continuing:
-
-```r
-all_edges <- step1$grn_result$tf_peak_gene_condition_all
-
-condition_active <- subset(
-  all_edges,
-  (is.na(analysis_mode) | analysis_mode == "condition_grn") &
-    penalty_eligible %in% TRUE,
-  select = c(
-    tf, target, region, condition,
-    estimate, padj, corr, corr_source,
-    estimable, penalty_effect
-  )
-)
-
-head(condition_active)
-table(condition_active$corr_source, useNA = "ifany")
-summary(abs(condition_active$corr))
-summary(abs(condition_active$estimate))
-```
+When `tf_cor` or `peak_cor` is omitted, RegCompass supplies `0.05` to both condition-GRN and standard-Pando routes. User-supplied values remain unchanged. The current Pando candidate implementation uses strict comparisons, so a threshold of `0.05` means `abs(correlation) > 0.05`, not `>= 0.05`.
 
 When at least two cell-type jobs are available, Stage 1 distributes those jobs through `BPPARAM`. Every worker runs its own Pando job serially, so nested worker pools are not created. With one standard-Pando job, its existing target-level path may be used. A single condition-GRN job remains serial because pooled discovery, condition-specific discovery, dictionary freezing, and condition refits are treated as one coordinated contract.
 

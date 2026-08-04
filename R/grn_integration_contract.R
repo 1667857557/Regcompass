@@ -1,5 +1,8 @@
 # Final cross-package argument contract for Stage 1 Pando routing.
 
+.RC_PANDO_TF_COR_DEFAULT <- 0.05
+.RC_PANDO_PEAK_COR_DEFAULT <- 0.05
+
 .rc_route_pando_infer_args_integration_base <-
   .rc_route_pando_infer_args
 
@@ -60,6 +63,11 @@
 .rc_route_pando_infer_args <- function(
     args, condition_types = character(), standard_types = character()) {
   .rc_require_condition_pando_version(condition_types)
+  supplied_names <- if (is.list(args) && !is.null(names(args))) {
+    names(args)
+  } else {
+    character()
+  }
   normalized <- .rc_normalize_condition_pando_layer_args(
     args, condition_types
   )
@@ -68,6 +76,50 @@
     condition_types = condition_types,
     standard_types = standard_types
   )
+
+  active_routes <- c(
+    if (length(condition_types)) "condition_grn" else character(),
+    if (length(standard_types)) "standard_pando" else character()
+  )
+  default_rows <- list()
+  if (!"tf_cor" %in% supplied_names) {
+    if (length(condition_types)) {
+      answer$condition$tf_cor <- .RC_PANDO_TF_COR_DEFAULT
+    }
+    if (length(standard_types)) {
+      answer$standard$tf_cor <- .RC_PANDO_TF_COR_DEFAULT
+    }
+    if (length(active_routes)) {
+      default_rows[[length(default_rows) + 1L]] <- data.frame(
+        route = active_routes,
+        argument = "tf_cor",
+        action = "defaulted_to_0.05",
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  if (!"peak_cor" %in% supplied_names) {
+    if (length(condition_types)) {
+      answer$condition$peak_cor <- .RC_PANDO_PEAK_COR_DEFAULT
+    }
+    if (length(standard_types)) {
+      answer$standard$peak_cor <- .RC_PANDO_PEAK_COR_DEFAULT
+    }
+    if (length(active_routes)) {
+      default_rows[[length(default_rows) + 1L]] <- data.frame(
+        route = active_routes,
+        argument = "peak_cor",
+        action = "defaulted_to_0.05",
+        stringsAsFactors = FALSE
+      )
+    }
+  }
+  if (length(default_rows)) {
+    answer$diagnostics <- .rc_bind_frames_fill(c(
+      list(answer$diagnostics), default_rows
+    ))
+  }
+
   if (length(normalized$supplied)) {
     confirmed <- data.frame(
       route = "condition_grn",
