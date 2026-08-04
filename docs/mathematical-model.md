@@ -24,11 +24,24 @@ y_{g,i}=\alpha_{g,c}+\sum_{e\in E_g^{\cup}}\beta_{e,g,c}x_{e,i}+\varepsilon_{g,i
 
 The implementation uses a Gaussian identity GLM with an intercept, `interaction_term = ":"`, and `scale = FALSE`. Pooled coefficients are not used to calibrate condition coefficients.
 
-Let \(a_{e,g,c}\) indicate that a coefficient is estimable. For adjusted-P threshold \(q\),
+Let \(a_{e,g,c}\) indicate that a coefficient is estimable, \(\rho_{e,g,c}\) denote the correlation value used by the RegCompass edge gate, and \(\widehat\beta_{e,g,c}\) denote the fitted coefficient. The fixed penalty-entry thresholds are
 
 \[
-s_{e,g,c}=\mathbf{1}\{a_{e,g,c}=1\ \land\ padj_{e,g,c}<q\}.
+q=0.05,\qquad \rho_0=0.05,\qquad \beta_0=0.05.
 \]
+
+An edge is active for regulatory penalty projection only when all four criteria hold:
+
+\[
+s_{e,g,c}=\mathbf{1}\left\{
+ a_{e,g,c}=1
+ \ \land\ padj_{e,g,c}<q
+ \ \land\ |\rho_{e,g,c}|\ge\rho_0
+ \ \land\ |\widehat\beta_{e,g,c}|\ge\beta_0
+\right\}.
+\]
+
+For standard Pando, \(\rho_{e,g,c}\) is the coefficient-table TF–target correlation. For a common-dictionary condition fit without coefficient-level `corr`, RegCompass uses the frozen dictionary's audited `max_abs_tf_target_cor`; the source is recorded in `corr_source`. The absolute-value gates retain both positive and negative correlations and coefficients. Their boundaries are inclusive, whereas the adjusted-P criterion is strict.
 
 The effect used for downstream projection is
 
@@ -40,7 +53,7 @@ The effect used for downstream projection is
 \end{cases}
 \]
 
-Unavailable coefficients remain `NA` in the complete coefficient table.
+Unavailable coefficients remain `NA` in the complete coefficient table. Estimable coefficients that fail the adjusted-P, correlation, or effect-size gate remain auditable but have zero realized penalty contribution.
 
 ## 2. Paired-cell projection and metacell aggregation
 
