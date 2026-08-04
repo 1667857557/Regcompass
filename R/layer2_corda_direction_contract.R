@@ -50,19 +50,21 @@
   target <- as.character(task$variable_id[[1L]])
   stage <- as.character(task$stage[[1L]])
   replicate <- as.integer(task$replicate[[1L]])
+  noise_namespace <- as.character(options$noise_namespace %||% "")
   base_cost <- .rc_corda_base_cost(
     split, confidence, stage, options$gamma
   )
   objective <- as.numeric(base_cost) + .rc_corda_noise(
     length(base_cost), options$seed,
-    c(stage, target, replicate), options$kappa
+    c(noise_namespace, stage, target, replicate), options$kappa
   )
   if (!target %in% names(split$ub) || split$ub[[target]] < options$epsilon) {
     return(list(
       result = list(
         task = task, status = "target_blocked", associated = character(),
         target_flux = 0, objective = NA_real_, backend = engine$type,
-        opposite_direction_blocked = character()
+        opposite_direction_blocked = character(),
+        noise_namespace = noise_namespace
       ),
       engine = engine
     ))
@@ -100,7 +102,8 @@
       objective = answer$objective,
       backend = answer$backend,
       solver_message = answer$solver_message,
-      opposite_direction_blocked = bounds$opposite_variables
+      opposite_direction_blocked = bounds$opposite_variables,
+      noise_namespace = noise_namespace
     ),
     engine = engine
   )
