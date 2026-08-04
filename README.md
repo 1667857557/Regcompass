@@ -33,7 +33,18 @@ result <- rc_run_regcompass_one_shot(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
   condition_col = "condition",
-  celltype_col = "cell_type"
+  celltype_col = "cell_type",
+  pando_args = list(
+    min_cells = 300L,
+    pando_infer_args = list(
+      tf_cor = 0.05,
+      peak_cor = 0.05,
+      adjust_method = "BH",
+      padj_threshold = 0.05,
+      rank_action = "mark",
+      min_residual_df = 1L
+    )
+  )
 )
 ```
 
