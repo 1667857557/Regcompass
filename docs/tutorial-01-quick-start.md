@@ -12,6 +12,8 @@ Stage 1 uses a fixed minimum of 300 paired cells. For each cell type:
 
 The same `pando_infer_args` list can be supplied in all cases. Stage 1 automatically disables condition-only controls before standard Pando and disables standard-model controls for the fixed common-dictionary condition model. With multiple retained cell types, `upstream_workers` distributes independent cell-type GRN jobs and prevents nested worker pools.
 
+RegCompass now defaults both Pando candidate-discovery correlation thresholds to `0.05`. Because the current Pando implementation applies strict `>` comparisons, the effective candidate rules are `abs(TF-target correlation) > 0.05` and `abs(peak-target correlation) > 0.05`.
+
 ## Install current companion repositories
 
 ```r
@@ -84,8 +86,8 @@ result <- rc_run_regcompass_one_shot(
   pando_args = list(
     min_cells = 300L,
     pando_infer_args = list(
-      tf_cor = 0.1,
-      peak_cor = 0,
+      tf_cor = 0.05,
+      peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
