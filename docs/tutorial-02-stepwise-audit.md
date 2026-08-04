@@ -153,7 +153,6 @@ step5_corda <- rc_regcompass_step_layer2(
     model_params = list(
       model_completion = "corda",
       completion_time_limit = 3000,
-      fastcore_epsilon = 1e-4,
       strict = TRUE,
       corda_gamma = 1e5,
       corda_kappa = 1e-2,
@@ -174,19 +173,33 @@ step5_corda <- rc_regcompass_step_layer2(
 
 CORDA maps merged core reactions to HC, non-core module reactions to flexible MC,
 low-evidence reactions to NC and remaining reactions to OT. It then performs the
-published HC-dependency, shared-NC/MC-feasibility and retained-set/OT stages.
-Only retained, parent-feasible HC core directions remain downstream scoring
-targets, so the score and penalty matrix dimensions remain compatible with the
-FASTCORE route.
+published HC-association, shared-NC/MC-feasibility and RE/OT-association stages.
+The parent model is the complete GEM after applying the requested medium bounds;
+CORDA does not apply FASTCC pruning or generic demand/sink/artificial-support
+blocking. `fastcore_epsilon` and `max_support_reactions` are therefore FASTCORE
+controls and should not be supplied to the CORDA route.
+
+For a reversible reaction being assessed in one direction, the opposite split
+direction is fixed to zero. This is equivalent to the original implementation,
+which leaves the target reaction unsplit and constrains it to `+epsilon` or
+`-epsilon`, and prevents a zero-net-flux forward/reverse self-cycle.
+
+Only retained HC core directions that can reach `corda_epsilon` remain downstream
+scoring targets, so the score and penalty matrix dimensions remain compatible
+with the FASTCORE route. The optional temporary metabolite-task reactions from
+the original MATLAB workflow are not exposed by the current Layer-2 input
+contract.
 
 When `BPPARAM` is omitted, the CORDA route creates one package-managed worker
 pool and keeps it alive across all stages. With few cell-type-by-medium models,
 target-direction-by-repeat tasks use the full pool; with many models, models run
 in parallel. HiGHS uses a persistent native C++ solver and reuses the simplex
-basis within each task block.
+basis within each task block. Every worker restricts its internal LP solver to
+one thread to avoid oversubscription.
 
-See `docs/layer2-corda.md` for the exact confidence mapping, paper parameters,
-three stages, acceleration strategy and audit fields.
+See `docs/layer2-corda.md` for the exact confidence mapping, mathematical
+transformation, original-code equivalence, acceleration strategy and audit
+fields.
 
 ## Stage 6: result assembly
 
