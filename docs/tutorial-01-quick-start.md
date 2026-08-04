@@ -12,7 +12,23 @@ Stage 1 uses a fixed minimum of 300 paired cells. For each cell type:
 
 The same `pando_infer_args` list can be supplied in all cases. Stage 1 automatically disables condition-only controls before standard Pando and disables standard-model controls for the fixed common-dictionary condition model. With multiple retained cell types, `upstream_workers` distributes independent cell-type GRN jobs and prevents nested worker pools.
 
-RegCompass now defaults both Pando candidate-discovery correlation thresholds to `0.05`. Because the current Pando implementation applies strict `>` comparisons, the effective candidate rules are `abs(TF-target correlation) > 0.05` and `abs(peak-target correlation) > 0.05`.
+RegCompass defaults both Pando candidate-discovery correlation thresholds to `0.05`. Because the current Pando implementation applies strict `>` comparisons, the effective candidate rules are:
+
+```r
+abs(tf_target_cor) > 0.05
+abs(peak_target_cor) > 0.05
+```
+
+Candidate discovery and final penalty entry are separate operations. A fitted TF-peak-target edge contributes to the RegCompass regulatory penalty only when all four conditions hold:
+
+```r
+estimable == TRUE &
+  padj < 0.05 &
+  abs(corr) >= 0.05 &
+  abs(estimate) >= 0.05
+```
+
+The two final absolute-value gates are inclusive. Positive and negative correlations and coefficients are retained when their absolute magnitudes pass the threshold. Edges that fail any final gate remain in the complete coefficient table but receive `penalty_effect = 0` and do not contribute to downstream regulatory projection. For standard Pando, `corr` is the coefficient-table TF-target correlation. For a common-dictionary condition fit without coefficient-level `corr`, RegCompass uses the frozen dictionary's audited `max_abs_tf_target_cor` and records the origin in `corr_source`.
 
 ## Install current companion repositories
 
