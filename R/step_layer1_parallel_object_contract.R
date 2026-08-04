@@ -1,11 +1,24 @@
 # Route Layer 1 projection to the exact per-cell-type Pando object.
 
 .rc_condition_pando_object_for_fit <- function(grn_result, fit) {
+  .rc_require_pando_condition_grn_fit(fit)
   cell_type <- as.character(fit$cell_type)[[1L]]
   object_map <- grn_result$pando_grn_data_by_cell_type %||% list()
   if (length(object_map)) {
-    if (is.null(names(object_map)) ||
-        !cell_type %in% names(object_map)) {
+    map_names <- names(object_map)
+    fit_types <- vapply(grn_result$condition_grn_fits, function(value) {
+      as.character(value$cell_type)[[1L]]
+    }, character(1))
+    if (is.null(map_names) || anyNA(map_names) ||
+        any(!nzchar(map_names)) || anyDuplicated(map_names) ||
+        anyNA(fit_types) || any(!nzchar(fit_types)) ||
+        anyDuplicated(fit_types) || !setequal(map_names, fit_types)) {
+      stop(
+        "Condition fits and per-cell-type Pando objects do not form the same ",
+        "unique cell-type set.", call. = FALSE
+      )
+    }
+    if (!cell_type %in% map_names) {
       stop("No Pando GRNData object is stored for condition-GRN cell type `",
            cell_type, "`.", call. = FALSE)
     }
@@ -17,9 +30,9 @@
     stop("Condition-GRN projection requires a Pando GRNData object for `",
          cell_type, "`.", call. = FALSE)
   }
-  fit_cells <- unique(as.character(unlist(
-    fit$condition_cell_ids, use.names = FALSE
-  )))
+  fit_cells <- as.character(unlist(
+    fit$condition_cell_ids[fit$condition_levels], use.names = FALSE
+  ))
   object_cells <- colnames(object@data)
   missing <- setdiff(fit_cells, object_cells)
   if (length(missing)) {
@@ -29,6 +42,12 @@
       call. = FALSE
     )
   }
+  .rc_validate_pando_fit_metadata_frame(
+    metadata = object@data@meta.data,
+    fits = list(fit),
+    condition_col = as.character(fit$condition_col)[[1L]],
+    celltype_col = as.character(fit$cell_type_col)[[1L]]
+  )
   object
 }
 
