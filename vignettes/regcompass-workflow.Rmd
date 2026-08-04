@@ -20,6 +20,10 @@ Stage 1 routes each cell type independently:
 - two or more retained conditions: condition GRN;
 - one retained condition: standard Pando.
 
+Candidate discovery and penalty entry are separate. The example `tf_cor = 0.1` controls Pando candidate construction. A fitted TF–peak–gene edge contributes to the RegCompass regulatory penalty only when it is estimable and simultaneously satisfies `padj < 0.05`, `abs(corr) >= 0.05`, and `abs(estimate) >= 0.05`. The absolute-value thresholds include the boundary. Failed edges remain in the complete coefficient table with `penalty_effect = 0`.
+
+For standard Pando, `corr` is the coefficient-table TF–target correlation. For common-dictionary condition fits without coefficient-level `corr`, RegCompass uses the frozen dictionary's `max_abs_tf_target_cor` and records the source in `corr_source`.
+
 # One-shot run
 
 ```r
