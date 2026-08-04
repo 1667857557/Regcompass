@@ -1,7 +1,83 @@
 # Route Layer 1 projection to the exact per-cell-type Pando object.
 
+.rc_require_layer1_condition_grn_fit <- function(fit) {
+  if (is.null(fit$regcompass_penalty_filter)) {
+    .rc_require_pando_condition_grn_fit(fit)
+    return(invisible(TRUE))
+  }
+
+  expected_filter <-
+    "estimable & BH padj < 0.05 & abs(corr) >= 0.05 & abs(estimate) >= 0.05"
+  filter_value <- as.character(fit$regcompass_penalty_filter)
+  corr_threshold <- suppressWarnings(as.numeric(
+    fit$regcompass_corr_threshold
+  ))
+  estimate_threshold <- suppressWarnings(as.numeric(
+    fit$regcompass_estimate_threshold
+  ))
+  if (length(filter_value) != 1L || is.na(filter_value) ||
+      !identical(filter_value, expected_filter) ||
+      length(corr_threshold) != 1L ||
+      !isTRUE(all.equal(
+        corr_threshold, .RC_PANDO_PENALTY_CORR_THRESHOLD
+      )) ||
+      length(estimate_threshold) != 1L ||
+      !isTRUE(all.equal(
+        estimate_threshold, .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD
+      ))) {
+    stop(
+      "RegCompass condition-GRN penalty gate metadata are inconsistent.",
+      call. = FALSE
+    )
+  }
+
+  coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
+  if (!all(c("significant", "penalty_effect") %in%
+           colnames(coefficient))) {
+    stop(
+      "RegCompass-gated condition fits require significant and penalty_effect.",
+      call. = FALSE
+    )
+  }
+  expected_gate <- .rc_condition_penalty_gate(coefficient)
+  observed_gate <- as.logical(coefficient$significant)
+  if (!identical(observed_gate, expected_gate)) {
+    stop(
+      "RegCompass-gated significant-edge flags do not match the final penalty gate.",
+      call. = FALSE
+    )
+  }
+
+  estimate <- suppressWarnings(as.numeric(coefficient$estimate))
+  expected_effect <- ifelse(expected_gate, estimate, 0)
+  observed_effect <- suppressWarnings(as.numeric(
+    coefficient$penalty_effect
+  ))
+  comparable <- is.finite(expected_effect) & is.finite(observed_effect)
+  if (any(is.finite(expected_effect) != is.finite(observed_effect)) ||
+      any(abs(expected_effect[comparable] -
+              observed_effect[comparable]) > 1e-12)) {
+    stop(
+      "RegCompass-gated penalty_effect does not match the final penalty gate.",
+      call. = FALSE
+    )
+  }
+
+  validation_fit <- fit
+  padj <- suppressWarnings(as.numeric(coefficient$padj))
+  pando_significant <- coefficient$estimable %in% TRUE &
+    is.finite(padj) & padj < 0.05
+  coefficient$significant <- pando_significant
+  coefficient$penalty_effect <- ifelse(
+    pando_significant, estimate, 0
+  )
+  validation_fit$coefficients <- coefficient
+  .rc_require_pando_condition_grn_fit(validation_fit)
+  invisible(TRUE)
+}
+
 .rc_condition_pando_object_for_fit <- function(grn_result, fit) {
-  .rc_require_pando_condition_grn_fit(fit)
+  .rc_require_layer1_condition_grn_fit(fit)
   cell_type <- as.character(fit$cell_type)[[1L]]
   object_map <- grn_result$pando_grn_data_by_cell_type %||% list()
   if (length(object_map)) {
@@ -61,7 +137,7 @@
   coverage <- list()
 
   for (fit in grn_result$condition_grn_fits) {
-    .rc_require_pando_condition_grn_fit(fit)
+    .rc_require_layer1_condition_grn_fit(fit)
     pando_object <- .rc_condition_pando_object_for_fit(grn_result, fit)
     cell_projection <- Pando::project_condition_grn_cells(
       object = pando_object,
@@ -93,9 +169,7 @@
       ]
       significant_edges <- coefficient[
         as.character(coefficient$condition) == condition &
-          coefficient$estimable %in% TRUE &
-          is.finite(as.numeric(coefficient$padj)) &
-          as.numeric(coefficient$padj) < 0.05,
+          coefficient$significant %in% TRUE,
         , drop = FALSE
       ]
       reliable_targets <- intersect(
@@ -113,13 +187,13 @@
       n_significant_edges = vapply(fit$condition_levels, function(condition) {
         sum(
           coefficient$condition == condition &
-            coefficient$estimable %in% TRUE &
-            is.finite(as.numeric(coefficient$padj)) &
-            as.numeric(coefficient$padj) < 0.05,
+            coefficient$significant %in% TRUE,
           na.rm = TRUE
         )
       }, integer(1)),
       padj_threshold = 0.05,
+      corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
+      estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
       projection_effect = "penalty_effect",
       pando_object_scope = "cell_type_exact_feature_space",
       aggregation_contract = "all_projected_cells_have_exact_membership",
@@ -131,9 +205,10 @@
     projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_fixed_dictionary_glm_padj_filtered",
+    origin = "paired_cell_fixed_dictionary_glm_padj_corr_effect_filtered",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    projection_name = "padj_filtered_fixed_dictionary_condition_glm",
+    projection_name =
+      "padj_corr_effect_filtered_fixed_dictionary_condition_glm",
     nonestimable_policy =
       "coefficient_NA_and_zero_realized_penalty_contribution"
   )
