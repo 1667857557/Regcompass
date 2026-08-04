@@ -3,6 +3,27 @@
 .rc_complete_celltype_medium_corda_gem_base <-
   .rc_complete_celltype_medium_corda_gem
 
+.rc_corda_empty_task_table <- function() {
+  data.frame(
+    variable_id = character(),
+    reaction_id = character(),
+    direction = character(),
+    stage = character(),
+    replicate = integer(),
+    kind = character(),
+    status = character(),
+    target_flux = numeric(),
+    objective = numeric(),
+    backend = character(),
+    solver_message = character(),
+    noise_namespace = character(),
+    opposite_direction_blocked = character(),
+    n_associated = integer(),
+    task_key = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
 .rc_corda_task_summary <- function(tab) {
   if (!is.data.frame(tab) || !nrow(tab)) {
     return(data.frame(
@@ -45,6 +66,7 @@
     stop("CORDA task diagnostics cannot construct stable task keys.",
          call. = FALSE)
   }
+  if (!nrow(tab)) return(character())
   paste(
     as.character(tab$stage),
     as.character(tab$kind),
@@ -165,10 +187,20 @@
   args <- list(...)
   model <- do.call(.rc_complete_celltype_medium_corda_gem_base, args)
   task_tab <- model$corda_task_diagnostics
+  if (!is.data.frame(task_tab) || !nrow(task_tab)) {
+    task_tab <- .rc_corda_empty_task_table()
+    association_edges <- data.frame(
+      task_key = character(),
+      associated_reaction_id = character(),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    model$corda_task_summary <- .rc_corda_task_summary(task_tab)
+    association_edges <- .rc_corda_normalize_associations(task_tab)
+    task_tab$task_key <- .rc_corda_task_keys(task_tab)
+    task_tab$associated <- NULL
+  }
   model$corda_task_summary <- .rc_corda_task_summary(task_tab)
-  association_edges <- .rc_corda_normalize_associations(task_tab)
-  task_tab$task_key <- .rc_corda_task_keys(task_tab)
-  task_tab$associated <- NULL
   model$corda_task_diagnostics <- task_tab
   model$corda_association_edges <- association_edges
 
