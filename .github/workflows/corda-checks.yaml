@@ -40,6 +40,7 @@ jobs:
           files <- c(
             "R/layer2_corda_evidence.R",
             "R/layer2_corda_lp.R",
+            "R/layer2_corda_paper_contract.R",
             "R/layer2_corda_model.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_pool_lifecycle.R",
