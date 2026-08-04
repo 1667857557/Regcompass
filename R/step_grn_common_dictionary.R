@@ -150,6 +150,29 @@ rc_regcompass_step_grn <- function(
   standard_infer_args$verbose <- standard_infer_args$verbose %||%
     .rc_progress_enabled(progress)
 
+  dispatch_extra_args <- extra_args
+  resources <- .rc_materialize_pando_resources(
+    pfm = pfm,
+    species = species,
+    pando_initiate_args = dispatch_extra_args$pando_initiate_args %||%
+      list(exclude_exons = TRUE),
+    pando_motif_args = dispatch_extra_args$pando_motif_args %||% list()
+  )
+  pfm <- resources$pfm
+  dispatch_extra_args$pando_initiate_args <- resources$pando_initiate_args
+  dispatch_extra_args$pando_motif_args <- resources$pando_motif_args
+  .rc_step_monitor_event(
+    monitor,
+    "pando_resource_materialization",
+    "materialized Pando reference resources before worker dispatch",
+    current = 5L,
+    context = list(
+      pfm = !is.null(pfm),
+      regions = !is.null(dispatch_extra_args$pando_initiate_args$regions),
+      motif_tfs = !is.null(dispatch_extra_args$pando_motif_args$motif_tfs)
+    )
+  )
+
   grn_result <- .rc_with_step_diagnostics(
     .rc_fit_pando_by_celltype_route(
       object = object, gem = gem, outdir = outdir, genome = genome,
@@ -159,7 +182,7 @@ rc_regcompass_step_grn <- function(
       condition_types = condition_types,
       standard_types = standard_types,
       rna_assay = rna_assay, atac_assay = atac_assay,
-      extra_args = extra_args,
+      extra_args = dispatch_extra_args,
       condition_infer_args = condition_infer_args,
       standard_infer_args = standard_infer_args,
       parallel = parallel, BPPARAM = BPPARAM,
@@ -214,6 +237,13 @@ rc_regcompass_step_grn <- function(
         standard_pando_infer_args = standard_infer_args,
         infer_argument_routing = routed_infer_args$diagnostics
       )),
+      pando_resource_materialization = list(
+        scope = "controller_before_outer_parallel_dispatch",
+        pfm = TRUE,
+        regions = TRUE,
+        motif_tfs = TRUE,
+        stored_in_step_params = FALSE
+      ),
       parallel = parallel,
       pando_execution_plan = grn_result$pando_execution_plan,
       species = species,

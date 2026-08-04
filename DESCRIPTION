@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.1
+Version: 2.4.2
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -18,15 +18,17 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     retained condition uses the original standard Pando GRN and creates no
     condition coefficient. Stage 1 automatically enables only the Pando
     arguments valid for each route and parallelizes independent broad-cell-type
-    jobs without nested worker pools. Parallel condition jobs retain one exact
-    Pando object per cell type so local peak and motif feature spaces are never
-    merged incorrectly; Layer 1 routes each fit to its matching object. Paired-
-    cell TF-by-ATAC regulatory effects are projected before exact SuperCell
-    aggregation. Metacells use one multimodal WNN graph per broad cell type and
-    remain condition-pure after membership splitting. RNA support, regulatory
-    effects, GPR rules, cell-type-specific union GEM construction and
-    directional penalties use consistent reaction ordering, bounds and medium
-    scenarios.
+    jobs without nested worker pools. Before outer parallel dispatch, bundled
+    Pando motif matrices, regulatory regions and motif-to-TF mappings are
+    materialized in the controller and passed to workers as ordinary objects.
+    Parallel condition jobs retain one exact Pando object per cell type so local
+    peak and motif feature spaces are never merged incorrectly; Layer 1 routes
+    each fit to its matching object. Paired-cell TF-by-ATAC regulatory effects
+    are projected before exact SuperCell aggregation. Metacells use one
+    multimodal WNN graph per broad cell type and remain condition-pure after
+    membership splitting. RNA support, regulatory effects, GPR rules,
+    cell-type-specific union GEM construction and directional penalties use
+    consistent reaction ordering, bounds and medium scenarios.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

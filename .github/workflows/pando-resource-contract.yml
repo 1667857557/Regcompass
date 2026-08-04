@@ -1,0 +1,76 @@
+name: Pando resource dispatch contract
+
+on:
+  pull_request:
+  push:
+    branches: [Main]
+
+permissions:
+  contents: read
+
+jobs:
+  resource-contract:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5.1'
+          use-public-rspm: true
+      - name: Verify controller-side materialization contract
+        shell: Rscript {0}
+        run: |
+          environment <- new.env(parent = baseenv())
+          sys.source("R/pando_grn.R", envir = environment)
+          sys.source("R/step_grn_common_dictionary.R", envir = environment)
+
+          pfm <- structure(list(name = "pfm"), class = "test_pfm")
+          regions <- structure(list(name = "regions"), class = "test_regions")
+          motif_tfs <- data.frame(
+            motif = "M1", tf = "TF1", stringsAsFactors = FALSE
+          )
+          resources <- environment$.rc_materialize_pando_resources(
+            pfm = pfm,
+            species = "human",
+            pando_initiate_args = list(
+              exclude_exons = TRUE,
+              regions = regions
+            ),
+            pando_motif_args = list(motif_tfs = motif_tfs)
+          )
+          stopifnot(
+            identical(resources$pfm, pfm),
+            identical(resources$pando_initiate_args$regions, regions),
+            identical(resources$pando_motif_args$motif_tfs, motif_tfs)
+          )
+
+          loader <- paste(
+            deparse(body(environment$.rc_pando_data_object)),
+            collapse = "\n"
+          )
+          stopifnot(
+            !grepl("lazydata", tolower(loader), fixed = TRUE),
+            grepl("utils::data", loader, fixed = TRUE),
+            grepl("lib.loc", loader, fixed = TRUE)
+          )
+
+          stage <- paste(
+            deparse(body(environment$rc_regcompass_step_grn)),
+            collapse = "\n"
+          )
+          materialize <- regexpr(
+            ".rc_materialize_pando_resources", stage, fixed = TRUE
+          )[[1L]]
+          dispatch <- regexpr(
+            ".rc_fit_pando_by_celltype_route", stage, fixed = TRUE
+          )[[1L]]
+          stopifnot(
+            materialize > 0L,
+            dispatch > materialize,
+            grepl(
+              "extra_args = dispatch_extra_args", stage, fixed = TRUE
+            ),
+            grepl(
+              "stored_in_step_params = FALSE", stage, fixed = TRUE
+            )
+          )
