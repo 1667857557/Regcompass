@@ -26,6 +26,7 @@ jobs:
               "Version: 2.4.3",
               "Pando (>= 2.0.3)",
               "'condition_grn_contract_compat.R'",
+              "'mixed_pando_contract.R'",
               "'grn_integration_contract.R'",
           ]
           missing = [value for value in required_description if value not in description]
@@ -33,6 +34,8 @@ jobs:
               raise RuntimeError(f"DESCRIPTION integration contract missing: {missing}")
           if description.index("'condition_grn_contract.R'") > description.index("'condition_grn_contract_compat.R'"):
               raise RuntimeError("condition contract compatibility file loads too early")
+          if description.index("'mixed_pando.R'") > description.index("'mixed_pando_contract.R'"):
+              raise RuntimeError("mixed-Pando merge contract loads too early")
           if description.index("'grn_route_parallel.R'") > description.index("'grn_integration_contract.R'"):
               raise RuntimeError("GRN integration contract loads before argument routing")
           compat = Path("R/condition_grn_contract_compat.R").read_text()
@@ -46,6 +49,15 @@ jobs:
           missing = [value for value in required_fit if value not in compat]
           if missing:
               raise RuntimeError(f"downstream fit validation missing: {missing}")
+          mixed = Path("R/mixed_pando_contract.R").read_text()
+          required_mixed = [
+              ".rc_validate_pando_route_partition",
+              ".rc_validate_pando_result_cell_partition",
+              "projection overlaps an existing route",
+          ]
+          missing = [value for value in required_mixed if value not in mixed]
+          if missing:
+              raise RuntimeError(f"mixed Pando route contract missing: {missing}")
           bridge = Path("R/grn_integration_contract.R").read_text()
           required_bridge = [
               "Pando >= 2.0.3",
@@ -119,6 +131,36 @@ jobs:
             .rc_validate_pando_fit_metadata_frame(
               wrong_metadata, list(fit), "dataset", "cell_type"
             ),
+            silent = TRUE
+          )
+          stopifnot(inherits(rejected, "try-error"))
+
+          .rc_merge_pando_results <- function(...) list()
+          source("R/mixed_pando_contract.R")
+          stopifnot(isTRUE(.rc_validate_pando_route_partition(
+            "epithelial_like", "stem_like"
+          )))
+          rejected <- try(
+            .rc_validate_pando_route_partition(
+              "epithelial_like", "epithelial_like"
+            ),
+            silent = TRUE
+          )
+          stopifnot(inherits(rejected, "try-error"))
+          duplicate_results <- list(
+            list(paired_cell_metadata = data.frame(cell_id = "cell1")),
+            list(paired_cell_metadata = data.frame(cell_id = "cell1"))
+          )
+          rejected <- try(
+            .rc_validate_pando_result_cell_partition(duplicate_results),
+            silent = TRUE
+          )
+          stopifnot(inherits(rejected, "try-error"))
+          target <- matrix(
+            1, nrow = 1, dimnames = list("gene", "unit")
+          )
+          rejected <- try(
+            .rc_overlay_projection(target, target, "Standard-Pando"),
             silent = TRUE
           )
           stopifnot(inherits(rejected, "try-error"))
