@@ -24,6 +24,7 @@ writeLines(c(
   "    'layer2_corda_evidence.R'",
   "    'layer2_corda_lp.R'",
   "    'layer2_corda_paper_contract.R'",
+  "    'layer2_corda_direction_contract.R'",
   "    'layer2_corda_model.R'",
   "    'run.R'"
 ), file.path(pkg, "DESCRIPTION"))
@@ -33,6 +34,7 @@ for (file in c(
   "layer2_corda_evidence.R",
   "layer2_corda_lp.R",
   "layer2_corda_paper_contract.R",
+  "layer2_corda_direction_contract.R",
   "layer2_corda_model.R"
 )) {
   file.copy(
@@ -141,6 +143,13 @@ run <- c(
   "            identical(result$stage1_associated, 'NC1'),",
   "            identical(result$stage2_promoted_nc, 'NC_SHARED'),",
   "            setequal(result$stage3_associated_ot, c('SRC_A', 'SRC_Y'))) ",
+  "  revS <- Matrix::Matrix(matrix(c(-1, 1), nrow = 2), sparse = TRUE,",
+  "    dimnames = list(c('RA', 'RB'), 'REV'))",
+  "  rev <- .rc_corda_split_model(list(S = revS, lb = c(REV = -10),",
+  "    ub = c(REV = 10)), tolerance = 1e-8)",
+  "  bounds <- .rc_corda_target_bounds(rev, 'REV::forward', epsilon = 1)",
+  "  stopifnot(identical(bounds$opposite_variables, 'REV::reverse'),",
+  "            bounds$upper[['REV::reverse']] == 0)",
   "  TRUE",
   "}"
 )
