@@ -24,6 +24,15 @@ jobs:
           description = Path("DESCRIPTION").read_text()
           if "Pando (>= 2.0.3)" not in description:
               raise RuntimeError("Pando >= 2.0.3 is not required")
+          bridge = Path("R/grn_integration_contract.R").read_text()
+          required_bridge = [
+              "getNamespaceExports(\"Pando\")",
+              "aggregate_condition_grn_projection_strict",
+              "Reinstall Pando before starting Stage 1",
+          ]
+          missing = [value for value in required_bridge if value not in bridge]
+          if missing:
+              raise RuntimeError(f"Pando API preflight missing: {missing}")
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           required = [
               "Pando::aggregate_condition_grn_projection_strict",
