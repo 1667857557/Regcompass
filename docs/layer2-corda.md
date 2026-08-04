@@ -1,9 +1,15 @@
-# Optional original CORDA reconstruction in Layer 2
+# Original CORDA reconstruction in Layer 2
 
 `rc_regcompass_step_layer2()` keeps compact add-only FASTCORE as the default.
 For `model_mode = "meta_module_gem"`, `model_completion = "corda"` runs the
-three-stage CORDA algorithm described by Schultz and Qutub (2016). The former
-draft name `"corda_like"` is accepted as an alias and normalized to `"corda"`.
+reaction-reconstruction algorithm described by Schultz and Qutub (2016). The
+former draft value `"corda_like"` is accepted only as a compatibility alias and
+is normalized to `"corda"`.
+
+The implementation contract is based on the paper's Materials and Methods
+pseudocode and the author-distributed MATLAB function referenced as S2 File. If
+a RegCompass engineering choice is not part of the original algorithm, it is
+identified explicitly below.
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -19,7 +25,6 @@ step5 <- rc_regcompass_step_layer2(
     model_params = list(
       model_completion = "corda",
       completion_time_limit = 3000,
-      fastcore_epsilon = 1e-4,
       strict = TRUE,
       corda_gamma = 1e5,
       corda_kappa = 1e-2,
@@ -38,15 +43,29 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
+`fastcore_epsilon` and `max_support_reactions` are FASTCORE controls. They do not
+change CORDA reconstruction and should normally be omitted from a CORDA call.
+
+## Input model contract
+
+For each cell type and medium, CORDA receives the complete GEM after application
+of the requested medium bounds. No FASTCC reaction deletion is performed and no
+reaction is blocked solely because it is annotated as demand, sink, exchange or
+artificial support. This follows the original function's contract: CORDA acts on
+the model supplied to it, and every supplied reaction is assigned to HC, MC, NC
+or OT.
+
+The medium constraint is a RegCompass input transformation performed before
+CORDA. It is not presented as part of the original CORDA algorithm.
+
 ## Confidence mapping
 
-CORDA accepts reaction confidence classes; it does not prescribe how omics data
-must be converted into those classes. RegCompass performs that mapping within
-each cell type.
+CORDA accepts reaction confidence classes and leaves their definition to the
+caller. RegCompass maps evidence within each broad cell type.
 
 RNA-only and multiome reaction capacities are summarized across matching
-metacells and converted to within-cell-type percentile ranks. The evidence score
-is
+metacells and converted to within-cell-type percentile ranks. The RegCompass
+evidence score is
 
 \[
 E_r=(1-w)\max\{Q_r^{RNA},Q_r^{multiome}\}+wA_r^{regulatory},
@@ -63,115 +82,155 @@ The initial classes are:
   above `corda_medium_confidence_threshold`;
 - **NC:** remaining reactions with finite evidence at or below
   `corda_negative_confidence_threshold`;
-- **OT:** all remaining reactions, including reactions with unavailable omics
-  evidence.
+- **OT:** every remaining input-model reaction, including reactions without
+  available omics evidence.
 
-MC reactions are flexible. They are not automatically retained.
+MC reactions are flexible and are not automatically retained.
 
-## Directional representation
+## Exact directional transformation
 
-The medium-constrained, FASTCC-audited parent GEM is split once into nonnegative
-forward and reverse variables. The original reaction bounds determine which
-directions exist and their directional upper and lower bounds. CORDA operates on
-these directional variables, while the final model is converted back to original
-reaction IDs, original stoichiometry, bounds, annotations and GPR rules.
+The original dependency code does not split the reaction currently being
+tested. It constrains that original variable to `+epsilon` or `-epsilon` and
+splits the other reversible reactions.
 
-## Dependency assessment
+RegCompass pre-splits the model once for solver reuse. To remain mathematically
+equivalent, when a forward target is tested its reverse copy is fixed to zero;
+when a reverse target is tested its forward copy is fixed to zero. Without this
+constraint, a reversible reaction could satisfy the target by sending equal
+forward and reverse flux through itself, producing zero net stoichiometric flux.
 
-For a target direction, CORDA requires at least `corda_epsilon` flux and solves
+Original reaction bounds determine which directional copies exist. The final
+model is converted back to original reaction IDs, stoichiometry, bounds,
+annotations and GPR rules.
+
+## Dependency-assessment LP
+
+Let `Y` be the undesirable reaction group for the current stage. After splitting
+non-target reversible reactions, every directional variable is nonnegative. The
+original code adds one pseudo-metabolite whose production coefficient is the
+reaction cost, adds a cost-consuming reaction, and minimizes that sink flux.
+Eliminating the pseudo-metabolite balance gives the equivalent LP used here:
 
 \[
-\min_v \sum_j c_jv_j,
-\qquad S_{split}v=0,
-\qquad l\le v\le u.
+\begin{aligned}
+\min_v\quad &\sum_i c_i v_i\\
+\text{s.t.}\quad&S_{split}v=0,\\
+&l\le v\le u,\\
+&v_x\ge\epsilon,
+\end{aligned}
 \]
 
-Undesirable directions receive their stage-specific base cost. Every direction
-also receives deterministic uniform noise in `[0, corda_kappa]`. The noise is
-keyed by stage, target, direction, repeat and `corda_seed`, so results do not
-depend on worker scheduling. Penalized reactions carrying flux above
-`corda_flux_tolerance` are associated with the target.
+where the opposite target direction is fixed to zero. For every directional
+reaction,
+
+\[
+c_i=\begin{cases}
+\gamma+U_i(0,\kappa), & i\in Y,\\
+U_i(0,\kappa), & i\notin Y.
+\end{cases}
+\]
+
+Thus CORDA minimizes the **combined flux through costly reactions**, not the
+number of costly reactions. A reaction in `Y` is associated with the target when
+its selected directional flux is nonzero. `corda_flux_tolerance` supplies the
+numerical nonzero threshold; `corda_epsilon` is kept separate and defines the
+forced target magnitude.
+
+The original algorithm draws fresh uniform noise for every dependency
+assessment. RegCompass preserves that distribution but derives each task's
+random stream deterministically from `corda_seed`, stage, target direction and
+repeat. This is an engineering adaptation required so serial, Multicore and SOCK
+execution return the same task-level random draws regardless of scheduling. It
+is not claimed to reproduce a particular unseeded MATLAB random-number stream
+bit for bit.
 
 The paper defaults are:
 
 - `corda_gamma = 1e5`;
 - `corda_kappa = 1e-2`;
 - `corda_epsilon = 1`;
-- `corda_n = 5` randomized dependency assessments per target direction;
+- `corda_n = 5` dependency assessments per allowed target direction;
 - `corda_p = 2` distinct MC reactions required to promote a shared NC reaction.
 
 ## Three reconstruction stages
 
-### Stage 1: HC dependencies
+### Stage 1: HC associations
 
-All HC directions are assessed `n` times. MC directions have cost
-`sqrt(gamma)`, NC directions have cost `gamma`, and HC/OT directions have zero
-base cost. Any MC or NC reaction associated with an HC target is promoted to the
-retained set.
+All HC reactions begin in RE. Every allowed HC direction is assessed `n` times.
+MC directions have base cost `sqrt(gamma)`, NC directions have base cost
+`gamma`, and HC/OT directions have base cost zero. Any MC or NC reaction
+associated with an HC target in any repeat is moved to RE.
 
-### Stage 2: flexible MC and shared NC support
+### Stage 2: flexible MC/NC core
 
-Each remaining MC direction is assessed `n` times while only NC directions are
-penalized by `gamma`. An NC reaction is promoted when it is associated with at
-least `p` distinct MC reactions. Remaining NC reactions are then blocked. Every
-remaining MC direction is tested for flux capacity, and an MC reaction is
-promoted when at least one allowed direction can carry `corda_epsilon` flux.
+Each remaining MC direction is assessed `n` times with NC as the costly group.
+An NC reaction is moved to RE when it is associated with at least `p` **distinct
+MC reactions**. All remaining NC reactions are then blocked. Every remaining MC
+reaction is tested in every allowed direction and is moved to RE if at least one
+direction can carry `corda_epsilon`.
 
-### Stage 3: OT dependencies of the retained set
+The algorithm records excluded MC reactions and their Stage-2 NC associations
+for subsequent curation.
 
-All still-unpromoted MC and NC reactions are blocked. Every retained direction
-is assessed `n` times while OT directions have cost `gamma`. Associated OT
-reactions are promoted. The final model contains the retained reaction set.
+### Stage 3: OT associations
 
-Confidence updates occur only after all tasks in a stage finish. This barrier
-semantics makes the reconstruction independent of task completion order.
+All remaining MC and NC reactions are blocked. Every allowed direction of every
+RE reaction is assessed `n` times with OT as the costly group. Every associated
+OT reaction is moved to RE. The resulting RE set defines the final reconstruction.
+
+Confidence updates occur only after all tasks in a stage finish. This stage
+barrier preserves the original algorithm's reaction-order independence.
+
+## Optional metabolic tasks
+
+The original MATLAB workflow can temporarily add metabolite sinks as HC tests,
+removing each test before another reaction or task is assessed. The current
+RegCompass Layer-2 input contract supplies reaction targets rather than temporary
+metabolite-task definitions, so this optional original-code feature is not yet
+exposed. The implementation must not claim metabolic-task preservation unless a
+future explicit task input and isolated temporary-reaction contract are added.
 
 ## Native C++ acceleration and parallelism
 
-The LP solve is the dominant cost. The `highs` package already exposes the
-native HiGHS C++ solver. RegCompass therefore does not duplicate the solver in a
-custom Rcpp implementation. Instead, each worker:
+Repeated LP solution dominates runtime. HiGHS already provides the native C++
+solver, so RegCompass does not duplicate FBA in custom Rcpp code. Each worker:
 
 1. constructs one persistent HiGHS model for its task block;
-2. updates only the objective coefficients and variable bounds between tasks;
-3. re-solves with the simplex solver and reuses the existing basis;
-4. falls back to the previous one-shot LP path if the installed `highs` version
-   does not expose the persistent solver API or a persistent call fails.
+2. updates only objective coefficients and target bounds;
+3. re-solves with simplex-basis reuse;
+4. falls back to the existing one-shot LP path if the persistent API is absent
+   or fails.
 
 When the number of cell-type-by-medium models is at least the worker count,
-models run in parallel and each model executes its stages serially inside one
-worker. When there are fewer models than workers, models run sequentially and
-each stage distributes `target direction × repeat` chunks across the full worker
-pool. A supplied but inactive `BPPARAM` is started once for the whole Layer 2
-call and released at exit; an already active caller pool remains active. When
-`BPPARAM = NULL`, the CORDA route creates one package-managed pool and keeps it
-alive across all stages.
+models run in parallel and each model executes its CORDA stages serially. When
+there are fewer models, models run sequentially and each stage distributes
+`target direction × repeat` chunks across the full pool. A supplied inactive
+`BPPARAM` is started once for the complete Layer-2 call and released at exit; an
+already active caller pool remains active. Solvers are restricted to one thread
+per worker to prevent oversubscription.
 
 The persistent native solver removes repeated model construction and permits
-basis reuse, but the actual speedup depends on model size, presolve behavior and
-worker count. Performance claims should be based on a Human-GEM benchmark rather
-than the synthetic correctness test.
+basis reuse. A quantitative speedup claim requires a Human-GEM benchmark; the
+synthetic checks establish correctness, not production-scale performance.
 
 ## Pipeline contracts
 
-- Only parent-feasible HC core directions enter the downstream `vmax`, penalty
-  and score matrices. MC/NC/OT reconstruction does not change matrix row names.
+- Only retained HC core directions that can reach `corda_epsilon` enter the
+  downstream `vmax`, penalty and score matrices.
+- MC/NC/OT reconstruction does not enlarge the score matrix.
 - Conditions and matching metacells share one model only within the same cell
   type and medium.
-- The RNA-only control reuses the exact CORDA model cache and checksum.
-- Final models retain original reaction IDs, bounds, annotations and GPR rules.
-- CORDA caches are isolated under
-  `model_cache/meta_module_gem/corda`.
-- `max_support_reactions` remains a FASTCORE control and is recorded but not used
-  to truncate CORDA, because such a cap would change the published algorithm.
+- The primary multiome path and RNA-only control reuse the same CORDA model file
+  and checksum.
+- CORDA caches are isolated under `model_cache/meta_module_gem/corda`.
+- `fastcore_epsilon`, FASTCC counts, role-blocking counts and
+  `max_support_reactions` are not reported as CORDA algorithm results.
 
 ## Audit output
 
-Each model records initial confidence, final retained status, inclusion stage,
-reaction evidence, dependency tasks, Stage 2 NC-to-MC support pairs, execution
-backend, persistent-solver fallback counts and core-direction closure checks.
-The full task table is stored once and a compact stage/status/backend summary is
-stored separately to avoid duplicate model-cache payloads. The Layer 2 result
-records `params$model_completion` and `completion_contract`; the exported
-model-cache summary reports class and stage counts for every cell-type-by-medium
-model.
+Each model records the initial confidence, final RE status, inclusion stage,
+reaction evidence, dependency tasks, Stage-2 NC-to-MC association pairs,
+opposite-target directions blocked during each solve, solver backend, persistent
+solver fallback counts, unpruned parent-model contract and HC-direction closure
+checks. The full task table is stored once and a compact stage/status/backend
+summary is stored separately.
