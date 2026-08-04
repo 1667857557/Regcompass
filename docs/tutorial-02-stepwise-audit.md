@@ -129,10 +129,15 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-To retain the full HC/MC evidence-supported reaction set and complete every
-parent-feasible HC/MC direction, select the optional CORDA-like route:
+To run the original three-stage CORDA dependency-assessment algorithm:
 
 ```r
+layer2_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(workers = 12L, type = "SOCK", progressbar = TRUE)
+} else {
+  MulticoreParam(workers = 12L, progressbar = TRUE)
+}
+
 step5_corda <- rc_regcompass_step_layer2(
   layer1 = step4,
   meta_modules = step3,
@@ -140,20 +145,26 @@ step5_corda <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2_corda",
   model_mode = "meta_module_gem",
+  parallel = TRUE,
+  BPPARAM = layer2_bp,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
     model_params = list(
-      model_completion = "corda_like",
+      model_completion = "corda",
       completion_time_limit = 3000,
       fastcore_epsilon = 1e-4,
-      max_support_reactions = 3000,
       strict = TRUE,
+      corda_gamma = 1e5,
+      corda_kappa = 1e-2,
+      corda_epsilon = 1,
+      corda_n = 5L,
+      corda_p = 2L,
+      corda_seed = 1L,
+      corda_flux_tolerance = 1e-8,
       corda_medium_confidence_threshold = 0.75,
       corda_negative_confidence_threshold = 0.10,
       corda_regulatory_weight = 0.20,
-      corda_other_penalty = 1,
-      corda_negative_penalty = 10,
       corda_include_evidence_outside_modules = TRUE,
       corda_max_medium_confidence_reactions = Inf
     )
@@ -161,10 +172,21 @@ step5_corda <- rc_regcompass_step_layer2(
 )
 ```
 
-The CORDA-like option does not enlarge the downstream score matrix: only HC core
-reactions remain scoring targets. MC reactions enlarge and complete the shared
-cell-type structural model. See `docs/layer2-corda-like.md` for the evidence
-formula, class definitions, weighted support objective and audit fields.
+CORDA maps merged core reactions to HC, non-core module reactions to flexible MC,
+low-evidence reactions to NC and remaining reactions to OT. It then performs the
+published HC-dependency, shared-NC/MC-feasibility and retained-set/OT stages.
+Only retained, parent-feasible HC core directions remain downstream scoring
+targets, so the score and penalty matrix dimensions remain compatible with the
+FASTCORE route.
+
+When `BPPARAM` is omitted, the CORDA route creates one package-managed worker
+pool and keeps it alive across all stages. With few cell-type-by-medium models,
+target-direction-by-repeat tasks use the full pool; with many models, models run
+in parallel. HiGHS uses a persistent native C++ solver and reuses the simplex
+basis within each task block.
+
+See `docs/layer2-corda.md` for the exact confidence mapping, paper parameters,
+three stages, acceleration strategy and audit fields.
 
 ## Stage 6: result assembly
 
