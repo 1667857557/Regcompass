@@ -1,7 +1,7 @@
 # API-based Pando compatibility and RegCompass penalty-entry gates.
 
-.RC_PANDO_PENALTY_CORR_THRESHOLD <- 0.1
-.RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0.01
+.RC_PANDO_PENALTY_CORR_THRESHOLD <- 0.05
+.RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0.05
 
 .rc_attach_condition_penalty_corr <- function(fit) {
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
@@ -90,7 +90,7 @@
   )
   fit$coefficients <- coefficient
   fit$regcompass_penalty_filter <-
-    "estimable & BH padj < 0.05 & abs(corr) >= 0.1 & abs(estimate) >= 0.01"
+    "estimable & BH padj < 0.05 & abs(corr) >= 0.05 & abs(estimate) >= 0.05"
   fit$regcompass_corr_threshold <- .RC_PANDO_PENALTY_CORR_THRESHOLD
   fit$regcompass_estimate_threshold <-
     .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD
@@ -119,8 +119,8 @@
   answer <- table[keep, , drop = FALSE]
   attr(answer, "edge_filter") <- list(
     padj = "< 0.05",
-    absolute_correlation = ">= 0.1",
-    absolute_estimate = ">= 0.01"
+    absolute_correlation = ">= 0.05",
+    absolute_estimate = ">= 0.05"
   )
   answer
 }
@@ -216,9 +216,9 @@
     answer$tf_peak_gene_condition_effect <- active
   }
   answer$normalization_policy$condition_effect_filter <-
-    "estimable, BH adjusted P below 0.05, absolute corr at least 0.1, and absolute estimate at least 0.01"
+    "estimable, BH adjusted P below 0.05, absolute corr at least 0.05, and absolute estimate at least 0.05"
   answer$normalization_policy$standard_edge_filter <-
-    "adjusted P below 0.05, absolute corr at least 0.1, and absolute estimate at least 0.01"
+    "adjusted P below 0.05, absolute corr at least 0.05, and absolute estimate at least 0.05"
 
   .rc_write_tsv_gz(
     answer$tf_peak_gene_condition_all,

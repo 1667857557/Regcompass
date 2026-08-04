@@ -47,8 +47,8 @@ below hold:
 
 - the coefficient is estimable;
 - BH-adjusted `padj < 0.05`;
-- `abs(corr) >= 0.1`;
-- `abs(estimate) >= 0.01`.
+- `abs(corr) >= 0.05`;
+- `abs(estimate) >= 0.05`.
 
 For standard Pando, `corr` is the coefficient-table TF-target correlation. For a
 common-dictionary condition fit that does not expose a coefficient-level `corr`,

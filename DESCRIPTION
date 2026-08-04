@@ -14,8 +14,8 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     condition, exact TF-peak-target triples are unioned into one frozen
     dictionary, and every condition is refitted with the same unscaled Gaussian
     identity Pando interaction model. Only estimable coefficients with
-    BH-adjusted P below 0.05, absolute TF-target correlation at least 0.1, and
-    absolute coefficient at least 0.01 enter the regulatory penalty. A cell type
+    BH-adjusted P below 0.05, absolute TF-target correlation at least 0.05, and
+    absolute coefficient at least 0.05 enter the regulatory penalty. A cell type
     with one retained condition uses the original standard Pando GRN and creates
     no condition coefficient. Stage 1 validates the required Pando API contract
     without imposing a package-version floor. Stage 1 automatically enables only
@@ -172,4 +172,4 @@ Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionMethod: two-stage-exact-edge-union-fixed-dictionary-glm
-Config/RegCompass/PandoConditionEffectFilter: estimable-bh-padj-below-0.05-abs-corr-at-least-0.1-abs-estimate-at-least-0.01
+Config/RegCompass/PandoConditionEffectFilter: estimable-bh-padj-below-0.05-abs-corr-at-least-0.05-abs-estimate-at-least-0.05
