@@ -44,6 +44,46 @@ Stage 1 resolves the route independently for each retained cell type:
 
 The same `pando_infer_args` list can be used for all routes. Condition-only arguments (`padj_threshold`, `rank_action`, `min_residual_df`, and layer controls) are disabled before standard Pando is called. Standard-model controls (`method`, `alpha`, `scale`, and related model arguments) are disabled for the fixed common-dictionary condition model. Unknown argument names still fail before model fitting.
 
+`tf_cor = 0.1` controls Pando candidate discovery. It must not be interpreted as the final RegCompass penalty-entry threshold. In both the condition-GRN and standard-Pando routes, an edge enters the regulatory penalty only when:
+
+```r
+estimable == TRUE
+padj < 0.05
+abs(corr) >= 0.05
+abs(estimate) >= 0.05
+```
+
+The absolute correlation and effect-size cutoffs are inclusive. A coefficient with `corr = -0.05` and `estimate = -0.05` passes those two gates; values with absolute magnitude below `0.05` do not. Edges that fail a gate are retained for audit in the complete table but use `penalty_effect = 0`.
+
+For common-dictionary condition fits, `corr_source` records whether `corr` came directly from the condition coefficient table or from the frozen dictionary's `max_abs_tf_target_cor`. Standard Pando uses the coefficient-table TF–target correlation.
+
+Audit the condition-GRN table before continuing:
+
+```r
+all_edges <- step1$grn_result$tf_peak_gene_condition_all
+active_edges <- step1$grn_result$tf_peak_gene_condition
+
+condition_all <- subset(
+  all_edges,
+  is.na(analysis_mode) | analysis_mode == "condition_grn"
+)
+
+condition_active <- subset(
+  condition_all,
+  penalty_eligible %in% TRUE
+)
+
+stopifnot(
+  all(condition_active$estimable %in% TRUE),
+  all(condition_active$padj < 0.05),
+  all(abs(condition_active$corr) >= 0.05),
+  all(abs(condition_active$estimate) >= 0.05),
+  all(condition_active$penalty_effect == condition_active$estimate)
+)
+
+table(condition_active$corr_source, useNA = "ifany")
+```
+
 When at least two cell-type jobs are available, Stage 1 distributes those jobs through `BPPARAM`. Every worker runs its own Pando job serially, so nested worker pools are not created. With one standard-Pando job, its existing target-level path may be used. A single condition-GRN job remains serial because pooled discovery, condition-specific discovery, dictionary freezing, and condition refits are treated as one coordinated contract.
 
 ```r
