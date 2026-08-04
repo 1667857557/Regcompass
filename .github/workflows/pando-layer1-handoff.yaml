@@ -37,8 +37,8 @@ jobs:
               raise RuntimeError("Pando API preflight still contains a version gate")
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
-              ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0.1",
-              ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0.01",
+              ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0.05",
+              ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0.05",
               "abs(corr) >= .RC_PANDO_PENALTY_CORR_THRESHOLD",
               "abs(estimate) >= .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD",
           ]
