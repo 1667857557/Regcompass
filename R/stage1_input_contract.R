@@ -232,8 +232,10 @@
   if (!length(analysis_cells)) {
     stop("No cells remain for Stage 1 Pando analysis.", call. = FALSE)
   }
+  analysis_object <- subset(groups$object, cells = analysis_cells)
+  analysis_cells <- unname(as.character(colnames(analysis_object)))
   list(
-    object = subset(groups$object, cells = analysis_cells),
+    object = analysis_object,
     retained_cells = analysis_cells,
     retained_cell_types = analysis_types,
     condition_pando_cell_types =
@@ -260,8 +262,8 @@
       call. = FALSE
     )
   }
-  cells <- as.character(contract$retained_cells)
-  types <- as.character(contract$retained_cell_types)
+  cells <- unname(as.character(contract$retained_cells))
+  types <- unname(as.character(contract$retained_cell_types))
   if (!length(cells) || anyNA(cells) || any(!nzchar(cells)) ||
       anyDuplicated(cells)) {
     stop("The Stage 1 retained-cell contract is invalid.", call. = FALSE)
@@ -278,7 +280,9 @@
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
-  missing <- setdiff(contract$retained_cells, colnames(object))
+  expected <- unname(as.character(contract$retained_cells))
+  available <- unname(as.character(colnames(object)))
+  missing <- setdiff(expected, available)
   if (length(missing)) {
     stop(
       "Stage 2 input is missing ", length(missing),
@@ -286,19 +290,28 @@
       call. = FALSE
     )
   }
-  filtered <- subset(object, cells = contract$retained_cells)
-  if (!identical(colnames(filtered), contract$retained_cells)) {
-    filtered <- filtered[, contract$retained_cells]
-  }
-  if (!identical(colnames(filtered), contract$retained_cells)) {
-    stop("Stage 2 could not reproduce the ordered Stage 1 cell set.",
+  filtered <- subset(object, cells = expected)
+  observed <- unname(as.character(colnames(filtered)))
+  exact_set <- length(observed) == length(expected) &&
+    !anyDuplicated(observed) && setequal(observed, expected)
+  if (!exact_set) {
+    stop("Stage 2 could not reproduce the exact Stage 1 cell set.",
          call. = FALSE)
   }
+  order_matches_stage1 <- identical(observed, expected)
   filtered@misc$regcompass_cross_stage_cell_set <- list(
     source = contract$source %||% "stage1_grn_result",
-    n_cells = length(contract$retained_cells),
+    n_cells = length(expected),
     retained_cell_types = contract$retained_cell_types,
-    min_cells = contract$min_cells %||% .rc_stage1_min_cells_fixed
+    min_cells = contract$min_cells %||% .rc_stage1_min_cells_fixed,
+    exact_cell_set = TRUE,
+    order_matches_stage1 = order_matches_stage1,
+    order_policy = if (order_matches_stage1) {
+      "stage1_contract_order"
+    } else {
+      "seurat_native_order_exact_set"
+    },
+    stage1_order_index = match(observed, expected)
   )
   filtered
 }
