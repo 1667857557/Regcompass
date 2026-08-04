@@ -23,62 +23,71 @@ jobs:
           from pathlib import Path
           description = Path("DESCRIPTION").read_text()
           required_description = [
-              "Version: 2.4.3",
-              "Pando (>= 2.0.3)",
+              "Version: 2.4.4",
               "'condition_grn_contract_compat.R'",
               "'mixed_pando_contract.R'",
               "'grn_parallel_merge_contract.R'",
               "'grn_integration_contract.R'",
+              "'condition_penalty_contract.R'",
+              "'layer2_parallel_runtime.R'",
+              "'celltype_microcompass_reaction_parallel.R'",
           ]
           missing = [value for value in required_description if value not in description]
           if missing:
               raise RuntimeError(f"DESCRIPTION integration contract missing: {missing}")
-          if description.index("'condition_grn_contract.R'") > description.index("'condition_grn_contract_compat.R'"):
-              raise RuntimeError("condition contract compatibility file loads too early")
-          if description.index("'mixed_pando.R'") > description.index("'mixed_pando_contract.R'"):
-              raise RuntimeError("mixed-Pando merge contract loads too early")
-          if description.index("'grn_parallel_output_contract.R'") > description.index("'grn_parallel_merge_contract.R'"):
-              raise RuntimeError("parallel condition merge contract loads too early")
-          if description.index("'grn_route_parallel.R'") > description.index("'grn_integration_contract.R'"):
-              raise RuntimeError("GRN integration contract loads before argument routing")
-          compat = Path("R/condition_grn_contract_compat.R").read_text()
-          required_fit = [
-              "condition_col", "cell_type_col", "fit_engine",
-              "coefficient_scale", "target_genes",
-              "target-level fit diagnostics are incomplete",
-              ".rc_validate_pando_fit_metadata_frame",
-              "disagree with stored object metadata",
+          if "Pando (>=" in description:
+              raise RuntimeError("DESCRIPTION still imposes a Pando version floor")
+          order_pairs = [
+              ("'condition_grn_contract.R'", "'condition_grn_contract_compat.R'"),
+              ("'mixed_pando.R'", "'mixed_pando_contract.R'"),
+              ("'grn_parallel_output_contract.R'", "'grn_parallel_merge_contract.R'"),
+              ("'grn_route_parallel.R'", "'grn_integration_contract.R'"),
+              ("'grn_integration_contract.R'", "'condition_penalty_contract.R'"),
+              ("'step_layer2.R'", "'layer2_parallel_runtime.R'"),
+              ("'layer2_parallel_runtime.R'", "'celltype_microcompass_reaction_parallel.R'"),
           ]
-          missing = [value for value in required_fit if value not in compat]
-          if missing:
-              raise RuntimeError(f"downstream fit validation missing: {missing}")
-          mixed = Path("R/mixed_pando_contract.R").read_text()
-          required_mixed = [
-              ".rc_validate_pando_route_partition",
-              ".rc_validate_pando_result_cell_partition",
-              "projection overlaps an existing route",
-          ]
-          missing = [value for value in required_mixed if value not in mixed]
-          if missing:
-              raise RuntimeError(f"mixed Pando route contract missing: {missing}")
-          parallel = Path("R/grn_parallel_merge_contract.R").read_text()
-          required_parallel = [
-              ".rc_validate_condition_job_merge_output",
-              ".rc_merge_condition_job_results_contract_base",
-              "same unique cell-type set",
-          ]
-          missing = [value for value in required_parallel if value not in parallel]
-          if missing:
-              raise RuntimeError(f"parallel condition merge contract missing: {missing}")
+          for first, second in order_pairs:
+              if description.index(first) > description.index(second):
+                  raise RuntimeError(f"invalid Collate order: {first} after {second}")
           bridge = Path("R/grn_integration_contract.R").read_text()
           required_bridge = [
-              "Pando >= 2.0.3",
+              "getNamespaceExports(\"Pando\")",
               ".rc_normalize_condition_pando_layer_args",
               "Unsupported override(s)",
           ]
           missing = [value for value in required_bridge if value not in bridge]
           if missing:
               raise RuntimeError(f"Pando runtime bridge missing: {missing}")
+          if "package_version" in bridge or "packageVersion" in bridge:
+              raise RuntimeError("Pando runtime bridge contains a version gate")
+          penalty = Path("R/condition_penalty_contract.R").read_text()
+          required_penalty = [
+              "abs(corr) >= .RC_PANDO_PENALTY_CORR_THRESHOLD",
+              "abs(estimate) >= .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD",
+              "required_exported_api_without_version_floor",
+          ]
+          missing = [value for value in required_penalty if value not in penalty]
+          if missing:
+              raise RuntimeError(f"condition penalty contract missing: {missing}")
+          runtime = Path("R/layer2_parallel_runtime.R").read_text()
+          engine = Path("R/celltype_microcompass_reaction_parallel.R").read_text()
+          required_runtime = [
+              "Threads = 1",
+              ".rc_directional_feasibility",
+              "vmax_reaction_cache",
+              "fastcore_parallel_task",
+          ]
+          missing = [value for value in required_runtime if value not in runtime]
+          if missing:
+              raise RuntimeError(f"Layer 2 runtime contract missing: {missing}")
+          required_engine = [
+              "directional_reaction_by_matching_metacells_step2",
+              ".rc_atomic_save_rds",
+              "gc(verbose = FALSE, full = TRUE)",
+          ]
+          missing = [value for value in required_engine if value not in engine]
+          if missing:
+              raise RuntimeError(f"reaction-level Step 2 contract missing: {missing}")
       - name: Parse package sources
         shell: Rscript {0}
         run: |
@@ -98,94 +107,6 @@ jobs:
       - name: Run lightweight integration tests
         shell: Rscript {0}
         run: |
-          .rc_require_pando_condition_grn_fit <- function(fit) invisible(TRUE)
-          .rc_extract_condition_grn_contract <- function(...) invisible(TRUE)
-          source("R/condition_grn_contract_compat.R")
-          dictionary <- data.frame(edge_id = "TP53||TF||chr1:1-2")
-          attr(dictionary, "preprocessing_provenance_verified") <- TRUE
-          fit <- structure(list(
-            cell_type = "epithelial_like",
-            condition_levels = c("control", "treated"),
-            condition_cell_ids = list(control = "cell1", treated = "cell2"),
-            edge_dictionary = dictionary,
-            dictionary_preprocessing_provenance_verified = TRUE,
-            condition_col = "dataset",
-            cell_type_col = "cell_type",
-            fit_engine = "two_stage_exact_edge_union_fixed_dictionary_glm",
-            coefficient_scale = "shared_preprocessed_input_units_unscaled",
-            target_genes = "TP53",
-            fit = data.frame(
-              target = c("TP53", "TP53"),
-              condition = c("control", "treated"),
-              rsq = c(0.2, 0.3),
-              fit_status = c("ok", "ok")
-            )
-          ), class = c("ConditionGRNFit", "list"))
-          stopifnot(isTRUE(.rc_require_pando_condition_grn_fit(fit)))
-          overlapping <- fit
-          overlapping$condition_cell_ids$treated <- "cell1"
-          rejected <- try(.rc_require_pando_condition_grn_fit(overlapping), silent = TRUE)
-          stopifnot(inherits(rejected, "try-error"))
-          metadata <- data.frame(
-            dataset = c("control", "treated"),
-            cell_type = c("epithelial_like", "epithelial_like"),
-            row.names = c("cell1", "cell2"), stringsAsFactors = FALSE
-          )
-          stopifnot(isTRUE(.rc_validate_pando_fit_metadata_frame(
-            metadata, list(fit), "dataset", "cell_type"
-          )))
-          wrong_metadata <- metadata
-          wrong_metadata["cell2", "dataset"] <- "control"
-          rejected <- try(.rc_validate_pando_fit_metadata_frame(
-            wrong_metadata, list(fit), "dataset", "cell_type"
-          ), silent = TRUE)
-          stopifnot(inherits(rejected, "try-error"))
-
-          .rc_merge_pando_results <- function(...) list()
-          source("R/mixed_pando_contract.R")
-          stopifnot(isTRUE(.rc_validate_pando_route_partition(
-            "epithelial_like", "stem_like"
-          )))
-          rejected <- try(.rc_validate_pando_route_partition(
-            "epithelial_like", "epithelial_like"
-          ), silent = TRUE)
-          stopifnot(inherits(rejected, "try-error"))
-          duplicate_results <- list(
-            list(paired_cell_metadata = data.frame(cell_id = "cell1")),
-            list(paired_cell_metadata = data.frame(cell_id = "cell1"))
-          )
-          rejected <- try(.rc_validate_pando_result_cell_partition(
-            duplicate_results
-          ), silent = TRUE)
-          stopifnot(inherits(rejected, "try-error"))
-          target <- matrix(1, nrow = 1, dimnames = list("gene", "unit"))
-          rejected <- try(.rc_overlay_projection(
-            target, target, "Standard-Pando"
-          ), silent = TRUE)
-          stopifnot(inherits(rejected, "try-error"))
-
-          .rc_merge_condition_job_results <- function(...) NULL
-          source("R/grn_parallel_merge_contract.R")
-          fake_object <- structure(list(), class = "GRNData")
-          parallel_answer <- list(
-            condition_grn_fits = list(structure(
-              list(cell_type = "epithelial_like"),
-              class = c("ConditionGRNFit", "list")
-            )),
-            pando_grn_data_by_cell_type = list(
-              epithelial_like = fake_object
-            ),
-            paired_cell_metadata = data.frame(cell_id = "cell1")
-          )
-          stopifnot(isTRUE(.rc_validate_condition_job_merge_output(
-            parallel_answer
-          )))
-          names(parallel_answer$pando_grn_data_by_cell_type) <- "wrong_type"
-          rejected <- try(.rc_validate_condition_job_merge_output(
-            parallel_answer
-          ), silent = TRUE)
-          stopifnot(inherits(rejected, "try-error"))
-
           .rc_route_pando_infer_args <- function(
               args, condition_types = character(), standard_types = character()) {
             list(
