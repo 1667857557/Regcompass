@@ -189,6 +189,18 @@ rc_regcompass_step_layer2 <- function(
   monitor <- .rc_step_monitor_start("layer2", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   model_mode <- match.arg(model_mode)
+  if (!is.list(layer2_args)) {
+    stop("`layer2_args` must be a list.", call. = FALSE)
+  }
+
+  pool_state <- .rc_prepare_corda_worker_pool(
+    layer2_args = layer2_args,
+    parallel = parallel,
+    BPPARAM = BPPARAM
+  )
+  BPPARAM <- pool_state$BPPARAM
+  on.exit(.rc_release_corda_worker_pool(pool_state), add = TRUE)
+
   parallel_context <- .rc_layer2_enter_parallel_context(parallel, BPPARAM)
   on.exit(
     .rc_layer2_restore_parallel_context(parallel_context),
@@ -202,9 +214,6 @@ rc_regcompass_step_layer2 <- function(
     "meta_modules",
     "rc_regcompass_step_meta_modules"
   )
-  if (!is.list(layer2_args)) {
-    stop("`layer2_args` must be a list.", call. = FALSE)
-  }
   allowed <- c(
     "model_params", "omega", "target_direction", "solver",
     "flux_threshold"
@@ -430,6 +439,9 @@ rc_regcompass_step_layer2 <- function(
     is_corda2 = completion$is_corda2,
     solver = solver
   )
+  answer$params$corda2_worker_pool_origin <- pool_state$origin
+  answer$params$corda2_worker_pool_started_by_layer2 <-
+    isTRUE(pool_state$started_here)
   class(answer) <- c("regcompass_layer2_step", "list")
   .rc_validate_layer2_stage(
     answer,
