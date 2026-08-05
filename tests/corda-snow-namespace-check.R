@@ -5,17 +5,17 @@ suppressPackageStartupMessages({
 })
 
 root <- normalizePath(".", mustWork = TRUE)
-work <- tempfile("corda_snow_package_")
-pkg <- file.path(work, "CordaSnowCheck")
+work <- tempfile("corda2_snow_package_")
+pkg <- file.path(work, "Corda2SnowCheck")
 lib <- file.path(work, "library")
 dir.create(file.path(pkg, "R"), recursive = TRUE)
 dir.create(lib, recursive = TRUE)
 
 writeLines(c(
-  "Package: CordaSnowCheck",
-  "Title: CORDA Snow Namespace Check",
+  "Package: Corda2SnowCheck",
+  "Title: CORDA2 Snow Namespace Check",
   "Version: 0.0.1",
-  "Description: Minimal namespace test for RegCompass CORDA Snow workers.",
+  "Description: Minimal namespace test for corrected Python CORDA2 workers.",
   "License: MIT",
   "Encoding: UTF-8",
   "Imports: Matrix, methods, highs, BiocParallel",
@@ -26,16 +26,24 @@ writeLines(c(
   "    'layer2_corda_paper_contract.R'",
   "    'layer2_corda_direction_contract.R'",
   "    'layer2_corda_model.R'",
+  "    'layer2_corda_output_contract.R'",
+  "    'layer2_corda_target_contract.R'",
+  "    'layer2_corda_parent_contract.R'",
+  "    'layer2_corda2_algorithm.R'",
   "    'run.R'"
 ), file.path(pkg, "DESCRIPTION"))
-writeLines("export(run_corda_snow_check)", file.path(pkg, "NAMESPACE"))
+writeLines("export(run_corda2_snow_check)", file.path(pkg, "NAMESPACE"))
 
 for (file in c(
   "layer2_corda_evidence.R",
   "layer2_corda_lp.R",
   "layer2_corda_paper_contract.R",
   "layer2_corda_direction_contract.R",
-  "layer2_corda_model.R"
+  "layer2_corda_model.R",
+  "layer2_corda_output_contract.R",
+  "layer2_corda_target_contract.R",
+  "layer2_corda_parent_contract.R",
+  "layer2_corda2_algorithm.R"
 )) {
   file.copy(
     file.path(root, "R", file),
@@ -102,34 +110,41 @@ support <- c(
   "}",
   ".TEST_CONTEXT <- new.env(parent = emptyenv())",
   ".TEST_CONTEXT$bpparam <- FALSE",
-  ".rc_layer2_task_bpparam <- function() .TEST_CONTEXT$bpparam"
+  ".rc_layer2_task_bpparam <- function() .TEST_CONTEXT$bpparam",
+  ".rc_subset_gem <- function(gem, reactions) gem",
+  "rc_prepare_directional_targets <- function(...) data.frame()",
+  ".rc_directional_feasibility <- function(...) data.frame()",
+  "rc_build_full_gem <- function(gem, ...) gem",
+  "rc_export_microcompass <- function(...) invisible(TRUE)"
 )
 writeLines(support, file.path(pkg, "R", "support.R"))
 
 run <- c(
-  "run_corda_snow_check <- function() {",
-  "  metabolites <- c('A', 'B', 'X', 'Y')",
-  "  reactions <- c('SRC_A', 'NC1', 'HC1', 'NC_SHARED', 'MC1', 'MC2', 'SRC_Y', 'MC3')",
+  "run_corda2_snow_check <- function() {",
+  "  metabolites <- c('A', 'B', 'C', 'D', 'E', 'F')",
+  "  reactions <- c('SRC_A','M1','SRC_B','M2','H1','SRC_D','N1','M3','M4','SRC_F','M5','N2')",
   "  S <- Matrix::Matrix(0, nrow = length(metabolites), ncol = length(reactions), sparse = TRUE,",
   "                      dimnames = list(metabolites, reactions))",
-  "  S['A', 'SRC_A'] <- 1; S['A', 'NC1'] <- -1",
-  "  S['B', 'NC1'] <- 1; S['B', 'HC1'] <- -1",
-  "  S['X', 'NC_SHARED'] <- 1; S['X', 'MC1'] <- -1; S['X', 'MC2'] <- -1",
-  "  S['Y', 'SRC_Y'] <- 1; S['Y', 'MC3'] <- -1",
+  "  S['A','SRC_A'] <- 1; S['A','M1'] <- -1; S['C','M1'] <- 1",
+  "  S['B','SRC_B'] <- 1; S['B','M2'] <- -1; S['C','M2'] <- 1; S['C','H1'] <- -1",
+  "  S['D','SRC_D'] <- 1; S['D','N1'] <- -1; S['E','N1'] <- 1",
+  "  S['E','M3'] <- -1; S['E','M4'] <- -1",
+  "  S['F','SRC_F'] <- 1; S['F','M5'] <- -1; S['A','N2'] <- -1",
   "  gem <- list(S = S, lb = stats::setNames(rep(0, length(reactions)), reactions),",
   "              ub = stats::setNames(rep(100, length(reactions)), reactions))",
   "  split <- .rc_corda_split_model(gem, tolerance = 1e-8)",
-  "  classes <- list(hc = 'HC1', mc_module = c('MC1', 'MC2', 'MC3'),",
-  "                  mc_evidence = character(), mc = c('MC1', 'MC2', 'MC3'),",
-  "                  nc = c('NC1', 'NC_SHARED'), ot = c('SRC_A', 'SRC_Y'))",
+  "  classes <- list(hc = 'H1', mc_module = c('M1','M2','M3','M4','M5'),",
+  "                  mc_evidence = character(), mc = c('M1','M2','M3','M4','M5'),",
+  "                  nc = c('N1','N2'), ot = c('SRC_A','SRC_B','SRC_D','SRC_F'))",
   "  classes$confidence <- stats::setNames(rep('OT', length(reactions)), reactions)",
   "  classes$confidence[classes$nc] <- 'NC'",
   "  classes$confidence[classes$mc] <- 'MC_module'",
   "  classes$confidence[classes$hc] <- 'HC'",
   "  classes$initial_confidence <- classes$confidence",
-  "  options <- .rc_layer2_corda_options(list(model_completion = 'corda',",
-  "    corda_gamma = 1e5, corda_kappa = 1e-2, corda_epsilon = 1,",
-  "    corda_n = 3L, corda_p = 2L, corda_seed = 19L))",
+  "  options <- .rc_layer2_corda_options(list(model_completion = 'corda2',",
+  "    corda2_redundancies = 3L, corda2_penalty_factor = 100,",
+  "    corda2_support = 2L, corda2_cost_increase = 1.01,",
+  "    corda2_target_flux = 1))",
   "  .TEST_CONTEXT$bpparam <- BiocParallel::SnowParam(",
   "    workers = 2L, type = 'SOCK', progressbar = FALSE,",
   "    exportglobals = TRUE, exportvariables = TRUE)",
@@ -139,17 +154,11 @@ run <- c(
   "  }, add = TRUE)",
   "  result <- .rc_corda_build_three_stage(split, classes, options,",
   "                                         solver = 'highs', time_limit = 60)",
-  "  stopifnot(setequal(result$included, reactions),",
-  "            identical(result$stage1_associated, 'NC1'),",
-  "            identical(result$stage2_promoted_nc, 'NC_SHARED'),",
-  "            setequal(result$stage3_associated_ot, c('SRC_A', 'SRC_Y'))) ",
-  "  revS <- Matrix::Matrix(matrix(c(-1, 1), nrow = 2), sparse = TRUE,",
-  "    dimnames = list(c('RA', 'RB'), 'REV'))",
-  "  rev <- .rc_corda_split_model(list(S = revS, lb = c(REV = -10),",
-  "    ub = c(REV = 10)), tolerance = 1e-8)",
-  "  bounds <- .rc_corda_target_bounds(rev, 'REV::forward', epsilon = 1)",
-  "  stopifnot(identical(bounds$opposite_variables, 'REV::reverse'),",
-  "            bounds$upper[['REV::reverse']] == 0)",
+  "  stopifnot('N1' %in% result$stage2_promoted_nc,",
+  "            all(c('M3','M4','M5') %in% result$stage2_promoted_mc),",
+  "            !'N2' %in% result$included,",
+  "            identical(result$algorithm,",
+  "              'resendislab_python_CORDA2_corrected_redundant_path_assessment'))",
   "  TRUE",
   "}"
 )
@@ -161,6 +170,6 @@ status <- system2(
 )
 stopifnot(identical(status, 0L))
 .libPaths(c(lib, .libPaths()))
-suppressPackageStartupMessages(library(CordaSnowCheck))
-stopifnot(isTRUE(run_corda_snow_check()))
-cat("CORDA Snow namespace check passed\n")
+suppressPackageStartupMessages(library(Corda2SnowCheck))
+stopifnot(isTRUE(run_corda2_snow_check()))
+cat("Corrected Python CORDA2 Snow namespace check passed\n")
