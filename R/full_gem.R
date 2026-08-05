@@ -56,7 +56,7 @@ rc_build_full_gem <- function(
     gem, medium_table = NULL, condition = NULL,
     prune_flux_inconsistent = FALSE,
     solver = "highs", time_limit = 300,
-    flux_consistency_epsilon = 1e-8) {
+    flux_consistency_epsilon = 1e-4) {
   if (!is.logical(prune_flux_inconsistent) ||
       length(prune_flux_inconsistent) != 1L ||
       is.na(prune_flux_inconsistent)) {
@@ -72,6 +72,11 @@ rc_build_full_gem <- function(
       flux_consistency_epsilon <= 0) {
     stop("`flux_consistency_epsilon` must be positive.", call. = FALSE)
   }
+  requested_flux_consistency_epsilon <-
+    as.numeric(flux_consistency_epsilon)
+  flux_consistency_epsilon <- max(
+    1e-4, requested_flux_consistency_epsilon
+  )
 
   gem <- rc_annotate_reaction_roles(gem, medium_table = medium_table)
   validated <- rc_validate_gem(gem)
@@ -171,6 +176,8 @@ rc_build_full_gem <- function(
     } else {
       "none"
     },
+    requested_flux_consistency_epsilon =
+      requested_flux_consistency_epsilon,
     flux_consistency_epsilon = flux_consistency_epsilon,
     solver = solver,
     time_limit = time_limit,
@@ -281,8 +288,11 @@ rc_build_full_gem_cache <- function(
   time_limit <- as.numeric(
     time_limit %||% context$completion_time_limit %||% 300
   )
-  flux_consistency_epsilon <- as.numeric(
-    flux_consistency_epsilon %||% context$flux_threshold %||% 1e-8
+  requested_flux_consistency_epsilon <- as.numeric(
+    flux_consistency_epsilon %||% 1e-4
+  )
+  flux_consistency_epsilon <- max(
+    1e-4, requested_flux_consistency_epsilon
   )
   if (length(solver) != 1L || is.na(solver) || !nzchar(solver)) {
     stop("`solver` must be one non-empty solver name.", call. = FALSE)
@@ -291,9 +301,9 @@ rc_build_full_gem_cache <- function(
       time_limit <= 0) {
     stop("`time_limit` must be one positive finite number.", call. = FALSE)
   }
-  if (length(flux_consistency_epsilon) != 1L ||
-      !is.finite(flux_consistency_epsilon) ||
-      flux_consistency_epsilon <= 0) {
+  if (length(requested_flux_consistency_epsilon) != 1L ||
+      !is.finite(requested_flux_consistency_epsilon) ||
+      requested_flux_consistency_epsilon <= 0) {
     stop("`flux_consistency_epsilon` must be positive.", call. = FALSE)
   }
 
@@ -432,6 +442,8 @@ rc_build_full_gem_cache <- function(
       n_flux_inconsistent_reactions =
         build$n_flux_inconsistent_reactions,
       n_metabolites = nrow(full$S),
+      requested_flux_consistency_epsilon =
+        requested_flux_consistency_epsilon,
       flux_consistency_epsilon = flux_consistency_epsilon,
       medium_applied = isTRUE(build$medium_applied),
       solver = solver,
