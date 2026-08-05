@@ -1,62 +1,80 @@
-test_that("CORDA implements all three paper stages with barriers", {
+test_that("CORDA2 implements the Python build stages with barriers", {
   implementation <- paste(
     deparse(body(RegCompassR:::.rc_corda_build_three_stage)),
     collapse = "\n"
   )
-  expect_match(implementation, "stage1_hc_dependencies", fixed = TRUE)
-  expect_match(implementation, "stage2_mc_nc_support", fixed = TRUE)
   expect_match(
-    implementation, "stage2_remaining_mc_feasibility", fixed = TRUE
-  )
-  expect_match(implementation, "stage3_re_ot_dependencies", fixed = TRUE)
-  expect_match(
-    implementation, "stage2_NC_supports_at_least_p_MC", fixed = TRUE
+    implementation, "corda2_stage1_high_associations", fixed = TRUE
   )
   expect_match(
-    implementation, "barrier_then_union_order_independent", fixed = TRUE
+    implementation, "corda2_stage2_medium_absent_support", fixed = TRUE
+  )
+  expect_match(
+    implementation, "corda2_stage2_independent_medium_flux", fixed = TRUE
+  )
+  expect_match(
+    implementation, "corda2_stage3_free_completion", fixed = TRUE
+  )
+  expect_match(
+    implementation, "python_build_stage_barriers", fixed = TRUE
+  )
+  expect_match(
+    implementation, "as.integer(absent_count) >= options$support",
+    fixed = TRUE
   )
 })
 
-test_that("dependency costs match the original CORDA paper", {
-  S <- Matrix::Diagonal(4)
-  dimnames(S) <- list(paste0("M", 1:4), paste0("R", 1:4))
-  gem <- list(
-    S = S,
-    lb = stats::setNames(rep(0, 4), colnames(S)),
-    ub = stats::setNames(rep(10, 4), colnames(S))
+test_that("CORDA2 penalties match the Python implementation", {
+  confidence <- c(
+    H = 3L, M = 2L, L = 1L, U = 0L, N = -1L
   )
-  split <- RegCompassR:::.rc_corda_split_model(gem)
-  confidence <- c(R1 = "RE", R2 = "MC_module", R3 = "NC", R4 = "OT")
-  stage1 <- RegCompassR:::.rc_corda_base_cost(
-    split, confidence, "stage1_hc_dependencies", gamma = 1e5
+  with_medium <- RegCompassR:::.rc_corda2_penalties(
+    confidence, penalize_medium = TRUE, penalty_factor = 100
   )
-  expect_equal(stage1[["R1::forward"]], 0)
-  expect_equal(stage1[["R2::forward"]], sqrt(1e5))
-  expect_equal(stage1[["R3::forward"]], 1e5)
-  expect_equal(stage1[["R4::forward"]], 0)
-  stage2 <- RegCompassR:::.rc_corda_base_cost(
-    split, confidence, "stage2_mc_nc_support", gamma = 1e5
+  expect_equal(with_medium[["H"]], 0)
+  expect_equal(with_medium[["M"]], 1)
+  expect_equal(with_medium[["L"]], 1)
+  expect_equal(with_medium[["U"]], 0)
+  expect_equal(with_medium[["N"]], 100)
+  without_medium <- RegCompassR:::.rc_corda2_penalties(
+    confidence, penalize_medium = FALSE, penalty_factor = 100
   )
-  expect_equal(stage2[["R2::forward"]], 0)
-  expect_equal(stage2[["R3::forward"]], 1e5)
-  stage3 <- RegCompassR:::.rc_corda_base_cost(
-    split, confidence, "stage3_re_ot_dependencies", gamma = 1e5
-  )
-  expect_equal(stage3[["R4::forward"]], 1e5)
+  expect_equal(without_medium[["M"]], 0)
+  expect_equal(without_medium[["L"]], 0)
+  expect_equal(without_medium[["N"]], 100)
 })
 
-test_that("randomized dependency repeats are deterministic by task", {
-  first <- RegCompassR:::.rc_corda_noise(
-    20, seed = 7L, key = c("stage1", "R1", 2L), kappa = 0.01
+test_that("CORDA2 redundancy search increases only newly used penalties", {
+  implementation <- paste(
+    deparse(body(RegCompassR:::.rc_corda2_associated_target)),
+    collapse = "\n"
   )
-  second <- RegCompassR:::.rc_corda_noise(
-    20, seed = 7L, key = c("stage1", "R1", 2L), kappa = 0.01
+  expect_match(implementation, "options$cost_increase", fixed = TRUE)
+  expect_match(implementation, "setdiff(candidate, needed)", fixed = TRUE)
+  expect_match(implementation, "penalty[weighted_new]", fixed = TRUE)
+  expect_match(implementation, "iteration < max_iter", fixed = TRUE)
+})
+
+test_that("remaining medium confidence uses maximum flux", {
+  implementation <- paste(
+    deparse(body(RegCompassR:::.rc_corda2_maximize_targets)),
+    collapse = "\n"
   )
-  other <- RegCompassR:::.rc_corda_noise(
-    20, seed = 7L, key = c("stage1", "R1", 3L), kappa = 0.01
+  expect_match(
+    implementation,
+    "objective[[bounds$target_index]] <- -1",
+    fixed = TRUE
   )
-  expect_identical(first, second)
-  expect_false(identical(first, other))
+  expect_match(
+    implementation,
+    "result$target_flux > options$target_flux",
+    fixed = TRUE
+  )
+  expect_false(grepl(
+    "objective[[bounds$target_index]] <- 1",
+    implementation,
+    fixed = TRUE
+  ))
 })
 
 test_that("persistent native HiGHS path has one-shot fallback", {
@@ -79,7 +97,7 @@ test_that("persistent native HiGHS path has one-shot fallback", {
 
 test_that("final scoring targets remain restricted to HC core", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem)),
+    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem_before_corda2)),
     collapse = "\n"
   )
   expect_match(implementation, ".rc_corda_core_closure", fixed = TRUE)
