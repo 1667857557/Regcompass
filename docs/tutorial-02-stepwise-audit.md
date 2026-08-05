@@ -129,7 +129,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-To run the original three-stage CORDA dependency-assessment algorithm:
+To run the corrected Python CORDA2 reconstruction:
 
 ```r
 layer2_bp <- if (.Platform$OS.type == "windows") {
@@ -138,12 +138,12 @@ layer2_bp <- if (.Platform$OS.type == "windows") {
   MulticoreParam(workers = 12L, progressbar = TRUE)
 }
 
-step5_corda <- rc_regcompass_step_layer2(
+step5_corda2 <- rc_regcompass_step_layer2(
   layer1 = step4,
   meta_modules = step3,
   gem = gem,
   medium_scenarios = medium_scenarios,
-  outdir = "run/05_layer2_corda",
+  outdir = "run/05_layer2_corda2",
   model_mode = "meta_module_gem",
   parallel = TRUE,
   BPPARAM = layer2_bp,
@@ -151,16 +151,15 @@ step5_corda <- rc_regcompass_step_layer2(
     target_direction = "both",
     solver = "highs",
     model_params = list(
-      model_completion = "corda",
+      model_completion = "corda2",
       completion_time_limit = 3000,
       strict = TRUE,
-      corda_gamma = 1e5,
-      corda_kappa = 1e-2,
-      corda_epsilon = 1,
-      corda_n = 5L,
-      corda_p = 2L,
-      corda_seed = 1L,
-      corda_flux_tolerance = 1e-8,
+      corda2_redundancies = 3L,
+      corda2_penalty_factor = 100,
+      corda2_support = 5L,
+      corda2_cost_increase = 1.01,
+      corda2_target_flux = 1,
+      corda2_flux_tolerance = 1e-8,
       corda_medium_confidence_threshold = 0.75,
       corda_negative_confidence_threshold = 0.10,
       corda_regulatory_weight = 0.20,
@@ -171,35 +170,24 @@ step5_corda <- rc_regcompass_step_layer2(
 )
 ```
 
-CORDA maps merged core reactions to HC, non-core module reactions to flexible MC,
-low-evidence reactions to NC and remaining reactions to OT. It then performs the
-published HC-association, shared-NC/MC-feasibility and RE/OT-association stages.
-The parent model is the complete GEM after applying the requested medium bounds;
-CORDA does not apply FASTCC pruning or generic demand/sink/artificial-support
-blocking. `fastcore_epsilon` and `max_support_reactions` are therefore FASTCORE
-controls and should not be supplied to the CORDA route.
+CORDA2 maps merged core reactions to high confidence (`3`), non-core module reactions to medium confidence (`2`), optional high-evidence outside-module reactions to low confidence (`1`), low-evidence reactions to absent confidence (`-1`) and remaining reactions to unknown confidence (`0`). Forward and reverse directions are updated independently.
 
-For a reversible reaction being assessed in one direction, the opposite split
-direction is fixed to zero. This is equivalent to the original implementation,
-which leaves the target reaction unsplit and constrains it to `+epsilon` or
-`-epsilon`, and prevents a zero-net-flux forward/reverse self-cycle.
+The reconstruction follows the `resendislab/corda` Python flow:
 
-Only retained HC core directions that can reach `corda_epsilon` remain downstream
-scoring targets, so the score and penalty matrix dimensions remain compatible
-with the FASTCORE route. The optional temporary metabolite-task reactions from
-the original MATLAB workflow are not exposed by the current Layer-2 input
-contract.
+1. high-confidence targets identify required low/medium/absent directions;
+2. low/medium targets identify absent directions shared by at least `corda2_support` signed targets;
+3. remaining low/medium directions are retained only when their maximum flux is greater than `corda2_target_flux` after the remaining absent directions are blocked;
+4. unknown directions are penalized and added only when required by retained targets.
 
-When `BPPARAM` is omitted, the CORDA route creates one package-managed worker
-pool and keeps it alive across all stages. With few cell-type-by-medium models,
-target-direction-by-repeat tasks use the full pool; with many models, models run
-in parallel. HiGHS uses a persistent native C++ solver and reuses the simplex
-basis within each task block. Every worker restricts its internal LP solver to
-one thread to avoid oversubscription.
+Redundant pathways for one target are explored by multiplying newly selected penalized-direction costs by `corda2_cost_increase`, up to `corda2_redundancies` paths. The opposite copy of a reversible target is fixed to zero during assessment.
 
-See `docs/layer2-corda.md` for the exact confidence mapping, mathematical
-transformation, original-code equivalence, acceleration strategy and audit
-fields.
+The parent model is the complete GEM after applying the requested medium bounds; CORDA2 does not run FASTCC or generic reaction-role pruning. `fastcore_epsilon` and `max_support_reactions` are FASTCORE controls and should not be supplied to the CORDA2 route.
+
+Only included core-reaction directions that can reach `corda2_target_flux` remain downstream scoring targets, so the penalty and score matrix dimensions remain compatible with FASTCORE results. Model caches are written under `model_cache/meta_module_gem/corda2`.
+
+When the number of cell-type-by-medium models is large, models are parallelized. When there are only a few models, independent signed targets use the complete worker pool. Redundancy iterations for one target remain serial. HiGHS uses a persistent native C++ solver with objective/bound updates and simplex-basis reuse; every worker restricts internal solver and numerical-library threads to one.
+
+See `docs/layer2-corda.md` for the full mathematics, Python-source correspondence, intentional corrections, output contracts and audit fields.
 
 ## Stage 6: result assembly
 
