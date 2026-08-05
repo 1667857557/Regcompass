@@ -39,6 +39,27 @@ test_that("both direction penalties use forward confidence as in Python", {
   expect_equal(penalty2[["REV::reverse"]], 100)
 })
 
+test_that("reaction confidence reduction equals Python max of both directions", {
+  S <- Matrix::Matrix(
+    matrix(c(-1, 1, 1, -1), nrow = 2), sparse = TRUE,
+    dimnames = list(c("A", "B"), c("R1", "R2"))
+  )
+  split <- RegCompassR:::.rc_corda_split_model(list(
+    S = S,
+    lb = c(R1 = -10, R2 = -10),
+    ub = c(R1 = 10, R2 = 10)
+  ), tolerance = 1e-7)
+  directional <- c(
+    "R1::forward" = 3L, "R1::reverse" = -1L,
+    "R2::forward" = 1L, "R2::reverse" = 2L
+  )
+  reduced <- RegCompassR:::.rc_corda2_reduce_confidence(
+    split, directional
+  )
+  expect_identical(reduced, c(R1 = 3L, R2 = 2L))
+  expect_type(reduced, "integer")
+})
+
 test_that("build iteration 2 uses positive-coefficient minimization", {
   implementation <- paste(
     deparse(body(RegCompassR:::.rc_corda2_minimize_medium_targets)),
