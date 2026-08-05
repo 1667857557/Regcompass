@@ -93,6 +93,7 @@ jobs:
               raise RuntimeError(f"Layer 2 completion contract missing: {missing}")
 
           required_engine = [
+              '.rc_validate_full_gem_model_params(model_params)',
               'time_limit = model_params$completion_time_limit %||% 300',
               'flux_consistency_epsilon = flux_threshold',
               'completion_method"), "none"',
