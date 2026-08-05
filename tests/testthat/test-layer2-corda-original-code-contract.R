@@ -24,6 +24,10 @@ test_that("target lower-bound assignment precedes UPPER expansion", {
   split <- RegCompassR:::.rc_corda_split_model(list(
     S = S, lb = c(SMALL = 0), ub = c(SMALL = 0.5)
   ), tolerance = 1e-7)
+  # Constructor normalization occurs before associated() target mutation.
+  expect_equal(split$ub[["SMALL::forward"]], 1e6)
+  # Simulate a later bound change and verify Python's setter order.
+  split$ub[["SMALL::forward"]] <- 0.5
   expect_error(
     RegCompassR:::.rc_corda_target_bounds(
       split, "SMALL::forward", epsilon = 1
