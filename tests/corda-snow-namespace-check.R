@@ -30,6 +30,7 @@ writeLines(c(
   "    'layer2_corda_target_contract.R'",
   "    'layer2_corda_parent_contract.R'",
   "    'layer2_corda2_algorithm.R'",
+  "    'layer2_corda2_options_contract.R'",
   "    'layer2_corda2_output_contract.R'",
   "    'run.R'"
 ), file.path(pkg, "DESCRIPTION"))
@@ -45,6 +46,7 @@ for (file in c(
   "layer2_corda_target_contract.R",
   "layer2_corda_parent_contract.R",
   "layer2_corda2_algorithm.R",
+  "layer2_corda2_options_contract.R",
   "layer2_corda2_output_contract.R"
 )) {
   file.copy(
@@ -147,6 +149,8 @@ run <- c(
   "    corda2_redundancies = 3L, corda2_penalty_factor = 100,",
   "    corda2_support = 2L, corda2_cost_increase = 1.01,",
   "    corda2_target_flux = 1))",
+  "  stopifnot(identical(options$model_completion, 'corda2'),",
+  "            identical(options$random_noise, FALSE))",
   "  .TEST_CONTEXT$bpparam <- BiocParallel::SnowParam(",
   "    workers = 2L, type = 'SOCK', progressbar = FALSE,",
   "    exportglobals = TRUE, exportvariables = TRUE)",
