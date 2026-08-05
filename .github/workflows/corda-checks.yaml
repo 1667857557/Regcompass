@@ -7,6 +7,7 @@ on:
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-original-direction-check.R'
       - 'tests/corda-snow-namespace-check.R'
+      - 'tests/corda-performance-check.R'
       - 'tests/corda2-python-reference-check.py'
       - 'tests/testthat/test-layer2-corda*.R'
       - '.github/workflows/corda-checks.yaml'
@@ -17,6 +18,7 @@ on:
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-original-direction-check.R'
       - 'tests/corda-snow-namespace-check.R'
+      - 'tests/corda-performance-check.R'
       - 'tests/corda2-python-reference-check.py'
       - 'tests/testthat/test-layer2-corda*.R'
       - '.github/workflows/corda-checks.yaml'
@@ -84,7 +86,8 @@ jobs:
             "R/layer2_corda2_public_contract.R",
             "tests/corda-synthetic-check.R",
             "tests/corda-original-direction-check.R",
-            "tests/corda-snow-namespace-check.R"
+            "tests/corda-snow-namespace-check.R",
+            "tests/corda-performance-check.R"
           )
           for (file in files) parse(file = file)
 
@@ -93,6 +96,9 @@ jobs:
 
       - name: Verify target-direction and fixed-parameter semantics
         run: Rscript tests/corda-original-direction-check.R
+
+      - name: Verify sparse persistent updates and dynamic task scheduling
+        run: Rscript tests/corda-performance-check.R
 
       - name: Verify installed SnowParam namespace and serial inner execution
         run: Rscript tests/corda-snow-namespace-check.R
