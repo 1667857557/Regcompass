@@ -110,4 +110,4 @@ The selected route is recorded in `step5$params` and `step5$completion_contract`
 | CORDA2 | `"corda2"` | `FALSE` | `TRUE` |
 | medium-pruned full GEM | `"none"` | `FALSE` | `FALSE` |
 
-For the full-GEM route, `model_cache_summary` also records the input reaction count, retained reaction count, number of removed flux-inconsistent reactions, solver, structural time limit, and consistency threshold. Cache fingerprints include the reference GEM, pruning algorithm, solver, and threshold so an older unpruned cache cannot be reused silently.
+For the full-GEM route, `model_cache_summary` also records the input reaction count, retained reaction count, number of removed flux-inconsistent reactions, actual medium fingerprint, solver, structural time limit, and consistency threshold. Cache keys include the reference GEM, exact exchange bounds, pruning algorithm, solver, time limit, and threshold, so a same-named custom medium with changed bounds or an older unpruned cache cannot be reused silently.
