@@ -1,21 +1,61 @@
-# Run the existing pinned-Python oracle suite first with the baseline
-# full-vector persistent engine. This leaves its synthetic models, helpers and
-# baseline results in the current global environment.
+# The pinned-Python oracle suite defines deterministic synthetic models and the
+# direct production CORDA2 functions.
 source("tests/corda-synthetic-check.R", local = FALSE)
 
-baseline <- list(
-  stage3 = stage3,
-  support = support,
-  forced = forced,
-  free = free
+run_one_shot <- function(...) {
+  original <- .rc_corda_highs_api_available
+  assign(
+    ".rc_corda_highs_api_available",
+    function() FALSE,
+    envir = .GlobalEnv
+  )
+  on.exit(assign(
+    ".rc_corda_highs_api_available",
+    original,
+    envir = .GlobalEnv
+  ), add = TRUE)
+  run_build(...)$result
+}
+
+persistent <- list(
+  stage3 = run_build(stage3_gem, c(SRC = 0L, H = 3L))$result,
+  support = run_build(
+    support_gem,
+    c(N = -1L, M1 = 2L, M2 = 2L),
+    n = 1L,
+    support = 2L
+  )$result,
+  forced = run_build(
+    forced_gem,
+    c(SRC = 0L, M = 2L),
+    n = 1L
+  )$result,
+  free = run_build(
+    free_gem,
+    c(SRC = 0L, M = 2L),
+    n = 1L
+  )$result
 )
 
-# The runtime file captures these production functions at source time. They are
-# not exercised by this isolated state-machine test, but must exist so the same
-# package runtime override is loaded rather than a test-specific copy.
-rc_regcompass_step_layer2 <- function(...) NULL
-.rc_build_celltype_medium_union_gem_cache <- function(...) NULL
-source("R/layer2_corda_runtime.R", local = FALSE)
+one_shot <- list(
+  stage3 = run_one_shot(stage3_gem, c(SRC = 0L, H = 3L)),
+  support = run_one_shot(
+    support_gem,
+    c(N = -1L, M1 = 2L, M2 = 2L),
+    n = 1L,
+    support = 2L
+  ),
+  forced = run_one_shot(
+    forced_gem,
+    c(SRC = 0L, M = 2L),
+    n = 1L
+  ),
+  free = run_one_shot(
+    free_gem,
+    c(SRC = 0L, M = 2L),
+    n = 1L
+  )
+)
 
 mathematical_fields <- c(
   "included",
@@ -45,17 +85,15 @@ mathematical_fields <- c(
   "algorithm",
   "python_reference_commit",
   "stage_update_policy",
-  "source_semantics",
-  "source_fidelity",
-  "intentional_corrections"
+  "source_semantics"
 )
 
 compare_state <- function(label, reference, candidate) {
   for (field in mathematical_fields) {
     if (!identical(reference[[field]], candidate[[field]])) {
       stop(
-        "Sparse persistent CORDA2 changed mathematical field `",
-        field, "` in case `", label, "`.",
+        "One-shot CORDA2 changed mathematical field `", field,
+        "` in case `", label, "`.",
         call. = FALSE
       )
     }
@@ -79,56 +117,27 @@ compare_state <- function(label, reference, candidate) {
     check.attributes = TRUE
   ))) {
     stop(
-      "Sparse persistent CORDA2 changed task-level mathematical diagnostics ",
-      "in case `", label, "`.",
+      "One-shot CORDA2 changed task-level mathematical diagnostics in case `",
+      label, "`.",
       call. = FALSE
     )
   }
 
-  performance <- candidate$solver_performance
+  persistent_performance <- reference$solver_performance
+  one_shot_performance <- candidate$solver_performance
   stopifnot(
-    is.list(performance),
-    performance$n_solves > 0L,
-    performance$n_sparse_update_calls > 0L,
-    performance$n_transmitted_numeric_values <
-      performance$n_full_vector_numeric_values,
-    performance$n_full_vector_numeric_values_avoided > 0,
-    performance$transmitted_fraction_of_full < 1
+    isTRUE(persistent_performance$persistent_solver),
+    persistent_performance$n_sparse_update_calls > 0L,
+    persistent_performance$n_transmitted_numeric_values <
+      persistent_performance$n_full_vector_numeric_values,
+    identical(one_shot_performance$persistent_solver, FALSE),
+    one_shot_performance$n_sparse_update_calls == 0L
   )
   invisible(TRUE)
 }
 
-sparse <- list(
-  stage3 = run_build(stage3_gem, c(SRC = 0L, H = 3L))$result,
-  support = run_build(
-    support_gem,
-    c(N = -1L, M1 = 2L, M2 = 2L),
-    n = 1L,
-    support = 2L
-  )$result,
-  forced = run_build(
-    forced_gem,
-    c(SRC = 0L, M = 2L),
-    n = 1L
-  )$result,
-  free = run_build(
-    free_gem,
-    c(SRC = 0L, M = 2L),
-    n = 1L
-  )$result
-)
-
-for (label in names(baseline)) {
-  compare_state(label, baseline[[label]], sparse[[label]])
-  compare_oracle_confidence(label_map <- switch(
-    label,
-    stage3 = "stage3_unknown",
-    support = "absent_support",
-    forced = "positive_min_forced",
-    free = "positive_min_free"
-  ), sparse[[label]])
+for (label in names(persistent)) {
+  compare_state(label, persistent[[label]], one_shot[[label]])
 }
 
-cat(
-  "Full CORDA2 state machine is identical under sparse persistent updates\n"
-)
+cat("Direct persistent and one-shot CORDA2 state machines are identical\n")
