@@ -7,6 +7,8 @@ test_that("CORDA2 options match the pinned Python constructor and constants", {
   ))
   expect_identical(options$model_completion, "corda2")
   expect_identical(options$requested_model_completion, "corda2")
+  expect_null(options$met_prod)
+  expect_identical(options$n, 3L)
   expect_identical(options$redundancies, 3L)
   expect_equal(options$penalty_factor, 100)
   expect_identical(options$support, 5L)
@@ -18,6 +20,16 @@ test_that("CORDA2 options match the pinned Python constructor and constants", {
     "resendislab_python_CORDA2_c02e06d_exact_semantics"
   )
   expect_identical(options$supported_scope, "met_prod = NULL")
+
+  exact <- RegCompassR:::.rc_layer2_corda_options(list(
+    model_completion = "corda2",
+    corda2_args = list(
+      met_prod = NULL, n = 2L, penalty_factor = 10, support = 4L
+    )
+  ))
+  expect_identical(exact$n, 2L)
+  expect_equal(exact$penalty_factor, 10)
+  expect_identical(exact$support, 4L)
 
   for (alias in c("corda", "corda_like")) {
     value <- RegCompassR:::.rc_layer2_corda_options(list(
@@ -38,6 +50,13 @@ test_that("CORDA2 options match the pinned Python constructor and constants", {
       "does not expose"
     )
   }
+  expect_error(
+    RegCompassR:::.rc_layer2_corda_options(list(
+      model_completion = "corda2",
+      corda2_args = list(met_prod = "atp_c")
+    )),
+    "met_prod = NULL"
+  )
 })
 
 test_that("CORDA2 solver tolerance follows the selected solver", {
@@ -78,16 +97,15 @@ test_that("CORDA2 creates both COBRA direction variables and normalizes bounds",
   expect_equal(split$ub[["REV::reverse"]], 1e6)
 })
 
-test_that("Layer 2 exposes exact CORDA2 without changing public formals", {
+test_that("Layer 2 directly prepares and finalizes CORDA2", {
   implementation <- paste(
     deparse(body(rc_regcompass_step_layer2)), collapse = "\n"
   )
-  expect_match(
-    implementation,
-    ".rc_regcompass_step_layer2_exact_public_base",
-    fixed = TRUE
-  )
-  expect_match(implementation, "source_fidelity", fixed = TRUE)
+  expect_match(implementation, ".rc_prepare_corda_worker_pool", fixed = TRUE)
+  expect_match(implementation, ".rc_layer2_prepare_completion", fixed = TRUE)
+  expect_match(implementation, ".rc_layer2_finalize_completion", fixed = TRUE)
+  expect_false(grepl("_base", implementation, fixed = TRUE))
+  expect_false(grepl("before_", implementation, fixed = TRUE))
   expect_identical(
     names(formals(rc_regcompass_step_layer2)),
     c(
@@ -97,24 +115,27 @@ test_that("Layer 2 exposes exact CORDA2 without changing public formals", {
   )
 })
 
-test_that("CORDA2 cache metadata states serial execution within each instance", {
+test_that("original union cache directly dispatches to CORDA2 helper", {
   implementation <- paste(
     deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache)),
     collapse = "\n"
   )
   expect_match(
     implementation,
-    ".rc_build_celltype_medium_union_gem_cache_exact_base",
+    ".rc_build_celltype_medium_corda_cache",
     fixed = TRUE
   )
+  expect_match(implementation, "context$model_completion", fixed = TRUE)
+  expect_false(grepl("_base", implementation, fixed = TRUE))
+
+  helper <- paste(
+    deparse(body(RegCompassR:::.rc_build_celltype_medium_corda_cache)),
+    collapse = "\n"
+  )
   expect_match(
-    implementation,
+    helper,
     "serial_within_each_python_corda2_instance",
     fixed = TRUE
   )
-  expect_match(
-    implementation,
-    "celltype_medium_python_corda2_exact",
-    fixed = TRUE
-  )
+  expect_match(helper, "celltype_medium_python_corda2_exact", fixed = TRUE)
 })
