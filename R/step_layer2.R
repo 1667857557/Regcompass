@@ -189,6 +189,11 @@ rc_regcompass_step_layer2 <- function(
   monitor <- .rc_step_monitor_start("layer2", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   model_mode <- match.arg(model_mode)
+  parallel_context <- .rc_layer2_enter_parallel_context(parallel, BPPARAM)
+  on.exit(
+    .rc_layer2_restore_parallel_context(parallel_context),
+    add = TRUE
+  )
   meta_modules <- .rc_compact_meta_modules_for_layer2(meta_modules)
   invisible(gc(verbose = FALSE, full = TRUE))
   .rc_require_stage_class(
