@@ -1,38 +1,50 @@
-# Original CORDA reconstruction in Layer 2
+# Corrected Python CORDA2 reconstruction in Layer 2
 
 `rc_regcompass_step_layer2()` keeps compact add-only FASTCORE as the default.
-For `model_mode = "meta_module_gem"`, `model_completion = "corda"` runs the
-reaction-reconstruction algorithm described by Schultz and Qutub (2016). The
-former draft value `"corda_like"` is accepted only as a compatibility alias and
-is normalized to `"corda"`.
-
-The implementation contract is based on the paper's Materials and Methods
-pseudocode and the author-distributed MATLAB function referenced as S2 File. If
-a RegCompass engineering choice is not part of the original algorithm, it is
-identified explicitly below.
+For `model_mode = "meta_module_gem"`, use:
 
 ```r
-step5 <- rc_regcompass_step_layer2(
+model_completion = "corda2"
+```
+
+The development aliases `"corda"` and `"corda_like"` are normalized to the
+same CORDA2 implementation. No second CORDA reconstruction algorithm is loaded.
+
+The implementation follows `resendislab/corda` at commit
+`c02e06d50606bf93f23d8f2e6d6ade0e996ca70e`, including its five directional
+confidence levels, redundant-path search and build stages. Two source defects
+are corrected explicitly:
+
+1. remaining medium-confidence directions are tested by **maximizing** their
+   flux rather than minimizing a positive target coefficient;
+2. the opposite copy of a reversible target is fixed to zero during target
+   assessment, preventing a zero-net-flux forward/reverse self-cycle.
+
+## Recommended call
+
+```r
+step5_corda2 <- rc_regcompass_step_layer2(
   layer1 = step4,
   meta_modules = step3,
   gem = gem,
   medium_scenarios = medium_scenarios,
-  outdir = "run/05_layer2_corda",
+  outdir = "run/05_layer2_corda2",
   model_mode = "meta_module_gem",
+  parallel = TRUE,
+  BPPARAM = layer2_bp,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
     model_params = list(
-      model_completion = "corda",
+      model_completion = "corda2",
       completion_time_limit = 3000,
       strict = TRUE,
-      corda_gamma = 1e5,
-      corda_kappa = 1e-2,
-      corda_epsilon = 1,
-      corda_n = 5L,
-      corda_p = 2L,
-      corda_seed = 1L,
-      corda_flux_tolerance = 1e-8,
+      corda2_redundancies = 3L,
+      corda2_penalty_factor = 100,
+      corda2_support = 5L,
+      corda2_cost_increase = 1.01,
+      corda2_target_flux = 1,
+      corda2_flux_tolerance = 1e-8,
       corda_medium_confidence_threshold = 0.75,
       corda_negative_confidence_threshold = 0.10,
       corda_regulatory_weight = 0.20,
@@ -43,194 +55,234 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-`fastcore_epsilon` and `max_support_reactions` are FASTCORE controls. They do not
-change CORDA reconstruction and should normally be omitted from a CORDA call.
+`fastcore_epsilon` and `max_support_reactions` are FASTCORE controls. They are
+not CORDA2 algorithm parameters.
 
-## Input model contract
+## Parent-model contract
 
-For each cell type and medium, CORDA receives the complete GEM after application
-of the requested medium bounds. No FASTCC reaction deletion is performed and no
-reaction is blocked solely because it is annotated as demand, sink, exchange or
-artificial support. This follows the original function's contract: CORDA acts on
-the model supplied to it, and every supplied reaction is assigned to HC, MC, NC
-or OT.
+For each cell type and medium, CORDA2 receives the complete GEM after applying
+the requested medium bounds. It does not run FASTCC first and does not block a
+reaction solely from a generic demand, sink, exchange or artificial-support
+role annotation.
 
-The medium constraint is a RegCompass input transformation performed before
-CORDA. It is not presented as part of the original CORDA algorithm.
+As in the Python implementation, every direction that is open in the supplied
+model is normalized to an internal upper bound of `1e6`. Closed directions stay
+closed and positive directional lower bounds are preserved. The final retained
+model restores the original reaction IDs, stoichiometry, annotations, GPR rules
+and original bounds.
 
-## Confidence mapping
+## RegCompass evidence mapping
 
-CORDA accepts reaction confidence classes and leaves their definition to the
-caller. RegCompass maps evidence within each broad cell type.
-
-RNA-only and multiome reaction capacities are summarized across matching
-metacells and converted to within-cell-type percentile ranks. The RegCompass
-evidence score is
+Reaction evidence is calculated independently within each broad cell type:
 
 \[
 E_r=(1-w)\max\{Q_r^{RNA},Q_r^{multiome}\}+wA_r^{regulatory},
 \]
 
-where `A_regulatory` is the median GPR regulatory-support fraction and the
-default `w` is `0.20`.
+where:
 
-The initial classes are:
+- `Q_RNA` is the within-cell-type percentile of median RNA-only reaction
+  capacity;
+- `Q_multiome` is the within-cell-type percentile of median multiome reaction
+  capacity;
+- `A_regulatory` is the median GPR regulatory-support fraction;
+- the default regulatory weight is `w = 0.20`.
 
-- **HC:** merged core reactions;
-- **MC_module:** non-core reactions in the merged cell-type meta-module;
-- **MC_evidence:** optional reactions outside the module with evidence at or
-  above `corda_medium_confidence_threshold`;
-- **NC:** remaining reactions with finite evidence at or below
-  `corda_negative_confidence_threshold`;
-- **OT:** every remaining input-model reaction, including reactions without
-  available omics evidence.
+RegCompass maps reaction classes to the Python CORDA2 confidence values:
 
-MC reactions are flexible and are not automatically retained.
+| RegCompass class | Directional confidence | Meaning |
+|---|---:|---|
+| merged core reaction | `3` | high confidence |
+| non-core module reaction | `2` | medium confidence |
+| high-evidence outside-module reaction | `1` | low confidence |
+| remaining low-evidence reaction | `-1` | absent / penalized |
+| remaining reaction | `0` | unknown / free until final completion |
 
-## Exact directional transformation
+Forward and reverse copies inherit the same initial reaction confidence, then
+are updated independently during reconstruction. A final reaction is retained
+when at least one allowed directional copy reaches confidence `3`.
 
-The original dependency code does not split the reaction currently being
-tested. It constrains that original variable to `+epsilon` or `-epsilon` and
-splits the other reversible reactions.
+## Directional representation
 
-RegCompass pre-splits the model once for solver reuse. To remain mathematically
-equivalent, when a forward target is tested its reverse copy is fixed to zero;
-when a reverse target is tested its forward copy is fixed to zero. Without this
-constraint, a reversible reaction could satisfy the target by sending equal
-forward and reverse flux through itself, producing zero net stoichiometric flux.
-
-Original reaction bounds determine which directional copies exist. The final
-model is converted back to original reaction IDs, stoichiometry, bounds,
-annotations and GPR rules.
-
-## Dependency-assessment LP
-
-Let `Y` be the undesirable reaction group for the current stage. After splitting
-non-target reversible reactions, every directional variable is nonnegative. The
-original code adds one pseudo-metabolite whose production coefficient is the
-reaction cost, adds a cost-consuming reaction, and minimizes that sink flux.
-Eliminating the pseudo-metabolite balance gives the equivalent LP used here:
+Every allowed reaction direction is represented by a nonnegative variable:
 
 \[
-\begin{aligned}
-\min_v\quad &\sum_i c_i v_i\\
-\text{s.t.}\quad&S_{split}v=0,\\
-&l\le v\le u,\\
-&v_x\ge\epsilon,
-\end{aligned}
+v_r=v_r^+-v_r^-.
 \]
 
-where the opposite target direction is fixed to zero. For every directional
-reaction,
+When direction `x` is assessed, its opposite directional copy is fixed to zero
+and the target is forced to carry at least `corda2_target_flux`:
+
+\[
+v_x\ge t,\qquad v_{opposite}=0.
+\]
+
+The opposite-direction constraint is required because otherwise a reversible
+reaction could satisfy the target through equal forward and reverse flux while
+producing zero net stoichiometric flux.
+
+## Associated-path LP
+
+For one signed target, CORDA2 constructs costs from the current directional
+confidence:
 
 \[
 c_i=\begin{cases}
-\gamma+U_i(0,\kappa), & i\in Y,\\
-U_i(0,\kappa), & i\notin Y.
+1,& q_i\in\{1,2\}\text{ and medium penalties are enabled},\\
+P,& q_i=-1,\\
+0,& q_i\in\{0,3\},
 \end{cases}
 \]
 
-Thus CORDA minimizes the **combined flux through costly reactions**, not the
-number of costly reactions. A reaction in `Y` is associated with the target when
-its selected directional flux is nonzero. `corda_flux_tolerance` supplies the
-numerical nonzero threshold; `corda_epsilon` is kept separate and defines the
-forced target magnitude.
+where the default absent-reaction penalty is `P = 100`.
 
-The original algorithm draws fresh uniform noise for every dependency
-assessment. RegCompass preserves that distribution but derives each task's
-random stream deterministically from `corda_seed`, stage, target direction and
-repeat. This is an engineering adaptation required so serial, Multicore and SOCK
-execution return the same task-level random draws regardless of scheduling. It
-is not claimed to reproduce a particular unseeded MATLAB random-number stream
-bit for bit.
+The LP is:
 
-The paper defaults are:
+\[
+\begin{aligned}
+\min_v\quad & \sum_i c_i v_i\\
+\text{s.t.}\quad &S_{split}v=0,\\
+&l\le v\le u,\\
+&v_x\ge t,\\
+&v_{opposite}=0.
+\end{aligned}
+\]
 
-- `corda_gamma = 1e5`;
-- `corda_kappa = 1e-2`;
-- `corda_epsilon = 1`;
-- `corda_n = 5` dependency assessments per allowed target direction;
-- `corda_p = 2` distinct MC reactions required to promote a shared NC reaction.
+A low-, medium- or absent-confidence directional variable is associated with
+the target when its solution flux exceeds `corda2_flux_tolerance`.
 
-## Three reconstruction stages
+### Redundant pathways
 
-### Stage 1: HC associations
+For each target, the LP is solved repeatedly up to
+`corda2_redundancies` times. After a solve, every newly observed penalized
+variable has its coefficient multiplied by:
 
-All HC reactions begin in RE. Every allowed HC direction is assessed `n` times.
-MC directions have base cost `sqrt(gamma)`, NC directions have base cost
-`gamma`, and HC/OT directions have base cost zero. Any MC or NC reaction
-associated with an HC target in any repeat is moved to RE.
+\[
+CI=\texttt{corda2_cost_increase},
+\]
 
-### Stage 2: flexible MC/NC core
+with default `CI = 1.01`. The next solve is therefore encouraged to use an
+alternative path. Repetition stops when no new associated variable is found or
+the redundancy limit is reached.
 
-Each remaining MC direction is assessed `n` times with NC as the costly group.
-An NC reaction is moved to RE when it is associated with at least `p` **distinct
-MC reactions**. All remaining NC reactions are then blocked. Every remaining MC
-reaction is tested in every allowed direction and is moved to RE if at least one
-direction can carry `corda_epsilon`.
+Redundancy iterations for one target are necessarily serial because iteration
+`k+1` depends on the variables selected in iteration `k`. Different signed
+targets remain independent and are parallelized.
 
-The algorithm records excluded MC reactions and their Stage-2 NC associations
-for subsequent curation.
+## CORDA2 build stages
 
-### Stage 3: OT associations
+### Stage 1: high-confidence associations
 
-All remaining MC and NC reactions are blocked. Every allowed direction of every
-RE reaction is assessed `n` times with OT as the costly group. Every associated
-OT reaction is moved to RE. The resulting RE set defines the final reconstruction.
+All confidence-3 directional variables are assessed with low and medium
+variables penalized by `1` and absent variables penalized by
+`corda2_penalty_factor`. Every associated directional variable is promoted to
+confidence `3`.
 
-Confidence updates occur only after all tasks in a stage finish. This stage
-barrier preserves the original algorithm's reaction-order independence.
+### Stage 2a: absent support for low/medium targets
 
-## Optional metabolic tasks
+Every remaining confidence-1 or confidence-2 direction is assessed with medium
+penalties disabled. Associated absent directional variables are counted across
+signed targets. An absent direction is promoted when its occurrence count is at
+least:
 
-The original MATLAB workflow can temporarily add metabolite sinks as HC tests,
-removing each test before another reaction or task is assessed. The current
-RegCompass Layer-2 input contract supplies reaction targets rather than temporary
-metabolite-task definitions, so this optional original-code feature is not yet
-exposed. The implementation must not claim metabolic-task preservation unless a
-future explicit task input and isolated temporary-reaction contract are added.
+```r
+corda2_support
+```
 
-## Native C++ acceleration and parallelism
+The default is `5`, matching the Python package.
 
-Repeated LP solution dominates runtime. HiGHS already provides the native C++
-solver, so RegCompass does not duplicate FBA in custom Rcpp code. Each worker:
+### Stage 2b: independent low/medium feasibility
 
-1. constructs one persistent HiGHS model for its task block;
-2. updates only objective coefficients and target bounds;
-3. re-solves with simplex-basis reuse;
-4. falls back to the existing one-shot LP path if the persistent API is absent
-   or fails.
+All still-absent directions are blocked. Each remaining confidence-1 or
+confidence-2 direction is then tested independently by solving:
 
-When the number of cell-type-by-medium models is at least the worker count,
-models run in parallel and each model executes its CORDA stages serially. When
-there are fewer models, models run sequentially and each stage distributes
-`target direction × repeat` chunks across the full pool. A supplied inactive
-`BPPARAM` is started once for the complete Layer-2 call and released at exit; an
-already active caller pool remains active. Solvers are restricted to one thread
-per worker to prevent oversubscription.
+\[
+\max v_x.
+\]
 
-The persistent native solver removes repeated model construction and permits
-basis reuse. A quantitative speedup claim requires a Human-GEM benchmark; the
-synthetic checks establish correctness, not production-scale performance.
+The direction is promoted when the optimum is strictly greater than
+`corda2_target_flux`.
+
+The Python source sets a positive coefficient while retaining minimization in
+this step, which drives the solution toward zero. RegCompass corrects the sign
+and records this correction in the model and Layer-2 completion contracts.
+
+### Stage 3: unknown/free reaction completion
+
+All unpromoted low/medium directions are blocked. Unknown directions are changed
+to absent confidence and become penalized candidates. Every confidence-3 target
+is assessed once, with medium penalties disabled and redundancy search disabled.
+Associated formerly unknown directions are promoted to confidence `3`.
+
+## Native C++ solver acceleration
+
+LP solving dominates runtime. HiGHS is already a native C++ solver, so the
+implementation does not duplicate the optimizer in custom Rcpp code.
+
+Each worker:
+
+1. constructs one persistent HiGHS model for its target chunk;
+2. updates the complete objective vector and target bounds;
+3. repeatedly solves with the simplex method;
+4. reuses the solver state and simplex basis;
+5. falls back to the existing one-shot LP interface if the persistent API is
+   unavailable or fails.
+
+Custom C++ should be added only if profiling on Human-GEM shows that sparse
+index preparation or result aggregation, rather than LP solving, is a material
+runtime bottleneck.
+
+## Parallel scheduling
+
+Parallelism is adaptive:
+
+- when `cell type × medium` model count is at least the worker count, models are
+  constructed in parallel and each worker runs one model's CORDA2 stages;
+- when model count is smaller, models run sequentially and independent signed
+  targets use the complete worker pool;
+- redundancy iterations for one target remain serial;
+- confidence changes are applied only after every target in a build stage has
+  completed;
+- one `BPPARAM` pool is retained across the complete Layer-2 call;
+- each worker restricts HiGHS/Gurobi and BLAS/OpenMP internals to one thread.
+
+This avoids nested process pools and solver oversubscription.
 
 ## Pipeline contracts
 
-- Only retained HC core directions that can reach `corda_epsilon` enter the
-  downstream `vmax`, penalty and score matrices.
-- MC/NC/OT reconstruction does not enlarge the score matrix.
-- Conditions and matching metacells share one model only within the same cell
-  type and medium.
-- The primary multiome path and RNA-only control reuse the same CORDA model file
-  and checksum.
-- CORDA caches are isolated under `model_cache/meta_module_gem/corda`.
-- `fastcore_epsilon`, FASTCC counts, role-blocking counts and
-  `max_support_reactions` are not reported as CORDA algorithm results.
+- CORDA2 is available only with `model_mode = "meta_module_gem"`.
+- One structural model is built per cell type and medium and shared across its
+  matching conditions and metacells.
+- The primary multiome calculation and RNA-only control reuse exactly the same
+  model file and checksum.
+- Only retained core-reaction directions that can reach
+  `corda2_target_flux` enter the downstream `vmax`, penalty and score matrices.
+- Low-, medium-, absent- and unknown-reaction reconstruction does not enlarge
+  the score matrix.
+- CORDA2 model files are isolated under:
+
+```text
+model_cache/meta_module_gem/corda2/
+```
 
 ## Audit output
 
-Each model records the initial confidence, final RE status, inclusion stage,
-reaction evidence, dependency tasks, Stage-2 NC-to-MC association pairs,
-opposite-target directions blocked during each solve, solver backend, persistent
-solver fallback counts, unpruned parent-model contract and HC-direction closure
-checks. The full task table is stored once and a compact stage/status/backend
-summary is stored separately.
+Each CORDA2 model stores:
+
+- the Python reference repository and commit;
+- all initial and final directional confidence values;
+- reaction-level inclusion stages;
+- per-target redundancy counts;
+- directional absent-support counts;
+- impossible signed targets;
+- solver runtime and persistent-solver fallback counts;
+- the corrected-MC-flux and opposite-direction corrections;
+- compact task diagnostics;
+- normalized association edges with both `associated_variable_id` and
+  `associated_reaction_id`;
+- original parent-model and downstream core-closure diagnostics.
+
+Synthetic CI verifies real LP solutions, redundancy search, support thresholds,
+independent medium promotion, final free-reaction completion, reversible-target
+self-cycle prevention, serial/Multicore equality, persistent/one-shot equality
+and installed-package SnowParam execution.
