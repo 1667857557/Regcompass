@@ -1,4 +1,4 @@
-# Runtime dispatch for optional original CORDA Layer 2 completion.
+# Native runtime dispatch for corrected Python CORDA2 Layer 2 completion.
 
 .rc_layer2_completion_context <- new.env(parent = emptyenv())
 .rc_layer2_completion_context$active <- FALSE
@@ -9,6 +9,13 @@
 .rc_regcompass_step_layer2_completion_base <- rc_regcompass_step_layer2
 .rc_build_celltype_medium_union_gem_cache_fastcore <-
   .rc_build_celltype_medium_union_gem_cache
+
+.rc_is_corda2_options <- function(options) {
+  is.list(options) && identical(
+    as.character(options$algorithm %||% ""),
+    "resendislab_python_CORDA2_corrected_redundant_path_assessment"
+  )
+}
 
 # Correct persistent-solver fallback while retaining basis reuse on success.
 .rc_corda_engine_solve <- function(
@@ -94,7 +101,8 @@
     strict = TRUE) {
   context <- .rc_layer2_completion_context
   if (!isTRUE(context$active) ||
-      !identical(context$model_completion, "corda")) {
+      !identical(context$model_completion, "corda2") ||
+      !.rc_is_corda2_options(context$corda_options)) {
     return(.rc_build_celltype_medium_union_gem_cache_fastcore(
       gem = gem,
       reaction_membership = reaction_membership,
@@ -120,16 +128,16 @@
   evidence_all <- context$reaction_evidence
   corda_options <- context$corda_options
   if (!is.data.frame(evidence_all) || !nrow(evidence_all)) {
-    stop("CORDA reaction evidence is unavailable.", call. = FALSE)
+    stop("CORDA2 reaction evidence is unavailable.", call. = FALSE)
   }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))
   scenarios <- scenarios[!is.na(scenarios) & nzchar(scenarios)]
   if (!length(scenarios)) {
-    stop("No medium scenarios are available for CORDA construction.",
+    stop("No medium scenarios are available for CORDA2 construction.",
          call. = FALSE)
   }
-  cache_dir <- file.path(cache_dir, "corda")
+  cache_dir <- file.path(cache_dir, "corda2")
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   task_grid <- expand.grid(
     cell_type = scoped$cell_types,
@@ -242,9 +250,10 @@
       n_stage3_associated_ot = build$n_stage3_associated_ot,
       solver_runtime = paste(execution_types, collapse = ";"),
       target_status = model$target_status,
-      build_strategy = "celltype_medium_original_corda",
+      build_strategy = "celltype_medium_corrected_python_corda2",
       completion_stage =
-        "original_CORDA_three_stage_after_confidence_mapping",
+        "corrected_python_CORDA2_after_confidence_mapping",
+      completion_method = "corda2",
       completion_time_limit = time_limit,
       stringsAsFactors = FALSE
     )
@@ -270,7 +279,7 @@
           condition = "all",
           file = file,
           file_checksum = checksum,
-          build_strategy = "celltype_medium_original_corda"
+          build_strategy = "celltype_medium_corrected_python_corda2"
         )
       }
     }
@@ -296,7 +305,7 @@
       run_one(task[1, , drop = FALSE], suppress_nested = FALSE)
     })
     dispatch <- if (pool_workers > 1L) {
-      "models_serial_target_direction_x_replicate_inner_parallel"
+      "models_serial_signed_target_inner_parallel"
     } else {
       "serial"
     }
@@ -309,7 +318,7 @@
     if (length(part$cache)) {
       duplicated <- intersect(names(cache), names(part$cache))
       if (length(duplicated)) {
-        stop("Parallel CORDA tasks produced duplicate cache keys.",
+        stop("Parallel CORDA2 tasks produced duplicate cache keys.",
              call. = FALSE)
       }
       cache[names(part$cache)] <- part$cache
@@ -318,10 +327,10 @@
   attr(cache, "summary") <- .rc_bind_frames_fill(summaries)
   attr(cache, "celltype_col") <- celltype_col
   attr(cache, "structural_scope") <- "cell_type_x_medium"
-  attr(cache, "completion_method") <- "corda"
+  attr(cache, "completion_method") <- "corda2"
   attr(cache, "structural_parallel_task") <- dispatch
   attr(cache, "structural_parallel_workers") <- pool_workers
-  attr(cache, "fastcore_parallel_task") <- "not_applicable_to_corda"
+  attr(cache, "fastcore_parallel_task") <- "not_applicable_to_corda2"
   cache
 }
 
@@ -336,18 +345,22 @@ rc_regcompass_step_layer2 <- function(
   }
   model_params <- layer2_args$model_params %||% list()
   corda_options <- .rc_layer2_corda_options(model_params)
-  if (identical(corda_options$model_completion, "corda") &&
-      !identical(model_mode, "meta_module_gem")) {
+  is_corda2 <- .rc_is_corda2_options(corda_options)
+  if (isTRUE(is_corda2) && !identical(model_mode, "meta_module_gem")) {
     stop(
-      "`model_completion = \"corda\"` is available only with ",
+      "`model_completion = \"corda2\"` is available only with ",
       "`model_mode = \"meta_module_gem\"`.",
       call. = FALSE
     )
   }
   extracted <- c(
     "model_completion",
-    "corda_gamma", "corda_kappa", "corda_epsilon",
-    "corda_n", "corda_p", "corda_seed", "corda_flux_tolerance",
+    "corda2_penalty_factor", "corda_penalty_factor", "corda_gamma",
+    "corda2_cost_increase", "corda_cost_increase", "corda_kappa",
+    "corda2_target_flux", "corda_tflux", "corda_epsilon",
+    "corda2_redundancies", "corda_n",
+    "corda2_support", "corda_support", "corda_p",
+    "corda2_flux_tolerance", "corda_flux_tolerance", "corda_seed",
     "corda_medium_confidence_threshold",
     "corda_negative_confidence_threshold",
     "corda_regulatory_weight",
@@ -360,11 +373,9 @@ rc_regcompass_step_layer2 <- function(
   previous <- as.list(.rc_layer2_completion_context)
   .rc_layer2_completion_context$active <- TRUE
   .rc_layer2_completion_context$model_completion <-
-    corda_options$model_completion
+    if (isTRUE(is_corda2)) "corda2" else "fastcore"
   .rc_layer2_completion_context$corda_options <- corda_options
-  .rc_layer2_completion_context$reaction_evidence <- if (
-    identical(corda_options$model_completion, "corda")
-  ) {
+  .rc_layer2_completion_context$reaction_evidence <- if (isTRUE(is_corda2)) {
     .rc_layer2_corda_reaction_evidence(
       layer1,
       meta_modules,
@@ -390,44 +401,70 @@ rc_regcompass_step_layer2 <- function(
     BPPARAM = BPPARAM,
     progress = progress
   )
-  answer$params$model_completion <- corda_options$model_completion
-  answer$completion_contract <- list(
-    model_completion = corda_options$model_completion,
-    default_unchanged = identical(corda_options$model_completion, "fastcore"),
-    algorithm = if (identical(corda_options$model_completion, "corda")) {
-      "Schultz_Qutub_CORDA_2016_three_stage_dependency_assessment"
-    } else {
-      "add_only_compact_FASTCORE"
-    },
-    confidence_mapping = if (
-      identical(corda_options$model_completion, "corda")
-    ) {
-      paste(
-        "HC=merged core; MC=remaining module plus optional high-evidence",
-        "outside-module reactions; NC=low evidence; OT=remaining"
-      )
-    } else {
-      NULL
-    },
-    stage_update_policy = if (
-      identical(corda_options$model_completion, "corda")
-    ) "barrier_then_union_order_independent" else NULL,
-    native_solver_acceleration = if (
-      identical(corda_options$model_completion, "corda")
-    ) {
-      "persistent HiGHS C++ solver with objective/bound updates and basis reuse"
-    } else {
-      NULL
-    },
-    corda = if (
-      identical(corda_options$model_completion, "corda")
-    ) corda_options else NULL
-  )
-  if (identical(corda_options$model_completion, "corda")) {
+  answer$params$model_completion <- if (isTRUE(is_corda2)) {
+    "corda2"
+  } else {
+    "fastcore"
+  }
+  answer$completion_contract <- if (isTRUE(is_corda2)) {
+    list(
+      model_completion = "corda2",
+      default_unchanged = FALSE,
+      algorithm = corda_options$algorithm,
+      python_reference = list(
+        repository = "resendislab/corda",
+        commit = corda_options$python_reference_commit,
+        class = "CORDA2"
+      ),
+      confidence_levels = c(
+        absent = -1L, unknown = 0L, low = 1L,
+        medium = 2L, high = 3L
+      ),
+      confidence_mapping = paste(
+        "high=merged core; medium=non-core module; low=optional",
+        "high-evidence outside-module; absent=low evidence; unknown=remaining"
+      ),
+      redundant_path_search = list(
+        maximum_paths = corda_options$redundancies,
+        cost_increase = corda_options$cost_increase,
+        absent_penalty_factor = corda_options$penalty_factor,
+        support_threshold = corda_options$support,
+        target_flux = corda_options$target_flux
+      ),
+      stage_update_policy = "python_build_stage_barriers",
+      native_solver_acceleration = paste(
+        "persistent HiGHS C++ solver with complete objective/bound updates",
+        "and simplex-basis reuse"
+      ),
+      intentional_corrections = corda_options$intentional_corrections,
+      options = corda_options
+    )
+  } else {
+    list(
+      model_completion = "fastcore",
+      default_unchanged = TRUE,
+      algorithm = "add_only_compact_FASTCORE"
+    )
+  }
+  if (isTRUE(is_corda2)) {
+    answer$params$structural_completion <- "corda2"
+    answer$params$structural_completion_algorithm <- corda_options$algorithm
+    answer$params$corda2_reference_commit <-
+      corda_options$python_reference_commit
+    answer$params$corda2_redundancies <- corda_options$redundancies
+    answer$params$corda2_support <- corda_options$support
+    answer$params$corda2_penalty_factor <- corda_options$penalty_factor
+    answer$params$corda2_cost_increase <- corda_options$cost_increase
+    answer$params$corda2_target_flux <- corda_options$target_flux
     answer$union_gem_policy <- paste(
-      "one original-CORDA reconstruction per cell type and medium;",
-      "three dependency-assessment stages use barrier updates; only retained",
-      "parent-feasible HC core directions enter downstream scoring"
+      "one corrected Python-CORDA2 reconstruction per cell type and medium;",
+      "five directional confidence levels, redundant-path cost updates,",
+      "absent support counting, independent medium testing and final free",
+      "reaction completion"
+    )
+    answer$method <- paste(
+      "microCOMPASS directional LP on cell-type-specific medium models",
+      "reconstructed by corrected Python CORDA2"
     )
   }
   rc_export_microcompass(answer, outdir)
