@@ -1,9 +1,9 @@
-name: CORDA algorithm checks
+name: CORDA2 algorithm checks
 
 on:
   pull_request:
     paths:
-      - 'R/layer2_corda_*.R'
+      - 'R/layer2_corda*.R'
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-original-direction-check.R'
       - 'tests/corda-snow-namespace-check.R'
@@ -11,7 +11,7 @@ on:
   push:
     branches: [Main]
     paths:
-      - 'R/layer2_corda_*.R'
+      - 'R/layer2_corda*.R'
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-original-direction-check.R'
       - 'tests/corda-snow-namespace-check.R'
@@ -21,7 +21,7 @@ permissions:
   contents: read
 
 jobs:
-  synthetic-corda:
+  synthetic-corda2:
     runs-on: ubuntu-22.04
     timeout-minutes: 25
     steps:
@@ -38,7 +38,7 @@ jobs:
             install.packages("BiocManager")
           }
           BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
-      - name: Parse CORDA sources
+      - name: Parse CORDA2 sources
         shell: Rscript {0}
         run: |
           files <- c(
@@ -50,16 +50,18 @@ jobs:
             "R/layer2_corda_output_contract.R",
             "R/layer2_corda_target_contract.R",
             "R/layer2_corda_parent_contract.R",
+            "R/layer2_corda2_algorithm.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_pool_lifecycle.R",
+            "R/layer2_corda2_public_contract.R",
             "tests/corda-synthetic-check.R",
             "tests/corda-original-direction-check.R",
             "tests/corda-snow-namespace-check.R"
           )
           for (file in files) parse(file = file)
-      - name: Run synthetic three-stage CORDA checks
+      - name: Run corrected Python CORDA2 synthetic checks
         run: Rscript tests/corda-synthetic-check.R
-      - name: Run original signed-direction check
+      - name: Run signed-direction correction check
         run: Rscript tests/corda-original-direction-check.R
-      - name: Run SnowParam package-namespace check
+      - name: Run CORDA2 SnowParam package-namespace check
         run: Rscript tests/corda-snow-namespace-check.R
