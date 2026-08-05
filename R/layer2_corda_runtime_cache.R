@@ -57,6 +57,7 @@
     stringsAsFactors = FALSE
   )
   tasks <- split(task_grid, seq_len(nrow(task_grid)))
+
   run_one <- function(task, suppress_nested = FALSE) {
     previous_nested <- .rc_layer2_parallel_context$nested_serial
     if (isTRUE(suppress_nested)) {
@@ -66,6 +67,7 @@
       .rc_layer2_parallel_context$nested_serial <- previous_nested
       invisible(gc(verbose = FALSE, full = TRUE))
     }, add = TRUE)
+
     cell_type <- as.character(task$cell_type[[1L]])
     scenario <- as.character(task$medium_scenario[[1L]])
     membership <- reaction_membership[
@@ -96,6 +98,7 @@
     evidence <- evidence_all[
       as.character(evidence_all$cell_type) == cell_type, , drop = FALSE
     ]
+
     model <- .rc_complete_celltype_medium_corda_gem(
       gem = gem,
       reaction_membership = membership,
@@ -118,6 +121,7 @@
     model$union_gem_medium_scenario <- scenario
     model$union_gem_scope <-
       "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
+
     file <- file.path(
       cache_dir,
       paste0(
@@ -128,10 +132,12 @@
     .rc_atomic_save_rds(model, file)
     checksum <- unname(tools::md5sum(file))
     build <- model$build_params
+    performance <- model$corda_reconstruction$solver_performance %||% list()
     execution_types <- unique(unlist(lapply(
       model$corda_execution,
       function(value) value$solver_runtime %||% character()
     ), use.names = FALSE))
+
     summary <- data.frame(
       cell_type = cell_type,
       medium_scenario = scenario,
@@ -159,6 +165,22 @@
       n_stage2_promoted_nc = build$n_stage2_promoted_nc,
       n_stage2_promoted_mc = build$n_stage2_promoted_mc,
       n_stage3_associated_ot = build$n_stage3_associated_ot,
+      n_corda2_lp_solves = as.integer(performance$n_solves %||% NA_integer_),
+      n_corda2_objective_coeff_updates = as.integer(
+        performance$n_objective_coeff_updates %||% NA_integer_
+      ),
+      n_corda2_bound_index_updates = as.integer(
+        performance$n_bound_index_updates %||% NA_integer_
+      ),
+      n_corda2_full_vector_values_avoided = as.numeric(
+        performance$n_full_vector_numeric_values_avoided %||% NA_real_
+      ),
+      corda2_transmitted_fraction_of_full = as.numeric(
+        performance$transmitted_fraction_of_full %||% NA_real_
+      ),
+      corda2_solver_release_policy = as.character(
+        performance$release_policy %||% NA_character_
+      ),
       solver_runtime = paste(execution_types, collapse = ";"),
       target_status = model$target_status,
       build_strategy = "celltype_medium_python_corda2_exact",
@@ -167,6 +189,7 @@
       completion_time_limit = time_limit,
       stringsAsFactors = FALSE
     )
+
     cache <- list()
     if (nrow(model$target_directions)) {
       for (i in seq_len(nrow(model$target_directions))) {
@@ -193,14 +216,26 @@
         )
       }
     }
-    rm(model)
+
+    # The structural model is already durably saved. Drop the in-memory model
+    # before the worker accepts another independent task.
+    rm(model, membership, core, evidence, medium, build, performance)
     list(cache = cache, summary = summary)
   }
 
-  task_bpparam <- .rc_layer2_task_bpparam()
+  task_bpparam <- .rc_corda_tune_task_bpparam(
+    .rc_layer2_task_bpparam(), length(tasks)
+  )
   pool_workers <- .rc_corda_pool_workers(task_bpparam)
-  outer_parallel <- length(tasks) > 1L &&
-    length(tasks) >= pool_workers && pool_workers > 1L
+  outer_parallel <- .rc_corda_should_outer_parallel(
+    length(tasks), pool_workers
+  )
+  active_workers <- if (outer_parallel) {
+    min(length(tasks), pool_workers)
+  } else {
+    1L
+  }
+
   if (outer_parallel) {
     parts <- rc_parallel_lapply(
       tasks,
@@ -209,13 +244,15 @@
       ),
       BPPARAM = task_bpparam
     )
-    dispatch <- "cell_type_x_medium_outer_parallel_python_instances"
+    dispatch <-
+      "dynamic_cell_type_x_medium_outer_parallel_python_instances"
   } else {
     parts <- lapply(tasks, function(task) {
       run_one(task[1, , drop = FALSE], suppress_nested = FALSE)
     })
     dispatch <- "serial_within_each_python_corda2_instance"
   }
+
   cache <- list()
   summaries <- vector("list", length(parts))
   for (i in seq_along(parts)) {
@@ -235,8 +272,13 @@
   attr(cache, "structural_scope") <- "cell_type_x_medium"
   attr(cache, "completion_method") <- "corda2"
   attr(cache, "structural_parallel_task") <- dispatch
-  attr(cache, "structural_parallel_workers") <- pool_workers
+  attr(cache, "structural_parallel_workers_requested") <- pool_workers
+  attr(cache, "structural_parallel_workers") <- active_workers
+  attr(cache, "structural_parallel_tasks") <- length(tasks)
+  attr(cache, "structural_dynamic_task_scheduling") <- outer_parallel
   attr(cache, "corda2_inner_target_parallelism") <- FALSE
   attr(cache, "fastcore_parallel_task") <- "not_applicable_to_corda2"
+  rm(parts, summaries)
+  invisible(gc(verbose = FALSE, full = FALSE))
   cache
 }
