@@ -72,6 +72,8 @@ jobs:
               '.rc_validate_full_gem_model_params',
               '"medium_flux_consistency_pruned_full_gem"',
               '.rc_fastcc_consistent_reactions',
+              '.rc_full_gem_medium_fingerprint',
+              'medium_fingerprint = medium_fingerprint',
               'fastcore_executed = FALSE',
               'corda2_executed = FALSE',
               'reaction_evidence_used = FALSE',
