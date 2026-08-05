@@ -7,6 +7,7 @@ on:
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-original-direction-check.R'
       - 'tests/corda-snow-namespace-check.R'
+      - 'tests/corda2-python-reference-check.py'
       - '.github/workflows/corda-checks.yaml'
   push:
     branches: [Main]
@@ -15,6 +16,7 @@ on:
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-original-direction-check.R'
       - 'tests/corda-snow-namespace-check.R'
+      - 'tests/corda2-python-reference-check.py'
       - '.github/workflows/corda-checks.yaml'
 
 permissions:
@@ -23,14 +25,23 @@ permissions:
 jobs:
   synthetic-corda2:
     runs-on: ubuntu-22.04
-    timeout-minutes: 25
+    timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install pinned Python CORDA2 reference
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install "git+https://github.com/resendislab/corda.git@c02e06d50606bf93f23d8f2e6d6ade0e996ca70e"
+      - name: Run pinned Python CORDA2 reference checks
+        run: python tests/corda2-python-reference-check.py
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
           use-public-rspm: true
-      - name: Install minimal solver dependencies
+      - name: Install minimal R solver dependencies
         shell: Rscript {0}
         run: |
           install.packages("highs")
@@ -60,7 +71,7 @@ jobs:
             "tests/corda-snow-namespace-check.R"
           )
           for (file in files) parse(file = file)
-      - name: Run corrected Python CORDA2 synthetic checks
+      - name: Run corrected R CORDA2 synthetic checks
         run: Rscript tests/corda-synthetic-check.R
       - name: Run signed-direction correction check
         run: Rscript tests/corda-original-direction-check.R
