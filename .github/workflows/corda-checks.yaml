@@ -75,7 +75,8 @@ jobs:
 
           options = Path("R/layer2_corda2_options_contract.R").read_text()
           split = Path("R/layer2_corda_paper_contract.R").read_text()
-          algorithm = Path("R/layer2_corda2_algorithm_build.R").read_text()
+          dependency = Path("R/layer2_corda2_algorithm.R").read_text()
+          build = Path("R/layer2_corda2_algorithm_build.R").read_text()
           model = Path("R/layer2_corda_model.R").read_text()
           tutorial = Path("docs/tutorial-02-stepwise-audit.md").read_text()
 
@@ -98,13 +99,20 @@ jobs:
           if missing:
               raise RuntimeError(f"original CORDA2 direction contract missing: {missing}")
 
-          required_algorithm = [
-              'sqrt(options$om)', '1 + options$ci', 'HCtoMC', 'HCtoNC',
-              'MCxNC', 'options$MCxNCthresh',
+          required_dependency = [
+              'sqrt(options$om)', '1 + options$ci',
+              '.rc_corda2_constrain_target', 'options$flux_threshold',
+          ]
+          missing = [x for x in required_dependency if x not in dependency]
+          if missing:
+              raise RuntimeError(f"original CORDA2 dependency loop missing: {missing}")
+
+          required_build = [
+              'HCtoMC', 'HCtoNC', 'MCxNC', 'options$MCxNCthresh',
               'corda2_step2_2_MC_feasibility',
               'corda2_step3_HC_OT_dependencies',
           ]
-          missing = [x for x in required_algorithm if x not in algorithm]
+          missing = [x for x in required_build if x not in build]
           if missing:
               raise RuntimeError(f"original CORDA2 state machine missing: {missing}")
 
