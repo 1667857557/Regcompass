@@ -33,7 +33,11 @@ rc_validate_gem <- function(gem) {
   reactions <- colnames(S)
   lb <- as.numeric(gem$lb[reactions])
   ub <- as.numeric(gem$ub[reactions])
-  names(lb) <- names(ub) <- reactions
+  if (length(lb) != length(reactions) || length(ub) != length(reactions)) {
+    stop("synthetic GEM bound length mismatch")
+  }
+  names(lb) <- reactions
+  names(ub) <- reactions
   if (anyNA(lb) || anyNA(ub) || any(lb > ub)) stop("invalid GEM bounds")
   list(S = S, lb = lb, ub = ub, reactions = reactions)
 }
@@ -67,13 +71,20 @@ source("R/layer2_corda2_algorithm_build.R")
 source("R/layer2_corda2_options_contract.R")
 
 make_gem <- function(metabolites, reactions, entries, lb = NULL, ub = NULL) {
-  S <- Matrix::Matrix(
-    0, nrow = length(metabolites), ncol = length(reactions), sparse = TRUE,
-    dimnames = list(metabolites, reactions)
+  S <- Matrix::sparseMatrix(
+    i = integer(), j = integer(), x = numeric(),
+    dims = c(length(metabolites), length(reactions)),
+    dimnames = list(metabolites, reactions),
+    giveCsparse = TRUE
   )
   for (entry in entries) S[entry[[1L]], entry[[2L]]] <- entry[[3L]]
   if (is.null(lb)) lb <- stats::setNames(rep(0, length(reactions)), reactions)
   if (is.null(ub)) ub <- stats::setNames(rep(1000, length(reactions)), reactions)
+  stopifnot(
+    identical(colnames(S), reactions),
+    length(lb) == length(reactions),
+    length(ub) == length(reactions)
+  )
   list(S = S, lb = lb, ub = ub)
 }
 classes <- function(hc, mc, nc, ot = character()) {
@@ -85,6 +96,15 @@ classes <- function(hc, mc, nc, ot = character()) {
   list(
     hc = hc, mc_module = mc, mc_evidence = character(), mc = mc,
     nc = nc, ot = ot, confidence = label, initial_confidence = label
+  )
+}
+inspect_gem <- function(label, gem) {
+  cat(
+    label, ": reactions=", paste(colnames(gem$S), collapse = ","),
+    "; ncol=", ncol(gem$S),
+    "; lb=", paste(names(gem$lb), collapse = ","),
+    "; ub=", paste(names(gem$ub), collapse = ","), "\n",
+    sep = ""
   )
 }
 
@@ -128,6 +148,7 @@ reversible <- make_gem(
   lb = c(REV = -1000, IRR = 0),
   ub = c(REV = 1000, IRR = 1000)
 )
+inspect_gem("reversible", reversible)
 split <- .rc_corda2_split_original(reversible)
 stopifnot(
   identical(colnames(split$S), c("REV", "IRR", "REV_CORDA_rev_rxn")),
@@ -152,6 +173,7 @@ network <- make_gem(
     list("B", "N", -1)
   )
 )
+inspect_gem("network", network)
 network_split <- .rc_corda2_split_original(network)
 result <- .rc_corda_build_three_stage(
   split = network_split,
