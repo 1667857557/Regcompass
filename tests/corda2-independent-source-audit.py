@@ -87,7 +87,7 @@ def penalty_route_case(rows, penalty_factor):
     b = Metabolite("B")
     c = Metabolite("C")
     d = Metabolite("D")
-    model = Model(f"penalty_route_{penalty_factor}")
+    model = Model(f"penalty_route_{penalty_factor:g}")
     add_reaction(model, "SRC", {a: 1})
     add_reaction(model, "N", {a: -1, d: 1})
     add_reaction(model, "M1", {a: -1, b: 1})
@@ -108,7 +108,7 @@ def penalty_route_case(rows, penalty_factor):
     mapping = normalized_variable_map(worker)
     needed = worker.associated(["SINK"], redundancies=True)
     normalized = sorted(mapping[name] for name in needed)
-    key = f"penalty_factor_{penalty_factor}"
+    key = f"penalty_factor_{penalty_factor:g}"
     rows.append((key, "needed", ";".join(normalized)))
     rows.append((key, "redundancy", str(worker.redundancies["SINK"])))
 
