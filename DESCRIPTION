@@ -44,10 +44,8 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     source. Persistent and one-shot HiGHS paths use the same verified simplex,
     one-thread and feasibility-tolerance configuration. Targets are processed
     serially with one persistent solver state. Parallelism is limited to
-    independent cell-type-by-medium CORDA2 instances. Directional vmax and
-    Step-2 LP scoring remain reaction-granular parallel tasks with per-task
-    checkpoints and full garbage collection. Internal LP solvers are restricted
-    to one thread per worker, including Gurobi.
+    independent cell-type-by-medium CORDA2 instances, and the primary and
+    RNA-only scoring paths reuse the same completed structural model cache.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -143,7 +141,6 @@ Collate:
     'layer2_corda2_algorithm.R'
     'layer2_corda2_algorithm_build.R'
     'layer2_corda2_options_contract.R'
-    'layer2_corda2_output_contract.R'
     'layer2_corda_runtime.R'
     'layer2_corda_runtime_cache.R'
     'layer2_corda_runtime_step.R'
