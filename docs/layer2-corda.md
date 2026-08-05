@@ -49,6 +49,34 @@ RegCompass maps cell-type evidence to the four reaction groups required by origi
 
 This mapping is an input adapter. The reconstruction state machine begins after HC, MC, NC and OT have been assigned.
 
+## Native Layer 1 evidence aggregation
+
+The canonical Layer 1 output stores RNA-only reaction capacity, multiome reaction capacity and reaction-level regulatory support as `reaction × metacell` matrices. CORDA2 reconstructs one shared structural model per `cell type × medium`, so these metacell values are converted to one evidence value per `reaction × cell type` before HC, MC, NC and OT classification.
+
+For each reaction, cell type and condition, RegCompass first takes the median across metacells:
+
+\[
+E_{r,c,k}^{\mathrm{within}}
+=
+\operatorname{median}_{u \in (c,k)} E_{r,u}.
+\]
+
+It then takes the maximum of those condition medians within the same cell type:
+
+\[
+E_{r,c}^{\mathrm{union}}
+=
+\max_k E_{r,c,k}^{\mathrm{within}}.
+\]
+
+This fixed `condition_median_max` policy is applied independently to:
+
+- `reaction_expression_rna_only`;
+- `reaction_expression`;
+- `reaction_regulatory_support_fraction`, when available.
+
+The within-condition median limits the influence of individual metacell outliers. The cross-condition maximum preserves reactions strongly supported in any retained condition so that condition-specific pathways are not averaged away from the shared union GEM. No new user parameter is introduced, and all existing CORDA2 thresholds and original MATLAB controls remain unchanged. Legacy reaction-support data frames remain accepted and retain their previous cell-type aggregation behavior.
+
 ## Directional model
 
 Only reactions satisfying `lb < 0 && ub >= 0` are split. Their reverse copies use the original suffix `_CORDA_rev_rxn`. The original forward column remains unchanged and the reverse copy uses the negated stoichiometric column. Both variables are non-negative.
