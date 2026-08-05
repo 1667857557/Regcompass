@@ -83,6 +83,7 @@
     stop("The shared full-GEM engine accepts only `full_gem` mode.",
          call. = FALSE)
   }
+  .rc_validate_full_gem_model_params(model_params)
   unit <- match.arg(unit)
   solver <- match.arg(solver)
   target_direction <- match.arg(target_direction)
