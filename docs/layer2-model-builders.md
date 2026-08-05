@@ -100,6 +100,8 @@ reference GEM
 
 FASTCC here is only a consistency filter. It does not select a compact evidence-supported network and therefore is not a FASTCORE reconstruction. The workflow still uses the Stage 3 merged core reactions as scoring targets; the pruned full GEM supplies the complete feasible support network for those targets.
 
+The scoring parameter `flux_threshold` is not reused as the FASTCC consistency threshold. Directional scoring may use its default `1e-8`, whereas structural consistency uses an effective epsilon of at least `1e-4`. This separation keeps the structural activation requirement above the HiGHS/GLPK feasibility tolerance and prevents zero-flux reactions from being retained because of numerical tolerance. The requested and effective structural epsilon are both recorded in the cache summary.
+
 ## Output contract
 
 The selected route is recorded in `step5$params` and `step5$completion_contract`:
@@ -110,4 +112,4 @@ The selected route is recorded in `step5$params` and `step5$completion_contract`
 | CORDA2 | `"corda2"` | `FALSE` | `TRUE` |
 | medium-pruned full GEM | `"none"` | `FALSE` | `FALSE` |
 
-For the full-GEM route, `model_cache_summary` also records the input reaction count, retained reaction count, number of removed flux-inconsistent reactions, actual medium fingerprint, solver, structural time limit, and consistency threshold. Cache keys include the reference GEM, exact exchange bounds, pruning algorithm, solver, time limit, and threshold, so a same-named custom medium with changed bounds or an older unpruned cache cannot be reused silently.
+For the full-GEM route, `model_cache_summary` also records the input reaction count, retained reaction count, number of removed flux-inconsistent reactions, actual medium fingerprint, requested and effective consistency epsilon, solver, and structural time limit. Cache keys include the reference GEM, exact exchange bounds, pruning algorithm, solver, time limit, and effective threshold, so a same-named custom medium with changed bounds or an older unpruned cache cannot be reused silently.
