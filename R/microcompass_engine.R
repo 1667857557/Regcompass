@@ -99,8 +99,11 @@
 
   if (!is.null(model_cache_override)) {
     if (!is.list(model_cache_override) || !length(model_cache_override) ||
-        is.null(attr(model_cache_override, "summary"))) {
-      stop("`model_cache_override` is not an audited shared model cache.",
+        is.null(attr(model_cache_override, "summary")) ||
+        !identical(attr(model_cache_override, "completion_method"), "none") ||
+        !identical(attr(model_cache_override, "fastcore_executed"), FALSE) ||
+        !identical(attr(model_cache_override, "corda2_executed"), FALSE)) {
+      stop("`model_cache_override` is not an audited medium-pruned full-GEM cache.",
            call. = FALSE)
     }
     model_cache <- model_cache_override
@@ -144,8 +147,22 @@
       medium_scenarios = medium_scenarios,
       cache_dir = model_params$cache_dir %||%
         tempfile("RegCompassR_full_gem_cache_"),
-      conditions = "all"
+      conditions = "all",
+      solver = solver,
+      time_limit = model_params$completion_time_limit %||% 300,
+      flux_consistency_epsilon = flux_threshold
     )
+    directions <- unique(do.call(rbind, lapply(
+      model_cache,
+      function(entry) {
+        data.frame(
+          reaction_id = as.character(entry$reaction_id),
+          target_direction = as.character(entry$target_direction),
+          medium_scenario = as.character(entry$medium_scenario),
+          stringsAsFactors = FALSE
+        )
+      }
+    )))
   } else {
     stop("The shared full-GEM engine received a non-full-GEM mode.",
          call. = FALSE)
@@ -352,8 +369,17 @@
       omega = omega,
       target_direction = target_direction,
       shared_gem = TRUE,
-      shared_gem_scope =
-        "one_full_gem_per_medium_shared_across_all_units",
+      shared_gem_scope = paste(
+        "one medium-flux-consistency-pruned full GEM per medium",
+        "shared across all units"
+      ),
+      structural_scope = "medium_x_full_gem",
+      model_completion = "none",
+      structural_completion = "medium_flux_consistency",
+      structural_completion_algorithm =
+        "medium_flux_consistency_pruned_full_gem",
+      fastcore_executed = FALSE,
+      corda2_executed = FALSE,
       parallel_task = "shared_model_by_metacell_step2",
       vmax_computation_scope =
         "shared_model_x_directional_target_once",
@@ -362,7 +388,7 @@
       flux_threshold = flux_threshold,
       scoring_time_limit = "none"
     ),
-    method = "microCOMPASS shared full-GEM directional LP"
+    method = "microCOMPASS shared medium-pruned full-GEM directional LP"
   )
 }
 
