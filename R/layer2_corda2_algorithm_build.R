@@ -103,6 +103,9 @@
   )
   inclusion_stage_direction[confidence == 3L] <- "initial_high_confidence"
   engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
+  on.exit({
+    engine <- .rc_corda_release_lp_engine(engine)
+  }, add = TRUE)
   execution <- list()
   task_tables <- list()
   all_impossible <- character()
@@ -266,6 +269,8 @@
     if (length(pair_rows)) support_pairs <- do.call(rbind, pair_rows)
   }
 
+  solver_performance <- .rc_corda_execution_metrics(engine)
+
   list(
     included = included_reactions,
     included_directional_variables = included_variables,
@@ -309,6 +314,7 @@
     redundancies = redundancy_values,
     task_diagnostics = .rc_bind_frames_fill(task_tables),
     execution = execution,
+    solver_performance = solver_performance,
     algorithm = "resendislab_python_CORDA2_c02e06d_exact_semantics",
     python_reference_commit =
       "c02e06d50606bf93f23d8f2e6d6ade0e996ca70e",
