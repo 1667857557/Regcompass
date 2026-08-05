@@ -1,5 +1,56 @@
 # Exact Python CORDA2 build-state transitions.
 
+# Standalone source-oracle scripts load the algorithm before the later runtime
+# override. Keep a complete baseline lifecycle here; layer2_corda_runtime.R
+# replaces the metrics with sparse-update bookkeeping during normal package use.
+if (!exists(".rc_corda_release_lp_engine", mode = "function")) {
+  .rc_corda_release_lp_engine <- function(engine) {
+    if (!is.list(engine) || isTRUE(engine$released)) return(engine)
+    if (!is.null(engine$pointer) && requireNamespace("highs", quietly = TRUE)) {
+      exports <- getNamespaceExports("highs")
+      if ("hi_solver_clear" %in% exports) {
+        try(.rc_corda_highs_call(
+          "hi_solver_clear", engine$pointer
+        ), silent = TRUE)
+      } else if ("hi_solver_clear_model" %in% exports) {
+        try(.rc_corda_highs_call(
+          "hi_solver_clear_model", engine$pointer
+        ), silent = TRUE)
+      }
+    }
+    engine$pointer <- NULL
+    engine$released <- TRUE
+    engine
+  }
+}
+
+if (!exists(".rc_corda_execution_metrics", mode = "function")) {
+  .rc_corda_execution_metrics <- function(engine) {
+    n_variables <- if (is.list(engine$split) && !is.null(engine$split$S)) {
+      ncol(engine$split$S)
+    } else {
+      0L
+    }
+    n_solves <- as.integer(engine$n_solves %||% 0L)
+    full_values <- as.numeric(3 * n_variables * n_solves)
+    list(
+      n_variables = as.integer(n_variables),
+      n_solves = n_solves,
+      n_fallback = as.integer(engine$n_fallback %||% 0L),
+      n_objective_coeff_updates = NA_integer_,
+      n_bound_index_updates = NA_integer_,
+      n_sparse_update_calls = 0L,
+      n_full_vector_numeric_values = full_values,
+      n_transmitted_numeric_values = full_values,
+      n_full_vector_numeric_values_avoided = 0,
+      transmitted_fraction_of_full = if (full_values > 0) 1 else NA_real_,
+      persistent_solver = identical(engine$type, "highs_persistent_cpp"),
+      persistent_disabled = FALSE,
+      release_policy = "explicit_native_clear_on_reconstruction_exit"
+    )
+  }
+}
+
 .rc_corda2_minimize_medium_targets <- function(
     engine, split, targets, directional_confidence, options,
     stage = "corda2_stage2_independent_medium_minimization") {
