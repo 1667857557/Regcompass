@@ -1,29 +1,37 @@
-test_that("CORDA options preserve FASTCORE and match paper defaults", {
+test_that("CORDA2 options preserve FASTCORE and match Python defaults", {
   defaults <- RegCompassR:::.rc_layer2_corda_options(list())
   expect_identical(defaults$model_completion, "fastcore")
-  corda <- RegCompassR:::.rc_layer2_corda_options(list(
-    model_completion = "corda"
+  corda2 <- RegCompassR:::.rc_layer2_corda_options(list(
+    model_completion = "corda2"
   ))
-  expect_identical(corda$model_completion, "corda")
-  expect_equal(corda$gamma, 1e5)
-  expect_equal(corda$kappa, 1e-2)
-  expect_equal(corda$epsilon, 1)
-  expect_equal(corda$n, 5L)
-  expect_equal(corda$p, 2L)
-  alias <- RegCompassR:::.rc_layer2_corda_options(list(
-    model_completion = "corda_like"
-  ))
-  expect_identical(alias$model_completion, "corda")
+  expect_identical(corda2$model_completion, "corda")
+  expect_identical(corda2$requested_model_completion, "corda2")
+  expect_equal(corda2$penalty_factor, 100)
+  expect_equal(corda2$cost_increase, 1.01)
+  expect_equal(corda2$target_flux, 1)
+  expect_equal(corda2$redundancies, 3L)
+  expect_equal(corda2$support, 5L)
+  expect_equal(corda2$upper_bound, 1e6)
+  expect_identical(
+    corda2$algorithm,
+    "resendislab_python_CORDA2_corrected_redundant_path_assessment"
+  )
+  for (alias in c("corda", "corda_like")) {
+    value <- RegCompassR:::.rc_layer2_corda_options(list(
+      model_completion = alias
+    ))
+    expect_identical(value$requested_model_completion, "corda2")
+  }
   expect_error(
     RegCompassR:::.rc_layer2_corda_options(list(
-      model_completion = "corda",
-      corda_negative_penalty = 10
+      model_completion = "corda2",
+      corda2_cost_increase = 1
     )),
-    "Obsolete weighted-FASTCORE"
+    "greater than 1"
   )
 })
 
-test_that("CORDA evidence is calculated within each cell type", {
+test_that("CORDA2 evidence is calculated within each cell type", {
   reactions <- paste0("R", 1:4)
   units <- paste0("U", 1:4)
   rna <- matrix(
@@ -64,7 +72,7 @@ test_that("CORDA evidence is calculated within each cell type", {
   )
 })
 
-test_that("confidence mapping leaves MC flexible", {
+test_that("RegCompass confidence mapping supplies five CORDA2 levels", {
   evidence <- data.frame(
     reaction_id = paste0("R", 1:7),
     evidence_score = c(0.9, 0.8, 0.7, 0.95, 0.4, 0.05, NA),
@@ -83,14 +91,26 @@ test_that("confidence mapping leaves MC flexible", {
   expect_identical(classes$hc, "R1")
   expect_setequal(classes$mc_module, c("R2", "R3"))
   expect_identical(classes$mc_evidence, "R4")
-  expect_setequal(classes$mc, c("R2", "R3", "R4"))
   expect_identical(classes$nc, "R6")
   expect_setequal(classes$ot, c("R5", "R7"))
-  expect_false("biological" %in% names(classes))
-  expect_true(all(classes$confidence[classes$mc] != "RE"))
+  S <- Matrix::Diagonal(7)
+  dimnames(S) <- list(paste0("M", 1:7), evidence$reaction_id)
+  split <- RegCompassR:::.rc_corda_split_model(list(
+    S = S,
+    lb = stats::setNames(rep(0, 7), evidence$reaction_id),
+    ub = stats::setNames(rep(10, 7), evidence$reaction_id)
+  ))
+  directional <- RegCompassR:::.rc_corda2_directional_confidence(
+    split, classes
+  )
+  expect_equal(directional[["R1::forward"]], 3L)
+  expect_equal(directional[["R2::forward"]], 2L)
+  expect_equal(directional[["R4::forward"]], 1L)
+  expect_equal(directional[["R6::forward"]], -1L)
+  expect_equal(directional[["R7::forward"]], 0L)
 })
 
-test_that("direction splitting preserves bounds and direction", {
+test_that("direction splitting and CORDA2 bound normalization are explicit", {
   S <- Matrix::Matrix(
     matrix(c(-1, 1, 1, -1), nrow = 2), sparse = TRUE,
     dimnames = list(c("A", "B"), c("IRR", "REV"))
@@ -101,27 +121,24 @@ test_that("direction splitting preserves bounds and direction", {
     ub = c(IRR = 10, REV = 7)
   )
   split <- RegCompassR:::.rc_corda_split_model(gem, tolerance = 1e-8)
+  normalized <- RegCompassR:::.rc_corda2_normalize_split(split)
   expect_setequal(
     split$direction_table$variable_id,
     c("IRR::forward", "REV::forward", "REV::reverse")
   )
-  expect_equal(split$ub[["IRR::forward"]], 10)
-  expect_equal(split$ub[["REV::forward"]], 7)
-  expect_equal(split$ub[["REV::reverse"]], 5)
-  expect_equal(
-    as.numeric(split$S[, "REV::reverse"]),
-    -as.numeric(S[, "REV"])
-  )
+  expect_equal(normalized$ub[["IRR::forward"]], 1e6)
+  expect_equal(normalized$ub[["REV::forward"]], 1e6)
+  expect_equal(normalized$ub[["REV::reverse"]], 1e6)
 })
 
-test_that("Layer 2 exposes CORDA without changing public formals", {
+test_that("Layer 2 exposes CORDA2 without changing public formals", {
   implementation <- paste(
     deparse(body(rc_regcompass_step_layer2)), collapse = "\n"
   )
-  expect_match(implementation, "corda", fixed = TRUE)
+  expect_match(implementation, "corda2", fixed = TRUE)
   expect_match(
     implementation,
-    ".rc_regcompass_step_layer2_corda_pool_base",
+    ".rc_regcompass_step_layer2_before_corda2_public",
     fixed = TRUE
   )
   expect_identical(
@@ -133,24 +150,23 @@ test_that("Layer 2 exposes CORDA without changing public formals", {
   )
 })
 
-test_that("CORDA cache retains exact FASTCORE fallback", {
+test_that("CORDA2 cache retains exact FASTCORE fallback and dedicated path", {
   implementation <- paste(
     deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache)),
     collapse = "\n"
   )
   expect_match(
     implementation,
-    ".rc_build_celltype_medium_union_gem_cache_fastcore",
+    ".rc_build_celltype_medium_union_gem_cache_before_corda2_public",
     fixed = TRUE
   )
-  expect_match(
-    implementation,
-    "celltype_medium_original_corda",
-    fixed = TRUE
+  expect_match(implementation, ".rc_corda2_move_cache_files", fixed = TRUE)
+  mover <- paste(
+    deparse(body(RegCompassR:::.rc_corda2_move_cache_files)),
+    collapse = "\n"
   )
+  expect_match(mover, "corda2", fixed = TRUE)
   expect_match(
-    implementation,
-    "models_serial_target_direction_x_replicate_inner_parallel",
-    fixed = TRUE
+    mover, "celltype_medium_corrected_python_corda2", fixed = TRUE
   )
 })
