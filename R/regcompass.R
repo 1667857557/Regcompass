@@ -10,8 +10,9 @@
 #' Layer 2 selects exactly one structural route. `model_mode =
 #' "meta_module_gem"` uses add-only FASTCORE by default or original MATLAB
 #' CORDA2 when `layer2_args$model_params$model_completion = "corda2"`.
-#' `model_mode = "full_gem"` applies the shared medium and removes only
-#' flux-inconsistent reactions; it does not execute FASTCORE or CORDA2.
+#' `model_mode = "full_gem"` retains the complete GEM, applies the shared
+#' medium as exchange-reaction bounds only, and uses directional COMPASS vmax
+#' to identify infeasible targets; it does not execute FASTCORE or CORDA2.
 #'
 #' When `medium_scenarios` is omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
