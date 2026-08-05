@@ -26,7 +26,10 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     L = as.numeric(obj), lower = as.numeric(lb), upper = as.numeric(ub),
     A = A, lhs = as.numeric(lhs), rhs = as.numeric(rhs), maximum = FALSE,
     control = highs::highs_control(
-      log_to_console = FALSE, threads = 1L, solver = "simplex"
+      log_to_console = FALSE, output_flag = FALSE,
+      threads = 1L, solver = "simplex",
+      primal_feasibility_tolerance = 1e-7,
+      time_limit = as.numeric(time_limit)
     )
   )
   list(
@@ -39,25 +42,14 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
 rc_parallel_config <- function(...) list(workers = 1L)
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) lapply(X, FUN, ...)
 .rc_layer2_task_bpparam <- function() FALSE
-.rc_subset_gem <- function(gem, reactions) gem
-rc_prepare_directional_targets <- function(...) data.frame()
-.rc_directional_feasibility <- function(...) data.frame()
-rc_build_full_gem <- function(gem, ...) gem
-.rc_fastcore_parent <- function(...) stop("not used")
 
 source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
-source("R/layer2_corda_paper_contract.R")
-source("R/layer2_corda_direction_contract.R")
-source("R/layer2_corda_model.R")
 source("R/layer2_corda_output_contract.R")
-source("R/layer2_corda_target_contract.R")
-source("R/layer2_corda_parent_contract.R")
+source("R/layer2_corda_direction_contract.R")
 source("R/layer2_corda2_algorithm.R")
 source("R/layer2_corda2_algorithm_build.R")
-source("R/layer2_corda2_algorithm_integration.R")
 source("R/layer2_corda2_options_contract.R")
-source("R/layer2_corda2_correction_contract.R")
 
 S <- Matrix::Matrix(
   matrix(c(-1, 1), nrow = 2), sparse = TRUE,
@@ -77,9 +69,7 @@ stopifnot(
   split$ub[["REV::reverse"]] == 1e6
 )
 
-bounds <- .rc_corda_target_bounds(
-  split, "REV::forward", epsilon = 1
-)
+bounds <- .rc_corda_target_bounds(split, "REV::forward", epsilon = 1)
 stopifnot(
   identical(bounds$opposite_variables, "REV::reverse"),
   identical(bounds$opposite_direction_blocked, character()),
@@ -90,7 +80,7 @@ answer <- rc_solve_lp(
   obj = c(0, 0), A = split$S,
   lhs = rep(0, nrow(split$S)), rhs = rep(0, nrow(split$S)),
   lb = bounds$lower, ub = bounds$upper,
-  solver = "highs", time_limit = 60
+  solver = "highs", time_limit = Inf
 )
 stopifnot(
   identical(answer$status, "optimal"),
@@ -102,10 +92,7 @@ small <- .rc_corda_split_model(
   list(S = S, lb = c(REV = 0), ub = c(REV = 0.5)),
   tolerance = .rc_corda2_solver_feasibility_tolerance("highs")
 )
-# CORDA.__init__ first normalizes every positive reaction upper bound to UPPER.
 stopifnot(small$ub[["REV::forward"]] == 1e6)
-# Reproduce a post-constructor bound mutation, then verify that associated()
-# applies the lower-bound setter before resetting the upper bound to UPPER.
 small$ub[["REV::forward"]] <- 0.5
 failed_order <- try(
   .rc_corda_target_bounds(small, "REV::forward", epsilon = 1),
@@ -115,6 +102,10 @@ stopifnot(inherits(failed_order, "try-error"))
 
 options <- .rc_layer2_corda_options(list(model_completion = "corda2"))
 stopifnot(
+  identical(options$met_prod, NULL),
+  identical(options$n, 3L),
+  identical(options$penalty_factor, 100),
+  identical(options$support, 5L),
   identical(options$cost_increase, 1.01),
   identical(options$target_flux, 1),
   identical(options$upper_bound, 1e6),
@@ -125,8 +116,8 @@ for (parameter in c(
 )) {
   args <- list(model_completion = "corda2")
   args[[parameter]] <- 2
-  failed <- try(.rc_layer2_corda_options(args), silent = TRUE)
-  stopifnot(inherits(failed, "try-error"))
+  stopifnot(inherits(try(.rc_layer2_corda_options(args), silent = TRUE),
+                     "try-error"))
 }
 
 medium_code <- paste(
@@ -138,4 +129,12 @@ stopifnot(
   !grepl("objective[[target]] <- -1", medium_code, fixed = TRUE)
 )
 
-cat("Exact Python CORDA2 target-direction semantics passed\n")
+build_code <- paste(deparse(body(.rc_corda_build_three_stage)), collapse = "\n")
+stopifnot(
+  grepl("stage1_targets", build_code, fixed = TRUE),
+  grepl("stage2_targets", build_code, fixed = TRUE),
+  grepl("split_stage3$ub[[variable]] <- 0", build_code, fixed = TRUE),
+  grepl("python_serial_mutation_order", build_code, fixed = TRUE)
+)
+
+cat("Direct exact Python CORDA2 target-direction semantics passed\n")
