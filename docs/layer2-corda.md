@@ -12,13 +12,20 @@ same CORDA2 implementation. No second CORDA reconstruction algorithm is loaded.
 
 The implementation follows `resendislab/corda` at commit
 `c02e06d50606bf93f23d8f2e6d6ade0e996ca70e`, including its five directional
-confidence levels, redundant-path search and build stages. Two source defects
-are corrected explicitly:
+confidence levels, redundant-path search and build stages. Three source-level
+corrections are applied explicitly:
 
 1. remaining medium-confidence directions are tested by **maximizing** their
    flux rather than minimizing a positive target coefficient;
 2. the opposite copy of a reversible target is fixed to zero during target
-   assessment, preventing a zero-net-flux forward/reverse self-cycle.
+   assessment, preventing a zero-net-flux forward/reverse self-cycle;
+3. forward and reverse variables receive costs from their own current
+   directional confidence rather than both inheriting the forward variable's
+   current confidence after directional promotion.
+
+The pinned Python package uses `np.in1d`, which is unavailable in NumPy 2.x.
+Reference CI therefore runs that historical source with `numpy<2`; the R
+implementation has no NumPy dependency.
 
 ## Recommended call
 
@@ -55,8 +62,9 @@ step5_corda2 <- rc_regcompass_step_layer2(
 )
 ```
 
-`fastcore_epsilon` and `max_support_reactions` are FASTCORE controls. They are
-not CORDA2 algorithm parameters.
+`fastcore_epsilon`, `max_support_reactions`, and `corda_seed` are not CORDA2
+algorithm parameters. CORDA2 is deterministic and uses multiplicative cost
+updates, not randomized cost perturbations.
 
 ## Parent-model contract
 
@@ -88,7 +96,7 @@ where:
 - `A_regulatory` is the median GPR regulatory-support fraction;
 - the default regulatory weight is `w = 0.20`.
 
-RegCompass maps reaction classes to the Python CORDA2 confidence values:
+RegCompass maps reaction classes to Python CORDA2 confidence values:
 
 | RegCompass class | Directional confidence | Meaning |
 |---|---:|---|
@@ -123,8 +131,8 @@ producing zero net stoichiometric flux.
 
 ## Associated-path LP
 
-For one signed target, CORDA2 constructs costs from the current directional
-confidence:
+For one signed target, CORDA2 constructs costs from each directional variable's
+current confidence:
 
 \[
 c_i=\begin{cases}
@@ -166,8 +174,8 @@ alternative path. Repetition stops when no new associated variable is found or
 the redundancy limit is reached.
 
 Redundancy iterations for one target are necessarily serial because iteration
-`k+1` depends on the variables selected in iteration `k`. Different signed
-targets remain independent and are parallelized.
+`k+1` depends on variables selected in iteration `k`. Different signed targets
+remain independent and are parallelized.
 
 ## CORDA2 build stages
 
@@ -183,18 +191,12 @@ confidence `3`.
 Every remaining confidence-1 or confidence-2 direction is assessed with medium
 penalties disabled. Associated absent directional variables are counted across
 signed targets. An absent direction is promoted when its occurrence count is at
-least:
-
-```r
-corda2_support
-```
-
-The default is `5`, matching the Python package.
+least `corda2_support`; the default is `5`, matching the Python package.
 
 ### Stage 2b: independent low/medium feasibility
 
 All still-absent directions are blocked. Each remaining confidence-1 or
-confidence-2 direction is then tested independently by solving:
+confidence-2 direction is tested independently by solving:
 
 \[
 \max v_x.
@@ -256,7 +258,10 @@ This avoids nested process pools and solver oversubscription.
 - The primary multiome calculation and RNA-only control reuse exactly the same
   model file and checksum.
 - Only retained core-reaction directions that can reach
-  `corda2_target_flux` enter the downstream `vmax`, penalty and score matrices.
+  `corda2_target_flux` enter downstream `vmax`, penalty and score matrices.
+- `strict = TRUE` uses `corda2_target_flux`, not the much smaller numerical
+  association tolerance, when deciding whether a parent-feasible core direction
+  was lost.
 - Low-, medium-, absent- and unknown-reaction reconstruction does not enlarge
   the score matrix.
 - CORDA2 model files are isolated under:
@@ -264,6 +269,14 @@ This avoids nested process pools and solver oversubscription.
 ```text
 model_cache/meta_module_gem/corda2/
 ```
+
+## Scope limitation: Python `met_prod`
+
+The Python class can add temporary mock reactions through `met_prod`. The
+current RegCompass Layer-2 API supplies reaction targets and medium constraints,
+not metabolite-production tasks, so `met_prod` is not exposed in PR #254. The
+implementation must not claim Python task parity until an explicit metabolite
+or reaction-task input contract is added and tested.
 
 ## Audit output
 
@@ -276,13 +289,14 @@ Each CORDA2 model stores:
 - directional absent-support counts;
 - impossible signed targets;
 - solver runtime and persistent-solver fallback counts;
-- the corrected-MC-flux and opposite-direction corrections;
+- all three intentional source corrections;
 - compact task diagnostics;
 - normalized association edges with both `associated_variable_id` and
   `associated_reaction_id`;
 - original parent-model and downstream core-closure diagnostics.
 
-Synthetic CI verifies real LP solutions, redundancy search, support thresholds,
-independent medium promotion, final free-reaction completion, reversible-target
-self-cycle prevention, serial/Multicore equality, persistent/one-shot equality
-and installed-package SnowParam execution.
+Synthetic CI verifies the pinned Python behavior in a NumPy-compatible
+environment and independently verifies R LP solutions, redundancy search,
+support thresholds, independent medium promotion, final free-reaction
+completion, reversible-target self-cycle prevention, serial/Multicore equality,
+persistent/one-shot equality and installed-package SnowParam execution.
