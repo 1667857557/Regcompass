@@ -105,7 +105,11 @@ step4 <- rc_regcompass_step_layer1(
 
 ## Stage 5: Layer 2 metabolic scoring
 
-The default remains compact add-only FASTCORE completion:
+Layer 2 has three mutually exclusive structural builders.
+
+### FASTCORE
+
+The default is compact add-only FASTCORE completion:
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -129,7 +133,9 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-Original CORDA2 completion:
+Omitting `model_completion` under `model_mode = "meta_module_gem"` selects the same FASTCORE route.
+
+### Original CORDA2
 
 ```r
 layer2_bp <- if (.Platform$OS.type == "windows") {
@@ -178,6 +184,43 @@ Adjustable CORDA2 parameters:
 - `constrainby`: `"val"` or `"perc"`; default `"val"`.
 - `om`: high reaction cost; MC cost in Step 1 is `sqrt(om)`; default `1e4`.
 - `ci`: proportional cost increase for newly used high-cost reactions; default `0.01`.
+
+### Medium-pruned full GEM
+
+This route applies the supplied medium to the full reference GEM, removes reactions that cannot carry non-zero steady-state flux under that medium, and then runs directional scoring. It does not use expression evidence to construct the model and does not execute FASTCORE or CORDA2.
+
+```r
+step5_full <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "run/05_layer2_full_gem",
+  model_mode = "full_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    flux_threshold = 1e-8,
+    model_params = list(
+      completion_time_limit = 1200
+    )
+  )
+)
+```
+
+Do not set `model_completion = "fastcore"` or `"corda2"` in this mode. It may be omitted or explicitly set to `"none"`. FASTCORE- and CORDA2-specific parameters are rejected instead of being silently ignored. FASTCC is used only as the medium-specific flux-consistency filter; it is not a compact FASTCORE reconstruction.
+
+The route used is stored in:
+
+```r
+step5$params$model_completion
+step5$params$fastcore_executed
+step5$params$corda2_executed
+step5$completion_contract
+step5$model_cache_summary
+```
+
+See `docs/layer2-model-builders.md` for the full contract.
 
 ## Stage 6: result assembly
 
