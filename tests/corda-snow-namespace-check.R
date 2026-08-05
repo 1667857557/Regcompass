@@ -30,6 +30,7 @@ writeLines(c(
   "    'layer2_corda_target_contract.R'",
   "    'layer2_corda_parent_contract.R'",
   "    'layer2_corda2_algorithm.R'",
+  "    'layer2_corda2_output_contract.R'",
   "    'run.R'"
 ), file.path(pkg, "DESCRIPTION"))
 writeLines("export(run_corda2_snow_check)", file.path(pkg, "NAMESPACE"))
@@ -43,7 +44,8 @@ for (file in c(
   "layer2_corda_output_contract.R",
   "layer2_corda_target_contract.R",
   "layer2_corda_parent_contract.R",
-  "layer2_corda2_algorithm.R"
+  "layer2_corda2_algorithm.R",
+  "layer2_corda2_output_contract.R"
 )) {
   file.copy(
     file.path(root, "R", file),
