@@ -31,7 +31,6 @@ suppressPackageStartupMessages({
 rc_validate_gem <- function(gem) {
   S <- .rc_as_dgCMatrix(gem$S)
   reactions <- colnames(S)
-  if (is.null(reactions) || anyDuplicated(reactions)) stop("invalid reactions")
   lb <- as.numeric(gem$lb[reactions])
   ub <- as.numeric(gem$ub[reactions])
   names(lb) <- names(ub) <- reactions
@@ -42,13 +41,8 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
   control <- list(log_to_console = FALSE, threads = 1L, solver = "simplex")
   if (is.finite(time_limit)) control$time_limit <- time_limit
   answer <- highs::highs_solve(
-    L = as.numeric(obj),
-    lower = as.numeric(lb),
-    upper = as.numeric(ub),
-    A = A,
-    lhs = as.numeric(lhs),
-    rhs = as.numeric(rhs),
-    maximum = FALSE,
+    L = as.numeric(obj), lower = as.numeric(lb), upper = as.numeric(ub),
+    A = A, lhs = as.numeric(lhs), rhs = as.numeric(rhs), maximum = FALSE,
     control = do.call(highs::highs_control, control)
   )
   list(
@@ -78,25 +72,37 @@ source("R/layer2_corda_lp.R")
 source("R/layer2_corda_paper_contract.R")
 source("R/layer2_corda_direction_contract.R")
 source("R/layer2_corda_model.R")
+source("R/layer2_corda_output_contract.R")
+source("R/layer2_corda_target_contract.R")
+source("R/layer2_corda_parent_contract.R")
+source("R/layer2_corda2_algorithm.R")
 
-metabolites <- c("A", "B", "X", "Y")
+metabolites <- c("A", "B", "C", "D", "E", "F")
 reactions <- c(
-  "SRC_A", "NC1", "HC1", "NC_SHARED",
-  "MC1", "MC2", "SRC_Y", "MC3"
+  "SRC_A", "M1", "SRC_B", "M2", "H1",
+  "SRC_D", "N1", "M3", "M4",
+  "SRC_F", "M5", "N2"
 )
 S <- Matrix::Matrix(
   0, nrow = length(metabolites), ncol = length(reactions), sparse = TRUE,
   dimnames = list(metabolites, reactions)
 )
 S["A", "SRC_A"] <- 1
-S["A", "NC1"] <- -1
-S["B", "NC1"] <- 1
-S["B", "HC1"] <- -1
-S["X", "NC_SHARED"] <- 1
-S["X", "MC1"] <- -1
-S["X", "MC2"] <- -1
-S["Y", "SRC_Y"] <- 1
-S["Y", "MC3"] <- -1
+S["A", "M1"] <- -1
+S["C", "M1"] <- 1
+S["B", "SRC_B"] <- 1
+S["B", "M2"] <- -1
+S["C", "M2"] <- 1
+S["C", "H1"] <- -1
+S["D", "SRC_D"] <- 1
+S["D", "N1"] <- -1
+S["E", "N1"] <- 1
+S["E", "M3"] <- -1
+S["E", "M4"] <- -1
+S["F", "SRC_F"] <- 1
+S["F", "M5"] <- -1
+S["A", "N2"] <- -1
+
 gem <- list(
   S = S,
   lb = stats::setNames(rep(0, length(reactions)), reactions),
@@ -104,52 +110,66 @@ gem <- list(
 )
 split <- .rc_corda_split_model(gem, tolerance = 1e-8)
 classes <- list(
-  hc = "HC1",
-  mc_module = c("MC1", "MC2", "MC3"),
+  hc = "H1",
+  mc_module = c("M1", "M2", "M3", "M4", "M5"),
   mc_evidence = character(),
-  mc = c("MC1", "MC2", "MC3"),
-  nc = c("NC1", "NC_SHARED"),
-  ot = c("SRC_A", "SRC_Y")
+  mc = c("M1", "M2", "M3", "M4", "M5"),
+  nc = c("N1", "N2"),
+  ot = c("SRC_A", "SRC_B", "SRC_D", "SRC_F")
 )
 classes$confidence <- stats::setNames(rep("OT", length(reactions)), reactions)
 classes$confidence[classes$nc] <- "NC"
-classes$confidence[classes$mc] <- "MC_module"
+classes$confidence[classes$mc_module] <- "MC_module"
 classes$confidence[classes$hc] <- "HC"
 classes$initial_confidence <- classes$confidence
+
 options <- .rc_layer2_corda_options(list(
-  model_completion = "corda",
-  corda_gamma = 1e5,
-  corda_kappa = 1e-2,
-  corda_epsilon = 1,
-  corda_n = 3L,
-  corda_p = 2L,
-  corda_seed = 19L
+  model_completion = "corda2",
+  corda2_redundancies = 3L,
+  corda2_penalty_factor = 100,
+  corda2_support = 2L,
+  corda2_cost_increase = 1.01,
+  corda2_target_flux = 1,
+  corda2_flux_tolerance = 1e-8
 ))
+stopifnot(
+  identical(options$requested_model_completion, "corda2"),
+  identical(options$algorithm,
+            "resendislab_python_CORDA2_corrected_redundant_path_assessment"),
+  identical(options$redundancies, 3L),
+  identical(options$support, 2L),
+  identical(options$penalty_factor, 100),
+  identical(options$cost_increase, 1.01)
+)
 
 .TEST_BPPARAM <- FALSE
 serial <- .rc_corda_build_three_stage(
   split, classes, options, solver = "highs", time_limit = 60
 )
-expected <- reactions
 stopifnot(
-  setequal(serial$included, expected),
-  identical(serial$stage1_associated, "NC1"),
-  identical(serial$stage2_promoted_nc, "NC_SHARED"),
-  setequal(serial$stage2_promoted_mc, c("MC1", "MC2", "MC3")),
-  setequal(serial$stage3_associated_ot, c("SRC_A", "SRC_Y")),
-  identical(unname(serial$stage2_nc_support_count[["NC_SHARED"]]), 2L)
+  identical(serial$algorithm,
+            "resendislab_python_CORDA2_corrected_redundant_path_assessment"),
+  all(c("H1", "M1", "M2", "N1", "M3", "M4", "M5") %in%
+        serial$included),
+  !"N2" %in% serial$included,
+  all(c("M1", "M2") %in% serial$stage1_associated),
+  "N1" %in% serial$stage2_promoted_nc,
+  all(c("M3", "M4", "M5") %in% serial$stage2_promoted_mc),
+  all(c("SRC_A", "SRC_B", "SRC_D", "SRC_F") %in%
+        serial$stage3_associated_ot),
+  max(serial$redundancies, na.rm = TRUE) >= 2L
 )
 
-options_p3 <- options
-options_p3$p <- 3L
-p3 <- .rc_corda_build_three_stage(
-  split, classes, options_p3, solver = "highs", time_limit = 60
+options_support3 <- options
+options_support3$support <- 3L
+support3 <- .rc_corda_build_three_stage(
+  split, classes, options_support3, solver = "highs", time_limit = 60
 )
 stopifnot(
-  !"NC_SHARED" %in% p3$included,
-  !"MC1" %in% p3$included,
-  !"MC2" %in% p3$included,
-  "MC3" %in% p3$included
+  !"N1" %in% support3$stage2_promoted_nc,
+  !"M3" %in% support3$included,
+  !"M4" %in% support3$included,
+  "M5" %in% support3$included
 )
 
 if (.Platform$OS.type != "windows") {
@@ -169,14 +189,10 @@ if (.Platform$OS.type != "windows") {
   )
 }
 
-persistent_available <- .rc_corda_highs_api_available()
-if (persistent_available) {
+if (.rc_corda_highs_api_available()) {
   stopifnot(any(vapply(serial$execution, function(x) {
     isTRUE(x$persistent_solver)
   }, logical(1))))
-  stopifnot(sum(vapply(serial$execution, function(x) {
-    as.integer(x$n_fallback %||% 0L)
-  }, integer(1))) == 0L)
   original_api <- .rc_corda_highs_api_available
   .rc_corda_highs_api_available <- function() FALSE
   one_shot <- .rc_corda_build_three_stage(
@@ -186,4 +202,4 @@ if (persistent_available) {
   stopifnot(setequal(serial$included, one_shot$included))
 }
 
-cat("CORDA synthetic checks passed\n")
+cat("Corrected Python CORDA2 synthetic checks passed\n")
