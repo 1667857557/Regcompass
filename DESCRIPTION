@@ -135,6 +135,7 @@ Collate:
     'layer2_corda_target_contract.R'
     'layer2_corda_parent_contract.R'
     'layer2_corda2_algorithm.R'
+    'layer2_corda2_output_contract.R'
     'layer2_corda_runtime.R'
     'layer2_corda_pool_lifecycle.R'
     'layer2_corda2_public_contract.R'
