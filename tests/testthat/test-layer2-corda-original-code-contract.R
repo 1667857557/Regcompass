@@ -52,26 +52,46 @@ test_that("FASTCORE fallback remains the captured original implementation", {
   expect_match(dispatch_code, ".rc_corda_parent", fixed = TRUE)
 })
 
-test_that("CORDA2 records its Python source and corrections", {
-  implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_build_three_stage)),
+test_that("CORDA2 records its pinned Python source", {
+  core <- paste(
+    deparse(body(
+      RegCompassR:::.rc_corda_build_three_stage_before_correction_contract
+    )),
     collapse = "\n"
   )
   expect_match(
-    implementation,
+    core,
     "c02e06d50606bf93f23d8f2e6d6ade0e996ca70e",
     fixed = TRUE
   )
   expect_match(
-    implementation,
+    core,
+    "resendislab_python_CORDA2_corrected_redundant_path_assessment",
+    fixed = TRUE
+  )
+})
+
+test_that("CORDA2 records all intentional corrections", {
+  wrapper <- paste(
+    deparse(body(RegCompassR:::.rc_corda_build_three_stage)),
+    collapse = "\n"
+  )
+  expect_match(
+    wrapper,
     "remaining medium confidence flux is maximized",
     fixed = TRUE
   )
   expect_match(
-    implementation,
+    wrapper,
     "opposite reversible target direction is blocked",
     fixed = TRUE
   )
+  expect_match(
+    wrapper,
+    "penalties use each directional variable's own current confidence",
+    fixed = TRUE
+  )
+  expect_match(wrapper, "directional_penalty_contract", fixed = TRUE)
 })
 
 test_that("CORDA2 has no randomized paper-noise dependency", {
@@ -82,6 +102,11 @@ test_that("CORDA2 has no randomized paper-noise dependency", {
   expect_false(grepl(".rc_corda_noise", associated, fixed = TRUE))
   expect_match(associated, "options$cost_increase", fixed = TRUE)
   expect_match(associated, "options$penalty_factor", fixed = TRUE)
+  options <- RegCompassR:::.rc_layer2_corda_options(list(
+    model_completion = "corda2"
+  ))
+  expect_identical(options$random_noise, FALSE)
+  expect_identical(options$deterministic, TRUE)
 })
 
 test_that("CORDA2 public aliases all select one algorithm", {
@@ -89,6 +114,7 @@ test_that("CORDA2 public aliases all select one algorithm", {
     options <- RegCompassR:::.rc_layer2_corda_options(list(
       model_completion = requested
     ))
+    expect_identical(options$model_completion, "corda2")
     expect_identical(options$requested_model_completion, "corda2")
     expect_identical(
       options$algorithm,
