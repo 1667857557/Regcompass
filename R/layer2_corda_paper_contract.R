@@ -59,22 +59,31 @@
   }
   lower <- stats::setNames(rep(0, length(variable_ids)), variable_ids)
   upper <- stats::setNames(upper_values, variable_ids)
-  direction_table <- rbind(
-    data.frame(
-      variable_id = forward_ids,
-      reaction_id = reactions,
-      direction = "forward",
-      original_index = seq_along(reactions),
-      stringsAsFactors = FALSE
-    ),
+  forward_table <- data.frame(
+    variable_id = forward_ids,
+    reaction_id = reactions,
+    direction = rep("forward", length(forward_ids)),
+    original_index = seq_along(reactions),
+    stringsAsFactors = FALSE
+  )
+  reverse_table <- if (length(reverse_ids)) {
     data.frame(
       variable_id = reverse_ids,
       reaction_id = reverse_reactions,
-      direction = "reverse",
+      direction = rep("reverse", length(reverse_ids)),
       original_index = reverse_index,
       stringsAsFactors = FALSE
     )
-  )
+  } else {
+    data.frame(
+      variable_id = character(),
+      reaction_id = character(),
+      direction = character(),
+      original_index = integer(),
+      stringsAsFactors = FALSE
+    )
+  }
+  direction_table <- rbind(forward_table, reverse_table)
   rownames(direction_table) <- NULL
   if (nrow(direction_table) != length(variable_ids)) {
     stop(
