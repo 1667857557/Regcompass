@@ -1,8 +1,5 @@
 # Validate exact CORDA2 union models and compact large diagnostics.
 
-.rc_complete_celltype_medium_corda_gem_base <-
-  .rc_complete_celltype_medium_corda_gem
-
 .rc_corda_empty_task_table <- function() {
   data.frame(
     variable_id = character(),
@@ -78,9 +75,14 @@
   )
 }
 
+.rc_corda2_reaction_from_variable <- function(variable_id) {
+  sub("::(forward|reverse)$", "", as.character(variable_id))
+}
+
 .rc_corda_normalize_associations <- function(tab) {
   empty <- data.frame(
     task_key = character(),
+    associated_variable_id = character(),
     associated_reaction_id = character(),
     stringsAsFactors = FALSE
   )
@@ -92,12 +94,15 @@
   task_key <- .rc_corda_task_keys(tab)
   split_value <- strsplit(as.character(tab$associated), ";", fixed = TRUE)
   rows <- lapply(seq_along(split_value), function(i) {
-    value <- unique(split_value[[i]])
-    value <- value[!is.na(value) & nzchar(value)]
-    if (!length(value)) return(NULL)
+    variable <- unique(split_value[[i]])
+    variable <- variable[!is.na(variable) & nzchar(variable)]
+    if (!length(variable)) return(NULL)
     data.frame(
-      task_key = rep(task_key[[i]], length(value)),
-      associated_reaction_id = sort(value),
+      task_key = rep(task_key[[i]], length(variable)),
+      associated_variable_id = sort(variable),
+      associated_reaction_id = .rc_corda2_reaction_from_variable(
+        sort(variable)
+      ),
       stringsAsFactors = FALSE
     )
   })
@@ -105,7 +110,11 @@
   if (!length(rows)) return(empty)
   answer <- unique(do.call(rbind, rows))
   rownames(answer) <- NULL
-  answer[order(answer$task_key, answer$associated_reaction_id), , drop = FALSE]
+  answer[order(
+    answer$task_key,
+    answer$associated_reaction_id,
+    answer$associated_variable_id
+  ), , drop = FALSE]
 }
 
 .rc_validate_corda_union_model <- function(model, cell_type) {
@@ -174,9 +183,15 @@
     stop("CORDA2 compact task diagnostics have invalid task keys.",
          call. = FALSE)
   }
+  edge_required <- c(
+    "task_key", "associated_variable_id", "associated_reaction_id"
+  )
   if (!is.data.frame(edge_tab) ||
-      !all(c("task_key", "associated_reaction_id") %in% colnames(edge_tab)) ||
-      any(!edge_tab$task_key %in% task_tab$task_key)) {
+      !all(edge_required %in% colnames(edge_tab)) ||
+      any(!edge_tab$task_key %in% task_tab$task_key) ||
+      any(.rc_corda2_reaction_from_variable(
+        edge_tab$associated_variable_id
+      ) != edge_tab$associated_reaction_id)) {
     stop("CORDA2 normalized association edges do not match tasks.",
          call. = FALSE)
   }
@@ -188,17 +203,11 @@
   invisible(TRUE)
 }
 
-.rc_complete_celltype_medium_corda_gem <- function(...) {
-  args <- list(...)
-  model <- do.call(.rc_complete_celltype_medium_corda_gem_base, args)
+.rc_finalize_corda_union_model <- function(model, cell_type) {
   task_tab <- model$corda_task_diagnostics
   if (!is.data.frame(task_tab) || !nrow(task_tab)) {
     task_tab <- .rc_corda_empty_task_table()
-    association_edges <- data.frame(
-      task_key = character(),
-      associated_reaction_id = character(),
-      stringsAsFactors = FALSE
-    )
+    association_edges <- .rc_corda_normalize_associations(task_tab)
   } else {
     association_edges <- .rc_corda_normalize_associations(task_tab)
     task_tab$task_key <- .rc_corda_task_keys(task_tab)
@@ -221,12 +230,9 @@
     "associations normalized in corda_association_edges; aggregate counts",
     "stored in corda_task_summary"
   )
-  .rc_validate_corda_union_model(
-    model,
-    cell_type = as.character(args$cell_type)
+  model$build_params$association_edge_schema <- c(
+    "task_key", "associated_variable_id", "associated_reaction_id"
   )
+  .rc_validate_corda_union_model(model, cell_type = cell_type)
   model
 }
-
-.rc_complete_celltype_medium_corda_like_gem <-
-  .rc_complete_celltype_medium_corda_gem
