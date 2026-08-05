@@ -1,8 +1,8 @@
-# Exact Python CORDA2 semantics in Layer 2
+# Original CORDA2 in Layer 2
 
-`rc_regcompass_step_layer2()` keeps compact add-only FASTCORE as the default.
-The optional CORDA2 route is selected only for
-`model_mode = "meta_module_gem"`:
+`rc_regcompass_step_layer2()` keeps compact add-only FASTCORE as the default. The optional CORDA2 route is available with `model_mode = "meta_module_gem"` and follows the original MATLAB implementation in `schultzdre/Constraint-Based-Modeling/CORDA2.m`.
+
+## Parameters
 
 ```r
 layer2_args = list(
@@ -12,9 +12,13 @@ layer2_args = list(
     model_completion = "corda2",
     completion_time_limit = 3000,
     strict = TRUE,
-    corda2_redundancies = 3L,
-    corda2_penalty_factor = 100,
-    corda2_support = 5L,
+    corda2_args = list(
+      MCxNCthresh = 2,
+      constraint = 1,
+      constrainby = "val",
+      om = 1e4,
+      ci = 0.01
+    ),
     corda_medium_confidence_threshold = 0.75,
     corda_negative_confidence_threshold = 0.10,
     corda_regulatory_weight = 0.20,
@@ -24,265 +28,71 @@ layer2_args = list(
 )
 ```
 
-The implementation follows `resendislab/corda` at commit
-`c02e06d50606bf93f23d8f2e6d6ade0e996ca70e` **as written** for
-`met_prod = NULL`. It does not substitute the 2016 paper algorithm and does not
-apply the former PR-specific “corrections.” The compatibility names `"corda"`
-and `"corda_like"` route to this same implementation.
-
-## Exact-source scope
-
-The Python constructor exposes three controls:
-
-| Python argument | RegCompass argument | Default |
-|---|---|---:|
-| `n` | `corda2_redundancies` | `3` |
-| `penalty_factor` | `corda2_penalty_factor` | `100` |
-| `support` | `corda2_support` | `5` |
-
-The following values are fixed in the source and are not configurable:
-
-| Source symbol | Value | Role |
+| Argument | Original default | Effect |
 |---|---:|---|
-| `UPPER` | `1e6` | normalized open directional bound |
-| `CI` | `1.01` | multiplicative cost increase |
-| `tflux` | `1` | target lower bound and iteration-2 comparison |
+| `MCxNCthresh` | `2` | Minimum number of remaining MC directional reactions that must depend on an NC direction before that NC direction is retained. |
+| `constraint` | `1` | Absolute target flux under `constrainby = "val"`, or percentage under `"perc"`. |
+| `constrainby` | `"val"` | Target constraint mode: absolute value or percentage of maximum flux. |
+| `om` | `1e4` | High cost assigned to NC reactions and Step-3 OT reactions; Step-1 MC cost is `sqrt(om)`. |
+| `ci` | `0.01` | Proportional cost increase applied once to each newly observed high-cost dependency during one target assessment. |
 
-`corda2_cost_increase`, `corda2_target_flux`, `corda2_flux_tolerance`, and
-`corda_seed` are rejected. CORDA2 has no randomized paper-noise process. The
-association threshold is the active solver's feasibility tolerance, matching
-`model.solver.configuration.tolerances.feasibility` in Python. RegCompass uses
-`1e-7` for HiGHS/GLPK and `1e-6` for Gurobi.
+## Confidence mapping
 
-The Python `met_prod` feature creates temporary mock metabolic reactions.
-RegCompass Layer 2 currently supplies reaction targets and medium constraints,
-not temporary metabolite-production reactions, so exactness is claimed only for
-`met_prod = NULL`.
+RegCompass maps cell-type evidence to the four reaction groups required by original CORDA2:
 
-## Model initialization
+| RegCompass reaction class | CORDA2 group |
+|---|---|
+| merged core reaction | HC |
+| non-core merged meta-module reaction and selected high-evidence outside-module reaction | MC |
+| finite low-evidence reaction | NC |
+| remaining reaction | OT |
 
-For every reaction, both COBRA-style nonnegative variables are created:
+This mapping is an input adapter. The reconstruction state machine begins after HC, MC, NC and OT have been assigned.
 
-\[
-v_r = v_r^+ - v_r^- , \qquad v_r^+,v_r^-\ge 0.
-\]
+## Directional model
 
-This includes closed directions. Reaction bounds are normalized in reaction
-order exactly as in the Python constructor:
+Only reactions satisfying `lb < 0 && ub >= 0` are split. Their reverse copies use the original suffix `_CORDA_rev_rxn`. The original forward column remains unchanged and the reverse copy uses the negated stoichiometric column. Both variables are non-negative.
 
-\[
-l_r < -\tau \Rightarrow l_r=-10^6,
-\qquad
-u_r > \tau \Rightarrow u_r=10^6,
-\]
+When a directional target is tested, its opposite directional copy is closed. The target is first maximized and then fixed according to `constraint` and `constrainby`:
 
-where \(\tau\) is the active solver feasibility tolerance. Positive directional
-lower bounds and directions whose bounds lie within \(\tau\) are preserved.
-The final reconstructed GEM restores the original medium-constrained reaction
-bounds.
+- `"val"`: `min(constraint, maximum target flux)`;
+- `"perc"`: `0.01 * constraint * maximum target flux`.
 
-The complete medium-constrained input GEM is copied before normalization. No
-FASTCC pruning, role-based blocking, or global feasibility precheck is added.
-`fastcore_epsilon` and `max_support_reactions` are irrelevant to CORDA2.
+## Reconstruction steps
 
-## Confidence representation
+### Step 1
 
-The Python algorithm expects reaction confidence in
-`{-1, 0, 1, 2, 3}`. RegCompass derives those inputs within each broad cell type:
-
-| RegCompass evidence class | CORDA2 confidence |
-|---|---:|
-| merged core reaction | `3` |
-| non-core merged meta-module reaction | `2` |
-| selected high-evidence outside-module reaction | `1` |
-| finite low-evidence reaction | `-1` |
-| remaining reaction | `0` |
-
-Both direction variables initially receive the reaction confidence. Directional
-confidence is then mutated by the Python build sequence. A final reaction is
-included when `max(conf_forward, conf_reverse) == 3`.
-
-The confidence mapping is RegCompass input preparation; the CORDA2 solver logic
-begins after this mapping.
-
-## `associated()` mathematical and code contract
-
-Penalties are computed once before the target loop. The Python source looks up
-the **forward-variable confidence** by reaction ID and assigns the same cost to
-both direction variables:
+Each HC direction is tested with the cost vector:
 
 \[
-c_{r,+}=c_{r,-}=\begin{cases}
-1, & q_{r,+}\in\{1,2\}\text{ and medium penalties are enabled},\\
-P, & q_{r,+}=-1,\\
-0, & \text{otherwise},
+c_i =
+\begin{cases}
+\sqrt{om}, & i \in MC,\\
+om, & i \in NC,\\
+10^{-3}, & \text{otherwise}.
 \end{cases}
 \]
 
-where \(P=\texttt{penalty\_factor}\). This remains true even when forward and
-reverse confidence have diverged during the build.
+Newly observed MC or NC dependencies have their cost multiplied by `1 + ci`. Solving continues until the HC-to-MC and HC-to-NC dependency sets stop changing. Used MC and NC directions are promoted to HC. Blocked HC directions are removed unless they were active while supporting another HC target.
 
-Targets are processed serially in Python dictionary order. For target variable
-\(x\):
+### Step 2.1
 
-1. If `ub(x) < tolerance`, append `x` to `impossible`, set its confidence to
-   `-1`, and continue.
-2. Otherwise save its bounds, set
-   \(l_x=\max(1,l_x)\) and \(u_x=10^6\).
-3. Do **not** block the opposite reversible variable.
-4. Solve
+Each remaining MC direction is tested with NC cost `om`. The MC-to-NC dependency matrix is updated until stable. MC directions unable to carry the required flux are removed.
 
-\[
-\begin{aligned}
-\min_v\quad & \sum_i c_i v_i\\
-\text{s.t.}\quad &S_{split}v=0,\\
-&l\le v\le u.
-\end{aligned}
-\]
+### Step 2.2
 
-5. An active variable is associated when
+NC directions required by at least `MCxNCthresh` MC directions are promoted. All other NC directions are blocked. Each remaining MC direction is then maximized with its opposite direction closed; infeasible MC directions are removed and recorded in `rescue`.
 
-\[
-v_i>\tau,\qquad q_i\in\{-1,1,2\},\qquad i\ne x.
-\]
+### Step 3
 
-6. For each newly observed associated variable that has an objective
-   coefficient, multiply that coefficient by the fixed `CI = 1.01`.
-7. Repeat while a new association is found and the iteration count is below
-   `n`.
-8. Restore only the target bounds.
+All reactions outside retained HC and OT are blocked. Each retained HC direction is tested with OT cost `om`; required OT directions are added to the final model.
 
-The opposite reversible variable remains available. Consequently, the exact
-source permits equal forward/reverse flux to satisfy a target with zero net
-reaction flux. This behavior is preserved because the requirement is source
-parity, not an algorithmic correction.
+## Final reaction bounds
 
-## Exact build sequence
+Forward and reverse directional selections are merged back to the original reaction identifiers. RegCompass retains the medium-constrained parent bounds and disables directions not selected by CORDA2. This preserves the requested medium rather than reopening exchanges after reconstruction.
 
-### Iteration 1 — high-confidence dependencies
+## Engineering flow
 
-All directional variables with confidence `3` are passed to `associated()` with
-medium penalties enabled. The union of returned directional variables is then
-promoted to confidence `3`.
+One CORDA2 reconstruction is created per `cell type × medium` combination. Target assessments inside one reconstruction remain serial because dependency matrices and promoted reaction sets are updated in source order. Independent reconstructions may run through `BPPARAM`. The solver is restricted to one thread per worker, and the completed structural model is reused by the primary and RNA-only scoring paths.
 
-### Iteration 2a — absent support for low/medium targets
-
-All remaining confidence-`1` or confidence-`2` variables are passed to
-`associated()` with medium penalties disabled. Returned variables currently at
-confidence `-1` are counted with Python `Counter` semantics. A directional
-variable is promoted when its count is at least `support`.
-
-Every remaining confidence-`-1` variable is then constrained by
-
-\[
-u_i=\max(0,l_i).
-\]
-
-### Iteration 2b — source positive-coefficient minimization
-
-The Python source iterates serially over all solver variables. For each variable
-whose current confidence is `1` or `2`, it sets a positive objective coefficient
-and minimizes:
-
-\[
-\min_v v_i.
-\]
-
-The variable is promoted only when the optimum objective is strictly greater
-than the fixed `tflux = 1`.
-
-This is intentionally **not** replaced by flux maximization. In ordinary
-zero-lower-bound models the optimum is commonly zero, so this source behavior
-usually does not promote an otherwise optional medium-confidence variable.
-
-### Iteration 3 — block remaining low/medium and test free variables
-
-In confidence dictionary order:
-
-- confidence `1` or `2`: set the directional upper bound directly to zero;
-- confidence `0`: change confidence to `-1`.
-
-Then all current confidence-`3` targets are passed to `associated()` once with
-medium penalties disabled and redundancy detection disabled. Returned variables
-are promoted to `3`.
-
-Finally:
-
-- `impossible` is sorted and deduplicated;
-- redundancy records are retained only for final confidence-`3` variables not
-  in `impossible`;
-- a reaction is included when either directional confidence is `3`.
-
-## Execution order and parallelism
-
-Target-level parallelism is disabled because it would not reproduce the source's
-single-model mutation and solver order. Each CORDA2 model uses one persistent
-solver instance and processes targets and iteration-2 variables serially.
-
-Parallelism is allowed only across independent `cell type × medium` model
-instances. This does not change any CORDA2 state because each task creates its
-own model, confidence dictionary, objective, bounds, and solver instance.
-
-HiGHS is restricted to one thread within each worker. The persistent native
-HiGHS interface updates objective coefficients and bounds on the same solver
-model; the one-shot path is retained only as a runtime fallback.
-
-## RegCompass post-reconstruction scoring
-
-CORDA2 reconstruction and RegCompass scoring are separate contracts. After the
-exact CORDA2 reaction subset is built, RegCompass evaluates core-reaction
-forward/reverse capacities on the restored original bounds and includes only
-core directions reaching `tflux = 1` in downstream `vmax`, penalty, and score
-matrices.
-
-The original Python build records impossible targets and completes rather than
-throwing. Therefore `strict = TRUE` is retained for API compatibility but does
-not convert a CORDA2 impossible/closure result into a reconstruction error.
-Closure failures are stored in diagnostics and excluded from scoring.
-
-## Cache and audit output
-
-One structural model is built per cell type and medium and shared across matching
-conditions and metacells. Primary multiome scoring and the RNA-only control reuse
-the same model path and checksum. Files are stored under:
-
-```text
-model_cache/meta_module_gem/corda2/
-```
-
-Each model records:
-
-- pinned Python repository and commit;
-- constructor controls and fixed source constants;
-- solver feasibility tolerance;
-- initial, intermediate, and final directional confidence;
-- impossible directional targets;
-- redundancy counts;
-- absent-support counts;
-- source-order execution metadata;
-- normalized association edges containing both directional variable ID and
-  reaction ID;
-- restored-bound core-closure diagnostics.
-
-## Validation
-
-The dedicated CI job installs the pinned Python revision under `numpy<2`, runs
-an executable Python source oracle, and compares the R implementation on the
-same nondegenerate networks. Checks cover:
-
-- constants and solver tolerance;
-- both direction variables and bound normalization;
-- upstream redundant-path example;
-- unblocked reversible self-cycle;
-- forward-confidence penalty coupling;
-- absent-support counting;
-- positive-coefficient minimization with forced and optional medium variables;
-- iteration-3 free-reaction completion;
-- serial target order;
-- persistent versus one-shot HiGHS equivalence on the test networks;
-- installed-package/SnowParam namespace behavior.
-
-Solver implementations may choose different members of a degenerate optimal
-face. The algorithm, objective, constraints, mutation order, thresholds, and
-confidence updates are source-identical; CI comparison uses networks with stable
-optimal associations across the pinned Python GLPK and R HiGHS backends.
+Each model stores the HC-to-MC, HC-to-NC and MC-to-NC matrices, rescue table, directional inclusion set, solver diagnostics, parameter values and cache checksum.
