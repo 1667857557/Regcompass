@@ -1,3 +1,51 @@
+.rc_validate_full_gem_model_params <- function(model_params = list()) {
+  if (!is.list(model_params)) {
+    stop("`model_params` must be a list.", call. = FALSE)
+  }
+  requested <- as.character(model_params$model_completion %||% "none")
+  if (length(requested) != 1L || is.na(requested) ||
+      !requested %in% c("none", "full_gem")) {
+    stop(
+      "Full-GEM mode automatically skips FASTCORE and CORDA2; omit ",
+      "`model_completion` or set it to `none`.",
+      call. = FALSE
+    )
+  }
+  incompatible <- intersect(names(model_params), c(
+    "fastcore_epsilon", "max_support_reactions", "strict",
+    "corda2_args", "corda_medium_confidence_threshold",
+    "corda_negative_confidence_threshold", "corda_regulatory_weight",
+    "corda_include_evidence_outside_modules",
+    "corda_max_medium_confidence_reactions"
+  ))
+  if (length(incompatible)) {
+    stop(
+      "Full-GEM mode does not accept FASTCORE or CORDA2 controls: ",
+      paste(incompatible, collapse = ", "),
+      ". It applies only the requested medium and flux-consistency pruning.",
+      call. = FALSE
+    )
+  }
+  unknown <- setdiff(
+    names(model_params),
+    c("model_completion", "completion_time_limit", "cache_dir")
+  )
+  if (length(unknown)) {
+    stop(
+      "Unsupported full-GEM `model_params`: ",
+      paste(unknown, collapse = ", "),
+      ".", call. = FALSE
+    )
+  }
+  if (!is.null(model_params$completion_time_limit)) {
+    value <- as.numeric(model_params$completion_time_limit)
+    if (length(value) != 1L || !is.finite(value) || value <= 0) {
+      stop("`completion_time_limit` must be positive.", call. = FALSE)
+    }
+  }
+  invisible(list(model_completion = "none"))
+}
+
 #' Build a COMPASS-style full GEM for one medium scenario
 #'
 #' Optional medium constraints are applied once. In Layer 2 full-GEM mode,
