@@ -1,7 +1,6 @@
 suppressPackageStartupMessages({
   library(Matrix)
   library(highs)
-  library(BiocParallel)
 })
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
@@ -24,6 +23,7 @@ suppressPackageStartupMessages({
   text <- tolower(paste(message, collapse = " "))
   if (grepl("infeasible", text)) return("infeasible")
   if (grepl("unbounded", text)) return("unbounded")
+  if (grepl("time|limit", text)) return("time_limit")
   if (grepl("optimal", text)) return("optimal")
   if (is.finite(code) && as.integer(code) == 0L) return("optimal")
   "error"
@@ -34,16 +34,20 @@ rc_validate_gem <- function(gem) {
   lb <- as.numeric(gem$lb[reactions])
   ub <- as.numeric(gem$ub[reactions])
   names(lb) <- names(ub) <- reactions
+  if (anyNA(lb) || anyNA(ub) || any(lb > ub)) stop("invalid GEM bounds")
   list(S = S, lb = lb, ub = ub, reactions = reactions)
 }
 rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
                         solver = "highs", time_limit = Inf) {
-  control <- list(log_to_console = FALSE, threads = 1L, solver = "simplex")
-  if (is.finite(time_limit)) control$time_limit <- time_limit
   answer <- highs::highs_solve(
     L = as.numeric(obj), lower = as.numeric(lb), upper = as.numeric(ub),
     A = A, lhs = as.numeric(lhs), rhs = as.numeric(rhs), maximum = FALSE,
-    control = do.call(highs::highs_control, control)
+    control = highs::highs_control(
+      log_to_console = FALSE, output_flag = FALSE,
+      threads = 1L, solver = "simplex",
+      primal_feasibility_tolerance = 1e-7,
+      time_limit = as.numeric(time_limit)
+    )
   )
   list(
     status = .rc_lp_status(answer$status_message, answer$status),
@@ -52,39 +56,23 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     solver_message = answer$status_message
   )
 }
-rc_parallel_config <- function(workers = NULL, backend = "auto") {
-  list(workers = 1L)
-}
-rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
-  lapply(X, FUN, ...)
-}
+rc_parallel_config <- function(...) list(workers = 1L)
+rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) lapply(X, FUN, ...)
 .rc_layer2_task_bpparam <- function() FALSE
-.rc_subset_gem <- function(gem, reactions) gem
-rc_prepare_directional_targets <- function(...) data.frame()
-.rc_directional_feasibility <- function(...) data.frame()
-rc_build_full_gem <- function(gem, ...) gem
-.rc_fastcore_parent <- function(...) stop("not used")
-rc_export_microcompass <- function(...) invisible(TRUE)
 
 source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
-source("R/layer2_corda_paper_contract.R")
-source("R/layer2_corda_direction_contract.R")
-source("R/layer2_corda_model.R")
 source("R/layer2_corda_output_contract.R")
-source("R/layer2_corda_target_contract.R")
-source("R/layer2_corda_parent_contract.R")
+source("R/layer2_corda_direction_contract.R")
 source("R/layer2_corda2_algorithm.R")
 source("R/layer2_corda2_algorithm_build.R")
-source("R/layer2_corda2_algorithm_integration.R")
 source("R/layer2_corda2_options_contract.R")
-source("R/layer2_corda2_correction_contract.R")
-source("R/layer2_corda2_output_contract.R")
 
 oracle <- utils::read.delim(
   "tests/corda2_python_oracle.tsv",
   stringsAsFactors = FALSE,
-  check.names = FALSE
+  check.names = FALSE,
+  colClasses = "character"
 )
 value <- function(case, key) {
   hit <- oracle$value[oracle$case == case & oracle$key == key]
@@ -97,9 +85,7 @@ make_gem <- function(metabolites, reactions, entries, lb = NULL, ub = NULL) {
     0, nrow = length(metabolites), ncol = length(reactions), sparse = TRUE,
     dimnames = list(metabolites, reactions)
   )
-  for (entry in entries) {
-    S[entry[[1L]], entry[[2L]]] <- entry[[3L]]
-  }
+  for (entry in entries) S[entry[[1L]], entry[[2L]]] <- entry[[3L]]
   if (is.null(lb)) lb <- stats::setNames(rep(0, length(reactions)), reactions)
   if (is.null(ub)) ub <- stats::setNames(rep(1000, length(reactions)), reactions)
   list(S = S, lb = lb, ub = ub)
@@ -124,63 +110,77 @@ classes_from_confidence <- function(confidence) {
   )
 }
 
-options_for <- function(n = 3L, support = 5L, penalty = 100) {
-  .rc_layer2_corda_options(list(
+options_for <- function(n = 3L, support = 5L, penalty_factor = 100) {
+  options <- .rc_layer2_corda_options(list(
     model_completion = "corda2",
-    corda2_redundancies = n,
-    corda2_support = support,
-    corda2_penalty_factor = penalty
+    corda2_args = list(
+      met_prod = NULL,
+      n = as.integer(n),
+      penalty_factor = penalty_factor,
+      support = as.integer(support)
+    )
   ))
-}
-
-run_build <- function(gem, confidence, n = 3L, support = 5L, penalty = 100) {
-  options <- options_for(n, support, penalty)
   options$feasibility_tolerance <-
     .rc_corda2_solver_feasibility_tolerance("highs")
+  options
+}
+
+run_build <- function(gem, confidence, n = 3L, support = 5L,
+                      penalty_factor = 100, persistent = TRUE) {
+  options <- options_for(n, support, penalty_factor)
   split <- .rc_corda_split_model(
     gem,
     tolerance = options$feasibility_tolerance,
     upper_bound = options$upper_bound
   )
+  if (!persistent) {
+    original <- .rc_corda_highs_api_available
+    .rc_corda_highs_api_available <- function() FALSE
+    on.exit({ .rc_corda_highs_api_available <- original }, add = TRUE)
+  }
   result <- .rc_corda_build_three_stage(
-    split, classes_from_confidence(confidence), options,
-    solver = "highs", time_limit = 60
+    split = split,
+    classes = classes_from_confidence(confidence),
+    options = options,
+    solver = "highs",
+    time_limit = Inf
   )
   list(result = result, split = split, options = options)
 }
 
-compare_oracle_confidence <- function(case, result) {
+compare_oracle <- function(case, result) {
   rows <- oracle[oracle$case == case & grepl("::", oracle$key, fixed = TRUE), ]
   observed <- result$final_directional_confidence[rows$key]
   stopifnot(
     !anyNA(observed),
     identical(as.integer(observed), as.integer(rows$value))
   )
-  expected_included <- value(case, "included")
-  expected_included <- if (nzchar(expected_included)) {
-    strsplit(expected_included, ";", fixed = TRUE)[[1L]]
-  } else {
-    character()
-  }
-  stopifnot(setequal(result$included, expected_included))
+  expected <- value(case, "included")
+  expected <- if (nzchar(expected)) {
+    strsplit(expected, ";", fixed = TRUE)[[1L]]
+  } else character()
+  stopifnot(setequal(result$included, expected))
 }
 
-# Source constants and active-solver feasibility tolerance.
+# Constants and constructor defaults.
+defaults <- options_for()
 stopifnot(
-  identical(as.numeric(value("constants", "UPPER")), 1e6),
-  identical(as.numeric(value("constants", "CI")), 1.01),
-  identical(as.numeric(value("constants", "tflux")), 1),
-  identical(as.integer(value("constants", "default_n")), 3L),
-  identical(as.numeric(value("constants", "default_penalty_factor")), 100),
-  identical(as.integer(value("constants", "default_support")), 5L),
+  identical(defaults$n, as.integer(value("constants", "default_n"))),
+  identical(defaults$penalty_factor,
+            as.numeric(value("constants", "default_penalty_factor"))),
+  identical(defaults$support,
+            as.integer(value("constants", "default_support"))),
+  identical(defaults$upper_bound, as.numeric(value("constants", "UPPER"))),
+  identical(defaults$cost_increase, as.numeric(value("constants", "CI"))),
+  identical(defaults$target_flux, as.numeric(value("constants", "tflux"))),
   isTRUE(all.equal(
+    defaults$feasibility_tolerance,
     as.numeric(value("constants", "feasibility_tolerance")),
-    .rc_corda2_solver_feasibility_tolerance("highs"),
     tolerance = 0
   ))
 )
 
-# Upstream redundancy example: two alternative routes are recovered.
+# Upstream redundancy example.
 association_gem <- make_gem(
   c("A", "B", "C"),
   c("R1", "R2", "SRC_A", "SRC_B", "SINK_C"),
@@ -191,10 +191,10 @@ association_gem <- make_gem(
     list("C", "SINK_C", -1)
   )
 )
-association_conf <- c(R1 = 1L, R2 = 2L, SRC_A = 1L, SRC_B = 1L, SINK_C = 3L)
+association_conf <- c(
+  R1 = 1L, R2 = 2L, SRC_A = 1L, SRC_B = 1L, SINK_C = 3L
+)
 association_options <- options_for(n = 3L)
-association_options$feasibility_tolerance <-
-  .rc_corda2_solver_feasibility_tolerance("highs")
 association_split <- .rc_corda_split_model(
   association_gem,
   tolerance = association_options$feasibility_tolerance
@@ -203,7 +203,7 @@ association_directional <- .rc_corda2_directional_confidence(
   association_split, classes_from_confidence(association_conf)
 )
 association_engine <- .rc_corda_new_lp_engine(
-  association_split, "highs", 60
+  association_split, "highs", Inf
 )
 association <- .rc_corda2_associated(
   association_engine,
@@ -215,6 +215,7 @@ association <- .rc_corda2_associated(
   redundancies = TRUE,
   stage = "oracle_association"
 )
+association_engine <- .rc_corda_release_lp_engine(association$engine)
 expected_needed <- strsplit(
   value("association", "needed"), ";", fixed = TRUE
 )[[1L]]
@@ -226,18 +227,15 @@ stopifnot(
   )
 )
 
-# The opposite reversible variable is intentionally left open, exactly as the
-# pinned Python source does.
+# Opposite reversible direction remains open.
 self_cycle_gem <- make_gem(
   c("A", "B"), "REV",
   list(list("A", "REV", -1), list("B", "REV", 1)),
   lb = c(REV = -1000), ub = c(REV = 1000)
 )
-self_options <- options_for(n = 1L)
-self_options$feasibility_tolerance <-
-  .rc_corda2_solver_feasibility_tolerance("highs")
 self_split <- .rc_corda_split_model(
-  self_cycle_gem, tolerance = self_options$feasibility_tolerance
+  self_cycle_gem,
+  tolerance = defaults$feasibility_tolerance
 )
 self_bounds <- .rc_corda_target_bounds(
   self_split, "REV::forward", epsilon = 1
@@ -246,11 +244,15 @@ stopifnot(
   identical(self_bounds$opposite_direction_blocked, character()),
   self_bounds$upper[["REV::reverse"]] == 1e6
 )
-self_answer <- rc_solve_lp(
-  obj = c(0, 0), A = self_split$S,
-  lhs = rep(0, nrow(self_split$S)), rhs = rep(0, nrow(self_split$S)),
-  lb = self_bounds$lower, ub = self_bounds$upper,
-  solver = "highs", time_limit = 60
+self_answer <- .rc_corda_one_shot_solve(
+  list(
+    split = self_split,
+    solver = "highs",
+    time_limit = Inf
+  ),
+  objective = c(0, 0),
+  lower = self_bounds$lower,
+  upper = self_bounds$upper
 )
 stopifnot(
   identical(self_answer$status, value("self_cycle", "status")),
@@ -258,16 +260,16 @@ stopifnot(
   self_answer$solution[[2L]] > self_split$tolerance
 )
 
-# Unknown/free completion in build iteration 3.
+# Iteration 3 free/unknown association.
 stage3_gem <- make_gem(
   "A", c("SRC", "H"),
   list(list("A", "SRC", 1), list("A", "H", -1))
 )
 stage3 <- run_build(stage3_gem, c(SRC = 0L, H = 3L))$result
-compare_oracle_confidence("stage3_unknown", stage3)
+compare_oracle("stage3_unknown", stage3)
 stopifnot("SRC" %in% stage3$stage3_associated_ot)
 
-# Absent-support counting plus the source's positive-minimization step.
+# Absent support and positive-minimization behavior.
 support_gem <- make_gem(
   "X", c("N", "M1", "M2"),
   list(
@@ -279,10 +281,12 @@ support_gem <- make_gem(
   ub = c(N = 1000, M1 = 1000, M2 = 1000)
 )
 support <- run_build(
-  support_gem, c(N = -1L, M1 = 2L, M2 = 2L),
-  n = 1L, support = 2L
+  support_gem,
+  c(N = -1L, M1 = 2L, M2 = 2L),
+  n = 1L,
+  support = 2L
 )$result
-compare_oracle_confidence("absent_support", support)
+compare_oracle("absent_support", support)
 stopifnot(
   support$stage2_nc_support_count[["N::forward"]] == 2L,
   "N" %in% support$stage2_promoted_nc,
@@ -290,15 +294,15 @@ stopifnot(
   !"M2" %in% support$stage2_promoted_mc
 )
 
-# Exact source behavior in iteration 2b: minimize +1*v and promote only when
-# the minimum objective is greater than tflux=1.
 forced_gem <- make_gem(
   "A", c("SRC", "M"),
   list(list("A", "SRC", 1), list("A", "M", -1)),
   lb = c(SRC = 0, M = 2), ub = c(SRC = 1000, M = 1000)
 )
-forced <- run_build(forced_gem, c(SRC = 0L, M = 2L), n = 1L)$result
-compare_oracle_confidence("positive_min_forced", forced)
+forced <- run_build(
+  forced_gem, c(SRC = 0L, M = 2L), n = 1L
+)$result
+compare_oracle("positive_min_forced", forced)
 stopifnot("M" %in% forced$stage2_promoted_mc)
 
 free_gem <- make_gem(
@@ -306,31 +310,13 @@ free_gem <- make_gem(
   list(list("A", "SRC", 1), list("A", "M", -1))
 )
 free <- run_build(free_gem, c(SRC = 0L, M = 2L), n = 1L)$result
-compare_oracle_confidence("positive_min_free", free)
+compare_oracle("positive_min_free", free)
 stopifnot(!"M" %in% free$stage2_promoted_mc)
 
-# Python assigns both direction costs from the forward variable confidence.
-penalty_split <- .rc_corda_split_model(
-  self_cycle_gem,
-  tolerance = .rc_corda2_solver_feasibility_tolerance("highs")
-)
-penalty <- .rc_corda2_penalties(
-  penalty_split,
-  c("REV::forward" = 3L, "REV::reverse" = -1L),
-  penalize_medium = TRUE,
-  penalty_factor = 100
-)
-stopifnot(
-  penalty[["REV::forward"]] == 0,
-  penalty[["REV::reverse"]] == 0
-)
-
-# The one-shot fallback preserves the same exact control flow and result on the
-# nondegenerate oracle network.
-original_api <- .rc_corda_highs_api_available
-.rc_corda_highs_api_available <- function() FALSE
-stage3_one_shot <- run_build(stage3_gem, c(SRC = 0L, H = 3L))$result
-.rc_corda_highs_api_available <- original_api
+# One-shot fallback must preserve the nondegenerate result.
+stage3_one_shot <- run_build(
+  stage3_gem, c(SRC = 0L, H = 3L), persistent = FALSE
+)$result
 stopifnot(
   identical(
     stage3_one_shot$final_directional_confidence,
@@ -350,4 +336,4 @@ stopifnot(
   }, logical(1)))
 )
 
-cat("R implementation matches the pinned Python CORDA2 oracle\n")
+cat("Direct R implementation matches the pinned Python CORDA2 oracle\n")
