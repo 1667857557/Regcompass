@@ -1,4 +1,4 @@
-# Runtime context and parallel scheduling for exact pinned Python CORDA2.
+# Runtime context and parallel scheduling for original MATLAB CORDA2.
 
 .rc_layer2_completion_context <- new.env(parent = emptyenv())
 .rc_layer2_completion_context$active <- FALSE
@@ -9,7 +9,7 @@
 .rc_is_corda2_options <- function(options) {
   is.list(options) && identical(
     as.character(options$algorithm %||% ""),
-    "resendislab_python_CORDA2_c02e06d_exact_semantics"
+    "schultzdre_MATLAB_CORDA2_original_semantics"
   )
 }
 
