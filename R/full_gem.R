@@ -106,7 +106,7 @@ rc_build_full_gem <- function(
     strategy = if (isTRUE(prune_flux_inconsistent)) {
       "medium_flux_consistency_pruned_full_gem"
     } else {
-      "unpruned_full_gem"
+      "full_gem"
     },
     context_specific_reconstruction = FALSE,
     reaction_evidence_used = FALSE,
@@ -154,10 +154,12 @@ rc_build_full_gem <- function(
   unname(tools::md5sum(file)[[1L]])
 }
 
-.rc_full_gem_pruning_fingerprint <- function(flux_consistency_epsilon) {
+.rc_full_gem_pruning_fingerprint <- function(
+    flux_consistency_epsilon, solver) {
   payload <- list(
     algorithm = "medium_flux_consistency_pruned_full_gem_v1",
-    epsilon = as.numeric(flux_consistency_epsilon)
+    epsilon = as.numeric(flux_consistency_epsilon),
+    solver = as.character(solver)
   )
   file <- tempfile("RegCompassR-full-gem-pruning-", fileext = ".rds")
   on.exit(unlink(file, force = TRUE), add = TRUE)
@@ -216,7 +218,7 @@ rc_build_full_gem_cache <- function(
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   gem_fingerprint <- .rc_full_gem_cache_fingerprint(gem)
   pruning_fingerprint <- .rc_full_gem_pruning_fingerprint(
-    flux_consistency_epsilon
+    flux_consistency_epsilon, solver
   )
   scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))
   combinations <- expand.grid(
@@ -295,6 +297,7 @@ rc_build_full_gem_cache <- function(
       full$cache_identity <- list(
         gem_fingerprint = gem_fingerprint,
         pruning_fingerprint = pruning_fingerprint,
+        solver = solver,
         species = gem$model_info$species %||% NA_character_,
         source = gem$model_info$source %||% NA_character_,
         version = gem$model_info$model_version %||%
@@ -324,6 +327,8 @@ rc_build_full_gem_cache <- function(
         build$n_flux_inconsistent_reactions,
       n_metabolites = nrow(full$S),
       flux_consistency_epsilon = flux_consistency_epsilon,
+      solver = solver,
+      completion_time_limit = time_limit,
       build_strategy = "medium_flux_consistency_pruned_full_gem",
       target_status = full$target_status,
       model_version = gem$model_info$model_version %||%
