@@ -38,6 +38,17 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
   )
 }
 
+rc_align_bound <- function(x, rxns, default, name, allow_partial = FALSE) {
+  if (is.null(x)) {
+    return(stats::setNames(rep(default, length(rxns)), rxns))
+  }
+  x <- as.numeric(x[rxns])
+  if (length(x) != length(rxns) || anyNA(x)) {
+    stop("invalid ", name, " bounds", call. = FALSE)
+  }
+  stats::setNames(x, rxns)
+}
+
 rc_validate_gem <- function(gem) {
   S <- .rc_as_dgCMatrix(gem$S)
   reactions <- colnames(S)
