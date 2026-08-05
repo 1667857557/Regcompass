@@ -106,8 +106,8 @@ jobs:
           required_dispatch = [
               'answer$params$structural_completion <- "none"',
               '"compass_medium_bounds_only"',
-              '"exchange_bounds_only_before_fastcc_fastcore"',
-              '"exchange_bounds_only_before_corda2"',
+              '"exchange_bounds_only_then_fastcc_fastcore"',
+              '"exchange_bounds_only_then_corda2"',
               'medium_direct_reaction_deletion = FALSE',
               'fastcore_executed = FALSE',
               'corda2_executed = FALSE',
