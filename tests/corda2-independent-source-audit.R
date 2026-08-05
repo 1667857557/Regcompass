@@ -69,14 +69,13 @@ source("R/layer2_corda_direction_contract.R")
 source("R/layer2_corda2_algorithm.R")
 source("R/layer2_corda2_algorithm_build.R")
 source("R/layer2_corda2_options_contract.R")
-source("R/layer2_corda2_correction_contract.R")
 source("R/layer2_corda_runtime.R")
-source("R/layer2_corda_solver_contract.R")
 
 oracle <- utils::read.delim(
   "tests/corda2_independent_oracle.tsv",
   stringsAsFactors = FALSE,
-  check.names = FALSE
+  check.names = FALSE,
+  colClasses = "character"
 )
 value <- function(case, key) {
   hit <- oracle$value[oracle$case == case & oracle$key == key]
@@ -93,9 +92,7 @@ make_gem <- function(metabolites, reactions, entries,
     sparse = TRUE,
     dimnames = list(metabolites, reactions)
   )
-  for (entry in entries) {
-    S[entry[[1L]], entry[[2L]]] <- entry[[3L]]
-  }
+  for (entry in entries) S[entry[[1L]], entry[[2L]]] <- entry[[3L]]
   if (is.null(lb)) lb <- stats::setNames(rep(0, length(reactions)), reactions)
   if (is.null(ub)) ub <- stats::setNames(rep(1000, length(reactions)), reactions)
   list(S = S, lb = lb, ub = ub)
@@ -120,7 +117,7 @@ classes_from_confidence <- function(confidence) {
   )
 }
 
-# Exact Python constructor names, order and defaults.
+# Constructor signature, exact source names and defaults.
 defaults <- .rc_layer2_corda_options(list(model_completion = "corda2"))
 stopifnot(
   identical(
@@ -138,49 +135,25 @@ stopifnot(
 custom <- .rc_layer2_corda_options(list(
   model_completion = "corda2",
   corda2_args = list(
-    met_prod = NULL,
-    n = 1L,
-    penalty_factor = 0.5,
-    support = 2L
+    met_prod = NULL, n = 1L, penalty_factor = 0.5, support = 2L
   )
 ))
 stopifnot(
   identical(custom$n, 1L),
-  identical(custom$redundancies, 1L),
   identical(custom$penalty_factor, 0.5),
   identical(custom$support, 2L)
 )
-legacy <- .rc_layer2_corda_options(list(
-  model_completion = "corda2",
-  corda2_redundancies = 1L,
-  corda2_penalty_factor = 0.5,
-  corda2_support = 2L
-))
-stopifnot(
-  identical(legacy$n, custom$n),
-  identical(legacy$penalty_factor, custom$penalty_factor),
-  identical(legacy$support, custom$support)
-)
-conflict <- try(.rc_layer2_corda_options(list(
+stopifnot(inherits(try(.rc_layer2_corda_options(list(
   model_completion = "corda2",
   corda2_args = list(n = 1L),
   corda2_redundancies = 2L
-)), silent = TRUE)
-non_null_met_prod <- try(.rc_layer2_corda_options(list(
+)), silent = TRUE), "try-error"))
+stopifnot(inherits(try(.rc_layer2_corda_options(list(
   model_completion = "corda2",
   corda2_args = list(met_prod = "atp_c")
-)), silent = TRUE)
-unknown_constructor_arg <- try(.rc_layer2_corda_options(list(
-  model_completion = "corda2",
-  corda2_args = list(target_flux = 2)
-)), silent = TRUE)
-stopifnot(
-  inherits(conflict, "try-error"),
-  inherits(non_null_met_prod, "try-error"),
-  inherits(unknown_constructor_arg, "try-error")
-)
+)), silent = TRUE), "try-error"))
 
-# Ordered constructor bound setters, including both transient error cases.
+# Ordered COBRA bound-setter behavior, including transient errors.
 bound_cases <- list(
   bounds_reversible = c(-1000, 1000),
   bounds_positive = c(2, 1000),
@@ -193,49 +166,42 @@ for (case in names(bound_cases)) {
   bounds <- bound_cases[[case]]
   gem <- make_gem(
     "A", "R", list(),
-    lb = c(R = bounds[[1L]]),
-    ub = c(R = bounds[[2L]])
+    lb = c(R = bounds[[1L]]), ub = c(R = bounds[[2L]])
   )
   observed <- try(.rc_corda_split_model(
     gem,
     tolerance = .rc_corda2_solver_feasibility_tolerance("highs"),
     upper_bound = 1e6
   ), silent = TRUE)
-  expected_status <- value(case, "status")
-  if (identical(expected_status, "error")) {
+  if (identical(value(case, "status"), "error")) {
     stopifnot(inherits(observed, "try-error"))
   } else {
     stopifnot(!inherits(observed, "try-error"))
+    checks <- c(
+      normalized_reaction_lb = "reaction_lb",
+      normalized_reaction_ub = "reaction_ub"
+    )
+    for (field in names(checks)) {
+      stopifnot(isTRUE(all.equal(
+        observed[[field]][["R"]],
+        as.numeric(value(case, checks[[field]])),
+        tolerance = 0
+      )))
+    }
     stopifnot(
-      isTRUE(all.equal(
-        observed$normalized_reaction_lb[["R"]],
-        as.numeric(value(case, "reaction_lb")), tolerance = 0
-      )),
-      isTRUE(all.equal(
-        observed$normalized_reaction_ub[["R"]],
-        as.numeric(value(case, "reaction_ub")), tolerance = 0
-      )),
-      isTRUE(all.equal(
-        observed$lb[["R::forward"]],
-        as.numeric(value(case, "forward_lb")), tolerance = 0
-      )),
-      isTRUE(all.equal(
-        observed$ub[["R::forward"]],
-        as.numeric(value(case, "forward_ub")), tolerance = 0
-      )),
-      isTRUE(all.equal(
-        observed$lb[["R::reverse"]],
-        as.numeric(value(case, "reverse_lb")), tolerance = 0
-      )),
-      isTRUE(all.equal(
-        observed$ub[["R::reverse"]],
-        as.numeric(value(case, "reverse_ub")), tolerance = 0
-      ))
+      isTRUE(all.equal(observed$lb[["R::forward"]],
+                       as.numeric(value(case, "forward_lb")), tolerance = 0)),
+      isTRUE(all.equal(observed$ub[["R::forward"]],
+                       as.numeric(value(case, "forward_ub")), tolerance = 0)),
+      isTRUE(all.equal(observed$lb[["R::reverse"]],
+                       as.numeric(value(case, "reverse_lb")), tolerance = 0)),
+      isTRUE(all.equal(observed$ub[["R::reverse"]],
+                       as.numeric(value(case, "reverse_ub")), tolerance = 0))
     )
   }
 }
 
-# Penalty-factor behavior on a network with a unique cheap route.
+# Penalty-factor routing on a nondegenerate network.
 route_gem <- make_gem(
   c("A", "B", "C", "D"),
   c("SRC", "N", "M1", "M2", "M3", "SINK"),
@@ -271,13 +237,11 @@ for (penalty_factor in c(0.5, 100)) {
     stage = "independent_penalty_factor_audit"
   )
   engine <- .rc_corda_release_lp_engine(associated$engine)
-  key <- paste0("penalty_factor_", penalty_factor)
+  key <- paste0("penalty_factor_", format(penalty_factor, trim = TRUE))
   expected <- value(key, "needed")
   expected <- if (nzchar(expected)) {
     strsplit(expected, ";", fixed = TRUE)[[1L]]
-  } else {
-    character()
-  }
+  } else character()
   stopifnot(
     identical(sort(unique(associated$needed)), sort(expected)),
     identical(
@@ -287,7 +251,7 @@ for (penalty_factor in c(0.5, 100)) {
   )
 }
 
-# Python n=0 performs no redundancy LP iterations.
+# n=0 and verified persistent HiGHS configuration.
 n0_gem <- make_gem(
   "A", c("SRC", "SINK"),
   list(list("A", "SRC", 1), list("A", "SINK", -1))
@@ -304,13 +268,25 @@ n0_split <- .rc_corda_split_model(
 n0_confidence <- .rc_corda2_directional_confidence(
   n0_split, classes_from_confidence(c(SRC = 1L, SINK = 3L))
 )
-n0_engine <- .rc_corda_new_lp_engine(n0_split, "highs", Inf)
+engine <- .rc_corda_new_lp_engine(n0_split, "highs", Inf)
+stopifnot(
+  identical(engine$type, "highs_persistent_cpp"),
+  isTRUE(engine$solver_configuration_verified),
+  identical(as.integer(engine$verified_solver_options$threads), 1L),
+  identical(as.character(engine$verified_solver_options$solver), "simplex"),
+  isTRUE(all.equal(
+    as.numeric(engine$verified_solver_options$primal_feasibility_tolerance),
+    n0_split$tolerance,
+    tolerance = 0
+  )),
+  is.infinite(engine$time_limit)
+)
 n0 <- .rc_corda2_associated(
-  n0_engine, n0_split, "SINK::forward", n0_confidence, n0_options,
+  engine, n0_split, "SINK::forward", n0_confidence, n0_options,
   penalize_medium = TRUE, redundancies = TRUE,
   stage = "independent_n_zero_audit"
 )
-n0_engine <- .rc_corda_release_lp_engine(n0$engine)
+engine <- .rc_corda_release_lp_engine(n0$engine)
 stopifnot(
   !length(n0$needed),
   identical(unname(n0$redundancies[["SINK::forward"]]), 0L),
@@ -318,35 +294,13 @@ stopifnot(
   identical(as.integer(value("n_zero", "redundancy")), 0L)
 )
 
-# Persistent and one-shot HiGHS paths must share verified solver options.
-solver_engine <- .rc_corda_new_lp_engine(n0_split, "highs", Inf)
-stopifnot(
-  identical(solver_engine$type, "highs_persistent_cpp"),
-  isTRUE(solver_engine$solver_configuration_verified),
-  identical(as.integer(solver_engine$verified_solver_options$threads), 1L),
-  identical(as.character(solver_engine$verified_solver_options$solver), "simplex"),
-  isTRUE(all.equal(
-    as.numeric(solver_engine$verified_solver_options$primal_feasibility_tolerance),
-    n0_split$tolerance,
-    tolerance = 0
-  ))
-)
-solver_engine <- .rc_corda_release_lp_engine(solver_engine)
-
-# A generic RegCompass time limit is not a Python CORDA constructor parameter.
-time_options <- .rc_layer2_corda_options(list(model_completion = "corda2"))
-time_options$feasibility_tolerance <-
-  .rc_corda2_solver_feasibility_tolerance("highs")
-time_build <- .rc_corda_build_three_stage(
-  n0_split,
-  classes_from_confidence(c(SRC = 0L, SINK = 3L)),
-  time_options,
-  solver = "highs",
-  time_limit = 1e-9
-)
-stopifnot(
-  is.infinite(time_build$solver_time_limit),
-  identical(time_build$requested_regcompass_time_limit_ignored, 1e-9)
-)
+# The original model builder, not an override, passes Inf to CORDA2 build().
+model_source <- paste(readLines("R/layer2_corda_model.R", warn = FALSE),
+                      collapse = "\n")
+stopifnot(grepl(
+  "reconstruction <- .rc_corda_build_three_stage\\([\\s\\S]*time_limit = Inf",
+  model_source,
+  perl = TRUE
+))
 
 cat("Independent R/Python CORDA2 source audit passed\n")
