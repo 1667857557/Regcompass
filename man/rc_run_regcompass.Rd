@@ -33,8 +33,8 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
 \item{layer1_args}{Optional \code{gpr_and_method} and \code{gene_half_saturation}.}
 \item{medium_scenarios}{Shared medium table.}
-\item{model_mode}{Use cell-type meta-module GEMs or the full GEM.}
-\item{layer2_args}{Directional scoring and model-completion controls.}
+\item{model_mode}{Use cell-type meta-module reconstruction with FASTCORE or CORDA2, or use the shared full reference GEM after medium application and flux-consistency pruning.}
+\item{layer2_args}{Directional scoring and structural controls. FASTCORE is the default for \code{meta_module_gem}; set \code{model_params$model_completion = "corda2"} for CORDA2. The \code{full_gem} route skips both algorithms.}
 \item{upstream_workers}{Worker count for Stage 1 and Stage 4.}
 \item{layer2_workers}{Worker count for Stage 5.}
 \item{progress}{Display workflow and stage progress.}
@@ -53,6 +53,9 @@ condition use standard Pando and do not receive condition coefficients.
 Stage 2 builds one independent RNA+ATAC WNN graph per broad cell type and keeps
 final metacells condition-pure. Layer 1 accepts only \code{gpr_and_method} and
 \code{gene_half_saturation}. Layer 2 retains the primary penalty and an explicit
-RNA-only control. Mathematical definitions are maintained in
-\code{docs/mathematical-model.md}.
+RNA-only control while selecting exactly one structural route: add-only
+FASTCORE, original MATLAB CORDA2, or a medium-constrained full GEM pruned only
+for flux consistency. Mathematical definitions are maintained in
+\code{docs/mathematical-model.md}; selection examples are in
+\code{docs/layer2-model-builders.md}.
 }
