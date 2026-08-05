@@ -197,8 +197,9 @@ for (invalid in list(
   error <- try(.rc_validate_full_gem_model_params(invalid), silent = TRUE)
   stopifnot(inherits(error, "try-error"))
 }
-stopifnot(invisible(.rc_validate_full_gem_model_params(
+valid <- .rc_validate_full_gem_model_params(
   list(model_completion = "none", completion_time_limit = 60)
-)))
+)
+stopifnot(identical(valid$model_completion, "none"))
 
 message("Full-GEM medium-pruning synthetic contract passed.")
