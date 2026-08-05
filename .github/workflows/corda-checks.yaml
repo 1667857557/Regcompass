@@ -34,6 +34,7 @@ jobs:
       - name: Install pinned Python CORDA2 reference
         run: |
           python -m pip install --upgrade pip
+          python -m pip install "numpy<2"
           python -m pip install "git+https://github.com/resendislab/corda.git@c02e06d50606bf93f23d8f2e6d6ade0e996ca70e"
       - name: Run pinned Python CORDA2 reference checks
         run: python tests/corda2-python-reference-check.py
