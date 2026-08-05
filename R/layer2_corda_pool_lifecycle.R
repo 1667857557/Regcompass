@@ -8,7 +8,7 @@
   }
   requested <- as.character(model_params$model_completion %||% "fastcore")
   length(requested) == 1L && !is.na(requested) &&
-    requested %in% c("corda2", "corda", "corda_like")
+    requested %in% c("corda2", "corda")
 }
 
 .rc_prepare_corda_worker_pool <- function(
@@ -21,7 +21,6 @@
     thread_state = NULL
   )
   if (!isTRUE(state$is_corda2) || !isTRUE(parallel)) return(state)
-
   if (is.null(state$BPPARAM)) {
     state$BPPARAM <- rc_default_bpparam()
     state$origin <- if (is.null(state$BPPARAM)) {
