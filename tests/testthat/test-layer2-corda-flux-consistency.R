@@ -95,9 +95,9 @@ test_that("persistent native HiGHS path has one-shot fallback", {
   expect_match(solve, "one_shot_fallback", fixed = TRUE)
 })
 
-test_that("final scoring targets remain restricted to HC core", {
+test_that("model integration scores only core-reaction closure targets", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem_before_corda2)),
+    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem_base)),
     collapse = "\n"
   )
   expect_match(implementation, ".rc_corda_core_closure", fixed = TRUE)
@@ -107,6 +107,11 @@ test_that("final scoring targets remain restricted to HC core", {
   )
   expect_match(
     implementation, "n_celltype_fastcore_support_reactions = 0L",
+    fixed = TRUE
+  )
+  expect_match(
+    implementation,
+    "Python_CORDA2_directional_confidence_then_restore_original_bounds",
     fixed = TRUE
   )
 })
