@@ -34,11 +34,11 @@
   )
   diagnostics$completion_status <- ifelse(
     !diagnostics$feasible,
-    "parent_blocked",
+    "parent_below_corda2_target_flux",
     ifelse(
       diagnostics$final_feasible %in% TRUE,
-      "corda2_reaction_retained",
-      "corda2_reaction_unresolved"
+      "corda2_retained_at_target_flux",
+      "corda2_unresolved_at_target_flux"
     )
   )
   feasible_targets <- diagnostics[
@@ -110,6 +110,7 @@
     stop("CORDA2 reconstruction retained no reactions.", call. = FALSE)
   }
   final <- .rc_subset_gem(parent, included)
+  target_flux <- corda_options$target_flux
   closure <- .rc_corda_core_closure(
     parent = parent,
     final = final,
@@ -117,7 +118,7 @@
     target_direction = target_direction,
     solver = solver,
     time_limit = time_limit,
-    flux_threshold = corda_options$flux_tolerance
+    flux_threshold = target_flux
   )
   if (isTRUE(strict) && any(closure$failed)) {
     bad <- paste(
@@ -129,8 +130,8 @@
       collapse = ", "
     )
     stop(
-      "CORDA2 failed to retain parent-feasible core directions in `",
-      cell_type, "`: ", bad,
+      "CORDA2 failed to retain parent-feasible core directions at target ",
+      "flux in `", cell_type, "`: ", bad,
       call. = FALSE
     )
   }
@@ -190,9 +191,9 @@
     reconstruction$stage2_nc_support_count
   final$corda_reconstruction <- reconstruction
   final$target_status <- if (any(closure$failed)) {
-    "structurally_infeasible"
+    "structurally_infeasible_at_corda2_target_flux"
   } else if (!nrow(closure$feasible_targets)) {
-    "parent_blocked"
+    "parent_below_corda2_target_flux"
   } else {
     "ok"
   }
@@ -234,6 +235,8 @@
     scoring_target_direction = target_direction,
     reconstruction_direction_policy =
       "Python_CORDA2_directional_confidence_then_restore_original_bounds",
+    corda2_target_flux = target_flux,
+    association_flux_tolerance = corda_options$flux_tolerance,
     fastcore_epsilon_used = FALSE,
     max_support_reactions_ignored_for_corda2 = max_support_reactions,
     strict = strict,
