@@ -103,9 +103,16 @@
         is.null(attr(model_cache_override, "summary")) ||
         !identical(attr(model_cache_override, "completion_method"), "none") ||
         !identical(attr(model_cache_override, "fastcore_executed"), FALSE) ||
-        !identical(attr(model_cache_override, "corda2_executed"), FALSE)) {
-      stop("`model_cache_override` is not an audited medium-pruned full-GEM cache.",
-           call. = FALSE)
+        !identical(attr(model_cache_override, "corda2_executed"), FALSE) ||
+        !identical(
+          attr(model_cache_override, "medium_handling"),
+          "exchange_bounds_only_no_reaction_deletion"
+        )) {
+      stop(
+        "`model_cache_override` is not an audited COMPASS-style ",
+        "medium-constrained full-GEM cache.",
+        call. = FALSE
+      )
     }
     model_cache <- model_cache_override
     directions <- unique(do.call(rbind, lapply(
@@ -150,7 +157,7 @@
         tempfile("RegCompassR_full_gem_cache_"),
       conditions = "all",
       solver = solver,
-      time_limit = model_params$completion_time_limit %||% 300,
+      time_limit = model_params$completion_time_limit %||% NA_real_,
       flux_consistency_epsilon = flux_threshold
     )
     directions <- unique(do.call(rbind, lapply(
@@ -292,8 +299,11 @@
           solver_status = answer$solver_status,
           step1_status = answer$step1_status,
           step2_status = answer$step2_status,
-          target_status = model$target_status %||%
-            if (isTRUE(answer$feasible)) "ok" else "structurally_infeasible",
+          target_status = if (isTRUE(answer$feasible)) {
+            "ok"
+          } else {
+            "medium_directionally_infeasible"
+          },
           objective_value = if (target_evidence_available) {
             answer$penalty
           } else {
@@ -371,14 +381,19 @@
       target_direction = target_direction,
       shared_gem = TRUE,
       shared_gem_scope = paste(
-        "one medium-flux-consistency-pruned full GEM per medium",
+        "one complete medium-constrained full GEM per medium",
         "shared across all units"
       ),
-      structural_scope = "medium_x_full_gem",
+      structural_scope = "medium_x_complete_full_gem",
       model_completion = "none",
-      structural_completion = "medium_flux_consistency",
-      structural_completion_algorithm =
-        "medium_flux_consistency_pruned_full_gem",
+      structural_completion = "none",
+      structural_completion_algorithm = "compass_medium_bounds_only",
+      medium_handling = "exchange_bounds_only_no_reaction_deletion",
+      medium_direct_reaction_deletion = FALSE,
+      target_feasibility = paste(
+        "directional vmax under the medium; skip Step 2 when",
+        "vmax is below flux_threshold"
+      ),
       fastcore_executed = FALSE,
       corda2_executed = FALSE,
       parallel_task = "shared_model_by_metacell_step2",
@@ -389,7 +404,7 @@
       flux_threshold = flux_threshold,
       scoring_time_limit = "none"
     ),
-    method = "microCOMPASS shared medium-pruned full-GEM directional LP"
+    method = "microCOMPASS shared medium-constrained full-GEM directional LP"
   )
 }
 
