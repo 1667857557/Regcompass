@@ -18,12 +18,21 @@
 
   forward_ids <- reactions
   reverse_ids <- paste0(reactions[reverse_index], "_CORDA_rev_rxn")
+  S <- validated$S
+  colnames(S) <- forward_ids
+  if (length(reverse_index)) {
+    reverse_columns <- -validated$S[, reverse_index, drop = FALSE]
+    colnames(reverse_columns) <- reverse_ids
+    S <- cbind(S, reverse_columns)
+  }
   variable_ids <- c(forward_ids, reverse_ids)
-  S <- cbind(
-    validated$S,
-    if (length(reverse_index)) -validated$S[, reverse_index, drop = FALSE]
-    else Matrix::Matrix(0, nrow(validated$S), 0, sparse = TRUE)
-  )
+  if (ncol(S) != length(variable_ids)) {
+    stop(
+      "CORDA2 directional decomposition produced ", ncol(S),
+      " columns for ", length(variable_ids), " directional identifiers.",
+      call. = FALSE
+    )
+  }
   colnames(S) <- variable_ids
   lower <- stats::setNames(rep(0, length(variable_ids)), variable_ids)
   upper <- stats::setNames(c(reaction_ub, -reaction_lb[reverse_index]), variable_ids)
