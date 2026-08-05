@@ -1,4 +1,4 @@
-# Complete medium-constrained parent model for exact Python CORDA2 semantics.
+# Complete medium-constrained parent model for original MATLAB CORDA2.
 
 .rc_corda_parent <- function(
     gem, medium_table = NULL, condition = NULL,
@@ -19,14 +19,13 @@
   parent$corda_parent_role_blocking <- "none"
   parent$corda_parent_feasibility_precheck <- FALSE
   parent$corda_parent_contract <- paste(
-    "copy the complete medium-constrained input model before CORDA2 bound",
-    "normalization; do not run FASTCC, role pruning, or a global feasibility",
-    "precheck, matching CORDA.__init__ for met_prod = NULL"
+    "apply the requested medium to the complete GEM, then pass that model",
+    "directly to original CORDA2 without FASTCC or reaction-role pruning"
   )
   parent$corda_ignored_fastcore_forbidden_roles <-
     unique(as.character(forbidden_roles))
-  parent$corda_parent_solver_argument_ignored <- as.character(solver)
-  parent$corda_parent_time_limit_argument_ignored <- as.numeric(time_limit)
+  parent$corda_parent_solver <- as.character(solver)
+  parent$corda_parent_time_limit <- as.numeric(time_limit)
   parent
 }
 
@@ -53,8 +52,7 @@
   build$parent_role_blocking <- "none"
   build$parent_feasibility_precheck <- FALSE
   build$parent_algorithm_contract <- paste(
-    "exact Python CORDA2 initialization on the complete medium-constrained",
-    "input GEM for met_prod = NULL"
+    "original MATLAB CORDA2 on the complete medium-constrained input GEM"
   )
   build$input_fastcore_epsilon_ignored_for_corda2 <-
     as.numeric(fastcore_epsilon)
@@ -62,7 +60,7 @@
     unique(as.character(forbidden_roles))
   model$build_params <- build
   model$corda_parent_contract <- list(
-    algorithm = "python_corda2_exact_met_prod_NULL",
+    algorithm = "original_matlab_corda2",
     prepruning = "none",
     role_blocking = "none",
     feasibility_precheck = FALSE,
