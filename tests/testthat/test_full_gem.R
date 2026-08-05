@@ -8,76 +8,83 @@
 .full_gem_test_model <- function() {
   S <- matrix(
     c(
-      1, -1,  0,  0,
-      0,  1, -1,  0,
-      0,  0,  0, -1
+      1, -1,  0,  0,  0,  0,
+      0,  1, -1,  0,  0,  0,
+      0,  0,  0,  1, -1,  0,
+      0,  0,  0,  0,  1, -1
     ),
-    nrow = 3,
+    nrow = 4,
     byrow = TRUE,
     dimnames = list(
-      c("A_c", "B_c", "C_c"),
-      c("EX_A", "R1", "EX_B", "R_BLOCKED")
+      c("A_c", "B_c", "C_c", "D_c"),
+      c("EX_A", "R1", "EX_B", "EX_C", "R2", "EX_D")
     )
   )
   rc_make_gem(
     S,
-    lb = stats::setNames(rep(0, 4), colnames(S)),
-    ub = stats::setNames(rep(1000, 4), colnames(S)),
+    lb = stats::setNames(rep(0, 6), colnames(S)),
+    ub = stats::setNames(rep(1000, 6), colnames(S)),
     reaction_meta = data.frame(
       reaction_id = colnames(S),
-      role = c("exchange", "internal", "exchange", "internal"),
+      role = c("exchange", "internal", "exchange",
+               "exchange", "internal", "exchange"),
       role_source = "curated",
       stringsAsFactors = FALSE
     )
   )
 }
 
-test_that("full GEM removes only medium flux-inconsistent reactions", {
-  solver <- .full_gem_test_solver()
-  skip_if(is.null(solver), "No LP solver is installed")
-  gem <- .full_gem_test_model()
+.full_gem_test_medium <- function(open_c = FALSE) {
+  data.frame(
+    medium_scenario_id = "test",
+    exchange_reaction_id = c("EX_A", "EX_B", "EX_C", "EX_D"),
+    lb = 0,
+    ub = c(1000, 1000, if (open_c) 1000 else 0, 1000),
+    available = c(TRUE, TRUE, open_c, TRUE),
+    condition = "all",
+    stringsAsFactors = FALSE
+  )
+}
 
+test_that("full GEM applies medium bounds without deleting reactions", {
+  gem <- .full_gem_test_model()
   model <- rc_build_full_gem(
     gem,
-    prune_flux_inconsistent = TRUE,
-    solver = solver,
-    time_limit = 60,
-    flux_consistency_epsilon = 1e-8
+    medium_table = .full_gem_test_medium()
   )
 
-  expect_setequal(colnames(model$S), c("EX_A", "R1", "EX_B"))
-  expect_false("R_BLOCKED" %in% colnames(model$S))
+  expect_identical(colnames(model$S), colnames(gem$S))
+  expect_identical(rownames(model$S), rownames(gem$S))
+  expect_equal(model$S, gem$S)
+  expect_equal(unname(model$ub[["EX_C"]]), 0)
   expect_identical(
     model$build_params$strategy,
-    "medium_flux_consistency_pruned_full_gem"
+    "compass_medium_constrained_full_gem"
   )
-  expect_false(model$build_params$fastcore_executed)
-  expect_false(model$build_params$corda2_executed)
-  expect_equal(model$build_params$n_flux_inconsistent_reactions, 1L)
+  expect_identical(model$build_params$n_input_reactions, 6L)
+  expect_identical(model$build_params$n_reactions, 6L)
+  expect_identical(model$build_params$n_medium_removed_reactions, 0L)
+  expect_false(model$build_params$medium_direct_reaction_deletion)
+  expect_false(model$build_params$flux_consistency_pruning)
+  expect_identical(
+    model$build_params$medium_handling,
+    "exchange_bounds_only_no_reaction_deletion"
+  )
+  expect_identical(model$target_status, "not_prechecked")
 })
 
-test_that("full GEM cache excludes pruned targets and records the builder", {
-  solver <- .full_gem_test_solver()
-  skip_if(is.null(solver), "No LP solver is installed")
+test_that("full GEM cache retains medium-blocked targets", {
   gem <- .full_gem_test_model()
   dirs <- data.frame(
-    reaction_id = c("R1", "R_BLOCKED"),
+    reaction_id = c("R1", "R2"),
     target_direction = c("forward", "forward"),
     stringsAsFactors = FALSE
   )
-  medium <- data.frame(
-    medium_scenario_id = "base",
-    exchange_reaction_id = NA_character_,
-    lb = NA_real_, ub = NA_real_, available = FALSE,
-    .no_constraints = TRUE,
-    stringsAsFactors = FALSE
-  )
-
   cache <- rc_build_full_gem_cache(
     gem = gem,
     dirs = dirs,
-    medium_scenarios = medium,
-    solver = solver,
+    medium_scenarios = .full_gem_test_medium(),
+    solver = "highs",
     time_limit = 60,
     flux_consistency_epsilon = 1e-8
   )
@@ -86,23 +93,97 @@ test_that("full GEM cache excludes pruned targets and records the builder", {
   expect_equal(nrow(summary), 1L)
   expect_identical(
     summary$build_strategy,
-    "medium_flux_consistency_pruned_full_gem"
+    "compass_medium_constrained_full_gem"
   )
-  expect_equal(summary$n_input_reactions, 4L)
-  expect_equal(summary$n_reactions, 3L)
-  expect_equal(summary$n_flux_inconsistent_reactions, 1L)
-  expect_false(summary$medium_applied)
-  expect_identical(summary$solver, solver)
-  expect_equal(summary$completion_time_limit, 60)
+  expect_equal(summary$n_input_reactions, 6L)
+  expect_equal(summary$n_reactions, 6L)
+  expect_equal(summary$n_medium_removed_reactions, 0L)
+  expect_true(summary$medium_applied)
+  expect_setequal(
+    vapply(cache, `[[`, character(1), "reaction_id"),
+    c("R1", "R2")
+  )
   expect_true(file.exists(summary$file[[1L]]))
-  expect_true(all(vapply(
-    cache,
-    function(entry) identical(entry$reaction_id, "R1"),
-    logical(1)
-  )))
   expect_identical(attr(cache, "completion_method"), "none")
   expect_false(attr(cache, "fastcore_executed"))
   expect_false(attr(cache, "corda2_executed"))
+  expect_identical(
+    attr(cache, "medium_handling"),
+    "exchange_bounds_only_no_reaction_deletion"
+  )
+})
+
+test_that("medium-blocked full-GEM target is handled by COMPASS vmax", {
+  solver <- .full_gem_test_solver()
+  skip_if(is.null(solver), "No LP solver is installed")
+  model <- rc_build_full_gem(
+    .full_gem_test_model(),
+    medium_table = .full_gem_test_medium()
+  )
+
+  feasible <- rc_compass_vmax_directional(
+    model$S, model$lb, model$ub,
+    target_reaction = "R1",
+    direction = "forward",
+    solver = solver,
+    flux_threshold = 1e-8
+  )
+  blocked <- rc_compass_vmax_directional(
+    model$S, model$lb, model$ub,
+    target_reaction = "R2",
+    direction = "forward",
+    solver = solver,
+    flux_threshold = 1e-8
+  )
+  step2 <- .rc_compass_step2_from_vmax_directional(
+    S = model$S,
+    lb = model$lb,
+    ub = model$ub,
+    target_reaction = "R2",
+    penalties = stats::setNames(rep(0, ncol(model$S)), colnames(model$S)),
+    vmax_result = blocked,
+    target_direction = "forward",
+    solver = solver,
+    flux_threshold = 1e-8
+  )
+
+  expect_true(feasible$feasible)
+  expect_gt(feasible$vmax, 0)
+  expect_false(blocked$feasible)
+  expect_lt(blocked$vmax, 1e-8)
+  expect_false(step2$feasible)
+  expect_identical(step2$step2_status, "not_run")
+})
+
+test_that("all three routes reject direct medium reaction deletion", {
+  solver <- .full_gem_test_solver()
+  skip_if(is.null(solver), "No LP solver is installed")
+  gem <- .full_gem_test_model()
+  medium <- .full_gem_test_medium()
+  reactions <- colnames(gem$S)
+
+  full <- rc_build_full_gem(gem, medium_table = medium)
+  fastcore_parent <- .rc_fastcore_parent(
+    gem,
+    medium_table = medium,
+    forbidden_roles = character(),
+    solver = solver,
+    time_limit = 60,
+    fastcore_epsilon = 1e-4
+  )
+  corda_parent <- .rc_corda_parent(
+    gem,
+    medium_table = medium,
+    forbidden_roles = character(),
+    solver = solver,
+    time_limit = 60
+  )
+
+  expect_identical(colnames(full$S), reactions)
+  expect_identical(colnames(fastcore_parent$S), reactions)
+  expect_identical(colnames(corda_parent$S), reactions)
+  expect_identical(corda_parent$corda_parent_prepruning, "none")
+  expect_identical(corda_parent$corda_parent_role_blocking, "none")
 })
 
 test_that("full GEM completion contract is never labelled FASTCORE", {
@@ -112,11 +193,13 @@ test_that("full GEM completion contract is never labelled FASTCORE", {
     model_cache_summary = data.frame(
       medium_scenario = "base",
       condition = "all",
-      n_input_reactions = 4L,
-      n_reactions = 3L,
-      n_flux_inconsistent_reactions = 1L,
-      flux_consistency_epsilon = 1e-8,
-      build_strategy = "medium_flux_consistency_pruned_full_gem",
+      n_input_reactions = 6L,
+      n_reactions = 6L,
+      n_medium_removed_reactions = 0L,
+      n_medium_bound_changes = 1L,
+      medium_applied = TRUE,
+      medium_handling = "exchange_bounds_only_no_reaction_deletion",
+      build_strategy = "compass_medium_constrained_full_gem",
       stringsAsFactors = FALSE
     )
   )
@@ -129,11 +212,14 @@ test_that("full GEM completion contract is never labelled FASTCORE", {
   )
 
   expect_identical(result$params$model_completion, "none")
+  expect_identical(result$params$structural_completion, "none")
   expect_identical(
-    result$params$structural_completion,
-    "medium_flux_consistency"
+    result$params$structural_completion_algorithm,
+    "compass_medium_bounds_only"
   )
+  expect_false(result$params$medium_direct_reaction_deletion)
   expect_identical(result$completion_contract$model_completion, "none")
+  expect_false(result$completion_contract$flux_consistency_pruning)
   expect_false(result$completion_contract$fastcore_executed)
   expect_false(result$completion_contract$corda2_executed)
 })
@@ -172,15 +258,4 @@ test_that("full GEM rejects FASTCORE and CORDA2 completion controls", {
     ),
     "does not accept FASTCORE or CORDA2 controls"
   )
-})
-
-test_that("unpruned full GEM remains available to reconstruction parents", {
-  gem <- .full_gem_test_model()
-  model <- rc_build_full_gem(gem)
-  expect_setequal(colnames(model$S), colnames(gem$S))
-  expect_identical(model$build_params$strategy, "full_gem")
-  expect_false(model$build_params$flux_consistency_pruning)
-  expect_identical(model$target_status, "not_prechecked")
-  expect_true(is.na(model$build_params$n_flux_inconsistent_reactions))
-  expect_equal(nrow(model$closure_diagnostics), 0L)
 })
