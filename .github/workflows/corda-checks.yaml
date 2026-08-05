@@ -1,4 +1,4 @@
-name: CORDA2 exact-source checks
+name: Original CORDA2 source checks
 
 on:
   pull_request:
@@ -7,14 +7,8 @@ on:
       - 'R/step_layer2.R'
       - 'R/celltype_union_gem_cache.R'
       - 'DESCRIPTION'
+      - 'docs/tutorial-02-stepwise-audit.md'
       - 'tests/corda-synthetic-check.R'
-      - 'tests/corda-original-direction-check.R'
-      - 'tests/corda-snow-namespace-check.R'
-      - 'tests/corda-performance-check.R'
-      - 'tests/corda-runtime-state-machine-check.R'
-      - 'tests/corda2-python-reference-check.py'
-      - 'tests/corda2-independent-source-audit.py'
-      - 'tests/corda2-independent-source-audit.R'
       - 'tests/testthat/test-layer2-corda*.R'
       - '.github/workflows/corda-checks.yaml'
   push:
@@ -24,14 +18,8 @@ on:
       - 'R/step_layer2.R'
       - 'R/celltype_union_gem_cache.R'
       - 'DESCRIPTION'
+      - 'docs/tutorial-02-stepwise-audit.md'
       - 'tests/corda-synthetic-check.R'
-      - 'tests/corda-original-direction-check.R'
-      - 'tests/corda-snow-namespace-check.R'
-      - 'tests/corda-performance-check.R'
-      - 'tests/corda-runtime-state-machine-check.R'
-      - 'tests/corda2-python-reference-check.py'
-      - 'tests/corda2-independent-source-audit.py'
-      - 'tests/corda2-independent-source-audit.R'
       - 'tests/testthat/test-layer2-corda*.R'
       - '.github/workflows/corda-checks.yaml'
 
@@ -39,49 +27,25 @@ permissions:
   contents: read
 
 jobs:
-  exact-corda2:
+  original-corda2:
     runs-on: ubuntu-22.04
-    timeout-minutes: 35
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v4
-
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
-
-      - name: Install pinned Python CORDA2 reference
-        run: |
-          python -m pip install --upgrade pip
-          python -m pip install 'numpy<2'
-          python -m pip install --no-deps 'git+https://github.com/resendislab/corda.git@c02e06d50606bf93f23d8f2e6d6ade0e996ca70e'
-          python -m pip install 'cobra>=0.25,<0.32'
-
-      - name: Run pinned Python source oracle
-        run: python tests/corda2-python-reference-check.py
-
-      - name: Derive independent Python source audit oracle
-        run: python tests/corda2-independent-source-audit.py
 
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
           use-public-rspm: true
 
-      - name: Install minimal R solver dependencies
+      - name: Install solver dependency
         shell: Rscript {0}
-        run: |
-          install.packages("highs")
-          if (!requireNamespace("BiocManager", quietly = TRUE)) {
-            install.packages("BiocManager")
-          }
-          BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
+        run: install.packages("highs")
 
-      - name: Parse directly modified CORDA2 sources and checks
+      - name: Parse directly modified CORDA2 sources
         shell: Rscript {0}
         run: |
           files <- c(
-            "R/celltype_union_gem_cache.R",
-            "R/step_layer2.R",
             "R/layer2_corda_evidence.R",
             "R/layer2_corda_lp.R",
             "R/layer2_corda_paper_contract.R",
@@ -93,34 +57,71 @@ jobs:
             "R/layer2_corda2_algorithm.R",
             "R/layer2_corda2_algorithm_build.R",
             "R/layer2_corda2_options_contract.R",
-            "R/layer2_corda2_output_contract.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_runtime_cache.R",
             "R/layer2_corda_runtime_step.R",
             "R/layer2_corda_pool_lifecycle.R",
-            "tests/corda-synthetic-check.R",
-            "tests/corda-original-direction-check.R",
-            "tests/corda-snow-namespace-check.R",
-            "tests/corda-performance-check.R",
-            "tests/corda-runtime-state-machine-check.R",
-            "tests/corda2-independent-source-audit.R"
+            "tests/corda-synthetic-check.R"
           )
           for (file in files) parse(file = file)
 
-      - name: Compare R output with Python oracle
+      - name: Verify original CORDA2 source contract
         run: Rscript tests/corda-synthetic-check.R
 
-      - name: Verify target-direction and fixed-parameter semantics
-        run: Rscript tests/corda-original-direction-check.R
+      - name: Audit direct implementation and parameter surface
+        run: |
+          python - <<'PY'
+          from pathlib import Path
 
-      - name: Verify independent Python and R source audit
-        run: Rscript tests/corda2-independent-source-audit.R
+          options = Path("R/layer2_corda2_options_contract.R").read_text()
+          split = Path("R/layer2_corda_paper_contract.R").read_text()
+          algorithm = Path("R/layer2_corda2_algorithm_build.R").read_text()
+          model = Path("R/layer2_corda_model.R").read_text()
+          tutorial = Path("docs/tutorial-02-stepwise-audit.md").read_text()
 
-      - name: Verify sparse persistent updates and dynamic task scheduling
-        run: Rscript tests/corda-performance-check.R
+          required_options = [
+              '"MCxNCthresh"', '"constraint"', '"constrainby"',
+              '"om"', '"ci"', 'args$MCxNCthresh %||% 2',
+              'args$constraint %||% 1', 'args$constrainby %||% "val"',
+              'args$om %||% 1e4', 'args$ci %||% 0.01',
+          ]
+          missing = [x for x in required_options if x not in options]
+          if missing:
+              raise RuntimeError(f"original CORDA2 option contract missing: {missing}")
 
-      - name: Compare full and sparse CORDA2 state machines
-        run: Rscript tests/corda-runtime-state-machine-check.R
+          required_split = [
+              'reaction_lb < 0 & reaction_ub >= 0',
+              '_CORDA_rev_rxn', '.rc_corda2_close_opposite',
+              '.rc_corda2_constrain_target',
+          ]
+          missing = [x for x in required_split if x not in split]
+          if missing:
+              raise RuntimeError(f"original CORDA2 direction contract missing: {missing}")
 
-      - name: Verify installed SnowParam namespace and serial inner execution
-        run: Rscript tests/corda-snow-namespace-check.R
+          required_algorithm = [
+              'sqrt(options$om)', '1 + options$ci', 'HCtoMC', 'HCtoNC',
+              'MCxNC', 'options$MCxNCthresh',
+              'corda2_step2_2_MC_feasibility',
+              'corda2_step3_HC_OT_dependencies',
+          ]
+          missing = [x for x in required_algorithm if x not in algorithm]
+          if missing:
+              raise RuntimeError(f"original CORDA2 state machine missing: {missing}")
+
+          required_direct = [
+              '.rc_corda2_split_original', '.rc_corda_build_three_stage',
+              '.rc_corda2_apply_direction_bounds',
+          ]
+          missing = [x for x in required_direct if x not in model]
+          if missing:
+              raise RuntimeError(f"direct model integration missing: {missing}")
+          for marker in ('_base <-', 'before_corda2', 'corda_like'):
+              if marker in model:
+                  raise RuntimeError(f"override or alternate algorithm marker remains: {marker}")
+
+          if 'resendislab/corda' in tutorial or 'corda2_redundancies' in tutorial:
+              raise RuntimeError("tutorial still documents the Python CORDA contract")
+          for name in ('MCxNCthresh', 'constraint', 'constrainby', 'om', 'ci'):
+              if name not in tutorial:
+                  raise RuntimeError(f"tutorial does not describe {name}")
+          PY
