@@ -136,7 +136,7 @@ writeLines(run, file.path(pkg, "R", "run.R"))
 
 status <- system2(
   file.path(R.home("bin"), "R"),
-  c("CMD", "INSTALL", "--no-byte-compile", "--library", shQuote(lib), shQuote(pkg))
+  c("CMD", "INSTALL", "--no-byte-compile", "-l", shQuote(lib), shQuote(pkg))
 )
 stopifnot(identical(status, 0L))
 .libPaths(c(lib, .libPaths()))
