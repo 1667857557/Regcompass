@@ -170,3 +170,51 @@ test_that("CORDA2 cache retains exact FASTCORE fallback and dedicated path", {
     mover, "celltype_medium_corrected_python_corda2", fixed = TRUE
   )
 })
+
+test_that("CORDA2 cache relocation preserves shared file identity", {
+  root <- tempfile("corda2_cache_")
+  old_dir <- file.path(root, "meta_module_gem", "corda")
+  dir.create(old_dir, recursive = TRUE)
+  old_file <- file.path(old_dir, "union_gem__celltype_A__medium_M.rds")
+  saveRDS(list(marker = "same structural model"), old_file)
+  old_checksum <- unname(tools::md5sum(old_file))
+  cache <- list(
+    forward = list(
+      file = old_file,
+      file_checksum = old_checksum,
+      build_strategy = "celltype_medium_original_corda"
+    ),
+    reverse = list(
+      file = old_file,
+      file_checksum = old_checksum,
+      build_strategy = "celltype_medium_original_corda"
+    )
+  )
+  attr(cache, "summary") <- data.frame(
+    file = old_file,
+    file_checksum = old_checksum,
+    build_strategy = "celltype_medium_original_corda",
+    completion_stage = "old",
+    stringsAsFactors = FALSE
+  )
+  moved <- RegCompassR:::.rc_corda2_move_cache_files(cache)
+  expect_identical(moved$forward$file, moved$reverse$file)
+  expect_true(file.exists(moved$forward$file))
+  expect_false(file.exists(old_file))
+  expect_match(moved$forward$file, "corda2", fixed = TRUE)
+  expect_identical(
+    moved$forward$file_checksum,
+    unname(tools::md5sum(moved$forward$file))
+  )
+  expect_identical(
+    moved$forward$file_checksum,
+    moved$reverse$file_checksum
+  )
+  expect_identical(attr(moved, "completion_method"), "corda2")
+  summary <- attr(moved, "summary")
+  expect_identical(summary$file[[1L]], moved$forward$file)
+  expect_identical(
+    summary$build_strategy[[1L]],
+    "celltype_medium_corrected_python_corda2"
+  )
+})
