@@ -1,13 +1,5 @@
 # Complete medium-constrained parent model for exact Python CORDA2 semantics.
 
-.rc_fastcore_parent_before_corda_contract <- if (
-  exists(".rc_fastcore_parent", mode = "function", inherits = TRUE)
-) {
-  get(".rc_fastcore_parent", mode = "function", inherits = TRUE)
-} else {
-  NULL
-}
-
 .rc_corda_parent <- function(
     gem, medium_table = NULL, condition = NULL,
     forbidden_roles = c("demand", "sink", "artificial_support"),
@@ -33,70 +25,26 @@
   )
   parent$corda_ignored_fastcore_forbidden_roles <-
     unique(as.character(forbidden_roles))
+  parent$corda_parent_solver_argument_ignored <- as.character(solver)
+  parent$corda_parent_time_limit_argument_ignored <- as.numeric(time_limit)
   parent
 }
 
-.rc_fastcore_parent <- function(
-    gem, medium_table = NULL, condition = NULL,
-    forbidden_roles = c("demand", "sink", "artificial_support"),
-    solver = "highs", time_limit = 300, fastcore_epsilon = 1e-4) {
-  if (isTRUE(getOption("RegCompassR.corda_parent_active", FALSE))) {
-    return(.rc_corda_parent(
-      gem = gem,
-      medium_table = medium_table,
-      condition = condition,
-      forbidden_roles = forbidden_roles,
-      solver = solver,
-      time_limit = time_limit
-    ))
+.rc_corda_attach_parent_contract <- function(
+    model, parent, fastcore_epsilon = NA_real_,
+    forbidden_roles = c("demand", "sink", "artificial_support")) {
+  if (!is.list(model$build_params)) {
+    stop("CORDA2 build parameters are unavailable.", call. = FALSE)
   }
-  if (is.null(.rc_fastcore_parent_before_corda_contract)) {
-    stop(
-      "The original FASTCORE parent builder is unavailable in this isolated ",
-      "CORDA2 test context.",
-      call. = FALSE
-    )
-  }
-  .rc_fastcore_parent_before_corda_contract(
-    gem = gem,
-    medium_table = medium_table,
-    condition = condition,
-    forbidden_roles = forbidden_roles,
-    solver = solver,
-    time_limit = time_limit,
-    fastcore_epsilon = fastcore_epsilon
-  )
-}
-
-.rc_complete_celltype_medium_corda_gem_parent_base <-
-  .rc_complete_celltype_medium_corda_gem
-
-.rc_complete_celltype_medium_corda_gem <- function(...) {
-  args <- list(...)
-  corda_options <- args$corda_options
-  if (!is.list(corda_options)) {
-    stop("CORDA2 options are unavailable during model construction.",
-         call. = FALSE)
-  }
-  previous <- getOption("RegCompassR.corda_parent_active", FALSE)
-  options(RegCompassR.corda_parent_active = TRUE)
-  on.exit(
-    options(RegCompassR.corda_parent_active = previous),
-    add = TRUE
-  )
-  model <- do.call(
-    .rc_complete_celltype_medium_corda_gem_parent_base,
-    args
-  )
   build <- model$build_params
   build$n_parent_reactions <- as.integer(
-    model$corda_parent_n_reactions %||% NA_integer_
+    parent$corda_parent_n_reactions %||% NA_integer_
   )
   build$n_parent_metabolites <- as.integer(
-    model$corda_parent_n_metabolites %||% NA_integer_
+    parent$corda_parent_n_metabolites %||% NA_integer_
   )
   build$n_parent_open_reactions <- as.integer(
-    model$corda_parent_n_open_reactions %||% NA_integer_
+    parent$corda_parent_n_open_reactions %||% NA_integer_
   )
   build$n_fastcc_consistent_parent_reactions <- NULL
   build$n_fastcc_inconsistent_parent_reactions <- NULL
@@ -109,9 +57,9 @@
     "input GEM for met_prod = NULL"
   )
   build$input_fastcore_epsilon_ignored_for_corda2 <-
-    as.numeric(args$fastcore_epsilon %||% NA_real_)
+    as.numeric(fastcore_epsilon)
   build$input_fastcore_forbidden_roles_ignored_for_corda2 <-
-    model$corda_ignored_fastcore_forbidden_roles %||% character()
+    unique(as.character(forbidden_roles))
   model$build_params <- build
   model$corda_parent_contract <- list(
     algorithm = "python_corda2_exact_met_prod_NULL",
@@ -128,6 +76,3 @@
   model$corda_noise_contract <- NULL
   model
 }
-
-.rc_complete_celltype_medium_corda_like_gem <-
-  .rc_complete_celltype_medium_corda_gem
