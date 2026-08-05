@@ -63,6 +63,7 @@ jobs:
             "R/layer2_corda_parent_contract.R",
             "R/layer2_corda2_algorithm.R",
             "R/layer2_corda2_options_contract.R",
+            "R/layer2_corda2_correction_contract.R",
             "R/layer2_corda2_output_contract.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_pool_lifecycle.R",
