@@ -18,22 +18,21 @@
 
   forward_ids <- reactions
   reverse_ids <- paste0(reactions[reverse_index], "_CORDA_rev_rxn")
-  S <- validated$S
-  colnames(S) <- forward_ids
-  if (length(reverse_index)) {
-    reverse_columns <- -validated$S[, reverse_index, drop = FALSE]
-    colnames(reverse_columns) <- reverse_ids
-    S <- cbind(S, reverse_columns)
-  }
   variable_ids <- c(forward_ids, reverse_ids)
-  if (ncol(S) != length(variable_ids)) {
-    stop(
-      "CORDA2 directional decomposition produced ", ncol(S),
-      " columns for ", length(variable_ids), " directional identifiers.",
-      call. = FALSE
-    )
-  }
-  colnames(S) <- variable_ids
+  triplet <- Matrix::summary(.rc_as_dgCMatrix(validated$S))
+  reverse_entry <- triplet$j %in% reverse_index
+  reverse_position <- match(triplet$j[reverse_entry], reverse_index)
+  S <- Matrix::sparseMatrix(
+    i = c(triplet$i, triplet$i[reverse_entry]),
+    j = c(
+      triplet$j,
+      length(reactions) + reverse_position
+    ),
+    x = c(triplet$x, -triplet$x[reverse_entry]),
+    dims = c(nrow(validated$S), length(variable_ids)),
+    dimnames = list(rownames(validated$S), variable_ids),
+    giveCsparse = TRUE
+  )
   lower <- stats::setNames(rep(0, length(variable_ids)), variable_ids)
   upper <- stats::setNames(c(reaction_ub, -reaction_lb[reverse_index]), variable_ids)
   direction_table <- rbind(
