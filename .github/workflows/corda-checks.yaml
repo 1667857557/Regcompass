@@ -4,6 +4,9 @@ on:
   pull_request:
     paths:
       - 'R/layer2_corda*.R'
+      - 'R/step_layer2.R'
+      - 'R/celltype_union_gem_cache.R'
+      - 'DESCRIPTION'
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-original-direction-check.R'
       - 'tests/corda-snow-namespace-check.R'
@@ -18,6 +21,9 @@ on:
     branches: [Main]
     paths:
       - 'R/layer2_corda*.R'
+      - 'R/step_layer2.R'
+      - 'R/celltype_union_gem_cache.R'
+      - 'DESCRIPTION'
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-original-direction-check.R'
       - 'tests/corda-snow-namespace-check.R'
@@ -70,10 +76,12 @@ jobs:
           }
           BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
 
-      - name: Parse exact CORDA2 sources and checks
+      - name: Parse directly modified CORDA2 sources and checks
         shell: Rscript {0}
         run: |
           files <- c(
+            "R/celltype_union_gem_cache.R",
+            "R/step_layer2.R",
             "R/layer2_corda_evidence.R",
             "R/layer2_corda_lp.R",
             "R/layer2_corda_paper_contract.R",
@@ -84,16 +92,12 @@ jobs:
             "R/layer2_corda_parent_contract.R",
             "R/layer2_corda2_algorithm.R",
             "R/layer2_corda2_algorithm_build.R",
-            "R/layer2_corda2_algorithm_integration.R",
             "R/layer2_corda2_options_contract.R",
-            "R/layer2_corda2_correction_contract.R",
             "R/layer2_corda2_output_contract.R",
             "R/layer2_corda_runtime.R",
-            "R/layer2_corda_solver_contract.R",
             "R/layer2_corda_runtime_cache.R",
             "R/layer2_corda_runtime_step.R",
             "R/layer2_corda_pool_lifecycle.R",
-            "R/layer2_corda2_public_contract.R",
             "tests/corda-synthetic-check.R",
             "tests/corda-original-direction-check.R",
             "tests/corda-snow-namespace-check.R",
@@ -110,11 +114,7 @@ jobs:
         run: Rscript tests/corda-original-direction-check.R
 
       - name: Verify independent Python and R source audit
-        shell: Rscript {0}
-        run: |
-          rc_regcompass_step_layer2 <- function(...) NULL
-          .rc_build_celltype_medium_union_gem_cache <- function(...) list()
-          source("tests/corda2-independent-source-audit.R")
+        run: Rscript tests/corda2-independent-source-audit.R
 
       - name: Verify sparse persistent updates and dynamic task scheduling
         run: Rscript tests/corda-performance-check.R
