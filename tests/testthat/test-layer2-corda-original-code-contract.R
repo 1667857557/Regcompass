@@ -16,7 +16,7 @@ test_that("target assessment leaves the opposite reversible direction open", {
   expect_equal(bounds$upper[["REV::reverse"]], 1e6)
 })
 
-test_that("target lower-bound assignment precedes UPPER expansion", {
+test_that("constructor and target bound assignments preserve Python order", {
   S <- Matrix::Matrix(
     matrix(c(-1, 1), nrow = 2), sparse = TRUE,
     dimnames = list(c("A", "B"), "SMALL")
@@ -24,15 +24,23 @@ test_that("target lower-bound assignment precedes UPPER expansion", {
   split <- RegCompassR:::.rc_corda_split_model(list(
     S = S, lb = c(SMALL = 0), ub = c(SMALL = 0.5)
   ), tolerance = 1e-7)
-  # Constructor normalization occurs before associated() target mutation.
   expect_equal(split$ub[["SMALL::forward"]], 1e6)
-  # Simulate a later bound change and verify Python's setter order.
   split$ub[["SMALL::forward"]] <- 0.5
   expect_error(
     RegCompassR:::.rc_corda_target_bounds(
       split, "SMALL::forward", epsilon = 1
     ),
     "above the current upper bound"
+  )
+
+  extreme <- list(
+    S = S,
+    lb = c(SMALL = -2e6),
+    ub = c(SMALL = -1.5e6)
+  )
+  expect_error(
+    RegCompassR:::.rc_corda_split_model(extreme, tolerance = 1e-7),
+    "transient lower bound assignment"
   )
 })
 
@@ -49,31 +57,29 @@ test_that("CORDA2 uses the complete parent without a feasibility precheck", {
                      fixed = TRUE))
 })
 
-test_that("FASTCORE fallback remains captured and unchanged", {
+test_that("FASTCORE parent remains independent of CORDA2", {
   dispatch_code <- paste(
     deparse(body(RegCompassR:::.rc_fastcore_parent)), collapse = "\n"
   )
-  expect_match(
-    dispatch_code,
-    ".rc_fastcore_parent_before_corda_contract",
-    fixed = TRUE
-  )
-  expect_match(dispatch_code, "RegCompassR.corda_parent_active", fixed = TRUE)
-  expect_match(dispatch_code, ".rc_corda_parent", fixed = TRUE)
+  expect_false(grepl("corda", dispatch_code, ignore.case = TRUE))
+  expect_false(grepl("getOption", dispatch_code, fixed = TRUE))
+  expect_false(grepl("_base", dispatch_code, fixed = TRUE))
 })
 
-test_that("exact-source wrapper records no intentional corrections", {
+test_that("original model builder directly calls exact CORDA2 state machine", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_build_three_stage)),
+    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem)),
     collapse = "\n"
   )
-  expect_match(
-    implementation,
-    ".rc_corda_build_three_stage_exact_base",
-    fixed = TRUE
-  )
-  expect_match(implementation, "exact_for_met_prod_NULL", fixed = TRUE)
+  expect_match(implementation, ".rc_corda_parent", fixed = TRUE)
+  expect_match(implementation, ".rc_corda_build_three_stage", fixed = TRUE)
+  expect_match(implementation, "time_limit = Inf", fixed = TRUE)
+  expect_match(implementation, ".rc_corda2_apply_target_flux", fixed = TRUE)
+  expect_match(implementation, ".rc_corda_attach_parent_contract", fixed = TRUE)
+  expect_match(implementation, ".rc_finalize_corda_union_model", fixed = TRUE)
   expect_match(implementation, "intentional_corrections <- character()", fixed = TRUE)
+  expect_false(grepl("_base", implementation, fixed = TRUE))
+  expect_false(grepl("before_", implementation, fixed = TRUE))
 })
 
 test_that("all aliases select one exact pinned algorithm", {
