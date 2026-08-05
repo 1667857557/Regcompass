@@ -49,3 +49,53 @@
     answer$associated_variable_id
   ), , drop = FALSE]
 }
+
+.rc_complete_celltype_medium_corda_gem_before_corda2_output <-
+  .rc_complete_celltype_medium_corda_gem
+
+.rc_complete_celltype_medium_corda_gem <- function(...) {
+  args <- list(...)
+  model <- do.call(
+    .rc_complete_celltype_medium_corda_gem_before_corda2_output,
+    args
+  )
+  algorithm <- as.character(model$build_params$algorithm %||% "")
+  if (!identical(
+    algorithm,
+    "resendislab_python_CORDA2_corrected_redundant_path_assessment"
+  )) {
+    return(model)
+  }
+  edges <- model$corda_association_edges
+  if (!is.data.frame(edges)) {
+    edges <- data.frame(
+      task_key = character(),
+      associated_variable_id = character(),
+      associated_reaction_id = character(),
+      stringsAsFactors = FALSE
+    )
+  } else {
+    if (!"associated_variable_id" %in% colnames(edges)) {
+      edges$associated_variable_id <- if (nrow(edges)) {
+        as.character(edges$associated_reaction_id)
+      } else {
+        character()
+      }
+    }
+    edges <- edges[, c(
+      "task_key", "associated_variable_id", "associated_reaction_id"
+    ), drop = FALSE]
+  }
+  model$corda_association_edges <- edges
+  model$build_params$association_edge_schema <- c(
+    "task_key", "associated_variable_id", "associated_reaction_id"
+  )
+  .rc_validate_corda_union_model(
+    model,
+    cell_type = as.character(args$cell_type)
+  )
+  model
+}
+
+.rc_complete_celltype_medium_corda_like_gem <-
+  .rc_complete_celltype_medium_corda_gem
