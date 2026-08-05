@@ -131,14 +131,14 @@ test_that("direction splitting and CORDA2 bound normalization are explicit", {
   expect_equal(normalized$ub[["REV::reverse"]], 1e6)
 })
 
-test_that("Layer 2 exposes CORDA2 without changing public formals", {
+test_that("Layer 2 exposes native CORDA2 without changing public formals", {
   implementation <- paste(
     deparse(body(rc_regcompass_step_layer2)), collapse = "\n"
   )
   expect_match(implementation, "corda2", fixed = TRUE)
   expect_match(
     implementation,
-    ".rc_regcompass_step_layer2_before_corda2_public",
+    ".rc_regcompass_step_layer2_corda_pool_base",
     fixed = TRUE
   )
   expect_identical(
@@ -150,71 +150,53 @@ test_that("Layer 2 exposes CORDA2 without changing public formals", {
   )
 })
 
-test_that("CORDA2 cache retains exact FASTCORE fallback and dedicated path", {
+test_that("CORDA2 cache is native and FASTCORE fallback is exact", {
   implementation <- paste(
     deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache)),
     collapse = "\n"
   )
   expect_match(
     implementation,
-    ".rc_build_celltype_medium_union_gem_cache_before_corda2_public",
+    ".rc_build_celltype_medium_union_gem_cache_fastcore",
     fixed = TRUE
   )
-  expect_match(implementation, ".rc_corda2_move_cache_files", fixed = TRUE)
-  mover <- paste(
-    deparse(body(RegCompassR:::.rc_corda2_move_cache_files)),
-    collapse = "\n"
-  )
-  expect_match(mover, "corda2", fixed = TRUE)
   expect_match(
-    mover, "celltype_medium_corrected_python_corda2", fixed = TRUE
+    implementation,
+    "cache_dir <- file.path(cache_dir, \"corda2\")",
+    fixed = TRUE
   )
+  expect_match(
+    implementation,
+    "celltype_medium_corrected_python_corda2",
+    fixed = TRUE
+  )
+  expect_match(
+    implementation,
+    "attr(cache, \"completion_method\") <- \"corda2\"",
+    fixed = TRUE
+  )
+  expect_false(grepl("file.rename", implementation, fixed = TRUE))
+  expect_false(grepl("file.copy", implementation, fixed = TRUE))
 })
 
-test_that("CORDA2 cache relocation preserves shared file identity", {
-  root <- tempfile("corda2_cache_")
-  old_dir <- file.path(root, "meta_module_gem", "corda")
-  dir.create(old_dir, recursive = TRUE)
-  old_file <- file.path(old_dir, "union_gem__celltype_A__medium_M.rds")
-  saveRDS(list(marker = "same structural model"), old_file)
-  old_checksum <- unname(tools::md5sum(old_file))
-  cache <- list(
-    forward = list(
-      file = old_file,
-      file_checksum = old_checksum,
-      build_strategy = "celltype_medium_original_corda"
-    ),
-    reverse = list(
-      file = old_file,
-      file_checksum = old_checksum,
-      build_strategy = "celltype_medium_original_corda"
-    )
+test_that("CORDA2 runtime writes one checksum per shared structural file", {
+  implementation <- paste(
+    deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache)),
+    collapse = "\n"
   )
-  attr(cache, "summary") <- data.frame(
-    file = old_file,
-    file_checksum = old_checksum,
-    build_strategy = "celltype_medium_original_corda",
-    completion_stage = "old",
-    stringsAsFactors = FALSE
+  expect_match(
+    implementation,
+    "checksum <- unname(tools::md5sum(file))",
+    fixed = TRUE
   )
-  moved <- RegCompassR:::.rc_corda2_move_cache_files(cache)
-  expect_identical(moved$forward$file, moved$reverse$file)
-  expect_true(file.exists(moved$forward$file))
-  expect_false(file.exists(old_file))
-  expect_match(moved$forward$file, "corda2", fixed = TRUE)
-  expect_identical(
-    moved$forward$file_checksum,
-    unname(tools::md5sum(moved$forward$file))
+  expect_match(
+    implementation,
+    "file_checksum = checksum",
+    fixed = TRUE
   )
-  expect_identical(
-    moved$forward$file_checksum,
-    moved$reverse$file_checksum
-  )
-  expect_identical(attr(moved, "completion_method"), "corda2")
-  summary <- attr(moved, "summary")
-  expect_identical(summary$file[[1L]], moved$forward$file)
-  expect_identical(
-    summary$build_strategy[[1L]],
-    "celltype_medium_corrected_python_corda2"
+  expect_match(
+    implementation,
+    "condition = \"all\"",
+    fixed = TRUE
   )
 })
