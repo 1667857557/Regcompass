@@ -91,6 +91,8 @@ test_that("full GEM cache excludes pruned targets and records the builder", {
   expect_equal(summary$n_input_reactions, 4L)
   expect_equal(summary$n_reactions, 3L)
   expect_equal(summary$n_flux_inconsistent_reactions, 1L)
+  expect_identical(summary$solver, solver)
+  expect_equal(summary$completion_time_limit, 60)
   expect_true(file.exists(summary$file[[1L]]))
   expect_true(all(vapply(
     cache,
@@ -169,4 +171,12 @@ test_that("full GEM rejects FASTCORE and CORDA2 completion controls", {
     ),
     "does not accept FASTCORE or CORDA2 controls"
   )
+})
+
+test_that("unpruned full GEM remains available to reconstruction parents", {
+  gem <- .full_gem_test_model()
+  model <- rc_build_full_gem(gem)
+  expect_setequal(colnames(model$S), colnames(gem$S))
+  expect_identical(model$build_params$strategy, "full_gem")
+  expect_false(model$build_params$flux_consistency_pruning)
 })
