@@ -127,7 +127,8 @@
     ),
     intentional_corrections = c(
       "maximize remaining medium-confidence directional flux",
-      "block the opposite direction of a reversible target"
+      "block the opposite direction of a reversible target",
+      "apply penalties from each directional variable's own confidence"
     ),
     deterministic = TRUE,
     random_noise = FALSE
