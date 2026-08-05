@@ -74,9 +74,9 @@ test_that("build iteration 2 uses positive-coefficient minimization", {
   expect_false(grepl("objective[[target]] <- -1", implementation, fixed = TRUE))
 })
 
-test_that("build steps preserve Python serial mutation order", {
+test_that("direct build function preserves Python serial mutation order", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_build_three_stage_exact_base)),
+    deparse(body(RegCompassR:::.rc_corda_build_three_stage)),
     collapse = "\n"
   )
   expect_match(implementation, "stage1_targets", fixed = TRUE)
@@ -98,6 +98,7 @@ test_that("persistent HiGHS keeps one model and one-shot fallback", {
   )
   expect_match(creation, "hi_new_solver", fixed = TRUE)
   expect_match(creation, "primal_feasibility_tolerance", fixed = TRUE)
+  expect_match(creation, "hi_solver_get_option", fixed = TRUE)
   expect_match(solve, "hi_solver_set_objective", fixed = TRUE)
   expect_match(solve, "hi_solver_set_variable_bounds", fixed = TRUE)
   expect_match(solve, "hi_solver_run", fixed = TRUE)
