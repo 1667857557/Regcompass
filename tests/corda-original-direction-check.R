@@ -102,6 +102,11 @@ small <- .rc_corda_split_model(
   list(S = S, lb = c(REV = 0), ub = c(REV = 0.5)),
   tolerance = .rc_corda2_solver_feasibility_tolerance("highs")
 )
+# CORDA.__init__ first normalizes every positive reaction upper bound to UPPER.
+stopifnot(small$ub[["REV::forward"]] == 1e6)
+# Reproduce a post-constructor bound mutation, then verify that associated()
+# applies the lower-bound setter before resetting the upper bound to UPPER.
+small$ub[["REV::forward"]] <- 0.5
 failed_order <- try(
   .rc_corda_target_bounds(small, "REV::forward", epsilon = 1),
   silent = TRUE
