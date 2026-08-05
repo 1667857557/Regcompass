@@ -149,7 +149,7 @@
     answer$params$structural_completion_algorithm <-
       "add_only_compact_FASTCORE"
     answer$params$medium_handling <-
-      "exchange_bounds_only_before_fastcc_fastcore"
+      "exchange_bounds_only_then_fastcc_fastcore"
     answer$params$medium_direct_reaction_deletion <- FALSE
     answer$params$fastcore_executed <- TRUE
     answer$params$corda2_executed <- FALSE
@@ -157,7 +157,7 @@
       model_completion = "fastcore",
       default_unchanged = TRUE,
       algorithm = "add_only_compact_FASTCORE",
-      medium_handling = "exchange_bounds_only_before_fastcc_fastcore",
+      medium_handling = "exchange_bounds_only_then_fastcc_fastcore",
       medium_direct_reaction_deletion = FALSE,
       fastcc_role = paste(
         "FASTCC is part of FASTCORE parent consistency analysis;",
@@ -198,7 +198,7 @@
     ),
     stage_update_policy = "original_matlab_directional_order",
     target_parallelism = FALSE,
-    medium_handling = "exchange_bounds_only_before_corda2",
+    medium_handling = "exchange_bounds_only_then_corda2",
     medium_direct_reaction_deletion = FALSE,
     parent_prepruning = "none",
     fastcore_executed = FALSE,
@@ -206,7 +206,7 @@
     options = corda_options
   )
   answer$params$structural_completion <- "corda2"
-  answer$params$medium_handling <- "exchange_bounds_only_before_corda2"
+  answer$params$medium_handling <- "exchange_bounds_only_then_corda2"
   answer$params$medium_direct_reaction_deletion <- FALSE
   answer$params$fastcore_executed <- FALSE
   answer$params$corda2_executed <- TRUE
