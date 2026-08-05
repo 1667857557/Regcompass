@@ -134,6 +134,209 @@
   candidates[[1L]]
 }
 
+.rc_corda_matrix_like <- function(x) {
+  is.matrix(x) || inherits(x, "Matrix")
+}
+
+.rc_corda_native_layer1_root <- function(layer1) {
+  candidates <- list(layer1, layer1$layer1_result)
+  candidates <- candidates[vapply(candidates, is.list, logical(1))]
+  for (candidate in candidates) {
+    if (.rc_corda_matrix_like(candidate$reaction_expression_rna_only) &&
+        .rc_corda_matrix_like(candidate$reaction_expression) &&
+        is.data.frame(candidate$unit_meta %||% candidate$metacell_meta)) {
+      return(candidate)
+    }
+  }
+  NULL
+}
+
+.rc_corda_row_medians <- function(x) {
+  value <- matrixStats::rowMedians(as.matrix(x), na.rm = TRUE)
+  value[!is.finite(value)] <- NA_real_
+  value
+}
+
+.rc_corda_row_maxs <- function(x) {
+  value <- matrixStats::rowMaxs(as.matrix(x), na.rm = TRUE)
+  value[!is.finite(value)] <- NA_real_
+  value
+}
+
+.rc_corda_condition_median_max <- function(
+    value, unit_meta, condition, cell_type) {
+  reactions <- rownames(value)
+  cell_types <- sort(unique(cell_type))
+  rows <- lapply(cell_types, function(current_cell_type) {
+    selected <- which(cell_type == current_cell_type)
+    current_conditions <- sort(unique(condition[selected]))
+    condition_medians <- lapply(current_conditions, function(current_condition) {
+      index <- which(
+        cell_type == current_cell_type & condition == current_condition
+      )
+      .rc_corda_row_medians(value[, index, drop = FALSE])
+    })
+    condition_matrix <- do.call(cbind, condition_medians)
+    data.frame(
+      cell_type = current_cell_type,
+      reaction_id = reactions,
+      value = .rc_corda_row_maxs(condition_matrix),
+      n_conditions = length(current_conditions),
+      n_metacells = length(selected),
+      stringsAsFactors = FALSE
+    )
+  })
+  answer <- do.call(rbind, rows)
+  rownames(answer) <- NULL
+  answer
+}
+
+.rc_corda_native_layer1_evidence_tables <- function(layer1) {
+  root <- .rc_corda_native_layer1_root(layer1)
+  if (is.null(root)) return(NULL)
+
+  rna <- root$reaction_expression_rna_only
+  multiome <- root$reaction_expression
+  regulatory <- root$reaction_regulatory_support_fraction
+  unit_meta <- as.data.frame(root$unit_meta %||% root$metacell_meta)
+  params <- root$workflow_params %||% layer1$workflow_params %||% list()
+
+  if (!identical(dimnames(rna), dimnames(multiome))) {
+    stop(
+      "Layer 1 RNA-only and multiome reaction matrices must align exactly ",
+      "for CORDA2 evidence mapping.",
+      call. = FALSE
+    )
+  }
+  if (is.null(rownames(rna)) || is.null(colnames(rna)) ||
+      anyNA(rownames(rna)) || any(!nzchar(rownames(rna))) ||
+      anyDuplicated(rownames(rna)) || anyNA(colnames(rna)) ||
+      any(!nzchar(colnames(rna))) || anyDuplicated(colnames(rna))) {
+    stop(
+      "Layer 1 reaction matrices require unique non-empty reaction and ",
+      "metacell identifiers for CORDA2 evidence mapping.",
+      call. = FALSE
+    )
+  }
+  if (!is.null(regulatory)) {
+    if (!.rc_corda_matrix_like(regulatory) ||
+        !identical(dimnames(regulatory), dimnames(rna))) {
+      stop(
+        "Layer 1 reaction regulatory support must align exactly with the ",
+        "reaction matrices.",
+        call. = FALSE
+      )
+    }
+  }
+
+  unit_col <- intersect(
+    c("unit_id", "metacell_id", "pool_id"), colnames(unit_meta)
+  )
+  if (!length(unit_col)) {
+    stop(
+      "Layer 1 unit metadata require unit_id, metacell_id or pool_id for ",
+      "CORDA2 evidence mapping.",
+      call. = FALSE
+    )
+  }
+  unit_col <- unit_col[[1L]]
+  unit_id <- as.character(unit_meta[[unit_col]])
+  if (anyNA(unit_id) || any(!nzchar(unit_id)) || anyDuplicated(unit_id)) {
+    stop("Layer 1 unit identifiers must be unique and non-empty.",
+         call. = FALSE)
+  }
+  index <- match(colnames(rna), unit_id)
+  if (anyNA(index)) {
+    stop(
+      "Layer 1 reaction matrix columns are absent from unit metadata.",
+      call. = FALSE
+    )
+  }
+  unit_meta <- unit_meta[index, , drop = FALSE]
+
+  celltype_col <- as.character(params$celltype_col %||% "cell_type")
+  if (length(celltype_col) != 1L || is.na(celltype_col) ||
+      !nzchar(celltype_col) || !celltype_col %in% colnames(unit_meta)) {
+    stop(
+      "Layer 1 workflow parameters do not resolve a valid cell-type column ",
+      "for CORDA2 evidence mapping.",
+      call. = FALSE
+    )
+  }
+  condition_col <- params$condition_col
+  if (is.null(condition_col) || !length(condition_col) ||
+      is.na(condition_col[[1L]]) || !nzchar(as.character(condition_col[[1L]]))) {
+    condition <- rep("all", nrow(unit_meta))
+    condition_col <- NA_character_
+  } else {
+    condition_col <- as.character(condition_col[[1L]])
+    if (!condition_col %in% colnames(unit_meta)) {
+      stop(
+        "Layer 1 workflow parameters name a condition column absent from ",
+        "unit metadata.",
+        call. = FALSE
+      )
+    }
+    condition <- trimws(as.character(unit_meta[[condition_col]]))
+  }
+  cell_type <- trimws(as.character(unit_meta[[celltype_col]]))
+  if (anyNA(cell_type) || any(!nzchar(cell_type)) ||
+      anyNA(condition) || any(!nzchar(condition))) {
+    stop(
+      "Layer 1 metacells require complete cell-type and condition labels for ",
+      "CORDA2 evidence mapping.",
+      call. = FALSE
+    )
+  }
+
+  rna_table <- .rc_corda_condition_median_max(
+    rna, unit_meta, condition, cell_type
+  )
+  names(rna_table)[names(rna_table) == "value"] <- "rna_reaction_support"
+  multiome_table <- .rc_corda_condition_median_max(
+    multiome, unit_meta, condition, cell_type
+  )
+  names(multiome_table)[names(multiome_table) == "value"] <-
+    "multiome_reaction_support"
+
+  regulatory_table <- NULL
+  if (!is.null(regulatory)) {
+    regulatory_table <- .rc_corda_condition_median_max(
+      regulatory, unit_meta, condition, cell_type
+    )
+    names(regulatory_table)[names(regulatory_table) == "value"] <-
+      "regulatory_support"
+  }
+
+  list(
+    support = rna_table,
+    multiome = multiome_table,
+    regulatory = regulatory_table,
+    source = "native_layer1_metacell_matrices",
+    aggregation = "condition_median_max",
+    aggregation_contract = paste(
+      "median across metacells within each condition and cell type, then max",
+      "across conditions within the same cell type"
+    ),
+    condition_col = condition_col,
+    celltype_col = celltype_col
+  )
+}
+
+.rc_corda_layer1_evidence_tables <- function(layer1) {
+  native <- .rc_corda_native_layer1_evidence_tables(layer1)
+  if (!is.null(native)) return(native)
+  list(
+    support = .rc_corda_layer1_support_table(layer1),
+    multiome = .rc_corda_layer1_multiome_support(layer1),
+    regulatory = .rc_corda_layer1_regulatory_support(layer1),
+    source = "legacy_reaction_support_tables",
+    aggregation = "legacy_celltype_mean",
+    aggregation_contract =
+      "legacy reaction-support rows aggregated by cell-type mean"
+  )
+}
+
 .rc_corda_aggregate_support <- function(
     tab, value, value_name, aggregation = c("max", "mean")) {
   aggregation <- match.arg(aggregation)
@@ -167,7 +370,8 @@
 
 .rc_corda_reaction_evidence <- function(
     layer1, meta_modules, regulatory_weight = 0.20) {
-  support <- .rc_corda_layer1_support_table(layer1)
+  tables <- .rc_corda_layer1_evidence_tables(layer1)
+  support <- tables$support
   support$cell_type <- as.character(support$cell_type)
   support$reaction_id <- as.character(support$reaction_id)
   support <- support[
@@ -198,7 +402,7 @@
     rna_table$rna_support, rna_table$cell_type
   )
 
-  multiome_tab <- .rc_corda_layer1_multiome_support(layer1)
+  multiome_tab <- tables$multiome
   if (is.null(multiome_tab)) {
     multiome_table <- rna_table[
       c("cell_type", "reaction_id", "rna_support", "rna_percentile")
@@ -224,7 +428,7 @@
     )
   }
 
-  regulatory_tab <- .rc_corda_layer1_regulatory_support(layer1)
+  regulatory_tab <- tables$regulatory
   if (is.null(regulatory_tab)) {
     regulatory_table <- rna_table[c("cell_type", "reaction_id")]
     regulatory_table$regulatory_support <- 0
@@ -282,9 +486,13 @@
   answer$merged_meta_module_member[
     is.na(answer$merged_meta_module_member)
   ] <- FALSE
+  answer$evidence_source <- tables$source
+  answer$evidence_aggregation <- tables$aggregation
+  answer$evidence_aggregation_contract <- tables$aggregation_contract
   answer$evidence_contract <- paste(
     "RegCompass maps multiome evidence to original CORDA2 HC, MC, NC and OT",
-    "reaction groups before the reconstruction state machine begins"
+    "reaction groups before the reconstruction state machine begins; native",
+    "Layer 1 metacells use condition_median_max aggregation"
   )
   answer
 }
