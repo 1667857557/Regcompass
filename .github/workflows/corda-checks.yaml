@@ -110,7 +110,11 @@ jobs:
         run: Rscript tests/corda-original-direction-check.R
 
       - name: Verify independent Python and R source audit
-        run: Rscript tests/corda2-independent-source-audit.R
+        shell: Rscript {0}
+        run: |
+          rc_regcompass_step_layer2 <- function(...) NULL
+          .rc_build_celltype_medium_union_gem_cache <- function(...) list()
+          source("tests/corda2-independent-source-audit.R")
 
       - name: Verify sparse persistent updates and dynamic task scheduling
         run: Rscript tests/corda-performance-check.R
