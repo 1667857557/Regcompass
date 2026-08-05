@@ -6,9 +6,6 @@ suppressPackageStartupMessages({
 `%||%` <- function(x, y) if (is.null(x)) y else x
 .rc_as_dgCMatrix <- function(x) methods::as(x, "dgCMatrix")
 .rc_layer2_completion_context <- new.env(parent = emptyenv())
-.rc_layer2_completion_context$solver <- "highs"
-.rc_layer2_completion_context$completion_time_limit <- 60
-.rc_layer2_completion_context$flux_threshold <- 1e-8
 
 .rc_lp_status <- function(message = "", code = NA_integer_) {
   text <- tolower(paste(message, collapse = " "))
@@ -89,8 +86,48 @@ rc_apply_medium_constraints <- function(
 
 .rc_normalize_medium_scenarios <- function(x) x
 
+rc_compass_vmax_directional <- function(
+    S, lb, ub, target_reaction,
+    direction = c("forward", "reverse"),
+    solver = "highs", time_limit = 60,
+    flux_threshold = 1e-8) {
+  direction <- match.arg(direction)
+  reactions <- colnames(S)
+  index <- match(target_reaction, reactions)
+  stopifnot(!is.na(index))
+  objective <- rep(0, length(reactions))
+  objective[[index]] <- if (identical(direction, "forward")) -1 else 1
+  answer <- rc_solve_lp(
+    obj = objective,
+    A = S,
+    lhs = rep(0, nrow(S)),
+    rhs = rep(0, nrow(S)),
+    lb = lb[reactions],
+    ub = ub[reactions],
+    solver = solver,
+    time_limit = time_limit
+  )
+  vmax <- if (identical(answer$status, "optimal")) {
+    if (identical(direction, "forward")) {
+      answer$solution[[index]]
+    } else {
+      -answer$solution[[index]]
+    }
+  } else {
+    0
+  }
+  list(
+    feasible = identical(answer$status, "optimal") &&
+      is.finite(vmax) && vmax >= flux_threshold,
+    vmax = max(0, as.numeric(vmax)),
+    status = answer$status
+  )
+}
+
 source("R/fastcore.R")
 source("R/full_gem.R")
+source("R/layer2_corda_parent_contract.R")
+source("R/microcompass_vmax_cache.R")
 
 S <- Matrix::sparseMatrix(
   i = c(1, 1, 2, 2, 3, 3, 4, 4),
@@ -129,36 +166,52 @@ medium <- data.frame(
   stringsAsFactors = FALSE
 )
 
-parent <- rc_build_full_gem(gem)
+full <- rc_build_full_gem(gem, medium_table = medium)
 stopifnot(
-  identical(colnames(parent$S), reactions),
-  identical(parent$build_params$strategy, "full_gem"),
-  identical(parent$target_status, "not_prechecked"),
-  is.na(parent$build_params$n_flux_inconsistent_reactions)
+  identical(colnames(full$S), reactions),
+  identical(rownames(full$S), rownames(S)),
+  identical(full$S, .rc_as_dgCMatrix(S)),
+  identical(unname(full$ub[["EX_C"]]), 0),
+  identical(
+    full$build_params$strategy,
+    "compass_medium_constrained_full_gem"
+  ),
+  identical(full$build_params$n_input_reactions, 6L),
+  identical(full$build_params$n_reactions, 6L),
+  identical(full$build_params$n_medium_removed_reactions, 0L),
+  identical(full$build_params$medium_direct_reaction_deletion, FALSE),
+  identical(
+    full$build_params$medium_handling,
+    "exchange_bounds_only_no_reaction_deletion"
+  )
 )
 
-pruned <- rc_build_full_gem(
-  gem,
-  medium_table = medium,
-  prune_flux_inconsistent = TRUE,
+r1_vmax <- rc_compass_vmax_directional(
+  full$S, full$lb, full$ub, "R1", "forward",
+  solver = "highs", flux_threshold = 1e-8
+)
+r2_vmax <- rc_compass_vmax_directional(
+  full$S, full$lb, full$ub, "R2", "forward",
+  solver = "highs", flux_threshold = 1e-8
+)
+r2_step2 <- .rc_compass_step2_from_vmax_directional(
+  S = full$S,
+  lb = full$lb,
+  ub = full$ub,
+  target_reaction = "R2",
+  penalties = stats::setNames(rep(0, length(reactions)), reactions),
+  vmax_result = r2_vmax,
+  target_direction = "forward",
   solver = "highs",
-  time_limit = 60,
-  flux_consistency_epsilon = 1e-8
+  flux_threshold = 1e-8
 )
 stopifnot(
-  setequal(colnames(pruned$S), c("EX_A", "R1", "EX_B")),
-  !any(c("EX_C", "R2", "EX_D") %in% colnames(pruned$S)),
-  identical(
-    pruned$build_params$strategy,
-    "medium_flux_consistency_pruned_full_gem"
-  ),
-  identical(pruned$build_params$n_input_reactions, 6L),
-  identical(pruned$build_params$n_flux_inconsistent_reactions, 3L),
-  identical(pruned$build_params$requested_flux_consistency_epsilon, 1e-8),
-  identical(pruned$build_params$flux_consistency_epsilon, 1e-4),
-  identical(pruned$build_params$fastcore_executed, FALSE),
-  identical(pruned$build_params$corda2_executed, FALSE),
-  identical(pruned$build_params$reaction_evidence_used, FALSE)
+  isTRUE(r1_vmax$feasible),
+  r1_vmax$vmax > 0,
+  !isTRUE(r2_vmax$feasible),
+  r2_vmax$vmax < 1e-8,
+  identical(r2_step2$feasible, FALSE),
+  identical(r2_step2$step2_status, "not_run")
 )
 
 dirs <- data.frame(
@@ -178,21 +231,25 @@ cache <- rc_build_full_gem_cache(
 )
 summary <- attr(cache, "summary")
 stopifnot(
-  length(cache) == 1L,
-  identical(cache[[1L]]$reaction_id, "R1"),
+  length(cache) == 2L,
+  setequal(vapply(cache, `[[`, character(1), "reaction_id"), c("R1", "R2")),
   identical(summary$n_input_reactions, 6L),
-  identical(summary$n_reactions, 3L),
-  identical(summary$n_flux_inconsistent_reactions, 3L),
-  identical(summary$requested_flux_consistency_epsilon, 1e-8),
-  identical(summary$flux_consistency_epsilon, 1e-4),
+  identical(summary$n_reactions, 6L),
+  identical(summary$n_medium_removed_reactions, 0L),
   identical(summary$medium_applied, TRUE),
-  identical(summary$solver, "highs"),
-  identical(summary$completion_time_limit, 60),
+  identical(
+    summary$medium_handling,
+    "exchange_bounds_only_no_reaction_deletion"
+  ),
   is.character(summary$medium_fingerprint),
   nzchar(summary$medium_fingerprint),
   identical(attr(cache, "completion_method"), "none"),
   identical(attr(cache, "fastcore_executed"), FALSE),
-  identical(attr(cache, "corda2_executed"), FALSE)
+  identical(attr(cache, "corda2_executed"), FALSE),
+  identical(
+    attr(cache, "medium_handling"),
+    "exchange_bounds_only_no_reaction_deletion"
+  )
 )
 
 medium_open <- medium
@@ -208,17 +265,40 @@ cache_open <- rc_build_full_gem_cache(
   flux_consistency_epsilon = 1e-8
 )
 summary_open <- attr(cache_open, "summary")
+full_open <- readRDS(summary_open$file[[1L]])
+r2_open <- rc_compass_vmax_directional(
+  full_open$S, full_open$lb, full_open$ub,
+  "R2", "forward", solver = "highs", flux_threshold = 1e-8
+)
 stopifnot(
   length(cache_open) == 2L,
-  any(vapply(
-    cache_open,
-    function(entry) identical(entry$reaction_id, "R2"),
-    logical(1)
-  )),
   identical(summary_open$n_reactions, 6L),
-  identical(summary_open$flux_consistency_epsilon, 1e-4),
+  identical(summary_open$n_medium_removed_reactions, 0L),
   !identical(summary$file, summary_open$file),
-  !identical(summary$medium_fingerprint, summary_open$medium_fingerprint)
+  !identical(summary$medium_fingerprint, summary_open$medium_fingerprint),
+  isTRUE(r2_open$feasible)
+)
+
+fastcore_parent <- .rc_fastcore_parent(
+  gem,
+  medium_table = medium,
+  forbidden_roles = character(),
+  solver = "highs",
+  time_limit = 60,
+  fastcore_epsilon = 1e-4
+)
+corda_parent <- .rc_corda_parent(
+  gem,
+  medium_table = medium,
+  forbidden_roles = character(),
+  solver = "highs",
+  time_limit = 60
+)
+stopifnot(
+  identical(colnames(fastcore_parent$S), reactions),
+  identical(colnames(corda_parent$S), reactions),
+  identical(corda_parent$corda_parent_prepruning, "none"),
+  identical(corda_parent$corda_parent_role_blocking, "none")
 )
 
 for (invalid in list(
@@ -235,4 +315,4 @@ valid <- .rc_validate_full_gem_model_params(
 )
 stopifnot(identical(valid$model_completion, "none"))
 
-message("Full-GEM medium-pruning synthetic contract passed.")
+message("COMPASS medium-bounds synthetic contract passed.")
