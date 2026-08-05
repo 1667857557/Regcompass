@@ -18,7 +18,7 @@
       requested_model_completion = as.character(
         model_params$model_completion %||% "none"
       ),
-      algorithm = "medium_flux_consistency_pruned_full_gem"
+      algorithm = "compass_medium_constrained_full_gem"
     )
     is_corda2 <- FALSE
   } else {
@@ -96,37 +96,46 @@
     contract_summary <- if (is.data.frame(summary)) {
       keep <- intersect(c(
         "medium_scenario", "condition", "n_input_reactions",
-        "n_reactions", "n_flux_inconsistent_reactions",
-        "flux_consistency_epsilon", "medium_applied", "solver",
-        "completion_time_limit", "build_strategy"
+        "n_reactions", "n_medium_removed_reactions",
+        "n_medium_bound_changes", "medium_applied",
+        "medium_handling", "build_strategy"
       ), colnames(summary))
       summary[, keep, drop = FALSE]
     } else {
       data.frame()
     }
     answer$params$model_completion <- "none"
-    answer$params$structural_completion <- "medium_flux_consistency"
+    answer$params$structural_completion <- "none"
     answer$params$structural_completion_algorithm <-
-      "medium_flux_consistency_pruned_full_gem"
+      "compass_medium_bounds_only"
+    answer$params$medium_handling <-
+      "exchange_bounds_only_no_reaction_deletion"
+    answer$params$medium_direct_reaction_deletion <- FALSE
     answer$params$fastcore_executed <- FALSE
     answer$params$corda2_executed <- FALSE
     answer$completion_contract <- list(
       model_completion = "none",
       default_unchanged = FALSE,
-      algorithm = "medium_flux_consistency_pruned_full_gem",
+      algorithm = "compass_medium_constrained_full_gem",
       context_specific_reconstruction = FALSE,
       fastcore_executed = FALSE,
       corda2_executed = FALSE,
       medium_applied = if (
         is.data.frame(summary) && "medium_applied" %in% colnames(summary)
       ) all(summary$medium_applied %in% TRUE) else NA,
-      flux_consistency_pruning = TRUE,
-      flux_consistency_algorithm = "FASTCC_flux_consistency_only",
+      medium_handling = "exchange_bounds_only_no_reaction_deletion",
+      medium_direct_reaction_deletion = FALSE,
+      flux_consistency_pruning = FALSE,
+      flux_consistency_algorithm = "none",
+      target_feasibility = paste(
+        "retain the complete medium-constrained GEM; compute directional vmax;",
+        "skip the penalty LP when vmax is below the scoring threshold"
+      ),
       reaction_evidence_used_for_structure = FALSE,
       model_summary = contract_summary
     )
     answer$method <-
-      "microCOMPASS shared medium-pruned full-GEM directional LP"
+      "microCOMPASS shared medium-constrained full-GEM directional LP"
     return(answer)
   }
 
@@ -139,12 +148,21 @@
     answer$params$structural_completion <- "fastcore"
     answer$params$structural_completion_algorithm <-
       "add_only_compact_FASTCORE"
+    answer$params$medium_handling <-
+      "exchange_bounds_only_before_fastcc_fastcore"
+    answer$params$medium_direct_reaction_deletion <- FALSE
     answer$params$fastcore_executed <- TRUE
     answer$params$corda2_executed <- FALSE
     answer$completion_contract <- list(
       model_completion = "fastcore",
       default_unchanged = TRUE,
       algorithm = "add_only_compact_FASTCORE",
+      medium_handling = "exchange_bounds_only_before_fastcc_fastcore",
+      medium_direct_reaction_deletion = FALSE,
+      fastcc_role = paste(
+        "FASTCC is part of FASTCORE parent consistency analysis;",
+        "the medium table itself only changes exchange bounds"
+      ),
       fastcore_executed = TRUE,
       corda2_executed = FALSE
     )
@@ -180,11 +198,16 @@
     ),
     stage_update_policy = "original_matlab_directional_order",
     target_parallelism = FALSE,
+    medium_handling = "exchange_bounds_only_before_corda2",
+    medium_direct_reaction_deletion = FALSE,
+    parent_prepruning = "none",
     fastcore_executed = FALSE,
     corda2_executed = TRUE,
     options = corda_options
   )
   answer$params$structural_completion <- "corda2"
+  answer$params$medium_handling <- "exchange_bounds_only_before_corda2"
+  answer$params$medium_direct_reaction_deletion <- FALSE
   answer$params$fastcore_executed <- FALSE
   answer$params$corda2_executed <- TRUE
   answer$params$structural_completion_algorithm <- corda_options$algorithm
