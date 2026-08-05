@@ -18,18 +18,11 @@
 
   extracted <- c(
     "model_completion", "corda2_args",
-    "corda2_penalty_factor", "corda_penalty_factor", "corda_gamma",
-    "corda2_cost_increase", "corda_cost_increase", "corda_kappa",
-    "corda2_target_flux", "corda_tflux", "corda_epsilon",
-    "corda2_redundancies", "corda_n",
-    "corda2_support", "corda_support", "corda_p",
-    "corda2_flux_tolerance", "corda_flux_tolerance", "corda_seed",
     "corda_medium_confidence_threshold",
     "corda_negative_confidence_threshold",
     "corda_regulatory_weight",
     "corda_include_evidence_outside_modules",
-    "corda_max_medium_confidence_reactions",
-    "corda_other_penalty", "corda_negative_penalty"
+    "corda_max_medium_confidence_reactions"
   )
   clean_params <- model_params[setdiff(names(model_params), extracted)]
   layer2_args$model_params <- clean_params
@@ -82,70 +75,53 @@
     return(answer)
   }
 
-  feasibility_tolerance <-
-    .rc_corda2_solver_feasibility_tolerance(solver)
-  constructor_args <- list(
-    met_prod = corda_options$met_prod,
-    n = corda_options$n,
-    penalty_factor = corda_options$penalty_factor,
-    support = corda_options$support
+  original_args <- list(
+    MCxNCthresh = corda_options$MCxNCthresh,
+    constraint = corda_options$constraint,
+    constrainby = corda_options$constrainby,
+    om = corda_options$om,
+    ci = corda_options$ci
   )
   answer$completion_contract <- list(
     model_completion = "corda2",
     default_unchanged = FALSE,
     algorithm = corda_options$algorithm,
-    source_fidelity = "exact_for_met_prod_NULL",
-    python_reference = list(
-      repository = "resendislab/corda",
-      commit = corda_options$python_reference_commit,
-      class = "CORDA"
+    source_fidelity = "original_MATLAB_CORDA2",
+    reference = list(
+      repository = corda_options$reference_repository,
+      file = corda_options$reference_file
     ),
-    constructor_signature = c(
-      "model", "confidence", "met_prod", "n", "penalty_factor", "support"
+    adjustable_args = original_args,
+    confidence_levels = c(HC = 3L, MC = 2L, NC = 1L, OT = 0L),
+    fixed_internal = list(
+      fluxThreshold = corda_options$flux_threshold,
+      baselineCost = corda_options$baseline_cost,
+      outputBound = corda_options$output_bound
     ),
-    constructor_args = constructor_args,
-    confidence_levels = c(
-      absent = -1L, unknown = 0L, low = 1L,
-      medium = 2L, high = 3L
-    ),
-    fixed_source_constants = list(UPPER = 1e6, CI = 1.01, tflux = 1),
     solver_configuration = list(
       solver = solver,
-      threads = 1L,
-      algorithm = if (identical(solver, "highs")) "simplex" else NA_character_,
-      feasibility_tolerance = feasibility_tolerance,
-      time_limit = Inf,
-      option_round_trip_required = identical(solver, "highs")
+      threads = 1L
     ),
-    stage_update_policy = "python_serial_mutation_order",
+    stage_update_policy = "original_matlab_directional_order",
     target_parallelism = FALSE,
-    supported_scope = "met_prod = NULL",
-    intentional_corrections = character(),
     options = corda_options
   )
   answer$params$structural_completion <- "corda2"
   answer$params$structural_completion_algorithm <- corda_options$algorithm
-  answer$params$corda2_reference_commit <-
-    corda_options$python_reference_commit
-  answer$params$corda2_args <- constructor_args
-  answer$params$corda2_met_prod <- corda_options$met_prod
-  answer$params$corda2_n <- corda_options$n
-  answer$params$corda2_redundancies <- corda_options$n
-  answer$params$corda2_support <- corda_options$support
-  answer$params$corda2_penalty_factor <- corda_options$penalty_factor
-  answer$params$corda2_cost_increase <- 1.01
-  answer$params$corda2_target_flux <- 1
-  answer$params$corda2_feasibility_tolerance <- feasibility_tolerance
-  answer$params$corda2_solver_time_limit <- Inf
+  answer$params$corda2_args <- original_args
+  answer$params$corda2_MCxNCthresh <- corda_options$MCxNCthresh
+  answer$params$corda2_constraint <- corda_options$constraint
+  answer$params$corda2_constrainby <- corda_options$constrainby
+  answer$params$corda2_om <- corda_options$om
+  answer$params$corda2_ci <- corda_options$ci
   answer$params$corda2_inner_target_parallelism <- FALSE
   answer$union_gem_policy <- paste(
-    "one exact pinned Python-CORDA2 reconstruction per cell type and",
-    "medium; each instance preserves serial target and variable mutation",
-    "order; parallelism is limited to independent model instances"
+    "one original-CORDA2 reconstruction per cell type and medium;",
+    "targets are processed serially and independent models may run in parallel"
   )
   answer$method <- paste(
     "microCOMPASS directional LP on cell-type-specific medium models",
-    "reconstructed with exact pinned Python CORDA2 semantics"
+    "reconstructed with original MATLAB CORDA2 semantics"
   )
   answer
 }
