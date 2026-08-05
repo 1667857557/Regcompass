@@ -144,10 +144,16 @@
   meta$celltype_corda_included <- TRUE
   meta$support_only <- !reaction_id %in% module_reactions
   meta$corda2_initial_confidence <- unname(
+    reconstruction$initial_reaction_confidence[reaction_id]
+  )
+  meta$corda2_initial_class <- unname(
     classes$initial_confidence[reaction_id]
   )
   meta$corda2_final_confidence <- unname(
-    reconstruction$final_confidence[reaction_id]
+    reconstruction$final_reaction_confidence[reaction_id]
+  )
+  meta$corda2_final_status <- unname(
+    reconstruction$final_reaction_status[reaction_id]
   )
   meta$corda2_inclusion_stage <- unname(
     reconstruction$inclusion_stage[reaction_id]
