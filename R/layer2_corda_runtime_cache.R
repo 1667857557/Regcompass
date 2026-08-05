@@ -1,4 +1,4 @@
-# Exact CORDA2 cell-type by medium cache construction helper.
+# Original CORDA2 cell-type by medium cache construction helper.
 
 .rc_build_celltype_medium_corda_cache <- function(
     gem, reaction_membership, core_reactions,
@@ -120,11 +120,6 @@
     checksum <- unname(tools::md5sum(file))
     build <- model$build_params
     performance <- model$corda_reconstruction$solver_performance %||% list()
-    execution_types <- unique(unlist(lapply(
-      model$corda_execution,
-      function(value) value$solver_runtime %||% character()
-    ), use.names = FALSE))
-
     summary <- data.frame(
       cell_type = cell_type,
       medium_scenario = scenario,
@@ -141,8 +136,7 @@
         build$n_module_medium_confidence_reactions,
       n_evidence_medium_confidence_reactions =
         build$n_evidence_medium_confidence_reactions,
-      n_negative_confidence_reactions =
-        build$n_negative_confidence_reactions,
+      n_negative_confidence_reactions = build$n_negative_confidence_reactions,
       n_other_reactions = build$n_other_reactions,
       n_corda_included_reactions = build$n_corda_included_reactions,
       n_corda_included_initial_MC = build$n_corda_included_initial_MC,
@@ -159,21 +153,16 @@
       n_corda2_bound_index_updates = as.integer(
         performance$n_bound_index_updates %||% NA_integer_
       ),
-      n_corda2_full_vector_values_avoided = as.numeric(
-        performance$n_full_vector_numeric_values_avoided %||% NA_real_
-      ),
-      corda2_transmitted_fraction_of_full = as.numeric(
-        performance$transmitted_fraction_of_full %||% NA_real_
-      ),
-      corda2_solver_release_policy = as.character(
-        performance$release_policy %||% NA_character_
-      ),
-      solver_runtime = paste(execution_types, collapse = ";"),
+      solver_runtime = if (isTRUE(performance$persistent_solver)) {
+        "highs_persistent_cpp"
+      } else {
+        "one_shot"
+      },
       target_status = model$target_status,
-      build_strategy = "celltype_medium_python_corda2_exact",
-      completion_stage = "python_CORDA2_exact_after_confidence_mapping",
+      build_strategy = "celltype_medium_original_matlab_corda2",
+      completion_stage = "original_CORDA2_after_confidence_mapping",
       completion_method = "corda2",
-      completion_time_limit = Inf,
+      completion_time_limit = time_limit,
       stringsAsFactors = FALSE
     )
 
@@ -199,11 +188,10 @@
           condition = "all",
           file = file,
           file_checksum = checksum,
-          build_strategy = "celltype_medium_python_corda2_exact"
+          build_strategy = "celltype_medium_original_matlab_corda2"
         )
       }
     }
-
     rm(model, membership, core, evidence, medium, build, performance)
     list(cache = cache, summary = summary)
   }
@@ -220,7 +208,6 @@
   } else {
     1L
   }
-
   if (outer_parallel) {
     parts <- rc_parallel_lapply(
       tasks,
@@ -229,13 +216,12 @@
       ),
       BPPARAM = task_bpparam
     )
-    dispatch <-
-      "dynamic_cell_type_x_medium_outer_parallel_python_instances"
+    dispatch <- "dynamic_cell_type_x_medium_outer_parallel_corda2_instances"
   } else {
     parts <- lapply(tasks, function(task) {
       run_one(task[1, , drop = FALSE], suppress_nested = FALSE)
     })
-    dispatch <- "serial_within_each_python_corda2_instance"
+    dispatch <- "serial_within_each_original_corda2_instance"
   }
 
   cache <- list()
