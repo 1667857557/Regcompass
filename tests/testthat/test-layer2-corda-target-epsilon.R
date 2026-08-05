@@ -1,4 +1,4 @@
-test_that("CORDA scoring targets use epsilon rather than association tolerance", {
+test_that("CORDA2 scoring targets use target flux, not association tolerance", {
   model <- list(
     closure_diagnostics = data.frame(
       reaction_id = c("R1", "R2", "R3"),
@@ -13,33 +13,33 @@ test_that("CORDA scoring targets use epsilon rather than association tolerance",
       corda_options = list(flux_tolerance = 1e-8)
     )
   )
-  filtered <- RegCompassR:::.rc_corda_apply_target_epsilon(
+  filtered <- RegCompassR:::.rc_corda2_apply_target_flux(
     model,
-    epsilon = 1,
+    target_flux = 1,
     strict = FALSE,
     cell_type = "A"
   )
   expect_identical(filtered$target_directions$reaction_id, "R1")
   expect_equal(
-    filtered$build_params$n_parent_corda_epsilon_feasible_core_directions,
+    filtered$build_params$n_parent_corda2_target_feasible_core_directions,
     2L
   )
   expect_equal(
-    filtered$build_params$n_final_corda_epsilon_feasible_core_directions,
+    filtered$build_params$n_final_corda2_target_feasible_core_directions,
     1L
   )
   expect_identical(
     filtered$closure_diagnostics$completion_status,
     c(
-      "corda_retained_at_epsilon",
-      "parent_below_corda_epsilon",
-      "corda_unresolved_at_epsilon"
+      "corda2_retained_at_target_flux",
+      "parent_below_corda2_target_flux",
+      "corda2_unresolved_at_target_flux"
     )
   )
   expect_error(
-    RegCompassR:::.rc_corda_apply_target_epsilon(
+    RegCompassR:::.rc_corda2_apply_target_flux(
       model,
-      epsilon = 1,
+      target_flux = 1,
       strict = TRUE,
       cell_type = "A"
     ),
@@ -47,16 +47,24 @@ test_that("CORDA scoring targets use epsilon rather than association tolerance",
   )
 })
 
-test_that("CORDA keeps association tolerance separate from target epsilon", {
+test_that("CORDA2 keeps association tolerance separate from target flux", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_apply_target_epsilon)),
+    deparse(body(RegCompassR:::.rc_corda2_apply_target_flux)),
     collapse = "\n"
   )
-  expect_match(implementation, "vmax >= epsilon", fixed = TRUE)
-  expect_match(implementation, "final_vmax >= epsilon", fixed = TRUE)
+  expect_match(implementation, "vmax >= target_flux", fixed = TRUE)
+  expect_match(implementation, "final_vmax >= target_flux", fixed = TRUE)
   expect_match(
     implementation,
     "association_flux_tolerance",
     fixed = TRUE
   )
+})
+
+test_that("legacy epsilon helper delegates to CORDA2 target flux", {
+  implementation <- paste(
+    deparse(body(RegCompassR:::.rc_corda_apply_target_epsilon)),
+    collapse = "\n"
+  )
+  expect_match(implementation, ".rc_corda2_apply_target_flux", fixed = TRUE)
 })
