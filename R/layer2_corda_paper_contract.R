@@ -19,12 +19,11 @@
   forward_ids <- reactions
   reverse_ids <- paste0(reactions[reverse_index], "_CORDA_rev_rxn")
   variable_ids <- c(forward_ids, reverse_ids)
-  reverse_columns <- if (length(reverse_index)) {
-    -validated$S[, reverse_index, drop = FALSE]
-  } else {
-    validated$S[, integer(), drop = FALSE]
-  }
-  S <- cbind(validated$S, reverse_columns)
+  S <- cbind(
+    validated$S,
+    if (length(reverse_index)) -validated$S[, reverse_index, drop = FALSE]
+    else Matrix::Matrix(0, nrow(validated$S), 0, sparse = TRUE)
+  )
   colnames(S) <- variable_ids
   lower <- stats::setNames(rep(0, length(variable_ids)), variable_ids)
   upper <- stats::setNames(c(reaction_ub, -reaction_lb[reverse_index]), variable_ids)
@@ -141,11 +140,14 @@
 
 .rc_corda2_apply_direction_bounds <- function(parent, included_variables, split) {
   validated <- rc_validate_gem(parent)
-  output <- .rc_subset_gem(
-    parent,
-    unique(as.character(split$variable_to_reaction[included_variables]))
-  )
   included_variables <- unique(as.character(included_variables))
+  selected_reactions <- unique(as.character(
+    split$variable_to_reaction[included_variables]
+  ))
+  selected_reactions <- validated$reactions[
+    validated$reactions %in% selected_reactions
+  ]
+  output <- .rc_subset_gem(parent, selected_reactions)
   for (reaction in colnames(output$S)) {
     variables <- split$direction_table[
       split$direction_table$reaction_id == reaction, , drop = FALSE
