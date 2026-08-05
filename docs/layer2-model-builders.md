@@ -1,6 +1,15 @@
 # Layer 2 structural model builders
 
-`rc_regcompass_step_layer2()` supports exactly three structural choices. They are mutually exclusive and all reuse the same completed structural cache for the primary multiome score and the RNA-only control.
+`rc_regcompass_step_layer2()` supports exactly three mutually exclusive structural choices. All three use the same medium contract:
+
+```text
+medium scenario
+  -> modify bounds of the listed exchange reactions
+  -> retain the reaction set and stoichiometric matrix
+  -> let the selected algorithm or directional LP determine feasibility
+```
+
+The medium table itself never removes reaction or metabolite columns. The completed structural cache is reused for both the primary multiome score and the RNA-only control.
 
 ## 1. FASTCORE
 
@@ -28,7 +37,19 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-Omitting `model_completion` under `model_mode = "meta_module_gem"` is equivalent to `model_completion = "fastcore"`. One cell-type-by-medium biological reaction union is completed by add-only FASTCORE. FASTCC is used to define the consistent parent model before support reactions are selected.
+Omitting `model_completion` under `model_mode = "meta_module_gem"` is equivalent to `model_completion = "fastcore"`.
+
+The sequence is:
+
+```text
+complete reference GEM
+  -> apply medium exchange bounds without deleting reactions
+  -> FASTCC consistency analysis inside the FASTCORE route
+  -> add-only FASTCORE support selection
+  -> compact cell-type-by-medium union GEM
+```
+
+FASTCC is an internal part of FASTCORE parent preparation. Reactions absent from the final compact model are excluded by FASTCORE reconstruction, not deleted directly because they were absent from the medium table.
 
 ## 2. CORDA2
 
@@ -60,11 +81,20 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-CORDA2 is available only with `model_mode = "meta_module_gem"`. FASTCORE is not executed on this route. Independent cell-type-by-medium CORDA2 reconstructions may run in parallel; target processing inside each reconstruction remains serial.
+The sequence is:
 
-## 3. Medium-pruned full GEM
+```text
+complete reference GEM
+  -> apply medium exchange bounds without deleting reactions
+  -> pass the complete medium-constrained parent directly to CORDA2
+  -> original CORDA2 confidence-state reconstruction
+```
 
-The full-GEM route applies the requested medium to the reference GEM and removes reactions that cannot carry non-zero steady-state flux under that medium. It does not use reaction-expression evidence to construct the model and does not execute FASTCORE or CORDA2.
+There is no FASTCC or role-based parent pre-pruning before CORDA2. CORDA2 is available only with `model_mode = "meta_module_gem"`; FASTCORE is not executed on this route. Independent cell-type-by-medium reconstructions may run in parallel, while target processing inside each CORDA2 reconstruction remains serial.
+
+## 3. COMPASS-style full GEM
+
+The full-GEM route retains the complete reference network. It applies the medium only to exchange-reaction bounds and then follows the COMPASS target-scoring pattern.
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -77,39 +107,36 @@ step5 <- rc_regcompass_step_layer2(
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    flux_threshold = 1e-8,
-    model_params = list(
-      completion_time_limit = 1200
-    )
+    flux_threshold = 1e-8
   )
 )
 ```
 
-`model_completion` should normally be omitted. The explicit value `"none"` is accepted, but `"fastcore"` and `"corda2"` are rejected. FASTCORE- and CORDA2-specific controls are also rejected rather than silently ignored.
+`model_completion` should normally be omitted. The explicit value `"none"` is accepted, but `"fastcore"` and `"corda2"` are rejected. FASTCORE- and CORDA2-specific controls are rejected rather than silently ignored.
 
-The structural sequence is:
+The sequence is:
 
 ```text
-reference GEM
-  -> apply shared medium bounds
-  -> FASTCC flux-consistency analysis
-  -> remove reactions with no feasible non-zero steady-state flux
-  -> remove orphan metabolites
-  -> directional COMPASS-like scoring
+complete reference GEM
+  -> apply medium exchange bounds without deleting reactions
+  -> retain every requested target direction in the cache
+  -> maximize each target direction under steady-state constraints
+  -> if vmax < flux_threshold: mark direction infeasible and skip Step 2
+  -> otherwise constrain target flux to omega * vmax and minimize penalty
 ```
 
-FASTCC here is only a consistency filter. It does not select a compact evidence-supported network and therefore is not a FASTCORE reconstruction. The workflow still uses the Stage 3 merged core reactions as scoring targets; the pruned full GEM supplies the complete feasible support network for those targets.
-
-The scoring parameter `flux_threshold` is not reused as the FASTCC consistency threshold. Directional scoring may use its default `1e-8`, whereas structural consistency uses an effective epsilon of at least `1e-4`. This separation keeps the structural activation requirement above the HiGHS/GLPK feasibility tolerance and prevents zero-flux reactions from being retained because of numerical tolerance. The requested and effective structural epsilon are both recorded in the cache summary.
+Full-GEM mode does not run FASTCC, FASTCORE, or CORDA2. A reaction that cannot operate under a medium remains in the stoichiometric matrix; its infeasibility is represented by its directional `vmax` result and LP diagnostics.
 
 ## Output contract
 
 The selected route is recorded in `step5$params` and `step5$completion_contract`:
 
-| Route | `model_completion` | `fastcore_executed` | `corda2_executed` |
-|---|---|---:|---:|
-| FASTCORE | `"fastcore"` | `TRUE` | `FALSE` |
-| CORDA2 | `"corda2"` | `FALSE` | `TRUE` |
-| medium-pruned full GEM | `"none"` | `FALSE` | `FALSE` |
+| Route | `model_completion` | medium directly deletes reactions | `fastcore_executed` | `corda2_executed` |
+|---|---|---:|---:|---:|
+| FASTCORE | `"fastcore"` | `FALSE` | `TRUE` | `FALSE` |
+| CORDA2 | `"corda2"` | `FALSE` | `FALSE` | `TRUE` |
+| COMPASS-style full GEM | `"none"` | `FALSE` | `FALSE` | `FALSE` |
 
-For the full-GEM route, `model_cache_summary` also records the input reaction count, retained reaction count, number of removed flux-inconsistent reactions, actual medium fingerprint, requested and effective consistency epsilon, solver, and structural time limit. Cache keys include the reference GEM, exact exchange bounds, pruning algorithm, solver, time limit, and effective threshold, so a same-named custom medium with changed bounds or an older unpruned cache cannot be reused silently.
+For full-GEM mode, `model_cache_summary` records the input and retained reaction counts, the invariant zero count of medium-removed reactions, the number of exchange-bound changes, and the exact medium fingerprint. Cache keys include the reference GEM and exact exchange bounds, so a same-named custom medium with changed bounds cannot reuse a stale model.
+
+The target-level diagnostics are stored in `vmax_cache_diagnostics` and `lp_diagnostics`. Medium-infeasible directions remain visible with `feasible = FALSE` and `step2_status = "not_run"` rather than disappearing from the output.
