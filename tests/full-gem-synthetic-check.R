@@ -154,6 +154,8 @@ stopifnot(
   ),
   identical(pruned$build_params$n_input_reactions, 6L),
   identical(pruned$build_params$n_flux_inconsistent_reactions, 3L),
+  identical(pruned$build_params$requested_flux_consistency_epsilon, 1e-8),
+  identical(pruned$build_params$flux_consistency_epsilon, 1e-4),
   identical(pruned$build_params$fastcore_executed, FALSE),
   identical(pruned$build_params$corda2_executed, FALSE),
   identical(pruned$build_params$reaction_evidence_used, FALSE)
@@ -181,6 +183,8 @@ stopifnot(
   identical(summary$n_input_reactions, 6L),
   identical(summary$n_reactions, 3L),
   identical(summary$n_flux_inconsistent_reactions, 3L),
+  identical(summary$requested_flux_consistency_epsilon, 1e-8),
+  identical(summary$flux_consistency_epsilon, 1e-4),
   identical(summary$medium_applied, TRUE),
   identical(summary$solver, "highs"),
   identical(summary$completion_time_limit, 60),
@@ -212,6 +216,7 @@ stopifnot(
     logical(1)
   )),
   identical(summary_open$n_reactions, 6L),
+  identical(summary_open$flux_consistency_epsilon, 1e-4),
   !identical(summary$file, summary_open$file),
   !identical(summary$medium_fingerprint, summary_open$medium_fingerprint)
 )
