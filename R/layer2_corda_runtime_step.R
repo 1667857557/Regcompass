@@ -6,8 +6,47 @@
     stop("`layer2_args` must be a list.", call. = FALSE)
   }
   model_params <- layer2_args$model_params %||% list()
-  corda_options <- .rc_layer2_corda_options(model_params)
-  is_corda2 <- .rc_is_corda2_options(corda_options)
+  if (!is.list(model_params)) {
+    stop("`layer2_args$model_params` must be a list.", call. = FALSE)
+  }
+  is_full_gem <- identical(model_mode, "full_gem")
+
+  if (is_full_gem) {
+    requested <- as.character(model_params$model_completion %||% "none")
+    if (length(requested) != 1L || is.na(requested) ||
+        !requested %in% c("none", "full_gem")) {
+      stop(
+        "`model_mode = \"full_gem\"` automatically skips FASTCORE and ",
+        "CORDA2; omit `model_completion` or set it to `none`.",
+        call. = FALSE
+      )
+    }
+    incompatible <- intersect(names(model_params), c(
+      "fastcore_epsilon", "max_support_reactions", "strict",
+      "corda2_args", "corda_medium_confidence_threshold",
+      "corda_negative_confidence_threshold", "corda_regulatory_weight",
+      "corda_include_evidence_outside_modules",
+      "corda_max_medium_confidence_reactions"
+    ))
+    if (length(incompatible)) {
+      stop(
+        "Full-GEM mode does not accept FASTCORE or CORDA2 controls: ",
+        paste(incompatible, collapse = ", "),
+        ". It applies only the requested medium and flux-consistency pruning.",
+        call. = FALSE
+      )
+    }
+    corda_options <- list(
+      model_completion = "none",
+      requested_model_completion = requested,
+      algorithm = "medium_flux_consistency_pruned_full_gem"
+    )
+    is_corda2 <- FALSE
+  } else {
+    corda_options <- .rc_layer2_corda_options(model_params)
+    is_corda2 <- .rc_is_corda2_options(corda_options)
+  }
+
   if (isTRUE(is_corda2) && !identical(model_mode, "meta_module_gem")) {
     stop(
       "`model_completion = \"corda2\"` is available only with ",
@@ -29,9 +68,20 @@
 
   previous <- as.list(.rc_layer2_completion_context)
   .rc_layer2_completion_context$active <- TRUE
-  .rc_layer2_completion_context$model_completion <-
-    if (isTRUE(is_corda2)) "corda2" else "fastcore"
+  .rc_layer2_completion_context$model_completion <- if (is_full_gem) {
+    "none"
+  } else if (isTRUE(is_corda2)) {
+    "corda2"
+  } else {
+    "fastcore"
+  }
   .rc_layer2_completion_context$corda_options <- corda_options
+  .rc_layer2_completion_context$solver <-
+    as.character(layer2_args$solver %||% "highs")
+  .rc_layer2_completion_context$completion_time_limit <-
+    as.numeric(model_params$completion_time_limit %||% 300)
+  .rc_layer2_completion_context$flux_threshold <-
+    as.numeric(layer2_args$flux_threshold %||% 1e-8)
   .rc_layer2_completion_context$reaction_evidence <- if (isTRUE(is_corda2)) {
     .rc_layer2_corda_reaction_evidence(
       layer1,
@@ -46,6 +96,7 @@
     layer2_args = layer2_args,
     corda_options = corda_options,
     is_corda2 = is_corda2,
+    is_full_gem = is_full_gem,
     previous_context = previous
   )
 }
@@ -61,12 +112,48 @@
 
 .rc_layer2_finalize_completion <- function(
     answer, corda_options, is_corda2, solver) {
+  if (identical(answer$model_mode, "full_gem")) {
+    summary <- answer$model_cache_summary
+    contract_summary <- if (is.data.frame(summary)) {
+      keep <- intersect(c(
+        "medium_scenario", "condition", "n_input_reactions",
+        "n_reactions", "n_flux_inconsistent_reactions",
+        "flux_consistency_epsilon", "build_strategy"
+      ), colnames(summary))
+      summary[, keep, drop = FALSE]
+    } else {
+      data.frame()
+    }
+    answer$params$model_completion <- "none"
+    answer$params$structural_completion <- "medium_flux_consistency"
+    answer$params$structural_completion_algorithm <-
+      "medium_flux_consistency_pruned_full_gem"
+    answer$completion_contract <- list(
+      model_completion = "none",
+      default_unchanged = FALSE,
+      algorithm = "medium_flux_consistency_pruned_full_gem",
+      context_specific_reconstruction = FALSE,
+      fastcore_executed = FALSE,
+      corda2_executed = FALSE,
+      medium_applied = TRUE,
+      flux_consistency_pruning = TRUE,
+      reaction_evidence_used_for_structure = FALSE,
+      model_summary = contract_summary
+    )
+    answer$method <-
+      "microCOMPASS shared medium-pruned full-GEM directional LP"
+    return(answer)
+  }
+
   answer$params$model_completion <- if (isTRUE(is_corda2)) {
     "corda2"
   } else {
     "fastcore"
   }
   if (!isTRUE(is_corda2)) {
+    answer$params$structural_completion <- "fastcore"
+    answer$params$structural_completion_algorithm <-
+      "add_only_compact_FASTCORE"
     answer$completion_contract <- list(
       model_completion = "fastcore",
       default_unchanged = TRUE,
