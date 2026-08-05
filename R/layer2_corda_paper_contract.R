@@ -1,7 +1,6 @@
 # Compatibility shim.
 #
-# PR #254 originally used this file for paper-CORDA objective overrides.
-# Those overrides were removed when the optional reconstruction was replaced by
-# the corrected resendislab Python CORDA2 workflow. The file remains intentionally
-# empty so retained source lists and older development scripts do not fail while
-# no second CORDA algorithm is loaded or executed.
+# PR #254 previously used this file for 2016 paper-CORDA objective overrides.
+# Those overrides are not part of resendislab Python CORDA2 commit c02e06d and
+# remain removed. The file is intentionally empty so retained Collate lists and
+# development scripts do not load a second CORDA algorithm.

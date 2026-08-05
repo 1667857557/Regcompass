@@ -1,4 +1,4 @@
-# Validate CORDA union models and compact large diagnostics.
+# Validate exact CORDA2 union models and compact large diagnostics.
 
 .rc_complete_celltype_medium_corda_gem_base <-
   .rc_complete_celltype_medium_corda_gem
@@ -19,6 +19,8 @@
     noise_namespace = character(),
     opposite_direction_blocked = character(),
     n_associated = integer(),
+    corda2_redundancies = integer(),
+    corda2_n_solves = integer(),
     task_key = character(),
     stringsAsFactors = FALSE
   )
@@ -34,7 +36,7 @@
   }
   required <- c("stage", "kind", "status", "backend", "n_associated")
   if (!all(required %in% colnames(tab))) {
-    stop("CORDA task diagnostics are missing required columns.",
+    stop("CORDA2 task diagnostics are missing required columns.",
          call. = FALSE)
   }
   key <- interaction(
@@ -63,7 +65,7 @@
 .rc_corda_task_keys <- function(tab) {
   required <- c("stage", "kind", "variable_id", "replicate")
   if (!is.data.frame(tab) || !all(required %in% colnames(tab))) {
-    stop("CORDA task diagnostics cannot construct stable task keys.",
+    stop("CORDA2 task diagnostics cannot construct stable task keys.",
          call. = FALSE)
   }
   if (!nrow(tab)) return(character())
@@ -84,13 +86,11 @@
   )
   if (!is.data.frame(tab) || !nrow(tab)) return(empty)
   if (!"associated" %in% colnames(tab)) {
-    stop("CORDA task diagnostics have no association payload.",
+    stop("CORDA2 task diagnostics have no association payload.",
          call. = FALSE)
   }
   task_key <- .rc_corda_task_keys(tab)
-  split_value <- strsplit(
-    as.character(tab$associated), ";", fixed = TRUE
-  )
+  split_value <- strsplit(as.character(tab$associated), ";", fixed = TRUE)
   rows <- lapply(seq_along(split_value), function(i) {
     value <- unique(split_value[[i]])
     value <- value[!is.na(value) & nzchar(value)]
@@ -116,12 +116,12 @@
         as.character(model$union_gem_scope),
         "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
       )) {
-    stop("CORDA union-model provenance is incomplete.", call. = FALSE)
+    stop("CORDA2 union-model provenance is incomplete.", call. = FALSE)
   }
   targets <- as.data.frame(model$target_directions)
   required <- c("reaction_id", "target_direction")
   if (!all(required %in% colnames(targets))) {
-    stop("CORDA scoring target directions are incomplete.", call. = FALSE)
+    stop("CORDA2 scoring target directions are incomplete.", call. = FALSE)
   }
   if (nrow(targets)) {
     reaction <- as.character(targets$reaction_id)
@@ -129,7 +129,8 @@
     if (anyDuplicated(targets[required]) ||
         any(!reaction %in% validated$reactions) ||
         any(!direction %in% c("forward", "reverse"))) {
-      stop("CORDA scoring targets do not match the final GEM.", call. = FALSE)
+      stop("CORDA2 scoring targets do not match the final GEM.",
+           call. = FALSE)
     }
     index <- match(reaction, validated$reactions)
     direction_allowed <- ifelse(
@@ -138,7 +139,7 @@
       validated$lb[index] < 0
     )
     if (any(!direction_allowed)) {
-      stop("CORDA scoring targets contain a disallowed final direction.",
+      stop("CORDA2 scoring targets contain a disallowed final direction.",
            call. = FALSE)
     }
   }
@@ -146,38 +147,42 @@
   if (!is.data.frame(meta) ||
       !"reaction_id" %in% colnames(meta) ||
       !identical(as.character(meta$reaction_id), validated$reactions)) {
-    stop("CORDA reaction metadata do not align to the final GEM.",
+    stop("CORDA2 reaction metadata do not align to the final GEM.",
          call. = FALSE)
   }
   build <- model$build_params
   if (!is.list(build) ||
       !identical(
         as.character(build$algorithm),
-        "Schultz_Qutub_CORDA_2016_three_stage_dependency_assessment"
+        "resendislab_python_CORDA2_c02e06d_exact_semantics"
       ) ||
       !identical(
         as.character(build$stage_update_policy),
-        "barrier_then_union_order_independent"
+        "python_serial_mutation_order"
+      ) ||
+      !identical(
+        as.character(build$python_reference_commit),
+        "c02e06d50606bf93f23d8f2e6d6ade0e996ca70e"
       )) {
-    stop("CORDA build parameters do not identify the published algorithm.",
+    stop("CORDA2 build parameters do not identify the pinned source.",
          call. = FALSE)
   }
   task_tab <- model$corda_task_diagnostics
   edge_tab <- model$corda_association_edges
   if (!is.data.frame(task_tab) || !"task_key" %in% colnames(task_tab) ||
       anyDuplicated(task_tab$task_key)) {
-    stop("CORDA compact task diagnostics have invalid task keys.",
+    stop("CORDA2 compact task diagnostics have invalid task keys.",
          call. = FALSE)
   }
   if (!is.data.frame(edge_tab) ||
       !all(c("task_key", "associated_reaction_id") %in% colnames(edge_tab)) ||
       any(!edge_tab$task_key %in% task_tab$task_key)) {
-    stop("CORDA normalized association edges do not match task diagnostics.",
+    stop("CORDA2 normalized association edges do not match tasks.",
          call. = FALSE)
   }
   expected <- sum(as.integer(task_tab$n_associated), na.rm = TRUE)
   if (nrow(edge_tab) != expected) {
-    stop("CORDA normalized association count does not match task results.",
+    stop("CORDA2 normalized association count does not match tasks.",
          call. = FALSE)
   }
   invisible(TRUE)
@@ -195,7 +200,6 @@
       stringsAsFactors = FALSE
     )
   } else {
-    model$corda_task_summary <- .rc_corda_task_summary(task_tab)
     association_edges <- .rc_corda_normalize_associations(task_tab)
     task_tab$task_key <- .rc_corda_task_keys(task_tab)
     task_tab$associated <- NULL
@@ -213,9 +217,9 @@
     model$corda_reconstruction <- reconstruction
   }
   model$build_params$diagnostic_storage <- paste(
-    "task metadata stored once in corda_task_diagnostics; task-to-reaction",
-    "associations normalized in corda_association_edges; compact aggregate",
-    "counts stored in corda_task_summary"
+    "task metadata stored once in corda_task_diagnostics; directional",
+    "associations normalized in corda_association_edges; aggregate counts",
+    "stored in corda_task_summary"
   )
   .rc_validate_corda_union_model(
     model,

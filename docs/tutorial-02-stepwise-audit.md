@@ -129,7 +129,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-To run the corrected Python CORDA2 reconstruction:
+To run the pinned Python CORDA2 semantics exactly for `met_prod = NULL`:
 
 ```r
 layer2_bp <- if (.Platform$OS.type == "windows") {
@@ -157,9 +157,6 @@ step5_corda2 <- rc_regcompass_step_layer2(
       corda2_redundancies = 3L,
       corda2_penalty_factor = 100,
       corda2_support = 5L,
-      corda2_cost_increase = 1.01,
-      corda2_target_flux = 1,
-      corda2_flux_tolerance = 1e-8,
       corda_medium_confidence_threshold = 0.75,
       corda_negative_confidence_threshold = 0.10,
       corda_regulatory_weight = 0.20,
@@ -170,24 +167,39 @@ step5_corda2 <- rc_regcompass_step_layer2(
 )
 ```
 
-CORDA2 maps merged core reactions to high confidence (`3`), non-core module reactions to medium confidence (`2`), optional high-evidence outside-module reactions to low confidence (`1`), low-evidence reactions to absent confidence (`-1`) and remaining reactions to unknown confidence (`0`). Forward and reverse directions are updated independently.
+The reference is `resendislab/corda` commit
+`c02e06d50606bf93f23d8f2e6d6ade0e996ca70e`. The implementation follows that
+source as written rather than applying the previous PR-specific corrections.
 
-The reconstruction follows the `resendislab/corda` Python flow:
+CORDA2 maps merged core reactions to high confidence (`3`), non-core module reactions to medium confidence (`2`), optional high-evidence outside-module reactions to low confidence (`1`), low-evidence reactions to absent confidence (`-1`) and remaining reactions to unknown confidence (`0`). This mapping prepares the Python algorithm input; both forward and reverse variables initially receive the reaction confidence.
 
-1. high-confidence targets identify required low/medium/absent directions;
-2. low/medium targets identify absent directions shared by at least `corda2_support` signed targets;
-3. remaining low/medium directions are retained only when their maximum flux is greater than `corda2_target_flux` after the remaining absent directions are blocked;
-4. unknown directions are penalized and added only when required by retained targets.
+The exact source behavior is:
 
-Redundant pathways for one target are explored by multiplying newly selected penalized-direction costs by `corda2_cost_increase`, up to `corda2_redundancies` paths. The opposite copy of a reversible target is fixed to zero during assessment.
+1. create both forward and reverse variables for every reaction, including closed directions;
+2. normalize open reaction bounds to `UPPER = 1e6` using the active solver feasibility tolerance;
+3. assess confidence-`3` targets serially and promote their associated variables;
+4. assess remaining confidence-`1/2` targets serially, count associated absent variables, and promote those meeting `corda2_support`;
+5. block remaining absent variables;
+6. for each remaining confidence-`1/2` variable, minimize a positive coefficient and promote it only when the minimum objective is greater than `tflux = 1`;
+7. block the remaining confidence-`1/2` variables, convert unknown variables to absent, and run one final dependency pass for the retained targets.
 
-The parent model is the complete GEM after applying the requested medium bounds; CORDA2 does not run FASTCC or generic reaction-role pruning. `fastcore_epsilon` and `max_support_reactions` are FASTCORE controls and should not be supplied to the CORDA2 route.
+During target assessment, only the target variable receives `lb = max(1, lb)` and `ub = 1e6`. The opposite reversible variable is **not** closed. Costs for both directions of a reaction are assigned from the current forward-variable confidence, matching the Python source even after directional confidences diverge.
 
-Only included core-reaction directions that can reach `corda2_target_flux` remain downstream scoring targets, so the penalty and score matrix dimensions remain compatible with FASTCORE results. Model caches are written under `model_cache/meta_module_gem/corda2`.
+The only CORDA2 constructor controls exposed are:
 
-When the number of cell-type-by-medium models is large, models are parallelized. When there are only a few models, independent signed targets use the complete worker pool. Redundancy iterations for one target remain serial. HiGHS uses a persistent native C++ solver with objective/bound updates and simplex-basis reuse; every worker restricts internal solver and numerical-library threads to one.
+- `corda2_redundancies` (`n`, default `3`);
+- `corda2_penalty_factor` (`penalty_factor`, default `100`);
+- `corda2_support` (`support`, default `5`).
 
-See `docs/layer2-corda.md` for the full mathematics, Python-source correspondence, intentional corrections, output contracts and audit fields.
+`CI = 1.01`, `tflux = 1`, and `UPPER = 1e6` are fixed source constants. Do not supply `corda2_cost_increase`, `corda2_target_flux`, `corda2_flux_tolerance`, or `corda_seed`; these are rejected. `fastcore_epsilon` and `max_support_reactions` remain FASTCORE-only controls.
+
+The parent model is the complete GEM after applying the requested medium bounds. CORDA2 does not run FASTCC, generic reaction-role pruning, or an added global feasibility precheck. Final models restore the original reaction bounds.
+
+Only included core-reaction directions that reach the fixed `tflux = 1` on restored bounds enter downstream scoring. The Python build records impossible targets and completes, so `strict = TRUE` does not convert those results into a reconstruction error; they remain diagnostics and are excluded from the score matrices.
+
+Each CORDA2 model is serial internally to preserve Python target order, confidence mutation order, and persistent solver state. Parallelism is used only across independent cell-type-by-medium model instances. A few models therefore will not use all workers during structural reconstruction. Model caches are written under `model_cache/meta_module_gem/corda2`.
+
+See `docs/layer2-corda.md` for the full equations, line-by-line source correspondence, output contracts, audit fields, and Python-oracle CI design.
 
 ## Stage 6: result assembly
 

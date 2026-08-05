@@ -1,4 +1,4 @@
-# Cell-type reaction confidence mapping for the original CORDA algorithm.
+# Cell-type evidence mapping for pinned Python CORDA2 input confidence.
 
 .rc_corda_scalar <- function(value, name, lower = -Inf, upper = Inf,
                              finite = TRUE) {
@@ -29,106 +29,6 @@
     stop("`", name, "` must be TRUE or FALSE.", call. = FALSE)
   }
   isTRUE(value)
-}
-
-.rc_layer2_corda_options <- function(model_params = list()) {
-  if (!is.list(model_params)) {
-    stop("`layer2_args$model_params` must be a list.", call. = FALSE)
-  }
-  requested <- as.character(model_params$model_completion %||% "fastcore")
-  if (length(requested) != 1L || is.na(requested)) {
-    stop("`model_completion` must be `fastcore` or `corda`.", call. = FALSE)
-  }
-  if (identical(requested, "corda_like")) requested <- "corda"
-  model_completion <- match.arg(requested, c("fastcore", "corda"))
-  obsolete <- intersect(
-    names(model_params),
-    c("corda_other_penalty", "corda_negative_penalty")
-  )
-  if (length(obsolete)) {
-    stop(
-      "Obsolete weighted-FASTCORE parameter(s): ",
-      paste(obsolete, collapse = ", "),
-      ". Original CORDA uses `corda_gamma`, `corda_kappa`, `corda_n`, ",
-      "and `corda_p`.",
-      call. = FALSE
-    )
-  }
-  max_mc <- suppressWarnings(as.numeric(
-    model_params$corda_max_medium_confidence_reactions %||% Inf
-  ))
-  if (length(max_mc) != 1L || is.na(max_mc) || max_mc < 0) {
-    stop(
-      "`corda_max_medium_confidence_reactions` must be non-negative or Inf.",
-      call. = FALSE
-    )
-  }
-  if (is.finite(max_mc)) max_mc <- as.integer(floor(max_mc))
-  answer <- list(
-    model_completion = model_completion,
-    gamma = .rc_corda_scalar(
-      model_params$corda_gamma %||% 1e5,
-      "corda_gamma", 1, Inf
-    ),
-    kappa = .rc_corda_scalar(
-      model_params$corda_kappa %||% 1e-2,
-      "corda_kappa", 0, Inf
-    ),
-    epsilon = .rc_corda_scalar(
-      model_params$corda_epsilon %||% 1,
-      "corda_epsilon", .Machine$double.eps, Inf
-    ),
-    n = .rc_corda_integer(
-      model_params$corda_n %||% 5L,
-      "corda_n", 1L
-    ),
-    p = .rc_corda_integer(
-      model_params$corda_p %||% 2L,
-      "corda_p", 1L
-    ),
-    seed = .rc_corda_integer(
-      model_params$corda_seed %||% 1L,
-      "corda_seed", 0L
-    ),
-    flux_tolerance = .rc_corda_scalar(
-      model_params$corda_flux_tolerance %||% 1e-8,
-      "corda_flux_tolerance", .Machine$double.eps, Inf
-    ),
-    medium_confidence_threshold = .rc_corda_scalar(
-      model_params$corda_medium_confidence_threshold %||% 0.75,
-      "corda_medium_confidence_threshold", 0, 1
-    ),
-    negative_confidence_threshold = .rc_corda_scalar(
-      model_params$corda_negative_confidence_threshold %||% 0.10,
-      "corda_negative_confidence_threshold", 0, 1
-    ),
-    regulatory_weight = .rc_corda_scalar(
-      model_params$corda_regulatory_weight %||% 0.20,
-      "corda_regulatory_weight", 0, 1
-    ),
-    include_evidence_outside_modules = .rc_corda_flag(
-      model_params$corda_include_evidence_outside_modules %||% TRUE,
-      "corda_include_evidence_outside_modules"
-    ),
-    max_medium_confidence_reactions = max_mc,
-    evidence_definition = paste(
-      "(1 - regulatory_weight) * max(within-cell-type RNA percentile,",
-      "multiome percentile) + regulatory_weight * regulatory support"
-    ),
-    algorithm = "Schultz_Qutub_CORDA_2016_three_stage_dependency_assessment",
-    paper_defaults = c(
-      gamma = 1e5, kappa = 1e-2, epsilon = 1, n = 5, p = 2
-    )
-  )
-  if (answer$negative_confidence_threshold >
-      answer$medium_confidence_threshold) {
-    stop(
-      "`corda_negative_confidence_threshold` must not exceed ",
-      "`corda_medium_confidence_threshold`.",
-      call. = FALSE
-    )
-  }
-  answer
 }
 
 .rc_corda_rank01 <- function(value) {
@@ -166,7 +66,7 @@
   }, logical(1))]
   if (length(missing)) {
     stop(
-      "CORDA completion requires aligned Layer 1 matrices: ",
+      "CORDA2 completion requires aligned Layer 1 matrices: ",
       paste(missing, collapse = ", "), ".",
       call. = FALSE
     )
@@ -174,7 +74,7 @@
   reference <- layer1$reaction_expression
   for (name in required[-1L]) {
     if (!identical(dimnames(layer1[[name]]), dimnames(reference))) {
-      stop("CORDA Layer 1 evidence matrices are not aligned.",
+      stop("CORDA2 Layer 1 evidence matrices are not aligned.",
            call. = FALSE)
     }
   }
@@ -182,7 +82,7 @@
   celltype_col <- as.character(params$celltype_col %||% "cell_type")
   unit_meta <- layer1$unit_meta %||% layer1$metacell_meta
   if (!is.data.frame(unit_meta) || !celltype_col %in% colnames(unit_meta)) {
-    stop("CORDA completion requires Layer 1 unit cell types.",
+    stop("CORDA2 completion requires Layer 1 unit cell types.",
          call. = FALSE)
   }
   id_col <- if ("unit_id" %in% colnames(unit_meta)) {
@@ -190,14 +90,14 @@
   } else if ("pool_id" %in% colnames(unit_meta)) {
     "pool_id"
   } else {
-    stop("CORDA completion requires unit_id or pool_id.", call. = FALSE)
+    stop("CORDA2 completion requires unit_id or pool_id.", call. = FALSE)
   }
   unit_meta[[id_col]] <- as.character(unit_meta[[id_col]])
   unit_meta <- unit_meta[
     match(colnames(reference), unit_meta[[id_col]]), , drop = FALSE
   ]
   if (anyNA(unit_meta[[id_col]])) {
-    stop("CORDA unit metadata do not align to Layer 1 columns.",
+    stop("CORDA2 unit metadata do not align to Layer 1 columns.",
          call. = FALSE)
   }
   rows <- lapply(unique(as.character(unit_meta[[celltype_col]])), function(ct) {

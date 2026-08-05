@@ -1,51 +1,47 @@
-test_that("CORDA2 associations preserve variables and reaction IDs", {
-  tab <- data.frame(
-    variable_id = c("R1::forward", "R2::reverse"),
-    reaction_id = c("R1", "R2"),
-    direction = c("forward", "reverse"),
-    stage = c("corda2_stage1_high_associations",
-              "corda2_stage3_free_completion"),
-    replicate = c(1L, 1L),
-    kind = c("dependency", "dependency"),
-    status = c("optimal", "optimal"),
-    target_flux = c(1, 1),
-    objective = c(2, 3),
-    backend = c("highs", "highs"),
-    solver_message = c("Optimal", "Optimal"),
-    noise_namespace = c("not_applicable_to_corda2",
-                        "not_applicable_to_corda2"),
-    opposite_direction_blocked = c("", "R2::forward"),
-    n_associated = c(2L, 1L),
-    associated = c("S1::forward;S2::reverse", "S3::forward"),
+test_that("CORDA2 task storage keeps directional association IDs", {
+  task <- data.frame(
+    variable_id = "R::forward",
+    reaction_id = "R",
+    direction = "forward",
+    stage = "corda2_stage1_high_associations",
+    replicate = 1L,
+    kind = "dependency",
+    status = "optimal",
+    target_flux = 1,
+    objective = 100,
+    backend = "highs_persistent_cpp_basis_reuse",
+    solver_message = "optimal",
+    noise_namespace = "not_applicable_to_python_corda2",
+    opposite_direction_blocked = "",
+    n_associated = 1L,
+    associated = "A::reverse",
+    corda2_redundancies = 1L,
+    corda2_n_solves = 1L,
     stringsAsFactors = FALSE
   )
-  keys <- RegCompassR:::.rc_corda_task_keys(tab)
-  edges <- RegCompassR:::.rc_corda_normalize_associations(tab)
-  expect_length(keys, 2L)
-  expect_false(anyDuplicated(keys))
-  expect_equal(nrow(edges), 3L)
-  expect_setequal(edges$task_key, keys)
-  expect_setequal(
-    edges$associated_variable_id,
-    c("S1::forward", "S2::reverse", "S3::forward")
-  )
-  expect_setequal(edges$associated_reaction_id, c("S1", "S2", "S3"))
-  expect_equal(nrow(edges), sum(tab$n_associated))
+  associations <- RegCompassR:::.rc_corda_normalize_associations(task)
+  tasks <- task
+  tasks$task_key <- RegCompassR:::.rc_corda_task_keys(tasks)
+  tasks$associated <- NULL
+  summary <- RegCompassR:::.rc_corda_task_summary(tasks)
+
+  expect_equal(nrow(tasks), 1L)
+  expect_equal(nrow(summary), 1L)
+  expect_identical(associations$associated_variable_id, "A::reverse")
+  expect_identical(associations$associated_reaction_id, "A")
+  expect_identical(associations$task_key, tasks$task_key)
 })
 
-test_that("empty CORDA2 task storage remains schema-valid", {
-  empty <- RegCompassR:::.rc_corda_empty_task_table()
-  expect_s3_class(empty, "data.frame")
-  expect_equal(nrow(empty), 0L)
-  expect_true(all(c(
-    "task_key", "n_associated", "opposite_direction_blocked",
-    "noise_namespace"
-  ) %in% colnames(empty)))
-  expect_identical(RegCompassR:::.rc_corda_task_keys(empty), character())
-  edges <- RegCompassR:::.rc_corda_normalize_associations(empty)
-  expect_equal(nrow(edges), 0L)
+test_that("empty association output has a stable three-column schema", {
+  empty <- data.frame(
+    task_key = character(),
+    associated_reaction_id = character(),
+    stringsAsFactors = FALSE
+  )
+  normalized <- RegCompassR:::.rc_corda_normalize_associations(empty)
   expect_identical(
-    colnames(edges),
+    colnames(normalized),
     c("task_key", "associated_variable_id", "associated_reaction_id")
   )
+  expect_equal(nrow(normalized), 0L)
 })

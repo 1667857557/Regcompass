@@ -1,71 +1,115 @@
-# Original CORDA directional dependency assessment and accelerated LP runtime.
+# LP representation and persistent solver runtime for exact Python CORDA2 semantics.
 
-.rc_corda_split_model <- function(gem, tolerance = 1e-8) {
+
+.rc_corda2_solver_feasibility_tolerance <- function(solver) {
+  solver <- match.arg(as.character(solver), c("highs", "gurobi", "glpk"))
+  switch(
+    solver,
+    highs = 1e-7,
+    glpk = 1e-7,
+    gurobi = 1e-6
+  )
+}
+
+.rc_corda_split_model <- function(
+    gem, tolerance = 1e-7, upper_bound = 1e6) {
   validated <- rc_validate_gem(gem)
   reactions <- validated$reactions
-  columns <- list()
-  rows <- list()
-  lower <- upper <- numeric()
-  variable_id <- character()
-  index <- 0L
+  reaction_lb <- as.numeric(validated$lb)
+  reaction_ub <- as.numeric(validated$ub)
+  names(reaction_lb) <- names(reaction_ub) <- reactions
+
+  # Exact CORDA.__init__ bound normalization:
+  # lower bounds below -tol become -UPPER and upper bounds above tol become UPPER.
+  normalized_lb <- reaction_lb
+  normalized_ub <- reaction_ub
+  normalized_lb[normalized_lb < -tolerance] <- -upper_bound
+  normalized_ub[normalized_ub > tolerance] <- upper_bound
+
+  n_reactions <- length(reactions)
+  n_variables <- 2L * n_reactions
+  columns <- vector("list", n_variables)
+  direction_rows <- vector("list", n_variables)
+  lower <- upper <- numeric(n_variables)
+  variable_id <- character(n_variables)
+
+  cursor <- 0L
   for (i in seq_along(reactions)) {
     reaction <- reactions[[i]]
-    lb <- validated$lb[[i]]
-    ub <- validated$ub[[i]]
-    if (ub > tolerance) {
-      index <- index + 1L
-      variable <- paste0(reaction, "::forward")
-      variable_id[[index]] <- variable
-      columns[[index]] <- validated$S[, i, drop = FALSE]
-      lower[[index]] <- max(0, lb)
-      upper[[index]] <- ub
-      rows[[index]] <- data.frame(
-        variable_id = variable,
-        reaction_id = reaction,
-        direction = "forward",
-        original_index = i,
-        stringsAsFactors = FALSE
-      )
+    lb <- normalized_lb[[i]]
+    ub <- normalized_ub[[i]]
+
+    cursor <- cursor + 1L
+    forward <- paste0(reaction, "::forward")
+    variable_id[[cursor]] <- forward
+    columns[[cursor]] <- validated$S[, i, drop = FALSE]
+    if (lb > 0) {
+      lower[[cursor]] <- lb
+      upper[[cursor]] <- ub
+    } else if (ub < 0) {
+      lower[[cursor]] <- 0
+      upper[[cursor]] <- 0
+    } else {
+      lower[[cursor]] <- 0
+      upper[[cursor]] <- ub
     }
-    if (lb < -tolerance) {
-      index <- index + 1L
-      variable <- paste0(reaction, "::reverse")
-      variable_id[[index]] <- variable
-      columns[[index]] <- -validated$S[, i, drop = FALSE]
-      lower[[index]] <- max(0, -ub)
-      upper[[index]] <- -lb
-      rows[[index]] <- data.frame(
-        variable_id = variable,
-        reaction_id = reaction,
-        direction = "reverse",
-        original_index = i,
-        stringsAsFactors = FALSE
-      )
+    direction_rows[[cursor]] <- data.frame(
+      variable_id = forward,
+      reaction_id = reaction,
+      direction = "forward",
+      original_index = i,
+      stringsAsFactors = FALSE
+    )
+
+    cursor <- cursor + 1L
+    reverse <- paste0(reaction, "::reverse")
+    variable_id[[cursor]] <- reverse
+    columns[[cursor]] <- -validated$S[, i, drop = FALSE]
+    if (lb > 0) {
+      lower[[cursor]] <- 0
+      upper[[cursor]] <- 0
+    } else if (ub < 0) {
+      lower[[cursor]] <- -ub
+      upper[[cursor]] <- -lb
+    } else {
+      lower[[cursor]] <- 0
+      upper[[cursor]] <- -lb
     }
+    direction_rows[[cursor]] <- data.frame(
+      variable_id = reverse,
+      reaction_id = reaction,
+      direction = "reverse",
+      original_index = i,
+      stringsAsFactors = FALSE
+    )
   }
-  if (!length(columns)) {
-    stop("CORDA parent model has no allowed directional variables.",
-         call. = FALSE)
-  }
+
   S <- do.call(cbind, columns)
   colnames(S) <- variable_id
   lower <- stats::setNames(as.numeric(lower), variable_id)
   upper <- stats::setNames(as.numeric(upper), variable_id)
-  direction_table <- do.call(rbind, rows)
+  direction_table <- do.call(rbind, direction_rows)
   rownames(direction_table) <- NULL
+
   list(
     S = .rc_as_dgCMatrix(S),
     lb = lower,
     ub = upper,
     direction_table = direction_table,
+    reaction_order = reactions,
     variable_to_reaction = stats::setNames(
       direction_table$reaction_id, direction_table$variable_id
     ),
     variable_to_direction = stats::setNames(
       direction_table$direction, direction_table$variable_id
     ),
-    algorithm = "single_direction_split_before_CORDA",
-    tolerance = tolerance
+    original_reaction_lb = reaction_lb,
+    original_reaction_ub = reaction_ub,
+    normalized_reaction_lb = normalized_lb,
+    normalized_reaction_ub = normalized_ub,
+    algorithm = "cobra_forward_reverse_variables_exact_CORDA2_bounds",
+    tolerance = as.numeric(tolerance),
+    upper_bound = as.numeric(upper_bound)
   )
 }
 
@@ -77,62 +121,6 @@
   split$ub[blocked] <- 0
   split$lb[blocked] <- pmin(split$lb[blocked], split$ub[blocked])
   split
-}
-
-.rc_corda_target_table <- function(split, reactions) {
-  reactions <- unique(as.character(reactions))
-  answer <- split$direction_table[
-    split$direction_table$reaction_id %in% reactions &
-      split$ub[split$direction_table$variable_id] > split$tolerance,
-    c("variable_id", "reaction_id", "direction"),
-    drop = FALSE
-  ]
-  rownames(answer) <- NULL
-  answer
-}
-
-.rc_corda_string_hash <- function(value) {
-  raw <- as.integer(charToRaw(enc2utf8(paste(value, collapse = "|"))))
-  hash <- 0
-  if (length(raw)) {
-    for (x in raw) hash <- (hash * 131 + x) %% 2147483629
-  }
-  as.integer(hash)
-}
-
-.rc_corda_noise <- function(n, seed, key, kappa) {
-  if (n <= 0L || kappa <= 0) return(rep(0, n))
-  derived <- (as.double(seed) + .rc_corda_string_hash(key)) %% 2147483646
-  derived <- as.integer(derived + 1)
-  existed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
-  if (existed) old <- get(".Random.seed", envir = .GlobalEnv)
-  on.exit({
-    if (existed) {
-      assign(".Random.seed", old, envir = .GlobalEnv)
-    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
-      rm(".Random.seed", envir = .GlobalEnv)
-    }
-  }, add = TRUE)
-  set.seed(derived)
-  stats::runif(n, min = 0, max = kappa)
-}
-
-.rc_corda_base_cost <- function(split, confidence, stage, gamma) {
-  reaction_confidence <- as.character(
-    confidence[split$direction_table$reaction_id]
-  )
-  cost <- rep(0, nrow(split$direction_table))
-  if (identical(stage, "stage1_hc_dependencies")) {
-    cost[grepl("^MC", reaction_confidence)] <- 1
-    cost[reaction_confidence == "NC"] <- gamma
-  } else if (identical(stage, "stage2_mc_nc_support")) {
-    cost[reaction_confidence == "NC"] <- gamma
-  } else if (identical(stage, "stage3_re_ot_dependencies")) {
-    cost[reaction_confidence == "OT"] <- 1
-  } else {
-    stop("Unknown CORDA dependency stage: ", stage, call. = FALSE)
-  }
-  stats::setNames(cost, split$direction_table$variable_id)
 }
 
 .rc_corda_highs_api_available <- function() {
@@ -172,6 +160,10 @@
       ), silent = TRUE)
       try(.rc_corda_highs_call(
         "hi_solver_set_option", pointer, "solver", "simplex"
+      ), silent = TRUE)
+      try(.rc_corda_highs_call(
+        "hi_solver_set_option", pointer,
+        "primal_feasibility_tolerance", as.character(split$tolerance)
       ), silent = TRUE)
       if (is.finite(time_limit)) {
         try(.rc_corda_highs_call(
@@ -232,7 +224,7 @@
       engine = engine
     ))
   }
-  answer <- tryCatch({
+  persistent <- tryCatch({
     index <- seq_along(objective) - 1L
     .rc_corda_highs_call(
       "hi_solver_set_objective", engine$pointer,
@@ -270,117 +262,17 @@
       solver_message = as.character(status_message)
     )
   }, error = function(e) e)
-  if (inherits(answer, "error")) {
-    engine$n_fallback <- engine$n_fallback + 1L
-    answer <- .rc_corda_one_shot_solve(engine, objective, lower, upper)
-    answer$backend <- "highs_persistent_failed_one_shot_fallback"
-    answer$solver_message <- paste(
-      conditionMessage(answer), answer$solver_message
-    )
+  if (!inherits(persistent, "error")) {
+    return(list(answer = persistent, engine = engine))
   }
-  list(answer = answer, engine = engine)
-}
-
-.rc_corda_dependency_task <- function(
-    engine, task, confidence, options) {
-  split <- engine$split
-  target <- as.character(task$variable_id[[1L]])
-  target_index <- match(target, colnames(split$S))
-  stage <- as.character(task$stage[[1L]])
-  replicate <- as.integer(task$replicate[[1L]])
-  base_cost <- .rc_corda_base_cost(
-    split, confidence, stage, options$gamma
+  failure_message <- conditionMessage(persistent)
+  engine$n_fallback <- engine$n_fallback + 1L
+  fallback <- .rc_corda_one_shot_solve(engine, objective, lower, upper)
+  fallback$backend <- "highs_persistent_failed_one_shot_fallback"
+  fallback$solver_message <- paste(
+    failure_message, fallback$solver_message
   )
-  objective <- as.numeric(base_cost) + .rc_corda_noise(
-    length(base_cost), options$seed,
-    c(stage, target, replicate), options$kappa
-  )
-  lower <- split$lb
-  upper <- split$ub
-  if (is.na(target_index) || upper[[target_index]] < options$epsilon) {
-    return(list(
-      result = list(
-        task = task, status = "target_blocked", associated = character(),
-        target_flux = 0, objective = NA_real_, backend = engine$type
-      ),
-      engine = engine
-    ))
-  }
-  lower[[target_index]] <- max(lower[[target_index]], options$epsilon)
-  solved <- .rc_corda_engine_solve(engine, objective, lower, upper)
-  engine <- solved$engine
-  answer <- solved$answer
-  flux <- answer$solution
-  associated <- character()
-  target_flux <- NA_real_
-  if (identical(answer$status, "optimal") &&
-      length(flux) == ncol(split$S)) {
-    names(flux) <- colnames(split$S)
-    target_flux <- flux[[target]]
-    penalized <- names(base_cost)[base_cost > 0]
-    active <- penalized[flux[penalized] > options$flux_tolerance]
-    associated <- unique(as.character(
-      split$variable_to_reaction[active]
-    ))
-    associated <- setdiff(
-      associated, as.character(task$reaction_id[[1L]])
-    )
-  }
-  list(
-    result = list(
-      task = task,
-      status = answer$status,
-      associated = sort(associated),
-      target_flux = target_flux,
-      objective = answer$objective,
-      backend = answer$backend,
-      solver_message = answer$solver_message
-    ),
-    engine = engine
-  )
-}
-
-.rc_corda_feasibility_task <- function(engine, task, options) {
-  split <- engine$split
-  target <- as.character(task$variable_id[[1L]])
-  target_index <- match(target, colnames(split$S))
-  objective <- rep(0, ncol(split$S))
-  lower <- split$lb
-  upper <- split$ub
-  if (is.na(target_index) || upper[[target_index]] < options$epsilon) {
-    return(list(
-      result = list(
-        task = task, status = "target_blocked", associated = character(),
-        target_flux = 0, objective = NA_real_, backend = engine$type
-      ),
-      engine = engine
-    ))
-  }
-  objective[[target_index]] <- -1
-  solved <- .rc_corda_engine_solve(engine, objective, lower, upper)
-  engine <- solved$engine
-  answer <- solved$answer
-  target_flux <- NA_real_
-  status <- answer$status
-  if (identical(status, "optimal") &&
-      length(answer$solution) == ncol(split$S)) {
-    target_flux <- as.numeric(answer$solution[[target_index]])
-    if (!is.finite(target_flux) || target_flux < options$epsilon) {
-      status <- "blocked"
-    }
-  }
-  list(
-    result = list(
-      task = task,
-      status = status,
-      associated = character(),
-      target_flux = target_flux,
-      objective = answer$objective,
-      backend = answer$backend,
-      solver_message = answer$solver_message
-    ),
-    engine = engine
-  )
+  list(answer = fallback, engine = engine)
 }
 
 .rc_corda_task_bpparam <- function() {
@@ -388,131 +280,7 @@
 }
 
 .rc_corda_worker_count <- function(BPPARAM, n_tasks) {
-  if (identical(BPPARAM, FALSE) || n_tasks < 2L) return(1L)
-  if (!is.null(BPPARAM) &&
-      requireNamespace("BiocParallel", quietly = TRUE) &&
-      methods::is(BPPARAM, "BiocParallelParam")) {
-    return(max(1L, min(n_tasks, BiocParallel::bpnworkers(BPPARAM))))
-  }
-  config <- rc_parallel_config(workers = NULL, backend = "auto")
-  max(1L, min(n_tasks, config$workers))
-}
-
-.rc_corda_run_tasks <- function(
-    split, tasks, confidence, options, solver, time_limit,
-    BPPARAM = .rc_corda_task_bpparam()) {
-  if (!is.data.frame(tasks) || !nrow(tasks)) {
-    return(list(
-      results = list(),
-      execution = list(
-        n_tasks = 0L, n_chunks = 0L, workers = 1L,
-        task_granularity = "direction_x_replicate",
-        solver_runtime = "not_run"
-      )
-    ))
-  }
-  workers <- .rc_corda_worker_count(BPPARAM, nrow(tasks))
-  n_chunks <- min(workers, nrow(tasks))
-  chunk_id <- rep(seq_len(n_chunks), length.out = nrow(tasks))
-  chunks <- split(tasks, chunk_id)
-  run_chunk <- function(chunk) {
-    engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
-    rows <- vector("list", nrow(chunk))
-    for (i in seq_len(nrow(chunk))) {
-      task <- chunk[i, , drop = FALSE]
-      solved <- if (identical(as.character(task$kind[[1L]]), "dependency")) {
-        .rc_corda_dependency_task(engine, task, confidence, options)
-      } else {
-        .rc_corda_feasibility_task(engine, task, options)
-      }
-      engine <- solved$engine
-      rows[[i]] <- solved$result
-    }
-    list(
-      results = rows,
-      engine = list(
-        type = engine$type,
-        n_solves = engine$n_solves,
-        n_fallback = engine$n_fallback
-      )
-    )
-  }
-  parts <- rc_parallel_lapply(
-    chunks, run_chunk,
-    BPPARAM = if (n_chunks > 1L) BPPARAM else FALSE
-  )
-  results <- unlist(lapply(parts, `[[`, "results"), recursive = FALSE)
-  engine_rows <- lapply(parts, function(part) {
-    data.frame(
-      type = part$engine$type,
-      n_solves = part$engine$n_solves,
-      n_fallback = part$engine$n_fallback,
-      stringsAsFactors = FALSE
-    )
-  })
-  engines <- do.call(rbind, engine_rows)
-  list(
-    results = results,
-    execution = list(
-      n_tasks = nrow(tasks),
-      n_chunks = n_chunks,
-      workers = workers,
-      task_granularity = "direction_x_replicate",
-      stage_barrier = TRUE,
-      persistent_solver = any(
-        engines$type == "highs_persistent_cpp"
-      ),
-      solver_runtime = paste(unique(engines$type), collapse = ";"),
-      n_solves = sum(engines$n_solves),
-      n_fallback = sum(engines$n_fallback)
-    )
-  )
-}
-
-.rc_corda_make_tasks <- function(
-    split, reactions, stage, n = 1L,
-    kind = c("dependency", "feasibility")) {
-  kind <- match.arg(kind)
-  targets <- .rc_corda_target_table(split, reactions)
-  if (!nrow(targets)) return(data.frame())
-  if (identical(kind, "dependency")) {
-    targets <- targets[rep(seq_len(nrow(targets)), each = n), , drop = FALSE]
-    targets$replicate <- rep(seq_len(n), times = nrow(targets) / n)
-  } else {
-    targets$replicate <- 1L
-  }
-  targets$stage <- stage
-  targets$kind <- kind
-  rownames(targets) <- NULL
-  targets
-}
-
-.rc_corda_results_table <- function(results) {
-  if (!length(results)) return(data.frame())
-  rows <- lapply(results, function(x) {
-    task <- x$task
-    data.frame(
-      variable_id = as.character(task$variable_id[[1L]]),
-      reaction_id = as.character(task$reaction_id[[1L]]),
-      direction = as.character(task$direction[[1L]]),
-      stage = as.character(task$stage[[1L]]),
-      replicate = as.integer(task$replicate[[1L]]),
-      kind = as.character(task$kind[[1L]]),
-      status = as.character(x$status),
-      target_flux = as.numeric(x$target_flux),
-      objective = as.numeric(x$objective),
-      backend = as.character(x$backend),
-      n_associated = length(x$associated),
-      associated = paste(x$associated, collapse = ";"),
-      stringsAsFactors = FALSE
-    )
-  })
-  do.call(rbind, rows)
-}
-
-.rc_corda_associated <- function(results, allowed = NULL) {
-  value <- unique(unlist(lapply(results, `[[`, "associated"), use.names = FALSE))
-  value <- value[!is.na(value) & nzchar(value)]
-  if (!is.null(allowed)) value <- intersect(value, allowed)
-  sort(value)
+  # Exact CORDA2 reconstruction is serial within one model. Parallelism is
+  # permitted only across independent cell-type x medium model instances.
+  1L
 }

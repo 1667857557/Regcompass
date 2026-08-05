@@ -1,13 +1,10 @@
-# Common model integration for corrected Python CORDA2 reconstruction.
+# RegCompass model integration around exact Python CORDA2 reconstruction.
 
 .rc_corda_core_closure <- function(
     parent, final, core, target_direction, solver, time_limit,
     flux_threshold) {
-  direction_model <- parent
-  direction_model$lb <- parent$lb
-  direction_model$ub <- parent$ub
   requested <- rc_prepare_directional_targets(
-    direction_model, core, target_direction = target_direction
+    parent, core, target_direction = target_direction
   )
   parent_diagnostics <- .rc_directional_feasibility(
     parent, requested,
@@ -34,11 +31,11 @@
   )
   diagnostics$completion_status <- ifelse(
     !diagnostics$feasible,
-    "parent_below_corda2_target_flux",
+    "parent_below_corda2_tflux",
     ifelse(
       diagnostics$final_feasible %in% TRUE,
-      "corda2_retained_at_target_flux",
-      "corda2_unresolved_at_target_flux"
+      "corda2_retained_at_tflux",
+      "corda2_unresolved_at_tflux"
     )
   )
   feasible_targets <- diagnostics[
@@ -95,8 +92,12 @@
     max_medium_confidence_reactions =
       corda_options$max_medium_confidence_reactions
   )
+  corda_options$feasibility_tolerance <-
+    .rc_corda2_solver_feasibility_tolerance(solver)
   split <- .rc_corda_split_model(
-    parent, tolerance = corda_options$flux_tolerance
+    parent,
+    tolerance = corda_options$feasibility_tolerance,
+    upper_bound = corda_options$upper_bound
   )
   reconstruction <- .rc_corda_build_three_stage(
     split = split,
@@ -110,7 +111,9 @@
     stop("CORDA2 reconstruction retained no reactions.", call. = FALSE)
   }
   final <- .rc_subset_gem(parent, included)
-  target_flux <- corda_options$target_flux
+
+  # This is a RegCompass post-reconstruction scoring contract, not a mutation
+  # of CORDA2 reconstruction semantics.
   closure <- .rc_corda_core_closure(
     parent = parent,
     final = final,
@@ -118,23 +121,12 @@
     target_direction = target_direction,
     solver = solver,
     time_limit = time_limit,
-    flux_threshold = target_flux
+    flux_threshold = corda_options$target_flux
   )
-  if (isTRUE(strict) && any(closure$failed)) {
-    bad <- paste(
-      paste(
-        closure$diagnostics$reaction_id[closure$failed],
-        closure$diagnostics$target_direction[closure$failed],
-        sep = ":"
-      ),
-      collapse = ", "
-    )
-    stop(
-      "CORDA2 failed to retain parent-feasible core directions at target ",
-      "flux in `", cell_type, "`: ", bad,
-      call. = FALSE
-    )
-  }
+  # Python CORDA2 records impossible directional targets and completes the
+  # reconstruction. RegCompass therefore never converts a closure loss into a
+  # structural-build error; `strict` is retained only for API compatibility.
+
   meta <- final$reaction_meta
   if (is.null(meta)) {
     meta <- data.frame(
@@ -170,7 +162,6 @@
   meta$corda2_regulatory_support <- suppressWarnings(as.numeric(
     evidence$regulatory_support
   ))
-  # Legacy aliases allow draft objects to be inspected with older notebooks.
   meta$corda_initial_confidence <- meta$corda2_initial_confidence
   meta$corda_final_confidence <- meta$corda2_final_confidence
   meta$corda_inclusion_stage <- meta$corda2_inclusion_stage
@@ -191,21 +182,22 @@
     reconstruction$stage2_nc_support_count
   final$corda_reconstruction <- reconstruction
   final$target_status <- if (any(closure$failed)) {
-    "structurally_infeasible_at_corda2_target_flux"
+    "structurally_infeasible_at_corda2_tflux"
   } else if (!nrow(closure$feasible_targets)) {
-    "parent_below_corda2_target_flux"
+    "parent_below_corda2_tflux"
   } else {
     "ok"
   }
   final$is_union_gem <- TRUE
   final$union_gem_scope <-
     "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
+
   initial <- classes$initial_confidence
   final$build_params <- list(
-    strategy = "celltype_medium_corrected_python_corda2",
+    strategy = "celltype_medium_python_corda2_exact",
     cell_type = cell_type,
     algorithm = reconstruction$algorithm,
-    completion_stage = "corrected_python_CORDA2_after_confidence_mapping",
+    completion_stage = "python_CORDA2_exact_after_confidence_mapping",
     evidence_schema = "regcompass_corda_reaction_evidence_v2",
     confidence_mapping = classes$confidence_contract,
     n_celltype_biological_reactions = length(included),
@@ -234,20 +226,21 @@
     n_stage3_associated_ot = length(reconstruction$stage3_associated_ot),
     scoring_target_direction = target_direction,
     reconstruction_direction_policy =
-      "Python_CORDA2_directional_confidence_then_restore_original_bounds",
-    corda2_target_flux = target_flux,
-    association_flux_tolerance = corda_options$flux_tolerance,
+      "exact_Python_CORDA2_directional_confidence_restore_original_bounds",
+    corda2_target_flux = corda_options$target_flux,
+    association_flux_tolerance = corda_options$feasibility_tolerance,
     fastcore_epsilon_used = FALSE,
     max_support_reactions_ignored_for_corda2 = max_support_reactions,
-    strict = strict,
+    strict_requested = strict,
+    strict_used_for_reconstruction = FALSE,
     corda_options = corda_options,
     included_reactions = included,
     stage_update_policy = reconstruction$stage_update_policy,
-    python_reference_commit = reconstruction$python_reference_commit
+    python_reference_commit = reconstruction$python_reference_commit,
+    python_source_semantics = reconstruction$source_semantics
   )
   final
 }
 
-# Draft-branch aliases; the canonical public option is `corda2`.
 .rc_complete_celltype_medium_corda_like_gem <-
   .rc_complete_celltype_medium_corda_gem

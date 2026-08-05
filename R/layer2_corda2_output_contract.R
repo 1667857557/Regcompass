@@ -1,4 +1,4 @@
-# Preserve directional CORDA2 associations and validate early metadata.
+# Directional association storage and validation for exact Python CORDA2.
 
 .rc_validate_corda_union_model_before_corda2_output <-
   .rc_validate_corda_union_model
@@ -7,7 +7,7 @@
   algorithm <- as.character(model$build_params$algorithm %||% "")
   if (identical(
     algorithm,
-    "resendislab_python_CORDA2_corrected_redundant_path_assessment"
+    "resendislab_python_CORDA2_c02e06d_exact_semantics"
   )) {
     reference <-
       model$build_params$python_reference_commit %||%
@@ -62,7 +62,7 @@
   algorithm <- as.character(model$build_params$algorithm %||% "")
   if (!identical(
     algorithm,
-    "resendislab_python_CORDA2_corrected_redundant_path_assessment"
+    "resendislab_python_CORDA2_c02e06d_exact_semantics"
   )) {
     return(model)
   }

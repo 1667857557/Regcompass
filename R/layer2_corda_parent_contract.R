@@ -1,4 +1,4 @@
-# Preserve the complete medium-constrained parent model for CORDA2.
+# Complete medium-constrained parent model for exact Python CORDA2 semantics.
 
 .rc_fastcore_parent_before_corda_contract <- if (
   exists(".rc_fastcore_parent", mode = "function", inherits = TRUE)
@@ -16,23 +16,6 @@
     gem, medium_table = medium_table, condition = condition
   )
   validated <- rc_validate_gem(parent)
-  feasibility <- rc_solve_lp(
-    obj = rep(0, length(validated$reactions)),
-    A = validated$S,
-    lhs = rep(0, nrow(validated$S)),
-    rhs = rep(0, nrow(validated$S)),
-    lb = validated$lb,
-    ub = validated$ub,
-    solver = solver,
-    time_limit = time_limit
-  )
-  if (!identical(feasibility$status, "optimal")) {
-    stop(
-      "The medium-constrained CORDA2 parent GEM is not feasible: ",
-      feasibility$status,
-      call. = FALSE
-    )
-  }
   parent$corda_parent_original_lb <- validated$lb
   parent$corda_parent_original_ub <- validated$ub
   parent$corda_parent_n_reactions <- length(validated$reactions)
@@ -42,9 +25,11 @@
   )
   parent$corda_parent_prepruning <- "none"
   parent$corda_parent_role_blocking <- "none"
+  parent$corda_parent_feasibility_precheck <- FALSE
   parent$corda_parent_contract <- paste(
-    "the complete input GEM is retained after applying only the requested",
-    "medium bounds; no FASTCC pruning or reaction-role blocking is applied"
+    "copy the complete medium-constrained input model before CORDA2 bound",
+    "normalization; do not run FASTCC, role pruning, or a global feasibility",
+    "precheck, matching CORDA.__init__ for met_prod = NULL"
   )
   parent$corda_ignored_fastcore_forbidden_roles <-
     unique(as.character(forbidden_roles))
@@ -118,9 +103,10 @@
   build$fastcc_epsilon <- NULL
   build$parent_prepruning <- "none"
   build$parent_role_blocking <- "none"
+  build$parent_feasibility_precheck <- FALSE
   build$parent_algorithm_contract <- paste(
-    "corrected Python CORDA2 on the complete medium-constrained input GEM;",
-    "no FASTCC deletion and no generic role-based reaction block"
+    "exact Python CORDA2 initialization on the complete medium-constrained",
+    "input GEM for met_prod = NULL"
   )
   build$input_fastcore_epsilon_ignored_for_corda2 <-
     as.numeric(args$fastcore_epsilon %||% NA_real_)
@@ -128,9 +114,10 @@
     model$corda_ignored_fastcore_forbidden_roles %||% character()
   model$build_params <- build
   model$corda_parent_contract <- list(
-    algorithm = "corrected_python_corda2",
+    algorithm = "python_corda2_exact_met_prod_NULL",
     prepruning = "none",
     role_blocking = "none",
+    feasibility_precheck = FALSE,
     n_reactions = build$n_parent_reactions,
     n_metabolites = build$n_parent_metabolites,
     n_open_reactions = build$n_parent_open_reactions,

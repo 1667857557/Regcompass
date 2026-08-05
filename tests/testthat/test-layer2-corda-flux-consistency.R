@@ -1,117 +1,84 @@
-test_that("CORDA2 implements the Python build stages with barriers", {
+test_that("associated() matches Python target and redundancy control flow", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_build_three_stage)),
+    deparse(body(RegCompassR:::.rc_corda2_associated)),
     collapse = "\n"
   )
-  expect_match(
-    implementation, "corda2_stage1_high_associations", fixed = TRUE
-  )
-  expect_match(
-    implementation, "corda2_stage2_medium_absent_support", fixed = TRUE
-  )
-  expect_match(
-    implementation, "corda2_stage2_independent_medium_flux", fixed = TRUE
-  )
-  expect_match(
-    implementation, "corda2_stage3_free_completion", fixed = TRUE
-  )
-  expect_match(
-    implementation, "python_build_stage_barriers", fixed = TRUE
-  )
-  expect_match(
-    implementation, "as.integer(absent_count) >= options$support",
-    fixed = TRUE
-  )
-})
-
-test_that("CORDA2 penalties match the Python implementation", {
-  confidence <- c(
-    H = 3L, M = 2L, L = 1L, U = 0L, N = -1L
-  )
-  with_medium <- RegCompassR:::.rc_corda2_penalties(
-    confidence, penalize_medium = TRUE, penalty_factor = 100
-  )
-  expect_equal(with_medium[["H"]], 0)
-  expect_equal(with_medium[["M"]], 1)
-  expect_equal(with_medium[["L"]], 1)
-  expect_equal(with_medium[["U"]], 0)
-  expect_equal(with_medium[["N"]], 100)
-  without_medium <- RegCompassR:::.rc_corda2_penalties(
-    confidence, penalize_medium = FALSE, penalty_factor = 100
-  )
-  expect_equal(without_medium[["M"]], 0)
-  expect_equal(without_medium[["L"]], 0)
-  expect_equal(without_medium[["N"]], 100)
-})
-
-test_that("CORDA2 redundancy search increases only newly used penalties", {
-  implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda2_associated_target)),
-    collapse = "\n"
-  )
-  expect_match(implementation, "options$cost_increase", fixed = TRUE)
-  expect_match(implementation, "setdiff(candidate, needed)", fixed = TRUE)
-  expect_match(implementation, "penalty[weighted_new]", fixed = TRUE)
+  expect_match(implementation, ".rc_corda2_penalties", fixed = TRUE)
+  expect_match(implementation, "split$ub[[target]] < split$tolerance", fixed = TRUE)
   expect_match(implementation, "iteration < max_iter", fixed = TRUE)
+  expect_match(implementation, "options$cost_increase", fixed = TRUE)
+  expect_match(implementation, "needed_for_target <- sort(unique", fixed = TRUE)
+  expect_match(implementation, "python_serial_target_order", fixed = TRUE)
+  expect_match(implementation, "target_parallelism = FALSE", fixed = TRUE)
 })
 
-test_that("remaining medium confidence uses maximum flux", {
+test_that("both direction penalties use forward confidence as in Python", {
+  S <- Matrix::Matrix(
+    matrix(c(-1, 1), nrow = 2), sparse = TRUE,
+    dimnames = list(c("A", "B"), "REV")
+  )
+  split <- RegCompassR:::.rc_corda_split_model(list(
+    S = S, lb = c(REV = -10), ub = c(REV = 10)
+  ), tolerance = 1e-7)
+  penalty <- RegCompassR:::.rc_corda2_penalties(
+    split,
+    c("REV::forward" = 3L, "REV::reverse" = -1L),
+    penalize_medium = TRUE,
+    penalty_factor = 100
+  )
+  expect_equal(penalty[["REV::forward"]], 0)
+  expect_equal(penalty[["REV::reverse"]], 0)
+
+  penalty2 <- RegCompassR:::.rc_corda2_penalties(
+    split,
+    c("REV::forward" = -1L, "REV::reverse" = 3L),
+    penalize_medium = TRUE,
+    penalty_factor = 100
+  )
+  expect_equal(penalty2[["REV::forward"]], 100)
+  expect_equal(penalty2[["REV::reverse"]], 100)
+})
+
+test_that("build iteration 2 uses positive-coefficient minimization", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda2_maximize_targets)),
+    deparse(body(RegCompassR:::.rc_corda2_minimize_medium_targets)),
     collapse = "\n"
   )
+  expect_match(implementation, "objective[[target]] <- 1", fixed = TRUE)
   expect_match(
     implementation,
-    "objective[[bounds$target_index]] <- -1",
+    "answer$objective > options$target_flux",
     fixed = TRUE
   )
-  expect_match(
-    implementation,
-    "result$target_flux > options$target_flux",
-    fixed = TRUE
-  )
-  expect_false(grepl(
-    "objective[[bounds$target_index]] <- 1",
-    implementation,
-    fixed = TRUE
-  ))
+  expect_false(grepl("objective[[target]] <- -1", implementation, fixed = TRUE))
 })
 
-test_that("persistent native HiGHS path has one-shot fallback", {
-  creation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_new_lp_engine)),
+test_that("build steps preserve Python serial mutation order", {
+  implementation <- paste(
+    deparse(body(RegCompassR:::.rc_corda_build_three_stage_exact_base)),
     collapse = "\n"
+  )
+  expect_match(implementation, "stage1_targets", fixed = TRUE)
+  expect_match(implementation, "stage2_targets", fixed = TRUE)
+  expect_match(implementation, "absent_count", fixed = TRUE)
+  expect_match(implementation, "split_after_absent$ub", fixed = TRUE)
+  expect_match(implementation, ".rc_corda2_minimize_medium_targets", fixed = TRUE)
+  expect_match(implementation, "split_stage3$ub[[variable]] <- 0", fixed = TRUE)
+  expect_match(implementation, "redundancies = FALSE", fixed = TRUE)
+  expect_match(implementation, "python_serial_mutation_order", fixed = TRUE)
+})
+
+test_that("persistent HiGHS keeps one model and one-shot fallback", {
+  creation <- paste(
+    deparse(body(RegCompassR:::.rc_corda_new_lp_engine)), collapse = "\n"
   )
   solve <- paste(
-    deparse(body(RegCompassR:::.rc_corda_engine_solve)),
-    collapse = "\n"
+    deparse(body(RegCompassR:::.rc_corda_engine_solve)), collapse = "\n"
   )
   expect_match(creation, "hi_new_solver", fixed = TRUE)
-  expect_match(creation, "highs_persistent_cpp", fixed = TRUE)
+  expect_match(creation, "primal_feasibility_tolerance", fixed = TRUE)
   expect_match(solve, "hi_solver_set_objective", fixed = TRUE)
   expect_match(solve, "hi_solver_set_variable_bounds", fixed = TRUE)
   expect_match(solve, "hi_solver_run", fixed = TRUE)
-  expect_match(solve, "basis_reuse", fixed = TRUE)
   expect_match(solve, "one_shot_fallback", fixed = TRUE)
-})
-
-test_that("model integration scores only core-reaction closure targets", {
-  implementation <- paste(
-    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem_base)),
-    collapse = "\n"
-  )
-  expect_match(implementation, ".rc_corda_core_closure", fixed = TRUE)
-  expect_match(
-    implementation, "final$target_directions <- closure$feasible_targets",
-    fixed = TRUE
-  )
-  expect_match(
-    implementation, "n_celltype_fastcore_support_reactions = 0L",
-    fixed = TRUE
-  )
-  expect_match(
-    implementation,
-    "Python_CORDA2_directional_confidence_then_restore_original_bounds",
-    fixed = TRUE
-  )
 })

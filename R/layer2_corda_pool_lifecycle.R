@@ -1,4 +1,4 @@
-# Keep one worker pool alive across all CORDA2 stages.
+# Keep one worker pool alive across independent CORDA2 model instances.
 
 .rc_regcompass_step_layer2_corda_pool_base <- rc_regcompass_step_layer2
 
@@ -32,7 +32,8 @@ rc_regcompass_step_layer2 <- function(
       if (!requireNamespace("BiocParallel", quietly = TRUE) ||
           !methods::is(BPPARAM, "BiocParallelParam")) {
         stop(
-          "CORDA2 parallel execution requires a BiocParallelParam object.",
+          "CORDA2 outer-model parallel execution requires a ",
+          "BiocParallelParam object.",
           call. = FALSE
         )
       }
@@ -70,10 +71,13 @@ rc_regcompass_step_layer2 <- function(
   if (isTRUE(is_corda2)) {
     answer$params$structural_completion <- "corda2"
     answer$params$structural_completion_algorithm <-
-      "resendislab_python_CORDA2_corrected_redundant_path_assessment"
+      "resendislab_python_CORDA2_c02e06d_exact_semantics"
+    answer$params$corda2_inner_target_parallelism <- FALSE
+    answer$params$corda2_parallel_scope <-
+      "independent_cell_type_x_medium_instances_only"
     answer$method <- paste(
       "microCOMPASS directional LP on cell-type-specific medium models",
-      "reconstructed by corrected Python CORDA2"
+      "reconstructed with exact pinned Python CORDA2 semantics"
     )
     rc_export_microcompass(answer, outdir)
     saveRDS(answer, file.path(outdir, "step_layer2.rds"))

@@ -9,9 +9,7 @@ suppressPackageStartupMessages({
 .rc_lp_status <- function(message = "", code = NA_integer_) {
   text <- tolower(paste(message, collapse = " "))
   if (grepl("infeasible", text)) return("infeasible")
-  if (grepl("unbounded", text)) return("unbounded")
   if (grepl("optimal", text)) return("optimal")
-  if (is.finite(code) && as.integer(code) == 0L) return("optimal")
   "error"
 }
 rc_validate_gem <- function(gem) {
@@ -24,12 +22,12 @@ rc_validate_gem <- function(gem) {
 }
 rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
                         solver = "highs", time_limit = Inf) {
-  control <- list(log_to_console = FALSE, threads = 1L, solver = "simplex")
-  if (is.finite(time_limit)) control$time_limit <- time_limit
   answer <- highs::highs_solve(
     L = as.numeric(obj), lower = as.numeric(lb), upper = as.numeric(ub),
     A = A, lhs = as.numeric(lhs), rhs = as.numeric(rhs), maximum = FALSE,
-    control = do.call(highs::highs_control, control)
+    control = highs::highs_control(
+      log_to_console = FALSE, threads = 1L, solver = "simplex"
+    )
   )
   list(
     status = .rc_lp_status(answer$status_message, answer$status),
@@ -38,13 +36,14 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     solver_message = answer$status_message
   )
 }
-rc_parallel_config <- function(workers = NULL, backend = "auto") list(workers = 1L)
+rc_parallel_config <- function(...) list(workers = 1L)
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) lapply(X, FUN, ...)
 .rc_layer2_task_bpparam <- function() FALSE
 .rc_subset_gem <- function(gem, reactions) gem
 rc_prepare_directional_targets <- function(...) data.frame()
 .rc_directional_feasibility <- function(...) data.frame()
 rc_build_full_gem <- function(gem, ...) gem
+.rc_fastcore_parent <- function(...) stop("not used")
 
 source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
@@ -55,71 +54,83 @@ source("R/layer2_corda_output_contract.R")
 source("R/layer2_corda_target_contract.R")
 source("R/layer2_corda_parent_contract.R")
 source("R/layer2_corda2_algorithm.R")
+source("R/layer2_corda2_algorithm_build.R")
+source("R/layer2_corda2_algorithm_integration.R")
 source("R/layer2_corda2_options_contract.R")
+source("R/layer2_corda2_correction_contract.R")
 
 S <- Matrix::Matrix(
   matrix(c(-1, 1), nrow = 2), sparse = TRUE,
   dimnames = list(c("A", "B"), "REV")
 )
 gem <- list(S = S, lb = c(REV = -10), ub = c(REV = 10))
-split <- .rc_corda_split_model(gem, tolerance = 1e-8)
-
-raw_lower <- split$lb
-raw_upper <- split$ub
-raw_lower[["REV::forward"]] <- 1
-raw <- rc_solve_lp(
-  obj = c(0, 0), A = split$S,
-  lhs = rep(0, nrow(split$S)), rhs = rep(0, nrow(split$S)),
-  lb = raw_lower, ub = raw_upper,
-  solver = "highs", time_limit = 60
+split <- .rc_corda_split_model(
+  gem,
+  tolerance = .rc_corda2_solver_feasibility_tolerance("highs")
 )
-stopifnot(identical(raw$status, "optimal"))
+stopifnot(
+  identical(
+    split$direction_table$variable_id,
+    c("REV::forward", "REV::reverse")
+  ),
+  split$ub[["REV::forward"]] == 1e6,
+  split$ub[["REV::reverse"]] == 1e6
+)
 
 bounds <- .rc_corda_target_bounds(
   split, "REV::forward", epsilon = 1
 )
-closed <- rc_solve_lp(
+stopifnot(
+  identical(bounds$opposite_variables, "REV::reverse"),
+  identical(bounds$opposite_direction_blocked, character()),
+  bounds$lower[["REV::forward"]] == 1,
+  bounds$upper[["REV::reverse"]] == 1e6
+)
+answer <- rc_solve_lp(
   obj = c(0, 0), A = split$S,
   lhs = rep(0, nrow(split$S)), rhs = rep(0, nrow(split$S)),
   lb = bounds$lower, ub = bounds$upper,
   solver = "highs", time_limit = 60
 )
 stopifnot(
-  identical(bounds$opposite_variables, "REV::reverse"),
-  identical(closed$status, "infeasible")
+  identical(answer$status, "optimal"),
+  answer$solution[[1L]] > split$tolerance,
+  answer$solution[[2L]] > split$tolerance
 )
 
-options <- .rc_layer2_corda_options(list(
-  model_completion = "corda2",
-  corda2_target_flux = 1,
-  corda2_penalty_factor = 100,
-  corda2_cost_increase = 1.01,
-  corda2_redundancies = 3L,
-  corda2_support = 5L
-))
-stopifnot(
-  identical(options$model_completion, "corda2"),
-  identical(options$random_noise, FALSE)
+small <- .rc_corda_split_model(
+  list(S = S, lb = c(REV = 0), ub = c(REV = 0.5)),
+  tolerance = .rc_corda2_solver_feasibility_tolerance("highs")
 )
-engine <- .rc_corda_new_lp_engine(split, solver = "highs", time_limit = 60)
-assessment <- .rc_corda2_associated_target(
-  engine = engine,
-  target = "REV::forward",
-  directional_confidence = c(
-    "REV::forward" = 3L,
-    "REV::reverse" = 3L
-  ),
-  options = options,
-  penalize_medium = TRUE,
-  redundancies = TRUE,
-  stage = "corda2_stage1_high_associations"
+failed_order <- try(
+  .rc_corda_target_bounds(small, "REV::forward", epsilon = 1),
+  silent = TRUE
+)
+stopifnot(inherits(failed_order, "try-error"))
+
+options <- .rc_layer2_corda_options(list(model_completion = "corda2"))
+stopifnot(
+  identical(options$cost_increase, 1.01),
+  identical(options$target_flux, 1),
+  identical(options$upper_bound, 1e6),
+  identical(options$source_semantics, "exact")
+)
+for (parameter in c(
+  "corda2_cost_increase", "corda2_target_flux", "corda2_flux_tolerance"
+)) {
+  args <- list(model_completion = "corda2")
+  args[[parameter]] <- 2
+  failed <- try(.rc_layer2_corda_options(args), silent = TRUE)
+  stopifnot(inherits(failed, "try-error"))
+}
+
+medium_code <- paste(
+  deparse(body(.rc_corda2_minimize_medium_targets)), collapse = "\n"
 )
 stopifnot(
-  assessment$result$status %in% c("infeasible", "error"),
-  identical(
-    assessment$result$opposite_direction_blocked,
-    "REV::reverse"
-  )
+  grepl("objective[[target]] <- 1", medium_code, fixed = TRUE),
+  grepl("answer$objective > options$target_flux", medium_code, fixed = TRUE),
+  !grepl("objective[[target]] <- -1", medium_code, fixed = TRUE)
 )
 
-cat("Corrected Python CORDA2 signed-direction check passed\n")
+cat("Exact Python CORDA2 target-direction semantics passed\n")

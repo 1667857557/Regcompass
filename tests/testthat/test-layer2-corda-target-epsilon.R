@@ -1,4 +1,4 @@
-test_that("CORDA2 scoring targets use target flux, not association tolerance", {
+test_that("RegCompass scoring uses fixed Python tflux without changing build", {
   model <- list(
     closure_diagnostics = data.frame(
       reaction_id = c("R1", "R2", "R3"),
@@ -10,61 +10,50 @@ test_that("CORDA2 scoring targets use target flux, not association tolerance", {
       stringsAsFactors = FALSE
     ),
     build_params = list(
-      corda_options = list(flux_tolerance = 1e-8)
+      corda_options = list(feasibility_tolerance = 1e-7)
     )
   )
   filtered <- RegCompassR:::.rc_corda2_apply_target_flux(
     model,
     target_flux = 1,
-    strict = FALSE,
+    strict = TRUE,
     cell_type = "A"
   )
   expect_identical(filtered$target_directions$reaction_id, "R1")
   expect_equal(
-    filtered$build_params$n_parent_corda2_target_feasible_core_directions,
+    filtered$build_params$n_parent_corda2_tflux_feasible_core_directions,
     2L
   )
   expect_equal(
-    filtered$build_params$n_final_corda2_target_feasible_core_directions,
+    filtered$build_params$n_final_corda2_tflux_feasible_core_directions,
     1L
   )
   expect_identical(
     filtered$closure_diagnostics$completion_status,
     c(
-      "corda2_retained_at_target_flux",
-      "parent_below_corda2_target_flux",
-      "corda2_unresolved_at_target_flux"
+      "corda2_retained_at_tflux",
+      "parent_below_corda2_tflux",
+      "corda2_unresolved_at_tflux"
     )
   )
-  expect_error(
-    RegCompassR:::.rc_corda2_apply_target_flux(
-      model,
-      target_flux = 1,
-      strict = TRUE,
-      cell_type = "A"
-    ),
-    "R3:reverse"
-  )
+  expect_true(filtered$build_params$strict_requested)
+  expect_false(filtered$build_params$strict_used_for_reconstruction)
 })
 
-test_that("CORDA2 keeps association tolerance separate from target flux", {
+test_that("tflux is fixed at one and tolerance remains distinct", {
+  expect_error(
+    RegCompassR:::.rc_corda2_apply_target_flux(
+      list(closure_diagnostics = data.frame()),
+      target_flux = 2,
+      strict = FALSE,
+      cell_type = "A"
+    ),
+    "fixes `tflux` at 1"
+  )
   implementation <- paste(
     deparse(body(RegCompassR:::.rc_corda2_apply_target_flux)),
     collapse = "\n"
   )
-  expect_match(implementation, "vmax >= target_flux", fixed = TRUE)
-  expect_match(implementation, "final_vmax >= target_flux", fixed = TRUE)
-  expect_match(
-    implementation,
-    "association_flux_tolerance",
-    fixed = TRUE
-  )
-})
-
-test_that("legacy epsilon helper delegates to CORDA2 target flux", {
-  implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_apply_target_epsilon)),
-    collapse = "\n"
-  )
-  expect_match(implementation, ".rc_corda2_apply_target_flux", fixed = TRUE)
+  expect_match(implementation, "final_vmax >= 1", fixed = TRUE)
+  expect_match(implementation, "strict_used_for_reconstruction", fixed = TRUE)
 })

@@ -1,10 +1,10 @@
-# Match the original CORDA directional target semantics.
+# Exact target-bound semantics of resendislab/corda CORDA.associated().
 
 .rc_corda_target_bounds <- function(split, target, epsilon = NULL) {
   target <- as.character(target)
   if (length(target) != 1L || is.na(target) ||
       !target %in% split$direction_table$variable_id) {
-    stop("CORDA target direction is not present in the split model.",
+    stop("CORDA2 target variable is not present in the split model.",
          call. = FALSE)
   }
   target_row <- split$direction_table[
@@ -17,18 +17,26 @@
   ])
   lower <- split$lb
   upper <- split$ub
-  if (length(opposite)) {
-    lower[opposite] <- 0
-    upper[opposite] <- 0
-  }
   target_index <- match(target, names(upper))
   if (!is.null(epsilon)) {
     epsilon <- as.numeric(epsilon)
     if (length(epsilon) != 1L || !is.finite(epsilon) || epsilon <= 0) {
-      stop("CORDA target epsilon must be one positive finite number.",
+      stop("CORDA2 target flux must be one positive finite number.",
            call. = FALSE)
     }
-    lower[[target_index]] <- max(lower[[target_index]], epsilon)
+    new_lower <- max(lower[[target_index]], epsilon)
+    # Python assigns `va.lb` before `va.ub = UPPER`. Optlang rejects the
+    # transient state when the new lower bound exceeds the current upper bound.
+    if (new_lower > upper[[target_index]]) {
+      stop(
+        "Exact Python CORDA2 target-bound assignment would set lower bound ",
+        new_lower, " above the current upper bound ",
+        upper[[target_index]], " for `", target, "`.",
+        call. = FALSE
+      )
+    }
+    lower[[target_index]] <- new_lower
+    upper[[target_index]] <- split$upper_bound
   }
   list(
     lower = lower,
@@ -36,152 +44,36 @@
     target = target,
     target_reaction = reaction,
     opposite_variables = opposite,
+    opposite_direction_blocked = character(),
     target_index = target_index,
-    original_code_semantics = paste(
-      "test one signed direction of the original reaction while the",
-      "opposite split direction is unavailable"
+    source_semantics = paste(
+      "only the target variable bounds are changed; the opposite reversible",
+      "variable remains available exactly as in Python CORDA.associated"
     )
-  )
-}
-
-.rc_corda_dependency_task <- function(
-    engine, task, confidence, options) {
-  split <- engine$split
-  target <- as.character(task$variable_id[[1L]])
-  stage <- as.character(task$stage[[1L]])
-  replicate <- as.integer(task$replicate[[1L]])
-  noise_namespace <- as.character(options$noise_namespace %||% "")
-  base_cost <- .rc_corda_base_cost(
-    split, confidence, stage, options$gamma
-  )
-  objective <- as.numeric(base_cost) + .rc_corda_noise(
-    length(base_cost), options$seed,
-    c(noise_namespace, stage, target, replicate), options$kappa
-  )
-  if (!target %in% names(split$ub) || split$ub[[target]] < options$epsilon) {
-    return(list(
-      result = list(
-        task = task, status = "target_blocked", associated = character(),
-        target_flux = 0, objective = NA_real_, backend = engine$type,
-        solver_message = "target upper bound is below CORDA epsilon",
-        opposite_direction_blocked = character(),
-        noise_namespace = noise_namespace
-      ),
-      engine = engine
-    ))
-  }
-  bounds <- .rc_corda_target_bounds(
-    split, target, epsilon = options$epsilon
-  )
-  solved <- .rc_corda_engine_solve(
-    engine, objective, bounds$lower, bounds$upper
-  )
-  engine <- solved$engine
-  answer <- solved$answer
-  flux <- answer$solution
-  associated <- character()
-  target_flux <- NA_real_
-  if (identical(answer$status, "optimal") &&
-      length(flux) == ncol(split$S)) {
-    names(flux) <- colnames(split$S)
-    target_flux <- flux[[target]]
-    penalized <- names(base_cost)[base_cost > 0]
-    active <- penalized[flux[penalized] > options$flux_tolerance]
-    associated <- unique(as.character(
-      split$variable_to_reaction[active]
-    ))
-    associated <- setdiff(
-      associated, as.character(task$reaction_id[[1L]])
-    )
-  }
-  list(
-    result = list(
-      task = task,
-      status = answer$status,
-      associated = sort(associated),
-      target_flux = target_flux,
-      objective = answer$objective,
-      backend = answer$backend,
-      solver_message = answer$solver_message,
-      opposite_direction_blocked = bounds$opposite_variables,
-      noise_namespace = noise_namespace
-    ),
-    engine = engine
-  )
-}
-
-.rc_corda_feasibility_task <- function(engine, task, options) {
-  split <- engine$split
-  target <- as.character(task$variable_id[[1L]])
-  noise_namespace <- as.character(options$noise_namespace %||% "")
-  if (!target %in% names(split$ub) || split$ub[[target]] < options$epsilon) {
-    return(list(
-      result = list(
-        task = task, status = "target_blocked", associated = character(),
-        target_flux = 0, objective = NA_real_, backend = engine$type,
-        solver_message = "target upper bound is below CORDA epsilon",
-        opposite_direction_blocked = character(),
-        noise_namespace = noise_namespace
-      ),
-      engine = engine
-    ))
-  }
-  bounds <- .rc_corda_target_bounds(split, target, epsilon = NULL)
-  objective <- rep(0, ncol(split$S))
-  objective[[bounds$target_index]] <- -1
-  solved <- .rc_corda_engine_solve(
-    engine, objective, bounds$lower, bounds$upper
-  )
-  engine <- solved$engine
-  answer <- solved$answer
-  target_flux <- NA_real_
-  status <- answer$status
-  if (identical(status, "optimal") &&
-      length(answer$solution) == ncol(split$S)) {
-    target_flux <- as.numeric(answer$solution[[bounds$target_index]])
-    if (!is.finite(target_flux) || target_flux < options$epsilon) {
-      status <- "blocked"
-    }
-  }
-  list(
-    result = list(
-      task = task,
-      status = status,
-      associated = character(),
-      target_flux = target_flux,
-      objective = answer$objective,
-      backend = answer$backend,
-      solver_message = answer$solver_message,
-      opposite_direction_blocked = bounds$opposite_variables,
-      noise_namespace = noise_namespace
-    ),
-    engine = engine
   )
 }
 
 .rc_corda_results_table <- function(results) {
   if (!length(results)) return(data.frame())
   rows <- lapply(results, function(x) {
-    task <- x$task
     data.frame(
-      variable_id = as.character(task$variable_id[[1L]]),
-      reaction_id = as.character(task$reaction_id[[1L]]),
-      direction = as.character(task$direction[[1L]]),
-      stage = as.character(task$stage[[1L]]),
-      replicate = as.integer(task$replicate[[1L]]),
-      kind = as.character(task$kind[[1L]]),
+      variable_id = as.character(x$target),
+      reaction_id = as.character(x$reaction_id),
+      direction = as.character(x$direction),
+      stage = as.character(x$stage),
+      replicate = 1L,
+      kind = as.character(x$kind),
       status = as.character(x$status),
       target_flux = as.numeric(x$target_flux),
       objective = as.numeric(x$objective),
       backend = as.character(x$backend),
       solver_message = as.character(x$solver_message %||% ""),
-      noise_namespace = as.character(x$noise_namespace %||% ""),
-      opposite_direction_blocked = paste(
-        x$opposite_direction_blocked %||% character(),
-        collapse = ";"
-      ),
+      noise_namespace = "not_applicable_to_python_corda2",
+      opposite_direction_blocked = "",
       n_associated = length(x$associated),
       associated = paste(x$associated, collapse = ";"),
+      corda2_redundancies = as.integer(x$redundancies %||% 0L),
+      corda2_n_solves = as.integer(x$n_solves %||% 0L),
       stringsAsFactors = FALSE
     )
   })
