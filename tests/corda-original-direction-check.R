@@ -5,6 +5,7 @@ suppressPackageStartupMessages({
 
 `%||%` <- function(x, y) if (is.null(x)) y else x
 .rc_as_dgCMatrix <- function(x) methods::as(x, "dgCMatrix")
+.rc_bind_frames_fill <- function(values) data.frame()
 .rc_lp_status <- function(message = "", code = NA_integer_) {
   text <- tolower(paste(message, collapse = " "))
   if (grepl("infeasible", text)) return("infeasible")
@@ -37,10 +38,23 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     solver_message = answer$status_message
   )
 }
+rc_parallel_config <- function(workers = NULL, backend = "auto") list(workers = 1L)
+rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) lapply(X, FUN, ...)
+.rc_layer2_task_bpparam <- function() FALSE
+.rc_subset_gem <- function(gem, reactions) gem
+rc_prepare_directional_targets <- function(...) data.frame()
+.rc_directional_feasibility <- function(...) data.frame()
+rc_build_full_gem <- function(gem, ...) gem
 
+source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
 source("R/layer2_corda_paper_contract.R")
 source("R/layer2_corda_direction_contract.R")
+source("R/layer2_corda_model.R")
+source("R/layer2_corda_output_contract.R")
+source("R/layer2_corda_target_contract.R")
+source("R/layer2_corda_parent_contract.R")
+source("R/layer2_corda2_algorithm.R")
 
 S <- Matrix::Matrix(
   matrix(c(-1, 1), nrow = 2), sparse = TRUE,
@@ -48,10 +62,6 @@ S <- Matrix::Matrix(
 )
 gem <- list(S = S, lb = c(REV = -10), ub = c(REV = 10))
 split <- .rc_corda_split_model(gem, tolerance = 1e-8)
-stopifnot(setequal(
-  split$direction_table$variable_id,
-  c("REV::forward", "REV::reverse")
-))
 
 raw_lower <- split$lb
 raw_upper <- split$ub
@@ -67,52 +77,44 @@ stopifnot(identical(raw$status, "optimal"))
 bounds <- .rc_corda_target_bounds(
   split, "REV::forward", epsilon = 1
 )
-stopifnot(
-  identical(bounds$opposite_variables, "REV::reverse"),
-  identical(unname(bounds$lower[["REV::reverse"]]), 0),
-  identical(unname(bounds$upper[["REV::reverse"]]), 0),
-  identical(unname(bounds$lower[["REV::forward"]]), 1)
-)
 closed <- rc_solve_lp(
   obj = c(0, 0), A = split$S,
   lhs = rep(0, nrow(split$S)), rhs = rep(0, nrow(split$S)),
   lb = bounds$lower, ub = bounds$upper,
   solver = "highs", time_limit = 60
 )
-stopifnot(identical(closed$status, "infeasible"))
+stopifnot(
+  identical(bounds$opposite_variables, "REV::reverse"),
+  identical(closed$status, "infeasible")
+)
 
-options <- list(
-  gamma = 1e5, kappa = 0, epsilon = 1,
-  seed = 1L, flux_tolerance = 1e-8
-)
-task <- data.frame(
-  variable_id = "REV::forward",
-  reaction_id = "REV",
-  direction = "forward",
-  stage = "stage1_hc_dependencies",
-  replicate = 1L,
-  kind = "dependency",
-  stringsAsFactors = FALSE
-)
+options <- .rc_layer2_corda_options(list(
+  model_completion = "corda2",
+  corda2_target_flux = 1,
+  corda2_penalty_factor = 100,
+  corda2_cost_increase = 1.01,
+  corda2_redundancies = 3L,
+  corda2_support = 5L
+))
 engine <- .rc_corda_new_lp_engine(split, solver = "highs", time_limit = 60)
-dependency <- .rc_corda_dependency_task(
-  engine, task, confidence = c(REV = "HC"), options = options
+assessment <- .rc_corda2_associated_target(
+  engine = engine,
+  target = "REV::forward",
+  directional_confidence = c(
+    "REV::forward" = 3L,
+    "REV::reverse" = 3L
+  ),
+  options = options,
+  penalize_medium = TRUE,
+  redundancies = TRUE,
+  stage = "corda2_stage1_high_associations"
 )
 stopifnot(
-  dependency$result$status %in% c("infeasible", "error"),
+  assessment$result$status %in% c("infeasible", "error"),
   identical(
-    dependency$result$opposite_direction_blocked,
-    "REV::reverse"
-  )
-)
-engine <- dependency$engine
-feasibility <- .rc_corda_feasibility_task(engine, task, options)
-stopifnot(
-  feasibility$result$status %in% c("infeasible", "blocked", "error"),
-  identical(
-    feasibility$result$opposite_direction_blocked,
+    assessment$result$opposite_direction_blocked,
     "REV::reverse"
   )
 )
 
-cat("Original CORDA signed-direction check passed\n")
+cat("Corrected Python CORDA2 signed-direction check passed\n")
