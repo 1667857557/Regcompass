@@ -1,4 +1,24 @@
-# Preserve both directional-variable and reaction-level CORDA2 associations.
+# Preserve directional CORDA2 associations and validate early metadata.
+
+.rc_validate_corda_union_model_before_corda2_output <-
+  .rc_validate_corda_union_model
+
+.rc_validate_corda_union_model <- function(model, cell_type) {
+  algorithm <- as.character(model$build_params$algorithm %||% "")
+  if (identical(
+    algorithm,
+    "resendislab_python_CORDA2_corrected_redundant_path_assessment"
+  )) {
+    reference <-
+      model$build_params$python_reference_commit %||%
+      model$corda_reconstruction$python_reference_commit %||%
+      "c02e06d50606bf93f23d8f2e6d6ade0e996ca70e"
+    model$build_params$python_reference_commit <- reference
+  }
+  .rc_validate_corda_union_model_before_corda2_output(
+    model, cell_type
+  )
+}
 
 .rc_corda_normalize_associations_before_corda2 <-
   .rc_corda_normalize_associations
