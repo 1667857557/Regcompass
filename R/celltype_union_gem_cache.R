@@ -90,6 +90,27 @@
     fastcore_epsilon = 1e-4,
     max_support_reactions = 2000,
     strict = TRUE) {
+  context <- .rc_layer2_completion_context
+  if (isTRUE(context$active) &&
+      identical(context$model_completion, "corda2") &&
+      .rc_is_corda2_options(context$corda_options)) {
+    return(.rc_build_celltype_medium_corda_cache(
+      gem = gem,
+      reaction_membership = reaction_membership,
+      core_reactions = core_reactions,
+      target_reactions = target_reactions,
+      medium_scenarios = medium_scenarios,
+      celltype_col = celltype_col,
+      cache_dir = cache_dir,
+      target_direction = target_direction,
+      solver = solver,
+      time_limit = time_limit,
+      fastcore_epsilon = fastcore_epsilon,
+      max_support_reactions = max_support_reactions,
+      strict = strict
+    ))
+  }
+
   target_direction <- match.arg(target_direction)
   scoped <- .rc_validate_celltype_reaction_scope(
     reaction_membership, core_reactions, celltype_col
