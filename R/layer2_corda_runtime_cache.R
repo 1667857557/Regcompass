@@ -1,6 +1,6 @@
-# Exact CORDA2 cell-type by medium cache construction.
+# Exact CORDA2 cell-type by medium cache construction helper.
 
-.rc_build_celltype_medium_union_gem_cache <- function(
+.rc_build_celltype_medium_corda_cache <- function(
     gem, reaction_membership, core_reactions,
     target_reactions = NULL, medium_scenarios = NULL,
     celltype_col = "cell_type",
@@ -14,21 +14,8 @@
   if (!isTRUE(context$active) ||
       !identical(context$model_completion, "corda2") ||
       !.rc_is_corda2_options(context$corda_options)) {
-    return(.rc_build_celltype_medium_union_gem_cache_fastcore(
-      gem = gem,
-      reaction_membership = reaction_membership,
-      core_reactions = core_reactions,
-      target_reactions = target_reactions,
-      medium_scenarios = medium_scenarios,
-      celltype_col = celltype_col,
-      cache_dir = cache_dir,
-      target_direction = target_direction,
-      solver = solver,
-      time_limit = time_limit,
-      fastcore_epsilon = fastcore_epsilon,
-      max_support_reactions = max_support_reactions,
-      strict = strict
-    ))
+    stop("CORDA2 cache construction was requested without active options.",
+         call. = FALSE)
   }
   target_direction <- match.arg(target_direction)
   scoped <- .rc_validate_celltype_reaction_scope(
@@ -186,7 +173,7 @@
       build_strategy = "celltype_medium_python_corda2_exact",
       completion_stage = "python_CORDA2_exact_after_confidence_mapping",
       completion_method = "corda2",
-      completion_time_limit = time_limit,
+      completion_time_limit = Inf,
       stringsAsFactors = FALSE
     )
 
@@ -217,8 +204,6 @@
       }
     }
 
-    # The structural model is already durably saved. Drop the in-memory model
-    # before the worker accepts another independent task.
     rm(model, membership, core, evidence, medium, build, performance)
     list(cache = cache, summary = summary)
   }
