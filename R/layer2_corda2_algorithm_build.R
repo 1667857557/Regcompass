@@ -87,12 +87,15 @@
   retained_stage1_hc <- stage1_hc[!blocked_hc]
   HCtoMC <- HCtoMC[!blocked_hc, , drop = FALSE]
   HCtoNC <- HCtoNC[!blocked_hc, , drop = FALSE]
-  promoted_step1 <- union(mc_present, nc_present)
+  promoted_step1_mc <- stage1_mc[stage1_mc %in% mc_present]
+  promoted_step1_nc <- stage1_nc[stage1_nc %in% nc_present]
+  promoted_step1 <- c(promoted_step1_mc, promoted_step1_nc)
   inclusion_stage_direction[promoted_step1] <-
     "corda2_step1_associated_with_HC"
-  hc <- unique(c(retained_stage1_hc, promoted_step1))
-  mc <- setdiff(mc, mc_present)
-  nc <- setdiff(nc, nc_present)
+  directional_class[promoted_step1] <- "HC"
+  hc <- c(retained_stage1_hc, promoted_step1)
+  mc <- stage1_mc[!stage1_mc %in% mc_present]
+  nc <- stage1_nc[!stage1_nc %in% nc_present]
   task_tables$step1 <- .rc_corda2_results_table(stage1_results)
 
   # Step 2.1: determine NC dependencies of every remaining MC direction.
@@ -135,7 +138,8 @@
     )
     MCxNC <- rbind(MCxNC, promoted_rows)
   }
-  mc <- unique(c(mc, promoted_nc))
+  directional_class[promoted_nc] <- "MC"
+  mc <- c(mc, promoted_nc)
   if (length(promoted_nc) && ncol(MCxNC)) {
     MCxNC <- MCxNC[, setdiff(colnames(MCxNC), promoted_nc), drop = FALSE]
   }
@@ -189,12 +193,11 @@
   feasible_mc <- mc[!blocked_mc_step22]
   inclusion_stage_direction[promoted_nc] <-
     "corda2_step2_2_NC_occurrence_threshold"
-  unstaged_feasible <- feasible_mc[is.na(
+  inclusion_stage_direction[feasible_mc[is.na(
     inclusion_stage_direction[feasible_mc]
-  )]
-  inclusion_stage_direction[unstaged_feasible] <-
-    "corda2_step2_2_MC_feasible"
-  hc <- unique(c(hc, feasible_mc))
+  )]] <- "corda2_step2_2_MC_feasible"
+  directional_class[feasible_mc] <- "HC"
+  hc <- c(hc, feasible_mc)
   task_tables$step2_2 <- .rc_corda2_results_table(stage22_results)
 
   # Step 3: block all remaining MC/NC directions and add only OT reactions
