@@ -105,7 +105,7 @@ step4 <- rc_regcompass_step_layer1(
 
 ## Stage 5: Layer 2 metabolic scoring
 
-Layer 2 has three mutually exclusive structural builders.
+Layer 2 has three mutually exclusive structural builders. In all three routes, a medium scenario modifies the bounds of listed exchange reactions only. Medium application itself does not remove reaction or metabolite columns.
 
 ### FASTCORE
 
@@ -133,7 +133,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-Omitting `model_completion` under `model_mode = "meta_module_gem"` selects the same FASTCORE route.
+Omitting `model_completion` under `model_mode = "meta_module_gem"` selects the same FASTCORE route. FASTCC and support selection belong to FASTCORE reconstruction after medium bounds are applied; they are not direct deletions performed by the medium table.
 
 ### Original CORDA2
 
@@ -177,6 +177,8 @@ step5_corda2 <- rc_regcompass_step_layer2(
 )
 ```
 
+The complete GEM with medium-adjusted exchange bounds is passed directly to CORDA2. There is no FASTCC or role-based parent pre-pruning before the original CORDA2 state machine.
+
 Adjustable CORDA2 parameters:
 
 - `MCxNCthresh`: minimum number of medium-confidence directional dependencies required to retain an NC direction; default `2`.
@@ -185,9 +187,9 @@ Adjustable CORDA2 parameters:
 - `om`: high reaction cost; MC cost in Step 1 is `sqrt(om)`; default `1e4`.
 - `ci`: proportional cost increase for newly used high-cost reactions; default `0.01`.
 
-### Medium-pruned full GEM
+### COMPASS-style full GEM
 
-This route applies the supplied medium to the full reference GEM, removes reactions that cannot carry non-zero steady-state flux under that medium, and then runs directional scoring. It does not use expression evidence to construct the model and does not execute FASTCORE or CORDA2.
+This route retains the complete reference GEM. The medium changes exchange bounds only; all requested target directions remain in the cache. Directional maximum flux is then computed under the medium. A target direction with `vmax < flux_threshold` is retained in diagnostics as infeasible and its penalty-minimization LP is not run.
 
 ```r
 step5_full <- rc_regcompass_step_layer2(
@@ -200,24 +202,25 @@ step5_full <- rc_regcompass_step_layer2(
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
-    flux_threshold = 1e-8,
-    model_params = list(
-      completion_time_limit = 1200
-    )
+    flux_threshold = 1e-8
   )
 )
 ```
 
-Do not set `model_completion = "fastcore"` or `"corda2"` in this mode. It may be omitted or explicitly set to `"none"`. FASTCORE- and CORDA2-specific parameters are rejected instead of being silently ignored. FASTCC is used only as the medium-specific flux-consistency filter; it is not a compact FASTCORE reconstruction.
+Do not set `model_completion = "fastcore"` or `"corda2"` in this mode. It may be omitted or explicitly set to `"none"`. FASTCORE- and CORDA2-specific parameters are rejected instead of being silently ignored. Full-GEM mode does not run FASTCC, FASTCORE, or CORDA2.
 
-The route used is stored in:
+The route and medium contract are stored in:
 
 ```r
 step5$params$model_completion
+step5$params$medium_handling
+step5$params$medium_direct_reaction_deletion
 step5$params$fastcore_executed
 step5$params$corda2_executed
 step5$completion_contract
 step5$model_cache_summary
+step5$vmax_cache_diagnostics
+step5$lp_diagnostics
 ```
 
 See `docs/layer2-model-builders.md` for the full contract.
