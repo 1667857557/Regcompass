@@ -30,12 +30,22 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     multimodal WNN graph per broad cell type and remain condition-pure after
     membership splitting. RNA support, regulatory effects, GPR rules,
     cell-type-specific union GEM construction and directional penalties use
-    consistent reaction ordering, bounds and medium scenarios. Stage 5 runs
-    FASTCORE through non-nested cell-type/medium and directional-reaction tasks,
-    and runs directional vmax and Step-2 LP scoring as reaction-granular
-    parallel tasks with per-task
-    checkpoints and full garbage collection. Internal LP solvers are restricted
-    to one thread per worker, including Gurobi.
+    consistent reaction ordering, bounds and medium scenarios. Stage 5 keeps
+    compact FASTCORE completion as the default and optionally reproduces the
+    execution semantics of resendislab Python CORDA2 commit
+    c02e06d50606bf93f23d8f2e6d6ade0e996ca70e for met_prod = NULL after
+    mapping cell-type multiome evidence to absent, unknown, low, medium and high
+    confidence. The exact constructor controls are exposed as met_prod, n,
+    penalty_factor and support under corda2_args. CORDA2 creates both direction
+    variables for every reaction, uses the source constants UPPER = 1e6,
+    CI = 1.01 and tflux = 1, preserves ordered COBRA bound-setter behavior,
+    forward-confidence cost coupling and positive-coefficient medium-variable
+    minimization, and adds no reconstruction time limit absent from the Python
+    source. Persistent and one-shot HiGHS paths use the same verified simplex,
+    one-thread and feasibility-tolerance configuration. Targets are processed
+    serially with one persistent solver state. Parallelism is limited to
+    independent cell-type-by-medium CORDA2 instances, and the primary and
+    RNA-only scoring paths reuse the same completed structural model cache.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -120,6 +130,21 @@ Collate:
     'step_layer2.R'
     'layer2_parallel_runtime.R'
     'celltype_microcompass_reaction_parallel.R'
+    'layer2_corda_evidence.R'
+    'layer2_corda_lp.R'
+    'layer2_corda_paper_contract.R'
+    'layer2_corda_direction_contract.R'
+    'layer2_corda_model.R'
+    'layer2_corda_output_contract.R'
+    'layer2_corda_target_contract.R'
+    'layer2_corda_parent_contract.R'
+    'layer2_corda2_algorithm.R'
+    'layer2_corda2_algorithm_build.R'
+    'layer2_corda2_options_contract.R'
+    'layer2_corda_runtime.R'
+    'layer2_corda_runtime_cache.R'
+    'layer2_corda_runtime_step.R'
+    'layer2_corda_pool_lifecycle.R'
     'step_results.R'
     'regcompass.R'
     'one_shot.R'

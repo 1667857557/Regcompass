@@ -174,7 +174,7 @@
 #' Build cell-type and medium structural models and score directional LPs
 #'
 #' With `model_mode = "meta_module_gem"`, conditions are unioned only within the
-#' same cell type. One union GEM and one independent FASTCORE completion are
+#' same cell type. One union GEM and one independent structural completion are
 #' created for every cell-type and medium combination. Conditions and metacells
 #' share a model only when their cell type matches. RNA-only scoring is an
 #' interpretation control that reuses the exact structural model cache. The
@@ -189,6 +189,23 @@ rc_regcompass_step_layer2 <- function(
   monitor <- .rc_step_monitor_start("layer2", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   model_mode <- match.arg(model_mode)
+  if (!is.list(layer2_args)) {
+    stop("`layer2_args` must be a list.", call. = FALSE)
+  }
+
+  pool_state <- .rc_prepare_corda_worker_pool(
+    layer2_args = layer2_args,
+    parallel = parallel,
+    BPPARAM = BPPARAM
+  )
+  BPPARAM <- pool_state$BPPARAM
+  on.exit(.rc_release_corda_worker_pool(pool_state), add = TRUE)
+
+  parallel_context <- .rc_layer2_enter_parallel_context(parallel, BPPARAM)
+  on.exit(
+    .rc_layer2_restore_parallel_context(parallel_context),
+    add = TRUE
+  )
   meta_modules <- .rc_compact_meta_modules_for_layer2(meta_modules)
   invisible(gc(verbose = FALSE, full = TRUE))
   .rc_require_stage_class(
@@ -197,9 +214,6 @@ rc_regcompass_step_layer2 <- function(
     "meta_modules",
     "rc_regcompass_step_meta_modules"
   )
-  if (!is.list(layer2_args)) {
-    stop("`layer2_args` must be a list.", call. = FALSE)
-  }
   allowed <- c(
     "model_params", "omega", "target_direction", "solver",
     "flux_threshold"
@@ -209,8 +223,8 @@ rc_regcompass_step_layer2 <- function(
     stop(
       "Unsupported `layer2_args`: ", paste(unknown, collapse = ", "),
       ". Scoring `time_limit` has been removed. Use only ",
-      "`layer2_args$model_params$completion_time_limit` to limit global ",
-      "FASTCORE union-GEM construction.",
+      "`layer2_args$model_params$completion_time_limit` for structural ",
+      "completion controls.",
       call. = FALSE
     )
   }
@@ -222,6 +236,19 @@ rc_regcompass_step_layer2 <- function(
     gem = gem,
     argument = "layer1"
   )
+
+  completion <- .rc_layer2_prepare_completion(
+    layer1 = layer1,
+    meta_modules = meta_modules,
+    model_mode = model_mode,
+    layer2_args = layer2_args
+  )
+  layer2_args <- completion$layer2_args
+  on.exit(
+    .rc_layer2_restore_completion(completion$previous_context),
+    add = TRUE
+  )
+
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   layer2_args$model_params <- layer2_args$model_params %||% list()
@@ -239,7 +266,7 @@ rc_regcompass_step_layer2 <- function(
     stop(
       "Unsupported `layer2_args$model_params`: ",
       paste(unknown_model_params, collapse = ", "),
-      ". Only union-GEM construction controls are accepted.",
+      ". Only structural union-GEM controls are accepted.",
       call. = FALSE
     )
   }
@@ -400,12 +427,21 @@ rc_regcompass_step_layer2 <- function(
     catalogue$merged_reaction_membership
   answer$union_gem_policy <- if (identical(model_mode, "meta_module_gem")) {
     paste(
-      "one union GEM per cell type and medium; FASTCORE runs",
+      "one union GEM per cell type and medium; structural completion runs",
       "independently within each cell type"
     )
   } else {
     "shared full GEM; no union-GEM reconstruction"
   }
+  answer <- .rc_layer2_finalize_completion(
+    answer = answer,
+    corda_options = completion$corda_options,
+    is_corda2 = completion$is_corda2,
+    solver = solver
+  )
+  answer$params$corda2_worker_pool_origin <- pool_state$origin
+  answer$params$corda2_worker_pool_started_by_layer2 <-
+    isTRUE(pool_state$started_here)
   class(answer) <- c("regcompass_layer2_step", "list")
   .rc_validate_layer2_stage(
     answer,
@@ -416,6 +452,12 @@ rc_regcompass_step_layer2 <- function(
   )
   answer <- .rc_step_monitor_finish(answer, monitor)
   rc_export_microcompass(answer, outdir)
+  model_dir <- file.path(outdir, "03_models")
+  dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
+  saveRDS(
+    answer$completion_contract,
+    file.path(model_dir, "model_completion_contract.rds")
+  )
   saveRDS(answer, file.path(outdir, "step_layer2.rds"))
   answer
 }
