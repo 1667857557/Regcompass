@@ -164,11 +164,12 @@ dirs <- data.frame(
   target_direction = "forward",
   stringsAsFactors = FALSE
 )
+cache_dir <- tempfile("full-gem-ci-")
 cache <- rc_build_full_gem_cache(
   gem = gem,
   dirs = dirs,
   medium_scenarios = medium,
-  cache_dir = tempfile("full-gem-ci-"),
+  cache_dir = cache_dir,
   solver = "highs",
   time_limit = 60,
   flux_consistency_epsilon = 1e-8
@@ -183,9 +184,36 @@ stopifnot(
   identical(summary$medium_applied, TRUE),
   identical(summary$solver, "highs"),
   identical(summary$completion_time_limit, 60),
+  is.character(summary$medium_fingerprint),
+  nzchar(summary$medium_fingerprint),
   identical(attr(cache, "completion_method"), "none"),
   identical(attr(cache, "fastcore_executed"), FALSE),
   identical(attr(cache, "corda2_executed"), FALSE)
+)
+
+medium_open <- medium
+medium_open$ub[medium_open$exchange_reaction_id == "EX_C"] <- 1000
+medium_open$available[medium_open$exchange_reaction_id == "EX_C"] <- TRUE
+cache_open <- rc_build_full_gem_cache(
+  gem = gem,
+  dirs = dirs,
+  medium_scenarios = medium_open,
+  cache_dir = cache_dir,
+  solver = "highs",
+  time_limit = 60,
+  flux_consistency_epsilon = 1e-8
+)
+summary_open <- attr(cache_open, "summary")
+stopifnot(
+  length(cache_open) == 2L,
+  any(vapply(
+    cache_open,
+    function(entry) identical(entry$reaction_id, "R2"),
+    logical(1)
+  )),
+  identical(summary_open$n_reactions, 6L),
+  !identical(summary$file, summary_open$file),
+  !identical(summary$medium_fingerprint, summary_open$medium_fingerprint)
 )
 
 for (invalid in list(
