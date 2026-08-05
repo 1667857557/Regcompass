@@ -31,12 +31,24 @@ jobs:
               "'condition_penalty_contract.R'",
               "'layer2_parallel_runtime.R'",
               "'celltype_microcompass_reaction_parallel.R'",
+              "'layer2_corda_lp.R'",
+              "'layer2_corda_model.R'",
           ]
           missing = [value for value in required_description if value not in description]
           if missing:
               raise RuntimeError(f"DESCRIPTION integration contract missing: {missing}")
           if "Pando (>=" in description:
               raise RuntimeError("DESCRIPTION still imposes a Pando version floor")
+          deleted_override_files = [
+              "layer2_corda2_correction_contract.R",
+              "layer2_corda_solver_contract.R",
+              "layer2_corda2_algorithm_integration.R",
+              "layer2_corda2_public_contract.R",
+              "layer2_corda2_output_contract.R",
+          ]
+          present = [name for name in deleted_override_files if name in description]
+          if present:
+              raise RuntimeError(f"deleted CORDA2 override files remain in Collate: {present}")
           order_pairs = [
               ("'condition_grn_contract.R'", "'condition_grn_contract_compat.R'"),
               ("'mixed_pando.R'", "'mixed_pando_contract.R'"),
@@ -44,7 +56,8 @@ jobs:
               ("'grn_route_parallel.R'", "'grn_integration_contract.R'"),
               ("'grn_integration_contract.R'", "'condition_penalty_contract.R'"),
               ("'step_layer2.R'", "'layer2_parallel_runtime.R'"),
-              ("'layer2_parallel_runtime.R'", "'celltype_microcompass_reaction_parallel.R'"),
+              ("'layer2_corda_lp.R'", "'layer2_corda2_algorithm.R'"),
+              ("'layer2_corda2_algorithm_build.R'", "'layer2_corda_runtime_cache.R'"),
           ]
           for first, second in order_pairs:
               if description.index(first) > description.index(second):
@@ -78,17 +91,61 @@ jobs:
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
               raise RuntimeError(f"condition penalty contract missing: {missing}")
+
           runtime = Path("R/layer2_parallel_runtime.R").read_text()
+          step = Path("R/step_layer2.R").read_text()
+          cache = Path("R/celltype_union_gem_cache.R").read_text()
+          corda_lp = Path("R/layer2_corda_lp.R").read_text()
+          corda_model = Path("R/layer2_corda_model.R").read_text()
           engine = Path("R/celltype_microcompass_reaction_parallel.R").read_text()
-          required_runtime = [
-              "Threads = 1",
-              ".rc_directional_feasibility",
-              "vmax_reaction_cache",
-              "fastcore_parallel_task",
+          direct_contracts = {
+              "Layer 2 parallel helpers": (
+                  runtime,
+                  [".rc_layer2_enter_parallel_context", ".rc_layer2_task_bpparam", ".rc_atomic_save_rds"],
+              ),
+              "Layer 2 direct entrypoint": (
+                  step,
+                  [".rc_prepare_corda_worker_pool", ".rc_layer2_prepare_completion", ".rc_layer2_finalize_completion"],
+              ),
+              "union-cache direct dispatch": (
+                  cache,
+                  [".rc_build_celltype_medium_corda_cache", "context$model_completion"],
+              ),
+              "CORDA2 direct LP": (
+                  corda_lp,
+                  ["Threads", "hi_solver_set_objective", "hi_solver_set_variable_bounds", "hi_solver_get_option"],
+              ),
+              "CORDA2 direct model": (
+                  corda_model,
+                  [".rc_corda_parent", ".rc_corda_build_three_stage", "time_limit = Inf", ".rc_finalize_corda_union_model"],
+              ),
+          }
+          for label, (text, required) in direct_contracts.items():
+              missing = [value for value in required if value not in text]
+              if missing:
+                  raise RuntimeError(f"{label} missing: {missing}")
+          forbidden_override_markers = [
+              "_base <-",
+              "before_corda2",
+              "completion_base <-",
+              "runtime_base <-",
           ]
-          missing = [value for value in required_runtime if value not in runtime]
-          if missing:
-              raise RuntimeError(f"Layer 2 runtime contract missing: {missing}")
+          production_files = [
+              Path("R/layer2_parallel_runtime.R"),
+              Path("R/step_layer2.R"),
+              Path("R/celltype_union_gem_cache.R"),
+              Path("R/layer2_corda_lp.R"),
+              Path("R/layer2_corda_model.R"),
+              Path("R/layer2_corda_runtime.R"),
+              Path("R/layer2_corda_runtime_cache.R"),
+              Path("R/layer2_corda_runtime_step.R"),
+              Path("R/layer2_corda_pool_lifecycle.R"),
+          ]
+          for file in production_files:
+              text = file.read_text()
+              found = [marker for marker in forbidden_override_markers if marker in text]
+              if found:
+                  raise RuntimeError(f"function override marker remains in {file}: {found}")
           required_engine = [
               "directional_reaction_by_matching_metacells_step2",
               ".rc_atomic_save_rds",
