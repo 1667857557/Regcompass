@@ -99,21 +99,28 @@
     tolerance = corda_options$feasibility_tolerance,
     upper_bound = corda_options$upper_bound
   )
+
+  # Python CORDA.__init__ and build() do not expose or add a time limit.
   reconstruction <- .rc_corda_build_three_stage(
     split = split,
     classes = classes,
     options = corda_options,
     solver = solver,
-    time_limit = time_limit
+    time_limit = Inf
   )
+  reconstruction$source_fidelity <- "exact_for_met_prod_NULL"
+  reconstruction$intentional_corrections <- character()
+  reconstruction$solver_time_limit <- Inf
+  reconstruction$requested_regcompass_time_limit_ignored <- time_limit
+
   included <- intersect(reconstruction$included, validated$reactions)
   if (!length(included)) {
     stop("CORDA2 reconstruction retained no reactions.", call. = FALSE)
   }
   final <- .rc_subset_gem(parent, included)
 
-  # This is a RegCompass post-reconstruction scoring contract, not a mutation
-  # of CORDA2 reconstruction semantics.
+  # Post-reconstruction scoring is a RegCompass adapter and does not mutate the
+  # CORDA2 reconstruction state.
   closure <- .rc_corda_core_closure(
     parent = parent,
     final = final,
@@ -123,9 +130,6 @@
     time_limit = time_limit,
     flux_threshold = corda_options$target_flux
   )
-  # Python CORDA2 records impossible directional targets and completes the
-  # reconstruction. RegCompass therefore never converts a closure loss into a
-  # structural-build error; `strict` is retained only for API compatibility.
 
   meta <- final$reaction_meta
   if (is.null(meta)) {
@@ -198,6 +202,12 @@
   final$union_gem_scope <-
     "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
 
+  constructor_args <- list(
+    met_prod = corda_options$met_prod,
+    n = corda_options$n,
+    penalty_factor = corda_options$penalty_factor,
+    support = corda_options$support
+  )
   initial <- classes$initial_confidence
   final$build_params <- list(
     strategy = "celltype_medium_python_corda2_exact",
@@ -233,7 +243,15 @@
     scoring_target_direction = target_direction,
     reconstruction_direction_policy =
       "exact_Python_CORDA2_directional_confidence_restore_original_bounds",
+    corda2_args = constructor_args,
+    corda2_met_prod = corda_options$met_prod,
+    corda2_n = corda_options$n,
+    corda2_redundancies = corda_options$n,
+    corda2_penalty_factor = corda_options$penalty_factor,
+    corda2_support = corda_options$support,
     corda2_target_flux = corda_options$target_flux,
+    corda2_solver_time_limit = Inf,
+    requested_regcompass_time_limit_ignored = time_limit,
     association_flux_tolerance = corda_options$feasibility_tolerance,
     fastcore_epsilon_used = FALSE,
     max_support_reactions_ignored_for_corda2 = max_support_reactions,
@@ -244,6 +262,20 @@
     stage_update_policy = reconstruction$stage_update_policy,
     python_reference_commit = reconstruction$python_reference_commit,
     python_source_semantics = reconstruction$source_semantics
+  )
+  final$corda2_contract <- list(
+    implementation = "exact resendislab/corda Python CORDA2 semantics",
+    supported_scope = "met_prod = NULL",
+    reference_repository = "resendislab/corda",
+    reference_commit = reconstruction$python_reference_commit,
+    constructor_signature = c(
+      "model", "confidence", "met_prod", "n", "penalty_factor", "support"
+    ),
+    constructor_args = constructor_args,
+    fixed_constants = c(CI = 1.01, tflux = 1, UPPER = 1e6),
+    solver_time_limit = Inf,
+    feasibility_tolerance = corda_options$feasibility_tolerance,
+    source_semantics = reconstruction$source_semantics
   )
   final
 }
