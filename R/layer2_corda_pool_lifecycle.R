@@ -1,86 +1,76 @@
 # Keep one worker pool alive across independent CORDA2 model instances.
 
-.rc_regcompass_step_layer2_corda_pool_base <- rc_regcompass_step_layer2
-
-rc_regcompass_step_layer2 <- function(
-    layer1, meta_modules, gem, medium_scenarios, outdir,
-    model_mode = c("meta_module_gem", "full_gem"),
-    layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
-    progress = getOption("RegCompassR.progress", TRUE)) {
+.rc_layer2_requested_corda2 <- function(layer2_args) {
   model_params <- if (is.list(layer2_args)) {
     layer2_args$model_params %||% list()
   } else {
     list()
   }
   requested <- as.character(model_params$model_completion %||% "fastcore")
-  is_corda2 <- length(requested) == 1L && !is.na(requested) &&
+  length(requested) == 1L && !is.na(requested) &&
     requested %in% c("corda2", "corda", "corda_like")
-  pool_origin <- "not_used"
-  pool_started_here <- FALSE
-  if (isTRUE(is_corda2) && isTRUE(parallel)) {
-    if (is.null(BPPARAM)) {
-      BPPARAM <- rc_default_bpparam()
-      pool_origin <- if (is.null(BPPARAM)) {
-        "serial_fallback"
-      } else {
-        "package_default"
-      }
-    } else {
-      pool_origin <- "caller_supplied"
-    }
-    if (!is.null(BPPARAM)) {
-      if (!requireNamespace("BiocParallel", quietly = TRUE) ||
-          !methods::is(BPPARAM, "BiocParallelParam")) {
-        stop(
-          "CORDA2 outer-model parallel execution requires a ",
-          "BiocParallelParam object.",
-          call. = FALSE
-        )
-      }
-      was_started <- isTRUE(BiocParallel::bpisup(BPPARAM))
-      if (!was_started) {
-        thread_state <- .rc_set_internal_single_thread()
-        on.exit({
-          if (requireNamespace("BiocParallel", quietly = TRUE) &&
-              methods::is(BPPARAM, "BiocParallelParam") &&
-              isTRUE(BiocParallel::bpisup(BPPARAM))) {
-            .rc_release_bpparam(BPPARAM)
-          }
-          .rc_restore_internal_threads(thread_state)
-          invisible(gc(verbose = FALSE, full = TRUE))
-        }, add = TRUE)
-        BiocParallel::bpstart(BPPARAM)
-        pool_started_here <- TRUE
-      }
-    }
-  }
-  answer <- .rc_regcompass_step_layer2_corda_pool_base(
-    layer1 = layer1,
-    meta_modules = meta_modules,
-    gem = gem,
-    medium_scenarios = medium_scenarios,
-    outdir = outdir,
-    model_mode = model_mode,
-    layer2_args = layer2_args,
-    parallel = parallel,
+}
+
+.rc_prepare_corda_worker_pool <- function(
+    layer2_args, parallel = TRUE, BPPARAM = NULL) {
+  state <- list(
+    is_corda2 = .rc_layer2_requested_corda2(layer2_args),
     BPPARAM = BPPARAM,
-    progress = progress
+    origin = "not_used",
+    started_here = FALSE,
+    thread_state = NULL
   )
-  answer$params$corda2_worker_pool_origin <- pool_origin
-  answer$params$corda2_worker_pool_started_by_layer2 <- pool_started_here
-  if (isTRUE(is_corda2)) {
-    answer$params$structural_completion <- "corda2"
-    answer$params$structural_completion_algorithm <-
-      "resendislab_python_CORDA2_c02e06d_exact_semantics"
-    answer$params$corda2_inner_target_parallelism <- FALSE
-    answer$params$corda2_parallel_scope <-
-      "independent_cell_type_x_medium_instances_only"
-    answer$method <- paste(
-      "microCOMPASS directional LP on cell-type-specific medium models",
-      "reconstructed with exact pinned Python CORDA2 semantics"
-    )
-    rc_export_microcompass(answer, outdir)
-    saveRDS(answer, file.path(outdir, "step_layer2.rds"))
+  if (!isTRUE(state$is_corda2) || !isTRUE(parallel)) return(state)
+
+  if (is.null(state$BPPARAM)) {
+    state$BPPARAM <- rc_default_bpparam()
+    state$origin <- if (is.null(state$BPPARAM)) {
+      "serial_fallback"
+    } else {
+      "package_default"
+    }
+  } else {
+    state$origin <- "caller_supplied"
   }
-  answer
+  if (is.null(state$BPPARAM)) return(state)
+  if (!requireNamespace("BiocParallel", quietly = TRUE) ||
+      !methods::is(state$BPPARAM, "BiocParallelParam")) {
+    stop(
+      "CORDA2 outer-model parallel execution requires a ",
+      "BiocParallelParam object.",
+      call. = FALSE
+    )
+  }
+  if (!isTRUE(BiocParallel::bpisup(state$BPPARAM))) {
+    state$thread_state <- .rc_set_internal_single_thread()
+    start_error <- tryCatch({
+      BiocParallel::bpstart(state$BPPARAM)
+      NULL
+    }, error = function(e) e)
+    if (inherits(start_error, "error")) {
+      .rc_restore_internal_threads(state$thread_state)
+      stop(
+        "Unable to start the CORDA2 BiocParallel worker pool: ",
+        conditionMessage(start_error),
+        call. = FALSE
+      )
+    }
+    state$started_here <- TRUE
+  }
+  state
+}
+
+.rc_release_corda_worker_pool <- function(state) {
+  if (!is.list(state)) return(invisible(NULL))
+  if (isTRUE(state$started_here) &&
+      requireNamespace("BiocParallel", quietly = TRUE) &&
+      methods::is(state$BPPARAM, "BiocParallelParam") &&
+      isTRUE(BiocParallel::bpisup(state$BPPARAM))) {
+    .rc_release_bpparam(state$BPPARAM)
+  }
+  if (!is.null(state$thread_state)) {
+    .rc_restore_internal_threads(state$thread_state)
+  }
+  invisible(gc(verbose = FALSE, full = TRUE))
+  invisible(NULL)
 }
