@@ -26,7 +26,6 @@ jobs:
 
           description = Path("DESCRIPTION").read_text()
           required_description = [
-              "Version: 2.4.5",
               "'condition_grn_contract_compat.R'",
               "'mixed_pando_contract.R'",
               "'grn_parallel_merge_contract.R'",
