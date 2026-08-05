@@ -55,6 +55,7 @@ source("R/layer2_corda_output_contract.R")
 source("R/layer2_corda_target_contract.R")
 source("R/layer2_corda_parent_contract.R")
 source("R/layer2_corda2_algorithm.R")
+source("R/layer2_corda2_options_contract.R")
 
 S <- Matrix::Matrix(
   matrix(c(-1, 1), nrow = 2), sparse = TRUE,
@@ -96,6 +97,10 @@ options <- .rc_layer2_corda_options(list(
   corda2_redundancies = 3L,
   corda2_support = 5L
 ))
+stopifnot(
+  identical(options$model_completion, "corda2"),
+  identical(options$random_noise, FALSE)
+)
 engine <- .rc_corda_new_lp_engine(split, solver = "highs", time_limit = 60)
 assessment <- .rc_corda2_associated_target(
   engine = engine,
