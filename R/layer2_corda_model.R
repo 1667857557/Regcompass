@@ -283,6 +283,3 @@
   )
   .rc_finalize_corda_union_model(final, cell_type = cell_type)
 }
-
-.rc_complete_celltype_medium_corda_like_gem <-
-  .rc_complete_celltype_medium_corda_gem
