@@ -62,6 +62,7 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
 }
 rc_parallel_config <- function(...) list(workers = 1L)
 
+source("R/layer2_corda_meta_module_contract.R")
 source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
 source("R/layer2_corda_paper_contract.R")
@@ -138,6 +139,44 @@ stopifnot(inherits(try(
     model_completion = "corda2", corda2_redundancies = 3L
   )), silent = TRUE
 ), "try-error"))
+
+handoff_layer1 <- list(
+  reaction_support = data.frame(
+    reaction_id = c("R1", "R2"),
+    cell_type = c("epithelial", "epithelial"),
+    rna_reaction_support = c(0.8, 0.2),
+    multiome_reaction_support = c(0.9, 0.3),
+    stringsAsFactors = FALSE
+  )
+)
+handoff_meta_modules <- list(
+  workflow_params = list(celltype_col = "broad_type"),
+  merged_modules = list(
+    celltype_col = "broad_type",
+    merged_reaction_membership = data.frame(
+      broad_type = "epithelial",
+      reaction_id = "R1",
+      stringsAsFactors = FALSE
+    )
+  )
+)
+handoff_evidence <- .rc_corda_reaction_evidence(
+  layer1 = handoff_layer1,
+  meta_modules = handoff_meta_modules,
+  regulatory_weight = 0.20
+)
+stopifnot(
+  handoff_evidence$merged_meta_module_member[
+    handoff_evidence$reaction_id == "R1"
+  ],
+  !handoff_evidence$merged_meta_module_member[
+    handoff_evidence$reaction_id == "R2"
+  ],
+  identical(
+    unique(handoff_evidence$evidence_source),
+    "legacy_reaction_support_tables"
+  )
+)
 
 reversible <- make_gem(
   c("A", "B"), c("REV", "IRR"),
