@@ -2,39 +2,59 @@
 
 .rc_corda2_split_original <- function(gem) {
   validated <- rc_validate_gem(gem)
-  reactions <- validated$reactions
-  reaction_lb <- as.numeric(validated$lb)
-  reaction_ub <- as.numeric(validated$ub)
-  names(reaction_lb) <- names(reaction_ub) <- reactions
-  reverse_index <- which(reaction_lb < 0 & reaction_ub >= 0)
-  reverse_only <- which(reaction_ub < 0)
+  reactions <- as.character(validated$reactions)
+  reaction_lb <- validated$lb[reactions]
+  reaction_ub <- validated$ub[reactions]
+  if (length(reaction_lb) != length(reactions) ||
+      length(reaction_ub) != length(reactions)) {
+    stop(
+      "CORDA2 input bounds do not align with the reaction order: reactions=",
+      length(reactions), ", lb=", length(reaction_lb),
+      ", ub=", length(reaction_ub), ".",
+      call. = FALSE
+    )
+  }
+  reaction_lb <- stats::setNames(as.numeric(reaction_lb), reactions)
+  reaction_ub <- stats::setNames(as.numeric(reaction_ub), reactions)
+  reverse_reactions <- reactions[reaction_lb < 0 & reaction_ub >= 0]
+  reverse_only <- reactions[reaction_ub < 0]
   if (length(reverse_only)) {
     stop(
       "Original CORDA2.m does not support reactions with an upper bound below zero: ",
-      paste(utils::head(reactions[reverse_only], 10L), collapse = ", "),
+      paste(utils::head(reverse_only, 10L), collapse = ", "),
       call. = FALSE
     )
   }
 
   forward_ids <- reactions
-  reverse_ids <- paste0(reactions[reverse_index], "_CORDA_rev_rxn")
+  reverse_ids <- paste0(reverse_reactions, "_CORDA_rev_rxn")
   variable_ids <- c(forward_ids, reverse_ids)
-  triplet <- Matrix::summary(.rc_as_dgCMatrix(validated$S))
+  triplet <- Matrix::summary(.rc_as_dgCMatrix(validated$S[, reactions, drop = FALSE]))
+  reverse_index <- match(reverse_reactions, reactions)
   reverse_entry <- triplet$j %in% reverse_index
   reverse_position <- match(triplet$j[reverse_entry], reverse_index)
   S <- Matrix::sparseMatrix(
     i = c(triplet$i, triplet$i[reverse_entry]),
-    j = c(
-      triplet$j,
-      length(reactions) + reverse_position
-    ),
+    j = c(triplet$j, length(reactions) + reverse_position),
     x = c(triplet$x, -triplet$x[reverse_entry]),
     dims = c(nrow(validated$S), length(variable_ids)),
     dimnames = list(rownames(validated$S), variable_ids),
     giveCsparse = TRUE
   )
+  upper_values <- c(
+    unname(reaction_ub),
+    -unname(reaction_lb[reverse_reactions])
+  )
+  if (length(upper_values) != length(variable_ids)) {
+    stop(
+      "CORDA2 directional bounds do not align with variable identifiers: variables=",
+      length(variable_ids), ", bounds=", length(upper_values),
+      ", reversible=", length(reverse_reactions), ".",
+      call. = FALSE
+    )
+  }
   lower <- stats::setNames(rep(0, length(variable_ids)), variable_ids)
-  upper <- stats::setNames(c(reaction_ub, -reaction_lb[reverse_index]), variable_ids)
+  upper <- stats::setNames(upper_values, variable_ids)
   direction_table <- rbind(
     data.frame(
       variable_id = forward_ids,
@@ -45,13 +65,20 @@
     ),
     data.frame(
       variable_id = reverse_ids,
-      reaction_id = reactions[reverse_index],
+      reaction_id = reverse_reactions,
       direction = "reverse",
       original_index = reverse_index,
       stringsAsFactors = FALSE
     )
   )
   rownames(direction_table) <- NULL
+  if (nrow(direction_table) != length(variable_ids)) {
+    stop(
+      "CORDA2 direction table does not align with variable identifiers: rows=",
+      nrow(direction_table), ", variables=", length(variable_ids), ".",
+      call. = FALSE
+    )
+  }
   list(
     S = .rc_as_dgCMatrix(S),
     lb = lower,
@@ -60,14 +87,14 @@
     reaction_order = reactions,
     variable_order = variable_ids,
     variable_to_reaction = stats::setNames(
-      direction_table$reaction_id, direction_table$variable_id
+      as.character(direction_table$reaction_id), variable_ids
     ),
     variable_to_direction = stats::setNames(
-      direction_table$direction, direction_table$variable_id
+      as.character(direction_table$direction), variable_ids
     ),
     original_reaction_lb = reaction_lb,
     original_reaction_ub = reaction_ub,
-    reversible_reactions = reactions[reverse_index],
+    reversible_reactions = reverse_reactions,
     tolerance = 1e-7,
     upper_bound = max(c(upper, 1), na.rm = TRUE),
     algorithm = "original_CORDA2_irreversible_decomposition"
