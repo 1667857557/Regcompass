@@ -59,13 +59,14 @@
     solver = "highs", time_limit = 300, fastcore_epsilon = 1e-4,
     max_support_reactions = 2000, strict = TRUE) {
   target_direction <- match.arg(target_direction)
-  parent <- .rc_fastcore_parent(
-    gem,
+  forbidden_roles <- c("demand", "sink", "artificial_support")
+  parent <- .rc_corda_parent(
+    gem = gem,
     medium_table = medium_table,
     condition = NULL,
+    forbidden_roles = forbidden_roles,
     solver = solver,
-    time_limit = time_limit,
-    fastcore_epsilon = fastcore_epsilon
+    time_limit = time_limit
   )
   validated <- rc_validate_gem(parent)
   module_reactions <- intersect(
@@ -277,7 +278,20 @@
     feasibility_tolerance = corda_options$feasibility_tolerance,
     source_semantics = reconstruction$source_semantics
   )
-  final
+
+  final <- .rc_corda2_apply_target_flux(
+    model = final,
+    target_flux = corda_options$target_flux,
+    strict = strict,
+    cell_type = cell_type
+  )
+  final <- .rc_corda_attach_parent_contract(
+    model = final,
+    parent = parent,
+    fastcore_epsilon = fastcore_epsilon,
+    forbidden_roles = forbidden_roles
+  )
+  .rc_finalize_corda_union_model(final, cell_type = cell_type)
 }
 
 .rc_complete_celltype_medium_corda_like_gem <-
