@@ -97,7 +97,7 @@
       keep <- intersect(c(
         "medium_scenario", "condition", "n_input_reactions",
         "n_reactions", "n_flux_inconsistent_reactions",
-        "flux_consistency_epsilon", "solver",
+        "flux_consistency_epsilon", "medium_applied", "solver",
         "completion_time_limit", "build_strategy"
       ), colnames(summary))
       summary[, keep, drop = FALSE]
@@ -117,7 +117,9 @@
       context_specific_reconstruction = FALSE,
       fastcore_executed = FALSE,
       corda2_executed = FALSE,
-      medium_applied = TRUE,
+      medium_applied = if (
+        is.data.frame(summary) && "medium_applied" %in% colnames(summary)
+      ) all(summary$medium_applied %in% TRUE) else NA,
       flux_consistency_pruning = TRUE,
       flux_consistency_algorithm = "FASTCC_flux_consistency_only",
       reaction_evidence_used_for_structure = FALSE,
