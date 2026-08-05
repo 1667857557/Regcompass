@@ -27,7 +27,11 @@
   }
 
   forward_ids <- reactions
-  reverse_ids <- paste0(reverse_reactions, "_CORDA_rev_rxn")
+  reverse_ids <- if (length(reverse_reactions)) {
+    paste0(reverse_reactions, "_CORDA_rev_rxn")
+  } else {
+    character()
+  }
   variable_ids <- c(forward_ids, reverse_ids)
   triplet <- Matrix::summary(.rc_as_dgCMatrix(validated$S[, reactions, drop = FALSE]))
   reverse_index <- match(reverse_reactions, reactions)
