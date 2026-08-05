@@ -118,7 +118,8 @@
       keep <- intersect(c(
         "medium_scenario", "condition", "n_input_reactions",
         "n_reactions", "n_flux_inconsistent_reactions",
-        "flux_consistency_epsilon", "build_strategy"
+        "flux_consistency_epsilon", "solver",
+        "completion_time_limit", "build_strategy"
       ), colnames(summary))
       summary[, keep, drop = FALSE]
     } else {
@@ -128,6 +129,8 @@
     answer$params$structural_completion <- "medium_flux_consistency"
     answer$params$structural_completion_algorithm <-
       "medium_flux_consistency_pruned_full_gem"
+    answer$params$fastcore_executed <- FALSE
+    answer$params$corda2_executed <- FALSE
     answer$completion_contract <- list(
       model_completion = "none",
       default_unchanged = FALSE,
@@ -137,6 +140,7 @@
       corda2_executed = FALSE,
       medium_applied = TRUE,
       flux_consistency_pruning = TRUE,
+      flux_consistency_algorithm = "FASTCC_flux_consistency_only",
       reaction_evidence_used_for_structure = FALSE,
       model_summary = contract_summary
     )
@@ -154,10 +158,14 @@
     answer$params$structural_completion <- "fastcore"
     answer$params$structural_completion_algorithm <-
       "add_only_compact_FASTCORE"
+    answer$params$fastcore_executed <- TRUE
+    answer$params$corda2_executed <- FALSE
     answer$completion_contract <- list(
       model_completion = "fastcore",
       default_unchanged = TRUE,
-      algorithm = "add_only_compact_FASTCORE"
+      algorithm = "add_only_compact_FASTCORE",
+      fastcore_executed = TRUE,
+      corda2_executed = FALSE
     )
     return(answer)
   }
@@ -191,9 +199,13 @@
     ),
     stage_update_policy = "original_matlab_directional_order",
     target_parallelism = FALSE,
+    fastcore_executed = FALSE,
+    corda2_executed = TRUE,
     options = corda_options
   )
   answer$params$structural_completion <- "corda2"
+  answer$params$fastcore_executed <- FALSE
+  answer$params$corda2_executed <- TRUE
   answer$params$structural_completion_algorithm <- corda_options$algorithm
   answer$params$corda2_args <- original_args
   answer$params$corda2_MCxNCthresh <- corda_options$MCxNCthresh
