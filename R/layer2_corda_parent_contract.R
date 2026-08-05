@@ -1,6 +1,12 @@
-# Preserve the original CORDA parent-model semantics without pre-pruning.
+# Preserve the complete medium-constrained parent model for CORDA2.
 
-.rc_fastcore_parent_before_corda_contract <- .rc_fastcore_parent
+.rc_fastcore_parent_before_corda_contract <- if (
+  exists(".rc_fastcore_parent", mode = "function", inherits = TRUE)
+) {
+  get(".rc_fastcore_parent", mode = "function", inherits = TRUE)
+} else {
+  NULL
+}
 
 .rc_corda_parent <- function(
     gem, medium_table = NULL, condition = NULL,
@@ -22,7 +28,7 @@
   )
   if (!identical(feasibility$status, "optimal")) {
     stop(
-      "The medium-constrained CORDA parent GEM is not feasible: ",
+      "The medium-constrained CORDA2 parent GEM is not feasible: ",
       feasibility$status,
       call. = FALSE
     )
@@ -59,6 +65,13 @@
       time_limit = time_limit
     ))
   }
+  if (is.null(.rc_fastcore_parent_before_corda_contract)) {
+    stop(
+      "The original FASTCORE parent builder is unavailable in this isolated ",
+      "CORDA2 test context.",
+      call. = FALSE
+    )
+  }
   .rc_fastcore_parent_before_corda_contract(
     gem = gem,
     medium_table = medium_table,
@@ -70,36 +83,6 @@
   )
 }
 
-.rc_corda_medium_id <- function(medium_table) {
-  if (is.null(medium_table) || !is.data.frame(medium_table) ||
-      !nrow(medium_table) ||
-      !"medium_scenario_id" %in% colnames(medium_table)) {
-    return("default")
-  }
-  value <- unique(as.character(medium_table$medium_scenario_id))
-  value <- value[!is.na(value) & nzchar(value)]
-  if (length(value) != 1L) {
-    stop(
-      "CORDA model construction requires exactly one medium scenario.",
-      call. = FALSE
-    )
-  }
-  value
-}
-
-.rc_corda_noise_namespace <- function(cell_type, medium_table) {
-  cell_type <- as.character(cell_type)
-  if (length(cell_type) != 1L || is.na(cell_type) || !nzchar(cell_type)) {
-    stop("CORDA noise namespace requires one non-empty cell type.",
-         call. = FALSE)
-  }
-  medium <- .rc_corda_medium_id(medium_table)
-  paste0(
-    "celltype=", utils::URLencode(cell_type, reserved = TRUE),
-    "::medium=", utils::URLencode(medium, reserved = TRUE)
-  )
-}
-
 .rc_complete_celltype_medium_corda_gem_parent_base <-
   .rc_complete_celltype_medium_corda_gem
 
@@ -107,16 +90,9 @@
   args <- list(...)
   corda_options <- args$corda_options
   if (!is.list(corda_options)) {
-    stop("CORDA options are unavailable during model construction.",
+    stop("CORDA2 options are unavailable during model construction.",
          call. = FALSE)
   }
-  noise_namespace <- .rc_corda_noise_namespace(
-    cell_type = args$cell_type,
-    medium_table = args$medium_table
-  )
-  corda_options$noise_namespace <- noise_namespace
-  args$corda_options <- corda_options
-
   previous <- getOption("RegCompassR.corda_parent_active", FALSE)
   options(RegCompassR.corda_parent_active = TRUE)
   on.exit(
@@ -143,18 +119,16 @@
   build$parent_prepruning <- "none"
   build$parent_role_blocking <- "none"
   build$parent_algorithm_contract <- paste(
-    "original CORDA dependency assessment on the complete medium-constrained",
-    "input GEM; no FASTCC deletion and no generic role-based reaction block"
+    "corrected Python CORDA2 on the complete medium-constrained input GEM;",
+    "no FASTCC deletion and no generic role-based reaction block"
   )
-  build$input_fastcore_epsilon_ignored_for_corda <-
+  build$input_fastcore_epsilon_ignored_for_corda2 <-
     as.numeric(args$fastcore_epsilon %||% NA_real_)
-  build$input_fastcore_forbidden_roles_ignored_for_corda <-
+  build$input_fastcore_forbidden_roles_ignored_for_corda2 <-
     model$corda_ignored_fastcore_forbidden_roles %||% character()
-  build$corda_noise_namespace <- noise_namespace
-  build$corda_noise_task_key <-
-    "namespace_x_stage_x_signed_target_x_repeat"
   model$build_params <- build
   model$corda_parent_contract <- list(
+    algorithm = "corrected_python_corda2",
     prepruning = "none",
     role_blocking = "none",
     n_reactions = build$n_parent_reactions,
@@ -164,14 +138,7 @@
     fastcore_epsilon_used = FALSE,
     fastcore_forbidden_roles_used = FALSE
   )
-  model$corda_noise_contract <- list(
-    seed = corda_options$seed,
-    namespace = noise_namespace,
-    task_key = "namespace_x_stage_x_signed_target_x_repeat",
-    distribution = paste0("Uniform(0, ", corda_options$kappa, ")"),
-    scheduling_invariant = TRUE,
-    matlab_rng_bitwise_identity = FALSE
-  )
+  model$corda_noise_contract <- NULL
   model
 }
 
