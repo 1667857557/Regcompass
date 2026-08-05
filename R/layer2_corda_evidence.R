@@ -1,4 +1,4 @@
-# Cell-type evidence mapping for pinned Python CORDA2 input confidence.
+# RegCompass evidence adapter for original MATLAB CORDA2 HC/MC/NC/OT classes.
 
 .rc_corda_scalar <- function(value, name, lower = -Inf, upper = Inf,
                              finite = TRUE) {
@@ -25,183 +25,342 @@
 }
 
 .rc_corda_flag <- function(value, name) {
-  if (!is.logical(value) || length(value) != 1L || is.na(value)) {
+  if (length(value) != 1L || is.na(value) || !is.logical(value)) {
     stop("`", name, "` must be TRUE or FALSE.", call. = FALSE)
   }
   isTRUE(value)
 }
 
-.rc_corda_rank01 <- function(value) {
-  value <- as.numeric(value)
+.rc_corda_rank_percentile <- function(value) {
+  value <- suppressWarnings(as.numeric(value))
   answer <- rep(NA_real_, length(value))
-  keep <- is.finite(value)
-  n <- sum(keep)
-  if (!n) return(answer)
-  if (n == 1L) {
-    answer[keep] <- 1
+  valid <- is.finite(value)
+  if (!any(valid)) return(answer)
+  ranked <- rank(value[valid], ties.method = "average", na.last = "keep")
+  if (sum(valid) == 1L) {
+    answer[valid] <- 1
   } else {
-    answer[keep] <- (rank(value[keep], ties.method = "average") - 1) /
-      (n - 1)
+    answer[valid] <- (ranked - 1) / (sum(valid) - 1)
   }
   answer
 }
 
-.rc_corda_row_summary <- function(x, units) {
-  x <- as.matrix(x[, units, drop = FALSE])
-  apply(x, 1L, function(value) {
-    value <- value[is.finite(value)]
-    if (length(value)) stats::median(value) else NA_real_
+.rc_corda_reaction_percentile <- function(value, reaction) {
+  reaction <- as.character(reaction)
+  value <- suppressWarnings(as.numeric(value))
+  answer <- rep(NA_real_, length(value))
+  groups <- split(seq_along(value), reaction)
+  for (index in groups) answer[index] <- .rc_corda_rank_percentile(value[index])
+  answer
+}
+
+.rc_corda_evidence_score <- function(
+    rna_percentile, multiome_percentile, regulatory_support,
+    regulatory_weight) {
+  rna_percentile <- suppressWarnings(as.numeric(rna_percentile))
+  multiome_percentile <- suppressWarnings(as.numeric(multiome_percentile))
+  regulatory_support <- suppressWarnings(as.numeric(regulatory_support))
+  regulatory_weight <- as.numeric(regulatory_weight)
+  expression <- pmax(rna_percentile, multiome_percentile, na.rm = TRUE)
+  expression[!is.finite(expression)] <- NA_real_
+  answer <- (1 - regulatory_weight) * expression +
+    regulatory_weight * regulatory_support
+  answer[!is.finite(answer)] <- NA_real_
+  pmin(1, pmax(0, answer))
+}
+
+.rc_corda_first_numeric_column <- function(tab, candidates) {
+  candidate <- intersect(candidates, colnames(tab))
+  if (!length(candidate)) return(rep(NA_real_, nrow(tab)))
+  for (name in candidate) {
+    value <- suppressWarnings(as.numeric(tab[[name]]))
+    if (any(is.finite(value))) return(value)
+  }
+  rep(NA_real_, nrow(tab))
+}
+
+.rc_corda_layer1_support_table <- function(layer1) {
+  candidates <- list(
+    layer1$reaction_support,
+    layer1$reaction_penalty,
+    layer1$penalty_table,
+    layer1$reaction_table,
+    layer1$layer1_result$reaction_support,
+    layer1$layer1_result$reaction_penalty,
+    layer1$layer1_result$penalty_table,
+    layer1$layer1_result$reaction_table
+  )
+  candidates <- candidates[vapply(candidates, is.data.frame, logical(1))]
+  candidates <- candidates[vapply(candidates, function(tab) {
+    all(c("reaction_id", "cell_type") %in% colnames(tab))
+  }, logical(1))]
+  if (!length(candidates)) {
+    stop(
+      "Layer 1 does not contain a reaction-support table with reaction_id ",
+      "and cell_type columns required for CORDA2 evidence mapping.",
+      call. = FALSE
+    )
+  }
+  candidates[[1L]]
+}
+
+.rc_corda_layer1_regulatory_support <- function(layer1) {
+  candidates <- list(
+    layer1$condition_regulatory_support,
+    layer1$regulatory_support,
+    layer1$layer1_result$condition_regulatory_support,
+    layer1$layer1_result$regulatory_support
+  )
+  candidates <- candidates[vapply(candidates, is.data.frame, logical(1))]
+  candidates <- candidates[vapply(candidates, function(tab) {
+    all(c("reaction_id", "cell_type") %in% colnames(tab))
+  }, logical(1))]
+  if (!length(candidates)) return(NULL)
+  candidates[[1L]]
+}
+
+.rc_corda_layer1_multiome_support <- function(layer1) {
+  candidates <- list(
+    layer1$multiome_reaction_support,
+    layer1$layer1_result$multiome_reaction_support,
+    layer1$reaction_support,
+    layer1$layer1_result$reaction_support
+  )
+  candidates <- candidates[vapply(candidates, is.data.frame, logical(1))]
+  candidates <- candidates[vapply(candidates, function(tab) {
+    all(c("reaction_id", "cell_type") %in% colnames(tab))
+  }, logical(1))]
+  if (!length(candidates)) return(NULL)
+  candidates[[1L]]
+}
+
+.rc_corda_aggregate_support <- function(
+    tab, value, value_name, aggregation = c("max", "mean")) {
+  aggregation <- match.arg(aggregation)
+  value <- suppressWarnings(as.numeric(value))
+  key <- interaction(
+    as.character(tab$cell_type), as.character(tab$reaction_id),
+    drop = TRUE, lex.order = TRUE
+  )
+  rows <- lapply(split(seq_len(nrow(tab)), key), function(index) {
+    values <- value[index]
+    values <- values[is.finite(values)]
+    aggregate_value <- if (!length(values)) {
+      NA_real_
+    } else if (identical(aggregation, "max")) {
+      max(values)
+    } else {
+      mean(values)
+    }
+    data.frame(
+      cell_type = as.character(tab$cell_type[index[[1L]]]),
+      reaction_id = as.character(tab$reaction_id[index[[1L]]]),
+      value = aggregate_value,
+      stringsAsFactors = FALSE
+    )
   })
+  answer <- do.call(rbind, rows)
+  names(answer)[names(answer) == "value"] <- value_name
+  rownames(answer) <- NULL
+  answer
+}
+
+.rc_corda_reaction_evidence <- function(
+    layer1, meta_modules, regulatory_weight = 0.20) {
+  support <- .rc_corda_layer1_support_table(layer1)
+  support$cell_type <- as.character(support$cell_type)
+  support$reaction_id <- as.character(support$reaction_id)
+  support <- support[
+    !is.na(support$cell_type) & nzchar(support$cell_type) &
+      !is.na(support$reaction_id) & nzchar(support$reaction_id),
+    , drop = FALSE
+  ]
+  if (!nrow(support)) {
+    stop("Layer 1 reaction support is empty after validation.", call. = FALSE)
+  }
+
+  rna <- .rc_corda_first_numeric_column(
+    support,
+    c(
+      "rna_reaction_support", "rna_support", "expression_support",
+      "reaction_support", "support", "capacity", "penalty"
+    )
+  )
+  if ("penalty" %in% colnames(support) &&
+      all(!is.finite(rna) | rna == suppressWarnings(as.numeric(support$penalty)))) {
+    penalty <- suppressWarnings(as.numeric(support$penalty))
+    rna <- ifelse(is.finite(penalty), -penalty, NA_real_)
+  }
+  rna_table <- .rc_corda_aggregate_support(
+    support, rna, "rna_support", aggregation = "mean"
+  )
+  rna_table$rna_percentile <- .rc_corda_reaction_percentile(
+    rna_table$rna_support, rna_table$cell_type
+  )
+
+  multiome_tab <- .rc_corda_layer1_multiome_support(layer1)
+  if (is.null(multiome_tab)) {
+    multiome_table <- rna_table[
+      c("cell_type", "reaction_id", "rna_support", "rna_percentile")
+    ]
+    names(multiome_table)[3:4] <- c(
+      "multiome_support", "multiome_percentile"
+    )
+  } else {
+    multiome_tab$cell_type <- as.character(multiome_tab$cell_type)
+    multiome_tab$reaction_id <- as.character(multiome_tab$reaction_id)
+    multiome <- .rc_corda_first_numeric_column(
+      multiome_tab,
+      c(
+        "multiome_reaction_support", "multiome_support",
+        "regulatory_expression_support", "reaction_support", "support"
+      )
+    )
+    multiome_table <- .rc_corda_aggregate_support(
+      multiome_tab, multiome, "multiome_support", aggregation = "mean"
+    )
+    multiome_table$multiome_percentile <- .rc_corda_reaction_percentile(
+      multiome_table$multiome_support, multiome_table$cell_type
+    )
+  }
+
+  regulatory_tab <- .rc_corda_layer1_regulatory_support(layer1)
+  if (is.null(regulatory_tab)) {
+    regulatory_table <- rna_table[c("cell_type", "reaction_id")]
+    regulatory_table$regulatory_support <- 0
+  } else {
+    regulatory_tab$cell_type <- as.character(regulatory_tab$cell_type)
+    regulatory_tab$reaction_id <- as.character(regulatory_tab$reaction_id)
+    regulatory <- .rc_corda_first_numeric_column(
+      regulatory_tab,
+      c(
+        "regulatory_support", "condition_regulatory_support",
+        "tf_atac_support", "edge_support", "support"
+      )
+    )
+    regulatory_table <- .rc_corda_aggregate_support(
+      regulatory_tab, regulatory, "regulatory_support", aggregation = "max"
+    )
+    regulatory_table$regulatory_support <- pmin(
+      1, pmax(0, regulatory_table$regulatory_support)
+    )
+    regulatory_table$regulatory_support[
+      !is.finite(regulatory_table$regulatory_support)
+    ] <- 0
+  }
+
+  answer <- merge(
+    rna_table, multiome_table,
+    by = c("cell_type", "reaction_id"), all = TRUE, sort = FALSE
+  )
+  answer <- merge(
+    answer, regulatory_table,
+    by = c("cell_type", "reaction_id"), all = TRUE, sort = FALSE
+  )
+  answer$regulatory_support[
+    !is.finite(answer$regulatory_support)
+  ] <- 0
+  answer$evidence_score <- .rc_corda_evidence_score(
+    answer$rna_percentile,
+    answer$multiome_percentile,
+    answer$regulatory_support,
+    regulatory_weight = regulatory_weight
+  )
+
+  membership <- .rc_meta_module_reaction_membership(meta_modules)
+  if (!"cell_type" %in% colnames(membership)) {
+    stop("Meta-module reaction membership lacks cell_type.", call. = FALSE)
+  }
+  membership$cell_type <- as.character(membership$cell_type)
+  membership$reaction_id <- as.character(membership$reaction_id)
+  module_flag <- unique(membership[c("cell_type", "reaction_id")])
+  module_flag$merged_meta_module_member <- TRUE
+  answer <- merge(
+    answer, module_flag,
+    by = c("cell_type", "reaction_id"), all = TRUE, sort = FALSE
+  )
+  answer$merged_meta_module_member[
+    is.na(answer$merged_meta_module_member)
+  ] <- FALSE
+  answer$evidence_contract <- paste(
+    "RegCompass maps multiome evidence to original CORDA2 HC, MC, NC and OT",
+    "reaction groups before the reconstruction state machine begins"
+  )
+  answer
 }
 
 .rc_layer2_corda_reaction_evidence <- function(
     layer1, meta_modules, regulatory_weight = 0.20) {
-  required <- c(
-    "reaction_expression", "reaction_expression_rna_only",
-    "reaction_regulatory_support_fraction"
+  .rc_corda_reaction_evidence(
+    layer1 = layer1,
+    meta_modules = meta_modules,
+    regulatory_weight = regulatory_weight
   )
-  missing <- required[!vapply(required, function(name) {
-    value <- layer1[[name]]
-    is.numeric(value) && !is.null(dim(value))
-  }, logical(1))]
-  if (length(missing)) {
-    stop(
-      "CORDA2 completion requires aligned Layer 1 matrices: ",
-      paste(missing, collapse = ", "), ".",
-      call. = FALSE
-    )
-  }
-  reference <- layer1$reaction_expression
-  for (name in required[-1L]) {
-    if (!identical(dimnames(layer1[[name]]), dimnames(reference))) {
-      stop("CORDA2 Layer 1 evidence matrices are not aligned.",
-           call. = FALSE)
-    }
-  }
-  params <- meta_modules$workflow_params
-  celltype_col <- as.character(params$celltype_col %||% "cell_type")
-  unit_meta <- layer1$unit_meta %||% layer1$metacell_meta
-  if (!is.data.frame(unit_meta) || !celltype_col %in% colnames(unit_meta)) {
-    stop("CORDA2 completion requires Layer 1 unit cell types.",
-         call. = FALSE)
-  }
-  id_col <- if ("unit_id" %in% colnames(unit_meta)) {
-    "unit_id"
-  } else if ("pool_id" %in% colnames(unit_meta)) {
-    "pool_id"
-  } else {
-    stop("CORDA2 completion requires unit_id or pool_id.", call. = FALSE)
-  }
-  unit_meta[[id_col]] <- as.character(unit_meta[[id_col]])
-  unit_meta <- unit_meta[
-    match(colnames(reference), unit_meta[[id_col]]), , drop = FALSE
-  ]
-  if (anyNA(unit_meta[[id_col]])) {
-    stop("CORDA2 unit metadata do not align to Layer 1 columns.",
-         call. = FALSE)
-  }
-  rows <- lapply(unique(as.character(unit_meta[[celltype_col]])), function(ct) {
-    units <- unit_meta[[id_col]][as.character(unit_meta[[celltype_col]]) == ct]
-    rna <- .rc_corda_row_summary(layer1$reaction_expression_rna_only, units)
-    multiome <- .rc_corda_row_summary(layer1$reaction_expression, units)
-    regulatory <- .rc_corda_row_summary(
-      layer1$reaction_regulatory_support_fraction, units
-    )
-    rna_percentile <- .rc_corda_rank01(rna)
-    multiome_percentile <- .rc_corda_rank01(multiome)
-    expression_percentile <- pmax(
-      rna_percentile, multiome_percentile, na.rm = TRUE
-    )
-    expression_percentile[
-      !is.finite(rna_percentile) & !is.finite(multiome_percentile)
-    ] <- NA_real_
-    regulatory_clamped <- pmin(pmax(regulatory, 0), 1)
-    regulatory_clamped[!is.finite(regulatory_clamped)] <- 0
-    evidence_score <-
-      (1 - regulatory_weight) * expression_percentile +
-      regulatory_weight * regulatory_clamped
-    evidence_score[!is.finite(expression_percentile)] <- NA_real_
-    data.frame(
-      cell_type = ct,
-      reaction_id = rownames(reference),
-      rna_median = as.numeric(rna),
-      multiome_median = as.numeric(multiome),
-      rna_percentile = as.numeric(rna_percentile),
-      multiome_percentile = as.numeric(multiome_percentile),
-      regulatory_support = as.numeric(regulatory),
-      evidence_score = as.numeric(evidence_score),
-      stringsAsFactors = FALSE
-    )
-  })
-  answer <- .rc_bind_frames_fill(rows)
-  answer$evidence_schema <- "regcompass_corda_reaction_evidence_v2"
-  answer
 }
 
 .rc_corda_classify_reactions <- function(
-    parent_reactions, module_reactions, core_reactions, reaction_evidence,
-    medium_confidence_threshold = 0.75,
-    negative_confidence_threshold = 0.10,
-    include_evidence_outside_modules = TRUE,
+    parent_reactions, module_reactions, core_reactions,
+    reaction_evidence, medium_confidence_threshold,
+    negative_confidence_threshold,
+    include_evidence_outside_modules,
     max_medium_confidence_reactions = Inf) {
-  parent_reactions <- unique(as.character(parent_reactions))
+  reactions <- unique(as.character(parent_reactions))
+  evidence <- reaction_evidence[
+    match(reactions, as.character(reaction_evidence$reaction_id)),
+    , drop = FALSE
+  ]
+  score <- suppressWarnings(as.numeric(evidence$evidence_score))
+  names(score) <- reactions
   module_reactions <- intersect(
-    unique(as.character(module_reactions)), parent_reactions
+    unique(as.character(module_reactions)), reactions
   )
   core_reactions <- intersect(
     unique(as.character(core_reactions)), module_reactions
   )
-  evidence <- reaction_evidence[
-    match(parent_reactions, as.character(reaction_evidence$reaction_id)),
-    , drop = FALSE
-  ]
-  evidence$reaction_id <- parent_reactions
-  score <- suppressWarnings(as.numeric(evidence$evidence_score))
-  names(score) <- parent_reactions
-  outside <- setdiff(parent_reactions, module_reactions)
-  evidence_mc <- character()
+  mc_module <- setdiff(module_reactions, core_reactions)
+  outside <- setdiff(reactions, module_reactions)
+  mc_evidence <- character()
   if (isTRUE(include_evidence_outside_modules)) {
-    evidence_mc <- outside[
+    mc_evidence <- outside[
       is.finite(score[outside]) &
         score[outside] >= medium_confidence_threshold
     ]
     if (is.finite(max_medium_confidence_reactions) &&
-        length(evidence_mc) > max_medium_confidence_reactions) {
-      ordering <- order(-score[evidence_mc], evidence_mc, na.last = TRUE)
-      evidence_mc <- evidence_mc[
-        ordering[seq_len(max_medium_confidence_reactions)]
+        length(mc_evidence) > max_medium_confidence_reactions) {
+      order_index <- order(
+        -score[mc_evidence], mc_evidence, method = "radix"
+      )
+      mc_evidence <- mc_evidence[
+        order_index[seq_len(max_medium_confidence_reactions)]
       ]
     }
   }
-  hc <- core_reactions
-  mc_module <- setdiff(module_reactions, hc)
-  mc_evidence <- setdiff(evidence_mc, union(hc, mc_module))
   mc <- union(mc_module, mc_evidence)
-  remaining <- setdiff(parent_reactions, union(hc, mc))
+  remaining <- setdiff(reactions, union(core_reactions, mc))
   nc <- remaining[
     is.finite(score[remaining]) &
       score[remaining] <= negative_confidence_threshold
   ]
   ot <- setdiff(remaining, nc)
-  confidence <- stats::setNames(rep("OT", length(parent_reactions)),
-                                parent_reactions)
-  confidence[nc] <- "NC"
-  confidence[mc_evidence] <- "MC_evidence"
+
+  confidence <- stats::setNames(rep("OT", length(reactions)), reactions)
+  confidence[core_reactions] <- "HC"
   confidence[mc_module] <- "MC_module"
-  confidence[hc] <- "HC"
+  confidence[mc_evidence] <- "MC_evidence"
+  confidence[nc] <- "NC"
   list(
-    hc = hc,
+    confidence = confidence,
+    initial_confidence = confidence,
+    hc = core_reactions,
     mc_module = mc_module,
     mc_evidence = mc_evidence,
     mc = mc,
     nc = nc,
     ot = ot,
     evidence_score = score,
-    confidence = confidence,
-    initial_confidence = confidence,
     confidence_contract = paste(
-      "HC=merged core; MC=non-core module plus optional high-evidence",
-      "outside-module reactions; NC=finite low evidence; OT=remaining"
+      "HC=merged core; MC=remaining merged module plus selected high-evidence",
+      "outside-module reactions; NC=finite low-evidence; OT=remaining"
     )
   )
 }
