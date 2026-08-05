@@ -34,17 +34,20 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     compact FASTCORE completion as the default and optionally reproduces the
     execution semantics of resendislab Python CORDA2 commit
     c02e06d50606bf93f23d8f2e6d6ade0e996ca70e for met_prod = NULL after
-    mapping cell-type
-    multiome evidence to absent, unknown, low, medium and high confidence.
-    CORDA2 creates both direction variables for every reaction, uses the source
-    constants UPPER = 1e6, CI = 1.01 and tflux = 1, preserves the source's
+    mapping cell-type multiome evidence to absent, unknown, low, medium and high
+    confidence. The exact constructor controls are exposed as met_prod, n,
+    penalty_factor and support under corda2_args. CORDA2 creates both direction
+    variables for every reaction, uses the source constants UPPER = 1e6,
+    CI = 1.01 and tflux = 1, preserves ordered COBRA bound-setter behavior,
     forward-confidence cost coupling and positive-coefficient medium-variable
-    minimization, and processes targets serially with one persistent solver
-    state. Parallelism is limited to independent cell-type-by-medium CORDA2
-    instances. Directional vmax and Step-2 LP scoring remain reaction-granular
-    parallel tasks with per-task checkpoints and full garbage collection.
-    Internal LP solvers are restricted to one thread per worker, including
-    Gurobi.
+    minimization, and adds no reconstruction time limit absent from the Python
+    source. Persistent and one-shot HiGHS paths use the same verified simplex,
+    one-thread and feasibility-tolerance configuration. Targets are processed
+    serially with one persistent solver state. Parallelism is limited to
+    independent cell-type-by-medium CORDA2 instances. Directional vmax and
+    Step-2 LP scoring remain reaction-granular parallel tasks with per-task
+    checkpoints and full garbage collection. Internal LP solvers are restricted
+    to one thread per worker, including Gurobi.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -144,6 +147,7 @@ Collate:
     'layer2_corda2_correction_contract.R'
     'layer2_corda2_output_contract.R'
     'layer2_corda_runtime.R'
+    'layer2_corda_solver_contract.R'
     'layer2_corda_runtime_cache.R'
     'layer2_corda_runtime_step.R'
     'layer2_corda_pool_lifecycle.R'
