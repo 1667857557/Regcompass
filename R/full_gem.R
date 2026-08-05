@@ -226,6 +226,43 @@ rc_build_full_gem <- function(
   unname(tools::md5sum(file)[[1L]])
 }
 
+.rc_full_gem_medium_fingerprint <- function(medium) {
+  payload <- if (is.null(medium)) {
+    list(no_constraints = TRUE)
+  } else {
+    required <- c("exchange_reaction_id", "lb", "ub", "available")
+    missing <- setdiff(required, colnames(medium))
+    if (length(missing)) {
+      stop(
+        "Medium fingerprint input is missing: ",
+        paste(missing, collapse = ", "),
+        ".", call. = FALSE
+      )
+    }
+    columns <- intersect(
+      c(
+        "exchange_reaction_id", "condition", "available", "lb", "ub",
+        ".no_constraints"
+      ),
+      colnames(medium)
+    )
+    value <- medium[, columns, drop = FALSE]
+    order_columns <- intersect(
+      c("condition", "exchange_reaction_id"),
+      colnames(value)
+    )
+    if (length(order_columns) && nrow(value)) {
+      value <- value[do.call(order, value[order_columns]), , drop = FALSE]
+    }
+    rownames(value) <- NULL
+    value
+  }
+  file <- tempfile("RegCompassR-full-gem-medium-", fileext = ".rds")
+  on.exit(unlink(file, force = TRUE), add = TRUE)
+  saveRDS(payload, file, version = 2)
+  unname(tools::md5sum(file)[[1L]])
+}
+
 #' Cache one medium-pruned full GEM per medium scenario
 rc_build_full_gem_cache <- function(
     gem, dirs, medium_scenarios,
@@ -299,15 +336,6 @@ rc_build_full_gem_cache <- function(
     scenario <- combinations$medium_scenario[[i]]
     condition <- combinations$condition[[i]]
     identity <- paste(scenario, condition, sep = "::")
-    file <- file.path(
-      cache_dir,
-      paste0(
-        "full_gem__gem_", gem_fingerprint,
-        "__pruning_", pruning_fingerprint,
-        "__medium_", safe(scenario),
-        "__condition_", safe(condition), ".rds"
-      )
-    )
     medium <- medium_scenarios[
       as.character(medium_scenarios$medium_scenario_id) == scenario,
       , drop = FALSE
@@ -317,6 +345,17 @@ rc_build_full_gem_cache <- function(
          all(medium$.no_constraints))) {
       medium <- NULL
     }
+    medium_fingerprint <- .rc_full_gem_medium_fingerprint(medium)
+    file <- file.path(
+      cache_dir,
+      paste0(
+        "full_gem__gem_", gem_fingerprint,
+        "__pruning_", pruning_fingerprint,
+        "__medium_bounds_", medium_fingerprint,
+        "__medium_", safe(scenario),
+        "__condition_", safe(condition), ".rds"
+      )
+    )
     rebuild <- !file.exists(file) || isTRUE(force)
     if (!rebuild) {
       full <- tryCatch(readRDS(file), error = function(error) NULL)
@@ -330,6 +369,11 @@ rc_build_full_gem_cache <- function(
       } else {
         NA_character_
       }
+      cached_medium_fingerprint <- if (is.list(full)) {
+        full$cache_identity$medium_fingerprint %||% NA_character_
+      } else {
+        NA_character_
+      }
       cached_strategy <- if (is.list(full)) {
         full$build_params$strategy %||% NA_character_
       } else {
@@ -337,6 +381,7 @@ rc_build_full_gem_cache <- function(
       }
       rebuild <- !identical(cached_gem_fingerprint, gem_fingerprint) ||
         !identical(cached_pruning_fingerprint, pruning_fingerprint) ||
+        !identical(cached_medium_fingerprint, medium_fingerprint) ||
         !identical(
           cached_strategy,
           "medium_flux_consistency_pruned_full_gem"
@@ -356,6 +401,7 @@ rc_build_full_gem_cache <- function(
       full$cache_identity <- list(
         gem_fingerprint = gem_fingerprint,
         pruning_fingerprint = pruning_fingerprint,
+        medium_fingerprint = medium_fingerprint,
         solver = solver,
         species = gem$model_info$species %||% NA_character_,
         source = gem$model_info$source %||% NA_character_,
@@ -373,10 +419,11 @@ rc_build_full_gem_cache <- function(
     summaries[[i]] <- data.frame(
       cache_key = paste(
         "full_gem", gem_fingerprint, pruning_fingerprint,
-        scenario, condition, sep = "::"
+        medium_fingerprint, scenario, condition, sep = "::"
       ),
       gem_fingerprint = gem_fingerprint,
       pruning_fingerprint = pruning_fingerprint,
+      medium_fingerprint = medium_fingerprint,
       medium_scenario = scenario,
       condition = condition,
       file = file,
