@@ -4,7 +4,7 @@ test_that("CORDA2 options preserve FASTCORE and match Python defaults", {
   corda2 <- RegCompassR:::.rc_layer2_corda_options(list(
     model_completion = "corda2"
   ))
-  expect_identical(corda2$model_completion, "corda")
+  expect_identical(corda2$model_completion, "corda2")
   expect_identical(corda2$requested_model_completion, "corda2")
   expect_equal(corda2$penalty_factor, 100)
   expect_equal(corda2$cost_increase, 1.01)
@@ -12,6 +12,7 @@ test_that("CORDA2 options preserve FASTCORE and match Python defaults", {
   expect_equal(corda2$redundancies, 3L)
   expect_equal(corda2$support, 5L)
   expect_equal(corda2$upper_bound, 1e6)
+  expect_identical(corda2$random_noise, FALSE)
   expect_identical(
     corda2$algorithm,
     "resendislab_python_CORDA2_corrected_redundant_path_assessment"
@@ -20,6 +21,7 @@ test_that("CORDA2 options preserve FASTCORE and match Python defaults", {
     value <- RegCompassR:::.rc_layer2_corda_options(list(
       model_completion = alias
     ))
+    expect_identical(value$model_completion, "corda2")
     expect_identical(value$requested_model_completion, "corda2")
   }
   expect_error(
@@ -28,6 +30,13 @@ test_that("CORDA2 options preserve FASTCORE and match Python defaults", {
       corda2_cost_increase = 1
     )),
     "greater than 1"
+  )
+  expect_error(
+    RegCompassR:::.rc_layer2_corda_options(list(
+      model_completion = "corda2",
+      corda_seed = 1L
+    )),
+    "not a CORDA2 parameter"
   )
 })
 
