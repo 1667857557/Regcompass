@@ -1,5 +1,71 @@
 # Public Layer 2 contract for the corrected Python CORDA2 implementation.
 
+.rc_build_celltype_medium_union_gem_cache_before_corda2_public <-
+  .rc_build_celltype_medium_union_gem_cache
+
+.rc_corda2_move_cache_files <- function(cache) {
+  if (!length(cache)) return(cache)
+  old_files <- unique(vapply(cache, function(entry) {
+    as.character(entry$file %||% "")
+  }, character(1)))
+  old_files <- old_files[nzchar(old_files)]
+  file_map <- stats::setNames(old_files, old_files)
+  for (old_file in old_files) {
+    old_dir <- dirname(old_file)
+    new_dir <- file.path(dirname(old_dir), "corda2")
+    dir.create(new_dir, recursive = TRUE, showWarnings = FALSE)
+    new_file <- file.path(new_dir, basename(old_file))
+    if (!identical(normalizePath(old_file, mustWork = FALSE),
+                   normalizePath(new_file, mustWork = FALSE))) {
+      moved <- isTRUE(file.rename(old_file, new_file))
+      if (!moved) {
+        copied <- isTRUE(file.copy(old_file, new_file, overwrite = TRUE))
+        if (!copied) {
+          stop("Could not move CORDA2 cache model to its dedicated directory.",
+               call. = FALSE)
+        }
+        unlink(old_file)
+      }
+    }
+    file_map[[old_file]] <- new_file
+  }
+  for (name in names(cache)) {
+    old_file <- as.character(cache[[name]]$file)
+    new_file <- unname(file_map[[old_file]])
+    cache[[name]]$file <- new_file
+    cache[[name]]$file_checksum <- unname(tools::md5sum(new_file))
+    cache[[name]]$build_strategy <-
+      "celltype_medium_corrected_python_corda2"
+  }
+  summary <- attr(cache, "summary")
+  if (is.data.frame(summary) && nrow(summary)) {
+    summary$file <- unname(file_map[as.character(summary$file)])
+    summary$file_checksum <- unname(tools::md5sum(summary$file))
+    summary$build_strategy <-
+      "celltype_medium_corrected_python_corda2"
+    summary$completion_stage <-
+      "corrected_python_CORDA2_after_confidence_mapping"
+    summary$completion_method <- "corda2"
+    attr(cache, "summary") <- summary
+  }
+  attr(cache, "completion_method") <- "corda2"
+  attr(cache, "fastcore_parallel_task") <- "not_applicable_to_corda2"
+  cache
+}
+
+.rc_build_celltype_medium_union_gem_cache <- function(...) {
+  context <- .rc_layer2_completion_context
+  is_corda2 <- isTRUE(context$active) &&
+    identical(context$model_completion, "corda") &&
+    identical(
+      as.character(context$corda_options$algorithm %||% ""),
+      "resendislab_python_CORDA2_corrected_redundant_path_assessment"
+    )
+  cache <- .rc_build_celltype_medium_union_gem_cache_before_corda2_public(...)
+  if (!is_corda2) return(cache)
+  .rc_corda2_move_cache_files(cache)
+}
+
 .rc_regcompass_step_layer2_before_corda2_public <- rc_regcompass_step_layer2
 
 rc_regcompass_step_layer2 <- function(
