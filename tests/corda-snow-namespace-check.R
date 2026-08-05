@@ -14,25 +14,18 @@ dir.create(lib, recursive = TRUE)
 files <- c(
   "layer2_corda_evidence.R",
   "layer2_corda_lp.R",
-  "layer2_corda_paper_contract.R",
-  "layer2_corda_direction_contract.R",
-  "layer2_corda_model.R",
   "layer2_corda_output_contract.R",
-  "layer2_corda_target_contract.R",
-  "layer2_corda_parent_contract.R",
+  "layer2_corda_direction_contract.R",
   "layer2_corda2_algorithm.R",
   "layer2_corda2_algorithm_build.R",
-  "layer2_corda2_algorithm_integration.R",
-  "layer2_corda2_options_contract.R",
-  "layer2_corda2_correction_contract.R",
-  "layer2_corda2_output_contract.R"
+  "layer2_corda2_options_contract.R"
 )
 
 writeLines(c(
   "Package: Corda2ExactSnowCheck",
   "Title: Exact CORDA2 Snow Namespace Check",
   "Version: 0.0.1",
-  "Description: Installed namespace test for pinned Python CORDA2 semantics.",
+  "Description: Installed namespace test for direct pinned Python CORDA2 semantics.",
   "License: MIT",
   "Encoding: UTF-8",
   "Imports: Matrix, methods, highs, BiocParallel",
@@ -43,8 +36,10 @@ writeLines(c(
 ), file.path(pkg, "DESCRIPTION"))
 writeLines("export(run_corda2_exact_snow_check)", file.path(pkg, "NAMESPACE"))
 for (file in files) {
-  file.copy(file.path(root, "R", file), file.path(pkg, "R", file),
-            overwrite = TRUE)
+  stopifnot(file.copy(
+    file.path(root, "R", file), file.path(pkg, "R", file),
+    overwrite = TRUE
+  ))
 }
 
 support <- c(
@@ -81,7 +76,9 @@ support <- c(
   "  answer <- highs::highs_solve(",
   "    L = as.numeric(obj), lower = as.numeric(lb), upper = as.numeric(ub),",
   "    A = A, lhs = as.numeric(lhs), rhs = as.numeric(rhs), maximum = FALSE,",
-  "    control = highs::highs_control(log_to_console = FALSE, threads = 1L, solver = 'simplex'))",
+  "    control = highs::highs_control(log_to_console = FALSE, output_flag = FALSE,",
+  "      threads = 1L, solver = 'simplex', primal_feasibility_tolerance = 1e-7,",
+  "      time_limit = as.numeric(time_limit)))",
   "  list(status = .rc_lp_status(answer$status_message, answer$status),",
   "       solution = as.numeric(answer$primal_solution),",
   "       objective = as.numeric(answer$objective_value),",
@@ -94,13 +91,7 @@ support <- c(
   "rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {",
   "  if (identical(BPPARAM, FALSE) || is.null(BPPARAM)) return(lapply(X, FUN, ...))",
   "  BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)",
-  "}",
-  ".rc_subset_gem <- function(gem, reactions) gem",
-  "rc_prepare_directional_targets <- function(...) data.frame()",
-  ".rc_directional_feasibility <- function(...) data.frame()",
-  "rc_build_full_gem <- function(gem, ...) gem",
-  ".rc_fastcore_parent <- function(...) stop('not used')",
-  "rc_export_microcompass <- function(...) invisible(TRUE)"
+  "}"
 )
 writeLines(support, file.path(pkg, "R", "support.R"))
 
@@ -123,7 +114,7 @@ run <- c(
   "  on.exit({ try(BiocParallel::bpstop(.TEST_CONTEXT$bpparam), silent = TRUE);",
   "            .TEST_CONTEXT$bpparam <- FALSE }, add = TRUE)",
   "  result <- .rc_corda_build_three_stage(",
-  "    split, classes, options, solver = 'highs', time_limit = 60)",
+  "    split, classes, options, solver = 'highs', time_limit = Inf)",
   "  stopifnot(setequal(result$included, c('SRC', 'H')))",
   "  stopifnot(all(vapply(result$execution, function(x) {",
   "    identical(x$workers, 1L) && identical(x$target_parallelism, FALSE)",
@@ -142,4 +133,4 @@ stopifnot(identical(status, 0L))
 .libPaths(c(lib, .libPaths()))
 suppressPackageStartupMessages(library(Corda2ExactSnowCheck))
 stopifnot(isTRUE(run_corda2_exact_snow_check()))
-cat("Exact Python CORDA2 Snow namespace check passed\n")
+cat("Direct exact Python CORDA2 Snow namespace check passed\n")
