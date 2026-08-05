@@ -4,7 +4,7 @@
   }
   requested <- as.character(model_params$model_completion %||% "none")
   if (length(requested) != 1L || is.na(requested) ||
-      !requested %in% c("none", "full_gem")) {
+      !identical(requested, "none")) {
     stop(
       "Full-GEM mode automatically skips FASTCORE and CORDA2; omit ",
       "`model_completion` or set it to `none`.",
@@ -104,6 +104,8 @@ rc_build_full_gem <- function(
   medium_validated <- rc_validate_gem(full)
   input_reactions <- medium_validated$reactions
   consistent <- input_reactions
+  removed <- character()
+  flux_consistency_diagnostics <- data.frame()
   if (isTRUE(prune_flux_inconsistent)) {
     consistent <- .rc_fastcc_consistent_reactions(
       full,
@@ -118,19 +120,19 @@ rc_build_full_gem <- function(
         call. = FALSE
       )
     }
+    removed <- setdiff(input_reactions, consistent)
+    flux_consistency_diagnostics <- data.frame(
+      reaction_id = input_reactions,
+      flux_consistent = input_reactions %in% consistent,
+      structural_action = ifelse(
+        input_reactions %in% consistent,
+        "retained",
+        "removed_medium_flux_inconsistent"
+      ),
+      stringsAsFactors = FALSE
+    )
     full <- .rc_subset_gem(full, consistent)
   }
-  removed <- setdiff(input_reactions, consistent)
-  flux_consistency_diagnostics <- data.frame(
-    reaction_id = input_reactions,
-    flux_consistent = input_reactions %in% consistent,
-    structural_action = ifelse(
-      input_reactions %in% consistent,
-      "retained",
-      "removed_medium_flux_inconsistent"
-    ),
-    stringsAsFactors = FALSE
-  )
 
   full$reaction_roles <- full$reaction_meta[
     , intersect(
@@ -145,7 +147,9 @@ rc_build_full_gem <- function(
   full$medium_diagnostics <- medium_diagnostics
   full$flux_consistency_diagnostics <- flux_consistency_diagnostics
   full$closure_diagnostics <- flux_consistency_diagnostics
-  full$target_status <- if (length(removed)) {
+  full$target_status <- if (!isTRUE(prune_flux_inconsistent)) {
+    "not_prechecked"
+  } else if (length(removed)) {
     "medium_flux_inconsistent_reactions_removed"
   } else {
     "all_reactions_medium_flux_consistent"
@@ -172,8 +176,14 @@ rc_build_full_gem <- function(
     time_limit = time_limit,
     n_input_reactions = length(input_reactions),
     n_reactions = ncol(full$S),
-    n_flux_inconsistent_reactions = length(removed),
-    removed_flux_inconsistent_reactions = removed,
+    n_flux_inconsistent_reactions = if (isTRUE(prune_flux_inconsistent)) {
+      length(removed)
+    } else {
+      NA_integer_
+    },
+    removed_flux_inconsistent_reactions = if (
+      isTRUE(prune_flux_inconsistent)
+    ) removed else character(),
     n_metabolites = nrow(full$S)
   )
   full
@@ -203,11 +213,12 @@ rc_build_full_gem <- function(
 }
 
 .rc_full_gem_pruning_fingerprint <- function(
-    flux_consistency_epsilon, solver) {
+    flux_consistency_epsilon, solver, time_limit) {
   payload <- list(
     algorithm = "medium_flux_consistency_pruned_full_gem_v1",
     epsilon = as.numeric(flux_consistency_epsilon),
-    solver = as.character(solver)
+    solver = as.character(solver),
+    time_limit = as.numeric(time_limit)
   )
   file <- tempfile("RegCompassR-full-gem-pruning-", fileext = ".rds")
   on.exit(unlink(file, force = TRUE), add = TRUE)
@@ -266,7 +277,7 @@ rc_build_full_gem_cache <- function(
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
   gem_fingerprint <- .rc_full_gem_cache_fingerprint(gem)
   pruning_fingerprint <- .rc_full_gem_pruning_fingerprint(
-    flux_consistency_epsilon, solver
+    flux_consistency_epsilon, solver, time_limit
   )
   scenarios <- unique(as.character(medium_scenarios$medium_scenario_id))
   combinations <- expand.grid(
@@ -375,6 +386,7 @@ rc_build_full_gem_cache <- function(
         build$n_flux_inconsistent_reactions,
       n_metabolites = nrow(full$S),
       flux_consistency_epsilon = flux_consistency_epsilon,
+      medium_applied = isTRUE(build$medium_applied),
       solver = solver,
       completion_time_limit = time_limit,
       build_strategy = "medium_flux_consistency_pruned_full_gem",
@@ -414,10 +426,18 @@ rc_build_full_gem_cache <- function(
       )
     }
   }
-  if (!length(cache)) {
+  cached_media <- unique(vapply(
+    cache,
+    function(entry) as.character(entry$medium_scenario),
+    character(1)
+  ))
+  missing_target_media <- setdiff(scenarios, cached_media)
+  if (length(missing_target_media)) {
     stop(
-      "No requested target reactions remain after medium flux-consistency pruning.",
-      call. = FALSE
+      "No requested target reactions remain after medium flux-consistency ",
+      "pruning for medium scenario(s): ",
+      paste(missing_target_media, collapse = ", "),
+      ".", call. = FALSE
     )
   }
   attr(cache, "summary") <- do.call(rbind, summaries)
