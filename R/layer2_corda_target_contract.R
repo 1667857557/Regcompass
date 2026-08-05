@@ -1,8 +1,5 @@
 # Apply fixed Python CORDA2 tflux=1 to RegCompass post-build scoring targets.
 
-.rc_complete_celltype_medium_corda_gem_output_base <-
-  .rc_complete_celltype_medium_corda_gem
-
 .rc_corda2_apply_target_flux <- function(
     model, target_flux = 1, strict, cell_type) {
   diagnostics <- as.data.frame(model$closure_diagnostics)
@@ -33,9 +30,6 @@
       "corda2_unresolved_at_tflux"
     )
   )
-  # Exact Python CORDA2 does not stop when a target is impossible; it records
-  # the target in `impossible` and completes the build. Do not elevate this
-  # RegCompass post-build closure diagnostic into an algorithmic error.
   targets <- diagnostics[
     final_target_feasible,
     c("reaction_id", "target_direction"),
@@ -60,6 +54,7 @@
     sum(final_target_feasible)
   model$build_params$association_flux_tolerance <-
     model$build_params$corda_options$feasibility_tolerance
+  model$build_params$target_flux_cell_type <- as.character(cell_type)
   model
 }
 
@@ -72,22 +67,3 @@
     cell_type = cell_type
   )
 }
-
-.rc_complete_celltype_medium_corda_gem <- function(...) {
-  args <- list(...)
-  model <- do.call(.rc_complete_celltype_medium_corda_gem_output_base, args)
-  model <- .rc_corda2_apply_target_flux(
-    model,
-    target_flux = args$corda_options$target_flux,
-    strict = args$strict,
-    cell_type = as.character(args$cell_type)
-  )
-  .rc_validate_corda_union_model(
-    model,
-    cell_type = as.character(args$cell_type)
-  )
-  model
-}
-
-.rc_complete_celltype_medium_corda_like_gem <-
-  .rc_complete_celltype_medium_corda_gem
