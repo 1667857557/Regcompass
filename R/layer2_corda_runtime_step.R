@@ -12,33 +12,12 @@
   is_full_gem <- identical(model_mode, "full_gem")
 
   if (is_full_gem) {
-    requested <- as.character(model_params$model_completion %||% "none")
-    if (length(requested) != 1L || is.na(requested) ||
-        !requested %in% c("none", "full_gem")) {
-      stop(
-        "`model_mode = \"full_gem\"` automatically skips FASTCORE and ",
-        "CORDA2; omit `model_completion` or set it to `none`.",
-        call. = FALSE
-      )
-    }
-    incompatible <- intersect(names(model_params), c(
-      "fastcore_epsilon", "max_support_reactions", "strict",
-      "corda2_args", "corda_medium_confidence_threshold",
-      "corda_negative_confidence_threshold", "corda_regulatory_weight",
-      "corda_include_evidence_outside_modules",
-      "corda_max_medium_confidence_reactions"
-    ))
-    if (length(incompatible)) {
-      stop(
-        "Full-GEM mode does not accept FASTCORE or CORDA2 controls: ",
-        paste(incompatible, collapse = ", "),
-        ". It applies only the requested medium and flux-consistency pruning.",
-        call. = FALSE
-      )
-    }
+    .rc_validate_full_gem_model_params(model_params)
     corda_options <- list(
       model_completion = "none",
-      requested_model_completion = requested,
+      requested_model_completion = as.character(
+        model_params$model_completion %||% "none"
+      ),
       algorithm = "medium_flux_consistency_pruned_full_gem"
     )
     is_corda2 <- FALSE
