@@ -73,8 +73,9 @@
   .rc_corda_results_table(results)
 }
 
-.rc_corda2_reduce_confidence <- function(
-    split, directional_confidence, initial_reaction_confidence) {
+# Exact equivalent of Python CORDA.__reduce_conf(): one numeric confidence per
+# reaction, equal to max(forward confidence, reverse confidence).
+.rc_corda2_reduce_confidence <- function(split, directional_confidence) {
   reactions <- split$reaction_order
   reduced <- stats::setNames(rep(-1L, length(reactions)), reactions)
   for (reaction in reactions) {
@@ -83,9 +84,7 @@
     ]
     reduced[[reaction]] <- max(directional_confidence[variables])
   }
-  label <- as.character(initial_reaction_confidence[reactions])
-  label[reduced == 3L] <- "RE"
-  stats::setNames(label, reactions)
+  reduced
 }
 
 .rc_corda2_count_in_order <- function(value) {
@@ -222,9 +221,15 @@
   included_reactions <- unique(as.character(
     split$variable_to_reaction[included_variables]
   ))
-  initial_reaction_confidence <- classes$initial_confidence
+  initial_reaction_confidence <- .rc_corda2_reduce_confidence(
+    split, initial_directional_confidence
+  )
   final_reaction_confidence <- .rc_corda2_reduce_confidence(
-    split, confidence, initial_reaction_confidence
+    split, confidence
+  )
+  final_reaction_status <- stats::setNames(
+    ifelse(final_reaction_confidence == 3L, "included", "excluded"),
+    names(final_reaction_confidence)
   )
   inclusion_stage <- stats::setNames(
     rep(NA_character_, length(initial_reaction_confidence)),
@@ -264,6 +269,10 @@
   list(
     included = included_reactions,
     included_directional_variables = included_variables,
+    initial_reaction_confidence = initial_reaction_confidence,
+    final_reaction_confidence = final_reaction_confidence,
+    final_reaction_status = final_reaction_status,
+    final_confidence = final_reaction_confidence,
     final_directional_confidence = confidence,
     initial_directional_confidence = initial_directional_confidence,
     confidence_after_stage1 = confidence_after_stage1,
@@ -271,7 +280,6 @@
       confidence_after_stage2_association,
     confidence_after_stage2_support = confidence_after_stage2_support,
     confidence_after_stage2_medium = confidence_after_stage2_medium,
-    final_confidence = final_reaction_confidence,
     inclusion_stage = inclusion_stage,
     inclusion_stage_direction = inclusion_stage_direction,
     stage1_associated = unique(as.character(
