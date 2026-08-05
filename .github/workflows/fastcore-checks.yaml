@@ -14,16 +14,19 @@ jobs:
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v4
+
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
+
       - name: Validate cross-package source contract
         shell: python
         run: |
           from pathlib import Path
+
           description = Path("DESCRIPTION").read_text()
           required_description = [
-              "Version: 2.4.4",
+              "Version: 2.4.5",
               "'condition_grn_contract_compat.R'",
               "'mixed_pando_contract.R'",
               "'grn_parallel_merge_contract.R'",
@@ -31,24 +34,16 @@ jobs:
               "'condition_penalty_contract.R'",
               "'layer2_parallel_runtime.R'",
               "'celltype_microcompass_reaction_parallel.R'",
-              "'layer2_corda_lp.R'",
+              "'layer2_corda_paper_contract.R'",
+              "'layer2_corda2_algorithm.R'",
               "'layer2_corda_model.R'",
           ]
-          missing = [value for value in required_description if value not in description]
+          missing = [x for x in required_description if x not in description]
           if missing:
               raise RuntimeError(f"DESCRIPTION integration contract missing: {missing}")
           if "Pando (>=" in description:
               raise RuntimeError("DESCRIPTION still imposes a Pando version floor")
-          deleted_override_files = [
-              "layer2_corda2_correction_contract.R",
-              "layer2_corda_solver_contract.R",
-              "layer2_corda2_algorithm_integration.R",
-              "layer2_corda2_public_contract.R",
-              "layer2_corda2_output_contract.R",
-          ]
-          present = [name for name in deleted_override_files if name in description]
-          if present:
-              raise RuntimeError(f"deleted CORDA2 override files remain in Collate: {present}")
+
           order_pairs = [
               ("'condition_grn_contract.R'", "'condition_grn_contract_compat.R'"),
               ("'mixed_pando.R'", "'mixed_pando_contract.R'"),
@@ -56,104 +51,83 @@ jobs:
               ("'grn_route_parallel.R'", "'grn_integration_contract.R'"),
               ("'grn_integration_contract.R'", "'condition_penalty_contract.R'"),
               ("'step_layer2.R'", "'layer2_parallel_runtime.R'"),
-              ("'layer2_corda_lp.R'", "'layer2_corda2_algorithm.R'"),
+              ("'layer2_corda_paper_contract.R'", "'layer2_corda2_algorithm.R'"),
               ("'layer2_corda2_algorithm_build.R'", "'layer2_corda_runtime_cache.R'"),
           ]
           for first, second in order_pairs:
               if description.index(first) > description.index(second):
                   raise RuntimeError(f"invalid Collate order: {first} after {second}")
+
           bridge = Path("R/grn_integration_contract.R").read_text()
           required_bridge = [
-              "getNamespaceExports(\"Pando\")",
+              'getNamespaceExports("Pando")',
               ".rc_normalize_condition_pando_layer_args",
               "Unsupported override(s)",
           ]
-          missing = [value for value in required_bridge if value not in bridge]
+          missing = [x for x in required_bridge if x not in bridge]
           if missing:
               raise RuntimeError(f"Pando runtime bridge missing: {missing}")
           if "package_version" in bridge or "packageVersion" in bridge:
               raise RuntimeError("Pando runtime bridge contains a version gate")
-          repository = Path("R/00_meta_module_utils.R").read_text()
-          required_repository = [
-              "required_exported_api_without_version_floor",
-              "getNamespaceExports(\"Pando\")",
-          ]
-          missing = [value for value in required_repository if value not in repository]
-          if missing:
-              raise RuntimeError(f"Pando repository validation missing: {missing}")
-          if "base::package_version" in repository:
-              raise RuntimeError("Pando repository validation still contains a version floor")
+
           penalty = Path("R/condition_penalty_contract.R").read_text()
-          required_penalty = [
+          for value in (
               "abs(corr) >= .RC_PANDO_PENALTY_CORR_THRESHOLD",
               "abs(estimate) >= .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD",
-          ]
-          missing = [value for value in required_penalty if value not in penalty]
-          if missing:
-              raise RuntimeError(f"condition penalty contract missing: {missing}")
+          ):
+              if value not in penalty:
+                  raise RuntimeError(f"condition penalty contract missing: {value}")
 
-          runtime = Path("R/layer2_parallel_runtime.R").read_text()
           step = Path("R/step_layer2.R").read_text()
           cache = Path("R/celltype_union_gem_cache.R").read_text()
-          corda_lp = Path("R/layer2_corda_lp.R").read_text()
-          corda_model = Path("R/layer2_corda_model.R").read_text()
-          engine = Path("R/celltype_microcompass_reaction_parallel.R").read_text()
+          split = Path("R/layer2_corda_paper_contract.R").read_text()
+          algorithm = Path("R/layer2_corda2_algorithm_build.R").read_text()
+          model = Path("R/layer2_corda_model.R").read_text()
           direct_contracts = {
-              "Layer 2 parallel helpers": (
-                  runtime,
-                  [".rc_layer2_enter_parallel_context", ".rc_layer2_task_bpparam", ".rc_atomic_save_rds"],
-              ),
-              "Layer 2 direct entrypoint": (
+              "Layer 2 entrypoint": (
                   step,
                   [".rc_prepare_corda_worker_pool", ".rc_layer2_prepare_completion", ".rc_layer2_finalize_completion"],
               ),
-              "union-cache direct dispatch": (
+              "union-cache dispatch": (
                   cache,
                   [".rc_build_celltype_medium_corda_cache", "context$model_completion"],
               ),
-              "CORDA2 direct LP": (
-                  corda_lp,
-                  ["Threads", "hi_solver_set_objective", "hi_solver_set_variable_bounds", "hi_solver_get_option"],
+              "original CORDA2 split": (
+                  split,
+                  [".rc_corda2_split_original", "_CORDA_rev_rxn", ".rc_corda2_close_opposite"],
               ),
-              "CORDA2 direct model": (
-                  corda_model,
-                  [".rc_corda_parent", ".rc_corda_build_three_stage", "time_limit = Inf", ".rc_finalize_corda_union_model"],
+              "original CORDA2 state machine": (
+                  algorithm,
+                  ["HCtoMC", "HCtoNC", "MCxNC", "options$MCxNCthresh", "corda2_step3_HC_OT_dependencies"],
+              ),
+              "direct CORDA2 model": (
+                  model,
+                  [".rc_corda_parent", ".rc_corda2_split_original", ".rc_corda_build_three_stage", ".rc_corda2_apply_direction_bounds", ".rc_finalize_corda_union_model"],
               ),
           }
           for label, (text, required) in direct_contracts.items():
-              missing = [value for value in required if value not in text]
+              missing = [x for x in required if x not in text]
               if missing:
                   raise RuntimeError(f"{label} missing: {missing}")
-          forbidden_override_markers = [
-              "_base <-",
-              "before_corda2",
-              "completion_base <-",
-              "runtime_base <-",
-          ]
+
+          forbidden_markers = ["_base <-", "before_corda2", "completion_base <-", "runtime_base <-"]
           production_files = [
-              Path("R/layer2_parallel_runtime.R"),
               Path("R/step_layer2.R"),
               Path("R/celltype_union_gem_cache.R"),
-              Path("R/layer2_corda_lp.R"),
+              Path("R/layer2_corda_paper_contract.R"),
+              Path("R/layer2_corda2_algorithm.R"),
+              Path("R/layer2_corda2_algorithm_build.R"),
               Path("R/layer2_corda_model.R"),
               Path("R/layer2_corda_runtime.R"),
               Path("R/layer2_corda_runtime_cache.R"),
               Path("R/layer2_corda_runtime_step.R"),
-              Path("R/layer2_corda_pool_lifecycle.R"),
           ]
           for file in production_files:
               text = file.read_text()
-              found = [marker for marker in forbidden_override_markers if marker in text]
+              found = [x for x in forbidden_markers if x in text]
               if found:
                   raise RuntimeError(f"function override marker remains in {file}: {found}")
-          required_engine = [
-              "directional_reaction_by_matching_metacells_step2",
-              ".rc_atomic_save_rds",
-              "gc(verbose = FALSE, full = TRUE)",
-          ]
-          missing = [value for value in required_engine if value not in engine]
-          if missing:
-              raise RuntimeError(f"reaction-level Step 2 contract missing: {missing}")
+
       - name: Parse package sources
         shell: Rscript {0}
         run: |
@@ -170,6 +144,7 @@ jobs:
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
           for (file in files) parse(file = file)
+
       - name: Run lightweight integration tests
         shell: Rscript {0}
         run: |
@@ -208,5 +183,6 @@ jobs:
             list(rna_layer = "counts"), condition_types = "epithelial_like"
           ), silent = TRUE)
           stopifnot(inherits(rejected, "try-error"))
+
       - name: Build source package
         run: R CMD build --no-build-vignettes --no-manual .

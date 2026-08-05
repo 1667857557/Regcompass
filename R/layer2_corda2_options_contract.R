@@ -1,88 +1,46 @@
-# Public parameter contract for exact Python CORDA2 execution semantics.
+# Public parameter contract for the original MATLAB CORDA2 algorithm.
 
-.rc_corda2_constructor_args <- function(model_params) {
-  exact <- model_params$corda2_args %||% list()
-  if (!is.list(exact)) {
+.rc_corda2_original_args <- function(model_params) {
+  args <- model_params$corda2_args %||% list()
+  if (!is.list(args)) {
     stop("`corda2_args` must be a named list.", call. = FALSE)
   }
-  if (length(exact) && (is.null(names(exact)) || any(!nzchar(names(exact))))) {
+  if (length(args) && (is.null(names(args)) || any(!nzchar(names(args))))) {
     stop("`corda2_args` must be a named list.", call. = FALSE)
   }
-  allowed <- c("met_prod", "n", "penalty_factor", "support")
-  unknown <- setdiff(names(exact), allowed)
+  allowed <- c("MCxNCthresh", "constraint", "constrainby", "om", "ci")
+  unknown <- setdiff(names(args), allowed)
   if (length(unknown)) {
     stop(
-      "Unknown Python CORDA constructor parameter(s) in `corda2_args`: ",
+      "Unknown CORDA2 parameter(s) in `corda2_args`: ",
       paste(unknown, collapse = ", "),
-      ". Allowed names are met_prod, n, penalty_factor and support.",
+      ". Allowed names are MCxNCthresh, constraint, constrainby, om and ci.",
       call. = FALSE
     )
   }
-
-  same_value <- function(left, right) {
-    isTRUE(all.equal(left, right, check.attributes = FALSE))
-  }
-  resolve <- function(name, legacy, default) {
-    has_exact <- name %in% names(exact)
-    has_legacy <- !is.null(legacy)
-    if (has_exact && has_legacy && !same_value(exact[[name]], legacy)) {
-      stop(
-        "Conflicting CORDA2 values for Python parameter `", name,
-        "` and its legacy RegCompass alias.",
-        call. = FALSE
-      )
-    }
-    if (has_exact) return(exact[[name]])
-    if (has_legacy) return(legacy)
-    default
-  }
-
-  met_prod <- if ("met_prod" %in% names(exact)) exact$met_prod else NULL
-  if (!is.null(met_prod)) {
-    stop(
-      "RegCompass exact CORDA2 currently supports the Python constructor only ",
-      "for `met_prod = NULL`; non-NULL mock metabolic targets are not silently ",
-      "approximated.",
-      call. = FALSE
-    )
-  }
-
-  n <- .rc_corda_integer(
-    resolve(
-      "n",
-      model_params$corda2_redundancies %||% NULL,
-      3L
-    ),
-    "corda2_args$n",
-    0L
+  MCxNCthresh <- .rc_corda_scalar(
+    args$MCxNCthresh %||% 2,
+    "corda2_args$MCxNCthresh", 0, Inf
   )
-  penalty_factor <- .rc_corda_scalar(
-    resolve(
-      "penalty_factor",
-      model_params$corda2_penalty_factor %||%
-        model_params$corda_penalty_factor %||% NULL,
-      100
-    ),
-    "corda2_args$penalty_factor",
-    -Inf,
-    Inf
+  constraint <- .rc_corda_scalar(
+    args$constraint %||% 1,
+    "corda2_args$constraint", 0, Inf
   )
-  support <- .rc_corda_integer(
-    resolve(
-      "support",
-      model_params$corda2_support %||%
-        model_params$corda_support %||% NULL,
-      5L
-    ),
-    "corda2_args$support",
-    0L
-  )
-
+  constrainby <- as.character(args$constrainby %||% "val")
+  if (length(constrainby) != 1L || is.na(constrainby) ||
+      !constrainby %in% c("val", "perc")) {
+    stop("`corda2_args$constrainby` must be `val` or `perc`.",
+         call. = FALSE)
+  }
+  om <- .rc_corda_scalar(args$om %||% 1e4, "corda2_args$om", 0, Inf)
+  if (om <= 0) stop("`corda2_args$om` must be positive.", call. = FALSE)
+  ci <- .rc_corda_scalar(args$ci %||% 0.01, "corda2_args$ci", 0, Inf)
   list(
-    met_prod = NULL,
-    n = n,
-    penalty_factor = penalty_factor,
-    support = support
+    MCxNCthresh = MCxNCthresh,
+    constraint = constraint,
+    constrainby = constrainby,
+    om = om,
+    ci = ci
   )
 }
 
@@ -102,31 +60,29 @@
       algorithm = "add_only_compact_FASTCORE"
     ))
   }
-  if (!requested %in% c("corda2", "corda", "corda_like")) {
+  if (!requested %in% c("corda2", "corda")) {
     stop("`model_completion` must be `fastcore` or `corda2`.",
          call. = FALSE)
   }
 
-  non_source <- intersect(names(model_params), c(
-    "corda2_cost_increase", "corda_cost_increase", "corda_kappa",
+  obsolete <- intersect(names(model_params), c(
+    "corda2_redundancies", "corda2_penalty_factor", "corda2_support",
+    "corda_penalty_factor", "corda_support", "corda_n", "corda_p",
     "corda2_target_flux", "corda_tflux", "corda_epsilon",
+    "corda2_cost_increase", "corda_cost_increase", "corda_kappa",
     "corda2_flux_tolerance", "corda_flux_tolerance", "corda_seed",
-    "corda_gamma", "corda_n", "corda_p",
-    "corda_other_penalty", "corda_negative_penalty"
+    "corda_gamma", "corda_other_penalty", "corda_negative_penalty"
   ))
-  if (length(non_source)) {
+  if (length(obsolete)) {
     stop(
-      "Exact Python CORDA2 does not expose parameter(s): ",
-      paste(non_source, collapse = ", "),
-      ". The source fixes CI=1.01, tflux=1 and UPPER=1e6; its constructor ",
-      "controls are met_prod, n, penalty_factor and support.",
+      "Unsupported Python-CORDA parameter(s): ",
+      paste(obsolete, collapse = ", "),
+      ". Use `corda2_args` with the original MATLAB CORDA2 names.",
       call. = FALSE
     )
   }
 
-  constructor <- .rc_corda2_constructor_args(model_params)
-  scalar <- .rc_corda_scalar
-  flag <- .rc_corda_flag
+  original <- .rc_corda2_original_args(model_params)
   max_mc <- suppressWarnings(as.numeric(
     model_params$corda_max_medium_confidence_reactions %||% Inf
   ))
@@ -138,31 +94,26 @@
   }
   if (is.finite(max_mc)) max_mc <- as.integer(floor(max_mc))
 
-  answer <- list(
+  answer <- c(list(
     model_completion = "corda2",
-    requested_model_completion = "corda2",
-    met_prod = constructor$met_prod,
-    n = constructor$n,
-    # Internal compatibility alias. The canonical source parameter is `n`.
-    redundancies = constructor$n,
-    penalty_factor = constructor$penalty_factor,
-    support = constructor$support,
-    cost_increase = 1.01,
-    target_flux = 1,
-    upper_bound = 1e6,
-    medium_confidence_threshold = scalar(
+    requested_model_completion = requested
+  ), original, list(
+    flux_threshold = 1e-7,
+    baseline_cost = 1e-3,
+    output_bound = 1000,
+    medium_confidence_threshold = .rc_corda_scalar(
       model_params$corda_medium_confidence_threshold %||% 0.75,
       "corda_medium_confidence_threshold", 0, 1
     ),
-    negative_confidence_threshold = scalar(
+    negative_confidence_threshold = .rc_corda_scalar(
       model_params$corda_negative_confidence_threshold %||% 0.10,
       "corda_negative_confidence_threshold", 0, 1
     ),
-    regulatory_weight = scalar(
+    regulatory_weight = .rc_corda_scalar(
       model_params$corda_regulatory_weight %||% 0.20,
       "corda_regulatory_weight", 0, 1
     ),
-    include_evidence_outside_modules = flag(
+    include_evidence_outside_modules = .rc_corda_flag(
       model_params$corda_include_evidence_outside_modules %||% TRUE,
       "corda_include_evidence_outside_modules"
     ),
@@ -171,32 +122,12 @@
       "(1 - regulatory_weight) * max(within-cell-type RNA percentile,",
       "multiome percentile) + regulatory_weight * regulatory support"
     ),
-    algorithm = "resendislab_python_CORDA2_c02e06d_exact_semantics",
-    python_reference_repository = "resendislab/corda",
-    python_reference_commit =
-      "c02e06d50606bf93f23d8f2e6d6ade0e996ca70e",
-    python_constructor_signature = c(
-      "model", "confidence", "met_prod", "n", "penalty_factor", "support"
-    ),
-    python_constructor_controls = c(
-      met_prod = "corda2_args$met_prod",
-      n = "corda2_args$n",
-      penalty_factor = "corda2_args$penalty_factor",
-      support = "corda2_args$support"
-    ),
-    python_constructor_defaults = list(
-      met_prod = NULL,
-      n = 3L,
-      penalty_factor = 100,
-      support = 5L
-    ),
-    python_fixed_constants = c(
-      CI = 1.01, tflux = 1, UPPER = 1e6
-    ),
-    supported_scope = "met_prod = NULL",
-    source_semantics = "exact",
-    random_noise = FALSE
-  )
+    algorithm = "schultzdre_MATLAB_CORDA2_original_semantics",
+    reference_repository = "schultzdre/Constraint-Based-Modeling",
+    reference_file = "CORDA2.m",
+    random_noise = FALSE,
+    source_semantics = "original_matlab_corda2"
+  ))
   if (answer$negative_confidence_threshold >
       answer$medium_confidence_threshold) {
     stop(

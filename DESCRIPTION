@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.4
+Version: 2.4.5
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -31,21 +31,16 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     membership splitting. RNA support, regulatory effects, GPR rules,
     cell-type-specific union GEM construction and directional penalties use
     consistent reaction ordering, bounds and medium scenarios. Stage 5 keeps
-    compact FASTCORE completion as the default and optionally reproduces the
-    execution semantics of resendislab Python CORDA2 commit
-    c02e06d50606bf93f23d8f2e6d6ade0e996ca70e for met_prod = NULL after
-    mapping cell-type multiome evidence to absent, unknown, low, medium and high
-    confidence. The exact constructor controls are exposed as met_prod, n,
-    penalty_factor and support under corda2_args. CORDA2 creates both direction
-    variables for every reaction, uses the source constants UPPER = 1e6,
-    CI = 1.01 and tflux = 1, preserves ordered COBRA bound-setter behavior,
-    forward-confidence cost coupling and positive-coefficient medium-variable
-    minimization, and adds no reconstruction time limit absent from the Python
-    source. Persistent and one-shot HiGHS paths use the same verified simplex,
-    one-thread and feasibility-tolerance configuration. Targets are processed
-    serially with one persistent solver state. Parallelism is limited to
-    independent cell-type-by-medium CORDA2 instances, and the primary and
-    RNA-only scoring paths reuse the same completed structural model cache.
+    compact FASTCORE completion as the default and optionally runs the original
+    MATLAB CORDA2 algorithm from schultzdre/Constraint-Based-Modeling/CORDA2.m
+    after mapping cell-type multiome evidence to HC, MC, NC and OT reactions.
+    The adjustable original controls are MCxNCthresh, constraint, constrainby,
+    om and ci under corda2_args. Actively reversible reactions are split once,
+    the opposite directional copy is closed during each target assessment, and
+    the original Step 1, Step 2.1, Step 2.2 and Step 3 dependency transitions are
+    preserved. Targets remain serial within each reconstruction; independent
+    cell-type-by-medium models may run in parallel and are reused by the primary
+    and RNA-only scoring paths.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)

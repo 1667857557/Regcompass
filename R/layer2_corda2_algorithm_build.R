@@ -1,276 +1,264 @@
-# Exact Python CORDA2 build-state transitions.
-# LP engine lifecycle and metrics are defined once in layer2_corda_lp.R.
+# Original MATLAB CORDA2 three-step reconstruction state machine.
 
-.rc_corda2_minimize_medium_targets <- function(
-    engine, split, targets, directional_confidence, options,
-    stage = "corda2_stage2_independent_medium_minimization") {
-  targets <- as.character(targets)
-  if (anyNA(targets) || any(!targets %in% colnames(split$S))) {
-    stop("CORDA2 medium variable is missing from the solver model.",
-         call. = FALSE)
-  }
-  results <- vector("list", length(targets))
-  promoted <- character()
-
-  for (i in seq_along(targets)) {
-    target <- targets[[i]]
-    objective <- stats::setNames(
-      rep(0, ncol(split$S)), colnames(split$S)
-    )
-    objective[[target]] <- 1
-    solved <- .rc_corda_engine_solve(
-      engine,
-      objective = as.numeric(objective),
-      lower = split$lb,
-      upper = split$ub
-    )
-    engine <- solved$engine
-    answer <- solved$answer
-    target_flux <- if (identical(answer$status, "optimal") &&
-                       length(answer$solution) == ncol(split$S)) {
-      as.numeric(answer$solution[[match(target, colnames(split$S))]])
-    } else {
-      NA_real_
-    }
-    if (identical(answer$status, "optimal") &&
-        is.finite(answer$objective) &&
-        answer$objective > options$target_flux) {
-      directional_confidence[[target]] <- 3L
-      promoted <- c(promoted, target)
-    }
-    results[[i]] <- .rc_corda2_target_result(
-      split, target, stage, "positive_coefficient_minimization",
-      answer$status,
-      target_flux = target_flux,
-      objective = answer$objective,
-      backend = answer$backend,
-      solver_message = answer$solver_message %||% "",
-      n_solves = 1L
-    )
-  }
-
-  list(
-    engine = engine,
-    confidence = directional_confidence,
-    promoted = promoted,
-    results = results,
-    execution = list(
-      n_targets = length(targets),
-      n_chunks = if (length(targets)) 1L else 0L,
-      workers = 1L,
-      task_granularity = "python_serial_variable_order_positive_minimization",
-      stage_barrier = FALSE,
-      target_parallelism = FALSE,
-      persistent_solver = identical(engine$type, "highs_persistent_cpp"),
-      solver_runtime = engine$type,
-      n_solves = engine$n_solves,
-      n_fallback = engine$n_fallback
-    )
+.rc_corda2_empty_dependency_matrix <- function(rows, columns) {
+  matrix(
+    0L,
+    nrow = length(rows),
+    ncol = length(columns),
+    dimnames = list(rows, columns)
   )
 }
 
-.rc_corda2_results_table <- function(results, split = NULL) {
-  if (!length(results)) return(.rc_corda_empty_task_table())
-  .rc_corda_results_table(results)
-}
-
-# Exact equivalent of Python CORDA.__reduce_conf(): one numeric confidence per
-# reaction, equal to max(forward confidence, reverse confidence).
-.rc_corda2_reduce_confidence <- function(split, directional_confidence) {
+.rc_corda2_reaction_numeric_confidence <- function(
+    split, directional_class, included_variables = character()) {
+  level <- c(OT = 0L, NC = 1L, MC = 2L, HC = 3L)
+  directional <- unname(level[directional_class])
+  names(directional) <- names(directional_class)
+  if (length(included_variables)) {
+    directional[] <- 0L
+    directional[included_variables] <- 3L
+  }
   reactions <- split$reaction_order
-  reduced <- stats::setNames(rep(-1L, length(reactions)), reactions)
+  answer <- stats::setNames(integer(length(reactions)), reactions)
   for (reaction in reactions) {
     variables <- split$direction_table$variable_id[
       split$direction_table$reaction_id == reaction
     ]
-    reduced[[reaction]] <- max(directional_confidence[variables])
+    answer[[reaction]] <- max(directional[variables])
   }
-  reduced
-}
-
-.rc_corda2_count_in_order <- function(value) {
-  value <- as.character(value)
-  if (!length(value)) return(stats::setNames(integer(), character()))
-  keys <- unique(value)
-  stats::setNames(vapply(keys, function(key) sum(value == key), integer(1)), keys)
+  answer
 }
 
 .rc_corda_build_three_stage <- function(
     split, classes, options, solver, time_limit) {
-  confidence <- .rc_corda2_directional_confidence(split, classes)
-  initial_directional_confidence <- confidence
+  directional_class <- .rc_corda2_directional_class(split, classes)
+  initial_directional_class <- directional_class
+  hc <- names(directional_class)[directional_class == "HC"]
+  mc <- names(directional_class)[directional_class == "MC"]
+  nc <- names(directional_class)[directional_class == "NC"]
+  ot <- names(directional_class)[directional_class == "OT"]
   inclusion_stage_direction <- stats::setNames(
-    rep(NA_character_, length(confidence)), names(confidence)
+    rep(NA_character_, length(directional_class)), names(directional_class)
   )
-  inclusion_stage_direction[confidence == 3L] <- "initial_high_confidence"
+  inclusion_stage_direction[hc] <- "initial_high_confidence"
+
   engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
   on.exit({
     engine <- .rc_corda_release_lp_engine(engine)
   }, add = TRUE)
-  execution <- list()
   task_tables <- list()
-  all_impossible <- character()
-  redundancy_values <- stats::setNames(
-    integer(length(confidence)), names(confidence)
-  )
 
-  # Python build iteration 1.
-  stage1_targets <- names(confidence)[confidence == 3L]
-  stage1 <- .rc_corda2_associated(
-    engine, split, stage1_targets, confidence, options,
-    penalize_medium = TRUE, redundancies = TRUE,
-    stage = "corda2_stage1_high_associations"
-  )
-  engine <- stage1$engine
-  confidence <- stage1$confidence
-  all_impossible <- c(all_impossible, stage1$impossible)
-  redundancy_values[names(stage1$redundancies)] <- stage1$redundancies
-  stage1_needed <- unique(stage1$needed)
-  newly_stage1 <- stage1_needed[confidence[stage1_needed] != 3L]
-  confidence[stage1_needed] <- 3L
-  confidence_after_stage1 <- confidence
-  inclusion_stage_direction[newly_stage1] <-
-    "corda2_stage1_associated_with_high"
-  execution$stage1 <- stage1$execution
-  task_tables$stage1 <- .rc_corda2_results_table(stage1$results)
-
-  # Python build iteration 2: absent support from low/medium targets.
-  stage2_targets <- names(confidence)[confidence %in% c(1L, 2L)]
-  stage2 <- .rc_corda2_associated(
-    engine, split, stage2_targets, confidence, options,
-    penalize_medium = FALSE, redundancies = TRUE,
-    stage = "corda2_stage2_medium_absent_support"
-  )
-  engine <- stage2$engine
-  confidence <- stage2$confidence
-  all_impossible <- c(all_impossible, stage2$impossible)
-  redundancy_values[names(stage2$redundancies)] <- stage2$redundancies
-  confidence_after_stage2_association <- confidence
-  absent_needed <- stage2$needed[
-    confidence_after_stage2_association[stage2$needed] == -1L
-  ]
-  absent_count <- .rc_corda2_count_in_order(absent_needed)
-  supported_absent <- names(absent_count)[
-    as.integer(absent_count) >= options$support
-  ]
-  newly_absent <- supported_absent[confidence[supported_absent] != 3L]
-  confidence[supported_absent] <- 3L
-  confidence_after_stage2_support <- confidence
-  inclusion_stage_direction[newly_absent] <-
-    "corda2_stage2_absent_support_threshold"
-  execution$stage2_association <- stage2$execution
-  task_tables$stage2_association <- .rc_corda2_results_table(stage2$results)
-
-  # Exact Python blocking of all remaining confidence -1 variables.
-  split_after_absent <- split
-  absent_remaining <- names(confidence)[confidence == -1L]
-  split_after_absent$ub[absent_remaining] <- pmax(
-    0, split_after_absent$lb[absent_remaining]
-  )
-
-  # Exact source behavior: minimize +1 * v and compare objective > tflux.
-  medium_targets <- names(confidence)[confidence %in% c(1L, 2L)]
-  stage2_medium <- .rc_corda2_minimize_medium_targets(
-    engine, split_after_absent, medium_targets, confidence, options
-  )
-  engine <- stage2_medium$engine
-  confidence <- stage2_medium$confidence
-  confidence_after_stage2_medium <- confidence
-  feasible_medium <- stage2_medium$promoted
-  inclusion_stage_direction[feasible_medium] <-
-    "corda2_stage2_positive_coefficient_minimization"
-  execution$stage2_medium <- stage2_medium$execution
-  task_tables$stage2_medium <-
-    .rc_corda2_results_table(stage2_medium$results)
-
-  # Python build iteration 3.
-  split_stage3 <- split_after_absent
-  for (variable in names(confidence)) {
-    if (confidence[[variable]] %in% c(1L, 2L)) {
-      if (split_stage3$lb[[variable]] > 0) {
-        stop(
-          "Exact Python CORDA2 cannot set the stage-3 upper bound to zero ",
-          "when the variable has a positive lower bound: ", variable,
-          call. = FALSE
-        )
-      }
-      split_stage3$ub[[variable]] <- 0
-    } else if (identical(confidence[[variable]], 0L)) {
-      confidence[[variable]] <- -1L
+  # Step 1: support every high-confidence direction with MC and NC reactions.
+  stage1_hc <- hc
+  stage1_mc <- mc
+  stage1_nc <- nc
+  HCtoMC <- .rc_corda2_empty_dependency_matrix(stage1_hc, stage1_mc)
+  HCtoNC <- .rc_corda2_empty_dependency_matrix(stage1_hc, stage1_nc)
+  hc_present <- mc_present <- nc_present <- character()
+  blocked_hc <- logical(length(stage1_hc))
+  stage1_results <- vector("list", length(stage1_hc))
+  for (i in seq_along(stage1_hc)) {
+    target <- stage1_hc[[i]]
+    assessed <- .rc_corda2_dependency_assessment(
+      engine, split, target, directional_class, options,
+      stage = "corda2_step1_HC_dependencies",
+      penalized_class = "stage1"
+    )
+    engine <- assessed$engine
+    stage1_results[[i]] <- assessed$result
+    if (!isTRUE(assessed$success)) {
+      blocked_hc[[i]] <- TRUE
+      next
     }
+    active <- assessed$active
+    hc_present <- union(hc_present, active[directional_class[active] == "HC"])
+    mc_used <- assessed$associated[
+      directional_class[assessed$associated] == "MC"
+    ]
+    nc_used <- assessed$associated[
+      directional_class[assessed$associated] == "NC"
+    ]
+    mc_present <- union(mc_present, mc_used)
+    nc_present <- union(nc_present, nc_used)
+    if (length(mc_used)) HCtoMC[i, mc_used] <- 1L
+    if (length(nc_used)) HCtoNC[i, nc_used] <- 1L
   }
-  stage3_targets <- names(confidence)[confidence == 3L]
-  stage3 <- .rc_corda2_associated(
-    engine, split_stage3, stage3_targets, confidence, options,
-    penalize_medium = FALSE, redundancies = FALSE,
-    stage = "corda2_stage3_free_completion"
-  )
-  engine <- stage3$engine
-  confidence <- stage3$confidence
-  all_impossible <- c(all_impossible, stage3$impossible)
-  stage3_needed <- unique(stage3$needed)
-  newly_stage3 <- stage3_needed[confidence[stage3_needed] != 3L]
-  confidence[stage3_needed] <- 3L
-  inclusion_stage_direction[newly_stage3] <-
-    "corda2_stage3_free_association"
-  execution$stage3 <- stage3$execution
-  task_tables$stage3 <- .rc_corda2_results_table(stage3$results)
+  blocked_hc[stage1_hc %in% hc_present] <- FALSE
+  retained_stage1_hc <- stage1_hc[!blocked_hc]
+  HCtoMC <- HCtoMC[!blocked_hc, , drop = FALSE]
+  HCtoNC <- HCtoNC[!blocked_hc, , drop = FALSE]
+  promoted_step1_mc <- stage1_mc[stage1_mc %in% mc_present]
+  promoted_step1_nc <- stage1_nc[stage1_nc %in% nc_present]
+  promoted_step1 <- c(promoted_step1_mc, promoted_step1_nc)
+  inclusion_stage_direction[promoted_step1] <-
+    "corda2_step1_associated_with_HC"
+  directional_class[promoted_step1] <- "HC"
+  hc <- c(retained_stage1_hc, promoted_step1)
+  mc <- stage1_mc[!stage1_mc %in% mc_present]
+  nc <- stage1_nc[!stage1_nc %in% nc_present]
+  task_tables$step1 <- .rc_corda2_results_table(stage1_results)
 
-  impossible <- sort(unique(all_impossible), method = "radix")
-  redundancy_values <- redundancy_values[
-    confidence[names(redundancy_values)] == 3L &
-      !names(redundancy_values) %in% impossible
-  ]
-  included_variables <- names(confidence)[confidence == 3L]
+  # Step 2.1: determine NC dependencies of every remaining MC direction.
+  stage2_mc_input <- mc
+  stage2_nc_input <- nc
+  MCxNC <- .rc_corda2_empty_dependency_matrix(stage2_mc_input, stage2_nc_input)
+  blocked_mc_step21 <- logical(length(stage2_mc_input))
+  stage21_results <- vector("list", length(stage2_mc_input))
+  for (i in seq_along(stage2_mc_input)) {
+    target <- stage2_mc_input[[i]]
+    assessed <- .rc_corda2_dependency_assessment(
+      engine, split, target, directional_class, options,
+      stage = "corda2_step2_1_MC_NC_dependencies",
+      penalized_class = "NC"
+    )
+    engine <- assessed$engine
+    stage21_results[[i]] <- assessed$result
+    if (!isTRUE(assessed$success)) {
+      blocked_mc_step21[[i]] <- TRUE
+      next
+    }
+    nc_used <- assessed$associated[
+      directional_class[assessed$associated] == "NC"
+    ]
+    if (length(nc_used)) MCxNC[i, nc_used] <- 1L
+  }
+  MCxNC <- MCxNC[!blocked_mc_step21, , drop = FALSE]
+  mc <- stage2_mc_input[!blocked_mc_step21]
+  MCtoNC <- MCxNC
+  task_tables$step2_1 <- .rc_corda2_results_table(stage21_results)
+
+  # Step 2.2: promote frequently required NC directions, block the rest, and
+  # retain only MC directions that remain feasible.
+  nc_count <- if (ncol(MCxNC)) colSums(MCxNC) else numeric()
+  promoted_nc <- names(nc_count)[nc_count >= options$MCxNCthresh]
+  if (length(promoted_nc)) {
+    promoted_rows <- matrix(
+      0L, nrow = length(promoted_nc), ncol = ncol(MCxNC),
+      dimnames = list(promoted_nc, colnames(MCxNC))
+    )
+    MCxNC <- rbind(MCxNC, promoted_rows)
+  }
+  directional_class[promoted_nc] <- "MC"
+  mc <- c(mc, promoted_nc)
+  if (length(promoted_nc) && ncol(MCxNC)) {
+    MCxNC <- MCxNC[, setdiff(colnames(MCxNC), promoted_nc), drop = FALSE]
+  }
+  nc <- setdiff(nc, promoted_nc)
+  split_step22 <- split
+  if (length(nc)) {
+    split_step22$lb[nc] <- 0
+    split_step22$ub[nc] <- 0
+  }
+  stage22_results <- vector("list", length(mc))
+  blocked_mc_step22 <- logical(length(mc))
+  rescue <- vector("list", length(mc))
+  for (i in seq_along(mc)) {
+    target <- mc[[i]]
+    maximum <- .rc_corda2_maximize_target(
+      engine, split_step22, target,
+      lower = split_step22$lb,
+      upper = split_step22$ub
+    )
+    engine <- maximum$engine
+    success <- identical(maximum$answer$status, "optimal") &&
+      is.finite(maximum$vmax) && maximum$vmax >= options$flux_threshold
+    blocked_mc_step22[[i]] <- !success
+    dependencies <- if (target %in% rownames(MCxNC)) {
+      colnames(MCxNC)[MCxNC[target, , drop = TRUE] > 0]
+    } else {
+      character()
+    }
+    rescue[[i]] <- dependencies
+    stage22_results[[i]] <- .rc_corda2_target_result(
+      split, target, "corda2_step2_2_MC_feasibility",
+      if (success) "optimal" else "target_blocked",
+      associated = dependencies,
+      target_flux = maximum$vmax,
+      vmax = maximum$vmax,
+      objective = maximum$answer$objective,
+      backend = maximum$answer$backend,
+      solver_message = maximum$answer$solver_message %||% "",
+      n_solves = 1L,
+      opposite = maximum$opposite
+    )
+  }
+  deleted_mc <- mc[blocked_mc_step22]
+  rescue_table <- data.frame(
+    reaction = deleted_mc,
+    dependent_on = vapply(
+      rescue[blocked_mc_step22], paste, character(1), collapse = ","
+    ),
+    stringsAsFactors = FALSE
+  )
+  feasible_mc <- mc[!blocked_mc_step22]
+  inclusion_stage_direction[promoted_nc] <-
+    "corda2_step2_2_NC_occurrence_threshold"
+  inclusion_stage_direction[feasible_mc[is.na(
+    inclusion_stage_direction[feasible_mc]
+  )]] <- "corda2_step2_2_MC_feasible"
+  directional_class[feasible_mc] <- "HC"
+  hc <- c(hc, feasible_mc)
+  task_tables$step2_2 <- .rc_corda2_results_table(stage22_results)
+
+  # Step 3: block all remaining MC/NC directions and add only OT reactions
+  # required for retained HC flux.
+  split_step3 <- split_step22
+  allowed_step3 <- union(hc, ot)
+  blocked_step3 <- setdiff(colnames(split_step3$S), allowed_step3)
+  if (length(blocked_step3)) {
+    split_step3$lb[blocked_step3] <- 0
+    split_step3$ub[blocked_step3] <- 0
+  }
+  stage3_results <- vector("list", length(hc))
+  ot_present <- character()
+  for (i in seq_along(hc)) {
+    target <- hc[[i]]
+    assessed <- .rc_corda2_dependency_assessment(
+      engine, split_step3, target, directional_class, options,
+      stage = "corda2_step3_HC_OT_dependencies",
+      penalized_class = "OT",
+      lower = split_step3$lb,
+      upper = split_step3$ub
+    )
+    engine <- assessed$engine
+    stage3_results[[i]] <- assessed$result
+    if (!isTRUE(assessed$success)) next
+    used <- assessed$associated[
+      directional_class[assessed$associated] == "OT"
+    ]
+    ot_present <- union(ot_present, used)
+  }
+  inclusion_stage_direction[ot_present] <-
+    "corda2_step3_associated_OT"
+  included_variables <- unique(c(hc, ot_present))
+  task_tables$step3 <- .rc_corda2_results_table(stage3_results)
+
+  initial_reaction_confidence <- .rc_corda2_reaction_numeric_confidence(
+    split, initial_directional_class
+  )
+  final_reaction_confidence <- .rc_corda2_reaction_numeric_confidence(
+    split, initial_directional_class, included_variables
+  )
   included_reactions <- unique(as.character(
     split$variable_to_reaction[included_variables]
   ))
-  initial_reaction_confidence <- .rc_corda2_reduce_confidence(
-    split, initial_directional_confidence
-  )
-  final_reaction_confidence <- .rc_corda2_reduce_confidence(
-    split, confidence
-  )
   final_reaction_status <- stats::setNames(
-    ifelse(final_reaction_confidence == 3L, "included", "excluded"),
+    ifelse(names(final_reaction_confidence) %in% included_reactions,
+           "included", "excluded"),
     names(final_reaction_confidence)
   )
   inclusion_stage <- stats::setNames(
-    rep(NA_character_, length(initial_reaction_confidence)),
-    names(initial_reaction_confidence)
+    rep(NA_character_, length(split$reaction_order)), split$reaction_order
   )
   for (reaction in names(inclusion_stage)) {
     variables <- split$direction_table$variable_id[
       split$direction_table$reaction_id == reaction &
-        confidence[split$direction_table$variable_id] == 3L
+        split$direction_table$variable_id %in% included_variables
     ]
     stages <- inclusion_stage_direction[variables]
-    stages <- stages[!is.na(stages) & nzchar(stages)]
+    stages <- stages[!is.na(stages)]
     if (length(stages)) inclusion_stage[[reaction]] <- stages[[1L]]
   }
-
-  support_pairs <- data.frame(
-    target_variable = character(),
-    absent_variable = character(),
-    stringsAsFactors = FALSE
-  )
-  if (length(stage2$results)) {
-    pair_rows <- lapply(stage2$results, function(result) {
-      absent <- result$associated[
-        confidence_after_stage2_association[result$associated] == -1L
-      ]
-      if (!length(absent)) return(NULL)
-      data.frame(
-        target_variable = rep(result$target, length(absent)),
-        absent_variable = absent,
-        stringsAsFactors = FALSE
-      )
-    })
-    pair_rows <- pair_rows[!vapply(pair_rows, is.null, logical(1))]
-    if (length(pair_rows)) support_pairs <- do.call(rbind, pair_rows)
-  }
-
-  solver_performance <- .rc_corda_execution_metrics(engine)
 
   list(
     included = included_reactions,
@@ -279,54 +267,48 @@
     final_reaction_confidence = final_reaction_confidence,
     final_reaction_status = final_reaction_status,
     final_confidence = final_reaction_confidence,
-    final_directional_confidence = confidence,
-    initial_directional_confidence = initial_directional_confidence,
-    confidence_after_stage1 = confidence_after_stage1,
-    confidence_after_stage2_association =
-      confidence_after_stage2_association,
-    confidence_after_stage2_support = confidence_after_stage2_support,
-    confidence_after_stage2_medium = confidence_after_stage2_medium,
+    initial_directional_class = initial_directional_class,
     inclusion_stage = inclusion_stage,
     inclusion_stage_direction = inclusion_stage_direction,
     stage1_associated = unique(as.character(
-      split$variable_to_reaction[stage1_needed]
+      split$variable_to_reaction[promoted_step1]
     )),
-    stage2_nc_support_pairs = support_pairs,
-    stage2_nc_support_count = absent_count,
     stage2_promoted_nc = unique(as.character(
-      split$variable_to_reaction[supported_absent]
+      split$variable_to_reaction[promoted_nc]
     )),
     stage2_promoted_mc = unique(as.character(
-      split$variable_to_reaction[feasible_medium]
+      split$variable_to_reaction[feasible_mc]
     )),
     stage3_associated_ot = unique(as.character(
-      split$variable_to_reaction[stage3_needed]
+      split$variable_to_reaction[ot_present]
     )),
     blocked_after_stage2 = unique(as.character(
-      split$variable_to_reaction[absent_remaining]
+      split$variable_to_reaction[nc]
     )),
     blocked_before_stage3 = unique(as.character(
-      split$variable_to_reaction[c(
-        absent_remaining,
-        names(confidence)[confidence %in% c(1L, 2L)]
-      )]
+      split$variable_to_reaction[blocked_step3]
     )),
-    impossible_directional_targets = impossible,
-    redundancies = redundancy_values,
+    blocked_high_confidence_directions = stage1_hc[blocked_hc],
+    blocked_medium_directions_step2_1 = stage2_mc_input[blocked_mc_step21],
+    blocked_medium_directions_step2_2 = deleted_mc,
+    HCtoMC = HCtoMC,
+    HCtoNC = HCtoNC,
+    MCtoNC = MCtoNC,
+    rescue = rescue_table,
     task_diagnostics = .rc_bind_frames_fill(task_tables),
-    execution = execution,
-    solver_performance = solver_performance,
-    algorithm = "resendislab_python_CORDA2_c02e06d_exact_semantics",
-    python_reference_commit =
-      "c02e06d50606bf93f23d8f2e6d6ade0e996ca70e",
-    stage_update_policy = "python_serial_mutation_order",
+    solver_performance = .rc_corda_execution_metrics(engine),
+    algorithm = "schultzdre_MATLAB_CORDA2_original_semantics",
+    reference_repository = "schultzdre/Constraint-Based-Modeling",
+    reference_file = "CORDA2.m",
+    stage_update_policy = "original_matlab_directional_order",
     source_semantics = c(
-      "fixed UPPER=1e6, CI=1.01 and tflux=1",
-      "both forward and reverse variables exist for every reaction",
-      "target assessment changes only the target variable bounds",
-      "penalties for both directions use the forward variable confidence",
-      "targets are processed serially with one persistent solver state",
-      "remaining medium variables use positive-coefficient minimization"
+      "split only actively reversible reactions once",
+      "close the opposite direction for every tested reaction",
+      "fix the target at the original val-or-percentage constraint",
+      "step 1 costs MC=sqrt(om), NC=om and all other reactions=1e-3",
+      "increase each newly used high-cost reaction once by 1+ci",
+      "promote NC directions required by at least MCxNCthresh MC directions",
+      "block remaining NC before MC feasibility and add OT only in step 3"
     )
   )
 }

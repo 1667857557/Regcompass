@@ -1,72 +1,43 @@
-# Exact execution semantics of resendislab/corda Python CORDA2.
-# Reference: c02e06d50606bf93f23d8f2e6d6ade0e996ca70e.
+# Original MATLAB CORDA2 dependency assessment.
 
-.rc_corda2_directional_confidence <- function(split, classes) {
-  reaction_confidence <- stats::setNames(
-    rep(0L, length(classes$confidence)), names(classes$confidence)
+.rc_corda2_directional_class <- function(split, classes) {
+  reaction_class <- stats::setNames(
+    rep("OT", length(classes$confidence)), names(classes$confidence)
   )
-  reaction_confidence[classes$hc] <- 3L
-  reaction_confidence[classes$mc_module] <- 2L
-  reaction_confidence[classes$mc_evidence] <- 1L
-  reaction_confidence[classes$nc] <- -1L
-  reaction_confidence[classes$ot] <- 0L
-  value <- as.integer(
-    reaction_confidence[split$direction_table$reaction_id]
-  )
-  if (anyNA(value) || any(!value %in% c(-1L, 0L, 1L, 2L, 3L))) {
-    stop("Every CORDA2 reaction requires confidence in {-1,0,1,2,3}.",
+  reaction_class[classes$hc] <- "HC"
+  reaction_class[classes$mc] <- "MC"
+  reaction_class[classes$nc] <- "NC"
+  reaction_class[classes$ot] <- "OT"
+  value <- unname(reaction_class[split$direction_table$reaction_id])
+  if (anyNA(value) || any(!value %in% c("HC", "MC", "NC", "OT"))) {
+    stop("Every CORDA2 directional variable requires HC, MC, NC or OT class.",
          call. = FALSE)
   }
   stats::setNames(value, split$direction_table$variable_id)
 }
 
-.rc_corda2_forward_variable <- function(split, reaction) {
-  variable <- split$direction_table$variable_id[
-    split$direction_table$reaction_id == reaction &
-      split$direction_table$direction == "forward"
-  ]
-  if (length(variable) != 1L) {
-    stop("CORDA2 split model has no unique forward variable for `",
-         reaction, "`.", call. = FALSE)
+.rc_corda2_stage_cost <- function(
+    split, directional_class, options,
+    penalized_class, baseline = 0) {
+  cost <- stats::setNames(rep(baseline, ncol(split$S)), colnames(split$S))
+  if (identical(penalized_class, "stage1")) {
+    cost[directional_class == "MC"] <- sqrt(options$om)
+    cost[directional_class == "NC"] <- options$om
+  } else if (identical(penalized_class, "NC")) {
+    cost[directional_class == "NC"] <- options$om
+  } else if (identical(penalized_class, "OT")) {
+    cost[directional_class == "OT"] <- options$om
+  } else {
+    stop("Unknown CORDA2 cost stage.", call. = FALSE)
   }
-  variable
-}
-
-.rc_corda2_penalties <- function(
-    split, directional_confidence, penalize_medium, penalty_factor) {
-  penalty <- stats::setNames(
-    rep(0, ncol(split$S)), colnames(split$S)
-  )
-  penalized <- character()
-  for (reaction in split$reaction_order) {
-    forward <- .rc_corda2_forward_variable(split, reaction)
-    confidence <- directional_confidence[[forward]]
-    matched <- FALSE
-    value <- if (isTRUE(penalize_medium) && confidence %in% c(1L, 2L)) {
-      matched <- TRUE
-      1
-    } else if (identical(confidence, -1L)) {
-      matched <- TRUE
-      penalty_factor
-    } else {
-      0
-    }
-    if (isTRUE(matched)) {
-      variables <- split$direction_table$variable_id[
-        split$direction_table$reaction_id == reaction
-      ]
-      penalty[variables] <- value
-      penalized <- c(penalized, variables)
-    }
-  }
-  attr(penalty, "penalized_variables") <- unique(penalized)
-  penalty
+  cost
 }
 
 .rc_corda2_target_result <- function(
-    split, target, stage, kind, status, associated = character(),
-    target_flux = NA_real_, objective = NA_real_, backend = "",
-    solver_message = "", redundancies = 0L, n_solves = 0L) {
+    split, target, stage, status, associated = character(),
+    active = character(), target_flux = NA_real_, vmax = NA_real_,
+    objective = NA_real_, backend = "", solver_message = "",
+    n_solves = 0L, opposite = character()) {
   row <- split$direction_table[
     split$direction_table$variable_id == target, , drop = FALSE
   ]
@@ -75,142 +46,186 @@
     reaction_id = as.character(row$reaction_id[[1L]]),
     direction = as.character(row$direction[[1L]]),
     stage = stage,
-    kind = kind,
+    kind = "dependency",
     status = status,
     associated = as.character(associated),
+    active = as.character(active),
     target_flux = as.numeric(target_flux),
+    vmax = as.numeric(vmax),
     objective = as.numeric(objective),
     backend = as.character(backend),
     solver_message = as.character(solver_message),
-    opposite_direction_blocked = character(),
-    redundancies = as.integer(redundancies),
+    opposite_direction_blocked = as.character(opposite),
+    redundancies = max(0L, as.integer(n_solves) - 1L),
     n_solves = as.integer(n_solves)
   )
 }
 
-.rc_corda2_associated <- function(
-    engine, split, targets, directional_confidence, options,
-    penalize_medium = TRUE, redundancies = TRUE, stage) {
-  targets <- as.character(targets)
-  if (anyNA(targets) || any(!targets %in% colnames(split$S))) {
-    stop("CORDA2 target variable is missing from the solver model.",
-         call. = FALSE)
+.rc_corda2_dependency_assessment <- function(
+    engine, split, target, directional_class, options,
+    stage, penalized_class,
+    lower = split$lb, upper = split$ub,
+    constrain_target = TRUE) {
+  constrained <- if (isTRUE(constrain_target)) {
+    .rc_corda2_constrain_target(
+      engine, split, target, options, lower = lower, upper = upper
+    )
+  } else {
+    .rc_corda2_maximize_target(
+      engine, split, target, lower = lower, upper = upper
+    )
   }
-  penalties <- .rc_corda2_penalties(
-    split = split,
-    directional_confidence = directional_confidence,
-    penalize_medium = penalize_medium,
-    penalty_factor = options$penalty_factor
-  )
-  penalized_variables <- attr(penalties, "penalized_variables") %||%
-    character()
-  max_iter <- if (isTRUE(redundancies)) options$redundancies else 1L
-  needed_all <- character()
-  impossible <- character()
-  results <- vector("list", length(targets))
-  redundancy_map <- stats::setNames(integer(length(targets)), targets)
-
-  for (i in seq_along(targets)) {
-    target <- targets[[i]]
-    if (split$ub[[target]] < split$tolerance) {
-      directional_confidence[[target]] <- -1L
-      impossible <- c(impossible, target)
-      results[[i]] <- .rc_corda2_target_result(
-        split, target, stage, "dependency", "target_blocked",
+  engine <- constrained$engine
+  if (!identical(constrained$answer$status, "optimal") ||
+      !is.finite(constrained$vmax) ||
+      constrained$vmax < options$flux_threshold ||
+      (isTRUE(constrain_target) && !is.finite(constrained$required_flux))) {
+    return(list(
+      engine = engine,
+      result = .rc_corda2_target_result(
+        split, target, stage, "target_blocked",
         target_flux = 0,
-        backend = engine$type,
-        solver_message = "target upper bound is below CORDA2 tolerance"
-      )
-      next
-    }
+        vmax = constrained$vmax,
+        backend = constrained$answer$backend,
+        solver_message = constrained$answer$solver_message %||% "",
+        n_solves = 1L,
+        opposite = constrained$opposite
+      ),
+      associated = character(),
+      active = character(),
+      success = FALSE
+    ))
+  }
 
-    bounds <- .rc_corda_target_bounds(
-      split, target, epsilon = options$target_flux
+  baseline <- if (identical(penalized_class, "stage1")) {
+    options$baseline_cost
+  } else {
+    0
+  }
+  penalty <- .rc_corda2_stage_cost(
+    split, directional_class, options,
+    penalized_class = penalized_class,
+    baseline = baseline
+  )
+  track_class <- switch(
+    penalized_class,
+    stage1 = c("MC", "NC"),
+    NC = "NC",
+    OT = "OT"
+  )
+  associated <- character()
+  active_all <- character()
+  n_solves <- 1L
+  final_answer <- constrained$answer
+  final_flux <- NA_real_
+
+  repeat {
+    solved <- .rc_corda_engine_solve(
+      engine,
+      objective = as.numeric(penalty),
+      lower = constrained$lower,
+      upper = constrained$upper
     )
-    penalty <- penalties
-    needed_for_target <- character()
-    has_new <- TRUE
-    iteration <- 0L
-    redundancy_count <- 0L
-    status <- "not_run"
-    target_flux <- NA_real_
-    objective_value <- NA_real_
-    backend <- engine$type
-    solver_message <- ""
-
-    while (isTRUE(has_new) && iteration < max_iter) {
-      solved <- .rc_corda_engine_solve(
-        engine,
-        objective = as.numeric(penalty),
-        lower = bounds$lower,
-        upper = bounds$upper
-      )
-      engine <- solved$engine
-      answer <- solved$answer
-      iteration <- iteration + 1L
-      status <- answer$status
-      objective_value <- answer$objective
-      backend <- answer$backend
-      solver_message <- answer$solver_message %||% ""
-      if (!identical(status, "optimal") ||
-          length(answer$solution) != ncol(split$S)) {
-        directional_confidence[[target]] <- -1L
-        impossible <- c(impossible, target)
-        break
-      }
-
-      flux <- as.numeric(answer$solution)
-      names(flux) <- colnames(split$S)
-      target_flux <- flux[[target]]
-      need <- names(flux)[
-        flux > split$tolerance &
-          directional_confidence[names(flux)] %in% c(-1L, 1L, 2L) &
-          names(flux) != target
-      ]
-      new <- need[!need %in% needed_for_target]
-      has_new <- length(new) > 0L
-      if (isTRUE(redundancies)) {
-        redundancy_count <- redundancy_count + as.integer(has_new)
-      }
-      weighted_new <- new[new %in% penalized_variables]
-      if (length(weighted_new)) {
-        penalty[weighted_new] <- penalty[weighted_new] * options$cost_increase
-      }
-      needed_for_target <- sort(unique(c(needed_for_target, need)), method = "radix")
+    engine <- solved$engine
+    answer <- solved$answer
+    n_solves <- n_solves + 1L
+    final_answer <- answer
+    if (!identical(answer$status, "optimal") ||
+        length(answer$solution) != ncol(split$S)) {
+      return(list(
+        engine = engine,
+        result = .rc_corda2_target_result(
+          split, target, stage, answer$status,
+          associated = associated,
+          active = active_all,
+          vmax = constrained$vmax,
+          objective = answer$objective,
+          backend = answer$backend,
+          solver_message = answer$solver_message %||% "",
+          n_solves = n_solves,
+          opposite = constrained$opposite
+        ),
+        associated = associated,
+        active = active_all,
+        success = FALSE
+      ))
     }
-
-    redundancy_map[[target]] <- redundancy_count
-    needed_all <- c(needed_all, needed_for_target)
-    results[[i]] <- .rc_corda2_target_result(
-      split, target, stage, "dependency", status,
-      associated = needed_for_target,
-      target_flux = target_flux,
-      objective = objective_value,
-      backend = backend,
-      solver_message = solver_message,
-      redundancies = redundancy_count,
-      n_solves = iteration
-    )
+    flux <- as.numeric(answer$solution)
+    names(flux) <- colnames(split$S)
+    final_flux <- flux[[target]]
+    if (!is.finite(final_flux) || final_flux < options$flux_threshold) {
+      return(list(
+        engine = engine,
+        result = .rc_corda2_target_result(
+          split, target, stage, "target_below_flux_threshold",
+          associated = associated,
+          active = active_all,
+          target_flux = final_flux,
+          vmax = constrained$vmax,
+          objective = answer$objective,
+          backend = answer$backend,
+          solver_message = answer$solver_message %||% "",
+          n_solves = n_solves,
+          opposite = constrained$opposite
+        ),
+        associated = associated,
+        active = active_all,
+        success = FALSE
+      ))
+    }
+    active <- names(flux)[flux > options$flux_threshold]
+    active_all <- union(active_all, active)
+    used <- active[directional_class[active] %in% track_class]
+    newly_used <- setdiff(used, associated)
+    associated <- union(associated, used)
+    if (!length(newly_used)) break
+    penalty[newly_used] <- penalty[newly_used] * (1 + options$ci)
   }
 
   list(
     engine = engine,
-    confidence = directional_confidence,
-    needed = needed_all,
-    results = results,
-    impossible = impossible,
-    redundancies = redundancy_map,
-    execution = list(
-      n_targets = length(targets),
-      n_chunks = if (length(targets)) 1L else 0L,
-      workers = 1L,
-      task_granularity = "python_serial_target_order",
-      stage_barrier = TRUE,
-      target_parallelism = FALSE,
-      persistent_solver = identical(engine$type, "highs_persistent_cpp"),
-      solver_runtime = engine$type,
-      n_solves = engine$n_solves,
-      n_fallback = engine$n_fallback
-    )
+    result = .rc_corda2_target_result(
+      split, target, stage, final_answer$status,
+      associated = associated,
+      active = active_all,
+      target_flux = final_flux,
+      vmax = constrained$vmax,
+      objective = final_answer$objective,
+      backend = final_answer$backend,
+      solver_message = final_answer$solver_message %||% "",
+      n_solves = n_solves,
+      opposite = constrained$opposite
+    ),
+    associated = associated,
+    active = active_all,
+    success = TRUE
   )
+}
+
+.rc_corda2_results_table <- function(results, split = NULL) {
+  if (!length(results)) return(data.frame())
+  rows <- lapply(results, function(x) {
+    data.frame(
+      variable_id = as.character(x$target),
+      reaction_id = as.character(x$reaction_id),
+      direction = as.character(x$direction),
+      stage = as.character(x$stage),
+      replicate = 1L,
+      kind = as.character(x$kind),
+      status = as.character(x$status),
+      target_flux = as.numeric(x$target_flux),
+      vmax = as.numeric(x$vmax),
+      objective = as.numeric(x$objective),
+      backend = as.character(x$backend),
+      solver_message = as.character(x$solver_message %||% ""),
+      opposite_direction_blocked = paste(
+        x$opposite_direction_blocked, collapse = ";"
+      ),
+      n_associated = length(x$associated),
+      associated = paste(x$associated, collapse = ";"),
+      corda2_n_solves = as.integer(x$n_solves %||% 0L),
+      stringsAsFactors = FALSE
+    )
+  })
+  do.call(rbind, rows)
 }

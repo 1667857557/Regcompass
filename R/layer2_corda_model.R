@@ -1,4 +1,4 @@
-# RegCompass model integration around exact Python CORDA2 reconstruction.
+# RegCompass integration for the original MATLAB CORDA2 algorithm.
 
 .rc_corda_core_closure <- function(
     parent, final, core, target_direction, solver, time_limit,
@@ -31,11 +31,11 @@
   )
   diagnostics$completion_status <- ifelse(
     !diagnostics$feasible,
-    "parent_below_corda2_tflux",
+    "parent_blocked",
     ifelse(
       diagnostics$final_feasible %in% TRUE,
-      "corda2_retained_at_tflux",
-      "corda2_unresolved_at_tflux"
+      "corda2_retained",
+      "corda2_removed"
     )
   )
   feasible_targets <- diagnostics[
@@ -93,35 +93,25 @@
     max_medium_confidence_reactions =
       corda_options$max_medium_confidence_reactions
   )
-  corda_options$feasibility_tolerance <-
-    .rc_corda2_solver_feasibility_tolerance(solver)
-  split <- .rc_corda_split_model(
-    parent,
-    tolerance = corda_options$feasibility_tolerance,
-    upper_bound = corda_options$upper_bound
-  )
-
-  # Python CORDA.__init__ and build() do not expose or add a time limit.
+  split <- .rc_corda2_split_original(parent)
   reconstruction <- .rc_corda_build_three_stage(
     split = split,
     classes = classes,
     options = corda_options,
     solver = solver,
-    time_limit = Inf
+    time_limit = time_limit
   )
-  reconstruction$source_fidelity <- "exact_for_met_prod_NULL"
-  reconstruction$intentional_corrections <- character()
-  reconstruction$solver_time_limit <- Inf
-  reconstruction$requested_regcompass_time_limit_ignored <- time_limit
+  reconstruction$source_fidelity <- "original_MATLAB_CORDA2"
+  reconstruction$solver_time_limit <- time_limit
 
-  included <- intersect(reconstruction$included, validated$reactions)
-  if (!length(included)) {
-    stop("CORDA2 reconstruction retained no reactions.", call. = FALSE)
+  included_variables <- reconstruction$included_directional_variables
+  if (!length(included_variables)) {
+    stop("CORDA2 reconstruction retained no directional reactions.",
+         call. = FALSE)
   }
-  final <- .rc_subset_gem(parent, included)
-
-  # Post-reconstruction scoring is a RegCompass adapter and does not mutate the
-  # CORDA2 reconstruction state.
+  final <- .rc_corda2_apply_direction_bounds(
+    parent, included_variables, split
+  )
   closure <- .rc_corda_core_closure(
     parent = parent,
     final = final,
@@ -129,7 +119,7 @@
     target_direction = target_direction,
     solver = solver,
     time_limit = time_limit,
-    flux_threshold = corda_options$target_flux
+    flux_threshold = corda_options$flux_threshold
   )
 
   meta <- final$reaction_meta
@@ -186,16 +176,23 @@
   final$corda2_reaction_evidence <- reaction_evidence
   final$corda_reaction_evidence <- reaction_evidence
   final$corda_task_diagnostics <- reconstruction$task_diagnostics
-  final$corda_execution <- reconstruction$execution
-  final$corda_stage2_nc_support_pairs <-
-    reconstruction$stage2_nc_support_pairs
-  final$corda_stage2_nc_support_count <-
-    reconstruction$stage2_nc_support_count
+  final$corda_execution <- list(original_matlab = list(
+    solver_runtime = if (isTRUE(reconstruction$solver_performance$persistent_solver)) {
+      "highs_persistent_cpp"
+    } else {
+      "one_shot"
+    },
+    target_parallelism = FALSE
+  ))
+  final$corda_stage1_HCtoMC <- reconstruction$HCtoMC
+  final$corda_stage1_HCtoNC <- reconstruction$HCtoNC
+  final$corda_stage2_MCtoNC <- reconstruction$MCtoNC
+  final$corda_rescue <- reconstruction$rescue
   final$corda_reconstruction <- reconstruction
   final$target_status <- if (any(closure$failed)) {
-    "structurally_infeasible_at_corda2_tflux"
+    "core_direction_removed_by_corda2"
   } else if (!nrow(closure$feasible_targets)) {
-    "parent_below_corda2_tflux"
+    "no_feasible_core_direction"
   } else {
     "ok"
   }
@@ -203,18 +200,20 @@
   final$union_gem_scope <-
     "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
 
-  constructor_args <- list(
-    met_prod = corda_options$met_prod,
-    n = corda_options$n,
-    penalty_factor = corda_options$penalty_factor,
-    support = corda_options$support
+  original_args <- list(
+    MCxNCthresh = corda_options$MCxNCthresh,
+    constraint = corda_options$constraint,
+    constrainby = corda_options$constrainby,
+    om = corda_options$om,
+    ci = corda_options$ci
   )
   initial <- classes$initial_confidence
+  included <- colnames(final$S)
   final$build_params <- list(
-    strategy = "celltype_medium_python_corda2_exact",
+    strategy = "celltype_medium_original_matlab_corda2",
     cell_type = cell_type,
     algorithm = reconstruction$algorithm,
-    completion_stage = "python_CORDA2_exact_after_confidence_mapping",
+    completion_stage = "original_CORDA2_after_confidence_mapping",
     evidence_schema = "regcompass_corda_reaction_evidence_v2",
     confidence_mapping = classes$confidence_contract,
     n_celltype_biological_reactions = length(included),
@@ -243,45 +242,36 @@
     n_stage3_associated_ot = length(reconstruction$stage3_associated_ot),
     scoring_target_direction = target_direction,
     reconstruction_direction_policy =
-      "exact_Python_CORDA2_directional_confidence_restore_original_bounds",
-    corda2_args = constructor_args,
-    corda2_met_prod = corda_options$met_prod,
-    corda2_n = corda_options$n,
-    corda2_redundancies = corda_options$n,
-    corda2_penalty_factor = corda_options$penalty_factor,
-    corda2_support = corda_options$support,
-    corda2_target_flux = corda_options$target_flux,
-    corda2_solver_time_limit = Inf,
-    requested_regcompass_time_limit_ignored = time_limit,
-    association_flux_tolerance = corda_options$feasibility_tolerance,
+      "original_CORDA2_opposite_direction_closed_and_directional_merge",
+    corda2_args = original_args,
+    corda2_solver_time_limit = time_limit,
     fastcore_epsilon_used = FALSE,
     max_support_reactions_ignored_for_corda2 = max_support_reactions,
     strict_requested = strict,
     strict_used_for_reconstruction = FALSE,
     corda_options = corda_options,
     included_reactions = included,
+    included_directional_variables = included_variables,
     stage_update_policy = reconstruction$stage_update_policy,
-    python_reference_commit = reconstruction$python_reference_commit,
-    python_source_semantics = reconstruction$source_semantics
+    source_semantics = reconstruction$source_semantics
   )
   final$corda2_contract <- list(
-    implementation = "exact resendislab/corda Python CORDA2 semantics",
-    supported_scope = "met_prod = NULL",
-    reference_repository = "resendislab/corda",
-    reference_commit = reconstruction$python_reference_commit,
-    constructor_signature = c(
-      "model", "confidence", "met_prod", "n", "penalty_factor", "support"
+    implementation = "original MATLAB CORDA2.m semantics",
+    reference_repository = corda_options$reference_repository,
+    reference_file = corda_options$reference_file,
+    adjustable_args = original_args,
+    fixed_internal = c(
+      fluxThreshold = corda_options$flux_threshold,
+      baselineCost = corda_options$baseline_cost,
+      outputBound = corda_options$output_bound
     ),
-    constructor_args = constructor_args,
-    fixed_constants = c(CI = 1.01, tflux = 1, UPPER = 1e6),
-    solver_time_limit = Inf,
-    feasibility_tolerance = corda_options$feasibility_tolerance,
+    solver_time_limit = time_limit,
     source_semantics = reconstruction$source_semantics
   )
 
   final <- .rc_corda2_apply_target_flux(
     model = final,
-    target_flux = corda_options$target_flux,
+    flux_threshold = corda_options$flux_threshold,
     strict = strict,
     cell_type = cell_type
   )
@@ -293,6 +283,3 @@
   )
   .rc_finalize_corda_union_model(final, cell_type = cell_type)
 }
-
-.rc_complete_celltype_medium_corda_like_gem <-
-  .rc_complete_celltype_medium_corda_gem
