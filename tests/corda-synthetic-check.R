@@ -76,6 +76,7 @@ source("R/layer2_corda_output_contract.R")
 source("R/layer2_corda_target_contract.R")
 source("R/layer2_corda_parent_contract.R")
 source("R/layer2_corda2_algorithm.R")
+source("R/layer2_corda2_options_contract.R")
 
 metabolites <- c("A", "B", "C", "D", "E", "F")
 reactions <- c(
@@ -133,13 +134,15 @@ options <- .rc_layer2_corda_options(list(
   corda2_flux_tolerance = 1e-8
 ))
 stopifnot(
+  identical(options$model_completion, "corda2"),
   identical(options$requested_model_completion, "corda2"),
   identical(options$algorithm,
             "resendislab_python_CORDA2_corrected_redundant_path_assessment"),
   identical(options$redundancies, 3L),
   identical(options$support, 2L),
   identical(options$penalty_factor, 100),
-  identical(options$cost_increase, 1.01)
+  identical(options$cost_increase, 1.01),
+  identical(options$random_noise, FALSE)
 )
 
 .TEST_BPPARAM <- FALSE
