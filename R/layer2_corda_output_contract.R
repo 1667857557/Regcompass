@@ -1,24 +1,14 @@
-# Validate exact CORDA2 union models and compact large diagnostics.
+# Validate original CORDA2 union models and compact diagnostics.
 
 .rc_corda_empty_task_table <- function() {
   data.frame(
-    variable_id = character(),
-    reaction_id = character(),
-    direction = character(),
-    stage = character(),
-    replicate = integer(),
-    kind = character(),
-    status = character(),
-    target_flux = numeric(),
-    objective = numeric(),
-    backend = character(),
-    solver_message = character(),
-    noise_namespace = character(),
-    opposite_direction_blocked = character(),
-    n_associated = integer(),
-    corda2_redundancies = integer(),
-    corda2_n_solves = integer(),
-    task_key = character(),
+    variable_id = character(), reaction_id = character(),
+    direction = character(), stage = character(), replicate = integer(),
+    kind = character(), status = character(), target_flux = numeric(),
+    vmax = numeric(), objective = numeric(), backend = character(),
+    solver_message = character(), opposite_direction_blocked = character(),
+    n_associated = integer(), corda2_n_solves = integer(),
+    associated = character(), task_key = character(),
     stringsAsFactors = FALSE
   )
 }
@@ -67,24 +57,20 @@
   }
   if (!nrow(tab)) return(character())
   paste(
-    as.character(tab$stage),
-    as.character(tab$kind),
+    as.character(tab$stage), as.character(tab$kind),
     utils::URLencode(as.character(tab$variable_id), reserved = TRUE),
-    as.integer(tab$replicate),
-    sep = "::"
+    as.integer(tab$replicate), sep = "::"
   )
 }
 
 .rc_corda2_reaction_from_variable <- function(variable_id) {
-  sub("::(forward|reverse)$", "", as.character(variable_id))
+  sub("_CORDA_rev_rxn$", "", as.character(variable_id))
 }
 
 .rc_corda_normalize_associations <- function(tab) {
   empty <- data.frame(
-    task_key = character(),
-    associated_variable_id = character(),
-    associated_reaction_id = character(),
-    stringsAsFactors = FALSE
+    task_key = character(), associated_variable_id = character(),
+    associated_reaction_id = character(), stringsAsFactors = FALSE
   )
   if (!is.data.frame(tab) || !nrow(tab)) return(empty)
   if (!"associated" %in% colnames(tab)) {
@@ -97,12 +83,11 @@
     variable <- unique(split_value[[i]])
     variable <- variable[!is.na(variable) & nzchar(variable)]
     if (!length(variable)) return(NULL)
+    variable <- sort(variable)
     data.frame(
       task_key = rep(task_key[[i]], length(variable)),
-      associated_variable_id = sort(variable),
-      associated_reaction_id = .rc_corda2_reaction_from_variable(
-        sort(variable)
-      ),
+      associated_variable_id = variable,
+      associated_reaction_id = .rc_corda2_reaction_from_variable(variable),
       stringsAsFactors = FALSE
     )
   })
@@ -111,8 +96,7 @@
   answer <- unique(do.call(rbind, rows))
   rownames(answer) <- NULL
   answer[order(
-    answer$task_key,
-    answer$associated_reaction_id,
+    answer$task_key, answer$associated_reaction_id,
     answer$associated_variable_id
   ), , drop = FALSE]
 }
@@ -143,8 +127,7 @@
     }
     index <- match(reaction, validated$reactions)
     direction_allowed <- ifelse(
-      direction == "forward",
-      validated$ub[index] > 0,
+      direction == "forward", validated$ub[index] > 0,
       validated$lb[index] < 0
     )
     if (any(!direction_allowed)) {
@@ -153,8 +136,7 @@
     }
   }
   meta <- model$reaction_meta
-  if (!is.data.frame(meta) ||
-      !"reaction_id" %in% colnames(meta) ||
+  if (!is.data.frame(meta) || !"reaction_id" %in% colnames(meta) ||
       !identical(as.character(meta$reaction_id), validated$reactions)) {
     stop("CORDA2 reaction metadata do not align to the final GEM.",
          call. = FALSE)
@@ -163,17 +145,13 @@
   if (!is.list(build) ||
       !identical(
         as.character(build$algorithm),
-        "resendislab_python_CORDA2_c02e06d_exact_semantics"
+        "schultzdre_MATLAB_CORDA2_original_semantics"
       ) ||
       !identical(
         as.character(build$stage_update_policy),
-        "python_serial_mutation_order"
-      ) ||
-      !identical(
-        as.character(build$python_reference_commit),
-        "c02e06d50606bf93f23d8f2e6d6ade0e996ca70e"
+        "original_matlab_directional_order"
       )) {
-    stop("CORDA2 build parameters do not identify the pinned source.",
+    stop("CORDA2 build parameters do not identify original CORDA2.m.",
          call. = FALSE)
   }
   task_tab <- model$corda_task_diagnostics
@@ -207,12 +185,10 @@
   task_tab <- model$corda_task_diagnostics
   if (!is.data.frame(task_tab) || !nrow(task_tab)) {
     task_tab <- .rc_corda_empty_task_table()
-    association_edges <- .rc_corda_normalize_associations(task_tab)
-  } else {
-    association_edges <- .rc_corda_normalize_associations(task_tab)
-    task_tab$task_key <- .rc_corda_task_keys(task_tab)
-    task_tab$associated <- NULL
   }
+  association_edges <- .rc_corda_normalize_associations(task_tab)
+  task_tab$task_key <- .rc_corda_task_keys(task_tab)
+  if ("associated" %in% colnames(task_tab)) task_tab$associated <- NULL
   model$corda_task_summary <- .rc_corda_task_summary(task_tab)
   model$corda_task_diagnostics <- task_tab
   model$corda_association_edges <- association_edges
@@ -220,15 +196,11 @@
   reconstruction <- model$corda_reconstruction
   if (is.list(reconstruction)) {
     reconstruction$task_diagnostics <- NULL
-    reconstruction$execution <- NULL
-    reconstruction$stage2_nc_support_pairs <- NULL
-    reconstruction$stage2_nc_support_count <- NULL
     model$corda_reconstruction <- reconstruction
   }
   model$build_params$diagnostic_storage <- paste(
     "task metadata stored once in corda_task_diagnostics; directional",
-    "associations normalized in corda_association_edges; aggregate counts",
-    "stored in corda_task_summary"
+    "associations normalized in corda_association_edges"
   )
   model$build_params$association_edge_schema <- c(
     "task_key", "associated_variable_id", "associated_reaction_id"
