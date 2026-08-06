@@ -1,19 +1,10 @@
 # Layer 2 structural model builders
 
-`rc_regcompass_step_layer2()` supports exactly three mutually exclusive structural choices. All three use the same medium contract:
+`rc_regcompass_step_layer2()` supports three mutually exclusive structural routes. In every route, a medium scenario changes listed exchange-reaction bounds only; the same completed structural cache is reused for the primary multiome score and the RNA-only control.
 
-```text
-medium scenario
-  -> modify bounds of the listed exchange reactions
-  -> retain the reaction set and stoichiometric matrix
-  -> let the selected algorithm or directional LP determine feasibility
-```
+## Default: CORDA2 cell-type models
 
-The medium table itself never removes reaction or metabolite columns. The completed structural cache is reused for both the primary multiome score and the RNA-only control.
-
-## 1. FASTCORE
-
-FASTCORE is the default cell-type-specific reconstruction route.
+With `model_mode = "meta_module_gem"`, omitting `model_params$model_completion` selects `"corda2"`.
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -22,6 +13,41 @@ step5 <- rc_regcompass_step_layer2(
   gem = gem,
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2",
+  model_mode = "meta_module_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    model_params = list(
+      completion_time_limit = 3000,
+      strict = TRUE,
+      corda2_args = list(
+        MCxNCthresh = 2,
+        constraint = 1,
+        constrainby = "val",
+        om = 1e4,
+        ci = 0.01
+      ),
+      corda_medium_confidence_threshold = 0.75,
+      corda_negative_confidence_threshold = 0.10,
+      corda_regulatory_weight = 0.20,
+      corda_include_evidence_outside_modules = TRUE,
+      corda_max_medium_confidence_reactions = Inf
+    )
+  )
+)
+```
+
+The complete medium-constrained parent is passed directly to the original MATLAB CORDA2 state machine. FASTCC and role-based pre-pruning are not run. One model is reconstructed per `cell type × medium` and shared across conditions of that cell type. During directional merge, selected reactions recover their parent bounds, including positive lower bounds.
+
+## Supplementary: FASTCORE
+
+```r
+step5_fastcore <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "run/05_layer2_fastcore",
   model_mode = "meta_module_gem",
   layer2_args = list(
     target_direction = "both",
@@ -37,72 +63,17 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-Omitting `model_completion` under `model_mode = "meta_module_gem"` is equivalent to `model_completion = "fastcore"`.
+FASTCORE is now an explicit alternative. It performs FASTCC consistency analysis and add-only support selection after medium bounds are applied.
 
-The sequence is:
-
-```text
-complete reference GEM
-  -> apply medium exchange bounds without deleting reactions
-  -> FASTCC consistency analysis inside the FASTCORE route
-  -> add-only FASTCORE support selection
-  -> compact cell-type-by-medium union GEM
-```
-
-FASTCC is an internal part of FASTCORE parent preparation. Reactions absent from the final compact model are excluded by FASTCORE reconstruction, not deleted directly because they were absent from the medium table.
-
-## 2. CORDA2
-
-CORDA2 uses the original MATLAB CORDA2 state-machine semantics and the RegCompass confidence adapter.
+## Supplementary: COMPASS-style full GEM
 
 ```r
-step5 <- rc_regcompass_step_layer2(
+step5_full <- rc_regcompass_step_layer2(
   layer1 = step4,
   meta_modules = step3,
   gem = gem,
   medium_scenarios = medium_scenarios,
-  outdir = "run/05_layer2",
-  model_mode = "meta_module_gem",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    model_params = list(
-      model_completion = "corda2",
-      completion_time_limit = 1200,
-      corda2_args = list(
-        MCxNCthresh = 2,
-        constraint = 1,
-        constrainby = "val",
-        om = 1e4,
-        ci = 0.01
-      )
-    )
-  )
-)
-```
-
-The sequence is:
-
-```text
-complete reference GEM
-  -> apply medium exchange bounds without deleting reactions
-  -> pass the complete medium-constrained parent directly to CORDA2
-  -> original CORDA2 confidence-state reconstruction
-```
-
-There is no FASTCC or role-based parent pre-pruning before CORDA2. CORDA2 is available only with `model_mode = "meta_module_gem"`; FASTCORE is not executed on this route. Independent cell-type-by-medium reconstructions may run in parallel, while target processing inside each CORDA2 reconstruction remains serial.
-
-## 3. COMPASS-style full GEM
-
-The full-GEM route retains the complete reference network. It applies the medium only to exchange-reaction bounds and then follows the COMPASS target-scoring pattern.
-
-```r
-step5 <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "run/05_layer2",
+  outdir = "run/05_layer2_full_gem",
   model_mode = "full_gem",
   layer2_args = list(
     target_direction = "both",
@@ -112,31 +83,22 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-`model_completion` should normally be omitted. The explicit value `"none"` is accepted, but `"fastcore"` and `"corda2"` are rejected. FASTCORE- and CORDA2-specific controls are rejected rather than silently ignored.
+Full-GEM mode keeps the complete reference GEM and skips FASTCC, FASTCORE and CORDA2. Do not supply completion-specific controls in this mode.
 
-The sequence is:
+## Penalty and output contract
+
+All routes use the COMPASS reaction-cost scale:
 
 ```text
-complete reference GEM
-  -> apply medium exchange bounds without deleting reactions
-  -> retain every requested target direction in the cache
-  -> maximize each target direction under steady-state constraints
-  -> if vmax < flux_threshold: mark direction infeasible and skip Step 2
-  -> otherwise constrain target flux to omega * vmax and minimize penalty
+P = 1 / (1 + log2(1 + max(E, 0)))
 ```
 
-Full-GEM mode does not run FASTCC, FASTCORE, or CORDA2. A reaction that cannot operate under a medium remains in the stoichiometric matrix; its infeasibility is represented by its directional `vmax` result and LP diagnostics.
+Missing reaction expression and the structural roles `exchange`, `demand`, `sink` and `artificial_support` receive the maximum cost `1`.
 
-## Output contract
-
-The selected route is recorded in `step5$params` and `step5$completion_contract`:
-
-| Route | `model_completion` | medium directly deletes reactions | `fastcore_executed` | `corda2_executed` |
+| Route | `model_completion` | default | `fastcore_executed` | `corda2_executed` |
 |---|---|---:|---:|---:|
-| FASTCORE | `"fastcore"` | `FALSE` | `TRUE` | `FALSE` |
-| CORDA2 | `"corda2"` | `FALSE` | `FALSE` | `TRUE` |
-| COMPASS-style full GEM | `"none"` | `FALSE` | `FALSE` | `FALSE` |
+| CORDA2 | `"corda2"` | yes | `FALSE` | `TRUE` |
+| FASTCORE | `"fastcore"` | no | `TRUE` | `FALSE` |
+| Full GEM | `"none"` | no | `FALSE` | `FALSE` |
 
-For full-GEM mode, `model_cache_summary` records the input and retained reaction counts, the invariant zero count of medium-removed reactions, the number of exchange-bound changes, and the exact medium fingerprint. Cache keys include the reference GEM and exact exchange bounds, so a same-named custom medium with changed bounds cannot reuse a stale model.
-
-The target-level diagnostics are stored in `vmax_cache_diagnostics` and `lp_diagnostics`. Medium-infeasible directions remain visible with `feasible = FALSE` and `step2_status = "not_run"` rather than disappearing from the output.
+Inspect `step5$params`, `step5$completion_contract`, `step5$model_cache_summary`, `step5$vmax_cache_diagnostics` and `step5$lp_diagnostics` for the selected route and feasibility results.
