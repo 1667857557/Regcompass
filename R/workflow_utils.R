@@ -67,6 +67,19 @@
   }
   condition_col <- trimws(condition_col)
   if (!condition_col %in% colnames(metadata)) {
+    if (identical(condition_col, "condition")) {
+      effective <- .rc_internal_condition_col(metadata)
+      object@meta.data[[effective]] <- rep(constant_label, nrow(metadata))
+      return(list(
+        object = object,
+        requested_condition_col = condition_col,
+        condition_col = effective,
+        condition_levels = constant_label,
+        analysis_mode = "standard_pando",
+        condition_supplied = FALSE,
+        fallback_reason = "default_condition_col_absent"
+      ))
+    }
     stop(
       "Explicitly requested `condition_col` was not found: `",
       condition_col, "`.",
