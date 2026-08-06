@@ -1,8 +1,8 @@
 # Tutorial 2: restartable workflow
 
-Each stage writes an RDS checkpoint to its output directory.
+Each stage writes an RDS checkpoint to its output directory. Use the same paired-cell object, GEM, metadata columns and medium definitions when restarting later stages.
 
-## Stage 1: regulatory evidence
+## 1. Parallel backend
 
 ```r
 library(BiocParallel)
@@ -13,6 +13,16 @@ upstream_bp <- if (.Platform$OS.type == "windows") {
   MulticoreParam(workers = 6L, progressbar = TRUE)
 }
 
+layer2_bp <- if (.Platform$OS.type == "windows") {
+  SnowParam(workers = 12L, type = "SOCK", progressbar = TRUE)
+} else {
+  MulticoreParam(workers = 12L, progressbar = TRUE)
+}
+```
+
+## 2. Regulatory evidence
+
+```r
 step1 <- rc_regcompass_step_grn(
   object = A,
   gem = gem,
@@ -36,25 +46,9 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-Stage 1 resolves the route independently for each retained cell type:
+A cell type with at least two retained conditions uses the common-dictionary condition GRN. A cell type with one retained condition uses standard Pando.
 
-- at least two retained conditions: common-dictionary condition GRN;
-- one retained condition: standard Pando;
-- no retained stratum: excluded.
-
-The same `pando_infer_args` list can be used for all routes. Condition-only arguments (`padj_threshold`, `rank_action`, `min_residual_df`, and layer controls) are disabled before standard Pando is called. Standard-model controls (`method`, `alpha`, `scale`, and related model arguments) are disabled for the fixed common-dictionary condition model. Unknown argument names still fail before model fitting.
-
-Candidate discovery uses `abs(tf_target_cor) > 0.05` and `abs(peak_target_cor) > 0.05`. Final penalty entry requires `estimable == TRUE`, `padj < 0.05`, `abs(corr) >= 0.05`, and `abs(estimate) >= 0.05`.
-
-When at least two cell-type jobs are available, Stage 1 distributes those jobs through `BPPARAM`. Every worker runs its own Pando job serially, so nested worker pools are not created. With one standard-Pando job, its existing target-level path may be used. A single condition-GRN job remains serial because pooled discovery, condition-specific discovery, dictionary freezing, and condition refits are treated as one coordinated contract.
-
-```r
-step1$grn_result$cell_type_analysis_mode
-step1$grn_result$pando_execution_plan
-step1$grn_result$pando_infer_argument_routing
-```
-
-## Stage 2: metacells
+## 3. Metacells
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -76,9 +70,9 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-Stage 2 reproduces the exact Stage 1 cell set. One WNN graph is built per broad cell type; final metacells remain condition-pure.
+One WNN graph is constructed per broad cell type. Final metacells remain condition-pure.
 
-## Stage 3: biological reaction catalogue
+## 4. Reaction catalogue and Layer 1 support
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -87,11 +81,7 @@ step3 <- rc_regcompass_step_meta_modules(
   gem = gem,
   outdir = "run/03_meta_modules"
 )
-```
 
-## Stage 4: Layer 1 reaction support
-
-```r
 step4 <- rc_regcompass_step_layer1(
   grn = step1,
   metacells = step2,
@@ -103,13 +93,53 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
-## Stage 5: Layer 2 metabolic scoring
+## 5. Medium scenarios
 
-Layer 2 has three mutually exclusive structural builders. In all three routes, a medium scenario modifies the bounds of listed exchange reactions only. Medium application itself does not remove reaction or metabolite columns.
+Use `rc_make_medium_scenarios()` so every condition within one scenario receives identical exchange bounds.
 
-### FASTCORE
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "normal_human_plasma",
+  species = "human"
+)
+```
 
-The default is compact add-only FASTCORE completion:
+Supported biological presets are:
+
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
+
+Multiple scenarios can be supplied together:
+
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = c(
+    "normal_human_plasma",
+    "high_glucose",
+    "low_glucose",
+    "high_lactate",
+    "low_lactate",
+    "low_glutamine"
+  ),
+  species = "human"
+)
+```
+
+For exact reaction-level custom bounds use `scenario = "custom"` and `custom_medium`. For metabolite-level composition use `scenario = NULL` and `custom_metabolites`. Provenance fields such as `background_reference_doi`, `background_validation_reference_doi` and `challenge_reference_doi` are retained. See `docs/medium-presets.md`.
+
+## 6. Layer 2: default CORDA2 reconstruction
+
+With `model_mode = "meta_module_gem"`, omitting `model_completion` now selects original MATLAB CORDA2 semantics.
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -119,45 +149,12 @@ step5 <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2",
   model_mode = "meta_module_gem",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    model_params = list(
-      model_completion = "fastcore",
-      completion_time_limit = 600,
-      fastcore_epsilon = 1e-4,
-      max_support_reactions = 2000,
-      strict = TRUE
-    )
-  )
-)
-```
-
-Omitting `model_completion` under `model_mode = "meta_module_gem"` selects the same FASTCORE route. FASTCC and support selection belong to FASTCORE reconstruction after medium bounds are applied; they are not direct deletions performed by the medium table.
-
-### Original CORDA2
-
-```r
-layer2_bp <- if (.Platform$OS.type == "windows") {
-  SnowParam(workers = 12L, type = "SOCK", progressbar = TRUE)
-} else {
-  MulticoreParam(workers = 12L, progressbar = TRUE)
-}
-
-step5_corda2 <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "run/05_layer2_corda2",
-  model_mode = "meta_module_gem",
   parallel = TRUE,
   BPPARAM = layer2_bp,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
     model_params = list(
-      model_completion = "corda2",
       completion_time_limit = 3000,
       strict = TRUE,
       corda2_args = list(
@@ -177,19 +174,48 @@ step5_corda2 <- rc_regcompass_step_layer2(
 )
 ```
 
-The complete GEM with medium-adjusted exchange bounds is passed directly to CORDA2. There is no FASTCC or role-based parent pre-pruning before the original CORDA2 state machine.
+The complete medium-constrained parent GEM is passed directly to CORDA2 without FASTCC pre-pruning. Final retained reactions recover the parent bounds for selected directions, including positive parent lower bounds. Layer 2 reaction costs use the COMPASS scale: missing expression and structural roles receive the maximum cost `1`.
 
-Adjustable CORDA2 parameters:
+Main controls:
 
-- `MCxNCthresh`: minimum number of medium-confidence directional dependencies required to retain an NC direction; default `2`.
-- `constraint`: target flux value for `constrainby = "val"`, or percentage for `"perc"`; default `1`.
-- `constrainby`: `"val"` or `"perc"`; default `"val"`.
-- `om`: high reaction cost; MC cost in Step 1 is `sqrt(om)`; default `1e4`.
-- `ci`: proportional cost increase for newly used high-cost reactions; default `0.01`.
+- `target_direction`: `"both"`, `"forward"` or `"reverse"`;
+- `solver`: `"highs"`, `"gurobi"` or `"glpk"`;
+- `completion_time_limit`: structural reconstruction time limit;
+- `strict`: fail when required targets are not retained;
+- `corda2_args`: original CORDA2 controls `MCxNCthresh`, `constraint`, `constrainby`, `om` and `ci`;
+- `corda_*`: RegCompass evidence-to-confidence mapping controls.
 
-### COMPASS-style full GEM
+## 7. Supplementary structural modes
 
-This route retains the complete reference GEM. The medium changes exchange bounds only; all requested target directions remain in the cache. Directional maximum flux is then computed under the medium. A target direction with `vmax < flux_threshold` is retained in diagnostics as infeasible and its penalty-minimization LP is not run.
+### FASTCORE
+
+Set the completion method explicitly:
+
+```r
+step5_fastcore <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "run/05_layer2_fastcore",
+  model_mode = "meta_module_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    model_params = list(
+      model_completion = "fastcore",
+      completion_time_limit = 1200,
+      fastcore_epsilon = 1e-4,
+      max_support_reactions = 3000,
+      strict = TRUE
+    )
+  )
+)
+```
+
+### Full GEM
+
+Full-GEM mode skips context-specific reconstruction and applies only the medium exchange bounds before COMPASS-style directional scoring.
 
 ```r
 step5_full <- rc_regcompass_step_layer2(
@@ -207,25 +233,9 @@ step5_full <- rc_regcompass_step_layer2(
 )
 ```
 
-Do not set `model_completion = "fastcore"` or `"corda2"` in this mode. It may be omitted or explicitly set to `"none"`. FASTCORE- and CORDA2-specific parameters are rejected instead of being silently ignored. Full-GEM mode does not run FASTCC, FASTCORE, or CORDA2.
+Do not supply CORDA2 or FASTCORE controls in `full_gem` mode.
 
-The route and medium contract are stored in:
-
-```r
-step5$params$model_completion
-step5$params$medium_handling
-step5$params$medium_direct_reaction_deletion
-step5$params$fastcore_executed
-step5$params$corda2_executed
-step5$completion_contract
-step5$model_cache_summary
-step5$vmax_cache_diagnostics
-step5$lp_diagnostics
-```
-
-See `docs/layer2-model-builders.md` for the full contract.
-
-## Stage 6: result assembly
+## 8. Results
 
 ```r
 result <- rc_regcompass_step_results(
@@ -240,4 +250,4 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-To restart, load the last valid checkpoint and rerun only later stages. Do not combine checkpoints created from different cell sets, GEMs, media, metadata columns, or Layer 2 completion methods.
+Useful Layer 2 provenance fields are `step5$params`, `step5$completion_contract`, `step5$model_cache_summary`, `step5$vmax_cache_diagnostics` and `step5$lp_diagnostics`.
