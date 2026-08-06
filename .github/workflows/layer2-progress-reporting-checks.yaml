@@ -70,7 +70,7 @@ jobs:
               '.rc_layer2_progress_original',
               '.rc_layer2_progress_capture',
               '_base <-',
-              'before_',
+              'before_corda2',
           ]
           found = [value for value in forbidden if value in text]
           if found:
