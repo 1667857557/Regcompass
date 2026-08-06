@@ -16,7 +16,7 @@ Use a paired-cell Seurat object containing:
 
 - RNA and ATAC count assays for the same cells;
 - a broad cell-type metadata column;
-- RNA PCA and ATAC LSI reductions;
+- RNA PCA (or harmony) and ATAC LSI reductions;
 - genome-compatible peak coordinates;
 - an optional condition column.
 
@@ -33,24 +33,19 @@ Shared biological or custom medium          ┘
 Stage 1 ── Cell-type Pando GRN routing
           ├── no condition / one condition ──► standard Pando
           └── two or more conditions       ──► common-dictionary condition GRNs
-          └──────────────────────────────────► Result: cell-type GRNs, active
-                                               TF-peak-gene edges, and routing
-                                               provenance
+          └──────────────────────────────────► Result: cell-type GRNs, active TF-peak-gene edges, and routing provenance
                                                 │
                                                 ▼
 Stage 2 ── Multimodal metacell construction
           ├── one RNA+ATAC WNN graph per broad cell type
           └── condition split after graph clustering
-          └──────────────────────────────────► Result: condition-pure metacells,
-                                               membership, aggregated RNA counts,
-                                               and aggregated ATAC counts
+          └──────────────────────────────────► Result: condition-pure metacells, membership, aggregated RNA counts, and aggregated ATAC counts
                                                 │
                                                 ▼
 Stage 3 ── Cell-type reaction meta-modules
           ├── metabolic genes and GPR-linked core reactions
           ├── subsystem / Rhea / network-neighbour expansion
-          └──────────────────────────────────► Result: reaction modules and
-                                               cell-type scoring targets
+          └──────────────────────────────────► Result: reaction modules and cell-type scoring targets
                                                 │
                      Stage 1 GRNs ──────────────┤
                      Stage 2 metacells ─────────┤
@@ -59,17 +54,14 @@ Stage 3 ── Cell-type reaction meta-modules
 Stage 4 ── RNA + regulatory reaction support
           ├── RNA-only gene and reaction support
           └── Pando-regulated multiome support
-          └──────────────────────────────────► Result: aligned RNA-only and
-                                               RNA+ATAC reaction evidence matrices
+          └──────────────────────────────────► Result: aligned RNA-only and RNA+ATAC reaction evidence matrices
                                                 │
                                                 ▼
 Stage 5 ── Cell-type × medium structural model
           ├── default       ──► CORDA2 completion
           ├── supplementary ──► FASTCORE completion
           └── supplementary ──► complete full-GEM scoring
-          └──────────────────────────────────► Result: shared structural model,
-                                               bounds, target directions, and
-                                               directional maximum fluxes
+          └──────────────────────────────────► Result: shared structural model, bounds, target directions, and directional maximum fluxes
                                                 │
                        ┌────────────────────────┴────────────────────────┐
                        ▼                                                 ▼
@@ -81,11 +73,10 @@ Stage 6 ── Result assembly and post-analysis
           ├── reaction annotations and evidence classes
           ├── cell-type reaction rankings
           ├── condition contrasts when conditions are available
-          └──────────────────────────────────► Result: auditable reaction tables,
-                                               plots, rankings, and comparisons
+          └──────────────────────────────────► Result: auditable reaction tables, plots, rankings, and comparisons
 ```
 
-The primary multiome score and RNA-only control reuse the same completed structural model, bounds, medium and target directions. Therefore their difference isolates the regulatory contribution rather than a change in network structure.
+The primary multiome score and RNA-only control reuse the same completed structural model, bounds, medium, and target directions. Therefore, their difference isolates the regulatory contribution rather than a change in network structure.
 
 ## Simple workflow
 
