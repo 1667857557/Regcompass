@@ -1,0 +1,43 @@
+name: API surface audit
+
+on:
+  pull_request:
+    paths:
+      - 'R/**'
+      - 'tests/**'
+      - 'man/**'
+      - 'docs/**'
+      - 'vignettes/**'
+      - 'README.md'
+      - 'DESCRIPTION'
+      - 'NAMESPACE'
+      - '.github/workflows/api-surface-audit.yaml'
+  push:
+    branches: [Main]
+    paths:
+      - 'R/**'
+      - 'tests/**'
+      - 'man/**'
+      - 'docs/**'
+      - 'vignettes/**'
+      - 'README.md'
+      - 'DESCRIPTION'
+      - 'NAMESPACE'
+      - '.github/workflows/api-surface-audit.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  audit:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+
+      - name: Parse and audit package API surface
+        run: Rscript tests/api-surface-audit.R --strict
