@@ -1,5 +1,3 @@
-options(warn = 2)
-
 `%||%` <- function(x, y) if (is.null(x)) y else x
 
 library(Matrix)
@@ -7,6 +5,7 @@ library(Rcpp)
 
 Rcpp::sourceCpp("src/layer2_native.cpp")
 .rc_corda2_scan_flux_cpp <- rc_corda2_scan_flux_cpp
+options(warn = 2)
 
 source("R/00_utils.R", local = FALSE)
 
