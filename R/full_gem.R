@@ -1,7 +1,103 @@
+.rc_validate_full_gem_model_params <- function(model_params = list()) {
+  if (!is.list(model_params)) {
+    stop("`model_params` must be a list.", call. = FALSE)
+  }
+  requested <- as.character(model_params$model_completion %||% "none")
+  if (length(requested) != 1L || is.na(requested) ||
+      !identical(requested, "none")) {
+    stop(
+      "Full-GEM mode automatically skips FASTCORE and CORDA2; omit ",
+      "`model_completion` or set it to `none`.",
+      call. = FALSE
+    )
+  }
+  incompatible <- intersect(names(model_params), c(
+    "fastcore_epsilon", "max_support_reactions", "strict",
+    "corda2_args", "corda_medium_confidence_threshold",
+    "corda_negative_confidence_threshold", "corda_regulatory_weight",
+    "corda_include_evidence_outside_modules",
+    "corda_max_medium_confidence_reactions"
+  ))
+  if (length(incompatible)) {
+    stop(
+      "Full-GEM mode does not accept FASTCORE or CORDA2 controls: ",
+      paste(incompatible, collapse = ", "),
+      ". It applies medium bounds to the complete GEM and evaluates ",
+      "directional feasibility during COMPASS scoring.",
+      call. = FALSE
+    )
+  }
+  unknown <- setdiff(
+    names(model_params),
+    c("model_completion", "completion_time_limit", "cache_dir")
+  )
+  if (length(unknown)) {
+    stop(
+      "Unsupported full-GEM `model_params`: ",
+      paste(unknown, collapse = ", "),
+      ".", call. = FALSE
+    )
+  }
+  if (!is.null(model_params$completion_time_limit)) {
+    value <- as.numeric(model_params$completion_time_limit)
+    if (length(value) != 1L || !is.finite(value) || value <= 0) {
+      stop("`completion_time_limit` must be positive.", call. = FALSE)
+    }
+  }
+  invisible(list(model_completion = "none"))
+}
+
+.rc_assert_medium_bounds_only <- function(
+    reference_gem, constrained_gem, medium_table = NULL,
+    context = "medium application") {
+  reference <- rc_validate_gem(reference_gem)
+  constrained <- rc_validate_gem(constrained_gem)
+
+  same_structure <- identical(reference$reactions, constrained$reactions) &&
+    identical(reference$metabolites, constrained$metabolites) &&
+    identical(reference$S, constrained$S)
+  if (!same_structure) {
+    stop(
+      context,
+      " changed the reaction/metabolite set or stoichiometric matrix. ",
+      "Medium handling must only modify reaction bounds.",
+      call. = FALSE
+    )
+  }
+
+  changed <- reference$reactions[
+    reference$lb != constrained$lb | reference$ub != constrained$ub
+  ]
+  allowed <- if (!is.null(medium_table) &&
+                 "exchange_reaction_id" %in% colnames(medium_table)) {
+    unique(as.character(medium_table$exchange_reaction_id))
+  } else {
+    character()
+  }
+  allowed <- allowed[!is.na(allowed) & nzchar(allowed)]
+  unexpected <- setdiff(changed, allowed)
+  if (length(unexpected)) {
+    stop(
+      context,
+      " modified bounds outside the supplied exchange reactions: ",
+      paste(utils::head(unexpected, 10L), collapse = ", "),
+      ".", call. = FALSE
+    )
+  }
+
+  invisible(list(
+    changed_reactions = changed,
+    n_changed_reactions = length(changed),
+    n_removed_reactions = 0L
+  ))
+}
+
 #' Build a COMPASS-style full GEM for one medium scenario
 #'
-#' The complete validated Human-GEM is retained. Optional medium constraints are
-#' applied once and the resulting model is reused for every target and unit.
+#' The complete validated GEM is retained. Optional medium constraints modify
+#' exchange-reaction bounds only. Reactions that cannot carry flux under the
+#' medium remain in the model and are classified by the directional COMPASS
+#' maximum-flux step; the penalty-minimization step is skipped when infeasible.
 rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
   gem <- rc_annotate_reaction_roles(gem, medium_table = medium_table)
   validated <- rc_validate_gem(gem)
@@ -19,7 +115,13 @@ rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
     ]
   }
 
+  reference <- full
   medium_diagnostics <- data.frame()
+  medium_contract <- list(
+    changed_reactions = character(),
+    n_changed_reactions = 0L,
+    n_removed_reactions = 0L
+  )
   if (!is.null(medium_table)) {
     applied <- rc_apply_medium_constraints(
       full,
@@ -29,6 +131,21 @@ rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
     )
     full <- applied$gem
     medium_diagnostics <- applied$medium_diagnostics
+    medium_contract <- .rc_assert_medium_bounds_only(
+      reference,
+      full,
+      medium_table = medium_table,
+      context = "COMPASS-style full-GEM medium application"
+    )
+  }
+
+  constrained <- rc_validate_gem(full)
+  if (!identical(validated$reactions, constrained$reactions)) {
+    stop(
+      "COMPASS-style full-GEM construction must retain every reference ",
+      "reaction after medium application.",
+      call. = FALSE
+    )
   }
   full$reaction_roles <- full$reaction_meta[
     , intersect(
@@ -41,11 +158,27 @@ rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
     drop = FALSE
   ]
   full$medium_diagnostics <- medium_diagnostics
+  full$medium_contract <- medium_contract
+  full$flux_consistency_diagnostics <- data.frame()
   full$closure_diagnostics <- data.frame()
   full$target_status <- "not_prechecked"
   full$build_params <- list(
-    strategy = "full_gem",
+    strategy = "compass_medium_constrained_full_gem",
+    context_specific_reconstruction = FALSE,
+    reaction_evidence_used = FALSE,
+    fastcore_executed = FALSE,
+    corda2_executed = FALSE,
+    medium_applied = !is.null(medium_table),
+    medium_handling = "exchange_bounds_only_no_reaction_deletion",
+    medium_direct_reaction_deletion = FALSE,
+    target_feasibility =
+      "directional_vmax_then_skip_penalty_lp_when_infeasible",
+    flux_consistency_pruning = FALSE,
+    flux_consistency_algorithm = "none",
+    n_input_reactions = length(validated$reactions),
     n_reactions = ncol(full$S),
+    n_medium_removed_reactions = 0L,
+    n_medium_bound_changes = medium_contract$n_changed_reactions,
     n_metabolites = nrow(full$S)
   )
   full
@@ -74,17 +207,62 @@ rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
   unname(tools::md5sum(file)[[1L]])
 }
 
-#' Cache one complete full GEM per medium scenario
-rc_build_full_gem_cache <- function(gem, dirs, medium_scenarios,
-                                    cache_dir = tempfile(
-                                      "RegCompassR_full_gem_cache_"
-                                    ),
-                                    force = FALSE,
-                                    conditions = NULL) {
+.rc_full_gem_medium_fingerprint <- function(medium) {
+  payload <- if (is.null(medium)) {
+    list(no_constraints = TRUE)
+  } else {
+    required <- c("exchange_reaction_id", "lb", "ub", "available")
+    missing <- setdiff(required, colnames(medium))
+    if (length(missing)) {
+      stop(
+        "Medium fingerprint input is missing: ",
+        paste(missing, collapse = ", "),
+        ".", call. = FALSE
+      )
+    }
+    columns <- intersect(
+      c(
+        "exchange_reaction_id", "condition", "available", "lb", "ub",
+        ".no_constraints"
+      ),
+      colnames(medium)
+    )
+    value <- medium[, columns, drop = FALSE]
+    order_columns <- intersect(
+      c("condition", "exchange_reaction_id"),
+      colnames(value)
+    )
+    if (length(order_columns) && nrow(value)) {
+      value <- value[do.call(order, value[order_columns]), , drop = FALSE]
+    }
+    rownames(value) <- NULL
+    value
+  }
+  file <- tempfile("RegCompassR-full-gem-medium-", fileext = ".rds")
+  on.exit(unlink(file, force = TRUE), add = TRUE)
+  saveRDS(payload, file, version = 2)
+  unname(tools::md5sum(file)[[1L]])
+}
+
+#' Cache one complete medium-constrained full GEM per medium scenario
+rc_build_full_gem_cache <- function(
+    gem, dirs, medium_scenarios,
+    cache_dir = tempfile("RegCompassR_full_gem_cache_"),
+    force = FALSE, conditions = NULL,
+    solver = NULL, time_limit = NULL,
+    flux_consistency_epsilon = NULL) {
   if (!is.data.frame(dirs) ||
       !all(c("reaction_id", "target_direction") %in% colnames(dirs))) {
     stop("`dirs` must contain `reaction_id` and `target_direction`.", call. = FALSE)
   }
+  requested_solver <- if (is.null(solver)) NA_character_ else as.character(solver)
+  requested_time_limit <- if (is.null(time_limit)) NA_real_ else as.numeric(time_limit)
+  requested_epsilon <- if (is.null(flux_consistency_epsilon)) {
+    NA_real_
+  } else {
+    as.numeric(flux_consistency_epsilon)
+  }
+
   medium_scenarios <- .rc_normalize_medium_scenarios(medium_scenarios)
   if (is.null(conditions)) {
     conditions <- if ("condition" %in% colnames(medium_scenarios)) {
@@ -109,37 +287,57 @@ rc_build_full_gem_cache <- function(gem, dirs, medium_scenarios,
   )
   model_files <- list()
   summaries <- vector("list", nrow(combinations))
-  safe <- function(value) paste(sprintf("%02x", as.integer(charToRaw(enc2utf8(value)))), collapse = "")
+  safe <- function(value) {
+    paste(
+      sprintf("%02x", as.integer(charToRaw(enc2utf8(value)))),
+      collapse = ""
+    )
+  }
 
   for (i in seq_len(nrow(combinations))) {
     scenario <- combinations$medium_scenario[[i]]
     condition <- combinations$condition[[i]]
     identity <- paste(scenario, condition, sep = "::")
-    file <- file.path(
-      cache_dir,
-      paste0(
-        "full_gem__gem_", gem_fingerprint,
-        "__medium_", safe(scenario),
-        "__condition_", safe(condition), ".rds"
-      )
-    )
     medium <- medium_scenarios[
       as.character(medium_scenarios$medium_scenario_id) == scenario,
       , drop = FALSE
     ]
     if (!nrow(medium) ||
-        (".no_constraints" %in% colnames(medium) && all(medium$.no_constraints))) {
+        (".no_constraints" %in% colnames(medium) &&
+         all(medium$.no_constraints))) {
       medium <- NULL
     }
+    medium_fingerprint <- .rc_full_gem_medium_fingerprint(medium)
+    file <- file.path(
+      cache_dir,
+      paste0(
+        "full_gem__gem_", gem_fingerprint,
+        "__medium_bounds_", medium_fingerprint,
+        "__medium_", safe(scenario),
+        "__condition_", safe(condition), ".rds"
+      )
+    )
     rebuild <- !file.exists(file) || isTRUE(force)
     if (!rebuild) {
       full <- tryCatch(readRDS(file), error = function(error) NULL)
-      cached_fingerprint <- if (is.list(full)) {
+      cached_gem_fingerprint <- if (is.list(full)) {
         full$cache_identity$gem_fingerprint %||% NA_character_
       } else {
         NA_character_
       }
-      rebuild <- !identical(cached_fingerprint, gem_fingerprint)
+      cached_medium_fingerprint <- if (is.list(full)) {
+        full$cache_identity$medium_fingerprint %||% NA_character_
+      } else {
+        NA_character_
+      }
+      cached_strategy <- if (is.list(full)) {
+        full$build_params$strategy %||% NA_character_
+      } else {
+        NA_character_
+      }
+      rebuild <- !identical(cached_gem_fingerprint, gem_fingerprint) ||
+        !identical(cached_medium_fingerprint, medium_fingerprint) ||
+        !identical(cached_strategy, "compass_medium_constrained_full_gem")
     }
     if (rebuild) {
       full <- rc_build_full_gem(
@@ -150,6 +348,7 @@ rc_build_full_gem_cache <- function(gem, dirs, medium_scenarios,
       full$condition <- condition
       full$cache_identity <- list(
         gem_fingerprint = gem_fingerprint,
+        medium_fingerprint = medium_fingerprint,
         species = gem$model_info$species %||% NA_character_,
         source = gem$model_info$source %||% NA_character_,
         version = gem$model_info$model_version %||%
@@ -161,35 +360,46 @@ rc_build_full_gem_cache <- function(gem, dirs, medium_scenarios,
       saveRDS(full, file)
     }
     model_files[[identity]] <- file
+    build <- full$build_params
     summaries[[i]] <- data.frame(
       cache_key = paste(
-        "full_gem", gem_fingerprint, scenario, condition, sep = "::"
+        "full_gem", gem_fingerprint, medium_fingerprint,
+        scenario, condition, sep = "::"
       ),
       gem_fingerprint = gem_fingerprint,
+      medium_fingerprint = medium_fingerprint,
       medium_scenario = scenario,
       condition = condition,
       file = file,
+      n_input_reactions = build$n_input_reactions,
       n_reactions = ncol(full$S),
+      n_medium_removed_reactions = 0L,
+      n_medium_bound_changes = build$n_medium_bound_changes,
       n_metabolites = nrow(full$S),
-      build_strategy = "full_gem",
-      target_status = "not_prechecked",
-      model_version = gem$model_info$model_version %||% gem$model_info$version %||% NA_character_,
-      model_commit = gem$model_info$source_commit %||% gem$model_info$commit %||% NA_character_,
+      medium_applied = isTRUE(build$medium_applied),
+      medium_handling = build$medium_handling,
+      requested_solver = requested_solver,
+      requested_completion_time_limit = requested_time_limit,
+      requested_flux_threshold = requested_epsilon,
+      build_strategy = "compass_medium_constrained_full_gem",
+      target_status = full$target_status,
+      model_version = gem$model_info$model_version %||%
+        gem$model_info$version %||% NA_character_,
+      model_commit = gem$model_info$source_commit %||%
+        gem$model_info$commit %||% NA_character_,
       stringsAsFactors = FALSE
     )
   }
 
   cache <- list()
   for (i in seq_len(nrow(dirs))) {
+    reaction <- as.character(dirs$reaction_id[[i]])
     for (j in seq_len(nrow(combinations))) {
       scenario <- combinations$medium_scenario[[j]]
       condition <- combinations$condition[[j]]
       identity <- paste(scenario, condition, sep = "::")
       key <- paste0(
-        "reaction=", utils::URLencode(
-          as.character(dirs$reaction_id[[i]]),
-          reserved = TRUE
-        ),
+        "reaction=", utils::URLencode(reaction, reserved = TRUE),
         "::direction=", utils::URLencode(
           as.character(dirs$target_direction[[i]]),
           reserved = TRUE
@@ -198,15 +408,21 @@ rc_build_full_gem_cache <- function(gem, dirs, medium_scenarios,
         "::condition=", utils::URLencode(condition, reserved = TRUE)
       )
       cache[[key]] <- list(
-        reaction_id = as.character(dirs$reaction_id[[i]]),
+        reaction_id = reaction,
         target_direction = as.character(dirs$target_direction[[i]]),
         medium_scenario = scenario,
         condition = condition,
         file = model_files[[identity]],
-        build_strategy = "full_gem"
+        build_strategy = "compass_medium_constrained_full_gem"
       )
     }
   }
   attr(cache, "summary") <- do.call(rbind, summaries)
+  attr(cache, "structural_scope") <- "medium_x_complete_full_gem"
+  attr(cache, "completion_method") <- "none"
+  attr(cache, "fastcore_executed") <- FALSE
+  attr(cache, "corda2_executed") <- FALSE
+  attr(cache, "medium_handling") <-
+    "exchange_bounds_only_no_reaction_deletion"
   cache
 }

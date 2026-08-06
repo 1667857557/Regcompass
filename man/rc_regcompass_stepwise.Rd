@@ -57,13 +57,13 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{meta_module_args}{Optional custom subsystem table.}
 \item{gpr_and_method}{GPR AND aggregation method.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
-\item{layer2_args}{Directional scoring and model-completion controls.}
+\item{layer2_args}{Directional scoring and structural controls. With \code{model_mode = "meta_module_gem"}, \code{model_params$model_completion} selects \code{"fastcore"} or \code{"corda2"}. With \code{model_mode = "full_gem"}, FASTCORE and CORDA2 are skipped and target feasibility is evaluated by directional COMPASS maximum-flux LPs.}
 \item{parallel}{Enable stage-level parallel execution.}
 \item{BPPARAM}{A \code{BiocParallelParam}, \code{NULL}, or \code{FALSE}.}
 \item{progress}{Display and persist stage progress.}
 \item{metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
-\item{medium_scenarios}{Shared medium table.}
-\item{model_mode}{Use cell-type meta-module GEMs or the full reference GEM.}
+\item{medium_scenarios}{Shared medium table. In every Layer 2 route, medium application changes listed exchange-reaction bounds only and does not directly remove reactions.}
+\item{model_mode}{Use cell-type meta-module reconstruction with FASTCORE or CORDA2, or use the complete shared full GEM with COMPASS-style directional scoring.}
 }
 \value{
 Each function returns a validated stage object and writes its artifacts to
@@ -79,7 +79,14 @@ conditions use the common-dictionary condition GRN; one retained condition uses
 standard Pando. Stage 2 reproduces the Stage 1 cell set and keeps final
 metacells condition-pure. Stage 3 builds cell-type-scoped reaction catalogues.
 Stage 4 produces the primary multiome reaction support and an RNA-only control.
-Stage 5 uses cell-type and medium structural models or the full GEM. Stage 6
-assembles rankings, annotations and available condition contrasts. Mathematical
-definitions are maintained in \code{docs/mathematical-model.md}.
+Stage 5 has three mutually exclusive structural routes: add-only FASTCORE,
+original MATLAB CORDA2, or a COMPASS-style full GEM. Medium scenarios modify
+exchange bounds without directly deleting reactions in all three routes.
+FASTCORE then performs its own FASTCC/FASTCORE reconstruction; CORDA2 receives
+the complete medium-constrained parent without FASTCC pre-pruning; full-GEM
+mode retains every reaction and skips the penalty LP when a target direction's
+maximum feasible flux is below the scoring threshold. Stage 6 assembles
+rankings, annotations and available condition contrasts. Mathematical
+definitions are maintained in \code{docs/mathematical-model.md}; selection
+examples are in \code{docs/layer2-model-builders.md}.
 }

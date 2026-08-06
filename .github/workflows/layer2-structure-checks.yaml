@@ -1,0 +1,158 @@
+name: Layer 2 structural builder checks
+
+on:
+  pull_request:
+    paths:
+      - 'R/fastcore.R'
+      - 'R/full_gem.R'
+      - 'R/microcompass_engine.R'
+      - 'R/layer2_corda_parent_contract.R'
+      - 'R/layer2_corda_runtime_step.R'
+      - 'R/step_layer2.R'
+      - 'tests/full-gem-synthetic-check.R'
+      - 'tests/testthat/test_full_gem.R'
+      - '.github/workflows/layer2-structure-checks.yaml'
+  push:
+    branches: [Main]
+    paths:
+      - 'R/fastcore.R'
+      - 'R/full_gem.R'
+      - 'R/microcompass_engine.R'
+      - 'R/layer2_corda_parent_contract.R'
+      - 'R/layer2_corda_runtime_step.R'
+      - 'R/step_layer2.R'
+      - 'tests/full-gem-synthetic-check.R'
+      - 'tests/testthat/test_full_gem.R'
+      - '.github/workflows/layer2-structure-checks.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  structural-builders:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+          use-public-rspm: true
+
+      - name: Install solver dependency
+        shell: Rscript {0}
+        run: install.packages("highs")
+
+      - name: Parse structural builder sources and tests
+        shell: Rscript {0}
+        run: |
+          files <- c(
+            "R/fastcore.R",
+            "R/full_gem.R",
+            "R/microcompass_engine.R",
+            "R/layer2_corda_parent_contract.R",
+            "R/layer2_corda_runtime_step.R",
+            "R/step_layer2.R",
+            "tests/full-gem-synthetic-check.R",
+            "tests/testthat/test_full_gem.R"
+          )
+          for (file in files) parse(file = file)
+
+      - name: Run COMPASS medium-bounds regression
+        run: Rscript tests/full-gem-synthetic-check.R
+
+      - name: Audit mutually exclusive builder contract
+        shell: python
+        run: |
+          from pathlib import Path
+
+          full = Path("R/full_gem.R").read_text()
+          fastcore = Path("R/fastcore.R").read_text()
+          corda_parent = Path("R/layer2_corda_parent_contract.R").read_text()
+          dispatch = Path("R/layer2_corda_runtime_step.R").read_text()
+          engine = Path("R/microcompass_engine.R").read_text()
+
+          required_full = [
+              '.rc_validate_full_gem_model_params',
+              '.rc_assert_medium_bounds_only',
+              '"compass_medium_constrained_full_gem"',
+              '"exchange_bounds_only_no_reaction_deletion"',
+              'medium_direct_reaction_deletion = FALSE',
+              'flux_consistency_pruning = FALSE',
+              '.rc_full_gem_medium_fingerprint',
+              'medium_fingerprint = medium_fingerprint',
+              'n_medium_removed_reactions = 0L',
+              'fastcore_executed = FALSE',
+              'corda2_executed = FALSE',
+              'reaction_evidence_used = FALSE',
+          ]
+          missing = [value for value in required_full if value not in full]
+          if missing:
+              raise RuntimeError(f"full-GEM implementation missing: {missing}")
+
+          forbidden_full = [
+              '.rc_fastcc_consistent_reactions',
+              '.rc_subset_gem(',
+              'medium_flux_consistency_pruned_full_gem',
+              'removed_medium_flux_inconsistent',
+          ]
+          found = [value for value in forbidden_full if value in full]
+          if found:
+              raise RuntimeError(
+                  f"full-GEM still contains medium-driven pruning: {found}"
+              )
+
+          required_dispatch = [
+              'answer$params$structural_completion <- "none"',
+              '"compass_medium_bounds_only"',
+              '"exchange_bounds_only_then_fastcc_fastcore"',
+              '"exchange_bounds_only_then_corda2"',
+              'medium_direct_reaction_deletion = FALSE',
+              'fastcore_executed = FALSE',
+              'corda2_executed = FALSE',
+          ]
+          missing = [value for value in required_dispatch if value not in dispatch]
+          if missing:
+              raise RuntimeError(f"Layer 2 completion contract missing: {missing}")
+
+          required_engine = [
+              '.rc_validate_full_gem_model_params(model_params)',
+              '"medium_directionally_infeasible"',
+              '"compass_medium_bounds_only"',
+              '"exchange_bounds_only_no_reaction_deletion"',
+              'completion_method"), "none"',
+          ]
+          missing = [value for value in required_engine if value not in engine]
+          if missing:
+              raise RuntimeError(f"full-GEM engine integration missing: {missing}")
+
+          required_fastcore = [
+              'parent <- rc_build_full_gem(',
+              'consistent <- .rc_fastcc_consistent_reactions(',
+          ]
+          missing = [value for value in required_fastcore if value not in fastcore]
+          if missing:
+              raise RuntimeError(f"FASTCORE medium contract missing: {missing}")
+
+          required_corda = [
+              'parent <- rc_build_full_gem(',
+              'parent$corda_parent_prepruning <- "none"',
+              'directly to original CORDA2 without FASTCC',
+          ]
+          missing = [value for value in required_corda if value not in corda_parent]
+          if missing:
+              raise RuntimeError(f"CORDA2 medium contract missing: {missing}")
+
+          production = [
+              Path("R/full_gem.R"),
+              Path("R/microcompass_engine.R"),
+              Path("R/layer2_corda_runtime_step.R"),
+          ]
+          for file in production:
+              text = file.read_text()
+              for marker in ("_base <-", "before_full_gem", "completion_base <-"):
+                  if marker in text:
+                      raise RuntimeError(
+                          f"function override marker remains in {file}: {marker}"
+                      )

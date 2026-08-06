@@ -83,6 +83,7 @@
     stop("The shared full-GEM engine accepts only `full_gem` mode.",
          call. = FALSE)
   }
+  .rc_validate_full_gem_model_params(model_params)
   unit <- match.arg(unit)
   solver <- match.arg(solver)
   target_direction <- match.arg(target_direction)
@@ -99,9 +100,19 @@
 
   if (!is.null(model_cache_override)) {
     if (!is.list(model_cache_override) || !length(model_cache_override) ||
-        is.null(attr(model_cache_override, "summary"))) {
-      stop("`model_cache_override` is not an audited shared model cache.",
-           call. = FALSE)
+        is.null(attr(model_cache_override, "summary")) ||
+        !identical(attr(model_cache_override, "completion_method"), "none") ||
+        !identical(attr(model_cache_override, "fastcore_executed"), FALSE) ||
+        !identical(attr(model_cache_override, "corda2_executed"), FALSE) ||
+        !identical(
+          attr(model_cache_override, "medium_handling"),
+          "exchange_bounds_only_no_reaction_deletion"
+        )) {
+      stop(
+        "`model_cache_override` is not an audited COMPASS-style ",
+        "medium-constrained full-GEM cache.",
+        call. = FALSE
+      )
     }
     model_cache <- model_cache_override
     directions <- unique(do.call(rbind, lapply(
@@ -144,8 +155,22 @@
       medium_scenarios = medium_scenarios,
       cache_dir = model_params$cache_dir %||%
         tempfile("RegCompassR_full_gem_cache_"),
-      conditions = "all"
+      conditions = "all",
+      solver = solver,
+      time_limit = model_params$completion_time_limit %||% NA_real_,
+      flux_consistency_epsilon = flux_threshold
     )
+    directions <- unique(do.call(rbind, lapply(
+      model_cache,
+      function(entry) {
+        data.frame(
+          reaction_id = as.character(entry$reaction_id),
+          target_direction = as.character(entry$target_direction),
+          medium_scenario = as.character(entry$medium_scenario),
+          stringsAsFactors = FALSE
+        )
+      }
+    )))
   } else {
     stop("The shared full-GEM engine received a non-full-GEM mode.",
          call. = FALSE)
@@ -274,8 +299,11 @@
           solver_status = answer$solver_status,
           step1_status = answer$step1_status,
           step2_status = answer$step2_status,
-          target_status = model$target_status %||%
-            if (isTRUE(answer$feasible)) "ok" else "structurally_infeasible",
+          target_status = if (isTRUE(answer$feasible)) {
+            "ok"
+          } else {
+            "medium_directionally_infeasible"
+          },
           objective_value = if (target_evidence_available) {
             answer$penalty
           } else {
@@ -352,8 +380,22 @@
       omega = omega,
       target_direction = target_direction,
       shared_gem = TRUE,
-      shared_gem_scope =
-        "one_full_gem_per_medium_shared_across_all_units",
+      shared_gem_scope = paste(
+        "one complete medium-constrained full GEM per medium",
+        "shared across all units"
+      ),
+      structural_scope = "medium_x_complete_full_gem",
+      model_completion = "none",
+      structural_completion = "none",
+      structural_completion_algorithm = "compass_medium_bounds_only",
+      medium_handling = "exchange_bounds_only_no_reaction_deletion",
+      medium_direct_reaction_deletion = FALSE,
+      target_feasibility = paste(
+        "directional vmax under the medium; skip Step 2 when",
+        "vmax is below flux_threshold"
+      ),
+      fastcore_executed = FALSE,
+      corda2_executed = FALSE,
       parallel_task = "shared_model_by_metacell_step2",
       vmax_computation_scope =
         "shared_model_x_directional_target_once",
@@ -362,7 +404,7 @@
       flux_threshold = flux_threshold,
       scoring_time_limit = "none"
     ),
-    method = "microCOMPASS shared full-GEM directional LP"
+    method = "microCOMPASS shared medium-constrained full-GEM directional LP"
   )
 }
 
