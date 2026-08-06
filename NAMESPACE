@@ -2,6 +2,7 @@
 
 useDynLib(RegCompassR, .registration = TRUE)
 importFrom(Rcpp,evalCpp)
+export(plot_top_celltype_reaction_rank)
 export(rc_attach_reaction_annotations)
 export(rc_build_reaction_annotations)
 export(rc_bundled_gem_manifest)

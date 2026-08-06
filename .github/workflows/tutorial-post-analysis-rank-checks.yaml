@@ -1,14 +1,24 @@
-name: Post-analysis reaction rank tutorial checks
+name: Post-analysis reaction rank checks
 
 on:
   pull_request:
     paths:
+      - 'R/reaction_rank_plot.R'
+      - 'R/workflow_utils.R'
+      - 'DESCRIPTION'
+      - 'NAMESPACE'
+      - 'man/plot_top_celltype_reaction_rank.Rd'
       - 'docs/tutorial-04-post-analysis.md'
       - 'tests/tutorial-post-analysis-rank-check.R'
       - '.github/workflows/tutorial-post-analysis-rank-checks.yaml'
   push:
     branches: [Main]
     paths:
+      - 'R/reaction_rank_plot.R'
+      - 'R/workflow_utils.R'
+      - 'DESCRIPTION'
+      - 'NAMESPACE'
+      - 'man/plot_top_celltype_reaction_rank.Rd'
       - 'docs/tutorial-04-post-analysis.md'
       - 'tests/tutorial-post-analysis-rank-check.R'
       - '.github/workflows/tutorial-post-analysis-rank-checks.yaml'
@@ -17,7 +27,7 @@ permissions:
   contents: read
 
 jobs:
-  tutorial-rank:
+  reaction-rank:
     runs-on: ubuntu-22.04
     timeout-minutes: 15
     steps:
@@ -32,9 +42,11 @@ jobs:
         shell: Rscript {0}
         run: install.packages('ggplot2')
 
-      - name: Parse tutorial R code blocks
+      - name: Parse implementation and tutorial code blocks
         shell: Rscript {0}
         run: |
+          parse(file = 'R/reaction_rank_plot.R')
+          parse(file = 'R/workflow_utils.R')
           lines <- readLines('docs/tutorial-04-post-analysis.md', warn = FALSE)
           starts <- which(trimws(lines) == '```r')
           ends <- which(trimws(lines) == '```')
@@ -45,21 +57,24 @@ jobs:
             parse(text = lines[seq.int(start + 1L, finish - 1L)])
           }
 
-      - name: Run synthetic rank regression
+      - name: Run synthetic rank and condition regressions
         run: Rscript tests/tutorial-post-analysis-rank-check.R
 
-      - name: Audit tutorial semantics
+      - name: Audit exported rank semantics
         shell: python
         run: |
           from pathlib import Path
 
-          text = Path('docs/tutorial-04-post-analysis.md').read_text()
-          required = [
+          source = Path('R/reaction_rank_plot.R').read_text()
+          namespace = Path('NAMESPACE').read_text()
+          description = Path('DESCRIPTION').read_text()
+          documentation = Path('man/plot_top_celltype_reaction_rank.Rd').read_text()
+          tutorial = Path('docs/tutorial-04-post-analysis.md').read_text()
+          required_source = [
               'plot_top_celltype_reaction_rank <- function(',
               'top_n = 20L',
               'median_support_score',
               'has_active_multiome_contribution',
-              'any(\n        one$has_active_multiome_contribution %in% TRUE',
               'Multiome-supported',
               'RNA-only',
               'reaction_name',
@@ -68,19 +83,35 @@ jobs:
               'duplicate_label',
               'ggplot2::geom_col',
               'ggplot2::coord_flip',
-              'attr(p, "rank_data")',
-              'Structural reactions without a GPR',
-              'GPR reactions without observed RNA support',
+              'attr(plot, "rank_data")',
+              'condition_available',
+              'no usable condition metadata',
           ]
-          missing = [value for value in required if value not in text]
+          missing = [value for value in required_source if value not in source]
           if missing:
-              raise RuntimeError(f'post-analysis rank contract missing: {missing}')
+              raise RuntimeError(f'exported rank implementation missing: {missing}')
+
+          required_registration = [
+              ('NAMESPACE', 'export(plot_top_celltype_reaction_rank)', namespace),
+              ('DESCRIPTION', "'reaction_rank_plot.R'", description),
+              ('Rd', '\\alias{plot_top_celltype_reaction_rank}', documentation),
+              ('tutorial', 'plot_top_celltype_reaction_rank(', tutorial),
+          ]
+          missing_registration = [
+              f'{name}: {value}'
+              for name, value, text in required_registration
+              if value not in text
+          ]
+          if missing_registration:
+              raise RuntimeError(
+                  f'exported rank registration missing: {missing_registration}'
+              )
 
           forbidden = [
               'regulatory_support_fraction > 0',
               'regulatory_penalty_delta != 0',
               'evidence_class == "RNA+ATAC"[1]',
           ]
-          found = [value for value in forbidden if value in text]
+          found = [value for value in forbidden if value in source]
           if found:
               raise RuntimeError(f'unsupported evidence shortcut found: {found}')

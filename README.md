@@ -20,33 +20,69 @@ Use a paired-cell Seurat object containing:
 - genome-compatible peak coordinates;
 - an optional condition column.
 
-Stage 1 retains groups with at least 300 paired cells. Within each broad cell type, two or more retained conditions use the common-dictionary condition GRN; one retained condition uses standard Pando automatically.
+Stage 1 retains groups with at least 300 paired cells. Within each broad cell type, two or more retained conditions use the common-dictionary condition GRN; one retained condition or no condition uses standard Pando automatically.
 
 ## Workflow
 
-```mermaid
-flowchart TD
-  A[Paired single-cell RNA + ATAC Seurat object] --> S1
-  G[Species GEM] --> S3
-  M[Shared biological or custom medium] --> S5
-
-  S1[Stage 1: cell-type Pando GRN routing] --> S2[Stage 2: condition-pure multimodal metacells]
-  S2 --> S3[Stage 3: cell-type reaction meta-modules]
-  S1 --> S4[Stage 4: RNA + regulatory reaction support]
-  S2 --> S4
-  S3 --> S4
-
-  S3 --> S5[Stage 5 default: CORDA2 cell-type x medium structural model]
-  S4 --> P[Primary multiome COMPASS-like directional penalty]
-  S4 --> R[RNA-only control penalty]
-  S5 --> P
-  S5 --> R
-
-  P --> S6[Stage 6: rankings, annotations and condition contrasts]
-  R --> S6
-
-  F[Explicit supplement: FASTCORE] -. replaces CORDA2 .-> S5
-  H[Explicit supplement: complete full GEM] -. skips reconstruction .-> P
+```text
+Paired single-cell RNA + ATAC Seurat object ┐
+Species-specific genome-scale model (GEM)  ├──► RegCompass inputs
+Shared biological or custom medium          ┘
+                                                │
+                                                ▼
+Stage 1 ── Cell-type Pando GRN routing
+          ├── no condition / one condition ──► standard Pando
+          └── two or more conditions       ──► common-dictionary condition GRNs
+          └──────────────────────────────────► Result: cell-type GRNs, active
+                                               TF-peak-gene edges, and routing
+                                               provenance
+                                                │
+                                                ▼
+Stage 2 ── Multimodal metacell construction
+          ├── one RNA+ATAC WNN graph per broad cell type
+          └── condition split after graph clustering
+          └──────────────────────────────────► Result: condition-pure metacells,
+                                               membership, aggregated RNA counts,
+                                               and aggregated ATAC counts
+                                                │
+                                                ▼
+Stage 3 ── Cell-type reaction meta-modules
+          ├── metabolic genes and GPR-linked core reactions
+          ├── subsystem / Rhea / network-neighbour expansion
+          └──────────────────────────────────► Result: reaction modules and
+                                               cell-type scoring targets
+                                                │
+                     Stage 1 GRNs ──────────────┤
+                     Stage 2 metacells ─────────┤
+                     Stage 3 modules ───────────┘
+                                                ▼
+Stage 4 ── RNA + regulatory reaction support
+          ├── RNA-only gene and reaction support
+          └── Pando-regulated multiome support
+          └──────────────────────────────────► Result: aligned RNA-only and
+                                               RNA+ATAC reaction evidence matrices
+                                                │
+                                                ▼
+Stage 5 ── Cell-type × medium structural model
+          ├── default       ──► CORDA2 completion
+          ├── supplementary ──► FASTCORE completion
+          └── supplementary ──► complete full-GEM scoring
+          └──────────────────────────────────► Result: shared structural model,
+                                               bounds, target directions, and
+                                               directional maximum fluxes
+                                                │
+                       ┌────────────────────────┴────────────────────────┐
+                       ▼                                                 ▼
+Primary multiome COMPASS-like penalty                 Matched RNA-only control
+                       └────────────────────────┬────────────────────────┘
+                                                │
+                                                ▼
+Stage 6 ── Result assembly and post-analysis
+          ├── reaction annotations and evidence classes
+          ├── cell-type reaction rankings
+          ├── condition contrasts when conditions are available
+          └──────────────────────────────────► Result: auditable reaction tables,
+                                               plots, rankings, and comparisons
 ```
 
 The primary multiome score and RNA-only control reuse the same completed structural model, bounds, medium and target directions. Therefore their difference isolates the regulatory contribution rather than a change in network structure.
@@ -77,7 +113,9 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-The one-shot workflow prepares the species GEM and default plasma-like medium, builds cell-type-specific GRNs and condition-pure metacells, constructs reaction catalogues, calculates RNA+ATAC-informed reaction penalties, and assembles condition-level results.
+When no condition metadata are available, omit `condition_col` or set `condition_col = NULL`; the workflow uses standard Pando with one internal background label.
+
+The one-shot workflow prepares the species GEM and default plasma-like medium, builds cell-type-specific GRNs and condition-pure metacells, constructs reaction catalogues, calculates RNA+ATAC-informed reaction penalties, and assembles condition-level results when conditions are available.
 
 Main outputs:
 
