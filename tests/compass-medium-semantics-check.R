@@ -29,6 +29,8 @@ rc_annotate_reaction_roles <- function(gem, medium_table = NULL) gem
   )
 }
 
+source("R/full_gem.R")
+source("R/layer2_corda_parent_contract.R")
 source("R/compass_medium_semantics.R")
 
 reactions <- c(
@@ -131,6 +133,26 @@ stopifnot(
   all(model_bounds$bound_scope == "uptake")
 )
 
+full <- rc_build_full_gem(gem, medium_table = medium)
+corda_parent <- .rc_corda_parent(
+  gem,
+  medium_table = medium,
+  forbidden_roles = character(),
+  solver = "highs",
+  time_limit = 60
+)
+stopifnot(
+  identical(colnames(full$S), reactions),
+  identical(colnames(corda_parent$S), reactions),
+  identical(unname(full$lb[["EX_unlisted"]]), -1),
+  identical(unname(corda_parent$lb[["EX_unlisted"]]), -1),
+  identical(unname(full$ub[["EX_reverse"]]), 1000),
+  identical(unname(corda_parent$ub[["EX_forward"]]), 4),
+  identical(full$build_params$n_medium_removed_reactions, 0L),
+  identical(corda_parent$corda_parent_prepruning, "none"),
+  identical(corda_parent$corda_parent_role_blocking, "none")
+)
+
 fingerprint_1 <- .rc_full_gem_medium_fingerprint(medium)
 medium_2 <- medium
 medium_2$exchange_limit[[1L]] <- 11
@@ -140,4 +162,4 @@ stopifnot(
   !identical(fingerprint_1, fingerprint_2)
 )
 
-message("COMPASS exchange-medium semantics regression passed.")
+message("COMPASS exchange-medium and Layer 2 handoff regression passed.")
