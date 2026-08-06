@@ -429,11 +429,14 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 rc_build_full_gem <- function(...) {
-  if (!isTRUE(.rc_layer2_progress_state$active) &&
-      is.null(.rc_layer2_progress_state$current_task)) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  if (!isTRUE(progress_state$active) &&
+      is.null(progress_state$current_task)) {
     return(do.call(.rc_build_full_gem_core, list(...)))
   }
-  if (!is.null(.rc_layer2_progress_state$current_task)) {
+  if (!is.null(progress_state$current_task)) {
     return(do.call(.rc_build_full_gem_core, list(...)))
   }
   args <- list(...)
@@ -460,11 +463,14 @@ rc_build_full_gem <- function(...) {
 
 # Progress-aware entry point; the algorithm remains in the core above.
 rc_build_full_gem_cache <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
   answer <- do.call(
     .rc_build_full_gem_cache_core,
     list(...)
   )
-  if (identical(.rc_layer2_progress_state$run_kind, "primary")) {
+  if (identical(progress_state$run_kind, "primary")) {
     summary <- attr(answer, "summary")
     .rc_layer2_overall_event(
       "structural_models_complete", 3L,

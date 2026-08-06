@@ -70,3 +70,13 @@ test_that("union cache directly dispatches to original CORDA2 helper", {
     fixed = TRUE
   )
 })
+
+test_that("CORDA2 is the default structural worker-pool route", {
+  expect_true(RegCompassR:::.rc_layer2_requested_corda2(list()))
+  expect_true(RegCompassR:::.rc_layer2_requested_corda2(list(
+    model_params = list()
+  )))
+  expect_false(RegCompassR:::.rc_layer2_requested_corda2(list(
+    model_params = list(model_completion = "fastcore")
+  )))
+})

@@ -765,6 +765,9 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_complete_celltype_medium_union_gem <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
   args <- list(...)
   context <- .rc_layer2_task_context(
     cell_type = args$cell_type %||% args[[4L]],
@@ -782,7 +785,7 @@
     )
     if (!exists(
           "fastcore_support",
-          envir = .rc_layer2_progress_state$algorithm_flags,
+          envir = progress_state$algorithm_flags,
           inherits = FALSE
         )) {
       .rc_layer2_algorithm_once(
@@ -812,7 +815,10 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_directional_feasibility <- function(...) {
-  task <- .rc_layer2_progress_state$current_task
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- progress_state$current_task
   if (!is.null(task) && identical(task$route, "fastcore")) {
     .rc_layer2_algorithm_once(
       "fastcore_direction_scan", "core_direction_scan", 4L,
@@ -824,8 +830,11 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_fastcore_complete_direction <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
   args <- list(...)
-  task <- .rc_layer2_progress_state$current_task
+  task <- progress_state$current_task
   if (!is.null(task) && identical(task$route, "fastcore")) {
     direction <- args$direction %||%
       if (length(args) >= 5L) args[[5L]] else "unknown"
@@ -842,7 +851,10 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_fastcore_parent <- function(...) {
-  task <- .rc_layer2_progress_state$current_task
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- progress_state$current_task
   if (!is.null(task) && identical(task$route, "fastcore")) {
     .rc_layer2_current_task_event(
       "medium_parent_start", 2L,

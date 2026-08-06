@@ -631,6 +631,9 @@ rc_run_microcompass <- function(
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_run_shared_full_gem_engine <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
   answer <- do.call(
     .rc_run_shared_full_gem_engine_core,
     list(...)
@@ -639,7 +642,7 @@ rc_run_microcompass <- function(
     answer$shared_model_cache, mode = "full_gem"
   )
   parts_dir <- .rc_layer2_cache_progress_dir(answer$shared_model_cache)
-  run_kind <- .rc_layer2_progress_state$run_kind %||% "primary"
+  run_kind <- progress_state$run_kind %||% "primary"
   for (item in contexts) {
     .rc_layer2_task_event(
       item$context, "penalty_step2_complete", 4L, 4L,

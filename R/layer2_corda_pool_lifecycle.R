@@ -6,7 +6,7 @@
   } else {
     list()
   }
-  requested <- as.character(model_params$model_completion %||% "fastcore")
+  requested <- as.character(model_params$model_completion %||% "corda2")
   length(requested) == 1L && !is.na(requested) &&
     requested %in% c("corda2", "corda")
 }

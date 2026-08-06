@@ -507,13 +507,16 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_build_microcompass_vmax_cache <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
   args <- list(...)
   contexts <- .rc_layer2_model_contexts(
     args$model_cache,
     mode = as.character(args$mode %||% "meta_module_gem")
   )
   parts_dir <- .rc_layer2_cache_progress_dir(args$model_cache)
-  run_kind <- .rc_layer2_progress_state$run_kind %||% "primary"
+  run_kind <- progress_state$run_kind %||% "primary"
   for (item in contexts) {
     .rc_layer2_task_event(
       item$context, "directional_vmax_start", 1L, 4L,

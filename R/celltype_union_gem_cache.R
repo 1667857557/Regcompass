@@ -368,11 +368,14 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_build_celltype_medium_union_gem_cache <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
   answer <- do.call(
     .rc_build_celltype_medium_union_gem_cache_core,
     list(...)
   )
-  if (identical(.rc_layer2_progress_state$run_kind, "primary")) {
+  if (identical(progress_state$run_kind, "primary")) {
     summary <- attr(answer, "summary")
     .rc_layer2_overall_event(
       "structural_models_complete", 3L,

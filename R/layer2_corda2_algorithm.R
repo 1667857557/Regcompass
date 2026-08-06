@@ -272,9 +272,12 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_corda2_dependency_assessment <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
   args <- list(...)
   stage <- args$stage %||% if (length(args) >= 6L) args[[6L]] else ""
-  task <- .rc_layer2_progress_state$current_task
+  task <- progress_state$current_task
   if (!is.null(task) && identical(task$route, "corda2")) {
     if (identical(stage, "corda2_step1_HC_dependencies")) {
       .rc_layer2_algorithm_once(
@@ -293,9 +296,9 @@
       )
     }
   }
-  previous <- .rc_layer2_progress_state$inside_dependency
-  .rc_layer2_progress_state$inside_dependency <- TRUE
-  on.exit({ .rc_layer2_progress_state$inside_dependency <- previous }, add = TRUE)
+  previous <- progress_state$inside_dependency
+  progress_state$inside_dependency <- TRUE
+  on.exit({ progress_state$inside_dependency <- previous }, add = TRUE)
   do.call(
     .rc_corda2_dependency_assessment_core,
     args

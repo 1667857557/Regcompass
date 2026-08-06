@@ -563,7 +563,10 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_corda_classify_reactions <- function(...) {
-  task <- .rc_layer2_progress_state$current_task
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- progress_state$current_task
   if (!is.null(task) && identical(task$route, "corda2")) {
     .rc_layer2_current_task_event(
       "corda2_confidence_mapping", 3L,

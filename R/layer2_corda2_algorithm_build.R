@@ -315,11 +315,14 @@
 
 # Progress-aware entry point; the algorithm remains in the core above.
 .rc_corda_build_three_stage <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
   answer <- do.call(
     .rc_corda_build_three_stage_core,
     list(...)
   )
-  task <- .rc_layer2_progress_state$current_task
+  task <- progress_state$current_task
   if (!is.null(task) && identical(task$route, "corda2")) {
     required <- list(
       c("corda2_step1", "corda2_step1_HC_dependencies", 4L),
@@ -328,7 +331,7 @@
       c("corda2_step3", "corda2_step3_HC_OT_dependencies", 7L)
     )
     for (item in required) {
-      if (!exists(item[[1L]], envir = .rc_layer2_progress_state$algorithm_flags,
+      if (!exists(item[[1L]], envir = progress_state$algorithm_flags,
                   inherits = FALSE)) {
         .rc_layer2_algorithm_once(
           item[[1L]], item[[2L]], as.integer(item[[3L]]),
