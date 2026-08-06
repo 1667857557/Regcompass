@@ -5,6 +5,7 @@ on:
     paths:
       - 'R/**'
       - 'tests/**'
+      - 'tools/**'
       - 'man/**'
       - 'docs/**'
       - 'vignettes/**'
@@ -17,6 +18,7 @@ on:
     paths:
       - 'R/**'
       - 'tests/**'
+      - 'tools/**'
       - 'man/**'
       - 'docs/**'
       - 'vignettes/**'
@@ -39,5 +41,16 @@ jobs:
         with:
           r-version: '4.5'
 
-      - name: Parse and audit package API surface
+      - name: Dry-run deterministic cleanup
+        run: |
+          python tools/apply_api_cleanup.py
+          git diff --check
+
+      - name: Parse transformed R sources
+        shell: Rscript {0}
+        run: |
+          files <- list.files('R', pattern = '[.]R$', full.names = TRUE)
+          for (file in files) parse(file = file)
+
+      - name: Audit transformed API surface
         run: Rscript tests/api-surface-audit.R --strict
