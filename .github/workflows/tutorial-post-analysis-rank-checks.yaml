@@ -1,0 +1,86 @@
+name: Post-analysis reaction rank tutorial checks
+
+on:
+  pull_request:
+    paths:
+      - 'docs/tutorial-04-post-analysis.md'
+      - 'tests/tutorial-post-analysis-rank-check.R'
+      - '.github/workflows/tutorial-post-analysis-rank-checks.yaml'
+  push:
+    branches: [Main]
+    paths:
+      - 'docs/tutorial-04-post-analysis.md'
+      - 'tests/tutorial-post-analysis-rank-check.R'
+      - '.github/workflows/tutorial-post-analysis-rank-checks.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  tutorial-rank:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+          use-public-rspm: true
+
+      - name: Install plotting dependency
+        shell: Rscript {0}
+        run: install.packages('ggplot2')
+
+      - name: Parse tutorial R code blocks
+        shell: Rscript {0}
+        run: |
+          lines <- readLines('docs/tutorial-04-post-analysis.md', warn = FALSE)
+          starts <- which(trimws(lines) == '```r')
+          ends <- which(trimws(lines) == '```')
+          stopifnot(length(starts) > 0L)
+          for (start in starts) {
+            finish <- ends[ends > start][1L]
+            if (is.na(finish)) stop('Unclosed R code block at line ', start)
+            parse(text = lines[seq.int(start + 1L, finish - 1L)])
+          }
+
+      - name: Run synthetic rank regression
+        run: Rscript tests/tutorial-post-analysis-rank-check.R
+
+      - name: Audit tutorial semantics
+        shell: python
+        run: |
+          from pathlib import Path
+
+          text = Path('docs/tutorial-04-post-analysis.md').read_text()
+          required = [
+              'plot_top_celltype_reaction_rank <- function(',
+              'top_n = 20L',
+              'median_support_score',
+              'has_active_multiome_contribution',
+              'any(\n        one$has_active_multiome_contribution %in% TRUE',
+              'Multiome-supported',
+              'RNA-only',
+              'reaction_name',
+              'forward_formula',
+              'reverse_formula',
+              'duplicate_label',
+              'ggplot2::geom_col',
+              'ggplot2::coord_flip',
+              'attr(p, "rank_data")',
+              'Structural reactions without a GPR',
+              'GPR reactions without observed RNA support',
+          ]
+          missing = [value for value in required if value not in text]
+          if missing:
+              raise RuntimeError(f'post-analysis rank contract missing: {missing}')
+
+          forbidden = [
+              'regulatory_support_fraction > 0',
+              'regulatory_penalty_delta != 0',
+              'evidence_class == "RNA+ATAC"[1]',
+          ]
+          found = [value for value in forbidden if value in text]
+          if found:
+              raise RuntimeError(f'unsupported evidence shortcut found: {found}')
