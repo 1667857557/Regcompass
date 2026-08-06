@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.6
+Version: 2.4.7
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -71,6 +71,7 @@ Collate:
     'medium.R'
     'published_medium_contract.R'
     'medium_exchange_mapping.R'
+    'compass_medium_semantics.R'
     'meta_module_definition.R'
     'meta_module_construction.R'
     'meta_module_merge.R'
