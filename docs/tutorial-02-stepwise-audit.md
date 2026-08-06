@@ -14,9 +14,9 @@ upstream_bp <- if (.Platform$OS.type == "windows") {
 }
 
 layer2_bp <- if (.Platform$OS.type == "windows") {
-  SnowParam(workers = 12L, type = "SOCK", progressbar = TRUE)
+  SnowParam(workers = 30L, type = "SOCK", progressbar = TRUE)
 } else {
-  MulticoreParam(workers = 12L, progressbar = TRUE)
+  MulticoreParam(workers = 30L, progressbar = TRUE)
 }
 ```
 
