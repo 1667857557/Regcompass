@@ -39,7 +39,7 @@ Stage 1 ── Cell-type Pando GRN routing
 Stage 2 ── Multimodal metacell construction
           ├── one RNA+ATAC WNN graph per broad cell type
           └── condition split after graph clustering
-          └──────────────────────────────────► Result: condition-pure metacells, membership, aggregated RNA counts, and aggregated ATAC counts
+          └──────────────────────────────────► Result: condition-pure metacells, membership, aggregated RNA/ATAC counts
                                                 │
                                                 ▼
 Stage 3 ── Cell-type reaction meta-modules
