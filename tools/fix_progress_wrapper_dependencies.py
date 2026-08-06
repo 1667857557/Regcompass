@@ -101,14 +101,21 @@ def find_body_close(text: str, body_open: int) -> int:
 
 def migrate_file(path: Path) -> int:
     text = path.read_text(encoding="utf-8")
+    starts = function_starts(text)
     edits: list[tuple[int, int, str]] = []
     migrated = 0
-    for name, _start, after_formals_start in function_starts(text):
+    for index, (name, _start, after_formals_start) in enumerate(starts):
+        next_start = starts[index + 1][1] if index + 1 < len(starts) else len(text)
+        function_segment = text[after_formals_start:next_start]
+        if STATE_REF not in function_segment:
+            continue
         body_open = find_body_open(text, after_formals_start)
         body_close = find_body_close(text, body_open)
         body = text[body_open + 1 : body_close]
         if STATE_REF not in body:
-            continue
+            raise RuntimeError(
+                f"State reference for {path.name}::{name} is outside its body"
+            )
         if 'get0(\n    ".rc_layer2_progress_state"' in body:
             continue
         updated_body = body.replace(STATE_REF, "progress_state$")
