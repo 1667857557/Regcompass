@@ -1,6 +1,6 @@
 # Original CORDA2 in Layer 2
 
-`rc_regcompass_step_layer2()` keeps compact add-only FASTCORE as the default. The optional CORDA2 route is available with `model_mode = "meta_module_gem"` and follows the original MATLAB implementation in `schultzdre/Constraint-Based-Modeling/CORDA2.m`.
+`rc_regcompass_step_layer2()` uses original MATLAB CORDA2 semantics by default when `model_mode = "meta_module_gem"`. Set `model_params$model_completion = "fastcore"` only when the supplementary FASTCORE route is required.
 
 ## Parameters
 
@@ -9,7 +9,6 @@ layer2_args = list(
   target_direction = "both",
   solver = "highs",
   model_params = list(
-    model_completion = "corda2",
     completion_time_limit = 3000,
     strict = TRUE,
     corda2_args = list(
@@ -28,99 +27,51 @@ layer2_args = list(
 )
 ```
 
-| Argument | Original default | Effect |
+| Argument | Default | Meaning |
 |---|---:|---|
-| `MCxNCthresh` | `2` | Minimum number of remaining MC directional reactions that must depend on an NC direction before that NC direction is retained. |
-| `constraint` | `1` | Absolute target flux under `constrainby = "val"`, or percentage under `"perc"`. |
-| `constrainby` | `"val"` | Target constraint mode: absolute value or percentage of maximum flux. |
-| `om` | `1e4` | High cost assigned to NC reactions and Step-3 OT reactions; Step-1 MC cost is `sqrt(om)`. |
-| `ci` | `0.01` | Proportional cost increase applied once to each newly observed high-cost dependency during one target assessment. |
+| `MCxNCthresh` | `2` | Minimum number of MC directional dependencies required to promote an NC direction. |
+| `constraint` | `1` | Absolute target flux for `constrainby = "val"`, or percentage for `"perc"`. |
+| `constrainby` | `"val"` | Target constraint mode. |
+| `om` | `1e4` | High reaction cost; Step-1 MC cost is `sqrt(om)`. |
+| `ci` | `0.01` | Proportional cost increase for newly observed high-cost dependencies. |
 
-## Confidence mapping
+## RegCompass confidence adapter
 
-RegCompass maps cell-type evidence to the four reaction groups required by original CORDA2:
+For each `reaction × cell type`, Layer 1 evidence is summarized across metacells and conditions and mapped to the four CORDA2 groups:
 
-| RegCompass reaction class | CORDA2 group |
+| RegCompass evidence class | CORDA2 group |
 |---|---|
 | merged core reaction | HC |
-| non-core merged meta-module reaction and selected high-evidence outside-module reaction | MC |
+| merged non-core or selected high-evidence reaction | MC |
 | finite low-evidence reaction | NC |
 | remaining reaction | OT |
 
-This mapping is an input adapter. The reconstruction state machine begins after HC, MC, NC and OT have been assigned.
+The reconstruction then follows the original three-stage CORDA2 state machine. The complete medium-constrained parent GEM is passed directly to CORDA2 without FASTCC or role-based pre-pruning.
 
-## Native Layer 1 evidence aggregation
+## Directional bounds
 
-The canonical Layer 1 output stores RNA-only reaction capacity, multiome reaction capacity and reaction-level regulatory support as `reaction × metacell` matrices. CORDA2 reconstructs one shared structural model per `cell type × medium`, so these metacell values are converted to one evidence value per `reaction × cell type` before HC, MC, NC and OT classification.
+Only reactions with `lb < 0 && ub >= 0` are split into forward and `_CORDA_rev_rxn` variables. The opposite direction is closed while a target direction is assessed.
 
-For each reaction, cell type and condition, RegCompass first takes the median across metacells:
+After reconstruction, selected directional variables are merged back to the original reaction identifiers. The final model restores the medium-constrained parent bounds for retained directions:
 
-\[
-E_{r,c,k}^{\mathrm{within}}
-=
-\operatorname{median}_{u \in (c,k)} E_{r,u}.
-\]
+- a retained reversible direction keeps the corresponding parent directional bound;
+- a retained irreversible reaction with `parent lb > 0` recovers that positive lower bound;
+- an excluded direction is fixed to zero.
 
-It then takes the maximum of those condition medians within the same cell type:
+This avoids converting a required positive parent flux into an optional `lb = 0` reaction during finalization.
 
-\[
-E_{r,c}^{\mathrm{union}}
-=
-\max_k E_{r,c,k}^{\mathrm{within}}.
-\]
+## Penalty scale
 
-This fixed `condition_median_max` policy is applied independently to:
+Layer 2 scoring uses the COMPASS cost function:
 
-- `reaction_expression_rna_only`;
-- `reaction_expression`;
-- `reaction_regulatory_support_fraction`, when available.
+```text
+P = 1 / (1 + log2(1 + max(E, 0)))
+```
 
-The within-condition median limits the influence of individual metacell outliers. The cross-condition maximum preserves reactions strongly supported in any retained condition so that condition-specific pathways are not averaged away from the shared union GEM. No new user parameter is introduced, and all existing CORDA2 thresholds and original MATLAB controls remain unchanged. Legacy reaction-support data frames remain accepted and retain their previous cell-type aggregation behavior.
+Missing expression and structural roles use the maximum COMPASS cost `1`; no structural role receives a default cost of `20`.
 
-## Directional model
+## Execution and provenance
 
-Only reactions satisfying `lb < 0 && ub >= 0` are split. Their reverse copies use the original suffix `_CORDA_rev_rxn`. The original forward column remains unchanged and the reverse copy uses the negated stoichiometric column. Both variables are non-negative.
+One CORDA2 reconstruction is built per `cell type × medium`. Independent models may run through `BPPARAM`; target assessments within one reconstruction remain serial. The completed model is reused for primary multiome and RNA-only scoring.
 
-When a directional target is tested, its opposite directional copy is closed. The target is first maximized and then fixed according to `constraint` and `constrainby`:
-
-- `"val"`: `min(constraint, maximum target flux)`;
-- `"perc"`: `0.01 * constraint * maximum target flux`.
-
-## Reconstruction steps
-
-### Step 1
-
-Each HC direction is tested with the cost vector:
-
-\[
-c_i =
-\begin{cases}
-\sqrt{om}, & i \in MC,\\
-om, & i \in NC,\\
-10^{-3}, & \text{otherwise}.
-\end{cases}
-\]
-
-Newly observed MC or NC dependencies have their cost multiplied by `1 + ci`. Solving continues until the HC-to-MC and HC-to-NC dependency sets stop changing. Used MC and NC directions are promoted to HC. Blocked HC directions are removed unless they were active while supporting another HC target.
-
-### Step 2.1
-
-Each remaining MC direction is tested with NC cost `om`. The MC-to-NC dependency matrix is updated until stable. MC directions unable to carry the required flux are removed.
-
-### Step 2.2
-
-NC directions required by at least `MCxNCthresh` MC directions are promoted. All other NC directions are blocked. Each remaining MC direction is then maximized with its opposite direction closed; infeasible MC directions are removed and recorded in `rescue`.
-
-### Step 3
-
-All reactions outside retained HC and OT are blocked. Each retained HC direction is tested with OT cost `om`; required OT directions are added to the final model.
-
-## Final reaction bounds
-
-Forward and reverse directional selections are merged back to the original reaction identifiers. RegCompass retains the medium-constrained parent bounds and disables directions not selected by CORDA2. This preserves the requested medium rather than reopening exchanges after reconstruction.
-
-## Engineering flow
-
-One CORDA2 reconstruction is created per `cell type × medium` combination. Target assessments inside one reconstruction remain serial because dependency matrices and promoted reaction sets are updated in source order. Independent reconstructions may run through `BPPARAM`. The solver is restricted to one thread per worker, and the completed structural model is reused by the primary and RNA-only scoring paths.
-
-Each model stores the HC-to-MC, HC-to-NC and MC-to-NC matrices, rescue table, directional inclusion set, solver diagnostics, parameter values and cache checksum.
+Inspect `step5$completion_contract`, `step5$model_cache_summary`, `step5$vmax_cache_diagnostics` and `step5$lp_diagnostics` for the algorithm, parameters and target feasibility results.
