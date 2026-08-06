@@ -1,25 +1,9 @@
-document_path <- file.path("docs", "tutorial-04-post-analysis.md")
-if (!file.exists(document_path)) {
-  stop("tutorial-04-post-analysis.md is unavailable.", call. = FALSE)
-}
 if (!requireNamespace("ggplot2", quietly = TRUE)) {
-  stop("ggplot2 is required for the tutorial rank regression.", call. = FALSE)
+  stop("ggplot2 is required for the reaction rank regression.", call. = FALSE)
 }
 
-lines <- readLines(document_path, warn = FALSE)
-begin <- which(lines == "# BEGIN top-celltype-reaction-rank")
-end <- which(lines == "# END top-celltype-reaction-rank")
-if (length(begin) != 1L || length(end) != 1L || begin >= end) {
-  stop("The tutorial rank helper markers are malformed.", call. = FALSE)
-}
-
-environment <- new.env(parent = globalenv())
-eval(parse(text = lines[begin:end]), envir = environment)
-plot_rank <- get(
-  "plot_top_celltype_reaction_rank",
-  envir = environment,
-  inherits = FALSE
-)
+source(file.path("R", "reaction_rank_plot.R"))
+source(file.path("R", "workflow_utils.R"))
 
 metacells <- c("T_1", "T_2", "T_3", "T_4")
 conditions <- c("Control", "Control", "Treatment", "Treatment")
@@ -77,7 +61,7 @@ result <- list(
   reaction_evidence = reaction_evidence
 )
 
-plot <- plot_rank(
+plot <- plot_top_celltype_reaction_rank(
   result = result,
   cell_type = "T_cell",
   target_direction = "forward"
@@ -104,10 +88,12 @@ stopifnot(
   !"R4" %in% rank_data$reaction_id,
   identical(selection$top_n, 20L),
   identical(selection$medium_scenario, "plasma"),
+  identical(selection$conditions, c("Control", "Treatment")),
+  isTRUE(selection$condition_available),
   identical(selection$ranking_statistic, "median_support_score")
 )
 
-control_plot <- plot_rank(
+control_plot <- plot_top_celltype_reaction_rank(
   result = result,
   cell_type = "T_cell",
   target_direction = "forward",
@@ -119,7 +105,101 @@ control_data <- attr(control_plot, "rank_data")
 stopifnot(
   nrow(control_data) == 1L,
   identical(as.character(control_data$reaction_id), "R1"),
-  identical(as.character(control_data$support_class), "RNA-only")
+  identical(as.character(control_data$support_class), "RNA-only"),
+  identical(control_data$n_conditions, 1L)
 )
 
-cat("tutorial post-analysis reaction rank regression passed\n")
+no_condition_result <- result
+no_condition_result$reaction_comparison_by_metacell$condition <- NULL
+no_condition_result$reaction_evidence$condition <- NULL
+no_condition_plot <- plot_top_celltype_reaction_rank(
+  result = no_condition_result,
+  cell_type = "T_cell",
+  target_direction = "forward",
+  medium_scenario = "plasma"
+)
+no_condition_data <- attr(no_condition_plot, "rank_data")
+no_condition_selection <- attr(no_condition_plot, "selection")
+stopifnot(
+  inherits(no_condition_plot, "ggplot"),
+  identical(no_condition_selection$conditions, NULL),
+  identical(no_condition_selection$condition_available, FALSE),
+  all(no_condition_data$n_conditions == 0L)
+)
+condition_error <- tryCatch(
+  {
+    plot_top_celltype_reaction_rank(
+      result = no_condition_result,
+      cell_type = "T_cell",
+      target_direction = "forward",
+      medium_scenario = "plasma",
+      conditions = "Control"
+    )
+    NULL
+  },
+  error = identity
+)
+stopifnot(
+  inherits(condition_error, "error"),
+  grepl("no usable condition metadata", conditionMessage(condition_error),
+        fixed = TRUE)
+)
+
+single_condition_result <- result
+single_condition_result$reaction_comparison_by_metacell$condition <- "Control"
+single_condition_result$reaction_evidence <-
+  single_condition_result$reaction_evidence[
+    single_condition_result$reaction_evidence$condition == "Control",
+    , drop = FALSE
+  ]
+single_condition_plot <- plot_top_celltype_reaction_rank(
+  result = single_condition_result,
+  cell_type = "T_cell",
+  target_direction = "forward",
+  medium_scenario = "plasma"
+)
+single_condition_selection <- attr(single_condition_plot, "selection")
+single_condition_data <- attr(single_condition_plot, "rank_data")
+stopifnot(
+  identical(single_condition_selection$conditions, "Control"),
+  isTRUE(single_condition_selection$condition_available),
+  all(single_condition_data$n_conditions == 1L)
+)
+
+if (!methods::isClass("Seurat")) {
+  methods::setClass("Seurat", slots = c(meta.data = "data.frame"))
+}
+object_without_condition <- methods::new(
+  "Seurat",
+  meta.data = data.frame(
+    cell_type = c("T_cell", "T_cell"),
+    row.names = c("cell_1", "cell_2"),
+    stringsAsFactors = FALSE
+  )
+)
+design <- .rc_resolve_condition_design(object_without_condition)
+stopifnot(
+  identical(design$analysis_mode, "standard_pando"),
+  identical(design$condition_levels, "all"),
+  identical(design$condition_supplied, FALSE),
+  identical(design$fallback_reason, "default_condition_col_absent"),
+  design$condition_col %in% colnames(design$object@meta.data),
+  all(design$object@meta.data[[design$condition_col]] == "all")
+)
+
+explicit_error <- tryCatch(
+  {
+    .rc_resolve_condition_design(
+      object_without_condition,
+      condition_col = "missing_group"
+    )
+    NULL
+  },
+  error = identity
+)
+stopifnot(
+  inherits(explicit_error, "error"),
+  grepl("Explicitly requested", conditionMessage(explicit_error), fixed = TRUE)
+)
+
+cat("exported post-analysis reaction rank regression passed\n")
