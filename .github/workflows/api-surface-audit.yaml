@@ -43,7 +43,7 @@ jobs:
 
       - name: Dry-run deterministic cleanup
         run: |
-          python tools/apply_api_cleanup_v2.py
+          python tools/apply_api_cleanup_v3.py
           git diff --check
 
       - name: Parse transformed R sources
