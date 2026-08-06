@@ -1,0 +1,39 @@
+name: Layer 2 native acceleration checks
+
+on:
+  pull_request:
+    paths:
+      - "R/microcompass_vmax_cache.R"
+      - "R/celltype_microcompass_reaction_parallel.R"
+      - "R/layer2_corda2_algorithm.R"
+      - "R/RcppExports.R"
+      - "src/RcppExports.cpp"
+      - "src/layer2_native.cpp"
+      - "tests/layer2-native-acceleration-check.R"
+      - ".github/workflows/layer2-native-acceleration-checks.yaml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  native-layer2:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: "4.5"
+          use-public-rspm: true
+      - name: Install native regression dependencies
+        shell: Rscript {0}
+        run: |
+          install.packages(c("Rcpp", "RcppEigen", "Matrix", "highs"))
+      - name: Parse modified R sources
+        shell: Rscript {0}
+        run: |
+          parse(file = "R/microcompass_vmax_cache.R")
+          parse(file = "R/celltype_microcompass_reaction_parallel.R")
+          parse(file = "R/layer2_corda2_algorithm.R")
+      - name: Compile and run native numerical regression
+        run: Rscript tests/layer2-native-acceleration-check.R

@@ -26,9 +26,31 @@ BEGIN_RCPP
 END_RCPP
 }
 
+Rcpp::List rc_corda2_scan_flux_cpp(
+    Rcpp::NumericVector, Rcpp::IntegerVector, Rcpp::IntegerVector, double
+);
+
+RcppExport SEXP _RegCompassR_rc_corda2_scan_flux_cpp(
+    SEXP a, SEXP b, SEXP c, SEXP d
+) {
+BEGIN_RCPP
+    Rcpp::RObject out;
+    Rcpp::RNGScope scope;
+    out = Rcpp::wrap(rc_corda2_scan_flux_cpp(
+        Rcpp::as<Rcpp::NumericVector>(a),
+        Rcpp::as<Rcpp::IntegerVector>(b),
+        Rcpp::as<Rcpp::IntegerVector>(c),
+        Rcpp::as<double>(d)
+    ));
+    return out;
+END_RCPP
+}
+
 static const R_CallMethodDef CallEntries[] = {
     {"_RegCompassR_rc_gpr_capacity_cpp",
      (DL_FUNC) &_RegCompassR_rc_gpr_capacity_cpp, 6},
+    {"_RegCompassR_rc_corda2_scan_flux_cpp",
+     (DL_FUNC) &_RegCompassR_rc_corda2_scan_flux_cpp, 4},
     {NULL, NULL, 0}
 };
 

@@ -61,6 +61,19 @@
   )
 }
 
+.rc_corda2_scan_flux <- function(
+    flux, class_code, track_code, threshold) {
+  native <- get0(
+    ".rc_corda2_scan_flux_cpp", mode = "function", inherits = TRUE
+  )
+  if (is.function(native)) {
+    return(native(flux, class_code, track_code, threshold))
+  }
+  active <- which(is.finite(flux) & flux > threshold)
+  used <- active[class_code[active] %in% track_code]
+  list(active = as.integer(active), used = as.integer(used))
+}
+
 .rc_corda2_dependency_assessment <- function(
     engine, split, target, directional_class, options,
     stage, penalized_class,
@@ -113,8 +126,19 @@
     NC = "NC",
     OT = "OT"
   )
+  variable_ids <- colnames(split$S)
+  target_index <- match(target, variable_ids)
+  class_levels <- c("HC", "MC", "NC", "OT")
+  class_code <- match(unname(directional_class[variable_ids]), class_levels)
+  track_code <- match(track_class, class_levels)
+  if (is.na(target_index) || anyNA(class_code) || anyNA(track_code)) {
+    stop("CORDA2 native dependency indices are incomplete.", call. = FALSE)
+  }
+
   associated <- character()
   active_all <- character()
+  associated_seen <- rep(FALSE, length(variable_ids))
+  active_seen <- rep(FALSE, length(variable_ids))
   n_solves <- 1L
   final_answer <- constrained$answer
   final_flux <- NA_real_
@@ -151,8 +175,7 @@
       ))
     }
     flux <- as.numeric(answer$solution)
-    names(flux) <- colnames(split$S)
-    final_flux <- flux[[target]]
+    final_flux <- flux[[target_index]]
     if (!is.finite(final_flux) || final_flux < options$flux_threshold) {
       return(list(
         engine = engine,
@@ -173,13 +196,30 @@
         success = FALSE
       ))
     }
-    active <- names(flux)[flux > options$flux_threshold]
-    active_all <- union(active_all, active)
-    used <- active[directional_class[active] %in% track_class]
-    newly_used <- setdiff(used, associated)
-    associated <- union(associated, used)
-    if (!length(newly_used)) break
-    penalty[newly_used] <- penalty[newly_used] * (1 + options$ci)
+
+    scan <- .rc_corda2_scan_flux(
+      flux = flux,
+      class_code = class_code,
+      track_code = track_code,
+      threshold = options$flux_threshold
+    )
+    active_index <- as.integer(scan$active)
+    used_index <- as.integer(scan$used)
+
+    new_active <- active_index[!active_seen[active_index]]
+    if (length(new_active)) {
+      active_seen[new_active] <- TRUE
+      active_all <- c(active_all, variable_ids[new_active])
+    }
+
+    newly_used <- used_index[!associated_seen[used_index]]
+    if (length(newly_used)) {
+      associated_seen[newly_used] <- TRUE
+      associated <- c(associated, variable_ids[newly_used])
+      penalty[newly_used] <- penalty[newly_used] * (1 + options$ci)
+    } else {
+      break
+    }
   }
 
   list(

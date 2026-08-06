@@ -147,7 +147,8 @@
       vmax = as.numeric(value$vmax),
       feasible = isTRUE(value$feasible),
       status = as.character(value$status),
-      computation_scope = "one_directional_reaction_task",
+      computation_scope =
+        "directional_target_batch_within_shared_model",
       stringsAsFactors = FALSE
     )
   }))
@@ -190,6 +191,26 @@
            call. = FALSE)
     }
 
+    prepared <- .rc_compass_step2_prepare(
+      S = model$S,
+      lb = model$lb,
+      ub = model$ub,
+      target_reaction = entry$reaction_id,
+      vmax_result = vmax_cache[[row_id]],
+      target_direction = entry$target_direction,
+      omega = omega,
+      flux_threshold = flux_threshold
+    )
+    step2_engine <- if (isTRUE(prepared$runnable)) {
+      .rc_compass_step2_new_engine(prepared$template, solver)
+    } else {
+      NULL
+    }
+    on.exit(
+      .rc_compass_step2_release_engine(step2_engine),
+      add = TRUE
+    )
+
     task_penalty <- rep(NA_real_, length(eligible))
     task_vmax <- rep(NA_real_, length(eligible))
     task_feasible <- task_evaluated <- rep(FALSE, length(eligible))
@@ -204,18 +225,20 @@
       evidence_available <- is.finite(unit_penalty)
       solver_penalty <- unit_penalty
       solver_penalty[!evidence_available] <- 0
-      fit <- .rc_compass_step2_from_vmax_directional(
-        S = model$S,
-        lb = model$lb,
-        ub = model$ub,
-        target_reaction = entry$reaction_id,
-        penalties = solver_penalty,
-        vmax_result = vmax_cache[[row_id]],
-        target_direction = entry$target_direction,
-        omega = omega,
-        solver = solver,
-        flux_threshold = flux_threshold
-      )
+
+      fit <- if (isTRUE(prepared$runnable)) {
+        solved <- .rc_compass_step2_engine_solve(
+          step2_engine, solver_penalty
+        )
+        step2_engine <- solved$engine
+        .rc_compass_step2_result(prepared$template, solved$answer)
+      } else {
+        .rc_compass_step2_align_penalties(
+          prepared$reactions, solver_penalty
+        )
+        prepared$result
+      }
+
       target_available <- is.finite(target_penalty)
       task_penalty[[one_unit]] <- if (target_available) {
         fit$penalty
@@ -237,6 +260,7 @@
         condition = "all",
         strict_feasible = isTRUE(fit$feasible),
         solver_status = fit$solver_status,
+        solver_backend = fit$solver_backend %||% "unknown",
         step1_status = fit$step1_status,
         step2_status = fit$step2_status,
         target_status = model$target_status %||%
@@ -244,6 +268,7 @@
         objective_value = if (target_available) fit$penalty else NA_real_,
         vmax = fit$vmax,
         vmax_reused_from_celltype_cache = TRUE,
+        step2_model_reused_across_metacells = TRUE,
         target_expression_available = target_available,
         objective_evidence_fraction = mean(evidence_available),
         unavailable_objective_terms = sum(!evidence_available),
@@ -253,6 +278,7 @@
       rm(unit_penalty, solver_penalty, fit)
     }
 
+    engine_metrics <- .rc_compass_step2_engine_metrics(step2_engine)
     token <- substr(.rc_microcompass_object_checksum(list(
       row_id = row_id,
       file_checksum = entry$file_checksum,
@@ -271,10 +297,11 @@
       vmax = task_vmax,
       feasible = task_feasible,
       evaluated = task_evaluated,
-      diagnostics = .rc_bind_frames_fill(diagnostics)
+      diagnostics = .rc_bind_frames_fill(diagnostics),
+      engine_metrics = engine_metrics
     ), checkpoint)
     rm(model, diagnostics, task_penalty, task_vmax,
-       task_feasible, task_evaluated)
+       task_feasible, task_evaluated, prepared)
     checkpoint
   }
 
@@ -284,6 +311,7 @@
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
   diagnostics <- vector("list", length(checkpoint_files))
+  step2_engine_metrics <- vector("list", length(checkpoint_files))
   for (i in seq_along(checkpoint_files)) {
     result <- readRDS(checkpoint_files[[i]])
     row_id <- as.character(result$row_id)
@@ -297,6 +325,17 @@
     feasible[row_id, result$units] <- result$feasible
     evaluated[row_id, result$units] <- result$evaluated
     diagnostics[[i]] <- result$diagnostics
+    metrics <- result$engine_metrics %||% list()
+    step2_engine_metrics[[i]] <- data.frame(
+      row_id = row_id,
+      engine = as.character(metrics$engine %||% "unknown"),
+      n_solves = as.integer(metrics$n_solves %||% 0L),
+      n_objective_updates = as.integer(
+        metrics$n_objective_updates %||% 0L
+      ),
+      n_fallback = as.integer(metrics$n_fallback %||% 0L),
+      stringsAsFactors = FALSE
+    )
     rm(result)
     unlink(checkpoint_files[[i]], force = TRUE)
     invisible(gc(verbose = FALSE, full = TRUE))
@@ -344,6 +383,7 @@
     model_diagnostics = model_diagnostics,
     vmax_cache_diagnostics = vmax_cache_diagnostics,
     lp_diagnostics = .rc_bind_frames_fill(diagnostics),
+    step2_engine_metrics = .rc_bind_frames_fill(step2_engine_metrics),
     penalty_components = penalties$components,
     evidence_policy = penalties$evidence_policy,
     evidence_policy_detail = penalties$evidence_policy_detail,
@@ -361,10 +401,22 @@
       fastcore_parallel_task = "cell_type_x_medium",
       parallel_task =
         "directional_reaction_by_matching_metacells_step2",
-      vmax_computation_scope = "one_directional_reaction_task_once",
+      vmax_computation_scope = attr(
+        vmax_cache, "parallel_scope"
+      ) %||% "directional_target_batches_within_shared_models",
+      vmax_parallel_tasks = as.integer(
+        attr(vmax_cache, "parallel_tasks") %||% length(vmax_cache)
+      ),
+      vmax_parallel_workers = as.integer(
+        attr(vmax_cache, "parallel_workers") %||% 1L
+      ),
       vmax_solve_count = length(vmax_cache),
       vmax_reuse_by_cell_type = stats::setNames(
         as.integer(reuse), names(reuse)
+      ),
+      step2_solver_reuse = paste(
+        "one persistent HiGHS model per directional reaction reused across",
+        "all matching metacells; one-shot fallback for unsupported backends"
       ),
       worker_cleanup =
         "checkpoint_each_reaction_then_drop_model_and_run_full_gc",
@@ -372,8 +424,8 @@
       scoring_time_limit = "none"
     ),
     method = paste(
-      "reaction-parallel microCOMPASS directional LP on cell-type-specific",
-      "medium union GEMs after parallel cell-type-by-medium FASTCORE completion"
+      "reaction-parallel microCOMPASS directional LP with persistent native",
+      "HiGHS reuse on cell-type-specific medium union GEMs"
     )
   )
 }

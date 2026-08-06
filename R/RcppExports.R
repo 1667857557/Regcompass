@@ -10,3 +10,12 @@
         and_method, or_method
     )
 }
+
+.rc_corda2_scan_flux_cpp <- function(
+    flux, class_code, track_code, threshold
+) {
+    .Call(
+        `_RegCompassR_rc_corda2_scan_flux_cpp`,
+        flux, class_code, track_code, threshold
+    )
+}
