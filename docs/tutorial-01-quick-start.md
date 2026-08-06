@@ -1,28 +1,10 @@
 # Tutorial 1: quick start
 
-## Input requirements
+## Input
 
-Use a paired-cell Seurat object with RNA and ATAC counts, broad cell-type metadata, RNA PCA, ATAC LSI, and genome-compatible peak coordinates.
+Use a paired-cell Seurat object with RNA and ATAC count assays, broad cell-type metadata, RNA PCA, ATAC LSI and genome-compatible peak coordinates. Stage 1 requires at least 300 paired cells per retained condition-by-cell-type stratum.
 
-Stage 1 uses a fixed minimum of 300 paired cells. For each cell type:
-
-- at least two retained conditions: common-dictionary condition GRN;
-- one retained condition: standard Pando;
-- no retained condition stratum: excluded.
-
-The same `pando_infer_args` list can be supplied in all cases. Stage 1 automatically disables condition-only controls before standard Pando and disables standard-model controls for the fixed common-dictionary condition model. With multiple retained cell types, `upstream_workers` distributes independent cell-type GRN jobs and prevents nested worker pools.
-
-Candidate discovery uses `abs(tf_target_cor) > 0.05` and `abs(peak_target_cor) > 0.05`. Final penalty entry requires `estimable == TRUE`, `padj < 0.05`, `abs(corr) >= 0.05`, and `abs(estimate) >= 0.05`.
-
-## Install current companion repositories
-
-```r
-remotes::install_github("1667857557/Pando_regcompass")
-remotes::install_github("1667857557/SuperCell_Seurat_V4")
-remotes::install_github("1667857557/Regcompass")
-```
-
-## Prepare GEM and medium
+## GEM and medium
 
 ```r
 library(RegCompassR)
@@ -40,37 +22,7 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Supported built-in scenarios include:
-
-| Scenario | Use |
-|---|---|
-| `normal_human_plasma` | Human plasma-like background |
-| `mouse_plasma` | Mouse plasma/interstitial-fluid background |
-| `high_glucose` | Plasma-like background with increased glucose |
-| `low_glucose` | Plasma-like background with reduced glucose |
-| `high_lactate` | Plasma-like background with increased lactate |
-| `low_lactate` | Plasma-like background with reduced lactate |
-| `low_glutamine` | Plasma-like background with reduced glutamine |
-| `custom` | User-supplied exchange bounds or metabolite availability |
-
-Custom reaction bounds:
-
-```r
-custom_medium <- data.frame(
-  medium_scenario_id = "measured_medium",
-  exchange_reaction_id = c("EX_glc_D_e", "EX_gln_L_e"),
-  lb = c(-0.20, -0.10),
-  ub = c(1, 1),
-  available = TRUE
-)
-
-medium_scenarios <- rc_make_medium_scenarios(
-  gem = gem,
-  scenario = "custom",
-  species = "human",
-  custom_medium = custom_medium
-)
-```
+Built-in biological scenarios are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine` and `custom`. See [medium-presets.md](medium-presets.md) for custom reaction bounds, metabolite compositions and publication provenance.
 
 ## Run
 
@@ -94,19 +46,15 @@ result <- rc_run_regcompass_one_shot(
       min_residual_df = 1L
     )
   ),
-  fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
     rna_dims = 1:30,
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
-    k.knn = 30L,
-    seed = 12345L,
-    min_cells_per_stratum = 500L,
+    min_cells_per_stratum = 300L,
     min_metacell_size = 10L,
-    min_metacells_per_stratum = 2L,
-    overwrite = FALSE
+    min_metacells_per_stratum = 2L
   ),
   layer1_args = list(
     gpr_and_method = "min",
@@ -118,10 +66,18 @@ result <- rc_run_regcompass_one_shot(
     target_direction = "both",
     solver = "highs",
     model_params = list(
-      completion_time_limit = 600,
-      fastcore_epsilon = 1e-4,
-      max_support_reactions = 2000,
-      strict = TRUE
+      completion_time_limit = 3000,
+      strict = TRUE,
+      corda2_args = list(
+        MCxNCthresh = 2,
+        constraint = 1,
+        constrainby = "val",
+        om = 1e4,
+        ci = 0.01
+      ),
+      corda_medium_confidence_threshold = 0.75,
+      corda_negative_confidence_threshold = 0.10,
+      corda_regulatory_weight = 0.20
     )
   ),
   upstream_workers = 6L,
@@ -129,17 +85,18 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
+`meta_module_gem` uses original MATLAB CORDA2 by default. Set `model_params$model_completion = "fastcore"` only for the supplementary FASTCORE route. Use `model_mode = "full_gem"` for supplementary complete-network COMPASS-style scoring.
+
+CORDA2 receives the complete medium-constrained parent without FASTCC pre-pruning. Retained reactions recover their parent directional bounds, including positive lower bounds. Layer 2 uses the COMPASS cost scale; missing expression and structural roles receive cost `1`.
+
 ## Main outputs
 
 ```r
 result$grn$cell_type_analysis_mode
-result$grn$condition_fit_status
-result$grn$pando_execution_plan
-result$grn$pando_infer_argument_routing
 result$layer1$gene_regulatory_modifier
 result$microcompass$penalty
 result$reaction_ranking
 result$condition_contrast
 ```
 
-The mathematical definitions are maintained only in [mathematical-model.md](mathematical-model.md).
+Detailed stage parameters are in [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md). Mathematical definitions are in [mathematical-model.md](mathematical-model.md).

@@ -32,9 +32,9 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma, seed and cache controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
 \item{layer1_args}{Optional \code{gpr_and_method} and \code{gene_half_saturation}.}
-\item{medium_scenarios}{Shared medium table. Medium application changes listed exchange-reaction bounds only and does not directly remove reactions in any Layer 2 route.}
-\item{model_mode}{Use cell-type meta-module reconstruction with FASTCORE or CORDA2, or use the complete shared full GEM with COMPASS-style directional scoring.}
-\item{layer2_args}{Directional scoring and structural controls. FASTCORE is the default for \code{meta_module_gem}; set \code{model_params$model_completion = "corda2"} for CORDA2. The \code{full_gem} route skips both algorithms, retains the complete medium-constrained GEM, and evaluates each target direction by maximum feasible flux.}
+\item{medium_scenarios}{Shared medium table. When omitted, human models use \code{"normal_human_plasma"} and mouse models use \code{"mouse_plasma"}. Medium application changes listed exchange-reaction bounds only.}
+\item{model_mode}{The default \code{"meta_module_gem"} route reconstructs one CORDA2 model per cell type and medium. \code{"full_gem"} is a supplementary complete-network COMPASS-style route.}
+\item{layer2_args}{Directional scoring and structural controls. CORDA2 is the default for \code{meta_module_gem}; set \code{model_params$model_completion = "fastcore"} for the supplementary FASTCORE route. The \code{full_gem} route rejects completion-specific controls.}
 \item{upstream_workers}{Worker count for Stage 1 and Stage 4.}
 \item{layer2_workers}{Worker count for Stage 5.}
 \item{progress}{Display workflow and stage progress.}
@@ -53,13 +53,13 @@ condition use standard Pando and do not receive condition coefficients.
 Stage 2 builds one independent RNA+ATAC WNN graph per broad cell type and keeps
 final metacells condition-pure. Layer 1 accepts only \code{gpr_and_method} and
 \code{gene_half_saturation}. Layer 2 retains the primary penalty and an explicit
-RNA-only control while selecting exactly one structural route: add-only
-FASTCORE, original MATLAB CORDA2, or a COMPASS-style complete full GEM. In every
-route the medium table changes exchange bounds without directly deleting
-reactions. FASTCORE performs its own FASTCC/FASTCORE reconstruction; CORDA2
-receives the complete medium-constrained parent without FASTCC pre-pruning; and
-full-GEM mode retains every reaction, computes directional maximum flux, and
-skips the penalty LP for infeasible directions. Mathematical definitions are
-maintained in \code{docs/mathematical-model.md}; selection examples are in
+RNA-only control. The default cell-type route passes the complete
+medium-constrained parent to original MATLAB CORDA2 without FASTCC pre-pruning.
+Retained directions recover their parent bounds, including positive lower
+bounds. FASTCORE is an explicit supplementary route. Full-GEM mode retains every
+reaction, computes directional maximum flux, and skips the penalty LP for
+infeasible directions. All routes use the COMPASS reaction-cost scale; missing
+expression and structural roles receive the maximum cost 1. See
+\code{docs/tutorial-02-stepwise-audit.md} and
 \code{docs/layer2-model-builders.md}.
 }

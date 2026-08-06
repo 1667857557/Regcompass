@@ -1,6 +1,6 @@
 # RegCompass mathematical specification
 
-This file is the only mathematical specification for the RegCompass workflow.
+This file is the mathematical specification for the RegCompass workflow.
 
 ## 1. Condition-comparable regulatory model
 
@@ -97,7 +97,7 @@ Regulatory evidence modifies the support odds:
 C^{MO}_{g,u}=\frac{C^{RNA}_{g,u}2^{R_{g,u}}}{1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{R_{g,u}}}.
 \]
 
-## 4. GPR aggregation and reaction penalty
+## 4. GPR aggregation and COMPASS reaction cost
 
 For an AND branch \(A_{r,j}\),
 
@@ -111,13 +111,27 @@ Isozyme branches are additive:
 E_{r,u}=\sum_jQ_{r,j,u}.
 \]
 
-Reaction support is converted to the LP penalty:
+Reaction support is converted to the COMPASS-style LP cost:
 
 \[
 p_{r,u}=\frac{1}{1+\log_2(1+\max(E_{r,u},0))}.
 \]
 
-## 5. Cell-type structural model and directional LP
+If reaction expression is unavailable, RegCompass sets \(E_{r,u}=0\), so
+
+\[
+p_{r,u}=1.
+\]
+
+The structural roles `exchange`, `demand`, `sink`, and `artificial_support` also receive the maximum COMPASS cost
+
+\[
+p_{r,u}=1,
+\]
+
+rather than a separate fixed cost outside the COMPASS range.
+
+## 5. Default CORDA2 structural model
 
 For cell type \(t\) and condition-specific biological reaction sets \(B_{t,c}\), the structural catalogue is
 
@@ -125,11 +139,28 @@ For cell type \(t\) and condition-specific biological reaction sets \(B_{t,c}\),
 B_t=\bigcup_c B_{t,c}.
 \]
 
-For medium \(m\), FASTCORE completes the cell-type model:
+Layer 1 reaction evidence is summarized within condition and unioned within cell type, then mapped to the CORDA2 confidence groups
 
 \[
-\mathcal{G}_{t,m}=FASTCORE(B_t;S,l_m,u_m).
+HC_{t},\ MC_{t},\ NC_{t},\ OT_{t}.
 \]
+
+For medium \(m\), exchange bounds are first applied to the complete parent GEM. The default cell-type structural model is
+
+\[
+\mathcal{G}_{t,m}=
+CORDA2(HC_t,MC_t,NC_t,OT_t;S,l_m,u_m).
+\]
+
+The parent is passed directly to the original MATLAB CORDA2 state machine without FASTCC pre-pruning. Reversible reactions are represented by non-negative directional variables during reconstruction. When selected directions are merged back into reactions, excluded directions are fixed to zero and retained directions recover the corresponding parent bounds. In particular, a retained irreversible reaction with positive parent lower bound \(l_{m,r}>0\) retains
+
+\[
+l^{final}_{t,m,r}=l_{m,r}>0.
+\]
+
+FASTCORE is an explicit supplementary reconstruction selected with `model_completion = "fastcore"`. The full-GEM route is a supplementary mode that keeps the complete medium-constrained parent and performs no context-specific reconstruction.
+
+## 6. Directional COMPASS-like LP
 
 For target reaction \(r\) and direction \(d\),
 
@@ -163,7 +194,7 @@ The normalized penalty is
 
 Lower normalized penalty indicates stronger model-constrained support for the target direction; it is not a measured flux.
 
-## 6. Condition statistics
+## 7. Condition statistics
 
 The comparison score is
 
@@ -173,6 +204,6 @@ S_{r,d,u,m}=-\log(\widetilde P_{r,d,u,m}+\epsilon).
 
 Condition comparisons are performed within one cell type, target reaction, direction, and medium. Wilcoxon rank-sum tests are used for pairwise comparisons; Kruskal–Wallis tests may be used for analyses with at least three conditions. Metacells are within-dataset statistical units, not donor-level biological replicates.
 
-## 7. Inference scope
+## 8. Inference scope
 
 Condition-GRN P values are conditional on the frozen candidate dictionary and do not include selective-inference correction for candidate discovery. Standard-Pando cell types do not receive manufactured condition coefficients.

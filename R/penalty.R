@@ -20,9 +20,9 @@ rc_compute_multiome_penalty <- function(
     reaction_expression,
     reaction_roles = NULL,
     eps = 1e-6,
-    penalty_cap = 20,
+    penalty_cap = 1,
     support_penalty = c(
-      exchange = 1.0, demand = 20, sink = 20, artificial_support = 20
+      exchange = 1.0, demand = 1.0, sink = 1.0, artificial_support = 1.0
     )) {
   E <- as.matrix(reaction_expression)
   if (!is.numeric(E) || is.null(rownames(E)) || is.null(colnames(E)) ||
@@ -77,14 +77,17 @@ rc_compute_multiome_penalty <- function(
       "unavailable final reaction expression is set to zero before penalty conversion"
     ),
     missing_expression_policy = "compass_missing_expression_max_penalty",
-    penalty_version = "compass_gpr_missing_zero_penalty_v3",
+    structural_reaction_policy =
+      "compass_maximum_expression_penalty_for_all_structural_roles",
+    penalty_version = "compass_gpr_missing_zero_penalty_v4",
     evidence_description = paste(
       "RNA and Pando regulatory evidence are integrated into gene support before",
-      "GPR aggregation. Expression-linked reactions use 1/(1+log2(1+E));",
-      "missing E receives the maximum expression-linked penalty, while",
-      "structural reactions use fixed costs."
+      "GPR aggregation. All reactions use the COMPASS cost scale",
+      "1/(1+log2(1+E)); missing E and structural reactions receive cost 1."
     ),
-    penalty_formula =
-      "P=1/(1+log2(1+pmax(E,0))); nonfinite E:=0, hence P:=1"
+    penalty_formula = paste(
+      "P=1/(1+log2(1+pmax(E,0))); nonfinite E:=0, hence P:=1;",
+      "exchange, demand, sink and artificial_support use P:=1"
+    )
   )
 }

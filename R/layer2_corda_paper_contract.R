@@ -206,7 +206,13 @@
     keep_reverse <- length(reverse) && reverse %in% included_variables
     parent_lb <- validated$lb[[reaction]]
     parent_ub <- validated$ub[[reaction]]
-    output$lb[[reaction]] <- if (keep_reverse) max(parent_lb, -1000) else 0
+    output$lb[[reaction]] <- if (keep_reverse) {
+      max(parent_lb, -1000)
+    } else if (keep_forward && parent_lb > 0) {
+      parent_lb
+    } else {
+      0
+    }
     output$ub[[reaction]] <- if (keep_forward) min(parent_ub, 1000) else 0
   }
   output

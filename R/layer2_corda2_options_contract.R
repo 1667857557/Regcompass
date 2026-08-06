@@ -48,9 +48,9 @@
   if (!is.list(model_params)) {
     stop("`layer2_args$model_params` must be a list.", call. = FALSE)
   }
-  requested <- as.character(model_params$model_completion %||% "fastcore")
+  requested <- as.character(model_params$model_completion %||% "corda2")
   if (length(requested) != 1L || is.na(requested)) {
-    stop("`model_completion` must be `fastcore` or `corda2`.",
+    stop("`model_completion` must be `corda2` or `fastcore`.",
          call. = FALSE)
   }
   if (identical(requested, "fastcore")) {
@@ -61,7 +61,7 @@
     ))
   }
   if (!requested %in% c("corda2", "corda")) {
-    stop("`model_completion` must be `fastcore` or `corda2`.",
+    stop("`model_completion` must be `corda2` or `fastcore`.",
          call. = FALSE)
   }
 

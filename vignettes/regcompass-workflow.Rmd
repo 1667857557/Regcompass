@@ -13,14 +13,15 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 # Input
 
-Use a paired RNA+ATAC Seurat object with broad cell-type metadata, RNA PCA, ATAC LSI, and an optional condition column.
+Use a paired RNA+ATAC Seurat object with broad cell-type metadata, RNA PCA and ATAC LSI. Human workflows use `normal_human_plasma` by default when no medium is supplied; mouse workflows use `mouse_plasma`.
 
-Stage 1 routes each cell type independently:
-
-- two or more retained conditions: condition GRN;
-- one retained condition: standard Pando.
-
-Candidate discovery uses `abs(tf_target_cor) > 0.05` and `abs(peak_target_cor) > 0.05`. Final penalty entry requires `estimable == TRUE`, `padj < 0.05`, `abs(corr) >= 0.05`, and `abs(estimate) >= 0.05`.
+```r
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "normal_human_plasma",
+  species = "human"
+)
+```
 
 # One-shot run
 
@@ -43,59 +44,61 @@ result <- rc_run_regcompass_one_shot(
       min_residual_df = 1L
     )
   ),
-  metacell_args = list(
-    rna_reduction = "pca",
-    atac_reduction = "lsi",
-    gamma = 30L
-  )
-)
-```
-
-# Stepwise run
-
-```r
-step1 <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "RegCompass_steps/01_grn",
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  pando_args = list(
-    min_cells = 300L,
-    pando_infer_args = list(
-      tf_cor = 0.05,
-      peak_cor = 0.05,
-      adjust_method = "BH",
-      padj_threshold = 0.05,
-      rank_action = "mark",
-      min_residual_df = 1L
+  metacell_args = list(gamma = 30L),
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    model_params = list(
+      completion_time_limit = 3000,
+      strict = TRUE
     )
   )
 )
-step2 <- rc_regcompass_step_metacells(..., grn = step1)
-step3 <- rc_regcompass_step_meta_modules(
-  grn = step1, metacells = step2, gem = gem, ...
-)
-step4 <- rc_regcompass_step_layer1(
-  grn = step1, metacells = step2, meta_modules = step3, gem = gem, ...
-)
+```
+
+With `model_mode = "meta_module_gem"`, CORDA2 is the default structural reconstruction. FASTCORE requires `model_params$model_completion = "fastcore"`; `model_mode = "full_gem"` is the supplementary complete-network route.
+
+# Stepwise Layer 2
+
+```r
 step5 <- rc_regcompass_step_layer2(
-  layer1 = step4, meta_modules = step3, gem = gem, ...
-)
-result <- rc_regcompass_step_results(
-  grn = step1, metacells = step2, meta_modules = step3,
-  layer1 = step4, layer2 = step5, gem = gem, ...
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "RegCompass_steps/05_layer2",
+  model_mode = "meta_module_gem",
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    model_params = list(
+      completion_time_limit = 3000,
+      strict = TRUE,
+      corda2_args = list(
+        MCxNCthresh = 2,
+        constraint = 1,
+        constrainby = "val",
+        om = 1e4,
+        ci = 0.01
+      ),
+      corda_medium_confidence_threshold = 0.75,
+      corda_negative_confidence_threshold = 0.10,
+      corda_regulatory_weight = 0.20
+    )
+  )
 )
 ```
+
+CORDA2 receives the complete medium-constrained parent without FASTCC pre-pruning. Retained directions recover their parent bounds, including positive lower bounds. Layer 2 uses the COMPASS reaction-cost scale; missing expression and structural roles receive cost `1`.
 
 # Outputs
 
 ```r
-result$grn$cell_type_analysis_mode
-result$reaction_ranking
-result$condition_contrast
-result$rna_only_control_contrast
+step5$params
+step5$completion_contract
+step5$model_cache_summary
+step5$vmax_cache_diagnostics
+step5$lp_diagnostics
 ```
 
-The mathematical specification is maintained only in `docs/mathematical-model.md`.
+The full restartable workflow is in `docs/tutorial-02-stepwise-audit.md`; medium presets are in `docs/medium-presets.md`.

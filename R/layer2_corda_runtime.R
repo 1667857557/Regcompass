@@ -2,7 +2,7 @@
 
 .rc_layer2_completion_context <- new.env(parent = emptyenv())
 .rc_layer2_completion_context$active <- FALSE
-.rc_layer2_completion_context$model_completion <- "fastcore"
+.rc_layer2_completion_context$model_completion <- "corda2"
 .rc_layer2_completion_context$reaction_evidence <- NULL
 .rc_layer2_completion_context$corda_options <- NULL
 

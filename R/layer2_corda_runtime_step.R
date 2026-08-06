@@ -155,7 +155,7 @@
     answer$params$corda2_executed <- FALSE
     answer$completion_contract <- list(
       model_completion = "fastcore",
-      default_unchanged = TRUE,
+      default_unchanged = FALSE,
       algorithm = "add_only_compact_FASTCORE",
       medium_handling = "exchange_bounds_only_then_fastcc_fastcore",
       medium_direct_reaction_deletion = FALSE,
@@ -178,7 +178,7 @@
   )
   answer$completion_contract <- list(
     model_completion = "corda2",
-    default_unchanged = FALSE,
+    default_unchanged = TRUE,
     algorithm = corda_options$algorithm,
     source_fidelity = "original_MATLAB_CORDA2",
     reference = list(
