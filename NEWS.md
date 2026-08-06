@@ -1,5 +1,6 @@
 # RegCompassR 2.4.7
 
+- Adds a post-analysis tutorial helper for same-cell-type Top-N reaction bar charts, defaulting to Top 20 by median support score, using formal reaction names or direction-specific formulas, and distinguishing RNA-only from active multiome-supported reactions with an any-metacell rule.
 - Parallelizes independent FASTCC + FASTCORE structural reconstructions across cell-type-by-medium tasks through the active Layer 2 `BPPARAM` instead of running the cache builder as nested serial loops.
 - Limits package-created structural worker pools to the number of independent FASTCORE tasks, enables dynamic task scheduling, and keeps solver libraries single-threaded inside each R worker to avoid nested oversubscription.
 - Atomically checkpoints each completed FASTCORE model, returns only lightweight cache metadata to the controller, drops task-local model and table objects, runs full garbage collection in every worker, and releases package-managed worker processes after the structural batch.
