@@ -24,7 +24,7 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{medium_scenario}{Optional built-in biological medium scenario.}
 \item{medium_scenarios}{Optional prebuilt built-in or user-defined medium table.}
 \item{progress}{Display workflow and stage progress.}
-\item{...}{Arguments passed to \code{rc_run_regcompass()}.}
+\item{...}{Arguments passed to \code{rc_run_regcompass()}, including explicit supplementary Layer 2 mode controls when required.}
 }
 \value{
 A complete RegCompass result with workflow and cell-type routing provenance.
@@ -39,4 +39,7 @@ Pando routing is resolved independently for each retained broad cell type:
 cell types with at least two retained conditions use the condition GRN, while
 cell types with one retained condition use standard Pando. Stage 2 builds one
 RNA+ATAC WNN graph per broad cell type and keeps final metacells condition-pure.
+Layer 2 uses original MATLAB CORDA2 by default. FASTCORE and the complete
+full-GEM route are explicit supplementary alternatives passed through
+\code{...}.
 }
