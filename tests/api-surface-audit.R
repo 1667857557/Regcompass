@@ -38,57 +38,82 @@ s3_methods <- sub(
   grep("^S3method[(]", namespace, value = TRUE)
 )
 
-extract_definition <- function(expr, file) {
-  if (!is.call(expr) || length(expr) < 3L) return(NULL)
-  op <- as.character(expr[[1L]])
-  if (!op %in% c("<-", "=")) return(NULL)
+source_line <- function(expr) {
+  ref <- attr(expr, "srcref", exact = TRUE)
+  if (is.null(ref)) return(NA_integer_)
+  suppressWarnings(as.integer(ref[[1L]]))
+}
+
+forward_target <- function(fun) {
+  body_expr <- fun[[3L]]
+  if (is.call(body_expr) && identical(body_expr[[1L]], as.name("{")) &&
+      length(body_expr) == 2L) body_expr <- body_expr[[2L]]
+  if (!is.call(body_expr)) return(NA_character_)
+  head <- body_expr[[1L]]
+  if (is.symbol(head)) {
+    candidate <- as.character(head)
+    if (!candidate %in% c(
+      "if", "for", "while", "repeat", "return", "stop", "warning",
+      "tryCatch", "withCallingHandlers", "switch", "{", "(", "<-", "="
+    )) return(candidate)
+  }
+  if (is.call(head) && as.character(head[[1L]]) %in% c("::", ":::")) {
+    return(paste0(
+      as.character(head[[2L]]), as.character(head[[1L]]),
+      as.character(head[[3L]])
+    ))
+  }
+  NA_character_
+}
+
+extract_top_level <- function(expr, file) {
+  empty <- list(definition = NULL, alias = NULL)
+  if (!is.call(expr) || length(expr) < 3L ||
+      !as.character(expr[[1L]]) %in% c("<-", "=")) return(empty)
   lhs <- expr[[2L]]
   rhs <- expr[[3L]]
-  if (!is.symbol(lhs) || !is.call(rhs) || !identical(rhs[[1L]], as.name("function"))) {
-    return(NULL)
+  if (!is.symbol(lhs)) return(empty)
+  name <- as.character(lhs)
+  line <- source_line(expr)
+  if (is.call(rhs) && identical(rhs[[1L]], as.name("function"))) {
+    empty$definition <- data.frame(
+      name = name,
+      file = file,
+      line = line,
+      forward_target = forward_target(rhs),
+      stringsAsFactors = FALSE
+    )
+  } else if (is.symbol(rhs)) {
+    empty$alias <- data.frame(
+      alias = name,
+      target = as.character(rhs),
+      file = file,
+      line = line,
+      implementation_alias = grepl(
+        "(^|_)(base|impl|legacy|old)(_|$)|^before_", name,
+        ignore.case = TRUE, perl = TRUE
+      ),
+      stringsAsFactors = FALSE
+    )
   }
-  ref <- attr(expr, "srcref")
-  line <- if (!is.null(ref)) as.integer(ref[[1L]]) else NA_integer_
-  body_expr <- rhs[[3L]]
-  if (is.call(body_expr) && identical(body_expr[[1L]], as.name("{")) &&
-      length(body_expr) == 2L) {
-    body_expr <- body_expr[[2L]]
-  }
-  forward_target <- NA_character_
-  if (is.call(body_expr)) {
-    head <- body_expr[[1L]]
-    if (is.symbol(head)) {
-      candidate <- as.character(head)
-      if (!candidate %in% c(
-        "if", "for", "while", "repeat", "return", "stop", "warning",
-        "tryCatch", "withCallingHandlers", "switch", "{", "(", "<-", "="
-      )) forward_target <- candidate
-    } else if (is.call(head) && as.character(head[[1L]]) %in% c("::", ":::")) {
-      forward_target <- paste0(
-        as.character(head[[2L]]), as.character(head[[1L]]),
-        as.character(head[[3L]])
-      )
-    }
-  }
-  data.frame(
-    name = as.character(lhs),
-    file = file,
-    line = line,
-    forward_target = forward_target,
-    stringsAsFactors = FALSE
-  )
+  empty
 }
 
 definitions <- list()
+aliases <- list()
 for (file in all_r_files) {
   parsed <- tryCatch(
     parse(file = file, keep.source = TRUE),
-    error = function(e) stop("Failed to parse ", file, ": ", conditionMessage(e),
-                             call. = FALSE)
+    error = function(e) stop(
+      "Failed to parse ", file, ": ", conditionMessage(e), call. = FALSE
+    )
   )
   for (expr in parsed) {
-    one <- extract_definition(expr, file)
-    if (!is.null(one)) definitions[[length(definitions) + 1L]] <- one
+    one <- extract_top_level(expr, file)
+    if (!is.null(one$definition)) {
+      definitions[[length(definitions) + 1L]] <- one$definition
+    }
+    if (!is.null(one$alias)) aliases[[length(aliases) + 1L]] <- one$alias
   }
 }
 definitions <- if (length(definitions)) do.call(rbind, definitions) else {
@@ -97,7 +122,14 @@ definitions <- if (length(definitions)) do.call(rbind, definitions) else {
     forward_target = character(), stringsAsFactors = FALSE
   )
 }
-rownames(definitions) <- NULL
+aliases <- if (length(aliases)) do.call(rbind, aliases) else {
+  data.frame(
+    alias = character(), target = character(), file = character(),
+    line = integer(), implementation_alias = logical(),
+    stringsAsFactors = FALSE
+  )
+}
+rownames(definitions) <- rownames(aliases) <- NULL
 
 count_fixed <- function(name, files) {
   files <- files[file.exists(files)]
@@ -110,7 +142,7 @@ count_fixed <- function(name, files) {
       if (length(x) == 1L && x[[1L]] == -1L) 0L else length(x)
     }, integer(1)))
   }
-  total
+  as.integer(total)
 }
 
 test_files <- sort(unique(c(
@@ -130,8 +162,9 @@ doc_files <- sort(unique(c(
 )))
 
 if (nrow(definitions)) {
-  definitions$definition_count <- ave(
-    definitions$name, definitions$name, FUN = length
+  definition_counts <- table(definitions$name)
+  definitions$definition_count <- as.integer(
+    definition_counts[definitions$name]
   )
   unique_defs <- definitions[!duplicated(definitions$name), , drop = FALSE]
   unique_defs$source_occurrences <- vapply(
@@ -145,13 +178,6 @@ if (nrow(definitions)) {
   )
   unique_defs$exported <- unique_defs$name %in% exports
   unique_defs$s3_registered <- unique_defs$name %in% s3_methods
-  unique_defs$compatibility_named <- grepl(
-    "compat|legacy|deprecated|obsolete|old", unique_defs$name,
-    ignore.case = TRUE
-  ) | grepl(
-    "compat|legacy|deprecated|obsolete|old", unique_defs$file,
-    ignore.case = TRUE
-  )
   special <- c(
     ".onLoad", ".onUnload", ".onAttach", ".Last.lib", ".First.lib"
   )
@@ -170,22 +196,42 @@ if (nrow(definitions)) {
   unique_defs <- definitions
 }
 
-duplicates <- definitions[duplicated(definitions$name) |
-  duplicated(definitions$name, fromLast = TRUE), , drop = FALSE]
+duplicate_names <- names(which(table(definitions$name) > 1L))
+duplicate_summary <- if (length(duplicate_names)) {
+  do.call(rbind, lapply(duplicate_names, function(name) {
+    rows <- definitions[definitions$name == name, , drop = FALSE]
+    location <- paste0(
+      rows$file,
+      ifelse(is.na(rows$line), "", paste0(":", rows$line))
+    )
+    data.frame(
+      name = name,
+      definitions = nrow(rows),
+      locations = paste(location, collapse = " | "),
+      stringsAsFactors = FALSE
+    )
+  }))
+} else {
+  data.frame(
+    name = character(), definitions = integer(), locations = character(),
+    stringsAsFactors = FALSE
+  )
+}
+
 undefined_exports <- setdiff(exports, definitions$name)
+rd_files <- list.files("man", pattern = "[.]Rd$", full.names = TRUE)
 undocumented_exports <- exports[!vapply(exports, function(name) {
-  any(vapply(list.files("man", pattern = "[.]Rd$", full.names = TRUE),
-             function(file) {
-               any(grepl(paste0("\\\\alias\\{", name, "\\}"),
-                         readLines(file, warn = FALSE)))
-             }, logical(1)))
+  any(vapply(rd_files, function(file) {
+    any(grepl(
+      paste0("\\\\alias\\{", name, "\\}"),
+      readLines(file, warn = FALSE)
+    ))
+  }, logical(1)))
 }, logical(1))]
 
-marker_files <- c(all_r_files, test_files, doc_files)
-marker_patterns <- c(
-  "[.]Deprecated[(]", "[.]Defunct[(]", "deprecated", "obsolete",
-  "legacy API", "compatibility wrapper"
-)
+marker_files <- setdiff(c(all_r_files, test_files, doc_files),
+                        "tests/api-surface-audit.R")
+marker_patterns <- c("[.]Deprecated[(]", "[.]Defunct[(]", "deprecated API")
 marker_hits <- list()
 for (pattern in marker_patterns) {
   for (file in marker_files[file.exists(marker_files)]) {
@@ -223,7 +269,11 @@ print_section <- function(title, value) {
 
 print_section("Missing Collate files", missing_collate)
 print_section("Uncollated R files", uncollated)
-print_section("Duplicate top-level function definitions", duplicates)
+print_section("Duplicate top-level function definitions", duplicate_summary)
+print_section(
+  "Saved implementation aliases",
+  aliases[aliases$implementation_alias %in% TRUE, , drop = FALSE]
+)
 print_section("Undefined exports", undefined_exports)
 print_section("Undocumented exports", undocumented_exports)
 print_section(
@@ -234,30 +284,18 @@ print_section(
               drop = FALSE]
 )
 print_section(
-  "Compatibility-named functions/files",
-  unique_defs[unique_defs$compatibility_named %in% TRUE,
-              c("name", "file", "line", "forward_target",
-                "source_occurrences", "test_occurrences", "doc_occurrences",
-                "exported"), drop = FALSE]
-)
-print_section(
-  "Single-call forwarding functions",
-  unique_defs[!is.na(unique_defs$forward_target),
-              c("name", "file", "line", "forward_target",
-                "source_occurrences", "test_occurrences", "doc_occurrences",
-                "exported"), drop = FALSE]
-)
-print_section(
   "Exported functions without non-man usage",
   unique_defs[unique_defs$exported_without_usage %in% TRUE,
               c("name", "file", "line", "source_occurrences",
                 "test_occurrences", "doc_occurrences"), drop = FALSE]
 )
-print_section("Deprecation/obsolete markers", marker_hits)
+print_section("Explicit deprecated API markers", marker_hits)
 
 hard_fail <- length(missing_collate) || length(uncollated) ||
-  nrow(duplicates) || length(undefined_exports) || length(undocumented_exports) ||
-  any(unique_defs$private_zero_reference %in% TRUE)
+  nrow(duplicate_summary) ||
+  any(aliases$implementation_alias %in% TRUE) ||
+  length(undefined_exports) || length(undocumented_exports) ||
+  any(unique_defs$private_zero_reference %in% TRUE) || nrow(marker_hits)
 
 if (strict && hard_fail) {
   stop("API surface audit found hard failures; inspect the sections above.",
