@@ -80,7 +80,7 @@
   unique(trimws(as.character(target_reactions)))
 }
 
-.rc_build_celltype_medium_union_gem_cache <- function(
+.rc_build_celltype_medium_union_gem_cache_core <- function(
     gem, reaction_membership, core_reactions,
     target_reactions = NULL, medium_scenarios = NULL,
     celltype_col = "cell_type",
@@ -364,4 +364,25 @@
     )
   }
   model
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_build_celltype_medium_union_gem_cache <- function(...) {
+  answer <- do.call(
+    .rc_build_celltype_medium_union_gem_cache_core,
+    list(...)
+  )
+  if (identical(.rc_layer2_progress_state$run_kind, "primary")) {
+    summary <- attr(answer, "summary")
+    .rc_layer2_overall_event(
+      "structural_models_complete", 3L,
+      detail = paste0(
+        "cell_type_x_medium_models=",
+        if (is.data.frame(summary)) nrow(summary) else length(unique(vapply(
+          answer, function(entry) as.character(entry$file), character(1)
+        )))
+      )
+    )
+  }
+  answer
 }

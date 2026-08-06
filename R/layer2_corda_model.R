@@ -1,6 +1,6 @@
 # RegCompass integration for the original MATLAB CORDA2 algorithm.
 
-.rc_corda_core_closure <- function(
+.rc_corda_core_closure_core <- function(
     parent, final, core, target_direction, solver, time_limit,
     flux_threshold) {
   requested <- rc_prepare_directional_targets(
@@ -52,7 +52,7 @@
   )
 }
 
-.rc_complete_celltype_medium_corda_gem <- function(
+.rc_complete_celltype_medium_corda_gem_core <- function(
     gem, reaction_membership, core_reactions, cell_type,
     reaction_evidence, corda_options, medium_table = NULL,
     target_direction = c("both", "forward", "reverse"),
@@ -282,4 +282,51 @@
     forbidden_roles = forbidden_roles
   )
   .rc_finalize_corda_union_model(final, cell_type = cell_type)
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_complete_celltype_medium_corda_gem <- function(...) {
+  args <- list(...)
+  context <- .rc_layer2_task_context(
+    cell_type = args$cell_type %||% args[[4L]],
+    medium_scenario = .rc_layer2_medium_id(args$medium_table),
+    route = "corda2"
+  )
+  previous <- .rc_layer2_task_push(context, "corda2", 9L)
+  on.exit(.rc_layer2_task_pop(previous), add = TRUE)
+  tryCatch({
+    answer <- do.call(
+      .rc_complete_celltype_medium_corda_gem_core,
+      args
+    )
+    .rc_layer2_current_task_event(
+      "corda2_model_ready", 9L,
+      detail = paste0(
+        "included_reactions=", ncol(answer$S),
+        "; lp_solves=",
+        answer$corda_reconstruction$solver_performance$n_solves %||% NA_integer_
+      ),
+      status = "complete"
+    )
+    answer
+  }, error = function(error) {
+    .rc_layer2_current_task_event(
+      "corda2_task_error",
+      .rc_layer2_task_last_step(context),
+      conditionMessage(error), status = "error"
+    )
+    stop(error)
+  })
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_corda_core_closure <- function(...) {
+  task <- .rc_layer2_progress_state$current_task
+  if (!is.null(task) && identical(task$route, "corda2")) {
+    .rc_layer2_current_task_event(
+      "corda2_target_closure", 8L,
+      "validating retained core directions in the reconstructed GEM"
+    )
+  }
+  do.call(.rc_corda_core_closure_core, list(...))
 }

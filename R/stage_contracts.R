@@ -258,7 +258,7 @@
   ids
 }
 
-.rc_validate_layer2_stage <- function(
+.rc_validate_layer2_stage_core <- function(
     layer2, layer1 = NULL, workflow_params = NULL, gem = NULL,
     argument = "layer2", required_mode = NULL) {
   .rc_require_stage_class(
@@ -319,4 +319,17 @@
   }
   if (!is.null(gem)) .rc_require_stage_gem(layer2, gem, argument)
   invisible(ids)
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_validate_layer2_stage <- function(...) {
+  answer <- do.call(
+    .rc_validate_layer2_stage_core,
+    list(...)
+  )
+  .rc_layer2_overall_event(
+    "layer2_validation_complete", 10L,
+    "Layer 2 schemas, ordering and shared-model contracts validated"
+  )
+  answer
 }

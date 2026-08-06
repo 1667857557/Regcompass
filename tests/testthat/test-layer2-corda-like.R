@@ -47,7 +47,7 @@ test_that("Layer 2 directly prepares and finalizes CORDA2", {
 
 test_that("union cache directly dispatches to original CORDA2 helper", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache)),
+    deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache_core)),
     collapse = "\n"
   )
   expect_match(

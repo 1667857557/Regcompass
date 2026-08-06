@@ -63,7 +63,7 @@
   answer[order(answer$medium_scenario, answer$model_file), , drop = FALSE]
 }
 
-.rc_run_shared_full_gem_engine <- function(
+.rc_run_shared_full_gem_engine_core <- function(
     layer1, gem, target_reactions = NULL,
     medium_table = NULL, medium_scenarios = NULL,
     mode = c("full_gem", "meta_module_gem"),
@@ -628,3 +628,25 @@ rc_run_microcompass <- function(
 }
 
 #' Summarize a microCOMPASS result
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_run_shared_full_gem_engine <- function(...) {
+  answer <- do.call(
+    .rc_run_shared_full_gem_engine_core,
+    list(...)
+  )
+  contexts <- .rc_layer2_model_contexts(
+    answer$shared_model_cache, mode = "full_gem"
+  )
+  parts_dir <- .rc_layer2_cache_progress_dir(answer$shared_model_cache)
+  run_kind <- .rc_layer2_progress_state$run_kind %||% "primary"
+  for (item in contexts) {
+    .rc_layer2_task_event(
+      item$context, "penalty_step2_complete", 4L, 4L,
+      detail = paste0("units=", nrow(answer$unit_meta)),
+      scope = "scoring", run_kind = run_kind,
+      status = "complete", parts_dir = parts_dir
+    )
+  }
+  answer
+}

@@ -98,7 +98,7 @@
 #' exchange-reaction bounds only. Reactions that cannot carry flux under the
 #' medium remain in the model and are classified by the directional COMPASS
 #' maximum-flux step; the penalty-minimization step is skipped when infeasible.
-rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
+.rc_build_full_gem_core <- function(gem, medium_table = NULL, condition = NULL) {
   gem <- rc_annotate_reaction_roles(gem, medium_table = medium_table)
   validated <- rc_validate_gem(gem)
   full <- gem
@@ -245,7 +245,7 @@ rc_build_full_gem <- function(gem, medium_table = NULL, condition = NULL) {
 }
 
 #' Cache one complete medium-constrained full GEM per medium scenario
-rc_build_full_gem_cache <- function(
+.rc_build_full_gem_cache_core <- function(
     gem, dirs, medium_scenarios,
     cache_dir = tempfile("RegCompassR_full_gem_cache_"),
     force = FALSE, conditions = NULL,
@@ -425,4 +425,54 @@ rc_build_full_gem_cache <- function(
   attr(cache, "medium_handling") <-
     "exchange_bounds_only_no_reaction_deletion"
   cache
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+rc_build_full_gem <- function(...) {
+  if (!isTRUE(.rc_layer2_progress_state$active) &&
+      is.null(.rc_layer2_progress_state$current_task)) {
+    return(do.call(.rc_build_full_gem_core, list(...)))
+  }
+  if (!is.null(.rc_layer2_progress_state$current_task)) {
+    return(do.call(.rc_build_full_gem_core, list(...)))
+  }
+  args <- list(...)
+  context <- .rc_layer2_task_context(
+    "ALL", .rc_layer2_medium_id(args$medium_table), "full_gem"
+  )
+  parts_dir <- .rc_layer2_progress_dir_from_cache(
+    .rc_layer2_progress_cache_dir_from_frames()
+  )
+  .rc_layer2_task_event(
+    context, "full_gem_medium_bounds", 1L, 2L,
+    "applying medium bounds without reaction deletion",
+    scope = "structural", run_kind = "primary", parts_dir = parts_dir
+  )
+  answer <- do.call(.rc_build_full_gem_core, args)
+  .rc_layer2_task_event(
+    context, "full_gem_model_ready", 2L, 2L,
+    detail = paste0("reactions=", ncol(answer$S)),
+    scope = "structural", run_kind = "primary", status = "complete",
+    parts_dir = parts_dir
+  )
+  answer
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+rc_build_full_gem_cache <- function(...) {
+  answer <- do.call(
+    .rc_build_full_gem_cache_core,
+    list(...)
+  )
+  if (identical(.rc_layer2_progress_state$run_kind, "primary")) {
+    summary <- attr(answer, "summary")
+    .rc_layer2_overall_event(
+      "structural_models_complete", 3L,
+      detail = paste0(
+        "full_gem_medium_models=",
+        if (is.data.frame(summary)) nrow(summary) else 1L
+      )
+    )
+  }
+  answer
 }

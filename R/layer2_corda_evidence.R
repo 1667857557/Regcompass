@@ -494,7 +494,7 @@
   )
 }
 
-.rc_corda_classify_reactions <- function(
+.rc_corda_classify_reactions_core <- function(
     parent_reactions, module_reactions, core_reactions,
     reaction_evidence, medium_confidence_threshold,
     negative_confidence_threshold,
@@ -559,4 +559,16 @@
       "outside-module reactions; NC=finite low-evidence; OT=remaining"
     )
   )
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_corda_classify_reactions <- function(...) {
+  task <- .rc_layer2_progress_state$current_task
+  if (!is.null(task) && identical(task$route, "corda2")) {
+    .rc_layer2_current_task_event(
+      "corda2_confidence_mapping", 3L,
+      "mapping multiome evidence to HC, MC, NC and OT"
+    )
+  }
+  do.call(.rc_corda_classify_reactions_core, list(...))
 }

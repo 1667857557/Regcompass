@@ -1,10 +1,4 @@
 #' Safe robust sigma-scale estimate
-rc_safe_scale <- function(x, min_scale = 0.05) {
-  mad_sigma <- stats::mad(x, constant = 1.4826, na.rm = TRUE)
-  iqr_sigma <- stats::IQR(x, na.rm = TRUE) / 1.349
-  max(mad_sigma, iqr_sigma, min_scale, na.rm = TRUE)
-}
-
 #' Robust row-wise z score clipped to a finite range
 rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
   X <- as.matrix(X)
