@@ -5,7 +5,6 @@ on:
     paths:
       - 'R/**'
       - 'tests/**'
-      - 'tools/**'
       - 'man/**'
       - 'docs/**'
       - 'vignettes/**'
@@ -18,7 +17,6 @@ on:
     paths:
       - 'R/**'
       - 'tests/**'
-      - 'tools/**'
       - 'man/**'
       - 'docs/**'
       - 'vignettes/**'
@@ -41,16 +39,11 @@ jobs:
         with:
           r-version: '4.5'
 
-      - name: Dry-run remaining runtime consolidation
-        run: |
-          python tools/consolidate_runtime_wrappers_v2.py
-          git diff --check
-
-      - name: Parse transformed R sources
+      - name: Parse package R sources
         shell: Rscript {0}
         run: |
           files <- list.files('R', pattern = '[.]R$', full.names = TRUE)
           for (file in files) parse(file = file)
 
-      - name: Audit transformed API surface
+      - name: Audit committed API surface
         run: Rscript tests/api-surface-audit.R --strict
