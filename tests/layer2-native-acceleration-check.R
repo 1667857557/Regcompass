@@ -5,7 +5,6 @@ library(Rcpp)
 
 Rcpp::sourceCpp("src/layer2_native.cpp")
 .rc_corda2_scan_flux_cpp <- rc_corda2_scan_flux_cpp
-options(warn = 2)
 
 source("R/00_utils.R", local = FALSE)
 
@@ -56,57 +55,64 @@ stopifnot(
   length(observed) == length(unique(observed))
 )
 
-S <- Matrix::Matrix(
-  matrix(
-    c(1, -1), nrow = 1,
-    dimnames = list("M", c("UP", "TARGET"))
-  ),
-  sparse = TRUE
-)
-lb <- c(UP = 0, TARGET = 0)
-ub <- c(UP = 10, TARGET = 10)
-vmax <- rc_compass_vmax_directional(
-  S, lb, ub, "TARGET", direction = "forward", solver = "highs"
-)
-stopifnot(isTRUE(vmax$feasible))
-prepared <- .rc_compass_step2_prepare(
-  S, lb, ub, "TARGET", vmax,
-  target_direction = "forward", omega = 0.95
-)
-engine <- .rc_compass_step2_new_engine(prepared$template, "highs")
-on.exit(.rc_compass_step2_release_engine(engine), add = TRUE)
-if (!identical(engine$type, "highs_persistent_cpp")) {
-  stop(
-    "Persistent HiGHS Step 2 API was not activated: ",
-    engine$persistent_message %||% "unknown reason"
+run_persistent_step2_check <- function() {
+  S <- Matrix::Matrix(
+    matrix(
+      c(1, -1), nrow = 1,
+      dimnames = list("M", c("UP", "TARGET"))
+    ),
+    sparse = TRUE
   )
-}
+  lb <- c(UP = 0, TARGET = 0)
+  ub <- c(UP = 10, TARGET = 10)
+  vmax <- rc_compass_vmax_directional(
+    S, lb, ub, "TARGET", direction = "forward", solver = "highs"
+  )
+  stopifnot(isTRUE(vmax$feasible))
+  prepared <- .rc_compass_step2_prepare(
+    S, lb, ub, "TARGET", vmax,
+    target_direction = "forward", omega = 0.95
+  )
+  engine <- .rc_compass_step2_new_engine(prepared$template, "highs")
+  on.exit(.rc_compass_step2_release_engine(engine), add = TRUE)
+  if (!identical(engine$type, "highs_persistent_cpp")) {
+    stop(
+      "Persistent HiGHS Step 2 API was not activated: ",
+      engine$persistent_message %||% "unknown reason"
+    )
+  }
 
-penalty_sets <- list(
-  c(UP = 0.25, TARGET = 0.50),
-  c(UP = 0.75, TARGET = 0.10),
-  c(UP = 0.05, TARGET = 1.25)
-)
-for (penalties in penalty_sets) {
-  solved <- .rc_compass_step2_engine_solve(engine, penalties)
-  engine <- solved$engine
-  persistent <- .rc_compass_step2_result(prepared$template, solved$answer)
-  reference <- rc_compass_two_step_lp_directional(
-    S, lb, ub, "TARGET", penalties,
-    target_direction = "forward", omega = 0.95, solver = "highs"
+  penalty_sets <- list(
+    c(UP = 0.25, TARGET = 0.50),
+    c(UP = 0.75, TARGET = 0.10),
+    c(UP = 0.05, TARGET = 1.25)
   )
+  for (penalties in penalty_sets) {
+    solved <- .rc_compass_step2_engine_solve(engine, penalties)
+    engine <- solved$engine
+    persistent <- .rc_compass_step2_result(
+      prepared$template, solved$answer
+    )
+    reference <- rc_compass_two_step_lp_directional(
+      S, lb, ub, "TARGET", penalties,
+      target_direction = "forward", omega = 0.95, solver = "highs"
+    )
+    stopifnot(
+      identical(persistent$feasible, reference$feasible),
+      isTRUE(all.equal(persistent$vmax, reference$vmax, tolerance = 1e-10)),
+      isTRUE(all.equal(
+        persistent$penalty, reference$penalty, tolerance = 1e-9
+      ))
+  }
+  metrics <- .rc_compass_step2_engine_metrics(engine)
   stopifnot(
-    identical(persistent$feasible, reference$feasible),
-    isTRUE(all.equal(persistent$vmax, reference$vmax, tolerance = 1e-10)),
-    isTRUE(all.equal(persistent$penalty, reference$penalty, tolerance = 1e-9))
+    identical(metrics$engine, "highs_persistent_cpp"),
+    metrics$n_solves == length(penalty_sets),
+    metrics$n_objective_updates > 0L,
+    metrics$n_fallback == 0L
   )
+  invisible(metrics)
 }
-metrics <- .rc_compass_step2_engine_metrics(engine)
-stopifnot(
-  identical(metrics$engine, "highs_persistent_cpp"),
-  metrics$n_solves == length(penalty_sets),
-  metrics$n_objective_updates > 0L,
-  metrics$n_fallback == 0L
-)
 
+run_persistent_step2_check()
 cat("Layer 2 native acceleration regression passed.\n")
