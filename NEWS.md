@@ -1,3 +1,11 @@
+# RegCompassR 2.4.7
+
+- Aligns medium application with the original COMPASS exchange-bound sequence: all exchange uptake directions receive the shared cap, omitted medium reactions remain capped rather than closed, and explicit medium rows override only the intended uptake direction for generated biological media.
+- Detects uptake direction from exchange stoichiometry so both `metabolite -> boundary` and `boundary -> metabolite` conventions are handled without restricting the secretion direction.
+- Keeps reaction-level custom `lb`/`ub` rows backward compatible, while `available = FALSE` closes uptake only.
+- Expands the medium audit to allow COMPASS baseline changes on any annotated exchange reaction while continuing to reject bound changes on internal reactions.
+- Versions the full-GEM medium fingerprint so existing caches created under the previous closed-unlisted semantics are not reused.
+
 # RegCompassR 2.4.0
 
 - Defines three mutually exclusive Layer 2 structural routes: add-only FASTCORE, original MATLAB CORDA2, and a COMPASS-style full GEM.
