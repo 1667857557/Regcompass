@@ -69,8 +69,8 @@ jobs:
               'ggplot2::geom_col',
               'ggplot2::coord_flip',
               'attr(p, "rank_data")',
-              'structural/no-GPR',
-              'GPR/no-observed-RNA',
+              'Structural reactions without a GPR',
+              'GPR reactions without observed RNA support',
           ]
           missing = [value for value in required if value not in text]
           if missing:
