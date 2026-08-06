@@ -6,6 +6,7 @@ on:
       - agent/prune-obsolete-api-readme-flow
     paths:
       - 'tools/consolidate_runtime_wrappers.py'
+      - 'tools/consolidate_runtime_wrappers_v2.py'
       - '.github/workflows/apply-runtime-consolidation.yaml'
 
 permissions:
@@ -24,7 +25,7 @@ jobs:
 
       - name: Consolidate canonical implementations
         run: |
-          python tools/consolidate_runtime_wrappers.py
+          python tools/consolidate_runtime_wrappers_v2.py
           git diff --check
 
       - name: Parse transformed R sources
