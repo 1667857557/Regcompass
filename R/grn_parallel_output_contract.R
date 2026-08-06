@@ -28,7 +28,7 @@
   values
 }
 
-.rc_merge_condition_job_results <- function(results, full_object = NULL) {
+.rc_merge_condition_job_results_core <- function(results, full_object = NULL) {
   if (!length(results)) return(NULL)
   answer <- results[[1L]]
   object_map <- .rc_condition_job_object_map(results)
@@ -84,13 +84,11 @@
   answer
 }
 
-.rc_merge_pando_results_base_parallel_contract <- .rc_merge_pando_results
-
-.rc_merge_pando_results <- function(
+.rc_merge_pando_results_with_parallel_objects <- function(
     condition_result = NULL, standard_results = list(),
     condition_types = character(), standard_types = character(),
     condition_col, celltype_col, outdir) {
-  answer <- .rc_merge_pando_results_base_parallel_contract(
+  answer <- .rc_merge_pando_results_validated(
     condition_result = condition_result,
     standard_results = standard_results,
     condition_types = condition_types,

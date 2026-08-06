@@ -19,7 +19,7 @@
   )
 }
 
-.rc_require_pando_condition_grn_fit <- function(fit) {
+.rc_require_pando_condition_grn_fit_schema <- function(fit) {
   if (!inherits(fit, "ConditionGRNFit") ||
       !identical(fit$schema_version, .RC_PANDO_CONDITION_GRN_FIT_SCHEMA)) {
     stop(
@@ -136,7 +136,7 @@
   invisible(TRUE)
 }
 
-.rc_extract_condition_grn_contract <- function(
+.rc_extract_condition_grn_contract_core <- function(
     grn_object, condition_col, celltype_col) {
   fits <- Pando::condition_grn_fit(grn_object)
   if (inherits(fits, "ConditionGRNFit")) fits <- list(fits)

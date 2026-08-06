@@ -20,7 +20,7 @@
   )
 }
 
-.rc_route_pando_infer_args <- function(
+.rc_route_pando_infer_args_core <- function(
     args, condition_types = character(), standard_types = character()) {
   if (!is.list(args)) {
     stop("`pando_infer_args` must be a list.", call. = FALSE)
@@ -87,82 +87,6 @@
     standard = standard_args,
     diagnostics = diagnostics
   )
-}
-
-.rc_merge_pando_grn_data <- function(results, full_object) {
-  values <- lapply(results, `[[`, "pando_grn_data")
-  values <- values[vapply(values, function(x) inherits(x, "GRNData"), logical(1))]
-  if (!length(values)) return(NULL)
-  combined <- values[[1L]]
-  if (length(values) > 1L) {
-    for (value in values[-1L]) {
-      for (network_name in names(value@grn@networks)) {
-        if (network_name %in% names(combined@grn@networks)) {
-          stop("Duplicated Pando network while merging cell-type jobs: ",
-               network_name, call. = FALSE)
-        }
-        combined@grn@networks[[network_name]] <- value@grn@networks[[network_name]]
-      }
-    }
-  }
-  if (!inherits(full_object, "Seurat")) {
-    stop("The merged condition GRN requires the complete normalized Seurat object.",
-         call. = FALSE)
-  }
-  combined@data <- full_object
-  combined@grn@params$condition_grn_fits <- unlist(
-    lapply(results, `[[`, "condition_grn_fits"), recursive = FALSE
-  )
-  combined@grn@params$condition_network_index <- .rc_bind_pando_field(
-    results, "pando_network_index"
-  )
-  network_names <- names(combined@grn@networks)
-  if (length(network_names)) combined@grn@active_network <- tail(network_names, 1L)
-  combined
-}
-
-.rc_merge_condition_job_results <- function(results, full_object) {
-  if (!length(results)) return(NULL)
-  answer <- results[[1L]]
-  if (length(results) > 1L) {
-    frame_fields <- c(
-      "condition_fit_status", "pando_network_index", "pando_fit_diagnostics",
-      "tf_peak_gene_universal", "tf_peak_gene_condition_all",
-      "tf_peak_gene_condition", "tf_peak_gene_condition_effect_all",
-      "tf_peak_gene_condition_effect", "paired_cell_metadata"
-    )
-    for (field in frame_fields) {
-      answer[[field]] <- .rc_bind_pando_field(results, field)
-    }
-    if (nrow(answer$paired_cell_metadata)) {
-      answer$paired_cell_metadata <- answer$paired_cell_metadata[
-        !duplicated(answer$paired_cell_metadata$cell_id), , drop = FALSE
-      ]
-    }
-    answer$paired_cell_ids <- unique(
-      as.character(answer$paired_cell_metadata$cell_id)
-    )
-    answer$target_metabolic_genes <- unique(unlist(
-      lapply(results, `[[`, "target_metabolic_genes"), use.names = FALSE
-    ))
-    answer$condition_grn_fits <- unlist(
-      lapply(results, `[[`, "condition_grn_fits"), recursive = FALSE
-    )
-    summaries <- lapply(results, `[[`, "pando_execution_summary")
-    answer$pando_execution_summary <- list(
-      fit_engine = paste(unique(unlist(lapply(
-        summaries, `[[`, "fit_engine"
-      ), use.names = FALSE)), collapse = ";"),
-      targets_total = sum(vapply(summaries, function(x) {
-        as.integer(x$targets_total %||% 0L)
-      }, integer(1))),
-      targets_failed = sum(vapply(summaries, function(x) {
-        as.integer(x$targets_failed %||% 0L)
-      }, integer(1)))
-    )
-  }
-  answer$pando_grn_data <- .rc_merge_pando_grn_data(results, full_object)
-  answer
 }
 
 .rc_run_pando_celltype_job <- function(

@@ -1,8 +1,5 @@
 # Strict contract for merging independent condition-GRN worker results.
 
-.rc_merge_condition_job_results_contract_base <-
-  .rc_merge_condition_job_results
-
 .rc_validate_condition_job_merge_output <- function(answer) {
   if (is.null(answer)) return(invisible(TRUE))
   fits <- answer$condition_grn_fits
@@ -52,7 +49,7 @@
 
 .rc_merge_condition_job_results <- function(results, full_object = NULL) {
   .rc_validate_pando_result_cell_partition(results)
-  answer <- .rc_merge_condition_job_results_contract_base(
+  answer <- .rc_merge_condition_job_results_core(
     results = results, full_object = full_object
   )
   .rc_validate_condition_job_merge_output(answer)

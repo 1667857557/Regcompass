@@ -380,15 +380,3 @@
   invisible(NULL)
 }
 
-.rc_write_execution_timing <- function(timing, outdir) {
-  if (!is.data.frame(timing)) {
-    stop("`timing` must be a data frame.", call. = FALSE)
-  }
-  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  utils::write.table(
-    timing,
-    file = file.path(outdir, "00_execution_timing.tsv"),
-    sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE
-  )
-  invisible(timing)
-}

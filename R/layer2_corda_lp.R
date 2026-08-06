@@ -141,16 +141,6 @@
   )
 }
 
-.rc_corda_block_reactions <- function(split, reactions) {
-  reactions <- unique(as.character(reactions))
-  blocked <- split$direction_table$variable_id[
-    split$direction_table$reaction_id %in% reactions
-  ]
-  split$ub[blocked] <- 0
-  split$lb[blocked] <- pmin(split$lb[blocked], split$ub[blocked])
-  split
-}
-
 .rc_corda_highs_api_available <- function() {
   if (!requireNamespace("highs", quietly = TRUE)) return(FALSE)
   required <- c(
@@ -510,12 +500,3 @@
   list(answer = fallback, engine = engine)
 }
 
-.rc_corda_task_bpparam <- function() {
-  .rc_layer2_task_bpparam()
-}
-
-.rc_corda_worker_count <- function(BPPARAM, n_tasks) {
-  # Exact CORDA2 reconstruction is serial within one model. Parallelism is
-  # permitted only across independent cell-type x medium model instances.
-  1L
-}

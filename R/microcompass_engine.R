@@ -628,24 +628,3 @@ rc_run_microcompass <- function(
 }
 
 #' Summarize a microCOMPASS result
-rc_summarize_microcompass <- function(result) {
-  evaluated <- result$evaluated %||% matrix(
-    TRUE,
-    nrow = nrow(result$feasible),
-    ncol = ncol(result$feasible),
-    dimnames = dimnames(result$feasible)
-  )
-  data.frame(
-    model_mode = result$model_mode %||% NA_character_,
-    n_targets = nrow(result$score),
-    n_units = ncol(result$score),
-    n_evaluated = sum(evaluated),
-    feasible_fraction = if (any(evaluated)) {
-      mean(result$feasible[evaluated])
-    } else {
-      NA_real_
-    },
-    shared_gem = isTRUE(result$params$shared_gem),
-    stringsAsFactors = FALSE
-  )
-}

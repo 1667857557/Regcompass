@@ -12,18 +12,6 @@
   value
 }
 
-.rc_corda_integer <- function(value, name, lower = 0L) {
-  numeric_value <- suppressWarnings(as.numeric(value))
-  integer_value <- suppressWarnings(as.integer(numeric_value))
-  if (length(numeric_value) != 1L || is.na(numeric_value) ||
-      !is.finite(numeric_value) || numeric_value != integer_value ||
-      integer_value < lower) {
-    stop("`", name, "` must be one integer >= ", lower, ".",
-         call. = FALSE)
-  }
-  integer_value
-}
-
 .rc_corda_flag <- function(value, name) {
   if (length(value) != 1L || is.na(value) || !is.logical(value)) {
     stop("`", name, "` must be TRUE or FALSE.", call. = FALSE)

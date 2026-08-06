@@ -3,9 +3,6 @@
 .RC_PANDO_TF_COR_DEFAULT <- 0.05
 .RC_PANDO_PEAK_COR_DEFAULT <- 0.05
 
-.rc_route_pando_infer_args_integration_base <-
-  .rc_route_pando_infer_args
-
 .rc_require_condition_pando_version <- function(condition_types) {
   if (!length(condition_types)) return(invisible(TRUE))
   if (!requireNamespace("Pando", quietly = TRUE)) {
@@ -71,7 +68,7 @@
   normalized <- .rc_normalize_condition_pando_layer_args(
     args, condition_types
   )
-  answer <- .rc_route_pando_infer_args_integration_base(
+  answer <- .rc_route_pando_infer_args_core(
     args = normalized$args,
     condition_types = condition_types,
     standard_types = standard_types

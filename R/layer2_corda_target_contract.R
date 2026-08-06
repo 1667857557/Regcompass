@@ -53,12 +53,3 @@
   model
 }
 
-.rc_corda_apply_target_epsilon <- function(
-    model, epsilon, strict, cell_type) {
-  .rc_corda2_apply_target_flux(
-    model = model,
-    flux_threshold = epsilon,
-    strict = strict,
-    cell_type = cell_type
-  )
-}

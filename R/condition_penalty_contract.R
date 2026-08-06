@@ -125,13 +125,11 @@
   answer
 }
 
-.rc_merge_pando_results_penalty_base <- .rc_merge_pando_results
-
 .rc_merge_pando_results <- function(
     condition_result = NULL, standard_results = list(),
     condition_types = character(), standard_types = character(),
     condition_col, celltype_col, outdir) {
-  answer <- .rc_merge_pando_results_penalty_base(
+  answer <- .rc_merge_pando_results_with_parallel_objects(
     condition_result = condition_result,
     standard_results = standard_results,
     condition_types = condition_types,

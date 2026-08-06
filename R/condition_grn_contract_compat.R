@@ -21,12 +21,9 @@
   lapply(fits, .rc_complete_pando_condition_fit_contract)
 }
 
-.rc_require_pando_condition_grn_fit_base <-
-  .rc_require_pando_condition_grn_fit
-
 .rc_require_pando_condition_grn_fit <- function(fit) {
   fit <- .rc_complete_pando_condition_fit_contract(fit)
-  .rc_require_pando_condition_grn_fit_base(fit)
+  .rc_require_pando_condition_grn_fit_schema(fit)
 
   downstream_required <- c(
     "condition_col", "cell_type_col", "fit_engine",
@@ -171,9 +168,6 @@
   grn_object
 }
 
-.rc_extract_condition_grn_contract_impl <-
-  .rc_extract_condition_grn_contract
-
 .rc_extract_condition_grn_contract <- function(
     grn_object, condition_col, celltype_col) {
   grn_object <- .rc_complete_pando_condition_fits_in_object(grn_object)
@@ -195,7 +189,7 @@
     condition_col = condition_col,
     celltype_col = celltype_col
   )
-  .rc_extract_condition_grn_contract_impl(
+  .rc_extract_condition_grn_contract_core(
     grn_object = grn_object,
     condition_col = condition_col,
     celltype_col = celltype_col
