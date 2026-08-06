@@ -1,0 +1,78 @@
+name: COMPASS medium semantics checks
+
+on:
+  pull_request:
+    paths:
+      - 'DESCRIPTION'
+      - 'R/medium.R'
+      - 'R/medium_exchange_mapping.R'
+      - 'R/compass_medium_semantics.R'
+      - 'R/full_gem.R'
+      - 'tests/compass-medium-semantics-check.R'
+      - 'tests/testthat/test-compass-medium-semantics.R'
+      - '.github/workflows/compass-medium-semantics-checks.yaml'
+  push:
+    branches: [Main]
+    paths:
+      - 'DESCRIPTION'
+      - 'R/medium.R'
+      - 'R/medium_exchange_mapping.R'
+      - 'R/compass_medium_semantics.R'
+      - 'R/full_gem.R'
+      - 'tests/compass-medium-semantics-check.R'
+      - 'tests/testthat/test-compass-medium-semantics.R'
+      - '.github/workflows/compass-medium-semantics-checks.yaml'
+
+permissions:
+  contents: read
+
+jobs:
+  compass-medium:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+          use-public-rspm: true
+
+      - name: Install regression dependency
+        shell: Rscript {0}
+        run: install.packages('Matrix')
+
+      - name: Parse medium sources and regression tests
+        shell: Rscript {0}
+        run: |
+          files <- c(
+            'R/medium.R',
+            'R/medium_exchange_mapping.R',
+            'R/compass_medium_semantics.R',
+            'R/full_gem.R',
+            'tests/compass-medium-semantics-check.R',
+            'tests/testthat/test-compass-medium-semantics.R'
+          )
+          for (file in files) parse(file = file)
+
+      - name: Run COMPASS exchange-bound regression
+        run: Rscript tests/compass-medium-semantics-check.R
+
+      - name: Audit package collation and cache versioning
+        shell: python
+        run: |
+          from pathlib import Path
+
+          description = Path('DESCRIPTION').read_text()
+          semantics = Path('R/compass_medium_semantics.R').read_text()
+          required = [
+              "'medium_exchange_mapping.R'\n    'compass_medium_semantics.R'",
+              'compass_exchange_bounds_v2',
+              'compass_uptake_cap_then_explicit_directional_overrides',
+              'changed_unlisted_exchange_reactions',
+              '.rc_full_gem_medium_fingerprint <- .rc_compass_medium_fingerprint',
+          ]
+          text = description + '\n' + semantics
+          missing = [value for value in required if value not in text]
+          if missing:
+              raise RuntimeError(f'COMPASS medium contract missing: {missing}')
