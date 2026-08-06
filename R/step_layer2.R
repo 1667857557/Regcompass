@@ -54,7 +54,7 @@
   invisible(TRUE)
 }
 
-.rc_layer2_comparison_table <- function(
+.rc_layer2_comparison_table_core <- function(
     layer2, layer1, condition_col, celltype_col) {
   penalty <- layer2$penalty
   row_meta <- rc_parse_microcompass_row_id(rownames(penalty))
@@ -135,40 +135,6 @@
     )
   }
   meta_modules
-}
-
-.rc_run_microcompass_monitored <- function(..., progress_monitor = NULL) {
-  args <- list(...)
-  .rc_step_monitor_event(
-    progress_monitor,
-    "layer2_engine_start",
-    "starting union-model construction and directional scoring",
-    context = list(parallel = isTRUE(args$parallel %||% TRUE))
-  )
-  answer <- do.call(rc_run_microcompass, args)
-  .rc_step_monitor_event(
-    progress_monitor,
-    "layer2_engine_complete",
-    "completed union-model construction and directional scoring"
-  )
-  answer
-}
-
-.rc_run_microcompass_engine_monitored <- function(
-    ..., progress_monitor = NULL) {
-  args <- list(...)
-  .rc_step_monitor_event(
-    progress_monitor,
-    "layer2_control_start",
-    "starting shared-model control scoring"
-  )
-  answer <- do.call(.rc_run_microcompass_engine, args)
-  .rc_step_monitor_event(
-    progress_monitor,
-    "layer2_control_complete",
-    "completed shared-model control scoring"
-  )
-  answer
 }
 
 #' Build cell-type and medium structural models and score directional LPs
@@ -459,5 +425,92 @@ rc_regcompass_step_layer2 <- function(
     file.path(model_dir, "model_completion_contract.rds")
   )
   saveRDS(answer, file.path(outdir, "step_layer2.rds"))
+  answer
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_layer2_comparison_table <- function(...) {
+  answer <- do.call(
+    .rc_layer2_comparison_table_core,
+    list(...)
+  )
+  .rc_layer2_overall_event(
+    "comparison_table_complete", 9L,
+    detail = paste0("comparison_rows=", nrow(answer))
+  )
+  answer
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_run_microcompass_engine_monitored <- function(
+    ..., progress_monitor = NULL) {
+  args <- list(...)
+  state <- .rc_layer2_progress_state
+  previous_run <- state$run_kind
+  state$run_kind <- "rna_control"
+  on.exit({ state$run_kind <- previous_run }, add = TRUE)
+  .rc_layer2_overall_event(
+    "rna_control_start", 7L,
+    "reusing structural models for RNA-only control scoring"
+  )
+  answer <- do.call(.rc_run_microcompass_engine, args)
+  .rc_layer2_overall_event(
+    "rna_control_complete", 8L,
+    "RNA-only control scoring completed on the shared structural cache"
+  )
+  answer
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_run_microcompass_monitored <- function(..., progress_monitor = NULL) {
+  args <- list(...)
+  state <- .rc_layer2_progress_state
+  previous_run <- state$run_kind
+  state$run_kind <- "primary"
+  on.exit({ state$run_kind <- previous_run }, add = TRUE)
+  media <- unique(as.character(
+    args$medium_scenarios$medium_scenario_id %||% "base"
+  ))
+  celltypes <- if (identical(as.character(args$mode), "meta_module_gem") &&
+                   is.data.frame(args$reaction_membership)) {
+    column <- as.character(args$celltype_col %||% "cell_type")
+    unique(as.character(args$reaction_membership[[column]]))
+  } else {
+    "ALL"
+  }
+  completion <- .rc_layer2_completion_context$model_completion %||%
+    if (identical(as.character(args$mode), "full_gem")) "none" else "fastcore"
+  target_count <- if (is.data.frame(args$target_reactions)) {
+    length(unique(as.character(args$target_reactions$reaction_id)))
+  } else {
+    length(unique(as.character(args$target_reactions)))
+  }
+  .rc_layer2_overall_event(
+    "layer2_plan_ready", 1L,
+    detail = paste(
+      "execution plan resolved:", length(celltypes), "cell types x",
+      length(media), "media;", target_count, "target reactions"
+    ),
+    context = list(
+      model_mode = args$mode,
+      completion = completion,
+      cell_types = length(celltypes),
+      media = length(media),
+      parallel = isTRUE(args$parallel %||% TRUE)
+    )
+  )
+  .rc_layer2_overall_event(
+    "primary_engine_start", 2L,
+    "starting structural construction and primary multiome scoring"
+  )
+  answer <- do.call(rc_run_microcompass, args)
+  .rc_layer2_overall_event(
+    "primary_scoring_complete", 5L,
+    "primary multiome Step 2 scoring completed"
+  )
+  .rc_layer2_overall_event(
+    "primary_engine_complete", 6L,
+    "primary structural models and directional scores assembled"
+  )
   answer
 }

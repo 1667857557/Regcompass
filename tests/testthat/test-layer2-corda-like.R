@@ -47,7 +47,7 @@ test_that("Layer 2 directly prepares and finalizes CORDA2", {
 
 test_that("union cache directly dispatches to original CORDA2 helper", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache)),
+    deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache_core)),
     collapse = "\n"
   )
   expect_match(
@@ -69,4 +69,14 @@ test_that("union cache directly dispatches to original CORDA2 helper", {
     "celltype_medium_original_matlab_corda2",
     fixed = TRUE
   )
+})
+
+test_that("CORDA2 is the default structural worker-pool route", {
+  expect_true(RegCompassR:::.rc_layer2_requested_corda2(list()))
+  expect_true(RegCompassR:::.rc_layer2_requested_corda2(list(
+    model_params = list()
+  )))
+  expect_false(RegCompassR:::.rc_layer2_requested_corda2(list(
+    model_params = list(model_completion = "fastcore")
+  )))
 })

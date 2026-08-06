@@ -56,7 +56,7 @@
   list(S = S, lb = lb, ub = ub)
 }
 
-.rc_directional_feasibility <- function(
+.rc_directional_feasibility_core <- function(
     gem, targets, solver = "highs", time_limit = 60,
     flux_threshold = 1e-8) {
   required <- c("reaction_id", "target_direction")
@@ -324,7 +324,7 @@
   )
 }
 
-.rc_fastcore_parent <- function(
+.rc_fastcore_parent_core <- function(
     gem, medium_table = NULL, condition = NULL,
     forbidden_roles = c("demand", "sink", "artificial_support"),
     solver = "highs", time_limit = 300, fastcore_epsilon = 1e-4) {
@@ -388,7 +388,7 @@
   parent
 }
 
-.rc_fastcore_complete_direction <- function(
+.rc_fastcore_complete_direction_core <- function(
     parent, biological_reactions, selected_support, targets, direction,
     epsilon, solver, time_limit, max_support_reactions,
     scaling_factor = 1e5) {
@@ -523,7 +523,7 @@
   )
 }
 
-.rc_complete_celltype_medium_union_gem <- function(
+.rc_complete_celltype_medium_union_gem_core <- function(
     gem, reaction_membership, core_reactions, cell_type, medium_table = NULL,
     target_direction = c("both", "forward", "reverse"),
     solver = "highs", time_limit = 300, fastcore_epsilon = 1e-4,
@@ -761,4 +761,115 @@
     strict = strict
   )
   final
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_complete_celltype_medium_union_gem <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  args <- list(...)
+  context <- .rc_layer2_task_context(
+    cell_type = args$cell_type %||% args[[4L]],
+    medium_scenario = .rc_layer2_medium_id(
+      args$medium_table %||% if (length(args) >= 5L) args[[5L]] else NULL
+    ),
+    route = "fastcore"
+  )
+  previous <- .rc_layer2_task_push(context, "fastcore", 6L)
+  on.exit(.rc_layer2_task_pop(previous), add = TRUE)
+  tryCatch({
+    answer <- do.call(
+      .rc_complete_celltype_medium_union_gem_core,
+      args
+    )
+    if (!exists(
+          "fastcore_support",
+          envir = progress_state$algorithm_flags,
+          inherits = FALSE
+        )) {
+      .rc_layer2_algorithm_once(
+        "fastcore_support", "fastcore_support_completion", 5L,
+        "skipped because all parent-feasible targets were already supported"
+      )
+    }
+    .rc_layer2_current_task_event(
+      "fastcore_model_ready", 6L,
+      detail = paste0(
+        "reactions=", ncol(answer$S),
+        "; support=",
+        answer$build_params$n_celltype_fastcore_support_reactions %||% NA_integer_
+      ),
+      status = "complete"
+    )
+    answer
+  }, error = function(error) {
+    .rc_layer2_current_task_event(
+      "fastcore_task_error",
+      .rc_layer2_task_last_step(context),
+      conditionMessage(error), status = "error"
+    )
+    stop(error)
+  })
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_directional_feasibility <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- progress_state$current_task
+  if (!is.null(task) && identical(task$route, "fastcore")) {
+    .rc_layer2_algorithm_once(
+      "fastcore_direction_scan", "core_direction_scan", 4L,
+      "testing parent and biological-submodel target directions"
+    )
+  }
+  do.call(.rc_directional_feasibility_core, list(...))
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_fastcore_complete_direction <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  args <- list(...)
+  task <- progress_state$current_task
+  if (!is.null(task) && identical(task$route, "fastcore")) {
+    direction <- args$direction %||%
+      if (length(args) >= 5L) args[[5L]] else "unknown"
+    .rc_layer2_algorithm_once(
+      "fastcore_support", "fastcore_support_completion", 5L,
+      detail = paste0("target_direction=", direction)
+    )
+  }
+  do.call(
+    .rc_fastcore_complete_direction_core,
+    args
+  )
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_fastcore_parent <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- progress_state$current_task
+  if (!is.null(task) && identical(task$route, "fastcore")) {
+    .rc_layer2_current_task_event(
+      "medium_parent_start", 2L,
+      "applying medium bounds and checking parent feasibility"
+    )
+  }
+  answer <- do.call(.rc_fastcore_parent_core, list(...))
+  if (!is.null(task) && identical(task$route, "fastcore")) {
+    .rc_layer2_current_task_event(
+      "fastcc_complete", 3L,
+      detail = paste0(
+        "consistent=", length(answer$fastcc_consistent_reactions %||% character()),
+        "; inconsistent=", length(answer$fastcc_inconsistent_reactions %||% character())
+      )
+    )
+  }
+  answer
 }

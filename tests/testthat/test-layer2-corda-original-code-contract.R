@@ -54,7 +54,7 @@ test_that("original CORDA2 parameter defaults match CORDA2.m", {
 
 test_that("CORDA2 uses the complete parent without FASTCC", {
   parent_code <- paste(
-    deparse(body(RegCompassR:::.rc_corda_parent)), collapse = "\n"
+    deparse(body(RegCompassR:::.rc_corda_parent_core)), collapse = "\n"
   )
   expect_match(parent_code, "rc_build_full_gem", fixed = TRUE)
   expect_false(grepl("rc_solve_lp", parent_code, fixed = TRUE))
@@ -66,7 +66,7 @@ test_that("CORDA2 uses the complete parent without FASTCC", {
 
 test_that("model builder directly invokes the original state machine", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem)),
+    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem_core)),
     collapse = "\n"
   )
   expect_match(implementation, ".rc_corda2_split_original", fixed = TRUE)

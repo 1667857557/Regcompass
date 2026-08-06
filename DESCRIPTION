@@ -30,14 +30,17 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     multimodal WNN graph per broad cell type and remain condition-pure after
     membership splitting. RNA support, regulatory effects, GPR rules,
     cell-type-specific union GEM construction and directional penalties use
-    consistent reaction ordering, bounds and medium scenarios. Stage 5 keeps
-    compact FASTCORE completion as the default and optionally runs the original
-    MATLAB CORDA2 algorithm from schultzdre/Constraint-Based-Modeling/CORDA2.m
-    after mapping cell-type multiome evidence to HC, MC, NC and OT reactions.
+    consistent reaction ordering, bounds and medium scenarios. Stage 5 uses the
+    original MATLAB CORDA2 algorithm from
+    schultzdre/Constraint-Based-Modeling/CORDA2.m as the default
+    context-specific completion after mapping cell-type multiome evidence to HC,
+    MC, NC and OT reactions. FASTCORE and complete full-GEM scoring remain
+    explicit supplementary routes.
     The adjustable original controls are MCxNCthresh, constraint, constrainby,
     om and ci under corda2_args. Actively reversible reactions are split once,
     the opposite directional copy is closed during each target assessment, and
-    the original Step 1, Step 2.1, Step 2.2 and Step 3 dependency transitions are
+    the original Step 1, Step 2.1, Step 2.2 and Step 3 dependency transitions
+    are
     preserved. Targets remain serial within each reconstruction; independent
     cell-type-by-medium models may run in parallel and are reused by the primary
     and RNA-only scoring paths.
@@ -121,7 +124,6 @@ Collate:
     'step_meta_modules.R'
     'step_layer1.R'
     'layer1_regulatory_support.R'
-    'step_layer1_common_dictionary.R'
     'step_layer1_parallel_object_contract.R'
     'step_layer2.R'
     'layer2_parallel_runtime.R'

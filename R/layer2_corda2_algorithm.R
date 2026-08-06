@@ -74,7 +74,7 @@
   list(active = as.integer(active), used = as.integer(used))
 }
 
-.rc_corda2_dependency_assessment <- function(
+.rc_corda2_dependency_assessment_core <- function(
     engine, split, target, directional_class, options,
     stage, penalized_class,
     lower = split$lb, upper = split$ub,
@@ -268,4 +268,39 @@
     )
   })
   do.call(rbind, rows)
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_corda2_dependency_assessment <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  args <- list(...)
+  stage <- args$stage %||% if (length(args) >= 6L) args[[6L]] else ""
+  task <- progress_state$current_task
+  if (!is.null(task) && identical(task$route, "corda2")) {
+    if (identical(stage, "corda2_step1_HC_dependencies")) {
+      .rc_layer2_algorithm_once(
+        "corda2_step1", "corda2_step1_HC_dependencies", 4L,
+        "supporting high-confidence directions with MC/NC dependencies"
+      )
+    } else if (identical(stage, "corda2_step2_1_MC_NC_dependencies")) {
+      .rc_layer2_algorithm_once(
+        "corda2_step2_1", "corda2_step2_1_MC_NC_dependencies", 5L,
+        "measuring NC dependencies of remaining MC directions"
+      )
+    } else if (identical(stage, "corda2_step3_HC_OT_dependencies")) {
+      .rc_layer2_algorithm_once(
+        "corda2_step3", "corda2_step3_HC_OT_dependencies", 7L,
+        "adding only OT reactions required by retained HC flux"
+      )
+    }
+  }
+  previous <- progress_state$inside_dependency
+  progress_state$inside_dependency <- TRUE
+  on.exit({ progress_state$inside_dependency <- previous }, add = TRUE)
+  do.call(
+    .rc_corda2_dependency_assessment_core,
+    args
+  )
 }

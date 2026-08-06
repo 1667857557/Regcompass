@@ -1,6 +1,6 @@
 # Complete medium-constrained parent model for original MATLAB CORDA2.
 
-.rc_corda_parent <- function(
+.rc_corda_parent_core <- function(
     gem, medium_table = NULL, condition = NULL,
     forbidden_roles = c("demand", "sink", "artificial_support"),
     solver = "highs", time_limit = 300) {
@@ -73,4 +73,29 @@
   )
   model$corda_noise_contract <- NULL
   model
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_corda_parent <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- progress_state$current_task
+  if (!is.null(task) && identical(task$route, "corda2")) {
+    .rc_layer2_current_task_event(
+      "medium_parent_start", 2L,
+      "applying COMPASS medium bounds to the complete parent GEM"
+    )
+  }
+  answer <- do.call(.rc_corda_parent_core, list(...))
+  if (!is.null(task) && identical(task$route, "corda2")) {
+    .rc_layer2_current_task_event(
+      "medium_parent_complete", 2L,
+      detail = paste0(
+        "reactions=", answer$corda_parent_n_reactions %||% ncol(answer$S),
+        "; open=", answer$corda_parent_n_open_reactions %||% NA_integer_
+      )
+    )
+  }
+  answer
 }

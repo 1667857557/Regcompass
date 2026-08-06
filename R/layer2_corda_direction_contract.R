@@ -39,6 +39,3 @@
   )
 }
 
-.rc_corda_results_table <- function(results) {
-  .rc_corda2_results_table(results)
-}

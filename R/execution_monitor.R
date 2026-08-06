@@ -230,7 +230,7 @@
     (!is.na(after$ctime) && !is.na(before$ctime) && after$ctime > before$ctime)
 }
 
-.rc_step_monitor_start <- function(
+.rc_step_monitor_start_core <- function(
     stage, outdir, progress = TRUE, total_parts = 1L) {
   progress <- .rc_progress_enabled(progress)
   if (!is.null(outdir)) {
@@ -280,7 +280,7 @@
   invisible(NULL)
 }
 
-.rc_step_monitor_finish <- function(
+.rc_step_monitor_finish_core <- function(
     value, monitor, status = "success", details = NULL) {
   if (is.null(monitor) || !is.environment(monitor)) return(value)
   timing <- .rc_timing_finish(
@@ -334,7 +334,7 @@
   )
 }
 
-.rc_step_monitor_fail <- function(monitor) {
+.rc_step_monitor_fail_core <- function(monitor) {
   if (!is.null(monitor) && is.environment(monitor) &&
       !isTRUE(monitor$finished)) {
     artifact_committed <- isTRUE(monitor$finish_requested) &&
@@ -380,15 +380,40 @@
   invisible(NULL)
 }
 
-.rc_write_execution_timing <- function(timing, outdir) {
-  if (!is.data.frame(timing)) {
-    stop("`timing` must be a data frame.", call. = FALSE)
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_step_monitor_fail <- function(monitor) {
+  is_layer2 <- !is.null(monitor) && is.environment(monitor) &&
+    identical(as.character(monitor$timer$stage), "layer2")
+  if (is_layer2) .rc_layer2_collect_task_progress(monitor$outdir)
+  answer <- .rc_step_monitor_fail_core(monitor)
+  if (is_layer2) .rc_layer2_progress_reset()
+  answer
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_step_monitor_finish <- function(
+    value, monitor, status = "success", details = NULL) {
+  if (!is.null(monitor) && is.environment(monitor) &&
+      identical(as.character(monitor$timer$stage), "layer2")) {
+    .rc_layer2_collect_task_progress(monitor$outdir)
   }
-  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  utils::write.table(
-    timing,
-    file = file.path(outdir, "00_execution_timing.tsv"),
-    sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE
+  .rc_step_monitor_finish_core(
+    value, monitor, status, details
   )
-  invisible(timing)
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_step_monitor_start <- function(
+    stage, outdir, progress = TRUE, total_parts = 1L) {
+  if (identical(as.character(stage[[1L]]), "layer2") &&
+      identical(as.integer(total_parts[[1L]]), 1L)) {
+    total_parts <- .rc_layer2_progress_parts
+  }
+  monitor <- .rc_step_monitor_start_core(
+    stage, outdir, progress, total_parts
+  )
+  if (identical(as.character(stage[[1L]]), "layer2")) {
+    .rc_layer2_progress_begin(monitor)
+  }
+  monitor
 }

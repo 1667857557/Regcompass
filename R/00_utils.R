@@ -20,24 +20,6 @@
 #' @param meta Data frame containing metadata rows.
 #' @param grouping_cols Character vector of grouping columns.
 #' @return Filtered metadata with an attribute containing per-column drop counts.
-rc_drop_na_grouping <- function(meta, grouping_cols) {
-  missing_cols <- setdiff(grouping_cols, colnames(meta))
-  if (length(missing_cols) > 0L) {
-    stop("Missing grouping columns: ", paste(missing_cols, collapse = ", "), call. = FALSE)
-  }
-  drop_by_col <- vapply(grouping_cols, function(column) {
-    values <- meta[[column]]
-    sum(is.na(values) | !nzchar(trimws(as.character(values))))
-  }, integer(1))
-  keep <- stats::complete.cases(meta[, grouping_cols, drop = FALSE])
-  for (column in grouping_cols) {
-    keep <- keep & nzchar(trimws(as.character(meta[[column]])))
-  }
-  out <- meta[keep, , drop = FALSE]
-  attr(out, "dropped_na_by_column") <- drop_by_col
-  out
-}
-
 .rc_as_dgCMatrix <- function(x) {
   if (inherits(x, "dgCMatrix")) return(x)
   if (inherits(x, "sparseMatrix")) {
@@ -65,4 +47,3 @@ rc_drop_na_grouping <- function(meta, grouping_cols) {
 }
 
 # Clamp finite numerical evidence to the unit interval.
-.rc_clamp01 <- function(x) pmin(pmax(x, 0), 1)

@@ -137,7 +137,7 @@
   list(lower = lower, upper = upper, opposite = opposite)
 }
 
-.rc_corda2_maximize_target <- function(
+.rc_corda2_maximize_target_core <- function(
     engine, split, target, lower = split$lb, upper = split$ub) {
   closed <- .rc_corda2_close_opposite(split, target, lower, upper)
   objective <- stats::setNames(rep(0, ncol(split$S)), colnames(split$S))
@@ -216,4 +216,20 @@
     output$ub[[reaction]] <- if (keep_forward) min(parent_ub, 1000) else 0
   }
   output
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_corda2_maximize_target <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- progress_state$current_task
+  if (!is.null(task) && identical(task$route, "corda2") &&
+      !isTRUE(progress_state$inside_dependency)) {
+    .rc_layer2_algorithm_once(
+      "corda2_step2_2", "corda2_step2_2_MC_feasibility", 6L,
+      "promoting frequent NC dependencies and testing MC feasibility"
+    )
+  }
+  do.call(.rc_corda2_maximize_target_core, list(...))
 }

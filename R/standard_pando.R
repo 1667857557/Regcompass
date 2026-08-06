@@ -1,7 +1,6 @@
 # Standard Pando fallback used when no multi-level condition is available.
 
 .rc_standard_pando_padj_fixed <- 0.05
-.rc_standard_pando_min_abs_fixed <- 0.01
 
 .rc_standard_pando_cell_types <- function(metadata, celltype_col, cell_type) {
   .rc_validate_celltype_metadata(metadata, celltype_col)
@@ -45,26 +44,6 @@
     dropped_condition_arguments = condition_only,
     scale_forced_false = !identical(requested_scale, FALSE),
     reason = "one_effective_condition_uses_original_pando_projection_scale"
-  )
-  answer
-}
-
-.rc_filter_standard_pando_edges <- function(table) {
-  required <- c("estimate", "padj")
-  if (!is.data.frame(table) || !all(required %in% colnames(table))) {
-    stop("Standard Pando requires estimate and padj columns.", call. = FALSE)
-  }
-  estimate <- suppressWarnings(as.numeric(table$estimate))
-  padj <- suppressWarnings(as.numeric(table$padj))
-  keep <- is.finite(estimate) &
-    abs(estimate) > .rc_standard_pando_min_abs_fixed &
-    is.finite(padj) & padj < .rc_standard_pando_padj_fixed
-  answer <- table[keep, , drop = FALSE]
-  attr(answer, "edge_filter") <- list(
-    padj = "< 0.05",
-    absolute_estimate = paste0(
-      "> ", format(.rc_standard_pando_min_abs_fixed, scientific = FALSE)
-    )
   )
   answer
 }
@@ -342,7 +321,7 @@
         "standard Pando full-fit TF-by-ATAC cell projections aggregated by",
         "exact SuperCell membership"
       ),
-      absolute_estimate_threshold = .rc_standard_pando_min_abs_fixed,
+      absolute_estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
       padj_threshold = .rc_standard_pando_padj_fixed
     ),
     group_cols = c(condition_col, celltype_col)

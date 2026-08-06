@@ -73,7 +73,7 @@
   tasks
 }
 
-.rc_build_microcompass_vmax_cache <- function(
+.rc_build_microcompass_vmax_cache_core <- function(
     model_cache, mode, model_keys, solver, flux_threshold,
     parallel = TRUE, BPPARAM = NULL) {
   workers <- .rc_microcompass_worker_count(
@@ -503,4 +503,52 @@
   solved <- .rc_compass_step2_engine_solve(engine, penalties)
   engine <- solved$engine
   .rc_compass_step2_result(prepared$template, solved$answer)
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_build_microcompass_vmax_cache <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  args <- list(...)
+  contexts <- .rc_layer2_model_contexts(
+    args$model_cache,
+    mode = as.character(args$mode %||% "meta_module_gem")
+  )
+  parts_dir <- .rc_layer2_cache_progress_dir(args$model_cache)
+  run_kind <- progress_state$run_kind %||% "primary"
+  for (item in contexts) {
+    .rc_layer2_task_event(
+      item$context, "directional_vmax_start", 1L, 4L,
+      detail = paste0("directional_targets=", item$n_targets),
+      scope = "scoring", run_kind = run_kind, parts_dir = parts_dir
+    )
+  }
+  answer <- do.call(
+    .rc_build_microcompass_vmax_cache_core,
+    args
+  )
+  for (item in contexts) {
+    .rc_layer2_task_event(
+      item$context, "directional_vmax_complete", 2L, 4L,
+      detail = paste0("directional_targets=", item$n_targets),
+      scope = "scoring", run_kind = run_kind,
+      status = "complete", parts_dir = parts_dir
+    )
+    .rc_layer2_task_event(
+      item$context, "penalty_step2_start", 3L, 4L,
+      "scoring matching metacells with the cached directional vmax",
+      scope = "scoring", run_kind = run_kind, parts_dir = parts_dir
+    )
+  }
+  if (identical(run_kind, "primary")) {
+    .rc_layer2_overall_event(
+      "primary_vmax_complete", 4L,
+      detail = paste0(
+        "directional target batches completed; tasks=",
+        attr(answer, "parallel_tasks") %||% length(answer)
+      )
+    )
+  }
+  answer
 }

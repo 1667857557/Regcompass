@@ -1,7 +1,5 @@
 # Violin geometry extension for condition-associated reaction plots.
 
-.rc_plot_condition_reaction_boxplot_impl <- rc_plot_condition_reaction
-
 #' Plot one reaction target across conditions
 #'
 #' Extends the canonical condition-reaction plot with violin geometries while
@@ -61,7 +59,7 @@ rc_plot_condition_reaction <- function(
     stop("Violin geometry controls contain invalid values.", call. = FALSE)
   }
 
-  plot <- .rc_plot_condition_reaction_boxplot_impl(
+  plot <- .rc_plot_condition_reaction_boxplot_core(
     x = x,
     reaction_id = reaction_id,
     cell_type = cell_type,

@@ -1,10 +1,4 @@
 #' Safe robust sigma-scale estimate
-rc_safe_scale <- function(x, min_scale = 0.05) {
-  mad_sigma <- stats::mad(x, constant = 1.4826, na.rm = TRUE)
-  iqr_sigma <- stats::IQR(x, na.rm = TRUE) / 1.349
-  max(mad_sigma, iqr_sigma, min_scale, na.rm = TRUE)
-}
-
 #' Robust row-wise z score clipped to a finite range
 rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
   X <- as.matrix(X)
@@ -18,40 +12,8 @@ rc_gene_zscore <- function(X, min_scale = 0.05, z_clip = 6) {
 }
 
 #' Robust row-wise z score
-rc_robust_z <- function(x, eps = 1e-6) {
-  if (!is.numeric(eps) || length(eps) != 1L || !is.finite(eps) || eps <= 0) {
-    stop("`eps` must be a single positive finite number.", call. = FALSE)
-  }
-  if (is.null(dim(x))) {
-    x <- as.numeric(x)
-    center <- stats::median(x, na.rm = TRUE)
-    scale <- rc_safe_scale(x, min_scale = max(eps, 0.05))
-    return((x - center) / scale)
-  }
-  rc_gene_zscore(x, min_scale = max(eps, 0.05), z_clip = Inf)
-}
-
 #' Logistic sigmoid transform
 rc_sigmoid <- function(z) 1 / (1 + exp(-z))
-
-.rc_absolute_activity_score <- function(X, half_saturation = 1) {
-  X <- as.matrix(X)
-  if (!is.numeric(half_saturation) || length(half_saturation) != 1L ||
-      !is.finite(half_saturation) || half_saturation <= 0) {
-    stop("`half_saturation` must be one positive finite number.", call. = FALSE)
-  }
-  observed <- is.finite(X)
-  signal <- pmax(X, 0)
-  score <- signal / (signal + half_saturation)
-  score[observed & signal <= 0] <- 0
-  score[!observed] <- NA_real_
-  dimnames(score) <- dimnames(X)
-  attr(score, "score_semantics") <- paste(
-    "zero-preserving bounded support from non-negative normalized signal;",
-    "not a probability or enzyme capacity"
-  )
-  score
-}
 
 #' Gene capacity score from meta-cell-level logCPM
 rc_gene_score <- function(

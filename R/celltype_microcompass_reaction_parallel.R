@@ -1,6 +1,6 @@
 # Reaction-granular directional LP scoring on cell-type-specific models.
 
-.rc_run_celltype_microcompass_engine <- function(
+.rc_run_celltype_microcompass_engine_reaction_core <- function(
     layer1, gem, target_reactions = NULL,
     medium_table = NULL, medium_scenarios = NULL,
     reaction_membership, core_reactions,
@@ -428,4 +428,38 @@
       "HiGHS reuse on cell-type-specific medium union GEMs"
     )
   )
+}
+
+# Progress-aware entry point; the algorithm remains in the core above.
+.rc_run_celltype_microcompass_engine <- function(...) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  args <- list(...)
+  answer <- do.call(
+    .rc_run_celltype_microcompass_engine_reaction_core,
+    args
+  )
+  contexts <- .rc_layer2_model_contexts(
+    answer$shared_model_cache, mode = "meta_module_gem"
+  )
+  parts_dir <- .rc_layer2_cache_progress_dir(answer$shared_model_cache)
+  run_kind <- progress_state$run_kind %||% "primary"
+  celltype_col <- as.character(args$celltype_col %||% "cell_type")
+  unit_celltypes <- if (celltype_col %in% colnames(answer$unit_meta)) {
+    as.character(answer$unit_meta[[celltype_col]])
+  } else {
+    character()
+  }
+  for (item in contexts) {
+    .rc_layer2_task_event(
+      item$context, "penalty_step2_complete", 4L, 4L,
+      detail = paste0(
+        "matching_units=", sum(unit_celltypes == item$context$cell_type)
+      ),
+      scope = "scoring", run_kind = run_kind,
+      status = "complete", parts_dir = parts_dir
+    )
+  }
+  answer
 }

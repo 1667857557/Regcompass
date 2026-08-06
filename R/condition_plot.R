@@ -171,8 +171,8 @@
 #' @return A `ggplot` object. The underlying statistics, plotted metacells, and
 #'   annotation table are attached as `condition_statistics`, `plot_data`, and
 #'   `annotation_data` attributes.
-#' @export
-rc_plot_condition_reaction <- function(
+#' @name rc_plot_condition_reaction
+.rc_plot_condition_reaction_boxplot_core <- function(
     x,
     reaction_id,
     cell_type,

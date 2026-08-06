@@ -8,18 +8,7 @@
   .rc_bind_frames_fill(values)
 }
 
-.rc_standard_pando_runtime_args <- function(args) {
-  if (!is.list(args)) return(list())
-  method <- tryCatch(
-    getS3method("infer_grn", "GRNData", envir = asNamespace("Pando")),
-    error = function(error) NULL
-  )
-  if (!is.function(method)) return(list())
-  allowed <- setdiff(names(formals(method)), c("object", "..."))
-  args[intersect(names(args), allowed)]
-}
-
-.rc_merge_pando_results <- function(
+.rc_merge_pando_results_core <- function(
     condition_result = NULL, standard_results = list(),
     condition_types = character(), standard_types = character(),
     condition_col, celltype_col, outdir) {
@@ -123,78 +112,6 @@
     file.path(outdir, "pando_tf_peak_gene_active.tsv.gz"))
   saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
   answer
-}
-
-.rc_fit_pando_by_celltype_route <- function(
-    object, gem, outdir, genome, pfm, species, condition_col, celltype_col,
-    condition_types, standard_types, rna_assay, atac_assay,
-    extra_args, condition_infer_args, standard_infer_args,
-    parallel, BPPARAM, progress_monitor) {
-  base <- list(
-    object = object, gem = gem, outdir = outdir, genome = genome,
-    pfm = pfm, species = species, condition_col = condition_col,
-    celltype_col = celltype_col, rna_assay = rna_assay,
-    atac_assay = atac_assay
-  )
-  build_args <- function(defaults) {
-    c(defaults[setdiff(names(defaults), names(extra_args))], extra_args)
-  }
-  condition_result <- NULL
-  if (length(condition_types)) {
-    args <- build_args(base)
-    args$outdir <- file.path(outdir, "condition")
-    args$cell_type <- condition_types
-    args$pando_infer_args <- condition_infer_args
-    args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
-    args$progress_monitor <- progress_monitor
-    condition_result <- do.call(.rc_fit_condition_grns_by_cell_type, args)
-  }
-  standard_results <- list()
-  for (type in standard_types) {
-    cells <- rownames(object@meta.data)[
-      as.character(object@meta.data[[celltype_col]]) == type
-    ]
-    one <- subset(object, cells = cells)
-    levels <- unique(as.character(one@meta.data[[condition_col]]))
-    if (length(levels) != 1L) {
-      stop("Standard Pando fallback requires one retained condition in cell type `",
-           type, "`.", call. = FALSE)
-    }
-    args <- build_args(base)
-    args$object <- one
-    args$outdir <- file.path(outdir, "standard", .rc_safe_path_component(type))
-    args$cell_type <- type
-    args$pando_infer_args <- standard_infer_args
-    args$parallel <- isTRUE(parallel)
-    args$progress_monitor <- progress_monitor
-    standard_results[[type]] <- do.call(
-      .rc_fit_standard_pando_by_cell_type, args
-    )
-  }
-  .rc_merge_pando_results(
-    condition_result = condition_result,
-    standard_results = standard_results,
-    condition_types = condition_types,
-    standard_types = standard_types,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    outdir = outdir
-  )
-}
-
-.rc_overlay_projection <- function(target, incoming, label) {
-  if (!identical(dimnames(target), dimnames(incoming))) {
-    stop(label, " projection layout is incompatible.", call. = FALSE)
-  }
-  occupied <- is.finite(target)
-  supplied <- is.finite(incoming)
-  overlap <- occupied & supplied
-  if (any(overlap) &&
-      any(abs(target[overlap] - incoming[overlap]) > 1e-10)) {
-    stop(label, " projection overlaps another cell-type route.", call. = FALSE)
-  }
-  target[supplied] <- incoming[supplied]
-  target
 }
 
 .rc_project_pando_by_celltype <- function(
