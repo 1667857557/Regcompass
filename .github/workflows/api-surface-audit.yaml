@@ -5,14 +5,24 @@ on:
     paths:
       - 'R/**'
       - 'tests/**'
-      - 'tools/fix_progress_wrapper_dependencies.py'
+      - 'man/**'
+      - 'docs/**'
+      - 'vignettes/**'
+      - 'README.md'
+      - 'DESCRIPTION'
+      - 'NAMESPACE'
       - '.github/workflows/api-surface-audit.yaml'
   push:
     branches: [Main]
     paths:
       - 'R/**'
       - 'tests/**'
-      - 'tools/fix_progress_wrapper_dependencies.py'
+      - 'man/**'
+      - 'docs/**'
+      - 'vignettes/**'
+      - 'README.md'
+      - 'DESCRIPTION'
+      - 'NAMESPACE'
       - '.github/workflows/api-surface-audit.yaml'
 
 permissions:
@@ -29,24 +39,11 @@ jobs:
         with:
           r-version: '4.5'
 
-      - name: Apply progress wrapper fallback in the workspace
-        run: python tools/fix_progress_wrapper_dependencies.py
-
-      - name: Parse transformed R sources
+      - name: Parse package R sources
         shell: Rscript {0}
         run: |
           files <- list.files('R', pattern = '[.]R$', full.names = TRUE)
           for (file in files) parse(file = file)
 
-      - name: Audit transformed API surface
+      - name: Audit committed API surface
         run: Rscript tests/api-surface-audit.R --strict
-
-      - name: Package transformed source tree
-        run: |
-          tar -czf progress-wrapper-fix.tar.gz R tests/testthat/test-layer2-corda-like.R
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: progress-wrapper-fix
-          path: progress-wrapper-fix.tar.gz
-          if-no-files-found: error
