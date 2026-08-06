@@ -3,23 +3,13 @@ name: Layer 2 progress reporting checks
 on:
   pull_request:
     paths:
-      - 'R/execution_monitor.R'
-      - 'R/step_layer2.R'
-      - 'R/celltype_union_gem_cache.R'
-      - 'R/celltype_microcompass_reaction_parallel.R'
-      - 'R/layer2_corda_runtime_cache.R'
-      - 'R/layer2_corda_pool_lifecycle.R'
+      - 'R/**'
       - 'tests/layer2-progress-reporting-check.R'
       - '.github/workflows/layer2-progress-reporting-checks.yaml'
   push:
     branches: [Main]
     paths:
-      - 'R/execution_monitor.R'
-      - 'R/step_layer2.R'
-      - 'R/celltype_union_gem_cache.R'
-      - 'R/celltype_microcompass_reaction_parallel.R'
-      - 'R/layer2_corda_runtime_cache.R'
-      - 'R/layer2_corda_pool_lifecycle.R'
+      - 'R/**'
       - 'tests/layer2-progress-reporting-check.R'
       - '.github/workflows/layer2-progress-reporting-checks.yaml'
 
@@ -42,12 +32,7 @@ jobs:
         shell: Rscript {0}
         run: |
           files <- c(
-            'R/execution_monitor.R',
-            'R/step_layer2.R',
-            'R/celltype_union_gem_cache.R',
-            'R/celltype_microcompass_reaction_parallel.R',
-            'R/layer2_corda_runtime_cache.R',
-            'R/layer2_corda_pool_lifecycle.R',
+            list.files('R', pattern = '[.]R$', full.names = TRUE),
             'tests/layer2-progress-reporting-check.R'
           )
           for (file in files) parse(file = file)
@@ -60,7 +45,8 @@ jobs:
         run: |
           from pathlib import Path
 
-          text = Path('R/layer2_corda_pool_lifecycle.R').read_text()
+          sources = sorted(Path('R').glob('*.R'))
+          text = '\n'.join(path.read_text() for path in sources)
           required = [
               '.rc_layer2_progress_parts <- 12L',
               'layer2_task_progress.tsv',
@@ -79,3 +65,15 @@ jobs:
           missing = [value for value in required if value not in text]
           if missing:
               raise RuntimeError(f'Layer 2 progress contract missing: {missing}')
+
+          forbidden = [
+              '.rc_layer2_progress_original',
+              '.rc_layer2_progress_capture',
+              '_base <-',
+              'before_',
+          ]
+          found = [value for value in forbidden if value in text]
+          if found:
+              raise RuntimeError(
+                  f'Runtime capture or override marker remains: {found}'
+              )
