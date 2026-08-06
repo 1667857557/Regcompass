@@ -1,5 +1,9 @@
 # RegCompassR 2.4.7
 
+- Reports Layer 2 as a 12-part end-to-end workflow instead of a single 0/1 progress item.
+- Prints task-scoped progress for every cell-type-by-medium model, including COMPASS medium setup, FASTCC/FASTCORE phases or original CORDA2 Steps 1, 2.1, 2.2 and 3, target closure, directional vmax, primary penalty scoring and RNA-only control scoring.
+- Persists merged `layer2_task_progress.tsv` and latest-state `layer2_task_status.tsv` diagnostics across controller and parallel worker processes, including the actual interrupted step on failure.
+- Keeps numerical algorithms, model caches, parallel task decomposition and Layer 2 output schemas unchanged.
 - Aligns medium application with the original COMPASS exchange-bound sequence: all exchange uptake directions receive the shared cap, omitted medium reactions remain capped rather than closed, and explicit medium rows override only the intended uptake direction for generated biological media.
 - Detects uptake direction from exchange stoichiometry so both `metabolite -> boundary` and `boundary -> metabolite` conventions are handled without restricting the secretion direction.
 - Keeps reaction-level custom `lb`/`ub` rows backward compatible, while `available = FALSE` closes uptake only.
