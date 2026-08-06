@@ -1,6 +1,6 @@
 test_that("CORDA2 exposes only original adjustable parameters", {
   defaults <- RegCompassR:::.rc_layer2_corda_options(list())
-  expect_identical(defaults$model_completion, "fastcore")
+  expect_identical(defaults$model_completion, "corda2")
 
   options <- RegCompassR:::.rc_layer2_corda_options(list(
     model_completion = "corda2",
