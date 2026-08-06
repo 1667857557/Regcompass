@@ -1,5 +1,9 @@
 # RegCompassR 2.4.7
 
+- Parallelizes independent FASTCC + FASTCORE structural reconstructions across cell-type-by-medium tasks through the active Layer 2 `BPPARAM` instead of running the cache builder as nested serial loops.
+- Limits package-created structural worker pools to the number of independent FASTCORE tasks, enables dynamic task scheduling, and keeps solver libraries single-threaded inside each R worker to avoid nested oversubscription.
+- Atomically checkpoints each completed FASTCORE model, returns only lightweight cache metadata to the controller, drops task-local model and table objects, runs full garbage collection in every worker, and releases package-managed worker processes after the structural batch.
+- Reports requested/active structural workers, task count, dispatch policy, completion method, and worker-cleanup policy on the FASTCORE model cache.
 - Reports Layer 2 as a 12-part end-to-end workflow instead of a single 0/1 progress item.
 - Prints task-scoped progress for every cell-type-by-medium model, including COMPASS medium setup, FASTCC/FASTCORE phases or original CORDA2 Steps 1, 2.1, 2.2 and 3, target closure, directional vmax, primary penalty scoring and RNA-only control scoring.
 - Persists merged `layer2_task_progress.tsv` and latest-state `layer2_task_status.tsv` diagnostics across controller and parallel worker processes, including the actual interrupted step on failure.

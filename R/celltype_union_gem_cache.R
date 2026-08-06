@@ -131,10 +131,26 @@
   }
   dir.create(cache_dir, recursive = TRUE, showWarnings = FALSE)
 
-  cache <- list()
-  summaries <- list()
-  summary_index <- 0L
-  for (cell_type in scoped$cell_types) {
+  task_grid <- expand.grid(
+    cell_type = scoped$cell_types,
+    medium_scenario = scenarios,
+    KEEP.OUT.ATTRS = FALSE,
+    stringsAsFactors = FALSE
+  )
+  tasks <- split(task_grid, seq_len(nrow(task_grid)))
+
+  run_one <- function(task, suppress_nested = FALSE) {
+    previous_nested <- .rc_layer2_parallel_context$nested_serial
+    if (isTRUE(suppress_nested)) {
+      .rc_layer2_parallel_context$nested_serial <- TRUE
+    }
+    on.exit({
+      .rc_layer2_parallel_context$nested_serial <- previous_nested
+      invisible(gc(verbose = FALSE, full = TRUE))
+    }, add = TRUE)
+
+    cell_type <- as.character(task$cell_type[[1L]])
+    scenario <- as.character(task$medium_scenario[[1L]])
     membership <- reaction_membership[
       reaction_membership[[celltype_col]] == cell_type, , drop = FALSE
     ]
@@ -152,70 +168,73 @@
            call. = FALSE)
     }
 
-    for (scenario in scenarios) {
-      medium <- medium_scenarios[
-        as.character(medium_scenarios$medium_scenario_id) == scenario,
-        , drop = FALSE
-      ]
-      if (!nrow(medium) ||
-          (".no_constraints" %in% colnames(medium) &&
-           all(medium$.no_constraints))) {
-        medium <- NULL
-      }
-      model <- .rc_complete_celltype_medium_union_gem(
-        gem = gem,
-        reaction_membership = membership,
-        core_reactions = core,
-        cell_type = cell_type,
-        medium_table = medium,
-        target_direction = target_direction,
-        solver = solver,
-        time_limit = time_limit,
-        fastcore_epsilon = fastcore_epsilon,
-        max_support_reactions = max_support_reactions,
-        strict = strict
-      )
-      model$shared_across_conditions <- TRUE
-      model$shared_across_cell_types <- FALSE
-      model$is_union_gem <- TRUE
-      model$union_gem_cell_type <- cell_type
-      model$union_gem_medium_scenario <- scenario
-      model$union_gem_scope <-
-        "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
+    medium <- medium_scenarios[
+      as.character(medium_scenarios$medium_scenario_id) == scenario,
+      , drop = FALSE
+    ]
+    if (!nrow(medium) ||
+        (".no_constraints" %in% colnames(medium) &&
+         all(medium$.no_constraints))) {
+      medium <- NULL
+    }
 
-      file <- file.path(
-        cache_dir,
-        paste0(
-          "union_gem__celltype_", .rc_safe_cache_token(cell_type),
-          "__medium_", .rc_safe_cache_token(scenario), ".rds"
-        )
-      )
-      saveRDS(model, file)
-      checksum <- unname(tools::md5sum(file))
-      summary_index <- summary_index + 1L
-      summaries[[summary_index]] <- data.frame(
-        cell_type = cell_type,
-        medium_scenario = scenario,
-        file = file,
-        file_checksum = checksum,
-        n_reactions = ncol(model$S),
-        n_metabolites = nrow(model$S),
-        n_celltype_biological_reactions =
-          model$build_params$n_celltype_biological_reactions,
-        n_celltype_fastcore_support_reactions =
-          model$build_params$n_celltype_fastcore_support_reactions,
-        target_status = model$target_status,
-        build_strategy = "celltype_medium_union_gem",
-        completion_stage =
-          "celltype_specific_fastcore_after_condition_module_union",
-        completion_time_limit = time_limit,
-        stringsAsFactors = FALSE
-      )
+    model <- .rc_complete_celltype_medium_union_gem(
+      gem = gem,
+      reaction_membership = membership,
+      core_reactions = core,
+      cell_type = cell_type,
+      medium_table = medium,
+      target_direction = target_direction,
+      solver = solver,
+      time_limit = time_limit,
+      fastcore_epsilon = fastcore_epsilon,
+      max_support_reactions = max_support_reactions,
+      strict = strict
+    )
+    model$shared_across_conditions <- TRUE
+    model$shared_across_cell_types <- FALSE
+    model$is_union_gem <- TRUE
+    model$union_gem_cell_type <- cell_type
+    model$union_gem_medium_scenario <- scenario
+    model$union_gem_scope <-
+      "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
 
-      if (!nrow(model$target_directions)) next
+    file <- file.path(
+      cache_dir,
+      paste0(
+        "union_gem__celltype_", .rc_safe_cache_token(cell_type),
+        "__medium_", .rc_safe_cache_token(scenario), ".rds"
+      )
+    )
+    .rc_atomic_save_rds(model, file)
+    checksum <- unname(tools::md5sum(file))
+    build <- model$build_params
+    summary <- data.frame(
+      cell_type = cell_type,
+      medium_scenario = scenario,
+      file = file,
+      file_checksum = checksum,
+      n_reactions = ncol(model$S),
+      n_metabolites = nrow(model$S),
+      n_celltype_biological_reactions =
+        build$n_celltype_biological_reactions,
+      n_celltype_fastcore_support_reactions =
+        build$n_celltype_fastcore_support_reactions,
+      target_status = model$target_status,
+      build_strategy = "celltype_medium_union_gem",
+      completion_stage =
+        "celltype_specific_fastcore_after_condition_module_union",
+      completion_time_limit = time_limit,
+      stringsAsFactors = FALSE
+    )
+
+    cache <- list()
+    if (nrow(model$target_directions)) {
       for (i in seq_len(nrow(model$target_directions))) {
         reaction <- as.character(model$target_directions$reaction_id[[i]])
-        direction <- as.character(model$target_directions$target_direction[[i]])
+        direction <- as.character(
+          model$target_directions$target_direction[[i]]
+        )
         key <- paste0(
           "celltype=", utils::URLencode(cell_type, reserved = TRUE),
           "::reaction=", utils::URLencode(reaction, reserved = TRUE),
@@ -235,10 +254,80 @@
         )
       }
     }
+
+    rm(model, membership, core, medium, selected_targets, build)
+    invisible(gc(verbose = FALSE, full = TRUE))
+    list(cache = cache, summary = summary)
   }
+
+  task_bpparam <- .rc_layer2_tune_task_bpparam(
+    .rc_layer2_task_bpparam(), length(tasks)
+  )
+  requested_workers <- suppressWarnings(as.integer(
+    attr(task_bpparam, "regcompass_layer2_requested_workers") %||%
+      .rc_layer2_pool_workers(task_bpparam)
+  ))
+  pool_workers <- .rc_layer2_pool_workers(task_bpparam)
+  outer_parallel <- .rc_layer2_should_outer_parallel(
+    length(tasks), pool_workers
+  )
+  active_workers <- if (outer_parallel) {
+    min(length(tasks), pool_workers)
+  } else {
+    1L
+  }
+
+  if (outer_parallel) {
+    parts <- rc_parallel_lapply(
+      tasks,
+      function(task) run_one(
+        task[1, , drop = FALSE], suppress_nested = TRUE
+      ),
+      BPPARAM = task_bpparam
+    )
+    dispatch <- "dynamic_cell_type_x_medium_outer_parallel_fastcore_instances"
+  } else {
+    parts <- lapply(tasks, function(task) {
+      run_one(task[1, , drop = FALSE], suppress_nested = FALSE)
+    })
+    dispatch <- "serial_cell_type_x_medium_fastcore_instances"
+  }
+
+  cache <- list()
+  summaries <- vector("list", length(parts))
+  for (i in seq_along(parts)) {
+    part <- parts[[i]]
+    summaries[[i]] <- part$summary
+    if (length(part$cache)) {
+      duplicated <- intersect(names(cache), names(part$cache))
+      if (length(duplicated)) {
+        stop("Parallel FASTCORE tasks produced duplicate cache keys.",
+             call. = FALSE)
+      }
+      cache[names(part$cache)] <- part$cache
+    }
+    parts[i] <- list(NULL)
+    part <- NULL
+    invisible(gc(verbose = FALSE, full = FALSE))
+  }
+
   attr(cache, "summary") <- .rc_bind_frames_fill(summaries)
   attr(cache, "celltype_col") <- celltype_col
   attr(cache, "structural_scope") <- "cell_type_x_medium"
+  attr(cache, "completion_method") <- "fastcore"
+  attr(cache, "structural_parallel_task") <- dispatch
+  attr(cache, "structural_parallel_workers_requested") <- requested_workers
+  attr(cache, "structural_parallel_workers") <- active_workers
+  attr(cache, "structural_parallel_tasks") <- length(tasks)
+  attr(cache, "structural_dynamic_task_scheduling") <- outer_parallel
+  attr(cache, "fastcore_parallel_task") <- dispatch
+  attr(cache, "fastcore_inner_lp_parallelism") <- FALSE
+  attr(cache, "fastcore_worker_cleanup") <- paste(
+    "atomic model checkpoint; return lightweight cache metadata;",
+    "drop task-local model/tables; full garbage collection"
+  )
+  rm(parts, summaries, task_grid, tasks)
+  invisible(gc(verbose = FALSE, full = TRUE))
   cache
 }
 
