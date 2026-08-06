@@ -6,6 +6,7 @@ on:
       - agent/prune-obsolete-api-readme-flow
     paths:
       - 'tools/apply_api_cleanup.py'
+      - 'tools/apply_api_cleanup_v2.py'
       - '.github/workflows/apply-api-cleanup.yaml'
 
 permissions:
@@ -23,7 +24,7 @@ jobs:
           fetch-depth: 0
 
       - name: Apply deterministic cleanup
-        run: python tools/apply_api_cleanup.py
+        run: python tools/apply_api_cleanup_v2.py
 
       - name: Commit transformed sources
         shell: bash
