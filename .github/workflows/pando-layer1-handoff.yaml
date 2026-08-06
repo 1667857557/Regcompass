@@ -72,7 +72,6 @@ jobs:
             "R/grn_parallel_merge_contract.R",
             "R/grn_integration_contract.R",
             "R/condition_penalty_contract.R",
-            "R/step_layer1_common_dictionary.R",
             "R/step_layer1_parallel_object_contract.R"
           )
           for (file in files) parse(file = file)
