@@ -103,6 +103,7 @@ run_persistent_step2_check <- function() {
       isTRUE(all.equal(
         persistent$penalty, reference$penalty, tolerance = 1e-9
       ))
+    )
   }
   metrics <- .rc_compass_step2_engine_metrics(engine)
   stopifnot(
