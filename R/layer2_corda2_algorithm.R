@@ -61,6 +61,19 @@
   )
 }
 
+.rc_corda2_scan_flux <- function(
+    flux, class_code, track_code, threshold) {
+  native <- get0(
+    ".rc_corda2_scan_flux_cpp", mode = "function", inherits = TRUE
+  )
+  if (is.function(native)) {
+    return(native(flux, class_code, track_code, threshold))
+  }
+  active <- which(is.finite(flux) & flux > threshold)
+  used <- active[class_code[active] %in% track_code]
+  list(active = as.integer(active), used = as.integer(used))
+}
+
 .rc_corda2_dependency_assessment <- function(
     engine, split, target, directional_class, options,
     stage, penalized_class,
@@ -184,7 +197,7 @@
       ))
     }
 
-    scan <- .rc_corda2_scan_flux_cpp(
+    scan <- .rc_corda2_scan_flux(
       flux = flux,
       class_code = class_code,
       track_code = track_code,
