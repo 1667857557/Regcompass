@@ -28,7 +28,7 @@ jobs:
       - name: Install native regression dependencies
         shell: Rscript {0}
         run: |
-          install.packages(c("Rcpp", "Matrix", "highs"))
+          install.packages(c("Rcpp", "RcppEigen", "Matrix", "highs"))
       - name: Parse modified R sources
         shell: Rscript {0}
         run: |
