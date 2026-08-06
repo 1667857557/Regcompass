@@ -31,7 +31,7 @@ Shared biological or custom medium          ┘
                                                 │
                                                 ▼
 Stage 1 ── Cell-type Pando GRN routing
-          ├── no condition / one condition ──► standard Pando
+          ├── no one condition ──► standard Pando
           └── two or more conditions       ──► common-dictionary condition GRNs
           └──────────────────────────────────► Result: cell-type GRNs, active TF-peak-gene edges, and routing provenance
                                                 │
