@@ -43,7 +43,7 @@ jobs:
 
       - name: Dry-run remaining runtime consolidation
         run: |
-          python tools/consolidate_runtime_wrappers.py
+          python tools/consolidate_runtime_wrappers_v2.py
           git diff --check
 
       - name: Parse transformed R sources
