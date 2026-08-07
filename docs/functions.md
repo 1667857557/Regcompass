@@ -11,7 +11,7 @@
 - `rc_regcompass_step_metacells()`: construct condition-pure multimodal SuperCell metacells.
 - `rc_regcompass_step_meta_modules()`: build condition-by-cell-type biological reaction catalogues and cell-type unions.
 - `rc_regcompass_step_layer1()`: combine RNA and regulatory support and apply Boolean GPR rules.
-- `rc_regcompass_step_layer2()`: reconstruct one cell-type-by-medium model with original MATLAB CORDA2 by default and score directional reactions. FASTCORE and the COMPASS-style complete full GEM are explicit supplementary routes. Medium scenarios modify exchange bounds only and do not directly remove reactions.
+- `rc_regcompass_step_layer2()`: reconstruct one cell-type-by-medium model with original MATLAB CORDA2 by default and score directional reactions. CORDA2 reconstruction runs without a structural time limit and rejects `model_params$completion_time_limit`; that control is retained only for supplementary non-CORDA2 completion such as FASTCORE. FASTCORE and the COMPASS-style complete full GEM are explicit supplementary routes. Medium scenarios modify exchange bounds only and do not directly remove reactions.
 - `rc_regcompass_step_results()`: assemble annotations, evidence classes, rankings, metacell tables, and condition contrasts.
 
 The Layer 2 parameters and alternatives are documented in [Layer 2 model builders](layer2-model-builders.md).
