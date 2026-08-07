@@ -21,7 +21,6 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "RegCompass_steps/02_condition_metacells",
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
-  fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "pca",
     rna_dims = 1:30,
@@ -32,8 +31,7 @@ step2 <- rc_regcompass_step_metacells(
     seed = 12345L,
     min_cells_per_stratum = 20L,
     min_metacell_size = 1L,
-    min_metacells_per_stratum = 1L,
-    overwrite = FALSE
+    min_metacells_per_stratum = 1L
   )
 )
 ```
@@ -56,7 +54,6 @@ min_metacells_per_stratum = 1L
 metacellNormalization = FALSE
 avg.in.data = FALSE
 verbose = FALSE
-overwrite = FALSE
 ```
 
 `min_cells_per_stratum` is checked on each final condition × cell-type coverage
@@ -77,9 +74,8 @@ seed_for_graph_group = seed + graph_group_index - 1
 ```
 
 Repeated runs with the same cells, metadata, reductions, dimensions and seed
-therefore use the same seed sequence. Changing graph-group identity or order,
-condition labels, selected dimensions, counts or other cached inputs invalidates
-the Stage 2 cache contract.
+therefore use the same seed sequence. The Stage 2 input fingerprint records the
+exact geometry and count inputs used for provenance.
 
 ## Use Harmony for the RNA geometry
 
@@ -99,7 +95,6 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "RegCompass_steps/02_condition_metacells",
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
-  fragment_files = FALSE,
   metacell_args = list(
     rna_reduction = "harmony",
     rna_dims = 1:30,
@@ -107,8 +102,7 @@ step2 <- rc_regcompass_step_metacells(
     atac_dims = 2:30,
     gamma = 30L,
     k.knn = 30L,
-    seed = 12345L,
-    overwrite = TRUE
+    seed = 12345L
   )
 )
 ```
@@ -153,9 +147,10 @@ sample role        = not used
 Thus different broad cell types never share graph edges, while all conditions
 within one broad cell type jointly determine the same local WNN geometry.
 
-## Cache and restart behaviour
+## Input fingerprint and restart behaviour
 
-The Stage 2 cache contract records:
+`step2$pooled$cache_contract` is retained as an input fingerprint and provenance
+record. It contains:
 
 - reduction names and selected dimensions;
 - fingerprints of selected embeddings;
@@ -164,21 +159,10 @@ The Stage 2 cache contract records:
 - grouped-WNN API and provenance fields;
 - `gamma`, `k.knn`, `seed` and metacell thresholds.
 
-Changing any of these inputs invalidates existing Stage 2 checkpoints. Rebuild
-explicitly:
-
-```r
-metacell_args = list(
-  rna_reduction = "harmony",
-  rna_dims = 1:30,
-  atac_reduction = "lsi",
-  atac_dims = 2:30,
-  gamma = 30L,
-  k.knn = 30L,
-  seed = 12345L,
-  overwrite = TRUE
-)
-```
+Stage 2 no longer writes large sidecar RDS files for automatic cache recovery.
+The authoritative restart point is `step_metacells.rds`. If Stage 2 inputs or
+geometry change, run Stage 2 again and replace that checkpoint; there is no
+`overwrite` control for a hidden sidecar cache.
 
 ## Verify the selected geometry and seed
 
