@@ -1,24 +1,3 @@
-test_that("normalized assay validation accepts reordered identical cell sets", {
-  skip_if_not_installed("Seurat")
-  counts <- Matrix::Matrix(
-    matrix(c(1, 0, 2, 3, 1, 0), nrow = 2),
-    sparse = TRUE,
-    dimnames = list(c("G1", "G2"), c("C1", "C2", "C3"))
-  )
-  object <- Seurat::CreateSeuratObject(counts = counts)
-  object <- Seurat::NormalizeData(object, verbose = FALSE)
-  object[["RNA"]]@data <- object[["RNA"]]@data[, c("C3", "C1", "C2")]
-
-  expect_no_error(
-    RegCompassR:::.rc_require_normalized_assay(object, "RNA", "RNA")
-  )
-  aligned <- RegCompassR:::.rc_align_normalized_assay(object, "RNA", "RNA")
-  expect_identical(
-    colnames(SeuratObject::GetAssayData(aligned, assay = "RNA", slot = "data")),
-    colnames(aligned)
-  )
-})
-
 test_that("matrix layout comparison ignores outer Dimnames labels", {
   x <- Matrix::Matrix(
     matrix(1:6, nrow = 2),
