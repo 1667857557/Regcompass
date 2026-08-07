@@ -55,8 +55,9 @@ test_that("externalized Stage 3 and structural model caches remain writable", {
 
 test_that("Stage 1 storage removes exact duplicate GRN aliases", {
   writer <- getFromNamespace("saveRDS", "RegCompassR")
-  path <- tempfile("step_grn_", fileext = ".rds")
-  path <- file.path(dirname(path), "step_grn.rds")
+  outdir <- tempfile("stage1-storage-")
+  dir.create(outdir, recursive = TRUE)
+  path <- file.path(outdir, "step_grn.rds")
 
   canonical_object <- list(marker = "GRNData")
   x <- list(
