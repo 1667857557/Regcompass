@@ -16,9 +16,8 @@
   }
 
   names_to_merge <- c(
-    "condition_fit_status", "tf_peak_gene_condition_all",
-    "tf_peak_gene_condition", "supported_metabolic_genes",
-    "core_gene_reaction", "reaction_membership", "meta_module_summary"
+    "supported_metabolic_genes", "core_gene_reaction",
+    "reaction_membership", "meta_module_summary"
   )
   tables <- lapply(names_to_merge, function(name) {
     value <- condition_modules[[name]]
@@ -118,18 +117,14 @@
     names(scoped_membership)[names(scoped_membership) == "cell_type"] <-
       celltype_col
 
-    status <- one$condition_fit_status
-    source_groups <- if (
-      is.data.frame(status) && "group_id" %in% colnames(status)
-    ) {
-      unique(as.character(status$group_id))
+    source_groups <- if ("group_id" %in% colnames(one_biological)) {
+      value <- trimws(as.character(one_biological$group_id))
+      sort(unique(value[!is.na(value) & nzchar(value)]))
     } else {
       character()
     }
-    source_conditions <- if (
-      is.data.frame(status) && condition_col %in% colnames(status)
-    ) {
-      value <- trimws(as.character(status[[condition_col]]))
+    source_conditions <- if (condition_col %in% colnames(one_biological)) {
+      value <- trimws(as.character(one_biological[[condition_col]]))
       sort(unique(value[!is.na(value) & nzchar(value)]))
     } else {
       character()

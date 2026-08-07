@@ -182,11 +182,11 @@
     drop_internal_group_alias(expanded$reaction_membership)
   expanded$summary <- drop_internal_group_alias(expanded$summary)
 
-  out <- c(grn_result, list(
+  out <- list(
+    schema_version = "regcompass_condition_meta_modules_v2",
     supported_metabolic_genes = supported,
     core_gene_reaction = core,
     reaction_membership = expanded$reaction_membership,
-    biological_reaction_membership = expanded$reaction_membership,
     meta_module_summary = expanded$summary,
     crossref_maps = expanded$crossref_maps,
     core_definition = paste(
@@ -200,7 +200,7 @@
     analysis_group_unit =
       "effective_condition_x_celltype_active_pando_metabolic_targets",
     feasibility_completion = "none_at_meta_module_stage"
-  ))
+  )
   .rc_mm_write_tsv_gz(
     supported,
     file.path(outdir, "supported_metabolic_genes.tsv.gz")
@@ -217,6 +217,5 @@
     expanded$summary,
     file.path(outdir, "meta_module_summary.tsv.gz")
   )
-  saveRDS(out, file.path(outdir, "condition_meta_modules.rds"))
   out
 }
