@@ -7,7 +7,8 @@ test_that("retired source subsystems stay out of the package", {
     "metacell_object_merge.R",
     "metacell_fragments.R",
     "medium_exchange_mapping.R",
-    "condition_direction_report.R"
+    "condition_direction_report.R",
+    "stratum_filter.R"
   )
   expect_false(any(vapply(
     retired, grepl, logical(1), x = collate, fixed = TRUE
@@ -46,4 +47,7 @@ test_that("current core validation and mapping helpers remain", {
                       inherits = FALSE))
   expect_false(exists(".rc_get_assay_counts_safe", envir = ns,
                       inherits = FALSE))
+  expect_false(exists(".rc_strict_stratum_cols", envir = ns,
+                      inherits = FALSE))
+  expect_false(exists(".rc_add_stratum_id", envir = ns, inherits = FALSE))
 })
