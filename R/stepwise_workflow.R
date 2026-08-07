@@ -91,7 +91,6 @@ rc_regcompass_step_metacells <- function(
     cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
-    fragment_files = FALSE,
     metacell_args = list(),
     progress = getOption("RegCompassR.progress", TRUE),
     grn = NULL) {
@@ -174,9 +173,7 @@ rc_regcompass_step_metacells <- function(
     assays = c(rna_assay, atac_assay),
     required_layers = "counts"
   )
-  if (identical(fragment_files, FALSE) || is.null(fragment_files)) {
-    object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
-  }
+  object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
 
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   pooled <- .rc_make_condition_celltype_metacells(
@@ -187,7 +184,6 @@ rc_regcompass_step_metacells <- function(
     cell_type = cell_type,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    fragment_files = fragment_files,
     metacell_args = metacell_args
   )
   metacell_object <- .rc_normalize_condition_metacell_object(
@@ -215,7 +211,6 @@ rc_regcompass_step_metacells <- function(
     pooled$celltype_composition_summary,
     file.path(outdir, "metacell_celltype_summary.tsv.gz")
   )
-  saveRDS(metacell_object, file.path(outdir, "merged_metacell_object.rds"))
 
   resolved_metacell_args <- modifyList(
     .rc_condition_metacell_defaults(), metacell_args
@@ -236,7 +231,6 @@ rc_regcompass_step_metacells <- function(
       cell_type = cell_type,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
-      fragment_files = fragment_files,
       metacell_args = resolved_metacell_args,
       supercell_api = pooled$input_design$native_supercell_api,
       graph_group_argument = pooled$input_design$graph_group_argument,
