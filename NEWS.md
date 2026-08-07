@@ -1,5 +1,8 @@
 # RegCompassR 2.4.7
 
+- Removes finite structural time limits from the default CORDA2 route. CORDA2 now always runs with `completion_time_limit = Inf`, and supplying `model_params$completion_time_limit` with CORDA2 is rejected so a long Human-GEM reconstruction cannot be silently truncated by a persistent solver clock.
+- Keeps `completion_time_limit` available for supplementary non-CORDA2 completion such as FASTCORE, and synchronizes the Layer 2 tutorials and function reference with this route-specific contract.
+- Adds a regression test covering unlimited CORDA2 runtime and retained non-CORDA2 time-limit controls.
 - Adds a post-analysis tutorial helper for same-cell-type Top-N reaction bar charts, defaulting to Top 20 by median support score, using formal reaction names or direction-specific formulas, and distinguishing RNA-only from active multiome-supported reactions with an any-metacell rule.
 - Parallelizes independent FASTCC + FASTCORE structural reconstructions across cell-type-by-medium tasks through the active Layer 2 `BPPARAM` instead of running the cache builder as nested serial loops.
 - Limits package-created structural worker pools to the number of independent FASTCORE tasks, enables dynamic task scheduling, and keeps solver libraries single-threaded inside each R worker to avoid nested oversubscription.
