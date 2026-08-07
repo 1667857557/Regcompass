@@ -21,8 +21,6 @@
 #' @param gem_source GEM source: automatic, bundled-only, or download.
 #' @param pfm Optional motif collection. Pando's bundled motifs are used when
 #'   omitted.
-#' @param fragment_files Must be `FALSE`; metacell RNA and ATAC counts are
-#'   aggregated from the existing assays.
 #' @param medium_scenario Optional built-in biological scenario.
 #' @param medium_scenarios Optional prebuilt user-defined or built-in medium table.
 #' @param progress Show stage and total progress.
@@ -37,7 +35,6 @@ rc_run_regcompass_one_shot <- function(
     gem_version = NULL,
     gem_source = c("auto", "bundled", "download"),
     pfm = NULL,
-    fragment_files = FALSE,
     medium_scenario = NULL,
     medium_scenarios = NULL,
     progress = getOption("RegCompassR.progress", TRUE),
@@ -77,7 +74,6 @@ rc_run_regcompass_one_shot <- function(
     genome = genome,
     pfm = pfm,
     species = species,
-    fragment_files = fragment_files,
     medium_scenarios = medium_scenarios,
     progress = progress,
     ...
