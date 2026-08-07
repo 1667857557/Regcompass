@@ -56,7 +56,7 @@ Stage-specific behavior:
 
 - **GRNs:** common-dictionary condition fits require at least two retained conditions within a cell type; other cell types use standard Pando.
 - **Meta-modules:** complete-GPR core reactions are expanded by core subsystem and direct KEGG, Reactome or master-Rhea equivalence.
-- **Structural models:** `meta_module_gem` builds one model per cell-type × medium combination; CORDA2 is the default completion route and FASTCORE is optional. `full_gem` keeps the complete GEM with medium bounds.
+- **Structural models:** `meta_module_gem` builds one model per cell-type × medium combination; CORDA2 is the default completion route and runs without a structural time limit. `model_params$completion_time_limit` is rejected for CORDA2 and remains available only for supplementary non-CORDA2 completion such as FASTCORE. `full_gem` keeps the complete GEM with medium bounds.
 - **Matched control:** RNA+ATAC and RNA-only penalties reuse the same structural model, bounds, medium and target directions.
 
 Stage 3 retains only newly derived meta-module information and does not serialize the Stage 1 GRN payload again.
