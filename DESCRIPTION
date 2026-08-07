@@ -75,7 +75,6 @@ Collate:
     'solver_preflight.R'
     'medium.R'
     'published_medium_contract.R'
-    'medium_exchange_mapping.R'
     'compass_medium_semantics.R'
     'meta_module_definition.R'
     'meta_module_construction.R'
