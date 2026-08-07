@@ -6,6 +6,7 @@ test_that("retired source subsystems stay out of the package", {
     "metacell_peak_calling.R",
     "metacell_object_merge.R",
     "metacell_fragments.R",
+    "medium_exchange_mapping.R",
     "condition_direction_report.R"
   )
   expect_false(any(vapply(
@@ -40,5 +41,9 @@ test_that("current core validation and mapping helpers remain", {
   expect_true(exists(".rc_read_gem", envir = ns, inherits = FALSE))
   expect_false(exists("rc_make_gem", envir = ns, inherits = FALSE))
   expect_false(exists(".rc_medium_resolve_exchange_metabolites", envir = ns,
+                      inherits = FALSE))
+  expect_false(exists("rc_validate_metacell_inputs", envir = ns,
+                      inherits = FALSE))
+  expect_false(exists(".rc_get_assay_counts_safe", envir = ns,
                       inherits = FALSE))
 })
