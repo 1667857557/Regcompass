@@ -28,43 +28,28 @@ Stage 1 keeps groups meeting `pando_args$min_cells` (300 by default). A cell typ
 Paired RNA + ATAC cells + GEM + medium
 │
 ├─ 1. GRN inference
-│  ├─ ≥2 retained conditions within a cell type ──► common-dictionary condition GRNs
-│  └─ 0–1 retained condition within a cell type ──► standard Pando GRN
-│                                                   └─► step_grn.rds
+│  └─► Infer cell-type regulatory networks; use common-dictionary condition GRNs
+│      when at least two conditions are retained, otherwise use standard Pando.
 │
 ├─ 2. Multimodal metacells
-│  └─ one multimodal graph per cell type; memberships remain condition-pure
-│                                                   └─► step_metacells.rds
-│                                                       merged_metacell_object.rds
+│  └─► Aggregate paired cells within each cell type into multimodal metacells while
+│      preserving condition purity for downstream comparison.
 │
 ├─ 3. GPR-supported reaction meta-modules
-│  ├─ active metabolic targets ─► complete-GPR core reactions
-│  └─ core reactions ───────────► subsystem + KEGG/Reactome + master-Rhea expansion
-│                                                   ├─► condition_meta_modules.rds
-│                                                   │    Stage 3 information only;
-│                                                   │    Stage 1 GRN is not copied
-│                                                   ├─► merged_meta_modules.rds
-│                                                   └─► step_meta_modules.rds
+│  └─► Convert active GRN-supported metabolic genes into complete-GPR core reactions
+│      and expand them by subsystem and direct reaction-database equivalence.
 │
 ├─ 4. Reaction evidence projection
-│  ├─ RNA expression ───────────► RNA-only reaction evidence
-│  └─ RNA + Pando regulation ───► RNA+ATAC reaction evidence
-│                                                   └─► step_layer1.rds
+│  └─► Project RNA-only and RNA+ATAC regulatory evidence onto GEM reactions to obtain
+│      directly comparable reaction-level evidence for each metacell.
 │
 ├─ 5. Structural model + directional scoring
-│  ├─ meta_module_gem ──────────► one structural model per cell type × medium
-│  ├─ full_gem ─────────────────► full GEM with medium bounds
-│  └─ matched RNA-only control ─► same model, bounds and target directions
-│                                                   └─► step_layer2.rds
-│                                                       model_cache/
+│  └─► Build cell-type-specific structural metabolic models and calculate directional
+│      penalties while reusing the same model for the matched RNA-only control.
 │
 └─ 6. Result assembly and condition comparison
-   ├─ reaction catalogue / evidence / rankings
-   ├─ condition summaries and contrasts
-   └─ metacell-level RNA+ATAC vs RNA-only comparison
-                                                    ├─► regcompass_result.rds
-                                                    ├─► step_comparison.rds
-                                                    └─► reaction_*.tsv.gz
+   └─► Assemble reaction evidence, rankings and condition contrasts for biological
+       interpretation and downstream analysis.
 ```
 
 Stage-specific behavior:
@@ -74,7 +59,7 @@ Stage-specific behavior:
 - **Structural models:** `meta_module_gem` builds one model per cell-type × medium combination; CORDA2 is the default completion route and FASTCORE is optional. `full_gem` keeps the complete GEM with medium bounds.
 - **Matched control:** RNA+ATAC and RNA-only penalties reuse the same structural model, bounds, medium and target directions.
 
-Runtime RDS artifacts use gzip compression. Stage 1 stores the GRN checkpoint in `step_grn.rds`. Stage 3 stores only newly derived meta-module information in `condition_meta_modules.rds`; it does not serialize the Stage 1 GRN again.
+Stage 3 retains only newly derived meta-module information and does not serialize the Stage 1 GRN payload again.
 
 ## Simple workflow
 
