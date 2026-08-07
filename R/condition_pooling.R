@@ -12,7 +12,7 @@
 
 .rc_condition_metacell_matrix_fingerprint <- function(x) {
   if (is.null(dim(x)) || length(dim(x)) != 2L) {
-    stop("Metacell cache fingerprinting requires a two-dimensional matrix.",
+    stop("Metacell fingerprinting requires a two-dimensional matrix.",
          call. = FALSE)
   }
   row_weight_a <- .rc_condition_metacell_projection_weights(nrow(x), 104729, 37)
@@ -87,8 +87,7 @@
     graph.name = NULL,
     metacellNormalization = FALSE,
     avg.in.data = FALSE,
-    verbose = FALSE,
-    overwrite = FALSE
+    verbose = FALSE
   )
 }
 
@@ -98,7 +97,7 @@
   cells <- as.character(colnames(object))
   meta_index <- match(cells, rownames(object@meta.data))
   if (anyNA(meta_index)) {
-    stop("Seurat cell order cannot be aligned to metadata for cache validation.",
+    stop("Seurat cell order cannot be aligned to metadata for fingerprinting.",
          call. = FALSE)
   }
   defaults <- .rc_condition_metacell_defaults()
@@ -141,32 +140,6 @@
       object, analysis_args$atac_reduction, analysis_args$atac_dims, cells
     )
   )
-}
-
-.rc_condition_metacell_has_checkpoints <- function(outdir) {
-  all(file.exists(c(
-    file.path(outdir, "metacell_metadata.tsv.gz"),
-    file.path(outdir, "membership.tsv.gz"),
-    file.path(outdir, "rna_counts.rds"),
-    file.path(outdir, "atac_counts.rds"),
-    file.path(outdir, "metacell_object.rds")
-  )))
-}
-
-.rc_validate_condition_metacell_cache <- function(
-    outdir, contract, overwrite = FALSE) {
-  if (!.rc_condition_metacell_has_checkpoints(outdir) || isTRUE(overwrite)) {
-    return(invisible(FALSE))
-  }
-  contract_file <- file.path(outdir, "condition_metacell_cache_contract.rds")
-  if (!file.exists(contract_file) ||
-      !identical(readRDS(contract_file), contract)) {
-    stop(
-      "Existing metacell checkpoints use a different grouped-WNN contract; set `metacell_args$overwrite = TRUE`.",
-      call. = FALSE
-    )
-  }
-  invisible(TRUE)
 }
 
 .rc_require_supercell_api <- function() {
@@ -327,19 +300,12 @@
     cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
-    fragment_files = FALSE,
     metacell_args = list()) {
   if (!inherits(object, "Seurat")) {
     stop("`object` must inherit from Seurat.", call. = FALSE)
   }
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
-  }
-  if (!identical(fragment_files, FALSE) && !is.null(fragment_files)) {
-    stop(
-      "This condition-joint path aggregates the existing ATAC count assay; `fragment_files` must be FALSE.",
-      call. = FALSE
-    )
   }
   .rc_validate_condition_celltype_metadata(
     object@meta.data, condition_col, celltype_col
@@ -359,7 +325,7 @@
   }
   reserved <- intersect(names(metacell_args), c(
     "object", "outdir", "condition_col", "celltype_col", "cell_type",
-    "rna_assay", "atac_assay", "fragment_files", "membership", "assay",
+    "rna_assay", "atac_assay", "membership", "assay",
     "reduction", "dims", "label", "return.seurat",
     "cell.graph.group", "cell.split.condition"
   ))
@@ -369,13 +335,13 @@
   }
   retired <- intersect(names(metacell_args), c(
     "do.approx", "approx.N", "block.size", "igraph.clustering",
-    "embedding_scaling"
+    "embedding_scaling", "overwrite"
   ))
   if (length(retired)) {
     stop(
-      "Embedding-only graph controls are no longer accepted: ",
+      "Retired Stage 2 controls are no longer accepted: ",
       paste(retired, collapse = ", "),
-      ". Use grouped multimodal WNN controls.",
+      ". Stage 2 uses one explicit step checkpoint and no sidecar cache.",
       call. = FALSE
     )
   }
@@ -397,7 +363,7 @@
     }
   }
   for (field in c("kernel", "metacellNormalization", "avg.in.data",
-                  "verbose", "overwrite")) {
+                  "verbose")) {
     if (!is.logical(args[[field]]) || length(args[[field]]) != 1L ||
         is.na(args[[field]])) {
       stop("`", field, "` must be TRUE or FALSE.", call. = FALSE)
@@ -421,108 +387,83 @@
   contract <- .rc_condition_metacell_cache_contract(
     object, condition_col, celltype_col, rna_assay, atac_assay, args
   )
-  .rc_validate_condition_metacell_cache(
-    outdir, contract, overwrite = isTRUE(args$overwrite)
+
+  grouped <- .rc_build_grouped_wnn_membership(
+    object = object,
+    condition_col = condition_col,
+    celltype_col = celltype_col,
+    rna_assay = rna_assay,
+    atac_assay = atac_assay,
+    rna_reduction = args$rna_reduction,
+    atac_reduction = args$atac_reduction,
+    rna_dims = args$rna_dims,
+    atac_dims = args$atac_dims,
+    gamma = args$gamma,
+    seed = args$seed,
+    k.knn = args$k.knn,
+    kith = args$kith,
+    kernel = args$kernel,
+    graph.name = args$graph.name,
+    verbose = args$verbose
   )
-  if (.rc_condition_metacell_has_checkpoints(outdir) &&
-      !isTRUE(args$overwrite)) {
-    mc <- readRDS(file.path(outdir, "metacell_object.rds"))
-    membership <- utils::read.delim(
-      gzfile(file.path(outdir, "membership.tsv.gz")),
-      stringsAsFactors = FALSE, check.names = FALSE
-    )
-    mc_meta <- utils::read.delim(
-      gzfile(file.path(outdir, "metacell_metadata.tsv.gz")),
-      stringsAsFactors = FALSE, check.names = FALSE
-    )
-    aggregated <- list(
-      object = mc,
-      rna_counts = readRDS(file.path(outdir, "rna_counts.rds")),
-      atac_counts = readRDS(file.path(outdir, "atac_counts.rds"))
-    )
-    grouped <- list(parent_hierarchies = list())
-  } else {
-    grouped <- .rc_build_grouped_wnn_membership(
-      object = object,
-      condition_col = condition_col,
-      celltype_col = celltype_col,
-      rna_assay = rna_assay,
-      atac_assay = atac_assay,
-      rna_reduction = args$rna_reduction,
-      atac_reduction = args$atac_reduction,
-      rna_dims = args$rna_dims,
-      atac_dims = args$atac_dims,
-      gamma = args$gamma,
-      seed = args$seed,
-      k.knn = args$k.knn,
-      kith = args$kith,
-      kernel = args$kernel,
-      graph.name = args$graph.name,
-      verbose = args$verbose
-    )
-    membership <- grouped$membership
-    source_index <- match(membership$cell_id, rownames(object@meta.data))
-    if (anyNA(source_index)) {
-      stop("Grouped membership cannot be aligned to Seurat metadata.",
-           call. = FALSE)
-    }
-    membership[[condition_col]] <- as.character(
-      object@meta.data[[condition_col]][source_index]
-    )
-    membership[[celltype_col]] <- as.character(
-      object@meta.data[[celltype_col]][source_index]
-    )
-    mc_meta <- rc_build_metacell_metadata(membership)
-    groups <- split(seq_len(nrow(membership)), membership$metacell_id)
-    impure <- names(groups)[vapply(groups, function(rows) {
-      length(unique(membership[[condition_col]][rows])) != 1L ||
-        length(unique(membership[[celltype_col]][rows])) != 1L
-    }, logical(1))]
-    if (length(impure)) {
-      stop("Grouped WNN produced impure metacells: ",
-           paste(utils::head(impure, 10L), collapse = ", "), call. = FALSE)
-    }
-    stratum_mc <- table(interaction(
-      mc_meta[, c(condition_col, celltype_col), drop = FALSE],
-      drop = TRUE, lex.order = TRUE
-    ))
-    if (any(stratum_mc < args$min_metacells_per_stratum)) {
-      stop("SuperCell produced too few metacells in strata: ",
-           paste(names(stratum_mc)[stratum_mc < args$min_metacells_per_stratum],
-                 collapse = ", "), call. = FALSE)
-    }
-    mc_meta$low_power_metacell <- mc_meta$n_cells < args$min_metacell_size
-    mc_meta$requested_gamma <- args$gamma
-    mc_meta$pooling_scope <- "celltype_grouped_joint_condition_WNN"
-    mc_meta$celltype_role <- "one_independent_WNN_graph_per_cell_type"
-    mc_meta$condition_role <- "post_WNN_clustering_membership_split"
-    aggregated <- .rc_aggregate_metacell_counts(
-      object = object,
-      membership = membership,
-      rna_assay = rna_assay,
-      atac_assay = atac_assay,
-      rna_reduction = args$rna_reduction,
-      atac_reduction = args$atac_reduction,
-      rna_dims = args$rna_dims,
-      atac_dims = args$atac_dims,
-      seed = args$seed,
-      metacellNormalization = args$metacellNormalization,
-      avg.in.data = args$avg.in.data,
-      verbose = args$verbose,
-      parent_hierarchies = grouped$parent_hierarchies
-    )
-    rownames(mc_meta) <- mc_meta$metacell_id
-    aggregated$object@meta.data <- mc_meta[
-      colnames(aggregated$object), , drop = FALSE
-    ]
-    dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-    .rc_write_tsv_gz(membership, file.path(outdir, "membership.tsv.gz"))
-    .rc_write_tsv_gz(mc_meta, file.path(outdir, "metacell_metadata.tsv.gz"))
-    saveRDS(aggregated$rna_counts, file.path(outdir, "rna_counts.rds"))
-    saveRDS(aggregated$atac_counts, file.path(outdir, "atac_counts.rds"))
-    saveRDS(aggregated$object, file.path(outdir, "metacell_object.rds"))
-    saveRDS(contract, file.path(outdir, "condition_metacell_cache_contract.rds"))
+  membership <- grouped$membership
+  source_index <- match(membership$cell_id, rownames(object@meta.data))
+  if (anyNA(source_index)) {
+    stop("Grouped membership cannot be aligned to Seurat metadata.",
+         call. = FALSE)
   }
+  membership[[condition_col]] <- as.character(
+    object@meta.data[[condition_col]][source_index]
+  )
+  membership[[celltype_col]] <- as.character(
+    object@meta.data[[celltype_col]][source_index]
+  )
+  mc_meta <- rc_build_metacell_metadata(membership)
+  groups <- split(seq_len(nrow(membership)), membership$metacell_id)
+  impure <- names(groups)[vapply(groups, function(rows) {
+    length(unique(membership[[condition_col]][rows])) != 1L ||
+      length(unique(membership[[celltype_col]][rows])) != 1L
+  }, logical(1))]
+  if (length(impure)) {
+    stop("Grouped WNN produced impure metacells: ",
+         paste(utils::head(impure, 10L), collapse = ", "), call. = FALSE)
+  }
+  stratum_mc <- table(interaction(
+    mc_meta[, c(condition_col, celltype_col), drop = FALSE],
+    drop = TRUE, lex.order = TRUE
+  ))
+  if (any(stratum_mc < args$min_metacells_per_stratum)) {
+    stop("SuperCell produced too few metacells in strata: ",
+         paste(names(stratum_mc)[stratum_mc < args$min_metacells_per_stratum],
+               collapse = ", "), call. = FALSE)
+  }
+  mc_meta$low_power_metacell <- mc_meta$n_cells < args$min_metacell_size
+  mc_meta$requested_gamma <- args$gamma
+  mc_meta$pooling_scope <- "celltype_grouped_joint_condition_WNN"
+  mc_meta$celltype_role <- "one_independent_WNN_graph_per_cell_type"
+  mc_meta$condition_role <- "post_WNN_clustering_membership_split"
+  aggregated <- .rc_aggregate_metacell_counts(
+    object = object,
+    membership = membership,
+    rna_assay = rna_assay,
+    atac_assay = atac_assay,
+    rna_reduction = args$rna_reduction,
+    atac_reduction = args$atac_reduction,
+    rna_dims = args$rna_dims,
+    atac_dims = args$atac_dims,
+    seed = args$seed,
+    metacellNormalization = args$metacellNormalization,
+    avg.in.data = args$avg.in.data,
+    verbose = args$verbose,
+    parent_hierarchies = grouped$parent_hierarchies
+  )
+  rownames(mc_meta) <- mc_meta$metacell_id
+  aggregated$object@meta.data <- mc_meta[
+    colnames(aggregated$object), , drop = FALSE
+  ]
+  dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
+  .rc_write_tsv_gz(membership, file.path(outdir, "membership.tsv.gz"))
+  .rc_write_tsv_gz(mc_meta, file.path(outdir, "metacell_metadata.tsv.gz"))
 
   celltype_composition <- data.frame(
     metacell_id = as.character(mc_meta$metacell_id),
@@ -541,12 +482,9 @@
     stringsAsFactors = FALSE
   )
   list(
-    metacell_objects = list(grouped_wnn = aggregated$object),
     metacell_object = aggregated$object,
     metacell_meta = mc_meta,
     membership = membership,
-    rna_counts = aggregated$rna_counts,
-    atac_counts = aggregated$atac_counts,
     celltype_composition = celltype_composition,
     celltype_composition_summary = celltype_summary,
     condition_col = condition_col,
