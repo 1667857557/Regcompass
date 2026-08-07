@@ -30,7 +30,6 @@ rc_run_regcompass <- function(
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
-    fragment_files = FALSE,
     metacell_args = list(),
     meta_module_args = list(),
     layer1_args = list(),
@@ -75,8 +74,6 @@ rc_run_regcompass <- function(
   }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  saveRDS(gem$model_info %||% list(), file.path(outdir, "00_model_info.rds"))
-  saveRDS(medium_scenarios, file.path(outdir, "00_medium_scenarios.rds"))
 
   upstream_config <- .rc_stage_worker_config(
     upstream_workers, argument = "upstream_workers"
@@ -94,7 +91,7 @@ rc_run_regcompass <- function(
         genome = genome, pfm = pfm, species = species,
         condition_col = condition_col, celltype_col = celltype_col,
         cell_type = cell_type, rna_assay = rna_assay,
-        atac_assay = atac_assay, fragment_files = fragment_files,
+        atac_assay = atac_assay,
         pando_args = pando_args,
         parallel = !identical(config$actual_backend, "serial"),
         BPPARAM = param, progress = progress
@@ -106,7 +103,7 @@ rc_run_regcompass <- function(
     outdir = file.path(outdir, "02_metacells"),
     condition_col = condition_col, celltype_col = celltype_col,
     cell_type = NULL, rna_assay = rna_assay,
-    atac_assay = atac_assay, fragment_files = fragment_files,
+    atac_assay = atac_assay,
     metacell_args = metacell_args, progress = progress,
     grn = step1
   )
@@ -173,6 +170,5 @@ rc_run_regcompass <- function(
   result$params$temporary_combined_stratum <- FALSE
   result$params$upstream_workers <- upstream_config$workers
   result$params$layer2_workers <- layer2_config$workers
-  saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result
 }
