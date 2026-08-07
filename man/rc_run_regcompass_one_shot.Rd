@@ -7,7 +7,8 @@
 rc_run_regcompass_one_shot(object, outdir, genome,
   species = c("human", "mouse"), gem = NULL, gem_version = NULL,
   gem_source = c("auto", "bundled", "download"), pfm = NULL,
-  medium_scenario = NULL, medium_scenarios = NULL,
+  fragment_files = NULL, medium_scenario = NULL,
+  medium_scenarios = NULL,
   progress = getOption("RegCompassR.progress", TRUE), ...)
 }
 \arguments{
@@ -19,6 +20,7 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{gem_version}{Model release used when \code{gem} is omitted.}
 \item{gem_source}{Automatic, bundled-only, or download model source.}
 \item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
+\item{fragment_files}{Optional Stage 2 raw fragment input. Use \code{NULL}/\code{FALSE}, a single path, a named path vector whose names match cell-ID prefixes before \code{_}, or a data frame with \code{fragment_file}, \code{object_cell}, and \code{fragment_barcode}.}
 \item{medium_scenario}{Optional built-in biological medium scenario.}
 \item{medium_scenarios}{Optional prebuilt built-in or user-defined medium table.}
 \item{progress}{Display workflow and stage progress.}
@@ -35,10 +37,12 @@ When both medium arguments are omitted, Human-GEM uses
 \code{"normal_human_plasma"} and Mouse-GEM uses \code{"mouse_plasma"}.
 Pando routing is resolved independently for each retained broad cell type:
 cell types with at least two retained conditions use the condition GRN, while
-cell types with one retained condition use standard Pando. Stage 1 and Stage 2
-use in-memory RNA/ATAC assays and clear Signac fragment references from their
-working copies. Stage 2 builds one RNA+ATAC WNN graph per broad cell type and
-keeps final metacells condition-pure. Layer 2 uses original MATLAB CORDA2 by
-default. FASTCORE and the complete full-GEM route are explicit supplementary
-alternatives passed through \code{...}.
+cell types with one retained condition use standard Pando. Stage 1 uses the
+in-memory RNA/ATAC assays. Stage 2 builds one RNA+ATAC WNN graph per broad cell
+type and keeps final metacells condition-pure. When raw fragments are supplied,
+they are transformed from single-cell to final metacell barcodes and used for
+peak calling/FeatureMatrix recount before metacell TF-IDF. Sample identity is not
+introduced as a metacell stratum. Layer 2 uses original MATLAB CORDA2 by default.
+FASTCORE and the complete full-GEM route are explicit supplementary alternatives
+passed through \code{...}.
 }
