@@ -8,9 +8,9 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  pando_args = list(), fragment_files = FALSE,
-  metacell_args = list(), meta_module_args = list(),
-  layer1_args = list(), medium_scenarios = NULL,
+  pando_args = list(), metacell_args = list(),
+  meta_module_args = list(), layer1_args = list(),
+  medium_scenarios = NULL,
   model_mode = c("meta_module_gem", "full_gem"),
   layer2_args = list(), upstream_workers = 6L,
   layer2_workers = 30L,
@@ -28,8 +28,7 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{cell_type}{Optional broad-cell-type labels to process.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Stage 1 controls, including nested \code{pando_infer_args}.}
-\item{fragment_files}{Must be \code{FALSE} for the count-assay metacell path.}
-\item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma, seed and cache controls.}
+\item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma and seed controls.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
 \item{layer1_args}{Optional \code{gpr_and_method} and \code{gene_half_saturation}.}
 \item{medium_scenarios}{Shared medium table. When omitted, human models use \code{"normal_human_plasma"} and mouse models use \code{"mouse_plasma"}. Medium application changes listed exchange-reaction bounds only.}
@@ -50,8 +49,10 @@ conditions use the common-dictionary condition GRN. Cell types with one retained
 condition use standard Pando and do not receive condition coefficients.
 }
 \details{
-Stage 2 builds one independent RNA+ATAC WNN graph per broad cell type and keeps
-final metacells condition-pure. Layer 1 accepts only \code{gpr_and_method} and
+Stage 1 and Stage 2 operate on the in-memory RNA and ATAC assays and clear
+Signac fragment references from their working copies. Stage 2 builds one
+independent RNA+ATAC WNN graph per broad cell type and keeps final metacells
+condition-pure. Layer 1 accepts only \code{gpr_and_method} and
 \code{gene_half_saturation}. Layer 2 retains the primary penalty and an explicit
 RNA-only control. The default cell-type route passes the complete
 medium-constrained parent to original MATLAB CORDA2 without FASTCC pre-pruning.
