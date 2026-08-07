@@ -18,7 +18,6 @@ step5 <- rc_regcompass_step_layer2(
     target_direction = "both",
     solver = "highs",
     model_params = list(
-      completion_time_limit = 3000,
       strict = TRUE,
       corda2_args = list(
         MCxNCthresh = 2,
@@ -38,6 +37,8 @@ step5 <- rc_regcompass_step_layer2(
 ```
 
 The complete medium-constrained parent is passed directly to the original MATLAB CORDA2 state machine. FASTCC and role-based pre-pruning are not run. One model is reconstructed per `cell type × medium` and shared across conditions of that cell type. During directional merge, selected reactions recover their parent bounds, including positive lower bounds.
+
+CORDA2 reconstruction is intentionally unbounded in wall-clock time. `model_params$completion_time_limit` is rejected when CORDA2 is selected so a large reconstruction cannot be partially completed and mistaken for a valid context-specific model.
 
 ## Supplementary: FASTCORE
 
@@ -63,7 +64,7 @@ step5_fastcore <- rc_regcompass_step_layer2(
 )
 ```
 
-FASTCORE is now an explicit alternative. It performs FASTCC consistency analysis and add-only support selection after medium bounds are applied.
+FASTCORE is now an explicit alternative. It performs FASTCC consistency analysis and add-only support selection after medium bounds are applied. `completion_time_limit` remains available for this supplementary non-CORDA2 route.
 
 ## Supplementary: COMPASS-style full GEM
 
@@ -95,10 +96,10 @@ P = 1 / (1 + log2(1 + max(E, 0)))
 
 Missing reaction expression and the structural roles `exchange`, `demand`, `sink` and `artificial_support` receive the maximum cost `1`.
 
-| Route | `model_completion` | default | `fastcore_executed` | `corda2_executed` |
-|---|---|---:|---:|---:|
-| CORDA2 | `"corda2"` | yes | `FALSE` | `TRUE` |
-| FASTCORE | `"fastcore"` | no | `TRUE` | `FALSE` |
-| Full GEM | `"none"` | no | `FALSE` | `FALSE` |
+| Route | `model_completion` | default | `fastcore_executed` | `corda2_executed` | structural time limit |
+|---|---|---:|---:|---:|---|
+| CORDA2 | `"corda2"` | yes | `FALSE` | `TRUE` | none |
+| FASTCORE | `"fastcore"` | no | `TRUE` | `FALSE` | optional `completion_time_limit` |
+| Full GEM | `"none"` | no | `FALSE` | `FALSE` | not applicable |
 
 Inspect `step5$params`, `step5$completion_contract`, `step5$model_cache_summary`, `step5$vmax_cache_diagnostics` and `step5$lp_diagnostics` for the selected route and feasibility results.
