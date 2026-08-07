@@ -1,6 +1,6 @@
 # Exact exchange-to-metabolite correspondence ----------------------------------
 
-.rc_medium_resolve_exchange_metabolites <- function(
+.rc_medium_exchange_metabolites <- function(
     gem, exchange_meta, validated) {
   exchange_ids <- as.character(exchange_meta$reaction_id)
   output <- data.frame(
@@ -119,5 +119,3 @@
     .rc_medium_normalize_name(output$gem_metabolite_name)
   output
 }
-
-.rc_medium_exchange_metabolites <- .rc_medium_resolve_exchange_metabolites
