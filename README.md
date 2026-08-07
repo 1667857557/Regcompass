@@ -25,25 +25,46 @@ Stage 1 keeps groups meeting `pando_args$min_cells` (300 by default). A cell typ
 ## Workflow
 
 ```text
-Paired RNA + ATAC cells, GEM and medium
-                  │
-                  ▼
-1. Cell-type GRN inference
-                  │
-                  ▼
-2. Condition-pure multimodal metacells
-                  │
-                  ▼
-3. GPR-supported reaction meta-modules
-                  │
-                  ▼
-4. RNA-only and RNA+ATAC reaction evidence
-                  │
-                  ▼
-5. Structural model construction and directional scoring
-                  │
-                  ▼
-6. Reaction tables, rankings and condition comparisons
+Paired RNA + ATAC cells + GEM + medium
+│
+├─ 1. GRN inference
+│  ├─ ≥2 retained conditions within a cell type ──► common-dictionary condition GRNs
+│  └─ 0–1 retained condition within a cell type ──► standard Pando GRN
+│                                                   └─► step_grn.rds
+│
+├─ 2. Multimodal metacells
+│  └─ one multimodal graph per cell type; memberships remain condition-pure
+│                                                   └─► step_metacells.rds
+│                                                       merged_metacell_object.rds
+│
+├─ 3. GPR-supported reaction meta-modules
+│  ├─ active metabolic targets ─► complete-GPR core reactions
+│  └─ core reactions ───────────► subsystem + KEGG/Reactome + master-Rhea expansion
+│                                                   ├─► condition_meta_modules.rds
+│                                                   │    Stage 3 information only;
+│                                                   │    Stage 1 GRN is not copied
+│                                                   ├─► merged_meta_modules.rds
+│                                                   └─► step_meta_modules.rds
+│
+├─ 4. Reaction evidence projection
+│  ├─ RNA expression ───────────► RNA-only reaction evidence
+│  └─ RNA + Pando regulation ───► RNA+ATAC reaction evidence
+│                                                   └─► step_layer1.rds
+│
+├─ 5. Structural model + directional scoring
+│  ├─ meta_module_gem ──────────► one structural model per cell type × medium
+│  ├─ full_gem ─────────────────► full GEM with medium bounds
+│  └─ matched RNA-only control ─► same model, bounds and target directions
+│                                                   └─► step_layer2.rds
+│                                                       model_cache/
+│
+└─ 6. Result assembly and condition comparison
+   ├─ reaction catalogue / evidence / rankings
+   ├─ condition summaries and contrasts
+   └─ metacell-level RNA+ATAC vs RNA-only comparison
+                                                    ├─► regcompass_result.rds
+                                                    ├─► step_comparison.rds
+                                                    └─► reaction_*.tsv.gz
 ```
 
 Stage-specific behavior:
@@ -51,9 +72,9 @@ Stage-specific behavior:
 - **GRNs:** common-dictionary condition fits require at least two retained conditions within a cell type; other cell types use standard Pando.
 - **Meta-modules:** complete-GPR core reactions are expanded by core subsystem and direct KEGG, Reactome or master-Rhea equivalence.
 - **Structural models:** `meta_module_gem` builds one model per cell-type × medium combination; CORDA2 is the default completion route and FASTCORE is optional. `full_gem` keeps the complete GEM with medium bounds.
-- **Matched control:** RNA+ATAC and RNA-only penalties reuse the same structural model, bounds, medium and target directions; their difference reflects regulatory evidence within this model.
+- **Matched control:** RNA+ATAC and RNA-only penalties reuse the same structural model, bounds, medium and target directions.
 
-Runtime RDS artifacts use gzip compression. Stage 1 stores the GRN checkpoint in `step_grn.rds`. Stage 3 stores only newly derived meta-module information in `condition_meta_modules.rds` and does not copy the Stage 1 GRN payload.
+Runtime RDS artifacts use gzip compression. Stage 1 stores the GRN checkpoint in `step_grn.rds`. Stage 3 stores only newly derived meta-module information in `condition_meta_modules.rds`; it does not serialize the Stage 1 GRN again.
 
 ## Simple workflow
 
