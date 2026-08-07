@@ -131,7 +131,11 @@
 .rc_layer2_progress_cache_dir_from_frames <- function() {
   frames <- rev(sys.frames())
   for (frame in frames) {
-    value <- get0("cache_dir", envir = frame, inherits = TRUE)
+    if (!exists("cache_dir", envir = frame, inherits = FALSE)) next
+    value <- tryCatch(
+      get("cache_dir", envir = frame, inherits = FALSE),
+      error = function(error) NULL
+    )
     if (!is.null(value) && length(value)) return(as.character(value[[1L]]))
   }
   NULL
@@ -331,13 +335,18 @@
     inside_dependency = state$inside_dependency,
     algorithm_flags = state$algorithm_flags
   )
+  resolved_parts_dir <- parts_dir
+  if (is.null(resolved_parts_dir)) {
+    resolved_cache_dir <- .rc_layer2_progress_cache_dir_from_frames()
+    resolved_parts_dir <- .rc_layer2_progress_dir_from_cache(
+      resolved_cache_dir
+    )
+  }
   state$current_task <- list(
     context = context,
     route = route,
     total = as.integer(total),
-    parts_dir = parts_dir %||% .rc_layer2_progress_dir_from_cache(
-      .rc_layer2_progress_cache_dir_from_frames()
-    )
+    parts_dir = resolved_parts_dir
   )
   state$inside_dependency <- FALSE
   state$algorithm_flags <- new.env(parent = emptyenv())
