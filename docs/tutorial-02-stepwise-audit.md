@@ -33,7 +33,7 @@ step1 <- rc_regcompass_step_grn(
   pando_args = list(
     min_cells = 300L,
     pando_infer_args = list(
-      tf_cor = 0.05,
+      tf_cor = 0.1,
       peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
@@ -46,7 +46,13 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-A cell type with at least two retained conditions uses the common-dictionary condition GRN. A cell type with one retained condition uses standard Pando.
+A cell type with at least two retained conditions uses the common-dictionary condition GRN; this tutorial passes `tf_cor = 0.1` to that route. A cell type with one retained condition uses standard Pando. For standard Pando, the requested `tf_cor` is an effect-size floor and RegCompass computes an additional sample-size floor from the exact two-sided Pearson correlation test,
+
+\[
+r_{crit}(n) = \frac{t_{1-\alpha/2,n-2}}{\sqrt{t_{1-\alpha/2,n-2}^2+n-2}},\qquad \alpha=0.05,
+\]
+
+then passes `max(tf_cor, r_crit(n))` to `Pando::infer_grn()` for that cell type. Thus small standard-Pando groups require a stronger TF-target correlation solely because their null correlation distribution is wider. The condition-GRN route is not altered by this adaptive standard-Pando gate.
 
 ## 3. Metacells
 
