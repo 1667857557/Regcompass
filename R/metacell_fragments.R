@@ -104,17 +104,32 @@
   if (any(invalid)) {
     stop("Fragment mapping contains missing or empty values.", call. = FALSE)
   }
-  manifest$fragment_file <- .rc_validate_fragment_file_paths(
-    unique(manifest$fragment_file)
-  )[match(manifest$fragment_file, unique(manifest$fragment_file))]
-  unknown_cells <- setdiff(manifest$object_cell, membership$cell_id)
-  if (length(unknown_cells)) {
+  .rc_validate_fragment_file_paths(unique(manifest$fragment_file))
+
+  stage_cells <- as.character(membership$cell_id)
+  manifest <- manifest[manifest$object_cell %in% stage_cells, , drop = FALSE]
+  manifest <- unique(manifest)
+  if (!nrow(manifest)) {
+    stop("Fragment mapping contains no cells from the Stage 2 cell set.",
+         call. = FALSE)
+  }
+  missing_cells <- setdiff(stage_cells, unique(manifest$object_cell))
+  if (length(missing_cells)) {
     stop(
-      "Fragment mapping contains cells absent from the Stage 2 cell set: ",
-      paste(utils::head(unknown_cells, 10L), collapse = ", "),
+      "Fragment mapping does not cover Stage 2 cells: ",
+      paste(utils::head(missing_cells, 10L), collapse = ", "),
       call. = FALSE
     )
   }
+  duplicated_cells <- names(which(table(manifest$object_cell) > 1L))
+  if (length(duplicated_cells)) {
+    stop(
+      "Stage 2 cells map to multiple fragment rows/files: ",
+      paste(utils::head(duplicated_cells, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
+
   manifest$metacell_id <- membership$metacell_id[
     match(manifest$object_cell, membership$cell_id)
   ]
@@ -171,17 +186,35 @@
   }
   labels <- trimws(labels)
   object_cells <- as.character(membership$cell_id)
+  assignments <- do.call(cbind, lapply(labels, function(prefix) {
+    startsWith(object_cells, paste0(prefix, "_"))
+  }))
+  if (is.null(dim(assignments))) {
+    assignments <- matrix(assignments, ncol = length(labels))
+  }
+  colnames(assignments) <- labels
+  n_sources <- rowSums(assignments)
+  if (any(n_sources != 1L)) {
+    bad <- object_cells[n_sources != 1L]
+    stop(
+      "Named fragment paths must route every Stage 2 cell to exactly one source; invalid cells: ",
+      paste(utils::head(bad, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  unused <- labels[colSums(assignments) == 0L]
+  if (length(unused)) {
+    stop(
+      "Named fragment prefixes have no Stage 2 cells: ",
+      paste(unused, collapse = ", "),
+      call. = FALSE
+    )
+  }
+
   lapply(seq_along(paths), function(i) {
     prefix <- labels[[i]]
     prefix_token <- paste0(prefix, "_")
-    keep <- startsWith(object_cells, prefix_token)
-    if (!any(keep)) {
-      stop(
-        "No Stage 2 cells use fragment prefix `", prefix,
-        "_`; use an explicit fragment mapping data.frame if cell IDs use a different convention.",
-        call. = FALSE
-      )
-    }
+    keep <- assignments[, i]
     raw_barcode <- substring(object_cells[keep], nchar(prefix_token) + 1L)
     if (any(!nzchar(raw_barcode)) || anyDuplicated(raw_barcode)) {
       stop(
