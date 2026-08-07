@@ -12,13 +12,13 @@ rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  fragment_files = FALSE, pando_args = list(), parallel = TRUE,
-  BPPARAM = NULL, progress = getOption("RegCompassR.progress", TRUE))
+  pando_args = list(), parallel = TRUE, BPPARAM = NULL,
+  progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_metacells(object, outdir,
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  fragment_files = FALSE, metacell_args = list(),
+  metacell_args = list(),
   progress = getOption("RegCompassR.progress", TRUE), grn = NULL)
 
 rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
@@ -50,9 +50,8 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type labels. Stage 1 uses a fixed minimum of 300 paired cells per retained condition-by-cell-type stratum.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{fragment_files}{Whether to preserve Signac fragment references.}
 \item{pando_args}{Stage 1 Pando initialization, motif and inference controls.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed, size and cache controls.}
+\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed and size controls. Stage 2 has one explicit checkpoint and no large sidecar auto-resume cache.}
 \item{grn}{Validated Stage 1 output. In Stage 2 it enforces the exact Stage 1 cell set.}
 \item{meta_module_args}{Optional custom subsystem table.}
 \item{gpr_and_method}{GPR AND aggregation method.}
@@ -66,8 +65,8 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{model_mode}{The default \code{"meta_module_gem"} route reconstructs one CORDA2 model per cell type and medium. \code{"full_gem"} is a supplementary complete-network COMPASS-style scoring route.}
 }
 \value{
-Each function returns a validated stage object and writes its artifacts to
-\code{outdir}.
+Each function returns a validated stage object and writes its canonical stage
+checkpoint and compact diagnostic tables to \code{outdir}.
 }
 \description{
 Runs the regulatory, metacell, reaction-catalogue, reaction-support, metabolic
@@ -76,19 +75,20 @@ scoring and result stages independently.
 \details{
 Stage 1 routes each retained cell type independently. At least two retained
 conditions use the common-dictionary condition GRN; one retained condition uses
-standard Pando. Stage 2 reproduces the Stage 1 cell set and keeps final
-metacells condition-pure. Stage 3 builds cell-type-scoped reaction catalogues.
-Stage 4 produces the primary multiome reaction support and an RNA-only control.
-Stage 5 defaults to original MATLAB CORDA2 on the complete medium-constrained
-parent GEM for each cell-type-by-medium combination. FASTCC pre-pruning is not
-used before CORDA2. During final directional merge, retained reactions recover
-the corresponding parent bounds, including positive parent lower bounds.
-FASTCORE is available only when explicitly requested. Full-GEM mode is a
-supplementary route that retains every reaction and skips the penalty LP when a
-target direction's maximum feasible flux is below the scoring threshold.
-All Layer 2 routes use the COMPASS reaction-cost scale; missing expression and
-structural reaction roles receive the maximum cost 1. Stage 6 assembles
-rankings, annotations and available condition contrasts. See
-\code{docs/tutorial-02-stepwise-audit.md} and
+standard Pando. Stage 1 and Stage 2 use the in-memory count assays and clear
+Signac fragment references from their working copies. Stage 2 reproduces the
+Stage 1 cell set and keeps final metacells condition-pure. Stage 3 builds
+cell-type-scoped reaction catalogues. Stage 4 produces the primary multiome
+reaction support and an RNA-only control. Stage 5 defaults to original MATLAB
+CORDA2 on the complete medium-constrained parent GEM for each cell-type-by-medium
+combination. FASTCC pre-pruning is not used before CORDA2. During final
+directional merge, retained reactions recover the corresponding parent bounds,
+including positive parent lower bounds. FASTCORE is available only when
+explicitly requested. Full-GEM mode is a supplementary route that retains every
+reaction and skips the penalty LP when a target direction's maximum feasible
+flux is below the scoring threshold. All Layer 2 routes use the COMPASS
+reaction-cost scale; missing expression and structural reaction roles receive
+the maximum cost 1. Stage 6 assembles rankings, annotations and available
+condition contrasts. See \code{docs/tutorial-02-stepwise-audit.md} and
 \code{docs/layer2-model-builders.md}.
 }
