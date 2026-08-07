@@ -54,7 +54,7 @@ Paired RNA + ATAC cells + GEM + medium
 
 Stage-specific behavior:
 
-- **GRNs:** common-dictionary condition fits require at least two retained conditions within a cell type; other cell types use standard Pando.
+- **GRNs:** common-dictionary condition fits require at least two retained conditions within a cell type; other cell types use standard Pando. Standard Pando treats the requested `tf_cor` as an effect-size floor and raises it to the two-sided Pearson critical correlation for the cell type's actual cell count when that value is larger.
 - **Meta-modules:** complete-GPR core reactions are expanded by core subsystem and direct KEGG, Reactome or master-Rhea equivalence.
 - **Structural models:** `meta_module_gem` builds one model per cell-type × medium combination; CORDA2 is the default completion route and runs without a structural time limit. `model_params$completion_time_limit` is rejected for CORDA2 and remains available only for supplementary non-CORDA2 completion such as FASTCORE. `full_gem` keeps the complete GEM with medium bounds.
 - **Matched control:** RNA+ATAC and RNA-only penalties reuse the same structural model, bounds, medium and target directions.
@@ -76,7 +76,7 @@ result <- rc_run_regcompass_one_shot(
   pando_args = list(
     min_cells = 300L,
     pando_infer_args = list(
-      tf_cor = 0.05,
+      tf_cor = 0.1,
       peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
