@@ -5,7 +5,8 @@
 #' dictionary condition GRN; cell types with one retained condition use standard
 #' Pando and do not receive condition coefficients. Stage 2 builds one
 #' independent multimodal WNN graph per broad cell type and keeps final
-#' metacells condition-pure.
+#' metacells condition-pure. Optional raw ATAC fragment files are aggregated to
+#' the final metacell membership and recounted before metacell TF-IDF.
 #'
 #' Layer 2 selects exactly one structural route. `model_mode =
 #' "meta_module_gem"` uses original MATLAB CORDA2 by default. Set
@@ -19,6 +20,10 @@
 #' When `medium_scenarios` is omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
 #'
+#' @param fragment_files Optional Stage 2 fragment input. Use `NULL`/`FALSE` to
+#' aggregate the existing ATAC matrix, a fragment path (or named path vector for
+#' multiple samples), or a data frame with `fragment_file`, `object_cell`, and
+#' `fragment_barcode`. Fragment routing does not make sample a metacell stratum.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -29,6 +34,7 @@ rc_run_regcompass <- function(
     cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
+    fragment_files = NULL,
     pando_args = list(),
     metacell_args = list(),
     meta_module_args = list(),
@@ -104,6 +110,7 @@ rc_run_regcompass <- function(
     condition_col = condition_col, celltype_col = celltype_col,
     cell_type = NULL, rna_assay = rna_assay,
     atac_assay = atac_assay,
+    fragment_files = fragment_files,
     metacell_args = metacell_args, progress = progress,
     grn = step1
   )
@@ -167,6 +174,8 @@ rc_run_regcompass <- function(
   result$params$metacell_membership_split_timing <-
     design$membership_split_timing
   result$params$metacell_modality_weighting <- design$modality_weighting
+  result$params$metacell_atac_aggregation <- design$atac_aggregation_method
+  result$params$fragment_files_supplied <- isTRUE(design$fragment_files_supplied)
   result$params$temporary_combined_stratum <- FALSE
   result$params$upstream_workers <- upstream_config$workers
   result$params$layer2_workers <- layer2_config$workers
