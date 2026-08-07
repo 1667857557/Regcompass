@@ -14,6 +14,26 @@
 source("R/execution_monitor.R")
 source("R/layer2_corda_pool_lifecycle.R")
 
+probe_context <- .rc_layer2_task_context(
+  cell_type = "Astrocyte",
+  medium_scenario = "normal_human_plasma",
+  route = "corda2"
+)
+probe_previous <- .rc_layer2_task_push(
+  probe_context, route = "corda2", total = 9L
+)
+probe_dir <- .rc_layer2_progress_state$current_task$parts_dir
+stopifnot(
+  is.character(probe_dir),
+  length(probe_dir) == 1L,
+  !is.na(probe_dir),
+  nzchar(probe_dir),
+  dir.exists(probe_dir)
+)
+.rc_layer2_task_pop(probe_previous)
+unlink(probe_dir, recursive = TRUE, force = TRUE)
+.rc_layer2_progress_reset()
+
 outdir <- tempfile("layer2-progress-")
 dir.create(outdir, recursive = TRUE)
 monitor <- .rc_step_monitor_start(
