@@ -81,6 +81,19 @@
 #' after clustering. When a Stage 1 result is supplied, Stage 2 reproduces its
 #' exact ordered cell set and validates workflow parameters.
 #'
+#' When `fragment_files` is supplied, Stage 2 first builds the final SuperCell
+#' membership, then aggregates the original single-cell fragments to those
+#' metacell barcodes with `SuperCell::AggregateFragmentFile()`. The aggregated
+#' fragments are used for optional MACS2 peak calling and Signac FeatureMatrix
+#' recount before metacell TF-IDF normalization. Multiple fragment files may be
+#' supplied as a named character vector whose names are the exact prefixes used
+#' before `_` in Seurat cell IDs, or as an explicit data frame with columns
+#' `fragment_file`, `object_cell`, and `fragment_barcode`.
+#'
+#' @param fragment_files `NULL`/`FALSE` to aggregate the existing ATAC count
+#' matrix, a fragment path (or named path vector for multiple samples), or an
+#' explicit fragment mapping data frame. Fragment input affects ATAC recounting
+#' only; sample identity is not used as a metacell grouping variable.
 #' @param grn Optional output of `rc_regcompass_step_grn()`. Supplying it enables
 #' exact Stage 1 cell-ID and parameter validation.
 #' @export
@@ -91,6 +104,7 @@ rc_regcompass_step_metacells <- function(
     cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
+    fragment_files = NULL,
     metacell_args = list(),
     progress = getOption("RegCompassR.progress", TRUE),
     grn = NULL) {
@@ -102,6 +116,13 @@ rc_regcompass_step_metacells <- function(
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
   }
+
+  fragment_enabled <- .rc_fragment_input_enabled(fragment_files)
+  fragment_args <- .rc_resolve_fragment_aggregation_args(
+    metacell_args$fragment_args %||% list()
+  )
+  metacell_core_args <- metacell_args
+  metacell_core_args$fragment_args <- NULL
 
   n_input <- ncol(object)
   if (is.null(grn)) {
@@ -184,8 +205,50 @@ rc_regcompass_step_metacells <- function(
     cell_type = cell_type,
     rna_assay = rna_assay,
     atac_assay = atac_assay,
-    metacell_args = metacell_args
+    metacell_args = metacell_core_args
   )
+
+  fragment_run <- NULL
+  if (fragment_enabled) {
+    fragment_run <- .rc_aggregate_single_cell_fragments(
+      fragment_files = fragment_files,
+      membership = pooled$membership,
+      outdir = outdir,
+      fragment_args = fragment_args
+    )
+    pooled$metacell_object <- .rc_recount_atac_from_fragment_manifest(
+      object = pooled$metacell_object,
+      fragment_manifest = fragment_run$fragment_manifest,
+      atac_assay = atac_assay,
+      require_complete = TRUE,
+      process_n = fragment_args$process_n,
+      call_peaks = fragment_args$call_peaks,
+      macs2_path = fragment_args$macs2_path,
+      effective_genome_size = fragment_args$effective_genome_size,
+      peak_calling_args = fragment_args$peak_calling_args,
+      peak_calling_outdir = file.path(outdir, "fragments", "macs2")
+    )
+    pooled$fragment_manifest <- fragment_run$fragment_manifest
+    pooled$fragment_files <- fragment_run$fragment_files
+    pooled$fragment_aggregation <- list(
+      schema_version = "regcompass_metacell_fragment_aggregation_v1",
+      source = "SuperCell::AggregateFragmentFile",
+      args = fragment_run$args,
+      details = fragment_run$details
+    )
+    pooled$input_design$atac_aggregation_method <-
+      "single_cell_fragments_to_metacell_then_featurematrix_recount"
+    pooled$input_design$fragment_files_supplied <- TRUE
+    .rc_write_tsv_gz(
+      fragment_run$fragment_manifest,
+      file.path(outdir, "fragments", "fragment_manifest.tsv.gz")
+    )
+  } else {
+    pooled$input_design$atac_aggregation_method <-
+      "existing_single_cell_ATAC_matrix_sum"
+    pooled$input_design$fragment_files_supplied <- FALSE
+  }
+
   metacell_object <- .rc_normalize_condition_metacell_object(
     pooled, rna_assay, atac_assay
   )
@@ -213,8 +276,9 @@ rc_regcompass_step_metacells <- function(
   )
 
   resolved_metacell_args <- modifyList(
-    .rc_condition_metacell_defaults(), metacell_args
+    .rc_condition_metacell_defaults(), metacell_core_args
   )
+  resolved_metacell_args$fragment_args <- fragment_args
   answer <- list(
     pooled = pooled,
     metacell_object = metacell_object,
@@ -231,6 +295,17 @@ rc_regcompass_step_metacells <- function(
       cell_type = cell_type,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
+      fragment_files_supplied = fragment_enabled,
+      fragment_input_type = if (!fragment_enabled) {
+        "none"
+      } else if (is.data.frame(fragment_files)) {
+        "explicit_manifest"
+      } else if (length(fragment_files) == 1L) {
+        "single_path"
+      } else {
+        "named_path_vector"
+      },
+      atac_aggregation_method = pooled$input_design$atac_aggregation_method,
       metacell_args = resolved_metacell_args,
       supercell_api = pooled$input_design$native_supercell_api,
       graph_group_argument = pooled$input_design$graph_group_argument,
