@@ -15,9 +15,7 @@
     return(2.7e9)
   }
   warning(
-    "Could not infer the MACS effective genome size from the ATAC ranges; ",
-    "using 2.7e9. Set `peak_calling_effective_genome_size` explicitly for ",
-    "non-human or unannotated genomes.",
+    "Could not infer the MACS effective genome size from the ATAC ranges; using 2.7e9. Set `metacell_args$fragment_args$effective_genome_size` explicitly for non-human or unannotated genomes.",
     call. = FALSE
   )
   2.7e9
@@ -43,12 +41,11 @@
   }
   if (!isTRUE(call_peaks)) {
     peaks <- methods::slot(object[[atac_assay]], "ranges")
-    counts <- .rc_get_assay_counts_safe(object, atac_assay)
+    counts <- .rc_get_assay_counts(object, atac_assay)
     if (!inherits(peaks, "GRanges") || !length(peaks) ||
         length(peaks) != nrow(counts)) {
       stop(
-        "Existing ATAC ranges must be a non-empty GRanges with one range per ",
-        "count-matrix row.",
+        "Existing ATAC ranges must be a non-empty GRanges with one range per count-matrix row.",
         call. = FALSE
       )
     }
@@ -95,8 +92,7 @@
   }
   if (!nzchar(as.character(macs2_path)) && using_signac_call_peaks) {
     stop(
-      "MACS2 was not found. Install MACS2 or pass its executable path in ",
-      "`metacell_args$macs2_path`.",
+      "MACS2 was not found. Install MACS2 or pass its executable path in `metacell_args$fragment_args$macs2_path`.",
       call. = FALSE
     )
   }

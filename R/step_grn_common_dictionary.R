@@ -13,9 +13,6 @@
 #' common-dictionary condition GRNs. Independent broad-cell-type jobs are
 #' parallelized through `BPPARAM` when more than one job is available.
 #'
-#' @param fragment_files Preserve existing Signac fragment references when TRUE.
-#' The default FALSE clears them before Stage 1 because the workflow uses the
-#' in-memory peak matrix and genome sequence.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
@@ -26,7 +23,6 @@ rc_regcompass_step_grn <- function(
     cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
-    fragment_files = FALSE,
     pando_args = list(),
     parallel = TRUE,
     BPPARAM = NULL,
@@ -51,7 +47,6 @@ rc_regcompass_step_grn <- function(
 
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
-  preserve_fragments <- .rc_validate_stage1_fragment_policy(fragment_files)
   n_input <- ncol(object)
 
   cell_set <- .rc_build_stage_analysis_cell_set(
@@ -87,17 +82,15 @@ rc_regcompass_step_grn <- function(
     passed_to_pando = TRUE
   )
 
-  if (!preserve_fragments) {
-    object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
-  }
+  object <- .rc_clear_signac_fragments(object, atac_assay = atac_assay)
   zero_filtered <- .rc_drop_zero_count_atac_features(
     object, atac_assay, "Stage 1 min_cells prefilter"
   )
   object <- zero_filtered$object
   object@misc$regcompass_stage1_zero_peak_filter <- zero_filtered$diagnostics
   object@misc$regcompass_stage1_fragment_policy <- list(
-    fragment_files = preserve_fragments,
-    policy = if (preserve_fragments) "preserve" else "clear_before_stage1"
+    policy = "clear_before_stage1",
+    reason = "workflow uses in-memory ATAC counts and genome sequence"
   )
 
   motif_args <- pando_args$pando_motif_args %||% list()
@@ -125,7 +118,7 @@ rc_regcompass_step_grn <- function(
   reserved <- intersect(names(pando_args), c(
     "object", "gem", "outdir", "genome", "pfm", "species",
     "condition_col", "celltype_col", "cell_type", "rna_assay", "atac_assay",
-    "BPPARAM", "parallel", "fragment_files"
+    "BPPARAM", "parallel"
   ))
   if (length(reserved)) {
     stop(
@@ -230,7 +223,6 @@ rc_regcompass_step_grn <- function(
       cell_type = cell_set$retained_cell_types,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
-      fragment_files = preserve_fragments,
       pando_args = c(extra_args, list(
         pando_infer_args = infer_args,
         condition_pando_infer_args = condition_infer_args,

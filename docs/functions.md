@@ -21,7 +21,6 @@ The Layer 2 parameters and alternatives are documented in [Layer 2 model builder
 - `rc_prepare_gem()`: load and prepare a supported human or mouse GEM.
 - `rc_prepare_human2_gem()`: prepare the bundled or downloaded Human-GEM 2 model.
 - `rc_prepare_mouse_gem()`: prepare the supported mouse GEM.
-- `rc_validate_gem()`: validate reaction order, stoichiometry, bounds, GPRs, and model metadata.
 - `rc_make_medium_scenarios()`: construct built-in or custom medium tables.
 - `rc_bundled_gem_manifest()`: inspect bundled model availability.
 - `rc_download_species_gem()`: download a supported species model.
@@ -31,7 +30,6 @@ The Layer 2 parameters and alternatives are documented in [Layer 2 model builder
 - `rc_regcompass_step_target_union()`: use selected core reactions or genes as anchors, identify directly database-linked non-core reactions, and rescore them in the exact existing cell-type structural models without rebuilding Layer 2.
 - `rc_test_condition_reactions()`: perform pairwise Wilcoxon and optional Kruskal-Wallis condition comparisons for fixed cell type, reaction direction, and medium.
 - `rc_plot_condition_reaction()`: draw violin, violin-plus-boxplot, or boxplot distributions for one selected reaction target across conditions, with metacell points and significance annotations.
-- `rc_report_condition_directions()`: summarize which condition has stronger support for each reaction direction.
 - `rc_select_gene_reactions()`: select reactions through Boolean GPR annotations for specified metabolic genes.
 - `rc_plot_condition_gene_reactions()`: test and plot significant reaction directions associated with specified metabolic genes.
 - `rc_build_reaction_annotations()`: create formal reaction names, formulas, substrates, products, GPRs, and database identifiers.

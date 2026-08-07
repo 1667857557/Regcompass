@@ -28,10 +28,11 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     routes each fit to its matching object. Paired-cell TF-by-ATAC regulatory
     effects are projected before exact SuperCell aggregation. Metacells use one
     multimodal WNN graph per broad cell type and remain condition-pure after
-    membership splitting. RNA support, regulatory effects, GPR rules,
-    cell-type-specific union GEM construction and directional penalties use
-    consistent reaction ordering, bounds and medium scenarios. Stage 5 uses the
-    original MATLAB CORDA2 algorithm from
+    membership splitting. Optional raw ATAC fragment files are aggregated to
+    final metacell barcodes and recounted before metacell TF-IDF. RNA support,
+    regulatory effects, GPR rules, cell-type-specific union GEM construction and
+    directional penalties use consistent reaction ordering, bounds and medium
+    scenarios. Stage 5 uses the original MATLAB CORDA2 algorithm from
     schultzdre/Constraint-Based-Modeling/CORDA2.m as the default
     context-specific completion after mapping cell-type multiome evidence to HC,
     MC, NC and OT reactions. FASTCORE and complete full-GEM scoring remain
@@ -40,8 +41,7 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     om and ci under corda2_args. Actively reversible reactions are split once,
     the opposite directional copy is closed during each target assessment, and
     the original Step 1, Step 2.1, Step 2.2 and Step 3 dependency transitions
-    are
-    preserved. Targets remain serial within each reconstruction; independent
+    are preserved. Targets remain serial within each reconstruction; independent
     cell-type-by-medium models may run in parallel and are reused by the primary
     and RNA-only scoring paths.
 License: MIT + file LICENSE
@@ -69,20 +69,18 @@ Collate:
     'bundled_gems.R'
     'humangem_annotations.R'
     'input_seurat.R'
+    'seurat_fragments.R'
+    'metacell_fragments.R'
+    'metacell_peak_calling.R'
     'layer2_penalty_lp.R'
     'lp_solver.R'
     'solver_preflight.R'
     'medium.R'
     'published_medium_contract.R'
-    'medium_exchange_mapping.R'
     'compass_medium_semantics.R'
     'meta_module_definition.R'
     'meta_module_construction.R'
     'meta_module_merge.R'
-    'metacell_fragments.R'
-    'metacell_import.R'
-    'metacell_object_merge.R'
-    'metacell_peak_calling.R'
     'metacell.R'
     'microcompass.R'
     'celltype_union_gem_cache.R'
@@ -94,7 +92,6 @@ Collate:
     'pando_grn.R'
     'shared_tfidf.R'
     'condition_pooling.R'
-    'grn_inference.R'
     'stage1_input_contract.R'
     'condition_grn_contract.R'
     'condition_grn_contract_compat.R'
@@ -108,7 +105,6 @@ Collate:
     'reaction_annotation_api.R'
     'reaction_rank_plot.R'
     'condition_statistics.R'
-    'condition_direction_report.R'
     'condition_plot.R'
     'condition_plot_violin.R'
     'reaction_gene_plots.R'
@@ -149,7 +145,6 @@ Collate:
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
-    'stratum_filter.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,

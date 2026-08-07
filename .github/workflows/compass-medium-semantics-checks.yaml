@@ -5,7 +5,7 @@ on:
     paths:
       - 'DESCRIPTION'
       - 'R/medium.R'
-      - 'R/medium_exchange_mapping.R'
+      - 'R/published_medium_contract.R'
       - 'R/compass_medium_semantics.R'
       - 'R/full_gem.R'
       - 'tests/compass-medium-semantics-check.R'
@@ -16,7 +16,7 @@ on:
     paths:
       - 'DESCRIPTION'
       - 'R/medium.R'
-      - 'R/medium_exchange_mapping.R'
+      - 'R/published_medium_contract.R'
       - 'R/compass_medium_semantics.R'
       - 'R/full_gem.R'
       - 'tests/compass-medium-semantics-check.R'
@@ -47,7 +47,7 @@ jobs:
         run: |
           files <- c(
             'R/medium.R',
-            'R/medium_exchange_mapping.R',
+            'R/published_medium_contract.R',
             'R/compass_medium_semantics.R',
             'R/full_gem.R',
             'tests/compass-medium-semantics-check.R',
@@ -64,15 +64,17 @@ jobs:
           from pathlib import Path
 
           description = Path('DESCRIPTION').read_text()
+          medium = Path('R/medium.R').read_text()
           semantics = Path('R/compass_medium_semantics.R').read_text()
           required = [
-              "'medium_exchange_mapping.R'\n    'compass_medium_semantics.R'",
+              "'published_medium_contract.R'\n    'compass_medium_semantics.R'",
+              '.rc_medium_exchange_metabolites <- function',
               'compass_exchange_bounds_v2',
               'compass_uptake_cap_then_explicit_directional_overrides',
               'changed_unlisted_exchange_reactions',
               '.rc_full_gem_medium_fingerprint <- .rc_compass_medium_fingerprint',
           ]
-          text = description + '\n' + semantics
+          text = description + '\n' + medium + '\n' + semantics
           missing = [value for value in required if value not in text]
           if missing:
               raise RuntimeError(f'COMPASS medium contract missing: {missing}')

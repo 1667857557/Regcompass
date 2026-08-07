@@ -1,18 +1,68 @@
-test_that("fragment manifest expansion records metacell barcode mappings", {
-  manifest <- data.frame(
-    fragment_file = c("f1.tsv.gz", "f2.tsv.gz"),
-    index_file = c("f1.tsv.gz.tbi", "f2.tsv.gz.tbi"),
+test_that("named fragment paths route prefixed cells without changing metacell groups", {
+  files <- c(
+    Control_1 = tempfile(fileext = ".tsv.gz"),
+    Cre_1 = tempfile(fileext = ".tsv.gz")
+  )
+  file.create(unname(files))
+  membership <- data.frame(
+    cell_id = c(
+      "Control_1_AAAC-1", "Control_1_AAAG-1",
+      "Cre_1_AAAC-1", "Cre_1_AAAT-1"
+    ),
+    metacell_id = c("ctrl_mc1", "ctrl_mc1", "cre_mc1", "cre_mc2"),
     stringsAsFactors = FALSE
   )
 
-  out <- .rc_expand_fragment_manifest(manifest, c("mc1", "mc2"))
-  file_counts <- table(out$fragment_file)
+  specs <- .rc_resolve_fragment_memberships(files, membership)
 
-  expect_equal(nrow(out), 4L)
-  expect_setequal(out$object_cell, c("mc1", "mc2"))
-  expect_identical(out$object_cell, out$fragment_barcode)
-  expect_setequal(names(file_counts), c("f1.tsv.gz", "f2.tsv.gz"))
-  expect_equal(as.integer(file_counts), c(2L, 2L))
+  expect_length(specs, 2L)
+  expect_identical(specs[[1L]]$source, "named_fragment_prefix")
+  expect_identical(specs[[2L]]$source, "named_fragment_prefix")
+  expect_identical(names(specs[[1L]]$membership), c("AAAC-1", "AAAG-1"))
+  expect_identical(unname(specs[[1L]]$membership), c("ctrl_mc1", "ctrl_mc1"))
+  expect_identical(names(specs[[2L]]$membership), c("AAAC-1", "AAAT-1"))
+  expect_identical(unname(specs[[2L]]$membership), c("cre_mc1", "cre_mc2"))
+})
+
+test_that("explicit fragment manifest permits the same raw barcode in different files", {
+  files <- c(tempfile(fileext = ".tsv.gz"), tempfile(fileext = ".tsv.gz"))
+  file.create(files)
+  membership <- data.frame(
+    cell_id = c("sampleA_cell", "sampleB_cell"),
+    metacell_id = c("mcA", "mcB"),
+    stringsAsFactors = FALSE
+  )
+  manifest <- data.frame(
+    fragment_file = files,
+    object_cell = membership$cell_id,
+    fragment_barcode = c("AAAC-1", "AAAC-1"),
+    stringsAsFactors = FALSE
+  )
+
+  specs <- .rc_resolve_fragment_memberships(manifest, membership)
+
+  expect_length(specs, 2L)
+  expect_identical(names(specs[[1L]]$membership), "AAAC-1")
+  expect_identical(names(specs[[2L]]$membership), "AAAC-1")
+  expect_setequal(
+    unlist(lapply(specs, function(x) unname(x$membership))),
+    c("mcA", "mcB")
+  )
+})
+
+test_that("multiple fragment paths require an explicit routing contract", {
+  files <- c(tempfile(fileext = ".tsv.gz"), tempfile(fileext = ".tsv.gz"))
+  file.create(files)
+  membership <- data.frame(
+    cell_id = c("s1_AAAC-1", "s2_AAAC-1"),
+    metacell_id = c("mc1", "mc2"),
+    stringsAsFactors = FALSE
+  )
+
+  expect_error(
+    .rc_resolve_fragment_memberships(files, membership),
+    "named character vector"
+  )
 })
 
 test_that("peak matrices are aligned to the requested feature and cell order", {
@@ -42,7 +92,7 @@ test_that("peak matrices are aligned to the requested feature and cell order", {
   expect_equal(sum(out[, "mc3"]), 0)
 })
 
-test_that("fragment-derived de novo peaks replace the ATAC assay before Pando", {
+test_that("fragment-derived peaks replace the metacell ATAC assay", {
   skip_if_not_installed("SeuratObject")
   skip_if_not_installed("Signac")
   skip_if_not_installed("GenomicRanges")
@@ -131,7 +181,7 @@ test_that("fragment-derived de novo peaks replace the ATAC assay before Pando", 
     feature_matrix_fun = feature_matrix_fun,
     call_peaks_fun = call_peaks_fun
   )
-  counts <- .rc_get_assay_counts_safe(out, "ATAC")
+  counts <- .rc_get_assay_counts(out, "ATAC")
 
   expect_identical(rownames(counts), called_peak_ids)
   expect_false(any(c("chr1-1-10", "chr1-20-30") %in% rownames(counts)))
@@ -159,6 +209,6 @@ test_that("fragment-derived de novo peaks replace the ATAC assay before Pando", 
     out@misc$atac_fragment_recount$fragment_registration,
     "not_registered_overlapping_fragment_files"
   )
-  expect_equal(out$nCount_ATAC, c(mc1 = 33, mc2 = 77))
-  expect_equal(out$nFeature_ATAC, c(mc1 = 2, mc2 = 2))
+  expect_equal(as.numeric(out$nCount_ATAC), c(33, 77))
+  expect_equal(as.numeric(out$nFeature_ATAC), c(2, 2))
 })

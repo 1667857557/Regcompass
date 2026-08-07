@@ -8,7 +8,6 @@ test_that("public API exposes the restartable workflow", {
     "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
     "rc_regcompass_step_target_union", "rc_regcompass_step_results",
     "rc_test_condition_reactions", "rc_plot_condition_reaction",
-    "rc_report_condition_directions",
     "rc_build_reaction_annotations", "rc_attach_reaction_annotations",
     "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
   )

@@ -1,17 +1,5 @@
 .rc_stage1_min_cells_fixed <- 300L
 
-.rc_validate_stage1_fragment_policy <- function(fragment_files) {
-  if (is.null(fragment_files)) return(FALSE)
-  if (!is.logical(fragment_files) || length(fragment_files) != 1L ||
-      is.na(fragment_files)) {
-    stop(
-      "Stage 1 `fragment_files` must be TRUE or FALSE; FALSE clears stale Signac fragment references.",
-      call. = FALSE
-    )
-  }
-  isTRUE(fragment_files)
-}
-
 .rc_pando_supports_motif_cache <- function() {
   if (!requireNamespace("Pando", quietly = TRUE)) return(FALSE)
   method <- tryCatch(

@@ -1,31 +1,3 @@
-#' Validate metacell-level RegCompass inputs
-rc_validate_metacell_inputs <- function(rna_metacell_counts,
-                                        metacell_meta,
-                                        atac_metacell_counts = NULL,
-                                        metacell_id_col = "metacell_id",
-                                        sample_col = NULL,
-                                        condition_col = "condition",
-                                        celltype_col = "cell_type") {
-  if (is.null(dim(rna_metacell_counts)) || length(dim(rna_metacell_counts)) != 2L) stop("`rna_metacell_counts` must be a feature-by-metacell matrix.", call. = FALSE)
-  if (is.null(colnames(rna_metacell_counts)) || anyNA(colnames(rna_metacell_counts)) || any(!nzchar(colnames(rna_metacell_counts)))) stop("`rna_metacell_counts` must have metacell IDs in colnames().", call. = FALSE)
-  if (!is.data.frame(metacell_meta)) stop("`metacell_meta` must be a data.frame.", call. = FALSE)
-  required <- c(metacell_id_col, sample_col, condition_col, celltype_col)
-  required <- required[!is.null(required) & !is.na(required) & nzchar(required)]
-  missing <- setdiff(required, colnames(metacell_meta))
-  if (length(missing) > 0L) stop("`metacell_meta` is missing columns: ", paste(missing, collapse = ", "), call. = FALSE)
-  if (anyNA(metacell_meta[[metacell_id_col]]) || anyDuplicated(as.character(metacell_meta[[metacell_id_col]]))) stop("Metacell IDs must be non-missing and unique.", call. = FALSE)
-  missing_mc <- setdiff(colnames(rna_metacell_counts), as.character(metacell_meta[[metacell_id_col]]))
-  if (length(missing_mc) > 0L) stop("`metacell_meta` is missing metadata for metacells: ", paste(utils::head(missing_mc, 5L), collapse = ", "), call. = FALSE)
-  if (!is.null(atac_metacell_counts)) {
-    if (is.null(dim(atac_metacell_counts)) || length(dim(atac_metacell_counts)) != 2L) stop("`atac_metacell_counts` must be a feature-by-metacell matrix.", call. = FALSE)
-    rna_ids <- as.character(colnames(rna_metacell_counts))
-    atac_ids <- as.character(colnames(atac_metacell_counts))
-    if (!setequal(rna_ids, atac_ids)) stop("RNA and ATAC metacell matrices contain different metacell IDs.", call. = FALSE)
-    if (!identical(rna_ids, atac_ids)) stop("RNA and ATAC metacell matrices contain the same IDs but in different order.", call. = FALSE)
-  }
-  invisible(TRUE)
-}
-
 #' Construct RegCompass stratum IDs
 #'
 #' This helper exposes the same `interaction(..., sep = "|", lex.order = TRUE)`
@@ -113,8 +85,4 @@ rc_build_metacell_metadata <- function(membership,
     x, file = con, sep = "\t", quote = FALSE, row.names = FALSE
   )
   invisible(file)
-}
-
-.rc_get_assay_counts_safe <- function(object, assay) {
-  .rc_get_assay_counts(object, assay)
 }

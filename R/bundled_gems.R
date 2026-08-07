@@ -31,7 +31,7 @@ rc_bundled_gem_manifest <- function() {
 .rc_load_bundled_species_gem <- function(spec) {
   path <- .rc_bundled_gem_path(spec)
   if (!nzchar(path) || !file.exists(path)) return(NULL)
-  gem <- rc_read_gem(path)
+  gem <- .rc_read_gem(path)
   rc_validate_species_gem(gem, spec$species)
   recorded_source <- as.character(gem$model_info$source %||% "")
   recorded_version <- as.character(gem$model_info$version %||% "")

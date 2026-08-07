@@ -16,7 +16,9 @@ test_that("public workflow is GRN first", {
       positions[[2L]] < positions[[3L]]
   )
   expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
-  expect_identical(eval(formals(rc_run_regcompass)$fragment_files), FALSE)
+  expect_true("fragment_files" %in% names(formals(rc_run_regcompass)))
+  expect_false("fragment_files" %in% names(formals(rc_regcompass_step_grn)))
+  expect_true("fragment_files" %in% names(formals(rc_regcompass_step_metacells)))
   expect_true("meta_module_args" %in% names(formals(rc_run_regcompass)))
 })
 
@@ -131,11 +133,14 @@ test_that("metacells use one grouped WNN graph per cell type", {
   )
   expect_false(grepl("cell.annotation", builder, fixed = TRUE))
   expect_identical(.rc_condition_metacell_defaults()$gamma, 30L)
+  expect_false("overwrite" %in% names(.rc_condition_metacell_defaults()))
   expect_match(
     wrapper, "celltype_grouped_joint_condition_WNN", fixed = TRUE
   )
   expect_false(grepl("supercell_stratum_col", wrapper, fixed = TRUE))
   expect_false(grepl("stratum_col", wrapper, fixed = TRUE))
+  expect_false(grepl("metacell_object.rds", wrapper, fixed = TRUE))
+  expect_false(grepl("rna_counts.rds", wrapper, fixed = TRUE))
 })
 
 test_that("grouped construction does not use posthoc cell-type assignment", {
@@ -148,13 +153,18 @@ test_that("grouped construction does not use posthoc cell-type assignment", {
   expect_match(text, "Grouped WNN produced impure metacells", fixed = TRUE)
 })
 
-test_that("canonical metacells reject fragment pooling", {
-  text <- paste(
-    deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
+test_that("fragment processing is post-membership and optional", {
+  expect_false(
+    "fragment_files" %in% names(formals(.rc_make_condition_celltype_metacells))
   )
-  expect_match(
-    text,
-    "`fragment_files` must be FALSE",
-    fixed = TRUE
+  stage2 <- paste(
+    deparse(body(rc_regcompass_step_metacells)), collapse = "\n"
+  )
+  expect_match(stage2, ".rc_make_condition_celltype_metacells", fixed = TRUE)
+  expect_match(stage2, ".rc_aggregate_single_cell_fragments", fixed = TRUE)
+  expect_match(stage2, ".rc_recount_atac_from_fragment_manifest", fixed = TRUE)
+  expect_true(
+    regexpr(".rc_make_condition_celltype_metacells", stage2, fixed = TRUE)[[1L]] <
+      regexpr(".rc_aggregate_single_cell_fragments", stage2, fixed = TRUE)[[1L]]
   )
 })

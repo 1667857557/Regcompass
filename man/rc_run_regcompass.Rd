@@ -8,9 +8,9 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  pando_args = list(), fragment_files = FALSE,
-  metacell_args = list(), meta_module_args = list(),
-  layer1_args = list(), medium_scenarios = NULL,
+  fragment_files = NULL, pando_args = list(), metacell_args = list(),
+  meta_module_args = list(), layer1_args = list(),
+  medium_scenarios = NULL,
   model_mode = c("meta_module_gem", "full_gem"),
   layer2_args = list(), upstream_workers = 6L,
   layer2_workers = 30L,
@@ -27,9 +27,9 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{celltype_col}{Broad-cell-type metadata column.}
 \item{cell_type}{Optional broad-cell-type labels to process.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
+\item{fragment_files}{Optional Stage 2 raw fragment input. Use \code{NULL}/\code{FALSE} to aggregate the existing ATAC matrix; a single fragment path; a named character vector of paths whose names are exact prefixes before \code{_} in Seurat cell IDs; or a data frame with \code{fragment_file}, \code{object_cell}, and \code{fragment_barcode}. Fragment routing does not make sample identity a metacell grouping variable.}
 \item{pando_args}{Stage 1 controls, including nested \code{pando_infer_args}.}
-\item{fragment_files}{Must be \code{FALSE} for the count-assay metacell path.}
-\item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma, seed and cache controls.}
+\item{metacell_args}{Grouped-WNN reductions, dimensions, neighbours, gamma and seed controls. Fragment aggregation/recount controls are supplied through \code{metacell_args$fragment_args}.}
 \item{meta_module_args}{Optional Stage 3 custom \code{subsystem_table}.}
 \item{layer1_args}{Optional \code{gpr_and_method} and \code{gene_half_saturation}.}
 \item{medium_scenarios}{Shared medium table. When omitted, human models use \code{"normal_human_plasma"} and mouse models use \code{"mouse_plasma"}. Medium application changes listed exchange-reaction bounds only.}
@@ -50,8 +50,14 @@ conditions use the common-dictionary condition GRN. Cell types with one retained
 condition use standard Pando and do not receive condition coefficients.
 }
 \details{
-Stage 2 builds one independent RNA+ATAC WNN graph per broad cell type and keeps
-final metacells condition-pure. Layer 1 accepts only \code{gpr_and_method} and
+Stage 1 uses the in-memory RNA and ATAC assays. Stage 2 builds one independent
+RNA+ATAC WNN graph per broad cell type and keeps final metacells condition-pure.
+When raw fragment files are supplied, Stage 2 aggregates single-cell fragment
+barcodes to the final SuperCell membership, optionally calls MACS2, and recounts
+the ATAC assay with Signac FeatureMatrix before metacell TF-IDF. With no fragment
+input, the existing ATAC count matrix is aggregated. Sample identity is used only
+for fragment-file routing when provided by the caller, never as a WNN/metacell
+stratum. Layer 1 accepts only \code{gpr_and_method} and
 \code{gene_half_saturation}. Layer 2 retains the primary penalty and an explicit
 RNA-only control. The default cell-type route passes the complete
 medium-constrained parent to original MATLAB CORDA2 without FASTCC pre-pruning.

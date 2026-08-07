@@ -5,7 +5,8 @@
 #' dictionary condition GRN; cell types with one retained condition use standard
 #' Pando and do not receive condition coefficients. Stage 2 builds one
 #' independent multimodal WNN graph per broad cell type and keeps final
-#' metacells condition-pure.
+#' metacells condition-pure. Optional raw ATAC fragment files are aggregated to
+#' the final metacell membership and recounted before metacell TF-IDF.
 #'
 #' Layer 2 selects exactly one structural route. `model_mode =
 #' "meta_module_gem"` uses original MATLAB CORDA2 by default. Set
@@ -19,6 +20,10 @@
 #' When `medium_scenarios` is omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
 #'
+#' @param fragment_files Optional Stage 2 fragment input. Use `NULL`/`FALSE` to
+#' aggregate the existing ATAC matrix, a fragment path (or named path vector for
+#' multiple samples), or a data frame with `fragment_file`, `object_cell`, and
+#' `fragment_barcode`. Fragment routing does not make sample a metacell stratum.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -29,8 +34,8 @@ rc_run_regcompass <- function(
     cell_type = NULL,
     rna_assay = "RNA",
     atac_assay = "ATAC",
+    fragment_files = NULL,
     pando_args = list(),
-    fragment_files = FALSE,
     metacell_args = list(),
     meta_module_args = list(),
     layer1_args = list(),
@@ -75,8 +80,6 @@ rc_run_regcompass <- function(
   }
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
-  saveRDS(gem$model_info %||% list(), file.path(outdir, "00_model_info.rds"))
-  saveRDS(medium_scenarios, file.path(outdir, "00_medium_scenarios.rds"))
 
   upstream_config <- .rc_stage_worker_config(
     upstream_workers, argument = "upstream_workers"
@@ -94,7 +97,7 @@ rc_run_regcompass <- function(
         genome = genome, pfm = pfm, species = species,
         condition_col = condition_col, celltype_col = celltype_col,
         cell_type = cell_type, rna_assay = rna_assay,
-        atac_assay = atac_assay, fragment_files = fragment_files,
+        atac_assay = atac_assay,
         pando_args = pando_args,
         parallel = !identical(config$actual_backend, "serial"),
         BPPARAM = param, progress = progress
@@ -106,7 +109,8 @@ rc_run_regcompass <- function(
     outdir = file.path(outdir, "02_metacells"),
     condition_col = condition_col, celltype_col = celltype_col,
     cell_type = NULL, rna_assay = rna_assay,
-    atac_assay = atac_assay, fragment_files = fragment_files,
+    atac_assay = atac_assay,
+    fragment_files = fragment_files,
     metacell_args = metacell_args, progress = progress,
     grn = step1
   )
@@ -170,9 +174,10 @@ rc_run_regcompass <- function(
   result$params$metacell_membership_split_timing <-
     design$membership_split_timing
   result$params$metacell_modality_weighting <- design$modality_weighting
+  result$params$metacell_atac_aggregation <- design$atac_aggregation_method
+  result$params$fragment_files_supplied <- isTRUE(design$fragment_files_supplied)
   result$params$temporary_combined_stratum <- FALSE
   result$params$upstream_workers <- upstream_config$workers
   result$params$layer2_workers <- layer2_config$workers
-  saveRDS(result, file.path(outdir, "regcompass_result.rds"))
   result
 }

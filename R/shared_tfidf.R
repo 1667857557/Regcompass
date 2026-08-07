@@ -225,14 +225,32 @@
 
 .rc_normalize_condition_metacell_object <- function(
     pooled, rna_assay = "RNA", atac_assay = "ATAC") {
-  object <- rc_load_or_merge_metacell_objects(
-    pooled$metacell_objects,
-    fragment_manifest = NULL,
-    metacell_meta = pooled$metacell_meta,
-    rna_assay = rna_assay,
-    atac_assay = atac_assay,
-    require_complete_fragments = FALSE
-  )
+  if (!is.list(pooled) || !inherits(pooled$metacell_object, "Seurat") ||
+      !is.data.frame(pooled$metacell_meta)) {
+    stop("Stage 2 pooled output lacks its canonical metacell object or metadata.",
+         call. = FALSE)
+  }
+  object <- pooled$metacell_object
+  if (!"metacell_id" %in% colnames(pooled$metacell_meta)) {
+    stop("Stage 2 metacell metadata lack `metacell_id`.", call. = FALSE)
+  }
+  expected <- trimws(as.character(pooled$metacell_meta$metacell_id))
+  if (anyNA(expected) || any(!nzchar(expected)) || anyDuplicated(expected)) {
+    stop("Stage 2 metacell IDs must be unique and non-empty.", call. = FALSE)
+  }
+  observed <- as.character(colnames(object))
+  if (anyNA(observed) || any(!nzchar(observed)) || anyDuplicated(observed) ||
+      !setequal(observed, expected)) {
+    stop("Stage 2 canonical metacell object and metadata contain different IDs.",
+         call. = FALSE)
+  }
+  if (!identical(observed, expected)) {
+    object <- subset(object, cells = expected)
+  }
+  index <- match(colnames(object), expected)
+  object@meta.data <- pooled$metacell_meta[index, , drop = FALSE]
+  rownames(object@meta.data) <- colnames(object)
+
   object <- .rc_prepare_seurat_assays(
     object,
     assays = c(rna_assay, atac_assay),
