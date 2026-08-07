@@ -18,7 +18,7 @@ rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
 rc_regcompass_step_metacells(object, outdir,
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  metacell_args = list(),
+  fragment_files = NULL, metacell_args = list(),
   progress = getOption("RegCompassR.progress", TRUE), grn = NULL)
 
 rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
@@ -50,8 +50,9 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type labels. Stage 1 uses a fixed minimum of 300 paired cells per retained condition-by-cell-type stratum.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
+\item{fragment_files}{Optional Stage 2 raw fragment input. Use \code{NULL}/\code{FALSE} to aggregate the existing ATAC matrix; a single fragment path; a named character vector of paths whose names are exact prefixes before \code{_} in Seurat cell IDs; or a data frame with \code{fragment_file}, \code{object_cell}, and \code{fragment_barcode}. Fragment routing is used only for ATAC aggregation and does not make sample identity a metacell grouping variable.}
 \item{pando_args}{Stage 1 Pando initialization, motif and inference controls.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed and size controls. Stage 2 has one explicit checkpoint and no large sidecar auto-resume cache.}
+\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed and size controls. Fragment aggregation/recount controls are supplied in \code{metacell_args$fragment_args}: \code{workers}, \code{rows_per_chunk}, \code{bgzip_path}, \code{tabix_path}, \code{process_n}, \code{call_peaks}, \code{macs2_path}, \code{effective_genome_size}, and \code{peak_calling_args}. Stage 2 has one explicit checkpoint and no large sidecar auto-resume cache.}
 \item{grn}{Validated Stage 1 output. In Stage 2 it enforces the exact Stage 1 cell set.}
 \item{meta_module_args}{Optional custom subsystem table.}
 \item{gpr_and_method}{GPR AND aggregation method.}
@@ -75,9 +76,14 @@ scoring and result stages independently.
 \details{
 Stage 1 routes each retained cell type independently. At least two retained
 conditions use the common-dictionary condition GRN; one retained condition uses
-standard Pando. Stage 1 and Stage 2 use the in-memory count assays and clear
-Signac fragment references from their working copies. Stage 2 reproduces the
-Stage 1 cell set and keeps final metacells condition-pure. Stage 3 builds
+standard Pando. Stage 1 uses the in-memory RNA/ATAC assays and does not require
+fragment files. Stage 2 reproduces the Stage 1 cell set and keeps final
+metacells condition-pure. When raw fragment files are supplied, Stage 2 first
+builds the final grouped-WNN membership, transforms single-cell fragment
+barcodes to the final metacell barcodes with
+\code{SuperCell::AggregateFragmentFile()}, then optionally calls MACS2 and uses
+Signac FeatureMatrix to recount the metacell ATAC assay before TF-IDF. With no
+fragment input, the existing ATAC count matrix is aggregated. Stage 3 builds
 cell-type-scoped reaction catalogues. Stage 4 produces the primary multiome
 reaction support and an RNA-only control. Stage 5 defaults to original MATLAB
 CORDA2 on the complete medium-constrained parent GEM for each cell-type-by-medium
