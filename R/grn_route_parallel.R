@@ -89,6 +89,44 @@
   )
 }
 
+.rc_standard_pando_sample_size_gate <- function(
+    args, n_cells, alpha = 0.05) {
+  if (!is.list(args)) {
+    stop("Standard Pando inference arguments must be a list.", call. = FALSE)
+  }
+  if (!is.numeric(n_cells) || length(n_cells) != 1L ||
+      !is.finite(n_cells) || n_cells < 4) {
+    stop("`n_cells` must be one finite value >= 4.", call. = FALSE)
+  }
+  if (!is.numeric(alpha) || length(alpha) != 1L ||
+      !is.finite(alpha) || alpha <= 0 || alpha >= 1) {
+    stop("`alpha` must be one finite value in (0, 1).", call. = FALSE)
+  }
+
+  requested_tf_cor <- args$tf_cor %||% 0.1
+  if (!is.numeric(requested_tf_cor) || length(requested_tf_cor) != 1L ||
+      !is.finite(requested_tf_cor) || requested_tf_cor < 0 ||
+      requested_tf_cor >= 1) {
+    stop("Standard Pando `tf_cor` must be one finite value in [0, 1).",
+         call. = FALSE)
+  }
+
+  df <- as.numeric(n_cells) - 2
+  t_critical <- stats::qt(1 - alpha / 2, df = df)
+  sample_size_floor <- t_critical / sqrt(t_critical^2 + df)
+  effective_tf_cor <- max(as.numeric(requested_tf_cor), sample_size_floor)
+  args$tf_cor <- effective_tf_cor
+  attr(args, "sample_size_aware_tf_cor_gate") <- list(
+    method = "two_sided_pearson_t_critical",
+    alpha = as.numeric(alpha),
+    n_cells = as.integer(n_cells),
+    requested_tf_cor = as.numeric(requested_tf_cor),
+    sample_size_floor = as.numeric(sample_size_floor),
+    effective_tf_cor = as.numeric(effective_tf_cor)
+  )
+  args
+}
+
 .rc_run_pando_celltype_job <- function(
     job, base, extra_args, condition_infer_args, standard_infer_args,
     parallel, outer_parallel, progress_monitor) {
@@ -119,9 +157,27 @@
     args$outdir <- file.path(
       base$outdir, "standard", .rc_safe_path_component(job$cell_type)
     )
-    args$pando_infer_args <- standard_infer_args
+    gated_infer_args <- .rc_standard_pando_sample_size_gate(
+      standard_infer_args, n_cells = ncol(job$object)
+    )
+    gate <- attr(
+      gated_infer_args, "sample_size_aware_tf_cor_gate", exact = TRUE
+    )
+    attr(gated_infer_args, "sample_size_aware_tf_cor_gate") <- NULL
+    args$pando_infer_args <- gated_infer_args
     args$parallel <- isTRUE(parallel) && !outer_parallel
     value <- do.call(.rc_fit_standard_pando_by_cell_type, args)
+    if (is.list(value$normalization_policy)) {
+      value$normalization_policy$sample_size_aware_tf_cor_gate <- gate
+    }
+    if (is.data.frame(value$condition_fit_status) &&
+        nrow(value$condition_fit_status)) {
+      value$condition_fit_status$tf_cor_requested <- gate$requested_tf_cor
+      value$condition_fit_status$tf_cor_sample_size_floor <-
+        gate$sample_size_floor
+      value$condition_fit_status$tf_cor_effective <- gate$effective_tf_cor
+      value$condition_fit_status$tf_cor_gate_alpha <- gate$alpha
+    }
   } else {
     stop("Unknown Pando route: ", job$route, call. = FALSE)
   }
