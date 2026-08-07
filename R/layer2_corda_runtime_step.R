@@ -73,6 +73,9 @@
     "corda_max_medium_confidence_reactions"
   )
   clean_params <- model_params[setdiff(names(model_params), extracted)]
+  if (isTRUE(is_corda2)) {
+    clean_params$completion_time_limit <- Inf
+  }
   layer2_args$model_params <- clean_params
 
   previous <- as.list(.rc_layer2_completion_context)
