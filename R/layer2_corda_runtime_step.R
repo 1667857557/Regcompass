@@ -1,5 +1,31 @@
 # CORDA2 preparation and completion helpers used directly by Layer 2.
 
+.rc_layer2_completion_time_limit <- function(model_params, is_corda2) {
+  if (isTRUE(is_corda2)) {
+    if ("completion_time_limit" %in% names(model_params)) {
+      stop(
+        "`layer2_args$model_params$completion_time_limit` is not supported ",
+        "for CORDA2. CORDA2 reconstruction runs without a time limit; ",
+        "remove this parameter.",
+        call. = FALSE
+      )
+    }
+    return(Inf)
+  }
+
+  value <- suppressWarnings(as.numeric(
+    model_params$completion_time_limit %||% 300
+  ))
+  if (length(value) != 1L || is.na(value) || value <= 0) {
+    stop(
+      "`layer2_args$model_params$completion_time_limit` must be a positive ",
+      "number or Inf.",
+      call. = FALSE
+    )
+  }
+  value
+}
+
 .rc_layer2_prepare_completion <- function(
     layer1, meta_modules, model_mode, layer2_args) {
   if (!is.list(layer2_args)) {
@@ -34,6 +60,10 @@
     )
   }
 
+  completion_time_limit <- .rc_layer2_completion_time_limit(
+    model_params, is_corda2
+  )
+
   extracted <- c(
     "model_completion", "corda2_args",
     "corda_medium_confidence_threshold",
@@ -58,7 +88,7 @@
   .rc_layer2_completion_context$solver <-
     as.character(layer2_args$solver %||% "highs")
   .rc_layer2_completion_context$completion_time_limit <-
-    as.numeric(model_params$completion_time_limit %||% 300)
+    completion_time_limit
   .rc_layer2_completion_context$flux_threshold <-
     as.numeric(layer2_args$flux_threshold %||% 1e-8)
   .rc_layer2_completion_context$reaction_evidence <- if (isTRUE(is_corda2)) {
@@ -194,7 +224,8 @@
     ),
     solver_configuration = list(
       solver = solver,
-      threads = 1L
+      threads = 1L,
+      completion_time_limit = Inf
     ),
     stage_update_policy = "original_matlab_directional_order",
     target_parallelism = FALSE,
@@ -217,6 +248,7 @@
   answer$params$corda2_constrainby <- corda_options$constrainby
   answer$params$corda2_om <- corda_options$om
   answer$params$corda2_ci <- corda_options$ci
+  answer$params$corda2_completion_time_limit <- Inf
   answer$params$corda2_inner_target_parallelism <- FALSE
   answer$union_gem_policy <- paste(
     "one original-CORDA2 reconstruction per cell type and medium;",
