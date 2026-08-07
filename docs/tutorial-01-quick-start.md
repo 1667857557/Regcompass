@@ -38,7 +38,7 @@ result <- rc_run_regcompass_one_shot(
   pando_args = list(
     min_cells = 300L,
     pando_infer_args = list(
-      tf_cor = 0.05,
+      tf_cor = 0.1,
       peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
@@ -83,6 +83,8 @@ result <- rc_run_regcompass_one_shot(
   layer2_workers = 30L
 )
 ```
+
+For cell types with at least two retained conditions, the tutorial uses `tf_cor = 0.1` for the common-dictionary condition-GRN route. If only one effective condition is retained, standard Pando treats the requested `tf_cor` as an effect-size floor and automatically raises it when necessary to the two-sided Pearson-correlation critical value for that cell type's actual cell count (`alpha = 0.05`). This sample-size-aware gate prevents small cell groups from receiving a more permissive TF-correlation screen solely because their sampling variance is larger.
 
 `meta_module_gem` uses original MATLAB CORDA2 by default. Set `model_params$model_completion = "fastcore"` only for the supplementary FASTCORE route. Use `model_mode = "full_gem"` for supplementary complete-network COMPASS-style scoring.
 
