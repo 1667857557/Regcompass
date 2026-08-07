@@ -144,7 +144,6 @@ Collate:
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
-    'stratum_filter.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
