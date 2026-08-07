@@ -46,7 +46,7 @@
 .rc_load_compatible_species_gem <- function(save_rds, spec) {
   if (!file.exists(save_rds)) return(NULL)
   cached <- tryCatch(
-    rc_read_gem(save_rds),
+    .rc_read_gem(save_rds),
     error = function(error) error
   )
   reason <- NULL
@@ -93,7 +93,7 @@
   rc_validate_species_gem(gem, species)
   dir.create(dirname(save_rds), recursive = TRUE, showWarnings = FALSE)
   saveRDS(gem, save_rds)
-  persisted <- rc_read_gem(save_rds)
+  persisted <- .rc_read_gem(save_rds)
   rc_validate_species_gem(persisted, species)
   persisted
 }
