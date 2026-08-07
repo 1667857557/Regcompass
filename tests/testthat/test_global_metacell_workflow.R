@@ -16,9 +16,9 @@ test_that("public workflow is GRN first", {
       positions[[2L]] < positions[[3L]]
   )
   expect_false("inference_unit" %in% names(formals(rc_run_regcompass)))
-  expect_false("fragment_files" %in% names(formals(rc_run_regcompass)))
+  expect_true("fragment_files" %in% names(formals(rc_run_regcompass)))
   expect_false("fragment_files" %in% names(formals(rc_regcompass_step_grn)))
-  expect_false("fragment_files" %in% names(formals(rc_regcompass_step_metacells)))
+  expect_true("fragment_files" %in% names(formals(rc_regcompass_step_metacells)))
   expect_true("meta_module_args" %in% names(formals(rc_run_regcompass)))
 })
 
@@ -153,12 +153,18 @@ test_that("grouped construction does not use posthoc cell-type assignment", {
   expect_match(text, "Grouped WNN produced impure metacells", fixed = TRUE)
 })
 
-test_that("canonical metacells use in-memory assays without fragment pooling", {
+test_that("fragment processing is post-membership and optional", {
   expect_false(
     "fragment_files" %in% names(formals(.rc_make_condition_celltype_metacells))
   )
-  text <- paste(
-    deparse(body(.rc_make_condition_celltype_metacells)), collapse = "\n"
+  stage2 <- paste(
+    deparse(body(rc_regcompass_step_metacells)), collapse = "\n"
   )
-  expect_false(grepl("fragment_manifest", text, fixed = TRUE))
+  expect_match(stage2, ".rc_make_condition_celltype_metacells", fixed = TRUE)
+  expect_match(stage2, ".rc_aggregate_single_cell_fragments", fixed = TRUE)
+  expect_match(stage2, ".rc_recount_atac_from_fragment_manifest", fixed = TRUE)
+  expect_true(
+    regexpr(".rc_make_condition_celltype_metacells", stage2, fixed = TRUE)[[1L]] <
+      regexpr(".rc_aggregate_single_cell_fragments", stage2, fixed = TRUE)[[1L]]
+  )
 })
