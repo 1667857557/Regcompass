@@ -51,6 +51,7 @@ VignetteBuilder: knitr
 Collate:
     '00_meta_module_utils.R'
     '00_utils.R'
+    'rds_storage.R'
     'RcppExports.R'
     'workflow_utils.R'
     'execution_monitor.R'
