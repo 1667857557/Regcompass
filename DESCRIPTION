@@ -90,7 +90,6 @@ Collate:
     'pando_grn.R'
     'shared_tfidf.R'
     'condition_pooling.R'
-    'grn_inference.R'
     'stage1_input_contract.R'
     'condition_grn_contract.R'
     'condition_grn_contract_compat.R'
