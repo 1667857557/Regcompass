@@ -155,7 +155,6 @@ step5 <- rc_regcompass_step_layer2(
     target_direction = "both",
     solver = "highs",
     model_params = list(
-      completion_time_limit = 3000,
       strict = TRUE,
       corda2_args = list(
         MCxNCthresh = 2,
@@ -176,14 +175,16 @@ step5 <- rc_regcompass_step_layer2(
 
 The complete medium-constrained parent GEM is passed directly to CORDA2 without FASTCC pre-pruning. Final retained reactions recover the parent bounds for selected directions, including positive parent lower bounds. Layer 2 reaction costs use the COMPASS scale: missing expression and structural roles receive the maximum cost `1`.
 
+CORDA2 reconstruction has no structural time limit. `model_params$completion_time_limit` is rejected on the default CORDA2 route so a long Human-GEM reconstruction cannot be silently truncated. The parameter remains available for supplementary non-CORDA2 completion such as FASTCORE.
+
 Main controls:
 
 - `target_direction`: `"both"`, `"forward"` or `"reverse"`;
 - `solver`: `"highs"`, `"gurobi"` or `"glpk"`;
-- `completion_time_limit`: structural reconstruction time limit;
 - `strict`: fail when required targets are not retained;
 - `corda2_args`: original CORDA2 controls `MCxNCthresh`, `constraint`, `constrainby`, `om` and `ci`;
-- `corda_*`: RegCompass evidence-to-confidence mapping controls.
+- `corda_*`: RegCompass evidence-to-confidence mapping controls;
+- `completion_time_limit`: non-CORDA2 structural completion control; do not use it with CORDA2.
 
 ## 7. Supplementary structural modes
 

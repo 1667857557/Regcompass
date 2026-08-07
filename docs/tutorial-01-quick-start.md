@@ -66,7 +66,6 @@ result <- rc_run_regcompass_one_shot(
     target_direction = "both",
     solver = "highs",
     model_params = list(
-      completion_time_limit = 3000,
       strict = TRUE,
       corda2_args = list(
         MCxNCthresh = 2,
@@ -86,6 +85,8 @@ result <- rc_run_regcompass_one_shot(
 ```
 
 `meta_module_gem` uses original MATLAB CORDA2 by default. Set `model_params$model_completion = "fastcore"` only for the supplementary FASTCORE route. Use `model_mode = "full_gem"` for supplementary complete-network COMPASS-style scoring.
+
+CORDA2 reconstruction intentionally runs without a structural time limit. Do not supply `model_params$completion_time_limit` for the default CORDA2 route; that control is reserved for supplementary non-CORDA2 completion such as FASTCORE.
 
 CORDA2 receives the complete medium-constrained parent without FASTCC pre-pruning. Retained reactions recover their parent directional bounds, including positive lower bounds. Layer 2 uses the COMPASS cost scale; missing expression and structural roles receive cost `1`.
 
