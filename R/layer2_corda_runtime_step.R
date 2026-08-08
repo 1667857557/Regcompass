@@ -231,7 +231,12 @@
       completion_time_limit = Inf
     ),
     stage_update_policy = "original_matlab_directional_order",
-    target_parallelism = FALSE,
+    parallel_execution_policy =
+      "stage_barrier_parallel_targets_deterministic_ordered_reduce",
+    target_parallelism = "within_each_corda2_stage",
+    stage_barrier = TRUE,
+    stage_worker_lifecycle =
+      "fresh_pool_each_stage_stop_full_gc_before_next_stage",
     medium_handling = "exchange_bounds_only_then_corda2",
     medium_direct_reaction_deletion = FALSE,
     parent_prepruning = "none",
@@ -252,10 +257,12 @@
   answer$params$corda2_om <- corda_options$om
   answer$params$corda2_ci <- corda_options$ci
   answer$params$corda2_completion_time_limit <- Inf
-  answer$params$corda2_inner_target_parallelism <- FALSE
+  answer$params$corda2_inner_target_parallelism <- TRUE
+  answer$params$corda2_stage_barrier_parallelism <- TRUE
   answer$union_gem_policy <- paste(
     "one original-CORDA2 reconstruction per cell type and medium;",
-    "targets are processed serially and independent models may run in parallel"
+    "Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers;",
+    "directional targets inside each step use the full Layer-2 worker budget"
   )
   answer$method <- paste(
     "microCOMPASS directional LP on cell-type-specific medium models",
