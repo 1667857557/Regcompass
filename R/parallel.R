@@ -1,39 +1,41 @@
 #' Detect the RegCompass worker budget
 #'
-#' Worker discovery honors an explicit RegCompass option or environment setting
-#' before scheduler- or machine-aware sources. This is a global upper bound: an
-#' individual stage may use fewer workers when it has fewer independent tasks.
+#' Explicit RegCompass settings take precedence. Without an explicit setting,
+#' RegCompass uses at most `default` workers and never intentionally exceeds the
+#' CPU allocation detected from the scheduler or current machine.
 #'
-#' @param default Fallback worker count.
+#' @param default Fallback worker upper bound. The package default is 10.
 #' @return A positive integer worker count.
-rc_available_workers <- function(default = 1L) {
-  vals <- c(
+rc_available_workers <- function(default = 10L) {
+  explicit <- c(
     getOption("RegCompassR.workers", NA),
     Sys.getenv("REGCOMPASS_WORKERS", unset = NA_character_),
     Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA_character_),
     Sys.getenv("NSLOTS", unset = NA_character_)
   )
-  vals <- suppressWarnings(as.integer(vals))
-  vals <- vals[is.finite(vals) & vals >= 1L]
-  if (length(vals)) return(max(1L, vals[[1L]]))
+  explicit <- suppressWarnings(as.integer(explicit))
+  explicit <- explicit[is.finite(explicit) & explicit >= 1L]
+  if (length(explicit)) return(max(1L, explicit[[1L]]))
 
+  default <- suppressWarnings(as.integer(default[[1L]]))
+  if (!is.finite(default) || default < 1L) default <- 10L
+  available <- NA_integer_
   if (requireNamespace("future", quietly = TRUE)) {
-    fc <- tryCatch(future::availableCores(), error = function(e) NA_integer_)
-    fc <- suppressWarnings(as.integer(fc[[1L]]))
-    if (is.finite(fc) && fc >= 1L) return(fc)
+    available <- tryCatch(
+      suppressWarnings(as.integer(future::availableCores()[[1L]])),
+      error = function(e) NA_integer_
+    )
   }
-
-  cores <- parallel::detectCores(logical = TRUE)
-  cores <- suppressWarnings(as.integer(cores[[1L]]))
-  if (!is.finite(cores) || cores < 1L) {
-    max(1L, as.integer(default[[1L]]))
-  } else {
-    max(1L, cores - 1L)
+  if (!is.finite(available) || available < 1L) {
+    cores <- suppressWarnings(as.integer(parallel::detectCores(logical = TRUE)[[1L]]))
+    if (is.finite(cores) && cores >= 1L) available <- max(1L, cores - 1L)
   }
+  if (!is.finite(available) || available < 1L) return(default)
+  max(1L, min(default, available))
 }
 
 .rc_normalize_worker_budget <- function(workers = NULL, argument = "workers") {
-  if (is.null(workers)) workers <- rc_available_workers(default = 1L)
+  if (is.null(workers)) workers <- rc_available_workers(default = 10L)
   if (length(workers) != 1L || is.na(workers) || !is.finite(workers)) {
     stop("`", argument, "` must be one positive integer or NULL.", call. = FALSE)
   }
@@ -63,14 +65,15 @@ rc_available_workers <- function(default = 1L) {
 
 #' Resolve the platform-aware RegCompass parallel budget
 #'
-#' `workers` is the only user-facing parallel budget. `backend = "auto"`
-#' selects a SOCK cluster on Windows and forked multicore workers on Linux/macOS.
-#' Individual operations automatically use no more than
+#' `workers` is the only user-facing parallel budget. The default budget is 10.
+#' `backend = "auto"` selects a SOCK cluster on Windows and forked multicore
+#' workers on Linux/macOS. Individual operations automatically use no more than
 #' `min(number_of_independent_tasks, workers)` workers. Sequential execution is
 #' used when one worker is requested or BiocParallel is unavailable.
 #'
-#' @param workers Global worker upper bound. `NULL` uses
-#' `options(RegCompassR.workers)`, scheduler allocation, or detected cores.
+#' @param workers Global worker upper bound. `NULL` uses an explicit
+#' `options(RegCompassR.workers)`/environment setting when present, otherwise a
+#' machine-aware maximum of 10 workers.
 #' @param backend Requested backend.
 #' @return A list describing requested and resolved execution settings.
 #' @export
@@ -138,7 +141,7 @@ rc_default_bpparam <- function(
   n_tasks <- max(1L, as.integer(n_tasks[[1L]]))
   budget <- .rc_normalize_worker_budget(
     workers %||% attr(BPPARAM, "regcompass_worker_budget") %||%
-      rc_available_workers(default = 1L)
+      rc_available_workers(default = 10L)
   )
   if (identical(BPPARAM, FALSE)) return(FALSE)
   if (is.null(BPPARAM)) {
