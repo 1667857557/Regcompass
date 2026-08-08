@@ -40,13 +40,14 @@ Pando routing is resolved independently for each retained broad cell type:
 cell types with at least two retained conditions use the condition GRN, while
 cell types with one retained condition use standard Pando. The single
 \code{workers} parameter controls the maximum process count across Stage 1,
-Stage 4 and Stage 5; two detected logical CPUs are always reserved and smaller
-task sets automatically use fewer workers. Stage 1 uses the in-memory RNA/ATAC
-assays. Stage 2 builds one RNA+ATAC WNN graph per broad cell type and keeps final
-metacells condition-pure. When raw fragments are supplied, they are transformed
-from single-cell to final metacell barcodes and used for peak calling/
-FeatureMatrix recount before metacell TF-IDF. Sample identity is not introduced
-as a metacell stratum. Layer 2 uses original MATLAB CORDA2 by default. CORDA2
+Stage 2 fragment aggregation, Stage 4 and Stage 5; two detected logical CPUs are
+reserved and smaller task sets automatically use fewer workers. Stage 1 uses the
+in-memory RNA/ATAC assays. Stage 2 builds one RNA+ATAC WNN graph per broad cell
+type and keeps final metacells condition-pure. When raw fragments are supplied,
+they are transformed from single-cell to final metacell barcodes and use the
+same protected top-level worker cap for aggregation before peak calling/
+FeatureMatrix recount and metacell TF-IDF. Sample identity is not introduced as
+a metacell stratum. Layer 2 uses original MATLAB CORDA2 by default. CORDA2
 parallelism is limited to directional targets within the current mathematical
 step, with a strict barrier and worker cleanup before the next step. FASTCORE
 and the complete full-GEM route are explicit supplementary alternatives passed
