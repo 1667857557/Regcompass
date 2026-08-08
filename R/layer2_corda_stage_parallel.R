@@ -307,9 +307,21 @@
     scope = "corda2_stage", status = "running", emit = FALSE
   )
 
+  # SOCK workers do not reliably discover symbols referenced only through a
+  # nested anonymous stage closure. Bind the concrete chunk functions into a
+  # child lexical environment before serialization. This changes transport only;
+  # the original stage state and CORDA2 LP functions are unchanged.
+  fun_environment <- new.env(parent = environment(FUN))
+  fun_environment$.rc_corda2_dependency_chunk_parallel <-
+    .rc_corda2_dependency_chunk_parallel
+  fun_environment$.rc_corda2_maximize_chunk_parallel <-
+    .rc_corda2_maximize_chunk_parallel
+  environment(FUN) <- fun_environment
+  mark_progress <- .rc_corda_stage_mark_progress
+
   worker <- function(index) {
     mark_done <- function(position, target) {
-      .rc_corda_stage_mark_progress(
+      mark_progress(
         progress_dir = progress_dir,
         index = position,
         total = n_targets,
