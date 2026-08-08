@@ -17,12 +17,13 @@
 #' execute FASTCORE or CORDA2. All routes use the COMPASS reaction-cost scale,
 #' with missing expression and structural reaction roles assigned cost 1.
 #'
-#' `workers` is the only workflow-level parallel parameter. The default budget
+#' `workers` is the only workflow-level parallel parameter. The default request
 #' is 10. RegCompass automatically selects SOCK workers on Windows and multicore
-#' workers on Linux/macOS. Each operation uses at most
-#' `min(number_of_independent_tasks, workers)` workers: Pando is capped by the
-#' number of broad-cell-type jobs, whereas CORDA2 and large LP target sets can
-#' consume the full budget. Worker pools are released between workflow stages.
+#' workers on Linux/macOS. Two detected CPUs are reserved globally, and each
+#' operation uses at most the smaller of its independent task count and the
+#' resolved worker budget. Pando is capped by broad-cell-type job count, whereas
+#' CORDA2 and large LP target sets can consume the complete resolved budget.
+#' Worker pools are released between workflow stages.
 #'
 #' When `medium_scenarios` is omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
@@ -32,7 +33,8 @@
 #' multiple samples), or a data frame with `fragment_file`, `object_cell`, and
 #' `fragment_barcode`. Fragment routing does not make sample a metacell stratum.
 #' @param workers Global worker upper bound. Defaults to 10 and may be adjusted
-#' directly or through `options(RegCompassR.workers = ...)`.
+#' directly or through `options(RegCompassR.workers = ...)`; the resolved budget
+#' is capped at `max(1, available CPUs - 2)`.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -171,8 +173,12 @@ rc_run_regcompass <- function(
   result$params$fragment_files_supplied <- isTRUE(design$fragment_files_supplied)
   result$params$temporary_combined_stratum <- FALSE
   result$params$workers <- workers
+  result$params$available_cpus <- worker_config$available_cpus
+  result$params$reserved_cpus <- worker_config$reserved_cpus
+  result$params$worker_ceiling <- worker_config$worker_ceiling
+  result$params$worker_capacity_source <- worker_config$worker_capacity_source
   result$params$parallel_backend <- worker_config$actual_backend
   result$params$parallel_policy <-
-    "each_stage_uses_at_most_min(independent_tasks, workers)"
+    "each_stage_uses_at_most_min(independent_tasks, workers, available_cpus_minus_2)"
   result
 }
