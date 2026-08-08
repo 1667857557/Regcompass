@@ -6,14 +6,15 @@
 #' is bounded by one global `workers` budget and automatically shrinks to the
 #' number of independent tasks.
 #'
-#' @param workers Global RegCompass worker upper bound. `NULL` uses
-#' `options(RegCompassR.workers)`, scheduler allocation, or detected cores.
+#' @param workers Global RegCompass worker upper bound. The default is 10.
+#' Windows automatically uses SOCK workers; Linux/macOS automatically uses
+#' multicore workers.
 #' @export
 rc_regcompass_step_layer1 <- function(
     grn, metacells, meta_modules, gem, outdir,
     gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
-    workers = NULL,
+    workers = getOption("RegCompassR.workers", 10L),
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("layer1", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
