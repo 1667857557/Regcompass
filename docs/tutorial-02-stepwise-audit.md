@@ -2,23 +2,35 @@
 
 Each stage writes an RDS checkpoint to its output directory. Use the same paired-cell object, GEM, metadata columns and medium definitions when restarting later stages.
 
-## 1. Parallel backend
+## 1. One global parallel budget
+
+RegCompass selects the BiocParallel backend automatically. Windows uses a SOCK cluster; Linux/macOS use multicore workers. Users no longer need to construct separate `upstream_bp` and `layer2_bp` objects.
 
 ```r
-library(BiocParallel)
-
-upstream_bp <- if (.Platform$OS.type == "windows") {
-  SnowParam(workers = 6L, type = "SOCK", progressbar = TRUE)
-} else {
-  MulticoreParam(workers = 6L, progressbar = TRUE)
-}
-
-layer2_bp <- if (.Platform$OS.type == "windows") {
-  SnowParam(workers = 30L, type = "SOCK", progressbar = TRUE)
-} else {
-  MulticoreParam(workers = 30L, progressbar = TRUE)
-}
+workers <- 10L
 ```
+
+`10` is the default requested worker budget and can be changed, for example `workers <- 60L`. RegCompass always reserves two available CPUs for the controller, operating system, garbage collection and I/O, so the resolved hard ceiling is:
+
+```text
+max(1, available CPUs - 2)
+```
+
+Each operation then uses only:
+
+```text
+min(number of independent tasks, resolved worker budget)
+```
+
+For example, with 64 available CPUs, `workers = 60L` resolves to 60 workers, whereas `workers = 64L` resolves to 62. If Stage 1 has only 6 independent broad-cell-type Pando jobs, it launches 6 workers. CORDA2 or large directional LP stages with thousands of targets can use the complete resolved budget.
+
+The same budget can also be set once for the session:
+
+```r
+options(RegCompassR.workers = 10L)
+```
+
+`rc_parallel_config(workers)` reports the detected platform, available CPUs, two-CPU reserve, resolved worker ceiling and selected backend.
 
 ## 2. Regulatory evidence
 
@@ -41,8 +53,7 @@ step1 <- rc_regcompass_step_grn(
       min_residual_df = 1L
     )
   ),
-  parallel = TRUE,
-  BPPARAM = upstream_bp
+  workers = workers
 )
 ```
 
@@ -53,6 +64,8 @@ r_{crit}(n) = \frac{t_{1-\alpha/2,n-2}}{\sqrt{t_{1-\alpha/2,n-2}^2+n-2}},\qquad 
 \]
 
 then passes `max(tf_cor, r_crit(n))` to `Pando::infer_grn()` for that cell type. Thus small standard-Pando groups require a stronger TF-target correlation solely because their null correlation distribution is wider. The condition-GRN route is not altered by this adaptive standard-Pando gate.
+
+Stage 1 parallelism is across independent broad cell types. If the retained data contain fewer cell types than the resolved worker budget, RegCompass launches only the required number of Pando workers and does not create idle nested worker pools.
 
 ## 3. Metacells
 
@@ -95,9 +108,12 @@ step4 <- rc_regcompass_step_layer1(
   gem = gem,
   outdir = "run/04_layer1",
   gpr_and_method = "min",
-  gene_half_saturation = 1
+  gene_half_saturation = 1,
+  workers = workers
 )
 ```
+
+Layer 1 also treats `workers` as a hard upper bound. Any smaller independent task set automatically uses fewer workers.
 
 ## 5. Medium scenarios
 
@@ -155,8 +171,7 @@ step5 <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2",
   model_mode = "meta_module_gem",
-  parallel = TRUE,
-  BPPARAM = layer2_bp,
+  workers = workers,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -185,12 +200,15 @@ CORDA2 reconstruction has no structural time limit. `model_params$completion_tim
 
 Main controls:
 
+- `workers`: one global requested worker budget; resolved to no more than available CPUs minus 2;
 - `target_direction`: `"both"`, `"forward"` or `"reverse"`;
 - `solver`: `"highs"`, `"gurobi"` or `"glpk"`;
 - `strict`: fail when required targets are not retained;
 - `corda2_args`: original CORDA2 controls `MCxNCthresh`, `constraint`, `constrainby`, `om` and `ci`;
 - `corda_*`: RegCompass evidence-to-confidence mapping controls;
 - `completion_time_limit`: non-CORDA2 structural completion control; do not use it with CORDA2.
+
+For CORDA2, the outer cell-type-by-medium reconstruction loop is kept serial so each mathematical CORDA2 step can use the complete resolved worker budget. Within Step 1, Step 2.1, Step 2.2 and Step 3, directional targets run in parallel behind strict stage barriers. Each step prints its target count, active worker count, completed count and remaining count; its stage-local pool is released and garbage-collected before the next mathematical step begins.
 
 ## 7. Supplementary structural modes
 
@@ -206,6 +224,7 @@ step5_fastcore <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2_fastcore",
   model_mode = "meta_module_gem",
+  workers = workers,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -232,6 +251,7 @@ step5_full <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2_full_gem",
   model_mode = "full_gem",
+  workers = workers,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
