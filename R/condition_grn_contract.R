@@ -248,11 +248,13 @@
     pando_infer_args = list(
       tf_cor = 0.1, peak_cor = 0, adjust_method = "BH",
       padj_threshold = 0.05, rank_action = "mark",
-      min_residual_df = 1L, parallel = FALSE
+      min_residual_df = 1L
     ),
     save_pando_objects = TRUE, BPPARAM = NULL,
     progress_monitor = NULL,
     species = c("auto", "human", "mouse")) {
+  thread_state <- .rc_set_internal_single_thread()
+  on.exit(.rc_restore_internal_threads(thread_state), add = TRUE)
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
   .rc_validate_condition_celltype_metadata(
@@ -288,6 +290,14 @@
     stop("Canonical RegCompass condition effects require BH padj < 0.05.",
          call. = FALSE)
   }
+  condition_parallel <- !identical(BPPARAM, FALSE) && !is.null(BPPARAM)
+  condition_workers <- if (condition_parallel &&
+      requireNamespace("BiocParallel", quietly = TRUE) &&
+      methods::is(BPPARAM, "BiocParallelParam")) {
+    max(1L, as.integer(BiocParallel::bpnworkers(BPPARAM)))
+  } else {
+    1L
+  }
   .rc_step_monitor_event(
     progress_monitor, "condition_design",
     "configured exact-edge union and fixed-dictionary condition GLMs",
@@ -298,7 +308,13 @@
       adjust_method = "BH",
       padj_threshold = 0.05,
       scale = FALSE,
-      interaction = ":"
+      interaction = ":",
+      parallel_scope = if (condition_parallel) {
+        "condition_x_cell_type"
+      } else {
+        "serial"
+      },
+      workers = condition_workers
     )
   )
   if (is.null(pfm)) pfm <- .rc_default_pando_motifs()
@@ -342,14 +358,35 @@
     padj_threshold = 0.05,
     rank_action = pando_infer_args$rank_action,
     min_residual_df = pando_infer_args$min_residual_df,
-    parallel = FALSE,
+    parallel = condition_parallel,
+    BPPARAM = if (condition_parallel) BPPARAM else FALSE,
+    parallel_scope = "condition_cell_type",
     overwrite = TRUE,
     verbose = TRUE
   )
+  for (name in intersect(
+    c("rna_layer", "peak_layer", "peak_value_type"),
+    names(pando_infer_args)
+  )) {
+    infer[[name]] <- pando_infer_args[[name]]
+  }
   .rc_step_monitor_event(
     progress_monitor, "fixed_dictionary_fit",
-    "running global/condition discovery, exact union and condition GLMs",
-    current = 9L, context = list(targets = length(target_genes))
+    paste(
+      "running global/condition discovery, exact union and condition GLMs",
+      if (condition_parallel) "with condition x cell-type parallelism" else
+        "serially"
+    ),
+    current = 9L,
+    context = list(
+      targets = length(target_genes),
+      parallel_scope = if (condition_parallel) {
+        "condition_x_cell_type"
+      } else {
+        "serial"
+      },
+      workers = condition_workers
+    )
   )
   grn <- do.call(Pando::infer_condition_grn, infer)
   extracted <- .rc_extract_condition_grn_contract(
@@ -357,6 +394,11 @@
   )
   execution_summary <- .rc_pando_execution_summary(
     extracted$fit_diagnostics
+  )
+  grn_params <- methods::slot(methods::slot(grn, "grn"), "params")
+  execution_summary$parallel_plan <- grn_params$parallel_plan %||% list(
+    scope = "serial",
+    nested_parallel = FALSE
   )
 
   meta <- object@meta.data
@@ -457,6 +499,17 @@
       coefficient_contract =
         "same_exact_edge_dictionary_unscaled_gaussian_glm",
       significance = "estimable and BH adjusted P below 0.05",
+      parallel_contract = list(
+        scope = if (condition_parallel) {
+          "condition_x_cell_type"
+        } else {
+          "serial"
+        },
+        workers = condition_workers,
+        nested_target_parallel = FALSE,
+        stage_barrier =
+          "candidate_discovery_then_exact_union_then_fixed_dictionary_fit"
+      ),
       penalty_regulatory_evidence =
         "paired-cell TF-by-ATAC projection using penalty_effect without effect-size or model-R2 gates"
     ),
