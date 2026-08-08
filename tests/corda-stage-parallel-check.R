@@ -6,14 +6,8 @@ suppressPackageStartupMessages({
 
 # Give the standalone CI harness an explicit protected allocation so the
 # production CPU-minus-two policy still permits the requested 2-worker test.
-old_slurm <- Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA_character_)
-old_nslots <- Sys.getenv("NSLOTS", unset = NA_character_)
-on.exit({
-  if (is.na(old_slurm)) Sys.unsetenv("SLURM_CPUS_PER_TASK") else
-    Sys.setenv(SLURM_CPUS_PER_TASK = old_slurm)
-  if (is.na(old_nslots)) Sys.unsetenv("NSLOTS") else
-    Sys.setenv(NSLOTS = old_nslots)
-}, add = TRUE)
+# The Rscript process is disposable, so no top-level environment restoration is
+# required.
 Sys.setenv(SLURM_CPUS_PER_TASK = "8")
 Sys.unsetenv("NSLOTS")
 
