@@ -109,7 +109,9 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     if (!requireNamespace("highs", quietly = TRUE)) {
       return(failure("Package 'highs' is not installed."))
     }
-    control_args <- list(log_to_console = FALSE)
+    # RegCompass parallelism is process/task level. Keep every LP backend to
+    # one solver thread so a worker cannot create nested oversubscription.
+    control_args <- list(log_to_console = FALSE, threads = 1L)
     if (is.finite(time_limit)) control_args$time_limit <- time_limit
     answer <- tryCatch(
       highs::highs_solve(
@@ -199,7 +201,7 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     rhs = expanded$rhs,
     modelsense = "min"
   )
-  parameters <- list(OutputFlag = 0)
+  parameters <- list(OutputFlag = 0, Threads = 1L)
   if (is.finite(time_limit)) parameters$TimeLimit <- time_limit
   answer <- tryCatch(
     gurobi::gurobi(model, params = parameters),
