@@ -12,7 +12,7 @@ Performance changes must not alter the original MATLAB CORDA2 contract:
 - preserve `MCxNCthresh`, `constraint`, `constrainby`, `om` and `ci` semantics;
 - preserve the stable-dependency stopping rule.
 
-The canonical `.rc_corda_build_three_stage_core()` contains both execution paths. `parallel = FALSE` or one effective worker keeps the original serial persistent-engine target order. Parallel execution changes scheduling only; the dependency LP, objective coefficients, target constraints, thresholds and confidence transitions are unchanged.
+The canonical `.rc_corda_build_three_stage_core()` contains both execution paths. One effective worker keeps the original serial persistent-engine target order. Parallel execution changes scheduling only; the dependency LP, objective coefficients, target constraints, thresholds and confidence transitions are unchanged.
 
 ## Solver reuse
 
@@ -45,7 +45,7 @@ Step 3 HC-to-OT dependencies
 
 Every target inside a step sees the same immutable pre-step `split`, confidence classes, options and bounds. Worker results are written back to their original target indices before any dependency matrix, promotion or confidence state is changed. The next step cannot start until the preceding step has been completely reduced.
 
-CORDA2 cell-type-by-medium models are therefore executed one at a time during structural reconstruction so that the current model can use the full Layer-2 worker budget inside each step. For a step with `N` candidate directional targets and `W` requested workers, effective target concurrency is bounded by `min(N, W)`. The caller-provided `BPPARAM` is treated as a backend and worker-count template; a fresh step-local pool is created and stopped for every mathematical step, followed by full garbage collection.
+CORDA2 cell-type-by-medium models are therefore executed one at a time during structural reconstruction so that the current model can use the full protected worker budget inside each step. The user supplies only the top-level `workers` cap. RegCompass selects Snow/SOCK on Windows or Multicore on Linux/macOS, reserves two detected logical CPUs, creates an internal backend template, and for a step with `N` candidate directional targets uses at most `min(N, protected worker cap)` workers. A fresh step-local pool is created and stopped for every mathematical step, followed by full garbage collection.
 
 Completed cell-type-by-medium models are still saved atomically. Primary multiome scoring and the RNA-only control continue to reuse the same structural-model file and checksum.
 
