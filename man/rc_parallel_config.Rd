@@ -5,13 +5,13 @@
 \title{Resolve the platform-aware parallel configuration}
 \usage{
 rc_parallel_config(
-  workers = NULL,
+  workers = 10L,
   backend = c("auto", "serial", "snow", "multicore")
 )
 }
 \arguments{
-\item{workers}{Optional worker count. When \code{NULL}, RegCompass uses scheduler, environment, cgroup-aware, or local core detection.}
+\item{workers}{Total worker cap, default \code{10L}. Set another positive integer to raise or lower the requested cap. \code{NULL} uses the protected detected capacity. The effective cap is \code{min(workers, max(1, detected logical CPUs - 2))}.}
 \item{backend}{Requested backend. \code{"auto"} selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS.}
 }
-\value{A list containing OS type, requested and resolved backends, actual backend, worker count, and BiocParallel availability.}
-\description{Reports the execution configuration used by RegCompass without starting workers. Automatic resolution uses SOCK workers on Windows and multicore workers on Linux/macOS; one worker or unavailable BiocParallel resolves to sequential execution. Complete workflows expose separate upstream and Layer 2 worker budgets.}
+\value{A list containing OS type, requested and resolved backends, detected CPU capacity, two-CPU reservation, protected available-worker count, effective worker limit, and BiocParallel availability.}
+\description{Reports the execution configuration used by RegCompass without starting workers. Automatic resolution uses SOCK workers on Windows and multicore workers on Linux/macOS. RegCompass reserves two detected logical CPUs for the operating system/R controller and uses one user-facing worker cap across the workflow. Individual dispatches may use fewer processes than the cap when fewer independent tasks are available.}
