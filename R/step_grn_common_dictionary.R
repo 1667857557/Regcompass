@@ -3,21 +3,22 @@
 #' Infer regulatory evidence with automatic mode selection
 #'
 #' Stage 1 filters the analysis cell set before normalization. With at least two
-#' retained conditions in a broad cell type, Pando performs pooled and
-#' condition-specific candidate discovery, freezes the exact TF-peak-target
-#' union, and fits the same unscaled Gaussian identity model in every condition.
-#' With no condition or one effective condition, the original per-cell-type
-#' Pando workflow is used without constructing condition coefficients. Pando
-#' inference arguments are routed automatically: condition-only controls are
-#' disabled for standard Pando, while standard-model controls are disabled for
-#' common-dictionary condition GRNs. Independent broad-cell-type jobs use at
-#' most `workers` processes. When fewer cell-type jobs exist than the worker
-#' cap, only the required number of workers is started.
+#' retained conditions in a broad cell type, candidate discovery is run on the
+#' pooled cell-type background and each retained condition, exact
+#' TF-peak-target triples are frozen into one common dictionary per cell type,
+#' and every condition is refitted with the same unscaled Gaussian identity
+#' Pando model. RegCompass parallelizes the independent condition-by-cell-type
+#' candidate and fixed-dictionary fitting jobs while preserving the dictionary
+#' barrier. With no condition or one effective condition, standard Pando is run
+#' independently by broad cell type. Individual Pando jobs do not start nested
+#' worker pools.
 #'
 #' @param workers Total RegCompass worker cap, default 10. Windows uses
-#'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. The Stage 1
-#'   Pando dispatcher uses at most one worker per independent broad-cell-type
-#'   job and never exceeds this cap. Users may increase or decrease it.
+#'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. The effective
+#'   package cap is `min(workers, max(1, detected logical CPUs - 2))`. Each
+#'   Stage 1 dispatch shrinks further to its independent task count: condition
+#'   mode can use pooled/condition-by-cell-type jobs, while standard Pando uses
+#'   broad-cell-type jobs.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
@@ -71,8 +72,8 @@ rc_regcompass_step_grn <- function(
     source = "pando_args$min_cells",
     fixed = TRUE,
     analysis_mode = cell_set$analysis_mode,
-    threshold_scope = if (identical(cell_set$analysis_mode, "condition_grn")) {
-      "condition_x_cell_type_independent"
+    threshold_scope = if (length(condition_types)) {
+      "condition_x_cell_type"
     } else {
       "cell_type"
     },
@@ -234,7 +235,7 @@ rc_regcompass_step_grn <- function(
         infer_argument_routing = routed_infer_args$diagnostics
       )),
       pando_resource_materialization = list(
-        scope = "controller_before_outer_parallel_dispatch",
+        scope = "controller_before_parallel_dispatch",
         pfm = TRUE,
         regions = TRUE,
         motif_tfs = TRUE,
@@ -247,7 +248,7 @@ rc_regcompass_step_grn <- function(
       species = species,
       n_input_cells = as.integer(n_input),
       n_stage_cells = as.integer(length(cell_set$retained_cells)),
-      cell_set_contract = "stage1_exact_cell_ids_v1"
+      cell_set_contract = "stage1_exact_cell_ids"
     )
   )
   class(answer) <- c("regcompass_grn_step", "list")
