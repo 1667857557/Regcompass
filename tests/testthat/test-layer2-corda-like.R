@@ -45,7 +45,7 @@ test_that("Layer 2 directly prepares and finalizes CORDA2", {
   expect_false(grepl("before_", implementation, fixed = TRUE))
 })
 
-test_that("union cache directly dispatches to original CORDA2 helper", {
+test_that("union cache directly dispatches original CORDA2 models to stage targets", {
   implementation <- paste(
     deparse(body(RegCompassR:::.rc_build_celltype_medium_union_gem_cache_core)),
     collapse = "\n"
@@ -61,7 +61,12 @@ test_that("union cache directly dispatches to original CORDA2 helper", {
   )
   expect_match(
     helper,
-    "serial_within_each_original_corda2_instance",
+    "serial_cell_type_x_medium_models_stage_parallel_corda2_targets",
+    fixed = TRUE
+  )
+  expect_match(
+    helper,
+    "serial_cell_type_x_medium_original_corda2",
     fixed = TRUE
   )
   expect_match(
@@ -71,7 +76,7 @@ test_that("union cache directly dispatches to original CORDA2 helper", {
   )
 })
 
-test_that("CORDA2 is the default structural worker-pool route", {
+test_that("CORDA2 is the default structural worker-template route", {
   expect_true(RegCompassR:::.rc_layer2_requested_corda2(list()))
   expect_true(RegCompassR:::.rc_layer2_requested_corda2(list(
     model_params = list()
@@ -79,4 +84,19 @@ test_that("CORDA2 is the default structural worker-pool route", {
   expect_false(RegCompassR:::.rc_layer2_requested_corda2(list(
     model_params = list(model_completion = "fastcore")
   )))
+})
+
+test_that("CORDA2 preparation leaves the template pool stopped", {
+  skip_if_not_installed("BiocParallel")
+  param <- BiocParallel::SnowParam(
+    workers = 2L, type = "SOCK", progressbar = FALSE
+  )
+  state <- RegCompassR:::.rc_prepare_corda_worker_pool(
+    layer2_args = list(), parallel = TRUE, BPPARAM = param
+  )
+  expect_identical(state$origin, "caller_supplied_stage_template")
+  expect_false(isTRUE(state$started_here))
+  expect_false(BiocParallel::bpisup(param))
+  RegCompassR:::.rc_release_corda_worker_pool(state)
+  expect_false(BiocParallel::bpisup(param))
 })
