@@ -760,7 +760,7 @@
       fit_contract$condition_cell_ids, use.names = FALSE
     ))
     results[[type]] <- list(
-      schema_version = "regcompass_condition_grn_common_dictionary_v1",
+      schema_version = "regcompass_condition_grn_common_dictionary",
       analysis_mode = "condition_grn",
       condition_coefficients_calculated = TRUE,
       pando_fit_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
