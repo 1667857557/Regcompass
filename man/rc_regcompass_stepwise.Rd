@@ -12,7 +12,7 @@ rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  pando_args = list(), workers = NULL,
+  pando_args = list(), workers = getOption("RegCompassR.workers", 10L),
   progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_metacells(object, outdir,
