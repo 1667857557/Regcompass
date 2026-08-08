@@ -9,6 +9,7 @@ on:
       - 'DESCRIPTION'
       - 'docs/tutorial-02-stepwise-audit.md'
       - 'tests/corda-synthetic-check.R'
+      - 'tests/corda-stage-parallel-check.R'
       - 'tests/testthat/test-layer2-corda*.R'
       - '.github/workflows/corda-checks.yaml'
   push:
@@ -20,6 +21,7 @@ on:
       - 'DESCRIPTION'
       - 'docs/tutorial-02-stepwise-audit.md'
       - 'tests/corda-synthetic-check.R'
+      - 'tests/corda-stage-parallel-check.R'
       - 'tests/testthat/test-layer2-corda*.R'
       - '.github/workflows/corda-checks.yaml'
 
@@ -38,9 +40,11 @@ jobs:
           r-version: '4.5'
           use-public-rspm: true
 
-      - name: Install solver dependency
+      - name: Install solver and parallel dependencies
         shell: Rscript {0}
-        run: install.packages("highs")
+        run: |
+          install.packages(c("highs", "BiocManager"))
+          BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
 
       - name: Parse directly modified CORDA2 sources
         shell: Rscript {0}
@@ -62,12 +66,16 @@ jobs:
             "R/layer2_corda_runtime_cache.R",
             "R/layer2_corda_runtime_step.R",
             "R/layer2_corda_pool_lifecycle.R",
-            "tests/corda-synthetic-check.R"
+            "tests/corda-synthetic-check.R",
+            "tests/corda-stage-parallel-check.R"
           )
           for (file in files) parse(file = file)
 
       - name: Verify original CORDA2 source contract
         run: Rscript tests/corda-synthetic-check.R
+
+      - name: Verify CORDA2 stage-parallel serial equivalence
+        run: Rscript tests/corda-stage-parallel-check.R
 
       - name: Audit direct implementation and parameter surface
         run: |
