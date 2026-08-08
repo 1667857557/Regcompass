@@ -1,13 +1,11 @@
-#' Detect the system worker capacity available to RegCompass
+#' Detect the raw system CPU capacity available to RegCompass
 #'
-#' Worker discovery uses scheduler-aware sources before local core detection.
-#' User-facing parallelism is controlled by the single `workers` argument; this
-#' helper only establishes the system capacity that the requested cap may not
-#' exceed.
+#' Capacity discovery uses scheduler-aware sources before local core detection.
+#' User-facing parallelism is controlled by the single `workers` argument.
 #'
-#' @param default Fallback worker count.
-#' @return A positive integer worker count.
-rc_available_workers <- function(default = 1L) {
+#' @param default Fallback CPU capacity.
+#' @return A positive integer CPU capacity.
+.rc_detect_cpu_capacity <- function(default = 1L) {
   vals <- c(
     Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA_character_),
     Sys.getenv("NSLOTS", unset = NA_character_)
@@ -27,8 +25,21 @@ rc_available_workers <- function(default = 1L) {
   if (!is.finite(cores) || cores < 1L) {
     max(1L, as.integer(default[[1L]]))
   } else {
-    max(1L, cores - 1L)
+    max(1L, cores)
   }
+}
+
+#' Detect the protected RegCompass worker capacity
+#'
+#' RegCompass always reserves two logical CPUs for the operating system, R
+#' controller process, filesystem/cache work and other non-worker activity.
+#' Therefore the package-managed worker capacity is
+#' `max(1, detected_cpu_capacity - 2)`.
+#'
+#' @param default Fallback CPU capacity.
+#' @return A positive integer worker capacity after reserving two CPUs.
+rc_available_workers <- function(default = 1L) {
+  max(1L, .rc_detect_cpu_capacity(default = default) - 2L)
 }
 
 .rc_validate_worker_limit <- function(workers = NULL, argument = "workers") {
@@ -88,13 +99,13 @@ rc_available_workers <- function(default = 1L) {
 #'
 #' `backend = "auto"` selects a SOCK cluster on Windows and forked multicore
 #' workers on Linux/macOS. `workers` is the single RegCompass-wide worker cap.
-#' The default requested cap is 10 and can be changed by the caller. The
-#' effective cap is additionally limited by scheduler/cgroup/local CPU capacity.
-#' Individual dispatches may use fewer workers when fewer independent tasks are
-#' available, but no package-managed dispatch may exceed the effective cap.
+#' The default requested cap is 10 and can be changed by the caller. RegCompass
+#' always reserves two detected logical CPUs, so the effective cap is
+#' `min(workers, max(1, detected CPUs - 2))`. Individual dispatches may use
+#' fewer workers when fewer independent tasks are available.
 #'
 #' @param workers Total worker cap, default 10. Set a different positive integer
-#'   to raise or lower the cap. `NULL` uses the detected system capacity.
+#'   to raise or lower the cap. `NULL` uses the protected system capacity.
 #' @param backend Requested backend.
 #' @return A list describing requested and resolved execution settings.
 #' @export
@@ -103,7 +114,9 @@ rc_parallel_config <- function(
     backend = c("auto", "serial", "snow", "multicore")) {
   backend <- match.arg(backend)
   requested_workers <- .rc_validate_worker_limit(workers, argument = "workers")
-  available_workers <- rc_available_workers(default = 1L)
+  detected_cpu_capacity <- .rc_detect_cpu_capacity(default = 1L)
+  reserved_cpus <- min(2L, max(0L, detected_cpu_capacity - 1L))
+  available_workers <- max(1L, detected_cpu_capacity - 2L)
   worker_limit <- min(requested_workers, available_workers)
   resolved <- .rc_resolve_parallel_backend(backend)
   available <- requireNamespace("BiocParallel", quietly = TRUE)
@@ -118,6 +131,8 @@ rc_parallel_config <- function(
     resolved_backend = resolved,
     actual_backend = actual,
     requested_workers = requested_workers,
+    detected_cpu_capacity = detected_cpu_capacity,
+    reserved_cpus = reserved_cpus,
     available_workers = available_workers,
     worker_limit = worker_limit,
     workers = if (identical(actual, "serial")) 1L else worker_limit,
@@ -132,8 +147,8 @@ rc_parallel_config <- function(
 #' the effective RegCompass worker cap. Dispatchers create smaller short-lived
 #' pools when the current task count is below that cap.
 #'
-#' @param workers Total worker cap, default 10. The effective cap also respects
-#'   detected system capacity.
+#' @param workers Total worker cap, default 10. The effective cap also reserves
+#'   two detected logical CPUs and respects scheduler/cgroup/local capacity.
 #' @param backend Requested backend.
 #' @return A `BiocParallelParam` object or `NULL` for sequential execution.
 rc_default_bpparam <- function(
@@ -258,7 +273,8 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
     BiocParallel::bpstart(BPPARAM)
   } else if (!identical(original, BPPARAM)) {
     stop("Internal error: a started worker pool cannot be resized.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   BiocParallel::bplapply(X, worker_fun, BPPARAM = BPPARAM)
 }
