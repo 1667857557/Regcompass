@@ -121,13 +121,13 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
     runtime_functions, is.function, logical(1)
   )]
   extra <- list(...)
-  worker <- function(x, FUN, runtime_functions, extra) {
+  worker <- function(x, target_fun, runtime_functions, extra) {
     list2env(runtime_functions, envir = .GlobalEnv)
-    do.call(FUN, c(list(x), extra))
+    do.call(target_fun, c(list(x), extra))
   }
   BiocParallel::bplapply(
     X, worker,
-    FUN = FUN,
+    target_fun = FUN,
     runtime_functions = runtime_functions,
     extra = extra,
     BPPARAM = BPPARAM
