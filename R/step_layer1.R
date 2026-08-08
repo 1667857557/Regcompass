@@ -2,18 +2,31 @@
 #'
 #' Each cell type uses its Stage 1 Pando route. Standard mode uses
 #' the original Pando full-fit TF-by-ATAC projection and calculates no condition
-#' coefficients. Both modes use exact native SuperCell membership.
+#' coefficients. Both modes use exact native SuperCell membership. Parallel work
+#' is bounded by one global `workers` budget and automatically shrinks to the
+#' number of independent tasks.
 #'
+#' @param workers Global RegCompass worker upper bound. `NULL` uses
+#' `options(RegCompassR.workers)`, scheduler allocation, or detected cores.
 #' @export
 rc_regcompass_step_layer1 <- function(
     grn, metacells, meta_modules, gem, outdir,
     gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
-    parallel = TRUE, BPPARAM = NULL,
+    workers = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("layer1", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   gpr_and_method <- match.arg(gpr_and_method)
+  worker_config <- rc_parallel_config(workers = workers, backend = "auto")
+  BPPARAM <- if (worker_config$workers > 1L &&
+                 !identical(worker_config$actual_backend, "serial")) {
+    .rc_task_bpparam(workers = worker_config$worker_budget)
+  } else {
+    FALSE
+  }
+  on.exit(.rc_release_bpparam(BPPARAM), add = TRUE)
+
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
   )
@@ -47,11 +60,17 @@ rc_regcompass_step_layer1 <- function(
     rna_assay = params$rna_assay,
     gpr_and_method = gpr_and_method,
     gene_half_saturation = gene_half_saturation,
-    parallel = parallel,
+    parallel = worker_config$workers > 1L &&
+      !identical(worker_config$actual_backend, "serial"),
     BPPARAM = BPPARAM
   )
   layer1$workflow_params <- params
   layer1$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
+  layer1$parallel_execution <- list(
+    workers = worker_config$worker_budget,
+    backend = worker_config$actual_backend,
+    policy = "task_count_capped_by_global_worker_budget"
+  )
   class(layer1) <- c("regcompass_layer1_step", "list")
   .rc_validate_layer1_stage(
     layer1, workflow_params = params, gem = gem, argument = "layer1"
