@@ -164,7 +164,9 @@ rc_default_bpparam <- function(
     BiocParallel::SnowParam(
       workers = config$workers,
       type = "SOCK",
-      progressbar = show_progress
+      progressbar = show_progress,
+      exportglobals = TRUE,
+      exportvariables = TRUE
     )
   } else {
     BiocParallel::MulticoreParam(
@@ -228,11 +230,25 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
   if (!is.function(FUN)) stop("`FUN` must be a function.", call. = FALSE)
   extra <- list(...)
   caller_libpaths <- .libPaths()
+  internal_env <- .rc_internal_thread_env()
   worker_fun <- function(x) {
     .libPaths(unique(c(caller_libpaths, .libPaths())))
-    .rc_with_internal_single_thread(function() {
-      do.call(FUN, c(list(x), extra))
-    })
+    old_env <- Sys.getenv(names(internal_env), unset = NA_character_)
+    old_options <- base::options(
+      mc.cores = 1L,
+      RegCompassR.internal_workers = 1L
+    )
+    do.call(Sys.setenv, as.list(internal_env))
+    on.exit({
+      missing <- names(old_env)[is.na(old_env)]
+      present <- names(old_env)[!is.na(old_env)]
+      if (length(present)) {
+        do.call(Sys.setenv, as.list(old_env[present]))
+      }
+      if (length(missing)) Sys.unsetenv(missing)
+      do.call(base::options, old_options)
+    }, add = TRUE)
+    do.call(FUN, c(list(x), extra))
   }
   if (identical(BPPARAM, FALSE) || length(X) <= 1L) {
     return(lapply(X, worker_fun))
