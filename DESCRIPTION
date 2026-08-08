@@ -41,9 +41,13 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     om and ci under corda2_args. Actively reversible reactions are split once,
     the opposite directional copy is closed during each target assessment, and
     the original Step 1, Step 2.1, Step 2.2 and Step 3 dependency transitions
-    are preserved. Targets remain serial within each reconstruction; independent
-    cell-type-by-medium models may run in parallel and are reused by the primary
-    and RNA-only scoring paths.
+    are preserved. Directional targets are parallelized only within one CORDA2
+    step from an immutable stage snapshot, then reduced in original target order
+    before the next state transition. Cell-type-by-medium reconstructions run
+    serially so each step can use the full Layer-2 worker budget; every step owns
+    a fresh worker pool that is stopped and fully collected at its barrier. The
+    completed structural models are reused by the primary and RNA-only scoring
+    paths.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -142,6 +146,7 @@ Collate:
     'layer2_corda_runtime_cache.R'
     'layer2_corda_runtime_step.R'
     'layer2_corda_pool_lifecycle.R'
+    'layer2_corda_stage_parallel.R'
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
