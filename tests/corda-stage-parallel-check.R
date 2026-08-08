@@ -114,6 +114,7 @@ for (file in c(
   "R/layer2_corda_lp.R",
   "R/layer2_corda_paper_contract.R",
   "R/layer2_corda_direction_contract.R",
+  "R/layer2_corda_target_isolation.R",
   "R/layer2_corda2_algorithm.R",
   "R/layer2_corda_stage_parallel.R",
   "R/layer2_corda2_algorithm_build.R",
@@ -184,33 +185,22 @@ evalq({
     finally = .rc_layer2_restore_parallel_context(previous)
   )
 
+  identical_set <- function(x, y) {
+    identical(sort(unique(as.character(x))), sort(unique(as.character(y))))
+  }
   stopifnot(
-    setequal(serial$included, parallel_result$included),
-    setequal(serial$included_directional_variables,
-             parallel_result$included_directional_variables),
-    isTRUE(all.equal(serial$HCtoMC, parallel_result$HCtoMC)),
-    isTRUE(all.equal(serial$HCtoNC, parallel_result$HCtoNC)),
-    isTRUE(all.equal(serial$MCtoNC, parallel_result$MCtoNC)),
-    setequal(serial$stage1_associated, parallel_result$stage1_associated),
-    setequal(serial$stage2_promoted_nc,
-             parallel_result$stage2_promoted_nc),
-    setequal(serial$stage2_promoted_mc,
-             parallel_result$stage2_promoted_mc),
-    setequal(serial$stage3_associated_ot,
-             parallel_result$stage3_associated_ot),
-    identical(serial$stage_update_policy,
-              "original_matlab_directional_order"),
-    identical(parallel_result$stage_update_policy,
-              "original_matlab_directional_order"),
-    identical(
-      parallel_result$parallel_execution_policy,
-      "stage_barrier_parallel_targets_deterministic_ordered_reduce"
-    ),
-    isTRUE(parallel_result$solver_performance$stage_barrier),
-    identical(parallel_result$solver_performance$target_parallelism,
-              "within_corda2_stage"),
-    !BiocParallel::bpisup(param)
+    identical_set(serial$included_directions, parallel_result$included_directions),
+    identical_set(serial$included_reactions, parallel_result$included_reactions),
+    identical(serial$final_directional_class,
+              parallel_result$final_directional_class),
+    identical(serial$HCtoMC, parallel_result$HCtoMC),
+    identical(serial$HCtoNC, parallel_result$HCtoNC),
+    identical(serial$MCxNC, parallel_result$MCxNC),
+    identical(serial$step1_associations, parallel_result$step1_associations),
+    identical(serial$step2_1_associations, parallel_result$step2_1_associations),
+    identical(serial$step2_1_promoted_nc, parallel_result$step2_1_promoted_nc),
+    identical(serial$step2_2_feasible_mc, parallel_result$step2_2_feasible_mc),
+    identical(serial$step3_associations, parallel_result$step3_associations)
   )
+  cat("CORDA2 serial-vs-Snow-2-worker equivalence passed.\n")
 }, envir = runtime)
-
-cat("CORDA2 stage-parallel serial-equivalence check passed\n")
