@@ -51,12 +51,14 @@
   stage1_nc <- nc
   HCtoMC <- .rc_corda2_empty_dependency_matrix(stage1_hc, stage1_mc)
   HCtoNC <- .rc_corda2_empty_dependency_matrix(stage1_hc, stage1_nc)
-  stage1_parts <- .rc_corda_stage_run(
+  stage1_run <- .rc_corda_stage_run(
     stage1_hc,
     "corda2_step1_HC_dependencies",
-    function(target) {
-      .rc_corda2_dependency_target_parallel(
-        target = target,
+    function(targets, indices, mark_done) {
+      .rc_corda2_dependency_chunk_parallel(
+        targets = targets,
+        indices = indices,
+        mark_done = mark_done,
         split = split,
         directional_class = directional_class,
         options = options,
@@ -67,12 +69,14 @@
       )
     }
   )
-  execution_metrics <- c(
-    execution_metrics, lapply(stage1_parts, function(x) x$metrics)
-  )
+  stage1_parts <- stage1_run$results
+  execution_metrics <- c(execution_metrics, stage1_run$metrics)
   stage_parallelism$step1 <- data.frame(
     stage = "corda2_step1_HC_dependencies",
-    n_targets = length(stage1_hc), stringsAsFactors = FALSE
+    n_targets = length(stage1_hc),
+    workers = stage1_run$workers,
+    n_chunks = stage1_run$chunks,
+    stringsAsFactors = FALSE
   )
   hc_present <- mc_present <- nc_present <- character()
   blocked_hc <- logical(length(stage1_hc))
@@ -111,19 +115,21 @@
   mc <- stage1_mc[!stage1_mc %in% mc_present]
   nc <- stage1_nc[!stage1_nc %in% nc_present]
   task_tables$step1 <- .rc_corda2_results_table(stage1_results)
-  rm(stage1_parts)
+  rm(stage1_run, stage1_parts)
   invisible(gc(verbose = FALSE, full = TRUE))
 
   # Step 2.1: all remaining MC targets read one immutable Step-2.1 snapshot.
   stage2_mc_input <- mc
   stage2_nc_input <- nc
   MCxNC <- .rc_corda2_empty_dependency_matrix(stage2_mc_input, stage2_nc_input)
-  stage21_parts <- .rc_corda_stage_run(
+  stage21_run <- .rc_corda_stage_run(
     stage2_mc_input,
     "corda2_step2_1_MC_NC_dependencies",
-    function(target) {
-      .rc_corda2_dependency_target_parallel(
-        target = target,
+    function(targets, indices, mark_done) {
+      .rc_corda2_dependency_chunk_parallel(
+        targets = targets,
+        indices = indices,
+        mark_done = mark_done,
         split = split,
         directional_class = directional_class,
         options = options,
@@ -134,12 +140,14 @@
       )
     }
   )
-  execution_metrics <- c(
-    execution_metrics, lapply(stage21_parts, function(x) x$metrics)
-  )
+  stage21_parts <- stage21_run$results
+  execution_metrics <- c(execution_metrics, stage21_run$metrics)
   stage_parallelism$step2_1 <- data.frame(
     stage = "corda2_step2_1_MC_NC_dependencies",
-    n_targets = length(stage2_mc_input), stringsAsFactors = FALSE
+    n_targets = length(stage2_mc_input),
+    workers = stage21_run$workers,
+    n_chunks = stage21_run$chunks,
+    stringsAsFactors = FALSE
   )
   blocked_mc_step21 <- logical(length(stage2_mc_input))
   stage21_results <- vector("list", length(stage2_mc_input))
@@ -159,7 +167,7 @@
   mc <- stage2_mc_input[!blocked_mc_step21]
   MCtoNC <- MCxNC
   task_tables$step2_1 <- .rc_corda2_results_table(stage21_results)
-  rm(stage21_parts)
+  rm(stage21_run, stage21_parts)
   invisible(gc(verbose = FALSE, full = TRUE))
 
   # Step 2.2: promotion occurs only after Step 2.1 has completely reduced.
@@ -183,12 +191,14 @@
     split_step22$lb[nc] <- 0
     split_step22$ub[nc] <- 0
   }
-  stage22_parts <- .rc_corda_stage_run(
+  stage22_run <- .rc_corda_stage_run(
     mc,
     "corda2_step2_2_MC_feasibility",
-    function(target) {
-      .rc_corda2_maximize_target_parallel(
-        target = target,
+    function(targets, indices, mark_done) {
+      .rc_corda2_maximize_chunk_parallel(
+        targets = targets,
+        indices = indices,
+        mark_done = mark_done,
         split = split_step22,
         solver = solver,
         time_limit = time_limit,
@@ -197,19 +207,21 @@
       )
     }
   )
-  execution_metrics <- c(
-    execution_metrics, lapply(stage22_parts, function(x) x$metrics)
-  )
+  stage22_parts <- stage22_run$results
+  execution_metrics <- c(execution_metrics, stage22_run$metrics)
   stage_parallelism$step2_2 <- data.frame(
     stage = "corda2_step2_2_MC_feasibility",
-    n_targets = length(mc), stringsAsFactors = FALSE
+    n_targets = length(mc),
+    workers = stage22_run$workers,
+    n_chunks = stage22_run$chunks,
+    stringsAsFactors = FALSE
   )
   stage22_results <- vector("list", length(mc))
   blocked_mc_step22 <- logical(length(mc))
   rescue <- vector("list", length(mc))
   for (i in seq_along(mc)) {
     target <- mc[[i]]
-    maximum <- stage22_parts[[i]]$maximum
+    maximum <- stage22_parts[[i]]
     success <- identical(maximum$answer$status, "optimal") &&
       is.finite(maximum$vmax) && maximum$vmax >= options$flux_threshold
     blocked_mc_step22[[i]] <- !success
@@ -249,7 +261,7 @@
   directional_class[feasible_mc] <- "HC"
   hc <- c(hc, feasible_mc)
   task_tables$step2_2 <- .rc_corda2_results_table(stage22_results)
-  rm(stage22_parts)
+  rm(stage22_run, stage22_parts)
   invisible(gc(verbose = FALSE, full = TRUE))
 
   # Step 3: all remaining MC/NC are blocked before parallel HC assessment.
@@ -260,12 +272,14 @@
     split_step3$lb[blocked_step3] <- 0
     split_step3$ub[blocked_step3] <- 0
   }
-  stage3_parts <- .rc_corda_stage_run(
+  stage3_run <- .rc_corda_stage_run(
     hc,
     "corda2_step3_HC_OT_dependencies",
-    function(target) {
-      .rc_corda2_dependency_target_parallel(
-        target = target,
+    function(targets, indices, mark_done) {
+      .rc_corda2_dependency_chunk_parallel(
+        targets = targets,
+        indices = indices,
+        mark_done = mark_done,
         split = split_step3,
         directional_class = directional_class,
         options = options,
@@ -278,12 +292,14 @@
       )
     }
   )
-  execution_metrics <- c(
-    execution_metrics, lapply(stage3_parts, function(x) x$metrics)
-  )
+  stage3_parts <- stage3_run$results
+  execution_metrics <- c(execution_metrics, stage3_run$metrics)
   stage_parallelism$step3 <- data.frame(
     stage = "corda2_step3_HC_OT_dependencies",
-    n_targets = length(hc), stringsAsFactors = FALSE
+    n_targets = length(hc),
+    workers = stage3_run$workers,
+    n_chunks = stage3_run$chunks,
+    stringsAsFactors = FALSE
   )
   stage3_results <- vector("list", length(hc))
   ot_present <- character()
@@ -300,7 +316,7 @@
     "corda2_step3_associated_OT"
   included_variables <- unique(c(hc, ot_present))
   task_tables$step3 <- .rc_corda2_results_table(stage3_results)
-  rm(stage3_parts)
+  rm(stage3_run, stage3_parts)
   invisible(gc(verbose = FALSE, full = TRUE))
 
   initial_reaction_confidence <- .rc_corda2_reaction_numeric_confidence(
@@ -397,7 +413,11 @@
     .rc_corda_build_three_stage_core,
     list(...)
   )
-  task <- progress_state$current_task
+  task <- if (is.environment(progress_state)) {
+    progress_state$current_task
+  } else {
+    NULL
+  }
   if (!is.null(task) && identical(task$route, "corda2")) {
     required <- list(
       c("corda2_step1", "corda2_step1_HC_dependencies", 4L),
