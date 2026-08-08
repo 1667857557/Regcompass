@@ -6,15 +6,16 @@
 #' projection jobs use at most `workers` processes and automatically shrink to
 #' the number of independent tasks available.
 #'
-#' @param workers Total RegCompass worker cap. `NULL` auto-detects available
-#'   workers. Windows uses SOCK/Snow workers and Linux/macOS uses multicore
-#'   workers. Stage 4 never starts more workers than there are independent jobs.
+#' @param workers Total RegCompass worker cap, default 10. Windows uses SOCK/Snow
+#'   workers and Linux/macOS uses multicore workers. Stage 4 never starts more
+#'   workers than there are independent jobs. Users may increase or decrease the
+#'   cap explicitly.
 #' @export
 rc_regcompass_step_layer1 <- function(
     grn, metacells, meta_modules, gem, outdir,
     gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
-    workers = NULL,
+    workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("layer1", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
