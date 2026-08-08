@@ -10,7 +10,7 @@ test_that("stepwise workflow functions are exported", {
   }, logical(1))))
 })
 
-test_that("computational stages expose optional parallelism", {
+test_that("computational stages expose one worker cap", {
   stages <- list(
     grn = rc_regcompass_step_grn,
     layer1 = rc_regcompass_step_layer1,
@@ -18,9 +18,10 @@ test_that("computational stages expose optional parallelism", {
   )
   for (stage in stages) {
     stage_formals <- formals(stage)
-    expect_true(all(c("parallel", "BPPARAM") %in% names(stage_formals)))
-    expect_identical(eval(stage_formals$parallel), TRUE)
-    expect_null(eval(stage_formals$BPPARAM))
+    expect_true("workers" %in% names(stage_formals))
+    expect_identical(stage_formals$workers, 10L)
+    expect_false("parallel" %in% names(stage_formals))
+    expect_false("BPPARAM" %in% names(stage_formals))
   }
 })
 
@@ -43,17 +44,15 @@ test_that("meta-module stage requires GRN and metacell outputs", {
 test_that("meta-module stage no longer runs Pando", {
   f <- names(formals(rc_regcompass_step_meta_modules))
   expect_true(all(c("grn", "metacells", "gem", "outdir") %in% f))
-  expect_false(any(c("pfm", "genome", "pando_args", "parallel", "BPPARAM") %in% f))
+  expect_false(any(c(
+    "pfm", "genome", "pando_args", "parallel", "BPPARAM", "workers"
+  ) %in% f))
 })
 
-test_that("one-shot workflow executes and saves Stage 6 output", {
+test_that("one-shot workflow executes Stage 6 output", {
   body_text <- paste(deparse(body(rc_run_regcompass)), collapse = "\n")
   expect_match(body_text, "rc_regcompass_step_results", fixed = TRUE)
-  expect_match(
-    body_text,
-    'saveRDS(result, file.path(outdir, "regcompass_result.rds"))',
-    fixed = TRUE
-  )
+  expect_match(body_text, "workers = worker_limit", fixed = TRUE)
 })
 
 test_that("GRN and metacell stages use direct automatic design resolution", {
