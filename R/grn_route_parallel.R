@@ -221,7 +221,7 @@
   args$pando_infer_args <- condition_infer_args
   args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
   args$progress_monitor <- progress_monitor
-  do.call(.rc_fit_condition_grns_by_cell_type, args)
+  do.call(.rc_fit_condition_grns_regcompass_parallel, args)
 }
 
 .rc_fit_pando_by_celltype_route <- function(
@@ -242,8 +242,8 @@
   .rc_step_monitor_event(
     progress_monitor, "cell_type_execution_plan",
     paste(
-      "condition GRNs use condition x cell-type tasks with exact-dictionary",
-      "barriers; standard Pando uses broad-cell-type jobs"
+      "RegCompass schedules condition x cell-type Pando primitives with exact-",
+      "dictionary barriers; standard Pando uses broad-cell-type jobs"
     ),
     current = 5L,
     context = list(
@@ -259,14 +259,16 @@
       } else {
         "not_applicable"
       },
+      scheduler_owner = "RegCompassR",
       nested_parallel = FALSE
     )
   )
 
-  # Phase 1: Pando owns the condition-mode scheduler. It preserves the
-  # cell-type-specific global+condition candidate-discovery barrier, freezes one
-  # exact dictionary per cell type, then dispatches condition x cell-type fixed
-  # dictionary fits. No RegCompass cell-type pool wraps this call.
+  # Phase 1: RegCompass owns condition-mode scheduling over Pando's exported
+  # atomic mathematical operations. Candidate discovery completes first, exact
+  # dictionaries are frozen per cell type, and only then are condition x
+  # cell-type fixed-dictionary GLMs dispatched. No nested Pando worker pool is
+  # enabled inside an individual task.
   condition_result <- .rc_run_condition_pando_batch(
     object = object,
     condition_types = condition_types,
@@ -340,7 +342,8 @@
     condition_parallel_plan = condition_plan,
     standard_outer_parallel = standard_outer_parallel,
     nested_parallel = FALSE,
-    worker_budget_shared_sequentially = TRUE
+    worker_budget_shared_sequentially = TRUE,
+    scheduler_owner = "RegCompassR"
   )
   answer
 }
