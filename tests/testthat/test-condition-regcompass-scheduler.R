@@ -74,8 +74,23 @@ test_that("RegCompass condition scheduling uses exported Pando primitives", {
   ) %in% exports))
 })
 
-test_that("condition route is owned by RegCompass rather than a Pando parallel scope", {
+test_that("condition route calls the canonical RegCompass condition function", {
   body_text <- paste(deparse(body(.rc_run_condition_pando_batch)), collapse = "\n")
-  expect_match(body_text, "rc_fit_condition_grns_regcompass_parallel")
+  expect_match(body_text, "rc_fit_condition_grns_by_cell_type")
   expect_false(grepl("parallel_scope", body_text, fixed = TRUE))
+  expect_false(grepl("rc_fit_condition_grns_regcompass_parallel", body_text,
+                     fixed = TRUE))
+})
+
+test_that("Pando workflow has no versioned or wrapper implementation functions", {
+  forbidden <- c(
+    ".rc_route_pando_infer_args_core",
+    ".rc_extract_condition_grn_contract_core",
+    ".rc_merge_condition_job_results_core",
+    ".rc_merge_pando_results_core",
+    ".rc_merge_pando_results_validated",
+    ".rc_merge_pando_results_with_parallel_objects",
+    ".rc_fit_condition_grns_regcompass_parallel"
+  )
+  expect_false(any(vapply(forbidden, exists, logical(1), inherits = TRUE)))
 })
