@@ -8,7 +8,7 @@ rc_run_regcompass_one_shot(object, outdir, genome,
   species = c("human", "mouse"), gem = NULL, gem_version = NULL,
   gem_source = c("auto", "bundled", "download"), pfm = NULL,
   fragment_files = NULL, medium_scenario = NULL,
-  medium_scenarios = NULL,
+  medium_scenarios = NULL, workers = 10L,
   progress = getOption("RegCompassR.progress", TRUE), ...)
 }
 \arguments{
@@ -23,6 +23,7 @@ rc_run_regcompass_one_shot(object, outdir, genome,
 \item{fragment_files}{Optional Stage 2 raw fragment input. Use \code{NULL}/\code{FALSE}, a single path, a named path vector whose names match cell-ID prefixes before \code{_}, or a data frame with \code{fragment_file}, \code{object_cell}, and \code{fragment_barcode}.}
 \item{medium_scenario}{Optional built-in biological medium scenario.}
 \item{medium_scenarios}{Optional prebuilt built-in or user-defined medium table.}
+\item{workers}{Single RegCompass-wide worker cap, default \code{10L}. RegCompass selects SOCK/Snow workers on Windows and Multicore workers on Linux/macOS. The effective limit is \code{min(workers, max(1, detected logical CPUs - 2))}, and individual stages/sub-steps shrink further to their independent task count.}
 \item{progress}{Display workflow and stage progress.}
 \item{...}{Arguments passed to \code{rc_run_regcompass()}, including explicit supplementary Layer 2 mode controls when required.}
 }
@@ -37,12 +38,17 @@ When both medium arguments are omitted, Human-GEM uses
 \code{"normal_human_plasma"} and Mouse-GEM uses \code{"mouse_plasma"}.
 Pando routing is resolved independently for each retained broad cell type:
 cell types with at least two retained conditions use the condition GRN, while
-cell types with one retained condition use standard Pando. Stage 1 uses the
-in-memory RNA/ATAC assays. Stage 2 builds one RNA+ATAC WNN graph per broad cell
-type and keeps final metacells condition-pure. When raw fragments are supplied,
-they are transformed from single-cell to final metacell barcodes and used for
-peak calling/FeatureMatrix recount before metacell TF-IDF. Sample identity is not
-introduced as a metacell stratum. Layer 2 uses original MATLAB CORDA2 by default.
-FASTCORE and the complete full-GEM route are explicit supplementary alternatives
-passed through \code{...}.
+cell types with one retained condition use standard Pando. The single
+\code{workers} parameter controls the maximum process count across Stage 1,
+Stage 4 and Stage 5; two detected logical CPUs are always reserved and smaller
+task sets automatically use fewer workers. Stage 1 uses the in-memory RNA/ATAC
+assays. Stage 2 builds one RNA+ATAC WNN graph per broad cell type and keeps final
+metacells condition-pure. When raw fragments are supplied, they are transformed
+from single-cell to final metacell barcodes and used for peak calling/
+FeatureMatrix recount before metacell TF-IDF. Sample identity is not introduced
+as a metacell stratum. Layer 2 uses original MATLAB CORDA2 by default. CORDA2
+parallelism is limited to directional targets within the current mathematical
+step, with a strict barrier and worker cleanup before the next step. FASTCORE
+and the complete full-GEM route are explicit supplementary alternatives passed
+through \code{...}.
 }
