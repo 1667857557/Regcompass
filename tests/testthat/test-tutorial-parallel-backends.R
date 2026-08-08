@@ -1,4 +1,4 @@
-test_that("stepwise tutorial defines portable BiocParallel backends", {
+test_that("stepwise tutorial documents one portable worker budget", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   roots <- unique(c(
     if (nzchar(workspace)) workspace else character(),
@@ -17,17 +17,18 @@ test_that("stepwise tutorial defines portable BiocParallel backends", {
   text <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
   required <- c(
-    "library(BiocParallel)",
-    ".Platform$OS.type == \"windows\"",
-    "SnowParam(workers = 6L",
-    "SnowParam(workers = 30L",
-    "MulticoreParam(workers = 6L",
-    "MulticoreParam(workers = 30L",
-    "BPPARAM = upstream_bp",
-    "BPPARAM = layer2_bp"
+    "workers <- 10L",
+    "options(RegCompassR.workers = 10L)",
+    "max(1, available CPUs - 2)",
+    "workers = workers",
+    "Windows uses a SOCK cluster",
+    "Linux/macOS use multicore workers"
   )
   missing <- required[!vapply(
     required, grepl, logical(1), x = text, fixed = TRUE
   )]
   expect_length(missing, 0L)
+  expect_false(grepl("upstream_bp", text, fixed = TRUE))
+  expect_false(grepl("layer2_bp", text, fixed = TRUE))
+  expect_false(grepl("BPPARAM =", text, fixed = TRUE))
 })
