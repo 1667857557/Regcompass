@@ -59,10 +59,8 @@ jobs:
             "R/layer2_corda_target_contract.R",
             "R/layer2_corda_parent_contract.R",
             "R/layer2_corda2_algorithm.R",
-            "R/layer2_corda_serial_core.R",
             "R/layer2_corda_stage_parallel.R",
             "R/layer2_corda2_algorithm_build.R",
-            "R/layer2_corda_dispatch.R",
             "R/layer2_corda2_options_contract.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_runtime_cache.R",
@@ -74,7 +72,7 @@ jobs:
           for (file in files) parse(file = file)
 
       - name: Verify original serial CORDA2 source contract
-        run: Rscript -e 'source("R/layer2_corda_stage_parallel.R"); source("R/layer2_corda_serial_core.R"); source("tests/corda-synthetic-check.R")'
+        run: Rscript tests/corda-synthetic-check.R
 
       - name: Verify stage-parallel serial equivalence
         shell: bash
@@ -105,10 +103,9 @@ jobs:
           options = Path("R/layer2_corda2_options_contract.R").read_text()
           split = Path("R/layer2_corda_paper_contract.R").read_text()
           dependency = Path("R/layer2_corda2_algorithm.R").read_text()
-          serial = Path("R/layer2_corda_serial_core.R").read_text()
           build = Path("R/layer2_corda2_algorithm_build.R").read_text()
           stage_parallel = Path("R/layer2_corda_stage_parallel.R").read_text()
-          dispatch = Path("R/layer2_corda_dispatch.R").read_text()
+          runtime = Path("R/layer2_corda_runtime.R").read_text()
           model = Path("R/layer2_corda_model.R").read_text()
           tutorial = Path("docs/tutorial-02-stepwise-audit.md").read_text()
 
@@ -139,24 +136,19 @@ jobs:
           if missing:
               raise RuntimeError(f"original CORDA2 dependency loop missing: {missing}")
 
-          required_state = [
+          required_build = [
               'HCtoMC', 'HCtoNC', 'MCxNC', 'options$MCxNCthresh',
               'corda2_step2_2_MC_feasibility',
               'corda2_step3_HC_OT_dependencies',
               'original_matlab_directional_order',
-          ]
-          missing = [x for x in required_state if x not in serial]
-          if missing:
-              raise RuntimeError(f"preserved serial CORDA2 state machine missing: {missing}")
-          missing = [x for x in required_state if x not in build]
-          if missing:
-              raise RuntimeError(f"stage-parallel CORDA2 state machine missing: {missing}")
-          for marker in (
+              'serial_original_persistent_engine',
               '.rc_corda_stage_run',
               'stage_barrier_parallel_targets_deterministic_ordered_reduce',
-          ):
-              if marker not in build:
-                  raise RuntimeError(f"stage-parallel CORDA2 build missing: {marker}")
+              'if (!use_stage_parallel)',
+          ]
+          missing = [x for x in required_build if x not in build]
+          if missing:
+              raise RuntimeError(f"canonical CORDA2 core missing: {missing}")
 
           required_stage_parallel = [
               'completed=', 'remaining=', 'worker pool released',
@@ -166,25 +158,23 @@ jobs:
           if missing:
               raise RuntimeError(f"CORDA2 stage-parallel runtime missing: {missing}")
 
-          required_dispatch = [
-              '.rc_corda_stage_parallel_requested',
-              '.rc_corda_build_three_stage_serial_core',
-              '.rc_corda_build_three_stage',
-          ]
-          missing = [x for x in required_dispatch if x not in dispatch]
-          if missing:
-              raise RuntimeError(f"CORDA2 serial/parallel dispatch missing: {missing}")
+          if '.rc_corda_stage_parallel_requested' not in runtime:
+              raise RuntimeError("canonical CORDA2 runtime lacks parallel decision helper")
 
           required_direct = [
-              '.rc_corda2_split_original', '.rc_corda_build_three_stage_dispatch',
+              '.rc_corda2_split_original', '.rc_corda_build_three_stage(',
               '.rc_corda2_apply_direction_bounds',
           ]
           missing = [x for x in required_direct if x not in model]
           if missing:
               raise RuntimeError(f"direct model integration missing: {missing}")
-          for marker in ('_base <-', 'before_corda2', 'corda_like'):
-              if marker in model:
-                  raise RuntimeError(f"override or alternate algorithm marker remains: {marker}")
+          for marker in (
+              '_base <-', 'before_corda2', 'corda_like',
+              '.rc_corda_build_three_stage_dispatch',
+              '.rc_corda_build_three_stage_serial_core',
+          ):
+              if marker in model or marker in build:
+                  raise RuntimeError(f"wrapper/alternate algorithm marker remains: {marker}")
 
           if 'resendislab/corda' in tutorial or 'corda2_redundancies' in tutorial:
               raise RuntimeError("tutorial still documents the Python CORDA contract")
