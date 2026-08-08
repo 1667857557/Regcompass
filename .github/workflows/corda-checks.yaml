@@ -55,6 +55,7 @@ jobs:
             "R/layer2_corda_target_contract.R",
             "R/layer2_corda_parent_contract.R",
             "R/layer2_corda2_algorithm.R",
+            "R/layer2_corda_stage_parallel.R",
             "R/layer2_corda2_algorithm_build.R",
             "R/layer2_corda2_options_contract.R",
             "R/layer2_corda_runtime.R",
@@ -66,7 +67,7 @@ jobs:
           for (file in files) parse(file = file)
 
       - name: Verify original CORDA2 source contract
-        run: Rscript tests/corda-synthetic-check.R
+        run: Rscript -e 'source("R/layer2_corda_stage_parallel.R"); source("tests/corda-synthetic-check.R")'
 
       - name: Audit direct implementation and parameter surface
         run: |
@@ -77,6 +78,7 @@ jobs:
           split = Path("R/layer2_corda_paper_contract.R").read_text()
           dependency = Path("R/layer2_corda2_algorithm.R").read_text()
           build = Path("R/layer2_corda2_algorithm_build.R").read_text()
+          stage_parallel = Path("R/layer2_corda_stage_parallel.R").read_text()
           model = Path("R/layer2_corda_model.R").read_text()
           tutorial = Path("docs/tutorial-02-stepwise-audit.md").read_text()
 
@@ -111,10 +113,20 @@ jobs:
               'HCtoMC', 'HCtoNC', 'MCxNC', 'options$MCxNCthresh',
               'corda2_step2_2_MC_feasibility',
               'corda2_step3_HC_OT_dependencies',
+              '.rc_corda_stage_run',
+              'stage_barrier_parallel_targets_deterministic_ordered_reduce',
           ]
           missing = [x for x in required_build if x not in build]
           if missing:
               raise RuntimeError(f"original CORDA2 state machine missing: {missing}")
+
+          required_stage_parallel = [
+              'completed=', 'remaining=', 'worker pool released',
+              'threads=1', 'rc_parallel_lapply',
+          ]
+          missing = [x for x in required_stage_parallel if x not in stage_parallel]
+          if missing:
+              raise RuntimeError(f"CORDA2 stage-parallel runtime missing: {missing}")
 
           required_direct = [
               '.rc_corda2_split_original', '.rc_corda_build_three_stage',
