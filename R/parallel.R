@@ -1,14 +1,14 @@
-#' Detect a conservative RegCompass worker count
+#' Detect the system worker capacity available to RegCompass
 #'
-#' Worker discovery honors explicit RegCompass settings before scheduler- or
-#' cgroup-aware sources.
+#' Worker discovery uses scheduler-aware sources before local core detection.
+#' User-facing parallelism is controlled by the single `workers` argument; this
+#' helper only establishes the system capacity that the requested cap may not
+#' exceed.
 #'
 #' @param default Fallback worker count.
 #' @return A positive integer worker count.
 rc_available_workers <- function(default = 1L) {
   vals <- c(
-    getOption("RegCompassR.workers", NA),
-    Sys.getenv("REGCOMPASS_WORKERS", unset = NA_character_),
     Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA_character_),
     Sys.getenv("NSLOTS", unset = NA_character_)
   )
@@ -87,24 +87,27 @@ rc_available_workers <- function(default = 1L) {
 #' Resolve the platform-aware parallel configuration
 #'
 #' `backend = "auto"` selects a SOCK cluster on Windows and forked multicore
-#' workers on Linux/macOS. `workers` is the single RegCompass-wide worker cap:
-#' individual dispatches may use fewer workers when fewer independent tasks are
-#' available, but no package-managed dispatch may exceed this value.
+#' workers on Linux/macOS. `workers` is the single RegCompass-wide worker cap.
+#' The default requested cap is 10 and can be changed by the caller. The
+#' effective cap is additionally limited by scheduler/cgroup/local CPU capacity.
+#' Individual dispatches may use fewer workers when fewer independent tasks are
+#' available, but no package-managed dispatch may exceed the effective cap.
 #'
-#' @param workers Optional total worker cap. When `NULL`, RegCompass detects the
-#'   available worker count once from scheduler/cgroup/local resources.
+#' @param workers Total worker cap, default 10. Set a different positive integer
+#'   to raise or lower the cap. `NULL` uses the detected system capacity.
 #' @param backend Requested backend.
 #' @return A list describing requested and resolved execution settings.
 #' @export
 rc_parallel_config <- function(
-    workers = NULL,
+    workers = 10L,
     backend = c("auto", "serial", "snow", "multicore")) {
   backend <- match.arg(backend)
-  requested_workers <- workers
-  workers <- .rc_validate_worker_limit(workers, argument = "workers")
+  requested_workers <- .rc_validate_worker_limit(workers, argument = "workers")
+  available_workers <- rc_available_workers(default = 1L)
+  worker_limit <- min(requested_workers, available_workers)
   resolved <- .rc_resolve_parallel_backend(backend)
   available <- requireNamespace("BiocParallel", quietly = TRUE)
-  actual <- if (workers < 2L || identical(resolved, "serial") || !available) {
+  actual <- if (worker_limit < 2L || identical(resolved, "serial") || !available) {
     "serial"
   } else {
     resolved
@@ -115,8 +118,9 @@ rc_parallel_config <- function(
     resolved_backend = resolved,
     actual_backend = actual,
     requested_workers = requested_workers,
-    worker_limit = workers,
-    workers = if (identical(actual, "serial")) 1L else workers,
+    available_workers = available_workers,
+    worker_limit = worker_limit,
+    workers = if (identical(actual, "serial")) 1L else worker_limit,
     biocparallel_available = available
   )
 }
@@ -125,14 +129,15 @@ rc_parallel_config <- function(
 #'
 #' The backend's task-level progress bar follows
 #' `options(RegCompassR.progress = TRUE/FALSE)`. The returned parameter records
-#' the total RegCompass worker cap. Dispatchers create smaller short-lived pools
-#' when the current task count is below that cap.
+#' the effective RegCompass worker cap. Dispatchers create smaller short-lived
+#' pools when the current task count is below that cap.
 #'
-#' @param workers Optional total worker cap.
+#' @param workers Total worker cap, default 10. The effective cap also respects
+#'   detected system capacity.
 #' @param backend Requested backend.
 #' @return A `BiocParallelParam` object or `NULL` for sequential execution.
 rc_default_bpparam <- function(
-    workers = NULL,
+    workers = 10L,
     backend = c("auto", "serial", "snow", "multicore")) {
   config <- rc_parallel_config(workers = workers, backend = backend)
   if (identical(config$actual_backend, "serial")) return(NULL)
