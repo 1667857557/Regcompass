@@ -166,8 +166,8 @@ evalq({
 
   previous <- .rc_layer2_enter_parallel_context(FALSE, FALSE)
   serial <- tryCatch(
-    .rc_corda_build_three_stage_core(
-      split, classes, corda_options, solver = "highs", time_limit = 30
+    .rc_corda_build_three_stage(
+      split, classes, corda_options, solver = "highs", time_limit = Inf
     ),
     finally = .rc_layer2_restore_parallel_context(previous)
   )
@@ -179,8 +179,8 @@ evalq({
   )
   previous <- .rc_layer2_enter_parallel_context(TRUE, param)
   parallel_result <- tryCatch(
-    .rc_corda_build_three_stage_core(
-      split, classes, corda_options, solver = "highs", time_limit = 30
+    .rc_corda_build_three_stage(
+      split, classes, corda_options, solver = "highs", time_limit = Inf
     ),
     finally = .rc_layer2_restore_parallel_context(previous)
   )
@@ -189,18 +189,28 @@ evalq({
     identical(sort(unique(as.character(x))), sort(unique(as.character(y))))
   }
   stopifnot(
-    identical_set(serial$included_directions, parallel_result$included_directions),
-    identical_set(serial$included_reactions, parallel_result$included_reactions),
-    identical(serial$final_directional_class,
-              parallel_result$final_directional_class),
+    identical(serial$stage_order, parallel_result$stage_order),
+    identical_set(serial$included_directional_variables,
+                  parallel_result$included_directional_variables),
+    identical_set(serial$included, parallel_result$included),
+    identical(serial$final_confidence, parallel_result$final_confidence),
     identical(serial$HCtoMC, parallel_result$HCtoMC),
     identical(serial$HCtoNC, parallel_result$HCtoNC),
-    identical(serial$MCxNC, parallel_result$MCxNC),
-    identical(serial$step1_associations, parallel_result$step1_associations),
-    identical(serial$step2_1_associations, parallel_result$step2_1_associations),
-    identical(serial$step2_1_promoted_nc, parallel_result$step2_1_promoted_nc),
-    identical(serial$step2_2_feasible_mc, parallel_result$step2_2_feasible_mc),
-    identical(serial$step3_associations, parallel_result$step3_associations)
+    identical(serial$MCtoNC, parallel_result$MCtoNC),
+    identical_set(serial$stage1_associated,
+                  parallel_result$stage1_associated),
+    identical_set(serial$stage2_promoted_nc,
+                  parallel_result$stage2_promoted_nc),
+    identical_set(serial$stage2_promoted_mc,
+                  parallel_result$stage2_promoted_mc),
+    identical_set(serial$stage3_associated_ot,
+                  parallel_result$stage3_associated_ot),
+    identical_set(serial$blocked_high_confidence_directions,
+                  parallel_result$blocked_high_confidence_directions),
+    identical_set(serial$blocked_medium_directions_step2_1,
+                  parallel_result$blocked_medium_directions_step2_1),
+    identical_set(serial$blocked_medium_directions_step2_2,
+                  parallel_result$blocked_medium_directions_step2_2)
   )
   cat("CORDA2 serial-vs-Snow-2-worker equivalence passed.\n")
 }, envir = runtime)
