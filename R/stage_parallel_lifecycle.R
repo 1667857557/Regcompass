@@ -63,35 +63,32 @@
   FUN()
 }
 
-.rc_stage_worker_config <- function(workers, argument = "workers") {
-  if (length(workers) != 1L || is.na(workers) || !is.finite(workers)) {
-    stop("`", argument, "` must be one positive integer.", call. = FALSE)
-  }
-  workers <- suppressWarnings(as.integer(workers))
-  if (workers < 1L) {
-    stop("`", argument, "` must be at least 1.", call. = FALSE)
-  }
+.rc_stage_worker_config <- function(workers = NULL, argument = "workers") {
+  workers <- .rc_validate_worker_limit(workers, argument = argument)
   rc_parallel_config(workers = workers, backend = "auto")
 }
 
-.rc_with_stage_workers <- function(workers, FUN, argument = "workers") {
-  if (!is.function(FUN)) stop("`FUN` must be a function.", call. = FALSE)
+.rc_stage_parallel_plan <- function(workers = NULL, argument = "workers") {
   config <- .rc_stage_worker_config(workers, argument = argument)
-  thread_state <- .rc_set_internal_single_thread()
-  on.exit(.rc_restore_internal_threads(thread_state), add = TRUE)
+  param <- if (identical(config$actual_backend, "serial")) {
+    FALSE
+  } else {
+    .rc_phase_bpparam(config$worker_limit, backend = "auto")
+  }
+  list(
+    workers = config$worker_limit,
+    parallel = !identical(config$actual_backend, "serial"),
+    BPPARAM = param,
+    config = config
+  )
+}
 
-  param <- .rc_phase_bpparam(config$workers, backend = "auto")
+.rc_with_stage_workers <- function(workers = NULL, FUN, argument = "workers") {
+  if (!is.function(FUN)) stop("`FUN` must be a function.", call. = FALSE)
+  plan <- .rc_stage_parallel_plan(workers, argument = argument)
   on.exit({
-    if (!identical(param, FALSE) && !is.null(param)) {
-      .rc_release_bpparam(param)
-    }
-    param <- FALSE
+    .rc_release_bpparam(plan$BPPARAM)
     invisible(gc(verbose = FALSE, full = TRUE))
   }, add = TRUE)
-
-  if (!identical(param, FALSE) && !is.null(param)) {
-    BiocParallel::bpstart(param)
-  }
-
-  FUN(param, config)
+  FUN(plan$BPPARAM, plan$config)
 }
