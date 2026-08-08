@@ -17,6 +17,34 @@
   do.call(event, list(...))
 }
 
+.rc_corda_stage_algorithm_once <- function(stage) {
+  once <- get0(".rc_layer2_algorithm_once", mode = "function", inherits = TRUE)
+  if (!is.function(once)) return(invisible(NULL))
+  spec <- switch(
+    as.character(stage),
+    corda2_step1_HC_dependencies = list(
+      "corda2_step1", 4L,
+      "supporting high-confidence directions with MC/NC dependencies"
+    ),
+    corda2_step2_1_MC_NC_dependencies = list(
+      "corda2_step2_1", 5L,
+      "measuring NC dependencies of remaining MC directions"
+    ),
+    corda2_step2_2_MC_feasibility = list(
+      "corda2_step2_2", 6L,
+      "testing retained MC directions after NC promotion and blocking"
+    ),
+    corda2_step3_HC_OT_dependencies = list(
+      "corda2_step3", 7L,
+      "adding only OT reactions required by retained HC flux"
+    ),
+    NULL
+  )
+  if (is.null(spec)) return(invisible(NULL))
+  once(spec[[1L]], as.character(stage), spec[[2L]], spec[[3L]])
+  invisible(NULL)
+}
+
 .rc_corda_stage_backend <- function(BPPARAM) {
   if (identical(BPPARAM, FALSE) || is.null(BPPARAM) ||
       !requireNamespace("BiocParallel", quietly = TRUE) ||
@@ -197,6 +225,7 @@
     return(list())
   }
 
+  .rc_corda_stage_algorithm_once(stage)
   BPPARAM <- .rc_corda_stage_param(n_targets)
   pool_workers <- get0(
     ".rc_layer2_pool_workers", mode = "function", inherits = TRUE
