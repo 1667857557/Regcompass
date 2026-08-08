@@ -127,12 +127,33 @@
   args
 }
 
+.rc_standard_pando_single_process_args <- function(args) {
+  if (!is.list(args)) return(args)
+  controls <- intersect(names(args), c("n_jobs", "cores", "nthread"))
+  requested <- if (length(controls)) args[controls] else list()
+  for (name in controls) args[[name]] <- 1L
+  if (is.list(args$params) && "nthread" %in% names(args$params)) {
+    requested$params_nthread <- args$params$nthread
+    args$params$nthread <- 1L
+  }
+  attr(args, "regcompass_pando_parallel_contract") <- list(
+    scope = "broad_cell_type_jobs_only",
+    infer_grn_parallel = FALSE,
+    inner_worker_limit = 1L,
+    overridden_controls = requested
+  )
+  args
+}
+
 .rc_run_pando_celltype_job <- function(
     job, base, extra_args, condition_infer_args, standard_infer_args,
     parallel, outer_parallel, progress_monitor) {
   if (!is.list(job) || !inherits(job$object, "Seurat")) {
     stop("Invalid Pando cell-type job.", call. = FALSE)
   }
+  thread_state <- .rc_set_internal_single_thread()
+  on.exit(.rc_restore_internal_threads(thread_state), add = TRUE)
+
   job_extra <- extra_args
   motif_args <- job_extra$pando_motif_args %||% list()
   if (outer_parallel && is.list(motif_args) &&
@@ -164,11 +185,23 @@
       gated_infer_args, "sample_size_aware_tf_cor_gate", exact = TRUE
     )
     attr(gated_infer_args, "sample_size_aware_tf_cor_gate") <- NULL
+    gated_infer_args <- .rc_standard_pando_single_process_args(
+      gated_infer_args
+    )
+    pando_parallel_contract <- attr(
+      gated_infer_args, "regcompass_pando_parallel_contract", exact = TRUE
+    )
+    attr(gated_infer_args, "regcompass_pando_parallel_contract") <- NULL
     args$pando_infer_args <- gated_infer_args
-    args$parallel <- isTRUE(parallel) && !outer_parallel
+    # RegCompass parallelizes Pando only across independent broad cell types.
+    # A single cell-type fit is deliberately one process so no Pando-internal
+    # worker pool can exceed or nest inside the top-level worker contract.
+    args$parallel <- FALSE
     value <- do.call(.rc_fit_standard_pando_by_cell_type, args)
     if (is.list(value$normalization_policy)) {
       value$normalization_policy$sample_size_aware_tf_cor_gate <- gate
+      value$normalization_policy$parallel_contract <-
+        pando_parallel_contract
     }
     if (is.data.frame(value$condition_fit_status) &&
         nrow(value$condition_fit_status)) {
@@ -208,14 +241,15 @@
     if (outer_parallel) {
       "parallelizing independent Pando jobs by broad cell type"
     } else {
-      "running Pando cell-type jobs without outer parallelism"
+      "running one Pando broad-cell-type job in one process"
     },
     current = 5L,
     context = list(
       jobs = nrow(jobs),
       condition_jobs = sum(jobs$route == "condition_grn"),
       standard_jobs = sum(jobs$route == "standard_pando"),
-      outer_parallel = outer_parallel
+      outer_parallel = outer_parallel,
+      inner_parallel = FALSE
     )
   )
 
@@ -279,18 +313,11 @@
     celltype_col = celltype_col,
     outdir = outdir
   )
-  single_standard_inner <- isTRUE(parallel) && !outer_parallel &&
-    nrow(jobs) == 1L && identical(jobs$route[[1L]], "standard_pando")
   answer$pando_execution_plan <- list(
-    scope = if (outer_parallel) {
-      "cell_type"
-    } else if (single_standard_inner) {
-      "target_standard_pando"
-    } else {
-      "serial"
-    },
+    scope = if (outer_parallel) "cell_type" else "serial",
     n_jobs = nrow(jobs),
     outer_parallel = outer_parallel,
+    inner_parallel = FALSE,
     nested_parallel = FALSE,
     routes = jobs
   )
