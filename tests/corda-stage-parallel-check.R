@@ -119,8 +119,10 @@ for (file in c(
   "R/layer2_corda_paper_contract.R",
   "R/layer2_corda_direction_contract.R",
   "R/layer2_corda2_algorithm.R",
+  "R/layer2_corda_serial_core.R",
   "R/layer2_corda_stage_parallel.R",
   "R/layer2_corda2_algorithm_build.R",
+  "R/layer2_corda_dispatch.R",
   "R/layer2_corda2_options_contract.R",
   "R/layer2_corda_runtime.R"
 )) source(file, local = e)
@@ -159,12 +161,10 @@ classes <- list(
 )
 corda_options <- e$.rc_layer2_corda_options(list(model_completion = "corda2"))
 
-previous <- e$.rc_layer2_enter_parallel_context(FALSE, FALSE)
-serial <- e$.rc_corda_build_three_stage_core(
+serial <- e$.rc_corda_build_three_stage_serial_core(
   split = split, classes = classes, options = corda_options,
   solver = "highs", time_limit = 30
 )
-e$.rc_layer2_restore_parallel_context(previous)
 
 param <- BiocParallel::SnowParam(workers = 2L, type = "SOCK", progressbar = FALSE)
 previous <- e$.rc_layer2_enter_parallel_context(TRUE, param)
@@ -187,6 +187,8 @@ stopifnot(
   setequal(parallel_result$stage2_promoted_nc, serial$stage2_promoted_nc),
   setequal(parallel_result$stage2_promoted_mc, serial$stage2_promoted_mc),
   setequal(parallel_result$stage3_associated_ot, serial$stage3_associated_ot),
+  identical(serial$parallel_execution_policy,
+            "serial_original_persistent_engine"),
   identical(
     parallel_result$stage_update_policy,
     "original_matlab_directional_order"
@@ -202,5 +204,16 @@ stopifnot(
   ),
   !isTRUE(BiocParallel::bpisup(param))
 )
+
+previous <- e$.rc_layer2_enter_parallel_context(FALSE, FALSE)
+dispatched_serial <- e$.rc_corda_build_three_stage_dispatch(
+  split = split, classes = classes, options = corda_options,
+  solver = "highs", time_limit = 30
+)
+e$.rc_layer2_restore_parallel_context(previous)
+stopifnot(identical(
+  dispatched_serial$parallel_execution_policy,
+  "serial_original_persistent_engine"
+))
 
 cat("CORDA2 stage-parallel serial-equivalence check passed\n")
