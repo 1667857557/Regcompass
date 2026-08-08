@@ -14,10 +14,10 @@
 #' most `workers` processes. When fewer cell-type jobs exist than the worker
 #' cap, only the required number of workers is started.
 #'
-#' @param workers Total RegCompass worker cap. `NULL` auto-detects available
-#'   workers. Windows uses `SnowParam(type = "SOCK")`; Linux/macOS uses
-#'   `MulticoreParam`. The Stage 1 Pando dispatcher uses at most one worker per
-#'   independent broad-cell-type job and never exceeds this cap.
+#' @param workers Total RegCompass worker cap, default 10. Windows uses
+#'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. The Stage 1
+#'   Pando dispatcher uses at most one worker per independent broad-cell-type
+#'   job and never exceeds this cap. Users may increase or decrease it.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
@@ -29,7 +29,7 @@ rc_regcompass_step_grn <- function(
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
-    workers = NULL,
+    workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start(
     "grn", outdir, progress, total_parts = 12L
