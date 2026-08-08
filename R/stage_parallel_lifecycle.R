@@ -82,13 +82,3 @@
     config = config
   )
 }
-
-.rc_with_stage_workers <- function(workers = NULL, FUN, argument = "workers") {
-  if (!is.function(FUN)) stop("`FUN` must be a function.", call. = FALSE)
-  plan <- .rc_stage_parallel_plan(workers, argument = argument)
-  on.exit({
-    .rc_release_bpparam(plan$BPPARAM)
-    invisible(gc(verbose = FALSE, full = TRUE))
-  }, add = TRUE)
-  FUN(plan$BPPARAM, plan$config)
-}
