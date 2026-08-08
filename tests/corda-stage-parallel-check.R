@@ -4,6 +4,19 @@ suppressPackageStartupMessages({
   library(BiocParallel)
 })
 
+# Give the standalone CI harness an explicit protected allocation so the
+# production CPU-minus-two policy still permits the requested 2-worker test.
+old_slurm <- Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA_character_)
+old_nslots <- Sys.getenv("NSLOTS", unset = NA_character_)
+on.exit({
+  if (is.na(old_slurm)) Sys.unsetenv("SLURM_CPUS_PER_TASK") else
+    Sys.setenv(SLURM_CPUS_PER_TASK = old_slurm)
+  if (is.na(old_nslots)) Sys.unsetenv("NSLOTS") else
+    Sys.setenv(NSLOTS = old_nslots)
+}, add = TRUE)
+Sys.setenv(SLURM_CPUS_PER_TASK = "8")
+Sys.unsetenv("NSLOTS")
+
 `%||%` <- function(x, y) if (is.null(x)) y else x
 .rc_as_dgCMatrix <- function(x) methods::as(x, "dgCMatrix")
 .rc_bind_frames_fill <- function(values) {
@@ -91,49 +104,13 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
   list2env(previous, envir = .rc_layer2_parallel_context)
   invisible(NULL)
 }
-rc_available_workers <- function(default = 1L) 2L
-rc_default_bpparam <- function(workers = NULL, backend = "auto") {
-  workers <- as.integer(workers %||% 2L)
-  BiocParallel::SnowParam(
-    workers = workers, type = "SOCK", progressbar = FALSE,
-    exportglobals = TRUE, exportvariables = TRUE
-  )
-}
 .rc_layer2_tune_task_bpparam <- function(BPPARAM, n_tasks) BPPARAM
-.rc_release_bpparam <- function(param) {
-  if (!identical(param, FALSE) && !is.null(param) &&
-      isTRUE(BiocParallel::bpisup(param))) {
-    try(BiocParallel::bpstop(param), silent = TRUE)
-  }
-  invisible(NULL)
-}
-.rc_with_internal_single_thread <- function(FUN) FUN()
-rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
-  if (identical(BPPARAM, FALSE) || is.null(BPPARAM)) return(lapply(X, FUN, ...))
-  was_started <- isTRUE(BiocParallel::bpisup(BPPARAM))
-  if (!was_started) {
-    BiocParallel::bpstart(BPPARAM)
-    on.exit(.rc_release_bpparam(BPPARAM), add = TRUE)
-  }
-  names_all <- ls(.GlobalEnv, all.names = TRUE)
-  runtime_functions <- mget(names_all, envir = .GlobalEnv, inherits = FALSE)
-  runtime_functions <- runtime_functions[vapply(
-    runtime_functions, is.function, logical(1)
-  )]
-  extra <- list(...)
-  worker <- function(x, target_fun, runtime_functions, extra) {
-    list2env(runtime_functions, envir = .GlobalEnv)
-    do.call(target_fun, c(list(x), extra))
-  }
-  BiocParallel::bplapply(
-    X, worker,
-    target_fun = FUN,
-    runtime_functions = runtime_functions,
-    extra = extra,
-    BPPARAM = BPPARAM
-  )
-}
 
+# Use the actual RegCompass parallel implementation instead of a test-only Snow
+# wrapper. This exercises the same pool sizing, worker environment and cleanup
+# code used by installed-package execution.
+source("R/parallel.R")
+source("R/stage_parallel_lifecycle.R")
 source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
 source("R/layer2_corda_paper_contract.R")
@@ -165,6 +142,8 @@ split <- .rc_corda2_split_original(list(
   lb = stats::setNames(rep(0, length(reactions)), reactions),
   ub = stats::setNames(rep(1000, length(reactions)), reactions)
 ))
+stopifnot(is.list(split), !is.null(split$S), ncol(split$S) > 0L)
+
 initial <- stats::setNames(rep("OT", length(reactions)), reactions)
 initial[c("H1", "H2")] <- "HC"
 initial[c("M1", "M2", "M3", "M4")] <- "MC_module"
@@ -189,10 +168,8 @@ serial <- tryCatch(
   finally = .rc_layer2_restore_parallel_context(previous)
 )
 
-param <- BiocParallel::SnowParam(
-  workers = 2L, type = "SOCK", progressbar = FALSE,
-  exportglobals = TRUE, exportvariables = TRUE
-)
+param <- rc_default_bpparam(workers = 2L, backend = "snow")
+stopifnot(methods::is(param, "SnowParam"), BiocParallel::bpnworkers(param) == 2L)
 previous <- .rc_layer2_enter_parallel_context(TRUE, param)
 parallel <- tryCatch(
   .rc_corda_build_three_stage_core(
