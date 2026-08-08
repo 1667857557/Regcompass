@@ -83,17 +83,17 @@
 #'
 #' When `fragment_files` is supplied, Stage 2 first builds the final SuperCell
 #' membership, then aggregates the original single-cell fragments to those
-#' metacell barcodes with `SuperCell::AggregateFragmentFile()`. The aggregated
-#' fragments are used for optional MACS2 peak calling and Signac FeatureMatrix
-#' recount before metacell TF-IDF normalization. Multiple fragment files may be
-#' supplied as a named character vector whose names are the exact prefixes used
-#' before `_` in Seurat cell IDs, or as an explicit data frame with columns
-#' `fragment_file`, `object_cell`, and `fragment_barcode`.
+#' metacell barcodes with `SuperCell::AggregateFragmentFile()`. Fragment
+#' aggregation uses the same top-level `workers` cap as the rest of RegCompass;
+#' `metacell_args$fragment_args$workers` is not a separate public control.
 #'
 #' @param fragment_files `NULL`/`FALSE` to aggregate the existing ATAC count
 #' matrix, a fragment path (or named path vector for multiple samples), or an
 #' explicit fragment mapping data frame. Fragment input affects ATAC recounting
 #' only; sample identity is not used as a metacell grouping variable.
+#' @param workers Total RegCompass worker cap, default 10. The effective cap is
+#' `min(workers, max(1, detected logical CPUs - 2))`. Stage 2 uses this value for
+#' fragment aggregation and reserves two logical CPUs globally.
 #' @param grn Optional output of `rc_regcompass_step_grn()`. Supplying it enables
 #' exact Stage 1 cell-ID and parameter validation.
 #' @export
@@ -106,6 +106,7 @@ rc_regcompass_step_metacells <- function(
     atac_assay = "ATAC",
     fragment_files = NULL,
     metacell_args = list(),
+    workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE),
     grn = NULL) {
   monitor <- .rc_step_monitor_start("metacells", outdir, progress)
@@ -116,11 +117,20 @@ rc_regcompass_step_metacells <- function(
   if (!is.list(metacell_args)) {
     stop("`metacell_args` must be a list.", call. = FALSE)
   }
+  worker_config <- .rc_stage_worker_config(workers, argument = "workers")
+  worker_limit <- worker_config$worker_limit
 
   fragment_enabled <- .rc_fragment_input_enabled(fragment_files)
-  fragment_args <- .rc_resolve_fragment_aggregation_args(
-    metacell_args$fragment_args %||% list()
-  )
+  supplied_fragment_args <- metacell_args$fragment_args %||% list()
+  if ("workers" %in% names(supplied_fragment_args)) {
+    stop(
+      "`metacell_args$fragment_args$workers` has been removed. Use the ",
+      "top-level `workers` argument; it is the single RegCompass parallel cap.",
+      call. = FALSE
+    )
+  }
+  fragment_args <- .rc_resolve_fragment_aggregation_args(supplied_fragment_args)
+  fragment_args$workers <- worker_limit
   metacell_core_args <- metacell_args
   metacell_core_args$fragment_args <- NULL
 
@@ -295,6 +305,9 @@ rc_regcompass_step_metacells <- function(
       cell_type = cell_type,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
+      workers = worker_limit,
+      parallel_backend = worker_config$actual_backend,
+      reserved_cpus = worker_config$reserved_cpus,
       fragment_files_supplied = fragment_enabled,
       fragment_input_type = if (!fragment_enabled) {
         "none"
