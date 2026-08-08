@@ -22,17 +22,18 @@
 #'
 #' One `workers` argument controls the maximum process count for all parallel
 #' stages. The default is 10. RegCompass automatically selects SOCK/Snow workers
-#' on Windows and Multicore workers on Linux/macOS. Each stage and sub-step uses
-#' only `min(independent tasks, workers)` processes, so small Pando cell-type
-#' batches do not start unnecessary workers while CORDA2 and large directional
-#' LP batches can use the full cap.
+#' on Windows and Multicore workers on Linux/macOS. Two detected logical CPUs are
+#' reserved globally, and each stage/sub-step uses only the number of independent
+#' tasks it can actually execute concurrently.
 #'
 #' @param fragment_files Optional Stage 2 fragment input. Use `NULL`/`FALSE` to
 #' aggregate the existing ATAC matrix, a fragment path (or named path vector for
 #' multiple samples), or a data frame with `fragment_file`, `object_cell`, and
 #' `fragment_barcode`. Fragment routing does not make sample a metacell stratum.
 #' @param workers Total RegCompass worker cap, default 10. Users may increase or
-#'   decrease it. The selected backend is automatic and platform-aware.
+#' decrease it. The effective limit is
+#' `min(workers, max(1, detected logical CPUs - 2))`; the backend is selected
+#' automatically for the operating system.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -109,7 +110,9 @@ rc_run_regcompass <- function(
     cell_type = NULL, rna_assay = rna_assay,
     atac_assay = atac_assay,
     fragment_files = fragment_files,
-    metacell_args = metacell_args, progress = progress,
+    metacell_args = metacell_args,
+    workers = worker_limit,
+    progress = progress,
     grn = step1
   )
   step3 <- rc_regcompass_step_meta_modules(
@@ -164,8 +167,11 @@ rc_run_regcompass <- function(
   result$params$fragment_files_supplied <- isTRUE(design$fragment_files_supplied)
   result$params$temporary_combined_stratum <- FALSE
   result$params$workers <- worker_limit
+  result$params$requested_workers <- worker_config$requested_workers
+  result$params$detected_cpu_capacity <- worker_config$detected_cpu_capacity
+  result$params$reserved_cpus <- worker_config$reserved_cpus
   result$params$parallel_backend <- worker_config$actual_backend
   result$params$parallel_worker_policy <-
-    "dynamic_min_independent_tasks_worker_cap"
+    "min(independent_tasks,requested_workers,max(1,detected_cpus-2))"
   result
 }
