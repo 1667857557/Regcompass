@@ -146,8 +146,12 @@
       significant_only = TRUE,
       return_edge_contributions = FALSE
     )
-    aggregated <- Pando::aggregate_condition_grn_projection_strict(
-      cell_projection, membership, group_col = "metacell_id"
+    projection_membership <-
+      Pando::validate_condition_grn_projection_membership(
+        cell_projection, membership, group_col = "metacell_id"
+      )
+    aggregated <- Pando::aggregate_condition_grn_projection(
+      cell_projection, projection_membership, group_col = "metacell_id"
     )
     score <- as.matrix(aggregated$gene_score)
     rownames(score) <- tolower(rownames(score))
