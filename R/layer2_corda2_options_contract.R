@@ -98,6 +98,11 @@
     model_completion = "corda2",
     requested_model_completion = requested
   ), original, list(
+    # Original CORDA2 reconstruction is intentionally not time-bounded. The
+    # user-facing preparation path separately rejects completion_time_limit for
+    # CORDA2; keeping Inf in this canonical option object ensures direct model
+    # construction, diagnostics, tests and runtime provenance all agree.
+    time_limit = Inf,
     flux_threshold = 1e-7,
     baseline_cost = 1e-3,
     output_bound = 1000,
