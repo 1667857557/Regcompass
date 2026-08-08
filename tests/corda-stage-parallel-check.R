@@ -31,7 +31,7 @@ e$.rc_lp_status <- function(message = "", code = NA_integer_) {
   "error"
 }
 e$rc_validate_gem <- function(gem) {
-  S <- e$.rc_as_dgCMatrix(gem$S)
+  S <- .rc_as_dgCMatrix(gem$S)
   reactions <- colnames(S)
   lb <- as.numeric(gem$lb[reactions])
   ub <- as.numeric(gem$ub[reactions])
@@ -52,7 +52,7 @@ e$rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
     )
   )
   list(
-    status = e$.rc_lp_status(answer$status_message, answer$status),
+    status = .rc_lp_status(answer$status_message, answer$status),
     solution = as.numeric(answer$primal_solution),
     objective = as.numeric(answer$objective_value),
     solver_message = answer$status_message
@@ -95,18 +95,23 @@ e$.rc_layer2_parallel_context$parallel <- FALSE
 e$.rc_layer2_parallel_context$BPPARAM <- FALSE
 e$.rc_layer2_parallel_context$nested_serial <- FALSE
 e$.rc_layer2_enter_parallel_context <- function(parallel, BPPARAM) {
-  previous <- as.list(e$.rc_layer2_parallel_context)
-  e$.rc_layer2_parallel_context$active <- TRUE
-  e$.rc_layer2_parallel_context$parallel <- isTRUE(parallel)
-  e$.rc_layer2_parallel_context$BPPARAM <- BPPARAM
-  e$.rc_layer2_parallel_context$nested_serial <- FALSE
+  previous <- as.list(.rc_layer2_parallel_context)
+  .rc_layer2_parallel_context$active <- TRUE
+  .rc_layer2_parallel_context$parallel <- isTRUE(parallel)
+  .rc_layer2_parallel_context$BPPARAM <- BPPARAM
+  .rc_layer2_parallel_context$nested_serial <- FALSE
   previous
 }
 e$.rc_layer2_restore_parallel_context <- function(previous) {
-  rm(list = ls(e$.rc_layer2_parallel_context, all.names = TRUE),
-     envir = e$.rc_layer2_parallel_context)
-  list2env(previous, envir = e$.rc_layer2_parallel_context)
+  rm(list = ls(.rc_layer2_parallel_context, all.names = TRUE),
+     envir = .rc_layer2_parallel_context)
+  list2env(previous, envir = .rc_layer2_parallel_context)
   invisible(NULL)
+}
+
+e$e <- e
+for (name in ls(e, all.names = TRUE)) {
+  if (is.function(e[[name]])) environment(e[[name]]) <- e
 }
 
 for (file in c(
