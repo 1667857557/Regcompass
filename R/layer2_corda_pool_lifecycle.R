@@ -1,4 +1,4 @@
-# Keep one worker pool alive across independent CORDA2 model instances.
+# CORDA2 worker-template preparation and hierarchical Layer 2 progress.
 
 .rc_layer2_requested_corda2 <- function(layer2_args) {
   model_params <- if (is.list(layer2_args)) {
@@ -26,36 +26,23 @@
     state$origin <- if (is.null(state$BPPARAM)) {
       "serial_fallback"
     } else {
-      "package_default"
+      "package_default_stage_template"
     }
   } else {
-    state$origin <- "caller_supplied"
+    state$origin <- "caller_supplied_stage_template"
   }
   if (is.null(state$BPPARAM)) return(state)
   if (!requireNamespace("BiocParallel", quietly = TRUE) ||
       !methods::is(state$BPPARAM, "BiocParallelParam")) {
     stop(
-      "CORDA2 outer-model parallel execution requires a ",
+      "CORDA2 stage-parallel execution requires a ",
       "BiocParallelParam object.",
       call. = FALSE
     )
   }
-  if (!isTRUE(BiocParallel::bpisup(state$BPPARAM))) {
-    state$thread_state <- .rc_set_internal_single_thread()
-    start_error <- tryCatch({
-      BiocParallel::bpstart(state$BPPARAM)
-      NULL
-    }, error = function(e) e)
-    if (inherits(start_error, "error")) {
-      .rc_restore_internal_threads(state$thread_state)
-      stop(
-        "Unable to start the CORDA2 BiocParallel worker pool: ",
-        conditionMessage(start_error),
-        call. = FALSE
-      )
-    }
-    state$started_here <- TRUE
-  }
+  # Do not start a long-lived CORDA2 pool here. The supplied/default BPPARAM is
+  # a backend/worker-count template. Each mathematical CORDA2 step creates and
+  # releases its own short-lived pool at the stage barrier.
   state
 }
 
@@ -99,7 +86,6 @@
 .rc_layer2_progress_state$current_task <- NULL
 .rc_layer2_progress_state$inside_dependency <- FALSE
 .rc_layer2_progress_state$algorithm_flags <- new.env(parent = emptyenv())
-
 
 .rc_layer2_progress_sanitize <- function(x, empty = "NA") {
   value <- if (is.null(x) || !length(x)) empty else {
