@@ -1,6 +1,6 @@
 # Portable execution, bundled GEMs, progress, timing, and worker cleanup
 
-RegCompassR 2.1.0 removes three setup assumptions from the canonical workflow:
+RegCompass removes three setup assumptions from the canonical workflow:
 
 1. users do not need to prepare the default Human-GEM or Mouse-GEM;
 2. users do not choose a platform-specific parallel backend;
@@ -35,78 +35,72 @@ human_gem <- rc_prepare_gem(
 )
 ```
 
-Rebuild a pinned model from the official upstream repository:
+## One worker cap for the complete workflow
+
+The complete workflow exposes one parallel parameter only:
 
 ```r
-human_gem <- rc_prepare_gem(
-  species = "human",
-  version = "2.0.0",
-  source = "download",
-  force_download = TRUE
-)
+workers <- 10L
 ```
 
-`rc_download_species_gem()` remains available for lower-level update and
-inspection workflows. `scripts/build-bundled-gems.R` reproduces the package
-assets. Model provenance and CC BY 4.0 attribution are recorded in
-`inst/extdata/gem/manifest.tsv`.
-
-## Canonical two-layer worker model
-
-The complete workflow exposes two worker counts only:
+The default is `10L`. Users may raise or lower it, for example:
 
 ```r
-upstream_workers <- 6L
-layer2_workers <- 30L
+workers <- 60L
 ```
 
-`upstream_workers` applies to:
+`workers` is an upper bound, not a fixed number of processes that must always be
+started. Every dispatch uses:
 
-- Pando fixed-dictionary or standard GRN fitting by cell type;
-- Layer 1 reaction-support calculation.
+```text
+min(number of independent tasks, requested worker cap, system capacity)
+```
 
-Stage 3 meta-module construction does not run FASTCORE and does not own a worker
-pool for feasibility completion.
+Examples:
 
-`layer2_workers` applies to independent tasks such as:
+- 6 independent Pando cell-type jobs with `workers = 60L` use 6 workers;
+- 30 independent Pando cell-type jobs with `workers = 60L` use 30 workers;
+- a CORDA2 step with 2,000 directional targets and `workers = 60L` can use 60 workers;
+- a directional LP batch with 8 tasks and `workers = 60L` uses 8 workers.
 
-- union-GEM construction for each `cell_type × medium_scenario` pair;
-- FASTCORE completion performed independently inside each cell-type union GEM;
-- directional `vmax` calculation for each cell-type model and target direction;
-- directional LP scoring for metacells matching that cell type.
+This replaces separate upstream and Layer-2 worker budgets. The same worker cap
+is passed to Stage 1, Stage 4 and Stage 5, while each stage chooses the actual
+number of processes required by its current independent-task count.
 
-Conditions do not create separate structural models. Conditions of the same
-cell type share its cell-type/medium model; different cell types are separate
-Layer 2 structural tasks.
-
-Set both values to one for fully serial execution:
+Set `workers = 1L` for fully serial execution:
 
 ```r
 result <- rc_run_regcompass_one_shot(
   ...,
-  upstream_workers = 1L,
-  layer2_workers = 1L
+  workers = 1L
 )
 ```
 
-## Automatic backend resolution
+## Automatic backend and capacity resolution
 
-The canonical workflow always requests `backend = "auto"` internally.
+RegCompass always requests `backend = "auto"` internally.
 
 | Operating system | Resolved backend |
 |---|---|
 | Windows | `BiocParallel::SnowParam(type = "SOCK")` |
 | Linux/macOS | `BiocParallel::MulticoreParam` |
-| one worker or unavailable BiocParallel | sequential |
+| one effective worker or unavailable BiocParallel | sequential |
 
-The public complete-workflow interface therefore does not require
-`parallel_backend`. Low-level `rc_parallel_config()` remains available for
-diagnostics and package development.
+The requested worker cap is additionally limited by scheduler/cgroup/local CPU
+capacity. For example, `workers = 60L` on a job allocation exposing only 32 CPUs
+uses at most 32 workers.
+
+Users therefore do not need to create `SnowParam` or `MulticoreParam` objects.
+`rc_parallel_config()` remains available for diagnostics:
+
+```r
+rc_parallel_config(workers = 60L)
+```
 
 ## One outer worker equals one single-thread task
 
-RegCompass uses task-level parallelism only. Every analysis running inside an
-outer worker is constrained to one internal thread.
+RegCompass uses task-level parallelism. Every analysis running inside an outer
+worker is constrained to one internal numerical/solver thread.
 
 The workflow temporarily sets:
 
@@ -118,61 +112,61 @@ VECLIB_MAXIMUM_THREADS=1
 BLIS_NUM_THREADS=1
 NUMEXPR_NUM_THREADS=1
 RCPP_PARALLEL_NUM_THREADS=1
+HIGHS_THREADS=1
 ```
 
-It also sets `mc.cores = 1L` and keeps Pando's internal `parallel = FALSE`.
-Package-managed child processes inherit the single-thread environment. This
-prevents an outer pool of LP tasks from expanding into nested multi-threaded
-solver or BLAS workloads.
+It also sets `mc.cores = 1L`. This prevents a pool of Pando, CORDA2 or LP tasks
+from expanding into nested BLAS or solver thread pools.
 
-HiGHS uses a one-thread control default. GLPK is used as a serial solver backend.
-Alternative low-level solver interfaces remain available, but the canonical
-tutorials use HiGHS.
-
-## Stage-scoped worker lifecycle
+## Stage- and CORDA2-step-scoped worker lifecycle
 
 Parallel workers are not retained across unrelated stages.
 
-For each parallel stage RegCompass performs:
+For Stage 1 and Stage 4 RegCompass performs:
 
 ```text
-resolve operating-system backend
-→ set internal thread count to one
-→ create worker pool
-→ start worker pool
-→ execute independent tasks
-→ stop worker pool in guaranteed cleanup
-→ remove pool reference
-→ run gc(full = TRUE)
+resolve operating-system backend and worker cap
+→ count independent tasks
+→ create min(tasks, worker cap) workers
+→ execute tasks
+→ stop worker pool
+→ release references
+→ full garbage collection
 ```
 
-Cleanup is registered before pool startup. Stage 1, Stage 4, and Stage 5 each
-receive a fresh pool when parallel work is requested. Stage 3 is a
-catalogue-construction stage and does not create a feasibility-completion pool.
-No upstream worker pool remains active while Layer 2 is running.
+Layer 2 follows the same principle. CORDA2 has an additional strict mathematical
+barrier between Step 1, Step 2.1, Step 2.2 and Step 3. Each CORDA2 step creates
+its own worker pool, completes and reduces all target results in deterministic
+order, releases the pool and worker-local HiGHS engines, performs full garbage
+collection, and only then starts the next step.
 
-## Cell-type FASTCORE configuration
+No Stage 1/4 worker pool remains active while Layer 2 is running, and no CORDA2
+step pool remains active after that step ends.
 
-Configure completion of each `cell_type × medium` union GEM through:
+## Dynamic scheduling examples
+
+For a stepwise analysis, define one value and reuse it:
 
 ```r
-layer2_args = list(
-  model_params = list(
-    completion_time_limit = 600,
-    fastcore_epsilon = 1e-4,
-    max_support_reactions = 2000,
-    strict = TRUE
-  )
+workers <- 60L
+
+step1 <- rc_regcompass_step_grn(
+  ...,
+  workers = workers
+)
+
+step4 <- rc_regcompass_step_layer1(
+  ...,
+  workers = workers
+)
+
+step5 <- rc_regcompass_step_layer2(
+  ...,
+  workers = workers
 )
 ```
 
-`completion_time_limit` applies independently to each cell-type/medium model
-construction. Every resulting model file records its cell type, medium,
-checksum, biological reaction count and cell-type FASTCORE support count.
-Conditions and metacells reuse only the model belonging to their cell type.
-
-Increasing the number of cell types or media increases the number of independent
-structural construction tasks. It does not create one larger cross-cell-type GEM.
+If `workers` is omitted from any of these functions, the default cap is 10.
 
 ## Linux numerical-library setup
 
@@ -206,8 +200,8 @@ or per call:
 result <- rc_run_regcompass_one_shot(..., progress = FALSE)
 ```
 
-The complete workflow reports progress across six stages. Each independently
-run stage reports its own start and completion status.
+Layer 2 additionally reports CORDA2 step-level directional-target progress with
+completed/total and remaining target counts.
 
 ## Timing and execution provenance
 
@@ -217,25 +211,14 @@ Every stage writes:
 <stage-output>/step_timing.tsv
 ```
 
-A complete run writes:
-
-```text
-<outdir>/00_execution_timing.tsv
-```
-
-and stores:
+The returned one-shot result records the resolved execution contract, including:
 
 ```r
-result$timing$stages
-result$timing$total
-result$params$parallel_backend_resolved
-result$params$upstream_workers
-result$params$layer2_workers
-result$params$internal_threads_per_task
-result$params$parallel_worker_lifecycle
-result$params$parallel_stage_groups
+result$params$workers
+result$params$parallel_backend
+result$params$parallel_worker_policy
 ```
 
-Timing columns include stage, status, timestamps, elapsed seconds, formatted
-elapsed time, OS type, and R version. Failed stages write an error-status timing
-row before propagating the original error.
+Stage 1, Stage 4 and Stage 5 also record their worker cap/backend or parallel
+contract in the corresponding stage object. Layer 2 records CORDA2 stage worker
+counts and worker lifecycle in its completion and reconstruction diagnostics.
