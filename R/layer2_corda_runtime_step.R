@@ -209,6 +209,24 @@
     om = corda_options$om,
     ci = corda_options$ci
   )
+  stage_parallel <- isTRUE(attr(
+    answer$shared_model_cache, "corda2_inner_target_parallelism"
+  ))
+  execution_policy <- if (stage_parallel) {
+    "stage_barrier_parallel_targets_deterministic_ordered_reduce"
+  } else {
+    "serial_original_persistent_engine"
+  }
+  target_parallelism <- if (stage_parallel) {
+    "within_each_corda2_stage"
+  } else {
+    FALSE
+  }
+  worker_lifecycle <- if (stage_parallel) {
+    "fresh_pool_each_stage_stop_full_gc_before_next_stage"
+  } else {
+    "single_persistent_engine_for_complete_reconstruction"
+  }
   answer$completion_contract <- list(
     model_completion = "corda2",
     default_unchanged = TRUE,
@@ -231,12 +249,10 @@
       completion_time_limit = Inf
     ),
     stage_update_policy = "original_matlab_directional_order",
-    parallel_execution_policy =
-      "stage_barrier_parallel_targets_deterministic_ordered_reduce",
-    target_parallelism = "within_each_corda2_stage",
-    stage_barrier = TRUE,
-    stage_worker_lifecycle =
-      "fresh_pool_each_stage_stop_full_gc_before_next_stage",
+    parallel_execution_policy = execution_policy,
+    target_parallelism = target_parallelism,
+    stage_barrier = stage_parallel,
+    stage_worker_lifecycle = worker_lifecycle,
     medium_handling = "exchange_bounds_only_then_corda2",
     medium_direct_reaction_deletion = FALSE,
     parent_prepruning = "none",
@@ -257,13 +273,20 @@
   answer$params$corda2_om <- corda_options$om
   answer$params$corda2_ci <- corda_options$ci
   answer$params$corda2_completion_time_limit <- Inf
-  answer$params$corda2_inner_target_parallelism <- TRUE
-  answer$params$corda2_stage_barrier_parallelism <- TRUE
-  answer$union_gem_policy <- paste(
-    "one original-CORDA2 reconstruction per cell type and medium;",
-    "Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers;",
-    "directional targets inside each step use the full Layer-2 worker budget"
-  )
+  answer$params$corda2_inner_target_parallelism <- stage_parallel
+  answer$params$corda2_stage_barrier_parallelism <- stage_parallel
+  answer$union_gem_policy <- if (stage_parallel) {
+    paste(
+      "one original-CORDA2 reconstruction per cell type and medium;",
+      "Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers;",
+      "directional targets inside each step use the full Layer-2 worker budget"
+    )
+  } else {
+    paste(
+      "one original-CORDA2 reconstruction per cell type and medium;",
+      "the preserved original persistent-engine serial target order is used"
+    )
+  }
   answer$method <- paste(
     "microCOMPASS directional LP on cell-type-specific medium models",
     "reconstructed with original MATLAB CORDA2 semantics"
