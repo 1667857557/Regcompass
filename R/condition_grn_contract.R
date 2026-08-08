@@ -1,5 +1,7 @@
 # Integration of the Pando common-dictionary condition-GRN contract.
 
+# This string is the external Pando data-schema identifier used for cross-package
+# validation. RegCompass keeps one implementation for each operation.
 .RC_PANDO_CONDITION_GRN_FIT_SCHEMA <-
   "pando_condition_grn_common_dictionary_v1"
 
@@ -16,7 +18,7 @@
   )
 }
 
-.rc_require_pando_condition_grn_fit_schema <- function(fit) {
+.rc_require_pando_condition_grn_fit <- function(fit) {
   if (!inherits(fit, "ConditionGRNFit") ||
       !identical(fit$schema_version, .RC_PANDO_CONDITION_GRN_FIT_SCHEMA)) {
     stop(
@@ -31,7 +33,9 @@
     "padj_threshold", "adjust_method", "scale", "interaction",
     "projection_effect_column", "projection_policy", "rna_layer",
     "peak_layer", "peak_value_type", "preprocessing_fingerprint",
-    "dictionary_preprocessing_provenance_verified"
+    "dictionary_preprocessing_provenance_verified",
+    "condition_col", "cell_type_col", "fit_engine",
+    "coefficient_scale", "target_genes"
   )
   if (!all(required %in% names(fit)) ||
       !identical(fit$scale, FALSE) ||
@@ -47,6 +51,53 @@
         as.character(fit$preprocessing_fingerprint)
       )))) {
     stop("Pando common-dictionary condition fit contract is incomplete.",
+         call. = FALSE)
+  }
+
+  scalar_text <- function(value) {
+    is.character(value) && length(value) == 1L &&
+      !is.na(value) && nzchar(trimws(value))
+  }
+  if (!scalar_text(fit$cell_type) ||
+      !scalar_text(fit$condition_col) ||
+      !scalar_text(fit$cell_type_col) ||
+      identical(fit$condition_col, fit$cell_type_col) ||
+      !scalar_text(fit$fit_engine) ||
+      !scalar_text(fit$coefficient_scale)) {
+    stop("Pando condition fit identifiers and model labels are invalid.",
+         call. = FALSE)
+  }
+
+  levels <- as.character(fit$condition_levels)
+  if (length(levels) < 2L || anyNA(levels) || any(!nzchar(levels)) ||
+      anyDuplicated(levels)) {
+    stop("Pando condition levels must contain at least two unique labels.",
+         call. = FALSE)
+  }
+  cells_by_condition <- fit$condition_cell_ids
+  cell_list_names <- names(cells_by_condition)
+  if (!is.list(cells_by_condition) || is.null(cell_list_names) ||
+      anyNA(cell_list_names) || any(!nzchar(cell_list_names)) ||
+      anyDuplicated(cell_list_names) || !all(levels %in% cell_list_names)) {
+    stop("Pando condition cell IDs are not uniquely named for every condition.",
+         call. = FALSE)
+  }
+  cells_by_condition <- cells_by_condition[levels]
+  if (any(lengths(cells_by_condition) < 1L)) {
+    stop("Every Pando fitted condition must contain at least one cell.",
+         call. = FALSE)
+  }
+  fitted_cells <- as.character(unlist(cells_by_condition, use.names = FALSE))
+  if (!length(fitted_cells) || anyNA(fitted_cells) ||
+      any(!nzchar(fitted_cells)) || anyDuplicated(fitted_cells)) {
+    stop("Pando fitted cells must be complete and condition-disjoint.",
+         call. = FALSE)
+  }
+
+  targets <- unique(as.character(fit$target_genes))
+  if (!length(targets) || anyNA(targets) || any(!nzchar(targets)) ||
+      anyDuplicated(toupper(targets))) {
+    stop("Pando fitted target genes are empty or case-ambiguous.",
          call. = FALSE)
   }
 
@@ -66,13 +117,13 @@
       !all(required_coefficient %in% colnames(coefficient)) ||
       anyNA(edge$edge_id) || any(!nzchar(as.character(edge$edge_id))) ||
       anyDuplicated(edge$edge_id) ||
-      any(!coefficient$condition %in% fit$condition_levels)) {
+      any(!coefficient$condition %in% levels)) {
     stop("Pando common-dictionary coefficient table is incomplete.",
          call. = FALSE)
   }
 
   dictionary_ids <- sort(as.character(edge$edge_id))
-  for (condition in fit$condition_levels) {
+  for (condition in levels) {
     one <- coefficient[
       as.character(coefficient$condition) == condition, , drop = FALSE
     ]
@@ -130,10 +181,25 @@
     }
   }
 
+  fit_table <- as.data.frame(fit$fit, stringsAsFactors = FALSE)
+  required_fit <- c("target", "condition", "rsq", "fit_status")
+  if (!all(required_fit %in% colnames(fit_table)) || !nrow(fit_table)) {
+    stop("Pando target-level fit diagnostics are incomplete.",
+         call. = FALSE)
+  }
+  fit_key <- paste(
+    toupper(as.character(fit_table$target)),
+    as.character(fit_table$condition), sep = "\001"
+  )
+  if (anyNA(fit_key) || anyDuplicated(fit_key) ||
+      any(!as.character(fit_table$condition) %in% levels)) {
+    stop("Pando target-level fit diagnostics are duplicated or mislabelled.",
+         call. = FALSE)
+  }
   invisible(TRUE)
 }
 
-.rc_extract_condition_grn_contract_core <- function(
+.rc_extract_condition_grn_contract <- function(
     grn_object, condition_col, celltype_col) {
   fits <- Pando::condition_grn_fit(grn_object)
   if (inherits(fits, "ConditionGRNFit")) fits <- list(fits)
@@ -142,6 +208,43 @@
          call. = FALSE)
   }
   invisible(lapply(fits, .rc_require_pando_condition_grn_fit))
+
+  data_object <- methods::slot(grn_object, "data")
+  metadata <- methods::slot(data_object, "meta.data")
+  if (!is.data.frame(metadata) ||
+      !all(c(condition_col, celltype_col) %in% colnames(metadata)) ||
+      is.null(rownames(metadata)) || anyDuplicated(rownames(metadata))) {
+    stop("Pando object metadata cannot validate condition fit cell mappings.",
+         call. = FALSE)
+  }
+  for (fit in fits) {
+    if (!identical(as.character(fit$condition_col), condition_col) ||
+        !identical(as.character(fit$cell_type_col), celltype_col)) {
+      stop("Pando fit metadata columns do not match the RegCompass request.",
+           call. = FALSE)
+    }
+    for (condition in fit$condition_levels) {
+      cells <- as.character(fit$condition_cell_ids[[condition]])
+      missing <- setdiff(cells, rownames(metadata))
+      if (length(missing)) {
+        stop(
+          "Pando fit references cells absent from its stored object; first ",
+          "missing ID: ", missing[[1L]], ".", call. = FALSE
+        )
+      }
+      observed_condition <- as.character(metadata[cells, condition_col])
+      observed_celltype <- as.character(metadata[cells, celltype_col])
+      if (anyNA(observed_condition) || anyNA(observed_celltype) ||
+          any(observed_condition != condition) ||
+          any(observed_celltype != as.character(fit$cell_type))) {
+        stop(
+          "Pando fit cell assignments disagree with stored object metadata ",
+          "for cell type '", as.character(fit$cell_type),
+          "' and condition '", condition, "'.", call. = FALSE
+        )
+      }
+    }
+  }
 
   rows <- list()
   universal <- list()
@@ -343,10 +446,7 @@
 
   prepare_tasks <- lapply(names(plans), function(type) {
     cells <- plans[[type]]$global_cells
-    list(
-      cell_type = type,
-      object = subset(object, cells = cells)
-    )
+    list(cell_type = type, object = subset(object, cells = cells))
   })
   .rc_step_monitor_event(
     progress_monitor, "condition_celltype_prepare",
@@ -359,9 +459,7 @@
     .rc_condition_prepare_celltype_task,
     BPPARAM = if (condition_parallel && length(prepare_tasks) > 1L) {
       BPPARAM
-    } else {
-      FALSE
-    },
+    } else FALSE,
     atac_assay = atac_assay,
     rna_assay = rna_assay,
     pando_initiate_args = pando_initiate_args,
@@ -389,21 +487,14 @@
   for (type in names(plans)) {
     grn <- prepared[[type]]$grn
     discovery_tasks[[length(discovery_tasks) + 1L]] <- list(
-      cell_type = type,
-      condition = NA_character_,
-      source_label = "global",
-      source_type = "global",
-      cells = plans[[type]]$global_cells,
-      grn = grn
+      cell_type = type, condition = NA_character_, source_label = "global",
+      source_type = "global", cells = plans[[type]]$global_cells, grn = grn
     )
     for (condition in plans[[type]]$conditions) {
       discovery_tasks[[length(discovery_tasks) + 1L]] <- list(
-        cell_type = type,
-        condition = condition,
-        source_label = condition,
+        cell_type = type, condition = condition, source_label = condition,
         source_type = "condition",
-        cells = plans[[type]]$cells_by_condition[[condition]],
-        grn = grn
+        cells = plans[[type]]$cells_by_condition[[condition]], grn = grn
       )
     }
   }
@@ -418,9 +509,7 @@
     .rc_condition_discovery_task,
     BPPARAM = if (condition_parallel && length(discovery_tasks) > 1L) {
       BPPARAM
-    } else {
-      FALSE
-    },
+    } else FALSE,
     target_genes = target_genes,
     pando_infer_args = pando_infer_args
   )
@@ -492,9 +581,7 @@
     .rc_condition_fit_task,
     BPPARAM = if (condition_parallel && length(fit_tasks) > 1L) {
       BPPARAM
-    } else {
-      FALSE
-    },
+    } else FALSE,
     pando_infer_args = pando_infer_args
   )
   .rc_step_monitor_event(
@@ -587,7 +674,7 @@
       ))
     )
     class(fit_contract) <- c("ConditionGRNFit", "list")
-    invisible(.rc_require_pando_condition_grn_fit_schema(fit_contract))
+    invisible(.rc_require_pando_condition_grn_fit(fit_contract))
 
     network_index <- do.call(rbind, lapply(one, function(value) {
       data.frame(
