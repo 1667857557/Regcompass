@@ -87,7 +87,6 @@
 .rc_layer2_progress_state$inside_dependency <- FALSE
 .rc_layer2_progress_state$algorithm_flags <- new.env(parent = emptyenv())
 
-
 .rc_layer2_progress_sanitize <- function(x, empty = "NA") {
   value <- if (is.null(x) || !length(x)) empty else {
     paste(as.character(x), collapse = ",")
@@ -371,3 +370,102 @@
   assign(flag, TRUE, envir = flags)
   .rc_layer2_current_task_event(phase, step, detail)
 }
+
+.rc_layer2_cache_progress_dir <- function(model_cache) {
+  if (is.list(model_cache) && length(model_cache)) {
+    entry <- model_cache[[1L]]
+    file <- as.character(entry$file %||% "")
+    if (nzchar(file)) {
+      directory <- dirname(file)
+      if (identical(basename(directory), "corda2")) {
+        directory <- dirname(directory)
+      }
+      return(.rc_layer2_progress_dir_from_cache(directory))
+    }
+  }
+  .rc_layer2_progress_dir_from_cache()
+}
+
+.rc_layer2_model_contexts <- function(model_cache, mode = NULL) {
+  if (!is.list(model_cache) || !length(model_cache)) return(list())
+  files <- vapply(model_cache, function(entry) {
+    as.character(entry$file %||% "memory")
+  }, character(1))
+  representatives <- match(unique(files), files)
+  lapply(representatives, function(index) {
+    entry <- model_cache[[index]]
+    strategy <- as.character(entry$build_strategy %||% "")
+    route <- if (identical(mode, "full_gem")) {
+      "full_gem"
+    } else if (grepl("corda2", strategy, ignore.case = TRUE)) {
+      "corda2"
+    } else {
+      "fastcore"
+    }
+    context <- .rc_layer2_task_context(
+      cell_type = entry$cell_type %||% "ALL",
+      medium_scenario = entry$medium_scenario %||% "base",
+      route = route
+    )
+    list(
+      context = context,
+      file = files[[index]],
+      n_targets = sum(files == files[[index]])
+    )
+  })
+}
+
+.rc_layer2_collect_task_progress <- function(outdir) {
+  if (is.null(outdir) || !length(outdir)) return(invisible(NULL))
+  parts_dir <- file.path(outdir, "layer2_task_progress_parts")
+  files <- list.files(
+    parts_dir, pattern = "^events_[0-9]+\\.tsv$", full.names = TRUE
+  )
+  if (!length(files)) return(invisible(NULL))
+  rows <- lapply(files, function(file) {
+    tryCatch(
+      utils::read.delim(file, stringsAsFactors = FALSE, check.names = FALSE),
+      error = function(error) data.frame()
+    )
+  })
+  rows <- rows[vapply(rows, nrow, integer(1)) > 0L]
+  if (!length(rows)) return(invisible(NULL))
+  events <- .rc_bind_frames_fill(rows)
+  order_columns <- intersect(
+    c("timestamp", "pid", "sequence"), colnames(events)
+  )
+  if (length(order_columns)) {
+    events <- events[do.call(order, events[order_columns]), , drop = FALSE]
+  }
+  rownames(events) <- NULL
+  utils::write.table(
+    events,
+    file.path(outdir, "layer2_task_progress.tsv"),
+    sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE
+  )
+  key_columns <- intersect(
+    c("run_kind", "scope", "cell_type", "medium_scenario", "route"),
+    colnames(events)
+  )
+  if (length(key_columns)) {
+    key <- do.call(paste, c(events[key_columns], sep = "\001"))
+    latest <- !duplicated(key, fromLast = TRUE)
+    status <- events[latest, , drop = FALSE]
+    status <- status[do.call(order, status[key_columns]), , drop = FALSE]
+    utils::write.table(
+      status,
+      file.path(outdir, "layer2_task_status.tsv"),
+      sep = "\t", quote = FALSE, row.names = FALSE, col.names = TRUE
+    )
+  }
+  invisible(events)
+}
+
+# Controller monitor: Layer 2 starts with a meaningful total rather than 0/1.
+# Overall primary and RNA-control phases.
+# Structural FASTCORE task phases.
+# Original CORDA2 task phases.
+# Full-GEM model construction has no cell-type partition.
+# Per-model vmax and Step 2 scoring phases.
+# Structural cache completion advances the controller-owned overall bar.
+# Final comparison and validation phases.
