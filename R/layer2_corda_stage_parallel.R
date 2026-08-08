@@ -381,7 +381,7 @@
   engine <- .rc_corda_target_metric_engine(split, solver, time_limit)
   results <- vector("list", length(targets))
   for (i in seq_along(targets)) {
-    assessed <- .rc_corda2_dependency_assessment_core(
+    assessed <- .rc_corda2_dependency_assessment(
       engine = engine,
       split = split,
       target = targets[[i]],
