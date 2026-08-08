@@ -196,16 +196,18 @@
     list(cache = cache, summary = summary)
   }
 
+  stage_template <- .rc_layer2_task_bpparam()
+  stage_worker_budget <- .rc_corda_pool_workers(stage_template)
   task_bpparam <- .rc_corda_tune_task_bpparam(
-    .rc_layer2_task_bpparam(), length(tasks)
+    stage_template, length(tasks)
   )
-  pool_workers <- .rc_corda_pool_workers(task_bpparam)
+  model_task_workers <- .rc_corda_pool_workers(task_bpparam)
   stage_parallel <- .rc_corda_stage_parallel_requested()
   outer_parallel <- .rc_corda_should_outer_parallel(
-    length(tasks), pool_workers
+    length(tasks), model_task_workers
   )
   active_workers <- if (outer_parallel) {
-    min(length(tasks), pool_workers)
+    min(length(tasks), model_task_workers)
   } else {
     1L
   }
@@ -248,14 +250,14 @@
   attr(cache, "structural_scope") <- "cell_type_x_medium"
   attr(cache, "completion_method") <- "corda2"
   attr(cache, "structural_parallel_task") <- dispatch
-  attr(cache, "structural_parallel_workers_requested") <- pool_workers
+  attr(cache, "structural_parallel_workers_requested") <- stage_worker_budget
   attr(cache, "structural_parallel_workers") <- active_workers
   attr(cache, "structural_parallel_tasks") <- length(tasks)
   attr(cache, "structural_dynamic_task_scheduling") <- outer_parallel
   attr(cache, "corda2_inner_target_parallelism") <- stage_parallel
   attr(cache, "corda2_stage_barrier_parallelism") <- stage_parallel
   attr(cache, "corda2_stage_parallel_workers") <- if (stage_parallel) {
-    pool_workers
+    stage_worker_budget
   } else {
     1L
   }
