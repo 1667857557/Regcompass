@@ -114,6 +114,13 @@
   )
   if (is.null(param)) return(FALSE)
   if (is.function(tune_param)) param <- tune_param(param, n_targets)
+  progress_setter <- get0(
+    "bpprogressbar<-", envir = asNamespace("BiocParallel"),
+    mode = "function", inherits = FALSE
+  )
+  if (is.function(progress_setter)) {
+    param <- tryCatch(progress_setter(param, FALSE), error = function(e) param)
+  }
   attr(param, "regcompass_corda2_stage_workers") <- workers
   attr(param, "regcompass_corda2_stage_targets") <- n_targets
   param
@@ -172,6 +179,19 @@
   file.path(base, paste0("corda_stage_", token))
 }
 
+.rc_corda_stage_progress_bar <- function(completed, total, width = 28L) {
+  total <- max(1L, as.integer(total))
+  completed <- max(0L, min(as.integer(completed), total))
+  width <- max(10L, as.integer(width))
+  filled <- min(width, floor(width * completed / total))
+  paste0(
+    paste(rep("=", filled), collapse = ""),
+    if (filled < width) ">" else "",
+    paste(rep(" ", max(0L, width - filled - as.integer(filled < width))),
+          collapse = "")
+  )
+}
+
 .rc_corda_stage_mark_progress <- function(
     progress_dir, index, total, stage, context, target) {
   dir.create(progress_dir, recursive = TRUE, showWarnings = FALSE)
@@ -188,6 +208,15 @@
   emit <- .rc_corda_stage_progress_enabled() &&
     (completed == as.integer(total) || completed <= 2L ||
      (completed %% interval) == 0L)
+  if (emit) {
+    message(sprintf(
+      "%s [%s] %d/%d (%5.1f%%) remaining=%d current=%s",
+      .rc_corda_stage_label(stage),
+      .rc_corda_stage_progress_bar(completed, total),
+      completed, as.integer(total), 100 * completed / as.integer(total),
+      remaining, as.character(target)
+    ))
+  }
   .rc_corda_stage_event(
     context = context,
     phase = stage,
@@ -202,9 +231,16 @@
     run_kind = "primary",
     status = if (remaining == 0L) "complete" else "running",
     parts_dir = dirname(progress_dir),
-    emit = emit
+    emit = FALSE
   )
   invisible(NULL)
+}
+
+.rc_corda_stage_chunks <- function(n_targets, workers) {
+  n_targets <- max(1L, as.integer(n_targets))
+  workers <- max(1L, min(as.integer(workers), n_targets))
+  n_chunks <- min(n_targets, max(workers, 4L * workers))
+  split(seq_len(n_targets), rep(seq_len(n_chunks), length.out = n_targets))
 }
 
 .rc_corda_stage_run <- function(targets, stage, FUN) {
@@ -220,9 +256,9 @@
     .rc_corda_stage_event(
       context, stage, 0L, 1L,
       detail = "no candidate directional targets; remaining=0",
-      scope = "corda2_stage", status = "complete", emit = show_progress
+      scope = "corda2_stage", status = "complete", emit = FALSE
     )
-    return(list())
+    return(list(results = list(), metrics = list(), workers = 1L, chunks = 0L))
   }
 
   .rc_corda_stage_algorithm_once(stage)
@@ -240,6 +276,7 @@
   } else {
     1L
   }
+  chunks <- .rc_corda_stage_chunks(n_targets, workers)
   progress_dir <- .rc_corda_stage_progress_dir(stage)
   unlink(progress_dir, recursive = TRUE, force = TRUE)
   dir.create(progress_dir, recursive = TRUE, showWarnings = FALSE)
@@ -252,10 +289,10 @@
   if (show_progress) {
     message(sprintf(
       paste0(
-        "%s started | targets=%d | remaining=%d | workers=%d | ",
+        "%s started | targets=%d | remaining=%d | workers=%d | chunks=%d | ",
         "per-worker HiGHS threads=1"
       ),
-      label, n_targets, n_targets, workers
+      label, n_targets, n_targets, workers, length(chunks)
     ))
   }
   .rc_corda_stage_event(
@@ -264,28 +301,28 @@
       "stage started; targets=", n_targets,
       "; remaining=", n_targets,
       "; workers=", workers,
+      "; chunks=", length(chunks),
       "; solver_threads_per_worker=1"
     ),
-    scope = "corda2_stage", status = "running", emit = show_progress
+    scope = "corda2_stage", status = "running", emit = FALSE
   )
 
-  indexed <- lapply(seq_along(targets), function(i) {
-    list(index = as.integer(i), target = targets[[i]])
-  })
-  worker <- function(item) {
-    answer <- FUN(item$target)
-    .rc_corda_stage_mark_progress(
-      progress_dir = progress_dir,
-      index = item$index,
-      total = n_targets,
-      stage = stage,
-      context = context,
-      target = item$target
-    )
-    answer
+  worker <- function(index) {
+    mark_done <- function(position, target) {
+      .rc_corda_stage_mark_progress(
+        progress_dir = progress_dir,
+        index = position,
+        total = n_targets,
+        stage = stage,
+        context = context,
+        target = target
+      )
+    }
+    value <- FUN(targets[index], as.integer(index), mark_done)
+    list(index = as.integer(index), value = value)
   }
   if (identical(BPPARAM, FALSE)) {
-    answer <- lapply(indexed, worker)
+    parts <- lapply(chunks, worker)
   } else {
     parallel_lapply <- get0(
       "rc_parallel_lapply", mode = "function", inherits = TRUE
@@ -294,7 +331,21 @@
       stop("CORDA2 stage parallelism requires `rc_parallel_lapply`.",
            call. = FALSE)
     }
-    answer <- parallel_lapply(indexed, worker, BPPARAM = BPPARAM)
+    parts <- parallel_lapply(chunks, worker, BPPARAM = BPPARAM)
+  }
+
+  results <- vector("list", n_targets)
+  metrics <- vector("list", length(parts))
+  for (i in seq_along(parts)) {
+    part <- parts[[i]]
+    value <- part$value
+    if (!is.list(value) || !is.list(value$results) ||
+        length(value$results) != length(part$index)) {
+      stop("A CORDA2 stage worker returned malformed target results.",
+           call. = FALSE)
+    }
+    results[part$index] <- value$results
+    metrics[[i]] <- value$metrics %||% list()
   }
 
   .rc_corda_stage_stop_started_template(BPPARAM)
@@ -310,44 +361,62 @@
       "stage complete; completed=", n_targets, "/", n_targets,
       "; remaining=0; worker_pool=released"
     ),
-    scope = "corda2_stage", status = "complete", emit = show_progress
+    scope = "corda2_stage", status = "complete", emit = FALSE
   )
-  answer
-}
-
-.rc_corda2_dependency_target_parallel <- function(
-    target, split, directional_class, options, stage, penalized_class,
-    solver, time_limit, lower = split$lb, upper = split$ub) {
-  engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
-  on.exit({ engine <- .rc_corda_release_lp_engine(engine) }, add = TRUE)
-  assessed <- .rc_corda2_dependency_assessment_core(
-    engine = engine,
-    split = split,
-    target = target,
-    directional_class = directional_class,
-    options = options,
-    stage = stage,
-    penalized_class = penalized_class,
-    lower = lower,
-    upper = upper
-  )
-  engine <- assessed$engine
-  assessed$engine <- NULL
-  assessed$metrics <- .rc_corda_execution_metrics(engine)
-  assessed
-}
-
-.rc_corda2_maximize_target_parallel <- function(
-    target, split, solver, time_limit, lower, upper) {
-  engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
-  on.exit({ engine <- .rc_corda_release_lp_engine(engine) }, add = TRUE)
-  maximum <- .rc_corda2_maximize_target(
-    engine, split, target, lower = lower, upper = upper
-  )
-  engine <- maximum$engine
-  maximum$engine <- NULL
   list(
-    maximum = maximum,
+    results = results,
+    metrics = metrics,
+    workers = as.integer(workers),
+    chunks = as.integer(length(chunks))
+  )
+}
+
+.rc_corda2_dependency_chunk_parallel <- function(
+    targets, indices, mark_done, split, directional_class, options,
+    stage, penalized_class, solver, time_limit,
+    lower = split$lb, upper = split$ub) {
+  engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
+  on.exit({ engine <- .rc_corda_release_lp_engine(engine) }, add = TRUE)
+  results <- vector("list", length(targets))
+  for (i in seq_along(targets)) {
+    assessed <- .rc_corda2_dependency_assessment_core(
+      engine = engine,
+      split = split,
+      target = targets[[i]],
+      directional_class = directional_class,
+      options = options,
+      stage = stage,
+      penalized_class = penalized_class,
+      lower = lower,
+      upper = upper
+    )
+    engine <- assessed$engine
+    assessed$engine <- NULL
+    results[[i]] <- assessed
+    mark_done(indices[[i]], targets[[i]])
+  }
+  list(
+    results = results,
+    metrics = .rc_corda_execution_metrics(engine)
+  )
+}
+
+.rc_corda2_maximize_chunk_parallel <- function(
+    targets, indices, mark_done, split, solver, time_limit, lower, upper) {
+  engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
+  on.exit({ engine <- .rc_corda_release_lp_engine(engine) }, add = TRUE)
+  results <- vector("list", length(targets))
+  for (i in seq_along(targets)) {
+    maximum <- .rc_corda2_maximize_target(
+      engine, split, targets[[i]], lower = lower, upper = upper
+    )
+    engine <- maximum$engine
+    maximum$engine <- NULL
+    results[[i]] <- maximum
+    mark_done(indices[[i]], targets[[i]])
+  }
+  list(
+    results = results,
     metrics = .rc_corda_execution_metrics(engine)
   )
 }
@@ -392,7 +461,7 @@
     solver_configuration_verified = all_field(
       "solver_configuration_verified"
     ),
-    release_policy = "step_local_target_engine_then_worker_pool_release",
+    release_policy = "stage_chunk_engine_then_worker_pool_release",
     target_parallelism = "within_corda2_stage",
     stage_barrier = TRUE
   )
