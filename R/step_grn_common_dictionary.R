@@ -1,6 +1,6 @@
 # Stage 1 dispatcher for standard and common-dictionary Pando GRNs.
 
-#' Infer regulatory evidence with automatic mode selection
+#' Infer regulatory evidence with automatic mode and worker selection
 #'
 #' Stage 1 filters the analysis cell set before normalization. With at least two
 #' retained conditions in a broad cell type, Pando performs pooled and
@@ -8,11 +8,13 @@
 #' union, and fits the same unscaled Gaussian identity model in every condition.
 #' With no condition or one effective condition, the original per-cell-type
 #' Pando workflow is used without constructing condition coefficients. Pando
-#' inference arguments are routed automatically: condition-only controls are
-#' disabled for standard Pando, while standard-model controls are disabled for
-#' common-dictionary condition GRNs. Independent broad-cell-type jobs are
-#' parallelized through `BPPARAM` when more than one job is available.
+#' inference arguments are routed automatically. Parallel execution is resolved
+#' from one global `workers` budget: Windows uses SOCK workers, Linux/macOS uses
+#' multicore workers, and Stage 1 launches only
+#' `min(number_of_broad_cell_types, workers)` workers.
 #'
+#' @param workers Global RegCompass worker upper bound. `NULL` uses
+#' `options(RegCompassR.workers)`, scheduler allocation, or detected cores.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
@@ -24,8 +26,7 @@ rc_regcompass_step_grn <- function(
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
-    parallel = TRUE,
-    BPPARAM = NULL,
+    workers = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start(
     "grn", outdir, progress, total_parts = 12L
@@ -38,12 +39,7 @@ rc_regcompass_step_grn <- function(
   if (!is.list(pando_args)) {
     stop("`pando_args` must be a list.", call. = FALSE)
   }
-  if (!is.logical(parallel) || length(parallel) != 1L || is.na(parallel)) {
-    stop("`parallel` must be TRUE or FALSE.", call. = FALSE)
-  }
-  if (identical(BPPARAM, TRUE)) {
-    stop("`BPPARAM = TRUE` is invalid.", call. = FALSE)
-  }
+  worker_config <- rc_parallel_config(workers = workers, backend = "auto")
 
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
@@ -118,7 +114,7 @@ rc_regcompass_step_grn <- function(
   reserved <- intersect(names(pando_args), c(
     "object", "gem", "outdir", "genome", "pfm", "species",
     "condition_col", "celltype_col", "cell_type", "rna_assay", "atac_assay",
-    "BPPARAM", "parallel"
+    "workers", "BPPARAM", "parallel"
   ))
   if (length(reserved)) {
     stop(
@@ -162,7 +158,9 @@ rc_regcompass_step_grn <- function(
     context = list(
       pfm = !is.null(pfm),
       regions = !is.null(dispatch_extra_args$pando_initiate_args$regions),
-      motif_tfs = !is.null(dispatch_extra_args$pando_motif_args$motif_tfs)
+      motif_tfs = !is.null(dispatch_extra_args$pando_motif_args$motif_tfs),
+      worker_budget = worker_config$worker_budget,
+      backend = worker_config$actual_backend
     )
   )
 
@@ -178,7 +176,7 @@ rc_regcompass_step_grn <- function(
       extra_args = dispatch_extra_args,
       condition_infer_args = condition_infer_args,
       standard_infer_args = standard_infer_args,
-      parallel = parallel, BPPARAM = BPPARAM,
+      workers = worker_config$worker_budget,
       progress_monitor = monitor
     ),
     monitor
@@ -236,7 +234,8 @@ rc_regcompass_step_grn <- function(
         motif_tfs = TRUE,
         stored_in_step_params = FALSE
       ),
-      parallel = parallel,
+      workers = worker_config$worker_budget,
+      parallel_backend = worker_config$actual_backend,
       pando_execution_plan = grn_result$pando_execution_plan,
       species = species,
       n_input_cells = as.integer(n_input),
