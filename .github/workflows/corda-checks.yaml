@@ -77,7 +77,25 @@ jobs:
         run: Rscript -e 'source("R/layer2_corda_stage_parallel.R"); source("R/layer2_corda_serial_core.R"); source("tests/corda-synthetic-check.R")'
 
       - name: Verify stage-parallel serial equivalence
-        run: Rscript tests/corda-stage-parallel-check.R
+        shell: bash
+        run: |
+          set +e
+          Rscript tests/corda-stage-parallel-check.R > corda-stage-parallel.log 2>&1
+          status=$?
+          cat corda-stage-parallel.log
+          echo "$status" > corda-stage-parallel.exit-code
+          exit "$status"
+
+      - name: Upload stage-parallel diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: corda-stage-parallel-diagnostics
+          path: |
+            corda-stage-parallel.log
+            corda-stage-parallel.exit-code
+          if-no-files-found: ignore
+          retention-days: 3
 
       - name: Audit direct implementation and parameter surface
         run: |
