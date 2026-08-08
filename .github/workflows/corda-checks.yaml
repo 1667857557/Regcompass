@@ -58,6 +58,7 @@ jobs:
             "R/layer2_corda_output_contract.R",
             "R/layer2_corda_target_contract.R",
             "R/layer2_corda_parent_contract.R",
+            "R/layer2_corda_target_isolation.R",
             "R/layer2_corda2_algorithm.R",
             "R/layer2_corda_stage_parallel.R",
             "R/layer2_corda2_algorithm_build.R",
@@ -85,6 +86,7 @@ jobs:
           options = Path("R/layer2_corda2_options_contract.R").read_text()
           split = Path("R/layer2_corda_paper_contract.R").read_text()
           dependency = Path("R/layer2_corda2_algorithm.R").read_text()
+          isolation = Path("R/layer2_corda_target_isolation.R").read_text()
           build = Path("R/layer2_corda2_algorithm_build.R").read_text()
           stage = Path("R/layer2_corda_stage_parallel.R").read_text()
           model = Path("R/layer2_corda_model.R").read_text()
@@ -113,10 +115,22 @@ jobs:
           required_dependency = [
               'sqrt(options$om)', '1 + options$ci',
               '.rc_corda2_constrain_target', 'options$flux_threshold',
+              '.rc_corda_new_target_engine',
+              'inside_dependency',
           ]
           missing = [x for x in required_dependency if x not in dependency]
           if missing:
               raise RuntimeError(f"original CORDA2 dependency loop missing: {missing}")
+
+          required_isolation = [
+              '.rc_corda_new_target_engine',
+              '.rc_corda_absorb_target_engine',
+              'regcompass_target_isolated',
+              '.rc_corda_release_lp_engine',
+          ]
+          missing = [x for x in required_isolation if x not in isolation]
+          if missing:
+              raise RuntimeError(f"target-local solver-state contract missing: {missing}")
 
           required_build = [
               'HCtoMC', 'HCtoNC', 'MCxNC', 'options$MCxNCthresh',
@@ -136,6 +150,7 @@ jobs:
               '.rc_corda2_maximize_target',
               'remaining=', 'worker pool released',
               'rc_parallel_lapply',
+              'solver_state=target_isolated',
           ]
           missing = [x for x in required_stage if x not in stage]
           if missing:
@@ -149,7 +164,7 @@ jobs:
           if missing:
               raise RuntimeError(f"direct model integration missing: {missing}")
 
-          combined = build + '\n' + stage + '\n' + model
+          combined = build + '\n' + stage + '\n' + model + '\n' + dependency
           for marker in ('assignInNamespace', 'unlockBinding', '_base <-',
                          'before_corda2', 'corda_like'):
               if marker in combined:
