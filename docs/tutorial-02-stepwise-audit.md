@@ -21,7 +21,7 @@ The effective worker count is always bounded by
 min(independent tasks, workers, max(1, detected logical CPUs - 2))
 ```
 
-so RegCompass reserves two logical CPUs for the operating system/R controller. For example, 8 independent Pando cell-type jobs use 8 workers even when `workers = 60L`, while a CORDA2 step with thousands of directional targets can use the full protected worker budget.
+so RegCompass reserves two logical CPUs for the operating system/R controller. For example, 8 independent Pando cell-type jobs use 8 workers even when `workers = 60L`, while a CORDA2 step with thousands of directional targets can use the full protected worker budget. Stage 2 fragment aggregation uses the same cap; do not set `metacell_args$fragment_args$workers` separately.
 
 ## 2. Regulatory evidence
 
@@ -74,11 +74,12 @@ step2 <- rc_regcompass_step_metacells(
     min_cells_per_stratum = 300L,
     min_metacell_size = 10L,
     min_metacells_per_stratum = 2L
-  )
+  ),
+  workers = workers
 )
 ```
 
-One WNN graph is constructed per broad cell type. Final metacells remain condition-pure.
+One WNN graph is constructed per broad cell type. Final metacells remain condition-pure. If raw fragment files are supplied, `SuperCell::AggregateFragmentFile()` receives the same protected top-level worker cap.
 
 ## 4. Reaction catalogue and Layer 1 support
 
