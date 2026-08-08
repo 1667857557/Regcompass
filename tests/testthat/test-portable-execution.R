@@ -8,30 +8,53 @@ test_that("auto parallel backend follows the operating system", {
   )
 })
 
-test_that("parallel configuration records requested and actual execution", {
+test_that("parallel configuration reserves two CPUs and caps every request", {
+  capacity <- .rc_worker_capacity()
+  expect_identical(capacity$reserved_cpus, 2L)
+  expect_identical(
+    capacity$worker_ceiling,
+    max(1L, capacity$available_cpus - 2L)
+  )
+  expect_identical(
+    .rc_normalize_worker_budget(capacity$available_cpus + 100L),
+    capacity$worker_ceiling
+  )
+
   one <- rc_parallel_config(workers = 1L, backend = "auto")
   expect_identical(one$actual_backend, "serial")
   expect_identical(one$workers, 1L)
   expect_identical(one$os_type, .Platform$OS.type)
+  expect_identical(one$reserved_cpus, 2L)
+  expect_identical(one$worker_ceiling, capacity$worker_ceiling)
 
-  windows <- .rc_resolve_parallel_backend("auto", "windows")
-  linux <- .rc_resolve_parallel_backend("auto", "unix")
-  expect_identical(windows, "snow")
-  expect_identical(linux, "multicore")
+  requested <- rc_parallel_config(workers = 100000L, backend = "auto")
+  expect_lte(requested$worker_budget, capacity$worker_ceiling)
+  expect_identical(requested$available_cpus, capacity$available_cpus)
 })
 
-test_that("canonical workflow exposes only two layered worker counts", {
+test_that("canonical workflow exposes one global worker budget", {
   args <- formals(rc_run_regcompass)
-  expect_identical(args$upstream_workers, 6L)
-  expect_identical(args$layer2_workers, 30L)
-  expect_false("parallel_backend" %in% names(args))
+  expect_true("workers" %in% names(args))
+  expect_false(any(c(
+    "upstream_workers", "layer2_workers", "parallel_backend", "BPPARAM",
+    "parallel"
+  ) %in% names(args)))
+  expect_identical(
+    eval(args$workers),
+    getOption("RegCompassR.workers", 10L)
+  )
   expect_lt(match("species", names(args)), match("progress", names(args)))
 
-  upstream <- .rc_stage_worker_config(1L, "upstream_workers")
-  layer2 <- .rc_stage_worker_config(1L, "layer2_workers")
-  expect_identical(upstream$actual_backend, "serial")
-  expect_identical(layer2$actual_backend, "serial")
-  expect_error(.rc_stage_worker_config(0L), "at least 1")
+  parallel_steps <- list(
+    grn = rc_regcompass_step_grn,
+    layer1 = rc_regcompass_step_layer1,
+    layer2 = rc_regcompass_step_layer2
+  )
+  for (fun in parallel_steps) {
+    step_args <- names(formals(fun))
+    expect_true("workers" %in% step_args)
+    expect_false(any(c("BPPARAM", "parallel") %in% step_args))
+  }
 })
 
 test_that("internal task thread settings are forced to one and restored", {
@@ -82,6 +105,7 @@ test_that("serial stage wrapper applies one-thread contract on errors", {
 
 test_that("package-managed worker pool is stopped after its stage", {
   skip_if_not_installed("BiocParallel")
+  skip_if(.rc_worker_capacity()$worker_ceiling < 2L)
   param <- .rc_with_stage_workers(
     2L,
     function(param, config) {
