@@ -3,15 +3,15 @@
 ## Complete workflow
 
 - `rc_run_regcompass_one_shot()`: prepare species-aware defaults and run the complete workflow.
-- `rc_run_regcompass()`: run the complete workflow with explicit GEM, media, stage arguments, and worker counts.
+- `rc_run_regcompass()`: run the complete workflow with explicit GEM, media, stage arguments, and one global `workers` budget. The default request is 10, the backend is selected automatically by operating system, and the resolved budget is capped at available CPUs minus 2.
 
 ## Restartable stages
 
-- `rc_regcompass_step_grn()`: filter cells, select standard or condition-specific Pando per broad cell type, and fit GRNs.
+- `rc_regcompass_step_grn()`: filter cells, select standard or condition-specific Pando per broad cell type, and fit GRNs. Pando parallelism is across independent broad-cell-type jobs, so the actual worker count is at most the number of retained cell types.
 - `rc_regcompass_step_metacells()`: construct condition-pure multimodal SuperCell metacells.
 - `rc_regcompass_step_meta_modules()`: build condition-by-cell-type biological reaction catalogues and cell-type unions.
-- `rc_regcompass_step_layer1()`: combine RNA and regulatory support and apply Boolean GPR rules.
-- `rc_regcompass_step_layer2()`: reconstruct one cell-type-by-medium model with original MATLAB CORDA2 by default and score directional reactions. CORDA2 reconstruction runs without a structural time limit and rejects `model_params$completion_time_limit`; that control is retained only for supplementary non-CORDA2 completion such as FASTCORE. FASTCORE and the COMPASS-style complete full GEM are explicit supplementary routes. Medium scenarios modify exchange bounds only and do not directly remove reactions.
+- `rc_regcompass_step_layer1()`: combine RNA and regulatory support and apply Boolean GPR rules under the same global worker ceiling.
+- `rc_regcompass_step_layer2()`: reconstruct one cell-type-by-medium model with original MATLAB CORDA2 by default and score directional reactions. CORDA2 uses the complete resolved worker budget when enough directional targets exist, retains strict Step 1/2.1/2.2/3 barriers, prints completed and remaining target counts, and releases each stage-local pool before the next step. CORDA2 reconstruction runs without a structural time limit and rejects `model_params$completion_time_limit`; FASTCORE and the COMPASS-style complete full GEM remain supplementary routes.
 - `rc_regcompass_step_results()`: assemble annotations, evidence classes, rankings, metacell tables, and condition contrasts.
 
 The Layer 2 parameters and alternatives are documented in [Layer 2 model builders](layer2-model-builders.md).
@@ -39,6 +39,6 @@ The optional limma metacell-level differential workflow is documented in [Post a
 
 ## Export and execution
 
-- `rc_parallel_config()`: inspect the resolved platform-aware parallel configuration.
+- `rc_parallel_config()`: inspect the requested worker count, detected CPU allocation, fixed two-CPU reserve, hard worker ceiling, and resolved platform-aware backend.
 
 Use the generated Rd help for complete argument definitions. Principles and equations are maintained in [mathematical-model.md](mathematical-model.md).
