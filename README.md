@@ -54,7 +54,7 @@ Paired RNA + ATAC cells + GEM + medium
 
 Stage-specific behavior:
 
-- **GRNs:** common-dictionary condition fits require at least two retained conditions within a cell type; other cell types use standard Pando. Standard Pando treats the requested `tf_cor` as an effect-size floor and raises it to the two-sided Pearson critical correlation for the cell type's actual cell count when that value is larger.
+- **GRNs:** common-dictionary condition fits require at least two retained conditions within a cell type. RegCompass parallelizes pooled-background and condition × cell-type candidate discovery, waits for all candidate tasks of each cell type, freezes one exact edge dictionary per cell type, and then parallelizes condition × cell-type fixed-dictionary GLMs. Standard Pando is parallelized across broad cell types. Standard Pando treats the requested `tf_cor` as a biological floor and raises it to the two-sided Pearson critical correlation for the cell type's actual cell count when that value is larger.
 - **Meta-modules:** complete-GPR core reactions are expanded by core subsystem and direct KEGG, Reactome or master-Rhea equivalence.
 - **Structural models:** `meta_module_gem` builds one model per cell-type × medium combination; CORDA2 is the default completion route and runs without a structural time limit. `model_params$completion_time_limit` is rejected for CORDA2 and remains available only for supplementary non-CORDA2 completion such as FASTCORE. `full_gem` keeps the complete GEM with medium bounds.
 - **Matched control:** RNA+ATAC and RNA-only penalties reuse the same structural model, bounds, medium and target directions.
@@ -77,15 +77,18 @@ result <- rc_run_regcompass_one_shot(
     min_cells = 300L,
     pando_infer_args = list(
       tf_cor = 0.1,
-      peak_cor = 0.05,
+      peak_cor = 0,
       adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
       min_residual_df = 1L
     )
-  )
+  ),
+  workers = 10L
 )
 ```
+
+`workers` is the only workflow-level parallel setting. The default is `10L`. RegCompass automatically selects `SnowParam(type = "SOCK")` on Windows and `MulticoreParam` on Linux/macOS; the effective cap is `min(workers, max(1, detected logical CPUs - 2))` and each dispatch shrinks further to its number of independent jobs.
 
 When condition metadata are unavailable, omit `condition_col` or set `condition_col = NULL`; the workflow then uses standard Pando with one internal background label.
 

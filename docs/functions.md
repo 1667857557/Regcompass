@@ -2,16 +2,16 @@
 
 ## Complete workflow
 
-- `rc_run_regcompass_one_shot()`: prepare species-aware defaults and run the complete workflow.
-- `rc_run_regcompass()`: run the complete workflow with explicit GEM, media, stage arguments, and worker counts.
+- `rc_run_regcompass_one_shot()`: prepare species-aware defaults and run the complete workflow with the single top-level `workers` cap.
+- `rc_run_regcompass()`: run the complete workflow with explicit GEM, media and stage arguments. `workers` is the only workflow-level parallel cap; the effective maximum is `min(workers, max(1, detected logical CPUs - 2))`.
 
 ## Restartable stages
 
-- `rc_regcompass_step_grn()`: filter cells, select standard or condition-specific Pando per broad cell type, and fit GRNs.
-- `rc_regcompass_step_metacells()`: construct condition-pure multimodal SuperCell metacells.
+- `rc_regcompass_step_grn()`: filter cells, select standard or condition-specific Pando per broad cell type, and fit GRNs. Condition mode parallelizes pooled-background/condition-by-cell-type candidate jobs, freezes one exact dictionary per cell type at a barrier, then parallelizes condition-by-cell-type fixed-dictionary GLMs. Standard Pando parallelizes broad-cell-type jobs.
+- `rc_regcompass_step_metacells()`: construct condition-pure multimodal SuperCell metacells. Optional fragment aggregation uses the same top-level worker cap.
 - `rc_regcompass_step_meta_modules()`: build condition-by-cell-type biological reaction catalogues and cell-type unions.
 - `rc_regcompass_step_layer1()`: combine RNA and regulatory support and apply Boolean GPR rules.
-- `rc_regcompass_step_layer2()`: reconstruct one cell-type-by-medium model with original MATLAB CORDA2 by default and score directional reactions. CORDA2 reconstruction runs without a structural time limit and rejects `model_params$completion_time_limit`; that control is retained only for supplementary non-CORDA2 completion such as FASTCORE. FASTCORE and the COMPASS-style complete full GEM are explicit supplementary routes. Medium scenarios modify exchange bounds only and do not directly remove reactions.
+- `rc_regcompass_step_layer2()`: reconstruct one cell-type-by-medium model with original MATLAB CORDA2 by default and score directional reactions. CORDA2 reconstruction runs without a structural time limit and rejects `model_params$completion_time_limit`; that control is retained only for supplementary non-CORDA2 completion such as FASTCORE. CORDA2 directional targets are parallelized only within the current mathematical step, and each step-local worker pool is stopped before the next step. FASTCORE and the COMPASS-style complete full GEM are explicit supplementary routes. Medium scenarios modify exchange bounds only and do not directly remove reactions.
 - `rc_regcompass_step_results()`: assemble annotations, evidence classes, rankings, metacell tables, and condition contrasts.
 
 The Layer 2 parameters and alternatives are documented in [Layer 2 model builders](layer2-model-builders.md).
@@ -27,7 +27,7 @@ The Layer 2 parameters and alternatives are documented in [Layer 2 model builder
 
 ## Post analysis
 
-- `rc_regcompass_step_target_union()`: use selected core reactions or genes as anchors, identify directly database-linked non-core reactions, and rescore them in the exact existing cell-type structural models without rebuilding Layer 2.
+- `rc_regcompass_step_target_union()`: use selected core reactions or genes as anchors, identify directly database-linked non-core reactions, and rescore them in the exact existing cell-type structural models without rebuilding Layer 2. It uses the same `workers` cap and can reuse audited CORDA2 or FASTCORE Stage 5 union GEMs.
 - `rc_test_condition_reactions()`: perform pairwise Wilcoxon and optional Kruskal-Wallis condition comparisons for fixed cell type, reaction direction, and medium.
 - `rc_plot_condition_reaction()`: draw violin, violin-plus-boxplot, or boxplot distributions for one selected reaction target across conditions, with metacell points and significance annotations.
 - `rc_select_gene_reactions()`: select reactions through Boolean GPR annotations for specified metabolic genes.
@@ -39,6 +39,6 @@ The optional limma metacell-level differential workflow is documented in [Post a
 
 ## Export and execution
 
-- `rc_parallel_config()`: inspect the resolved platform-aware parallel configuration.
+- `rc_parallel_config()`: inspect platform detection, the requested worker cap, the protected CPU-minus-two capacity and the resolved backend.
 
 Use the generated Rd help for complete argument definitions. Principles and equations are maintained in [mathematical-model.md](mathematical-model.md).

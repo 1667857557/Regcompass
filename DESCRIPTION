@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.9
+Version: 2.4.10
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -14,38 +14,38 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     condition, exact TF-peak-target triples are unioned into one frozen
     dictionary, and every condition is refitted with the same unscaled Gaussian
     identity Pando interaction model. Only estimable coefficients with
-    BH-adjusted P below 0.05, absolute TF-target correlation at least 0.05, and
-    absolute coefficient at least 0.05 enter the regulatory penalty. A cell type
+    BH-adjusted P below 0.05 enter the condition regulatory penalty. A cell type
     with one retained condition uses the original standard Pando GRN and creates
-    no condition coefficient. Stage 1 validates the required Pando API contract
-    without imposing a package-version floor. Stage 1 automatically enables only
-    the Pando arguments valid for each route and parallelizes independent broad-
-    cell-type jobs without nested worker pools. Before outer parallel dispatch,
-    bundled Pando motif matrices, regulatory regions and motif-to-TF mappings
-    are materialized in the controller and passed to workers as ordinary
-    objects. Parallel condition jobs retain one exact Pando object per cell type
-    so local peak and motif feature spaces are never merged incorrectly; Layer 1
-    routes each fit to its matching object. Paired-cell TF-by-ATAC regulatory
-    effects are projected before exact SuperCell aggregation. Metacells use one
-    multimodal WNN graph per broad cell type and remain condition-pure after
-    membership splitting. Optional raw ATAC fragment files are aggregated to
-    final metacell barcodes and recounted before metacell TF-IDF. RNA support,
-    regulatory effects, GPR rules, cell-type-specific union GEM construction and
-    directional penalties use consistent reaction ordering, bounds and medium
-    scenarios. Stage 5 uses the original MATLAB CORDA2 algorithm from
-    schultzdre/Constraint-Based-Modeling/CORDA2.m as the default
+    no condition coefficient. Standard Pando applies a sample-size-aware
+    TF-correlation candidate screen while retaining the requested tf_cor as a
+    biological floor. RegCompass owns the parallel scheduler. Condition-mode
+    Pando objects are initialized independently by broad cell type, pooled and
+    condition-by-cell-type candidate-discovery tasks run within the single
+    worker budget, exact dictionaries are frozen at a strict cell-type barrier,
+    and condition-by-cell-type fixed-dictionary GLMs are then dispatched with
+    nested Pando target parallelism disabled. Different cell types retain their
+    own Pando objects and local peak/motif feature spaces. Standard Pando is
+    parallelized only across independent broad cell types. Paired-cell TF-by-ATAC
+    regulatory effects are projected before exact SuperCell aggregation.
+    Metacells use one multimodal WNN graph per broad cell type and remain
+    condition-pure after membership splitting. Optional raw ATAC fragment files
+    are aggregated to final metacell barcodes and recounted before metacell
+    TF-IDF. RNA support, regulatory effects, GPR rules, cell-type-specific union
+    GEM construction and directional penalties use consistent reaction ordering,
+    bounds and medium scenarios. Stage 5 uses the original MATLAB CORDA2
+    algorithm from schultzdre/Constraint-Based-Modeling/CORDA2.m as the default
     context-specific completion after mapping cell-type multiome evidence to HC,
     MC, NC and OT reactions. FASTCORE and complete full-GEM scoring remain
-    explicit supplementary routes.
-    The adjustable original controls are MCxNCthresh, constraint, constrainby,
-    om and ci under corda2_args. Actively reversible reactions are split once,
-    the opposite directional copy is closed during each target assessment, and
-    the original Step 1, Step 2.1, Step 2.2 and Step 3 dependency transitions
-    are preserved. With parallel Layer 2 execution, directional targets are
-    parallelized only within the current CORDA2 step, all results are reduced in
-    original directional order at a strict step barrier, and the step-local
-    worker pool is released before the next step begins. Cell-type-by-medium
-    models remain independent and are reused by primary and RNA-only scoring.
+    explicit supplementary routes. The adjustable original controls are
+    MCxNCthresh, constraint, constrainby, om and ci under corda2_args. Actively
+    reversible reactions are split once, the opposite directional copy is
+    closed during each target assessment, and the original Step 1, Step 2.1,
+    Step 2.2 and Step 3 dependency transitions are preserved. With parallel
+    Layer 2 execution, directional targets are parallelized only within the
+    current CORDA2 step, all results are reduced in original directional order
+    at a strict step barrier, and the step-local worker pool is released before
+    the next step begins. Cell-type-by-medium models remain independent and are
+    reused by primary and RNA-only scoring.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -96,7 +96,6 @@ Collate:
     'condition_pooling.R'
     'stage1_input_contract.R'
     'condition_grn_contract.R'
-    'condition_grn_contract_compat.R'
     'standard_pando.R'
     'mixed_pando.R'
     'mixed_pando_contract.R'
@@ -112,10 +111,9 @@ Collate:
     'reaction_gene_plots.R'
     'parallel.R'
     'stage_parallel_lifecycle.R'
+    'grn_condition_parallel.R'
     'grn_route_parallel.R'
-    'grn_parallel_output_contract.R'
     'grn_parallel_merge_contract.R'
-    'grn_integration_contract.R'
     'condition_penalty_contract.R'
     'penalty.R'
     'reaction_roles.R'
@@ -139,6 +137,7 @@ Collate:
     'layer2_corda_parent_contract.R'
     'layer2_corda2_algorithm.R'
     'layer2_corda_stage_parallel.R'
+    'layer2_corda_target_isolation.R'
     'layer2_corda2_algorithm_build.R'
     'layer2_corda2_options_contract.R'
     'layer2_corda_runtime.R'
@@ -196,4 +195,4 @@ Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionMethod: two-stage-exact-edge-union-fixed-dictionary-glm
-Config/RegCompass/PandoConditionEffectFilter: estimable-bh-padj-below-0.05-abs-corr-at-least-0.05-abs-estimate-at-least-0.05
+Config/RegCompass/PandoConditionEffectFilter: estimable-bh-padj-below-0.05

@@ -59,10 +59,16 @@ min(number of independent tasks, workers, max(1, detected logical CPUs - 2))
 
 Examples on a machine/allocation exposing at least 62 logical CPUs:
 
-- 6 independent Pando cell-type jobs with `workers = 60L` use 6 workers;
-- 30 independent Pando cell-type jobs with `workers = 60L` use 30 workers;
+- 6 standard-Pando broad-cell-type jobs with `workers = 60L` use 6 workers;
+- 30 condition-by-cell-type candidate/fit jobs with `workers = 60L` use 30 workers;
 - a CORDA2 step with 2,000 directional targets and `workers = 60L` can use 60 workers;
 - a directional LP batch with 8 tasks and `workers = 60L` uses 8 workers.
+
+For a condition GRN, pooled-background and per-condition candidate-discovery jobs
+are completed first. RegCompass then freezes one exact TF-peak-target dictionary
+per broad cell type at a strict barrier before condition-by-cell-type fixed-
+dictionary GLMs are dispatched. Different cell types keep separate Pando objects
+and peak/motif feature spaces. Individual Pando jobs do not start nested pools.
 
 Stage 2 fragment aggregation uses the same top-level cap. There is no separate
 public `metacell_args$fragment_args$workers`; pass `workers` at the stage or
@@ -121,8 +127,9 @@ RCPP_PARALLEL_NUM_THREADS=1
 HIGHS_THREADS=1
 ```
 
-It also sets `mc.cores = 1L`. This prevents a pool of Pando, CORDA2 or LP tasks
-from expanding into nested BLAS or solver thread pools.
+It also sets `mc.cores = 1L`. HiGHS and Gurobi LP calls are explicitly limited to
+one solver thread per outer worker. This prevents a Pando, CORDA2 or LP task pool
+from expanding into nested numerical thread pools.
 
 ## Stage- and CORDA2-step-scoped worker lifecycle
 
@@ -148,8 +155,14 @@ Stage 2 fragment aggregation receives the same protected cap through
 Layer 2 follows the same principle. CORDA2 has an additional strict mathematical
 barrier between Step 1, Step 2.1, Step 2.2 and Step 3. Each CORDA2 step creates
 its own worker pool, completes and reduces all target results in deterministic
-order, releases the pool and worker-local HiGHS engines, performs full garbage
-collection, and only then starts the next step.
+order, releases the pool, performs full garbage collection, and only then starts
+the next step.
+
+Every directional CORDA2 target starts from a fresh target-local solver engine.
+Repeated maximize/dependency solves belonging to that same target reuse its
+engine, but a target never inherits a simplex basis from a previous target or
+from its chunk assignment. The target-local engine is released when that target
+finishes.
 
 No upstream worker pool remains active while Layer 2 is running, and no CORDA2
 step pool remains active after that step ends.
@@ -224,5 +237,5 @@ result$params$parallel_worker_policy
 ```
 
 Stage objects also record their worker cap/backend where relevant. Layer 2 records
-CORDA2 stage worker counts and worker lifecycle in its completion and
-reconstruction diagnostics.
+CORDA2 stage worker counts, target-local solver-state scope, and worker lifecycle
+in its completion and reconstruction diagnostics.

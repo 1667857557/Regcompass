@@ -24,11 +24,15 @@
     stop("Standard Pando inference arguments cannot override managed fields: ",
          paste(forbidden, collapse = ", "), ".", call. = FALSE)
   }
+  # These are legacy controls from the condition-GRN implementation only.
+  # Standard Pando model-fitting arguments such as nlambda, lambda and seed
+  # must pass through `...` to Pando::infer_grn rather than being silently
+  # discarded after the public Stage-1 router accepted them.
   condition_only <- intersect(names(args), c(
     "candidate_screen", "condition_mix", "condition_weight",
-    "reference_condition", "comparison_conditions", "nlambda", "lambda",
+    "reference_condition", "comparison_conditions",
     "lambda_min_ratio", "outer_nfolds", "inner_nfolds",
-    "lambda_selection", "active_tol", "seed", "max_iter",
+    "lambda_selection", "active_tol", "max_iter",
     "tol_objective", "tol_coef", "BPPARAM"
   ))
   requested_scale <- args$scale %||% NULL

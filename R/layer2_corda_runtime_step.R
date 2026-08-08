@@ -215,7 +215,7 @@
   execution_policy <- if (stage_parallel) {
     "stage_barrier_parallel_targets_deterministic_ordered_reduce"
   } else {
-    "serial_original_persistent_engine"
+    "serial_original_target_order_target_isolated_solver_state"
   }
   target_parallelism <- if (stage_parallel) {
     "within_each_corda2_stage"
@@ -225,8 +225,12 @@
   worker_lifecycle <- if (stage_parallel) {
     "fresh_pool_each_stage_stop_full_gc_before_next_stage"
   } else {
-    "single_persistent_engine_for_complete_reconstruction"
+    "no_worker_pool_fresh_solver_engine_per_target"
   }
+  solver_state_scope <- paste(
+    "fresh solver engine per directional target; persistent simplex basis",
+    "reuse only inside that target's maximize/dependency iterations"
+  )
   answer$completion_contract <- list(
     model_completion = "corda2",
     default_unchanged = TRUE,
@@ -248,11 +252,14 @@
       threads = 1L,
       completion_time_limit = Inf
     ),
+    solver_state_scope = solver_state_scope,
     stage_update_policy = "original_matlab_directional_order",
     parallel_execution_policy = execution_policy,
     target_parallelism = target_parallelism,
     stage_barrier = stage_parallel,
     stage_worker_lifecycle = worker_lifecycle,
+    closure_parallelism =
+      "directional_target_tasks_using_same_layer2_worker_cap",
     medium_handling = "exchange_bounds_only_then_corda2",
     medium_direct_reaction_deletion = FALSE,
     parent_prepruning = "none",
@@ -275,16 +282,19 @@
   answer$params$corda2_completion_time_limit <- Inf
   answer$params$corda2_inner_target_parallelism <- stage_parallel
   answer$params$corda2_stage_barrier_parallelism <- stage_parallel
+  answer$params$corda2_solver_state_scope <- solver_state_scope
   answer$union_gem_policy <- if (stage_parallel) {
     paste(
       "one original-CORDA2 reconstruction per cell type and medium;",
       "Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers;",
-      "directional targets inside each step use the full Layer-2 worker budget"
+      "directional targets inside each step use the full Layer-2 worker budget;",
+      "solver state is isolated between directional targets"
     )
   } else {
     paste(
       "one original-CORDA2 reconstruction per cell type and medium;",
-      "the preserved original persistent-engine serial target order is used"
+      "original directional target order is retained and every target starts",
+      "from a clean solver state"
     )
   }
   answer$method <- paste(

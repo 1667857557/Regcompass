@@ -223,13 +223,53 @@
   progress_state <- get0(
     ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
   )
-  task <- progress_state$current_task
+  args <- list(...)
+  engine <- args$engine %||% if (length(args)) args[[1L]] else NULL
+  split <- args$split %||% if (length(args) >= 2L) args[[2L]] else NULL
+  inside_dependency <- is.environment(progress_state) &&
+    isTRUE(progress_state$inside_dependency)
+  task <- if (is.environment(progress_state)) {
+    progress_state$current_task
+  } else {
+    NULL
+  }
   if (!is.null(task) && identical(task$route, "corda2") &&
-      !isTRUE(progress_state$inside_dependency)) {
+      !inside_dependency) {
     .rc_layer2_algorithm_once(
       "corda2_step2_2", "corda2_step2_2_MC_feasibility", 6L,
       "promoting frequent NC dependencies and testing MC feasibility"
     )
   }
-  do.call(.rc_corda2_maximize_target_core, list(...))
+
+  # Dependency assessment already owns one fresh target-local engine and must
+  # reuse it for its maximize + penalty-update solves. Standalone Step 2.2
+  # maximizations instead receive their own clean engine here so no MC target
+  # inherits a simplex basis from another target or chunk.
+  if (inside_dependency || isTRUE(engine$regcompass_target_isolated)) {
+    return(do.call(.rc_corda2_maximize_target_core, args))
+  }
+  if (!is.list(engine) || !is.list(split)) {
+    return(do.call(.rc_corda2_maximize_target_core, args))
+  }
+
+  aggregate_engine <- engine
+  target_engine <- .rc_corda_new_target_engine(aggregate_engine, split)
+  cleanup_target <- TRUE
+  on.exit({
+    if (isTRUE(cleanup_target)) {
+      .rc_corda_release_lp_engine(target_engine)
+    }
+  }, add = TRUE)
+  if (!is.null(names(args)) && "engine" %in% names(args)) {
+    args$engine <- target_engine
+  } else {
+    args[[1L]] <- target_engine
+  }
+  maximum <- do.call(.rc_corda2_maximize_target_core, args)
+  target_engine <- maximum$engine
+  maximum$engine <- .rc_corda_absorb_target_engine(
+    aggregate_engine, target_engine
+  )
+  cleanup_target <- FALSE
+  maximum
 }

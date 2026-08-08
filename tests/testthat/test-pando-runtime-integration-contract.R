@@ -1,35 +1,43 @@
-test_that("condition layer overrides are never silently ignored", {
-  normalized <- .rc_normalize_condition_pando_layer_args(
+test_that("condition layer overrides are validated by canonical routing", {
+  skip_if_not_installed("Pando")
+  routed <- .rc_route_pando_infer_args(
     list(
       rna_layer = "data",
       peak_layer = "data",
       peak_value_type = "normalized",
       tf_cor = 0.1
     ),
-    condition_types = "epithelial_like"
+    condition_types = "epithelial_like",
+    standard_types = character()
   )
-  expect_identical(
-    normalized$supplied,
-    c("rna_layer", "peak_layer", "peak_value_type")
-  )
-  expect_identical(names(normalized$args), "tf_cor")
+  expect_identical(routed$condition$rna_layer, "data")
+  expect_identical(routed$condition$peak_layer, "data")
+  expect_identical(routed$condition$peak_value_type, "normalized")
+  expect_identical(routed$condition$tf_cor, 0.1)
 
   expect_error(
-    .rc_normalize_condition_pando_layer_args(
+    .rc_route_pando_infer_args(
       list(rna_layer = "counts"),
-      condition_types = "epithelial_like"
+      condition_types = "epithelial_like",
+      standard_types = character()
     ),
     "Unsupported override"
   )
 })
 
-test_that("standard-only routing leaves condition layer arguments untouched", {
-  args <- list(rna_layer = "counts")
-  normalized <- .rc_normalize_condition_pando_layer_args(
-    args, condition_types = character()
+test_that("standard-only routing disables condition-only layer arguments", {
+  routed <- .rc_route_pando_infer_args(
+    list(rna_layer = "counts", tf_cor = 0.1),
+    condition_types = character(),
+    standard_types = "epithelial_like"
   )
-  expect_identical(normalized$args, args)
-  expect_length(normalized$supplied, 0L)
+  expect_false("rna_layer" %in% names(routed$standard))
+  expect_identical(routed$standard$tf_cor, 0.1)
+  expect_true(any(
+    routed$diagnostics$route == "standard_pando" &
+      routed$diagnostics$argument == "rna_layer" &
+      routed$diagnostics$action == "disabled_condition_only"
+  ))
 })
 
 test_that("condition fit cells agree with stored Pando metadata", {

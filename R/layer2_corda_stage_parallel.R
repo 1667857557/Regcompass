@@ -3,7 +3,7 @@
 # These helpers change scheduling only. Every directional target receives the
 # same split model, confidence snapshot, objective, bounds and stopping rules as
 # the serial implementation. Mathematical state is reduced only at the original
-# CORDA2 stage barriers.
+# CORDA2 stage barriers. Solver state is isolated between targets.
 
 .rc_corda_stage_progress_enabled <- function() {
   enabled <- get0(".rc_progress_enabled", mode = "function", inherits = TRUE)
@@ -290,7 +290,7 @@
     message(sprintf(
       paste0(
         "%s started | targets=%d | remaining=%d | workers=%d | chunks=%d | ",
-        "per-worker HiGHS threads=1"
+        "solver state isolated per target | per-worker HiGHS threads=1"
       ),
       label, n_targets, n_targets, workers, length(chunks)
     ))
@@ -302,6 +302,7 @@
       "; remaining=", n_targets,
       "; workers=", workers,
       "; chunks=", length(chunks),
+      "; solver_state=target_isolated",
       "; solver_threads_per_worker=1"
     ),
     scope = "corda2_stage", status = "running", emit = FALSE
@@ -375,8 +376,9 @@
     targets, indices, mark_done, split, directional_class, options,
     stage, penalized_class, solver, time_limit,
     lower = split$lb, upper = split$ub) {
-  engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
-  on.exit({ engine <- .rc_corda_release_lp_engine(engine) }, add = TRUE)
+  # No chunk-level native solver is created. This object only accumulates
+  # per-target solver metrics; each target creates and releases its own engine.
+  engine <- .rc_corda_target_metric_engine(split, solver, time_limit)
   results <- vector("list", length(targets))
   for (i in seq_along(targets)) {
     assessed <- .rc_corda2_dependency_assessment_core(
@@ -403,8 +405,8 @@
 
 .rc_corda2_maximize_chunk_parallel <- function(
     targets, indices, mark_done, split, solver, time_limit, lower, upper) {
-  engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
-  on.exit({ engine <- .rc_corda_release_lp_engine(engine) }, add = TRUE)
+  # Step 2.2 uses the same target-isolated solver-state contract.
+  engine <- .rc_corda_target_metric_engine(split, solver, time_limit)
   results <- vector("list", length(targets))
   for (i in seq_along(targets)) {
     maximum <- .rc_corda2_maximize_target(
@@ -461,7 +463,10 @@
     solver_configuration_verified = all_field(
       "solver_configuration_verified"
     ),
-    release_policy = "stage_chunk_engine_then_worker_pool_release",
+    release_policy =
+      "target_engine_release_then_step_worker_pool_release",
+    solver_state_scope = "fresh_solver_engine_per_directional_target",
+    within_target_solver_state_reuse = TRUE,
     target_parallelism = "within_corda2_stage",
     stage_barrier = TRUE
   )

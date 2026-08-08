@@ -154,10 +154,12 @@
         performance$n_bound_index_updates %||% NA_integer_
       ),
       solver_runtime = if (isTRUE(performance$persistent_solver)) {
-        "highs_persistent_cpp"
+        "highs_persistent_cpp_target_local"
       } else {
         "one_shot"
       },
+      solver_state_scope =
+        "fresh_solver_engine_per_directional_target",
       target_status = model$target_status,
       build_strategy = "celltype_medium_original_matlab_corda2",
       completion_stage = "original_CORDA2_after_confidence_mapping",
@@ -264,8 +266,10 @@
   attr(cache, "corda2_stage_worker_lifecycle") <- if (stage_parallel) {
     "fresh_pool_each_stage_stop_full_gc_before_next_stage"
   } else {
-    "single_persistent_engine_for_complete_reconstruction"
+    "no_worker_pool_fresh_solver_engine_per_target"
   }
+  attr(cache, "corda2_solver_state_scope") <-
+    "fresh_solver_engine_per_directional_target"
   attr(cache, "fastcore_parallel_task") <- "not_applicable_to_corda2"
   rm(parts, summaries)
   invisible(gc(verbose = FALSE, full = FALSE))

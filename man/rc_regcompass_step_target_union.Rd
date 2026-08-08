@@ -8,7 +8,7 @@ rc_regcompass_step_target_union(
   layer1, meta_modules, layer2, gem, outdir,
   core_reaction_ids = NULL, core_genes = NULL,
   gene_match = c("complete_gpr", "any_direct"),
-  layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+  layer2_args = list(), workers = 10L,
   progress = getOption("RegCompassR.progress", TRUE)
 )
 }
@@ -19,15 +19,14 @@ rc_regcompass_step_target_union(
 \item{core_reaction_ids}{GEM reaction IDs used only as direct database-mapping anchors. The argument name is retained for compatibility, but selected reactions may be original Layer 2 cores or non-core GEM reactions. An anchor is evaluated only in cell types where it is structurally available.}
 \item{core_genes}{Genes used to resolve original core anchors through GPR rules within each cell type.}
 \item{gene_match}{Complete-GPR or intentional direct-gene matching for \code{core_genes}.}
-\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold} overrides. This step does not rebuild a union GEM or rerun FASTCORE.}
-\item{parallel}{Whether to parallelize reused cell-type-model by matching-metacell tasks.}
-\item{BPPARAM}{Optional BiocParallel parameter object.}
+\item{layer2_args}{Optional \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold} overrides. This step reuses the existing Stage 5 union GEM and does not rerun CORDA2 or FASTCORE.}
+\item{workers}{Single RegCompass worker cap, default 10. The effective cap is \code{min(workers, max(1, detected logical CPUs - 2))}. Each LP dispatch shrinks further to the number of independent tasks; RegCompass chooses SOCK workers on Windows and multicore workers on Unix-like systems.}
 \item{progress}{Display stage progress.}
 }
 \value{A \code{regcompass_target_union_step} containing cell-type-scoped selected anchors, original-core and non-core anchor subsets, direct database-linked non-core targets, source-model provenance, LP results, and timing.}
 \description{Directly maps selected GEM reaction anchors through shared KEGG, Reactome, or master-Rhea identifiers and scores linked non-core reactions in the exact final Stage 5 union GEMs for the corresponding cell types and media.}
-\details{Reaction-ID anchors are validated against the supplied GEM rather than restricted to the original Layer 2 core set. Gene-selected anchors retain complete-GPR core resolution within each cell type. Same-subsystem, metabolite-neighbour, recursive/transitive, model-reconstruction, and new FASTCORE expansion are excluded.
+\details{Reaction-ID anchors are validated against the supplied GEM rather than restricted to the original Layer 2 core set. Gene-selected anchors retain complete-GPR core resolution within each cell type. Same-subsystem, metabolite-neighbour, recursive/transitive, model-reconstruction, and new structural expansion are excluded.
 
-The exact cached cell-type- and medium-specific union-GEM files and bounds are reused. Each cache file is validated against its recorded checksum, cell type, build strategy, completion stage, union-GEM marker, and medium identifier. Candidate availability is intersected across required media within one cell type and is never intersected or merged across different cell types. Original Layer 2 core targets for that cell type are not rescored.
+The exact cached cell-type- and medium-specific union-GEM files and bounds are reused. Both canonical CORDA2 and supplementary FASTCORE Stage 5 union GEMs are accepted after checksum, cell-type, completion-stage, union-marker, and medium validation. Candidate availability is intersected across required media within one cell type and is never intersected or merged across different cell types. Original Layer 2 core targets for that cell type are not rescored.
 
-A targeted request may cover a valid subset of the cell types represented in Layer 1. Every reused cache cell type must exist in Layer 1, and each cached model is scored only against metacells whose cell type matches. FASTCORE is not rerun. The stage writes \code{step_timing.tsv}.}
+A targeted request may cover a valid subset of the cell types represented in Layer 1. Every reused cache cell type must exist in Layer 1, and each cached model is scored only against metacells whose cell type matches. The targeted scoring LPs use the unified RegCompass worker budget and do not perform structural reconstruction. The stage writes \code{step_timing.tsv}.}

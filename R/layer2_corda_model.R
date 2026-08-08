@@ -1,22 +1,78 @@
 # RegCompass integration for the original MATLAB CORDA2 algorithm.
 
+.rc_corda_closure_directional_feasibility <- function(
+    gem, targets, solver, time_limit, flux_threshold,
+    label = "CORDA2 core-direction closure") {
+  if (!is.data.frame(targets) || !nrow(targets)) {
+    return(.rc_directional_feasibility_core(
+      gem, targets,
+      solver = solver,
+      time_limit = time_limit,
+      flux_threshold = flux_threshold
+    ))
+  }
+  BPPARAM <- .rc_layer2_task_bpparam()
+  if (identical(BPPARAM, FALSE) || is.null(BPPARAM) || nrow(targets) <= 1L) {
+    return(.rc_directional_feasibility_core(
+      gem, targets,
+      solver = solver,
+      time_limit = time_limit,
+      flux_threshold = flux_threshold
+    ))
+  }
+
+  worker_limit <- .rc_layer2_pool_workers(BPPARAM)
+  effective_workers <- min(nrow(targets), worker_limit)
+  if (.rc_progress_enabled(getOption("RegCompassR.progress", TRUE))) {
+    message(sprintf(
+      "%s started | targets=%d | workers=%d | solver_threads_per_worker=1",
+      label, nrow(targets), effective_workers
+    ))
+  }
+  indices <- as.list(seq_len(nrow(targets)))
+  parts <- rc_parallel_lapply(
+    indices,
+    function(i) {
+      .rc_directional_feasibility_core(
+        gem,
+        targets[as.integer(i), , drop = FALSE],
+        solver = solver,
+        time_limit = time_limit,
+        flux_threshold = flux_threshold
+      )
+    },
+    BPPARAM = BPPARAM
+  )
+  out <- do.call(rbind, parts)
+  rownames(out) <- NULL
+  if (.rc_progress_enabled(getOption("RegCompassR.progress", TRUE))) {
+    message(sprintf(
+      "%s complete | completed=%d/%d | remaining=0 | worker pool released",
+      label, nrow(targets), nrow(targets)
+    ))
+  }
+  out
+}
+
 .rc_corda_core_closure_core <- function(
     parent, final, core, target_direction, solver, time_limit,
     flux_threshold) {
   requested <- rc_prepare_directional_targets(
     parent, core, target_direction = target_direction
   )
-  parent_diagnostics <- .rc_directional_feasibility(
+  parent_diagnostics <- .rc_corda_closure_directional_feasibility(
     parent, requested,
     solver = solver,
     time_limit = time_limit,
-    flux_threshold = flux_threshold
+    flux_threshold = flux_threshold,
+    label = "CORDA2 parent core-direction closure"
   )
-  final_diagnostics <- .rc_directional_feasibility(
+  final_diagnostics <- .rc_corda_closure_directional_feasibility(
     final, requested,
     solver = solver,
     time_limit = time_limit,
-    flux_threshold = flux_threshold
+    flux_threshold = flux_threshold,
+    label = "CORDA2 reconstructed core-direction closure"
   )
   names(final_diagnostics)[names(final_diagnostics) == "feasible"] <-
     "final_feasible"
@@ -107,6 +163,15 @@
     reconstruction$parallel_execution_policy,
     "stage_barrier_parallel_targets_deterministic_ordered_reduce"
   )
+  solver_state_scope <- paste(
+    "fresh solver engine per directional target; persistent simplex basis",
+    "reuse only inside that target's maximize/dependency iterations"
+  )
+  reconstruction$solver_state_scope <- solver_state_scope
+  if (!stage_parallel) {
+    reconstruction$parallel_execution_policy <-
+      "serial_original_target_order_target_isolated_solver_state"
+  }
 
   included_variables <- reconstruction$included_directional_variables
   if (!length(included_variables)) {
@@ -186,19 +251,21 @@
     } else {
       "one_shot"
     },
+    solver_state_scope = solver_state_scope,
     target_parallelism = stage_parallel,
     parallel_scope = if (stage_parallel) {
       "directional_targets_within_each_original_corda2_stage"
     } else {
-      "serial_original_persistent_engine"
+      "serial_original_target_order_with_target_isolated_solver_state"
     },
     stage_barrier = stage_parallel,
     ordered_reduce = stage_parallel,
     worker_lifecycle = if (stage_parallel) {
       "fresh_pool_each_stage_stop_full_gc_before_next_stage"
     } else {
-      "single_persistent_engine_for_complete_reconstruction"
-    }
+      "no_worker_pool_fresh_solver_engine_per_target"
+    },
+    closure_parallelism = "directional_target_tasks_using_layer2_worker_cap"
   ))
   final$corda_stage1_HCtoMC <- reconstruction$HCtoMC
   final$corda_stage1_HCtoNC <- reconstruction$HCtoNC
@@ -270,6 +337,7 @@
     included_directional_variables = included_variables,
     stage_update_policy = reconstruction$stage_update_policy,
     parallel_execution_policy = reconstruction$parallel_execution_policy,
+    solver_state_scope = solver_state_scope,
     source_semantics = reconstruction$source_semantics
   )
   final$corda2_contract <- list(
@@ -285,6 +353,7 @@
     solver_time_limit = time_limit,
     stage_update_policy = reconstruction$stage_update_policy,
     parallel_execution_policy = reconstruction$parallel_execution_policy,
+    solver_state_scope = solver_state_scope,
     source_semantics = reconstruction$source_semantics
   )
 
@@ -343,7 +412,11 @@
   progress_state <- get0(
     ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
   )
-  task <- progress_state$current_task
+  task <- if (is.environment(progress_state)) {
+    progress_state$current_task
+  } else {
+    NULL
+  }
   if (!is.null(task) && identical(task$route, "corda2")) {
     .rc_layer2_current_task_event(
       "corda2_target_closure", 8L,

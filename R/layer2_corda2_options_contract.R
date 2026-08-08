@@ -98,6 +98,20 @@
     model_completion = "corda2",
     requested_model_completion = requested
   ), original, list(
+    # Original CORDA2 reconstruction is intentionally not time-bounded. The
+    # user-facing preparation path separately rejects completion_time_limit for
+    # CORDA2; keeping Inf in this canonical option object ensures direct model
+    # construction, diagnostics, tests and runtime provenance all agree.
+    time_limit = Inf,
+    # Keep the original MATLAB stage order explicit in the same canonical
+    # option object consumed by the reconstruction state machine. Parallelism is
+    # permitted only within one listed stage and never across these barriers.
+    stage_order = c(
+      "step1_HC_dependencies",
+      "step2_1_MC_NC_dependencies",
+      "step2_2_MC_feasibility",
+      "step3_HC_OT_dependencies"
+    ),
     flux_threshold = 1e-7,
     baseline_cost = 1e-3,
     output_bound = 1000,

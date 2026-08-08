@@ -1,4 +1,4 @@
-# Strict merge contract for condition/standard Pando routing.
+# Validation helpers for condition/standard Pando routing.
 
 .rc_validate_pando_route_partition <- function(
     condition_types = character(), standard_types = character()) {
@@ -49,26 +49,6 @@
     )
   }
   invisible(TRUE)
-}
-
-.rc_merge_pando_results_validated <- function(
-    condition_result = NULL, standard_results = list(),
-    condition_types = character(), standard_types = character(),
-    condition_col, celltype_col, outdir) {
-  .rc_validate_pando_route_partition(condition_types, standard_types)
-  .rc_validate_pando_result_cell_partition(c(
-    if (is.null(condition_result)) list() else list(condition_result),
-    standard_results
-  ))
-  .rc_merge_pando_results_core(
-    condition_result = condition_result,
-    standard_results = standard_results,
-    condition_types = condition_types,
-    standard_types = standard_types,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    outdir = outdir
-  )
 }
 
 .rc_overlay_projection <- function(target, incoming, label) {
