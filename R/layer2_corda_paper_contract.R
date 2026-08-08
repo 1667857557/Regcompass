@@ -137,8 +137,52 @@
   list(lower = lower, upper = upper, opposite = opposite)
 }
 
-.rc_corda2_maximize_target_core <- function(
+.rc_corda2_maximize_target <- function(
     engine, split, target, lower = split$lb, upper = split$ub) {
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  inside_dependency <- is.environment(progress_state) &&
+    isTRUE(progress_state$inside_dependency)
+  task <- if (is.environment(progress_state)) {
+    progress_state$current_task
+  } else {
+    NULL
+  }
+  if (!is.null(task) && identical(task$route, "corda2") &&
+      !inside_dependency) {
+    .rc_layer2_algorithm_once(
+      "corda2_step2_2", "corda2_step2_2_MC_feasibility", 6L,
+      "promoting frequent NC dependencies and testing MC feasibility"
+    )
+  }
+
+  # Each standalone directional target starts from a clean solver state. The
+  # same target-local engine is then reused for every solve belonging to that
+  # target. Dependency assessment supplies an already-isolated engine, so its
+  # maximize solve and subsequent penalty-update solves share the same basis.
+  if (!inside_dependency &&
+      !isTRUE(engine$regcompass_target_isolated) &&
+      is.list(engine) && is.list(split)) {
+    aggregate_engine <- engine
+    target_engine <- .rc_corda_new_target_engine(aggregate_engine, split)
+    cleanup_target <- TRUE
+    on.exit({
+      if (isTRUE(cleanup_target)) {
+        .rc_corda_release_lp_engine(target_engine)
+      }
+    }, add = TRUE)
+    maximum <- .rc_corda2_maximize_target(
+      target_engine, split, target, lower = lower, upper = upper
+    )
+    target_engine <- maximum$engine
+    maximum$engine <- .rc_corda_absorb_target_engine(
+      aggregate_engine, target_engine
+    )
+    cleanup_target <- FALSE
+    return(maximum)
+  }
+
   closed <- .rc_corda2_close_opposite(split, target, lower, upper)
   objective <- stats::setNames(rep(0, ncol(split$S)), colnames(split$S))
   objective[[target]] <- -1
@@ -216,60 +260,4 @@
     output$ub[[reaction]] <- if (keep_forward) min(parent_ub, 1000) else 0
   }
   output
-}
-
-# Progress-aware entry point; the algorithm remains in the core above.
-.rc_corda2_maximize_target <- function(...) {
-  progress_state <- get0(
-    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
-  )
-  args <- list(...)
-  engine <- args$engine %||% if (length(args)) args[[1L]] else NULL
-  split <- args$split %||% if (length(args) >= 2L) args[[2L]] else NULL
-  inside_dependency <- is.environment(progress_state) &&
-    isTRUE(progress_state$inside_dependency)
-  task <- if (is.environment(progress_state)) {
-    progress_state$current_task
-  } else {
-    NULL
-  }
-  if (!is.null(task) && identical(task$route, "corda2") &&
-      !inside_dependency) {
-    .rc_layer2_algorithm_once(
-      "corda2_step2_2", "corda2_step2_2_MC_feasibility", 6L,
-      "promoting frequent NC dependencies and testing MC feasibility"
-    )
-  }
-
-  # Dependency assessment already owns one fresh target-local engine and must
-  # reuse it for its maximize + penalty-update solves. Standalone Step 2.2
-  # maximizations instead receive their own clean engine here so no MC target
-  # inherits a simplex basis from another target or chunk.
-  if (inside_dependency || isTRUE(engine$regcompass_target_isolated)) {
-    return(do.call(.rc_corda2_maximize_target_core, args))
-  }
-  if (!is.list(engine) || !is.list(split)) {
-    return(do.call(.rc_corda2_maximize_target_core, args))
-  }
-
-  aggregate_engine <- engine
-  target_engine <- .rc_corda_new_target_engine(aggregate_engine, split)
-  cleanup_target <- TRUE
-  on.exit({
-    if (isTRUE(cleanup_target)) {
-      .rc_corda_release_lp_engine(target_engine)
-    }
-  }, add = TRUE)
-  if (!is.null(names(args)) && "engine" %in% names(args)) {
-    args$engine <- target_engine
-  } else {
-    args[[1L]] <- target_engine
-  }
-  maximum <- do.call(.rc_corda2_maximize_target_core, args)
-  target_engine <- maximum$engine
-  maximum$engine <- .rc_corda_absorb_target_engine(
-    aggregate_engine, target_engine
-  )
-  cleanup_target <- FALSE
-  maximum
 }

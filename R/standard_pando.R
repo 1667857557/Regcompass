@@ -293,7 +293,7 @@
   .rc_write_tsv_gz(all_table, file.path(outdir, "pando_tf_peak_gene_standard_all.tsv.gz"))
   .rc_write_tsv_gz(active_table, file.path(outdir, "pando_tf_peak_gene_standard_active.tsv.gz"))
   answer <- list(
-    schema_version = "regcompass_standard_pando_fit_v1",
+    schema_version = "regcompass_standard_pando_fit",
     analysis_mode = "standard_pando",
     condition_coefficients_calculated = FALSE,
     target_metabolic_genes = target_genes,

@@ -33,7 +33,6 @@
     "padj_threshold", "adjust_method", "scale", "interaction",
     "projection_effect_column", "projection_policy", "rna_layer",
     "peak_layer", "peak_value_type", "preprocessing_fingerprint",
-    "dictionary_preprocessing_provenance_verified",
     "condition_col", "cell_type_col", "fit_engine",
     "coefficient_scale", "target_genes"
   )
@@ -44,7 +43,11 @@
       !identical(fit$projection_policy, "padj_significant_effects_only") ||
       !identical(toupper(as.character(fit$adjust_method)), "BH") ||
       !isTRUE(all.equal(as.numeric(fit$padj_threshold), 0.05)) ||
-      !isTRUE(fit$dictionary_preprocessing_provenance_verified) ||
+      !isTRUE(attr(
+        fit$edge_dictionary,
+        "preprocessing_provenance_verified",
+        exact = TRUE
+      )) ||
       any(!nzchar(c(
         as.character(fit$rna_layer), as.character(fit$peak_layer),
         as.character(fit$peak_value_type),
@@ -668,10 +671,7 @@
       peak_value_type = attr(dictionary, "peak_value_type", exact = TRUE),
       preprocessing_fingerprint = attr(
         dictionary, "preprocessing_fingerprint", exact = TRUE
-      ),
-      dictionary_preprocessing_provenance_verified = isTRUE(attr(
-        dictionary, "preprocessing_provenance_verified", exact = TRUE
-      ))
+      )
     )
     class(fit_contract) <- c("ConditionGRNFit", "list")
     invisible(.rc_require_pando_condition_grn_fit(fit_contract))
@@ -760,7 +760,7 @@
       fit_contract$condition_cell_ids, use.names = FALSE
     ))
     results[[type]] <- list(
-      schema_version = "regcompass_condition_grn_common_dictionary_v1",
+      schema_version = "regcompass_condition_grn_common_dictionary",
       analysis_mode = "condition_grn",
       condition_coefficients_calculated = TRUE,
       pando_fit_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
