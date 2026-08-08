@@ -37,18 +37,16 @@
   )
 }
 
-test_that("stage-parallel CORDA2 preserves serial mathematical state", {
+test_that("stage-parallel CORDA2 preserves exact serial mathematical state", {
   skip_if_not_installed("BiocParallel")
   case <- .make_corda_stage_parallel_case()
   old_options <- options(RegCompassR.progress = FALSE)
   on.exit(options(old_options), add = TRUE)
 
-  previous <- RegCompassR:::.rc_layer2_enter_parallel_context(FALSE, FALSE)
-  serial <- RegCompassR:::.rc_corda_build_three_stage_core(
+  serial <- RegCompassR:::.rc_corda_build_three_stage_serial_core(
     split = case$split, classes = case$classes, options = case$options,
     solver = "highs", time_limit = 30
   )
-  RegCompassR:::.rc_layer2_restore_parallel_context(previous)
 
   param <- BiocParallel::SnowParam(
     workers = 2L, type = "SOCK", progressbar = FALSE
@@ -77,6 +75,9 @@ test_that("stage-parallel CORDA2 preserves serial mathematical state", {
   expect_setequal(parallel$stage2_promoted_mc, serial$stage2_promoted_mc)
   expect_setequal(parallel$stage3_associated_ot, serial$stage3_associated_ot)
   expect_identical(parallel$stage_update_policy, "original_matlab_directional_order")
+  expect_identical(serial$stage_update_policy, "original_matlab_directional_order")
+  expect_identical(serial$parallel_execution_policy,
+                   "serial_original_persistent_engine")
   expect_identical(
     parallel$parallel_execution_policy,
     "stage_barrier_parallel_targets_deterministic_ordered_reduce"
@@ -86,6 +87,18 @@ test_that("stage-parallel CORDA2 preserves serial mathematical state", {
     parallel$solver_performance$target_parallelism, "within_corda2_stage"
   )
   expect_false(BiocParallel::bpisup(param))
+})
+
+test_that("CORDA2 dispatcher keeps serial route when parallel is disabled", {
+  case <- .make_corda_stage_parallel_case()
+  previous <- RegCompassR:::.rc_layer2_enter_parallel_context(FALSE, FALSE)
+  on.exit(RegCompassR:::.rc_layer2_restore_parallel_context(previous), add = TRUE)
+  result <- RegCompassR:::.rc_corda_build_three_stage_dispatch(
+    split = case$split, classes = case$classes, options = case$options,
+    solver = "highs", time_limit = 30
+  )
+  expect_identical(result$parallel_execution_policy,
+                   "serial_original_persistent_engine")
 })
 
 test_that("CORDA2 progress records completed and remaining targets", {
