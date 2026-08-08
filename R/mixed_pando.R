@@ -126,7 +126,7 @@
   }
 
   answer <- list(
-    schema_version = "regcompass_celltype_routed_pando_v1",
+    schema_version = "regcompass_celltype_routed_pando",
     analysis_mode = mode,
     cell_type_analysis_mode = routing,
     condition_coefficients_calculated = length(condition_fits) > 0L,
