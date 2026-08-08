@@ -79,6 +79,55 @@
     stage, penalized_class,
     lower = split$lb, upper = split$ub,
     constrain_target = TRUE) {
+  # A target must never inherit a simplex basis from a different target. This
+  # keeps parallel chunk assignment and worker count from affecting which
+  # alternate optimum is selected. The fresh engine is nevertheless reused for
+  # all solves belonging to this one target, including the target-maximization
+  # solve and every CORDA2 penalty-update iteration.
+  if (!isTRUE(engine$regcompass_target_isolated)) {
+    aggregate_engine <- engine
+    target_engine <- .rc_corda_new_target_engine(aggregate_engine, split)
+    progress_state <- get0(
+      ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+    )
+    previous_inside <- if (is.environment(progress_state)) {
+      isTRUE(progress_state$inside_dependency)
+    } else {
+      FALSE
+    }
+    if (is.environment(progress_state)) {
+      progress_state$inside_dependency <- TRUE
+    }
+    cleanup_target <- TRUE
+    on.exit({
+      if (isTRUE(cleanup_target)) {
+        .rc_corda_release_lp_engine(target_engine)
+      }
+      if (is.environment(progress_state)) {
+        progress_state$inside_dependency <- previous_inside
+      }
+    }, add = TRUE)
+
+    assessed <- .rc_corda2_dependency_assessment_core(
+      engine = target_engine,
+      split = split,
+      target = target,
+      directional_class = directional_class,
+      options = options,
+      stage = stage,
+      penalized_class = penalized_class,
+      lower = lower,
+      upper = upper,
+      constrain_target = constrain_target
+    )
+    target_engine <- assessed$engine
+    assessed$engine <- .rc_corda_absorb_target_engine(
+      aggregate_engine, target_engine
+    )
+    cleanup_target <- FALSE
+    return(assessed)
+  }
+
   constrained <- if (isTRUE(constrain_target)) {
     .rc_corda2_constrain_target(
       engine, split, target, options, lower = lower, upper = upper
@@ -277,7 +326,11 @@
   )
   args <- list(...)
   stage <- args$stage %||% if (length(args) >= 6L) args[[6L]] else ""
-  task <- progress_state$current_task
+  task <- if (is.environment(progress_state)) {
+    progress_state$current_task
+  } else {
+    NULL
+  }
   if (!is.null(task) && identical(task$route, "corda2")) {
     if (identical(stage, "corda2_step1_HC_dependencies")) {
       .rc_layer2_algorithm_once(
@@ -296,9 +349,6 @@
       )
     }
   }
-  previous <- progress_state$inside_dependency
-  progress_state$inside_dependency <- TRUE
-  on.exit({ progress_state$inside_dependency <- previous }, add = TRUE)
   do.call(
     .rc_corda2_dependency_assessment_core,
     args
