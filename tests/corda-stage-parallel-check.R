@@ -118,6 +118,7 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
   BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
 }
 
+source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
 source("R/layer2_corda_paper_contract.R")
 source("R/layer2_corda_direction_contract.R")
