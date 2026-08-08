@@ -56,13 +56,6 @@
   invisible(NULL)
 }
 
-.rc_with_internal_single_thread <- function(FUN) {
-  if (!is.function(FUN)) stop("`FUN` must be a function.", call. = FALSE)
-  state <- .rc_set_internal_single_thread()
-  on.exit(.rc_restore_internal_threads(state), add = TRUE)
-  FUN()
-}
-
 .rc_stage_worker_config <- function(workers = NULL, argument = "workers") {
   workers <- .rc_validate_worker_limit(workers, argument = argument)
   rc_parallel_config(workers = workers, backend = "auto")
