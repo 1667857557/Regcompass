@@ -15,7 +15,7 @@ test_that("Stage 3 does not run FASTCORE", {
   expect_false(grepl(".rc_fastcore_", text, fixed = TRUE))
 })
 
-test_that("canonical workflow injects stage-scoped workers", {
+test_that("canonical workflow injects one global worker budget", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   candidates <- unique(c(
     if (nzchar(workspace)) file.path(workspace, "R", "regcompass.R") else character(),
@@ -26,13 +26,14 @@ test_that("canonical workflow injects stage-scoped workers", {
   candidates <- candidates[file.exists(candidates)]
   if (!length(candidates)) skip("regcompass.R is unavailable.")
   text <- paste(readLines(candidates[[1L]], warn = FALSE), collapse = "\n")
-  expect_match(text, "upstream_workers = 6L", fixed = TRUE)
-  expect_match(text, "layer2_workers = 30L", fixed = TRUE)
-  expect_match(text, ".rc_stage_worker_config(", fixed = TRUE)
-  expect_match(text, ".rc_with_stage_workers(", fixed = TRUE)
+  expect_match(text, "workers = getOption(\"RegCompassR.workers\", 10L)", fixed = TRUE)
+  expect_match(text, "rc_parallel_config(workers = workers", fixed = TRUE)
+  expect_match(text, "workers = workers", fixed = TRUE)
   expect_match(text, "layer2_args = layer2_args", fixed = TRUE)
-  expect_match(text, "result$params$upstream_workers", fixed = TRUE)
-  expect_match(text, "result$params$layer2_workers", fixed = TRUE)
+  expect_match(text, "result$params$workers", fixed = TRUE)
+  expect_match(text, "gc(verbose = FALSE, full = TRUE)", fixed = TRUE)
+  expect_false(grepl("upstream_workers", text, fixed = TRUE))
+  expect_false(grepl("layer2_workers", text, fixed = TRUE))
   expect_false(grepl("parallel_backend =", text, fixed = TRUE))
 })
 
@@ -59,6 +60,7 @@ test_that("stage worker lifecycle forces one-thread child environments", {
 test_that("explicit Linux multicore backend creates a MulticoreParam", {
   skip_if(.Platform$OS.type == "windows")
   skip_if_not_installed("BiocParallel")
+  skip_if(.rc_worker_capacity()$worker_ceiling < 2L)
   param <- rc_default_bpparam(workers = 2L, backend = "multicore")
   expect_true(methods::is(param, "MulticoreParam"))
   expect_equal(BiocParallel::bpnworkers(param), 2L)
