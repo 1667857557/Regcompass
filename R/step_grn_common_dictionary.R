@@ -10,11 +10,12 @@
 #' Pando workflow is used without constructing condition coefficients. Pando
 #' inference arguments are routed automatically. Parallel execution is resolved
 #' from one global `workers` budget: Windows uses SOCK workers, Linux/macOS uses
-#' multicore workers, and Stage 1 launches only
-#' `min(number_of_broad_cell_types, workers)` workers.
+#' multicore workers, and Stage 1 launches only the smaller of the broad-cell-
+#' type job count and the resolved worker budget. Two detected CPUs are reserved
+#' globally for controller/OS/I/O work.
 #'
-#' @param workers Global RegCompass worker upper bound. `NULL` uses
-#' `options(RegCompassR.workers)`, scheduler allocation, or detected cores.
+#' @param workers Requested global RegCompass worker upper bound. Defaults to 10
+#' and is capped at `max(1, available CPUs - 2)`.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
@@ -26,7 +27,7 @@ rc_regcompass_step_grn <- function(
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
-    workers = NULL,
+    workers = getOption("RegCompassR.workers", 10L),
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start(
     "grn", outdir, progress, total_parts = 12L
@@ -235,6 +236,9 @@ rc_regcompass_step_grn <- function(
         stored_in_step_params = FALSE
       ),
       workers = worker_config$worker_budget,
+      available_cpus = worker_config$available_cpus,
+      reserved_cpus = worker_config$reserved_cpus,
+      worker_ceiling = worker_config$worker_ceiling,
       parallel_backend = worker_config$actual_backend,
       pando_execution_plan = grn_result$pando_execution_plan,
       species = species,
