@@ -144,13 +144,19 @@
 #' created for every cell-type and medium combination. Conditions and metacells
 #' share a model only when their cell type matches. RNA-only scoring is an
 #' interpretation control that reuses the exact structural model cache. The
-#' `full_gem` route uses a separate engine.
+#' `full_gem` route uses a separate engine. `workers` is the single hard upper
+#' bound for Layer 2 parallelism. CORDA2 and directional LP batches can use the
+#' full cap when enough independent targets exist; smaller batches use fewer
+#' workers automatically.
 #'
+#' @param workers Total RegCompass worker cap. The default is 10. Windows uses
+#'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. Every
+#'   dispatch is limited to `min(number of independent tasks, workers)`.
 #' @export
 rc_regcompass_step_layer2 <- function(
     layer1, meta_modules, gem, medium_scenarios, outdir,
     model_mode = c("meta_module_gem", "full_gem"),
-    layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+    layer2_args = list(), workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("layer2", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
@@ -159,6 +165,10 @@ rc_regcompass_step_layer2 <- function(
     stop("`layer2_args` must be a list.", call. = FALSE)
   }
 
+  parallel_plan <- .rc_stage_parallel_plan(workers, argument = "workers")
+  on.exit(.rc_release_bpparam(parallel_plan$BPPARAM), add = TRUE)
+  parallel <- parallel_plan$parallel
+  BPPARAM <- parallel_plan$BPPARAM
   pool_state <- .rc_prepare_corda_worker_pool(
     layer2_args = layer2_args,
     parallel = parallel,
@@ -243,7 +253,7 @@ rc_regcompass_step_layer2 <- function(
     "layer1", "gem", "mode", "unit", "reaction_membership",
     "core_reactions", "target_reactions", "medium_scenarios",
     "sample_col", "condition_col", "celltype_col", "BPPARAM",
-    "parallel", "penalty_weights"
+    "parallel", "workers", "penalty_weights"
   ))
   if (length(reserved)) {
     stop(
@@ -405,6 +415,9 @@ rc_regcompass_step_layer2 <- function(
     is_corda2 = completion$is_corda2,
     solver = solver
   )
+  answer$params$workers <- parallel_plan$workers
+  answer$params$parallel_backend <- parallel_plan$config$actual_backend
+  answer$params$dynamic_worker_sizing <- TRUE
   answer$params$corda2_worker_pool_origin <- pool_state$origin
   answer$params$corda2_worker_pool_started_by_layer2 <-
     isTRUE(pool_state$started_here)
@@ -485,18 +498,22 @@ rc_regcompass_step_layer2 <- function(
   } else {
     length(unique(as.character(args$target_reactions)))
   }
+  BPPARAM <- args$BPPARAM %||% FALSE
+  worker_limit <- .rc_bpparam_worker_limit(BPPARAM, default = 1L)
   .rc_layer2_overall_event(
     "layer2_plan_ready", 1L,
     detail = paste(
       "execution plan resolved:", length(celltypes), "cell types x",
-      length(media), "media;", target_count, "target reactions"
+      length(media), "media;", target_count, "target reactions; worker cap",
+      worker_limit
     ),
     context = list(
       model_mode = args$mode,
       completion = completion,
       cell_types = length(celltypes),
       media = length(media),
-      parallel = isTRUE(args$parallel %||% TRUE)
+      parallel = isTRUE(args$parallel %||% TRUE),
+      worker_limit = worker_limit
     )
   )
   .rc_layer2_overall_event(
