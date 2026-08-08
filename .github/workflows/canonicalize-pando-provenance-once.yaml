@@ -1,0 +1,84 @@
+name: Canonicalize Pando provenance once
+
+on:
+  pull_request:
+
+permissions:
+  contents: write
+
+jobs:
+  migrate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Canonicalize provenance source
+        shell: python
+        run: |
+          from pathlib import Path
+          path = Path('R/condition_grn_contract.R')
+          text = path.read_text()
+
+          text = text.replace(
+              '    "peak_layer", "peak_value_type", "preprocessing_fingerprint",\n'
+              '    "dictionary_preprocessing_provenance_verified",\n'
+              '    "condition_col", "cell_type_col", "fit_engine",',
+              '    "peak_layer", "peak_value_type", "preprocessing_fingerprint",\n'
+              '    "condition_col", "cell_type_col", "fit_engine",'
+          )
+          text = text.replace(
+              '      !isTRUE(all.equal(as.numeric(fit$padj_threshold), 0.05)) ||\n'
+              '      !isTRUE(fit$dictionary_preprocessing_provenance_verified) ||\n'
+              '      any(!nzchar(c(',
+              '      !isTRUE(all.equal(as.numeric(fit$padj_threshold), 0.05)) ||\n'
+              '      !isTRUE(attr(\n'
+              '        fit$edge_dictionary,\n'
+              '        "preprocessing_provenance_verified",\n'
+              '        exact = TRUE\n'
+              '      )) ||\n'
+              '      any(!nzchar(c('
+          )
+          text = text.replace(
+              '      preprocessing_fingerprint = attr(\n'
+              '        dictionary, "preprocessing_fingerprint", exact = TRUE\n'
+              '      ),\n'
+              '      dictionary_preprocessing_provenance_verified = isTRUE(attr(\n'
+              '        dictionary, "preprocessing_provenance_verified", exact = TRUE\n'
+              '      ))',
+              '      preprocessing_fingerprint = attr(\n'
+              '        dictionary, "preprocessing_fingerprint", exact = TRUE\n'
+              '      )'
+          )
+
+          forbidden = 'dictionary_preprocessing_provenance_verified'
+          if forbidden in text:
+              raise RuntimeError(
+                  'duplicate top-level Pando provenance field remains'
+              )
+          required = [
+              'fit$edge_dictionary',
+              '"preprocessing_provenance_verified"',
+              'exact = TRUE',
+          ]
+          missing = [value for value in required if value not in text]
+          if missing:
+              raise RuntimeError(
+                  f'canonical dictionary provenance validation missing: {missing}'
+              )
+          path.write_text(text)
+      - name: Parse source
+        shell: Rscript {0}
+        run: parse(file = 'R/condition_grn_contract.R')
+      - name: Commit migration
+        shell: bash
+        run: |
+          if git diff --quiet; then
+            echo 'No migration changes to commit.'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add R/condition_grn_contract.R
+          git commit -m 'Use frozen dictionary provenance directly'
+          git push origin HEAD:${{ github.head_ref }}
