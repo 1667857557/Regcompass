@@ -115,7 +115,23 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
     BiocParallel::bpstart(BPPARAM)
     on.exit(.rc_release_bpparam(BPPARAM), add = TRUE)
   }
-  BiocParallel::bplapply(X, FUN, ..., BPPARAM = BPPARAM)
+  names_all <- ls(.GlobalEnv, all.names = TRUE)
+  runtime_functions <- mget(names_all, envir = .GlobalEnv, inherits = FALSE)
+  runtime_functions <- runtime_functions[vapply(
+    runtime_functions, is.function, logical(1)
+  )]
+  extra <- list(...)
+  worker <- function(x, FUN, runtime_functions, extra) {
+    list2env(runtime_functions, envir = .GlobalEnv)
+    do.call(FUN, c(list(x), extra))
+  }
+  BiocParallel::bplapply(
+    X, worker,
+    FUN = FUN,
+    runtime_functions = runtime_functions,
+    extra = extra,
+    BPPARAM = BPPARAM
+  )
 }
 
 source("R/layer2_corda_evidence.R")
