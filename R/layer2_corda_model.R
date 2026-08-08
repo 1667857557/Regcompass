@@ -182,7 +182,11 @@
     } else {
       "one_shot"
     },
-    target_parallelism = FALSE
+    target_parallelism = TRUE,
+    parallel_scope = "directional_targets_within_each_original_corda2_stage",
+    stage_barrier = TRUE,
+    ordered_reduce = TRUE,
+    worker_lifecycle = "fresh_pool_each_stage_stop_full_gc_before_next_stage"
   ))
   final$corda_stage1_HCtoMC <- reconstruction$HCtoMC
   final$corda_stage1_HCtoNC <- reconstruction$HCtoNC
@@ -253,6 +257,7 @@
     included_reactions = included,
     included_directional_variables = included_variables,
     stage_update_policy = reconstruction$stage_update_policy,
+    parallel_execution_policy = reconstruction$parallel_execution_policy,
     source_semantics = reconstruction$source_semantics
   )
   final$corda2_contract <- list(
@@ -266,6 +271,8 @@
       outputBound = corda_options$output_bound
     ),
     solver_time_limit = time_limit,
+    stage_update_policy = reconstruction$stage_update_policy,
+    parallel_execution_policy = reconstruction$parallel_execution_policy,
     source_semantics = reconstruction$source_semantics
   )
 
