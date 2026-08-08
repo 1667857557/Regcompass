@@ -39,7 +39,7 @@
 }
 
 .rc_corda_should_outer_parallel <- function(n_tasks, pool_workers) {
-  as.integer(n_tasks) > 1L && as.integer(pool_workers) > 1L
+  FALSE
 }
 
 .rc_corda_pool_workers <- function(BPPARAM) {
