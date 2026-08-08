@@ -2,94 +2,40 @@
 
 .rc_layer2_direction_contract <- function(x) {
   tab <- as.data.frame(x$lp_diagnostics)
-  required <- c(
-    "reaction_id", "target_direction", "medium_scenario", "row_id"
-  )
-  if (identical(as.character(x$model_mode), "meta_module_gem")) {
-    required <- c("cell_type", required)
-  }
-  if (!all(required %in% colnames(tab))) {
-    stop("Layer 2 direction diagnostics are incomplete.", call. = FALSE)
-  }
+  required <- c("reaction_id", "target_direction", "medium_scenario", "row_id")
+  if (identical(as.character(x$model_mode), "meta_module_gem")) required <- c("cell_type", required)
+  if (!all(required %in% colnames(tab))) stop("Layer 2 direction diagnostics are incomplete.", call. = FALSE)
   tab <- unique(tab[, required, drop = FALSE])
-  order_cols <- intersect(
-    c("cell_type", "medium_scenario", "reaction_id",
-      "target_direction", "row_id"),
-    colnames(tab)
-  )
+  order_cols <- intersect(c("cell_type", "medium_scenario", "reaction_id", "target_direction", "row_id"), colnames(tab))
   tab[do.call(order, tab[order_cols]), , drop = FALSE]
 }
 
 .rc_assert_layer2_shared_contract <- function(primary, candidate, label) {
   matrices <- c("penalty", "vmax", "feasible", "evaluated")
-  for (name in matrices) {
-    if (!identical(dimnames(primary[[name]]), dimnames(candidate[[name]]))) {
-      stop("Layer 2 ", label, " changed ", name, " ordering.",
-           call. = FALSE)
-    }
-  }
-  if (!identical(
-        primary$structural_model_contract,
-        candidate$structural_model_contract
-      ) ||
-      !identical(
-        .rc_layer2_direction_contract(primary),
-        .rc_layer2_direction_contract(candidate)
-      ) ||
-      !identical(primary$medium_scenarios, candidate$medium_scenarios) ||
-      !identical(primary$unit_meta, candidate$unit_meta)) {
-    stop(
-      "Layer 2 ", label,
-      " did not reuse the exact GEM, bounds, media, directions, and units.",
-      call. = FALSE
-    )
-  }
+  for (name in matrices) if (!identical(dimnames(primary[[name]]), dimnames(candidate[[name]]))) stop("Layer 2 ", label, " changed ", name, " ordering.", call. = FALSE)
+  if (!identical(primary$structural_model_contract, candidate$structural_model_contract) || !identical(.rc_layer2_direction_contract(primary), .rc_layer2_direction_contract(candidate)) || !identical(primary$medium_scenarios, candidate$medium_scenarios) || !identical(primary$unit_meta, candidate$unit_meta)) stop("Layer 2 ", label, " did not reuse the exact GEM, bounds, media, directions, and units.", call. = FALSE)
   finite <- is.finite(primary$vmax) & is.finite(candidate$vmax)
-  if (any(is.finite(primary$vmax) != is.finite(candidate$vmax)) ||
-      any(abs(primary$vmax[finite] - candidate$vmax[finite]) >
-          1e-10 * pmax(1, abs(primary$vmax[finite])))) {
-    stop("Layer 2 ", label, " changed structural target vmax.",
-         call. = FALSE)
-  }
+  if (any(is.finite(primary$vmax) != is.finite(candidate$vmax)) || any(abs(primary$vmax[finite] - candidate$vmax[finite]) > 1e-10 * pmax(1, abs(primary$vmax[finite])))) stop("Layer 2 ", label, " changed structural target vmax.", call. = FALSE)
   invisible(TRUE)
 }
 
-.rc_layer2_comparison_table_core <- function(
-    layer2, layer1, condition_col, celltype_col) {
+.rc_layer2_comparison_table_core <- function(layer2, layer1, condition_col, celltype_col) {
   penalty <- layer2$penalty
   row_meta <- rc_parse_microcompass_row_id(rownames(penalty))
   unit_meta <- layer2$unit_meta
-  unit_id <- if ("unit_id" %in% colnames(unit_meta)) {
-    as.character(unit_meta$unit_id)
-  } else {
-    as.character(unit_meta$pool_id)
-  }
+  unit_id <- if ("unit_id" %in% colnames(unit_meta)) as.character(unit_meta$unit_id) else as.character(unit_meta$pool_id)
   unit_meta <- unit_meta[match(colnames(penalty), unit_id), , drop = FALSE]
   unit_celltype <- as.character(unit_meta[[celltype_col]])
-  grid <- expand.grid(
-    row_index = seq_len(nrow(penalty)),
-    unit_index = seq_len(ncol(penalty)),
-    KEEP.OUT.ATTRS = FALSE,
-    stringsAsFactors = FALSE
-  )
+  grid <- expand.grid(row_index = seq_len(nrow(penalty)), unit_index = seq_len(ncol(penalty)), KEEP.OUT.ATTRS = FALSE, stringsAsFactors = FALSE)
   scoped_celltype <- row_meta$cell_type[grid$row_index]
-  matching_scope <- is.na(scoped_celltype) |
-    scoped_celltype == unit_celltype[grid$unit_index]
+  matching_scope <- is.na(scoped_celltype) | scoped_celltype == unit_celltype[grid$unit_index]
   grid <- grid[matching_scope, , drop = FALSE]
-  if (!nrow(grid)) {
-    stop("No Layer 2 rows match their cell-type units.", call. = FALSE)
-  }
+  if (!nrow(grid)) stop("No Layer 2 rows match their cell-type units.", call. = FALSE)
   reaction <- row_meta$reaction_id[grid$row_index]
   unit <- colnames(penalty)[grid$unit_index]
-  index_matrix <- function(x) {
-    as.numeric(x[cbind(grid$row_index, grid$unit_index)])
-  }
+  index_matrix <- function(x) as.numeric(x[cbind(grid$row_index, grid$unit_index)])
   reaction_unit_matrix <- function(x) {
-    if (!is.numeric(x) || is.null(dim(x)) ||
-        !all(unique(reaction) %in% rownames(x)) ||
-        !identical(colnames(x), colnames(penalty))) {
-      stop("Layer 1 reaction diagnostics are not aligned.", call. = FALSE)
-    }
+    if (!is.numeric(x) || is.null(dim(x)) || !all(unique(reaction) %in% rownames(x)) || !identical(colnames(x), colnames(penalty))) stop("Layer 1 reaction diagnostics are not aligned.", call. = FALSE)
     as.numeric(x[cbind(match(reaction, rownames(x)), grid$unit_index)])
   }
   omega <- layer2$params$omega
@@ -98,419 +44,148 @@
   rna_only <- index_matrix(layer2$penalty_rna_only)
   normalized <- primary / (omega * vmax)
   normalized[!is.finite(primary) | !is.finite(vmax) | vmax <= 0] <- NA_real_
-  data.frame(
-    row_id = rownames(penalty)[grid$row_index],
-    reaction_id = reaction,
-    direction = row_meta$target_direction[grid$row_index],
-    medium = row_meta$medium_scenario[grid$row_index],
-    cell_type = unit_celltype[grid$unit_index],
-    condition = as.character(unit_meta[[condition_col]][grid$unit_index]),
-    metacell_id = unit,
-    penalty = primary,
-    penalty_rna_only = rna_only,
-    regulatory_penalty_delta = primary - rna_only,
-    penalty_per_target_flux = normalized,
-    vmax = vmax,
-    penalty_available = is.finite(primary),
-    regulatory_support_fraction = reaction_unit_matrix(
-      layer1$reaction_regulatory_support_fraction
-    ),
-    inference_class = "metacell_statistical_unit_within_dataset",
-    comparability_class =
-      "same_celltype_conditions_on_one_celltype_medium_union_gem",
-    stringsAsFactors = FALSE
-  )
+  data.frame(row_id = rownames(penalty)[grid$row_index], reaction_id = reaction, direction = row_meta$target_direction[grid$row_index], medium = row_meta$medium_scenario[grid$row_index], cell_type = unit_celltype[grid$unit_index], condition = as.character(unit_meta[[condition_col]][grid$unit_index]), metacell_id = unit, penalty = primary, penalty_rna_only = rna_only, regulatory_penalty_delta = primary - rna_only, penalty_per_target_flux = normalized, vmax = vmax, penalty_available = is.finite(primary), regulatory_support_fraction = reaction_unit_matrix(layer1$reaction_regulatory_support_fraction), inference_class = "metacell_statistical_unit_within_dataset", comparability_class = "same_celltype_conditions_on_one_celltype_medium_union_gem", stringsAsFactors = FALSE)
 }
 
 .rc_compact_meta_modules_for_layer2 <- function(meta_modules) {
   embedded <- meta_modules$condition_modules
   if (is.list(embedded) && is.data.frame(embedded$reaction_membership)) {
-    meta_modules$condition_modules <- list(
-      schema_version = "regcompass_transient_condition_modules_summary_v1",
-      embedded = FALSE,
-      n_reaction_membership = nrow(embedded$reaction_membership)
-    )
-    class(meta_modules$condition_modules) <- c(
-      "regcompass_external_condition_modules", "list"
-    )
+    meta_modules$condition_modules <- list(schema_version = "regcompass_transient_condition_modules_summary_v1", embedded = FALSE, n_reaction_membership = nrow(embedded$reaction_membership))
+    class(meta_modules$condition_modules) <- c("regcompass_external_condition_modules", "list")
   }
   meta_modules
 }
 
 #' Build cell-type and medium structural models and score directional LPs
 #'
-#' With `model_mode = "meta_module_gem"`, conditions are unioned only within the
-#' same cell type. One union GEM and one independent structural completion are
-#' created for every cell-type and medium combination. Conditions and metacells
-#' share a model only when their cell type matches. RNA-only scoring is an
-#' interpretation control that reuses the exact structural model cache. The
-#' `full_gem` route uses a separate engine.
+#' With `model_mode = "meta_module_gem"`, conditions are unioned only within the same cell type. One union GEM and one independent structural completion are created for every cell-type and medium combination. Parallel work uses one global `workers` budget. Windows uses SOCK workers and Linux/macOS use multicore workers. CORDA2 and large LP target sets can use the complete resolved budget; smaller task sets use fewer workers. The resolved budget is capped at available CPUs minus two.
 #'
+#' @param workers Requested global RegCompass worker upper bound. Defaults to 10 and is capped at `max(1, available CPUs - 2)`.
 #' @export
-rc_regcompass_step_layer2 <- function(
-    layer1, meta_modules, gem, medium_scenarios, outdir,
-    model_mode = c("meta_module_gem", "full_gem"),
-    layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
-    progress = getOption("RegCompassR.progress", TRUE)) {
+rc_regcompass_step_layer2 <- function(layer1, meta_modules, gem, medium_scenarios, outdir, model_mode = c("meta_module_gem", "full_gem"), layer2_args = list(), workers = getOption("RegCompassR.workers", 10L), progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("layer2", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   model_mode <- match.arg(model_mode)
-  if (!is.list(layer2_args)) {
-    stop("`layer2_args` must be a list.", call. = FALSE)
-  }
-
-  pool_state <- .rc_prepare_corda_worker_pool(
-    layer2_args = layer2_args,
-    parallel = parallel,
-    BPPARAM = BPPARAM
-  )
+  if (!is.list(layer2_args)) stop("`layer2_args` must be a list.", call. = FALSE)
+  worker_config <- rc_parallel_config(workers = workers, backend = "auto")
+  parallel <- worker_config$workers > 1L && !identical(worker_config$actual_backend, "serial")
+  requested_param <- if (parallel) .rc_task_bpparam(workers = worker_config$worker_budget) else FALSE
+  pool_state <- .rc_prepare_corda_worker_pool(layer2_args = layer2_args, parallel = parallel, BPPARAM = requested_param)
   BPPARAM <- pool_state$BPPARAM
   on.exit(.rc_release_corda_worker_pool(pool_state), add = TRUE)
-
   parallel_context <- .rc_layer2_enter_parallel_context(parallel, BPPARAM)
-  on.exit(
-    .rc_layer2_restore_parallel_context(parallel_context),
-    add = TRUE
-  )
+  on.exit(.rc_layer2_restore_parallel_context(parallel_context), add = TRUE)
   meta_modules <- .rc_compact_meta_modules_for_layer2(meta_modules)
   invisible(gc(verbose = FALSE, full = TRUE))
-  .rc_require_stage_class(
-    meta_modules,
-    "regcompass_meta_module_step",
-    "meta_modules",
-    "rc_regcompass_step_meta_modules"
-  )
-  allowed <- c(
-    "model_params", "omega", "target_direction", "solver",
-    "flux_threshold"
-  )
+  .rc_require_stage_class(meta_modules, "regcompass_meta_module_step", "meta_modules", "rc_regcompass_step_meta_modules")
+  allowed <- c("model_params", "omega", "target_direction", "solver", "flux_threshold")
   unknown <- setdiff(names(layer2_args), allowed)
-  if (length(unknown)) {
-    stop(
-      "Unsupported `layer2_args`: ", paste(unknown, collapse = ", "),
-      ". Scoring `time_limit` has been removed. Use only ",
-      "`layer2_args$model_params$completion_time_limit` for structural ",
-      "completion controls.",
-      call. = FALSE
-    )
-  }
+  if (length(unknown)) stop("Unsupported `layer2_args`: ", paste(unknown, collapse = ", "), ". Scoring `time_limit` has been removed. Use only `layer2_args$model_params$completion_time_limit` for structural completion controls.", call. = FALSE)
   params <- meta_modules$workflow_params
   .rc_require_stage_gem(meta_modules, gem, "meta_modules")
-  .rc_validate_layer1_stage(
-    layer1,
-    workflow_params = params,
-    gem = gem,
-    argument = "layer1"
-  )
-
-  completion <- .rc_layer2_prepare_completion(
-    layer1 = layer1,
-    meta_modules = meta_modules,
-    model_mode = model_mode,
-    layer2_args = layer2_args
-  )
+  .rc_validate_layer1_stage(layer1, workflow_params = params, gem = gem, argument = "layer1")
+  completion <- .rc_layer2_prepare_completion(layer1 = layer1, meta_modules = meta_modules, model_mode = model_mode, layer2_args = layer2_args)
   layer2_args <- completion$layer2_args
-  on.exit(
-    .rc_layer2_restore_completion(completion$previous_context),
-    add = TRUE
-  )
-
+  on.exit(.rc_layer2_restore_completion(completion$previous_context), add = TRUE)
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   layer2_args$model_params <- layer2_args$model_params %||% list()
-  if (!is.list(layer2_args$model_params)) {
-    stop("`layer2_args$model_params` must be a list.", call. = FALSE)
-  }
-  allowed_model_params <- c(
-    "completion_time_limit", "fastcore_epsilon",
-    "max_support_reactions", "strict"
-  )
-  unknown_model_params <- setdiff(
-    names(layer2_args$model_params), allowed_model_params
-  )
-  if (length(unknown_model_params)) {
-    stop(
-      "Unsupported `layer2_args$model_params`: ",
-      paste(unknown_model_params, collapse = ", "),
-      ". Only structural union-GEM controls are accepted.",
-      call. = FALSE
-    )
-  }
-  layer2_args$model_params$cache_dir <- file.path(
-    outdir, "model_cache", model_mode
-  )
-  reserved <- intersect(names(layer2_args), c(
-    "layer1", "gem", "mode", "unit", "reaction_membership",
-    "core_reactions", "target_reactions", "medium_scenarios",
-    "sample_col", "condition_col", "celltype_col", "BPPARAM",
-    "parallel", "penalty_weights"
-  ))
-  if (length(reserved)) {
-    stop(
-      "`layer2_args` cannot override workflow fields: ",
-      paste(reserved, collapse = ", "),
-      call. = FALSE
-    )
-  }
-  solver <- match.arg(
-    as.character(layer2_args$solver %||% "highs"),
-    c("highs", "gurobi", "glpk")
-  )
+  if (!is.list(layer2_args$model_params)) stop("`layer2_args$model_params` must be a list.", call. = FALSE)
+  allowed_model_params <- c("completion_time_limit", "fastcore_epsilon", "max_support_reactions", "strict")
+  unknown_model_params <- setdiff(names(layer2_args$model_params), allowed_model_params)
+  if (length(unknown_model_params)) stop("Unsupported `layer2_args$model_params`: ", paste(unknown_model_params, collapse = ", "), ". Only structural union-GEM controls are accepted.", call. = FALSE)
+  layer2_args$model_params$cache_dir <- file.path(outdir, "model_cache", model_mode)
+  reserved <- intersect(names(layer2_args), c("layer1", "gem", "mode", "unit", "reaction_membership", "core_reactions", "target_reactions", "medium_scenarios", "sample_col", "condition_col", "celltype_col", "BPPARAM", "parallel", "workers", "penalty_weights"))
+  if (length(reserved)) stop("`layer2_args` cannot override workflow fields: ", paste(reserved, collapse = ", "), call. = FALSE)
+  solver <- match.arg(as.character(layer2_args$solver %||% "highs"), c("highs", "gurobi", "glpk"))
   .rc_require_lp_solver(solver)
   catalogue <- meta_modules$merged_modules
-  if (!is.list(catalogue) ||
-      !is.data.frame(catalogue$merged_core_reactions) ||
-      !is.data.frame(catalogue$merged_reaction_membership)) {
-    stop("The merged biological meta-module catalogue is incomplete.",
-         call. = FALSE)
-  }
+  if (!is.list(catalogue) || !is.data.frame(catalogue$merged_core_reactions) || !is.data.frame(catalogue$merged_reaction_membership)) stop("The merged biological meta-module catalogue is incomplete.", call. = FALSE)
   required_catalogue_cols <- c(params$celltype_col, "reaction_id")
-  if (!is.list(catalogue$cell_type_catalogues) ||
-      !all(required_catalogue_cols %in%
-           colnames(catalogue$merged_core_reactions)) ||
-      !all(required_catalogue_cols %in%
-           colnames(catalogue$merged_reaction_membership)) ||
-      !identical(catalogue$merge_scope, "cell_type") ||
-      isTRUE(catalogue$cross_celltype_merge)) {
-    stop("Meta-modules are not partitioned by cell type.", call. = FALSE)
-  }
-  targets <- unique(as.character(
-    catalogue$merged_core_reactions$reaction_id
-  ))
-  missing_expression <- setdiff(
-    targets, rownames(layer1$reaction_expression)
-  )
-  if (length(missing_expression)) {
-    stop(
-      "Merged core reactions are absent from Layer 1 expression: ",
-      paste(utils::head(missing_expression, 10L), collapse = ", "),
-      call. = FALSE
-    )
-  }
-  defaults <- list(
-    layer1 = layer1,
-    gem = gem,
-    target_reactions = if (identical(model_mode, "meta_module_gem")) {
-      catalogue$merged_core_reactions
-    } else {
-      targets
-    },
-    medium_scenarios = medium_scenarios,
-    mode = model_mode,
-    reaction_membership = if (identical(model_mode, "meta_module_gem")) {
-      catalogue$merged_reaction_membership
-    } else {
-      NULL
-    },
-    core_reactions = if (identical(model_mode, "meta_module_gem")) {
-      catalogue$merged_core_reactions
-    } else {
-      NULL
-    },
-    unit = "metacell",
-    condition_col = params$condition_col,
-    celltype_col = params$celltype_col,
-    parallel = parallel,
-    BPPARAM = BPPARAM
-  )
+  if (!is.list(catalogue$cell_type_catalogues) || !all(required_catalogue_cols %in% colnames(catalogue$merged_core_reactions)) || !all(required_catalogue_cols %in% colnames(catalogue$merged_reaction_membership)) || !identical(catalogue$merge_scope, "cell_type") || isTRUE(catalogue$cross_celltype_merge)) stop("Meta-modules are not partitioned by cell type.", call. = FALSE)
+  targets <- unique(as.character(catalogue$merged_core_reactions$reaction_id))
+  missing_expression <- setdiff(targets, rownames(layer1$reaction_expression))
+  if (length(missing_expression)) stop("Merged core reactions are absent from Layer 1 expression: ", paste(utils::head(missing_expression, 10L), collapse = ", "), call. = FALSE)
+  defaults <- list(layer1 = layer1, gem = gem, target_reactions = if (identical(model_mode, "meta_module_gem")) catalogue$merged_core_reactions else targets, medium_scenarios = medium_scenarios, mode = model_mode, reaction_membership = if (identical(model_mode, "meta_module_gem")) catalogue$merged_reaction_membership else NULL, core_reactions = if (identical(model_mode, "meta_module_gem")) catalogue$merged_core_reactions else NULL, unit = "metacell", condition_col = params$condition_col, celltype_col = params$celltype_col, parallel = parallel, BPPARAM = BPPARAM)
   defaults[names(layer2_args)] <- NULL
-  answer <- withCallingHandlers(
-    do.call(
-      .rc_run_microcompass_monitored,
-      c(defaults, layer2_args, list(progress_monitor = monitor))
-    ),
-    warning = function(w) {
-      if (grepl(
-        "Metacells are valid within-dataset statistical units",
-        conditionMessage(w),
-        fixed = TRUE
-      )) invokeRestart("muffleWarning")
-    }
-  )
+  answer <- withCallingHandlers(do.call(.rc_run_microcompass_monitored, c(defaults, layer2_args, list(progress_monitor = monitor))), warning = function(w) { if (grepl("Metacells are valid within-dataset statistical units", conditionMessage(w), fixed = TRUE)) invokeRestart("muffleWarning") })
   run_control <- function(expression_field, label) {
     expression <- layer1[[expression_field]]
-    if (!is.numeric(expression) || is.null(dim(expression)) ||
-        !identical(
-          dimnames(expression),
-          dimnames(layer1$reaction_expression)
-        )) {
-      stop(
-        "Layer 1 control `", label,
-        "` is missing or is not aligned with the primary expression.",
-        call. = FALSE
-      )
-    }
+    if (!is.numeric(expression) || is.null(dim(expression)) || !identical(dimnames(expression), dimnames(layer1$reaction_expression))) stop("Layer 1 control `", label, "` is missing or is not aligned with the primary expression.", call. = FALSE)
     control_layer1 <- layer1
     control_layer1$reaction_expression <- expression
     control_args <- c(defaults, layer2_args)
     control_args$layer1 <- control_layer1
     control_args$model_cache_override <- answer$shared_model_cache
-    result <- withCallingHandlers(
-      do.call(
-        .rc_run_microcompass_engine_monitored,
-        c(control_args, list(progress_monitor = monitor))
-      ),
-      warning = function(w) {
-        if (grepl(
-          "Metacells are valid within-dataset statistical units",
-          conditionMessage(w),
-          fixed = TRUE
-        )) invokeRestart("muffleWarning")
-      }
-    )
+    result <- withCallingHandlers(do.call(.rc_run_microcompass_engine_monitored, c(control_args, list(progress_monitor = monitor))), warning = function(w) { if (grepl("Metacells are valid within-dataset statistical units", conditionMessage(w), fixed = TRUE)) invokeRestart("muffleWarning") })
     .rc_assert_layer2_shared_contract(answer, result, label)
     result
   }
-  rna_only <- run_control(
-    "reaction_expression_rna_only",
-    "RNA-only control"
-  )
+  rna_only <- run_control("reaction_expression_rna_only", "RNA-only control")
   answer$schema_version <- "regcompass_regulatory_layer2_v3"
   answer$penalty_rna_only <- rna_only$penalty
   answer$score_rna_only <- rna_only$score
-  answer$comparison_contract <- list(
-    primary = "penalty",
-    rna_control = "penalty_rna_only",
-    nonestimable_edge_policy =
-      "coefficient_NA_and_zero_realized_penalty_contribution",
-    exact_shared_structure = TRUE,
-    structural_model_contract = answer$structural_model_contract,
-    effect_size_basis = "penalty / (omega * vmax)",
-    ecdf_effect_size_eligible = FALSE
-  )
+  answer$comparison_contract <- list(primary = "penalty", rna_control = "penalty_rna_only", nonestimable_edge_policy = "coefficient_NA_and_zero_realized_penalty_contribution", exact_shared_structure = TRUE, structural_model_contract = answer$structural_model_contract, effect_size_basis = "penalty / (omega * vmax)", ecdf_effect_size_eligible = FALSE)
   rna_only$shared_model_cache <- NULL
   answer$comparison_paths <- list(rna_only = rna_only)
-  answer$comparison_table <- .rc_layer2_comparison_table(
-    answer,
-    layer1,
-    params$condition_col,
-    params$celltype_col
-  )
+  answer$comparison_table <- .rc_layer2_comparison_table(answer, layer1, params$condition_col, params$celltype_col)
   answer$workflow_params <- params
   answer$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   answer$source_core_reactions <- catalogue$merged_core_reactions
-  answer$source_merged_reaction_membership <-
-    catalogue$merged_reaction_membership
-  answer$union_gem_policy <- if (identical(model_mode, "meta_module_gem")) {
-    paste(
-      "one union GEM per cell type and medium; structural completion runs",
-      "independently within each cell type"
-    )
-  } else {
-    "shared full GEM; no union-GEM reconstruction"
-  }
-  answer <- .rc_layer2_finalize_completion(
-    answer = answer,
-    corda_options = completion$corda_options,
-    is_corda2 = completion$is_corda2,
-    solver = solver
-  )
+  answer$source_merged_reaction_membership <- catalogue$merged_reaction_membership
+  answer$union_gem_policy <- if (identical(model_mode, "meta_module_gem")) paste("one union GEM per cell type and medium; structural completion runs", "independently within each cell type") else "shared full GEM; no union-GEM reconstruction"
+  answer <- .rc_layer2_finalize_completion(answer = answer, corda_options = completion$corda_options, is_corda2 = completion$is_corda2, solver = solver)
+  answer$params$workers <- worker_config$worker_budget
+  answer$params$available_cpus <- worker_config$available_cpus
+  answer$params$reserved_cpus <- worker_config$reserved_cpus
+  answer$params$worker_ceiling <- worker_config$worker_ceiling
+  answer$params$parallel_backend <- worker_config$actual_backend
+  answer$params$parallel_policy <- "each_operation_uses_min(independent_tasks, workers, available_cpus_minus_2)"
   answer$params$corda2_worker_pool_origin <- pool_state$origin
-  answer$params$corda2_worker_pool_started_by_layer2 <-
-    isTRUE(pool_state$started_here)
+  answer$params$corda2_worker_pool_started_by_layer2 <- isTRUE(pool_state$started_here)
   class(answer) <- c("regcompass_layer2_step", "list")
-  .rc_validate_layer2_stage(
-    answer,
-    layer1 = layer1,
-    workflow_params = params,
-    gem = gem,
-    argument = "layer2"
-  )
+  .rc_validate_layer2_stage(answer, layer1 = layer1, workflow_params = params, gem = gem, argument = "layer2")
   answer <- .rc_step_monitor_finish(answer, monitor)
   rc_export_microcompass(answer, outdir)
   model_dir <- file.path(outdir, "03_models")
   dir.create(model_dir, recursive = TRUE, showWarnings = FALSE)
-  saveRDS(
-    answer$completion_contract,
-    file.path(model_dir, "model_completion_contract.rds")
-  )
+  saveRDS(answer$completion_contract, file.path(model_dir, "model_completion_contract.rds"))
   saveRDS(answer, file.path(outdir, "step_layer2.rds"))
   answer
 }
 
-# Progress-aware entry point; the algorithm remains in the core above.
 .rc_layer2_comparison_table <- function(...) {
-  answer <- do.call(
-    .rc_layer2_comparison_table_core,
-    list(...)
-  )
-  .rc_layer2_overall_event(
-    "comparison_table_complete", 9L,
-    detail = paste0("comparison_rows=", nrow(answer))
-  )
+  answer <- do.call(.rc_layer2_comparison_table_core, list(...))
+  .rc_layer2_overall_event("comparison_table_complete", 9L, detail = paste0("comparison_rows=", nrow(answer)))
   answer
 }
 
-# Progress-aware entry point; the algorithm remains in the core above.
-.rc_run_microcompass_engine_monitored <- function(
-    ..., progress_monitor = NULL) {
+.rc_run_microcompass_engine_monitored <- function(..., progress_monitor = NULL) {
   args <- list(...)
   state <- .rc_layer2_progress_state
   previous_run <- state$run_kind
   state$run_kind <- "rna_control"
   on.exit({ state$run_kind <- previous_run }, add = TRUE)
-  .rc_layer2_overall_event(
-    "rna_control_start", 7L,
-    "reusing structural models for RNA-only control scoring"
-  )
+  .rc_layer2_overall_event("rna_control_start", 7L, "reusing structural models for RNA-only control scoring")
   answer <- do.call(.rc_run_microcompass_engine, args)
-  .rc_layer2_overall_event(
-    "rna_control_complete", 8L,
-    "RNA-only control scoring completed on the shared structural cache"
-  )
+  .rc_layer2_overall_event("rna_control_complete", 8L, "RNA-only control scoring completed on the shared structural cache")
   answer
 }
 
-# Progress-aware entry point; the algorithm remains in the core above.
 .rc_run_microcompass_monitored <- function(..., progress_monitor = NULL) {
   args <- list(...)
   state <- .rc_layer2_progress_state
   previous_run <- state$run_kind
   state$run_kind <- "primary"
   on.exit({ state$run_kind <- previous_run }, add = TRUE)
-  media <- unique(as.character(
-    args$medium_scenarios$medium_scenario_id %||% "base"
-  ))
-  celltypes <- if (identical(as.character(args$mode), "meta_module_gem") &&
-                   is.data.frame(args$reaction_membership)) {
-    column <- as.character(args$celltype_col %||% "cell_type")
-    unique(as.character(args$reaction_membership[[column]]))
-  } else {
-    "ALL"
-  }
-  completion <- .rc_layer2_completion_context$model_completion %||%
-    if (identical(as.character(args$mode), "full_gem")) "none" else "fastcore"
-  target_count <- if (is.data.frame(args$target_reactions)) {
-    length(unique(as.character(args$target_reactions$reaction_id)))
-  } else {
-    length(unique(as.character(args$target_reactions)))
-  }
-  .rc_layer2_overall_event(
-    "layer2_plan_ready", 1L,
-    detail = paste(
-      "execution plan resolved:", length(celltypes), "cell types x",
-      length(media), "media;", target_count, "target reactions"
-    ),
-    context = list(
-      model_mode = args$mode,
-      completion = completion,
-      cell_types = length(celltypes),
-      media = length(media),
-      parallel = isTRUE(args$parallel %||% TRUE)
-    )
-  )
-  .rc_layer2_overall_event(
-    "primary_engine_start", 2L,
-    "starting structural construction and primary multiome scoring"
-  )
+  media <- unique(as.character(args$medium_scenarios$medium_scenario_id %||% "base"))
+  celltypes <- if (identical(as.character(args$mode), "meta_module_gem") && is.data.frame(args$reaction_membership)) { column <- as.character(args$celltype_col %||% "cell_type"); unique(as.character(args$reaction_membership[[column]])) } else "ALL"
+  completion <- .rc_layer2_completion_context$model_completion %||% if (identical(as.character(args$mode), "full_gem")) "none" else "fastcore"
+  target_count <- if (is.data.frame(args$target_reactions)) length(unique(as.character(args$target_reactions$reaction_id))) else length(unique(as.character(args$target_reactions)))
+  .rc_layer2_overall_event("layer2_plan_ready", 1L, detail = paste("execution plan resolved:", length(celltypes), "cell types x", length(media), "media;", target_count, "target reactions"), context = list(model_mode = args$mode, completion = completion, cell_types = length(celltypes), media = length(media), parallel = isTRUE(args$parallel %||% TRUE)))
+  .rc_layer2_overall_event("primary_engine_start", 2L, "starting structural construction and primary multiome scoring")
   answer <- do.call(rc_run_microcompass, args)
-  .rc_layer2_overall_event(
-    "primary_scoring_complete", 5L,
-    "primary multiome Step 2 scoring completed"
-  )
-  .rc_layer2_overall_event(
-    "primary_engine_complete", 6L,
-    "primary structural models and directional scores assembled"
-  )
+  .rc_layer2_overall_event("primary_scoring_complete", 5L, "primary multiome Step 2 scoring completed")
+  .rc_layer2_overall_event("primary_engine_complete", 6L, "primary structural models and directional scores assembled")
   answer
 }
