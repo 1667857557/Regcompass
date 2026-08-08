@@ -41,30 +41,44 @@
     rep(NA_character_, length(directional_class)), names(directional_class)
   )
   inclusion_stage_direction[hc] <- "initial_high_confidence"
-
-  engine <- .rc_corda_new_lp_engine(split, solver, time_limit)
-  on.exit({
-    engine <- .rc_corda_release_lp_engine(engine)
-  }, add = TRUE)
   task_tables <- list()
+  execution_metrics <- list()
+  stage_parallelism <- list()
 
-  # Step 1: support every high-confidence direction with MC and NC reactions.
+  # Step 1: every target reads the same pre-Step-1 confidence snapshot.
   stage1_hc <- hc
   stage1_mc <- mc
   stage1_nc <- nc
   HCtoMC <- .rc_corda2_empty_dependency_matrix(stage1_hc, stage1_mc)
   HCtoNC <- .rc_corda2_empty_dependency_matrix(stage1_hc, stage1_nc)
+  stage1_parts <- .rc_corda_stage_run(
+    stage1_hc,
+    "corda2_step1_HC_dependencies",
+    function(target) {
+      .rc_corda2_dependency_target_parallel(
+        target = target,
+        split = split,
+        directional_class = directional_class,
+        options = options,
+        stage = "corda2_step1_HC_dependencies",
+        penalized_class = "stage1",
+        solver = solver,
+        time_limit = time_limit
+      )
+    }
+  )
+  execution_metrics <- c(
+    execution_metrics, lapply(stage1_parts, function(x) x$metrics)
+  )
+  stage_parallelism$step1 <- data.frame(
+    stage = "corda2_step1_HC_dependencies",
+    n_targets = length(stage1_hc), stringsAsFactors = FALSE
+  )
   hc_present <- mc_present <- nc_present <- character()
   blocked_hc <- logical(length(stage1_hc))
   stage1_results <- vector("list", length(stage1_hc))
   for (i in seq_along(stage1_hc)) {
-    target <- stage1_hc[[i]]
-    assessed <- .rc_corda2_dependency_assessment(
-      engine, split, target, directional_class, options,
-      stage = "corda2_step1_HC_dependencies",
-      penalized_class = "stage1"
-    )
-    engine <- assessed$engine
+    assessed <- stage1_parts[[i]]
     stage1_results[[i]] <- assessed$result
     if (!isTRUE(assessed$success)) {
       blocked_hc[[i]] <- TRUE
@@ -97,21 +111,40 @@
   mc <- stage1_mc[!stage1_mc %in% mc_present]
   nc <- stage1_nc[!stage1_nc %in% nc_present]
   task_tables$step1 <- .rc_corda2_results_table(stage1_results)
+  rm(stage1_parts)
+  invisible(gc(verbose = FALSE, full = TRUE))
 
-  # Step 2.1: determine NC dependencies of every remaining MC direction.
+  # Step 2.1: all remaining MC targets read one immutable Step-2.1 snapshot.
   stage2_mc_input <- mc
   stage2_nc_input <- nc
   MCxNC <- .rc_corda2_empty_dependency_matrix(stage2_mc_input, stage2_nc_input)
+  stage21_parts <- .rc_corda_stage_run(
+    stage2_mc_input,
+    "corda2_step2_1_MC_NC_dependencies",
+    function(target) {
+      .rc_corda2_dependency_target_parallel(
+        target = target,
+        split = split,
+        directional_class = directional_class,
+        options = options,
+        stage = "corda2_step2_1_MC_NC_dependencies",
+        penalized_class = "NC",
+        solver = solver,
+        time_limit = time_limit
+      )
+    }
+  )
+  execution_metrics <- c(
+    execution_metrics, lapply(stage21_parts, function(x) x$metrics)
+  )
+  stage_parallelism$step2_1 <- data.frame(
+    stage = "corda2_step2_1_MC_NC_dependencies",
+    n_targets = length(stage2_mc_input), stringsAsFactors = FALSE
+  )
   blocked_mc_step21 <- logical(length(stage2_mc_input))
   stage21_results <- vector("list", length(stage2_mc_input))
   for (i in seq_along(stage2_mc_input)) {
-    target <- stage2_mc_input[[i]]
-    assessed <- .rc_corda2_dependency_assessment(
-      engine, split, target, directional_class, options,
-      stage = "corda2_step2_1_MC_NC_dependencies",
-      penalized_class = "NC"
-    )
-    engine <- assessed$engine
+    assessed <- stage21_parts[[i]]
     stage21_results[[i]] <- assessed$result
     if (!isTRUE(assessed$success)) {
       blocked_mc_step21[[i]] <- TRUE
@@ -126,9 +159,10 @@
   mc <- stage2_mc_input[!blocked_mc_step21]
   MCtoNC <- MCxNC
   task_tables$step2_1 <- .rc_corda2_results_table(stage21_results)
+  rm(stage21_parts)
+  invisible(gc(verbose = FALSE, full = TRUE))
 
-  # Step 2.2: promote frequently required NC directions, block the rest, and
-  # retain only MC directions that remain feasible.
+  # Step 2.2: promotion occurs only after Step 2.1 has completely reduced.
   nc_count <- if (ncol(MCxNC)) colSums(MCxNC) else numeric()
   promoted_nc <- names(nc_count)[nc_count >= options$MCxNCthresh]
   if (length(promoted_nc)) {
@@ -149,17 +183,33 @@
     split_step22$lb[nc] <- 0
     split_step22$ub[nc] <- 0
   }
+  stage22_parts <- .rc_corda_stage_run(
+    mc,
+    "corda2_step2_2_MC_feasibility",
+    function(target) {
+      .rc_corda2_maximize_target_parallel(
+        target = target,
+        split = split_step22,
+        solver = solver,
+        time_limit = time_limit,
+        lower = split_step22$lb,
+        upper = split_step22$ub
+      )
+    }
+  )
+  execution_metrics <- c(
+    execution_metrics, lapply(stage22_parts, function(x) x$metrics)
+  )
+  stage_parallelism$step2_2 <- data.frame(
+    stage = "corda2_step2_2_MC_feasibility",
+    n_targets = length(mc), stringsAsFactors = FALSE
+  )
   stage22_results <- vector("list", length(mc))
   blocked_mc_step22 <- logical(length(mc))
   rescue <- vector("list", length(mc))
   for (i in seq_along(mc)) {
     target <- mc[[i]]
-    maximum <- .rc_corda2_maximize_target(
-      engine, split_step22, target,
-      lower = split_step22$lb,
-      upper = split_step22$ub
-    )
-    engine <- maximum$engine
+    maximum <- stage22_parts[[i]]$maximum
     success <- identical(maximum$answer$status, "optimal") &&
       is.finite(maximum$vmax) && maximum$vmax >= options$flux_threshold
     blocked_mc_step22[[i]] <- !success
@@ -199,9 +249,10 @@
   directional_class[feasible_mc] <- "HC"
   hc <- c(hc, feasible_mc)
   task_tables$step2_2 <- .rc_corda2_results_table(stage22_results)
+  rm(stage22_parts)
+  invisible(gc(verbose = FALSE, full = TRUE))
 
-  # Step 3: block all remaining MC/NC directions and add only OT reactions
-  # required for retained HC flux.
+  # Step 3: all remaining MC/NC are blocked before parallel HC assessment.
   split_step3 <- split_step22
   allowed_step3 <- union(hc, ot)
   blocked_step3 <- setdiff(colnames(split_step3$S), allowed_step3)
@@ -209,18 +260,35 @@
     split_step3$lb[blocked_step3] <- 0
     split_step3$ub[blocked_step3] <- 0
   }
+  stage3_parts <- .rc_corda_stage_run(
+    hc,
+    "corda2_step3_HC_OT_dependencies",
+    function(target) {
+      .rc_corda2_dependency_target_parallel(
+        target = target,
+        split = split_step3,
+        directional_class = directional_class,
+        options = options,
+        stage = "corda2_step3_HC_OT_dependencies",
+        penalized_class = "OT",
+        solver = solver,
+        time_limit = time_limit,
+        lower = split_step3$lb,
+        upper = split_step3$ub
+      )
+    }
+  )
+  execution_metrics <- c(
+    execution_metrics, lapply(stage3_parts, function(x) x$metrics)
+  )
+  stage_parallelism$step3 <- data.frame(
+    stage = "corda2_step3_HC_OT_dependencies",
+    n_targets = length(hc), stringsAsFactors = FALSE
+  )
   stage3_results <- vector("list", length(hc))
   ot_present <- character()
   for (i in seq_along(hc)) {
-    target <- hc[[i]]
-    assessed <- .rc_corda2_dependency_assessment(
-      engine, split_step3, target, directional_class, options,
-      stage = "corda2_step3_HC_OT_dependencies",
-      penalized_class = "OT",
-      lower = split_step3$lb,
-      upper = split_step3$ub
-    )
-    engine <- assessed$engine
+    assessed <- stage3_parts[[i]]
     stage3_results[[i]] <- assessed$result
     if (!isTRUE(assessed$success)) next
     used <- assessed$associated[
@@ -232,6 +300,8 @@
     "corda2_step3_associated_OT"
   included_variables <- unique(c(hc, ot_present))
   task_tables$step3 <- .rc_corda2_results_table(stage3_results)
+  rm(stage3_parts)
+  invisible(gc(verbose = FALSE, full = TRUE))
 
   initial_reaction_confidence <- .rc_corda2_reaction_numeric_confidence(
     split, initial_directional_class
@@ -296,11 +366,16 @@
     MCtoNC = MCtoNC,
     rescue = rescue_table,
     task_diagnostics = .rc_bind_frames_fill(task_tables),
-    solver_performance = .rc_corda_execution_metrics(engine),
+    solver_performance = .rc_corda2_sum_execution_metrics(
+      execution_metrics, ncol(split$S)
+    ),
+    stage_parallelism = .rc_bind_frames_fill(stage_parallelism),
     algorithm = "schultzdre_MATLAB_CORDA2_original_semantics",
     reference_repository = "schultzdre/Constraint-Based-Modeling",
     reference_file = "CORDA2.m",
     stage_update_policy = "original_matlab_directional_order",
+    parallel_execution_policy =
+      "stage_barrier_parallel_targets_deterministic_ordered_reduce",
     source_semantics = c(
       "split only actively reversible reactions once",
       "close the opposite direction for every tested reaction",
