@@ -145,20 +145,23 @@ test_that("integrated workflow validates routing inputs before delegation", {
       rc_run_regcompass,
       c(common, list(layer1_args = list(tau = 0.2)))
     ),
-    "retired `tau`/Boltzmann"
+    "Unknown `layer1_args`"
   )
-  expect_error(.rc_stage_worker_config(0L, "upstream_workers"), "at least 1")
-  expect_error(.rc_stage_worker_config(0L, "layer2_workers"), "at least 1")
+  expect_error(.rc_normalize_worker_budget(0L), "at least 1")
 
   formals_names <- names(formals(rc_run_regcompass))
   expect_true("model_mode" %in% formals_names)
-  expect_true("upstream_workers" %in% formals_names)
-  expect_true("layer2_workers" %in% formals_names)
-  expect_false("parallel_backend" %in% formals_names)
+  expect_true("workers" %in% formals_names)
+  expect_false(any(c(
+    "upstream_workers", "layer2_workers", "parallel_backend", "BPPARAM",
+    "parallel"
+  ) %in% formals_names))
   expect_false("inference_unit" %in% formals_names)
   expect_false("strict_biological_defaults" %in% formals_names)
-  expect_identical(formals(rc_run_regcompass)$upstream_workers, 6L)
-  expect_identical(formals(rc_run_regcompass)$layer2_workers, 30L)
+  expect_identical(
+    eval(formals(rc_run_regcompass)$workers),
+    getOption("RegCompassR.workers", 10L)
+  )
   expect_identical(
     eval(formals(rc_run_regcompass)$model_mode),
     c("meta_module_gem", "full_gem")
