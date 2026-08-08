@@ -2,7 +2,7 @@
 % Please edit documentation in R/parallel.R
 \name{rc_parallel_config}
 \alias{rc_parallel_config}
-\title{Resolve the platform-aware parallel configuration}
+\title{Resolve the platform-aware RegCompass worker budget}
 \usage{
 rc_parallel_config(
   workers = NULL,
@@ -10,8 +10,8 @@ rc_parallel_config(
 )
 }
 \arguments{
-\item{workers}{Optional worker count. When \code{NULL}, RegCompass uses scheduler, environment, cgroup-aware, or local core detection.}
+\item{workers}{Requested global worker upper bound. The default request is 10. An explicit \code{options(RegCompassR.workers)} or \code{REGCOMPASS_WORKERS} setting may change the request, but the resolved budget is always capped at \code{max(1, available CPUs - 2)}.}
 \item{backend}{Requested backend. \code{"auto"} selects SOCK/SnowParam on Windows and MulticoreParam on Linux/macOS.}
 }
-\value{A list containing OS type, requested and resolved backends, actual backend, worker count, and BiocParallel availability.}
-\description{Reports the execution configuration used by RegCompass without starting workers. Automatic resolution uses SOCK workers on Windows and multicore workers on Linux/macOS; one worker or unavailable BiocParallel resolves to sequential execution. Complete workflows expose separate upstream and Layer 2 worker budgets.}
+\value{A list containing OS type, requested and resolved backends, actual backend, requested worker count, detected available CPUs, the fixed two-CPU reserve, the hard worker ceiling, resolved worker budget, and BiocParallel availability.}
+\description{Reports the execution configuration used by RegCompass without starting workers. RegCompass uses one global worker budget across parallel workflow stages. Automatic resolution uses SOCK workers on Windows and multicore workers on Linux/macOS. Two detected CPUs are reserved for controller/OS/I/O work, and each concrete operation further reduces concurrency to the number of independent tasks.}
