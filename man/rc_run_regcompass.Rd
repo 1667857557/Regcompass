@@ -2,7 +2,7 @@
 % Please edit documentation in R/regcompass.R
 \name{rc_run_regcompass}
 \alias{rc_run_regcompass}
-\title{Run RegCompass with cell-type-specific Pando routing}
+\title{Run RegCompass with one global worker budget}
 \usage{
 rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
@@ -12,8 +12,8 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   meta_module_args = list(), layer1_args = list(),
   medium_scenarios = NULL,
   model_mode = c("meta_module_gem", "full_gem"),
-  layer2_args = list(), upstream_workers = 6L,
-  layer2_workers = 30L,
+  layer2_args = list(),
+  workers = getOption("RegCompassR.workers", 10L),
   progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
@@ -35,8 +35,7 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{medium_scenarios}{Shared medium table. When omitted, human models use \code{"normal_human_plasma"} and mouse models use \code{"mouse_plasma"}. Medium application changes listed exchange-reaction bounds only.}
 \item{model_mode}{The default \code{"meta_module_gem"} route reconstructs one CORDA2 model per cell type and medium. \code{"full_gem"} is a supplementary complete-network COMPASS-style route.}
 \item{layer2_args}{Directional scoring and structural controls. CORDA2 is the default for \code{meta_module_gem}; set \code{model_params$model_completion = "fastcore"} for the supplementary FASTCORE route. The \code{full_gem} route rejects completion-specific controls.}
-\item{upstream_workers}{Worker count for Stage 1 and Stage 4.}
-\item{layer2_workers}{Worker count for Stage 5.}
+\item{workers}{The single workflow-wide requested worker budget. The default is 10. RegCompass automatically selects SOCK workers on Windows and multicore workers on Linux/macOS. A hard resource guard reserves two detected CPUs, so the resolved budget is at most \code{max(1, available CPUs - 2)}. Every step then uses at most the smaller of its independent task count and this resolved budget.}
 \item{progress}{Display workflow and stage progress.}
 }
 \value{
@@ -45,27 +44,22 @@ A complete RegCompass result. \code{analysis_mode} is \code{"condition_grn"},
 \code{cell_type_analysis_mode} table records the route used by each cell type.
 }
 \description{
-Runs the six-stage RegCompass workflow. Cell types with at least two retained
-conditions use the common-dictionary condition GRN. Cell types with one retained
-condition use standard Pando and do not receive condition coefficients.
+Runs the six-stage RegCompass workflow with one platform-aware global worker
+budget. Cell types with at least two retained conditions use the common-
+dictionary condition GRN. Cell types with one retained condition use standard
+Pando and do not receive condition coefficients.
 }
 \details{
-Stage 1 uses the in-memory RNA and ATAC assays. Stage 2 builds one independent
-RNA+ATAC WNN graph per broad cell type and keeps final metacells condition-pure.
-When raw fragment files are supplied, Stage 2 aggregates single-cell fragment
-barcodes to the final SuperCell membership, optionally calls MACS2, and recounts
-the ATAC assay with Signac FeatureMatrix before metacell TF-IDF. With no fragment
-input, the existing ATAC count matrix is aggregated. Sample identity is used only
-for fragment-file routing when provided by the caller, never as a WNN/metacell
-stratum. Layer 1 accepts only \code{gpr_and_method} and
-\code{gene_half_saturation}. Layer 2 retains the primary penalty and an explicit
-RNA-only control. The default cell-type route passes the complete
-medium-constrained parent to original MATLAB CORDA2 without FASTCC pre-pruning.
-Retained directions recover their parent bounds, including positive lower
-bounds. FASTCORE is an explicit supplementary route. Full-GEM mode retains every
-reaction, computes directional maximum flux, and skips the penalty LP for
-infeasible directions. All routes use the COMPASS reaction-cost scale; missing
-expression and structural roles receive the maximum cost 1. See
-\code{docs/tutorial-02-stepwise-audit.md} and
-\code{docs/layer2-model-builders.md}.
+Stage 1 parallelizes independent broad-cell-type Pando jobs and therefore uses
+only the number of workers actually required by the retained cell types. Stage 2
+builds one independent RNA+ATAC WNN graph per broad cell type and keeps final
+metacells condition-pure. Stage 4 uses the same global worker ceiling for
+reaction-support tasks. Stage 5 may consume the complete resolved worker budget
+for CORDA2 directional targets or large LP target sets. CORDA2 retains strict
+Step 1, Step 2.1, Step 2.2 and Step 3 mathematical barriers, releases its
+stage-local pool after each barrier and performs full garbage collection before
+the next step. The one-shot workflow also performs garbage collection between
+major workflow stages. The caller no longer needs separate upstream and Layer 2
+BiocParallel objects. See \code{docs/tutorial-02-stepwise-audit.md} and
+\code{docs/layer2-corda-performance.md}.
 }
