@@ -200,6 +200,7 @@
     .rc_layer2_task_bpparam(), length(tasks)
   )
   pool_workers <- .rc_corda_pool_workers(task_bpparam)
+  stage_parallel <- .rc_corda_stage_parallel_requested()
   outer_parallel <- .rc_corda_should_outer_parallel(
     length(tasks), pool_workers
   )
@@ -221,8 +222,11 @@
     parts <- lapply(tasks, function(task) {
       run_one(task[1, , drop = FALSE], suppress_nested = FALSE)
     })
-    dispatch <-
+    dispatch <- if (stage_parallel) {
       "serial_cell_type_x_medium_models_stage_parallel_corda2_targets"
+    } else {
+      "serial_cell_type_x_medium_original_corda2"
+    }
   }
 
   cache <- list()
@@ -248,10 +252,18 @@
   attr(cache, "structural_parallel_workers") <- active_workers
   attr(cache, "structural_parallel_tasks") <- length(tasks)
   attr(cache, "structural_dynamic_task_scheduling") <- outer_parallel
-  attr(cache, "corda2_inner_target_parallelism") <- TRUE
-  attr(cache, "corda2_stage_barrier_parallelism") <- TRUE
-  attr(cache, "corda2_stage_worker_lifecycle") <-
+  attr(cache, "corda2_inner_target_parallelism") <- stage_parallel
+  attr(cache, "corda2_stage_barrier_parallelism") <- stage_parallel
+  attr(cache, "corda2_stage_parallel_workers") <- if (stage_parallel) {
+    pool_workers
+  } else {
+    1L
+  }
+  attr(cache, "corda2_stage_worker_lifecycle") <- if (stage_parallel) {
     "fresh_pool_each_stage_stop_full_gc_before_next_stage"
+  } else {
+    "single_persistent_engine_for_complete_reconstruction"
+  }
   attr(cache, "fastcore_parallel_task") <- "not_applicable_to_corda2"
   rm(parts, summaries)
   invisible(gc(verbose = FALSE, full = FALSE))
