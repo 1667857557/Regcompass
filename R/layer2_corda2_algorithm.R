@@ -74,41 +74,66 @@
   list(active = as.integer(active), used = as.integer(used))
 }
 
-.rc_corda2_dependency_assessment_core <- function(
+.rc_corda2_dependency_assessment <- function(
     engine, split, target, directional_class, options,
     stage, penalized_class,
     lower = split$lb, upper = split$ub,
     constrain_target = TRUE) {
-  # A target must never inherit a simplex basis from a different target. This
-  # keeps parallel chunk assignment and worker count from affecting which
-  # alternate optimum is selected. The fresh engine is nevertheless reused for
-  # all solves belonging to this one target, including the target-maximization
-  # solve and every CORDA2 penalty-update iteration.
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- if (is.environment(progress_state)) {
+    progress_state$current_task
+  } else {
+    NULL
+  }
+  if (!is.null(task) && identical(task$route, "corda2")) {
+    if (identical(stage, "corda2_step1_HC_dependencies")) {
+      .rc_layer2_algorithm_once(
+        "corda2_step1", "corda2_step1_HC_dependencies", 4L,
+        "supporting high-confidence directions with MC/NC dependencies"
+      )
+    } else if (identical(stage, "corda2_step2_1_MC_NC_dependencies")) {
+      .rc_layer2_algorithm_once(
+        "corda2_step2_1", "corda2_step2_1_MC_NC_dependencies", 5L,
+        "measuring NC dependencies of remaining MC directions"
+      )
+    } else if (identical(stage, "corda2_step3_HC_OT_dependencies")) {
+      .rc_layer2_algorithm_once(
+        "corda2_step3", "corda2_step3_HC_OT_dependencies", 7L,
+        "adding only OT reactions required by retained HC flux"
+      )
+    }
+  }
+
+  previous_inside <- if (is.environment(progress_state)) {
+    isTRUE(progress_state$inside_dependency)
+  } else {
+    FALSE
+  }
+  if (is.environment(progress_state)) {
+    progress_state$inside_dependency <- TRUE
+  }
+  on.exit({
+    if (is.environment(progress_state)) {
+      progress_state$inside_dependency <- previous_inside
+    }
+  }, add = TRUE)
+
+  # Every directional target starts from a clean solver state. Repeated solves
+  # inside this same dependency assessment deliberately reuse that target-local
+  # engine, preserving the original penalty-update loop while removing any
+  # cross-target simplex-basis dependence on chunking or worker count.
   if (!isTRUE(engine$regcompass_target_isolated)) {
     aggregate_engine <- engine
     target_engine <- .rc_corda_new_target_engine(aggregate_engine, split)
-    progress_state <- get0(
-      ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
-    )
-    previous_inside <- if (is.environment(progress_state)) {
-      isTRUE(progress_state$inside_dependency)
-    } else {
-      FALSE
-    }
-    if (is.environment(progress_state)) {
-      progress_state$inside_dependency <- TRUE
-    }
     cleanup_target <- TRUE
     on.exit({
       if (isTRUE(cleanup_target)) {
         .rc_corda_release_lp_engine(target_engine)
       }
-      if (is.environment(progress_state)) {
-        progress_state$inside_dependency <- previous_inside
-      }
     }, add = TRUE)
-
-    assessed <- .rc_corda2_dependency_assessment_core(
+    assessed <- .rc_corda2_dependency_assessment(
       engine = target_engine,
       split = split,
       target = target,
@@ -317,40 +342,4 @@
     )
   })
   do.call(rbind, rows)
-}
-
-# Progress-aware entry point; the algorithm remains in the core above.
-.rc_corda2_dependency_assessment <- function(...) {
-  progress_state <- get0(
-    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
-  )
-  args <- list(...)
-  stage <- args$stage %||% if (length(args) >= 6L) args[[6L]] else ""
-  task <- if (is.environment(progress_state)) {
-    progress_state$current_task
-  } else {
-    NULL
-  }
-  if (!is.null(task) && identical(task$route, "corda2")) {
-    if (identical(stage, "corda2_step1_HC_dependencies")) {
-      .rc_layer2_algorithm_once(
-        "corda2_step1", "corda2_step1_HC_dependencies", 4L,
-        "supporting high-confidence directions with MC/NC dependencies"
-      )
-    } else if (identical(stage, "corda2_step2_1_MC_NC_dependencies")) {
-      .rc_layer2_algorithm_once(
-        "corda2_step2_1", "corda2_step2_1_MC_NC_dependencies", 5L,
-        "measuring NC dependencies of remaining MC directions"
-      )
-    } else if (identical(stage, "corda2_step3_HC_OT_dependencies")) {
-      .rc_layer2_algorithm_once(
-        "corda2_step3", "corda2_step3_HC_OT_dependencies", 7L,
-        "adding only OT reactions required by retained HC flux"
-      )
-    }
-  }
-  do.call(
-    .rc_corda2_dependency_assessment_core,
-    args
-  )
 }
