@@ -33,7 +33,7 @@
 .rc_set_internal_single_thread <- function() {
   desired <- .rc_internal_thread_env()
   old_env <- Sys.getenv(names(desired), unset = NA_character_)
-  old_options <- options(
+  old_options <- base::options(
     mc.cores = 1L,
     RegCompassR.internal_workers = 1L
   )
@@ -43,7 +43,7 @@
 
 .rc_restore_internal_threads <- function(state) {
   if (!is.list(state)) return(invisible(NULL))
-  old_env <- state$env %||% character()
+  old_env <- if (is.null(state$env)) character() else state$env
   if (length(old_env)) {
     missing <- names(old_env)[is.na(old_env)]
     present <- names(old_env)[!is.na(old_env)]
@@ -52,7 +52,7 @@
     }
     if (length(missing)) Sys.unsetenv(missing)
   }
-  if (is.list(state$options)) do.call(options, state$options)
+  if (is.list(state$options)) do.call(base::options, state$options)
   invisible(NULL)
 }
 
