@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.8
+Version: 2.4.9
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -41,9 +41,11 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     om and ci under corda2_args. Actively reversible reactions are split once,
     the opposite directional copy is closed during each target assessment, and
     the original Step 1, Step 2.1, Step 2.2 and Step 3 dependency transitions
-    are preserved. Targets remain serial within each reconstruction; independent
-    cell-type-by-medium models may run in parallel and are reused by the primary
-    and RNA-only scoring paths.
+    are preserved. With parallel Layer 2 execution, directional targets are
+    parallelized only within the current CORDA2 step, all results are reduced in
+    original directional order at a strict step barrier, and the step-local
+    worker pool is released before the next step begins. Cell-type-by-medium
+    models remain independent and are reused by primary and RNA-only scoring.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -136,6 +138,7 @@ Collate:
     'layer2_corda_target_contract.R'
     'layer2_corda_parent_contract.R'
     'layer2_corda2_algorithm.R'
+    'layer2_corda_stage_parallel.R'
     'layer2_corda2_algorithm_build.R'
     'layer2_corda2_options_contract.R'
     'layer2_corda_runtime.R'
