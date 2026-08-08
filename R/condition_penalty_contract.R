@@ -1,5 +1,11 @@
 # API-based Pando compatibility and RegCompass penalty-entry contracts.
 
+# Retained only because older Stage-1 provenance contains these fields. They are
+# no longer used as post-fit edge gates; zero records the absence of an extra
+# correlation or coefficient threshold beyond Pando candidate screening and BH.
+.RC_PANDO_PENALTY_CORR_THRESHOLD <- 0
+.RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0
+
 .rc_condition_penalty_gate <- function(coefficient) {
   required <- c("estimate", "padj", "estimable")
   if (!is.data.frame(coefficient) ||
