@@ -5,6 +5,18 @@
 # the serial implementation. Mathematical state is reduced only at the original
 # CORDA2 stage barriers.
 
+.rc_corda_stage_progress_enabled <- function() {
+  enabled <- get0(".rc_progress_enabled", mode = "function", inherits = TRUE)
+  if (!is.function(enabled)) return(FALSE)
+  isTRUE(enabled(getOption("RegCompassR.progress", TRUE)))
+}
+
+.rc_corda_stage_event <- function(...) {
+  event <- get0(".rc_layer2_task_event", mode = "function", inherits = TRUE)
+  if (!is.function(event)) return(invisible(NULL))
+  do.call(event, list(...))
+}
+
 .rc_corda_stage_backend <- function(BPPARAM) {
   if (identical(BPPARAM, FALSE) || is.null(BPPARAM) ||
       !requireNamespace("BiocParallel", quietly = TRUE) ||
@@ -19,7 +31,12 @@
       !requireNamespace("BiocParallel", quietly = TRUE) ||
       !methods::is(BPPARAM, "BiocParallelParam")) return(invisible(NULL))
   if (isTRUE(BiocParallel::bpisup(BPPARAM))) {
-    .rc_release_bpparam(BPPARAM)
+    release <- get0(".rc_release_bpparam", mode = "function", inherits = TRUE)
+    if (is.function(release)) {
+      release(BPPARAM)
+    } else {
+      try(BiocParallel::bpstop(BPPARAM), silent = TRUE)
+    }
     invisible(gc(verbose = FALSE, full = TRUE))
   }
   invisible(NULL)
@@ -27,26 +44,48 @@
 
 .rc_corda_stage_param <- function(n_targets) {
   n_targets <- max(0L, as.integer(n_targets[[1L]]))
-  if (n_targets <= 1L ||
-      !isTRUE(.rc_layer2_parallel_context$active) ||
-      !isTRUE(.rc_layer2_parallel_context$parallel)) return(FALSE)
-  template <- .rc_layer2_parallel_context$BPPARAM
+  context <- get0(
+    ".rc_layer2_parallel_context", mode = "environment", inherits = TRUE
+  )
+  if (n_targets <= 1L || !is.environment(context) ||
+      !isTRUE(context$active) || !isTRUE(context$parallel)) return(FALSE)
+  template <- context$BPPARAM
+  pool_workers <- get0(
+    ".rc_corda_pool_workers", mode = "function", inherits = TRUE
+  )
+  available_workers <- get0(
+    "rc_available_workers", mode = "function", inherits = TRUE
+  )
   requested <- if (identical(template, FALSE)) {
     1L
   } else if (is.null(template)) {
-    max(1L, as.integer(rc_available_workers(default = 1L)))
+    if (is.function(available_workers)) {
+      max(1L, as.integer(available_workers(default = 1L)))
+    } else {
+      1L
+    }
+  } else if (is.function(pool_workers)) {
+    pool_workers(template)
+  } else if (requireNamespace("BiocParallel", quietly = TRUE) &&
+             methods::is(template, "BiocParallelParam")) {
+    max(1L, as.integer(BiocParallel::bpnworkers(template)))
   } else {
-    .rc_corda_pool_workers(template)
+    1L
   }
   .rc_corda_stage_stop_started_template(template)
   workers <- min(n_targets, max(1L, as.integer(requested)))
   if (workers <= 1L) return(FALSE)
-  param <- rc_default_bpparam(
+  make_param <- get0("rc_default_bpparam", mode = "function", inherits = TRUE)
+  tune_param <- get0(
+    ".rc_layer2_tune_task_bpparam", mode = "function", inherits = TRUE
+  )
+  if (!is.function(make_param)) return(FALSE)
+  param <- make_param(
     workers = workers,
     backend = .rc_corda_stage_backend(template)
   )
   if (is.null(param)) return(FALSE)
-  param <- .rc_layer2_tune_task_bpparam(param, n_targets)
+  if (is.function(tune_param)) param <- tune_param(param, n_targets)
   attr(param, "regcompass_corda2_stage_workers") <- workers
   attr(param, "regcompass_corda2_stage_targets") <- n_targets
   param
@@ -64,23 +103,44 @@
 }
 
 .rc_corda_stage_context <- function() {
-  task <- .rc_layer2_progress_state$current_task
-  if (is.list(task) && is.list(task$context)) return(task$context)
-  .rc_layer2_task_context(route = "corda2")
+  state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  if (is.environment(state)) {
+    task <- state$current_task
+    if (is.list(task) && is.list(task$context)) return(task$context)
+  }
+  make_context <- get0(
+    ".rc_layer2_task_context", mode = "function", inherits = TRUE
+  )
+  if (is.function(make_context)) return(make_context(route = "corda2"))
+  list(cell_type = "ALL", medium_scenario = "base", route = "corda2")
 }
 
 .rc_corda_stage_progress_dir <- function(stage) {
-  task <- .rc_layer2_progress_state$current_task
+  state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- if (is.environment(state)) state$current_task else NULL
   base <- if (is.list(task) && !is.null(task$parts_dir)) {
     task$parts_dir
   } else {
-    .rc_layer2_progress_dir_from_cache()
+    progress_dir <- get0(
+      ".rc_layer2_progress_dir_from_cache", mode = "function", inherits = TRUE
+    )
+    if (is.function(progress_dir)) progress_dir() else tempdir()
   }
   context <- .rc_corda_stage_context()
-  token <- .rc_safe_cache_token(paste(
+  raw_token <- paste(
     context$cell_type, context$medium_scenario,
     stage, Sys.getpid(), sep = "::"
-  ))
+  )
+  safe_token <- get0(".rc_safe_cache_token", mode = "function", inherits = TRUE)
+  token <- if (is.function(safe_token)) {
+    safe_token(raw_token)
+  } else {
+    gsub("[^A-Za-z0-9]+", "_", raw_token)
+  }
   file.path(base, paste0("corda_stage_", token))
 }
 
@@ -97,10 +157,10 @@
   )
   remaining <- max(0L, as.integer(total) - completed)
   interval <- max(1L, floor(as.integer(total) / 100L))
-  emit <- .rc_progress_enabled(getOption("RegCompassR.progress", TRUE)) &&
+  emit <- .rc_corda_stage_progress_enabled() &&
     (completed == as.integer(total) || completed <= 2L ||
      (completed %% interval) == 0L)
-  .rc_layer2_task_event(
+  .rc_corda_stage_event(
     context = context,
     phase = stage,
     step = completed,
@@ -124,12 +184,12 @@
   n_targets <- length(targets)
   label <- .rc_corda_stage_label(stage)
   context <- .rc_corda_stage_context()
-  show_progress <- .rc_progress_enabled(getOption("RegCompassR.progress", TRUE))
+  show_progress <- .rc_corda_stage_progress_enabled()
   if (!n_targets) {
     if (show_progress) {
       message(label, ": no candidate directional targets; skipping")
     }
-    .rc_layer2_task_event(
+    .rc_corda_stage_event(
       context, stage, 0L, 1L,
       detail = "no candidate directional targets; remaining=0",
       scope = "corda2_stage", status = "complete", emit = show_progress
@@ -138,18 +198,24 @@
   }
 
   BPPARAM <- .rc_corda_stage_param(n_targets)
-  workers <- if (identical(BPPARAM, FALSE)) 1L else
-    .rc_layer2_pool_workers(BPPARAM)
+  pool_workers <- get0(
+    ".rc_layer2_pool_workers", mode = "function", inherits = TRUE
+  )
+  workers <- if (identical(BPPARAM, FALSE)) {
+    1L
+  } else if (is.function(pool_workers)) {
+    pool_workers(BPPARAM)
+  } else if (requireNamespace("BiocParallel", quietly = TRUE) &&
+             methods::is(BPPARAM, "BiocParallelParam")) {
+    max(1L, as.integer(BiocParallel::bpnworkers(BPPARAM)))
+  } else {
+    1L
+  }
   progress_dir <- .rc_corda_stage_progress_dir(stage)
   unlink(progress_dir, recursive = TRUE, force = TRUE)
   dir.create(progress_dir, recursive = TRUE, showWarnings = FALSE)
   on.exit({
-    if (!identical(BPPARAM, FALSE) && !is.null(BPPARAM) &&
-        requireNamespace("BiocParallel", quietly = TRUE) &&
-        methods::is(BPPARAM, "BiocParallelParam") &&
-        isTRUE(BiocParallel::bpisup(BPPARAM))) {
-      .rc_release_bpparam(BPPARAM)
-    }
+    .rc_corda_stage_stop_started_template(BPPARAM)
     unlink(progress_dir, recursive = TRUE, force = TRUE)
     invisible(gc(verbose = FALSE, full = TRUE))
   }, add = TRUE)
@@ -163,7 +229,7 @@
       label, n_targets, n_targets, workers
     ))
   }
-  .rc_layer2_task_event(
+  .rc_corda_stage_event(
     context, stage, 0L, n_targets,
     detail = paste0(
       "stage started; targets=", n_targets,
@@ -189,7 +255,18 @@
     )
     answer
   }
-  answer <- rc_parallel_lapply(indexed, worker, BPPARAM = BPPARAM)
+  if (identical(BPPARAM, FALSE)) {
+    answer <- lapply(indexed, worker)
+  } else {
+    parallel_lapply <- get0(
+      "rc_parallel_lapply", mode = "function", inherits = TRUE
+    )
+    if (!is.function(parallel_lapply)) {
+      stop("CORDA2 stage parallelism requires `rc_parallel_lapply`.",
+           call. = FALSE)
+    }
+    answer <- parallel_lapply(indexed, worker, BPPARAM = BPPARAM)
+  }
 
   .rc_corda_stage_stop_started_template(BPPARAM)
   if (show_progress) {
@@ -198,7 +275,7 @@
       label, n_targets, n_targets
     ))
   }
-  .rc_layer2_task_event(
+  .rc_corda_stage_event(
     context, stage, n_targets, n_targets,
     detail = paste0(
       "stage complete; completed=", n_targets, "/", n_targets,
