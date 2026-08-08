@@ -61,7 +61,12 @@ test_that("union cache directly dispatches to original CORDA2 helper", {
   )
   expect_match(
     helper,
-    "serial_within_each_original_corda2_instance",
+    "serial_cell_type_x_medium_models_stage_parallel_corda2_targets",
+    fixed = TRUE
+  )
+  expect_match(
+    helper,
+    ".rc_corda_stage_parallel_requested",
     fixed = TRUE
   )
   expect_match(
@@ -71,7 +76,7 @@ test_that("union cache directly dispatches to original CORDA2 helper", {
   )
 })
 
-test_that("CORDA2 is the default structural worker-pool route", {
+test_that("CORDA2 is the default structural worker-template route", {
   expect_true(RegCompassR:::.rc_layer2_requested_corda2(list()))
   expect_true(RegCompassR:::.rc_layer2_requested_corda2(list(
     model_params = list()
@@ -79,4 +84,10 @@ test_that("CORDA2 is the default structural worker-pool route", {
   expect_false(RegCompassR:::.rc_layer2_requested_corda2(list(
     model_params = list(model_completion = "fastcore")
   )))
+  pool_code <- paste(
+    deparse(body(RegCompassR:::.rc_prepare_corda_worker_pool)),
+    collapse = "\n"
+  )
+  expect_false(grepl("bpstart", pool_code, fixed = TRUE))
+  expect_match(pool_code, "stage_template", fixed = TRUE)
 })
