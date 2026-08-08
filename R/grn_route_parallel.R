@@ -129,7 +129,7 @@
 
 .rc_run_pando_celltype_job <- function(
     job, base, extra_args, condition_infer_args, standard_infer_args,
-    parallel, outer_parallel, progress_monitor) {
+    outer_parallel, progress_monitor) {
   if (!is.list(job) || !inherits(job$object, "Seurat")) {
     stop("Invalid Pando cell-type job.", call. = FALSE)
   }
@@ -165,7 +165,9 @@
     )
     attr(gated_infer_args, "sample_size_aware_tf_cor_gate") <- NULL
     args$pando_infer_args <- gated_infer_args
-    args$parallel <- isTRUE(parallel) && !outer_parallel
+    # Pando is parallelized only across independent broad-cell-type jobs here.
+    # The outer worker already owns one slot from the global worker budget.
+    args$parallel <- FALSE
     value <- do.call(.rc_fit_standard_pando_by_cell_type, args)
     if (is.list(value$normalization_policy)) {
       value$normalization_policy$sample_size_aware_tf_cor_gate <- gate
@@ -188,7 +190,7 @@
     object, gem, outdir, genome, pfm, species, condition_col, celltype_col,
     condition_types, standard_types, rna_assay, atac_assay,
     extra_args, condition_infer_args, standard_infer_args,
-    parallel, BPPARAM, progress_monitor) {
+    workers, progress_monitor) {
   jobs <- rbind(
     if (length(condition_types)) data.frame(
       cell_type = condition_types, route = "condition_grn",
@@ -202,19 +204,30 @@
   if (is.null(jobs) || !nrow(jobs)) {
     stop("No Pando cell-type job was selected.", call. = FALSE)
   }
-  outer_parallel <- isTRUE(parallel) && nrow(jobs) > 1L
+  config <- rc_parallel_config(workers = workers, backend = "auto")
+  effective_workers <- min(nrow(jobs), config$workers)
+  outer_parallel <- effective_workers > 1L &&
+    !identical(config$actual_backend, "serial")
+  BPPARAM <- if (outer_parallel) {
+    .rc_task_bpparam(workers = config$workers, n_tasks = nrow(jobs))
+  } else {
+    FALSE
+  }
   .rc_step_monitor_event(
     progress_monitor, "cell_type_execution_plan",
     if (outer_parallel) {
       "parallelizing independent Pando jobs by broad cell type"
     } else {
-      "running Pando cell-type jobs without outer parallelism"
+      "running the single Pando cell-type job serially"
     },
     current = 5L,
     context = list(
       jobs = nrow(jobs),
       condition_jobs = sum(jobs$route == "condition_grn"),
       standard_jobs = sum(jobs$route == "standard_pando"),
+      worker_budget = config$worker_budget,
+      effective_workers = effective_workers,
+      backend = config$actual_backend,
       outer_parallel = outer_parallel
     )
   )
@@ -239,12 +252,11 @@
   executed <- rc_parallel_lapply(
     job_inputs,
     .rc_run_pando_celltype_job,
-    BPPARAM = if (outer_parallel) BPPARAM else FALSE,
+    BPPARAM = BPPARAM,
     base = base,
     extra_args = extra_args,
     condition_infer_args = condition_infer_args,
     standard_infer_args = standard_infer_args,
-    parallel = parallel,
     outer_parallel = outer_parallel,
     progress_monitor = progress_monitor
   )
@@ -279,17 +291,12 @@
     celltype_col = celltype_col,
     outdir = outdir
   )
-  single_standard_inner <- isTRUE(parallel) && !outer_parallel &&
-    nrow(jobs) == 1L && identical(jobs$route[[1L]], "standard_pando")
   answer$pando_execution_plan <- list(
-    scope = if (outer_parallel) {
-      "cell_type"
-    } else if (single_standard_inner) {
-      "target_standard_pando"
-    } else {
-      "serial"
-    },
+    scope = if (outer_parallel) "cell_type" else "serial",
     n_jobs = nrow(jobs),
+    worker_budget = config$worker_budget,
+    effective_workers = effective_workers,
+    backend = config$actual_backend,
     outer_parallel = outer_parallel,
     nested_parallel = FALSE,
     routes = jobs
