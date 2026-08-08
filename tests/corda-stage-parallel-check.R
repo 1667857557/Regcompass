@@ -66,11 +66,15 @@ rc_solve_lp <- function(obj, A, lhs, rhs, lb, ub,
 }
 rc_available_workers <- function(default = 1L) 2L
 rc_parallel_config <- function(workers = NULL, backend = "auto") {
-  list(workers = as.integer(workers %||% 2L), actual_backend = "snow")
+  workers <- as.integer(workers %||% 2L)
+  list(workers = workers, actual_backend = backend)
 }
 rc_default_bpparam <- function(workers = NULL, backend = "auto") {
   workers <- as.integer(workers %||% 2L)
   if (workers <= 1L) return(NULL)
+  if (identical(backend, "multicore")) {
+    return(BiocParallel::MulticoreParam(workers = workers, progressbar = FALSE))
+  }
   BiocParallel::SnowParam(workers = workers, type = "SOCK", progressbar = FALSE)
 }
 rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
@@ -163,7 +167,7 @@ serial <- .rc_corda_build_three_stage_core(
 )
 .rc_layer2_restore_parallel_context(previous)
 
-param <- BiocParallel::SnowParam(workers = 2L, type = "SOCK", progressbar = FALSE)
+param <- BiocParallel::MulticoreParam(workers = 2L, progressbar = FALSE)
 previous <- .rc_layer2_enter_parallel_context(TRUE, param)
 parallel_result <- .rc_corda_build_three_stage_core(
   split = split, classes = classes, options = corda_options,
@@ -189,4 +193,8 @@ stopifnot(
   !isTRUE(BiocParallel::bpisup(param))
 )
 
-cat("CORDA2 stage-parallel serial-equivalence check passed\n")
+snow <- BiocParallel::SnowParam(workers = 2L, type = "SOCK", progressbar = FALSE)
+snow_result <- rc_parallel_lapply(as.list(1:4), function(x) x * x, BPPARAM = snow)
+stopifnot(identical(unlist(snow_result), c(1, 4, 9, 16)), !BiocParallel::bpisup(snow))
+
+cat("CORDA2 stage-parallel serial-equivalence and SnowParam lifecycle checks passed\n")
