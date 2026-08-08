@@ -12,7 +12,7 @@ Performance changes must not alter the original MATLAB CORDA2 contract:
 - preserve `MCxNCthresh`, `constraint`, `constrainby`, `om` and `ci` semantics;
 - preserve the stable-dependency stopping rule.
 
-The pre-parallel persistent-engine implementation remains inside the canonical CORDA2 core. `parallel = FALSE` or an effective one-worker configuration executes those original serial loops directly; no wrapper or replacement implementation is used.
+The pre-parallel persistent-engine implementation remains inside the canonical CORDA2 core. An effective one-worker configuration executes those original serial loops directly; no wrapper or replacement implementation is used.
 
 ## Solver reuse
 
@@ -20,17 +20,29 @@ The LP matrix and all CORDA2 mathematical controls are unchanged. Each direction
 
 HiGHS remains restricted to one solver thread per worker. Targets in each CORDA2 step are divided into stage-local chunks (up to sixteen chunks per active worker). One persistent HiGHS engine is reused within each chunk, avoiding one solver-model construction per directional target while retaining fine-grained dynamic scheduling across workers. Every chunk releases its native solver engine before the stage pool is released.
 
+## Global worker budget
+
+Layer 2 receives the same public `workers` budget used by the rest of RegCompass. The default request is 10. Backend selection is automatic: Windows uses SOCK workers and Linux/macOS use multicore workers. RegCompass reserves two detected CPUs globally, so the hard worker ceiling is:
+
+```text
+max(1, available CPUs - 2)
+```
+
+The resolved Layer 2 budget is the smaller of the requested budget and that ceiling. No public `BPPARAM` construction is required.
+
 ## Parallel scope
 
 CORDA2 keeps the original Step 1 -> Step 2.1 -> Step 2.2 -> Step 3 state barriers. Directional targets inside one step read the same immutable stage snapshot and are evaluated in parallel. Results are placed back into the original directional-target positions and reduced in the original target order before any dependency matrix, confidence class or retained-reaction state is mutated.
 
-Cell-type-by-medium reconstructions execute serially so each active CORDA2 step can consume the full Layer-2 worker budget. For one step, worker concurrency is:
+Cell-type-by-medium reconstructions execute serially so each active CORDA2 step can consume the full resolved Layer 2 budget. For one step, worker concurrency is:
 
 ```text
-min(number of directional targets in the step, available Layer-2 workers)
+min(number of directional targets in the step,
+    requested workers,
+    max(1, available CPUs - 2))
 ```
 
-The caller-supplied `BPPARAM` is a worker-count/backend template only; Layer 2 does not keep a long-lived CORDA2 pool alive. A fresh stage-local pool is created for every mathematical CORDA2 step. After all targets in the step finish, chunk-local HiGHS engines are released, the stage pool is stopped, full garbage collection runs, and only then does the next step start.
+Layer 2 does not keep a long-lived CORDA2 pool alive. A fresh stage-local pool is created for every mathematical CORDA2 step. After all targets in the step finish, chunk-local HiGHS engines are released, the stage pool is stopped, full garbage collection runs, and only then does the next step start.
 
 For SOCK backends, the stage worker receives an ordinary serializable environment containing the CORDA2 worker functions and the immutable stage snapshot. This is a transport mechanism only; it prevents nested anonymous closures from depending on package-namespace symbol discovery on remote workers and does not alter the mathematical program.
 
@@ -46,4 +58,4 @@ The exact target denominator is the directional-target count for that CORDA2 ste
 
 ## Recorded diagnostics
 
-Each cache summary records the number of LP solves, objective updates, bound updates, solver runtime, reaction counts, confidence-class counts and reconstruction-stage counts. Reconstruction output additionally records, for every CORDA2 step, target count, worker count and chunk count, plus the stage-barrier parallel policy and worker lifecycle. The output contract distinguishes the original serial persistent-engine route from stage-parallel execution.
+Each cache summary records the number of LP solves, objective updates, bound updates, solver runtime, reaction counts, confidence-class counts and reconstruction-stage counts. Reconstruction output additionally records, for every CORDA2 step, target count, worker count and chunk count, plus the stage-barrier parallel policy and worker lifecycle. Layer 2 provenance records the requested/resolved worker budget, detected available CPUs, reserved CPU count, hard worker ceiling and backend. The output contract distinguishes the original serial persistent-engine route from stage-parallel execution.
