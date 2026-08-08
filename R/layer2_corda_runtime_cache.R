@@ -221,7 +221,8 @@
     parts <- lapply(tasks, function(task) {
       run_one(task[1, , drop = FALSE], suppress_nested = FALSE)
     })
-    dispatch <- "serial_within_each_original_corda2_instance"
+    dispatch <-
+      "serial_cell_type_x_medium_models_stage_parallel_corda2_targets"
   }
 
   cache <- list()
@@ -247,7 +248,10 @@
   attr(cache, "structural_parallel_workers") <- active_workers
   attr(cache, "structural_parallel_tasks") <- length(tasks)
   attr(cache, "structural_dynamic_task_scheduling") <- outer_parallel
-  attr(cache, "corda2_inner_target_parallelism") <- FALSE
+  attr(cache, "corda2_inner_target_parallelism") <- TRUE
+  attr(cache, "corda2_stage_barrier_parallelism") <- TRUE
+  attr(cache, "corda2_stage_worker_lifecycle") <-
+    "fresh_pool_each_stage_stop_full_gc_before_next_stage"
   attr(cache, "fastcore_parallel_task") <- "not_applicable_to_corda2"
   rm(parts, summaries)
   invisible(gc(verbose = FALSE, full = FALSE))
