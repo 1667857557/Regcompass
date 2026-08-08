@@ -82,6 +82,7 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           options = Path("R/layer2_corda2_options_contract.R").read_text()
           split = Path("R/layer2_corda_paper_contract.R").read_text()
@@ -92,12 +93,15 @@ jobs:
           model = Path("R/layer2_corda_model.R").read_text()
           pool = Path("R/layer2_corda_pool_lifecycle.R").read_text()
           tutorial = Path("docs/tutorial-02-stepwise-audit.md").read_text()
+          synthetic = Path("tests/corda-synthetic-check.R").read_text()
+          equivalence = Path("tests/corda-stage-parallel-check.R").read_text()
 
           required_options = [
               '"MCxNCthresh"', '"constraint"', '"constrainby"',
               '"om"', '"ci"', 'args$MCxNCthresh %||% 2',
               'args$constraint %||% 1', 'args$constrainby %||% "val"',
               'args$om %||% 1e4', 'args$ci %||% 0.01',
+              'time_limit = Inf', 'stage_order = c(',
           ]
           missing = [x for x in required_options if x not in options]
           if missing:
@@ -140,13 +144,14 @@ jobs:
               'corda2_step3_HC_OT_dependencies',
               '.rc_corda_stage_run',
               'stage_barrier_parallel_targets_deterministic_ordered_reduce',
+              'stage_order = options$stage_order',
           ]
           missing = [x for x in required_build if x not in build]
           if missing:
               raise RuntimeError(f"original CORDA2 state machine missing: {missing}")
 
           required_stage = [
-              '.rc_corda2_dependency_assessment_core',
+              '.rc_corda2_dependency_assessment',
               '.rc_corda2_maximize_target',
               'remaining=', 'worker pool released',
               'rc_parallel_lapply',
@@ -155,6 +160,29 @@ jobs:
           missing = [x for x in required_stage if x not in stage]
           if missing:
               raise RuntimeError(f"CORDA2 stage scheduler missing: {missing}")
+
+          canonical = {
+              "R/layer2_corda_paper_contract.R": ".rc_corda2_maximize_target",
+              "R/layer2_corda2_algorithm.R": ".rc_corda2_dependency_assessment",
+              "R/layer2_corda2_algorithm_build.R": ".rc_corda_build_three_stage",
+          }
+          all_corda = "\n".join((split, dependency, build, stage, model))
+          for path, name in canonical.items():
+              text = Path(path).read_text()
+              pattern = re.compile(rf"(?m)^{re.escape(name)}\s*<-\s*function\b")
+              if len(pattern.findall(text)) != 1:
+                  raise RuntimeError(f"{name} must have one canonical definition in {path}")
+              if len(pattern.findall(all_corda)) != 1:
+                  raise RuntimeError(f"{name} is redefined outside its canonical source")
+
+          forbidden_core = [
+              '.rc_corda2_maximize_target_core',
+              '.rc_corda2_dependency_assessment_core',
+              '.rc_corda_build_three_stage_core',
+          ]
+          present = [x for x in forbidden_core if x in all_corda or x in synthetic or x in equivalence]
+          if present:
+              raise RuntimeError(f"CORDA2 core/wrapper split remains: {present}")
 
           required_direct = [
               '.rc_corda2_split_original', '.rc_corda_build_three_stage',
@@ -169,6 +197,11 @@ jobs:
                          'before_corda2', 'corda_like'):
               if marker in combined:
                   raise RuntimeError(f"override or alternate algorithm marker remains: {marker}")
+
+          if 'REV::forward' in synthetic or 'REV::reverse' in synthetic:
+              raise RuntimeError("synthetic test hard-codes obsolete directional variable labels")
+          if 'time_limit = 30' in equivalence:
+              raise RuntimeError("CORDA2 equivalence test reintroduced a finite time limit")
 
           prepare_start = pool.index('.rc_prepare_corda_worker_pool <- function')
           prepare_end = pool.index('.rc_release_corda_worker_pool <- function')
