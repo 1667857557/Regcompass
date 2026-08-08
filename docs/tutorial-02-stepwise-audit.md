@@ -21,7 +21,7 @@ The effective worker count is always bounded by
 min(independent tasks, workers, max(1, detected logical CPUs - 2))
 ```
 
-so RegCompass reserves two logical CPUs for the operating system/R controller. For example, 8 independent Pando cell-type jobs use 8 workers even when `workers = 60L`, while a CORDA2 step with thousands of directional targets can use the full protected worker budget. Stage 2 fragment aggregation uses the same cap; do not set `metacell_args$fragment_args$workers` separately.
+so RegCompass reserves two logical CPUs for the operating system/R controller. Condition-GRN candidate and fit phases can expose condition × cell-type jobs; standard Pando exposes broad-cell-type jobs; CORDA2 and directional LP phases can expose thousands of targets. Every dispatch uses only the workers it can actually use, and a package-managed pool is stopped before the next phase starts. Stage 2 fragment aggregation uses the same cap; do not set `metacell_args$fragment_args$workers` separately.
 
 ## 2. Regulatory evidence
 
@@ -37,7 +37,7 @@ step1 <- rc_regcompass_step_grn(
     min_cells = 300L,
     pando_infer_args = list(
       tf_cor = 0.1,
-      peak_cor = 0.05,
+      peak_cor = 0,
       adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
@@ -48,13 +48,15 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-A cell type with at least two retained conditions uses the common-dictionary condition GRN; this tutorial passes `tf_cor = 0.1` to that route. A cell type with one retained condition uses standard Pando. For standard Pando, the requested `tf_cor` is an effect-size floor and RegCompass computes an additional sample-size floor from the exact two-sided Pearson correlation test,
+A cell type with at least two retained conditions uses the common-dictionary condition GRN. RegCompass initializes a separate Pando object for each broad cell type, parallelizes the pooled-background and per-condition candidate-discovery jobs, waits at a strict barrier, unions exact `(target, TF, region)` triples into one frozen dictionary for that cell type, and only then parallelizes the condition × cell-type fixed-dictionary Gaussian identity GLMs. Different cell types never share or merge Pando peak/motif feature spaces. The main workflow uses `tf_cor = 0.1` and `peak_cor = 0` for candidate discovery. Final condition edges are active when they are estimable and have BH-adjusted `padj < 0.05`; no second post-fit coefficient-size, correlation, or model-R² gate is applied.
+
+A cell type with one retained condition uses standard Pando. Standard Pando is parallelized across broad cell types, and each individual Pando fit is kept single-process to avoid nested oversubscription. The requested `tf_cor` is a biological floor and RegCompass computes an additional sample-size floor from the exact two-sided Pearson correlation test,
 
 \[
 r_{crit}(n) = \frac{t_{1-\alpha/2,n-2}}{\sqrt{t_{1-\alpha/2,n-2}^2+n-2}},\qquad \alpha=0.05,
 \]
 
-then passes `max(tf_cor, r_crit(n))` to `Pando::infer_grn()` for that cell type. Thus small standard-Pando groups require a stronger TF-target correlation solely because their null correlation distribution is wider. The condition-GRN route is not altered by this adaptive standard-Pando gate.
+then passes `max(tf_cor, r_crit(n))` to `Pando::infer_grn()` for that cell type.
 
 ## 3. Metacells
 
@@ -182,83 +184,31 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-The complete medium-constrained parent GEM is passed directly to CORDA2 without FASTCC pre-pruning. Final retained reactions recover the parent bounds for selected directions, including positive parent lower bounds. Layer 2 reaction costs use the COMPASS scale: missing expression and structural roles receive the maximum cost `1`.
+Do not set `completion_time_limit` for CORDA2. The canonical CORDA2 option object and Layer 2 completion context both use `Inf`; a supplied structural time limit is rejected rather than silently changing original CORDA2 execution.
 
-CORDA2 reconstruction has no structural time limit. `model_params$completion_time_limit` is rejected on the default CORDA2 route so a long Human-GEM reconstruction cannot be silently truncated. The parameter remains available for supplementary non-CORDA2 completion such as FASTCORE.
+### CORDA2 step-level parallelism
 
-CORDA2 does not parallelize different mathematical steps simultaneously. Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers. Directional targets inside the current step are distributed across up to the protected `workers` cap, restored to original directional order, and only then are HC/MC/NC/OT states updated. Each step uses a fresh worker pool with one HiGHS thread per worker. The pool and worker-local solver engines are released and full garbage collection is requested before the next step starts. Step entry and completion are printed, and the step progress display reports `completed/total` plus `remaining` directional targets. The same target-level status is written to the Layer-2 task progress files with `scope = "corda2_stage"`.
+The mathematical order remains fixed:
 
-Main controls:
-
-- `workers`: one workflow-wide worker cap; default `10L`, user-adjustable, with two logical CPUs reserved from detected capacity;
-- `target_direction`: `"both"`, `"forward"` or `"reverse"`;
-- `solver`: `"highs"`, `"gurobi"` or `"glpk"`;
-- `strict`: fail when required targets are not retained;
-- `corda2_args`: original CORDA2 controls `MCxNCthresh`, `constraint`, `constrainby`, `om` and `ci`;
-- `corda_*`: RegCompass evidence-to-confidence mapping controls;
-- `completion_time_limit`: non-CORDA2 structural completion control; do not use it with CORDA2.
-
-## 7. Supplementary structural modes
-
-### FASTCORE
-
-```r
-step5_fastcore <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "run/05_layer2_fastcore",
-  model_mode = "meta_module_gem",
-  workers = workers,
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    model_params = list(
-      model_completion = "fastcore",
-      completion_time_limit = 1200,
-      fastcore_epsilon = 1e-4,
-      max_support_reactions = 3000,
-      strict = TRUE
-    )
-  )
-)
+```text
+Step 1 HC dependencies
+  -> barrier / deterministic ordered reduce / state update
+  -> release worker pool and target-local HiGHS engines / GC
+Step 2.1 MC-NC dependencies
+  -> barrier / deterministic ordered reduce / state update
+  -> release pool / GC
+Step 2.2 MC feasibility
+  -> barrier / deterministic ordered reduce / state update
+  -> release pool / GC
+Step 3 HC-OT dependencies
+  -> barrier / deterministic ordered reduce / state update
+  -> release pool / GC
 ```
 
-### Full GEM
+Within the current step, directional targets are parallelized up to the protected worker cap. Each directional target starts from a fresh solver engine so its incoming simplex basis cannot depend on the worker/chunk assignment; repeated solves belonging to that same target still reuse its engine. HiGHS remains one thread per worker. Results are reduced in the original directional order only after all targets in the step finish.
 
-```r
-step5_full <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "run/05_layer2_full_gem",
-  model_mode = "full_gem",
-  workers = workers,
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    flux_threshold = 1e-8
-  )
-)
-```
+The console and Layer 2 progress files report the current CORDA2 step, completed targets, total targets and `remaining=` count. Worker pools are short-lived by step; a new pool is created only after the preceding step has fully completed.
 
-Do not supply CORDA2 or FASTCORE controls in `full_gem` mode.
+## 7. Result assembly
 
-## 8. Results
-
-```r
-result <- rc_regcompass_step_results(
-  grn = step1,
-  metacells = step2,
-  meta_modules = step3,
-  layer1 = step4,
-  layer2 = step5,
-  gem = gem,
-  outdir = "run/06_results",
-  species = "human"
-)
-```
-
-Useful Layer 2 provenance fields are `step5$params`, `step5$completion_contract`, `step5$model_cache_summary`, `step5$vmax_cache_diagnostics` and `step5$lp_diagnostics`.
+Use the Layer 2 output directly or continue with the one-shot result assembly functions. Targeted post-analysis can reuse either audited CORDA2 or supplementary FASTCORE Stage 5 union GEMs without structural reconstruction; `rc_regcompass_step_target_union()` uses the same top-level `workers` contract.
