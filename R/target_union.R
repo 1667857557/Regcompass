@@ -286,7 +286,7 @@
     support_only <- catalogue$available_in_all_cached_union_gems &
       !catalogue$present_in_merged_catalogue
     catalogue$merged_catalogue_inclusion_stage[support_only] <-
-      "celltype_fastcore_support_not_in_biological_catalogue"
+      "celltype_structural_support_not_in_biological_catalogue"
     catalogue$score_target <- !catalogue$merged_catalogue_is_core &
       catalogue$available_in_all_cached_union_gems
     catalogue$target_role <- ifelse(
@@ -344,8 +344,10 @@
       expansion_policy = expansion_policy,
       scoring_policy =
         "celltype_noncore_reactions_present_in_all_media_for_that_celltype",
-      model_policy =
-        "reuse_exact_celltype_medium_union_gems_without_fastcore_rerun",
+      model_policy = paste(
+        "reuse exact audited celltype-medium union GEMs without rerunning",
+        "CORDA2 or FASTCORE structural reconstruction"
+      ),
       stringsAsFactors = FALSE
     )
     list(
@@ -578,14 +580,35 @@
          call. = FALSE)
   }
   summary <- summary[!duplicated(key), , drop = FALSE]
+  allowed_contracts <- data.frame(
+    build_strategy = c(
+      "celltype_medium_union_gem",
+      "celltype_medium_original_matlab_corda2"
+    ),
+    completion_stage = c(
+      "celltype_specific_fastcore_after_condition_module_union",
+      "original_CORDA2_after_confidence_mapping"
+    ),
+    stringsAsFactors = FALSE
+  )
+  observed_key <- paste(
+    as.character(summary$build_strategy),
+    as.character(summary$completion_stage), sep = "\001"
+  )
+  allowed_key <- paste(
+    allowed_contracts$build_strategy,
+    allowed_contracts$completion_stage, sep = "\001"
+  )
+  if (any(!observed_key %in% allowed_key)) {
+    stop(
+      paste(
+        "Target remapping requires an audited cell-type/medium union GEM",
+        "built by the canonical FASTCORE or CORDA2 Stage 5 route."
+      ),
+      call. = FALSE
+    )
+  }
   for (i in seq_len(nrow(summary))) {
-    if (!identical(summary$build_strategy[[i]],
-                   "celltype_medium_union_gem") ||
-        !identical(summary$completion_stage[[i]],
-                   "celltype_specific_fastcore_after_condition_module_union")) {
-      stop("Target remapping requires cell-type-specific final union GEMs.",
-           call. = FALSE)
-    }
     .rc_read_celltype_union_gem(
       summary$file[[i]], summary$cell_type[[i]],
       summary$medium_scenario[[i]], summary$file_checksum[[i]]
@@ -745,10 +768,12 @@
   )
   answer$model_mode <- "reused_celltype_medium_union_gem"
   answer$params$structural_model_reused_exactly <- TRUE
+  answer$params$structural_reconstruction_rerun <- FALSE
   answer$params$fastcore_rerun <- FALSE
+  answer$params$corda2_rerun <- FALSE
   answer$params$model_rebuild <- FALSE
   answer$params$parallel_task <-
-    "reused_celltype_union_gem_by_matching_metacell"
+    "reused_celltype_union_gem_directional_LP_tasks"
   answer$direction_diagnostics <- attr(model_cache, "direction_diagnostics")
   answer$relative_penalty_rank <- answer$score
   answer$score_semantics <- attr(answer$score, "score_semantics") %||%
@@ -767,12 +792,14 @@
 #' master-Rhea-linked non-core reactions are scored by reusing the exact Stage 5
 #' union GEMs for the corresponding cell types and media. Candidate availability
 #' is intersected across media within each cell type. Models from different cell
-#' types are never merged, and FASTCORE is not rerun.
+#' types are never merged, and neither CORDA2 nor FASTCORE reconstruction is
+#' rerun.
 #'
 #' @param layer1 Output from [rc_regcompass_step_layer1()].
 #' @param meta_modules Output from [rc_regcompass_step_meta_modules()].
 #' @param layer2 Output from [rc_regcompass_step_layer2()] with
-#'   `model_mode = "meta_module_gem"`.
+#'   `model_mode = "meta_module_gem"` using the canonical CORDA2 or FASTCORE
+#'   structural route.
 #' @param gem The same GEM used for the original run.
 #' @param outdir Output directory.
 #' @param core_reaction_ids GEM reaction IDs used as direct mapping anchors.
@@ -785,9 +812,9 @@
 #' @param gene_match Require a complete GPR group or allow any direct gene match.
 #' @param layer2_args Optional `omega`, `target_direction`, `solver`, and
 #'   `flux_threshold` overrides. Scoring LPs have no construction time limit.
-#' @param parallel Whether to parallelize reused cell-type-model by matching-
-#'   metacell tasks.
-#' @param BPPARAM Optional BiocParallel parameter object.
+#' @param workers Total RegCompass worker cap, default 10. The effective cap is
+#'   `min(workers, max(1, detected logical CPUs - 2))`; target-union LP batches
+#'   shrink further to the number of independent tasks.
 #' @param progress Whether to display stage progress.
 #' @return A `regcompass_target_union_step` containing cell-type-scoped anchors,
 #'   direct database-linked non-core targets, exact model provenance, and LP
@@ -797,10 +824,12 @@ rc_regcompass_step_target_union <- function(
     layer1, meta_modules, layer2, gem, outdir,
     core_reaction_ids = NULL, core_genes = NULL,
     gene_match = c("complete_gpr", "any_direct"),
-    layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+    layer2_args = list(), workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("target_union", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
+  parallel_plan <- .rc_stage_parallel_plan(workers, argument = "workers")
+  on.exit(.rc_release_bpparam(parallel_plan$BPPARAM), add = TRUE)
   gene_match <- match.arg(gene_match)
   .rc_require_stage_class(
     meta_modules, "regcompass_meta_module_step", "meta_modules",
@@ -823,9 +852,8 @@ rc_regcompass_step_target_union <- function(
   if (length(unknown)) {
     stop(
       "Unsupported `layer2_args`: ", paste(unknown, collapse = ", "),
-      ". Scoring `time_limit` has been removed; only ",
-      "`layer2_args$model_params$completion_time_limit` in the original ",
-      "union-GEM construction stage is supported.",
+      ". Scoring `time_limit` has been removed; the target-union stage reuses ",
+      "the existing Stage 5 structural models without reconstruction.",
       call. = FALSE
     )
   }
@@ -865,11 +893,13 @@ rc_regcompass_step_target_union <- function(
     c("both", "forward", "reverse")
   )
   solver <- match.arg(
-    as.character(layer2_args$solver %||% "highs"),
+    as.character(layer2_args$solver %||%
+                   layer2$params$solver %||% "highs"),
     c("highs", "gurobi", "glpk")
   )
   omega <- layer2_args$omega %||% layer2$params$omega %||% 0.95
-  flux_threshold <- layer2_args$flux_threshold %||% 1e-8
+  flux_threshold <- layer2_args$flux_threshold %||%
+    layer2$params$flux_threshold %||% 1e-8
   model_cache <- .rc_build_target_union_model_cache(
     layer2 = layer2,
     target_reactions = definition$params$score_targets,
@@ -885,15 +915,22 @@ rc_regcompass_step_target_union <- function(
     omega = omega,
     solver = solver,
     flux_threshold = flux_threshold,
-    parallel = parallel,
-    BPPARAM = BPPARAM
+    parallel = parallel_plan$parallel,
+    BPPARAM = parallel_plan$BPPARAM
   )
   scored$workflow_params <- workflow
   scored$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
   scored$params$target_direction <- target_direction
+  scored$params$solver <- solver
+  scored$params$flux_threshold <- flux_threshold
   scored$params$target_scope <-
     "direct_database_crossrefs_within_cell_type_only"
   scored$params$n_selected_core <- nrow(definition$selected_core_reactions)
+  scored$params$workers <- parallel_plan$workers
+  scored$params$parallel_backend <- parallel_plan$config$actual_backend
+  scored$params$reserved_cpus <- parallel_plan$config$reserved_cpus
+  scored$params$parallel_worker_policy <-
+    "min(independent_tasks,requested_workers,max(1,detected_cpus-2))"
   relation_catalogue <- definition$expanded_reaction_catalog
   scored$params$n_merged_core_reactions_not_rescored <- length(unique(
     as.character(relation_catalogue$reaction_id[
@@ -933,6 +970,12 @@ rc_regcompass_step_target_union <- function(
   answer <- c(definition, list(microcompass = scored))
   answer$workflow_params <- workflow
   answer$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
+  answer$parallel_contract <- list(
+    worker_limit = parallel_plan$workers,
+    backend = parallel_plan$config$actual_backend,
+    dynamic_task_sizing = TRUE,
+    structural_reconstruction_rerun = FALSE
+  )
   class(answer) <- c("regcompass_target_union_step", "list")
   answer <- .rc_step_monitor_finish(answer, monitor)
   saveRDS(answer, file.path(outdir, "step_target_union.rds"))
