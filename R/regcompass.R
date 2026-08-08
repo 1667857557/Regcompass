@@ -1,4 +1,4 @@
-#' Run the RegCompass workflow with cell-type-specific Pando routing
+#' Run the RegCompass workflow with one global worker budget
 #'
 #' Stage 1 resolves the Pando route independently for each retained broad cell
 #' type. Cell types with at least two retained conditions use the common-
@@ -17,6 +17,13 @@
 #' execute FASTCORE or CORDA2. All routes use the COMPASS reaction-cost scale,
 #' with missing expression and structural reaction roles assigned cost 1.
 #'
+#' `workers` is the only workflow-level parallel parameter. The default budget
+#' is 10. RegCompass automatically selects SOCK workers on Windows and multicore
+#' workers on Linux/macOS. Each operation uses at most
+#' `min(number_of_independent_tasks, workers)` workers: Pando is capped by the
+#' number of broad-cell-type jobs, whereas CORDA2 and large LP target sets can
+#' consume the full budget. Worker pools are released between workflow stages.
+#'
 #' When `medium_scenarios` is omitted, Human-GEM uses
 #' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
 #'
@@ -24,6 +31,8 @@
 #' aggregate the existing ATAC matrix, a fragment path (or named path vector for
 #' multiple samples), or a data frame with `fragment_file`, `object_cell`, and
 #' `fragment_barcode`. Fragment routing does not make sample a metacell stratum.
+#' @param workers Global worker upper bound. Defaults to 10 and may be adjusted
+#' directly or through `options(RegCompassR.workers = ...)`.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -42,8 +51,7 @@ rc_run_regcompass <- function(
     medium_scenarios = NULL,
     model_mode = c("meta_module_gem", "full_gem"),
     layer2_args = list(),
-    upstream_workers = 6L,
-    layer2_workers = 30L,
+    workers = getOption("RegCompassR.workers", 10L),
     progress = getOption("RegCompassR.progress", TRUE)) {
   model_mode <- match.arg(model_mode)
   bundles <- list(
@@ -64,6 +72,8 @@ rc_run_regcompass <- function(
     stop("Unknown `layer1_args`: ", paste(unknown_layer1, collapse = ", "),
          call. = FALSE)
   }
+  worker_config <- rc_parallel_config(workers = workers, backend = "auto")
+  workers <- worker_config$worker_budget
   species <- .rc_infer_gem_species(gem, species)
   rc_validate_gem(gem)
   if (is.null(medium_scenarios)) {
@@ -81,29 +91,18 @@ rc_run_regcompass <- function(
   medium_scenarios <- .rc_validate_shared_medium(medium_scenarios)
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
 
-  upstream_config <- .rc_stage_worker_config(
-    upstream_workers, argument = "upstream_workers"
+  step1 <- rc_regcompass_step_grn(
+    object = object, gem = gem,
+    outdir = file.path(outdir, "01_single_cell_grn"),
+    genome = genome, pfm = pfm, species = species,
+    condition_col = condition_col, celltype_col = celltype_col,
+    cell_type = cell_type, rna_assay = rna_assay,
+    atac_assay = atac_assay,
+    pando_args = pando_args,
+    workers = workers, progress = progress
   )
-  layer2_config <- .rc_stage_worker_config(
-    layer2_workers, argument = "layer2_workers"
-  )
-  step1 <- .rc_with_stage_workers(
-    upstream_config$workers,
-    argument = "upstream_workers",
-    FUN = function(param, config) {
-      rc_regcompass_step_grn(
-        object = object, gem = gem,
-        outdir = file.path(outdir, "01_single_cell_grn"),
-        genome = genome, pfm = pfm, species = species,
-        condition_col = condition_col, celltype_col = celltype_col,
-        cell_type = cell_type, rna_assay = rna_assay,
-        atac_assay = atac_assay,
-        pando_args = pando_args,
-        parallel = !identical(config$actual_backend, "serial"),
-        BPPARAM = param, progress = progress
-      )
-    }
-  )
+  invisible(gc(verbose = FALSE, full = TRUE))
+
   step2 <- rc_regcompass_step_metacells(
     object = object,
     outdir = file.path(outdir, "02_metacells"),
@@ -114,40 +113,34 @@ rc_run_regcompass <- function(
     metacell_args = metacell_args, progress = progress,
     grn = step1
   )
+  invisible(gc(verbose = FALSE, full = TRUE))
+
   step3 <- rc_regcompass_step_meta_modules(
     grn = step1, metacells = step2, gem = gem,
     outdir = file.path(outdir, "03_meta_modules"),
     meta_module_args = meta_module_args, progress = progress
   )
-  step4 <- .rc_with_stage_workers(
-    upstream_config$workers,
-    argument = "upstream_workers",
-    FUN = function(param, config) {
-      rc_regcompass_step_layer1(
-        grn = step1, metacells = step2, meta_modules = step3, gem = gem,
-        outdir = file.path(outdir, "04_layer1"),
-        gpr_and_method = layer1_args$gpr_and_method %||% "min",
-        gene_half_saturation = layer1_args$gene_half_saturation %||%
-          getOption("RegCompassR.cpm_half_saturation", 1),
-        parallel = !identical(config$actual_backend, "serial"),
-        BPPARAM = param, progress = progress
-      )
-    }
+  invisible(gc(verbose = FALSE, full = TRUE))
+
+  step4 <- rc_regcompass_step_layer1(
+    grn = step1, metacells = step2, meta_modules = step3, gem = gem,
+    outdir = file.path(outdir, "04_layer1"),
+    gpr_and_method = layer1_args$gpr_and_method %||% "min",
+    gene_half_saturation = layer1_args$gene_half_saturation %||%
+      getOption("RegCompassR.cpm_half_saturation", 1),
+    workers = workers, progress = progress
   )
-  step5 <- .rc_with_stage_workers(
-    layer2_config$workers,
-    argument = "layer2_workers",
-    FUN = function(param, config) {
-      rc_regcompass_step_layer2(
-        layer1 = step4, meta_modules = step3, gem = gem,
-        medium_scenarios = medium_scenarios,
-        outdir = file.path(outdir, "05_layer2"),
-        model_mode = model_mode, layer2_args = layer2_args,
-        parallel = !identical(config$actual_backend, "serial"),
-        BPPARAM = param, progress = progress
-      )
-    }
+  invisible(gc(verbose = FALSE, full = TRUE))
+
+  step5 <- rc_regcompass_step_layer2(
+    layer1 = step4, meta_modules = step3, gem = gem,
+    medium_scenarios = medium_scenarios,
+    outdir = file.path(outdir, "05_layer2"),
+    model_mode = model_mode, layer2_args = layer2_args,
+    workers = workers, progress = progress
   )
+  invisible(gc(verbose = FALSE, full = TRUE))
+
   result <- rc_regcompass_step_results(
     grn = step1, metacells = step2, meta_modules = step3,
     layer1 = step4, layer2 = step5, gem = gem,
@@ -177,7 +170,9 @@ rc_run_regcompass <- function(
   result$params$metacell_atac_aggregation <- design$atac_aggregation_method
   result$params$fragment_files_supplied <- isTRUE(design$fragment_files_supplied)
   result$params$temporary_combined_stratum <- FALSE
-  result$params$upstream_workers <- upstream_config$workers
-  result$params$layer2_workers <- layer2_config$workers
+  result$params$workers <- workers
+  result$params$parallel_backend <- worker_config$actual_backend
+  result$params$parallel_policy <-
+    "each_stage_uses_at_most_min(independent_tasks, workers)"
   result
 }
