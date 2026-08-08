@@ -103,6 +103,10 @@
   )
   reconstruction$source_fidelity <- "original_MATLAB_CORDA2"
   reconstruction$solver_time_limit <- time_limit
+  stage_parallel <- identical(
+    reconstruction$parallel_execution_policy,
+    "stage_barrier_parallel_targets_deterministic_ordered_reduce"
+  )
 
   included_variables <- reconstruction$included_directional_variables
   if (!length(included_variables)) {
@@ -182,7 +186,19 @@
     } else {
       "one_shot"
     },
-    target_parallelism = FALSE
+    target_parallelism = stage_parallel,
+    parallel_scope = if (stage_parallel) {
+      "directional_targets_within_each_original_corda2_stage"
+    } else {
+      "serial_original_persistent_engine"
+    },
+    stage_barrier = stage_parallel,
+    ordered_reduce = stage_parallel,
+    worker_lifecycle = if (stage_parallel) {
+      "fresh_pool_each_stage_stop_full_gc_before_next_stage"
+    } else {
+      "single_persistent_engine_for_complete_reconstruction"
+    }
   ))
   final$corda_stage1_HCtoMC <- reconstruction$HCtoMC
   final$corda_stage1_HCtoNC <- reconstruction$HCtoNC
@@ -253,6 +269,7 @@
     included_reactions = included,
     included_directional_variables = included_variables,
     stage_update_policy = reconstruction$stage_update_policy,
+    parallel_execution_policy = reconstruction$parallel_execution_policy,
     source_semantics = reconstruction$source_semantics
   )
   final$corda2_contract <- list(
@@ -266,6 +283,8 @@
       outputBound = corda_options$output_bound
     ),
     solver_time_limit = time_limit,
+    stage_update_policy = reconstruction$stage_update_policy,
+    parallel_execution_policy = reconstruction$parallel_execution_policy,
     source_semantics = reconstruction$source_semantics
   )
 
