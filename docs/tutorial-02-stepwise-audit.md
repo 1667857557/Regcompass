@@ -183,6 +183,8 @@ The complete medium-constrained parent GEM is passed directly to CORDA2 without 
 
 CORDA2 reconstruction has no structural time limit. `model_params$completion_time_limit` is rejected on the default CORDA2 route so a long Human-GEM reconstruction cannot be silently truncated. The parameter remains available for supplementary non-CORDA2 completion such as FASTCORE.
 
+With `parallel = TRUE`, `BPPARAM` supplies the Layer-2 worker budget and backend. CORDA2 does not parallelize different mathematical steps simultaneously. Instead, Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers; directional targets inside the current step are distributed across the available workers, restored to original directional order, and only then are HC/MC/NC/OT states updated. Each step uses a fresh worker pool with one HiGHS thread per worker. The pool and worker-local solver engines are released and full garbage collection is requested before the next step starts. Step entry and completion are printed, and the step progress display reports `completed/total` plus `remaining` directional targets. The same target-level status is written to the Layer-2 task progress files with `scope = "corda2_stage"`.
+
 Main controls:
 
 - `target_direction`: `"both"`, `"forward"` or `"reverse"`;
