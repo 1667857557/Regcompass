@@ -69,6 +69,7 @@ source("R/layer2_corda_paper_contract.R")
 source("R/layer2_corda_direction_contract.R")
 source("R/layer2_corda2_algorithm.R")
 source("R/layer2_corda2_algorithm_build.R")
+source("R/layer2_corda_serial_core.R")
 source("R/layer2_corda2_options_contract.R")
 
 make_gem <- function(metabolites, reactions, entries, lb = NULL, ub = NULL) {
@@ -214,7 +215,7 @@ network <- make_gem(
 )
 inspect_gem("network", network)
 network_split <- .rc_corda2_split_original(network)
-result <- .rc_corda_build_three_stage(
+result <- .rc_corda_build_three_stage_serial_core(
   split = network_split,
   classes = classes(hc = "H", mc = "M", nc = "N"),
   options = options,
@@ -229,7 +230,9 @@ stopifnot(
   identical(result$algorithm,
             "schultzdre_MATLAB_CORDA2_original_semantics"),
   identical(result$stage_update_policy,
-            "original_matlab_directional_order")
+            "original_matlab_directional_order"),
+  identical(result$parallel_execution_policy,
+            "serial_original_persistent_engine")
 )
 
 cat("Original MATLAB CORDA2 source-contract checks passed\n")
