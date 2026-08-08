@@ -43,10 +43,12 @@ test_that("stage-parallel CORDA2 preserves serial mathematical state", {
   old_options <- options(RegCompassR.progress = FALSE)
   on.exit(options(old_options), add = TRUE)
 
-  serial <- RegCompassR:::.rc_corda_build_three_stage_core_serial(
+  previous <- RegCompassR:::.rc_layer2_enter_parallel_context(FALSE, FALSE)
+  serial <- RegCompassR:::.rc_corda_build_three_stage_core(
     split = case$split, classes = case$classes, options = case$options,
     solver = "highs", time_limit = 30
   )
+  RegCompassR:::.rc_layer2_restore_parallel_context(previous)
 
   param <- BiocParallel::SnowParam(
     workers = 2L, type = "SOCK", progressbar = FALSE
