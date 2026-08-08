@@ -29,17 +29,47 @@
   answer
 }
 
-.rc_corda_build_three_stage_core <- function(
+.rc_corda_build_three_stage <- function(
     split, classes, options, solver, time_limit) {
+  finalize_progress <- function(answer) {
+    progress_state <- get0(
+      ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+    )
+    task <- if (is.environment(progress_state)) {
+      progress_state$current_task
+    } else {
+      NULL
+    }
+    if (!is.null(task) && identical(task$route, "corda2")) {
+      required <- list(
+        c("corda2_step1", "corda2_step1_HC_dependencies", 4L),
+        c("corda2_step2_1", "corda2_step2_1_MC_NC_dependencies", 5L),
+        c("corda2_step2_2", "corda2_step2_2_MC_feasibility", 6L),
+        c("corda2_step3", "corda2_step3_HC_OT_dependencies", 7L)
+      )
+      for (item in required) {
+        if (!exists(item[[1L]], envir = progress_state$algorithm_flags,
+                    inherits = FALSE)) {
+          .rc_layer2_algorithm_once(
+            item[[1L]], item[[2L]], as.integer(item[[3L]]),
+            "skipped because this confidence class had no candidate directions"
+          )
+        }
+      }
+    }
+    answer
+  }
+
   parallel_requested <- get0(
     ".rc_corda_stage_parallel_requested", mode = "function", inherits = TRUE
   )
   use_stage_parallel <- is.function(parallel_requested) &&
     isTRUE(parallel_requested())
 
-  # Exact original serial implementation. This branch is intentionally kept in
-  # the canonical function so parallel=FALSE and one-worker execution preserve
-  # the pre-parallel persistent-engine behavior and directional target order.
+  # Serial scheduling preserves the original directional target order. Solver
+  # state is still isolated between targets, exactly as in the parallel path, so
+  # worker count cannot alter an incoming simplex basis. Repeated solves within
+  # one target continue to reuse the same target-local engine.
   if (!use_stage_parallel) {
     directional_class <- .rc_corda2_directional_class(split, classes)
     initial_directional_class <- directional_class
@@ -272,7 +302,7 @@
       if (length(stages)) inclusion_stage[[reaction]] <- stages[[1L]]
     }
 
-    return(list(
+    return(finalize_progress(list(
       included = included_reactions,
       included_directional_variables = included_variables,
       initial_reaction_confidence = initial_reaction_confidence,
@@ -309,11 +339,13 @@
       rescue = rescue_table,
       task_diagnostics = .rc_bind_frames_fill(task_tables),
       solver_performance = .rc_corda_execution_metrics(engine),
+      stage_order = options$stage_order,
       algorithm = "schultzdre_MATLAB_CORDA2_original_semantics",
       reference_repository = "schultzdre/Constraint-Based-Modeling",
       reference_file = "CORDA2.m",
       stage_update_policy = "original_matlab_directional_order",
-      parallel_execution_policy = "serial_original_persistent_engine",
+      parallel_execution_policy =
+        "serial_original_order_target_isolated_solver_state",
       source_semantics = c(
         "split only actively reversible reactions once",
         "close the opposite direction for every tested reaction",
@@ -323,7 +355,7 @@
         "promote NC directions required by at least MCxNCthresh MC directions",
         "block remaining NC before MC feasibility and add OT only in step 3"
       )
-    ))
+    )))
   }
 
   # Stage-parallel execution. Mathematical state is still updated only at the
@@ -641,7 +673,7 @@
     if (length(stages)) inclusion_stage[[reaction]] <- stages[[1L]]
   }
 
-  list(
+  finalize_progress(list(
     included = included_reactions,
     included_directional_variables = included_variables,
     initial_reaction_confidence = initial_reaction_confidence,
@@ -681,6 +713,7 @@
       execution_metrics, ncol(split$S)
     ),
     stage_parallelism = .rc_bind_frames_fill(stage_parallelism),
+    stage_order = options$stage_order,
     algorithm = "schultzdre_MATLAB_CORDA2_original_semantics",
     reference_repository = "schultzdre/Constraint-Based-Modeling",
     reference_file = "CORDA2.m",
@@ -696,39 +729,5 @@
       "promote NC directions required by at least MCxNCthresh MC directions",
       "block remaining NC before MC feasibility and add OT only in step 3"
     )
-  )
-}
-
-# Progress-aware entry point; the algorithm remains in the core above.
-.rc_corda_build_three_stage <- function(...) {
-  progress_state <- get0(
-    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
-  )
-  answer <- do.call(
-    .rc_corda_build_three_stage_core,
-    list(...)
-  )
-  task <- if (is.environment(progress_state)) {
-    progress_state$current_task
-  } else {
-    NULL
-  }
-  if (!is.null(task) && identical(task$route, "corda2")) {
-    required <- list(
-      c("corda2_step1", "corda2_step1_HC_dependencies", 4L),
-      c("corda2_step2_1", "corda2_step2_1_MC_NC_dependencies", 5L),
-      c("corda2_step2_2", "corda2_step2_2_MC_feasibility", 6L),
-      c("corda2_step3", "corda2_step3_HC_OT_dependencies", 7L)
-    )
-    for (item in required) {
-      if (!exists(item[[1L]], envir = progress_state$algorithm_flags,
-                  inherits = FALSE)) {
-        .rc_layer2_algorithm_once(
-          item[[1L]], item[[2L]], as.integer(item[[3L]]),
-          "skipped because this confidence class had no candidate directions"
-        )
-      }
-    }
-  }
-  answer
+  ))
 }
