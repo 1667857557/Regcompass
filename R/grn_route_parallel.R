@@ -221,7 +221,7 @@
   args$pando_infer_args <- condition_infer_args
   args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
   args$progress_monitor <- progress_monitor
-  do.call(.rc_fit_condition_grns_regcompass_parallel, args)
+  do.call(.rc_fit_condition_grns_by_cell_type, args)
 }
 
 .rc_fit_pando_by_celltype_route <- function(
@@ -259,16 +259,10 @@
       } else {
         "not_applicable"
       },
-      scheduler_owner = "RegCompassR",
       nested_parallel = FALSE
     )
   )
 
-  # Phase 1: RegCompass owns condition-mode scheduling over Pando's exported
-  # atomic mathematical operations. Candidate discovery completes first, exact
-  # dictionaries are frozen per cell type, and only then are condition x
-  # cell-type fixed-dictionary GLMs dispatched. No nested Pando worker pool is
-  # enabled inside an individual task.
   condition_result <- .rc_run_condition_pando_batch(
     object = object,
     condition_types = condition_types,
@@ -281,9 +275,6 @@
   )
   invisible(gc(verbose = FALSE, full = TRUE))
 
-  # Phase 2: standard Pando has no condition dictionary, so independent broad
-  # cell types are the correct parallel unit. Every individual infer_grn call is
-  # one process with model-specific thread controls forced to one.
   standard_values <- list()
   standard_outer_parallel <- isTRUE(parallel) && length(standard_types) > 1L
   if (length(standard_types)) {
@@ -322,10 +313,8 @@
     outdir = outdir
   )
   condition_plan <- if (!is.null(condition_result) &&
-      inherits(condition_result$pando_grn_data, "GRNData")) {
-    methods::slot(methods::slot(
-      condition_result$pando_grn_data, "grn"
-    ), "params")$parallel_plan %||% list()
+      is.list(condition_result$pando_execution_summary)) {
+    condition_result$pando_execution_summary$parallel_plan %||% list()
   } else {
     list()
   }
@@ -342,8 +331,7 @@
     condition_parallel_plan = condition_plan,
     standard_outer_parallel = standard_outer_parallel,
     nested_parallel = FALSE,
-    worker_budget_shared_sequentially = TRUE,
-    scheduler_owner = "RegCompassR"
+    worker_budget_shared_sequentially = TRUE
   )
   answer
 }
