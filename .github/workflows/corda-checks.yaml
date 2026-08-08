@@ -9,6 +9,7 @@ on:
       - 'DESCRIPTION'
       - 'docs/tutorial-02-stepwise-audit.md'
       - 'tests/corda-synthetic-check.R'
+      - 'tests/corda-stage-parallel-check.R'
       - 'tests/testthat/test-layer2-corda*.R'
       - '.github/workflows/corda-checks.yaml'
   push:
@@ -20,6 +21,7 @@ on:
       - 'DESCRIPTION'
       - 'docs/tutorial-02-stepwise-audit.md'
       - 'tests/corda-synthetic-check.R'
+      - 'tests/corda-stage-parallel-check.R'
       - 'tests/testthat/test-layer2-corda*.R'
       - '.github/workflows/corda-checks.yaml'
 
@@ -38,9 +40,11 @@ jobs:
           r-version: '4.5'
           use-public-rspm: true
 
-      - name: Install solver dependency
+      - name: Install solver and parallel dependencies
         shell: Rscript {0}
-        run: install.packages("highs")
+        run: |
+          install.packages(c("highs", "BiocManager"))
+          BiocManager::install("BiocParallel", ask = FALSE, update = FALSE)
 
       - name: Parse directly modified CORDA2 sources
         shell: Rscript {0}
@@ -55,18 +59,23 @@ jobs:
             "R/layer2_corda_target_contract.R",
             "R/layer2_corda_parent_contract.R",
             "R/layer2_corda2_algorithm.R",
+            "R/layer2_corda_stage_parallel.R",
             "R/layer2_corda2_algorithm_build.R",
             "R/layer2_corda2_options_contract.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_runtime_cache.R",
             "R/layer2_corda_runtime_step.R",
             "R/layer2_corda_pool_lifecycle.R",
-            "tests/corda-synthetic-check.R"
+            "tests/corda-synthetic-check.R",
+            "tests/corda-stage-parallel-check.R"
           )
           for (file in files) parse(file = file)
 
       - name: Verify original CORDA2 source contract
         run: Rscript tests/corda-synthetic-check.R
+
+      - name: Verify CORDA2 stage-parallel serial equivalence
+        run: Rscript tests/corda-stage-parallel-check.R
 
       - name: Audit direct implementation and parameter surface
         run: |
@@ -77,7 +86,9 @@ jobs:
           split = Path("R/layer2_corda_paper_contract.R").read_text()
           dependency = Path("R/layer2_corda2_algorithm.R").read_text()
           build = Path("R/layer2_corda2_algorithm_build.R").read_text()
+          stage = Path("R/layer2_corda_stage_parallel.R").read_text()
           model = Path("R/layer2_corda_model.R").read_text()
+          pool = Path("R/layer2_corda_pool_lifecycle.R").read_text()
           tutorial = Path("docs/tutorial-02-stepwise-audit.md").read_text()
 
           required_options = [
@@ -109,12 +120,26 @@ jobs:
 
           required_build = [
               'HCtoMC', 'HCtoNC', 'MCxNC', 'options$MCxNCthresh',
+              'corda2_step1_HC_dependencies',
+              'corda2_step2_1_MC_NC_dependencies',
               'corda2_step2_2_MC_feasibility',
               'corda2_step3_HC_OT_dependencies',
+              '.rc_corda_stage_run',
+              'stage_barrier_parallel_targets_deterministic_ordered_reduce',
           ]
           missing = [x for x in required_build if x not in build]
           if missing:
               raise RuntimeError(f"original CORDA2 state machine missing: {missing}")
+
+          required_stage = [
+              '.rc_corda2_dependency_assessment_core',
+              '.rc_corda2_maximize_target',
+              'remaining=', 'worker pool released',
+              'rc_parallel_lapply',
+          ]
+          missing = [x for x in required_stage if x not in stage]
+          if missing:
+              raise RuntimeError(f"CORDA2 stage scheduler missing: {missing}")
 
           required_direct = [
               '.rc_corda2_split_original', '.rc_corda_build_three_stage',
@@ -123,9 +148,20 @@ jobs:
           missing = [x for x in required_direct if x not in model]
           if missing:
               raise RuntimeError(f"direct model integration missing: {missing}")
-          for marker in ('_base <-', 'before_corda2', 'corda_like'):
-              if marker in model:
+
+          combined = build + '\n' + stage + '\n' + model
+          for marker in ('assignInNamespace', 'unlockBinding', '_base <-',
+                         'before_corda2', 'corda_like'):
+              if marker in combined:
                   raise RuntimeError(f"override or alternate algorithm marker remains: {marker}")
+
+          prepare_start = pool.index('.rc_prepare_corda_worker_pool <- function')
+          prepare_end = pool.index('.rc_release_corda_worker_pool <- function')
+          prepare = pool[prepare_start:prepare_end]
+          if 'bpstart' in prepare:
+              raise RuntimeError("CORDA2 Layer2 entry still starts a long-lived worker pool")
+          if 'stage_template' not in prepare:
+              raise RuntimeError("CORDA2 BPPARAM is not documented as a stage template")
 
           if 'resendislab/corda' in tutorial or 'corda2_redundancies' in tutorial:
               raise RuntimeError("tutorial still documents the Python CORDA contract")

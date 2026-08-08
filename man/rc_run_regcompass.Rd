@@ -12,8 +12,7 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   meta_module_args = list(), layer1_args = list(),
   medium_scenarios = NULL,
   model_mode = c("meta_module_gem", "full_gem"),
-  layer2_args = list(), upstream_workers = 6L,
-  layer2_workers = 30L,
+  layer2_args = list(), workers = 10L,
   progress = getOption("RegCompassR.progress", TRUE))
 }
 \arguments{
@@ -35,8 +34,7 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{medium_scenarios}{Shared medium table. When omitted, human models use \code{"normal_human_plasma"} and mouse models use \code{"mouse_plasma"}. Medium application changes listed exchange-reaction bounds only.}
 \item{model_mode}{The default \code{"meta_module_gem"} route reconstructs one CORDA2 model per cell type and medium. \code{"full_gem"} is a supplementary complete-network COMPASS-style route.}
 \item{layer2_args}{Directional scoring and structural controls. CORDA2 is the default for \code{meta_module_gem}; set \code{model_params$model_completion = "fastcore"} for the supplementary FASTCORE route. The \code{full_gem} route rejects completion-specific controls.}
-\item{upstream_workers}{Worker count for Stage 1 and Stage 4.}
-\item{layer2_workers}{Worker count for Stage 5.}
+\item{workers}{Single RegCompass-wide worker cap, default \code{10L}. RegCompass automatically uses SOCK/Snow workers on Windows and Multicore workers on Linux/macOS. The effective limit is \code{min(workers, max(1, detected logical CPUs - 2))}; each dispatch then uses no more than the number of independent tasks available.}
 \item{progress}{Display workflow and stage progress.}
 }
 \value{
@@ -58,8 +56,12 @@ the ATAC assay with Signac FeatureMatrix before metacell TF-IDF. With no fragmen
 input, the existing ATAC count matrix is aggregated. Sample identity is used only
 for fragment-file routing when provided by the caller, never as a WNN/metacell
 stratum. Layer 1 accepts only \code{gpr_and_method} and
-\code{gene_half_saturation}. Layer 2 retains the primary penalty and an explicit
-RNA-only control. The default cell-type route passes the complete
+\code{gene_half_saturation}. Parallelism is controlled by one \code{workers}
+value for the whole workflow. Small Pando or Layer 1 task sets automatically use
+fewer workers; CORDA2 steps and large directional LP batches can use the full
+protected worker budget. Two detected logical CPUs are reserved for controller
+and operating-system activity. Layer 2 retains the primary penalty and an
+explicit RNA-only control. The default cell-type route passes the complete
 medium-constrained parent to original MATLAB CORDA2 without FASTCC pre-pruning.
 Retained directions recover their parent bounds, including positive lower
 bounds. FASTCORE is an explicit supplementary route. Full-GEM mode retains every

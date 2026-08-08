@@ -8,29 +8,38 @@ test_that("auto parallel backend follows the operating system", {
   )
 })
 
-test_that("parallel configuration records requested and actual execution", {
+test_that("parallel configuration records requested and protected execution", {
   one <- rc_parallel_config(workers = 1L, backend = "auto")
   expect_identical(one$actual_backend, "serial")
   expect_identical(one$workers, 1L)
   expect_identical(one$os_type, .Platform$OS.type)
+  expect_true(one$detected_cpu_capacity >= 1L)
+  expect_true(one$reserved_cpus %in% 0:2)
+  expect_identical(one$available_workers,
+                   max(1L, one$detected_cpu_capacity - 2L))
 
-  windows <- .rc_resolve_parallel_backend("auto", "windows")
-  linux <- .rc_resolve_parallel_backend("auto", "unix")
-  expect_identical(windows, "snow")
-  expect_identical(linux, "multicore")
+  expect_identical(.rc_resolve_parallel_backend("auto", "windows"), "snow")
+  expect_identical(.rc_resolve_parallel_backend("auto", "unix"), "multicore")
 })
 
-test_that("canonical workflow exposes only two layered worker counts", {
+test_that("canonical workflow exposes one adjustable worker cap", {
   args <- formals(rc_run_regcompass)
-  expect_identical(args$upstream_workers, 6L)
-  expect_identical(args$layer2_workers, 30L)
+  expect_identical(args$workers, 10L)
+  expect_false("upstream_workers" %in% names(args))
+  expect_false("layer2_workers" %in% names(args))
   expect_false("parallel_backend" %in% names(args))
   expect_lt(match("species", names(args)), match("progress", names(args)))
 
-  upstream <- .rc_stage_worker_config(1L, "upstream_workers")
-  layer2 <- .rc_stage_worker_config(1L, "layer2_workers")
-  expect_identical(upstream$actual_backend, "serial")
-  expect_identical(layer2$actual_backend, "serial")
+  expect_identical(formals(rc_regcompass_step_grn)$workers, 10L)
+  expect_identical(formals(rc_regcompass_step_layer1)$workers, 10L)
+  expect_identical(formals(rc_regcompass_step_layer2)$workers, 10L)
+  expect_identical(formals(rc_run_regcompass_one_shot)$workers, 10L)
+  expect_false("BPPARAM" %in% names(formals(rc_regcompass_step_grn)))
+  expect_false("BPPARAM" %in% names(formals(rc_regcompass_step_layer1)))
+  expect_false("BPPARAM" %in% names(formals(rc_regcompass_step_layer2)))
+  expect_false("parallel" %in% names(formals(rc_regcompass_step_grn)))
+  expect_false("parallel" %in% names(formals(rc_regcompass_step_layer1)))
+  expect_false("parallel" %in% names(formals(rc_regcompass_step_layer2)))
   expect_error(.rc_stage_worker_config(0L), "at least 1")
 })
 
@@ -47,6 +56,7 @@ test_that("internal task thread settings are forced to one and restored", {
   expect_identical(Sys.getenv("OMP_NUM_THREADS"), "1")
   expect_identical(Sys.getenv("OPENBLAS_NUM_THREADS"), "1")
   expect_identical(Sys.getenv("MKL_NUM_THREADS"), "1")
+  expect_identical(Sys.getenv("HIGHS_THREADS"), "1")
   expect_identical(getOption("mc.cores"), 1L)
   expect_identical(getOption("RegCompassR.internal_workers"), 1L)
 
@@ -60,38 +70,44 @@ test_that("internal task thread settings are forced to one and restored", {
   )
 })
 
-test_that("serial stage wrapper applies one-thread contract on errors", {
-  before <- Sys.getenv("OMP_NUM_THREADS", unset = NA_character_)
-  expect_error(
-    .rc_with_stage_workers(
-      1L,
-      function(param, config) {
-        expect_identical(param, FALSE)
-        expect_identical(config$actual_backend, "serial")
-        expect_identical(Sys.getenv("OMP_NUM_THREADS"), "1")
-        stop("expected-stage-error")
-      }
-    ),
-    "expected-stage-error"
-  )
-  expect_identical(
-    Sys.getenv("OMP_NUM_THREADS", unset = NA_character_),
-    before
-  )
+test_that("dynamic task sizing does not start more workers than tasks", {
+  skip_if_not_installed("BiocParallel")
+  old_slurm <- Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA_character_)
+  old_nslots <- Sys.getenv("NSLOTS", unset = NA_character_)
+  on.exit({
+    if (is.na(old_slurm)) Sys.unsetenv("SLURM_CPUS_PER_TASK") else
+      Sys.setenv(SLURM_CPUS_PER_TASK = old_slurm)
+    if (is.na(old_nslots)) Sys.unsetenv("NSLOTS") else
+      Sys.setenv(NSLOTS = old_nslots)
+  }, add = TRUE)
+  Sys.setenv(SLURM_CPUS_PER_TASK = "64")
+  Sys.unsetenv("NSLOTS")
+
+  template <- rc_default_bpparam(workers = 10L, backend = "snow")
+  tuned <- .rc_parallel_param_for_tasks(template, 3L)
+  expect_equal(BiocParallel::bpnworkers(tuned), 3L)
+  expect_equal(attr(tuned, "regcompass_worker_limit"), 10L)
+  expect_false(BiocParallel::bpisup(tuned))
 })
 
-test_that("package-managed worker pool is stopped after its stage", {
+test_that("package-managed worker pool is stopped after dispatch", {
   skip_if_not_installed("BiocParallel")
-  param <- .rc_with_stage_workers(
-    2L,
-    function(param, config) {
-      expect_false(identical(param, FALSE))
-      expect_true(BiocParallel::bpisup(param))
-      expect_identical(config$workers, 2L)
-      param
-    }
-  )
-  expect_false(BiocParallel::bpisup(param))
+  old_slurm <- Sys.getenv("SLURM_CPUS_PER_TASK", unset = NA_character_)
+  old_nslots <- Sys.getenv("NSLOTS", unset = NA_character_)
+  on.exit({
+    if (is.na(old_slurm)) Sys.unsetenv("SLURM_CPUS_PER_TASK") else
+      Sys.setenv(SLURM_CPUS_PER_TASK = old_slurm)
+    if (is.na(old_nslots)) Sys.unsetenv("NSLOTS") else
+      Sys.setenv(NSLOTS = old_nslots)
+  }, add = TRUE)
+  Sys.setenv(SLURM_CPUS_PER_TASK = "8")
+  Sys.unsetenv("NSLOTS")
+
+  template <- rc_default_bpparam(workers = 4L, backend = "snow")
+  expect_false(BiocParallel::bpisup(template))
+  result <- rc_parallel_lapply(1:2, function(x) x + 1L, BPPARAM = template)
+  expect_equal(result, list(2L, 3L))
+  expect_false(BiocParallel::bpisup(template))
 })
 
 test_that("bundled GEM manifest and files are complete", {

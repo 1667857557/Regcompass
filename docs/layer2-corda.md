@@ -2,30 +2,56 @@
 
 `rc_regcompass_step_layer2()` uses original MATLAB CORDA2 semantics by default when `model_mode = "meta_module_gem"`. Set `model_params$model_completion = "fastcore"` only when the supplementary FASTCORE route is required.
 
+## Parallel worker cap
+
+Layer 2 uses the same single RegCompass worker parameter as the rest of the workflow:
+
+```r
+workers = 10L
+```
+
+The default requested cap is `10L` and users may change it. RegCompass automatically chooses `BiocParallel::SnowParam(type = "SOCK")` on Windows and `BiocParallel::MulticoreParam` on Linux/macOS. Two detected logical CPUs are reserved, so the effective cap is
+
+```text
+min(workers, max(1, detected logical CPUs - 2))
+```
+
+Each CORDA2 step additionally uses no more workers than it has independent directional targets.
+
 ## Parameters
 
 ```r
-layer2_args = list(
-  target_direction = "both",
-  solver = "highs",
-  model_params = list(
-    completion_time_limit = 3000,
-    strict = TRUE,
-    corda2_args = list(
-      MCxNCthresh = 2,
-      constraint = 1,
-      constrainby = "val",
-      om = 1e4,
-      ci = 0.01
-    ),
-    corda_medium_confidence_threshold = 0.75,
-    corda_negative_confidence_threshold = 0.10,
-    corda_regulatory_weight = 0.20,
-    corda_include_evidence_outside_modules = TRUE,
-    corda_max_medium_confidence_reactions = Inf
+step5 <- rc_regcompass_step_layer2(
+  layer1 = step4,
+  meta_modules = step3,
+  gem = gem,
+  medium_scenarios = medium_scenarios,
+  outdir = "run/05_layer2",
+  model_mode = "meta_module_gem",
+  workers = 10L,
+  layer2_args = list(
+    target_direction = "both",
+    solver = "highs",
+    model_params = list(
+      strict = TRUE,
+      corda2_args = list(
+        MCxNCthresh = 2,
+        constraint = 1,
+        constrainby = "val",
+        om = 1e4,
+        ci = 0.01
+      ),
+      corda_medium_confidence_threshold = 0.75,
+      corda_negative_confidence_threshold = 0.10,
+      corda_regulatory_weight = 0.20,
+      corda_include_evidence_outside_modules = TRUE,
+      corda_max_medium_confidence_reactions = Inf
+    )
   )
 )
 ```
+
+CORDA2 reconstruction intentionally has no structural time limit. `model_params$completion_time_limit` is rejected on the CORDA2 route so a long reconstruction cannot be silently truncated. That parameter remains available only for supplementary non-CORDA2 completion such as FASTCORE.
 
 | Argument | Default | Meaning |
 |---|---:|---|
@@ -46,7 +72,39 @@ For each `reaction × cell type`, Layer 1 evidence is summarized across metacell
 | finite low-evidence reaction | NC |
 | remaining reaction | OT |
 
-The reconstruction then follows the original three-stage CORDA2 state machine. The complete medium-constrained parent GEM is passed directly to CORDA2 without FASTCC or role-based pre-pruning.
+The reconstruction follows the original CORDA2 state machine. The complete medium-constrained parent GEM is passed directly to CORDA2 without FASTCC or role-based pre-pruning.
+
+## Stage-barrier target parallelism
+
+The mathematical steps remain strictly sequential:
+
+```text
+Step 1 HC dependencies
+  -> ordered reduction and HC/MC/NC update
+Step 2.1 MC-to-NC dependencies
+  -> ordered reduction and MCxNC update
+Step 2.2 MC feasibility
+  -> ordered reduction and NC/MC promotion update
+Step 3 HC-to-OT dependencies
+  -> ordered reduction and final OT inclusion
+```
+
+Within one step, directional targets are independent with respect to that step's frozen pre-step state and are distributed across the protected worker budget. Every worker uses the unchanged CORDA2 dependency/maximization routines and one HiGHS thread. Results are restored to the original directional-target indices before any dependency matrix, promotion, blocking or confidence state is modified.
+
+After every step RegCompass releases worker-local HiGHS engines, stops the step-local worker pool, performs full garbage collection and only then enters the next step. Independent cell-type × medium CORDA2 models are processed one at a time so the current model can use the full protected worker budget inside its mathematical step.
+
+## Progress
+
+Entering each step prints its name, target count, worker count and chunk count. During the step the progress display reports
+
+```text
+completed / total
+percentage
+remaining directional targets
+current completed target
+```
+
+Step completion reports `remaining=0` and confirms that the worker pool was released. The same events are persisted through the Layer 2 progress infrastructure with `scope = "corda2_stage"`.
 
 ## Directional bounds
 
@@ -72,6 +130,4 @@ Missing expression and structural roles use the maximum COMPASS cost `1`; no str
 
 ## Execution and provenance
 
-One CORDA2 reconstruction is built per `cell type × medium`. Independent models may run through `BPPARAM`; target assessments within one reconstruction remain serial. The completed model is reused for primary multiome and RNA-only scoring.
-
-Inspect `step5$completion_contract`, `step5$model_cache_summary`, `step5$vmax_cache_diagnostics` and `step5$lp_diagnostics` for the algorithm, parameters and target feasibility results.
+One CORDA2 reconstruction is built per `cell type × medium` and reused for primary multiome and RNA-only scoring. Inspect `step5$completion_contract`, `step5$model_cache_summary`, `step5$vmax_cache_diagnostics`, `step5$lp_diagnostics` and each reconstructed model's `corda_reconstruction$stage_parallelism` for the algorithm, worker counts, stage target counts, parameters and target-feasibility results.

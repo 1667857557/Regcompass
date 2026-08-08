@@ -2,23 +2,26 @@
 
 Each stage writes an RDS checkpoint to its output directory. Use the same paired-cell object, GEM, metadata columns and medium definitions when restarting later stages.
 
-## 1. Parallel backend
+## 1. One parallel worker cap
+
+RegCompass selects the parallel backend automatically:
+
+- Windows: `BiocParallel::SnowParam(type = "SOCK")`;
+- Linux/macOS: `BiocParallel::MulticoreParam`.
+
+Users set only one worker cap. The default is `10L`; increase it explicitly when more parallel capacity is desired:
 
 ```r
-library(BiocParallel)
-
-upstream_bp <- if (.Platform$OS.type == "windows") {
-  SnowParam(workers = 6L, type = "SOCK", progressbar = TRUE)
-} else {
-  MulticoreParam(workers = 6L, progressbar = TRUE)
-}
-
-layer2_bp <- if (.Platform$OS.type == "windows") {
-  SnowParam(workers = 30L, type = "SOCK", progressbar = TRUE)
-} else {
-  MulticoreParam(workers = 30L, progressbar = TRUE)
-}
+workers <- 60L
 ```
+
+The effective worker count is always bounded by
+
+```text
+min(independent tasks, workers, max(1, detected logical CPUs - 2))
+```
+
+so RegCompass reserves two logical CPUs for the operating system/R controller. For example, 8 independent Pando cell-type jobs use 8 workers even when `workers = 60L`, while a CORDA2 step with thousands of directional targets can use the full protected worker budget. Stage 2 fragment aggregation uses the same cap; do not set `metacell_args$fragment_args$workers` separately.
 
 ## 2. Regulatory evidence
 
@@ -41,8 +44,7 @@ step1 <- rc_regcompass_step_grn(
       min_residual_df = 1L
     )
   ),
-  parallel = TRUE,
-  BPPARAM = upstream_bp
+  workers = workers
 )
 ```
 
@@ -72,11 +74,12 @@ step2 <- rc_regcompass_step_metacells(
     min_cells_per_stratum = 300L,
     min_metacell_size = 10L,
     min_metacells_per_stratum = 2L
-  )
+  ),
+  workers = workers
 )
 ```
 
-One WNN graph is constructed per broad cell type. Final metacells remain condition-pure.
+One WNN graph is constructed per broad cell type. Final metacells remain condition-pure. If raw fragment files are supplied, `SuperCell::AggregateFragmentFile()` receives the same protected top-level worker cap.
 
 ## 4. Reaction catalogue and Layer 1 support
 
@@ -95,7 +98,8 @@ step4 <- rc_regcompass_step_layer1(
   gem = gem,
   outdir = "run/04_layer1",
   gpr_and_method = "min",
-  gene_half_saturation = 1
+  gene_half_saturation = 1,
+  workers = workers
 )
 ```
 
@@ -145,7 +149,7 @@ For exact reaction-level custom bounds use `scenario = "custom"` and `custom_med
 
 ## 6. Layer 2: default CORDA2 reconstruction
 
-With `model_mode = "meta_module_gem"`, omitting `model_completion` now selects original MATLAB CORDA2 semantics.
+With `model_mode = "meta_module_gem"`, omitting `model_completion` selects original MATLAB CORDA2 semantics.
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -155,8 +159,7 @@ step5 <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2",
   model_mode = "meta_module_gem",
-  parallel = TRUE,
-  BPPARAM = layer2_bp,
+  workers = workers,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -183,8 +186,11 @@ The complete medium-constrained parent GEM is passed directly to CORDA2 without 
 
 CORDA2 reconstruction has no structural time limit. `model_params$completion_time_limit` is rejected on the default CORDA2 route so a long Human-GEM reconstruction cannot be silently truncated. The parameter remains available for supplementary non-CORDA2 completion such as FASTCORE.
 
+CORDA2 does not parallelize different mathematical steps simultaneously. Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers. Directional targets inside the current step are distributed across up to the protected `workers` cap, restored to original directional order, and only then are HC/MC/NC/OT states updated. Each step uses a fresh worker pool with one HiGHS thread per worker. The pool and worker-local solver engines are released and full garbage collection is requested before the next step starts. Step entry and completion are printed, and the step progress display reports `completed/total` plus `remaining` directional targets. The same target-level status is written to the Layer-2 task progress files with `scope = "corda2_stage"`.
+
 Main controls:
 
+- `workers`: one workflow-wide worker cap; default `10L`, user-adjustable, with two logical CPUs reserved from detected capacity;
 - `target_direction`: `"both"`, `"forward"` or `"reverse"`;
 - `solver`: `"highs"`, `"gurobi"` or `"glpk"`;
 - `strict`: fail when required targets are not retained;
@@ -196,8 +202,6 @@ Main controls:
 
 ### FASTCORE
 
-Set the completion method explicitly:
-
 ```r
 step5_fastcore <- rc_regcompass_step_layer2(
   layer1 = step4,
@@ -206,6 +210,7 @@ step5_fastcore <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2_fastcore",
   model_mode = "meta_module_gem",
+  workers = workers,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -222,8 +227,6 @@ step5_fastcore <- rc_regcompass_step_layer2(
 
 ### Full GEM
 
-Full-GEM mode skips context-specific reconstruction and applies only the medium exchange bounds before COMPASS-style directional scoring.
-
 ```r
 step5_full <- rc_regcompass_step_layer2(
   layer1 = step4,
@@ -232,6 +235,7 @@ step5_full <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2_full_gem",
   model_mode = "full_gem",
+  workers = workers,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",

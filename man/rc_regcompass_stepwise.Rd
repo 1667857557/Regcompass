@@ -12,13 +12,13 @@ rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  pando_args = list(), parallel = TRUE, BPPARAM = NULL,
+  pando_args = list(), workers = 10L,
   progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_metacells(object, outdir,
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  fragment_files = NULL, metacell_args = list(),
+  fragment_files = NULL, metacell_args = list(), workers = 10L,
   progress = getOption("RegCompassR.progress", TRUE), grn = NULL)
 
 rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
@@ -28,12 +28,12 @@ rc_regcompass_step_meta_modules(grn, metacells, gem, outdir,
 rc_regcompass_step_layer1(grn, metacells, meta_modules, gem, outdir,
   gpr_and_method = c("min", "median", "mean"),
   gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
-  parallel = TRUE, BPPARAM = NULL,
+  workers = 10L,
   progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_layer2(layer1, meta_modules, gem, medium_scenarios,
   outdir, model_mode = c("meta_module_gem", "full_gem"),
-  layer2_args = list(), parallel = TRUE, BPPARAM = NULL,
+  layer2_args = list(), workers = 10L,
   progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
@@ -52,14 +52,13 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{fragment_files}{Optional Stage 2 raw fragment input. Use \code{NULL}/\code{FALSE} to aggregate the existing ATAC matrix; a single fragment path; a named character vector of paths whose names are exact prefixes before \code{_} in Seurat cell IDs; or a data frame with \code{fragment_file}, \code{object_cell}, and \code{fragment_barcode}. Fragment routing is used only for ATAC aggregation and does not make sample identity a metacell grouping variable.}
 \item{pando_args}{Stage 1 Pando initialization, motif and inference controls.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed and size controls. Fragment aggregation/recount controls are supplied in \code{metacell_args$fragment_args}: \code{workers}, \code{rows_per_chunk}, \code{bgzip_path}, \code{tabix_path}, \code{process_n}, \code{call_peaks}, \code{macs2_path}, \code{effective_genome_size}, and \code{peak_calling_args}. Stage 2 has one explicit checkpoint and no large sidecar auto-resume cache.}
+\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed and size controls. Fragment aggregation/recount controls are supplied in \code{metacell_args$fragment_args}: \code{rows_per_chunk}, \code{bgzip_path}, \code{tabix_path}, \code{process_n}, \code{call_peaks}, \code{macs2_path}, \code{effective_genome_size}, and \code{peak_calling_args}. Fragment parallelism uses the top-level \code{workers} argument; \code{fragment_args$workers} is not a separate public control.}
 \item{grn}{Validated Stage 1 output. In Stage 2 it enforces the exact Stage 1 cell set.}
 \item{meta_module_args}{Optional custom subsystem table.}
 \item{gpr_and_method}{GPR AND aggregation method.}
 \item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
 \item{layer2_args}{Directional scoring and structural controls. Under \code{model_mode = "meta_module_gem"}, original MATLAB CORDA2 is the default completion method; set \code{model_params$model_completion = "fastcore"} for the supplementary FASTCORE route. CORDA2 controls are supplied through \code{model_params$corda2_args} and the \code{corda_*} evidence-mapping parameters. Under \code{model_mode = "full_gem"}, completion-specific controls are rejected.}
-\item{parallel}{Enable stage-level parallel execution.}
-\item{BPPARAM}{A \code{BiocParallelParam}, \code{NULL}, or \code{FALSE}.}
+\item{workers}{Single RegCompass worker cap for computational stages, default \code{10L}. RegCompass automatically selects SOCK/Snow workers on Windows and Multicore workers on Linux/macOS. The effective cap is \code{min(workers, max(1, detected logical CPUs - 2))}; each dispatch additionally shrinks to its number of independent tasks. Stage 2 fragment aggregation uses this same cap.}
 \item{progress}{Display and persist stage progress.}
 \item{metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
 \item{medium_scenarios}{Shared medium table, normally created by \code{rc_make_medium_scenarios()}. Medium application changes listed exchange-reaction bounds only and does not directly remove reactions.}
@@ -76,25 +75,28 @@ scoring and result stages independently.
 \details{
 Stage 1 routes each retained cell type independently. At least two retained
 conditions use the common-dictionary condition GRN; one retained condition uses
-standard Pando. Stage 1 uses the in-memory RNA/ATAC assays and does not require
-fragment files. Stage 2 reproduces the Stage 1 cell set and keeps final
-metacells condition-pure. When raw fragment files are supplied, Stage 2 first
-builds the final grouped-WNN membership, transforms single-cell fragment
-barcodes to the final metacell barcodes with
-\code{SuperCell::AggregateFragmentFile()}, then optionally calls MACS2 and uses
-Signac FeatureMatrix to recount the metacell ATAC assay before TF-IDF. With no
-fragment input, the existing ATAC count matrix is aggregated. Stage 3 builds
-cell-type-scoped reaction catalogues. Stage 4 produces the primary multiome
-reaction support and an RNA-only control. Stage 5 defaults to original MATLAB
+standard Pando. Stage 1 starts at most one worker per independent broad-cell-type
+job and never exceeds the protected \code{workers} cap. Stage 2 reproduces the
+Stage 1 cell set and keeps final metacells condition-pure. When raw fragment
+files are supplied, Stage 2 first builds the final grouped-WNN membership,
+transforms single-cell fragment barcodes to the final metacell barcodes with
+\code{SuperCell::AggregateFragmentFile()}, and uses the same protected
+\code{workers} cap for fragment aggregation. Stage 3 builds cell-type-scoped
+reaction catalogues. Stage 4 uses the same worker cap and shrinks to the
+available independent projection jobs. Stage 5 defaults to original MATLAB
 CORDA2 on the complete medium-constrained parent GEM for each cell-type-by-medium
-combination. FASTCC pre-pruning is not used before CORDA2. During final
-directional merge, retained reactions recover the corresponding parent bounds,
-including positive parent lower bounds. FASTCORE is available only when
-explicitly requested. Full-GEM mode is a supplementary route that retains every
-reaction and skips the penalty LP when a target direction's maximum feasible
-flux is below the scoring threshold. All Layer 2 routes use the COMPASS
-reaction-cost scale; missing expression and structural reaction roles receive
-the maximum cost 1. Stage 6 assembles rankings, annotations and available
-condition contrasts. See \code{docs/tutorial-02-stepwise-audit.md} and
+combination. CORDA2 Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers;
+each step can use the full protected worker cap for its directional targets,
+then stops its pool and releases worker-local HiGHS engines before the next step.
+Two detected logical CPUs are reserved globally. FASTCC pre-pruning is not used
+before CORDA2. During final directional merge, retained reactions recover the
+corresponding parent bounds, including positive parent lower bounds. FASTCORE is
+available only when explicitly requested. Full-GEM mode is a supplementary
+route that retains every reaction and skips the penalty LP when a target
+direction's maximum feasible flux is below the scoring threshold. All Layer 2
+routes use the COMPASS reaction-cost scale; missing expression and structural
+reaction roles receive the maximum cost 1. Stage 6 assembles rankings,
+annotations and available condition contrasts. See
+\code{docs/tutorial-02-stepwise-audit.md} and
 \code{docs/layer2-model-builders.md}.
 }

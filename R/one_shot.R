@@ -28,6 +28,10 @@
 #'   `fragment_file`, `object_cell`, and `fragment_barcode`.
 #' @param medium_scenario Optional built-in biological scenario.
 #' @param medium_scenarios Optional prebuilt user-defined or built-in medium table.
+#' @param workers Total RegCompass worker cap, default 10. RegCompass selects
+#'   SOCK/Snow workers on Windows and Multicore workers on Linux/macOS. The
+#'   effective cap is `min(workers, max(1, detected logical CPUs - 2))`, and
+#'   each dispatch shrinks further to its number of independent tasks.
 #' @param progress Show stage and total progress.
 #' @param ... Arguments passed to [rc_run_regcompass()], including explicit
 #'   supplementary Layer 2 mode controls when required.
@@ -43,6 +47,7 @@ rc_run_regcompass_one_shot <- function(
     fragment_files = NULL,
     medium_scenario = NULL,
     medium_scenarios = NULL,
+    workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE),
     ...) {
   species <- match.arg(species)
@@ -82,6 +87,7 @@ rc_run_regcompass_one_shot <- function(
     species = species,
     fragment_files = fragment_files,
     medium_scenarios = medium_scenarios,
+    workers = workers,
     progress = progress,
     ...
   )

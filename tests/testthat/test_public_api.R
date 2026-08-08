@@ -51,12 +51,15 @@ test_that("canonical order is GRN then metacells then meta-modules", {
   expect_true(positions[[2L]] < positions[[3L]])
 })
 
-test_that("complete workflow exposes parallel cell-type routing", {
+test_that("complete workflow exposes dynamic parallel cell-type routing", {
   run_formals <- formals(rc_run_regcompass)
   expect_identical(eval(run_formals$condition_col), "condition")
+  expect_identical(run_formals$workers, 10L)
+  expect_false("upstream_workers" %in% names(run_formals))
+  expect_false("layer2_workers" %in% names(run_formals))
   expect_true(all(c(
     "pando_args", "metacell_args", "meta_module_args",
-    "layer1_args", "layer2_args"
+    "layer1_args", "layer2_args", "workers"
   ) %in% names(run_formals)))
   routing_text <- paste(
     deparse(body(.rc_fit_pando_by_celltype_route)), collapse = "\n"
@@ -123,9 +126,11 @@ test_that("canonical SuperCell API uses cell-type grouped WNN", {
 test_that("Layer 1 exposes only current controls", {
   formals_layer1 <- formals(rc_regcompass_step_layer1)
   expect_identical(eval(formals_layer1$gpr_and_method), c("min", "median", "mean"))
-  expect_true("gene_half_saturation" %in% names(formals_layer1))
+  expect_true(all(c("gene_half_saturation", "workers") %in% names(formals_layer1)))
+  expect_identical(formals_layer1$workers, 10L)
   expect_false(any(c(
-    "tau", "projection_component", "comparison_support", "regulatory_alpha"
+    "tau", "projection_component", "comparison_support", "regulatory_alpha",
+    "parallel", "BPPARAM"
   ) %in% names(formals_layer1)))
 })
 

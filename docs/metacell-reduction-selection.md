@@ -34,9 +34,14 @@ step2 <- rc_regcompass_step_metacells(
     min_cells_per_stratum = 20L,
     min_metacell_size = 1L,
     min_metacells_per_stratum = 1L
-  )
+  ),
+  workers = 10L
 )
 ```
+
+`workers` is the same RegCompass-wide worker cap used by the other computational
+stages. The default is `10L`; the effective cap is
+`min(workers, max(1, detected logical CPUs - 2))`.
 
 The implementation defaults are:
 
@@ -91,7 +96,8 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "RegCompass_steps/02_condition_metacells",
   condition_col = "dataset",
   celltype_col = "epithelial_or_stem",
-  fragment_files = "/data/fragments.tsv.gz"
+  fragment_files = "/data/fragments.tsv.gz",
+  workers = 10L
 )
 ```
 
@@ -126,12 +132,11 @@ barcodes across different files are safe because mappings are validated within
 each fragment file.
 
 Fragment aggregation/recount controls are nested in
-`metacell_args$fragment_args`:
+`metacell_args$fragment_args`, but worker count is deliberately excluded:
 
 ```r
 metacell_args = list(
   fragment_args = list(
-    workers = NULL,
     rows_per_chunk = 10000000L,
     bgzip_path = NULL,
     tabix_path = NULL,
@@ -143,6 +148,11 @@ metacell_args = list(
   )
 )
 ```
+
+Use the top-level `workers` argument for fragment aggregation. Stage 2 passes the
+protected global worker cap to `SuperCell::AggregateFragmentFile(nb_cl = ...)`;
+`metacell_args$fragment_args$workers` is rejected so fragment processing cannot
+exceed the workflow-wide cap.
 
 When `call_peaks = TRUE`, MACS2 is run on the aggregated metacell fragment
 files. With `call_peaks = FALSE`, the existing ATAC peak ranges are retained and
@@ -187,7 +197,8 @@ step2 <- rc_regcompass_step_metacells(
     gamma = 30L,
     k.knn = 30L,
     seed = 12345L
-  )
+  ),
+  workers = 10L
 )
 ```
 

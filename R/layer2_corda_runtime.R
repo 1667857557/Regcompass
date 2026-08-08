@@ -38,8 +38,26 @@
   tuned
 }
 
+.rc_corda_stage_parallel_requested <- function() {
+  context <- get0(
+    ".rc_layer2_parallel_context", mode = "environment", inherits = TRUE
+  )
+  if (!is.environment(context) || !isTRUE(context$active) ||
+      !isTRUE(context$parallel)) return(FALSE)
+  template <- context$BPPARAM
+  if (identical(template, FALSE)) return(FALSE)
+  if (!is.null(template) &&
+      requireNamespace("BiocParallel", quietly = TRUE) &&
+      methods::is(template, "BiocParallelParam")) {
+    return(as.integer(BiocParallel::bpnworkers(template)) > 1L)
+  }
+  available <- rc_available_workers(default = 1L)
+  requireNamespace("BiocParallel", quietly = TRUE) &&
+    as.integer(available) > 1L
+}
+
 .rc_corda_should_outer_parallel <- function(n_tasks, pool_workers) {
-  as.integer(n_tasks) > 1L && as.integer(pool_workers) > 1L
+  FALSE
 }
 
 .rc_corda_pool_workers <- function(BPPARAM) {

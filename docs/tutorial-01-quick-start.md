@@ -79,10 +79,11 @@ result <- rc_run_regcompass_one_shot(
       corda_regulatory_weight = 0.20
     )
   ),
-  upstream_workers = 6L,
-  layer2_workers = 30L
+  workers = 10L
 )
 ```
+
+`workers` is the only workflow-level parallel setting. Its default is `10L` and it may be changed, for example `workers = 60L`. RegCompass automatically selects `SnowParam(type = "SOCK")` on Windows and `MulticoreParam` on Linux/macOS. The effective cap is `min(workers, max(1, detected logical CPUs - 2))`, and each individual Pando/CORDA2/LP dispatch shrinks further to its own independent task count.
 
 For cell types with at least two retained conditions, the tutorial uses `tf_cor = 0.1` for the common-dictionary condition-GRN route. If only one effective condition is retained, standard Pando treats the requested `tf_cor` as an effect-size floor and automatically raises it when necessary to the two-sided Pearson-correlation critical value for that cell type's actual cell count (`alpha = 0.05`). This sample-size-aware gate prevents small cell groups from receiving a more permissive TF-correlation screen solely because their sampling variance is larger.
 
@@ -90,7 +91,7 @@ For cell types with at least two retained conditions, the tutorial uses `tf_cor 
 
 CORDA2 reconstruction intentionally runs without a structural time limit. Do not supply `model_params$completion_time_limit` for the default CORDA2 route; that control is reserved for supplementary non-CORDA2 completion such as FASTCORE.
 
-CORDA2 receives the complete medium-constrained parent without FASTCC pre-pruning. Retained reactions recover their parent directional bounds, including positive lower bounds. Layer 2 uses the COMPASS cost scale; missing expression and structural roles receive cost `1`.
+CORDA2 receives the complete medium-constrained parent without FASTCC pre-pruning. Retained reactions recover their parent directional bounds, including positive lower bounds. Layer 2 uses the COMPASS cost scale; missing expression and structural roles receive cost `1`. Step 1, Step 2.1, Step 2.2 and Step 3 remain strict mathematical barriers; directional targets within each step are parallelized up to the protected worker cap, the step pool is then released, and the next step starts with a fresh pool.
 
 ## Main outputs
 
