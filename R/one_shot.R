@@ -28,9 +28,11 @@
 #'   `fragment_file`, `object_cell`, and `fragment_barcode`.
 #' @param medium_scenario Optional built-in biological scenario.
 #' @param medium_scenarios Optional prebuilt user-defined or built-in medium table.
+#' @param workers The single global requested worker budget. Defaults to 10 and
+#'   is capped at `max(1, available CPUs - 2)`.
 #' @param progress Show stage and total progress.
-#' @param ... Arguments passed to [rc_run_regcompass()], including explicit
-#'   supplementary Layer 2 mode controls when required.
+#' @param ... Non-parallel arguments passed to [rc_run_regcompass()], including
+#'   explicit supplementary Layer 2 mode controls when required.
 #' @return A complete RegCompass result.
 #' @export
 rc_run_regcompass_one_shot <- function(
@@ -43,6 +45,7 @@ rc_run_regcompass_one_shot <- function(
     fragment_files = NULL,
     medium_scenario = NULL,
     medium_scenarios = NULL,
+    workers = getOption("RegCompassR.workers", 10L),
     progress = getOption("RegCompassR.progress", TRUE),
     ...) {
   species <- match.arg(species)
@@ -82,6 +85,7 @@ rc_run_regcompass_one_shot <- function(
     species = species,
     fragment_files = fragment_files,
     medium_scenarios = medium_scenarios,
+    workers = workers,
     progress = progress,
     ...
   )
