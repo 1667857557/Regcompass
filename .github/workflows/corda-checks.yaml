@@ -59,8 +59,10 @@ jobs:
             "R/layer2_corda_target_contract.R",
             "R/layer2_corda_parent_contract.R",
             "R/layer2_corda2_algorithm.R",
+            "R/layer2_corda_serial_core.R",
             "R/layer2_corda_stage_parallel.R",
             "R/layer2_corda2_algorithm_build.R",
+            "R/layer2_corda_dispatch.R",
             "R/layer2_corda2_options_contract.R",
             "R/layer2_corda_runtime.R",
             "R/layer2_corda_runtime_cache.R",
@@ -71,8 +73,8 @@ jobs:
           )
           for (file in files) parse(file = file)
 
-      - name: Verify original CORDA2 source contract
-        run: Rscript -e 'source("R/layer2_corda_stage_parallel.R"); source("tests/corda-synthetic-check.R")'
+      - name: Verify original serial CORDA2 source contract
+        run: Rscript -e 'source("R/layer2_corda_stage_parallel.R"); source("R/layer2_corda_serial_core.R"); source("tests/corda-synthetic-check.R")'
 
       - name: Verify stage-parallel serial equivalence
         run: Rscript tests/corda-stage-parallel-check.R
@@ -85,8 +87,10 @@ jobs:
           options = Path("R/layer2_corda2_options_contract.R").read_text()
           split = Path("R/layer2_corda_paper_contract.R").read_text()
           dependency = Path("R/layer2_corda2_algorithm.R").read_text()
+          serial = Path("R/layer2_corda_serial_core.R").read_text()
           build = Path("R/layer2_corda2_algorithm_build.R").read_text()
           stage_parallel = Path("R/layer2_corda_stage_parallel.R").read_text()
+          dispatch = Path("R/layer2_corda_dispatch.R").read_text()
           model = Path("R/layer2_corda_model.R").read_text()
           tutorial = Path("docs/tutorial-02-stepwise-audit.md").read_text()
 
@@ -117,16 +121,24 @@ jobs:
           if missing:
               raise RuntimeError(f"original CORDA2 dependency loop missing: {missing}")
 
-          required_build = [
+          required_state = [
               'HCtoMC', 'HCtoNC', 'MCxNC', 'options$MCxNCthresh',
               'corda2_step2_2_MC_feasibility',
               'corda2_step3_HC_OT_dependencies',
+              'original_matlab_directional_order',
+          ]
+          missing = [x for x in required_state if x not in serial]
+          if missing:
+              raise RuntimeError(f"preserved serial CORDA2 state machine missing: {missing}")
+          missing = [x for x in required_state if x not in build]
+          if missing:
+              raise RuntimeError(f"stage-parallel CORDA2 state machine missing: {missing}")
+          for marker in (
               '.rc_corda_stage_run',
               'stage_barrier_parallel_targets_deterministic_ordered_reduce',
-          ]
-          missing = [x for x in required_build if x not in build]
-          if missing:
-              raise RuntimeError(f"original CORDA2 state machine missing: {missing}")
+          ):
+              if marker not in build:
+                  raise RuntimeError(f"stage-parallel CORDA2 build missing: {marker}")
 
           required_stage_parallel = [
               'completed=', 'remaining=', 'worker pool released',
@@ -136,8 +148,17 @@ jobs:
           if missing:
               raise RuntimeError(f"CORDA2 stage-parallel runtime missing: {missing}")
 
+          required_dispatch = [
+              '.rc_corda_stage_parallel_requested',
+              '.rc_corda_build_three_stage_serial_core',
+              '.rc_corda_build_three_stage',
+          ]
+          missing = [x for x in required_dispatch if x not in dispatch]
+          if missing:
+              raise RuntimeError(f"CORDA2 serial/parallel dispatch missing: {missing}")
+
           required_direct = [
-              '.rc_corda2_split_original', '.rc_corda_build_three_stage',
+              '.rc_corda2_split_original', '.rc_corda_build_three_stage_dispatch',
               '.rc_corda2_apply_direction_bounds',
           ]
           missing = [x for x in required_direct if x not in model]
