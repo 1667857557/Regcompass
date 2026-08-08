@@ -125,8 +125,9 @@ stopifnot(
               "step2_2_MC_feasibility", "step3_HC_OT_dependencies"))
 )
 
-# 1. Reversible split keeps a single active copy per direction and closes the
-# opposite copy under target assessment.
+# 1. Reversible split keeps one forward and one reverse directional variable and
+# closes the opposite copy under target assessment. Validate semantic direction
+# from the direction table rather than hard-coding an internal variable label.
 gem <- make_gem(
   c("A", "B"), c("REV", "IRR"),
   list(c(1, 1, -1), c(2, 1, 1), c(2, 2, -1)),
@@ -135,19 +136,27 @@ gem <- make_gem(
 )
 inspect_gem("reversible", gem)
 split <- .rc_corda2_split_original(gem)
+forward_id <- split$direction_table$variable_id[
+  split$direction_table$reaction_id == "REV" &
+    split$direction_table$direction == "forward"
+]
+reverse_id <- split$direction_table$variable_id[
+  split$direction_table$reaction_id == "REV" &
+    split$direction_table$direction == "reverse"
+]
 stopifnot(
-  "REV::forward" %in% colnames(split$S),
-  "REV::reverse" %in% colnames(split$S),
-  identical(.rc_corda2_opposite(split, "REV::forward"), "REV::reverse"),
-  identical(.rc_corda2_opposite(split, "REV::reverse"), "REV::forward")
+  length(forward_id) == 1L,
+  length(reverse_id) == 1L,
+  identical(.rc_corda2_opposite_variable(split, forward_id), reverse_id),
+  identical(.rc_corda2_opposite_variable(split, reverse_id), forward_id)
 )
 constrained <- .rc_corda2_constrain_target(
   .rc_corda_new_lp_engine(split, "highs", Inf),
-  split, "REV::forward", options
+  split, forward_id, options
 )
 stopifnot(
-  constrained$upper[["REV::reverse"]] == 0,
-  constrained$lower[["REV::forward"]] >= 0,
+  constrained$upper[[reverse_id]] == 0,
+  constrained$lower[[forward_id]] >= 0,
   identical(constrained$answer$status, "optimal")
 )
 .rc_corda_release_lp_engine(constrained$engine)
@@ -179,13 +188,13 @@ stopifnot(
   identical(reconstruction$stage_order, options$stage_order),
   is.matrix(reconstruction$HCtoMC),
   is.matrix(reconstruction$HCtoNC),
-  is.matrix(reconstruction$MCxNC),
-  all(reconstruction$final_directional_class %in% c("HC", "MC", "NC", "OT")),
+  is.matrix(reconstruction$MCtoNC),
+  all(reconstruction$final_confidence %in% 0:3),
   reconstruction$solver_performance$n_solves >= 1L
 )
 
-# 3. The synthetic contract includes all original user-facing CORDA2 controls.
+# 3. The canonical option object contains all original user-facing controls.
 for (name in c("MCxNCthresh", "constraint", "constrainby", "om", "ci")) {
-  stopifnot(name %in% names(reconstruction$options))
+  stopifnot(name %in% names(options))
 }
 cat("Original CORDA2 synthetic source checks passed.\n")
