@@ -13,6 +13,7 @@ test_that("stepwise workflow functions are exported", {
 test_that("computational stages expose one worker cap", {
   stages <- list(
     grn = rc_regcompass_step_grn,
+    metacells = rc_regcompass_step_metacells,
     layer1 = rc_regcompass_step_layer1,
     layer2 = rc_regcompass_step_layer2
   )
@@ -47,6 +48,19 @@ test_that("meta-module stage no longer runs Pando", {
   expect_false(any(c(
     "pfm", "genome", "pando_args", "parallel", "BPPARAM", "workers"
   ) %in% f))
+})
+
+test_that("Stage 2 rejects a second fragment worker control", {
+  body_text <- paste(
+    deparse(body(rc_regcompass_step_metacells)), collapse = "\n"
+  )
+  expect_match(
+    body_text,
+    "metacell_args$fragment_args$workers",
+    fixed = TRUE
+  )
+  expect_match(body_text, "top-level `workers`", fixed = TRUE)
+  expect_match(body_text, "fragment_args$workers <- worker_limit", fixed = TRUE)
 })
 
 test_that("one-shot workflow executes Stage 6 output", {
