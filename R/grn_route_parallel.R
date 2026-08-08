@@ -20,7 +20,7 @@
   )
 }
 
-.rc_route_pando_infer_args_core <- function(
+.rc_route_pando_infer_args <- function(
     args, condition_types = character(), standard_types = character()) {
   if (!is.list(args)) {
     stop("`pando_infer_args` must be a list.", call. = FALSE)
@@ -29,6 +29,49 @@
   if (any(!nzchar(names(args)))) {
     stop("Every `pando_infer_args` entry must be named.", call. = FALSE)
   }
+
+  if (length(condition_types)) {
+    if (!requireNamespace("Pando", quietly = TRUE)) {
+      stop("Package 'Pando' is required for condition-GRN Stage 1.",
+           call. = FALSE)
+    }
+    required_api <- c(
+      "condition_grn_fit", "project_condition_grn_cells",
+      "aggregate_condition_grn_projection_strict",
+      "discover_grn_edges", "union_grn_edges", "fit_grn_from_edges",
+      "GetNetwork", "gof"
+    )
+    missing_api <- setdiff(required_api, getNamespaceExports("Pando"))
+    if (length(missing_api)) {
+      stop(
+        "Installed Pando lacks required RegCompass condition-GRN API(s): ",
+        paste(missing_api, collapse = ", "), ".", call. = FALSE
+      )
+    }
+  }
+
+  canonical_layers <- list(
+    rna_layer = "data",
+    peak_layer = "data",
+    peak_value_type = "normalized"
+  )
+  supplied_layers <- intersect(names(args), names(canonical_layers))
+  if (length(condition_types) && length(supplied_layers)) {
+    invalid <- vapply(supplied_layers, function(field) {
+      value <- args[[field]]
+      !is.character(value) || length(value) != 1L || is.na(value) ||
+        !identical(as.character(value), canonical_layers[[field]])
+    }, logical(1))
+    if (any(invalid)) {
+      stop(
+        "Condition-GRN Stage 1 requires rna_layer='data', peak_layer='data', ",
+        "and peak_value_type='normalized'. Unsupported override(s): ",
+        paste(supplied_layers[invalid], collapse = ", "), ".",
+        call. = FALSE
+      )
+    }
+  }
+
   catalog <- .rc_pando_infer_arg_catalog()
   condition_allowed <- unique(c(catalog$shared, catalog$condition))
   standard_allowed <- unique(c(catalog$shared, catalog$standard))
@@ -43,9 +86,15 @@
 
   condition_args <- args[intersect(names(args), condition_allowed)]
   condition_args <- utils::modifyList(list(
-    tf_cor = 0.1, peak_cor = 0, adjust_method = "BH",
-    padj_threshold = 0.05, rank_action = "mark",
-    min_residual_df = 1L
+    tf_cor = 0.1,
+    peak_cor = 0,
+    adjust_method = "BH",
+    padj_threshold = 0.05,
+    rank_action = "mark",
+    min_residual_df = 1L,
+    rna_layer = "data",
+    peak_layer = "data",
+    peak_value_type = "normalized"
   ), condition_args)
   if (length(condition_types) &&
       (!identical(toupper(as.character(condition_args$adjust_method)), "BH") ||
@@ -55,6 +104,12 @@
   }
 
   standard_args <- args[intersect(names(args), standard_allowed)]
+  standard_args <- utils::modifyList(list(
+    tf_cor = 0.1,
+    peak_cor = 0,
+    adjust_method = "BH"
+  ), standard_args)
+
   disabled_condition <- if (length(standard_types)) {
     intersect(names(args), catalog$condition)
   } else character()
@@ -242,8 +297,8 @@
   .rc_step_monitor_event(
     progress_monitor, "cell_type_execution_plan",
     paste(
-      "RegCompass schedules condition x cell-type Pando primitives with exact-",
-      "dictionary barriers; standard Pando uses broad-cell-type jobs"
+      "condition GRNs use condition x cell-type tasks with exact-dictionary",
+      "barriers; standard Pando uses broad-cell-type jobs"
     ),
     current = 5L,
     context = list(
