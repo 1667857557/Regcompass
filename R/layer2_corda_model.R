@@ -94,7 +94,7 @@
       corda_options$max_medium_confidence_reactions
   )
   split <- .rc_corda2_split_original(parent)
-  reconstruction <- .rc_corda_build_three_stage_dispatch(
+  reconstruction <- .rc_corda_build_three_stage(
     split = split,
     classes = classes,
     options = corda_options,
