@@ -114,13 +114,6 @@
   )
   if (is.null(param)) return(FALSE)
   if (is.function(tune_param)) param <- tune_param(param, n_targets)
-  progress_setter <- get0(
-    "bpprogressbar<-", envir = asNamespace("BiocParallel"),
-    mode = "function", inherits = FALSE
-  )
-  if (is.function(progress_setter)) {
-    param <- tryCatch(progress_setter(param, FALSE), error = function(e) param)
-  }
   attr(param, "regcompass_corda2_stage_workers") <- workers
   attr(param, "regcompass_corda2_stage_targets") <- n_targets
   param
@@ -239,8 +232,37 @@
 .rc_corda_stage_chunks <- function(n_targets, workers) {
   n_targets <- max(1L, as.integer(n_targets))
   workers <- max(1L, min(as.integer(workers), n_targets))
-  n_chunks <- min(n_targets, max(workers, 4L * workers))
+  n_chunks <- min(n_targets, max(workers, 16L * workers))
   split(seq_len(n_targets), rep(seq_len(n_chunks), length.out = n_targets))
+}
+
+.rc_corda_stage_worker_environment <- function() {
+  source_environment <- environment(.rc_corda_stage_worker_environment)
+  worker_environment <- new.env(parent = baseenv())
+  available <- ls(source_environment, all.names = TRUE)
+  keep <- grep("^\\.rc_corda", available, value = TRUE)
+  keep <- union(
+    keep,
+    intersect(
+      c(
+        "%||%", ".rc_lp_status", ".rc_as_dgCMatrix",
+        ".rc_progress_enabled", "rc_validate_gem", "rc_solve_lp"
+      ),
+      available
+    )
+  )
+  for (name in keep) {
+    assign(name, get(name, envir = source_environment, inherits = FALSE),
+           envir = worker_environment)
+  }
+  for (name in keep) {
+    value <- get(name, envir = worker_environment, inherits = FALSE)
+    if (is.function(value)) {
+      environment(value) <- worker_environment
+      assign(name, value, envir = worker_environment)
+    }
+  }
+  worker_environment
 }
 
 .rc_corda_stage_run <- function(targets, stage, FUN) {
@@ -307,21 +329,39 @@
     scope = "corda2_stage", status = "running", emit = FALSE
   )
 
-  # SOCK workers do not reliably discover symbols referenced only through a
-  # nested anonymous stage closure. Bind the concrete chunk functions into a
-  # child lexical environment before serialization. This changes transport only;
-  # the original stage state and CORDA2 LP functions are unchanged.
-  fun_environment <- new.env(parent = environment(FUN))
-  fun_environment$.rc_corda2_dependency_chunk_parallel <-
-    .rc_corda2_dependency_chunk_parallel
-  fun_environment$.rc_corda2_maximize_chunk_parallel <-
-    .rc_corda2_maximize_chunk_parallel
+  # Re-home the anonymous stage closure into a plain serializable environment
+  # whose parent contains the CORDA2 worker code. This is required for SOCK
+  # workers, where nested package closures do not reliably retain indirect
+  # internal symbols. Only transport changes; the captured stage snapshot and
+  # CORDA2 functions themselves are unchanged.
+  worker_namespace <- .rc_corda_stage_worker_environment()
+  original_fun_environment <- environment(FUN)
+  fun_environment <- new.env(parent = worker_namespace)
+  captured_names <- setdiff(
+    all.vars(body(FUN), functions = FALSE),
+    names(formals(FUN))
+  )
+  for (name in captured_names) {
+    if (exists(name, envir = original_fun_environment, inherits = FALSE)) {
+      assign(
+        name,
+        get(name, envir = original_fun_environment, inherits = FALSE),
+        envir = fun_environment
+      )
+    }
+  }
   environment(FUN) <- fun_environment
-  mark_progress <- .rc_corda_stage_mark_progress
 
+  worker_environment <- new.env(parent = worker_namespace)
+  worker_environment$FUN <- FUN
+  worker_environment$targets <- targets
+  worker_environment$progress_dir <- progress_dir
+  worker_environment$n_targets <- n_targets
+  worker_environment$stage <- stage
+  worker_environment$context <- context
   worker <- function(index) {
     mark_done <- function(position, target) {
-      mark_progress(
+      .rc_corda_stage_mark_progress(
         progress_dir = progress_dir,
         index = position,
         total = n_targets,
@@ -333,6 +373,8 @@
     value <- FUN(targets[index], as.integer(index), mark_done)
     list(index = as.integer(index), value = value)
   }
+  environment(worker) <- worker_environment
+
   if (identical(BPPARAM, FALSE)) {
     parts <- lapply(chunks, worker)
   } else {
