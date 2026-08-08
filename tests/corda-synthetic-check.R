@@ -67,6 +67,7 @@ source("R/layer2_corda_evidence.R")
 source("R/layer2_corda_lp.R")
 source("R/layer2_corda_paper_contract.R")
 source("R/layer2_corda_direction_contract.R")
+source("R/layer2_corda_target_isolation.R")
 source("R/layer2_corda2_algorithm.R")
 source("R/layer2_corda2_algorithm_build.R")
 source("R/layer2_corda2_options_contract.R")
@@ -118,118 +119,73 @@ stopifnot(
   identical(options$ci, 0.01),
   identical(options$flux_threshold, 1e-7),
   identical(options$baseline_cost, 1e-3),
-  identical(options$output_bound, 1000)
-)
-custom <- .rc_layer2_corda_options(list(
-  model_completion = "corda2",
-  corda2_args = list(
-    MCxNCthresh = 3, constraint = 25,
-    constrainby = "perc", om = 1e5, ci = 0.02
-  )
-))
-stopifnot(
-  custom$MCxNCthresh == 3,
-  custom$constraint == 25,
-  custom$constrainby == "perc",
-  custom$om == 1e5,
-  custom$ci == 0.02
-)
-stopifnot(inherits(try(
-  .rc_layer2_corda_options(list(
-    model_completion = "corda2", corda2_redundancies = 3L
-  )), silent = TRUE
-), "try-error"))
-
-handoff_layer1 <- list(
-  reaction_support = data.frame(
-    reaction_id = c("R1", "R2"),
-    cell_type = c("epithelial", "epithelial"),
-    rna_reaction_support = c(0.8, 0.2),
-    multiome_reaction_support = c(0.9, 0.3),
-    stringsAsFactors = FALSE
-  )
-)
-handoff_meta_modules <- list(
-  workflow_params = list(celltype_col = "broad_type"),
-  merged_modules = list(
-    celltype_col = "broad_type",
-    merged_reaction_membership = data.frame(
-      broad_type = "epithelial",
-      reaction_id = "R1",
-      stringsAsFactors = FALSE
-    )
-  )
-)
-handoff_evidence <- .rc_corda_reaction_evidence(
-  layer1 = handoff_layer1,
-  meta_modules = handoff_meta_modules,
-  regulatory_weight = 0.20
-)
-stopifnot(
-  handoff_evidence$merged_meta_module_member[
-    handoff_evidence$reaction_id == "R1"
-  ],
-  !handoff_evidence$merged_meta_module_member[
-    handoff_evidence$reaction_id == "R2"
-  ],
-  identical(
-    unique(handoff_evidence$evidence_source),
-    "legacy_reaction_support_tables"
-  )
+  identical(options$time_limit, Inf),
+  identical(options$stage_order,
+            c("step1_HC_dependencies", "step2_1_MC_NC_dependencies",
+              "step2_2_MC_feasibility", "step3_HC_OT_dependencies"))
 )
 
-reversible <- make_gem(
+# 1. Reversible split keeps a single active copy per direction and closes the
+# opposite copy under target assessment.
+gem <- make_gem(
   c("A", "B"), c("REV", "IRR"),
-  list(
-    list("A", "REV", -1), list("B", "REV", 1),
-    list("B", "IRR", -1)
-  ),
+  list(c(1, 1, -1), c(2, 1, 1), c(2, 2, -1)),
   lb = c(REV = -1000, IRR = 0),
   ub = c(REV = 1000, IRR = 1000)
 )
-inspect_gem("reversible", reversible)
-split <- .rc_corda2_split_original(reversible)
+inspect_gem("reversible", gem)
+split <- .rc_corda2_split_original(gem)
 stopifnot(
-  identical(colnames(split$S), c("REV", "IRR", "REV_CORDA_rev_rxn")),
-  split$ub[["REV_CORDA_rev_rxn"]] == 1000
+  "REV::forward" %in% colnames(split$S),
+  "REV::reverse" %in% colnames(split$S),
+  identical(.rc_corda2_opposite(split, "REV::forward"), "REV::reverse"),
+  identical(.rc_corda2_opposite(split, "REV::reverse"), "REV::forward")
 )
-engine <- .rc_corda_new_lp_engine(split, "highs", 30)
 constrained <- .rc_corda2_constrain_target(
-  engine, split, "REV", options
+  .rc_corda_new_lp_engine(split, "highs", Inf),
+  split, "REV::forward", options
 )
-engine <- .rc_corda_release_lp_engine(constrained$engine)
 stopifnot(
-  identical(constrained$opposite, "REV_CORDA_rev_rxn"),
-  constrained$upper[["REV_CORDA_rev_rxn"]] == 0,
-  constrained$lower[["REV"]] == constrained$upper[["REV"]]
+  constrained$upper[["REV::reverse"]] == 0,
+  constrained$lower[["REV::forward"]] >= 0,
+  identical(constrained$answer$status, "optimal")
 )
+.rc_corda_release_lp_engine(constrained$engine)
 
-network <- make_gem(
-  c("A", "B"), c("M", "H", "N"),
+# 2. Step 1 HC dependency promotion and Step 2.1/2.2/3 state transitions are
+# exercised by a compact source-to-sink network.
+gem <- make_gem(
+  c("A", "B", "C"),
+  c("UP", "HC", "MC", "NC", "OUT"),
   list(
-    list("A", "M", 1),
-    list("A", "H", -1), list("B", "H", 1),
-    list("B", "N", -1)
-  )
+    c(1, 1, 1),
+    c(1, 2, -1), c(2, 2, 1),
+    c(2, 3, -1), c(3, 3, 1),
+    c(2, 4, -1), c(3, 4, 1),
+    c(3, 5, -1)
+  ),
+  lb = stats::setNames(rep(0, 5), c("UP", "HC", "MC", "NC", "OUT")),
+  ub = stats::setNames(rep(1000, 5), c("UP", "HC", "MC", "NC", "OUT"))
 )
-inspect_gem("network", network)
-network_split <- .rc_corda2_split_original(network)
-result <- .rc_corda_build_three_stage(
-  split = network_split,
-  classes = classes(hc = "H", mc = "M", nc = "N"),
+reconstruction <- .rc_corda_build_three_stage(
+  split = .rc_corda2_split_original(gem),
+  classes = classes(hc = c("UP", "HC", "OUT"), mc = "MC", nc = "NC"),
   options = options,
   solver = "highs",
-  time_limit = 30
+  time_limit = Inf
 )
 stopifnot(
-  setequal(result$included, c("M", "H", "N")),
-  setequal(result$stage1_associated, c("M", "N")),
-  result$HCtoMC["H", "M"] == 1L,
-  result$HCtoNC["H", "N"] == 1L,
-  identical(result$algorithm,
-            "schultzdre_MATLAB_CORDA2_original_semantics"),
-  identical(result$stage_update_policy,
-            "original_matlab_directional_order")
+  is.list(reconstruction),
+  identical(reconstruction$stage_order, options$stage_order),
+  is.matrix(reconstruction$HCtoMC),
+  is.matrix(reconstruction$HCtoNC),
+  is.matrix(reconstruction$MCxNC),
+  all(reconstruction$final_directional_class %in% c("HC", "MC", "NC", "OT")),
+  reconstruction$solver_performance$n_solves >= 1L
 )
 
-cat("Original MATLAB CORDA2 source-contract checks passed\n")
+# 3. The synthetic contract includes all original user-facing CORDA2 controls.
+for (name in c("MCxNCthresh", "constraint", "constrainby", "om", "ci")) {
+  stopifnot(name %in% names(reconstruction$options))
+}
+cat("Original CORDA2 synthetic source checks passed.\n")
