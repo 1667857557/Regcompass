@@ -2,18 +2,25 @@
 #'
 #' Each cell type uses its Stage 1 Pando route. Standard mode uses
 #' the original Pando full-fit TF-by-ATAC projection and calculates no condition
-#' coefficients. Both modes use exact native SuperCell membership.
+#' coefficients. Both modes use exact native SuperCell membership. Parallel
+#' projection jobs use at most `workers` processes and automatically shrink to
+#' the number of independent tasks available.
 #'
+#' @param workers Total RegCompass worker cap. `NULL` auto-detects available
+#'   workers. Windows uses SOCK/Snow workers and Linux/macOS uses multicore
+#'   workers. Stage 4 never starts more workers than there are independent jobs.
 #' @export
 rc_regcompass_step_layer1 <- function(
     grn, metacells, meta_modules, gem, outdir,
     gpr_and_method = c("min", "median", "mean"),
     gene_half_saturation = getOption("RegCompassR.cpm_half_saturation", 1),
-    parallel = TRUE, BPPARAM = NULL,
+    workers = NULL,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start("layer1", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   gpr_and_method <- match.arg(gpr_and_method)
+  parallel_plan <- .rc_stage_parallel_plan(workers, argument = "workers")
+  on.exit(.rc_release_bpparam(parallel_plan$BPPARAM), add = TRUE)
   .rc_require_stage_class(
     grn, "regcompass_grn_step", "grn", "rc_regcompass_step_grn"
   )
@@ -47,11 +54,16 @@ rc_regcompass_step_layer1 <- function(
     rna_assay = params$rna_assay,
     gpr_and_method = gpr_and_method,
     gene_half_saturation = gene_half_saturation,
-    parallel = parallel,
-    BPPARAM = BPPARAM
+    parallel = parallel_plan$parallel,
+    BPPARAM = parallel_plan$BPPARAM
   )
   layer1$workflow_params <- params
   layer1$gem_fingerprint <- .rc_stage_gem_fingerprint(gem)
+  layer1$parallel_contract <- list(
+    worker_limit = parallel_plan$workers,
+    backend = parallel_plan$config$actual_backend,
+    dynamic_task_sizing = TRUE
+  )
   class(layer1) <- c("regcompass_layer1_step", "list")
   .rc_validate_layer1_stage(
     layer1, workflow_params = params, gem = gem, argument = "layer1"
