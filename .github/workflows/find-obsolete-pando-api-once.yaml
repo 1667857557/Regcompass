@@ -1,0 +1,29 @@
+name: Locate obsolete Pando API once
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  locate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.head_ref }}
+      - name: Find obsolete API references
+        shell: python
+        run: |
+          from pathlib import Path
+          needle = 'aggregate_condition_grn_projection_strict'
+          found = []
+          for path in sorted(Path('R').glob('*.R')):
+              for number, line in enumerate(path.read_text().splitlines(), 1):
+                  if needle in line:
+                      found.append((str(path), number, line.strip()))
+          for item in found:
+              print(f'{item[0]}:{item[1]}: {item[2]}')
+          if not found:
+              raise RuntimeError('No obsolete reference found although handoff audit reported one')
