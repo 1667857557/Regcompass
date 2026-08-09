@@ -50,13 +50,7 @@ step1 <- rc_regcompass_step_grn(
 
 A cell type with at least two retained conditions uses the common-dictionary condition GRN. RegCompass initializes a separate Pando object for each broad cell type, parallelizes the pooled-background and per-condition candidate-discovery jobs, waits at a strict barrier, unions exact `(target, TF, region)` triples into one frozen dictionary for that cell type, and only then parallelizes the condition × cell-type fixed-dictionary Gaussian identity GLMs. Different cell types never share or merge Pando peak/motif feature spaces. The main workflow uses `tf_cor = 0.1` and `peak_cor = 0.05` for candidate discovery. Final condition edges are active when they are estimable and have BH-adjusted `padj < 0.05`; no second post-fit coefficient-size, correlation, or model-R² gate is applied.
 
-A cell type with one retained condition uses standard Pando. Standard Pando is parallelized across broad cell types, and each individual Pando fit is kept single-process to avoid nested oversubscription. The requested `tf_cor` is a biological floor and RegCompass computes an additional sample-size floor from the exact two-sided Pearson correlation test,
-
-\[
-r_{crit}(n) = \frac{t_{1-\alpha/2,n-2}}{\sqrt{t_{1-\alpha/2,n-2}^2+n-2}},\qquad \alpha=0.05,
-\]
-
-then passes `max(tf_cor, r_crit(n))` to `Pando::infer_grn()` for that cell type.
+A cell type with one retained condition uses standard Pando. Standard Pando is parallelized across broad cell types, and each individual Pando fit is kept single-process to avoid nested oversubscription. The `tf_cor` and `peak_cor` values are passed to `Pando::infer_grn()` exactly as routed from `pando_infer_args`; the defaults are fixed at `tf_cor = 0.1` and `peak_cor = 0.05`, with no cell-count-dependent correlation threshold.
 
 ## 3. Metacells
 
