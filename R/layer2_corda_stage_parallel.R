@@ -113,7 +113,8 @@
     backend = .rc_corda_stage_backend(template)
   )
   if (is.null(param)) return(FALSE)
-  if (is.function(tune_param)) param <- tune_param(param, n_targets)
+  stage_tasks <- min(n_targets, max(workers, 4L * workers))
+  if (is.function(tune_param)) param <- tune_param(param, stage_tasks)
   progress_setter <- get0(
     "bpprogressbar<-", envir = asNamespace("BiocParallel"),
     mode = "function", inherits = FALSE
@@ -123,6 +124,7 @@
   }
   attr(param, "regcompass_corda2_stage_workers") <- workers
   attr(param, "regcompass_corda2_stage_targets") <- n_targets
+  attr(param, "regcompass_corda2_stage_tasks") <- stage_tasks
   param
 }
 
@@ -403,9 +405,25 @@
   )
 }
 
+.rc_corda2_compact_maximum_result <- function(maximum) {
+  if (!is.list(maximum) || !is.list(maximum$answer)) {
+    stop("CORDA2 Step 2.2 received a malformed maximize result.", call. = FALSE)
+  }
+  list(
+    answer = maximum$answer[c(
+      "status", "objective", "backend", "solver_message"
+    )],
+    vmax = maximum$vmax,
+    opposite = maximum$opposite
+  )
+}
+
 .rc_corda2_maximize_chunk_parallel <- function(
     targets, indices, mark_done, split, solver, time_limit, lower, upper) {
-  # Step 2.2 uses the same target-isolated solver-state contract.
+  # Step 2.2 uses the same target-isolated solver-state contract. Return only
+  # controller-required scalars/metadata: the full primal solution and the full
+  # lower/upper vectors are worker-local and must never be serialized to the
+  # controller for every target.
   engine <- .rc_corda_target_metric_engine(split, solver, time_limit)
   results <- vector("list", length(targets))
   for (i in seq_along(targets)) {
@@ -413,8 +431,8 @@
       engine, split, targets[[i]], lower = lower, upper = upper
     )
     engine <- maximum$engine
-    maximum$engine <- NULL
-    results[[i]] <- maximum
+    results[[i]] <- .rc_corda2_compact_maximum_result(maximum)
+    rm(maximum)
     mark_done(indices[[i]], targets[[i]])
   }
   list(
