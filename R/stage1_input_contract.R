@@ -1,4 +1,4 @@
-.rc_stage1_min_cells_fixed <- 300L
+.rc_stage1_min_cells_default <- 500L
 
 .rc_pando_supports_motif_cache <- function() {
   if (!requireNamespace("Pando", quietly = TRUE)) return(FALSE)
@@ -14,13 +14,15 @@
   if (!is.list(pando_args)) {
     stop("`pando_args` must be a list.", call. = FALSE)
   }
-  supplied <- pando_args$min_cells %||% .rc_stage1_min_cells_fixed
-  supplied <- suppressWarnings(as.integer(supplied[[1L]]))
-  if (!is.finite(supplied) || supplied != .rc_stage1_min_cells_fixed) {
-    message("Stage 1 `min_cells` is fixed at 300; overriding the supplied value.")
+  supplied <- pando_args$min_cells %||% .rc_stage1_min_cells_default
+  if (!is.numeric(supplied) || length(supplied) != 1L ||
+      is.na(supplied) || !is.finite(supplied) || supplied < 1 ||
+      supplied != as.integer(supplied)) {
+    stop("`pando_args$min_cells` must be one positive integer.", call. = FALSE)
   }
-  pando_args$min_cells <- .rc_stage1_min_cells_fixed
-  list(min_cells = .rc_stage1_min_cells_fixed, pando_args = pando_args)
+  supplied <- as.integer(supplied)
+  pando_args$min_cells <- supplied
+  list(min_cells = supplied, pando_args = pando_args)
 }
 
 .rc_filter_stage1_groups_by_min_cells <- function(
@@ -109,14 +111,15 @@
     dropped <- diagnostics[!diagnostics$retained_stratum, , drop = FALSE]
     if (nrow(dropped)) {
       message(
-        "Stage 1 excluded condition x cell-type strata below min_cells=300: ",
+        "Stage 1 excluded condition x cell-type strata below min_cells=",
+        as.integer(min_cells), ": ",
         paste0(dropped$cell_type, "{", dropped$condition, "}=",
                dropped$n_cells, collapse = "; ")
       )
     }
     if (!length(retained_type)) {
-      stop("No condition x cell-type stratum reaches min_cells=300.",
-           call. = FALSE)
+      stop("No condition x cell-type stratum reaches min_cells=",
+           as.integer(min_cells), ".", call. = FALSE)
     }
     if (length(standard_type)) {
       message(
@@ -178,7 +181,8 @@
       stringsAsFactors = FALSE
     )
     if (!length(retained_type)) {
-      stop("No requested cell type reaches min_cells=300.", call. = FALSE)
+      stop("No requested cell type reaches min_cells=",
+           as.integer(min_cells), ".", call. = FALSE)
     }
     keep_cells <- selected & observed_type %in% retained_type
     analysis_mode <- "standard_pando"
@@ -291,7 +295,7 @@
     source = contract$source %||% "stage1_grn_result",
     n_cells = length(expected),
     retained_cell_types = contract$retained_cell_types,
-    min_cells = contract$min_cells %||% .rc_stage1_min_cells_fixed,
+    min_cells = contract$min_cells %||% .rc_stage1_min_cells_default,
     exact_cell_set = TRUE,
     order_matches_stage1 = order_matches_stage1,
     order_policy = if (order_matches_stage1) {
