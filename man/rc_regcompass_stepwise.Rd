@@ -48,11 +48,11 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{pfm}{Optional motif collection.}
 \item{species}{Species identifier or \code{"auto"}.}
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
-\item{cell_type}{Optional broad-cell-type labels. Stage 1 uses a fixed minimum of 300 paired cells per retained condition-by-cell-type stratum.}
+\item{cell_type}{Optional broad-cell-type labels.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{fragment_files}{Optional Stage 2 raw fragment input. Use \code{NULL}/\code{FALSE} to aggregate the existing ATAC matrix; a single fragment path; a named character vector of paths whose names are exact prefixes before \code{_} in Seurat cell IDs; or a data frame with \code{fragment_file}, \code{object_cell}, and \code{fragment_barcode}. Fragment routing is used only for ATAC aggregation and does not make sample identity a metacell grouping variable.}
-\item{pando_args}{Stage 1 Pando initialization, motif and inference controls. The main condition-GRN candidate screen uses \code{tf_cor = 0.1} and \code{peak_cor = 0.05} unless explicitly changed. Final condition edges are active when estimable with BH-adjusted \code{padj < 0.05}; no additional post-fit coefficient-size, correlation, or model-R-squared gate is applied.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed and size controls. Fragment aggregation/recount controls are supplied in \code{metacell_args$fragment_args}: \code{rows_per_chunk}, \code{bgzip_path}, \code{tabix_path}, \code{process_n}, \code{call_peaks}, \code{macs2_path}, \code{effective_genome_size}, and \code{peak_calling_args}. Fragment parallelism uses the top-level \code{workers} argument; \code{fragment_args$workers} is not a separate public control.}
+\item{pando_args}{Stage 1 Pando initialization, motif and inference controls. \code{min_cells} defaults to \code{500L} and may be changed to any positive integer. The main condition-GRN candidate screen uses \code{tf_cor = 0.1} and \code{peak_cor = 0.05} unless explicitly changed. Final condition edges are active when estimable with BH-adjusted \code{padj < 0.05}; no additional post-fit coefficient-size, correlation, or model-R-squared gate is applied.}
+\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed and size controls. \code{min_cells_per_stratum} defaults to \code{500L} and may be explicitly overridden. Fragment aggregation/recount controls are supplied in \code{metacell_args$fragment_args}: \code{rows_per_chunk}, \code{bgzip_path}, \code{tabix_path}, \code{process_n}, \code{call_peaks}, \code{macs2_path}, \code{effective_genome_size}, and \code{peak_calling_args}. Fragment parallelism uses the top-level \code{workers} argument; \code{fragment_args$workers} is not a separate public control.}
 \item{grn}{Validated Stage 1 output. In Stage 2 it enforces the exact Stage 1 cell set.}
 \item{meta_module_args}{Optional custom subsystem table.}
 \item{gpr_and_method}{GPR AND aggregation method.}
@@ -73,23 +73,27 @@ Runs the regulatory, metacell, reaction-catalogue, reaction-support, metabolic
 scoring and result stages independently.
 }
 \details{
-Stage 1 determines the route independently for each broad cell type. At least
-two retained conditions use the common-dictionary condition GRN; one retained
-condition uses standard Pando. In condition mode, RegCompass initializes one
-Pando object per broad cell type, dispatches pooled-background and condition-by-
-cell-type candidate discovery, waits at a strict cell-type barrier to freeze one
-exact TF-peak-target dictionary, then dispatches condition-by-cell-type fixed-
-dictionary Gaussian identity GLMs. Different cell types retain separate Pando
-peak/motif feature spaces. Standard Pando is parallelized across broad cell
-types. Atomic Pando jobs disable nested target-level parallelism.
+Stage 1 applies the configurable \code{pando_args$min_cells} threshold before
+normalization; the default is \code{500L}. It determines the route independently
+for each broad cell type. At least two retained conditions use the common-
+dictionary condition GRN; one retained condition uses standard Pando. In
+condition mode, RegCompass initializes one Pando object per broad cell type,
+dispatches pooled-background and condition-by-cell-type candidate discovery,
+waits at a strict cell-type barrier to freeze one exact TF-peak-target
+dictionary, then dispatches condition-by-cell-type fixed-dictionary Gaussian
+identity GLMs. Different cell types retain separate Pando peak/motif feature
+spaces. Standard Pando is parallelized across broad cell types. Atomic Pando
+jobs disable nested target-level parallelism.
 
 Stage 2 reproduces the Stage 1 cell set and keeps final metacells
-condition-pure. When raw fragment files are supplied, Stage 2 first builds the
-final grouped-WNN membership, transforms single-cell fragment barcodes to the
-final metacell barcodes with \code{SuperCell::AggregateFragmentFile()}, and uses
-the same protected \code{workers} cap for fragment aggregation. Stage 3 builds
-cell-type-scoped reaction catalogues. Stage 4 uses the same worker cap and
-shrinks to the available independent projection jobs.
+condition-pure. Its configurable \code{metacell_args$min_cells_per_stratum}
+threshold defaults to \code{500L}. When raw fragment files are supplied, Stage 2
+first builds the final grouped-WNN membership, transforms single-cell fragment
+barcodes to the final metacell barcodes with
+\code{SuperCell::AggregateFragmentFile()}, and uses the same protected
+\code{workers} cap for fragment aggregation. Stage 3 builds cell-type-scoped
+reaction catalogues. Stage 4 uses the same worker cap and shrinks to the
+available independent projection jobs.
 
 Stage 5 defaults to original MATLAB CORDA2 on the complete medium-constrained
 parent GEM for each cell-type-by-medium combination. CORDA2 Step 1, Step 2.1,
