@@ -34,7 +34,7 @@ step1 <- rc_regcompass_step_grn(
   condition_col = "condition",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 300L,
+    min_cells = 500L,
     pando_infer_args = list(
       tf_cor = 0.1,
       peak_cor = 0.05,
@@ -47,6 +47,8 @@ step1 <- rc_regcompass_step_grn(
   workers = workers
 )
 ```
+
+`pando_args$min_cells` defaults to `500L`, but it is not fixed. Any positive integer supplied by the user is retained and becomes the Stage 1 filtering threshold.
 
 A cell type with at least two retained conditions uses the common-dictionary condition GRN. RegCompass initializes a separate Pando object for each broad cell type, parallelizes the pooled-background and per-condition candidate-discovery jobs, waits at a strict barrier, unions exact `(target, TF, region)` triples into one frozen dictionary for that cell type, and only then parallelizes the condition × cell-type fixed-dictionary Gaussian identity GLMs. Different cell types never share or merge Pando peak/motif feature spaces. The main workflow uses `tf_cor = 0.1` and `peak_cor = 0.05` for candidate discovery. Final condition edges are active when they are estimable and have BH-adjusted `padj < 0.05`; no second post-fit coefficient-size, correlation, or model-R² gate is applied.
 
@@ -67,13 +69,15 @@ step2 <- rc_regcompass_step_metacells(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
-    min_cells_per_stratum = 300L,
+    min_cells_per_stratum = 500L,
     min_metacell_size = 10L,
     min_metacells_per_stratum = 2L
   ),
   workers = workers
 )
 ```
+
+`metacell_args$min_cells_per_stratum` also defaults to `500L` and is user-configurable. If Stage 1 is intentionally run with a lower `min_cells`, set the Stage 2 threshold explicitly as needed rather than relying on the `500L` default.
 
 One WNN graph is constructed per broad cell type. Final metacells remain condition-pure. If raw fragment files are supplied, `SuperCell::AggregateFragmentFile()` receives the same protected top-level worker cap.
 

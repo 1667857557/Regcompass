@@ -2,7 +2,7 @@
 
 ## Input
 
-Use a paired-cell Seurat object with RNA and ATAC count assays, broad cell-type metadata, RNA PCA, ATAC LSI and genome-compatible peak coordinates. Stage 1 requires at least 300 paired cells per retained condition-by-cell-type stratum.
+Use a paired-cell Seurat object with RNA and ATAC count assays, broad cell-type metadata, RNA PCA, ATAC LSI and genome-compatible peak coordinates. Stage 1 uses `pando_args$min_cells = 500L` by default for each retained condition-by-cell-type stratum, but this threshold is user-configurable. Stage 2 likewise defaults `metacell_args$min_cells_per_stratum` to `500L` and allows an explicit override.
 
 ## GEM and medium
 
@@ -36,7 +36,7 @@ result <- rc_run_regcompass_one_shot(
   condition_col = "condition",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 300L,
+    min_cells = 500L,
     pando_infer_args = list(
       tf_cor = 0.1,
       peak_cor = 0.05,
@@ -52,7 +52,7 @@ result <- rc_run_regcompass_one_shot(
     atac_reduction = "lsi",
     atac_dims = 2:30,
     gamma = 30L,
-    min_cells_per_stratum = 300L,
+    min_cells_per_stratum = 500L,
     min_metacell_size = 10L,
     min_metacells_per_stratum = 2L
   ),
@@ -82,6 +82,8 @@ result <- rc_run_regcompass_one_shot(
   workers = 10L
 )
 ```
+
+The two `500L` cell-count settings are defaults, not fixed constraints. If a dataset requires a lower or higher threshold, set `pando_args$min_cells` and/or `metacell_args$min_cells_per_stratum` explicitly; RegCompass preserves those supplied values.
 
 `workers` is the only workflow-level parallel setting. Its default is `10L` and it may be changed, for example `workers = 60L`. RegCompass automatically selects `SnowParam(type = "SOCK")` on Windows and `MulticoreParam` on Linux/macOS. The effective cap is `min(workers, max(1, detected logical CPUs - 2))`, and each individual Pando/CORDA2/LP dispatch shrinks further to its own independent task count.
 

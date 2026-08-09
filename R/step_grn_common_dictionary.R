@@ -13,6 +13,8 @@
 #' independently by broad cell type. Individual Pando jobs do not start nested
 #' worker pools.
 #'
+#' @param pando_args Pando configuration list. `min_cells` defaults to `500L`
+#'   and may be overridden with any positive integer.
 #' @param workers Total RegCompass worker cap, default 10. Windows uses
 #'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. The effective
 #'   package cap is `min(workers, max(1, detected logical CPUs - 2))`. Each
@@ -65,12 +67,14 @@ rc_regcompass_step_grn <- function(
   condition_types <- cell_set$condition_pando_cell_types
   standard_types <- cell_set$standard_pando_cell_types
 
-  cell_set$diagnostics$threshold_source <- "fixed_pando_args_min_cells"
+  cell_set$diagnostics$threshold_source <- "configurable_pando_args_min_cells"
   object@misc$regcompass_stage1_group_filter <- cell_set$diagnostics
   object@misc$regcompass_stage1_min_cells_contract <- list(
     min_cells = cell_set$min_cells,
+    default_min_cells = .rc_stage1_min_cells_default,
     source = "pando_args$min_cells",
-    fixed = TRUE,
+    fixed = FALSE,
+    configurable = TRUE,
     analysis_mode = cell_set$analysis_mode,
     threshold_scope = if (length(condition_types)) {
       "condition_x_cell_type"

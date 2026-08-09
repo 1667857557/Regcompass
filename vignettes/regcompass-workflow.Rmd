@@ -34,7 +34,7 @@ result <- rc_run_regcompass_one_shot(
   condition_col = "condition",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 300L,
+    min_cells = 500L,
     pando_infer_args = list(
       tf_cor = 0.1,
       peak_cor = 0.05,
@@ -44,7 +44,10 @@ result <- rc_run_regcompass_one_shot(
       min_residual_df = 1L
     )
   ),
-  metacell_args = list(gamma = 30L),
+  metacell_args = list(
+    gamma = 30L,
+    min_cells_per_stratum = 500L
+  ),
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -55,6 +58,8 @@ result <- rc_run_regcompass_one_shot(
   )
 )
 ```
+
+`pando_args$min_cells` and `metacell_args$min_cells_per_stratum` both default to `500L`; either value may be explicitly changed by the user.
 
 With `model_mode = "meta_module_gem"`, CORDA2 is the default structural reconstruction. FASTCORE requires `model_params$model_completion = "fastcore"`; `model_mode = "full_gem"` is the supplementary complete-network route.
 

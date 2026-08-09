@@ -1,6 +1,6 @@
 # Stage 1–Stage 2 cell-set contract
 
-Stage 1 applies the fixed `min_cells = 300` filter before normalization and stores the exact analysis-cell IDs in the Seurat object's native cell order:
+Stage 1 applies `pando_args$min_cells` before normalization and stores the exact analysis-cell IDs in the Seurat object's native cell order. The default is `500L`, but users may supply another positive integer:
 
 ```r
 step1$cell_filter$retained_cells
@@ -20,9 +20,9 @@ step1 <- rc_regcompass_step_grn(
   condition_col = "dataset",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 300L,
+    min_cells = 500L,
     pando_infer_args = list(
-      tf_cor = 0.05,
+      tf_cor = 0.1,
       peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
@@ -37,7 +37,10 @@ step2 <- rc_regcompass_step_metacells(
   grn = step1,
   outdir = "RegCompass_steps/02_metacells",
   condition_col = "dataset",
-  celltype_col = "cell_type"
+  celltype_col = "cell_type",
+  metacell_args = list(
+    min_cells_per_stratum = 500L
+  )
 )
 ```
 
@@ -47,7 +50,8 @@ With `grn = step1`, Stage 2:
 - rejects missing or extra cells after subsetting;
 - accepts Seurat's native subset order when Seurat does not preserve the requested Stage 1 order;
 - rejects conflicting condition, cell-type, RNA-assay, ATAC-assay, or explicit cell-type arguments;
+- applies the configurable `metacell_args$min_cells_per_stratum` gate, default `500L`, before metacell construction;
 - stores `cell_filter$exact_stage1_match = TRUE` in `step_metacells.rds`;
 - records `exact_cell_set`, `order_matches_stage1`, `order_policy`, and `stage1_order_index` under `metacell_object@misc$regcompass_cross_stage_cell_set`.
 
-Omitting `grn` remains supported for backward compatibility. In that mode Stage 2 independently reapplies the same fixed filter, but the result is marked `independent_stage1_filter_reapplication_v1` rather than an exact inherited contract.
+Omitting `grn` remains supported for backward compatibility. In that mode Stage 2 independently reapplies the Stage 1 default `min_cells = 500L` filter, and the result is marked `independent_stage1_filter_reapplication_v1` rather than an exact inherited contract. The Stage 2 `min_cells_per_stratum` default remains separately configurable.
