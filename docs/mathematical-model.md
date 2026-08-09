@@ -24,24 +24,24 @@ y_{g,i}=\alpha_{g,c}+\sum_{e\in E_g^{\cup}}\beta_{e,g,c}x_{e,i}+\varepsilon_{g,i
 
 The implementation uses a Gaussian identity GLM with an intercept, `interaction_term = ":"`, and `scale = FALSE`. Pooled coefficients are not used to calibrate condition coefficients.
 
-Let \(a_{e,g,c}\) indicate that a coefficient is estimable, \(\rho_{e,g,c}\) denote the correlation value used by the RegCompass edge gate, and \(\widehat\beta_{e,g,c}\) denote the fitted coefficient. The fixed penalty-entry thresholds are
+Let \(a_{e,g,c}\) indicate that an edge coefficient is estimable and let \(m_{g,c}\) indicate that the complete target-level regression has `fit_status == "ok"`. The adjusted-P threshold is
 
 \[
-q=0.05,\qquad \rho_0=0.05,\qquad \beta_0=0.05.
+q=0.05.
 \]
 
-An edge is active for regulatory penalty projection only when all four criteria hold:
+An edge is active for RegCompass regulatory penalty projection only when the target regression is full-rank under the fitted dictionary, the coefficient itself is estimable, the estimate is finite, and the BH-adjusted P value is below 0.05:
 
 \[
 s_{e,g,c}=\mathbf{1}\left\{
- a_{e,g,c}=1
+ m_{g,c}=1
+ \ \land\ a_{e,g,c}=1
  \ \land\ padj_{e,g,c}<q
- \ \land\ |\rho_{e,g,c}|\ge\rho_0
- \ \land\ |\widehat\beta_{e,g,c}|\ge\beta_0
+ \ \land\ \widehat\beta_{e,g,c}\text{ is finite}
 \right\}.
 \]
 
-For standard Pando, \(\rho_{e,g,c}\) is the coefficient-table TF–target correlation. For a common-dictionary condition fit without coefficient-level `corr`, RegCompass uses the frozen dictionary's audited `max_abs_tf_target_cor`; the source is recorded in `corr_source`. The absolute-value gates retain both positive and negative correlations and coefficients. Their boundaries are inclusive, whereas the adjusted-P criterion is strict.
+No additional post-fit absolute-correlation or absolute-effect-size threshold is applied. Candidate TF and peak correlation filters act upstream during Pando candidate discovery, not as a second coefficient gate.
 
 The effect used for downstream projection is
 
@@ -53,7 +53,9 @@ The effect used for downstream projection is
 \end{cases}
 \]
 
-Unavailable coefficients remain `NA` in the complete coefficient table. Estimable coefficients that fail the adjusted-P, correlation, or effect-size gate remain auditable but have zero realized penalty contribution.
+A `rank_deficient` target remains in the complete coefficient and fit-diagnostic tables for audit, but every edge belonging to that target has zero realized RegCompass penalty contribution even when an individual coefficient is finite and its P value would otherwise pass BH. This policy avoids attributing an edge-specific regulatory effect when the complete frozen-dictionary coefficient vector is not uniquely identifiable in that condition. Other non-`ok` target statuses, including insufficient residual degrees of freedom and failed/non-finite fits, are likewise excluded from penalty projection.
+
+The Pando source object may retain its original GLM significance fields. RegCompass records the target fit status on the gated coefficient table and applies the stricter `fit_status == "ok"` rule before paired-cell regulatory projection and before active-edge assembly.
 
 ## 2. Paired-cell projection and metacell aggregation
 

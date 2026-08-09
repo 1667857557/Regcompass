@@ -77,7 +77,7 @@ test_that("strict validator requires the complete dictionary in every condition"
   )
 })
 
-test_that("significance and penalty effect are exactly estimable BH padj below 0.05", {
+test_that("Pando source significance remains exactly estimable BH padj below 0.05", {
   fit <- .strict_fit_fixture()
   wrong_flag <- fit
   wrong_flag$coefficients$significant[[1L]] <- FALSE
@@ -93,7 +93,7 @@ test_that("significance and penalty effect are exactly estimable BH padj below 0
   )
 })
 
-test_that("Layer 1 validates the BH-only RegCompass condition gate", {
+test_that("Layer 1 validates the RegCompass condition gate", {
   fit <- .strict_fit_fixture()
   fit$coefficients$estimate[[1L]] <- 0.01
   fit$coefficients$statistic[[1L]] <- 0.1
@@ -103,12 +103,21 @@ test_that("Layer 1 validates the BH-only RegCompass condition gate", {
   gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
   expect_true(gated$coefficients$significant[[1L]])
   expect_equal(gated$coefficients$penalty_effect[[1L]], 0.01)
+  expect_true(all(gated$coefficients$fit_status == "ok"))
   expect_identical(
     gated$regcompass_penalty_filter,
     "estimable & BH padj < 0.05"
   )
+  expect_identical(
+    gated$regcompass_fit_status_filter,
+    "fit_status == 'ok'"
+  )
+  expect_identical(
+    gated$regcompass_rank_deficient_policy,
+    "exclude_from_penalty"
+  )
   expect_invisible(
-    RegCompassR:::.rc_require_pando_condition_grn_fit(gated)
+    RegCompassR:::.rc_require_pando_condition_grn_fit(fit)
   )
   expect_invisible(
     RegCompassR:::.rc_require_layer1_condition_grn_fit(gated)
@@ -134,6 +143,23 @@ test_that("Layer 1 validates the BH-only RegCompass condition gate", {
   expect_error(
     RegCompassR:::.rc_require_layer1_condition_grn_fit(wrong_effect),
     "RegCompass-gated penalty_effect"
+  )
+})
+
+test_that("rank-deficient target fits are auditable but contribute no penalty", {
+  fit <- .strict_fit_fixture()
+  fit$fit$fit_status[fit$fit$condition == "A"] <- "rank_deficient"
+
+  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
+  condition_a <- gated$coefficients$condition == "A"
+  condition_b <- gated$coefficients$condition == "B"
+
+  expect_true(all(gated$coefficients$fit_status[condition_a] == "rank_deficient"))
+  expect_false(any(gated$coefficients$significant[condition_a]))
+  expect_equal(gated$coefficients$penalty_effect[condition_a], c(0, 0))
+  expect_true(any(gated$coefficients$significant[condition_b]))
+  expect_invisible(
+    RegCompassR:::.rc_require_layer1_condition_grn_fit(gated)
   )
 })
 
