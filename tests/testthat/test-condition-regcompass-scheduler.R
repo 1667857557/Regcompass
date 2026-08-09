@@ -39,17 +39,38 @@ test_that("condition scheduler preserves the min-cells error contract", {
   )
 })
 
-test_that("condition penalty eligibility is exactly estimable plus BH", {
+test_that("condition penalty eligibility requires an ok target fit plus estimable BH significance", {
   coefficient <- data.frame(
-    estimate = c(1e-6, 2, 3),
-    padj = c(0.01, 0.049, 0.051),
-    estimable = c(TRUE, TRUE, TRUE),
-    corr = c(0, 1, 1),
+    estimate = c(1e-6, 2, 3, 4),
+    padj = c(0.01, 0.01, 0.051, 0.01),
+    estimable = c(TRUE, TRUE, TRUE, TRUE),
+    fit_status = c("ok", "rank_deficient", "ok", "insufficient_df"),
+    corr = c(0, 1, 1, 1),
     stringsAsFactors = FALSE
   )
   expect_identical(
     .rc_condition_penalty_gate(coefficient),
-    c(TRUE, TRUE, FALSE)
+    c(TRUE, FALSE, FALSE, FALSE)
+  )
+})
+
+test_that("condition fit status maps exactly by target and condition", {
+  coefficient <- data.frame(
+    target = c("G1", "G1", "G2", "G2"),
+    condition = c("A", "B", "A", "B"),
+    stringsAsFactors = FALSE
+  )
+  fit <- list(
+    fit = data.frame(
+      target = c("G2", "G1", "G2", "G1"),
+      condition = c("B", "A", "A", "B"),
+      fit_status = c("rank_deficient", "ok", "ok", "insufficient_df"),
+      stringsAsFactors = FALSE
+    )
+  )
+  expect_identical(
+    .rc_condition_fit_status_for_coefficients(fit, coefficient),
+    c("ok", "insufficient_df", "ok", "rank_deficient")
   )
 })
 
