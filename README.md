@@ -77,7 +77,7 @@ result <- rc_run_regcompass_one_shot(
     min_cells = 300L,
     pando_infer_args = list(
       tf_cor = 0.1,
-      peak_cor = 0,
+      peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
