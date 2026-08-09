@@ -185,3 +185,56 @@ test_that("CORDA2 Layer2 pool preparation leaves workers step-local", {
   expect_false(state$started_here)
   expect_identical(state$origin, "caller_supplied_stage_template")
 })
+
+test_that("CORDA2 Step 2.2 worker payload excludes unused full LP vectors", {
+  maximum <- list(
+    engine = list(pointer = "mock"),
+    answer = list(
+      status = "optimal",
+      solution = rep(1, 10000),
+      objective = -3,
+      backend = "highs_persistent_cpp_sparse_delta_basis_reuse",
+      solver_message = "optimal"
+    ),
+    vmax = 2,
+    lower = rep(0, 10000),
+    upper = rep(1000, 10000),
+    opposite = "R1_CORDA_rev_rxn"
+  )
+  compact <- RegCompassR:::.rc_corda2_compact_maximum_result(maximum)
+
+  expect_named(compact, c("answer", "vmax", "opposite"))
+  expect_named(
+    compact$answer,
+    c("status", "objective", "backend", "solver_message")
+  )
+  expect_identical(compact$answer$status, maximum$answer$status)
+  expect_identical(compact$answer$objective, maximum$answer$objective)
+  expect_identical(compact$vmax, maximum$vmax)
+  expect_identical(compact$opposite, maximum$opposite)
+  expect_null(compact$answer$solution)
+  expect_null(compact$lower)
+  expect_null(compact$upper)
+  expect_null(compact$engine)
+  expect_lt(
+    as.numeric(utils::object.size(compact)),
+    as.numeric(utils::object.size(maximum)) / 100
+  )
+})
+
+test_that("CORDA2 stage task tuning matches the actual chunk count", {
+  skip_if_not_installed("BiocParallel")
+  param <- BiocParallel::SnowParam(
+    workers = 2L, type = "SOCK", progressbar = FALSE
+  )
+  previous <- RegCompassR:::.rc_layer2_enter_parallel_context(TRUE, param)
+  on.exit(RegCompassR:::.rc_layer2_restore_parallel_context(previous), add = TRUE)
+
+  tuned <- RegCompassR:::.rc_corda_stage_param(20L)
+  on.exit(RegCompassR:::.rc_corda_stage_stop_started_template(tuned), add = TRUE)
+
+  expect_equal(attr(tuned, "regcompass_corda2_stage_workers"), 2L)
+  expect_equal(attr(tuned, "regcompass_corda2_stage_tasks"), 8L)
+  expect_equal(attr(tuned, "regcompass_layer2_dynamic_tasks"), 8L)
+  expect_equal(BiocParallel::bptasks(tuned), 8L)
+})
