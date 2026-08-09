@@ -349,7 +349,7 @@
     pando_initiate_args = list(exclude_exons = TRUE),
     pando_motif_args = list(),
     pando_infer_args = list(
-      tf_cor = 0.1, peak_cor = 0, adjust_method = "BH",
+      tf_cor = 0.1, peak_cor = 0.05, adjust_method = "BH",
       padj_threshold = 0.05, rank_action = "mark",
       min_residual_df = 1L
     ),
@@ -378,7 +378,7 @@
     )
   }
   pando_infer_args <- utils::modifyList(list(
-    tf_cor = 0.1, peak_cor = 0, adjust_method = "BH",
+    tf_cor = 0.1, peak_cor = 0.05, adjust_method = "BH",
     padj_threshold = 0.05, rank_action = "mark", min_residual_df = 1L,
     rna_layer = "data", peak_layer = "data",
     peak_value_type = "normalized"

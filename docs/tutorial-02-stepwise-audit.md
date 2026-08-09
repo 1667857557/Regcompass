@@ -37,7 +37,7 @@ step1 <- rc_regcompass_step_grn(
     min_cells = 300L,
     pando_infer_args = list(
       tf_cor = 0.1,
-      peak_cor = 0,
+      peak_cor = 0.05,
       adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
@@ -48,7 +48,7 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-A cell type with at least two retained conditions uses the common-dictionary condition GRN. RegCompass initializes a separate Pando object for each broad cell type, parallelizes the pooled-background and per-condition candidate-discovery jobs, waits at a strict barrier, unions exact `(target, TF, region)` triples into one frozen dictionary for that cell type, and only then parallelizes the condition × cell-type fixed-dictionary Gaussian identity GLMs. Different cell types never share or merge Pando peak/motif feature spaces. The main workflow uses `tf_cor = 0.1` and `peak_cor = 0` for candidate discovery. Final condition edges are active when they are estimable and have BH-adjusted `padj < 0.05`; no second post-fit coefficient-size, correlation, or model-R² gate is applied.
+A cell type with at least two retained conditions uses the common-dictionary condition GRN. RegCompass initializes a separate Pando object for each broad cell type, parallelizes the pooled-background and per-condition candidate-discovery jobs, waits at a strict barrier, unions exact `(target, TF, region)` triples into one frozen dictionary for that cell type, and only then parallelizes the condition × cell-type fixed-dictionary Gaussian identity GLMs. Different cell types never share or merge Pando peak/motif feature spaces. The main workflow uses `tf_cor = 0.1` and `peak_cor = 0.05` for candidate discovery. Final condition edges are active when they are estimable and have BH-adjusted `padj < 0.05`; no second post-fit coefficient-size, correlation, or model-R² gate is applied.
 
 A cell type with one retained condition uses standard Pando. Standard Pando is parallelized across broad cell types, and each individual Pando fit is kept single-process to avoid nested oversubscription. The requested `tf_cor` is a biological floor and RegCompass computes an additional sample-size floor from the exact two-sided Pearson correlation test,
 
