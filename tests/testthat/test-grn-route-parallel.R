@@ -1,3 +1,15 @@
+test_that("Pando routing defaults peak_cor to 0.05", {
+  routed <- .rc_route_pando_infer_args(
+    list(),
+    condition_types = character(),
+    standard_types = "T_cell"
+  )
+
+  expect_equal(routed$standard$tf_cor, 0.1)
+  expect_equal(routed$standard$peak_cor, 0.05)
+  expect_equal(routed$standard$adjust_method, "BH")
+})
+
 test_that("single-condition standard Pando drops condition-only controls", {
   routed <- .rc_route_pando_infer_args(
     list(
