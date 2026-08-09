@@ -42,18 +42,27 @@ recreated; only reaction-specific memory is discarded between tasks.
 
 ## Stage 1 penalty-entry contract
 
-A TF-peak-gene edge enters regulatory penalty projection only when all conditions
-below hold:
+Condition-GRN and standard-Pando candidate screening are kept separate from the
+post-fit penalty-entry decision.
+
+For a common-dictionary condition GRN, `tf_cor` and `peak_cor` act during
+candidate discovery. After the same frozen dictionary has been fitted in every
+condition, a TF-peak-gene coefficient enters regulatory penalty projection only
+when:
 
 - the coefficient is estimable;
 - BH-adjusted `padj < 0.05`;
-- `abs(corr) >= 0.05`;
-- `abs(estimate) >= 0.05`.
+- the fitted estimate is finite.
 
-For standard Pando, `corr` is the coefficient-table TF-target correlation. For a
-common-dictionary condition fit that does not expose a coefficient-level `corr`,
-RegCompass uses the dictionary's audited `max_abs_tf_target_cor` and records the
-source in `corr_source`.
+There is no second post-fit `abs(corr)` or raw `abs(estimate)` cutoff. The stored
+`penalty_effect` is the fitted condition coefficient for eligible edges and zero
+otherwise. The retained correlation/estimate threshold provenance constants are
+zero and indicate that no additional post-fit effect-size gate is applied.
+
+For standard Pando, the requested `tf_cor` is a candidate-screening floor and may
+be raised by the sample-size-aware Pearson critical-correlation floor. Its
+post-fit active-edge filter likewise uses adjusted `P < 0.05` and estimability
+when available, rather than a second fixed raw effect-size threshold.
 
 Pando compatibility is checked from required exported APIs and data contracts,
 not from a package-version floor.
