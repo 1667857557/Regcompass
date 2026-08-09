@@ -1,0 +1,66 @@
+name: Rank-deficient penalty contract
+
+on:
+  pull_request:
+  push:
+    branches: [Main]
+
+permissions:
+  contents: read
+
+jobs:
+  contract:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+      - name: Verify rank-deficient targets cannot enter penalty
+        shell: Rscript {0}
+        run: |
+          .rc_standard_pando_padj_fixed <- 0.05
+          .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
+          source("R/condition_penalty_contract.R")
+
+          coefficient <- data.frame(
+            estimate = c(1, 1, 1, 1),
+            padj = c(0.01, 0.01, 0.01, 0.01),
+            estimable = c(TRUE, TRUE, TRUE, TRUE),
+            fit_status = c(
+              "ok", "rank_deficient", "insufficient_df", "failed"
+            ),
+            stringsAsFactors = FALSE
+          )
+          stopifnot(identical(
+            .rc_condition_penalty_gate(coefficient),
+            c(TRUE, FALSE, FALSE, FALSE)
+          ))
+
+          coefficient <- data.frame(
+            target = c("G", "G"),
+            condition = c("A", "B"),
+            estimate = c(0.8, -0.7),
+            padj = c(0.01, 0.01),
+            estimable = TRUE,
+            stringsAsFactors = FALSE
+          )
+          fit <- list(
+            coefficients = coefficient,
+            fit = data.frame(
+              target = c("G", "G"),
+              condition = c("A", "B"),
+              fit_status = c("rank_deficient", "ok"),
+              stringsAsFactors = FALSE
+            )
+          )
+          gated <- .rc_apply_condition_penalty_gate(fit)
+          stopifnot(
+            identical(gated$coefficients$fit_status,
+                      c("rank_deficient", "ok")),
+            identical(gated$coefficients$significant, c(FALSE, TRUE)),
+            identical(as.numeric(gated$coefficients$penalty_effect), c(0, -0.7)),
+            identical(gated$regcompass_rank_deficient_policy,
+                      "exclude_from_penalty")
+          )
