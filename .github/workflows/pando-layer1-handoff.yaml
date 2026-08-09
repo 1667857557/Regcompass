@@ -88,7 +88,7 @@ jobs:
               'expected_filter <- "estimable & BH padj < 0.05"',
               "Pando::validate_condition_grn_projection_membership",
               "Pando::aggregate_condition_grn_projection",
-              ".rc_validate_pando_fit_metadata_frame",
+              ".rc_validate_pando_fit_metadata_frame <- function",
               "aggregation_contract = \"all_projected_cells_have_exact_membership\"",
               "origin = \"paired_cell_fixed_dictionary_glm_bh_filtered\"",
               "projection_name = \"bh_filtered_fixed_dictionary_condition_glm\"",
