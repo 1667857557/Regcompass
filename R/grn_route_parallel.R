@@ -88,7 +88,7 @@
   condition_args <- args[intersect(names(args), condition_allowed)]
   condition_args <- utils::modifyList(list(
     tf_cor = 0.1,
-    peak_cor = 0,
+    peak_cor = 0.05,
     adjust_method = "BH",
     padj_threshold = 0.05,
     rank_action = "mark",
@@ -107,7 +107,7 @@
   standard_args <- args[intersect(names(args), standard_allowed)]
   standard_args <- utils::modifyList(list(
     tf_cor = 0.1,
-    peak_cor = 0,
+    peak_cor = 0.05,
     adjust_method = "BH"
   ), standard_args)
 
