@@ -5,49 +5,50 @@ Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut",
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
 Description: Integrates paired single-cell RNA and ATAC regulatory evidence
-    with genome-scale metabolic reaction analysis. Stage 1 fixes min_cells at
-    300 and applies the same cell set before normalization and downstream
-    metacell construction. Routing is resolved independently for every broad
-    cell type. A cell type with at least two retained conditions uses the
-    common-dictionary Pando condition-GRN procedure: candidate edges are
-    discovered on the complete cell type and separately in every retained
-    condition, exact TF-peak-target triples are unioned into one frozen
-    dictionary, and every condition is refitted with the same unscaled Gaussian
-    identity Pando interaction model. Only estimable coefficients with
-    BH-adjusted P below 0.05 from target fits whose fit_status is exactly ok
-    enter the condition regulatory penalty; rank-deficient target fits remain
-    auditable but contribute zero regulatory penalty. A cell type with one
-    retained condition uses the original standard Pando GRN and creates no
-    condition coefficient. Standard Pando applies a sample-size-aware
-    TF-correlation candidate screen while retaining the requested tf_cor as a
-    biological floor. RegCompass owns the parallel scheduler. Condition-mode
-    Pando objects are initialized independently by broad cell type, pooled and
-    condition-by-cell-type candidate-discovery tasks run within the single
-    worker budget, exact dictionaries are frozen at a strict cell-type barrier,
-    and condition-by-cell-type fixed-dictionary GLMs are then dispatched with
-    nested Pando target parallelism disabled. Different cell types retain their
-    own Pando objects and local peak/motif feature spaces. Standard Pando is
-    parallelized only across independent broad cell types. Paired-cell TF-by-ATAC
-    regulatory effects are projected before exact SuperCell aggregation.
-    Metacells use one multimodal WNN graph per broad cell type and remain
-    condition-pure after membership splitting. Optional raw ATAC fragment files
-    are aggregated to final metacell barcodes and recounted before metacell
-    TF-IDF. RNA support, regulatory effects, GPR rules, cell-type-specific union
-    GEM construction and directional penalties use consistent reaction ordering,
-    bounds and medium scenarios. Stage 5 uses the original MATLAB CORDA2
-    algorithm from schultzdre/Constraint-Based-Modeling/CORDA2.m as the default
-    context-specific completion after mapping cell-type multiome evidence to HC,
-    MC, NC and OT reactions. FASTCORE and complete full-GEM scoring remain
-    explicit supplementary routes. The adjustable original controls are
-    MCxNCthresh, constraint, constrainby, om and ci under corda2_args. Actively
-    reversible reactions are split once, the opposite directional copy is
-    closed during each target assessment, and the original Step 1, Step 2.1,
-    Step 2.2 and Step 3 dependency transitions are preserved. With parallel
-    Layer 2 execution, directional targets are parallelized only within the
-    current CORDA2 step, all results are reduced in original directional order
-    at a strict step barrier, and the step-local worker pool is released before
-    the next step begins. Cell-type-by-medium models remain independent and are
-    reused by primary and RNA-only scoring.
+    with genome-scale metabolic reaction analysis. Stage 1 applies a configurable
+    min_cells threshold before normalization, with a default of 500, and passes
+    the same retained cell set to downstream metacell construction. Stage 2 uses
+    a configurable min_cells_per_stratum threshold that also defaults to 500.
+    Routing is resolved independently for every broad cell type. A cell type
+    with at least two retained conditions uses the common-dictionary Pando
+    condition-GRN procedure: candidate edges are discovered on the complete cell
+    type and separately in every retained condition, exact TF-peak-target triples
+    are unioned into one frozen dictionary, and every condition is refitted with
+    the same unscaled Gaussian identity Pando interaction model. Only estimable
+    coefficients with BH-adjusted P below 0.05 from target fits whose fit_status
+    is exactly ok enter the condition regulatory penalty; rank-deficient target
+    fits remain auditable but contribute zero regulatory penalty. A cell type
+    with one retained condition uses the original standard Pando GRN and creates
+    no condition coefficient. Standard Pando uses the configured fixed tf_cor
+    and peak_cor candidate thresholds without cell-count-dependent adjustment.
+    RegCompass owns the parallel scheduler. Condition-mode Pando objects are
+    initialized independently by broad cell type, pooled and condition-by-cell-
+    type candidate-discovery tasks run within the single worker budget, exact
+    dictionaries are frozen at a strict cell-type barrier, and condition-by-cell-
+    type fixed-dictionary GLMs are then dispatched with nested Pando target
+    parallelism disabled. Different cell types retain their own Pando objects and
+    local peak/motif feature spaces. Standard Pando is parallelized only across
+    independent broad cell types. Paired-cell TF-by-ATAC regulatory effects are
+    projected before exact SuperCell aggregation. Metacells use one multimodal
+    WNN graph per broad cell type and remain condition-pure after membership
+    splitting. Optional raw ATAC fragment files are aggregated to final metacell
+    barcodes and recounted before metacell TF-IDF. RNA support, regulatory
+    effects, GPR rules, cell-type-specific union GEM construction and directional
+    penalties use consistent reaction ordering, bounds and medium scenarios.
+    Stage 5 uses the original MATLAB CORDA2 algorithm from
+    schultzdre/Constraint-Based-Modeling/CORDA2.m as the default context-specific
+    completion after mapping cell-type multiome evidence to HC, MC, NC and OT
+    reactions. FASTCORE and complete full-GEM scoring remain explicit
+    supplementary routes. The adjustable original controls are MCxNCthresh,
+    constraint, constrainby, om and ci under corda2_args. Actively reversible
+    reactions are split once, the opposite directional copy is closed during each
+    target assessment, and the original Step 1, Step 2.1, Step 2.2 and Step 3
+    dependency transitions are preserved. With parallel Layer 2 execution,
+    directional targets are parallelized only within the current CORDA2 step, all
+    results are reduced in original directional order at a strict step barrier,
+    and the step-local worker pool is released before the next step begins.
+    Cell-type-by-medium models remain independent and are reused by primary and
+    RNA-only scoring.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
