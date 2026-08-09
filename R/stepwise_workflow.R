@@ -133,6 +133,9 @@ rc_regcompass_step_metacells <- function(
   fragment_args$workers <- worker_limit
   metacell_core_args <- metacell_args
   metacell_core_args$fragment_args <- NULL
+  if (is.null(metacell_core_args$min_cells_per_stratum)) {
+    metacell_core_args$min_cells_per_stratum <- 500L
+  }
 
   n_input <- ncol(object)
   if (is.null(grn)) {
@@ -141,7 +144,7 @@ rc_regcompass_step_metacells <- function(
       condition_col = condition_col,
       celltype_col = celltype_col,
       cell_type = cell_type,
-      pando_args = list(min_cells = .rc_stage1_min_cells_fixed)
+      pando_args = list(min_cells = .rc_stage1_min_cells_default)
     )
     contract <- list(
       source = "independent_stage1_filter_reapplication",
