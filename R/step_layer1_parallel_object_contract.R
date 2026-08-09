@@ -1,5 +1,58 @@
 # Route Layer 1 projection to the exact per-cell-type Pando object.
 
+.rc_validate_pando_fit_metadata_frame <- function(
+    metadata, fits, condition_col, celltype_col) {
+  if (!is.data.frame(metadata) ||
+      !all(c(condition_col, celltype_col) %in% colnames(metadata)) ||
+      is.null(rownames(metadata)) || anyNA(rownames(metadata)) ||
+      any(!nzchar(rownames(metadata))) || anyDuplicated(rownames(metadata))) {
+    stop("Pando object metadata cannot validate condition fit cell mappings.",
+         call. = FALSE)
+  }
+  if (inherits(fits, "ConditionGRNFit")) fits <- list(fits)
+  if (!is.list(fits) || !length(fits)) {
+    stop("No Pando condition fits are available for metadata validation.",
+         call. = FALSE)
+  }
+  for (fit in fits) {
+    if (!identical(as.character(fit$condition_col), condition_col) ||
+        !identical(as.character(fit$cell_type_col), celltype_col)) {
+      stop(
+        "Pando fit metadata columns do not match the RegCompass request: ",
+        "fit condition_col='", as.character(fit$condition_col),
+        "', cell_type_col='", as.character(fit$cell_type_col),
+        "'; requested condition_col='", condition_col,
+        "', cell_type_col='", celltype_col, "'.",
+        call. = FALSE
+      )
+    }
+    levels <- as.character(fit$condition_levels)
+    cells_by_condition <- fit$condition_cell_ids[levels]
+    for (condition in levels) {
+      cells <- as.character(cells_by_condition[[condition]])
+      missing <- setdiff(cells, rownames(metadata))
+      if (length(missing)) {
+        stop(
+          "Pando fit references cells absent from its stored object; first ",
+          "missing ID: ", missing[[1L]], ".", call. = FALSE
+        )
+      }
+      observed_condition <- as.character(metadata[cells, condition_col])
+      observed_celltype <- as.character(metadata[cells, celltype_col])
+      if (anyNA(observed_condition) || anyNA(observed_celltype) ||
+          any(observed_condition != condition) ||
+          any(observed_celltype != as.character(fit$cell_type))) {
+        stop(
+          "Pando fit cell assignments disagree with stored object metadata ",
+          "for cell type '", as.character(fit$cell_type),
+          "' and condition '", condition, "'.", call. = FALSE
+        )
+      }
+    }
+  }
+  invisible(TRUE)
+}
+
 .rc_require_layer1_condition_grn_fit <- function(fit) {
   if (is.null(fit$regcompass_penalty_filter)) {
     .rc_require_pando_condition_grn_fit(fit)
