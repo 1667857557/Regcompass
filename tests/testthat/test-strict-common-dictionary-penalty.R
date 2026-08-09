@@ -8,6 +8,7 @@
     candidate_index = 1:2,
     stringsAsFactors = FALSE
   )
+  attr(edge, "preprocessing_provenance_verified") <- TRUE
   pval <- c(0.001, 0.9, 0.02, 0.8)
   condition <- rep(c("A", "B"), each = 2L)
   padj <- unlist(lapply(split(pval, condition), stats::p.adjust,
@@ -61,7 +62,7 @@
     peak_layer = "data",
     peak_value_type = "normalized",
     preprocessing_fingerprint = "fixture-preprocessing",
-    dictionary_preprocessing_provenance_verified = TRUE
+    target_genes = "G"
   ), class = c("ConditionGRNFit", "list"))
 }
 
@@ -92,33 +93,44 @@ test_that("significance and penalty effect are exactly estimable BH padj below 0
   )
 })
 
-test_that("Layer 1 validates RegCompass-gated fits against both contracts", {
+test_that("Layer 1 validates the BH-only RegCompass condition gate", {
   fit <- .strict_fit_fixture()
   fit$coefficients$estimate[[1L]] <- 0.01
   fit$coefficients$statistic[[1L]] <- 0.1
   fit$coefficients$penalty_effect[[1L]] <- 0.01
-  fit$coefficients$corr <- 0.2
+  fit$coefficients$corr <- 0.001
 
   gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
-  expect_false(gated$coefficients$significant[[1L]])
-  expect_equal(gated$coefficients$penalty_effect[[1L]], 0)
-  expect_error(
-    RegCompassR:::.rc_require_pando_condition_grn_fit(gated),
-    "significant-edge flags"
+  expect_true(gated$coefficients$significant[[1L]])
+  expect_equal(gated$coefficients$penalty_effect[[1L]], 0.01)
+  expect_identical(
+    gated$regcompass_penalty_filter,
+    "estimable & BH padj < 0.05"
+  )
+  expect_invisible(
+    RegCompassR:::.rc_require_pando_condition_grn_fit(gated)
   )
   expect_invisible(
     RegCompassR:::.rc_require_layer1_condition_grn_fit(gated)
   )
 
+  stale_metadata <- gated
+  stale_metadata$regcompass_penalty_filter <-
+    "estimable & BH padj < 0.05 & abs(corr) >= 0.05 & abs(estimate) >= 0.05"
+  expect_error(
+    RegCompassR:::.rc_require_layer1_condition_grn_fit(stale_metadata),
+    "penalty gate metadata are inconsistent"
+  )
+
   wrong_flag <- gated
-  wrong_flag$coefficients$significant[[1L]] <- TRUE
+  wrong_flag$coefficients$significant[[1L]] <- FALSE
   expect_error(
     RegCompassR:::.rc_require_layer1_condition_grn_fit(wrong_flag),
     "RegCompass-gated significant-edge flags"
   )
 
   wrong_effect <- gated
-  wrong_effect$coefficients$penalty_effect[[1L]] <- 0.01
+  wrong_effect$coefficients$penalty_effect[[1L]] <- 0
   expect_error(
     RegCompassR:::.rc_require_layer1_condition_grn_fit(wrong_effect),
     "RegCompass-gated penalty_effect"

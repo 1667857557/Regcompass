@@ -85,15 +85,31 @@ jobs:
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           required = [
+              'expected_filter <- "estimable & BH padj < 0.05"',
               "Pando::validate_condition_grn_projection_membership",
               "Pando::aggregate_condition_grn_projection",
               ".rc_validate_pando_fit_metadata_frame",
               "aggregation_contract = \"all_projected_cells_have_exact_membership\"",
+              "origin = \"paired_cell_fixed_dictionary_glm_bh_filtered\"",
+              "projection_name = \"bh_filtered_fixed_dictionary_condition_glm\"",
               "unique cell-type set.",
           ]
           missing = [value for value in required if value not in layer1]
           if missing:
               raise RuntimeError(f"Layer 1 canonical handoff missing: {missing}")
+          forbidden_layer1 = [
+              "abs(corr) >= 0.05",
+              "abs(estimate) >= 0.05",
+              "regcompass_corr_threshold",
+              "regcompass_estimate_threshold",
+              "padj_corr_effect_filtered_fixed_dictionary_condition_glm",
+              "paired_cell_fixed_dictionary_glm_padj_corr_effect_filtered",
+          ]
+          present = [value for value in forbidden_layer1 if value in layer1]
+          if present:
+              raise RuntimeError(
+                  f"Layer 1 reintroduced obsolete post-fit gate metadata: {present}"
+              )
 
           merge = Path("R/grn_parallel_merge_contract.R").read_text()
           required_merge = [

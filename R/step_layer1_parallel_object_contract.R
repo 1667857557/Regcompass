@@ -6,25 +6,10 @@
     return(invisible(TRUE))
   }
 
-  expected_filter <-
-    "estimable & BH padj < 0.05 & abs(corr) >= 0.05 & abs(estimate) >= 0.05"
+  expected_filter <- "estimable & BH padj < 0.05"
   filter_value <- as.character(fit$regcompass_penalty_filter)
-  corr_threshold <- suppressWarnings(as.numeric(
-    fit$regcompass_corr_threshold
-  ))
-  estimate_threshold <- suppressWarnings(as.numeric(
-    fit$regcompass_estimate_threshold
-  ))
   if (length(filter_value) != 1L || is.na(filter_value) ||
-      !identical(filter_value, expected_filter) ||
-      length(corr_threshold) != 1L ||
-      !isTRUE(all.equal(
-        corr_threshold, .RC_PANDO_PENALTY_CORR_THRESHOLD
-      )) ||
-      length(estimate_threshold) != 1L ||
-      !isTRUE(all.equal(
-        estimate_threshold, .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD
-      ))) {
+      !identical(filter_value, expected_filter)) {
     stop(
       "RegCompass condition-GRN penalty gate metadata are inconsistent.",
       call. = FALSE
@@ -209,10 +194,9 @@
     projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_fixed_dictionary_glm_padj_corr_effect_filtered",
+    origin = "paired_cell_fixed_dictionary_glm_bh_filtered",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    projection_name =
-      "padj_corr_effect_filtered_fixed_dictionary_condition_glm",
+    projection_name = "bh_filtered_fixed_dictionary_condition_glm",
     nonestimable_policy =
       "coefficient_NA_and_zero_realized_penalty_contribution"
   )
