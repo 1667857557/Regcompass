@@ -20,7 +20,7 @@ Use a paired-cell Seurat object containing:
 - genome-compatible peak coordinates;
 - an optional condition column.
 
-Stage 1 keeps groups meeting `pando_args$min_cells` (300 by default). A cell type with at least two retained conditions uses common-dictionary condition GRNs; otherwise it uses standard Pando.
+Stage 1 keeps groups meeting `pando_args$min_cells`, which defaults to `500L` and may be changed by the user. Stage 2 uses `metacell_args$min_cells_per_stratum = 500L` by default and also accepts an explicit user value. A cell type with at least two retained conditions uses common-dictionary condition GRNs; otherwise it uses standard Pando.
 
 ## Workflow
 
@@ -74,7 +74,7 @@ result <- rc_run_regcompass_one_shot(
   condition_col = "condition",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 300L,
+    min_cells = 500L,
     pando_infer_args = list(
       tf_cor = 0.1,
       peak_cor = 0.05,
@@ -84,9 +84,14 @@ result <- rc_run_regcompass_one_shot(
       min_residual_df = 1L
     )
   ),
+  metacell_args = list(
+    min_cells_per_stratum = 500L
+  ),
   workers = 10L
 )
 ```
+
+Both cell-count thresholds above are defaults rather than hard constraints. For example, `min_cells = 300L` and `min_cells_per_stratum = 300L` are accepted when a smaller retained stratum is intentional.
 
 `workers` is the only workflow-level parallel setting. The default is `10L`. RegCompass automatically selects `SnowParam(type = "SOCK")` on Windows and `MulticoreParam` on Linux/macOS; the effective cap is `min(workers, max(1, detected logical CPUs - 2))` and each dispatch shrinks further to its number of independent jobs.
 
