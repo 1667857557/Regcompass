@@ -17,7 +17,8 @@ test_that("quantitative Pando correction preserves latent-CPM scale", {
   expected_modifier[!is.finite(expected_modifier)] <- 0
   expected <- rna * 2^expected_modifier
 
-  expect_equal(out, expected, ignore_attr = TRUE)
+  expect_equal(as.numeric(out), as.numeric(expected))
+  expect_identical(dimnames(out), dimnames(expected))
   expect_equal(out["g1", "u1"], 0)
   expect_gt(out["g2", "u2"], 1)
   expect_identical(
