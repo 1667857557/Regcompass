@@ -202,8 +202,8 @@
       fitted_estimate_role =
         "stored for inference/audit and sign; absolute magnitude not used for penalty",
       projection = paste(
-        "sign-only self-scaled paired-cell TF-by-ATAC activity before exact",
-        "SuperCell aggregation"
+        "mean signed self-scaled paired-cell TF-by-ATAC activity over active",
+        "target edges before exact SuperCell aggregation"
       )
     ),
     group_cols = c(condition_col, celltype_col)
@@ -223,6 +223,76 @@
   )
   saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
   answer
+}
+
+.rc_sign_only_target_degree <- function(
+    grn_result, unit_meta, genes, condition_col, celltype_col) {
+  genes <- as.character(genes)
+  units <- as.character(unit_meta$unit_id)
+  degree <- matrix(
+    NA_real_, length(genes), length(units),
+    dimnames = list(genes, units)
+  )
+  edge <- grn_result$tf_peak_gene_condition
+  required <- c("target", condition_col, celltype_col)
+  if (!is.data.frame(edge) || !nrow(edge)) return(degree)
+  if (!all(required %in% colnames(edge))) {
+    stop(
+      "Sign-only target-degree normalization requires target, condition and ",
+      "cell-type columns on active Pando edges.", call. = FALSE
+    )
+  }
+  if (!all(c("unit_id", condition_col, celltype_col) %in% colnames(unit_meta))) {
+    stop(
+      "Sign-only target-degree normalization requires aligned metacell metadata.",
+      call. = FALSE
+    )
+  }
+
+  edge_target <- tolower(trimws(as.character(edge$target)))
+  edge_condition <- as.character(edge[[condition_col]])
+  edge_celltype <- as.character(edge[[celltype_col]])
+  unit_condition <- as.character(unit_meta[[condition_col]])
+  unit_celltype <- as.character(unit_meta[[celltype_col]])
+
+  strata <- unique(data.frame(
+    condition = unit_condition,
+    cell_type = unit_celltype,
+    stringsAsFactors = FALSE
+  ))
+  for (i in seq_len(nrow(strata))) {
+    condition <- strata$condition[[i]]
+    cell_type <- strata$cell_type[[i]]
+    selected_units <- units[
+      unit_condition == condition & unit_celltype == cell_type
+    ]
+    selected_edges <-
+      edge_condition == condition & edge_celltype == cell_type
+    if (!length(selected_units) || !any(selected_edges)) next
+
+    counts <- table(edge_target[selected_edges])
+    targets <- intersect(names(counts), rownames(degree))
+    if (!length(targets)) next
+    degree[targets, selected_units] <- matrix(
+      as.numeric(counts[targets]),
+      nrow = length(targets), ncol = length(selected_units)
+    )
+  }
+  degree
+}
+
+.rc_average_sign_only_projection <- function(projection, degree) {
+  projection <- as.matrix(projection)
+  degree <- as.matrix(degree)
+  if (!identical(dimnames(projection), dimnames(degree))) {
+    stop(
+      "Sign-only projection and target active-edge degree must align exactly.",
+      call. = FALSE
+    )
+  }
+  valid <- is.finite(projection) & is.finite(degree) & degree > 0
+  projection[valid] <- projection[valid] / degree[valid]
+  projection
 }
 
 .rc_project_pando_by_celltype <- function(
@@ -273,6 +343,16 @@
     policies <- c(policies, "not_applicable_standard_pando")
   }
   if (!length(origins)) stop("No Pando projection route is available.", call. = FALSE)
+
+  target_degree <- .rc_sign_only_target_degree(
+    grn_result = grn_result,
+    unit_meta = unit_meta,
+    genes = genes,
+    condition_col = condition_col,
+    celltype_col = celltype_col
+  )
+  projection <- .rc_average_sign_only_projection(projection, target_degree)
+
   list(
     projection = projection,
     reliability = reliability,
@@ -281,6 +361,8 @@
     pando_schema = paste(unique(schemas), collapse = ";"),
     projection_name = paste(unique(projection_names), collapse = ";"),
     nonestimable_policy = paste(unique(policies), collapse = ";"),
+    target_active_edge_degree = target_degree,
+    target_edge_combination = "mean_signed_active_edge_activity",
     estimate_magnitude_used_for_penalty = FALSE,
     condition_coefficients_calculated =
       length(grn_result$condition_grn_fits) > 0L,
