@@ -71,22 +71,26 @@ rc_compute_multiome_penalty <- function(
         !matrix(override, nrow(E), ncol(E)),
       observed_zero_expression_flag = expression_observed & E_effective <= 0
     ),
-    evidence_policy = "penalty_only",
+    evidence_policy = "quantitative_penalty_only",
     evidence_policy_detail = paste(
-      "GPR expression uses complete AND branches and additive OR branches;",
-      "unavailable final reaction expression is set to zero before penalty conversion"
+      "Layer 2 supplies unbounded quantitative reaction expression obtained",
+      "from latent CPM after the bounded 2^R Pando multiplier and GPR aggregation;",
+      "the bounded gene/reaction support matrices are reserved for CORDA2 and",
+      "other structural-confidence decisions"
     ),
     missing_expression_policy = "compass_missing_expression_max_penalty",
     structural_reaction_policy =
       "compass_maximum_expression_penalty_for_all_structural_roles",
-    penalty_version = "compass_gpr_missing_zero_penalty_v4",
+    penalty_version = "compass_quantitative_expression_penalty_v5",
     evidence_description = paste(
-      "RNA and Pando regulatory evidence are integrated into gene support before",
-      "GPR aggregation. All reactions use the COMPASS cost scale",
-      "1/(1+log2(1+E)); missing E and structural reactions receive cost 1."
+      "The quantitative LP route applies Pando as X_multiome=X_RNA*2^R on",
+      "latent CPM before GPR aggregation. Reaction expression then enters the",
+      "COMPASS cost scale 1/(1+log2(1+E)). Bounded structural support is not",
+      "used as the LP reaction-expression value. Missing E and structural",
+      "reaction roles receive cost 1."
     ),
     penalty_formula = paste(
-      "P=1/(1+log2(1+pmax(E,0))); nonfinite E:=0, hence P:=1;",
+      "P=1/(1+log2(1+pmax(E_quantitative,0))); nonfinite E:=0, hence P:=1;",
       "exchange, demand, sink and artificial_support use P:=1"
     )
   )
