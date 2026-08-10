@@ -30,11 +30,12 @@ jobs:
           route = Path("R/grn_route_parallel.R").read_text()
           required_route = [
               'getNamespaceExports("Pando")',
-              '"validate_condition_grn_projection_membership"',
-              '"aggregate_condition_grn_projection"',
+              '"condition_grn_fit"',
               '"discover_grn_edges"',
               '"union_grn_edges"',
               '"fit_grn_from_edges"',
+              '"GetNetwork"',
+              '"gof"',
               "Unsupported override(s)",
           ]
           missing = [value for value in required_route if value not in route]
