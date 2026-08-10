@@ -84,6 +84,51 @@ test_that("sign-only contribution changes only when direction changes", {
   expect_equal(negative, -positive_small)
 })
 
+test_that("target edge degree is averaged rather than summed", {
+  projection <- matrix(
+    c(1.2, -0.6), nrow = 1,
+    dimnames = list("g1", c("mc1", "mc2"))
+  )
+  degree <- matrix(
+    c(3, 3), nrow = 1,
+    dimnames = dimnames(projection)
+  )
+
+  averaged <- .rc_average_sign_only_projection(projection, degree)
+  expect_equal(averaged, projection / 3)
+  expect_true(all(abs(averaged) <= 1))
+})
+
+test_that("active target degree follows condition and cell type", {
+  grn <- list(
+    tf_peak_gene_condition = data.frame(
+      target = c("G1", "G1", "G1", "G2"),
+      condition = c("A", "A", "B", "A"),
+      cell_type = c("T", "T", "T", "T"),
+      stringsAsFactors = FALSE
+    )
+  )
+  unit_meta <- data.frame(
+    unit_id = c("a1", "a2", "b1"),
+    condition = c("A", "A", "B"),
+    cell_type = "T",
+    stringsAsFactors = FALSE
+  )
+
+  degree <- .rc_sign_only_target_degree(
+    grn_result = grn,
+    unit_meta = unit_meta,
+    genes = c("g1", "g2"),
+    condition_col = "condition",
+    celltype_col = "cell_type"
+  )
+
+  expect_equal(as.numeric(degree["g1", c("a1", "a2")]), c(2, 2))
+  expect_equal(degree["g1", "b1"], 1)
+  expect_equal(as.numeric(degree["g2", c("a1", "a2")]), c(1, 1))
+  expect_true(is.na(degree["g2", "b1"]))
+})
+
 test_that("Layer 1 routes both Pando modes through sign-only projections", {
   route <- paste(deparse(body(.rc_project_pando_by_celltype)), collapse = "\n")
 
@@ -93,6 +138,8 @@ test_that("Layer 1 routes both Pando modes through sign-only projections", {
   expect_match(
     route, ".rc_standard_pando_projection_sign_only", fixed = TRUE
   )
+  expect_match(route, ".rc_sign_only_target_degree", fixed = TRUE)
+  expect_match(route, ".rc_average_sign_only_projection", fixed = TRUE)
   expect_match(
     route, "estimate_magnitude_used_for_penalty = FALSE", fixed = TRUE
   )
