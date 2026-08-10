@@ -230,34 +230,21 @@
   maximum
 }
 
+# Merge CORDA2 directional selections back to reactions. A reaction is retained
+# when either split direction survives reconstruction, then its original
+# medium-constrained parent bounds are restored. Thus a reversible parent
+# reaction remains reversible even if CORDA2 selected only one split copy;
+# irreversible parent reactions remain irreversible.
 .rc_corda2_apply_direction_bounds <- function(parent, included_variables, split) {
   validated <- rc_validate_gem(parent)
-  included_variables <- unique(as.character(included_variables))
+  included_variables <- intersect(
+    unique(as.character(included_variables)), split$variable_order
+  )
   selected_reactions <- unique(as.character(
     split$variable_to_reaction[included_variables]
   ))
   selected_reactions <- validated$reactions[
     validated$reactions %in% selected_reactions
   ]
-  output <- .rc_subset_gem(parent, selected_reactions)
-  for (reaction in colnames(output$S)) {
-    variables <- split$direction_table[
-      split$direction_table$reaction_id == reaction, , drop = FALSE
-    ]
-    forward <- variables$variable_id[variables$direction == "forward"]
-    reverse <- variables$variable_id[variables$direction == "reverse"]
-    keep_forward <- length(forward) && forward %in% included_variables
-    keep_reverse <- length(reverse) && reverse %in% included_variables
-    parent_lb <- validated$lb[[reaction]]
-    parent_ub <- validated$ub[[reaction]]
-    output$lb[[reaction]] <- if (keep_reverse) {
-      max(parent_lb, -1000)
-    } else if (keep_forward && parent_lb > 0) {
-      parent_lb
-    } else {
-      0
-    }
-    output$ub[[reaction]] <- if (keep_forward) min(parent_ub, 1000) else 0
-  }
-  output
+  .rc_subset_gem(parent, selected_reactions)
 }
