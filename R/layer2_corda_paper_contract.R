@@ -230,12 +230,13 @@
   maximum
 }
 
-# Merge CORDA2 directional selections back to reactions. A reaction is retained
-# when either split direction survives reconstruction, then its original
-# medium-constrained parent bounds are restored. Thus a reversible parent
-# reaction remains reversible even if CORDA2 selected only one split copy;
-# irreversible parent reactions remain irreversible.
-.rc_corda2_apply_direction_bounds <- function(parent, included_variables, split) {
+# Merge CORDA2 directional selections back to reaction space. A reaction is
+# retained when either split direction survives reconstruction. Required core
+# reactions are retained unconditionally. Every retained reaction restores the
+# original medium-constrained input bounds, so reversible core/support reactions
+# remain reversible and irreversible reactions remain irreversible.
+.rc_corda2_apply_direction_bounds <- function(
+    parent, included_variables, split, core_reactions = character()) {
   validated <- rc_validate_gem(parent)
   included_variables <- intersect(
     unique(as.character(included_variables)), split$variable_order
@@ -243,8 +244,20 @@
   selected_reactions <- unique(as.character(
     split$variable_to_reaction[included_variables]
   ))
-  selected_reactions <- validated$reactions[
-    validated$reactions %in% selected_reactions
+  core_reactions <- unique(trimws(as.character(core_reactions)))
+  core_reactions <- core_reactions[
+    !is.na(core_reactions) & nzchar(core_reactions)
   ]
-  .rc_subset_gem(parent, selected_reactions)
+  missing_core <- setdiff(core_reactions, validated$reactions)
+  if (length(missing_core)) {
+    stop(
+      "Required core reactions are absent from the CORDA2 input GEM: ",
+      paste(utils::head(missing_core, 10L), collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+  retained <- union(selected_reactions, core_reactions)
+  retained <- validated$reactions[validated$reactions %in% retained]
+  .rc_subset_gem(parent, retained)
 }
