@@ -43,47 +43,74 @@ s_{e,g,c}=\mathbf{1}\left\{
 
 No additional post-fit absolute-correlation or absolute-effect-size threshold is applied. Candidate TF and peak correlation filters act upstream during Pando candidate discovery, not as a second coefficient gate.
 
-The effect used for downstream projection is
+Pando coefficient magnitudes are retained in the GRN fit for inference diagnostics and audit, but **absolute coefficient magnitude is not a RegCompass penalty weight**. The downstream signed edge direction is
 
 \[
-\theta_{e,g,c}=
+d_{e,g,c}=
 \begin{cases}
-\widehat\beta_{e,g,c}, & s_{e,g,c}=1,\\
+\operatorname{sign}(\widehat\beta_{e,g,c}), & s_{e,g,c}=1,\\
 0, & s_{e,g,c}=0.
 \end{cases}
 \]
 
-A `rank_deficient` target remains in the complete coefficient and fit-diagnostic tables for audit, but every edge belonging to that target has zero realized RegCompass penalty contribution even when an individual coefficient is finite and its P value would otherwise pass BH. This policy avoids attributing an edge-specific regulatory effect when the complete frozen-dictionary coefficient vector is not uniquely identifiable in that condition. Other non-`ok` target statuses, including insufficient residual degrees of freedom and failed/non-finite fits, are likewise excluded from penalty projection.
+Thus two active positive edges with estimates 0.2 and 2.0 have the same RegCompass directional weight \(+1\); two active negative edges with estimates -0.2 and -2.0 have the same directional weight \(-1\). Estimate magnitude cannot change the Layer-1 penalty projection after the significance/estimability gate.
 
-The Pando source object may retain its original GLM significance fields. RegCompass records the target fit status on the gated coefficient table and applies the stricter `fit_status == "ok"` rule before paired-cell regulatory projection and before active-edge assembly.
+A `rank_deficient` target remains in the complete coefficient and fit-diagnostic tables for audit, but every edge belonging to that target has zero realized RegCompass penalty contribution even when an individual coefficient is finite and its P value would otherwise pass BH. This policy avoids attributing an edge-specific regulatory direction when the complete frozen-dictionary coefficient vector is not uniquely identifiable in that condition. Other non-`ok` target statuses, including insufficient residual degrees of freedom and failed/non-finite fits, are likewise excluded from penalty projection.
 
-## 2. Paired-cell projection and metacell aggregation
+The Pando source object may retain its original GLM coefficient and significance fields. RegCompass records the stricter target fit status and applies `fit_status == "ok"` before signed paired-cell regulatory projection and before active-edge assembly.
 
-For cell \(i\) in condition \(c\), the target-level regulatory score is
+## 2. Sign-only paired-cell projection and metacell aggregation
+
+Removing \(|\widehat\beta|\) also removes the coefficient's automatic compensation for arbitrary predictor units. RegCompass therefore calibrates each TF-by-ATAC predictor using only its own distribution over **all fitted cells of the same broad cell type**, pooled across conditions. This preserves condition comparability while preventing one edge from dominating only because its normalized RNA or ATAC feature has a larger numerical scale.
+
+For edge \(e\) in broad cell type \(t\), define
 
 \[
-G_{i,g,c}=\sum_{e\in E_g^{\cup}}\theta_{e,g,c}x_{e,i}.
+\lambda_{e,t}=\max\left(
+\frac{IQR(x_{e,t})}{1.349},
+MAD_{1.4826}(x_{e,t}),
+\sqrt{mean(x_{e,t}^{2})},
+10^{-6}
+\right),
 \]
 
-For metacell \(u\) with membership set \(M_u\),
+with a neutral scale of 1 when the predictor is identically zero. The bounded paired-cell edge activity is
+
+\[
+a_{e,i}=\tanh\left(\frac{\max(x_{e,i},0)}{\lambda_{e,t(i)}}\right).
+\]
+
+Because both \(x\) and \(\lambda\) multiply by the same positive constant under a change of feature units, \(a_{e,i}\) is invariant to positive rescaling of the raw TF-by-ATAC predictor. It also retains paired-cell co-occurrence because TF and ATAC are multiplied before SuperCell aggregation.
+
+For cell \(i\) in condition \(c\), the target-level sign-only regulatory score is
+
+\[
+G_{i,g,c}=\sum_{e\in E_g^{\cup}}d_{e,g,c}\,a_{e,i}.
+\]
+
+For metacell \(u\) with exact membership set \(M_u\),
 
 \[
 G_{u,g}=\frac{1}{|M_u|}\sum_{i\in M_u}G_{i,g,c(i)}.
 \]
 
-For target \(g\) and cell type \(t\), the calibration scale is
+Stage 2 remains condition-pure, so each final metacell receives the edge directions fitted for its own condition. The membership operation is unchanged from the previous Layer-1 contract; only the edge magnitude definition changes from coefficient-weighted to sign-only, self-scaled paired-cell activity.
+
+For target \(g\) and cell type \(t\), the existing target-level calibration scale remains
 
 \[
 \sigma_{g,t}=\max\left(\frac{IQR(G_{g,t})}{1.349},MAD_{1.4826}(G_{g,t}),\sqrt{mean(G_{g,t}^{2})},10^{-6}\right).
 \]
 
-The bounded regulatory modifier is
+The bounded regulatory modifier remains
 
 \[
 R_{g,u}=q_{g,u}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right).
 \]
 
-Unavailable regulatory evidence uses the neutral RNA-only route downstream.
+The reliability term \(q_{g,u}\) retains the existing routing semantics: condition-Pando uses reliability 1 for targets with at least one mapped active edge in that condition, whereas standard Pando retains its target-level fit reliability. Unavailable regulatory evidence uses the neutral RNA-only route downstream.
+
+For the one-effective-condition standard-Pando route, the same sign-only paired-cell activity definition is used after the standard Pando adjusted-P/estimability gate. Standard-Pando coefficient magnitudes therefore also remain audit information rather than penalty magnitudes.
 
 ## 3. RNA and multiome gene support
 
