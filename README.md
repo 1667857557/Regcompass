@@ -1,6 +1,6 @@
 # RegCompassR
 
-RegCompassR combines paired single-cell RNA and ATAC regulatory evidence with genome-scale metabolic models to calculate cell-type-resolved reaction scores. Outputs are model-derived priorities and penalties, not direct intracellular flux measurements.
+RegCompassR integrates paired single-cell RNA and ATAC regulatory evidence with genome-scale metabolic models and returns cell-type-resolved reaction scores. The scores are model-derived reaction support/penalty measures, not direct flux measurements.
 
 ## Installation
 
@@ -12,108 +12,66 @@ remotes::install_github("1667857557/Regcompass")
 
 ## Required input
 
-Use a paired-cell Seurat object containing:
+Use a paired-cell Seurat object with RNA and ATAC count assays for the same cells, broad cell-type metadata, RNA PCA or Harmony, ATAC LSI, and genome-compatible peak coordinates. A condition column is optional.
 
-- RNA and ATAC count assays for the same cells;
-- a broad cell-type metadata column;
-- RNA PCA or Harmony and ATAC LSI reductions;
-- genome-compatible peak coordinates;
-- an optional condition column.
-
-Stage 1 keeps groups meeting `pando_args$min_cells`, which defaults to `500L` and may be changed by the user. Stage 2 uses `metacell_args$min_cells_per_stratum = 500L` by default and also accepts an explicit user value. A cell type with at least two retained conditions uses common-dictionary condition GRNs; otherwise it uses standard Pando.
-
-## Workflow
-
-```text
-Paired RNA + ATAC cells + GEM + medium
-│
-├─ 1. GRN inference
-│  └─► Infer cell-type regulatory networks; use common-dictionary condition GRNs
-│      when at least two conditions are retained, otherwise use standard Pando.
-│
-├─ 2. Multimodal metacells
-│  └─► Aggregate paired cells within each cell type into multimodal metacells while
-│      preserving condition purity for downstream comparison.
-│
-├─ 3. GPR-supported reaction meta-modules
-│  └─► Convert active GRN-supported metabolic genes into complete-GPR core reactions
-│      and expand them by subsystem and direct reaction-database equivalence.
-│
-├─ 4. Reaction evidence projection
-│  └─► Project RNA-only and RNA+ATAC regulatory evidence onto GEM reactions to obtain
-│      directly comparable reaction-level evidence for each metacell.
-│
-├─ 5. Structural model + directional scoring
-│  └─► Build cell-type-specific structural metabolic models and calculate directional
-│      penalties while reusing the same model for the matched RNA-only control.
-│
-└─ 6. Result assembly and condition comparison
-   └─► Assemble reaction evidence, rankings and condition contrasts for biological
-       interpretation and downstream analysis.
-```
-
-Stage-specific behavior:
-
-- **GRNs:** common-dictionary condition fits require at least two retained conditions within a cell type. RegCompass parallelizes pooled-background and condition × cell-type candidate discovery, waits for all candidate tasks of each cell type, freezes one exact edge dictionary per cell type, and then parallelizes condition × cell-type fixed-dictionary GLMs. Standard Pando is parallelized across broad cell types and uses the fixed `tf_cor` and `peak_cor` values supplied through `pando_infer_args` without any cell-count-dependent threshold adjustment.
-- **Meta-modules:** complete-GPR core reactions are expanded by core subsystem and direct KEGG, Reactome or master-Rhea equivalence.
-- **Structural models:** `meta_module_gem` builds one model per cell-type × medium combination; CORDA2 is the default completion route and runs without a structural time limit. `model_params$completion_time_limit` is rejected for CORDA2 and remains available only for supplementary non-CORDA2 completion such as FASTCORE. `full_gem` keeps the complete GEM with medium bounds.
-- **Matched control:** RNA+ATAC and RNA-only penalties reuse the same structural model, bounds, medium and target directions.
-
-Stage 3 retains only newly derived meta-module information and does not serialize the Stage 1 GRN payload again.
-
-## Simple workflow
+## Minimal workflow
 
 ```r
 library(RegCompassR)
+
+gem <- rc_prepare_gem(
+  species = "human",
+  version = "2.0.0",
+  source = "bundled"
+)
+
+medium_scenarios <- rc_make_medium_scenarios(
+  gem = gem,
+  scenario = "normal_human_plasma",
+  species = "human"
+)
 
 result <- rc_run_regcompass_one_shot(
   object = A,
   outdir = "RegCompass_result",
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
+  gem = gem,
+  medium_scenarios = medium_scenarios,
   condition_col = "condition",
   celltype_col = "cell_type",
-  pando_args = list(
-    min_cells = 500L,
-    pando_infer_args = list(
-      tf_cor = 0.1,
-      peak_cor = 0.05,
-      adjust_method = "BH",
-      padj_threshold = 0.05,
-      rank_action = "mark",
-      min_residual_df = 1L
-    )
-  ),
-  metacell_args = list(
-    min_cells_per_stratum = 500L
-  ),
   workers = 10L
 )
 ```
 
-Both cell-count thresholds above are defaults rather than hard constraints. For example, `min_cells = 300L` and `min_cells_per_stratum = 300L` are accepted when a smaller retained stratum is intentional.
+For condition-aware analysis, cell types with at least two retained conditions use the condition-GRN route; cell types with one retained condition use standard Pando. `condition_col = NULL` is valid for analyses without condition metadata.
 
-`workers` is the only workflow-level parallel setting. The default is `10L`. RegCompass automatically selects `SnowParam(type = "SOCK")` on Windows and `MulticoreParam` on Linux/macOS; the effective cap is `min(workers, max(1, detected logical CPUs - 2))` and each dispatch shrinks further to its number of independent jobs.
+## Main defaults
 
-When condition metadata are unavailable, omit `condition_col` or set `condition_col = NULL`; the workflow then uses standard Pando with one internal background label.
+- Human GEM: Human-GEM `2.0.0`; mouse GEM: Mouse-GEM `1.8.0`.
+- Human default medium: `normal_human_plasma`; mouse default medium: `mouse_plasma`.
+- Stage 1: `pando_args$min_cells = 500L`.
+- Pando candidate defaults: `tf_cor = 0.1`, `peak_cor = 0.05`, `adjust_method = "BH"`; the condition route additionally uses `padj_threshold = 0.05`, `rank_action = "mark"`, and `min_residual_df = 1L`.
+- Stage 2: `metacell_args$min_cells_per_stratum = 500L`.
+- Structural mode: `model_mode = "meta_module_gem"`, with CORDA2 as the default completion method. `model_params$completion_time_limit` is not a CORDA2 control; it is reserved for supplementary non-CORDA2 completion such as FASTCORE.
+- Parallelism: one top-level `workers` cap, default `10L`.
 
-The one-shot workflow prepares the species GEM and default plasma-like medium, runs the six stages above and returns condition comparisons only when multiple retained conditions are available.
+The cell-count thresholds are defaults rather than fixed requirements and can be overridden explicitly.
 
-Main outputs:
+## Medium presets
 
-```r
-result$grn$cell_type_analysis_mode
-result$reaction_catalog
-result$reaction_evidence
-result$reaction_ranking
-result$condition_contrast
-result$reaction_comparison_by_metacell
-```
+`rc_make_medium_scenarios()` supports:
+
+`normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`.
+
+See [`docs/medium-presets.md`](docs/medium-presets.md) for compositions, provenance, and custom-medium input formats.
 
 ## Documentation
 
-1. [Quick run](docs/tutorial-01-quick-start.md)
-2. [Stepwise run](docs/tutorial-02-stepwise-audit.md)
-3. [Post analysis](docs/tutorial-04-post-analysis.md)
-4. [Principles and mathematical formulas](docs/mathematical-model.md)
-5. [Function reference](docs/functions.md)
+- [Quick start](docs/tutorial-01-quick-start.md)
+- [Restartable stepwise workflow](docs/tutorial-02-stepwise-audit.md)
+- [Post analysis](docs/tutorial-04-post-analysis.md)
+- [Function reference](docs/functions.md)
+- [Mathematical specification](docs/mathematical-model.md)
+
+Algorithmic equations and quantitative definitions are maintained only in `docs/mathematical-model.md`; tutorials and Rd files are interface documentation.
