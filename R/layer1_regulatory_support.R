@@ -329,6 +329,19 @@
     and_method = gpr_and_method, or_method = "sum",
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
+  # The structural matrices are also the compatibility carrier used by the
+  # existing RNA-only control wrapper. An explicit marker makes the quantitative
+  # LP route deterministic even when the two bounded matrices have identical
+  # numerical values.
+  attr(
+    reaction_structural_multiome,
+    "regcompass_quantitative_penalty_route"
+  ) <- "multiome"
+  attr(
+    reaction_structural_rna,
+    "regcompass_quantitative_penalty_route"
+  ) <- "rna_only"
+
   support_fraction <- .rc_gpr_best_group_fraction(
     parsed, is.finite(modifier)
   )
@@ -428,6 +441,9 @@
       gpr_and_method = gpr_and_method,
       gpr_or_method = "sum",
       penalty_formula = "1/(1+log2(1+max(E_quantitative,0)))",
+      structural_route_marker = "regcompass_quantitative_penalty_route",
+      primary_route = "multiome",
+      rna_control_route = "rna_only",
       bounded_support_excluded_from_lp_penalty = TRUE
     ),
     structural_support_contract = list(
