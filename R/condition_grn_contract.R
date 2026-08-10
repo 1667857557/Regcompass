@@ -797,8 +797,8 @@
         significance = "estimable and BH adjusted P below 0.05",
         parallel_contract = parallel_plan,
         penalty_regulatory_evidence = paste(
-          "paired-cell TF-by-ATAC projection using penalty_effect without",
-          "a post-fit effect-size or model-R2 gate"
+          "penalty_effect times metacell-mean TF times metacell-mean ATAC",
+          "without a post-fit effect-size or model-R2 gate"
         )
       ),
       group_cols = c(condition_col, celltype_col)

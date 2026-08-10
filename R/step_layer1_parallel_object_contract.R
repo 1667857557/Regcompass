@@ -233,7 +233,7 @@
 }
 
 .rc_condition_pando_projection <- function(
-    grn_result, membership, unit_meta, genes) {
+    grn_result, membership, unit_meta, genes, rna_assay, atac_assay) {
   projection <- matrix(
     NA_real_, length(genes), nrow(unit_meta),
     dimnames = list(genes, unit_meta$unit_id)
@@ -244,27 +244,57 @@
   for (fit in grn_result$condition_grn_fits) {
     .rc_require_layer1_condition_grn_fit(fit)
     pando_object <- .rc_condition_pando_object_for_fit(grn_result, fit)
-    cell_projection <- Pando::project_condition_grn_cells(
-      object = pando_object,
-      fit = fit,
-      targets = genes,
-      significant_only = TRUE,
-      return_edge_contributions = FALSE
-    )
-    projection_membership <-
-      Pando::validate_condition_grn_projection_membership(
-        cell_projection, membership, group_col = "metacell_id"
-      )
-    aggregated <- Pando::aggregate_condition_grn_projection(
-      cell_projection, projection_membership, group_col = "metacell_id"
-    )
-    score <- as.matrix(aggregated$gene_score)
-    rownames(score) <- tolower(rownames(score))
-    targets <- intersect(rownames(score), rownames(projection))
-    units <- intersect(colnames(score), colnames(projection))
-    projection[targets, units] <- score[targets, units, drop = FALSE]
-
+    rna <- Matrix::t(Pando::LayerData(
+      pando_object, assay = rna_assay, layer = fit$rna_layer
+    ))
+    atac <- Matrix::t(Pando::LayerData(
+      pando_object, assay = atac_assay, layer = fit$peak_layer
+    ))
+    cells <- colnames(pando_object@data)
+    rownames(rna) <- cells
+    rownames(atac) <- cells
     coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
+    dictionary <- as.data.frame(fit$edge_dictionary, stringsAsFactors = FALSE)
+    coefficient <- merge(
+      coefficient, dictionary[, c(
+        "edge_id", "tf", "target", "region", "atac_feature_id"
+      ), drop = FALSE],
+      by = "edge_id", all.x = TRUE, sort = FALSE,
+      suffixes = c("", ".dictionary")
+    )
+    coefficient$estimate <- coefficient$penalty_effect
+    coefficient <- coefficient[coefficient$significant %in% TRUE, , drop = FALSE]
+    fit_units <- unit_meta$unit_id[
+      as.character(unit_meta[[fit$cell_type_col]]) == fit$cell_type
+    ]
+    fit_membership <- membership[
+      membership$metacell_id %in% fit_units & membership$cell_id %in% cells,
+      , drop = FALSE
+    ]
+    expected_cells <- unique(unlist(fit$condition_cell_ids, use.names = FALSE))
+    if (anyDuplicated(fit_membership$cell_id) ||
+        !setequal(fit_membership$cell_id, expected_cells)) {
+      stop(
+        "Condition-Pando projection requires exactly one metacell membership ",
+        "for every fitted cell.", call. = FALSE
+      )
+    }
+    cells_by_group <- split(fit_membership$cell_id, fit_membership$metacell_id)
+    unit_condition <- stats::setNames(
+      as.character(unit_meta[[fit$condition_col]]), unit_meta$unit_id
+    )
+    edges_by_group <- lapply(names(cells_by_group), function(unit) {
+      coefficient[as.character(coefficient$condition) == unit_condition[[unit]],
+                  , drop = FALSE]
+    })
+    names(edges_by_group) <- names(cells_by_group)
+    score <- .rc_pando_projection_from_group_means(
+      rna, atac, edges_by_group, cells_by_group, genes
+    )
+    targets <- intersect(colnames(score), rownames(projection))
+    units <- intersect(rownames(score), colnames(projection))
+    projection[targets, units] <- t(score[units, targets, drop = FALSE])
+
     target_reliability <- .rc_condition_target_reliability(fit)
     target_reliability$target <- tolower(
       as.character(target_reliability$target)
@@ -327,7 +357,8 @@
       estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
       projection_effect = "penalty_effect",
       pando_object_scope = "cell_type_exact_feature_space",
-      aggregation_contract = "all_projected_cells_have_exact_membership",
+      aggregation_contract =
+        "beta_times_group_mean_tf_times_group_mean_atac",
       stringsAsFactors = FALSE
     )
   }

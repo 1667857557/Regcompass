@@ -28,8 +28,8 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     type fixed-dictionary GLMs are then dispatched with nested Pando target
     parallelism disabled. Different cell types retain their own Pando objects and
     local peak/motif feature spaces. Standard Pando is parallelized only across
-    independent broad cell types. Paired-cell TF-by-ATAC regulatory effects are
-    projected before exact SuperCell aggregation. Metacells use one multimodal
+    independent broad cell types. TF and ATAC values are separately averaged
+    over exact SuperCell membership before regulatory multiplication. Metacells use one multimodal
     WNN graph per broad cell type and remain condition-pure after membership
     splitting. Optional raw ATAC fragment files are aggregated to final metacell
     barcodes and recounted before metacell TF-IDF. RNA support, regulatory

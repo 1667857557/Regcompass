@@ -55,21 +55,21 @@ The effect used for downstream projection is
 
 A `rank_deficient` target remains in the complete coefficient and fit-diagnostic tables for audit, but every edge belonging to that target has zero realized RegCompass penalty contribution even when an individual coefficient is finite and its P value would otherwise pass BH. This policy avoids attributing an edge-specific regulatory effect when the complete frozen-dictionary coefficient vector is not uniquely identifiable in that condition. Other non-`ok` target statuses, including insufficient residual degrees of freedom and failed/non-finite fits, are likewise excluded from penalty projection.
 
-The Pando source object may retain its original GLM significance fields. RegCompass records the target fit status on the gated coefficient table and applies the stricter `fit_status == "ok"` rule before paired-cell regulatory projection and before active-edge assembly.
+The Pando source object may retain its original GLM significance fields. RegCompass records the target fit status on the gated coefficient table and applies the stricter `fit_status == "ok"` rule before metacell regulatory projection and before active-edge assembly.
 
-## 2. Paired-cell projection and metacell aggregation
+## 2. Metacell projection from separately aggregated modalities
 
-For cell \(i\) in condition \(c\), the target-level regulatory score is
-
-\[
-G_{i,g,c}=\sum_{e\in E_g^{\cup}}\theta_{e,g,c}x_{e,i}.
-\]
-
-For metacell \(u\) with membership set \(M_u\),
+For edge \(e\) and metacell \(u\), let \(\overline{T}_{e,u}\) and
+\(\overline{A}_{e,u}\) be the separately aggregated mean TF expression and
+mean ATAC accessibility over the exact member cells. The target-level score is
 
 \[
-G_{u,g}=\frac{1}{|M_u|}\sum_{i\in M_u}G_{i,g,c(i)}.
+G_{u,g}=\sum_{e\in E_g^{\cup}}
+\theta_{e,g,c(u)}\overline{T}_{e,u}\overline{A}_{e,u}.
 \]
+
+Thus aggregation is performed before multiplication; it is not the mean of
+the paired-cell TF-by-ATAC products.
 
 For target \(g\) and cell type \(t\), the calibration scale is
 

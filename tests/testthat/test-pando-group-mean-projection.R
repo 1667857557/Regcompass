@@ -1,0 +1,40 @@
+test_that("Pando projection multiplies separate metacell modality means", {
+  rna <- matrix(c(1, 3), ncol = 1L,
+                dimnames = list(c("c1", "c2"), "TF1"))
+  atac <- matrix(c(4, 2), ncol = 1L,
+                 dimnames = list(c("c1", "c2"), "chr1-10-20"))
+  edge <- data.frame(
+    tf = "TF1", target = "G", region = "chr1-10-20", estimate = 2,
+    stringsAsFactors = FALSE
+  )
+
+  score <- RegCompassR:::.rc_pando_projection_from_group_means(
+    rna, atac, list(u1 = edge), list(u1 = c("c1", "c2")), "G"
+  )
+
+  expect_equal(score["u1", "g"], 2 * mean(c(1, 3)) * mean(c(4, 2)))
+  expect_false(isTRUE(all.equal(
+    score["u1", "g"], mean(2 * c(1, 3) * c(4, 2))
+  )))
+})
+
+test_that("Pando group-mean projection sums edges by target", {
+  rna <- matrix(c(1, 3, 2, 4), nrow = 2L,
+                dimnames = list(c("c1", "c2"), c("TF1", "TF2")))
+  atac <- matrix(c(4, 2, 5, 1), nrow = 2L,
+                 dimnames = list(
+                   c("c1", "c2"), c("chr1-10-20", "chr1-30-40")
+                 ))
+  edge <- data.frame(
+    tf = c("TF1", "TF2"), target = "G",
+    region = c("chr1-10-20", "chr1-30-40"), estimate = c(2, -1),
+    stringsAsFactors = FALSE
+  )
+
+  score <- RegCompassR:::.rc_pando_projection_from_group_means(
+    rna, atac, list(u1 = edge), list(u1 = c("c1", "c2")), "G"
+  )
+  expected <- 2 * mean(rna[, "TF1"]) * mean(atac[, "chr1-10-20"]) -
+    mean(rna[, "TF2"]) * mean(atac[, "chr1-30-40"])
+  expect_equal(score["u1", "g"], expected)
+})

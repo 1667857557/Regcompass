@@ -46,9 +46,7 @@
     }
     required_exports <- c(
       "initiate_grn", "find_motifs", "infer_condition_grn",
-      "condition_grn_fit", "project_condition_grn_cells",
-      "validate_condition_grn_projection_membership",
-      "aggregate_condition_grn_projection"
+      "condition_grn_fit"
     )
     exported <- getNamespaceExports("Pando")
     missing_exports <- setdiff(required_exports, exported)

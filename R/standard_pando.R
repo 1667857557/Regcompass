@@ -322,8 +322,8 @@
       condition_coefficients_calculated = FALSE,
       standard_fallback_adjustments = fallback_adjustments,
       penalty_regulatory_evidence = paste(
-        "standard Pando full-fit TF-by-ATAC cell projections aggregated by",
-        "exact SuperCell membership"
+        "standard Pando full-fit beta times metacell-mean TF times",
+        "metacell-mean ATAC"
       ),
       absolute_estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
       padj_threshold = .rc_standard_pando_padj_fixed
@@ -359,45 +359,19 @@
     ))
     rownames(rna) <- colnames(grn@data)
     rownames(atac) <- colnames(grn@data)
-    atac_keys <- .rc_pando_region_key(colnames(atac))
-    if (anyDuplicated(atac_keys)) {
-      stop("ATAC features are duplicated after Pando region normalization.",
-           call. = FALSE)
-    }
-    colnames(atac) <- atac_keys
     edge <- grn_result$tf_peak_gene_condition[
       as.character(grn_result$tf_peak_gene_condition[[celltype_col]]) == celltype,
       , drop = FALSE
     ]
     if (!nrow(edge)) next
-    edge$tf <- toupper(as.character(edge$tf))
     edge$target <- tolower(as.character(edge$target))
-    edge$region_key <- .rc_pando_region_key(edge$region)
-    rna_names <- toupper(colnames(rna))
-    tf_index <- match(edge$tf, rna_names)
-    peak_index <- match(edge$region_key, colnames(atac))
-    usable <- !is.na(tf_index) & !is.na(peak_index) & is.finite(edge$estimate)
-    edge <- edge[usable, , drop = FALSE]
-    tf_index <- tf_index[usable]
-    peak_index <- peak_index[usable]
-    cell_score <- matrix(
-      0, nrow = length(cells), ncol = length(target_genes),
-      dimnames = list(cells, tolower(target_genes))
-    )
-    for (i in seq_len(nrow(edge))) {
-      target <- edge$target[[i]]
-      if (!target %in% colnames(cell_score)) next
-      cell_score[, target] <- cell_score[, target] +
-        as.numeric(rna[, tf_index[[i]]]) *
-        as.numeric(atac[, peak_index[[i]]]) *
-        as.numeric(edge$estimate[[i]])
-    }
-    mapped <- one_membership$cell_id %in% rownames(cell_score)
+    mapped <- one_membership$cell_id %in% rownames(rna)
     one_membership <- one_membership[mapped, , drop = FALSE]
     groups <- split(one_membership$cell_id, one_membership$metacell_id)
-    group_score <- do.call(rbind, lapply(groups, function(group_cells) {
-      colMeans(cell_score[group_cells, , drop = FALSE])
-    }))
+    edges_by_group <- stats::setNames(rep(list(edge), length(groups)), names(groups))
+    group_score <- .rc_pando_projection_from_group_means(
+      rna, atac, edges_by_group, groups, target_genes
+    )
     target <- intersect(colnames(group_score), rownames(projection))
     group <- intersect(rownames(group_score), colnames(projection))
     projection[target, group] <- t(group_score[group, target, drop = FALSE])
