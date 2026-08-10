@@ -2,7 +2,7 @@
 % Please edit documentation in R/published_medium_contract.R
 \name{rc_make_medium_scenarios}
 \alias{rc_make_medium_scenarios}
-\title{Build literature-backed extracellular medium scenarios}
+\title{Build extracellular medium scenarios}
 \usage{
 rc_make_medium_scenarios(
   gem,
@@ -19,37 +19,15 @@ rc_make_medium_scenarios(
 }
 \arguments{
 \item{gem}{A validated RegCompass GEM.}
-
-\item{scenario}{One or more identifiers from \code{"normal_human_plasma"}, \code{"mouse_plasma"}, \code{"high_glucose"}, \code{"low_glucose"}, \code{"high_lactate"}, \code{"low_lactate"}, \code{"low_glutamine"}, and \code{"custom"}. Use \code{NULL} for a custom-only run.}
-
-\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}. Human plasma and culture challenges require Human-GEM; mouse plasma requires Mouse-GEM.}
-
-\item{custom_medium}{User-defined reaction-level bounds. Publication columns are optional and retained when supplied.}
-
-\item{custom_metabolites}{User-defined metabolite availability and optional concentration rows. Publication columns are optional and retained.}
-
-\item{uptake_scale}{Non-negative global or named sensitivity multipliers for target nutrient relative caps. These are modelling assumptions, not measured transporter rates.}
-
+\item{scenario}{One or more of \code{"normal_human_plasma"}, \code{"mouse_plasma"}, \code{"high_glucose"}, \code{"low_glucose"}, \code{"high_lactate"}, \code{"low_lactate"}, \code{"low_glutamine"}, and \code{"custom"}. Use \code{NULL} with \code{custom_metabolites} for a custom-only metabolite composition.}
+\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}. Human presets require Human-GEM; \code{"mouse_plasma"} requires Mouse-GEM.}
+\item{custom_medium}{Optional user-defined reaction-level medium bounds.}
+\item{custom_metabolites}{Optional user-defined metabolite availability/composition table.}
+\item{uptake_scale}{Non-negative global or named sensitivity multiplier for preset uptake caps.}
 \item{exchange_roles}{Reaction roles treated as exchange reactions.}
-
-\item{condition}{Shared condition label; canonical scoring requires \code{"all"}.}
-
-\item{exchange_limit}{Shared modelling cap intersected with original GEM directionality.}
-
-\item{strict_preset_matching}{Stop when required components cannot be mapped one-to-one to GEM exchanges.}
+\item{condition}{Medium condition label. Canonical shared-medium scoring uses \code{"all"}.}
+\item{exchange_limit}{Shared bound cap intersected with original GEM directionality.}
+\item{strict_preset_matching}{Stop when required preset components cannot be mapped uniquely to GEM exchanges.}
 }
-\value{
-A reaction-level medium table with composition and challenge citations.
-}
-\description{
-Human plasma and culture backgrounds use exact HPLM composition from \emph{Cell} 2017 and the updated formulation in \emph{Cell Metabolism} 2021. Plasmax from \emph{Science Advances} 2019 is an independent validation source and is not numerically averaged with HPLM. Mouse plasma uses a conservative availability set anchored to absolute metabolite measurements in \emph{Nature} 2026; unsupported components are omitted. Challenge papers provide only the named nutrient concentration.
-}
-\details{
-\code{"normal_human_plasma"} records \code{medium_background_id = "authoritative_HPLM_2017_2021"}, the composition DOI values \code{10.1016/j.cell.2017.03.023} and \code{10.1016/j.cmet.2021.02.005}, and the independent validation DOI \code{10.1126/sciadv.aau7314}.
-
-\code{"mouse_plasma"} is anchored to \code{10.1038/s41586-025-09898-9}. Only glucose, lactate, and glutamine retain limited quantitative secondary values; unsupported mouse components are omitted rather than copied from human HPLM.
-
-All five culture challenge presets use the identical authoritative HPLM background and override only the named glucose, lactate, or glutamine concentration. They store \code{background_reference_doi}, \code{background_validation_reference_doi}, and \code{challenge_reference_doi}, and mark their construction as \code{authoritative_HPLM_background_plus_named_nutrient_override}. The medium policy is \code{authoritative_journal_composition_with_explicit_overrides}. Target concentration-derived caps are sensitivity assumptions rather than measured uptake fluxes.
-
-User-defined compositions may be supplied through \code{scenario = "custom"} or \code{scenario = NULL}. Technical GEM boundary constructions are not accepted as biological scenarios.
-}
+\value{A reaction-level medium table with bounds and provenance fields.}
+\description{Creates literature-backed human or mouse medium presets or a user-defined medium. Human workflows default to \code{"normal_human_plasma"}; mouse workflows default to \code{"mouse_plasma"} when the top-level workflow creates the medium automatically. Exact compositions and references are documented in \code{docs/medium-presets.md}.}
