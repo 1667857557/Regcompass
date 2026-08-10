@@ -1,3 +1,11 @@
+# RegCompassR 2.4.13
+
+- Replaces the quantitative LP RNA baseline with the SuperCell representative-state estimator: raw RNA counts are normalized to linear CPM independently within each original cell using that cell's complete RNA library size, then cells are averaged with equal weight inside the exact final SuperCell membership.
+- Removes `CPM(sum(metacell counts))` and cell-type empirical-Bayes latent CPM from the quantitative penalty route. This prevents higher-depth cells from receiving larger metacell expression weights and prevents cross-condition cell-type shrinkage from changing the RNA abundance supplied to the LP objective.
+- Keeps the existing latent-CPM empirical-Bayes model only for bounded CORDA2/structural confidence in this release; Pando fitting, cell-first regulatory projection, GPR aggregation, CORDA2 reconstruction and the COMPASS-shaped reaction cost are otherwise unchanged.
+- Introduces Layer 1 schema v6 with explicit `rna_metacell_mean_single_cell_cpm` provenance and rejects stale schema-v5 Layer 1 artifacts before Layer 2. Stage 1 Pando objects and Stage 2 SuperCell membership provide the cell-level counts and exact memberships required to regenerate Stage 4.
+- Adds regression tests that distinguish equal-weight mean single-cell CPM from pooled-count CPM and verifies the new quantitative Layer 2 route names and penalty provenance.
+
 # RegCompassR 2.4.12
 
 - Maps standard-Pando candidate intervals back to their overlapping ATAC assay peaks before TF-by-ATAC projection, instead of discarding coefficients whenever Pando reports an intersected regulatory interval rather than the exact peak name.
