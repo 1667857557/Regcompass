@@ -55,10 +55,37 @@ make_reaction_annotation_fixture <- function() {
   modifier["gene1", conditions == "MS177"] <- 0.5
   multiome <- rna
   multiome["gene1", conditions == "MS177"] <- 0.65
+
+  quantitative_rna <- matrix(
+    10,
+    nrow = 2,
+    ncol = length(units),
+    dimnames = dimnames(rna)
+  )
+  quantitative_rna["gene1", ] <- 5
+  quantitative_multiome <- quantitative_rna * 2^modifier
+  quantitative_reaction_rna <- matrix(
+    pmin(quantitative_rna["gene1", ], quantitative_rna["gene2", ]),
+    nrow = 1,
+    dimnames = list("R_GENE", units)
+  )
+  quantitative_reaction_multiome <- matrix(
+    pmin(
+      quantitative_multiome["gene1", ],
+      quantitative_multiome["gene2", ]
+    ),
+    nrow = 1,
+    dimnames = list("R_GENE", units)
+  )
+
   layer1 <- list(
     gene_support_rna = rna,
     gene_regulatory_modifier = modifier,
     gene_support_multiome = multiome,
+    gene_expression_quantitative_rna = quantitative_rna,
+    gene_expression_quantitative_multiome = quantitative_multiome,
+    reaction_expression_quantitative_rna_only = quantitative_reaction_rna,
+    reaction_expression_quantitative = quantitative_reaction_multiome,
     unit_meta = data.frame(
       pool_id = units,
       condition = conditions,
@@ -147,8 +174,15 @@ test_that("reaction annotations contain names formulas GPRs and evidence classes
   )
   expect_equal(control$evidence_class, "RNA-only")
   expect_equal(ms177$evidence_class, "RNA+ATAC")
-  expect_equal(control$evidence_resolution, "reaction_capacity")
-  expect_equal(ms177$evidence_resolution, "reaction_capacity")
+  expect_equal(
+    control$evidence_resolution,
+    "quantitative_lp_reaction_expression"
+  )
+  expect_equal(
+    ms177$evidence_resolution,
+    "quantitative_lp_reaction_expression"
+  )
+  expect_equal(ms177$evidence_scale, "quantitative_lp_penalty_input")
   expect_equal(ms177$atac_modifier_genes, "GENE1")
   expect_equal(ms177$multiome_contributing_genes, "GENE1")
   expect_false(control$has_active_multiome_contribution)
@@ -160,8 +194,9 @@ test_that("reaction annotations contain names formulas GPRs and evidence classes
   expect_equal(
     annotation$params$evidence_definition,
     paste(
-      "RNA+ATAC requires GPR-aggregated reaction capacity from integrated",
-      "gene support to differ from RNA-only reaction capacity"
+      "RNA+ATAC requires Pando to change the GPR-aggregated quantitative",
+      "reaction expression used by the Layer 2 LP penalty relative to the",
+      "matched quantitative RNA-only reaction expression"
     )
   )
 })
@@ -186,6 +221,7 @@ test_that("condition statistics are enriched with reaction biology", {
     "reaction_name", "tested_formula", "genes", "gpr_rule",
     "evidence_class_a", "evidence_class_b", "evidence_comparison",
     "evidence_resolution_a", "evidence_resolution_b",
+    "evidence_scale_a", "evidence_scale_b",
     "median_multiome_capacity_shift_a",
     "median_multiome_capacity_shift_b",
     "max_abs_multiome_capacity_shift_a",
@@ -194,7 +230,14 @@ test_that("condition statistics are enriched with reaction biology", {
   expect_equal(statistics$pairwise$reaction_name, "Gene-associated conversion")
   expect_equal(statistics$pairwise$evidence_class_a, "RNA-only")
   expect_equal(statistics$pairwise$evidence_class_b, "RNA+ATAC")
-  expect_equal(statistics$pairwise$evidence_resolution_b, "reaction_capacity")
+  expect_equal(
+    statistics$pairwise$evidence_resolution_b,
+    "quantitative_lp_reaction_expression"
+  )
+  expect_equal(
+    statistics$pairwise$evidence_scale_b,
+    "quantitative_lp_penalty_input"
+  )
   expect_gt(statistics$pairwise$max_abs_multiome_capacity_shift_b, 0)
   expect_equal(
     statistics$pairwise$tested_formula,
