@@ -39,7 +39,12 @@ test_that("CORDA2 closure solves only the reconstructed GEM", {
   expect_equal(sum(matches > 0), 1L)
   expect_match(
     implementation,
-    "rc_prepare_directional_targets(final, core",
+    "rc_prepare_directional_targets(parent, core",
+    fixed = TRUE
+  )
+  expect_match(
+    implementation,
+    ".rc_corda_closure_directional_feasibility(final, requested",
     fixed = TRUE
   )
   expect_false(grepl("parent_diagnostics", implementation, fixed = TRUE))
