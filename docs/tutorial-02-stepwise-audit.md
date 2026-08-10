@@ -50,9 +50,11 @@ step1 <- rc_regcompass_step_grn(
 
 `pando_args$min_cells` defaults to `500L`, but it is not fixed. Any positive integer supplied by the user is retained and becomes the Stage 1 filtering threshold.
 
-A cell type with at least two retained conditions uses the common-dictionary condition GRN. RegCompass initializes a separate Pando object for each broad cell type, parallelizes the pooled-background and per-condition candidate-discovery jobs, waits at a strict barrier, unions exact `(target, TF, region)` triples into one frozen dictionary for that cell type, and only then parallelizes the condition × cell-type fixed-dictionary Gaussian identity GLMs. Different cell types never share or merge Pando peak/motif feature spaces. The main workflow uses `tf_cor = 0.1` and `peak_cor = 0.05` for candidate discovery. Final condition edges are active when they are estimable and have BH-adjusted `padj < 0.05`; no second post-fit coefficient-size, correlation, or model-R² gate is applied.
+A cell type with at least two retained conditions uses the common-dictionary condition GRN. RegCompass initializes a separate Pando object for each broad cell type, parallelizes the pooled-background and per-condition candidate-discovery jobs, waits at a strict barrier, unions exact `(target, TF, region)` triples into one frozen dictionary for that cell type, and only then parallelizes the condition × cell-type fixed-dictionary Gaussian identity GLMs. Different cell types never share or merge Pando peak/motif feature spaces. The main workflow uses `tf_cor = 0.1` and `peak_cor = 0.05` for candidate discovery. Final condition edges are active when their target fit has `fit_status == "ok"`, the coefficient is estimable, and BH-adjusted `padj < 0.05`; no second post-fit coefficient-size, correlation, or model-R² gate is applied.
 
-A cell type with one retained condition uses standard Pando. Standard Pando is parallelized across broad cell types, and each individual Pando fit is kept single-process to avoid nested oversubscription. The `tf_cor` and `peak_cor` values are passed to `Pando::infer_grn()` exactly as routed from `pando_infer_args`; the defaults are fixed at `tf_cor = 0.1` and `peak_cor = 0.05`, with no cell-count-dependent correlation threshold.
+The fitted Pando `estimate` remains in Stage 1 outputs for statistical inference, direction and audit, but its absolute magnitude is no longer a Layer-1 penalty weight. For every active edge, Layer 1 uses only `sign(estimate)`. The paired-cell predictor `TF * ATAC` is robustly self-scaled across all fitted cells of the same broad cell type and bounded with `tanh`; those signed paired-cell activities are then averaged using the exact Stage-2 SuperCell membership. This keeps paired-cell TF/ATAC co-occurrence and condition-pure membership while making the penalty projection invariant to positive rescaling of an individual TF-by-ATAC predictor. No new public parameter is introduced.
+
+A cell type with one retained condition uses standard Pando. Standard Pando is parallelized across broad cell types, and each individual Pando fit is kept single-process to avoid nested oversubscription. The `tf_cor` and `peak_cor` values are passed to `Pando::infer_grn()` exactly as routed from `pando_infer_args`; the defaults are fixed at `tf_cor = 0.1` and `peak_cor = 0.05`, with no cell-count-dependent correlation threshold. The standard-Pando Layer-1 route uses the same sign-only, self-scaled paired-cell projection, so coefficient magnitude is not reintroduced when a cell type has only one effective condition.
 
 ## 3. Metacells
 
@@ -102,6 +104,8 @@ step4 <- rc_regcompass_step_layer1(
   workers = workers
 )
 ```
+
+After the signed paired-cell activities have been aggregated to metacells, the existing target-level robust projection calibration and bounded regulatory modifier are unchanged. Target RNA remains the baseline gene support, regulatory evidence remains a bounded odds correction, and GPR aggregation, COMPASS reaction costs and Layer-2 LP mathematics are unchanged.
 
 ## 5. Medium scenarios
 
