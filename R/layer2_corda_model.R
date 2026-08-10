@@ -58,7 +58,7 @@
     parent, final, core, target_direction, solver, time_limit,
     flux_threshold) {
   requested <- rc_prepare_directional_targets(
-    final, core, target_direction = target_direction
+    parent, core, target_direction = target_direction
   )
   diagnostics <- .rc_corda_closure_directional_feasibility(
     final, requested,
