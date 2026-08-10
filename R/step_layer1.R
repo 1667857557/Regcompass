@@ -44,7 +44,7 @@ rc_regcompass_step_layer1 <- function(
   .rc_require_stage_gem(meta_modules, gem, "meta_modules")
   .rc_require_stage_gem(grn, gem, "grn")
   params <- metacells$params
-  layer1 <- .rc_cell_first_projection_layer1(
+  layer1 <- .rc_cell_first_projection_layer1_v6(
     grn_result = grn$grn_result,
     metacell_object = metacells$metacell_object,
     membership = metacells$pooled$membership,
