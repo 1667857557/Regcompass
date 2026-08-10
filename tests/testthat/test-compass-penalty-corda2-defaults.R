@@ -62,3 +62,32 @@ test_that("CORDA2 finalization restores positive parent lower bounds", {
   expect_equal(final$lb[["MUST_RUN"]], 2)
   expect_equal(final$ub[["MUST_RUN"]], 10)
 })
+
+test_that("either retained CORDA2 direction restores reversible parent bounds", {
+  parent <- list(
+    S = Matrix::Matrix(
+      matrix(c(-1, 1), nrow = 2),
+      sparse = TRUE,
+      dimnames = list(c("A", "B"), "REV")
+    ),
+    lb = c(REV = -10),
+    ub = c(REV = 8)
+  )
+  split <- RegCompassR:::.rc_corda2_split_original(parent)
+
+  forward_only <- RegCompassR:::.rc_corda2_apply_direction_bounds(
+    parent = parent,
+    included_variables = "REV",
+    split = split
+  )
+  reverse_only <- RegCompassR:::.rc_corda2_apply_direction_bounds(
+    parent = parent,
+    included_variables = "REV_CORDA_rev_rxn",
+    split = split
+  )
+
+  expect_equal(forward_only$lb[["REV"]], -10)
+  expect_equal(forward_only$ub[["REV"]], 8)
+  expect_equal(reverse_only$lb[["REV"]], -10)
+  expect_equal(reverse_only$ub[["REV"]], 8)
+})
