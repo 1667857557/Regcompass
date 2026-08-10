@@ -36,10 +36,8 @@
            call. = FALSE)
     }
     required_api <- c(
-      "condition_grn_fit", "project_condition_grn_cells",
-      "validate_condition_grn_projection_membership",
-      "aggregate_condition_grn_projection",
-      "discover_grn_edges", "union_grn_edges", "fit_grn_from_edges",
+      "condition_grn_fit", "discover_grn_edges", "union_grn_edges",
+      "fit_grn_from_edges",
       "GetNetwork", "gof"
     )
     missing_api <- setdiff(required_api, getNamespaceExports("Pando"))

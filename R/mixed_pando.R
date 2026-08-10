@@ -200,7 +200,7 @@
       standard_edge_filter =
         "estimable when available and adjusted P below 0.05",
       projection =
-        "paired-cell TF-by-ATAC before exact SuperCell aggregation"
+        "beta times metacell-mean TF times metacell-mean ATAC"
     ),
     group_cols = c(condition_col, celltype_col)
   )
@@ -233,7 +233,7 @@
   origins <- schemas <- projection_names <- policies <- character()
   if (length(grn_result$condition_grn_fits)) {
     part <- .rc_condition_pando_projection(
-      grn_result, membership, unit_meta, genes
+      grn_result, membership, unit_meta, genes, rna_assay, atac_assay
     )
     projection <- .rc_overlay_projection(
       projection, part$projection, "Condition-Pando"

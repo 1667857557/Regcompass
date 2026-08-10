@@ -95,3 +95,44 @@
   }
   answer
 }
+
+.rc_pando_projection_from_group_means <- function(
+    rna, atac, edges_by_group, cells_by_group, targets) {
+  answer <- matrix(
+    0, nrow = length(cells_by_group), ncol = length(targets),
+    dimnames = list(names(cells_by_group), tolower(targets))
+  )
+  rna_names <- toupper(colnames(rna))
+  atac_features <- colnames(atac)
+  for (group in names(cells_by_group)) {
+    edge <- edges_by_group[[group]]
+    cells <- intersect(cells_by_group[[group]], rownames(rna))
+    cells <- intersect(cells, rownames(atac))
+    if (is.null(edge) || !nrow(edge) || !length(cells)) next
+    tf_index <- match(toupper(as.character(edge$tf)), rna_names)
+    region <- if ("atac_feature_id" %in% colnames(edge)) {
+      feature_id <- as.character(edge$atac_feature_id)
+      fallback <- is.na(feature_id) | !nzchar(trimws(feature_id))
+      feature_id[fallback] <- as.character(edge$region[fallback])
+      feature_id
+    } else {
+      as.character(edge$region)
+    }
+    peak_index <- .rc_map_pando_regions_to_atac(region, atac_features)
+    estimate <- suppressWarnings(as.numeric(edge$estimate))
+    usable <- !is.na(tf_index) & !is.na(peak_index) & is.finite(estimate)
+    if (!any(usable)) next
+    edge <- edge[usable, , drop = FALSE]
+    tf_index <- tf_index[usable]
+    peak_index <- peak_index[usable]
+    estimate <- estimate[usable]
+    tf_mean <- colMeans(rna[cells, tf_index, drop = FALSE])
+    peak_mean <- colMeans(atac[cells, peak_index, drop = FALSE])
+    contribution <- estimate * tf_mean * peak_mean
+    edge_target <- tolower(as.character(edge$target))
+    totals <- tapply(contribution, edge_target, sum)
+    selected <- intersect(names(totals), colnames(answer))
+    answer[group, selected] <- totals[selected]
+  }
+  answer
+}

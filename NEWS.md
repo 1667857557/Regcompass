@@ -1,5 +1,6 @@
 # RegCompassR 2.4.12
 
+- Changes both standard and conditional Pando metacell projection from the mean of paired-cell `beta * TF * ATAC` products to `beta * mean(TF) * mean(ATAC)`, using the exact metacell membership for each separate modality mean.
 - Maps standard-Pando candidate intervals back to their overlapping ATAC assay peaks before TF-by-ATAC projection, instead of discarding coefficients whenever Pando reports an intersected regulatory interval rather than the exact peak name.
 - Splits Layer 1 evidence into an unbounded quantitative COMPASS penalty path and a bounded structural-confidence path. The LP route now starts from latent metacell CPM, applies Pando as `X_multiome = X_RNA * 2^R`, performs GPR aggregation, and applies `1/(1+log2(1+E_quantitative))` only at reaction level.
 - Retains the previous bounded `log1p(CPM)/(log1p(CPM)+h)` support and bounded-odds Pando update for CORDA2 and other structural-confidence decisions; `gene_half_saturation` no longer compresses the quantitative LP penalty scale.
