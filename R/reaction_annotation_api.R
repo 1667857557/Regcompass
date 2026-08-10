@@ -4,9 +4,10 @@
 #'
 #' Constructs reaction names, formulas, direction-specific substrates and
 #' products, GPR genes, database identifiers, and condition-by-cell-type
-#' evidence classes. `RNA+ATAC` is assigned only when a GPR-aggregated
-#' reaction-capacity comparison is available and differs from the RNA-only
-#' capacity.
+#' evidence classes. For Layer 1 schema v5, `RNA+ATAC` is assigned only when
+#' Pando changes the GPR-aggregated quantitative reaction expression that is
+#' actually supplied to the COMPASS-like LP penalty. Legacy Layer 1 objects fall
+#' back to the historical bounded reaction-capacity definition.
 #'
 #' @param gem A validated RegCompass GEM.
 #' @param layer1 Optional Layer 1 result used for GPR and evidence provenance.
@@ -43,8 +44,9 @@ rc_build_reaction_annotations <- function(
       celltype_col = celltype_col,
       evidence_tolerance = evidence_tolerance,
       evidence_definition = paste(
-        "RNA+ATAC requires GPR-aggregated reaction capacity from integrated",
-        "gene support to differ from RNA-only reaction capacity"
+        "RNA+ATAC requires Pando to change the GPR-aggregated quantitative",
+        "reaction expression used by the Layer 2 LP penalty relative to the",
+        "matched quantitative RNA-only reaction expression"
       )
     )
   )

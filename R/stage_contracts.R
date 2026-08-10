@@ -131,7 +131,8 @@
     "gene_regulatory_reliability",
     "gene_regulatory_reliability_available",
     "gene_regulatory_modifier", "gene_support_rna",
-    "gene_support_multiome"
+    "gene_support_multiome", "gene_expression_quantitative_rna",
+    "gene_expression_quantitative_multiome"
   )
   reference <- layer1$gene_projection
   if (!is.numeric(reference) || is.null(dim(reference)) ||
@@ -164,10 +165,41 @@
     stop("Layer 1 regulatory modifier is inconsistent with its inputs.",
          call. = FALSE)
   }
-  value <- layer1$reaction_expression_rna_only
-  if (!is.numeric(value) || is.null(dim(value)) ||
-      !identical(dimnames(value), dimnames(layer1$reaction_expression))) {
-    stop("Layer 1 RNA-only reaction matrix is misaligned.", call. = FALSE)
+
+  quantitative_rna <- layer1$gene_expression_quantitative_rna
+  if (any(quantitative_rna[is.finite(quantitative_rna)] < 0)) {
+    stop("Layer 1 quantitative RNA expression must be non-negative.",
+         call. = FALSE)
+  }
+  expected_quantitative <- .rc_integrate_regulatory_expression(
+    quantitative_rna, observed
+  )
+  observed_quantitative <- layer1$gene_expression_quantitative_multiome
+  finite <- is.finite(expected_quantitative) & is.finite(observed_quantitative)
+  if (any(is.finite(expected_quantitative) !=
+          is.finite(observed_quantitative)) ||
+      any(abs(expected_quantitative[finite] - observed_quantitative[finite]) >
+          1e-10 * pmax(1, abs(expected_quantitative[finite])))) {
+    stop(
+      "Layer 1 quantitative multiome expression is inconsistent with X*2^R.",
+      call. = FALSE
+    )
+  }
+
+  required_reaction_matrices <- c(
+    "reaction_expression_rna_only",
+    "reaction_expression_quantitative",
+    "reaction_expression_quantitative_rna_only",
+    "reaction_structural_support",
+    "reaction_structural_support_rna_only"
+  )
+  for (name in required_reaction_matrices) {
+    value <- layer1[[name]]
+    if (!is.numeric(value) || is.null(dim(value)) ||
+        !identical(dimnames(value), dimnames(layer1$reaction_expression))) {
+      stop("Layer 1 `", name, "` is missing or misaligned.",
+           call. = FALSE)
+    }
   }
   if (!is.numeric(layer1$reaction_regulatory_support_fraction) ||
       !identical(
@@ -175,6 +207,73 @@
         dimnames(layer1$reaction_expression)
       )) {
     stop("Layer 1 reaction regulatory support is misaligned.",
+         call. = FALSE)
+  }
+  if (!identical(
+        layer1$reaction_expression,
+        layer1$reaction_structural_support
+      ) ||
+      !identical(
+        layer1$reaction_expression_rna_only,
+        layer1$reaction_structural_support_rna_only
+      )) {
+    stop(
+      "Layer 1 compatibility reaction_expression fields must remain bounded structural support.",
+      call. = FALSE
+    )
+  }
+
+  route_attr <- "regcompass_quantitative_penalty_route"
+  if (!identical(attr(layer1$reaction_expression, route_attr, exact = TRUE),
+                 "multiome") ||
+      !identical(attr(layer1$reaction_expression_rna_only,
+                      route_attr, exact = TRUE), "rna_only")) {
+    stop(
+      "Layer 1 structural compatibility matrices lack deterministic quantitative penalty route markers.",
+      call. = FALSE
+    )
+  }
+  if (!is.logical(layer1$reaction_expression_available) ||
+      !identical(
+        dimnames(layer1$reaction_expression_available),
+        dimnames(layer1$reaction_expression)
+      ) ||
+      !identical(
+        unname(layer1$reaction_expression_available),
+        unname(is.finite(layer1$reaction_expression))
+      ) ||
+      !is.logical(layer1$reaction_expression_quantitative_available) ||
+      !identical(
+        dimnames(layer1$reaction_expression_quantitative_available),
+        dimnames(layer1$reaction_expression_quantitative)
+      ) ||
+      !identical(
+        unname(layer1$reaction_expression_quantitative_available),
+        unname(is.finite(layer1$reaction_expression_quantitative))
+      )) {
+    stop("Layer 1 reaction-expression availability masks are inconsistent.",
+         call. = FALSE)
+  }
+
+  quantitative_contract <- layer1$quantitative_penalty_contract
+  structural_contract <- layer1$structural_support_contract
+  if (!is.list(quantitative_contract) ||
+      !isTRUE(quantitative_contract$bounded_support_excluded_from_lp_penalty) ||
+      !identical(
+        quantitative_contract$baseline_gene_expression,
+        "latent_cpm"
+      ) ||
+      !identical(quantitative_contract$regulatory_multiplier, "2^R") ||
+      !identical(quantitative_contract$structural_route_marker, route_attr) ||
+      !identical(quantitative_contract$primary_route, "multiome") ||
+      !identical(quantitative_contract$rna_control_route, "rna_only") ||
+      !is.list(structural_contract) ||
+      !identical(
+        structural_contract$intended_use,
+        "CORDA2_and_structural_confidence"
+      ) ||
+      !identical(structural_contract$quantitative_lp_penalty, FALSE)) {
+    stop("Layer 1 quantitative/structural support contracts are incomplete.",
          call. = FALSE)
   }
 
@@ -187,7 +286,7 @@
     "cell_type_analysis_mode"
   )
   routing <- provenance$cell_type_analysis_mode
-  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v4") ||
+  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v5") ||
       !is.list(provenance) ||
       !all(required_provenance %in% names(provenance)) ||
       !identical(provenance$analysis_mode, mode) ||
@@ -302,16 +401,44 @@
       !identical(contract$primary, "penalty") ||
       !identical(contract$rna_control, "penalty_rna_only") ||
       !isTRUE(contract$exact_shared_structure) ||
+      !identical(layer2$evidence_policy, "quantitative_penalty_only") ||
       !identical(
         contract$nonestimable_edge_policy,
         "coefficient_NA_and_zero_realized_penalty_contribution"
       )) {
-    stop("Layer 2 comparison contract is incomplete.", call. = FALSE)
+    stop(
+      "Layer 2 comparison/quantitative penalty contract is incomplete; rerun Stage 5 with the current RegCompass version.",
+      call. = FALSE
+    )
   }
   if (!is.null(layer1)) {
     .rc_validate_layer1_stage(layer1, argument = "layer1")
     if (!identical(ids, .rc_layer1_unit_ids(layer1))) {
       stop("Layer 1 and Layer 2 unit IDs differ.", call. = FALSE)
+    }
+
+    components <- layer2$penalty_components$reaction_expression
+    expected <- layer1$reaction_expression_quantitative
+    if (!is.numeric(components) || is.null(dim(components)) ||
+        !identical(colnames(components), ids)) {
+      stop("Layer 2 quantitative reaction-expression provenance is missing.",
+           call. = FALSE)
+    }
+    common <- intersect(rownames(expected), rownames(components))
+    if (!length(common)) {
+      stop("Layer 1 and Layer 2 share no quantitative reaction-expression rows.",
+           call. = FALSE)
+    }
+    observed_input <- components[common, ids, drop = FALSE]
+    expected_input <- expected[common, ids, drop = FALSE]
+    finite <- is.finite(observed_input) & is.finite(expected_input)
+    if (any(is.finite(observed_input) != is.finite(expected_input)) ||
+        any(abs(observed_input[finite] - expected_input[finite]) >
+            1e-10 * pmax(1, abs(expected_input[finite])))) {
+      stop(
+        "Layer 2 primary penalty was not constructed from Layer 1 quantitative multiome reaction expression; rerun Stage 5.",
+        call. = FALSE
+      )
     }
   }
   if (!is.null(workflow_params)) {

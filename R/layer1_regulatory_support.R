@@ -123,6 +123,32 @@
   out
 }
 
+.rc_integrate_regulatory_expression <- function(
+    rna_expression, regulatory_modifier) {
+  rna_expression <- as.matrix(rna_expression)
+  regulatory_modifier <- as.matrix(regulatory_modifier)
+  if (!identical(dimnames(rna_expression), dimnames(regulatory_modifier))) {
+    stop(
+      "Quantitative RNA expression and regulatory modifier matrices must align exactly.",
+      call. = FALSE
+    )
+  }
+  observed <- is.finite(rna_expression)
+  X <- pmax(rna_expression, 0)
+  fallback <- !is.finite(regulatory_modifier)
+  R <- regulatory_modifier
+  R[fallback] <- 0
+  R <- pmin(pmax(R, -1), 1)
+  out <- X * 2^R
+  out[observed & X <= 0] <- 0
+  out[!observed] <- NA_real_
+  dimnames(out) <- dimnames(X)
+  attr(out, "rna_only_fallback_mask") <- fallback
+  attr(out, "integration_formula") <-
+    "X_multiome=X_RNA*2^R; X_RNA=latent_CPM; nonfinite R:=0; R clipped to [-1,1]"
+  out
+}
+
 .rc_projection_scale <- function(projection, unit_meta, celltype_col) {
   scale <- matrix(
     NA_real_, nrow(projection), ncol(projection),
@@ -259,6 +285,32 @@
   modifier <- .rc_scaled_regulatory_modifier(
     projection$projection, projection$reliability, calibration$scale
   )
+
+  # Quantitative COMPASS path: retain the unbounded latent-CPM dynamic range.
+  # Pando changes expression by at most a two-fold multiplier in either
+  # direction because R is bounded to [-1, 1]. The COMPASS log transform is
+  # applied only after GPR aggregation when reaction penalty is constructed.
+  gene_expression_quantitative_rna <- latent$latent_cpm
+  gene_expression_quantitative_multiome <-
+    .rc_integrate_regulatory_expression(
+      gene_expression_quantitative_rna, modifier
+    )
+  reaction_quantitative_rna <- rc_reaction_capacity(
+    parsed, gene_expression_quantitative_rna,
+    promiscuity_mode = "none",
+    and_method = gpr_and_method, or_method = "sum",
+    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
+  )
+  reaction_quantitative_multiome <- rc_reaction_capacity(
+    parsed, gene_expression_quantitative_multiome,
+    promiscuity_mode = "none",
+    and_method = gpr_and_method, or_method = "sum",
+    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
+  )
+
+  # Bounded support is intentionally retained for structural confidence only.
+  # This preserves the previous CORDA2/meta-module evidence scale without
+  # compressing the quantitative LP penalty path into [0, 1].
   gene_support_rna <- rc_gene_score(
     latent$latent_log_expression,
     mode = "absolute",
@@ -267,26 +319,51 @@
   gene_support_multiome <- .rc_integrate_regulatory_support(
     gene_support_rna, modifier, alpha = 1
   )
-  reaction_rna <- rc_reaction_capacity(
+  reaction_structural_rna <- rc_reaction_capacity(
     parsed, gene_support_rna, promiscuity_mode = "none",
     and_method = gpr_and_method, or_method = "sum",
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
-  reaction_multiome <- rc_reaction_capacity(
+  reaction_structural_multiome <- rc_reaction_capacity(
     parsed, gene_support_multiome, promiscuity_mode = "none",
     and_method = gpr_and_method, or_method = "sum",
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
+  # The structural matrices are also the compatibility carrier used by the
+  # existing RNA-only control wrapper. An explicit marker makes the quantitative
+  # LP route deterministic even when the two bounded matrices have identical
+  # numerical values.
+  attr(
+    reaction_structural_multiome,
+    "regcompass_quantitative_penalty_route"
+  ) <- "multiome"
+  attr(
+    reaction_structural_rna,
+    "regcompass_quantitative_penalty_route"
+  ) <- "rna_only"
+
   support_fraction <- .rc_gpr_best_group_fraction(
     parsed, is.finite(modifier)
   )
   fallback <- !is.finite(modifier)
   list(
-    schema_version = "regcompass_regulatory_layer1_v4",
+    schema_version = "regcompass_regulatory_layer1_v5",
     analysis_mode = mode,
-    reaction_expression = reaction_multiome,
-    reaction_expression_rna_only = reaction_rna,
-    reaction_expression_available = is.finite(reaction_multiome),
+
+    # Compatibility structural fields. CORDA2 continues to consume these
+    # bounded matrices; Layer 2 LP explicitly prefers the quantitative fields.
+    reaction_expression = reaction_structural_multiome,
+    reaction_expression_rna_only = reaction_structural_rna,
+    reaction_expression_available = is.finite(reaction_structural_multiome),
+    reaction_structural_support = reaction_structural_multiome,
+    reaction_structural_support_rna_only = reaction_structural_rna,
+
+    # Unbounded reaction expression used by the quantitative COMPASS penalty.
+    reaction_expression_quantitative = reaction_quantitative_multiome,
+    reaction_expression_quantitative_rna_only = reaction_quantitative_rna,
+    reaction_expression_quantitative_available =
+      is.finite(reaction_quantitative_multiome),
+
     rna_metacell_latent_log_expression = latent$latent_log_expression,
     rna_metacell_latent_cpm = latent$latent_cpm,
     posterior_positive_probability = latent$posterior_positive_probability,
@@ -294,6 +371,9 @@
     rna_zero_class = latent$zero_class,
     eb_prior_weight = latent$prior_weight,
     eb_observation_weight = latent$observation_weight,
+    gene_expression_quantitative_rna = gene_expression_quantitative_rna,
+    gene_expression_quantitative_multiome =
+      gene_expression_quantitative_multiome,
     gene_support_rna = gene_support_rna,
     gene_support_multiome = gene_support_multiome,
     gene_projection = projection$projection,
@@ -338,13 +418,40 @@
     ),
     capacity_params = list(
       regulatory_odds_budget = 2,
+      regulatory_expression_multiplier_budget = 2,
       gene_half_saturation = gene_half_saturation,
       regulatory_mode = mode,
       link_function = "tanh(G/shared_scale)",
+      quantitative_gene_expression = "latent_cpm",
+      quantitative_regulatory_formula =
+        "X_multiome=X_RNA*2^R; nonfinite R:=0",
+      structural_gene_support =
+        "log1p(latent_cpm)/(log1p(latent_cpm)+gene_half_saturation)",
+      structural_regulatory_formula =
+        "C_multiome=C_RNA*2^R/(1-C_RNA+C_RNA*2^R)",
       promiscuity_mode = "none",
       and_method = gpr_and_method,
       or_method = "sum",
       parallel = parallel
+    ),
+    quantitative_penalty_contract = list(
+      baseline_gene_expression = "latent_cpm",
+      regulatory_multiplier = "2^R",
+      regulatory_modifier_range = c(-1, 1),
+      gpr_and_method = gpr_and_method,
+      gpr_or_method = "sum",
+      penalty_formula = "1/(1+log2(1+max(E_quantitative,0)))",
+      structural_route_marker = "regcompass_quantitative_penalty_route",
+      primary_route = "multiome",
+      rna_control_route = "rna_only",
+      bounded_support_excluded_from_lp_penalty = TRUE
+    ),
+    structural_support_contract = list(
+      gene_support_range = c(0, 1),
+      gene_half_saturation = gene_half_saturation,
+      regulatory_update = "bounded_odds",
+      intended_use = "CORDA2_and_structural_confidence",
+      quantitative_lp_penalty = FALSE
     ),
     projection_provenance = list(
       analysis_mode = mode,

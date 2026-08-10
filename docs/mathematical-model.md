@@ -83,14 +83,92 @@ The bounded regulatory modifier is
 R_{g,u}=q_{g,u}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right).
 \]
 
-Unavailable regulatory evidence uses the neutral RNA-only route downstream.
-
-## 3. RNA and multiome gene support
-
-Metacell RNA support is
+RegCompass constrains the realized modifier to
 
 \[
-C^{RNA}_{g,u}=\frac{x_{g,u}}{x_{g,u}+h}.
+-1\le R_{g,u}\le1.
+\]
+
+Unavailable regulatory evidence uses the neutral RNA-only route downstream, equivalent to \(R_{g,u}=0\).
+
+## 3. Two distinct Layer 1 evidence scales
+
+Layer 1 intentionally exposes two different numerical representations. They must not be interchanged because they answer different questions.
+
+### 3.1 Quantitative COMPASS penalty path
+
+Let \(\widehat{CPM}_{g,u}\) denote the empirical-Bayes latent metacell CPM produced by the RNA model. The quantitative RNA expression used for the LP penalty is
+
+\[
+X^{RNA}_{g,u}=\widehat{CPM}_{g,u}.
+\]
+
+Pando modifies this unbounded non-negative expression multiplicatively:
+
+\[
+\boxed{
+X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}}
+}
+\]
+
+so that
+
+\[
+\frac12X^{RNA}_{g,u}\le X^{MO}_{g,u}\le2X^{RNA}_{g,u}.
+\]
+
+This is the quantitative regulatory correction. It preserves the latent-CPM dynamic range instead of first mapping every gene into \([0,1]\). It also preserves the zero condition:
+
+\[
+X^{RNA}_{g,u}=0\Rightarrow X^{MO}_{g,u}=0.
+\]
+
+For an AND branch \(A_{r,j}\), the canonical RegCompass workflow uses the configured GPR AND operator, `min` by default:
+
+\[
+Q^{quant}_{r,j,u}=\min_{g\in A_{r,j}}X^{MO}_{g,u}.
+\]
+
+Isozyme branches remain additive, matching the existing COMPASS-style OR policy:
+
+\[
+E^{quant}_{r,u}=\sum_jQ^{quant}_{r,j,u}.
+\]
+
+The reaction value entering the LP cost is therefore unbounded above when expression is high. RegCompass then applies the COMPASS-shaped cost exactly once at reaction level:
+
+\[
+\boxed{
+p_{r,u}=\frac{1}{1+\log_2(1+\max(E^{quant}_{r,u},0))}
+}
+\]
+
+If quantitative reaction expression is unavailable, RegCompass sets \(E^{quant}_{r,u}=0\), hence
+
+\[
+p_{r,u}=1.
+\]
+
+The structural roles `exchange`, `demand`, `sink`, and `artificial_support` also receive
+
+\[
+p_{r,u}=1.
+\]
+
+This restores a COMPASS-like expression dynamic range: for a single-gene, single-isozyme reaction, increasing expression can drive \(p_{r,u}\) toward zero rather than imposing a floor near 0.5. RegCompass still differs from the original COMPASS implementation in other design choices, including the default GPR AND rule (`min` rather than the original default `mean`) and the empirical-Bayes metacell expression model.
+
+### 3.2 Bounded structural-confidence path
+
+A separate bounded representation is retained for CORDA2 and other structural-confidence decisions. Let
+
+\[
+L_{g,u}=\ln(1+\widehat{CPM}_{g,u}).
+\]
+
+The bounded RNA support is
+
+\[
+C^{RNA}_{g,u}=\frac{L_{g,u}}{L_{g,u}+h}.
 \]
 
 Regulatory evidence modifies the support odds:
@@ -99,39 +177,57 @@ Regulatory evidence modifies the support odds:
 C^{MO}_{g,u}=\frac{C^{RNA}_{g,u}2^{R_{g,u}}}{1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{R_{g,u}}}.
 \]
 
-## 4. GPR aggregation and COMPASS reaction cost
-
-For an AND branch \(A_{r,j}\),
+Thus
 
 \[
-Q_{r,j,u}=\min_{g\in A_{r,j}}C^{MO}_{g,u}.
+0\le C^{RNA}_{g,u},C^{MO}_{g,u}\le1.
 \]
 
-Isozyme branches are additive:
+Bounded reaction structural support is then computed with the same GPR topology:
 
 \[
-E_{r,u}=\sum_jQ_{r,j,u}.
+Q^{struct}_{r,j,u}=\min_{g\in A_{r,j}}C^{MO}_{g,u},
+\qquad
+E^{struct}_{r,u}=\sum_jQ^{struct}_{r,j,u}.
 \]
 
-Reaction support is converted to the COMPASS-style LP cost:
+The bounded representation is **not** passed to the quantitative LP penalty in Layer 1 schema v5. It is retained to stabilize structural evidence and preserve the previous CORDA2 confidence scale.
+
+For backward compatibility, Layer 1 continues to expose the bounded matrices as `reaction_expression` and `reaction_expression_rna_only`, with explicit aliases `reaction_structural_support` and `reaction_structural_support_rna_only`. The quantitative LP matrices are `reaction_expression_quantitative` and `reaction_expression_quantitative_rna_only`. Layer 2 explicitly prefers the quantitative matrices when schema v5 is present.
+
+## 4. Why the two paths are separated
+
+The previous formulation used bounded gene support for both structural confidence and quantitative LP cost:
 
 \[
-p_{r,u}=\frac{1}{1+\log_2(1+\max(E_{r,u},0))}.
+\widehat{CPM}\rightarrow\ln(1+\widehat{CPM})
+\rightarrow\frac{L}{L+h}\rightarrow GPR
+\rightarrow\frac{1}{1+\log_2(1+E)}.
 \]
 
-If reaction expression is unavailable, RegCompass sets \(E_{r,u}=0\), so
+For a single-gene, single-isozyme reaction this forced \(E<1\), so even arbitrarily high RNA expression could not reduce the expression penalty below approximately 0.5. It also attenuated the realized Pando effect at high expression because the regulatory correction acted inside a saturating \([0,1]\) support scale.
+
+Layer 1 schema v5 therefore separates the estimands:
 
 \[
-p_{r,u}=1.
+\boxed{
+\widehat{CPM}\times2^R\rightarrow GPR\rightarrow COMPASS\ penalty
+}
 \]
 
-The structural roles `exchange`, `demand`, `sink`, and `artificial_support` also receive the maximum COMPASS cost
+for quantitative metabolic scoring, and
 
 \[
-p_{r,u}=1,
+\boxed{
+\frac{\ln(1+\widehat{CPM})}{\ln(1+\widehat{CPM})+h}
+\xrightarrow{\text{bounded odds }2^R}
+structural\ support
+}
 \]
 
-rather than a separate fixed cost outside the COMPASS range.
+for CORDA2/structural confidence.
+
+This change does not alter Pando fitting, metacell construction, the frozen edge dictionary, rank-deficiency gating, CORDA2 reconstruction semantics, directional \(V_{max}\), or the LP constraints. It changes only which Layer 1 numerical evidence scale is supplied to the LP objective.
 
 ## 5. Default CORDA2 structural model
 
@@ -141,7 +237,7 @@ For cell type \(t\) and condition-specific biological reaction sets \(B_{t,c}\),
 B_t=\bigcup_c B_{t,c}.
 \]
 
-Layer 1 reaction evidence is summarized within condition and unioned within cell type, then mapped to the CORDA2 confidence groups
+CORDA2 uses the bounded structural reaction evidence \(E^{struct}\), not \(E^{quant}\). Layer 1 structural evidence is summarized within condition and unioned within cell type, then mapped to the CORDA2 confidence groups
 
 \[
 HC_{t},\ MC_{t},\ NC_{t},\ OT_{t}.
@@ -196,7 +292,23 @@ The normalized penalty is
 
 Lower normalized penalty indicates stronger model-constrained support for the target direction; it is not a measured flux.
 
-## 7. Condition statistics
+## 7. RNA-only interpretation control
+
+The RNA-only comparison reuses the exact same structural model, media, bounds, target directions, and directional \(V_{max}\) as the multiome route. Only the quantitative objective coefficients differ:
+
+\[
+X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}}
+\]
+
+versus
+
+\[
+X^{RNA}_{g,u}.
+\]
+
+Therefore `regulatory_penalty_delta` isolates the effect of the Pando regulatory modifier on the quantitative COMPASS objective **conditional on the already constructed shared structural model**. It is not an end-to-end RNA-only reconstruction control.
+
+## 8. Condition statistics
 
 The comparison score is
 
@@ -206,6 +318,8 @@ S_{r,d,u,m}=-\log(\widetilde P_{r,d,u,m}+\epsilon).
 
 Condition comparisons are performed within one cell type, target reaction, direction, and medium. Wilcoxon rank-sum tests are used for pairwise comparisons; Kruskal–Wallis tests may be used for analyses with at least three conditions. Metacells are within-dataset statistical units, not donor-level biological replicates.
 
-## 8. Inference scope
+## 9. Inference scope
 
 Condition-GRN P values are conditional on the frozen candidate dictionary and do not include selective-inference correction for candidate discovery. Standard-Pando cell types do not receive manufactured condition coefficients.
+
+Layer 1 schema v5 is intentionally incompatible with old v4 artifacts for downstream validation. Existing `step_layer1.rds` objects must be regenerated before Layer 2 so that the quantitative reaction-expression matrices are present and the LP cannot silently fall back to the previous bounded penalty scale.

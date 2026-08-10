@@ -1,6 +1,8 @@
 # Reaction-level evidence hardening.
 # Multiome evidence is assigned only when ATAC integration changes the GPR-
-# aggregated reaction capacity, not merely when one participating gene changes.
+# aggregated quantitative reaction expression used by the LP penalty, not merely
+# when one participating gene changes. Legacy Layer 1 objects fall back to the
+# former bounded reaction-capacity evidence definition.
 
 .rc_ra_reaction_capacity_pair <- function(catalog, layer1) {
   empty <- list(rna = NULL, multiome = NULL, resolution = "unavailable")
@@ -11,6 +13,23 @@
     as.character(catalog$reaction_id), names(layer1$parsed_gpr)
   )
   if (!length(reaction_ids)) return(empty)
+
+  quantitative_rna <- layer1$reaction_expression_quantitative_rna_only
+  quantitative_multiome <- layer1$reaction_expression_quantitative
+  valid_quantitative <- is.matrix(quantitative_rna) &&
+    is.matrix(quantitative_multiome) &&
+    all(reaction_ids %in% rownames(quantitative_rna)) &&
+    all(reaction_ids %in% rownames(quantitative_multiome)) &&
+    identical(colnames(quantitative_rna), colnames(quantitative_multiome))
+  if (valid_quantitative) {
+    units <- colnames(quantitative_rna)
+    return(list(
+      rna = quantitative_rna[reaction_ids, units, drop = FALSE],
+      multiome = quantitative_multiome[reaction_ids, units, drop = FALSE],
+      resolution = "quantitative_lp_reaction_expression"
+    ))
+  }
+
   parsed <- layer1$parsed_gpr[reaction_ids]
   params <- layer1$capacity_params %||% list()
   calculate <- function(gene_support) {
@@ -24,7 +43,8 @@
     )
   }
   rna <- calculate(layer1$gene_support_rna)
-  multiome <- layer1$reaction_expression
+  multiome <- layer1$reaction_structural_support %||%
+    layer1$reaction_expression
   valid_multiome <- is.matrix(multiome) &&
     all(reaction_ids %in% rownames(multiome)) &&
     identical(colnames(rna), colnames(multiome))
@@ -36,7 +56,7 @@
   list(
     rna = rna[reaction_ids, , drop = FALSE],
     multiome = multiome[reaction_ids, , drop = FALSE],
-    resolution = "reaction_capacity"
+    resolution = "legacy_bounded_reaction_capacity"
   )
 }
 
@@ -46,7 +66,7 @@
   empty <- data.frame(
     reaction_id = character(), condition = character(), cell_type = character(),
     evidence_class = character(), evidence_resolution = character(),
-    n_units = integer(),
+    evidence_scale = character(), n_units = integer(),
     rna_supported_genes = character(), n_rna_supported_genes = integer(),
     atac_modifier_genes = character(), n_atac_modifier_genes = integer(),
     multiome_contributing_genes = character(),
@@ -64,16 +84,32 @@
     "gene_support_multiome", "unit_meta"
   )
   if (!all(required %in% names(layer1))) return(empty)
-  rna <- as.matrix(layer1$gene_support_rna)
+
+  structural_rna <- as.matrix(layer1$gene_support_rna)
   modifier <- as.matrix(layer1$gene_regulatory_modifier)
-  multiome <- as.matrix(layer1$gene_support_multiome)
-  if (!identical(dimnames(rna), dimnames(modifier)) ||
-      !identical(dimnames(rna), dimnames(multiome))) {
+  structural_multiome <- as.matrix(layer1$gene_support_multiome)
+  if (!identical(dimnames(structural_rna), dimnames(modifier)) ||
+      !identical(dimnames(structural_rna), dimnames(structural_multiome))) {
     stop(
       "Layer 1 RNA, ATAC modifier, and multiome matrices must align.",
       call. = FALSE
     )
   }
+
+  quantitative_rna <- layer1$gene_expression_quantitative_rna
+  quantitative_multiome <- layer1$gene_expression_quantitative_multiome
+  use_quantitative_genes <- !is.null(quantitative_rna) &&
+    !is.null(quantitative_multiome) &&
+    identical(dimnames(quantitative_rna), dimnames(structural_rna)) &&
+    identical(dimnames(quantitative_multiome), dimnames(structural_rna))
+  if (use_quantitative_genes) {
+    rna <- as.matrix(quantitative_rna)
+    multiome <- as.matrix(quantitative_multiome)
+  } else {
+    rna <- structural_rna
+    multiome <- structural_multiome
+  }
+
   meta <- layer1$unit_meta
   columns <- .rc_ra_infer_group_columns(meta, condition_col, celltype_col)
   condition_col <- columns$condition_col
@@ -197,7 +233,7 @@
           max_abs_shift <- max(abs(shifts))
         }
       } else {
-        evidence_resolution <- "reaction_capacity_unavailable"
+        evidence_resolution <- "reaction_expression_unavailable"
         has_rna_capacity <- length(rna_genes) > 0L
         has_capacity_shift <- FALSE
       }
@@ -216,6 +252,14 @@
         cell_type = cell_type,
         evidence_class = evidence_class,
         evidence_resolution = evidence_resolution,
+        evidence_scale = if (identical(
+          evidence_resolution,
+          "quantitative_lp_reaction_expression"
+        )) {
+          "quantitative_lp_penalty_input"
+        } else {
+          "legacy_bounded_structural_support"
+        },
         n_units = sum(keep),
         rna_supported_genes = display_genes(rna_genes),
         n_rna_supported_genes = length(rna_genes),
@@ -323,4 +367,3 @@
   })
   cbind(data, do.call(rbind, summary), stringsAsFactors = FALSE)
 }
-

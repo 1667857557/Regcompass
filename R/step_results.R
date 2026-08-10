@@ -96,8 +96,8 @@ rc_regcompass_step_results <- function(
   metacell_design <- metacells$pooled$input_design
   is_celltype_union <- identical(layer2$model_mode, "meta_module_gem")
   result <- list(
-    schema_version = "regcompass_regulatory_metabolic_result_v3",
-    version = "2.4.0",
+    schema_version = "regcompass_regulatory_metabolic_result_v4",
+    version = "2.4.12",
     species = species,
     model_mode = layer2$model_mode,
     analysis_mode = mode,
@@ -143,7 +143,13 @@ rc_regcompass_step_results <- function(
       cell_type_analysis_mode = grn$grn_result$cell_type_analysis_mode,
       pando_regulatory_projection = layer1$projection_provenance,
       primary_penalty = "penalty",
+      primary_penalty_expression = "reaction_expression_quantitative",
       rna_only_control = "penalty_rna_only",
+      rna_only_penalty_expression =
+        "reaction_expression_quantitative_rna_only",
+      structural_support_expression = "reaction_structural_support",
+      quantitative_penalty_contract = layer1$quantitative_penalty_contract,
+      structural_support_contract = layer1$structural_support_contract,
       nonestimable_edge_policy =
         "coefficient_NA_and_zero_realized_penalty_contribution",
       metacell_purity_grouping = c(params$condition_col, params$celltype_col),
@@ -182,11 +188,8 @@ rc_regcompass_step_results <- function(
         } else {
           "not_applicable_full_gem"
         },
-      feasibility_completion = if (is_celltype_union) {
-        "independent_fastcore_for_each_celltype_x_medium_union_gem"
-      } else {
-        "not_applicable_full_gem"
-      },
+      feasibility_completion = layer2$params$model_completion %||%
+        if (is_celltype_union) "unknown" else "none",
       vmax_computation_scope = layer2$params$vmax_computation_scope %||%
         if (is_celltype_union) {
           "celltype_model_x_directional_target_once"
@@ -194,7 +197,13 @@ rc_regcompass_step_results <- function(
           "full_gem_x_directional_target_once"
         },
       pando_normalization_policy = grn$grn_result$normalization_policy,
-      penalty_formula = "1/(1+log2(1+E_multiome)); missing E:=0",
+      penalty_formula =
+        "1/(1+log2(1+E_quantitative)); missing E_quantitative:=0",
+      penalty_evidence_policy = layer2$evidence_policy,
+      reaction_evidence_definition = paste(
+        "RNA+ATAC means Pando changes the GPR-aggregated quantitative reaction",
+        "expression used by the LP penalty relative to RNA-only"
+      ),
       execution_mode = "stepwise"
     )
   )

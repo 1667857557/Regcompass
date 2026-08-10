@@ -1,5 +1,12 @@
-# RegCompassR 2.4.7
+# RegCompassR 2.4.12
 
+- Splits Layer 1 evidence into an unbounded quantitative COMPASS penalty path and a bounded structural-confidence path. The LP route now starts from latent metacell CPM, applies Pando as `X_multiome = X_RNA * 2^R`, performs GPR aggregation, and applies `1/(1+log2(1+E_quantitative))` only at reaction level.
+- Retains the previous bounded `log1p(CPM)/(log1p(CPM)+h)` support and bounded-odds Pando update for CORDA2 and other structural-confidence decisions; `gene_half_saturation` no longer compresses the quantitative LP penalty scale.
+- Introduces Layer 1 schema v5 with explicit quantitative and structural matrices and rejects stale v4 Layer 1 artifacts before Layer 2 so old bounded penalties cannot be silently reused.
+- Uses explicit primary/RNA-only route markers rather than numerical equality of bounded support matrices, preventing a primary run from being misrouted when bounded multiome and RNA-only support happen to be identical.
+- Hardens the Layer 2/results handoff by requiring `quantitative_penalty_only` provenance and verifying the saved primary LP reaction-expression input against the Layer 1 quantitative multiome matrix; stale bounded-penalty Stage 5 artifacts are rejected.
+- Defines reaction-level `RNA+ATAC` evidence from changes in the same quantitative GPR-aggregated reaction expression used by the LP penalty, while retaining bounded support for structural confidence.
+- Adds regression tests for the restored high-expression penalty dynamic range, the bounded structural scale, the `2^R` quantitative modifier, deterministic RNA-only routing, and quantitative reaction-evidence provenance.
 - Removes finite structural time limits from the default CORDA2 route. CORDA2 now always runs with `completion_time_limit = Inf`, and supplying `model_params$completion_time_limit` with CORDA2 is rejected so a long Human-GEM reconstruction cannot be silently truncated by a persistent solver clock.
 - Keeps `completion_time_limit` available for supplementary non-CORDA2 completion such as FASTCORE, and synchronizes the Layer 2 tutorials and function reference with this route-specific contract.
 - Adds a regression test covering unlimited CORDA2 runtime and retained non-CORDA2 time-limit controls.
@@ -11,7 +18,7 @@
 - Reports Layer 2 as a 12-part end-to-end workflow instead of a single 0/1 progress item.
 - Prints task-scoped progress for every cell-type-by-medium model, including COMPASS medium setup, FASTCC/FASTCORE phases or original CORDA2 Steps 1, 2.1, 2.2 and 3, target closure, directional vmax, primary penalty scoring and RNA-only control scoring.
 - Persists merged `layer2_task_progress.tsv` and latest-state `layer2_task_status.tsv` diagnostics across controller and parallel worker processes, including the actual interrupted step on failure.
-- Keeps numerical algorithms, model caches, parallel task decomposition and Layer 2 output schemas unchanged.
+- Keeps the CORDA2 state machine, structural model caches, parallel task decomposition, directional Vmax calculation, and LP constraints unchanged by the quantitative penalty split.
 - Aligns medium application with the original COMPASS exchange-bound sequence: all exchange uptake directions receive the shared cap, omitted medium reactions remain capped rather than closed, and explicit medium rows override only the intended uptake direction for generated biological media.
 - Detects uptake direction from exchange stoichiometry so both `metabolite -> boundary` and `boundary -> metabolite` conventions are handled without restricting the secretion direction.
 - Keeps reaction-level custom `lb`/`ub` rows backward compatible, while `available = FALSE` closes uptake only.

@@ -66,14 +66,66 @@ rc_compass_score_from_penalty <- function(P, feasible,
   score
 }
 
+.rc_layer2_penalty_expression <- function(layer1) {
+  structural <- layer1$reaction_expression %||% layer1$C_rel
+  if (is.null(structural)) {
+    stop("Layer 1 must contain `reaction_expression`.", call. = FALSE)
+  }
+  quantitative <- layer1$reaction_expression_quantitative
+  quantitative_rna <- layer1$reaction_expression_quantitative_rna_only
+
+  # Legacy Layer 1 artifacts did not contain the split quantitative path.
+  # Public v5 Stage 4 artifacts are validated before Layer 2, but keeping the
+  # fallback here preserves lower-level compatibility for legacy callers.
+  if (is.null(quantitative) || is.null(quantitative_rna)) {
+    return(list(
+      expression = structural,
+      route = "legacy_reaction_expression"
+    ))
+  }
+  if (!identical(dimnames(quantitative), dimnames(structural)) ||
+      !identical(dimnames(quantitative_rna), dimnames(structural))) {
+    stop(
+      "Layer 1 quantitative and structural reaction matrices are misaligned.",
+      call. = FALSE
+    )
+  }
+
+  # The canonical Stage 5 RNA-only control swaps reaction_expression to the
+  # bounded RNA-only compatibility matrix. Route selection must therefore be
+  # carried by an explicit matrix attribute, never inferred from numerical
+  # equality: multiome and RNA-only bounded support can legitimately be equal.
+  route <- attr(
+    structural,
+    "regcompass_quantitative_penalty_route",
+    exact = TRUE
+  )
+  if (!is.character(route) || length(route) != 1L || is.na(route) ||
+      !route %in% c("multiome", "rna_only")) {
+    stop(
+      "Layer 1 v5 structural reaction matrix lacks a valid explicit quantitative penalty route marker.",
+      call. = FALSE
+    )
+  }
+  list(
+    expression = if (identical(route, "rna_only")) {
+      quantitative_rna
+    } else {
+      quantitative
+    },
+    route = if (identical(route, "rna_only")) {
+      "quantitative_latent_cpm_rna_only"
+    } else {
+      "quantitative_latent_cpm_multiome"
+    }
+  )
+}
+
 rc_layer2_unit_matrices <- function(
     layer1, unit, sample_col, celltype_col, condition_col) {
   unit <- match.arg(unit, c("sample_celltype", "metacell"))
-  reaction_expression <- layer1$reaction_expression %||% layer1$C_rel
-  if (is.null(reaction_expression)) {
-    stop("Layer 1 must contain `reaction_expression`.", call. = FALSE)
-  }
-  E <- as.matrix(reaction_expression)
+  selected <- .rc_layer2_penalty_expression(layer1)
+  E <- as.matrix(selected$expression)
   valid_dimnames <- function(x) {
     !is.null(rownames(x)) && !is.null(colnames(x)) &&
       !anyNA(rownames(x)) && !anyNA(colnames(x)) &&
@@ -90,7 +142,11 @@ rc_layer2_unit_matrices <- function(
     return(list(
       reaction_expression = E,
       unit_meta = layer1$unit_meta,
-      summary = "metacell-level reaction-expression matrix"
+      penalty_route = selected$route,
+      summary = paste0(
+        "metacell-level reaction-expression matrix; penalty_route=",
+        selected$route
+      )
     ))
   }
   if (is.null(layer1$unit_meta) || !is.data.frame(layer1$unit_meta)) {
@@ -155,7 +211,11 @@ rc_layer2_unit_matrices <- function(
   list(
     reaction_expression = out,
     unit_meta = unit_meta,
-    summary = "reaction expression aggregated to sample x celltype medians"
+    penalty_route = selected$route,
+    summary = paste0(
+      "reaction expression aggregated to sample x celltype medians; penalty_route=",
+      selected$route
+    )
   )
 }
 
