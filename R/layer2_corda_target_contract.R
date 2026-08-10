@@ -36,7 +36,6 @@
 
   model$required_core_reactions <- core
   model$core_direction_diagnostics <- diagnostics
-  model$closure_diagnostics <- data.frame()
   model$target_directions <- targets
   model$target_status <- if (!nrow(targets)) {
     "no_bound_allowed_core_direction"
