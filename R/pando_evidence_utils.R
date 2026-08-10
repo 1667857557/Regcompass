@@ -19,3 +19,65 @@
   x <- sub("^([^:]+):(\\d+):(\\d+)$", "\\1-\\2-\\3", x)
   x
 }
+
+.rc_pando_region_coordinates <- function(x) {
+  keys <- .rc_pando_region_key(x)
+  matched <- regexec("^(.*)-(\\d+)-(\\d+)$", keys)
+  parts <- regmatches(keys, matched)
+  data.frame(
+    seqname = vapply(parts, function(value) {
+      if (length(value) == 4L) value[[2L]] else NA_character_
+    }, character(1)),
+    start = suppressWarnings(as.numeric(vapply(parts, function(value) {
+      if (length(value) == 4L) value[[3L]] else NA_character_
+    }, character(1)))),
+    end = suppressWarnings(as.numeric(vapply(parts, function(value) {
+      if (length(value) == 4L) value[[4L]] else NA_character_
+    }, character(1)))),
+    stringsAsFactors = FALSE
+  )
+}
+
+# Pando reports the regulatory candidate interval in its coefficient table.
+# That interval can be the intersection of a supplied regulatory element and an
+# assay peak, so it is not necessarily identical to the ATAC feature name. Map
+# exact names first and otherwise recover the source peak by genomic overlap.
+.rc_map_pando_regions_to_atac <- function(regions, atac_features) {
+  region_keys <- .rc_pando_region_key(regions)
+  atac_keys <- .rc_pando_region_key(atac_features)
+  if (anyDuplicated(atac_keys)) {
+    stop("ATAC features are duplicated after Pando region normalization.",
+         call. = FALSE)
+  }
+
+  answer <- match(region_keys, atac_keys)
+  unresolved <- which(is.na(answer))
+  if (!length(unresolved)) return(answer)
+
+  candidate <- .rc_pando_region_coordinates(region_keys)
+  peaks <- .rc_pando_region_coordinates(atac_keys)
+  valid_peaks <- !is.na(peaks$seqname) & is.finite(peaks$start) &
+    is.finite(peaks$end) & peaks$start <= peaks$end
+  for (i in unresolved) {
+    if (is.na(candidate$seqname[[i]]) ||
+        !is.finite(candidate$start[[i]]) ||
+        !is.finite(candidate$end[[i]]) ||
+        candidate$start[[i]] > candidate$end[[i]]) next
+    hits <- which(
+      valid_peaks & peaks$seqname == candidate$seqname[[i]] &
+        peaks$start <= candidate$end[[i]] &
+        peaks$end >= candidate$start[[i]]
+    )
+    if (!length(hits)) next
+    overlap <- pmin(peaks$end[hits], candidate$end[[i]]) -
+      pmax(peaks$start[hits], candidate$start[[i]]) + 1
+    # ATAC peak sets should be disjoint. If they are not, prefer the peak with
+    # the greatest shared span, then the closest midpoint, then assay order.
+    midpoint_distance <- abs(
+      (peaks$start[hits] + peaks$end[hits]) -
+        (candidate$start[[i]] + candidate$end[[i]])
+    )
+    answer[[i]] <- hits[order(-overlap, midpoint_distance, hits)[[1L]]]
+  }
+  answer
+}

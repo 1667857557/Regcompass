@@ -359,12 +359,7 @@
     ))
     rownames(rna) <- colnames(grn@data)
     rownames(atac) <- colnames(grn@data)
-    atac_keys <- .rc_pando_region_key(colnames(atac))
-    if (anyDuplicated(atac_keys)) {
-      stop("ATAC features are duplicated after Pando region normalization.",
-           call. = FALSE)
-    }
-    colnames(atac) <- atac_keys
+    atac_features <- colnames(atac)
     edge <- grn_result$tf_peak_gene_condition[
       as.character(grn_result$tf_peak_gene_condition[[celltype_col]]) == celltype,
       , drop = FALSE
@@ -375,7 +370,9 @@
     edge$region_key <- .rc_pando_region_key(edge$region)
     rna_names <- toupper(colnames(rna))
     tf_index <- match(edge$tf, rna_names)
-    peak_index <- match(edge$region_key, colnames(atac))
+    peak_index <- .rc_map_pando_regions_to_atac(
+      edge$region_key, atac_features
+    )
     usable <- !is.na(tf_index) & !is.na(peak_index) & is.finite(edge$estimate)
     edge <- edge[usable, , drop = FALSE]
     tf_index <- tf_index[usable]
