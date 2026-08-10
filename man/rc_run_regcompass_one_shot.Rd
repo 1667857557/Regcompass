@@ -12,44 +12,20 @@ rc_run_regcompass_one_shot(object, outdir, genome,
   progress = getOption("RegCompassR.progress", TRUE), ...)
 }
 \arguments{
-\item{object}{Paired single-cell RNA+ATAC Seurat object.}
+\item{object}{Paired-cell Seurat RNA+ATAC object.}
 \item{outdir}{Persistent workflow output directory.}
-\item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
+\item{genome}{Genome object matching the ATAC coordinates and regulatory regions.}
 \item{species}{\code{"human"} or \code{"mouse"}.}
-\item{gem}{Optional prepared GEM.}
-\item{gem_version}{Model release used when \code{gem} is omitted.}
-\item{gem_source}{Automatic, bundled-only, or download model source.}
-\item{pfm}{Optional motif collection. Pando's bundled motifs are used when omitted.}
-\item{fragment_files}{Optional Stage 2 raw fragment input. Use \code{NULL}/\code{FALSE}, a single path, a named path vector whose names match cell-ID prefixes before \code{_}, or a data frame with \code{fragment_file}, \code{object_cell}, and \code{fragment_barcode}.}
-\item{medium_scenario}{Optional built-in biological medium scenario.}
-\item{medium_scenarios}{Optional prebuilt built-in or user-defined medium table.}
-\item{workers}{Single RegCompass-wide worker cap, default \code{10L}. RegCompass selects SOCK/Snow workers on Windows and Multicore workers on Linux/macOS. The effective limit is \code{min(workers, max(1, detected logical CPUs - 2))}, and individual stages/sub-steps shrink further to their independent task count.}
-\item{progress}{Display workflow and stage progress.}
-\item{...}{Arguments passed to \code{rc_run_regcompass()}, including explicit supplementary Layer 2 mode controls when required.}
+\item{gem}{Optional prepared GEM. When omitted, \code{rc_prepare_gem()} is called.}
+\item{gem_version}{Optional model release used when \code{gem} is omitted. Human defaults to 2.0.0 and mouse to 1.8.0.}
+\item{gem_source}{GEM source passed to \code{rc_prepare_gem()}.}
+\item{pfm}{Optional motif collection. Pando defaults are used when omitted.}
+\item{fragment_files}{Optional Stage 2 raw fragment input.}
+\item{medium_scenario}{Optional built-in medium scenario used when \code{medium_scenarios} is omitted.}
+\item{medium_scenarios}{Optional prebuilt medium table.}
+\item{workers}{RegCompass-wide worker cap, default \code{10L}.}
+\item{progress}{Display workflow progress.}
+\item{...}{Arguments forwarded to \code{rc_run_regcompass()}, such as metadata columns and stage argument bundles.}
 }
-\value{
-A complete RegCompass result with workflow and cell-type routing provenance.
-}
-\description{
-Loads species-aware defaults and runs the complete RegCompass workflow.
-}
-\details{
-When both medium arguments are omitted, Human-GEM uses
-\code{"normal_human_plasma"} and Mouse-GEM uses \code{"mouse_plasma"}.
-Pando routing is resolved independently for each retained broad cell type:
-cell types with at least two retained conditions use the condition GRN, while
-cell types with one retained condition use standard Pando. The single
-\code{workers} parameter controls the maximum process count across Stage 1,
-Stage 2 fragment aggregation, Stage 4 and Stage 5; two detected logical CPUs are
-reserved and smaller task sets automatically use fewer workers. Stage 1 uses the
-in-memory RNA/ATAC assays. Stage 2 builds one RNA+ATAC WNN graph per broad cell
-type and keeps final metacells condition-pure. When raw fragments are supplied,
-they are transformed from single-cell to final metacell barcodes and use the
-same protected top-level worker cap for aggregation before peak calling/
-FeatureMatrix recount and metacell TF-IDF. Sample identity is not introduced as
-a metacell stratum. Layer 2 uses original MATLAB CORDA2 by default. CORDA2
-parallelism is limited to directional targets within the current mathematical
-step, with a strict barrier and worker cleanup before the next step. FASTCORE
-and the complete full-GEM route are explicit supplementary alternatives passed
-through \code{...}.
-}
+\value{A complete RegCompass result.}
+\description{Runs the complete workflow while supplying species-aware GEM and medium defaults when they are not provided explicitly. Human defaults to \code{"normal_human_plasma"}; mouse defaults to \code{"mouse_plasma"}.}
