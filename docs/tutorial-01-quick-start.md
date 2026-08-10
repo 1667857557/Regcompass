@@ -89,17 +89,21 @@ The two `500L` cell-count settings are defaults, not fixed constraints. If a dat
 
 For cell types with at least two retained conditions, RegCompass first parallelizes pooled-background and condition × cell-type candidate discovery, freezes one exact edge dictionary per cell type after a strict barrier, and then parallelizes condition × cell-type fixed-dictionary GLMs. This tutorial uses `tf_cor = 0.1` and `peak_cor = 0.05` for that candidate screen. Each atomic Pando task disables nested target-level parallelism. If only one effective condition is retained, standard Pando is parallelized across broad cell types and uses the same fixed `tf_cor` and `peak_cor` values supplied through `pando_infer_args`; RegCompass does not increase either threshold as a function of cell count.
 
+Layer 1 schema v5 separates the quantitative COMPASS penalty scale from bounded structural confidence. The LP path starts from latent metacell CPM and applies the Pando modifier as `X_multiome = X_RNA * 2^R` before GPR aggregation. `gene_half_saturation` therefore controls only the bounded `0-1` support used for CORDA2/structural evidence; it no longer compresses the quantitative LP reaction-expression scale. Existing Layer 1 artifacts generated under schema v4 must be regenerated before Layer 2.
+
 `meta_module_gem` uses original MATLAB CORDA2 by default. Set `model_params$model_completion = "fastcore"` only for the supplementary FASTCORE route. Use `model_mode = "full_gem"` for supplementary complete-network COMPASS-style scoring.
 
 CORDA2 reconstruction intentionally runs without a structural time limit. Do not supply `model_params$completion_time_limit` for the default CORDA2 route; that control is reserved for supplementary non-CORDA2 completion such as FASTCORE.
 
-CORDA2 receives the complete medium-constrained parent without FASTCC pre-pruning. Retained reactions recover their parent directional bounds, including positive lower bounds. Layer 2 uses the COMPASS cost scale; missing expression and structural roles receive cost `1`. Step 1, Step 2.1, Step 2.2 and Step 3 remain strict mathematical barriers; directional targets within each step are parallelized up to the protected worker cap, the step pool is then released, and the next step starts with a fresh pool.
+CORDA2 receives the complete medium-constrained parent without FASTCC pre-pruning. Retained reactions recover their parent directional bounds, including positive lower bounds. CORDA2 consumes the bounded structural-support matrices. Layer 2 LP scoring separately consumes the quantitative reaction-expression matrices and applies the COMPASS cost `1/(1+log2(1+E_quantitative))`; missing expression and structural roles receive cost `1`. Step 1, Step 2.1, Step 2.2 and Step 3 remain strict mathematical barriers; directional targets within each step are parallelized up to the protected worker cap, the step pool is then released, and the next step starts with a fresh pool.
 
 ## Main outputs
 
 ```r
 result$grn$cell_type_analysis_mode
 result$layer1$gene_regulatory_modifier
+result$layer1$reaction_expression_quantitative
+result$layer1$reaction_structural_support
 result$microcompass$penalty
 result$reaction_ranking
 result$condition_contrast
