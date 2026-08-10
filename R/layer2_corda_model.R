@@ -1,113 +1,5 @@
 # RegCompass integration for the original MATLAB CORDA2 algorithm.
 
-.rc_corda_closure_directional_feasibility <- function(
-    gem, targets, solver, time_limit, flux_threshold,
-    label = "CORDA2 core-direction closure") {
-  if (!is.data.frame(targets) || !nrow(targets)) {
-    return(.rc_directional_feasibility_core(
-      gem, targets,
-      solver = solver,
-      time_limit = time_limit,
-      flux_threshold = flux_threshold
-    ))
-  }
-  BPPARAM <- .rc_layer2_task_bpparam()
-  if (identical(BPPARAM, FALSE) || is.null(BPPARAM) || nrow(targets) <= 1L) {
-    return(.rc_directional_feasibility_core(
-      gem, targets,
-      solver = solver,
-      time_limit = time_limit,
-      flux_threshold = flux_threshold
-    ))
-  }
-
-  worker_limit <- .rc_layer2_pool_workers(BPPARAM)
-  effective_workers <- min(nrow(targets), worker_limit)
-  if (.rc_progress_enabled(getOption("RegCompassR.progress", TRUE))) {
-    message(sprintf(
-      "%s started | targets=%d | workers=%d | solver_threads_per_worker=1",
-      label, nrow(targets), effective_workers
-    ))
-  }
-  indices <- as.list(seq_len(nrow(targets)))
-  parts <- rc_parallel_lapply(
-    indices,
-    function(i) {
-      .rc_directional_feasibility_core(
-        gem,
-        targets[as.integer(i), , drop = FALSE],
-        solver = solver,
-        time_limit = time_limit,
-        flux_threshold = flux_threshold
-      )
-    },
-    BPPARAM = BPPARAM
-  )
-  out <- do.call(rbind, parts)
-  rownames(out) <- NULL
-  if (.rc_progress_enabled(getOption("RegCompassR.progress", TRUE))) {
-    message(sprintf(
-      "%s complete | completed=%d/%d | remaining=0 | worker pool released",
-      label, nrow(targets), nrow(targets)
-    ))
-  }
-  out
-}
-
-.rc_corda_core_closure_core <- function(
-    parent, final, core, target_direction, solver, time_limit,
-    flux_threshold) {
-  requested <- rc_prepare_directional_targets(
-    parent, core, target_direction = target_direction
-  )
-  parent_diagnostics <- .rc_corda_closure_directional_feasibility(
-    parent, requested,
-    solver = solver,
-    time_limit = time_limit,
-    flux_threshold = flux_threshold,
-    label = "CORDA2 parent core-direction closure"
-  )
-  final_diagnostics <- .rc_corda_closure_directional_feasibility(
-    final, requested,
-    solver = solver,
-    time_limit = time_limit,
-    flux_threshold = flux_threshold,
-    label = "CORDA2 reconstructed core-direction closure"
-  )
-  names(final_diagnostics)[names(final_diagnostics) == "feasible"] <-
-    "final_feasible"
-  names(final_diagnostics)[names(final_diagnostics) == "vmax"] <-
-    "final_vmax"
-  names(final_diagnostics)[names(final_diagnostics) == "solver_status"] <-
-    "final_solver_status"
-  diagnostics <- merge(
-    parent_diagnostics, final_diagnostics,
-    by = c("reaction_id", "target_direction"),
-    all.x = TRUE, sort = FALSE
-  )
-  diagnostics$completion_status <- ifelse(
-    !diagnostics$feasible,
-    "parent_blocked",
-    ifelse(
-      diagnostics$final_feasible %in% TRUE,
-      "corda2_retained",
-      "corda2_removed"
-    )
-  )
-  feasible_targets <- diagnostics[
-    diagnostics$final_feasible %in% TRUE,
-    c("reaction_id", "target_direction"),
-    drop = FALSE
-  ]
-  list(
-    requested = requested,
-    diagnostics = diagnostics,
-    feasible_targets = feasible_targets,
-    failed = diagnostics$feasible %in% TRUE &
-      !(diagnostics$final_feasible %in% TRUE)
-  )
-}
-
 .rc_complete_celltype_medium_corda_gem_core <- function(
     gem, reaction_membership, core_reactions, cell_type,
     reaction_evidence, corda_options, medium_table = NULL,
@@ -173,23 +65,34 @@
       "serial_original_target_order_target_isolated_solver_state"
   }
 
-  included_variables <- reconstruction$included_directional_variables
-  if (!length(included_variables)) {
-    stop("CORDA2 reconstruction retained no directional reactions.",
-         call. = FALSE)
-  }
+  included_variables <- unique(as.character(
+    reconstruction$included_directional_variables %||% character()
+  ))
   final <- .rc_corda2_apply_direction_bounds(
-    parent, included_variables, split
-  )
-  closure <- .rc_corda_core_closure(
     parent = parent,
-    final = final,
-    core = core,
-    target_direction = target_direction,
-    solver = solver,
-    time_limit = time_limit,
-    flux_threshold = corda_options$flux_threshold
+    included_variables = included_variables,
+    split = split,
+    core_reactions = core
   )
+  missing_core <- setdiff(core, colnames(final$S))
+  if (length(missing_core)) {
+    stop(
+      "CORDA2 finalization failed to retain required core reactions: ",
+      paste(utils::head(missing_core, 10L), collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
+  selected_by_corda2 <- unique(as.character(
+    split$variable_to_reaction[
+      intersect(included_variables, split$variable_order)
+    ]
+  ))
+  selected_by_corda2 <- selected_by_corda2[
+    !is.na(selected_by_corda2) & nzchar(selected_by_corda2)
+  ]
+  forced_core <- setdiff(core, selected_by_corda2)
 
   meta <- final$reaction_meta
   if (is.null(meta)) {
@@ -203,6 +106,10 @@
     , drop = FALSE
   ]
   meta$merged_meta_module_member <- reaction_id %in% module_reactions
+  meta$core_reaction <- reaction_id %in% core
+  meta$core_structural_retention <- ifelse(
+    meta$core_reaction, "required", "not_core"
+  )
   meta$celltype_fastcore_support <- FALSE
   meta$celltype_corda2_included <- TRUE
   meta$celltype_corda_included <- TRUE
@@ -216,12 +123,21 @@
   meta$corda2_final_confidence <- unname(
     reconstruction$final_reaction_confidence[reaction_id]
   )
-  meta$corda2_final_status <- unname(
+  directional_status <- unname(
     reconstruction$final_reaction_status[reaction_id]
+  )
+  meta$corda2_directional_status <- directional_status
+  meta$corda2_final_status <- ifelse(
+    meta$core_reaction & !(directional_status %in% "included"),
+    "core_forced_retained",
+    directional_status
   )
   meta$corda2_inclusion_stage <- unname(
     reconstruction$inclusion_stage[reaction_id]
   )
+  meta$corda2_inclusion_stage[
+    meta$core_reaction & is.na(meta$corda2_inclusion_stage)
+  ] <- "core_structural_backbone"
   meta$corda2_evidence_score <- unname(classes$evidence_score[reaction_id])
   meta$corda2_rna_percentile <- suppressWarnings(as.numeric(
     evidence$rna_percentile
@@ -240,8 +156,7 @@
   final$sample_id <- cell_type
   final$grn_module_id <- paste0("CELLTYPE_MEDIUM_UNION_GEM::", cell_type)
   final$cell_type <- cell_type
-  final$target_directions <- closure$feasible_targets
-  final$closure_diagnostics <- closure$diagnostics
+  final$required_core_reactions <- core
   final$corda2_reaction_evidence <- reaction_evidence
   final$corda_reaction_evidence <- reaction_evidence
   final$corda_task_diagnostics <- reconstruction$task_diagnostics
@@ -265,20 +180,13 @@
     } else {
       "no_worker_pool_fresh_solver_engine_per_target"
     },
-    closure_parallelism = "directional_target_tasks_using_layer2_worker_cap"
+    closure_parallelism = "none_post_reconstruction"
   ))
   final$corda_stage1_HCtoMC <- reconstruction$HCtoMC
   final$corda_stage1_HCtoNC <- reconstruction$HCtoNC
   final$corda_stage2_MCtoNC <- reconstruction$MCtoNC
   final$corda_rescue <- reconstruction$rescue
   final$corda_reconstruction <- reconstruction
-  final$target_status <- if (any(closure$failed)) {
-    "core_direction_removed_by_corda2"
-  } else if (!nrow(closure$feasible_targets)) {
-    "no_feasible_core_direction"
-  } else {
-    "ok"
-  }
   final$is_union_gem <- TRUE
   final$union_gem_scope <-
     "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells"
@@ -307,6 +215,9 @@
     n_negative_confidence_reactions = sum(initial == "NC"),
     n_other_reactions = sum(initial == "OT"),
     n_corda_included_reactions = length(included),
+    n_corda2_directionally_selected_reactions = length(selected_by_corda2),
+    n_core_reactions = length(core),
+    n_core_forced_retained = length(forced_core),
     n_corda_included_initial_HC = sum(
       included %in% names(initial)[initial == "HC"]
     ),
@@ -324,8 +235,13 @@
     n_stage2_promoted_mc = length(reconstruction$stage2_promoted_mc),
     n_stage3_associated_ot = length(reconstruction$stage3_associated_ot),
     scoring_target_direction = target_direction,
-    reconstruction_direction_policy =
-      "original_CORDA2_opposite_direction_closed_and_directional_merge",
+    reconstruction_direction_policy = paste(
+      "original CORDA2 directional state machine internally; retain a",
+      "reaction if either split direction is selected; retain every core",
+      "reaction unconditionally and restore medium-constrained parent bounds"
+    ),
+    core_retention_policy = "immutable_structural_backbone",
+    closure_policy = "none_post_reconstruction_compass_vmax_only",
     corda2_args = original_args,
     corda2_solver_time_limit = time_limit,
     fastcore_epsilon_used = FALSE,
@@ -354,15 +270,42 @@
     stage_update_policy = reconstruction$stage_update_policy,
     parallel_execution_policy = reconstruction$parallel_execution_policy,
     solver_state_scope = solver_state_scope,
-    source_semantics = reconstruction$source_semantics
+    source_semantics = reconstruction$source_semantics,
+    post_reconstruction_direction_merge = paste(
+      "retain reaction if either direction is selected; force all core",
+      "reactions; restore medium-constrained parent bounds"
+    ),
+    core_retention = "all_core_reactions_structurally_required",
+    post_reconstruction_closure =
+      "none_microcompass_scoring_computes_directional_vmax_once"
   )
 
-  final <- .rc_corda2_apply_target_flux(
+  final <- .rc_corda2_prepare_scoring_targets(
     model = final,
-    flux_threshold = corda_options$flux_threshold,
+    core_reactions = core,
+    target_direction = target_direction,
     strict = strict,
     cell_type = cell_type
   )
+  progress_state <- get0(
+    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
+  )
+  task <- if (is.environment(progress_state)) {
+    progress_state$current_task
+  } else {
+    NULL
+  }
+  if (!is.null(task) && identical(task$route, "corda2")) {
+    .rc_layer2_current_task_event(
+      "corda2_scoring_targets_ready", 8L,
+      detail = paste0(
+        "core_reactions=", length(core),
+        "; directional_targets=", nrow(final$target_directions),
+        "; post_build_lp_solves=0"
+      )
+    )
+  }
+
   final <- .rc_corda_attach_parent_contract(
     model = final,
     parent = parent,
@@ -405,23 +348,4 @@
     )
     stop(error)
   })
-}
-
-# Progress-aware entry point; the algorithm remains in the core above.
-.rc_corda_core_closure <- function(...) {
-  progress_state <- get0(
-    ".rc_layer2_progress_state", mode = "environment", inherits = TRUE
-  )
-  task <- if (is.environment(progress_state)) {
-    progress_state$current_task
-  } else {
-    NULL
-  }
-  if (!is.null(task) && identical(task$route, "corda2")) {
-    .rc_layer2_current_task_event(
-      "corda2_target_closure", 8L,
-      "validating retained core directions in the reconstructed GEM"
-    )
-  }
-  do.call(.rc_corda_core_closure_core, list(...))
 }

@@ -42,18 +42,23 @@ Internal source constants such as the positive-flux threshold and Step-1 baselin
 
 ## RegCompass adapters
 
-Three operations are outside the original MATLAB function:
+Four operations are outside the original MATLAB function:
 
 1. cell-type multiome evidence is mapped to HC, MC, NC and OT groups;
 2. the requested medium is applied before reconstruction;
-3. final selected directions retain the medium-constrained parent bounds instead of reopening every retained reaction to unconditional `±1000` bounds.
+3. CORDA2 still performs its original directional decomposition internally, but finalization is reaction-level: if either directional copy survives, the reaction is retained and its original medium-constrained bounds are restored; all core reactions are retained unconditionally as the immutable structural backbone, even when CORDA2 marks their tested direction as blocked;
+4. no post-reconstruction closure LP is run. Scoring targets are enumerated directly from the reconstructed final GEM bounds, and microCOMPASS computes the directional `vmax` exactly once as COMPASS Step 1 before the penalty LP.
 
-The third operation is required to preserve the medium supplied to Layer 2. It changes only the final bound restoration adapter, not dependency assessment or reaction inclusion.
+The direction relaxation and hard core retention are applied only when directional CORDA2 variables are merged back to reaction space. They do not alter Step 1, Step 2.1, Step 2.2 or Step 3 dependency calculations, including the original opposite-direction closure used while assessing an individual split target.
+
+Core structural retention and flux feasibility are deliberately separated. For every required core reaction `r`, RegCompass enforces `r` in the final reaction set. A retained core direction may still have `vmax < flux_threshold` under the final stoichiometric and medium constraints; in that case microCOMPASS records the direction as infeasible and skips the penalty-minimization LP rather than deleting the reaction.
+
+For `target_direction = "both"`, target enumeration uses only the final reconstructed GEM. A reversible retained core reaction contributes forward and reverse candidates according to its restored final `lb/ub`; an irreversible parent reaction remains irreversible. No parent-GEM target enumeration or parent-GEM scoring LP remains after CORDA2 finalization.
 
 ## Parallelism
 
-The original directional target loop is serial within each reconstruction. RegCompass parallelizes only independent `cell type × medium` models. Each worker uses one solver thread, writes its cache atomically and releases the native solver state before returning to the pool.
+Within each original CORDA2 stage, RegCompass parallelizes independent directional targets with target-isolated solver state and a stage barrier before confidence-state reduction. Each worker uses one HiGHS thread. After reconstruction there is no closure worker pass; the existing microCOMPASS shared directional-`vmax` cache owns COMPASS Step 1 and reuses each result across matching metacells.
 
 ## Validation
 
-`tests/corda-synthetic-check.R` verifies defaults, accepted and rejected parameters, reversible decomposition, opposite-direction closure, target constraint handling, Step-1 dependencies and the HC-to-MC/HC-to-NC matrices. Testthat source-contract tests additionally verify the direct call path and absence of function-override wrappers.
+`tests/corda-synthetic-check.R` verifies defaults, accepted and rejected parameters, reversible decomposition, opposite-direction closure, target constraint handling, Step-1 dependencies and the HC-to-MC/HC-to-NC matrices. Testthat source-contract tests additionally verify immutable core retention, restoration of reversible parent bounds when either CORDA2 split direction is selected, absence of post-reconstruction closure LP calls, final-GEM-only target enumeration, and ownership of directional feasibility by the microCOMPASS `vmax` cache.

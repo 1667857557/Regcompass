@@ -30,11 +30,12 @@ jobs:
           route = Path("R/grn_route_parallel.R").read_text()
           required_route = [
               'getNamespaceExports("Pando")',
-              '"validate_condition_grn_projection_membership"',
-              '"aggregate_condition_grn_projection"',
+              '"condition_grn_fit"',
               '"discover_grn_edges"',
               '"union_grn_edges"',
               '"fit_grn_from_edges"',
+              '"GetNetwork"',
+              '"gof"',
               "Unsupported override(s)",
           ]
           missing = [value for value in required_route if value not in route]
@@ -84,20 +85,34 @@ jobs:
                   raise RuntimeError(f"obsolete post-fit gate remains: {forbidden}")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
-          required = [
+          projection = Path("R/pando_evidence_utils.R").read_text()
+          required_layer1 = [
               'expected_filter <- "estimable & BH padj < 0.05"',
-              "Pando::validate_condition_grn_projection_membership",
-              "Pando::aggregate_condition_grn_projection",
               ".rc_validate_pando_fit_metadata_frame <- function",
-              "aggregation_contract = \"all_projected_cells_have_exact_membership\"",
+              "Condition-Pando projection requires exactly one metacell membership",
+              ".rc_pando_projection_from_group_means",
+              'aggregation_contract =',
+              '"beta_times_group_mean_tf_times_group_mean_atac"',
               "origin = \"paired_cell_fixed_dictionary_glm_bh_filtered\"",
               "projection_name = \"bh_filtered_fixed_dictionary_condition_glm\"",
               "unique cell-type set.",
           ]
-          missing = [value for value in required if value not in layer1]
+          missing = [value for value in required_layer1 if value not in layer1]
           if missing:
               raise RuntimeError(f"Layer 1 canonical handoff missing: {missing}")
+          required_projection = [
+              ".rc_pando_projection_from_group_means <- function",
+              "tf_mean <- colMeans",
+              "peak_mean <- colMeans",
+              "contribution <- estimate * tf_mean * peak_mean",
+          ]
+          missing = [value for value in required_projection if value not in projection]
+          if missing:
+              raise RuntimeError(f"group-mean Pando projection contract missing: {missing}")
           forbidden_layer1 = [
+              "Pando::validate_condition_grn_projection_membership",
+              "Pando::aggregate_condition_grn_projection",
+              "all_projected_cells_have_exact_membership",
               "abs(corr) >= 0.05",
               "abs(estimate) >= 0.05",
               "regcompass_corr_threshold",
@@ -108,7 +123,7 @@ jobs:
           present = [value for value in forbidden_layer1 if value in layer1]
           if present:
               raise RuntimeError(
-                  f"Layer 1 reintroduced obsolete post-fit gate metadata: {present}"
+                  f"Layer 1 retains obsolete handoff implementation: {present}"
               )
 
           merge = Path("R/grn_parallel_merge_contract.R").read_text()
@@ -147,6 +162,9 @@ jobs:
               "R/grn_parallel_merge_contract.R": [
                   ".rc_merge_condition_job_results",
               ],
+              "R/pando_evidence_utils.R": [
+                  ".rc_pando_projection_from_group_means",
+              ],
           }
           for path, names in canonical.items():
               text = Path(path).read_text()
@@ -169,6 +187,7 @@ jobs:
             "R/grn_route_parallel.R",
             "R/grn_parallel_merge_contract.R",
             "R/condition_penalty_contract.R",
+            "R/pando_evidence_utils.R",
             "R/step_layer1_parallel_object_contract.R"
           )
           for (file in files) parse(file = file)
