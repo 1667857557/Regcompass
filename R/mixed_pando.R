@@ -199,8 +199,12 @@
       condition_effect_filter = "estimable and BH adjusted P below 0.05",
       standard_edge_filter =
         "estimable when available and adjusted P below 0.05",
-      projection =
-        "paired-cell TF-by-ATAC before exact SuperCell aggregation"
+      fitted_estimate_role =
+        "stored for inference/audit and sign; absolute magnitude not used for penalty",
+      projection = paste(
+        "sign-only self-scaled paired-cell TF-by-ATAC activity before exact",
+        "SuperCell aggregation"
+      )
     ),
     group_cols = c(condition_col, celltype_col)
   )
@@ -232,7 +236,7 @@
   coverage <- list()
   origins <- schemas <- projection_names <- policies <- character()
   if (length(grn_result$condition_grn_fits)) {
-    part <- .rc_condition_pando_projection(
+    part <- .rc_condition_pando_projection_sign_only(
       grn_result, membership, unit_meta, genes
     )
     projection <- .rc_overlay_projection(
@@ -248,7 +252,7 @@
     policies <- c(policies, part$nonestimable_policy)
   }
   if (length(grn_result$standard_pando_objects)) {
-    standard <- .rc_standard_pando_projection(
+    standard <- .rc_standard_pando_projection_sign_only(
       grn_result, membership, unit_meta, condition_col, celltype_col,
       rna_assay = rna_assay, atac_assay = atac_assay,
       target_genes = genes
@@ -262,7 +266,10 @@
     coverage[[length(coverage) + 1L]] <- standard$coverage
     origins <- c(origins, standard$projection_origin)
     schemas <- c(schemas, "standard_pando_network")
-    projection_names <- c(projection_names, "standard_pando_full_fit")
+    projection_names <- c(
+      projection_names,
+      standard$projection_name %||% "standard_pando_sign_only_scaled_pair_activity"
+    )
     policies <- c(policies, "not_applicable_standard_pando")
   }
   if (!length(origins)) stop("No Pando projection route is available.", call. = FALSE)
@@ -274,6 +281,7 @@
     pando_schema = paste(unique(schemas), collapse = ";"),
     projection_name = paste(unique(projection_names), collapse = ";"),
     nonestimable_policy = paste(unique(policies), collapse = ";"),
+    estimate_magnitude_used_for_penalty = FALSE,
     condition_coefficients_calculated =
       length(grn_result$condition_grn_fits) > 0L,
     cell_type_analysis_mode = grn_result$cell_type_analysis_mode
