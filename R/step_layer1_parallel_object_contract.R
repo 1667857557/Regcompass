@@ -165,6 +165,73 @@
   object
 }
 
+.rc_condition_target_reliability <- function(fit) {
+  fit_table <- as.data.frame(fit$fit, stringsAsFactors = FALSE)
+  coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
+  required_fit <- c("target", "condition", "rsq", "fit_status")
+  required_coefficient <- c("target", "condition", "significant")
+  if (!all(required_fit %in% colnames(fit_table)) || !nrow(fit_table) ||
+      !all(required_coefficient %in% colnames(coefficient))) {
+    stop(
+      "Condition-GRN reliability requires target-condition fit diagnostics ",
+      "and significant-edge flags.", call. = FALSE
+    )
+  }
+
+  fit_target <- toupper(trimws(as.character(fit_table$target)))
+  fit_condition <- as.character(fit_table$condition)
+  fit_key <- paste(fit_target, fit_condition, sep = "\001")
+  if (anyNA(fit_key) || any(!nzchar(fit_target)) ||
+      any(!nzchar(fit_condition)) || anyDuplicated(fit_key)) {
+    stop(
+      "Condition-GRN target-condition fit diagnostics must be complete and unique.",
+      call. = FALSE
+    )
+  }
+
+  coefficient_target <- toupper(trimws(as.character(coefficient$target)))
+  coefficient_condition <- as.character(coefficient$condition)
+  coefficient_key <- paste(
+    coefficient_target, coefficient_condition, sep = "\001"
+  )
+  if (anyNA(coefficient_key) || any(!nzchar(coefficient_target)) ||
+      any(!nzchar(coefficient_condition))) {
+    stop("Condition-GRN coefficients contain incomplete target-condition labels.",
+         call. = FALSE)
+  }
+  coefficient_index <- match(coefficient_key, fit_key)
+  if (anyNA(coefficient_index)) {
+    stop(
+      "Condition-GRN coefficients cannot be aligned to target fit diagnostics.",
+      call. = FALSE
+    )
+  }
+
+  active_edge <- coefficient$significant %in% TRUE
+  n_significant_edges <- tabulate(
+    coefficient_index[active_edge], nbins = nrow(fit_table)
+  )
+  rsq <- suppressWarnings(as.numeric(fit_table$rsq))
+  fit_status <- trimws(as.character(fit_table$fit_status))
+  if (anyNA(fit_status) || any(!nzchar(fit_status))) {
+    stop("Condition-GRN fit_status values must be complete.", call. = FALSE)
+  }
+  reliability <- rep(NA_real_, nrow(fit_table))
+  eligible <- fit_status == "ok" &
+    n_significant_edges > 0L & is.finite(rsq)
+  reliability[eligible] <- sqrt(pmin(1, pmax(0, rsq[eligible])))
+
+  data.frame(
+    target = as.character(fit_table$target),
+    condition = fit_condition,
+    rsq = rsq,
+    fit_status = fit_status,
+    n_significant_edges = as.integer(n_significant_edges),
+    reliability = reliability,
+    stringsAsFactors = FALSE
+  )
+}
+
 .rc_condition_pando_projection <- function(
     grn_result, membership, unit_meta, genes) {
   projection <- matrix(
@@ -198,6 +265,10 @@
     projection[targets, units] <- score[targets, units, drop = FALSE]
 
     coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
+    target_reliability <- .rc_condition_target_reliability(fit)
+    target_reliability$target <- tolower(
+      as.character(target_reliability$target)
+    )
     condition_col <- as.character(fit$condition_col)[[1L]]
     celltype_col <- as.character(fit$cell_type_col)[[1L]]
     if (!all(c(condition_col, celltype_col) %in% colnames(unit_meta))) {
@@ -209,17 +280,23 @@
         as.character(unit_meta[[condition_col]]) == condition &
           as.character(unit_meta[[celltype_col]]) == fit$cell_type
       ]
-      significant_edges <- coefficient[
-        as.character(coefficient$condition) == condition &
-          coefficient$significant %in% TRUE,
+      one_reliability <- target_reliability[
+        as.character(target_reliability$condition) == condition &
+          is.finite(target_reliability$reliability),
         , drop = FALSE
       ]
       reliable_targets <- intersect(
-        tolower(unique(as.character(significant_edges$target))),
-        rownames(reliability)
+        one_reliability$target, rownames(reliability)
       )
       if (length(reliable_targets) && length(selected_units)) {
-        reliability[reliable_targets, selected_units] <- 1
+        q <- one_reliability$reliability[
+          match(reliable_targets, one_reliability$target)
+        ]
+        reliability[reliable_targets, selected_units] <- matrix(
+          q,
+          nrow = length(reliable_targets),
+          ncol = length(selected_units)
+        )
       }
     }
     coverage[[length(coverage) + 1L]] <- data.frame(
@@ -233,6 +310,18 @@
           na.rm = TRUE
         )
       }, integer(1)),
+      mean_target_reliability = vapply(
+        fit$condition_levels,
+        function(condition) {
+          value <- target_reliability$reliability[
+            as.character(target_reliability$condition) == condition
+          ]
+          value <- value[is.finite(value)]
+          if (length(value)) mean(value) else NA_real_
+        },
+        numeric(1)
+      ),
+      reliability_definition = "sqrt(clamp(target_condition_rsq,0,1))",
       padj_threshold = 0.05,
       corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
       estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
