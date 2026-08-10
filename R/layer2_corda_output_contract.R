@@ -111,6 +111,25 @@
       )) {
     stop("CORDA2 union-model provenance is incomplete.", call. = FALSE)
   }
+
+  core <- unique(trimws(as.character(
+    model$required_core_reactions %||% character()
+  )))
+  core <- core[!is.na(core) & nzchar(core)]
+  if (!length(core)) {
+    stop("CORDA2 union model has no required core-reaction contract.",
+         call. = FALSE)
+  }
+  missing_core <- setdiff(core, validated$reactions)
+  if (length(missing_core)) {
+    stop(
+      "CORDA2 union model dropped required core reactions: ",
+      paste(utils::head(missing_core, 10L), collapse = ", "),
+      ".",
+      call. = FALSE
+    )
+  }
+
   targets <- as.data.frame(model$target_directions)
   required <- c("reaction_id", "target_direction")
   if (!all(required %in% colnames(targets))) {
@@ -121,9 +140,12 @@
     direction <- as.character(targets$target_direction)
     if (anyDuplicated(targets[required]) ||
         any(!reaction %in% validated$reactions) ||
+        any(!reaction %in% core) ||
         any(!direction %in% c("forward", "reverse"))) {
-      stop("CORDA2 scoring targets do not match the final GEM.",
-           call. = FALSE)
+      stop(
+        "CORDA2 scoring targets must be core reactions in the final GEM.",
+        call. = FALSE
+      )
     }
     index <- match(reaction, validated$reactions)
     direction_allowed <- ifelse(
@@ -150,9 +172,20 @@
       !identical(
         as.character(build$stage_update_policy),
         "original_matlab_directional_order"
+      ) ||
+      !identical(
+        as.character(build$core_retention_policy),
+        "immutable_structural_backbone"
+      ) ||
+      !identical(build$post_reconstruction_closure_lp, FALSE) ||
+      !identical(
+        as.integer(build$n_retained_core_reactions),
+        as.integer(length(core))
       )) {
-    stop("CORDA2 build parameters do not identify original CORDA2.m.",
-         call. = FALSE)
+    stop(
+      "CORDA2 build parameters do not satisfy the core-retention/scoring contract.",
+      call. = FALSE
+    )
   }
   task_tab <- model$corda_task_diagnostics
   edge_tab <- model$corda_association_edges
