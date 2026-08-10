@@ -82,10 +82,23 @@ a_{e,i}=\tanh\left(\frac{\max(x_{e,i},0)}{\lambda_{e,t(i)}}\right).
 
 Because both \(x\) and \(\lambda\) multiply by the same positive constant under a change of feature units, \(a_{e,i}\) is invariant to positive rescaling of the raw TF-by-ATAC predictor. It also retains paired-cell co-occurrence because TF and ATAC are multiplied before SuperCell aggregation.
 
-For cell \(i\) in condition \(c\), the target-level sign-only regulatory score is
+Let the number of active edges for target \(g\) in condition \(c\) be
 
 \[
-G_{i,g,c}=\sum_{e\in E_g^{\cup}}d_{e,g,c}\,a_{e,i}.
+N_{g,c}=\sum_{e\in E_g^{\cup}}\mathbf{1}\{d_{e,g,c}\neq0\}.
+\]
+
+For \(N_{g,c}>0\), the target-level sign-only regulatory score for cell \(i\) is the **mean signed active-edge activity**
+
+\[
+G_{i,g,c}=\frac{1}{N_{g,c}}
+\sum_{e\in E_g^{\cup}}d_{e,g,c}\,a_{e,i}.
+\]
+
+This normalization is essential after coefficient magnitudes are removed: otherwise a target or condition with more significant Pando edges would receive a larger regulatory score solely because of network degree. Because \(|d_{e,g,c}a_{e,i}|\le1\), the degree-normalized cell score satisfies
+
+\[
+-1\le G_{i,g,c}\le1.
 \]
 
 For metacell \(u\) with exact membership set \(M_u\),
@@ -94,7 +107,7 @@ For metacell \(u\) with exact membership set \(M_u\),
 G_{u,g}=\frac{1}{|M_u|}\sum_{i\in M_u}G_{i,g,c(i)}.
 \]
 
-Stage 2 remains condition-pure, so each final metacell receives the edge directions fitted for its own condition. The membership operation is unchanged from the previous Layer-1 contract; only the edge magnitude definition changes from coefficient-weighted to sign-only, self-scaled paired-cell activity.
+Stage 2 remains condition-pure, so each final metacell receives the edge directions and active-edge degree fitted for its own condition. The membership operation is unchanged from the previous Layer-1 contract; only the edge magnitude definition changes from coefficient-weighted to degree-controlled sign-only, self-scaled paired-cell activity. If a target has no active edge in a metacell's condition, regulatory evidence is unavailable and the downstream RNA-only fallback remains neutral.
 
 For target \(g\) and cell type \(t\), the existing target-level calibration scale remains
 
@@ -110,7 +123,7 @@ R_{g,u}=q_{g,u}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right).
 
 The reliability term \(q_{g,u}\) retains the existing routing semantics: condition-Pando uses reliability 1 for targets with at least one mapped active edge in that condition, whereas standard Pando retains its target-level fit reliability. Unavailable regulatory evidence uses the neutral RNA-only route downstream.
 
-For the one-effective-condition standard-Pando route, the same sign-only paired-cell activity definition is used after the standard Pando adjusted-P/estimability gate. Standard-Pando coefficient magnitudes therefore also remain audit information rather than penalty magnitudes.
+For the one-effective-condition standard-Pando route, the same sign-only paired-cell activity and active-edge-degree normalization are used after the standard Pando adjusted-P/estimability gate. Standard-Pando coefficient magnitudes therefore also remain audit information rather than penalty magnitudes.
 
 ## 3. RNA and multiome gene support
 
