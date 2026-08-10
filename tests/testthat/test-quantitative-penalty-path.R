@@ -57,15 +57,22 @@ test_that("bounded support remains separate from quantitative expression", {
   expect_lt(quantitative_penalty, 0.1)
 })
 
-test_that("Layer 2 LP prefers quantitative matrices and preserves RNA control", {
+test_that("Layer 2 routes quantitative matrices by explicit marker", {
+  # Deliberately make the two bounded matrices numerically identical. Route
+  # selection must not depend on identical() of their numerical contents.
   structural_multiome <- matrix(
     c(0.2, 0.8), ncol = 1,
     dimnames = list(c("R1", "R2"), "u1")
   )
-  structural_rna <- matrix(
-    c(0.1, 0.7), ncol = 1,
-    dimnames = dimnames(structural_multiome)
-  )
+  structural_rna <- structural_multiome
+  attr(
+    structural_multiome,
+    "regcompass_quantitative_penalty_route"
+  ) <- "multiome"
+  attr(
+    structural_rna,
+    "regcompass_quantitative_penalty_route"
+  ) <- "rna_only"
   quantitative_multiome <- matrix(
     c(20, 200), ncol = 1,
     dimnames = dimnames(structural_multiome)
@@ -93,7 +100,7 @@ test_that("Layer 2 LP prefers quantitative matrices and preserves RNA control", 
     condition_col = "condition"
   )
   expect_equal(primary$reaction_expression, quantitative_multiome)
-  expect_match(primary$summary, "quantitative_latent_cpm_multiome")
+  expect_identical(primary$penalty_route, "quantitative_latent_cpm_multiome")
 
   control <- layer1
   control$reaction_expression <- structural_rna
@@ -105,7 +112,23 @@ test_that("Layer 2 LP prefers quantitative matrices and preserves RNA control", 
     condition_col = "condition"
   )
   expect_equal(rna_only$reaction_expression, quantitative_rna)
-  expect_match(rna_only$summary, "quantitative_latent_cpm_rna_only")
+  expect_identical(rna_only$penalty_route, "quantitative_latent_cpm_rna_only")
+
+  missing_marker <- layer1
+  attr(
+    missing_marker$reaction_expression,
+    "regcompass_quantitative_penalty_route"
+  ) <- NULL
+  expect_error(
+    RegCompassR:::rc_layer2_unit_matrices(
+      missing_marker,
+      unit = "metacell",
+      sample_col = NULL,
+      celltype_col = "cell_type",
+      condition_col = "condition"
+    ),
+    "explicit quantitative penalty route marker"
+  )
 })
 
 test_that("quantitative COMPASS cost keeps high-expression dynamic range", {
