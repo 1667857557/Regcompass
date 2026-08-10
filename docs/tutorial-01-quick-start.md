@@ -2,9 +2,9 @@
 
 ## Input
 
-Use a paired-cell Seurat object with RNA and ATAC count assays, broad cell-type metadata, RNA PCA, ATAC LSI and genome-compatible peak coordinates. Stage 1 uses `pando_args$min_cells = 500L` by default for each retained condition-by-cell-type stratum, but this threshold is user-configurable. Stage 2 likewise defaults `metacell_args$min_cells_per_stratum` to `500L` and allows an explicit override.
+Use a paired-cell Seurat object containing RNA and ATAC counts for the same cells, broad cell-type metadata, RNA PCA or Harmony, ATAC LSI, and genome-compatible peaks. `condition_col` is optional.
 
-## GEM and medium
+## Prepare the GEM and medium
 
 ```r
 library(RegCompassR)
@@ -22,9 +22,24 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Built-in biological scenarios are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine` and `custom`. See [medium-presets.md](medium-presets.md) for custom reaction bounds, metabolite compositions and publication provenance.
+Human workflows default to `normal_human_plasma`; mouse workflows default to `mouse_plasma` when no medium is supplied.
 
-## Run
+Available biological presets are:
+
+```text
+normal_human_plasma
+mouse_plasma
+high_glucose
+low_glucose
+high_lactate
+low_lactate
+low_glutamine
+custom
+```
+
+Use `scenario = "custom"` with `custom_medium` for reaction-level bounds. Use `scenario = NULL` with `custom_metabolites` for a custom metabolite composition. Exact preset composition, provenance fields such as `background_reference_doi`, `background_validation_reference_doi`, and `challenge_reference_doi`, and custom formats are documented in [medium-presets.md](medium-presets.md).
+
+## Run the workflow
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -33,81 +48,54 @@ result <- rc_run_regcompass_one_shot(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   species = "human",
   gem = gem,
+  medium_scenarios = medium_scenarios,
   condition_col = "condition",
   celltype_col = "cell_type",
-  pando_args = list(
-    min_cells = 500L,
-    pando_infer_args = list(
-      tf_cor = 0.1,
-      peak_cor = 0.05,
-      adjust_method = "BH",
-      padj_threshold = 0.05,
-      rank_action = "mark",
-      min_residual_df = 1L
-    )
-  ),
-  metacell_args = list(
-    rna_reduction = "pca",
-    rna_dims = 1:30,
-    atac_reduction = "lsi",
-    atac_dims = 2:30,
-    gamma = 30L,
-    min_cells_per_stratum = 500L,
-    min_metacell_size = 10L,
-    min_metacells_per_stratum = 2L
-  ),
-  layer1_args = list(
-    gpr_and_method = "min",
-    gene_half_saturation = 1
-  ),
-  medium_scenarios = medium_scenarios,
-  model_mode = "meta_module_gem",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    model_params = list(
-      strict = TRUE,
-      corda2_args = list(
-        MCxNCthresh = 2,
-        constraint = 1,
-        constrainby = "val",
-        om = 1e4,
-        ci = 0.01
-      ),
-      corda_medium_confidence_threshold = 0.75,
-      corda_negative_confidence_threshold = 0.10,
-      corda_regulatory_weight = 0.20
-    )
-  ),
   workers = 10L
 )
 ```
 
-The two `500L` cell-count settings are defaults, not fixed constraints. If a dataset requires a lower or higher threshold, set `pando_args$min_cells` and/or `metacell_args$min_cells_per_stratum` explicitly; RegCompass preserves those supplied values.
+### Main arguments
 
-`workers` is the only workflow-level parallel setting. Its default is `10L` and it may be changed, for example `workers = 60L`. RegCompass automatically selects `SnowParam(type = "SOCK")` on Windows and `MulticoreParam` on Linux/macOS. The effective cap is `min(workers, max(1, detected logical CPUs - 2))`, and each individual Pando/CORDA2/LP dispatch shrinks further to its own independent task count.
+| Argument | Purpose | Default |
+|---|---|---|
+| `species` | Select human or mouse model defaults | required by one-shot setup |
+| `condition_col` | Condition metadata column; use `NULL` when absent | `"condition"` |
+| `celltype_col` | Broad cell-type metadata column | `"cell_type"` |
+| `rna_assay` / `atac_assay` | Input assay names | `"RNA"` / `"ATAC"` |
+| `pando_args$min_cells` | Stage 1 retained-group cell threshold | `500L` |
+| `metacell_args$min_cells_per_stratum` | Stage 2 retained-stratum threshold | `500L` |
+| `model_mode` | Structural scoring route | `"meta_module_gem"` |
+| `workers` | RegCompass-wide worker cap | `10L` |
 
-For cell types with at least two retained conditions, RegCompass first parallelizes pooled-background and condition × cell-type candidate discovery, freezes one exact edge dictionary per cell type after a strict barrier, and then parallelizes condition × cell-type fixed-dictionary GLMs. This tutorial uses `tf_cor = 0.1` and `peak_cor = 0.05` for that candidate screen. Each atomic Pando task disables nested target-level parallelism. If only one effective condition is retained, standard Pando is parallelized across broad cell types and uses the same fixed `tf_cor` and `peak_cor` values supplied through `pando_infer_args`; RegCompass does not increase either threshold as a function of cell count.
+The two cell-count thresholds are configurable. `model_mode = "meta_module_gem"` uses CORDA2 by default; `model_params$model_completion = "fastcore"` selects the supplementary FASTCORE route, and `model_mode = "full_gem"` selects complete-network scoring. Do not set `model_params$completion_time_limit` for the default CORDA2 route.
 
-Layer 1 schema v6 separates quantitative COMPASS penalty RNA from bounded structural confidence. For the LP path, RegCompass returns to the original single-cell raw RNA counts retained in the Stage 1 Pando objects, divides each cell by its own complete RNA library size on a linear CPM scale, and then takes an equal-weight mean across the cells in each exact final SuperCell membership. This follows the SuperCell representative-state interpretation and deliberately differs from `CPM(sum(metacell counts))`, which weights cells by library size. The quantitative path does not use the cell-type empirical-Bayes latent CPM. Pando is then applied as `X_multiome = X_RNA * 2^R` before GPR aggregation. `gene_half_saturation` controls only the bounded `0-1` support used for CORDA2/structural evidence; that structural path continues to use the existing latent-CPM support model. Existing Layer 1 schema-v5 artifacts must be regenerated before Layer 2.
+### Optional Pando controls
 
-`meta_module_gem` uses original MATLAB CORDA2 by default. Set `model_params$model_completion = "fastcore"` only for the supplementary FASTCORE route. Use `model_mode = "full_gem"` for supplementary complete-network COMPASS-style scoring.
+```r
+pando_args <- list(
+  min_cells = 500L,
+  pando_infer_args = list(
+    tf_cor = 0.1,
+    peak_cor = 0.05,
+    adjust_method = "BH",
+    padj_threshold = 0.05,
+    rank_action = "mark",
+    min_residual_df = 1L
+  )
+)
+```
 
-CORDA2 reconstruction intentionally runs without a structural time limit. Do not supply `model_params$completion_time_limit` for the default CORDA2 route; that control is reserved for supplementary non-CORDA2 completion such as FASTCORE.
-
-CORDA2 receives the complete medium-constrained parent without FASTCC pre-pruning. Retained reactions recover their parent directional bounds, including positive lower bounds. CORDA2 consumes the bounded structural-support matrices. Layer 2 LP scoring separately consumes the quantitative reaction-expression matrices and applies the COMPASS cost `1/(1+log2(1+E_quantitative))`; missing expression and structural roles receive cost `1`. Step 1, Step 2.1, Step 2.2 and Step 3 remain strict mathematical barriers; directional targets within each step are parallelized up to the protected worker cap, the step pool is then released, and the next step starts with a fresh pool.
+`padj_threshold`, `rank_action`, and `min_residual_df` are condition-GRN controls. Standard Pando receives only arguments supported by its route.
 
 ## Main outputs
 
 ```r
-result$grn$cell_type_analysis_mode
-result$layer1$gene_regulatory_modifier
-result$layer1$rna_metacell_mean_single_cell_cpm
-result$layer1$reaction_expression_quantitative
-result$layer1$reaction_structural_support
-result$microcompass$penalty
+result$reaction_catalog
+result$reaction_evidence
 result$reaction_ranking
 result$condition_contrast
+result$reaction_comparison_by_metacell
 ```
 
-Detailed stage parameters are in [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md). Mathematical definitions are in [mathematical-model.md](mathematical-model.md).
+For restartable stage calls see [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md). All equations and quantitative definitions are in [mathematical-model.md](mathematical-model.md).
