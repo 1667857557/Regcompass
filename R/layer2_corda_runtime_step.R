@@ -258,8 +258,14 @@
     target_parallelism = target_parallelism,
     stage_barrier = stage_parallel,
     stage_worker_lifecycle = worker_lifecycle,
-    closure_parallelism =
-      "directional_target_tasks_using_same_layer2_worker_cap",
+    closure_parallelism = "none_post_reconstruction",
+    post_reconstruction_closure_lp = FALSE,
+    core_retention_policy = "immutable_structural_backbone",
+    target_feasibility = paste(
+      "enumerate core directions from the final reconstructed GEM bounds;",
+      "microCOMPASS computes directional vmax once and skips the penalty LP",
+      "when that direction is infeasible"
+    ),
     medium_handling = "exchange_bounds_only_then_corda2",
     medium_direct_reaction_deletion = FALSE,
     parent_prepruning = "none",
@@ -283,23 +289,28 @@
   answer$params$corda2_inner_target_parallelism <- stage_parallel
   answer$params$corda2_stage_barrier_parallelism <- stage_parallel
   answer$params$corda2_solver_state_scope <- solver_state_scope
+  answer$params$corda2_core_retention_policy <-
+    "immutable_structural_backbone"
+  answer$params$corda2_post_reconstruction_closure_lp <- FALSE
   answer$union_gem_policy <- if (stage_parallel) {
     paste(
       "one original-CORDA2 reconstruction per cell type and medium;",
       "Step 1, Step 2.1, Step 2.2 and Step 3 remain strict barriers;",
       "directional targets inside each step use the full Layer-2 worker budget;",
-      "solver state is isolated between directional targets"
+      "solver state is isolated between directional targets; all core reactions",
+      "are retained structurally in the final reaction-space GEM"
     )
   } else {
     paste(
       "one original-CORDA2 reconstruction per cell type and medium;",
       "original directional target order is retained and every target starts",
-      "from a clean solver state"
+      "from a clean solver state; all core reactions are retained structurally"
     )
   }
   answer$method <- paste(
     "microCOMPASS directional LP on cell-type-specific medium models",
-    "reconstructed with original MATLAB CORDA2 semantics"
+    "reconstructed with original MATLAB CORDA2 semantics and an immutable",
+    "core-reaction structural backbone"
   )
   answer
 }
