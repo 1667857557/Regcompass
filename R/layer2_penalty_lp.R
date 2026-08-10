@@ -73,10 +73,10 @@ rc_compass_score_from_penalty <- function(P, feasible,
   }
   quantitative <- layer1$reaction_expression_quantitative
   quantitative_rna <- layer1$reaction_expression_quantitative_rna_only
-  structural_rna <- layer1$reaction_expression_rna_only
 
   # Legacy Layer 1 artifacts did not contain the split quantitative path.
-  # New v5 artifacts must use the unbounded quantitative matrices for LP cost.
+  # Public v5 Stage 4 artifacts are validated before Layer 2, but keeping the
+  # fallback here preserves lower-level compatibility for legacy callers.
   if (is.null(quantitative) || is.null(quantitative_rna)) {
     return(list(
       expression = structural,
@@ -91,15 +91,29 @@ rc_compass_score_from_penalty <- function(P, feasible,
     )
   }
 
-  # rc_regcompass_step_layer2() constructs its RNA-only control by replacing
-  # reaction_expression with reaction_expression_rna_only. Detect that exact
-  # control state and route to the matching quantitative RNA-only matrix while
-  # keeping CORDA2 on the bounded structural matrices.
-  rna_only_control <- !is.null(structural_rna) &&
-    identical(structural, structural_rna)
+  # The canonical Stage 5 RNA-only control swaps reaction_expression to the
+  # bounded RNA-only compatibility matrix. Route selection must therefore be
+  # carried by an explicit matrix attribute, never inferred from numerical
+  # equality: multiome and RNA-only bounded support can legitimately be equal.
+  route <- attr(
+    structural,
+    "regcompass_quantitative_penalty_route",
+    exact = TRUE
+  )
+  if (!is.character(route) || length(route) != 1L || is.na(route) ||
+      !route %in% c("multiome", "rna_only")) {
+    stop(
+      "Layer 1 v5 structural reaction matrix lacks a valid explicit quantitative penalty route marker.",
+      call. = FALSE
+    )
+  }
   list(
-    expression = if (rna_only_control) quantitative_rna else quantitative,
-    route = if (rna_only_control) {
+    expression = if (identical(route, "rna_only")) {
+      quantitative_rna
+    } else {
+      quantitative
+    },
+    route = if (identical(route, "rna_only")) {
       "quantitative_latent_cpm_rna_only"
     } else {
       "quantitative_latent_cpm_multiome"
@@ -128,6 +142,7 @@ rc_layer2_unit_matrices <- function(
     return(list(
       reaction_expression = E,
       unit_meta = layer1$unit_meta,
+      penalty_route = selected$route,
       summary = paste0(
         "metacell-level reaction-expression matrix; penalty_route=",
         selected$route
@@ -196,6 +211,7 @@ rc_layer2_unit_matrices <- function(
   list(
     reaction_expression = out,
     unit_meta = unit_meta,
+    penalty_route = selected$route,
     summary = paste0(
       "reaction expression aggregated to sample x celltype medians; penalty_route=",
       selected$route
