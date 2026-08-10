@@ -32,3 +32,12 @@ test_that("standard Pando peak mapping rejects normalized duplicates", {
     "duplicated after Pando region normalization"
   )
 })
+
+test_that("standard Pando overlap mapping uses interval indexing", {
+  implementation <- paste(
+    deparse(body(RegCompassR:::.rc_map_pando_regions_to_atac)),
+    collapse = "\n"
+  )
+  expect_match(implementation, "GenomicRanges::findOverlaps", fixed = TRUE)
+  expect_false(grepl("for (i in unresolved)", implementation, fixed = TRUE))
+})

@@ -57,18 +57,32 @@
   candidate <- .rc_pando_region_coordinates(region_keys)
   peaks <- .rc_pando_region_coordinates(atac_keys)
   valid_peaks <- !is.na(peaks$seqname) & is.finite(peaks$start) &
-    is.finite(peaks$end) & peaks$start <= peaks$end
-  for (i in unresolved) {
-    if (is.na(candidate$seqname[[i]]) ||
-        !is.finite(candidate$start[[i]]) ||
-        !is.finite(candidate$end[[i]]) ||
-        candidate$start[[i]] > candidate$end[[i]]) next
-    hits <- which(
-      valid_peaks & peaks$seqname == candidate$seqname[[i]] &
-        peaks$start <= candidate$end[[i]] &
-        peaks$end >= candidate$start[[i]]
-    )
-    if (!length(hits)) next
+    is.finite(peaks$end) & nzchar(peaks$seqname) &
+    peaks$start <= peaks$end
+  valid_candidates <- !is.na(candidate$seqname) &
+    is.finite(candidate$start) & is.finite(candidate$end) &
+    nzchar(candidate$seqname) & candidate$start <= candidate$end
+  candidate_index <- unresolved[valid_candidates[unresolved]]
+  peak_index <- which(valid_peaks)
+  if (!length(candidate_index) || !length(peak_index)) return(answer)
+
+  candidate_ranges <- GenomicRanges::makeGRangesFromDataFrame(
+    candidate[candidate_index, , drop = FALSE],
+    seqnames.field = "seqname", start.field = "start", end.field = "end"
+  )
+  peak_ranges <- GenomicRanges::makeGRangesFromDataFrame(
+    peaks[peak_index, , drop = FALSE],
+    seqnames.field = "seqname", start.field = "start", end.field = "end"
+  )
+  range_hits <- GenomicRanges::findOverlaps(
+    candidate_ranges, peak_ranges, ignore.strand = TRUE
+  )
+  if (!length(range_hits)) return(answer)
+  hit_table <- as.data.frame(range_hits)
+  hits_by_candidate <- split(hit_table$subjectHits, hit_table$queryHits)
+  for (query in names(hits_by_candidate)) {
+    i <- candidate_index[[as.integer(query)]]
+    hits <- peak_index[hits_by_candidate[[query]]]
     overlap <- pmin(peaks$end[hits], candidate$end[[i]]) -
       pmax(peaks$start[hits], candidate$start[[i]]) + 1
     # ATAC peak sets should be disjoint. If they are not, prefer the peak with
