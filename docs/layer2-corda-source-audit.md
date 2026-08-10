@@ -46,19 +46,19 @@ Four operations are outside the original MATLAB function:
 
 1. cell-type multiome evidence is mapped to HC, MC, NC and OT groups;
 2. the requested medium is applied before reconstruction;
-3. CORDA2 still performs its original directional decomposition internally, but if either directional copy of a reaction survives reconstruction, RegCompass retains the reaction and restores its original medium-constrained parent `lb/ub`; therefore a reversible parent reaction remains reversible even when only one split copy was selected, while an irreversible parent reaction remains irreversible;
-4. post-reconstruction core-direction closure is evaluated only once on the reconstructed CORDA2 GEM. The historical second baseline pass on the parent GEM has been removed because it was reconstruction QC rather than an input to downstream COMPASS-like scoring.
+3. CORDA2 still performs its original directional decomposition internally, but finalization is reaction-level: if either directional copy survives, the reaction is retained and its original medium-constrained bounds are restored; all core reactions are retained unconditionally as the immutable structural backbone, even when CORDA2 marks their tested direction as blocked;
+4. no post-reconstruction closure LP is run. Scoring targets are enumerated directly from the reconstructed final GEM bounds, and microCOMPASS computes the directional `vmax` exactly once as COMPASS Step 1 before the penalty LP.
 
-The direction relaxation is applied only when directional CORDA2 variables are merged back to reaction space. It does not alter Step 1, Step 2.1, Step 2.2 or Step 3 dependency calculations, including the original opposite-direction closure used while assessing an individual split target.
+The direction relaxation and hard core retention are applied only when directional CORDA2 variables are merged back to reaction space. They do not alter Step 1, Step 2.1, Step 2.2 or Step 3 dependency calculations, including the original opposite-direction closure used while assessing an individual split target.
 
-The closure uses the parent/medium bounds only to enumerate which core directions are legitimate candidates, so core reactions removed from the reconstructed model can still be reported as blocked. No LP is solved on the parent model. Every closure LP is solved on the reconstructed CORDA2 GEM.
+Core structural retention and flux feasibility are deliberately separated. For every required core reaction `r`, RegCompass enforces `r` in the final reaction set. A retained core direction may still have `vmax < flux_threshold` under the final stoichiometric and medium constraints; in that case microCOMPASS records the direction as infeasible and skips the penalty-minimization LP rather than deleting the reaction.
 
-For `target_direction = "both"`, the single post-build closure therefore tests all directions allowed by the parent biochemical/medium bounds. A reversible retained reaction can contribute both forward and reverse scoring targets if both are flux-feasible in the reconstructed network; no reverse direction is invented for a reaction whose parent bounds are irreversible.
+For `target_direction = "both"`, target enumeration uses only the final reconstructed GEM. A reversible retained core reaction contributes forward and reverse candidates according to its restored final `lb/ub`; an irreversible parent reaction remains irreversible. No parent-GEM target enumeration or parent-GEM scoring LP remains after CORDA2 finalization.
 
 ## Parallelism
 
-Within each original CORDA2 stage, RegCompass parallelizes independent directional targets with target-isolated solver state and a stage barrier before confidence-state reduction. Each worker uses one HiGHS thread. The post-build closure uses the same Layer 2 worker cap but performs only the reconstructed-GEM target pass.
+Within each original CORDA2 stage, RegCompass parallelizes independent directional targets with target-isolated solver state and a stage barrier before confidence-state reduction. Each worker uses one HiGHS thread. After reconstruction there is no closure worker pass; the existing microCOMPASS shared directional-`vmax` cache owns COMPASS Step 1 and reuses each result across matching metacells.
 
 ## Validation
 
-`tests/corda-synthetic-check.R` verifies defaults, accepted and rejected parameters, reversible decomposition, opposite-direction closure, target constraint handling, Step-1 dependencies and the HC-to-MC/HC-to-NC matrices. Testthat source-contract tests additionally verify the direct call path, reconstructed-only closure, and reaction-level restoration of reversible parent bounds when either CORDA2 split direction is retained.
+`tests/corda-synthetic-check.R` verifies defaults, accepted and rejected parameters, reversible decomposition, opposite-direction closure, target constraint handling, Step-1 dependencies and the HC-to-MC/HC-to-NC matrices. Testthat source-contract tests additionally verify immutable core retention, restoration of reversible parent bounds when either CORDA2 split direction is selected, absence of post-reconstruction closure LP calls, final-GEM-only target enumeration, and ownership of directional feasibility by the microCOMPASS `vmax` cache.
