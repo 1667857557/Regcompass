@@ -9,11 +9,7 @@
   )
 }
 
-#' List GEM models bundled with RegCompassR
-#'
-#' @return A data frame with species, upstream release, file size, checksum,
-#'   source attribution, and citation DOI.
-#' @export
+# Internal maintenance helper used to validate bundled GEM assets.
 rc_bundled_gem_manifest <- function() {
   path <- system.file(
     "extdata", "gem", "manifest.tsv", package = "RegCompassR"
