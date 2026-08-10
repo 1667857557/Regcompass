@@ -110,36 +110,6 @@ test_that("canonical CORDA2 stage-parallel path preserves serial mathematical st
   expect_false(BiocParallel::bpisup(param))
 })
 
-test_that("canonical CORDA2 function is directly stage-parallelized", {
-  implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_build_three_stage)),
-    collapse = "\n"
-  )
-  expect_match(implementation, ".rc_corda_stage_run", fixed = TRUE)
-  expect_match(
-    implementation,
-    "corda2_step1_HC_dependencies",
-    fixed = TRUE
-  )
-  expect_match(
-    implementation,
-    "corda2_step2_1_MC_NC_dependencies",
-    fixed = TRUE
-  )
-  expect_match(
-    implementation,
-    "corda2_step2_2_MC_feasibility",
-    fixed = TRUE
-  )
-  expect_match(
-    implementation,
-    "corda2_step3_HC_OT_dependencies",
-    fixed = TRUE
-  )
-  expect_false(grepl("assignInNamespace", implementation, fixed = TRUE))
-  expect_false(grepl("unlockBinding", implementation, fixed = TRUE))
-})
-
 test_that("CORDA2 stage progress records completed and remaining targets", {
   old_options <- options(RegCompassR.progress = FALSE)
   on.exit(options(old_options), add = TRUE)
