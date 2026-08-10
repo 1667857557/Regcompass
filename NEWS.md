@@ -3,8 +3,9 @@
 - Removes absolute Pando `estimate` magnitude from the canonical Layer-1 regulatory penalty projection while retaining fitted estimates for inference diagnostics, significance testing, direction and audit.
 - Uses `sign(estimate)` only after the existing fit-status, estimability and BH-adjusted-P gates in both condition-Pando and standard-Pando routes.
 - Converts each paired-cell TF-by-ATAC predictor to a positive-scale-invariant bounded activity using a cell-type-wide robust scale before exact SuperCell membership aggregation, preventing arbitrary RNA/ATAC feature units from replacing the removed coefficient magnitude.
+- Averages signed activities across each target/condition's active Pando edges so targets or conditions with more significant edges do not receive a larger regulatory score solely from network degree.
 - Keeps the existing target-level robust calibration, bounded regulatory odds correction, RNA support, GPR aggregation, COMPASS reaction cost and Layer-2 LP unchanged.
-- Adds regression tests for estimate-magnitude invariance, positive predictor-rescaling invariance, exact membership aggregation and sign-only routing, and updates the mathematical specification and quick-start tutorial.
+- Adds regression tests for estimate-magnitude invariance, positive predictor-rescaling invariance, target active-edge-degree control, exact membership aggregation and sign-only routing, and updates the mathematical specification and tutorials.
 
 # RegCompassR 2.4.7
 
