@@ -91,3 +91,27 @@ test_that("either retained CORDA2 direction restores reversible parent bounds", 
   expect_equal(reverse_only$lb[["REV"]], -10)
   expect_equal(reverse_only$ub[["REV"]], 8)
 })
+
+test_that("core reactions are retained even when CORDA2 selects no direction", {
+  parent <- list(
+    S = Matrix::Matrix(
+      matrix(c(-1, 1, 1, -1), nrow = 2),
+      sparse = TRUE,
+      dimnames = list(c("A", "B"), c("CORE", "SUPPORT"))
+    ),
+    lb = c(CORE = -7, SUPPORT = 0),
+    ub = c(CORE = 9, SUPPORT = 5)
+  )
+  split <- RegCompassR:::.rc_corda2_split_original(parent)
+
+  final <- RegCompassR:::.rc_corda2_apply_direction_bounds(
+    parent = parent,
+    included_variables = "SUPPORT",
+    split = split,
+    core_reactions = "CORE"
+  )
+
+  expect_true(all(c("CORE", "SUPPORT") %in% colnames(final$S)))
+  expect_equal(final$lb[["CORE"]], -7)
+  expect_equal(final$ub[["CORE"]], 9)
+})
