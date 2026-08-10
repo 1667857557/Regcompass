@@ -6,8 +6,7 @@
 # target-fit-status and BH gates.  To avoid making the sign-only score depend on
 # arbitrary RNA/ATAC feature units, each paired-cell TF-by-ATAC predictor is
 # calibrated by a positive, cell-type-wide robust scale before membership
-# aggregation.  These definitions are collated after the historical projection
-# helpers and therefore form the runtime Layer-1 projection contract.
+# aggregation.
 
 .rc_sign_only_edge_direction <- function(estimate, eligible = NULL) {
   estimate <- suppressWarnings(as.numeric(estimate))
@@ -169,7 +168,7 @@
   )
 }
 
-.rc_condition_pando_projection <- function(
+.rc_condition_pando_projection_sign_only <- function(
     grn_result, membership, unit_meta, genes) {
   projection <- matrix(
     NA_real_, length(genes), nrow(unit_meta),
@@ -319,7 +318,7 @@
   )
 }
 
-.rc_standard_pando_projection <- function(
+.rc_standard_pando_projection_sign_only <- function(
     grn_result, membership, metacell_meta, condition_col, celltype_col,
     rna_assay, atac_assay, target_genes) {
   units <- as.character(metacell_meta$unit_id %||% metacell_meta$metacell_id)
@@ -429,6 +428,7 @@
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
     projection_origin = "standard_pando_sign_only_scaled_pair_activity",
+    projection_name = "standard_pando_sign_only_scaled_pair_activity",
     projection_used_for_penalty = TRUE,
     full_fit_projection_used_for_penalty = FALSE,
     estimate_magnitude_used_for_penalty = FALSE
