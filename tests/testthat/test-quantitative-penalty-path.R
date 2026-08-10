@@ -60,6 +60,27 @@ test_that("SuperCell quantitative RNA averages per-cell linear CPM equally", {
   expect_identical(averaged$library_size_weighted, FALSE)
 })
 
+test_that("Pando RNA sources exactly partition the SuperCell membership", {
+  validate <- RegCompassR:::.rc_validate_pando_rna_cell_partition
+
+  expect_invisible(validate(
+    list(condition = c("c1", "c2"), standard = "c3"),
+    c("c3", "c2", "c1")
+  ))
+  expect_error(
+    validate(list(condition = c("c1", "c2")), c("c1")),
+    "missing=0, extra=1"
+  )
+  expect_error(
+    validate(list(condition = "c1"), c("c1", "c2")),
+    "missing=1, extra=0"
+  )
+  expect_error(
+    validate(list(condition = "c1", standard = "c1"), "c1"),
+    "more than one routed Pando RNA source"
+  )
+})
+
 test_that("Layer 1 v6 quantitative path does not use latent CPM", {
   body_text <- paste(
     deparse(body(RegCompassR:::.rc_cell_first_projection_layer1_v6)),

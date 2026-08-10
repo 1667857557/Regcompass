@@ -114,10 +114,11 @@
       any(!nzchar(names(cells_by_group))) ||
       anyDuplicated(names(edges_by_group)) ||
       anyDuplicated(names(cells_by_group)) ||
-      !identical(names(edges_by_group), names(cells_by_group))) {
-    stop("Pando edge and cell groups must have identical unique names and order.",
+      !setequal(names(edges_by_group), names(cells_by_group))) {
+    stop("Pando edge and cell groups must have the same unique names.",
          call. = FALSE)
   }
+  edges_by_group <- edges_by_group[names(cells_by_group)]
   targets <- tolower(trimws(as.character(targets)))
   if (anyNA(targets) || any(!nzchar(targets)) || anyDuplicated(targets)) {
     stop("Pando projection targets must be unique and non-empty.",

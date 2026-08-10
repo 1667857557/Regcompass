@@ -51,7 +51,7 @@ test_that("Pando group-mean projection rejects broken stage hand-offs", {
     RegCompassR:::.rc_pando_projection_from_group_means(
       rna, atac, list(u2 = edge), list(u1 = "c1"), "G"
     ),
-    "identical unique names and order"
+    "same unique names"
   )
   expect_error(
     RegCompassR:::.rc_pando_projection_from_group_means(
@@ -65,4 +65,26 @@ test_that("Pando group-mean projection rejects broken stage hand-offs", {
     ),
     "targets must be unique"
   )
+})
+
+test_that("Pando group names align by ID rather than list position", {
+  rna <- matrix(c(1, 2), nrow = 2L,
+                dimnames = list(c("c1", "c2"), "TF1"))
+  atac <- matrix(c(3, 4), nrow = 2L,
+                 dimnames = list(c("c1", "c2"), "chr1-10-20"))
+  edge1 <- data.frame(
+    tf = "TF1", target = "G", region = "chr1-10-20", estimate = 1
+  )
+  edge2 <- edge1
+  edge2$estimate <- 2
+
+  score <- RegCompassR:::.rc_pando_projection_from_group_means(
+    rna, atac,
+    edges_by_group = list(u2 = edge2, u1 = edge1),
+    cells_by_group = list(u1 = "c1", u2 = "c2"),
+    targets = "G"
+  )
+
+  expect_equal(score["u1", "g"], 3)
+  expect_equal(score["u2", "g"], 16)
 })

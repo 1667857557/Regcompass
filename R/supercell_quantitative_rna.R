@@ -28,6 +28,49 @@
   objects
 }
 
+.rc_validate_pando_rna_cell_partition <- function(
+    source_cells, membership_cells) {
+  if (!is.list(source_cells) || !length(source_cells) ||
+      is.null(names(source_cells)) || anyNA(names(source_cells)) ||
+      any(!nzchar(names(source_cells))) || anyDuplicated(names(source_cells))) {
+    stop("Pando RNA source cell sets require unique non-empty source names.",
+         call. = FALSE)
+  }
+  source_cells <- lapply(source_cells, function(cells) {
+    cells <- as.character(cells)
+    if (!length(cells) || anyNA(cells) || any(!nzchar(cells)) ||
+        anyDuplicated(cells)) {
+      stop("Every Pando RNA source requires unique non-empty cell IDs.",
+           call. = FALSE)
+    }
+    cells
+  })
+  membership_cells <- as.character(membership_cells)
+  if (!length(membership_cells) || anyNA(membership_cells) ||
+      any(!nzchar(membership_cells)) || anyDuplicated(membership_cells)) {
+    stop("SuperCell membership requires unique non-empty cell IDs.",
+         call. = FALSE)
+  }
+  observed <- unlist(source_cells, use.names = FALSE)
+  if (anyDuplicated(observed)) {
+    duplicated_cells <- unique(observed[duplicated(observed)])
+    stop(
+      "A cell occurs in more than one routed Pando RNA source; first duplicated cell: ",
+      duplicated_cells[[1L]], ".", call. = FALSE
+    )
+  }
+  missing <- setdiff(membership_cells, observed)
+  extra <- setdiff(observed, membership_cells)
+  if (length(missing) || length(extra)) {
+    stop(
+      "Stage 1 Pando RNA sources and SuperCell membership are not an exact cell partition; ",
+      "missing=", length(missing), ", extra=", length(extra), ".",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 .rc_single_cell_linear_cpm <- function(
     counts, genes, scale_factor = 1e6) {
   if (is.null(dim(counts)) || is.null(rownames(counts)) ||
@@ -137,13 +180,16 @@
     scale_factor = 1e6) {
   objects <- .rc_pando_rna_objects(grn_result)
   membership_cells <- as.character(membership$cell_id)
+  object_cells <- lapply(objects, function(object) {
+    colnames(object@data)
+  })
+  .rc_validate_pando_rna_cell_partition(object_cells, membership_cells)
   expression_parts <- list()
   library_parts <- list()
   source_rows <- list()
   for (name in names(objects)) {
     object <- objects[[name]]
-    cells <- intersect(membership_cells, colnames(object@data))
-    if (!length(cells)) next
+    cells <- colnames(object@data)
     counts <- .rc_get_assay_counts(object@data, rna_assay)
     if (!all(cells %in% colnames(counts))) {
       stop("Pando RNA count columns do not match the stored cell IDs.",
@@ -170,15 +216,6 @@
     stop(
       "A cell occurs in more than one routed Pando RNA source; first duplicated cell: ",
       duplicated_cells[[1L]], ".",
-      call. = FALSE
-    )
-  }
-  missing_cells <- setdiff(membership_cells, observed_cells)
-  extra_cells <- setdiff(observed_cells, membership_cells)
-  if (length(missing_cells) || length(extra_cells)) {
-    stop(
-      "Stage 1 Pando RNA sources and SuperCell membership are not an exact cell partition; ",
-      "missing=", length(missing_cells), ", extra=", length(extra_cells), ".",
       call. = FALSE
     )
   }
