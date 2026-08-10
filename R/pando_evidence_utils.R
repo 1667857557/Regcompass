@@ -98,17 +98,61 @@
 
 .rc_pando_projection_from_group_means <- function(
     rna, atac, edges_by_group, cells_by_group, targets) {
+  if (is.null(dim(rna)) || is.null(rownames(rna)) ||
+      is.null(colnames(rna)) || anyDuplicated(rownames(rna)) ||
+      anyDuplicated(colnames(rna)) ||
+      is.null(dim(atac)) || is.null(rownames(atac)) ||
+      is.null(colnames(atac)) || anyDuplicated(rownames(atac)) ||
+      anyDuplicated(colnames(atac))) {
+    stop("Pando RNA and ATAC inputs require unique cell and feature IDs.",
+         call. = FALSE)
+  }
+  if (!is.list(edges_by_group) || !is.list(cells_by_group) ||
+      is.null(names(edges_by_group)) || is.null(names(cells_by_group)) ||
+      anyNA(names(edges_by_group)) || anyNA(names(cells_by_group)) ||
+      any(!nzchar(names(edges_by_group))) ||
+      any(!nzchar(names(cells_by_group))) ||
+      anyDuplicated(names(edges_by_group)) ||
+      anyDuplicated(names(cells_by_group)) ||
+      !identical(names(edges_by_group), names(cells_by_group))) {
+    stop("Pando edge and cell groups must have identical unique names and order.",
+         call. = FALSE)
+  }
+  targets <- tolower(trimws(as.character(targets)))
+  if (anyNA(targets) || any(!nzchar(targets)) || anyDuplicated(targets)) {
+    stop("Pando projection targets must be unique and non-empty.",
+         call. = FALSE)
+  }
   answer <- matrix(
     0, nrow = length(cells_by_group), ncol = length(targets),
-    dimnames = list(names(cells_by_group), tolower(targets))
+    dimnames = list(names(cells_by_group), targets)
   )
   rna_names <- toupper(colnames(rna))
   atac_features <- colnames(atac)
   for (group in names(cells_by_group)) {
     edge <- edges_by_group[[group]]
-    cells <- intersect(cells_by_group[[group]], rownames(rna))
-    cells <- intersect(cells, rownames(atac))
-    if (is.null(edge) || !nrow(edge) || !length(cells)) next
+    cells <- as.character(cells_by_group[[group]])
+    if (anyNA(cells) || any(!nzchar(cells)) || anyDuplicated(cells)) {
+      stop("Every Pando projection group must contain unique non-empty cell IDs.",
+           call. = FALSE)
+    }
+    missing_rna <- setdiff(cells, rownames(rna))
+    missing_atac <- setdiff(cells, rownames(atac))
+    if (length(missing_rna) || length(missing_atac)) {
+      stop(
+        "Pando projection group `", group,
+        "` is not fully represented in both RNA and ATAC inputs; missing RNA=",
+        length(missing_rna), ", missing ATAC=", length(missing_atac), ".",
+        call. = FALSE
+      )
+    }
+    required <- c("tf", "target", "region", "estimate")
+    if (is.null(edge) || (is.data.frame(edge) && !nrow(edge)) ||
+        !length(cells)) next
+    if (!is.data.frame(edge) || !all(required %in% colnames(edge))) {
+      stop("Every non-empty Pando edge group requires tf, target, region, and estimate columns.",
+           call. = FALSE)
+    }
     tf_index <- match(toupper(as.character(edge$tf)), rna_names)
     region <- if ("atac_feature_id" %in% colnames(edge)) {
       feature_id <- as.character(edge$atac_feature_id)
