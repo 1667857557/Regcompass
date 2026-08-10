@@ -4,7 +4,7 @@
 \alias{rc_attach_reaction_annotations}
 \alias{rc_select_gene_reactions}
 \alias{rc_plot_condition_gene_reactions}
-\title{Annotate, select, and plot gene-associated reaction responses}
+\title{Annotate, select, and plot gene-associated reactions}
 \usage{
 rc_build_reaction_annotations(
   gem,
@@ -60,96 +60,29 @@ rc_plot_condition_gene_reactions(
 )
 }
 \arguments{
-\item{gem}{The validated GEM used for the RegCompass analysis.}
-
-\item{layer1}{Optional Layer 1 result containing bounded structural support, quantitative RNA/multiome expression, ATAC regulatory modifiers, parsed GPRs, and unit metadata.}
-
-\item{reaction_ids}{Optional reaction identifiers. The default uses all reactions in the GEM.}
-
-\item{condition_col, celltype_col}{Optional metadata columns defining condition and cell type.}
-
-\item{evidence_tolerance}{Non-negative numerical tolerance used to identify active RNA and ATAC evidence and quantitative reaction-expression shifts.}
-
+\item{gem}{The validated GEM used for the analysis.}
+\item{layer1}{Optional Layer 1 output used to add RNA/regulatory evidence annotations.}
+\item{reaction_ids}{Optional reaction identifiers. The default uses all GEM reactions.}
+\item{condition_col, celltype_col}{Optional condition and cell-type metadata columns.}
+\item{evidence_tolerance}{Non-negative numerical tolerance for classifying evidence changes.}
 \item{result}{A complete RegCompass result.}
-
-\item{x}{An annotated RegCompass result.}
-
-\item{genes}{One or more metabolic gene symbols. Matching is case-insensitive; reported symbols retain the source GEM or Layer 1 case.}
-
-\item{match}{Whether each reaction must contain any or all requested genes in its GPR.}
-
-\item{conditions}{Optional ordered conditions. The same restriction is applied to evidence selection and condition testing.}
-
-\item{cell_types}{Optional cell-type filters for gene-reaction selection.}
-
-\item{evidence_class}{Optional evidence classes, including \code{"RNA+ATAC"}, \code{"RNA-only"}, \code{"GPR/no-observed-RNA"}, \code{"structural/no-GPR"}, and \code{"unknown/unavailable"}.}
-
+\item{x}{An annotated RegCompass result or gene-reaction selection input accepted by the called function.}
+\item{genes}{One or more metabolic gene symbols. Matching is case-insensitive.}
+\item{match}{Require any or all requested genes to occur in the reaction GPR.}
+\item{conditions}{Optional condition filter/order.}
+\item{cell_types}{Optional cell-type filter for reaction selection.}
+\item{evidence_class}{Optional evidence-class filter.}
 \item{cell_type}{One cell type to plot.}
-
 \item{comparisons}{Optional condition pairs.}
-
-\item{min_units}{Minimum finite metacells required in every tested condition.}
-
-\item{target_directions}{Optional scored target directions.}
-
+\item{min_units}{Minimum finite metacells required per tested condition.}
+\item{target_directions}{Optional target-direction filter.}
 \item{medium_scenario}{Optional medium scenario.}
-
-\item{p_adj_max}{Maximum adjusted pairwise P value for plotted targets.}
-
+\item{p_adj_max}{Maximum adjusted pairwise P value retained for plotting.}
 \item{min_abs_rank_biserial}{Minimum absolute rank-biserial effect size.}
-
 \item{max_reactions}{Maximum number of reaction-direction plots.}
-
-\item{annotation_p}{Use adjusted or raw P values for plot brackets.}
-
+\item{annotation_p}{Use adjusted or raw P values for plot annotations.}
 \item{significance_threshold, show_nonsignificant, show_omnibus, point_size, point_alpha, jitter_width, box_width, bracket_step}{Plot display controls.}
-
-\item{outdir}{Optional output directory for selected tables and PDF plots.}
+\item{outdir}{Optional output directory.}
 }
-\value{
-\code{rc_build_reaction_annotations()} returns reaction and evidence tables.
-\code{rc_attach_reaction_annotations()} returns an enriched RegCompass result.
-\code{rc_select_gene_reactions()} returns a gene-reaction selection object.
-\code{rc_plot_condition_gene_reactions()} returns a list containing named plots,
-selected targets, pairwise hits, the complete statistics result, and gene selection.
-}
-\description{
-Reaction formulas are reconstructed from the validated GEM stoichiometric matrix using
-formal metabolite names and compartments. GPR rules and participating genes are
-reported explicitly. For Layer 1 schema v6, condition-by-cell-type evidence
-labels a reaction \code{RNA+ATAC} only when Pando changes the GPR-aggregated
-quantitative reaction expression that is actually supplied to the Layer 2 LP
-penalty relative to the matched quantitative RNA-only expression. Bounded
-reaction support remains a separate structural-confidence quantity.
-}
-\details{
-For Layer 1 schema v6, \code{RNA+ATAC} is assigned only when
-\code{reaction_expression_quantitative} differs from
-\code{reaction_expression_quantitative_rna_only} by more than
-\code{evidence_tolerance} in at least one relevant unit. Quantitative RNA is
-constructed by normalizing each original cell's raw RNA counts by its complete
-RNA library on a linear CPM scale, then averaging cells with equal weight inside
-the exact final SuperCell membership. Pando then supplies the bounded multiplier
-\eqn{2^R} before the same GPR AND/OR aggregation used by the quantitative penalty
-path. Thus the reported evidence class follows the quantity that can change the
-LP objective. The empirical-Bayes latent metacell CPM is retained only for the
-bounded CORDA2/structural-confidence route. Legacy Layer 1 objects without
-quantitative matrices fall back to the historical bounded reaction-capacity
-comparison and report that fallback in \code{evidence_resolution} and
-\code{evidence_scale}.
-
-Gene-level provenance is retained separately in \code{atac_modifier_genes} and
-\code{multiome_contributing_genes}. A non-zero Pando modifier or a changed GPR gene
-is not, by itself, sufficient to label the whole reaction \code{RNA+ATAC}; the
-GPR-aggregated quantitative reaction expression must change. Canonical schema-v6
-results report \code{evidence_resolution = "quantitative_lp_reaction_expression"}
-and \code{evidence_scale = "quantitative_lp_penalty_input"}. The existing
-\code{median_multiome_capacity_shift} and
-\code{max_abs_multiome_capacity_shift} columns are retained for compatibility;
-under schema v6 they quantify the quantitative reaction-expression shift used by
-the LP penalty rather than the bounded structural-support shift.
-
-Selecting a gene identifies every scored reaction in which that gene participates
-in the GPR. The complete Boolean GPR rule is retained so that membership is not
-misinterpreted as enzyme sufficiency.
-}
+\value{Annotation functions return reaction/evidence tables or an enriched result; selection returns matched reactions; plotting returns selected statistics and ggplot objects.}
+\description{Builds reaction annotations from GEM stoichiometry/GPR metadata, attaches Layer 1 evidence where available, selects reactions by gene membership, and plots condition-associated reaction responses. Quantitative evidence definitions are documented in \code{docs/mathematical-model.md}.}
