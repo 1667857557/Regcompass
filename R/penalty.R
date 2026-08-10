@@ -9,7 +9,7 @@
     hit <- intersect(reaction_ids, as.character(roles$reaction_id))
     idx <- match(hit, as.character(roles$reaction_id))
     role[hit] <- as.character(roles$role[idx])
-    if ("role_source" %in% colnames(roles))) {
+    if ("role_source" %in% colnames(roles)) {
       role_source[hit] <- as.character(roles$role_source[idx])
     }
   }
