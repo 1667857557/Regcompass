@@ -184,11 +184,14 @@
     cells <- as.character(unlist(
       fit$condition_cell_ids[fit$condition_levels], use.names = FALSE
     ))
+    pando_params <- Pando::Params(pando_object)
+    condition_rna_assay <- as.character(pando_params$rna_assay %||% "RNA")[[1L]]
+    condition_atac_assay <- as.character(pando_params$peak_assay %||% "ATAC")[[1L]]
     rna <- Matrix::t(Pando::LayerData(
-      pando_object, assay = grn_result$rna_assay %||% "RNA", layer = "data"
+      pando_object, assay = condition_rna_assay, layer = "data"
     ))
     atac <- Matrix::t(Pando::LayerData(
-      pando_object, assay = grn_result$atac_assay %||% "ATAC", layer = "data"
+      pando_object, assay = condition_atac_assay, layer = "data"
     ))
     rownames(rna) <- colnames(pando_object@data)
     rownames(atac) <- colnames(pando_object@data)
