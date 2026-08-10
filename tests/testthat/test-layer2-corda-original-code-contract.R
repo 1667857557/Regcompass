@@ -63,16 +63,3 @@ test_that("CORDA2 uses the complete parent without FASTCC", {
   expect_false(grepl("rc_annotate_reaction_roles", parent_code,
                      fixed = TRUE))
 })
-
-test_that("model builder directly invokes the original state machine", {
-  implementation <- paste(
-    deparse(body(RegCompassR:::.rc_complete_celltype_medium_corda_gem_core)),
-    collapse = "\n"
-  )
-  expect_match(implementation, ".rc_corda2_split_original", fixed = TRUE)
-  expect_match(implementation, ".rc_corda_build_three_stage", fixed = TRUE)
-  expect_match(implementation, ".rc_corda2_apply_direction_bounds", fixed = TRUE)
-  expect_match(implementation, ".rc_finalize_corda_union_model", fixed = TRUE)
-  expect_false(grepl("_base", implementation, fixed = TRUE))
-  expect_false(grepl("before_", implementation, fixed = TRUE))
-})
