@@ -245,6 +245,32 @@
   split(seq_len(n_targets), rep(seq_len(n_chunks), length.out = n_targets))
 }
 
+.rc_corda_stage_compact_closure <- function(FUN) {
+  if (!is.function(FUN)) {
+    stop("CORDA2 stage worker must be a function.", call. = FALSE)
+  }
+  source_env <- environment(FUN)
+  if (is.null(source_env) || identical(source_env, emptyenv()) ||
+      identical(source_env, baseenv()) || isNamespace(source_env)) {
+    return(FUN)
+  }
+  symbols <- unique(all.vars(body(FUN), functions = TRUE))
+  symbols <- setdiff(symbols, names(formals(FUN)))
+  direct <- symbols[vapply(
+    symbols, exists, logical(1), envir = source_env, inherits = FALSE
+  )]
+  compact_env <- new.env(hash = TRUE, parent = parent.env(source_env))
+  for (name in direct) {
+    assign(
+      name,
+      get(name, envir = source_env, inherits = FALSE),
+      envir = compact_env
+    )
+  }
+  environment(FUN) <- compact_env
+  FUN
+}
+
 .rc_corda_stage_run <- function(targets, stage, FUN) {
   targets <- as.character(targets)
   n_targets <- length(targets)
@@ -263,6 +289,7 @@
     return(list(results = list(), metrics = list(), workers = 1L, chunks = 0L))
   }
 
+  FUN <- .rc_corda_stage_compact_closure(FUN)
   .rc_corda_stage_algorithm_once(stage)
   BPPARAM <- .rc_corda_stage_param(n_targets)
   pool_workers <- get0(
@@ -324,6 +351,7 @@
     value <- FUN(targets[index], as.integer(index), mark_done)
     list(index = as.integer(index), value = value)
   }
+  worker <- .rc_corda_stage_compact_closure(worker)
   if (identical(BPPARAM, FALSE)) {
     parts <- lapply(chunks, worker)
   } else {
@@ -374,6 +402,31 @@
   )
 }
 
+.rc_corda2_compact_dependency_result <- function(
+    assessed, keep_active = FALSE) {
+  if (!is.list(assessed) || !is.list(assessed$result)) {
+    stop(
+      "CORDA2 dependency stage received a malformed assessment result.",
+      call. = FALSE
+    )
+  }
+  associated <- as.character(
+    assessed$associated %||% assessed$result$associated %||% character()
+  )
+  active <- as.character(
+    assessed$active %||% assessed$result$active %||% character()
+  )
+  result <- assessed$result
+  result$associated <- associated
+  result$active <- if (isTRUE(keep_active)) active else character()
+  list(
+    result = result,
+    associated = associated,
+    active = if (isTRUE(keep_active)) active else character(),
+    success = isTRUE(assessed$success)
+  )
+}
+
 .rc_corda2_dependency_chunk_parallel <- function(
     targets, indices, mark_done, split, directional_class, options,
     stage, penalized_class, solver, time_limit,
@@ -382,6 +435,7 @@
   # per-target solver metrics; each target creates and releases its own engine.
   engine <- .rc_corda_target_metric_engine(split, solver, time_limit)
   results <- vector("list", length(targets))
+  keep_active <- identical(stage, "corda2_step1_HC_dependencies")
   for (i in seq_along(targets)) {
     assessed <- .rc_corda2_dependency_assessment(
       engine = engine,
@@ -395,8 +449,11 @@
       upper = upper
     )
     engine <- assessed$engine
-    assessed$engine <- NULL
-    results[[i]] <- assessed
+    results[[i]] <- .rc_corda2_compact_dependency_result(
+      assessed,
+      keep_active = keep_active
+    )
+    rm(assessed)
     mark_done(indices[[i]], targets[[i]])
   }
   list(

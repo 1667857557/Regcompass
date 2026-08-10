@@ -51,12 +51,12 @@ test_that("canonical CORDA2 stage-parallel path preserves serial mathematical st
 
   previous <- RegCompassR:::.rc_layer2_enter_parallel_context(FALSE, FALSE)
   serial <- tryCatch(
-    RegCompassR:::.rc_corda_build_three_stage_core(
+    RegCompassR:::.rc_corda_build_three_stage(
       split = case$split,
       classes = case$classes,
       options = case$options,
       solver = "highs",
-      time_limit = 30
+      time_limit = Inf
     ),
     finally = RegCompassR:::.rc_layer2_restore_parallel_context(previous)
   )
@@ -66,12 +66,12 @@ test_that("canonical CORDA2 stage-parallel path preserves serial mathematical st
   )
   previous <- RegCompassR:::.rc_layer2_enter_parallel_context(TRUE, param)
   parallel <- tryCatch(
-    RegCompassR:::.rc_corda_build_three_stage_core(
+    RegCompassR:::.rc_corda_build_three_stage(
       split = case$split,
       classes = case$classes,
       options = case$options,
       solver = "highs",
-      time_limit = 30
+      time_limit = Inf
     ),
     finally = RegCompassR:::.rc_layer2_restore_parallel_context(previous)
   )
@@ -94,7 +94,7 @@ test_that("canonical CORDA2 stage-parallel path preserves serial mathematical st
   )
   expect_identical(
     serial$parallel_execution_policy,
-    "serial_original_persistent_engine"
+    "serial_original_order_target_isolated_solver_state"
   )
   expect_identical(
     parallel$parallel_execution_policy,
@@ -112,7 +112,7 @@ test_that("canonical CORDA2 stage-parallel path preserves serial mathematical st
 
 test_that("canonical CORDA2 function is directly stage-parallelized", {
   implementation <- paste(
-    deparse(body(RegCompassR:::.rc_corda_build_three_stage_core)),
+    deparse(body(RegCompassR:::.rc_corda_build_three_stage)),
     collapse = "\n"
   )
   expect_match(implementation, ".rc_corda_stage_run", fixed = TRUE)
@@ -184,6 +184,60 @@ test_that("CORDA2 Layer2 pool preparation leaves workers step-local", {
   expect_false(BiocParallel::bpisup(param))
   expect_false(state$started_here)
   expect_identical(state$origin, "caller_supplied_stage_template")
+})
+
+test_that("CORDA2 stage closure compaction excludes unrelated frame state", {
+  worker <- local({
+    required <- rep(1, 32)
+    unrelated <- rep(2, 250000)
+    function(x) sum(required) + length(x)
+  })
+  expected <- worker(1:3)
+  before <- length(serialize(worker, NULL))
+  compact <- RegCompassR:::.rc_corda_stage_compact_closure(worker)
+  after <- length(serialize(compact, NULL))
+
+  expect_true(exists(
+    "required", envir = environment(compact), inherits = FALSE
+  ))
+  expect_false(exists(
+    "unrelated", envir = environment(compact), inherits = FALSE
+  ))
+  expect_equal(compact(1:3), expected)
+  expect_lt(after, before)
+})
+
+test_that("CORDA2 dependency payload drops unused active vectors after Step 1", {
+  associated <- paste0("OT", seq_len(8))
+  active <- paste0("R", seq_len(10000))
+  assessed <- list(
+    engine = list(pointer = "mock"),
+    result = list(associated = associated, active = active),
+    associated = associated,
+    active = active,
+    success = TRUE
+  )
+  compact <- RegCompassR:::.rc_corda2_compact_dependency_result(
+    assessed, keep_active = FALSE
+  )
+
+  expect_named(compact, c("result", "associated", "active", "success"))
+  expect_identical(compact$associated, associated)
+  expect_length(compact$active, 0L)
+  expect_identical(compact$result$associated, associated)
+  expect_length(compact$result$active, 0L)
+  expect_true(compact$success)
+  expect_null(compact$engine)
+  expect_lt(
+    as.numeric(utils::object.size(compact)),
+    as.numeric(utils::object.size(assessed))
+  )
+
+  stage1 <- RegCompassR:::.rc_corda2_compact_dependency_result(
+    assessed, keep_active = TRUE
+  )
+  expect_identical(stage1$active, active)
+  expect_identical(stage1$result$active, active)
 })
 
 test_that("CORDA2 Step 2.2 worker payload excludes unused full LP vectors", {
