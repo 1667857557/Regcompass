@@ -95,13 +95,38 @@ Unavailable regulatory evidence uses the neutral RNA-only route downstream, equi
 
 Layer 1 intentionally exposes two different numerical representations. They must not be interchanged because they answer different questions.
 
-### 3.1 Quantitative COMPASS penalty path
+### 3.1 Quantitative COMPASS penalty path: SuperCell representative RNA state
 
-Let \(\widehat{CPM}_{g,u}\) denote the empirical-Bayes latent metacell CPM produced by the RNA model. The quantitative RNA expression used for the LP penalty is
+Let \(Y_{g,i}\) be the raw RNA count for gene \(g\) in original single cell \(i\), and let
 
 \[
-X^{RNA}_{g,u}=\widehat{CPM}_{g,u}.
+L_i=\sum_hY_{h,i}
 \]
+
+be that cell's complete RNA library size. RegCompass first computes a **linear**, non-logarithmic per-cell CPM:
+
+\[
+x_{g,i}=10^6\frac{Y_{g,i}}{L_i}.
+\]
+
+For final SuperCell metacell \(u\), quantitative RNA is the equal-weight mean of its member-cell normalized expression:
+
+\[
+\boxed{
+X^{RNA}_{g,u}=\frac{1}{|M_u|}\sum_{i\in M_u}x_{g,i}
+}
+\]
+
+This implements the SuperCell coarse-graining interpretation that a metacell represents the average state of its member cells. It is intentionally different from normalizing the summed metacell counts:
+
+\[
+10^6\frac{\sum_{i\in M_u}Y_{g,i}}{\sum_{i\in M_u}L_i}
+=
+\sum_{i\in M_u}
+\frac{L_i}{\sum_jL_j}x_{g,i},
+\]
+
+which is a library-size-weighted mean. The quantitative LP path therefore does **not** let a higher-depth cell contribute more merely because more UMIs were captured, and final metacell size does not directly scale enzyme abundance.
 
 Pando modifies this unbounded non-negative expression multiplicatively:
 
@@ -117,11 +142,7 @@ so that
 \frac12X^{RNA}_{g,u}\le X^{MO}_{g,u}\le2X^{RNA}_{g,u}.
 \]
 
-This is the quantitative regulatory correction. It preserves the latent-CPM dynamic range instead of first mapping every gene into \([0,1]\). It also preserves the zero condition:
-
-\[
-X^{RNA}_{g,u}=0\Rightarrow X^{MO}_{g,u}=0.
-\]
+The Pando modifier is applied after the equal-weight SuperCell RNA aggregation; Pando's regulatory projection itself remains cell-first and is averaged over the same exact membership before the bounded modifier is constructed.
 
 For an AND branch \(A_{r,j}\), the canonical RegCompass workflow uses the configured GPR AND operator, `min` by default:
 
@@ -155,14 +176,16 @@ The structural roles `exchange`, `demand`, `sink`, and `artificial_support` also
 p_{r,u}=1.
 \]
 
-This restores a COMPASS-like expression dynamic range: for a single-gene, single-isozyme reaction, increasing expression can drive \(p_{r,u}\) toward zero rather than imposing a floor near 0.5. RegCompass still differs from the original COMPASS implementation in other design choices, including the default GPR AND rule (`min` rather than the original default `mean`) and the empirical-Bayes metacell expression model.
+The quantitative estimator contains no empirical-Bayes shrinkage and does not borrow RNA abundance across conditions. A zero member-cell count remains zero before averaging; no cell-type prior creates quantitative expression for an unobserved gene. RegCompass still differs from original COMPASS in other design choices, including the default GPR AND rule (`min` rather than the original default `mean`) and the use of SuperCell metacells as statistical units.
 
 ### 3.2 Bounded structural-confidence path
 
-A separate bounded representation is retained for CORDA2 and other structural-confidence decisions. Let
+A separate bounded representation is retained for CORDA2 and other structural-confidence decisions. In schema v6 this path deliberately retains the pre-existing empirical-Bayes latent metacell CPM; that latent estimator is **structural-only** and is no longer an LP expression input.
+
+Let \(\widehat{CPM}^{struct}_{g,u}\) denote that latent structural-support estimate and
 
 \[
-L_{g,u}=\ln(1+\widehat{CPM}_{g,u}).
+L_{g,u}=\ln(1+\widehat{CPM}^{struct}_{g,u}).
 \]
 
 The bounded RNA support is
@@ -191,27 +214,39 @@ Q^{struct}_{r,j,u}=\min_{g\in A_{r,j}}C^{MO}_{g,u},
 E^{struct}_{r,u}=\sum_jQ^{struct}_{r,j,u}.
 \]
 
-The bounded representation is **not** passed to the quantitative LP penalty in Layer 1 schema v5. It is retained to stabilize structural evidence and preserve the previous CORDA2 confidence scale.
+The bounded representation is **not** passed to the quantitative LP penalty. It is retained to preserve the established CORDA2 confidence scale while the quantitative RNA estimator is corrected independently.
 
-For backward compatibility, Layer 1 continues to expose the bounded matrices as `reaction_expression` and `reaction_expression_rna_only`, with explicit aliases `reaction_structural_support` and `reaction_structural_support_rna_only`. The quantitative LP matrices are `reaction_expression_quantitative` and `reaction_expression_quantitative_rna_only`. Layer 2 explicitly prefers the quantitative matrices when schema v5 is present.
+For backward compatibility, Layer 1 continues to expose the bounded matrices as `reaction_expression` and `reaction_expression_rna_only`, with explicit aliases `reaction_structural_support` and `reaction_structural_support_rna_only`. The quantitative LP matrices are `reaction_expression_quantitative` and `reaction_expression_quantitative_rna_only`. Layer 1 schema v6 additionally saves `rna_metacell_mean_single_cell_cpm`; Layer 2 explicitly prefers the quantitative reaction matrices.
 
-## 4. Why the two paths are separated
+## 4. Why the quantitative RNA estimator changed in schema v6
 
-The previous formulation used bounded gene support for both structural confidence and quantitative LP cost:
+Schema v5 used
 
 \[
-\widehat{CPM}\rightarrow\ln(1+\widehat{CPM})
-\rightarrow\frac{L}{L+h}\rightarrow GPR
-\rightarrow\frac{1}{1+\log_2(1+E)}.
+CPM(\text{summed metacell counts})
+\rightarrow
+\text{cell-type empirical-Bayes shrinkage}
+\rightarrow
+\widehat{CPM}
+\rightarrow
+2^R
+\rightarrow GPR\rightarrow penalty.
 \]
 
-For a single-gene, single-isozyme reaction this forced \(E<1\), so even arbitrarily high RNA expression could not reduce the expression penalty below approximately 0.5. It also attenuated the realized Pando effect at high expression because the regulatory correction acted inside a saturating \([0,1]\) support scale.
+That construction had two undesirable properties for the LP objective. First, `CPM(sum counts)` weights member cells in proportion to their RNA library sizes rather than representing the equal-weight SuperCell state. Second, the empirical-Bayes update shrank metacells toward a shared cell-type mean and could create positive quantitative expression from a pooled zero, thereby attenuating condition differences before metabolic scoring.
 
-Layer 1 schema v5 therefore separates the estimands:
+Schema v6 separates the estimands more strictly:
 
 \[
 \boxed{
-\widehat{CPM}\times2^R\rightarrow GPR\rightarrow COMPASS\ penalty
+Y_{g,i}
+\rightarrow
+10^6Y_{g,i}/L_i
+\xrightarrow{\text{equal SuperCell mean}}
+X^{RNA}_{g,u}
+\times2^R
+\rightarrow GPR
+\rightarrow COMPASS\ penalty
 }
 \]
 
@@ -219,15 +254,18 @@ for quantitative metabolic scoring, and
 
 \[
 \boxed{
-\frac{\ln(1+\widehat{CPM})}{\ln(1+\widehat{CPM})+h}
+\widehat{CPM}^{struct}
+\rightarrow
+\frac{\ln(1+\widehat{CPM}^{struct})}
+{\ln(1+\widehat{CPM}^{struct})+h}
 \xrightarrow{\text{bounded odds }2^R}
 structural\ support
 }
 \]
 
-for CORDA2/structural confidence.
+for the current CORDA2/structural-confidence route.
 
-This change does not alter Pando fitting, metacell construction, the frozen edge dictionary, rank-deficiency gating, CORDA2 reconstruction semantics, directional \(V_{max}\), or the LP constraints. It changes only which Layer 1 numerical evidence scale is supplied to the LP objective.
+This change does not alter Pando fitting, the common edge dictionary, rank-deficiency gating, SuperCell membership construction, CORDA2 reconstruction semantics, directional \(V_{max}\), or the LP constraints. It changes the RNA abundance estimator supplied to the quantitative LP objective and records that estimator explicitly in the Layer 1 contract.
 
 ## 5. Default CORDA2 structural model
 
@@ -318,8 +356,8 @@ S_{r,d,u,m}=-\log(\widetilde P_{r,d,u,m}+\epsilon).
 
 Condition comparisons are performed within one cell type, target reaction, direction, and medium. Wilcoxon rank-sum tests are used for pairwise comparisons; Kruskal–Wallis tests may be used for analyses with at least three conditions. Metacells are within-dataset statistical units, not donor-level biological replicates.
 
-## 9. Inference scope
+## 9. Inference scope and artifact compatibility
 
 Condition-GRN P values are conditional on the frozen candidate dictionary and do not include selective-inference correction for candidate discovery. Standard-Pando cell types do not receive manufactured condition coefficients.
 
-Layer 1 schema v5 is intentionally incompatible with old v4 artifacts for downstream validation. Existing `step_layer1.rds` objects must be regenerated before Layer 2 so that the quantitative reaction-expression matrices are present and the LP cannot silently fall back to the previous bounded penalty scale.
+Layer 1 schema v6 is intentionally incompatible with v5 artifacts for downstream validation. Existing `step_layer1.rds` objects must be regenerated before Layer 2 so that the quantitative reaction-expression matrices are reconstructed from equal-weight mean single-cell CPM rather than the old latent-CPM estimator. Stage 1 and Stage 2 artifacts remain reusable if their existing workflow contracts are otherwise unchanged, because the new quantitative RNA estimator is reconstructed in Stage 4 from the retained Stage 1 cell-level Pando objects and the exact Stage 2 SuperCell membership.
