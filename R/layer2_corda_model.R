@@ -58,44 +58,22 @@
     parent, final, core, target_direction, solver, time_limit,
     flux_threshold) {
   requested <- rc_prepare_directional_targets(
-    parent, core, target_direction = target_direction
+    final, core, target_direction = target_direction
   )
-  parent_diagnostics <- .rc_corda_closure_directional_feasibility(
-    parent, requested,
-    solver = solver,
-    time_limit = time_limit,
-    flux_threshold = flux_threshold,
-    label = "CORDA2 parent core-direction closure"
-  )
-  final_diagnostics <- .rc_corda_closure_directional_feasibility(
+  diagnostics <- .rc_corda_closure_directional_feasibility(
     final, requested,
     solver = solver,
     time_limit = time_limit,
     flux_threshold = flux_threshold,
     label = "CORDA2 reconstructed core-direction closure"
   )
-  names(final_diagnostics)[names(final_diagnostics) == "feasible"] <-
-    "final_feasible"
-  names(final_diagnostics)[names(final_diagnostics) == "vmax"] <-
-    "final_vmax"
-  names(final_diagnostics)[names(final_diagnostics) == "solver_status"] <-
-    "final_solver_status"
-  diagnostics <- merge(
-    parent_diagnostics, final_diagnostics,
-    by = c("reaction_id", "target_direction"),
-    all.x = TRUE, sort = FALSE
-  )
   diagnostics$completion_status <- ifelse(
-    !diagnostics$feasible,
-    "parent_blocked",
-    ifelse(
-      diagnostics$final_feasible %in% TRUE,
-      "corda2_retained",
-      "corda2_removed"
-    )
+    diagnostics$feasible %in% TRUE,
+    "corda2_retained",
+    "corda2_blocked"
   )
   feasible_targets <- diagnostics[
-    diagnostics$final_feasible %in% TRUE,
+    diagnostics$feasible %in% TRUE,
     c("reaction_id", "target_direction"),
     drop = FALSE
   ]
@@ -103,8 +81,7 @@
     requested = requested,
     diagnostics = diagnostics,
     feasible_targets = feasible_targets,
-    failed = diagnostics$feasible %in% TRUE &
-      !(diagnostics$final_feasible %in% TRUE)
+    failed = rep(FALSE, nrow(diagnostics))
   )
 }
 
@@ -265,16 +242,14 @@
     } else {
       "no_worker_pool_fresh_solver_engine_per_target"
     },
-    closure_parallelism = "directional_target_tasks_using_layer2_worker_cap"
+    closure_parallelism = "single_reconstructed_gem_directional_target_pass"
   ))
   final$corda_stage1_HCtoMC <- reconstruction$HCtoMC
   final$corda_stage1_HCtoNC <- reconstruction$HCtoNC
   final$corda_stage2_MCtoNC <- reconstruction$MCtoNC
   final$corda_rescue <- reconstruction$rescue
   final$corda_reconstruction <- reconstruction
-  final$target_status <- if (any(closure$failed)) {
-    "core_direction_removed_by_corda2"
-  } else if (!nrow(closure$feasible_targets)) {
+  final$target_status <- if (!nrow(closure$feasible_targets)) {
     "no_feasible_core_direction"
   } else {
     "ok"
@@ -325,7 +300,8 @@
     n_stage3_associated_ot = length(reconstruction$stage3_associated_ot),
     scoring_target_direction = target_direction,
     reconstruction_direction_policy =
-      "original_CORDA2_opposite_direction_closed_and_directional_merge",
+      "retain_reaction_if_either_corda2_direction_selected_restore_parent_bounds",
+    closure_policy = "single_pass_on_reconstructed_corda2_gem",
     corda2_args = original_args,
     corda2_solver_time_limit = time_limit,
     fastcore_epsilon_used = FALSE,
@@ -354,7 +330,10 @@
     stage_update_policy = reconstruction$stage_update_policy,
     parallel_execution_policy = reconstruction$parallel_execution_policy,
     solver_state_scope = solver_state_scope,
-    source_semantics = reconstruction$source_semantics
+    source_semantics = reconstruction$source_semantics,
+    post_reconstruction_direction_merge =
+      "retain_reaction_if_either_direction_selected_restore_parent_bounds",
+    post_reconstruction_closure = "single_pass_on_reconstructed_gem"
   )
 
   final <- .rc_corda2_apply_target_flux(
