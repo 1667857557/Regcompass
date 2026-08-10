@@ -16,17 +16,12 @@ rc_prepare_gem(
 }
 \arguments{
 \item{species}{Model organism: \code{"human"} or \code{"mouse"}.}
-\item{version}{Pinned release version. Defaults to Human-GEM 2.0.0 or Mouse-GEM 1.8.0.}
+\item{version}{Pinned model release. Defaults to Human-GEM 2.0.0 or Mouse-GEM 1.8.0.}
 \item{cache_dir}{Persistent model cache directory.}
-\item{save_rds}{Optional output RDS path. When \code{NULL}, a species/version path is generated inside \code{cache_dir}. Bundled and downloaded models are both written to this path and revalidated after persistence.}
-\item{force_download}{Re-download and rebuild an existing cached model. This implies \code{source = "download"}.}
-\item{allow_latest}{Permit the unpinned \code{version = "latest"} mode.}
-\item{source}{Model source. \code{"auto"} checks a compatible user cache, then the installed bundled asset, and downloads only when required. \code{"bundled"} forbids network fallback. \code{"download"} runs the official download and conversion path.}
+\item{save_rds}{Optional output RDS path. When \code{NULL}, a species/version path is generated inside \code{cache_dir}.}
+\item{force_download}{Re-download and rebuild the requested model. This implies the download source.}
+\item{allow_latest}{Permit unpinned \code{version = "latest"}. Pinned releases are recommended for reproducible analyses.}
+\item{source}{\code{"auto"}, \code{"bundled"}, or \code{"download"}. \code{"auto"} checks a compatible cache, then the bundled pinned model, then downloads when necessary.}
 }
-\value{A validated RegCompass GEM list loaded from the requested persistent RDS path.}
-\description{
-Loads the bundled pinned Human-GEM or Mouse-GEM by default. The official download and conversion path remains available for custom or updated releases. Mouse genes remain mouse symbols and are not converted through human orthologues.
-}
-\details{
-RegCompassR 2.1.0 bundles Human-GEM 2.0.0 and Mouse-GEM 1.8.0 under \code{inst/extdata/gem}. Use \code{rc_bundled_gem_manifest()} to inspect source, release, checksum, size, citation, and license metadata. A bundled asset is copied to \code{save_rds} rather than returned only from the package installation directory, so later cache-first calls and explicit custom output paths behave consistently with downloaded models.
-}
+\value{A validated RegCompass GEM list.}
+\description{Loads or prepares the supported Human-GEM or Mouse-GEM model used by RegCompass. Mouse genes remain mouse symbols; no human-orthologue conversion is applied.}

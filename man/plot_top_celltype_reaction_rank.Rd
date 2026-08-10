@@ -2,7 +2,7 @@
 % Please edit documentation in R/reaction_rank_plot.R
 \name{plot_top_celltype_reaction_rank}
 \alias{plot_top_celltype_reaction_rank}
-\title{Plot the top reaction targets within one cell type}
+\title{Plot top reaction targets within one cell type}
 \usage{
 plot_top_celltype_reaction_rank(
   result,
@@ -15,40 +15,13 @@ plot_top_celltype_reaction_rank(
 )
 }
 \arguments{
-\item{result}{A complete RegCompass result containing
-\code{reaction_comparison_by_metacell}, \code{reaction_catalog}, and
-\code{reaction_evidence}.}
-
+\item{result}{A complete RegCompass result with reaction comparison and annotation tables.}
 \item{cell_type}{One cell-type label.}
-
 \item{target_direction}{\code{"forward"} or \code{"reverse"}.}
-
-\item{medium_scenario}{Optional medium label. It may be omitted when exactly
-one medium remains after cell-type, direction, and condition filtering.}
-
-\item{conditions}{Optional condition labels. Leave \code{NULL} to pool all
-available conditions, or when condition metadata were not supplied.}
-
+\item{medium_scenario}{Optional medium label. It may be omitted when one medium remains after filtering.}
+\item{conditions}{Optional condition labels. \code{NULL} uses all represented conditions.}
 \item{top_n}{Maximum number of reaction targets to display.}
-
-\item{label_width}{Approximate character width used to wrap reaction labels.}
+\item{label_width}{Approximate character width for wrapped reaction labels.}
 }
-\value{
-A \code{ggplot} object. Ranked data and resolved selection are attached as
-\code{rank_data} and \code{selection} attributes.
-}
-\description{
-Ranks directional reaction targets by the median metacell support score
-\code{-log(penalty_per_target_flux + 1e-8)} within one cell type and medium.
-Reactions are eligible only when their formal evidence class is \code{RNA-only}
-or \code{RNA+ATAC}. A reaction is labelled \code{Multiome-supported} when at
-least one selected evidence row has an active ATAC contribution that changes
-the GPR-aggregated reaction capacity.
-}
-\details{
-Condition metadata are optional. When \code{condition} is absent or entirely
-empty in the annotated result tables, all matching metacells are pooled and
-\code{conditions} must remain \code{NULL}. A single condition is valid and does
-not require a contrast. When condition labels are available,
-\code{conditions = NULL} uses every represented condition.
-}
+\value{A \code{ggplot} object with ranked data and the resolved selection attached as attributes.}
+\description{Ranks eligible directional reaction targets within one cell type and medium and displays the top targets. Reaction-support score and evidence-class definitions are documented in \code{docs/mathematical-model.md}.}

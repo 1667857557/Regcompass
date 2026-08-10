@@ -1,17 +1,22 @@
-test_that("public API exposes the restartable workflow", {
+test_that("public API exposes only the supported workflow surface", {
   expected <- c(
-    "rc_prepare_gem", "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
-    "rc_bundled_gem_manifest", "rc_download_species_gem",
-    "rc_parallel_config", "rc_make_medium_scenarios", "rc_run_regcompass",
-    "rc_run_regcompass_one_shot", "rc_regcompass_step_grn",
-    "rc_regcompass_step_metacells", "rc_regcompass_step_meta_modules",
-    "rc_regcompass_step_layer1", "rc_regcompass_step_layer2",
-    "rc_regcompass_step_target_union", "rc_regcompass_step_results",
-    "rc_test_condition_reactions", "rc_plot_condition_reaction",
-    "rc_build_reaction_annotations", "rc_attach_reaction_annotations",
-    "rc_select_gene_reactions", "rc_plot_condition_gene_reactions"
+    "rc_prepare_gem", "rc_parallel_config", "rc_make_medium_scenarios",
+    "rc_run_regcompass", "rc_run_regcompass_one_shot",
+    "rc_regcompass_step_grn", "rc_regcompass_step_metacells",
+    "rc_regcompass_step_meta_modules", "rc_regcompass_step_layer1",
+    "rc_regcompass_step_layer2", "rc_regcompass_step_target_union",
+    "rc_regcompass_step_results", "rc_test_condition_reactions",
+    "rc_plot_condition_reaction", "rc_build_reaction_annotations",
+    "rc_attach_reaction_annotations", "rc_select_gene_reactions",
+    "rc_plot_condition_gene_reactions", "plot_top_celltype_reaction_rank"
   )
-  expect_length(setdiff(expected, getNamespaceExports("RegCompassR")), 0L)
+  exports <- getNamespaceExports("RegCompassR")
+  expect_length(setdiff(expected, exports), 0L)
+  retired <- c(
+    "rc_prepare_human2_gem", "rc_prepare_mouse_gem",
+    "rc_download_species_gem", "rc_bundled_gem_manifest"
+  )
+  expect_false(any(retired %in% exports))
 })
 
 test_that("canonical source architecture has one direct routing layer", {

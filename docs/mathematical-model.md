@@ -1,304 +1,177 @@
 # RegCompass mathematical specification
 
-This file is the mathematical specification for the RegCompass workflow.
+This is the single canonical document for RegCompass equations and quantitative definitions. Tutorials and Rd files describe interfaces only.
 
-## 1. Condition-comparable regulatory model
+## 1. Condition-comparable Pando model
 
-For one broad cell type, target gene \(g\), pooled cells, and conditions \(c\), let \(E_g^{pool}\) be the pooled candidate set and \(E_{g,c}\) the candidate set found within condition \(c\). The frozen dictionary is the union of complete TF–peak–target triples:
+For one broad cell type and target gene \(g\), let \(E_g^{pool}\) be the candidate TF–peak–target triples discovered in the pooled cell type and \(E_{g,c}\) the triples discovered in condition \(c\). The condition route freezes one common dictionary
 
 \[
 E_g^{\cup}=E_g^{pool}\cup\bigcup_c E_{g,c}.
 \]
 
-For edge \(e\) and paired cell \(i\), the unscaled predictor is
+For edge \(e\), paired cell \(i\), and target \(g\), the Pando interaction predictor is
 
 \[
-x_{e,i}=RNA_{TF(e),i}\,ATAC_{peak(e),i}.
+x_{e,i}=T_{e,i}A_{e,i},
 \]
 
-Every eligible condition uses the same ordered dictionary and fits
+where \(T\) is TF expression and \(A\) is peak accessibility. Every retained condition is refit on the same ordered dictionary with an unscaled Gaussian identity model,
 
 \[
 y_{g,i}=\alpha_{g,c}+\sum_{e\in E_g^{\cup}}\beta_{e,g,c}x_{e,i}+\varepsilon_{g,i}.
 \]
 
-The implementation uses a Gaussian identity GLM with an intercept, `interaction_term = ":"`, and `scale = FALSE`. Pooled coefficients are not used to calibrate condition coefficients.
+An edge contributes downstream only when the complete target fit has `fit_status == "ok"`, the edge coefficient is estimable and finite, and its BH-adjusted P value is below 0.05. Rank-deficient or otherwise invalid target fits remain auditable but contribute zero regulatory effect.
 
-Let \(a_{e,g,c}\) indicate that an edge coefficient is estimable and let \(m_{g,c}\) indicate that the complete target-level regression has `fit_status == "ok"`. The adjusted-P threshold is
+The condition target reliability is the clipped square root of target-level \(R^2\), provided the target has at least one active edge:
 
 \[
-q=0.05.
+q_{g,c}=\sqrt{\min(1,\max(0,R^2_{g,c}))}.
 \]
 
-An edge is active for RegCompass regulatory penalty projection only when the target regression is full-rank under the fitted dictionary, the coefficient itself is estimable, the estimate is finite, and the BH-adjusted P value is below 0.05:
+Unavailable or invalid fits have no regulatory contribution.
+
+## 2. Metacell regulatory projection
+
+For metacell \(u\), RegCompass averages TF expression and peak accessibility separately over the exact member cells before multiplying them. For edge \(e\),
 
 \[
-s_{e,g,c}=\mathbf{1}\left\{
- m_{g,c}=1
- \ \land\ a_{e,g,c}=1
- \ \land\ padj_{e,g,c}<q
- \ \land\ \widehat\beta_{e,g,c}\text{ is finite}
-\right\}.
+\overline T_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}T_{e,i},\qquad
+\overline A_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}A_{e,i}.
 \]
 
-No additional post-fit absolute-correlation or absolute-effect-size threshold is applied. Candidate TF and peak correlation filters act upstream during Pando candidate discovery, not as a second coefficient gate.
-
-The effect used for downstream projection is
+The target regulatory score is therefore
 
 \[
-\theta_{e,g,c}=
-\begin{cases}
-\widehat\beta_{e,g,c}, & s_{e,g,c}=1,\\
-0, & s_{e,g,c}=0.
-\end{cases}
+G_{g,u}=\sum_{e\in E_g^{\cup}}
+\widehat\beta_{e,g,c(u)}\,\overline T_{e,u}\,\overline A_{e,u}.
 \]
 
-A `rank_deficient` target remains in the complete coefficient and fit-diagnostic tables for audit, but every edge belonging to that target has zero realized RegCompass penalty contribution even when an individual coefficient is finite and its P value would otherwise pass BH. This policy avoids attributing an edge-specific regulatory effect when the complete frozen-dictionary coefficient vector is not uniquely identifiable in that condition. Other non-`ok` target statuses, including insufficient residual degrees of freedom and failed/non-finite fits, are likewise excluded from penalty projection.
+This is **\(\beta\times mean(TF)\times mean(ATAC)\)** for each active edge, followed by target-level summation; it is not the mean of cell-wise TF×ATAC products.
 
-The Pando source object may retain its original GLM significance fields. RegCompass records the target fit status on the gated coefficient table and applies the stricter `fit_status == "ok"` rule before metacell regulatory projection and before active-edge assembly.
-
-## 2. Metacell projection from separately aggregated modalities
-
-For edge \(e\) and metacell \(u\), let \(\overline{T}_{e,u}\) and
-\(\overline{A}_{e,u}\) be the separately aggregated mean TF expression and
-mean ATAC accessibility over the exact member cells. The target-level score is
+For target \(g\) within cell type \(t\), define a robust calibration scale
 
 \[
-G_{u,g}=\sum_{e\in E_g^{\cup}}
-\theta_{e,g,c(u)}\overline{T}_{e,u}\overline{A}_{e,u}.
-\]
-
-Thus aggregation is performed before multiplication; it is not the mean of
-the paired-cell TF-by-ATAC products.
-
-For target \(g\) and cell type \(t\), the calibration scale is
-
-\[
-\sigma_{g,t}=\max\left(\frac{IQR(G_{g,t})}{1.349},MAD_{1.4826}(G_{g,t}),\sqrt{mean(G_{g,t}^{2})},10^{-6}\right).
+\sigma_{g,t}=\max\left(
+\frac{IQR(G_{g,t})}{1.349},
+MAD_{1.4826}(G_{g,t}),
+\sqrt{mean(G_{g,t}^2)},
+10^{-6}
+\right).
 \]
 
 The bounded regulatory modifier is
 
 \[
-R_{g,u}=q_{g,u}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right).
+R_{g,u}=q_{g,c(u)}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right),
+\qquad -1\le R_{g,u}\le1.
 \]
 
-RegCompass constrains the realized modifier to
+When regulatory evidence is unavailable, \(R_{g,u}=0\).
 
-\[
--1\le R_{g,u}\le1.
-\]
+## 3. Quantitative RNA input to the COMPASS-like penalty
 
-Unavailable regulatory evidence uses the neutral RNA-only route downstream, equivalent to \(R_{g,u}=0\).
-
-## 3. Two distinct Layer 1 evidence scales
-
-Layer 1 intentionally exposes two different numerical representations. They must not be interchanged because they answer different questions.
-
-### 3.1 Quantitative COMPASS penalty path: SuperCell representative RNA state
-
-Let \(Y_{g,i}\) be the raw RNA count for gene \(g\) in original single cell \(i\), and let
+Let \(Y_{g,i}\) be the raw RNA count of gene \(g\) in original cell \(i\), and
 
 \[
 L_i=\sum_hY_{h,i}
 \]
 
-be that cell's complete RNA library size. RegCompass first computes a **linear**, non-logarithmic per-cell CPM:
+its complete RNA library size. RegCompass first computes linear per-cell CPM,
 
 \[
-x_{g,i}=10^6\frac{Y_{g,i}}{L_i}.
+x_{g,i}=10^6\frac{Y_{g,i}}{L_i},
 \]
 
-For final SuperCell metacell \(u\), quantitative RNA is the equal-weight mean of its member-cell normalized expression:
+then takes an equal-weight mean across the final SuperCell membership,
 
 \[
-\boxed{
-X^{RNA}_{g,u}=\frac{1}{|M_u|}\sum_{i\in M_u}x_{g,i}
-}
+X^{RNA}_{g,u}=\frac{1}{|M_u|}\sum_{i\in M_u}x_{g,i}.
 \]
 
-This implements the SuperCell coarse-graining interpretation that a metacell represents the average state of its member cells. It is intentionally different from normalizing the summed metacell counts:
+Thus the quantitative LP path uses `mean(single-cell CPM)` rather than `CPM(sum counts)`, and it does not use the empirical-Bayes latent CPM estimator.
+
+The regulatory modifier acts multiplicatively,
 
 \[
-10^6\frac{\sum_{i\in M_u}Y_{g,i}}{\sum_{i\in M_u}L_i}
-=
-\sum_{i\in M_u}
-\frac{L_i}{\sum_jL_j}x_{g,i},
+X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}}.
 \]
 
-which is a library-size-weighted mean. The quantitative LP path therefore does **not** let a higher-depth cell contribute more merely because more UMIs were captured, and final metacell size does not directly scale enzyme abundance.
+Because \(-1\le R\le1\), the regulatory multiplier is bounded between \(1/2\) and \(2\).
 
-Pando modifies this unbounded non-negative expression multiplicatively:
+## 4. GPR aggregation and quantitative reaction cost
 
-\[
-\boxed{
-X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}}
-}
-\]
-
-so that
-
-\[
-\frac12X^{RNA}_{g,u}\le X^{MO}_{g,u}\le2X^{RNA}_{g,u}.
-\]
-
-The Pando modifier is applied after the equal-weight SuperCell RNA aggregation; Pando's regulatory projection itself remains cell-first and is averaged over the same exact membership before the bounded modifier is constructed.
-
-For an AND branch \(A_{r,j}\), the canonical RegCompass workflow uses the configured GPR AND operator, `min` by default:
+For reaction \(r\), let \(A_{r,j}\) denote one AND branch of its Boolean GPR. With the default `gpr_and_method = "min"`,
 
 \[
 Q^{quant}_{r,j,u}=\min_{g\in A_{r,j}}X^{MO}_{g,u}.
 \]
 
-Isozyme branches remain additive, matching the existing COMPASS-style OR policy:
+`"mean"` or `"median"` replace the AND operator when explicitly selected. Isozyme/OR branches are additive,
 
 \[
 E^{quant}_{r,u}=\sum_jQ^{quant}_{r,j,u}.
 \]
 
-The reaction value entering the LP cost is therefore unbounded above when expression is high. RegCompass then applies the COMPASS-shaped cost exactly once at reaction level:
+The reaction coefficient supplied to the COMPASS-like LP objective is
 
 \[
-\boxed{
-p_{r,u}=\frac{1}{1+\log_2(1+\max(E^{quant}_{r,u},0))}
-}
+p_{r,u}=\frac{1}{1+\log_2(1+\max(E^{quant}_{r,u},0))}.
 \]
 
-If quantitative reaction expression is unavailable, RegCompass sets \(E^{quant}_{r,u}=0\), hence
+Missing quantitative expression and structural-only reaction roles use cost \(p=1\).
+
+## 5. Separate bounded structural-support path
+
+CORDA2 structural evidence uses a bounded representation distinct from the quantitative LP input. Let \(\widehat{CPM}^{struct}_{g,u}\) denote the structural-only latent metacell CPM estimate and
 
 \[
-p_{r,u}=1.
+L^{struct}_{g,u}=\ln(1+\widehat{CPM}^{struct}_{g,u}).
 \]
 
-The structural roles `exchange`, `demand`, `sink`, and `artificial_support` also receive
+With half-saturation parameter \(h\),
 
 \[
-p_{r,u}=1.
+C^{RNA}_{g,u}=\frac{L^{struct}_{g,u}}{L^{struct}_{g,u}+h}.
 \]
 
-The quantitative estimator contains no empirical-Bayes shrinkage and does not borrow RNA abundance across conditions. A zero member-cell count remains zero before averaging; no cell-type prior creates quantitative expression for an unobserved gene. RegCompass still differs from original COMPASS in other design choices, including the default GPR AND rule (`min` rather than the original default `mean`) and the use of SuperCell metacells as statistical units.
-
-### 3.2 Bounded structural-confidence path
-
-A separate bounded representation is retained for CORDA2 and other structural-confidence decisions. In schema v6 this path deliberately retains the pre-existing empirical-Bayes latent metacell CPM; that latent estimator is **structural-only** and is no longer an LP expression input.
-
-Let \(\widehat{CPM}^{struct}_{g,u}\) denote that latent structural-support estimate and
+Regulatory evidence modifies structural-support odds,
 
 \[
-L_{g,u}=\ln(1+\widehat{CPM}^{struct}_{g,u}).
+C^{MO}_{g,u}=
+\frac{C^{RNA}_{g,u}2^{R_{g,u}}}
+{1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{R_{g,u}}}.
 \]
 
-The bounded RNA support is
+The same Boolean GPR topology is then applied to obtain bounded reaction structural support. This bounded quantity is used for structural-confidence classification and is **not** substituted for \(E^{quant}\) in the LP penalty.
+
+## 6. Medium constraints
+
+A medium scenario changes exchange bounds by intersection with the parent GEM. For reaction \(r\),
 
 \[
-C^{RNA}_{g,u}=\frac{L_{g,u}}{L_{g,u}+h}.
+l'_r\ge l_r,\qquad u'_r\le u_r.
 \]
 
-Regulatory evidence modifies the support odds:
+Therefore medium application cannot create a reaction direction that was blocked in the original GEM.
 
-\[
-C^{MO}_{g,u}=\frac{C^{RNA}_{g,u}2^{R_{g,u}}}{1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{R_{g,u}}}.
-\]
+## 7. CORDA2 structural reconstruction
 
-Thus
+For cell type \(t\), condition-specific reaction catalogues are unioned within that cell type before structural reconstruction. Bounded evidence is mapped to CORDA2 confidence classes \(HC,MC,NC,OT\), and one medium-constrained parent GEM is reconstructed for each cell-type × medium combination.
 
-\[
-0\le C^{RNA}_{g,u},C^{MO}_{g,u}\le1.
-\]
+The current canonical implementation has two additional structural rules:
 
-Bounded reaction structural support is then computed with the same GPR topology:
+1. every input core reaction is an immutable structural requirement and cannot be deleted by CORDA2 finalization;
+2. after CORDA2 finishes, no second parent/final closure LP pass is run.
 
-\[
-Q^{struct}_{r,j,u}=\min_{g\in A_{r,j}}C^{MO}_{g,u},
-\qquad
-E^{struct}_{r,u}=\sum_jQ^{struct}_{r,j,u}.
-\]
+Internally reversible reactions are evaluated directionally by the CORDA2 state machine. During final merge, a reaction is retained when either allowed split direction is selected; all core reactions are retained unconditionally. Retained reactions recover the corresponding medium-constrained parent reaction bounds. Consequently the final CORDA2 GEM is the model passed directly to downstream COMPASS-like scoring.
 
-The bounded representation is **not** passed to the quantitative LP penalty. It is retained to preserve the established CORDA2 confidence scale while the quantitative RNA estimator is corrected independently.
+FASTCORE is an explicit supplementary completion route. `model_mode = "full_gem"` bypasses context-specific reconstruction and scores the complete medium-constrained GEM.
 
-For backward compatibility, Layer 1 continues to expose the bounded matrices as `reaction_expression` and `reaction_expression_rna_only`, with explicit aliases `reaction_structural_support` and `reaction_structural_support_rna_only`. The quantitative LP matrices are `reaction_expression_quantitative` and `reaction_expression_quantitative_rna_only`. Layer 1 schema v6 additionally saves `rna_metacell_mean_single_cell_cpm`; Layer 2 explicitly prefers the quantitative reaction matrices.
+## 8. Directional feasibility and COMPASS-like LP scoring
 
-## 4. Why the quantitative RNA estimator changed in schema v6
-
-Schema v5 used
-
-\[
-CPM(\text{summed metacell counts})
-\rightarrow
-\text{cell-type empirical-Bayes shrinkage}
-\rightarrow
-\widehat{CPM}
-\rightarrow
-2^R
-\rightarrow GPR\rightarrow penalty.
-\]
-
-That construction had two undesirable properties for the LP objective. First, `CPM(sum counts)` weights member cells in proportion to their RNA library sizes rather than representing the equal-weight SuperCell state. Second, the empirical-Bayes update shrank metacells toward a shared cell-type mean and could create positive quantitative expression from a pooled zero, thereby attenuating condition differences before metabolic scoring.
-
-Schema v6 separates the estimands more strictly:
-
-\[
-\boxed{
-Y_{g,i}
-\rightarrow
-10^6Y_{g,i}/L_i
-\xrightarrow{\text{equal SuperCell mean}}
-X^{RNA}_{g,u}
-\times2^R
-\rightarrow GPR
-\rightarrow COMPASS\ penalty
-}
-\]
-
-for quantitative metabolic scoring, and
-
-\[
-\boxed{
-\widehat{CPM}^{struct}
-\rightarrow
-\frac{\ln(1+\widehat{CPM}^{struct})}
-{\ln(1+\widehat{CPM}^{struct})+h}
-\xrightarrow{\text{bounded odds }2^R}
-structural\ support
-}
-\]
-
-for the current CORDA2/structural-confidence route.
-
-This change does not alter Pando fitting, the common edge dictionary, rank-deficiency gating, SuperCell membership construction, CORDA2 reconstruction semantics, directional \(V_{max}\), or the LP constraints. It changes the RNA abundance estimator supplied to the quantitative LP objective and records that estimator explicitly in the Layer 1 contract.
-
-## 5. Default CORDA2 structural model
-
-For cell type \(t\) and condition-specific biological reaction sets \(B_{t,c}\), the structural catalogue is
-
-\[
-B_t=\bigcup_c B_{t,c}.
-\]
-
-CORDA2 uses the bounded structural reaction evidence \(E^{struct}\), not \(E^{quant}\). Layer 1 structural evidence is summarized within condition and unioned within cell type, then mapped to the CORDA2 confidence groups
-
-\[
-HC_{t},\ MC_{t},\ NC_{t},\ OT_{t}.
-\]
-
-For medium \(m\), exchange bounds are first applied to the complete parent GEM. The default cell-type structural model is
-
-\[
-\mathcal{G}_{t,m}=
-CORDA2(HC_t,MC_t,NC_t,OT_t;S,l_m,u_m).
-\]
-
-The parent is passed directly to the original MATLAB CORDA2 state machine without FASTCC pre-pruning. Reversible reactions are represented by non-negative directional variables during reconstruction. When selected directions are merged back into reactions, excluded directions are fixed to zero and retained directions recover the corresponding parent bounds. In particular, a retained irreversible reaction with positive parent lower bound \(l_{m,r}>0\) retains
-
-\[
-l^{final}_{t,m,r}=l_{m,r}>0.
-\]
-
-FASTCORE is an explicit supplementary reconstruction selected with `model_completion = "fastcore"`. The full-GEM route is a supplementary mode that keeps the complete medium-constrained parent and performs no context-specific reconstruction.
-
-## 6. Directional COMPASS-like LP
-
-For target reaction \(r\) and direction \(d\),
+For final cell-type/medium model \(\mathcal G_{t,m}\), target reaction \(r\), and direction \(d\in\{+1,-1\}\), the scoring stage first computes
 
 \[
 v^{max}_{r,d,t,m}=\max_v d\,v_r
@@ -310,54 +183,57 @@ subject to
 S_{t,m}v=0,\qquad l_{t,m}\le v\le u_{t,m}.
 \]
 
-For metacell \(u\), RegCompass solves
+This is the single post-reconstruction directional feasibility calculation used for scoring; it is not a second CORDA2 closure stage.
+
+For metacell \(u\), RegCompass then solves
 
 \[
-P^{*}_{r,d,u,m}=\min_{v,z}\sum_jp_{j,u}z_j
+P^*_{r,d,u,m}=\min_{v,z}\sum_jp_{j,u}z_j
 \]
 
 subject to
 
 \[
-S_{t,m}v=0,\qquad -z_j\le v_j\le z_j,\qquad d\,v_r\ge\omega v^{max}_{r,d,t,m}.
+S_{t,m}v=0,
+\qquad -z_j\le v_j\le z_j,
+\qquad d\,v_r\ge\omega v^{max}_{r,d,t,m}.
 \]
 
 The normalized penalty is
 
 \[
-\widetilde P_{r,d,u,m}=\frac{P^{*}_{r,d,u,m}}{\omega v^{max}_{r,d,t,m}}.
+\widetilde P_{r,d,u,m}=\frac{P^*_{r,d,u,m}}
+{\omega v^{max}_{r,d,t,m}}.
 \]
 
-Lower normalized penalty indicates stronger model-constrained support for the target direction; it is not a measured flux.
+Lower normalized penalty indicates stronger model-constrained support for the target direction. It is not measured metabolic flux.
 
-## 7. RNA-only interpretation control
-
-The RNA-only comparison reuses the exact same structural model, media, bounds, target directions, and directional \(V_{max}\) as the multiome route. Only the quantitative objective coefficients differ:
-
-\[
-X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}}
-\]
-
-versus
-
-\[
-X^{RNA}_{g,u}.
-\]
-
-Therefore `regulatory_penalty_delta` isolates the effect of the Pando regulatory modifier on the quantitative COMPASS objective **conditional on the already constructed shared structural model**. It is not an end-to-end RNA-only reconstruction control.
-
-## 8. Condition statistics
-
-The comparison score is
+The comparison/ranking score is
 
 \[
 S_{r,d,u,m}=-\log(\widetilde P_{r,d,u,m}+\epsilon).
 \]
 
-Condition comparisons are performed within one cell type, target reaction, direction, and medium. Wilcoxon rank-sum tests are used for pairwise comparisons; Kruskal–Wallis tests may be used for analyses with at least three conditions. Metacells are within-dataset statistical units, not donor-level biological replicates.
+Larger score indicates stronger model support.
 
-## 9. Inference scope and artifact compatibility
+## 9. RNA-only interpretation control
 
-Condition-GRN P values are conditional on the frozen candidate dictionary and do not include selective-inference correction for candidate discovery. Standard-Pando cell types do not receive manufactured condition coefficients.
+The RNA-only control reuses the exact same structural GEM, medium, bounds, target directions, and \(v^{max}\). Only the quantitative objective coefficient differs:
 
-Layer 1 schema v6 is intentionally incompatible with v5 artifacts for downstream validation. Existing `step_layer1.rds` objects must be regenerated before Layer 2 so that the quantitative reaction-expression matrices are reconstructed from equal-weight mean single-cell CPM rather than the old latent-CPM estimator. Stage 1 and Stage 2 artifacts remain reusable if their existing workflow contracts are otherwise unchanged, because the new quantitative RNA estimator is reconstructed in Stage 4 from the retained Stage 1 cell-level Pando objects and the exact Stage 2 SuperCell membership.
+\[
+X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}}
+\quad\text{versus}\quad
+X^{RNA}_{g,u}.
+\]
+
+Therefore the multiome-versus-RNA-only penalty difference isolates the effect of the regulatory modifier conditional on the already constructed structural model; it is not a separately reconstructed RNA-only GEM.
+
+## 10. Condition statistics
+
+Condition comparisons are performed within a fixed cell type, reaction, direction, and medium. Pairwise comparisons use Wilcoxon rank-sum tests; analyses with at least three conditions can additionally use a Kruskal–Wallis omnibus test. Multiple-testing correction is applied according to the requested adjustment scope.
+
+Metacells are within-dataset statistical units. These tests are not donor/sample-level biological-replicate inference unless the study design supplies an appropriate independent replicate level outside this metacell test.
+
+## 11. Artifact compatibility
+
+The quantitative LP path and bounded structural path are deliberately separate. Layer 1 schema-v6 artifacts expose both quantitative reaction expression and bounded structural support. Older Layer 1 artifacts that lack the quantitative matrices must be regenerated before canonical Layer 2 scoring.

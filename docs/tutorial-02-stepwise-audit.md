@@ -1,29 +1,14 @@
 # Tutorial 2: restartable workflow
 
-Each stage writes an RDS checkpoint to its output directory. Use the same paired-cell object, GEM, metadata columns and medium definitions when restarting later stages.
-
-## 1. One parallel worker cap
-
-RegCompass selects the parallel backend automatically:
-
-- Windows: `BiocParallel::SnowParam(type = "SOCK")`;
-- Linux/macOS: `BiocParallel::MulticoreParam`.
-
-Users set only one worker cap. The default is `10L`; increase it explicitly when more parallel capacity is desired:
+Each stage writes a checkpoint to its output directory. Reuse the same input object, GEM, metadata columns, and medium definition when restarting downstream stages.
 
 ```r
-workers <- 60L
+workers <- 10L
 ```
 
-The effective worker count is always bounded by
+`workers` is the single workflow-level parallel cap. RegCompass selects the platform-specific backend automatically; individual stages use no more workers than their independent task count.
 
-```text
-min(independent tasks, workers, max(1, detected logical CPUs - 2))
-```
-
-so RegCompass reserves two logical CPUs for the operating system/R controller. Condition-GRN candidate and fit phases can expose condition × cell-type jobs; standard Pando exposes broad-cell-type jobs; CORDA2 and directional LP phases can expose thousands of targets. Every dispatch uses only the workers it can actually use, and a package-managed pool is stopped before the next phase starts. Stage 2 fragment aggregation uses the same cap; do not set `metacell_args$fragment_args$workers` separately.
-
-## 2. Regulatory evidence
+## 1. Regulatory evidence
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -48,13 +33,9 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-`pando_args$min_cells` defaults to `500L`, but it is not fixed. Any positive integer supplied by the user is retained and becomes the Stage 1 filtering threshold.
+Key arguments: `condition_col`, `celltype_col`, `cell_type`, `rna_assay`, `atac_assay`, `pando_args`, `workers`, and `progress`. `pando_args$min_cells` defaults to `500L`. Condition-only Pando arguments are routed only to the condition-GRN path.
 
-A cell type with at least two retained conditions uses the common-dictionary condition GRN. RegCompass initializes a separate Pando object for each broad cell type, parallelizes the pooled-background and per-condition candidate-discovery jobs, waits at a strict barrier, unions exact `(target, TF, region)` triples into one frozen dictionary for that cell type, and only then parallelizes the condition × cell-type fixed-dictionary Gaussian identity GLMs. Different cell types never share or merge Pando peak/motif feature spaces. The main workflow uses `tf_cor = 0.1` and `peak_cor = 0.05` for candidate discovery. Final condition edges are active when they are estimable and have BH-adjusted `padj < 0.05`; no second post-fit coefficient-size, correlation, or model-R² gate is applied.
-
-A cell type with one retained condition uses standard Pando. Standard Pando is parallelized across broad cell types, and each individual Pando fit is kept single-process to avoid nested oversubscription. The `tf_cor` and `peak_cor` values are passed to `Pando::infer_grn()` exactly as routed from `pando_infer_args`; the defaults are fixed at `tf_cor = 0.1` and `peak_cor = 0.05`, with no cell-count-dependent correlation threshold.
-
-## 3. Metacells
+## 2. Multimodal metacells
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -77,11 +58,9 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-`metacell_args$min_cells_per_stratum` also defaults to `500L` and is user-configurable. If Stage 1 is intentionally run with a lower `min_cells`, set the Stage 2 threshold explicitly as needed rather than relying on the `500L` default.
+Key arguments: `fragment_files`, `metacell_args`, `workers`, and `grn`. Supplying `grn = step1` enforces the Stage 1 cell set. `metacell_args$min_cells_per_stratum` defaults to `500L`. Fragment aggregation, when requested, uses the same top-level `workers` cap; `metacell_args$fragment_args$workers` is not a public control.
 
-One WNN graph is constructed per broad cell type. Final metacells remain condition-pure. If raw fragment files are supplied, `SuperCell::AggregateFragmentFile()` receives the same protected top-level worker cap.
-
-## 4. Reaction catalogue and Layer 1 support
+## 3. Reaction meta-modules
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -90,7 +69,13 @@ step3 <- rc_regcompass_step_meta_modules(
   gem = gem,
   outdir = "run/03_meta_modules"
 )
+```
 
+`meta_module_args` is an optional list for Stage 3 customization, including a custom subsystem table when required.
+
+## 4. Layer 1 reaction evidence
+
+```r
 step4 <- rc_regcompass_step_layer1(
   grn = step1,
   metacells = step2,
@@ -103,9 +88,9 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
-## 5. Medium scenarios
+`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"`; the default is `"min"`. `gene_half_saturation` controls the bounded structural-support path. Mathematical definitions are not duplicated here; see [mathematical-model.md](mathematical-model.md).
 
-Use `rc_make_medium_scenarios()` so every condition within one scenario receives identical exchange bounds.
+## 5. Medium scenarios
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
@@ -115,7 +100,7 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Supported biological presets are:
+Built-in scenarios are:
 
 ```text
 normal_human_plasma
@@ -128,28 +113,9 @@ low_glutamine
 custom
 ```
 
-Multiple scenarios can be supplied together:
+Multiple compatible scenarios may be supplied as a character vector. Use `scenario = "custom"` with `custom_medium` for reaction-level bounds, or `scenario = NULL` with `custom_metabolites` for a custom metabolite composition. Provenance fields including `background_reference_doi`, `background_validation_reference_doi`, and `challenge_reference_doi` are retained in the returned table. See [medium-presets.md](medium-presets.md).
 
-```r
-medium_scenarios <- rc_make_medium_scenarios(
-  gem = gem,
-  scenario = c(
-    "normal_human_plasma",
-    "high_glucose",
-    "low_glucose",
-    "high_lactate",
-    "low_lactate",
-    "low_glutamine"
-  ),
-  species = "human"
-)
-```
-
-For exact reaction-level custom bounds use `scenario = "custom"` and `custom_medium`. For metabolite-level composition use `scenario = NULL` and `custom_metabolites`. Provenance fields such as `background_reference_doi`, `background_validation_reference_doi` and `challenge_reference_doi` are retained. See `docs/medium-presets.md`.
-
-## 6. Layer 2: default CORDA2 reconstruction
-
-With `model_mode = "meta_module_gem"`, omitting `model_completion` selects original MATLAB CORDA2 semantics.
+## 6. Layer 2 structural model and directional scoring
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -159,7 +125,6 @@ step5 <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2",
   model_mode = "meta_module_gem",
-  workers = workers,
   layer2_args = list(
     target_direction = "both",
     solver = "highs",
@@ -171,42 +136,28 @@ step5 <- rc_regcompass_step_layer2(
         constrainby = "val",
         om = 1e4,
         ci = 0.01
-      ),
-      corda_medium_confidence_threshold = 0.75,
-      corda_negative_confidence_threshold = 0.10,
-      corda_regulatory_weight = 0.20,
-      corda_include_evidence_outside_modules = TRUE,
-      corda_max_medium_confidence_reactions = Inf
+      )
     )
-  )
+  ),
+  workers = workers
 )
 ```
 
-Do not set `completion_time_limit` for CORDA2. The canonical CORDA2 option object and Layer 2 completion context both use `Inf`; a supplied structural time limit is rejected rather than silently changing original CORDA2 execution.
-
-### CORDA2 step-level parallelism
-
-The mathematical order remains fixed:
-
-```text
-Step 1 HC dependencies
-  -> barrier / deterministic ordered reduce / state update
-  -> release worker pool and target-local HiGHS engines / GC
-Step 2.1 MC-NC dependencies
-  -> barrier / deterministic ordered reduce / state update
-  -> release pool / GC
-Step 2.2 MC feasibility
-  -> barrier / deterministic ordered reduce / state update
-  -> release pool / GC
-Step 3 HC-OT dependencies
-  -> barrier / deterministic ordered reduce / state update
-  -> release pool / GC
-```
-
-Within the current step, directional targets are parallelized up to the protected worker cap. Each directional target starts from a fresh solver engine so its incoming simplex basis cannot depend on the worker/chunk assignment; repeated solves belonging to that same target still reuse its engine. HiGHS remains one thread per worker. Results are reduced in the original directional order only after all targets in the step finish.
-
-The console and Layer 2 progress files report the current CORDA2 step, completed targets, total targets and `remaining=` count. Worker pools are short-lived by step; a new pool is created only after the preceding step has fully completed.
+`layer2_args` accepts `model_params`, `omega`, `target_direction`, `solver`, and `flux_threshold`. `model_mode = "meta_module_gem"` uses CORDA2 by default. Set `model_params$model_completion = "fastcore"` for supplementary FASTCORE completion or `model_mode = "full_gem"` for complete-network scoring. `model_params$completion_time_limit` is not accepted for CORDA2.
 
 ## 7. Result assembly
 
-Use the Layer 2 output directly or continue with the one-shot result assembly functions. Targeted post-analysis can reuse either audited CORDA2 or supplementary FASTCORE Stage 5 union GEMs without structural reconstruction; `rc_regcompass_step_target_union()` uses the same top-level `workers` contract.
+```r
+result <- rc_regcompass_step_results(
+  grn = step1,
+  metacells = step2,
+  meta_modules = step3,
+  layer1 = step4,
+  layer2 = step5,
+  gem = gem,
+  outdir = "run/06_results",
+  species = "human"
+)
+```
+
+The stage outputs are restartable R objects. For post-analysis functions see [tutorial-04-post-analysis.md](tutorial-04-post-analysis.md) and [functions.md](functions.md). All equations and algorithmic definitions are maintained in [mathematical-model.md](mathematical-model.md).

@@ -6,7 +6,7 @@
 \alias{rc_regcompass_step_layer1}
 \alias{rc_regcompass_step_layer2}
 \alias{rc_regcompass_step_results}
-\title{Run the six restartable RegCompass stages}
+\title{Run the restartable RegCompass stages}
 \usage{
 rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
@@ -46,71 +46,23 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{outdir}{Stage output directory.}
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
 \item{pfm}{Optional motif collection.}
-\item{species}{Species identifier or \code{"auto"}.}
+\item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
-\item{cell_type}{Optional broad-cell-type labels.}
+\item{cell_type}{Optional broad-cell-type subset.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{fragment_files}{Optional Stage 2 raw fragment input. Use \code{NULL}/\code{FALSE} to aggregate the existing ATAC matrix; a single fragment path; a named character vector of paths whose names are exact prefixes before \code{_} in Seurat cell IDs; or a data frame with \code{fragment_file}, \code{object_cell}, and \code{fragment_barcode}. Fragment routing is used only for ATAC aggregation and does not make sample identity a metacell grouping variable.}
-\item{pando_args}{Stage 1 Pando initialization, motif and inference controls. \code{min_cells} defaults to \code{500L} and may be changed to any positive integer. The main condition-GRN candidate screen uses \code{tf_cor = 0.1} and \code{peak_cor = 0.05} unless explicitly changed. Final condition edges are active when estimable with BH-adjusted \code{padj < 0.05}; no additional post-fit coefficient-size, correlation, or model-R-squared gate is applied.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN, gamma, seed and size controls. \code{min_cells_per_stratum} defaults to \code{500L} and may be explicitly overridden. Fragment aggregation/recount controls are supplied in \code{metacell_args$fragment_args}: \code{rows_per_chunk}, \code{bgzip_path}, \code{tabix_path}, \code{process_n}, \code{call_peaks}, \code{macs2_path}, \code{effective_genome_size}, and \code{peak_calling_args}. Fragment parallelism uses the top-level \code{workers} argument; \code{fragment_args$workers} is not a separate public control.}
-\item{grn}{Validated Stage 1 output. In Stage 2 it enforces the exact Stage 1 cell set.}
-\item{meta_module_args}{Optional custom subsystem table.}
-\item{gpr_and_method}{GPR AND aggregation method.}
-\item{gene_half_saturation}{Half-saturation parameter for bounded RNA support.}
-\item{layer2_args}{Directional scoring and structural controls. Under \code{model_mode = "meta_module_gem"}, original MATLAB CORDA2 is the default completion method; set \code{model_params$model_completion = "fastcore"} for the supplementary FASTCORE route. CORDA2 controls are supplied through \code{model_params$corda2_args} and the \code{corda_*} evidence-mapping parameters. CORDA2 has no structural time limit and rejects \code{model_params$completion_time_limit}. Under \code{model_mode = "full_gem"}, completion-specific controls are rejected.}
-\item{workers}{Single RegCompass worker cap for computational stages, default \code{10L}. RegCompass automatically selects SOCK/Snow workers on Windows and Multicore workers on Linux/macOS. The effective cap is \code{min(workers, max(1, detected logical CPUs - 2))}; each dispatch additionally shrinks to its number of independent tasks. Stage 1 condition mode can expose pooled/condition-by-cell-type candidate jobs and condition-by-cell-type fixed-dictionary GLM jobs; standard Pando exposes broad-cell-type jobs. Stage 2 fragment aggregation and later LP stages use this same cap.}
+\item{pando_args}{Stage 1 configuration. \code{min_cells} defaults to \code{500L}; inference controls are supplied through \code{pando_infer_args}.}
+\item{workers}{Single worker cap used by computational stages, default \code{10L}.}
 \item{progress}{Display and persist stage progress.}
+\item{fragment_files}{Optional Stage 2 raw fragment input.}
+\item{metacell_args}{Stage 2 reductions, dimensions, WNN, size, and fragment controls. \code{min_cells_per_stratum} defaults to \code{500L}.}
+\item{grn}{Stage 1 output. In Stage 2, supplying it enforces the retained Stage 1 cell set.}
 \item{metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
-\item{medium_scenarios}{Shared medium table, normally created by \code{rc_make_medium_scenarios()}. Medium application changes listed exchange-reaction bounds only and does not directly remove reactions.}
-\item{model_mode}{The default \code{"meta_module_gem"} route reconstructs one CORDA2 model per cell type and medium. \code{"full_gem"} is a supplementary complete-network COMPASS-style scoring route.}
+\item{meta_module_args}{Optional Stage 3 configuration, including a custom subsystem table.}
+\item{gpr_and_method}{GPR AND aggregation method: \code{"min"}, \code{"median"}, or \code{"mean"}.}
+\item{gene_half_saturation}{Half-saturation parameter for the bounded structural-support path.}
+\item{medium_scenarios}{Shared medium table, normally created by \code{rc_make_medium_scenarios()}.}
+\item{model_mode}{\code{"meta_module_gem"} or supplementary \code{"full_gem"}.}
+\item{layer2_args}{Stage 5 controls. Supported top-level entries are \code{model_params}, \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold}. CORDA2 is the default completion under \code{"meta_module_gem"}; \code{model_params$completion_time_limit} is not a CORDA2 control.}
 }
-\value{
-Each function returns a validated stage object and writes its canonical stage
-checkpoint and compact diagnostic tables to \code{outdir}.
-}
-\description{
-Runs the regulatory, metacell, reaction-catalogue, reaction-support, metabolic
-scoring and result stages independently.
-}
-\details{
-Stage 1 applies the configurable \code{pando_args$min_cells} threshold before
-normalization; the default is \code{500L}. It determines the route independently
-for each broad cell type. At least two retained conditions use the common-
-dictionary condition GRN; one retained condition uses standard Pando. In
-condition mode, RegCompass initializes one Pando object per broad cell type,
-dispatches pooled-background and condition-by-cell-type candidate discovery,
-waits at a strict cell-type barrier to freeze one exact TF-peak-target
-dictionary, then dispatches condition-by-cell-type fixed-dictionary Gaussian
-identity GLMs. Different cell types retain separate Pando peak/motif feature
-spaces. Standard Pando is parallelized across broad cell types. Atomic Pando
-jobs disable nested target-level parallelism.
-
-Stage 2 reproduces the Stage 1 cell set and keeps final metacells
-condition-pure. Its configurable \code{metacell_args$min_cells_per_stratum}
-threshold defaults to \code{500L}. When raw fragment files are supplied, Stage 2
-first builds the final grouped-WNN membership, transforms single-cell fragment
-barcodes to the final metacell barcodes with
-\code{SuperCell::AggregateFragmentFile()}, and uses the same protected
-\code{workers} cap for fragment aggregation. Stage 3 builds cell-type-scoped
-reaction catalogues. Stage 4 uses the same worker cap and shrinks to the
-available independent projection jobs.
-
-Stage 5 defaults to original MATLAB CORDA2 on the complete medium-constrained
-parent GEM for each cell-type-by-medium combination. CORDA2 Step 1, Step 2.1,
-Step 2.2 and Step 3 remain strict barriers; each step can use the full protected
-worker cap for its directional targets, then stops its pool, releases target-
-local HiGHS engines and performs garbage collection before the next step. Every
-directional target begins from a fresh solver engine while repeated solves
-inside that target reuse its engine. This prevents worker/chunk assignment from
-changing the incoming simplex basis. Two detected logical CPUs are reserved
-globally. FASTCC pre-pruning is not used before CORDA2. During final directional
-merge, retained reactions recover the corresponding parent bounds, including
-positive parent lower bounds. FASTCORE is available only when explicitly
-requested. Full-GEM mode is a supplementary route that retains every reaction
-and skips the penalty LP when a target direction's maximum feasible flux is
-below the scoring threshold. All Layer 2 routes use the COMPASS reaction-cost
-scale; missing expression and structural reaction roles receive the maximum
-cost 1. Stage 6 assembles rankings, annotations and available condition
-contrasts. See \code{docs/tutorial-02-stepwise-audit.md} and
-\code{docs/layer2-model-builders.md}.
-}
+\value{Each function returns a validated stage object and writes its stage checkpoint and diagnostics to \code{outdir}.}
+\description{Runs individual stages of the RegCompass workflow for restartable execution. See \code{docs/tutorial-02-stepwise-audit.md} for calls and \code{docs/mathematical-model.md} for quantitative definitions.}

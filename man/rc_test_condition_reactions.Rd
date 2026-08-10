@@ -2,7 +2,7 @@
 % Please edit documentation in R/condition_statistics.R and R/reaction_annotations.R
 \name{rc_test_condition_reactions}
 \alias{rc_test_condition_reactions}
-\title{Compare shared-model reaction support between conditions}
+\title{Compare reaction support between conditions}
 \usage{
 rc_test_condition_reactions(
   x,
@@ -26,74 +26,22 @@ rc_test_condition_reactions(
 )
 }
 \arguments{
-\item{x}{A microCOMPASS result, such as \code{step5}, or a complete RegCompass result containing a \code{microcompass} element. Complete annotated results add reaction biology and evidence provenance automatically.}
-
-\item{condition_col}{Metadata column defining conditions. When \code{NULL}, common condition-column names are searched in order.}
-
-\item{celltype_col}{Metadata column defining cell types. When \code{NULL}, common cell-type-column names are searched in order.}
-
-\item{conditions}{Optional conditions to retain. The default uses all.}
-
-\item{cell_types}{Optional cell types to retain. The default uses all.}
-
-\item{comparisons}{Optional pairwise contrasts. Supply a list of character vectors of length two or a two-column matrix/data frame. The default tests every pair of retained conditions.}
-
+\item{x}{A Layer 2 result or complete RegCompass result.}
+\item{condition_col}{Condition metadata column. When \code{NULL}, common names are searched.}
+\item{celltype_col}{Cell-type metadata column. When \code{NULL}, common names are searched.}
+\item{conditions}{Optional condition filter.}
+\item{cell_types}{Optional cell-type filter.}
+\item{comparisons}{Optional pairwise contrasts. The default tests every retained pair.}
 \item{reaction_ids, target_directions, medium_scenarios}{Optional target filters.}
-
-\item{min_units}{Minimum finite units required in every tested condition.}
-
+\item{min_units}{Minimum finite metacells required in every tested condition.}
 \item{include_omnibus}{Run Kruskal-Wallis tests when at least three conditions are retained.}
-
 \item{p_adjust_method}{Method passed to \code{stats::p.adjust()}.}
-
-\item{p_adjust_scope}{Multiple-testing scope: \code{"celltype_contrast_medium"} (default), \code{"celltype_contrast"}, \code{"celltype"}, or \code{"global"}.}
-
+\item{p_adjust_scope}{Multiple-testing scope.}
 \item{wilcox_correct}{Apply continuity correction in Wilcoxon tests.}
-
-\item{eps}{Positive offset used in the support-score transformation.}
-
-\item{vmax_tolerance}{Relative tolerance for verifying that target vmax is invariant across units under the shared GEM.}
-
-\item{include_scores}{Include the filtered unit-level score matrix in the returned object.}
-
-\item{outdir}{Optional directory for annotated pairwise/omnibus tables, reaction catalog, evidence table, and RDS output.}
+\item{eps}{Positive offset used by the support-score transformation.}
+\item{vmax_tolerance}{Relative tolerance for checking shared-model target-vmax consistency.}
+\item{include_scores}{Include filtered unit-level scores in the result.}
+\item{outdir}{Optional output directory.}
 }
-\value{
-A \code{regcompass_condition_statistics} list with \code{pairwise}, \code{omnibus}, \code{params}, \code{inference_policy}, and optionally \code{score}. For annotated complete results it also contains \code{reaction_catalog} and \code{reaction_evidence}; pairwise and omnibus rows include reaction names, formulas, substrates, products, GPR genes, and RNA-versus-multiome evidence fields.
-}
-\description{
-Compares the same reaction, direction, and medium between conditions within each selected cell type. All units must have been scored against the shared structural GEM stored in the microCOMPASS result. The tested score is \code{-log(penalty / (omega * vmax) + eps)}, so larger values indicate stronger multiome support for the target reaction direction.
-}
-\details{
-Pairwise differences use two-sided Wilcoxon rank-sum tests and report median shifts, rank-biserial correlation, common-language effect size, and Cohen's d. When at least three conditions are selected, an optional Kruskal-Wallis omnibus test is also performed. P values are adjusted across reaction targets using the requested scope.
-
-For annotated results, \code{tested_formula} follows the scored forward or reverse direction. \code{evidence_class_a} and \code{evidence_class_b} distinguish active \code{RNA+ATAC} contribution from \code{RNA-only}, \code{GPR/no-observed-RNA}, and \code{structural/no-GPR} support.
-
-Metacell tests use each metacell as a statistical unit and quantify
-within-dataset condition-associated separation. They are not sample/donor-level
-biological-replicate inference. The returned \code{inference_level},
-\code{metacell_statistical_inference}, and
-\code{biological_replicate_inference} fields record this distinction
-explicitly.
-}
-\examples{
-\dontrun{
-stats <- rc_test_condition_reactions(
-  result,
-  condition_col = "dataset",
-  celltype_col = "epithelial_or_stem",
-  cell_types = "epithelial_like",
-  comparisons = list(
-    c("control_24hr", "JQ1_24hr"),
-    c("control_24hr", "MS177_24hr")
-  )
-)
-
-subset(
-  stats$pairwise,
-  p_adj < 0.05 &
-    abs(rank_biserial_b_minus_a) >= 0.3 &
-    (evidence_class_a == "RNA+ATAC" | evidence_class_b == "RNA+ATAC")
-)
-}
-}
+\value{A \code{regcompass_condition_statistics} object containing pairwise results, optional omnibus results, parameters, inference metadata, and optionally unit-level scores.}
+\description{Compares the same reaction, direction, and medium between conditions within a selected cell type. Pairwise tests use Wilcoxon rank-sum tests; optional omnibus tests use Kruskal-Wallis. Metacells are within-dataset statistical units. Score and normalization definitions are documented in \code{docs/mathematical-model.md}.}

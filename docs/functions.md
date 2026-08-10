@@ -1,44 +1,87 @@
 # Function reference
 
+This page lists the supported public API. Complete argument definitions are in the corresponding Rd help pages. Mathematical definitions are maintained only in [mathematical-model.md](mathematical-model.md).
+
 ## Complete workflow
 
-- `rc_run_regcompass_one_shot()`: prepare species-aware defaults and run the complete workflow with the single top-level `workers` cap.
-- `rc_run_regcompass()`: run the complete workflow with explicit GEM, media and stage arguments. `workers` is the only workflow-level parallel cap; the effective maximum is `min(workers, max(1, detected logical CPUs - 2))`.
+### `rc_run_regcompass_one_shot()`
+
+Prepare species defaults when needed and run the complete workflow.
+
+Main arguments: `object`, `outdir`, `genome`, `species`, optional `gem`, `gem_version`, `gem_source`, `pfm`, `fragment_files`, `medium_scenario`, `medium_scenarios`, `workers`, `progress`, plus `...` forwarded to `rc_run_regcompass()`.
+
+### `rc_run_regcompass()`
+
+Run the complete workflow with an explicit GEM and stage argument bundles.
+
+Main arguments: `object`, `gem`, `outdir`, `genome`, `species`, `condition_col`, `celltype_col`, `cell_type`, `rna_assay`, `atac_assay`, `fragment_files`, `pando_args`, `metacell_args`, `meta_module_args`, `layer1_args`, `medium_scenarios`, `model_mode`, `layer2_args`, `workers`, and `progress`.
 
 ## Restartable stages
 
-- `rc_regcompass_step_grn()`: filter cells, select standard or condition-specific Pando per broad cell type, and fit GRNs. Condition mode parallelizes pooled-background/condition-by-cell-type candidate jobs, freezes one exact dictionary per cell type at a barrier, then parallelizes condition-by-cell-type fixed-dictionary GLMs. Standard Pando parallelizes broad-cell-type jobs.
-- `rc_regcompass_step_metacells()`: construct condition-pure multimodal SuperCell metacells. Optional fragment aggregation uses the same top-level worker cap.
-- `rc_regcompass_step_meta_modules()`: build condition-by-cell-type biological reaction catalogues and cell-type unions.
-- `rc_regcompass_step_layer1()`: combine RNA and regulatory support and apply Boolean GPR rules.
-- `rc_regcompass_step_layer2()`: reconstruct one cell-type-by-medium model with original MATLAB CORDA2 by default and score directional reactions. CORDA2 reconstruction runs without a structural time limit and rejects `model_params$completion_time_limit`; that control is retained only for supplementary non-CORDA2 completion such as FASTCORE. CORDA2 directional targets are parallelized only within the current mathematical step, and each step-local worker pool is stopped before the next step. FASTCORE and the COMPASS-style complete full GEM are explicit supplementary routes. Medium scenarios modify exchange bounds only and do not directly remove reactions.
-- `rc_regcompass_step_results()`: assemble annotations, evidence classes, rankings, metacell tables, and condition contrasts.
+### `rc_regcompass_step_grn()`
 
-The Layer 2 parameters and alternatives are documented in [Layer 2 model builders](layer2-model-builders.md).
+Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`; Pando inference controls are supplied through `pando_args$pando_infer_args`.
 
-## GEM and medium preparation
+### `rc_regcompass_step_metacells()`
 
-- `rc_prepare_gem()`: load and prepare a supported human or mouse GEM.
-- `rc_prepare_human2_gem()`: prepare the bundled or downloaded Human-GEM 2 model.
-- `rc_prepare_mouse_gem()`: prepare the supported mouse GEM.
-- `rc_make_medium_scenarios()`: construct built-in or custom medium tables.
-- `rc_bundled_gem_manifest()`: inspect bundled model availability.
-- `rc_download_species_gem()`: download a supported species model.
+Construct Stage 2 multimodal metacells. `metacell_args$min_cells_per_stratum` defaults to `500L`. Optional raw fragments are supplied through `fragment_files`.
+
+### `rc_regcompass_step_meta_modules()`
+
+Build the Stage 3 reaction catalogue and cell-type reaction meta-modules. Optional customization is supplied through `meta_module_args`.
+
+### `rc_regcompass_step_layer1()`
+
+Project RNA and regulatory evidence to reactions. Public controls are `gpr_and_method`, `gene_half_saturation`, `workers`, and `progress`.
+
+### `rc_regcompass_step_layer2()`
+
+Build the Stage 5 structural model and score directional targets. `layer2_args` accepts `model_params`, `omega`, `target_direction`, `solver`, and `flux_threshold`. `model_mode = "meta_module_gem"` uses CORDA2 by default; FASTCORE and `full_gem` are supplementary routes. CORDA2 does not accept a finite `model_params$completion_time_limit`.
+
+### `rc_regcompass_step_results()`
+
+Assemble reaction annotations, evidence, rankings, metacell-level comparisons, and available condition contrasts.
+
+### `rc_regcompass_step_target_union()`
+
+Select directly database-linked targets and rescore them in existing Stage 5 structural models without rebuilding the structural model.
+
+## GEM and medium
+
+### `rc_prepare_gem()`
+
+Prepare the supported species GEM. Important arguments are `species`, `version`, `source`, `cache_dir`, `save_rds`, `force_download`, and `allow_latest`. Human defaults to Human-GEM `2.0.0`; mouse defaults to Mouse-GEM `1.8.0`.
+
+Low-level species download helpers, species-specific wrapper functions, and the bundled-asset manifest are implementation/maintenance interfaces rather than public workflow API.
+
+### `rc_make_medium_scenarios()`
+
+Create built-in or custom medium tables. Supported presets are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`. See [medium-presets.md](medium-presets.md).
+
+## Parallel configuration
+
+### `rc_parallel_config()`
+
+Inspect the platform-resolved parallel configuration without starting workers. The workflow itself uses one top-level `workers` cap.
 
 ## Post analysis
 
-- `rc_regcompass_step_target_union()`: use selected core reactions or genes as anchors, identify directly database-linked non-core reactions, and rescore them in the exact existing cell-type structural models without rebuilding Layer 2. It uses the same `workers` cap and can reuse audited CORDA2 or FASTCORE Stage 5 union GEMs.
-- `rc_test_condition_reactions()`: perform pairwise Wilcoxon and optional Kruskal-Wallis condition comparisons for fixed cell type, reaction direction, and medium.
-- `rc_plot_condition_reaction()`: draw violin, violin-plus-boxplot, or boxplot distributions for one selected reaction target across conditions, with metacell points and significance annotations.
-- `rc_select_gene_reactions()`: select reactions through Boolean GPR annotations for specified metabolic genes.
-- `rc_plot_condition_gene_reactions()`: test and plot significant reaction directions associated with specified metabolic genes.
-- `rc_build_reaction_annotations()`: create formal reaction names, formulas, substrates, products, GPRs, and database identifiers.
-- `rc_attach_reaction_annotations()`: attach reaction annotations and evidence provenance to an existing result.
+### `rc_test_condition_reactions()`
 
-The optional limma metacell-level differential workflow is documented in [Post analysis](tutorial-04-post-analysis.md). It is intentionally described as within-dataset metacell inference rather than donor-level biological-replicate inference.
+Compare fixed reaction/direction/medium targets between conditions within cell type.
 
-## Export and execution
+### `rc_plot_condition_reaction()`
 
-- `rc_parallel_config()`: inspect platform detection, the requested worker cap, the protected CPU-minus-two capacity and the resolved backend.
+Plot one selected reaction target across conditions.
 
-Use the generated Rd help for complete argument definitions. Principles and equations are maintained in [mathematical-model.md](mathematical-model.md).
+### `plot_top_celltype_reaction_rank()`
+
+Plot top directional reaction targets within one cell type.
+
+### `rc_build_reaction_annotations()` / `rc_attach_reaction_annotations()`
+
+Build reaction annotations and attach them to a result.
+
+### `rc_select_gene_reactions()` / `rc_plot_condition_gene_reactions()`
+
+Select GPR-associated reactions for specified genes and optionally test/plot condition differences.

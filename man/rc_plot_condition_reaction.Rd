@@ -2,7 +2,7 @@
 % Please edit documentation in R/condition_plot.R and R/condition_plot_violin.R
 \name{rc_plot_condition_reaction}
 \alias{rc_plot_condition_reaction}
-\title{Plot one shared-model reaction target across conditions}
+\title{Plot one reaction target across conditions}
 \usage{
 rc_plot_condition_reaction(
   x,
@@ -35,70 +35,27 @@ rc_plot_condition_reaction(
 )
 }
 \arguments{
-\item{x}{A Layer 2 microCOMPASS result or a complete RegCompass result.}
-
+\item{x}{A Layer 2 result or complete RegCompass result.}
 \item{reaction_id}{One reaction identifier.}
-
 \item{cell_type}{One cell-type value.}
-
-\item{target_direction}{Optional \code{"forward"} or \code{"reverse"}. Required when both directions were scored.}
-
-\item{medium_scenario}{Optional medium identifier. Required when the selected target was scored under multiple media.}
-
+\item{target_direction}{Optional \code{"forward"} or \code{"reverse"}; required when both remain after filtering.}
+\item{medium_scenario}{Optional medium identifier; required when multiple media remain after filtering.}
 \item{condition_col, celltype_col}{Metadata columns used by the Layer 2 units.}
-
-\item{conditions}{Optional ordered condition values. The default uses all conditions represented in the selected cell type.}
-
-\item{comparisons}{Optional pairwise contrasts passed to \code{rc_test_condition_reactions()}. The default uses every condition pair.}
-
+\item{conditions}{Optional ordered condition values.}
+\item{comparisons}{Optional pairwise condition contrasts.}
 \item{min_units}{Minimum finite metacells per condition for testing.}
-
 \item{p_adjust_method, p_adjust_scope}{Multiple-testing settings passed to \code{rc_test_condition_reactions()}.}
-
-\item{annotation_p}{Use \code{"p_adj"} or \code{"p_value"} for significance labels.}
-
-\item{significance_threshold}{Maximum P value displayed as significant. Must be no greater than \code{0.05}.}
-
-\item{show_nonsignificant}{Display non-significant comparisons as \code{ns}.}
-
-\item{show_omnibus}{Add the Kruskal-Wallis result to the subtitle when available.}
-
+\item{annotation_p}{Use adjusted or raw P values for plot labels.}
+\item{significance_threshold}{Maximum P value displayed as significant.}
+\item{show_nonsignificant}{Display non-significant comparisons.}
+\item{show_omnibus}{Show the omnibus result when available.}
 \item{point_size, point_alpha, jitter_width}{Metacell point controls.}
-
-\item{box_width}{Width of the optional boxplot overlay.}
-
-\item{plot_type}{Distribution geometry: \code{"violin_boxplot"}, \code{"violin"}, or \code{"boxplot"}.}
-
-\item{violin_width, violin_alpha, violin_trim}{Violin geometry controls.}
-
-\item{bracket_step}{Vertical spacing between significance brackets, expressed as a fraction of the observed score range.}
-
+\item{box_width}{Boxplot width.}
+\item{plot_type}{\code{"violin_boxplot"}, \code{"violin"}, or \code{"boxplot"}.}
+\item{violin_width, violin_alpha, violin_trim}{Violin controls.}
+\item{bracket_step}{Vertical spacing between comparison brackets.}
 \item{title}{Optional plot title.}
-
 \item{y_label}{Y-axis label.}
 }
-\value{
-A \code{ggplot} object. The underlying statistics, plotted metacells, annotation table, and selected geometry are attached as \code{condition_statistics}, \code{plot_data}, \code{annotation_data}, and \code{plot_type} attributes.
-}
-\description{
-Draws a violin, violin-plus-boxplot, or boxplot for one fixed reaction, direction, medium, and cell type. Every finite metacell score is displayed as a jittered point. Pairwise significance brackets are derived from \code{rc_test_condition_reactions()} and can use raw or multiplicity-adjusted P values. The statistics layer is run over the full scored reaction set before the selected target is extracted, so adjusted P values retain the requested reaction-wide multiplicity correction. Metacells are the within-dataset statistical units; these P values are not sample/donor-level biological-replicate inference. When three or more conditions are present, the Kruskal-Wallis omnibus result is shown in the subtitle by default.
-}
-\details{
-The plotted score is \code{-log(penalty / (omega * vmax) + eps)}, with larger values indicating stronger multiome support for the selected reaction direction under the shared structural GEM.
-}
-\examples{
-\dontrun{
-p <- rc_plot_condition_reaction(
-  result,
-  reaction_id = "MAR06231",
-  cell_type = "epithelial_like",
-  target_direction = "reverse",
-  medium_scenario = "high_glucose",
-  condition_col = "dataset",
-  celltype_col = "epithelial_or_stem",
-  conditions = c("control_24hr", "JQ1_24hr", "MS177_24hr"),
-  plot_type = "violin_boxplot"
-)
-print(p)
-}
-}
+\value{A \code{ggplot} object with the underlying statistics and plotted data attached as attributes.}
+\description{Plots one fixed reaction, direction, medium, and cell type across conditions and optionally adds pairwise/omnibus significance annotations. The reaction-support score definition is documented in \code{docs/mathematical-model.md}.}
