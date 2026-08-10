@@ -1,4 +1,4 @@
-test_that("stepwise tutorial documents one platform-aware worker cap", {
+test_that("stepwise tutorial documents one concise worker cap", {
   workspace <- Sys.getenv("GITHUB_WORKSPACE", unset = "")
   roots <- unique(c(
     if (nzchar(workspace)) workspace else character(),
@@ -17,10 +17,8 @@ test_that("stepwise tutorial documents one platform-aware worker cap", {
   text <- paste(readLines(path, warn = FALSE), collapse = "\n")
 
   required <- c(
-    "workers <- 60L",
-    "Windows: `BiocParallel::SnowParam(type = \"SOCK\")`",
-    "Linux/macOS: `BiocParallel::MulticoreParam`",
-    "max(1, detected logical CPUs - 2)",
+    "workers <- 10L",
+    "single workflow-level parallel cap",
     "workers = workers"
   )
   missing <- required[!vapply(
@@ -30,4 +28,6 @@ test_that("stepwise tutorial documents one platform-aware worker cap", {
   expect_false(grepl("upstream_bp", text, fixed = TRUE))
   expect_false(grepl("layer2_bp", text, fixed = TRUE))
   expect_false(grepl("BPPARAM =", text, fixed = TRUE))
+  expect_false(grepl("SnowParam", text, fixed = TRUE))
+  expect_false(grepl("MulticoreParam", text, fixed = TRUE))
 })
