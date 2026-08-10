@@ -83,3 +83,17 @@ test_that("sign-only contribution changes only when direction changes", {
   expect_equal(positive_small, positive_large)
   expect_equal(negative, -positive_small)
 })
+
+test_that("Layer 1 routes both Pando modes through sign-only projections", {
+  route <- paste(deparse(body(.rc_project_pando_by_celltype)), collapse = "\n")
+
+  expect_match(
+    route, ".rc_condition_pando_projection_sign_only", fixed = TRUE
+  )
+  expect_match(
+    route, ".rc_standard_pando_projection_sign_only", fixed = TRUE
+  )
+  expect_match(
+    route, "estimate_magnitude_used_for_penalty = FALSE", fixed = TRUE
+  )
+})
