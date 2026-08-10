@@ -1,3 +1,11 @@
+# RegCompassR 2.4.12
+
+- Removes absolute Pando `estimate` magnitude from the canonical Layer-1 regulatory penalty projection while retaining fitted estimates for inference diagnostics, significance testing, direction and audit.
+- Uses `sign(estimate)` only after the existing fit-status, estimability and BH-adjusted-P gates in both condition-Pando and standard-Pando routes.
+- Converts each paired-cell TF-by-ATAC predictor to a positive-scale-invariant bounded activity using a cell-type-wide robust scale before exact SuperCell membership aggregation, preventing arbitrary RNA/ATAC feature units from replacing the removed coefficient magnitude.
+- Keeps the existing target-level robust calibration, bounded regulatory odds correction, RNA support, GPR aggregation, COMPASS reaction cost and Layer-2 LP unchanged.
+- Adds regression tests for estimate-magnitude invariance, positive predictor-rescaling invariance, exact membership aggregation and sign-only routing, and updates the mathematical specification and quick-start tutorial.
+
 # RegCompassR 2.4.7
 
 - Removes finite structural time limits from the default CORDA2 route. CORDA2 now always runs with `completion_time_limit = Inf`, and supplying `model_params$completion_time_limit` with CORDA2 is rejected so a long Human-GEM reconstruction cannot be silently truncated by a persistent solver clock.
