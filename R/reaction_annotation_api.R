@@ -4,10 +4,12 @@
 #'
 #' Constructs reaction names, formulas, direction-specific substrates and
 #' products, GPR genes, database identifiers, and condition-by-cell-type
-#' evidence classes. For Layer 1 schema v5, `RNA+ATAC` is assigned only when
+#' evidence classes. For Layer 1 schema v6, `RNA+ATAC` is assigned only when
 #' Pando changes the GPR-aggregated quantitative reaction expression that is
-#' actually supplied to the COMPASS-like LP penalty. Legacy Layer 1 objects fall
-#' back to the historical bounded reaction-capacity definition.
+#' actually supplied to the COMPASS-like LP penalty. Quantitative RNA is the
+#' equal-weight SuperCell mean of per-cell linear CPM. Legacy Layer 1 objects
+#' without quantitative reaction matrices fall back to the historical bounded
+#' reaction-capacity definition.
 #'
 #' @param gem A validated RegCompass GEM.
 #' @param layer1 Optional Layer 1 result used for GPR and evidence provenance.

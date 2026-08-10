@@ -132,7 +132,8 @@
     "gene_regulatory_reliability_available",
     "gene_regulatory_modifier", "gene_support_rna",
     "gene_support_multiome", "gene_expression_quantitative_rna",
-    "gene_expression_quantitative_multiome"
+    "gene_expression_quantitative_multiome",
+    "rna_metacell_mean_single_cell_cpm"
   )
   reference <- layer1$gene_projection
   if (!is.numeric(reference) || is.null(dim(reference)) ||
@@ -146,6 +147,15 @@
       stop("Layer 1 `", name, "` is missing or misaligned.",
            call. = FALSE)
     }
+  }
+  if (!identical(
+        layer1$rna_metacell_mean_single_cell_cpm,
+        layer1$gene_expression_quantitative_rna
+      )) {
+    stop(
+      "Layer 1 quantitative RNA must equal the saved SuperCell mean single-cell CPM matrix.",
+      call. = FALSE
+    )
   }
   if (!is.logical(layer1$gene_regulatory_reliability_available) ||
       anyNA(layer1$gene_regulatory_reliability_available)) {
@@ -261,7 +271,19 @@
       !isTRUE(quantitative_contract$bounded_support_excluded_from_lp_penalty) ||
       !identical(
         quantitative_contract$baseline_gene_expression,
-        "latent_cpm"
+        "equal_mean_single_cell_linear_cpm"
+      ) ||
+      !identical(
+        quantitative_contract$single_cell_normalization,
+        "raw_counts_per_cell_divided_by_complete_cell_RNA_library_times_1e6"
+      ) ||
+      !identical(
+        quantitative_contract$metacell_aggregation,
+        "equal_mean_by_exact_SuperCell_membership"
+      ) ||
+      !identical(
+        quantitative_contract$library_size_weighted_metacell_average,
+        FALSE
       ) ||
       !identical(quantitative_contract$regulatory_multiplier, "2^R") ||
       !identical(quantitative_contract$structural_route_marker, route_attr) ||
@@ -272,7 +294,8 @@
         structural_contract$intended_use,
         "CORDA2_and_structural_confidence"
       ) ||
-      !identical(structural_contract$quantitative_lp_penalty, FALSE)) {
+      !identical(structural_contract$quantitative_lp_penalty, FALSE) ||
+      !isTRUE(structural_contract$latent_cpm_structural_only)) {
     stop("Layer 1 quantitative/structural support contracts are incomplete.",
          call. = FALSE)
   }
@@ -282,11 +305,12 @@
     "analysis_mode", "pando_schema", "projection_origin",
     "projection_used_for_penalty", "projection_name",
     "condition_coefficients_calculated", "supercell_membership",
+    "quantitative_rna_source", "quantitative_rna_aggregation",
     "unavailable_target_policy", "nonestimable_edge_policy",
     "cell_type_analysis_mode"
   )
   routing <- provenance$cell_type_analysis_mode
-  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v5") ||
+  if (!identical(layer1$schema_version, "regcompass_regulatory_layer1_v6") ||
       !is.list(provenance) ||
       !all(required_provenance %in% names(provenance)) ||
       !identical(provenance$analysis_mode, mode) ||
@@ -294,6 +318,14 @@
       !identical(
         provenance$supercell_membership,
         "membership_table(cell_id, metacell_id)"
+      ) ||
+      !identical(
+        provenance$quantitative_rna_source,
+        "Pando_retained_cell_level_raw_RNA_counts"
+      ) ||
+      !identical(
+        provenance$quantitative_rna_aggregation,
+        "equal_mean_after_per_cell_linear_CPM_normalization"
       ) ||
       !is.data.frame(routing) ||
       !all(c("cell_type", "analysis_mode") %in% colnames(routing)) ||

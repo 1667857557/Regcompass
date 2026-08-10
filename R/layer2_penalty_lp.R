@@ -75,7 +75,7 @@ rc_compass_score_from_penalty <- function(P, feasible,
   quantitative_rna <- layer1$reaction_expression_quantitative_rna_only
 
   # Legacy Layer 1 artifacts did not contain the split quantitative path.
-  # Public v5 Stage 4 artifacts are validated before Layer 2, but keeping the
+  # Public v6 Stage 4 artifacts are validated before Layer 2, but keeping the
   # fallback here preserves lower-level compatibility for legacy callers.
   if (is.null(quantitative) || is.null(quantitative_rna)) {
     return(list(
@@ -103,7 +103,7 @@ rc_compass_score_from_penalty <- function(P, feasible,
   if (!is.character(route) || length(route) != 1L || is.na(route) ||
       !route %in% c("multiome", "rna_only")) {
     stop(
-      "Layer 1 v5 structural reaction matrix lacks a valid explicit quantitative penalty route marker.",
+      "Layer 1 v6 structural reaction matrix lacks a valid explicit quantitative penalty route marker.",
       call. = FALSE
     )
   }
@@ -114,9 +114,9 @@ rc_compass_score_from_penalty <- function(P, feasible,
       quantitative
     },
     route = if (identical(route, "rna_only")) {
-      "quantitative_latent_cpm_rna_only"
+      "quantitative_supercell_mean_cpm_rna_only"
     } else {
-      "quantitative_latent_cpm_multiome"
+      "quantitative_supercell_mean_cpm_multiome"
     }
   )
 }

@@ -116,33 +116,37 @@ selected targets, pairwise hits, the complete statistics result, and gene select
 \description{
 Reaction formulas are reconstructed from the validated GEM stoichiometric matrix using
 formal metabolite names and compartments. GPR rules and participating genes are
-reported explicitly. For Layer 1 schema v5, condition-by-cell-type evidence
+reported explicitly. For Layer 1 schema v6, condition-by-cell-type evidence
 labels a reaction \code{RNA+ATAC} only when Pando changes the GPR-aggregated
 quantitative reaction expression that is actually supplied to the Layer 2 LP
 penalty relative to the matched quantitative RNA-only expression. Bounded
 reaction support remains a separate structural-confidence quantity.
 }
 \details{
-For Layer 1 schema v5, \code{RNA+ATAC} is assigned only when
+For Layer 1 schema v6, \code{RNA+ATAC} is assigned only when
 \code{reaction_expression_quantitative} differs from
 \code{reaction_expression_quantitative_rna_only} by more than
-\code{evidence_tolerance} in at least one relevant unit. These matrices are
-constructed from latent CPM, the bounded Pando multiplier \eqn{2^R}, and the same
-GPR AND/OR aggregation settings used by the quantitative penalty path. Thus the
-reported evidence class follows the quantity that can change the LP objective.
-Legacy Layer 1 objects without quantitative matrices fall back to the historical
-bounded reaction-capacity comparison and report that fallback in
-\code{evidence_resolution} and \code{evidence_scale}.
+\code{evidence_tolerance} in at least one relevant unit. Quantitative RNA is
+constructed by normalizing each original cell's raw RNA counts by its complete
+RNA library on a linear CPM scale, then averaging cells with equal weight inside
+the exact final SuperCell membership. Pando then supplies the bounded multiplier
+\eqn{2^R} before the same GPR AND/OR aggregation used by the quantitative penalty
+path. Thus the reported evidence class follows the quantity that can change the
+LP objective. The empirical-Bayes latent metacell CPM is retained only for the
+bounded CORDA2/structural-confidence route. Legacy Layer 1 objects without
+quantitative matrices fall back to the historical bounded reaction-capacity
+comparison and report that fallback in \code{evidence_resolution} and
+\code{evidence_scale}.
 
 Gene-level provenance is retained separately in \code{atac_modifier_genes} and
 \code{multiome_contributing_genes}. A non-zero Pando modifier or a changed GPR gene
 is not, by itself, sufficient to label the whole reaction \code{RNA+ATAC}; the
-GPR-aggregated quantitative reaction expression must change. Canonical schema-v5
+GPR-aggregated quantitative reaction expression must change. Canonical schema-v6
 results report \code{evidence_resolution = "quantitative_lp_reaction_expression"}
 and \code{evidence_scale = "quantitative_lp_penalty_input"}. The existing
 \code{median_multiome_capacity_shift} and
 \code{max_abs_multiome_capacity_shift} columns are retained for compatibility;
-under schema v5 they quantify the quantitative reaction-expression shift used by
+under schema v6 they quantify the quantitative reaction-expression shift used by
 the LP penalty rather than the bounded structural-support shift.
 
 Selecting a gene identifies every scored reaction in which that gene participates

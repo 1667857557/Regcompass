@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.12
+Version: 2.4.13
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -32,23 +32,26 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     over exact SuperCell membership before regulatory multiplication. Metacells use one multimodal
     WNN graph per broad cell type and remain condition-pure after membership
     splitting. Optional raw ATAC fragment files are aggregated to final metacell
-    barcodes and recounted before metacell TF-IDF. RNA support, regulatory
-    effects, GPR rules, cell-type-specific union GEM construction and directional
-    penalties use consistent reaction ordering, bounds and medium scenarios.
-    Stage 5 uses the original MATLAB CORDA2 algorithm from
-    schultzdre/Constraint-Based-Modeling/CORDA2.m as the default context-specific
-    completion after mapping cell-type multiome evidence to HC, MC, NC and OT
-    reactions. FASTCORE and complete full-GEM scoring remain explicit
-    supplementary routes. The adjustable original controls are MCxNCthresh,
-    constraint, constrainby, om and ci under corda2_args. Actively reversible
-    reactions are split once, the opposite directional copy is closed during each
-    target assessment, and the original Step 1, Step 2.1, Step 2.2 and Step 3
-    dependency transitions are preserved. With parallel Layer 2 execution,
-    directional targets are parallelized only within the current CORDA2 step, all
-    results are reduced in original directional order at a strict step barrier,
-    and the step-local worker pool is released before the next step begins.
-    Cell-type-by-medium models remain independent and are reused by primary and
-    RNA-only scoring.
+    barcodes and recounted before metacell TF-IDF. Quantitative RNA for the LP
+    penalty is normalized on the linear CPM scale per original cell and then
+    averaged with equal cell weight inside exact final SuperCell membership;
+    aggregated-count latent CPM remains restricted to bounded structural
+    confidence. RNA support, regulatory effects, GPR rules, cell-type-specific
+    union GEM construction and directional penalties use consistent reaction
+    ordering, bounds and medium scenarios. Stage 5 uses the original MATLAB
+    CORDA2 algorithm from schultzdre/Constraint-Based-Modeling/CORDA2.m as the
+    default context-specific completion after mapping cell-type multiome evidence
+    to HC, MC, NC and OT reactions. FASTCORE and complete full-GEM scoring remain
+    explicit supplementary routes. The adjustable original controls are
+    MCxNCthresh, constraint, constrainby, om and ci under corda2_args. Actively
+    reversible reactions are split once, the opposite directional copy is closed
+    during each target assessment, and the original Step 1, Step 2.1, Step 2.2
+    and Step 3 dependency transitions are preserved. With parallel Layer 2
+    execution, directional targets are parallelized only within the current
+    CORDA2 step, all results are reduced in original directional order at a strict
+    step barrier, and the step-local worker pool is released before the next step
+    begins. Cell-type-by-medium models remain independent and are reused by
+    primary and RNA-only scoring.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -125,6 +128,7 @@ Collate:
     'step_meta_modules.R'
     'step_layer1.R'
     'layer1_regulatory_support.R'
+    'supercell_quantitative_rna.R'
     'step_layer1_parallel_object_contract.R'
     'step_layer2.R'
     'layer2_parallel_runtime.R'
