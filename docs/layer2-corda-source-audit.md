@@ -51,7 +51,9 @@ Four operations are outside the original MATLAB function:
 
 The direction relaxation is applied only when directional CORDA2 variables are merged back to reaction space. It does not alter Step 1, Step 2.1, Step 2.2 or Step 3 dependency calculations, including the original opposite-direction closure used while assessing an individual split target.
 
-For `target_direction = "both"`, the single post-build closure therefore tests all directions allowed by the restored reconstructed-GEM bounds. A reversible retained reaction can contribute both forward and reverse scoring targets if both are flux-feasible in the reconstructed network; no reverse direction is invented for a reaction whose parent bounds are irreversible.
+The closure uses the parent/medium bounds only to enumerate which core directions are legitimate candidates, so core reactions removed from the reconstructed model can still be reported as blocked. No LP is solved on the parent model. Every closure LP is solved on the reconstructed CORDA2 GEM.
+
+For `target_direction = "both"`, the single post-build closure therefore tests all directions allowed by the parent biochemical/medium bounds. A reversible retained reaction can contribute both forward and reverse scoring targets if both are flux-feasible in the reconstructed network; no reverse direction is invented for a reaction whose parent bounds are irreversible.
 
 ## Parallelism
 
