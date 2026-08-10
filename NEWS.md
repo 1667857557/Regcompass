@@ -1,5 +1,6 @@
 # RegCompassR 2.4.12
 
+- Maps standard-Pando candidate intervals back to their overlapping ATAC assay peaks before TF-by-ATAC projection, instead of discarding coefficients whenever Pando reports an intersected regulatory interval rather than the exact peak name.
 - Splits Layer 1 evidence into an unbounded quantitative COMPASS penalty path and a bounded structural-confidence path. The LP route now starts from latent metacell CPM, applies Pando as `X_multiome = X_RNA * 2^R`, performs GPR aggregation, and applies `1/(1+log2(1+E_quantitative))` only at reaction level.
 - Retains the previous bounded `log1p(CPM)/(log1p(CPM)+h)` support and bounded-odds Pando update for CORDA2 and other structural-confidence decisions; `gene_half_saturation` no longer compresses the quantitative LP penalty scale.
 - Introduces Layer 1 schema v5 with explicit quantitative and structural matrices and rejects stale v4 Layer 1 artifacts before Layer 2 so old bounded penalties cannot be silently reused.
