@@ -16,24 +16,22 @@
 
 .rc_standard_pando_infer_args <- function(args) {
   if (!is.list(args)) stop("`pando_infer_args` must be a list.", call. = FALSE)
+  method <- as.character(args$method %||% "glm")
+  is_ridge <- length(method) == 1L && !is.na(method) && identical(method, "ridge")
   forbidden <- intersect(names(args), c(
     "object", "genes", "network_name", "aggregate_rna_col",
-    "aggregate_peaks_col", "parallel"
+    "aggregate_peaks_col", "parallel", "BPPARAM"
   ))
   if (length(forbidden)) {
     stop("Standard Pando inference arguments cannot override managed fields: ",
          paste(forbidden, collapse = ", "), ".", call. = FALSE)
   }
-  # These are legacy controls from the condition-GRN implementation only.
-  # Standard Pando model-fitting arguments such as nlambda, lambda and seed
-  # must pass through `...` to Pando::infer_grn rather than being silently
-  # discarded after the public Stage-1 router accepted them.
   condition_only <- intersect(names(args), c(
     "candidate_screen", "condition_mix", "condition_weight",
     "reference_condition", "comparison_conditions",
     "lambda_min_ratio", "outer_nfolds", "inner_nfolds",
     "lambda_selection", "active_tol", "max_iter",
-    "tol_objective", "tol_coef", "BPPARAM"
+    "tol_objective", "tol_coef"
   ))
   requested_scale <- args$scale %||% NULL
   if (length(condition_only)) args[condition_only] <- NULL
@@ -41,6 +39,18 @@
       !identical(as.character(args$interaction_term), ":")) {
     stop("Standard RegCompass projection requires `interaction_term = ':'`.",
          call. = FALSE)
+  }
+  if (is_ridge) {
+    args$ridge_control <- args$ridge_control %||% list()
+    if (!is.list(args$ridge_control)) {
+      stop("Standard Pando `ridge_control` must be a list.", call. = FALSE)
+    }
+    args$rank_action <- args$rank_action %||% "mark"
+    args$min_residual_df <- args$min_residual_df %||% 1L
+    args$padj_threshold <- .rc_standard_pando_padj_fixed
+  } else {
+    args[c("ridge_control", "rank_action", "min_residual_df",
+           "padj_threshold")] <- NULL
   }
   args$scale <- FALSE
   answer <- modifyList(list(interaction_term = ":", scale = FALSE), args)
@@ -59,7 +69,7 @@
     min_cells = 20L,
     pando_initiate_args = list(exclude_exons = TRUE),
     pando_motif_args = list(), pando_infer_args = list(),
-    save_pando_objects = TRUE, parallel = FALSE,
+    save_pando_objects = TRUE, parallel = FALSE, BPPARAM = NULL,
     progress_monitor = NULL,
     species = c("auto", "human", "mouse")) {
   .rc_step_monitor_event(
@@ -170,6 +180,9 @@
       context = c(job_context, list(cells = length(cells)))
     )
     grn <- do.call(Pando::initiate_grn, c(init, pando_initiate_args))
+    init <- NULL
+    one <- NULL
+    invisible(gc(verbose = FALSE, full = TRUE))
     .rc_step_monitor_event(
       progress_monitor, "standard_candidate_initialization_complete",
       "regulatory candidate space initialized", current = 7L,
@@ -184,6 +197,9 @@
       context = job_context
     )
     grn <- do.call(Pando::find_motifs, c(motif, motif_args))
+    motif <- NULL
+    motif_args <- NULL
+    invisible(gc(verbose = FALSE, full = TRUE))
     .rc_step_monitor_event(
       progress_monitor, "standard_motif_mapping_complete",
       "completed binary peak-by-motif mapping", current = 8L,
@@ -195,6 +211,10 @@
       network_name = "regcompass_standard_grn",
       parallel = isTRUE(parallel)
     )
+    if (isTRUE(parallel) && !is.null(BPPARAM) &&
+        !identical(BPPARAM, FALSE)) {
+      infer$BPPARAM <- BPPARAM
+    }
     infer[names(infer_args)] <- NULL
     .rc_step_monitor_event(
       progress_monitor, "standard_grn_fit",
@@ -202,6 +222,8 @@
       context = c(job_context, list(targets = length(target_genes)))
     )
     grn <- do.call(Pando::infer_grn, c(infer, infer_args))
+    infer <- NULL
+    invisible(gc(verbose = FALSE, full = TRUE))
     .rc_step_monitor_event(
       progress_monitor, "standard_grn_fit_complete",
       "standard Pando GRN fit completed", current = 9L,
