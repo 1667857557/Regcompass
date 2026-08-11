@@ -59,8 +59,8 @@
   }
   value <- suppressWarnings(as.numeric(value))
   value <- value[is.finite(value)]
-  if (length(value) != 1L || value <= 0 || value > 0.1) {
-    stop("Condition-GRN padj_threshold must be one value in (0, 0.1].",
+  if (length(value) != 1L || value <= 0 || value >= 1) {
+    stop("Condition-GRN padj_threshold must be one value in (0, 1).",
          call. = FALSE)
   }
   value[[1L]]
@@ -80,8 +80,8 @@
   } else {
     value <- suppressWarnings(as.numeric(padj_threshold))
     if (length(value) != 1L || !is.finite(value) ||
-        value <= 0 || value > 0.1) {
-      stop("Condition-GRN padj_threshold must be in (0, 0.1].",
+        value <= 0 || value >= 1) {
+      stop("Condition-GRN padj_threshold must be in (0, 1).",
            call. = FALSE)
     }
     value
