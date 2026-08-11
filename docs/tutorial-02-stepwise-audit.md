@@ -19,7 +19,7 @@ Stage 1 determines the Pando route automatically after the `min_cells` filter:
 - `condition_col = NULL` uses standard Pando for the analysis;
 - mixed datasets are routed independently by broad cell type.
 
-The stable defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment with `padj_threshold = 0.05`, ridge fitting, and the validated rank/CV controls. They do not need to be repeated in routine calls.
+The stable defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment with `padj_threshold = 0.05`, ridge fitting, and the validated rank/CV controls. They do not need to be repeated in routine calls. If `pando_infer_args` contains a known option belonging only to the other Pando mode, RegCompass ignores that option for the incompatible route and records it in `step1$grn_result$pando_infer_argument_routing`; genuinely unknown argument names still raise an error.
 
 ```r
 step1 <- rc_regcompass_step_grn(
