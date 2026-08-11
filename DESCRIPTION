@@ -84,7 +84,6 @@ Collate:
     'stage_parallel_lifecycle.R'
     'grn_condition_parallel.R'
     'grn_route_parallel.R'
-    'grn_default_ridge_target_parallel.R'
     'grn_parallel_merge_contract.R'
     'condition_penalty_contract.R'
     'penalty.R'
