@@ -41,7 +41,7 @@
   param
 }
 
-rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
+.rc_parallel_lapply_bounded <- function(X, FUN, BPPARAM = NULL, ...) {
   if (!length(X)) return(list())
   if (!is.function(FUN)) stop("`FUN` must be a function.", call. = FALSE)
   extra <- list(...)
@@ -150,3 +150,5 @@ rc_parallel_lapply <- function(X, FUN, BPPARAM = NULL, ...) {
   }, add = TRUE)
   BiocParallel::bplapply(X, worker_fun, BPPARAM = outer_param)
 }
+
+rc_parallel_lapply <- .rc_parallel_lapply_bounded
