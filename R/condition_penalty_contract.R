@@ -1,8 +1,8 @@
 # Pando edge eligibility used by the canonical Stage-1 merge.
 
 # Retained only for backward-compatible provenance fields. They are not applied
-# as post-fit thresholds; zero records that no additional correlation or
-# coefficient-size gate is imposed after Pando candidate screening and BH.
+# as post-fit thresholds. Candidate selection happens upstream in Pando; the
+# quantitative condition path keeps the continuous regularized coefficient.
 .RC_PANDO_PENALTY_CORR_THRESHOLD <- 0
 .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0
 
@@ -48,22 +48,15 @@
 }
 
 .rc_condition_penalty_gate <- function(coefficient) {
-  required <- c("estimate", "padj", "estimable")
+  required <- c("estimate", "estimable")
   if (!is.data.frame(coefficient) ||
       !all(required %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN coefficients must contain estimate, padj, and estimable ",
-      "columns before RegCompass penalty filtering.",
-      call. = FALSE
+      "Condition-GRN coefficients must contain estimate and estimable columns ",
+      "before RegCompass penalty filtering.", call. = FALSE
     )
   }
   estimate <- suppressWarnings(as.numeric(coefficient$estimate))
-  padj <- suppressWarnings(as.numeric(coefficient$padj))
-
-  # Canonical condition-GRN fits attach the target-level status before this
-  # gate is applied. The fallback preserves compatibility for legacy tables
-  # that predate fit_status metadata; it is not used by the current condition
-  # merge/projection path.
   fit_status <- if ("fit_status" %in% colnames(coefficient)) {
     trimws(as.character(coefficient$fit_status))
   } else {
@@ -72,7 +65,6 @@
 
   coefficient$estimable %in% TRUE &
     !is.na(fit_status) & fit_status == "ok" &
-    is.finite(padj) & padj < 0.05 &
     is.finite(estimate)
 }
 
@@ -83,17 +75,18 @@
     fit, coefficient
   )
   gate <- .rc_condition_penalty_gate(coefficient)
-  coefficient$significant <- gate
   coefficient$penalty_effect <- ifelse(
     gate, suppressWarnings(as.numeric(coefficient$estimate)), 0
   )
+  # `significant` remains the Pando ridge-Wald/BH diagnostic flag. It is not
+  # overwritten by the quantitative projection gate.
   fit$coefficients <- coefficient
-  # Keep the historical BH-filter field for compatibility and record the new
-  # target-level eligibility rule separately so older saved objects remain
-  # readable while current fits are explicit about rank-deficient exclusion.
-  fit$regcompass_penalty_filter <- "estimable & BH padj < 0.05"
+  fit$regcompass_penalty_filter <-
+    "estimable & finite estimate & fit_status == 'ok'"
   fit$regcompass_fit_status_filter <- "fit_status == 'ok'"
-  fit$regcompass_rank_deficient_policy <- "exclude_from_penalty"
+  fit$regcompass_rank_deficient_policy <-
+    "regularized_ok_fit_retained; condition-zero-variance edge excluded"
+  fit$regcompass_significance_role <- "diagnostic_only"
   fit
 }
 
@@ -102,8 +95,7 @@
   if (!is.data.frame(table) || !all(required %in% colnames(table))) {
     stop(
       "Standard Pando requires estimate and padj columns for RegCompass ",
-      "penalty filtering.",
-      call. = FALSE
+      "penalty filtering.", call. = FALSE
     )
   }
   estimate <- suppressWarnings(as.numeric(table$estimate))
