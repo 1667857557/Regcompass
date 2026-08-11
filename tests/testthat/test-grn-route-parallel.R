@@ -22,6 +22,33 @@ test_that("Pando routing defaults correlations to 0.05 and standard ridge", {
   expect_equal(condition$condition$padj_threshold, 0.05)
 })
 
+test_that("standard Pando ignores condition-only inference parameters", {
+  routed <- .rc_route_pando_infer_args(
+    list(
+      padj_threshold = 0.01,
+      condition_ridge_control = list(fusion_ratio = 2),
+      rna_layer = "data",
+      peak_layer = "data",
+      peak_value_type = "normalized"
+    ),
+    condition_types = character(),
+    standard_types = "T_cell"
+  )
+
+  expect_false(any(c(
+    "padj_threshold", "condition_ridge_control",
+    "rna_layer", "peak_layer", "peak_value_type"
+  ) %in% names(routed$standard)))
+  expect_setequal(
+    routed$diagnostics$argument,
+    c(
+      "padj_threshold", "condition_ridge_control",
+      "rna_layer", "peak_layer", "peak_value_type"
+    )
+  )
+  expect_true(all(routed$diagnostics$route == "standard_pando"))
+})
+
 test_that("single-condition standard ridge drops only condition-exclusive controls", {
   routed <- .rc_route_pando_infer_args(
     list(
@@ -44,6 +71,30 @@ test_that("single-condition standard ridge drops only condition-exclusive contro
   expect_identical(routed$standard$min_residual_df, 1L)
   expect_false("padj_threshold" %in% names(routed$standard))
   expect_setequal(routed$diagnostics$argument, "padj_threshold")
+})
+
+test_that("condition Pando ignores standard-only inference parameters", {
+  routed <- .rc_route_pando_infer_args(
+    list(
+      method = "glm",
+      alpha = 0.5,
+      family = "gaussian",
+      scale = TRUE,
+      ridge_control = list(lambda_rule = "1se"),
+      nfolds = 3L
+    ),
+    condition_types = "Monocyte",
+    standard_types = character()
+  )
+
+  expect_false(any(c(
+    "method", "alpha", "family", "scale", "ridge_control", "nfolds"
+  ) %in% names(routed$condition)))
+  expect_setequal(
+    routed$diagnostics$argument,
+    c("method", "alpha", "family", "scale", "ridge_control", "nfolds")
+  )
+  expect_true(all(routed$diagnostics$route == "condition_grn"))
 })
 
 test_that("condition GRN routes ridge controls and drops standard-model controls", {
@@ -108,8 +159,12 @@ test_that("mixed routing preserves controls for their own route", {
   ) %in% names(routed$condition)))
   expect_true(all(c("method", "scale") %in% names(routed$standard)))
   expect_false("method" %in% names(routed$condition))
-  expect_false("rank_action" %in% names(routed$standard))
+  expect_false("padj_threshold" %in% names(routed$standard))
   expect_false("condition_ridge_control" %in% names(routed$standard))
+  expect_setequal(
+    routed$diagnostics$argument,
+    c("padj_threshold", "condition_ridge_control", "method", "scale")
+  )
 })
 
 test_that("unknown Pando arguments fail before model fitting", {
