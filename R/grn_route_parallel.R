@@ -96,15 +96,21 @@
     peak_value_type = "normalized",
     condition_ridge_control = list()
   ), condition_args)
+  condition_threshold <- suppressWarnings(as.numeric(
+    condition_args$padj_threshold
+  ))
   if (length(condition_types) &&
       (!identical(toupper(as.character(condition_args$adjust_method)), "BH") ||
-       !isTRUE(all.equal(as.numeric(condition_args$padj_threshold), 0.05)) ||
+       length(condition_threshold) != 1L || !is.finite(condition_threshold) ||
+       condition_threshold <= 0 || condition_threshold > 0.1 ||
        !is.list(condition_args$condition_ridge_control))) {
     stop(
-      "Canonical RegCompass condition fits require BH diagnostic padj at 0.05 ",
-      "and condition_ridge_control must be a list.", call. = FALSE
+      "Canonical RegCompass condition fits require BH adjustment, ",
+      "padj_threshold in (0, 0.1], and condition_ridge_control as a list.",
+      call. = FALSE
     )
   }
+  condition_args$padj_threshold <- condition_threshold
 
   standard_args <- args[intersect(names(args), standard_allowed)]
   standard_args <- utils::modifyList(list(
@@ -246,7 +252,7 @@
   .rc_step_monitor_event(
     progress_monitor, "cell_type_execution_plan",
     paste(
-      "condition GRNs use native Pando exact-union multi-task ridge;",
+      "condition GRNs use native Pando significant-union multi-task ridge;",
       "standard Pando uses broad-cell-type jobs"
     ),
     current = 5L,
