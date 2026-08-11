@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.15
+Version: 2.4.16
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -9,11 +9,11 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     The workflow provides condition-aware or standard Pando regulatory inference,
     multimodal SuperCell aggregation, reaction meta-modules, context-specific
     structural reconstruction, directional metabolic scoring, and post-analysis
-    utilities. Condition and optional standard-ridge GRNs use bounded hierarchical
-    cell-type and target scheduling under one workflow worker cap; standard Pando
-    retains Gaussian GLM as its default method. Mathematical and quantitative
-    definitions are maintained in the package mathematical specification rather
-    than duplicated in interface text.
+    utilities. Stage 1 uses one parallel level at a time and memory-trimmed Pando
+    working objects; condition GRNs use multi-task ridge and standard Pando retains
+    Gaussian GLM as its default method with optional ridge. Mathematical and
+    quantitative definitions are maintained in the package mathematical
+    specification rather than duplicated in interface text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -117,10 +117,6 @@ Collate:
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
-    'zzzz_condition_parallel_budget.R'
-    'zzzzzz_condition_target_worker_cap.R'
-    'zzzzzzzz_parallel_dispatch_cap.R'
-    'zzzzzzzzz_standard_ridge_route.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
