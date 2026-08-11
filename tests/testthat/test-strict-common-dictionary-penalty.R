@@ -162,17 +162,15 @@ test_that("final condition penalty uses configured BH threshold", {
   )
 })
 
-test_that("padj threshold can be relaxed to 0.1 but not above", {
-  fit <- .strict_fit_fixture(padj_threshold = 0.1)
-  fit$edge_dictionary$screening_min_padj[[2L]] <- 0.08
-  fit$dictionary_screening_summary$screening_min_padj[[2L]] <- 0.08
+test_that("padj threshold is configurable above 0.1 with no artificial cap", {
+  fit <- .strict_fit_fixture(padj_threshold = 0.2)
   expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
 
-  too_relaxed <- fit
-  too_relaxed$padj_threshold <- 0.11
-  too_relaxed$dictionary_screening_threshold <- 0.11
+  invalid <- fit
+  invalid$padj_threshold <- 1
+  invalid$dictionary_screening_threshold <- 1
   expect_error(
-    RegCompassR:::.rc_require_pando_condition_grn_fit(too_relaxed),
+    RegCompassR:::.rc_require_pando_condition_grn_fit(invalid),
     "incomplete"
   )
 })
