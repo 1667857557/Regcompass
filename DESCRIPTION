@@ -16,8 +16,9 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     unioned into a broad candidate dictionary. A preliminary joint multi-task
     ridge fit supplies condition-wise ridge-Wald P values; BH-adjusted significant
     edges are unioned across conditions to form the actual shared fit dictionary.
-    The default adjusted-P threshold is 0.05 and condition analysis permits a
-    configured threshold up to 0.1. All conditions for each target are then
+    The default adjusted-P threshold is 0.05 and remains user-configurable over
+    the ordinary adjusted-P threshold domain (0, 1), without an additional
+    condition-specific upper cap. All conditions for each target are then
     refitted jointly on that same significant-union dictionary with ridge
     regression and a symmetric fusion penalty. Predictor regularization uses one
     equal-condition within-condition RMS scale, one target-specific lambda shared
