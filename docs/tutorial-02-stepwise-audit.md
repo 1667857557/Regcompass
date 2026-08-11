@@ -56,7 +56,8 @@ step1 <- rc_regcompass_step_grn(
       downstream = 0,
       extend = 1000000,
       only_tss = FALSE,
-      method = "glm"
+      method = "glm",
+      verbose = TRUE
     )
   ),
   workers = workers,
@@ -102,12 +103,13 @@ pando_args_ridge <- list(
       cv_folds = 5L,
       seed = 1L,
       scale_floor = 1e-8
-    )
+    ),
+    verbose = TRUE
   )
 )
 ```
 
-For standard ridge, `fusion_ratio` is accepted for the shared ridge-control schema but has no numerical effect because the standard model has one task. Other standard-only backend controls accepted through `pando_infer_args` are `alpha`, `family`, `aggregate_rna_col`, `aggregate_peaks_col`, `maxit`, `epsilon`, `control`, `nlambda`, `lambda`, `lambda.min.ratio`, `standardize`, `nfolds`, `type.measure`, `solver`, `bagging_number`, `n_jobs`, `p_method`, `prior`, `chains`, `cores`, `iter`, `seed`, `params`, `nrounds`, and `nthread`; they are relevant only to the selected standard backend. RegCompass constrains backend-internal thread counts to the workflow worker budget rather than treating them as an independent parallel cap.
+For standard ridge, `fusion_ratio` is accepted for the shared ridge-control schema but has no numerical effect because the standard model has one task. Other effective standard-backend controls accepted through `pando_infer_args` are `alpha`, `family`, `maxit`, `epsilon`, `control`, `nlambda`, `lambda`, `lambda.min.ratio`, `standardize`, `nfolds`, `type.measure`, `solver`, `bagging_number`, `p_method`, `prior`, `chains`, `iter`, `seed`, `params`, and `nrounds`; they are relevant only to backends that use them. Backend thread-count controls are managed internally so they cannot create a second parallel budget outside top-level `workers`.
 
 ## 2. Multimodal metacells
 
