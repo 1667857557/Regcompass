@@ -22,22 +22,9 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Human workflows default to `normal_human_plasma`; mouse workflows default to `mouse_plasma` when no medium is supplied.
+When the top-level workflow creates the medium automatically, human models use `normal_human_plasma` and mouse models use `mouse_plasma`.
 
-Available biological presets are:
-
-```text
-normal_human_plasma
-mouse_plasma
-high_glucose
-low_glucose
-high_lactate
-low_lactate
-low_glutamine
-custom
-```
-
-Use `scenario = "custom"` with `custom_medium` for reaction-level bounds. Use `scenario = NULL` with `custom_metabolites` for a custom metabolite composition. Exact preset composition, provenance fields such as `background_reference_doi`, `background_validation_reference_doi`, and `challenge_reference_doi`, and custom formats are documented in [medium-presets.md](medium-presets.md).
+Built-in scenarios are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`. See [medium-presets.md](medium-presets.md) for compositions, provenance, and custom-medium formats.
 
 ## Run the workflow
 
@@ -59,34 +46,17 @@ result <- rc_run_regcompass_one_shot(
 
 | Argument | Purpose | Default |
 |---|---|---|
-| `species` | Select human or mouse model defaults | required by one-shot setup |
+| `species` | Select human or mouse model defaults | required |
 | `condition_col` | Condition metadata column; use `NULL` when absent | `"condition"` |
 | `celltype_col` | Broad cell-type metadata column | `"cell_type"` |
 | `rna_assay` / `atac_assay` | Input assay names | `"RNA"` / `"ATAC"` |
-| `pando_args$min_cells` | Stage 1 retained-group cell threshold | `500L` |
-| `metacell_args$min_cells_per_stratum` | Stage 2 retained-stratum threshold | `500L` |
-| `model_mode` | Structural scoring route | `"meta_module_gem"` |
+| `pando_args` | Stage 1 options; `min_cells` is the retained-group threshold | `min_cells = 500L` |
+| `metacell_args` | Stage 2 SuperCell/WNN options | public retained-stratum threshold `500L` |
+| `model_mode` | Layer 2 structural route | `"meta_module_gem"` |
+| `layer2_args` | Layer 2 scoring/reconstruction options | `list()` |
 | `workers` | RegCompass-wide worker cap | `10L` |
 
-The two cell-count thresholds are configurable. `model_mode = "meta_module_gem"` uses CORDA2 by default; `model_params$model_completion = "fastcore"` selects the supplementary FASTCORE route, and `model_mode = "full_gem"` selects complete-network scoring. Do not set `model_params$completion_time_limit` for the default CORDA2 route.
-
-### Optional Pando controls
-
-```r
-pando_args <- list(
-  min_cells = 500L,
-  pando_infer_args = list(
-    tf_cor = 0.1,
-    peak_cor = 0.05,
-    adjust_method = "BH",
-    padj_threshold = 0.05,
-    rank_action = "mark",
-    min_residual_df = 1L
-  )
-)
-```
-
-`padj_threshold`, `rank_action`, and `min_residual_df` are condition-GRN controls. Standard Pando receives only arguments supported by its route.
+`model_mode = "meta_module_gem"` uses CORDA2 by default. Advanced stage-specific options are documented by the corresponding Rd help pages rather than duplicated in this tutorial.
 
 ## Main outputs
 
@@ -98,4 +68,4 @@ result$condition_contrast
 result$reaction_comparison_by_metacell
 ```
 
-For restartable stage calls see [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md). All equations and quantitative definitions are in [mathematical-model.md](mathematical-model.md).
+For restartable calls see [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md). All equations and quantitative definitions are maintained only in [mathematical-model.md](mathematical-model.md).
