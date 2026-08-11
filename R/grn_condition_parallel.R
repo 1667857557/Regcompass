@@ -89,8 +89,8 @@
   ridge_control <- pando_infer_args$condition_ridge_control %||% list()
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
   if (length(threshold) != 1L || !is.finite(threshold) ||
-      threshold <= 0 || threshold > 0.1) {
-    stop("Condition Pando padj_threshold must be in (0, 0.1].",
+      threshold <= 0 || threshold >= 1) {
+    stop("Condition Pando padj_threshold must be in (0, 1).",
          call. = FALSE)
   }
   args <- list(
