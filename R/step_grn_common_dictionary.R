@@ -3,24 +3,26 @@
 #' Infer regulatory evidence with automatic mode selection
 #'
 #' Stage 1 filters the analysis cell set before normalization. With at least two
-#' retained conditions in a broad cell type, candidate discovery is run on the
-#' pooled cell-type background and each retained condition, exact
-#' TF-peak-target triples are frozen into one common dictionary per cell type,
-#' and every condition is refitted with the same unscaled Gaussian identity
-#' Pando model. RegCompass parallelizes the independent condition-by-cell-type
-#' candidate and fixed-dictionary fitting jobs while preserving the dictionary
-#' barrier. With no condition or one effective condition, standard Pando is run
-#' independently by broad cell type. Individual Pando jobs do not start nested
-#' worker pools.
+#' retained conditions in a broad cell type, Pando discovers candidates on the
+#' pooled cell-type background and within each condition, freezes their exact
+#' TF-peak-target union, performs preliminary joint multi-task ridge screening,
+#' forms the BH-significant union dictionary, and jointly refits all conditions
+#' on that shared dictionary. With no condition or one effective condition,
+#' standard Pando defaults to the K=1 specialization of the same ridge solver;
+#' the original Gaussian GLM remains available only by explicit request. Ridge
+#' cell types are processed sequentially, while the shared worker budget is used
+#' inside Pando for target-level work. Target workers receive only target-specific
+#' RNA, ATAC, motif and dictionary slices, and completed worker/batch temporaries
+#' are released before the next batch.
 #'
 #' @param pando_args Pando configuration list. `min_cells` defaults to `500L`
-#'   and may be overridden with any positive integer.
+#'   and may be overridden with any positive integer. Standard Pando uses ridge
+#'   unless `pando_infer_args$method = "glm"` is explicitly requested.
 #' @param workers Total RegCompass worker cap, default 10. Windows uses
 #'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. The effective
-#'   package cap is `min(workers, max(1, detected logical CPUs - 2))`. Each
-#'   Stage 1 dispatch shrinks further to its independent task count: condition
-#'   mode can use pooled/condition-by-cell-type jobs, while standard Pando uses
-#'   broad-cell-type jobs.
+#'   package cap is `min(workers, max(1, detected logical CPUs - 2))`. Ridge GRNs
+#'   keep one cell type resident at a time and reuse this cap for target-level
+#'   Pando parallelism; target payloads are trimmed before dispatch.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
