@@ -127,7 +127,8 @@
   fit
 }
 
-.rc_filter_standard_pando_edges <- function(table) {
+.rc_filter_standard_pando_edges <- function(
+    table, padj_threshold = .rc_standard_pando_padj_default) {
   required <- c("estimate", "padj")
   if (!is.data.frame(table) || !all(required %in% colnames(table))) {
     stop(
@@ -135,17 +136,22 @@
       "penalty filtering.", call. = FALSE
     )
   }
+  threshold <- suppressWarnings(as.numeric(padj_threshold))
+  if (length(threshold) != 1L || !is.finite(threshold) ||
+      threshold <= 0 || threshold >= 1) {
+    stop("Standard Pando `padj_threshold` must be one value in (0, 1).",
+         call. = FALSE)
+  }
   estimate <- suppressWarnings(as.numeric(table$estimate))
   padj <- suppressWarnings(as.numeric(table$padj))
-  keep <- is.finite(estimate) &
-    is.finite(padj) & padj < .rc_standard_pando_padj_fixed
+  keep <- is.finite(estimate) & is.finite(padj) & padj < threshold
   if ("estimable" %in% colnames(table)) {
     keep <- keep & table$estimable %in% TRUE
   }
   answer <- table[keep, , drop = FALSE]
   attr(answer, "edge_filter") <- list(
     estimable = if ("estimable" %in% colnames(table)) TRUE else NA,
-    padj = "< 0.05"
+    padj = paste0("< ", format(threshold, trim = TRUE))
   )
   answer
 }
