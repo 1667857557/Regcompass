@@ -1,4 +1,6 @@
 # Optional standard-Pando ridge routing. Original GLM remains the default.
+# Canonical direct definitions remain in the original routing files; extended
+# behavior is installed through aliases after helper definitions.
 
 .rc_pando_infer_arg_catalog_standard_ridge_impl <- .rc_pando_infer_arg_catalog
 .rc_pando_infer_arg_catalog <- function() {
@@ -11,7 +13,7 @@
 }
 
 .rc_route_pando_infer_args_standard_ridge_impl <- .rc_route_pando_infer_args
-.rc_route_pando_infer_args <- function(
+.rc_route_pando_infer_args_standard_ridge <- function(
     args, condition_types = character(), standard_types = character()) {
   if (!is.list(args)) {
     stop("`pando_infer_args` must be a list.", call. = FALSE)
@@ -326,3 +328,5 @@
   )
   answer
 }
+
+.rc_route_pando_infer_args <- .rc_route_pando_infer_args_standard_ridge
