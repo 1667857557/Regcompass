@@ -1,15 +1,10 @@
-# Layer 2 structural model routes
+# Layer 2 structural routes
 
-`rc_regcompass_step_layer2()` supports three structural routes:
+`rc_regcompass_step_layer2()` exposes two top-level model modes:
 
-| Route | Selection | Use |
-|---|---|---|
-| CORDA2 | `model_mode = "meta_module_gem"` with default `model_completion` | Canonical cell-type/medium context-specific reconstruction |
-| FASTCORE | `model_mode = "meta_module_gem"` and `model_params$model_completion = "fastcore"` | Supplementary context-specific reconstruction |
-| Full GEM | `model_mode = "full_gem"` | Supplementary complete-network scoring |
+- `model_mode = "meta_module_gem"`: context-specific reconstruction; CORDA2 is the default completion route.
+- `model_mode = "full_gem"`: complete-network scoring without context-specific reconstruction.
 
-All routes apply the selected medium by intersecting exchange bounds with the parent GEM and reuse the resulting structural model for primary and RNA-only scoring.
+Within `meta_module_gem`, supplementary FASTCORE completion can be selected through the current `layer2_args$model_params` interface documented by the Rd help.
 
-CORDA2 has no finite `model_params$completion_time_limit` control. FASTCORE may use completion-specific controls documented by the current code path.
-
-See [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md) for runnable calls and [mathematical-model.md](mathematical-model.md) for the quantitative definitions.
+For runnable calls see [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md). Quantitative and structural definitions are maintained only in [mathematical-model.md](mathematical-model.md).
