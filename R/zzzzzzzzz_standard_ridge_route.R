@@ -1,4 +1,4 @@
-# Optional standard-Pando ridge routing.  Original GLM remains the default.
+# Optional standard-Pando ridge routing. Original GLM remains the default.
 
 .rc_pando_infer_arg_catalog_standard_ridge_impl <- .rc_pando_infer_arg_catalog
 .rc_pando_infer_arg_catalog <- function() {
@@ -27,6 +27,8 @@
   }
   ridge_fields <- c("ridge_control", "rank_action", "min_residual_df",
                     "padj_threshold")
+  shared_ridge_fields <- c("rank_action", "min_residual_df", "padj_threshold")
+
   if (identical(method, "ridge")) {
     answer$standard$ridge_control <- answer$standard$ridge_control %||% list()
     if (!is.list(answer$standard$ridge_control)) {
@@ -37,14 +39,6 @@
       answer$standard$min_residual_df %||% 1L
     answer$standard$padj_threshold <-
       answer$standard$padj_threshold %||% 0.05
-    if (is.data.frame(answer$diagnostics) && nrow(answer$diagnostics)) {
-      answer$diagnostics <- answer$diagnostics[
-        !(answer$diagnostics$argument %in% ridge_fields &
-          answer$diagnostics$route == "standard_pando"),
-        , drop = FALSE
-      ]
-      rownames(answer$diagnostics) <- NULL
-    }
   } else {
     if ("ridge_control" %in% names(args) && length(args$ridge_control)) {
       stop(
@@ -53,6 +47,20 @@
       )
     }
     answer$standard[ridge_fields] <- NULL
+  }
+
+  if (is.data.frame(answer$diagnostics) && nrow(answer$diagnostics)) {
+    false_condition_disable <-
+      answer$diagnostics$route == "condition_grn" &
+      answer$diagnostics$argument %in% shared_ridge_fields
+    valid_standard_ridge <- identical(method, "ridge") &
+      answer$diagnostics$route == "standard_pando" &
+      answer$diagnostics$argument %in% ridge_fields
+    answer$diagnostics <- answer$diagnostics[
+      !(false_condition_disable | valid_standard_ridge),
+      , drop = FALSE
+    ]
+    rownames(answer$diagnostics) <- NULL
   }
   answer
 }
