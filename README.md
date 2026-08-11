@@ -44,27 +44,24 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-For condition-aware analysis, cell types with at least two retained conditions use the condition-GRN route; cell types with one retained condition use standard Pando. `condition_col = NULL` is valid for analyses without condition metadata.
+For condition-aware analysis, cell types with at least two retained conditions use the condition-GRN route; cell types with one retained condition use standard Pando. `condition_col = NULL` is valid when condition metadata are absent.
 
 ## Main defaults
 
 - Human GEM: Human-GEM `2.0.0`; mouse GEM: Mouse-GEM `1.8.0`.
 - Human default medium: `normal_human_plasma`; mouse default medium: `mouse_plasma`.
-- Stage 1: `pando_args$min_cells = 500L`.
-- Pando candidate defaults: `tf_cor = 0.1`, `peak_cor = 0.05`, `adjust_method = "BH"`; the condition route additionally uses `padj_threshold = 0.05`, `rank_action = "mark"`, and `min_residual_df = 1L`.
-- Stage 2: `metacell_args$min_cells_per_stratum = 500L`.
-- Structural mode: `model_mode = "meta_module_gem"`, with CORDA2 as the default completion method. `model_params$completion_time_limit` is not a CORDA2 control; it is reserved for supplementary non-CORDA2 completion such as FASTCORE.
+- Stage 1 retained-group threshold: `pando_args$min_cells = 500L`.
+- Stage 2 public retained-stratum threshold: `metacell_args$min_cells_per_stratum = 500L`.
+- Structural mode: `model_mode = "meta_module_gem"`, with CORDA2 as the default completion route.
 - Parallelism: one top-level `workers` cap, default `10L`.
 
-The cell-count thresholds are defaults rather than fixed requirements and can be overridden explicitly.
+These thresholds are configurable through the current public arguments.
 
 ## Medium presets
 
-`rc_make_medium_scenarios()` supports:
+`rc_make_medium_scenarios()` supports `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`.
 
-`normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`.
-
-See [`docs/medium-presets.md`](docs/medium-presets.md) for compositions, provenance, and custom-medium input formats.
+See [`docs/medium-presets.md`](docs/medium-presets.md) for compositions, provenance, and custom-medium formats.
 
 ## Documentation
 
@@ -74,4 +71,4 @@ See [`docs/medium-presets.md`](docs/medium-presets.md) for compositions, provena
 - [Function reference](docs/functions.md)
 - [Mathematical specification](docs/mathematical-model.md)
 
-Algorithmic equations and quantitative definitions are maintained only in `docs/mathematical-model.md`; tutorials and Rd files are interface documentation.
+Tutorials and Rd pages document interfaces. Equations and quantitative definitions are maintained only in `docs/mathematical-model.md`.
