@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.14
+Version: 2.4.15
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -9,8 +9,11 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     The workflow provides condition-aware or standard Pando regulatory inference,
     multimodal SuperCell aggregation, reaction meta-modules, context-specific
     structural reconstruction, directional metabolic scoring, and post-analysis
-    utilities. Mathematical and quantitative definitions are maintained in the
-    package mathematical specification rather than duplicated in interface text.
+    utilities. Condition and optional standard-ridge GRNs use bounded hierarchical
+    cell-type and target scheduling under one workflow worker cap; standard Pando
+    retains Gaussian GLM as its default method. Mathematical and quantitative
+    definitions are maintained in the package mathematical specification rather
+    than duplicated in interface text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -114,6 +117,10 @@ Collate:
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
+    'zzzz_condition_parallel_budget.R'
+    'zzzzzz_condition_target_worker_cap.R'
+    'zzzzzzzz_parallel_dispatch_cap.R'
+    'zzzzzzzzz_standard_ridge_route.R'
 Imports:
     BiocGenerics,
     GenomeInfoDb,
@@ -165,3 +172,5 @@ Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge
 Config/RegCompass/PandoConditionMethod: significant-union-multitask-ridge-refit
 Config/RegCompass/PandoConditionProjectionPolicy: padj-significant-ridge-effects
 Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-screen-and-refit
+Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
+Config/RegCompass/PandoStandardDefaultMethod: glm
