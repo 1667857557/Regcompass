@@ -1,7 +1,7 @@
-# Final bounded condition target routing. A cell-type GRN budget includes the
-# outer cell-type worker itself; only the remaining slots may become Pando
-# target workers. Canonical direct definitions remain in their original source
-# files; these helpers are installed through aliases at the end of this file.
+# Bounded condition target routing. A cell-type GRN budget includes the outer
+# cell-type worker itself; only the remaining slots may become Pando target
+# workers. The canonical condition-GRN orchestrator remains unchanged and calls
+# this task helper through the alias at the end of the file.
 
 .rc_condition_multitask_fit_task_bounded <- function(
     task, target_genes, condition_col, celltype_col, min_cells,
@@ -123,73 +123,4 @@
   list(cell_type = task$cell_type, grn = fitted, fit = fit)
 }
 
-.rc_fit_condition_grns_by_cell_type_cap_impl <-
-  .rc_fit_condition_grns_by_cell_type
-
-.rc_fit_condition_grns_by_cell_type_bounded <- function(
-    object, gem, outdir, pfm = NULL, genome,
-    condition_col = "condition", celltype_col = "cell_type",
-    cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-    min_cells = 20L,
-    pando_initiate_args = list(exclude_exons = TRUE),
-    pando_motif_args = list(),
-    pando_infer_args = list(
-      tf_cor = 0.1, peak_cor = 0.05, adjust_method = "BH",
-      padj_threshold = 0.05, rank_action = "mark",
-      min_residual_df = 1L
-    ),
-    save_pando_objects = TRUE, BPPARAM = NULL,
-    progress_monitor = NULL,
-    species = c("auto", "human", "mouse")) {
-  answer <- .rc_fit_condition_grns_by_cell_type_cap_impl(
-    object = object, gem = gem, outdir = outdir, pfm = pfm, genome = genome,
-    condition_col = condition_col, celltype_col = celltype_col,
-    cell_type = cell_type, rna_assay = rna_assay, atac_assay = atac_assay,
-    min_cells = min_cells, pando_initiate_args = pando_initiate_args,
-    pando_motif_args = pando_motif_args, pando_infer_args = pando_infer_args,
-    save_pando_objects = save_pando_objects, BPPARAM = BPPARAM,
-    progress_monitor = progress_monitor, species = species
-  )
-  fits <- answer$condition_grn_fits
-  allocation <- if (is.list(fits) && length(fits)) {
-    data.frame(
-      cell_type = names(fits),
-      grn_worker_budget = vapply(fits, function(fit) {
-        as.integer((fit$parallel_plan$grn_worker_budget %||% 1L)[[1L]])
-      }, integer(1)),
-      target_workers = vapply(fits, function(fit) {
-        as.integer((fit$parallel_plan$target_workers %||% 1L)[[1L]])
-      }, integer(1)),
-      nested_pool = vapply(fits, function(fit) {
-        isTRUE(fit$parallel_plan$nested_pool)
-      }, logical(1)),
-      stringsAsFactors = FALSE
-    )
-  } else {
-    data.frame(
-      cell_type = character(), grn_worker_budget = integer(),
-      target_workers = integer(), nested_pool = logical()
-    )
-  }
-  plan <- answer$pando_execution_summary$parallel_plan %||% list()
-  plan$scope <- "bounded_hierarchical_cell_type_target"
-  plan$worker_allocation_by_cell_type <- allocation
-  plan$inner_target_parallel <- any(allocation$target_workers > 1L)
-  plan$nested_parallel <- any(allocation$nested_pool)
-  plan$nested_backend <- if (any(allocation$nested_pool)) "snow" else "none"
-  plan$worker_budget_bounded <- TRUE
-  plan$target_pools_release_policy <- "release_after_each_cell_type_fit"
-  plan$worker_budget_rule <- paste(
-    "evenly split the global cap across concurrent condition-GRN cell types;",
-    "each nested Pando target pool uses at most its GRN budget minus the outer worker"
-  )
-  answer$pando_execution_summary$parallel_plan <- plan
-  answer$normalization_policy$parallel_contract <- plan
-  saveRDS(answer$condition_grn_fits,
-          file.path(outdir, "pando_condition_grn_fits.rds"))
-  saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
-  answer
-}
-
 .rc_condition_multitask_fit_task <- .rc_condition_multitask_fit_task_bounded
-.rc_fit_condition_grns_by_cell_type <- .rc_fit_condition_grns_by_cell_type_bounded
