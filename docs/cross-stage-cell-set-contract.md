@@ -8,7 +8,7 @@ step1$cell_filter$retained_cells
 
 For condition-aware input, an undersized condition × cell-type stratum is deleted first. Routing is then automatic for each retained broad cell type: at least two retained condition levels use Condition Pando; one retained condition level uses Standard Pando. With `condition_col = NULL`, Standard Pando is used. Mixed datasets may therefore contain both routes in one Stage 1 run.
 
-The stable Pando defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment, and `padj_threshold = 0.05` where the selected route uses that parameter. Known arguments belonging only to the other Pando route are ignored for the incompatible route; genuinely unknown argument names still fail validation.
+The Stage 1 defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment, and `padj_threshold = 0.05`. These thresholds are configurable rather than fixed; `padj_threshold` is shared by Condition Pando and Standard Pando. Known arguments belonging only to the other Pando route are ignored for the incompatible route; genuinely unknown argument names still fail validation.
 
 Use the Stage 1 result explicitly in a stepwise run:
 
