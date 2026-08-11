@@ -20,7 +20,7 @@ Main arguments: `object`, `gem`, `outdir`, `genome`, `species`, `condition_col`,
 
 ### `rc_regcompass_step_grn()`
 
-Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`; inference options are supplied through `pando_args$pando_infer_args`.
+Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`; inference options are supplied through `pando_args$pando_infer_args`. Multi-condition cell types use Pando multi-task ridge. Standard Pando keeps `method = "glm"` as the default and accepts `method = "ridge"` to use the same ridge solver in its single-task form. The single `workers` cap is divided across concurrent cell-type GRNs, and each ridge fit may use its assigned target-worker budget without exceeding that cap.
 
 ### `rc_regcompass_step_metacells()`
 
@@ -62,7 +62,7 @@ Create built-in or custom medium tables. Supported presets are `normal_human_pla
 
 ### `rc_parallel_config()`
 
-Inspect the platform-resolved parallel configuration without starting workers. The workflow itself uses one top-level `workers` cap.
+Inspect the platform-resolved parallel configuration without starting workers. The workflow itself uses one top-level `workers` cap. Stage 1 uses bounded hierarchical scheduling: the cap is divided across concurrently running Pando cell-type jobs, target pools are bounded within each allocation, and completed target pools are stopped immediately.
 
 ## Post analysis
 
