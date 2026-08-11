@@ -89,6 +89,41 @@
   )
 }
 
+.rc_pando_quiet_target_bpparam <- function(BPPARAM) {
+  if (is.null(BPPARAM) || identical(BPPARAM, FALSE) ||
+      !requireNamespace("BiocParallel", quietly = TRUE) ||
+      !methods::is(BPPARAM, "BiocParallelParam")) {
+    return(BPPARAM)
+  }
+  if (isTRUE(BiocParallel::bpisup(BPPARAM))) return(BPPARAM)
+  workers <- max(1L, as.integer(BiocParallel::bpnworkers(BPPARAM)))
+  quiet <- if (methods::is(BPPARAM, "SnowParam")) {
+    BiocParallel::SnowParam(
+      workers = workers,
+      type = "SOCK",
+      progressbar = FALSE,
+      exportglobals = TRUE,
+      exportvariables = TRUE
+    )
+  } else if (methods::is(BPPARAM, "MulticoreParam")) {
+    BiocParallel::MulticoreParam(
+      workers = workers,
+      progressbar = FALSE
+    )
+  } else {
+    BPPARAM
+  }
+  if (!identical(quiet, BPPARAM)) {
+    attr(quiet, "regcompass_worker_limit") <-
+      .rc_bpparam_worker_limit(BPPARAM, default = workers)
+    config <- attr(BPPARAM, "regcompass_parallel_config", exact = TRUE)
+    if (!is.null(config)) {
+      attr(quiet, "regcompass_parallel_config") <- config
+    }
+  }
+  quiet
+}
+
 .rc_condition_multitask_fit_task <- function(
     task, target_genes, condition_col, celltype_col, min_cells,
     pando_infer_args, inner_parallel = FALSE, PANDO_BPPARAM = NULL) {
@@ -104,6 +139,9 @@
     stop("Condition Pando padj_threshold must be in (0, 1).",
          call. = FALSE)
   }
+  show_progress <- .rc_progress_enabled(
+    getOption("RegCompassR.progress", TRUE)
+  )
   args <- list(
     object = task$grn,
     cell_type_col = celltype_col,
@@ -126,13 +164,35 @@
     parallel_scope = "target",
     overwrite = TRUE,
     fallback_args = list(condition_ridge_control = ridge_control),
-    verbose = FALSE
+    verbose = show_progress
   )
   if (isTRUE(inner_parallel) && !is.null(PANDO_BPPARAM) &&
       !identical(PANDO_BPPARAM, FALSE)) {
-    args$BPPARAM <- PANDO_BPPARAM
+    args$BPPARAM <- .rc_pando_quiet_target_bpparam(PANDO_BPPARAM)
   }
-  fitted <- do.call(Pando::infer_condition_grn, args)
+  if (show_progress) {
+    message(
+      "RegCompass grn condition detail | cell_type=", cell_type,
+      ";phase=pando_condition_pipeline",
+      ";targets_requested=", length(target_genes),
+      ";target_parallel=", isTRUE(inner_parallel),
+      ";workers=", if (!is.null(args$BPPARAM) &&
+          !identical(args$BPPARAM, FALSE)) {
+        .rc_bpparam_worker_limit(args$BPPARAM, default = 1L)
+      } else 1L
+    )
+  }
+  fitted <- tryCatch(
+    do.call(Pando::infer_condition_grn, args),
+    error = function(error) {
+      stop(
+        "Condition-GRN multi-task fit failed for cell type `", cell_type,
+        "` during Pando target-level execution: ",
+        conditionMessage(error),
+        call. = FALSE
+      )
+    }
+  )
   args <- NULL
   task$grn <- NULL
   invisible(gc(verbose = FALSE, full = TRUE))
@@ -155,6 +215,15 @@
   if (!isTRUE(all.equal(as.numeric(fit$padj_threshold), threshold))) {
     stop("Pando returned a condition fit with the wrong BH threshold.",
          call. = FALSE)
+  }
+  if (show_progress) {
+    message(
+      "RegCompass grn condition detail | cell_type=", cell_type,
+      ";phase=pando_condition_pipeline_complete",
+      ";candidate_edges=", as.integer(fit$candidate_edge_count %||% NA_integer_),
+      ";fit_edges=", as.integer(fit$fit_dictionary_edge_count %||% NA_integer_),
+      ";targets_fitted=", length(unique(as.character(fit$target_genes)))
+    )
   }
   list(
     cell_type = cell_type,
