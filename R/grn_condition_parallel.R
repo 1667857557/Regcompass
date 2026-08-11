@@ -58,9 +58,16 @@
     paste0("Pando condition GRN for ", task$cell_type)
   )
   one <- filtered$object
+  n_cells <- ncol(one)
+  n_removed <- filtered$n_removed %||% 0L
+  task$object <- NULL
+  filtered <- NULL
   init <- list(object = one, peak_assay = atac_assay, rna_assay = rna_assay)
   init[names(pando_initiate_args)] <- NULL
   grn <- do.call(Pando::initiate_grn, c(init, pando_initiate_args))
+  init <- NULL
+  one <- NULL
+  invisible(gc(verbose = FALSE, full = TRUE))
 
   motif_args <- .rc_regcompass_motif_args(pando_motif_args)
   if (is.list(motif_args) && !is.null(motif_args$cache_dir)) {
@@ -71,11 +78,14 @@
   motif <- list(object = grn, pfm = pfm, genome = genome)
   motif[names(motif_args)] <- NULL
   grn <- do.call(Pando::find_motifs, c(motif, motif_args))
+  motif <- NULL
+  motif_args <- NULL
+  invisible(gc(verbose = FALSE, full = TRUE))
   list(
     cell_type = task$cell_type,
     grn = grn,
-    n_cells = ncol(one),
-    n_removed_atac_features = filtered$n_removed %||% 0L
+    n_cells = n_cells,
+    n_removed_atac_features = n_removed
   )
 }
 
@@ -86,6 +96,7 @@
       !is.character(task$cell_type) || length(task$cell_type) != 1L) {
     stop("Invalid condition-GRN multi-task fit task.", call. = FALSE)
   }
+  cell_type <- task$cell_type
   ridge_control <- pando_infer_args$condition_ridge_control %||% list()
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
   if (length(threshold) != 1L || !is.finite(threshold) ||
@@ -97,7 +108,7 @@
     object = task$grn,
     cell_type_col = celltype_col,
     condition_col = condition_col,
-    cell_type = task$cell_type,
+    cell_type = cell_type,
     genes = target_genes,
     network_name = "regcompass_condition_grn",
     rna_layer = pando_infer_args$rna_layer %||% "data",
@@ -122,19 +133,22 @@
     args$BPPARAM <- PANDO_BPPARAM
   }
   fitted <- do.call(Pando::infer_condition_grn, args)
+  args <- NULL
+  task$grn <- NULL
+  invisible(gc(verbose = FALSE, full = TRUE))
   fits <- Pando::condition_grn_fit(fitted)
   if (inherits(fits, "ConditionGRNFit")) {
     fit <- fits
-  } else if (is.list(fits) && task$cell_type %in% names(fits)) {
-    fit <- fits[[task$cell_type]]
+  } else if (is.list(fits) && cell_type %in% names(fits)) {
+    fit <- fits[[cell_type]]
   } else if (is.list(fits) && length(fits) == 1L &&
              inherits(fits[[1L]], "ConditionGRNFit")) {
     fit <- fits[[1L]]
   } else {
     stop("Pando multi-task condition fit was not returned for cell type `",
-         task$cell_type, "`.", call. = FALSE)
+         cell_type, "`.", call. = FALSE)
   }
-  if (!identical(as.character(fit$cell_type), task$cell_type)) {
+  if (!identical(as.character(fit$cell_type), cell_type)) {
     stop("Pando multi-task condition fit returned the wrong cell type.",
          call. = FALSE)
   }
@@ -143,7 +157,7 @@
          call. = FALSE)
   }
   list(
-    cell_type = task$cell_type,
+    cell_type = cell_type,
     grn = fitted,
     fit = fit
   )
