@@ -51,17 +51,17 @@ test_that("standard glm remains explicitly available", {
   expect_false("ridge_control" %in% names(routed$standard))
 })
 
-test_that("default-ridge policy wraps the canonical route without changing it", {
-  expect_true(exists(
+test_that("ridge defaults live in canonical Stage 1 functions", {
+  expect_false(exists(
     ".rc_route_pando_infer_args_before_default_ridge", inherits = TRUE
   ))
-  expect_true(exists(
+  expect_false(exists(
     ".rc_standard_pando_infer_args_before_default_ridge", inherits = TRUE
   ))
   route_text <- paste(deparse(body(.rc_route_pando_infer_args)), collapse = "\n")
-  expect_match(route_text, 'args$method <- "ridge"', fixed = TRUE)
+  expect_match(route_text, 'standard_args$method %||% "ridge"', fixed = TRUE)
   standard_text <- paste(
     deparse(body(.rc_standard_pando_infer_args)), collapse = "\n"
   )
-  expect_match(standard_text, 'args$method <- "ridge"', fixed = TRUE)
+  expect_match(standard_text, 'args$method %||% "ridge"', fixed = TRUE)
 })
