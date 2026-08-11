@@ -87,7 +87,7 @@
 
 .rc_condition_multitask_fit_task <- function(
     task, target_genes, condition_col, celltype_col, min_cells,
-    pando_infer_args, inner_parallel = FALSE, BPPARAM = NULL) {
+    pando_infer_args, inner_parallel = FALSE, PANDO_BPPARAM = NULL) {
   if (!is.list(task) || !inherits(task$grn, "GRNData") ||
       !is.character(task$cell_type) || length(task$cell_type) != 1L) {
     stop("Invalid condition-GRN multi-task fit task.", call. = FALSE)
@@ -117,9 +117,9 @@
     fallback_args = list(condition_ridge_control = ridge_control),
     verbose = FALSE
   )
-  if (isTRUE(inner_parallel) && !is.null(BPPARAM) &&
-      !identical(BPPARAM, FALSE)) {
-    args$BPPARAM <- BPPARAM
+  if (isTRUE(inner_parallel) && !is.null(PANDO_BPPARAM) &&
+      !identical(PANDO_BPPARAM, FALSE)) {
+    args$BPPARAM <- PANDO_BPPARAM
   }
   fitted <- do.call(Pando::infer_condition_grn, args)
   fits <- Pando::condition_grn_fit(fitted)
