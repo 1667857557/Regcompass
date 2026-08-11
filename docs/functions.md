@@ -20,7 +20,11 @@ Main arguments: `object`, `gem`, `outdir`, `genome`, `species`, `condition_col`,
 
 ### `rc_regcompass_step_grn()`
 
-Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`; inference options are supplied through `pando_args$pando_infer_args`. Multi-condition cell types use Pando multi-task ridge. Standard Pando now defaults to `method = "ridge"`, which is the K=1 specialization of the same ridge solver; `method = "glm"` remains an explicit compatibility option. Ridge routes keep one cell type resident at a time and use target-level workers under the global worker cap. Each Pando target worker receives only the target-specific RNA, ATAC, motif and edge-dictionary slices required for that target, and worker/batch temporaries are released after completion.
+Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`. After that filter, routing is automatic per broad cell type: at least two retained condition levels use Condition Pando multi-task ridge; one retained condition level uses Standard Pando; `condition_col = NULL` also selects Standard Pando. Mixed routing is supported in one run.
+
+Stable inference defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment, and `padj_threshold = 0.05` where applicable. Inference options are supplied through `pando_args$pando_infer_args`. Known parameters that belong only to the other Pando route are ignored for the incompatible route and recorded in routing diagnostics, while genuinely unknown parameter names still fail validation. Standard Pando defaults to `method = "ridge"`, the K=1 specialization of the same ridge solver; `method = "glm"` remains an explicit compatibility option.
+
+Ridge routes keep one cell type resident at a time and use target-level workers under the global worker cap. Each Pando target worker receives only the target-specific RNA, ATAC, motif and edge-dictionary slices required for that target, and worker/batch temporaries are released after completion.
 
 ### `rc_regcompass_step_metacells()`
 
