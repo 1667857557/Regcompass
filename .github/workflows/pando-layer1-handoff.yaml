@@ -40,7 +40,7 @@ jobs:
               '"infer_condition_grn"',
               '"condition_grn_fit"',
               '"condition_ridge_control"',
-              "padj_threshold in (0, 0.1]",
+              "padj_threshold in (0, 1)",
               "Unsupported override(s)",
           ]
           missing = [value for value in required_route if value not in route]
@@ -78,7 +78,7 @@ jobs:
               "Pando::infer_condition_grn",
               "Pando::condition_grn_fit",
               "condition_ridge_control",
-              "threshold > 0.1",
+              "threshold >= 1",
               'parallel_scope = "target"',
           ]
           missing = [value for value in required_helper if value not in helper]
