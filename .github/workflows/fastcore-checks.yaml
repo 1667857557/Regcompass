@@ -131,7 +131,7 @@ jobs:
               'tf_cor = 0.1',
               'peak_cor = 0.05',
               'condition_ridge_control = list()',
-              "padj_threshold in (0, 0.1]",
+              "padj_threshold in (0, 1)",
               "Unsupported override(s)",
           ]
           missing = [x for x in required_route if x not in route]
@@ -159,7 +159,7 @@ jobs:
               "Pando::infer_condition_grn",
               "Pando::condition_grn_fit",
               "condition_ridge_control",
-              "threshold > 0.1",
+              "threshold >= 1",
               'parallel_scope = "target"',
           ]
           missing = [x for x in helper_required if x not in condition_helpers]
@@ -291,11 +291,11 @@ jobs:
             stringsAsFactors = FALSE
           )
           stopifnot(identical(
-            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.1),
-            c(TRUE, TRUE, FALSE, FALSE)
+            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.5),
+            c(TRUE, TRUE, TRUE, FALSE)
           ))
           stopifnot(inherits(
-            try(.rc_condition_penalty_gate(coefficient, padj_threshold = 0.11),
+            try(.rc_condition_penalty_gate(coefficient, padj_threshold = 1),
                 silent = TRUE),
             "try-error"
           ))
