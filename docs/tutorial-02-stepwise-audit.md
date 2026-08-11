@@ -1,12 +1,12 @@
 # Tutorial 2: restartable workflow
 
-Each stage writes a checkpoint to its output directory. Reuse the same input object, GEM, metadata columns, and medium definition when restarting downstream stages.
+Each stage writes a checkpoint to its output directory. Reuse the same input object, GEM, metadata columns, assays, and medium definition when restarting downstream stages. The calls below expose the current user-adjustable parameter surface. Parameters that RegCompass deliberately fixes for cross-stage comparability are not presented as tunable controls.
 
 ```r
 workers <- 10L
 ```
 
-`workers` is the single workflow-level parallel cap. RegCompass selects the platform-specific backend automatically; individual stages use no more workers than their independent task count.
+`workers` is the single workflow-level process cap. RegCompass selects the platform-specific backend automatically for ordinary dispatches. Stage 1 ridge fitting uses bounded hierarchical scheduling: the cap is divided across concurrently running cell-type GRNs, each Pando fit can use its assigned remainder for target-level work, nested GRN pools use isolated SOCK workers, and completed target pools are released immediately.
 
 ## 1. Regulatory evidence
 
@@ -16,14 +16,100 @@ step1 <- rc_regcompass_step_grn(
   gem = gem,
   outdir = "run/01_grn",
   genome = BSgenome.Hsapiens.UCSC.hg38,
+  pfm = NULL,
+  species = "auto",
   condition_col = "condition",
   celltype_col = "cell_type",
-  pando_args = list(min_cells = 500L),
-  workers = workers
+  cell_type = NULL,
+  rna_assay = "RNA",
+  atac_assay = "ATAC",
+  pando_args = list(
+    min_cells = 500L,
+    save_pando_objects = TRUE,
+    pando_initiate_args = list(
+      regions = NULL,
+      exclude_exons = TRUE
+    ),
+    pando_motif_args = list(
+      motif_tfs = NULL,
+      verbose = TRUE,
+      cache_dir = NULL,
+      reuse_cache = TRUE
+    ),
+    pando_infer_args = list(
+      tf_cor = 0.1,
+      peak_cor = 0.05,
+      adjust_method = "BH",
+      padj_threshold = 0.05,
+      rank_action = "mark",
+      min_residual_df = 1L,
+      condition_ridge_control = list(
+        lambda_grid = 10^seq(-3, 2, length.out = 9L),
+        lambda_rule = "1se",
+        fusion_ratio = 1,
+        cv_folds = 5L,
+        seed = 1L,
+        scale_floor = 1e-8
+      ),
+      peak_to_gene_method = "Signac",
+      upstream = 100000,
+      downstream = 0,
+      extend = 1000000,
+      only_tss = FALSE,
+      method = "glm",
+      verbose = TRUE
+    )
+  ),
+  workers = workers,
+  progress = TRUE
 )
 ```
 
-Main parameters are `condition_col`, `celltype_col`, `cell_type`, `rna_assay`, `atac_assay`, `pando_args`, `workers`, and `progress`. Pando inference options, when needed, are supplied through `pando_args$pando_infer_args`; route-specific arguments are dispatched only to the compatible condition or standard Pando path.
+For broad cell types with at least two retained conditions, RegCompass uses the condition-comparable multi-task ridge path; `condition_ridge_control` controls its lambda grid, selection rule, fusion strength, CV folds, seed, and scale floor. `padj_threshold` is a condition-GRN control. `method` and the peak-to-gene domain controls apply to the standard-Pando route used by cell types with one effective condition. The default standard method remains `"glm"`, and the standard downstream edge gate remains the fixed historical `padj < 0.05` contract.
+
+`regions = NULL` uses the bundled human regulatory-region set when available; supply a compatible `GRanges` to override it. `motif_tfs = NULL` uses the bundled Pando motif-to-TF map, and `cache_dir = NULL` lets RegCompass use its stage-local motif cache. Exact motif-position retention is intentionally fixed off because the workflow consumes the peak-by-motif incidence matrix rather than footprint coordinates.
+
+To use the same ridge numerical backend for standard Pando, set `method = "ridge"` and optionally add `ridge_control`:
+
+```r
+pando_args_ridge <- list(
+  min_cells = 500L,
+  save_pando_objects = TRUE,
+  pando_infer_args = list(
+    tf_cor = 0.1,
+    peak_cor = 0.05,
+    adjust_method = "BH",
+    padj_threshold = 0.05,
+    rank_action = "mark",
+    min_residual_df = 1L,
+    peak_to_gene_method = "Signac",
+    upstream = 100000,
+    downstream = 0,
+    extend = 1000000,
+    only_tss = FALSE,
+    method = "ridge",
+    ridge_control = list(
+      lambda_grid = 10^seq(-3, 2, length.out = 9L),
+      lambda_rule = "1se",
+      fusion_ratio = 1,
+      cv_folds = 5L,
+      seed = 1L,
+      scale_floor = 1e-8
+    ),
+    condition_ridge_control = list(
+      lambda_grid = 10^seq(-3, 2, length.out = 9L),
+      lambda_rule = "1se",
+      fusion_ratio = 1,
+      cv_folds = 5L,
+      seed = 1L,
+      scale_floor = 1e-8
+    ),
+    verbose = TRUE
+  )
+)
+```
+
+For standard ridge, `fusion_ratio` is accepted for the shared ridge-control schema but has no numerical effect because the standard model has one task. Other effective standard-backend controls accepted through `pando_infer_args` are `alpha`, `family`, `maxit`, `epsilon`, `control`, `nlambda`, `lambda`, `lambda.min.ratio`, `standardize`, `nfolds`, `type.measure`, `solver`, `bagging_number`, `p_method`, `prior`, `chains`, `iter`, `seed`, `params`, and `nrounds`; they are relevant only to backends that use them. Backend thread-count controls are managed internally so they cannot create a second parallel budget outside top-level `workers`.
 
 ## 2. Multimodal metacells
 
@@ -34,11 +120,44 @@ step2 <- rc_regcompass_step_metacells(
   outdir = "run/02_metacells",
   condition_col = "condition",
   celltype_col = "cell_type",
-  workers = workers
+  cell_type = NULL,
+  rna_assay = "RNA",
+  atac_assay = "ATAC",
+  fragment_files = NULL,
+  metacell_args = list(
+    rna_reduction = "pca",
+    atac_reduction = "lsi",
+    rna_dims = 1:30,
+    atac_dims = 2:30,
+    gamma = 30L,
+    seed = 12345L,
+    min_cells_per_stratum = 500L,
+    min_metacell_size = 1L,
+    min_metacells_per_stratum = 1L,
+    k.knn = 30L,
+    kith = NULL,
+    kernel = TRUE,
+    graph.name = NULL,
+    metacellNormalization = FALSE,
+    avg.in.data = FALSE,
+    verbose = FALSE,
+    fragment_args = list(
+      rows_per_chunk = 10000000L,
+      bgzip_path = NULL,
+      tabix_path = NULL,
+      process_n = 2000L,
+      call_peaks = TRUE,
+      macs2_path = NULL,
+      effective_genome_size = NULL,
+      peak_calling_args = list()
+    )
+  ),
+  workers = workers,
+  progress = TRUE
 )
 ```
 
-Main parameters are `fragment_files`, `metacell_args`, `workers`, and `grn`. Supplying `grn = step1` enforces the Stage 1 retained cell set. The public retained-stratum threshold defaults to `500L`; other SuperCell/WNN settings are exposed through `metacell_args` and documented in the Rd help.
+`fragment_args` is relevant only when `fragment_files` is supplied. Fragment worker count is deliberately not a separate parameter; the top-level `workers` value remains the single cap.
 
 ## 3. Reaction meta-modules
 
@@ -47,11 +166,15 @@ step3 <- rc_regcompass_step_meta_modules(
   grn = step1,
   metacells = step2,
   gem = gem,
-  outdir = "run/03_meta_modules"
+  outdir = "run/03_meta_modules",
+  meta_module_args = list(
+    subsystem_table = NULL
+  ),
+  progress = TRUE
 )
 ```
 
-`meta_module_args` contains optional Stage 3 customization, including a custom subsystem table when required.
+`subsystem_table` is the current optional Stage 3 customization. The expansion order and GPR-completeness rules are fixed workflow contracts.
 
 ## 4. Layer 1 reaction evidence
 
@@ -62,11 +185,14 @@ step4 <- rc_regcompass_step_layer1(
   meta_modules = step3,
   gem = gem,
   outdir = "run/04_layer1",
-  workers = workers
+  gpr_and_method = "min",
+  gene_half_saturation = 1,
+  workers = workers,
+  progress = TRUE
 )
 ```
 
-Public controls are `gpr_and_method`, `gene_half_saturation`, `workers`, and `progress`. The default GPR AND rule is `"min"`.
+`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"`. `gene_half_saturation` is user-adjustable.
 
 ## 5. Medium scenarios
 
@@ -74,13 +200,22 @@ Public controls are `gpr_and_method`, `gene_half_saturation`, `workers`, and `pr
 medium_scenarios <- rc_make_medium_scenarios(
   gem = gem,
   scenario = "normal_human_plasma",
-  species = "human"
+  species = "human",
+  custom_medium = NULL,
+  custom_metabolites = NULL,
+  uptake_scale = 1,
+  exchange_roles = "exchange",
+  condition = "all",
+  exchange_limit = 1,
+  strict_preset_matching = TRUE
 )
 ```
 
-Built-in scenarios are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`. See [medium-presets.md](medium-presets.md) for compositions, provenance, and custom-medium formats.
+Built-in scenarios are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`. See [medium-presets.md](medium-presets.md) for composition and provenance.
 
 ## 6. Layer 2 structural model and directional scoring
+
+The default `meta_module_gem` route uses CORDA2. Its adjustable parameters are shown explicitly below; CORDA2 has no completion time limit.
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -90,11 +225,34 @@ step5 <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2",
   model_mode = "meta_module_gem",
-  workers = workers
+  layer2_args = list(
+    omega = 0.95,
+    target_direction = "both",
+    solver = "highs",
+    flux_threshold = 1e-8,
+    model_params = list(
+      model_completion = "corda2",
+      strict = TRUE,
+      corda2_args = list(
+        MCxNCthresh = 2,
+        constraint = 1,
+        constrainby = "val",
+        om = 1e4,
+        ci = 0.01
+      ),
+      corda_medium_confidence_threshold = 0.75,
+      corda_negative_confidence_threshold = 0.10,
+      corda_regulatory_weight = 0.20,
+      corda_include_evidence_outside_modules = TRUE,
+      corda_max_medium_confidence_reactions = Inf
+    )
+  ),
+  workers = workers,
+  progress = TRUE
 )
 ```
 
-Main parameters are `model_mode`, `layer2_args`, `workers`, and `progress`. `layer2_args` accepts `model_params`, `omega`, `target_direction`, `solver`, and `flux_threshold`. `model_mode = "meta_module_gem"` uses CORDA2 by default; its adjustable `corda2_args` are `MCxNCthresh`, `constraint`, `constrainby`, `om`, and `ci`. Defaults and supplementary routes are documented in the current Rd help and [layer2-corda.md](layer2-corda.md).
+`target_direction` accepts `"both"`, `"forward"`, or `"reverse"`; `solver` accepts the installed supported LP backends. The supplementary FASTCORE route is selected with `model_completion = "fastcore"`; its adjustable structural controls are `completion_time_limit`, `fastcore_epsilon`, `max_support_reactions`, and `strict`. See [layer2-corda.md](layer2-corda.md) for the CORDA2 parameter contract.
 
 ## 7. Result assembly
 
@@ -107,8 +265,9 @@ result <- rc_regcompass_step_results(
   layer2 = step5,
   gem = gem,
   outdir = "run/06_results",
-  species = "human"
+  species = "human",
+  progress = TRUE
 )
 ```
 
-The stage outputs are restartable R objects. For post-analysis functions see [tutorial-04-post-analysis.md](tutorial-04-post-analysis.md) and [functions.md](functions.md). All equations and quantitative definitions are maintained only in [mathematical-model.md](mathematical-model.md).
+The stage outputs are restartable R objects. Post-analysis functions are listed in [tutorial-04-post-analysis.md](tutorial-04-post-analysis.md) and [functions.md](functions.md). Equations and quantitative definitions are maintained only in [mathematical-model.md](mathematical-model.md).

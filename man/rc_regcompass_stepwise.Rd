@@ -50,8 +50,8 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type subset.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 configuration. \code{min_cells} defaults to \code{500L}; inference controls are supplied through \code{pando_infer_args}.}
-\item{workers}{Single worker cap used by computational stages, default \code{10L}.}
+\item{pando_args}{Stage 1 configuration. \code{min_cells} defaults to \code{500L}; inference controls are supplied through \code{pando_infer_args}. Multi-condition cell types use the condition multi-task ridge path. Standard Pando defaults to \code{method = "glm"}; set \code{method = "ridge"} and optionally \code{ridge_control} to use the same ridge numerical backend in the single-task case.}
+\item{workers}{Single worker cap used by computational stages, default \code{10L}. In Stage 1 the cap is divided across concurrent cell-type GRNs; ridge target pools use only the budget assigned to that GRN and are released when its fit completes.}
 \item{progress}{Display and persist stage progress.}
 \item{fragment_files}{Optional Stage 2 raw fragment input.}
 \item{metacell_args}{Stage 2 reductions, dimensions, WNN, size, and fragment controls. \code{min_cells_per_stratum} defaults to \code{500L}.}
@@ -62,7 +62,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{gene_half_saturation}{Half-saturation parameter for the bounded structural-support path.}
 \item{medium_scenarios}{Shared medium table, normally created by \code{rc_make_medium_scenarios()}.}
 \item{model_mode}{\code{"meta_module_gem"} or supplementary \code{"full_gem"}.}
-\item{layer2_args}{Stage 5 controls. Supported top-level entries are \code{model_params}, \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold}. CORDA2 is the default completion under \code{"meta_module_gem"}; \code{model_params$completion_time_limit} is not a CORDA2 control.}
+\item{layer2_args}{Stage 5 controls. Supported top-level entries are \code{model_params}, \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold}. CORDA2 is the default completion under \code{"meta_module_gem"}; its adjustable options are documented in \code{docs/layer2-corda.md}. \code{model_params$completion_time_limit} is not a CORDA2 control.}
 }
 \value{Each function returns a validated stage object and writes its stage checkpoint and diagnostics to \code{outdir}.}
-\description{Runs individual stages of the RegCompass workflow for restartable execution. See \code{docs/tutorial-02-stepwise-audit.md} for calls and \code{docs/mathematical-model.md} for quantitative definitions.}
+\description{Runs individual stages of the RegCompass workflow for restartable execution. See \code{docs/tutorial-02-stepwise-audit.md} for calls and adjustable parameters, and \code{docs/mathematical-model.md} for quantitative definitions.}
