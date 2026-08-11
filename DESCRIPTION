@@ -10,44 +10,49 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     the same retained cell set to downstream metacell construction. Stage 2 uses
     a configurable min_cells_per_stratum threshold that also defaults to 500.
     Routing is resolved independently for every broad cell type. A cell type
-    with at least two retained conditions uses Pando's native common-dictionary
-    multi-task condition-GRN procedure: candidate edges are discovered on the
-    complete cell type and separately in every retained condition, exact
-    TF-peak-target triples are unioned into one frozen dictionary, and all
-    conditions for each target are fitted jointly by ridge regression with a
-    symmetric fusion penalty. Predictor regularization uses one equal-condition
-    within-condition RMS scale, one target-specific lambda shared across
-    conditions is selected by condition-stratified cross-validation, and
-    exported coefficients are back-transformed to raw TF-by-ATAC units. Every
-    finite estimable coefficient from an ok target fit contributes continuously
-    to the quantitative condition regulatory projection; approximate ridge-Wald
-    coefficient and pairwise condition-contrast P values are retained as
-    diagnostics and are not used to create condition-specific beta-versus-zero
-    thresholds. Condition-specific zero-variance edges remain in the frozen
-    dictionary but contribute zero in that condition. A cell type with one
-    retained condition uses the original standard Pando GRN and creates no
-    condition coefficient. Standard Pando uses the configured fixed tf_cor and
-    peak_cor candidate thresholds without cell-count-dependent adjustment.
-    RegCompass owns the outer parallel scheduler. Condition-mode Pando objects
-    are initialized independently by broad cell type. When several cell types
-    are present they are run as independent outer jobs with nested target
-    parallelism disabled; when one condition-mode cell type is present the same
-    worker budget can be used by Pando across target-level multi-task fits.
-    Different cell types retain their own Pando objects and local peak/motif
-    feature spaces. Standard Pando is parallelized only across independent broad
-    cell types. For RegCompass Layer 1, TF and ATAC values are separately averaged
-    over exact SuperCell membership before regulatory multiplication, preserving
-    beta times mean(TF) times mean(ATAC) as the condition regulatory projection.
-    Metacells use one multimodal WNN graph per broad cell type and remain
-    condition-pure after membership splitting. Optional raw ATAC fragment files
-    are aggregated to final metacell barcodes and recounted before metacell
-    TF-IDF. Quantitative RNA for the LP penalty is normalized on the linear CPM
-    scale per original cell and then averaged with equal cell weight inside exact
-    final SuperCell membership; aggregated-count latent CPM remains restricted
-    to bounded structural confidence. RNA support, regulatory effects, GPR
-    rules, cell-type-specific union GEM construction and directional penalties
-    use consistent reaction ordering, bounds and medium scenarios. Stage 5 uses
-    the original MATLAB CORDA2 algorithm from
+    with at least two retained conditions uses Pando's native condition-GRN
+    procedure. Candidate edges are discovered on the complete cell type and
+    separately in every retained condition, and exact TF-peak-target triples are
+    unioned into a broad candidate dictionary. A preliminary joint multi-task
+    ridge fit supplies condition-wise ridge-Wald P values; BH-adjusted significant
+    edges are unioned across conditions to form the actual shared fit dictionary.
+    The default adjusted-P threshold is 0.05 and condition analysis permits a
+    configured threshold up to 0.1. All conditions for each target are then
+    refitted jointly on that same significant-union dictionary with ridge
+    regression and a symmetric fusion penalty. Predictor regularization uses one
+    equal-condition within-condition RMS scale, one target-specific lambda shared
+    across conditions is selected by condition-stratified cross-validation, and
+    exported coefficients are back-transformed to raw TF-by-ATAC units. In the
+    final refit, a condition-specific coefficient contributes to RegCompass only
+    when it is estimable, belongs to an ok target fit, and its BH-adjusted
+    ridge-Wald P value is below the configured threshold. Pairwise direct
+    condition contrasts beta_A-beta_B are retained separately from condition-wise
+    edge significance. Condition-specific zero-variance edges can remain in the
+    common fit dictionary when supported in another condition but contribute zero
+    in a condition where they are not estimable. A cell type with one retained
+    condition uses the original standard Pando GRN and creates no condition
+    coefficient. Standard Pando uses the configured fixed tf_cor and peak_cor
+    candidate thresholds without cell-count-dependent adjustment. RegCompass
+    owns the outer parallel scheduler. Condition-mode Pando objects are
+    initialized independently by broad cell type. When several cell types are
+    present they are run as independent outer jobs with nested target parallelism
+    disabled; when one condition-mode cell type is present the same worker budget
+    can be used by Pando across target-level multi-task fits. Different cell
+    types retain their own Pando objects and local peak/motif feature spaces.
+    Standard Pando is parallelized only across independent broad cell types. For
+    RegCompass Layer 1, TF and ATAC values are separately averaged over exact
+    SuperCell membership before regulatory multiplication, preserving beta times
+    mean(TF) times mean(ATAC) as the condition regulatory projection. Metacells
+    use one multimodal WNN graph per broad cell type and remain condition-pure
+    after membership splitting. Optional raw ATAC fragment files are aggregated
+    to final metacell barcodes and recounted before metacell TF-IDF. Quantitative
+    RNA for the LP penalty is normalized on the linear CPM scale per original
+    cell and then averaged with equal cell weight inside exact final SuperCell
+    membership; aggregated-count latent CPM remains restricted to bounded
+    structural confidence. RNA support, regulatory effects, GPR rules,
+    cell-type-specific union GEM construction and directional penalties use
+    consistent reaction ordering, bounds and medium scenarios. Stage 5 uses the
+    original MATLAB CORDA2 algorithm from
     schultzdre/Constraint-Based-Modeling/CORDA2.m as the default context-specific
     completion after mapping cell-type multiome evidence to HC, MC, NC and OT
     reactions. FASTCORE and complete full-GEM scoring remain explicit
@@ -211,6 +216,6 @@ Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v2
-Config/RegCompass/PandoConditionMethod: two-stage-exact-edge-union-multitask-ridge
-Config/RegCompass/PandoConditionProjectionPolicy: continuous-estimable-ridge-effects
-Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-diagnostics
+Config/RegCompass/PandoConditionMethod: significant-union-multitask-ridge-refit
+Config/RegCompass/PandoConditionProjectionPolicy: padj-significant-ridge-effects
+Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-screen-and-refit
