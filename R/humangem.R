@@ -185,7 +185,7 @@ rc_prepare_gem <- function(
     paste0("v", spec$version)
   }
   tmp <- tempfile(paste0(spec$repository_name, "-"))
-  prepared <- rc_download_species_gem(
+  prepared <- .rc_download_species_gem(
     species = species,
     destdir = tmp,
     ref = ref,
@@ -223,69 +223,6 @@ rc_prepare_gem <- function(
   gem$model_info$citation <- spec$citation
   gem$model_info$citation_doi <- spec$citation_doi
   .rc_persist_species_gem(gem, save_rds, species)
-}
-
-#' Prepare Human-GEM 2 for RegCompass
-#'
-#' Species-specific Human-GEM 2 entry point. Use this named helper when the
-#' analysis should explicitly download, cache, and validate the Human-GEM 2
-#' model path; it delegates to `rc_prepare_gem(species = "human")` with
-#' Human-GEM 2 defaults.
-#'
-#' @inheritParams rc_prepare_gem
-#' @param version Human-GEM 2 release version.
-#' @export
-rc_prepare_human2_gem <- function(
-    version = "2.0.0",
-    cache_dir = tools::R_user_dir("RegCompassR", "cache"),
-    save_rds = file.path(
-      cache_dir,
-      paste0("Human2_", version, "_regcompass.rds")
-    ),
-    force_download = FALSE,
-    allow_latest = FALSE,
-    source = c("auto", "bundled", "download")) {
-  source <- match.arg(source)
-  rc_prepare_gem(
-    species = "human",
-    version = version,
-    cache_dir = cache_dir,
-    save_rds = save_rds,
-    force_download = force_download,
-    allow_latest = allow_latest,
-    source = source
-  )
-}
-
-#' Prepare Mouse-GEM for RegCompass
-#'
-#' Species-specific convenience entry point for users who want the Mouse-GEM
-#' download, cache naming, and validation path explicitly. Equivalent to
-#' `rc_prepare_gem(species = "mouse")` with Mouse-GEM defaults.
-#'
-#' @inheritParams rc_prepare_gem
-#' @param version Mouse-GEM release version.
-#' @export
-rc_prepare_mouse_gem <- function(
-    version = "1.8.0",
-    cache_dir = tools::R_user_dir("RegCompassR", "cache"),
-    save_rds = file.path(
-      cache_dir,
-      paste0("Mouse_", version, "_regcompass.rds")
-    ),
-    force_download = FALSE,
-    allow_latest = FALSE,
-    source = c("auto", "bundled", "download")) {
-  source <- match.arg(source)
-  rc_prepare_gem(
-    species = "mouse",
-    version = version,
-    cache_dir = cache_dir,
-    save_rds = save_rds,
-    force_download = force_download,
-    allow_latest = allow_latest,
-    source = source
-  )
 }
 
 rc_validate_species_gem <- function(gem, species = c("human", "mouse")) {
@@ -328,14 +265,8 @@ rc_validate_species_gem <- function(gem, species = c("human", "mouse")) {
   invisible(TRUE)
 }
 
-#' Download and parse an official species GEM release
-#'
-#' Retained for users rebuilding the bundled files or preparing a newer pinned
-#' upstream release.
-#'
-#' @return Parsed official model tables with source archive metadata.
-#' @export
-rc_download_species_gem <- function(
+# Internal downloader used by rc_prepare_gem() and maintenance tests.
+.rc_download_species_gem <- function(
     species = c("human", "mouse"),
     destdir = tempfile("species-GEM-"),
     ref = "main",

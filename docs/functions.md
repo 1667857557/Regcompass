@@ -1,6 +1,6 @@
 # Function reference
 
-This page lists the supported public API. Complete argument definitions are in the corresponding Rd help pages. Mathematical definitions are maintained only in [mathematical-model.md](mathematical-model.md).
+This page lists the supported public API. Complete argument definitions are in the corresponding Rd help pages. Equations and quantitative definitions are maintained only in [mathematical-model.md](mathematical-model.md).
 
 ## Complete workflow
 
@@ -20,11 +20,11 @@ Main arguments: `object`, `gem`, `outdir`, `genome`, `species`, `condition_col`,
 
 ### `rc_regcompass_step_grn()`
 
-Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`; Pando inference controls are supplied through `pando_args$pando_infer_args`.
+Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`; inference options are supplied through `pando_args$pando_infer_args`.
 
 ### `rc_regcompass_step_metacells()`
 
-Construct Stage 2 multimodal metacells. `metacell_args$min_cells_per_stratum` defaults to `500L`. Optional raw fragments are supplied through `fragment_files`.
+Construct Stage 2 multimodal metacells. The public `metacell_args$min_cells_per_stratum` default is `500L`. Optional raw fragments are supplied through `fragment_files`.
 
 ### `rc_regcompass_step_meta_modules()`
 
@@ -36,7 +36,7 @@ Project RNA and regulatory evidence to reactions. Public controls are `gpr_and_m
 
 ### `rc_regcompass_step_layer2()`
 
-Build the Stage 5 structural model and score directional targets. `layer2_args` accepts `model_params`, `omega`, `target_direction`, `solver`, and `flux_threshold`. `model_mode = "meta_module_gem"` uses CORDA2 by default; FASTCORE and `full_gem` are supplementary routes. CORDA2 does not accept a finite `model_params$completion_time_limit`.
+Build the Stage 5 structural model and score directional targets. `layer2_args` accepts `model_params`, `omega`, `target_direction`, `solver`, and `flux_threshold`. `model_mode = "meta_module_gem"` uses CORDA2 by default; supplementary structural routes are selected explicitly through the current Rd-documented controls.
 
 ### `rc_regcompass_step_results()`
 
@@ -52,7 +52,7 @@ Select directly database-linked targets and rescore them in existing Stage 5 str
 
 Prepare the supported species GEM. Important arguments are `species`, `version`, `source`, `cache_dir`, `save_rds`, `force_download`, and `allow_latest`. Human defaults to Human-GEM `2.0.0`; mouse defaults to Mouse-GEM `1.8.0`.
 
-Low-level species download helpers, species-specific wrapper functions, and the bundled-asset manifest are implementation/maintenance interfaces rather than public workflow API.
+Species-specific preparation wrappers and low-level download/asset helpers are not public workflow APIs. Use `rc_prepare_gem()` for both species.
 
 ### `rc_make_medium_scenarios()`
 

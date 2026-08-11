@@ -13,7 +13,7 @@ knitr::opts_chunk$set(eval = FALSE, collapse = TRUE, comment = "#>")
 
 # Input
 
-Use a paired RNA+ATAC Seurat object with broad cell-type metadata, RNA PCA or Harmony, and ATAC LSI. Human workflows use `normal_human_plasma` by default when no medium is supplied; mouse workflows use `mouse_plasma`.
+Use a paired RNA+ATAC Seurat object with broad cell-type metadata, RNA PCA or Harmony, ATAC LSI, and genome-compatible peaks.
 
 ```r
 gem <- rc_prepare_gem(
@@ -28,6 +28,8 @@ medium_scenarios <- rc_make_medium_scenarios(
   species = "human"
 )
 ```
+
+When the workflow creates the medium automatically, human models use `normal_human_plasma` and mouse models use `mouse_plasma`.
 
 # One-shot run
 
@@ -45,36 +47,21 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-`pando_args$min_cells` and `metacell_args$min_cells_per_stratum` both default to `500L` and can be overridden. `model_mode = "meta_module_gem"` uses CORDA2 by default. Do not set `model_params$completion_time_limit` for CORDA2; that control is reserved for supplementary non-CORDA2 completion such as FASTCORE.
+The main stage-specific configuration bundles are `pando_args`, `metacell_args`, `meta_module_args`, `layer1_args`, and `layer2_args`. `model_mode = "meta_module_gem"` uses CORDA2 by default. Full parameter definitions are maintained in the corresponding Rd help pages.
 
-# Stepwise Layer 2
+# Restartable workflow
+
+The same workflow can be run stage by stage with:
 
 ```r
-step5 <- rc_regcompass_step_layer2(
-  layer1 = step4,
-  meta_modules = step3,
-  gem = gem,
-  medium_scenarios = medium_scenarios,
-  outdir = "RegCompass_steps/05_layer2",
-  model_mode = "meta_module_gem",
-  layer2_args = list(
-    target_direction = "both",
-    solver = "highs",
-    model_params = list(
-      strict = TRUE,
-      corda2_args = list(
-        MCxNCthresh = 2,
-        constraint = 1,
-        constrainby = "val",
-        om = 1e4,
-        ci = 0.01
-      )
-    )
-  ),
-  workers = 10L
-)
+step1 <- rc_regcompass_step_grn(...)
+step2 <- rc_regcompass_step_metacells(..., grn = step1)
+step3 <- rc_regcompass_step_meta_modules(grn = step1, metacells = step2, ...)
+step4 <- rc_regcompass_step_layer1(grn = step1, metacells = step2, meta_modules = step3, ...)
+step5 <- rc_regcompass_step_layer2(layer1 = step4, meta_modules = step3, ...)
+result <- rc_regcompass_step_results(grn = step1, metacells = step2, meta_modules = step3, layer1 = step4, layer2 = step5, ...)
 ```
 
 # Documentation
 
-The complete restartable workflow is in `docs/tutorial-02-stepwise-audit.md`; medium presets are in `docs/medium-presets.md`; all mathematical definitions are in `docs/mathematical-model.md`.
+Runnable stage calls are in `docs/tutorial-02-stepwise-audit.md`; medium presets are in `docs/medium-presets.md`; all equations and quantitative definitions are maintained only in `docs/mathematical-model.md`.

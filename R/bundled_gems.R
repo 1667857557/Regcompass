@@ -10,7 +10,7 @@
 }
 
 # Internal maintenance helper used to validate bundled GEM assets.
-rc_bundled_gem_manifest <- function() {
+.rc_bundled_gem_manifest <- function() {
   path <- system.file(
     "extdata", "gem", "manifest.tsv", package = "RegCompassR"
   )

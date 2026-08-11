@@ -50,8 +50,6 @@ test_that("species model routing is explicit and pinned", {
   expect_equal(mouse$version, "1.8.0")
   expect_equal(mouse$taxonomy_id, "10090")
   expect_identical(eval(formals(rc_prepare_gem)$species), c("human", "mouse"))
-  expect_identical(eval(formals(rc_prepare_human2_gem)$version), "2.0.0")
-  expect_identical(eval(formals(rc_prepare_mouse_gem)$version), "1.8.0")
 })
 
 test_that("Mouse-GEM GPR rules retain mouse symbols directly", {
