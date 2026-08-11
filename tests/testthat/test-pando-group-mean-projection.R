@@ -18,6 +18,29 @@ test_that("Pando projection multiplies separate metacell modality means", {
   )))
 })
 
+test_that("Pando group-mean projection supports sparse Matrix inputs", {
+  rna <- Matrix::Matrix(
+    matrix(c(1, 3), ncol = 1L,
+           dimnames = list(c("c1", "c2"), "TF1")),
+    sparse = TRUE
+  )
+  atac <- Matrix::Matrix(
+    matrix(c(4, 2), ncol = 1L,
+           dimnames = list(c("c1", "c2"), "chr1-10-20")),
+    sparse = TRUE
+  )
+  edge <- data.frame(
+    tf = "TF1", target = "G", region = "chr1-10-20", estimate = 2,
+    stringsAsFactors = FALSE
+  )
+
+  score <- RegCompassR:::.rc_pando_projection_from_group_means(
+    rna, atac, list(u1 = edge), list(u1 = c("c1", "c2")), "G"
+  )
+
+  expect_equal(score["u1", "g"], 2 * mean(c(1, 3)) * mean(c(4, 2)))
+})
+
 test_that("Pando group-mean projection sums edges by target", {
   rna <- matrix(c(1, 3, 2, 4), nrow = 2L,
                 dimnames = list(c("c1", "c2"), c("TF1", "TF2")))
