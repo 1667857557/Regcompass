@@ -16,8 +16,9 @@
 
 .rc_standard_pando_infer_args <- function(args) {
   if (!is.list(args)) stop("`pando_infer_args` must be a list.", call. = FALSE)
-  method <- as.character(args$method %||% "glm")
+  method <- as.character(args$method %||% "ridge")
   is_ridge <- length(method) == 1L && !is.na(method) && identical(method, "ridge")
+  args$method <- method
   forbidden <- intersect(names(args), c(
     "object", "genes", "network_name", "aggregate_rna_col",
     "aggregate_peaks_col", "parallel", "BPPARAM"
@@ -339,7 +340,10 @@
     normalization_policy = list(
       rna = "global single-cell normalized RNA",
       atac = "cell-type-shared TF-IDF",
-      grn_fit = "original Pando infer_grn per broad cell type",
+      grn_fit = paste(
+        "standard Pando infer_grn", infer_args$method,
+        "per broad cell type"
+      ),
       coefficient_contract = "standard_pando_coefficient_no_condition_effect",
       condition_coefficients_calculated = FALSE,
       standard_fallback_adjustments = fallback_adjustments,

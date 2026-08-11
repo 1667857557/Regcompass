@@ -50,8 +50,8 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type subset.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 configuration. \code{min_cells} defaults to \code{500L}; inference controls are supplied through \code{pando_infer_args}. Multi-condition cell types use the condition multi-task ridge path. Standard Pando defaults to \code{method = "glm"}; set \code{method = "ridge"} and optionally \code{ridge_control} to use the same ridge numerical backend in the single-task case.}
-\item{workers}{Single worker cap used by computational stages, default \code{10L}. Stage 1 uses one parallel level at a time: multiple retained GRNs are parallelized by cell type, while a single ridge GRN may use target-level workers. Worker inputs are trimmed to the RNA/ATAC assays and metadata required by Pando.}
+\item{pando_args}{Stage 1 configuration. \code{min_cells} defaults to \code{500L}; inference controls are supplied through \code{pando_infer_args}. Multi-condition cell types use the condition multi-task ridge path. Standard Pando also defaults to \code{method = "ridge"}, the K=1 specialization of the same ridge solver; set \code{method = "glm"} only when the original Gaussian GLM compatibility route is intentionally required.}
+\item{workers}{Single worker cap used by computational stages, default \code{10L}. Ridge GRNs use one parallel level at a time: cell types are processed sequentially and the worker budget is reused for target-level Pando work. Each target worker receives only target-specific RNA, ATAC, motif and edge-dictionary data, with worker and completed-batch temporaries released after use.}
 \item{progress}{Display and persist stage progress.}
 \item{fragment_files}{Optional Stage 2 raw fragment input.}
 \item{metacell_args}{Stage 2 reductions, dimensions, WNN, size, and fragment controls. \code{min_cells_per_stratum} defaults to \code{500L}.}

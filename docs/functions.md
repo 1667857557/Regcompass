@@ -20,7 +20,7 @@ Main arguments: `object`, `gem`, `outdir`, `genome`, `species`, `condition_col`,
 
 ### `rc_regcompass_step_grn()`
 
-Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`; inference options are supplied through `pando_args$pando_infer_args`. Multi-condition cell types use Pando multi-task ridge. Standard Pando keeps `method = "glm"` as the default and accepts `method = "ridge"` to use the same ridge solver in its single-task form. Stage 1 uses one parallel level at a time: multiple retained cell types are parallelized across cell types, while a single ridge GRN may use target-level workers. Pando worker inputs are reduced to the RNA/ATAC assays and metadata required by the fit.
+Infer Stage 1 regulatory evidence. `pando_args$min_cells` defaults to `500L`; inference options are supplied through `pando_args$pando_infer_args`. Multi-condition cell types use Pando multi-task ridge. Standard Pando now defaults to `method = "ridge"`, which is the K=1 specialization of the same ridge solver; `method = "glm"` remains an explicit compatibility option. Ridge routes keep one cell type resident at a time and use target-level workers under the global worker cap. Each Pando target worker receives only the target-specific RNA, ATAC, motif and edge-dictionary slices required for that target, and worker/batch temporaries are released after completion.
 
 ### `rc_regcompass_step_metacells()`
 
@@ -62,7 +62,7 @@ Create built-in or custom medium tables. Supported presets are `normal_human_pla
 
 ### `rc_parallel_config()`
 
-Inspect the platform-resolved parallel configuration without starting workers. The workflow itself uses one top-level `workers` cap. Stage 1 does not nest cell-type and target worker pools: multiple GRNs use cell-type parallelism, while a single ridge GRN can use target-level parallelism under the same cap.
+Inspect the platform-resolved parallel configuration without starting workers. The workflow itself uses one top-level `workers` cap. Ridge GRNs do not nest cell-type and target pools: cell types are processed sequentially and the available worker budget is reused for target-level Pando work. Target payloads are trimmed before dispatch and are released promptly after each completed worker batch.
 
 ## Post analysis
 
