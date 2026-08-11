@@ -76,7 +76,7 @@ test_that("Human-GEM downloader prefers tags for semver and validates archives",
     22L
   }
 
-  out <- rc_download_species_gem(species = "human", destdir = tempfile("hg-dl-"), ref = "v2.0.0", overwrite = TRUE, download_fun = mock_download)
+  out <- .rc_download_species_gem(species = "human", destdir = tempfile("hg-dl-"), ref = "v2.0.0", overwrite = TRUE, download_fun = mock_download)
   expect_match(calls[[1]], "/tags/")
   expect_equal(attr(out, "download_diagnostics")$archive_validation[[1]], "ok")
 })
@@ -88,7 +88,7 @@ test_that("Human-GEM downloader rejects status-zero HTML archives and cleans par
   }
   dest <- tempfile("hg-dl-bad-")
   expect_error(
-    rc_download_species_gem(species = "human", destdir = dest, ref = "main", overwrite = TRUE, download_fun = mock_download),
+    .rc_download_species_gem(species = "human", destdir = dest, ref = "main", overwrite = TRUE, download_fun = mock_download),
     "invalid_zip_magic"
   )
   expect_false(any(grepl("\\.part$", list.files(dest, full.names = TRUE))))
@@ -102,7 +102,7 @@ test_that("Human-GEM downloader uses heads first for branch refs", {
     1L
   }
   expect_error(
-    rc_download_species_gem(
+    .rc_download_species_gem(
       species = "human", destdir = tempfile("hg-dl-branch-"), ref = "develop",
       overwrite = TRUE, download_fun = mock_download
     ),
