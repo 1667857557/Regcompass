@@ -1,13 +1,14 @@
-test_that("condition target worker budgets evenly exhaust the cap", {
-  expect_identical(
-    .rc_allocate_condition_target_workers(60L, 8L),
-    c(8L, 8L, 8L, 8L, 7L, 7L, 7L, 7L)
-  )
-  expect_equal(sum(.rc_allocate_condition_target_workers(60L, 8L)), 60L)
+test_that("condition GRN worker budgets evenly exhaust the cap", {
+  budget <- .rc_allocate_condition_target_workers(60L, 8L)
+  expect_identical(budget, c(8L, 8L, 8L, 8L, 7L, 7L, 7L, 7L))
+  expect_equal(sum(budget), 60L)
   expect_identical(
     .rc_allocate_condition_target_workers(10L, 3L),
     c(4L, 3L, 3L)
   )
+
+  nested_capacity <- pmax(0L, budget - 1L)
+  expect_equal(length(budget) + sum(nested_capacity), 60L)
 })
 
 test_that("more condition GRNs than workers stay one-worker tasks", {
