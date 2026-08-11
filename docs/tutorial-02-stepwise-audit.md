@@ -1,6 +1,6 @@
 # Tutorial 2: restartable workflow
 
-Each stage writes a checkpoint to its output directory. Reuse the same input object, GEM, metadata columns, assays, and medium definition when restarting downstream stages. The code below shows the user-adjustable parameters used by the current workflow; fixed internal contracts are not exposed here.
+Each stage writes a checkpoint to its output directory. Reuse the same input object, GEM, metadata columns, assays, and medium definition when restarting downstream stages. The calls below expose the current user-adjustable parameter surface. Parameters that RegCompass deliberately fixes for cross-stage comparability are not presented as tunable controls.
 
 ```r
 workers <- 10L
@@ -25,10 +25,15 @@ step1 <- rc_regcompass_step_grn(
   atac_assay = "ATAC",
   pando_args = list(
     min_cells = 500L,
+    save_pando_objects = TRUE,
     pando_initiate_args = list(
+      regions = NULL,
       exclude_exons = TRUE
     ),
     pando_motif_args = list(
+      motif_tfs = NULL,
+      verbose = TRUE,
+      cache_dir = NULL,
       reuse_cache = TRUE
     ),
     pando_infer_args = list(
@@ -46,6 +51,11 @@ step1 <- rc_regcompass_step_grn(
         seed = 1L,
         scale_floor = 1e-8
       ),
+      peak_to_gene_method = "Signac",
+      upstream = 100000,
+      downstream = 0,
+      extend = 1000000,
+      only_tss = FALSE,
       method = "glm"
     )
   ),
@@ -54,13 +64,16 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-For broad cell types with at least two retained conditions, RegCompass always uses the condition-comparable multi-task ridge path; `condition_ridge_control` controls its CV and shrinkage. `method` applies only to the standard-Pando route used by cell types with one effective condition. The default standard method remains `"glm"`. `padj_threshold` is a condition-GRN control; the standard-Pando downstream edge gate remains the fixed historical `padj < 0.05` contract.
+For broad cell types with at least two retained conditions, RegCompass uses the condition-comparable multi-task ridge path; `condition_ridge_control` controls its lambda grid, selection rule, fusion strength, CV folds, seed, and scale floor. `padj_threshold` is a condition-GRN control. `method` and the peak-to-gene domain controls apply to the standard-Pando route used by cell types with one effective condition. The default standard method remains `"glm"`, and the standard downstream edge gate remains the fixed historical `padj < 0.05` contract.
+
+`regions = NULL` uses the bundled human regulatory-region set when available; supply a compatible `GRanges` to override it. `motif_tfs = NULL` uses the bundled Pando motif-to-TF map, and `cache_dir = NULL` lets RegCompass use its stage-local motif cache. Exact motif-position retention is intentionally fixed off because the workflow consumes the peak-by-motif incidence matrix rather than footprint coordinates.
 
 To use the same ridge numerical backend for standard Pando, set `method = "ridge"` and optionally add `ridge_control`:
 
 ```r
 pando_args_ridge <- list(
   min_cells = 500L,
+  save_pando_objects = TRUE,
   pando_infer_args = list(
     tf_cor = 0.1,
     peak_cor = 0.05,
@@ -68,6 +81,11 @@ pando_args_ridge <- list(
     padj_threshold = 0.05,
     rank_action = "mark",
     min_residual_df = 1L,
+    peak_to_gene_method = "Signac",
+    upstream = 100000,
+    downstream = 0,
+    extend = 1000000,
+    only_tss = FALSE,
     method = "ridge",
     ridge_control = list(
       lambda_grid = 10^seq(-3, 2, length.out = 9L),
@@ -89,7 +107,7 @@ pando_args_ridge <- list(
 )
 ```
 
-For standard ridge, `fusion_ratio` is accepted for a shared control schema but has no numerical effect because the standard model has one task. Standard-only Pando controls such as `peak_to_gene_method`, `upstream`, `downstream`, `extend`, `only_tss`, `alpha`, `family`, and other backend-specific arguments may also be supplied through `pando_infer_args` when that standard backend uses them.
+For standard ridge, `fusion_ratio` is accepted for the shared ridge-control schema but has no numerical effect because the standard model has one task. Other standard-only backend controls accepted through `pando_infer_args` are `alpha`, `family`, `aggregate_rna_col`, `aggregate_peaks_col`, `maxit`, `epsilon`, `control`, `nlambda`, `lambda`, `lambda.min.ratio`, `standardize`, `nfolds`, `type.measure`, `solver`, `bagging_number`, `n_jobs`, `p_method`, `prior`, `chains`, `cores`, `iter`, `seed`, `params`, `nrounds`, and `nthread`; they are relevant only to the selected standard backend. RegCompass constrains backend-internal thread counts to the workflow worker budget rather than treating them as an independent parallel cap.
 
 ## 2. Multimodal metacells
 
