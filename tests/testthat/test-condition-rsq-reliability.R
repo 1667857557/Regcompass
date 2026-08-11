@@ -70,5 +70,9 @@ test_that("combined Pando projection does not reuse route-level R-squared weight
   expect_match(body_text, ".rc_active_target_penalty_q", fixed = TRUE)
   expect_false(grepl("part$reliability", body_text, fixed = TRUE))
   expect_false(grepl("standard$reliability", body_text, fixed = TRUE))
-  expect_match(body_text, "R2 and OOF R2 remain fit", fixed = TRUE)
+  expect_match(
+    body_text,
+    "q=1 for valid active target; R2 and OOF R2 excluded from penalty",
+    fixed = TRUE
+  )
 })
