@@ -1,4 +1,4 @@
-test_that("Pando routing defaults peak_cor to 0.05", {
+test_that("Pando routing defaults peak_cor to 0.05 and standard ridge", {
   routed <- .rc_route_pando_infer_args(
     list(),
     condition_types = character(),
@@ -8,9 +8,13 @@ test_that("Pando routing defaults peak_cor to 0.05", {
   expect_equal(routed$standard$tf_cor, 0.1)
   expect_equal(routed$standard$peak_cor, 0.05)
   expect_equal(routed$standard$adjust_method, "BH")
+  expect_identical(routed$standard$method, "ridge")
+  expect_true(is.list(routed$standard$ridge_control))
+  expect_identical(routed$standard$rank_action, "mark")
+  expect_identical(routed$standard$min_residual_df, 1L)
 })
 
-test_that("single-condition standard Pando drops condition-only controls", {
+test_that("single-condition standard ridge drops only condition-exclusive controls", {
   routed <- .rc_route_pando_infer_args(
     list(
       tf_cor = 0.1,
@@ -27,13 +31,11 @@ test_that("single-condition standard Pando drops condition-only controls", {
   expect_equal(routed$standard$tf_cor, 0.1)
   expect_equal(routed$standard$peak_cor, 0)
   expect_equal(routed$standard$adjust_method, "BH")
-  expect_false(any(c(
-    "padj_threshold", "rank_action", "min_residual_df"
-  ) %in% names(routed$standard)))
-  expect_setequal(
-    routed$diagnostics$argument,
-    c("padj_threshold", "rank_action", "min_residual_df")
-  )
+  expect_identical(routed$standard$method, "ridge")
+  expect_identical(routed$standard$rank_action, "mark")
+  expect_identical(routed$standard$min_residual_df, 1L)
+  expect_false("padj_threshold" %in% names(routed$standard))
+  expect_setequal(routed$diagnostics$argument, "padj_threshold")
 })
 
 test_that("condition GRN routes ridge controls and drops standard-model controls", {
