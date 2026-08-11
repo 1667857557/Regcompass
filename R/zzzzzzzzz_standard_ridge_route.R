@@ -1,9 +1,9 @@
 # Optional standard-Pando ridge routing. Original GLM remains the default.
 # Canonical direct definitions remain in the original routing files; extended
-# behavior is installed through aliases after helper definitions.
+# behavior is installed only through aliases after helper definitions.
 
 .rc_pando_infer_arg_catalog_standard_ridge_impl <- .rc_pando_infer_arg_catalog
-.rc_pando_infer_arg_catalog <- function() {
+.rc_pando_infer_arg_catalog_standard_ridge <- function() {
   out <- .rc_pando_infer_arg_catalog_standard_ridge_impl()
   out$standard <- unique(c(
     out$standard,
@@ -65,7 +65,7 @@
 }
 
 .rc_standard_pando_infer_args_ridge_impl <- .rc_standard_pando_infer_args
-.rc_standard_pando_infer_args <- function(args) {
+.rc_standard_pando_infer_args_standard_ridge <- function(args) {
   if (!is.list(args)) stop("`pando_infer_args` must be a list.", call. = FALSE)
   method <- as.character(args$method %||% "glm")
   is_ridge <- length(method) == 1L && !is.na(method) && identical(method, "ridge")
@@ -89,7 +89,7 @@
 .rc_run_standard_pando_celltype_job_glm_impl <-
   .rc_run_standard_pando_celltype_job
 
-.rc_run_standard_pando_celltype_job <- function(
+.rc_run_standard_pando_celltype_job_ridge <- function(
     job, base, extra_args, standard_infer_args,
     outer_parallel, progress_monitor) {
   method <- as.character(standard_infer_args$method %||% "glm")
@@ -186,7 +186,7 @@
 .rc_fit_pando_by_celltype_route_standard_ridge_impl <-
   .rc_fit_pando_by_celltype_route
 
-.rc_fit_pando_by_celltype_route <- function(
+.rc_fit_pando_by_celltype_route_ridge <- function(
     object, gem, outdir, genome, pfm, species, condition_col, celltype_col,
     condition_types, standard_types, rna_assay, atac_assay,
     extra_args, condition_infer_args, standard_infer_args,
@@ -329,4 +329,8 @@
   answer
 }
 
+.rc_pando_infer_arg_catalog <- .rc_pando_infer_arg_catalog_standard_ridge
 .rc_route_pando_infer_args <- .rc_route_pando_infer_args_standard_ridge
+.rc_standard_pando_infer_args <- .rc_standard_pando_infer_args_standard_ridge
+.rc_run_standard_pando_celltype_job <- .rc_run_standard_pando_celltype_job_ridge
+.rc_fit_pando_by_celltype_route <- .rc_fit_pando_by_celltype_route_ridge
