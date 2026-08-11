@@ -22,7 +22,13 @@ where \(T\) is TF expression and \(A\) is peak accessibility. Every retained con
 y_{g,i}=\alpha_{g,c}+\sum_{e\in E_g^{\cup}}\beta_{e,g,c}x_{e,i}+\varepsilon_{g,i}.
 \]
 
-An edge contributes downstream only when the complete target fit has `fit_status == "ok"`, the edge coefficient is estimable and finite, and its BH-adjusted P value is below 0.05. Rank-deficient or otherwise invalid target fits remain auditable but contribute zero regulatory effect.
+Let \(\theta_{adj}\) denote the configured `padj_threshold`; its default is 0.05, but it is not fixed. An edge contributes downstream only when the complete target fit has `fit_status == "ok"`, the edge coefficient is estimable and finite, and its BH-adjusted P value satisfies
+
+\[
+P^{adj}_{e,g,c}<\theta_{adj}.
+\]
+
+Rank-deficient or otherwise invalid target fits remain auditable but contribute zero regulatory effect. The same configurable `padj_threshold` contract is used by Standard Pando for its final active-edge gate.
 
 The target weight used by the downstream penalty is binary. A target-condition pair with at least one final active edge has
 
