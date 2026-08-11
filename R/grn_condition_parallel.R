@@ -67,7 +67,6 @@
     motif_args$cache_dir <- file.path(
       motif_args$cache_dir, .rc_safe_path_component(task$cell_type)
     )
-    job_extra$pando_motif_args <- motif_args
   }
   motif <- list(object = grn, pfm = pfm, genome = genome)
   motif[names(motif_args)] <- NULL
