@@ -33,3 +33,24 @@ test_that("standard glm remains available", {
   expect_identical(routed$standard$method, "glm")
   expect_false("ridge_control" %in% names(routed$standard))
 })
+
+test_that("standard ridge is implemented in canonical source functions", {
+  expect_false(exists(
+    ".rc_pando_infer_arg_catalog_standard_ridge", inherits = TRUE
+  ))
+  expect_false(exists(
+    ".rc_route_pando_infer_args_standard_ridge", inherits = TRUE
+  ))
+  expect_false(exists(
+    ".rc_run_standard_pando_celltype_job_ridge", inherits = TRUE
+  ))
+  expect_false(exists(
+    ".rc_fit_pando_by_celltype_route_ridge", inherits = TRUE
+  ))
+  route_text <- paste(deparse(body(.rc_route_pando_infer_args)), collapse = "\n")
+  expect_match(route_text, "ridge_control", fixed = TRUE)
+  standard_text <- paste(
+    deparse(body(.rc_standard_pando_infer_args)), collapse = "\n"
+  )
+  expect_match(standard_text, "is_ridge", fixed = TRUE)
+})
