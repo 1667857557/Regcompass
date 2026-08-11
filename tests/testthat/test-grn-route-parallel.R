@@ -1,17 +1,25 @@
-test_that("Pando routing defaults peak_cor to 0.05 and standard ridge", {
-  routed <- .rc_route_pando_infer_args(
+test_that("Pando routing defaults correlations to 0.05 and standard ridge", {
+  standard <- .rc_route_pando_infer_args(
     list(),
     condition_types = character(),
     standard_types = "T_cell"
   )
+  condition <- .rc_route_pando_infer_args(
+    list(),
+    condition_types = "T_cell",
+    standard_types = character()
+  )
 
-  expect_equal(routed$standard$tf_cor, 0.1)
-  expect_equal(routed$standard$peak_cor, 0.05)
-  expect_equal(routed$standard$adjust_method, "BH")
-  expect_identical(routed$standard$method, "ridge")
-  expect_true(is.list(routed$standard$ridge_control))
-  expect_identical(routed$standard$rank_action, "mark")
-  expect_identical(routed$standard$min_residual_df, 1L)
+  expect_equal(standard$standard$tf_cor, 0.05)
+  expect_equal(standard$standard$peak_cor, 0.05)
+  expect_equal(standard$standard$adjust_method, "BH")
+  expect_identical(standard$standard$method, "ridge")
+  expect_true(is.list(standard$standard$ridge_control))
+  expect_identical(standard$standard$rank_action, "mark")
+  expect_identical(standard$standard$min_residual_df, 1L)
+  expect_equal(condition$condition$tf_cor, 0.05)
+  expect_equal(condition$condition$peak_cor, 0.05)
+  expect_equal(condition$condition$padj_threshold, 0.05)
 })
 
 test_that("single-condition standard ridge drops only condition-exclusive controls", {
