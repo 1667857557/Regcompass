@@ -105,13 +105,17 @@ jobs:
               raise RuntimeError(f"Layer 1 canonical handoff missing: {missing}")
           required_projection = [
               ".rc_pando_projection_from_group_means <- function",
-              "tf_mean <- colMeans",
-              "peak_mean <- colMeans",
+              "tf_mean <- if",
+              "peak_mean <- if",
+              "Matrix::colMeans(tf_block)",
+              "base::colMeans(tf_block)",
+              "Matrix::colMeans(peak_block)",
+              "base::colMeans(peak_block)",
               "contribution <- estimate * tf_mean * peak_mean",
           ]
           missing = [value for value in required_projection if value not in projection]
           if missing:
-              raise RuntimeError(f"group-mean Pando projection contract missing: {missing}")
+              raise RuntimeError(f"sparse-safe product-of-means Pando projection missing: {missing}")
           forbidden_layer1 = [
               "paired_cell_fixed_dictionary_glm_bh_filtered",
               "bh_filtered_fixed_dictionary_condition_glm",
