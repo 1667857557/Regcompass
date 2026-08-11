@@ -20,7 +20,7 @@ jobs:
       - name: Verify regularized rank deficiency remains diagnostic
         shell: Rscript {0}
         run: |
-          .rc_standard_pando_padj_fixed <- 0.05
+          .rc_standard_pando_padj_default <- 0.05
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
 
