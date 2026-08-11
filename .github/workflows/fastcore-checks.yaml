@@ -40,7 +40,8 @@ jobs:
               "'layer2_corda2_algorithm.R'",
               "'layer2_corda_model.R'",
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v2",
-              "Config/RegCompass/PandoConditionProjectionPolicy: continuous-estimable-ridge-effects",
+              "Config/RegCompass/PandoConditionProjectionPolicy: padj-significant-ridge-effects",
+              "Config/RegCompass/PandoConditionMethod: significant-union-multitask-ridge-refit",
           ]
           missing = [x for x in required_description if x not in description]
           if missing:
@@ -49,6 +50,7 @@ jobs:
               "R/condition_grn_contract_compat.R",
               "R/grn_integration_contract.R",
               "R/grn_parallel_output_contract.R",
+              "R/step_layer1_significance_contract.R",
           ]
           present = [x for x in obsolete_files if Path(x).exists()]
           if present:
@@ -112,7 +114,6 @@ jobs:
               ".rc_route_pando_infer_args_core",
               ".rc_extract_condition_grn_contract_core",
               ".rc_merge_condition_job_results_core",
-              ".rc_merge_pando_results_core",
               ".rc_merge_pando_results_validated",
               ".rc_merge_pando_results_with_parallel_objects",
               ".rc_fit_condition_grns_regcompass_parallel",
@@ -130,6 +131,7 @@ jobs:
               'tf_cor = 0.1',
               'peak_cor = 0.05',
               'condition_ridge_control = list()',
+              "padj_threshold in (0, 0.1]",
               "Unsupported override(s)",
           ]
           missing = [x for x in required_route if x not in route]
@@ -142,9 +144,12 @@ jobs:
           condition_helpers = Path("R/grn_condition_parallel.R").read_text()
           required_condition = [
               ".rc_fit_condition_grns_by_cell_type",
-              "joint multi-task ridge",
+              "preliminary joint ridge BH screening",
+              "significant-edge union",
+              "final joint ridge",
               "tf_peak_gene_condition_contrasts",
-              "continuous finite estimable raw-unit multi-task ridge coefficient",
+              "same_significant_union_dictionary_joint_multitask_ridge_raw_units",
+              "screening_n_significant_conditions",
           ]
           missing = [x for x in required_condition if x not in condition]
           if missing:
@@ -154,6 +159,7 @@ jobs:
               "Pando::infer_condition_grn",
               "Pando::condition_grn_fit",
               "condition_ridge_control",
+              "threshold > 0.1",
               'parallel_scope = "target"',
           ]
           missing = [x for x in helper_required if x not in condition_helpers]
@@ -167,14 +173,16 @@ jobs:
           required_penalty = [
               "coefficient$estimable %in% TRUE",
               "is.finite(estimate)",
+              "is.finite(padj)",
+              "padj < threshold",
               'fit_status == "ok"',
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
-              'fit$regcompass_significance_role <- "diagnostic_only"',
+              'fit$regcompass_significance_role <- "condition_edge_inclusion_gate"',
           ]
           missing = [x for x in required_penalty if x not in penalty]
           if missing:
-              raise RuntimeError(f"continuous ridge penalty contract missing: {missing}")
+              raise RuntimeError(f"BH-significant ridge penalty contract missing: {missing}")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
@@ -192,9 +200,11 @@ jobs:
           if missing:
               raise RuntimeError(f"sparse-safe product-of-means Pando projection missing: {missing}")
           required_layer1 = [
-              'expected_filter <- "estimable & finite estimate & fit_status == \'ok\'"',
+              ".rc_condition_padj_threshold(fit = fit)",
+              ".rc_condition_penalty_gate",
               '"beta_times_group_mean_tf_times_group_mean_atac"',
-              'origin = "paired_cell_exact_union_multitask_ridge_continuous"',
+              'origin = "paired_cell_significant_union_multitask_ridge_bh_filtered"',
+              'projection_name = "bh_significant_multitask_ridge_condition_effect"',
           ]
           missing = [x for x in required_layer1 if x not in layer1]
           if missing:
@@ -258,7 +268,8 @@ jobs:
           remotes <- unname(description[1L, "Remotes"])
           stopifnot(
             grepl("1667857557/Pando_regcompass", remotes, fixed = TRUE),
-            grepl("1667857557/SuperCell_Seurat_V4", remotes, fixed = TRUE)
+            grepl("1667857557/SuperCell_Seurat_V4", remotes, fixed = TRUE),
+            !grepl("@", remotes, fixed = TRUE)
           )
           files <- c(
             list.files("R", pattern = "[.]R$", full.names = TRUE),
@@ -275,12 +286,18 @@ jobs:
           coefficient <- data.frame(
             estimate = c(1e-8, 2, 3, NA_real_),
             estimable = c(TRUE, TRUE, TRUE, FALSE),
+            padj = c(0.01, 0.08, 0.2, NA_real_),
             fit_status = c("ok", "ok", "ok", "ok"),
             stringsAsFactors = FALSE
           )
           stopifnot(identical(
-            .rc_condition_penalty_gate(coefficient),
-            c(TRUE, TRUE, TRUE, FALSE)
+            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.1),
+            c(TRUE, TRUE, FALSE, FALSE)
+          ))
+          stopifnot(inherits(
+            try(.rc_condition_penalty_gate(coefficient, padj_threshold = 0.11),
+                silent = TRUE),
+            "try-error"
           ))
 
       - name: Build source package
