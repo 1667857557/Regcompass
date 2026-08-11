@@ -38,7 +38,8 @@
       "condition_fit_status", "pando_network_index", "pando_fit_diagnostics",
       "tf_peak_gene_universal", "tf_peak_gene_condition_all",
       "tf_peak_gene_condition", "tf_peak_gene_condition_effect_all",
-      "tf_peak_gene_condition_effect", "paired_cell_metadata"
+      "tf_peak_gene_condition_effect", "tf_peak_gene_condition_contrasts",
+      "paired_cell_metadata"
     )
     for (field in frame_fields) {
       answer[[field]] <- .rc_bind_pando_field(results, field)
@@ -103,7 +104,7 @@
   cell_id <- as.character(paired$cell_id)
   if (anyNA(cell_id) || any(!nzchar(trimws(cell_id))) || anyDuplicated(cell_id)) {
     stop("Merged condition-GRN output contains invalid paired-cell IDs.",
-         call. = FALSE)
+         call. = FALSE
   }
   answer
 }
