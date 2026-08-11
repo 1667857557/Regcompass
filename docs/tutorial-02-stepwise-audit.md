@@ -6,7 +6,7 @@ Each stage writes a checkpoint to its output directory. Reuse the same input obj
 workers <- 10L
 ```
 
-`workers` is the single workflow-level process cap. RegCompass selects the platform-specific backend automatically. For condition GRNs, the cap is divided across concurrently running cell types and each Pando fit can use its assigned remainder for target-level work; completed target pools are released immediately.
+`workers` is the single workflow-level process cap. RegCompass selects the platform-specific backend automatically for ordinary dispatches. Stage 1 ridge fitting uses bounded hierarchical scheduling: the cap is divided across concurrently running cell-type GRNs, each Pando fit can use its assigned remainder for target-level work, nested GRN pools use isolated SOCK workers, and completed target pools are released immediately.
 
 ## 1. Regulatory evidence
 
@@ -54,7 +54,7 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-For broad cell types with at least two retained conditions, RegCompass always uses the condition-comparable multi-task ridge path; `condition_ridge_control` controls its CV and shrinkage. `method` applies only to the standard-Pando route used by cell types with one effective condition. The default standard method remains `"glm"`.
+For broad cell types with at least two retained conditions, RegCompass always uses the condition-comparable multi-task ridge path; `condition_ridge_control` controls its CV and shrinkage. `method` applies only to the standard-Pando route used by cell types with one effective condition. The default standard method remains `"glm"`. `padj_threshold` is a condition-GRN control; the standard-Pando downstream edge gate remains the fixed historical `padj < 0.05` contract.
 
 To use the same ridge numerical backend for standard Pando, set `method = "ridge"` and optionally add `ridge_control`:
 
