@@ -1,11 +1,5 @@
 # Task helpers used directly by the canonical condition-GRN implementation.
 
-.rc_condition_network_label <- function(x) {
-  value <- gsub("[^[:alnum:]_.-]+", "_", as.character(x))
-  value[!nzchar(value)] <- "unnamed"
-  value
-}
-
 .rc_condition_parallel_plan <- function(
     metadata, condition_types, condition_col, celltype_col, min_cells) {
   condition_types <- unique(as.character(condition_types))
@@ -73,6 +67,7 @@
     motif_args$cache_dir <- file.path(
       motif_args$cache_dir, .rc_safe_path_component(task$cell_type)
     )
+    job_extra$pando_motif_args <- motif_args
   }
   motif <- list(object = grn, pfm = pfm, genome = genome)
   motif[names(motif_args)] <- NULL
