@@ -180,13 +180,17 @@ jobs:
           projection = Path("R/pando_evidence_utils.R").read_text()
           required_projection = [
               ".rc_pando_projection_from_group_means <- function",
-              "tf_mean <- colMeans",
-              "peak_mean <- colMeans",
+              "tf_mean <- if",
+              "peak_mean <- if",
+              "Matrix::colMeans(tf_block)",
+              "base::colMeans(tf_block)",
+              "Matrix::colMeans(peak_block)",
+              "base::colMeans(peak_block)",
               "contribution <- estimate * tf_mean * peak_mean",
           ]
           missing = [x for x in required_projection if x not in projection]
           if missing:
-              raise RuntimeError(f"group-mean Pando projection contract missing: {missing}")
+              raise RuntimeError(f"sparse-safe product-of-means Pando projection missing: {missing}")
           required_layer1 = [
               'expected_filter <- "estimable & finite estimate & fit_status == \'ok\'"',
               '"beta_times_group_mean_tf_times_group_mean_atac"',
