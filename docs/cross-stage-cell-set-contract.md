@@ -6,7 +6,9 @@ Stage 1 applies `pando_args$min_cells` before normalization and stores the exact
 step1$cell_filter$retained_cells
 ```
 
-For condition-aware Pando, an undersized condition × cell-type stratum is deleted. A cell type with at least two qualifying conditions uses condition-GRN fitting; a cell type with one qualifying condition uses standard Pando. Cell types without a qualifying stratum remain in `step1$cell_filter$diagnostics` but are not sent to Stage 1 fitting or Stage 2 metacell construction.
+For condition-aware input, an undersized condition × cell-type stratum is deleted first. Routing is then automatic for each retained broad cell type: at least two retained condition levels use Condition Pando; one retained condition level uses Standard Pando. With `condition_col = NULL`, Standard Pando is used. Mixed datasets may therefore contain both routes in one Stage 1 run.
+
+The stable Pando defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment, and `padj_threshold = 0.05` where the selected route uses that parameter. Known arguments belonging only to the other Pando route are ignored for the incompatible route; genuinely unknown argument names still fail validation.
 
 Use the Stage 1 result explicitly in a stepwise run:
 
@@ -20,15 +22,7 @@ step1 <- rc_regcompass_step_grn(
   condition_col = "dataset",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 500L,
-    pando_infer_args = list(
-      tf_cor = 0.1,
-      peak_cor = 0.05,
-      adjust_method = "BH",
-      padj_threshold = 0.05,
-      rank_action = "mark",
-      min_residual_df = 1L
-    )
+    min_cells = 500L
   )
 )
 
