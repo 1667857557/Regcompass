@@ -1,4 +1,4 @@
-# Cell-type-specific routing between common-dictionary and standard Pando.
+# Cell-type-specific routing between condition and standard Pando.
 
 .rc_bind_pando_field <- function(results, field) {
   values <- lapply(results, function(x) x[[field]])
@@ -96,20 +96,24 @@
       gate <- .rc_condition_penalty_gate(
         all_edges[condition_rows, , drop = FALSE]
       )
-      all_edges$significant[condition_rows] <- gate
       all_edges$penalty_effect[condition_rows] <- ifelse(
         gate,
         suppressWarnings(as.numeric(all_edges$estimate[condition_rows])),
         0
       )
-      if ("penalty_eligible" %in% colnames(all_edges)) {
-        all_edges$penalty_eligible[condition_rows] <- gate
+      if (!"penalty_eligible" %in% colnames(all_edges)) {
+        all_edges$penalty_eligible <- FALSE
       }
-      if ("active_in_condition" %in% colnames(all_edges)) {
-        all_edges$active_in_condition[condition_rows] <- gate
+      all_edges$penalty_eligible[condition_rows] <- gate
+      if (!"active_in_condition" %in% colnames(all_edges)) {
+        all_edges$active_in_condition <- FALSE
       }
+      all_edges$active_in_condition[condition_rows] <- gate
+      # Do not overwrite Pando's `significant` field: it remains an approximate
+      # ridge-Wald/BH diagnostic and is intentionally separate from the
+      # continuous quantitative projection gate.
       condition_active <- all_edges[condition_rows &
-        all_edges$significant %in% TRUE, , drop = FALSE]
+        all_edges$penalty_eligible %in% TRUE, , drop = FALSE]
       standard_active <- if (nrow(active_edges) &&
           "analysis_mode" %in% colnames(active_edges)) {
         active_edges[
@@ -132,6 +136,9 @@
     condition_coefficients_calculated = length(condition_fits) > 0L,
     pando_fit_schema = if (length(condition_fits)) {
       .RC_PANDO_CONDITION_GRN_FIT_SCHEMA
+    } else NA_character_,
+    pando_model_schema = if (length(condition_fits)) {
+      .RC_PANDO_CONDITION_GRN_MODEL_SCHEMA
     } else NA_character_,
     pando_installed_version = as.character(utils::packageVersion("Pando")),
     pando_grn_data = if (length(condition_objects) == 1L) {
@@ -187,6 +194,9 @@
     } else {
       active_edges
     },
+    tf_peak_gene_condition_contrasts = .rc_bind_pando_field(
+      results, "tf_peak_gene_condition_contrasts"
+    ),
     paired_cell_ids = unique(as.character(paired_meta$cell_id)),
     paired_cell_metadata = paired_meta,
     normalization_policy = list(
@@ -196,7 +206,10 @@
         "condition GRN for at least two retained conditions;",
         "standard Pando otherwise"
       ),
-      condition_effect_filter = "estimable and BH adjusted P below 0.05",
+      condition_effect_filter = paste(
+        "continuous finite estimable multi-task ridge coefficient;",
+        "ridge-Wald/BH significance retained only as diagnostics"
+      ),
       standard_edge_filter =
         "estimable when available and adjusted P below 0.05",
       projection =
@@ -217,6 +230,12 @@
     answer$tf_peak_gene_condition,
     file.path(outdir, "pando_tf_peak_gene_active.tsv.gz")
   )
+  if (nrow(answer$tf_peak_gene_condition_contrasts)) {
+    .rc_write_tsv_gz(
+      answer$tf_peak_gene_condition_contrasts,
+      file.path(outdir, "pando_tf_peak_gene_condition_contrasts.tsv.gz")
+    )
+  }
   saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
   answer
 }

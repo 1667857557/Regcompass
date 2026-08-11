@@ -1,8 +1,9 @@
 # Pando edge eligibility used by the canonical Stage-1 merge.
 
-# Retained only for backward-compatible provenance fields. They are not applied
-# as post-fit thresholds; zero records that no additional correlation or
-# coefficient-size gate is imposed after Pando candidate screening and BH.
+# Candidate-correlation and absolute-effect thresholds remain disabled here.
+# The condition path now uses the configured BH-adjusted ridge-Wald threshold
+# as the sole post-fit edge inclusion gate, after Pando has already constructed
+# a significant-union common fit dictionary.
 .RC_PANDO_PENALTY_CORR_THRESHOLD <- 0
 .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0
 
@@ -47,23 +48,46 @@
   status
 }
 
-.rc_condition_penalty_gate <- function(coefficient) {
-  required <- c("estimate", "padj", "estimable")
+.rc_condition_padj_threshold <- function(fit = NULL, coefficient = NULL) {
+  value <- if (!is.null(fit) && !is.null(fit$padj_threshold)) {
+    fit$padj_threshold
+  } else if (is.data.frame(coefficient) &&
+             "padj_threshold" %in% colnames(coefficient)) {
+    unique(suppressWarnings(as.numeric(coefficient$padj_threshold)))
+  } else {
+    0.05
+  }
+  value <- suppressWarnings(as.numeric(value))
+  value <- value[is.finite(value)]
+  if (length(value) != 1L || value <= 0 || value >= 1) {
+    stop("Condition-GRN padj_threshold must be one value in (0, 1).",
+         call. = FALSE)
+  }
+  value[[1L]]
+}
+
+.rc_condition_penalty_gate <- function(coefficient, padj_threshold = NULL) {
+  required <- c("estimate", "estimable", "padj")
   if (!is.data.frame(coefficient) ||
       !all(required %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN coefficients must contain estimate, padj, and estimable ",
-      "columns before RegCompass penalty filtering.",
-      call. = FALSE
+      "Condition-GRN coefficients must contain estimate, estimable and padj ",
+      "before RegCompass penalty filtering.", call. = FALSE
     )
+  }
+  threshold <- if (is.null(padj_threshold)) {
+    .rc_condition_padj_threshold(coefficient = coefficient)
+  } else {
+    value <- suppressWarnings(as.numeric(padj_threshold))
+    if (length(value) != 1L || !is.finite(value) ||
+        value <= 0 || value >= 1) {
+      stop("Condition-GRN padj_threshold must be in (0, 1).",
+           call. = FALSE)
+    }
+    value
   }
   estimate <- suppressWarnings(as.numeric(coefficient$estimate))
   padj <- suppressWarnings(as.numeric(coefficient$padj))
-
-  # Canonical condition-GRN fits attach the target-level status before this
-  # gate is applied. The fallback preserves compatibility for legacy tables
-  # that predate fit_status metadata; it is not used by the current condition
-  # merge/projection path.
   fit_status <- if ("fit_status" %in% colnames(coefficient)) {
     trimws(as.character(coefficient$fit_status))
   } else {
@@ -72,28 +96,34 @@
 
   coefficient$estimable %in% TRUE &
     !is.na(fit_status) & fit_status == "ok" &
-    is.finite(padj) & padj < 0.05 &
-    is.finite(estimate)
+    is.finite(estimate) & is.finite(padj) & padj < threshold
 }
 
 .rc_apply_condition_penalty_gate <- function(fit) {
   .rc_require_pando_condition_grn_fit(fit)
+  threshold <- .rc_condition_padj_threshold(fit = fit)
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
   coefficient$fit_status <- .rc_condition_fit_status_for_coefficients(
     fit, coefficient
   )
-  gate <- .rc_condition_penalty_gate(coefficient)
+  coefficient$padj_threshold <- threshold
+  gate <- .rc_condition_penalty_gate(
+    coefficient, padj_threshold = threshold
+  )
   coefficient$significant <- gate
   coefficient$penalty_effect <- ifelse(
     gate, suppressWarnings(as.numeric(coefficient$estimate)), 0
   )
   fit$coefficients <- coefficient
-  # Keep the historical BH-filter field for compatibility and record the new
-  # target-level eligibility rule separately so older saved objects remain
-  # readable while current fits are explicit about rank-deficient exclusion.
-  fit$regcompass_penalty_filter <- "estimable & BH padj < 0.05"
+  fit$regcompass_penalty_filter <- paste0(
+    "estimable & finite estimate & fit_status == 'ok' & BH padj < ",
+    format(threshold, trim = TRUE)
+  )
   fit$regcompass_fit_status_filter <- "fit_status == 'ok'"
-  fit$regcompass_rank_deficient_policy <- "exclude_from_penalty"
+  fit$regcompass_rank_deficient_policy <-
+    "regularized_ok_fit_retained; condition-zero-variance edge excluded"
+  fit$regcompass_significance_role <- "condition_edge_inclusion_gate"
+  fit$regcompass_padj_threshold <- threshold
   fit
 }
 
@@ -102,8 +132,7 @@
   if (!is.data.frame(table) || !all(required %in% colnames(table))) {
     stop(
       "Standard Pando requires estimate and padj columns for RegCompass ",
-      "penalty filtering.",
-      call. = FALSE
+      "penalty filtering.", call. = FALSE
     )
   }
   estimate <- suppressWarnings(as.numeric(table$estimate))
