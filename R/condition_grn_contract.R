@@ -79,14 +79,16 @@
       identical(fit$condition_col, fit$cell_type_col) ||
       !scalar_text(fit$coefficient_scale)) {
     stop("Pando condition fit identifiers and model labels are invalid.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
 
   levels <- as.character(fit$condition_levels)
   if (length(levels) < 2L || anyNA(levels) || any(!nzchar(levels)) ||
       anyDuplicated(levels)) {
     stop("Pando condition levels must contain at least two unique labels.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   cells_by_condition <- fit$condition_cell_ids
   cell_list_names <- names(cells_by_condition)
@@ -94,25 +96,29 @@
       anyNA(cell_list_names) || any(!nzchar(cell_list_names)) ||
       anyDuplicated(cell_list_names) || !all(levels %in% cell_list_names)) {
     stop("Pando condition cell IDs are not uniquely named for every condition.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   cells_by_condition <- cells_by_condition[levels]
   if (any(lengths(cells_by_condition) < 1L)) {
     stop("Every Pando fitted condition must contain at least one cell.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   fitted_cells <- as.character(unlist(cells_by_condition, use.names = FALSE))
   if (!length(fitted_cells) || anyNA(fitted_cells) ||
       any(!nzchar(fitted_cells)) || anyDuplicated(fitted_cells)) {
     stop("Pando fitted cells must be complete and condition-disjoint.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
 
   targets <- unique(as.character(fit$target_genes))
   if (!length(targets) || anyNA(targets) || any(!nzchar(targets)) ||
       anyDuplicated(toupper(targets))) {
     stop("Pando fitted target genes are empty or case-ambiguous.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
 
   edge <- as.data.frame(fit$edge_dictionary, stringsAsFactors = FALSE)
@@ -134,7 +140,8 @@
       anyDuplicated(edge$edge_id) ||
       any(!coefficient$condition %in% levels)) {
     stop("Pando common-dictionary coefficient table is incomplete.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
 
   dictionary_ids <- sort(as.character(edge$edge_id))
@@ -195,8 +202,8 @@
     )
     if (!identical(as.character(coefficient$direction), expected_direction)) {
       stop("Pando coefficient directions are inconsistent with estimates.",
-           call. = FALSE)
-    }
+           call. = FALSE
+    )
   }
 
   fit_table <- as.data.frame(fit$fit, stringsAsFactors = FALSE)
@@ -232,7 +239,8 @@
       any(!contrast$condition_b %in% levels) ||
       any(!contrast$edge_id %in% dictionary_ids)) {
     stop("Pando pairwise condition-contrast table is incomplete.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   pair_key <- paste(contrast$condition_a, contrast$condition_b, sep = "\001")
   for (pair in unique(pair_key)) {
@@ -273,7 +281,8 @@
       !all(c(condition_col, celltype_col) %in% colnames(metadata)) ||
       is.null(rownames(metadata)) || anyDuplicated(rownames(metadata))) {
     stop("Pando object metadata cannot validate condition fit cell mappings.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   for (fit in fits) {
     if (!identical(as.character(fit$condition_col), condition_col) ||
@@ -338,8 +347,8 @@
     fit_index <- match(coef_key, fit_key)
     if (anyNA(fit_index)) {
       stop("Condition coefficient and target fit diagnostics are misaligned.",
-           call. = FALSE)
-    }
+           call. = FALSE
+    )
     coefficient$rsq <- as.numeric(fit_table$rsq[fit_index])
     coefficient$fit_status <- as.character(fit_table$fit_status[fit_index])
     coefficient$reliable_model <- coefficient$fit_status == "ok"
@@ -500,7 +509,8 @@
   target_genes <- rna_genes[toupper(rna_genes) %in% target_upper]
   if (!length(target_genes)) {
     stop("No overlap between RNA genes and GEM metabolic genes.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
 
   prepare_tasks <- lapply(names(plans), function(type) {
@@ -531,7 +541,8 @@
   if (anyDuplicated(prepared_types) ||
       !setequal(prepared_types, names(plans))) {
     stop("Condition-GRN Pando initialization returned an invalid cell-type set.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   names(prepared) <- prepared_types
   prepared <- prepared[names(plans)]
@@ -562,12 +573,13 @@
     min_cells = min_cells,
     pando_infer_args = pando_infer_args,
     inner_parallel = inner_parallel,
-    BPPARAM = if (inner_parallel) BPPARAM else NULL
+    PANDO_BPPARAM = if (inner_parallel) BPPARAM else NULL
   )
   fit_types <- vapply(fit_results, `[[`, character(1), "cell_type")
   if (anyDuplicated(fit_types) || !setequal(fit_types, names(plans))) {
     stop("Pando multi-task condition fits returned an invalid cell-type set.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   names(fit_results) <- fit_types
   fit_results <- fit_results[names(plans)]
