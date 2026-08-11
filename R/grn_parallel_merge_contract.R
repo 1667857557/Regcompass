@@ -104,7 +104,7 @@
   cell_id <- as.character(paired$cell_id)
   if (anyNA(cell_id) || any(!nzchar(trimws(cell_id))) || anyDuplicated(cell_id)) {
     stop("Merged condition-GRN output contains invalid paired-cell IDs.",
-         call. = FALSE
+         call. = FALSE)
   }
   answer
 }
