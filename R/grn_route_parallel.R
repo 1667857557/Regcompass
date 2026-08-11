@@ -5,7 +5,8 @@
     shared = c("tf_cor", "peak_cor", "adjust_method"),
     condition = c(
       "padj_threshold", "rank_action", "min_residual_df",
-      "rna_layer", "peak_layer", "peak_value_type"
+      "rna_layer", "peak_layer", "peak_value_type",
+      "condition_ridge_control"
     ),
     standard = c(
       "peak_to_gene_method", "upstream", "downstream", "extend",
@@ -36,9 +37,8 @@
            call. = FALSE)
     }
     required_api <- c(
-      "condition_grn_fit", "discover_grn_edges", "union_grn_edges",
-      "fit_grn_from_edges",
-      "GetNetwork", "gof"
+      "infer_condition_grn", "condition_grn_fit", "initiate_grn",
+      "find_motifs", "LayerData"
     )
     missing_api <- setdiff(required_api, getNamespaceExports("Pando"))
     if (length(missing_api)) {
@@ -93,13 +93,17 @@
     min_residual_df = 1L,
     rna_layer = "data",
     peak_layer = "data",
-    peak_value_type = "normalized"
+    peak_value_type = "normalized",
+    condition_ridge_control = list()
   ), condition_args)
   if (length(condition_types) &&
       (!identical(toupper(as.character(condition_args$adjust_method)), "BH") ||
-       !isTRUE(all.equal(as.numeric(condition_args$padj_threshold), 0.05)))) {
-    stop("Canonical RegCompass condition effects require BH padj < 0.05.",
-         call. = FALSE)
+       !isTRUE(all.equal(as.numeric(condition_args$padj_threshold), 0.05)) ||
+       !is.list(condition_args$condition_ridge_control))) {
+    stop(
+      "Canonical RegCompass condition fits require BH diagnostic padj at 0.05 ",
+      "and condition_ridge_control must be a list.", call. = FALSE
+    )
   }
 
   standard_args <- args[intersect(names(args), standard_allowed)]
@@ -242,15 +246,15 @@
   .rc_step_monitor_event(
     progress_monitor, "cell_type_execution_plan",
     paste(
-      "condition GRNs use condition x cell-type tasks with exact-dictionary",
-      "barriers; standard Pando uses broad-cell-type jobs"
+      "condition GRNs use native Pando exact-union multi-task ridge;",
+      "standard Pando uses broad-cell-type jobs"
     ),
     current = 5L,
     context = list(
       condition_cell_types = length(condition_types),
       standard_cell_types = length(standard_types),
       condition_parallel_scope = if (length(condition_types)) {
-        "condition_x_cell_type"
+        "cell_type_or_target"
       } else {
         "not_applicable"
       },
@@ -320,9 +324,9 @@
   }
   answer$pando_execution_plan <- list(
     scope = if (length(condition_types) && length(standard_types)) {
-      "condition_x_cell_type_then_standard_cell_type"
+      "condition_multitask_then_standard_cell_type"
     } else if (length(condition_types)) {
-      "condition_x_cell_type"
+      "condition_multitask"
     } else {
       "standard_cell_type"
     },
