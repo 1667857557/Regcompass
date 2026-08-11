@@ -51,7 +51,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{cell_type}{Optional broad-cell-type subset.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
 \item{pando_args}{Stage 1 configuration. \code{min_cells} defaults to \code{500L}; inference controls are supplied through \code{pando_infer_args}. Multi-condition cell types use the condition multi-task ridge path. Standard Pando defaults to \code{method = "glm"}; set \code{method = "ridge"} and optionally \code{ridge_control} to use the same ridge numerical backend in the single-task case.}
-\item{workers}{Single worker cap used by computational stages, default \code{10L}. In Stage 1 the cap is divided across concurrent cell-type GRNs; ridge target pools use only the budget assigned to that GRN and are released when its fit completes.}
+\item{workers}{Single worker cap used by computational stages, default \code{10L}. Stage 1 uses one parallel level at a time: multiple retained GRNs are parallelized by cell type, while a single ridge GRN may use target-level workers. Worker inputs are trimmed to the RNA/ATAC assays and metadata required by Pando.}
 \item{progress}{Display and persist stage progress.}
 \item{fragment_files}{Optional Stage 2 raw fragment input.}
 \item{metacell_args}{Stage 2 reductions, dimensions, WNN, size, and fragment controls. \code{min_cells_per_stratum} defaults to \code{500L}.}
