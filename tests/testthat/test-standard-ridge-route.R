@@ -59,9 +59,9 @@ test_that("default-ridge policy wraps the canonical route without changing it", 
     ".rc_standard_pando_infer_args_before_default_ridge", inherits = TRUE
   ))
   route_text <- paste(deparse(body(.rc_route_pando_infer_args)), collapse = "\n")
-  expect_match(route_text, "args\\$method <- \\"ridge\\"")
+  expect_match(route_text, 'args$method <- "ridge"', fixed = TRUE)
   standard_text <- paste(
     deparse(body(.rc_standard_pando_infer_args)), collapse = "\n"
   )
-  expect_match(standard_text, "args\\$method <- \\"ridge\\"")
+  expect_match(standard_text, 'args$method <- "ridge"', fixed = TRUE)
 })
