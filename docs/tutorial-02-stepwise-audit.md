@@ -94,7 +94,7 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-Main parameters are `model_mode`, `layer2_args`, `workers`, and `progress`. `layer2_args` accepts `model_params`, `omega`, `target_direction`, `solver`, and `flux_threshold`. `model_mode = "meta_module_gem"` uses CORDA2 by default; supplementary routes are selected explicitly through the current Rd-documented controls.
+Main parameters are `model_mode`, `layer2_args`, `workers`, and `progress`. `layer2_args` accepts `model_params`, `omega`, `target_direction`, `solver`, and `flux_threshold`. `model_mode = "meta_module_gem"` uses CORDA2 by default; its adjustable `corda2_args` are `MCxNCthresh`, `constraint`, `constrainby`, `om`, and `ci`. Defaults and supplementary routes are documented in the current Rd help and [layer2-corda.md](layer2-corda.md).
 
 ## 7. Result assembly
 
