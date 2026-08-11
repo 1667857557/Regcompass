@@ -110,8 +110,7 @@
       }
       all_edges$active_in_condition[condition_rows] <- gate
       # Do not overwrite Pando's `significant` field: it remains an approximate
-      # ridge-Wald/BH diagnostic and is intentionally separate from the
-      # continuous quantitative projection gate.
+      # ridge-Wald/BH diagnostic alongside the final RegCompass active-edge gate.
       condition_active <- all_edges[condition_rows &
         all_edges$penalty_eligible %in% TRUE, , drop = FALSE]
       standard_active <- if (nrow(active_edges) &&
@@ -207,11 +206,13 @@
         "standard Pando otherwise"
       ),
       condition_effect_filter = paste(
-        "continuous finite estimable multi-task ridge coefficient;",
-        "ridge-Wald/BH significance retained only as diagnostics"
+        "fit_status ok, estimable finite coefficient and adjusted P below",
+        "the configured padj_threshold"
       ),
-      standard_edge_filter =
-        "estimable when available and adjusted P below 0.05",
+      standard_edge_filter = paste(
+        "estimable when available and adjusted P below",
+        "the configured padj_threshold"
+      ),
       projection =
         "beta times metacell-mean TF times metacell-mean ATAC"
     ),
