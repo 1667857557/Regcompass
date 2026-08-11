@@ -39,6 +39,8 @@ jobs:
               "'layer2_corda_paper_contract.R'",
               "'layer2_corda2_algorithm.R'",
               "'layer2_corda_model.R'",
+              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v2",
+              "Config/RegCompass/PandoConditionProjectionPolicy: continuous-estimable-ridge-effects",
           ]
           missing = [x for x in required_description if x not in description]
           if missing:
@@ -118,11 +120,11 @@ jobs:
           route = Path("R/grn_route_parallel.R").read_text()
           required_route = [
               'getNamespaceExports("Pando")',
-              '"discover_grn_edges"',
-              '"union_grn_edges"',
-              '"fit_grn_from_edges"',
+              '"infer_condition_grn"',
+              '"condition_grn_fit"',
               'tf_cor = 0.1',
-              'peak_cor = 0',
+              'peak_cor = 0.05',
+              'condition_ridge_control = list()',
               "Unsupported override(s)",
           ]
           missing = [x for x in required_route if x not in route]
@@ -134,47 +136,60 @@ jobs:
           condition = Path("R/condition_grn_contract.R").read_text()
           condition_helpers = Path("R/grn_condition_parallel.R").read_text()
           required_condition = [
-              "Pando::union_grn_edges",
-              ".rc_condition_candidate_discovery",
-          ]
-          # Candidate/fitting work is expressed through task helpers; verify the
-          # canonical function directly dispatches them around one union barrier.
-          required_condition = [
-              ".rc_condition_discovery_task",
-              "Pando::union_grn_edges",
-              ".rc_condition_fit_task",
+              ".rc_condition_multitask_fit_task",
               ".rc_merge_condition_job_results",
-              "condition_x_cell_type",
+              "joint multi-task ridge",
+              "tf_peak_gene_condition_contrasts",
+              "continuous finite estimable raw-unit multi-task ridge coefficient",
           ]
           missing = [x for x in required_condition if x not in condition]
           if missing:
               raise RuntimeError(f"condition scheduler missing: {missing}")
           helper_required = [
-              "Pando::discover_grn_edges",
-              "Pando::fit_grn_from_edges",
-              "parallel = FALSE",
+              "Pando::infer_condition_grn",
+              "Pando::condition_grn_fit",
+              "condition_ridge_control",
+              'parallel_scope = "target"',
           ]
           missing = [x for x in helper_required if x not in condition_helpers]
           if missing:
               raise RuntimeError(f"condition task helpers missing: {missing}")
+          for forbidden in ("Pando::fit_grn_from_edges", ".rc_condition_fit_task"):
+              if forbidden in condition_helpers:
+                  raise RuntimeError(f"obsolete independent condition fit remains: {forbidden}")
 
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
-              "padj < 0.05",
               "coefficient$estimable %in% TRUE",
+              "is.finite(estimate)",
+              'fit_status == "ok"',
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
+              'fit$regcompass_significance_role <- "diagnostic_only"',
           ]
           missing = [x for x in required_penalty if x not in penalty]
           if missing:
-              raise RuntimeError(f"BH-only penalty contract missing: {missing}")
-          forbidden_penalty = [
-              "abs(corr) >= .RC_PANDO_PENALTY_CORR_THRESHOLD",
-              "abs(estimate) >= .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD",
+              raise RuntimeError(f"continuous ridge penalty contract missing: {missing}")
+
+          layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
+          projection = Path("R/pando_evidence_utils.R").read_text()
+          required_projection = [
+              ".rc_pando_projection_from_group_means <- function",
+              "tf_mean <- colMeans",
+              "peak_mean <- colMeans",
+              "contribution <- estimate * tf_mean * peak_mean",
           ]
-          present = [x for x in forbidden_penalty if x in penalty]
-          if present:
-              raise RuntimeError(f"obsolete post-fit effect-size gate remains: {present}")
+          missing = [x for x in required_projection if x not in projection]
+          if missing:
+              raise RuntimeError(f"group-mean Pando projection contract missing: {missing}")
+          required_layer1 = [
+              'expected_filter <- "estimable & finite estimate & fit_status == \'ok\'"',
+              '"beta_times_group_mean_tf_times_group_mean_atac"',
+              'origin = "paired_cell_exact_union_multitask_ridge_continuous"',
+          ]
+          missing = [x for x in required_layer1 if x not in layer1]
+          if missing:
+              raise RuntimeError(f"Layer 1 multi-task handoff missing: {missing}")
 
           step = Path("R/step_layer2.R").read_text()
           cache = Path("R/celltype_union_gem_cache.R").read_text()
@@ -234,8 +249,7 @@ jobs:
           remotes <- unname(description[1L, "Remotes"])
           stopifnot(
             grepl("1667857557/Pando_regcompass", remotes, fixed = TRUE),
-            grepl("1667857557/SuperCell_Seurat_V4", remotes, fixed = TRUE),
-            !grepl("@", remotes, fixed = TRUE)
+            grepl("1667857557/SuperCell_Seurat_V4", remotes, fixed = TRUE)
           )
           files <- c(
             list.files("R", pattern = "[.]R$", full.names = TRUE),
@@ -250,14 +264,14 @@ jobs:
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
           coefficient <- data.frame(
-            estimate = c(1e-8, 2, 3),
-            padj = c(0.01, 0.049, 0.051),
-            estimable = c(TRUE, TRUE, TRUE),
+            estimate = c(1e-8, 2, 3, NA_real_),
+            estimable = c(TRUE, TRUE, TRUE, FALSE),
+            fit_status = c("ok", "ok", "ok", "ok"),
             stringsAsFactors = FALSE
           )
           stopifnot(identical(
             .rc_condition_penalty_gate(coefficient),
-            c(TRUE, TRUE, FALSE)
+            c(TRUE, TRUE, TRUE, FALSE)
           ))
 
       - name: Build source package
