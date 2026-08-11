@@ -5,7 +5,7 @@
   out <- .rc_pando_infer_arg_catalog_standard_ridge_impl()
   out$standard <- unique(c(
     out$standard,
-    "ridge_control", "rank_action", "min_residual_df", "padj_threshold"
+    "ridge_control", "rank_action", "min_residual_df"
   ))
   out
 }
@@ -25,9 +25,8 @@
   if (length(method) != 1L || is.na(method) || !nzchar(method)) {
     stop("Standard Pando `method` must be one non-empty value.", call. = FALSE)
   }
-  ridge_fields <- c("ridge_control", "rank_action", "min_residual_df",
-                    "padj_threshold")
-  shared_ridge_fields <- c("rank_action", "min_residual_df", "padj_threshold")
+  ridge_fields <- c("ridge_control", "rank_action", "min_residual_df")
+  shared_ridge_fields <- c("rank_action", "min_residual_df")
 
   if (identical(method, "ridge")) {
     answer$standard$ridge_control <- answer$standard$ridge_control %||% list()
@@ -37,8 +36,6 @@
     answer$standard$rank_action <- answer$standard$rank_action %||% "mark"
     answer$standard$min_residual_df <-
       answer$standard$min_residual_df %||% 1L
-    answer$standard$padj_threshold <-
-      answer$standard$padj_threshold %||% 0.05
   } else {
     if ("ridge_control" %in% names(args) && length(args$ridge_control)) {
       stop(
@@ -73,6 +70,11 @@
   target_param <- args$BPPARAM %||% NULL
   if (is_ridge) args$BPPARAM <- NULL
   answer <- .rc_standard_pando_infer_args_ridge_impl(args)
+  if (is_ridge) {
+    # Standard-Pando significance remains the historical RegCompass contract:
+    # BH/fdr adjusted P < 0.05. The condition padj_threshold is not reused here.
+    answer$padj_threshold <- .rc_standard_pando_padj_fixed
+  }
   if (is_ridge && !is.null(target_param) && !identical(target_param, FALSE)) {
     if (!requireNamespace("BiocParallel", quietly = TRUE) ||
         !methods::is(target_param, "BiocParallelParam")) {
