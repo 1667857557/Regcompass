@@ -30,12 +30,9 @@ jobs:
           route = Path("R/grn_route_parallel.R").read_text()
           required_route = [
               'getNamespaceExports("Pando")',
+              '"infer_condition_grn"',
               '"condition_grn_fit"',
-              '"discover_grn_edges"',
-              '"union_grn_edges"',
-              '"fit_grn_from_edges"',
-              '"GetNetwork"',
-              '"gof"',
+              '"condition_ridge_control"',
               "Unsupported override(s)",
           ]
           missing = [value for value in required_route if value not in route]
@@ -47,54 +44,62 @@ jobs:
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition = [
               ".rc_fit_condition_grns_by_cell_type",
-              ".rc_condition_discovery_task",
-              "Pando::union_grn_edges",
-              ".rc_condition_fit_task",
+              ".rc_condition_multitask_fit_task",
               ".rc_merge_condition_job_results",
-              "condition_x_cell_type",
+              "joint multi-task ridge",
+              "tf_peak_gene_condition_contrasts",
+              "continuous finite estimable raw-unit multi-task ridge coefficient",
           ]
           missing = [value for value in required_condition if value not in condition]
           if missing:
               raise RuntimeError(f"condition-GRN scheduler missing: {missing}")
+          forbidden_condition = [
+              "fixed-dictionary Pando GLMs",
+              "two_stage_exact_edge_union_fixed_dictionary_glm",
+              "same_exact_edge_dictionary_unscaled_gaussian_glm",
+          ]
+          present = [value for value in forbidden_condition if value in condition]
+          if present:
+              raise RuntimeError(f"obsolete condition GLM implementation remains: {present}")
 
           helper = Path("R/grn_condition_parallel.R").read_text()
           required_helper = [
-              "Pando::discover_grn_edges",
-              "Pando::fit_grn_from_edges",
-              "parallel = FALSE",
+              "Pando::infer_condition_grn",
+              "Pando::condition_grn_fit",
+              "condition_ridge_control",
+              'parallel_scope = "target"',
           ]
           missing = [value for value in required_helper if value not in helper]
           if missing:
               raise RuntimeError(f"condition task helper contract missing: {missing}")
+          for forbidden in ("Pando::fit_grn_from_edges", ".rc_condition_fit_task"):
+              if forbidden in helper:
+                  raise RuntimeError(f"obsolete independent condition fit remains: {forbidden}")
 
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
               "coefficient$estimable %in% TRUE",
-              "padj < 0.05",
+              "is.finite(estimate)",
+              'fit_status == "ok"',
+              'fit$regcompass_significance_role <- "diagnostic_only"',
           ]
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
-              raise RuntimeError(f"BH-only penalty-entry contract missing: {missing}")
-          for forbidden in (
-              "abs(corr) >= .RC_PANDO_PENALTY_CORR_THRESHOLD",
-              "abs(estimate) >= .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD",
-          ):
-              if forbidden in penalty:
-                  raise RuntimeError(f"obsolete post-fit gate remains: {forbidden}")
+              raise RuntimeError(f"continuous ridge penalty-entry contract missing: {missing}")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
           required_layer1 = [
-              'expected_filter <- "estimable & BH padj < 0.05"',
+              'expected_filter <- "estimable & finite estimate & fit_status == \'ok\'"',
               ".rc_validate_pando_fit_metadata_frame <- function",
               "Condition-Pando projection requires exactly one metacell membership",
               ".rc_pando_projection_from_group_means",
               'aggregation_contract =',
               '"beta_times_group_mean_tf_times_group_mean_atac"',
-              "origin = \"paired_cell_fixed_dictionary_glm_bh_filtered\"",
-              "projection_name = \"bh_filtered_fixed_dictionary_condition_glm\"",
+              'origin = "paired_cell_exact_union_multitask_ridge_continuous"',
+              'projection_name = "continuous_estimable_multitask_ridge_condition_effect"',
               "unique cell-type set.",
           ]
           missing = [value for value in required_layer1 if value not in layer1]
@@ -110,13 +115,8 @@ jobs:
           if missing:
               raise RuntimeError(f"group-mean Pando projection contract missing: {missing}")
           forbidden_layer1 = [
-              "Pando::validate_condition_grn_projection_membership",
-              "Pando::aggregate_condition_grn_projection",
-              "all_projected_cells_have_exact_membership",
-              "abs(corr) >= 0.05",
-              "abs(estimate) >= 0.05",
-              "regcompass_corr_threshold",
-              "regcompass_estimate_threshold",
+              "paired_cell_fixed_dictionary_glm_bh_filtered",
+              "bh_filtered_fixed_dictionary_condition_glm",
               "padj_corr_effect_filtered_fixed_dictionary_condition_glm",
               "paired_cell_fixed_dictionary_glm_padj_corr_effect_filtered",
           ]
@@ -132,6 +132,7 @@ jobs:
               ".rc_merge_condition_job_results",
               "pando_grn_data_by_cell_type",
               "preserves_cell_type_peak_space",
+              "tf_peak_gene_condition_contrasts",
           ]
           missing = [value for value in required_merge if value not in merge]
           if missing:
@@ -167,7 +168,6 @@ jobs:
               ],
           }
           for path, names in canonical.items():
-              text = Path(path).read_text()
               for name in names:
                   count = len(re.findall(
                       rf"(?m)^{re.escape(name)}\s*<-\s*function\b", all_r
