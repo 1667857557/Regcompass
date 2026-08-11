@@ -24,7 +24,24 @@ test_that("standard ridge routes its controls", {
   expect_equal(resolved$padj_threshold, .rc_standard_pando_padj_fixed)
 })
 
-test_that("standard glm remains available", {
+test_that("standard Pando defaults to the ridge K1 solver", {
+  routed <- .rc_route_pando_infer_args(
+    list(tf_cor = 0.1, peak_cor = 0.05),
+    condition_types = character(),
+    standard_types = "standard_celltype"
+  )
+  expect_identical(routed$standard$method, "ridge")
+  expect_true(is.list(routed$standard$ridge_control))
+  expect_identical(routed$standard$rank_action, "mark")
+  expect_identical(routed$standard$min_residual_df, 1L)
+
+  direct <- .rc_standard_pando_infer_args(list())
+  expect_identical(direct$method, "ridge")
+  expect_true(is.list(direct$ridge_control))
+  expect_equal(direct$padj_threshold, .rc_standard_pando_padj_fixed)
+})
+
+test_that("standard glm remains explicitly available", {
   routed <- .rc_route_pando_infer_args(
     list(method = "glm", tf_cor = 0.1, peak_cor = 0.05),
     condition_types = character(),
@@ -34,23 +51,17 @@ test_that("standard glm remains available", {
   expect_false("ridge_control" %in% names(routed$standard))
 })
 
-test_that("standard ridge is implemented in canonical source functions", {
-  expect_false(exists(
-    ".rc_pando_infer_arg_catalog_standard_ridge", inherits = TRUE
+test_that("default-ridge policy wraps the canonical route without changing it", {
+  expect_true(exists(
+    ".rc_route_pando_infer_args_before_default_ridge", inherits = TRUE
   ))
-  expect_false(exists(
-    ".rc_route_pando_infer_args_standard_ridge", inherits = TRUE
-  ))
-  expect_false(exists(
-    ".rc_run_standard_pando_celltype_job_ridge", inherits = TRUE
-  ))
-  expect_false(exists(
-    ".rc_fit_pando_by_celltype_route_ridge", inherits = TRUE
+  expect_true(exists(
+    ".rc_standard_pando_infer_args_before_default_ridge", inherits = TRUE
   ))
   route_text <- paste(deparse(body(.rc_route_pando_infer_args)), collapse = "\n")
-  expect_match(route_text, "ridge_control", fixed = TRUE)
+  expect_match(route_text, "args\\$method <- \\"ridge\\"")
   standard_text <- paste(
     deparse(body(.rc_standard_pando_infer_args)), collapse = "\n"
   )
-  expect_match(standard_text, "is_ridge", fixed = TRUE)
+  expect_match(standard_text, "args\\$method <- \\"ridge\\"")
 })
