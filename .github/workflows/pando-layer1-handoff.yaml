@@ -44,8 +44,6 @@ jobs:
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition = [
               ".rc_fit_condition_grns_by_cell_type",
-              ".rc_condition_multitask_fit_task",
-              ".rc_merge_condition_job_results",
               "joint multi-task ridge",
               "tf_peak_gene_condition_contrasts",
               "continuous finite estimable raw-unit multi-task ridge coefficient",
@@ -64,6 +62,7 @@ jobs:
 
           helper = Path("R/grn_condition_parallel.R").read_text()
           required_helper = [
+              ".rc_condition_multitask_fit_task <- function",
               "Pando::infer_condition_grn",
               "Pando::condition_grn_fit",
               "condition_ridge_control",
@@ -95,7 +94,6 @@ jobs:
               'expected_filter <- "estimable & finite estimate & fit_status == \'ok\'"',
               ".rc_validate_pando_fit_metadata_frame <- function",
               "Condition-Pando projection requires exactly one metacell membership",
-              ".rc_pando_projection_from_group_means",
               'aggregation_contract =',
               '"beta_times_group_mean_tf_times_group_mean_atac"',
               'origin = "paired_cell_exact_union_multitask_ridge_continuous"',
@@ -128,8 +126,7 @@ jobs:
 
           merge = Path("R/grn_parallel_merge_contract.R").read_text()
           required_merge = [
-              ".rc_validate_pando_result_cell_partition",
-              ".rc_merge_condition_job_results",
+              ".rc_merge_condition_job_results <- function",
               "pando_grn_data_by_cell_type",
               "preserves_cell_type_peak_space",
               "tf_peak_gene_condition_contrasts",
@@ -159,6 +156,11 @@ jobs:
                   ".rc_require_pando_condition_grn_fit",
                   ".rc_extract_condition_grn_contract",
                   ".rc_fit_condition_grns_by_cell_type",
+              ],
+              "R/grn_condition_parallel.R": [
+                  ".rc_condition_parallel_plan",
+                  ".rc_condition_prepare_celltype_task",
+                  ".rc_condition_multitask_fit_task",
               ],
               "R/grn_parallel_merge_contract.R": [
                   ".rc_merge_condition_job_results",
