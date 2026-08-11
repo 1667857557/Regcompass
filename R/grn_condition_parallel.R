@@ -85,61 +85,62 @@
   )
 }
 
-.rc_condition_discovery_task <- function(
-    task, target_genes, pando_infer_args) {
-  if (!is.list(task) || !inherits(task$grn, "GRNData")) {
-    stop("Invalid condition-GRN candidate-discovery task.", call. = FALSE)
+.rc_condition_multitask_fit_task <- function(
+    task, target_genes, condition_col, celltype_col, min_cells,
+    pando_infer_args, inner_parallel = FALSE, BPPARAM = NULL) {
+  if (!is.list(task) || !inherits(task$grn, "GRNData") ||
+      !is.character(task$cell_type) || length(task$cell_type) != 1L) {
+    stop("Invalid condition-GRN multi-task fit task.", call. = FALSE)
   }
-  edge <- Pando::discover_grn_edges(
+  ridge_control <- pando_infer_args$condition_ridge_control %||% list()
+  args <- list(
     object = task$grn,
+    cell_type_col = celltype_col,
+    condition_col = condition_col,
+    cell_type = task$cell_type,
     genes = target_genes,
-    cells = task$cells,
-    source_label = task$source_label,
-    source_type = task$source_type,
-    tf_cor = pando_infer_args$tf_cor,
-    peak_cor = pando_infer_args$peak_cor,
+    network_name = "regcompass_condition_grn",
     rna_layer = pando_infer_args$rna_layer %||% "data",
     peak_layer = pando_infer_args$peak_layer %||% "data",
     peak_value_type = pando_infer_args$peak_value_type %||% "normalized",
-    parallel = FALSE,
-    verbose = FALSE
-  )
-  list(
-    cell_type = task$cell_type,
-    condition = task$condition,
-    source_type = task$source_type,
-    edge = edge
-  )
-}
-
-.rc_condition_fit_task <- function(task, pando_infer_args) {
-  if (!is.list(task) || !inherits(task$grn, "GRNData")) {
-    stop("Invalid condition-GRN fixed-dictionary task.", call. = FALSE)
-  }
-  fitted <- Pando::fit_grn_from_edges(
-    object = task$grn,
-    edge_dictionary = task$dictionary,
-    cells = task$cells,
-    condition_label = task$condition,
-    network_name = task$network_name,
+    tf_cor = pando_infer_args$tf_cor,
+    peak_cor = pando_infer_args$peak_cor,
+    min_cells_per_condition = as.integer(min_cells),
+    small_condition_action = "error",
     adjust_method = "BH",
     padj_threshold = 0.05,
     rank_action = pando_infer_args$rank_action,
     min_residual_df = pando_infer_args$min_residual_df,
-    rna_layer = pando_infer_args$rna_layer %||% "data",
-    peak_layer = pando_infer_args$peak_layer %||% "data",
-    peak_value_type = pando_infer_args$peak_value_type %||% "normalized",
-    parallel = FALSE,
+    parallel = isTRUE(inner_parallel),
+    parallel_scope = "target",
     overwrite = TRUE,
+    fallback_args = list(condition_ridge_control = ridge_control),
     verbose = FALSE
   )
-  network <- Pando::GetNetwork(fitted, network = task$network_name)
+  if (isTRUE(inner_parallel) && !is.null(BPPARAM) &&
+      !identical(BPPARAM, FALSE)) {
+    args$BPPARAM <- BPPARAM
+  }
+  fitted <- do.call(Pando::infer_condition_grn, args)
+  fits <- Pando::condition_grn_fit(fitted)
+  if (inherits(fits, "ConditionGRNFit")) {
+    fit <- fits
+  } else if (is.list(fits) && task$cell_type %in% names(fits)) {
+    fit <- fits[[task$cell_type]]
+  } else if (is.list(fits) && length(fits) == 1L &&
+             inherits(fits[[1L]], "ConditionGRNFit")) {
+    fit <- fits[[1L]]
+  } else {
+    stop("Pando multi-task condition fit was not returned for cell type `",
+         task$cell_type, "`.", call. = FALSE)
+  }
+  if (!identical(as.character(fit$cell_type), task$cell_type)) {
+    stop("Pando multi-task condition fit returned the wrong cell type.",
+         call. = FALSE)
+  }
   list(
     cell_type = task$cell_type,
-    condition = task$condition,
-    network_name = task$network_name,
-    network = network,
-    coefficients = as.data.frame(stats::coef(network), stringsAsFactors = FALSE),
-    fit = as.data.frame(Pando::gof(network), stringsAsFactors = FALSE)
+    grn = fitted,
+    fit = fit
   )
 }
