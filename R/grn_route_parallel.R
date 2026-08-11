@@ -102,11 +102,11 @@
   if (length(condition_types) &&
       (!identical(toupper(as.character(condition_args$adjust_method)), "BH") ||
        length(condition_threshold) != 1L || !is.finite(condition_threshold) ||
-       condition_threshold <= 0 || condition_threshold > 0.1 ||
+       condition_threshold <= 0 || condition_threshold >= 1 ||
        !is.list(condition_args$condition_ridge_control))) {
     stop(
       "Canonical RegCompass condition fits require BH adjustment, ",
-      "padj_threshold in (0, 0.1], and condition_ridge_control as a list.",
+      "padj_threshold in (0, 1), and condition_ridge_control as a list.",
       call. = FALSE
     )
   }
