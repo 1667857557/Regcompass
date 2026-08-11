@@ -50,7 +50,7 @@ test_that("condition GRN routes ridge controls and drops standard-model controls
       tf_cor = 0.2,
       peak_cor = 0.05,
       adjust_method = "BH",
-      padj_threshold = 0.1,
+      padj_threshold = 0.2,
       rank_action = "mark",
       min_residual_df = 2L,
       condition_ridge_control = ridge,
@@ -64,7 +64,7 @@ test_that("condition GRN routes ridge controls and drops standard-model controls
 
   expect_equal(routed$condition$tf_cor, 0.2)
   expect_equal(routed$condition$peak_cor, 0.05)
-  expect_equal(routed$condition$padj_threshold, 0.1)
+  expect_equal(routed$condition$padj_threshold, 0.2)
   expect_equal(routed$condition$min_residual_df, 2L)
   expect_identical(routed$condition$condition_ridge_control, ridge)
   expect_false(any(c("method", "alpha", "scale") %in%
@@ -112,19 +112,25 @@ test_that("unknown Pando arguments fail before model fitting", {
   )
 })
 
-test_that("condition BH threshold allows 0.1 but rejects larger values", {
-  routed <- .rc_route_pando_infer_args(
-    list(adjust_method = "BH", padj_threshold = 0.1),
+test_that("condition BH threshold defaults to 0.05 and accepts any value in (0,1)", {
+  default <- .rc_route_pando_infer_args(
+    list(adjust_method = "BH"),
     condition_types = "T_cell"
   )
-  expect_equal(routed$condition$padj_threshold, 0.1)
+  expect_equal(default$condition$padj_threshold, 0.05)
+
+  routed <- .rc_route_pando_infer_args(
+    list(adjust_method = "BH", padj_threshold = 0.5),
+    condition_types = "T_cell"
+  )
+  expect_equal(routed$condition$padj_threshold, 0.5)
 
   expect_error(
     .rc_route_pando_infer_args(
-      list(adjust_method = "BH", padj_threshold = 0.1001),
+      list(adjust_method = "BH", padj_threshold = 1),
       condition_types = "T_cell"
     ),
-    "padj_threshold in \\(0, 0.1\\]"
+    "padj_threshold in \\(0, 1\\)"
   )
 })
 
