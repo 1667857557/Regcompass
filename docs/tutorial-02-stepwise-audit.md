@@ -12,17 +12,14 @@ workers <- 10L
 
 ## 1. Regulatory evidence
 
-Stage 1 automatically selects the GRN route per retained broad cell type:
+Stage 1 determines the Pando route automatically after the `min_cells` filter:
 
-- at least two retained conditions: condition-comparable Pando multi-task ridge;
-- one effective condition, or `condition_col = NULL`: standard Pando using the K=1 specialization of the same ridge solver;
-- mixed datasets: each cell type is routed independently.
+- a broad cell type retaining at least two condition levels uses condition-comparable Pando multi-task ridge;
+- a broad cell type retaining only one effective condition uses standard Pando automatically;
+- `condition_col = NULL` uses standard Pando for the analysis;
+- mixed datasets are routed independently by broad cell type.
 
-`min_cells` is kept visible because it is data dependent. The default correlation thresholds, BH adjustment, ridge CV settings, rank handling, and other stable model defaults are not repeated in the main calls.
-
-### 1A. Condition Pando
-
-Use this when conditions should be compared within each broad cell type.
+The stable defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment with `padj_threshold = 0.05`, ridge fitting, and the validated rank/CV controls. They do not need to be repeated in routine calls. If `pando_infer_args` contains a known option belonging only to the other Pando mode, RegCompass ignores that option for the incompatible route and records it in `step1$grn_result$pando_infer_argument_routing`; genuinely unknown argument names still raise an error.
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -39,80 +36,18 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-Do not set `method` for the condition route. Multi-condition fits use the condition-GRN multi-task ridge engine by design.
+If the dataset has no condition variable, use the same call with `condition_col = NULL`. Do not manually choose Condition Pando versus Standard Pando; the retained condition structure determines the route.
 
-Only add `pando_infer_args` when you intentionally want to change a default. For example, a stricter candidate/significance configuration can be supplied as:
+Only add `pando_infer_args` when intentionally changing a default. For example:
 
 ```r
 pando_args = list(
   min_cells = 500L,
   pando_infer_args = list(
-    tf_cor = 0.15,
+    tf_cor = 0.10,
     peak_cor = 0.10,
     padj_threshold = 0.01
   )
-)
-```
-
-### 1B. Standard Pando
-
-Use `condition_col = NULL` when the whole analysis should use standard Pando rather than condition-comparable fitting. Ridge is already the default, so `method` should normally be omitted.
-
-```r
-step1 <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "run/01_grn",
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = NULL,
-  celltype_col = "cell_type",
-  pando_args = list(
-    min_cells = 500L
-  ),
-  workers = workers
-)
-```
-
-With one effective condition, the shared multi-task ridge backend reduces to K=1: the fusion term is zero, while ridge regularization, target-specific CV, predictor scaling, effective degrees of freedom and ridge-Wald diagnostics remain the same numerical framework.
-
-### 1C. Original standard-Pando GLM compatibility route
-
-Set `method = "glm"` only when the unregularized Gaussian GLM behavior is intentionally required.
-
-```r
-step1 <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "run/01_grn",
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = NULL,
-  celltype_col = "cell_type",
-  pando_args = list(
-    min_cells = 500L,
-    pando_infer_args = list(
-      method = "glm"
-    )
-  ),
-  workers = workers
-)
-```
-
-### 1D. Mixed routing
-
-When some broad cell types retain at least two conditions and others retain only one, no model override is required. Condition-capable cell types use the joint multi-task ridge; standard-Pando cell types use its K=1 ridge specialization.
-
-```r
-step1 <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "run/01_grn",
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = "condition",
-  celltype_col = "cell_type",
-  pando_args = list(
-    min_cells = 500L
-  ),
-  workers = workers
 )
 ```
 

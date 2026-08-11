@@ -16,38 +16,39 @@ test_that("Pando compatibility is API-based rather than version-based", {
   expect_false(any(grepl("Pando \\(>=", description)))
 })
 
-test_that("condition penalty entry uses padj, corr and estimate gates", {
+test_that("condition penalty entry uses fit validity and configured BH gate", {
   coefficient <- data.frame(
-    estimate = c(0.05, 0.0499, -0.06, 0.06, 0.06, -0.05),
+    estimate = c(0.05, 0.0499, -0.06, 0.06, NA_real_, -0.05),
     padj = c(0.049, 0.001, 0.049, 0.05, 0.001, 0.001),
-    corr = c(0.05, 0.5, -0.05, 0.5, 0.0499, -0.05),
-    estimable = TRUE,
+    estimable = c(TRUE, TRUE, TRUE, TRUE, TRUE, FALSE),
+    fit_status = c("ok", "ok", "ok", "ok", "ok", "ok"),
     stringsAsFactors = FALSE
   )
   expect_identical(
-    RegCompassR:::.rc_condition_penalty_gate(coefficient),
-    c(TRUE, FALSE, TRUE, FALSE, FALSE, TRUE)
+    RegCompassR:::.rc_condition_penalty_gate(
+      coefficient, padj_threshold = 0.05
+    ),
+    c(TRUE, TRUE, TRUE, FALSE, FALSE, FALSE)
   )
 })
 
-test_that("standard Pando uses the same corr and estimate gates", {
+test_that("standard Pando active-edge BH threshold is configurable", {
   edges <- data.frame(
     estimate = c(0.05, 0.049, -0.06, 0.06, -0.05),
-    padj = c(0.01, 0.01, 0.05, 0.01, 0.01),
-    corr = c(0.05, 0.5, 0.5, 0.049, -0.05),
+    padj = c(0.01, 0.03, 0.05, 0.08, 0.049),
+    estimable = c(TRUE, TRUE, TRUE, TRUE, FALSE),
     stringsAsFactors = FALSE
   )
-  selected <- RegCompassR:::.rc_filter_standard_pando_edges(edges)
-  expect_equal(nrow(selected), 2L)
-  expect_equal(selected$estimate, c(0.05, -0.05))
-  expect_identical(
-    attr(selected, "edge_filter")$absolute_correlation,
-    ">= 0.05"
+  selected_005 <- RegCompassR:::.rc_filter_standard_pando_edges(
+    edges, padj_threshold = 0.05
   )
-  expect_identical(
-    attr(selected, "edge_filter")$absolute_estimate,
-    ">= 0.05"
+  selected_002 <- RegCompassR:::.rc_filter_standard_pando_edges(
+    edges, padj_threshold = 0.02
   )
+  expect_equal(selected_005$estimate, c(0.05, 0.049))
+  expect_equal(selected_002$estimate, 0.05)
+  expect_identical(attr(selected_005, "edge_filter")$padj, "< 0.05")
+  expect_identical(attr(selected_002, "edge_filter")$padj, "< 0.02")
 })
 
 test_that("Gurobi is pinned to one thread inside every worker", {

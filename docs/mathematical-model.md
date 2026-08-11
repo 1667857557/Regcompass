@@ -22,15 +22,21 @@ where \(T\) is TF expression and \(A\) is peak accessibility. Every retained con
 y_{g,i}=\alpha_{g,c}+\sum_{e\in E_g^{\cup}}\beta_{e,g,c}x_{e,i}+\varepsilon_{g,i}.
 \]
 
-An edge contributes downstream only when the complete target fit has `fit_status == "ok"`, the edge coefficient is estimable and finite, and its BH-adjusted P value is below 0.05. Rank-deficient or otherwise invalid target fits remain auditable but contribute zero regulatory effect.
-
-The condition target reliability is the clipped square root of target-level \(R^2\), provided the target has at least one active edge:
+Let \(\theta_{adj}\) denote the configured `padj_threshold`; its default is 0.05, but it is not fixed. An edge contributes downstream only when the complete target fit has `fit_status == "ok"`, the edge coefficient is estimable and finite, and its BH-adjusted P value satisfies
 
 \[
-q_{g,c}=\sqrt{\min(1,\max(0,R^2_{g,c}))}.
+P^{adj}_{e,g,c}<\theta_{adj}.
 \]
 
-Unavailable or invalid fits have no regulatory contribution.
+Rank-deficient or otherwise invalid target fits remain auditable but contribute zero regulatory effect. The same configurable `padj_threshold` contract is used by Standard Pando for its final active-edge gate.
+
+The target weight used by the downstream penalty is binary. A target-condition pair with at least one final active edge has
+
+\[
+q_{g,c}=1.
+\]
+
+Targets without a valid active edge have no regulatory contribution. Target-level \(R^2\) and out-of-fold \(R^2\) may remain in Pando fit diagnostics, but they do not enter \(q\), do not rescale the regulatory projection, and do not enter the COMPASS-like penalty. The same binary rule is used by the standard-Pando route: a target represented by at least one final active standard-Pando edge has \(q=1\).
 
 ## 2. Metacell regulatory projection
 
@@ -65,10 +71,10 @@ The bounded regulatory modifier is
 
 \[
 R_{g,u}=q_{g,c(u)}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right),
-\qquad -1\le R_{g,u}\le1.
+\qquad -1\le R_{g,u}\le1,
 \]
 
-When regulatory evidence is unavailable, \(R_{g,u}=0\).
+with \(q=1\) for a valid active target. Thus model-fit \(R^2\) values never attenuate the modifier. When regulatory evidence is unavailable, \(R_{g,u}=0\).
 
 ## 3. Quantitative RNA input to the COMPASS-like penalty
 

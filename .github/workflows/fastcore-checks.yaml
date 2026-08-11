@@ -128,7 +128,7 @@ jobs:
               'getNamespaceExports("Pando")',
               '"infer_condition_grn"',
               '"condition_grn_fit"',
-              'tf_cor = 0.1',
+              'tf_cor = 0.05',
               'peak_cor = 0.05',
               'condition_ridge_control = list()',
               "padj_threshold in (0, 1)",
@@ -280,7 +280,7 @@ jobs:
       - name: Run lightweight integration tests
         shell: Rscript {0}
         run: |
-          .rc_standard_pando_padj_fixed <- 0.05
+          .rc_standard_pando_padj_default <- 0.05
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
           coefficient <- data.frame(

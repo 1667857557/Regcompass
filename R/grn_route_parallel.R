@@ -30,9 +30,9 @@
 
 .rc_pando_infer_arg_catalog <- function() {
   list(
-    shared = c("tf_cor", "peak_cor", "adjust_method"),
+    shared = c("tf_cor", "peak_cor", "adjust_method", "padj_threshold"),
     condition = c(
-      "padj_threshold", "rank_action", "min_residual_df",
+      "rank_action", "min_residual_df",
       "rna_layer", "peak_layer", "peak_value_type",
       "condition_ridge_control"
     ),
@@ -113,7 +113,7 @@
 
   condition_args <- args[intersect(names(args), condition_allowed)]
   condition_args <- utils::modifyList(list(
-    tf_cor = 0.1,
+    tf_cor = 0.05,
     peak_cor = 0.05,
     adjust_method = "BH",
     padj_threshold = 0.05,
@@ -142,10 +142,21 @@
 
   standard_args <- args[intersect(names(args), standard_allowed)]
   standard_args <- utils::modifyList(list(
-    tf_cor = 0.1,
+    tf_cor = 0.05,
     peak_cor = 0.05,
-    adjust_method = "BH"
+    adjust_method = "BH",
+    padj_threshold = 0.05
   ), standard_args)
+  standard_threshold <- suppressWarnings(as.numeric(
+    standard_args$padj_threshold
+  ))
+  if (length(standard_types) &&
+      (length(standard_threshold) != 1L || !is.finite(standard_threshold) ||
+       standard_threshold <= 0 || standard_threshold >= 1)) {
+    stop("Standard Pando `padj_threshold` must be one value in (0, 1).",
+         call. = FALSE)
+  }
+  standard_args$padj_threshold <- standard_threshold
   standard_method <- as.character(standard_args$method %||% "ridge")
   if (length(standard_method) != 1L || is.na(standard_method) ||
       !nzchar(standard_method)) {
