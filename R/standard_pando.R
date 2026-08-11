@@ -1,6 +1,6 @@
 # Standard Pando fallback used when no multi-level condition is available.
 
-.rc_standard_pando_padj_fixed <- 0.05
+.rc_standard_pando_padj_default <- 0.05
 
 .rc_standard_pando_cell_types <- function(metadata, celltype_col, cell_type) {
   .rc_validate_celltype_metadata(metadata, celltype_col)
@@ -16,6 +16,15 @@
 
 .rc_standard_pando_infer_args <- function(args) {
   if (!is.list(args)) stop("`pando_infer_args` must be a list.", call. = FALSE)
+  threshold <- suppressWarnings(as.numeric(
+    args$padj_threshold %||% .rc_standard_pando_padj_default
+  ))
+  if (length(threshold) != 1L || !is.finite(threshold) ||
+      threshold <= 0 || threshold >= 1) {
+    stop("Standard Pando `padj_threshold` must be one value in (0, 1).",
+         call. = FALSE)
+  }
+  args$padj_threshold <- threshold
   method <- as.character(args$method %||% "ridge")
   is_ridge <- length(method) == 1L && !is.na(method) && identical(method, "ridge")
   args$method <- method
@@ -48,13 +57,13 @@
     }
     args$rank_action <- args$rank_action %||% "mark"
     args$min_residual_df <- args$min_residual_df %||% 1L
-    args$padj_threshold <- .rc_standard_pando_padj_fixed
   } else {
     args[c("ridge_control", "rank_action", "min_residual_df",
            "padj_threshold")] <- NULL
   }
   args$scale <- FALSE
   answer <- modifyList(list(interaction_term = ":", scale = FALSE), args)
+  attr(answer, "regcompass_padj_threshold") <- threshold
   attr(answer, "standard_fallback_adjustments") <- list(
     dropped_condition_arguments = condition_only,
     scale_forced_false = !identical(requested_scale, FALSE),
@@ -99,9 +108,13 @@
          call. = FALSE)
   }
   infer_args <- .rc_standard_pando_infer_args(pando_infer_args)
+  standard_padj_threshold <- attr(
+    infer_args, "regcompass_padj_threshold", exact = TRUE
+  )
   fallback_adjustments <- attr(
     infer_args, "standard_fallback_adjustments", exact = TRUE
   )
+  attr(infer_args, "regcompass_padj_threshold") <- NULL
   attr(infer_args, "standard_fallback_adjustments") <- NULL
   if (length(fallback_adjustments$dropped_condition_arguments) ||
       isTRUE(fallback_adjustments$scale_forced_false)) {
@@ -238,16 +251,19 @@
     extracted <- rc_extract_pando_tf_peak_gene(
       grn_object = grn,
       sample_id = value,
-      padj_threshold = .rc_standard_pando_padj_fixed,
+      padj_threshold = standard_padj_threshold,
       require_padj = TRUE
     )
-    extracted$significant <- .rc_filter_standard_pando_edges(extracted$all)
+    extracted$significant <- .rc_filter_standard_pando_edges(
+      extracted$all, padj_threshold = standard_padj_threshold
+    )
     .rc_step_monitor_event(
       progress_monitor, "standard_contract_extraction_complete",
       "extracted standard Pando edge contract", current = 10L,
       context = c(job_context, list(
         all_edges = nrow(extracted$all),
-        active_edges = nrow(extracted$significant)
+        active_edges = nrow(extracted$significant),
+        padj_threshold = standard_padj_threshold
       ))
     )
     add_design <- function(tab) {
@@ -260,6 +276,7 @@
       )
       tab$effect_definition <- "standard_pando_coefficient"
       tab$analysis_mode <- "standard_pando"
+      tab$padj_threshold <- standard_padj_threshold
       tab <- tab[, c(
         "group_id", condition_col, celltype_col,
         setdiff(colnames(tab), c("group_id", condition_col, celltype_col))
@@ -284,6 +301,7 @@
       n_target_genes = length(target_genes),
       n_edges = nrow(extracted$all),
       n_active_edges = nrow(extracted$significant),
+      padj_threshold = standard_padj_threshold,
       grn_evidence_role = "standard_pando_full_fit",
       stringsAsFactors = FALSE,
       check.names = FALSE
@@ -352,7 +370,7 @@
         "metacell-mean ATAC"
       ),
       absolute_estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
-      padj_threshold = .rc_standard_pando_padj_fixed
+      padj_threshold = standard_padj_threshold
     ),
     group_cols = c(condition_col, celltype_col)
   )
