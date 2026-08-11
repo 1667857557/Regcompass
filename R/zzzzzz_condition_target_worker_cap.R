@@ -47,11 +47,20 @@
   target_parallel <- !is.null(target_param) && target_workers > 1L
 
   old_r_libs <- Sys.getenv("R_LIBS", unset = NA_character_)
+  on.exit({
+    if (target_parallel && !is.null(target_param) &&
+        requireNamespace("BiocParallel", quietly = TRUE) &&
+        isTRUE(tryCatch(BiocParallel::bpisup(target_param),
+                        error = function(e) FALSE))) {
+      try(BiocParallel::bpstop(target_param), silent = TRUE)
+    }
+    if (target_parallel) {
+      if (is.na(old_r_libs)) Sys.unsetenv("R_LIBS") else Sys.setenv(R_LIBS = old_r_libs)
+    }
+    invisible(gc(verbose = FALSE, full = TRUE))
+  }, add = TRUE)
   if (target_parallel) {
     Sys.setenv(R_LIBS = paste(.libPaths(), collapse = .Platform$path.sep))
-    on.exit({
-      if (is.na(old_r_libs)) Sys.unsetenv("R_LIBS") else Sys.setenv(R_LIBS = old_r_libs)
-    }, add = TRUE)
   }
 
   args <- list(
@@ -108,6 +117,7 @@
     target_backend = target_backend,
     nested_pool = nested_pool,
     outer_worker_included_in_grn_budget = nested_pool,
+    target_pool_released_after_cell_type = TRUE,
     bounded_by_regcompass_task_budget = TRUE
   )
   list(cell_type = task$cell_type, grn = fitted, fit = fit)
@@ -168,6 +178,7 @@
   plan$nested_parallel <- any(allocation$nested_pool)
   plan$nested_backend <- if (any(allocation$nested_pool)) "snow" else "none"
   plan$worker_budget_bounded <- TRUE
+  plan$target_pools_release_policy <- "release_after_each_cell_type_fit"
   plan$worker_budget_rule <- paste(
     "evenly split the global cap across concurrent condition-GRN cell types;",
     "each nested Pando target pool uses at most its GRN budget minus the outer worker"
