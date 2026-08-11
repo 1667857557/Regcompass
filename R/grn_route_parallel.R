@@ -1,5 +1,33 @@
 # Route Stage 1 Pando arguments and schedule condition/standard Pando work.
 
+.rc_stage1_pando_working_object <- function(
+    object, rna_assay = "RNA", atac_assay = "ATAC") {
+  if (!inherits(object, "Seurat")) {
+    stop("Stage 1 Pando working data must inherit from Seurat.", call. = FALSE)
+  }
+  assays <- unique(c(as.character(rna_assay), as.character(atac_assay)))
+  missing <- setdiff(assays, .rc_seurat_assay_names(object))
+  if (length(missing)) {
+    stop(
+      "Stage 1 Pando working data are missing assays: ",
+      paste(missing, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  SeuratObject::DefaultAssay(object) <- rna_assay
+  slim <- Seurat::DietSeurat(
+    object = object,
+    counts = TRUE,
+    data = TRUE,
+    scale.data = FALSE,
+    assays = assays,
+    dimreducs = NULL,
+    graphs = NULL,
+    misc = FALSE
+  )
+  SeuratObject::DefaultAssay(slim) <- rna_assay
+  slim
+}
+
 .rc_pando_infer_arg_catalog <- function() {
   list(
     shared = c("tf_cor", "peak_cor", "adjust_method"),
@@ -16,7 +44,7 @@
       "lambda.min.ratio", "standardize", "nfolds", "type.measure",
       "solver", "bagging_number", "n_jobs", "p_method", "prior",
       "chains", "cores", "iter", "seed", "params", "nrounds",
-      "nthread"
+      "nthread", "ridge_control", "rank_action", "min_residual_df"
     )
   )
 }
@@ -118,12 +146,35 @@
     peak_cor = 0.05,
     adjust_method = "BH"
   ), standard_args)
+  standard_method <- as.character(standard_args$method %||% "glm")
+  if (length(standard_method) != 1L || is.na(standard_method) ||
+      !nzchar(standard_method)) {
+    stop("Standard Pando `method` must be one non-empty value.", call. = FALSE)
+  }
+  if (identical(standard_method, "ridge")) {
+    standard_args$ridge_control <- standard_args$ridge_control %||% list()
+    if (!is.list(standard_args$ridge_control)) {
+      stop("Standard Pando `ridge_control` must be a list.", call. = FALSE)
+    }
+    standard_args$rank_action <- standard_args$rank_action %||% "mark"
+    standard_args$min_residual_df <- standard_args$min_residual_df %||% 1L
+  } else {
+    if ("ridge_control" %in% names(args) && length(args$ridge_control)) {
+      stop(
+        "`pando_infer_args$ridge_control` requires standard Pando ",
+        "`method = \"ridge\"`.", call. = FALSE
+      )
+    }
+    standard_args[c("ridge_control", "rank_action", "min_residual_df")] <- NULL
+  }
 
+  condition_only <- setdiff(catalog$condition, catalog$standard)
+  standard_only <- setdiff(catalog$standard, catalog$condition)
   disabled_condition <- if (length(standard_types)) {
-    intersect(names(args), catalog$condition)
+    intersect(names(args), condition_only)
   } else character()
   disabled_standard <- if (length(condition_types)) {
-    intersect(names(args), catalog$standard)
+    intersect(names(args), standard_only)
   } else character()
   diagnostics <- rbind(
     if (length(disabled_condition)) data.frame(
@@ -173,12 +224,15 @@
 
 .rc_run_standard_pando_celltype_job <- function(
     job, base, extra_args, standard_infer_args,
-    outer_parallel, progress_monitor) {
+    outer_parallel, progress_monitor, PANDO_BPPARAM = NULL) {
   if (!is.list(job) || !inherits(job$object, "Seurat")) {
     stop("Invalid standard-Pando cell-type job.", call. = FALSE)
   }
   thread_state <- .rc_set_internal_single_thread()
-  on.exit(.rc_restore_internal_threads(thread_state), add = TRUE)
+  on.exit({
+    .rc_restore_internal_threads(thread_state)
+    invisible(gc(verbose = FALSE, full = TRUE))
+  }, add = TRUE)
 
   job_extra <- extra_args
   motif_args <- job_extra$pando_motif_args %||% list()
@@ -203,12 +257,28 @@
     fixed_infer_args, "regcompass_pando_parallel_contract", exact = TRUE
   )
   attr(fixed_infer_args, "regcompass_pando_parallel_contract") <- NULL
+  method <- as.character(fixed_infer_args$method %||% "glm")
+  ridge_inner_parallel <- identical(method, "ridge") && !isTRUE(outer_parallel) &&
+    !is.null(PANDO_BPPARAM) && !identical(PANDO_BPPARAM, FALSE) &&
+    .rc_bpparam_worker_limit(PANDO_BPPARAM, default = 1L) > 1L
   args$pando_infer_args <- fixed_infer_args
-  args$parallel <- FALSE
+  args$parallel <- ridge_inner_parallel
+  args$BPPARAM <- if (ridge_inner_parallel) PANDO_BPPARAM else NULL
+  if (is.list(pando_parallel_contract)) {
+    pando_parallel_contract$scope <- if (ridge_inner_parallel) {
+      "standard_pando_single_celltype_target_parallel"
+    } else {
+      "standard_pando_celltype_parallel_or_serial"
+    }
+    pando_parallel_contract$infer_grn_parallel <- ridge_inner_parallel
+    pando_parallel_contract$inner_worker_limit <- if (ridge_inner_parallel) {
+      .rc_bpparam_worker_limit(PANDO_BPPARAM, default = 1L)
+    } else 1L
+    pando_parallel_contract$nested_parallel <- FALSE
+  }
   value <- do.call(.rc_fit_standard_pando_by_cell_type, args)
   if (is.list(value$normalization_policy)) {
-    value$normalization_policy$parallel_contract <-
-      pando_parallel_contract
+    value$normalization_policy$parallel_contract <- pando_parallel_contract
   }
   list(cell_type = job$cell_type, route = "standard_pando", result = value)
 }
@@ -223,15 +293,20 @@
   if (!length(cells)) {
     stop("No cells remain for condition-GRN cell types.", call. = FALSE)
   }
-  condition_object <- subset(object, cells = cells)
+  working_object <- .rc_stage1_pando_working_object(
+    object, rna_assay = base$rna_assay, atac_assay = base$atac_assay
+  )
   args <- c(base[setdiff(names(base), names(extra_args))], extra_args)
-  args$object <- condition_object
+  args$object <- working_object
   args$cell_type <- condition_types
   args$outdir <- file.path(base$outdir, "condition")
   args$pando_infer_args <- condition_infer_args
   args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
   args$progress_monitor <- progress_monitor
-  do.call(.rc_fit_condition_grns_by_cell_type, args)
+  value <- do.call(.rc_fit_condition_grns_by_cell_type, args)
+  working_object <- NULL
+  invisible(gc(verbose = FALSE, full = TRUE))
+  value
 }
 
 .rc_fit_pando_by_celltype_route <- function(
@@ -248,28 +323,35 @@
     celltype_col = celltype_col, rna_assay = rna_assay,
     atac_assay = atac_assay
   )
+  standard_method <- as.character(standard_infer_args$method %||% "glm")
+  standard_ridge <- identical(standard_method, "ridge")
 
   .rc_step_monitor_event(
     progress_monitor, "cell_type_execution_plan",
     paste(
       "condition GRNs use native Pando significant-union multi-task ridge;",
-      "standard Pando uses broad-cell-type jobs"
+      "standard Pando uses", standard_method, "broad-cell-type jobs"
     ),
     current = 5L,
     context = list(
       condition_cell_types = length(condition_types),
       standard_cell_types = length(standard_types),
-      condition_parallel_scope = if (length(condition_types)) {
-        "cell_type_or_target"
-      } else {
-        "not_applicable"
-      },
-      standard_parallel_scope = if (length(standard_types)) {
+      condition_parallel_scope = if (length(condition_types) == 1L) {
+        "target"
+      } else if (length(condition_types) > 1L) {
         "cell_type"
       } else {
         "not_applicable"
       },
-      nested_parallel = FALSE
+      standard_parallel_scope = if (length(standard_types) == 1L && standard_ridge) {
+        "target"
+      } else if (length(standard_types) > 1L) {
+        "cell_type"
+      } else {
+        "serial"
+      },
+      nested_parallel = FALSE,
+      memory_policy = "single_parallel_level_with_slim_pando_working_objects"
     )
   )
 
@@ -288,15 +370,20 @@
   standard_values <- list()
   standard_outer_parallel <- isTRUE(parallel) && length(standard_types) > 1L
   if (length(standard_types)) {
+    standard_source <- .rc_stage1_pando_working_object(
+      object, rna_assay = rna_assay, atac_assay = atac_assay
+    )
     standard_inputs <- lapply(standard_types, function(type) {
-      cells <- rownames(object@meta.data)[
-        as.character(object@meta.data[[celltype_col]]) == type
+      cells <- rownames(standard_source@meta.data)[
+        as.character(standard_source@meta.data[[celltype_col]]) == type
       ]
       list(
         cell_type = type,
-        object = subset(object, cells = cells)
+        object = subset(standard_source, cells = cells)
       )
     })
+    standard_source <- NULL
+    invisible(gc(verbose = FALSE, full = TRUE))
     executed <- rc_parallel_lapply(
       standard_inputs,
       .rc_run_standard_pando_celltype_job,
@@ -305,12 +392,19 @@
       extra_args = extra_args,
       standard_infer_args = standard_infer_args,
       outer_parallel = standard_outer_parallel,
-      progress_monitor = progress_monitor
+      progress_monitor = progress_monitor,
+      PANDO_BPPARAM = if (!standard_outer_parallel && standard_ridge) {
+        BPPARAM
+      } else NULL
     )
+    standard_inputs <- NULL
+    invisible(gc(verbose = FALSE, full = TRUE))
     standard_values <- lapply(executed, `[[`, "result")
     names(standard_values) <- vapply(
       executed, `[[`, character(1), "cell_type"
     )
+    executed <- NULL
+    invisible(gc(verbose = FALSE, full = TRUE))
   }
 
   answer <- .rc_merge_pando_results(
@@ -341,7 +435,8 @@
     condition_parallel_plan = condition_plan,
     standard_outer_parallel = standard_outer_parallel,
     nested_parallel = FALSE,
-    worker_budget_shared_sequentially = TRUE
+    worker_budget_shared_sequentially = TRUE,
+    memory_policy = "single_parallel_level_with_slim_pando_working_objects"
   )
   answer
 }
