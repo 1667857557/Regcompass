@@ -54,12 +54,10 @@
 }
 
 .rc_require_layer1_condition_grn_fit <- function(fit) {
-  if (is.null(fit$regcompass_penalty_filter)) {
-    .rc_require_pando_condition_grn_fit(fit)
-    return(invisible(TRUE))
-  }
+  .rc_require_pando_condition_grn_fit(fit)
+  if (is.null(fit$regcompass_penalty_filter)) return(invisible(TRUE))
 
-  expected_filter <- "estimable & BH padj < 0.05"
+  expected_filter <- "estimable & finite estimate & fit_status == 'ok'"
   filter_value <- as.character(fit$regcompass_penalty_filter)
   if (length(filter_value) != 1L || is.na(filter_value) ||
       !identical(filter_value, expected_filter)) {
@@ -70,47 +68,25 @@
   }
 
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
-  if (!all(c("significant", "penalty_effect") %in%
+  if (!all(c("significant", "penalty_effect", "estimate", "estimable") %in%
            colnames(coefficient))) {
     stop(
-      "RegCompass-gated condition fits require significant and penalty_effect.",
+      "RegCompass-gated condition fits require ridge coefficients and projection effects.",
       call. = FALSE
     )
   }
   expected_gate <- .rc_condition_penalty_gate(coefficient)
-  observed_gate <- as.logical(coefficient$significant)
-  if (!identical(observed_gate, expected_gate)) {
-    stop(
-      "RegCompass-gated significant-edge flags do not match the final penalty gate.",
-      call. = FALSE
-    )
-  }
-
   estimate <- suppressWarnings(as.numeric(coefficient$estimate))
   expected_effect <- ifelse(expected_gate, estimate, 0)
-  observed_effect <- suppressWarnings(as.numeric(
-    coefficient$penalty_effect
-  ))
+  observed_effect <- suppressWarnings(as.numeric(coefficient$penalty_effect))
   comparable <- is.finite(expected_effect) & is.finite(observed_effect)
   if (any(is.finite(expected_effect) != is.finite(observed_effect)) ||
-      any(abs(expected_effect[comparable] -
-              observed_effect[comparable]) > 1e-12)) {
+      any(abs(expected_effect[comparable] - observed_effect[comparable]) > 1e-12)) {
     stop(
-      "RegCompass-gated penalty_effect does not match the final penalty gate.",
+      "RegCompass-gated penalty_effect does not match the continuous ridge gate.",
       call. = FALSE
     )
   }
-
-  validation_fit <- fit
-  padj <- suppressWarnings(as.numeric(coefficient$padj))
-  pando_significant <- coefficient$estimable %in% TRUE &
-    is.finite(padj) & padj < 0.05
-  coefficient$significant <- pando_significant
-  coefficient$penalty_effect <- ifelse(
-    pando_significant, estimate, 0
-  )
-  validation_fit$coefficients <- coefficient
-  .rc_require_pando_condition_grn_fit(validation_fit)
   invisible(TRUE)
 }
 
@@ -169,12 +145,12 @@
   fit_table <- as.data.frame(fit$fit, stringsAsFactors = FALSE)
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
   required_fit <- c("target", "condition", "rsq", "fit_status")
-  required_coefficient <- c("target", "condition", "significant")
+  required_coefficient <- c("target", "condition", "estimable", "estimate")
   if (!all(required_fit %in% colnames(fit_table)) || !nrow(fit_table) ||
       !all(required_coefficient %in% colnames(coefficient))) {
     stop(
       "Condition-GRN reliability requires target-condition fit diagnostics ",
-      "and significant-edge flags.", call. = FALSE
+      "and estimable ridge coefficients.", call. = FALSE
     )
   }
 
@@ -207,9 +183,10 @@
     )
   }
 
-  active_edge <- coefficient$significant %in% TRUE
-  n_significant_edges <- tabulate(
-    coefficient_index[active_edge], nbins = nrow(fit_table)
+  projection_edge <- coefficient$estimable %in% TRUE &
+    is.finite(suppressWarnings(as.numeric(coefficient$estimate)))
+  n_projection_edges <- tabulate(
+    coefficient_index[projection_edge], nbins = nrow(fit_table)
   )
   rsq <- suppressWarnings(as.numeric(fit_table$rsq))
   fit_status <- trimws(as.character(fit_table$fit_status))
@@ -218,7 +195,7 @@
   }
   reliability <- rep(NA_real_, nrow(fit_table))
   eligible <- fit_status == "ok" &
-    n_significant_edges > 0L & is.finite(rsq)
+    n_projection_edges > 0L & is.finite(rsq)
   reliability[eligible] <- sqrt(pmin(1, pmax(0, rsq[eligible])))
 
   data.frame(
@@ -226,7 +203,7 @@
     condition = fit_condition,
     rsq = rsq,
     fit_status = fit_status,
-    n_significant_edges = as.integer(n_significant_edges),
+    n_projection_edges = as.integer(n_projection_edges),
     reliability = reliability,
     stringsAsFactors = FALSE
   )
@@ -241,7 +218,8 @@
   reliability <- projection
   coverage <- list()
 
-  for (fit in grn_result$condition_grn_fits) {
+  for (fit_raw in grn_result$condition_grn_fits) {
+    fit <- .rc_apply_condition_penalty_gate(fit_raw)
     .rc_require_layer1_condition_grn_fit(fit)
     pando_object <- .rc_condition_pando_object_for_fit(grn_result, fit)
     rna <- Matrix::t(Pando::LayerData(
@@ -263,7 +241,8 @@
       suffixes = c("", ".dictionary")
     )
     coefficient$estimate <- coefficient$penalty_effect
-    coefficient <- coefficient[coefficient$significant %in% TRUE, , drop = FALSE]
+    projection_gate <- .rc_condition_penalty_gate(coefficient)
+    coefficient <- coefficient[projection_gate, , drop = FALSE]
     fit_units <- unit_meta$unit_id[
       as.character(unit_meta[[fit$cell_type_col]]) == fit$cell_type
     ]
@@ -288,6 +267,8 @@
                   , drop = FALSE]
     })
     names(edges_by_group) <- names(cells_by_group)
+    # Deliberately preserve the RegCompass estimand requested by the package:
+    # beta * mean(TF) * mean(ATAC), not beta * mean(TF * ATAC).
     score <- .rc_pando_projection_from_group_means(
       rna, atac, edges_by_group, cells_by_group, genes
     )
@@ -333,13 +314,19 @@
       cell_type = fit$cell_type,
       condition = fit$condition_levels,
       n_dictionary_edges = nrow(fit$edge_dictionary),
-      n_significant_edges = vapply(fit$condition_levels, function(condition) {
-        sum(
-          coefficient$condition == condition &
-            coefficient$significant %in% TRUE,
-          na.rm = TRUE
-        )
+      n_projection_edges = vapply(fit$condition_levels, function(condition) {
+        sum(coefficient$condition == condition, na.rm = TRUE)
       }, integer(1)),
+      n_significant_diagnostic_edges = vapply(
+        fit$condition_levels, function(condition) {
+          all_coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
+          sum(
+            all_coefficient$condition == condition &
+              all_coefficient$significant %in% TRUE,
+            na.rm = TRUE
+          )
+        }, integer(1)
+      ),
       mean_target_reliability = vapply(
         fit$condition_levels,
         function(condition) {
@@ -351,11 +338,11 @@
         },
         numeric(1)
       ),
-      reliability_definition = "sqrt(clamp(target_condition_rsq,0,1))",
-      padj_threshold = 0.05,
+      reliability_definition = "sqrt(clamp(dictionary_conditional_oof_rsq,0,1))",
+      padj_threshold_diagnostic = 0.05,
       corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
       estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
-      projection_effect = "penalty_effect",
+      projection_effect = "continuous_estimable_penalty_effect",
       pando_object_scope = "cell_type_exact_feature_space",
       aggregation_contract =
         "beta_times_group_mean_tf_times_group_mean_atac",
@@ -367,10 +354,10 @@
     projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_fixed_dictionary_glm_bh_filtered",
+    origin = "paired_cell_exact_union_multitask_ridge_continuous",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    projection_name = "bh_filtered_fixed_dictionary_condition_glm",
+    projection_name = "continuous_estimable_multitask_ridge_condition_effect",
     nonestimable_policy =
-      "coefficient_NA_and_zero_realized_penalty_contribution"
+      "zero_realized_penalty_contribution_for_nonestimable_condition_edge"
   )
 }
