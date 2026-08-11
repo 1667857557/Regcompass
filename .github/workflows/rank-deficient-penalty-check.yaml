@@ -24,19 +24,23 @@ jobs:
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
 
-          # In multi-task ridge v2, a raw singular design is not represented by
-          # fit_status='rank_deficient'. If the penalized solve succeeds the
-          # target status is 'ok' and design_rank_deficient remains diagnostic.
+          # Raw singularity remains a diagnostic after ridge regularization, but
+          # final condition-edge inclusion additionally requires BH support.
           coefficient <- data.frame(
             estimate = c(1, 1, 1, 1),
             estimable = c(TRUE, TRUE, FALSE, TRUE),
+            padj = c(0.01, 0.08, NA_real_, 0.01),
             fit_status = c("ok", "ok", "ok", "failed"),
             design_rank_deficient = c(FALSE, TRUE, TRUE, FALSE),
             stringsAsFactors = FALSE
           )
           stopifnot(identical(
-            .rc_condition_penalty_gate(coefficient),
+            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.1),
             c(TRUE, TRUE, FALSE, FALSE)
+          ))
+          stopifnot(identical(
+            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.05),
+            c(TRUE, FALSE, FALSE, FALSE)
           ))
 
           coefficient <- data.frame(
@@ -44,10 +48,14 @@ jobs:
             condition = c("A", "B"),
             estimate = c(0.8, -0.7),
             estimable = c(TRUE, FALSE),
+            pval = c(0.001, NA_real_),
+            padj = c(0.01, NA_real_),
             significant = c(TRUE, FALSE),
+            penalty_effect = c(0.8, 0),
             stringsAsFactors = FALSE
           )
-          fit <- list(
+          fit <- structure(list(
+            padj_threshold = 0.05,
             coefficients = coefficient,
             fit = data.frame(
               target = c("G", "G"),
@@ -56,7 +64,7 @@ jobs:
               design_rank_deficient = c(TRUE, TRUE),
               stringsAsFactors = FALSE
             )
-          )
+          ), class = c("ConditionGRNFit", "list"))
           gated <- .rc_apply_condition_penalty_gate(fit)
           stopifnot(
             identical(gated$coefficients$fit_status, c("ok", "ok")),
@@ -65,5 +73,6 @@ jobs:
               gated$regcompass_rank_deficient_policy,
               "regularized_ok_fit_retained; condition-zero-variance edge excluded"
             ),
-            identical(gated$regcompass_significance_role, "diagnostic_only")
+            identical(gated$regcompass_significance_role,
+                      "condition_edge_inclusion_gate")
           )
