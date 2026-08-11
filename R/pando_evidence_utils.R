@@ -171,8 +171,18 @@
     tf_index <- tf_index[usable]
     peak_index <- peak_index[usable]
     estimate <- estimate[usable]
-    tf_mean <- colMeans(rna[cells, tf_index, drop = FALSE])
-    peak_mean <- colMeans(atac[cells, peak_index, drop = FALSE])
+    tf_block <- rna[cells, tf_index, drop = FALSE]
+    peak_block <- atac[cells, peak_index, drop = FALSE]
+    tf_mean <- if (inherits(tf_block, "Matrix")) {
+      Matrix::colMeans(tf_block)
+    } else {
+      base::colMeans(tf_block)
+    }
+    peak_mean <- if (inherits(peak_block, "Matrix")) {
+      Matrix::colMeans(peak_block)
+    } else {
+      base::colMeans(peak_block)
+    }
     contribution <- estimate * tf_mean * peak_mean
     edge_target <- tolower(as.character(edge$target))
     totals <- tapply(contribution, edge_target, sum)
