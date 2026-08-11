@@ -279,7 +279,23 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-### 6B. Score only one reaction direction
+### 6B. Adjust CORDA2 only when needed
+
+The original CORDA2 controls remain available under `model_params$corda2_args`: `MCxNCthresh`, `constraint`, `constrainby`, `om`, and `ci`. They should normally stay at their validated defaults; expose only the parameter being deliberately changed. For example:
+
+```r
+layer2_args = list(
+  model_params = list(
+    corda2_args = list(
+      MCxNCthresh = 3
+    )
+  )
+)
+```
+
+See [layer2-corda.md](layer2-corda.md) for the meaning and validated defaults of `constraint`, `constrainby`, `om`, `ci`, and `MCxNCthresh` before changing them.
+
+### 6C. Score only one reaction direction
 
 Only set `target_direction` when the analysis should not score both directions.
 
@@ -299,7 +315,7 @@ step5 <- rc_regcompass_step_layer2(
 
 `target_direction` accepts `"both"`, `"forward"`, or `"reverse"`.
 
-### 6C. Supplementary FASTCORE structural completion
+### 6D. Supplementary FASTCORE structural completion
 
 Use this only when intentionally replacing the default CORDA2 completion route.
 
