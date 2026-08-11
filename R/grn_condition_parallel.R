@@ -87,6 +87,12 @@
     stop("Invalid condition-GRN multi-task fit task.", call. = FALSE)
   }
   ridge_control <- pando_infer_args$condition_ridge_control %||% list()
+  threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
+  if (length(threshold) != 1L || !is.finite(threshold) ||
+      threshold <= 0 || threshold > 0.1) {
+    stop("Condition Pando padj_threshold must be in (0, 0.1].",
+         call. = FALSE)
+  }
   args <- list(
     object = task$grn,
     cell_type_col = celltype_col,
@@ -102,7 +108,7 @@
     min_cells_per_condition = as.integer(min_cells),
     small_condition_action = "error",
     adjust_method = "BH",
-    padj_threshold = 0.05,
+    padj_threshold = threshold,
     rank_action = pando_infer_args$rank_action,
     min_residual_df = pando_infer_args$min_residual_df,
     parallel = isTRUE(inner_parallel),
@@ -130,6 +136,10 @@
   }
   if (!identical(as.character(fit$cell_type), task$cell_type)) {
     stop("Pando multi-task condition fit returned the wrong cell type.",
+         call. = FALSE)
+  }
+  if (!isTRUE(all.equal(as.numeric(fit$padj_threshold), threshold))) {
+    stop("Pando returned a condition fit with the wrong BH threshold.",
          call. = FALSE)
   }
   list(
