@@ -52,7 +52,7 @@
   )
   threshold <- suppressWarnings(as.numeric(fit$padj_threshold))
   threshold_valid <- length(threshold) == 1L && is.finite(threshold) &&
-    threshold > 0 && threshold <= 0.1
+    threshold > 0 && threshold < 1
   if (!all(required %in% names(fit)) ||
       !identical(fit$model_schema, .RC_PANDO_CONDITION_GRN_MODEL_SCHEMA) ||
       !identical(fit$fit_engine, .RC_PANDO_CONDITION_GRN_ENGINE) ||
@@ -494,11 +494,11 @@
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
   if (!identical(toupper(as.character(pando_infer_args$adjust_method)), "BH") ||
       length(threshold) != 1L || !is.finite(threshold) ||
-      threshold <= 0 || threshold > 0.1 ||
+      threshold <= 0 || threshold >= 1 ||
       !is.list(pando_infer_args$condition_ridge_control)) {
     stop(
       "Canonical RegCompass condition effects require BH adjustment with ",
-      "padj_threshold in (0, 0.1] and condition_ridge_control as a list.",
+      "padj_threshold in (0, 1) and condition_ridge_control as a list.",
       call. = FALSE
     )
   }
