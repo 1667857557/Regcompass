@@ -1,9 +1,9 @@
-# Final bounded condition target routing.  A cell-type GRN budget includes the
+# Final bounded condition target routing. A cell-type GRN budget includes the
 # outer cell-type worker itself; only the remaining slots may become Pando
-# target workers.  This keeps outer workers plus nested Pando workers within the
-# single RegCompass worker cap.
+# target workers. Canonical direct definitions remain in their original source
+# files; these helpers are installed through aliases at the end of this file.
 
-.rc_condition_multitask_fit_task <- function(
+.rc_condition_multitask_fit_task_bounded <- function(
     task, target_genes, condition_col, celltype_col, min_cells,
     pando_infer_args, inner_parallel = FALSE, PANDO_BPPARAM = NULL) {
   if (!is.list(task) || !inherits(task$grn, "GRNData") ||
@@ -126,7 +126,7 @@
 .rc_fit_condition_grns_by_cell_type_cap_impl <-
   .rc_fit_condition_grns_by_cell_type
 
-.rc_fit_condition_grns_by_cell_type <- function(
+.rc_fit_condition_grns_by_cell_type_bounded <- function(
     object, gem, outdir, pfm = NULL, genome,
     condition_col = "condition", celltype_col = "cell_type",
     cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
@@ -190,3 +190,6 @@
   saveRDS(answer, file.path(outdir, "single_cell_grn.rds"))
   answer
 }
+
+.rc_condition_multitask_fit_task <- .rc_condition_multitask_fit_task_bounded
+.rc_fit_condition_grns_by_cell_type <- .rc_fit_condition_grns_by_cell_type_bounded
