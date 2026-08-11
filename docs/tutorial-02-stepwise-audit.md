@@ -8,14 +8,14 @@ This tutorial shows only parameters that users commonly need to choose or change
 workers <- 10L
 ```
 
-`workers` is the single workflow-level process cap. RegCompass selects the platform-specific backend automatically and shrinks each dispatch to the number of independent tasks available.
+`workers` is the single workflow-level process cap. RegCompass selects the platform-specific backend automatically and shrinks each dispatch to the number of independent tasks available. For ridge GRNs, cell types are processed sequentially and this worker budget is reused inside Pando at the target level; each target worker receives only target-specific multiome data.
 
 ## 1. Regulatory evidence
 
 Stage 1 automatically selects the GRN route per retained broad cell type:
 
 - at least two retained conditions: condition-comparable Pando multi-task ridge;
-- one effective condition, or `condition_col = NULL`: standard Pando;
+- one effective condition, or `condition_col = NULL`: standard Pando using the K=1 specialization of the same ridge solver;
 - mixed datasets: each cell type is routed independently.
 
 `min_cells` is kept visible because it is data dependent. The default correlation thresholds, BH adjustment, ridge CV settings, rank handling, and other stable model defaults are not repeated in the main calls.
@@ -54,9 +54,9 @@ pando_args = list(
 )
 ```
 
-### 1B. Standard Pando with the original GLM
+### 1B. Standard Pando
 
-Use `condition_col = NULL` when the whole analysis should use standard Pando rather than condition-comparable fitting.
+Use `condition_col = NULL` when the whole analysis should use standard Pando rather than condition-comparable fitting. Ridge is already the default, so `method` should normally be omitted.
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -73,9 +73,11 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-### 1C. Standard Pando with ridge
+With one effective condition, the shared multi-task ridge backend reduces to K=1: the fusion term is zero, while ridge regularization, target-specific CV, predictor scaling, effective degrees of freedom and ridge-Wald diagnostics remain the same numerical framework.
 
-Use the optional single-task ridge backend when standard Pando is required but collinearity regularization is desired.
+### 1C. Original standard-Pando GLM compatibility route
+
+Set `method = "glm"` only when the unregularized Gaussian GLM behavior is intentionally required.
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -88,16 +90,16 @@ step1 <- rc_regcompass_step_grn(
   pando_args = list(
     min_cells = 500L,
     pando_infer_args = list(
-      method = "ridge"
+      method = "glm"
     )
   ),
   workers = workers
 )
 ```
 
-### 1D. Mixed routing, with ridge only for standard-Pando cell types
+### 1D. Mixed routing
 
-This is useful when some broad cell types retain at least two conditions while others retain only one. Condition-capable cell types still use the native condition multi-task ridge; `method = "ridge"` is applied only to standard-Pando cell types.
+When some broad cell types retain at least two conditions and others retain only one, no model override is required. Condition-capable cell types use the joint multi-task ridge; standard-Pando cell types use its K=1 ridge specialization.
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -108,10 +110,7 @@ step1 <- rc_regcompass_step_grn(
   condition_col = "condition",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 500L,
-    pando_infer_args = list(
-      method = "ridge"
-    )
+    min_cells = 500L
   ),
   workers = workers
 )
