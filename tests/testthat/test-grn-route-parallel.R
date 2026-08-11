@@ -1,4 +1,4 @@
-test_that("Pando routing defaults correlations to 0.05 and standard ridge", {
+test_that("Pando routing defaults thresholds to 0.05 and standard ridge", {
   standard <- .rc_route_pando_infer_args(
     list(),
     condition_types = character(),
@@ -12,6 +12,7 @@ test_that("Pando routing defaults correlations to 0.05 and standard ridge", {
 
   expect_equal(standard$standard$tf_cor, 0.05)
   expect_equal(standard$standard$peak_cor, 0.05)
+  expect_equal(standard$standard$padj_threshold, 0.05)
   expect_equal(standard$standard$adjust_method, "BH")
   expect_identical(standard$standard$method, "ridge")
   expect_true(is.list(standard$standard$ridge_control))
@@ -22,7 +23,7 @@ test_that("Pando routing defaults correlations to 0.05 and standard ridge", {
   expect_equal(condition$condition$padj_threshold, 0.05)
 })
 
-test_that("standard Pando ignores condition-only inference parameters", {
+test_that("standard Pando ignores only condition-only inference parameters", {
   routed <- .rc_route_pando_infer_args(
     list(
       padj_threshold = 0.01,
@@ -35,27 +36,24 @@ test_that("standard Pando ignores condition-only inference parameters", {
     standard_types = "T_cell"
   )
 
+  expect_equal(routed$standard$padj_threshold, 0.01)
   expect_false(any(c(
-    "padj_threshold", "condition_ridge_control",
-    "rna_layer", "peak_layer", "peak_value_type"
+    "condition_ridge_control", "rna_layer", "peak_layer", "peak_value_type"
   ) %in% names(routed$standard)))
   expect_setequal(
     routed$diagnostics$argument,
-    c(
-      "padj_threshold", "condition_ridge_control",
-      "rna_layer", "peak_layer", "peak_value_type"
-    )
+    c("condition_ridge_control", "rna_layer", "peak_layer", "peak_value_type")
   )
   expect_true(all(routed$diagnostics$route == "standard_pando"))
 })
 
-test_that("single-condition standard ridge drops only condition-exclusive controls", {
+test_that("single-condition standard ridge preserves shared thresholds", {
   routed <- .rc_route_pando_infer_args(
     list(
       tf_cor = 0.1,
       peak_cor = 0,
       adjust_method = "BH",
-      padj_threshold = 0.05,
+      padj_threshold = 0.01,
       rank_action = "mark",
       min_residual_df = 1L
     ),
@@ -65,12 +63,12 @@ test_that("single-condition standard ridge drops only condition-exclusive contro
 
   expect_equal(routed$standard$tf_cor, 0.1)
   expect_equal(routed$standard$peak_cor, 0)
+  expect_equal(routed$standard$padj_threshold, 0.01)
   expect_equal(routed$standard$adjust_method, "BH")
   expect_identical(routed$standard$method, "ridge")
   expect_identical(routed$standard$rank_action, "mark")
   expect_identical(routed$standard$min_residual_df, 1L)
-  expect_false("padj_threshold" %in% names(routed$standard))
-  expect_setequal(routed$diagnostics$argument, "padj_threshold")
+  expect_equal(nrow(routed$diagnostics), 0L)
 })
 
 test_that("condition Pando ignores standard-only inference parameters", {
@@ -136,13 +134,13 @@ test_that("condition GRN routes ridge controls and drops standard-model controls
   )
 })
 
-test_that("mixed routing preserves controls for their own route", {
+test_that("mixed routing preserves shared and route-specific controls", {
   routed <- .rc_route_pando_infer_args(
     list(
       tf_cor = 0.1,
       peak_cor = 0,
       adjust_method = "BH",
-      padj_threshold = 0.05,
+      padj_threshold = 0.01,
       rank_action = "mark",
       min_residual_df = 1L,
       condition_ridge_control = list(fusion_ratio = 2),
@@ -157,13 +155,15 @@ test_that("mixed routing preserves controls for their own route", {
     "padj_threshold", "rank_action", "min_residual_df",
     "condition_ridge_control"
   ) %in% names(routed$condition)))
-  expect_true(all(c("method", "scale") %in% names(routed$standard)))
+  expect_true(all(c("padj_threshold", "method", "scale") %in%
+                    names(routed$standard)))
+  expect_equal(routed$condition$padj_threshold, 0.01)
+  expect_equal(routed$standard$padj_threshold, 0.01)
   expect_false("method" %in% names(routed$condition))
-  expect_false("padj_threshold" %in% names(routed$standard))
   expect_false("condition_ridge_control" %in% names(routed$standard))
   expect_setequal(
     routed$diagnostics$argument,
-    c("padj_threshold", "condition_ridge_control", "method", "scale")
+    c("condition_ridge_control", "method", "scale")
   )
 })
 
@@ -177,18 +177,26 @@ test_that("unknown Pando arguments fail before model fitting", {
   )
 })
 
-test_that("condition BH threshold defaults to 0.05 and accepts any value in (0,1)", {
-  default <- .rc_route_pando_infer_args(
-    list(adjust_method = "BH"),
-    condition_types = "T_cell"
+test_that("BH threshold defaults to 0.05 and is configurable in both routes", {
+  condition_default <- .rc_route_pando_infer_args(
+    list(adjust_method = "BH"), condition_types = "T_cell"
   )
-  expect_equal(default$condition$padj_threshold, 0.05)
+  standard_default <- .rc_route_pando_infer_args(
+    list(adjust_method = "BH"), standard_types = "T_cell"
+  )
+  expect_equal(condition_default$condition$padj_threshold, 0.05)
+  expect_equal(standard_default$standard$padj_threshold, 0.05)
 
-  routed <- .rc_route_pando_infer_args(
+  condition <- .rc_route_pando_infer_args(
     list(adjust_method = "BH", padj_threshold = 0.5),
     condition_types = "T_cell"
   )
-  expect_equal(routed$condition$padj_threshold, 0.5)
+  standard <- .rc_route_pando_infer_args(
+    list(adjust_method = "BH", padj_threshold = 0.5),
+    standard_types = "T_cell"
+  )
+  expect_equal(condition$condition$padj_threshold, 0.5)
+  expect_equal(standard$standard$padj_threshold, 0.5)
 
   expect_error(
     .rc_route_pando_infer_args(
@@ -196,6 +204,13 @@ test_that("condition BH threshold defaults to 0.05 and accepts any value in (0,1
       condition_types = "T_cell"
     ),
     "padj_threshold in \\(0, 1\\)"
+  )
+  expect_error(
+    .rc_route_pando_infer_args(
+      list(adjust_method = "BH", padj_threshold = 1),
+      standard_types = "T_cell"
+    ),
+    "padj_threshold.*\\(0, 1\\)"
   )
 })
 
