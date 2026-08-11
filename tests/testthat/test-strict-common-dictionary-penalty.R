@@ -1,4 +1,4 @@
-.strict_fit_fixture <- function() {
+.strict_fit_fixture <- function(padj_threshold = 0.05) {
   edge <- data.frame(
     edge_id = c("G||TF1||P1", "G||TF2||P2"),
     target = "G",
@@ -6,17 +6,20 @@
     region = c("P1", "P2"),
     atac_feature_id = c("A1", "A2"),
     candidate_index = 1:2,
+    screening_min_padj = c(0.002, 0.04),
+    screening_n_significant_conditions = c(2L, 1L),
+    screening_significant_conditions = c("A;B", "A"),
     stringsAsFactors = FALSE
   )
   attr(edge, "preprocessing_provenance_verified") <- TRUE
 
-  pval <- c(0.001, 0.9, 0.02, 0.8)
+  pval <- c(0.001, 0.04, 0.02, 0.8)
   condition <- rep(c("A", "B"), each = 2L)
   padj <- unlist(lapply(split(pval, condition), stats::p.adjust,
                         method = "BH"), use.names = FALSE)
   estimate <- c(1, -0.2, -0.7, 0.1)
   shared <- c(0.15, -0.05, 0.15, -0.05)
-  significant <- padj < 0.05
+  significant <- padj < padj_threshold
   coefficient <- data.frame(
     edge_id = rep(edge$edge_id, 2L),
     target = "G",
@@ -31,7 +34,7 @@
     pval = pval,
     padj = padj,
     significant = significant,
-    penalty_effect = estimate,
+    penalty_effect = ifelse(significant, estimate, 0),
     estimable = TRUE,
     zero_variance = FALSE,
     aliased = FALSE,
@@ -58,7 +61,15 @@
     contrast_pval = contrast_pval,
     contrast_padj = contrast_padj,
     contrast_estimable = TRUE,
-    contrast_significant = contrast_padj < 0.05,
+    contrast_significant = contrast_padj < padj_threshold,
+    stringsAsFactors = FALSE
+  )
+
+  screening <- data.frame(
+    edge_id = c(edge$edge_id, "G||TF3||P3"),
+    screening_min_padj = c(0.002, 0.04, 0.4),
+    screening_n_significant_conditions = c(2L, 1L, 0L),
+    screening_significant_conditions = c("A;B", "A", ""),
     stringsAsFactors = FALSE
   )
 
@@ -86,12 +97,18 @@
       stringsAsFactors = FALSE
     ),
     network_names = c(A = "net_A", B = "net_B"),
-    padj_threshold = 0.05,
+    padj_threshold = padj_threshold,
     adjust_method = "BH",
     scale = FALSE,
     interaction = ":",
     projection_effect_column = "penalty_effect",
-    projection_policy = "continuous_estimable_ridge_effects",
+    projection_policy = "padj_significant_ridge_effects",
+    fit_dictionary_policy =
+      "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
+    candidate_edge_count = 3L,
+    fit_dictionary_edge_count = 2L,
+    dictionary_screening_threshold = padj_threshold,
+    dictionary_screening_summary = screening,
     rna_layer = "data",
     peak_layer = "data",
     peak_value_type = "normalized",
@@ -100,44 +117,67 @@
   ), class = c("ConditionGRNFit", "list"))
 }
 
-test_that("multi-task validator requires the complete dictionary in every condition", {
+test_that("significant-union dictionary is complete in every condition", {
   fit <- .strict_fit_fixture()
   expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
   incomplete <- fit
   incomplete$coefficients <- incomplete$coefficients[-1L, , drop = FALSE]
   expect_error(
     RegCompassR:::.rc_require_pando_condition_grn_fit(incomplete),
-    "every frozen dictionary edge"
+    "every screened fit-dictionary edge"
   )
 })
 
-test_that("ridge-Wald significance is diagnostic while projection remains continuous", {
+test_that("every fit-dictionary edge must have preliminary BH support", {
+  fit <- .strict_fit_fixture()
+  bad <- fit
+  bad$edge_dictionary$screening_n_significant_conditions[[2L]] <- 0L
+  bad$edge_dictionary$screening_min_padj[[2L]] <- 0.4
+  expect_error(
+    RegCompassR:::.rc_require_pando_condition_grn_fit(bad),
+    "BH-significant in at least one condition"
+  )
+})
+
+test_that("final condition penalty uses configured BH threshold", {
   fit <- .strict_fit_fixture()
   expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
 
   nonsignificant <- which(!fit$coefficients$significant)[[1L]]
-  expect_false(fit$coefficients$significant[[nonsignificant]])
-  expect_equal(
-    fit$coefficients$penalty_effect[[nonsignificant]],
-    fit$coefficients$estimate[[nonsignificant]]
+  expect_equal(fit$coefficients$penalty_effect[[nonsignificant]], 0)
+
+  wrong_effect <- fit
+  wrong_effect$coefficients$penalty_effect[[nonsignificant]] <-
+    wrong_effect$coefficients$estimate[[nonsignificant]]
+  expect_error(
+    RegCompassR:::.rc_require_pando_condition_grn_fit(wrong_effect),
+    "BH-significant finite ridge coefficient"
   )
 
   wrong_flag <- fit
   wrong_flag$coefficients$significant[[1L]] <- FALSE
   expect_error(
     RegCompassR:::.rc_require_pando_condition_grn_fit(wrong_flag),
-    "ridge-Wald diagnostic flags"
-  )
-
-  wrong_effect <- fit
-  wrong_effect$coefficients$penalty_effect[[nonsignificant]] <- 0
-  expect_error(
-    RegCompassR:::.rc_require_pando_condition_grn_fit(wrong_effect),
-    "finite estimable ridge coefficient"
+    "configured BH threshold"
   )
 })
 
-test_that("pairwise differential GRN contrasts are part of the contract", {
+test_that("padj threshold can be relaxed to 0.1 but not above", {
+  fit <- .strict_fit_fixture(padj_threshold = 0.1)
+  fit$edge_dictionary$screening_min_padj[[2L]] <- 0.08
+  fit$dictionary_screening_summary$screening_min_padj[[2L]] <- 0.08
+  expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
+
+  too_relaxed <- fit
+  too_relaxed$padj_threshold <- 0.11
+  too_relaxed$dictionary_screening_threshold <- 0.11
+  expect_error(
+    RegCompassR:::.rc_require_pando_condition_grn_fit(too_relaxed),
+    "incomplete"
+  )
+})
+
+test_that("pairwise differential GRN contrasts remain separate inference", {
   fit <- .strict_fit_fixture()
   expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
   expect_equal(
@@ -153,31 +193,34 @@ test_that("pairwise differential GRN contrasts are part of the contract", {
   )
 })
 
-test_that("Layer 1 keeps continuous estimable ridge effects", {
+test_that("Layer 1 keeps only final BH-significant ridge effects", {
   fit <- .strict_fit_fixture()
   gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
+  threshold <- fit$padj_threshold
+  expected <- fit$coefficients$estimable &
+    is.finite(fit$coefficients$padj) &
+    fit$coefficients$padj < threshold
 
-  expect_equal(gated$coefficients$penalty_effect, gated$coefficients$estimate)
-  expect_identical(gated$coefficients$significant, fit$coefficients$significant)
+  expect_identical(gated$coefficients$significant, expected)
+  expect_equal(
+    gated$coefficients$penalty_effect,
+    ifelse(expected, gated$coefficients$estimate, 0)
+  )
   expect_true(all(gated$coefficients$fit_status == "ok"))
   expect_identical(
     gated$regcompass_penalty_filter,
-    "estimable & finite estimate & fit_status == 'ok'"
+    "estimable & finite estimate & fit_status == 'ok' & BH padj < 0.05"
   )
-  expect_identical(gated$regcompass_significance_role, "diagnostic_only")
+  expect_identical(
+    gated$regcompass_significance_role,
+    "condition_edge_inclusion_gate"
+  )
   expect_invisible(
     RegCompassR:::.rc_require_layer1_condition_grn_fit(gated)
   )
-
-  stale_metadata <- gated
-  stale_metadata$regcompass_penalty_filter <- "estimable & BH padj < 0.05"
-  expect_error(
-    RegCompassR:::.rc_require_layer1_condition_grn_fit(stale_metadata),
-    "penalty gate metadata are inconsistent"
-  )
 })
 
-test_that("non-estimable condition edges contribute zero without changing diagnostics", {
+test_that("non-estimable condition edges contribute zero", {
   fit <- .strict_fit_fixture()
   fit$coefficients$estimable[[2L]] <- FALSE
   fit$coefficients$penalty_effect[[2L]] <- 0
@@ -193,7 +236,23 @@ test_that("non-estimable condition edges contribute zero without changing diagno
   )
 })
 
-test_that("Layer 1 routes continuous fits through the layered validator", {
+test_that("target reliability requires at least one significant edge", {
+  fit <- .strict_fit_fixture()
+  reliability <- RegCompassR:::.rc_condition_target_reliability(fit)
+  expect_true(all(reliability$n_significant_edges > 0L))
+  expect_true(all(is.finite(reliability$reliability)))
+
+  none <- fit
+  none$coefficients$significant[none$coefficients$condition == "B"] <- FALSE
+  none$coefficients$padj[none$coefficients$condition == "B"] <- 1
+  none$coefficients$penalty_effect[none$coefficients$condition == "B"] <- 0
+  reliability_none <- RegCompassR:::.rc_condition_target_reliability(none)
+  expect_true(is.na(reliability_none$reliability[
+    reliability_none$condition == "B"
+  ]))
+})
+
+test_that("Layer 1 keeps product-of-means projection with BH gate", {
   selector <- paste(
     deparse(body(RegCompassR:::.rc_condition_pando_object_for_fit)),
     collapse = "\n"
@@ -211,14 +270,12 @@ test_that("Layer 1 routes continuous fits through the layered validator", {
   expect_match(
     projection, ".rc_condition_penalty_gate", fixed = TRUE
   )
-  expect_false(grepl(
-    "coefficient$significant %in% TRUE", projection, fixed = TRUE
-  ))
   expect_match(
     projection,
     "beta_times_group_mean_tf_times_group_mean_atac",
     fixed = TRUE
   )
+  expect_false(grepl("mean(TF * ATAC)", projection, fixed = TRUE))
 })
 
 test_that("condition contract is implemented once in functional source files", {
