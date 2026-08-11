@@ -26,6 +26,13 @@ jobs:
           description = Path("DESCRIPTION").read_text()
           if "Pando (>= " in description or "Pando (>=" in description:
               raise RuntimeError("Pando compatibility must not use a version floor")
+          required_description = [
+              "Config/RegCompass/PandoConditionProjectionPolicy: padj-significant-ridge-effects",
+              "Config/RegCompass/PandoConditionMethod: significant-union-multitask-ridge-refit",
+          ]
+          missing = [x for x in required_description if x not in description]
+          if missing:
+              raise RuntimeError(f"DESCRIPTION condition policy missing: {missing}")
 
           route = Path("R/grn_route_parallel.R").read_text()
           required_route = [
@@ -33,6 +40,7 @@ jobs:
               '"infer_condition_grn"',
               '"condition_grn_fit"',
               '"condition_ridge_control"',
+              "padj_threshold in (0, 0.1]",
               "Unsupported override(s)",
           ]
           missing = [value for value in required_route if value not in route]
@@ -44,9 +52,12 @@ jobs:
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition = [
               ".rc_fit_condition_grns_by_cell_type",
-              "joint multi-task ridge",
+              "preliminary joint ridge BH screening",
+              "significant-edge union",
+              "final joint ridge",
               "tf_peak_gene_condition_contrasts",
-              "continuous finite estimable raw-unit multi-task ridge coefficient",
+              "same_significant_union_dictionary_joint_multitask_ridge_raw_units",
+              "screening_n_significant_conditions",
           ]
           missing = [value for value in required_condition if value not in condition]
           if missing:
@@ -55,10 +66,11 @@ jobs:
               "fixed-dictionary Pando GLMs",
               "two_stage_exact_edge_union_fixed_dictionary_glm",
               "same_exact_edge_dictionary_unscaled_gaussian_glm",
+              "continuous finite estimable raw-unit multi-task ridge coefficient",
           ]
           present = [value for value in forbidden_condition if value in condition]
           if present:
-              raise RuntimeError(f"obsolete condition GLM implementation remains: {present}")
+              raise RuntimeError(f"obsolete condition implementation remains: {present}")
 
           helper = Path("R/grn_condition_parallel.R").read_text()
           required_helper = [
@@ -66,6 +78,7 @@ jobs:
               "Pando::infer_condition_grn",
               "Pando::condition_grn_fit",
               "condition_ridge_control",
+              "threshold > 0.1",
               'parallel_scope = "target"',
           ]
           missing = [value for value in required_helper if value not in helper]
@@ -81,23 +94,26 @@ jobs:
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
               "coefficient$estimable %in% TRUE",
               "is.finite(estimate)",
+              "is.finite(padj)",
+              "padj < threshold",
               'fit_status == "ok"',
-              'fit$regcompass_significance_role <- "diagnostic_only"',
+              'fit$regcompass_significance_role <- "condition_edge_inclusion_gate"',
           ]
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
-              raise RuntimeError(f"continuous ridge penalty-entry contract missing: {missing}")
+              raise RuntimeError(f"BH-significant ridge penalty-entry contract missing: {missing}")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
           required_layer1 = [
-              'expected_filter <- "estimable & finite estimate & fit_status == \'ok\'"',
+              ".rc_condition_padj_threshold(fit = fit)",
+              ".rc_condition_penalty_gate",
               ".rc_validate_pando_fit_metadata_frame <- function",
               "Condition-Pando projection requires exactly one metacell membership",
               'aggregation_contract =',
               '"beta_times_group_mean_tf_times_group_mean_atac"',
-              'origin = "paired_cell_exact_union_multitask_ridge_continuous"',
-              'projection_name = "continuous_estimable_multitask_ridge_condition_effect"',
+              'origin = "paired_cell_significant_union_multitask_ridge_bh_filtered"',
+              'projection_name = "bh_significant_multitask_ridge_condition_effect"',
               "unique cell-type set.",
           ]
           missing = [value for value in required_layer1 if value not in layer1]
@@ -121,6 +137,7 @@ jobs:
               "bh_filtered_fixed_dictionary_condition_glm",
               "padj_corr_effect_filtered_fixed_dictionary_condition_glm",
               "paired_cell_fixed_dictionary_glm_padj_corr_effect_filtered",
+              "paired_cell_exact_union_multitask_ridge_continuous",
           ]
           present = [value for value in forbidden_layer1 if value in layer1]
           if present:
