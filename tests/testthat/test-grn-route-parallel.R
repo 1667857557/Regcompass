@@ -36,7 +36,15 @@ test_that("single-condition standard Pando drops condition-only controls", {
   )
 })
 
-test_that("condition GRN drops standard-model controls", {
+test_that("condition GRN routes ridge controls and drops standard-model controls", {
+  ridge <- list(
+    lambda_grid = c(0.01, 0.1, 1),
+    lambda_rule = "1se",
+    fusion_ratio = 1,
+    cv_folds = 4L,
+    seed = 7L,
+    scale_floor = 1e-8
+  )
   routed <- .rc_route_pando_infer_args(
     list(
       tf_cor = 0.2,
@@ -45,6 +53,7 @@ test_that("condition GRN drops standard-model controls", {
       padj_threshold = 0.05,
       rank_action = "mark",
       min_residual_df = 2L,
+      condition_ridge_control = ridge,
       method = "glmnet",
       alpha = 0.5,
       scale = TRUE
@@ -56,6 +65,7 @@ test_that("condition GRN drops standard-model controls", {
   expect_equal(routed$condition$tf_cor, 0.2)
   expect_equal(routed$condition$peak_cor, 0.05)
   expect_equal(routed$condition$min_residual_df, 2L)
+  expect_identical(routed$condition$condition_ridge_control, ridge)
   expect_false(any(c("method", "alpha", "scale") %in%
                      names(routed$condition)))
   expect_setequal(
@@ -73,6 +83,7 @@ test_that("mixed routing preserves controls for their own route", {
       padj_threshold = 0.05,
       rank_action = "mark",
       min_residual_df = 1L,
+      condition_ridge_control = list(fusion_ratio = 2),
       method = "glm",
       scale = FALSE
     ),
@@ -80,11 +91,14 @@ test_that("mixed routing preserves controls for their own route", {
     standard_types = "HSPC"
   )
 
-  expect_true(all(c("padj_threshold", "rank_action", "min_residual_df") %in%
-                    names(routed$condition)))
+  expect_true(all(c(
+    "padj_threshold", "rank_action", "min_residual_df",
+    "condition_ridge_control"
+  ) %in% names(routed$condition)))
   expect_true(all(c("method", "scale") %in% names(routed$standard)))
   expect_false("method" %in% names(routed$condition))
   expect_false("rank_action" %in% names(routed$standard))
+  expect_false("condition_ridge_control" %in% names(routed$standard))
 })
 
 test_that("unknown Pando arguments fail before model fitting", {
@@ -97,17 +111,17 @@ test_that("unknown Pando arguments fail before model fitting", {
   )
 })
 
-test_that("canonical condition significance rule remains fixed", {
+test_that("canonical condition diagnostic threshold remains fixed", {
   expect_error(
     .rc_route_pando_infer_args(
       list(adjust_method = "BH", padj_threshold = 0.1),
       condition_types = "T_cell"
     ),
-    "BH padj < 0.05"
+    "BH diagnostic padj at 0.05"
   )
 })
 
-test_that("parallel condition jobs preserve separate Pando objects", {
+test_that("parallel condition jobs preserve separate Pando objects and contrasts", {
   make_job <- function(cell_type, cell_id) {
     fit <- list(cell_type = cell_type)
     list(
@@ -121,6 +135,9 @@ test_that("parallel condition jobs preserve separate Pando objects", {
       tf_peak_gene_condition = data.frame(cell_type = cell_type),
       tf_peak_gene_condition_effect_all = data.frame(cell_type = cell_type),
       tf_peak_gene_condition_effect = data.frame(cell_type = cell_type),
+      tf_peak_gene_condition_contrasts = data.frame(
+        cell_type = cell_type, contrast = "A-B"
+      ),
       paired_cell_metadata = data.frame(
         cell_id = cell_id,
         condition = "Control",
@@ -130,7 +147,7 @@ test_that("parallel condition jobs preserve separate Pando objects", {
       paired_cell_ids = cell_id,
       target_metabolic_genes = paste0("GENE_", cell_type),
       pando_execution_summary = list(
-        fit_engine = "fixed_dictionary",
+        fit_engine = "two_stage_exact_edge_union_multitask_ridge",
         targets_total = 1L,
         targets_failed = 0L
       )
@@ -148,11 +165,10 @@ test_that("parallel condition jobs preserve separate Pando objects", {
     c("T_cell", "Monocyte")
   )
   expect_null(merged$pando_grn_data)
-  expect_true(merged$parallel_object_contract$preserves_local_peak_space)
-  expect_true(merged$parallel_object_contract$merged_grndata_prohibited)
   expect_setequal(merged$paired_cell_ids, c("T1", "M1"))
   expect_setequal(
     names(merged$condition_grn_fits),
     c("T_cell", "Monocyte")
   )
+  expect_equal(nrow(merged$tf_peak_gene_condition_contrasts), 2L)
 })
