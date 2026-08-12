@@ -40,8 +40,9 @@ jobs:
               "'layer2_corda2_algorithm.R'",
               "'layer2_corda_model.R'",
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v2",
-              "Config/RegCompass/PandoConditionProjectionPolicy: padj-significant-ridge-effects",
-              "Config/RegCompass/PandoConditionMethod: significant-union-multitask-ridge-refit",
+              "Config/RegCompass/PandoConditionProjectionPolicy: screen-bh-supported-refit-ridge-effects",
+              "Config/RegCompass/PandoConditionMethod: screened-union-multitask-ridge-effect-refit",
+              "Config/RegCompass/PandoConditionInference: preliminary-ridge-Wald-BH-screen-only-final-refit-no-inference",
           ]
           missing = [x for x in required_description if x not in description]
           if missing:
@@ -144,12 +145,13 @@ jobs:
           condition_helpers = Path("R/grn_condition_parallel.R").read_text()
           required_condition = [
               ".rc_fit_condition_grns_by_cell_type",
-              "preliminary joint ridge BH screening",
-              "significant-edge union",
-              "final joint ridge",
+              "preliminary joint ridge-Wald BH screening",
+              "supported-edge union",
+              "final effect-only joint ridge refit",
               "tf_peak_gene_condition_contrasts",
-              "same_significant_union_dictionary_joint_multitask_ridge_raw_units",
+              "same_screened_dictionary_joint_multitask_ridge_refit_raw_units",
               "screening_n_significant_conditions",
+              "post_screen_joint_ridge_effect_estimation_only_no_final_inference",
           ]
           missing = [x for x in required_condition if x not in condition]
           if missing:
@@ -171,18 +173,19 @@ jobs:
 
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
+              "coefficient$screen_significant %in% TRUE",
               "coefficient$estimable %in% TRUE",
               "is.finite(estimate)",
-              "is.finite(padj)",
-              "padj < threshold",
+              "is.finite(screen_padj)",
+              "screen_padj < threshold",
               'fit_status == "ok"',
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
-              'fit$regcompass_significance_role <- "condition_edge_inclusion_gate"',
+              '"stage1_dictionary_screen_support_gate_on_final_refit_effect"',
           ]
           missing = [x for x in required_penalty if x not in penalty]
           if missing:
-              raise RuntimeError(f"BH-significant ridge penalty contract missing: {missing}")
+              raise RuntimeError(f"screen-supported ridge penalty contract missing: {missing}")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
@@ -203,8 +206,8 @@ jobs:
               ".rc_condition_padj_threshold(fit = fit)",
               ".rc_condition_penalty_gate",
               '"beta_times_group_mean_tf_times_group_mean_atac"',
-              'origin = "paired_cell_significant_union_multitask_ridge_bh_filtered"',
-              'projection_name = "bh_significant_multitask_ridge_condition_effect"',
+              'origin = "paired_cell_screened_dictionary_multitask_ridge_refit"',
+              'projection_name = "screen_supported_final_refit_multitask_ridge_condition_effect"',
           ]
           missing = [x for x in required_layer1 if x not in layer1]
           if missing:
@@ -286,7 +289,8 @@ jobs:
           coefficient <- data.frame(
             estimate = c(1e-8, 2, 3, NA_real_),
             estimable = c(TRUE, TRUE, TRUE, FALSE),
-            padj = c(0.01, 0.08, 0.2, NA_real_),
+            screen_padj = c(0.01, 0.08, 0.2, NA_real_),
+            screen_significant = c(TRUE, TRUE, TRUE, FALSE),
             fit_status = c("ok", "ok", "ok", "ok"),
             stringsAsFactors = FALSE
           )
