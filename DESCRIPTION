@@ -17,11 +17,13 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     in either scope are deduplicated into one frozen common dictionary. Every
     condition is then fitted once on the same dictionary with a common-lambda
     no-fusion ridge model, retaining condition-specific comparable coefficients.
-    Standard Pando uses the K=1 ridge route in RegCompass. Ridge routes keep one
-    cell type resident at a time and parallelize target work with target-specific
-    multiome payloads. Mathematical and quantitative definitions are maintained
-    in the package mathematical specification rather than duplicated in interface
-    text.
+    Correlation support determines common-dictionary admission and is retained as
+    provenance only; an edge is active within a fitted condition when that
+    condition's ridge coefficient is estimable and BH-supported. Standard Pando
+    uses the K=1 ridge route in RegCompass. Ridge routes keep one cell type
+    resident at a time and parallelize target work with target-specific multiome
+    payloads. Mathematical and quantitative definitions are maintained in the
+    package mathematical specification rather than duplicated in interface text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -174,7 +176,7 @@ Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3
 Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge
-Config/RegCompass/PandoConditionProjectionPolicy: active-global-or-local-support-and-condition-BH-ridge
+Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge
 Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-conditional-on-candidate-dictionary-and-CV-lambda
 Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
 Config/RegCompass/PandoStandardDefaultMethod: ridge
