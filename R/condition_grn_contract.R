@@ -7,7 +7,7 @@
 .RC_PANDO_CONDITION_GRN_ENGINE <-
   "condition_union_single_no_fusion_common_lambda_ridge"
 .RC_PANDO_CONDITION_PROJECTION_POLICY <-
-  "active_global_or_local_pando_support_and_condition_bh_ridge_effects"
+  "condition_bh_supported_common_dictionary_ridge_effects"
 .RC_PANDO_CONDITION_DICTIONARY_POLICY <-
   "global_and_condition_union_pando_correlation_supported_frozen_dictionary"
 
@@ -283,15 +283,17 @@
     expected_local <- paste(
       as.character(one$edge_id), condition, sep = "\001"
     ) %in% local_key
-    expected_active <- expected_statistical & (expected_global | expected_local)
+    expected_active <- expected_statistical
     if (!identical(as.logical(one$statistically_supported), expected_statistical) ||
         !identical(as.logical(one$global_support), expected_global) ||
         !identical(as.logical(one$local_support), expected_local) ||
         !identical(as.logical(one$active), expected_active) ||
         !identical(as.logical(one$significant), expected_active)) {
       stop(
-        "Pando condition activity flags are inconsistent with ridge BH and ",
-        "global/local candidate support.", call. = FALSE
+        "Pando condition activity flags are inconsistent: global/local ",
+        "correlation support must remain provenance only, while active must ",
+        "equal the condition's own estimable BH-supported ridge evidence.",
+        call. = FALSE
       )
     }
     expected_effect <- ifelse(
@@ -500,7 +502,7 @@
     condition_contrasts = do.call(rbind, contrasts),
     active_tol = 0,
     penalty_filter = paste0(
-      "Pando active condition edge & fit_status == 'ok'; BH threshold=",
+      "Pando BH-active condition edge & fit_status == 'ok'; BH threshold=",
       paste(format(thresholds, trim = TRUE), collapse = ",")
     ),
     coefficient_contract =
@@ -767,7 +769,7 @@
         n_active_edges = nrow(active_rows),
         padj_threshold = threshold,
         grn_evidence_role =
-          "global_or_local_pando_candidate_single_no_fusion_ridge_active_edge",
+          "common_dictionary_condition_bh_supported_no_fusion_ridge_active_edge",
         stringsAsFactors = FALSE
       )
       names(status_rows[[length(status_rows)]])[
@@ -824,9 +826,9 @@
           " in pooled/global cells or at least one condition"
         ),
         condition_effect = paste0(
-          "raw-unit condition ridge coefficient active only when condition BH ",
-          "padj < ", format(threshold, trim = TRUE),
-          " and edge has global or same-condition Pando candidate support"
+          "raw-unit condition ridge coefficient active when estimable and ",
+          "condition BH padj < ", format(threshold, trim = TRUE),
+          "; global/local correlation support is dictionary provenance only"
         ),
         coefficient_contract =
           "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
