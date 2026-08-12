@@ -22,17 +22,21 @@
       !methods::is(BPPARAM, "BiocParallelParam")) {
     return(BPPARAM)
   }
+
+  # BiocParallelParam is a reference class. Never write `bptasks` into the
+  # shared Layer 2 template: a small structural task count would otherwise
+  # persist into later Vmax and reaction-level Step 2 scoring dispatches.
+  tuned <- .rc_parallel_param_for_tasks(BPPARAM, n_tasks)
+  if (identical(tuned, FALSE) || is.null(tuned)) return(tuned)
   setter <- get0(
     "bptasks<-", envir = asNamespace("BiocParallel"),
     mode = "function", inherits = FALSE
   )
   if (is.function(setter)) {
     tuned <- tryCatch(
-      setter(BPPARAM, n_tasks),
-      error = function(e) BPPARAM
+      setter(tuned, n_tasks),
+      error = function(e) tuned
     )
-  } else {
-    tuned <- BPPARAM
   }
   attr(tuned, "regcompass_corda2_dynamic_tasks") <- n_tasks
   tuned

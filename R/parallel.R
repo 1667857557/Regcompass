@@ -179,6 +179,17 @@ rc_default_bpparam <- function(
   param
 }
 
+.rc_parallel_dispatch_task_count <- function(
+    n_tasks, workers, chunks_per_worker = 8L) {
+  n_tasks <- max(1L, as.integer(n_tasks[[1L]]))
+  workers <- max(1L, min(as.integer(workers[[1L]]), n_tasks))
+  chunks_per_worker <- suppressWarnings(as.integer(chunks_per_worker[[1L]]))
+  if (!is.finite(chunks_per_worker) || chunks_per_worker < 1L) {
+    chunks_per_worker <- 1L
+  }
+  min(n_tasks, max(workers, workers * chunks_per_worker))
+}
+
 .rc_parallel_param_for_tasks <- function(BPPARAM = NULL, n_tasks) {
   n_tasks <- suppressWarnings(as.integer(n_tasks[[1L]]))
   if (!is.finite(n_tasks) || n_tasks <= 1L || identical(BPPARAM, FALSE)) {
@@ -200,17 +211,29 @@ rc_default_bpparam <- function(
   if (isTRUE(BiocParallel::bpisup(BPPARAM))) {
     return(BPPARAM)
   }
-  current <- max(1L, as.integer(BiocParallel::bpnworkers(BPPARAM)))
-  if (current == effective) {
-    attr(BPPARAM, "regcompass_worker_limit") <- limit
-    attr(BPPARAM, "regcompass_effective_workers") <- effective
-    return(BPPARAM)
-  }
+
   backend <- .rc_bpparam_backend(BPPARAM)
   tuned <- rc_default_bpparam(workers = effective, backend = backend)
   if (is.null(tuned)) return(FALSE)
+  dispatch_tasks <- .rc_parallel_dispatch_task_count(
+    n_tasks = n_tasks,
+    workers = effective,
+    chunks_per_worker = 8L
+  )
+  task_setter <- get0(
+    "bptasks<-", envir = asNamespace("BiocParallel"),
+    mode = "function", inherits = FALSE
+  )
+  if (is.function(task_setter)) {
+    tuned <- tryCatch(
+      task_setter(tuned, dispatch_tasks),
+      error = function(e) tuned
+    )
+  }
   attr(tuned, "regcompass_worker_limit") <- limit
   attr(tuned, "regcompass_effective_workers") <- effective
+  attr(tuned, "regcompass_dispatch_tasks") <- dispatch_tasks
+  attr(tuned, "regcompass_dynamic_chunks_per_worker") <- 8L
   tuned
 }
 
@@ -219,7 +242,10 @@ rc_default_bpparam <- function(
 #' Every task, including tasks submitted to a caller-started pool, establishes a
 #' one-thread numerical/solver environment inside the worker. Package-managed
 #' pools are sized as `min(number of independent tasks, worker cap)`, stopped
-#' after the dispatch, and followed by full garbage collection.
+#' after the dispatch, and followed by full garbage collection. Unstarted
+#' templates are copied into a fresh dispatch-local backend so task-count tuning
+#' from one stage cannot leak into later stages. Large workloads are split into
+#' multiple chunks per worker to reduce tail-idle time from heterogeneous tasks.
 #'
 #' @param X A vector or list.
 #' @param FUN Function applied to each element.
