@@ -20,10 +20,15 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     Correlation support determines common-dictionary admission and is retained as
     provenance only; an edge is active within a fitted condition when that
     condition's ridge coefficient is estimable and BH-supported. Standard Pando
-    uses the K=1 ridge route in RegCompass. Ridge routes keep one cell type
-    resident at a time and parallelize target work with target-specific multiome
-    payloads. Mathematical and quantitative definitions are maintained in the
-    package mathematical specification rather than duplicated in interface text.
+    uses the K=1 ridge route in RegCompass. Human standard and condition routes
+    share the RegCompass default regulatory prior formed by the union of Pando's
+    phastConsElements20Mammals.UCSC.hg38 and SCREEN.ccRE.UCSC.hg38 resources.
+    Downstream target regulatory weight is binary: q is one for a valid active
+    target, while R-squared and OOF R-squared remain diagnostics only. Ridge
+    routes keep one cell type resident at a time and parallelize target work with
+    target-specific multiome payloads. Mathematical and quantitative definitions
+    are maintained in the package mathematical specification rather than
+    duplicated in interface text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -181,3 +186,5 @@ Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-conditional-on
 Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
 Config/RegCompass/PandoStandardDefaultMethod: ridge
 Config/RegCompass/PandoTargetParallelMemoryPolicy: target-specific-worker-sized-payload-batches
+Config/RegCompass/PandoTargetPenaltyQ: binary-active-target-q1-rsq-diagnostic-only
+Config/RegCompass/PandoHumanDefaultRegions: phastConsElements20Mammals.UCSC.hg38+SCREEN.ccRE.UCSC.hg38
