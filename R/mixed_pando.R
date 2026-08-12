@@ -109,8 +109,8 @@
         all_edges$active_in_condition <- FALSE
       }
       all_edges$active_in_condition[condition_rows] <- gate
-      # Do not overwrite Pando's `significant` field: it remains an approximate
-      # ridge-Wald/BH diagnostic alongside the final RegCompass active-edge gate.
+      # Pando `significant` is the preliminary BH support mask restricted to a
+      # finite estimable final refit coefficient; RegCompass adds fit_status.
       condition_active <- all_edges[condition_rows &
         all_edges$penalty_eligible %in% TRUE, , drop = FALSE]
       standard_active <- if (nrow(active_edges) &&
@@ -206,8 +206,8 @@
         "standard Pando otherwise"
       ),
       condition_effect_filter = paste(
-        "fit_status ok, estimable finite coefficient and adjusted P below",
-        "the configured padj_threshold"
+        "preliminary condition BH screen support, final refit estimable finite",
+        "coefficient, and fit_status ok; no final coefficient P value"
       ),
       standard_edge_filter = paste(
         "estimable when available and adjusted P below",
