@@ -113,7 +113,7 @@
 
   condition_args <- args[intersect(names(args), condition_allowed)]
   condition_args <- utils::modifyList(list(
-    tf_cor = 0.05,
+    tf_cor = 0.1,
     peak_cor = 0.05,
     adjust_method = "BH",
     padj_threshold = 0.05,
@@ -135,6 +135,14 @@
     stop(
       "Canonical RegCompass condition fits require BH adjustment, ",
       "padj_threshold in (0, 1), and condition_ridge_control as a list.",
+      call. = FALSE
+    )
+  }
+  if (length(condition_types) &&
+      "fusion_ratio" %in% names(condition_args$condition_ridge_control)) {
+    stop(
+      "`pando_infer_args$condition_ridge_control$fusion_ratio` is obsolete; ",
+      "condition coefficients are fitted without cross-condition fusion.",
       call. = FALSE
     )
   }
@@ -385,7 +393,7 @@
   .rc_step_monitor_event(
     progress_monitor, "cell_type_execution_plan",
     paste(
-      "condition GRNs use native Pando significant-union multi-task ridge;",
+      "condition GRNs use pooled/global plus condition exact-union no-fusion ridge;",
       "standard Pando uses", standard_method,
       if (standard_ridge) "through the same ridge solver K=1" else ""
     ),
