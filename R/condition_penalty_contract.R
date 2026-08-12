@@ -1,9 +1,5 @@
 # Pando edge eligibility used by the canonical Stage-1 merge.
 
-# Candidate-correlation and absolute-effect thresholds remain disabled here.
-# The condition path now uses the configured BH-adjusted ridge-Wald threshold
-# as the sole post-fit edge inclusion gate, after Pando has already constructed
-# a significant-union common fit dictionary.
 .RC_PANDO_PENALTY_CORR_THRESHOLD <- 0
 .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0
 
@@ -19,7 +15,6 @@
       call. = FALSE
     )
   }
-
   fit_key <- paste(
     toupper(trimws(as.character(fit_table$target))),
     as.character(fit_table$condition), sep = "\001"
@@ -66,13 +61,19 @@
   value[[1L]]
 }
 
-.rc_condition_penalty_gate <- function(coefficient, padj_threshold = NULL) {
-  required <- c("estimate", "estimable", "padj")
+.rc_validate_pando_active_condition_edges <- function(
+    coefficient, padj_threshold = NULL) {
+  required <- c(
+    "estimate", "estimable", "padj", "statistically_supported",
+    "global_support", "local_support", "active", "significant",
+    "penalty_effect"
+  )
   if (!is.data.frame(coefficient) ||
       !all(required %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN coefficients must contain estimate, estimable and padj ",
-      "before RegCompass penalty filtering.", call. = FALSE
+      "Condition-GRN coefficients must retain Pando ridge statistics, ",
+      "global/local candidate support, active flags, and penalty_effect.",
+      call. = FALSE
     )
   }
   threshold <- if (is.null(padj_threshold)) {
@@ -88,15 +89,62 @@
   }
   estimate <- suppressWarnings(as.numeric(coefficient$estimate))
   padj <- suppressWarnings(as.numeric(coefficient$padj))
+  expected_statistical <- coefficient$estimable %in% TRUE &
+    is.finite(estimate) & is.finite(padj) & padj < threshold
+  expected_dictionary_support <-
+    coefficient$global_support %in% TRUE |
+    coefficient$local_support %in% TRUE
+  expected_active <- expected_statistical & expected_dictionary_support
+  if (!identical(
+      as.logical(coefficient$statistically_supported), expected_statistical
+  )) {
+    stop(
+      "Pando statistically_supported flags do not match condition-wise BH ridge evidence.",
+      call. = FALSE
+    )
+  }
+  if (!identical(as.logical(coefficient$active), expected_active) ||
+      !identical(as.logical(coefficient$significant), expected_active)) {
+    stop(
+      "Pando active condition-edge flags must equal BH-supported ridge evidence ",
+      "with pooled/global or condition-local Pando candidate support.",
+      call. = FALSE
+    )
+  }
+  expected_effect <- ifelse(expected_active, estimate, 0)
+  observed_effect <- suppressWarnings(as.numeric(coefficient$penalty_effect))
+  comparable <- is.finite(expected_effect) & is.finite(observed_effect)
+  if (any(is.finite(expected_effect) != is.finite(observed_effect)) ||
+      any(abs(expected_effect[comparable] - observed_effect[comparable]) > 1e-12)) {
+    stop(
+      "Pando penalty_effect must equal the active condition-specific ridge ",
+      "coefficient or zero.", call. = FALSE
+    )
+  }
+  invisible(expected_active)
+}
+
+.rc_condition_penalty_gate <- function(coefficient, padj_threshold = NULL) {
+  threshold <- if (is.null(padj_threshold)) {
+    .rc_condition_padj_threshold(coefficient = coefficient)
+  } else {
+    value <- suppressWarnings(as.numeric(padj_threshold))
+    if (length(value) != 1L || !is.finite(value) ||
+        value <= 0 || value >= 1) {
+      stop("Condition-GRN padj_threshold must be in (0, 1).",
+           call. = FALSE)
+    }
+    value
+  }
+  active <- .rc_validate_pando_active_condition_edges(
+    coefficient, padj_threshold = threshold
+  )
   fit_status <- if ("fit_status" %in% colnames(coefficient)) {
     trimws(as.character(coefficient$fit_status))
   } else {
     rep("ok", nrow(coefficient))
   }
-
-  coefficient$estimable %in% TRUE &
-    !is.na(fit_status) & fit_status == "ok" &
-    is.finite(estimate) & is.finite(padj) & padj < threshold
+  active & !is.na(fit_status) & fit_status == "ok"
 }
 
 .rc_apply_condition_penalty_gate <- function(fit) {
@@ -110,19 +158,18 @@
   gate <- .rc_condition_penalty_gate(
     coefficient, padj_threshold = threshold
   )
-  coefficient$significant <- gate
-  coefficient$penalty_effect <- ifelse(
-    gate, suppressWarnings(as.numeric(coefficient$estimate)), 0
-  )
+  coefficient$penalty_eligible <- gate
+  coefficient$active_in_condition <- gate
+  # Preserve Pando's active/significant/penalty_effect contract. RegCompass adds
+  # only the target-level fit_status == 'ok' requirement for downstream use.
   fit$coefficients <- coefficient
-  fit$regcompass_penalty_filter <- paste0(
-    "estimable & finite estimate & fit_status == 'ok' & BH padj < ",
-    format(threshold, trim = TRUE)
-  )
+  fit$regcompass_penalty_filter <-
+    "Pando active edge & target fit_status == 'ok'"
   fit$regcompass_fit_status_filter <- "fit_status == 'ok'"
   fit$regcompass_rank_deficient_policy <-
-    "regularized_ok_fit_retained; condition-zero-variance edge excluded"
-  fit$regcompass_significance_role <- "condition_edge_inclusion_gate"
+    "regularized_ok_fit_retained; non-estimable condition edge excluded"
+  fit$regcompass_significance_role <-
+    "consume_pando_active_condition_edge_without_reselection"
   fit$regcompass_padj_threshold <- threshold
   fit
 }
