@@ -1,9 +1,10 @@
 # Pando edge eligibility used by the canonical Stage-1 merge.
 
 # Candidate-correlation and absolute-effect thresholds remain disabled here.
-# The condition path now uses the configured BH-adjusted ridge-Wald threshold
-# as the sole post-fit edge inclusion gate, after Pando has already constructed
-# a significant-union common fit dictionary.
+# Condition Pando performs one preliminary ridge-Wald/BH screen to define the
+# shared fit dictionary and the condition-specific support mask. RegCompass uses
+# that stored screen support to gate the final effect-only common-dictionary
+# ridge refit; it does not calculate or require a second post-selection P value.
 .RC_PANDO_PENALTY_CORR_THRESHOLD <- 0
 .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0
 
@@ -67,12 +68,15 @@
 }
 
 .rc_condition_penalty_gate <- function(coefficient, padj_threshold = NULL) {
-  required <- c("estimate", "estimable", "padj")
+  required <- c(
+    "estimate", "estimable", "screen_padj", "screen_significant"
+  )
   if (!is.data.frame(coefficient) ||
       !all(required %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN coefficients must contain estimate, estimable and padj ",
-      "before RegCompass penalty filtering.", call. = FALSE
+      "Condition-GRN coefficients must contain final estimate/estimable and ",
+      "preliminary screen_padj/screen_significant before RegCompass penalty ",
+      "filtering.", call. = FALSE
     )
   }
   threshold <- if (is.null(padj_threshold)) {
@@ -87,16 +91,18 @@
     value
   }
   estimate <- suppressWarnings(as.numeric(coefficient$estimate))
-  padj <- suppressWarnings(as.numeric(coefficient$padj))
+  screen_padj <- suppressWarnings(as.numeric(coefficient$screen_padj))
   fit_status <- if ("fit_status" %in% colnames(coefficient)) {
     trimws(as.character(coefficient$fit_status))
   } else {
     rep("ok", nrow(coefficient))
   }
 
-  coefficient$estimable %in% TRUE &
+  coefficient$screen_significant %in% TRUE &
+    coefficient$estimable %in% TRUE &
     !is.na(fit_status) & fit_status == "ok" &
-    is.finite(estimate) & is.finite(padj) & padj < threshold
+    is.finite(estimate) & is.finite(screen_padj) &
+    screen_padj < threshold
 }
 
 .rc_apply_condition_penalty_gate <- function(fit) {
@@ -116,13 +122,15 @@
   )
   fit$coefficients <- coefficient
   fit$regcompass_penalty_filter <- paste0(
-    "estimable & finite estimate & fit_status == 'ok' & BH padj < ",
-    format(threshold, trim = TRUE)
+    "screen_significant & screen_padj < ",
+    format(threshold, trim = TRUE),
+    " & final estimable & finite estimate & fit_status == 'ok'"
   )
   fit$regcompass_fit_status_filter <- "fit_status == 'ok'"
   fit$regcompass_rank_deficient_policy <-
     "regularized_ok_fit_retained; condition-zero-variance edge excluded"
-  fit$regcompass_significance_role <- "condition_edge_inclusion_gate"
+  fit$regcompass_significance_role <-
+    "stage1_dictionary_screen_support_gate_on_final_refit_effect"
   fit$regcompass_padj_threshold <- threshold
   fit
 }
