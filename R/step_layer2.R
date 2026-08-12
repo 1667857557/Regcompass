@@ -143,11 +143,12 @@
 #' same cell type. One union GEM and one independent structural completion are
 #' created for every cell-type and medium combination. Conditions and metacells
 #' share a model only when their cell type matches. RNA-only scoring is an
-#' interpretation control that reuses the exact structural model cache. The
-#' `full_gem` route uses a separate engine. `workers` is the single hard upper
-#' bound for Layer 2 parallelism. CORDA2 and directional LP batches can use the
-#' full cap when enough independent targets exist; smaller batches use fewer
-#' workers automatically.
+#' interpretation control that reuses the exact structural model cache and the
+#' primary directional Vmax cache, then re-solves only the evidence-dependent
+#' Step 2 objective. The `full_gem` route uses a separate engine. `workers` is
+#' the single hard upper bound for Layer 2 parallelism. CORDA2 and directional
+#' LP batches can use the full cap when enough independent targets exist;
+#' smaller batches use fewer workers automatically.
 #'
 #' @param workers Total RegCompass worker cap. The default is 10. Windows uses
 #'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. Every
@@ -337,6 +338,19 @@ rc_regcompass_step_layer2 <- function(
       )) invokeRestart("muffleWarning")
     }
   )
+  control_model_cache <- answer$shared_model_cache
+  control_flux_threshold <- as.numeric(
+    answer$params$flux_threshold %||%
+      layer2_args$flux_threshold %||% 1e-8
+  )
+  attr(control_model_cache, "directional_vmax_cache_override") <-
+    .rc_pack_microcompass_vmax_cache(
+      diagnostics = answer$vmax_cache_diagnostics,
+      model_cache = control_model_cache,
+      mode = model_mode,
+      solver = solver,
+      flux_threshold = control_flux_threshold
+    )
   run_control <- function(expression_field, label) {
     expression <- layer1[[expression_field]]
     if (!is.numeric(expression) || is.null(dim(expression)) ||
@@ -354,7 +368,7 @@ rc_regcompass_step_layer2 <- function(
     control_layer1$reaction_expression <- expression
     control_args <- c(defaults, layer2_args)
     control_args$layer1 <- control_layer1
-    control_args$model_cache_override <- answer$shared_model_cache
+    control_args$model_cache_override <- control_model_cache
     result <- withCallingHandlers(
       do.call(
         .rc_run_microcompass_engine_monitored,
@@ -368,6 +382,18 @@ rc_regcompass_step_layer2 <- function(
         )) invokeRestart("muffleWarning")
       }
     )
+    if (is.list(result$params)) {
+      result$params$vmax_solve_count <- 0L
+      result$params$vmax_cache_source <- "reused_primary_directional_vmax"
+      result$params$vmax_computation_scope <-
+        "reused_primary_directional_vmax_cache"
+      result$params$vmax_reused_from_primary <- TRUE
+    }
+    if (is.data.frame(result$vmax_cache_diagnostics) &&
+        "computation_scope" %in% colnames(result$vmax_cache_diagnostics)) {
+      result$vmax_cache_diagnostics$computation_scope <-
+        "reused_primary_directional_vmax_cache"
+    }
     .rc_assert_layer2_shared_contract(answer, result, label)
     result
   }
@@ -385,6 +411,9 @@ rc_regcompass_step_layer2 <- function(
       "coefficient_NA_and_zero_realized_penalty_contribution",
     exact_shared_structure = TRUE,
     structural_model_contract = answer$structural_model_contract,
+    directional_vmax_contract =
+      "computed_once_in_primary_and_reused_exactly_for_rna_control",
+    rna_control_vmax_solve_count = 0L,
     effect_size_basis = "penalty / (omega * vmax)",
     ecdf_effect_size_eligible = FALSE
   )
@@ -464,12 +493,12 @@ rc_regcompass_step_layer2 <- function(
   on.exit({ state$run_kind <- previous_run }, add = TRUE)
   .rc_layer2_overall_event(
     "rna_control_start", 7L,
-    "reusing structural models for RNA-only control scoring"
+    "reusing structural models and primary directional Vmax for RNA-only Step 2"
   )
   answer <- do.call(.rc_run_microcompass_engine, args)
   .rc_layer2_overall_event(
     "rna_control_complete", 8L,
-    "RNA-only control scoring completed on the shared structural cache"
+    "RNA-only Step 2 completed without recomputing directional Vmax"
   )
   answer
 }
