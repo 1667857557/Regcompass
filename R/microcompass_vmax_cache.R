@@ -17,6 +17,175 @@
   answer[expected_names]
 }
 
+.rc_microcompass_vmax_cache_contract <- function(
+    model_cache, mode, solver, flux_threshold) {
+  if (!is.list(model_cache) || !length(model_cache) ||
+      is.null(names(model_cache)) || anyNA(names(model_cache)) ||
+      any(!nzchar(names(model_cache))) || anyDuplicated(names(model_cache))) {
+    stop(
+      "Directional vmax cache contracts require a uniquely named model cache.",
+      call. = FALSE
+    )
+  }
+  mode <- match.arg(
+    as.character(mode), c("full_gem", "meta_module_gem")
+  )
+  solver <- match.arg(
+    as.character(solver), c("highs", "gurobi", "glpk")
+  )
+  if (!is.numeric(flux_threshold) || length(flux_threshold) != 1L ||
+      !is.finite(flux_threshold) || flux_threshold <= 0) {
+    stop("`flux_threshold` must be one positive finite number.",
+         call. = FALSE)
+  }
+  scalar_text <- function(x, label, allow_empty = FALSE) {
+    value <- as.character(x %||% "")
+    if (length(value) != 1L || is.na(value) ||
+        (!allow_empty && !nzchar(value))) {
+      stop("Directional vmax cache entry has invalid `", label, "`.",
+           call. = FALSE)
+    }
+    value
+  }
+  rows <- lapply(names(model_cache), function(row_id) {
+    entry <- model_cache[[row_id]]
+    model_file <- scalar_text(entry$file, "file", allow_empty = TRUE)
+    checksum <- as.character(entry$file_checksum %||% NA_character_)
+    if (length(checksum) != 1L || is.na(checksum) || !nzchar(checksum)) {
+      checksum <- if (nzchar(model_file) && file.exists(model_file)) {
+        unname(tools::md5sum(model_file)[[1L]])
+      } else {
+        NA_character_
+      }
+    }
+    data.frame(
+      row_id = row_id,
+      model_file = model_file,
+      model_file_checksum = checksum,
+      cell_type = if (identical(mode, "meta_module_gem")) {
+        scalar_text(entry$cell_type, "cell_type")
+      } else {
+        ""
+      },
+      reaction_id = scalar_text(entry$reaction_id, "reaction_id"),
+      target_direction = scalar_text(
+        entry$target_direction, "target_direction"
+      ),
+      medium_scenario = scalar_text(
+        entry$medium_scenario, "medium_scenario"
+      ),
+      stringsAsFactors = FALSE
+    )
+  })
+  rows <- do.call(rbind, rows)
+  rownames(rows) <- NULL
+  list(
+    schema_version = "regcompass_directional_vmax_cache_contract_v1",
+    mode = mode,
+    solver = solver,
+    flux_threshold = as.numeric(flux_threshold),
+    rows = rows
+  )
+}
+
+.rc_pack_microcompass_vmax_cache <- function(
+    diagnostics, model_cache, mode, solver, flux_threshold) {
+  tab <- as.data.frame(diagnostics)
+  required <- c("row_id", "vmax", "feasible", "status")
+  if (!all(required %in% colnames(tab))) {
+    stop("Directional vmax diagnostics are incomplete.", call. = FALSE)
+  }
+  observed <- as.character(tab$row_id)
+  expected <- names(model_cache)
+  if (anyNA(observed) || any(!nzchar(observed)) || anyDuplicated(observed) ||
+      !setequal(observed, expected)) {
+    stop(
+      "Directional vmax diagnostics do not match the structural model cache.",
+      call. = FALSE
+    )
+  }
+  tab <- tab[match(expected, observed), , drop = FALSE]
+  values <- lapply(seq_along(expected), function(i) {
+    vmax <- as.numeric(tab$vmax[[i]])
+    feasible <- isTRUE(as.logical(tab$feasible[[i]]))
+    status <- as.character(tab$status[[i]])
+    if (length(vmax) != 1L ||
+        (feasible && (!is.finite(vmax) || vmax < flux_threshold)) ||
+        length(status) != 1L || is.na(status) || !nzchar(status)) {
+      stop("Directional vmax diagnostics contain an invalid result.",
+           call. = FALSE)
+    }
+    list(
+      feasible = feasible,
+      vmax = vmax,
+      status = status,
+      flux = numeric()
+    )
+  })
+  names(values) <- expected
+  attr(values, "vmax_cache_contract") <-
+    .rc_microcompass_vmax_cache_contract(
+      model_cache = model_cache,
+      mode = mode,
+      solver = solver,
+      flux_threshold = flux_threshold
+    )
+  attr(values, "cache_source") <- "primary_directional_vmax"
+  values
+}
+
+.rc_validate_microcompass_vmax_cache_override <- function(
+    vmax_cache, model_cache, mode, solver, flux_threshold) {
+  expected_names <- names(model_cache)
+  if (!is.list(vmax_cache) || !length(vmax_cache) ||
+      is.null(names(vmax_cache)) || anyNA(names(vmax_cache)) ||
+      any(!nzchar(names(vmax_cache))) || anyDuplicated(names(vmax_cache)) ||
+      !setequal(names(vmax_cache), expected_names)) {
+    stop("The reused directional vmax cache is incomplete.", call. = FALSE)
+  }
+  expected_contract <- .rc_microcompass_vmax_cache_contract(
+    model_cache = model_cache,
+    mode = mode,
+    solver = solver,
+    flux_threshold = flux_threshold
+  )
+  observed_contract <- attr(
+    vmax_cache, "vmax_cache_contract", exact = TRUE
+  )
+  if (!identical(observed_contract, expected_contract)) {
+    stop(
+      "The reused directional vmax cache contract does not match the current ",
+      "structural models, solver, or flux threshold.",
+      call. = FALSE
+    )
+  }
+  answer <- vmax_cache[expected_names]
+  for (row_id in expected_names) {
+    value <- answer[[row_id]]
+    if (!is.list(value) ||
+        !all(c("feasible", "vmax", "status") %in% names(value))) {
+      stop("The reused directional vmax cache contains a malformed result.",
+           call. = FALSE)
+    }
+    vmax <- as.numeric(value$vmax)
+    status <- as.character(value$status)
+    if (length(vmax) != 1L ||
+        (isTRUE(value$feasible) &&
+         (!is.finite(vmax) || vmax < flux_threshold)) ||
+        length(status) != 1L || is.na(status) || !nzchar(status)) {
+      stop("The reused directional vmax cache contains an invalid result.",
+           call. = FALSE)
+    }
+  }
+  attr(answer, "vmax_cache_contract") <- expected_contract
+  attr(answer, "cache_source") <- "primary_directional_vmax"
+  attr(answer, "parallel_tasks") <- 0L
+  attr(answer, "parallel_workers") <- 0L
+  attr(answer, "parallel_scope") <-
+    "reused_primary_directional_vmax_cache"
+  answer
+}
+
 .rc_microcompass_worker_count <- function(parallel, BPPARAM, n_tasks) {
   if (!isTRUE(parallel) || n_tasks <= 1L) return(1L)
   if (!is.null(BPPARAM) &&
@@ -76,6 +245,18 @@
 .rc_build_microcompass_vmax_cache_core <- function(
     model_cache, mode, model_keys, solver, flux_threshold,
     parallel = TRUE, BPPARAM = NULL) {
+  override <- attr(
+    model_cache, "directional_vmax_cache_override", exact = TRUE
+  )
+  if (!is.null(override)) {
+    return(.rc_validate_microcompass_vmax_cache_override(
+      vmax_cache = override,
+      model_cache = model_cache,
+      mode = mode,
+      solver = solver,
+      flux_threshold = flux_threshold
+    ))
+  }
   workers <- .rc_microcompass_worker_count(
     parallel = parallel,
     BPPARAM = BPPARAM,
@@ -108,6 +289,14 @@
   answer <- .rc_flatten_microcompass_vmax_cache(
     grouped, names(model_cache)
   )
+  attr(answer, "vmax_cache_contract") <-
+    .rc_microcompass_vmax_cache_contract(
+      model_cache = model_cache,
+      mode = mode,
+      solver = solver,
+      flux_threshold = flux_threshold
+    )
+  attr(answer, "cache_source") <- "computed"
   attr(answer, "parallel_tasks") <- length(tasks)
   attr(answer, "parallel_workers") <- workers
   attr(answer, "parallel_scope") <-
@@ -517,10 +706,16 @@
   )
   parts_dir <- .rc_layer2_cache_progress_dir(args$model_cache)
   run_kind <- progress_state$run_kind %||% "primary"
+  reused <- !is.null(attr(
+    args$model_cache, "directional_vmax_cache_override", exact = TRUE
+  ))
   for (item in contexts) {
     .rc_layer2_task_event(
       item$context, "directional_vmax_start", 1L, 4L,
-      detail = paste0("directional_targets=", item$n_targets),
+      detail = paste0(
+        "directional_targets=", item$n_targets,
+        if (reused) "; source=primary_cache; solves=0" else "; source=lp"
+      ),
       scope = "scoring", run_kind = run_kind, parts_dir = parts_dir
     )
   }
@@ -531,7 +726,10 @@
   for (item in contexts) {
     .rc_layer2_task_event(
       item$context, "directional_vmax_complete", 2L, 4L,
-      detail = paste0("directional_targets=", item$n_targets),
+      detail = paste0(
+        "directional_targets=", item$n_targets,
+        if (reused) "; reused_from=primary; solves=0" else "; solves=completed"
+      ),
       scope = "scoring", run_kind = run_kind,
       status = "complete", parts_dir = parts_dir
     )
