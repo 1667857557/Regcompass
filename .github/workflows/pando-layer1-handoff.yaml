@@ -27,8 +27,9 @@ jobs:
           if "Pando (>= " in description or "Pando (>=" in description:
               raise RuntimeError("Pando compatibility must not use a version floor")
           required_description = [
-              "Config/RegCompass/PandoConditionProjectionPolicy: padj-significant-ridge-effects",
-              "Config/RegCompass/PandoConditionMethod: significant-union-multitask-ridge-refit",
+              "Config/RegCompass/PandoConditionProjectionPolicy: screen-bh-supported-refit-ridge-effects",
+              "Config/RegCompass/PandoConditionMethod: screened-union-multitask-ridge-effect-refit",
+              "Config/RegCompass/PandoConditionInference: preliminary-ridge-Wald-BH-screen-only-final-refit-no-inference",
           ]
           missing = [x for x in required_description if x not in description]
           if missing:
@@ -52,12 +53,13 @@ jobs:
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition = [
               ".rc_fit_condition_grns_by_cell_type",
-              "preliminary joint ridge BH screening",
-              "significant-edge union",
-              "final joint ridge",
+              "preliminary joint ridge-Wald BH screening",
+              "supported-edge union",
+              "final effect-only joint ridge refit",
               "tf_peak_gene_condition_contrasts",
-              "same_significant_union_dictionary_joint_multitask_ridge_raw_units",
+              "same_screened_dictionary_joint_multitask_ridge_refit_raw_units",
               "screening_n_significant_conditions",
+              "post_screen_joint_ridge_effect_estimation_only_no_final_inference",
           ]
           missing = [value for value in required_condition if value not in condition]
           if missing:
@@ -67,6 +69,7 @@ jobs:
               "two_stage_exact_edge_union_fixed_dictionary_glm",
               "same_exact_edge_dictionary_unscaled_gaussian_glm",
               "continuous finite estimable raw-unit multi-task ridge coefficient",
+              "same_significant_union_dictionary_joint_multitask_ridge_raw_units",
           ]
           present = [value for value in forbidden_condition if value in condition]
           if present:
@@ -92,16 +95,21 @@ jobs:
           required_penalty = [
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
+              "coefficient$screen_significant %in% TRUE",
               "coefficient$estimable %in% TRUE",
               "is.finite(estimate)",
-              "is.finite(padj)",
-              "padj < threshold",
+              "is.finite(screen_padj)",
+              "screen_padj < threshold",
               'fit_status == "ok"',
-              'fit$regcompass_significance_role <- "condition_edge_inclusion_gate"',
+              'fit$regcompass_significance_role <-',
+              '"stage1_dictionary_screen_support_gate_on_final_refit_effect"',
           ]
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
-              raise RuntimeError(f"BH-significant ridge penalty-entry contract missing: {missing}")
+              raise RuntimeError(f"screen-supported ridge penalty-entry contract missing: {missing}")
+          for forbidden in ("is.finite(padj) & padj < threshold", "condition_edge_inclusion_gate"):
+              if forbidden in penalty:
+                  raise RuntimeError(f"obsolete final-BH penalty gate remains: {forbidden}")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
@@ -112,8 +120,8 @@ jobs:
               "Condition-Pando projection requires exactly one metacell membership",
               'aggregation_contract =',
               '"beta_times_group_mean_tf_times_group_mean_atac"',
-              'origin = "paired_cell_significant_union_multitask_ridge_bh_filtered"',
-              'projection_name = "bh_significant_multitask_ridge_condition_effect"',
+              'origin = "paired_cell_screened_dictionary_multitask_ridge_refit"',
+              'projection_name = "screen_supported_final_refit_multitask_ridge_condition_effect"',
               "unique cell-type set.",
           ]
           missing = [value for value in required_layer1 if value not in layer1]
@@ -138,6 +146,8 @@ jobs:
               "padj_corr_effect_filtered_fixed_dictionary_condition_glm",
               "paired_cell_fixed_dictionary_glm_padj_corr_effect_filtered",
               "paired_cell_exact_union_multitask_ridge_continuous",
+              "paired_cell_significant_union_multitask_ridge_bh_filtered",
+              "bh_significant_multitask_ridge_condition_effect",
           ]
           present = [value for value in forbidden_layer1 if value in layer1]
           if present:
