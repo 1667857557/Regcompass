@@ -39,14 +39,14 @@ test_that("condition scheduler preserves the min-cells error contract", {
   )
 })
 
-test_that("condition penalty eligibility consumes Pando active edges plus ok fit status", {
+test_that("condition penalty eligibility consumes BH-active Pando edges plus ok fit status", {
   estimate <- c(1e-6, 2, 3, 4)
   padj <- c(0.01, 0.01, 0.051, 0.01)
   estimable <- rep(TRUE, 4L)
   statistically_supported <- estimable & is.finite(padj) & padj < 0.05
   global_support <- c(TRUE, TRUE, TRUE, FALSE)
-  local_support <- c(FALSE, FALSE, TRUE, TRUE)
-  active <- statistically_supported & (global_support | local_support)
+  local_support <- c(FALSE, FALSE, TRUE, FALSE)
+  active <- statistically_supported
   coefficient <- data.frame(
     estimate = estimate,
     padj = padj,
@@ -57,12 +57,12 @@ test_that("condition penalty eligibility consumes Pando active edges plus ok fit
     active = active,
     significant = active,
     penalty_effect = ifelse(active, estimate, 0),
-    fit_status = c("ok", "rank_deficient", "ok", "insufficient_df"),
+    fit_status = c("ok", "rank_deficient", "ok", "ok"),
     stringsAsFactors = FALSE
   )
   expect_identical(
     .rc_condition_penalty_gate(coefficient),
-    c(TRUE, FALSE, FALSE, FALSE)
+    c(TRUE, FALSE, FALSE, TRUE)
   )
 })
 
