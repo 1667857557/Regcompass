@@ -73,13 +73,13 @@ S_{e,c}=\mathbf 1\{estimable_{e,c}\land
 P^{adj}_{e,c}<\theta_{adj}\}.
 \]
 
-The Pando active condition edge is
+Because every fitted coefficient row already corresponds to an exact edge in the frozen common dictionary, the Pando active condition edge is
 
 \[
-A_{e,c}=S_{e,c}(G_e\lor L_{e,c}).
+\boxed{A_{e,c}=S_{e,c}}.
 \]
 
-This distinction is essential. A global-only edge may remain eligible in a condition whose local marginal correlation is unstable, but it still requires that condition's own ridge coefficient to pass BH. Conversely, an edge admitted only because another condition passed its local correlation screen is not active in condition \(c\) unless it also has global support or local support in \(c\).
+The marginal-correlation quantities \(G_e\) and \(L_{e,c}\) have one role: common-dictionary admission and provenance. They are **not** applied again as a post-fit activity gate. Consequently, if an edge enters the dictionary through pooled/global support or through condition \(A\), condition \(B\) can still call that edge active when \(\widehat\beta_{e,B}\) is estimable and BH-supported even if \(G_e=0\) and \(L_{e,B}=0\). This is intentional because the marginal correlations and the coefficient of the joint TF×ATAC ridge model are different statistics; reapplying the marginal-correlation gate would reintroduce the small-condition false-negative problem that the common dictionary is designed to mitigate.
 
 Pando exports
 
