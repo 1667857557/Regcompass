@@ -9,7 +9,7 @@ test_that("condition GRN uses one parallel level at a time", {
   )
 
   fit_text <- paste(
-    deparse(body(.rc_condition_multitask_fit_task)), collapse = "\n"
+    deparse(body(.rc_condition_ridge_fit_task)), collapse = "\n"
   )
   expect_false(grepl("REGCOMPASS_TASK_WORKERS", fit_text, fixed = TRUE))
   expect_false(grepl("nested_pool", fit_text, fixed = TRUE))
@@ -59,7 +59,7 @@ test_that("condition workers release superseded large objects", {
   expect_match(prepare_text, "motif <- NULL", fixed = TRUE)
 
   fit_text <- paste(
-    deparse(body(.rc_condition_multitask_fit_task)), collapse = "\n"
+    deparse(body(.rc_condition_ridge_fit_task)), collapse = "\n"
   )
   expect_match(fit_text, "task$grn <- NULL", fixed = TRUE)
   expect_match(fit_text, "args <- NULL", fixed = TRUE)
