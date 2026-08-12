@@ -115,7 +115,7 @@
     }
     if (!cell_type %in% map_names) {
       stop("No Pando GRNData object is stored for condition-GRN cell type `",
-           cell_type, "`.", call. = FALSE
+           cell_type, "`.", call. = FALSE)
     }
     object <- object_map[[cell_type]]
   } else {
