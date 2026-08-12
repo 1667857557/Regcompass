@@ -58,7 +58,7 @@
   if (is.null(fit$regcompass_penalty_filter)) return(invisible(TRUE))
 
   threshold <- .rc_condition_padj_threshold(fit = fit)
-  expected_filter <- "Pando active edge & target fit_status == 'ok'"
+  expected_filter <- "Pando BH-active edge & target fit_status == 'ok'"
   filter_value <- as.character(fit$regcompass_penalty_filter)
   if (length(filter_value) != 1L || is.na(filter_value) ||
       !identical(filter_value, expected_filter)) {
@@ -88,7 +88,7 @@
   )
   if (!identical(as.logical(coefficient$penalty_eligible), expected_gate)) {
     stop(
-      "RegCompass penalty_eligible flags must equal Pando active edges with ",
+      "RegCompass penalty_eligible flags must equal Pando BH-active edges with ",
       "target fit_status == 'ok'.", call. = FALSE
     )
   }
@@ -115,7 +115,7 @@
     }
     if (!cell_type %in% map_names) {
       stop("No Pando GRNData object is stored for condition-GRN cell type `",
-           cell_type, "`.", call. = FALSE)
+           cell_type, "`.", call. = FALSE
     }
     object <- object_map[[cell_type]]
   } else {
@@ -123,7 +123,8 @@
   }
   if (!inherits(object, "GRNData")) {
     stop("Condition-GRN projection requires a Pando GRNData object for `",
-         cell_type, "`.", call. = FALSE)
+         cell_type, "`.", call. = FALSE
+    )
   }
   fit_cells <- as.character(unlist(
     fit$condition_cell_ids[fit$condition_levels], use.names = FALSE
@@ -181,7 +182,8 @@
   if (anyNA(coefficient_key) || any(!nzchar(coefficient_target)) ||
       any(!nzchar(coefficient_condition))) {
     stop("Condition-GRN coefficients contain incomplete target-condition labels.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   coefficient_index <- match(coefficient_key, fit_key)
   if (anyNA(coefficient_index)) {
@@ -360,7 +362,7 @@
       corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
       estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
       projection_effect =
-        "Pando_active_no_fusion_ridge_penalty_effect",
+        "Pando_condition_BH_active_no_fusion_ridge_penalty_effect",
       pando_object_scope = "cell_type_exact_feature_space",
       aggregation_contract =
         "beta_times_group_mean_tf_times_group_mean_atac",
@@ -372,7 +374,7 @@
     projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_global_or_local_candidate_no_fusion_ridge_active_edges",
+    origin = "paired_cell_common_dictionary_condition_bh_active_edges",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
     projection_name = "active_no_fusion_ridge_condition_effect",
     nonestimable_policy =
