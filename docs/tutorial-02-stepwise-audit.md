@@ -19,7 +19,7 @@ Stage 1 determines the Pando route automatically after the `min_cells` filter:
 - `condition_col = NULL` uses standard Pando for the analysis;
 - mixed datasets are routed independently by broad cell type.
 
-The stable defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment with `padj_threshold = 0.05`, ridge fitting, and the validated rank/CV controls. They do not need to be repeated in routine calls. If `pando_infer_args` contains a known option belonging only to the other Pando mode, RegCompass ignores that option for the incompatible route and records it in `step1$grn_result$pando_infer_argument_routing`; genuinely unknown argument names still raise an error.
+The stable defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment with `padj_threshold = 0.05`, ridge fitting, and the validated rank/CV controls. They do not need to be repeated in routine calls. In the condition-comparable route, `padj_threshold` applies only to the preliminary joint ridge-Wald/BH screen that selects the final shared dictionary and records condition-specific edge support. All conditions are then jointly refit on that same screened dictionary for quantitative coefficients, with no second coefficient P value or BH calculation. In the standard-Pando route, `padj_threshold` remains the one-stage active-edge significance threshold. If `pando_infer_args` contains a known option belonging only to the other Pando mode, RegCompass ignores that option for the incompatible route and records it in `step1$grn_result$pando_infer_argument_routing`; genuinely unknown argument names still raise an error.
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -38,7 +38,7 @@ step1 <- rc_regcompass_step_grn(
 
 If the dataset has no condition variable, use the same call with `condition_col = NULL`. Do not manually choose Condition Pando versus Standard Pando; the retained condition structure determines the route.
 
-Only add `pando_infer_args` when intentionally changing a default. For example:
+Only add `pando_infer_args` when intentionally changing a default. For example, this makes both candidate discovery and the preliminary condition dictionary screen more stringent:
 
 ```r
 pando_args = list(
@@ -50,6 +50,8 @@ pando_args = list(
   )
 )
 ```
+
+For condition Pando, the resulting `screen_pval`, `screen_padj`, and `screen_significant` fields refer to the preliminary candidate-dictionary fit. The final `estimate` used downstream is obtained from the shared screened-dictionary refit; its compatibility `pval`/`padj` fields are `NA` by design.
 
 ## 2. Multimodal metacells
 
