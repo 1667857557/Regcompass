@@ -39,9 +39,9 @@ jobs:
               "'layer2_corda_paper_contract.R'",
               "'layer2_corda2_algorithm.R'",
               "'layer2_corda_model.R'",
-              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v2",
-              "Config/RegCompass/PandoConditionProjectionPolicy: padj-significant-ridge-effects",
-              "Config/RegCompass/PandoConditionMethod: significant-union-multitask-ridge-refit",
+              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
+              "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
+              "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
           ]
           missing = [x for x in required_description if x not in description]
           if missing:
@@ -83,7 +83,7 @@ jobs:
               "R/grn_condition_parallel.R": [
                   ".rc_condition_parallel_plan",
                   ".rc_condition_prepare_celltype_task",
-                  ".rc_condition_multitask_fit_task",
+                  ".rc_condition_ridge_fit_task",
               ],
               "R/grn_parallel_merge_contract.R": [
                   ".rc_merge_condition_job_results",
@@ -117,6 +117,7 @@ jobs:
               ".rc_merge_pando_results_validated",
               ".rc_merge_pando_results_with_parallel_objects",
               ".rc_fit_condition_grns_regcompass_parallel",
+              ".rc_condition_multitask_fit_task",
               "pando_grn_data_by_cell_type_v1",
           ]
           present = [value for value in forbidden_names if value in all_r]
@@ -132,7 +133,9 @@ jobs:
               'peak_cor = 0.05',
               'condition_ridge_control = list()',
               "padj_threshold in (0, 1)",
-              "Unsupported override(s)",
+              "fusion_ratio",
+              "obsolete",
+              "pooled/global plus condition exact-union no-fusion ridge",
           ]
           missing = [x for x in required_route if x not in route]
           if missing:
@@ -144,23 +147,39 @@ jobs:
           condition_helpers = Path("R/grn_condition_parallel.R").read_text()
           required_condition = [
               ".rc_fit_condition_grns_by_cell_type",
-              "preliminary joint ridge BH screening",
-              "significant-edge union",
-              "final joint ridge",
+              "dictionary_support_table",
+              "dictionary_support_summary",
+              "candidate_tf_cor",
+              "candidate_peak_cor",
+              "Every condition must contain every common-dictionary edge exactly once",
+              "expected_active <- expected_statistical",
+              "global/local correlation support must remain provenance only",
               "tf_peak_gene_condition_contrasts",
-              "same_significant_union_dictionary_joint_multitask_ridge_raw_units",
-              "screening_n_significant_conditions",
+              "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
+              "exact deduplicated union -> single common-lambda no-fusion ridge",
+              "tf_cor = 0.05, peak_cor = 0.05",
+              "tf_cor/peak_cor in [0, 1]",
           ]
           missing = [x for x in required_condition if x not in condition]
           if missing:
               raise RuntimeError(f"condition scheduler missing: {missing}")
+          forbidden_condition = [
+              "screening_n_significant_conditions",
+              "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
+              "two_stage_exact_edge_union_multitask_ridge",
+              "expected_statistical & (expected_global | expected_local)",
+          ]
+          present = [x for x in forbidden_condition if x in condition]
+          if present:
+              raise RuntimeError(f"obsolete condition contract remains: {present}")
           helper_required = [
-              ".rc_condition_multitask_fit_task <- function",
+              ".rc_condition_ridge_fit_task <- function",
               "Pando::infer_condition_grn",
               "Pando::condition_grn_fit",
               "condition_ridge_control",
-              "threshold >= 1",
+              "fusion_ratio",
               'parallel_scope = "target"',
+              "active_edges=",
           ]
           missing = [x for x in helper_required if x not in condition_helpers]
           if missing:
@@ -171,18 +190,21 @@ jobs:
 
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
-              "coefficient$estimable %in% TRUE",
-              "is.finite(estimate)",
-              "is.finite(padj)",
-              "padj < threshold",
+              ".rc_validate_pando_active_condition_edges",
+              "statistically_supported",
+              "global_support",
+              "local_support",
+              "expected_active <- expected_statistical",
               'fit_status == "ok"',
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
-              'fit$regcompass_significance_role <- "condition_edge_inclusion_gate"',
+              "consume_pando_condition_bh_active_edge_without_reselection",
           ]
           missing = [x for x in required_penalty if x not in penalty]
           if missing:
-              raise RuntimeError(f"BH-significant ridge penalty contract missing: {missing}")
+              raise RuntimeError(f"active condition ridge penalty contract missing: {missing}")
+          if "expected_statistical & expected_dictionary_support" in penalty:
+              raise RuntimeError("candidate provenance still vetoes RegCompass activity")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
@@ -200,15 +222,15 @@ jobs:
           if missing:
               raise RuntimeError(f"sparse-safe product-of-means Pando projection missing: {missing}")
           required_layer1 = [
-              ".rc_condition_padj_threshold(fit = fit)",
+              ".rc_validate_pando_active_condition_edges",
               ".rc_condition_penalty_gate",
               '"beta_times_group_mean_tf_times_group_mean_atac"',
-              'origin = "paired_cell_significant_union_multitask_ridge_bh_filtered"',
-              'projection_name = "bh_significant_multitask_ridge_condition_effect"',
+              'origin = "paired_cell_common_dictionary_condition_bh_active_edges"',
+              'projection_name = "active_no_fusion_ridge_condition_effect"',
           ]
           missing = [x for x in required_layer1 if x not in layer1]
           if missing:
-              raise RuntimeError(f"Layer 1 multi-task handoff missing: {missing}")
+              raise RuntimeError(f"Layer 1 no-fusion handoff missing: {missing}")
 
           step = Path("R/step_layer2.R").read_text()
           cache = Path("R/celltype_union_gem_cache.R").read_text()
@@ -283,16 +305,29 @@ jobs:
           .rc_standard_pando_padj_default <- 0.05
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
+          estimate <- c(1e-8, 2, 3, NA_real_)
+          estimable <- c(TRUE, TRUE, TRUE, FALSE)
+          padj <- c(0.01, 0.08, 0.2, NA_real_)
+          statistically_supported <- c(TRUE, TRUE, TRUE, FALSE)
+          global_support <- c(TRUE, TRUE, FALSE, FALSE)
+          local_support <- c(FALSE, FALSE, FALSE, TRUE)
+          active <- statistically_supported
           coefficient <- data.frame(
-            estimate = c(1e-8, 2, 3, NA_real_),
-            estimable = c(TRUE, TRUE, TRUE, FALSE),
-            padj = c(0.01, 0.08, 0.2, NA_real_),
-            fit_status = c("ok", "ok", "ok", "ok"),
+            estimate = estimate,
+            estimable = estimable,
+            padj = padj,
+            statistically_supported = statistically_supported,
+            global_support = global_support,
+            local_support = local_support,
+            active = active,
+            significant = active,
+            penalty_effect = ifelse(active, estimate, 0),
+            fit_status = c("ok", "rank_deficient", "ok", "ok"),
             stringsAsFactors = FALSE
           )
           stopifnot(identical(
             .rc_condition_penalty_gate(coefficient, padj_threshold = 0.5),
-            c(TRUE, TRUE, TRUE, FALSE)
+            c(TRUE, FALSE, TRUE, FALSE)
           ))
           stopifnot(inherits(
             try(.rc_condition_penalty_gate(coefficient, padj_threshold = 1),

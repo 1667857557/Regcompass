@@ -58,10 +58,7 @@
   if (is.null(fit$regcompass_penalty_filter)) return(invisible(TRUE))
 
   threshold <- .rc_condition_padj_threshold(fit = fit)
-  expected_filter <- paste0(
-    "estimable & finite estimate & fit_status == 'ok' & BH padj < ",
-    format(threshold, trim = TRUE)
-  )
+  expected_filter <- "Pando BH-active edge & target fit_status == 'ok'"
   filter_value <- as.character(fit$regcompass_penalty_filter)
   if (length(filter_value) != 1L || is.na(filter_value) ||
       !identical(filter_value, expected_filter)) {
@@ -73,30 +70,26 @@
 
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
   required <- c(
-    "significant", "penalty_effect", "estimate", "estimable", "padj"
+    "statistically_supported", "global_support", "local_support",
+    "active", "significant", "penalty_effect", "estimate", "estimable",
+    "padj", "fit_status", "penalty_eligible"
   )
   if (!all(required %in% colnames(coefficient))) {
     stop(
-      "RegCompass-gated condition fits require ridge coefficients, padj and ",
-      "projection effects.", call. = FALSE
+      "RegCompass-gated condition fits require Pando active-edge provenance, ",
+      "ridge coefficients, fit status and penalty eligibility.", call. = FALSE
     )
   }
+  .rc_validate_pando_active_condition_edges(
+    coefficient, padj_threshold = threshold
+  )
   expected_gate <- .rc_condition_penalty_gate(
     coefficient, padj_threshold = threshold
   )
-  if (!identical(as.logical(coefficient$significant), expected_gate)) {
-    stop("RegCompass significant flags do not match the final BH gate.",
-         call. = FALSE)
-  }
-  estimate <- suppressWarnings(as.numeric(coefficient$estimate))
-  expected_effect <- ifelse(expected_gate, estimate, 0)
-  observed_effect <- suppressWarnings(as.numeric(coefficient$penalty_effect))
-  comparable <- is.finite(expected_effect) & is.finite(observed_effect)
-  if (any(is.finite(expected_effect) != is.finite(observed_effect)) ||
-      any(abs(expected_effect[comparable] - observed_effect[comparable]) > 1e-12)) {
+  if (!identical(as.logical(coefficient$penalty_eligible), expected_gate)) {
     stop(
-      "RegCompass-gated penalty_effect does not match the final BH-significant ",
-      "ridge gate.", call. = FALSE
+      "RegCompass penalty_eligible flags must equal Pando BH-active edges with ",
+      "target fit_status == 'ok'.", call. = FALSE
     )
   }
   invisible(TRUE)
@@ -122,7 +115,7 @@
     }
     if (!cell_type %in% map_names) {
       stop("No Pando GRNData object is stored for condition-GRN cell type `",
-           cell_type, "`.", call. = FALSE)
+           cell_type, "`.", call. = FALSE
     }
     object <- object_map[[cell_type]]
   } else {
@@ -130,7 +123,8 @@
   }
   if (!inherits(object, "GRNData")) {
     stop("Condition-GRN projection requires a Pando GRNData object for `",
-         cell_type, "`.", call. = FALSE)
+         cell_type, "`.", call. = FALSE
+    )
   }
   fit_cells <- as.character(unlist(
     fit$condition_cell_ids[fit$condition_levels], use.names = FALSE
@@ -158,13 +152,14 @@
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
   required_fit <- c("target", "condition", "rsq", "fit_status")
   required_coefficient <- c(
-    "target", "condition", "significant", "estimable", "estimate", "padj"
+    "target", "condition", "active", "estimable", "estimate", "padj",
+    "global_support", "local_support"
   )
   if (!all(required_fit %in% colnames(fit_table)) || !nrow(fit_table) ||
       !all(required_coefficient %in% colnames(coefficient))) {
     stop(
       "Condition-GRN reliability requires target-condition fit diagnostics ",
-      "and BH-significant ridge-edge flags.", call. = FALSE
+      "and Pando active ridge-edge flags.", call. = FALSE
     )
   }
 
@@ -187,7 +182,8 @@
   if (anyNA(coefficient_key) || any(!nzchar(coefficient_target)) ||
       any(!nzchar(coefficient_condition))) {
     stop("Condition-GRN coefficients contain incomplete target-condition labels.",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   coefficient_index <- match(coefficient_key, fit_key)
   if (anyNA(coefficient_index)) {
@@ -203,7 +199,7 @@
   final_gate <- .rc_condition_penalty_gate(
     coefficient, padj_threshold = threshold
   )
-  n_significant_edges <- tabulate(
+  n_active_edges <- tabulate(
     coefficient_index[final_gate], nbins = nrow(fit_table)
   )
   rsq <- suppressWarnings(as.numeric(fit_table$rsq))
@@ -212,8 +208,7 @@
     stop("Condition-GRN fit_status values must be complete.", call. = FALSE)
   }
   reliability <- rep(NA_real_, nrow(fit_table))
-  eligible <- fit_status == "ok" &
-    n_significant_edges > 0L & is.finite(rsq)
+  eligible <- fit_status == "ok" & n_active_edges > 0L & is.finite(rsq)
   reliability[eligible] <- sqrt(pmin(1, pmax(0, rsq[eligible])))
 
   data.frame(
@@ -221,8 +216,8 @@
     condition = fit_condition,
     rsq = rsq,
     fit_status = fit_status,
-    n_significant_edges = as.integer(n_significant_edges),
-    n_projection_edges = as.integer(n_significant_edges),
+    n_significant_edges = as.integer(n_active_edges),
+    n_projection_edges = as.integer(n_active_edges),
     padj_threshold = threshold,
     reliability = reliability,
     stringsAsFactors = FALSE
@@ -261,11 +256,11 @@
       by = "edge_id", all.x = TRUE, sort = FALSE,
       suffixes = c("", ".dictionary")
     )
-    coefficient$estimate <- coefficient$penalty_effect
     projection_gate <- .rc_condition_penalty_gate(
       coefficient, padj_threshold = threshold
     )
     coefficient <- coefficient[projection_gate, , drop = FALSE]
+    coefficient$estimate <- coefficient$penalty_effect
     fit_units <- unit_meta$unit_id[
       as.character(unit_meta[[fit$cell_type_col]]) == fit$cell_type
     ]
@@ -345,7 +340,7 @@
           all_coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
           sum(
             all_coefficient$condition == condition &
-              all_coefficient$significant %in% TRUE,
+              all_coefficient$active %in% TRUE,
             na.rm = TRUE
           )
         }, integer(1)
@@ -362,11 +357,12 @@
         numeric(1)
       ),
       reliability_definition =
-        "sqrt(clamp(dictionary_conditional_oof_rsq,0,1)); requires >=1 final BH-significant edge",
+        "sqrt(clamp(dictionary_conditional_oof_rsq,0,1)); requires >=1 active condition edge",
       padj_threshold = threshold,
       corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
       estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
-      projection_effect = "BH_significant_multitask_ridge_penalty_effect",
+      projection_effect =
+        "Pando_condition_BH_active_no_fusion_ridge_penalty_effect",
       pando_object_scope = "cell_type_exact_feature_space",
       aggregation_contract =
         "beta_times_group_mean_tf_times_group_mean_atac",
@@ -378,10 +374,10 @@
     projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_significant_union_multitask_ridge_bh_filtered",
+    origin = "paired_cell_common_dictionary_condition_bh_active_edges",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    projection_name = "bh_significant_multitask_ridge_condition_effect",
+    projection_name = "active_no_fusion_ridge_condition_effect",
     nonestimable_policy =
-      "nonestimable_or_nonsignificant_condition_edge_has_zero_projection_contribution"
+      "nonactive_or_nonestimable_condition_edge_has_zero_projection_contribution"
   )
 }

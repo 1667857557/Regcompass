@@ -124,15 +124,18 @@
   quiet
 }
 
-.rc_condition_multitask_fit_task <- function(
+.rc_condition_ridge_fit_task <- function(
     task, target_genes, condition_col, celltype_col, min_cells,
     pando_infer_args, inner_parallel = FALSE, PANDO_BPPARAM = NULL) {
   if (!is.list(task) || !inherits(task$grn, "GRNData") ||
       !is.character(task$cell_type) || length(task$cell_type) != 1L) {
-    stop("Invalid condition-GRN multi-task fit task.", call. = FALSE)
+    stop("Invalid condition-GRN ridge fit task.", call. = FALSE)
   }
   cell_type <- task$cell_type
   ridge_control <- pando_infer_args$condition_ridge_control %||% list()
+  if ("fusion_ratio" %in% names(ridge_control)) {
+    stop("Condition ridge no longer supports `fusion_ratio`.", call. = FALSE)
+  }
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
   if (length(threshold) != 1L || !is.finite(threshold) ||
       threshold <= 0 || threshold >= 1) {
@@ -186,7 +189,7 @@
     do.call(Pando::infer_condition_grn, args),
     error = function(error) {
       stop(
-        "Condition-GRN multi-task fit failed for cell type `", cell_type,
+        "Condition-GRN ridge fit failed for cell type `", cell_type,
         "` during Pando target-level execution: ",
         conditionMessage(error),
         call. = FALSE
@@ -205,11 +208,11 @@
              inherits(fits[[1L]], "ConditionGRNFit")) {
     fit <- fits[[1L]]
   } else {
-    stop("Pando multi-task condition fit was not returned for cell type `",
+    stop("Pando condition ridge fit was not returned for cell type `",
          cell_type, "`.", call. = FALSE)
   }
   if (!identical(as.character(fit$cell_type), cell_type)) {
-    stop("Pando multi-task condition fit returned the wrong cell type.",
+    stop("Pando condition ridge fit returned the wrong cell type.",
          call. = FALSE)
   }
   if (!isTRUE(all.equal(as.numeric(fit$padj_threshold), threshold))) {
@@ -222,6 +225,7 @@
       ";phase=pando_condition_pipeline_complete",
       ";candidate_edges=", as.integer(fit$candidate_edge_count %||% NA_integer_),
       ";fit_edges=", as.integer(fit$fit_dictionary_edge_count %||% NA_integer_),
+      ";active_edges=", sum(fit$coefficients$active %in% TRUE),
       ";targets_fitted=", length(unique(as.character(fit$target_genes)))
     )
   }

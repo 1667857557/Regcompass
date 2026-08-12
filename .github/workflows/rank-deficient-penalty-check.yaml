@@ -24,20 +24,38 @@ jobs:
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
 
-          # Raw singularity remains a diagnostic after ridge regularization, but
-          # final condition-edge inclusion additionally requires BH support.
-          coefficient <- data.frame(
-            estimate = c(1, 1, 1, 1),
-            estimable = c(TRUE, TRUE, FALSE, TRUE),
-            padj = c(0.01, 0.08, NA_real_, 0.01),
-            fit_status = c("ok", "ok", "ok", "failed"),
-            design_rank_deficient = c(FALSE, TRUE, TRUE, FALSE),
-            stringsAsFactors = FALSE
-          )
+          # Raw rank deficiency remains diagnostic under ridge. Candidate
+          # correlation provenance does not veto an estimable BH-supported edge.
+          make_coef <- function(threshold) {
+            estimate <- c(1, 1, 1, 1)
+            estimable <- c(TRUE, TRUE, FALSE, TRUE)
+            padj <- c(0.01, 0.08, NA_real_, 0.01)
+            statistically_supported <- estimable & is.finite(estimate) &
+              is.finite(padj) & padj < threshold
+            global_support <- c(TRUE, TRUE, TRUE, FALSE)
+            local_support <- c(FALSE, FALSE, TRUE, FALSE)
+            active <- statistically_supported
+            data.frame(
+              estimate = estimate,
+              estimable = estimable,
+              padj = padj,
+              statistically_supported = statistically_supported,
+              global_support = global_support,
+              local_support = local_support,
+              active = active,
+              significant = active,
+              penalty_effect = ifelse(active, estimate, 0),
+              fit_status = c("ok", "ok", "ok", "failed"),
+              design_rank_deficient = c(FALSE, TRUE, TRUE, FALSE),
+              stringsAsFactors = FALSE
+            )
+          }
+          coefficient <- make_coef(0.1)
           stopifnot(identical(
             .rc_condition_penalty_gate(coefficient, padj_threshold = 0.1),
             c(TRUE, TRUE, FALSE, FALSE)
           ))
+          coefficient <- make_coef(0.05)
           stopifnot(identical(
             .rc_condition_penalty_gate(coefficient, padj_threshold = 0.05),
             c(TRUE, FALSE, FALSE, FALSE)
@@ -50,6 +68,10 @@ jobs:
             estimable = c(TRUE, FALSE),
             pval = c(0.001, NA_real_),
             padj = c(0.01, NA_real_),
+            statistically_supported = c(TRUE, FALSE),
+            global_support = c(FALSE, TRUE),
+            local_support = c(FALSE, FALSE),
+            active = c(TRUE, FALSE),
             significant = c(TRUE, FALSE),
             penalty_effect = c(0.8, 0),
             stringsAsFactors = FALSE
@@ -69,10 +91,12 @@ jobs:
           stopifnot(
             identical(gated$coefficients$fit_status, c("ok", "ok")),
             identical(as.numeric(gated$coefficients$penalty_effect), c(0.8, 0)),
+            identical(as.logical(gated$coefficients$penalty_eligible),
+                      c(TRUE, FALSE)),
             identical(
               gated$regcompass_rank_deficient_policy,
-              "regularized_ok_fit_retained; condition-zero-variance edge excluded"
+              "regularized_ok_fit_retained; non-estimable condition edge excluded"
             ),
             identical(gated$regcompass_significance_role,
-                      "condition_edge_inclusion_gate")
+                      "consume_pando_condition_bh_active_edge_without_reselection")
           )

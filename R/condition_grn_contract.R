@@ -1,15 +1,15 @@
-# Integration of the Pando common-dictionary condition-GRN contract.
+# Integration of the Pando global-plus-condition common-dictionary GRN contract.
 
 .RC_PANDO_CONDITION_GRN_FIT_SCHEMA <-
   "pando_condition_grn_common_dictionary_v1"
 .RC_PANDO_CONDITION_GRN_MODEL_SCHEMA <-
-  "pando_condition_grn_multitask_ridge_v2"
+  "pando_condition_grn_multitask_ridge_v3"
 .RC_PANDO_CONDITION_GRN_ENGINE <-
-  "two_stage_exact_edge_union_multitask_ridge"
+  "condition_union_single_no_fusion_common_lambda_ridge"
 .RC_PANDO_CONDITION_PROJECTION_POLICY <-
-  "padj_significant_ridge_effects"
+  "condition_bh_supported_common_dictionary_ridge_effects"
 .RC_PANDO_CONDITION_DICTIONARY_POLICY <-
-  "preliminary_joint_ridge_bh_significant_union_then_joint_refit"
+  "global_and_condition_union_pando_correlation_supported_frozen_dictionary"
 
 .rc_pando_execution_summary <- function(diagnostics = NULL, fits = NULL) {
   engines <- if (is.list(fits) && length(fits)) {
@@ -30,6 +30,14 @@
   )
 }
 
+.rc_split_support_conditions <- function(value) {
+  value <- as.character(value)
+  lapply(value, function(one) {
+    if (is.na(one) || !nzchar(one)) character() else
+      sort(unique(strsplit(one, ";", fixed = TRUE)[[1L]]))
+  })
+}
+
 .rc_require_pando_condition_grn_fit <- function(fit) {
   if (!inherits(fit, "ConditionGRNFit") ||
       !identical(fit$schema_version, .RC_PANDO_CONDITION_GRN_FIT_SCHEMA)) {
@@ -38,17 +46,17 @@
       .RC_PANDO_CONDITION_GRN_FIT_SCHEMA, "`.", call. = FALSE
     )
   }
-
   required <- c(
     "model_schema", "cell_type", "condition_levels", "condition_cell_ids",
-    "edge_dictionary", "coefficients", "contrasts", "fit", "network_names",
-    "padj_threshold", "adjust_method", "scale", "interaction",
-    "projection_effect_column", "projection_policy", "rna_layer",
-    "peak_layer", "peak_value_type", "preprocessing_fingerprint",
-    "condition_col", "cell_type_col", "fit_engine", "coefficient_scale",
-    "target_genes", "fit_dictionary_policy", "candidate_edge_count",
-    "fit_dictionary_edge_count", "dictionary_screening_threshold",
-    "dictionary_screening_summary"
+    "edge_dictionary", "dictionary_support_table",
+    "dictionary_support_summary", "coefficients", "contrasts", "fit",
+    "network_names", "padj_threshold", "adjust_method", "scale",
+    "interaction", "projection_effect_column", "projection_policy",
+    "rna_layer", "peak_layer", "peak_value_type",
+    "preprocessing_fingerprint", "condition_col", "cell_type_col",
+    "fit_engine", "coefficient_scale", "target_genes",
+    "fit_dictionary_policy", "candidate_edge_count",
+    "fit_dictionary_edge_count", "candidate_tf_cor", "candidate_peak_cor"
   )
   threshold <- suppressWarnings(as.numeric(fit$padj_threshold))
   threshold_valid <- length(threshold) == 1L && is.finite(threshold) &&
@@ -65,9 +73,6 @@
                  .RC_PANDO_CONDITION_PROJECTION_POLICY) ||
       !identical(toupper(as.character(fit$adjust_method)), "BH") ||
       !threshold_valid ||
-      !isTRUE(all.equal(
-        as.numeric(fit$dictionary_screening_threshold), threshold
-      )) ||
       !isTRUE(attr(
         fit$edge_dictionary,
         "preprocessing_provenance_verified",
@@ -78,7 +83,7 @@
         as.character(fit$peak_value_type),
         as.character(fit$preprocessing_fingerprint)
       )))) {
-    stop("Pando multi-task condition fit contract is incomplete.",
+    stop("Pando no-fusion condition fit contract is incomplete.",
          call. = FALSE)
   }
 
@@ -110,8 +115,8 @@
          call. = FALSE)
   }
   cells_by_condition <- cells_by_condition[levels]
-  if (any(lengths(cells_by_condition) < 1L)) {
-    stop("Every Pando fitted condition must contain at least one cell.",
+  if (any(lengths(cells_by_condition) < 3L)) {
+    stop("Every Pando fitted condition must contain at least three cells.",
          call. = FALSE)
   }
   fitted_cells <- as.character(unlist(cells_by_condition, use.names = FALSE))
@@ -129,60 +134,125 @@
   }
 
   edge <- as.data.frame(fit$edge_dictionary, stringsAsFactors = FALSE)
+  support <- as.data.frame(fit$dictionary_support_table,
+                           stringsAsFactors = FALSE)
+  support_summary <- as.data.frame(
+    fit$dictionary_support_summary, stringsAsFactors = FALSE
+  )
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
   required_edge <- c(
     "edge_id", "target", "tf", "region", "atac_feature_id",
-    "candidate_index", "screening_min_padj",
-    "screening_n_significant_conditions", "screening_significant_conditions"
+    "candidate_index", "source_global", "source_conditions", "n_sources"
+  )
+  required_support <- c(
+    "edge_id", "target", "tf", "region", "atac_feature_id",
+    "source_type", "condition", "peak_target_cor", "tf_target_cor"
+  )
+  required_summary <- c(
+    "edge_id", "source_global", "n_support_conditions",
+    "support_conditions", "n_sources"
   )
   required_coefficient <- c(
     "edge_id", "target", "tf", "region", "condition", "estimate",
     "shared_estimate", "condition_deviation", "std_err", "statistic",
-    "pval", "padj", "significant", "penalty_effect", "estimable",
-    "zero_variance", "aliased"
+    "pval", "padj", "statistically_supported", "global_support",
+    "local_support", "active", "significant", "penalty_effect",
+    "estimable", "zero_variance", "aliased"
   )
-  if (!nrow(edge) ||
+  if (!nrow(edge) || !nrow(support) || !nrow(support_summary) ||
       !all(required_edge %in% colnames(edge)) ||
+      !all(required_support %in% colnames(support)) ||
+      !all(required_summary %in% colnames(support_summary)) ||
       !all(required_coefficient %in% colnames(coefficient)) ||
       anyNA(edge$edge_id) || any(!nzchar(as.character(edge$edge_id))) ||
       anyDuplicated(edge$edge_id) ||
       any(!coefficient$condition %in% levels)) {
-    stop("Pando significant-union coefficient dictionary is incomplete.",
+    stop("Pando global/condition common dictionary is incomplete.",
          call. = FALSE)
   }
-
-  screening_count <- suppressWarnings(as.integer(
-    edge$screening_n_significant_conditions
-  ))
-  screening_padj <- suppressWarnings(as.numeric(edge$screening_min_padj))
-  if (anyNA(screening_count) || any(screening_count < 1L) ||
-      any(!is.finite(screening_padj)) || any(screening_padj >= threshold)) {
+  expected_edge_id <- paste(edge$target, edge$tf, edge$region, sep = "||")
+  if (!identical(as.character(edge$edge_id), expected_edge_id)) {
+    stop("Pando dictionary edge IDs are not exact target-TF-region keys.",
+         call. = FALSE)
+  }
+  candidate_index <- suppressWarnings(as.integer(edge$candidate_index))
+  if (anyNA(candidate_index) || any(candidate_index < 1L) ||
+      anyDuplicated(candidate_index)) {
+    stop("Pando dictionary candidate indices are invalid.", call. = FALSE)
+  }
+  if (!isTRUE(all.equal(as.integer(fit$candidate_edge_count), nrow(edge))) ||
+      !isTRUE(all.equal(as.integer(fit$fit_dictionary_edge_count), nrow(edge)))) {
     stop(
-      "Every fit-dictionary edge must be BH-significant in at least one ",
-      "condition during preliminary joint-ridge screening.", call. = FALSE
+      "Pando candidate and fitted dictionary counts must equal the deduplicated ",
+      "common dictionary size.", call. = FALSE
     )
   }
-  if (!isTRUE(all.equal(as.integer(fit$fit_dictionary_edge_count), nrow(edge))) ||
-      as.integer(fit$candidate_edge_count) < nrow(edge)) {
-    stop("Pando candidate and screened fit-dictionary counts are inconsistent.",
+
+  support_type <- as.character(support$source_type)
+  if (any(!support_type %in% c("global", "condition"))) {
+    stop("Pando dictionary support source_type is invalid.", call. = FALSE)
+  }
+  global_rows <- support_type == "global"
+  local_rows <- support_type == "condition"
+  if (any(!is.na(support$condition[global_rows]) &
+          nzchar(as.character(support$condition[global_rows]))) ||
+      anyNA(support$condition[local_rows]) ||
+      any(!as.character(support$condition[local_rows]) %in% levels)) {
+    stop("Pando global/local support condition labels are inconsistent.",
+         call. = FALSE)
+  }
+  support_key <- paste(
+    support$edge_id, support_type,
+    ifelse(global_rows, "__global__", as.character(support$condition)),
+    sep = "\001"
+  )
+  if (anyDuplicated(support_key) ||
+      any(!as.character(support$edge_id) %in% as.character(edge$edge_id))) {
+    stop("Pando dictionary support rows are duplicated or reference unknown edges.",
+         call. = FALSE)
+  }
+  tf_threshold <- suppressWarnings(as.numeric(fit$candidate_tf_cor))
+  peak_threshold <- suppressWarnings(as.numeric(fit$candidate_peak_cor))
+  if (length(tf_threshold) != 1L || !is.finite(tf_threshold) ||
+      tf_threshold < 0 || tf_threshold > 1 ||
+      length(peak_threshold) != 1L || !is.finite(peak_threshold) ||
+      peak_threshold < 0 || peak_threshold > 1 ||
+      any(abs(as.numeric(support$tf_target_cor)) <= tf_threshold) ||
+      any(abs(as.numeric(support$peak_target_cor)) <= peak_threshold)) {
+    stop("Pando support rows do not satisfy the configured correlation gates.",
          call. = FALSE)
   }
 
-  screening <- as.data.frame(
-    fit$dictionary_screening_summary, stringsAsFactors = FALSE
+  if (anyDuplicated(support_summary$edge_id) ||
+      !setequal(as.character(support_summary$edge_id),
+                as.character(edge$edge_id))) {
+    stop("Pando dictionary support summary does not cover each exact edge once.",
+         call. = FALSE)
+  }
+  summary_index <- match(edge$edge_id, support_summary$edge_id)
+  if (anyNA(summary_index) ||
+      !identical(as.logical(edge$source_global),
+                 as.logical(support_summary$source_global[summary_index])) ||
+      any(as.integer(support_summary$n_sources[summary_index]) < 1L)) {
+    stop("Pando dictionary source provenance is inconsistent.", call. = FALSE)
+  }
+  edge_conditions <- .rc_split_support_conditions(edge$source_conditions)
+  summary_conditions <- .rc_split_support_conditions(
+    support_summary$support_conditions[summary_index]
   )
-  required_screening <- c(
-    "edge_id", "screening_min_padj",
-    "screening_n_significant_conditions", "screening_significant_conditions"
-  )
-  if (!all(required_screening %in% colnames(screening)) ||
-      anyDuplicated(screening$edge_id) ||
-      !all(as.character(edge$edge_id) %in% as.character(screening$edge_id))) {
-    stop("Pando dictionary screening audit table is incomplete.",
+  if (any(vapply(seq_len(nrow(edge)), function(i) {
+    !identical(edge_conditions[[i]], summary_conditions[[i]])
+  }, logical(1)))) {
+    stop("Pando condition-source provenance differs between dictionary tables.",
          call. = FALSE)
   }
 
   dictionary_ids <- sort(as.character(edge$edge_id))
+  global_ids <- unique(as.character(support$edge_id[global_rows]))
+  local_key <- paste(
+    as.character(support$edge_id[local_rows]),
+    as.character(support$condition[local_rows]), sep = "\001"
+  )
   for (condition in levels) {
     one <- coefficient[
       as.character(coefficient$condition) == condition, , drop = FALSE
@@ -190,15 +260,14 @@
     if (nrow(one) != nrow(edge) || anyDuplicated(one$edge_id) ||
         !identical(sort(as.character(one$edge_id)), dictionary_ids)) {
       stop(
-        "Every condition must contain every screened fit-dictionary edge exactly once.",
+        "Every condition must contain every common-dictionary edge exactly once.",
         call. = FALSE
       )
     }
-
-    valid_p <- is.finite(as.numeric(one$pval))
+    valid <- one$estimable %in% TRUE & is.finite(as.numeric(one$pval))
     expected_padj <- rep(NA_real_, nrow(one))
-    expected_padj[valid_p] <- stats::p.adjust(
-      as.numeric(one$pval[valid_p]), method = "BH"
+    expected_padj[valid] <- stats::p.adjust(
+      as.numeric(one$pval[valid]), method = "BH"
     )
     observed_padj <- as.numeric(one$padj)
     comparable <- is.finite(expected_padj) & is.finite(observed_padj)
@@ -207,39 +276,35 @@
       stop("Stored condition padj values do not equal BH adjustment.",
            call. = FALSE)
     }
-  }
-
-  expected_significant <- coefficient$estimable %in% TRUE &
-    is.finite(as.numeric(coefficient$padj)) &
-    as.numeric(coefficient$padj) < threshold
-  if (!identical(as.logical(coefficient$significant), expected_significant)) {
-    stop("Pando significant-edge flags do not match the configured BH threshold.",
-         call. = FALSE)
-  }
-
-  estimate <- as.numeric(coefficient$estimate)
-  expected_effect <- ifelse(
-    expected_significant & is.finite(estimate), estimate, 0
-  )
-  observed_effect <- as.numeric(coefficient$penalty_effect)
-  comparable_effect <- is.finite(expected_effect) & is.finite(observed_effect)
-  if (any(is.finite(expected_effect) != is.finite(observed_effect)) ||
-      any(abs(expected_effect[comparable_effect] -
-              observed_effect[comparable_effect]) > 1e-12)) {
-    stop(
-      "Pando penalty_effect must equal the BH-significant finite ridge ",
-      "coefficient or zero.", call. = FALSE
+    expected_statistical <- one$estimable %in% TRUE &
+      is.finite(as.numeric(one$estimate)) &
+      is.finite(observed_padj) & observed_padj < threshold
+    expected_global <- as.character(one$edge_id) %in% global_ids
+    expected_local <- paste(
+      as.character(one$edge_id), condition, sep = "\001"
+    ) %in% local_key
+    expected_active <- expected_statistical
+    if (!identical(as.logical(one$statistically_supported), expected_statistical) ||
+        !identical(as.logical(one$global_support), expected_global) ||
+        !identical(as.logical(one$local_support), expected_local) ||
+        !identical(as.logical(one$active), expected_active) ||
+        !identical(as.logical(one$significant), expected_active)) {
+      stop(
+        "Pando condition activity flags are inconsistent: global/local ",
+        "correlation support must remain provenance only, while active must ",
+        "equal the condition's own estimable BH-supported ridge evidence.",
+        call. = FALSE
+      )
+    }
+    expected_effect <- ifelse(
+      expected_active, as.numeric(one$estimate), 0
     )
-  }
-
-  if ("direction" %in% colnames(coefficient)) {
-    expected_direction <- ifelse(
-      !coefficient$estimable, "undefined",
-      ifelse(coefficient$estimate > 0, "positive",
-             ifelse(coefficient$estimate < 0, "negative", "zero"))
-    )
-    if (!identical(as.character(coefficient$direction), expected_direction)) {
-      stop("Pando coefficient directions are inconsistent with estimates.",
+    observed_effect <- as.numeric(one$penalty_effect)
+    comparable_effect <- is.finite(expected_effect) & is.finite(observed_effect)
+    if (any(is.finite(expected_effect) != is.finite(observed_effect)) ||
+        any(abs(expected_effect[comparable_effect] -
+                observed_effect[comparable_effect]) > 1e-12)) {
+      stop("Pando penalty_effect does not match active condition coefficients.",
            call. = FALSE)
     }
   }
@@ -252,7 +317,7 @@
   if (!all(required_fit %in% colnames(fit_table)) || !nrow(fit_table) ||
       any(as.character(fit_table$predictor_scale_reference) !=
           "equal_condition_within_condition_rms")) {
-    stop("Pando target-level multi-task diagnostics are incomplete.",
+    stop("Pando target-level no-fusion ridge diagnostics are incomplete.",
          call. = FALSE)
   }
   fit_key <- paste(
@@ -276,7 +341,7 @@
       any(!contrast$condition_a %in% levels) ||
       any(!contrast$condition_b %in% levels) ||
       any(!contrast$edge_id %in% dictionary_ids)) {
-    stop("Pando pairwise condition-contrast table is incomplete.",
+    stop("Pando pairwise no-fusion condition-contrast table is incomplete.",
          call. = FALSE)
   }
   pair_key <- paste(contrast$condition_a, contrast$condition_b, sep = "\001")
@@ -286,8 +351,7 @@
                    is.finite(as.numeric(contrast$contrast_pval[index]))]
     expected <- rep(NA_real_, length(index))
     if (length(valid)) {
-      local <- match(valid, index)
-      expected[local] <- stats::p.adjust(
+      expected[match(valid, index)] <- stats::p.adjust(
         as.numeric(contrast$contrast_pval[valid]), method = "BH"
       )
     }
@@ -369,12 +433,12 @@
     coefficient$condition_estimate <- as.numeric(coefficient$estimate)
     coefficient$condition_effect <- as.numeric(coefficient$penalty_effect)
     coefficient$effect_definition <-
-      "bh_significant_multitask_ridge_condition_coefficient_raw_tf_atac_units"
+      "active_no_fusion_ridge_condition_coefficient_raw_tf_atac_units"
     coefficient$coefficient_contract <-
-      "same_significant_union_dictionary_joint_multitask_ridge_raw_units"
+      "same_global_condition_union_dictionary_no_fusion_ridge_raw_units"
     coefficient$fit_engine <- fit$fit_engine
     coefficient$coefficient_scale <- fit$coefficient_scale
-    coefficient$eligible_in_condition <- coefficient$significant %in% TRUE
+    coefficient$eligible_in_condition <- coefficient$active %in% TRUE
     coefficient$padj_threshold <- threshold
 
     fit_table <- as.data.frame(fit$fit, stringsAsFactors = FALSE)
@@ -391,8 +455,7 @@
     coefficient$fit_status <- as.character(fit_table$fit_status[fit_index])
     coefficient$reliable_model <- coefficient$fit_status == "ok"
     coefficient$penalty_eligible <-
-      coefficient$significant %in% TRUE &
-      coefficient$fit_status == "ok" &
+      coefficient$active %in% TRUE & coefficient$fit_status == "ok" &
       is.finite(as.numeric(coefficient$penalty_effect))
     coefficient$active_in_condition <- coefficient$penalty_eligible
     rows[[length(rows) + 1L]] <- coefficient
@@ -410,7 +473,7 @@
     summary[[celltype_col]] <- as.character(fit$cell_type)
     summary$summary_only <- TRUE
     summary$coefficient_contract <-
-      "mean_condition_coefficient_from_significant_union_multitask_ridge"
+      "mean_condition_coefficient_summary_only_no_fusion_ridge"
     universal[[length(universal) + 1L]] <- summary
 
     contrast <- as.data.frame(fit$contrasts, stringsAsFactors = FALSE)
@@ -439,13 +502,13 @@
     condition_contrasts = do.call(rbind, contrasts),
     active_tol = 0,
     penalty_filter = paste0(
-      "fit_status == 'ok' & estimable & BH padj < ",
+      "Pando BH-active condition edge & fit_status == 'ok'; BH threshold=",
       paste(format(thresholds, trim = TRUE), collapse = ",")
     ),
     coefficient_contract =
-      "same_significant_union_dictionary_joint_multitask_ridge_raw_units",
+      "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
     pando_fit_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    pando_memory_contract = "pando_native_condition_multitask_ridge"
+    pando_memory_contract = "pando_native_condition_no_fusion_ridge"
   )
 }
 
@@ -457,7 +520,7 @@
     pando_initiate_args = list(exclude_exons = TRUE),
     pando_motif_args = list(),
     pando_infer_args = list(
-      tf_cor = 0.1, peak_cor = 0.05, adjust_method = "BH",
+      tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
       padj_threshold = 0.05, rank_action = "mark",
       min_residual_df = 1L
     ),
@@ -486,23 +549,36 @@
     )
   }
   pando_infer_args <- utils::modifyList(list(
-    tf_cor = 0.1, peak_cor = 0.05, adjust_method = "BH",
+    tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
     padj_threshold = 0.05, rank_action = "mark", min_residual_df = 1L,
     rna_layer = "data", peak_layer = "data",
     peak_value_type = "normalized", condition_ridge_control = list()
   ), pando_infer_args)
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
+  tf_threshold <- suppressWarnings(as.numeric(pando_infer_args$tf_cor))
+  peak_threshold <- suppressWarnings(as.numeric(pando_infer_args$peak_cor))
+  ridge_control <- pando_infer_args$condition_ridge_control
   if (!identical(toupper(as.character(pando_infer_args$adjust_method)), "BH") ||
       length(threshold) != 1L || !is.finite(threshold) ||
-      threshold <= 0 || threshold >= 1 ||
-      !is.list(pando_infer_args$condition_ridge_control)) {
+      threshold <= 0 || threshold >= 1 || !is.list(ridge_control) ||
+      length(tf_threshold) != 1L || !is.finite(tf_threshold) ||
+      tf_threshold < 0 || tf_threshold > 1 ||
+      length(peak_threshold) != 1L || !is.finite(peak_threshold) ||
+      peak_threshold < 0 || peak_threshold > 1) {
     stop(
       "Canonical RegCompass condition effects require BH adjustment with ",
-      "padj_threshold in (0, 1) and condition_ridge_control as a list.",
+      "padj_threshold in (0, 1), tf_cor/peak_cor in [0, 1], and ",
+      "condition_ridge_control as a list.",
       call. = FALSE
     )
   }
+  if ("fusion_ratio" %in% names(ridge_control)) {
+    stop("`condition_ridge_control$fusion_ratio` is obsolete and unsupported.",
+         call. = FALSE)
+  }
   pando_infer_args$padj_threshold <- threshold
+  pando_infer_args$tf_cor <- tf_threshold
+  pando_infer_args$peak_cor <- peak_threshold
 
   condition_types <- if (is.null(cell_type)) {
     unique(as.character(object@meta.data[[celltype_col]]))
@@ -532,7 +608,7 @@
 
   .rc_step_monitor_event(
     progress_monitor, "condition_design",
-    "resolved canonical Pando multi-task condition-GRN execution plan",
+    "resolved Pando global-plus-condition common-dictionary ridge plan",
     current = 5L,
     context = list(
       cell_types = length(plans),
@@ -599,8 +675,8 @@
   })
   inner_parallel <- condition_parallel && length(fit_tasks) == 1L
   .rc_step_monitor_event(
-    progress_monitor, "condition_multitask_fit",
-    "running screened significant-union Pando multi-task condition GRNs",
+    progress_monitor, "condition_ridge_fit",
+    "running Pando global-plus-condition union no-fusion ridge GRNs",
     current = 8L,
     context = list(
       tasks = length(fit_tasks),
@@ -612,7 +688,7 @@
   )
   fit_results <- rc_parallel_lapply(
     fit_tasks,
-    .rc_condition_multitask_fit_task,
+    .rc_condition_ridge_fit_task,
     BPPARAM = if (outer_parallel) BPPARAM else FALSE,
     target_genes = target_genes,
     condition_col = condition_col,
@@ -624,7 +700,7 @@
   )
   fit_types <- vapply(fit_results, `[[`, character(1), "cell_type")
   if (anyDuplicated(fit_types) || !setequal(fit_types, names(plans))) {
-    stop("Pando multi-task condition fits returned an invalid cell-type set.",
+    stop("Pando condition ridge fits returned an invalid cell-type set.",
          call. = FALSE)
   }
   names(fit_results) <- fit_types
@@ -632,15 +708,18 @@
   invisible(gc(verbose = FALSE, full = TRUE))
 
   parallel_plan <- list(
-    scope = "cell_type_multitask_ridge",
+    scope = "cell_type_condition_ridge",
     cell_type_prepare_tasks = length(prepare_tasks),
-    multitask_fit_tasks = length(fit_tasks),
+    condition_ridge_fit_tasks = length(fit_tasks),
     workers = worker_limit,
     outer_celltype_parallel = outer_parallel,
     inner_target_parallel = inner_parallel,
     nested_parallel = FALSE,
-    stage_barrier =
-      "Pando candidate union_preliminary ridge_BH significant union_joint refit"
+    stage_barrier = paste(
+      "Pando pooled/global candidate discovery + condition candidate discovery",
+      "-> exact deduplicated union -> single common-lambda no-fusion ridge",
+      "-> condition BH active-edge gate"
+    )
   )
 
   results <- list()
@@ -690,7 +769,7 @@
         n_active_edges = nrow(active_rows),
         padj_threshold = threshold,
         grn_evidence_role =
-          "within_cell_type_significant_union_joint_multitask_ridge",
+          "common_dictionary_condition_bh_supported_no_fusion_ridge_active_edge",
         stringsAsFactors = FALSE
       )
       names(status_rows[[length(status_rows)]])[
@@ -737,24 +816,29 @@
         rna = "global single-cell normalized RNA",
         atac = "cell-type-shared TF-IDF across conditions",
         grn_fit = paste(
-          "Pando global-plus-condition candidate discovery, exact candidate union,",
-          "preliminary joint ridge BH screening, significant-edge union, final joint ridge"
+          "Pando pooled/global plus condition-specific correlation candidate",
+          "discovery, exact deduplicated common dictionary, single no-fusion",
+          "common-lambda ridge fit"
         ),
         fit_dictionary = paste0(
-          "union of edges with preliminary condition-wise BH padj < ",
-          format(threshold, trim = TRUE), " in at least one condition"
+          "exact edge union satisfying tf_cor=", pando_infer_args$tf_cor,
+          " and peak_cor=", pando_infer_args$peak_cor,
+          " in pooled/global cells or at least one condition"
         ),
         condition_effect = paste0(
-          "final raw-unit multi-task ridge coefficient retained only when ",
-          "condition-wise BH padj < ", format(threshold, trim = TRUE)
+          "raw-unit condition ridge coefficient active when estimable and ",
+          "condition BH padj < ", format(threshold, trim = TRUE),
+          "; global/local correlation support is dictionary provenance only"
         ),
         coefficient_contract =
-          "same_significant_union_dictionary_joint_multitask_ridge_raw_units",
-        ridge_inference =
-          "approximate BH-adjusted ridge-Wald coefficient and pairwise contrast inference",
+          "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
+        ridge_inference = paste(
+          "approximate BH-adjusted ridge-Wald coefficient and direct pairwise",
+          "contrast inference conditional on candidate discovery and CV lambda"
+        ),
         parallel_contract = parallel_plan,
         penalty_regulatory_evidence = paste(
-          "BH-significant penalty_effect times metacell-mean TF times",
+          "active penalty_effect times metacell-mean TF times",
           "metacell-mean ATAC"
         )
       ),

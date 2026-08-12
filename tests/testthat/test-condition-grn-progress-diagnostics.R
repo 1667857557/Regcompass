@@ -16,9 +16,10 @@ test_that("condition target pool disables generic BiocParallel progress bars", {
 })
 
 test_that("condition fit task exposes semantic Pando progress", {
-  body_text <- paste(deparse(body(.rc_condition_multitask_fit_task)), collapse = "\n")
+  body_text <- paste(deparse(body(.rc_condition_ridge_fit_task)), collapse = "\n")
   expect_match(body_text, "verbose = show_progress", fixed = TRUE)
   expect_match(body_text, "phase=pando_condition_pipeline", fixed = TRUE)
-  expect_match(body_text, "Condition-GRN multi-task fit failed for cell type", fixed = TRUE)
+  expect_match(body_text, "Condition-GRN ridge fit failed for cell type", fixed = TRUE)
   expect_match(body_text, "pando_condition_pipeline_complete", fixed = TRUE)
+  expect_match(body_text, "active_edges=", fixed = TRUE)
 })
