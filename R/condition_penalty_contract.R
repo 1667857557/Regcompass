@@ -72,7 +72,7 @@
       !all(required %in% colnames(coefficient))) {
     stop(
       "Condition-GRN coefficients must retain Pando ridge statistics, ",
-      "global/local candidate support, active flags, and penalty_effect.",
+      "candidate-support provenance, active flags, and penalty_effect.",
       call. = FALSE
     )
   }
@@ -91,10 +91,7 @@
   padj <- suppressWarnings(as.numeric(coefficient$padj))
   expected_statistical <- coefficient$estimable %in% TRUE &
     is.finite(estimate) & is.finite(padj) & padj < threshold
-  expected_dictionary_support <-
-    coefficient$global_support %in% TRUE |
-    coefficient$local_support %in% TRUE
-  expected_active <- expected_statistical & expected_dictionary_support
+  expected_active <- expected_statistical
   if (!identical(
       as.logical(coefficient$statistically_supported), expected_statistical
   )) {
@@ -106,8 +103,9 @@
   if (!identical(as.logical(coefficient$active), expected_active) ||
       !identical(as.logical(coefficient$significant), expected_active)) {
     stop(
-      "Pando active condition-edge flags must equal BH-supported ridge evidence ",
-      "with pooled/global or condition-local Pando candidate support.",
+      "Pando active condition-edge flags must equal the condition's own ",
+      "estimable BH-supported ridge evidence; global/local correlation support ",
+      "is candidate provenance only.",
       call. = FALSE
     )
   }
@@ -164,12 +162,12 @@
   # only the target-level fit_status == 'ok' requirement for downstream use.
   fit$coefficients <- coefficient
   fit$regcompass_penalty_filter <-
-    "Pando active edge & target fit_status == 'ok'"
+    "Pando BH-active edge & target fit_status == 'ok'"
   fit$regcompass_fit_status_filter <- "fit_status == 'ok'"
   fit$regcompass_rank_deficient_policy <-
     "regularized_ok_fit_retained; non-estimable condition edge excluded"
   fit$regcompass_significance_role <-
-    "consume_pando_active_condition_edge_without_reselection"
+    "consume_pando_condition_bh_active_edge_without_reselection"
   fit$regcompass_padj_threshold <- threshold
   fit
 }
@@ -187,7 +185,8 @@
   if (length(threshold) != 1L || !is.finite(threshold) ||
       threshold <= 0 || threshold >= 1) {
     stop("Standard Pando `padj_threshold` must be one value in (0, 1).",
-         call. = FALSE)
+         call. = FALSE
+    )
   }
   estimate <- suppressWarnings(as.numeric(table$estimate))
   padj <- suppressWarnings(as.numeric(table$padj))
