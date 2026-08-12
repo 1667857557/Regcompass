@@ -202,8 +202,9 @@
         "standard Pando otherwise"
       ),
       condition_effect_filter = paste(
-        "consume Pando active edge from global-or-local candidate support and",
-        "condition BH ridge evidence, then require target fit_status == 'ok'"
+        "consume Pando condition-specific estimable BH-active ridge edge;",
+        "global/local correlation support is dictionary provenance only;",
+        "then require target fit_status == 'ok'"
       ),
       standard_edge_filter = paste(
         "estimable when available and adjusted P below",
