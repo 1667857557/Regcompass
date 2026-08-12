@@ -1,4 +1,4 @@
-test_that("condition scheduler plans global plus condition x cell-type tasks", {
+test_that("condition scheduler plans pooled/global plus condition cell sets", {
   metadata <- data.frame(
     condition = rep(c("A", "B"), each = 6L, times = 2L),
     cell_type = rep(c("T", "B"), each = 12L),
@@ -39,13 +39,25 @@ test_that("condition scheduler preserves the min-cells error contract", {
   )
 })
 
-test_that("condition penalty eligibility requires an ok target fit plus estimable BH significance", {
+test_that("condition penalty eligibility consumes Pando active edges plus ok fit status", {
+  estimate <- c(1e-6, 2, 3, 4)
+  padj <- c(0.01, 0.01, 0.051, 0.01)
+  estimable <- rep(TRUE, 4L)
+  statistically_supported <- estimable & is.finite(padj) & padj < 0.05
+  global_support <- c(TRUE, TRUE, TRUE, FALSE)
+  local_support <- c(FALSE, FALSE, TRUE, TRUE)
+  active <- statistically_supported & (global_support | local_support)
   coefficient <- data.frame(
-    estimate = c(1e-6, 2, 3, 4),
-    padj = c(0.01, 0.01, 0.051, 0.01),
-    estimable = c(TRUE, TRUE, TRUE, TRUE),
+    estimate = estimate,
+    padj = padj,
+    estimable = estimable,
+    statistically_supported = statistically_supported,
+    global_support = global_support,
+    local_support = local_support,
+    active = active,
+    significant = active,
+    penalty_effect = ifelse(active, estimate, 0),
     fit_status = c("ok", "rank_deficient", "ok", "insufficient_df"),
-    corr = c(0, 1, 1, 1),
     stringsAsFactors = FALSE
   )
   expect_identical(
@@ -87,12 +99,11 @@ test_that("standard Pando post-fit filter is BH-only after candidate screening",
   expect_equal(observed$padj, c(0.01, 0.049))
 })
 
-test_that("RegCompass condition scheduling uses exported Pando primitives", {
+test_that("RegCompass condition scheduling uses Pando condition GRN API", {
   skip_if_not_installed("Pando")
   exports <- getNamespaceExports("Pando")
-  expect_true(all(c(
-    "discover_grn_edges", "union_grn_edges", "fit_grn_from_edges"
-  ) %in% exports))
+  expect_true("infer_condition_grn" %in% exports)
+  expect_true("condition_grn_fit" %in% exports)
 })
 
 test_that("condition route calls the canonical RegCompass condition function", {
@@ -111,7 +122,8 @@ test_that("Pando workflow has no versioned or wrapper implementation functions",
     ".rc_merge_pando_results_core",
     ".rc_merge_pando_results_validated",
     ".rc_merge_pando_results_with_parallel_objects",
-    ".rc_fit_condition_grns_regcompass_parallel"
+    ".rc_fit_condition_grns_regcompass_parallel",
+    ".rc_condition_multitask_fit_task"
   )
   expect_false(any(vapply(forbidden, exists, logical(1), inherits = TRUE)))
 })
