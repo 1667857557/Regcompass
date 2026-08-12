@@ -35,6 +35,19 @@ test_that("Pando data loading never dereferences namespace lazydata", {
   expect_true(grepl("lib.loc", loader_source, fixed = TRUE))
 })
 
+test_that("human Pando default regions are the phastCons plus SCREEN union", {
+  region_source <- paste(
+    deparse(body(.rc_default_pando_regions)), collapse = "\n"
+  )
+  expect_match(
+    region_source,
+    "phastConsElements20Mammals.UCSC.hg38",
+    fixed = TRUE
+  )
+  expect_match(region_source, "SCREEN.ccRE.UCSC.hg38", fixed = TRUE)
+  expect_match(region_source, "BiocGenerics::union", fixed = TRUE)
+})
+
 test_that("Stage 1 materializes resources before Pando job dispatch", {
   stage_source <- paste(
     deparse(body(rc_regcompass_step_grn)), collapse = "\n"
@@ -48,7 +61,7 @@ test_that("Stage 1 materializes resources before Pando job dispatch", {
   expect_gt(materialize, 0L)
   expect_gt(dispatch, materialize)
   expect_true(grepl(
-    "dispatch_extra_args$pando_motif_args <- resources$pando_motif_args",
+    "dispatch_extra_args$pando_initiate_args <- resources$pando_initiate_args",
     stage_source,
     fixed = TRUE
   ))
@@ -62,4 +75,34 @@ test_that("Stage 1 materializes resources before Pando job dispatch", {
     stage_source,
     fixed = TRUE
   ))
+})
+
+test_that("standard and condition Pando routes receive the same materialized regions", {
+  route_source <- paste(
+    deparse(body(.rc_fit_pando_by_celltype_route)), collapse = "\n"
+  )
+  expect_match(route_source, ".rc_run_condition_pando_batch", fixed = TRUE)
+  expect_match(route_source, ".rc_run_standard_pando_celltype_job", fixed = TRUE)
+  occurrences <- gregexpr(
+    "extra_args = extra_args", route_source, fixed = TRUE
+  )[[1L]]
+  occurrences <- occurrences[occurrences > 0L]
+  expect_gte(length(occurrences), 2L)
+
+  condition_source <- paste(
+    deparse(body(.rc_run_condition_pando_batch)), collapse = "\n"
+  )
+  standard_source <- paste(
+    deparse(body(.rc_run_standard_pando_celltype_job)), collapse = "\n"
+  )
+  expect_match(
+    condition_source,
+    "args <- c(base[setdiff(names(base), names(extra_args))], extra_args)",
+    fixed = TRUE
+  )
+  expect_match(
+    standard_source,
+    "args <- c(base[setdiff(names(base), names(job_extra))], job_extra)",
+    fixed = TRUE
+  )
 })
