@@ -28,7 +28,7 @@ jobs:
               raise RuntimeError("Pando compatibility must not use a version floor")
           required_description = [
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
-              "Config/RegCompass/PandoConditionProjectionPolicy: active-global-or-local-support-and-condition-BH-ridge",
+              "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
               "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
           ]
           missing = [x for x in required_description if x not in description]
@@ -59,7 +59,8 @@ jobs:
               "dictionary_support_table",
               "candidate_tf_cor",
               "candidate_peak_cor",
-              "global/local candidate support",
+              "expected_active <- expected_statistical",
+              "global/local correlation support must remain provenance only",
               "Every condition must contain every common-dictionary edge exactly once",
               "tf_peak_gene_condition_contrasts",
               "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
@@ -74,10 +75,11 @@ jobs:
               "significant-edge union",
               "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
               "two_stage_exact_edge_union_multitask_ridge",
+              "expected_statistical & (expected_global | expected_local)",
           ]
           present = [value for value in forbidden_condition if value in condition]
           if present:
-              raise RuntimeError(f"obsolete two-stage condition implementation remains: {present}")
+              raise RuntimeError(f"obsolete condition implementation remains: {present}")
 
           helper = Path("R/grn_condition_parallel.R").read_text()
           required_helper = [
@@ -104,9 +106,9 @@ jobs:
               "statistically_supported",
               "global_support",
               "local_support",
-              "expected_active",
+              "expected_active <- expected_statistical",
               'fit_status == "ok"',
-              "consume_pando_active_condition_edge_without_reselection",
+              "consume_pando_condition_bh_active_edge_without_reselection",
           ]
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
@@ -121,7 +123,7 @@ jobs:
               "Condition-Pando projection requires exactly one metacell membership",
               'aggregation_contract =',
               '"beta_times_group_mean_tf_times_group_mean_atac"',
-              'origin = "paired_cell_global_or_local_candidate_no_fusion_ridge_active_edges"',
+              'origin = "paired_cell_common_dictionary_condition_bh_active_edges"',
               'projection_name = "active_no_fusion_ridge_condition_effect"',
               "unique cell-type set.",
           ]
