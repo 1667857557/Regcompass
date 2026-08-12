@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.17
+Version: 2.4.18
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -10,12 +10,15 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     multimodal SuperCell aggregation, reaction meta-modules, context-specific
     structural reconstruction, directional metabolic scoring, and post-analysis
     utilities. Stage 1 uses one parallel level at a time and memory-trimmed Pando
-    working objects. Condition GRNs use multi-task ridge; standard Pando defaults
-    to the K=1 specialization of the same ridge solver, while explicit Gaussian
-    GLM remains available. Ridge routes keep one cell type resident at a time and
-    parallelize target work with target-specific multiome payloads. Mathematical
-    and quantitative definitions are maintained in the package mathematical
-    specification rather than duplicated in interface text.
+    working objects. Condition GRNs use preliminary multi-task ridge-Wald/BH
+    screening to define one shared supported dictionary and then refit all
+    conditions jointly for quantitative effects without second-round coefficient
+    inference. Standard Pando defaults to the K=1 specialization of the same ridge
+    solver, while explicit Gaussian GLM remains available. Ridge routes keep one
+    cell type resident at a time and parallelize target work with target-specific
+    multiome payloads. Mathematical and quantitative definitions are maintained
+    in the package mathematical specification rather than duplicated in
+    interface text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -167,9 +170,9 @@ Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
 Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v2
-Config/RegCompass/PandoConditionMethod: significant-union-multitask-ridge-refit
-Config/RegCompass/PandoConditionProjectionPolicy: padj-significant-ridge-effects
-Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-screen-and-refit
+Config/RegCompass/PandoConditionMethod: screened-union-multitask-ridge-effect-refit
+Config/RegCompass/PandoConditionProjectionPolicy: screen-bh-supported-refit-ridge-effects
+Config/RegCompass/PandoConditionInference: preliminary-ridge-Wald-BH-screen-only-final-refit-no-inference
 Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
 Config/RegCompass/PandoStandardDefaultMethod: ridge
 Config/RegCompass/PandoTargetParallelMemoryPolicy: target-specific-worker-sized-payload-batches
