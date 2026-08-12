@@ -4,10 +4,10 @@ This is the single canonical document for RegCompass equations and quantitative 
 
 ## 1. Condition-comparable Pando model
 
-For one broad cell type and target gene \(g\), let \(E_g^{pool}\) be the candidate TF–peak–target triples discovered in the pooled cell type and \(E_{g,c}\) the triples discovered in condition \(c\). The condition route freezes one common dictionary
+For one broad cell type and target gene \(g\), let \(E_g^{pool}\) be the candidate TF–peak–target triples discovered in the pooled cell type and \(E_{g,c}\) the triples discovered in condition \(c\). The preliminary common candidate dictionary is
 
 \[
-E_g^{\cup}=E_g^{pool}\cup\bigcup_c E_{g,c}.
+D_g^{(0)}=E_g^{pool}\cup\bigcup_c E_{g,c}.
 \]
 
 For edge \(e\), paired cell \(i\), and target \(g\), the Pando interaction predictor is
@@ -16,19 +16,85 @@ For edge \(e\), paired cell \(i\), and target \(g\), the Pando interaction predi
 x_{e,i}=T_{e,i}A_{e,i},
 \]
 
-where \(T\) is TF expression and \(A\) is peak accessibility. Every retained condition is refit on the same ordered dictionary with an unscaled Gaussian identity model,
+where \(T\) is TF expression and \(A\) is peak accessibility. All retained conditions use the same ordered predictor dictionary and are fitted jointly by the multi-task ridge model. The regularized objective contains condition-balanced squared error, ordinary ridge shrinkage, and the configured fusion penalty between condition coefficient vectors. The regularization parameter \(\lambda\) is chosen by cross-validation.
+
+### 1.1 Preliminary dictionary screening
+
+The full candidate dictionary \(D_g^{(0)}\) is first fitted with approximate ridge-Wald inference enabled. For an estimable condition-edge coefficient,
 
 \[
-y_{g,i}=\alpha_{g,c}+\sum_{e\in E_g^{\cup}}\beta_{e,g,c}x_{e,i}+\varepsilon_{g,i}.
+z_{e,g,c}^{screen}
+=
+\frac{\widehat\beta_{e,g,c}^{screen}}
+{SE(\widehat\beta_{e,g,c}^{screen})},
 \]
 
-Let \(\theta_{adj}\) denote the configured `padj_threshold`; its default is 0.05, but it is not fixed. An edge contributes downstream only when the complete target fit has `fit_status == "ok"`, the edge coefficient is estimable and finite, and its BH-adjusted P value satisfies
+and
 
 \[
-P^{adj}_{e,g,c}<\theta_{adj}.
+p_{e,g,c}^{screen}
+=
+2\Phi\left(-\left|z_{e,g,c}^{screen}\right|\right).
 \]
 
-Rank-deficient or otherwise invalid target fits remain auditable but contribute zero regulatory effect. The same configurable `padj_threshold` contract is used by Standard Pando for its final active-edge gate.
+Within each condition, finite estimable screening P values are adjusted once by Benjamini-Hochberg. Let \(\theta_{adj}\) denote `padj_threshold`; the RegCompass default is 0.05. Condition-specific screening support is
+
+\[
+S_{e,g,c}
+=
+\mathbf 1\left\{
+q_{e,g,c}^{screen}<\theta_{adj}
+\right\}.
+\]
+
+The final shared dictionary contains an edge when at least one condition supports it:
+
+\[
+D_g^{(1)}
+=
+\left\{
+e\in D_g^{(0)}:\sum_c S_{e,g,c}>0
+\right\}.
+\]
+
+Thus `adjust_method` and `padj_threshold` define the preliminary dictionary screen and condition-specific support mask. They are not a second post-selection significance test.
+
+### 1.2 Final common-dictionary effect refit
+
+After \(D_g^{(1)}\) is frozen, every condition is jointly refit on exactly that same dictionary with the same multi-task ridge/fusion estimator. Coefficient inference is disabled in this final refit:
+
+\[
+\widehat\beta_{e,g,c}^{final}
+=
+\operatorname{MultiTaskRidgeRefit}(D_g^{(1)}),
+\]
+
+but no final coefficient \(SE\), Wald statistic, P value, or BH-adjusted P value is calculated. The preliminary `screen_pval` and `screen_padj` therefore must not be interpreted as P values for \(\widehat\beta^{final}\).
+
+The regulatory effect passed to RegCompass is
+
+\[
+\theta_{e,g,c}
+=
+\begin{cases}
+\widehat\beta_{e,g,c}^{final}, &
+S_{e,g,c}=1,\ \widehat\beta_{e,g,c}^{final}\text{ estimable},\ 
+\text{and target }fit\_status=\text{"ok"},\\
+0, & \text{otherwise}.
+\end{cases}
+\]
+
+This separates statistical discovery from quantitative effect estimation while keeping every condition on one final predictor space. Final condition contrasts are quantitative coefficient differences,
+
+\[
+\Delta_{e,a,b}
+=
+\widehat\beta_{e,a}^{final}-\widehat\beta_{e,b}^{final},
+\]
+
+without a second post-selection contrast P value.
+
+`screen_pval` and `screen_padj` are approximate ridge-Wald screening quantities conditional on the preliminary candidate dictionary, CV-selected regularization, and fusion structure. Candidate discovery is itself data dependent, so this is not claimed to be selective-inference-corrected FDR for the complete candidate-generation procedure.
 
 The target weight used by the downstream penalty is binary. A target-condition pair with at least one final active edge has
 
@@ -36,7 +102,7 @@ The target weight used by the downstream penalty is binary. A target-condition p
 q_{g,c}=1.
 \]
 
-Targets without a valid active edge have no regulatory contribution. Target-level \(R^2\) and out-of-fold \(R^2\) may remain in Pando fit diagnostics, but they do not enter \(q\), do not rescale the regulatory projection, and do not enter the COMPASS-like penalty. The same binary rule is used by the standard-Pando route: a target represented by at least one final active standard-Pando edge has \(q=1\).
+Targets without a valid active edge have no regulatory contribution. Target-level \(R^2\) and out-of-fold \(R^2\) remain fit diagnostics only; they do not enter \(q\), do not rescale the regulatory projection, and do not enter the COMPASS-like penalty. The standard-Pando route retains its own one-stage adjusted-P active-edge gate and the same binary target-weight rule.
 
 ## 2. Metacell regulatory projection
 
@@ -50,8 +116,8 @@ For metacell \(u\), RegCompass averages TF expression and peak accessibility sep
 The target regulatory score is therefore
 
 \[
-G_{g,u}=\sum_{e\in E_g^{\cup}}
-\widehat\beta_{e,g,c(u)}\,\overline T_{e,u}\,\overline A_{e,u}.
+G_{g,u}=\sum_{e\in D_g^{(1)}}
+\theta_{e,g,c(u)}\,\overline T_{e,u}\,\overline A_{e,u}.
 \]
 
 This is **\(\beta\times mean(TF)\times mean(ATAC)\)** for each active edge, followed by target-level summation; it is not the mean of cell-wise TF×ATAC products.
