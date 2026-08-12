@@ -39,7 +39,7 @@ test_that("condition scheduler preserves the min-cells error contract", {
   )
 })
 
-test_that("condition penalty eligibility consumes BH-active Pando edges plus ok fit status", {
+test_that("candidate provenance does not veto a BH-active Pando edge", {
   estimate <- c(1e-6, 2, 3, 4)
   padj <- c(0.01, 0.01, 0.051, 0.01)
   estimable <- rep(TRUE, 4L)
