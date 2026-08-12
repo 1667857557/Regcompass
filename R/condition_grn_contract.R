@@ -518,7 +518,7 @@
     pando_initiate_args = list(exclude_exons = TRUE),
     pando_motif_args = list(),
     pando_infer_args = list(
-      tf_cor = 0.1, peak_cor = 0.05, adjust_method = "BH",
+      tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
       padj_threshold = 0.05, rank_action = "mark",
       min_residual_df = 1L
     ),
@@ -547,19 +547,26 @@
     )
   }
   pando_infer_args <- utils::modifyList(list(
-    tf_cor = 0.1, peak_cor = 0.05, adjust_method = "BH",
+    tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
     padj_threshold = 0.05, rank_action = "mark", min_residual_df = 1L,
     rna_layer = "data", peak_layer = "data",
     peak_value_type = "normalized", condition_ridge_control = list()
   ), pando_infer_args)
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
+  tf_threshold <- suppressWarnings(as.numeric(pando_infer_args$tf_cor))
+  peak_threshold <- suppressWarnings(as.numeric(pando_infer_args$peak_cor))
   ridge_control <- pando_infer_args$condition_ridge_control
   if (!identical(toupper(as.character(pando_infer_args$adjust_method)), "BH") ||
       length(threshold) != 1L || !is.finite(threshold) ||
-      threshold <= 0 || threshold >= 1 || !is.list(ridge_control)) {
+      threshold <= 0 || threshold >= 1 || !is.list(ridge_control) ||
+      length(tf_threshold) != 1L || !is.finite(tf_threshold) ||
+      tf_threshold < 0 || tf_threshold > 1 ||
+      length(peak_threshold) != 1L || !is.finite(peak_threshold) ||
+      peak_threshold < 0 || peak_threshold > 1) {
     stop(
       "Canonical RegCompass condition effects require BH adjustment with ",
-      "padj_threshold in (0, 1) and condition_ridge_control as a list.",
+      "padj_threshold in (0, 1), tf_cor/peak_cor in [0, 1], and ",
+      "condition_ridge_control as a list.",
       call. = FALSE
     )
   }
@@ -568,6 +575,8 @@
          call. = FALSE)
   }
   pando_infer_args$padj_threshold <- threshold
+  pando_infer_args$tf_cor <- tf_threshold
+  pando_infer_args$peak_cor <- peak_threshold
 
   condition_types <- if (is.null(cell_type)) {
     unique(as.character(object@meta.data[[celltype_col]]))
