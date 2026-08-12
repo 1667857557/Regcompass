@@ -40,7 +40,7 @@ jobs:
               "'layer2_corda2_algorithm.R'",
               "'layer2_corda_model.R'",
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
-              "Config/RegCompass/PandoConditionProjectionPolicy: active-global-or-local-support-and-condition-BH-ridge",
+              "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
               "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
           ]
           missing = [x for x in required_description if x not in description]
@@ -152,7 +152,8 @@ jobs:
               "candidate_tf_cor",
               "candidate_peak_cor",
               "Every condition must contain every common-dictionary edge exactly once",
-              "global/local candidate support",
+              "expected_active <- expected_statistical",
+              "global/local correlation support must remain provenance only",
               "tf_peak_gene_condition_contrasts",
               "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
               "exact deduplicated union -> single common-lambda no-fusion ridge",
@@ -166,10 +167,11 @@ jobs:
               "screening_n_significant_conditions",
               "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
               "two_stage_exact_edge_union_multitask_ridge",
+              "expected_statistical & (expected_global | expected_local)",
           ]
           present = [x for x in forbidden_condition if x in condition]
           if present:
-              raise RuntimeError(f"obsolete two-stage condition contract remains: {present}")
+              raise RuntimeError(f"obsolete condition contract remains: {present}")
           helper_required = [
               ".rc_condition_ridge_fit_task <- function",
               "Pando::infer_condition_grn",
@@ -192,15 +194,17 @@ jobs:
               "statistically_supported",
               "global_support",
               "local_support",
-              "expected_active",
+              "expected_active <- expected_statistical",
               'fit_status == "ok"',
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
-              "consume_pando_active_condition_edge_without_reselection",
+              "consume_pando_condition_bh_active_edge_without_reselection",
           ]
           missing = [x for x in required_penalty if x not in penalty]
           if missing:
               raise RuntimeError(f"active condition ridge penalty contract missing: {missing}")
+          if "expected_statistical & expected_dictionary_support" in penalty:
+              raise RuntimeError("candidate provenance still vetoes RegCompass activity")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
@@ -221,7 +225,7 @@ jobs:
               ".rc_validate_pando_active_condition_edges",
               ".rc_condition_penalty_gate",
               '"beta_times_group_mean_tf_times_group_mean_atac"',
-              'origin = "paired_cell_global_or_local_candidate_no_fusion_ridge_active_edges"',
+              'origin = "paired_cell_common_dictionary_condition_bh_active_edges"',
               'projection_name = "active_no_fusion_ridge_condition_effect"',
           ]
           missing = [x for x in required_layer1 if x not in layer1]
@@ -306,8 +310,8 @@ jobs:
           padj <- c(0.01, 0.08, 0.2, NA_real_)
           statistically_supported <- c(TRUE, TRUE, TRUE, FALSE)
           global_support <- c(TRUE, TRUE, FALSE, FALSE)
-          local_support <- c(FALSE, FALSE, TRUE, TRUE)
-          active <- statistically_supported & (global_support | local_support)
+          local_support <- c(FALSE, FALSE, FALSE, TRUE)
+          active <- statistically_supported
           coefficient <- data.frame(
             estimate = estimate,
             estimable = estimable,
