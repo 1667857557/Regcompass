@@ -24,8 +24,8 @@ jobs:
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
 
-          # Raw rank deficiency remains diagnostic under ridge. Downstream
-          # eligibility consumes Pando active edges and adds fit_status == "ok".
+          # Raw rank deficiency remains diagnostic under ridge. Candidate
+          # correlation provenance does not veto an estimable BH-supported edge.
           make_coef <- function(threshold) {
             estimate <- c(1, 1, 1, 1)
             estimable <- c(TRUE, TRUE, FALSE, TRUE)
@@ -33,9 +33,8 @@ jobs:
             statistically_supported <- estimable & is.finite(estimate) &
               is.finite(padj) & padj < threshold
             global_support <- c(TRUE, TRUE, TRUE, FALSE)
-            local_support <- c(FALSE, FALSE, TRUE, TRUE)
-            active <- statistically_supported &
-              (global_support | local_support)
+            local_support <- c(FALSE, FALSE, TRUE, FALSE)
+            active <- statistically_supported
             data.frame(
               estimate = estimate,
               estimable = estimable,
@@ -70,8 +69,8 @@ jobs:
             pval = c(0.001, NA_real_),
             padj = c(0.01, NA_real_),
             statistically_supported = c(TRUE, FALSE),
-            global_support = c(TRUE, TRUE),
-            local_support = c(TRUE, FALSE),
+            global_support = c(FALSE, TRUE),
+            local_support = c(FALSE, FALSE),
             active = c(TRUE, FALSE),
             significant = c(TRUE, FALSE),
             penalty_effect = c(0.8, 0),
@@ -99,5 +98,5 @@ jobs:
               "regularized_ok_fit_retained; non-estimable condition edge excluded"
             ),
             identical(gated$regcompass_significance_role,
-                      "consume_pando_active_condition_edge_without_reselection")
+                      "consume_pando_condition_bh_active_edge_without_reselection")
           )
