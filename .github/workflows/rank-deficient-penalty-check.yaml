@@ -24,12 +24,14 @@ jobs:
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
 
-          # Raw singularity remains a diagnostic after ridge regularization, but
-          # final condition-edge inclusion additionally requires BH support.
+          # Raw singularity remains a diagnostic after ridge regularization. The
+          # final effect gate uses preliminary BH screen support plus final
+          # estimability/fit status; there is no second-round final P value.
           coefficient <- data.frame(
             estimate = c(1, 1, 1, 1),
             estimable = c(TRUE, TRUE, FALSE, TRUE),
-            padj = c(0.01, 0.08, NA_real_, 0.01),
+            screen_padj = c(0.01, 0.08, NA_real_, 0.01),
+            screen_significant = c(TRUE, TRUE, FALSE, TRUE),
             fit_status = c("ok", "ok", "ok", "failed"),
             design_rank_deficient = c(FALSE, TRUE, TRUE, FALSE),
             stringsAsFactors = FALSE
@@ -48,8 +50,8 @@ jobs:
             condition = c("A", "B"),
             estimate = c(0.8, -0.7),
             estimable = c(TRUE, FALSE),
-            pval = c(0.001, NA_real_),
-            padj = c(0.01, NA_real_),
+            screen_padj = c(0.01, NA_real_),
+            screen_significant = c(TRUE, FALSE),
             significant = c(TRUE, FALSE),
             penalty_effect = c(0.8, 0),
             stringsAsFactors = FALSE
@@ -74,5 +76,5 @@ jobs:
               "regularized_ok_fit_retained; condition-zero-variance edge excluded"
             ),
             identical(gated$regcompass_significance_role,
-                      "condition_edge_inclusion_gate")
+                      "stage1_dictionary_screen_support_gate_on_final_refit_effect")
           )
