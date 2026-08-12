@@ -4,39 +4,106 @@ This is the single canonical document for RegCompass equations and quantitative 
 
 ## 1. Condition-comparable Pando model
 
-For one broad cell type and target gene \(g\), let \(E_g^{pool}\) be the candidate TF–peak–target triples discovered in the pooled cell type and \(E_{g,c}\) the triples discovered in condition \(c\). The condition route freezes one common dictionary
+For one broad cell type and target gene \(g\), Pando first applies its structural candidate rules: regulatory-domain proximity, TF motif support, and the supplied regulatory-region prior. For the human RegCompass route the default region prior is
 
 \[
-E_g^{\cup}=E_g^{pool}\cup\bigcup_c E_{g,c}.
+R_{prior}=R_{phastCons}\cup R_{SCREEN\ cCRE}.
 \]
 
-For edge \(e\), paired cell \(i\), and target \(g\), the Pando interaction predictor is
+For exact edge \(e=(g,f,r)\), condition \(c\), define the Pando marginal correlations
 
 \[
-x_{e,i}=T_{e,i}A_{e,i},
+\rho^{peak}_{e,c}=cor_c(ATAC_r,RNA_g),\qquad
+\rho^{TF}_{e,c}=cor_c(RNA_f,RNA_g).
 \]
 
-where \(T\) is TF expression and \(A\) is peak accessibility. Every retained condition is refit on the same ordered dictionary with an unscaled Gaussian identity model,
+The same correlations are computed once more using all eligible-condition cells pooled within the broad cell type. The implementation uses strict comparisons. With configured thresholds \(\tau_{peak}\) and \(\tau_{TF}\),
 
 \[
-y_{g,i}=\alpha_{g,c}+\sum_{e\in E_g^{\cup}}\beta_{e,g,c}x_{e,i}+\varepsilon_{g,i}.
+L_{e,c}=\mathbf 1\{|\rho^{peak}_{e,c}|>\tau_{peak}\}
+\mathbf 1\{|\rho^{TF}_{e,c}|>\tau_{TF}\},
 \]
-
-Let \(\theta_{adj}\) denote the configured `padj_threshold`; its default is 0.05, but it is not fixed. An edge contributes downstream only when the complete target fit has `fit_status == "ok"`, the edge coefficient is estimable and finite, and its BH-adjusted P value satisfies
 
 \[
-P^{adj}_{e,g,c}<\theta_{adj}.
+G_e=\mathbf 1\{|\rho^{peak}_{e,global}|>\tau_{peak}\}
+\mathbf 1\{|\rho^{TF}_{e,global}|>\tau_{TF}\}.
 \]
 
-Rank-deficient or otherwise invalid target fits remain auditable but contribute zero regulatory effect. The same configurable `padj_threshold` contract is used by Standard Pando for its final active-edge gate.
+Both `tf_cor` and `peak_cor` default to 0.05. They are adjustable parameters, not fixed constants; the same user-supplied values are used in pooled/global and condition-specific candidate discovery and are stored in the fit contract.
 
-The target weight used by the downstream penalty is binary. A target-condition pair with at least one final active edge has
+Let \(E_g^{global}\) be the pooled/global candidate triples and \(E_{g,c}\) the triples supported in condition \(c\). The frozen common dictionary is
+
+\[
+E_g^{\cup}=\operatorname{unique}\left(
+E_g^{global}\cup\bigcup_cE_{g,c}
+\right).
+\]
+
+Deduplication is on the complete `(target, TF, region)` triple. TFs, peaks, and targets are never unioned independently and recombined.
+
+For edge \(e\), paired cell \(i\), and condition \(c\), the Pando interaction predictor remains
+
+\[
+x_{e,i,c}=T_{e,i}A_{e,i},
+\]
+
+where \(T\) is TF expression and \(A\) is peak accessibility. Every condition uses the same ordered columns \(e\in E_g^{\cup}\). Predictors share the equal-condition RMS within-condition scaling convention
+
+\[
+s_e^2=\frac{1}{K}\sum_{c=1}^{K}
+\frac{1}{n_c}\sum_{i\in c}(x_{e,i,c}-\bar x_{e,c})^2,
+\]
+
+and coefficients are back-transformed to original TF×ATAC units.
+
+For one target and \(K\) conditions the no-fusion ridge objective is
+
+\[
+\frac{1}{K}\sum_{c=1}^{K}
+\frac{\|y_c-X_c\beta_c\|_2^2}{n_c}
++\lambda\sum_{c=1}^{K}\|\beta_c\|_2^2.
+\]
+
+One target-specific \(\lambda\) is selected by condition-stratified cross-validation and used for all condition blocks. There is **no cross-condition fusion term** and no penalty shrinking \(\beta_c\) toward \(\beta_{c'}\). Thus conditions share the dictionary coordinate system, scaling convention, and tuning parameter while retaining independently estimated coefficient blocks. Ridge makes the penalized system identifiable under severe collinearity or raw rank deficiency, although individual coefficients can remain biologically non-identifiable when predictors encode nearly the same signal.
+
+Let \(\theta_{adj}\) denote the configurable BH threshold, default 0.05. Pando condition-specific statistical support is
+
+\[
+S_{e,c}=\mathbf 1\{estimable_{e,c}\land
+P^{adj}_{e,c}<\theta_{adj}\}.
+\]
+
+The Pando active condition edge is
+
+\[
+A_{e,c}=S_{e,c}(G_e\lor L_{e,c}).
+\]
+
+This distinction is essential. A global-only edge may remain eligible in a condition whose local marginal correlation is unstable, but it still requires that condition's own ridge coefficient to pass BH. Conversely, an edge admitted only because another condition passed its local correlation screen is not active in condition \(c\) unless it also has global support or local support in \(c\).
+
+Pando exports
+
+\[
+penalty\_effect_{e,c}=A_{e,c}\widehat\beta_{e,c}.
+\]
+
+RegCompass does not reselect these edges. It only adds the target-level requirement `fit_status == "ok"` before downstream use. Therefore RegCompass penalty eligibility is
+
+\[
+H_{e,c}=A_{e,c}\mathbf 1\{fit\_status_{g,c}=\text{"ok"}\}.
+\]
+
+The complete common-dictionary coefficient table remains stored for diagnostics and direct condition contrasts even when \(H_{e,c}=0\). Direct differential inference uses \(\Delta\beta_e=\beta_{e,A}-\beta_{e,B}\); significance in one condition and nonsignificance in another is not used as a substitute for this contrast.
+
+The target weight used by the downstream penalty is binary. A target-condition pair with at least one penalty-eligible active edge has
 
 \[
 q_{g,c}=1.
 \]
 
-Targets without a valid active edge have no regulatory contribution. Target-level \(R^2\) and out-of-fold \(R^2\) may remain in Pando fit diagnostics, but they do not enter \(q\), do not rescale the regulatory projection, and do not enter the COMPASS-like penalty. The same binary rule is used by the standard-Pando route: a target represented by at least one final active standard-Pando edge has \(q=1\).
+Targets without a valid active edge have no regulatory contribution. Target-level \(R^2\) and out-of-fold \(R^2\) remain fit diagnostics only: they do not enter \(q\), do not rescale the regulatory projection, and do not enter the COMPASS-like penalty. The same binary target rule is used by the standard-Pando route.
+
+Because correlation screening, ridge estimation, and CV tuning use the observed data, ridge-Wald and contrast P values are approximate and conditional on the selected dictionary and tuning procedure; they are not exact selective-inference P values.
 
 ## 2. Metacell regulatory projection
 
@@ -47,11 +114,11 @@ For metacell \(u\), RegCompass averages TF expression and peak accessibility sep
 \overline A_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}A_{e,i}.
 \]
 
-The target regulatory score is therefore
+Using only penalty-eligible active edges, the target regulatory score is
 
 \[
 G_{g,u}=\sum_{e\in E_g^{\cup}}
-\widehat\beta_{e,g,c(u)}\,\overline T_{e,u}\,\overline A_{e,u}.
+H_{e,c(u)}\widehat\beta_{e,g,c(u)}\,\overline T_{e,u}\,\overline A_{e,u}.
 \]
 
 This is **\(\beta\times mean(TF)\times mean(ATAC)\)** for each active edge, followed by target-level summation; it is not the mean of cell-wise TF×ATAC products.
