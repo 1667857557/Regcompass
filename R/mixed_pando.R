@@ -93,13 +93,11 @@
       condition_rows <- is.na(route) | !nzchar(route) | route == "condition_grn"
     }
     if (any(condition_rows)) {
+      # Pando owns active/significant/penalty_effect. RegCompass validates that
+      # contract and only adds target-fit-status eligibility; it does not
+      # reconstruct the Pando effect from estimate.
       gate <- .rc_condition_penalty_gate(
         all_edges[condition_rows, , drop = FALSE]
-      )
-      all_edges$penalty_effect[condition_rows] <- ifelse(
-        gate,
-        suppressWarnings(as.numeric(all_edges$estimate[condition_rows])),
-        0
       )
       if (!"penalty_eligible" %in% colnames(all_edges)) {
         all_edges$penalty_eligible <- FALSE
@@ -109,8 +107,6 @@
         all_edges$active_in_condition <- FALSE
       }
       all_edges$active_in_condition[condition_rows] <- gate
-      # Do not overwrite Pando's `significant` field: it remains an approximate
-      # ridge-Wald/BH diagnostic alongside the final RegCompass active-edge gate.
       condition_active <- all_edges[condition_rows &
         all_edges$penalty_eligible %in% TRUE, , drop = FALSE]
       standard_active <- if (nrow(active_edges) &&
@@ -206,8 +202,8 @@
         "standard Pando otherwise"
       ),
       condition_effect_filter = paste(
-        "fit_status ok, estimable finite coefficient and adjusted P below",
-        "the configured padj_threshold"
+        "consume Pando active edge from global-or-local candidate support and",
+        "condition BH ridge evidence, then require target fit_status == 'ok'"
       ),
       standard_edge_filter = paste(
         "estimable when available and adjusted P below",
