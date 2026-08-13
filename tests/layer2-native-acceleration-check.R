@@ -41,6 +41,10 @@ source("R/celltype_microcompass_reaction_parallel.R", local = FALSE)
   if (!length(x)) return(data.frame())
   do.call(rbind, x)
 }
+.rc_microcompass_object_checksum <- function(x) {
+  raw <- serialize(x, NULL, version = 2L)
+  paste0(length(raw), "-", sum(as.integer(raw)))
+}
 
 flux <- c(0, 2, 3, 1e-9, 4, NA_real_)
 class_code <- c(1L, 2L, 3L, 4L, 2L, 3L)
