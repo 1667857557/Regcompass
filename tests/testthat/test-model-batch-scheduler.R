@@ -1,11 +1,11 @@
-test_that("model batch scheduler balances unequal target counts", {
+test_that("Step 2 model batch scheduler balances unequal target counts", {
   rows_a <- paste0("A", seq_len(3223L))
   rows_b <- paste0("B", seq_len(4484L))
   model_keys <- c(
     stats::setNames(rep("model_A", length(rows_a)), rows_a),
     stats::setNames(rep("model_B", length(rows_b)), rows_b)
   )
-  tasks <- RegCompassR:::.rc_microcompass_vmax_tasks(
+  tasks <- RegCompassR:::.rc_step2_model_batches(
     model_keys, workers = 80L
   )
   expect_length(tasks, 80L)
@@ -19,11 +19,11 @@ test_that("model batch scheduler balances unequal target counts", {
   expect_gt(sum(task_models == "model_B"), sum(task_models == "model_A"))
 })
 
-test_that("model batch scheduler keeps one batch per model when workers are scarce", {
+test_that("Step 2 model batch scheduler keeps one batch per model when workers are scarce", {
   model_keys <- stats::setNames(
     c("m1", "m2", "m3", "m4"), paste0("row", seq_len(4L))
   )
-  tasks <- RegCompassR:::.rc_microcompass_vmax_tasks(
+  tasks <- RegCompassR:::.rc_step2_model_batches(
     model_keys, workers = 2L
   )
   expect_length(tasks, 4L)
