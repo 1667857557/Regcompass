@@ -51,7 +51,8 @@ test_that("compact Step 2 payload preserves the canonical LP result", {
     union_gem_medium_scenario = "toy",
     union_gem_scope =
       "one_cell_type_one_medium_shared_across_conditions_and_matching_metacells",
-    target_status = "ok"
+    target_status = "ok",
+    large_unused_metadata = raw(100000)
   )
   model_file <- file.path(root, "union_gem.rds")
   saveRDS(model, model_file)
@@ -100,6 +101,17 @@ test_that("compact Step 2 payload preserves the canonical LP result", {
       "entries", "vmax", "omega", "solver", "flux_threshold"
     )
   )
+  expect_identical(
+    names(payload$model),
+    c(
+      "S", "lb", "ub", "target_status", "file_checksum", "cell_type",
+      "medium_scenario"
+    )
+  )
+  expect_false("large_unused_metadata" %in% names(payload$model))
+  expect_identical(payload$model$S, S)
+  expect_identical(payload$model$lb, lb)
+  expect_identical(payload$model$ub, ub)
   expect_identical(payload$units, c("mc1", "mc2"))
   expect_length(payload$vmax[[row_id]]$flux, 0L)
 
