@@ -129,7 +129,7 @@ test_that("model-scoped reaction batches cover every target exactly once", {
     rep(c("model_A.rds", "model_B.rds"), each = 12L),
     row_ids
   )
-  batches <- RegCompassR:::.rc_microcompass_vmax_tasks(
+  batches <- RegCompassR:::.rc_step2_model_batches(
     model_keys, workers = 6L
   )
   observed <- unlist(lapply(batches, `[[`, "row_ids"), use.names = FALSE)
