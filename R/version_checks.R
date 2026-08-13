@@ -100,6 +100,16 @@
   ))
 }
 
+.rc_worker_runtime_profile <- function() {
+  trimws(Sys.getenv("REGCOMPASS_WORKER_PROFILE", unset = ""))
+}
+
+.rc_skip_eager_seurat_stack <- function() {
+  identical(.rc_worker_runtime_profile(), "layer2_numeric")
+}
+
 .onLoad <- function(libname, pkgname) {
+  if (isTRUE(.rc_skip_eager_seurat_stack())) return(invisible(NULL))
   .rc_validate_seurat_stack_versions(.rc_seurat_stack_versions(), error = TRUE)
+  invisible(NULL)
 }
