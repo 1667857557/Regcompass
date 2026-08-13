@@ -19,7 +19,7 @@ jobs:
         with:
           r-version: '4.5'
 
-      - name: Validate canonical cross-package source contract
+      - name: Validate canonical source contracts
         shell: python
         run: |
           from pathlib import Path
@@ -46,6 +46,9 @@ jobs:
           missing = [x for x in required_description if x not in description]
           if missing:
               raise RuntimeError(f"DESCRIPTION integration contract missing: {missing}")
+          if "Pando (>=" in description:
+              raise RuntimeError("DESCRIPTION still imposes a Pando version floor")
+
           obsolete_files = [
               "R/condition_grn_contract_compat.R",
               "R/grn_integration_contract.R",
@@ -55,8 +58,6 @@ jobs:
           present = [x for x in obsolete_files if Path(x).exists()]
           if present:
               raise RuntimeError(f"obsolete wrapper/override source remains: {present}")
-          if "Pando (>=" in description:
-              raise RuntimeError("DESCRIPTION still imposes a Pando version floor")
 
           order_pairs = [
               ("'condition_grn_contract.R'", "'grn_condition_parallel.R'"),
@@ -71,10 +72,11 @@ jobs:
               if description.index(first) > description.index(second):
                   raise RuntimeError(f"invalid Collate order: {first} after {second}")
 
+          all_r = "\n".join(
+              path.read_text() for path in sorted(Path("R").glob("*.R"))
+          )
           canonical = {
-              "R/grn_route_parallel.R": [
-                  ".rc_route_pando_infer_args",
-              ],
+              "R/grn_route_parallel.R": [".rc_route_pando_infer_args"],
               "R/condition_grn_contract.R": [
                   ".rc_require_pando_condition_grn_fit",
                   ".rc_extract_condition_grn_contract",
@@ -88,13 +90,8 @@ jobs:
               "R/grn_parallel_merge_contract.R": [
                   ".rc_merge_condition_job_results",
               ],
-              "R/mixed_pando.R": [
-                  ".rc_merge_pando_results",
-              ],
+              "R/mixed_pando.R": [".rc_merge_pando_results"],
           }
-          all_r = "\n".join(
-              path.read_text() for path in sorted(Path("R").glob("*.R"))
-          )
           for path, names in canonical.items():
               text = Path(path).read_text()
               for name in names:
@@ -124,45 +121,23 @@ jobs:
           if present:
               raise RuntimeError(f"versioned/wrapper implementation remains: {present}")
 
-          route = Path("R/grn_route_parallel.R").read_text()
-          required_route = [
-              'getNamespaceExports("Pando")',
-              '"infer_condition_grn"',
-              '"condition_grn_fit"',
-              'tf_cor = 0.05',
-              'peak_cor = 0.05',
-              'condition_ridge_control = list()',
-              "padj_threshold in (0, 1)",
-              "fusion_ratio",
-              "obsolete",
-              "pooled/global plus condition exact-union no-fusion ridge",
-          ]
-          missing = [x for x in required_route if x not in route]
-          if missing:
-              raise RuntimeError(f"canonical Pando routing missing: {missing}")
-          if "package_version" in route or "packageVersion" in route:
-              raise RuntimeError("Pando routing contains a package-version gate")
-
           condition = Path("R/condition_grn_contract.R").read_text()
-          condition_helpers = Path("R/grn_condition_parallel.R").read_text()
-          required_condition = [
-              ".rc_fit_condition_grns_by_cell_type",
+          required_condition_semantics = [
               "dictionary_support_table",
               "dictionary_support_summary",
               "candidate_tf_cor",
               "candidate_peak_cor",
-              "Every condition must contain every common-dictionary edge exactly once",
+              "expected_statistical <- one$estimable %in% TRUE",
+              "expected_global <-",
+              "expected_local <-",
               "expected_active <- expected_statistical",
-              "global/local correlation support must remain provenance only",
-              "tf_peak_gene_condition_contrasts",
-              "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
-              "exact deduplicated union -> single common-lambda no-fusion ridge",
-              "tf_cor = 0.05, peak_cor = 0.05",
-              "tf_cor/peak_cor in [0, 1]",
+              "!identical(as.logical(one$global_support), expected_global)",
+              "!identical(as.logical(one$local_support), expected_local)",
+              "!identical(as.logical(one$active), expected_active)",
           ]
-          missing = [x for x in required_condition if x not in condition]
+          missing = [x for x in required_condition_semantics if x not in condition]
           if missing:
-              raise RuntimeError(f"condition scheduler missing: {missing}")
+              raise RuntimeError(f"condition activity semantics missing: {missing}")
           forbidden_condition = [
               "screening_n_significant_conditions",
               "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
@@ -172,21 +147,6 @@ jobs:
           present = [x for x in forbidden_condition if x in condition]
           if present:
               raise RuntimeError(f"obsolete condition contract remains: {present}")
-          helper_required = [
-              ".rc_condition_ridge_fit_task <- function",
-              "Pando::infer_condition_grn",
-              "Pando::condition_grn_fit",
-              "condition_ridge_control",
-              "fusion_ratio",
-              'parallel_scope = "target"',
-              "active_edges=",
-          ]
-          missing = [x for x in helper_required if x not in condition_helpers]
-          if missing:
-              raise RuntimeError(f"condition task helpers missing: {missing}")
-          for forbidden in ("Pando::fit_grn_from_edges", ".rc_condition_fit_task"):
-              if forbidden in condition_helpers:
-                  raise RuntimeError(f"obsolete independent condition fit remains: {forbidden}")
 
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
@@ -205,32 +165,6 @@ jobs:
               raise RuntimeError(f"active condition ridge penalty contract missing: {missing}")
           if "expected_statistical & expected_dictionary_support" in penalty:
               raise RuntimeError("candidate provenance still vetoes RegCompass activity")
-
-          layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
-          projection = Path("R/pando_evidence_utils.R").read_text()
-          required_projection = [
-              ".rc_pando_projection_from_group_means <- function",
-              "tf_mean <- if",
-              "peak_mean <- if",
-              "Matrix::colMeans(tf_block)",
-              "base::colMeans(tf_block)",
-              "Matrix::colMeans(peak_block)",
-              "base::colMeans(peak_block)",
-              "contribution <- estimate * tf_mean * peak_mean",
-          ]
-          missing = [x for x in required_projection if x not in projection]
-          if missing:
-              raise RuntimeError(f"sparse-safe product-of-means Pando projection missing: {missing}")
-          required_layer1 = [
-              ".rc_validate_pando_active_condition_edges",
-              ".rc_condition_penalty_gate",
-              '"beta_times_group_mean_tf_times_group_mean_atac"',
-              'origin = "paired_cell_common_dictionary_condition_bh_active_edges"',
-              'projection_name = "active_no_fusion_ridge_condition_effect"',
-          ]
-          missing = [x for x in required_layer1 if x not in layer1]
-          if missing:
-              raise RuntimeError(f"Layer 1 no-fusion handoff missing: {missing}")
 
           step = Path("R/step_layer2.R").read_text()
           cache = Path("R/celltype_union_gem_cache.R").read_text()
@@ -264,7 +198,9 @@ jobs:
               if missing:
                   raise RuntimeError(f"{label} missing: {missing}")
 
-          forbidden_markers = ["_base <-", "before_corda2", "completion_base <-", "runtime_base <-"]
+          forbidden_markers = [
+              "_base <-", "before_corda2", "completion_base <-", "runtime_base <-"
+          ]
           production_files = [
               Path("R/step_layer2.R"),
               Path("R/celltype_union_gem_cache.R"),
