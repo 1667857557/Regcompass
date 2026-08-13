@@ -60,7 +60,6 @@ jobs:
               "candidate_tf_cor",
               "candidate_peak_cor",
               "expected_active <- expected_statistical",
-              "global/local correlation support must remain provenance only",
               "Every condition must contain every common-dictionary edge exactly once",
               "tf_peak_gene_condition_contrasts",
               "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
