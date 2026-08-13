@@ -94,7 +94,6 @@ Collate:
     'condition_plot_violin.R'
     'reaction_gene_plots.R'
     'parallel.R'
-    'model_batch_scheduler.R'
     'stage_parallel_lifecycle.R'
     'grn_condition_parallel.R'
     'grn_route_parallel.R'
