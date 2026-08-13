@@ -95,7 +95,10 @@
   payload <- list(
     schema_version = "regcompass_step2_compact_payload_v1",
     model = list(
-      file = as.character(first_entry$file),
+      S = model$S,
+      lb = model$lb,
+      ub = model$ub,
+      target_status = model$target_status %||% NA_character_,
       file_checksum = as.character(first_entry$file_checksum),
       cell_type = as.character(first_entry$cell_type),
       medium_scenario = as.character(first_entry$medium_scenario)
@@ -138,11 +141,12 @@
     stop("Step 2 reaction-batch rows are absent from the compact payload.",
          call. = FALSE)
   }
-  model_info <- payload$model
-  model <- .rc_read_celltype_union_gem(
-    model_info$file, model_info$cell_type,
-    model_info$medium_scenario, model_info$file_checksum
-  )
+  model <- payload$model
+  if (!is.list(model) || is.null(model$S) || is.null(model$lb) ||
+      is.null(model$ub)) {
+    stop("Step 2 compact payload lacks the required LP model state.",
+         call. = FALSE)
+  }
   if (!identical(colnames(model$S), as.character(payload$reactions))) {
     stop("Step 2 compact payload reaction order differs from its union GEM.",
          call. = FALSE)
@@ -249,7 +253,7 @@
     engine_metrics <- .rc_compass_step2_engine_metrics(step2_engine)
     token <- substr(.rc_microcompass_object_checksum(list(
       row_id = row_id,
-      file_checksum = model_info$file_checksum,
+      file_checksum = model$file_checksum,
       units = units,
       omega = payload$omega,
       solver = payload$solver,
@@ -611,12 +615,12 @@
       step2_parallel_tasks = as.integer(step2_task_count),
       step2_parallel_workers = as.integer(step2_workers),
       step2_worker_payload = paste(
-        "file-backed compact model-specific penalties, target metadata and",
-        "cached vmax; no Layer 1/GEM/global scoring closure export"
+        "file-backed compact S/lb/ub, model-specific penalties, target",
+        "metadata and cached vmax; no Layer 1/full GEM/global closure export"
       ),
       step2_model_load_reuse = paste(
-        "one union GEM load per model-scoped reaction batch; the loaded GEM",
-        "is reused across all directional reactions assigned to that batch"
+        "controller validates each union GEM once; every reaction batch loads",
+        "only compact S/lb/ub plus its matching-unit penalty matrix"
       ),
       vmax_computation_scope = vmax_computation_scope,
       vmax_parallel_tasks = vmax_parallel_tasks,
@@ -631,7 +635,7 @@
       ),
       worker_cleanup = paste(
         "checkpoint each reaction; release its target HiGHS engine; retain",
-        "only one union GEM plus one compact payload per reaction batch"
+        "only one compact S/lb/ub model and matching penalty payload per batch"
       ),
       flux_threshold = flux_threshold,
       scoring_time_limit = "none"
