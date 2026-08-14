@@ -1,14 +1,10 @@
 # Medium scenarios and published evidence
 
-`rc_make_medium_scenarios()` separates two evidence layers:
+`rc_make_medium_scenarios()` separates biological composition metadata from metabolic flux constraints.
 
-1. **basal nutrient composition**, which must come from a high-authority,
-   reproducible formulation or quantitative extracellular metabolomics study;
-2. **challenge concentration**, which may come from the experiment that defined
-   the glucose, lactate, or glutamine treatment.
-
-A challenge article is therefore not used to invent the rest of the medium. The
-output records basal-composition and challenge provenance separately.
+1. **Basal nutrient composition** comes from a high-authority reproducible formulation or quantitative extracellular metabolomics study.
+2. **Challenge concentration** records the extracellular concentration used in the named glucose, lactate, or glutamine experiment.
+3. **Flux bounds** are changed only by an explicit flux/bound assumption. A concentration in mM is not automatically converted into an uptake flux.
 
 ## Supported identifiers
 
@@ -23,36 +19,11 @@ low_glutamine
 custom
 ```
 
-The technical constructions `minimal`, `compass_model_bounds`, and
-`permissive_all_exchange` are not biological media. The ambiguous alias
-`physiologic` is also rejected.
+Technical or ambiguous aliases are not biological medium presets and are not part of the public scenario API.
 
-## Evidence hierarchy
+## Human physiological background
 
-For nutrient **composition**, the canonical priority is:
-
-1. *Cell* or *Cell Metabolism* complete physiological formulations;
-2. *Nature* quantitative plasma/interstitial-fluid metabolomics;
-3. *Science Advances* independently developed physiological formulations;
-4. lower-tier or older studies only for a named treatment concentration or a
-   quantitatively unsupported secondary value.
-
-No concentrations are averaged across publications. A secondary publication can
-validate a formulation without contributing a numerical row.
-
-## Human plasma and physiological culture background
-
-`normal_human_plasma` uses:
-
-- Cantor et al., *Cell* 2017 HPLM as the primary formulation;
-- Rossiter et al., *Cell Metabolism* 2021 for the updated HPLM formulation,
-  including alpha-ketoglutarate, acetylcarnitine, malate, and uridine;
-- Vande Voorde et al., *Science Advances* 2019 Plasmax as independent validation
-  that physiological media alter cancer-cell metabolism.
-
-The encoded concentrations come from HPLM. Plasmax is **not numerically averaged**
-with HPLM. Rounded ion values from lower-tier serum surveys are not used to fill
-ambiguous salt-to-free-ion conversions.
+`normal_human_plasma` uses Cantor et al. *Cell* 2017 HPLM as the primary formulation, Rossiter et al. *Cell Metabolism* 2021 for the updated HPLM components, and Vande Voorde et al. *Science Advances* 2019 Plasmax as independent physiological-medium validation. Numerical concentrations are not averaged across publications.
 
 ```r
 human_medium <- rc_make_medium_scenarios(
@@ -62,27 +33,16 @@ human_medium <- rc_make_medium_scenarios(
 )
 ```
 
-The output includes:
+The output includes the basal-medium provenance and
 
 ```text
 medium_background_id = authoritative_HPLM_2017_2021
-composition_primary_reference_doi
-composition_validation_reference_doi
 scenario_construction = authoritative_HPLM_composition_without_cross_study_averaging
 ```
 
 ## Mouse plasma
 
-`mouse_plasma` is now anchored to Abbott et al., *Nature* 2026, which quantified
-absolute levels of 124 metabolites across mouse plasma, cerebrospinal fluid, and
-multiple tissue interstitial fluids in NSG and C57BL/6J mice.
-
-The built-in catalog is deliberately conservative. It retains an auditable set
-of metabolites supported by that study. Components outside the supported set are
-omitted rather than inherited from human HPLM. Glucose, lactate, and glutamine
-retain the published mouse quantitative values from Gardner and Stuart 2024 as a
-secondary source; other retained rows are availability-only unless an exact
-mouse concentration is encoded.
+`mouse_plasma` is anchored to Abbott et al. *Nature* 2026. The built-in catalog is conservative: unsupported components are omitted rather than inherited from human HPLM. Glucose, lactate, and glutamine retain the secondary quantitative mouse-plasma values from Gardner and Stuart 2024; other retained components can be availability-only.
 
 ```r
 mouse_medium <- rc_make_medium_scenarios(
@@ -92,63 +52,64 @@ mouse_medium <- rc_make_medium_scenarios(
 )
 ```
 
-The output records:
-
-```text
-medium_background_id = Abbott_2026_Nature_mouse_plasma
-composition_primary_reference_doi = 10.1038/s41586-025-09898-9
-quantitative_secondary_reference_doi = 10.1152/ajpcell.00452.2024
-```
-
 Human concentrations are never copied into `mouse_plasma`.
 
 ## Cell-culture challenge scenarios
 
-All five challenge presets use the **same authoritative physiological basal
-composition**:
+The five challenge presets use the same HPLM basal composition and replace only the **concentration metadata** of the named nutrient:
 
-```text
-Cell 2017 HPLM
-+ Cell Metabolism 2021 updated HPLM components
-```
-
-Plasmax from *Science Advances* 2019 is stored as an independent validation
-reference. The challenge paper overrides only the named nutrient.
-
-| Scenario | Authoritative basal background | Target override | Challenge source |
+| Scenario | Basal background | Target concentration | Challenge source |
 |---|---|---:|---|
 | `high_glucose` | HPLM 2017/2021 | glucose 25 mM | Han et al. 2015 |
 | `low_glucose` | HPLM 2017/2021 | glucose 1 mM | Han et al. 2015 |
 | `high_lactate` | HPLM 2017/2021 | lactate 20 mM | San-Millan et al. 2020 |
 | `low_lactate` | HPLM 2017/2021 | lactate 0.5 mM | Cho et al. 2025 |
-| `low_glutamine` | HPLM 2017/2021 | glutamine 0.5 mM | Visagie et al. 2015 Methods |
+| `low_glutamine` | HPLM 2017/2021 | glutamine 0.5 mM | Visagie et al. 2015 |
 
-The previous RPMI/DMEM union is not used as the canonical composition source.
-The original JAMA and Virology formulation papers may explain the historical
-media lineage, but they are not the primary nutrient-composition evidence for
-these RegCompass scenarios.
-
-The expected construction string is:
+The canonical construction is recorded as
 
 ```text
-authoritative_HPLM_background_plus_named_nutrient_override
+authoritative_HPLM_background_plus_named_nutrient_concentration_metadata;no_automatic_concentration_to_flux_mapping
 ```
 
-Inspect provenance with:
+For a challenge target, the output explicitly records that concentration was not used to create the rate bound:
+
+```text
+concentration_used_for_rate_bound = FALSE
+rate_bound_source = background_model_cap_concentration_metadata_only
+assumption_level = literature_concentration_metadata_without_flux_conversion
+```
+
+This distinction is required dimensionally. Extracellular concentration has units of amount/volume, whereas a GEM exchange flux has units of amount/(biomass·time) or the model's equivalent normalization. Without an independently specified transporter/uptake model, there is no unique map
+
+\[
+C_{extracellular}\longrightarrow v_{uptake}.
+\]
+
+Therefore RegCompass does **not** assume `v_uptake ∝ concentration` for built-in challenge presets.
+
+## Consequence for high/low challenge comparisons
+
+A high- and low-concentration preset can resolve to identical final LP bounds. If so, the metabolic optimization problem is identical and the concentration metadata alone cannot produce different COMPASS/CORDA2 scores. This is intentional: the software does not manufacture a flux effect unsupported by a kinetic or experimental flux assumption.
+
+The full-GEM cache records the actual resolved feasible-region identity using the base GEM plus canonical final bounds
+
+\[
+\{(reaction\_id,lb_{final},ub_{final})\}.
+\]
+
+Inspect:
 
 ```r
-unique(medium_scenarios[, intersect(c(
-  "medium_scenario_id",
-  "medium_background_id",
-  "background_reference_label",
-  "background_reference_doi",
-  "background_validation_reference_label",
-  "background_validation_reference_doi",
-  "challenge_reference_label",
-  "challenge_reference_doi",
-  "scenario_construction"
-), colnames(medium_scenarios))])
+attr(full_gem_cache, "summary")[, c(
+  "medium_scenario",
+  "resolved_medium_fingerprint",
+  "n_changed_bounds_vs_reference",
+  "resolved_bounds_identical_to_reference"
+)]
 ```
+
+Different scenario descriptions that resolve to the same final bounds have the same `resolved_medium_fingerprint`. The input-medium fingerprint is retained only as provenance.
 
 ## Multiple scenarios
 
@@ -167,13 +128,11 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-Each scenario receives its own medium-specific structural model. Within one
-scenario, all conditions and metacells use identical exchange bounds.
+Scenario labels and concentration metadata are retained separately even when two scenarios resolve to the same final flux bounds.
 
-## User-defined medium composition
+## User-defined flux assumptions
 
-User-defined media remain supported through either `scenario = "custom"` or
-`scenario = NULL`. Publication metadata are optional and retained when supplied.
+If a study supplies measured uptake limits or the analysis deliberately adopts a flux sensitivity assumption, provide that explicitly rather than deriving it implicitly from concentration.
 
 ### Exact reaction-level bounds
 
@@ -184,8 +143,6 @@ custom_medium <- data.frame(
   lb = c(-0.20, -0.10),
   ub = c(1, 1),
   available = TRUE,
-  reference_label = "Optional experiment or publication label",
-  reference_doi = "10.xxxx/optional.reference",
   stringsAsFactors = FALSE
 )
 
@@ -197,7 +154,7 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-### Metabolite-level composition
+### Explicit relative uptake assumption
 
 ```r
 custom_metabolites <- data.frame(
@@ -207,42 +164,26 @@ custom_metabolites <- data.frame(
   uptake_fraction = c(0.2, 0.275, 0.08),
   target_exchange_flag = TRUE,
   required_match = TRUE,
-  reference_label = "Optional experiment or publication label",
-  reference_doi = "10.xxxx/optional.reference",
   stringsAsFactors = FALSE
-)
-
-medium_scenarios <- rc_make_medium_scenarios(
-  gem = human_gem,
-  scenario = NULL,
-  species = "human",
-  custom_metabolites = custom_metabolites
 )
 ```
 
-A built-in scenario vector and one custom table may be supplied together.
+Here `uptake_fraction` is an explicit modeling assumption supplied by the user. It must not be interpreted as a quantity automatically inferred from the `concentration_mM` column.
 
-## Interpretation rules
+## Bound semantics
 
-1. **Concentration is not uptake flux.** Target concentration ratios define
-   explicit relative sensitivity caps, not measured transporter rates.
-2. Every requested bound is intersected with the original GEM bounds; a medium
-   cannot open a direction blocked by the GEM.
-3. Uptake for unlisted exchanges is closed during medium application; originally
-   permitted secretion may remain open.
-4. Human and mouse plasma scenarios are species-restricted.
-5. The challenge scenarios use an identical HPLM background, so comparisons such
-   as `high_lactate` versus `low_lactate` differ in the named target concentration
-   rather than in unrelated basal nutrients.
+Every requested medium bound is intersected with the parent GEM bounds. A medium can restrict an exchange direction but cannot open a direction that the parent GEM blocks. Reversible exchanges are constrained through their existing lower/upper bounds; they do not need to be physically duplicated into separate reactions.
 
-## Diagnostics
+## Provenance
+
+Inspect preset evidence with:
 
 ```r
 attr(medium_scenarios, "preset_diagnostics")
 attr(medium_scenarios, "medium_policy")
 ```
 
-The expected policy is:
+The biological-preset policy is
 
 ```text
 authoritative_journal_composition_with_explicit_overrides
