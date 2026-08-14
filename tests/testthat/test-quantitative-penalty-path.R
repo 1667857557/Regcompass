@@ -10,9 +10,7 @@ test_that("quantitative Pando correction preserves unbounded expression scale", 
     dimnames = dimnames(rna)
   )
 
-  out <- RegCompassR:::.rc_integrate_regulatory_expression(
-    rna, modifier
-  )
+  out <- RegCompassR:::.rc_integrate_regulatory_expression(rna, modifier)
   expected_modifier <- modifier
   expected_modifier[!is.finite(expected_modifier)] <- 0
   expected <- rna * 2^expected_modifier
@@ -21,6 +19,24 @@ test_that("quantitative Pando correction preserves unbounded expression scale", 
   expect_identical(dimnames(out), dimnames(expected))
   expect_equal(out["g1", "u1"], 0)
   expect_gt(out["g2", "u2"], 1)
+})
+
+test_that("tri-state q makes evaluated rejection neutral and unavailable evidence missing", {
+  projection <- matrix(
+    c(NA_real_, 2, NA_real_),
+    nrow = 1,
+    dimnames = list("g", c("q0", "q1", "qNA"))
+  )
+  q <- matrix(
+    c(0, 1, NA_real_),
+    nrow = 1,
+    dimnames = dimnames(projection)
+  )
+  scale <- matrix(1, nrow = 1, ncol = 3, dimnames = dimnames(projection))
+  modifier <- RegCompassR:::.rc_scaled_regulatory_modifier(projection, q, scale)
+  expect_identical(modifier["g", "q0"], 0)
+  expect_equal(modifier["g", "q1"], tanh(2))
+  expect_true(is.na(modifier["g", "qNA"]))
 })
 
 test_that("SuperCell quantitative RNA averages per-cell linear CPM equally", {
@@ -81,17 +97,17 @@ test_that("Pando RNA sources exactly partition the SuperCell membership", {
   )
 })
 
-test_that("Layer 1 v6 quantitative path does not use latent CPM", {
+test_that("canonical Layer 1 quantitative path does not use latent CPM", {
+  expect_false(exists(
+    ".rc_cell_first_projection_layer1_v6",
+    envir = asNamespace("RegCompassR"), inherits = FALSE
+  ))
   body_text <- paste(
-    deparse(body(RegCompassR:::.rc_cell_first_projection_layer1_v6)),
+    deparse(body(RegCompassR:::.rc_cell_first_projection_layer1)),
     collapse = "\n"
   )
   expect_match(body_text, ".rc_quantitative_supercell_rna", fixed = TRUE)
-  expect_match(
-    body_text,
-    "equal_mean_single_cell_linear_cpm",
-    fixed = TRUE
-  )
+  expect_match(body_text, "equal_mean_single_cell_linear_cpm", fixed = TRUE)
   expect_false(grepl(
     "gene_expression_quantitative_rna <- latent$latent_cpm",
     body_text,
@@ -135,14 +151,8 @@ test_that("Layer 2 routes quantitative matrices by explicit marker", {
     dimnames = list(c("R1", "R2"), "u1")
   )
   structural_rna <- structural_multiome
-  attr(
-    structural_multiome,
-    "regcompass_quantitative_penalty_route"
-  ) <- "multiome"
-  attr(
-    structural_rna,
-    "regcompass_quantitative_penalty_route"
-  ) <- "rna_only"
+  attr(structural_multiome, "regcompass_quantitative_penalty_route") <- "multiome"
+  attr(structural_rna, "regcompass_quantitative_penalty_route") <- "rna_only"
   quantitative_multiome <- matrix(
     c(20, 200), ncol = 1,
     dimnames = dimnames(structural_multiome)
@@ -170,10 +180,7 @@ test_that("Layer 2 routes quantitative matrices by explicit marker", {
     condition_col = "condition"
   )
   expect_equal(primary$reaction_expression, quantitative_multiome)
-  expect_identical(
-    primary$penalty_route,
-    "quantitative_supercell_mean_cpm_multiome"
-  )
+  expect_identical(primary$penalty_route, "quantitative_supercell_mean_cpm_multiome")
 
   control <- layer1
   control$reaction_expression <- structural_rna
@@ -185,16 +192,10 @@ test_that("Layer 2 routes quantitative matrices by explicit marker", {
     condition_col = "condition"
   )
   expect_equal(rna_only$reaction_expression, quantitative_rna)
-  expect_identical(
-    rna_only$penalty_route,
-    "quantitative_supercell_mean_cpm_rna_only"
-  )
+  expect_identical(rna_only$penalty_route, "quantitative_supercell_mean_cpm_rna_only")
 
   missing_marker <- layer1
-  attr(
-    missing_marker$reaction_expression,
-    "regcompass_quantitative_penalty_route"
-  ) <- NULL
+  attr(missing_marker$reaction_expression, "regcompass_quantitative_penalty_route") <- NULL
   expect_error(
     RegCompassR:::rc_layer2_unit_matrices(
       missing_marker,
