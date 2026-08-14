@@ -81,6 +81,8 @@
     min_cells_per_stratum = 20L,
     min_metacell_size = 1L,
     min_metacells_per_stratum = 1L,
+    min_merge_affinity = NULL,
+    unresolved_small_policy = "error",
     k.knn = 30L,
     kith = NULL,
     kernel = TRUE,
@@ -111,7 +113,7 @@
     stringsAsFactors = FALSE
   )
   list(
-    schema_version = "regcompass_celltype_wnn_condition_joint_cache",
+    schema_version = "regcompass_celltype_wnn_condition_joint_repair_v2",
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
@@ -125,6 +127,10 @@
     graph_method = "SuperCell_multimodal_WNN_then_walktrap",
     modality_weighting = "adaptive_WNN_within_cell_type",
     aggregation_method = "SCimplify_for_Seurat_membership_mode",
+    repair_algorithm = "shared_wnn_condition_split_affinity_v1",
+    repair_affinity = "sum(W_MN)/sqrt(vol(M)*vol(N))",
+    repair_symmetrization = "(W+t(W))/2",
+    repair_scope = "same_condition_same_cell_type_original_shared_WNN",
     ordered_cell_metadata_md5 = .rc_condition_metacell_md5(meta_signature),
     analysis_args = analysis_args,
     rna_counts = .rc_condition_metacell_matrix_fingerprint(
@@ -145,7 +151,7 @@
 .rc_require_supercell_api <- function() {
   if (!requireNamespace("SuperCell", quietly = TRUE)) {
     stop(
-      "Package 'SuperCell' is required. Install the current default branch of 1667857557/SuperCell_Seurat_V4.",
+      "Package 'SuperCell' is required. Install the matching 1667857557/SuperCell_Seurat_V4 revision.",
       call. = FALSE
     )
   }
@@ -160,7 +166,9 @@
   aggregate <- getExportedValue("SuperCell", "SCimplify_for_Seurat")
   grouped_required <- c(
     "seurat", "cell.graph.group", "cell.split.condition", "k.knn", "kith",
-    "kernel", "gamma", "graph.name", "assay", "reduction", "dims", "seed"
+    "kernel", "gamma", "graph.name", "assay", "reduction", "dims", "seed",
+    "min_metacell_size", "min_metacells_per_stratum",
+    "min_merge_affinity", "unresolved_small_policy"
   )
   aggregate_required <- c(
     "seurat", "assay", "reduction", "dims", "membership", "return.seurat"
@@ -187,7 +195,9 @@
 .rc_build_grouped_wnn_membership <- function(
     object, condition_col, celltype_col, rna_assay, atac_assay,
     rna_reduction, atac_reduction, rna_dims, atac_dims,
-    gamma, seed, k.knn, kith, kernel, graph.name, verbose) {
+    gamma, seed, k.knn, kith, kernel, graph.name, verbose,
+    min_metacell_size, min_metacells_per_stratum,
+    min_merge_affinity, unresolved_small_policy) {
   api <- .rc_require_supercell_api()
   cells <- as.character(colnames(object))
   meta <- object@meta.data[cells, , drop = FALSE]
@@ -208,6 +218,10 @@
     reduction = list(rna_reduction, atac_reduction),
     dims = list(as.integer(rna_dims), as.integer(atac_dims)),
     seed = as.integer(seed),
+    min_metacell_size = as.integer(min_metacell_size),
+    min_metacells_per_stratum = as.integer(min_metacells_per_stratum),
+    min_merge_affinity = min_merge_affinity,
+    unresolved_small_policy = unresolved_small_policy,
     return.group.results = FALSE,
     verbose = isTRUE(verbose)
   ))
@@ -233,6 +247,10 @@
       "cell_id", "metacell_id", "parent_metacell_id"
     ), drop = FALSE],
     parent_hierarchies = result$h_membership %||% list(),
+    repair_diagnostics = result$repair_diagnostics %||% data.frame(),
+    unresolved_small_metacells =
+      result$unresolved_small_metacells %||% data.frame(),
+    repair_contract = result$repair_contract %||% list(),
     upstream_api = "SCimplify_by_graph_group"
   )
 }
@@ -286,7 +304,7 @@
   mc@misc$regcompass_supercell_parent_hierarchies <- parent_hierarchies
   mc@misc$regcompass_supercell_aggregation <- list(
     api = "SCimplify_for_Seurat",
-    mode = "provided_condition_pure_membership",
+    mode = "provided_condition_pure_repaired_membership",
     metacellNormalization = isTRUE(metacellNormalization),
     avg.in.data = isTRUE(avg.in.data)
   )
@@ -362,6 +380,34 @@
       stop("`kith` must be NULL or one positive integer.", call. = FALSE)
     }
   }
+  if (args$min_metacell_size > 1L) {
+    if (is.null(args$min_merge_affinity)) {
+      stop(
+        "`min_merge_affinity` must be supplied explicitly when ",
+        "`min_metacell_size > 1`.", call. = FALSE
+      )
+    }
+    args$min_merge_affinity <- suppressWarnings(
+      as.numeric(args$min_merge_affinity)[1L]
+    )
+    if (!is.finite(args$min_merge_affinity) ||
+        args$min_merge_affinity < 0 || args$min_merge_affinity > 1) {
+      stop("`min_merge_affinity` must be one finite value in [0, 1].",
+           call. = FALSE)
+    }
+  } else if (!is.null(args$min_merge_affinity)) {
+    args$min_merge_affinity <- suppressWarnings(
+      as.numeric(args$min_merge_affinity)[1L]
+    )
+    if (!is.finite(args$min_merge_affinity) ||
+        args$min_merge_affinity < 0 || args$min_merge_affinity > 1) {
+      stop("`min_merge_affinity` must be one finite value in [0, 1].",
+           call. = FALSE)
+    }
+  }
+  args$unresolved_small_policy <- match.arg(
+    as.character(args$unresolved_small_policy), c("error", "keep")
+  )
   for (field in c("kernel", "metacellNormalization", "avg.in.data",
                   "verbose")) {
     if (!is.logical(args[[field]]) || length(args[[field]]) != 1L ||
@@ -384,6 +430,14 @@
       call. = FALSE
     )
   }
+  required_cells <- args$min_metacell_size * args$min_metacells_per_stratum
+  if (any(stratum_size < required_cells)) {
+    stop(
+      "Condition/cell-type strata cannot satisfy metacell size/count constraints: ",
+      paste(names(stratum_size)[stratum_size < required_cells], collapse = ", "),
+      "; each needs at least ", required_cells, " cells.", call. = FALSE
+    )
+  }
   contract <- .rc_condition_metacell_cache_contract(
     object, condition_col, celltype_col, rna_assay, atac_assay, args
   )
@@ -404,7 +458,11 @@
     kith = args$kith,
     kernel = args$kernel,
     graph.name = args$graph.name,
-    verbose = args$verbose
+    verbose = args$verbose,
+    min_metacell_size = args$min_metacell_size,
+    min_metacells_per_stratum = args$min_metacells_per_stratum,
+    min_merge_affinity = args$min_merge_affinity,
+    unresolved_small_policy = args$unresolved_small_policy
   )
   membership <- grouped$membership
   source_index <- match(membership$cell_id, rownames(object@meta.data))
@@ -438,10 +496,15 @@
                collapse = ", "), call. = FALSE)
   }
   mc_meta$low_power_metacell <- mc_meta$n_cells < args$min_metacell_size
+  if (any(mc_meta$low_power_metacell) &&
+      identical(args$unresolved_small_policy, "error")) {
+    stop("SuperCell repair returned unresolved small metacells under error policy.",
+         call. = FALSE)
+  }
   mc_meta$requested_gamma <- args$gamma
   mc_meta$pooling_scope <- "celltype_grouped_joint_condition_WNN"
   mc_meta$celltype_role <- "one_independent_WNN_graph_per_cell_type"
-  mc_meta$condition_role <- "post_WNN_clustering_membership_split"
+  mc_meta$condition_role <- "post_WNN_clustering_split_then_shared_WNN_repair"
   aggregated <- .rc_aggregate_metacell_counts(
     object = object,
     membership = membership,
@@ -457,6 +520,9 @@
     verbose = args$verbose,
     parent_hierarchies = grouped$parent_hierarchies
   )
+  aggregated$object@misc$regcompass_supercell_repair <- grouped$repair_contract
+  aggregated$object@misc$regcompass_supercell_repair_diagnostics <-
+    grouped$repair_diagnostics
   rownames(mc_meta) <- mc_meta$metacell_id
   aggregated$object@meta.data <- mc_meta[
     colnames(aggregated$object), , drop = FALSE
@@ -464,6 +530,20 @@
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   .rc_write_tsv_gz(membership, file.path(outdir, "membership.tsv.gz"))
   .rc_write_tsv_gz(mc_meta, file.path(outdir, "metacell_metadata.tsv.gz"))
+  if (is.data.frame(grouped$repair_diagnostics) &&
+      nrow(grouped$repair_diagnostics)) {
+    .rc_write_tsv_gz(
+      grouped$repair_diagnostics,
+      file.path(outdir, "metacell_repair_diagnostics.tsv.gz")
+    )
+  }
+  if (is.data.frame(grouped$unresolved_small_metacells) &&
+      nrow(grouped$unresolved_small_metacells)) {
+    .rc_write_tsv_gz(
+      grouped$unresolved_small_metacells,
+      file.path(outdir, "metacell_unresolved_small.tsv.gz")
+    )
+  }
 
   celltype_composition <- data.frame(
     metacell_id = as.character(mc_meta$metacell_id),
@@ -487,6 +567,9 @@
     membership = membership,
     celltype_composition = celltype_composition,
     celltype_composition_summary = celltype_summary,
+    repair_diagnostics = grouped$repair_diagnostics,
+    unresolved_small_metacells = grouped$unresolved_small_metacells,
+    repair_contract = grouped$repair_contract,
     condition_col = condition_col,
     celltype_col = celltype_col,
     selected_cell_types = unique(as.character(mc_meta[[celltype_col]])),
@@ -501,10 +584,18 @@
       condition_argument = "cell.split.condition",
       graph_method = "multimodal_WNN",
       clustering_method = "walktrap_cut_at",
-      aggregation_method = "SCimplify_for_Seurat_with_membership",
+      aggregation_method = "SCimplify_for_Seurat_with_repaired_membership",
       graph_scope = "one_independent_WNN_graph_per_cell_type",
       condition_scope = "all_conditions_joint_within_cell_type_graph",
       membership_split_timing = "after_joint_WNN_graph_clustering",
+      repair_timing = "after_condition_split_before_aggregation",
+      repair_geometry = "original_shared_WNN",
+      repair_affinity = "sum(W_MN)/sqrt(vol(M)*vol(N))",
+      repair_symmetrization = "(W+t(W))/2",
+      min_metacell_size = args$min_metacell_size,
+      min_metacells_per_stratum = args$min_metacells_per_stratum,
+      min_merge_affinity = args$min_merge_affinity,
+      unresolved_small_policy = args$unresolved_small_policy,
       modality_weighting = "adaptive_WNN_within_cell_type",
       temporary_combined_stratum = FALSE,
       gamma = args$gamma,
@@ -513,7 +604,9 @@
       inference_policy = paste(
         "Each broad cell type receives one independent multimodal WNN graph;",
         "all conditions jointly determine WNN neighbours and Walktrap clusters;",
-        "condition splits membership only after clustering"
+        "condition splits membership only after clustering; small split groups",
+        "may merge only within the same condition and cell type using affinity",
+        "from that exact original shared WNN"
       ),
       sample_metadata = "not_used_or_retained"
     )
