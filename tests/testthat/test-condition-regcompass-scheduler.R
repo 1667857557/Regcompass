@@ -58,6 +58,7 @@ test_that("candidate provenance does not veto a BH-active Pando edge", {
     significant = active,
     penalty_effect = ifelse(active, estimate, 0),
     fit_status = c("ok", "rank_deficient", "ok", "ok"),
+    rsq = c(0.8, 0.9, 0.9, 0.8),
     stringsAsFactors = FALSE
   )
   expect_identical(
@@ -66,7 +67,7 @@ test_that("candidate provenance does not veto a BH-active Pando edge", {
   )
 })
 
-test_that("condition fit status maps exactly by target and condition", {
+test_that("condition fit diagnostics map exactly by target and condition", {
   coefficient <- data.frame(
     target = c("G1", "G1", "G2", "G2"),
     condition = c("A", "B", "A", "B"),
@@ -77,24 +78,30 @@ test_that("condition fit status maps exactly by target and condition", {
       target = c("G2", "G1", "G2", "G1"),
       condition = c("B", "A", "A", "B"),
       fit_status = c("rank_deficient", "ok", "ok", "insufficient_df"),
+      rsq = c(0.2, 0.9, 0.7, NA_real_),
       stringsAsFactors = FALSE
     )
   )
+  diagnostics <- .rc_condition_fit_diagnostics_for_coefficients(fit, coefficient)
   expect_identical(
-    .rc_condition_fit_status_for_coefficients(fit, coefficient),
+    diagnostics$fit_status,
     c("ok", "insufficient_df", "ok", "rank_deficient")
   )
+  expect_equal(diagnostics$target_rsq, c(0.9, NA, 0.7, 0.2))
 })
 
-test_that("standard Pando post-fit filter is BH-only after candidate screening", {
+test_that("standard Pando post-fit filter uses BH plus target-model R2", {
   table <- data.frame(
-    estimate = c(1e-8, 1, 1),
-    padj = c(0.01, 0.049, 0.051),
-    corr = c(0, 1, 1),
-    estimable = c(TRUE, TRUE, TRUE),
+    estimate = c(1e-8, 1, 1, 2),
+    padj = c(0.01, 0.049, 0.051, 0.01),
+    rsq = c(0.8, 0.2, 0.9, 0.01),
+    corr = c(0, 1, 1, 1),
+    estimable = c(TRUE, TRUE, TRUE, TRUE),
     stringsAsFactors = FALSE
   )
-  observed <- .rc_filter_standard_pando_edges(table)
+  observed <- .rc_filter_standard_pando_edges(
+    table, target_rsq_threshold = 0.05
+  )
   expect_equal(nrow(observed), 2L)
   expect_equal(observed$padj, c(0.01, 0.049))
 })
