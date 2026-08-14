@@ -125,7 +125,7 @@
     contrasts = contrasts,
     fit = data.frame(
       target = rep("G", 2), condition = c("A", "B"),
-      rsq = rsq, rsq_in_sample = rsq, rsq_oof = rsq - 0.05,
+      rsq = rsq,
       fit_status = "ok", lambda = 0.1,
       predictor_scale_reference = "equal_condition_within_condition_rms",
       stringsAsFactors = FALSE
@@ -147,10 +147,16 @@
     peak_value_type = "normalized",
     preprocessing_fingerprint = "fixture-preprocessing",
     target_genes = "G",
-    rsq_definition = "selected_lambda_full_data_R2",
-    rsq_oof_role = "cross_validated_prediction_diagnostic_only"
+    rsq_definition = "selected_lambda_full_data_R2"
   ), class = c("ConditionGRNFit", "list"))
 }
+
+test_that("condition fit contract requires only canonical full-data rsq", {
+  fit <- .strict_fit_fixture()
+  expect_false("rsq_oof" %in% colnames(fit$fit))
+  expect_false("rsq_in_sample" %in% colnames(fit$fit))
+  expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
+})
 
 test_that("deduplicated common dictionary is complete in every condition", {
   fit <- .strict_fit_fixture()
