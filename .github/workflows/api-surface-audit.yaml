@@ -43,7 +43,18 @@ jobs:
         shell: Rscript {0}
         run: |
           files <- list.files('R', pattern = '[.]R$', full.names = TRUE)
-          for (file in files) parse(file = file)
+          failed <- FALSE
+          for (file in files) {
+            tryCatch(
+              parse(file = file),
+              error = function(error) {
+                failed <<- TRUE
+                message <- gsub('[\r\n]+', ' ', conditionMessage(error))
+                cat(sprintf('::error file=%s::R parse failed: %s\n', file, message))
+              }
+            )
+          }
+          if (failed) quit(status = 1L)
 
       - name: Audit committed API surface
         run: Rscript tests/api-surface-audit.R --strict
