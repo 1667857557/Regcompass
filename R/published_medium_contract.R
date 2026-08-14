@@ -5,7 +5,9 @@
 # Nutrient composition is taken from high-authority, directly reproducible
 # formulations or quantitative extracellular metabolomics. Challenge papers
 # supply only the named treatment concentration; they do not define the basal
-# nutrient composition unless a complete formulation is provided.
+# nutrient composition unless a complete formulation is provided. Published
+# concentrations are provenance and availability evidence, not transporter
+# kinetics; they are never converted linearly into exchange flux bounds.
 
 .rc_make_medium_scenarios_unrestricted <- rc_make_medium_scenarios
 
@@ -28,6 +30,16 @@
   .rc_bind_frames_fill(list(compounds, row))
 }
 
+.rc_medium_concentration_provenance_only <- function(out) {
+  if (!is.data.frame(out) || !nrow(out)) return(out)
+  out$concentration_used_for_rate_bound <- FALSE
+  out$rate_bound_source <-
+    "availability_and_explicit_uptake_scale_only_concentration_is_provenance"
+  out$assumption_level <-
+    "availability_with_uniform_exchange_cap_concentration_provenance_only"
+  out
+}
+
 .rc_authoritative_hplm_background <- function() {
   compounds <- .rc_medium_catalog("normal_human_plasma", "human")
   cell_2017 <- "10.1016/j.cell.2017.03.023"
@@ -36,9 +48,6 @@
     "alpha_ketoglutarate", "acetylcarnitine", "malate", "uridine"
   )
 
-  # Keep only components with an exact HPLM concentration. Rounded serum-ion
-  # substitutions and availability-only additions are excluded rather than
-  # merged into the authoritative culture background.
   keep <- is.finite(compounds$concentration_mM) & (
     compounds$component_reference_doi == cell_2017 |
       compounds$metabolite_name %in% updated_components
@@ -89,7 +98,8 @@
     evidence_scope = paste(
       "Exact HPLM component concentrations from Cell and Cell Metabolism;",
       "Plasmax is retained as an independent physiological-medium validation",
-      "and is not numerically averaged with HPLM."
+      "and is not numerically averaged with HPLM. Concentrations are provenance",
+      "and availability evidence and are not converted to exchange rates."
     ),
     stringsAsFactors = FALSE
   )
@@ -106,6 +116,7 @@
     compounds = .rc_authoritative_hplm_background(),
     custom_reference = reference
   )
+  out <- .rc_medium_concentration_provenance_only(out)
   out$medium_scenario_id <- "normal_human_plasma"
   out$medium_background_id <- "authoritative_HPLM_2017_2021"
   out$composition_primary_reference_doi <- primary_doi
@@ -120,10 +131,6 @@
   nature_2026 <- "10.1038/s41586-025-09898-9"
   quantitative_secondary <- "10.1152/ajpcell.00452.2024"
 
-  # Conservative subset explicitly supported by the Nature 2026 plasma and
-  # tissue-fluid metabolomics study. The study quantified 124 metabolites in
-  # plasma and extracellular fluids across NSG and C57BL/6J mice. Components
-  # outside this auditable set are omitted rather than inherited from HPLM.
   supported <- c(
     "glucose", "lactate", "glutamine", "arginine", "ornithine",
     "citrulline", "isoleucine", "leucine", "valine", "serine",
@@ -144,10 +151,10 @@
   compounds$component_reference_doi[!quantitative] <- nature_2026
   compounds$concentration_basis[!quantitative] <-
     "Abbott_2026_Nature_mouse_plasma_detected_availability"
-  compounds$uptake_fraction[!quantitative] <- 1
-  compounds$target_exchange_flag[!quantitative] <- FALSE
-  compounds$required_match[!quantitative] <- FALSE
   compounds$component_reference_doi[quantitative] <- quantitative_secondary
+  compounds$uptake_fraction <- 1
+  compounds$target_exchange_flag <- FALSE
+  compounds$required_match[!quantitative] <- FALSE
   rownames(compounds) <- NULL
   compounds
 }
@@ -169,8 +176,8 @@
     reference_pmid = NA_character_,
     evidence_scope = paste(
       "Conservative mouse-plasma availability set anchored to Nature 2026;",
-      "only glucose, lactate and glutamine retain the secondary quantitative",
-      "mouse-plasma values. Unsupported components are omitted."
+      "glucose, lactate and glutamine retain quantitative concentration",
+      "provenance, but those values are not converted to exchange rates."
     ),
     stringsAsFactors = FALSE
   )
@@ -187,12 +194,13 @@
     compounds = .rc_authoritative_mouse_compounds(),
     custom_reference = reference
   )
+  out <- .rc_medium_concentration_provenance_only(out)
   out$medium_scenario_id <- "mouse_plasma"
   out$medium_background_id <- "Abbott_2026_Nature_mouse_plasma"
   out$composition_primary_reference_doi <- primary_doi
   out$quantitative_secondary_reference_doi <- quantitative_secondary
   out$scenario_construction <-
-    "Nature_2026_mouse_plasma_availability_with_limited_quantitative_secondary"
+    "Nature_2026_mouse_plasma_availability_with_concentration_provenance_only"
   out
 }
 
@@ -219,35 +227,35 @@
   switch(
     scenario_id,
     high_glucose = list(
-      target = "glucose", concentration_mM = 25, reference_high_mM = 25,
+      target = "glucose", concentration_mM = 25,
       concentration_basis = "Han_2015_high_glucose_25mM",
       challenge_reference_label =
         "Han et al., Gynecologic Oncology 2015; 25 mM glucose",
       challenge_reference_doi = "10.1016/j.ygyno.2015.06.036"
     ),
     low_glucose = list(
-      target = "glucose", concentration_mM = 1, reference_high_mM = 25,
+      target = "glucose", concentration_mM = 1,
       concentration_basis = "Han_2015_low_glucose_1mM",
       challenge_reference_label =
         "Han et al., Gynecologic Oncology 2015; 1 mM glucose",
       challenge_reference_doi = "10.1016/j.ygyno.2015.06.036"
     ),
     high_lactate = list(
-      target = "lactate", concentration_mM = 20, reference_high_mM = 20,
+      target = "lactate", concentration_mM = 20,
       concentration_basis = "San_Millan_2020_high_lactate_20mM",
       challenge_reference_label =
         "San-Millan et al., Frontiers in Oncology 2020; 20 mM lactate",
       challenge_reference_doi = "10.3389/fonc.2019.01536"
     ),
     low_lactate = list(
-      target = "lactate", concentration_mM = 0.5, reference_high_mM = 20,
+      target = "lactate", concentration_mM = 0.5,
       concentration_basis = "Cho_2025_low_lactate_0.5mM",
       challenge_reference_label =
         "Cho et al., Physiological Reports 2025; 0.5 mM lactate",
       challenge_reference_doi = "10.14814/phy2.70450"
     ),
     low_glutamine = list(
-      target = "glutamine", concentration_mM = 0.5, reference_high_mM = 4,
+      target = "glutamine", concentration_mM = 0.5,
       concentration_basis = "Visagie_2015_low_glutamine_0.5mM",
       challenge_reference_label = paste(
         "Visagie et al., Cell Bioscience 2015;",
@@ -274,8 +282,10 @@
   compounds$concentration_basis[selected] <- definition$concentration_basis
   compounds$component_reference_doi[selected] <-
     definition$challenge_reference_doi
-  compounds$uptake_fraction[selected] <-
-    definition$concentration_mM / definition$reference_high_mM
+  # Published challenge concentration is descriptive evidence, not a flux-rate
+  # model. Keep the default relative uptake factor at one; an explicit user
+  # `uptake_scale` remains the only relative sensitivity assumption here.
+  compounds$uptake_fraction[selected] <- 1
   compounds$target_exchange_flag[selected] <- TRUE
   compounds$required_match[selected] <- TRUE
 
@@ -298,7 +308,8 @@
     evidence_scope = paste(
       "Authoritative HPLM basal composition from Cell and Cell Metabolism,",
       "independently validated against Plasmax in Science Advances, with only",
-      "the named nutrient concentration overridden by the challenge paper."
+      "the named nutrient concentration overridden by the challenge paper;",
+      "the concentration is provenance and is not converted to a flux bound."
     ),
     stringsAsFactors = FALSE
   )
@@ -315,6 +326,7 @@
     compounds = compounds,
     custom_reference = reference
   )
+  out <- .rc_medium_concentration_provenance_only(out)
   out$medium_background_id <- background$background_id
   out$background_reference_label <- background$background_reference_label
   out$background_reference_doi <- background$background_reference_doi
@@ -325,6 +337,6 @@
   out$challenge_reference_label <- definition$challenge_reference_label
   out$challenge_reference_doi <- definition$challenge_reference_doi
   out$scenario_construction <-
-    "authoritative_HPLM_background_plus_named_nutrient_override"
+    "authoritative_HPLM_background_plus_named_concentration_provenance"
   out
 }
