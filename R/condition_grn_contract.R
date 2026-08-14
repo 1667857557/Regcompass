@@ -311,7 +311,7 @@
 
   fit_table <- as.data.frame(fit$fit, stringsAsFactors = FALSE)
   required_fit <- c(
-    "target", "condition", "rsq", "rsq_oof", "fit_status", "lambda",
+    "target", "condition", "rsq", "fit_status", "lambda",
     "predictor_scale_reference"
   )
   if (!all(required_fit %in% colnames(fit_table)) || !nrow(fit_table) ||
