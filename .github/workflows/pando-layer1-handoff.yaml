@@ -25,8 +25,10 @@ jobs:
 
           description = Path("DESCRIPTION").read_text()
           required_description = [
-              "Pando (>= 2.0.10)",
-              "SuperCell (>= 2.2.0)",
+              "    Pando,",
+              "    SuperCell,",
+              "1667857557/Pando_regcompass",
+              "1667857557/SuperCell_Seurat_V4",
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
               "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
               "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
@@ -37,6 +39,15 @@ jobs:
           missing = [x for x in required_description if x not in description]
           if missing:
               raise RuntimeError(f"DESCRIPTION cross-package policy missing: {missing}")
+          for forbidden in (
+              "Pando (>=", "SuperCell (>=",
+              "1667857557/Pando_regcompass@",
+              "1667857557/SuperCell_Seurat_V4@",
+          ):
+              if forbidden in description:
+                  raise RuntimeError(
+                      f"cross-package compatibility must not be version-pinned: {forbidden}"
+                  )
 
           route = Path("R/grn_route_parallel.R").read_text()
           required_route = [
@@ -54,7 +65,7 @@ jobs:
           if missing:
               raise RuntimeError(f"Pando API preflight missing: {missing}")
           if "package_version" in route or "packageVersion" in route:
-              raise RuntimeError("Runtime Pando API preflight must be feature-based rather than duplicate DESCRIPTION version gating")
+              raise RuntimeError("Runtime Pando API preflight must be feature-based rather than version-gated")
 
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition = [
@@ -120,6 +131,18 @@ jobs:
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
               raise RuntimeError(f"active ridge penalty-entry contract missing: {missing}")
+
+          mixed = Path("R/mixed_pando.R").read_text()
+          required_q = [
+              ".rc_penalty_evaluated_rows <- function",
+              "is.finite(rsq)",
+              'status == "ok"',
+              ".rc_active_target_penalty_q <- function",
+              "evaluated[.rc_penalty_evaluated_rows(evaluated)",
+          ]
+          missing = [value for value in required_q if value not in mixed]
+          if missing:
+              raise RuntimeError(f"tri-state q evaluation contract missing: {missing}")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
@@ -201,6 +224,10 @@ jobs:
               ],
               "R/supercell_quantitative_rna.R": [
                   ".rc_cell_first_projection_layer1",
+              ],
+              "R/mixed_pando.R": [
+                  ".rc_active_target_penalty_q",
+                  ".rc_penalty_evaluated_rows",
               ],
           }
           for path, names in canonical.items():

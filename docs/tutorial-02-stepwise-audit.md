@@ -17,24 +17,49 @@ step1 <- rc_regcompass_step_grn(
   condition_col = "condition",
   celltype_col = "cell_type",
   pando_args = list(min_cells = 500L),
+  target_rsq_threshold = 0.05,
   workers = workers
 )
 ```
 
-Use `condition_col = NULL` for a dataset without conditions. RegCompass automatically uses condition-comparable Pando ridge when a retained cell type has at least two conditions and standard Pando ridge otherwise.
+Use `condition_col = NULL` for a dataset without conditions. Cell types with at least two retained conditions use the common-dictionary condition ridge route; cell types with one effective condition use standard Pando ridge.
 
-Only specify `pando_infer_args` when changing a validated default, for example:
+Common Stage 1 adjustments are:
+
+- `pando_args$min_cells`: minimum cells required for the retained Stage 1 analysis strata.
+- `target_rsq_threshold`: minimum selected-lambda full-data target R² required for RegCompass penalty eligibility. It is a target-model gate after Pando fitting and does not redefine Pando edge significance.
+- `pando_args$pando_infer_args$tf_cor` and `peak_cor`: candidate-dictionary correlation gates.
+- `pando_args$pando_infer_args$padj_threshold`: Pando edge BH threshold.
+- `condition_ridge_control` or `ridge_control`: optional ridge CV controls when the default lambda grid/fold settings are intentionally changed.
+
+Example:
 
 ```r
-pando_args = list(
-  min_cells = 500L,
-  pando_infer_args = list(
-    tf_cor = 0.10,
-    peak_cor = 0.10,
-    padj_threshold = 0.01
-  )
+step1 <- rc_regcompass_step_grn(
+  object = A,
+  gem = gem,
+  outdir = "run/01_grn",
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  condition_col = "condition",
+  celltype_col = "cell_type",
+  pando_args = list(
+    min_cells = 500L,
+    pando_infer_args = list(
+      tf_cor = 0.10,
+      peak_cor = 0.05,
+      padj_threshold = 0.05,
+      condition_ridge_control = list(
+        cv_folds = 5L,
+        lambda_rule = "1se"
+      )
+    )
+  ),
+  target_rsq_threshold = 0.05,
+  workers = workers
 )
 ```
+
+For a one-condition standard-ridge run, use `ridge_control` instead of `condition_ridge_control` only when its CV settings need to be changed.
 
 ## 2. Multimodal metacells
 
@@ -49,7 +74,7 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-Stage 2 builds one multimodal WNN graph and one Walktrap hierarchy per broad cell type. Conditions share that graph/hierarchy; final condition-pure metacells are selected from the shared hierarchy. `gamma` is a resolution target, while `min_metacell_size` and `min_metacells_per_stratum` are hard constraints.
+Stage 2 builds one multimodal WNN graph and one Walktrap hierarchy per broad cell type. Conditions share that graph/hierarchy; final condition-pure metacells are selected by legal cuts of the shared hierarchy. `gamma` is a resolution target, while `min_metacell_size` and `min_metacells_per_stratum` are hard constraints.
 
 Common overrides:
 

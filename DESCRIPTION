@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.18
+Version: 2.4.19
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -32,9 +32,13 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     cell type and selects condition-specific feasible cuts from that same hierarchy
     with hard minimum metacell size and count constraints. Quantitative Layer 1 RNA
     is the equal-weight mean of single-cell linear CPM within the exact final
-    SuperCell membership. Mathematical and quantitative definitions are maintained
-    in the package mathematical specification rather than duplicated in interface
-    text.
+    SuperCell membership. Medium concentrations are provenance rather than implicit
+    kinetics, and full-GEM medium cache identity is based on the final resolved
+    reaction lower and upper bounds. Pando and SuperCell compatibility is checked
+    from required runtime APIs and data contracts rather than package version
+    strings; the Remotes entries target the current repository default branches.
+    Mathematical and quantitative definitions are maintained in the package
+    mathematical specification rather than duplicated in interface text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -156,11 +160,11 @@ LinkingTo:
 SystemRequirements: C++17
 Suggests:
     BiocParallel,
-    Pando (>= 2.0.10),
+    Pando,
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
-    SuperCell (>= 2.2.0),
+    SuperCell,
     yaml,
     future,
     ggplot2,
@@ -196,4 +200,6 @@ Config/RegCompass/PandoStandardDefaultMethod: ridge
 Config/RegCompass/PandoTargetParallelMemoryPolicy: target-specific-worker-sized-payload-batches
 Config/RegCompass/PandoTargetPenaltyQ: tri-state-q1-supported-q0-evaluated-rejected-qNA-unavailable
 Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1
+Config/RegCompass/MediumSemantics: compass-exchange-bounds-v2
+Config/RegCompass/MediumCacheFingerprint: resolved-reaction-id-final-lb-final-ub-v1
 Config/RegCompass/PandoHumanDefaultRegions: phastConsElements20Mammals.UCSC.hg38+SCREEN.ccRE.UCSC.hg38

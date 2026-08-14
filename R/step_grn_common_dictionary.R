@@ -2,27 +2,22 @@
 
 #' Infer regulatory evidence with automatic mode selection
 #'
-#' Stage 1 filters the analysis cell set before normalization. With at least two
-#' retained conditions in a broad cell type, Pando discovers candidates on the
-#' pooled cell-type background and within each condition, freezes their exact
-#' TF-peak-target union, performs preliminary joint multi-task ridge screening,
-#' forms the BH-significant union dictionary, and jointly refits all conditions
-#' on that shared dictionary. With no condition or one effective condition,
-#' standard Pando defaults to the K=1 specialization of the same ridge solver;
-#' the original Gaussian GLM remains available only by explicit request. Ridge
-#' cell types are processed sequentially, while the shared worker budget is used
-#' inside Pando for target-level work. Target workers receive only target-specific
-#' RNA, ATAC, motif and dictionary slices, and completed worker/batch temporaries
-#' are released before the next batch.
+#' Stage 1 filters the analysis cell set before normalization. Broad cell types
+#' with at least two retained conditions use Pando's pooled-plus-condition common
+#' dictionary and no-fusion ridge fit; cell types with one effective condition use
+#' the K=1 standard ridge route. RegCompass then applies the same target-model
+#' full-data R-squared eligibility gate to both routes before downstream penalty
+#' projection.
 #'
-#' @param pando_args Pando configuration list. `min_cells` defaults to `500L`
-#'   and may be overridden with any positive integer. Standard Pando uses ridge
-#'   unless `pando_infer_args$method = "glm"` is explicitly requested.
-#' @param workers Total RegCompass worker cap, default 10. Windows uses
-#'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. The effective
-#'   package cap is `min(workers, max(1, detected logical CPUs - 2))`. Ridge GRNs
-#'   keep one cell type resident at a time and reuse this cap for target-level
-#'   Pando parallelism; target payloads are trimmed before dispatch.
+#' @param pando_args Pando configuration list. `min_cells` defaults to `500L`.
+#'   Common inference controls are supplied through `pando_infer_args`; only
+#'   parameters intentionally changed from validated defaults need be supplied.
+#' @param target_rsq_threshold Minimum selected-lambda full-data target R-squared
+#'   required for a Pando target to enter RegCompass regulatory penalty support.
+#'   Defaults to `0.05`. This is a RegCompass target-model gate and does not
+#'   redefine Pando edge significance.
+#' @param workers Total RegCompass worker cap, default 10. Ridge GRNs use one
+#'   parallel level at a time and reuse this budget for target-level Pando work.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,
@@ -34,6 +29,7 @@ rc_regcompass_step_grn <- function(
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
+    target_rsq_threshold = 0.05,
     workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start(
@@ -47,6 +43,17 @@ rc_regcompass_step_grn <- function(
   if (!is.list(pando_args)) {
     stop("`pando_args` must be a list.", call. = FALSE)
   }
+  target_rsq_threshold <- .rc_target_rsq_threshold(target_rsq_threshold)
+  old_target_rsq_option <- getOption("RegCompassR.target_rsq_threshold")
+  options(RegCompassR.target_rsq_threshold = target_rsq_threshold)
+  on.exit({
+    if (is.null(old_target_rsq_option)) {
+      options(RegCompassR.target_rsq_threshold = NULL)
+    } else {
+      options(RegCompassR.target_rsq_threshold = old_target_rsq_option)
+    }
+  }, add = TRUE)
+
   parallel_plan <- .rc_stage_parallel_plan(workers, argument = "workers")
   on.exit(.rc_release_bpparam(parallel_plan$BPPARAM), add = TRUE)
   parallel <- parallel_plan$parallel
@@ -127,7 +134,7 @@ rc_regcompass_step_grn <- function(
   reserved <- intersect(names(pando_args), c(
     "object", "gem", "outdir", "genome", "pfm", "species",
     "condition_col", "celltype_col", "cell_type", "rna_assay", "atac_assay",
-    "BPPARAM", "parallel", "workers"
+    "target_rsq_threshold", "BPPARAM", "parallel", "workers"
   ))
   if (length(reserved)) {
     stop(
@@ -173,7 +180,8 @@ rc_regcompass_step_grn <- function(
       regions = !is.null(dispatch_extra_args$pando_initiate_args$regions),
       motif_tfs = !is.null(dispatch_extra_args$pando_motif_args$motif_tfs),
       worker_limit = parallel_plan$workers,
-      backend = parallel_plan$config$actual_backend
+      backend = parallel_plan$config$actual_backend,
+      target_rsq_threshold = target_rsq_threshold
     )
   )
 
@@ -204,6 +212,7 @@ rc_regcompass_step_grn <- function(
   )) "cell_type_specific_condition_count" else design$fallback_reason
   grn_result$rna_assay <- rna_assay
   grn_result$atac_assay <- atac_assay
+  grn_result$target_rsq_threshold <- target_rsq_threshold
   grn_result$pando_infer_argument_routing <- routed_infer_args$diagnostics
 
   answer <- list(
@@ -234,6 +243,7 @@ rc_regcompass_step_grn <- function(
       cell_type = cell_set$retained_cell_types,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
+      target_rsq_threshold = target_rsq_threshold,
       pando_args = c(extra_args, list(
         pando_infer_args = infer_args,
         condition_pando_infer_args = condition_infer_args,

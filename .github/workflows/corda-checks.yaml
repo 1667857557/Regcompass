@@ -7,6 +7,7 @@ on:
       - 'R/step_layer2.R'
       - 'R/celltype_union_gem_cache.R'
       - 'DESCRIPTION'
+      - 'docs/layer2-corda.md'
       - 'docs/tutorial-02-stepwise-audit.md'
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-stage-parallel-check.R'
@@ -19,6 +20,7 @@ on:
       - 'R/step_layer2.R'
       - 'R/celltype_union_gem_cache.R'
       - 'DESCRIPTION'
+      - 'docs/layer2-corda.md'
       - 'docs/tutorial-02-stepwise-audit.md'
       - 'tests/corda-synthetic-check.R'
       - 'tests/corda-stage-parallel-check.R'
@@ -92,6 +94,7 @@ jobs:
           stage = Path("R/layer2_corda_stage_parallel.R").read_text()
           model = Path("R/layer2_corda_model.R").read_text()
           pool = Path("R/layer2_corda_pool_lifecycle.R").read_text()
+          corda_doc = Path("docs/layer2-corda.md").read_text()
           tutorial = Path("docs/tutorial-02-stepwise-audit.md").read_text()
           synthetic = Path("tests/corda-synthetic-check.R").read_text()
           equivalence = Path("tests/corda-stage-parallel-check.R").read_text()
@@ -214,6 +217,6 @@ jobs:
           if 'resendislab/corda' in tutorial or 'corda2_redundancies' in tutorial:
               raise RuntimeError("tutorial still documents the Python CORDA contract")
           for name in ('MCxNCthresh', 'constraint', 'constrainby', 'om', 'ci'):
-              if name not in tutorial:
-                  raise RuntimeError(f"tutorial does not describe {name}")
+              if name not in corda_doc:
+                  raise RuntimeError(f"CORDA parameter reference does not describe {name}")
           PY

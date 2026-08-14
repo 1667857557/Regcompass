@@ -10,6 +10,7 @@ on:
       - 'R/full_gem.R'
       - 'tests/compass-medium-semantics-check.R'
       - 'tests/testthat/test-compass-medium-semantics.R'
+      - 'tests/testthat/test-custom-medium-availability.R'
       - '.github/workflows/compass-medium-semantics-checks.yaml'
   push:
     branches: [Main]
@@ -21,6 +22,7 @@ on:
       - 'R/full_gem.R'
       - 'tests/compass-medium-semantics-check.R'
       - 'tests/testthat/test-compass-medium-semantics.R'
+      - 'tests/testthat/test-custom-medium-availability.R'
       - '.github/workflows/compass-medium-semantics-checks.yaml'
 
 permissions:
@@ -51,14 +53,15 @@ jobs:
             'R/compass_medium_semantics.R',
             'R/full_gem.R',
             'tests/compass-medium-semantics-check.R',
-            'tests/testthat/test-compass-medium-semantics.R'
+            'tests/testthat/test-compass-medium-semantics.R',
+            'tests/testthat/test-custom-medium-availability.R'
           )
           for (file in files) parse(file = file)
 
       - name: Run COMPASS exchange-bound regression
         run: Rscript tests/compass-medium-semantics-check.R
 
-      - name: Audit package collation and cache versioning
+      - name: Audit canonical medium and resolved-cache contract
         shell: python
         run: |
           from pathlib import Path
@@ -66,15 +69,30 @@ jobs:
           description = Path('DESCRIPTION').read_text()
           medium = Path('R/medium.R').read_text()
           semantics = Path('R/compass_medium_semantics.R').read_text()
+          full_gem = Path('R/full_gem.R').read_text()
           required = [
               "'published_medium_contract.R'\n    'compass_medium_semantics.R'",
               '.rc_medium_exchange_metabolites <- function',
               'compass_exchange_bounds_v2',
               'compass_uptake_cap_then_explicit_directional_overrides',
               'changed_unlisted_exchange_reactions',
-              '.rc_full_gem_medium_fingerprint <- .rc_compass_medium_fingerprint',
+              'rc_apply_medium_constraints <- function',
+              '.rc_full_gem_medium_fingerprint <- function',
+              '.rc_full_gem_resolved_bounds_identity <- function',
+              'resolved_gem_bounds_v1',
+              'final_lb = as.numeric(resolved$lb)',
+              'final_ub = as.numeric(resolved$ub)',
+              'resolved_medium_fingerprint',
           ]
-          text = description + '\n' + medium + '\n' + semantics
+          text = description + '\n' + medium + '\n' + semantics + '\n' + full_gem
           missing = [value for value in required if value not in text]
           if missing:
               raise RuntimeError(f'COMPASS medium contract missing: {missing}')
+          forbidden = [
+              'rc_apply_medium_constraints <- .rc_apply_compass_medium_constraints',
+              '.rc_full_gem_medium_fingerprint <- .rc_compass_medium_fingerprint',
+              '.rc_compass_medium_fingerprint <- function',
+          ]
+          present = [value for value in forbidden if value in text]
+          if present:
+              raise RuntimeError(f'late-bound/declarative medium contract remains: {present}')

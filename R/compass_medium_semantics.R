@@ -1,12 +1,10 @@
-# COMPASS-compatible extracellular exchange-bound semantics -----------------
+# COMPASS-compatible extracellular exchange-bound helpers --------------------
 #
-# COMPASS first applies a uniform cap to the uptake direction of every
-# exchange reaction, preserves the secretion direction, and then lets explicit
-# medium entries override the uptake cap. A reaction omitted from the medium
-# therefore retains the capped model-defined uptake direction instead of being
-# closed. This file is collated after the legacy medium implementation and
-# installs the corrected semantics without changing the public medium table or
-# Layer 2 interfaces.
+# The canonical public and cache-facing functions remain defined in their
+# original source files. This file contains only shared helpers for COMPASS
+# uptake-direction semantics: cap the uptake direction of exchange reactions,
+# preserve model-defined secretion unless explicitly disabled, and intersect
+# explicit medium constraints with the original GEM feasible region.
 
 .rc_compass_medium_semantics_version <- "compass_exchange_bounds_v2"
 
@@ -663,52 +661,3 @@
     medium_semantics_version = .rc_compass_medium_semantics_version
   ))
 }
-
-.rc_compass_medium_fingerprint <- function(medium) {
-  medium_payload <- if (is.null(medium)) {
-    list(no_constraints = TRUE)
-  } else {
-    required <- c("exchange_reaction_id", "lb", "ub", "available")
-    missing_columns <- setdiff(required, colnames(medium))
-    if (length(missing_columns)) {
-      stop(
-        "Medium fingerprint input is missing: ",
-        paste(missing_columns, collapse = ", "),
-        ".", call. = FALSE
-      )
-    }
-    columns <- intersect(
-      c(
-        "exchange_reaction_id", "condition", "available", "lb", "ub",
-        "bound_scope", "uptake_limit", "uptake_fraction", "exchange_limit",
-        "unlisted_policy", ".no_constraints"
-      ),
-      colnames(medium)
-    )
-    value <- medium[, columns, drop = FALSE]
-    order_columns <- intersect(
-      c("condition", "exchange_reaction_id"), colnames(value)
-    )
-    if (length(order_columns) && nrow(value)) {
-      value <- value[do.call(order, value[order_columns]), , drop = FALSE]
-    }
-    rownames(value) <- NULL
-    value
-  }
-  payload <- list(
-    medium_semantics_version = .rc_compass_medium_semantics_version,
-    unlisted_default = "compass",
-    medium = medium_payload
-  )
-  file <- tempfile("RegCompassR-compass-medium-", fileext = ".rds")
-  on.exit(unlink(file, force = TRUE), add = TRUE)
-  saveRDS(payload, file, version = 2)
-  unname(tools::md5sum(file)[[1L]])
-}
-
-# Install the corrected implementations after the legacy medium files are
-# collated. Existing callers keep the same function names and data contracts.
-rc_apply_medium_constraints <- .rc_apply_compass_medium_constraints
-.rc_compass_model_bound_medium <- .rc_make_compass_model_bound_medium
-.rc_assert_medium_bounds_only <- .rc_assert_compass_medium_bounds_only
-.rc_full_gem_medium_fingerprint <- .rc_compass_medium_fingerprint

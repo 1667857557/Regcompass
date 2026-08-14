@@ -22,9 +22,8 @@ make_compass_medium_test_gem <- function() {
   )
 }
 
-test_that("COMPASS medium leaves omitted uptake capped instead of closed", {
-  gem <- make_compass_medium_test_gem()
-  medium <- data.frame(
+make_compass_medium_table <- function() {
+  data.frame(
     medium_scenario_id = "test",
     exchange_reaction_id = c(
       "EX_reverse", "EX_forward", "EX_close_reverse", "EX_close_forward"
@@ -38,6 +37,11 @@ test_that("COMPASS medium leaves omitted uptake capped instead of closed", {
     evidence_source = "literature_backed_medium_catalog",
     stringsAsFactors = FALSE
   )
+}
+
+test_that("COMPASS medium leaves omitted uptake capped instead of closed", {
+  gem <- make_compass_medium_test_gem()
+  medium <- make_compass_medium_table()
 
   applied <- rc_apply_medium_constraints(gem, medium)
   expect_equal(unname(applied$gem$lb["EX_reverse"]), -10)
@@ -115,4 +119,47 @@ test_that("medium audit allows exchange baseline changes only", {
     .rc_assert_medium_bounds_only(gem, invalid, medium),
     "outside annotated exchange reactions"
   )
+})
+
+test_that("medium cache fingerprint depends on resolved bounds, not provenance", {
+  gem <- make_compass_medium_test_gem()
+  medium <- make_compass_medium_table()
+  resolved <- rc_build_full_gem(gem, medium_table = medium)
+  identity <- .rc_full_gem_resolved_bounds_identity(gem, resolved)
+
+  provenance_only <- medium
+  provenance_only$concentration_mM <- c(99, 88, 77, 66)
+  resolved_same <- rc_build_full_gem(gem, medium_table = provenance_only)
+  identity_same <- .rc_full_gem_resolved_bounds_identity(gem, resolved_same)
+  expect_identical(identity$fingerprint, identity_same$fingerprint)
+
+  changed <- medium
+  changed$exchange_limit[[1L]] <- 11
+  resolved_changed <- rc_build_full_gem(gem, medium_table = changed)
+  identity_changed <- .rc_full_gem_resolved_bounds_identity(
+    gem, resolved_changed
+  )
+  expect_false(identical(identity$fingerprint, identity_changed$fingerprint))
+  expect_gt(identity$n_changed_bounds_vs_reference, 0L)
+  expect_false(identity$resolved_bounds_identical_to_reference)
+  expect_identical(
+    .rc_full_gem_medium_fingerprint(gem, resolved),
+    identity$fingerprint
+  )
+})
+
+test_that("medium semantics do not late-bind canonical function names", {
+  semantics <- paste(
+    readLines(testthat::test_path("..", "..", "R", "compass_medium_semantics.R"),
+              warn = FALSE),
+    collapse = "\n"
+  )
+  expect_false(grepl(
+    "rc_apply_medium_constraints <- .rc_apply_compass_medium_constraints",
+    semantics, fixed = TRUE
+  ))
+  expect_false(grepl(
+    ".rc_full_gem_medium_fingerprint <- .rc_compass_medium_fingerprint",
+    semantics, fixed = TRUE
+  ))
 })

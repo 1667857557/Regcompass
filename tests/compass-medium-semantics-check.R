@@ -19,19 +19,10 @@ rc_validate_gem <- function(gem) {
 
 rc_annotate_reaction_roles <- function(gem, medium_table = NULL) gem
 
-.rc_medium_exchange_metabolites <- function(gem, exchange_meta, validated) {
-  data.frame(
-    exchange_reaction_id = as.character(exchange_meta$reaction_id),
-    metabolite_id = paste0("m_", seq_len(nrow(exchange_meta))),
-    gem_metabolite_name = as.character(exchange_meta$reaction_id),
-    mapping_source = "synthetic",
-    stringsAsFactors = FALSE
-  )
-}
-
 source("R/full_gem.R")
-source("R/layer2_corda_parent_contract.R")
+source("R/medium.R")
 source("R/compass_medium_semantics.R")
+source("R/layer2_corda_parent_contract.R")
 
 reactions <- c(
   "EX_reverse", "EX_forward", "EX_unlisted",
@@ -153,13 +144,31 @@ stopifnot(
   identical(corda_parent$corda_parent_role_blocking, "none")
 )
 
-fingerprint_1 <- .rc_full_gem_medium_fingerprint(medium)
-medium_2 <- medium
-medium_2$exchange_limit[[1L]] <- 11
-fingerprint_2 <- .rc_full_gem_medium_fingerprint(medium_2)
+identity_1 <- .rc_full_gem_resolved_bounds_identity(gem, full)
+medium_provenance_only <- medium
+medium_provenance_only$concentration_mM <- c(99, 88, 77, 66)
+full_same_bounds <- rc_build_full_gem(
+  gem, medium_table = medium_provenance_only
+)
+identity_same <- .rc_full_gem_resolved_bounds_identity(gem, full_same_bounds)
+medium_changed_bounds <- medium
+medium_changed_bounds$exchange_limit[[1L]] <- 11
+full_changed_bounds <- rc_build_full_gem(
+  gem, medium_table = medium_changed_bounds
+)
+identity_changed <- .rc_full_gem_resolved_bounds_identity(
+  gem, full_changed_bounds
+)
 stopifnot(
-  is.character(fingerprint_1), nzchar(fingerprint_1),
-  !identical(fingerprint_1, fingerprint_2)
+  is.character(identity_1$fingerprint), nzchar(identity_1$fingerprint),
+  identical(identity_1$fingerprint, identity_same$fingerprint),
+  !identical(identity_1$fingerprint, identity_changed$fingerprint),
+  identity_1$n_changed_bounds_vs_reference > 0L,
+  !identity_1$resolved_bounds_identical_to_reference,
+  identical(
+    .rc_full_gem_medium_fingerprint(gem, full),
+    identity_1$fingerprint
+  )
 )
 
 message("COMPASS exchange-medium and Layer 2 handoff regression passed.")
