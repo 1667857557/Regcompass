@@ -18,6 +18,9 @@
 #' @param pando_args Pando configuration list. `min_cells` defaults to `500L`
 #'   and may be overridden with any positive integer. Standard Pando uses ridge
 #'   unless `pando_infer_args$method = "glm"` is explicitly requested.
+#' @param target_rsq_threshold RegCompass target-model quality threshold applied
+#'   to the selected-lambda final full-data Pando R-squared after Pando edge
+#'   significance. Defaults to `0.05`. OOF R-squared remains diagnostic only.
 #' @param workers Total RegCompass worker cap, default 10. Windows uses
 #'   `SnowParam(type = "SOCK")`; Linux/macOS uses `MulticoreParam`. The effective
 #'   package cap is `min(workers, max(1, detected logical CPUs - 2))`. Ridge GRNs
@@ -34,6 +37,7 @@ rc_regcompass_step_grn <- function(
     rna_assay = "RNA",
     atac_assay = "ATAC",
     pando_args = list(),
+    target_rsq_threshold = 0.05,
     workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   monitor <- .rc_step_monitor_start(
@@ -47,6 +51,7 @@ rc_regcompass_step_grn <- function(
   if (!is.list(pando_args)) {
     stop("`pando_args` must be a list.", call. = FALSE)
   }
+  target_rsq_threshold <- .rc_target_rsq_threshold(target_rsq_threshold)
   parallel_plan <- .rc_stage_parallel_plan(workers, argument = "workers")
   on.exit(.rc_release_bpparam(parallel_plan$BPPARAM), add = TRUE)
   parallel <- parallel_plan$parallel
@@ -127,7 +132,7 @@ rc_regcompass_step_grn <- function(
   reserved <- intersect(names(pando_args), c(
     "object", "gem", "outdir", "genome", "pfm", "species",
     "condition_col", "celltype_col", "cell_type", "rna_assay", "atac_assay",
-    "BPPARAM", "parallel", "workers"
+    "target_rsq_threshold", "BPPARAM", "parallel", "workers"
   ))
   if (length(reserved)) {
     stop(
@@ -172,6 +177,7 @@ rc_regcompass_step_grn <- function(
       pfm = !is.null(pfm),
       regions = !is.null(dispatch_extra_args$pando_initiate_args$regions),
       motif_tfs = !is.null(dispatch_extra_args$pando_motif_args$motif_tfs),
+      target_rsq_threshold = target_rsq_threshold,
       worker_limit = parallel_plan$workers,
       backend = parallel_plan$config$actual_backend
     )
@@ -190,7 +196,8 @@ rc_regcompass_step_grn <- function(
       condition_infer_args = condition_infer_args,
       standard_infer_args = standard_infer_args,
       parallel = parallel, BPPARAM = BPPARAM,
-      progress_monitor = monitor
+      progress_monitor = monitor,
+      target_rsq_threshold = target_rsq_threshold
     ),
     monitor
   )
@@ -234,6 +241,9 @@ rc_regcompass_step_grn <- function(
       cell_type = cell_set$retained_cell_types,
       rna_assay = rna_assay,
       atac_assay = atac_assay,
+      target_rsq_threshold = target_rsq_threshold,
+      target_rsq_metric = "selected_lambda_final_full_data_rsq",
+      oof_rsq_role = "diagnostic_only",
       pando_args = c(extra_args, list(
         pando_infer_args = infer_args,
         condition_pando_infer_args = condition_infer_args,
