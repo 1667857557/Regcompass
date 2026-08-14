@@ -87,8 +87,6 @@ jobs:
               condition = c("A", "B"),
               fit_status = c("ok", "ok"),
               rsq = c(0.8, 0.7),
-              rsq_in_sample = c(0.8, 0.7),
-              rsq_oof = c(0.7, 0.6),
               design_rank_deficient = c(TRUE, TRUE),
               stringsAsFactors = FALSE
             )
