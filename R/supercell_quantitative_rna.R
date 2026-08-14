@@ -180,9 +180,7 @@
     scale_factor = 1e6) {
   objects <- .rc_pando_rna_objects(grn_result)
   membership_cells <- as.character(membership$cell_id)
-  object_cells <- lapply(objects, function(object) {
-    colnames(object@data)
-  })
+  object_cells <- lapply(objects, function(object) colnames(object@data))
   .rc_validate_pando_rna_cell_partition(object_cells, membership_cells)
   expression_parts <- list()
   library_parts <- list()
@@ -215,8 +213,7 @@
     duplicated_cells <- unique(observed_cells[duplicated(observed_cells)])
     stop(
       "A cell occurs in more than one routed Pando RNA source; first duplicated cell: ",
-      duplicated_cells[[1L]], ".",
-      call. = FALSE
+      duplicated_cells[[1L]], ".", call. = FALSE
     )
   }
   cell_expression <- do.call(cbind, expression_parts)
@@ -242,7 +239,7 @@
   )
 }
 
-.rc_cell_first_projection_layer1_v6 <- function(
+.rc_cell_first_projection_layer1 <- function(
     grn_result, metacell_object, membership, metacell_meta, gem,
     condition_col, celltype_col, rna_assay,
     gpr_and_method = "min", gene_half_saturation = 1,
@@ -270,9 +267,9 @@
   parsed <- rc_parse_gpr_table(gem$gpr_table)
   gpr_genes <- unique(tolower(unlist(parsed, use.names = FALSE)))
 
-  # Aggregated raw metacell counts remain the input to the legacy bounded
-  # structural-confidence model only. They are no longer the quantitative LP
-  # expression estimator.
+  # Aggregated raw metacell counts are used only by the bounded structural
+  # support model. Quantitative reaction expression is defined from cell-level
+  # linear CPM and exact final SuperCell membership below.
   counts <- .rc_get_assay_counts(metacell_object, rna_assay)
   library_size <- Matrix::colSums(counts)
   rna_counts <- counts[
@@ -290,11 +287,6 @@
   )
   genes <- rownames(latent$latent_log_expression)
 
-  # Quantitative COMPASS path follows the SuperCell representative-state
-  # definition. Each original cell is normalized on the linear CPM scale using
-  # its own complete RNA library, then member cells are averaged with equal
-  # weight inside the exact final SuperCell membership. This is deliberately not
-  # CPM(sum(counts)), which would weight cells by library size.
   quantitative_rna <- .rc_quantitative_supercell_rna(
     grn_result = grn_result,
     membership = membership,
@@ -303,10 +295,7 @@
     rna_assay = rna_assay,
     scale_factor = 1e6
   )
-  if (!identical(
-        dimnames(quantitative_rna$expression),
-        list(genes, units)
-      )) {
+  if (!identical(dimnames(quantitative_rna$expression), list(genes, units))) {
     stop("Quantitative SuperCell RNA is misaligned to Layer 1 genes or units.",
          call. = FALSE)
   }
@@ -330,17 +319,14 @@
   )
 
   gene_expression_quantitative_rna <- quantitative_rna$expression
-  gene_expression_quantitative_multiome <-
-    .rc_integrate_regulatory_expression(
-      gene_expression_quantitative_rna, modifier
-    )
-  attr(
-    gene_expression_quantitative_multiome,
-    "integration_formula"
-  ) <- paste(
+  gene_expression_quantitative_multiome <- .rc_integrate_regulatory_expression(
+    gene_expression_quantitative_rna, modifier
+  )
+  attr(gene_expression_quantitative_multiome, "integration_formula") <- paste(
     "X_multiome=X_RNA*2^R;",
     "X_RNA=equal_mean_single_cell_linear_CPM_by_SuperCell_membership;",
-    "nonfinite R:=0; R clipped to [-1,1]"
+    "q=0 forces R=0 even if projection is unavailable;",
+    "q=NA uses RNA-only neutral fallback; R clipped to [-1,1]"
   )
   reaction_quantitative_rna <- rc_reaction_capacity(
     parsed, gene_expression_quantitative_rna,
@@ -355,9 +341,6 @@
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
 
-  # Bounded support intentionally keeps the previous latent-CPM model for
-  # CORDA2/structural confidence in this change. The quantitative LP route above
-  # is completely independent of that empirical-Bayes shrinkage.
   gene_support_rna <- rc_gene_score(
     latent$latent_log_expression,
     mode = "absolute",
@@ -376,35 +359,26 @@
     and_method = gpr_and_method, or_method = "sum",
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
-  attr(
-    reaction_structural_multiome,
-    "regcompass_quantitative_penalty_route"
-  ) <- "multiome"
-  attr(
-    reaction_structural_rna,
-    "regcompass_quantitative_penalty_route"
-  ) <- "rna_only"
+  attr(reaction_structural_multiome, "regcompass_quantitative_penalty_route") <-
+    "multiome"
+  attr(reaction_structural_rna, "regcompass_quantitative_penalty_route") <-
+    "rna_only"
 
-  support_fraction <- .rc_gpr_best_group_fraction(
-    parsed, is.finite(modifier)
-  )
+  support_fraction <- .rc_gpr_best_group_fraction(parsed, is.finite(modifier))
   fallback <- !is.finite(modifier)
   cell_library <- as.numeric(quantitative_rna$cell_library_size)
   list(
     schema_version = "regcompass_regulatory_layer1_v6",
     analysis_mode = mode,
-
     reaction_expression = reaction_structural_multiome,
     reaction_expression_rna_only = reaction_structural_rna,
     reaction_expression_available = is.finite(reaction_structural_multiome),
     reaction_structural_support = reaction_structural_multiome,
     reaction_structural_support_rna_only = reaction_structural_rna,
-
     reaction_expression_quantitative = reaction_quantitative_multiome,
     reaction_expression_quantitative_rna_only = reaction_quantitative_rna,
     reaction_expression_quantitative_available =
       is.finite(reaction_quantitative_multiome),
-
     rna_metacell_mean_single_cell_cpm = gene_expression_quantitative_rna,
     rna_metacell_latent_log_expression = latent$latent_log_expression,
     rna_metacell_latent_cpm = latent$latent_cpm,
@@ -414,15 +388,13 @@
     eb_prior_weight = latent$prior_weight,
     eb_observation_weight = latent$observation_weight,
     gene_expression_quantitative_rna = gene_expression_quantitative_rna,
-    gene_expression_quantitative_multiome =
-      gene_expression_quantitative_multiome,
+    gene_expression_quantitative_multiome = gene_expression_quantitative_multiome,
     gene_support_rna = gene_support_rna,
     gene_support_multiome = gene_support_multiome,
     gene_projection = projection$projection,
     gene_projection_scale = calibration$scale,
     gene_regulatory_reliability = projection$reliability,
-    gene_regulatory_reliability_available =
-      is.finite(projection$reliability),
+    gene_regulatory_reliability_available = is.finite(projection$reliability),
     gene_regulatory_available = is.finite(projection$projection),
     gene_regulatory_modifier = modifier,
     projection_coverage = projection$coverage,
@@ -434,16 +406,14 @@
     metacell_meta = unit_meta,
     layer1_unit = "native_SuperCell_metacell",
     regulatory_fallback = list(
-      policy = "rna_only_for_nonfinite_pando_modifier",
+      policy = "rna_only_only_when_penalty_q_is_unavailable",
       neutral_modifier = 0,
       gene_metacell_mask = fallback,
       n_fallback = sum(fallback),
       fallback_fraction = mean(fallback)
     ),
     depth_diagnostics = list(
-      rna_library_size = stats::setNames(
-        as.numeric(library_size[units]), units
-      ),
+      rna_library_size = stats::setNames(as.numeric(library_size[units]), units),
       latent_expression_model = latent$model,
       prior_estimation_scope = latent$prior_estimation_scope,
       posterior_update_scope = latent$posterior_update_scope,
@@ -451,21 +421,17 @@
       quantitative_expression_model = quantitative_rna$model,
       quantitative_normalization_scale = quantitative_rna$scale_factor,
       quantitative_aggregation = quantitative_rna$aggregation,
-      quantitative_library_size_weighted =
-        quantitative_rna$library_size_weighted,
+      quantitative_library_size_weighted = quantitative_rna$library_size_weighted,
       quantitative_metacell_n_cells = quantitative_rna$n_cells,
       quantitative_cell_library_size_summary = c(
-        min = min(cell_library),
-        median = stats::median(cell_library),
+        min = min(cell_library), median = stats::median(cell_library),
         max = max(cell_library)
       ),
       quantitative_rna_source_summary = quantitative_rna$source_summary
     ),
     zero_diagnostics = list(
       observed_zero_fraction = rowMeans(latent$observed_zero),
-      mean_posterior_zero_probability = rowMeans(
-        latent$posterior_zero_probability
-      ),
+      mean_posterior_zero_probability = rowMeans(latent$posterior_zero_probability),
       maximum_posterior_zero_probability = apply(
         latent$posterior_zero_probability, 1L, max
       )
@@ -475,10 +441,9 @@
       regulatory_expression_multiplier_budget = 2,
       gene_half_saturation = gene_half_saturation,
       regulatory_mode = mode,
-      link_function = "tanh(G/shared_scale)",
+      link_function = "q*tanh(G/shared_scale); q in {0,1,NA}",
       quantitative_gene_expression = "equal_mean_single_cell_linear_cpm",
-      quantitative_regulatory_formula =
-        "X_multiome=X_RNA*2^R; nonfinite R:=0",
+      quantitative_regulatory_formula = "X_multiome=X_RNA*2^R",
       structural_gene_support =
         "log1p(latent_cpm)/(log1p(latent_cpm)+gene_half_saturation)",
       structural_regulatory_formula =
@@ -496,6 +461,8 @@
       library_size_weighted_metacell_average = FALSE,
       regulatory_multiplier = "2^R",
       regulatory_modifier_range = c(-1, 1),
+      target_penalty_q =
+        "1=evaluated_supported;0=evaluated_rejected;NA=unavailable",
       gpr_and_method = gpr_and_method,
       gpr_or_method = "sum",
       penalty_formula = "1/(1+log2(1+max(E_quantitative,0)))",
@@ -525,7 +492,8 @@
       quantitative_rna_source = "Pando_retained_cell_level_raw_RNA_counts",
       quantitative_rna_aggregation =
         "equal_mean_after_per_cell_linear_CPM_normalization",
-      unavailable_target_policy = "rna_only_neutral_modifier_fallback",
+      unavailable_target_policy = "qNA_rna_only_neutral_modifier_fallback",
+      evaluated_rejected_target_policy = "q0_forces_neutral_modifier",
       nonestimable_edge_policy = projection$nonestimable_policy
     ),
     inference_class = "metacell_statistical_unit_within_dataset",
