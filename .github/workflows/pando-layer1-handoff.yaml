@@ -24,16 +24,19 @@ jobs:
           import re
 
           description = Path("DESCRIPTION").read_text()
-          if "Pando (>= " in description or "Pando (>=" in description:
-              raise RuntimeError("Pando compatibility must not use a version floor")
           required_description = [
+              "Pando (>= 2.0.10)",
+              "SuperCell (>= 2.2.0)",
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
               "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
               "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
+              "Config/RegCompass/PandoTargetR2: selected-lambda-full-data-R2",
+              "Config/RegCompass/PandoTargetR2Threshold: 0.05",
+              "Config/RegCompass/PandoTargetPenaltyQ: tri-state-q1-supported-q0-evaluated-rejected-qNA-unavailable",
           ]
           missing = [x for x in required_description if x not in description]
           if missing:
-              raise RuntimeError(f"DESCRIPTION condition policy missing: {missing}")
+              raise RuntimeError(f"DESCRIPTION cross-package policy missing: {missing}")
 
           route = Path("R/grn_route_parallel.R").read_text()
           required_route = [
@@ -51,7 +54,7 @@ jobs:
           if missing:
               raise RuntimeError(f"Pando API preflight missing: {missing}")
           if "package_version" in route or "packageVersion" in route:
-              raise RuntimeError("Pando API preflight still contains a version gate")
+              raise RuntimeError("Runtime Pando API preflight must be feature-based rather than duplicate DESCRIPTION version gating")
 
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition = [
@@ -101,12 +104,17 @@ jobs:
           required_penalty = [
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
+              ".RC_PANDO_TARGET_RSQ_THRESHOLD <- 0.05",
               ".rc_validate_pando_active_condition_edges",
+              ".rc_condition_fit_diagnostics_for_coefficients",
+              ".rc_condition_penalty_gate",
               "statistically_supported",
               "global_support",
               "local_support",
               "expected_active <- expected_statistical",
               'fit_status == "ok"',
+              "target_rsq >= rsq_threshold",
+              "selected_lambda_full_data_R2",
               "consume_pando_condition_bh_active_edge_without_reselection",
           ]
           missing = [value for value in required_penalty if value not in penalty]
@@ -125,6 +133,8 @@ jobs:
               'origin = "paired_cell_common_dictionary_condition_bh_active_edges"',
               'projection_name = "active_no_fusion_ridge_condition_effect"',
               "unique cell-type set.",
+              "target_rsq_threshold",
+              "selected-lambda full-data R2",
           ]
           missing = [value for value in required_layer1 if value not in layer1]
           if missing:
@@ -166,6 +176,7 @@ jobs:
               ".rc_fit_condition_grns_regcompass_parallel",
               ".rc_condition_multitask_fit_task",
               "aggregate_condition_grn_projection_strict",
+              ".rc_cell_first_projection_layer1_v6",
           ]
           present = [value for value in forbidden_architecture if value in all_r]
           if present:
@@ -187,6 +198,9 @@ jobs:
               ],
               "R/pando_evidence_utils.R": [
                   ".rc_pando_projection_from_group_means",
+              ],
+              "R/supercell_quantitative_rna.R": [
+                  ".rc_cell_first_projection_layer1",
               ],
           }
           for path, names in canonical.items():
@@ -210,6 +224,7 @@ jobs:
             "R/grn_parallel_merge_contract.R",
             "R/condition_penalty_contract.R",
             "R/pando_evidence_utils.R",
-            "R/step_layer1_parallel_object_contract.R"
+            "R/step_layer1_parallel_object_contract.R",
+            "R/supercell_quantitative_rna.R"
           )
           for (file in files) parse(file = file)
