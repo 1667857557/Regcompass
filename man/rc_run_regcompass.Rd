@@ -8,7 +8,8 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  fragment_files = NULL, pando_args = list(), metacell_args = list(),
+  fragment_files = NULL, pando_args = list(),
+  target_rsq_threshold = 0.05, metacell_args = list(),
   meta_module_args = list(), layer1_args = list(),
   medium_scenarios = NULL,
   model_mode = c("meta_module_gem", "full_gem"),
@@ -22,20 +23,21 @@ rc_run_regcompass(object, gem, outdir, genome, pfm = NULL,
 \item{genome}{Genome object matching ATAC coordinates and regulatory regions.}
 \item{pfm}{Optional motif collection.}
 \item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
-\item{condition_col}{Condition metadata column. Use \code{NULL} when condition metadata are absent.}
+\item{condition_col}{Condition metadata column, or \code{NULL} for standard Pando.}
 \item{celltype_col}{Broad cell-type metadata column.}
-\item{cell_type}{Optional subset of broad cell types to process.}
+\item{cell_type}{Optional broad-cell-type subset.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{fragment_files}{Optional Stage 2 raw fragment input.}
-\item{pando_args}{Stage 1 controls, including \code{min_cells} and nested \code{pando_infer_args}.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN, size, fragment, and aggregation controls.}
-\item{meta_module_args}{Stage 3 controls, including an optional custom subsystem table.}
-\item{layer1_args}{Stage 4 controls. Supported entries are \code{gpr_and_method} and \code{gene_half_saturation}.}
-\item{medium_scenarios}{Shared medium table. When omitted, human models use \code{"normal_human_plasma"} and mouse models use \code{"mouse_plasma"}.}
-\item{model_mode}{\code{"meta_module_gem"} for context-specific reconstruction or \code{"full_gem"} for supplementary complete-network scoring.}
-\item{layer2_args}{Stage 5 controls. Supported top-level entries are \code{model_params}, \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold}. CORDA2 is the default completion for \code{"meta_module_gem"}; FASTCORE is selected with \code{model_params$model_completion = "fastcore"}.}
+\item{fragment_files}{Optional Stage 2 raw ATAC fragment input.}
+\item{pando_args}{Stage 1 Pando controls, including \code{min_cells} and nested \code{pando_infer_args}.}
+\item{target_rsq_threshold}{RegCompass target-model quality threshold on the selected-lambda final full-data Pando R-squared, default \code{0.05}. OOF R-squared is diagnostic only.}
+\item{metacell_args}{Stage 2 WNN/metacell controls. Defaults include RNA PCA 1:30, ATAC LSI 2:30, \code{gamma = 30L}, \code{k.knn = 30L}, \code{min_cells_per_stratum = 20L}, \code{min_metacell_size = 1L}, and \code{min_metacells_per_stratum = 1L}. If \code{min_metacell_size > 1L}, supply \code{min_merge_affinity}.}
+\item{meta_module_args}{Stage 3 controls.}
+\item{layer1_args}{Stage 4 controls: \code{gpr_and_method} and \code{gene_half_saturation}.}
+\item{medium_scenarios}{Medium table. When omitted, human models use \code{"normal_human_plasma"} and mouse models use \code{"mouse_plasma"}. Built-in concentration challenges do not automatically infer uptake flux from concentration.}
+\item{model_mode}{\code{"meta_module_gem"} for context-specific reconstruction or \code{"full_gem"} for complete-network scoring.}
+\item{layer2_args}{Stage 5 controls. CORDA2 is the default completion for \code{"meta_module_gem"}; FASTCORE is selected with \code{model_params$model_completion = "fastcore"}.}
 \item{workers}{RegCompass-wide worker cap, default \code{10L}.}
 \item{progress}{Display workflow progress.}
 }
-\value{A complete RegCompass result with stage outputs, reaction annotations, rankings, and available condition comparisons.}
-\description{Runs the restartable RegCompass stages in order: regulatory evidence, metacells, reaction meta-modules, Layer 1 evidence, Layer 2 structural/scoring analysis, and result assembly. Mathematical definitions are documented in \code{docs/mathematical-model.md}.}
+\value{A complete RegCompass result containing the stage outputs and final reaction results.}
+\description{Runs the current RegCompass workflow in stage order: Pando regulatory evidence, shared-WNN metacells, reaction meta-modules, Layer 1 evidence, Layer 2 structural/scoring analysis, and result assembly.}
