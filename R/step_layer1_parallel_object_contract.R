@@ -58,7 +58,13 @@
   if (is.null(fit$regcompass_penalty_filter)) return(invisible(TRUE))
 
   threshold <- .rc_condition_padj_threshold(fit = fit)
-  expected_filter <- "Pando BH-active edge & target fit_status == 'ok'"
+  rsq_threshold <- .rc_target_rsq_threshold(
+    fit$regcompass_target_rsq_threshold %||% .rc_target_rsq_threshold()
+  )
+  expected_filter <- paste0(
+    "Pando BH-active edge & target fit_status == 'ok' & full-data target R2 >= ",
+    format(rsq_threshold, trim = TRUE)
+  )
   filter_value <- as.character(fit$regcompass_penalty_filter)
   if (length(filter_value) != 1L || is.na(filter_value) ||
       !identical(filter_value, expected_filter)) {
@@ -72,24 +78,38 @@
   required <- c(
     "statistically_supported", "global_support", "local_support",
     "active", "significant", "penalty_effect", "estimate", "estimable",
-    "padj", "fit_status", "penalty_eligible"
+    "padj", "fit_status", "target_rsq", "target_model_supported",
+    "penalty_eligible"
   )
   if (!all(required %in% colnames(coefficient))) {
     stop(
       "RegCompass-gated condition fits require Pando active-edge provenance, ",
-      "ridge coefficients, fit status and penalty eligibility.", call. = FALSE
+      "ridge coefficients, target fit status/R2 and penalty eligibility.",
+      call. = FALSE
     )
   }
   .rc_validate_pando_active_condition_edges(
     coefficient, padj_threshold = threshold
   )
+  expected_supported <-
+    trimws(as.character(coefficient$fit_status)) == "ok" &
+    is.finite(as.numeric(coefficient$target_rsq)) &
+    as.numeric(coefficient$target_rsq) >= rsq_threshold
+  if (!identical(
+      as.logical(coefficient$target_model_supported), expected_supported
+  )) {
+    stop("RegCompass target-model support flags do not match full-data R2 gate.",
+         call. = FALSE)
+  }
   expected_gate <- .rc_condition_penalty_gate(
-    coefficient, padj_threshold = threshold
+    coefficient,
+    padj_threshold = threshold,
+    target_rsq_threshold = rsq_threshold
   )
   if (!identical(as.logical(coefficient$penalty_eligible), expected_gate)) {
     stop(
       "RegCompass penalty_eligible flags must equal Pando BH-active edges with ",
-      "target fit_status == 'ok'.", call. = FALSE
+      "valid target fit status and full-data target R2 support.", call. = FALSE
     )
   }
   invisible(TRUE)
@@ -158,7 +178,7 @@
   if (!all(required_fit %in% colnames(fit_table)) || !nrow(fit_table) ||
       !all(required_coefficient %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN reliability requires target-condition fit diagnostics ",
+      "Condition-GRN target eligibility requires target-condition fit diagnostics ",
       "and Pando active ridge-edge flags.", call. = FALSE
     )
   }
@@ -194,10 +214,16 @@
   }
 
   threshold <- .rc_condition_padj_threshold(fit = fit)
+  rsq_threshold <- .rc_target_rsq_threshold(
+    fit$regcompass_target_rsq_threshold %||% .rc_target_rsq_threshold()
+  )
   coefficient$fit_status <- fit_table$fit_status[coefficient_index]
+  coefficient$rsq <- fit_table$rsq[coefficient_index]
   coefficient$padj_threshold <- threshold
   final_gate <- .rc_condition_penalty_gate(
-    coefficient, padj_threshold = threshold
+    coefficient,
+    padj_threshold = threshold,
+    target_rsq_threshold = rsq_threshold
   )
   n_active_edges <- tabulate(
     coefficient_index[final_gate], nbins = nrow(fit_table)
@@ -208,8 +234,12 @@
     stop("Condition-GRN fit_status values must be complete.", call. = FALSE)
   }
   reliability <- rep(NA_real_, nrow(fit_table))
-  eligible <- fit_status == "ok" & n_active_edges > 0L & is.finite(rsq)
-  reliability[eligible] <- sqrt(pmin(1, pmax(0, rsq[eligible])))
+  evaluated <- is.finite(rsq)
+  reliability[evaluated] <- as.numeric(
+    fit_status[evaluated] == "ok" &
+      rsq[evaluated] >= rsq_threshold &
+      n_active_edges[evaluated] > 0L
+  )
 
   data.frame(
     target = as.character(fit_table$target),
@@ -219,6 +249,7 @@
     n_significant_edges = as.integer(n_active_edges),
     n_projection_edges = as.integer(n_active_edges),
     padj_threshold = threshold,
+    target_rsq_threshold = rsq_threshold,
     reliability = reliability,
     stringsAsFactors = FALSE
   )
@@ -302,8 +333,8 @@
     celltype_col <- as.character(fit$cell_type_col)[[1L]]
     if (!all(c(condition_col, celltype_col) %in% colnames(unit_meta))) {
       stop("Metacell metadata lack fitted condition or cell-type columns.",
-           call. = FALSE)
-    }
+           call. = FALSE
+    )
     for (condition in fit$condition_levels) {
       selected_units <- unit_meta$unit_id[
         as.character(unit_meta[[condition_col]]) == condition &
@@ -356,8 +387,11 @@
         },
         numeric(1)
       ),
-      reliability_definition =
-        "sqrt(clamp(dictionary_conditional_oof_rsq,0,1)); requires >=1 active condition edge",
+      reliability_definition = paste0(
+        "binary target eligibility after Pando BH edge, fit_status and ",
+        "selected-lambda full-data R2 >= ",
+        format(.rc_target_rsq_threshold(), trim = TRUE)
+      ),
       padj_threshold = threshold,
       corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
       estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
