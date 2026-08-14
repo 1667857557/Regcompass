@@ -3,37 +3,51 @@
 #' Stage 1 resolves the Pando route independently for each retained broad cell
 #' type. Cell types with at least two retained conditions use the common-
 #' dictionary condition GRN; cell types with one retained condition use standard
-#' Pando and do not receive condition coefficients. Stage 2 builds one
-#' independent multimodal WNN graph per broad cell type and keeps final
-#' metacells condition-pure. Optional raw ATAC fragment files are aggregated to
-#' the final metacell membership and recounted before metacell TF-IDF.
+#' Pando. RegCompass applies a separate target-model quality gate using the
+#' selected-lambda final full-data Pando R-squared; OOF R-squared is diagnostic.
+#'
+#' Stage 2 builds one independent multimodal WNN graph per broad cell type with
+#' all conditions jointly present during WNN construction and Walktrap
+#' clustering. Condition splits parent memberships only after clustering. If a
+#' minimum final metacell size is requested, repair uses that exact original
+#' shared WNN within the same condition and broad cell type. The repaired
+#' membership is the only membership used by downstream aggregation/projection.
 #'
 #' Layer 2 selects exactly one structural route. `model_mode =
-#' "meta_module_gem"` uses original MATLAB CORDA2 by default. Set
+#' "meta_module_gem"` uses CORDA2 by default. Set
 #' `layer2_args$model_params$model_completion = "fastcore"` for the
-#' supplementary add-only FASTCORE route. `model_mode = "full_gem"` retains the
-#' complete GEM, applies the shared medium as exchange-reaction bounds only, and
-#' uses directional COMPASS vmax to identify infeasible targets; it does not
-#' execute FASTCORE or CORDA2. All routes use the COMPASS reaction-cost scale,
-#' with missing expression and structural reaction roles assigned cost 1.
+#' supplementary FASTCORE route. `model_mode = "full_gem"` retains the complete
+#' GEM and applies medium exchange bounds without structural reconstruction.
 #'
-#' When `medium_scenarios` is omitted, Human-GEM uses
-#' `"normal_human_plasma"` and Mouse-GEM uses `"mouse_plasma"`.
-#'
-#' One `workers` argument controls the maximum process count for all parallel
-#' stages. The default is 10. RegCompass automatically selects SOCK/Snow workers
-#' on Windows and Multicore workers on Linux/macOS. Two detected logical CPUs are
-#' reserved globally, and each stage/sub-step uses only the number of independent
-#' tasks it can actually execute concurrently.
-#'
-#' @param fragment_files Optional Stage 2 fragment input. Use `NULL`/`FALSE` to
-#' aggregate the existing ATAC matrix, a fragment path (or named path vector for
-#' multiple samples), or a data frame with `fragment_file`, `object_cell`, and
-#' `fragment_barcode`. Fragment routing does not make sample a metacell stratum.
-#' @param workers Total RegCompass worker cap, default 10. Users may increase or
-#' decrease it. The effective limit is
-#' `min(workers, max(1, detected logical CPUs - 2))`; the backend is selected
-#' automatically for the operating system.
+#' @param object Paired-cell Seurat RNA+ATAC object.
+#' @param gem Prepared genome-scale metabolic model.
+#' @param outdir Persistent output directory.
+#' @param genome Genome object matching ATAC coordinates and regulatory regions.
+#' @param pfm Optional motif collection.
+#' @param species `"auto"`, `"human"`, or `"mouse"`.
+#' @param condition_col Condition metadata column, or `NULL` for standard Pando.
+#' @param celltype_col Broad-cell-type metadata column.
+#' @param cell_type Optional broad-cell-type subset.
+#' @param rna_assay RNA assay name.
+#' @param atac_assay ATAC assay name.
+#' @param fragment_files Optional Stage 2 raw ATAC fragment input.
+#' @param pando_args Stage 1 Pando configuration.
+#' @param target_rsq_threshold RegCompass target-model quality threshold on the
+#' selected-lambda final full-data Pando R-squared. Default `0.05`. This is
+#' applied after Pando edge significance and does not redefine Pando
+#' `active`/`significant`; OOF R-squared remains diagnostic only.
+#' @param metacell_args Stage 2 WNN/metacell controls. When
+#' `min_metacell_size > 1`, `min_merge_affinity` must be explicit.
+#' @param meta_module_args Stage 3 controls.
+#' @param layer1_args Layer 1 controls.
+#' @param medium_scenarios Shared medium table. If omitted, species defaults are
+#' used. Built-in concentration challenges do not automatically infer uptake
+#' flux bounds from mM values.
+#' @param model_mode Structural route: `"meta_module_gem"` or `"full_gem"`.
+#' @param layer2_args Layer 2 controls.
+#' @param workers Total RegCompass worker cap, default 10.
+#' @param progress Show and persist stage progress.
+#' @return A complete RegCompass result.
 #' @export
 rc_run_regcompass <- function(
     object, gem, outdir, genome,
@@ -46,6 +60,7 @@ rc_run_regcompass <- function(
     atac_assay = "ATAC",
     fragment_files = NULL,
     pando_args = list(),
+    target_rsq_threshold = 0.05,
     metacell_args = list(),
     meta_module_args = list(),
     layer1_args = list(),
@@ -55,6 +70,7 @@ rc_run_regcompass <- function(
     workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE)) {
   model_mode <- match.arg(model_mode)
+  target_rsq_threshold <- .rc_target_rsq_threshold(target_rsq_threshold)
   bundles <- list(
     pando_args = pando_args,
     metacell_args = metacell_args,
@@ -100,6 +116,7 @@ rc_run_regcompass <- function(
     cell_type = cell_type, rna_assay = rna_assay,
     atac_assay = atac_assay,
     pando_args = pando_args,
+    target_rsq_threshold = target_rsq_threshold,
     workers = worker_limit,
     progress = progress
   )
@@ -151,6 +168,9 @@ rc_run_regcompass <- function(
     step1$grn_result$cell_type_analysis_mode
   result$params$requested_condition_col <- condition_col
   result$params$effective_condition_col <- step1$params$condition_col
+  result$params$target_rsq_threshold <- target_rsq_threshold
+  result$params$target_rsq_metric <- "selected_lambda_final_full_data_rsq"
+  result$params$oof_rsq_role <- "diagnostic_only"
   design <- step2$pooled$input_design
   result$params$native_supercell_api <- design$native_supercell_api
   result$params$native_supercell_inputs <- c(
@@ -162,6 +182,11 @@ rc_run_regcompass <- function(
   result$params$metacell_condition_scope <- design$condition_scope
   result$params$metacell_membership_split_timing <-
     design$membership_split_timing
+  result$params$metacell_repair_timing <- design$repair_timing
+  result$params$metacell_repair_geometry <- design$repair_geometry
+  result$params$metacell_min_merge_affinity <- design$min_merge_affinity
+  result$params$metacell_unresolved_small_policy <-
+    design$unresolved_small_policy
   result$params$metacell_modality_weighting <- design$modality_weighting
   result$params$metacell_atac_aggregation <- design$atac_aggregation_method
   result$params$fragment_files_supplied <- isTRUE(design$fragment_files_supplied)
