@@ -9,7 +9,201 @@
 # concentrations are provenance and availability evidence, not transporter
 # kinetics; they are never converted linearly into exchange flux bounds.
 
-.rc_make_medium_scenarios_unrestricted <- rc_make_medium_scenarios
+.rc_make_medium_scenarios_unrestricted <- function(
+    gem,
+    scenario = "custom",
+    species = c("auto", "human", "mouse"),
+    custom_medium = NULL,
+    custom_metabolites = NULL,
+    uptake_scale = 1,
+    exchange_roles = c("exchange"),
+    condition = "all",
+    exchange_limit = 1,
+    strict_preset_matching = TRUE) {
+  species <- .rc_infer_gem_species(gem, species)
+  if (!identical(as.character(scenario), "custom")) {
+    stop("Internal custom-medium builder accepts only `scenario = 'custom'`.",
+         call. = FALSE)
+  }
+  if (!is.null(custom_medium) && !is.null(custom_metabolites)) {
+    stop("Supply only one of `custom_medium` or `custom_metabolites`.",
+         call. = FALSE)
+  }
+  if (is.null(custom_medium) && is.null(custom_metabolites)) {
+    stop("A custom reaction-level or metabolite-level medium is required.",
+         call. = FALSE)
+  }
+
+  if (!is.null(custom_medium)) {
+    out <- as.data.frame(custom_medium, stringsAsFactors = FALSE)
+    required <- c("exchange_reaction_id", "lb", "ub")
+    if (!all(required %in% colnames(out)) || !nrow(out)) {
+      stop(
+        "`custom_medium` requires non-empty exchange_reaction_id, lb and ub columns.",
+        call. = FALSE
+      )
+    }
+    out$exchange_reaction_id <- trimws(as.character(out$exchange_reaction_id))
+    out$lb <- suppressWarnings(as.numeric(out$lb))
+    out$ub <- suppressWarnings(as.numeric(out$ub))
+    if (anyNA(out$exchange_reaction_id) ||
+        any(!nzchar(out$exchange_reaction_id)) ||
+        anyDuplicated(out$exchange_reaction_id) ||
+        any(!is.finite(out$lb)) || any(!is.finite(out$ub))) {
+      stop("Custom reaction-level medium rows must be unique and finite.",
+           call. = FALSE)
+    }
+    reactions <- colnames(gem$S)
+    if (is.null(reactions) || !length(reactions)) reactions <- names(gem$lb)
+    index <- match(out$exchange_reaction_id, reactions)
+    if (anyNA(index)) {
+      stop(
+        "Custom medium contains reaction IDs absent from the GEM: ",
+        paste(out$exchange_reaction_id[is.na(index)], collapse = ", "),
+        ".", call. = FALSE
+      )
+    }
+    base_lb <- as.numeric(gem$lb)[index]
+    base_ub <- as.numeric(gem$ub)[index]
+    requested_lb <- out$lb
+    requested_ub <- out$ub
+    out$lb <- pmax(requested_lb, base_lb)
+    out$ub <- pmin(requested_ub, base_ub)
+    if (any(out$lb > out$ub)) {
+      bad <- out$exchange_reaction_id[out$lb > out$ub]
+      stop(
+        "Custom medium is incompatible with original GEM directionality for: ",
+        paste(bad, collapse = ", "), ".", call. = FALSE
+      )
+    }
+    if (!"available" %in% colnames(out)) out$available <- TRUE
+    out$available <- as.logical(out$available)
+    if (anyNA(out$available)) {
+      stop("Custom medium `available` values must be TRUE or FALSE.",
+           call. = FALSE)
+    }
+    out$lb[!out$available] <- pmax(out$lb[!out$available], 0)
+    if (any(out$lb > out$ub)) {
+      stop("Unavailable custom exchange rows conflict with base GEM bounds.",
+           call. = FALSE)
+    }
+    if (!"medium_scenario_id" %in% colnames(out)) {
+      out$medium_scenario_id <- "custom"
+    }
+    if (!"condition" %in% colnames(out)) out$condition <- condition %||% "all"
+    out$species <- if (identical(species, "human")) {
+      "Homo sapiens"
+    } else {
+      "Mus musculus"
+    }
+    out$requested_lb <- requested_lb
+    out$requested_ub <- requested_ub
+    out$original_gem_lb <- base_lb
+    out$original_gem_ub <- base_ub
+    out$evidence_source <- "user_supplied_custom_medium"
+    out$assumption_level <- "explicit_user_flux_bound"
+    out$concentration_used_for_rate_bound <- FALSE
+    attr(out, "preset_diagnostics") <- data.frame(
+      preset_id = unique(as.character(out$medium_scenario_id))[[1L]],
+      species = unique(out$species)[[1L]],
+      n_requested = nrow(out),
+      n_mapped = nrow(out),
+      stringsAsFactors = FALSE
+    )
+    return(out)
+  }
+
+  compounds <- as.data.frame(custom_metabolites, stringsAsFactors = FALSE)
+  if (!nrow(compounds) || !"metabolite_name" %in% colnames(compounds)) {
+    stop("`custom_metabolites` requires a non-empty metabolite_name column.",
+         call. = FALSE)
+  }
+  compounds$metabolite_name <- trimws(as.character(compounds$metabolite_name))
+  if (anyNA(compounds$metabolite_name) ||
+      any(!nzchar(compounds$metabolite_name)) ||
+      anyDuplicated(compounds$metabolite_name)) {
+    stop("Custom metabolite names must be unique and non-empty.",
+         call. = FALSE)
+  }
+  if (!"available" %in% colnames(compounds)) compounds$available <- TRUE
+  compounds$available <- as.logical(compounds$available)
+  if (anyNA(compounds$available)) {
+    stop("Custom metabolite `available` values must be TRUE or FALSE.",
+         call. = FALSE)
+  }
+  if (!"concentration_mM" %in% colnames(compounds)) {
+    compounds$concentration_mM <- NA_real_
+  }
+  compounds$concentration_mM <- suppressWarnings(
+    as.numeric(compounds$concentration_mM)
+  )
+  if (!"uptake_fraction" %in% colnames(compounds)) {
+    compounds$uptake_fraction <- 1
+  }
+  compounds$uptake_fraction <- suppressWarnings(
+    as.numeric(compounds$uptake_fraction)
+  )
+  if (any(!is.finite(compounds$uptake_fraction)) ||
+      any(compounds$uptake_fraction < 0)) {
+    stop("Custom metabolite uptake_fraction must be finite and non-negative.",
+         call. = FALSE)
+  }
+  compounds$uptake_fraction[!compounds$available] <- 0
+  if (!"category" %in% colnames(compounds)) compounds$category <- "custom"
+  if (!"metabolite_pattern" %in% colnames(compounds)) {
+    compounds$metabolite_pattern <- vapply(
+      compounds$metabolite_name, .rc_medium_pattern, character(1)
+    )
+  }
+  if (!"gem_metabolite_aliases" %in% colnames(compounds)) {
+    compounds$gem_metabolite_aliases <- vapply(
+      compounds$metabolite_name,
+      function(x) paste(.rc_medium_gem_aliases(x), collapse = ";"),
+      character(1)
+    )
+  }
+  if (!"target_exchange_flag" %in% colnames(compounds)) {
+    compounds$target_exchange_flag <- TRUE
+  }
+  if (!"required_match" %in% colnames(compounds)) {
+    compounds$required_match <- TRUE
+  }
+  if (!"concentration_basis" %in% colnames(compounds)) {
+    compounds$concentration_basis <- "user_supplied"
+  }
+  if (!"component_reference_doi" %in% colnames(compounds)) {
+    compounds$component_reference_doi <- NA_character_
+  }
+  reference <- data.frame(
+    preset_id = "custom",
+    species = if (identical(species, "human")) "Homo sapiens" else "Mus musculus",
+    reference_label = "user supplied custom metabolite medium",
+    reference_doi = NA_character_,
+    reference_pmid = NA_character_,
+    evidence_scope = paste(
+      "User-supplied metabolite availability and explicit uptake fractions;",
+      "concentration values are provenance unless the user separately supplies",
+      "a flux sensitivity assumption."
+    ),
+    stringsAsFactors = FALSE
+  )
+  out <- .rc_build_medium_preset(
+    gem = gem,
+    preset_id = "custom",
+    species = species,
+    exchange_limit = exchange_limit,
+    uptake_scale = uptake_scale,
+    condition = condition %||% "all",
+    exchange_roles = exchange_roles,
+    strict_preset_matching = strict_preset_matching,
+    compounds = compounds,
+    custom_reference = reference
+  )
+  out$evidence_source <- "user_supplied_custom_medium"
+  out$assumption_level <- "explicit_user_metabolite_availability_or_uptake_fraction"
+  out$concentration_used_for_rate_bound <- FALSE
+  out
+}
 
 .rc_collapse_nonempty <- function(x) {
   x <- trimws(as.character(x))
@@ -264,7 +458,7 @@
       challenge_reference_doi = "10.1186/s13578-015-0030-1"
     ),
     stop("Unsupported culture challenge scenario: ", scenario_id,
-         call. = FALSE)
+         call. = FALSE
   )
 }
 
