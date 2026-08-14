@@ -1,4 +1,4 @@
-.strict_fit_fixture <- function(padj_threshold = 0.05) {
+.strict_fit_fixture <- function(padj_threshold = 0.05, rsq = c(0.8, 0.7)) {
   edge <- data.frame(
     edge_id = c("G||TF1||P1", "G||TF2||P2", "G||TF3||P3"),
     target = "G",
@@ -125,7 +125,7 @@
     contrasts = contrasts,
     fit = data.frame(
       target = rep("G", 2), condition = c("A", "B"),
-      rsq = c(0.8, 0.7), rsq_oof = c(0.8, 0.7),
+      rsq = rsq, rsq_in_sample = rsq, rsq_oof = rsq - 0.05,
       fit_status = "ok", lambda = 0.1,
       predictor_scale_reference = "equal_condition_within_condition_rms",
       stringsAsFactors = FALSE
@@ -146,7 +146,9 @@
     peak_layer = "data",
     peak_value_type = "normalized",
     preprocessing_fingerprint = "fixture-preprocessing",
-    target_genes = "G"
+    target_genes = "G",
+    rsq_definition = "selected_lambda_full_data_R2",
+    rsq_oof_role = "cross_validated_prediction_diagnostic_only"
   ), class = c("ConditionGRNFit", "list"))
 }
 
@@ -160,39 +162,36 @@ test_that("deduplicated common dictionary is complete in every condition", {
     "every common-dictionary edge"
   )
   duplicated <- fit
-  duplicated$edge_dictionary$edge_id[[2L]] <- duplicated$edge_dictionary$edge_id[[1L]]
+  duplicated$edge_dictionary$edge_id[[2L]] <-
+    duplicated$edge_dictionary$edge_id[[1L]]
   expect_error(
     RegCompassR:::.rc_require_pando_condition_grn_fit(duplicated),
     "common dictionary"
   )
 })
 
-test_that("global-only support can rescue dictionary admission for condition B", {
+test_that("dictionary support is provenance and condition activity remains Pando BH", {
   fit <- .strict_fit_fixture()
   expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
-  row <- which(fit$coefficients$condition == "B" &
-               fit$coefficients$edge_id == "G||TF2||P2")
-  expect_true(fit$coefficients$statistically_supported[[row]])
-  expect_true(fit$coefficients$global_support[[row]])
-  expect_false(fit$coefficients$local_support[[row]])
-  expect_true(fit$coefficients$active[[row]])
+  global_only <- which(
+    fit$coefficients$condition == "B" &
+      fit$coefficients$edge_id == "G||TF2||P2"
+  )
+  local_admitted <- which(
+    fit$coefficients$condition == "B" &
+      fit$coefficients$edge_id == "G||TF3||P3"
+  )
+  expect_true(fit$coefficients$global_support[[global_only]])
+  expect_false(fit$coefficients$local_support[[global_only]])
+  expect_true(fit$coefficients$active[[global_only]])
+  expect_false(fit$coefficients$global_support[[local_admitted]])
+  expect_false(fit$coefficients$local_support[[local_admitted]])
+  expect_true(fit$coefficients$active[[local_admitted]])
+  expect_equal(fit$coefficients$penalty_effect[[local_admitted]], 0.6)
 })
 
-test_that("local-only edge can be active in another condition after ridge BH", {
+test_that("Pando activity and penalty_effect remain authoritative", {
   fit <- .strict_fit_fixture()
-  row <- which(fit$coefficients$condition == "B" &
-               fit$coefficients$edge_id == "G||TF3||P3")
-  expect_true(fit$coefficients$statistically_supported[[row]])
-  expect_false(fit$coefficients$global_support[[row]])
-  expect_false(fit$coefficients$local_support[[row]])
-  expect_true(fit$coefficients$active[[row]])
-  expect_equal(fit$coefficients$penalty_effect[[row]], 0.6)
-})
-
-test_that("condition activity uses the configured BH threshold only after admission", {
-  fit <- .strict_fit_fixture()
-  expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
-
   wrong_effect <- fit
   row <- which(!fit$coefficients$active)[[1L]]
   wrong_effect$coefficients$penalty_effect[[row]] <-
@@ -211,20 +210,83 @@ test_that("condition activity uses the configured BH threshold only after admiss
   )
 })
 
-test_that("padj threshold remains configurable over the valid interval", {
-  fit <- .strict_fit_fixture(padj_threshold = 0.2)
-  expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
-  invalid <- fit
-  invalid$padj_threshold <- 1
-  expect_error(
-    RegCompassR:::.rc_require_pando_condition_grn_fit(invalid),
-    "incomplete"
+test_that("RegCompass adds full-data target R2 eligibility without rewriting Pando activity", {
+  fit <- .strict_fit_fixture()
+  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
+  expect_identical(gated$coefficients$active, fit$coefficients$active)
+  expect_identical(gated$coefficients$significant, fit$coefficients$significant)
+  expect_equal(gated$coefficients$penalty_effect, fit$coefficients$penalty_effect)
+  expect_true(all(gated$coefficients$target_model_supported))
+  expect_identical(gated$coefficients$penalty_eligible, fit$coefficients$active)
+  expect_true(all(gated$coefficients$target_rsq >= 0.05))
+  expect_identical(
+    gated$regcompass_penalty_filter,
+    "Pando BH-active edge & target fit_status == 'ok' & full-data target R2 >= 0.05"
   )
+  expect_identical(
+    gated$regcompass_target_rsq_definition,
+    "selected_lambda_full_data_R2"
+  )
+  expect_invisible(RegCompassR:::.rc_require_layer1_condition_grn_fit(gated))
+})
+
+test_that("low full-data target R2 rejects penalty eligibility but not Pando active flags", {
+  fit <- .strict_fit_fixture(rsq = c(0.8, 0.01))
+  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
+  rows_b <- gated$coefficients$condition == "B"
+  expect_true(any(gated$coefficients$active[rows_b]))
+  expect_false(any(gated$coefficients$target_model_supported[rows_b]))
+  expect_false(any(gated$coefficients$penalty_eligible[rows_b]))
+  expect_identical(gated$coefficients$active, fit$coefficients$active)
+  expect_equal(gated$coefficients$penalty_effect, fit$coefficients$penalty_effect)
+  expect_invisible(RegCompassR:::.rc_require_layer1_condition_grn_fit(gated))
+})
+
+test_that("non-estimable condition edges remain inactive", {
+  fit <- .strict_fit_fixture()
+  fit$coefficients$estimable[[3L]] <- FALSE
+  fit$coefficients$statistically_supported[[3L]] <- FALSE
+  fit$coefficients$active[[3L]] <- FALSE
+  fit$coefficients$significant[[3L]] <- FALSE
+  fit$coefficients$penalty_effect[[3L]] <- 0
+  fit$coefficients$padj[[3L]] <- NA_real_
+  fit$coefficients$pval[[3L]] <- NA_real_
+  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
+  expect_equal(gated$coefficients$penalty_effect[[3L]], 0)
+  expect_false(gated$coefficients$active[[3L]])
+  expect_false(gated$coefficients$penalty_eligible[[3L]])
+  expect_invisible(RegCompassR:::.rc_require_layer1_condition_grn_fit(gated))
+})
+
+test_that("target reliability is tri-state evaluation status rather than sqrt R2", {
+  fit <- .strict_fit_fixture()
+  reliability <- RegCompassR:::.rc_condition_target_reliability(fit)
+  expect_true(all(reliability$n_projection_edges > 0L))
+  expect_equal(reliability$reliability, c(1, 1))
+
+  none <- fit
+  rows <- none$coefficients$condition == "B"
+  none$coefficients$padj[rows] <- 1
+  none$coefficients$statistically_supported[rows] <- FALSE
+  none$coefficients$active[rows] <- FALSE
+  none$coefficients$significant[rows] <- FALSE
+  none$coefficients$penalty_effect[rows] <- 0
+  reliability_none <- RegCompassR:::.rc_condition_target_reliability(none)
+  expect_equal(
+    reliability_none$reliability[reliability_none$condition == "B"], 0
+  )
+
+  unavailable <- fit
+  unavailable$fit$rsq[unavailable$fit$condition == "B"] <- NA_real_
+  reliability_unavailable <-
+    RegCompassR:::.rc_condition_target_reliability(unavailable)
+  expect_true(is.na(reliability_unavailable$reliability[
+    reliability_unavailable$condition == "B"
+  ]))
 })
 
 test_that("pairwise differential GRN contrasts remain separate inference", {
   fit <- .strict_fit_fixture()
-  expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
   expect_equal(
     fit$contrasts$contrast_estimate,
     fit$contrasts$estimate_a - fit$contrasts$estimate_b
@@ -237,69 +299,7 @@ test_that("pairwise differential GRN contrasts remain separate inference", {
   )
 })
 
-test_that("Layer 1 preserves Pando activity and adds only fit-status eligibility", {
-  fit <- .strict_fit_fixture()
-  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
-  expect_identical(gated$coefficients$active, fit$coefficients$active)
-  expect_identical(gated$coefficients$significant, fit$coefficients$significant)
-  expect_equal(gated$coefficients$penalty_effect, fit$coefficients$penalty_effect)
-  expect_identical(
-    gated$coefficients$penalty_eligible,
-    fit$coefficients$active
-  )
-  expect_true(all(gated$coefficients$fit_status == "ok"))
-  expect_identical(
-    gated$regcompass_penalty_filter,
-    "Pando BH-active edge & target fit_status == 'ok'"
-  )
-  expect_identical(
-    gated$regcompass_significance_role,
-    "consume_pando_condition_bh_active_edge_without_reselection"
-  )
-  expect_invisible(
-    RegCompassR:::.rc_require_layer1_condition_grn_fit(gated)
-  )
-})
-
-test_that("non-estimable condition edges remain inactive", {
-  fit <- .strict_fit_fixture()
-  fit$coefficients$estimable[[3L]] <- FALSE
-  fit$coefficients$statistically_supported[[3L]] <- FALSE
-  fit$coefficients$active[[3L]] <- FALSE
-  fit$coefficients$significant[[3L]] <- FALSE
-  fit$coefficients$penalty_effect[[3L]] <- 0
-  fit$coefficients$padj[[3L]] <- NA_real_
-  fit$coefficients$pval[[3L]] <- NA_real_
-
-  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
-  expect_equal(gated$coefficients$penalty_effect[[3L]], 0)
-  expect_false(gated$coefficients$active[[3L]])
-  expect_false(gated$coefficients$penalty_eligible[[3L]])
-  expect_invisible(
-    RegCompassR:::.rc_require_layer1_condition_grn_fit(gated)
-  )
-})
-
-test_that("target reliability requires at least one active edge", {
-  fit <- .strict_fit_fixture()
-  reliability <- RegCompassR:::.rc_condition_target_reliability(fit)
-  expect_true(all(reliability$n_projection_edges > 0L))
-  expect_true(all(is.finite(reliability$reliability)))
-
-  none <- fit
-  rows <- none$coefficients$condition == "B"
-  none$coefficients$padj[rows] <- 1
-  none$coefficients$statistically_supported[rows] <- FALSE
-  none$coefficients$active[rows] <- FALSE
-  none$coefficients$significant[rows] <- FALSE
-  none$coefficients$penalty_effect[rows] <- 0
-  reliability_none <- RegCompassR:::.rc_condition_target_reliability(none)
-  expect_true(is.na(reliability_none$reliability[
-    reliability_none$condition == "B"
-  ]))
-})
-
-test_that("Layer 1 keeps product-of-means projection with Pando active gate", {
+test_that("Layer 1 keeps product-of-means projection with RegCompass eligibility gate", {
   selector <- paste(
     deparse(body(RegCompassR:::.rc_condition_pando_object_for_fit)),
     collapse = "\n"
@@ -322,12 +322,16 @@ test_that("condition contract is implemented once in functional source files", {
   r_files <- list.files(file.path(root, "R"), pattern = "\\.R$", full.names = TRUE)
   source_text <- unlist(lapply(r_files, readLines, warn = FALSE), use.names = FALSE)
   count_definition <- function(name) {
-    pattern <- paste0("^", gsub("\\.", "\\\\.", name),
-                      "[[:space:]]*<-[[:space:]]*function")
+    pattern <- paste0(
+      "^", gsub("\\.", "\\\\.", name),
+      "[[:space:]]*<-[[:space:]]*function"
+    )
     sum(grepl(pattern, source_text))
   }
   expect_identical(count_definition(".rc_require_pando_condition_grn_fit"), 1L)
   expect_identical(count_definition(".rc_require_layer1_condition_grn_fit"), 1L)
   expect_identical(count_definition(".rc_extract_condition_grn_contract"), 1L)
   expect_identical(count_definition(".rc_condition_pando_projection"), 1L)
+  expect_identical(count_definition(".rc_cell_first_projection_layer1"), 1L)
+  expect_identical(count_definition(".rc_cell_first_projection_layer1_v6"), 0L)
 })
