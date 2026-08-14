@@ -1,13 +1,204 @@
 # Literature-backed extracellular-medium contract.
 #
-# R/medium.R retains the low-level exchange mapping and custom-medium machinery.
-# This file defines the public biological scenarios and their evidence policy.
-# Nutrient composition is taken from high-authority, directly reproducible
-# formulations or quantitative extracellular metabolomics. Challenge papers
-# supply only the named treatment concentration; they do not define a flux
-# bound unless an independent transport/flux assumption is supplied explicitly.
+# R/medium.R owns the public rc_make_medium_scenarios() entry point and the
+# low-level exchange mapping machinery. This file provides biological preset
+# builders plus one explicit custom-medium builder. It never saves, aliases, or
+# redefines the public function.
 
-.rc_make_medium_scenarios_unrestricted <- rc_make_medium_scenarios
+.rc_make_medium_scenarios_unrestricted <- function(
+    gem, scenario = "custom", species = c("auto", "human", "mouse"),
+    custom_medium = NULL, custom_metabolites = NULL, uptake_scale = 1,
+    exchange_roles = c("exchange"), condition = "all", exchange_limit = 1,
+    strict_preset_matching = TRUE) {
+  species <- .rc_infer_gem_species(gem, species)
+  if (!identical(as.character(scenario), "custom")) {
+    stop("The internal custom-medium builder accepts only `scenario = 'custom'`.",
+         call. = FALSE)
+  }
+  if (!is.null(custom_medium) && !is.null(custom_metabolites)) {
+    stop("Supply only one of `custom_medium` or `custom_metabolites`.",
+         call. = FALSE)
+  }
+  if (is.null(custom_medium) && is.null(custom_metabolites)) {
+    stop("A custom medium requires `custom_medium` or `custom_metabolites`.",
+         call. = FALSE)
+  }
+
+  if (!is.null(custom_medium)) {
+    if (!is.data.frame(custom_medium)) {
+      stop("`custom_medium` must be a data.frame.", call. = FALSE)
+    }
+    out <- as.data.frame(custom_medium, stringsAsFactors = FALSE)
+    required <- c(
+      "medium_scenario_id", "exchange_reaction_id", "lb", "ub", "available"
+    )
+    missing <- setdiff(required, colnames(out))
+    if (length(missing)) {
+      stop("`custom_medium` missing columns: ", paste(missing, collapse = ", "),
+           call. = FALSE)
+    }
+    out$medium_scenario_id <- trimws(as.character(out$medium_scenario_id))
+    out$exchange_reaction_id <- trimws(as.character(out$exchange_reaction_id))
+    out$lb <- suppressWarnings(as.numeric(out$lb))
+    out$ub <- suppressWarnings(as.numeric(out$ub))
+    out$available <- as.logical(out$available)
+    out$condition <- if ("condition" %in% colnames(out)) {
+      trimws(as.character(out$condition))
+    } else {
+      as.character(condition %||% "all")
+    }
+    out$condition[is.na(out$condition) | !nzchar(out$condition)] <- "all"
+    if (anyNA(out$medium_scenario_id) || any(!nzchar(out$medium_scenario_id)) ||
+        anyNA(out$exchange_reaction_id) || any(!nzchar(out$exchange_reaction_id)) ||
+        any(!is.finite(out$lb)) || any(!is.finite(out$ub)) ||
+        any(out$lb > out$ub) || anyNA(out$available)) {
+      stop("Custom reaction-level rows require non-empty IDs, logical availability, and finite ordered bounds.",
+           call. = FALSE)
+    }
+    key <- paste(out$medium_scenario_id, out$exchange_reaction_id,
+                 out$condition, sep = "\001")
+    if (anyDuplicated(key)) {
+      stop("`custom_medium` contains duplicated scenario/reaction/condition rows.",
+           call. = FALSE)
+    }
+    validated <- rc_validate_gem(gem)
+    unknown <- setdiff(out$exchange_reaction_id, validated$reactions)
+    if (length(unknown) && isTRUE(strict_preset_matching)) {
+      stop("Custom medium reactions missing from GEM: ",
+           paste(utils::head(unknown, 10L), collapse = ", "), call. = FALSE)
+    }
+    if (length(unknown)) {
+      warning("Dropping custom medium reactions missing from GEM: ",
+              paste(utils::head(unknown, 10L), collapse = ", "), call. = FALSE)
+      out <- out[out$exchange_reaction_id %in% validated$reactions, , drop = FALSE]
+    }
+    if (!nrow(out)) stop("No custom reaction-level medium rows remain.", call. = FALSE)
+    defaults <- list(
+      metabolite_id = NA_character_,
+      evidence_source = "user_supplied_custom_medium",
+      assumption_level = "user_supplied_explicit_reaction_bounds",
+      target_exchange_flag = FALSE,
+      concentration_used_for_rate_bound = FALSE,
+      rate_bound_source = "user_supplied_explicit_reaction_bounds",
+      reference_label = NA_character_, reference_doi = NA_character_,
+      reference_pmid = NA_character_,
+      evidence_scope = "user-supplied extracellular environment"
+    )
+    for (field in names(defaults)) {
+      if (!field %in% colnames(out)) out[[field]] <- defaults[[field]]
+    }
+    out$species <- if (identical(species, "human")) "Homo sapiens" else "Mus musculus"
+    attr(out, "preset_diagnostics") <- data.frame()
+    rownames(out) <- NULL
+    return(out)
+  }
+
+  if (!is.data.frame(custom_metabolites)) {
+    stop("`custom_metabolites` must be a data.frame.", call. = FALSE)
+  }
+  compounds <- as.data.frame(custom_metabolites, stringsAsFactors = FALSE)
+  if (!"metabolite_name" %in% colnames(compounds)) {
+    stop("`custom_metabolites` requires `metabolite_name`.", call. = FALSE)
+  }
+  compounds$metabolite_name <- trimws(as.character(compounds$metabolite_name))
+  if (anyNA(compounds$metabolite_name) || any(!nzchar(compounds$metabolite_name))) {
+    stop("Custom metabolite names must be non-empty.", call. = FALSE)
+  }
+  explicit_uptake <- "uptake_fraction" %in% colnames(compounds)
+  defaults <- list(
+    medium_scenario_id = "custom",
+    available = TRUE,
+    concentration_mM = NA_real_,
+    uptake_fraction = 1,
+    category = "custom_metabolite",
+    target_exchange_flag = FALSE,
+    required_match = TRUE,
+    concentration_basis = "user_supplied",
+    component_reference_doi = NA_character_,
+    reference_label = NA_character_,
+    reference_doi = NA_character_
+  )
+  for (field in names(defaults)) {
+    if (!field %in% colnames(compounds)) compounds[[field]] <- defaults[[field]]
+  }
+  compounds$medium_scenario_id <- trimws(as.character(compounds$medium_scenario_id))
+  compounds$available <- as.logical(compounds$available)
+  compounds$concentration_mM <- suppressWarnings(as.numeric(compounds$concentration_mM))
+  compounds$uptake_fraction <- suppressWarnings(as.numeric(compounds$uptake_fraction))
+  compounds$target_exchange_flag <- as.logical(compounds$target_exchange_flag)
+  compounds$required_match <- as.logical(compounds$required_match)
+  if (anyNA(compounds$medium_scenario_id) || any(!nzchar(compounds$medium_scenario_id)) ||
+      anyNA(compounds$available) || anyNA(compounds$uptake_fraction) ||
+      any(!is.finite(compounds$uptake_fraction)) || any(compounds$uptake_fraction < 0) ||
+      anyNA(compounds$target_exchange_flag) || anyNA(compounds$required_match)) {
+    stop("Custom metabolite rows contain invalid scenario, availability, uptake, or matching values.",
+         call. = FALSE)
+  }
+  finite_concentration <- !is.na(compounds$concentration_mM)
+  if (any(!is.finite(compounds$concentration_mM[finite_concentration])) ||
+      any(compounds$concentration_mM[finite_concentration] < 0)) {
+    stop("Custom metabolite concentrations must be missing or finite non-negative values.",
+         call. = FALSE)
+  }
+  if (!"metabolite_pattern" %in% colnames(compounds)) {
+    compounds$metabolite_pattern <- vapply(
+      compounds$metabolite_name, .rc_medium_pattern, character(1)
+    )
+  }
+  if (!"gem_metabolite_aliases" %in% colnames(compounds)) {
+    compounds$gem_metabolite_aliases <- vapply(
+      compounds$metabolite_name,
+      function(name) paste(.rc_medium_gem_aliases(name), collapse = ";"),
+      character(1)
+    )
+  }
+
+  scenario_ids <- unique(compounds$medium_scenario_id)
+  pieces <- lapply(scenario_ids, function(id) {
+    one <- compounds[compounds$medium_scenario_id == id, , drop = FALSE]
+    reference_label <- .rc_collapse_nonempty(one$reference_label)
+    reference_doi <- .rc_collapse_nonempty(one$reference_doi)
+    reference <- data.frame(
+      preset_id = id,
+      species = if (identical(species, "human")) "Homo sapiens" else "Mus musculus",
+      reference_label = reference_label,
+      reference_doi = reference_doi,
+      reference_pmid = NA_character_,
+      evidence_scope = "user-supplied extracellular metabolite environment",
+      stringsAsFactors = FALSE
+    )
+    built <- .rc_build_medium_preset(
+      gem = gem, preset_id = id, species = species,
+      exchange_limit = exchange_limit, uptake_scale = uptake_scale,
+      condition = condition %||% "all", exchange_roles = exchange_roles,
+      strict_preset_matching = strict_preset_matching,
+      compounds = one, custom_reference = reference
+    )
+    source_index <- match(built$preset_metabolite, one$metabolite_name)
+    built$available <- one$available[source_index]
+    built$evidence_source <- "user_supplied_custom_metabolites"
+    built$assumption_level <- if (explicit_uptake) {
+      "user_supplied_relative_uptake_assumption"
+    } else {
+      "user_supplied_availability_without_flux_conversion"
+    }
+    built$concentration_used_for_rate_bound <- explicit_uptake &
+      built$target_exchange_flag %in% TRUE
+    built$rate_bound_source <- ifelse(
+      built$concentration_used_for_rate_bound,
+      "user_supplied_uptake_fraction_not_inferred_from_concentration",
+      "user_supplied_availability_intersected_with_original_gem_directionality"
+    )
+    built
+  })
+  diagnostics <- .rc_bind_frames_fill(lapply(
+    pieces, function(piece) attr(piece, "preset_diagnostics") %||% data.frame()
+  ))
+  out <- .rc_bind_frames_fill(pieces)
+  attr(out, "preset_diagnostics") <- diagnostics
+  rownames(out) <- NULL
+  out
+}
 
 .rc_collapse_nonempty <- function(x) {
   x <- trimws(as.character(x))
@@ -266,9 +457,6 @@
   compounds$concentration_basis[selected] <- definition$concentration_basis
   compounds$component_reference_doi[selected] <-
     definition$challenge_reference_doi
-  # Concentration is biological scenario metadata. In the absence of an
-  # independently specified transport/uptake flux bound, retain the background
-  # model-defined uptake cap. No mM ratio is converted into a flux quantity.
   compounds$uptake_fraction[selected] <- 1
   compounds$target_exchange_flag[selected] <- TRUE
   compounds$required_match[selected] <- TRUE
