@@ -4,8 +4,8 @@
 # This file defines the public biological scenarios and their evidence policy.
 # Nutrient composition is taken from high-authority, directly reproducible
 # formulations or quantitative extracellular metabolomics. Challenge papers
-# supply only the named treatment concentration; they do not define the basal
-# nutrient composition unless a complete formulation is provided.
+# supply only the named treatment concentration; they do not define a flux
+# bound unless an independent transport/flux assumption is supplied explicitly.
 
 .rc_make_medium_scenarios_unrestricted <- rc_make_medium_scenarios
 
@@ -36,9 +36,6 @@
     "alpha_ketoglutarate", "acetylcarnitine", "malate", "uridine"
   )
 
-  # Keep only components with an exact HPLM concentration. Rounded serum-ion
-  # substitutions and availability-only additions are excluded rather than
-  # merged into the authoritative culture background.
   keep <- is.finite(compounds$concentration_mM) & (
     compounds$component_reference_doi == cell_2017 |
       compounds$metabolite_name %in% updated_components
@@ -119,11 +116,6 @@
   compounds <- .rc_medium_catalog("mouse_plasma", "mouse")
   nature_2026 <- "10.1038/s41586-025-09898-9"
   quantitative_secondary <- "10.1152/ajpcell.00452.2024"
-
-  # Conservative subset explicitly supported by the Nature 2026 plasma and
-  # tissue-fluid metabolomics study. The study quantified 124 metabolites in
-  # plasma and extracellular fluids across NSG and C57BL/6J mice. Components
-  # outside this auditable set are omitted rather than inherited from HPLM.
   supported <- c(
     "glucose", "lactate", "glutamine", "arginine", "ornithine",
     "citrulline", "isoleucine", "leucine", "valine", "serine",
@@ -219,35 +211,35 @@
   switch(
     scenario_id,
     high_glucose = list(
-      target = "glucose", concentration_mM = 25, reference_high_mM = 25,
+      target = "glucose", concentration_mM = 25,
       concentration_basis = "Han_2015_high_glucose_25mM",
       challenge_reference_label =
         "Han et al., Gynecologic Oncology 2015; 25 mM glucose",
       challenge_reference_doi = "10.1016/j.ygyno.2015.06.036"
     ),
     low_glucose = list(
-      target = "glucose", concentration_mM = 1, reference_high_mM = 25,
+      target = "glucose", concentration_mM = 1,
       concentration_basis = "Han_2015_low_glucose_1mM",
       challenge_reference_label =
         "Han et al., Gynecologic Oncology 2015; 1 mM glucose",
       challenge_reference_doi = "10.1016/j.ygyno.2015.06.036"
     ),
     high_lactate = list(
-      target = "lactate", concentration_mM = 20, reference_high_mM = 20,
+      target = "lactate", concentration_mM = 20,
       concentration_basis = "San_Millan_2020_high_lactate_20mM",
       challenge_reference_label =
         "San-Millan et al., Frontiers in Oncology 2020; 20 mM lactate",
       challenge_reference_doi = "10.3389/fonc.2019.01536"
     ),
     low_lactate = list(
-      target = "lactate", concentration_mM = 0.5, reference_high_mM = 20,
+      target = "lactate", concentration_mM = 0.5,
       concentration_basis = "Cho_2025_low_lactate_0.5mM",
       challenge_reference_label =
         "Cho et al., Physiological Reports 2025; 0.5 mM lactate",
       challenge_reference_doi = "10.14814/phy2.70450"
     ),
     low_glutamine = list(
-      target = "glutamine", concentration_mM = 0.5, reference_high_mM = 4,
+      target = "glutamine", concentration_mM = 0.5,
       concentration_basis = "Visagie_2015_low_glutamine_0.5mM",
       challenge_reference_label = paste(
         "Visagie et al., Cell Bioscience 2015;",
@@ -274,8 +266,10 @@
   compounds$concentration_basis[selected] <- definition$concentration_basis
   compounds$component_reference_doi[selected] <-
     definition$challenge_reference_doi
-  compounds$uptake_fraction[selected] <-
-    definition$concentration_mM / definition$reference_high_mM
+  # Concentration is biological scenario metadata. In the absence of an
+  # independently specified transport/uptake flux bound, retain the background
+  # model-defined uptake cap. No mM ratio is converted into a flux quantity.
+  compounds$uptake_fraction[selected] <- 1
   compounds$target_exchange_flag[selected] <- TRUE
   compounds$required_match[selected] <- TRUE
 
@@ -298,7 +292,8 @@
     evidence_scope = paste(
       "Authoritative HPLM basal composition from Cell and Cell Metabolism,",
       "independently validated against Plasmax in Science Advances, with only",
-      "the named nutrient concentration overridden by the challenge paper."
+      "the named nutrient concentration overridden as scenario metadata;",
+      "concentration is not converted to an uptake flux bound."
     ),
     stringsAsFactors = FALSE
   )
@@ -315,6 +310,12 @@
     compounds = compounds,
     custom_reference = reference
   )
+  target_rows <- out$target_exchange_flag %in% TRUE
+  out$concentration_used_for_rate_bound[target_rows] <- FALSE
+  out$rate_bound_source[target_rows] <-
+    "background_model_cap_concentration_metadata_only"
+  out$assumption_level[target_rows] <-
+    "literature_concentration_metadata_without_flux_conversion"
   out$medium_background_id <- background$background_id
   out$background_reference_label <- background$background_reference_label
   out$background_reference_doi <- background$background_reference_doi
@@ -324,7 +325,9 @@
     background$background_validation_reference_doi
   out$challenge_reference_label <- definition$challenge_reference_label
   out$challenge_reference_doi <- definition$challenge_reference_doi
-  out$scenario_construction <-
-    "authoritative_HPLM_background_plus_named_nutrient_override"
+  out$scenario_construction <- paste(
+    "authoritative_HPLM_background_plus_named_nutrient_concentration_metadata;",
+    "no_automatic_concentration_to_flux_mapping"
+  )
   out
 }
