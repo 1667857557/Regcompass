@@ -1,17 +1,21 @@
-test_that("penalty q is one for valid active targets and ignores R-squared", {
+test_that("penalty q distinguishes active, rejected and unavailable targets", {
   grn_result <- list(
-    tf_peak_gene_condition = data.frame(
+    tf_peak_gene_condition_all = data.frame(
       target = c("G1", "G1", "G2", "G3"),
       condition = c("A", "B", "A", "A"),
       cell_type = c("T", "T", "T", "B"),
-      rsq = c(0.01, 0.99, NA, -4),
-      rsq_oof = c(-10, NA, 0.5, 2),
+      stringsAsFactors = FALSE
+    ),
+    tf_peak_gene_condition = data.frame(
+      target = c("G1", "G2"),
+      condition = c("A", "A"),
+      cell_type = c("T", "T"),
       stringsAsFactors = FALSE
     )
   )
   unit_meta <- data.frame(
     unit_id = c("u1", "u2", "u3", "u4"),
-    condition = c("A", "B", "A", "A"),
+    condition = c("A", "B", "A", "C"),
     cell_type = c("T", "T", "B", "T"),
     stringsAsFactors = FALSE
   )
@@ -29,40 +33,33 @@ test_that("penalty q is one for valid active targets and ignores R-squared", {
   )
 
   expect_equal(q["g1", "u1"], 1)
-  expect_equal(q["g1", "u2"], 1)
+  expect_equal(q["g1", "u2"], 0)
   expect_equal(q["g2", "u1"], 1)
-  expect_equal(q["g3", "u3"], 1)
+  expect_equal(q["g3", "u3"], 0)
   expect_true(is.na(q["g1", "u3"]))
   expect_true(is.na(q["g2", "u2"]))
   expect_true(is.na(q["g4", "u1"]))
+  expect_true(is.na(q["g1", "u4"]))
 })
 
-test_that("penalty q is determined only by the final active-edge table", {
-  active <- list(
-    tf_peak_gene_condition = data.frame(
-      target = "G1", condition = "A", cell_type = "T",
-      rsq = NA_real_, rsq_oof = NA_real_, stringsAsFactors = FALSE
-    )
+test_that("q zero is a neutral regulatory modifier even when projection is missing", {
+  projection <- matrix(
+    c(NA_real_, 2), nrow = 1,
+    dimnames = list("g1", c("u_rejected", "u_active"))
   )
-  inactive <- list(tf_peak_gene_condition = data.frame())
-  unit_meta <- data.frame(
-    unit_id = "u1", condition = "A", cell_type = "T",
-    stringsAsFactors = FALSE
+  reliability <- matrix(
+    c(0, 1), nrow = 1, dimnames = dimnames(projection)
   )
-  template <- matrix(0, 1, 1, dimnames = list("g1", "u1"))
+  scale <- matrix(1, nrow = 1, ncol = 2, dimnames = dimnames(projection))
 
-  q_active <- RegCompassR:::.rc_active_target_penalty_q(
-    active, unit_meta, "condition", "cell_type", template
+  modifier <- RegCompassR:::.rc_scaled_regulatory_modifier(
+    projection, reliability, scale
   )
-  q_inactive <- RegCompassR:::.rc_active_target_penalty_q(
-    inactive, unit_meta, "condition", "cell_type", template
-  )
-
-  expect_equal(q_active[[1L]], 1)
-  expect_true(is.na(q_inactive[[1L]]))
+  expect_equal(modifier["g1", "u_rejected"], 0)
+  expect_true(is.finite(modifier["g1", "u_active"]))
 })
 
-test_that("combined Pando projection does not reuse route-level R-squared weights", {
+test_that("combined Pando projection uses R2 as a gate rather than a weight", {
   body_text <- paste(
     deparse(body(RegCompassR:::.rc_project_pando_by_celltype)),
     collapse = "\n"
@@ -72,7 +69,7 @@ test_that("combined Pando projection does not reuse route-level R-squared weight
   expect_false(grepl("standard$reliability", body_text, fixed = TRUE))
   expect_match(
     body_text,
-    "q=1 for valid active target; R2 and OOF R2 excluded from penalty",
+    "q=1 evaluated with eligible active edge; q=0 evaluated but rejected",
     fixed = TRUE
   )
 })
