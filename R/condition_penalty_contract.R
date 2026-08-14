@@ -66,8 +66,10 @@
   if (anyNA(status) || any(!nzchar(status))) {
     stop("Condition-GRN fit_status values must be complete.", call. = FALSE)
   }
-  evaluated <- !is.na(status) & nzchar(status) & is.finite(target_rsq)
-  supported <- evaluated & status == "ok" & target_rsq >= threshold
+  # "evaluated" records that a final target model was successfully fit. A
+  # non-finite R2 is therefore evaluated-but-unsupported rather than unavailable.
+  evaluated <- status == "ok"
+  supported <- evaluated & is.finite(target_rsq) & target_rsq >= threshold
   data.frame(
     fit_status = status,
     target_rsq = target_rsq,
@@ -164,9 +166,9 @@
   invisible(expected_active)
 }
 
-.rc_condition_penalty_gate <- function(
-    coefficient, padj_threshold = NULL,
-    target_rsq_threshold = .RC_PANDO_TARGET_RSQ_THRESHOLD_DEFAULT) {
+# Edge-level Pando/fit-status gate only. Target-model R2 is intentionally kept
+# separate so RegCompass does not redefine Pando's active/significant statistic.
+.rc_condition_penalty_gate <- function(coefficient, padj_threshold = NULL) {
   threshold <- if (is.null(padj_threshold)) {
     .rc_condition_padj_threshold(coefficient = coefficient)
   } else {
@@ -178,7 +180,6 @@
     }
     value
   }
-  target_threshold <- .rc_target_rsq_threshold(target_rsq_threshold)
   active <- .rc_validate_pando_active_condition_edges(
     coefficient, padj_threshold = threshold
   )
@@ -187,16 +188,7 @@
   } else {
     rep(NA_character_, nrow(coefficient))
   }
-  target_rsq <- if ("target_rsq" %in% colnames(coefficient)) {
-    suppressWarnings(as.numeric(coefficient$target_rsq))
-  } else if ("rsq" %in% colnames(coefficient)) {
-    suppressWarnings(as.numeric(coefficient$rsq))
-  } else {
-    rep(NA_real_, nrow(coefficient))
-  }
-  supported <- !is.na(fit_status) & fit_status == "ok" &
-    is.finite(target_rsq) & target_rsq >= target_threshold
-  active & supported
+  active & !is.na(fit_status) & fit_status == "ok"
 }
 
 .rc_apply_condition_penalty_gate <- function(
@@ -215,11 +207,10 @@
   coefficient$target_model_supported <- diagnostics$target_model_supported
   coefficient$padj_threshold <- threshold
   coefficient$target_rsq_threshold <- target_threshold
-  gate <- .rc_condition_penalty_gate(
-    coefficient,
-    padj_threshold = threshold,
-    target_rsq_threshold = target_threshold
+  edge_gate <- .rc_condition_penalty_gate(
+    coefficient, padj_threshold = threshold
   )
+  gate <- edge_gate & coefficient$target_model_supported %in% TRUE
   coefficient$penalty_eligible <- gate
   coefficient$active_in_condition <- gate
   fit$coefficients <- coefficient
@@ -235,7 +226,7 @@
   fit$regcompass_rank_deficient_policy <-
     "regularized_ok_fit_retained; non-estimable condition edge excluded"
   fit$regcompass_significance_role <-
-    "consume_pando_condition_bh_active_edge_without_redefining_significance"
+    "consume_pando_condition_bh_active_edge_without_reselection"
   fit$regcompass_padj_threshold <- threshold
   fit
 }
@@ -271,9 +262,9 @@
   } else {
     NA_real_
   }
-  table$target_model_evaluated <- !is.na(status) & nzchar(status) & is.finite(rsq)
+  table$target_model_evaluated <- !is.na(status) & status == "ok"
   table$target_model_supported <- table$target_model_evaluated &
-    status == "ok" & rsq >= target_threshold
+    is.finite(rsq) & rsq >= target_threshold
   table$target_rsq_threshold <- target_threshold
   table
 }
