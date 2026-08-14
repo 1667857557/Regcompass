@@ -279,9 +279,6 @@
       )
     )
   )
-  # Exact HPLM formulation concentrations are used where the catalog has a
-  # direct one-to-one component. Rounded serum/plasma reference values are kept
-  # only for ions that are represented by several salts in the formulation.
   hplm_concentrations <- c(
     glycine = 0.3, alanine = 0.43000337, arginine = 0.1100019,
     asparagine = 0.05, aspartate = 0.02, cysteine = 0.03999886,
@@ -332,249 +329,61 @@
     "10.1016/j.cell.2017.03.023"
   physiologic$component_reference_doi[serum_ion_row] <-
     "10.1371/journal.pone.0016957"
-  sensitivity_reference <- c(glucose = 25, lactate = 20, glutamine = 2)
-  sensitivity_index <- match(
-    physiologic$metabolite_name, names(sensitivity_reference)
-  )
-  sensitivity_rows <- !is.na(sensitivity_index)
-  physiologic$uptake_fraction[sensitivity_rows] <- pmin(
-    1,
-    physiologic$concentration_mM[sensitivity_rows] /
-      sensitivity_reference[sensitivity_index[sensitivity_rows]]
-  )
-  physiologic$target_exchange_flag[sensitivity_rows] <- TRUE
+  physiologic$uptake_fraction <- 1
+  physiologic$target_exchange_flag <- FALSE
 
   if (identical(preset_id, "normal_human_plasma")) {
     return(physiologic)
   }
   if (identical(preset_id, "mouse_plasma")) {
-  # Quantitative target nutrients use healthy-mouse plasma-medium
-  # values from Gardner and Stuart (2024; doi:10.1152/ajpcell.00452.2024).
-  # The wider availability catalog is supported by murine plasma/TIF
-  # measurements from Sullivan et al. (2019; doi:10.7554/eLife.44235).
-  mouse_target_concentrations <- c(
-    glucose = 4.381,
-    lactate = 3.088,
-    glutamine = 0.934
-  )
-  physiologic$concentration_mM <- NA_real_
-  physiologic$concentration_basis <-
-    "mouse_plasma_availability_only_no_quantitative_bound"
-  physiologic$component_reference_doi <- NA_character_
-  physiologic$uptake_fraction <- 1
-  physiologic$target_exchange_flag <- FALSE
-
-  target_index <- match(
-    physiologic$metabolite_name,
-    names(mouse_target_concentrations)
-  )
-  target_rows <- !is.na(target_index)
-  physiologic$concentration_mM[target_rows] <-
-    mouse_target_concentrations[target_index[target_rows]]
-  physiologic$concentration_basis[target_rows] <-
-    "healthy_mouse_plasma_MPM_reference"
-  physiologic$component_reference_doi[target_rows] <-
-    "10.1152/ajpcell.00452.2024"
-  physiologic$uptake_fraction[target_rows] <- pmin(
-    1,
-    physiologic$concentration_mM[target_rows] /
-      sensitivity_reference[sensitivity_index[target_rows]]
-  )
-  physiologic$target_exchange_flag[target_rows] <- TRUE
-  return(physiologic)
-}
-
-  if (identical(preset_id, "rpmi1640")) {
-    rpm_names <- c(
-      "glycine", "hydroxyproline", "arginine", "asparagine", "aspartate",
-      "cystine", "glutamate", "glutamine", "histidine", "isoleucine",
-      "leucine", "lysine", "methionine", "phenylalanine", "proline",
-      "serine", "threonine", "tryptophan", "tyrosine", "valine",
-      "biotin", "choline", "pantothenate", "folate", "niacinamide",
-      "p_aminobenzoate", "pyridoxine", "riboflavin", "thiamine",
-      "vitamin_b12", "inositol", "calcium", "magnesium", "potassium",
-      "sodium", "chloride", "bicarbonate", "phosphate", "glucose",
-      "glutathione", "oxygen", "carbon_dioxide", "water"
+    mouse_target_concentrations <- c(
+      glucose = 4.381,
+      lactate = 3.088,
+      glutamine = 0.934
     )
-    rpm_conc <- c(
-      0.13333334, 0.15267175, 1.1494253, 0.37878788, 0.15037593,
-      0.20833333, 0.13605443, 2.0547945, 0.09677419, 0.3816794,
-      0.3816794, 0.21857923, 0.10067114, 0.09090909, 0.17391305,
-      0.2857143, 0.16806723, 0.024509804, 0.110497236, 0.17094018,
-      8.1967213e-4, 0.021428572, 5.24109e-4, 0.002265, 0.008196721,
-      0.00729927, 0.004854369, 5.319149e-4, 0.002967359,
-      3.690037e-6, 0.19444445, 0.42372882, 0.40650406, 5.3333335,
-      103.44827, 103.44827, 23.809525, 5.641791, 11.111111,
-      0.003257329, NA, NA, NA
+    physiologic$concentration_mM <- NA_real_
+    physiologic$concentration_basis <-
+      "mouse_plasma_availability_only_no_quantitative_bound"
+    physiologic$component_reference_doi <- NA_character_
+    physiologic$uptake_fraction <- 1
+    physiologic$target_exchange_flag <- FALSE
+    target_index <- match(
+      physiologic$metabolite_name,
+      names(mouse_target_concentrations)
     )
-    out <- .rc_medium_rows(
-      rpm_names,
-      rpm_conc,
-      category = ifelse(
-        rpm_names %in% amino_acids, "amino_acid",
-        ifelse(
-          rpm_names %in% vitamins, "vitamin_or_cofactor",
-          ifelse(rpm_names %in% ions, "inorganic_ion", "other_component")
-        )
-      ),
-      required = rpm_names %in% c("glucose", "glutamine", essential)
-    )
-    out$concentration_basis <- ifelse(
-      is.na(out$concentration_mM), "availability_only", "RPMI_1640_formulation"
-    )
-    out$component_reference_doi <- "10.1001/jama.1967.03120080053007"
-    return(out)
+    target_rows <- !is.na(target_index)
+    physiologic$concentration_mM[target_rows] <-
+      mouse_target_concentrations[target_index[target_rows]]
+    physiologic$concentration_basis[target_rows] <-
+      "healthy_mouse_plasma_MPM_reference"
+    physiologic$component_reference_doi[target_rows] <-
+      "10.1152/ajpcell.00452.2024"
+    return(physiologic)
   }
-
-  if (identical(preset_id, "dmem_high_glucose")) {
-    dmem_names <- c(
-      "glycine", "arginine", "cystine", "glutamine", "histidine",
-      "isoleucine", "leucine", "lysine", "methionine", "phenylalanine",
-      "serine", "threonine", "tryptophan", "tyrosine", "valine",
-      "choline", "pantothenate", "folate", "niacinamide", "pyridoxine",
-      "riboflavin", "thiamine", "inositol", "calcium", "iron",
-      "magnesium", "potassium", "sodium", "chloride", "bicarbonate",
-      "phosphate", "glucose", "oxygen", "carbon_dioxide", "water"
-    )
-    dmem_conc <- c(
-      0.4, 0.39810428, 0.20127796, 4.0, 0.2, 0.8015267, 0.8015267,
-      0.7978142, 0.20134228, 0.4, 0.4, 0.79831934, 0.078431375,
-      0.39846742, 0.8034188, 0.028571429, 0.008385744, 0.009070295,
-      0.032786883, 0.019417476, 0.00106383, 0.011869436, 0.04,
-      1.8018018, 2.4752476e-4, 0.8139166, 5.3333335, 110.344826,
-      110.344826, 44.04762, 0.9057971, 25.0, NA, NA, NA
-    )
-    out <- .rc_medium_rows(
-      dmem_names,
-      dmem_conc,
-      category = ifelse(
-        dmem_names %in% amino_acids, "amino_acid",
-        ifelse(
-          dmem_names %in% vitamins, "vitamin_or_cofactor",
-          ifelse(dmem_names %in% ions, "inorganic_ion", "other_component")
-        )
-      ),
-      required = dmem_names %in% c("glucose", "glutamine", essential)
-    )
-    out$concentration_basis <- ifelse(
-      is.na(out$concentration_mM), "availability_only",
-      "DMEM_high_glucose_11965_formulation"
-    )
-    out$component_reference_doi <- "10.1016/0042-6822(59)90063-3"
-    return(out)
-  }
-
-  if (preset_id %in% c(
-    "high_glucose", "low_glucose", "high_lactate", "low_lactate",
-    "low_glutamine"
-  )) {
-    if (!identical(species, "human")) {
-      stop(
-        "`", preset_id, "` is a human-derived nutrient challenge and ",
-        "requires a Human-GEM run.",
-        call. = FALSE
-      )
-    }
-    out <- .rc_medium_catalog("normal_human_plasma", "human")
-    target <- switch(
-      preset_id,
-      high_glucose = "glucose",
-      low_glucose = "glucose",
-      high_lactate = "lactate",
-      low_lactate = "lactate",
-      low_glutamine = "glutamine"
-    )
-    concentration <- switch(
-      preset_id,
-      high_glucose = 25,
-      low_glucose = 1,
-      high_lactate = 20,
-      low_lactate = 0.5,
-      low_glutamine = 0.05
-    )
-    reference_high <- switch(
-      target, glucose = 25, lactate = 20, glutamine = 2
-    )
-    concentration_basis <- switch(
-      preset_id,
-      high_glucose = "human_endometrial_cell_glucose_challenge_Han_2015",
-      low_glucose = "human_endometrial_cell_glucose_challenge_Han_2015",
-      high_lactate = "human_MCF7_lactate_challenge_San_Millan_2019",
-      low_lactate = "human_T_cell_lactate_control_Cho_2025",
-      low_glutamine = "human_tumor_cell_glutamine_deprivation_Visagie_2015"
-    )
-    component_reference_doi <- switch(
-      preset_id,
-      high_glucose = "10.1016/j.ygyno.2015.06.036",
-      low_glucose = "10.1016/j.ygyno.2015.06.036",
-      high_lactate = "10.3389/fonc.2019.01536",
-      low_lactate = "10.14814/phy2.70450",
-      low_glutamine = "10.1186/s13578-015-0030-1"
-    )
-    selected <- out$metabolite_name == target
-    out$concentration_mM[selected] <- concentration
-    out$concentration_basis[selected] <- concentration_basis
-    out$component_reference_doi[selected] <- component_reference_doi
-    out$uptake_fraction[selected] <- concentration / reference_high
-    out$target_exchange_flag[selected] <- TRUE
-    out$required_match[selected] <- TRUE
-    return(out)
-  }
-  stop("Unsupported medium preset: ", preset_id, call. = FALSE)
+  stop(
+    "Internal medium catalog supports only normal_human_plasma and mouse_plasma; ",
+    "culture challenges are defined by published_medium_contract.R.",
+    call. = FALSE
+  )
 }
 
 .rc_medium_reference_catalog <- function() {
   data.frame(
-    preset_id = c(
-      "normal_human_plasma", "mouse_plasma", "rpmi1640",
-      "dmem_high_glucose", "high_glucose", "low_glucose",
-      "high_lactate", "low_lactate", "low_glutamine", "custom"
-    ),
-    species = c(
-      "Homo sapiens", "Mus musculus", "not species-specific",
-      "not species-specific", rep("Homo sapiens", 5),
-      "user supplied"
-    ),
+    preset_id = c("normal_human_plasma", "mouse_plasma", "custom"),
+    species = c("Homo sapiens", "Mus musculus", "user supplied"),
     reference_label = c(
-      paste(
-        "Cantor et al., Cell 2017 (HPLM);",
-        "Psychogios et al., PLoS One 2011"
-      ),
-      paste(
-        "Gardner and Stuart, Am J Physiol Cell Physiol 2024;",
-        "Sullivan et al., eLife 2019"
-      ),
-      "Moore et al., JAMA 1967; Thermo Fisher RPMI-1640 formulation 11875",
-      "Dulbecco and Freeman, Virology 1959; Thermo Fisher DMEM formulation 11965",
-      "Han et al., Gynecol Oncol 2015; human cells at 25 mM glucose",
-      "Han et al., Gynecol Oncol 2015; human cells at 1 mM glucose",
-      "San-Millan et al., Front Oncol 2019; human MCF7 cells at 20 mM lactate",
-      "Cho et al., Physiol Rep 2025; human T cells at 0.5 mM lactate",
-      "Visagie et al., Cell Biosci 2015; human tumor cells at 0.05 mM glutamine",
+      "Cantor et al., Cell 2017 HPLM",
+      "mouse plasma metabolite availability",
       "user supplied"
     ),
     reference_doi = c(
-      "10.1016/j.cell.2017.03.023;10.1371/journal.pone.0016957",
-      "10.1152/ajpcell.00452.2024;10.7554/eLife.44235",
-      "10.1001/jama.1967.03120080053007",
-      "10.1016/0042-6822(59)90063-3",
-      "10.1016/j.ygyno.2015.06.036",
-      "10.1016/j.ygyno.2015.06.036",
-      "10.3389/fonc.2019.01536",
-      "10.14814/phy2.70450",
-      "10.1186/s13578-015-0030-1",
+      "10.1016/j.cell.2017.03.023",
+      "10.1152/ajpcell.00452.2024",
       NA_character_
     ),
     evidence_scope = c(
-      "adult human plasma-like polar nutrient availability",
-      "murine plasma and tumor interstitial-fluid polar nutrient availability",
-      "serum-free RPMI-1640 basal formulation",
-      "DMEM high-glucose basal formulation",
-      "human glucose challenge on a normal-human-plasma background",
-      "human glucose challenge on a normal-human-plasma background",
-      "human lactate challenge on a normal-human-plasma background",
-      "human low-lactate condition on a normal-human-plasma background",
-      "human glutamine-deprivation challenge on a normal-human-plasma background",
+      "human plasma-like nutrient availability",
+      "mouse plasma nutrient availability",
       "user-supplied extracellular environment"
     ),
     stringsAsFactors = FALSE
@@ -658,8 +467,7 @@
   }
   met_meta <- met_meta[
     match(validated$metabolites, as.character(met_meta$metabolite_id)),
-    ,
-    drop = FALSE
+    , drop = FALSE
   ]
   met_meta$metabolite_id <- validated$metabolites
   name_col <- intersect(c("name", "metabolite_name"), colnames(met_meta))
@@ -775,58 +583,9 @@
 }
 
 .rc_compass_model_bound_medium <- function(gem, exchange_limit = 1) {
-  validated <- rc_validate_gem(gem)
-  if (!is.numeric(exchange_limit) || length(exchange_limit) != 1L ||
-      !is.finite(exchange_limit) || exchange_limit <= 0) {
-    stop("`exchange_limit` must be one positive finite number.", call. = FALSE)
-  }
-  if (is.null(gem$reaction_meta) || !"role" %in% colnames(gem$reaction_meta)) {
-    gem <- rc_annotate_reaction_roles(gem)
-  }
-  meta <- gem$reaction_meta[
-    match(validated$reactions, as.character(gem$reaction_meta$reaction_id)),
-    ,
-    drop = FALSE
-  ]
-  exchange_meta <- meta[as.character(meta$role) == "exchange", , drop = FALSE]
-  exchange <- intersect(as.character(exchange_meta$reaction_id), validated$reactions)
-  if (!length(exchange)) {
-    stop("No exchange reactions were identified in the GEM.", call. = FALSE)
-  }
-  exchange_meta <- exchange_meta[
-    match(exchange, as.character(exchange_meta$reaction_id)),
-    ,
-    drop = FALSE
-  ]
-  exchange_map <- .rc_medium_exchange_metabolites(gem, exchange_meta, validated)
-  index <- match(exchange, validated$reactions)
-  original_lb <- as.numeric(validated$lb[index])
-  original_ub <- as.numeric(validated$ub[index])
-  data.frame(
-    medium_scenario_id = "compass_model_bounds",
-    exchange_reaction_id = exchange,
-    metabolite_id = exchange_map$metabolite_id,
-    gem_metabolite_name = exchange_map$gem_metabolite_name,
-    match_method = exchange_map$mapping_source,
-    preset_metabolite = NA_character_,
-    nutrient_category = NA_character_,
-    concentration_mM = NA_real_,
-    concentration_basis = NA_character_,
-    component_reference_doi = NA_character_,
-    condition = "all",
-    lb = pmax(original_lb, -exchange_limit),
-    ub = pmin(original_ub, exchange_limit),
-    available = TRUE,
-    original_lb = original_lb,
-    original_ub = original_ub,
-    exchange_limit = exchange_limit,
-    uptake_fraction = NA_real_,
-    evidence_source = "gem_directionality_with_uniform_exchange_cap",
-    assumption_level = "shared_model_defined_environment",
-    target_exchange_flag = FALSE,
-    concentration_used_for_rate_bound = FALSE,
-    rate_bound_source = "original_gem_bounds_intersected_with_uniform_cap",
-    stringsAsFactors = FALSE
+  .rc_make_compass_model_bound_medium(
+    gem = gem,
+    exchange_limit = exchange_limit
   )
 }
 
@@ -849,8 +608,7 @@
   }
   meta <- gem$reaction_meta[
     match(validated$reactions, as.character(gem$reaction_meta$reaction_id)),
-    ,
-    drop = FALSE
+    , drop = FALSE
   ]
   roles <- unique(trimws(as.character(exchange_roles)))
   roles <- roles[!is.na(roles) & nzchar(roles)]
@@ -934,14 +692,9 @@
       evidence_source = "literature_backed_medium_catalog",
       assumption_level = "availability_catalog_with_relative_uptake_cap",
       target_exchange_flag = as.logical(compounds$target_exchange_flag[[i]]),
-      concentration_used_for_rate_bound = as.logical(
-        compounds$target_exchange_flag[[i]]
-      ),
-      rate_bound_source = if (isTRUE(compounds$target_exchange_flag[[i]])) {
-        "relative_concentration_sensitivity_not_measured_flux"
-      } else {
-        "binary_availability_intersected_with_original_gem_directionality"
-      },
+      concentration_used_for_rate_bound = FALSE,
+      rate_bound_source =
+        "availability_and_explicit_uptake_scale_only_concentration_is_provenance",
       stringsAsFactors = FALSE
     )
   }
@@ -1034,199 +787,56 @@
   )
   output
 }
-#' Apply medium constraints without expanding GEM directionality
+
+#' Apply COMPASS-style extracellular medium constraints
 #'
-#' Every requested bound is intersected with the original GEM bounds. Closing
-#' uptake therefore preserves an originally permitted secretion direction, and
-#' no medium row can open a reaction direction that was blocked in the GEM.
+#' The original GEM structure is retained. By default, uptake on every annotated
+#' exchange is capped in its stoichiometrically defined uptake direction while
+#' the opposite secretion direction is preserved. Explicit medium rows then
+#' constrain uptake or both directions without expanding the original GEM
+#' feasible region.
 #'
 #' @param gem A validated RegCompass GEM.
 #' @param medium_table Medium rows from `rc_make_medium_scenarios()`.
 #' @param condition Optional condition selector.
-#' @param exchange_default_lb Default lower bound for unlisted exchanges.
-#' @param exchange_default_ub Upper cap for unlisted exchanges.
-#' @param allow_secretion Preserve originally permitted positive exchange flux.
-#' @param strict Stop for unknown or non-exchange reaction IDs.
+#' @param exchange_default_lb Legacy compatibility control. `NULL` is the
+#'   canonical default. Explicit zero with no `unlisted_policy` requests the
+#'   historical closed-unlisted behavior; a negative value sets the uptake cap.
+#' @param exchange_default_ub Optional secretion cap for exchange reactions.
+#' @param allow_secretion Preserve originally permitted secretion directions.
+#' @param strict Stop for unknown, non-exchange, or unresolved exchange rows.
+#' @param exchange_limit Non-negative default uptake cap used by COMPASS-style
+#'   unlisted exchange handling.
+#' @param unlisted_policy `"compass"` caps unlisted uptake; `"closed"` closes it.
 #' @return A list with the constrained GEM and bound diagnostics.
 rc_apply_medium_constraints <- function(
     gem, medium_table, condition = NULL,
-    exchange_default_lb = 0, exchange_default_ub = Inf,
-    allow_secretion = TRUE, strict = TRUE) {
-  if (!is.logical(allow_secretion) || length(allow_secretion) != 1L ||
-      is.na(allow_secretion) ||
-      !is.logical(strict) || length(strict) != 1L || is.na(strict)) {
-    stop("`allow_secretion` and `strict` must be TRUE or FALSE.", call. = FALSE)
-  }
-  if (!is.numeric(exchange_default_lb) ||
-      length(exchange_default_lb) != 1L ||
-      !is.finite(exchange_default_lb) ||
-      !is.numeric(exchange_default_ub) ||
-      length(exchange_default_ub) != 1L ||
-      is.na(exchange_default_ub) ||
-      exchange_default_lb > exchange_default_ub) {
-    stop("Default exchange bounds must be ordered numeric scalars.", call. = FALSE)
-  }
-  validated <- rc_validate_gem(gem)
-  reactions <- validated$reactions
-  if (is.null(gem$reaction_meta) || !"role" %in% colnames(gem$reaction_meta)) {
-    gem <- rc_annotate_reaction_roles(gem, medium_table = medium_table)
-  }
-  meta <- gem$reaction_meta[
-    match(reactions, as.character(gem$reaction_meta$reaction_id)),
-    ,
-    drop = FALSE
-  ]
-  is_exchange <- as.character(meta$role) == "exchange"
-  old_lb <- stats::setNames(as.numeric(validated$lb), reactions)
-  old_ub <- stats::setNames(as.numeric(validated$ub), reactions)
-  lb <- old_lb
-  ub <- old_ub
-  lb[is_exchange] <- pmax(old_lb[is_exchange], exchange_default_lb)
-  if (isTRUE(allow_secretion)) {
-    ub[is_exchange] <- pmin(old_ub[is_exchange], exchange_default_ub)
-  } else {
-    ub[is_exchange] <- pmin(old_ub[is_exchange], 0, exchange_default_ub)
-  }
-  status <- stats::setNames(rep("not_exchange", length(reactions)), reactions)
-  status[is_exchange] <- "exchange_default_uptake_closed"
-
-  if (!is.null(medium_table)) {
-    if (!is.data.frame(medium_table)) {
-      stop("`medium_table` must be a data.frame.", call. = FALSE)
-    }
-    required <- c("exchange_reaction_id", "lb", "ub", "available")
-    missing <- setdiff(required, colnames(medium_table))
-    if (length(missing)) {
-      stop(
-        "`medium_table` missing columns: ",
-        paste(missing, collapse = ", "),
-        call. = FALSE
-      )
-    }
-    medium <- medium_table
-    medium$exchange_reaction_id <-
-      trimws(as.character(medium$exchange_reaction_id))
-    medium$condition <- if ("condition" %in% colnames(medium)) {
-      as.character(medium$condition)
-    } else {
-      "all"
-    }
-    medium$condition[
-      is.na(medium$condition) | !nzchar(medium$condition)
-    ] <- "all"
-    keep <- medium$condition == "all"
-    if (!is.null(condition)) {
-      keep <- keep | medium$condition == as.character(condition)
-    }
-    medium <- medium[keep, , drop = FALSE]
-    if (nrow(medium)) {
-      medium$available <- as.logical(medium$available)
-      medium$lb <- suppressWarnings(as.numeric(medium$lb))
-      medium$ub <- suppressWarnings(as.numeric(medium$ub))
-      if (anyNA(medium$exchange_reaction_id) ||
-          any(!nzchar(medium$exchange_reaction_id)) ||
-          anyNA(medium$available) ||
-          any(!is.finite(medium$lb)) ||
-          any(!is.finite(medium$ub)) ||
-          any(medium$lb > medium$ub)) {
-        stop(
-          "Medium rows require valid reaction IDs, logical availability, ",
-          "and finite ordered bounds.",
-          call. = FALSE
-        )
-      }
-      duplicate_key <- paste(
-        medium$exchange_reaction_id,
-        medium$condition,
-        sep = "\001"
-      )
-      if (anyDuplicated(duplicate_key)) {
-        stop("`medium_table` contains duplicated reaction/condition rows.", call. = FALSE)
-      }
-      unknown <- setdiff(medium$exchange_reaction_id, reactions)
-      if (length(unknown)) {
-        message <- paste(
-          "Medium exchange reactions missing from GEM:",
-          paste(utils::head(unknown, 10L), collapse = ", ")
-        )
-        if (strict) stop(message, call. = FALSE) else warning(message, call. = FALSE)
-      }
-      medium <- medium[
-        medium$exchange_reaction_id %in% reactions,
-        ,
-        drop = FALSE
-      ]
-      reaction_index <- match(medium$exchange_reaction_id, reactions)
-      non_exchange <- medium$exchange_reaction_id[!is_exchange[reaction_index]]
-      if (length(non_exchange)) {
-        message <- paste(
-          "Medium rows reference reactions not annotated as exchange:",
-          paste(utils::head(unique(non_exchange), 10L), collapse = ", ")
-        )
-        if (strict) stop(message, call. = FALSE) else warning(message, call. = FALSE)
-      }
-      for (i in seq_len(nrow(medium))) {
-        index <- reaction_index[[i]]
-        if (!isTRUE(medium$available[[i]])) {
-          lb[[index]] <- pmax(old_lb[[index]], exchange_default_lb)
-          ub[[index]] <- if (isTRUE(allow_secretion)) {
-            pmin(old_ub[[index]], exchange_default_ub)
-          } else {
-            pmin(old_ub[[index]], 0, exchange_default_ub)
-          }
-          status[[index]] <- "medium_unavailable_uptake_closed"
-        } else {
-          lb[[index]] <- max(old_lb[[index]], medium$lb[[i]])
-          requested_ub <- if (isTRUE(allow_secretion)) {
-            medium$ub[[i]]
-          } else {
-            min(medium$ub[[i]], 0)
-          }
-          ub[[index]] <- min(old_ub[[index]], requested_ub)
-          status[[index]] <- "medium_available_intersection"
-        }
-      }
-    }
-  }
-  if (any(lb > ub)) {
-    bad <- reactions[lb > ub]
-    stop(
-      "Applied medium constraints produced lower bounds above upper bounds for: ",
-      paste(utils::head(bad, 10L), collapse = ", "),
-      call. = FALSE
-    )
-  }
-  gem$S <- validated$S
-  gem$lb <- stats::setNames(as.numeric(lb), reactions)
-  gem$ub <- stats::setNames(as.numeric(ub), reactions)
-  gem$medium_policy <- "original_gem_directionality_intersection"
-  diagnostics <- data.frame(
-    reaction_id = reactions,
-    old_lb = as.numeric(old_lb),
-    old_ub = as.numeric(old_ub),
-    new_lb = as.numeric(gem$lb),
-    new_ub = as.numeric(gem$ub),
-    lower_bound_expanded = gem$lb < old_lb,
-    upper_bound_expanded = gem$ub > old_ub,
-    medium_status = as.character(status),
-    condition = condition %||% "all",
-    stringsAsFactors = FALSE
+    exchange_default_lb = NULL, exchange_default_ub = Inf,
+    allow_secretion = TRUE, strict = TRUE,
+    exchange_limit = 1,
+    unlisted_policy = c("compass", "closed")) {
+  args <- list(
+    gem = gem,
+    medium_table = medium_table,
+    condition = condition,
+    exchange_default_lb = exchange_default_lb,
+    exchange_default_ub = exchange_default_ub,
+    allow_secretion = allow_secretion,
+    strict = strict,
+    exchange_limit = exchange_limit
   )
-  if (any(diagnostics$lower_bound_expanded | diagnostics$upper_bound_expanded)) {
-    stop("Medium application expanded the original GEM feasible region.", call. = FALSE)
+  if (!missing(unlisted_policy)) {
+    args$unlisted_policy <- match.arg(unlisted_policy)
   }
-  list(gem = gem, medium_diagnostics = diagnostics)
+  do.call(.rc_apply_compass_medium_constraints, args)
 }
-
 
 #' Build literature-backed extracellular medium scenarios
 #'
-#' Human plasma and culture backgrounds use exact HPLM composition from Cell
-#' 2017 and the updated formulation in Cell Metabolism 2021. Plasmax from Science
-#' Advances 2019 is an independent validation source and is not numerically
-#' averaged with HPLM. Mouse plasma uses a conservative availability set anchored
-#' to absolute metabolite measurements in Nature 2026; unsupported components are
-#' omitted. Challenge papers provide only the named nutrient concentration.
+#' Built-in scenarios retain published extracellular concentrations as
+#' composition/provenance evidence. Concentrations are not converted into flux
+#' rates. Flux sensitivity changes require an explicit `uptake_scale` or custom
+#' medium bound/uptake assumption.
 #'
 #' @param gem A validated RegCompass GEM.
 #' @param scenario One or more identifiers from `"normal_human_plasma"`,
@@ -1239,9 +849,9 @@ rc_apply_medium_constraints <- function(
 #'   are optional but retained when supplied.
 #' @param custom_metabolites User-defined metabolite availability and optional
 #'   concentration rows. Publication columns are optional but retained.
-#' @param uptake_scale Non-negative global or named sensitivity multipliers for
-#'   target nutrient relative caps. These are modelling assumptions, not measured
-#'   transporter rates.
+#' @param uptake_scale Non-negative global or named modelling multipliers for
+#'   uptake caps. This is an explicit flux assumption, not a concentration-to-rate
+#'   conversion.
 #' @param exchange_roles Reaction roles treated as exchange reactions.
 #' @param condition Shared condition label; canonical scoring requires `"all"`.
 #' @param exchange_limit Shared modelling cap intersected with original GEM
@@ -1402,4 +1012,3 @@ rc_make_medium_scenarios <- function(
     "authoritative_journal_composition_with_explicit_overrides"
   output
 }
-
