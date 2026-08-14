@@ -47,7 +47,7 @@ test_that("human nutrient challenges are rejected for Mouse-GEM", {
   }
 })
 
-test_that("challenge outputs record authoritative background and intervention DOIs", {
+test_that("challenge outputs record authoritative background and intervention provenance", {
   gem <- make_provenance_test_gem("human")
   expected <- c(
     high_glucose = "10.1016/j.ygyno.2015.06.036",
@@ -79,14 +79,20 @@ test_that("challenge outputs record authoritative background and intervention DO
     expect_true(all(
       rows$background_validation_reference_doi == "10.1126/sciadv.aau7314"
     ))
-    expect_true(all(
-      rows$scenario_construction ==
-        "authoritative_HPLM_background_plus_named_nutrient_override"
-    ))
+    expect_true(all(grepl(
+      "authoritative_HPLM_background_plus_named_nutrient_concentration_metadata",
+      rows$scenario_construction,
+      fixed = TRUE
+    )))
+    expect_true(all(grepl(
+      "no_automatic_concentration_to_flux_mapping",
+      rows$scenario_construction,
+      fixed = TRUE
+    )))
   }
 })
 
-test_that("challenge target rows retain their own concentration provenance", {
+test_that("challenge target rows retain concentration provenance without flux conversion", {
   gem <- make_provenance_test_gem("human")
   cases <- list(
     high_glucose = c("glucose", "25", "10.1016/j.ygyno.2015.06.036"),
@@ -112,5 +118,14 @@ test_that("challenge target rows retain their own concentration provenance", {
     expect_equal(row$concentration_mM, as.numeric(expected[[2]]))
     expect_equal(row$component_reference_doi, expected[[3]])
     expect_equal(row$challenge_reference_doi, expected[[3]])
+    expect_false(row$concentration_used_for_rate_bound)
+    expect_equal(
+      row$rate_bound_source,
+      "background_model_cap_concentration_metadata_only"
+    )
+    expect_equal(
+      row$assumption_level,
+      "literature_concentration_metadata_without_flux_conversion"
+    )
   }
 })
