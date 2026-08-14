@@ -199,6 +199,20 @@
     compounds = compounds,
     custom_reference = reference
   )
+  availability <- stats::setNames(
+    as.logical(compounds$available),
+    as.character(compounds$metabolite_name)
+  )
+  availability_index <- match(
+    as.character(out$preset_metabolite), names(availability)
+  )
+  if (anyNA(availability_index)) {
+    stop(
+      "Custom metabolite availability could not be mapped back to the ",
+      "generated exchange rows.", call. = FALSE
+    )
+  }
+  out$available <- unname(availability[availability_index])
   out$evidence_source <- "user_supplied_custom_medium"
   out$assumption_level <- "explicit_user_metabolite_availability_or_uptake_fraction"
   out$concentration_used_for_rate_bound <- FALSE
