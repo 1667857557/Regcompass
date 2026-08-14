@@ -458,7 +458,8 @@
       challenge_reference_doi = "10.1186/s13578-015-0030-1"
     ),
     stop("Unsupported culture challenge scenario: ", scenario_id,
-         call. = FALSE
+         call. = FALSE)
+  )
   )
 }
 
