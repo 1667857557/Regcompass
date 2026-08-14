@@ -25,7 +25,7 @@ jobs:
 
           description = Path("DESCRIPTION").read_text()
           required_description = [
-              "Pando (>= 2.0.10)",
+              "Pando (>= 2.0.11)",
               "SuperCell (>= 2.2.0)",
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
               "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
