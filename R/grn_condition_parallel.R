@@ -163,10 +163,11 @@
     padj_threshold = threshold,
     rank_action = pando_infer_args$rank_action,
     min_residual_df = pando_infer_args$min_residual_df,
+    condition_ridge_control = ridge_control,
     parallel = isTRUE(inner_parallel),
     parallel_scope = "target",
     overwrite = TRUE,
-    fallback_args = list(condition_ridge_control = ridge_control),
+    fallback_args = list(),
     verbose = show_progress
   )
   if (isTRUE(inner_parallel) && !is.null(PANDO_BPPARAM) &&
