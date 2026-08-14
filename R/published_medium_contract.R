@@ -460,7 +460,6 @@
     stop("Unsupported culture challenge scenario: ", scenario_id,
          call. = FALSE)
   )
-  )
 }
 
 .rc_build_literature_challenge <- function(
