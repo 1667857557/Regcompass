@@ -23,8 +23,12 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     uses the K=1 ridge route in RegCompass. Human standard and condition routes
     share the RegCompass default regulatory prior formed by the union of Pando's
     phastConsElements20Mammals.UCSC.hg38 and SCREEN.ccRE.UCSC.hg38 resources.
-    Downstream target regulatory weight is binary: q is one for a valid active
-    target, while R-squared and OOF R-squared remain diagnostics only. Ridge
+    RegCompass applies a separate selected-lambda final full-data target R-squared
+    quality gate after Pando edge significance; OOF R-squared is retained only as
+    a prediction diagnostic. Downstream target regulatory state is tri-state:
+    q is one for a model-supported target with at least one penalty-eligible edge,
+    zero for an evaluated target that should receive no regulatory modifier, and
+    missing only when the target model is unavailable or not evaluated. Ridge
     routes keep one cell type resident at a time and parallelize target work with
     target-specific multiome payloads. Mathematical and quantitative definitions
     are maintained in the package mathematical specification rather than
@@ -64,6 +68,7 @@ Collate:
     'medium.R'
     'published_medium_contract.R'
     'compass_medium_semantics.R'
+    'full_gem_resolved_medium_cache.R'
     'meta_module_definition.R'
     'meta_module_construction.R'
     'meta_module_merge.R'
@@ -186,5 +191,8 @@ Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-conditional-on
 Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
 Config/RegCompass/PandoStandardDefaultMethod: ridge
 Config/RegCompass/PandoTargetParallelMemoryPolicy: target-specific-worker-sized-payload-batches
-Config/RegCompass/PandoTargetPenaltyQ: binary-active-target-q1-rsq-diagnostic-only
+Config/RegCompass/PandoTargetPenaltyQ: tri-state-q1-eligible-q0-evaluated-neutral-qNA-unavailable
+Config/RegCompass/PandoTargetR2Gate: selected-lambda-final-full-data-rsq-ge-0.05
+Config/RegCompass/PandoOOFR2Role: diagnostic-only
 Config/RegCompass/PandoHumanDefaultRegions: phastConsElements20Mammals.UCSC.hg38+SCREEN.ccRE.UCSC.hg38
+Config/RegCompass/MediumFingerprint: base-GEM-identity-plus-canonical-final-reaction-bounds
