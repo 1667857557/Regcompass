@@ -59,10 +59,6 @@
   )
 }
 
-.rc_condition_fit_status_for_coefficients <- function(fit, coefficient) {
-  .rc_condition_fit_diagnostics_for_coefficients(fit, coefficient)$fit_status
-}
-
 .rc_condition_padj_threshold <- function(fit = NULL, coefficient = NULL) {
   value <- if (!is.null(fit) && !is.null(fit$padj_threshold)) {
     fit$padj_threshold
