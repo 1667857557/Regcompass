@@ -1,15 +1,19 @@
 test_that("penalty q distinguishes active, rejected and unavailable targets", {
   grn_result <- list(
     tf_peak_gene_condition_all = data.frame(
-      target = c("G1", "G1", "G2", "G3"),
-      condition = c("A", "B", "A", "A"),
-      cell_type = c("T", "T", "T", "B"),
+      target = c("G1", "G1", "G2", "G3", "G4"),
+      condition = c("A", "B", "A", "A", "A"),
+      cell_type = c("T", "T", "T", "B", "T"),
+      fit_status = c("ok", "ok", "ok", "ok", "ok"),
+      rsq = c(0.8, 0.7, 0.6, 0.4, NA_real_),
       stringsAsFactors = FALSE
     ),
     tf_peak_gene_condition = data.frame(
       target = c("G1", "G2"),
       condition = c("A", "A"),
       cell_type = c("T", "T"),
+      fit_status = c("ok", "ok"),
+      rsq = c(0.8, 0.6),
       stringsAsFactors = FALSE
     )
   )
@@ -20,8 +24,8 @@ test_that("penalty q distinguishes active, rejected and unavailable targets", {
     stringsAsFactors = FALSE
   )
   template <- matrix(
-    0, 4, 4,
-    dimnames = list(c("g1", "g2", "g3", "g4"), unit_meta$unit_id)
+    0, 5, 4,
+    dimnames = list(c("g1", "g2", "g3", "g4", "g5"), unit_meta$unit_id)
   )
 
   q <- RegCompassR:::.rc_active_target_penalty_q(
@@ -39,6 +43,7 @@ test_that("penalty q distinguishes active, rejected and unavailable targets", {
   expect_true(is.na(q["g1", "u3"]))
   expect_true(is.na(q["g2", "u2"]))
   expect_true(is.na(q["g4", "u1"]))
+  expect_true(is.na(q["g5", "u1"]))
   expect_true(is.na(q["g1", "u4"]))
 })
 
@@ -64,7 +69,12 @@ test_that("combined Pando projection uses R2 as a gate rather than a weight", {
     deparse(body(RegCompassR:::.rc_project_pando_by_celltype)),
     collapse = "\n"
   )
+  q_text <- paste(
+    deparse(body(RegCompassR:::.rc_active_target_penalty_q)),
+    collapse = "\n"
+  )
   expect_match(body_text, ".rc_active_target_penalty_q", fixed = TRUE)
+  expect_match(q_text, ".rc_penalty_evaluated_rows", fixed = TRUE)
   expect_false(grepl("part$reliability", body_text, fixed = TRUE))
   expect_false(grepl("standard$reliability", body_text, fixed = TRUE))
   expect_match(
