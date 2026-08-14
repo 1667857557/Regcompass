@@ -136,6 +136,11 @@ rc_compass_vmax_directional <- function(
 }
 
 source("R/fastcore.R")
+# full_gem.R intentionally keeps the public/cache-facing functions canonical,
+# while COMPASS exchange-bound helpers live in this helper source. Standalone
+# source-level regressions must therefore load the helper explicitly, matching
+# the package Collate contract rather than duplicating helpers into full_gem.R.
+source("R/compass_medium_semantics.R")
 source("R/full_gem.R")
 source("R/layer2_corda_parent_contract.R")
 source("R/microcompass_vmax_cache.R")
