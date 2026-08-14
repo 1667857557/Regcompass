@@ -145,6 +145,7 @@
     analysis_mode = mode,
     cell_type_analysis_mode = routing,
     condition_coefficients_calculated = length(condition_fits) > 0L,
+    target_rsq_threshold = .rc_target_rsq_threshold(),
     pando_fit_schema = if (length(condition_fits)) {
       .RC_PANDO_CONDITION_GRN_FIT_SCHEMA
     } else NA_character_,
@@ -279,6 +280,23 @@
   table
 }
 
+.rc_penalty_evaluated_rows <- function(table) {
+  if (!is.data.frame(table) || !nrow(table)) return(logical())
+  rsq <- if ("target_rsq" %in% colnames(table)) {
+    suppressWarnings(as.numeric(table$target_rsq))
+  } else if ("rsq" %in% colnames(table)) {
+    suppressWarnings(as.numeric(table$rsq))
+  } else {
+    rep(NA_real_, nrow(table))
+  }
+  evaluated <- is.finite(rsq)
+  if ("fit_status" %in% colnames(table)) {
+    status <- trimws(as.character(table$fit_status))
+    evaluated <- evaluated & !is.na(status) & status == "ok"
+  }
+  evaluated
+}
+
 .rc_set_penalty_q_by_stratum <- function(
     q, table, unit_meta, condition_col, celltype_col, value) {
   if (!nrow(table)) return(q)
@@ -309,6 +327,9 @@
     grn_result$tf_peak_gene_condition_all,
     unit_meta, condition_col, celltype_col, "Evaluated-target"
   )
+  if (nrow(evaluated)) {
+    evaluated <- evaluated[.rc_penalty_evaluated_rows(evaluated), , drop = FALSE]
+  }
   active <- .rc_validate_penalty_q_table(
     grn_result$tf_peak_gene_condition,
     unit_meta, condition_col, celltype_col, "Active-target"
@@ -317,7 +338,7 @@
   # Three-state target contract:
   #   1  = evaluated and at least one edge is penalty-eligible;
   #   0  = evaluated in this condition/cell type but no edge is eligible;
-  #   NA = target was unavailable/not evaluated, so regulatory evidence is absent.
+  #   NA = target lacks a valid finite target fit and therefore was not evaluable.
   q <- .rc_set_penalty_q_by_stratum(
     q, evaluated, unit_meta, condition_col, celltype_col, 0
   )
