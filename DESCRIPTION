@@ -34,9 +34,11 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     is the equal-weight mean of single-cell linear CPM within the exact final
     SuperCell membership. Medium concentrations are provenance rather than implicit
     kinetics, and full-GEM medium cache identity is based on the final resolved
-    reaction lower and upper bounds. Mathematical and quantitative definitions are
-    maintained in the package mathematical specification rather than duplicated in
-    interface text.
+    reaction lower and upper bounds. Pando and SuperCell compatibility is checked
+    from required runtime APIs and data contracts rather than package version
+    strings; the Remotes entries target the current repository default branches.
+    Mathematical and quantitative definitions are maintained in the package
+    mathematical specification rather than duplicated in interface text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -158,11 +160,11 @@ LinkingTo:
 SystemRequirements: C++17
 Suggests:
     BiocParallel,
-    Pando (>= 2.0.11),
+    Pando,
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
-    SuperCell (>= 2.2.0),
+    SuperCell,
     yaml,
     future,
     ggplot2,
