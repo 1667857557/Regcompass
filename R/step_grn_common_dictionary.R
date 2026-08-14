@@ -44,6 +44,16 @@ rc_regcompass_step_grn <- function(
     stop("`pando_args` must be a list.", call. = FALSE)
   }
   target_rsq_threshold <- .rc_target_rsq_threshold(target_rsq_threshold)
+  old_target_rsq_option <- getOption("RegCompassR.target_rsq_threshold")
+  options(RegCompassR.target_rsq_threshold = target_rsq_threshold)
+  on.exit({
+    if (is.null(old_target_rsq_option)) {
+      options(RegCompassR.target_rsq_threshold = NULL)
+    } else {
+      options(RegCompassR.target_rsq_threshold = old_target_rsq_option)
+    }
+  }, add = TRUE)
+
   parallel_plan <- .rc_stage_parallel_plan(workers, argument = "workers")
   on.exit(.rc_release_bpparam(parallel_plan$BPPARAM), add = TRUE)
   parallel <- parallel_plan$parallel
@@ -170,7 +180,8 @@ rc_regcompass_step_grn <- function(
       regions = !is.null(dispatch_extra_args$pando_initiate_args$regions),
       motif_tfs = !is.null(dispatch_extra_args$pando_motif_args$motif_tfs),
       worker_limit = parallel_plan$workers,
-      backend = parallel_plan$config$actual_backend
+      backend = parallel_plan$config$actual_backend,
+      target_rsq_threshold = target_rsq_threshold
     )
   )
 
@@ -186,7 +197,6 @@ rc_regcompass_step_grn <- function(
       extra_args = dispatch_extra_args,
       condition_infer_args = condition_infer_args,
       standard_infer_args = standard_infer_args,
-      target_rsq_threshold = target_rsq_threshold,
       parallel = parallel, BPPARAM = BPPARAM,
       progress_monitor = monitor
     ),
