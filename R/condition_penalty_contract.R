@@ -66,8 +66,6 @@
   if (anyNA(status) || any(!nzchar(status))) {
     stop("Condition-GRN fit_status values must be complete.", call. = FALSE)
   }
-  # "evaluated" records that a final target model was successfully fit. A
-  # non-finite R2 is therefore evaluated-but-unsupported rather than unavailable.
   evaluated <- status == "ok"
   supported <- evaluated & is.finite(target_rsq) & target_rsq >= threshold
   data.frame(
@@ -166,9 +164,12 @@
   invisible(expected_active)
 }
 
-# Edge-level Pando/fit-status gate only. Target-model R2 is intentionally kept
-# separate so RegCompass does not redefine Pando's active/significant statistic.
-.rc_condition_penalty_gate <- function(coefficient, padj_threshold = NULL) {
+# Without target_rsq_threshold this is the edge-level Pando/fit-status gate.
+# Supplying target_rsq_threshold composes that edge gate with the separately
+# annotated RegCompass target-model quality gate; Pando active/significant stays
+# unchanged in either case.
+.rc_condition_penalty_gate <- function(
+    coefficient, padj_threshold = NULL, target_rsq_threshold = NULL) {
   threshold <- if (is.null(padj_threshold)) {
     .rc_condition_padj_threshold(coefficient = coefficient)
   } else {
@@ -188,7 +189,14 @@
   } else {
     rep(NA_character_, nrow(coefficient))
   }
-  active & !is.na(fit_status) & fit_status == "ok"
+  edge_gate <- active & !is.na(fit_status) & fit_status == "ok"
+  if (is.null(target_rsq_threshold)) return(edge_gate)
+  .rc_target_rsq_threshold(target_rsq_threshold)
+  if (!"target_model_supported" %in% colnames(coefficient)) {
+    stop("Target-model support must be annotated before the combined penalty gate.",
+         call. = FALSE)
+  }
+  edge_gate & coefficient$target_model_supported %in% TRUE
 }
 
 .rc_apply_condition_penalty_gate <- function(
