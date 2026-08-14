@@ -80,8 +80,11 @@ jobs:
               '"exchange_bounds_only_no_reaction_deletion"',
               'medium_direct_reaction_deletion = FALSE',
               'flux_consistency_pruning = FALSE',
-              '.rc_full_gem_medium_fingerprint',
-              'medium_fingerprint = medium_fingerprint',
+              '.rc_resolved_medium_bounds_fingerprint',
+              '.rc_full_gem_medium_input_fingerprint',
+              'resolved_medium_fingerprint = medium_fingerprint',
+              'medium_input_fingerprint = input_fingerprint',
+              'base_GEM_identity_plus_canonical_final_reaction_bounds',
               'n_medium_removed_reactions = 0L',
               'fastcore_executed = FALSE',
               'corda2_executed = FALSE',
@@ -96,11 +99,12 @@ jobs:
               '.rc_subset_gem(',
               'medium_flux_consistency_pruned_full_gem',
               'removed_medium_flux_inconsistent',
+              '.rc_full_gem_medium_fingerprint',
           ]
           found = [value for value in forbidden_full if value in full]
           if found:
               raise RuntimeError(
-                  f"full-GEM still contains medium-driven pruning: {found}"
+                  f"full-GEM contains retired medium behavior/API: {found}"
               )
 
           required_dispatch = [
