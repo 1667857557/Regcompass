@@ -145,7 +145,7 @@
   dimnames(out) <- dimnames(X)
   attr(out, "rna_only_fallback_mask") <- fallback
   attr(out, "integration_formula") <-
-    "X_multiome=X_RNA*2^R; X_RNA=latent_CPM; nonfinite R:=0; R clipped to [-1,1]"
+    "X_multiome=X_RNA*2^R; nonfinite R:=0; R clipped to [-1,1]"
   out
 }
 
@@ -191,9 +191,19 @@
     stop("Projection, reliability, and calibration scale must align.",
          call. = FALSE)
   }
-  value <- reliability * tanh(projection / scale)
-  value[!is.finite(projection) | !is.finite(reliability)] <- NA_real_
-  dimnames(value) <- dimnames(projection)
+  projection <- as.matrix(projection)
+  reliability <- as.matrix(reliability)
+  scale <- as.matrix(scale)
+  value <- matrix(
+    NA_real_, nrow(projection), ncol(projection), dimnames = dimnames(projection)
+  )
+  available <- is.finite(reliability)
+  neutral <- available & reliability == 0
+  value[neutral] <- 0
+  regulated <- available & reliability != 0 &
+    is.finite(projection) & is.finite(scale) & scale > 0
+  value[regulated] <- reliability[regulated] *
+    tanh(projection[regulated] / scale[regulated])
   value
 }
 
@@ -223,252 +233,4 @@
     answer[reaction_id, ] <- apply(fractions, 1L, max)
   }
   answer
-}
-
-.rc_cell_first_projection_layer1 <- function(
-    grn_result, metacell_object, membership, metacell_meta, gem,
-    condition_col, celltype_col, rna_assay,
-    gpr_and_method = "min", gene_half_saturation = 1,
-    parallel = TRUE, BPPARAM = NULL) {
-  if (!is.data.frame(membership) ||
-      !all(c("cell_id", "metacell_id") %in% colnames(membership)) ||
-      anyDuplicated(membership$cell_id)) {
-    stop("SuperCell membership must map every cell exactly once.",
-         call. = FALSE)
-  }
-  id_col <- if ("metacell_id" %in% colnames(metacell_meta)) {
-    "metacell_id"
-  } else {
-    "pool_id"
-  }
-  unit_meta <- as.data.frame(metacell_meta)
-  unit_meta$unit_id <- as.character(unit_meta[[id_col]])
-  unit_meta$pool_id <- unit_meta$unit_id
-  units <- colnames(metacell_object)
-  unit_meta <- unit_meta[match(units, unit_meta$unit_id), , drop = FALSE]
-  if (anyNA(unit_meta$unit_id)) {
-    stop("Metacell metadata do not align to the metacell object.",
-         call. = FALSE)
-  }
-  parsed <- rc_parse_gpr_table(gem$gpr_table)
-  gpr_genes <- unique(tolower(unlist(parsed, use.names = FALSE)))
-  counts <- .rc_get_assay_counts(metacell_object, rna_assay)
-  library_size <- Matrix::colSums(counts)
-  rna_counts <- counts[
-    tolower(rownames(counts)) %in% gpr_genes, units, drop = FALSE
-  ]
-  rownames(rna_counts) <- tolower(rownames(rna_counts))
-  if (anyDuplicated(rownames(rna_counts))) {
-    stop("Duplicated GPR genes after case normalization.", call. = FALSE)
-  }
-  cell_type <- stats::setNames(
-    as.character(unit_meta[[celltype_col]]), unit_meta$unit_id
-  )
-  latent <- .rc_latent_metacell_expression(
-    rna_counts, library_size[units], cell_type = cell_type
-  )
-  genes <- rownames(latent$latent_log_expression)
-  mode <- grn_result$analysis_mode %||% "condition_grn"
-  projection <- .rc_project_pando_by_celltype(
-    grn_result = grn_result,
-    membership = membership,
-    unit_meta = unit_meta,
-    genes = genes,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
-    rna_assay = grn_result$rna_assay %||% "RNA",
-    atac_assay = grn_result$atac_assay %||% "ATAC"
-  )
-  calibration <- .rc_projection_scale(
-    projection$projection, unit_meta, celltype_col
-  )
-  modifier <- .rc_scaled_regulatory_modifier(
-    projection$projection, projection$reliability, calibration$scale
-  )
-
-  # Quantitative COMPASS path: retain the unbounded latent-CPM dynamic range.
-  # Pando changes expression by at most a two-fold multiplier in either
-  # direction because R is bounded to [-1, 1]. The COMPASS log transform is
-  # applied only after GPR aggregation when reaction penalty is constructed.
-  gene_expression_quantitative_rna <- latent$latent_cpm
-  gene_expression_quantitative_multiome <-
-    .rc_integrate_regulatory_expression(
-      gene_expression_quantitative_rna, modifier
-    )
-  reaction_quantitative_rna <- rc_reaction_capacity(
-    parsed, gene_expression_quantitative_rna,
-    promiscuity_mode = "none",
-    and_method = gpr_and_method, or_method = "sum",
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
-  )
-  reaction_quantitative_multiome <- rc_reaction_capacity(
-    parsed, gene_expression_quantitative_multiome,
-    promiscuity_mode = "none",
-    and_method = gpr_and_method, or_method = "sum",
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
-  )
-
-  # Bounded support is intentionally retained for structural confidence only.
-  # This preserves the previous CORDA2/meta-module evidence scale without
-  # compressing the quantitative LP penalty path into [0, 1].
-  gene_support_rna <- rc_gene_score(
-    latent$latent_log_expression,
-    mode = "absolute",
-    half_saturation = gene_half_saturation
-  )
-  gene_support_multiome <- .rc_integrate_regulatory_support(
-    gene_support_rna, modifier, alpha = 1
-  )
-  reaction_structural_rna <- rc_reaction_capacity(
-    parsed, gene_support_rna, promiscuity_mode = "none",
-    and_method = gpr_and_method, or_method = "sum",
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
-  )
-  reaction_structural_multiome <- rc_reaction_capacity(
-    parsed, gene_support_multiome, promiscuity_mode = "none",
-    and_method = gpr_and_method, or_method = "sum",
-    BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
-  )
-  # The structural matrices are also the compatibility carrier used by the
-  # existing RNA-only control wrapper. An explicit marker makes the quantitative
-  # LP route deterministic even when the two bounded matrices have identical
-  # numerical values.
-  attr(
-    reaction_structural_multiome,
-    "regcompass_quantitative_penalty_route"
-  ) <- "multiome"
-  attr(
-    reaction_structural_rna,
-    "regcompass_quantitative_penalty_route"
-  ) <- "rna_only"
-
-  support_fraction <- .rc_gpr_best_group_fraction(
-    parsed, is.finite(modifier)
-  )
-  fallback <- !is.finite(modifier)
-  list(
-    schema_version = "regcompass_regulatory_layer1_v5",
-    analysis_mode = mode,
-
-    # Compatibility structural fields. CORDA2 continues to consume these
-    # bounded matrices; Layer 2 LP explicitly prefers the quantitative fields.
-    reaction_expression = reaction_structural_multiome,
-    reaction_expression_rna_only = reaction_structural_rna,
-    reaction_expression_available = is.finite(reaction_structural_multiome),
-    reaction_structural_support = reaction_structural_multiome,
-    reaction_structural_support_rna_only = reaction_structural_rna,
-
-    # Unbounded reaction expression used by the quantitative COMPASS penalty.
-    reaction_expression_quantitative = reaction_quantitative_multiome,
-    reaction_expression_quantitative_rna_only = reaction_quantitative_rna,
-    reaction_expression_quantitative_available =
-      is.finite(reaction_quantitative_multiome),
-
-    rna_metacell_latent_log_expression = latent$latent_log_expression,
-    rna_metacell_latent_cpm = latent$latent_cpm,
-    posterior_positive_probability = latent$posterior_positive_probability,
-    posterior_zero_probability = latent$posterior_zero_probability,
-    rna_zero_class = latent$zero_class,
-    eb_prior_weight = latent$prior_weight,
-    eb_observation_weight = latent$observation_weight,
-    gene_expression_quantitative_rna = gene_expression_quantitative_rna,
-    gene_expression_quantitative_multiome =
-      gene_expression_quantitative_multiome,
-    gene_support_rna = gene_support_rna,
-    gene_support_multiome = gene_support_multiome,
-    gene_projection = projection$projection,
-    gene_projection_scale = calibration$scale,
-    gene_regulatory_reliability = projection$reliability,
-    gene_regulatory_reliability_available =
-      is.finite(projection$reliability),
-    gene_regulatory_available = is.finite(projection$projection),
-    gene_regulatory_modifier = modifier,
-    projection_coverage = projection$coverage,
-    projection_calibration = calibration$diagnostics,
-    reaction_regulatory_support_fraction = support_fraction,
-    parsed_gpr = parsed,
-    gpr_diagnostics = rc_gpr_diagnostics(parsed, genes),
-    unit_meta = unit_meta,
-    metacell_meta = unit_meta,
-    layer1_unit = "native_SuperCell_metacell",
-    regulatory_fallback = list(
-      policy = "rna_only_for_nonfinite_pando_modifier",
-      neutral_modifier = 0,
-      gene_metacell_mask = fallback,
-      n_fallback = sum(fallback),
-      fallback_fraction = mean(fallback)
-    ),
-    depth_diagnostics = list(
-      rna_library_size = stats::setNames(
-        as.numeric(library_size[units]), units
-      ),
-      latent_expression_model = latent$model,
-      prior_estimation_scope = latent$prior_estimation_scope,
-      posterior_update_scope = latent$posterior_update_scope,
-      eb_weight_library_size_dependent = FALSE
-    ),
-    zero_diagnostics = list(
-      observed_zero_fraction = rowMeans(latent$observed_zero),
-      mean_posterior_zero_probability = rowMeans(
-        latent$posterior_zero_probability
-      ),
-      maximum_posterior_zero_probability = apply(
-        latent$posterior_zero_probability, 1L, max
-      )
-    ),
-    capacity_params = list(
-      regulatory_odds_budget = 2,
-      regulatory_expression_multiplier_budget = 2,
-      gene_half_saturation = gene_half_saturation,
-      regulatory_mode = mode,
-      link_function = "tanh(G/shared_scale)",
-      quantitative_gene_expression = "latent_cpm",
-      quantitative_regulatory_formula =
-        "X_multiome=X_RNA*2^R; nonfinite R:=0",
-      structural_gene_support =
-        "log1p(latent_cpm)/(log1p(latent_cpm)+gene_half_saturation)",
-      structural_regulatory_formula =
-        "C_multiome=C_RNA*2^R/(1-C_RNA+C_RNA*2^R)",
-      promiscuity_mode = "none",
-      and_method = gpr_and_method,
-      or_method = "sum",
-      parallel = parallel
-    ),
-    quantitative_penalty_contract = list(
-      baseline_gene_expression = "latent_cpm",
-      regulatory_multiplier = "2^R",
-      regulatory_modifier_range = c(-1, 1),
-      gpr_and_method = gpr_and_method,
-      gpr_or_method = "sum",
-      penalty_formula = "1/(1+log2(1+max(E_quantitative,0)))",
-      structural_route_marker = "regcompass_quantitative_penalty_route",
-      primary_route = "multiome",
-      rna_control_route = "rna_only",
-      bounded_support_excluded_from_lp_penalty = TRUE
-    ),
-    structural_support_contract = list(
-      gene_support_range = c(0, 1),
-      gene_half_saturation = gene_half_saturation,
-      regulatory_update = "bounded_odds",
-      intended_use = "CORDA2_and_structural_confidence",
-      quantitative_lp_penalty = FALSE
-    ),
-    projection_provenance = list(
-      analysis_mode = mode,
-      pando_schema = projection$pando_schema,
-      projection_origin = projection$origin,
-      projection_used_for_penalty = TRUE,
-      projection_name = projection$projection_name,
-      condition_coefficients_calculated =
-        isTRUE(projection$condition_coefficients_calculated),
-      cell_type_analysis_mode = projection$cell_type_analysis_mode,
-      supercell_membership = "membership_table(cell_id, metacell_id)",
-      unavailable_target_policy = "rna_only_neutral_modifier_fallback",
-      nonestimable_edge_policy = projection$nonestimable_policy
-    ),
-    inference_class = "metacell_statistical_unit_within_dataset",
-    statistical_unit = "metacell",
-    metacell_statistical_inference = TRUE,
-    biological_replicate_inference = FALSE
-  )
 }
