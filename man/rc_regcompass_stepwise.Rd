@@ -12,7 +12,7 @@ rc_regcompass_step_grn(object, gem, outdir, genome, pfm = NULL,
   species = c("auto", "human", "mouse"),
   condition_col = "condition", celltype_col = "cell_type",
   cell_type = NULL, rna_assay = "RNA", atac_assay = "ATAC",
-  pando_args = list(), workers = 10L,
+  pando_args = list(), target_rsq_threshold = 0.05, workers = 10L,
   progress = getOption("RegCompassR.progress", TRUE))
 
 rc_regcompass_step_metacells(object, outdir,
@@ -50,11 +50,12 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type subset.}
 \item{rna_assay, atac_assay}{RNA and ATAC assay names.}
-\item{pando_args}{Stage 1 configuration. \code{min_cells} defaults to \code{500L}; inference controls are supplied through \code{pando_infer_args}. Multi-condition cell types use the condition multi-task ridge path. Standard Pando also defaults to \code{method = "ridge"}, the K=1 specialization of the same ridge solver; set \code{method = "glm"} only when the original Gaussian GLM compatibility route is intentionally required.}
-\item{workers}{Single worker cap used by computational stages, default \code{10L}. Ridge GRNs use one parallel level at a time: cell types are processed sequentially and the worker budget is reused for target-level Pando work. Each target worker receives only target-specific RNA, ATAC, motif and edge-dictionary data, with worker and completed-batch temporaries released after use.}
+\item{pando_args}{Stage 1 Pando configuration. \code{min_cells} defaults to \code{500L}; common inference controls are supplied through \code{pando_infer_args}. Multi-condition cell types use the common-dictionary no-fusion condition ridge route and one-condition cell types use standard ridge by default.}
+\item{target_rsq_threshold}{Minimum selected-lambda full-data target R-squared required for RegCompass penalty eligibility. Defaults to \code{0.05}. This target-model gate is applied after Pando fitting and does not redefine Pando edge significance.}
+\item{workers}{Single worker cap used by computational stages, default \code{10L}. Ridge GRNs use one parallel level at a time and reuse the worker budget for target-level Pando work.}
 \item{progress}{Display and persist stage progress.}
 \item{fragment_files}{Optional Stage 2 raw fragment input.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN, size, and fragment controls. \code{min_cells_per_stratum} defaults to \code{500L}.}
+\item{metacell_args}{Stage 2 reductions, dimensions, WNN and fragment controls. \code{gamma} is the resolution target; \code{min_metacell_size} and \code{min_metacells_per_stratum} are hard feasibility constraints under the shared-Walktrap hierarchy partition.}
 \item{grn}{Stage 1 output. In Stage 2, supplying it enforces the retained Stage 1 cell set.}
 \item{metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
 \item{meta_module_args}{Optional Stage 3 configuration, including a custom subsystem table.}
@@ -62,7 +63,7 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{gene_half_saturation}{Half-saturation parameter for the bounded structural-support path.}
 \item{medium_scenarios}{Shared medium table, normally created by \code{rc_make_medium_scenarios()}.}
 \item{model_mode}{\code{"meta_module_gem"} or supplementary \code{"full_gem"}.}
-\item{layer2_args}{Stage 5 controls. Supported top-level entries are \code{model_params}, \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold}. CORDA2 is the default completion under \code{"meta_module_gem"}; its adjustable options are documented in \code{docs/layer2-corda.md}. \code{model_params$completion_time_limit} is not a CORDA2 control.}
+\item{layer2_args}{Stage 5 controls. Supported top-level entries are \code{model_params}, \code{omega}, \code{target_direction}, \code{solver}, and \code{flux_threshold}. CORDA2 is the default completion under \code{"meta_module_gem"}; adjustable CORDA2 options are documented in \code{docs/layer2-corda.md}.}
 }
 \value{Each function returns a validated stage object and writes its stage checkpoint and diagnostics to \code{outdir}.}
-\description{Runs individual stages of the RegCompass workflow for restartable execution. See \code{docs/tutorial-02-stepwise-audit.md} for calls and adjustable parameters, and \code{docs/mathematical-model.md} for quantitative definitions.}
+\description{Runs individual stages of the RegCompass workflow for restartable execution. See \code{docs/tutorial-02-stepwise-audit.md} for calls and commonly adjusted parameters, \code{docs/medium-presets.md} for predefined media, and \code{docs/mathematical-model.md} for quantitative definitions.}
