@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.17
+Version: 2.4.18
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -23,12 +23,18 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     uses the K=1 ridge route in RegCompass. Human standard and condition routes
     share the RegCompass default regulatory prior formed by the union of Pando's
     phastConsElements20Mammals.UCSC.hg38 and SCREEN.ccRE.UCSC.hg38 resources.
-    Downstream target regulatory weight is binary: q is one for a valid active
-    target, while R-squared and OOF R-squared remain diagnostics only. Ridge
-    routes keep one cell type resident at a time and parallelize target work with
-    target-specific multiome payloads. Mathematical and quantitative definitions
-    are maintained in the package mathematical specification rather than
-    duplicated in interface text.
+    Downstream regulatory eligibility requires a Pando BH-active edge, a valid
+    target fit, and selected-lambda full-data target R-squared above the configured
+    threshold. The target q state is one for evaluated supported regulation, zero
+    for an evaluated target with no eligible edge, and missing only when the target
+    was unavailable or not evaluated; R-squared is a gate rather than a multiplier.
+    Stage 2 builds one multimodal WNN graph and one Walktrap hierarchy per broad
+    cell type and selects condition-specific feasible cuts from that same hierarchy
+    with hard minimum metacell size and count constraints. Quantitative Layer 1 RNA
+    is the equal-weight mean of single-cell linear CPM within the exact final
+    SuperCell membership. Mathematical and quantitative definitions are maintained
+    in the package mathematical specification rather than duplicated in interface
+    text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
@@ -150,11 +156,11 @@ LinkingTo:
 SystemRequirements: C++17
 Suggests:
     BiocParallel,
-    Pando,
+    Pando (>= 2.0.10),
     EnsDb.Hsapiens.v86,
     BSgenome.Hsapiens.UCSC.hg38,
     BSgenome.Mmusculus.UCSC.mm10,
-    SuperCell,
+    SuperCell (>= 2.2.0),
     yaml,
     future,
     ggplot2,
@@ -183,8 +189,11 @@ Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge
 Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge
 Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge
 Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-conditional-on-candidate-dictionary-and-CV-lambda
+Config/RegCompass/PandoTargetR2: selected-lambda-full-data-R2
+Config/RegCompass/PandoTargetR2Threshold: 0.05
 Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
 Config/RegCompass/PandoStandardDefaultMethod: ridge
 Config/RegCompass/PandoTargetParallelMemoryPolicy: target-specific-worker-sized-payload-batches
-Config/RegCompass/PandoTargetPenaltyQ: binary-active-target-q1-rsq-diagnostic-only
+Config/RegCompass/PandoTargetPenaltyQ: tri-state-q1-supported-q0-evaluated-rejected-qNA-unavailable
+Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1
 Config/RegCompass/PandoHumanDefaultRegions: phastConsElements20Mammals.UCSC.hg38+SCREEN.ccRE.UCSC.hg38
