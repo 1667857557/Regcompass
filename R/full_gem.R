@@ -50,46 +50,12 @@
 .rc_assert_medium_bounds_only <- function(
     reference_gem, constrained_gem, medium_table = NULL,
     context = "medium application") {
-  reference <- rc_validate_gem(reference_gem)
-  constrained <- rc_validate_gem(constrained_gem)
-
-  same_structure <- identical(reference$reactions, constrained$reactions) &&
-    identical(reference$metabolites, constrained$metabolites) &&
-    identical(reference$S, constrained$S)
-  if (!same_structure) {
-    stop(
-      context,
-      " changed the reaction/metabolite set or stoichiometric matrix. ",
-      "Medium handling must only modify reaction bounds.",
-      call. = FALSE
-    )
-  }
-
-  changed <- reference$reactions[
-    reference$lb != constrained$lb | reference$ub != constrained$ub
-  ]
-  allowed <- if (!is.null(medium_table) &&
-                 "exchange_reaction_id" %in% colnames(medium_table)) {
-    unique(as.character(medium_table$exchange_reaction_id))
-  } else {
-    character()
-  }
-  allowed <- allowed[!is.na(allowed) & nzchar(allowed)]
-  unexpected <- setdiff(changed, allowed)
-  if (length(unexpected)) {
-    stop(
-      context,
-      " modified bounds outside the supplied exchange reactions: ",
-      paste(utils::head(unexpected, 10L), collapse = ", "),
-      ".", call. = FALSE
-    )
-  }
-
-  invisible(list(
-    changed_reactions = changed,
-    n_changed_reactions = length(changed),
-    n_removed_reactions = 0L
-  ))
+  .rc_assert_compass_medium_bounds_only(
+    reference_gem = reference_gem,
+    constrained_gem = constrained_gem,
+    medium_table = medium_table,
+    context = context
+  )
 }
 
 #' Build a COMPASS-style full GEM for one medium scenario
@@ -119,7 +85,11 @@
   medium_diagnostics <- data.frame()
   medium_contract <- list(
     changed_reactions = character(),
+    changed_supplied_reactions = character(),
+    changed_unlisted_exchange_reactions = character(),
     n_changed_reactions = 0L,
+    n_changed_supplied_reactions = 0L,
+    n_changed_unlisted_exchange_reactions = 0L,
     n_removed_reactions = 0L
   )
   if (!is.null(medium_table)) {
@@ -207,41 +177,43 @@
   unname(tools::md5sum(file)[[1L]])
 }
 
-.rc_full_gem_medium_fingerprint <- function(medium) {
-  payload <- if (is.null(medium)) {
-    list(no_constraints = TRUE)
-  } else {
-    required <- c("exchange_reaction_id", "lb", "ub", "available")
-    missing <- setdiff(required, colnames(medium))
-    if (length(missing)) {
-      stop(
-        "Medium fingerprint input is missing: ",
-        paste(missing, collapse = ", "),
-        ".", call. = FALSE
-      )
-    }
-    columns <- intersect(
-      c(
-        "exchange_reaction_id", "condition", "available", "lb", "ub",
-        ".no_constraints"
-      ),
-      colnames(medium)
+.rc_full_gem_resolved_bounds_identity <- function(reference_gem, resolved_gem) {
+  reference <- rc_validate_gem(reference_gem)
+  resolved <- rc_validate_gem(resolved_gem)
+  same_structure <- identical(reference$reactions, resolved$reactions) &&
+    identical(reference$metabolites, resolved$metabolites) &&
+    identical(reference$S, resolved$S)
+  if (!same_structure) {
+    stop(
+      "Resolved medium fingerprint requires the same reactions, metabolites, ",
+      "and stoichiometric matrix as the reference GEM.", call. = FALSE
     )
-    value <- medium[, columns, drop = FALSE]
-    order_columns <- intersect(
-      c("condition", "exchange_reaction_id"),
-      colnames(value)
-    )
-    if (length(order_columns) && nrow(value)) {
-      value <- value[do.call(order, value[order_columns]), , drop = FALSE]
-    }
-    rownames(value) <- NULL
-    value
   }
-  file <- tempfile("RegCompassR-full-gem-medium-", fileext = ".rds")
+  payload <- data.frame(
+    reaction_id = reference$reactions,
+    final_lb = as.numeric(resolved$lb),
+    final_ub = as.numeric(resolved$ub),
+    stringsAsFactors = FALSE
+  )
+  changed <- reference$lb != resolved$lb | reference$ub != resolved$ub
+  file <- tempfile("RegCompassR-resolved-medium-", fileext = ".rds")
   on.exit(unlink(file, force = TRUE), add = TRUE)
-  saveRDS(payload, file, version = 2)
-  unname(tools::md5sum(file)[[1L]])
+  saveRDS(
+    list(schema = "resolved_gem_bounds_v1", bounds = payload),
+    file, version = 2
+  )
+  list(
+    fingerprint = unname(tools::md5sum(file)[[1L]]),
+    n_changed_bounds_vs_reference = as.integer(sum(changed)),
+    resolved_bounds_identical_to_reference = !any(changed),
+    changed_reactions = reference$reactions[changed]
+  )
+}
+
+.rc_full_gem_medium_fingerprint <- function(reference_gem, resolved_gem) {
+  .rc_full_gem_resolved_bounds_identity(
+    reference_gem, resolved_gem
+  )$fingerprint
 }
 
 #' Cache one complete medium-constrained full GEM per medium scenario
@@ -307,12 +279,23 @@
          all(medium$.no_constraints))) {
       medium <- NULL
     }
-    medium_fingerprint <- .rc_full_gem_medium_fingerprint(medium)
+
+    # Resolve the actual model bounds before assigning cache identity. Medium
+    # provenance and declarative fields are intentionally excluded from this
+    # fingerprint because they do not change the LP feasible region unless they
+    # alter final reaction bounds.
+    resolved <- .rc_build_full_gem_core(
+      gem = gem,
+      medium_table = medium,
+      condition = if (identical(condition, "all")) NULL else condition
+    )
+    bounds_identity <- .rc_full_gem_resolved_bounds_identity(gem, resolved)
+    medium_fingerprint <- bounds_identity$fingerprint
     file <- file.path(
       cache_dir,
       paste0(
         "full_gem__gem_", gem_fingerprint,
-        "__medium_bounds_", medium_fingerprint,
+        "__resolved_bounds_", medium_fingerprint,
         "__medium_", safe(scenario),
         "__condition_", safe(condition), ".rds"
       )
@@ -326,7 +309,8 @@
         NA_character_
       }
       cached_medium_fingerprint <- if (is.list(full)) {
-        full$cache_identity$medium_fingerprint %||% NA_character_
+        full$cache_identity$resolved_medium_fingerprint %||%
+          full$cache_identity$medium_fingerprint %||% NA_character_
       } else {
         NA_character_
       }
@@ -340,15 +324,16 @@
         !identical(cached_strategy, "compass_medium_constrained_full_gem")
     }
     if (rebuild) {
-      full <- rc_build_full_gem(
-        gem = gem,
-        medium_table = medium,
-        condition = if (identical(condition, "all")) NULL else condition
-      )
+      full <- resolved
       full$condition <- condition
       full$cache_identity <- list(
         gem_fingerprint = gem_fingerprint,
         medium_fingerprint = medium_fingerprint,
+        resolved_medium_fingerprint = medium_fingerprint,
+        n_changed_bounds_vs_reference =
+          bounds_identity$n_changed_bounds_vs_reference,
+        resolved_bounds_identical_to_reference =
+          bounds_identity$resolved_bounds_identical_to_reference,
         species = gem$model_info$species %||% NA_character_,
         source = gem$model_info$source %||% NA_character_,
         version = gem$model_info$model_version %||%
@@ -368,6 +353,11 @@
       ),
       gem_fingerprint = gem_fingerprint,
       medium_fingerprint = medium_fingerprint,
+      resolved_medium_fingerprint = medium_fingerprint,
+      n_changed_bounds_vs_reference =
+        bounds_identity$n_changed_bounds_vs_reference,
+      resolved_bounds_identical_to_reference =
+        bounds_identity$resolved_bounds_identical_to_reference,
       medium_scenario = scenario,
       condition = condition,
       file = file,
@@ -424,6 +414,8 @@
   attr(cache, "corda2_executed") <- FALSE
   attr(cache, "medium_handling") <-
     "exchange_bounds_only_no_reaction_deletion"
+  attr(cache, "medium_fingerprint_definition") <-
+    "resolved_reaction_id_final_lb_final_ub"
   cache
 }
 
