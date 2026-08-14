@@ -39,8 +39,10 @@ jobs:
               "'layer2_corda_paper_contract.R'",
               "'layer2_corda2_algorithm.R'",
               "'layer2_corda_model.R'",
-              "Pando (>= 2.0.11)",
-              "SuperCell (>= 2.2.0)",
+              "    Pando,",
+              "    SuperCell,",
+              "1667857557/Pando_regcompass",
+              "1667857557/SuperCell_Seurat_V4",
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
               "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
               "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
@@ -53,6 +55,15 @@ jobs:
           missing = [x for x in required_description if x not in description]
           if missing:
               raise RuntimeError(f"DESCRIPTION integration contract missing: {missing}")
+          for forbidden in (
+              "Pando (>=", "SuperCell (>=",
+              "1667857557/Pando_regcompass@",
+              "1667857557/SuperCell_Seurat_V4@",
+          ):
+              if forbidden in description:
+                  raise RuntimeError(
+                      f"repository-head dependency policy violated by: {forbidden}"
+                  )
 
           obsolete_files = [
               "R/condition_grn_contract_compat.R",
@@ -95,7 +106,11 @@ jobs:
               "R/grn_parallel_merge_contract.R": [
                   ".rc_merge_condition_job_results",
               ],
-              "R/mixed_pando.R": [".rc_merge_pando_results"],
+              "R/mixed_pando.R": [
+                  ".rc_merge_pando_results",
+                  ".rc_active_target_penalty_q",
+                  ".rc_penalty_evaluated_rows",
+              ],
               "R/medium.R": [
                   "rc_apply_medium_constraints",
                   ".rc_compass_model_bound_medium",
@@ -211,6 +226,16 @@ jobs:
           if "expected_statistical & expected_dictionary_support" in penalty:
               raise RuntimeError("candidate provenance still vetoes RegCompass activity")
 
+          step1 = Path("R/step_grn_common_dictionary.R").read_text()
+          required_stage1 = [
+              "target_rsq_threshold = 0.05",
+              ".rc_target_rsq_threshold(target_rsq_threshold)",
+              "options(RegCompassR.target_rsq_threshold = target_rsq_threshold)",
+          ]
+          missing = [x for x in required_stage1 if x not in step1]
+          if missing:
+              raise RuntimeError(f"Stage 1 target-R2 parameter surface missing: {missing}")
+
           step = Path("R/step_layer2.R").read_text()
           cache = Path("R/celltype_union_gem_cache.R").read_text()
           split = Path("R/layer2_corda_paper_contract.R").read_text()
@@ -279,6 +304,11 @@ jobs:
             list.files("tests/testthat", pattern = "[.]R$", full.names = TRUE)
           )
           for (file in files) parse(file = file)
+          rd_files <- list.files("man", pattern = "[.]Rd$", full.names = TRUE)
+          old_warn <- getOption("warn")
+          options(warn = 2)
+          on.exit(options(warn = old_warn), add = TRUE)
+          invisible(lapply(rd_files, tools::parse_Rd))
 
       - name: Run lightweight integration tests
         shell: Rscript {0}
