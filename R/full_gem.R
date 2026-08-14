@@ -207,6 +207,24 @@
   unname(tools::md5sum(file)[[1L]])
 }
 
+.rc_full_gem_medium_input_fingerprint <- function(medium_table) {
+  payload <- if (is.null(medium_table)) {
+    list(schema_version = "regcompass_medium_input_provenance_v1", medium = NULL)
+  } else {
+    medium <- as.data.frame(medium_table, stringsAsFactors = FALSE)
+    rownames(medium) <- NULL
+    list(
+      schema_version = "regcompass_medium_input_provenance_v1",
+      columns = colnames(medium),
+      medium = medium
+    )
+  }
+  file <- tempfile("RegCompassR-medium-input-", fileext = ".rds")
+  on.exit(unlink(file, force = TRUE), add = TRUE)
+  saveRDS(payload, file, version = 2)
+  unname(tools::md5sum(file)[[1L]])
+}
+
 .rc_resolved_medium_bounds_fingerprint <- function(reference_gem, constrained_gem) {
   reference <- rc_validate_gem(reference_gem)
   constrained <- rc_validate_gem(constrained_gem)
@@ -325,7 +343,7 @@
     resolved$condition <- condition
     medium_fingerprint <- .rc_resolved_medium_bounds_fingerprint(gem, resolved)
     bound_diagnostics <- .rc_resolved_medium_bound_diagnostics(gem, resolved)
-    input_fingerprint <- .rc_compass_medium_fingerprint(medium)
+    input_fingerprint <- .rc_full_gem_medium_input_fingerprint(medium)
 
     file <- file.path(
       cache_dir,
