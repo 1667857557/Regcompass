@@ -2,24 +2,41 @@
 
 Each stage writes a checkpoint to its output directory. Reuse the same input object, GEM, metadata columns, assays, and medium definition when restarting downstream stages.
 
-This tutorial shows only parameters that users commonly need to choose or change. Stable workflow defaults are intentionally omitted. Use the corresponding Rd help page when you need the complete parameter surface.
+This tutorial shows only parameters that users commonly need to choose or change. Stable workflow defaults are intentionally omitted.
 
 ```r
 workers <- 10L
 ```
 
-`workers` is the single workflow-level process cap. RegCompass selects the platform-specific backend automatically and shrinks each dispatch to the number of independent tasks available. For ridge GRNs, cell types are processed sequentially and this worker budget is reused inside Pando at the target level; each target worker receives only target-specific multiome data.
+`workers` is the workflow-level process cap. Ridge GRNs keep one broad cell type resident at a time and reuse this budget for target-level Pando work.
 
 ## 1. Regulatory evidence
 
-Stage 1 determines the Pando route automatically after the `min_cells` filter:
+Stage 1 selects the Pando route automatically after the `min_cells` filter:
 
-- a broad cell type retaining at least two condition levels uses condition-comparable Pando multi-task ridge;
-- a broad cell type retaining only one effective condition uses standard Pando automatically;
-- `condition_col = NULL` uses standard Pando for the analysis;
-- mixed datasets are routed independently by broad cell type.
+- at least two retained conditions within a broad cell type: condition-comparable common-dictionary ridge;
+- one effective condition: standard Pando K=1 ridge;
+- `condition_col = NULL`: standard Pando;
+- mixed datasets: route independently by broad cell type.
 
-The stable defaults are `tf_cor = 0.05`, `peak_cor = 0.05`, BH adjustment with `padj_threshold = 0.05`, ridge fitting, and the validated rank/CV controls. They do not need to be repeated in routine calls. If `pando_infer_args` contains a known option belonging only to the other Pando mode, RegCompass ignores that option for the incompatible route and records it in `step1$grn_result$pando_infer_argument_routing`; genuinely unknown argument names still raise an error.
+Routine call:
+
+```r
+step1 <- rc_regcompass_step_grn(
+  object = A,
+  gem = gem,
+  outdir = "run/01_grn",
+  genome = BSgenome.Hsapiens.UCSC.hg38,
+  condition_col = "condition",
+  celltype_col = "cell_type",
+  pando_args = list(min_cells = 500L),
+  workers = workers
+)
+```
+
+Stable defaults include `tf_cor = 0.05`, `peak_cor = 0.05`, BH `padj_threshold = 0.05`, ridge fitting, and `target_rsq_threshold = 0.05`. `target_rsq_threshold` is a RegCompass target-model quality gate on the selected-lambda **final full-data** target R²; it does not redefine Pando edge significance. OOF R² remains diagnostic only.
+
+Only expose changed values. For example:
 
 ```r
 step1 <- rc_regcompass_step_grn(
@@ -30,32 +47,23 @@ step1 <- rc_regcompass_step_grn(
   condition_col = "condition",
   celltype_col = "cell_type",
   pando_args = list(
-    min_cells = 500L
+    min_cells = 500L,
+    pando_infer_args = list(
+      tf_cor = 0.10,
+      peak_cor = 0.10,
+      padj_threshold = 0.01
+    )
   ),
+  target_rsq_threshold = 0.10,
   workers = workers
-)
-```
-
-If the dataset has no condition variable, use the same call with `condition_col = NULL`. Do not manually choose Condition Pando versus Standard Pando; the retained condition structure determines the route.
-
-Only add `pando_infer_args` when intentionally changing a default. For example:
-
-```r
-pando_args = list(
-  min_cells = 500L,
-  pando_infer_args = list(
-    tf_cor = 0.10,
-    peak_cor = 0.10,
-    padj_threshold = 0.01
-  )
 )
 ```
 
 ## 2. Multimodal metacells
 
-Stage 2 should use the same metadata design resolved by Stage 1. The default path aggregates the existing RNA and ATAC count matrices.
+Stage 2 uses the same retained cell/metadata design as Stage 1. For each broad cell type, all conditions jointly build one native RNA+ATAC WNN and Walktrap hierarchy; condition splits membership only **after** clustering.
 
-### 2A. Existing RNA and ATAC count matrices
+### 2A. Default path
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -68,7 +76,7 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-The default reductions are RNA PCA and ATAC LSI. Only override them when the input object uses different reductions, for example:
+The default reductions are RNA PCA and ATAC LSI. Only override them when needed:
 
 ```r
 metacell_args = list(
@@ -76,9 +84,32 @@ metacell_args = list(
 )
 ```
 
-### 2B. Recount ATAC from fragment files
+### 2B. Enforce a minimum final metacell size
 
-Supply `fragment_files` only when metacell ATAC counts should be rebuilt from single-cell fragments.
+When `min_metacell_size > 1`, supply an explicit `min_merge_affinity`. Repair occurs after the condition split and uses only the **original shared WNN**; RegCompass never builds a second condition-specific graph.
+
+```r
+step2 <- rc_regcompass_step_metacells(
+  object = A,
+  grn = step1,
+  outdir = "run/02_metacells",
+  condition_col = step1$params$requested_condition_col,
+  celltype_col = step1$params$celltype_col,
+  metacell_args = list(
+    min_metacell_size = 10L,
+    min_metacells_per_stratum = 3L,
+    min_merge_affinity = 0.05,
+    unresolved_small_policy = "error"
+  ),
+  workers = workers
+)
+```
+
+The numeric affinity threshold is an example, not a hidden biological default. A repair candidate must be in the same condition and broad cell type and satisfy the configured normalized original-WNN affinity. The repaired membership becomes the only canonical membership used by RNA/ATAC aggregation, Pando projection, and downstream scoring.
+
+### 2C. Recount ATAC from fragment files
+
+Fragments are processed only after final repaired membership is fixed.
 
 ```r
 step2 <- rc_regcompass_step_metacells(
@@ -92,13 +123,9 @@ step2 <- rc_regcompass_step_metacells(
 )
 ```
 
-Fragment processing shares the same top-level `workers` cap. Fragment-specific implementation defaults are documented in the Stage 2 Rd page.
+See [metacell-reduction-selection.md](metacell-reduction-selection.md) for the complete geometry, repair, provenance, and fragment contract.
 
 ## 3. Reaction meta-modules
-
-The default biological expansion rules are workflow contracts and normally require no tuning.
-
-### 3A. Default meta-module construction
 
 ```r
 step3 <- rc_regcompass_step_meta_modules(
@@ -109,28 +136,10 @@ step3 <- rc_regcompass_step_meta_modules(
 )
 ```
 
-### 3B. Custom subsystem annotation table
-
-Only add `subsystem_table` when the GEM requires an explicit compatible subsystem annotation override.
-
-```r
-step3 <- rc_regcompass_step_meta_modules(
-  grn = step1,
-  metacells = step2,
-  gem = gem,
-  outdir = "run/03_meta_modules",
-  meta_module_args = list(
-    subsystem_table = subsystem_table
-  )
-)
-```
+Only add `meta_module_args$subsystem_table` when the GEM requires an explicit compatible subsystem override.
 
 ## 4. Layer 1 reaction evidence
 
-The default GPR aggregation and RNA support scaling are normally sufficient.
-
-### 4A. Default Layer 1
-
 ```r
 step4 <- rc_regcompass_step_layer1(
   grn = step1,
@@ -142,29 +151,11 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
-### 4B. Alternative GPR aggregation
-
-Only expose these arguments when the analysis intentionally changes them.
-
-```r
-step4 <- rc_regcompass_step_layer1(
-  grn = step1,
-  metacells = step2,
-  meta_modules = step3,
-  gem = gem,
-  outdir = "run/04_layer1",
-  gpr_and_method = "median",
-  workers = workers
-)
-```
-
-`gpr_and_method` accepts `"min"`, `"median"`, or `"mean"`. `gene_half_saturation` can also be supplied when a non-default RNA support scale is scientifically intended.
+`gpr_and_method` can be changed to `"median"` or `"mean"` when scientifically intended; the default is `"min"`.
 
 ## 5. Medium scenarios
 
-Choose the biological medium; do not repeat unchanged exchange and matching defaults in routine calls.
-
-### 5A. Built-in physiological medium
+Choose the biological medium rather than repeating stable matching controls.
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
@@ -174,7 +165,7 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-### 5B. Built-in perturbation medium
+A built-in challenge can be selected similarly:
 
 ```r
 medium_scenarios <- rc_make_medium_scenarios(
@@ -184,24 +175,11 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-### 5C. Custom medium
-
-```r
-medium_scenarios <- rc_make_medium_scenarios(
-  gem = gem,
-  scenario = "custom",
-  species = "human",
-  custom_medium = custom_medium
-)
-```
-
-Built-in scenarios are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`. See [medium-presets.md](medium-presets.md) for composition, provenance, and custom-medium formats.
+Built-in challenge concentrations are **concentration metadata**, not automatic uptake-flux constraints. High- and low-concentration presets may therefore resolve to identical LP bounds. To model a flux restriction, supply an explicit custom reaction bound or explicit uptake-fraction assumption. See [medium-presets.md](medium-presets.md).
 
 ## 6. Layer 2 structural model and directional scoring
 
-`meta_module_gem` with CORDA2 is the default structural route. Stable CORDA2 and scoring defaults are not expanded in the routine call.
-
-### 6A. Default CORDA2 workflow
+`meta_module_gem` with CORDA2 is the default structural route:
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -214,25 +192,9 @@ step5 <- rc_regcompass_step_layer2(
 )
 ```
 
-### 6B. Adjust CORDA2 only when needed
+Only change CORDA2 controls deliberately. The original controls remain under `model_params$corda2_args`: `MCxNCthresh`, `constraint`, `constrainby`, `om`, and `ci`.
 
-The original CORDA2 controls remain available under `model_params$corda2_args`: `MCxNCthresh`, `constraint`, `constrainby`, `om`, and `ci`. They should normally stay at their validated defaults; expose only the parameter being deliberately changed. For example:
-
-```r
-layer2_args = list(
-  model_params = list(
-    corda2_args = list(
-      MCxNCthresh = 3
-    )
-  )
-)
-```
-
-See [layer2-corda.md](layer2-corda.md) for the meaning and validated defaults of `constraint`, `constrainby`, `om`, `ci`, and `MCxNCthresh` before changing them.
-
-### 6C. Score only one reaction direction
-
-Only set `target_direction` when the analysis should not score both directions.
+To score only one reaction direction:
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -241,18 +203,14 @@ step5 <- rc_regcompass_step_layer2(
   gem = gem,
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2",
-  layer2_args = list(
-    target_direction = "forward"
-  ),
+  layer2_args = list(target_direction = "forward"),
   workers = workers
 )
 ```
 
 `target_direction` accepts `"both"`, `"forward"`, or `"reverse"`.
 
-### 6D. Supplementary FASTCORE structural completion
-
-Use this only when intentionally replacing the default CORDA2 completion route.
+FASTCORE remains a supplementary alternative completion route:
 
 ```r
 step5 <- rc_regcompass_step_layer2(
@@ -262,19 +220,15 @@ step5 <- rc_regcompass_step_layer2(
   medium_scenarios = medium_scenarios,
   outdir = "run/05_layer2",
   layer2_args = list(
-    model_params = list(
-      model_completion = "fastcore"
-    )
+    model_params = list(model_completion = "fastcore")
   ),
   workers = workers
 )
 ```
 
-CORDA2-specific controls are documented in [layer2-corda.md](layer2-corda.md). FASTCORE-specific structural controls are documented in [layer2-model-builders.md](layer2-model-builders.md).
+See [layer2-corda.md](layer2-corda.md) and [layer2-model-builders.md](layer2-model-builders.md) before changing structural controls.
 
 ## 7. Result assembly
-
-Result assembly normally needs no tuning beyond the stage objects, GEM, and output directory.
 
 ```r
 result <- rc_regcompass_step_results(
@@ -288,4 +242,4 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-The stage outputs are restartable R objects. Post-analysis functions are listed in [tutorial-04-post-analysis.md](tutorial-04-post-analysis.md) and [functions.md](functions.md). Equations and quantitative definitions are maintained only in [mathematical-model.md](mathematical-model.md).
+The stage objects are restartable checkpoints. Equations and quantitative definitions are maintained in [mathematical-model.md](mathematical-model.md).
