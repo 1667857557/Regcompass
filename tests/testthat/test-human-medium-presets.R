@@ -84,6 +84,7 @@ test_that("normal human plasma uses authoritative physiological-medium sources",
   )
   expect_false("EX_oxygen" %in% medium$exchange_reaction_id)
   expect_false("EX_unknown" %in% medium$exchange_reaction_id)
+  expect_false(any(medium$concentration_used_for_rate_bound))
 })
 
 test_that("all culture challenges use the authoritative HPLM background", {
@@ -108,7 +109,7 @@ test_that("all culture challenges use the authoritative HPLM background", {
     ))
     expect_true(all(
       rows$scenario_construction ==
-        "authoritative_HPLM_background_plus_named_nutrient_override"
+        "authoritative_HPLM_background_plus_named_concentration_provenance"
     ))
     expect_true(all(grepl(
       "10.1016/j.cell.2017.03.023",
@@ -130,10 +131,11 @@ test_that("all culture challenges use the authoritative HPLM background", {
     expect_true(all(c(
       "EX_glucose", "EX_glutamine", "EX_arginine", "EX_leucine"
     ) %in% rows$exchange_reaction_id))
+    expect_false(any(rows$concentration_used_for_rate_bound))
   }
 })
 
-test_that("challenge concentrations override only the named nutrient", {
+test_that("challenge concentrations override only the named nutrient metadata", {
   gem <- make_human_medium_test_gem()
   medium <- rc_make_medium_scenarios(
     gem,
@@ -184,7 +186,7 @@ test_that("challenge concentrations override only the named nutrient", {
   )
 })
 
-test_that("target concentration caps remain explicit sensitivity assumptions", {
+test_that("published concentrations do not create implicit uptake ratios", {
   gem <- make_human_medium_test_gem()
   medium <- rc_make_medium_scenarios(
     gem,
@@ -196,31 +198,21 @@ test_that("target concentration caps remain explicit sensitivity assumptions", {
     exchange_limit = 1,
     strict_preset_matching = FALSE
   )
-  expect_equal(
-    medium_row(medium, "high_glucose", "EX_glucose")$uptake_fraction,
-    1
-  )
-  expect_equal(
-    medium_row(medium, "low_glucose", "EX_glucose")$uptake_fraction,
-    1 / 25
-  )
-  expect_equal(
-    medium_row(medium, "high_lactate", "EX_lactate")$uptake_fraction,
-    1
-  )
-  expect_equal(
-    medium_row(medium, "low_lactate", "EX_lactate")$uptake_fraction,
-    0.5 / 20
-  )
-  expect_equal(
-    medium_row(medium, "low_glutamine", "EX_glutamine")$uptake_fraction,
-    0.5 / 4
-  )
-  expect_true(all(
-    medium$concentration_used_for_rate_bound[
-      medium$target_exchange_flag %in% TRUE
-    ]
-  ))
+  for (scenario_id in c(
+    "high_glucose", "low_glucose", "high_lactate", "low_lactate",
+    "low_glutamine"
+  )) {
+    target <- if (grepl("glucose", scenario_id)) {
+      "EX_glucose"
+    } else if (grepl("lactate", scenario_id)) {
+      "EX_lactate"
+    } else {
+      "EX_glutamine"
+    }
+    row <- medium_row(medium, scenario_id, target)
+    expect_equal(row$uptake_fraction, 1)
+    expect_false(row$concentration_used_for_rate_bound)
+  }
 })
 
 test_that("technical and hidden aliases are rejected", {
@@ -268,7 +260,7 @@ test_that("user-defined media remain unrestricted by publication metadata", {
   )
 })
 
-test_that("scenario NULL supports custom-only metabolite composition", {
+test_that("scenario NULL supports explicit custom metabolite uptake assumptions", {
   gem <- make_human_medium_test_gem()
   custom <- data.frame(
     metabolite_name = "customfuel",
