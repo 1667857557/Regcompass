@@ -1,10 +1,12 @@
 #' Build RNA plus Pando reaction support
 #'
-#' Each cell type uses its Stage 1 Pando route. Standard mode uses
-#' the original Pando full-fit TF-by-ATAC projection and calculates no condition
-#' coefficients. Both modes use exact native SuperCell membership. Parallel
-#' projection jobs use at most `workers` processes and automatically shrink to
-#' the number of independent tasks available.
+#' Each cell type uses its Stage 1 Pando route. Standard mode uses the full-fit
+#' Pando TF-by-ATAC projection and calculates no condition coefficients. Both
+#' modes use exact native SuperCell membership. Quantitative reaction expression
+#' is the equal-weight mean of single-cell linear CPM within each final
+#' SuperCell membership; the latent metacell RNA model is structural support
+#' only. Parallel projection jobs use at most `workers` processes and
+#' automatically shrink to the number of independent tasks available.
 #'
 #' @param workers Total RegCompass worker cap, default 10. Windows uses SOCK/Snow
 #'   workers and Linux/macOS uses multicore workers. Stage 4 never starts more
@@ -44,7 +46,7 @@ rc_regcompass_step_layer1 <- function(
   .rc_require_stage_gem(meta_modules, gem, "meta_modules")
   .rc_require_stage_gem(grn, gem, "grn")
   params <- metacells$params
-  layer1 <- .rc_cell_first_projection_layer1_v6(
+  layer1 <- .rc_cell_first_projection_layer1(
     grn_result = grn$grn_result,
     metacell_object = metacells$metacell_object,
     membership = metacells$pooled$membership,
