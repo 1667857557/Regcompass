@@ -87,27 +87,74 @@ Pando exports
 penalty\_effect_{e,c}=A_{e,c}\widehat\beta_{e,c}.
 \]
 
-RegCompass does not reselect these edges. It only adds the target-level requirement `fit_status == "ok"` before downstream use. Therefore RegCompass penalty eligibility is
+After selecting \(\lambda^*\), Pando refits the target on all available cells in condition \(c\). The final full-data target goodness-of-fit is
 
 \[
-H_{e,c}=A_{e,c}\mathbf 1\{fit\_status_{g,c}=\text{"ok"}\}.
+R^2_{g,c,full}=1-
+\frac{\sum_i(y_{g,i,c}-\widehat y_{g,i,c})^2}
+{\sum_i(y_{g,i,c}-\bar y_{g,c})^2}.
 \]
+
+The generic Pando field `rsq` denotes this selected-\(\lambda\) final full-data \(R^2\). `rsq_oof` remains the condition-stratified cross-validation prediction diagnostic and is not used as a downstream penalty weight.
+
+RegCompass deliberately keeps edge significance and target-model quality as different statistical objects. With target-quality threshold \(\tau_{R^2}\), default 0.05, define
+
+\[
+Q_{g,c}=\mathbf 1\{fit\_status_{g,c}=\text{"ok"}\}
+\mathbf 1\{R^2_{g,c,full}\text{ is finite}\}
+\mathbf 1\{R^2_{g,c,full}\ge\tau_{R^2}\}.
+\]
+
+RegCompass penalty eligibility is
+
+\[
+\boxed{H_{e,c}=A_{e,c}Q_{g,c}}.
+\]
+
+Thus the target \(R^2\) gate **does not redefine** Pando `active`, `significant`, adjusted P values, or `penalty_effect`; it only determines whether an otherwise Pando-active edge may enter the RegCompass regulatory penalty. The same target-quality definition is used by the standard-Pando \(K=1\) ridge route.
 
 The complete common-dictionary coefficient table remains stored for diagnostics and direct condition contrasts even when \(H_{e,c}=0\). Direct differential inference uses \(\Delta\beta_e=\beta_{e,A}-\beta_{e,B}\); significance in one condition and nonsignificance in another is not used as a substitute for this contrast.
 
-The target weight used by the downstream penalty is binary. A target-condition pair with at least one penalty-eligible active edge has
+Downstream target state is tri-state. Let a target-condition pair be **evaluated** when its final target model has `fit_status == "ok"`. Then
 
 \[
-q_{g,c}=1.
+q_{g,c}=\begin{cases}
+1,& \exists e:\ H_{e,c}=1,\\
+0,& \text{target evaluated but no penalty-eligible edge exists},\\
+NA,& \text{target unavailable or not evaluated}.
+\end{cases}
 \]
 
-Targets without a valid active edge have no regulatory contribution. Target-level \(R^2\) and out-of-fold \(R^2\) remain fit diagnostics only: they do not enter \(q\), do not rescale the regulatory projection, and do not enter the COMPASS-like penalty. The same binary target rule is used by the standard-Pando route.
+Therefore a target with finite but sub-threshold full-data \(R^2\), or a model-supported target with no BH-active edge, receives \(q=0\) and an explicit neutral regulatory modifier. `NA` is retained as provenance for unavailable/not-evaluated targets and later follows the RNA-only neutral fallback. Neither full-data \(R^2\) nor OOF \(R^2\) is multiplied continuously into the regulatory projection.
 
 Because correlation screening, ridge estimation, and CV tuning use the observed data, ridge-Wald and contrast P values are approximate and conditional on the selected dictionary and tuning procedure; they are not exact selective-inference P values.
 
-## 2. Metacell regulatory projection
+## 2. Shared-WNN metacells and regulatory projection
 
-For metacell \(u\), RegCompass averages TF expression and peak accessibility separately over the exact member cells before multiplying them. For edge \(e\),
+For each broad cell type, all conditions jointly enter **one** multimodal WNN graph and one Walktrap hierarchy. Condition labels do not participate in graph construction. Only after Walktrap clustering is the parent membership split by condition to form provisional condition-pure metacells.
+
+If `min_metacell_size > 1`, a provisional small metacell \(M\) may merge only with a metacell \(N\) from the same condition and the same broad cell type, using the exact original shared WNN. With non-negative symmetrized weights
+
+\[
+W\leftarrow\frac{W+W^T}{2},
+\]
+
+and graph volume \(vol(M)=\sum_{i\in M}d_i\), the repair affinity is
+
+\[
+A(M,N)=\frac{\sum_{i\in M,j\in N}W_{ij}}
+{\sqrt{vol(M)vol(N)}}.
+\]
+
+A merge is legal only when \(A(M,N)\ge\tau_{merge}\), where `min_merge_affinity` is explicit. The necessary cell-count feasibility condition for stratum \(s\) is
+
+\[
+N_s\ge min\_metacell\_size\times min\_metacells\_per\_stratum,
+\]
+
+but this condition is not sufficient: graph topology and the affinity threshold can still leave an unresolved small metacell. Such cases follow the explicit `unresolved_small_policy`. Repair order and tie-breaking are deterministic, and the original Walktrap parent ID remains cell-level provenance because one final repaired metacell may contain cells from multiple parent clusters.
+
+All downstream aggregation uses the final repaired membership \(M_u\). For metacell \(u\), RegCompass averages TF expression and peak accessibility separately over the exact member cells before multiplying them. For edge \(e\),
 
 \[
 \overline T_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}T_{e,i},\qquad
@@ -134,14 +181,14 @@ MAD_{1.4826}(G_{g,t}),
 \right).
 \]
 
-The bounded regulatory modifier is
+For \(q=1\), the bounded regulatory modifier is
 
 \[
-R_{g,u}=q_{g,c(u)}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right),
-\qquad -1\le R_{g,u}\le1,
+R_{g,u}=\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right),
+\qquad -1\le R_{g,u}\le1.
 \]
 
-with \(q=1\) for a valid active target. Thus model-fit \(R^2\) values never attenuate the modifier. When regulatory evidence is unavailable, \(R_{g,u}=0\).
+For \(q=0\), \(R_{g,u}=0\) **by definition**, even if the projection is non-finite or absent. For \(q=NA\), unavailable provenance is retained as non-finite at the modifier construction step and downstream integration applies the neutral RNA-only fallback \(R:=0\). Model-fit \(R^2\) therefore acts as a discrete target-quality gate, never as a continuous attenuation factor.
 
 ## 3. Quantitative RNA input to the COMPASS-like penalty
 
@@ -157,7 +204,7 @@ its complete RNA library size. RegCompass first computes linear per-cell CPM,
 x_{g,i}=10^6\frac{Y_{g,i}}{L_i},
 \]
 
-then takes an equal-weight mean across the final SuperCell membership,
+then takes an equal-weight mean across the final repaired SuperCell membership,
 
 \[
 X^{RNA}_{g,u}=\frac{1}{|M_u|}\sum_{i\in M_u}x_{g,i}.
@@ -219,15 +266,31 @@ C^{MO}_{g,u}=
 
 The same Boolean GPR topology is then applied to obtain bounded reaction structural support. This bounded quantity is used for structural-confidence classification and is **not** substituted for \(E^{quant}\) in the LP penalty.
 
-## 6. Medium constraints
+## 6. Medium constraints and cache identity
 
-A medium scenario changes exchange bounds by intersection with the parent GEM. For reaction \(r\),
+A medium scenario may change exchange bounds only by restricting the parent GEM. For reaction \(r\),
 
 \[
 l'_r\ge l_r,\qquad u'_r\le u_r.
 \]
 
-Therefore medium application cannot create a reaction direction that was blocked in the original GEM.
+Therefore medium application cannot create a reaction direction that was blocked in the original GEM. Reversible exchange reactions do not need to be physically split: after the uptake orientation is resolved, constraining the corresponding original lower or upper bound is mathematically equivalent to a directional uptake cap.
+
+An extracellular concentration in mM and a flux bound are different physical quantities. Consequently a literature concentration \(C\) is scenario metadata and **does not imply**
+
+\[
+v_{uptake}\propto C
+\]
+
+unless an independent transport/flux model supplies that relationship. Built-in high/low concentration scenarios therefore do not derive an uptake cap from `concentration_mM/reference_mM`. Explicit user-supplied `uptake_limit`, bounds, or an explicitly declared `uptake_fraction` remain valid modeling assumptions; they are not inferred automatically from concentration.
+
+Cache identity is defined from the actual resolved LP problem rather than the medium input table. Let \(F_{GEM}\) identify the base GEM including stoichiometry and reference bounds. For resolved medium \(m\),
+
+\[
+F_m=hash\left(F_{GEM},\{(r,l'_{r,m},u'_{r,m})\}_{r=1}^{R}\right).
+\]
+
+Thus different medium descriptions that resolve to identical final bounds have the same `resolved_medium_fingerprint`. The cache summary additionally records `n_changed_bounds_vs_reference` and `resolved_bounds_identical_to_reference`; the original medium-table fingerprint is retained only as provenance.
 
 ## 7. CORDA2 structural reconstruction
 
