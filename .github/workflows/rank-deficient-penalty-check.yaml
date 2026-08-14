@@ -20,12 +20,14 @@ jobs:
       - name: Verify regularized rank deficiency remains diagnostic
         shell: Rscript {0}
         run: |
+          `%||%` <- function(x, y) if (is.null(x)) y else x
           .rc_standard_pando_padj_default <- 0.05
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
 
           # Raw rank deficiency remains diagnostic under ridge. Candidate
-          # correlation provenance does not veto an estimable BH-supported edge.
+          # correlation provenance does not veto an estimable BH-supported edge;
+          # target-model eligibility additionally requires full-data R2 support.
           make_coef <- function(threshold) {
             estimate <- c(1, 1, 1, 1)
             estimable <- c(TRUE, TRUE, FALSE, TRUE)
@@ -46,6 +48,7 @@ jobs:
               significant = active,
               penalty_effect = ifelse(active, estimate, 0),
               fit_status = c("ok", "ok", "ok", "failed"),
+              rsq = c(0.8, 0.7, 0.6, 0.9),
               design_rank_deficient = c(FALSE, TRUE, TRUE, FALSE),
               stringsAsFactors = FALSE
             )
@@ -83,6 +86,9 @@ jobs:
               target = c("G", "G"),
               condition = c("A", "B"),
               fit_status = c("ok", "ok"),
+              rsq = c(0.8, 0.7),
+              rsq_in_sample = c(0.8, 0.7),
+              rsq_oof = c(0.7, 0.6),
               design_rank_deficient = c(TRUE, TRUE),
               stringsAsFactors = FALSE
             )
@@ -93,10 +99,13 @@ jobs:
             identical(as.numeric(gated$coefficients$penalty_effect), c(0.8, 0)),
             identical(as.logical(gated$coefficients$penalty_eligible),
                       c(TRUE, FALSE)),
+            identical(as.numeric(gated$coefficients$target_rsq), c(0.8, 0.7)),
             identical(
               gated$regcompass_rank_deficient_policy,
               "regularized_ok_fit_retained; non-estimable condition edge excluded"
             ),
             identical(gated$regcompass_significance_role,
-                      "consume_pando_condition_bh_active_edge_without_reselection")
+                      "consume_pando_condition_bh_active_edge_without_reselection"),
+            identical(gated$regcompass_target_rsq_definition,
+                      "selected_lambda_full_data_R2")
           )

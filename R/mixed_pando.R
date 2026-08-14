@@ -94,11 +94,27 @@
     }
     if (any(condition_rows)) {
       # Pando owns active/significant/penalty_effect. RegCompass validates that
-      # contract and only adds target-fit-status eligibility; it does not
-      # reconstruct the Pando effect from estimate.
-      gate <- .rc_condition_penalty_gate(
-        all_edges[condition_rows, , drop = FALSE]
-      )
+      # contract and adds target-fit-status plus full-data target-R2 eligibility;
+      # it never reconstructs the Pando effect from estimate.
+      condition_table <- all_edges[condition_rows, , drop = FALSE]
+      gate <- .rc_condition_penalty_gate(condition_table)
+      target_rsq <- .rc_condition_target_rsq(condition_table)
+      rsq_threshold <- .rc_target_rsq_threshold()
+      if (!"target_rsq" %in% colnames(all_edges)) {
+        all_edges$target_rsq <- suppressWarnings(as.numeric(all_edges$rsq))
+      }
+      all_edges$target_rsq[condition_rows] <- target_rsq
+      if (!"target_rsq_threshold" %in% colnames(all_edges)) {
+        all_edges$target_rsq_threshold <- rsq_threshold
+      }
+      all_edges$target_rsq_threshold[condition_rows] <- rsq_threshold
+      if (!"target_model_supported" %in% colnames(all_edges)) {
+        all_edges$target_model_supported <- FALSE
+      }
+      fit_status <- trimws(as.character(condition_table$fit_status))
+      all_edges$target_model_supported[condition_rows] <-
+        !is.na(fit_status) & fit_status == "ok" &
+        is.finite(target_rsq) & target_rsq >= rsq_threshold
       if (!"penalty_eligible" %in% colnames(all_edges)) {
         all_edges$penalty_eligible <- FALSE
       }
@@ -125,7 +141,7 @@
   }
 
   answer <- list(
-    schema_version = "regcompass_celltype_routed_pando",
+    schema_version = "regcompass_celltype_routed_pando_v2",
     analysis_mode = mode,
     cell_type_analysis_mode = routing,
     condition_coefficients_calculated = length(condition_fits) > 0L,
@@ -204,11 +220,13 @@
       condition_effect_filter = paste(
         "consume Pando condition-specific estimable BH-active ridge edge;",
         "global/local correlation support is dictionary provenance only;",
-        "then require target fit_status == 'ok'"
+        "then require target fit_status == 'ok' and selected-lambda full-data",
+        paste0("R2 >= ", format(.rc_target_rsq_threshold(), trim = TRUE))
       ),
       standard_edge_filter = paste(
-        "estimable when available and adjusted P below",
-        "the configured padj_threshold"
+        "estimable when available, adjusted P below the configured threshold,",
+        paste0("and selected-lambda full-data R2 >= ",
+               format(.rc_target_rsq_threshold(), trim = TRUE))
       ),
       projection =
         "beta times metacell-mean TF times metacell-mean ATAC"
@@ -238,41 +256,39 @@
   answer
 }
 
-.rc_active_target_penalty_q <- function(
-    grn_result, unit_meta, condition_col, celltype_col, template) {
-  q <- as.matrix(template)
-  q[,] <- NA_real_
-  active <- grn_result$tf_peak_gene_condition
-  if (!is.data.frame(active) || !nrow(active)) return(q)
+.rc_validate_penalty_q_table <- function(
+    table, unit_meta, condition_col, celltype_col, label) {
+  if (!is.data.frame(table) || !nrow(table)) return(table)
   required <- c("target", condition_col, celltype_col)
-  if (!all(required %in% colnames(active)) ||
+  if (!all(required %in% colnames(table)) ||
       !all(c("unit_id", condition_col, celltype_col) %in% colnames(unit_meta))) {
     stop(
-      "Active-target penalty q requires target, condition and cell-type labels ",
+      label, " penalty routing requires target, condition and cell-type labels ",
       "aligned to metacell metadata.", call. = FALSE
     )
   }
-  target <- tolower(trimws(as.character(active$target)))
-  condition <- trimws(as.character(active[[condition_col]]))
-  cell_type <- trimws(as.character(active[[celltype_col]]))
-  if (anyNA(target) || any(!nzchar(target)) ||
-      anyNA(condition) || any(!nzchar(condition)) ||
-      anyNA(cell_type) || any(!nzchar(cell_type))) {
-    stop("Active Pando edges contain incomplete penalty-routing labels.",
+  table$target <- tolower(trimws(as.character(table$target)))
+  table[[condition_col]] <- trimws(as.character(table[[condition_col]]))
+  table[[celltype_col]] <- trimws(as.character(table[[celltype_col]]))
+  if (anyNA(table$target) || any(!nzchar(table$target)) ||
+      anyNA(table[[condition_col]]) || any(!nzchar(table[[condition_col]])) ||
+      anyNA(table[[celltype_col]]) || any(!nzchar(table[[celltype_col]]))) {
+    stop(label, " Pando edges contain incomplete penalty-routing labels.",
          call. = FALSE)
   }
-  active$target <- target
-  active[[condition_col]] <- condition
-  active[[celltype_col]] <- cell_type
-  strata <- unique(active[, c(condition_col, celltype_col), drop = FALSE])
+  table
+}
+
+.rc_set_penalty_q_by_stratum <- function(
+    q, table, unit_meta, condition_col, celltype_col, value) {
+  if (!nrow(table)) return(q)
+  strata <- unique(table[, c(condition_col, celltype_col), drop = FALSE])
   for (i in seq_len(nrow(strata))) {
     condition_value <- as.character(strata[[condition_col]][[i]])
     celltype_value <- as.character(strata[[celltype_col]][[i]])
-    edge_keep <- active[[condition_col]] == condition_value &
-      active[[celltype_col]] == celltype_value
-    targets <- intersect(
-      unique(as.character(active$target[edge_keep])), rownames(q)
-    )
+    edge_keep <- table[[condition_col]] == condition_value &
+      table[[celltype_col]] == celltype_value
+    targets <- intersect(unique(as.character(table$target[edge_keep])), rownames(q))
     units <- intersect(
       as.character(unit_meta$unit_id[
         as.character(unit_meta[[condition_col]]) == condition_value &
@@ -280,10 +296,34 @@
       ]),
       colnames(q)
     )
-    if (length(targets) && length(units)) {
-      q[targets, units] <- 1
-    }
+    if (length(targets) && length(units)) q[targets, units] <- value
   }
+  q
+}
+
+.rc_active_target_penalty_q <- function(
+    grn_result, unit_meta, condition_col, celltype_col, template) {
+  q <- as.matrix(template)
+  q[,] <- NA_real_
+  evaluated <- .rc_validate_penalty_q_table(
+    grn_result$tf_peak_gene_condition_all,
+    unit_meta, condition_col, celltype_col, "Evaluated-target"
+  )
+  active <- .rc_validate_penalty_q_table(
+    grn_result$tf_peak_gene_condition,
+    unit_meta, condition_col, celltype_col, "Active-target"
+  )
+
+  # Three-state target contract:
+  #   1  = evaluated and at least one edge is penalty-eligible;
+  #   0  = evaluated in this condition/cell type but no edge is eligible;
+  #   NA = target was unavailable/not evaluated, so regulatory evidence is absent.
+  q <- .rc_set_penalty_q_by_stratum(
+    q, evaluated, unit_meta, condition_col, celltype_col, 0
+  )
+  q <- .rc_set_penalty_q_by_stratum(
+    q, active, unit_meta, condition_col, celltype_col, 1
+  )
   q
 }
 
@@ -327,8 +367,6 @@
   }
   if (!length(origins)) stop("No Pando projection route is available.", call. = FALSE)
 
-  # Penalty target weight is intentionally binary. R2 and OOF R2 remain fit
-  # diagnostics only and never rescale the quantitative regulatory projection.
   reliability <- .rc_active_target_penalty_q(
     grn_result = grn_result,
     unit_meta = unit_meta,
@@ -338,8 +376,10 @@
   )
   coverage_table <- .rc_bind_frames_fill(coverage)
   if (nrow(coverage_table)) {
-    coverage_table$penalty_q_definition <-
-      "q=1 for valid active target; R2 and OOF R2 are diagnostics only"
+    coverage_table$penalty_q_definition <- paste(
+      "q=1 evaluated with eligible active edge; q=0 evaluated but rejected;",
+      "q=NA unavailable/not evaluated; R2 is a gate, not a multiplier"
+    )
   }
   list(
     projection = projection,
@@ -352,7 +392,9 @@
     condition_coefficients_calculated =
       length(grn_result$condition_grn_fits) > 0L,
     cell_type_analysis_mode = grn_result$cell_type_analysis_mode,
-    penalty_q_definition =
-      "q=1 for valid active target; R2 and OOF R2 excluded from penalty"
+    penalty_q_definition = paste(
+      "q=1 evaluated with eligible active edge; q=0 evaluated but rejected;",
+      "q=NA unavailable/not evaluated"
+    )
   )
 }

@@ -22,12 +22,12 @@ rc_make_medium_scenarios(
 \item{scenario}{One or more of \code{"normal_human_plasma"}, \code{"mouse_plasma"}, \code{"high_glucose"}, \code{"low_glucose"}, \code{"high_lactate"}, \code{"low_lactate"}, \code{"low_glutamine"}, and \code{"custom"}. Use \code{NULL} with \code{custom_metabolites} for a custom-only metabolite composition.}
 \item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}. Human presets require Human-GEM; \code{"mouse_plasma"} requires Mouse-GEM.}
 \item{custom_medium}{Optional user-defined reaction-level medium bounds.}
-\item{custom_metabolites}{Optional user-defined metabolite availability/composition table.}
-\item{uptake_scale}{Non-negative global or named sensitivity multiplier for preset uptake caps.}
+\item{custom_metabolites}{Optional user-defined metabolite availability/composition table. A supplied uptake fraction is an explicit modeling assumption, not inferred from concentration.}
+\item{uptake_scale}{Non-negative global or named sensitivity multiplier applied explicitly to preset exchange caps. Published concentration values are not converted into this multiplier.}
 \item{exchange_roles}{Reaction roles treated as exchange reactions.}
 \item{condition}{Medium condition label. Canonical shared-medium scoring uses \code{"all"}.}
-\item{exchange_limit}{Shared bound cap intersected with original GEM directionality.}
+\item{exchange_limit}{Shared exchange-cap magnitude intersected with original GEM directionality.}
 \item{strict_preset_matching}{Stop when required preset components cannot be mapped uniquely to GEM exchanges.}
 }
-\value{A reaction-level medium table with bounds and provenance fields.}
-\description{Creates literature-backed human or mouse medium presets or a user-defined medium. Human workflows default to \code{"normal_human_plasma"}; mouse workflows default to \code{"mouse_plasma"} when the top-level workflow creates the medium automatically. Exact compositions and references are documented in \code{docs/medium-presets.md}.}
+\value{A reaction-level medium table with resolved requested bounds and provenance fields.}
+\description{Creates literature-backed human or mouse medium presets or a user-defined medium. Published extracellular concentrations are retained as composition and provenance evidence and are not interpreted as transporter kinetics or converted linearly into exchange flux bounds. Human workflows default to \code{"normal_human_plasma"}; mouse workflows default to \code{"mouse_plasma"} when the top-level workflow creates the medium automatically. Presets and custom formats are summarized in \code{docs/medium-presets.md}.}

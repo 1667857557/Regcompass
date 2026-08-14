@@ -2,16 +2,27 @@
 
 .RC_PANDO_PENALTY_CORR_THRESHOLD <- 0
 .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0
+.RC_PANDO_TARGET_RSQ_THRESHOLD <- 0.05
 
-.rc_condition_fit_status_for_coefficients <- function(fit, coefficient) {
+.rc_target_rsq_threshold <- function(value = getOption(
+    "RegCompassR.target_rsq_threshold", .RC_PANDO_TARGET_RSQ_THRESHOLD)) {
+  value <- suppressWarnings(as.numeric(value))
+  if (length(value) != 1L || !is.finite(value) || value < 0 || value >= 1) {
+    stop("RegCompass target R2 threshold must be one value in [0, 1).",
+         call. = FALSE)
+  }
+  value[[1L]]
+}
+
+.rc_condition_fit_diagnostics_for_coefficients <- function(fit, coefficient) {
   fit_table <- as.data.frame(fit$fit, stringsAsFactors = FALSE)
-  required <- c("target", "condition", "fit_status")
+  required <- c("target", "condition", "fit_status", "rsq")
   if (!is.data.frame(fit_table) ||
       !all(required %in% colnames(fit_table)) ||
       !all(c("target", "condition") %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN penalty filtering requires target-level fit_status ",
-      "diagnostics aligned to coefficient target and condition.",
+      "Condition-GRN penalty filtering requires target-level fit_status and ",
+      "full-data rsq diagnostics aligned to coefficient target and condition.",
       call. = FALSE
     )
   }
@@ -32,15 +43,24 @@
   index <- match(coefficient_key, fit_key)
   if (anyNA(index)) {
     stop(
-      "Condition-GRN coefficients cannot be aligned to target-level fit_status.",
+      "Condition-GRN coefficients cannot be aligned to target-level fit diagnostics.",
       call. = FALSE
     )
   }
   status <- trimws(as.character(fit_table$fit_status[index]))
+  rsq <- suppressWarnings(as.numeric(fit_table$rsq[index]))
   if (anyNA(status) || any(!nzchar(status))) {
     stop("Condition-GRN fit_status values must be complete.", call. = FALSE)
   }
-  status
+  data.frame(
+    fit_status = status,
+    target_rsq = rsq,
+    stringsAsFactors = FALSE
+  )
+}
+
+.rc_condition_fit_status_for_coefficients <- function(fit, coefficient) {
+  .rc_condition_fit_diagnostics_for_coefficients(fit, coefficient)$fit_status
 }
 
 .rc_condition_padj_threshold <- function(fit = NULL, coefficient = NULL) {
@@ -122,7 +142,21 @@
   invisible(expected_active)
 }
 
-.rc_condition_penalty_gate <- function(coefficient, padj_threshold = NULL) {
+.rc_condition_target_rsq <- function(coefficient) {
+  if ("target_rsq" %in% colnames(coefficient)) {
+    return(suppressWarnings(as.numeric(coefficient$target_rsq)))
+  }
+  if ("rsq" %in% colnames(coefficient)) {
+    return(suppressWarnings(as.numeric(coefficient$rsq)))
+  }
+  stop(
+    "Condition-GRN penalty filtering requires full-data target R2 (`rsq`).",
+    call. = FALSE
+  )
+}
+
+.rc_condition_penalty_gate <- function(
+    coefficient, padj_threshold = NULL, target_rsq_threshold = NULL) {
   threshold <- if (is.null(padj_threshold)) {
     .rc_condition_padj_threshold(coefficient = coefficient)
   } else {
@@ -134,6 +168,11 @@
     }
     value
   }
+  rsq_threshold <- .rc_target_rsq_threshold(
+    target_rsq_threshold %||% getOption(
+      "RegCompassR.target_rsq_threshold", .RC_PANDO_TARGET_RSQ_THRESHOLD
+    )
+  )
   active <- .rc_validate_pando_active_condition_edges(
     coefficient, padj_threshold = threshold
   )
@@ -142,43 +181,69 @@
   } else {
     rep("ok", nrow(coefficient))
   }
-  active & !is.na(fit_status) & fit_status == "ok"
+  target_rsq <- .rc_condition_target_rsq(coefficient)
+  target_supported <- is.finite(target_rsq) & target_rsq >= rsq_threshold
+  active & !is.na(fit_status) & fit_status == "ok" & target_supported
 }
 
-.rc_apply_condition_penalty_gate <- function(fit) {
+.rc_apply_condition_penalty_gate <- function(
+    fit, target_rsq_threshold = NULL) {
   .rc_require_pando_condition_grn_fit(fit)
   threshold <- .rc_condition_padj_threshold(fit = fit)
+  rsq_threshold <- .rc_target_rsq_threshold(
+    target_rsq_threshold %||% getOption(
+      "RegCompassR.target_rsq_threshold", .RC_PANDO_TARGET_RSQ_THRESHOLD
+    )
+  )
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
-  coefficient$fit_status <- .rc_condition_fit_status_for_coefficients(
+  diagnostics <- .rc_condition_fit_diagnostics_for_coefficients(
     fit, coefficient
   )
+  coefficient$fit_status <- diagnostics$fit_status
+  coefficient$target_rsq <- diagnostics$target_rsq
+  coefficient$rsq <- diagnostics$target_rsq
   coefficient$padj_threshold <- threshold
+  coefficient$target_rsq_threshold <- rsq_threshold
+  coefficient$target_model_supported <-
+    coefficient$fit_status == "ok" &
+    is.finite(coefficient$target_rsq) &
+    coefficient$target_rsq >= rsq_threshold
   gate <- .rc_condition_penalty_gate(
-    coefficient, padj_threshold = threshold
+    coefficient,
+    padj_threshold = threshold,
+    target_rsq_threshold = rsq_threshold
   )
   coefficient$penalty_eligible <- gate
   coefficient$active_in_condition <- gate
-  # Preserve Pando's active/significant/penalty_effect contract. RegCompass adds
-  # only the target-level fit_status == 'ok' requirement for downstream use.
+  # Pando owns active/significant/penalty_effect. RegCompass only adds
+  # target-fit validity and full-data R2 quality requirements downstream.
   fit$coefficients <- coefficient
-  fit$regcompass_penalty_filter <-
-    "Pando BH-active edge & target fit_status == 'ok'"
+  fit$regcompass_penalty_filter <- paste0(
+    "Pando BH-active edge & target fit_status == 'ok' & full-data target R2 >= ",
+    format(rsq_threshold, trim = TRUE)
+  )
   fit$regcompass_fit_status_filter <- "fit_status == 'ok'"
+  fit$regcompass_target_rsq_filter <- paste0(
+    "rsq >= ", format(rsq_threshold, trim = TRUE)
+  )
+  fit$regcompass_target_rsq_definition <- "selected_lambda_full_data_R2"
   fit$regcompass_rank_deficient_policy <-
     "regularized_ok_fit_retained; non-estimable condition edge excluded"
   fit$regcompass_significance_role <-
     "consume_pando_condition_bh_active_edge_without_reselection"
   fit$regcompass_padj_threshold <- threshold
+  fit$regcompass_target_rsq_threshold <- rsq_threshold
   fit
 }
 
 .rc_filter_standard_pando_edges <- function(
-    table, padj_threshold = .rc_standard_pando_padj_default) {
-  required <- c("estimate", "padj")
+    table, padj_threshold = .rc_standard_pando_padj_default,
+    target_rsq_threshold = NULL) {
+  required <- c("estimate", "padj", "rsq")
   if (!is.data.frame(table) || !all(required %in% colnames(table))) {
     stop(
-      "Standard Pando requires estimate and padj columns for RegCompass ",
-      "penalty filtering.", call. = FALSE
+      "Standard Pando requires estimate, padj and full-data rsq columns for ",
+      "RegCompass penalty filtering.", call. = FALSE
     )
   }
   threshold <- suppressWarnings(as.numeric(padj_threshold))
@@ -188,16 +253,25 @@
          call. = FALSE
     )
   }
+  rsq_threshold <- .rc_target_rsq_threshold(
+    target_rsq_threshold %||% getOption(
+      "RegCompassR.target_rsq_threshold", .RC_PANDO_TARGET_RSQ_THRESHOLD
+    )
+  )
   estimate <- suppressWarnings(as.numeric(table$estimate))
   padj <- suppressWarnings(as.numeric(table$padj))
-  keep <- is.finite(estimate) & is.finite(padj) & padj < threshold
+  rsq <- suppressWarnings(as.numeric(table$rsq))
+  keep <- is.finite(estimate) & is.finite(padj) & padj < threshold &
+    is.finite(rsq) & rsq >= rsq_threshold
   if ("estimable" %in% colnames(table)) {
     keep <- keep & table$estimable %in% TRUE
   }
   answer <- table[keep, , drop = FALSE]
   attr(answer, "edge_filter") <- list(
     estimable = if ("estimable" %in% colnames(table)) TRUE else NA,
-    padj = paste0("< ", format(threshold, trim = TRUE))
+    padj = paste0("< ", format(threshold, trim = TRUE)),
+    rsq = paste0(">= ", format(rsq_threshold, trim = TRUE)),
+    rsq_definition = "selected_lambda_full_data_R2"
   )
   answer
 }

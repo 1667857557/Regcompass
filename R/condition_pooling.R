@@ -111,7 +111,7 @@
     stringsAsFactors = FALSE
   )
   list(
-    schema_version = "regcompass_celltype_wnn_condition_joint_cache",
+    schema_version = "regcompass_shared_walktrap_condition_cut_cache_v1",
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
@@ -119,9 +119,11 @@
     native_supercell_api = "SCimplify_by_graph_group",
     graph_group_argument = "cell.graph.group",
     condition_argument = "cell.split.condition",
+    condition_partition = "hierarchy_constrained",
     graph_scope = "one_independent_WNN_graph_per_cell_type",
-    condition_scope = "all_conditions_joint_within_cell_type_graph",
-    membership_split_timing = "after_joint_WNN_graph_clustering",
+    condition_scope =
+      "shared_WNN_and_Walktrap_with_condition_specific_hierarchy_cut",
+    membership_split_timing = "condition_specific_cut_of_shared_walktrap_hierarchy",
     graph_method = "SuperCell_multimodal_WNN_then_walktrap",
     modality_weighting = "adaptive_WNN_within_cell_type",
     aggregation_method = "SCimplify_for_Seurat_membership_mode",
@@ -145,7 +147,7 @@
 .rc_require_supercell_api <- function() {
   if (!requireNamespace("SuperCell", quietly = TRUE)) {
     stop(
-      "Package 'SuperCell' is required. Install the current default branch of 1667857557/SuperCell_Seurat_V4.",
+      "Package 'SuperCell' is required. Install 1667857557/SuperCell_Seurat_V4 >= 2.2.0.",
       call. = FALSE
     )
   }
@@ -160,7 +162,9 @@
   aggregate <- getExportedValue("SuperCell", "SCimplify_for_Seurat")
   grouped_required <- c(
     "seurat", "cell.graph.group", "cell.split.condition", "k.knn", "kith",
-    "kernel", "gamma", "graph.name", "assay", "reduction", "dims", "seed"
+    "kernel", "gamma", "condition.partition", "min.metacell.size",
+    "min.metacells.per.condition", "graph.name", "assay", "reduction",
+    "dims", "seed"
   )
   aggregate_required <- c(
     "seurat", "assay", "reduction", "dims", "membership", "return.seurat"
@@ -169,7 +173,7 @@
   missing_aggregate <- setdiff(aggregate_required, names(formals(aggregate)))
   if (length(missing_grouped) || length(missing_aggregate)) {
     stop(
-      "Installed SuperCell API formals are incompatible. Missing grouped formals: ",
+      "Installed SuperCell API is incompatible with RegCompass hierarchy-constrained Stage 2. Missing grouped formals: ",
       paste(missing_grouped, collapse = ", "),
       "; missing aggregation formals: ",
       paste(missing_aggregate, collapse = ", "), ".",
@@ -180,14 +184,22 @@
 }
 
 .rc_call_supercell <- function(fun, args) {
-  supported <- intersect(names(args), names(formals(fun)))
-  do.call(fun, args[supported])
+  formal_names <- names(formals(fun))
+  unsupported <- setdiff(names(args), formal_names)
+  if (length(unsupported) && !"..." %in% formal_names) {
+    stop(
+      "Installed SuperCell cannot accept required argument(s): ",
+      paste(unsupported, collapse = ", "), ".", call. = FALSE
+    )
+  }
+  do.call(fun, args)
 }
 
 .rc_build_grouped_wnn_membership <- function(
     object, condition_col, celltype_col, rna_assay, atac_assay,
     rna_reduction, atac_reduction, rna_dims, atac_dims,
-    gamma, seed, k.knn, kith, kernel, graph.name, verbose) {
+    gamma, seed, k.knn, kith, kernel, graph.name, verbose,
+    min_metacell_size, min_metacells_per_stratum) {
   api <- .rc_require_supercell_api()
   cells <- as.character(colnames(object))
   meta <- object@meta.data[cells, , drop = FALSE]
@@ -203,6 +215,9 @@
     kith = kith,
     kernel = isTRUE(kernel),
     gamma = as.numeric(gamma),
+    condition.partition = "hierarchy_constrained",
+    min.metacell.size = as.integer(min_metacell_size),
+    min.metacells.per.condition = as.integer(min_metacells_per_stratum),
     graph.name = graph.name,
     assay = c(rna_assay, atac_assay),
     reduction = list(rna_reduction, atac_reduction),
@@ -212,10 +227,21 @@
     verbose = isTRUE(verbose)
   ))
   membership <- result$membership_table
+  required_membership <- c(
+    "cell_id", "metacell_id", "parent_metacell_id", "graph_group",
+    "condition", "partition_policy", "shared_cut_k", "shared_community_id"
+  )
   if (!is.data.frame(membership) ||
-      !all(c("cell_id", "metacell_id", "parent_metacell_id") %in%
-           colnames(membership))) {
-    stop("SCimplify_by_graph_group() returned an incompatible membership table.",
+      !all(required_membership %in% colnames(membership))) {
+    stop(
+      "SCimplify_by_graph_group() returned an incompatible hierarchy membership table.",
+      call. = FALSE
+    )
+  }
+  if (!identical(as.character(result$partition_policy), "hierarchy_constrained") ||
+      !identical(as.character(result$partition_schema_version),
+                 "shared_walktrap_condition_cut_v1")) {
+    stop("SuperCell did not execute the required hierarchy-constrained policy.",
          call. = FALSE)
   }
   index <- match(cells, membership$cell_id)
@@ -228,11 +254,23 @@
       anyNA(membership$metacell_id) || any(!nzchar(membership$metacell_id))) {
     stop("Grouped SuperCell membership IDs are invalid.", call. = FALSE)
   }
+  if (any(as.character(membership$graph_group) !=
+          as.character(meta[[celltype_col]])) ||
+      any(as.character(membership$condition) !=
+          as.character(meta[[condition_col]])) ||
+      any(as.character(membership$partition_policy) !=
+          "hierarchy_constrained")) {
+    stop(
+      "SuperCell hierarchy membership provenance disagrees with RegCompass cell metadata.",
+      call. = FALSE
+    )
+  }
   list(
-    membership = membership[, c(
-      "cell_id", "metacell_id", "parent_metacell_id"
-    ), drop = FALSE],
+    membership = membership,
     parent_hierarchies = result$h_membership %||% list(),
+    partition_diagnostics = result$partition_diagnostics %||% data.frame(),
+    partition_policy = result$partition_policy,
+    partition_schema_version = result$partition_schema_version,
     upstream_api = "SCimplify_by_graph_group"
   )
 }
@@ -293,6 +331,15 @@
   list(object = mc, rna_counts = rna_counts, atac_counts = atac_counts)
 }
 
+.rc_positive_integer_control <- function(value, name) {
+  numeric <- suppressWarnings(as.numeric(value))
+  if (length(numeric) != 1L || !is.finite(numeric) || numeric < 1 ||
+      abs(numeric - round(numeric)) > sqrt(.Machine$double.eps)) {
+    stop("`", name, "` must be one positive integer.", call. = FALSE)
+  }
+  as.integer(round(numeric))
+}
+
 .rc_make_condition_celltype_metacells <- function(
     object, outdir,
     condition_col = "condition",
@@ -327,7 +374,8 @@
     "object", "outdir", "condition_col", "celltype_col", "cell_type",
     "rna_assay", "atac_assay", "membership", "assay",
     "reduction", "dims", "label", "return.seurat",
-    "cell.graph.group", "cell.split.condition"
+    "cell.graph.group", "cell.split.condition", "condition.partition",
+    "min.metacell.size", "min.metacells.per.condition"
   ))
   if (length(reserved)) {
     stop("`metacell_args` cannot override managed fields: ",
@@ -335,13 +383,14 @@
   }
   retired <- intersect(names(metacell_args), c(
     "do.approx", "approx.N", "block.size", "igraph.clustering",
-    "embedding_scaling", "overwrite"
+    "embedding_scaling", "overwrite", "return.graph", "repair_mode",
+    "repair_max_iter", "affinity_repair"
   ))
   if (length(retired)) {
     stop(
       "Retired Stage 2 controls are no longer accepted: ",
       paste(retired, collapse = ", "),
-      ". Stage 2 uses one explicit step checkpoint and no sidecar cache.",
+      ". Stage 2 uses one shared Walktrap hierarchy per cell type and no post-hoc graph repair.",
       call. = FALSE
     )
   }
@@ -350,17 +399,11 @@
     "gamma", "seed", "min_cells_per_stratum", "min_metacell_size",
     "min_metacells_per_stratum", "k.knn"
   )
-  for (field in integer_controls) args[[field]] <- as.integer(args[[field]])
-  if (any(vapply(args[integer_controls], function(x) {
-    length(x) != 1L || is.na(x) || x < 1L
-  }, logical(1)))) {
-    stop("SuperCell numeric controls must be positive integers.", call. = FALSE)
+  for (field in integer_controls) {
+    args[[field]] <- .rc_positive_integer_control(args[[field]], field)
   }
   if (!is.null(args$kith)) {
-    args$kith <- as.integer(args$kith)
-    if (length(args$kith) != 1L || is.na(args$kith) || args$kith < 1L) {
-      stop("`kith` must be NULL or one positive integer.", call. = FALSE)
-    }
+    args$kith <- .rc_positive_integer_control(args$kith, "kith")
   }
   for (field in c("kernel", "metacellNormalization", "avg.in.data",
                   "verbose")) {
@@ -384,6 +427,14 @@
       call. = FALSE
     )
   }
+  feasibility_floor <- args$min_metacell_size * args$min_metacells_per_stratum
+  if (any(stratum_size < feasibility_floor)) {
+    stop(
+      "Condition/cell-type strata are mathematically infeasible for the requested hard metacell constraints (N < min_metacell_size * min_metacells_per_stratum): ",
+      paste(names(stratum_size)[stratum_size < feasibility_floor],
+            collapse = ", "), call. = FALSE
+    )
+  }
   contract <- .rc_condition_metacell_cache_contract(
     object, condition_col, celltype_col, rna_assay, atac_assay, args
   )
@@ -404,7 +455,9 @@
     kith = args$kith,
     kernel = args$kernel,
     graph.name = args$graph.name,
-    verbose = args$verbose
+    verbose = args$verbose,
+    min_metacell_size = args$min_metacell_size,
+    min_metacells_per_stratum = args$min_metacells_per_stratum
   )
   membership <- grouped$membership
   source_index <- match(membership$cell_id, rownames(object@meta.data))
@@ -425,23 +478,31 @@
       length(unique(membership[[celltype_col]][rows])) != 1L
   }, logical(1))]
   if (length(impure)) {
-    stop("Grouped WNN produced impure metacells: ",
+    stop("Hierarchy-constrained SuperCell produced impure metacells: ",
          paste(utils::head(impure, 10L), collapse = ", "), call. = FALSE)
+  }
+  if (any(mc_meta$n_cells < args$min_metacell_size)) {
+    bad <- mc_meta$metacell_id[mc_meta$n_cells < args$min_metacell_size]
+    stop(
+      "Hierarchy-constrained SuperCell violated the hard minimum metacell size: ",
+      paste(utils::head(bad, 10L), collapse = ", "), call. = FALSE
+    )
   }
   stratum_mc <- table(interaction(
     mc_meta[, c(condition_col, celltype_col), drop = FALSE],
     drop = TRUE, lex.order = TRUE
   ))
   if (any(stratum_mc < args$min_metacells_per_stratum)) {
-    stop("SuperCell produced too few metacells in strata: ",
+    stop("Hierarchy-constrained SuperCell produced too few metacells in strata: ",
          paste(names(stratum_mc)[stratum_mc < args$min_metacells_per_stratum],
                collapse = ", "), call. = FALSE)
   }
-  mc_meta$low_power_metacell <- mc_meta$n_cells < args$min_metacell_size
   mc_meta$requested_gamma <- args$gamma
-  mc_meta$pooling_scope <- "celltype_grouped_joint_condition_WNN"
-  mc_meta$celltype_role <- "one_independent_WNN_graph_per_cell_type"
-  mc_meta$condition_role <- "post_WNN_clustering_membership_split"
+  mc_meta$min_metacell_size <- args$min_metacell_size
+  mc_meta$min_metacells_per_stratum <- args$min_metacells_per_stratum
+  mc_meta$pooling_scope <- "celltype_shared_WNN_condition_hierarchy_cut"
+  mc_meta$celltype_role <- "one_independent_WNN_and_Walktrap_per_cell_type"
+  mc_meta$condition_role <- "condition_specific_cut_of_shared_walktrap_hierarchy"
   aggregated <- .rc_aggregate_metacell_counts(
     object = object,
     membership = membership,
@@ -461,9 +522,21 @@
   aggregated$object@meta.data <- mc_meta[
     colnames(aggregated$object), , drop = FALSE
   ]
+  aggregated$object@misc$regcompass_supercell_partition <- list(
+    policy = grouped$partition_policy,
+    schema_version = grouped$partition_schema_version,
+    diagnostics = grouped$partition_diagnostics
+  )
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   .rc_write_tsv_gz(membership, file.path(outdir, "membership.tsv.gz"))
   .rc_write_tsv_gz(mc_meta, file.path(outdir, "metacell_metadata.tsv.gz"))
+  if (is.data.frame(grouped$partition_diagnostics) &&
+      nrow(grouped$partition_diagnostics)) {
+    .rc_write_tsv_gz(
+      grouped$partition_diagnostics,
+      file.path(outdir, "metacell_partition_diagnostics.tsv.gz")
+    )
+  }
 
   celltype_composition <- data.frame(
     metacell_id = as.character(mc_meta$metacell_id),
@@ -485,12 +558,15 @@
     metacell_object = aggregated$object,
     metacell_meta = mc_meta,
     membership = membership,
+    partition_diagnostics = grouped$partition_diagnostics,
+    partition_policy = grouped$partition_policy,
+    partition_schema_version = grouped$partition_schema_version,
     celltype_composition = celltype_composition,
     celltype_composition_summary = celltype_summary,
     condition_col = condition_col,
     celltype_col = celltype_col,
     selected_cell_types = unique(as.character(mc_meta[[celltype_col]])),
-    pooling_scope = "celltype_grouped_joint_condition_WNN",
+    pooling_scope = "celltype_shared_WNN_condition_hierarchy_cut",
     cache_contract = contract,
     input_design = list(
       metacell_purity_grouping = c(condition_col, celltype_col),
@@ -499,21 +575,28 @@
       native_supercell_api = "SCimplify_by_graph_group",
       graph_group_argument = "cell.graph.group",
       condition_argument = "cell.split.condition",
+      condition_partition = "hierarchy_constrained",
+      partition_schema_version = grouped$partition_schema_version,
       graph_method = "multimodal_WNN",
-      clustering_method = "walktrap_cut_at",
+      clustering_method = "one_shared_walktrap_hierarchy_per_cell_type",
+      final_partition_method =
+        "condition_specific_finest_feasible_cut_of_shared_hierarchy",
       aggregation_method = "SCimplify_for_Seurat_with_membership",
       graph_scope = "one_independent_WNN_graph_per_cell_type",
-      condition_scope = "all_conditions_joint_within_cell_type_graph",
-      membership_split_timing = "after_joint_WNN_graph_clustering",
+      condition_scope =
+        "all_conditions_joint_for_WNN_and_Walktrap_then_condition_specific_hierarchy_cut",
+      membership_split_timing = "during_final_shared_hierarchy_cut_selection",
       modality_weighting = "adaptive_WNN_within_cell_type",
+      hard_min_metacell_size = args$min_metacell_size,
+      hard_min_metacells_per_stratum = args$min_metacells_per_stratum,
       temporary_combined_stratum = FALSE,
       gamma = args$gamma,
       k.knn = args$k.knn,
       kernel = args$kernel,
       inference_policy = paste(
-        "Each broad cell type receives one independent multimodal WNN graph;",
-        "all conditions jointly determine WNN neighbours and Walktrap clusters;",
-        "condition splits membership only after clustering"
+        "Each broad cell type receives one independent multimodal WNN graph and Walktrap hierarchy;",
+        "conditions share that graph/hierarchy; final condition-pure metacells are selected as",
+        "condition-specific feasible cuts subject to hard size/count constraints"
       ),
       sample_metadata = "not_used_or_retained"
     )
