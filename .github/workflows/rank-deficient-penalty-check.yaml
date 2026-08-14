@@ -26,6 +26,8 @@ jobs:
 
           # Raw rank deficiency remains diagnostic under ridge. Candidate
           # correlation provenance does not veto an estimable BH-supported edge.
+          # This direct gate is intentionally edge/fit-status only; target model
+          # quality is composed separately in .rc_apply_condition_penalty_gate().
           make_coef <- function(threshold) {
             estimate <- c(1, 1, 1, 1)
             estimable <- c(TRUE, TRUE, FALSE, TRUE)
@@ -83,6 +85,9 @@ jobs:
               target = c("G", "G"),
               condition = c("A", "B"),
               fit_status = c("ok", "ok"),
+              rsq = c(0.20, 0.20),
+              rsq_in_sample = c(0.20, 0.20),
+              rsq_oof = c(-0.10, -0.20),
               design_rank_deficient = c(TRUE, TRUE),
               stringsAsFactors = FALSE
             )
@@ -91,6 +96,8 @@ jobs:
           stopifnot(
             identical(gated$coefficients$fit_status, c("ok", "ok")),
             identical(as.numeric(gated$coefficients$penalty_effect), c(0.8, 0)),
+            identical(as.logical(gated$coefficients$target_model_supported),
+                      c(TRUE, TRUE)),
             identical(as.logical(gated$coefficients$penalty_eligible),
                       c(TRUE, FALSE)),
             identical(
