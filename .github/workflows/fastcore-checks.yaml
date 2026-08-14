@@ -39,15 +39,18 @@ jobs:
               "'layer2_corda_paper_contract.R'",
               "'layer2_corda2_algorithm.R'",
               "'layer2_corda_model.R'",
+              "Pando (>= 2.0.10)",
+              "SuperCell (>= 2.2.0)",
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
               "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
               "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
+              "Config/RegCompass/PandoTargetR2: selected-lambda-full-data-R2",
+              "Config/RegCompass/PandoTargetR2Threshold: 0.05",
+              "Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1",
           ]
           missing = [x for x in required_description if x not in description]
           if missing:
               raise RuntimeError(f"DESCRIPTION integration contract missing: {missing}")
-          if "Pando (>=" in description:
-              raise RuntimeError("DESCRIPTION still imposes a Pando version floor")
 
           obsolete_files = [
               "R/condition_grn_contract_compat.R",
@@ -116,6 +119,7 @@ jobs:
               ".rc_fit_condition_grns_regcompass_parallel",
               ".rc_condition_multitask_fit_task",
               "pando_grn_data_by_cell_type_v1",
+              ".rc_cell_first_projection_layer1_v6",
           ]
           present = [value for value in forbidden_names if value in all_r]
           if present:
@@ -151,11 +155,15 @@ jobs:
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
               ".rc_validate_pando_active_condition_edges",
+              ".rc_condition_penalty_gate",
+              ".RC_PANDO_TARGET_RSQ_THRESHOLD <- 0.05",
               "statistically_supported",
               "global_support",
               "local_support",
               "expected_active <- expected_statistical",
               'fit_status == "ok"',
+              "target_rsq >= rsq_threshold",
+              "selected_lambda_full_data_R2",
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
               "consume_pando_condition_bh_active_edge_without_reselection",
@@ -238,6 +246,7 @@ jobs:
       - name: Run lightweight integration tests
         shell: Rscript {0}
         run: |
+          `%||%` <- function(x, y) if (is.null(x)) y else x
           .rc_standard_pando_padj_default <- 0.05
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
@@ -259,11 +268,12 @@ jobs:
             significant = active,
             penalty_effect = ifelse(active, estimate, 0),
             fit_status = c("ok", "rank_deficient", "ok", "ok"),
+            rsq = c(0.8, 0.9, 0.01, 0.7),
             stringsAsFactors = FALSE
           )
           stopifnot(identical(
             .rc_condition_penalty_gate(coefficient, padj_threshold = 0.5),
-            c(TRUE, FALSE, TRUE, FALSE)
+            c(TRUE, FALSE, FALSE, FALSE)
           ))
           stopifnot(inherits(
             try(.rc_condition_penalty_gate(coefficient, padj_threshold = 1),
