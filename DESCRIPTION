@@ -104,6 +104,7 @@ Collate:
     'grn_route_parallel.R'
     'grn_parallel_merge_contract.R'
     'condition_penalty_contract.R'
+    'grn_route_target_quality.R'
     'penalty.R'
     'reaction_roles.R'
     'stepwise_workflow.R'
