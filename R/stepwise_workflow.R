@@ -134,7 +134,8 @@ rc_regcompass_step_metacells <- function(
   metacell_core_args <- metacell_args
   metacell_core_args$fragment_args <- NULL
   if (is.null(metacell_core_args$min_cells_per_stratum)) {
-    metacell_core_args$min_cells_per_stratum <- 500L
+    metacell_core_args$min_cells_per_stratum <-
+      .rc_condition_metacell_defaults()$min_cells_per_stratum
   }
 
   n_input <- ncol(object)
@@ -332,6 +333,10 @@ rc_regcompass_step_metacells <- function(
       graph_scope = pooled$input_design$graph_scope,
       condition_scope = pooled$input_design$condition_scope,
       membership_split_timing = pooled$input_design$membership_split_timing,
+      repair_timing = pooled$input_design$repair_timing,
+      repair_geometry = pooled$input_design$repair_geometry,
+      min_merge_affinity = pooled$input_design$min_merge_affinity,
+      unresolved_small_policy = pooled$input_design$unresolved_small_policy,
       modality_weighting = pooled$input_design$modality_weighting,
       temporary_combined_stratum = FALSE,
       seurat_compatibility =
