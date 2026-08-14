@@ -191,9 +191,18 @@
     stop("Projection, reliability, and calibration scale must align.",
          call. = FALSE)
   }
-  value <- reliability * tanh(projection / scale)
-  value[!is.finite(projection) | !is.finite(reliability)] <- NA_real_
-  dimnames(value) <- dimnames(projection)
+  projection <- as.matrix(projection)
+  reliability <- as.matrix(reliability)
+  scale <- as.matrix(scale)
+  value <- matrix(
+    NA_real_, nrow(projection), ncol(projection), dimnames = dimnames(projection)
+  )
+  neutral <- is.finite(reliability) & reliability == 0
+  value[neutral] <- 0
+  active <- is.finite(reliability) & reliability != 0 &
+    is.finite(projection) & is.finite(scale) & scale > 0
+  value[active] <- reliability[active] *
+    tanh(projection[active] / scale[active])
   value
 }
 
@@ -329,10 +338,6 @@
     and_method = gpr_and_method, or_method = "sum",
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
-  # The structural matrices are also the compatibility carrier used by the
-  # existing RNA-only control wrapper. An explicit marker makes the quantitative
-  # LP route deterministic even when the two bounded matrices have identical
-  # numerical values.
   attr(
     reaction_structural_multiome,
     "regcompass_quantitative_penalty_route"
@@ -349,21 +354,15 @@
   list(
     schema_version = "regcompass_regulatory_layer1_v5",
     analysis_mode = mode,
-
-    # Compatibility structural fields. CORDA2 continues to consume these
-    # bounded matrices; Layer 2 LP explicitly prefers the quantitative fields.
     reaction_expression = reaction_structural_multiome,
     reaction_expression_rna_only = reaction_structural_rna,
     reaction_expression_available = is.finite(reaction_structural_multiome),
     reaction_structural_support = reaction_structural_multiome,
     reaction_structural_support_rna_only = reaction_structural_rna,
-
-    # Unbounded reaction expression used by the quantitative COMPASS penalty.
     reaction_expression_quantitative = reaction_quantitative_multiome,
     reaction_expression_quantitative_rna_only = reaction_quantitative_rna,
     reaction_expression_quantitative_available =
       is.finite(reaction_quantitative_multiome),
-
     rna_metacell_latent_log_expression = latent$latent_log_expression,
     rna_metacell_latent_cpm = latent$latent_cpm,
     posterior_positive_probability = latent$posterior_positive_probability,
