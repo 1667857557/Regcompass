@@ -2,9 +2,9 @@
 
 ## Input
 
-Use a paired-cell Seurat object containing RNA and ATAC counts for the same cells, broad cell-type metadata, RNA PCA or Harmony, ATAC LSI, and genome-compatible peaks. `condition_col` is optional.
+Use a paired-cell Seurat object with RNA and ATAC counts for the same cells, broad cell-type metadata, an RNA reduction (`pca` by default), an ATAC LSI reduction, and genome-compatible peaks. `condition_col` may be `NULL`.
 
-## Prepare the GEM and medium
+## GEM and predefined medium
 
 ```r
 library(RegCompassR)
@@ -22,11 +22,9 @@ medium_scenarios <- rc_make_medium_scenarios(
 )
 ```
 
-When the top-level workflow creates the medium automatically, human models use `normal_human_plasma` and mouse models use `mouse_plasma`.
+Built-in scenarios are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`. If omitted, the workflow uses `normal_human_plasma` for human and `mouse_plasma` for mouse. Challenge concentrations are metadata unless an explicit flux/bound assumption is supplied.
 
-Built-in scenarios are `normal_human_plasma`, `mouse_plasma`, `high_glucose`, `low_glucose`, `high_lactate`, `low_lactate`, `low_glutamine`, and `custom`. See [medium-presets.md](medium-presets.md) for compositions, provenance, and custom-medium formats.
-
-## Run the workflow
+## Run
 
 ```r
 result <- rc_run_regcompass_one_shot(
@@ -42,21 +40,21 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-### Main arguments
+## Main arguments
 
 | Argument | Purpose | Default |
 |---|---|---|
-| `species` | Select human or mouse model defaults | required |
-| `condition_col` | Condition metadata column; use `NULL` when absent | `"condition"` |
-| `celltype_col` | Broad cell-type metadata column | `"cell_type"` |
-| `rna_assay` / `atac_assay` | Input assay names | `"RNA"` / `"ATAC"` |
-| `pando_args` | Stage 1 options; `min_cells` is the retained-group threshold | `min_cells = 500L` |
-| `metacell_args` | Stage 2 SuperCell/WNN options | public retained-stratum threshold `500L` |
-| `model_mode` | Layer 2 structural route | `"meta_module_gem"` |
-| `layer2_args` | Layer 2 scoring/reconstruction options | `list()` |
-| `workers` | RegCompass-wide worker cap | `10L` |
+| `condition_col` | Condition metadata; `NULL` selects standard Pando | `"condition"` |
+| `celltype_col` | Broad cell-type metadata | `"cell_type"` |
+| `rna_assay` / `atac_assay` | Input assays | `"RNA"` / `"ATAC"` |
+| `pando_args` | Stage 1 Pando options | `min_cells = 500L` |
+| `target_rsq_threshold` | RegCompass target-model final-fit R² gate | `0.05` |
+| `metacell_args` | Stage 2 WNN/metacell options | `min_cells_per_stratum = 20L` |
+| `model_mode` | Layer 2 route | `"meta_module_gem"` |
+| `layer2_args` | Layer 2 options | `list()` |
+| `workers` | Workflow worker cap | `10L` |
 
-`model_mode = "meta_module_gem"` uses CORDA2 by default. Advanced stage-specific options are documented by the corresponding Rd help pages rather than duplicated in this tutorial.
+`model_mode = "meta_module_gem"` uses CORDA2 by default. Use the Rd pages for the complete parameter surface.
 
 ## Main outputs
 
@@ -68,4 +66,4 @@ result$condition_contrast
 result$reaction_comparison_by_metacell
 ```
 
-For restartable calls see [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md). All equations and quantitative definitions are maintained only in [mathematical-model.md](mathematical-model.md).
+See [tutorial-02-stepwise-audit.md](tutorial-02-stepwise-audit.md) for restartable stage calls and [medium-presets.md](medium-presets.md) for predefined/custom media.
