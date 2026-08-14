@@ -80,3 +80,14 @@ test_that("combined Pando projection uses tri-state target eligibility, not OOF 
   expect_false(grepl("standard$reliability", body_text, fixed = TRUE))
   expect_match(body_text, "q=1 eligible; q=0 evaluated neutral", fixed = TRUE)
 })
+
+test_that("Stage 1 exposes target R2 threshold as a validated public control", {
+  defaults <- formals(RegCompassR::rc_regcompass_step_grn)
+  expect_true("target_rsq_threshold" %in% names(defaults))
+  expect_equal(eval(defaults$target_rsq_threshold), 0.05)
+  expect_equal(RegCompassR:::.rc_target_rsq_threshold(0.2), 0.2)
+  expect_error(RegCompassR:::.rc_target_rsq_threshold(-0.1))
+  expect_error(RegCompassR:::.rc_target_rsq_threshold(1.1))
+  route_formals <- formals(RegCompassR:::.rc_fit_pando_by_celltype_route)
+  expect_true("target_rsq_threshold" %in% names(route_formals))
+})
