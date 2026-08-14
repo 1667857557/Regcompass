@@ -373,10 +373,12 @@
     object, gem, outdir, genome, pfm, species, condition_col, celltype_col,
     condition_types, standard_types, rna_assay, atac_assay,
     extra_args, condition_infer_args, standard_infer_args,
-    parallel, BPPARAM, progress_monitor) {
+    parallel, BPPARAM, progress_monitor,
+    target_rsq_threshold = .RC_PANDO_TARGET_RSQ_THRESHOLD_DEFAULT) {
   if (!length(condition_types) && !length(standard_types)) {
     stop("No Pando cell-type job was selected.", call. = FALSE)
   }
+  target_rsq_threshold <- .rc_target_rsq_threshold(target_rsq_threshold)
   base <- list(
     gem = gem, outdir = outdir, genome = genome,
     pfm = pfm, species = species, condition_col = condition_col,
@@ -412,6 +414,7 @@
       } else {
         "serial"
       },
+      target_rsq_threshold = target_rsq_threshold,
       nested_parallel = FALSE,
       memory_policy = paste(
         "single parallel level; one ridge cell type resident at a time;",
@@ -505,7 +508,8 @@
     standard_types = standard_types,
     condition_col = condition_col,
     celltype_col = celltype_col,
-    outdir = outdir
+    outdir = outdir,
+    target_rsq_threshold = target_rsq_threshold
   )
   condition_plan <- if (!is.null(condition_result) &&
       is.list(condition_result$pando_execution_summary)) {
@@ -528,6 +532,9 @@
     standard_outer_parallel = standard_outer_parallel,
     standard_target_parallel = standard_ridge && isTRUE(parallel) &&
       worker_limit > 1L,
+    target_rsq_threshold = target_rsq_threshold,
+    target_quality_metric = "selected_lambda_final_full_data_rsq",
+    oof_rsq_role = "diagnostic_only",
     nested_parallel = FALSE,
     worker_budget_shared_sequentially = TRUE,
     memory_policy = paste(
