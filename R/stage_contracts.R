@@ -11,39 +11,79 @@
     is.list(contract) &&
     identical(
       contract$schema_version,
-      "regcompass_celltype_wnn_condition_joint_cache"
+      "regcompass_shared_walktrap_condition_cut_cache_v1"
+    ) &&
+    identical(contract$native_supercell_api, "SCimplify_by_graph_group") &&
+    identical(contract$graph_group_argument, "cell.graph.group") &&
+    identical(contract$condition_argument, "cell.split.condition") &&
+    identical(contract$condition_partition, "hierarchy_constrained") &&
+    identical(
+      contract$graph_scope,
+      "one_independent_WNN_graph_per_cell_type"
+    ) &&
+    identical(
+      contract$condition_scope,
+      "shared_WNN_and_Walktrap_with_condition_specific_hierarchy_cut"
+    ) &&
+    identical(
+      contract$membership_split_timing,
+      "condition_specific_cut_of_shared_walktrap_hierarchy"
+    ) &&
+    identical(
+      contract$graph_method,
+      "SuperCell_multimodal_WNN_then_walktrap"
+    ) &&
+    identical(
+      contract$aggregation_method,
+      "SCimplify_for_Seurat_membership_mode"
+    ) &&
+    identical(
+      contract$modality_weighting,
+      "adaptive_WNN_within_cell_type"
     ) &&
     identical(design$native_supercell_api, "SCimplify_by_graph_group") &&
     identical(design$graph_group_argument, "cell.graph.group") &&
     identical(design$condition_argument, "cell.split.condition") &&
+    identical(design$condition_partition, "hierarchy_constrained") &&
+    identical(
+      design$partition_schema_version,
+      "shared_walktrap_condition_cut_v1"
+    ) &&
     identical(design$graph_method, "multimodal_WNN") &&
+    identical(
+      design$clustering_method,
+      "one_shared_walktrap_hierarchy_per_cell_type"
+    ) &&
+    identical(
+      design$final_partition_method,
+      "condition_specific_finest_feasible_cut_of_shared_hierarchy"
+    ) &&
+    identical(
+      design$aggregation_method,
+      "SCimplify_for_Seurat_with_membership"
+    ) &&
     identical(
       design$graph_scope,
       "one_independent_WNN_graph_per_cell_type"
     ) &&
     identical(
       design$condition_scope,
-      "all_conditions_joint_within_cell_type_graph"
+      "all_conditions_joint_for_WNN_and_Walktrap_then_condition_specific_hierarchy_cut"
     ) &&
     identical(
       design$membership_split_timing,
-      "after_joint_WNN_graph_clustering"
+      "during_final_shared_hierarchy_cut_selection"
     ) &&
     identical(
       design$modality_weighting,
       "adaptive_WNN_within_cell_type"
     ) &&
     identical(design$temporary_combined_stratum, FALSE) &&
-    identical(contract$native_supercell_api, design$native_supercell_api) &&
-    identical(contract$graph_group_argument, design$graph_group_argument) &&
-    identical(contract$condition_argument, design$condition_argument) &&
-    identical(contract$graph_scope, design$graph_scope) &&
-    identical(contract$condition_scope, design$condition_scope) &&
+    identical(pooled$partition_policy, "hierarchy_constrained") &&
     identical(
-      contract$membership_split_timing,
-      design$membership_split_timing
+      pooled$partition_schema_version,
+      design$partition_schema_version
     ) &&
-    identical(contract$modality_weighting, design$modality_weighting) &&
     identical(contract$condition_col, params$condition_col) &&
     identical(contract$celltype_col, params$celltype_col) &&
     identical(contract$rna_assay, params$rna_assay) &&
@@ -51,7 +91,7 @@
   if (!isTRUE(valid)) {
     stop(
       "`", argument,
-      "` is not a cell-type-scoped, joint-condition WNN SuperCell artifact; rerun Stage 2 with overwrite=TRUE.",
+      "` is not a shared-Walktrap hierarchy-constrained SuperCell artifact; rerun Stage 2 with the current RegCompass/SuperCell contract.",
       call. = FALSE
     )
   }
@@ -229,7 +269,7 @@
       )) {
     stop(
       "Layer 1 compatibility reaction_expression fields must remain bounded structural support.",
-      call. = FALSE
+      call. = FALSE)
     )
   }
 
@@ -240,8 +280,7 @@
                       route_attr, exact = TRUE), "rna_only")) {
     stop(
       "Layer 1 structural compatibility matrices lack deterministic quantitative penalty route markers.",
-      call. = FALSE
-    )
+      call. = FALSE)
   }
   if (!is.logical(layer1$reaction_expression_available) ||
       !identical(
