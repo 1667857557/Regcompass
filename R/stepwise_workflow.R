@@ -75,11 +75,13 @@
 
 #' Build condition-pure metacells from the Stage 1 analysis cell set
 #'
-#' Each broad cell type receives one independent multimodal WNN graph. All
-#' conditions within that cell type jointly determine modality weights,
-#' neighbours, and Walktrap clusters; condition splits parent membership only
-#' after clustering. When a Stage 1 result is supplied, Stage 2 reproduces its
-#' exact ordered cell set and validates workflow parameters.
+#' Each broad cell type receives one independent multimodal WNN graph and one
+#' Walktrap hierarchy. All conditions within that cell type jointly determine
+#' modality weights, neighbours, and the shared hierarchy; final condition-pure
+#' metacells are condition-specific legal cuts of that same hierarchy subject to
+#' the configured hard size and count constraints. When a Stage 1 result is
+#' supplied, Stage 2 reproduces its exact ordered cell set and validates workflow
+#' parameters.
 #'
 #' When `fragment_files` is supplied, Stage 2 first builds the final SuperCell
 #' membership, then aggregates the original single-cell fragments to those
