@@ -386,7 +386,6 @@
     NA_real_, length(target_genes), length(units),
     dimnames = list(tolower(target_genes), units)
   )
-  reliability <- projection
   coverage <- list()
   for (celltype in names(grn_result$standard_pando_objects)) {
     grn <- grn_result$standard_pando_objects[[celltype]]
@@ -419,14 +418,6 @@
     target <- intersect(colnames(group_score), rownames(projection))
     group <- intersect(rownames(group_score), colnames(projection))
     projection[target, group] <- t(group_score[group, target, drop = FALSE])
-    rsq <- tapply(as.numeric(edge$rsq), edge$target, function(x) {
-      x <- x[is.finite(x)]
-      if (length(x)) max(x) else NA_real_
-    })
-    q <- sqrt(pmin(1, pmax(0, rsq[target])))
-    reliability[target, group] <- matrix(
-      q, nrow = length(target), ncol = length(group)
-    )
     coverage[[celltype]] <- data.frame(
       target = target,
       cell_type = celltype,
@@ -441,7 +432,6 @@
   }
   list(
     projection = projection,
-    reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
     projection_origin = "standard_pando_full_fit",
     projection_used_for_penalty = TRUE,
