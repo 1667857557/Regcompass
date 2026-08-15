@@ -277,7 +277,7 @@
       )) {
     stop(
       "Layer 1 compatibility reaction_expression fields must remain bounded structural support.",
-      call. = FALSE)
+      call. = FALSE
     )
   }
 
@@ -288,7 +288,8 @@
                       route_attr, exact = TRUE), "rna_only")) {
     stop(
       "Layer 1 structural compatibility matrices lack deterministic quantitative penalty route markers.",
-      call. = FALSE)
+      call. = FALSE
+    )
   }
   if (!is.logical(layer1$reaction_expression_available) ||
       !identical(
