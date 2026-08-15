@@ -83,3 +83,12 @@ test_that("combined Pando projection uses R2 as a gate rather than a weight", {
     fixed = TRUE
   )
 })
+
+test_that("standard Pando projection contains no route-local R2 reliability", {
+  body_text <- paste(
+    deparse(body(RegCompassR:::.rc_standard_pando_projection)),
+    collapse = "\n"
+  )
+  expect_false(grepl("sqrt", body_text, fixed = TRUE))
+  expect_false(grepl("reliability", body_text, fixed = TRUE))
+})
