@@ -18,6 +18,10 @@
     identical(contract$condition_argument, "cell.split.condition") &&
     identical(contract$condition_partition, "hierarchy_constrained") &&
     identical(
+      contract$partition_schema_version,
+      "shared_walktrap_condition_cut_v1"
+    ) &&
+    identical(
       contract$graph_scope,
       "one_independent_WNN_graph_per_cell_type"
     ) &&
@@ -83,6 +87,10 @@
     identical(
       pooled$partition_schema_version,
       design$partition_schema_version
+    ) &&
+    identical(
+      contract$partition_schema_version,
+      pooled$partition_schema_version
     ) &&
     identical(contract$condition_col, params$condition_col) &&
     identical(contract$celltype_col, params$celltype_col) &&
