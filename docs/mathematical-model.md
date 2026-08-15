@@ -87,10 +87,12 @@ Pando exports
 penalty\_effect_{e,c}=A_{e,c}\widehat\beta_{e,c}.
 \]
 
-RegCompass does not reselect these edges. It only adds the target-level requirement `fit_status == "ok"` before downstream use. Therefore RegCompass penalty eligibility is
+RegCompass does not reselect Pando edges. It adds target-model validity and a hard selected-\(\lambda\) full-data \(R^2\) requirement before downstream use. Let \(\tau_{R^2}\) denote `RegCompassR.target_rsq_threshold` (default 0.05). RegCompass penalty eligibility is
 
 \[
-H_{e,c}=A_{e,c}\mathbf 1\{fit\_status_{g,c}=\text{"ok"}\}.
+H_{e,c}=A_{e,c}
+\mathbf 1\{fit\_status_{g,c}=\text{"ok"}\}
+\mathbf 1\{R^2_{g,c}\ge\tau_{R^2}\}.
 \]
 
 The complete common-dictionary coefficient table remains stored for diagnostics and direct condition contrasts even when \(H_{e,c}=0\). Direct differential inference uses \(\Delta\beta_e=\beta_{e,A}-\beta_{e,B}\); significance in one condition and nonsignificance in another is not used as a substitute for this contrast.
@@ -101,7 +103,7 @@ The target weight used by the downstream penalty is binary. A target-condition p
 q_{g,c}=1.
 \]
 
-Targets without a valid active edge have no regulatory contribution. Target-level \(R^2\) and out-of-fold \(R^2\) remain fit diagnostics only: they do not enter \(q\), do not rescale the regulatory projection, and do not enter the COMPASS-like penalty. The same binary target rule is used by the standard-Pando route.
+An evaluated target with no penalty-eligible edge has \(q=0\); a target without a valid finite target fit is unavailable for regulatory projection. The selected-\(\lambda\) full-data \(R^2\) therefore acts **only as the target hard gate** above: it does not continuously rescale \(q\), the regulatory projection, or the COMPASS-like penalty. Out-of-fold \(R^2\) is not part of the current canonical Pando→RegCompass handoff. The same binary target rule is used by the standard-Pando route after its full-data \(R^2\) gate.
 
 Because correlation screening, ridge estimation, and CV tuning use the observed data, ridge-Wald and contrast P values are approximate and conditional on the selected dictionary and tuning procedure; they are not exact selective-inference P values.
 
@@ -141,7 +143,7 @@ R_{g,u}=q_{g,c(u)}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right),
 \qquad -1\le R_{g,u}\le1,
 \]
 
-with \(q=1\) for a valid active target. Thus model-fit \(R^2\) values never attenuate the modifier. When regulatory evidence is unavailable, \(R_{g,u}=0\).
+with \(q=1\) for a valid active target. Thus model-fit \(R^2\) values never attenuate the modifier after passing the hard target gate. When regulatory evidence is unavailable or rejected, \(R_{g,u}=0\).
 
 ## 3. Quantitative RNA input to the COMPASS-like penalty
 
