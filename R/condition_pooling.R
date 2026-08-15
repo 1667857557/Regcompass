@@ -120,6 +120,7 @@
     graph_group_argument = "cell.graph.group",
     condition_argument = "cell.split.condition",
     condition_partition = "hierarchy_constrained",
+    partition_schema_version = "shared_walktrap_condition_cut_v1",
     graph_scope = "one_independent_WNN_graph_per_cell_type",
     condition_scope =
       "shared_WNN_and_Walktrap_with_condition_specific_hierarchy_cut",
