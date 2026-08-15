@@ -38,6 +38,7 @@
         graph_group_argument = "cell.graph.group",
         condition_argument = "cell.split.condition",
         condition_partition = "hierarchy_constrained",
+        partition_schema_version = "shared_walktrap_condition_cut_v1",
         graph_scope = "one_independent_WNN_graph_per_cell_type",
         condition_scope =
           "shared_WNN_and_Walktrap_with_condition_specific_hierarchy_cut",
@@ -68,6 +69,16 @@ test_that("legacy post-split Stage 2 contracts are rejected", {
   artifact <- .hierarchy_metacell_artifact()
   artifact$pooled$cache_contract$schema_version <-
     "regcompass_celltype_wnn_condition_joint_cache"
+  expect_error(
+    RegCompassR:::.rc_validate_metacell_artifact_contract(artifact),
+    "shared-Walktrap hierarchy-constrained"
+  )
+})
+
+test_that("Stage 2 cache is bound to the SuperCell partition schema", {
+  artifact <- .hierarchy_metacell_artifact()
+  artifact$pooled$cache_contract$partition_schema_version <-
+    "future_partition_schema"
   expect_error(
     RegCompassR:::.rc_validate_metacell_artifact_contract(artifact),
     "shared-Walktrap hierarchy-constrained"
