@@ -329,8 +329,9 @@
     })
     names(edges_by_group) <- names(cells_by_group)
 
-    # Canonical RegCompass estimand: beta * mean(TF) * mean(ATAC).
-    # Do not replace this with beta * mean(TF * ATAC).
+    # Canonical RegCompass estimand keeps the paired interaction dominant while
+    # shrinking 25% toward the product of separate metacell modality means:
+    # beta * [0.75 * mean(TF * ATAC) + 0.25 * mean(TF) * mean(ATAC)].
     score <- .rc_pando_projection_from_group_means(
       rna, atac, edges_by_group, cells_by_group, genes
     )
@@ -413,7 +414,11 @@
         "Pando_condition_BH_active_no_fusion_ridge_penalty_effect",
       pando_object_scope = "cell_type_exact_feature_space",
       aggregation_contract =
-        "beta_times_group_mean_tf_times_group_mean_atac",
+        "beta_times_0.75_paired_mean_product_plus_0.25_product_of_means",
+      paired_interaction_weight =
+        1 - .RC_PANDO_PROJECTION_PRODUCT_OF_MEANS_WEIGHT,
+      product_of_means_weight =
+        .RC_PANDO_PROJECTION_PRODUCT_OF_MEANS_WEIGHT,
       stringsAsFactors = FALSE
     )
   }
