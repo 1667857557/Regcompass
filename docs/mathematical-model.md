@@ -109,21 +109,52 @@ Because correlation screening, ridge estimation, and CV tuning use the observed 
 
 ## 2. Metacell regulatory projection
 
-For metacell \(u\), RegCompass averages TF expression and peak accessibility separately over the exact member cells before multiplying them. For edge \(e\),
+For metacell \(u\), RegCompass retains the paired TF×ATAC realization from the exact same member cells and shrinks it toward the more stable product of the separate metacell means. For edge \(e\), define
+
+\[
+\overline{TA}_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}T_{e,i}A_{e,i},
+\]
 
 \[
 \overline T_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}T_{e,i},\qquad
 \overline A_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}A_{e,i}.
 \]
 
+The canonical product-of-means shrinkage weight is
+
+\[
+\eta=0.25,
+\]
+
+so the edge-level metacell interaction is
+
+\[
+J_{e,u}=(1-\eta)\overline{TA}_{e,u}
++\eta\overline T_{e,u}\overline A_{e,u}
+=0.75\overline{TA}_{e,u}
++0.25\overline T_{e,u}\overline A_{e,u}.
+\]
+
+Equivalently,
+
+\[
+J_{e,u}=\overline T_{e,u}\overline A_{e,u}
++0.75\left[
+\frac{1}{|M_u|}\sum_{i\in M_u}
+(T_{e,i}-\overline T_{e,u})(A_{e,i}-\overline A_{e,u})
+\right].
+\]
+
+Thus the stable product-of-means baseline is retained while 75% of the within-metacell paired TF–ATAC co-deviation is preserved. The endpoints are explicit: \(\eta=0\) gives the fully paired mean interaction \(\overline{TA}\), whereas \(\eta=1\) reproduces the previous RegCompass product-of-means projection \(\overline T\,\overline A\). The default numerical shrinkage strength uses 0.25 as a COMPASS-inspired information-sharing magnitude; this is an analogous regularization choice, not the COMPASS neighbor-smoothing algorithm itself.
+
 Using only penalty-eligible active edges, the target regulatory score is
 
 \[
 G_{g,u}=\sum_{e\in E_g^{\cup}}
-H_{e,c(u)}\widehat\beta_{e,g,c(u)}\,\overline T_{e,u}\,\overline A_{e,u}.
+H_{e,c(u)}\widehat\beta_{e,g,c(u)}J_{e,u}.
 \]
 
-This is **\(\beta\times mean(TF)\times mean(ATAC)\)** for each active edge, followed by target-level summation; it is not the mean of cell-wise TF×ATAC products.
+The RNA and ATAC vectors used in \(\overline{TA}\) are indexed by the same paired cell IDs within the exact SuperCell membership. No cross-cell pairing, independent sorting, or nonzero-only matching is allowed.
 
 For target \(g\) within cell type \(t\), define a robust calibration scale
 
@@ -311,4 +342,4 @@ Metacells are within-dataset statistical units. These tests are not donor/sample
 
 ## 11. Artifact compatibility
 
-The quantitative LP path and bounded structural path are deliberately separate. Layer 1 schema-v6 artifacts expose both quantitative reaction expression and bounded structural support. Older Layer 1 artifacts that lack the quantitative matrices must be regenerated before canonical Layer 2 scoring.
+The quantitative LP path and bounded structural path are deliberately separate. Layer 1 schema-v6 artifacts expose both quantitative reaction expression and bounded structural support. Older Layer 1 artifacts that lack the quantitative matrices must be regenerated before canonical Layer 2 scoring. Layer 1 artifacts generated with the previous pure product-of-means Pando projection should likewise be regenerated before comparison with results using the canonical 0.75 paired / 0.25 product-of-means projection.
