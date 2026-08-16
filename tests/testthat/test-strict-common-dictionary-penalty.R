@@ -305,7 +305,7 @@ test_that("pairwise differential GRN contrasts remain separate inference", {
   )
 })
 
-test_that("Layer 1 keeps product-of-means projection with RegCompass eligibility gate", {
+test_that("Layer 1 keeps paired-shrinkage projection with RegCompass eligibility gate", {
   selector <- paste(
     deparse(body(RegCompassR:::.rc_condition_pando_object_for_fit)),
     collapse = "\n"
@@ -314,13 +314,24 @@ test_that("Layer 1 keeps product-of-means projection with RegCompass eligibility
     deparse(body(RegCompassR:::.rc_condition_pando_projection)),
     collapse = "\n"
   )
+  helper <- paste(
+    deparse(body(RegCompassR:::.rc_pando_projection_from_group_means)),
+    collapse = "\n"
+  )
   expect_match(selector, ".rc_require_layer1_condition_grn_fit", fixed = TRUE)
   expect_match(projection, ".rc_require_layer1_condition_grn_fit", fixed = TRUE)
   expect_match(projection, ".rc_condition_penalty_gate", fixed = TRUE)
   expect_match(
-    projection, "beta_times_group_mean_tf_times_group_mean_atac", fixed = TRUE
+    projection,
+    "beta_times_0.75_paired_mean_product_plus_0.25_product_of_means",
+    fixed = TRUE
   )
-  expect_false(grepl("mean(TF * ATAC)", projection, fixed = TRUE))
+  expect_match(helper, "paired_product <- tf_block * peak_block", fixed = TRUE)
+  expect_match(helper, "product_of_means_weight * tf_mean * peak_mean", fixed = TRUE)
+  expect_identical(
+    RegCompassR:::.RC_PANDO_PROJECTION_PRODUCT_OF_MEANS_WEIGHT,
+    0.25
+  )
 })
 
 test_that("condition contract is implemented once in functional source files", {

@@ -1,3 +1,16 @@
+.RC_PANDO_PROJECTION_PRODUCT_OF_MEANS_WEIGHT <- 0.25
+
+.rc_validate_pando_projection_weight <- function(value) {
+  value <- suppressWarnings(as.numeric(value))
+  if (length(value) != 1L || !is.finite(value) || value < 0 || value > 1) {
+    stop(
+      "`product_of_means_weight` must be one finite number in [0, 1].",
+      call. = FALSE
+    )
+  }
+  value
+}
+
 .rc_pando_assay_data <- function(object, assay) {
   value <- tryCatch(
     .rc_get_assay_matrix(object, assay, "data"),
@@ -97,7 +110,11 @@
 }
 
 .rc_pando_projection_from_group_means <- function(
-    rna, atac, edges_by_group, cells_by_group, targets) {
+    rna, atac, edges_by_group, cells_by_group, targets,
+    product_of_means_weight = .RC_PANDO_PROJECTION_PRODUCT_OF_MEANS_WEIGHT) {
+  product_of_means_weight <-
+    .rc_validate_pando_projection_weight(product_of_means_weight)
+  paired_weight <- 1 - product_of_means_weight
   if (is.null(dim(rna)) || is.null(rownames(rna)) ||
       is.null(colnames(rna)) || anyDuplicated(rownames(rna)) ||
       anyDuplicated(colnames(rna)) ||
@@ -183,7 +200,16 @@
     } else {
       base::colMeans(peak_block)
     }
-    contribution <- estimate * tf_mean * peak_mean
+    paired_product <- tf_block * peak_block
+    paired_mean <- if (inherits(paired_product, "Matrix")) {
+      Matrix::colMeans(paired_product)
+    } else {
+      base::colMeans(paired_product)
+    }
+    interaction_mean <-
+      paired_weight * paired_mean +
+      product_of_means_weight * tf_mean * peak_mean
+    contribution <- estimate * interaction_mean
     edge_target <- tolower(as.character(edge$target))
     totals <- tapply(contribution, edge_target, sum)
     selected <- intersect(names(totals), colnames(answer))

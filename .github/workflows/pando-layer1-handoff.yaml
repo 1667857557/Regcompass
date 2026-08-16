@@ -152,7 +152,9 @@ jobs:
               ".rc_validate_pando_fit_metadata_frame <- function",
               "Condition-Pando projection requires exactly one metacell membership",
               'aggregation_contract =',
-              '"beta_times_group_mean_tf_times_group_mean_atac"',
+              '"beta_times_0.75_paired_mean_product_plus_0.25_product_of_means"',
+              "paired_interaction_weight =",
+              "product_of_means_weight =",
               'origin = "paired_cell_common_dictionary_condition_bh_active_edges"',
               'projection_name = "active_no_fusion_ridge_condition_effect"',
               "unique cell-type set.",
@@ -163,6 +165,8 @@ jobs:
           if missing:
               raise RuntimeError(f"Layer 1 canonical handoff missing: {missing}")
           required_projection = [
+              ".RC_PANDO_PROJECTION_PRODUCT_OF_MEANS_WEIGHT <- 0.25",
+              ".rc_validate_pando_projection_weight <- function",
               ".rc_pando_projection_from_group_means <- function",
               "tf_mean <- if",
               "peak_mean <- if",
@@ -170,11 +174,14 @@ jobs:
               "base::colMeans(tf_block)",
               "Matrix::colMeans(peak_block)",
               "base::colMeans(peak_block)",
-              "contribution <- estimate * tf_mean * peak_mean",
+              "paired_product <- tf_block * peak_block",
+              "paired_weight * paired_mean",
+              "product_of_means_weight * tf_mean * peak_mean",
+              "contribution <- estimate * interaction_mean",
           ]
           missing = [value for value in required_projection if value not in projection]
           if missing:
-              raise RuntimeError(f"sparse-safe product-of-means Pando projection missing: {missing}")
+              raise RuntimeError(f"paired-shrinkage Pando projection missing: {missing}")
 
           merge = Path("R/grn_parallel_merge_contract.R").read_text()
           required_merge = [
