@@ -111,7 +111,7 @@
     stringsAsFactors = FALSE
   )
   list(
-    schema_version = "regcompass_shared_walktrap_condition_cut_cache_v1",
+    schema_version = "regcompass_shared_walktrap_condition_local_repair_cache_v2",
     condition_col = condition_col,
     celltype_col = celltype_col,
     rna_assay = rna_assay,
@@ -120,11 +120,12 @@
     graph_group_argument = "cell.graph.group",
     condition_argument = "cell.split.condition",
     condition_partition = "hierarchy_constrained",
-    partition_schema_version = "shared_walktrap_condition_cut_v1",
+    partition_schema_version = "shared_walktrap_condition_local_repair_v2",
     graph_scope = "one_independent_WNN_graph_per_cell_type",
     condition_scope =
-      "shared_WNN_and_Walktrap_with_condition_specific_hierarchy_cut",
-    membership_split_timing = "condition_specific_cut_of_shared_walktrap_hierarchy",
+      "shared_WNN_and_Walktrap_with_condition_gamma_cut_and_local_tree_repair",
+    membership_split_timing =
+      "condition_gamma_cut_then_local_same_condition_hierarchy_repair",
     graph_method = "SuperCell_multimodal_WNN_then_walktrap",
     modality_weighting = "adaptive_WNN_within_cell_type",
     aggregation_method = "SCimplify_for_Seurat_membership_mode",
@@ -241,8 +242,8 @@
   }
   if (!identical(as.character(result$partition_policy), "hierarchy_constrained") ||
       !identical(as.character(result$partition_schema_version),
-                 "shared_walktrap_condition_cut_v1")) {
-    stop("SuperCell did not execute the required hierarchy-constrained policy.",
+                 "shared_walktrap_condition_local_repair_v2")) {
+    stop("SuperCell did not execute the required hierarchy-constrained local-repair policy.",
          call. = FALSE)
   }
   index <- match(cells, membership$cell_id)
@@ -270,6 +271,7 @@
     membership = membership,
     parent_hierarchies = result$h_membership %||% list(),
     partition_diagnostics = result$partition_diagnostics %||% data.frame(),
+    partition_repairs = result$partition_repairs %||% data.frame(),
     partition_policy = result$partition_policy,
     partition_schema_version = result$partition_schema_version,
     upstream_api = "SCimplify_by_graph_group"
@@ -391,7 +393,7 @@
     stop(
       "Retired Stage 2 controls are no longer accepted: ",
       paste(retired, collapse = ", "),
-      ". Stage 2 uses one shared Walktrap hierarchy per cell type and no post-hoc graph repair.",
+      ". Stage 2 uses one shared Walktrap hierarchy per cell type; minimum-size repair follows that hierarchy without graph reconstruction or affinity-based reassignment.",
       call. = FALSE
     )
   }
@@ -501,9 +503,10 @@
   mc_meta$requested_gamma <- args$gamma
   mc_meta$min_metacell_size <- args$min_metacell_size
   mc_meta$min_metacells_per_stratum <- args$min_metacells_per_stratum
-  mc_meta$pooling_scope <- "celltype_shared_WNN_condition_hierarchy_cut"
+  mc_meta$pooling_scope <- "celltype_shared_WNN_condition_gamma_cut_local_tree_repair"
   mc_meta$celltype_role <- "one_independent_WNN_and_Walktrap_per_cell_type"
-  mc_meta$condition_role <- "condition_specific_cut_of_shared_walktrap_hierarchy"
+  mc_meta$condition_role <-
+    "condition_gamma_cut_then_local_same_condition_hierarchy_repair"
   aggregated <- .rc_aggregate_metacell_counts(
     object = object,
     membership = membership,
@@ -526,7 +529,8 @@
   aggregated$object@misc$regcompass_supercell_partition <- list(
     policy = grouped$partition_policy,
     schema_version = grouped$partition_schema_version,
-    diagnostics = grouped$partition_diagnostics
+    diagnostics = grouped$partition_diagnostics,
+    repairs = grouped$partition_repairs
   )
   dir.create(outdir, recursive = TRUE, showWarnings = FALSE)
   .rc_write_tsv_gz(membership, file.path(outdir, "membership.tsv.gz"))
@@ -536,6 +540,13 @@
     .rc_write_tsv_gz(
       grouped$partition_diagnostics,
       file.path(outdir, "metacell_partition_diagnostics.tsv.gz")
+    )
+  }
+  if (is.data.frame(grouped$partition_repairs) &&
+      nrow(grouped$partition_repairs)) {
+    .rc_write_tsv_gz(
+      grouped$partition_repairs,
+      file.path(outdir, "metacell_partition_repairs.tsv.gz")
     )
   }
 
@@ -560,6 +571,7 @@
     metacell_meta = mc_meta,
     membership = membership,
     partition_diagnostics = grouped$partition_diagnostics,
+    partition_repairs = grouped$partition_repairs,
     partition_policy = grouped$partition_policy,
     partition_schema_version = grouped$partition_schema_version,
     celltype_composition = celltype_composition,
@@ -567,7 +579,7 @@
     condition_col = condition_col,
     celltype_col = celltype_col,
     selected_cell_types = unique(as.character(mc_meta[[celltype_col]])),
-    pooling_scope = "celltype_shared_WNN_condition_hierarchy_cut",
+    pooling_scope = "celltype_shared_WNN_condition_gamma_cut_local_tree_repair",
     cache_contract = contract,
     input_design = list(
       metacell_purity_grouping = c(condition_col, celltype_col),
@@ -581,12 +593,13 @@
       graph_method = "multimodal_WNN",
       clustering_method = "one_shared_walktrap_hierarchy_per_cell_type",
       final_partition_method =
-        "condition_specific_finest_feasible_cut_of_shared_hierarchy",
+        "condition_specific_gamma_cut_then_local_hierarchy_min_size_repair",
       aggregation_method = "SCimplify_for_Seurat_with_membership",
       graph_scope = "one_independent_WNN_graph_per_cell_type",
       condition_scope =
-        "all_conditions_joint_for_WNN_and_Walktrap_then_condition_specific_hierarchy_cut",
-      membership_split_timing = "during_final_shared_hierarchy_cut_selection",
+        "all_conditions_joint_for_WNN_and_Walktrap_then_condition_gamma_cut_and_local_tree_repair",
+      membership_split_timing =
+        "condition_gamma_cut_then_local_same_condition_hierarchy_repair",
       modality_weighting = "adaptive_WNN_within_cell_type",
       hard_min_metacell_size = args$min_metacell_size,
       hard_min_metacells_per_stratum = args$min_metacells_per_stratum,
@@ -596,8 +609,9 @@
       kernel = args$kernel,
       inference_policy = paste(
         "Each broad cell type receives one independent multimodal WNN graph and Walktrap hierarchy;",
-        "conditions share that graph/hierarchy; final condition-pure metacells are selected as",
-        "condition-specific feasible cuts subject to hard size/count constraints"
+        "conditions share that graph/hierarchy; gamma sets the initial condition-specific resolution;",
+        "only metacells below the hard minimum size are merged upward to the nearest same-condition",
+        "branch of that same hierarchy, while already-valid metacells are not globally coarsened"
       ),
       sample_metadata = "not_used_or_retained"
     )

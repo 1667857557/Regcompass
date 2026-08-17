@@ -11,7 +11,7 @@
     is.list(contract) &&
     identical(
       contract$schema_version,
-      "regcompass_shared_walktrap_condition_cut_cache_v1"
+      "regcompass_shared_walktrap_condition_local_repair_cache_v2"
     ) &&
     identical(contract$native_supercell_api, "SCimplify_by_graph_group") &&
     identical(contract$graph_group_argument, "cell.graph.group") &&
@@ -19,7 +19,7 @@
     identical(contract$condition_partition, "hierarchy_constrained") &&
     identical(
       contract$partition_schema_version,
-      "shared_walktrap_condition_cut_v1"
+      "shared_walktrap_condition_local_repair_v2"
     ) &&
     identical(
       contract$graph_scope,
@@ -27,11 +27,11 @@
     ) &&
     identical(
       contract$condition_scope,
-      "shared_WNN_and_Walktrap_with_condition_specific_hierarchy_cut"
+      "shared_WNN_and_Walktrap_with_condition_gamma_cut_and_local_tree_repair"
     ) &&
     identical(
       contract$membership_split_timing,
-      "condition_specific_cut_of_shared_walktrap_hierarchy"
+      "condition_gamma_cut_then_local_same_condition_hierarchy_repair"
     ) &&
     identical(
       contract$graph_method,
@@ -51,7 +51,7 @@
     identical(design$condition_partition, "hierarchy_constrained") &&
     identical(
       design$partition_schema_version,
-      "shared_walktrap_condition_cut_v1"
+      "shared_walktrap_condition_local_repair_v2"
     ) &&
     identical(design$graph_method, "multimodal_WNN") &&
     identical(
@@ -60,7 +60,7 @@
     ) &&
     identical(
       design$final_partition_method,
-      "condition_specific_finest_feasible_cut_of_shared_hierarchy"
+      "condition_specific_gamma_cut_then_local_hierarchy_min_size_repair"
     ) &&
     identical(
       design$aggregation_method,
@@ -72,11 +72,11 @@
     ) &&
     identical(
       design$condition_scope,
-      "all_conditions_joint_for_WNN_and_Walktrap_then_condition_specific_hierarchy_cut"
+      "all_conditions_joint_for_WNN_and_Walktrap_then_condition_gamma_cut_and_local_tree_repair"
     ) &&
     identical(
       design$membership_split_timing,
-      "during_final_shared_hierarchy_cut_selection"
+      "condition_gamma_cut_then_local_same_condition_hierarchy_repair"
     ) &&
     identical(
       design$modality_weighting,
@@ -99,7 +99,7 @@
   if (!isTRUE(valid)) {
     stop(
       "`", argument,
-      "` is not a shared-Walktrap hierarchy-constrained SuperCell artifact; rerun Stage 2 with the current RegCompass/SuperCell contract.",
+      "` is not a shared-Walktrap hierarchy-constrained SuperCell artifact; rerun Stage 2 with the current RegCompass/SuperCell local-repair contract.",
       call. = FALSE
     )
   }
