@@ -135,7 +135,14 @@ test_that("metacells use one grouped WNN graph per cell type", {
   expect_identical(.rc_condition_metacell_defaults()$gamma, 30L)
   expect_false("overwrite" %in% names(.rc_condition_metacell_defaults()))
   expect_match(
-    wrapper, "celltype_grouped_joint_condition_WNN", fixed = TRUE
+    wrapper,
+    "celltype_shared_WNN_condition_gamma_cut_local_tree_repair",
+    fixed = TRUE
+  )
+  expect_match(
+    wrapper,
+    "condition_specific_gamma_cut_then_local_hierarchy_min_size_repair",
+    fixed = TRUE
   )
   expect_false(grepl("supercell_stratum_col", wrapper, fixed = TRUE))
   expect_false(grepl("stratum_col", wrapper, fixed = TRUE))
@@ -150,7 +157,11 @@ test_that("grouped construction does not use posthoc cell-type assignment", {
   expect_false(grepl(
     ".rc_assign_metacell_dominant_celltype", text, fixed = TRUE
   ))
-  expect_match(text, "Grouped WNN produced impure metacells", fixed = TRUE)
+  expect_match(
+    text,
+    "Hierarchy-constrained SuperCell produced impure metacells",
+    fixed = TRUE
+  )
 })
 
 test_that("fragment processing is post-membership and optional", {
