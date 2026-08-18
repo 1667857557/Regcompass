@@ -31,15 +31,15 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     Stage 2 builds one multimodal WNN graph and one Walktrap hierarchy per broad
     cell type, selects condition-specific gamma-resolution cuts from that shared
     hierarchy, and locally repairs only undersized same-condition fragments along
-    the same hierarchy while preserving the configured final metacell-count floor.
-    Quantitative Layer 1 RNA is the equal-weight mean of single-cell linear CPM
-    within the exact final SuperCell membership. Medium concentrations are
-    provenance rather than implicit kinetics, and full-GEM medium cache identity is
-    based on the final resolved reaction lower and upper bounds. Pando and SuperCell
-    compatibility is checked from required runtime APIs and data contracts rather
-    than package version strings; the Remotes entries target the current repository
-    default branches. Mathematical and quantitative definitions are maintained in
-    the package mathematical specification rather than duplicated in interface text.
+    the same hierarchy while preserving the final metacell-count floor. Quantitative
+    Layer 1 RNA is the equal-weight mean of single-cell linear CPM within the exact final
+    SuperCell membership. Medium concentrations are provenance rather than implicit
+    kinetics, and full-GEM medium cache identity is based on the final resolved
+    reaction lower and upper bounds. Pando and SuperCell compatibility is checked
+    from required runtime APIs and data contracts rather than package version
+    strings; the Remotes entries target the current repository default branches.
+    Mathematical and quantitative definitions are maintained in the package
+    mathematical specification rather than duplicated in interface text.
 License: MIT + file LICENSE
 Encoding: UTF-8
 Roxygen: list(markdown = TRUE)
