@@ -78,10 +78,10 @@
 #' Each broad cell type receives one independent multimodal WNN graph and one
 #' Walktrap hierarchy. All conditions within that cell type jointly determine
 #' modality weights, neighbours, and the shared hierarchy; final condition-pure
-#' metacells are condition-specific legal cuts of that same hierarchy subject to
-#' the configured hard size and count constraints. When a Stage 1 result is
-#' supplied, Stage 2 reproduces its exact ordered cell set and validates workflow
-#' parameters.
+#' metacells use condition-specific gamma-resolution cuts followed by local
+#' same-condition hierarchy repair for undersized fragments. When a Stage 1
+#' result is supplied, Stage 2 reproduces its exact ordered cell set and validates
+#' workflow parameters.
 #'
 #' When `fragment_files` is supplied, Stage 2 first builds the final SuperCell
 #' membership, then aggregates the original single-cell fragments to those
@@ -89,6 +89,12 @@
 #' aggregation uses the same top-level `workers` cap as the rest of RegCompass;
 #' `metacell_args$fragment_args$workers` is not a separate public control.
 #'
+#' @param rna_assay RNA assay name. When `grn` is supplied and this argument is
+#' omitted, Stage 2 inherits the exact RNA assay recorded by Stage 1. An
+#' explicitly supplied different assay remains a contract error.
+#' @param atac_assay ATAC assay name. When `grn` is supplied and this argument is
+#' omitted, Stage 2 inherits the exact ATAC assay recorded by Stage 1. An
+#' explicitly supplied different assay remains a contract error.
 #' @param fragment_files `NULL`/`FALSE` to aggregate the existing ATAC count
 #' matrix, a fragment path (or named path vector for multiple samples), or an
 #' explicit fragment mapping data frame. Fragment input affects ATAC recounting
@@ -111,6 +117,8 @@ rc_regcompass_step_metacells <- function(
     workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE),
     grn = NULL) {
+  rna_assay_missing <- missing(rna_assay)
+  atac_assay_missing <- missing(atac_assay)
   monitor <- .rc_step_monitor_start("metacells", outdir, progress)
   on.exit(.rc_step_monitor_fail(monitor), add = TRUE)
   if (!inherits(object, "Seurat")) {
@@ -171,6 +179,12 @@ rc_regcompass_step_metacells <- function(
     expected_celltype_col <- grn$params$celltype_col %||% celltype_col
     expected_rna_assay <- grn$params$rna_assay %||% rna_assay
     expected_atac_assay <- grn$params$atac_assay %||% atac_assay
+    if (rna_assay_missing) {
+      rna_assay <- expected_rna_assay
+    }
+    if (atac_assay_missing) {
+      atac_assay <- expected_atac_assay
+    }
     if (!identical(condition_col, expected_condition_col)) {
       stop("Stage 2 `condition_col` differs from Stage 1.", call. = FALSE)
     }
