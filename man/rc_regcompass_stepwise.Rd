@@ -49,14 +49,14 @@ rc_regcompass_step_results(grn, metacells, meta_modules, layer1, layer2,
 \item{species}{\code{"auto"}, \code{"human"}, or \code{"mouse"}.}
 \item{condition_col, celltype_col}{Condition and broad-cell-type metadata columns.}
 \item{cell_type}{Optional broad-cell-type subset.}
-\item{rna_assay, atac_assay}{RNA and ATAC assay names.}
+\item{rna_assay, atac_assay}{RNA and ATAC assay names. In Stage 2, when \code{grn} is supplied and either assay argument is omitted, the corresponding assay name is inherited from Stage 1. Explicitly supplying a different assay remains a cross-stage contract error.}
 \item{pando_args}{Stage 1 Pando configuration. \code{min_cells} defaults to \code{500L}; common inference controls are supplied through \code{pando_infer_args}. Multi-condition cell types use the common-dictionary no-fusion condition ridge route and one-condition cell types use standard ridge by default.}
 \item{target_rsq_threshold}{Minimum selected-lambda full-data target R-squared required for RegCompass penalty eligibility. Defaults to \code{0.05}. This target-model gate is applied after Pando fitting and does not redefine Pando edge significance.}
 \item{workers}{Single worker cap used by computational stages, default \code{10L}. Ridge GRNs use one parallel level at a time and reuse the worker budget for target-level Pando work.}
 \item{progress}{Display and persist stage progress.}
 \item{fragment_files}{Optional Stage 2 raw fragment input.}
-\item{metacell_args}{Stage 2 reductions, dimensions, WNN and fragment controls. \code{gamma} is the resolution target; \code{min_metacell_size} and \code{min_metacells_per_stratum} are hard feasibility constraints under the shared-Walktrap hierarchy partition.}
-\item{grn}{Stage 1 output. In Stage 2, supplying it enforces the retained Stage 1 cell set.}
+\item{metacell_args}{Stage 2 reductions, dimensions, WNN and fragment controls. \code{gamma} controls the condition-specific initial hierarchy resolution; \code{min_metacell_size} is enforced by local same-condition repair of undersized fragments on the shared Walktrap hierarchy, and \code{min_metacells_per_stratum} remains a hard final-count constraint.}
+\item{grn}{Stage 1 output. In Stage 2, supplying it enforces the retained Stage 1 cell set and supplies omitted Stage 1 assay names.}
 \item{metacells, meta_modules, layer1, layer2}{Validated outputs from preceding stages.}
 \item{meta_module_args}{Optional Stage 3 configuration, including a custom subsystem table.}
 \item{gpr_and_method}{GPR AND aggregation method: \code{"min"}, \code{"median"}, or \code{"mean"}.}
