@@ -129,17 +129,26 @@
     pando_infer_args, inner_parallel = FALSE, PANDO_BPPARAM = NULL) {
   if (!is.list(task) || !inherits(task$grn, "GRNData") ||
       !is.character(task$cell_type) || length(task$cell_type) != 1L) {
-    stop("Invalid condition-GRN ridge fit task.", call. = FALSE)
+    stop("Invalid condition-GRN Scheme-E fit task.", call. = FALSE)
   }
   cell_type <- task$cell_type
-  ridge_control <- pando_infer_args$condition_ridge_control %||% list()
-  if ("fusion_ratio" %in% names(ridge_control)) {
-    stop("Condition ridge no longer supports `fusion_ratio`.", call. = FALSE)
+  solver_control <- pando_infer_args$condition_ridge_control %||% list()
+  forbidden <- intersect(
+    names(solver_control),
+    c("fusion_ratio", "scheme_e_z", "z", "penalty_value", "penalty_family",
+      "condition_mix", "alpha")
+  )
+  if (length(forbidden)) {
+    stop(
+      "Condition Scheme E is fixed at z=0.25; unsupported penalty-control ",
+      "field(s): ", paste(forbidden, collapse = ", "), ".",
+      call. = FALSE
+    )
   }
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
   if (length(threshold) != 1L || !is.finite(threshold) ||
       threshold <= 0 || threshold >= 1) {
-    stop("Condition Pando padj_threshold must be in (0, 1).",
+    stop("Condition Pando diagnostic padj_threshold must be in (0, 1).",
          call. = FALSE)
   }
   show_progress <- .rc_progress_enabled(
@@ -166,7 +175,7 @@
     parallel = isTRUE(inner_parallel),
     parallel_scope = "target",
     overwrite = TRUE,
-    fallback_args = list(condition_ridge_control = ridge_control),
+    fallback_args = list(condition_ridge_control = solver_control),
     verbose = show_progress
   )
   if (isTRUE(inner_parallel) && !is.null(PANDO_BPPARAM) &&
@@ -176,7 +185,7 @@
   if (show_progress) {
     message(
       "RegCompass grn condition detail | cell_type=", cell_type,
-      ";phase=pando_condition_pipeline",
+      ";phase=pando_scheme_e_z025_pipeline",
       ";targets_requested=", length(target_genes),
       ";target_parallel=", isTRUE(inner_parallel),
       ";workers=", if (!is.null(args$BPPARAM) &&
@@ -189,7 +198,7 @@
     do.call(Pando::infer_condition_grn, args),
     error = function(error) {
       stop(
-        "Condition-GRN ridge fit failed for cell type `", cell_type,
+        "Condition-GRN Scheme-E fit failed for cell type `", cell_type,
         "` during Pando target-level execution: ",
         conditionMessage(error),
         call. = FALSE
@@ -208,24 +217,39 @@
              inherits(fits[[1L]], "ConditionGRNFit")) {
     fit <- fits[[1L]]
   } else {
-    stop("Pando condition ridge fit was not returned for cell type `",
+    stop("Pando condition Scheme-E fit was not returned for cell type `",
          cell_type, "`.", call. = FALSE)
   }
   if (!identical(as.character(fit$cell_type), cell_type)) {
-    stop("Pando condition ridge fit returned the wrong cell type.",
+    stop("Pando condition Scheme-E fit returned the wrong cell type.",
          call. = FALSE)
   }
   if (!isTRUE(all.equal(as.numeric(fit$padj_threshold), threshold))) {
-    stop("Pando returned a condition fit with the wrong BH threshold.",
+    stop("Pando returned a condition fit with the wrong diagnostic BH threshold.",
+         call. = FALSE)
+  }
+  if (!identical(as.character(fit$model_schema),
+                 .RC_PANDO_CONDITION_GRN_MODEL_SCHEMA) ||
+      !identical(as.character(fit$fit_engine),
+                 .RC_PANDO_CONDITION_GRN_ENGINE) ||
+      !is.list(fit$deviation_penalty) ||
+      !identical(as.character(fit$deviation_penalty$family),
+                 .RC_PANDO_CONDITION_PENALTY_FAMILY) ||
+      !isTRUE(all.equal(as.numeric(fit$deviation_penalty$z),
+                        .RC_PANDO_CONDITION_SCHEME_E_Z,
+                        tolerance = 1e-15))) {
+    stop("Pando returned a condition fit that is not fixed Scheme E z=0.25.",
          call. = FALSE)
   }
   if (show_progress) {
     message(
       "RegCompass grn condition detail | cell_type=", cell_type,
-      ";phase=pando_condition_pipeline_complete",
+      ";phase=pando_scheme_e_z025_complete",
       ";candidate_edges=", as.integer(fit$candidate_edge_count %||% NA_integer_),
       ";fit_edges=", as.integer(fit$fit_dictionary_edge_count %||% NA_integer_),
-      ";active_edges=", sum(fit$coefficients$active %in% TRUE),
+      ";continuous_edges=", sum(fit$coefficients$active %in% TRUE),
+      ";contrast_identifiable=",
+      sum(fit$coefficients$contrast_identifiable %in% TRUE),
       ";targets_fitted=", length(unique(as.character(fit$target_genes)))
     )
   }
