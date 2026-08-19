@@ -60,10 +60,8 @@
   rsq_threshold <- .rc_target_rsq_threshold(
     fit$regcompass_target_rsq_threshold %||% .rc_target_rsq_threshold()
   )
-  expected_filter <- paste0(
-    "Pando BH-active edge & target fit_status == 'ok' & full-data target R2 >= ",
-    format(rsq_threshold, trim = TRUE)
-  )
+  expected_filter <-
+    "finite continuous Scheme-E coefficient on frozen dictionary & fit_status == 'ok'"
   filter_value <- as.character(fit$regcompass_penalty_filter)
   if (length(filter_value) != 1L || is.na(filter_value) ||
       !identical(filter_value, expected_filter)) {
@@ -76,12 +74,13 @@
     "statistically_supported", "global_support", "local_support",
     "active", "significant", "penalty_effect", "estimate", "estimable",
     "padj", "fit_status", "target_rsq", "target_model_supported",
-    "penalty_eligible"
+    "penalty_eligible", "contrast_identifiable", "shared_by_boundary",
+    "fused_by_penalty", "penalty_family", "penalty_value"
   )
   if (!all(required %in% colnames(coefficient))) {
     stop(
-      "RegCompass-gated condition fits require Pando active-edge provenance, ",
-      "ridge coefficients, target fit status/R2 and penalty eligibility.",
+      "RegCompass-gated condition fits require the full Scheme-E continuous ",
+      "coefficient, identifiability, solver and diagnostic contract.",
       call. = FALSE
     )
   }
@@ -95,7 +94,7 @@
   if (!identical(
       as.logical(coefficient$target_model_supported), expected_supported
   )) {
-    stop("RegCompass target-model support flags do not match full-data R2 gate.",
+    stop("RegCompass target-model diagnostic flags do not match full-data R2.",
          call. = FALSE)
   }
   expected_gate <- .rc_condition_penalty_gate(
@@ -105,8 +104,9 @@
   )
   if (!identical(as.logical(coefficient$penalty_eligible), expected_gate)) {
     stop(
-      "RegCompass penalty_eligible flags must equal Pando BH-active edges with ",
-      "valid target fit status and full-data target R2 support.", call. = FALSE
+      "RegCompass penalty_eligible must retain every finite Scheme-E ",
+      "common-dictionary coefficient from an ok fit; BH/R2 cannot gate it.",
+      call. = FALSE
     )
   }
   invisible(TRUE)
@@ -168,15 +168,15 @@
   coefficient <- as.data.frame(fit$coefficients, stringsAsFactors = FALSE)
   required_fit <- c("target", "condition", "rsq", "fit_status")
   required_coefficient <- c(
-    "target", "condition", "active", "estimable", "estimate", "padj",
-    "global_support", "local_support"
+    "target", "condition", "active", "estimate", "penalty_effect",
+    "statistically_supported", "contrast_identifiable"
   )
   if (!nrow(fit_table) ||
       !all(required_fit %in% colnames(fit_table)) ||
       !all(required_coefficient %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN target eligibility requires target-condition fit diagnostics ",
-      "and Pando active ridge-edge flags.", call. = FALSE
+      "Condition-GRN target availability requires target-condition fit ",
+      "diagnostics and continuous Scheme-E coefficient rows.", call. = FALSE
     )
   }
 
@@ -230,12 +230,18 @@
   n_projection_edges <- tabulate(
     coefficient_index[final_gate], nbins = nrow(fit_table)
   )
-  reliability <- rep(NA_real_, nrow(fit_table))
-  evaluated <- is.finite(rsq)
-  reliability[evaluated] <- as.numeric(
-    fit_status[evaluated] == "ok" &
-      rsq[evaluated] >= rsq_threshold &
-      n_projection_edges[evaluated] > 0L
+  n_bh_supported_edges <- tabulate(
+    coefficient_index[coefficient$statistically_supported %in% TRUE],
+    nbins = nrow(fit_table)
+  )
+  n_identifiable_edges <- tabulate(
+    coefficient_index[coefficient$contrast_identifiable %in% TRUE],
+    nbins = nrow(fit_table)
+  )
+  # This is availability/reliability for Layer1 projection, not a target-R2
+  # quality gate. R2 remains in the table as a diagnostic only.
+  reliability <- as.numeric(
+    fit_status == "ok" & n_projection_edges > 0L
   )
 
   data.frame(
@@ -243,10 +249,12 @@
     condition = fit_condition,
     rsq = rsq,
     fit_status = fit_status,
-    n_significant_edges = as.integer(n_projection_edges),
+    n_significant_edges = as.integer(n_bh_supported_edges),
     n_projection_edges = as.integer(n_projection_edges),
+    n_contrast_identifiable_edges = as.integer(n_identifiable_edges),
     padj_threshold = threshold,
     target_rsq_threshold = rsq_threshold,
+    target_rsq_supported_diagnostic = is.finite(rsq) & rsq >= rsq_threshold,
     reliability = reliability,
     stringsAsFactors = FALSE
   )
@@ -329,8 +337,7 @@
     })
     names(edges_by_group) <- names(cells_by_group)
 
-    # Canonical RegCompass estimand keeps the paired interaction dominant while
-    # shrinking 25% toward the product of separate metacell modality means:
+    # Canonical RegCompass exposure is unchanged by the Scheme-E redesign:
     # beta * [0.75 * mean(TF * ATAC) + 0.25 * mean(TF) * mean(ATAC)].
     score <- .rc_pando_projection_from_group_means(
       rna, atac, edges_by_group, cells_by_group, genes
@@ -386,10 +393,19 @@
       n_significant_edges = vapply(fit$condition_levels, function(condition) {
         sum(
           all_coefficient$condition == condition &
-            all_coefficient$active %in% TRUE,
+            all_coefficient$statistically_supported %in% TRUE,
           na.rm = TRUE
         )
       }, integer(1)),
+      n_contrast_identifiable_edges = vapply(
+        fit$condition_levels, function(condition) {
+          sum(
+            all_coefficient$condition == condition &
+              all_coefficient$contrast_identifiable %in% TRUE,
+            na.rm = TRUE
+          )
+        }, integer(1)
+      ),
       mean_target_reliability = vapply(
         fit$condition_levels,
         function(condition) {
@@ -401,17 +417,16 @@
         },
         numeric(1)
       ),
-      reliability_definition = paste0(
-        "binary target eligibility after Pando BH edge, fit_status and ",
-        "selected-lambda full-data R2 >= ",
-        format(fit$regcompass_target_rsq_threshold, trim = TRUE)
+      reliability_definition = paste(
+        "binary target availability from fit_status and continuous Scheme-E",
+        "projection edges; BH and target R2 are diagnostics only"
       ),
       padj_threshold = threshold,
       target_rsq_threshold = fit$regcompass_target_rsq_threshold,
       corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
       estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
       projection_effect =
-        "Pando_condition_BH_active_no_fusion_ridge_penalty_effect",
+        "Pando_fixed_dictionary_scheme_e_z025_continuous_penalty_effect",
       pando_object_scope = "cell_type_exact_feature_space",
       aggregation_contract =
         "beta_times_0.75_paired_mean_product_plus_0.25_product_of_means",
@@ -427,10 +442,12 @@
     projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_common_dictionary_condition_bh_active_edges",
+    origin = "paired_cell_fixed_dictionary_scheme_e_z025_continuous_edges",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    projection_name = "active_no_fusion_ridge_condition_effect",
-    nonestimable_policy =
-      "nonactive_or_nonestimable_condition_edge_has_zero_projection_contribution"
+    projection_name = "continuous_scheme_e_z025_condition_effect",
+    nonestimable_policy = paste(
+      "non-identifiable contrasts are exact-shared and flagged; condition",
+      "coefficients remain projected; failed target fits are unavailable"
+    )
   )
 }
