@@ -15,11 +15,12 @@ test_that("condition target pool disables generic BiocParallel progress bars", {
   expect_equal(.rc_bpparam_worker_limit(quiet), 2L)
 })
 
-test_that("condition fit task exposes semantic Pando progress", {
+test_that("condition fit task exposes semantic Scheme E progress", {
   body_text <- paste(deparse(body(.rc_condition_ridge_fit_task)), collapse = "\n")
   expect_match(body_text, "verbose = show_progress", fixed = TRUE)
-  expect_match(body_text, "phase=pando_condition_pipeline", fixed = TRUE)
-  expect_match(body_text, "Condition-GRN ridge fit failed for cell type", fixed = TRUE)
-  expect_match(body_text, "pando_condition_pipeline_complete", fixed = TRUE)
-  expect_match(body_text, "active_edges=", fixed = TRUE)
+  expect_match(body_text, "phase=pando_scheme_e_z025_pipeline", fixed = TRUE)
+  expect_match(body_text, "Condition-GRN Scheme-E fit failed for cell type", fixed = TRUE)
+  expect_match(body_text, "pando_scheme_e_z025_complete", fixed = TRUE)
+  expect_match(body_text, "continuous_edges=", fixed = TRUE)
+  expect_match(body_text, "contrast_identifiable=", fixed = TRUE)
 })
