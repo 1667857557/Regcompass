@@ -42,15 +42,24 @@
   )
 
   condition <- rep(c("A", "B"), each = 3L)
-  pval <- c(0.001, 0.2, 0.03, 0.001, 0.02, 0.03)
-  padj <- unlist(lapply(split(pval, condition), stats::p.adjust,
-                        method = "BH"), use.names = FALSE)
-  estimate <- c(1, -0.2, 0.4, -0.7, 0.3, 0.6)
-  shared <- rep(colMeans(rbind(estimate[1:3], estimate[4:6])), 2L)
-  statistically_supported <- padj < padj_threshold
+  estimate <- c(1, -0.2, 0.4, -0.7, 0.3, 0.4)
+  shared_edge <- colMeans(rbind(estimate[1:3], estimate[4:6]))
+  shared <- rep(shared_edge, 2L)
+  deviation <- estimate - shared
+  pval <- c(0.001, 0.2, NA, 0.001, 0.02, NA)
+  padj <- unlist(lapply(split(seq_along(pval), condition), function(index) {
+    value <- rep(NA_real_, length(index))
+    valid <- is.finite(pval[index])
+    value[valid] <- stats::p.adjust(pval[index][valid], method = "BH")
+    value
+  }), use.names = FALSE)
+  statistically_supported <- is.finite(padj) & padj < padj_threshold
   global_support <- rep(edge$source_global, 2L)
   local_support <- c(TRUE, FALSE, TRUE, TRUE, FALSE, FALSE)
-  active <- statistically_supported
+  identifiable_edge <- c(TRUE, TRUE, FALSE)
+  contrast_identifiable <- rep(identifiable_edge, 2L)
+  shared_by_boundary <- !contrast_identifiable
+  fused_by_penalty <- rep(c(FALSE, TRUE, FALSE), 2L)
   coefficient <- data.frame(
     edge_id = rep(edge$edge_id, 2L),
     target = "G",
@@ -58,27 +67,47 @@
     region = rep(edge$region, 2L),
     condition = condition,
     estimate = estimate,
+    estimate_standardized = estimate,
     shared_estimate = shared,
-    condition_deviation = estimate - shared,
-    std_err = 0.1,
-    statistic = estimate / 0.1,
+    beta_shared = shared,
+    condition_deviation = deviation,
+    delta_beta = deviation,
+    std_err = c(0.1, 0.1, NA, 0.1, 0.1, NA),
+    statistic = c(10, -2, NA, -7, 3, NA),
     pval = pval,
     padj = padj,
     statistically_supported = statistically_supported,
     global_support = global_support,
     local_support = local_support,
-    active = active,
-    significant = active,
-    penalty_effect = ifelse(active, estimate, 0),
+    active = TRUE,
+    significant = statistically_supported,
+    penalty_effect = estimate,
     estimable = TRUE,
     zero_variance = FALSE,
-    aliased = FALSE,
-    direction = ifelse(estimate > 0, "positive", "negative"),
+    condition_informative = TRUE,
+    contrast_identifiable = contrast_identifiable,
+    shared_by_boundary = shared_by_boundary,
+    fused_by_penalty = fused_by_penalty,
+    raw_information_condition = c(30, 20, 0, 15, 10, 0),
+    profile_information_delta = rep(c(10, 6, 0), 2L),
+    profile_information_definition = "pairwise_delta_profile_information",
+    penalty_family = "exact_edge_sparse_deviation",
+    penalty_value = 0.25,
+    solver_status = "ok",
+    kkt_residual = 1e-10,
+    iterations = 24L,
+    aliased = !contrast_identifiable,
+    direction = ifelse(estimate > 0, "positive",
+                       ifelse(estimate < 0, "negative", "zero")),
     stringsAsFactors = FALSE
   )
 
-  contrast_pval <- c(0.01, 0.2, 0.5)
-  contrast_padj <- stats::p.adjust(contrast_pval, method = "BH")
+  contrast_pval <- c(0.01, 0.2, NA)
+  valid_contrast <- is.finite(contrast_pval) & identifiable_edge
+  contrast_padj <- rep(NA_real_, 3L)
+  contrast_padj[valid_contrast] <- stats::p.adjust(
+    contrast_pval[valid_contrast], method = "BH"
+  )
   contrasts <- data.frame(
     edge_id = edge$edge_id,
     target = "G",
@@ -91,23 +120,32 @@
     estimate_a = estimate[1:3],
     estimate_b = estimate[4:6],
     contrast_estimate = estimate[1:3] - estimate[4:6],
-    contrast_se = c(0.2, 0.2, 0.2),
-    contrast_statistic = c(8.5, -2.5, -1),
+    contrast_se = c(0.2, 0.2, NA),
+    contrast_statistic = c(8.5, -2.5, NA),
     contrast_pval = contrast_pval,
     contrast_padj = contrast_padj,
-    contrast_estimable = TRUE,
-    contrast_significant = contrast_padj < padj_threshold,
+    contrast_estimable = identifiable_edge,
+    contrast_identifiable = identifiable_edge,
+    shared_by_boundary = !identifiable_edge,
+    fused_by_penalty = c(FALSE, TRUE, FALSE),
+    profile_information_delta = c(10, 6, 0),
+    penalty_family = "exact_edge_sparse_deviation",
+    penalty_value = 0.25,
+    solver_status = "ok",
+    kkt_residual = 1e-10,
+    iterations = 24L,
+    contrast_significant = identifiable_edge &
+      is.finite(contrast_padj) & contrast_padj < padj_threshold,
     stringsAsFactors = FALSE
   )
 
   structure(list(
     schema_version = "pando_condition_grn_common_dictionary_v1",
-    model_schema = "pando_condition_grn_multitask_ridge_v3",
-    fit_engine = "condition_union_single_no_fusion_common_lambda_ridge",
+    model_schema = "pando_condition_grn_sparse_deviation_v4",
+    fit_engine = "condition_union_scheme_e_exact_edge_z025",
     coefficient_scale = "raw_tf_atac_interaction_units",
     internal_predictor_scale = "equal_condition_within_condition_rms",
-    inference_scope =
-      "approximate_ridge_wald_conditional_on_global_or_condition_pando_screened_dictionary_and_cv_lambda",
+    inference_scope = "scheme_e_z025_primary;BH_and_R2_are_diagnostics_only",
     cell_type = "T_cell",
     condition_levels = c("A", "B"),
     condition_col = "condition",
@@ -125,9 +163,12 @@
     contrasts = contrasts,
     fit = data.frame(
       target = rep("G", 2), condition = c("A", "B"),
-      rsq = rsq,
-      fit_status = "ok", lambda = 0.1,
+      rsq = rsq, fit_status = "ok", sigma2_common = 0.2,
+      deviation_z = 0.25,
+      penalty_family = "exact_edge_sparse_deviation",
+      solver_status = "ok", kkt_residual = 1e-10, iterations = 24L,
       predictor_scale_reference = "equal_condition_within_condition_rms",
+      profile_information_definition = "pairwise_delta_profile_information",
       stringsAsFactors = FALSE
     ),
     network_names = c(A = "net_A", B = "net_B"),
@@ -136,8 +177,7 @@
     scale = FALSE,
     interaction = ":",
     projection_effect_column = "penalty_effect",
-    projection_policy =
-      "condition_bh_supported_common_dictionary_ridge_effects",
+    projection_policy = "continuous_common_dictionary_scheme_e_effects",
     fit_dictionary_policy =
       "global_and_condition_union_pando_correlation_supported_frozen_dictionary",
     candidate_edge_count = 3L,
@@ -147,15 +187,33 @@
     peak_value_type = "normalized",
     preprocessing_fingerprint = "fixture-preprocessing",
     target_genes = "G",
-    rsq_definition = "selected_lambda_full_data_R2"
+    deviation_penalty = list(
+      family = "exact_edge_sparse_deviation", z = 0.25
+    ),
+    target_solver = list(list(
+      status = "ok", kkt_residual = 1e-10, iterations = 24L,
+      penalty_family = "exact_edge_sparse_deviation", penalty_value = 0.25
+    )),
+    target_scaling = list(list(
+      reference = "equal_condition_within_condition_rms"
+    )),
+    rsq_definition = "scheme_e_z025_full_data_R2_diagnostic"
   ), class = c("ConditionGRNFit", "list"))
 }
 
-test_that("condition fit contract requires only canonical full-data rsq", {
+test_that("condition fit contract requires fixed Scheme E z=0.25", {
   fit <- .strict_fit_fixture()
+  expect_false("lambda" %in% colnames(fit$fit))
   expect_false("rsq_oof" %in% colnames(fit$fit))
-  expect_false("rsq_in_sample" %in% colnames(fit$fit))
+  expect_equal(fit$deviation_penalty$z, 0.25)
   expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
+
+  wrong <- fit
+  wrong$deviation_penalty$z <- 0.5
+  expect_error(
+    RegCompassR:::.rc_require_pando_condition_grn_fit(wrong),
+    "z=0.25"
+  )
 })
 
 test_that("deduplicated common dictionary is complete in every condition", {
@@ -176,9 +234,27 @@ test_that("deduplicated common dictionary is complete in every condition", {
   )
 })
 
-test_that("dictionary support is provenance and condition activity remains Pando BH", {
+test_that("BH remains diagnostic and cannot change Scheme E topology", {
   fit <- .strict_fit_fixture()
   expect_invisible(RegCompassR:::.rc_require_pando_condition_grn_fit(fit))
+  unsupported <- which(!fit$coefficients$statistically_supported)[[1L]]
+  expect_true(fit$coefficients$active[[unsupported]])
+  expect_false(fit$coefficients$significant[[unsupported]])
+  expect_equal(
+    fit$coefficients$penalty_effect[[unsupported]],
+    fit$coefficients$estimate[[unsupported]]
+  )
+
+  wrong <- fit
+  wrong$coefficients$active[[unsupported]] <- FALSE
+  expect_error(
+    RegCompassR:::.rc_require_pando_condition_grn_fit(wrong),
+    "finite common-dictionary"
+  )
+})
+
+test_that("global and local support remain provenance only", {
+  fit <- .strict_fit_fixture()
   global_only <- which(
     fit$coefficients$condition == "B" &
       fit$coefficients$edge_id == "G||TF2||P2"
@@ -193,110 +269,73 @@ test_that("dictionary support is provenance and condition activity remains Pando
   expect_false(fit$coefficients$global_support[[local_admitted]])
   expect_false(fit$coefficients$local_support[[local_admitted]])
   expect_true(fit$coefficients$active[[local_admitted]])
-  expect_equal(fit$coefficients$penalty_effect[[local_admitted]], 0.6)
 })
 
-test_that("Pando activity and penalty_effect remain authoritative", {
+test_that("zero-information contrast is exact-shared and not claim-eligible", {
   fit <- .strict_fit_fixture()
-  wrong_effect <- fit
-  row <- which(!fit$coefficients$active)[[1L]]
-  wrong_effect$coefficients$penalty_effect[[row]] <-
-    wrong_effect$coefficients$estimate[[row]]
-  expect_error(
-    RegCompassR:::.rc_require_pando_condition_grn_fit(wrong_effect),
-    "penalty_effect"
+  boundary <- fit$coefficients$shared_by_boundary %in% TRUE
+  expect_true(all(!fit$coefficients$contrast_identifiable[boundary]))
+  expect_equal(fit$coefficients$condition_deviation[boundary], c(0, 0))
+  expect_equal(
+    fit$contrasts$contrast_estimate[fit$contrasts$shared_by_boundary], 0
   )
-
-  wrong_flag <- fit
-  wrong_flag$coefficients$active[[1L]] <- FALSE
-  wrong_flag$coefficients$significant[[1L]] <- FALSE
+  wrong <- fit
+  index <- which(wrong$coefficients$shared_by_boundary)[[1L]]
+  wrong$coefficients$condition_deviation[[index]] <- 0.1
   expect_error(
-    RegCompassR:::.rc_require_pando_condition_grn_fit(wrong_flag),
-    "activity flags"
+    RegCompassR:::.rc_require_pando_condition_grn_fit(wrong),
+    "exact-shared"
   )
 })
 
-test_that("RegCompass adds full-data target R2 eligibility without rewriting Pando activity", {
-  fit <- .strict_fit_fixture()
+test_that("RegCompass preserves continuous effects and makes target R2 diagnostic only", {
+  fit <- .strict_fit_fixture(rsq = c(0.8, 0.01))
   gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
-  expect_identical(gated$coefficients$active, fit$coefficients$active)
-  expect_identical(gated$coefficients$significant, fit$coefficients$significant)
-  expect_equal(gated$coefficients$penalty_effect, fit$coefficients$penalty_effect)
-  expect_true(all(gated$coefficients$target_model_supported))
-  expect_identical(gated$coefficients$penalty_eligible, fit$coefficients$active)
-  expect_true(all(gated$coefficients$target_rsq >= 0.05))
+  expect_identical(gated$coefficients$active, rep(TRUE, 6L))
+  expect_equal(gated$coefficients$penalty_effect, fit$coefficients$estimate)
+  rows_b <- gated$coefficients$condition == "B"
+  expect_false(any(gated$coefficients$target_model_supported[rows_b]))
+  expect_true(all(gated$coefficients$penalty_eligible[rows_b]))
   expect_identical(
     gated$regcompass_penalty_filter,
-    "Pando BH-active edge & target fit_status == 'ok' & full-data target R2 >= 0.05"
+    "finite continuous Scheme-E coefficient on frozen dictionary & fit_status == 'ok'"
   )
   expect_identical(
     gated$regcompass_target_rsq_definition,
-    "selected_lambda_full_data_R2"
+    "scheme_e_z025_full_data_R2_diagnostic"
   )
   expect_invisible(RegCompassR:::.rc_require_layer1_condition_grn_fit(gated))
 })
 
-test_that("low full-data target R2 rejects penalty eligibility but not Pando active flags", {
+test_that("target reliability is availability, not BH or R2 filtering", {
   fit <- .strict_fit_fixture(rsq = c(0.8, 0.01))
-  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
-  rows_b <- gated$coefficients$condition == "B"
-  expect_true(any(gated$coefficients$active[rows_b]))
-  expect_false(any(gated$coefficients$target_model_supported[rows_b]))
-  expect_false(any(gated$coefficients$penalty_eligible[rows_b]))
-  expect_identical(gated$coefficients$active, fit$coefficients$active)
-  expect_equal(gated$coefficients$penalty_effect, fit$coefficients$penalty_effect)
-  expect_invisible(RegCompassR:::.rc_require_layer1_condition_grn_fit(gated))
-})
-
-test_that("non-estimable condition edges remain inactive", {
-  fit <- .strict_fit_fixture()
-  fit$coefficients$estimable[[3L]] <- FALSE
-  fit$coefficients$statistically_supported[[3L]] <- FALSE
-  fit$coefficients$active[[3L]] <- FALSE
-  fit$coefficients$significant[[3L]] <- FALSE
-  fit$coefficients$penalty_effect[[3L]] <- 0
-  fit$coefficients$padj[[3L]] <- NA_real_
-  fit$coefficients$pval[[3L]] <- NA_real_
-  gated <- RegCompassR:::.rc_apply_condition_penalty_gate(fit)
-  expect_equal(gated$coefficients$penalty_effect[[3L]], 0)
-  expect_false(gated$coefficients$active[[3L]])
-  expect_false(gated$coefficients$penalty_eligible[[3L]])
-  expect_invisible(RegCompassR:::.rc_require_layer1_condition_grn_fit(gated))
-})
-
-test_that("target reliability is tri-state evaluation status rather than sqrt R2", {
-  fit <- .strict_fit_fixture()
   reliability <- RegCompassR:::.rc_condition_target_reliability(fit)
   expect_true(all(reliability$n_projection_edges > 0L))
   expect_equal(reliability$reliability, c(1, 1))
-
-  none <- fit
-  rows <- none$coefficients$condition == "B"
-  none$coefficients$padj[rows] <- 1
-  none$coefficients$statistically_supported[rows] <- FALSE
-  none$coefficients$active[rows] <- FALSE
-  none$coefficients$significant[rows] <- FALSE
-  none$coefficients$penalty_effect[rows] <- 0
-  reliability_none <- RegCompassR:::.rc_condition_target_reliability(none)
   expect_equal(
-    reliability_none$reliability[reliability_none$condition == "B"], 0
+    reliability$target_rsq_supported_diagnostic,
+    c(TRUE, FALSE)
   )
 
-  unavailable <- fit
-  unavailable$fit$rsq[unavailable$fit$condition == "B"] <- NA_real_
-  reliability_unavailable <-
-    RegCompassR:::.rc_condition_target_reliability(unavailable)
-  expect_true(is.na(reliability_unavailable$reliability[
-    reliability_unavailable$condition == "B"
-  ]))
+  no_bh <- fit
+  rows <- no_bh$coefficients$condition == "B"
+  no_bh$coefficients$padj[rows] <- 1
+  no_bh$coefficients$statistically_supported[rows] <- FALSE
+  no_bh$coefficients$significant[rows] <- FALSE
+  reliability_no_bh <- RegCompassR:::.rc_condition_target_reliability(no_bh)
+  expect_equal(
+    reliability_no_bh$reliability[reliability_no_bh$condition == "B"], 1
+  )
 })
 
-test_that("pairwise differential GRN contrasts remain separate inference", {
+test_that("pairwise differential claims require identifiable Scheme E contrasts", {
   fit <- .strict_fit_fixture()
   expect_equal(
     fit$contrasts$contrast_estimate,
     fit$contrasts$estimate_a - fit$contrasts$estimate_b
   )
+  expect_false(fit$contrasts$contrast_identifiable[[3L]])
+  expect_true(fit$contrasts$shared_by_boundary[[3L]])
   wrong <- fit
   wrong$contrasts$contrast_padj[[1L]] <- 0.99
   expect_error(
@@ -305,7 +344,7 @@ test_that("pairwise differential GRN contrasts remain separate inference", {
   )
 })
 
-test_that("Layer 1 keeps paired-shrinkage projection with RegCompass eligibility gate", {
+test_that("Layer 1 keeps paired-shrinkage exposure but uses continuous Scheme E beta", {
   selector <- paste(
     deparse(body(RegCompassR:::.rc_condition_pando_object_for_fit)),
     collapse = "\n"
@@ -319,7 +358,6 @@ test_that("Layer 1 keeps paired-shrinkage projection with RegCompass eligibility
     collapse = "\n"
   )
   expect_match(selector, ".rc_require_layer1_condition_grn_fit", fixed = TRUE)
-  expect_match(projection, ".rc_require_layer1_condition_grn_fit", fixed = TRUE)
   expect_match(projection, ".rc_condition_penalty_gate", fixed = TRUE)
   expect_match(
     projection,
