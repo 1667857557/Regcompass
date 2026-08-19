@@ -39,31 +39,35 @@ test_that("condition scheduler preserves the min-cells error contract", {
   )
 })
 
-test_that("candidate provenance does not veto a BH-active Pando edge", {
+test_that("Scheme E condition gate ignores BH and R2 but requires an ok fit", {
   estimate <- c(1e-6, 2, 3, 4)
-  padj <- c(0.01, 0.01, 0.051, 0.01)
-  estimable <- rep(TRUE, 4L)
-  statistically_supported <- estimable & is.finite(padj) & padj < 0.05
-  global_support <- c(TRUE, TRUE, TRUE, FALSE)
-  local_support <- c(FALSE, FALSE, TRUE, FALSE)
-  active <- statistically_supported
+  padj <- c(0.01, 0.20, 0.90, 0.01)
+  statistically_supported <- is.finite(padj) & padj < 0.05
   coefficient <- data.frame(
     estimate = estimate,
     padj = padj,
-    estimable = estimable,
+    estimable = TRUE,
     statistically_supported = statistically_supported,
-    global_support = global_support,
-    local_support = local_support,
-    active = active,
-    significant = active,
-    penalty_effect = ifelse(active, estimate, 0),
-    fit_status = c("ok", "rank_deficient", "ok", "ok"),
-    rsq = c(0.8, 0.9, 0.9, 0.8),
+    global_support = c(TRUE, TRUE, TRUE, FALSE),
+    local_support = c(FALSE, FALSE, TRUE, FALSE),
+    active = TRUE,
+    significant = statistically_supported,
+    penalty_effect = estimate,
+    fit_status = c("ok", "failed", "ok", "ok"),
+    rsq = c(0.8, 0.9, 0.01, NA_real_),
+    contrast_identifiable = c(TRUE, TRUE, TRUE, FALSE),
+    shared_by_boundary = c(FALSE, FALSE, FALSE, TRUE),
+    fused_by_penalty = c(FALSE, TRUE, FALSE, FALSE),
+    penalty_family = "exact_edge_sparse_deviation",
+    penalty_value = 0.25,
+    solver_status = "ok",
+    kkt_residual = 1e-10,
+    iterations = 20L,
     stringsAsFactors = FALSE
   )
   expect_identical(
     .rc_condition_penalty_gate(coefficient),
-    c(TRUE, FALSE, FALSE, TRUE)
+    c(TRUE, FALSE, TRUE, TRUE)
   )
 })
 
@@ -90,7 +94,7 @@ test_that("condition fit diagnostics map exactly by target and condition", {
   expect_equal(diagnostics$target_rsq, c(0.9, NA, 0.7, 0.2))
 })
 
-test_that("standard Pando post-fit filter uses BH plus target-model R2", {
+test_that("standard Pando post-fit filter still uses BH plus target-model R2", {
   table <- data.frame(
     estimate = c(1e-8, 1, 1, 2),
     padj = c(0.01, 0.049, 0.051, 0.01),
