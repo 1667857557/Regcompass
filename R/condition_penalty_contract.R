@@ -1,4 +1,9 @@
 # Pando edge eligibility used by the canonical Stage-1 merge.
+#
+# Conditional GRNs use Pando Scheme E z=0.25 on one frozen exact-edge
+# dictionary. Condition-wise BH and target R2 remain diagnostics only; neither
+# changes conditional network membership or overwrites a continuous coefficient.
+# Standard (single-condition) Pando keeps its existing BH/R2 filter below.
 
 .RC_PANDO_PENALTY_CORR_THRESHOLD <- 0
 .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0
@@ -21,9 +26,8 @@
       !all(required %in% colnames(fit_table)) ||
       !all(c("target", "condition") %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN penalty filtering requires target-level fit_status and ",
-      "full-data rsq diagnostics aligned to coefficient target and condition.",
-      call. = FALSE
+      "Condition-GRN diagnostics require target-level fit_status and full-data ",
+      "rsq aligned to coefficient target and condition.", call. = FALSE
     )
   }
   fit_key <- paste(
@@ -82,13 +86,15 @@
   required <- c(
     "estimate", "estimable", "padj", "statistically_supported",
     "global_support", "local_support", "active", "significant",
-    "penalty_effect"
+    "penalty_effect", "contrast_identifiable", "shared_by_boundary",
+    "fused_by_penalty", "penalty_family", "penalty_value",
+    "solver_status", "kkt_residual", "iterations"
   )
   if (!is.data.frame(coefficient) ||
       !all(required %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN coefficients must retain Pando ridge statistics, ",
-      "candidate-support provenance, active flags, and penalty_effect.",
+      "Condition-GRN coefficients must retain the Scheme-E continuous-effect, ",
+      "diagnostic-inference, identifiability and solver contract.",
       call. = FALSE
     )
   }
@@ -105,34 +111,60 @@
   }
   estimate <- suppressWarnings(as.numeric(coefficient$estimate))
   padj <- suppressWarnings(as.numeric(coefficient$padj))
-  expected_statistical <- coefficient$estimable %in% TRUE &
-    is.finite(estimate) & is.finite(padj) & padj < threshold
-  expected_active <- expected_statistical
+  expected_statistical <- is.finite(estimate) & is.finite(padj) &
+    padj < threshold
+  expected_active <- is.finite(estimate)
   if (!identical(
       as.logical(coefficient$statistically_supported), expected_statistical
   )) {
     stop(
-      "Pando statistically_supported flags do not match condition-wise BH ridge evidence.",
+      "Pando statistically_supported flags do not match diagnostic condition-wise BH values.",
       call. = FALSE
     )
   }
-  if (!identical(as.logical(coefficient$active), expected_active) ||
-      !identical(as.logical(coefficient$significant), expected_active)) {
+  if (!identical(as.logical(coefficient$active), expected_active)) {
     stop(
-      "Pando active condition-edge flags must equal the condition's own ",
-      "estimable BH-supported ridge evidence; global/local correlation support ",
-      "is candidate provenance only.",
-      call. = FALSE
+      "Pando Scheme-E active flags must retain every finite coefficient on the ",
+      "frozen common dictionary.", call. = FALSE
     )
   }
-  expected_effect <- ifelse(expected_active, estimate, 0)
+  if (!identical(
+      as.logical(coefficient$significant), expected_statistical
+  )) {
+    stop(
+      "Pando significant flags must remain diagnostic BH annotations and must ",
+      "not define Scheme-E network membership.", call. = FALSE
+    )
+  }
   observed_effect <- suppressWarnings(as.numeric(coefficient$penalty_effect))
+  expected_effect <- ifelse(expected_active, estimate, NA_real_)
   comparable <- is.finite(expected_effect) & is.finite(observed_effect)
   if (any(is.finite(expected_effect) != is.finite(observed_effect)) ||
       any(abs(expected_effect[comparable] - observed_effect[comparable]) > 1e-12)) {
     stop(
-      "Pando penalty_effect must equal the active condition-specific ridge ",
-      "coefficient or zero.", call. = FALSE
+      "Pando penalty_effect must equal the continuous Scheme-E condition coefficient.",
+      call. = FALSE
+    )
+  }
+  family <- as.character(coefficient$penalty_family)
+  value <- suppressWarnings(as.numeric(coefficient$penalty_value))
+  solver <- as.character(coefficient$solver_status)
+  kkt <- suppressWarnings(as.numeric(coefficient$kkt_residual))
+  iteration <- suppressWarnings(as.integer(coefficient$iterations))
+  if (anyNA(family) || any(family != "exact_edge_sparse_deviation") ||
+      any(!is.finite(value)) || any(abs(value - 0.25) > 1e-15) ||
+      anyNA(solver) || any(solver != "ok") ||
+      any(!is.finite(kkt)) || any(kkt < 0) ||
+      anyNA(iteration) || any(iteration < 0L)) {
+    stop("Pando conditional coefficients are not a converged fixed z=0.25 Scheme-E fit.",
+         call. = FALSE)
+  }
+  boundary <- coefficient$shared_by_boundary %in% TRUE
+  identifiable <- coefficient$contrast_identifiable %in% TRUE
+  if (any(boundary & identifiable) || any(!boundary & !identifiable)) {
+    stop(
+      "Scheme-E shared_by_boundary must be the complement of contrast_identifiable.",
+      call. = FALSE
     )
   }
   invisible(expected_active)
@@ -146,7 +178,7 @@
     return(suppressWarnings(as.numeric(coefficient$rsq)))
   }
   stop(
-    "Condition-GRN penalty filtering requires full-data target R2 (`rsq`).",
+    "Condition-GRN diagnostics require full-data target R2 (`rsq`).",
     call. = FALSE
   )
 }
@@ -164,11 +196,13 @@
     }
     value
   }
-  rsq_threshold <- .rc_target_rsq_threshold(
+  # Keep the threshold validated and exported as a diagnostic contract, but do
+  # not use it to remove a Scheme-E common-dictionary edge.
+  invisible(.rc_target_rsq_threshold(
     target_rsq_threshold %||% getOption(
       "RegCompassR.target_rsq_threshold", .RC_PANDO_TARGET_RSQ_THRESHOLD
     )
-  )
+  ))
   active <- .rc_validate_pando_active_condition_edges(
     coefficient, padj_threshold = threshold
   )
@@ -177,9 +211,8 @@
   } else {
     rep("ok", nrow(coefficient))
   }
-  target_rsq <- .rc_condition_target_rsq(coefficient)
-  target_supported <- is.finite(target_rsq) & target_rsq >= rsq_threshold
-  active & !is.na(fit_status) & fit_status == "ok" & target_supported
+  effect <- suppressWarnings(as.numeric(coefficient$penalty_effect))
+  active & !is.na(fit_status) & fit_status == "ok" & is.finite(effect)
 }
 
 .rc_apply_condition_penalty_gate <- function(
@@ -200,6 +233,8 @@
   coefficient$rsq <- diagnostics$target_rsq
   coefficient$padj_threshold <- threshold
   coefficient$target_rsq_threshold <- rsq_threshold
+  # Diagnostic only: this flag can be inspected, plotted or reported, but it is
+  # not part of the Scheme-E edge/projection gate.
   coefficient$target_model_supported <-
     coefficient$fit_status == "ok" &
     is.finite(coefficient$target_rsq) &
@@ -211,22 +246,21 @@
   )
   coefficient$penalty_eligible <- gate
   coefficient$active_in_condition <- gate
-  # Pando owns active/significant/penalty_effect. RegCompass only adds
-  # target-fit validity and full-data R2 quality requirements downstream.
   fit$coefficients <- coefficient
-  fit$regcompass_penalty_filter <- paste0(
-    "Pando BH-active edge & target fit_status == 'ok' & full-data target R2 >= ",
-    format(rsq_threshold, trim = TRUE)
-  )
+  fit$regcompass_penalty_filter <-
+    "finite continuous Scheme-E coefficient on frozen dictionary & fit_status == 'ok'"
   fit$regcompass_fit_status_filter <- "fit_status == 'ok'"
   fit$regcompass_target_rsq_filter <- paste0(
-    "rsq >= ", format(rsq_threshold, trim = TRUE)
+    "diagnostic only: rsq >= ", format(rsq_threshold, trim = TRUE)
   )
-  fit$regcompass_target_rsq_definition <- "selected_lambda_full_data_R2"
-  fit$regcompass_rank_deficient_policy <-
-    "regularized_ok_fit_retained; non-estimable condition edge excluded"
+  fit$regcompass_target_rsq_definition <-
+    "scheme_e_z025_full_data_R2_diagnostic"
+  fit$regcompass_rank_deficient_policy <- paste(
+    "non-identifiable condition contrast is exact-shared and flagged;",
+    "continuous condition coefficient remains on the fixed dictionary"
+  )
   fit$regcompass_significance_role <-
-    "consume_pando_condition_bh_active_edge_without_reselection"
+    "BH_and_target_R2_are_diagnostics_only;no_edge_reselection"
   fit$regcompass_padj_threshold <- threshold
   fit$regcompass_target_rsq_threshold <- rsq_threshold
   fit
