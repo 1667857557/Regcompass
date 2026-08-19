@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.19
+Version: 2.4.20
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -15,19 +15,23 @@ Description: Integrates paired single-cell RNA and ATAC regulatory evidence
     discovery is run on pooled eligible-condition cells and independently within
     each condition; exact target-TF-region triples passing the configured gates
     in either scope are deduplicated into one frozen common dictionary. Every
-    condition is then fitted once on the same dictionary with a common-lambda
-    no-fusion ridge model, retaining condition-specific comparable coefficients.
-    Correlation support determines common-dictionary admission and is retained as
-    provenance only; an edge is active within a fitted condition when that
-    condition's ridge coefficient is estimable and BH-supported. Standard Pando
-    uses the K=1 ridge route in RegCompass. Human standard and condition routes
+    condition uses this identical dictionary, one common exact-edge predictor
+    scale and one pooled residual scale. Conditional coefficients are estimated
+    jointly with Pando Scheme E exact-edge sparse deviations at the fixed primary
+    value z=0.25; no alternative penalty strength or sensitivity branch is part
+    of the production condition-GRN route. Non-identifiable condition contrasts
+    are exact-shared and explicitly marked. The continuous condition coefficient
+    is retained on every valid dictionary edge. Condition-wise and pairwise
+    Wald/BH values and target full-data R-squared remain diagnostics only and do
+    not alter conditional network membership, zero coefficients, or gate Layer 1
+    projection. Biological differential-GRN claims require
+    contrast_identifiable=TRUE. Standard Pando remains an independent route and
+    keeps its own BH/R-squared filtering. Human standard and condition routes
     share the RegCompass default regulatory prior formed by the union of Pando's
     phastConsElements20Mammals.UCSC.hg38 and SCREEN.ccRE.UCSC.hg38 resources.
-    Downstream regulatory eligibility requires a Pando BH-active edge, a valid
-    target fit, and selected-lambda full-data target R-squared above the configured
-    threshold. The target q state is one for evaluated supported regulation, zero
-    for an evaluated target with no eligible edge, and missing only when the target
-    was unavailable or not evaluated; R-squared is a gate rather than a multiplier.
+    Layer 1 combines the continuous Scheme-E coefficient with the existing
+    RegCompass paired-cell regulatory exposure, 0.75 times the metacell mean of
+    TF-by-ATAC plus 0.25 times the product of separate metacell TF and ATAC means.
     Stage 2 builds one multimodal WNN graph and one Walktrap hierarchy per broad
     cell type and selects condition-specific feasible cuts from that same hierarchy
     with hard minimum metacell size and count constraints. Quantitative Layer 1 RNA
@@ -189,16 +193,17 @@ Config/RegCompassR/SeuratObjectVersion: 4.1.4
 Config/RegCompassR/SeuratVersion: 4.4.0
 Config/RegCompassR/SignacVersion: 1.11.0
 Config/RegCompass/PandoConditionSchema: pando_condition_grn_common_dictionary_v1
-Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3
-Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge
-Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge
-Config/RegCompass/PandoConditionInference: approximate-ridge-Wald-conditional-on-candidate-dictionary-and-CV-lambda
-Config/RegCompass/PandoTargetR2: selected-lambda-full-data-R2
-Config/RegCompass/PandoTargetR2Threshold: 0.05
+Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_sparse_deviation_v4
+Config/RegCompass/PandoConditionMethod: global-condition-union-scheme-E-exact-edge-z025
+Config/RegCompass/PandoConditionPenalty: exact-edge-sparse-deviation-z025
+Config/RegCompass/PandoConditionProjectionPolicy: continuous-common-dictionary-scheme-E
+Config/RegCompass/PandoConditionInference: scheme-E-z025-primary-BH-diagnostic-only
+Config/RegCompass/PandoTargetR2: scheme-E-z025-full-data-R2-diagnostic
+Config/RegCompass/PandoTargetR2Threshold: 0.05-diagnostic-only-for-condition-GRN
 Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
 Config/RegCompass/PandoStandardDefaultMethod: ridge
 Config/RegCompass/PandoTargetParallelMemoryPolicy: target-specific-worker-sized-payload-batches
-Config/RegCompass/PandoTargetPenaltyQ: tri-state-q1-supported-q0-evaluated-rejected-qNA-unavailable
+Config/RegCompass/PandoTargetPenaltyQ: condition-scheme-E-fixed-dictionary-availability-standard-route-legacy-filter
 Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1
 Config/RegCompass/MediumSemantics: compass-exchange-bounds-v2
 Config/RegCompass/MediumCacheFingerprint: resolved-reaction-id-final-lb-final-ub-v1
