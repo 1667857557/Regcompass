@@ -93,9 +93,8 @@
       condition_rows <- is.na(route) | !nzchar(route) | route == "condition_grn"
     }
     if (any(condition_rows)) {
-      # Pando owns active/significant/penalty_effect. RegCompass validates that
-      # contract and adds target-fit-status plus full-data target-R2 eligibility;
-      # it never reconstructs the Pando effect from estimate.
+      # Scheme E owns continuous fixed-dictionary effects. RegCompass validates
+      # fit status while carrying BH and target R2 only as diagnostics.
       condition_table <- all_edges[condition_rows, , drop = FALSE]
       gate <- .rc_condition_penalty_gate(condition_table)
       target_rsq <- .rc_condition_target_rsq(condition_table)
@@ -219,18 +218,19 @@
         "standard Pando otherwise"
       ),
       condition_effect_filter = paste(
-        "consume Pando condition-specific estimable BH-active ridge edge;",
-        "global/local correlation support is dictionary provenance only;",
-        "then require target fit_status == 'ok' and selected-lambda full-data",
-        paste0("R2 >= ", format(.rc_target_rsq_threshold(), trim = TRUE))
+        "consume every finite continuous Pando Scheme-E z=0.25 coefficient on",
+        "the frozen exact-edge dictionary when fit_status == 'ok'; BH and",
+        "target R2 are diagnostics only"
       ),
+      condition_contrast_filter =
+        "biological differential claims require contrast_identifiable == TRUE",
       standard_edge_filter = paste(
         "estimable when available, adjusted P below the configured threshold,",
         paste0("and selected-lambda full-data R2 >= ",
                format(.rc_target_rsq_threshold(), trim = TRUE))
       ),
       projection =
-        "beta times metacell-mean TF times metacell-mean ATAC"
+        "continuous beta times canonical RegCompass metacell TF-ATAC exposure"
     ),
     group_cols = c(condition_col, celltype_col)
   )
@@ -268,7 +268,7 @@
       "aligned to metacell metadata.", call. = FALSE
     )
   }
-  table$target <- tolower(trimws(as.character(table$target)))
+  table$target <- tolower(trimws(as.character(table$target))
   table[[condition_col]] <- trimws(as.character(table[[condition_col]]))
   table[[celltype_col]] <- trimws(as.character(table[[celltype_col]]))
   if (anyNA(table$target) || any(!nzchar(table$target)) ||
@@ -282,6 +282,21 @@
 
 .rc_penalty_evaluated_rows <- function(table) {
   if (!is.data.frame(table) || !nrow(table)) return(logical())
+  condition_route <- if ("analysis_mode" %in% colnames(table)) {
+    route <- as.character(table$analysis_mode)
+    is.na(route) | !nzchar(route) | route == "condition_grn"
+  } else {
+    rep(FALSE, nrow(table))
+  }
+  fit_ok <- if ("fit_status" %in% colnames(table)) {
+    status <- trimws(as.character(table$fit_status))
+    !is.na(status) & status == "ok"
+  } else {
+    rep(TRUE, nrow(table))
+  }
+  # Scheme-E condition targets are evaluated from fit status and continuous
+  # dictionary coefficients. R2 is not an eligibility gate. Standard Pando keeps
+  # the legacy finite-R2 evaluation semantics.
   rsq <- if ("target_rsq" %in% colnames(table)) {
     suppressWarnings(as.numeric(table$target_rsq))
   } else if ("rsq" %in% colnames(table)) {
@@ -289,12 +304,13 @@
   } else {
     rep(NA_real_, nrow(table))
   }
-  evaluated <- is.finite(rsq)
-  if ("fit_status" %in% colnames(table)) {
-    status <- trimws(as.character(table$fit_status))
-    evaluated <- evaluated & !is.na(status) & status == "ok"
+  standard_evaluated <- fit_ok & is.finite(rsq)
+  condition_evaluated <- fit_ok
+  if ("penalty_effect" %in% colnames(table)) {
+    condition_evaluated <- condition_evaluated &
+      is.finite(suppressWarnings(as.numeric(table$penalty_effect)))
   }
-  evaluated
+  ifelse(condition_route, condition_evaluated, standard_evaluated)
 }
 
 .rc_set_penalty_q_by_stratum <- function(
@@ -335,10 +351,9 @@
     unit_meta, condition_col, celltype_col, "Active-target"
   )
 
-  # Three-state target contract:
-  #   1  = evaluated and at least one edge is penalty-eligible;
-  #   0  = evaluated in this condition/cell type but no edge is eligible;
-  #   NA = target lacks a valid finite target fit and therefore was not evaluable.
+  # Condition Scheme E: q=1 whenever a valid fitted target has at least one
+  # continuous fixed-dictionary coefficient; BH/R2 do not change this state.
+  # Standard Pando retains its existing filtered-edge three-state semantics.
   q <- .rc_set_penalty_q_by_stratum(
     q, evaluated, unit_meta, condition_col, celltype_col, 0
   )
@@ -398,8 +413,9 @@
   coverage_table <- .rc_bind_frames_fill(coverage)
   if (nrow(coverage_table)) {
     coverage_table$penalty_q_definition <- paste(
-      "q=1 evaluated with eligible active edge; q=0 evaluated but rejected;",
-      "q=NA unavailable/not evaluated; R2 is a gate, not a multiplier"
+      "condition Scheme E: q=1 for valid fixed-dictionary fitted target and",
+      "q=NA only when unavailable; BH/R2 diagnostic only; standard Pando keeps",
+      "its existing filtered-edge q semantics"
     )
   }
   list(
@@ -414,8 +430,8 @@
       length(grn_result$condition_grn_fits) > 0L,
     cell_type_analysis_mode = grn_result$cell_type_analysis_mode,
     penalty_q_definition = paste(
-      "q=1 evaluated with eligible active edge; q=0 evaluated but rejected;",
-      "q=NA unavailable/not evaluated"
+      "condition Scheme E uses continuous fixed-dictionary availability;",
+      "BH/R2 do not gate; standard Pando retains legacy filtering"
     )
   )
 }
