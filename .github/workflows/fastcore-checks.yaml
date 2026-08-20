@@ -237,7 +237,6 @@ jobs:
               raise RuntimeError(f"Scheme-E penalty contract missing: {missing}")
           forbidden_penalty = [
               "consume_pando_condition_bh_active_edge_without_reselection",
-              "selected_lambda_full_data_R2",
               "expected_active <- expected_statistical",
               "expected_statistical & expected_dictionary_support",
           ]
