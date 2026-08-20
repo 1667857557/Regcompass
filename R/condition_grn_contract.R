@@ -516,7 +516,7 @@
     pando_infer_args = list(
       tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
       padj_threshold = 0.05, rank_action = "mark",
-      min_residual_df = 1L
+      min_residual_df = 1L, reference_condition = NULL
     ),
     save_pando_objects = TRUE, BPPARAM = NULL,
     progress_monitor = NULL,
@@ -532,8 +532,8 @@
   }
   allowed_infer_args <- c(
     "tf_cor", "peak_cor", "adjust_method", "padj_threshold",
-    "rank_action", "min_residual_df", "rna_layer", "peak_layer",
-    "peak_value_type"
+    "rank_action", "min_residual_df", "reference_condition",
+    "rna_layer", "peak_layer", "peak_value_type"
   )
   unknown <- setdiff(names(pando_infer_args), allowed_infer_args)
   if (length(unknown)) {
@@ -546,6 +546,7 @@
   pando_infer_args <- utils::modifyList(list(
     tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
     padj_threshold = 0.05, rank_action = "mark", min_residual_df = 1L,
+    reference_condition = NULL,
     rna_layer = "data", peak_layer = "data",
     peak_value_type = "normalized"
   ), pando_infer_args)
@@ -567,6 +568,17 @@
   pando_infer_args$padj_threshold <- threshold
   pando_infer_args$tf_cor <- tf_threshold
   pando_infer_args$peak_cor <- peak_threshold
+  if (!is.null(pando_infer_args$reference_condition)) {
+    reference <- as.character(pando_infer_args$reference_condition)
+    if (length(reference) != 1L || is.na(reference) ||
+        !nzchar(trimws(reference)) || reference != trimws(reference)) {
+      stop(
+        "`pando_infer_args$reference_condition` must be NULL or one complete ",
+        "predefined condition label.", call. = FALSE
+      )
+    }
+    pando_infer_args$reference_condition <- reference
+  }
 
   condition_types <- if (is.null(cell_type)) {
     unique(as.character(object@meta.data[[celltype_col]]))
@@ -599,6 +611,8 @@
     context = list(
       cell_types = length(plans), tf_cor = tf_threshold,
       peak_cor = peak_threshold, padj_threshold = threshold,
+      reference_condition = pando_infer_args$reference_condition %||%
+        "<first-retained>",
       bh_scope = .RC_PANDO_CONDITION_BH_SCOPE,
       scheme_e_z = .RC_PANDO_CONDITION_SCHEME_E_Z,
       workers = worker_limit,
