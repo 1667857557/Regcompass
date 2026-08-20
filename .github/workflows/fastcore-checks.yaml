@@ -43,13 +43,14 @@ jobs:
               "    SuperCell,",
               "1667857557/Pando_regcompass",
               "1667857557/SuperCell_Seurat_V4",
-              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_Estar_jointse_v1",
-              "Config/RegCompass/PandoConditionMethod: global-condition-union-Estar-z025-JSE",
+              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_Estar_z025_inference_separated_v1",
+              "Config/RegCompass/PandoConditionMethod: global-condition-union-Estar-z025-separated-inference",
               "Config/RegCompass/PandoConditionPenalty: information-scaled-sparse-deviation-z025",
-              "Config/RegCompass/PandoConditionProjectionPolicy: any-condition-padj-exact-edge-union",
-              "Config/RegCompass/PandoConditionInference: fusion-component-joint-refit-condition-target-BH",
+              "Config/RegCompass/PandoConditionProjectionPolicy: exact-edge-whole-network-BH-common-topology",
+              "Config/RegCompass/PandoConditionInference: condition-local-gaussian-LM-exact-edge-omnibus-whole-network-BH",
               "Config/RegCompass/PandoTargetR2: scheme-E-z025-full-data-R2-diagnostic",
               "Config/RegCompass/PandoTargetR2Threshold: 0.05-diagnostic-only-for-condition-GRN",
+              "Config/RegCompass/PandoTargetPenaltyQ: condition-common-edge-topology-standard-route-legacy-filter",
               "Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1",
               "Config/RegCompass/MediumSemantics: compass-exchange-bounds-v2",
               "Config/RegCompass/MediumCacheFingerprint: resolved-reaction-id-final-lb-final-ub-v1",
@@ -57,6 +58,16 @@ jobs:
           missing = [x for x in required_description if x not in description]
           if missing:
               raise RuntimeError(f"DESCRIPTION integration contract missing: {missing}")
+          forbidden_description = [
+              "pando_condition_grn_Estar_jointse_v1",
+              "global-condition-union-Estar-z025-JSE",
+              "any-condition-padj-exact-edge-union",
+              "fusion-component-joint-refit-condition-target-BH",
+              "condition-any-condition-BH-exact-edge-union",
+          ]
+          present = [x for x in forbidden_description if x in description]
+          if present:
+              raise RuntimeError(f"obsolete condition DESCRIPTION contract remains: {present}")
           for forbidden in (
               "Pando (>=", "SuperCell (>=",
               "1667857557/Pando_regcompass@",
@@ -141,26 +152,31 @@ jobs:
 
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition = [
-              '"pando_condition_grn_Estar_jointse_v1"',
-              '"condition_union_Estar_z025_jointse"',
-              '"scheme_e_fusion_component_joint_refit_v1"',
+              '"pando_condition_grn_Estar_z025_inference_separated_v1"',
+              '"condition_union_Estar_z025_inference_separated"',
+              '"frozen_dictionary_condition_local_gaussian_lm_edge_omnibus_v1"',
+              '"exact_edge_whole_network_BH_common_topology"',
+              '"exact_edge_whole_cell_type_network_BH"',
               '"information_scaled_sparse_deviation"',
-              '"condition_target_BH"',
               ".RC_PANDO_CONDITION_SCHEME_E_Z <- 0.25",
               "reference_condition",
               "dictionary_support_table",
               "dictionary_support_summary",
               "candidate_tf_cor",
               "candidate_peak_cor",
-              "inference_component_id",
-              "inference_hypothesis_id",
+              "condition_inference_estimable",
               "inference_estimate",
               "inference_se",
-              "inference_estimable",
-              "condition_significant",
+              "inference_variance",
+              "condition_pval",
+              "edge_inference",
+              "edge_df",
+              "edge_statistic",
+              "edge_pval",
+              "edge_padj",
+              "edge_inference_estimable",
+              "edge_supported",
               "all_conditions_fit_valid",
-              "supporting_conditions",
-              "edge_union_supported",
               "active_in_regcompass",
               "penalty_effect",
               "shared_by_boundary",
@@ -174,16 +190,20 @@ jobs:
           ]
           missing = [x for x in required_condition if x not in condition]
           if missing:
-              raise RuntimeError(f"E-star/JSE condition contract missing: {missing}")
+              raise RuntimeError(f"separated-inference condition contract missing: {missing}")
           forbidden_condition = [
+              "pando_condition_grn_Estar_jointse_v1",
+              "condition_union_Estar_z025_jointse",
+              "scheme_e_fusion_component_joint_refit_v1",
+              '"condition_target_BH"',
+              '"any_condition_padj_exact_edge_union"',
+              "inference_component_id",
+              "inference_hypothesis_id",
+              "condition_significant",
+              "supporting_conditions",
+              "edge_union_supported",
               "pando_condition_grn_multitask_ridge_v3",
               "pando_condition_grn_sparse_deviation_v4",
-              "condition_union_scheme_e_exact_edge_z025",
-              "exact_edge_sparse_deviation",
-              "screening_n_significant_conditions",
-              "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
-              "two_stage_exact_edge_union_multitask_ridge",
-              "BH_and_R2_are_diagnostics_only",
           ]
           present = [x for x in forbidden_condition if x in condition]
           if present:
@@ -191,24 +211,30 @@ jobs:
 
           penalty = Path("R/condition_penalty_contract.R").read_text()
           required_penalty = [
+              ".rc_expected_edge_inference_from_coefficients",
               ".rc_validate_pando_active_condition_edges",
               ".rc_condition_penalty_gate",
               ".RC_PANDO_TARGET_RSQ_THRESHOLD <- 0.05",
-              'family != "information_scaled_sparse_deviation"',
-              "abs(value - 0.25) > 1e-15",
-              "condition_significant",
-              "edge_union_supported",
+              "condition_inference_estimable",
+              "inference_variance",
+              "condition_pval",
+              "edge_inference_estimable",
+              "edge_pval",
+              "edge_padj",
+              "edge_supported",
               "active_in_regcompass",
-              'fit_status == "ok"',
+              '"exact_edge_whole_cell_type_network_BH"',
               "target_model_supported",
               "scheme_e_z025_full_data_R2_diagnostic",
           ]
           missing = [x for x in required_penalty if x not in penalty]
           if missing:
-              raise RuntimeError(f"E-star/JSE penalty contract missing: {missing}")
+              raise RuntimeError(f"separated-inference penalty contract missing: {missing}")
           forbidden_penalty = [
-              "exact_edge_sparse_deviation",
-              "BH_and_target_R2_are_diagnostics_only;no_edge_reselection",
+              "condition_significant",
+              "edge_union_supported",
+              "supporting_conditions",
+              "n_supporting_conditions",
               "consume_pando_condition_bh_active_edge_without_reselection",
           ]
           present = [x for x in forbidden_penalty if x in penalty]
