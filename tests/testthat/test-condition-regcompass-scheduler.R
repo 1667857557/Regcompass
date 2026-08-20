@@ -15,9 +15,24 @@ test_that("condition scheduler plans pooled/global plus condition cell sets", {
   expect_identical(names(plan), c("T", "B"))
   expect_identical(plan$T$conditions, c("A", "B"))
   expect_identical(plan$B$conditions, c("A", "B"))
+  expect_identical(plan$T$reference_condition, "A")
   expect_length(plan$T$global_cells, 12L)
   expect_length(plan$T$cells_by_condition$A, 6L)
   expect_length(plan$T$cells_by_condition$B, 6L)
+})
+
+test_that("condition scheduler preserves factor-defined reference ordering", {
+  metadata <- data.frame(
+    condition = factor(rep(c("A", "B"), each = 4L), levels = c("B", "A")),
+    cell_type = "T",
+    row.names = paste0("cell", seq_len(8L))
+  )
+  plan <- .rc_condition_parallel_plan(
+    metadata = metadata, condition_types = "T",
+    condition_col = "condition", celltype_col = "cell_type", min_cells = 3L
+  )
+  expect_identical(plan$T$conditions, c("B", "A"))
+  expect_identical(plan$T$reference_condition, "B")
 })
 
 test_that("condition scheduler preserves the min-cells error contract", {
@@ -29,41 +44,37 @@ test_that("condition scheduler preserves the min-cells error contract", {
   )
   expect_error(
     .rc_condition_parallel_plan(
-      metadata = metadata,
-      condition_types = "T",
-      condition_col = "condition",
-      celltype_col = "cell_type",
-      min_cells = 3L
+      metadata = metadata, condition_types = "T",
+      condition_col = "condition", celltype_col = "cell_type", min_cells = 3L
     ),
     "below min_cells"
   )
 })
 
-test_that("candidate provenance does not veto a BH-active Pando edge", {
-  estimate <- c(1e-6, 2, 3, 4)
-  padj <- c(0.01, 0.01, 0.051, 0.01)
-  estimable <- rep(TRUE, 4L)
-  statistically_supported <- estimable & is.finite(padj) & padj < 0.05
-  global_support <- c(TRUE, TRUE, TRUE, FALSE)
-  local_support <- c(FALSE, FALSE, TRUE, FALSE)
-  active <- statistically_supported
-  coefficient <- data.frame(
-    estimate = estimate,
-    padj = padj,
-    estimable = estimable,
-    statistically_supported = statistically_supported,
-    global_support = global_support,
-    local_support = local_support,
-    active = active,
-    significant = active,
-    penalty_effect = ifelse(active, estimate, 0),
-    fit_status = c("ok", "rank_deficient", "ok", "ok"),
-    rsq = c(0.8, 0.9, 0.9, 0.8),
-    stringsAsFactors = FALSE
+test_that("conditional Pando routing exposes no ridge-CV or alternative-z controls", {
+  catalog <- .rc_pando_infer_arg_catalog()
+  expect_setequal(
+    catalog$condition,
+    c("rank_action", "min_residual_df", "rna_layer", "peak_layer",
+      "peak_value_type")
   )
-  expect_identical(
-    .rc_condition_penalty_gate(coefficient),
-    c(TRUE, FALSE, FALSE, TRUE)
+  routed <- .rc_route_pando_infer_args(
+    list(tf_cor = 0.1, peak_cor = 0.05, padj_threshold = 0.05),
+    condition_types = "T", standard_types = character()
+  )
+  expect_equal(routed$condition$tf_cor, 0.1)
+  expect_equal(routed$condition$peak_cor, 0.05)
+  expect_equal(routed$condition$padj_threshold, 0.05)
+  expect_false(any(c(
+    "condition_ridge_control", "scheme_e_z", "z", "lambda_grid",
+    "lambda_rule", "cv_folds", "fusion_ratio"
+  ) %in% names(routed$condition)))
+  expect_error(
+    .rc_route_pando_infer_args(
+      list(condition_ridge_control = list()),
+      condition_types = "T", standard_types = character()
+    ),
+    "Removed conditional Pando control"
   )
 })
 
@@ -90,13 +101,12 @@ test_that("condition fit diagnostics map exactly by target and condition", {
   expect_equal(diagnostics$target_rsq, c(0.9, NA, 0.7, 0.2))
 })
 
-test_that("standard Pando post-fit filter uses BH plus target-model R2", {
+test_that("standard Pando post-fit filter still uses BH plus target-model R2", {
   table <- data.frame(
     estimate = c(1e-8, 1, 1, 2),
     padj = c(0.01, 0.049, 0.051, 0.01),
     rsq = c(0.8, 0.2, 0.9, 0.01),
-    corr = c(0, 1, 1, 1),
-    estimable = c(TRUE, TRUE, TRUE, TRUE),
+    corr = c(0, 1, 1, 1), estimable = TRUE,
     stringsAsFactors = FALSE
   )
   observed <- .rc_filter_standard_pando_edges(

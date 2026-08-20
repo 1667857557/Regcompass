@@ -43,9 +43,21 @@ result <- rc_run_regcompass_one_shot(
   medium_scenarios = medium_scenarios,
   condition_col = "condition",
   celltype_col = "cell_type",
+  pando_args = list(
+    pando_infer_args = list(
+      tf_cor = 0.05,
+      peak_cor = 0.05,
+      padj_threshold = 0.05,
+      rank_action = "mark",
+      min_residual_df = 1L,
+      reference_condition = "Control"
+    )
+  ),
   workers = 10L
 )
 ```
+
+For multi-condition cell types, the production conditional GRN is fixed to E-star/JSE with `z = 0.25`: one frozen exact `(target, TF, peak)` dictionary, Q-orthogonal shared/deviation estimation, fusion-component joint covariance, BH within `condition × target`, and an any-condition exact-edge union into RegCompass. `reference_condition` is the predefined experimental reference used by the K-condition contrast-tree geometry; it is not a tuning or sensitivity parameter. If it is omitted, the first retained condition is used and recorded. Conditional ridge-CV controls and alternative `z` values are not part of this production API.
 
 The main stage-specific configuration bundles are `pando_args`, `metacell_args`, `meta_module_args`, `layer1_args`, and `layer2_args`. `model_mode = "meta_module_gem"` uses CORDA2 by default. Full parameter definitions are maintained in the corresponding Rd help pages.
 

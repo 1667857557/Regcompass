@@ -1,6 +1,6 @@
 # Tutorial 2: restartable workflow
 
-Each stage writes a checkpoint. Reuse the same Seurat object, GEM, metadata columns, assays, and medium definition when restarting downstream stages. Only commonly adjusted parameters are shown here; complete argument definitions are in the corresponding Rd help pages.
+Each stage writes a checkpoint. Reuse the same Seurat object, GEM, metadata columns, assays, and medium definition when restarting downstream stages. Only current production parameters are shown here; complete argument definitions are in the corresponding Rd help pages.
 
 ```r
 workers <- 10L
@@ -16,50 +16,38 @@ step1 <- rc_regcompass_step_grn(
   genome = BSgenome.Hsapiens.UCSC.hg38,
   condition_col = "condition",
   celltype_col = "cell_type",
-  pando_args = list(min_cells = 500L),
-  target_rsq_threshold = 0.05,
-  workers = workers
-)
-```
-
-Use `condition_col = NULL` for a dataset without conditions. Cell types with at least two retained conditions use the common-dictionary condition ridge route; cell types with one effective condition use standard Pando ridge.
-
-Common Stage 1 adjustments are:
-
-- `pando_args$min_cells`: minimum cells required for the retained Stage 1 analysis strata.
-- `target_rsq_threshold`: minimum selected-lambda full-data target R² required for RegCompass penalty eligibility. It is a target-model gate after Pando fitting and does not redefine Pando edge significance.
-- `pando_args$pando_infer_args$tf_cor` and `peak_cor`: candidate-dictionary correlation gates.
-- `pando_args$pando_infer_args$padj_threshold`: Pando edge BH threshold.
-- `condition_ridge_control` or `ridge_control`: optional ridge CV controls when the default lambda grid/fold settings are intentionally changed.
-
-Example:
-
-```r
-step1 <- rc_regcompass_step_grn(
-  object = A,
-  gem = gem,
-  outdir = "run/01_grn",
-  genome = BSgenome.Hsapiens.UCSC.hg38,
-  condition_col = "condition",
-  celltype_col = "cell_type",
   pando_args = list(
     min_cells = 500L,
     pando_infer_args = list(
-      tf_cor = 0.10,
+      tf_cor = 0.05,
       peak_cor = 0.05,
       padj_threshold = 0.05,
-      condition_ridge_control = list(
-        cv_folds = 5L,
-        lambda_rule = "1se"
-      )
+      rank_action = "mark",
+      min_residual_df = 1L,
+      reference_condition = "Control"
     )
   ),
-  target_rsq_threshold = 0.05,
   workers = workers
 )
 ```
 
-For a one-condition standard-ridge run, use `ridge_control` instead of `condition_ridge_control` only when its CV settings need to be changed.
+Use `condition_col = NULL` for a dataset without conditions. Broad cell types with at least two retained conditions use the conditional Pando production route: pooled/global plus condition-local candidate discovery, one frozen exact `(target, TF, peak)` union dictionary, E★ with fixed `z = 0.25`, fusion-component joint-SE inference, BH within each `condition × target`, and an any-condition exact-edge union for RegCompass handoff. Cell types with one effective condition use standard Pando.
+
+For the conditional route, the commonly adjusted Stage 1 parameters are:
+
+- `pando_args$min_cells`: minimum cells required for each retained Stage 1 condition × cell-type stratum.
+- `pando_args$pando_infer_args$tf_cor`: TF-target candidate-discovery correlation threshold.
+- `pando_args$pando_infer_args$peak_cor`: peak-target candidate-discovery correlation threshold.
+- `pando_args$pando_infer_args$padj_threshold`: strict BH threshold after fusion-component joint inference; BH is performed separately within each `condition × target` family.
+- `pando_args$pando_infer_args$rank_action`: `"mark"` keeps raw rank-deficient fits and records identifiable/boundary structure; `"error"` requests strict failure.
+- `pando_args$pando_infer_args$min_residual_df`: minimum pooled effective residual degrees of freedom.
+- `pando_args$pando_infer_args$reference_condition`: predefined experimental reference used to construct the K-condition contrast-tree geometry. It is a design coordinate, not a tuning parameter. The label must be retained in every conditional cell type; if omitted, Pando uses and records the first retained condition. Do not choose it after inspecting GRN results.
+
+The conditional production path does **not** expose `condition_ridge_control`, `condition_e_control`, `cv_folds`, `lambda_rule`, `fusion_ratio`, an alternative `z`, or a sensitivity grid. `z = 0.25` is fixed in the conditional estimator. Target full-data R² is retained as a diagnostic for this route and does not gate the exact-edge handoff.
+
+An exact edge enters RegCompass when every fitted condition has a valid continuous E★ coefficient and at least one condition has `padj < padj_threshold`. Once admitted, that exact edge is kept in every condition with the condition's own continuous `penalty_effect`; a nonsignificant small condition is therefore not converted into an absent edge solely because of lower power.
+
+For a one-condition standard-ridge route, standard Pando retains its separate `ridge_control` API and the existing `target_rsq_threshold` gate. The top-level `target_rsq_threshold` argument is therefore still present for standard Pando; on the conditional E★ route the same R² value is diagnostic only.
 
 ## 2. Multimodal metacells
 
@@ -114,6 +102,12 @@ step4 <- rc_regcompass_step_layer1(
   workers = workers
 )
 ```
+
+For conditional GRNs, Layer 1 projects only exact edges admitted by the any-condition BH union, but uses each condition's continuous E★ `penalty_effect`. The existing RegCompass exposure remains
+
+`0.75 × mean(TF × ATAC) + 0.25 × mean(TF) × mean(ATAC)`
+
+within each metacell. This exposure weight `0.25` is independent of the conditional E★ deviation threshold `z = 0.25`.
 
 `gpr_and_method` accepts `"min"`, `"median"`, or `"mean"`. Quantitative RNA is computed from single-cell linear CPM and averaged equally within the exact final SuperCell membership.
 
@@ -186,4 +180,4 @@ result <- rc_regcompass_step_results(
 )
 ```
 
-Equations and statistical definitions are maintained in [mathematical-model.md](mathematical-model.md), not duplicated in the tutorial.
+Equations and statistical definitions are maintained in [mathematical-model.md](mathematical-model.md).

@@ -17,7 +17,7 @@ jobs:
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
-      - name: Verify canonical projection handoff
+      - name: Verify canonical E-star JSE projection handoff
         shell: python
         run: |
           from pathlib import Path
@@ -29,12 +29,13 @@ jobs:
               "    SuperCell,",
               "1667857557/Pando_regcompass",
               "1667857557/SuperCell_Seurat_V4",
-              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
-              "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
-              "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
-              "Config/RegCompass/PandoTargetR2: selected-lambda-full-data-R2",
-              "Config/RegCompass/PandoTargetR2Threshold: 0.05",
-              "Config/RegCompass/PandoTargetPenaltyQ: tri-state-q1-supported-q0-evaluated-rejected-qNA-unavailable",
+              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_Estar_jointse_v1",
+              "Config/RegCompass/PandoConditionMethod: global-condition-union-Estar-z025-JSE",
+              "Config/RegCompass/PandoConditionPenalty: information-scaled-sparse-deviation-z025",
+              "Config/RegCompass/PandoConditionProjectionPolicy: any-condition-padj-exact-edge-union",
+              "Config/RegCompass/PandoConditionInference: fusion-component-joint-refit-condition-target-BH",
+              "Config/RegCompass/PandoTargetR2: scheme-E-z025-full-data-R2-diagnostic",
+              "Config/RegCompass/PandoTargetPenaltyQ: condition-any-condition-BH-exact-edge-union-standard-route-legacy-filter",
           ]
           missing = [x for x in required_description if x not in description]
           if missing:
@@ -54,59 +55,62 @@ jobs:
               'getNamespaceExports("Pando")',
               '"infer_condition_grn"',
               '"condition_grn_fit"',
-              '"condition_ridge_control"',
               "tf_cor = 0.05",
               "peak_cor = 0.05",
               "padj_threshold in (0, 1)",
-              "fusion_ratio",
-              "obsolete",
+              "Removed conditional Pando control(s)",
+              "fixed production E-star/JSE",
           ]
           missing = [value for value in required_route if value not in route]
           if missing:
-              raise RuntimeError(f"Pando API preflight missing: {missing}")
-          if "package_version" in route or "packageVersion" in route:
-              raise RuntimeError("Runtime Pando API preflight must be feature-based rather than version-gated")
+              raise RuntimeError(f"Pando API/routing contract missing: {missing}")
+          forbidden_route = [
+              '"condition_ridge_control" %in% condition_allowed',
+              "condition_args$condition_ridge_control",
+              "condition_args$scheme_e_z",
+          ]
+          present = [value for value in forbidden_route if value in route]
+          if present:
+              raise RuntimeError(f"obsolete conditional controls remain active: {present}")
 
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition = [
-              ".rc_fit_condition_grns_by_cell_type",
+              '"pando_condition_grn_Estar_jointse_v1"',
+              '"condition_union_Estar_z025_jointse"',
+              '"scheme_e_fusion_component_joint_refit_v1"',
+              ".RC_PANDO_CONDITION_SCHEME_E_Z <- 0.25",
+              '"information_scaled_sparse_deviation"',
+              '"condition_target_BH"',
+              '"any_condition_padj_exact_edge_union"',
               "dictionary_support_table",
               "candidate_tf_cor",
               "candidate_peak_cor",
-              "expected_active <- expected_statistical",
-              "Every condition must contain every common-dictionary edge exactly once",
+              "inference_estimable",
+              "active_in_regcompass",
+              "supporting_conditions",
+              "contrast_identifiable",
+              "shared_by_boundary",
+              "fused_by_penalty",
               "tf_peak_gene_condition_contrasts",
-              "same_global_condition_union_dictionary_no_fusion_ridge_raw_units",
-              "tf_cor = 0.05, peak_cor = 0.05",
-              "tf_cor/peak_cor in [0, 1]",
+              "biological_differential_eligible",
           ]
           missing = [value for value in required_condition if value not in condition]
           if missing:
-              raise RuntimeError(f"condition-GRN scheduler missing: {missing}")
-          forbidden_condition = [
-              "preliminary joint ridge BH screening",
-              "significant-edge union",
-              "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
-              "two_stage_exact_edge_union_multitask_ridge",
-              "expected_statistical & (expected_global | expected_local)",
-          ]
-          present = [value for value in forbidden_condition if value in condition]
-          if present:
-              raise RuntimeError(f"obsolete condition implementation remains: {present}")
+              raise RuntimeError(f"E-star/JSE condition scheduler missing: {missing}")
 
           helper = Path("R/grn_condition_parallel.R").read_text()
           required_helper = [
               ".rc_condition_ridge_fit_task <- function",
               "Pando::infer_condition_grn",
               "Pando::condition_grn_fit",
-              "condition_ridge_control",
-              "fusion_ratio",
-              'parallel_scope = "target"',
-              "active_edges=",
+              "phase=pando_Estar_z025_JSE_pipeline",
+              "phase=pando_Estar_z025_JSE_complete",
+              "condition_significant_rows=",
+              "regcompass_union_edges=",
           ]
           missing = [value for value in required_helper if value not in helper]
           if missing:
-              raise RuntimeError(f"condition task helper contract missing: {missing}")
+              raise RuntimeError(f"E-star/JSE condition task helper missing: {missing}")
           for forbidden in ("Pando::fit_grn_from_edges", ".rc_condition_fit_task"):
               if forbidden in helper:
                   raise RuntimeError(f"obsolete independent condition fit remains: {forbidden}")
@@ -117,32 +121,19 @@ jobs:
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
               ".RC_PANDO_TARGET_RSQ_THRESHOLD <- 0.05",
               ".rc_validate_pando_active_condition_edges",
-              ".rc_condition_fit_diagnostics_for_coefficients",
               ".rc_condition_penalty_gate",
-              "statistically_supported",
-              "global_support",
-              "local_support",
-              "expected_active <- expected_statistical",
-              'fit_status == "ok"',
-              "target_rsq >= rsq_threshold",
-              "selected_lambda_full_data_R2",
-              "consume_pando_condition_bh_active_edge_without_reselection",
+              "condition_significant",
+              "edge_union_supported",
+              "all_conditions_fit_valid",
+              "active_in_regcompass",
+              "penalty_effect must equal the production E-star coefficient",
+              'family != "information_scaled_sparse_deviation"',
+              'abs(value - 0.25) > 1e-15',
+              'gate & as.character(coefficient$fit_status) == "ok" & is.finite(effect)',
           ]
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
-              raise RuntimeError(f"active ridge penalty-entry contract missing: {missing}")
-
-          mixed = Path("R/mixed_pando.R").read_text()
-          required_q = [
-              ".rc_penalty_evaluated_rows <- function",
-              "is.finite(rsq)",
-              'status == "ok"',
-              ".rc_active_target_penalty_q <- function",
-              "evaluated[.rc_penalty_evaluated_rows(evaluated)",
-          ]
-          missing = [value for value in required_q if value not in mixed]
-          if missing:
-              raise RuntimeError(f"tri-state q evaluation contract missing: {missing}")
+              raise RuntimeError(f"E-star/JSE penalty-entry contract missing: {missing}")
 
           layer1 = Path("R/step_layer1_parallel_object_contract.R").read_text()
           projection = Path("R/pando_evidence_utils.R").read_text()
@@ -151,29 +142,19 @@ jobs:
               ".rc_condition_penalty_gate",
               ".rc_validate_pando_fit_metadata_frame <- function",
               "Condition-Pando projection requires exactly one metacell membership",
-              'aggregation_contract =',
               '"beta_times_0.75_paired_mean_product_plus_0.25_product_of_means"',
-              "paired_interaction_weight =",
-              "product_of_means_weight =",
-              'origin = "paired_cell_common_dictionary_condition_bh_active_edges"',
-              'projection_name = "active_no_fusion_ridge_condition_effect"',
-              "unique cell-type set.",
-              "target_rsq_threshold",
-              "selected-lambda full-data R2",
+              'origin = "paired_cell_Estar_z025_any_condition_BH_exact_edge_union"',
+              'projection_name = "E_star_z025_union_condition_effect"',
+              "target_rsq_supported_diagnostic",
+              "admitted exact-edge",
           ]
           missing = [value for value in required_layer1 if value not in layer1]
           if missing:
-              raise RuntimeError(f"Layer 1 canonical handoff missing: {missing}")
+              raise RuntimeError(f"Layer 1 E-star/JSE handoff missing: {missing}")
           required_projection = [
               ".RC_PANDO_PROJECTION_PRODUCT_OF_MEANS_WEIGHT <- 0.25",
               ".rc_validate_pando_projection_weight <- function",
               ".rc_pando_projection_from_group_means <- function",
-              "tf_mean <- if",
-              "peak_mean <- if",
-              "Matrix::colMeans(tf_block)",
-              "base::colMeans(tf_block)",
-              "Matrix::colMeans(peak_block)",
-              "base::colMeans(peak_block)",
               "paired_product <- tf_block * peak_block",
               "paired_weight * paired_mean",
               "product_of_means_weight * tf_mean * peak_mean",
@@ -183,20 +164,17 @@ jobs:
           if missing:
               raise RuntimeError(f"paired-shrinkage Pando projection missing: {missing}")
 
-          merge = Path("R/grn_parallel_merge_contract.R").read_text()
-          required_merge = [
-              ".rc_merge_condition_job_results <- function",
-              "pando_grn_data_by_cell_type",
-              "preserves_cell_type_peak_space",
-              "tf_peak_gene_condition_contrasts",
-          ]
-          missing = [value for value in required_merge if value not in merge]
-          if missing:
-              raise RuntimeError(f"condition result merge missing: {missing}")
+          math = Path("docs/mathematical-model.md").read_text()
+          for required in (
+              "Q-orthogonal shared/deviation geometry",
+              "Fusion-component joint covariance and inference",
+              "condition × target BH and RegCompass exact-edge union",
+              "z=0.25",
+          ):
+              if required not in math:
+                  raise RuntimeError(f"mathematical specification missing: {required}")
 
-          all_r = "\n".join(
-              path.read_text() for path in sorted(Path("R").glob("*.R"))
-          )
+          all_r = "\n".join(path.read_text() for path in sorted(Path("R").glob("*.R")))
           forbidden_architecture = [
               "pando_grn_data_by_cell_type_v1",
               ".rc_extract_condition_grn_contract_core",
@@ -223,15 +201,9 @@ jobs:
                   ".rc_condition_prepare_celltype_task",
                   ".rc_condition_ridge_fit_task",
               ],
-              "R/grn_parallel_merge_contract.R": [
-                  ".rc_merge_condition_job_results",
-              ],
-              "R/pando_evidence_utils.R": [
-                  ".rc_pando_projection_from_group_means",
-              ],
-              "R/supercell_quantitative_rna.R": [
-                  ".rc_cell_first_projection_layer1",
-              ],
+              "R/grn_parallel_merge_contract.R": [".rc_merge_condition_job_results"],
+              "R/pando_evidence_utils.R": [".rc_pando_projection_from_group_means"],
+              "R/supercell_quantitative_rna.R": [".rc_cell_first_projection_layer1"],
               "R/mixed_pando.R": [
                   ".rc_active_target_penalty_q",
                   ".rc_penalty_evaluated_rows",
@@ -246,6 +218,7 @@ jobs:
                       raise RuntimeError(
                           f"{name} must have exactly one package definition; found {count}"
                       )
+
       - name: Parse handoff sources
         shell: Rscript {0}
         run: |
@@ -259,6 +232,7 @@ jobs:
             "R/condition_penalty_contract.R",
             "R/pando_evidence_utils.R",
             "R/step_layer1_parallel_object_contract.R",
-            "R/supercell_quantitative_rna.R"
+            "R/supercell_quantitative_rna.R",
+            "R/step_grn_common_dictionary.R"
           )
           for (file in files) parse(file = file)

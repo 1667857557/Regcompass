@@ -1,169 +1,289 @@
 # RegCompass mathematical specification
 
-This is the single canonical document for RegCompass equations and quantitative definitions. Tutorials and Rd files describe interfaces only.
+This document is the canonical quantitative specification. Tutorials and Rd files describe interfaces; the equations below define the production calculations.
 
-## 1. Condition-comparable Pando model
+## 1. Condition-comparable Pando E★-JSE model
 
-For one broad cell type and target gene \(g\), Pando first applies its structural candidate rules: regulatory-domain proximity, TF motif support, and the supplied regulatory-region prior. For the human RegCompass route the default region prior is
+For one broad cell type and target gene \(g\), Pando first applies its structural candidate rules: regulatory-domain proximity, TF motif support, and the configured peak-target and TF-target correlation screens. For the human RegCompass route the default region prior is
 
 \[
 R_{prior}=R_{phastCons}\cup R_{SCREEN\ cCRE}.
 \]
 
-For exact edge \(e=(g,f,r)\), condition \(c\), define the Pando marginal correlations
+For exact edge \(e=(g,f,r)\), condition \(c\), define
 
 \[
 \rho^{peak}_{e,c}=cor_c(ATAC_r,RNA_g),\qquad
 \rho^{TF}_{e,c}=cor_c(RNA_f,RNA_g).
 \]
 
-The same correlations are computed once more using all eligible-condition cells pooled within the broad cell type. The implementation uses strict comparisons. With configured thresholds \(\tau_{peak}\) and \(\tau_{TF}\),
+The same correlations are also computed on all eligible-condition cells pooled within the broad cell type. With strict configured thresholds \(\tau_{peak}\) and \(\tau_{TF}\), pooled/global and condition-local candidate sets are unioned on the complete exact coordinate:
 
 \[
-L_{e,c}=\mathbf 1\{|\rho^{peak}_{e,c}|>\tau_{peak}\}
-\mathbf 1\{|\rho^{TF}_{e,c}|>\tau_{TF}\},
+D_T=D_{global}\cup D_1\cup\cdots\cup D_K.
 \]
+
+Deduplication is on `(target, TF, region)`. TFs, peaks and targets are never unioned independently and recombined. Every condition fits the same ordered \(D_T\).
+
+For paired cell \(i\),
 
 \[
-G_e=\mathbf 1\{|\rho^{peak}_{e,global}|>\tau_{peak}\}
-\mathbf 1\{|\rho^{TF}_{e,global}|>\tau_{TF}\}.
+x_{cie}=RNA_{ci,f(e)}\,ATAC_{ci,r(e)}.
 \]
 
-Both `tf_cor` and `peak_cor` default to 0.05. They are adjustable parameters, not fixed constants; the same user-supplied values are used in pooled/global and condition-specific candidate discovery and are stored in the fit contract.
-
-Let \(E_g^{global}\) be the pooled/global candidate triples and \(E_{g,c}\) the triples supported in condition \(c\). The frozen common dictionary is
+Each edge uses the equal-condition within-condition RMS scale
 
 \[
-E_g^{\cup}=\operatorname{unique}\left(
-E_g^{global}\cup\bigcup_cE_{g,c}
-\right).
+s_e=\sqrt{\frac1K\sum_{c=1}^K
+\frac1{n_c}\sum_i(x_{cie}-\bar x_{c,e})^2}.
 \]
 
-Deduplication is on the complete `(target, TF, region)` triple. TFs, peaks, and targets are never unioned independently and recombined.
-
-For edge \(e\), paired cell \(i\), and condition \(c\), the Pando interaction predictor remains
+This prevents the predictor scale itself from being determined by the largest condition, while the likelihood still retains the true information difference through \(X_c^TX_c\). Each condition has its own intercept:
 
 \[
-x_{e,i,c}=T_{e,i}A_{e,i},
+y_c=\alpha_c\mathbf 1+X_c\beta_c+\epsilon_c,
+\qquad \epsilon_c\sim N(0,\sigma_g^2I).
 \]
 
-where \(T\) is TF expression and \(A\) is peak accessibility. Every condition uses the same ordered columns \(e\in E_g^{\cup}\). Predictors share the equal-condition RMS within-condition scaling convention
+After condition-wise centering, one common target residual scale defines
 
 \[
-s_e^2=\frac{1}{K}\sum_{c=1}^{K}
-\frac{1}{n_c}\sum_{i\in c}(x_{e,i,c}-\bar x_{e,c})^2,
+Q_c=X_c^TX_c/\widehat\sigma_g^2,
+\qquad h_c=X_c^Ty_c/\widehat\sigma_g^2,
 \]
 
-and coefficients are back-transformed to original TF×ATAC units.
-
-For one target and \(K\) conditions the no-fusion ridge objective is
+and
 
 \[
-\frac{1}{K}\sum_{c=1}^{K}
-\frac{\|y_c-X_c\beta_c\|_2^2}{n_c}
-+\lambda\sum_{c=1}^{K}\|\beta_c\|_2^2.
+Q=blockdiag(Q_1,\ldots,Q_K),\qquad
+h=(h_1^T,\ldots,h_K^T)^T.
 \]
 
-One target-specific \(\lambda\) is selected by condition-stratified cross-validation and used for all condition blocks. There is **no cross-condition fusion term** and no penalty shrinking \(\beta_c\) toward \(\beta_{c'}\). Thus conditions share the dictionary coordinate system, scaling convention, and tuning parameter while retaining independently estimated coefficient blocks. Ridge makes the penalized system identifiable under severe collinearity or raw rank deficiency, although individual coefficients can remain biologically non-identifiable when predictors encode nearly the same signal.
+There is no \(n_{total}/(Kn_c)\) condition-size equalization weight.
 
-Let \(\theta_{adj}\) denote the configurable BH threshold, default 0.05. Pando condition-specific statistical support is
+### 1.1 Q-orthogonal shared/deviation geometry
+
+Let
 
 \[
-S_{e,c}=\mathbf 1\{estimable_{e,c}\land
-P^{adj}_{e,c}<\theta_{adj}\}.
+A=\mathbf1_K\otimes I_p.
 \]
 
-Because every fitted coefficient row already corresponds to an exact edge in the frozen common dictionary, the Pando active condition edge is
+For each exact edge, the implementation uses a predefined reference ordering when its contrasts are identifiable. If a reference contrast is not identifiable, it constructs a maximal identifiable contrast tree rather than allowing an unidentified coefficient difference to drift. Let \(D\) be the resulting contrast operator and \(B_0\) a right inverse on the identifiable contrast subspace, \(DB_0=I\). Define
 
 \[
-\boxed{A_{e,c}=S_{e,c}}.
+R=B_0-A(A^TQA)^+A^TQB_0.
 \]
 
-The marginal-correlation quantities \(G_e\) and \(L_{e,c}\) have one role: common-dictionary admission and provenance. They are **not** applied again as a post-fit activity gate. Consequently, if an edge enters the dictionary through pooled/global support or through condition \(A\), condition \(B\) can still call that edge active when \(\widehat\beta_{e,B}\) is estimable and BH-supported even if \(G_e=0\) and \(L_{e,B}=0\). This is intentional because the marginal correlations and the coefficient of the joint TF×ATAC ridge model are different statistics; reapplying the marginal-correlation gate would reintroduce the small-condition false-negative problem that the common dictionary is designed to mitigate.
-
-Pando exports
+Then
 
 \[
-penalty\_effect_{e,c}=A_{e,c}\widehat\beta_{e,c}.
+DR=I,\qquad A^TQR=0,
 \]
 
-RegCompass does not reselect Pando edges. It adds target-model validity and a hard selected-\(\lambda\) full-data \(R^2\) requirement before downstream use. Let \(\tau_{R^2}\) denote `RegCompassR.target_rsq_threshold` (default 0.05). RegCompass penalty eligibility is
+and the stacked coefficient has the exact decomposition
 
 \[
-H_{e,c}=A_{e,c}
-\mathbf 1\{fit\_status_{g,c}=\text{"ok"}\}
-\mathbf 1\{R^2_{g,c}\ge\tau_{R^2}\}.
+\beta=A\mu+R\delta.
 \]
 
-The complete common-dictionary coefficient table remains stored for diagnostics and direct condition contrasts even when \(H_{e,c}=0\). Direct differential inference uses \(\Delta\beta_e=\beta_{e,A}-\beta_{e,B}\); significance in one condition and nonsignificance in another is not used as a substitute for this contrast.
-
-The target weight used by the downstream penalty is binary. A target-condition pair with at least one penalty-eligible active edge has
+The shared and deviation likelihood blocks are therefore Q-orthogonal. The shared component is always the joint MLE
 
 \[
-q_{g,c}=1.
+\widehat\mu=(A^TQA)^+A^Th,
 \]
 
-An evaluated target with no penalty-eligible edge has \(q=0\); a target without a valid finite target fit is unavailable for regulatory projection. The selected-\(\lambda\) full-data \(R^2\) therefore acts **only as the target hard gate** above: it does not continuously rescale \(q\), the regulatory projection, or the COMPASS-like penalty. Out-of-fold \(R^2\) is not part of the current canonical Pando→RegCompass handoff. The same binary target rule is used by the standard-Pando route after its full-data \(R^2\) gate.
+with no empirical-Bayes or ridge shrinkage of the common mean toward zero.
 
-Because correlation screening, ridge estimation, and CV tuning use the observed data, ridge-Wald and contrast P values are approximate and conditional on the selected dictionary and tuning procedure; they are not exact selective-inference P values.
+Define
+
+\[
+H=R^TQR,\qquad r=R^Th.
+\]
+
+For every identifiable contrast coordinate \(j\), its effective information \(I_j\) is obtained from the full correlated profile information, equivalently from the appropriate diagonal of \(H^+\) only after estimability is established. Production uses the fixed E★ threshold
+
+\[
+\boxed{z=0.25}
+\]
+
+and solves
+
+\[
+\widehat\delta=
+\arg\min_\delta\left[
+\frac12\delta^TH\delta-r^T\delta
++0.25\sum_{j\in\mathcal I}\sqrt{I_j}|\delta_j|
+\right],
+\]
+
+subject to \(\delta_j=0\) for non-identifiable/zero-information coordinates. In the scalar case,
+
+\[
+\widehat\delta=sign(d)
+\left(|d|-\frac{0.25}{\sqrt{I_\delta}}\right)_+.
+\]
+
+A zero-information equality is a deterministic boundary convention and is recorded as `shared_by_boundary`; it is not evidence of biological equality. An identifiable contrast shrunk exactly to zero is recorded separately as `fused_by_penalty`.
+
+The production coefficient is
+
+\[
+\boxed{\widehat\beta^E=A\widehat\mu+R\widehat\delta}.
+\]
+
+Pando exports, in raw TF×ATAC units,
+
+\[
+estimate_{c,e}=penalty\_effect_{c,e}=\widehat\beta^E_{c,e}.
+\]
+
+The production conditional route exposes no alternative \(z\) grid, no conditional ridge-CV lambda selection and no fusion-ratio sensitivity parameter.
+
+### 1.2 Fusion-component joint covariance and inference
+
+Exact zero deviations define an equality graph among conditions for each edge. Connected components are the fusion components. After the E★ structure is frozen, let
+
+\[
+b=M_z\theta_z
+\]
+
+map the stacked condition-edge coefficient vector to one parameter per edge × fusion component. With condition-specific intercepts and block design \(\mathcal X=blockdiag(X_1,\ldots,X_K)\), the reduced joint design is
+
+\[
+Z_z=[I_{condition\ intercept},\;\mathcal X M_z].
+\]
+
+The inference-only selected-structure refit is
+
+\[
+\widetilde\theta_z=(Z_z^TZ_z)^+Z_z^Ty,
+\]
+
+with
+
+\[
+\widehat\sigma^2_{inf,z}
+=\frac{\|y-Z_z\widetilde\theta_z\|_2^2}
+{N-rank(Z_z)},
+\]
+
+and full covariance
+
+\[
+\widehat{Cov}(\widetilde\theta_z)
+=\widehat\sigma^2_{inf,z}(Z_z^TZ_z)^+.
+\]
+
+For condition \(c\), edge \(e\), selection row \(L_{c,e}\),
+
+\[
+SE_{c,e}=\sqrt{L_{c,e}\widehat{Cov}(\widetilde\theta_z)L_{c,e}^T}.
+\]
+
+Thus fully or partially shared edges borrow information through the full correlated joint design rather than through diagonal-information addition. `inference_estimate` and `inference_se` are stored separately and never replace the production `estimate`/`penalty_effect`.
+
+The Wald statistic and raw P value are
+
+\[
+Z_{c,e}=\frac{\widetilde\beta_{c,e}}{SE_{c,e}},
+\qquad
+p_{c,e}=2\Phi(-|Z_{c,e}|).
+\]
+
+If a reduced-model component remains non-estimable, `inference_se`, `pval`, and `padj` are `NA`; the row is not converted to `p=1` or `SE=Inf`.
+
+### 1.3 condition × target BH and RegCompass exact-edge union
+
+BH is performed independently for every condition-target family:
+
+\[
+q_{c,e}=BH\{p_{c,e'}:target(e')=g\}.
+\]
+
+Only finite, estimable P values enter each family, and significance is strict:
+
+\[
+S_{c,e}=1\{q_{c,e}<\theta_{adj}\},
+\qquad \theta_{adj}=0.05\ \text{by default}.
+\]
+
+For exact edge \(e\), define engineering validity
+
+\[
+V_e=1\{\forall c:\ fit\_status_{c,g(e)}=ok
+\land \widehat\beta^E_{c,e}\ \text{finite}\}.
+\]
+
+The RegCompass handoff is
+
+\[
+\boxed{H_e=V_e\,1\{\exists c:q_{c,e}<\theta_{adj}\}}.
+\]
+
+If \(H_e=1\), the edge is retained in **every** condition and each condition contributes its own continuous \(\widehat\beta^E_{c,e}\). If \(H_e=0\), the edge is not projected in any condition. Hence condition-specific biological effects are represented by continuous coefficient differences rather than sample-size-dependent edge presence/absence.
+
+Pairwise contrasts are reconstructed from the same joint coefficient vector. For three conditions C/J/M,
+
+\[
+\Delta_{JM}=\Delta_{CM}-\Delta_{CJ}
+\]
+
+holds exactly. A boundary-shared contrast is not eligible for a differential-regulation claim.
+
+The Pando-equivalent target diagnostic remains
+
+\[
+R^2_{c,g}=1-\frac{RSS_{c,g}}{TSS_{c,g}}.
+\]
+
+For conditional E★-JSE it is diagnostic only: it is not a RegCompass handoff gate and is not used to choose \(z\). Standard one-condition Pando remains a separate route and retains its own standard ridge controls and standard R² eligibility logic.
+
+The downstream binary target availability for a condition is
+
+\[
+q_{g,c}=1
+\]
+
+when at least one admitted exact edge for target \(g\) is projected in that condition, and \(q_{g,c}=0\) when the target was validly evaluated but no exact edge was admitted. A failed/non-finite target fit remains unavailable (`NA`).
 
 ## 2. Metacell regulatory projection
 
-For metacell \(u\), RegCompass retains the paired TF×ATAC realization from the exact same member cells and shrinks it toward the more stable product of the separate metacell means. For edge \(e\), define
+For metacell \(u\), RegCompass retains the paired TF×ATAC realization from the exact same member cells and shrinks it toward the product of separate metacell means. For edge \(e\),
 
 \[
-\overline{TA}_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}T_{e,i}A_{e,i},
+\overline{TA}_{e,u}=\frac1{|M_u|}\sum_{i\in M_u}T_{e,i}A_{e,i},
 \]
 
 \[
-\overline T_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}T_{e,i},\qquad
-\overline A_{e,u}=\frac{1}{|M_u|}\sum_{i\in M_u}A_{e,i}.
+\overline T_{e,u}=\frac1{|M_u|}\sum_{i\in M_u}T_{e,i},\qquad
+\overline A_{e,u}=\frac1{|M_u|}\sum_{i\in M_u}A_{e,i}.
 \]
 
-The canonical product-of-means shrinkage weight is
+The canonical exposure mixture is
 
 \[
-\eta=0.25,
-\]
-
-so the edge-level metacell interaction is
-
-\[
-J_{e,u}=(1-\eta)\overline{TA}_{e,u}
-+\eta\overline T_{e,u}\overline A_{e,u}
-=0.75\overline{TA}_{e,u}
+J_{e,u}=0.75\overline{TA}_{e,u}
 +0.25\overline T_{e,u}\overline A_{e,u}.
 \]
 
-Equivalently,
+This `0.25` is the RegCompass exposure mixing weight and is mathematically independent of the E★ deviation threshold \(z=0.25\).
+
+Using only admitted exact edges, the target regulatory score is
 
 \[
-J_{e,u}=\overline T_{e,u}\overline A_{e,u}
-+0.75\left[
-\frac{1}{|M_u|}\sum_{i\in M_u}
-(T_{e,i}-\overline T_{e,u})(A_{e,i}-\overline A_{e,u})
-\right].
+G_{g,u}=\sum_{e\to g}H_e\widehat\beta^E_{c(u),e}J_{e,u}.
 \]
 
-Thus the stable product-of-means baseline is retained while 75% of the within-metacell paired TF–ATAC co-deviation is preserved. The endpoints are explicit: \(\eta=0\) gives the fully paired mean interaction \(\overline{TA}\), whereas \(\eta=1\) reproduces the previous RegCompass product-of-means projection \(\overline T\,\overline A\). The default numerical shrinkage strength uses 0.25 as a COMPASS-inspired information-sharing magnitude; this is an analogous regularization choice, not the COMPASS neighbor-smoothing algorithm itself.
+The RNA and ATAC vectors used in \(\overline{TA}\) are indexed by the same paired cell IDs within the exact SuperCell membership.
 
-Using only penalty-eligible active edges, the target regulatory score is
-
-\[
-G_{g,u}=\sum_{e\in E_g^{\cup}}
-H_{e,c(u)}\widehat\beta_{e,g,c(u)}J_{e,u}.
-\]
-
-The RNA and ATAC vectors used in \(\overline{TA}\) are indexed by the same paired cell IDs within the exact SuperCell membership. No cross-cell pairing, independent sorting, or nonzero-only matching is allowed.
-
-For target \(g\) within cell type \(t\), define a robust calibration scale
+For target \(g\) within cell type \(t\), define
 
 \[
 \sigma_{g,t}=\max\left(
 \frac{IQR(G_{g,t})}{1.349},
 MAD_{1.4826}(G_{g,t}),
-\sqrt{mean(G_{g,t}^2)},
-10^{-6}
+\sqrt{mean(G_{g,t}^2)},10^{-6}
 \right).
 \]
 
@@ -171,44 +291,34 @@ The bounded regulatory modifier is
 
 \[
 R_{g,u}=q_{g,c(u)}\tanh\left(\frac{G_{g,u}}{\sigma_{g,t(u)}}\right),
-\qquad -1\le R_{g,u}\le1,
+\qquad -1\le R_{g,u}\le1.
 \]
-
-with \(q=1\) for a valid active target. Thus model-fit \(R^2\) values never attenuate the modifier after passing the hard target gate. When regulatory evidence is unavailable or rejected, \(R_{g,u}=0\).
 
 ## 3. Quantitative RNA input to the COMPASS-like penalty
 
-Let \(Y_{g,i}\) be the raw RNA count of gene \(g\) in original cell \(i\), and
-
-\[
-L_i=\sum_hY_{h,i}
-\]
-
-its complete RNA library size. RegCompass first computes linear per-cell CPM,
+Let \(Y_{g,i}\) be raw RNA count and \(L_i=\sum_hY_{h,i}\) the complete cell library size. RegCompass computes single-cell linear CPM,
 
 \[
 x_{g,i}=10^6\frac{Y_{g,i}}{L_i},
 \]
 
-then takes an equal-weight mean across the final SuperCell membership,
+then the equal-weight mean within the final SuperCell membership,
 
 \[
-X^{RNA}_{g,u}=\frac{1}{|M_u|}\sum_{i\in M_u}x_{g,i}.
+X^{RNA}_{g,u}=\frac1{|M_u|}\sum_{i\in M_u}x_{g,i}.
 \]
-
-Thus the quantitative LP path uses `mean(single-cell CPM)` rather than `CPM(sum counts)`, and it does not use the empirical-Bayes latent CPM estimator.
 
 The regulatory modifier acts multiplicatively,
 
 \[
-X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}}.
+X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}},
 \]
 
-Because \(-1\le R\le1\), the regulatory multiplier is bounded between \(1/2\) and \(2\).
+so the multiplier is bounded between \(1/2\) and \(2\).
 
 ## 4. GPR aggregation and quantitative reaction cost
 
-For reaction \(r\), let \(A_{r,j}\) denote one AND branch of its Boolean GPR. With the default `gpr_and_method = "min"`,
+For reaction \(r\), let \(A_{r,j}\) denote one AND branch. With the default `gpr_and_method = "min"`,
 
 \[
 Q^{quant}_{r,j,u}=\min_{g\in A_{r,j}}X^{MO}_{g,u}.
@@ -223,7 +333,7 @@ E^{quant}_{r,u}=\sum_jQ^{quant}_{r,j,u}.
 The reaction coefficient supplied to the COMPASS-like LP objective is
 
 \[
-p_{r,u}=\frac{1}{1+\log_2(1+\max(E^{quant}_{r,u},0))}.
+p_{r,u}=\frac1{1+\log_2(1+\max(E^{quant}_{r,u},0))}.
 \]
 
 Missing quantitative expression and structural-only reaction roles use cost \(p=1\).
@@ -245,12 +355,11 @@ C^{RNA}_{g,u}=\frac{L^{struct}_{g,u}}{L^{struct}_{g,u}+h}.
 Regulatory evidence modifies structural-support odds,
 
 \[
-C^{MO}_{g,u}=
-\frac{C^{RNA}_{g,u}2^{R_{g,u}}}
+C^{MO}_{g,u}=\frac{C^{RNA}_{g,u}2^{R_{g,u}}}
 {1-C^{RNA}_{g,u}+C^{RNA}_{g,u}2^{R_{g,u}}}.
 \]
 
-The same Boolean GPR topology is then applied to obtain bounded reaction structural support. This bounded quantity is used for structural-confidence classification and is **not** substituted for \(E^{quant}\) in the LP penalty.
+The same Boolean GPR topology is then applied to bounded reaction structural support. This structural quantity is not substituted for \(E^{quant}\) in the LP penalty.
 
 ## 6. Medium constraints
 
@@ -266,18 +375,13 @@ Therefore medium application cannot create a reaction direction that was blocked
 
 For cell type \(t\), condition-specific reaction catalogues are unioned within that cell type before structural reconstruction. Bounded evidence is mapped to CORDA2 confidence classes \(HC,MC,NC,OT\), and one medium-constrained parent GEM is reconstructed for each cell-type × medium combination.
 
-The current canonical implementation has two additional structural rules:
-
-1. every input core reaction is an immutable structural requirement and cannot be deleted by CORDA2 finalization;
-2. after CORDA2 finishes, no second parent/final closure LP pass is run.
-
-Internally reversible reactions are evaluated directionally by the CORDA2 state machine. During final merge, a reaction is retained when either allowed split direction is selected; all core reactions are retained unconditionally. Retained reactions recover the corresponding medium-constrained parent reaction bounds. Consequently the final CORDA2 GEM is the model passed directly to downstream COMPASS-like scoring.
+Every input core reaction is an immutable structural requirement. After CORDA2 finishes, no second parent/final closure LP pass is run. Internally reversible reactions are evaluated directionally by the CORDA2 state machine; during final merge a reaction is retained when either allowed split direction is selected, while all core reactions are retained unconditionally. Retained reactions recover the corresponding medium-constrained parent bounds.
 
 FASTCORE is an explicit supplementary completion route. `model_mode = "full_gem"` bypasses context-specific reconstruction and scores the complete medium-constrained GEM.
 
 ## 8. Directional feasibility and COMPASS-like LP scoring
 
-For final cell-type/medium model \(\mathcal G_{t,m}\), target reaction \(r\), and direction \(d\in\{+1,-1\}\), the scoring stage first computes
+For final cell-type/medium model \(\mathcal G_{t,m}\), target reaction \(r\), and direction \(d\in\{+1,-1\}\),
 
 \[
 v^{max}_{r,d,t,m}=\max_v d\,v_r
@@ -288,8 +392,6 @@ subject to
 \[
 S_{t,m}v=0,\qquad l_{t,m}\le v\le u_{t,m}.
 \]
-
-This is the single post-reconstruction directional feasibility calculation used for scoring; it is not a second CORDA2 closure stage.
 
 For metacell \(u\), RegCompass then solves
 
@@ -309,37 +411,34 @@ The normalized penalty is
 
 \[
 \widetilde P_{r,d,u,m}=\frac{P^*_{r,d,u,m}}
-{\omega v^{max}_{r,d,t,m}}.
+{\omega v^{max}_{r,d,t,m}},
 \]
 
-Lower normalized penalty indicates stronger model-constrained support for the target direction. It is not measured metabolic flux.
-
-The comparison/ranking score is
+and the comparison score is
 
 \[
 S_{r,d,u,m}=-\log(\widetilde P_{r,d,u,m}+\epsilon).
 \]
 
-Larger score indicates stronger model support.
+Lower normalized penalty and higher score indicate stronger model support; neither is measured flux.
 
 ## 9. RNA-only interpretation control
 
-The RNA-only control reuses the exact same structural GEM, medium, bounds, target directions, and \(v^{max}\). Only the quantitative objective coefficient differs:
+The RNA-only control reuses the same structural GEM, medium, bounds, target directions, and \(v^{max}\). Only the quantitative objective coefficient differs:
 
 \[
 X^{MO}_{g,u}=X^{RNA}_{g,u}2^{R_{g,u}}
-\quad\text{versus}\quad
-X^{RNA}_{g,u}.
+\quad\text{versus}\quad X^{RNA}_{g,u}.
 \]
 
-Therefore the multiome-versus-RNA-only penalty difference isolates the effect of the regulatory modifier conditional on the already constructed structural model; it is not a separately reconstructed RNA-only GEM.
+Thus the multiome-versus-RNA-only penalty difference isolates the regulatory modifier conditional on the same structural model.
 
 ## 10. Condition statistics
 
-Condition comparisons are performed within a fixed cell type, reaction, direction, and medium. Pairwise comparisons use Wilcoxon rank-sum tests; analyses with at least three conditions can additionally use a Kruskal–Wallis omnibus test. Multiple-testing correction is applied according to the requested adjustment scope.
+Condition comparisons are performed within a fixed cell type, reaction, direction, and medium. Pairwise comparisons use Wilcoxon rank-sum tests; analyses with at least three conditions can additionally use a Kruskal–Wallis omnibus test. Multiple-testing correction follows the requested adjustment scope.
 
-Metacells are within-dataset statistical units. These tests are not donor/sample-level biological-replicate inference unless the study design supplies an appropriate independent replicate level outside this metacell test.
+Metacells are within-dataset statistical units; these tests are not donor/sample-level biological-replicate inference unless an appropriate independent replicate level is supplied by the study design.
 
 ## 11. Artifact compatibility
 
-The quantitative LP path and bounded structural path are deliberately separate. Layer 1 schema-v6 artifacts expose both quantitative reaction expression and bounded structural support. Older Layer 1 artifacts that lack the quantitative matrices must be regenerated before canonical Layer 2 scoring. Layer 1 artifacts generated with the previous pure product-of-means Pando projection should likewise be regenerated before comparison with results using the canonical 0.75 paired / 0.25 product-of-means projection.
+The quantitative LP path and bounded structural path are deliberately separate. Layer 1 artifacts expose both quantitative reaction expression and bounded structural support. Artifacts generated with the old conditional no-fusion ridge/local-Wald topology, an R² hard gate on conditional handoff, or the previous pure product-of-means Pando projection must be regenerated before comparison with the E★-JSE z=0.25 production workflow.

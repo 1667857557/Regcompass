@@ -1,4 +1,4 @@
-name: Rank-deficient penalty contract
+name: Rank-deficient conditional penalty contract
 
 on:
   pull_request:
@@ -17,93 +17,85 @@ jobs:
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
-      - name: Verify regularized rank deficiency remains diagnostic
+      - name: Verify E-star boundary sharing and union handoff
         shell: Rscript {0}
         run: |
           `%||%` <- function(x, y) if (is.null(x)) y else x
           .rc_standard_pando_padj_default <- 0.05
-          .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
+          source("R/condition_grn_contract.R")
           source("R/condition_penalty_contract.R")
 
-          # Raw rank deficiency remains diagnostic under ridge. Candidate
-          # correlation provenance does not veto an estimable BH-supported edge;
-          # target-model eligibility additionally requires full-data R2 support.
-          make_coef <- function(threshold) {
-            estimate <- c(1, 1, 1, 1)
-            estimable <- c(TRUE, TRUE, FALSE, TRUE)
-            padj <- c(0.01, 0.08, NA_real_, 0.01)
-            statistically_supported <- estimable & is.finite(estimate) &
-              is.finite(padj) & padj < threshold
-            global_support <- c(TRUE, TRUE, TRUE, FALSE)
-            local_support <- c(FALSE, FALSE, TRUE, FALSE)
-            active <- statistically_supported
-            data.frame(
-              estimate = estimate,
-              estimable = estimable,
-              padj = padj,
-              statistically_supported = statistically_supported,
-              global_support = global_support,
-              local_support = local_support,
-              active = active,
-              significant = active,
-              penalty_effect = ifelse(active, estimate, 0),
-              fit_status = c("ok", "ok", "ok", "failed"),
-              rsq = c(0.8, 0.7, 0.6, 0.9),
-              design_rank_deficient = c(FALSE, TRUE, TRUE, FALSE),
-              stringsAsFactors = FALSE
-            )
-          }
-          coefficient <- make_coef(0.1)
-          stopifnot(identical(
-            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.1),
-            c(TRUE, TRUE, FALSE, FALSE)
-          ))
-          coefficient <- make_coef(0.05)
-          stopifnot(identical(
-            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.05),
-            c(TRUE, FALSE, FALSE, FALSE)
-          ))
-
           coefficient <- data.frame(
+            edge_id = c("G||TF||P", "G||TF||P"),
             target = c("G", "G"),
             condition = c("A", "B"),
-            estimate = c(0.8, -0.7),
-            estimable = c(TRUE, FALSE),
-            pval = c(0.001, NA_real_),
-            padj = c(0.01, NA_real_),
+            estimate = c(0.8, 0.8),
+            penalty_effect = c(0.8, 0.8),
+            pval = c(0.001, 0.2),
+            padj = c(0.01, 0.2),
+            inference_estimable = c(TRUE, TRUE),
+            condition_significant = c(TRUE, FALSE),
             statistically_supported = c(TRUE, FALSE),
-            global_support = c(FALSE, TRUE),
-            local_support = c(FALSE, FALSE),
-            active = c(TRUE, FALSE),
             significant = c(TRUE, FALSE),
-            penalty_effect = c(0.8, 0),
+            pando_estimation_active = c(TRUE, TRUE),
+            active = c(TRUE, TRUE),
+            edge_union_supported = c(TRUE, TRUE),
+            supporting_conditions = c("A", "A"),
+            n_supporting_conditions = c(1L, 1L),
+            all_conditions_fit_valid = c(TRUE, TRUE),
+            active_in_regcompass = c(TRUE, TRUE),
+            fit_status = c("ok", "ok"),
+            penalty_family = c(
+              "information_scaled_sparse_deviation",
+              "information_scaled_sparse_deviation"
+            ),
+            penalty_value = c(0.25, 0.25),
+            solver_status = c("ok", "ok"),
+            kkt_residual = c(1e-10, 1e-10),
+            iterations = c(20L, 20L),
+            contrast_identifiable = c(FALSE, FALSE),
+            shared_by_boundary = c(TRUE, TRUE),
+            fused_by_penalty = c(FALSE, FALSE),
             stringsAsFactors = FALSE
           )
-          fit <- structure(list(
-            padj_threshold = 0.05,
-            coefficients = coefficient,
-            fit = data.frame(
-              target = c("G", "G"),
-              condition = c("A", "B"),
-              fit_status = c("ok", "ok"),
-              rsq = c(0.8, 0.7),
-              design_rank_deficient = c(TRUE, TRUE),
-              stringsAsFactors = FALSE
-            )
-          ), class = c("ConditionGRNFit", "list"))
-          gated <- .rc_apply_condition_penalty_gate(fit)
-          stopifnot(
-            identical(gated$coefficients$fit_status, c("ok", "ok")),
-            identical(as.numeric(gated$coefficients$penalty_effect), c(0.8, 0)),
-            identical(as.logical(gated$coefficients$penalty_eligible),
-                      c(TRUE, FALSE)),
-            identical(as.numeric(gated$coefficients$target_rsq), c(0.8, 0.7)),
-            identical(
-              gated$regcompass_rank_deficient_policy,
-              "regularized_ok_fit_retained; non-estimable condition edge excluded"
-            ),
-            identical(gated$regcompass_significance_role,
-                      "consume_pando_condition_bh_active_edge_without_reselection"),
-            identical(gated$regcompass_target_rsq_definition,
-                      "selected_lambda_full_data_R2")
+
+          gate <- .rc_condition_penalty_gate(
+            coefficient, padj_threshold = 0.05,
+            target_rsq_threshold = 0.05
           )
+          stopifnot(identical(gate, c(TRUE, TRUE)))
+          stopifnot(
+            identical(coefficient$contrast_identifiable, c(FALSE, FALSE)),
+            identical(coefficient$shared_by_boundary, c(TRUE, TRUE)),
+            identical(coefficient$fused_by_penalty, c(FALSE, FALSE))
+          )
+
+          invalid <- coefficient
+          invalid$fit_status[[2]] <- "failed"
+          invalid$all_conditions_fit_valid <- FALSE
+          invalid$edge_union_supported <- FALSE
+          invalid$active_in_regcompass <- FALSE
+          stopifnot(identical(
+            .rc_condition_penalty_gate(
+              invalid, padj_threshold = 0.05,
+              target_rsq_threshold = 0.05
+            ),
+            c(FALSE, FALSE)
+          ))
+
+          no_support <- coefficient
+          no_support$padj <- c(0.2, 0.3)
+          no_support$condition_significant <- FALSE
+          no_support$statistically_supported <- FALSE
+          no_support$significant <- FALSE
+          no_support$edge_union_supported <- FALSE
+          no_support$supporting_conditions <- ""
+          no_support$n_supporting_conditions <- 0L
+          no_support$active_in_regcompass <- FALSE
+          stopifnot(identical(
+            .rc_condition_penalty_gate(
+              no_support, padj_threshold = 0.05,
+              target_rsq_threshold = 0.05
+            ),
+            c(FALSE, FALSE)
+          ))

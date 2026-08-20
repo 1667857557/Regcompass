@@ -3,21 +3,29 @@
 #' Infer regulatory evidence with automatic mode selection
 #'
 #' Stage 1 filters the analysis cell set before normalization. Broad cell types
-#' with at least two retained conditions use Pando's pooled-plus-condition common
-#' dictionary and no-fusion ridge fit; cell types with one effective condition use
-#' the K=1 standard ridge route. RegCompass then applies the same target-model
-#' full-data R-squared eligibility gate to both routes before downstream penalty
-#' projection.
+#' with at least two retained conditions use Pando's pooled/global plus
+#' condition-local exact-edge union dictionary, fixed E-star z=0.25 production
+#' fit, fusion-component joint-SE inference, condition-by-target BH, and
+#' any-condition exact-edge RegCompass handoff. Cell types with one effective
+#' condition use the independent K=1 standard Pando route.
 #'
 #' @param pando_args Pando configuration list. `min_cells` defaults to `500L`.
-#'   Common inference controls are supplied through `pando_infer_args`; only
-#'   parameters intentionally changed from validated defaults need be supplied.
-#' @param target_rsq_threshold Minimum selected-lambda full-data target R-squared
-#'   required for a Pando target to enter RegCompass regulatory penalty support.
-#'   Defaults to `0.05`. This is a RegCompass target-model gate and does not
-#'   redefine Pando edge significance.
-#' @param workers Total RegCompass worker cap, default 10. Ridge GRNs use one
-#'   parallel level at a time and reuse this budget for target-level Pando work.
+#'   Conditional inference controls supplied through `pando_infer_args` are
+#'   `tf_cor`, `peak_cor`, `padj_threshold`, `rank_action`,
+#'   `min_residual_df`, and optional `reference_condition`, plus the canonical
+#'   layer fields. `reference_condition` is a predefined experimental-design
+#'   coordinate for the K-condition contrast tree; it must be retained in every
+#'   conditional cell type and must not be selected after inspecting GRN
+#'   results. When omitted, Pando uses and records the first retained condition.
+#'   Conditional ridge-CV, alternative-z and fusion-ratio controls are removed.
+#'   Standard Pando retains its separate standard-route controls, including
+#'   `ridge_control` when used.
+#' @param target_rsq_threshold Full-data target R-squared threshold used by the
+#'   standard Pando route. Defaults to `0.05`. Conditional E-star/JSE keeps the
+#'   same target R-squared quantity as a diagnostic only; it does not gate the
+#'   conditional exact-edge handoff.
+#' @param workers Total RegCompass worker cap, default 10. Stage 1 uses one
+#'   parallel level at a time and reuses this budget for target-level Pando work.
 #' @export
 rc_regcompass_step_grn <- function(
     object, gem, outdir, genome,

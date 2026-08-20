@@ -15,14 +15,8 @@
   }
   SeuratObject::DefaultAssay(object) <- rna_assay
   slim <- Seurat::DietSeurat(
-    object = object,
-    counts = TRUE,
-    data = TRUE,
-    scale.data = FALSE,
-    assays = assays,
-    dimreducs = NULL,
-    graphs = NULL,
-    misc = FALSE
+    object = object, counts = TRUE, data = TRUE, scale.data = FALSE,
+    assays = assays, dimreducs = NULL, graphs = NULL, misc = FALSE
   )
   SeuratObject::DefaultAssay(slim) <- rna_assay
   slim
@@ -32,9 +26,8 @@
   list(
     shared = c("tf_cor", "peak_cor", "adjust_method", "padj_threshold"),
     condition = c(
-      "rank_action", "min_residual_df",
-      "rna_layer", "peak_layer", "peak_value_type",
-      "condition_ridge_control"
+      "rank_action", "min_residual_df", "reference_condition",
+      "rna_layer", "peak_layer", "peak_value_type"
     ),
     standard = c(
       "peak_to_gene_method", "upstream", "downstream", "extend",
@@ -77,10 +70,25 @@
     }
   }
 
+  obsolete <- intersect(
+    names(args),
+    c(
+      "condition_ridge_control", "condition_e_control", "scheme_e_z", "z",
+      "fusion_ratio", "lambda_grid", "lambda_rule", "cv_folds"
+    )
+  )
+  if (length(condition_types) && length(obsolete)) {
+    stop(
+      "Removed conditional Pando control(s): ",
+      paste(obsolete, collapse = ", "),
+      ". RegCompass conditional GRNs use the fixed production E-star/JSE ",
+      "model with z=0.25; no conditional CV or sensitivity control is exposed.",
+      call. = FALSE
+    )
+  }
+
   canonical_layers <- list(
-    rna_layer = "data",
-    peak_layer = "data",
-    peak_value_type = "normalized"
+    rna_layer = "data", peak_layer = "data", peak_value_type = "normalized"
   )
   supplied_layers <- intersect(names(args), names(canonical_layers))
   if (length(condition_types) && length(supplied_layers)) {
@@ -113,16 +121,10 @@
 
   condition_args <- args[intersect(names(args), condition_allowed)]
   condition_args <- utils::modifyList(list(
-    tf_cor = 0.05,
-    peak_cor = 0.05,
-    adjust_method = "BH",
-    padj_threshold = 0.05,
-    rank_action = "mark",
-    min_residual_df = 1L,
-    rna_layer = "data",
-    peak_layer = "data",
-    peak_value_type = "normalized",
-    condition_ridge_control = list()
+    tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
+    padj_threshold = 0.05, rank_action = "mark", min_residual_df = 1L,
+    reference_condition = NULL,
+    rna_layer = "data", peak_layer = "data", peak_value_type = "normalized"
   ), condition_args)
   condition_threshold <- suppressWarnings(as.numeric(
     condition_args$padj_threshold
@@ -130,30 +132,29 @@
   if (length(condition_types) &&
       (!identical(toupper(as.character(condition_args$adjust_method)), "BH") ||
        length(condition_threshold) != 1L || !is.finite(condition_threshold) ||
-       condition_threshold <= 0 || condition_threshold >= 1 ||
-       !is.list(condition_args$condition_ridge_control))) {
+       condition_threshold <= 0 || condition_threshold >= 1)) {
     stop(
-      "Canonical RegCompass condition fits require BH adjustment, ",
-      "padj_threshold in (0, 1), and condition_ridge_control as a list.",
-      call. = FALSE
-    )
-  }
-  if (length(condition_types) &&
-      "fusion_ratio" %in% names(condition_args$condition_ridge_control)) {
-    stop(
-      "`pando_infer_args$condition_ridge_control$fusion_ratio` is obsolete; ",
-      "condition coefficients are fitted without cross-condition fusion.",
-      call. = FALSE
+      "Canonical RegCompass condition fits require BH adjustment and ",
+      "padj_threshold in (0, 1).", call. = FALSE
     )
   }
   condition_args$padj_threshold <- condition_threshold
+  if (!is.null(condition_args$reference_condition)) {
+    reference <- as.character(condition_args$reference_condition)
+    if (length(reference) != 1L || is.na(reference) ||
+        !nzchar(trimws(reference)) || reference != trimws(reference)) {
+      stop(
+        "Conditional `reference_condition` must be NULL or one complete ",
+        "predefined condition label.", call. = FALSE
+      )
+    }
+    condition_args$reference_condition <- reference
+  }
 
   standard_args <- args[intersect(names(args), standard_allowed)]
   standard_args <- utils::modifyList(list(
-    tf_cor = 0.05,
-    peak_cor = 0.05,
-    adjust_method = "BH",
-    padj_threshold = 0.05
+    tf_cor = 0.05, peak_cor = 0.05,
+    adjust_method = "BH", padj_threshold = 0.05
   ), standard_args)
   standard_threshold <- suppressWarnings(as.numeric(
     standard_args$padj_threshold
@@ -393,14 +394,17 @@
   .rc_step_monitor_event(
     progress_monitor, "cell_type_execution_plan",
     paste(
-      "condition GRNs use pooled/global plus condition exact-union no-fusion ridge;",
-      "standard Pando uses", standard_method,
-      if (standard_ridge) "through the same ridge solver K=1" else ""
+      "condition GRNs use pooled/global plus condition exact union,",
+      "E-star z=0.25 and fusion-component JSE; standard Pando uses",
+      standard_method,
+      if (standard_ridge) "through the independent K=1 ridge route" else ""
     ),
     current = 5L,
     context = list(
       condition_cell_types = length(condition_types),
       standard_cell_types = length(standard_types),
+      condition_reference = condition_infer_args$reference_condition %||%
+        "<first-retained>",
       condition_parallel_scope = if (length(condition_types) &&
           isTRUE(parallel) && worker_limit > 1L) "target" else "serial",
       standard_parallel_scope = if (length(standard_types) && standard_ridge &&
@@ -414,20 +418,16 @@
       },
       nested_parallel = FALSE,
       memory_policy = paste(
-        "single parallel level; one ridge cell type resident at a time;",
+        "single parallel level; one ridge/E-star cell type resident at a time;",
         "target-specific Pando worker payloads"
       )
     )
   )
 
   condition_result <- .rc_run_condition_pando_batch(
-    object = object,
-    condition_types = condition_types,
-    base = base,
-    extra_args = extra_args,
-    condition_infer_args = condition_infer_args,
-    parallel = parallel,
-    BPPARAM = BPPARAM,
+    object = object, condition_types = condition_types, base = base,
+    extra_args = extra_args, condition_infer_args = condition_infer_args,
+    parallel = parallel, BPPARAM = BPPARAM,
     progress_monitor = progress_monitor
   )
   invisible(gc(verbose = FALSE, full = TRUE))
@@ -447,12 +447,9 @@
         )
         job <- list(cell_type = type, object = one)
         executed <- .rc_run_standard_pando_celltype_job(
-          job = job,
-          base = base,
-          extra_args = extra_args,
+          job = job, base = base, extra_args = extra_args,
           standard_infer_args = standard_infer_args,
-          outer_parallel = FALSE,
-          progress_monitor = progress_monitor,
+          outer_parallel = FALSE, progress_monitor = progress_monitor,
           PANDO_BPPARAM = if (isTRUE(parallel)) BPPARAM else NULL
         )
         standard_values[[type]] <- executed$result
@@ -477,15 +474,12 @@
       standard_outer_parallel <- isTRUE(parallel) &&
         length(standard_inputs) > 1L
       executed <- rc_parallel_lapply(
-        standard_inputs,
-        .rc_run_standard_pando_celltype_job,
+        standard_inputs, .rc_run_standard_pando_celltype_job,
         BPPARAM = if (standard_outer_parallel) BPPARAM else FALSE,
-        base = base,
-        extra_args = extra_args,
+        base = base, extra_args = extra_args,
         standard_infer_args = standard_infer_args,
         outer_parallel = standard_outer_parallel,
-        progress_monitor = progress_monitor,
-        PANDO_BPPARAM = NULL
+        progress_monitor = progress_monitor, PANDO_BPPARAM = NULL
       )
       standard_values <- lapply(executed, `[[`, "result")
       names(standard_values) <- vapply(
@@ -501,10 +495,8 @@
   answer <- .rc_merge_pando_results(
     condition_result = condition_result,
     standard_results = standard_values,
-    condition_types = condition_types,
-    standard_types = standard_types,
-    condition_col = condition_col,
-    celltype_col = celltype_col,
+    condition_types = condition_types, standard_types = standard_types,
+    condition_col = condition_col, celltype_col = celltype_col,
     outdir = outdir
   )
   condition_plan <- if (!is.null(condition_result) &&
@@ -531,8 +523,8 @@
     nested_parallel = FALSE,
     worker_budget_shared_sequentially = TRUE,
     memory_policy = paste(
-      "one ridge cell type resident at a time; target-specific Pando payloads;",
-      "worker and batch temporaries released after completion"
+      "one ridge/E-star cell type resident at a time; target-specific Pando",
+      "payloads; worker and batch temporaries released after completion"
     )
   )
   answer
