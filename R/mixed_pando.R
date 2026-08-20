@@ -93,8 +93,9 @@
       condition_rows <- is.na(route) | !nzchar(route) | route == "condition_grn"
     }
     if (any(condition_rows)) {
-      # Scheme E owns continuous fixed-dictionary effects. RegCompass validates
-      # fit status while carrying BH and target R2 only as diagnostics.
+      # E-star owns continuous fixed-dictionary production effects. Pando owns
+      # the common exact-edge whole-network BH topology. RegCompass validates
+      # that topology and never rebuilds a condition-local edge-selection rule.
       condition_table <- all_edges[condition_rows, , drop = FALSE]
       gate <- .rc_condition_penalty_gate(condition_table)
       target_rsq <- .rc_condition_target_rsq(condition_table)
@@ -122,8 +123,10 @@
         all_edges$active_in_condition <- FALSE
       }
       all_edges$active_in_condition[condition_rows] <- gate
-      condition_active <- all_edges[condition_rows &
-        all_edges$penalty_eligible %in% TRUE, , drop = FALSE]
+      condition_active <- all_edges[
+        condition_rows & all_edges$penalty_eligible %in% TRUE,
+        , drop = FALSE
+      ]
       standard_active <- if (nrow(active_edges) &&
           "analysis_mode" %in% colnames(active_edges)) {
         active_edges[
@@ -165,6 +168,7 @@
     ),
     standard_pando_objects = standard_objects,
     condition_grn_fits = condition_fits,
+    pando_edge_inference = .rc_bind_pando_field(results, "pando_edge_inference"),
     target_metabolic_genes = unique(unlist(
       lapply(results, `[[`, "target_metabolic_genes"), use.names = FALSE
     )),
@@ -218,9 +222,13 @@
         "standard Pando otherwise"
       ),
       condition_effect_filter = paste(
-        "consume every finite continuous Pando Scheme-E z=0.25 coefficient on",
-        "the frozen exact-edge dictionary when fit_status == 'ok'; BH and",
-        "target R2 are diagnostics only"
+        "consume Pando exact-edge whole-network BH common topology and retain",
+        "each condition's finite continuous E-star z=0.25 beta_E; target R2",
+        "is diagnostic only"
+      ),
+      condition_inference = paste(
+        "condition-local no-fusion Gaussian coefficient tests -> one exact-edge",
+        "omnibus P -> whole-cell-type-network BH"
       ),
       condition_contrast_filter =
         "biological differential claims require contrast_identifiable == TRUE",
@@ -230,7 +238,7 @@
                format(.rc_target_rsq_threshold(), trim = TRUE))
       ),
       projection =
-        "continuous beta times canonical RegCompass metacell TF-ATAC exposure"
+        "continuous beta_E times canonical RegCompass metacell TF-ATAC exposure"
     ),
     group_cols = c(condition_col, celltype_col)
   )
@@ -247,6 +255,12 @@
     answer$tf_peak_gene_condition,
     file.path(outdir, "pando_tf_peak_gene_active.tsv.gz")
   )
+  if (nrow(answer$pando_edge_inference)) {
+    .rc_write_tsv_gz(
+      answer$pando_edge_inference,
+      file.path(outdir, "pando_exact_edge_inference.tsv.gz")
+    )
+  }
   if (nrow(answer$tf_peak_gene_condition_contrasts)) {
     .rc_write_tsv_gz(
       answer$tf_peak_gene_condition_contrasts,
@@ -294,9 +308,9 @@
   } else {
     rep(TRUE, nrow(table))
   }
-  # Scheme-E condition targets are evaluated from fit status and continuous
-  # dictionary coefficients. R2 is not an eligibility gate. Standard Pando keeps
-  # the legacy finite-R2 evaluation semantics.
+  # Conditional targets are evaluated from production fit status and finite
+  # beta_E. Target R2 is not an eligibility gate. Standard Pando retains the
+  # legacy finite-R2 evaluation semantics.
   rsq <- if ("target_rsq" %in% colnames(table)) {
     suppressWarnings(as.numeric(table$target_rsq))
   } else if ("rsq" %in% colnames(table)) {
@@ -351,9 +365,11 @@
     unit_meta, condition_col, celltype_col, "Active-target"
   )
 
-  # Condition Scheme E: q=1 whenever a valid fitted target has at least one
-  # continuous fixed-dictionary coefficient; BH/R2 do not change this state.
-  # Standard Pando retains its existing filtered-edge three-state semantics.
+  # Conditional route: q=0 for a validly fitted target with no admitted common
+  # exact edge; q=1 when at least one whole-network-BH-supported exact edge is
+  # available for projection; q=NA when the target was not validly evaluated.
+  # Target R2 remains diagnostic only. Standard Pando retains its existing
+  # filtered-edge three-state semantics.
   q <- .rc_set_penalty_q_by_stratum(
     q, evaluated, unit_meta, condition_col, celltype_col, 0
   )
@@ -413,8 +429,9 @@
   coverage_table <- .rc_bind_frames_fill(coverage)
   if (nrow(coverage_table)) {
     coverage_table$penalty_q_definition <- paste(
-      "condition Scheme E: q=1 for valid fixed-dictionary fitted target and",
-      "q=NA only when unavailable; BH/R2 diagnostic only; standard Pando keeps",
+      "condition route: q=1 when a valid target has at least one common",
+      "whole-network-BH-supported exact edge, q=0 when valid but unsupported,",
+      "q=NA when unavailable; target R2 diagnostic only; standard Pando keeps",
       "its existing filtered-edge q semantics"
     )
   }
@@ -430,8 +447,8 @@
       length(grn_result$condition_grn_fits) > 0L,
     cell_type_analysis_mode = grn_result$cell_type_analysis_mode,
     penalty_q_definition = paste(
-      "condition Scheme E uses continuous fixed-dictionary availability;",
-      "BH/R2 do not gate; standard Pando retains legacy filtering"
+      "condition route uses the common exact-edge whole-network BH topology;",
+      "target R2 is diagnostic only; standard Pando retains legacy filtering"
     )
   )
 }
