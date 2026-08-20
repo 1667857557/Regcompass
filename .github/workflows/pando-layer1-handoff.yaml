@@ -128,7 +128,7 @@ jobs:
               "active_in_regcompass",
               "penalty_effect must equal the production E-star coefficient",
               'family != .RC_PANDO_CONDITION_PENALTY_FAMILY',
-              "target R2 cannot gate",
+              'gate & as.character(coefficient$fit_status) == "ok" & is.finite(effect)',
           ]
           missing = [value for value in required_penalty if value not in penalty]
           if missing:
