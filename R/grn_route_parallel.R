@@ -26,7 +26,7 @@
   list(
     shared = c("tf_cor", "peak_cor", "adjust_method", "padj_threshold"),
     condition = c(
-      "rank_action", "min_residual_df",
+      "rank_action", "min_residual_df", "reference_condition",
       "rna_layer", "peak_layer", "peak_value_type"
     ),
     standard = c(
@@ -123,6 +123,7 @@
   condition_args <- utils::modifyList(list(
     tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
     padj_threshold = 0.05, rank_action = "mark", min_residual_df = 1L,
+    reference_condition = NULL,
     rna_layer = "data", peak_layer = "data", peak_value_type = "normalized"
   ), condition_args)
   condition_threshold <- suppressWarnings(as.numeric(
@@ -138,6 +139,17 @@
     )
   }
   condition_args$padj_threshold <- condition_threshold
+  if (!is.null(condition_args$reference_condition)) {
+    reference <- as.character(condition_args$reference_condition)
+    if (length(reference) != 1L || is.na(reference) ||
+        !nzchar(trimws(reference)) || reference != trimws(reference)) {
+      stop(
+        "Conditional `reference_condition` must be NULL or one complete ",
+        "predefined condition label.", call. = FALSE
+      )
+    }
+    condition_args$reference_condition <- reference
+  }
 
   standard_args <- args[intersect(names(args), standard_allowed)]
   standard_args <- utils::modifyList(list(
@@ -391,6 +403,8 @@
     context = list(
       condition_cell_types = length(condition_types),
       standard_cell_types = length(standard_types),
+      condition_reference = condition_infer_args$reference_condition %||%
+        "<first-retained>",
       condition_parallel_scope = if (length(condition_types) &&
           isTRUE(parallel) && worker_limit > 1L) "target" else "serial",
       standard_parallel_scope = if (length(standard_types) && standard_ridge &&
