@@ -149,6 +149,7 @@
     stop("Condition Pando padj_threshold must be in (0, 1).",
          call. = FALSE)
   }
+  reference_condition <- pando_infer_args$reference_condition %||% NULL
   show_progress <- .rc_progress_enabled(
     getOption("RegCompassR.progress", TRUE)
   )
@@ -170,6 +171,7 @@
     padj_threshold = threshold,
     rank_action = pando_infer_args$rank_action,
     min_residual_df = pando_infer_args$min_residual_df,
+    reference_condition = reference_condition,
     parallel = isTRUE(inner_parallel),
     parallel_scope = "target",
     overwrite = TRUE,
@@ -184,6 +186,8 @@
       "RegCompass grn condition detail | cell_type=", cell_type,
       ";phase=pando_Estar_z025_JSE_pipeline",
       ";targets_requested=", length(target_genes),
+      ";reference_condition=",
+      if (is.null(reference_condition)) "<first-retained>" else reference_condition,
       ";target_parallel=", isTRUE(inner_parallel),
       ";workers=", if (!is.null(args$BPPARAM) &&
           !identical(args$BPPARAM, FALSE)) {
@@ -225,6 +229,12 @@
     stop("Pando returned a condition fit with the wrong BH threshold.",
          call. = FALSE)
   }
+  if (!is.null(reference_condition) &&
+      !identical(as.character(fit$reference_condition),
+                 as.character(reference_condition))) {
+    stop("Pando returned a condition fit with the wrong predefined reference.",
+         call. = FALSE)
+  }
   if (!identical(as.character(fit$model_schema),
                  .RC_PANDO_CONDITION_GRN_MODEL_SCHEMA) ||
       !identical(as.character(fit$fit_engine),
@@ -246,6 +256,7 @@
     message(
       "RegCompass grn condition detail | cell_type=", cell_type,
       ";phase=pando_Estar_z025_JSE_complete",
+      ";reference_condition=", as.character(fit$reference_condition),
       ";candidate_edges=", as.integer(fit$candidate_edge_count %||% NA_integer_),
       ";fit_edges=", as.integer(fit$fit_dictionary_edge_count %||% NA_integer_),
       ";condition_significant_rows=",
