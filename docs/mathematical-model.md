@@ -2,7 +2,7 @@
 
 This document is the canonical quantitative specification. Tutorials and Rd files describe interfaces; the equations below define the production calculations.
 
-## 1. Condition-comparable Pando E★-JSE model
+## 1. Condition-comparable Pando E★ production with separated inference
 
 For one broad cell type and target gene \(g\), Pando first applies its structural candidate rules: regulatory-domain proximity, TF motif support, and the configured peak-target and TF-target correlation screens. For the human RegCompass route the default region prior is
 
@@ -17,13 +17,13 @@ For exact edge \(e=(g,f,r)\), condition \(c\), define
 \rho^{TF}_{e,c}=cor_c(RNA_f,RNA_g).
 \]
 
-The same correlations are also computed on all eligible-condition cells pooled within the broad cell type. With strict configured thresholds \(\tau_{peak}\) and \(\tau_{TF}\), pooled/global and condition-local candidate sets are unioned on the complete exact coordinate:
+The same correlations are also computed on all eligible-condition cells pooled within the broad cell type. Candidate sets passing the configured peak-target and TF-target gates in the pooled/global or condition-local calculation are unioned on the complete exact coordinate:
 
 \[
 D_T=D_{global}\cup D_1\cup\cdots\cup D_K.
 \]
 
-Deduplication is on `(target, TF, region)`. TFs, peaks and targets are never unioned independently and recombined. Every condition fits the same ordered \(D_T\).
+Deduplication is on `(target, TF, region)`. TFs, peaks and targets are never unioned independently and recombined. Regression P values or BH-adjusted P values are not used to construct this dictionary. Every retained condition fits the same ordered \(D_T\).
 
 For paired cell \(i\),
 
@@ -45,7 +45,7 @@ y_c=\alpha_c\mathbf 1+X_c\beta_c+\epsilon_c,
 \qquad \epsilon_c\sim N(0,\sigma_g^2I).
 \]
 
-After condition-wise centering, one common target residual scale defines
+After condition-wise centering, one common target residual scale defines the E★ production information
 
 \[
 Q_c=X_c^TX_c/\widehat\sigma_g^2,
@@ -61,7 +61,7 @@ h=(h_1^T,\ldots,h_K^T)^T.
 
 There is no \(n_{total}/(Kn_c)\) condition-size equalization weight.
 
-### 1.1 Q-orthogonal shared/deviation geometry
+### 1.1 Q-orthogonal E★ production geometry
 
 Let
 
@@ -101,7 +101,7 @@ Define
 H=R^TQR,\qquad r=R^Th.
 \]
 
-For every identifiable contrast coordinate \(j\), its effective information \(I_j\) is obtained from the full correlated profile information, equivalently from the appropriate diagonal of \(H^+\) only after estimability is established. Production uses the fixed E★ threshold
+For every identifiable contrast coordinate \(j\), its effective information \(I_j\) is obtained from the full correlated profile information after estimability is established. Production uses the fixed E★ threshold
 
 \[
 \boxed{z=0.25}
@@ -124,7 +124,7 @@ subject to \(\delta_j=0\) for non-identifiable/zero-information coordinates. In 
 \left(|d|-\frac{0.25}{\sqrt{I_\delta}}\right)_+.
 \]
 
-A zero-information equality is a deterministic boundary convention and is recorded as `shared_by_boundary`; it is not evidence of biological equality. An identifiable contrast shrunk exactly to zero is recorded separately as `fused_by_penalty`.
+A zero-information equality is a deterministic boundary convention and is recorded as `shared_by_boundary`; it is not evidence of biological equality. An identifiable contrast shrunk exactly to zero is recorded separately as `fused_by_penalty`. Both are properties of the production estimator and are not used to define formal edge significance.
 
 The production coefficient is
 
@@ -140,96 +140,113 @@ estimate_{c,e}=penalty\_effect_{c,e}=\widehat\beta^E_{c,e}.
 
 The production conditional route exposes no alternative \(z\) grid, no conditional ridge-CV lambda selection and no fusion-ratio sensitivity parameter.
 
-### 1.2 Fusion-component joint covariance and inference
+### 1.2 Frozen-dictionary no-fusion condition inference
 
-Exact zero deviations define an equality graph among conditions for each edge. Connected components are the fusion components. After the E★ structure is frozen, let
+Formal edge inference is deliberately separated from the E★-selected production structure. For each condition and target, the same complete target-specific frozen dictionary is fit by a Gaussian linear model without coefficient fusion. After removing the condition intercept by centering,
 
 \[
-b=M_z\theta_z
+\widetilde y_c=\widetilde X_c b_c+\varepsilon_c.
 \]
 
-map the stacked condition-edge coefficient vector to one parameter per edge × fusion component. With condition-specific intercepts and block design \(\mathcal X=blockdiag(X_1,\ldots,X_K)\), the reduced joint design is
+Let
 
 \[
-Z_z=[I_{condition\ intercept},\;\mathcal X M_z].
+r_c=rank(\widetilde X_c),\qquad
+\nu_c=n_c-1-r_c.
 \]
 
-The inference-only selected-structure refit is
+When \(\nu_c\) satisfies the configured residual-degree-of-freedom requirement,
 
 \[
-\widetilde\theta_z=(Z_z^TZ_z)^+Z_z^Ty,
+\widehat b_c=(\widetilde X_c^T\widetilde X_c)^+
+\widetilde X_c^T\widetilde y_c,
 \]
 
-with
-
 \[
-\widehat\sigma^2_{inf,z}
-=\frac{\|y-Z_z\widetilde\theta_z\|_2^2}
-{N-rank(Z_z)},
+\widehat\sigma_c^2=
+\frac{\|\widetilde y_c-\widetilde X_c\widehat b_c\|_2^2}{\nu_c},
 \]
 
-and full covariance
+and
 
 \[
-\widehat{Cov}(\widetilde\theta_z)
-=\widehat\sigma^2_{inf,z}(Z_z^TZ_z)^+.
+\widehat{Cov}(\widehat b_c)=
+\widehat\sigma_c^2(\widetilde X_c^T\widetilde X_c)^+,
 \]
 
-For condition \(c\), edge \(e\), selection row \(L_{c,e}\),
+with the covariance and coefficients transformed back to raw TF×ATAC units using the same fixed predictor scale as the production fit.
+
+A coefficient is independently estimable only when its unit contrast lies in the row space of the condition design. Aliased/non-estimable coefficients are stored as non-estimable with inference quantities `NA`; they are not converted to coefficient zero, `P=1`, or infinite standard error.
+
+For an estimable condition-edge coefficient,
 
 \[
-SE_{c,e}=\sqrt{L_{c,e}\widehat{Cov}(\widetilde\theta_z)L_{c,e}^T}.
-\]
-
-Thus fully or partially shared edges borrow information through the full correlated joint design rather than through diagonal-information addition. `inference_estimate` and `inference_se` are stored separately and never replace the production `estimate`/`penalty_effect`.
-
-The Wald statistic and raw P value are
-
-\[
-Z_{c,e}=\frac{\widetilde\beta_{c,e}}{SE_{c,e}},
+t_{c,e}=\frac{\widehat b_{c,e}}{SE(\widehat b_{c,e})},
 \qquad
-p_{c,e}=2\Phi(-|Z_{c,e}|).
+p_{c,e}=2F_{t_{\nu_c}}(-|t_{c,e}|).
 \]
 
-If a reduced-model component remains non-estimable, `inference_se`, `pval`, and `padj` are `NA`; the row is not converted to `p=1` or `SE=Inf`.
+Thus condition-local `inference_estimate`, `inference_se`, `inference_variance`, `inference_statistic`, and `condition_pval` have ordinary no-fusion Gaussian-LM meaning. E★ fusion components do not alter their null hypothesis or covariance.
 
-### 1.3 condition × target BH and RegCompass exact-edge union
+### 1.3 Exact-edge omnibus test and whole-network BH
 
-BH is performed independently for every condition-target family:
+For exact edge \(e\), let \(C_e\) be the set of conditions in which that coefficient is independently estimable and let \(m_e=|C_e|\). Stack the corresponding no-fusion estimates as \(\widehat b_e\) with covariance \(V_e\). Conditions use disjoint cells, so the cross-condition covariance is block diagonal. For \(m_e>1\), the exact-edge null is
 
 \[
-q_{c,e}=BH\{p_{c,e'}:target(e')=g\}.
+H_{0,e}:\beta_{c,e}=0\quad\forall c\in C_e,
 \]
 
-Only finite, estimable P values enter each family, and significance is strict:
+with omnibus statistic
 
 \[
-S_{c,e}=1\{q_{c,e}<\theta_{adj}\},
+W_e=\widehat b_e^T V_e^+\widehat b_e
+=\sum_{c\in C_e}
+\frac{\widehat b_{c,e}^2}{\widehat{Var}(\widehat b_{c,e})},
+\]
+
+and reference distribution
+
+\[
+W_e\sim\chi^2_{m_e}.
+\]
+
+If \(m_e=1\), Pando retains that condition's exact finite-residual-df Student-t P value rather than replacing it by a \(\chi^2_1\) approximation. If \(m_e=0\), the exact edge is inference-non-estimable and its edge P value is `NA`.
+
+Let \(\mathcal E_{est}\) be all exact edges with finite edge P values in the broad cell type. BH is performed exactly once over this network-wide family:
+
+\[
+q_e=BH\{p_{e'}:e'\in\mathcal E_{est}\}.
+\]
+
+There is no condition × target BH family on the conditional route. Edge significance is strict,
+
+\[
+S_e=1\{q_e<\theta_{adj}\},
 \qquad \theta_{adj}=0.05\ \text{by default}.
 \]
 
-For exact edge \(e\), define engineering validity
+Define production validity
 
 \[
-V_e=1\{\forall c:\ fit\_status_{c,g(e)}=ok
+V_e^{prod}=1\{\forall c:\ fit\_status_{c,g(e)}=ok
 \land \widehat\beta^E_{c,e}\ \text{finite}\}.
 \]
 
-The RegCompass handoff is
+The RegCompass handoff is the common exact-edge topology
 
 \[
-\boxed{H_e=V_e\,1\{\exists c:q_{c,e}<\theta_{adj}\}}.
+\boxed{H_e=V_e^{prod}S_e}.
 \]
 
-If \(H_e=1\), the edge is retained in **every** condition and each condition contributes its own continuous \(\widehat\beta^E_{c,e}\). If \(H_e=0\), the edge is not projected in any condition. Hence condition-specific biological effects are represented by continuous coefficient differences rather than sample-size-dependent edge presence/absence.
+`active_in_regcompass`, `edge_supported`, and the generic significance flag therefore have the same edge-level value for every condition row of an exact edge. If \(H_e=1\), each condition still contributes its own continuous \(\widehat\beta^E_{c,e}\). Condition-local P values are inference annotations and cannot create condition-specific edge presence/absence.
 
-Pairwise contrasts are reconstructed from the same joint coefficient vector. For three conditions C/J/M,
+Production pairwise contrasts are differences of the continuous E★ coefficients. Formal no-fusion contrast inference, when reported, is computed from the condition-local inference branch and is separate from E★ boundary/fusion metadata. For three production coefficients C/J/M,
 
 \[
 \Delta_{JM}=\Delta_{CM}-\Delta_{CJ}
 \]
 
-holds exactly. A boundary-shared contrast is not eligible for a differential-regulation claim.
+holds algebraically. A production contrast fixed by zero information is marked as a boundary convention and must not be interpreted as evidence of biological equality.
 
 The Pando-equivalent target diagnostic remains
 
@@ -237,7 +254,7 @@ The Pando-equivalent target diagnostic remains
 R^2_{c,g}=1-\frac{RSS_{c,g}}{TSS_{c,g}}.
 \]
 
-For conditional E★-JSE it is diagnostic only: it is not a RegCompass handoff gate and is not used to choose \(z\). Standard one-condition Pando remains a separate route and retains its own standard ridge controls and standard R² eligibility logic.
+For conditional E★ z=0.25 it is diagnostic only: it is not a RegCompass handoff gate and is not used to choose \(z\). Standard one-condition Pando remains a separate route and retains its own standard ridge controls and standard R² eligibility logic.
 
 The downstream binary target availability for a condition is
 
@@ -245,7 +262,7 @@ The downstream binary target availability for a condition is
 q_{g,c}=1
 \]
 
-when at least one admitted exact edge for target \(g\) is projected in that condition, and \(q_{g,c}=0\) when the target was validly evaluated but no exact edge was admitted. A failed/non-finite target fit remains unavailable (`NA`).
+when at least one common-topology exact edge for target \(g\) is projected in that condition, and \(q_{g,c}=0\) when the target was validly evaluated but no exact edge was admitted. A failed/non-finite target fit remains unavailable (`NA`).
 
 ## 2. Metacell regulatory projection
 
@@ -441,4 +458,4 @@ Metacells are within-dataset statistical units; these tests are not donor/sample
 
 ## 11. Artifact compatibility
 
-The quantitative LP path and bounded structural path are deliberately separate. Layer 1 artifacts expose both quantitative reaction expression and bounded structural support. Artifacts generated with the old conditional no-fusion ridge/local-Wald topology, an R² hard gate on conditional handoff, or the previous pure product-of-means Pando projection must be regenerated before comparison with the E★-JSE z=0.25 production workflow.
+The quantitative LP path and bounded structural path are deliberately separate. Layer 1 artifacts expose both quantitative reaction expression and bounded structural support. Artifacts generated with the former selected-fusion JSE / condition-target-BH / any-condition-union conditional topology, an R² hard gate on conditional handoff, or the previous pure product-of-means Pando projection must be regenerated before comparison with the current fixed-z E★ production plus separated exact-edge inference workflow.

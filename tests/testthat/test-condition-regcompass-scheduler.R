@@ -51,23 +51,29 @@ test_that("condition scheduler preserves the min-cells error contract", {
   )
 })
 
-test_that("conditional Pando routing exposes no ridge-CV or alternative-z controls", {
+test_that("conditional Pando routing exposes design controls but no retired tuning API", {
   catalog <- .rc_pando_infer_arg_catalog()
   expect_setequal(
     catalog$condition,
-    c("rank_action", "min_residual_df", "rna_layer", "peak_layer",
-      "peak_value_type")
+    c(
+      "rank_action", "min_residual_df", "reference_condition",
+      "rna_layer", "peak_layer", "peak_value_type"
+    )
   )
   routed <- .rc_route_pando_infer_args(
-    list(tf_cor = 0.1, peak_cor = 0.05, padj_threshold = 0.05),
+    list(
+      tf_cor = 0.1, peak_cor = 0.05, padj_threshold = 0.05,
+      reference_condition = "A"
+    ),
     condition_types = "T", standard_types = character()
   )
   expect_equal(routed$condition$tf_cor, 0.1)
   expect_equal(routed$condition$peak_cor, 0.05)
   expect_equal(routed$condition$padj_threshold, 0.05)
+  expect_identical(routed$condition$reference_condition, "A")
   expect_false(any(c(
-    "condition_ridge_control", "scheme_e_z", "z", "lambda_grid",
-    "lambda_rule", "cv_folds", "fusion_ratio"
+    "condition_ridge_control", "condition_e_control", "scheme_e_z", "z",
+    "lambda_grid", "lambda_rule", "cv_folds", "fusion_ratio"
   ) %in% names(routed$condition)))
   expect_error(
     .rc_route_pando_infer_args(

@@ -21,9 +21,10 @@ test_that("Pando routing defaults thresholds to 0.05 and standard ridge", {
   expect_equal(condition$condition$tf_cor, 0.05)
   expect_equal(condition$condition$peak_cor, 0.05)
   expect_equal(condition$condition$padj_threshold, 0.05)
+  expect_null(condition$condition$reference_condition)
   expect_false(any(c(
-    "condition_ridge_control", "scheme_e_z", "z", "lambda_grid",
-    "lambda_rule", "cv_folds", "fusion_ratio"
+    "condition_ridge_control", "condition_e_control", "scheme_e_z", "z",
+    "lambda_grid", "lambda_rule", "cv_folds", "fusion_ratio"
   ) %in% names(condition$condition)))
 })
 
@@ -38,6 +39,13 @@ test_that("removed conditional controls are rejected instead of silently ignored
   expect_error(
     .rc_route_pando_infer_args(
       list(scheme_e_z = 0.5),
+      condition_types = "T_cell"
+    ),
+    "Removed conditional Pando control"
+  )
+  expect_error(
+    .rc_route_pando_infer_args(
+      list(fusion_ratio = 0.5),
       condition_types = "T_cell"
     ),
     "Removed conditional Pando control"
@@ -71,7 +79,7 @@ test_that("single-condition standard ridge preserves its independent controls", 
   expect_equal(nrow(routed$diagnostics), 0L)
 })
 
-test_that("condition Pando ignores standard-only inference parameters", {
+test_that("condition Pando disables standard-only inference parameters", {
   routed <- .rc_route_pando_infer_args(
     list(
       method = "glm",
@@ -95,7 +103,7 @@ test_that("condition Pando ignores standard-only inference parameters", {
   expect_true(all(routed$diagnostics$route == "condition_grn"))
 })
 
-test_that("condition GRN routes only current E-star/JSE design controls", {
+test_that("condition GRN routes only current fixed-z design controls", {
   routed <- .rc_route_pando_infer_args(
     list(
       tf_cor = 0.2,
@@ -104,6 +112,7 @@ test_that("condition GRN routes only current E-star/JSE design controls", {
       padj_threshold = 0.2,
       rank_action = "mark",
       min_residual_df = 2L,
+      reference_condition = "Control",
       method = "glmnet",
       alpha = 0.5,
       scale = TRUE
@@ -116,9 +125,10 @@ test_that("condition GRN routes only current E-star/JSE design controls", {
   expect_equal(routed$condition$peak_cor, 0.03)
   expect_equal(routed$condition$padj_threshold, 0.2)
   expect_equal(routed$condition$min_residual_df, 2L)
+  expect_identical(routed$condition$reference_condition, "Control")
   expect_false(any(c(
     "method", "alpha", "scale", "condition_ridge_control",
-    "scheme_e_z", "z", "fusion_ratio"
+    "condition_e_control", "scheme_e_z", "z", "fusion_ratio"
   ) %in% names(routed$condition)))
   expect_setequal(
     routed$diagnostics$argument,
@@ -143,7 +153,8 @@ test_that("mixed routing preserves current shared and route-specific controls", 
   )
 
   expect_true(all(c(
-    "padj_threshold", "rank_action", "min_residual_df"
+    "padj_threshold", "rank_action", "min_residual_df",
+    "reference_condition"
   ) %in% names(routed$condition)))
   expect_true(all(c("padj_threshold", "method", "scale") %in%
                     names(routed$standard)))
@@ -213,6 +224,9 @@ test_that("parallel condition jobs preserve separate Pando objects and contrasts
       condition_fit_status = data.frame(cell_type = cell_type),
       pando_network_index = data.frame(cell_type = cell_type),
       pando_fit_diagnostics = data.frame(cell_type = cell_type),
+      pando_edge_inference = data.frame(
+        cell_type = cell_type, edge_id = paste0("E_", cell_type)
+      ),
       tf_peak_gene_universal = data.frame(cell_type = cell_type),
       tf_peak_gene_condition_all = data.frame(cell_type = cell_type),
       tf_peak_gene_condition = data.frame(cell_type = cell_type),
@@ -230,7 +244,7 @@ test_that("parallel condition jobs preserve separate Pando objects and contrasts
       paired_cell_ids = cell_id,
       target_metabolic_genes = paste0("GENE_", cell_type),
       pando_execution_summary = list(
-        fit_engine = "condition_union_Estar_z025_jointse",
+        fit_engine = "condition_union_Estar_z025_inference_separated",
         targets_total = 1L,
         targets_failed = 0L
       )
@@ -253,5 +267,6 @@ test_that("parallel condition jobs preserve separate Pando objects and contrasts
     names(merged$condition_grn_fits),
     c("T_cell", "Monocyte")
   )
+  expect_equal(nrow(merged$pando_edge_inference), 2L)
   expect_equal(nrow(merged$tf_peak_gene_condition_contrasts), 2L)
 })

@@ -21,6 +21,7 @@ step1 <- rc_regcompass_step_grn(
     pando_infer_args = list(
       tf_cor = 0.05,
       peak_cor = 0.05,
+      adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
       min_residual_df = 1L,
@@ -31,21 +32,24 @@ step1 <- rc_regcompass_step_grn(
 )
 ```
 
-Use `condition_col = NULL` for a dataset without conditions. Broad cell types with at least two retained conditions use the conditional Pando production route: pooled/global plus condition-local candidate discovery, one frozen exact `(target, TF, peak)` union dictionary, E★ with fixed `z = 0.25`, fusion-component joint-SE inference, BH within each `condition × target`, and an any-condition exact-edge union for RegCompass handoff. Cell types with one effective condition use standard Pando.
+Use `condition_col = NULL` for a dataset without conditions. Broad cell types with at least two retained conditions use the conditional Pando production route. Candidate discovery is run on all eligible-condition cells pooled together and independently in each condition; exact `(target, TF, peak)` triples are deduplicated into one frozen common dictionary. Candidate membership is based on the Pando regulatory-domain, motif and configured correlation gates, not on regression P values or BH results.
+
+Continuous condition coefficients are then estimated jointly by E★ with fixed `z = 0.25`. Formal topology inference is separate from E★ fusion/boundary selection: each condition fits the same target-specific frozen dictionary with a no-fusion Gaussian linear model, non-estimable coefficients remain `NA`, each exact edge receives one across-condition omnibus P value, and BH is applied once across all estimable exact edges in that broad cell type. The resulting supported exact-edge topology is common to every retained condition. Cell types with one effective condition use standard Pando.
 
 For the conditional route, the commonly adjusted Stage 1 parameters are:
 
 - `pando_args$min_cells`: minimum cells required for each retained Stage 1 condition × cell-type stratum.
 - `pando_args$pando_infer_args$tf_cor`: TF-target candidate-discovery correlation threshold.
 - `pando_args$pando_infer_args$peak_cor`: peak-target candidate-discovery correlation threshold.
-- `pando_args$pando_infer_args$padj_threshold`: strict BH threshold after fusion-component joint inference; BH is performed separately within each `condition × target` family.
-- `pando_args$pando_infer_args$rank_action`: `"mark"` keeps raw rank-deficient fits and records identifiable/boundary structure; `"error"` requests strict failure.
-- `pando_args$pando_infer_args$min_residual_df`: minimum pooled effective residual degrees of freedom.
-- `pando_args$pando_infer_args$reference_condition`: predefined experimental reference used to construct the K-condition contrast-tree geometry. It is a design coordinate, not a tuning parameter. The label must be retained in every conditional cell type; if omitted, Pando uses and records the first retained condition. Do not choose it after inspecting GRN results.
+- `pando_args$pando_infer_args$adjust_method`: fixed to `"BH"` for the conditional route.
+- `pando_args$pando_infer_args$padj_threshold`: strict edge-level BH threshold. BH is performed once over the complete estimable exact-edge family of the broad cell type, not separately by condition or target.
+- `pando_args$pando_infer_args$rank_action`: `"mark"` retains rank-deficient production fits with explicit identifiable/boundary metadata; `"error"` requests strict failure.
+- `pando_args$pando_infer_args$min_residual_df`: minimum residual degrees of freedom required by the target fit/inference contract.
+- `pando_args$pando_infer_args$reference_condition`: predefined experimental reference used only for the K-condition E★ contrast-tree geometry. It is a production-model coordinate, not an inference tuning parameter. The label must be retained in every conditional cell type; if omitted, Pando uses and records the first retained condition. Do not choose it after inspecting GRN results.
 
-The conditional production path does **not** expose `condition_ridge_control`, `condition_e_control`, `cv_folds`, `lambda_rule`, `fusion_ratio`, an alternative `z`, or a sensitivity grid. `z = 0.25` is fixed in the conditional estimator. Target full-data R² is retained as a diagnostic for this route and does not gate the exact-edge handoff.
+The conditional production path does **not** expose `condition_ridge_control`, `condition_e_control`, `cv_folds`, `lambda_rule`, `fusion_ratio`, an alternative `z`, or a sensitivity grid. `z = 0.25` is fixed in the conditional estimator. Target full-data R² is retained as a diagnostic for this route and does not gate the common exact-edge topology.
 
-An exact edge enters RegCompass when every fitted condition has a valid continuous E★ coefficient and at least one condition has `padj < padj_threshold`. Once admitted, that exact edge is kept in every condition with the condition's own continuous `penalty_effect`; a nonsignificant small condition is therefore not converted into an absent edge solely because of lower power.
+For an exact edge, a single independently estimable condition retains its finite-residual-df Student-t P value. If multiple conditions are independently estimable, their no-fusion coefficients enter an omnibus Wald chi-square test. An edge enters RegCompass only when its whole-network BH-adjusted edge P value is below `padj_threshold` and every fitted condition has a valid finite E★ production coefficient. Once admitted, the same exact edge is kept in every condition with that condition's own continuous `penalty_effect`. Condition-local P values are annotations and do not create condition-specific edge presence/absence.
 
 For a one-condition standard-ridge route, standard Pando retains its separate `ridge_control` API and the existing `target_rsq_threshold` gate. The top-level `target_rsq_threshold` argument is therefore still present for standard Pando; on the conditional E★ route the same R² value is diagnostic only.
 
@@ -103,7 +107,7 @@ step4 <- rc_regcompass_step_layer1(
 )
 ```
 
-For conditional GRNs, Layer 1 projects only exact edges admitted by the any-condition BH union, but uses each condition's continuous E★ `penalty_effect`. The existing RegCompass exposure remains
+For conditional GRNs, Layer 1 projects only exact edges in Pando's common edge-level whole-network-BH topology and uses each condition's continuous E★ `penalty_effect`. RegCompass does not re-run significance testing or reselect the topology. The existing RegCompass exposure remains
 
 `0.75 × mean(TF × ATAC) + 0.25 × mean(TF) × mean(ATAC)`
 

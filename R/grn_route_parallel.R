@@ -81,8 +81,9 @@
     stop(
       "Removed conditional Pando control(s): ",
       paste(obsolete, collapse = ", "),
-      ". RegCompass conditional GRNs use the fixed production E-star/JSE ",
-      "model with z=0.25; no conditional CV or sensitivity control is exposed.",
+      ". RegCompass conditional GRNs use fixed production E-star z=0.25 ",
+      "coefficients with separate no-fusion exact-edge inference; no ",
+      "conditional CV or sensitivity control is exposed.",
       call. = FALSE
     )
   }
@@ -395,8 +396,8 @@
     progress_monitor, "cell_type_execution_plan",
     paste(
       "condition GRNs use pooled/global plus condition exact union,",
-      "E-star z=0.25 and fusion-component JSE; standard Pando uses",
-      standard_method,
+      "E-star z=0.25 production plus separated exact-edge inference;",
+      "standard Pando uses", standard_method,
       if (standard_ridge) "through the independent K=1 ridge route" else ""
     ),
     current = 5L,

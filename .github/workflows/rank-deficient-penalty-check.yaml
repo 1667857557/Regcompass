@@ -17,7 +17,7 @@ jobs:
       - uses: r-lib/actions/setup-r@v2
         with:
           r-version: '4.5'
-      - name: Verify E-star boundary sharing and union handoff
+      - name: Verify E-star boundary sharing and whole-network edge handoff
         shell: Rscript {0}
         run: |
           `%||%` <- function(x, y) if (is.null(x)) y else x
@@ -25,40 +25,67 @@ jobs:
           source("R/condition_grn_contract.R")
           source("R/condition_penalty_contract.R")
 
-          coefficient <- data.frame(
-            edge_id = c("G||TF||P", "G||TF||P"),
-            target = c("G", "G"),
-            condition = c("A", "B"),
-            estimate = c(0.8, 0.8),
-            penalty_effect = c(0.8, 0.8),
-            pval = c(0.001, 0.2),
-            padj = c(0.01, 0.2),
-            inference_estimable = c(TRUE, TRUE),
-            condition_significant = c(TRUE, FALSE),
-            statistically_supported = c(TRUE, FALSE),
-            significant = c(TRUE, FALSE),
-            pando_estimation_active = c(TRUE, TRUE),
-            active = c(TRUE, TRUE),
-            edge_union_supported = c(TRUE, TRUE),
-            supporting_conditions = c("A", "A"),
-            n_supporting_conditions = c(1L, 1L),
-            all_conditions_fit_valid = c(TRUE, TRUE),
-            active_in_regcompass = c(TRUE, TRUE),
-            fit_status = c("ok", "ok"),
-            penalty_family = c(
-              "information_scaled_sparse_deviation",
-              "information_scaled_sparse_deviation"
-            ),
-            penalty_value = c(0.25, 0.25),
-            solver_status = c("ok", "ok"),
-            kkt_residual = c(1e-10, 1e-10),
-            iterations = c(20L, 20L),
-            contrast_identifiable = c(FALSE, FALSE),
-            shared_by_boundary = c(TRUE, TRUE),
-            fused_by_penalty = c(FALSE, FALSE),
-            stringsAsFactors = FALSE
-          )
+          make_edge <- function(beta = c(0.4, 0.1), fit_status = c("ok", "ok")) {
+            variance <- c(0.01, 0.01)
+            se <- sqrt(variance)
+            condition_stat <- beta / se
+            condition_p <- 2 * stats::pnorm(-abs(condition_stat))
+            edge_stat <- sum(beta^2 / variance)
+            edge_p <- stats::pchisq(edge_stat, df = 2L, lower.tail = FALSE)
+            valid_production <- all(fit_status == "ok")
+            edge_supported <- valid_production && edge_p < 0.05
+            data.frame(
+              edge_id = c("G||TF||P", "G||TF||P"),
+              target = c("G", "G"),
+              condition = c("A", "B"),
+              estimate = c(0.8, 0.8),
+              penalty_effect = c(0.8, 0.8),
+              inference_estimate = beta,
+              inference_se = se,
+              inference_variance = variance,
+              inference_statistic = condition_stat,
+              condition_pval = condition_p,
+              condition_inference_estimable = c(TRUE, TRUE),
+              edge_df = c(2L, 2L),
+              edge_statistic = c(edge_stat, edge_stat),
+              edge_pval = c(edge_p, edge_p),
+              edge_padj = c(edge_p, edge_p),
+              edge_inference_estimable = c(TRUE, TRUE),
+              edge_inference_test = c(
+                "independent_condition_wald_chisq",
+                "independent_condition_wald_chisq"
+              ),
+              pval = c(edge_p, edge_p),
+              padj = c(edge_p, edge_p),
+              bh_scope = c(
+                "exact_edge_whole_cell_type_network_BH",
+                "exact_edge_whole_cell_type_network_BH"
+              ),
+              bh_family_size = c(1L, 1L),
+              all_conditions_fit_valid = c(valid_production, valid_production),
+              edge_supported = c(edge_supported, edge_supported),
+              statistically_supported = c(edge_supported, edge_supported),
+              significant = c(edge_supported, edge_supported),
+              pando_estimation_active = c(TRUE, TRUE),
+              active = c(TRUE, TRUE),
+              active_in_regcompass = c(edge_supported, edge_supported),
+              fit_status = fit_status,
+              penalty_family = c(
+                "information_scaled_sparse_deviation",
+                "information_scaled_sparse_deviation"
+              ),
+              penalty_value = c(0.25, 0.25),
+              solver_status = c("ok", "ok"),
+              kkt_residual = c(1e-10, 1e-10),
+              iterations = c(20L, 20L),
+              contrast_identifiable = c(FALSE, FALSE),
+              shared_by_boundary = c(TRUE, TRUE),
+              fused_by_penalty = c(FALSE, FALSE),
+              stringsAsFactors = FALSE
+            )
+          }
 
+          coefficient <- make_edge()
           gate <- .rc_condition_penalty_gate(
             coefficient, padj_threshold = 0.05,
             target_rsq_threshold = 0.05
@@ -70,11 +97,9 @@ jobs:
             identical(coefficient$fused_by_penalty, c(FALSE, FALSE))
           )
 
-          invalid <- coefficient
-          invalid$fit_status[[2]] <- "failed"
-          invalid$all_conditions_fit_valid <- FALSE
-          invalid$edge_union_supported <- FALSE
-          invalid$active_in_regcompass <- FALSE
+          # A production failure invalidates the common exact-edge topology in
+          # every condition even when formal edge inference remains significant.
+          invalid <- make_edge(fit_status = c("ok", "failed"))
           stopifnot(identical(
             .rc_condition_penalty_gate(
               invalid, padj_threshold = 0.05,
@@ -83,15 +108,10 @@ jobs:
             c(FALSE, FALSE)
           ))
 
-          no_support <- coefficient
-          no_support$padj <- c(0.2, 0.3)
-          no_support$condition_significant <- FALSE
-          no_support$statistically_supported <- FALSE
-          no_support$significant <- FALSE
-          no_support$edge_union_supported <- FALSE
-          no_support$supporting_conditions <- ""
-          no_support$n_supporting_conditions <- 0L
-          no_support$active_in_regcompass <- FALSE
+          # Weak no-fusion effects produce a nonsignificant edge-level omnibus
+          # test; both condition rows therefore share the same inactive topology.
+          no_support <- make_edge(beta = c(0.02, 0.01))
+          stopifnot(all(no_support$edge_padj >= 0.05))
           stopifnot(identical(
             .rc_condition_penalty_gate(
               no_support, padj_threshold = 0.05,

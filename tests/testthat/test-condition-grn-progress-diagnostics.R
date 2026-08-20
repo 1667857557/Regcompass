@@ -15,12 +15,27 @@ test_that("condition target pool disables generic BiocParallel progress bars", {
   expect_equal(.rc_bpparam_worker_limit(quiet), 2L)
 })
 
-test_that("condition fit task exposes E-star/JSE production progress", {
+test_that("condition fit task reports E-star production and separated inference", {
   body_text <- paste(deparse(body(.rc_condition_ridge_fit_task)), collapse = "\n")
   expect_match(body_text, "verbose = show_progress", fixed = TRUE)
-  expect_match(body_text, "phase=pando_Estar_z025_JSE_pipeline", fixed = TRUE)
-  expect_match(body_text, "Condition-GRN E-star/JSE fit failed for cell type", fixed = TRUE)
-  expect_match(body_text, "phase=pando_Estar_z025_JSE_complete", fixed = TRUE)
-  expect_match(body_text, "condition_significant_rows=", fixed = TRUE)
-  expect_match(body_text, "regcompass_union_edges=", fixed = TRUE)
+  expect_match(
+    body_text,
+    "phase=pando_Estar_z025_separate_inference_pipeline",
+    fixed = TRUE
+  )
+  expect_match(
+    body_text,
+    "Condition-GRN E-star/separate-inference fit failed for cell type",
+    fixed = TRUE
+  )
+  expect_match(
+    body_text,
+    "phase=pando_Estar_z025_separate_inference_complete",
+    fixed = TRUE
+  )
+  expect_match(body_text, "condition_inference_estimable_rows=", fixed = TRUE)
+  expect_match(body_text, "edge_inference_estimable=", fixed = TRUE)
+  expect_match(body_text, "regcompass_edges=", fixed = TRUE)
+  expect_false(grepl("JSE", body_text, fixed = TRUE))
+  expect_false(grepl("condition_significant_rows=", body_text, fixed = TRUE))
 })

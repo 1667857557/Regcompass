@@ -1,4 +1,4 @@
-test_that("conditional penalty q follows admitted exact-edge union, not R2", {
+test_that("conditional penalty q follows admitted common exact-edge topology, not R2", {
   all_edges <- data.frame(
     target = c("G1", "G1", "G2", "G3", "G4"),
     condition = c("A", "B", "A", "A", "A"),
@@ -42,7 +42,7 @@ test_that("conditional penalty q follows admitted exact-edge union, not R2", {
   expect_true(is.na(q["g1", "u4"]))
 })
 
-test_that("q zero remains a neutral modifier for evaluated but unadmitted targets", {
+test_that("q zero remains a neutral modifier for evaluated but unsupported targets", {
   projection <- matrix(
     c(NA_real_, 2), nrow = 1,
     dimnames = list("g1", c("u_rejected", "u_active"))
@@ -58,7 +58,7 @@ test_that("q zero remains a neutral modifier for evaluated but unadmitted target
   expect_true(is.finite(modifier["g1", "u_active"]))
 })
 
-test_that("combined projection keeps R2 diagnostic and union admission explicit", {
+test_that("combined projection keeps R2 diagnostic and common topology explicit", {
   body_text <- paste(
     deparse(body(RegCompassR:::.rc_project_pando_by_celltype)),
     collapse = "\n"

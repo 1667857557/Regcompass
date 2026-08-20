@@ -47,6 +47,7 @@ result <- rc_run_regcompass_one_shot(
     pando_infer_args = list(
       tf_cor = 0.05,
       peak_cor = 0.05,
+      adjust_method = "BH",
       padj_threshold = 0.05,
       rank_action = "mark",
       min_residual_df = 1L,
@@ -57,7 +58,9 @@ result <- rc_run_regcompass_one_shot(
 )
 ```
 
-For multi-condition cell types, the production conditional GRN is fixed to E-star/JSE with `z = 0.25`: one frozen exact `(target, TF, peak)` dictionary, Q-orthogonal shared/deviation estimation, fusion-component joint covariance, BH within `condition × target`, and an any-condition exact-edge union into RegCompass. `reference_condition` is the predefined experimental reference used by the K-condition contrast-tree geometry; it is not a tuning or sensitivity parameter. If it is omitted, the first retained condition is used and recorded. Conditional ridge-CV controls and alternative `z` values are not part of this production API.
+For multi-condition cell types, the production conditional GRN uses E-star with fixed `z = 0.25` on one frozen exact `(target, TF, peak)` dictionary. E-star supplies the continuous condition-specific production coefficients and retains Q-orthogonal shared/deviation, boundary and penalty-fusion metadata. Formal topology inference is separate from that selected structure: Pando fits the same target-specific dictionary independently within each condition without fusion, constructs one exact-edge omnibus P value across the conditions in which that coefficient is estimable, and applies BH once across all estimable exact edges in the broad cell type. The supported exact-edge topology is then common to every condition, while each condition retains its own continuous E-star `penalty_effect`.
+
+`reference_condition` is the predefined experimental reference used only by the K-condition E-star contrast-tree geometry; it is not an inference tuning or sensitivity parameter. If omitted, the first retained condition is used and recorded. Conditional ridge-CV controls, fusion-ratio controls, and alternative `z` values are not part of this production API. Conditional full-data target R-squared remains diagnostic only.
 
 The main stage-specific configuration bundles are `pando_args`, `metacell_args`, `meta_module_args`, `layer1_args`, and `layer2_args`. `model_mode = "meta_module_gem"` uses CORDA2 by default. Full parameter definitions are maintained in the corresponding Rd help pages.
 
