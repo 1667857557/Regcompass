@@ -36,10 +36,10 @@
   if (length(results) > 1L) {
     frame_fields <- c(
       "condition_fit_status", "pando_network_index", "pando_fit_diagnostics",
-      "tf_peak_gene_universal", "tf_peak_gene_condition_all",
-      "tf_peak_gene_condition", "tf_peak_gene_condition_effect_all",
-      "tf_peak_gene_condition_effect", "tf_peak_gene_condition_contrasts",
-      "paired_cell_metadata"
+      "pando_edge_inference", "tf_peak_gene_universal",
+      "tf_peak_gene_condition_all", "tf_peak_gene_condition",
+      "tf_peak_gene_condition_effect_all", "tf_peak_gene_condition_effect",
+      "tf_peak_gene_condition_contrasts", "paired_cell_metadata"
     )
     for (field in frame_fields) {
       answer[[field]] <- .rc_bind_pando_field(results, field)

@@ -1,20 +1,21 @@
-# Integration of the Pando E-star/JSE conditional-GRN contract.
+# Integration of the Pando E-star z=0.25 conditional-GRN contract with
+# production estimation separated from formal edge inference.
 
 .RC_PANDO_CONDITION_GRN_FIT_SCHEMA <-
   "pando_condition_grn_common_dictionary_v1"
 .RC_PANDO_CONDITION_GRN_MODEL_SCHEMA <-
-  "pando_condition_grn_Estar_jointse_v1"
+  "pando_condition_grn_Estar_z025_inference_separated_v1"
 .RC_PANDO_CONDITION_GRN_ENGINE <-
-  "condition_union_Estar_z025_jointse"
+  "condition_union_Estar_z025_inference_separated"
 .RC_PANDO_CONDITION_INFERENCE_SCHEMA <-
-  "scheme_e_fusion_component_joint_refit_v1"
+  "frozen_dictionary_condition_local_gaussian_lm_edge_omnibus_v1"
 .RC_PANDO_CONDITION_PROJECTION_POLICY <-
-  "any_condition_padj_exact_edge_union"
+  "exact_edge_whole_network_BH_common_topology"
 .RC_PANDO_CONDITION_DICTIONARY_POLICY <-
   "global_and_condition_union_pando_correlation_supported_frozen_dictionary"
 .RC_PANDO_CONDITION_PENALTY_FAMILY <-
   "information_scaled_sparse_deviation"
-.RC_PANDO_CONDITION_BH_SCOPE <- "condition_target_BH"
+.RC_PANDO_CONDITION_BH_SCOPE <- "exact_edge_whole_cell_type_network_BH"
 .RC_PANDO_CONDITION_SCHEME_E_Z <- 0.25
 
 .rc_pando_execution_summary <- function(diagnostics = NULL, fits = NULL) {
@@ -39,36 +40,6 @@
   )
 }
 
-.rc_split_support_conditions <- function(value) {
-  value <- as.character(value)
-  lapply(value, function(one) {
-    if (is.na(one) || !nzchar(one)) character() else
-      sort(unique(strsplit(one, ";", fixed = TRUE)[[1L]]))
-  })
-}
-
-.rc_condition_bh_expected <- function(coefficient) {
-  expected <- rep(NA_real_, nrow(coefficient))
-  key <- paste(
-    as.character(coefficient$condition),
-    toupper(trimws(as.character(coefficient$target))),
-    sep = "\001"
-  )
-  for (family in unique(key)) {
-    index <- which(key == family)
-    valid <- index[
-      coefficient$inference_estimable[index] %in% TRUE &
-      is.finite(suppressWarnings(as.numeric(coefficient$pval[index])))
-    ]
-    if (length(valid)) {
-      expected[valid] <- stats::p.adjust(
-        as.numeric(coefficient$pval[valid]), method = "BH"
-      )
-    }
-  }
-  expected
-}
-
 .rc_require_pando_condition_grn_fit <- function(fit) {
   if (!inherits(fit, "ConditionGRNFit") ||
       !identical(fit$schema_version, .RC_PANDO_CONDITION_GRN_FIT_SCHEMA)) {
@@ -78,13 +49,13 @@
     )
   }
   required <- c(
-    "model_schema", "fit_engine", "inference_schema", "cell_type",
-    "condition_levels", "reference_condition", "condition_cell_ids",
-    "edge_dictionary", "dictionary_support_table",
-    "dictionary_support_summary", "coefficients", "contrasts", "fit",
-    "network_names", "padj_threshold", "adjust_method", "scale",
-    "interaction", "projection_effect_column", "projection_policy",
-    "rna_layer", "peak_layer", "peak_value_type",
+    "model_schema", "fit_engine", "inference_schema", "inference_scope",
+    "cell_type", "condition_levels", "reference_condition",
+    "condition_cell_ids", "edge_dictionary", "dictionary_support_table",
+    "dictionary_support_summary", "coefficients", "contrasts",
+    "edge_inference", "fit", "network_names", "padj_threshold",
+    "adjust_method", "scale", "interaction", "projection_effect_column",
+    "projection_policy", "rna_layer", "peak_layer", "peak_value_type",
     "preprocessing_fingerprint", "condition_col", "cell_type_col",
     "coefficient_scale", "target_genes", "fit_dictionary_policy",
     "candidate_edge_count", "fit_dictionary_edge_count",
@@ -93,16 +64,15 @@
     "rsq_definition"
   )
   if (!all(required %in% names(fit))) {
-    stop("Pando E-star/JSE condition fit contract is incomplete.",
+    stop("Pando separated-inference condition fit contract is incomplete.",
          call. = FALSE)
   }
+
   threshold <- suppressWarnings(as.numeric(fit$padj_threshold))
   penalty <- fit$deviation_penalty
   penalty_ok <- is.list(penalty) &&
-    identical(
-      as.character(penalty$family),
-      .RC_PANDO_CONDITION_PENALTY_FAMILY
-    ) &&
+    identical(as.character(penalty$family),
+              .RC_PANDO_CONDITION_PENALTY_FAMILY) &&
     isTRUE(all.equal(
       as.numeric(penalty$z), .RC_PANDO_CONDITION_SCHEME_E_Z,
       tolerance = 1e-15
@@ -121,7 +91,7 @@
       !identical(toupper(as.character(fit$adjust_method)), "BH") ||
       length(threshold) != 1L || !is.finite(threshold) ||
       threshold <= 0 || threshold >= 1 || !penalty_ok) {
-    stop("Pando E-star z=0.25/JSE model labels are inconsistent.",
+    stop("Pando E-star z=0.25 separated-inference labels are inconsistent.",
          call. = FALSE)
   }
 
@@ -163,26 +133,20 @@
          call. = FALSE)
   }
 
-  support <- as.data.frame(
-    fit$dictionary_support_table, stringsAsFactors = FALSE
-  )
+  support <- as.data.frame(fit$dictionary_support_table,
+                           stringsAsFactors = FALSE)
   required_support <- c(
     "edge_id", "source_type", "condition",
     "peak_target_cor", "tf_target_cor"
   )
-  if (!nrow(support) ||
-      !all(required_support %in% colnames(support)) ||
+  if (!nrow(support) || !all(required_support %in% colnames(support)) ||
       any(!as.character(support$edge_id) %in% as.character(edge$edge_id))) {
     stop("Pando candidate-support provenance is incomplete.", call. = FALSE)
   }
   support_key <- paste(
-    as.character(support$edge_id),
-    as.character(support$source_type),
-    ifelse(
-      as.character(support$source_type) == "global",
-      "__global__", as.character(support$condition)
-    ),
-    sep = "\001"
+    as.character(support$edge_id), as.character(support$source_type),
+    ifelse(as.character(support$source_type) == "global",
+           "__global__", as.character(support$condition)), sep = "\001"
   )
   if (anyDuplicated(support_key)) {
     stop("Pando candidate-support provenance contains duplicate sources.",
@@ -196,20 +160,22 @@
     "contrast_identifiable", "shared_by_boundary", "boundary_condition",
     "fused_by_penalty", "fusion_component_id", "shared_edge",
     "raw_information_condition", "profile_information",
-    "inference_schema", "inference_component_id",
-    "inference_hypothesis_id", "inference_estimate", "inference_se",
-    "inference_statistic", "inference_estimable", "pval", "padj",
-    "bh_scope", "bh_family_size", "condition_significant",
-    "statistically_supported", "significant", "pando_estimation_active",
-    "active", "edge_union_supported", "supporting_conditions",
-    "n_supporting_conditions", "all_conditions_fit_valid",
-    "active_in_regcompass", "fit_status", "penalty_family",
-    "penalty_value", "solver_status", "objective", "kkt_residual",
-    "iterations"
+    "inference_schema", "inference_estimate", "inference_se",
+    "inference_variance", "inference_statistic", "inference_estimable",
+    "condition_inference_estimable", "condition_pval",
+    "condition_inference_residual_df", "condition_inference_sigma2",
+    "condition_inference_status", "edge_df", "edge_statistic",
+    "edge_pval", "edge_padj", "edge_inference_estimable",
+    "edge_inference_test", "all_conditions_fit_valid", "edge_supported",
+    "pando_estimation_active", "active", "statistically_supported",
+    "significant", "active_in_regcompass", "pval", "padj", "bh_scope",
+    "bh_family_size", "fit_status", "penalty_family", "penalty_value",
+    "solver_status", "objective", "kkt_residual", "iterations"
   )
   if (!nrow(coefficient) ||
       !all(required_coefficient %in% colnames(coefficient))) {
-    stop("Pando E-star/JSE coefficient rows are incomplete.", call. = FALSE)
+    stop("Pando separated-inference coefficient rows are incomplete.",
+         call. = FALSE)
   }
   dictionary_ids <- sort(as.character(edge$edge_id))
   for (condition in levels) {
@@ -235,7 +201,7 @@
               .RC_PANDO_CONDITION_SCHEME_E_Z) > 1e-15) ||
       any(as.character(coefficient$solver_status) != "ok") ||
       any(!is.finite(as.numeric(coefficient$kkt_residual)))) {
-    stop("Pando coefficient rows are not converged E-star z=0.25/JSE results.",
+    stop("Pando coefficient rows are not converged E-star z=0.25 results.",
          call. = FALSE)
   }
 
@@ -247,54 +213,68 @@
     stop("Pando penalty_effect does not equal production beta_E.",
          call. = FALSE)
   }
-  if (!identical(
-      as.logical(coefficient$active), is.finite(estimate)
-  ) || !identical(
-      as.logical(coefficient$pando_estimation_active), is.finite(estimate)
-  )) {
+  if (!identical(as.logical(coefficient$active), is.finite(estimate)) ||
+      !identical(as.logical(coefficient$pando_estimation_active),
+                 is.finite(estimate))) {
     stop("Pando active flags must retain every finite production coefficient.",
          call. = FALSE)
   }
 
-  expected_padj <- .rc_condition_bh_expected(coefficient)
-  observed_padj <- suppressWarnings(as.numeric(coefficient$padj))
-  comparable <- is.finite(expected_padj) & is.finite(observed_padj)
-  if (any(is.finite(expected_padj) != is.finite(observed_padj)) ||
-      any(abs(expected_padj[comparable] - observed_padj[comparable]) > 1e-10)) {
-    stop("Pando padj is not BH within condition x target.", call. = FALSE)
+  edge_inference <- as.data.frame(fit$edge_inference,
+                                  stringsAsFactors = FALSE)
+  required_edge_inference <- c(
+    "edge_id", "target", "tf", "region", "atac_feature_id",
+    "candidate_index", "edge_df", "edge_statistic", "edge_pval",
+    "edge_padj", "edge_inference_estimable", "edge_inference_test",
+    "inference_conditions", "all_conditions_fit_valid", "edge_supported",
+    "bh_scope", "bh_family_size", "padj_threshold"
+  )
+  if (nrow(edge_inference) != nrow(edge) ||
+      !all(required_edge_inference %in% colnames(edge_inference)) ||
+      anyDuplicated(as.character(edge_inference$edge_id)) ||
+      !identical(sort(as.character(edge_inference$edge_id)), dictionary_ids)) {
+    stop("Pando exact-edge inference table is incomplete.", call. = FALSE)
   }
-  expected_significant <-
-    coefficient$inference_estimable %in% TRUE &
-    is.finite(observed_padj) & observed_padj < threshold
-  if (!identical(
-      as.logical(coefficient$condition_significant), expected_significant
-  ) || !identical(
-      as.logical(coefficient$statistically_supported), expected_significant
-  ) || !identical(
-      as.logical(coefficient$significant), expected_significant
-  )) {
-    stop("Pando condition-significance flags do not match BH padj < threshold.",
+  edge_inference <- edge_inference[
+    match(as.character(edge$edge_id), as.character(edge_inference$edge_id)),
+    , drop = FALSE
+  ]
+  if (any(as.character(edge_inference$bh_scope) !=
+          .RC_PANDO_CONDITION_BH_SCOPE) ||
+      any(abs(as.numeric(edge_inference$padj_threshold) - threshold) > 1e-15)) {
+    stop("Pando edge-inference BH scope/threshold are inconsistent.",
          call. = FALSE)
   }
 
-  for (edge_id in dictionary_ids) {
-    index <- which(as.character(coefficient$edge_id) == edge_id)
-    valid <- length(index) == length(levels) &&
-      all(as.character(coefficient$fit_status[index]) == "ok") &&
-      all(is.finite(effect[index]))
-    supporting <- levels[levels %in% as.character(
-      coefficient$condition[index][expected_significant[index]]
-    )]
-    union <- valid && length(supporting) > 0L
-    if (any(as.logical(coefficient$all_conditions_fit_valid[index]) != valid) ||
-        any(as.logical(coefficient$edge_union_supported[index]) != union) ||
-        any(as.logical(coefficient$active_in_regcompass[index]) != union) ||
-        any(as.integer(coefficient$n_supporting_conditions[index]) !=
-            length(supporting)) ||
-        any(as.character(coefficient$supporting_conditions[index]) !=
-            paste(supporting, collapse = ";"))) {
-      stop("Pando any-condition exact-edge union metadata are inconsistent.",
-           call. = FALSE)
+  invisible(.rc_validate_pando_active_condition_edges(
+    coefficient, padj_threshold = threshold
+  ))
+
+  for (i in seq_len(nrow(edge_inference))) {
+    id <- as.character(edge_inference$edge_id[[i]])
+    index <- which(as.character(coefficient$edge_id) == id)
+    fields <- c(
+      "edge_df", "edge_statistic", "edge_pval", "edge_padj",
+      "edge_inference_estimable", "edge_inference_test",
+      "all_conditions_fit_valid", "edge_supported", "bh_scope",
+      "bh_family_size"
+    )
+    for (field in fields) {
+      value <- coefficient[[field]][index]
+      stored <- edge_inference[[field]][[i]]
+      if (is.numeric(value) || is.integer(value)) {
+        value <- suppressWarnings(as.numeric(value))
+        stored <- suppressWarnings(as.numeric(stored))
+        finite <- is.finite(value) & is.finite(stored)
+        if (any(is.finite(value) != is.finite(stored)) ||
+            any(abs(value[finite] - stored) > 1e-10)) {
+          stop("Pando edge-inference rows are not replicated consistently.",
+               call. = FALSE)
+        }
+      } else if (any(as.character(value) != as.character(stored))) {
+        stop("Pando edge-inference rows are not replicated consistently.",
+             call. = FALSE)
+      }
     }
   }
 
@@ -302,9 +282,9 @@
   required_fit <- c(
     "target", "condition", "rsq", "rsq_definition", "fit_status",
     "sigma2_common", "inference_sigma2", "inference_residual_df",
-    "reference_condition", "deviation_z", "penalty_family",
-    "solver_status", "kkt_residual", "iterations",
-    "predictor_scale_reference", "inference_schema",
+    "inference_rank", "inference_status", "reference_condition",
+    "deviation_z", "penalty_family", "solver_status", "kkt_residual",
+    "iterations", "predictor_scale_reference", "inference_schema",
     "orthogonality_error", "dr_error"
   )
   if (!nrow(fit_table) || !all(required_fit %in% colnames(fit_table)) ||
@@ -319,7 +299,7 @@
               .RC_PANDO_CONDITION_SCHEME_E_Z) > 1e-15) ||
       any(as.numeric(fit_table$orthogonality_error) > 1e-6) ||
       any(as.numeric(fit_table$dr_error) > 1e-6)) {
-    stop("Pando target-level E-star/JSE diagnostics are incomplete.",
+    stop("Pando target-level E-star/inference diagnostics are incomplete.",
          call. = FALSE)
   }
   fit_key <- paste(
@@ -334,17 +314,16 @@
   contrast <- as.data.frame(fit$contrasts, stringsAsFactors = FALSE)
   required_contrast <- c(
     "edge_id", "target", "condition_a", "condition_b",
-    "estimate_a", "estimate_b", "contrast_estimate",
-    "inference_contrast_estimate", "contrast_se", "contrast_pval",
-    "contrast_padj", "contrast_estimable", "contrast_identifiable",
-    "contrast_status", "contrast_significant", "shared_by_boundary",
-    "fused_by_penalty", "shared_edge", "penalty_family",
-    "penalty_value", "solver_status", "kkt_residual", "iterations"
+    "estimate_a", "estimate_b", "contrast_estimate", "contrast_estimable",
+    "contrast_identifiable", "contrast_status", "shared_by_boundary",
+    "fused_by_penalty", "shared_edge", "penalty_family", "penalty_value",
+    "solver_status", "kkt_residual", "iterations"
   )
   expected_n <- choose(length(levels), 2L) * nrow(edge)
   if (!is.data.frame(contrast) || nrow(contrast) != expected_n ||
       !all(required_contrast %in% colnames(contrast))) {
-    stop("Pando pairwise contrast table is incomplete.", call. = FALSE)
+    stop("Pando production pairwise contrast table is incomplete.",
+         call. = FALSE)
   }
   for (i in seq_len(nrow(contrast))) {
     edge_id <- as.character(contrast$edge_id[[i]])
@@ -352,11 +331,11 @@
     b <- as.character(contrast$condition_b[[i]])
     ia <- which(
       as.character(coefficient$edge_id) == edge_id &
-      as.character(coefficient$condition) == a
+        as.character(coefficient$condition) == a
     )
     ib <- which(
       as.character(coefficient$edge_id) == edge_id &
-      as.character(coefficient$condition) == b
+        as.character(coefficient$condition) == b
     )
     if (length(ia) != 1L || length(ib) != 1L) {
       stop("Pando contrast cannot be aligned to production coefficients.",
@@ -366,7 +345,7 @@
     observed_delta <- as.numeric(contrast$contrast_estimate[[i]])
     if (!is.finite(observed_delta) ||
         abs(observed_delta - expected_delta) > 1e-9) {
-      stop("Pando pairwise contrasts do not close on joint production beta_E.",
+      stop("Pando pairwise contrasts do not close on production beta_E.",
            call. = FALSE)
     }
   }
@@ -393,6 +372,7 @@
   }
 
   rows <- universal <- diagnostics <- contrasts <- gated_fits <- list()
+  edge_inference_rows <- list()
   for (fit_index in seq_along(fits)) {
     fit <- .rc_apply_condition_penalty_gate(fits[[fit_index]])
     gated_fits[[fit_index]] <- fit
@@ -424,7 +404,7 @@
     coefficient$effect_definition <-
       "E_star_z025_continuous_condition_coefficient_raw_tf_atac_units"
     coefficient$coefficient_contract <-
-      "fixed_exact_edge_dictionary_Estar_z025_jointse"
+      "fixed_exact_edge_dictionary_Estar_z025_separate_no_fusion_inference"
     coefficient$fit_engine <- fit$fit_engine
     coefficient$coefficient_scale <- fit$coefficient_scale
     coefficient$padj_threshold <- threshold
@@ -448,9 +428,18 @@
     rows[[length(rows) + 1L]] <- coefficient
     diagnostics[[length(diagnostics) + 1L]] <- fit_table
 
+    edge_inference <- as.data.frame(fit$edge_inference,
+                                    stringsAsFactors = FALSE)
+    edge_inference$tf <- toupper(as.character(edge_inference$tf))
+    edge_inference$target <- toupper(as.character(edge_inference$target))
+    edge_inference[[celltype_col]] <- as.character(fit$cell_type)
+    edge_inference_rows[[length(edge_inference_rows) + 1L]] <- edge_inference
+
     edge <- as.data.frame(fit$edge_dictionary, stringsAsFactors = FALSE)
     one_condition <- fit$condition_levels[[1L]]
-    first_rows <- coefficient[coefficient$condition == one_condition, , drop = FALSE]
+    first_rows <- coefficient[
+      coefficient$condition == one_condition, , drop = FALSE
+    ]
     shared_by_id <- stats::setNames(
       as.numeric(first_rows$beta_shared), as.character(first_rows$edge_id)
     )
@@ -473,7 +462,7 @@
       contrast$contrast_identifiable %in% TRUE
     contrast$differential_claim_eligible <-
       contrast$contrast_identifiable %in% TRUE &
-      contrast$contrast_status != "not_estimable"
+      contrast$contrast_estimable %in% TRUE
     contrasts[[length(contrasts) + 1L]] <- contrast
   }
   names(gated_fits) <- names(fits)
@@ -483,11 +472,14 @@
   active <- all_edges[all_edges$penalty_eligible %in% TRUE, , drop = FALSE]
   all_contrasts <- do.call(rbind, contrasts)
   rownames(all_contrasts) <- NULL
+  all_edge_inference <- do.call(rbind, edge_inference_rows)
+  rownames(all_edge_inference) <- NULL
   params <- methods::slot(methods::slot(grn_object, "grn"), "params")
   list(
     network_index = params$condition_network_index %||% data.frame(),
     fit_diagnostics = do.call(rbind, diagnostics),
     fit_contracts = gated_fits,
+    edge_inference = all_edge_inference,
     universal = do.call(rbind, universal),
     condition_all = all_edges,
     condition_active = active,
@@ -496,13 +488,14 @@
     condition_contrasts = all_contrasts,
     active_tol = 0,
     penalty_filter = paste(
-      "all conditions valid and any condition-target BH padj < threshold;",
-      "retain every condition production beta_E for the admitted exact edge"
+      "Pando exact-edge whole-network BH common topology;",
+      "retain each condition production beta_E for every admitted edge"
     ),
     coefficient_contract =
-      "fixed_exact_edge_dictionary_Estar_z025_jointse",
+      "fixed_exact_edge_dictionary_Estar_z025_separate_no_fusion_inference",
     pando_fit_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    pando_memory_contract = "pando_native_condition_Estar_z025_jointse"
+    pando_memory_contract =
+      "pando_native_condition_Estar_z025_separate_edge_inference"
   )
 }
 
@@ -606,7 +599,7 @@
 
   .rc_step_monitor_event(
     progress_monitor, "condition_design",
-    "resolved Pando E-star z=0.25/JSE conditional-GRN plan",
+    "resolved Pando E-star z=0.25 with separate exact-edge inference",
     current = 5L,
     context = list(
       cell_types = length(plans), tf_cor = tf_threshold,
@@ -636,10 +629,7 @@
   }
 
   prepare_tasks <- lapply(names(plans), function(type) {
-    list(
-      cell_type = type,
-      object = subset(object, cells = plans[[type]]$global_cells)
-    )
+    list(cell_type = type, object = subset(object, cells = plans[[type]]$global_cells))
   })
   outer_parallel <- condition_parallel && length(prepare_tasks) > 1L
   prepared <- rc_parallel_lapply(
@@ -654,8 +644,7 @@
     genome = genome
   )
   prepared_types <- vapply(prepared, `[[`, character(1), "cell_type")
-  if (anyDuplicated(prepared_types) ||
-      !setequal(prepared_types, names(plans))) {
+  if (anyDuplicated(prepared_types) || !setequal(prepared_types, names(plans))) {
     stop("Condition-GRN Pando initialization returned an invalid cell-type set.",
          call. = FALSE)
   }
@@ -681,7 +670,7 @@
   )
   fit_types <- vapply(fit_results, `[[`, character(1), "cell_type")
   if (anyDuplicated(fit_types) || !setequal(fit_types, names(plans))) {
-    stop("Pando E-star/JSE fits returned an invalid cell-type set.",
+    stop("Pando E-star separated-inference fits returned an invalid cell-type set.",
          call. = FALSE)
   }
   names(fit_results) <- fit_types
@@ -689,7 +678,7 @@
   invisible(gc(verbose = FALSE, full = TRUE))
 
   parallel_plan <- list(
-    scope = "cell_type_condition_Estar_JSE",
+    scope = "cell_type_condition_Estar_separate_inference",
     cell_type_prepare_tasks = length(prepare_tasks),
     condition_Estar_fit_tasks = length(fit_tasks),
     workers = worker_limit,
@@ -698,9 +687,9 @@
     nested_parallel = FALSE,
     stage_barrier = paste(
       "global + condition candidate discovery -> exact union ->",
-      "equal-condition RMS scaling -> pooled residual information ->",
-      "Q-orthogonal E-star z=0.25 -> fusion-component joint refit ->",
-      "condition-target BH -> any-condition exact-edge RegCompass union"
+      "equal-condition RMS scaling -> Q-orthogonal E-star z=0.25 production ->",
+      "condition-local no-fusion Gaussian inference -> exact-edge omnibus ->",
+      "whole-network BH common topology"
     )
   )
 
@@ -748,9 +737,9 @@
         n_target_genes = length(unique(all_rows$target)),
         n_edges = nrow(all_rows),
         n_active_edges = nrow(active_rows),
-        n_condition_significant_edges =
-          sum(all_rows$condition_significant %in% TRUE),
-        n_regcompass_union_edges =
+        n_condition_inference_estimable =
+          sum(all_rows$condition_inference_estimable %in% TRUE),
+        n_regcompass_edges =
           sum(all_rows$active_in_regcompass %in% TRUE),
         n_contrast_identifiable_edges =
           sum(all_rows$contrast_identifiable %in% TRUE),
@@ -792,6 +781,7 @@
       pando_fit_diagnostics = extracted$fit_diagnostics,
       pando_execution_summary = execution_summary,
       condition_grn_fits = extracted$fit_contracts,
+      pando_edge_inference = extracted$edge_inference,
       tf_peak_gene_universal = extracted$universal,
       tf_peak_gene_condition_all = extracted$condition_all,
       tf_peak_gene_condition = extracted$condition_active,
@@ -802,17 +792,17 @@
         rna = "global single-cell normalized RNA",
         atac = "cell-type-shared TF-IDF across conditions",
         grn_fit = paste(
-          "Pando exact-edge common dictionary, Q-orthogonal E-star z=0.25,",
-          "and fusion-component joint-refit inference"
+          "Pando exact-edge common dictionary; Q-orthogonal E-star z=0.25",
+          "production; separate no-fusion Gaussian edge inference"
         ),
         condition_effect =
           "continuous production beta_E retained in every condition",
-        condition_significance =
-          "BH within condition x target; strict padj < threshold",
-        regcompass_handoff = paste(
-          "all conditions fit-valid plus any condition significant;",
-          "same admitted exact-edge set in every condition"
-        ),
+        condition_inference =
+          "condition-local no-fusion finite-df Gaussian coefficient tests",
+        edge_significance =
+          "one exact-edge omnibus P followed by whole-cell-type-network BH",
+        regcompass_handoff =
+          "consume Pando common edge_supported topology; do not reselect edges",
         target_rsq = "Pando full-data R2 is diagnostic only",
         parallel_contract = parallel_plan,
         penalty_regulatory_evidence = paste(
@@ -848,6 +838,12 @@
     answer$tf_peak_gene_universal,
     file.path(outdir, "pando_tf_peak_gene_universal.tsv.gz")
   )
+  if (!is.null(answer$pando_edge_inference)) {
+    .rc_write_tsv_gz(
+      answer$pando_edge_inference,
+      file.path(outdir, "pando_exact_edge_inference.tsv.gz")
+    )
+  }
   saveRDS(
     answer$condition_grn_fits,
     file.path(outdir, "pando_condition_grn_fits.rds")

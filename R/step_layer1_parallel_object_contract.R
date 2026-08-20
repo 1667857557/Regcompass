@@ -1,4 +1,5 @@
-# Route Layer 1 projection to the exact per-cell-type Pando E-star/JSE object.
+# Route Layer 1 projection to the exact per-cell-type Pando E-star production
+# object and its common exact-edge whole-network BH topology.
 
 .rc_validate_pando_fit_metadata_frame <- function(
     metadata, fits, condition_col, celltype_col) {
@@ -60,9 +61,10 @@
   rsq_threshold <- .rc_target_rsq_threshold(
     fit$regcompass_target_rsq_threshold %||% .rc_target_rsq_threshold()
   )
-  expected_filter <- paste(
-    "exact edge: all conditions valid and at least one condition has",
-    paste0("condition-target BH padj < ", format(threshold, trim = TRUE))
+  expected_filter <- paste0(
+    "Pando common exact edge: whole-network BH edge_padj < ",
+    format(threshold, trim = TRUE),
+    " with valid finite production beta_E in every condition"
   )
   filter_value <- as.character(fit$regcompass_penalty_filter)
   if (length(filter_value) != 1L || is.na(filter_value) ||
@@ -75,18 +77,20 @@
   required <- c(
     "statistically_supported", "global_support", "local_support",
     "active", "significant", "penalty_effect", "estimate", "estimable",
-    "padj", "fit_status", "target_rsq", "target_model_supported",
-    "penalty_eligible", "contrast_identifiable", "shared_by_boundary",
-    "fused_by_penalty", "penalty_family", "penalty_value",
-    "edge_union_supported", "all_conditions_fit_valid",
-    "active_in_regcompass", "supporting_conditions",
-    "n_supporting_conditions", "inference_estimable",
-    "fusion_component_id", "shared_edge"
+    "pval", "padj", "fit_status", "target_rsq",
+    "target_model_supported", "penalty_eligible", "contrast_identifiable",
+    "shared_by_boundary", "fused_by_penalty", "penalty_family",
+    "penalty_value", "all_conditions_fit_valid", "active_in_regcompass",
+    "edge_supported", "edge_pval", "edge_padj", "edge_df",
+    "edge_inference_estimable", "condition_inference_estimable",
+    "condition_pval", "inference_estimate", "inference_se",
+    "inference_variance", "fusion_component_id", "shared_edge"
   )
   if (!all(required %in% colnames(coefficient))) {
     stop(
-      "RegCompass-gated condition fits require the E-star/JSE production, ",
-      "joint-inference and exact-edge union contract.", call. = FALSE
+      "RegCompass-gated condition fits require E-star production, separate ",
+      "no-fusion inference, and common exact-edge BH topology fields.",
+      call. = FALSE
     )
   }
   .rc_validate_pando_active_condition_edges(
@@ -110,8 +114,8 @@
   if (!identical(as.logical(coefficient$penalty_eligible), expected_gate) ||
       !identical(as.logical(coefficient$active_in_condition), expected_gate)) {
     stop(
-      "RegCompass conditional projection must use the any-condition ",
-      "condition-target-BH exact-edge union; target R2 cannot gate it.",
+      "RegCompass conditional projection must consume the Pando common ",
+      "exact-edge whole-network BH topology; target R2 cannot alter it.",
       call. = FALSE
     )
   }
@@ -183,7 +187,7 @@
       !all(required_coefficient %in% colnames(coefficient))) {
     stop(
       "Condition-GRN target availability requires target-condition fit ",
-      "diagnostics and exact-edge union projection rows.", call. = FALSE
+      "diagnostics and common exact-edge projection rows.", call. = FALSE
     )
   }
 
@@ -245,9 +249,7 @@
     coefficient_index[coefficient$contrast_identifiable %in% TRUE],
     nbins = nrow(fit_table)
   )
-  reliability <- as.numeric(
-    fit_status == "ok" & n_projection_edges > 0L
-  )
+  reliability <- as.numeric(fit_status == "ok" & n_projection_edges > 0L)
 
   data.frame(
     target = as.character(fit_table$target),
@@ -342,7 +344,7 @@
     })
     names(edges_by_group) <- names(cells_by_group)
 
-    # z=0.25 above is the E-star deviation threshold. It is unrelated to the
+    # z=0.25 is the E-star deviation threshold. It is unrelated to the
     # canonical RegCompass exposure mixture retained here:
     # beta_E * [0.75 * mean(TF * ATAC) + 0.25 * mean(TF) * mean(ATAC)].
     score <- .rc_pando_projection_from_group_means(
@@ -399,10 +401,19 @@
       n_significant_edges = vapply(fit$condition_levels, function(condition) {
         sum(
           all_coefficient$condition == condition &
-            all_coefficient$statistically_supported %in% TRUE,
+            all_coefficient$edge_supported %in% TRUE,
           na.rm = TRUE
         )
       }, integer(1)),
+      n_condition_inference_estimable = vapply(
+        fit$condition_levels, function(condition) {
+          sum(
+            all_coefficient$condition == condition &
+              all_coefficient$condition_inference_estimable %in% TRUE,
+            na.rm = TRUE
+          )
+        }, integer(1)
+      ),
       n_contrast_identifiable_edges = vapply(
         fit$condition_levels, function(condition) {
           sum(
@@ -420,19 +431,18 @@
           ]
           value <- value[is.finite(value)]
           if (length(value)) mean(value) else NA_real_
-        },
-        numeric(1)
+        }, numeric(1)
       ),
       reliability_definition = paste(
-        "binary target availability from fit_status and admitted exact-edge",
-        "union projection; target R2 remains diagnostic only"
+        "binary target availability from fit_status and common admitted",
+        "exact-edge projection; target R2 remains diagnostic only"
       ),
       padj_threshold = threshold,
       target_rsq_threshold = fit$regcompass_target_rsq_threshold,
       corr_threshold = .RC_PANDO_PENALTY_CORR_THRESHOLD,
       estimate_threshold = .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD,
       projection_effect =
-        "Pando_Estar_z025_continuous_beta_on_any_condition_BH_edge_union",
+        "Pando_Estar_z025_continuous_beta_on_common_exact_edge_BH_topology",
       pando_object_scope = "cell_type_exact_feature_space",
       aggregation_contract =
         "beta_times_0.75_paired_mean_product_plus_0.25_product_of_means",
@@ -448,12 +458,13 @@
     projection = projection,
     reliability = reliability,
     coverage = .rc_bind_frames_fill(coverage),
-    origin = "paired_cell_Estar_z025_any_condition_BH_exact_edge_union",
+    origin = "paired_cell_Estar_z025_common_exact_edge_whole_network_BH",
     pando_schema = .RC_PANDO_CONDITION_GRN_FIT_SCHEMA,
-    projection_name = "E_star_z025_union_condition_effect",
+    projection_name = "E_star_z025_common_topology_condition_effect",
     nonestimable_policy = paste(
-      "zero-information contrasts are boundary-shared and flagged; admitted",
-      "exact edges retain every condition beta_E; failed fits are unavailable"
+      "zero-information production contrasts remain boundary-shared metadata;",
+      "formal no-fusion inference marks aliased coefficients non-estimable;",
+      "common admitted edges retain every condition beta_E"
     )
   )
 }

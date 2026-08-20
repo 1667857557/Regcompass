@@ -1,9 +1,11 @@
 # Pando edge eligibility used by the canonical Stage-1 merge.
 #
-# Conditional GRNs use Pando E-star/JSE z=0.25 on one frozen exact-edge
-# dictionary. Joint-refit Wald p-values are adjusted within condition x target.
-# An exact edge enters RegCompass when any condition has padj < threshold and
-# every condition has a valid production coefficient. Target R2 stays diagnostic.
+# Conditional GRNs use one frozen exact-edge dictionary. E-star z=0.25 supplies
+# continuous condition-specific production coefficients. Formal inference is
+# separate and no-fusion; Pando assigns one omnibus P value per exact edge and
+# performs BH once across the complete broad-cell-type edge network. RegCompass
+# validates and consumes that common topology without recomputing a second gate.
+# Target R2 remains diagnostic only on the conditional route.
 
 .RC_PANDO_PENALTY_CORR_THRESHOLD <- 0
 .RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0
@@ -71,22 +73,75 @@
   value[[1L]]
 }
 
+.rc_expected_edge_inference_from_coefficients <- function(coefficient) {
+  edge_ids <- unique(as.character(coefficient$edge_id))
+  rows <- vector("list", length(edge_ids))
+  for (i in seq_along(edge_ids)) {
+    edge_id <- edge_ids[[i]]
+    index <- which(as.character(coefficient$edge_id) == edge_id)
+    valid <- index[
+      coefficient$condition_inference_estimable[index] %in% TRUE &
+      is.finite(suppressWarnings(as.numeric(
+        coefficient$inference_estimate[index]
+      ))) &
+      is.finite(suppressWarnings(as.numeric(
+        coefficient$inference_variance[index]
+      ))) &
+      suppressWarnings(as.numeric(coefficient$inference_variance[index])) > 0 &
+      is.finite(suppressWarnings(as.numeric(coefficient$condition_pval[index])))
+    ]
+    m <- length(valid)
+    statistic <- pval <- NA_real_
+    test <- "not_estimable"
+    if (m == 1L) {
+      one <- valid[[1L]]
+      statistic <- suppressWarnings(
+        as.numeric(coefficient$inference_statistic[[one]])
+      )^2
+      pval <- suppressWarnings(as.numeric(coefficient$condition_pval[[one]]))
+      test <- "single_condition_exact_t"
+    } else if (m > 1L) {
+      beta <- suppressWarnings(as.numeric(coefficient$inference_estimate[valid]))
+      variance <- suppressWarnings(as.numeric(
+        coefficient$inference_variance[valid]
+      ))
+      statistic <- sum(beta^2 / variance)
+      pval <- stats::pchisq(statistic, df = m, lower.tail = FALSE)
+      test <- "independent_condition_wald_chisq"
+    }
+    rows[[i]] <- data.frame(
+      edge_id = edge_id,
+      edge_df = as.integer(m),
+      edge_statistic = statistic,
+      edge_pval = pval,
+      edge_inference_estimable = m > 0L,
+      edge_inference_test = test,
+      stringsAsFactors = FALSE
+    )
+  }
+  do.call(rbind, rows)
+}
+
 .rc_validate_pando_active_condition_edges <- function(
     coefficient, padj_threshold = NULL) {
   required <- c(
     "edge_id", "target", "condition", "estimate", "penalty_effect",
-    "pval", "padj", "inference_estimable", "condition_significant",
+    "inference_estimate", "inference_se", "inference_variance",
+    "inference_statistic", "condition_pval",
+    "condition_inference_estimable", "edge_df", "edge_statistic",
+    "edge_pval", "edge_padj", "edge_inference_estimable",
+    "edge_inference_test", "all_conditions_fit_valid", "edge_supported",
     "statistically_supported", "significant", "pando_estimation_active",
-    "active", "edge_union_supported", "supporting_conditions",
-    "n_supporting_conditions", "all_conditions_fit_valid",
-    "active_in_regcompass", "fit_status", "penalty_family",
-    "penalty_value", "solver_status", "kkt_residual", "iterations"
+    "active", "active_in_regcompass", "fit_status", "bh_scope",
+    "bh_family_size", "penalty_family", "penalty_value", "solver_status",
+    "kkt_residual", "iterations"
   )
   if (!is.data.frame(coefficient) ||
       !all(required %in% colnames(coefficient))) {
     stop(
-      "Condition-GRN coefficients must retain the E-star/JSE inference and ",
-      "exact-edge union handoff contract.", call. = FALSE
+      "Condition-GRN coefficients must retain E-star production, separate ",
+      "no-fusion inference, and exact-edge whole-network BH fields.",
+      call. = FALSE
     )
   }
   threshold <- if (is.null(padj_threshold)) {
@@ -100,25 +155,9 @@
     }
     value
   }
+
   estimate <- suppressWarnings(as.numeric(coefficient$estimate))
   effect <- suppressWarnings(as.numeric(coefficient$penalty_effect))
-  padj <- suppressWarnings(as.numeric(coefficient$padj))
-  expected_condition_significant <-
-    coefficient$inference_estimable %in% TRUE &
-    is.finite(padj) & padj < threshold
-  if (!identical(
-      as.logical(coefficient$condition_significant),
-      expected_condition_significant
-  ) || !identical(
-      as.logical(coefficient$statistically_supported),
-      expected_condition_significant
-  ) || !identical(
-      as.logical(coefficient$significant),
-      expected_condition_significant
-  )) {
-    stop("Condition significance does not match condition-target BH.",
-         call. = FALSE)
-  }
   expected_active <- is.finite(estimate)
   if (!identical(
       as.logical(coefficient$pando_estimation_active), expected_active
@@ -133,32 +172,105 @@
          call. = FALSE)
   }
 
-  edge_ids <- unique(as.character(coefficient$edge_id))
+  if (any(as.character(coefficient$bh_scope) !=
+          "exact_edge_whole_cell_type_network_BH")) {
+    stop("Conditional topology must use exact-edge whole-network BH.",
+         call. = FALSE)
+  }
+
+  expected <- .rc_expected_edge_inference_from_coefficients(coefficient)
+  observed_edge <- coefficient[!duplicated(as.character(coefficient$edge_id)),
+                               , drop = FALSE]
+  observed_edge <- observed_edge[
+    match(expected$edge_id, as.character(observed_edge$edge_id)), , drop = FALSE
+  ]
+  if (anyNA(observed_edge$edge_id)) {
+    stop("Exact-edge inference cannot be aligned to coefficient rows.",
+         call. = FALSE)
+  }
+  compare_numeric <- function(observed, wanted, tol = 1e-10) {
+    observed <- suppressWarnings(as.numeric(observed))
+    wanted <- suppressWarnings(as.numeric(wanted))
+    finite <- is.finite(observed) & is.finite(wanted)
+    !any(is.finite(observed) != is.finite(wanted)) &&
+      !any(abs(observed[finite] - wanted[finite]) > tol)
+  }
+  if (!identical(as.integer(observed_edge$edge_df), expected$edge_df) ||
+      !identical(as.logical(observed_edge$edge_inference_estimable),
+                 expected$edge_inference_estimable) ||
+      !identical(as.character(observed_edge$edge_inference_test),
+                 expected$edge_inference_test) ||
+      !compare_numeric(observed_edge$edge_statistic,
+                       expected$edge_statistic) ||
+      !compare_numeric(observed_edge$edge_pval, expected$edge_pval)) {
+    stop("Stored exact-edge omnibus inference is inconsistent.",
+         call. = FALSE)
+  }
+
+  expected_padj <- rep(NA_real_, nrow(expected))
+  valid_edge <- which(
+    expected$edge_inference_estimable %in% TRUE &
+      is.finite(expected$edge_pval)
+  )
+  if (length(valid_edge)) {
+    expected_padj[valid_edge] <- stats::p.adjust(
+      expected$edge_pval[valid_edge], method = "BH"
+    )
+  }
+  if (!compare_numeric(observed_edge$edge_padj, expected_padj)) {
+    stop("Stored edge_padj is not BH across the complete exact-edge network.",
+         call. = FALSE)
+  }
+  if (any(as.integer(observed_edge$bh_family_size) != length(valid_edge))) {
+    stop("Stored exact-edge BH family size is inconsistent.", call. = FALSE)
+  }
+
+  edge_ids <- as.character(expected$edge_id)
   for (edge_id in edge_ids) {
     index <- which(as.character(coefficient$edge_id) == edge_id)
-    valid <- all(
+    valid_production <- all(
       as.character(coefficient$fit_status[index]) == "ok" &
-      is.finite(effect[index])
+        is.finite(effect[index])
     )
-    supporting <- unique(as.character(coefficient$condition[index][
-      expected_condition_significant[index]
-    ]))
-    expected_union <- valid && length(supporting) > 0L
-    if (any(as.logical(coefficient$all_conditions_fit_valid[index]) != valid) ||
-        any(as.logical(coefficient$edge_union_supported[index]) != expected_union) ||
-        any(as.logical(coefficient$active_in_regcompass[index]) != expected_union) ||
-        any(as.integer(coefficient$n_supporting_conditions[index]) !=
-            length(supporting))) {
-      stop("Exact-edge RegCompass union flags are inconsistent.",
+    unique_padj <- unique(suppressWarnings(as.numeric(
+      coefficient$edge_padj[index]
+    )))
+    unique_support <- unique(as.logical(coefficient$edge_supported[index]))
+    unique_active <- unique(as.logical(
+      coefficient$active_in_regcompass[index]
+    ))
+    unique_valid <- unique(as.logical(
+      coefficient$all_conditions_fit_valid[index]
+    ))
+    if (length(unique_padj) != 1L || length(unique_support) != 1L ||
+        length(unique_active) != 1L || length(unique_valid) != 1L) {
+      stop("Exact-edge topology fields must be identical across conditions.",
            call. = FALSE)
     }
-    stored <- unique(as.character(coefficient$supporting_conditions[index]))
-    stored_set <- if (length(stored) == 1L) {
-      .rc_split_support_conditions(stored)[[1L]]
-    } else character()
-    expected_set <- sort(unique(supporting))
-    if (length(stored) != 1L || !identical(stored_set, expected_set)) {
-      stop("Exact-edge supporting-condition audit is inconsistent.",
+    expected_support <- valid_production && is.finite(unique_padj) &&
+      unique_padj < threshold
+    if (!identical(unique_valid[[1L]], valid_production) ||
+        !identical(unique_support[[1L]], expected_support) ||
+        !identical(unique_active[[1L]], expected_support) ||
+        any(as.logical(coefficient$statistically_supported[index]) !=
+            expected_support) ||
+        any(as.logical(coefficient$significant[index]) != expected_support)) {
+      stop("Pando common exact-edge topology flags are inconsistent.",
+           call. = FALSE)
+    }
+    generic_p <- suppressWarnings(as.numeric(coefficient$pval[index]))
+    generic_q <- suppressWarnings(as.numeric(coefficient$padj[index]))
+    if (any(is.finite(generic_p) !=
+            is.finite(as.numeric(coefficient$edge_pval[index]))) ||
+        any(is.finite(generic_q) !=
+            is.finite(as.numeric(coefficient$edge_padj[index]))) ||
+        any(abs(generic_p[is.finite(generic_p)] -
+                as.numeric(coefficient$edge_pval[index][is.finite(generic_p)])) >
+            1e-12) ||
+        any(abs(generic_q[is.finite(generic_q)] -
+                as.numeric(coefficient$edge_padj[index][is.finite(generic_q)])) >
+            1e-12)) {
+      stop("Generic pval/padj fields must mirror exact-edge inference.",
            call. = FALSE)
     }
   }
@@ -170,8 +282,7 @@
   iteration <- suppressWarnings(as.integer(coefficient$iterations))
   if (anyNA(family) ||
       any(family != "information_scaled_sparse_deviation") ||
-      any(!is.finite(value)) ||
-      any(abs(value - 0.25) > 1e-15) ||
+      any(!is.finite(value)) || any(abs(value - 0.25) > 1e-15) ||
       anyNA(solver) || any(solver != "ok") ||
       any(!is.finite(kkt)) || any(kkt < 0) ||
       anyNA(iteration) || any(iteration < 0L)) {
@@ -232,8 +343,7 @@
   coefficient$padj_threshold <- threshold
   coefficient$target_rsq_threshold <- rsq_threshold
   coefficient$target_model_supported <-
-    coefficient$fit_status == "ok" &
-    is.finite(coefficient$target_rsq) &
+    coefficient$fit_status == "ok" & is.finite(coefficient$target_rsq) &
     coefficient$target_rsq >= rsq_threshold
   gate <- .rc_condition_penalty_gate(
     coefficient,
@@ -243,9 +353,10 @@
   coefficient$penalty_eligible <- gate
   coefficient$active_in_condition <- gate
   fit$coefficients <- coefficient
-  fit$regcompass_penalty_filter <- paste(
-    "exact edge: all conditions valid and at least one condition has",
-    paste0("condition-target BH padj < ", format(threshold, trim = TRUE))
+  fit$regcompass_penalty_filter <- paste0(
+    "Pando common exact edge: whole-network BH edge_padj < ",
+    format(threshold, trim = TRUE),
+    " with valid finite production beta_E in every condition"
   )
   fit$regcompass_fit_status_filter <- "fit_status == 'ok' in every condition"
   fit$regcompass_target_rsq_filter <- paste0(
@@ -254,7 +365,7 @@
   fit$regcompass_target_rsq_definition <-
     "scheme_e_z025_full_data_R2_diagnostic"
   fit$regcompass_significance_role <-
-    "condition_target_BH_defines_any_condition_exact_edge_union;R2_diagnostic_only"
+    "consume_Pando_exact_edge_whole_network_BH_common_topology;R2_diagnostic_only"
   fit$regcompass_padj_threshold <- threshold
   fit$regcompass_target_rsq_threshold <- rsq_threshold
   fit
