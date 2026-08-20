@@ -6,6 +6,12 @@
   if (!length(condition_types)) {
     stop("No condition-GRN cell type was supplied.", call. = FALSE)
   }
+  condition_value <- metadata[[condition_col]]
+  declared_levels <- if (is.factor(condition_value)) {
+    levels(condition_value)
+  } else {
+    unique(as.character(condition_value))
+  }
   plans <- vector("list", length(condition_types))
   names(plans) <- condition_types
   for (type in condition_types) {
@@ -16,11 +22,12 @@
       stop("Condition-GRN cell type `", type, "` contains no cells.",
            call. = FALSE)
     }
-    levels <- unique(as.character(metadata[type_cells, condition_col]))
-    counts <- vapply(levels, function(level) {
+    observed <- unique(as.character(metadata[type_cells, condition_col]))
+    condition_levels <- declared_levels[declared_levels %in% observed]
+    counts <- vapply(condition_levels, function(level) {
       sum(as.character(metadata[type_cells, condition_col]) == level)
     }, integer(1))
-    undersized <- levels[counts < as.integer(min_cells)]
+    undersized <- condition_levels[counts < as.integer(min_cells)]
     if (length(undersized)) {
       detail <- paste0(undersized, "=", counts[undersized], collapse = ", ")
       stop(
@@ -28,18 +35,22 @@
         detail, call. = FALSE
       )
     }
-    if (length(levels) < 2L) {
+    if (length(condition_levels) < 2L) {
       stop(
         "Condition-GRN cell type `", type,
         "` must retain at least two conditions.", call. = FALSE
       )
     }
-    cells_by_condition <- stats::setNames(lapply(levels, function(level) {
-      type_cells[as.character(metadata[type_cells, condition_col]) == level]
-    }), levels)
+    cells_by_condition <- stats::setNames(
+      lapply(condition_levels, function(level) {
+        type_cells[as.character(metadata[type_cells, condition_col]) == level]
+      }),
+      condition_levels
+    )
     plans[[type]] <- list(
       cell_type = type,
-      conditions = levels,
+      conditions = condition_levels,
+      reference_condition = condition_levels[[1L]],
       cells_by_condition = cells_by_condition,
       global_cells = unlist(cells_by_condition, use.names = FALSE)
     )
@@ -129,26 +140,13 @@
     pando_infer_args, inner_parallel = FALSE, PANDO_BPPARAM = NULL) {
   if (!is.list(task) || !inherits(task$grn, "GRNData") ||
       !is.character(task$cell_type) || length(task$cell_type) != 1L) {
-    stop("Invalid condition-GRN Scheme-E fit task.", call. = FALSE)
+    stop("Invalid condition-GRN E-star/JSE fit task.", call. = FALSE)
   }
   cell_type <- task$cell_type
-  solver_control <- pando_infer_args$condition_ridge_control %||% list()
-  forbidden <- intersect(
-    names(solver_control),
-    c("fusion_ratio", "scheme_e_z", "z", "penalty_value", "penalty_family",
-      "condition_mix", "alpha")
-  )
-  if (length(forbidden)) {
-    stop(
-      "Condition Scheme E is fixed at z=0.25; unsupported penalty-control ",
-      "field(s): ", paste(forbidden, collapse = ", "), ".",
-      call. = FALSE
-    )
-  }
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
   if (length(threshold) != 1L || !is.finite(threshold) ||
       threshold <= 0 || threshold >= 1) {
-    stop("Condition Pando diagnostic padj_threshold must be in (0, 1).",
+    stop("Condition Pando padj_threshold must be in (0, 1).",
          call. = FALSE)
   }
   show_progress <- .rc_progress_enabled(
@@ -175,7 +173,6 @@
     parallel = isTRUE(inner_parallel),
     parallel_scope = "target",
     overwrite = TRUE,
-    fallback_args = list(condition_ridge_control = solver_control),
     verbose = show_progress
   )
   if (isTRUE(inner_parallel) && !is.null(PANDO_BPPARAM) &&
@@ -185,7 +182,7 @@
   if (show_progress) {
     message(
       "RegCompass grn condition detail | cell_type=", cell_type,
-      ";phase=pando_scheme_e_z025_pipeline",
+      ";phase=pando_Estar_z025_JSE_pipeline",
       ";targets_requested=", length(target_genes),
       ";target_parallel=", isTRUE(inner_parallel),
       ";workers=", if (!is.null(args$BPPARAM) &&
@@ -198,16 +195,16 @@
     do.call(Pando::infer_condition_grn, args),
     error = function(error) {
       stop(
-        "Condition-GRN Scheme-E fit failed for cell type `", cell_type,
+        "Condition-GRN E-star/JSE fit failed for cell type `", cell_type,
         "` during Pando target-level execution: ",
-        conditionMessage(error),
-        call. = FALSE
+        conditionMessage(error), call. = FALSE
       )
     }
   )
   args <- NULL
   task$grn <- NULL
   invisible(gc(verbose = FALSE, full = TRUE))
+
   fits <- Pando::condition_grn_fit(fitted)
   if (inherits(fits, "ConditionGRNFit")) {
     fit <- fits
@@ -217,45 +214,48 @@
              inherits(fits[[1L]], "ConditionGRNFit")) {
     fit <- fits[[1L]]
   } else {
-    stop("Pando condition Scheme-E fit was not returned for cell type `",
+    stop("Pando condition E-star/JSE fit was not returned for cell type `",
          cell_type, "`.", call. = FALSE)
   }
   if (!identical(as.character(fit$cell_type), cell_type)) {
-    stop("Pando condition Scheme-E fit returned the wrong cell type.",
+    stop("Pando condition fit returned the wrong cell type.",
          call. = FALSE)
   }
   if (!isTRUE(all.equal(as.numeric(fit$padj_threshold), threshold))) {
-    stop("Pando returned a condition fit with the wrong diagnostic BH threshold.",
+    stop("Pando returned a condition fit with the wrong BH threshold.",
          call. = FALSE)
   }
   if (!identical(as.character(fit$model_schema),
                  .RC_PANDO_CONDITION_GRN_MODEL_SCHEMA) ||
       !identical(as.character(fit$fit_engine),
                  .RC_PANDO_CONDITION_GRN_ENGINE) ||
+      !identical(as.character(fit$inference_schema),
+                 .RC_PANDO_CONDITION_INFERENCE_SCHEMA) ||
       !is.list(fit$deviation_penalty) ||
       !identical(as.character(fit$deviation_penalty$family),
                  .RC_PANDO_CONDITION_PENALTY_FAMILY) ||
-      !isTRUE(all.equal(as.numeric(fit$deviation_penalty$z),
-                        .RC_PANDO_CONDITION_SCHEME_E_Z,
-                        tolerance = 1e-15))) {
-    stop("Pando returned a condition fit that is not fixed Scheme E z=0.25.",
+      !isTRUE(all.equal(
+        as.numeric(fit$deviation_penalty$z),
+        .RC_PANDO_CONDITION_SCHEME_E_Z,
+        tolerance = 1e-15
+      ))) {
+    stop("Pando returned a condition fit that is not E-star/JSE z=0.25.",
          call. = FALSE)
   }
   if (show_progress) {
     message(
       "RegCompass grn condition detail | cell_type=", cell_type,
-      ";phase=pando_scheme_e_z025_complete",
+      ";phase=pando_Estar_z025_JSE_complete",
       ";candidate_edges=", as.integer(fit$candidate_edge_count %||% NA_integer_),
       ";fit_edges=", as.integer(fit$fit_dictionary_edge_count %||% NA_integer_),
-      ";continuous_edges=", sum(fit$coefficients$active %in% TRUE),
-      ";contrast_identifiable=",
-      sum(fit$coefficients$contrast_identifiable %in% TRUE),
+      ";condition_significant_rows=",
+      sum(fit$coefficients$condition_significant %in% TRUE),
+      ";regcompass_union_edges=",
+      length(unique(fit$coefficients$edge_id[
+        fit$coefficients$active_in_regcompass %in% TRUE
+      ])),
       ";targets_fitted=", length(unique(as.character(fit$target_genes)))
     )
   }
-  list(
-    cell_type = cell_type,
-    grn = fitted,
-    fit = fit
-  )
+  list(cell_type = cell_type, grn = fitted, fit = fit)
 }
