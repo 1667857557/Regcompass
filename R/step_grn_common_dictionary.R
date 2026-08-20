@@ -11,10 +11,15 @@
 #'
 #' @param pando_args Pando configuration list. `min_cells` defaults to `500L`.
 #'   Conditional inference controls supplied through `pando_infer_args` are
-#'   `tf_cor`, `peak_cor`, `padj_threshold`, `rank_action`, and
-#'   `min_residual_df` plus the canonical layer fields. Conditional ridge-CV,
-#'   alternative-z and fusion-ratio controls are removed. Standard Pando retains
-#'   its separate standard-route controls, including `ridge_control` when used.
+#'   `tf_cor`, `peak_cor`, `padj_threshold`, `rank_action`,
+#'   `min_residual_df`, and optional `reference_condition`, plus the canonical
+#'   layer fields. `reference_condition` is a predefined experimental-design
+#'   coordinate for the K-condition contrast tree; it must be retained in every
+#'   conditional cell type and must not be selected after inspecting GRN
+#'   results. When omitted, Pando uses and records the first retained condition.
+#'   Conditional ridge-CV, alternative-z and fusion-ratio controls are removed.
+#'   Standard Pando retains its separate standard-route controls, including
+#'   `ridge_control` when used.
 #' @param target_rsq_threshold Full-data target R-squared threshold used by the
 #'   standard Pando route. Defaults to `0.05`. Conditional E-star/JSE keeps the
 #'   same target R-squared quantity as a diagnostic only; it does not gate the
