@@ -169,9 +169,9 @@
   kkt <- suppressWarnings(as.numeric(coefficient$kkt_residual))
   iteration <- suppressWarnings(as.integer(coefficient$iterations))
   if (anyNA(family) ||
-      any(family != .RC_PANDO_CONDITION_PENALTY_FAMILY) ||
+      any(family != "information_scaled_sparse_deviation") ||
       any(!is.finite(value)) ||
-      any(abs(value - .RC_PANDO_CONDITION_SCHEME_E_Z) > 1e-15) ||
+      any(abs(value - 0.25) > 1e-15) ||
       anyNA(solver) || any(solver != "ok") ||
       any(!is.finite(kkt)) || any(kkt < 0) ||
       anyNA(iteration) || any(iteration < 0L)) {
