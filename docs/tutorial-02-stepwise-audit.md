@@ -23,7 +23,8 @@ step1 <- rc_regcompass_step_grn(
       peak_cor = 0.05,
       padj_threshold = 0.05,
       rank_action = "mark",
-      min_residual_df = 1L
+      min_residual_df = 1L,
+      reference_condition = "Control"
     )
   ),
   workers = workers
@@ -40,8 +41,9 @@ For the conditional route, the commonly adjusted Stage 1 parameters are:
 - `pando_args$pando_infer_args$padj_threshold`: strict BH threshold after fusion-component joint inference; BH is performed separately within each `condition × target` family.
 - `pando_args$pando_infer_args$rank_action`: `"mark"` keeps raw rank-deficient fits and records identifiable/boundary structure; `"error"` requests strict failure.
 - `pando_args$pando_infer_args$min_residual_df`: minimum pooled effective residual degrees of freedom.
+- `pando_args$pando_infer_args$reference_condition`: predefined experimental reference used to construct the K-condition contrast-tree geometry. It is a design coordinate, not a tuning parameter. The label must be retained in every conditional cell type; if omitted, Pando uses and records the first retained condition. Do not choose it after inspecting GRN results.
 
-The conditional production path does **not** expose `condition_ridge_control`, `cv_folds`, `lambda_rule`, `fusion_ratio`, an alternative `z`, or a sensitivity grid. `z = 0.25` is fixed in the conditional estimator. Target full-data R² is retained as a diagnostic for this route and does not gate the exact-edge handoff.
+The conditional production path does **not** expose `condition_ridge_control`, `condition_e_control`, `cv_folds`, `lambda_rule`, `fusion_ratio`, an alternative `z`, or a sensitivity grid. `z = 0.25` is fixed in the conditional estimator. Target full-data R² is retained as a diagnostic for this route and does not gate the exact-edge handoff.
 
 An exact edge enters RegCompass when every fitted condition has a valid continuous E★ coefficient and at least one condition has `padj < padj_threshold`. Once admitted, that exact edge is kept in every condition with the condition's own continuous `penalty_effect`; a nonsignificant small condition is therefore not converted into an absent edge solely because of lower power.
 
