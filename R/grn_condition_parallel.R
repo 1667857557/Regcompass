@@ -140,7 +140,7 @@
     pando_infer_args, inner_parallel = FALSE, PANDO_BPPARAM = NULL) {
   if (!is.list(task) || !inherits(task$grn, "GRNData") ||
       !is.character(task$cell_type) || length(task$cell_type) != 1L) {
-    stop("Invalid condition-GRN E-star/JSE fit task.", call. = FALSE)
+    stop("Invalid condition-GRN E-star fit task.", call. = FALSE)
   }
   cell_type <- task$cell_type
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
@@ -184,7 +184,7 @@
   if (show_progress) {
     message(
       "RegCompass grn condition detail | cell_type=", cell_type,
-      ";phase=pando_Estar_z025_JSE_pipeline",
+      ";phase=pando_Estar_z025_separate_inference_pipeline",
       ";targets_requested=", length(target_genes),
       ";reference_condition=",
       if (is.null(reference_condition)) "<first-retained>" else reference_condition,
@@ -199,8 +199,8 @@
     do.call(Pando::infer_condition_grn, args),
     error = function(error) {
       stop(
-        "Condition-GRN E-star/JSE fit failed for cell type `", cell_type,
-        "` during Pando target-level execution: ",
+        "Condition-GRN E-star/separate-inference fit failed for cell type `",
+        cell_type, "` during Pando target-level execution: ",
         conditionMessage(error), call. = FALSE
       )
     }
@@ -218,7 +218,7 @@
              inherits(fits[[1L]], "ConditionGRNFit")) {
     fit <- fits[[1L]]
   } else {
-    stop("Pando condition E-star/JSE fit was not returned for cell type `",
+    stop("Pando condition E-star fit was not returned for cell type `",
          cell_type, "`.", call. = FALSE)
   }
   if (!identical(as.character(fit$cell_type), cell_type)) {
@@ -241,6 +241,8 @@
                  .RC_PANDO_CONDITION_GRN_ENGINE) ||
       !identical(as.character(fit$inference_schema),
                  .RC_PANDO_CONDITION_INFERENCE_SCHEMA) ||
+      !identical(as.character(fit$projection_policy),
+                 .RC_PANDO_CONDITION_PROJECTION_POLICY) ||
       !is.list(fit$deviation_penalty) ||
       !identical(as.character(fit$deviation_penalty$family),
                  .RC_PANDO_CONDITION_PENALTY_FAMILY) ||
@@ -249,22 +251,25 @@
         .RC_PANDO_CONDITION_SCHEME_E_Z,
         tolerance = 1e-15
       ))) {
-    stop("Pando returned a condition fit that is not E-star/JSE z=0.25.",
-         call. = FALSE)
+    stop(
+      "Pando returned a condition fit that is not the canonical E-star ",
+      "z=0.25 separated-inference contract.", call. = FALSE
+    )
   }
+  invisible(.rc_require_pando_condition_grn_fit(fit))
   if (show_progress) {
     message(
       "RegCompass grn condition detail | cell_type=", cell_type,
-      ";phase=pando_Estar_z025_JSE_complete",
+      ";phase=pando_Estar_z025_separate_inference_complete",
       ";reference_condition=", as.character(fit$reference_condition),
       ";candidate_edges=", as.integer(fit$candidate_edge_count %||% NA_integer_),
       ";fit_edges=", as.integer(fit$fit_dictionary_edge_count %||% NA_integer_),
-      ";condition_significant_rows=",
-      sum(fit$coefficients$condition_significant %in% TRUE),
-      ";regcompass_union_edges=",
-      length(unique(fit$coefficients$edge_id[
-        fit$coefficients$active_in_regcompass %in% TRUE
-      ])),
+      ";condition_inference_estimable_rows=",
+      sum(fit$coefficients$condition_inference_estimable %in% TRUE),
+      ";edge_inference_estimable=",
+      sum(fit$edge_inference$edge_inference_estimable %in% TRUE),
+      ";regcompass_edges=",
+      sum(fit$edge_inference$edge_supported %in% TRUE),
       ";targets_fitted=", length(unique(as.character(fit$target_genes)))
     )
   }
