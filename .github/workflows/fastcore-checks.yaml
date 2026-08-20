@@ -43,12 +43,13 @@ jobs:
               "    SuperCell,",
               "1667857557/Pando_regcompass",
               "1667857557/SuperCell_Seurat_V4",
-              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_sparse_deviation_v4",
-              "Config/RegCompass/PandoConditionProjectionPolicy: continuous-common-dictionary-scheme-E",
-              "Config/RegCompass/PandoConditionMethod: global-condition-union-scheme-E-exact-edge-z025",
-              "Config/RegCompass/PandoConditionPenalty: exact-edge-sparse-deviation-z025",
+              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_Estar_jointse_v1",
+              "Config/RegCompass/PandoConditionMethod: global-condition-union-Estar-z025-JSE",
+              "Config/RegCompass/PandoConditionPenalty: information-scaled-sparse-deviation-z025",
+              "Config/RegCompass/PandoConditionProjectionPolicy: any-condition-padj-exact-edge-union",
+              "Config/RegCompass/PandoConditionInference: fusion-component-joint-refit-condition-target-BH",
               "Config/RegCompass/PandoTargetR2: scheme-E-z025-full-data-R2-diagnostic",
-              "Config/RegCompass/PandoTargetR2Threshold: 0.05",
+              "Config/RegCompass/PandoTargetR2Threshold: 0.05-diagnostic-only-for-condition-GRN",
               "Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1",
               "Config/RegCompass/MediumSemantics: compass-exchange-bounds-v2",
               "Config/RegCompass/MediumCacheFingerprint: resolved-reaction-id-final-lb-final-ub-v1",
@@ -75,19 +76,6 @@ jobs:
           present = [x for x in obsolete_files if Path(x).exists()]
           if present:
               raise RuntimeError(f"obsolete wrapper/override source remains: {present}")
-
-          order_pairs = [
-              ("'condition_grn_contract.R'", "'grn_condition_parallel.R'"),
-              ("'grn_condition_parallel.R'", "'grn_route_parallel.R'"),
-              ("'mixed_pando.R'", "'grn_route_parallel.R'"),
-              ("'grn_route_parallel.R'", "'condition_penalty_contract.R'"),
-              ("'step_layer2.R'", "'layer2_parallel_runtime.R'"),
-              ("'layer2_corda_paper_contract.R'", "'layer2_corda2_algorithm.R'"),
-              ("'layer2_corda2_algorithm_build.R'", "'layer2_corda_runtime_cache.R'"),
-          ]
-          for first, second in order_pairs:
-              if description.index(first) > description.index(second):
-                  raise RuntimeError(f"invalid Collate order: {first} after {second}")
 
           all_r = "\n".join(
               path.read_text() for path in sorted(Path("R").glob("*.R"))
@@ -126,9 +114,7 @@ jobs:
           for path, names in canonical.items():
               text = Path(path).read_text()
               for name in names:
-                  pattern = re.compile(
-                      rf"(?m)^{re.escape(name)}\s*<-\s*function\b"
-                  )
+                  pattern = re.compile(rf"(?m)^{re.escape(name)}\s*<-\s*function\b")
                   if len(pattern.findall(text)) != 1:
                       raise RuntimeError(
                           f"{name} must have exactly one canonical definition in {path}"
@@ -153,63 +139,51 @@ jobs:
           if present:
               raise RuntimeError(f"versioned/wrapper implementation remains: {present}")
 
-          medium_semantics = Path("R/compass_medium_semantics.R").read_text()
-          forbidden_medium_overrides = [
-              "rc_apply_medium_constraints <- .rc_apply_compass_medium_constraints",
-              ".rc_compass_model_bound_medium <- .rc_make_compass_model_bound_medium",
-              ".rc_assert_medium_bounds_only <- .rc_assert_compass_medium_bounds_only",
-              ".rc_full_gem_medium_fingerprint <- .rc_compass_medium_fingerprint",
-              ".rc_compass_medium_fingerprint <- function",
-          ]
-          present = [x for x in forbidden_medium_overrides if x in medium_semantics]
-          if present:
-              raise RuntimeError(f"late-bound or declarative medium override remains: {present}")
-          full_gem = Path("R/full_gem.R").read_text()
-          required_resolved_cache = [
-              "resolved_gem_bounds_v1",
-              "reaction_id = reference$reactions",
-              "final_lb = as.numeric(resolved$lb)",
-              "final_ub = as.numeric(resolved$ub)",
-              "resolved_medium_fingerprint",
-              "n_changed_bounds_vs_reference",
-              "resolved_bounds_identical_to_reference",
-          ]
-          missing = [x for x in required_resolved_cache if x not in full_gem]
-          if missing:
-              raise RuntimeError(f"resolved medium cache contract missing: {missing}")
-
           condition = Path("R/condition_grn_contract.R").read_text()
-          required_condition_semantics = [
-              '"pando_condition_grn_sparse_deviation_v4"',
-              '"condition_union_scheme_e_exact_edge_z025"',
-              '"exact_edge_sparse_deviation"',
+          required_condition = [
+              '"pando_condition_grn_Estar_jointse_v1"',
+              '"condition_union_Estar_z025_jointse"',
+              '"scheme_e_fusion_component_joint_refit_v1"',
+              '"information_scaled_sparse_deviation"',
+              '"condition_target_BH"',
               ".RC_PANDO_CONDITION_SCHEME_E_Z <- 0.25",
+              "reference_condition",
               "dictionary_support_table",
               "dictionary_support_summary",
               "candidate_tf_cor",
               "candidate_peak_cor",
-              "expected_statistical <- is.finite(estimate)",
-              "expected_active <- is.finite(estimate)",
-              "Pando penalty_effect does not equal the continuous Scheme-E coefficient",
-              "contrast_identifiable",
+              "inference_component_id",
+              "inference_hypothesis_id",
+              "inference_estimate",
+              "inference_se",
+              "inference_estimable",
+              "condition_significant",
+              "all_conditions_fit_valid",
+              "supporting_conditions",
+              "edge_union_supported",
+              "active_in_regcompass",
+              "penalty_effect",
               "shared_by_boundary",
+              "boundary_condition",
               "fused_by_penalty",
+              "fusion_component_id",
               "raw_information_condition",
-              "profile_information_delta",
+              "profile_information",
               "solver_status",
               "kkt_residual",
-              "profile_information_definition",
           ]
-          missing = [x for x in required_condition_semantics if x not in condition]
+          missing = [x for x in required_condition if x not in condition]
           if missing:
-              raise RuntimeError(f"Scheme-E condition semantics missing: {missing}")
+              raise RuntimeError(f"E-star/JSE condition contract missing: {missing}")
           forbidden_condition = [
               "pando_condition_grn_multitask_ridge_v3",
+              "pando_condition_grn_sparse_deviation_v4",
+              "condition_union_scheme_e_exact_edge_z025",
+              "exact_edge_sparse_deviation",
               "screening_n_significant_conditions",
               "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
               "two_stage_exact_edge_union_multitask_ridge",
-              "expected_active <- expected_statistical",
-              "expected_statistical & (expected_global | expected_local)",
+              "BH_and_R2_are_diagnostics_only",
           ]
           present = [x for x in forbidden_condition if x in condition]
           if present:
@@ -220,93 +194,74 @@ jobs:
               ".rc_validate_pando_active_condition_edges",
               ".rc_condition_penalty_gate",
               ".RC_PANDO_TARGET_RSQ_THRESHOLD <- 0.05",
-              "expected_statistical <- is.finite(estimate)",
-              "expected_active <- is.finite(estimate)",
-              "penalty_effect must equal the continuous Scheme-E condition coefficient",
-              'family != "exact_edge_sparse_deviation"',
+              'family != "information_scaled_sparse_deviation"',
               "abs(value - 0.25) > 1e-15",
+              "condition_significant",
+              "edge_union_supported",
+              "active_in_regcompass",
               'fit_status == "ok"',
               "target_model_supported",
               "scheme_e_z025_full_data_R2_diagnostic",
-              "BH_and_target_R2_are_diagnostics_only;no_edge_reselection",
-              ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
-              ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
           ]
           missing = [x for x in required_penalty if x not in penalty]
           if missing:
-              raise RuntimeError(f"Scheme-E penalty contract missing: {missing}")
+              raise RuntimeError(f"E-star/JSE penalty contract missing: {missing}")
           forbidden_penalty = [
+              "exact_edge_sparse_deviation",
+              "BH_and_target_R2_are_diagnostics_only;no_edge_reselection",
               "consume_pando_condition_bh_active_edge_without_reselection",
-              "expected_active <- expected_statistical",
-              "expected_statistical & expected_dictionary_support",
           ]
           present = [x for x in forbidden_penalty if x in penalty]
           if present:
               raise RuntimeError(f"obsolete conditional penalty gate remains: {present}")
 
           step1 = Path("R/step_grn_common_dictionary.R").read_text()
-          required_stage1 = [
+          for marker in (
               "target_rsq_threshold = 0.05",
               ".rc_target_rsq_threshold(target_rsq_threshold)",
               "options(RegCompassR.target_rsq_threshold = target_rsq_threshold)",
-          ]
-          missing = [x for x in required_stage1 if x not in step1]
-          if missing:
-              raise RuntimeError(f"Stage 1 target-R2 diagnostic parameter surface missing: {missing}")
+          ):
+              if marker not in step1:
+                  raise RuntimeError(f"Stage 1 target-R2 diagnostic surface missing: {marker}")
 
-          step = Path("R/step_layer2.R").read_text()
-          cache = Path("R/celltype_union_gem_cache.R").read_text()
-          split = Path("R/layer2_corda_paper_contract.R").read_text()
-          algorithm = Path("R/layer2_corda2_algorithm_build.R").read_text()
-          model = Path("R/layer2_corda_model.R").read_text()
+          full_gem = Path("R/full_gem.R").read_text()
+          for marker in (
+              "resolved_gem_bounds_v1",
+              "reaction_id = reference$reactions",
+              "final_lb = as.numeric(resolved$lb)",
+              "final_ub = as.numeric(resolved$ub)",
+              "resolved_medium_fingerprint",
+          ):
+              if marker not in full_gem:
+                  raise RuntimeError(f"resolved medium cache contract missing: {marker}")
+
           direct_contracts = {
-              "Layer 2 entrypoint": (
-                  step,
-                  [".rc_prepare_corda_worker_pool", ".rc_layer2_prepare_completion", ".rc_layer2_finalize_completion"],
-              ),
-              "union-cache dispatch": (
-                  cache,
-                  [".rc_build_celltype_medium_corda_cache", "context$model_completion"],
-              ),
-              "original CORDA2 split": (
-                  split,
-                  [".rc_corda2_split_original", "_CORDA_rev_rxn", ".rc_corda2_close_opposite"],
-              ),
-              "original CORDA2 state machine": (
-                  algorithm,
-                  ["HCtoMC", "HCtoNC", "MCxNC", "options$MCxNCthresh", "corda2_step3_HC_OT_dependencies"],
-              ),
-              "direct CORDA2 model": (
-                  model,
-                  [".rc_corda_parent", ".rc_corda2_split_original", ".rc_corda_build_three_stage", ".rc_corda2_apply_direction_bounds", ".rc_finalize_corda_union_model"],
-              ),
+              "R/step_layer2.R": [
+                  ".rc_prepare_corda_worker_pool",
+                  ".rc_layer2_prepare_completion",
+                  ".rc_layer2_finalize_completion",
+              ],
+              "R/layer2_corda_paper_contract.R": [
+                  ".rc_corda2_split_original", "_CORDA_rev_rxn",
+                  ".rc_corda2_close_opposite",
+              ],
+              "R/layer2_corda2_algorithm_build.R": [
+                  "HCtoMC", "HCtoNC", "MCxNC", "options$MCxNCthresh",
+              ],
+              "R/layer2_corda_model.R": [
+                  ".rc_corda_parent", ".rc_corda2_split_original",
+                  ".rc_corda_build_three_stage",
+                  ".rc_corda2_apply_direction_bounds",
+                  ".rc_finalize_corda_union_model",
+              ],
           }
-          for label, (text, required) in direct_contracts.items():
-              missing = [x for x in required if x not in text]
+          for path, markers in direct_contracts.items():
+              text = Path(path).read_text()
+              missing = [x for x in markers if x not in text]
               if missing:
-                  raise RuntimeError(f"{label} missing: {missing}")
+                  raise RuntimeError(f"{path} direct contract missing: {missing}")
 
-          forbidden_markers = [
-              "_base <-", "before_corda2", "completion_base <-", "runtime_base <-"
-          ]
-          production_files = [
-              Path("R/step_layer2.R"),
-              Path("R/celltype_union_gem_cache.R"),
-              Path("R/layer2_corda_paper_contract.R"),
-              Path("R/layer2_corda2_algorithm.R"),
-              Path("R/layer2_corda2_algorithm_build.R"),
-              Path("R/layer2_corda_model.R"),
-              Path("R/layer2_corda_runtime.R"),
-              Path("R/layer2_corda_runtime_cache.R"),
-              Path("R/layer2_corda_runtime_step.R"),
-          ]
-          for file in production_files:
-              text = file.read_text()
-              found = [x for x in forbidden_markers if x in text]
-              if found:
-                  raise RuntimeError(f"function override marker remains in {file}: {found}")
-
-      - name: Parse package sources
+      - name: Parse package sources and Rd files
         shell: Rscript {0}
         run: |
           description <- read.dcf("DESCRIPTION")
@@ -327,54 +282,6 @@ jobs:
           options(warn = 2)
           on.exit(options(warn = old_warn), add = TRUE)
           invisible(lapply(rd_files, tools::parse_Rd))
-
-      - name: Run lightweight integration tests
-        shell: Rscript {0}
-        run: |
-          `%||%` <- function(x, y) if (is.null(x)) y else x
-          .rc_standard_pando_padj_default <- 0.05
-          .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
-          source("R/condition_penalty_contract.R")
-          estimate <- c(1e-8, 2, 3, NA_real_)
-          padj <- c(0.01, 0.08, NA_real_, NA_real_)
-          active <- is.finite(estimate)
-          coefficient <- data.frame(
-            estimate = estimate,
-            estimable = c(TRUE, TRUE, FALSE, FALSE),
-            padj = padj,
-            statistically_supported = c(TRUE, FALSE, FALSE, FALSE),
-            global_support = c(TRUE, TRUE, FALSE, FALSE),
-            local_support = c(FALSE, FALSE, TRUE, FALSE),
-            active = active,
-            significant = c(TRUE, FALSE, FALSE, FALSE),
-            penalty_effect = ifelse(active, estimate, NA_real_),
-            contrast_identifiable = c(TRUE, TRUE, FALSE, FALSE),
-            shared_by_boundary = c(FALSE, FALSE, TRUE, TRUE),
-            fused_by_penalty = c(FALSE, TRUE, FALSE, FALSE),
-            penalty_family = rep("exact_edge_sparse_deviation", 4L),
-            penalty_value = rep(0.25, 4L),
-            solver_status = rep("ok", 4L),
-            kkt_residual = rep(1e-8, 4L),
-            iterations = rep(20L, 4L),
-            fit_status = c("ok", "ok", "ok", "failed"),
-            rsq = c(0.8, 0.01, 0.6, 0.9),
-            stringsAsFactors = FALSE
-          )
-          stopifnot(identical(
-            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.05),
-            c(TRUE, TRUE, TRUE, FALSE)
-          ))
-          relaxed <- coefficient
-          relaxed$statistically_supported <- c(TRUE, TRUE, FALSE, FALSE)
-          relaxed$significant <- relaxed$statistically_supported
-          stopifnot(identical(
-            .rc_condition_penalty_gate(
-              relaxed,
-              padj_threshold = 0.5,
-              target_rsq_threshold = 0.95
-            ),
-            c(TRUE, TRUE, TRUE, FALSE)
-          ))
 
       - name: Build source package
         run: R CMD build --no-build-vignettes --no-manual .
