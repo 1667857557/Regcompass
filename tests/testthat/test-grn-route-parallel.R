@@ -21,33 +21,30 @@ test_that("Pando routing defaults thresholds to 0.05 and standard ridge", {
   expect_equal(condition$condition$tf_cor, 0.05)
   expect_equal(condition$condition$peak_cor, 0.05)
   expect_equal(condition$condition$padj_threshold, 0.05)
-})
-
-test_that("standard Pando ignores only condition-only inference parameters", {
-  routed <- .rc_route_pando_infer_args(
-    list(
-      padj_threshold = 0.01,
-      condition_ridge_control = list(lambda_rule = "1se"),
-      rna_layer = "data",
-      peak_layer = "data",
-      peak_value_type = "normalized"
-    ),
-    condition_types = character(),
-    standard_types = "T_cell"
-  )
-
-  expect_equal(routed$standard$padj_threshold, 0.01)
   expect_false(any(c(
-    "condition_ridge_control", "rna_layer", "peak_layer", "peak_value_type"
-  ) %in% names(routed$standard)))
-  expect_setequal(
-    routed$diagnostics$argument,
-    c("condition_ridge_control", "rna_layer", "peak_layer", "peak_value_type")
-  )
-  expect_true(all(routed$diagnostics$route == "standard_pando"))
+    "condition_ridge_control", "scheme_e_z", "z", "lambda_grid",
+    "lambda_rule", "cv_folds", "fusion_ratio"
+  ) %in% names(condition$condition)))
 })
 
-test_that("single-condition standard ridge preserves shared thresholds", {
+test_that("removed conditional controls are rejected instead of silently ignored", {
+  expect_error(
+    .rc_route_pando_infer_args(
+      list(condition_ridge_control = list(lambda_rule = "1se")),
+      condition_types = "T_cell"
+    ),
+    "Removed conditional Pando control"
+  )
+  expect_error(
+    .rc_route_pando_infer_args(
+      list(scheme_e_z = 0.5),
+      condition_types = "T_cell"
+    ),
+    "Removed conditional Pando control"
+  )
+})
+
+test_that("single-condition standard ridge preserves its independent controls", {
   routed <- .rc_route_pando_infer_args(
     list(
       tf_cor = 0.1,
@@ -55,7 +52,8 @@ test_that("single-condition standard ridge preserves shared thresholds", {
       adjust_method = "BH",
       padj_threshold = 0.01,
       rank_action = "mark",
-      min_residual_df = 1L
+      min_residual_df = 1L,
+      ridge_control = list(lambda_rule = "1se", cv_folds = 4L)
     ),
     condition_types = character(),
     standard_types = "T_cell"
@@ -68,6 +66,8 @@ test_that("single-condition standard ridge preserves shared thresholds", {
   expect_identical(routed$standard$method, "ridge")
   expect_identical(routed$standard$rank_action, "mark")
   expect_identical(routed$standard$min_residual_df, 1L)
+  expect_identical(routed$standard$ridge_control$lambda_rule, "1se")
+  expect_identical(routed$standard$ridge_control$cv_folds, 4L)
   expect_equal(nrow(routed$diagnostics), 0L)
 })
 
@@ -95,14 +95,7 @@ test_that("condition Pando ignores standard-only inference parameters", {
   expect_true(all(routed$diagnostics$route == "condition_grn"))
 })
 
-test_that("condition GRN routes adjustable thresholds and no-fusion ridge controls", {
-  ridge <- list(
-    lambda_grid = c(0.01, 0.1, 1),
-    lambda_rule = "1se",
-    cv_folds = 4L,
-    seed = 7L,
-    scale_floor = 1e-8
-  )
+test_that("condition GRN routes only current E-star/JSE design controls", {
   routed <- .rc_route_pando_infer_args(
     list(
       tf_cor = 0.2,
@@ -111,7 +104,6 @@ test_that("condition GRN routes adjustable thresholds and no-fusion ridge contro
       padj_threshold = 0.2,
       rank_action = "mark",
       min_residual_df = 2L,
-      condition_ridge_control = ridge,
       method = "glmnet",
       alpha = 0.5,
       scale = TRUE
@@ -124,26 +116,17 @@ test_that("condition GRN routes adjustable thresholds and no-fusion ridge contro
   expect_equal(routed$condition$peak_cor, 0.03)
   expect_equal(routed$condition$padj_threshold, 0.2)
   expect_equal(routed$condition$min_residual_df, 2L)
-  expect_identical(routed$condition$condition_ridge_control, ridge)
-  expect_false(any(c("method", "alpha", "scale") %in%
-                     names(routed$condition)))
+  expect_false(any(c(
+    "method", "alpha", "scale", "condition_ridge_control",
+    "scheme_e_z", "z", "fusion_ratio"
+  ) %in% names(routed$condition)))
   expect_setequal(
     routed$diagnostics$argument,
     c("method", "alpha", "scale")
   )
 })
 
-test_that("obsolete condition fusion control is rejected", {
-  expect_error(
-    .rc_route_pando_infer_args(
-      list(condition_ridge_control = list(fusion_ratio = 1)),
-      condition_types = "Monocyte"
-    ),
-    "fusion_ratio.*obsolete"
-  )
-})
-
-test_that("mixed routing preserves shared and route-specific controls", {
+test_that("mixed routing preserves current shared and route-specific controls", {
   routed <- .rc_route_pando_infer_args(
     list(
       tf_cor = 0.1,
@@ -152,7 +135,6 @@ test_that("mixed routing preserves shared and route-specific controls", {
       padj_threshold = 0.01,
       rank_action = "mark",
       min_residual_df = 1L,
-      condition_ridge_control = list(lambda_rule = "1se"),
       method = "glm",
       scale = FALSE
     ),
@@ -161,18 +143,17 @@ test_that("mixed routing preserves shared and route-specific controls", {
   )
 
   expect_true(all(c(
-    "padj_threshold", "rank_action", "min_residual_df",
-    "condition_ridge_control"
+    "padj_threshold", "rank_action", "min_residual_df"
   ) %in% names(routed$condition)))
   expect_true(all(c("padj_threshold", "method", "scale") %in%
                     names(routed$standard)))
   expect_equal(routed$condition$padj_threshold, 0.01)
   expect_equal(routed$standard$padj_threshold, 0.01)
   expect_false("method" %in% names(routed$condition))
-  expect_false("condition_ridge_control" %in% names(routed$standard))
+  expect_false("ridge_control" %in% names(routed$standard))
   expect_setequal(
     routed$diagnostics$argument,
-    c("condition_ridge_control", "method", "scale")
+    c("method", "scale")
   )
 })
 
@@ -249,7 +230,7 @@ test_that("parallel condition jobs preserve separate Pando objects and contrasts
       paired_cell_ids = cell_id,
       target_metabolic_genes = paste0("GENE_", cell_type),
       pando_execution_summary = list(
-        fit_engine = "condition_union_single_no_fusion_common_lambda_ridge",
+        fit_engine = "condition_union_Estar_z025_jointse",
         targets_total = 1L,
         targets_failed = 0L
       )
