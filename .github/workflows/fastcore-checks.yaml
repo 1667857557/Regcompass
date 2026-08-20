@@ -43,10 +43,11 @@ jobs:
               "    SuperCell,",
               "1667857557/Pando_regcompass",
               "1667857557/SuperCell_Seurat_V4",
-              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_multitask_ridge_v3",
-              "Config/RegCompass/PandoConditionProjectionPolicy: condition-BH-supported-common-dictionary-ridge",
-              "Config/RegCompass/PandoConditionMethod: global-condition-union-single-no-fusion-ridge",
-              "Config/RegCompass/PandoTargetR2: selected-lambda-full-data-R2",
+              "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_sparse_deviation_v4",
+              "Config/RegCompass/PandoConditionProjectionPolicy: continuous-common-dictionary-scheme-E",
+              "Config/RegCompass/PandoConditionMethod: global-condition-union-scheme-E-exact-edge-z025",
+              "Config/RegCompass/PandoConditionPenalty: exact-edge-sparse-deviation-z025-fixed",
+              "Config/RegCompass/PandoTargetR2: scheme-E-z025-full-data-R2-diagnostic",
               "Config/RegCompass/PandoTargetR2Threshold: 0.05",
               "Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1",
               "Config/RegCompass/MediumSemantics: compass-exchange-bounds-v2",
@@ -179,25 +180,35 @@ jobs:
 
           condition = Path("R/condition_grn_contract.R").read_text()
           required_condition_semantics = [
+              '"pando_condition_grn_sparse_deviation_v4"',
+              '"condition_union_scheme_e_exact_edge_z025"',
+              '"exact_edge_sparse_deviation"',
+              ".RC_PANDO_CONDITION_SCHEME_E_Z <- 0.25",
               "dictionary_support_table",
               "dictionary_support_summary",
               "candidate_tf_cor",
               "candidate_peak_cor",
-              "expected_statistical <- one$estimable %in% TRUE",
-              "expected_global <-",
-              "expected_local <-",
-              "expected_active <- expected_statistical",
-              "!identical(as.logical(one$global_support), expected_global)",
-              "!identical(as.logical(one$local_support), expected_local)",
-              "!identical(as.logical(one$active), expected_active)",
+              "expected_statistical <- is.finite(estimate)",
+              "expected_active <- is.finite(estimate)",
+              "Pando penalty_effect does not equal the continuous Scheme-E coefficient",
+              "contrast_identifiable",
+              "shared_by_boundary",
+              "fused_by_penalty",
+              "raw_information_condition",
+              "profile_information_delta",
+              "solver_status",
+              "kkt_residual",
+              "profile_information_definition",
           ]
           missing = [x for x in required_condition_semantics if x not in condition]
           if missing:
-              raise RuntimeError(f"condition activity semantics missing: {missing}")
+              raise RuntimeError(f"Scheme-E condition semantics missing: {missing}")
           forbidden_condition = [
+              "pando_condition_grn_multitask_ridge_v3",
               "screening_n_significant_conditions",
               "preliminary_joint_ridge_bh_significant_union_then_joint_refit",
               "two_stage_exact_edge_union_multitask_ridge",
+              "expected_active <- expected_statistical",
               "expected_statistical & (expected_global | expected_local)",
           ]
           present = [x for x in forbidden_condition if x in condition]
@@ -209,22 +220,30 @@ jobs:
               ".rc_validate_pando_active_condition_edges",
               ".rc_condition_penalty_gate",
               ".RC_PANDO_TARGET_RSQ_THRESHOLD <- 0.05",
-              "statistically_supported",
-              "global_support",
-              "local_support",
-              "expected_active <- expected_statistical",
+              "expected_statistical <- is.finite(estimate)",
+              "expected_active <- is.finite(estimate)",
+              "penalty_effect must equal the continuous Scheme-E condition coefficient",
+              'family != "exact_edge_sparse_deviation"',
+              "abs(value - 0.25) > 1e-15",
               'fit_status == "ok"',
-              "target_rsq >= rsq_threshold",
-              "selected_lambda_full_data_R2",
+              "target_model_supported",
+              "scheme_e_z025_full_data_R2_diagnostic",
+              "BH_and_target_R2_are_diagnostics_only;no_edge_reselection",
               ".RC_PANDO_PENALTY_CORR_THRESHOLD <- 0",
               ".RC_PANDO_PENALTY_ESTIMATE_THRESHOLD <- 0",
-              "consume_pando_condition_bh_active_edge_without_reselection",
           ]
           missing = [x for x in required_penalty if x not in penalty]
           if missing:
-              raise RuntimeError(f"active condition ridge penalty contract missing: {missing}")
-          if "expected_statistical & expected_dictionary_support" in penalty:
-              raise RuntimeError("candidate provenance still vetoes RegCompass activity")
+              raise RuntimeError(f"Scheme-E penalty contract missing: {missing}")
+          forbidden_penalty = [
+              "consume_pando_condition_bh_active_edge_without_reselection",
+              "selected_lambda_full_data_R2",
+              "expected_active <- expected_statistical",
+              "expected_statistical & expected_dictionary_support",
+          ]
+          present = [x for x in forbidden_penalty if x in penalty]
+          if present:
+              raise RuntimeError(f"obsolete conditional penalty gate remains: {present}")
 
           step1 = Path("R/step_grn_common_dictionary.R").read_text()
           required_stage1 = [
@@ -234,7 +253,7 @@ jobs:
           ]
           missing = [x for x in required_stage1 if x not in step1]
           if missing:
-              raise RuntimeError(f"Stage 1 target-R2 parameter surface missing: {missing}")
+              raise RuntimeError(f"Stage 1 target-R2 diagnostic parameter surface missing: {missing}")
 
           step = Path("R/step_layer2.R").read_text()
           cache = Path("R/celltype_union_gem_cache.R").read_text()
@@ -318,29 +337,42 @@ jobs:
           .rc_require_pando_condition_grn_fit <- function(x) invisible(TRUE)
           source("R/condition_penalty_contract.R")
           estimate <- c(1e-8, 2, 3, NA_real_)
-          estimable <- c(TRUE, TRUE, TRUE, FALSE)
-          padj <- c(0.01, 0.08, 0.2, NA_real_)
-          statistically_supported <- c(TRUE, TRUE, TRUE, FALSE)
-          global_support <- c(TRUE, TRUE, FALSE, FALSE)
-          local_support <- c(FALSE, FALSE, FALSE, TRUE)
-          active <- statistically_supported
+          padj <- c(0.01, 0.08, NA_real_, NA_real_)
+          statistically_supported <- c(TRUE, FALSE, FALSE, FALSE)
+          active <- is.finite(estimate)
           coefficient <- data.frame(
             estimate = estimate,
-            estimable = estimable,
+            estimable = c(TRUE, TRUE, FALSE, FALSE),
             padj = padj,
             statistically_supported = statistically_supported,
-            global_support = global_support,
-            local_support = local_support,
+            global_support = c(TRUE, TRUE, FALSE, FALSE),
+            local_support = c(FALSE, FALSE, TRUE, FALSE),
             active = active,
-            significant = active,
-            penalty_effect = ifelse(active, estimate, 0),
-            fit_status = c("ok", "rank_deficient", "ok", "ok"),
-            rsq = c(0.8, 0.9, 0.01, 0.7),
+            significant = statistically_supported,
+            penalty_effect = ifelse(active, estimate, NA_real_),
+            contrast_identifiable = c(TRUE, TRUE, FALSE, FALSE),
+            shared_by_boundary = c(FALSE, FALSE, TRUE, TRUE),
+            fused_by_penalty = c(FALSE, TRUE, FALSE, FALSE),
+            penalty_family = rep("exact_edge_sparse_deviation", 4L),
+            penalty_value = rep(0.25, 4L),
+            solver_status = rep("ok", 4L),
+            kkt_residual = rep(1e-8, 4L),
+            iterations = rep(20L, 4L),
+            fit_status = c("ok", "ok", "ok", "failed"),
+            rsq = c(0.8, 0.01, 0.6, 0.9),
             stringsAsFactors = FALSE
           )
           stopifnot(identical(
-            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.5),
-            c(TRUE, FALSE, FALSE, FALSE)
+            .rc_condition_penalty_gate(coefficient, padj_threshold = 0.05),
+            c(TRUE, TRUE, TRUE, FALSE)
+          ))
+          stopifnot(identical(
+            .rc_condition_penalty_gate(
+              coefficient,
+              padj_threshold = 0.5,
+              target_rsq_threshold = 0.95
+            ),
+            c(TRUE, TRUE, TRUE, FALSE)
           ))
           stopifnot(inherits(
             try(.rc_condition_penalty_gate(coefficient, padj_threshold = 1),
