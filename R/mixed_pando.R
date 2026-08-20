@@ -268,7 +268,7 @@
       "aligned to metacell metadata.", call. = FALSE
     )
   }
-  table$target <- tolower(trimws(as.character(table$target))
+  table$target <- tolower(trimws(as.character(table$target)))
   table[[condition_col]] <- trimws(as.character(table[[condition_col]]))
   table[[celltype_col]] <- trimws(as.character(table[[celltype_col]]))
   if (anyNA(table$target) || any(!nzchar(table$target)) ||
