@@ -46,7 +46,7 @@ jobs:
               "Config/RegCompass/PandoConditionModelSchema: pando_condition_grn_sparse_deviation_v4",
               "Config/RegCompass/PandoConditionProjectionPolicy: continuous-common-dictionary-scheme-E",
               "Config/RegCompass/PandoConditionMethod: global-condition-union-scheme-E-exact-edge-z025",
-              "Config/RegCompass/PandoConditionPenalty: exact-edge-sparse-deviation-z025-fixed",
+              "Config/RegCompass/PandoConditionPenalty: exact-edge-sparse-deviation-z025",
               "Config/RegCompass/PandoTargetR2: scheme-E-z025-full-data-R2-diagnostic",
               "Config/RegCompass/PandoTargetR2Threshold: 0.05",
               "Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1",
