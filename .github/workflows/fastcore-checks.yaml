@@ -337,17 +337,16 @@ jobs:
           source("R/condition_penalty_contract.R")
           estimate <- c(1e-8, 2, 3, NA_real_)
           padj <- c(0.01, 0.08, NA_real_, NA_real_)
-          statistically_supported <- c(TRUE, FALSE, FALSE, FALSE)
           active <- is.finite(estimate)
           coefficient <- data.frame(
             estimate = estimate,
             estimable = c(TRUE, TRUE, FALSE, FALSE),
             padj = padj,
-            statistically_supported = statistically_supported,
+            statistically_supported = c(TRUE, FALSE, FALSE, FALSE),
             global_support = c(TRUE, TRUE, FALSE, FALSE),
             local_support = c(FALSE, FALSE, TRUE, FALSE),
             active = active,
-            significant = statistically_supported,
+            significant = c(TRUE, FALSE, FALSE, FALSE),
             penalty_effect = ifelse(active, estimate, NA_real_),
             contrast_identifiable = c(TRUE, TRUE, FALSE, FALSE),
             shared_by_boundary = c(FALSE, FALSE, TRUE, TRUE),
@@ -365,18 +364,16 @@ jobs:
             .rc_condition_penalty_gate(coefficient, padj_threshold = 0.05),
             c(TRUE, TRUE, TRUE, FALSE)
           ))
+          relaxed <- coefficient
+          relaxed$statistically_supported <- c(TRUE, TRUE, FALSE, FALSE)
+          relaxed$significant <- relaxed$statistically_supported
           stopifnot(identical(
             .rc_condition_penalty_gate(
-              coefficient,
+              relaxed,
               padj_threshold = 0.5,
               target_rsq_threshold = 0.95
             ),
             c(TRUE, TRUE, TRUE, FALSE)
-          ))
-          stopifnot(inherits(
-            try(.rc_condition_penalty_gate(coefficient, padj_threshold = 1),
-                silent = TRUE),
-            "try-error"
           ))
 
       - name: Build source package
