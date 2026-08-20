@@ -140,9 +140,9 @@
       as.character(coefficient$fit_status[index]) == "ok" &
       is.finite(effect[index])
     )
-    supporting <- as.character(coefficient$condition[index][
+    supporting <- unique(as.character(coefficient$condition[index][
       expected_condition_significant[index]
-    ])
+    ]))
     expected_union <- valid && length(supporting) > 0L
     if (any(as.logical(coefficient$all_conditions_fit_valid[index]) != valid) ||
         any(as.logical(coefficient$edge_union_supported[index]) != expected_union) ||
@@ -153,12 +153,11 @@
            call. = FALSE)
     }
     stored <- unique(as.character(coefficient$supporting_conditions[index]))
-    expected_text <- paste(
-      unique(as.character(coefficient$condition[index][
-        expected_condition_significant[index]
-      ])), collapse = ";"
-    )
-    if (length(stored) != 1L || !identical(stored, expected_text)) {
+    stored_set <- if (length(stored) == 1L) {
+      .rc_split_support_conditions(stored)[[1L]]
+    } else character()
+    expected_set <- sort(unique(supporting))
+    if (length(stored) != 1L || !identical(stored_set, expected_set)) {
       stop("Exact-edge supporting-condition audit is inconsistent.",
            call. = FALSE)
     }
