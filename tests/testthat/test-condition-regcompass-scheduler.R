@@ -57,7 +57,8 @@ test_that("conditional Pando routing exposes design controls but no retired tuni
     catalog$condition,
     c(
       "rank_action", "min_residual_df", "reference_condition",
-      "rna_layer", "peak_layer", "peak_value_type"
+      "rna_layer", "peak_layer", "peak_value_type",
+      "checkpoint_dir", "resume"
     )
   )
   routed <- .rc_route_pando_infer_args(
@@ -71,6 +72,8 @@ test_that("conditional Pando routing exposes design controls but no retired tuni
   expect_equal(routed$condition$peak_cor, 0.05)
   expect_equal(routed$condition$padj_threshold, 0.05)
   expect_identical(routed$condition$reference_condition, "A")
+  expect_null(routed$condition$checkpoint_dir)
+  expect_identical(routed$condition$resume, TRUE)
   expect_false(any(c(
     "condition_ridge_control", "condition_e_control", "scheme_e_z", "z",
     "lambda_grid", "lambda_rule", "cv_folds", "fusion_ratio"

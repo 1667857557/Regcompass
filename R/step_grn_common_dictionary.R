@@ -20,6 +20,10 @@
 #'   coordinate for the K-condition E-star contrast tree; it must be retained in
 #'   every conditional cell type and must not be selected after inspecting GRN
 #'   results. When omitted, Pando uses and records the first retained condition.
+#'   Conditional Pando target results default to
+#'   `file.path(outdir, "pando_target_checkpoints")` and resume on an exact
+#'   input fingerprint. Use `pando_infer_args$checkpoint_dir` to change the
+#'   location or `pando_infer_args$resume = FALSE` to force recomputation.
 #'   Conditional ridge-CV, alternative-z, fusion-ratio, and sensitivity-grid
 #'   controls are removed. Standard Pando retains its separate standard-route
 #'   controls, including `ridge_control` when used.
@@ -157,6 +161,11 @@ rc_regcompass_step_grn <- function(
   infer_args <- pando_args$pando_infer_args %||% list()
   if (!is.list(infer_args)) {
     stop("`pando_infer_args` must be a list.", call. = FALSE)
+  }
+  if (length(condition_types)) {
+    infer_args$checkpoint_dir <- infer_args$checkpoint_dir %||%
+      file.path(outdir, "pando_target_checkpoints")
+    infer_args$resume <- infer_args$resume %||% TRUE
   }
   extra_args <- pando_args
   extra_args$pando_infer_args <- NULL

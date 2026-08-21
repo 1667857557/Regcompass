@@ -526,7 +526,8 @@
   allowed_infer_args <- c(
     "tf_cor", "peak_cor", "adjust_method", "padj_threshold",
     "rank_action", "min_residual_df", "reference_condition",
-    "rna_layer", "peak_layer", "peak_value_type"
+    "rna_layer", "peak_layer", "peak_value_type",
+    "checkpoint_dir", "resume"
   )
   unknown <- setdiff(names(pando_infer_args), allowed_infer_args)
   if (length(unknown)) {
@@ -541,7 +542,9 @@
     padj_threshold = 0.05, rank_action = "mark", min_residual_df = 1L,
     reference_condition = NULL,
     rna_layer = "data", peak_layer = "data",
-    peak_value_type = "normalized"
+    peak_value_type = "normalized",
+    checkpoint_dir = file.path(outdir, "pando_target_checkpoints"),
+    resume = TRUE
   ), pando_infer_args)
   threshold <- suppressWarnings(as.numeric(pando_infer_args$padj_threshold))
   tf_threshold <- suppressWarnings(as.numeric(pando_infer_args$tf_cor))
@@ -561,6 +564,19 @@
   pando_infer_args$padj_threshold <- threshold
   pando_infer_args$tf_cor <- tf_threshold
   pando_infer_args$peak_cor <- peak_threshold
+  if (!is.null(pando_infer_args$checkpoint_dir) &&
+      (!is.character(pando_infer_args$checkpoint_dir) ||
+       length(pando_infer_args$checkpoint_dir) != 1L ||
+       is.na(pando_infer_args$checkpoint_dir) ||
+       !nzchar(trimws(pando_infer_args$checkpoint_dir)))) {
+    stop("`pando_infer_args$checkpoint_dir` must be NULL or one non-empty path.",
+         call. = FALSE)
+  }
+  if (!is.logical(pando_infer_args$resume) ||
+      length(pando_infer_args$resume) != 1L || is.na(pando_infer_args$resume)) {
+    stop("`pando_infer_args$resume` must be either TRUE or FALSE.",
+         call. = FALSE)
+  }
   if (!is.null(pando_infer_args$reference_condition)) {
     reference <- as.character(pando_infer_args$reference_condition)
     if (length(reference) != 1L || is.na(reference) ||
