@@ -27,7 +27,8 @@
     shared = c("tf_cor", "peak_cor", "adjust_method", "padj_threshold"),
     condition = c(
       "rank_action", "min_residual_df", "reference_condition",
-      "rna_layer", "peak_layer", "peak_value_type"
+      "rna_layer", "peak_layer", "peak_value_type",
+      "checkpoint_dir", "resume"
     ),
     standard = c(
       "peak_to_gene_method", "upstream", "downstream", "extend",
@@ -125,7 +126,8 @@
     tf_cor = 0.05, peak_cor = 0.05, adjust_method = "BH",
     padj_threshold = 0.05, rank_action = "mark", min_residual_df = 1L,
     reference_condition = NULL,
-    rna_layer = "data", peak_layer = "data", peak_value_type = "normalized"
+    rna_layer = "data", peak_layer = "data", peak_value_type = "normalized",
+    checkpoint_dir = NULL, resume = TRUE
   ), condition_args)
   condition_threshold <- suppressWarnings(as.numeric(
     condition_args$padj_threshold
@@ -140,6 +142,18 @@
     )
   }
   condition_args$padj_threshold <- condition_threshold
+  if (!is.null(condition_args$checkpoint_dir) &&
+      (!is.character(condition_args$checkpoint_dir) ||
+       length(condition_args$checkpoint_dir) != 1L ||
+       is.na(condition_args$checkpoint_dir) ||
+       !nzchar(trimws(condition_args$checkpoint_dir)))) {
+    stop("Conditional `checkpoint_dir` must be NULL or one non-empty path.",
+         call. = FALSE)
+  }
+  if (!is.logical(condition_args$resume) ||
+      length(condition_args$resume) != 1L || is.na(condition_args$resume)) {
+    stop("Conditional `resume` must be either TRUE or FALSE.", call. = FALSE)
+  }
   if (!is.null(condition_args$reference_condition)) {
     reference <- as.character(condition_args$reference_condition)
     if (length(reference) != 1L || is.na(reference) ||

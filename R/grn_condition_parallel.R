@@ -172,6 +172,8 @@
     rank_action = pando_infer_args$rank_action,
     min_residual_df = pando_infer_args$min_residual_df,
     reference_condition = reference_condition,
+    checkpoint_dir = pando_infer_args$checkpoint_dir %||% NULL,
+    resume = pando_infer_args$resume %||% TRUE,
     parallel = isTRUE(inner_parallel),
     parallel_scope = "target",
     overwrite = TRUE,

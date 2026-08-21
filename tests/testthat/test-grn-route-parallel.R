@@ -22,6 +22,8 @@ test_that("Pando routing defaults thresholds to 0.05 and standard ridge", {
   expect_equal(condition$condition$peak_cor, 0.05)
   expect_equal(condition$condition$padj_threshold, 0.05)
   expect_null(condition$condition$reference_condition)
+  expect_null(condition$condition$checkpoint_dir)
+  expect_identical(condition$condition$resume, TRUE)
   expect_false(any(c(
     "condition_ridge_control", "condition_e_control", "scheme_e_z", "z",
     "lambda_grid", "lambda_rule", "cv_folds", "fusion_ratio"
@@ -175,6 +177,31 @@ test_that("unknown Pando arguments fail before model fitting", {
       standard_types = "T_cell"
     ),
     "Unsupported `pando_infer_args`"
+  )
+})
+
+test_that("condition checkpoint controls are validated and routed", {
+  routed <- .rc_route_pando_infer_args(
+    list(checkpoint_dir = "checkpoints", resume = FALSE),
+    condition_types = "T_cell"
+  )
+  expect_identical(routed$condition$checkpoint_dir, "checkpoints")
+  expect_identical(routed$condition$resume, FALSE)
+  expect_false("checkpoint_dir" %in% names(routed$standard))
+
+  expect_error(
+    .rc_route_pando_infer_args(
+      list(checkpoint_dir = "", resume = TRUE),
+      condition_types = "T_cell"
+    ),
+    "checkpoint_dir"
+  )
+  expect_error(
+    .rc_route_pando_infer_args(
+      list(checkpoint_dir = "checkpoints", resume = NA),
+      condition_types = "T_cell"
+    ),
+    "resume"
   )
 })
 
