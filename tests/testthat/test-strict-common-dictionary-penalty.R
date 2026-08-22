@@ -68,6 +68,31 @@ test_that("conditional penalty validates exact-edge omnibus and one network BH",
   expect_false(any(coefficient$active_in_regcompass[second]))
 })
 
+test_that("omnibus validation tolerates only relative floating-point drift", {
+  coefficient <- .current_edge_fixture(beta = matrix(
+    c(1e6, 5e5, 2e6, 1e6), nrow = 2L,
+    dimnames = list(c("A", "B"), c("E1", "E2"))
+  ))
+  first <- coefficient$edge_id == "E1"
+  coefficient$edge_statistic[first] <-
+    coefficient$edge_statistic[first] * (1 + 5e-15)
+  expect_invisible(
+    RegCompassR:::.rc_validate_pando_active_condition_edges(
+      coefficient, padj_threshold = 0.05
+    )
+  )
+
+  inconsistent <- coefficient
+  inconsistent$edge_statistic[first] <-
+    inconsistent$edge_statistic[first] * (1 + 1e-6)
+  expect_error(
+    RegCompassR:::.rc_validate_pando_active_condition_edges(
+      inconsistent, padj_threshold = 0.05
+    ),
+    "omnibus inference is inconsistent"
+  )
+})
+
 test_that("condition-local power cannot create condition-specific topology", {
   coefficient <- .current_edge_fixture()
   first <- which(coefficient$edge_id == "E1")
