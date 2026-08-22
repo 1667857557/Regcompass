@@ -68,6 +68,30 @@ test_that("conditional penalty validates exact-edge omnibus and one network BH",
   expect_false(any(coefficient$active_in_regcompass[second]))
 })
 
+test_that("condition gates keep shared edge IDs scoped to broad cell type", {
+  epithelial <- .current_edge_fixture()
+  epithelial$cell_type <- "epithelial_like"
+  stem <- .current_edge_fixture(beta = matrix(
+    c(0.7, 0.2, 0.03, 0.015), nrow = 2L,
+    dimnames = list(c("A", "B"), c("E1", "E2"))
+  ))
+  stem$cell_type <- "stem-cell_like"
+  coefficient <- rbind(epithelial, stem)
+
+  expect_error(
+    RegCompassR:::.rc_condition_penalty_gate(coefficient),
+    "omnibus inference is inconsistent"
+  )
+  observed <- RegCompassR:::.rc_condition_penalty_gate_by_celltype(
+    coefficient, celltype_col = "cell_type"
+  )
+  expected <- c(
+    RegCompassR:::.rc_condition_penalty_gate(epithelial),
+    RegCompassR:::.rc_condition_penalty_gate(stem)
+  )
+  expect_identical(observed, expected)
+})
+
 test_that("omnibus validation tolerates only relative floating-point drift", {
   coefficient <- .current_edge_fixture(beta = matrix(
     c(1e6, 5e5, 2e6, 1e6), nrow = 2L,
