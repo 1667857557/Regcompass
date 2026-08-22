@@ -8,6 +8,31 @@
   .rc_bind_frames_fill(values)
 }
 
+.rc_condition_penalty_gate_by_celltype <- function(coefficient, celltype_col) {
+  if (!is.data.frame(coefficient) || !nrow(coefficient)) return(logical())
+  if (!is.character(celltype_col) || length(celltype_col) != 1L ||
+      is.na(celltype_col) || !nzchar(trimws(celltype_col)) ||
+      !celltype_col %in% colnames(coefficient)) {
+    stop("Condition penalty gating requires its broad cell-type column.",
+         call. = FALSE)
+  }
+  cell_type <- trimws(as.character(coefficient[[celltype_col]]))
+  if (anyNA(cell_type) || any(!nzchar(cell_type))) {
+    stop("Condition penalty gating received incomplete broad cell types.",
+         call. = FALSE)
+  }
+  rows <- unname(split(
+    seq_len(nrow(coefficient)), factor(cell_type, levels = unique(cell_type))
+  ))
+  gate <- logical(nrow(coefficient))
+  for (index in rows) {
+    gate[index] <- .rc_condition_penalty_gate(
+      coefficient[index, , drop = FALSE]
+    )
+  }
+  gate
+}
+
 .rc_merge_pando_results <- function(
     condition_result = NULL, standard_results = list(),
     condition_types = character(), standard_types = character(),
@@ -97,7 +122,9 @@
       # the common exact-edge whole-network BH topology. RegCompass validates
       # that topology and never rebuilds a condition-local edge-selection rule.
       condition_table <- all_edges[condition_rows, , drop = FALSE]
-      gate <- .rc_condition_penalty_gate(condition_table)
+      gate <- .rc_condition_penalty_gate_by_celltype(
+        condition_table, celltype_col = celltype_col
+      )
       target_rsq <- .rc_condition_target_rsq(condition_table)
       rsq_threshold <- .rc_target_rsq_threshold()
       if (!"target_rsq" %in% colnames(all_edges)) {
@@ -452,3 +479,4 @@
     )
   )
 }
+
