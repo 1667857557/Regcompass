@@ -250,31 +250,35 @@
     coefficient, padj_threshold = threshold
   ))
 
-  for (i in seq_len(nrow(edge_inference))) {
-    id <- as.character(edge_inference$edge_id[[i]])
-    index <- which(as.character(coefficient$edge_id) == id)
-    fields <- c(
-      "edge_df", "edge_statistic", "edge_pval", "edge_padj",
-      "edge_inference_estimable", "edge_inference_test",
-      "all_conditions_fit_valid", "edge_supported", "bh_scope",
-      "bh_family_size"
-    )
-    for (field in fields) {
-      value <- coefficient[[field]][index]
-      stored <- edge_inference[[field]][[i]]
-      if (is.numeric(value) || is.integer(value)) {
-        value <- suppressWarnings(as.numeric(value))
-        stored <- suppressWarnings(as.numeric(stored))
-        finite <- is.finite(value) & is.finite(stored)
-        if (any(is.finite(value) != is.finite(stored)) ||
-            any(abs(value[finite] - stored) > 1e-10)) {
-          stop("Pando edge-inference rows are not replicated consistently.",
-               call. = FALSE)
-        }
-      } else if (any(as.character(value) != as.character(stored))) {
+  coefficient_edge_index <- match(
+    as.character(coefficient$edge_id), as.character(edge_inference$edge_id)
+  )
+  if (anyNA(coefficient_edge_index)) {
+    stop("Pando edge-inference rows are not replicated consistently.",
+         call. = FALSE)
+  }
+  fields <- c(
+    "edge_df", "edge_statistic", "edge_pval", "edge_padj",
+    "edge_inference_estimable", "edge_inference_test",
+    "all_conditions_fit_valid", "edge_supported", "bh_scope",
+    "bh_family_size"
+  )
+  for (field in fields) {
+    value <- coefficient[[field]]
+    stored <- edge_inference[[field]][coefficient_edge_index]
+    if (is.numeric(value) || is.integer(value)) {
+      value <- suppressWarnings(as.numeric(value))
+      stored <- suppressWarnings(as.numeric(stored))
+      finite <- is.finite(value) & is.finite(stored)
+      if (any(is.finite(value) != is.finite(stored)) ||
+          any(abs(value[finite] - stored[finite]) >
+                1e-10 * pmax(1, abs(value[finite]), abs(stored[finite])))) {
         stop("Pando edge-inference rows are not replicated consistently.",
              call. = FALSE)
       }
+    } else if (any(as.character(value) != as.character(stored))) {
+      stop("Pando edge-inference rows are not replicated consistently.",
+           call. = FALSE)
     }
   }
 
@@ -325,29 +329,34 @@
     stop("Pando production pairwise contrast table is incomplete.",
          call. = FALSE)
   }
-  for (i in seq_len(nrow(contrast))) {
-    edge_id <- as.character(contrast$edge_id[[i]])
-    a <- as.character(contrast$condition_a[[i]])
-    b <- as.character(contrast$condition_b[[i]])
-    ia <- which(
-      as.character(coefficient$edge_id) == edge_id &
-        as.character(coefficient$condition) == a
-    )
-    ib <- which(
-      as.character(coefficient$edge_id) == edge_id &
-        as.character(coefficient$condition) == b
-    )
-    if (length(ia) != 1L || length(ib) != 1L) {
-      stop("Pando contrast cannot be aligned to production coefficients.",
-           call. = FALSE)
-    }
-    expected_delta <- estimate[[ib]] - estimate[[ia]]
-    observed_delta <- as.numeric(contrast$contrast_estimate[[i]])
-    if (!is.finite(observed_delta) ||
-        abs(observed_delta - expected_delta) > 1e-9) {
-      stop("Pando pairwise contrasts do not close on production beta_E.",
-           call. = FALSE)
-    }
+  coefficient_key <- paste(
+    as.character(coefficient$edge_id),
+    as.character(coefficient$condition), sep = "\001"
+  )
+  if (anyDuplicated(coefficient_key)) {
+    stop("Pando contrast cannot be aligned to production coefficients.",
+         call. = FALSE)
+  }
+  contrast_a_key <- paste(
+    as.character(contrast$edge_id),
+    as.character(contrast$condition_a), sep = "\001"
+  )
+  contrast_b_key <- paste(
+    as.character(contrast$edge_id),
+    as.character(contrast$condition_b), sep = "\001"
+  )
+  ia <- match(contrast_a_key, coefficient_key)
+  ib <- match(contrast_b_key, coefficient_key)
+  if (anyNA(ia) || anyNA(ib)) {
+    stop("Pando contrast cannot be aligned to production coefficients.",
+         call. = FALSE)
+  }
+  expected_delta <- estimate[ib] - estimate[ia]
+  observed_delta <- suppressWarnings(as.numeric(contrast$contrast_estimate))
+  if (any(!is.finite(observed_delta)) ||
+      any(abs(observed_delta - expected_delta) > 1e-9)) {
+    stop("Pando pairwise contrasts do not close on production beta_E.",
+         call. = FALSE)
   }
   invisible(TRUE)
 }
