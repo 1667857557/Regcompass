@@ -47,6 +47,7 @@ rc_regcompass_step_grn <- function(
     target_rsq_threshold = 0.05,
     workers = 10L,
     progress = getOption("RegCompassR.progress", TRUE)) {
+  .rc_assert_current_namespace_install()
   monitor <- .rc_step_monitor_start(
     "grn", outdir, progress, total_parts = 12L
   )
