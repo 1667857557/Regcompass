@@ -38,3 +38,20 @@ test_that("explicit provenance values remain authoritative", {
 
   expect_false(completed$dictionary_preprocessing_provenance_verified)
 })
+
+
+test_that("large condition contracts use indexed vectorized alignment", {
+  validator <- paste(
+    deparse(body(RegCompassR:::.rc_require_pando_condition_grn_fit)),
+    collapse = "\n"
+  )
+  expect_match(validator, "coefficient_edge_index <- match", fixed = TRUE)
+  expect_match(validator, "contrast_a_key <- paste", fixed = TRUE)
+  expect_match(validator, "ia <- match", fixed = TRUE)
+  expect_false(grepl(
+    "for (i in seq_len(nrow(edge_inference)))", validator, fixed = TRUE
+  ))
+  expect_false(grepl(
+    "for (i in seq_len(nrow(contrast)))", validator, fixed = TRUE
+  ))
+})
