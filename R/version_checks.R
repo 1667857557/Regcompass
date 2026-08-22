@@ -1,3 +1,40 @@
+.rc_runtime_state <- new.env(parent = emptyenv())
+.rc_runtime_state$namespace_loaded_at <- as.POSIXct(NA)
+
+.rc_namespace_install_is_current <- function(
+    loaded_at, installed_at, tolerance_seconds = 1) {
+  loaded_at <- as.POSIXct(loaded_at)
+  installed_at <- as.POSIXct(installed_at)
+  tolerance_seconds <- suppressWarnings(as.numeric(tolerance_seconds))
+  if (length(loaded_at) != 1L || is.na(loaded_at) ||
+      length(installed_at) != 1L || is.na(installed_at) ||
+      length(tolerance_seconds) != 1L || !is.finite(tolerance_seconds) ||
+      tolerance_seconds < 0) {
+    return(TRUE)
+  }
+  !isTRUE(installed_at > loaded_at + tolerance_seconds)
+}
+
+.rc_assert_current_namespace_install <- function() {
+  installed_rdb <- system.file(
+    "R", "RegCompassR.rdb", package = "RegCompassR"
+  )
+  if (!nzchar(installed_rdb) || !file.exists(installed_rdb)) {
+    return(invisible(TRUE))
+  }
+  installed_at <- file.info(installed_rdb)$mtime
+  loaded_at <- .rc_runtime_state$namespace_loaded_at
+  if (!.rc_namespace_install_is_current(loaded_at, installed_at)) {
+    stop(
+      "RegCompassR was reinstalled after this R session loaded its namespace. ",
+      "Restart R before running a RegCompass stage; otherwise the session ",
+      "continues executing stale in-memory code.",
+      call. = FALSE
+    )
+  }
+  invisible(TRUE)
+}
+
 .rc_seurat_stack_versions <- function() {
   vapply(
     c("SeuratObject", "Seurat", "Signac"),
@@ -101,5 +138,6 @@
 }
 
 .onLoad <- function(libname, pkgname) {
+  .rc_runtime_state$namespace_loaded_at <- Sys.time()
   .rc_validate_seurat_stack_versions(.rc_seurat_stack_versions(), error = TRUE)
 }
