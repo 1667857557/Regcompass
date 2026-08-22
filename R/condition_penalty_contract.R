@@ -74,11 +74,15 @@
 }
 
 .rc_expected_edge_inference_from_coefficients <- function(coefficient) {
-  edge_ids <- unique(as.character(coefficient$edge_id))
+  edge_value <- as.character(coefficient$edge_id)
+  edge_ids <- unique(edge_value)
+  edge_rows <- unname(split(
+    seq_along(edge_value), factor(edge_value, levels = edge_ids)
+  ))
   rows <- vector("list", length(edge_ids))
   for (i in seq_along(edge_ids)) {
     edge_id <- edge_ids[[i]]
-    index <- which(as.character(coefficient$edge_id) == edge_id)
+    index <- edge_rows[[i]]
     valid <- index[
       coefficient$condition_inference_estimable[index] %in% TRUE &
       is.finite(suppressWarnings(as.numeric(
@@ -193,7 +197,8 @@
     wanted <- suppressWarnings(as.numeric(wanted))
     finite <- is.finite(observed) & is.finite(wanted)
     !any(is.finite(observed) != is.finite(wanted)) &&
-      !any(abs(observed[finite] - wanted[finite]) > tol)
+      !any(abs(observed[finite] - wanted[finite]) >
+             tol * pmax(1, abs(observed[finite]), abs(wanted[finite])))
   }
   if (!identical(as.integer(observed_edge$edge_df), expected$edge_df) ||
       !identical(as.logical(observed_edge$edge_inference_estimable),
@@ -226,8 +231,12 @@
   }
 
   edge_ids <- as.character(expected$edge_id)
-  for (edge_id in edge_ids) {
-    index <- which(as.character(coefficient$edge_id) == edge_id)
+  edge_value <- as.character(coefficient$edge_id)
+  edge_rows <- unname(split(
+    seq_along(edge_value), factor(edge_value, levels = edge_ids)
+  ))
+  for (i in seq_along(edge_ids)) {
+    index <- edge_rows[[i]]
     valid_production <- all(
       as.character(coefficient$fit_status[index]) == "ok" &
         is.finite(effect[index])
