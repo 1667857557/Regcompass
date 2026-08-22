@@ -183,4 +183,3 @@ test_that("Layer 1 retains canonical RegCompass TF-ATAC exposure mixture", {
     0.25
   )
 })
-
