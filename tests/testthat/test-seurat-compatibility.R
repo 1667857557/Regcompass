@@ -1,3 +1,11 @@
+test_that("stage guard detects a package installed after namespace load", {
+  loaded <- as.POSIXct("2026-08-22 17:43:17", tz = "UTC")
+  installed <- as.POSIXct("2026-08-22 17:44:55", tz = "UTC")
+  expect_false(.rc_namespace_install_is_current(loaded, installed))
+  expect_true(.rc_namespace_install_is_current(installed, loaded))
+  expect_true(.rc_namespace_install_is_current(loaded, loaded + 0.5))
+})
+
 test_that("Seurat stack profiles retain v4 default and accept v5", {
   v4 <- .rc_validate_seurat_stack_versions(c(
     SeuratObject = "4.1.4",
