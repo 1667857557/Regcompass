@@ -63,3 +63,95 @@ test_that("Stage 1 metabolic detection reduces to the same 20 percent rule for o
   )
   expect_identical(filtered$metabolic_genes, "PASS")
 })
+
+test_that("Stage 1 TF and peak candidates require five percent detection in any condition", {
+  skip_if_not_installed("SeuratObject")
+  skip_if_not_installed("Matrix")
+
+  cells <- paste0("cell", seq_len(80))
+  meta <- data.frame(
+    condition = rep(c("A", "B"), each = 40),
+    cell_type = rep("T", 80),
+    row.names = cells,
+    stringsAsFactors = FALSE
+  )
+  rna <- Matrix::Matrix(
+    0, nrow = 4, ncol = 80, sparse = TRUE,
+    dimnames = list(c("TARGET", "TF5", "TFLOW", "TFB"), cells)
+  )
+  rna["TF5", c("cell1", "cell2")] <- 1
+  rna["TFLOW", "cell1"] <- 1
+  rna["TFB", c("cell41", "cell42")] <- 1
+  object <- SeuratObject::CreateSeuratObject(counts = rna, meta.data = meta)
+
+  atac <- Matrix::Matrix(
+    0, nrow = 3, ncol = 80, sparse = TRUE,
+    dimnames = list(c("peak5", "peakLow", "peakB"), cells)
+  )
+  atac["peak5", c("cell1", "cell2")] <- 1
+  atac["peakLow", "cell1"] <- 1
+  atac["peakB", c("cell41", "cell42")] <- 1
+  object[["ATAC"]] <- SeuratObject::CreateAssayObject(counts = atac)
+
+  motif_tfs <- data.frame(
+    motif = c("m1", "m2", "m3"),
+    tf = c("TF5", "TFLOW", "TFB"),
+    stringsAsFactors = FALSE
+  )
+  filtered <- RegCompassR:::.rc_stage1_filter_pando_detection_features(
+    object = object,
+    pando_motif_args = list(motif_tfs = motif_tfs),
+    condition_col = "condition",
+    rna_assay = "RNA",
+    atac_assay = "ATAC",
+    cell_type = "T"
+  )
+
+  expect_setequal(filtered$pando_motif_args$motif_tfs$tf, c("TF5", "TFB"))
+  expect_setequal(rownames(filtered$object[["ATAC"]]), c("peak5", "peakB"))
+  expect_true(all(c("TARGET", "TF5", "TFLOW", "TFB") %in%
+                  rownames(filtered$object[["RNA"]])))
+  expect_equal(filtered$diagnostics$tf_threshold, 0.05)
+  expect_equal(filtered$diagnostics$peak_threshold, 0.05)
+  expect_equal(filtered$diagnostics$n_candidate_tfs, 3L)
+  expect_equal(filtered$diagnostics$n_retained_tfs, 2L)
+  expect_equal(filtered$diagnostics$n_candidate_peaks, 3L)
+  expect_equal(filtered$diagnostics$n_retained_peaks, 2L)
+})
+
+test_that("Stage 1 TF and peak detection uses the same five percent boundary for one condition", {
+  skip_if_not_installed("SeuratObject")
+  skip_if_not_installed("Matrix")
+
+  cells <- paste0("cell", seq_len(20))
+  meta <- data.frame(
+    condition = rep("only", 20), cell_type = rep("T", 20),
+    row.names = cells, stringsAsFactors = FALSE
+  )
+  rna <- Matrix::Matrix(
+    0, nrow = 2, ncol = 20, sparse = TRUE,
+    dimnames = list(c("TFPASS", "TFZERO"), cells)
+  )
+  rna["TFPASS", "cell1"] <- 1
+  object <- SeuratObject::CreateSeuratObject(counts = rna, meta.data = meta)
+  atac <- Matrix::Matrix(
+    0, nrow = 2, ncol = 20, sparse = TRUE,
+    dimnames = list(c("peakPass", "peakZero"), cells)
+  )
+  atac["peakPass", "cell1"] <- 1
+  object[["ATAC"]] <- SeuratObject::CreateAssayObject(counts = atac)
+
+  filtered <- RegCompassR:::.rc_stage1_filter_pando_detection_features(
+    object = object,
+    pando_motif_args = list(motif_tfs = data.frame(
+      motif = c("m1", "m2"), tf = c("TFPASS", "TFZERO"),
+      stringsAsFactors = FALSE
+    )),
+    condition_col = "condition",
+    rna_assay = "RNA",
+    atac_assay = "ATAC",
+    cell_type = "T"
+  )
+  expect_identical(filtered$pando_motif_args$motif_tfs$tf, "TFPASS")
+  expect_identical(rownames(filtered$object[["ATAC"]]), "peakPass")
+})
