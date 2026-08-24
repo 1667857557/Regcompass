@@ -64,33 +64,32 @@ test_that("Stage 1 metabolic detection reduces to the same 20 percent rule for o
   expect_identical(filtered$metabolic_genes, "PASS")
 })
 
-test_that("Stage 1 TF and peak candidates require five percent detection in any condition", {
+test_that("Stage 1 TF requires five percent and peak requires one percent in any condition", {
   skip_if_not_installed("SeuratObject")
   skip_if_not_installed("Matrix")
 
-  cells <- paste0("cell", seq_len(80))
+  cells <- paste0("cell", seq_len(200))
   meta <- data.frame(
-    condition = rep(c("A", "B"), each = 40),
-    cell_type = rep("T", 80),
+    condition = rep(c("A", "B"), each = 100),
+    cell_type = rep("T", 200),
     row.names = cells,
     stringsAsFactors = FALSE
   )
   rna <- Matrix::Matrix(
-    0, nrow = 4, ncol = 80, sparse = TRUE,
+    0, nrow = 4, ncol = 200, sparse = TRUE,
     dimnames = list(c("TARGET", "TF5", "TFLOW", "TFB"), cells)
   )
-  rna["TF5", c("cell1", "cell2")] <- 1
-  rna["TFLOW", "cell1"] <- 1
-  rna["TFB", c("cell41", "cell42")] <- 1
+  rna["TF5", paste0("cell", 1:5)] <- 1
+  rna["TFLOW", paste0("cell", 1:4)] <- 1
+  rna["TFB", paste0("cell", 101:105)] <- 1
   object <- SeuratObject::CreateSeuratObject(counts = rna, meta.data = meta)
 
   atac <- Matrix::Matrix(
-    0, nrow = 3, ncol = 80, sparse = TRUE,
-    dimnames = list(c("peak5", "peakLow", "peakB"), cells)
+    0, nrow = 3, ncol = 200, sparse = TRUE,
+    dimnames = list(c("peak1", "peakZero", "peakB"), cells)
   )
-  atac["peak5", c("cell1", "cell2")] <- 1
-  atac["peakLow", "cell1"] <- 1
-  atac["peakB", c("cell41", "cell42")] <- 1
+  atac["peak1", "cell1"] <- 1
+  atac["peakB", "cell101"] <- 1
   object[["ATAC"]] <- SeuratObject::CreateAssayObject(counts = atac)
 
   motif_tfs <- data.frame(
@@ -108,34 +107,35 @@ test_that("Stage 1 TF and peak candidates require five percent detection in any 
   )
 
   expect_setequal(filtered$pando_motif_args$motif_tfs$tf, c("TF5", "TFB"))
-  expect_setequal(rownames(filtered$object[["ATAC"]]), c("peak5", "peakB"))
+  expect_setequal(rownames(filtered$object[["ATAC"]]), c("peak1", "peakB"))
   expect_true(all(c("TARGET", "TF5", "TFLOW", "TFB") %in%
                   rownames(filtered$object[["RNA"]])))
   expect_equal(filtered$diagnostics$tf_threshold, 0.05)
-  expect_equal(filtered$diagnostics$peak_threshold, 0.05)
+  expect_equal(filtered$diagnostics$peak_threshold, 0.01)
   expect_equal(filtered$diagnostics$n_candidate_tfs, 3L)
   expect_equal(filtered$diagnostics$n_retained_tfs, 2L)
   expect_equal(filtered$diagnostics$n_candidate_peaks, 3L)
   expect_equal(filtered$diagnostics$n_retained_peaks, 2L)
 })
 
-test_that("Stage 1 TF and peak detection uses the same five percent boundary for one condition", {
+test_that("Stage 1 single-condition TF and peak boundaries are five and one percent", {
   skip_if_not_installed("SeuratObject")
   skip_if_not_installed("Matrix")
 
-  cells <- paste0("cell", seq_len(20))
+  cells <- paste0("cell", seq_len(100))
   meta <- data.frame(
-    condition = rep("only", 20), cell_type = rep("T", 20),
+    condition = rep("only", 100), cell_type = rep("T", 100),
     row.names = cells, stringsAsFactors = FALSE
   )
   rna <- Matrix::Matrix(
-    0, nrow = 2, ncol = 20, sparse = TRUE,
-    dimnames = list(c("TFPASS", "TFZERO"), cells)
+    0, nrow = 2, ncol = 100, sparse = TRUE,
+    dimnames = list(c("TFPASS", "TFLOW"), cells)
   )
-  rna["TFPASS", "cell1"] <- 1
+  rna["TFPASS", paste0("cell", 1:5)] <- 1
+  rna["TFLOW", paste0("cell", 1:4)] <- 1
   object <- SeuratObject::CreateSeuratObject(counts = rna, meta.data = meta)
   atac <- Matrix::Matrix(
-    0, nrow = 2, ncol = 20, sparse = TRUE,
+    0, nrow = 2, ncol = 100, sparse = TRUE,
     dimnames = list(c("peakPass", "peakZero"), cells)
   )
   atac["peakPass", "cell1"] <- 1
@@ -144,7 +144,7 @@ test_that("Stage 1 TF and peak detection uses the same five percent boundary for
   filtered <- RegCompassR:::.rc_stage1_filter_pando_detection_features(
     object = object,
     pando_motif_args = list(motif_tfs = data.frame(
-      motif = c("m1", "m2"), tf = c("TFPASS", "TFZERO"),
+      motif = c("m1", "m2"), tf = c("TFPASS", "TFLOW"),
       stringsAsFactors = FALSE
     )),
     condition_col = "condition",

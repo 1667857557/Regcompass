@@ -24,7 +24,7 @@
 
 .rc_stage1_metabolic_detection_threshold <- 0.20
 .rc_stage1_tf_detection_threshold <- 0.05
-.rc_stage1_peak_detection_threshold <- 0.05
+.rc_stage1_peak_detection_threshold <- 0.01
 
 .rc_stage1_condition_detection <- function(
     counts, metadata, condition_col, features = rownames(counts),
@@ -691,7 +691,7 @@
   answer$normalization_policy$regulatory_feature_detection_filter <- list(
     scope = "broad_cell_type_condition_union",
     tf = "RNA counts > 0 in >=5% of cells in any retained condition",
-    peak = "ATAC counts > 0 in >=5% of cells in any retained condition"
+    peak = "ATAC counts > 0 in >=1% of cells in any retained condition"
   )
   answer
 }
@@ -861,7 +861,7 @@
     positive = "raw assay counts > 0",
     metabolic_target_rna = ">=20% in any retained condition",
     tf_rna = ">=5% in any retained condition",
-    peak_atac = ">=5% in any retained condition",
+    peak_atac = ">=1% in any retained condition",
     application = paste(
       "metabolic target genes restrict the Pando target universe; TF filtering",
       "restricts motif-to-TF mappings; peak filtering restricts the ATAC feature",
