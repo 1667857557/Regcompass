@@ -22,6 +22,265 @@
   slim
 }
 
+.rc_stage1_metabolic_detection_threshold <- 0.20
+.rc_stage1_tf_detection_threshold <- 0.05
+.rc_stage1_peak_detection_threshold <- 0.05
+
+.rc_stage1_condition_detection <- function(
+    counts, metadata, condition_col, features = rownames(counts),
+    keep_matrix = FALSE) {
+  if (is.null(dim(counts)) || length(dim(counts)) != 2L ||
+      is.null(rownames(counts)) || is.null(colnames(counts))) {
+    stop("Stage 1 detection requires a named feature-by-cell count matrix.",
+         call. = FALSE)
+  }
+  if (!is.data.frame(metadata) || is.null(rownames(metadata))) {
+    stop("Stage 1 detection requires row-named cell metadata.", call. = FALSE)
+  }
+  if (!is.character(condition_col) || length(condition_col) != 1L ||
+      is.na(condition_col) || !nzchar(trimws(condition_col)) ||
+      !condition_col %in% colnames(metadata)) {
+    stop("Stage 1 detection requires a valid condition column.", call. = FALSE)
+  }
+  features <- unique(as.character(features))
+  features <- features[!is.na(features) & nzchar(features)]
+  missing_features <- setdiff(features, rownames(counts))
+  if (length(missing_features)) {
+    stop("Stage 1 detection features are absent from the count matrix: ",
+         paste(utils::head(missing_features, 10L), collapse = ", "),
+         call. = FALSE)
+  }
+  cells <- as.character(colnames(counts))
+  missing_cells <- setdiff(cells, rownames(metadata))
+  if (length(missing_cells)) {
+    stop("Stage 1 detection metadata are missing count-matrix cells.",
+         call. = FALSE)
+  }
+  meta <- metadata[match(cells, rownames(metadata)), , drop = FALSE]
+  condition <- trimws(as.character(meta[[condition_col]]))
+  invalid <- is.na(meta[[condition_col]]) | !nzchar(condition)
+  if (any(invalid)) {
+    stop("Stage 1 detection found missing condition labels.", call. = FALSE)
+  }
+  condition_levels <- unique(condition)
+  max_detection <- stats::setNames(rep(0, length(features)), features)
+  condition_detection <- if (isTRUE(keep_matrix)) {
+    matrix(
+      0, nrow = length(features), ncol = length(condition_levels),
+      dimnames = list(features, condition_levels)
+    )
+  } else NULL
+  for (i in seq_along(condition_levels)) {
+    level <- condition_levels[[i]]
+    cells_use <- cells[condition == level]
+    detected <- Matrix::rowSums(
+      counts[features, cells_use, drop = FALSE] > 0
+    )
+    fraction <- as.numeric(detected) / length(cells_use)
+    max_detection <- pmax(max_detection, fraction)
+    if (isTRUE(keep_matrix)) condition_detection[, i] <- fraction
+  }
+  list(
+    max_detection = max_detection,
+    condition_detection = condition_detection,
+    condition_levels = condition_levels
+  )
+}
+
+.rc_stage1_filter_gem_metabolic_genes <- function(
+    object, gem, condition_col, rna_assay = "RNA", cell_type = NULL,
+    threshold = .rc_stage1_metabolic_detection_threshold) {
+  if (!inherits(object, "Seurat")) {
+    stop("Stage 1 metabolic target filtering requires a Seurat object.",
+         call. = FALSE)
+  }
+  if (!is.list(gem)) {
+    stop("Stage 1 metabolic target filtering requires a GEM list.",
+         call. = FALSE)
+  }
+  threshold <- suppressWarnings(as.numeric(threshold))
+  if (length(threshold) != 1L || !is.finite(threshold) ||
+      threshold < 0 || threshold > 1) {
+    stop("Stage 1 metabolic detection threshold must be in [0, 1].",
+         call. = FALSE)
+  }
+
+  counts <- .rc_get_assay_counts(object, rna_assay)
+  metabolic_genes <- gem$metabolic_genes %||%
+    rc_metabolic_gpr_genes(gem$gpr_table)
+  rna_genes <- rownames(counts)
+  target_upper <- intersect(toupper(rna_genes), toupper(metabolic_genes))
+  candidate_genes <- rna_genes[toupper(rna_genes) %in% target_upper]
+  if (!length(candidate_genes)) {
+    stop("No overlap between RNA genes and GEM metabolic genes.", call. = FALSE)
+  }
+
+  detection <- .rc_stage1_condition_detection(
+    counts = counts, metadata = object@meta.data,
+    condition_col = condition_col, features = candidate_genes,
+    keep_matrix = TRUE
+  )
+  retained <- candidate_genes[detection$max_detection >= threshold]
+  label <- if (is.null(cell_type) || !length(cell_type) ||
+      is.na(cell_type[[1L]]) || !nzchar(trimws(as.character(cell_type[[1L]])))) {
+    "<unspecified>"
+  } else {
+    trimws(as.character(cell_type[[1L]]))
+  }
+  if (!length(retained)) {
+    stop(
+      "No GEM metabolic gene reaches RNA detection >= ",
+      format(100 * threshold, trim = TRUE),
+      "% (counts > 0) in any retained condition for cell type `",
+      label, "`.", call. = FALSE
+    )
+  }
+
+  filtered <- gem
+  filtered$metabolic_genes <- retained
+  attr(filtered, "regcompass_stage1_metabolic_detection") <- list(
+    threshold = threshold,
+    positive_rule = "RNA counts > 0",
+    scope = "broad_cell_type_condition_union",
+    cell_type = label,
+    condition_levels = detection$condition_levels,
+    n_candidate_genes = length(candidate_genes),
+    n_retained_genes = length(retained),
+    max_detection = detection$max_detection,
+    condition_detection = detection$condition_detection
+  )
+  message(
+    "Stage 1 metabolic target filter | cell_type=", label,
+    ";rule=any_condition_detection>=",
+    format(threshold, digits = 3, trim = TRUE),
+    ";positive=count>0;candidates=", length(candidate_genes),
+    ";retained=", length(retained)
+  )
+  filtered
+}
+
+.rc_stage1_filter_pando_detection_features <- function(
+    object, pando_motif_args, condition_col,
+    rna_assay = "RNA", atac_assay = "ATAC", cell_type = NULL,
+    tf_threshold = .rc_stage1_tf_detection_threshold,
+    peak_threshold = .rc_stage1_peak_detection_threshold) {
+  if (!inherits(object, "Seurat")) {
+    stop("Stage 1 regulatory feature filtering requires a Seurat object.",
+         call. = FALSE)
+  }
+  if (!is.list(pando_motif_args)) {
+    stop("Stage 1 regulatory feature filtering requires `pando_motif_args`.",
+         call. = FALSE)
+  }
+  motif_tfs <- pando_motif_args$motif_tfs
+  if (!is.data.frame(motif_tfs) || ncol(motif_tfs) < 2L) {
+    stop(
+      "Stage 1 regulatory feature filtering requires materialized ",
+      "`pando_motif_args$motif_tfs` with motif and TF columns.",
+      call. = FALSE
+    )
+  }
+  tf_threshold <- suppressWarnings(as.numeric(tf_threshold))
+  peak_threshold <- suppressWarnings(as.numeric(peak_threshold))
+  if (length(tf_threshold) != 1L || !is.finite(tf_threshold) ||
+      tf_threshold < 0 || tf_threshold > 1 ||
+      length(peak_threshold) != 1L || !is.finite(peak_threshold) ||
+      peak_threshold < 0 || peak_threshold > 1) {
+    stop("Stage 1 TF/peak detection thresholds must be in [0, 1].",
+         call. = FALSE)
+  }
+
+  rna_counts <- .rc_get_assay_counts(object, rna_assay)
+  atac_counts <- .rc_get_assay_counts(object, atac_assay)
+  candidate_tfs <- unique(as.character(motif_tfs[[2L]]))
+  candidate_tfs <- candidate_tfs[
+    !is.na(candidate_tfs) & nzchar(candidate_tfs) &
+      candidate_tfs %in% rownames(rna_counts)
+  ]
+  if (!length(candidate_tfs)) {
+    stop("No motif-linked TF is present in the RNA count matrix.",
+         call. = FALSE)
+  }
+  tf_detection <- .rc_stage1_condition_detection(
+    counts = rna_counts, metadata = object@meta.data,
+    condition_col = condition_col, features = candidate_tfs,
+    keep_matrix = FALSE
+  )
+  retained_tfs <- candidate_tfs[
+    tf_detection$max_detection >= tf_threshold
+  ]
+  if (!length(retained_tfs)) {
+    stop(
+      "No motif-linked TF reaches RNA detection >= ",
+      format(100 * tf_threshold, trim = TRUE),
+      "% (counts > 0) in any retained condition.", call. = FALSE
+    )
+  }
+  filtered_motif_tfs <- motif_tfs[
+    as.character(motif_tfs[[2L]]) %in% retained_tfs, , drop = FALSE
+  ]
+
+  candidate_peaks <- rownames(atac_counts)
+  peak_detection <- .rc_stage1_condition_detection(
+    counts = atac_counts, metadata = object@meta.data,
+    condition_col = condition_col, features = candidate_peaks,
+    keep_matrix = FALSE
+  )
+  retained_peaks <- candidate_peaks[
+    peak_detection$max_detection >= peak_threshold
+  ]
+  if (!length(retained_peaks)) {
+    stop(
+      "No ATAC peak reaches detection >= ",
+      format(100 * peak_threshold, trim = TRUE),
+      "% (counts > 0) in any retained condition.", call. = FALSE
+    )
+  }
+  if (length(retained_peaks) < length(candidate_peaks)) {
+    object[[atac_assay]] <- subset(
+      object[[atac_assay]], features = retained_peaks
+    )
+  }
+
+  label <- if (is.null(cell_type) || !length(cell_type) ||
+      is.na(cell_type[[1L]]) || !nzchar(trimws(as.character(cell_type[[1L]])))) {
+    "<unspecified>"
+  } else {
+    trimws(as.character(cell_type[[1L]]))
+  }
+  diagnostics <- list(
+    scope = "broad_cell_type_condition_union",
+    cell_type = label,
+    condition_levels = tf_detection$condition_levels,
+    tf_threshold = tf_threshold,
+    tf_positive_rule = "RNA counts > 0",
+    n_candidate_tfs = length(candidate_tfs),
+    n_retained_tfs = length(retained_tfs),
+    n_input_motif_tf_rows = nrow(motif_tfs),
+    n_retained_motif_tf_rows = nrow(filtered_motif_tfs),
+    peak_threshold = peak_threshold,
+    peak_positive_rule = "ATAC counts > 0",
+    n_candidate_peaks = length(candidate_peaks),
+    n_retained_peaks = length(retained_peaks)
+  )
+  object@misc$regcompass_stage1_regulatory_detection_filter <- diagnostics
+  pando_motif_args$motif_tfs <- filtered_motif_tfs
+  message(
+    "Stage 1 regulatory feature filter | cell_type=", label,
+    ";tf_any_condition_detection>=",
+    format(tf_threshold, digits = 3, trim = TRUE),
+    ";TFs=", length(retained_tfs), "/", length(candidate_tfs),
+    ";peak_any_condition_detection>=",
+    format(peak_threshold, digits = 3, trim = TRUE),
+    ";peaks=", length(retained_peaks), "/", length(candidate_peaks)
+  )
+  list(
+    object = object,
+    pando_motif_args = pando_motif_args,
+    diagnostics = diagnostics
+  )
+}
+
 .rc_pando_infer_arg_catalog <- function() {
   list(
     shared = c("tf_cor", "peak_cor", "adjust_method", "padj_threshold"),
@@ -277,9 +536,24 @@
     motif_args$cache_dir <- file.path(
       motif_args$cache_dir, .rc_safe_path_component(job$cell_type)
     )
-    job_extra$pando_motif_args <- motif_args
   }
+  detection <- .rc_stage1_filter_pando_detection_features(
+    object = job$object,
+    pando_motif_args = motif_args,
+    condition_col = base$condition_col,
+    rna_assay = base$rna_assay,
+    atac_assay = base$atac_assay,
+    cell_type = job$cell_type
+  )
+  job$object <- detection$object
+  job_extra$pando_motif_args <- detection$pando_motif_args
+  filtered_gem <- .rc_stage1_filter_gem_metabolic_genes(
+    object = job$object, gem = base$gem,
+    condition_col = base$condition_col, rna_assay = base$rna_assay,
+    cell_type = job$cell_type
+  )
   args <- c(base[setdiff(names(base), names(job_extra))], job_extra)
+  args$gem <- filtered_gem
   args$object <- job$object
   args$cell_type <- job$cell_type
   args$progress_monitor <- if (outer_parallel) NULL else progress_monitor
@@ -315,6 +589,10 @@
   value <- do.call(.rc_fit_standard_pando_by_cell_type, args)
   if (is.list(value$normalization_policy)) {
     value$normalization_policy$parallel_contract <- pando_parallel_contract
+    value$normalization_policy$metabolic_target_filter <-
+      "RNA counts > 0 in >=20% of cells in any retained condition within the broad cell type"
+    value$normalization_policy$regulatory_feature_detection_filter <-
+      detection$diagnostics
   }
   list(cell_type = job$cell_type, route = "standard_pando", result = value)
 }
@@ -342,7 +620,24 @@
     one <- .rc_stage1_pando_working_object(
       one, rna_assay = base$rna_assay, atac_assay = base$atac_assay
     )
-    args <- c(base[setdiff(names(base), names(extra_args))], extra_args)
+    job_extra <- extra_args
+    detection <- .rc_stage1_filter_pando_detection_features(
+      object = one,
+      pando_motif_args = job_extra$pando_motif_args %||% list(),
+      condition_col = base$condition_col,
+      rna_assay = base$rna_assay,
+      atac_assay = base$atac_assay,
+      cell_type = type
+    )
+    one <- detection$object
+    job_extra$pando_motif_args <- detection$pando_motif_args
+    filtered_gem <- .rc_stage1_filter_gem_metabolic_genes(
+      object = one, gem = base$gem,
+      condition_col = base$condition_col, rna_assay = base$rna_assay,
+      cell_type = type
+    )
+    args <- c(base[setdiff(names(base), names(job_extra))], job_extra)
+    args$gem <- filtered_gem
     args$object <- one
     args$cell_type <- type
     args$outdir <- file.path(
@@ -352,7 +647,16 @@
     args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
     args$progress_monitor <- progress_monitor
     values[[i]] <- do.call(.rc_fit_condition_grns_by_cell_type, args)
+    if (is.list(values[[i]]$normalization_policy)) {
+      values[[i]]$normalization_policy$metabolic_target_filter <-
+        "RNA counts > 0 in >=20% of cells in any retained condition within the broad cell type"
+      values[[i]]$normalization_policy$regulatory_feature_detection_filter <-
+        detection$diagnostics
+    }
     one <- NULL
+    detection <- NULL
+    filtered_gem <- NULL
+    job_extra <- NULL
     args <- NULL
     invisible(gc(verbose = FALSE, full = TRUE))
   }
@@ -382,6 +686,13 @@
     answer$normalization_policy <- list()
   }
   answer$normalization_policy$parallel_contract <- plan
+  answer$normalization_policy$metabolic_target_filter <-
+    "RNA counts > 0 in >=20% of cells in any retained condition within the broad cell type"
+  answer$normalization_policy$regulatory_feature_detection_filter <- list(
+    scope = "broad_cell_type_condition_union",
+    tf = "RNA counts > 0 in >=5% of cells in any retained condition",
+    peak = "ATAC counts > 0 in >=5% of cells in any retained condition"
+  )
   answer
 }
 
@@ -540,6 +851,21 @@
     memory_policy = paste(
       "one ridge/E-star cell type resident at a time; target-specific Pando",
       "payloads; worker and batch temporaries released after completion"
+    )
+  )
+  if (!is.list(answer$normalization_policy)) {
+    answer$normalization_policy <- list()
+  }
+  answer$normalization_policy$stage1_detection_filters <- list(
+    scope = "broad_cell_type_condition_union",
+    positive = "raw assay counts > 0",
+    metabolic_target_rna = ">=20% in any retained condition",
+    tf_rna = ">=5% in any retained condition",
+    peak_atac = ">=5% in any retained condition",
+    application = paste(
+      "metabolic target genes restrict the Pando target universe; TF filtering",
+      "restricts motif-to-TF mappings; peak filtering restricts the ATAC feature",
+      "space before Pando candidate discovery"
     )
   )
   answer
