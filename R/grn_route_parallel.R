@@ -22,6 +22,104 @@
   slim
 }
 
+.rc_stage1_metabolic_detection_threshold <- 0.20
+
+.rc_stage1_filter_gem_metabolic_genes <- function(
+    object, gem, condition_col, rna_assay = "RNA", cell_type = NULL,
+    threshold = .rc_stage1_metabolic_detection_threshold) {
+  if (!inherits(object, "Seurat")) {
+    stop("Stage 1 metabolic target filtering requires a Seurat object.",
+         call. = FALSE)
+  }
+  if (!is.list(gem)) {
+    stop("Stage 1 metabolic target filtering requires a GEM list.",
+         call. = FALSE)
+  }
+  threshold <- suppressWarnings(as.numeric(threshold))
+  if (length(threshold) != 1L || !is.finite(threshold) ||
+      threshold < 0 || threshold > 1) {
+    stop("Stage 1 metabolic detection threshold must be in [0, 1].",
+         call. = FALSE)
+  }
+  if (!is.character(condition_col) || length(condition_col) != 1L ||
+      is.na(condition_col) || !nzchar(trimws(condition_col)) ||
+      !condition_col %in% colnames(object@meta.data)) {
+    stop("Stage 1 metabolic target filtering requires a valid condition column.",
+         call. = FALSE)
+  }
+
+  counts <- .rc_get_assay_counts(object, rna_assay)
+  metabolic_genes <- gem$metabolic_genes %||%
+    rc_metabolic_gpr_genes(gem$gpr_table)
+  rna_genes <- rownames(counts)
+  target_upper <- intersect(toupper(rna_genes), toupper(metabolic_genes))
+  candidate_genes <- rna_genes[toupper(rna_genes) %in% target_upper]
+  if (!length(candidate_genes)) {
+    stop("No overlap between RNA genes and GEM metabolic genes.", call. = FALSE)
+  }
+
+  condition <- trimws(as.character(object@meta.data[[condition_col]]))
+  invalid <- is.na(object@meta.data[[condition_col]]) | !nzchar(condition)
+  if (any(invalid)) {
+    stop("Stage 1 metabolic target filtering found missing condition labels.",
+         call. = FALSE)
+  }
+  condition_levels <- unique(condition)
+  max_detection <- stats::setNames(rep(0, length(candidate_genes)),
+                                    candidate_genes)
+  condition_detection <- matrix(
+    0, nrow = length(candidate_genes), ncol = length(condition_levels),
+    dimnames = list(candidate_genes, condition_levels)
+  )
+  for (i in seq_along(condition_levels)) {
+    level <- condition_levels[[i]]
+    cells <- rownames(object@meta.data)[condition == level]
+    detected <- Matrix::rowSums(
+      counts[candidate_genes, cells, drop = FALSE] > 0
+    )
+    fraction <- as.numeric(detected) / length(cells)
+    condition_detection[, i] <- fraction
+    max_detection <- pmax(max_detection, fraction)
+  }
+  retained <- candidate_genes[max_detection >= threshold]
+  label <- if (is.null(cell_type) || !length(cell_type) ||
+      is.na(cell_type[[1L]]) || !nzchar(trimws(as.character(cell_type[[1L]])))) {
+    "<unspecified>"
+  } else {
+    trimws(as.character(cell_type[[1L]]))
+  }
+  if (!length(retained)) {
+    stop(
+      "No GEM metabolic gene reaches RNA detection >= ",
+      format(100 * threshold, trim = TRUE),
+      "% (counts > 0) in any retained condition for cell type `",
+      label, "`.", call. = FALSE
+    )
+  }
+
+  filtered <- gem
+  filtered$metabolic_genes <- retained
+  attr(filtered, "regcompass_stage1_metabolic_detection") <- list(
+    threshold = threshold,
+    positive_rule = "RNA counts > 0",
+    scope = "broad_cell_type_condition_union",
+    cell_type = label,
+    condition_levels = condition_levels,
+    n_candidate_genes = length(candidate_genes),
+    n_retained_genes = length(retained),
+    max_detection = max_detection,
+    condition_detection = condition_detection
+  )
+  message(
+    "Stage 1 metabolic target filter | cell_type=", label,
+    ";rule=any_condition_detection>=",
+    format(threshold, digits = 3, trim = TRUE),
+    ";positive=count>0;candidates=", length(candidate_genes),
+    ";retained=", length(retained)
+  )
+  filtered
+}
+
 .rc_pando_infer_arg_catalog <- function() {
   list(
     shared = c("tf_cor", "peak_cor", "adjust_method", "padj_threshold"),
@@ -279,7 +377,13 @@
     )
     job_extra$pando_motif_args <- motif_args
   }
+  filtered_gem <- .rc_stage1_filter_gem_metabolic_genes(
+    object = job$object, gem = base$gem,
+    condition_col = base$condition_col, rna_assay = base$rna_assay,
+    cell_type = job$cell_type
+  )
   args <- c(base[setdiff(names(base), names(job_extra))], job_extra)
+  args$gem <- filtered_gem
   args$object <- job$object
   args$cell_type <- job$cell_type
   args$progress_monitor <- if (outer_parallel) NULL else progress_monitor
@@ -315,6 +419,8 @@
   value <- do.call(.rc_fit_standard_pando_by_cell_type, args)
   if (is.list(value$normalization_policy)) {
     value$normalization_policy$parallel_contract <- pando_parallel_contract
+    value$normalization_policy$metabolic_target_filter <-
+      "RNA counts > 0 in >=20% of cells in any retained condition within the broad cell type"
   }
   list(cell_type = job$cell_type, route = "standard_pando", result = value)
 }
@@ -342,7 +448,13 @@
     one <- .rc_stage1_pando_working_object(
       one, rna_assay = base$rna_assay, atac_assay = base$atac_assay
     )
+    filtered_gem <- .rc_stage1_filter_gem_metabolic_genes(
+      object = one, gem = base$gem,
+      condition_col = base$condition_col, rna_assay = base$rna_assay,
+      cell_type = type
+    )
     args <- c(base[setdiff(names(base), names(extra_args))], extra_args)
+    args$gem <- filtered_gem
     args$object <- one
     args$cell_type <- type
     args$outdir <- file.path(
@@ -352,7 +464,12 @@
     args$BPPARAM <- if (isTRUE(parallel)) BPPARAM else FALSE
     args$progress_monitor <- progress_monitor
     values[[i]] <- do.call(.rc_fit_condition_grns_by_cell_type, args)
+    if (is.list(values[[i]]$normalization_policy)) {
+      values[[i]]$normalization_policy$metabolic_target_filter <-
+        "RNA counts > 0 in >=20% of cells in any retained condition within the broad cell type"
+    }
     one <- NULL
+    filtered_gem <- NULL
     args <- NULL
     invisible(gc(verbose = FALSE, full = TRUE))
   }
@@ -382,6 +499,8 @@
     answer$normalization_policy <- list()
   }
   answer$normalization_policy$parallel_contract <- plan
+  answer$normalization_policy$metabolic_target_filter <-
+    "RNA counts > 0 in >=20% of cells in any retained condition within the broad cell type"
   answer
 }
 
