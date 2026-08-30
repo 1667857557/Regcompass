@@ -271,7 +271,7 @@
       model <- .rc_load_microcompass_model(first_entry, mode)
       values <- lapply(selected_rows, function(row_id) {
         entry <- model_cache[[row_id]]
-        rc_compass_vmax_directional(
+        value <- rc_compass_vmax_directional(
           S = model$S,
           lb = model$lb,
           ub = model$ub,
@@ -279,6 +279,12 @@
           direction = entry$target_direction,
           solver = solver,
           flux_threshold = flux_threshold
+        )
+        list(
+          feasible = isTRUE(value$feasible),
+          vmax = as.numeric(value$vmax),
+          status = as.character(value$status),
+          flux = numeric()
         )
       })
       names(values) <- selected_rows
@@ -379,38 +385,52 @@
   }
 
   S <- .rc_as_dgCMatrix(S)
+  n_metabolites <- nrow(S)
   n_reactions <- ncol(S)
-  zero <- Matrix::Matrix(
-    0, nrow = nrow(S), ncol = n_reactions, sparse = TRUE
-  )
-  mass_balance <- cbind(S, zero)
-  positive <- Matrix::Matrix(
-    0, nrow = n_reactions, ncol = 2L * n_reactions, sparse = TRUE
-  )
-  negative <- positive
-  positive[cbind(seq_len(n_reactions), seq_len(n_reactions))] <- 1
-  positive[cbind(
-    seq_len(n_reactions), n_reactions + seq_len(n_reactions)
-  )] <- -1
-  negative[cbind(seq_len(n_reactions), seq_len(n_reactions))] <- -1
-  negative[cbind(
-    seq_len(n_reactions), n_reactions + seq_len(n_reactions)
-  )] <- -1
-  target <- Matrix::Matrix(
-    0, nrow = 1, ncol = 2L * n_reactions, sparse = TRUE
-  )
   target_index <- match(target_reaction, reactions)
-  target[1, target_index] <- if (
-    identical(target_direction, "forward")
-  ) 1 else -1
-  A <- rbind(mass_balance, positive, negative, target)
+  reaction_index <- seq_len(n_reactions)
+  s_nnz_per_col <- diff(S@p)
+  s_j <- rep.int(reaction_index, s_nnz_per_col)
+  s_i <- S@i + 1L
+
+  A <- Matrix::sparseMatrix(
+    i = c(
+      s_i,
+      n_metabolites + reaction_index,
+      n_metabolites + reaction_index,
+      n_metabolites + n_reactions + reaction_index,
+      n_metabolites + n_reactions + reaction_index,
+      n_metabolites + 2L * n_reactions + 1L
+    ),
+    j = c(
+      s_j,
+      reaction_index,
+      n_reactions + reaction_index,
+      reaction_index,
+      n_reactions + reaction_index,
+      target_index
+    ),
+    x = c(
+      S@x,
+      rep.int(1, n_reactions),
+      rep.int(-1, n_reactions),
+      rep.int(-1, n_reactions),
+      rep.int(-1, n_reactions),
+      if (identical(target_direction, "forward")) 1 else -1
+    ),
+    dims = c(
+      n_metabolites + 2L * n_reactions + 1L,
+      2L * n_reactions
+    ),
+    giveCsparse = TRUE
+  )
   lhs <- c(
-    rep(0, nrow(S)),
+    rep(0, n_metabolites),
     rep(-Inf, 2L * n_reactions),
     omega * vmax
   )
   rhs <- c(
-    rep(0, nrow(S)),
+    rep(0, n_metabolites),
     rep(0, 2L * n_reactions),
     Inf
   )
