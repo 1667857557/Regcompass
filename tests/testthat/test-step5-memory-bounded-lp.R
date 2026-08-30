@@ -27,7 +27,16 @@ test_that("Step 5 builds the canonical Step-2 LP without block intermediates", {
   expected_A <- rbind(mass_balance, positive, negative, target)
 
   expect_true(observed$runnable)
-  expect_equal(as.matrix(observed$template$A), as.matrix(expected_A), tolerance = 0)
+  # Matrix dimnames are not consumed by the LP solver; reaction identity is
+  # carried explicitly in `observed$reactions`/`template$reactions`. Compare the
+  # numerical constraint system exactly while retaining that name contract.
+  expect_equal(
+    unname(as.matrix(observed$template$A)),
+    unname(as.matrix(expected_A)),
+    tolerance = 0
+  )
+  expect_identical(observed$reactions, colnames(S))
+  expect_identical(observed$template$reactions, colnames(S))
   expect_equal(observed$template$lhs,
                c(rep(0, nrow(S)), rep(-Inf, 2L * n), 0.95 * 4))
   expect_equal(observed$template$rhs,
