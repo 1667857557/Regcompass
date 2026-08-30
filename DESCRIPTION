@@ -157,6 +157,7 @@ Collate:
     'layer2_corda_runtime_cache.R'
     'layer2_corda_runtime_step.R'
     'layer2_corda_pool_lifecycle.R'
+    'layer2_memory_hardening.R'
     'step_results.R'
     'regcompass.R'
     'one_shot.R'
