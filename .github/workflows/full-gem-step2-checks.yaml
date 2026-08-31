@@ -7,6 +7,7 @@ on:
       - 'R/microcompass_vmax_cache.R'
       - 'R/microcompass.R'
       - 'R/layer2_parallel_runtime.R'
+      - 'R/celltype_microcompass_reaction_parallel.R'
       - 'tests/full-gem-step2-reaction-checkpoint-check.R'
       - 'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
       - '.github/workflows/full-gem-step2-checks.yaml'
@@ -17,6 +18,7 @@ on:
       - 'R/microcompass_vmax_cache.R'
       - 'R/microcompass.R'
       - 'R/layer2_parallel_runtime.R'
+      - 'R/celltype_microcompass_reaction_parallel.R'
       - 'tests/full-gem-step2-reaction-checkpoint-check.R'
       - 'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
       - '.github/workflows/full-gem-step2-checks.yaml'
@@ -46,10 +48,71 @@ jobs:
           files <- c(
             'R/microcompass_engine.R',
             'R/microcompass_vmax_cache.R',
+            'R/celltype_microcompass_reaction_parallel.R',
             'tests/full-gem-step2-reaction-checkpoint-check.R',
             'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
           )
           for (file in files) parse(file = file)
 
-      - name: Run full-GEM Step 2 numerical equivalence regression
+      - name: Audit direct canonical implementation
+        shell: python
+        run: |
+          from pathlib import Path
+          import re
+
+          files = sorted(Path('R').glob('*.R'))
+          text_by_file = {str(path): path.read_text() for path in files}
+          all_r = '\n'.join(text_by_file.values())
+          canonical = Path('R/microcompass_engine.R').read_text()
+
+          name = '.rc_run_shared_full_gem_engine_core'
+          pattern = re.compile(rf'(?m)^{re.escape(name)}\s*<-\s*function\b')
+          hits = []
+          for path, text in text_by_file.items():
+              count = len(pattern.findall(text))
+              if count:
+                  hits.extend([path] * count)
+          if hits != ['R/microcompass_engine.R']:
+              raise RuntimeError(
+                  f'{name} must have exactly one canonical direct definition; found {hits}'
+              )
+
+          forbidden = [
+              '.rc_run_shared_full_gem_engine_core_base',
+              '.rc_run_shared_full_gem_engine_core_impl',
+              'before_run_shared_full_gem_engine_core',
+              'before_full_gem_step2',
+          ]
+          present = [marker for marker in forbidden if marker in all_r]
+          if present:
+              raise RuntimeError(
+                  f'full-GEM Step 2 override/saved implementation markers found: {present}'
+              )
+
+          required = [
+              'step2_workers <- .rc_microcompass_worker_count(',
+              'batch_specs <- .rc_step2_model_batches(model_keys, step2_workers)',
+              'checkpoint_groups <- rc_parallel_lapply(',
+              '.rc_full_gem_step2_reaction_batch_worker,',
+              'step2_solver_reuse = paste(',
+              'step2_parallel_workers = as.integer(step2_workers)',
+          ]
+          missing = [marker for marker in required if marker not in canonical]
+          if missing:
+              raise RuntimeError(
+                  f'direct canonical full-GEM Step 2 acceleration path missing: {missing}'
+              )
+
+          obsolete = [
+              'tasks <- expand.grid(\n    model_key = unique_model_keys,\n    unit_id = units',
+              'run_one_unit <- function(task)',
+              'grouped_results <- rc_parallel_lapply(',
+          ]
+          present = [marker for marker in obsolete if marker in canonical]
+          if present:
+              raise RuntimeError(
+                  f'obsolete metacell-parallel nested-result Step 2 path remains: {present}'
+              )
+
+      - name: Run full-GEM Step 2 numerical equivalence and parallel regression
         run: Rscript tests/full-gem-step2-reaction-checkpoint-check.R
