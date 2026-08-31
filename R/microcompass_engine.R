@@ -63,6 +63,274 @@
   answer[order(answer$medium_scenario, answer$model_file), , drop = FALSE]
 }
 
+.rc_full_gem_step2_model_payload <- function(
+    model_key, row_ids, model_cache, penalties, vmax_cache,
+    omega, solver, flux_threshold, payload_dir) {
+  row_ids <- as.character(row_ids)
+  if (!length(row_ids)) {
+    stop("A full-GEM Step 2 payload requires at least one target row.",
+         call. = FALSE)
+  }
+  first_entry <- model_cache[[row_ids[[1L]]]]
+  if (is.null(first_entry)) {
+    stop("A full-GEM Step 2 payload references an unknown target row.",
+         call. = FALSE)
+  }
+  model <- .rc_load_microcompass_model(first_entry, "full_gem")
+  reactions <- colnames(model$S)
+  if (is.null(reactions) || anyNA(reactions) || any(!nzchar(reactions)) ||
+      anyDuplicated(reactions)) {
+    stop("A full-GEM Step 2 payload has invalid reaction identifiers.",
+         call. = FALSE)
+  }
+  units <- colnames(penalties$penalty)
+  if (is.null(units) || anyNA(units) || any(!nzchar(units)) ||
+      anyDuplicated(units)) {
+    stop("A full-GEM Step 2 payload has invalid unit identifiers.",
+         call. = FALSE)
+  }
+  missing_penalty_rows <- setdiff(reactions, rownames(penalties$penalty))
+  if (length(missing_penalty_rows)) {
+    stop(
+      "Full-GEM Step 2 penalties are missing model reactions: ",
+      paste(utils::head(missing_penalty_rows, 10L), collapse = ", "),
+      call. = FALSE
+    )
+  }
+  entries <- lapply(row_ids, function(row_id) {
+    entry <- model_cache[[row_id]]
+    if (is.null(entry) ||
+        !identical(as.character(entry$file), as.character(model_key))) {
+      stop("A full-GEM Step 2 payload mixes different model files.",
+           call. = FALSE)
+    }
+    list(
+      reaction_id = as.character(entry$reaction_id),
+      target_direction = as.character(entry$target_direction),
+      medium_scenario = as.character(entry$medium_scenario),
+      condition = as.character(entry$condition %||% "all")
+    )
+  })
+  names(entries) <- row_ids
+  vmax_values <- lapply(row_ids, function(row_id) {
+    value <- vmax_cache[[row_id]]
+    list(
+      feasible = isTRUE(value$feasible),
+      vmax = as.numeric(value$vmax),
+      status = as.character(value$status),
+      flux = numeric()
+    )
+  })
+  names(vmax_values) <- row_ids
+  model_checksum <- if (!is.null(first_entry$file) &&
+                        file.exists(first_entry$file)) {
+    unname(tools::md5sum(first_entry$file)[[1L]])
+  } else {
+    NA_character_
+  }
+  payload <- list(
+    schema_version = "regcompass_full_gem_step2_compact_payload_v1",
+    model = list(
+      S = .rc_as_dgCMatrix(model$S),
+      lb = model$lb,
+      ub = model$ub,
+      target_status = model$target_status %||% "not_prechecked",
+      file_checksum = model_checksum,
+      medium_scenario = as.character(first_entry$medium_scenario),
+      condition = as.character(first_entry$condition %||% "all")
+    ),
+    reactions = reactions,
+    units = units,
+    penalty = penalties$penalty[reactions, units, drop = FALSE],
+    entries = entries,
+    vmax = vmax_values,
+    omega = as.numeric(omega),
+    solver = as.character(solver),
+    flux_threshold = as.numeric(flux_threshold)
+  )
+  token <- substr(.rc_microcompass_object_checksum(list(
+    file = as.character(first_entry$file %||% model_key),
+    checksum = model_checksum,
+    units = units,
+    row_ids = row_ids
+  )), 1L, 24L)
+  file <- file.path(payload_dir, paste0("payload__", token, ".rds"))
+  .rc_atomic_save_rds(payload, file)
+  rm(model, payload, entries, vmax_values)
+  invisible(gc(verbose = FALSE, full = FALSE))
+  file
+}
+
+.rc_full_gem_step2_reaction_batch_worker <- function(task) {
+  if (!is.list(task) ||
+      !all(c("payload_file", "row_ids", "checkpoint_dir") %in% names(task))) {
+    stop("Malformed full-GEM Step 2 reaction-batch task.", call. = FALSE)
+  }
+  payload <- readRDS(task$payload_file)
+  if (!is.list(payload) ||
+      !identical(
+        payload$schema_version,
+        "regcompass_full_gem_step2_compact_payload_v1"
+      )) {
+    stop("Malformed full-GEM Step 2 compact payload.", call. = FALSE)
+  }
+  row_ids <- as.character(task$row_ids)
+  if (!length(row_ids) ||
+      !all(row_ids %in% names(payload$entries)) ||
+      !all(row_ids %in% names(payload$vmax))) {
+    stop("Full-GEM Step 2 reaction-batch rows are absent from the payload.",
+         call. = FALSE)
+  }
+  model <- payload$model
+  if (!is.list(model) || is.null(model$S) || is.null(model$lb) ||
+      is.null(model$ub)) {
+    stop("Full-GEM Step 2 compact payload lacks the required LP model state.",
+         call. = FALSE)
+  }
+  if (!identical(colnames(model$S), as.character(payload$reactions))) {
+    stop("Full-GEM Step 2 payload reaction order differs from its model.",
+         call. = FALSE)
+  }
+  if (!identical(colnames(payload$penalty), as.character(payload$units)) ||
+      !identical(rownames(payload$penalty), as.character(payload$reactions))) {
+    stop("Full-GEM Step 2 compact payload penalties are not aligned.",
+         call. = FALSE)
+  }
+
+  checkpoint_files <- character(length(row_ids))
+  step2_engine <- NULL
+  on.exit({
+    .rc_compass_step2_release_engine(step2_engine)
+    rm(model, payload)
+    invisible(gc(verbose = FALSE, full = TRUE))
+  }, add = TRUE)
+
+  units <- as.character(payload$units)
+  for (j in seq_along(row_ids)) {
+    row_id <- row_ids[[j]]
+    entry <- payload$entries[[row_id]]
+    target_index <- match(entry$reaction_id, payload$reactions)
+    if (is.na(target_index)) {
+      stop("A full-GEM target reaction is absent from its shared model.",
+           call. = FALSE)
+    }
+    prepared <- .rc_compass_step2_prepare(
+      S = model$S,
+      lb = model$lb,
+      ub = model$ub,
+      target_reaction = entry$reaction_id,
+      vmax_result = payload$vmax[[row_id]],
+      target_direction = entry$target_direction,
+      omega = payload$omega,
+      flux_threshold = payload$flux_threshold
+    )
+    step2_engine <- if (isTRUE(prepared$runnable)) {
+      .rc_compass_step2_new_engine(prepared$template, payload$solver)
+    } else {
+      NULL
+    }
+
+    task_penalty <- rep(NA_real_, length(units))
+    task_vmax <- rep(NA_real_, length(units))
+    task_feasible <- task_evaluated <- rep(FALSE, length(units))
+    names(task_penalty) <- names(task_vmax) <-
+      names(task_feasible) <- names(task_evaluated) <- units
+    diagnostics <- vector("list", length(units))
+
+    for (i in seq_along(units)) {
+      one_unit <- units[[i]]
+      unit_penalty <- payload$penalty[, i]
+      target_penalty <- unit_penalty[[target_index]]
+      evidence_available <- is.finite(unit_penalty)
+      solver_penalty <- unit_penalty
+      solver_penalty[!evidence_available] <- 0
+
+      if (isTRUE(prepared$runnable)) {
+        solved <- .rc_compass_step2_engine_solve(
+          step2_engine, solver_penalty
+        )
+        step2_engine <- solved$engine
+        fit <- .rc_compass_step2_result(prepared$template, solved$answer)
+      } else {
+        fit <- prepared$result
+        solved <- NULL
+      }
+
+      target_available <- is.finite(target_penalty)
+      task_penalty[[one_unit]] <- if (target_available) {
+        fit$penalty
+      } else {
+        NA_real_
+      }
+      task_vmax[[one_unit]] <- fit$vmax
+      task_feasible[[one_unit]] <- isTRUE(fit$feasible)
+      task_evaluated[[one_unit]] <- isTRUE(fit$feasible) && target_available
+      diagnostics[[i]] <- data.frame(
+        row_id = row_id,
+        unit_id = one_unit,
+        module_id = NA_character_,
+        reaction_id = entry$reaction_id,
+        target_direction = entry$target_direction,
+        medium_scenario = entry$medium_scenario,
+        condition = entry$condition,
+        strict_feasible = isTRUE(fit$feasible),
+        solver_status = fit$solver_status,
+        solver_backend = fit$solver_backend %||% "unknown",
+        step1_status = fit$step1_status,
+        step2_status = fit$step2_status,
+        target_status = if (isTRUE(fit$feasible)) {
+          "ok"
+        } else {
+          "medium_directionally_infeasible"
+        },
+        objective_value = if (target_available) fit$penalty else NA_real_,
+        vmax = fit$vmax,
+        vmax_reused_from_shared_cache = TRUE,
+        step2_model_reused_across_metacells = TRUE,
+        target_expression_available = target_available,
+        objective_evidence_fraction = mean(evidence_available),
+        unavailable_objective_terms = sum(!evidence_available),
+        parallel_task = "directional_reaction_x_all_metacells",
+        stringsAsFactors = FALSE
+      )
+      rm(unit_penalty, solver_penalty, fit, solved, evidence_available)
+    }
+
+    engine_metrics <- .rc_compass_step2_engine_metrics(step2_engine)
+    token <- substr(.rc_microcompass_object_checksum(list(
+      row_id = row_id,
+      file_checksum = model$file_checksum,
+      units = units,
+      omega = payload$omega,
+      solver = payload$solver,
+      flux_threshold = payload$flux_threshold
+    )), 1L, 24L)
+    checkpoint <- file.path(
+      task$checkpoint_dir, paste0("step2__", token, ".rds")
+    )
+    .rc_atomic_save_rds(list(
+      row_id = row_id,
+      units = units,
+      penalty = task_penalty,
+      vmax = task_vmax,
+      feasible = task_feasible,
+      evaluated = task_evaluated,
+      diagnostics = .rc_bind_frames_fill(diagnostics),
+      engine_metrics = engine_metrics
+    ), checkpoint)
+    checkpoint_files[[j]] <- checkpoint
+
+    .rc_compass_step2_release_engine(step2_engine)
+    step2_engine <- NULL
+    rm(
+      diagnostics, task_penalty, task_vmax, task_feasible,
+      task_evaluated, prepared, engine_metrics
+    )
+    invisible(gc(verbose = FALSE, full = FALSE))
+  }
+  checkpoint_files
+}
+
 .rc_run_shared_full_gem_engine_core <- function(
     layer1, gem, target_reactions = NULL,
     medium_table = NULL, medium_scenarios = NULL,
@@ -133,7 +401,7 @@
     if (!setequal(cached_media, requested_media)) {
       stop("The shared cache and requested media differ.", call. = FALSE)
     }
-  } else if (identical(mode, "full_gem")) {
+  } else {
     if (is.null(target_reactions) || !length(target_reactions)) {
       stop("`target_reactions` is required in full-GEM mode.", call. = FALSE)
     }
@@ -171,12 +439,10 @@
         )
       }
     )))
-  } else {
-    stop("The shared full-GEM engine received a non-full-GEM mode.",
-         call. = FALSE)
   }
 
   units <- colnames(matrices$reaction_expression)
+  unit_meta <- matrices$unit_meta
   row_ids <- names(model_cache)
   model_keys <- vapply(row_ids, function(row_id) {
     entry <- model_cache[[row_id]]
@@ -209,6 +475,15 @@
     parallel = parallel,
     BPPARAM = BPPARAM
   )
+  vmax_parallel_tasks <- as.integer(
+    attr(vmax_cache, "parallel_tasks") %||% length(vmax_cache)
+  )
+  vmax_parallel_workers <- as.integer(
+    attr(vmax_cache, "parallel_workers") %||% 1L
+  )
+  vmax_computation_scope <- attr(vmax_cache, "parallel_scope") %||%
+    "shared_model_x_directional_target_once"
+  vmax_solve_count <- length(vmax_cache)
   vmax_cache_diagnostics <- do.call(rbind, lapply(row_ids, function(row_id) {
     entry <- model_cache[[row_id]]
     value <- vmax_cache[[row_id]]
@@ -238,119 +513,114 @@
     ncol = length(units),
     dimnames = list(row_ids, units)
   )
-  tasks <- expand.grid(
-    model_key = unique_model_keys,
-    unit_id = units,
-    stringsAsFactors = FALSE
+
+  checkpoint_root <- model_params$cache_dir %||%
+    dirname(model_cache[[row_ids[[1L]]]]$file)
+  dir.create(checkpoint_root, recursive = TRUE, showWarnings = FALSE)
+  checkpoint_dir <- tempfile(
+    pattern = "full_gem_step2_reaction_tasks_",
+    tmpdir = checkpoint_root
   )
+  payload_dir <- file.path(checkpoint_dir, "compact_payloads")
+  dir.create(payload_dir, recursive = TRUE, showWarnings = FALSE)
+  on.exit(unlink(checkpoint_dir, recursive = TRUE, force = TRUE), add = TRUE)
 
-  run_one_unit <- function(task) {
-    model_key <- as.character(task$model_key)
-    unit_id <- as.character(task$unit_id)
-    selected_rows <- names(model_keys)[model_keys == model_key]
-    first_entry <- model_cache[[selected_rows[[1L]]]]
-    model <- .rc_load_microcompass_model(first_entry, mode)
-    target_results <- lapply(selected_rows, function(row_id) {
-      entry <- model_cache[[row_id]]
-      unit_penalty <- penalties$penalty[colnames(model$S), unit_id]
-      target_index <- match(entry$reaction_id, colnames(model$S))
-      if (is.na(target_index)) {
-        stop("A target reaction is absent from its shared model.",
-             call. = FALSE)
-      }
-      target_penalty <- unit_penalty[[target_index]]
-      evidence_available <- is.finite(unit_penalty)
-      solver_penalty <- unit_penalty
-      solver_penalty[!evidence_available] <- 0
-      answer <- .rc_compass_step2_from_vmax_directional(
-        S = model$S,
-        lb = model$lb,
-        ub = model$ub,
-        target_reaction = entry$reaction_id,
-        penalties = solver_penalty,
-        vmax_result = vmax_cache[[row_id]],
-        target_direction = entry$target_direction,
-        omega = omega,
-        solver = solver,
-        flux_threshold = flux_threshold
-      )
-      target_evidence_available <- is.finite(target_penalty)
-      list(
-        row_id = row_id,
-        unit_id = unit_id,
-        penalty = if (target_evidence_available) {
-          answer$penalty
-        } else {
-          NA_real_
-        },
-        vmax = answer$vmax,
-        feasible = isTRUE(answer$feasible),
-        evaluated = isTRUE(answer$feasible) &&
-          target_evidence_available,
-        diagnostics = data.frame(
-          row_id = row_id,
-          unit_id = unit_id,
-          module_id = NA_character_,
-          reaction_id = entry$reaction_id,
-          target_direction = entry$target_direction,
-          medium_scenario = entry$medium_scenario,
-          condition = "all",
-          strict_feasible = isTRUE(answer$feasible),
-          solver_status = answer$solver_status,
-          step1_status = answer$step1_status,
-          step2_status = answer$step2_status,
-          target_status = if (isTRUE(answer$feasible)) {
-            "ok"
-          } else {
-            "medium_directionally_infeasible"
-          },
-          objective_value = if (target_evidence_available) {
-            answer$penalty
-          } else {
-            NA_real_
-          },
-          vmax = answer$vmax,
-          vmax_reused_from_shared_cache = TRUE,
-          target_expression_available = target_evidence_available,
-          objective_evidence_fraction = mean(evidence_available),
-          unavailable_objective_terms = sum(!evidence_available),
-          stringsAsFactors = FALSE
-        )
-      )
-    })
-    list(
-      results = target_results,
-      diagnostics = do.call(
-        rbind, lapply(target_results, `[[`, "diagnostics")
-      )
+  step2_workers <- .rc_microcompass_worker_count(
+    parallel = parallel,
+    BPPARAM = BPPARAM,
+    n_tasks = length(row_ids)
+  )
+  batch_specs <- .rc_step2_model_batches(model_keys, step2_workers)
+  step2_task_count <- length(batch_specs)
+  payload_files <- vapply(unique_model_keys, function(model_key) {
+    model_rows <- names(model_keys)[model_keys == model_key]
+    .rc_full_gem_step2_model_payload(
+      model_key = model_key,
+      row_ids = model_rows,
+      model_cache = model_cache,
+      penalties = penalties,
+      vmax_cache = vmax_cache,
+      omega = omega,
+      solver = solver,
+      flux_threshold = flux_threshold,
+      payload_dir = payload_dir
     )
-  }
+  }, character(1))
+  names(payload_files) <- unique_model_keys
+  tasks <- lapply(batch_specs, function(spec) {
+    list(
+      payload_file = payload_files[[as.character(spec$model_key)]],
+      row_ids = as.character(spec$row_ids),
+      checkpoint_dir = checkpoint_dir
+    )
+  })
+  names(tasks) <- names(batch_specs)
 
-  task_list <- split(tasks, seq_len(nrow(tasks)))
-  grouped_results <- rc_parallel_lapply(
-    task_list,
-    function(task) run_one_unit(task[1, , drop = FALSE]),
+  penalties$penalty <- NULL
+  rm(vmax_cache, matrices, all_reactions)
+  invisible(gc(verbose = FALSE, full = TRUE))
+
+  checkpoint_groups <- rc_parallel_lapply(
+    tasks,
+    .rc_full_gem_step2_reaction_batch_worker,
     BPPARAM = if (isTRUE(parallel)) BPPARAM else FALSE
   )
-  results <- unlist(
-    lapply(grouped_results, `[[`, "results"), recursive = FALSE
-  )
-  for (result in results) {
-    penalty[result$row_id, result$unit_id] <- result$penalty
-    vmax[result$row_id, result$unit_id] <- result$vmax
-    feasible[result$row_id, result$unit_id] <- result$feasible
-    evaluated[result$row_id, result$unit_id] <- result$evaluated
+  checkpoint_files <- unlist(checkpoint_groups, use.names = FALSE)
+  if (length(checkpoint_files) != length(row_ids)) {
+    stop("Full-GEM Step 2 reaction batches returned an incomplete checkpoint set.",
+         call. = FALSE)
   }
+
+  diagnostics <- vector("list", length(checkpoint_files))
+  step2_engine_metrics <- vector("list", length(checkpoint_files))
+  observed_rows <- character(length(checkpoint_files))
+  for (i in seq_along(checkpoint_files)) {
+    result <- readRDS(checkpoint_files[[i]])
+    row_id <- as.character(result$row_id)
+    if (!row_id %in% row_ids ||
+        !identical(names(result$penalty), as.character(result$units))) {
+      stop("A full-GEM reaction-level Step 2 checkpoint is malformed.",
+           call. = FALSE)
+    }
+    observed_rows[[i]] <- row_id
+    penalty[row_id, result$units] <- result$penalty
+    vmax[row_id, result$units] <- result$vmax
+    feasible[row_id, result$units] <- result$feasible
+    evaluated[row_id, result$units] <- result$evaluated
+    diagnostics[[i]] <- result$diagnostics
+    metrics <- result$engine_metrics %||% list()
+    step2_engine_metrics[[i]] <- data.frame(
+      row_id = row_id,
+      engine = as.character(metrics$engine %||% "unknown"),
+      n_solves = as.integer(metrics$n_solves %||% 0L),
+      n_objective_updates = as.integer(
+        metrics$n_objective_updates %||% 0L
+      ),
+      n_fallback = as.integer(metrics$n_fallback %||% 0L),
+      stringsAsFactors = FALSE
+    )
+    rm(result, metrics)
+    unlink(checkpoint_files[[i]], force = TRUE)
+    invisible(gc(verbose = FALSE, full = FALSE))
+  }
+  if (anyDuplicated(observed_rows) || !setequal(observed_rows, row_ids)) {
+    stop("Full-GEM Step 2 reaction batches did not score every target exactly once.",
+         call. = FALSE)
+  }
+  unlink(payload_files, force = TRUE)
+  rm(checkpoint_groups, checkpoint_files, tasks, batch_specs)
+  invisible(gc(verbose = FALSE, full = TRUE))
+
   score <- rc_compass_score_from_penalty(penalty, feasible)
-  lp_diagnostics <- do.call(
-    rbind, lapply(grouped_results, `[[`, "diagnostics")
-  )
+  lp_diagnostics <- .rc_bind_frames_fill(diagnostics)
   model_diagnostics <- .rc_bind_frames_fill(lapply(
     representative_rows,
     function(row_id) {
       entry <- model_cache[[row_id]]
       model <- .rc_load_microcompass_model(entry, mode)
-      model$closure_diagnostics %||% data.frame()
+      out <- model$closure_diagnostics %||% data.frame()
+      rm(model)
+      out
     }
   ))
 
@@ -371,10 +641,11 @@
     model_diagnostics = model_diagnostics,
     vmax_cache_diagnostics = vmax_cache_diagnostics,
     lp_diagnostics = lp_diagnostics,
+    step2_engine_metrics = .rc_bind_frames_fill(step2_engine_metrics),
     penalty_components = penalties$components,
     evidence_policy = penalties$evidence_policy,
     evidence_policy_detail = penalties$evidence_policy_detail,
-    unit_meta = matrices$unit_meta,
+    unit_meta = unit_meta,
     params = list(
       unit = unit,
       omega = omega,
@@ -396,15 +667,38 @@
       ),
       fastcore_executed = FALSE,
       corda2_executed = FALSE,
-      parallel_task = "shared_model_by_metacell_step2",
-      vmax_computation_scope =
-        "shared_model_x_directional_target_once",
-      vmax_solve_count = length(vmax_cache),
+      parallel_task = "directional_reaction_by_all_metacells_step2",
+      step2_dispatch = "model_scoped_reaction_batches",
+      step2_parallel_tasks = as.integer(step2_task_count),
+      step2_parallel_workers = as.integer(step2_workers),
+      step2_worker_payload = paste(
+        "file-backed compact S/lb/ub, full-GEM penalties, target metadata",
+        "and cached vmax; workers return checkpoint paths only"
+      ),
+      step2_model_load_reuse = paste(
+        "each reaction batch loads one compact full-GEM payload once and",
+        "reuses it across its directional reactions"
+      ),
+      step2_solver_reuse = paste(
+        "one persistent HiGHS model per directional reaction reused across",
+        "all metacells by objective-coefficient updates"
+      ),
+      worker_cleanup = paste(
+        "checkpoint each reaction, release its HiGHS engine, remove",
+        "reaction-local objects, then release the dispatch-local worker pool"
+      ),
+      vmax_computation_scope = vmax_computation_scope,
+      vmax_parallel_tasks = vmax_parallel_tasks,
+      vmax_parallel_workers = vmax_parallel_workers,
+      vmax_solve_count = vmax_solve_count,
       vmax_reuse_factor = length(units),
       flux_threshold = flux_threshold,
       scoring_time_limit = "none"
     ),
-    method = "microCOMPASS shared medium-constrained full-GEM directional LP"
+    method = paste(
+      "microCOMPASS shared medium-constrained full-GEM directional LP with",
+      "reaction-parallel persistent HiGHS Step 2"
+    )
   )
 }
 
