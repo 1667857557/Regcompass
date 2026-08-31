@@ -70,6 +70,7 @@ rc_align_bound <- function(x, rxns, default, name, allow_partial = FALSE) {
 source("R/microcompass.R")
 source("R/layer2_parallel_runtime.R")
 source("R/microcompass_vmax_cache.R")
+source("R/celltype_microcompass_reaction_parallel.R")
 source("R/microcompass_engine.R")
 
 root <- tempfile("full-gem-step2-checkpoint-ci-")
@@ -201,4 +202,30 @@ for (checkpoint in checkpoints) {
 }
 stopifnot(setequal(observed_rows, row_ids))
 
-cat("Full-GEM reaction-checkpoint Step 2 numerical regression passed.\n")
+# Parallel acceleration contract: when at least 80 independent directional
+# targets exist under one shared model, an 80-worker cap must remain capable of
+# producing 80 reaction batches. Stability fixes must not silently serialize or
+# reduce this parallel task surface.
+parallel_rows <- paste0("directional_row_", seq_len(200L))
+parallel_model_keys <- stats::setNames(
+  rep(model_file, length(parallel_rows)),
+  parallel_rows
+)
+parallel_batches <- .rc_step2_model_batches(
+  parallel_model_keys,
+  workers = 80L
+)
+parallel_assigned <- unlist(
+  lapply(parallel_batches, `[[`, "row_ids"),
+  use.names = FALSE
+)
+stopifnot(
+  length(parallel_batches) == 80L,
+  length(parallel_assigned) == length(parallel_rows),
+  !anyDuplicated(parallel_assigned),
+  setequal(parallel_assigned, parallel_rows)
+)
+
+cat(
+  "Full-GEM direct canonical Step 2 numerical and 80-worker batching regression passed.\n"
+)
