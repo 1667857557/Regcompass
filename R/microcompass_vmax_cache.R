@@ -866,8 +866,22 @@
   )
 }
 
+.rc_compass_step2_engine_metrics_delta <- function(after, before) {
+  fields <- c("n_solves", "n_objective_updates", "n_fallback")
+  value <- lapply(fields, function(field) {
+    max(
+      0L,
+      as.integer(after[[field]] %||% 0L) -
+        as.integer(before[[field]] %||% 0L)
+    )
+  })
+  names(value) <- fields
+  c(list(engine = as.character(after$engine %||% "not_run")), value)
+}
+
 .rc_compass_step2_route_solve <- function(
-    prepared, engine, penalty_matrix, evidence, target_index, units) {
+    prepared, engine, penalty_matrix, evidence, target_index, units,
+    reuse_mask = NULL, reuse_result = NULL) {
   penalty_matrix <- as.matrix(penalty_matrix)
   units <- as.character(units)
   n_units <- length(units)
@@ -882,6 +896,25 @@
     stop("Step 2 route penalty evidence summary is malformed.",
          call. = FALSE)
   }
+  reuse_mask <- if (is.null(reuse_mask)) {
+    rep(FALSE, n_units)
+  } else {
+    as.logical(reuse_mask)
+  }
+  if (length(reuse_mask) != n_units || anyNA(reuse_mask)) {
+    stop("Step 2 exact-reuse mask is not aligned to route units.",
+         call. = FALSE)
+  }
+  if (any(reuse_mask)) {
+    required <- c(
+      "penalty", "vmax", "feasible", "evaluated", "solver_status",
+      "solver_backend", "step1_status", "step2_status", "target_available"
+    )
+    if (!is.list(reuse_result) || !all(required %in% names(reuse_result)) ||
+        any(vapply(reuse_result[required], length, integer(1)) != n_units)) {
+      stop("Step 2 exact-reuse source is malformed.", call. = FALSE)
+    }
+  }
 
   task_penalty <- rep(NA_real_, n_units)
   task_vmax <- rep(NA_real_, n_units)
@@ -893,6 +926,18 @@
   target_available <- is.finite(penalty_matrix[target_index, ])
 
   for (i in seq_along(units)) {
+    if (isTRUE(reuse_mask[[i]])) {
+      task_penalty[[i]] <- reuse_result$penalty[[i]]
+      task_vmax[[i]] <- reuse_result$vmax[[i]]
+      task_feasible[[i]] <- reuse_result$feasible[[i]]
+      task_evaluated[[i]] <- reuse_result$evaluated[[i]]
+      solver_status[[i]] <- reuse_result$solver_status[[i]]
+      solver_backend[[i]] <- "reused_identical_primary_objective"
+      step1_status[[i]] <- reuse_result$step1_status[[i]]
+      step2_status[[i]] <- reuse_result$step2_status[[i]]
+      next
+    }
+
     unit_penalty <- penalty_matrix[, i]
     solver_penalty <- if (isTRUE(evidence$all_finite[[i]])) {
       unit_penalty

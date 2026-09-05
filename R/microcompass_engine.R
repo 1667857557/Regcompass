@@ -144,7 +144,15 @@
       control_penalties$penalty[reactions, units, drop = FALSE]
     control_penalty_evidence <-
       .rc_step2_penalty_evidence_stats(control_penalty_matrix)
-    control_identical <- identical(control_penalty_matrix, penalty_matrix)
+    control_identical <- vapply(
+      seq_len(ncol(penalty_matrix)),
+      function(i) identical(
+        control_penalty_matrix[, i, drop = TRUE],
+        penalty_matrix[, i, drop = TRUE]
+      ),
+      logical(1)
+    )
+    names(control_identical) <- colnames(penalty_matrix)
   }
   payload <- list(
     schema_version = "regcompass_full_gem_step2_compact_payload_v1",
@@ -228,10 +236,9 @@
   }
 
   checkpoint_files <- character(length(row_ids))
-  step2_engine <- control_step2_engine <- NULL
+  step2_engine <- NULL
   on.exit({
     .rc_compass_step2_release_engine(step2_engine)
-    .rc_compass_step2_release_engine(control_step2_engine)
     rm(model, payload)
     invisible(gc(verbose = FALSE, full = TRUE))
   }, add = TRUE)
@@ -244,6 +251,17 @@
       .rc_step2_penalty_evidence_stats(payload$control_penalty)
   } else {
     NULL
+  }
+  control_reuse_mask <- if (paired_control) {
+    value <- as.logical(payload$control_identical)
+    if (length(value) != length(units) || anyNA(value)) {
+      stop("Paired RNA-control exact-reuse mask is not aligned to units.",
+           call. = FALSE)
+    }
+    names(value) <- units
+    value
+  } else {
+    setNames(rep(FALSE, length(units)), units)
   }
 
   for (j in seq_along(row_ids)) {
@@ -284,22 +302,19 @@
       engine = "not_run", n_solves = 0L,
       n_objective_updates = 0L, n_fallback = 0L
     )
-    reused_control <- FALSE
+    reused_control <- control_reuse_mask
     if (paired_control) {
-      if (isTRUE(payload$control_identical)) {
-        control <- primary
-        control$engine <- NULL
-        reused_control <- TRUE
-      } else {
-        control_step2_engine <- new_engine()
-        control <- .rc_compass_step2_route_solve(
-          prepared, control_step2_engine, payload$control_penalty,
-          control_evidence, target_index, units
-        )
-        control_step2_engine <- control$engine
-        control_metrics <-
-          .rc_compass_step2_engine_metrics(control_step2_engine)
-      }
+      control <- .rc_compass_step2_route_solve(
+        prepared, step2_engine, payload$control_penalty,
+        control_evidence, target_index, units,
+        reuse_mask = reused_control,
+        reuse_result = primary
+      )
+      step2_engine <- control$engine
+      control_metrics <- .rc_compass_step2_engine_metrics_delta(
+        .rc_compass_step2_engine_metrics(step2_engine),
+        primary_metrics
+      )
     }
 
     diagnostics <- data.frame(
@@ -340,12 +355,8 @@
         objective_value = unname(control$penalty),
         strict_feasible = unname(control$feasible),
         solver_status = control$solver_status,
-        solver_backend = if (reused_control) {
-          rep("reused_identical_primary_objective", length(units))
-        } else {
-          control$solver_backend
-        },
-        objective_identical_to_primary = rep(reused_control, length(units)),
+        solver_backend = control$solver_backend,
+        objective_identical_to_primary = unname(reused_control),
         stringsAsFactors = FALSE
       )
     } else {
@@ -379,14 +390,15 @@
         evaluated = control$evaluated,
         diagnostics = control_diagnostics,
         engine_metrics = control_metrics,
-        reused_from_primary = reused_control
+        reused_from_primary = isTRUE(all(reused_control)),
+        reused_from_primary_by_unit = reused_control,
+        shared_target_engine = TRUE
       ) else NULL
     ), checkpoint)
     checkpoint_files[[j]] <- checkpoint
 
     .rc_compass_step2_release_engine(step2_engine)
-    .rc_compass_step2_release_engine(control_step2_engine)
-    step2_engine <- control_step2_engine <- NULL
+    step2_engine <- NULL
     rm(
       diagnostics, control_diagnostics, prepared, primary, control,
       primary_metrics, control_metrics
@@ -706,7 +718,15 @@
       control_feasible[row_id, result$units] <- ctrl$feasible
       control_evaluated[row_id, result$units] <- ctrl$evaluated
       control_diagnostics[[i]] <- ctrl$diagnostics
-      control_reused[[i]] <- isTRUE(ctrl$reused_from_primary)
+      reuse_mask <- as.logical(
+        ctrl$reused_from_primary_by_unit %||%
+          rep(isTRUE(ctrl$reused_from_primary), length(result$units))
+      )
+      if (length(reuse_mask) != length(result$units) || anyNA(reuse_mask)) {
+        stop("A paired RNA-control checkpoint has a malformed reuse mask.",
+             call. = FALSE)
+      }
+      control_reused[[i]] <- isTRUE(all(reuse_mask))
       control_metrics <- ctrl$engine_metrics %||% list()
       control_step2_engine_metrics[[i]] <- data.frame(
         row_id = row_id,
@@ -716,7 +736,10 @@
           control_metrics$n_objective_updates %||% 0L
         ),
         n_fallback = as.integer(control_metrics$n_fallback %||% 0L),
-        reused_from_primary = isTRUE(ctrl$reused_from_primary),
+        reused_from_primary = isTRUE(all(reuse_mask)),
+        n_reused_from_primary = as.integer(sum(reuse_mask)),
+        reuse_fraction = mean(reuse_mask),
+        shared_target_engine = isTRUE(ctrl$shared_target_engine),
         stringsAsFactors = FALSE
       )
     }
