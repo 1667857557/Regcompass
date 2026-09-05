@@ -1,13 +1,17 @@
 # Exact directional COMPASS Step 2 compiler.
 #
-# This final definition corrects the zero-length directional-ID edge case in
-# the PR #338 compiler.  Base R paste0() recycles a non-empty suffix against a
+# This implementation corrects the zero-length directional-ID edge case in
+# the PR #338 compiler. Base R paste0() recycles a non-empty suffix against a
 # zero-length character vector unless recycle0 = TRUE, which can create a
 # spurious "::forward" or "::reverse" name when an entire model has no flux in
-# that direction.  The explicit length guards below preserve the exact number
+# that direction. The explicit length guards below preserve the exact number
 # of directional variables and do not alter the LP feasible set.
+#
+# The uniquely named implementation is bound to the production symbol at the
+# end of this file. This keeps the API surface auditable: there is only one
+# direct top-level function definition for each implementation name.
 
-.rc_compass_step2_prepare <- function(
+.rc_compass_step2_prepare_exact <- function(
     S, lb, ub, target_reaction, vmax_result,
     target_direction = c("forward", "reverse"),
     omega = 0.95, flux_threshold = 1e-8) {
@@ -63,7 +67,7 @@
   n_reactions <- ncol(S)
   target_index <- match(target_reaction, reactions)
 
-  # COMPASS Step 2 uses exact non-negative directional variables.  CORDA2 has
+  # COMPASS Step 2 uses exact non-negative directional variables. CORDA2 has
   # its own structural directional split and directional Vmax remains signed.
   forward_index <- which(ub > 0)
   reverse_index <- which(lb < 0)
@@ -184,3 +188,8 @@
     )
   )
 }
+
+# Production binding. This is intentionally a plain alias, not a saved
+# legacy/base/implementation copy: callers continue to use the established
+# private symbol while the exact corrected compiler has one auditable definition.
+.rc_compass_step2_prepare <- .rc_compass_step2_prepare_exact
