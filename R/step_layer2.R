@@ -254,7 +254,7 @@ rc_regcompass_step_layer2 <- function(
     "layer1", "gem", "mode", "unit", "reaction_membership",
     "core_reactions", "target_reactions", "medium_scenarios",
     "sample_col", "condition_col", "celltype_col", "BPPARAM",
-    "parallel", "workers", "penalty_weights"
+    "parallel", "workers", "penalty_weights", "control_layer1"
   ))
   if (length(reserved)) {
     stop(
@@ -298,8 +298,18 @@ rc_regcompass_step_layer2 <- function(
       call. = FALSE
     )
   }
+  rna_expression <- layer1$reaction_expression_rna_only
+  if (!is.numeric(rna_expression) || is.null(dim(rna_expression)) ||
+      !identical(dimnames(rna_expression),
+                 dimnames(layer1$reaction_expression))) {
+    stop("Layer 1 RNA-only control is missing or misaligned.", call. = FALSE)
+  }
+  control_layer1 <- layer1
+  control_layer1$reaction_expression <- rna_expression
+
   defaults <- list(
     layer1 = layer1,
+    control_layer1 = control_layer1,
     gem = gem,
     target_reactions = if (identical(model_mode, "meta_module_gem")) {
       catalogue$merged_core_reactions
@@ -338,72 +348,28 @@ rc_regcompass_step_layer2 <- function(
       )) invokeRestart("muffleWarning")
     }
   )
-  control_model_cache <- answer$shared_model_cache
-  control_flux_threshold <- as.numeric(
-    answer$params$flux_threshold %||%
-      layer2_args$flux_threshold %||% 1e-8
-  )
-  attr(control_model_cache, "directional_vmax_cache_override") <-
-    .rc_pack_microcompass_vmax_cache(
-      diagnostics = answer$vmax_cache_diagnostics,
-      model_cache = control_model_cache,
-      mode = model_mode,
-      solver = solver,
-      flux_threshold = control_flux_threshold
-    )
-  run_control <- function(expression_field, label) {
-    expression <- layer1[[expression_field]]
-    if (!is.numeric(expression) || is.null(dim(expression)) ||
-        !identical(
-          dimnames(expression),
-          dimnames(layer1$reaction_expression)
-        )) {
-      stop(
-        "Layer 1 control `", label,
-        "` is missing or is not aligned with the primary expression.",
-        call. = FALSE
-      )
-    }
-    control_layer1 <- layer1
-    control_layer1$reaction_expression <- expression
-    control_args <- c(defaults, layer2_args)
-    control_args$layer1 <- control_layer1
-    control_args$model_cache_override <- control_model_cache
-    result <- withCallingHandlers(
-      do.call(
-        .rc_run_microcompass_engine_monitored,
-        c(control_args, list(progress_monitor = monitor))
-      ),
-      warning = function(w) {
-        if (grepl(
-          "Metacells are valid within-dataset statistical units",
-          conditionMessage(w),
-          fixed = TRUE
-        )) invokeRestart("muffleWarning")
-      }
-    )
-    if (is.list(result$params)) {
-      result$params$vmax_solve_count <- 0L
-      result$params$vmax_cache_source <- "reused_primary_directional_vmax"
-      result$params$vmax_computation_scope <-
-        "reused_primary_directional_vmax_cache"
-      result$params$vmax_reused_from_primary <- TRUE
-    }
-    if (is.data.frame(result$vmax_cache_diagnostics) &&
-        "computation_scope" %in% colnames(result$vmax_cache_diagnostics)) {
-      result$vmax_cache_diagnostics$computation_scope <-
-        "reused_primary_directional_vmax_cache"
-    }
-    .rc_assert_layer2_shared_contract(answer, result, label)
-    result
+  if (is.null(answer$penalty_rna_only) || is.null(answer$score_rna_only) ||
+      is.null(answer$feasible_rna_only) || is.null(answer$evaluated_rna_only)) {
+    stop("Paired Layer 2 did not return the RNA-only control matrices.",
+         call. = FALSE)
   }
-  rna_only <- run_control(
-    "reaction_expression_rna_only",
-    "RNA-only control"
+  rna_only_contract <- list(
+    penalty = answer$penalty_rna_only,
+    vmax = answer$vmax,
+    feasible = answer$feasible_rna_only,
+    evaluated = answer$evaluated_rna_only,
+    structural_model_contract = answer$structural_model_contract,
+    lp_diagnostics = answer$lp_diagnostics_rna_only,
+    model_mode = answer$model_mode,
+    medium_scenarios = answer$medium_scenarios,
+    unit_meta = answer$unit_meta
   )
+  .rc_assert_layer2_shared_contract(
+    answer, rna_only_contract, "RNA-only control"
+  )
+  rm(rna_only_contract)
+
   answer$schema_version <- "regcompass_regulatory_layer2_v3"
-  answer$penalty_rna_only <- rna_only$penalty
-  answer$score_rna_only <- rna_only$score
   answer$comparison_contract <- list(
     primary = "penalty",
     rna_control = "penalty_rna_only",
@@ -412,13 +378,16 @@ rc_regcompass_step_layer2 <- function(
     exact_shared_structure = TRUE,
     structural_model_contract = answer$structural_model_contract,
     directional_vmax_contract =
-      "computed_once_in_primary_and_reused_exactly_for_rna_control",
+      "computed_once_and_shared_by_paired_primary_rna_control",
     rna_control_vmax_solve_count = 0L,
+    paired_step2_dispatch = TRUE,
+    independent_solver_streams = FALSE,
+    independent_lp_solves_on_shared_target_engine = TRUE,
+    exact_identical_model_objective_reuse = TRUE,
     effect_size_basis = "penalty / (omega * vmax)",
     ecdf_effect_size_eligible = FALSE
   )
-  rna_only$shared_model_cache <- NULL
-  answer$comparison_paths <- list(rna_only = rna_only)
+  answer$comparison_paths <- NULL
   answer$comparison_table <- .rc_layer2_comparison_table(
     answer,
     layer1,
@@ -547,16 +516,22 @@ rc_regcompass_step_layer2 <- function(
   )
   .rc_layer2_overall_event(
     "primary_engine_start", 2L,
-    "starting structural construction and primary multiome scoring"
+    "starting structural construction and paired primary/RNA-only scoring"
   )
   answer <- do.call(rc_run_microcompass, args)
   .rc_layer2_overall_event(
     "primary_scoring_complete", 5L,
-    "primary multiome Step 2 scoring completed"
+    "paired primary multiome and RNA-only Step 2 scoring completed"
   )
   .rc_layer2_overall_event(
     "primary_engine_complete", 6L,
     "primary structural models and directional scores assembled"
   )
+  if (!is.null(args$control_layer1)) {
+    .rc_layer2_overall_event(
+      "rna_control_complete", 8L,
+      "RNA-only Step 2 completed in the same target dispatch with shared Vmax"
+    )
+  }
   answer
 }
