@@ -15,6 +15,7 @@ on:
       - "src/layer2_native.cpp"
       - "tests/layer2-native-acceleration-check.R"
       - "tests/layer2-model-batch-streaming-review-check.R"
+      - "tests/full-gem-step2-streaming-review-check.R"
       - ".github/workflows/layer2-native-acceleration-checks.yaml"
   workflow_dispatch:
 
@@ -47,3 +48,5 @@ jobs:
         run: Rscript tests/layer2-native-acceleration-check.R
       - name: Run bounded-memory streaming and reuse-diagnostic regression
         run: Rscript tests/layer2-model-batch-streaming-review-check.R
+      - name: Run full-GEM bounded-memory streaming regression
+        run: Rscript tests/full-gem-step2-streaming-review-check.R
