@@ -72,6 +72,7 @@ source("R/layer2_parallel_runtime.R")
 source("R/microcompass_vmax_cache.R")
 source("R/celltype_microcompass_reaction_parallel.R")
 source("R/microcompass_engine.R")
+source("R/layer2_step2_model_batch.R")
 
 root <- tempfile("full-gem-step2-checkpoint-ci-")
 dir.create(root, recursive = TRUE)
@@ -172,6 +173,12 @@ for (checkpoint in checkpoints) {
   stopifnot(
     identical(observed$units, units),
     identical(as.integer(observed$engine_metrics$n_solves), length(units)),
+    isTRUE(observed$engine_metrics$shared_model_batch_engine),
+    observed$engine_metrics$batch_objective_change_events <= length(units),
+    observed$engine_metrics$batch_target_switches ==
+      length(row_ids) * length(units),
+    all(observed$diagnostics$step2_solver_reused_across_targets),
+    all(observed$diagnostics$step2_traversal == "unit_then_directional_target"),
     nrow(observed$diagnostics) == length(units)
   )
   for (one_unit in units) {
@@ -227,5 +234,5 @@ stopifnot(
 )
 
 cat(
-  "Full-GEM direct canonical Step 2 numerical and 80-worker batching regression passed.\n"
+  "Full-GEM exact model-batch Step 2 numerical and 80-worker regression passed.\n"
 )
