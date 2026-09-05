@@ -5,6 +5,7 @@ on:
     paths:
       - "DESCRIPTION"
       - "R/microcompass_vmax_cache.R"
+      - "R/layer2_step2_directional_prepare.R"
       - "R/celltype_microcompass_reaction_parallel.R"
       - "R/layer2_step2_model_batch.R"
       - "R/layer2_corda2_algorithm.R"
@@ -35,6 +36,7 @@ jobs:
         shell: Rscript {0}
         run: |
           parse(file = "R/microcompass_vmax_cache.R")
+          parse(file = "R/layer2_step2_directional_prepare.R")
           parse(file = "R/celltype_microcompass_reaction_parallel.R")
           parse(file = "R/layer2_step2_model_batch.R")
           parse(file = "R/layer2_corda2_algorithm.R")
