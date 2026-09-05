@@ -41,7 +41,7 @@ S <- Matrix::Matrix(
 )
 rownames(S) <- "M"
 colnames(S) <- c("UP", "TARGET")
-lb <- c(UP = 0, TARGET = 0)
+lb <- c(UP = -10, TARGET = -10)
 ub <- c(UP = 10, TARGET = 10)
 units <- c("u1", "u2", "u3")
 primary_penalty <- matrix(
@@ -54,20 +54,42 @@ control_penalty <- matrix(
   nrow = 2, byrow = TRUE,
   dimnames = list(c("UP", "TARGET"), units)
 )
-row_id <- "reaction=TARGET::direction=forward::medium=base"
-vmax <- list()
-vmax[[row_id]] <- list(feasible = TRUE, vmax = 10, status = "optimal", flux = numeric())
-entry_full <- list(
-  reaction_id = "TARGET", target_direction = "forward",
-  medium_scenario = "base", condition = "all"
-)
-entry_cell <- list(
-  reaction_id = "TARGET", target_direction = "forward",
-  medium_scenario = "base", cell_type = "T"
-)
+
+row_key <- function(direction) {
+  paste0("reaction=TARGET::direction=", direction, "::medium=base")
+}
 
 mk_payload <- function(file, primary, control = NULL, full = TRUE,
-                       identical_control = FALSE) {
+                       direction = "forward") {
+  row_id <- row_key(direction)
+  vmax <- list()
+  vmax[[row_id]] <- list(
+    feasible = TRUE, vmax = 10, status = "optimal", flux = numeric()
+  )
+  entry <- if (full) {
+    list(
+      reaction_id = "TARGET", target_direction = direction,
+      medium_scenario = "base", condition = "all"
+    )
+  } else {
+    list(
+      reaction_id = "TARGET", target_direction = direction,
+      medium_scenario = "base", cell_type = "T"
+    )
+  }
+  exact_mask <- if (is.null(control)) {
+    FALSE
+  } else {
+    value <- vapply(
+      seq_len(ncol(primary)),
+      function(i) identical(
+        control[, i, drop = TRUE], primary[, i, drop = TRUE]
+      ),
+      logical(1)
+    )
+    names(value) <- colnames(primary)
+    value
+  }
   saveRDS(list(
     schema_version = if (full) {
       "regcompass_full_gem_step2_compact_payload_v1"
@@ -85,18 +107,19 @@ mk_payload <- function(file, primary, control = NULL, full = TRUE,
     control_penalty = control,
     control_penalty_evidence = if (is.null(control)) NULL else
       .rc_step2_penalty_evidence_stats(control),
-    control_identical = identical_control,
-    entries = setNames(list(if (full) entry_full else entry_cell), row_id),
+    control_identical = exact_mask,
+    entries = setNames(list(entry), row_id),
     vmax = vmax, omega = 0.95, solver = "highs", flux_threshold = 1e-8
   ), file)
 }
 
 run_worker <- function(worker, primary, control = NULL, full = TRUE,
-                       identical_control = FALSE) {
+                       direction = "forward") {
   root <- tempfile("paired-control-")
   dir.create(root)
   payload <- file.path(root, "payload.rds")
-  mk_payload(payload, primary, control, full, identical_control)
+  mk_payload(payload, primary, control, full, direction)
+  row_id <- row_key(direction)
   files <- worker(list(
     payload_file = payload, row_ids = row_id, checkpoint_dir = root
   ))
@@ -105,91 +128,150 @@ run_worker <- function(worker, primary, control = NULL, full = TRUE,
   out
 }
 
-check_worker <- function(worker, full) {
-  primary_legacy <- run_worker(worker, primary_penalty, full = full)
-  control_legacy <- run_worker(worker, control_penalty, full = full)
+score_one <- function(result, control = FALSE) {
+  row_id <- result$row_id
+  value <- if (control) result$control else result
+  rc_compass_score_from_penalty(
+    matrix(value$penalty, nrow = 1,
+           dimnames = list(row_id, names(value$penalty))),
+    matrix(value$feasible, nrow = 1,
+           dimnames = list(row_id, names(value$feasible)))
+  )
+}
+
+check_engine_state <- function(direction) {
+  vmax_result <- list(feasible = TRUE, vmax = 10, status = "optimal")
+  prepared <- .rc_compass_step2_prepare(
+    S, lb, ub, "TARGET", vmax_result,
+    target_direction = direction, omega = 0.95, flux_threshold = 1e-8
+  )
+  primary_evidence <- .rc_step2_penalty_evidence_stats(primary_penalty)
+  control_evidence <- .rc_step2_penalty_evidence_stats(control_penalty)
+  engine <- .rc_compass_step2_new_engine(
+    prepared$template, "highs", persistent_required = TRUE
+  )
+  on.exit(.rc_compass_step2_release_engine(engine), add = TRUE)
+  first <- .rc_compass_step2_route_solve(
+    prepared, engine, primary_penalty, primary_evidence, 2L, units
+  )
+  second <- .rc_compass_step2_route_solve(
+    prepared, first$engine, control_penalty, control_evidence, 2L, units
+  )
+  third <- .rc_compass_step2_route_solve(
+    prepared, second$engine, primary_penalty, primary_evidence, 2L, units
+  )
+  fresh_engine <- .rc_compass_step2_new_engine(
+    prepared$template, "highs", persistent_required = TRUE
+  )
+  fresh <- .rc_compass_step2_route_solve(
+    prepared, fresh_engine, primary_penalty, primary_evidence, 2L, units
+  )
+  .rc_compass_step2_release_engine(fresh$engine)
+  stopifnot(
+    isTRUE(all.equal(third$penalty, fresh$penalty, tolerance = 1e-12)),
+    identical(third$feasible, fresh$feasible),
+    identical(third$evaluated, fresh$evaluated)
+  )
+  engine <<- third$engine
+}
+
+check_worker <- function(worker, full, direction) {
+  primary_legacy <- run_worker(
+    worker, primary_penalty, full = full, direction = direction
+  )
+  control_legacy <- run_worker(
+    worker, control_penalty, full = full, direction = direction
+  )
   paired <- run_worker(
-    worker, primary_penalty, control_penalty, full = full
-  )
-  primary_score <- rc_compass_score_from_penalty(
-    matrix(primary_legacy$penalty, nrow = 1,
-           dimnames = list(row_id, names(primary_legacy$penalty))),
-    matrix(primary_legacy$feasible, nrow = 1,
-           dimnames = list(row_id, names(primary_legacy$feasible)))
-  )
-  paired_primary_score <- rc_compass_score_from_penalty(
-    matrix(paired$penalty, nrow = 1,
-           dimnames = list(row_id, names(paired$penalty))),
-    matrix(paired$feasible, nrow = 1,
-           dimnames = list(row_id, names(paired$feasible)))
-  )
-  control_score <- rc_compass_score_from_penalty(
-    matrix(control_legacy$penalty, nrow = 1,
-           dimnames = list(row_id, names(control_legacy$penalty))),
-    matrix(control_legacy$feasible, nrow = 1,
-           dimnames = list(row_id, names(control_legacy$feasible)))
-  )
-  paired_control_score <- rc_compass_score_from_penalty(
-    matrix(paired$control$penalty, nrow = 1,
-           dimnames = list(row_id, names(paired$control$penalty))),
-    matrix(paired$control$feasible, nrow = 1,
-           dimnames = list(row_id, names(paired$control$feasible)))
+    worker, primary_penalty, control_penalty,
+    full = full, direction = direction
   )
   stopifnot(
     isTRUE(all.equal(paired$penalty, primary_legacy$penalty,
                      tolerance = 1e-12)),
-    isTRUE(all.equal(paired$feasible, primary_legacy$feasible)),
-    isTRUE(all.equal(paired$evaluated, primary_legacy$evaluated)),
-    identical(paired_primary_score, primary_score),
+    identical(paired$feasible, primary_legacy$feasible),
+    identical(paired$evaluated, primary_legacy$evaluated),
+    identical(score_one(paired), score_one(primary_legacy)),
     isTRUE(all.equal(paired$control$penalty, control_legacy$penalty,
                      tolerance = 1e-12)),
-    isTRUE(all.equal(paired$control$feasible, control_legacy$feasible)),
-    isTRUE(all.equal(paired$control$evaluated, control_legacy$evaluated)),
-    identical(paired_control_score, control_score),
+    identical(paired$control$feasible, control_legacy$feasible),
+    identical(paired$control$evaluated, control_legacy$evaluated),
+    identical(score_one(paired, TRUE), score_one(control_legacy)),
     paired$engine_metrics$n_solves == length(units),
     paired$control$engine_metrics$n_solves == length(units),
+    paired$control$engine_metrics$n_fallback == 0L,
     !isTRUE(paired$control$reused_from_primary),
     identical(
-      unname(paired$diagnostics$objective_value),
-      unname(paired$penalty)
+      unname(paired$control$reused_from_primary_by_unit),
+      rep(FALSE, length(units))
     ),
-    identical(
-      unname(paired$control$diagnostics$objective_value),
-      unname(paired$control$penalty)
-    )
+    isTRUE(paired$control$shared_target_engine),
+    identical(unname(paired$diagnostics$objective_value),
+              unname(paired$penalty)),
+    identical(unname(paired$control$diagnostics$objective_value),
+              unname(paired$control$penalty))
   )
 
   reused <- run_worker(
     worker, primary_penalty, primary_penalty,
-    full = full, identical_control = TRUE
+    full = full, direction = direction
   )
   stopifnot(
     identical(reused$penalty, reused$control$penalty),
     identical(reused$feasible, reused$control$feasible),
     identical(reused$evaluated, reused$control$evaluated),
     isTRUE(reused$control$reused_from_primary),
-    reused$control$engine_metrics$n_solves == 0L
+    reused$control$engine_metrics$n_solves == 0L,
+    all(reused$control$reused_from_primary_by_unit),
+    all(reused$control$diagnostics$objective_identical_to_primary),
+    isTRUE(reused$control$shared_target_engine)
   )
 
-  # Guard against tolerance-based reuse. A one-ULP-sized objective change must
-  # still execute an independent RNA-control solver stream because the matrices
-  # are not exactly identical().
-  almost_control <- primary_penalty
-  almost_control[[1L, 1L]] <-
-    almost_control[[1L, 1L]] + .Machine$double.eps
-  stopifnot(!identical(almost_control, primary_penalty))
-  near <- run_worker(
-    worker, primary_penalty, almost_control,
-    full = full, identical_control = FALSE
-  )
+  # The TARGET penalty is unchanged for u1, but a non-target objective
+  # coefficient changes by one machine epsilon. This must solve u1 and may
+  # reuse only u2/u3; target-level evidence is therefore insufficient.
+  partial <- primary_penalty
+  partial["UP", "u1"] <- partial["UP", "u1"] + .Machine$double.eps
   stopifnot(
-    !isTRUE(near$control$reused_from_primary),
-    near$control$engine_metrics$n_solves == length(units)
+    identical(partial["TARGET", "u1"], primary_penalty["TARGET", "u1"]),
+    !identical(partial[, "u1"], primary_penalty[, "u1"])
+  )
+  partial_legacy <- run_worker(
+    worker, partial, full = full, direction = direction
+  )
+  partial_paired <- run_worker(
+    worker, primary_penalty, partial,
+    full = full, direction = direction
+  )
+  expected_reuse <- c(u1 = FALSE, u2 = TRUE, u3 = TRUE)
+  stopifnot(
+    isTRUE(all.equal(
+      partial_paired$control$penalty, partial_legacy$penalty,
+      tolerance = 1e-12
+    )),
+    identical(partial_paired$control$feasible, partial_legacy$feasible),
+    identical(partial_paired$control$evaluated, partial_legacy$evaluated),
+    identical(
+      partial_paired$control$reused_from_primary_by_unit,
+      expected_reuse
+    ),
+    partial_paired$control$engine_metrics$n_solves == 1L,
+    sum(partial_paired$control$diagnostics$objective_identical_to_primary) == 2L,
+    partial_paired$control$diagnostics$solver_backend[[1L]] !=
+      "reused_identical_primary_objective",
+    all(
+      partial_paired$control$diagnostics$solver_backend[2:3] ==
+        "reused_identical_primary_objective"
+    ),
+    isTRUE(partial_paired$control$shared_target_engine)
   )
 }
 
-check_worker(.rc_full_gem_step2_reaction_batch_worker, TRUE)
-check_worker(.rc_step2_reaction_batch_worker, FALSE)
+for (direction in c("forward", "reverse")) {
+  check_worker(.rc_full_gem_step2_reaction_batch_worker, TRUE, direction)
+  check_worker(.rc_step2_reaction_batch_worker, FALSE, direction)
+  check_engine_state(direction)
+}
 
 stage <- paste(readLines("R/step_layer2.R", warn = FALSE), collapse = "\n")
 stopifnot(
@@ -200,4 +282,4 @@ stopifnot(
   grepl("answer$comparison_paths <- NULL", stage, fixed = TRUE)
 )
 
-cat("paired Layer 2 primary/RNA-control exact-equivalence checks passed\n")
+cat("paired Layer 2 exact-equivalence and per-unit reuse checks passed\n")
