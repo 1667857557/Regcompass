@@ -8,11 +8,13 @@ on:
       - "R/layer2_step2_directional_prepare.R"
       - "R/celltype_microcompass_reaction_parallel.R"
       - "R/layer2_step2_model_batch.R"
+      - "R/layer2_step2_model_batch_streaming.R"
       - "R/layer2_corda2_algorithm.R"
       - "R/RcppExports.R"
       - "src/RcppExports.cpp"
       - "src/layer2_native.cpp"
       - "tests/layer2-native-acceleration-check.R"
+      - "tests/layer2-model-batch-streaming-review-check.R"
       - ".github/workflows/layer2-native-acceleration-checks.yaml"
   workflow_dispatch:
 
@@ -39,6 +41,9 @@ jobs:
           parse(file = "R/layer2_step2_directional_prepare.R")
           parse(file = "R/celltype_microcompass_reaction_parallel.R")
           parse(file = "R/layer2_step2_model_batch.R")
+          parse(file = "R/layer2_step2_model_batch_streaming.R")
           parse(file = "R/layer2_corda2_algorithm.R")
       - name: Compile and run native/model-batch numerical regression
         run: Rscript tests/layer2-native-acceleration-check.R
+      - name: Run bounded-memory streaming and reuse-diagnostic regression
+        run: Rscript tests/layer2-model-batch-streaming-review-check.R
