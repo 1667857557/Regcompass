@@ -29,6 +29,9 @@ jobs:
         shell: Rscript {0}
         run: install.packages(c('Rcpp', 'RcppEigen', 'Matrix', 'highs'))
 
+      - name: Fix standalone source patcher
+        run: python tools/fix_layer2_patcher.py
+
       - name: Apply source-level optimizations
         run: python tools/apply_layer2_exact_speedups.py
 
@@ -57,7 +60,7 @@ jobs:
           grep -F '.rc_compass_vmax_batch_highs' R/microcompass_vmax_cache.R
           grep -F 'highs (>= 1.12.0-1)' DESCRIPTION
           git diff --check
-          rm -f tools/apply_layer2_exact_speedups.py .github/workflows/apply-layer2-exact-speedups.yml
+          rm -f tools/apply_layer2_exact_speedups.py tools/fix_layer2_patcher.py .github/workflows/apply-layer2-exact-speedups.yml
           git config user.name 'regcompass-layer2-bot'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
