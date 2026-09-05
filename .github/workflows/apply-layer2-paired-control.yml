@@ -22,6 +22,8 @@ jobs:
       - name: Install minimal numerical dependencies
         run: |
           Rscript -e 'install.packages(c("Matrix", "highs"), repos="https://cloud.r-project.org")'
+      - name: Harden patch application
+        run: python tools/prepare_layer2_paired_patcher.py
       - name: Apply source patch
         run: python tools/apply_layer2_paired_control.py
       - name: Parse changed R sources
