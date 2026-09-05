@@ -8,6 +8,10 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: layer2-paired-control-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   patch-and-validate:
     if: github.actor != 'github-actions[bot]'
