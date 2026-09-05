@@ -64,6 +64,10 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
+          # The patcher also tightens a CI text audit. That workflow-only change is
+          # not part of the numerical implementation and GITHUB_TOKEN cannot write
+          # workflow files, so restore it before creating the source commit.
+          git restore --source=HEAD -- .github/workflows/full-gem-step2-checks.yaml
           rm -f tools/apply_layer2_exact_speedups.py tools/fix_layer2_patcher.py
           git config user.name 'regcompass-layer2-bot'
           git config user.email 'actions@users.noreply.github.com'
