@@ -29,8 +29,26 @@ jobs:
         shell: Rscript {0}
         run: install.packages(c('Rcpp', 'RcppEigen', 'Matrix', 'highs'))
 
-      - name: Fix standalone source patcher
-        run: python tools/fix_layer2_patcher.py
+      - name: Make HiGHS cache source-test safe
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('tools/apply_layer2_exact_speedups.py')
+          text = p.read_text()
+          start = text.index("replace_function(solver_path, '.rc_microcompass_highs_call'")
+          end = text.index("\n\ninsert_before(", start)
+          replacement = """replace_function(solver_path, '.rc_microcompass_highs_call', r'''.rc_microcompass_highs_call <- function(name, ...) {
+            fun <- get0(
+              name, envir = .rc_microcompass_highs_api_cache,
+              mode = \"function\", inherits = FALSE
+            )
+            if (!is.function(fun)) {
+              fun <- getExportedValue(\"highs\", name)
+              assign(name, fun, envir = .rc_microcompass_highs_api_cache)
+            }
+            fun(...)
+          }''')"""
+          p.write_text(text[:start] + replacement + text[end:])
 
       - name: Apply source-level optimizations
         run: python tools/apply_layer2_exact_speedups.py
