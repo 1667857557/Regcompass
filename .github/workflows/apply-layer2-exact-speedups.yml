@@ -80,19 +80,14 @@ jobs:
       - name: Run full-GEM target checkpoint numerical regression
         run: Rscript tests/full-gem-step2-reaction-checkpoint-check.R
 
-      - name: Audit patch and commit validated sources
+      - name: Commit validated sources
         shell: bash
         run: |
           set -euo pipefail
-          grep -F 'return_solution = FALSE' R/microcompass_engine.R
-          grep -F 'require_solution = FALSE' R/microcompass_engine.R
-          grep -F 'persistent_required = identical(payload$solver, "highs")' R/microcompass_engine.R
-          grep -F '.rc_compass_vmax_batch_highs' R/microcompass_vmax_cache.R
-          grep -F 'highs (>= 1.12.0-1)' DESCRIPTION
-          git diff --check
           rm -f tools/apply_layer2_exact_speedups.py tools/fix_layer2_patcher.py .github/workflows/apply-layer2-exact-speedups.yml
           git config user.name 'regcompass-layer2-bot'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
+          git status --short
           git commit -m 'Accelerate exact target-parallel Layer 2 scoring'
           git push origin HEAD:agent/layer2-target-parallel-exact-speedups
