@@ -546,68 +546,106 @@
   }
 
   S <- .rc_as_dgCMatrix(S)
-  n_metabolites <- nrow(S)
   n_reactions <- ncol(S)
   target_index <- match(target_reaction, reactions)
-  reaction_index <- seq_len(n_reactions)
-  s_nnz_per_col <- diff(S@p)
-  s_j <- rep.int(reaction_index, s_nnz_per_col)
-  s_i <- S@i + 1L
 
-  A <- Matrix::sparseMatrix(
-    i = c(
-      s_i,
-      n_metabolites + reaction_index,
-      n_metabolites + reaction_index,
-      n_metabolites + n_reactions + reaction_index,
-      n_metabolites + n_reactions + reaction_index,
-      n_metabolites + 2L * n_reactions + 1L
-    ),
-    j = c(
-      s_j,
-      reaction_index,
-      n_reactions + reaction_index,
-      reaction_index,
-      n_reactions + reaction_index,
-      target_index
-    ),
-    x = c(
-      S@x,
-      rep.int(1, n_reactions),
-      rep.int(-1, n_reactions),
-      rep.int(-1, n_reactions),
-      rep.int(-1, n_reactions),
-      if (identical(target_direction, "forward")) 1 else -1
-    ),
-    dims = c(
-      n_metabolites + 2L * n_reactions + 1L,
-      2L * n_reactions
-    ),
-    giveCsparse = TRUE
+  # COMPASS operates on non-negative directional reactions. Compile the signed
+  # completed GEM into that representation only for Step 2; CORDA2 keeps its
+  # separate structural split semantics and directional Vmax remains signed.
+  forward_index <- which(ub > 0)
+  reverse_index <- which(lb < 0)
+  direction_reaction_index <- c(forward_index, reverse_index)
+  direction_sign <- c(
+    rep.int(1, length(forward_index)),
+    rep.int(-1, length(reverse_index))
   )
-  lhs <- c(
-    rep(0, n_metabolites),
-    rep(-Inf, 2L * n_reactions),
-    omega * vmax
+  if (!length(direction_reaction_index)) {
+    stop("The completed GEM contains no flux-carrying reaction direction.",
+         call. = FALSE)
+  }
+
+  variable_id <- c(
+    paste0(reactions[forward_index], "::forward"),
+    paste0(reactions[reverse_index], "::reverse")
   )
-  rhs <- c(
-    rep(0, n_metabolites),
-    rep(0, 2L * n_reactions),
-    Inf
+  A <- S[, direction_reaction_index, drop = FALSE]
+  if (length(A@x)) {
+    A@x <- A@x * rep(direction_sign, times = diff(A@p))
+  }
+  colnames(A) <- variable_id
+
+  lower <- c(
+    pmax(lb[forward_index], 0),
+    pmax(-ub[reverse_index], 0)
   )
-  auxiliary_upper <- pmax(abs(lb), abs(ub))
+  upper <- c(
+    ub[forward_index],
+    -lb[reverse_index]
+  )
+  names(lower) <- names(upper) <- variable_id
+
+  target_sign <- if (identical(target_direction, "forward")) 1 else -1
+  target_variable <- which(
+    direction_reaction_index == target_index & direction_sign == target_sign
+  )
+  if (length(target_variable) != 1L) {
+    stop(
+      "Cached directional vmax is feasible but the requested target direction ",
+      "is absent from the exact Step 2 directional model.",
+      call. = FALSE
+    )
+  }
+  opposite_variable <- which(
+    direction_reaction_index == target_index & direction_sign == -target_sign
+  )
+  required_flux <- omega * vmax
+  bound_tolerance <- max(
+    flux_threshold,
+    32 * .Machine$double.eps * max(1, abs(required_flux),
+                                   abs(upper[[target_variable]]))
+  )
+  if (required_flux > upper[[target_variable]] + bound_tolerance) {
+    stop(
+      "Cached directional vmax is inconsistent with the completed-GEM target ",
+      "bound after exact directional compilation.",
+      call. = FALSE
+    )
+  }
+  lower[[target_variable]] <- max(
+    lower[[target_variable]],
+    min(required_flux, upper[[target_variable]])
+  )
+  if (length(opposite_variable)) {
+    if (lower[[opposite_variable]] > bound_tolerance) {
+      stop(
+        "The opposite target direction has a positive compulsory lower bound; ",
+        "this contradicts the feasible signed directional Vmax contract.",
+        call. = FALSE
+      )
+    }
+    lower[[opposite_variable]] <- 0
+    upper[[opposite_variable]] <- 0
+  }
 
   list(
     runnable = TRUE,
     reactions = reactions,
     template = list(
       A = A,
-      lhs = lhs,
-      rhs = rhs,
-      lb = c(lb, rep(0, n_reactions)),
-      ub = c(ub, auxiliary_upper),
+      lhs = rep(0, nrow(A)),
+      rhs = rep(0, nrow(A)),
+      lb = as.numeric(lower),
+      ub = as.numeric(upper),
       n_reactions = n_reactions,
+      n_variables = length(direction_reaction_index),
       reactions = reactions,
+      variable_id = variable_id,
+      direction_reaction_index = as.integer(direction_reaction_index),
+      direction_sign = as.numeric(direction_sign),
+      target_variable_index = as.integer(target_variable),
+      opposite_variable_index = as.integer(opposite_variable),
+      required_flux = as.numeric(required_flux),
+      formulation = "compass_directional_nonnegative_exact_v1",
       vmax = vmax,
       step1_status = as.character(vmax_result$status),
       target_reaction = target_reaction,
@@ -662,13 +700,19 @@
     template, solver, persistent_required = FALSE) {
   solver <- match.arg(solver, c("highs", "gurobi", "glpk"))
   n_reactions <- as.integer(template$n_reactions)
+  n_variables <- as.integer(template$n_variables)
+  if (length(n_variables) != 1L || !is.finite(n_variables) ||
+      n_variables < 1L ||
+      length(template$direction_reaction_index) != n_variables) {
+    stop("Directional Step 2 template is malformed.", call. = FALSE)
+  }
   engine <- list(
     type = "one_shot",
     pointer = NULL,
     template = template,
     solver = solver,
-    current_penalties = rep(0, n_reactions),
-    objective_index = as.integer(n_reactions + seq_len(n_reactions) - 1L),
+    current_objective = rep(0, n_variables),
+    objective_index = as.integer(seq_len(n_variables) - 1L),
     n_solves = 0L,
     n_objective_updates = 0L,
     n_fallback = 0L,
@@ -690,7 +734,7 @@
   persistent <- tryCatch({
     model <- .rc_microcompass_highs_call(
       "highs_model",
-      L = rep(0, 2L * n_reactions),
+      L = rep(0, n_variables),
       lower = template$lb,
       upper = template$ub,
       A = template$A,
@@ -728,11 +772,15 @@
   engine
 }
 
+.rc_compass_step2_directional_objective <- function(template, penalties) {
+  penalties[template$direction_reaction_index]
+}
+
 .rc_compass_step2_one_shot <- function(engine, penalties) {
   template <- engine$template
-  n_reactions <- template$n_reactions
+  objective <- .rc_compass_step2_directional_objective(template, penalties)
   answer <- rc_solve_lp(
-    obj = c(rep(0, n_reactions), penalties),
+    obj = objective,
     A = template$A,
     lhs = template$lhs,
     rhs = template$rhs,
@@ -758,6 +806,9 @@
       engine$template$reactions, penalties
     )
   }
+  directional_objective <- .rc_compass_step2_directional_objective(
+    engine$template, penalties
+  )
   engine$n_solves <- engine$n_solves + 1L
   if (!identical(engine$type, "highs_persistent_cpp") ||
       isTRUE(engine$persistent_disabled)) {
@@ -767,13 +818,13 @@
     ))
   }
 
-  changed <- which(engine$current_penalties != penalties)
+  changed <- which(engine$current_objective != directional_objective)
   persistent <- tryCatch({
     if (length(changed)) {
       .rc_microcompass_highs_call(
         "hi_solver_set_objective", engine$pointer,
         index = engine$objective_index[changed],
-        coeff = penalties[changed]
+        coeff = directional_objective[changed]
       )
     }
     .rc_microcompass_highs_call("hi_solver_run", engine$pointer)
@@ -796,14 +847,8 @@
       )$col_value)
     }
     if (!is.finite(objective) &&
-        length(solution) == 2L * engine$template$n_reactions) {
-      objective <- sum(
-        penalties * solution[
-          engine$template$n_reactions + seq_len(
-            engine$template$n_reactions
-          )
-        ]
-      )
+        length(solution) == engine$template$n_variables) {
+      objective <- sum(directional_objective * solution)
     }
     list(
       status = status,
@@ -820,7 +865,7 @@
   }, error = function(e) e)
 
   if (!inherits(persistent, "error")) {
-    engine$current_penalties <- penalties
+    engine$current_objective <- directional_objective
     engine$n_objective_updates <-
       engine$n_objective_updates + length(changed)
     return(list(engine = engine, answer = persistent))
@@ -991,9 +1036,10 @@
 .rc_compass_step2_result <- function(
     template, answer, require_solution = TRUE) {
   n_reactions <- template$n_reactions
+  n_variables <- template$n_variables
   optimal <- identical(answer$status, "optimal")
   objective <- as.numeric(answer$objective %||% NA_real_)
-  solution_ok <- length(answer$solution) == 2L * n_reactions
+  solution_ok <- length(answer$solution) == n_variables
   if (!optimal || !is.finite(objective) ||
       (isTRUE(require_solution) && !solution_ok)) {
     return(list(
@@ -1008,7 +1054,12 @@
     ))
   }
   flux <- if (isTRUE(require_solution)) {
-    value <- answer$solution[seq_len(n_reactions)]
+    value <- numeric(n_reactions)
+    for (i in seq_len(n_variables)) {
+      reaction_index <- template$direction_reaction_index[[i]]
+      value[[reaction_index]] <- value[[reaction_index]] +
+        template$direction_sign[[i]] * answer$solution[[i]]
+    }
     names(value) <- template$reactions
     value
   } else {
