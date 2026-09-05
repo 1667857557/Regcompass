@@ -34,12 +34,14 @@ patch(
     "drop transient duplicate comparison result"
 )
 
-# The standalone worker regression writes reaction checkpoints.
+# The standalone numerical regression deliberately sources only the hot LP files,
+# matching the existing native regression. Provide the same bound-alignment helper
+# that package collation supplies in an installed namespace.
 patch(
     "tests/layer2-paired-control-check.R",
     '''source("R/00_utils.R", local = FALSE)\nsource("R/lp_solver.R", local = FALSE)''',
-    '''source("R/00_utils.R", local = FALSE)\nsource("R/rds_storage.R", local = FALSE)\nsource("R/lp_solver.R", local = FALSE)''',
-    "source checkpoint helper"
+    '''source("R/00_utils.R", local = FALSE)\n\nrc_align_bound <- function(x, reactions, default, name) {\n  if (is.null(x)) {\n    value <- rep(default, length(reactions))\n    names(value) <- reactions\n    return(value)\n  }\n  if (!is.null(names(x))) {\n    missing <- setdiff(reactions, names(x))\n    if (length(missing)) {\n      stop(name, " is missing reactions: ", paste(missing, collapse = ", "))\n    }\n    x <- x[reactions]\n  }\n  x <- as.numeric(x)\n  if (length(x) != length(reactions) || anyNA(x)) {\n    stop(name, " does not align with reactions")\n  }\n  names(x) <- reactions\n  x\n}\n\nsource("R/layer2_parallel_runtime.R", local = FALSE)\nsource("R/lp_solver.R", local = FALSE)''',
+    "standalone LP helpers"
 )
 patch(
     "tests/layer2-paired-control-check.R",
