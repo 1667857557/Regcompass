@@ -680,7 +680,7 @@
   step2_engine_metrics <- vector("list", length(checkpoint_files))
   control_diagnostics <- vector("list", length(checkpoint_files))
   control_step2_engine_metrics <- vector("list", length(checkpoint_files))
-  control_reused <- logical(length(checkpoint_files))
+  control_reused <- setNames(logical(length(row_ids)), row_ids)
   observed_rows <- character(length(checkpoint_files))
   for (i in seq_along(checkpoint_files)) {
     result <- readRDS(checkpoint_files[[i]])
@@ -726,7 +726,7 @@
         stop("A paired RNA-control checkpoint has a malformed reuse mask.",
              call. = FALSE)
       }
-      control_reused[[i]] <- isTRUE(all(reuse_mask))
+      control_reused[[row_id]] <- isTRUE(all(reuse_mask))
       control_metrics <- ctrl$engine_metrics %||% list()
       control_step2_engine_metrics[[i]] <- data.frame(
         row_id = row_id,
@@ -784,7 +784,7 @@
     lp_diagnostics_rna_only = .rc_bind_frames_fill(control_diagnostics),
     step2_engine_metrics_rna_only =
       .rc_bind_frames_fill(control_step2_engine_metrics),
-    rna_control_model_identical_reuse = control_reused,
+    rna_control_model_identical_reuse = control_reused[row_ids],
     target_direction = directions,
     direction_diagnostics = direction_diagnostics,
     medium_scenarios = medium_scenarios,
@@ -835,8 +835,9 @@
         "reuses it across its directional reactions"
       ),
       step2_solver_reuse = paste(
-        "one prepared target template with independent persistent HiGHS",
-        "streams for primary and RNA-only objectives across all metacells"
+        "one prepared target template and one persistent HiGHS engine per",
+        "target; primary and RNA-only remain independent LP solves when their",
+        "full model-wide objective vectors differ"
       ),
       paired_primary_rna_control = !is.null(control_penalty),
       rna_control_vmax_solve_count = if (!is.null(control_penalty)) 0L else NA_integer_,

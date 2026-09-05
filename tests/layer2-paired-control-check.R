@@ -60,7 +60,7 @@ row_key <- function(direction) {
 }
 
 mk_payload <- function(file, primary, control = NULL, full = TRUE,
-                       direction = "forward") {
+                       direction = "forward", model_status = "ok") {
   row_id <- row_key(direction)
   vmax <- list()
   vmax[[row_id]] <- list(
@@ -97,7 +97,7 @@ mk_payload <- function(file, primary, control = NULL, full = TRUE,
       "regcompass_step2_compact_payload_v1"
     },
     model = list(
-      S = S, lb = lb, ub = ub, target_status = "ok",
+      S = S, lb = lb, ub = ub, target_status = model_status,
       file_checksum = "toy", cell_type = "T",
       medium_scenario = "base", condition = "all"
     ),
@@ -114,11 +114,11 @@ mk_payload <- function(file, primary, control = NULL, full = TRUE,
 }
 
 run_worker <- function(worker, primary, control = NULL, full = TRUE,
-                       direction = "forward") {
+                       direction = "forward", model_status = "ok") {
   root <- tempfile("paired-control-")
   dir.create(root)
   payload <- file.path(root, "payload.rds")
-  mk_payload(payload, primary, control, full, direction)
+  mk_payload(payload, primary, control, full, direction, model_status)
   row_id <- row_key(direction)
   files <- worker(list(
     payload_file = payload, row_ids = row_id, checkpoint_dir = root
@@ -267,6 +267,16 @@ check_worker <- function(worker, full, direction) {
   )
 }
 
+# Structural target provenance must not be rewritten from Step 2 solver
+# feasibility. A deliberately distinctive model status must survive unchanged.
+status_check <- run_worker(
+  .rc_step2_reaction_batch_worker, primary_penalty,
+  full = FALSE, model_status = "structural_status_preserved"
+)
+stopifnot(all(
+  status_check$diagnostics$target_status == "structural_status_preserved"
+))
+
 for (direction in c("forward", "reverse")) {
   check_worker(.rc_full_gem_step2_reaction_batch_worker, TRUE, direction)
   check_worker(.rc_step2_reaction_batch_worker, FALSE, direction)
@@ -277,9 +287,44 @@ stage <- paste(readLines("R/step_layer2.R", warn = FALSE), collapse = "\n")
 stopifnot(
   grepl("control_layer1 = control_layer1", stage, fixed = TRUE),
   grepl("paired_step2_dispatch = TRUE", stage, fixed = TRUE),
+  grepl("independent_solver_streams = FALSE", stage, fixed = TRUE),
+  grepl("independent_lp_solves_on_shared_target_engine = TRUE", stage,
+        fixed = TRUE),
   !grepl("rna_only <- run_control(", stage, fixed = TRUE),
   !grepl("rna_only <- answer", stage, fixed = TRUE),
   grepl("answer$comparison_paths <- NULL", stage, fixed = TRUE)
 )
+
+# The paired progress wrapper must never emit phase 8 before phase 6. Use the
+# paired-dispatch detail string so the legacy control wrapper's phase 8 event
+# does not affect this ordering assertion.
+phase6 <- regexpr(
+  "primary structural models and directional scores assembled",
+  stage, fixed = TRUE
+)[[1L]]
+phase8 <- regexpr(
+  "RNA-only Step 2 completed in the same target dispatch with shared Vmax",
+  stage, fixed = TRUE
+)[[1L]]
+stopifnot(phase6 > 0L, phase8 > 0L, phase6 < phase8)
+
+# Reuse summaries are row-keyed in both engines, so model-scoped checkpoint
+# ordering cannot scramble target-level diagnostics.
+full_text <- paste(readLines("R/microcompass_engine.R", warn = FALSE),
+                   collapse = "\n")
+cell_text <- paste(readLines(
+  "R/celltype_microcompass_reaction_parallel.R", warn = FALSE
+), collapse = "\n")
+for (text in list(full_text, cell_text)) {
+  stopifnot(
+    grepl("control_reused <- setNames(logical(length(row_ids)), row_ids)",
+          text, fixed = TRUE),
+    grepl("control_reused[[row_id]] <- isTRUE(all(reuse_mask))",
+          text, fixed = TRUE),
+    grepl("rna_control_model_identical_reuse = control_reused[row_ids]",
+          text, fixed = TRUE),
+    grepl("one persistent HiGHS engine per", text, fixed = TRUE)
+  )
+}
 
 cat("paired Layer 2 exact-equivalence and per-unit reuse checks passed\n")
