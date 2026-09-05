@@ -568,11 +568,12 @@
     paste0(reactions[forward_index], "::forward"),
     paste0(reactions[reverse_index], "::reverse")
   )
-  A <- S[, direction_reaction_index, drop = FALSE]
-  if (length(A@x)) {
-    A@x <- A@x * rep(direction_sign, times = diff(A@p))
-  }
+  forward_S <- S[, forward_index, drop = FALSE]
+  reverse_S <- S[, reverse_index, drop = FALSE]
+  if (length(reverse_S@x)) reverse_S@x <- -reverse_S@x
+  A <- cbind(forward_S, reverse_S)
   colnames(A) <- variable_id
+  rm(forward_S, reverse_S)
 
   lower <- c(
     pmax(lb[forward_index], 0),
