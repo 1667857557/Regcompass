@@ -93,3 +93,70 @@ test_that("persistent Step 2 reuses one native model without score drift", {
   expect_gt(metrics$n_objective_updates, 0L)
   expect_equal(metrics$n_fallback, 0L)
 })
+
+test_that("objective-only persistent Step 2 preserves the canonical penalty", {
+  skip_if_not_installed("highs")
+  S <- Matrix::Matrix(
+    matrix(c(1, -1), nrow = 1,
+           dimnames = list("M", c("UP", "TARGET"))),
+    sparse = TRUE
+  )
+  lb <- c(UP = 0, TARGET = 0)
+  ub <- c(UP = 10, TARGET = 10)
+  penalties <- c(UP = 0.75, TARGET = 0.10)
+  vmax <- rc_compass_vmax_directional(
+    S, lb, ub, "TARGET", direction = "forward", solver = "highs"
+  )
+  prepared <- RegCompassR:::.rc_compass_step2_prepare(
+    S, lb, ub, "TARGET", vmax,
+    target_direction = "forward", omega = 0.95
+  )
+  engine <- RegCompassR:::.rc_compass_step2_new_engine(
+    prepared$template, "highs", persistent_required = TRUE
+  )
+  on.exit(RegCompassR:::.rc_compass_step2_release_engine(engine), add = TRUE)
+  solved <- RegCompassR:::.rc_compass_step2_engine_solve(
+    engine, penalties, return_solution = FALSE, trusted_aligned = TRUE
+  )
+  engine <- solved$engine
+  observed <- RegCompassR:::.rc_compass_step2_result(
+    prepared$template, solved$answer, require_solution = FALSE
+  )
+  reference <- rc_compass_two_step_lp_directional(
+    S, lb, ub, "TARGET", penalties,
+    target_direction = "forward", omega = 0.95, solver = "highs"
+  )
+  expect_length(solved$answer$solution, 0L)
+  expect_identical(observed$feasible, reference$feasible)
+  expect_equal(observed$penalty, reference$penalty, tolerance = 1e-9)
+  expect_length(observed$flux, 0L)
+})
+
+test_that("persistent batched Vmax matches independent directional LPs", {
+  skip_if_not_installed("highs")
+  S <- Matrix::Matrix(
+    matrix(c(1, -1, -1), nrow = 1,
+           dimnames = list("M", c("UP", "T1", "T2"))),
+    sparse = TRUE
+  )
+  lb <- c(UP = 0, T1 = 0, T2 = 0)
+  ub <- c(UP = 10, T1 = 10, T2 = 10)
+  observed <- RegCompassR:::.rc_compass_vmax_batch_highs(
+    S, lb, ub,
+    target_reaction = c("T1", "T2"),
+    direction = c("forward", "forward"),
+    flux_threshold = 1e-8
+  )
+  skip_if(is.null(observed), "Persistent HiGHS API unavailable")
+  for (i in seq_along(observed)) {
+    target <- c("T1", "T2")[[i]]
+    reference <- rc_compass_vmax_directional(
+      S, lb, ub, target, direction = "forward", solver = "highs"
+    )
+    expect_identical(observed[[i]]$feasible, reference$feasible)
+    expect_identical(observed[[i]]$status, reference$status)
+    expect_equal(observed[[i]]$vmax, reference$vmax, tolerance = 1e-10)
+    expect_length(observed[[i]]$flux, 0L)
+  }
+})
+

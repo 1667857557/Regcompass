@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.22
+Version: 2.4.23
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -167,7 +167,7 @@ Imports:
     Matrix,
     matrixStats,
     methods,
-    highs,
+    highs (>= 1.12.0-1),
     Rcpp,
     RcppEigen,
     SeuratObject (>= 4.1.4),
