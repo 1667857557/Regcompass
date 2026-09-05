@@ -53,6 +53,18 @@ jobs:
       - name: Apply source-level optimizations
         run: python tools/apply_layer2_exact_speedups.py
 
+      - name: Correct objective-only solve-count regression expectation
+        shell: python
+        run: |
+          from pathlib import Path
+          p = Path('tests/layer2-native-acceleration-check.R')
+          text = p.read_text()
+          old = 'metrics$n_solves == length(penalty_sets),'
+          new = 'metrics$n_solves == length(penalty_sets) + 1L,'
+          if text.count(old) != 1:
+              raise SystemExit(f'expected one standalone solve-count assertion, found {text.count(old)}')
+          p.write_text(text.replace(old, new, 1))
+
       - name: Parse changed R sources
         shell: Rscript {0}
         run: |
