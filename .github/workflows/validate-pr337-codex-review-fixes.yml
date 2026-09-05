@@ -1,0 +1,55 @@
+name: Validate PR 337 Codex review fixes
+
+on:
+  push:
+    branches:
+      - agent/pr337-codex-review-fix-validation
+
+permissions:
+  contents: write
+
+concurrency:
+  group: pr337-codex-review-fixes-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  fix-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+          use-public-rspm: true
+      - name: Install minimal numerical dependencies
+        shell: Rscript {0}
+        run: |
+          install.packages(c("Matrix", "highs", "RcppEigen"))
+      - name: Apply Codex review fixes
+        run: python tools/fix_pr337_codex_review.py
+      - name: Parse changed R sources
+        shell: Rscript {0}
+        run: |
+          files <- c(
+            "R/microcompass_engine.R",
+            "R/celltype_microcompass_reaction_parallel.R",
+            "R/step_layer2.R"
+          )
+          invisible(lapply(files, parse))
+          cat("parse ok\n")
+      - name: Paired exact-equivalence and review regression
+        run: Rscript tests/layer2-paired-control-check.R
+      - name: Existing native acceleration regression
+        run: Rscript tests/layer2-native-acceleration-check.R
+      - name: Existing full-GEM checkpoint regression
+        run: Rscript tests/full-gem-step2-reaction-checkpoint-check.R
+      - name: Commit validated review fixes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add DESCRIPTION R/step_layer2.R R/microcompass_engine.R R/celltype_microcompass_reaction_parallel.R tests/layer2-paired-control-check.R
+          git commit -m "Address PR 337 Codex review findings" || exit 0
+          git push origin HEAD:agent/pr337-codex-review-fix-validation
