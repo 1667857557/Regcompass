@@ -866,6 +866,83 @@
   )
 }
 
+.rc_compass_step2_route_solve <- function(
+    prepared, engine, penalty_matrix, evidence, target_index, units) {
+  penalty_matrix <- as.matrix(penalty_matrix)
+  units <- as.character(units)
+  n_units <- length(units)
+  if (!identical(colnames(penalty_matrix), units) ||
+      target_index < 1L || target_index > nrow(penalty_matrix)) {
+    stop("Step 2 route penalties are not aligned to the prepared target.",
+         call. = FALSE)
+  }
+  if (length(evidence$all_finite) != n_units ||
+      length(evidence$fraction) != n_units ||
+      length(evidence$unavailable) != n_units) {
+    stop("Step 2 route penalty evidence summary is malformed.",
+         call. = FALSE)
+  }
+
+  task_penalty <- rep(NA_real_, n_units)
+  task_vmax <- rep(NA_real_, n_units)
+  task_feasible <- task_evaluated <- rep(FALSE, n_units)
+  names(task_penalty) <- names(task_vmax) <-
+    names(task_feasible) <- names(task_evaluated) <- units
+  solver_status <- step1_status <- step2_status <-
+    solver_backend <- rep(NA_character_, n_units)
+  target_available <- is.finite(penalty_matrix[target_index, ])
+
+  for (i in seq_along(units)) {
+    unit_penalty <- penalty_matrix[, i]
+    solver_penalty <- if (isTRUE(evidence$all_finite[[i]])) {
+      unit_penalty
+    } else {
+      value <- unit_penalty
+      value[!is.finite(value)] <- 0
+      value
+    }
+
+    if (isTRUE(prepared$runnable)) {
+      solved <- .rc_compass_step2_engine_solve(
+        engine, solver_penalty,
+        return_solution = FALSE,
+        trusted_aligned = TRUE
+      )
+      engine <- solved$engine
+      fit <- .rc_compass_step2_result(
+        prepared$template, solved$answer,
+        require_solution = FALSE
+      )
+    } else {
+      fit <- prepared$result
+      solved <- NULL
+    }
+
+    task_penalty[[i]] <- if (target_available[[i]]) fit$penalty else NA_real_
+    task_vmax[[i]] <- fit$vmax
+    task_feasible[[i]] <- isTRUE(fit$feasible)
+    task_evaluated[[i]] <- isTRUE(fit$feasible) && target_available[[i]]
+    solver_status[[i]] <- as.character(fit$solver_status)
+    solver_backend[[i]] <- as.character(fit$solver_backend %||% "unknown")
+    step1_status[[i]] <- as.character(fit$step1_status)
+    step2_status[[i]] <- as.character(fit$step2_status)
+    rm(unit_penalty, solver_penalty, fit, solved)
+  }
+
+  list(
+    engine = engine,
+    penalty = task_penalty,
+    vmax = task_vmax,
+    feasible = task_feasible,
+    evaluated = task_evaluated,
+    solver_status = solver_status,
+    solver_backend = solver_backend,
+    step1_status = step1_status,
+    step2_status = step2_status,
+    target_available = target_available
+  )
+}
+
 .rc_compass_step2_result <- function(
     template, answer, require_solution = TRUE) {
   n_reactions <- template$n_reactions

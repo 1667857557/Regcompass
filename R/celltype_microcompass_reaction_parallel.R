@@ -58,7 +58,8 @@
 
 .rc_step2_model_payload <- function(
     model_key, row_ids, model_cache, unit_celltype, penalties, vmax_cache,
-    omega, solver, flux_threshold, payload_dir) {
+    omega, solver, flux_threshold, payload_dir,
+    control_penalties = NULL) {
   row_ids <- as.character(row_ids)
   first_entry <- model_cache[[row_ids[[1L]]]]
   eligible <- names(unit_celltype)[unit_celltype == first_entry$cell_type]
@@ -94,6 +95,21 @@
   names(vmax_values) <- row_ids
   penalty_matrix <- penalties$penalty[reactions, eligible, drop = FALSE]
   penalty_evidence <- .rc_step2_penalty_evidence_stats(penalty_matrix)
+  control_penalty_matrix <- NULL
+  control_penalty_evidence <- NULL
+  control_identical <- FALSE
+  if (!is.null(control_penalties)) {
+    if (!identical(colnames(control_penalties$penalty), colnames(penalties$penalty)) ||
+        !all(reactions %in% rownames(control_penalties$penalty))) {
+      stop("RNA-control penalties are not aligned to primary penalties.",
+           call. = FALSE)
+    }
+    control_penalty_matrix <-
+      control_penalties$penalty[reactions, eligible, drop = FALSE]
+    control_penalty_evidence <-
+      .rc_step2_penalty_evidence_stats(control_penalty_matrix)
+    control_identical <- identical(control_penalty_matrix, penalty_matrix)
+  }
   payload <- list(
     schema_version = "regcompass_step2_compact_payload_v1",
     model = list(
@@ -109,6 +125,9 @@
     units = eligible,
     penalty = penalty_matrix,
     penalty_evidence = penalty_evidence,
+    control_penalty = control_penalty_matrix,
+    control_penalty_evidence = control_penalty_evidence,
+    control_identical = control_identical,
     entries = entries,
     vmax = vmax_values,
     omega = as.numeric(omega),
@@ -123,7 +142,10 @@
   )), 1L, 24L)
   file <- file.path(payload_dir, paste0("payload__", token, ".rds"))
   .rc_atomic_save_rds(payload, file)
-  rm(model, payload, entries, vmax_values, penalty_matrix, penalty_evidence)
+  rm(
+    model, payload, entries, vmax_values, penalty_matrix, penalty_evidence,
+    control_penalty_matrix, control_penalty_evidence
+  )
   invisible(gc(verbose = FALSE, full = FALSE))
   file
 }
@@ -135,11 +157,15 @@
   }
   payload <- readRDS(task$payload_file)
   if (!is.list(payload) ||
-      !identical(payload$schema_version, "regcompass_step2_compact_payload_v1")) {
+      !identical(
+        payload$schema_version,
+        "regcompass_step2_compact_payload_v1"
+      )) {
     stop("Malformed Step 2 compact payload.", call. = FALSE)
   }
   row_ids <- as.character(task$row_ids)
-  if (!length(row_ids) || !all(row_ids %in% names(payload$entries)) ||
+  if (!length(row_ids) ||
+      !all(row_ids %in% names(payload$entries)) ||
       !all(row_ids %in% names(payload$vmax))) {
     stop("Step 2 reaction-batch rows are absent from the compact payload.",
          call. = FALSE)
@@ -156,12 +182,20 @@
   }
   if (!identical(colnames(payload$penalty), as.character(payload$units)) ||
       !identical(rownames(payload$penalty), as.character(payload$reactions))) {
-    stop("Step 2 compact payload penalties are not aligned.", call. = FALSE)
+    stop("Step 2 compact payload penalties are not aligned.",
+         call. = FALSE)
   }
+  paired_control <- !is.null(payload$control_penalty)
+  if (paired_control &&
+      (!identical(dimnames(payload$control_penalty), dimnames(payload$penalty)))) {
+    stop("Paired RNA-control penalties are not aligned.", call. = FALSE)
+  }
+
   checkpoint_files <- character(length(row_ids))
-  step2_engine <- NULL
+  step2_engine <- control_step2_engine <- NULL
   on.exit({
     .rc_compass_step2_release_engine(step2_engine)
+    .rc_compass_step2_release_engine(control_step2_engine)
     rm(model, payload)
     invisible(gc(verbose = FALSE, full = TRUE))
   }, add = TRUE)
@@ -169,10 +203,11 @@
   units <- as.character(payload$units)
   evidence <- payload$penalty_evidence %||%
     .rc_step2_penalty_evidence_stats(payload$penalty)
-  if (length(evidence$all_finite) != length(units) ||
-      length(evidence$fraction) != length(units) ||
-      length(evidence$unavailable) != length(units)) {
-    stop("Step 2 penalty evidence summary is malformed.", call. = FALSE)
+  control_evidence <- if (paired_control) {
+    payload$control_penalty_evidence %||%
+      .rc_step2_penalty_evidence_stats(payload$control_penalty)
+  } else {
+    NULL
   }
 
   for (j in seq_along(row_ids)) {
@@ -193,99 +228,96 @@
       omega = payload$omega,
       flux_threshold = payload$flux_threshold
     )
-    step2_engine <- if (isTRUE(prepared$runnable)) {
+    new_engine <- function() {
+      if (!isTRUE(prepared$runnable)) return(NULL)
       .rc_compass_step2_new_engine(
         prepared$template, payload$solver,
         persistent_required = identical(payload$solver, "highs")
       )
-    } else {
-      NULL
     }
+    step2_engine <- new_engine()
+    primary <- .rc_compass_step2_route_solve(
+      prepared, step2_engine, payload$penalty, evidence,
+      target_index, units
+    )
+    step2_engine <- primary$engine
+    primary_metrics <- .rc_compass_step2_engine_metrics(step2_engine)
 
-    n_units <- length(units)
-    task_penalty <- rep(NA_real_, n_units)
-    task_vmax <- rep(NA_real_, n_units)
-    task_feasible <- task_evaluated <- rep(FALSE, n_units)
-    names(task_penalty) <- names(task_vmax) <-
-      names(task_feasible) <- names(task_evaluated) <- units
-    solver_status <- step1_status <- step2_status <-
-      solver_backend <- rep(NA_character_, n_units)
-    target_available <- is.finite(payload$penalty[target_index, ])
-
-    for (i in seq_along(units)) {
-      unit_penalty <- payload$penalty[, i]
-      solver_penalty <- if (isTRUE(evidence$all_finite[[i]])) {
-        unit_penalty
+    control <- NULL
+    control_metrics <- list(
+      engine = "not_run", n_solves = 0L,
+      n_objective_updates = 0L, n_fallback = 0L
+    )
+    reused_control <- FALSE
+    if (paired_control) {
+      if (isTRUE(payload$control_identical)) {
+        control <- primary
+        control$engine <- NULL
+        reused_control <- TRUE
       } else {
-        value <- unit_penalty
-        value[!is.finite(value)] <- 0
-        value
+        control_step2_engine <- new_engine()
+        control <- .rc_compass_step2_route_solve(
+          prepared, control_step2_engine, payload$control_penalty,
+          control_evidence, target_index, units
+        )
+        control_step2_engine <- control$engine
+        control_metrics <-
+          .rc_compass_step2_engine_metrics(control_step2_engine)
       }
-
-      if (isTRUE(prepared$runnable)) {
-        solved <- .rc_compass_step2_engine_solve(
-          step2_engine, solver_penalty,
-          return_solution = FALSE,
-          trusted_aligned = TRUE
-        )
-        step2_engine <- solved$engine
-        fit <- .rc_compass_step2_result(
-          prepared$template, solved$answer,
-          require_solution = FALSE
-        )
-      } else {
-        .rc_compass_step2_align_penalties(
-          prepared$reactions, solver_penalty
-        )
-        fit <- prepared$result
-        solved <- NULL
-      }
-
-      task_penalty[[i]] <- if (target_available[[i]]) fit$penalty else NA_real_
-      task_vmax[[i]] <- fit$vmax
-      task_feasible[[i]] <- isTRUE(fit$feasible)
-      task_evaluated[[i]] <- isTRUE(fit$feasible) && target_available[[i]]
-      solver_status[[i]] <- as.character(fit$solver_status)
-      solver_backend[[i]] <- as.character(fit$solver_backend %||% "unknown")
-      step1_status[[i]] <- as.character(fit$step1_status)
-      step2_status[[i]] <- as.character(fit$step2_status)
-      rm(unit_penalty, solver_penalty, fit, solved)
     }
 
-    target_status <- if (!is.null(model$target_status)) {
-      rep(as.character(model$target_status), n_units)
-    } else {
-      ifelse(task_feasible, "ok", "structurally_infeasible")
-    }
     diagnostics <- data.frame(
-      row_id = rep(row_id, n_units),
+      row_id = rep(row_id, length(units)),
       unit_id = units,
-      module_id = rep("CELLTYPE_MEDIUM_UNION_GEM", n_units),
-      cell_type = rep(entry$cell_type, n_units),
-      reaction_id = rep(entry$reaction_id, n_units),
-      target_direction = rep(entry$target_direction, n_units),
-      medium_scenario = rep(entry$medium_scenario, n_units),
-      condition = rep("all", n_units),
-      strict_feasible = unname(task_feasible),
-      solver_status = solver_status,
-      solver_backend = solver_backend,
-      step1_status = step1_status,
-      step2_status = step2_status,
-      target_status = target_status,
-      objective_value = unname(task_penalty),
-      vmax = unname(task_vmax),
-      vmax_reused_from_celltype_cache = rep(TRUE, n_units),
-      step2_model_reused_across_metacells = rep(TRUE, n_units),
-      target_expression_available = target_available,
+      module_id = rep("CELLTYPE_MEDIUM_UNION_GEM", length(units)),
+      cell_type = rep(entry$cell_type, length(units)),
+      reaction_id = rep(entry$reaction_id, length(units)),
+      target_direction = rep(entry$target_direction, length(units)),
+      medium_scenario = rep(entry$medium_scenario, length(units)),
+      condition = rep("all", length(units)),
+      strict_feasible = unname(primary$feasible),
+      solver_status = primary$solver_status,
+      solver_backend = primary$solver_backend,
+      step1_status = primary$step1_status,
+      step2_status = primary$step2_status,
+      target_status = ifelse(
+        primary$feasible, "ok", "structurally_infeasible"
+      ),
+      objective_value = unname(primary$penalty),
+      vmax = unname(primary$vmax),
+      vmax_reused_from_celltype_cache = rep(TRUE, length(units)),
+      step2_model_reused_across_metacells = rep(TRUE, length(units)),
+      target_expression_available = primary$target_available,
       objective_evidence_fraction = evidence$fraction,
       unavailable_objective_terms = evidence$unavailable,
       parallel_task = rep(
-        "directional_reaction_x_matching_metacells", n_units
+        "directional_reaction_x_matching_metacells", length(units)
       ),
       stringsAsFactors = FALSE
     )
+    control_diagnostics <- if (paired_control) {
+      data.frame(
+        row_id = rep(row_id, length(units)),
+        unit_id = units,
+        cell_type = rep(entry$cell_type, length(units)),
+        reaction_id = rep(entry$reaction_id, length(units)),
+        target_direction = rep(entry$target_direction, length(units)),
+        medium_scenario = rep(entry$medium_scenario, length(units)),
+        objective_value = unname(control$penalty),
+        strict_feasible = unname(control$feasible),
+        solver_status = control$solver_status,
+        solver_backend = if (reused_control) {
+          rep("reused_identical_primary_objective", length(units))
+        } else {
+          control$solver_backend
+        },
+        objective_identical_to_primary = rep(reused_control, length(units)),
+        stringsAsFactors = FALSE
+      )
+    } else {
+      data.frame()
+    }
 
-    engine_metrics <- .rc_compass_step2_engine_metrics(step2_engine)
     token <- substr(.rc_microcompass_object_checksum(list(
       row_id = row_id,
       file_checksum = model$file_checksum,
@@ -300,22 +332,30 @@
     .rc_atomic_save_rds(list(
       row_id = row_id,
       units = units,
-      penalty = task_penalty,
-      vmax = task_vmax,
-      feasible = task_feasible,
-      evaluated = task_evaluated,
+      penalty = primary$penalty,
+      vmax = primary$vmax,
+      feasible = primary$feasible,
+      evaluated = primary$evaluated,
       diagnostics = diagnostics,
-      engine_metrics = engine_metrics
+      engine_metrics = primary_metrics,
+      control = if (paired_control) list(
+        penalty = control$penalty,
+        vmax = control$vmax,
+        feasible = control$feasible,
+        evaluated = control$evaluated,
+        diagnostics = control_diagnostics,
+        engine_metrics = control_metrics,
+        reused_from_primary = reused_control
+      ) else NULL
     ), checkpoint)
     checkpoint_files[[j]] <- checkpoint
 
     .rc_compass_step2_release_engine(step2_engine)
-    step2_engine <- NULL
+    .rc_compass_step2_release_engine(control_step2_engine)
+    step2_engine <- control_step2_engine <- NULL
     rm(
-      diagnostics, task_penalty, task_vmax, task_feasible,
-      task_evaluated, prepared, engine_metrics, solver_status,
-      solver_backend, step1_status, step2_status, target_available,
-      target_status
+      diagnostics, control_diagnostics, prepared, primary, control,
+      primary_metrics, control_metrics
     )
     invisible(gc(verbose = FALSE, full = FALSE))
   }
@@ -335,7 +375,8 @@
     solver = c("highs", "gurobi", "glpk"),
     flux_threshold = 1e-8,
     BPPARAM = NULL,
-    model_cache_override = NULL) {
+    model_cache_override = NULL,
+    control_layer1 = NULL) {
   unit <- match.arg(unit)
   solver <- match.arg(solver)
   target_direction <- match.arg(target_direction)
@@ -347,6 +388,20 @@
     if (identical(unit, "metacell")) "metacell" else "sample_celltype",
     sample_col, celltype_col, condition_col
   )
+  control_matrices <- if (!is.null(control_layer1)) {
+    value <- rc_layer2_unit_matrices(
+      control_layer1,
+      if (identical(unit, "metacell")) "metacell" else "sample_celltype",
+      sample_col, celltype_col, condition_col
+    )
+    if (!identical(dimnames(value$reaction_expression),
+                   dimnames(matrices$reaction_expression)) ||
+        !identical(value$unit_meta, matrices$unit_meta)) {
+      stop("Paired RNA-control units do not align with primary Layer 2 units.",
+           call. = FALSE)
+    }
+    value
+  } else NULL
   unit_meta <- matrices$unit_meta
   if (!is.data.frame(unit_meta) || !celltype_col %in% colnames(unit_meta)) {
     stop("Layer 1 unit metadata lack the cell-type column.", call. = FALSE)
@@ -448,6 +503,14 @@
     ),
     reaction_roles = gem$reaction_roles
   )
+  control_penalties <- if (!is.null(control_matrices)) {
+    rc_compute_multiome_penalty(
+      rc_align_reaction_expression(
+        control_matrices$reaction_expression, all_reactions, NA_real_
+      ),
+      reaction_roles = gem$reaction_roles
+    )
+  } else NULL
   vmax_cache <- .rc_build_microcompass_vmax_cache(
     model_cache = model_cache,
     mode = "meta_module_gem",
@@ -493,6 +556,9 @@
     FALSE, length(row_ids), length(units),
     dimnames = list(row_ids, units)
   )
+  control_penalty <- if (!is.null(control_penalties)) penalty else NULL
+  control_feasible <- if (!is.null(control_penalties)) feasible else NULL
+  control_evaluated <- if (!is.null(control_penalties)) evaluated else NULL
 
   checkpoint_root <- model_params$cache_dir %||%
     dirname(model_cache[[row_ids[[1L]]]]$file)
@@ -523,7 +589,8 @@
       omega = omega,
       solver = solver,
       flux_threshold = flux_threshold,
-      payload_dir = payload_dir
+      payload_dir = payload_dir,
+      control_penalties = control_penalties
     )
   }, character(1))
   names(payload_files) <- unique_model_keys
@@ -537,7 +604,8 @@
   names(tasks) <- names(batch_specs)
 
   penalties$penalty <- NULL
-  rm(vmax_cache, matrices, all_reactions)
+  if (!is.null(control_penalties)) control_penalties$penalty <- NULL
+  rm(vmax_cache, matrices, control_matrices, all_reactions)
   invisible(gc(verbose = FALSE, full = TRUE))
 
   checkpoint_groups <- rc_parallel_lapply(
@@ -552,6 +620,9 @@
   }
   diagnostics <- vector("list", length(checkpoint_files))
   step2_engine_metrics <- vector("list", length(checkpoint_files))
+  control_diagnostics <- vector("list", length(checkpoint_files))
+  control_step2_engine_metrics <- vector("list", length(checkpoint_files))
+  control_reused <- logical(length(checkpoint_files))
   observed_rows <- character(length(checkpoint_files))
   for (i in seq_along(checkpoint_files)) {
     result <- readRDS(checkpoint_files[[i]])
@@ -578,6 +649,30 @@
       n_fallback = as.integer(metrics$n_fallback %||% 0L),
       stringsAsFactors = FALSE
     )
+    if (!is.null(control_penalty)) {
+      ctrl <- result$control
+      if (!is.list(ctrl) ||
+          !identical(names(ctrl$penalty), as.character(result$units))) {
+        stop("A paired RNA-control checkpoint is malformed.", call. = FALSE)
+      }
+      control_penalty[row_id, result$units] <- ctrl$penalty
+      control_feasible[row_id, result$units] <- ctrl$feasible
+      control_evaluated[row_id, result$units] <- ctrl$evaluated
+      control_diagnostics[[i]] <- ctrl$diagnostics
+      control_reused[[i]] <- isTRUE(ctrl$reused_from_primary)
+      control_metrics <- ctrl$engine_metrics %||% list()
+      control_step2_engine_metrics[[i]] <- data.frame(
+        row_id = row_id,
+        engine = as.character(control_metrics$engine %||% "not_run"),
+        n_solves = as.integer(control_metrics$n_solves %||% 0L),
+        n_objective_updates = as.integer(
+          control_metrics$n_objective_updates %||% 0L
+        ),
+        n_fallback = as.integer(control_metrics$n_fallback %||% 0L),
+        reused_from_primary = isTRUE(ctrl$reused_from_primary),
+        stringsAsFactors = FALSE
+      )
+    }
     rm(result)
     unlink(checkpoint_files[[i]], force = TRUE)
     invisible(gc(verbose = FALSE, full = FALSE))
@@ -591,6 +686,9 @@
   invisible(gc(verbose = FALSE, full = TRUE))
 
   score <- rc_compass_score_from_penalty(penalty, feasible)
+  score_rna_only <- if (!is.null(control_penalty)) {
+    rc_compass_score_from_penalty(control_penalty, control_feasible)
+  } else NULL
   directions <- unique(do.call(rbind, lapply(model_cache, function(entry) {
     data.frame(
       cell_type = entry$cell_type,
@@ -622,6 +720,14 @@
     vmax = vmax,
     feasible = feasible,
     evaluated = evaluated,
+    penalty_rna_only = control_penalty,
+    score_rna_only = score_rna_only,
+    feasible_rna_only = control_feasible,
+    evaluated_rna_only = control_evaluated,
+    lp_diagnostics_rna_only = .rc_bind_frames_fill(control_diagnostics),
+    step2_engine_metrics_rna_only =
+      .rc_bind_frames_fill(control_step2_engine_metrics),
+    rna_control_model_identical_reuse = control_reused,
     target_direction = directions,
     direction_diagnostics = directions,
     medium_scenarios = medium_scenarios,
@@ -669,9 +775,12 @@
         as.integer(reuse), names(reuse)
       ),
       step2_solver_reuse = paste(
-        "one persistent HiGHS model per directional reaction reused across",
-        "all matching metacells; one-shot fallback for unsupported backends"
+        "one prepared target template with independent persistent HiGHS",
+        "streams for primary and RNA-only objectives across matching metacells"
       ),
+      paired_primary_rna_control = !is.null(control_penalty),
+      rna_control_vmax_solve_count = if (!is.null(control_penalty)) 0L else NA_integer_,
+      rna_control_identical_model_reuse = sum(control_reused),
       worker_cleanup = paste(
         "checkpoint each reaction; release its target HiGHS engine; retain",
         "only one compact S/lb/ub model and matching penalty payload per batch"
