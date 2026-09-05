@@ -381,7 +381,8 @@ rc_regcompass_step_layer2 <- function(
       "computed_once_and_shared_by_paired_primary_rna_control",
     rna_control_vmax_solve_count = 0L,
     paired_step2_dispatch = TRUE,
-    independent_solver_streams = TRUE,
+    independent_solver_streams = FALSE,
+    independent_lp_solves_on_shared_target_engine = TRUE,
     exact_identical_model_objective_reuse = TRUE,
     effect_size_basis = "penalty / (omega * vmax)",
     ecdf_effect_size_eligible = FALSE
@@ -522,15 +523,15 @@ rc_regcompass_step_layer2 <- function(
     "primary_scoring_complete", 5L,
     "paired primary multiome and RNA-only Step 2 scoring completed"
   )
+  .rc_layer2_overall_event(
+    "primary_engine_complete", 6L,
+    "primary structural models and directional scores assembled"
+  )
   if (!is.null(args$control_layer1)) {
     .rc_layer2_overall_event(
       "rna_control_complete", 8L,
       "RNA-only Step 2 completed in the same target dispatch with shared Vmax"
     )
   }
-  .rc_layer2_overall_event(
-    "primary_engine_complete", 6L,
-    "primary structural models and directional scores assembled"
-  )
   answer
 }
