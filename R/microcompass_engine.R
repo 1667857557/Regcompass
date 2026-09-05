@@ -128,6 +128,8 @@
   } else {
     NA_character_
   }
+  penalty_matrix <- penalties$penalty[reactions, units, drop = FALSE]
+  penalty_evidence <- .rc_step2_penalty_evidence_stats(penalty_matrix)
   payload <- list(
     schema_version = "regcompass_full_gem_step2_compact_payload_v1",
     model = list(
@@ -141,7 +143,8 @@
     ),
     reactions = reactions,
     units = units,
-    penalty = penalties$penalty[reactions, units, drop = FALSE],
+    penalty = penalty_matrix,
+    penalty_evidence = penalty_evidence,
     entries = entries,
     vmax = vmax_values,
     omega = as.numeric(omega),
@@ -156,7 +159,7 @@
   )), 1L, 24L)
   file <- file.path(payload_dir, paste0("payload__", token, ".rds"))
   .rc_atomic_save_rds(payload, file)
-  rm(model, payload, entries, vmax_values)
+  rm(model, payload, entries, vmax_values, penalty_matrix, penalty_evidence)
   invisible(gc(verbose = FALSE, full = FALSE))
   file
 }
@@ -206,6 +209,15 @@
   }, add = TRUE)
 
   units <- as.character(payload$units)
+  evidence <- payload$penalty_evidence %||%
+    .rc_step2_penalty_evidence_stats(payload$penalty)
+  if (length(evidence$all_finite) != length(units) ||
+      length(evidence$fraction) != length(units) ||
+      length(evidence$unavailable) != length(units)) {
+    stop("Full-GEM Step 2 penalty evidence summary is malformed.",
+         call. = FALSE)
+  }
+
   for (j in seq_along(row_ids)) {
     row_id <- row_ids[[j]]
     entry <- payload$entries[[row_id]]
@@ -225,76 +237,93 @@
       flux_threshold = payload$flux_threshold
     )
     step2_engine <- if (isTRUE(prepared$runnable)) {
-      .rc_compass_step2_new_engine(prepared$template, payload$solver)
+      .rc_compass_step2_new_engine(
+        prepared$template, payload$solver,
+        persistent_required = identical(payload$solver, "highs")
+      )
     } else {
       NULL
     }
 
-    task_penalty <- rep(NA_real_, length(units))
-    task_vmax <- rep(NA_real_, length(units))
-    task_feasible <- task_evaluated <- rep(FALSE, length(units))
+    n_units <- length(units)
+    task_penalty <- rep(NA_real_, n_units)
+    task_vmax <- rep(NA_real_, n_units)
+    task_feasible <- task_evaluated <- rep(FALSE, n_units)
     names(task_penalty) <- names(task_vmax) <-
       names(task_feasible) <- names(task_evaluated) <- units
-    diagnostics <- vector("list", length(units))
+    solver_status <- step1_status <- step2_status <-
+      solver_backend <- rep(NA_character_, n_units)
+    target_available <- is.finite(payload$penalty[target_index, ])
 
     for (i in seq_along(units)) {
-      one_unit <- units[[i]]
       unit_penalty <- payload$penalty[, i]
-      target_penalty <- unit_penalty[[target_index]]
-      evidence_available <- is.finite(unit_penalty)
-      solver_penalty <- unit_penalty
-      solver_penalty[!evidence_available] <- 0
+      solver_penalty <- if (isTRUE(evidence$all_finite[[i]])) {
+        unit_penalty
+      } else {
+        value <- unit_penalty
+        value[!is.finite(value)] <- 0
+        value
+      }
 
       if (isTRUE(prepared$runnable)) {
         solved <- .rc_compass_step2_engine_solve(
-          step2_engine, solver_penalty
+          step2_engine, solver_penalty,
+          return_solution = FALSE,
+          trusted_aligned = TRUE
         )
         step2_engine <- solved$engine
-        fit <- .rc_compass_step2_result(prepared$template, solved$answer)
+        fit <- .rc_compass_step2_result(
+          prepared$template, solved$answer,
+          require_solution = FALSE
+        )
       } else {
         fit <- prepared$result
         solved <- NULL
       }
 
-      target_available <- is.finite(target_penalty)
-      task_penalty[[one_unit]] <- if (target_available) {
+      task_penalty[[i]] <- if (target_available[[i]]) {
         fit$penalty
       } else {
         NA_real_
       }
-      task_vmax[[one_unit]] <- fit$vmax
-      task_feasible[[one_unit]] <- isTRUE(fit$feasible)
-      task_evaluated[[one_unit]] <- isTRUE(fit$feasible) && target_available
-      diagnostics[[i]] <- data.frame(
-        row_id = row_id,
-        unit_id = one_unit,
-        module_id = NA_character_,
-        reaction_id = entry$reaction_id,
-        target_direction = entry$target_direction,
-        medium_scenario = entry$medium_scenario,
-        condition = entry$condition,
-        strict_feasible = isTRUE(fit$feasible),
-        solver_status = fit$solver_status,
-        solver_backend = fit$solver_backend %||% "unknown",
-        step1_status = fit$step1_status,
-        step2_status = fit$step2_status,
-        target_status = if (isTRUE(fit$feasible)) {
-          "ok"
-        } else {
-          "medium_directionally_infeasible"
-        },
-        objective_value = if (target_available) fit$penalty else NA_real_,
-        vmax = fit$vmax,
-        vmax_reused_from_shared_cache = TRUE,
-        step2_model_reused_across_metacells = TRUE,
-        target_expression_available = target_available,
-        objective_evidence_fraction = mean(evidence_available),
-        unavailable_objective_terms = sum(!evidence_available),
-        parallel_task = "directional_reaction_x_all_metacells",
-        stringsAsFactors = FALSE
-      )
-      rm(unit_penalty, solver_penalty, fit, solved, evidence_available)
+      task_vmax[[i]] <- fit$vmax
+      task_feasible[[i]] <- isTRUE(fit$feasible)
+      task_evaluated[[i]] <- isTRUE(fit$feasible) && target_available[[i]]
+      solver_status[[i]] <- as.character(fit$solver_status)
+      solver_backend[[i]] <- as.character(fit$solver_backend %||% "unknown")
+      step1_status[[i]] <- as.character(fit$step1_status)
+      step2_status[[i]] <- as.character(fit$step2_status)
+      rm(unit_penalty, solver_penalty, fit, solved)
     }
+
+    diagnostics <- data.frame(
+      row_id = rep(row_id, n_units),
+      unit_id = units,
+      module_id = rep(NA_character_, n_units),
+      reaction_id = rep(entry$reaction_id, n_units),
+      target_direction = rep(entry$target_direction, n_units),
+      medium_scenario = rep(entry$medium_scenario, n_units),
+      condition = rep(entry$condition, n_units),
+      strict_feasible = unname(task_feasible),
+      solver_status = solver_status,
+      solver_backend = solver_backend,
+      step1_status = step1_status,
+      step2_status = step2_status,
+      target_status = ifelse(
+        task_feasible, "ok", "medium_directionally_infeasible"
+      ),
+      objective_value = unname(task_penalty),
+      vmax = unname(task_vmax),
+      vmax_reused_from_shared_cache = rep(TRUE, n_units),
+      step2_model_reused_across_metacells = rep(TRUE, n_units),
+      target_expression_available = target_available,
+      objective_evidence_fraction = evidence$fraction,
+      unavailable_objective_terms = evidence$unavailable,
+      parallel_task = rep(
+        "directional_reaction_x_all_metacells", n_units
+      ),
+      stringsAsFactors = FALSE
+    )
 
     engine_metrics <- .rc_compass_step2_engine_metrics(step2_engine)
     token <- substr(.rc_microcompass_object_checksum(list(
@@ -315,7 +344,7 @@
       vmax = task_vmax,
       feasible = task_feasible,
       evaluated = task_evaluated,
-      diagnostics = .rc_bind_frames_fill(diagnostics),
+      diagnostics = diagnostics,
       engine_metrics = engine_metrics
     ), checkpoint)
     checkpoint_files[[j]] <- checkpoint
@@ -324,7 +353,8 @@
     step2_engine <- NULL
     rm(
       diagnostics, task_penalty, task_vmax, task_feasible,
-      task_evaluated, prepared, engine_metrics
+      task_evaluated, prepared, engine_metrics, solver_status,
+      solver_backend, step1_status, step2_status, target_available
     )
     invisible(gc(verbose = FALSE, full = FALSE))
   }

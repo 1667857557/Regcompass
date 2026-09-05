@@ -242,6 +242,129 @@
   tasks
 }
 
+.rc_compass_vmax_batch_highs <- function(
+    S, lb, ub, target_reaction, direction, flux_threshold = 1e-8) {
+  if (!.rc_microcompass_highs_api_available()) return(NULL)
+  S <- .rc_as_dgCMatrix(S)
+  reactions <- colnames(S)
+  if (is.null(reactions) || anyNA(reactions) || any(!nzchar(reactions)) ||
+      anyDuplicated(reactions)) {
+    stop("`S` must have unique non-empty reaction IDs in colnames().",
+         call. = FALSE)
+  }
+  target_reaction <- as.character(target_reaction)
+  direction <- as.character(direction)
+  if (!length(target_reaction) || length(direction) != length(target_reaction) ||
+      any(!direction %in% c("forward", "reverse")) ||
+      any(!target_reaction %in% reactions)) {
+    stop("Persistent Vmax targets or directions are invalid.", call. = FALSE)
+  }
+  lb <- rc_align_bound(lb, reactions, default = -1000, name = "lb")
+  ub <- rc_align_bound(ub, reactions, default = 1000, name = "ub")
+  if (any(lb > ub)) {
+    stop("Reaction lower bounds cannot exceed upper bounds.", call. = FALSE)
+  }
+
+  pointer <- NULL
+  on.exit({
+    if (!is.null(pointer)) {
+      .rc_compass_step2_release_engine(list(pointer = pointer))
+    }
+  }, add = TRUE)
+  answer <- tryCatch({
+    model <- .rc_microcompass_highs_call(
+      "highs_model",
+      L = rep(0, length(reactions)),
+      lower = lb,
+      upper = ub,
+      A = S,
+      lhs = rep(0, nrow(S)),
+      rhs = rep(0, nrow(S)),
+      maximum = FALSE
+    )
+    pointer <- .rc_microcompass_highs_call("hi_new_solver", model)
+    .rc_microcompass_highs_call(
+      "hi_solver_set_option", pointer, "output_flag", FALSE
+    )
+    .rc_microcompass_highs_call(
+      "hi_solver_set_option", pointer, "threads", 1L
+    )
+    .rc_microcompass_highs_call(
+      "hi_solver_set_option", pointer, "solver", "simplex"
+    )
+
+    values <- vector("list", length(target_reaction))
+    previous_index <- NA_integer_
+    for (i in seq_along(target_reaction)) {
+      target_index <- match(target_reaction[[i]], reactions)
+      allowed <- if (identical(direction[[i]], "forward")) {
+        ub[[target_index]] > flux_threshold
+      } else {
+        lb[[target_index]] < -flux_threshold
+      }
+      if (!isTRUE(allowed)) {
+        values[[i]] <- list(
+          feasible = FALSE, vmax = 0, status = "no_allowed_direction",
+          flux = numeric()
+        )
+        next
+      }
+
+      update_index <- unique(c(previous_index, target_index))
+      update_index <- update_index[is.finite(update_index)]
+      coeff <- numeric(length(update_index))
+      coeff[match(target_index, update_index)] <-
+        if (identical(direction[[i]], "forward")) -1 else 1
+      .rc_microcompass_highs_call(
+        "hi_solver_set_objective", pointer,
+        index = as.integer(update_index - 1L), coeff = coeff
+      )
+      previous_index <- target_index
+      .rc_microcompass_highs_call("hi_solver_run", pointer)
+      status_message <- .rc_microcompass_highs_call(
+        "hi_solver_status_message", pointer
+      )
+      status <- .rc_lp_status(status_message)
+      if (!identical(status, "optimal")) {
+        values[[i]] <- list(
+          feasible = FALSE, vmax = NA_real_, status = status,
+          flux = numeric()
+        )
+        next
+      }
+      info <- tryCatch(
+        .rc_microcompass_highs_call("hi_solver_info", pointer),
+        error = function(e) list()
+      )
+      objective <- as.numeric(info$objective_function_value %||% NA_real_)
+      vmax <- if (is.finite(objective)) {
+        max(0, -objective)
+      } else {
+        solution <- as.numeric(.rc_microcompass_highs_call(
+          "hi_solver_get_solution", pointer
+        )$col_value)
+        if (length(solution) != length(reactions)) NA_real_ else if (
+          identical(direction[[i]], "forward")
+        ) {
+          solution[[target_index]]
+        } else {
+          -solution[[target_index]]
+        }
+      }
+      feasible <- is.finite(vmax) && vmax >= flux_threshold
+      values[[i]] <- list(
+        feasible = feasible,
+        vmax = if (is.finite(vmax)) max(0, vmax) else NA_real_,
+        status = if (feasible) "optimal" else "blocked",
+        flux = numeric()
+      )
+    }
+    values
+  }, error = function(e) e)
+  if (inherits(answer, "error")) return(NULL)
+  answer
+}
+
 .rc_build_microcompass_vmax_cache_core <- function(
     model_cache, mode, model_keys, solver, flux_threshold,
     parallel = TRUE, BPPARAM = NULL) {
@@ -269,24 +392,45 @@
       selected_rows <- as.character(task$row_ids)
       first_entry <- model_cache[[selected_rows[[1L]]]]
       model <- .rc_load_microcompass_model(first_entry, mode)
-      values <- lapply(selected_rows, function(row_id) {
-        entry <- model_cache[[row_id]]
-        value <- rc_compass_vmax_directional(
+      entries <- lapply(selected_rows, function(row_id) model_cache[[row_id]])
+      values <- if (identical(solver, "highs")) {
+        .rc_compass_vmax_batch_highs(
           S = model$S,
           lb = model$lb,
           ub = model$ub,
-          target_reaction = entry$reaction_id,
-          direction = entry$target_direction,
-          solver = solver,
+          target_reaction = vapply(
+            entries, function(entry) as.character(entry$reaction_id),
+            character(1)
+          ),
+          direction = vapply(
+            entries, function(entry) as.character(entry$target_direction),
+            character(1)
+          ),
           flux_threshold = flux_threshold
         )
-        list(
-          feasible = isTRUE(value$feasible),
-          vmax = as.numeric(value$vmax),
-          status = as.character(value$status),
-          flux = numeric()
-        )
-      })
+      } else {
+        NULL
+      }
+      if (is.null(values)) {
+        values <- lapply(selected_rows, function(row_id) {
+          entry <- model_cache[[row_id]]
+          value <- rc_compass_vmax_directional(
+            S = model$S,
+            lb = model$lb,
+            ub = model$ub,
+            target_reaction = entry$reaction_id,
+            direction = entry$target_direction,
+            solver = solver,
+            flux_threshold = flux_threshold
+          )
+          list(
+            feasible = isTRUE(value$feasible),
+            vmax = as.numeric(value$vmax),
+            status = as.character(value$status),
+            flux = numeric()
+          )
+        })
+      }
       names(values) <- selected_rows
       values
     },
@@ -330,6 +474,23 @@
          call. = FALSE)
   }
   penalties
+}
+
+.rc_step2_penalty_evidence_stats <- function(penalty) {
+  if (!is.numeric(penalty) || is.null(dim(penalty)) || nrow(penalty) < 1L) {
+    stop("Step 2 penalty evidence requires a non-empty numeric matrix.",
+         call. = FALSE)
+  }
+  unavailable <- vapply(
+    seq_len(ncol(penalty)),
+    function(i) sum(!is.finite(penalty[, i])),
+    integer(1)
+  )
+  list(
+    unavailable = unavailable,
+    fraction = 1 - unavailable / nrow(penalty),
+    all_finite = unavailable == 0L
+  )
 }
 
 .rc_compass_step2_prepare <- function(
@@ -455,6 +616,8 @@
   )
 }
 
+.rc_microcompass_highs_api_cache <- new.env(parent = emptyenv())
+
 .rc_microcompass_highs_api_available <- function() {
   if (!requireNamespace("highs", quietly = TRUE)) return(FALSE)
   required <- c(
@@ -466,7 +629,15 @@
 }
 
 .rc_microcompass_highs_call <- function(name, ...) {
-  do.call(getExportedValue("highs", name), list(...))
+  fun <- get0(
+    name, envir = .rc_microcompass_highs_api_cache,
+    mode = "function", inherits = FALSE
+  )
+  if (!is.function(fun)) {
+    fun <- getExportedValue("highs", name)
+    assign(name, fun, envir = .rc_microcompass_highs_api_cache)
+  }
+  fun(...)
 }
 
 .rc_compass_step2_release_engine <- function(engine) {
@@ -487,7 +658,8 @@
   invisible(engine)
 }
 
-.rc_compass_step2_new_engine <- function(template, solver) {
+.rc_compass_step2_new_engine <- function(
+    template, solver, persistent_required = FALSE) {
   solver <- match.arg(solver, c("highs", "gurobi", "glpk"))
   n_reactions <- as.integer(template$n_reactions)
   engine <- list(
@@ -496,13 +668,22 @@
     template = template,
     solver = solver,
     current_penalties = rep(0, n_reactions),
+    objective_index = as.integer(n_reactions + seq_len(n_reactions) - 1L),
     n_solves = 0L,
     n_objective_updates = 0L,
     n_fallback = 0L,
-    persistent_disabled = FALSE
+    persistent_disabled = FALSE,
+    persistent_required = isTRUE(persistent_required)
   )
-  if (!identical(solver, "highs") ||
-      !.rc_microcompass_highs_api_available()) {
+  if (!identical(solver, "highs")) return(engine)
+  if (!.rc_microcompass_highs_api_available()) {
+    if (isTRUE(persistent_required)) {
+      stop(
+        "Target-parallel Layer 2 requires the persistent HiGHS solver API. ",
+        "Install a current `highs` package (>= 1.12.0-1).",
+        call. = FALSE
+      )
+    }
     return(engine)
   }
 
@@ -531,6 +712,13 @@
   }, error = function(e) e)
 
   if (inherits(persistent, "error")) {
+    if (isTRUE(persistent_required)) {
+      stop(
+        "Persistent HiGHS initialization failed for target-parallel Layer 2: ",
+        conditionMessage(persistent),
+        call. = FALSE
+      )
+    }
     engine$persistent_disabled <- TRUE
     engine$persistent_message <- conditionMessage(persistent)
     return(engine)
@@ -556,10 +744,20 @@
   answer
 }
 
-.rc_compass_step2_engine_solve <- function(engine, penalties) {
-  penalties <- .rc_compass_step2_align_penalties(
-    engine$template$reactions, penalties
-  )
+.rc_compass_step2_engine_solve <- function(
+    engine, penalties, return_solution = TRUE, trusted_aligned = FALSE) {
+  if (isTRUE(trusted_aligned)) {
+    penalties <- as.numeric(penalties)
+    if (length(penalties) != engine$template$n_reactions ||
+        any(!is.finite(penalties)) || any(penalties < 0)) {
+      stop("Trusted Step 2 penalties are not finite non-negative aligned values.",
+           call. = FALSE)
+    }
+  } else {
+    penalties <- .rc_compass_step2_align_penalties(
+      engine$template$reactions, penalties
+    )
+  }
   engine$n_solves <- engine$n_solves + 1L
   if (!identical(engine$type, "highs_persistent_cpp") ||
       isTRUE(engine$persistent_disabled)) {
@@ -574,7 +772,7 @@
     if (length(changed)) {
       .rc_microcompass_highs_call(
         "hi_solver_set_objective", engine$pointer,
-        index = as.integer(engine$template$n_reactions + changed - 1L),
+        index = engine$objective_index[changed],
         coeff = penalties[changed]
       )
     }
@@ -583,13 +781,6 @@
       "hi_solver_status_message", engine$pointer
     )
     status <- .rc_lp_status(status_message)
-    solution <- if (identical(status, "optimal")) {
-      as.numeric(.rc_microcompass_highs_call(
-        "hi_solver_get_solution", engine$pointer
-      )$col_value)
-    } else {
-      numeric()
-    }
     info <- tryCatch(
       .rc_microcompass_highs_call("hi_solver_info", engine$pointer),
       error = function(e) list()
@@ -597,6 +788,13 @@
     objective <- as.numeric(
       info$objective_function_value %||% NA_real_
     )
+    solution <- numeric()
+    if (identical(status, "optimal") &&
+        (isTRUE(return_solution) || !is.finite(objective))) {
+      solution <- as.numeric(.rc_microcompass_highs_call(
+        "hi_solver_get_solution", engine$pointer
+      )$col_value)
+    }
     if (!is.finite(objective) &&
         length(solution) == 2L * engine$template$n_reactions) {
       objective <- sum(
@@ -612,7 +810,11 @@
       solution = solution,
       objective = objective,
       solver = "highs",
-      backend = "highs_persistent_cpp_basis_reuse",
+      backend = if (isTRUE(return_solution)) {
+        "highs_persistent_cpp_basis_reuse"
+      } else {
+        "highs_persistent_cpp_basis_reuse_objective_only"
+      },
       solver_message = as.character(status_message)
     )
   }, error = function(e) e)
@@ -626,6 +828,15 @@
 
   engine$n_fallback <- engine$n_fallback + 1L
   engine$persistent_message <- conditionMessage(persistent)
+  if (isTRUE(engine$persistent_required)) {
+    .rc_compass_step2_release_engine(engine)
+    stop(
+      "Persistent HiGHS failed inside target-parallel Layer 2 instead of ",
+      "silently rebuilding millions of one-shot LPs: ",
+      engine$persistent_message,
+      call. = FALSE
+    )
+  }
   engine <- .rc_compass_step2_release_engine(engine)
   engine$type <- "one_shot"
   engine$persistent_disabled <- TRUE
@@ -655,10 +866,14 @@
   )
 }
 
-.rc_compass_step2_result <- function(template, answer) {
+.rc_compass_step2_result <- function(
+    template, answer, require_solution = TRUE) {
   n_reactions <- template$n_reactions
-  if (!identical(answer$status, "optimal") ||
-      length(answer$solution) != 2L * n_reactions) {
+  optimal <- identical(answer$status, "optimal")
+  objective <- as.numeric(answer$objective %||% NA_real_)
+  solution_ok <- length(answer$solution) == 2L * n_reactions
+  if (!optimal || !is.finite(objective) ||
+      (isTRUE(require_solution) && !solution_ok)) {
     return(list(
       feasible = FALSE,
       penalty = NA_real_,
@@ -670,11 +885,16 @@
       flux = numeric()
     ))
   }
-  flux <- answer$solution[seq_len(n_reactions)]
-  names(flux) <- template$reactions
+  flux <- if (isTRUE(require_solution)) {
+    value <- answer$solution[seq_len(n_reactions)]
+    names(value) <- template$reactions
+    value
+  } else {
+    numeric()
+  }
   list(
     feasible = TRUE,
-    penalty = max(0, as.numeric(answer$objective)),
+    penalty = max(0, objective),
     vmax = template$vmax,
     solver_status = answer$status,
     step1_status = template$step1_status,

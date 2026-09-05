@@ -91,6 +91,39 @@ stopifnot(
   sum(step2_models == "model_B") > sum(step2_models == "model_A")
 )
 
+run_persistent_vmax_check <- function() {
+  if (!.rc_microcompass_highs_api_available()) return(invisible(NULL))
+  S <- Matrix::Matrix(
+    matrix(
+      c(1, -1, -1), nrow = 1,
+      dimnames = list("M", c("UP", "T1", "T2"))
+    ),
+    sparse = TRUE
+  )
+  lb <- c(UP = 0, T1 = 0, T2 = 0)
+  ub <- c(UP = 10, T1 = 10, T2 = 10)
+  batch <- .rc_compass_vmax_batch_highs(
+    S, lb, ub,
+    target_reaction = c("T1", "T2"),
+    direction = c("forward", "forward"),
+    flux_threshold = 1e-8
+  )
+  stopifnot(length(batch) == 2L)
+  for (i in seq_along(batch)) {
+    target <- c("T1", "T2")[[i]]
+    reference <- rc_compass_vmax_directional(
+      S, lb, ub, target, direction = "forward", solver = "highs"
+    )
+    stopifnot(
+      identical(batch[[i]]$feasible, reference$feasible),
+      identical(batch[[i]]$status, reference$status),
+      isTRUE(all.equal(batch[[i]]$vmax, reference$vmax, tolerance = 1e-10)),
+      length(batch[[i]]$flux) == 0L
+    )
+  }
+  invisible(batch)
+}
+
 run_persistent_step2_check <- function() {
   S <- Matrix::Matrix(
     matrix(
@@ -141,10 +174,33 @@ run_persistent_step2_check <- function() {
       ))
     )
   }
+  score_only_solved <- .rc_compass_step2_engine_solve(
+    engine, penalty_sets[[2L]],
+    return_solution = FALSE,
+    trusted_aligned = TRUE
+  )
+  engine <- score_only_solved$engine
+  score_only <- .rc_compass_step2_result(
+    prepared$template, score_only_solved$answer,
+    require_solution = FALSE
+  )
+  score_reference <- rc_compass_two_step_lp_directional(
+    S, lb, ub, "TARGET", penalty_sets[[2L]],
+    target_direction = "forward", omega = 0.95, solver = "highs"
+  )
+  stopifnot(
+    length(score_only_solved$answer$solution) == 0L,
+    identical(score_only$feasible, score_reference$feasible),
+    isTRUE(all.equal(
+      score_only$penalty, score_reference$penalty, tolerance = 1e-9
+    )),
+    length(score_only$flux) == 0L
+  )
+
   metrics <- .rc_compass_step2_engine_metrics(engine)
   stopifnot(
     identical(metrics$engine, "highs_persistent_cpp"),
-    metrics$n_solves == length(penalty_sets),
+    metrics$n_solves == length(penalty_sets) + 1L,
     metrics$n_objective_updates > 0L,
     metrics$n_fallback == 0L
   )
@@ -233,6 +289,7 @@ run_compact_step2_worker_check <- function() {
   invisible(result)
 }
 
+run_persistent_vmax_check()
 run_persistent_step2_check()
 run_compact_step2_worker_check()
 cat("Layer 2 native acceleration regression passed.\n")
