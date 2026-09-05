@@ -26,6 +26,8 @@ jobs:
         run: python tools/prepare_layer2_paired_patcher.py
       - name: Apply source patch
         run: python tools/apply_layer2_paired_control.py
+      - name: Tighten exact-result output path
+        run: python tools/fix_layer2_paired_output.py
       - name: Parse changed R sources
         run: |
           Rscript -e 'files <- c("R/microcompass_vmax_cache.R","R/microcompass_engine.R","R/celltype_microcompass_reaction_parallel.R","R/step_layer2.R"); invisible(lapply(files, parse)); cat("parse ok\n")'
