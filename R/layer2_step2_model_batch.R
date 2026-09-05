@@ -1,11 +1,10 @@
 # Exact model-batch acceleration for Layer 2 COMPASS Step 2.
 #
-# This file is collated after the legacy reaction-batch workers.  The legacy
-# implementations remain useful as a numerical oracle during migration, while
-# these final definitions are the production hot path.  Cross-target solver
-# reuse is restricted to COMPASS Step 2, whose production contract consumes
-# only the scalar optimum/status.  CORDA2 target-local solver isolation is not
-# changed here.
+# Cross-target solver reuse is restricted to COMPASS Step 2. Production Step 2
+# consumes the scalar optimum/status, not a particular primal support pattern,
+# so warm-start/basis reuse cannot change the biological estimand. CORDA2 keeps
+# its target-local solver ownership because CORDA2 does consume primal support
+# for structural reconstruction.
 
 .rc_step2_batch_engine_metrics <- function(engine) {
   base <- .rc_compass_step2_engine_metrics(engine)
@@ -84,29 +83,28 @@
   )
 }
 
-.rc_step2_batch_compile_shared <- function(
-    model, reactions, entries, vmax_values, row_ids,
-    omega, flux_threshold) {
-  reactions <- as.character(reactions)
+.rc_step2_batch_compile_shared <- function(payload, row_ids) {
+  model <- payload$model
+  reactions <- as.character(payload$reactions)
   row_ids <- as.character(row_ids)
   feasible_rows <- row_ids[vapply(
-    vmax_values[row_ids],
+    payload$vmax[row_ids],
     function(value) isTRUE(value$feasible),
     logical(1)
   )]
   if (!length(feasible_rows)) return(NULL)
 
   first_row <- feasible_rows[[1L]]
-  first_entry <- entries[[first_row]]
+  first_entry <- payload$entries[[first_row]]
   first <- .rc_compass_step2_prepare(
     S = model$S,
     lb = model$lb,
     ub = model$ub,
     target_reaction = first_entry$reaction_id,
-    vmax_result = vmax_values[[first_row]],
+    vmax_result = payload$vmax[[first_row]],
     target_direction = first_entry$target_direction,
-    omega = omega,
-    flux_threshold = flux_threshold
+    omega = payload$omega,
+    flux_threshold = payload$flux_threshold
   )
   if (!isTRUE(first$runnable)) {
     stop("A feasible directional Vmax did not produce a runnable Step 2 model.",
@@ -142,8 +140,9 @@
          call. = FALSE)
   }
 
-  # The sparse matrix and directional index map are target invariant after the
-  # exact directional reformulation.  Only target bounds and metadata change.
+  # S_dir and directional variable identity depend only on the completed GEM.
+  # Reset the first target-specific template to the exact target-independent
+  # completed-GEM bounds before one persistent solver is created.
   template$lb <- base_lower
   template$ub <- base_upper
   template$vmax <- NA_real_
@@ -163,11 +162,13 @@
   )
 }
 
-.rc_step2_batch_target_spec <- function(
-    shared, reactions, entry, vmax_result,
-    omega, flux_threshold) {
+.rc_step2_batch_target_spec <- function(shared, payload, row_id) {
+  reactions <- as.character(payload$reactions)
+  entry <- payload$entries[[row_id]]
+  vmax_result <- payload$vmax[[row_id]]
   reaction <- as.character(entry$reaction_id)
   direction <- as.character(entry$target_direction)
+
   if (length(reaction) != 1L || is.na(reaction) || !nzchar(reaction) ||
       !reaction %in% reactions) {
     stop("A Step 2 batch target reaction is absent from its shared model.",
@@ -183,6 +184,7 @@
     stop("A Step 2 batch target lacks a directional Vmax result.",
          call. = FALSE)
   }
+
   target_index <- match(reaction, reactions)
   if (!isTRUE(vmax_result$feasible)) {
     return(list(
@@ -197,7 +199,8 @@
   }
 
   vmax <- as.numeric(vmax_result$vmax)
-  if (length(vmax) != 1L || !is.finite(vmax) || vmax < flux_threshold) {
+  if (length(vmax) != 1L || !is.finite(vmax) ||
+      vmax < payload$flux_threshold) {
     stop("Cached directional vmax is not a positive feasible value.",
          call. = FALSE)
   }
@@ -217,9 +220,9 @@
     shared$template$direction_reaction_index == target_index &
       shared$template$direction_sign == -target_sign
   )
-  required_flux <- as.numeric(omega) * vmax
+  required_flux <- as.numeric(payload$omega) * vmax
   bound_tolerance <- max(
-    flux_threshold,
+    payload$flux_threshold,
     32 * .Machine$double.eps * max(
       1, abs(required_flux), abs(shared$base_upper[[target_variable]])
     )
@@ -289,6 +292,10 @@
     stop("A runnable Step 2 target requires an initialized batch engine.",
          call. = FALSE)
   }
+
+  # Include both the previous and requested target indices. Starting candidate
+  # bounds from immutable completed-GEM base bounds guarantees that no target-
+  # specific lower/upper bound can leak into the next LP.
   previous <- as.integer(engine$batch_current_target_indices %||% integer())
   requested <- as.integer(spec$bound_indices)
   candidate <- sort(unique(c(previous, requested)))
@@ -362,7 +369,7 @@
     penalty_matrix[spec$target_index, , drop = TRUE]
   )
   names(target_available) <- units
-  out <- list(
+  list(
     penalty = stats::setNames(rep(NA_real_, n_units), units),
     vmax = stats::setNames(rep(NA_real_, n_units), units),
     feasible = stats::setNames(rep(FALSE, n_units), units),
@@ -373,7 +380,6 @@
     step2_status = stats::setNames(rep(NA_character_, n_units), units),
     target_available = target_available
   )
-  out
 }
 
 .rc_step2_batch_route_solve <- function(
@@ -431,9 +437,9 @@
   route_objective_events <- 0L
   route_bound_events <- 0L
 
-  # Unit-major traversal is exact because the objective is unit-specific while
-  # the target changes only variable bounds.  The same objective therefore need
-  # be transmitted once per unit, not once per target x unit.
+  # Unit-major traversal is exact: the objective is unit-specific, while the
+  # target changes only variable bounds. One unit objective can therefore be
+  # reused across every target in this structural-model batch.
   for (i in seq_along(units)) {
     if (isTRUE(reuse_mask[[i]])) {
       for (row_id in row_ids) {
@@ -520,51 +526,22 @@
     rm(unit_penalty, solver_penalty)
   }
 
-  total_solves <- sum(vapply(metrics, function(x) x$n_solves, integer(1)))
-  total_bound_switches <- sum(vapply(
-    metrics, function(x) x$n_target_switches, integer(1)
-  ))
   list(
     engine = engine,
     results = results,
     metrics = metrics,
     batch_metrics = list(
-      n_solves = as.integer(total_solves),
+      n_solves = as.integer(sum(vapply(
+        metrics, function(x) x$n_solves, integer(1)
+      ))),
       n_objective_change_events = as.integer(route_objective_events),
       n_bound_change_events = as.integer(route_bound_events),
-      n_target_switches = as.integer(total_bound_switches),
+      n_target_switches = as.integer(sum(vapply(
+        metrics, function(x) x$n_target_switches, integer(1)
+      ))),
       traversal = "unit_then_directional_target",
       shared_model_solver = TRUE
     )
-  )
-}
-
-.rc_step2_batch_prepare_payload <- function(payload, row_ids) {
-  model <- payload$model
-  shared <- .rc_step2_batch_compile_shared(
-    model = model,
-    reactions = payload$reactions,
-    entries = payload$entries,
-    vmax_values = payload$vmax,
-    row_ids = row_ids,
-    omega = payload$omega,
-    flux_threshold = payload$flux_threshold
-  )
-  specs <- lapply(row_ids, function(row_id) {
-    .rc_step2_batch_target_spec(
-      shared = shared,
-      reactions = payload$reactions,
-      entry = payload$entries[[row_id]],
-      vmax_result = payload$vmax[[row_id]],
-      omega = payload$omega,
-      flux_threshold = payload$flux_threshold
-    )
-  })
-  names(specs) <- row_ids
-  list(
-    shared = shared,
-    specs = specs,
-    engine = .rc_step2_batch_new_engine(shared, payload$solver)
   )
 }
 
@@ -639,10 +616,15 @@
     stats::setNames(rep(FALSE, length(units)), units)
   }
 
-  prepared <- .rc_step2_batch_prepare_payload(payload, row_ids)
-  engine <- prepared$engine
+  shared <- .rc_step2_batch_compile_shared(payload, row_ids)
+  specs <- lapply(row_ids, function(row_id) {
+    .rc_step2_batch_target_spec(shared, payload, row_id)
+  })
+  names(specs) <- row_ids
+  engine <- .rc_step2_batch_new_engine(shared, payload$solver)
+
   primary <- .rc_step2_batch_route_solve(
-    specs = prepared$specs,
+    specs = specs,
     engine = engine,
     penalty_matrix = payload$penalty,
     evidence = evidence,
@@ -652,7 +634,7 @@
   control <- NULL
   if (paired_control) {
     control <- .rc_step2_batch_route_solve(
-      specs = prepared$specs,
+      specs = specs,
       engine = engine,
       penalty_matrix = payload$control_penalty,
       evidence = control_evidence,
@@ -662,6 +644,7 @@
     )
     engine <- control$engine
   }
+
   list(
     engine = engine,
     primary = primary,
@@ -673,181 +656,11 @@
   )
 }
 
-# Final production definition: meta-module/cell-type union GEM Step 2.
-.rc_step2_reaction_batch_worker <- function(task) {
-  state <- .rc_step2_batch_validate_worker_payload(task, full_gem = FALSE)
-  payload <- state$payload
-  row_ids <- state$row_ids
-  model <- state$model
-  paired_control <- state$paired_control
-  routes <- NULL
-  step2_engine <- NULL
-  on.exit({
-    if (is.list(routes)) step2_engine <- routes$engine
-    .rc_compass_step2_release_engine(step2_engine)
-    rm(model, payload)
-    invisible(gc(verbose = FALSE, full = TRUE))
-  }, add = TRUE)
-
-  routes <- .rc_step2_batch_run_routes(payload, row_ids, paired_control)
-  step2_engine <- routes$engine
+.rc_step2_batch_primary_diagnostics <- function(
+    row_id, entry, model, primary, routes, full_gem) {
   units <- routes$units
-  checkpoint_files <- character(length(row_ids))
-
-  for (j in seq_along(row_ids)) {
-    row_id <- row_ids[[j]]
-    entry <- payload$entries[[row_id]]
-    primary <- routes$primary$results[[row_id]]
-    primary_metrics <- routes$primary$metrics[[row_id]]
-    control <- if (paired_control) routes$control$results[[row_id]] else NULL
-    control_metrics <- if (paired_control) {
-      routes$control$metrics[[row_id]]
-    } else {
-      list(engine = "not_run", n_solves = 0L,
-           n_objective_updates = 0L, n_fallback = 0L)
-    }
-    target_status <- if (!is.null(model$target_status)) {
-      rep(as.character(model$target_status), length(units))
-    } else {
-      ifelse(primary$feasible, "ok", "structurally_infeasible")
-    }
-    diagnostics <- data.frame(
-      row_id = rep(row_id, length(units)),
-      unit_id = units,
-      module_id = rep("CELLTYPE_MEDIUM_UNION_GEM", length(units)),
-      cell_type = rep(entry$cell_type, length(units)),
-      reaction_id = rep(entry$reaction_id, length(units)),
-      target_direction = rep(entry$target_direction, length(units)),
-      medium_scenario = rep(entry$medium_scenario, length(units)),
-      condition = rep("all", length(units)),
-      strict_feasible = unname(primary$feasible),
-      solver_status = primary$solver_status,
-      solver_backend = primary$solver_backend,
-      step1_status = primary$step1_status,
-      step2_status = primary$step2_status,
-      target_status = target_status,
-      objective_value = unname(primary$penalty),
-      vmax = unname(primary$vmax),
-      vmax_reused_from_celltype_cache = rep(TRUE, length(units)),
-      step2_model_reused_across_metacells = rep(TRUE, length(units)),
-      step2_solver_reused_across_targets = rep(TRUE, length(units)),
-      step2_traversal = rep("unit_then_directional_target", length(units)),
-      target_expression_available = primary$target_available,
-      objective_evidence_fraction = routes$evidence$fraction,
-      unavailable_objective_terms = routes$evidence$unavailable,
-      parallel_task = rep(
-        "directional_reaction_x_matching_metacells", length(units)
-      ),
-      stringsAsFactors = FALSE
-    )
-    control_diagnostics <- if (paired_control) {
-      data.frame(
-        row_id = rep(row_id, length(units)),
-        unit_id = units,
-        cell_type = rep(entry$cell_type, length(units)),
-        reaction_id = rep(entry$reaction_id, length(units)),
-        target_direction = rep(entry$target_direction, length(units)),
-        medium_scenario = rep(entry$medium_scenario, length(units)),
-        objective_value = unname(control$penalty),
-        strict_feasible = unname(control$feasible),
-        solver_status = control$solver_status,
-        solver_backend = control$solver_backend,
-        objective_identical_to_primary = unname(routes$reuse_mask),
-        stringsAsFactors = FALSE
-      )
-    } else {
-      data.frame()
-    }
-
-    token <- substr(.rc_microcompass_object_checksum(list(
-      row_id = row_id,
-      file_checksum = model$file_checksum,
-      units = units,
-      omega = payload$omega,
-      solver = payload$solver,
-      flux_threshold = payload$flux_threshold
-    )), 1L, 24L)
-    checkpoint <- file.path(
-      task$checkpoint_dir, paste0("step2__", token, ".rds")
-    )
-    primary_metrics$shared_model_batch_engine <- TRUE
-    primary_metrics$batch_objective_change_events <-
-      routes$primary$batch_metrics$n_objective_change_events
-    primary_metrics$batch_target_switches <-
-      routes$primary$batch_metrics$n_target_switches
-    if (paired_control) {
-      control_metrics$shared_model_batch_engine <- TRUE
-      control_metrics$batch_objective_change_events <-
-        routes$control$batch_metrics$n_objective_change_events
-      control_metrics$batch_target_switches <-
-        routes$control$batch_metrics$n_target_switches
-    }
-    .rc_atomic_save_rds(list(
-      row_id = row_id,
-      units = units,
-      penalty = primary$penalty,
-      vmax = primary$vmax,
-      feasible = primary$feasible,
-      evaluated = primary$evaluated,
-      diagnostics = diagnostics,
-      engine_metrics = primary_metrics,
-      control = if (paired_control) list(
-        penalty = control$penalty,
-        vmax = control$vmax,
-        feasible = control$feasible,
-        evaluated = control$evaluated,
-        diagnostics = control_diagnostics,
-        engine_metrics = control_metrics,
-        reused_from_primary = isTRUE(all(routes$reuse_mask)),
-        reused_from_primary_by_unit = routes$reuse_mask,
-        shared_target_engine = TRUE,
-        shared_model_batch_engine = TRUE
-      ) else NULL
-    ), checkpoint)
-    checkpoint_files[[j]] <- checkpoint
-    rm(
-      diagnostics, control_diagnostics, primary, control,
-      primary_metrics, control_metrics
-    )
-  }
-  checkpoint_files
-}
-
-# Final production definition: full-GEM Step 2.  It shares the same exact
-# target-bound switching engine; only diagnostics/provenance differ.
-.rc_full_gem_step2_reaction_batch_worker <- function(task) {
-  state <- .rc_step2_batch_validate_worker_payload(task, full_gem = TRUE)
-  payload <- state$payload
-  row_ids <- state$row_ids
-  model <- state$model
-  paired_control <- state$paired_control
-  routes <- NULL
-  step2_engine <- NULL
-  on.exit({
-    if (is.list(routes)) step2_engine <- routes$engine
-    .rc_compass_step2_release_engine(step2_engine)
-    rm(model, payload)
-    invisible(gc(verbose = FALSE, full = TRUE))
-  }, add = TRUE)
-
-  routes <- .rc_step2_batch_run_routes(payload, row_ids, paired_control)
-  step2_engine <- routes$engine
-  units <- routes$units
-  checkpoint_files <- character(length(row_ids))
-
-  for (j in seq_along(row_ids)) {
-    row_id <- row_ids[[j]]
-    entry <- payload$entries[[row_id]]
-    primary <- routes$primary$results[[row_id]]
-    primary_metrics <- routes$primary$metrics[[row_id]]
-    control <- if (paired_control) routes$control$results[[row_id]] else NULL
-    control_metrics <- if (paired_control) {
-      routes$control$metrics[[row_id]]
-    } else {
-      list(engine = "not_run", n_solves = 0L,
-           n_objective_updates = 0L, n_fallback = 0L)
-    }
-    diagnostics <- data.frame(
+  if (isTRUE(full_gem)) {
+    return(data.frame(
       row_id = rep(row_id, length(units)),
       unit_id = units,
       module_id = rep(NA_character_, length(units)),
@@ -876,28 +689,116 @@
         "directional_reaction_x_all_metacells", length(units)
       ),
       stringsAsFactors = FALSE
+    ))
+  }
+
+  target_status <- if (!is.null(model$target_status)) {
+    rep(as.character(model$target_status), length(units))
+  } else {
+    ifelse(primary$feasible, "ok", "structurally_infeasible")
+  }
+  data.frame(
+    row_id = rep(row_id, length(units)),
+    unit_id = units,
+    module_id = rep("CELLTYPE_MEDIUM_UNION_GEM", length(units)),
+    cell_type = rep(entry$cell_type, length(units)),
+    reaction_id = rep(entry$reaction_id, length(units)),
+    target_direction = rep(entry$target_direction, length(units)),
+    medium_scenario = rep(entry$medium_scenario, length(units)),
+    condition = rep("all", length(units)),
+    strict_feasible = unname(primary$feasible),
+    solver_status = primary$solver_status,
+    solver_backend = primary$solver_backend,
+    step1_status = primary$step1_status,
+    step2_status = primary$step2_status,
+    target_status = target_status,
+    objective_value = unname(primary$penalty),
+    vmax = unname(primary$vmax),
+    vmax_reused_from_celltype_cache = rep(TRUE, length(units)),
+    step2_model_reused_across_metacells = rep(TRUE, length(units)),
+    step2_solver_reused_across_targets = rep(TRUE, length(units)),
+    step2_traversal = rep("unit_then_directional_target", length(units)),
+    target_expression_available = primary$target_available,
+    objective_evidence_fraction = routes$evidence$fraction,
+    unavailable_objective_terms = routes$evidence$unavailable,
+    parallel_task = rep(
+      "directional_reaction_x_matching_metacells", length(units)
+    ),
+    stringsAsFactors = FALSE
+  )
+}
+
+.rc_step2_batch_control_diagnostics <- function(
+    row_id, entry, control, routes, full_gem) {
+  if (is.null(control)) return(data.frame())
+  units <- routes$units
+  common <- list(
+    row_id = rep(row_id, length(units)),
+    unit_id = units,
+    reaction_id = rep(entry$reaction_id, length(units)),
+    target_direction = rep(entry$target_direction, length(units)),
+    medium_scenario = rep(entry$medium_scenario, length(units)),
+    objective_value = unname(control$penalty),
+    strict_feasible = unname(control$feasible),
+    solver_status = control$solver_status,
+    solver_backend = control$solver_backend,
+    objective_identical_to_primary = unname(routes$reuse_mask)
+  )
+  if (!isTRUE(full_gem)) {
+    common <- append(
+      common,
+      list(cell_type = rep(entry$cell_type, length(units))),
+      after = 2L
     )
-    control_diagnostics <- if (paired_control) {
-      data.frame(
-        row_id = rep(row_id, length(units)),
-        unit_id = units,
-        reaction_id = rep(entry$reaction_id, length(units)),
-        target_direction = rep(entry$target_direction, length(units)),
-        medium_scenario = rep(entry$medium_scenario, length(units)),
-        objective_value = unname(control$penalty),
-        strict_feasible = unname(control$feasible),
-        solver_status = control$solver_status,
-        solver_backend = control$solver_backend,
-        objective_identical_to_primary = unname(routes$reuse_mask),
-        stringsAsFactors = FALSE
-      )
+  }
+  as.data.frame(common, stringsAsFactors = FALSE)
+}
+
+.rc_step2_batch_checkpoint_worker <- function(task, full_gem = FALSE) {
+  state <- .rc_step2_batch_validate_worker_payload(task, full_gem = full_gem)
+  payload <- state$payload
+  row_ids <- state$row_ids
+  model <- state$model
+  paired_control <- state$paired_control
+  routes <- NULL
+  step2_engine <- NULL
+  on.exit({
+    if (is.list(routes)) step2_engine <- routes$engine
+    .rc_compass_step2_release_engine(step2_engine)
+    rm(model, payload)
+    invisible(gc(verbose = FALSE, full = TRUE))
+  }, add = TRUE)
+
+  routes <- .rc_step2_batch_run_routes(payload, row_ids, paired_control)
+  step2_engine <- routes$engine
+  units <- routes$units
+  checkpoint_files <- character(length(row_ids))
+
+  for (j in seq_along(row_ids)) {
+    row_id <- row_ids[[j]]
+    entry <- payload$entries[[row_id]]
+    primary <- routes$primary$results[[row_id]]
+    primary_metrics <- routes$primary$metrics[[row_id]]
+    control <- if (paired_control) routes$control$results[[row_id]] else NULL
+    control_metrics <- if (paired_control) {
+      routes$control$metrics[[row_id]]
     } else {
-      data.frame()
+      list(
+        engine = "not_run", n_solves = 0L,
+        n_objective_updates = 0L, n_fallback = 0L
+      )
     }
+
+    diagnostics <- .rc_step2_batch_primary_diagnostics(
+      row_id, entry, model, primary, routes, full_gem
+    )
+    control_diagnostics <- .rc_step2_batch_control_diagnostics(
+      row_id, entry, control, routes, full_gem
+    )
 
     token <- substr(.rc_microcompass_object_checksum(list(
       row_id = row_id,
-      file_checksum = model$file_checksum,
+      file_checksum = model$file_checksum %||% NA_character_,
       units = units,
       omega = payload$omega,
       solver = payload$solver,
@@ -906,6 +807,7 @@
     checkpoint <- file.path(
       task$checkpoint_dir, paste0("step2__", token, ".rds")
     )
+
     primary_metrics$shared_model_batch_engine <- TRUE
     primary_metrics$batch_objective_change_events <-
       routes$primary$batch_metrics$n_objective_change_events
@@ -918,6 +820,7 @@
       control_metrics$batch_target_switches <-
         routes$control$batch_metrics$n_target_switches
     }
+
     .rc_atomic_save_rds(list(
       row_id = row_id,
       units = units,
@@ -941,10 +844,27 @@
       ) else NULL
     ), checkpoint)
     checkpoint_files[[j]] <- checkpoint
+
     rm(
       diagnostics, control_diagnostics, primary, control,
       primary_metrics, control_metrics
     )
   }
+
   checkpoint_files
 }
+
+.rc_step2_reaction_batch_worker_model_batch <- function(task) {
+  .rc_step2_batch_checkpoint_worker(task, full_gem = FALSE)
+}
+
+.rc_full_gem_step2_reaction_batch_worker_model_batch <- function(task) {
+  .rc_step2_batch_checkpoint_worker(task, full_gem = TRUE)
+}
+
+# Production bindings. The established private worker symbols remain stable for
+# the Layer 2 orchestration code, while each new implementation has one unique
+# top-level function definition for API-surface auditing.
+.rc_step2_reaction_batch_worker <- .rc_step2_reaction_batch_worker_model_batch
+.rc_full_gem_step2_reaction_batch_worker <-
+  .rc_full_gem_step2_reaction_batch_worker_model_batch
