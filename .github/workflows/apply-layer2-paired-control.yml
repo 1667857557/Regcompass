@@ -49,6 +49,8 @@ jobs:
         run: Rscript tests/layer2-paired-control-check.R
       - name: Existing native acceleration regression
         run: Rscript tests/layer2-native-acceleration-check.R
+      - name: Existing full-GEM checkpoint regression
+        run: Rscript tests/full-gem-step2-reaction-checkpoint-check.R
       - name: Commit validated source changes
         run: |
           git config user.name github-actions[bot]
