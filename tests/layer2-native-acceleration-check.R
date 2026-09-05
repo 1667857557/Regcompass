@@ -32,6 +32,7 @@ rc_align_bound <- function(x, reactions, default, name) {
 source("R/lp_solver.R", local = FALSE)
 source("R/microcompass_vmax_cache.R", local = FALSE)
 source("R/celltype_microcompass_reaction_parallel.R", local = FALSE)
+source("R/layer2_step2_model_batch.R", local = FALSE)
 
 .rc_atomic_save_rds <- function(x, file) {
   saveRDS(x, file)
@@ -283,13 +284,136 @@ run_compact_step2_worker_check <- function() {
       )),
       isTRUE(all.equal(
         result$penalty[[one_unit]], reference$penalty, tolerance = 1e-9
-      ))
+      )),
+      isTRUE(result$engine_metrics$shared_model_batch_engine),
+      result$engine_metrics$batch_objective_change_events <= length(units)
     )
   }
   invisible(result)
 }
 
+run_model_batch_step2_check <- function() {
+  root <- tempfile("regcompass-step2-model-batch-")
+  dir.create(root, recursive = TRUE)
+  on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
+
+  S <- Matrix::Matrix(
+    matrix(
+      c(1, -1, -1), nrow = 1,
+      dimnames = list("M", c("UP", "T1", "T2"))
+    ),
+    sparse = TRUE
+  )
+  lb <- c(UP = 0, T1 = 0, T2 = 0)
+  ub <- c(UP = 10, T1 = 10, T2 = 10)
+  units <- c("mc1", "mc2", "mc3")
+  primary_penalty <- matrix(
+    c(
+      0.20, 0.50, 0.90,
+      0.30, 0.70, 0.40,
+      0.80, 0.15, 0.60
+    ),
+    nrow = 3,
+    dimnames = list(c("UP", "T1", "T2"), units)
+  )
+  control_penalty <- primary_penalty
+  control_penalty[, "mc2"] <- c(0.45, 0.25, 0.95)
+  control_penalty[, "mc3"] <- c(0.10, 0.85, 0.35)
+  control_identical <- c(mc1 = TRUE, mc2 = FALSE, mc3 = FALSE)
+  row_ids <- c("row_T1", "row_T2")
+  entries <- stats::setNames(lapply(c("T1", "T2"), function(target) {
+    list(
+      reaction_id = target,
+      target_direction = "forward",
+      cell_type = "T",
+      medium_scenario = "toy"
+    )
+  }), row_ids)
+  vmax_values <- stats::setNames(lapply(c("T1", "T2"), function(target) {
+    .rc_step2_compact_vmax_value(rc_compass_vmax_directional(
+      S, lb, ub, target, direction = "forward", solver = "highs"
+    ))
+  }), row_ids)
+  payload <- list(
+    schema_version = "regcompass_step2_compact_payload_v1",
+    model = list(
+      S = S,
+      lb = lb,
+      ub = ub,
+      target_status = "ok",
+      file_checksum = "shared-toy-model",
+      cell_type = "T",
+      medium_scenario = "toy"
+    ),
+    reactions = c("UP", "T1", "T2"),
+    units = units,
+    penalty = primary_penalty,
+    control_penalty = control_penalty,
+    control_identical = control_identical,
+    entries = entries,
+    vmax = vmax_values,
+    omega = 0.95,
+    solver = "highs",
+    flux_threshold = 1e-8
+  )
+  payload_file <- file.path(root, "payload.rds")
+  checkpoint_dir <- file.path(root, "checkpoints")
+  dir.create(checkpoint_dir)
+  saveRDS(payload, payload_file)
+
+  checkpoints <- .rc_step2_reaction_batch_worker(list(
+    payload_file = payload_file,
+    row_ids = row_ids,
+    checkpoint_dir = checkpoint_dir
+  ))
+  stopifnot(length(checkpoints) == length(row_ids), all(file.exists(checkpoints)))
+
+  for (checkpoint in checkpoints) {
+    result <- readRDS(checkpoint)
+    target <- entries[[result$row_id]]$reaction_id
+    stopifnot(
+      result$engine_metrics$n_solves == length(units),
+      isTRUE(result$engine_metrics$shared_model_batch_engine),
+      result$engine_metrics$batch_objective_change_events <= length(units),
+      result$engine_metrics$batch_target_switches == length(row_ids) * length(units),
+      result$control$engine_metrics$n_solves == sum(!control_identical),
+      result$control$engine_metrics$batch_objective_change_events <=
+        sum(!control_identical),
+      identical(
+        result$control$diagnostics$objective_identical_to_primary,
+        unname(control_identical)
+      )
+    )
+    for (one_unit in units) {
+      primary_reference <- rc_compass_two_step_lp_directional(
+        S, lb, ub, target, primary_penalty[, one_unit],
+        target_direction = "forward", omega = 0.95, solver = "highs"
+      )
+      control_reference <- rc_compass_two_step_lp_directional(
+        S, lb, ub, target, control_penalty[, one_unit],
+        target_direction = "forward", omega = 0.95, solver = "highs"
+      )
+      stopifnot(
+        identical(result$feasible[[one_unit]], primary_reference$feasible),
+        isTRUE(all.equal(
+          result$penalty[[one_unit]], primary_reference$penalty,
+          tolerance = 1e-9
+        )),
+        identical(
+          result$control$feasible[[one_unit]], control_reference$feasible
+        ),
+        isTRUE(all.equal(
+          result$control$penalty[[one_unit]], control_reference$penalty,
+          tolerance = 1e-9
+        ))
+      )
+    }
+  }
+  invisible(checkpoints)
+}
+
 run_persistent_vmax_check()
 run_persistent_step2_check()
 run_compact_step2_worker_check()
-cat("Layer 2 native acceleration regression passed.\n")
+run_model_batch_step2_check()
+cat("Layer 2 native/model-batch acceleration regression passed.\n")
