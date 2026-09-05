@@ -1,0 +1,40 @@
+name: Apply paired Layer 2 control optimization
+
+on:
+  push:
+    branches:
+      - agent/layer2-paired-control-exact
+
+permissions:
+  contents: write
+
+jobs:
+  patch-and-validate:
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5.1'
+      - name: Install minimal numerical dependencies
+        run: |
+          Rscript -e 'install.packages(c("Matrix", "highs"), repos="https://cloud.r-project.org")'
+      - name: Apply source patch
+        run: python tools/apply_layer2_paired_control.py
+      - name: Parse changed R sources
+        run: |
+          Rscript -e 'files <- c("R/microcompass_vmax_cache.R","R/microcompass_engine.R","R/celltype_microcompass_reaction_parallel.R","R/step_layer2.R"); invisible(lapply(files, parse)); cat("parse ok\n")'
+      - name: Paired numerical equivalence regression
+        run: Rscript tests/layer2-paired-control-check.R
+      - name: Existing native acceleration regression
+        run: Rscript tests/layer2-native-acceleration-check.R
+      - name: Commit validated source changes
+        run: |
+          git config user.name github-actions[bot]
+          git config user.email 41898282+github-actions[bot]@users.noreply.github.com
+          git add DESCRIPTION R/microcompass_vmax_cache.R R/microcompass_engine.R R/celltype_microcompass_reaction_parallel.R R/step_layer2.R tests/layer2-paired-control-check.R tests/testthat/test-layer2-paired-control.R
+          git commit -m "Pair primary and RNA control Layer 2 scoring" || exit 0
+          git push origin HEAD:agent/layer2-paired-control-exact
