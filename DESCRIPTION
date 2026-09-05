@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.25
+Version: 2.4.26
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -139,6 +139,7 @@ Collate:
     'step_layer2.R'
     'layer2_parallel_runtime.R'
     'celltype_microcompass_reaction_parallel.R'
+    'layer2_step2_model_batch.R'
     'layer2_corda_meta_module_contract.R'
     'layer2_corda_evidence.R'
     'layer2_corda_lp.R'
@@ -218,8 +219,3 @@ Config/RegCompass/PandoTargetR2Threshold: 0.05-diagnostic-only-for-condition-GRN
 Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
 Config/RegCompass/PandoStandardDefaultMethod: ridge
 Config/RegCompass/PandoTargetParallelMemoryPolicy: target-specific-worker-sized-payload-batches
-Config/RegCompass/PandoTargetPenaltyQ: condition-common-edge-topology-standard-route-legacy-filter
-Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1
-Config/RegCompass/MediumSemantics: compass-exchange-bounds-v2
-Config/RegCompass/MediumCacheFingerprint: resolved-reaction-id-final-lb-final-ub-v1
-Config/RegCompass/PandoHumanDefaultRegions: phastConsElements20Mammals.UCSC.hg38+SCREEN.ccRE.UCSC.hg38
