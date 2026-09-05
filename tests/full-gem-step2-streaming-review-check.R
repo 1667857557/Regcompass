@@ -42,7 +42,6 @@ source("R/layer2_step2_model_batch_streaming.R", local = FALSE)
 
 root <- tempfile("regcompass-full-gem-streaming-")
 dir.create(root, recursive = TRUE)
-on.exit(unlink(root, recursive = TRUE, force = TRUE), add = TRUE)
 
 n_targets <- 17L
 targets <- paste0("T", seq_len(n_targets))
@@ -157,4 +156,5 @@ stopifnot(
   !any(singleton$diagnostics$step2_solver_reused_across_targets)
 )
 
+unlink(root, recursive = TRUE, force = TRUE)
 cat("Full-GEM bounded-memory streaming/Codex review checks passed.\n")
