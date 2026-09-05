@@ -28,6 +28,7 @@ source("R/layer2_parallel_runtime.R", local = FALSE)
 source("R/microcompass_vmax_cache.R", local = FALSE)
 source("R/microcompass_engine.R", local = FALSE)
 source("R/celltype_microcompass_reaction_parallel.R", local = FALSE)
+source("R/layer2_penalty_lp.R", local = FALSE)
 
 if (!requireNamespace("highs", quietly = TRUE)) {
   stop("highs is required for paired-control regression")
@@ -110,18 +111,52 @@ check_worker <- function(worker, full) {
   paired <- run_worker(
     worker, primary_penalty, control_penalty, full = full
   )
+  primary_score <- rc_compass_score_from_penalty(
+    matrix(primary_legacy$penalty, nrow = 1,
+           dimnames = list(row_id, names(primary_legacy$penalty))),
+    matrix(primary_legacy$feasible, nrow = 1,
+           dimnames = list(row_id, names(primary_legacy$feasible)))
+  )
+  paired_primary_score <- rc_compass_score_from_penalty(
+    matrix(paired$penalty, nrow = 1,
+           dimnames = list(row_id, names(paired$penalty))),
+    matrix(paired$feasible, nrow = 1,
+           dimnames = list(row_id, names(paired$feasible)))
+  )
+  control_score <- rc_compass_score_from_penalty(
+    matrix(control_legacy$penalty, nrow = 1,
+           dimnames = list(row_id, names(control_legacy$penalty))),
+    matrix(control_legacy$feasible, nrow = 1,
+           dimnames = list(row_id, names(control_legacy$feasible)))
+  )
+  paired_control_score <- rc_compass_score_from_penalty(
+    matrix(paired$control$penalty, nrow = 1,
+           dimnames = list(row_id, names(paired$control$penalty))),
+    matrix(paired$control$feasible, nrow = 1,
+           dimnames = list(row_id, names(paired$control$feasible)))
+  )
   stopifnot(
     isTRUE(all.equal(paired$penalty, primary_legacy$penalty,
                      tolerance = 1e-12)),
     isTRUE(all.equal(paired$feasible, primary_legacy$feasible)),
     isTRUE(all.equal(paired$evaluated, primary_legacy$evaluated)),
+    identical(paired_primary_score, primary_score),
     isTRUE(all.equal(paired$control$penalty, control_legacy$penalty,
                      tolerance = 1e-12)),
     isTRUE(all.equal(paired$control$feasible, control_legacy$feasible)),
     isTRUE(all.equal(paired$control$evaluated, control_legacy$evaluated)),
+    identical(paired_control_score, control_score),
     paired$engine_metrics$n_solves == length(units),
     paired$control$engine_metrics$n_solves == length(units),
-    !isTRUE(paired$control$reused_from_primary)
+    !isTRUE(paired$control$reused_from_primary),
+    identical(
+      unname(paired$diagnostics$objective_value),
+      unname(paired$penalty)
+    ),
+    identical(
+      unname(paired$control$diagnostics$objective_value),
+      unname(paired$control$penalty)
+    )
   )
 
   reused <- run_worker(
@@ -134,6 +169,22 @@ check_worker <- function(worker, full) {
     identical(reused$evaluated, reused$control$evaluated),
     isTRUE(reused$control$reused_from_primary),
     reused$control$engine_metrics$n_solves == 0L
+  )
+
+  # Guard against tolerance-based reuse. A one-ULP-sized objective change must
+  # still execute an independent RNA-control solver stream because the matrices
+  # are not exactly identical().
+  almost_control <- primary_penalty
+  almost_control[[1L, 1L]] <-
+    almost_control[[1L, 1L]] + .Machine$double.eps
+  stopifnot(!identical(almost_control, primary_penalty))
+  near <- run_worker(
+    worker, primary_penalty, almost_control,
+    full = full, identical_control = FALSE
+  )
+  stopifnot(
+    !isTRUE(near$control$reused_from_primary),
+    near$control$engine_metrics$n_solves == length(units)
   )
 }
 
@@ -149,4 +200,4 @@ stopifnot(
   grepl("answer$comparison_paths <- NULL", stage, fixed = TRUE)
 )
 
-cat("paired Layer 2 primary/RNA-control numerical equivalence checks passed\n")
+cat("paired Layer 2 primary/RNA-control exact-equivalence checks passed\n")
