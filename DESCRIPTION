@@ -141,6 +141,7 @@ Collate:
     'layer2_parallel_runtime.R'
     'celltype_microcompass_reaction_parallel.R'
     'layer2_step2_model_batch.R'
+    'layer2_step2_model_batch_streaming.R'
     'layer2_corda_meta_module_contract.R'
     'layer2_corda_evidence.R'
     'layer2_corda_lp.R'
