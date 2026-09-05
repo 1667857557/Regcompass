@@ -44,18 +44,13 @@ replace_once(
     '''      target_status = ifelse(\n        primary$feasible, "ok", "structurally_infeasible"\n      ),\n''',
     '''      target_status = target_status,\n''',
 )
-replace_once(
-    "R/celltype_microcompass_reaction_parallel.R",
-    '''      control_diagnostics, prepared, primary, control, primary_metrics,\n      control_metrics\n''',
-    '''      control_diagnostics, prepared, primary, control, primary_metrics,\n      control_metrics, target_status\n''',
-)
 
 # 4) Reuse flags must be keyed by target row because checkpoint order is
 # model/batch order, not necessarily the original penalty row order. Apply the
 # same protection to both full-GEM and cell-type engines.
-for path, label in [
-    ("R/microcompass_engine.R", "full-GEM"),
-    ("R/celltype_microcompass_reaction_parallel.R", "cell-type"),
+for path in [
+    "R/microcompass_engine.R",
+    "R/celltype_microcompass_reaction_parallel.R",
 ]:
     replace_once(
         path,
@@ -73,12 +68,22 @@ for path, label in [
         '''    rna_control_model_identical_reuse = control_reused[row_ids],\n''',
     )
 
-# Update misleading per-engine prose in the full-GEM result metadata.
-replace_once(
-    "R/microcompass_engine.R",
-    '''      step2_solver_reuse = paste(\n        "one prepared target template with independent persistent HiGHS",\n        "streams for primary and RNA-only objectives across all metacells"\n      ),\n''',
-    '''      step2_solver_reuse = paste(\n        "one prepared target template and one persistent HiGHS engine per",\n        "target; primary and RNA-only remain independent LP solves when their",\n        "full model-wide objective vectors differ"\n      ),\n''',
-)
+# Update misleading per-engine provenance in both execution routes.
+for path, old in [
+    (
+        "R/microcompass_engine.R",
+        '''      step2_solver_reuse = paste(\n        "one prepared target template with independent persistent HiGHS",\n        "streams for primary and RNA-only objectives across all metacells"\n      ),\n''',
+    ),
+    (
+        "R/celltype_microcompass_reaction_parallel.R",
+        '''      step2_solver_reuse = paste(\n        "one prepared target template with independent persistent HiGHS",\n        "streams for primary and RNA-only objectives across matching metacells"\n      ),\n''',
+    ),
+]:
+    replace_once(
+        path,
+        old,
+        '''      step2_solver_reuse = paste(\n        "one prepared target template and one persistent HiGHS engine per",\n        "target; primary and RNA-only remain independent LP solves when their",\n        "full model-wide objective vectors differ"\n      ),\n''',
+    )
 
 # Extend the permanent paired-control regression.
 replace_once(
@@ -114,7 +119,7 @@ replace_once(
 replace_once(
     "tests/layer2-paired-control-check.R",
     '''  grepl("answer$comparison_paths <- NULL", stage, fixed = TRUE)\n)\n''',
-    '''  grepl("answer$comparison_paths <- NULL", stage, fixed = TRUE)\n)\n\n# The paired progress wrapper must never emit phase 8 before phase 6.\nphase6 <- regexpr('"primary_engine_complete", 6L', stage, fixed = TRUE)[[1L]]\nphase8 <- regexpr('"rna_control_complete", 8L', stage, fixed = TRUE)[[1L]]\nstopifnot(phase6 > 0L, phase8 > 0L, phase6 < phase8)\n\n# Reuse summaries are row-keyed in both engines, so model-scoped checkpoint\n# ordering cannot scramble target-level diagnostics.\nfull_text <- paste(readLines("R/microcompass_engine.R", warn = FALSE),\n                   collapse = "\\n")\ncell_text <- paste(readLines(\n  "R/celltype_microcompass_reaction_parallel.R", warn = FALSE\n), collapse = "\\n")\nfor (text in list(full_text, cell_text)) {\n  stopifnot(\n    grepl("control_reused <- setNames(logical(length(row_ids)), row_ids)",\n          text, fixed = TRUE),\n    grepl("control_reused[[row_id]] <- isTRUE(all(reuse_mask))",\n          text, fixed = TRUE),\n    grepl("rna_control_model_identical_reuse = control_reused[row_ids]",\n          text, fixed = TRUE)\n  )\n}\n''',
+    '''  grepl("answer$comparison_paths <- NULL", stage, fixed = TRUE)\n)\n\n# The paired progress wrapper must never emit phase 8 before phase 6. Use the\n# paired-dispatch detail string so the legacy control wrapper's phase 8 event\n# does not affect this ordering assertion.\nphase6 <- regexpr(\n  "primary structural models and directional scores assembled",\n  stage, fixed = TRUE\n)[[1L]]\nphase8 <- regexpr(\n  "RNA-only Step 2 completed in the same target dispatch with shared Vmax",\n  stage, fixed = TRUE\n)[[1L]]\nstopifnot(phase6 > 0L, phase8 > 0L, phase6 < phase8)\n\n# Reuse summaries are row-keyed in both engines, so model-scoped checkpoint\n# ordering cannot scramble target-level diagnostics.\nfull_text <- paste(readLines("R/microcompass_engine.R", warn = FALSE),\n                   collapse = "\\n")\ncell_text <- paste(readLines(\n  "R/celltype_microcompass_reaction_parallel.R", warn = FALSE\n), collapse = "\\n")\nfor (text in list(full_text, cell_text)) {\n  stopifnot(\n    grepl("control_reused <- setNames(logical(length(row_ids)), row_ids)",\n          text, fixed = TRUE),\n    grepl("control_reused[[row_id]] <- isTRUE(all(reuse_mask))",\n          text, fixed = TRUE),\n    grepl("rna_control_model_identical_reuse = control_reused[row_ids]",\n          text, fixed = TRUE),\n    grepl("one persistent HiGHS engine per", text, fixed = TRUE)\n  )\n}\n''',
 )
 
 print("Applied PR #337 Codex review fixes")
