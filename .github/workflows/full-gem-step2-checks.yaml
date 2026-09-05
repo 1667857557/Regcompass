@@ -6,6 +6,7 @@ on:
       - 'DESCRIPTION'
       - 'R/microcompass_engine.R'
       - 'R/microcompass_vmax_cache.R'
+      - 'R/layer2_step2_directional_prepare.R'
       - 'R/microcompass.R'
       - 'R/layer2_parallel_runtime.R'
       - 'R/celltype_microcompass_reaction_parallel.R'
@@ -19,6 +20,7 @@ on:
       - 'DESCRIPTION'
       - 'R/microcompass_engine.R'
       - 'R/microcompass_vmax_cache.R'
+      - 'R/layer2_step2_directional_prepare.R'
       - 'R/microcompass.R'
       - 'R/layer2_parallel_runtime.R'
       - 'R/celltype_microcompass_reaction_parallel.R'
@@ -52,6 +54,7 @@ jobs:
           files <- c(
             'R/microcompass_engine.R',
             'R/microcompass_vmax_cache.R',
+            'R/layer2_step2_directional_prepare.R',
             'R/celltype_microcompass_reaction_parallel.R',
             'R/layer2_step2_model_batch.R',
             'tests/full-gem-step2-reaction-checkpoint-check.R',
