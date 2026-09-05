@@ -99,6 +99,7 @@ Collate:
     'microcompass.R'
     'celltype_union_gem_cache.R'
     'microcompass_vmax_cache.R'
+    'layer2_step2_directional_prepare.R'
     'microcompass_engine.R'
     'celltype_microcompass_engine.R'
     'target_union.R'
