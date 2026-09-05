@@ -27,7 +27,7 @@ jobs:
       - name: Install minimal numerical dependencies
         shell: Rscript {0}
         run: |
-          install.packages(c("Matrix", "highs"))
+          install.packages(c("Matrix", "highs", "RcppEigen"))
       - name: Harden patch application
         run: python tools/prepare_layer2_paired_patcher.py
       - name: Apply source patch
