@@ -8,20 +8,21 @@ on:
       - '.github/workflows/apply-layer2-exact-speedups.yml'
 
 concurrency:
-  group: layer2-exact-speedups-export
+  group: layer2-exact-speedups-finalize
   cancel-in-progress: true
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  export-validated-sources:
+  finalize-pr-branch:
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
         with:
           ref: agent/layer2-target-parallel-exact-speedups
           fetch-depth: 0
+          persist-credentials: true
 
       - name: Make HiGHS cache source-test safe
         shell: python
@@ -59,22 +60,13 @@ jobs:
               raise SystemExit(f'expected one standalone solve-count assertion, found {text.count(old)}')
           p.write_text(text.replace(old, new, 1))
 
-      - name: Stage validated source artifact
+      - name: Commit validated source to PR branch
         shell: bash
         run: |
           set -euo pipefail
-          mkdir -p validated/R validated/tests/testthat validated/.github/workflows
-          cp DESCRIPTION validated/DESCRIPTION
-          cp R/microcompass_vmax_cache.R validated/R/
-          cp R/microcompass_engine.R validated/R/
-          cp R/celltype_microcompass_reaction_parallel.R validated/R/
-          cp tests/layer2-native-acceleration-check.R validated/tests/
-          cp tests/testthat/test-layer2-native-acceleration.R validated/tests/testthat/
-          cp .github/workflows/full-gem-step2-checks.yaml validated/.github/workflows/
-
-      - uses: actions/upload-artifact@v4
-        with:
-          name: layer2-validated-sources
-          path: validated
-          if-no-files-found: error
-          retention-days: 1
+          rm -f tools/apply_layer2_exact_speedups.py tools/fix_layer2_patcher.py
+          git config user.name 'regcompass-layer2-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'Accelerate exact target-parallel Layer 2 scoring'
+          git push origin HEAD:refs/heads/agent/layer2-target-parallel-exact-speedups-pr
