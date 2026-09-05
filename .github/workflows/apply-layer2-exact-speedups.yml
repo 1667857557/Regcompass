@@ -1,0 +1,65 @@
+name: Apply exact Layer 2 speedups
+
+on:
+  push:
+    branches:
+      - agent/layer2-target-parallel-exact-speedups
+    paths:
+      - '.github/workflows/apply-layer2-exact-speedups.yml'
+
+permissions:
+  contents: write
+
+jobs:
+  apply-and-validate:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: agent/layer2-target-parallel-exact-speedups
+          fetch-depth: 0
+          persist-credentials: true
+
+      - uses: r-lib/actions/setup-r@v2
+        with:
+          r-version: '4.5'
+          use-public-rspm: true
+
+      - name: Install numerical regression dependencies
+        shell: Rscript {0}
+        run: install.packages(c('Rcpp', 'RcppEigen', 'Matrix', 'highs'))
+
+      - name: Apply source-level optimizations
+        run: python tools/apply_layer2_exact_speedups.py
+
+      - name: Parse changed R sources
+        shell: Rscript {0}
+        run: |
+          parse(file='R/microcompass_vmax_cache.R')
+          parse(file='R/microcompass_engine.R')
+          parse(file='R/celltype_microcompass_reaction_parallel.R')
+          parse(file='tests/layer2-native-acceleration-check.R')
+          parse(file='tests/testthat/test-layer2-native-acceleration.R')
+
+      - name: Run native/persistent numerical regression
+        run: Rscript tests/layer2-native-acceleration-check.R
+
+      - name: Run full-GEM target checkpoint numerical regression
+        run: Rscript tests/full-gem-step2-reaction-checkpoint-check.R
+
+      - name: Audit patch and commit validated sources
+        shell: bash
+        run: |
+          set -euo pipefail
+          grep -F 'return_solution = FALSE' R/microcompass_engine.R
+          grep -F 'require_solution = FALSE' R/microcompass_engine.R
+          grep -F 'persistent_required = identical(payload$solver, "highs")' R/microcompass_engine.R
+          grep -F '.rc_compass_vmax_batch_highs' R/microcompass_vmax_cache.R
+          grep -F 'highs (>= 1.12.0-1)' DESCRIPTION
+          git diff --check
+          rm -f tools/apply_layer2_exact_speedups.py .github/workflows/apply-layer2-exact-speedups.yml
+          git config user.name 'regcompass-layer2-bot'
+          git config user.email 'actions@users.noreply.github.com'
+          git add -A
+          git commit -m 'Accelerate exact target-parallel Layer 2 scoring'
+          git push origin HEAD:agent/layer2-target-parallel-exact-speedups
