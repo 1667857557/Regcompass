@@ -453,26 +453,6 @@ rc_regcompass_step_layer2 <- function(
 }
 
 # Progress-aware entry point; the algorithm remains in the core above.
-.rc_run_microcompass_engine_monitored <- function(
-    ..., progress_monitor = NULL) {
-  args <- list(...)
-  state <- .rc_layer2_progress_state
-  previous_run <- state$run_kind
-  state$run_kind <- "rna_control"
-  on.exit({ state$run_kind <- previous_run }, add = TRUE)
-  .rc_layer2_overall_event(
-    "rna_control_start", 7L,
-    "reusing structural models and primary directional Vmax for RNA-only Step 2"
-  )
-  answer <- do.call(.rc_run_microcompass_engine, args)
-  .rc_layer2_overall_event(
-    "rna_control_complete", 8L,
-    "RNA-only Step 2 completed without recomputing directional Vmax"
-  )
-  answer
-}
-
-# Progress-aware entry point; the algorithm remains in the core above.
 .rc_run_microcompass_monitored <- function(..., progress_monitor = NULL) {
   args <- list(...)
   state <- .rc_layer2_progress_state

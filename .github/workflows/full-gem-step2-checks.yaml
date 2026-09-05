@@ -3,23 +3,33 @@ name: Full-GEM Step 2 numerical regression
 on:
   pull_request:
     paths:
+      - 'DESCRIPTION'
       - 'R/microcompass_engine.R'
       - 'R/microcompass_vmax_cache.R'
+      - 'R/layer2_step2_directional_prepare.R'
       - 'R/microcompass.R'
       - 'R/layer2_parallel_runtime.R'
       - 'R/celltype_microcompass_reaction_parallel.R'
+      - 'R/layer2_step2_model_batch.R'
+      - 'R/layer2_step2_model_batch_streaming.R'
       - 'tests/full-gem-step2-reaction-checkpoint-check.R'
+      - 'tests/full-gem-step2-streaming-review-check.R'
       - 'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
       - '.github/workflows/full-gem-step2-checks.yaml'
   push:
     branches: [Main]
     paths:
+      - 'DESCRIPTION'
       - 'R/microcompass_engine.R'
       - 'R/microcompass_vmax_cache.R'
+      - 'R/layer2_step2_directional_prepare.R'
       - 'R/microcompass.R'
       - 'R/layer2_parallel_runtime.R'
       - 'R/celltype_microcompass_reaction_parallel.R'
+      - 'R/layer2_step2_model_batch.R'
+      - 'R/layer2_step2_model_batch_streaming.R'
       - 'tests/full-gem-step2-reaction-checkpoint-check.R'
+      - 'tests/full-gem-step2-streaming-review-check.R'
       - 'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
       - '.github/workflows/full-gem-step2-checks.yaml'
 
@@ -48,8 +58,12 @@ jobs:
           files <- c(
             'R/microcompass_engine.R',
             'R/microcompass_vmax_cache.R',
+            'R/layer2_step2_directional_prepare.R',
             'R/celltype_microcompass_reaction_parallel.R',
+            'R/layer2_step2_model_batch.R',
+            'R/layer2_step2_model_batch_streaming.R',
             'tests/full-gem-step2-reaction-checkpoint-check.R',
+            'tests/full-gem-step2-streaming-review-check.R',
             'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
           )
           for (file in files) parse(file = file)
@@ -64,6 +78,8 @@ jobs:
           text_by_file = {str(path): path.read_text() for path in files}
           all_r = '\n'.join(text_by_file.values())
           canonical = Path('R/microcompass_engine.R').read_text()
+          batch = Path('R/layer2_step2_model_batch.R').read_text()
+          streaming = Path('R/layer2_step2_model_batch_streaming.R').read_text()
 
           name = '.rc_run_shared_full_gem_engine_core'
           pattern = re.compile(rf'(?m)^{re.escape(name)}\s*<-\s*function\b')
@@ -103,6 +119,30 @@ jobs:
                   f'direct canonical full-GEM Step 2 acceleration path missing: {missing}'
               )
 
+          batch_required = [
+              '.rc_step2_batch_apply_target',
+              'hi_solver_set_variable_bounds',
+              'unit_then_directional_target',
+          ]
+          missing = [marker for marker in batch_required if marker not in batch]
+          if missing:
+              raise RuntimeError(
+                  f'model-batch Step 2 acceleration contract missing: {missing}'
+              )
+
+          streaming_required = [
+              '.rc_step2_stream_target_chunk_size',
+              'bounded_target_microbatch_unit_then_directional_target',
+              '.rc_full_gem_step2_reaction_batch_worker_streaming',
+              '.rc_full_gem_step2_reaction_batch_worker <-',
+              'shared_model_batch_engine',
+          ]
+          missing = [marker for marker in streaming_required if marker not in streaming]
+          if missing:
+              raise RuntimeError(
+                  f'bounded-memory full-GEM Step 2 production contract missing: {missing}'
+              )
+
           obsolete = [
               'tasks <- expand.grid(\n    model_key = unique_model_keys,\n    unit_id = units',
               'run_one_unit <- function(task)',
@@ -116,3 +156,6 @@ jobs:
 
       - name: Run full-GEM Step 2 numerical equivalence and parallel regression
         run: Rscript tests/full-gem-step2-reaction-checkpoint-check.R
+
+      - name: Run full-GEM bounded-memory streaming and diagnostic regression
+        run: Rscript tests/full-gem-step2-streaming-review-check.R

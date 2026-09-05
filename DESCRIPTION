@@ -1,6 +1,6 @@
 Package: RegCompassR
 Title: Multiome Regulatory Evidence and Metabolic Reaction Analysis
-Version: 2.4.25
+Version: 2.4.26
 Authors@R: c(person(given = "RegCompass", family = "Developers", role = c("aut", "cre"), email = "dev@example.com"))
 Author: RegCompass Developers [aut, cre]
 Maintainer: RegCompass Developers <dev@example.com>
@@ -99,6 +99,7 @@ Collate:
     'microcompass.R'
     'celltype_union_gem_cache.R'
     'microcompass_vmax_cache.R'
+    'layer2_step2_directional_prepare.R'
     'microcompass_engine.R'
     'celltype_microcompass_engine.R'
     'target_union.R'
@@ -139,6 +140,8 @@ Collate:
     'step_layer2.R'
     'layer2_parallel_runtime.R'
     'celltype_microcompass_reaction_parallel.R'
+    'layer2_step2_model_batch.R'
+    'layer2_step2_model_batch_streaming.R'
     'layer2_corda_meta_module_contract.R'
     'layer2_corda_evidence.R'
     'layer2_corda_lp.R'
