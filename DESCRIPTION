@@ -219,3 +219,8 @@ Config/RegCompass/PandoTargetR2Threshold: 0.05-diagnostic-only-for-condition-GRN
 Config/RegCompass/PandoStandardRidgeSchema: pando_standard_grn_single_task_ridge_v1
 Config/RegCompass/PandoStandardDefaultMethod: ridge
 Config/RegCompass/PandoTargetParallelMemoryPolicy: target-specific-worker-sized-payload-batches
+Config/RegCompass/PandoTargetPenaltyQ: condition-common-edge-topology-standard-route-legacy-filter
+Config/RegCompass/SuperCellPartition: shared-walktrap-condition-hierarchy-cut-v1
+Config/RegCompass/MediumSemantics: compass-exchange-bounds-v2
+Config/RegCompass/MediumCacheFingerprint: resolved-reaction-id-final-lb-final-ub-v1
+Config/RegCompass/PandoHumanDefaultRegions: phastConsElements20Mammals.UCSC.hg38+SCREEN.ccRE.UCSC.hg38
