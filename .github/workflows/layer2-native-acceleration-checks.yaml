@@ -3,8 +3,10 @@ name: Layer 2 native acceleration checks
 on:
   pull_request:
     paths:
+      - "DESCRIPTION"
       - "R/microcompass_vmax_cache.R"
       - "R/celltype_microcompass_reaction_parallel.R"
+      - "R/layer2_step2_model_batch.R"
       - "R/layer2_corda2_algorithm.R"
       - "R/RcppExports.R"
       - "src/RcppExports.cpp"
@@ -34,6 +36,7 @@ jobs:
         run: |
           parse(file = "R/microcompass_vmax_cache.R")
           parse(file = "R/celltype_microcompass_reaction_parallel.R")
+          parse(file = "R/layer2_step2_model_batch.R")
           parse(file = "R/layer2_corda2_algorithm.R")
-      - name: Compile and run native numerical regression
+      - name: Compile and run native/model-batch numerical regression
         run: Rscript tests/layer2-native-acceleration-check.R
