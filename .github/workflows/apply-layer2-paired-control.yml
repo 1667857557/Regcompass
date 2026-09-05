@@ -1,4 +1,4 @@
-name: Apply paired Layer 2 control optimization
+name: Validate exact paired Layer 2 optimization
 
 on:
   push:
@@ -9,11 +9,11 @@ permissions:
   contents: write
 
 concurrency:
-  group: layer2-paired-control-${{ github.ref }}
+  group: layer2-paired-control-exact-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
-  patch-and-validate:
+  optimize-and-validate:
     if: github.actor != 'github-actions[bot]'
     runs-on: ubuntu-22.04
     steps:
@@ -28,12 +28,8 @@ jobs:
         shell: Rscript {0}
         run: |
           install.packages(c("Matrix", "highs", "RcppEigen"))
-      - name: Harden patch application
-        run: python tools/prepare_layer2_paired_patcher.py
-      - name: Apply source patch
-        run: python tools/apply_layer2_paired_control.py
-      - name: Tighten exact-result output path
-        run: python tools/fix_layer2_paired_output.py
+      - name: Apply exact paired-control optimization
+        run: python tools/optimize_layer2_paired_exact.py
       - name: Parse changed R sources
         shell: Rscript {0}
         run: |
@@ -45,7 +41,7 @@ jobs:
           )
           invisible(lapply(files, parse))
           cat("parse ok\n")
-      - name: Paired numerical equivalence regression
+      - name: Paired exact-equivalence regression
         run: Rscript tests/layer2-paired-control-check.R
       - name: Existing native acceleration regression
         run: Rscript tests/layer2-native-acceleration-check.R
@@ -55,6 +51,6 @@ jobs:
         run: |
           git config user.name github-actions[bot]
           git config user.email 41898282+github-actions[bot]@users.noreply.github.com
-          git add DESCRIPTION R/microcompass_vmax_cache.R R/microcompass_engine.R R/celltype_microcompass_reaction_parallel.R R/step_layer2.R tests/layer2-paired-control-check.R tests/testthat/test-layer2-paired-control.R
-          git commit -m "Pair primary and RNA control Layer 2 scoring" || exit 0
+          git add R/microcompass_vmax_cache.R R/microcompass_engine.R R/celltype_microcompass_reaction_parallel.R tests/layer2-paired-control-check.R
+          git commit -m "Reuse exact RNA-control objectives within target solver" || exit 0
           git push origin HEAD:agent/layer2-paired-control-exact
