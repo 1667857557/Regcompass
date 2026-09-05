@@ -3,22 +3,26 @@ name: Full-GEM Step 2 numerical regression
 on:
   pull_request:
     paths:
+      - 'DESCRIPTION'
       - 'R/microcompass_engine.R'
       - 'R/microcompass_vmax_cache.R'
       - 'R/microcompass.R'
       - 'R/layer2_parallel_runtime.R'
       - 'R/celltype_microcompass_reaction_parallel.R'
+      - 'R/layer2_step2_model_batch.R'
       - 'tests/full-gem-step2-reaction-checkpoint-check.R'
       - 'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
       - '.github/workflows/full-gem-step2-checks.yaml'
   push:
     branches: [Main]
     paths:
+      - 'DESCRIPTION'
       - 'R/microcompass_engine.R'
       - 'R/microcompass_vmax_cache.R'
       - 'R/microcompass.R'
       - 'R/layer2_parallel_runtime.R'
       - 'R/celltype_microcompass_reaction_parallel.R'
+      - 'R/layer2_step2_model_batch.R'
       - 'tests/full-gem-step2-reaction-checkpoint-check.R'
       - 'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
       - '.github/workflows/full-gem-step2-checks.yaml'
@@ -49,6 +53,7 @@ jobs:
             'R/microcompass_engine.R',
             'R/microcompass_vmax_cache.R',
             'R/celltype_microcompass_reaction_parallel.R',
+            'R/layer2_step2_model_batch.R',
             'tests/full-gem-step2-reaction-checkpoint-check.R',
             'tests/testthat/test-full-gem-step2-reaction-checkpoints.R'
           )
@@ -64,6 +69,7 @@ jobs:
           text_by_file = {str(path): path.read_text() for path in files}
           all_r = '\n'.join(text_by_file.values())
           canonical = Path('R/microcompass_engine.R').read_text()
+          batch = Path('R/layer2_step2_model_batch.R').read_text()
 
           name = '.rc_run_shared_full_gem_engine_core'
           pattern = re.compile(rf'(?m)^{re.escape(name)}\s*<-\s*function\b')
@@ -101,6 +107,18 @@ jobs:
           if missing:
               raise RuntimeError(
                   f'direct canonical full-GEM Step 2 acceleration path missing: {missing}'
+              )
+
+          batch_required = [
+              '.rc_step2_batch_apply_target',
+              'hi_solver_set_variable_bounds',
+              'unit_then_directional_target',
+              'shared_model_batch_engine',
+          ]
+          missing = [marker for marker in batch_required if marker not in batch]
+          if missing:
+              raise RuntimeError(
+                  f'model-batch Step 2 acceleration contract missing: {missing}'
               )
 
           obsolete = [
