@@ -84,7 +84,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -f tools/apply_layer2_exact_speedups.py tools/fix_layer2_patcher.py .github/workflows/apply-layer2-exact-speedups.yml
+          rm -f tools/apply_layer2_exact_speedups.py tools/fix_layer2_patcher.py
           git config user.name 'regcompass-layer2-bot'
           git config user.email 'actions@users.noreply.github.com'
           git add -A
